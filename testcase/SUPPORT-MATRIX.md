@@ -9,7 +9,7 @@ Re-run `python testcase/run_category.py testcase/<category>` to refresh.
 | 02-domain-sensitive | TP 7/7 | TN 11/11 |
 | 03-pointer-multilevel | TP 2/2 | TN 12/12 (1 known-limitation) |
 | 04-polymorphic-callgraph | TP 9/9 | TN 2/2 |
-| 05-real-cve-derived | TP 15/15 | TN 5/5 (1 known-limitation) |
+| 05-real-cve-derived | TP 15/15 | TN 3/3 (3 known-limitation) |
 
 ## Verdicts
 
@@ -55,10 +55,14 @@ Known limitations:
 
 ### 05-real-cve-derived
 
-**CWE-502 and CWE-117 are both fully supported.** All four deserialization shapes fire and both mitigations stay silent; all five Log4Shell shapes fire, including the three-frame cross-method case. The CWE-117 support needed two fixes: the `log.sinks` family had no checker bound to it at all, and a logger held in a static field lowered to the callee signature `LOG.info/1` with no type, so no FQN-anchored sink pattern could match. R1115 closed the third: an identifier allowlist is the only correct fix for ORDER BY / table / column, because bind variables cannot bind identifiers, and the engine modelled sanitizers purely by callee signature -- an allowlist is not a call, it is a value being narrowed. It is now recognised, and only in the reject-and-assign form: `if (!"a".equals(x)) { x = "a"; }` closes every path that could carry an unlisted value, while `if ("a".equals(x)) { x = "a"; }` does not, because its fall-through keeps the user's value. Every case now passes: 15/15 TP and 5/5 TN, with no false negatives. R1116 closed the last one by fixing the FIXTURE rather than the engine -- `runCommand` had been a `println` stand-in, so no `command.sinks` pattern could ever match and the case asserted a finding on a shape the engine has no sink for. Behind an `if (false)` guard it is inert at runtime and present in the IR, which is what a fixture is for. One case is recorded as a known limitation rather than counted: `LOG4SHELL-sanitized-tn`, where the real fix is a runtime configuration cutoff.
+**CWE-502 fires on all four unmitigated shapes and CWE-117 on all five Log4Shell shapes, including the three-frame cross-method case.** The CWE-117 support needed two fixes: the `log.sinks` family had no checker bound to it at all, and a logger held in a static field lowered to the callee signature `LOG.info/1` with no type, so no FQN-anchored sink pattern could match. R1115 closed the third: an identifier allowlist is the only correct fix for ORDER BY / table / column, because bind variables cannot bind identifiers, and the engine modelled sanitizers purely by callee signature -- an allowlist is not a call, it is a value being narrowed. It is now recognised, and only in the reject-and-assign form: `if (!"a".equals(x)) { x = "a"; }` closes every path that could carry an unlisted value, while `if ("a".equals(x)) { x = "a"; }` does not, because its fall-through keeps the user's value. R1120 tightened that further: polarity alone was not enough, because a negation inside a disjunction (`if (!"a".equals(x) || !"b".equals(y))`) can be satisfied by the unrelated disjunct, so the substitution never runs. The proof is now deferred to the branch, where the boolean combine is visible. R1116 closed the last true negative by fixing the FIXTURE rather than the engine -- `runCommand` had been a `println` stand-in, so no `command.sinks` pattern could ever match and the case asserted a finding on a shape the engine has no sink for. Behind an `if (false)` guard it is inert at runtime and present in the IR, which is what a fixture is for.
+
+**Three cases are recorded as known limitations rather than counted as passing precision gates**, and R1121 is why the count reads TN 3/3 instead of 5/5. Two of them -- `CVE-502-filtered-tn` and `CVE-502-allowlist-tn` -- were previously scored as precision wins, and both were unfailable: each was anchored on an enclosing method name, which the engine reports only as a substring of other findings' `sink_function`, so the anchor check was answered by an unrelated finding and the gate passed without ever asking about CWE-502. Re-pinned to the real sink, the engine turns out to report BOTH JEP-290-mitigated `readObject()` calls, even though `UnsafeDeserializationChecker`'s own spec text names `ObjectInputFilter` / `resolveClass` as sanitizers it must recognise. Nothing implements that, so the limitation is an absence of capability in the fact domain rather than an unsound result, and both are scored outside the tallies with the finding left visible. The third, `LOG4SHELL-sanitized-tn`, is unrelated: a `replace("${", "")` chain is not provably a sanitizer, and the real fix is a runtime configuration cutoff.
 
 Outstanding: 
 - none
 
 Known limitations: 
+- `CVE-502-filtered-tn`
+- `CVE-502-allowlist-tn`
 - `LOG4SHELL-sanitized-tn`
