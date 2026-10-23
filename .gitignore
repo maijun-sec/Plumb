@@ -127,6 +127,15 @@ dist-test-package/
 testcase/**/_raw.ndjson
 testcase/**/_raw.jsonl
 
+# Python bytecode caches (scripts/gen_*.py are run in place).
+__pycache__/
+*.pyc
+
+# The rule-doc generators write to docs/ now. This is the legacy output
+# directory the generators used before they were repointed; it only appears
+# if someone runs an older copy of the script.
+doc/
+
 # R1113: 746 MB of prior scan OUTPUT sitting under src/main/resources.
 #
 # plumb-dfa/src/main/resources/scripts holds the real corpus (614 .java fixtures).

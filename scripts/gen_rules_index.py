@@ -49,8 +49,8 @@ def main() -> int:
             f"| `{r['fqn']}` | {eq_str} |"
         )
     out.append("")
-    out_path = Path("doc") / "plumb-style-rules-index.md"
-    out_path.parent.mkdir(exist_ok=True)
+    out_path = Path("docs") / "plumb-style-rules-index.md"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n".join(out) + "\n", encoding="utf-8")
     print(f"Wrote {out_path}  ({out_path.stat().st_size:,} bytes)")
     return 0

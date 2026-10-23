@@ -25,15 +25,17 @@ prompt 默认由 checker 提供。手写 override 见：
 
 ## 2. CWE 标签与 mapping 一致性
 
-`juliet-coverage/data/plumb_rule_to_cwe.json`（393 entries）是 rule → CWE 的双向映射，用于：
+`juliet-coverage/data/plumb_rule_to_cwe.json`（**367** 条）是 rule → CWE 的映射，用于：
 - Juliet 评估的 cwe_matched eval 路径
 - NDJSON 输出里 `cwe` 字段填充
 
-**Lesson 1318（P0）**：R-836 emit-id 改成 `ast-style-<bare>-style` 后，老 mapping 用 R-791 命名，导致 cwe_matched eval 静默跳过所有新 emit-style 的 finding。R-837 修法：
+**维护原则**：这个文件是**人工维护**的，仓库里没有自动 rebuild 脚本。key 有两种
+形态都能被 `ScanRunner.isRuleIdAllowed` 匹配：
+- 规则短名（大写下划线），例如 `ABSENT_CODEBLOCK_IN_CASE`
+- emit-id 字符串，例如 `ast-style-empty-catch-style`
 
-- `tmp/r837_extract_mapping.py` 从 plumb-style + plumb-dfa source 自动 grep `new RuleId(...)` + `new TaintRule(...)` 重建 mapping
-- mapping 从 278 → **393 entries**（+115 新 emit-style rule，-3 mismatch）
-- 维护原则：**不要手改 mapping**，改完源码就重跑 rebuild script
+改 emit-id 字符串时**必须**同步更新这个 mapping —— 漏改会让 Juliet 的
+`cwe_matched` 评估路径静默跳过对应 finding。
 
 ## 3. 与外部工具的等价 ID
 
@@ -108,28 +110,27 @@ prompt 默认由 checker 提供。手写 override 见：
 
 ### 13.1 加新 Style 规则
 
-1. 在 `plumb-style/src/main/java/org/plumb/style/<category>/FooCheck.java` 写规则，实现 `AstCheck` 接口。
+1. 在 `plumb-style/src/main/java/org/plumb/style/<category>/FooCheck.java` 写规则，实现 `AstChecker` 接口。
 2. 在 `CheckerCategories.java` 加 `m.put("FooCheck", "<category>");`（按字母序）。
 3. 跑 `mvn -o -pl plumb-style install` rebuild。
-4. `sast-scan --list-rules | grep FooCheck` 验证。
+4. `bin/sast-scan --list-rules | grep FooCheck` 验证。
 
-⚠️ 第 2 步漏掉会**静默丢失**：`StyleCheckRegistry.discoverAvailable()` 找不到规则，不 emit
-也不报错。
-5. `bin/sast-scan --list-rules | grep FooCheck` 验证。
-
-如果忘了 (2)/(3)，`StyleCheckRegistry.discoverAvailable()` 会找不到规则，**静默丢失**——emit 不出来但报错也没有。Lesson 1319 的修复就是为这种情况加 warning log + 周期性 codemod 同步。
+⚠️ 第 2 步漏掉会**静默丢失**：`AstCheckerRegistry.byCategory(...)` 找不到规则，
+不 emit 也不报错。（注意 `AstCheckerRegistry.builtins()` 走 classpath 扫描，
+不依赖 `CheckerCategories`；漏登记影响的是按分类加载的路径。）
 
 ### 13.2 加新 DFA Unified 规则
 
-1. 在 `plumb-dfa/src/main/java/org/plumb/dfa/checkers/<family>/FooChecker.java` 写规则，实现 `DfaChecker` 接口。
-2. 给 `RuleRegistry.withBuiltinDefaults()` 加 `RuleDef.of("plumb.<family>.foo", ...)` 注册。
-3. 在 `juliet-coverage/data/plumb_rule_to_cwe.json` 加 `"plumb.<family>.foo": ["CWE-XXX"]` mapping（或重跑 `tmp/r837_extract_mapping.py` 自动）。
-4. 跑 `mvn -pl plumb-dfa install` rebuild。
-5. `bin/sast-scan --list-rules | grep plumb.<family>.foo` 验证。
+1. 在 `plumb-dfa/src/main/java/org/plumb/dfa/checkers/<family>/FooChecker.java` 写规则，实现 `DfaChecker` 接口（或继承 `TaintedCheckerBase`）。
+2. 在 `ScanRunner.buildDfaCheckers()` 加一行 `checkers.add(new org.plumb.dfa.checkers.<family>.FooChecker());`，并挂上对应的 YAML flag。
+3. 在 `plumb-dfa/src/main/resources/checkers.yaml` 加一条 checker 条目（`enabled` 决定默认开关）。
+4. 在 `juliet-coverage/data/plumb_rule_to_cwe.json` 加 mapping（key 用规则短名或 emit-id，两者都能被匹配）。
+5. 跑 `mvn -pl plumb-dfa install` rebuild。
+6. `bin/sast-scan --list-rules | grep <rule-id>` 验证。
 
 ### 13.3 加新 Taint Rule
 
-1. 在 `plumb-rules/.../TaintRule.java` 的 `BuiltinTaintRules` 加 `new TaintRule("name", ...)`。
+1. 在 `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintRuleRegistry.java` 加一条 `m.put("<rule-id>", TaintRule.of(...))`。
 2. **在 `plumb-dfa/src/main/resources/sink-families.yaml` 注册 source / sink 模式**（不存在
    `TaintCatalog` 这个类——早期文档提到的它从未存在）。sanitizer 若不是某个 sink family 的
    固有属性，则在对应 checker 的 `isSanitizer` 里判定。

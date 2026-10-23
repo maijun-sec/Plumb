@@ -4,20 +4,23 @@
 
 > 本文档同时描述 **3 种发布形态**：
 > 1. **开发构建** — `scripts/build.sh` / `scripts/build.ps1` 出单文件 `plumb-main-<ver>-all.jar`
-> 2. **瘦发布包** — `scripts/package.sh` / `scripts/package.ps1` 出 bin/lib/conf 目录，需要目标机自带 JRE 17+
+> 2. **瘦发布包** — `scripts/package.sh` 出 bin/lib/conf 目录，需要目标机自带 JRE 17+
 > 3. **解压即用包** — `scripts/dist-jlink-windows.ps1` / `scripts/dist-jlink-linux.sh` 用 jlink 自带最小 JRE，**目标机无需任何 Java 环境**
 >
-> 此外 `scripts/package-slim.ps1` 在瘦发布包基础上重写 `default-config.yaml`，把 AI 模块开关关掉给内网/审计场景。
+> 此外 `scripts/package-slim.ps1` 在瘦发布包基础上重写 `default-config.yaml`，把 AI 开关关掉给内网/审计场景。
+>
+> **没有 Windows 原生的 `package.ps1`** —— `package.sh` 是 bash 脚本，Windows 上
+> 通过 git-bash / WSL 运行；纯 PowerShell 的 Windows 出包路径是
+> `scripts/dist-jlink-windows.ps1` 和 `scripts/package-slim.ps1`。
 
 ## 1. 出包命令速查
 
 | 形态 | 命令 | 产物 |
 | --- | --- | --- |
 | 单文件 jar | `pwsh scripts/build.ps1 --skip-tests` | `plumb-main/target/plumb-main-<ver>-all.jar` |
-| 瘦发布包 (POSIX) | `pwsh scripts/package.sh` | `dist/plumb-<ver>/{bin,lib,conf}/` |
-| 瘦发布包 (Windows) | `pwsh scripts/package.ps1` | `dist/plumb-<ver>/{bin,lib,conf}/` |
+| 瘦发布包 | `bash scripts/package.sh` | `dist/plumb-<ver>/{bin,lib,conf}/` |
 | AI-gate-closed slim | `pwsh scripts/package-slim.ps1` | `dist/plumb-<ver>-slim/{bin,lib,conf}/` |
-| 解压即用 (Linux x64 / arm64) | `pwsh scripts/dist-jlink-linux.sh --arch x64` | `dist-jlink/plumb-<ver>-jre-linux-x64.tar.gz` |
+| 解压即用 (Linux x64 / arm64) | `bash scripts/dist-jlink-linux.sh --arch x64` | `dist-jlink/plumb-<ver>-jre-linux-x64.tar.gz` |
 | 解压即用 (Windows x64) | `pwsh scripts/dist-jlink-windows.ps1 -Arch x64` | `dist-jlink/plumb-<ver>-jre-windows-x64.zip` |
 
 构建脚本都接受 `--skip-build` / `-SkipBuild` 跳过 Maven，仅基于已生成的 jar 重打发布包——CI 上常这么用：
@@ -39,7 +42,7 @@ plumb-<ver>/
 │   ├── sast-scan               POSIX 启动器（bash）
 │   └── sast-scan.bat           Windows cmd 启动器
 ├── lib/
-│   └── plumb-main-<ver>-all.jar     单文件 uber-jar（≈ 76 MB）
+│   └── plumb-main-<ver>-all.jar     单文件 uber-jar（≈ 115 MB）
 └── conf/
     ├── default-config.yaml     baseline YAML（详 §6）
     └── logback.xml             默认日志（INFO 级别）
@@ -53,7 +56,7 @@ plumb-<ver>/
 | --- | ---: | --- |
 | `bin/sast-scan` | ~300 B | POSIX shell 启动器。`exec java -cp $DIR/lib/* -Dlogback.configurationFile=$DIR/conf/logback.xml org.plumb.main.SastMain "$@"` |
 | `bin/sast-scan.bat` | ~250 B | Windows cmd 启动器。逻辑同 POSIX 版，靠 `%~dp0` 解路径 |
-| `lib/plumb-main-<ver>-all.jar` | ~76 MB | shade 后 uber-jar：plumb-* 全模块、JavaParser、SootUp、Z3 turnkey、Logback |
+| `lib/plumb-main-<ver>-all.jar` | ~115 MB | shade 后 uber-jar：plumb-* 全模块、JavaParser、SootUp、Z3 turnkey、Logback |
 | `conf/default-config.yaml` | ~9 KB | 全字段 baseline：inputs/output/outputDir/cacheMode/cgStrategy/checks/ai（详 §6） |
 | `conf/logback.xml` | ~200 B | 默认 INFO 级别；可用 `-Dlogback.configurationFile=...` 覆盖 |
 | `README.txt` | ~200 B | 启动命令 + 默认 conf 段说明 |
@@ -175,15 +178,20 @@ $env:OPENAI_API_KEY = "sk-..."
 
 ## 4. slim 发行（AI 关闭）
 
-`pwsh scripts/package-slim.ps1` 在瘦发布包基础上**重写** `conf/default-config.yaml`，把 `ai.enabled` 翻成 `false`：
+`pwsh scripts/package-slim.ps1` 在瘦发布包基础上**重写** `conf/default-config.yaml`，把 `ai.dedup` 翻成 `false`：
 
 ```
 dist/plumb-0.1.0-SNAPSHOT-slim/
 ├── README-SLIM.txt        解释本包差异
 ├── bin/sast-scan(.bat)
-├── lib/plumb-main-...-all.jar   # 仍含 plumb-ai 类，只是 runner 不触发
-└── conf/default-config.yaml     # ai.enabled: false
+├── lib/plumb-main-...-all.jar   # 仍含 plumb-ai 类，只是 gate 关着
+└── conf/default-config.yaml     # ai.dedup: false
 ```
+
+> **注意关的是 `ai.dedup`，不是 `ai.enabled`。** `ai.enabled` 这个 key 早已从
+> 配置 schema 里移除，`ConfigLoader` 遇到它只会打一条 warning 并忽略 ——
+> 写它等于没关 AI。真正的 AI 开关是 `ai.dedup`（CLI 的 `--ai-dedup` 也会
+> 设 `cfg.aiDedup = true`）。
 
 适用场景：
 
@@ -191,7 +199,12 @@ dist/plumb-0.1.0-SNAPSHOT-slim/
 - 离线 / 隔离网络环境
 - 想静态可复现的扫描结果（不依赖 LLM 判定）
 
-想彻底剥 plumb-ai classes：删 `lib/plumb-main-...-all.jar`，用 `mvn -pl plumb-main package -Pno-ai -DskipTests=true` 重打一个不 shade `plumb-ai` 的 uber-jar。Runner 有 reflection guard，类找不到会打 `plumb-ai not in classpath; AI pass skipped` 然后继续静态分析。
+想彻底剥掉 plumb-ai classes：`plumb-ai` 是 `plumb-main` 的**硬依赖**
+（`plumb-main/pom.xml` 直接依赖它，`ScanConfig` 直接 new
+`org.plumb.ai.agent.LlmConnection`），所以**不能**只从 `lib/` 删文件 ——
+必须用 `mvn -pl plumb-main package -DskipTests=true` 重新打一个不 shade
+`plumb-ai` 的 uber-jar。代码里**没有** reflection guard；类找不到会直接
+`NoClassDefFoundError`。
 
 ## 5. 跨平台注意
 
@@ -232,7 +245,7 @@ checks:
   taint: true
   style: true
   divByZero:           {enabled: true, aiDedup: true}
-  # ... 一共 42 项 ...
+  # ... 一共 46 项 ...
 
 # ---- AI augmentation ----
 ai:
@@ -311,7 +324,7 @@ gpg --armor --detach-sign --output dist/plumb-<ver>/lib/plumb-main-<ver>-all.jar
 
 | 组件 | 大小 |
 | --- | ---: |
-| `plumb-main-<ver>-all.jar` (shaded uber-jar) | ~76 MB |
+| `plumb-main-<ver>-all.jar` (shaded uber-jar) | ~115 MB |
 | jlink 最小 JRE 17（含 14 个 module） | ~95 MB |
 | 解压即用 tar.gz (Linux x64) | ~80 MB（gzip 压缩后） |
 | 解压即用 zip (Windows x64) | ~180 MB |

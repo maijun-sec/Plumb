@@ -89,16 +89,19 @@ public final class TacType implements Serializable {
         CLASS, ARRAY, VOID, NULL, UNKNOWN
     }
     private final Kind kind;
-    private final String className;   // 当 kind == CLASS/ARRAY 时
-    private final int arrayDepth;     // 当 kind == ARRAY 时
+    private final Object payload;   // kind == CLASS 时是短类名；
+                                   // kind == ARRAY 时是元素类型 (TacType)
 }
 ```
+
+`className()` 在 `kind == CLASS` 时返回 `(String) payload`；`arrayComponent()`
+在 `kind == ARRAY` 时返回元素类型。
 
 `STRING` 走 fast path；`CLASS` 只保留短名（不含包）。泛型擦除。
 
 ## 4. 指令集
 
-`TacInstruction.Kind` 共 17 种：
+`TacInstruction.Kind` 共 19 种：
 
 | Kind | 字段 | 含义 |
 | --- | --- | --- |

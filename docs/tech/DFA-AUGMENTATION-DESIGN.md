@@ -2,7 +2,6 @@
 
 本文档解释 Plumb 在 5 个 Coverity Java checker 上**加 DFA 增强版**的工程取舍——为什么 AST 版本会漏报、DFA 版本如何消除 false negative、4 种通用 DFA 增强技术怎么用。
 
-> 源材料：`docs/COV_JAVA_DFA_AUGMENTATION.md`（R540-DA / R541-DA / R542-DA / R543-DA / R560-DA / R561-DA）
 > 配套：`tech/CROSS-FUNCTION-ANALYSIS.md`（跨函数 summary 完整机制）、`tech/ARCHITECTURE.md §3.0`（DFA 引擎 SPI）、`rules/RULE-TOOL-COMPARISON.md §1.2`（DFA vs AST 取舍）
 
 ## 1. 背景：为什么 AST 不够用
@@ -190,9 +189,10 @@ FunctionSummary 用什么作 key？
 - ❌ 类名.函数名（inner class / lambda 命名差异）
 - ✅ **signature = "Class.method(param1,param2,...)"**（R-787 决定保留）
 
-签名规范化在 `R41-CALLGRAPH-SIG-NORMALIZATION-2026-08-18.md` 详述，包括：
-- 内部类 `$` qualifier（JVM 风格）
-- lambda 合成函数 `lambda$N/arity`
+签名规范化的具体规则：
+- 内部类用 `$` qualifier（JVM 风格）
+- lambda 合成函数的 signature 是 `lambda$N(arity)`（见
+  `plumb-tac/.../translate/ExpressionTranslator.java` 的 `translateLambda`）
 - 重载消歧用 arity + 参数类型
 
 ### 4.4 AST vs DFA 的判定准则

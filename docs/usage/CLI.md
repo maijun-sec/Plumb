@@ -1,4 +1,4 @@
-﻿# Plumb CLI 使用手册
+# Plumb CLI 使用手册
 
 本文档是 Plumb 命令行工具 `sast-scan` 的完整使用说明。
 
@@ -41,14 +41,14 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system <maven|gradle|b
 | `-c` | `--config` | `<yaml>` | — | 从 YAML 加载扫描配置（覆盖 / 扩展命令行 flag） |
 | `-i` | `--input` | `<path>` | — | 输入文件或目录，**可重复**。支持 `.java`、`.jar`、`.class`、`.war`、`.ear`、`.zip` |
 | `-o` | `--output` | `<path>` | `stdout` | 报告输出文件 |
-| `-f` | `--format` | `console` \| `ndjson` | `console` | 输出格式 |
+| `-f` | `--format` | `console` \| `ndjson` \| `sarif` | `console` | 输出格式 |
 | `-D` | `--output-dir` | `<dir>` | — | 报告 + 缓存输出根目录。子目录：`cache/programs/*.tac`、`report/findings.{ndjson,console}` |
 | — | `--cache-mode` | `off` \| `read` \| `write` \| `readwrite` | `off` | 磁盘 IR 缓存使用模式 |
-| — | `--cg-strategy` | 见下表 | `vta` | Call-graph 构造策略，传给 `plumb-dfa` 引擎 |
+| — | `--cg-strategy` | 见下表 | `global` | Call-graph 构造策略，传给 `plumb-dfa` 引擎 |
 | — | `--max-parallelism` | `<n>` | `nCPU-1`（最小 1） | parse + translate 阶段并发上限 |
 | — | `--ai-dedup` | — | off | R-? — FP reducer 开关。把每条 finding 发给 LLM 判 TP/FP/UNKNOWN。verdict 写到 NDJSON 的 `ai_verdict` + `ai_reason` 字段。LLM 端点 + key 走 YAML（`ai.apiKey` / `ai.baseUrl` / `ai.model`） |
 | — | `--ai-dedup-stats` | — | off | R-? — AI dedup 跑完后，往 **stderr** 打 verdict 分布 + 每条规则的 FP 占比 Top 10。stdout 的 NDJSON 不变。配合 `--ai-dedup` 一起用，单独开 no-op。 |
-| — | `--rule` | `<id>` | — | 只跑指定 rule（**可重复**）。覆盖 YAML 的 `checks.*` 标志。`--rule SQL_INJECTION` 就是只看 SQL 注入 |
+| — | `--rule` | `<id>` | — | 只跑指定 rule（**可重复**）。覆盖 YAML 的 `checks.*` 标志。**精确匹配** —— 要用真实的 rule id，例如 `--rule TAINT_SINK_SQL_INJECTION`；写不存在的 id 会静默产出 0 条 finding。用 `--list-rules` 查全部 id |
 | — | `--rule-prompts-dir` | `<path>` | — | 用户自带的 rule prompt `.md` 目录。覆盖打包在 classpath 里的默认 prompt |
 | — | `--list-rules` | — | — | 列出所有已知 rule id 并退出 |
 
@@ -63,7 +63,14 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system <maven|gradle|b
 | — | `--build-system` | `maven\|gradle\|bazel\|ant` | — | 显式挑 build-system adapter。缺省时按 `pom.xml` / `build.gradle` / `BUILD` / `build.xml` 自动探测 |
 | — | `--format` | `console\|ndjson\|sarif` | `console` | 输出格式（`sarif` 是 R-803 增加，IDE / GitHub Code Scanning 集成） |
 
-`--output-dir` 和 `--cache-mode` 必须**同时**使用；`--cache-mode off` 时磁盘缓存是 no-op。
+`--output-dir` 和 `--cache-mode` **不强制成对使用**，但要有意义就得配齐：
+
+- 只给 `--output-dir`：`ScanRunner` 仍会创建 `cache/` + `report/` 目录树
+  （`OutputLayout.ensureDirectories()`），但 `--cache-mode` 默认为 `off`，
+  所以缓存目录会是空的
+- 只给 `--cache-mode readwrite`：没有任何地方会写盘 —— 缓存路径由
+  `--output-dir` 决定，没给就没有 cache 目录可读可写
+- 两者都给：`--cache-mode` 决定 `cache/programs/*.tac` 的读写行为
 
 ### 2.1 R-? 单条规则的 AI 行为
 
@@ -72,10 +79,11 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system <maven|gradle|b
 > 返回非 null = LLM 收到这条规则的 prompt + finding 详情 +
 > dataflow trace + 源码窗口，输出 TP / FP / UNKNOWN。
 >
-> 规则的 prompt 默认由 checker 持有。`plumb-dfa` 里 23 个类覆写 `getAiPrompt`，例如
-> `plumb-dfa/src/main/java/org/plumb/dfa/checkers/...` 下的各 checker，加上
-> `plumb-style/src/main/java/org/plumb/style/security/HardcodedCredentialsCheck.java`、
-> `plumb-style/src/main/java/org/plumb/style/error/EmptyCatchBlockCheck.java`。
+> 规则的 prompt 默认由 checker 持有。`plumb-dfa` 里 23 个文件提到 `getAiPrompt`
+> （其中 21 个是真正的覆写，另 2 个是 `DfaChecker` 的接口声明和 `DfaEngine` 里的调用），
+> 例如 `plumb-dfa/src/main/java/org/plumb/dfa/checkers/...` 下的各 checker；`plumb-style`
+> 侧有 3 个覆写：`style/BadShiftCheck.java`、`error/EmptyCatchBlockCheck.java`、
+> `security/HardcodedCredentialsCheck.java`。
 > 用户的 `--rule-prompts-dir` 仍可 override（`<rule-name>.md` 文件覆盖对应 checker 的 inline `getAiPrompt` 返回值）。
 
 ### 2.2 R-? AI 集成
@@ -85,24 +93,33 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system <maven|gradle|b
 
 ```yaml
 ai:
-  enabled: true                # 总开关
-  dedup: true                  # FP reducer
-  dropOnAiFp: false            # false=保留 FP 标记，true=丢掉
-  dedupRules: []               # 空=每条规则都过；填了只审这些
-  provider: openai             # openai | anthropic | openai_compatible
+  dedup: false                  # FP reducer（CLI: --ai-dedup）
+  dropOnAiFp: false             # false=保留 FP 标记，true=丢掉
+  dedupRules: []                # 空=每条规则都过；填了只审这些
+  provider: openai              # openai | anthropic | openai_compatible
   baseUrl: https://api.openai.com
-  apiKey: ${OPENAI_API_KEY}    # ${ENV_VAR} 语法
+  apiKey: ${OPENAI_API_KEY}     # ${ENV_VAR} 语法
   model: gpt-4o-mini
+  header:                       # 可选的额外请求头
   timeoutSeconds: 30
-  maxConcurrent: 4             # 并发 dedup 请求数
-  contextLines: 5              # ±N 行源码上下文
-  rulePromptsDir: conf/rule-prompts
-  temperature: 0.0             # 0 = 确定性判 FP
+  maxConcurrent: 4              # 并发 dedup 请求数
+  temperature: 0.0              # 0 = 确定性判 FP
 ```
+
+**已被移除的 key**（`ConfigLoader` 会打 warning 并忽略）：
+
+| key | 替代 |
+| --- | --- |
+| `ai.enabled` | CLI `--ai-dedup` |
+| `ai.scan` | 无（AI 只做 FP 判定） |
+| `ai.contextLines` | 无（源码窗口在 runner 里硬编码为 3 行） |
+| `ai.rulePromptsDir` | CLI `--rule-prompts-dir` |
+| `ai.sendAstContext` | 无 |
 
 CLI 简写：
 
-- `--ai-dedup` = `ai.dedup: true`（+ 隐式 `ai.enabled: true`）
+- `--ai-dedup` = `ai.dedup: true`（`SastMain` 只设 `cfg.aiDedup = true`，
+  **不存在** `ai.enabled` 这个隐含开关）
 
 **Agent — FP reducer** (`AgentPrompts.FP_REDUCER`)
 
@@ -129,7 +146,9 @@ bin/sast-scan -c conf/default-config.yaml -i src \
     --ai-dedup
 
 # 3. 只看 SQL 注入
-bin/sast-scan -c conf/default-config.yaml -i src --rule SQL_INJECTION
+#    --rule 是精确匹配：必须用真实的 rule id（TAINT_SINK_SQL_INJECTION），
+#    写 SQL_INJECTION 匹配不到任何规则，扫描会静默产出 0 条 finding。
+bin/sast-scan -c conf/default-config.yaml -i src --rule TAINT_SINK_SQL_INJECTION
 
 # 4. 自带 rule prompt 覆盖
 bin/sast-scan -c conf/default-config.yaml -i src \
@@ -139,7 +158,7 @@ bin/sast-scan -c conf/default-config.yaml -i src \
 ### 2.3 R-? Re-Act 多轮工具调用
 
 `--ai-dedup` 默认走 **Re-Act 多轮循环**（不是单次问答）—— LLM 在判 TP/FP 之前可以调
-12 个工具去看更多代码、查 caller 有没有 sanitize、检查 trace 路径上有无 guard：
+13 个工具去看更多代码、查 caller 有没有 sanitize、检查 trace 路径上有无 guard：
 
 | 工具 | 干啥 | IR 依赖 | 何时用 |
 |------|------|--------|--------|
@@ -155,7 +174,10 @@ bin/sast-scan -c conf/default-config.yaml -i src \
 | `get_class_hierarchy` | 找 extends / implements | ✗ | "这个 controller 继承 TrustedService 吗？" |
 | `get_full_class` | 按 class name 读整个 .java 源 | ✗ | "看 controller 完整 surface" |
 | `get_dataflow_trace_with_facts` | 重新格式化 dataflow trace + Z3 facts | ✗ | "trace 路径上 L7 的 BRANCH 是不是 sanitizer？" |
-| `get_call_hierarchy` | 递归 walk caller chain (BFS, depth ≤ 4) | ✓ (Grep fallback) | "这个 sink 从 public HTTP 真的 reach 到吗？" |
+
+`plumb-ai/.../tools/` 下还有第 13 个工具类 `GetCallHierarchyTool`（递归 walk caller
+chain，BFS depth ≤ 4），但它**没有注册进** `ScanRunner.buildToolRegistry()` ——
+`--ai-dedup` 的 LLM 拿不到它。
 
 `grep` / `glob` / `list_dir` / `search_pattern` / `get_class_hierarchy` /
 `get_full_class` / `get_dataflow_trace_with_facts` **完全不依赖 AST/TAC** —
@@ -206,7 +228,7 @@ tool call）。Dev inner loop 不需要这个 — 5 个 LLM test 默认
 **为什么不用 Spring-AI**：`plumb-ai` 用裸 `java.net.http` + Jackson，client 代码 ~50
 行，OpenAI function-calling JSON 直接拼。Spring-AI / LangChain4j 多 3MB Spring
 依赖 + 调用栈深 6-8 层，调试 print 不到 raw reply。详细实现见
-`docs/tech/CROSS-FUNCTION-ANALYSIS.md` §14。
+`docs/tech/CROSS-FUNCTION-AI-TRACE.md` §14。
 
 ### 2.4 R-? AI dedup 报告（`--ai-dedup-stats`）
 
@@ -257,7 +279,7 @@ Top 10 rules by FP ratio (FP / total):
 `UNKNOWN` 通常来自：网络超时、模型编不出 JSON、模型编出非 TP/FP 的 verdict
 （被规范化为 UNKNOWN）。`UNKNOWN` 高的话看 stderr 末尾 `ai_reason` 字段。
 
-**实现细节**：见 `docs/tech/CROSS-FUNCTION-ANALYSIS.md` §14.7.10。`--ai-dedup-stats`
+**实现细节**：见 `docs/tech/CROSS-FUNCTION-AI-TRACE.md` §14。`--ai-dedup-stats`
 不带 `--ai-dedup` 是 no-op；不带 `--ai-dedup` 又配 `ai.dedup: true` 的 YAML
 才有用。
 
@@ -267,12 +289,12 @@ Top 10 rules by FP ratio (FP / total):
 
 | 策略 | 类型 | 速度 | 精度 | 备注 |
 | --- | --- | --- | --- | --- |
-| `vta` | Variable Type Analysis | 慢 | 跟踪变量赋值类型，比 RTA 精确 | **默认**（C-4 audit 2026-10-08 — 之前文档说 `cha`，但代码 `ScanConfig.cgStrategy = "vta"`）。适合动态分派多的大项目 |
+| `vta` | Variable Type Analysis | 慢 | 跟踪变量赋值类型，比 RTA 精确 | TU-local 策略。适合动态分派多的大项目 |
 | `cha` | Class Hierarchy Analysis | **最快** | over-approx（同 simple-name + arity 全收） | 大仓库且不在乎精度的场景；用 `MergedProgram` 合并视图就足够跨 TU |
 | `rta` | Rapid Type Analysis | 中 | 比 CHA 精确（剔除非可达 receiver） | 略慢，需要建 receiver type 集合 |
 | `1cfa` | 1-CFA context-sensitive | 最慢 | 区分同一方法在不同 call site 的调用 | 适合库代码 / framework 内部分析 |
 | `stub` | direct calls only | **最快** | 只看直接调用，忽略虚分派 | 仅 debug / 测试用 |
-| `global` | cross-TU signature lookup | 中 | 不依赖 type hierarchy，按 `calleeSig` 直接查 | 跨文件调用通过 `GlobalTACStore` 解析；`DfaEngine.runWithGlobalStore` 入口 |
+| `global` | cross-TU signature lookup | 中 | 不依赖 type hierarchy，按 `calleeSig` 直接查 | **默认**。跨文件调用通过 `GlobalTACStore` 解析；`DfaEngine.runWithGlobalStore` 入口 |
 | `cached:<name>:<path>` | 任何上面策略的磁盘包装 | — | — | 把策略 `<name>` 的结果序列化到 `<path>`，cache key 是 source-file 集合的 hash。第二次跑同项目直接读盘 |
 
 **YAML 等价**：
@@ -331,7 +353,7 @@ rules:
 #   (a) 简单 bool — 适用于只需开关的大类
 checks:
   taint: true                 # 33 unified taint 主开关
-  style: true                 # 591 AST 风格规则
+  style: true                 # 全部 AST 风格规则
   divByZero: true
   # ...
 #
@@ -423,7 +445,7 @@ checks:
 ```yaml
 checks:
   taint: false         # 关闭所有 17 条 taint 规则
-  style: false         # 关闭 515 条 AST 风格规则
+  style: false         # 关闭全部 AST 风格规则
   divByZero: false     # 关闭 DIV_BY_ZERO
 ```
 
@@ -466,7 +488,7 @@ java -jar plumb-...-all.jar -c /tmp/disable.yaml -i src/main/java
 
 ### 4.4 改规则参数
 
-每条 `RuleDef` 可以携带 `RuleParameter`（见 `plumb-rules/.../RuleParameter.java`）。
+每条 `RuleDef` 可以携带 `RuleParameter`（见 `plumb-rules/src/main/java/org/plumb/rules/RuleParameter.java`）。
 **当前 plumb-main 的 YAML 加载器尚未支持 YAML 端运行时参数覆盖**——所有规则
 使用代码里 hard-code 的 default。如果需要修改：
 

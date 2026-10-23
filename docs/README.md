@@ -20,7 +20,7 @@
 | [`CROSS-FUNCTION-OPERATION.md`](tech/CROSS-FUNCTION-OPERATION.md) | `Operation` 体系：常量传播 / 指向 / null / 数值范围 / 副作用的 summary 侧与消费侧 |
 | [`CROSS-FUNCTION-AI-TRACE.md`](tech/CROSS-FUNCTION-AI-TRACE.md) | 周边：并行 worklist、跨文件验证、已知限制、AI 增强层、Re-Act 框架 |
 | [`DFA-AUGMENTATION-DESIGN.md`](tech/DFA-AUGMENTATION-DESIGN.md) | 为什么 AST 不够用，以及 DFA 增强技术 |
-| [`STYLE-RULES.md`](tech/STYLE-RULES.md) | 风格类实现：`AstDispatcher`、`StyleCheckRegistry`、典型 checker 模式 |
+| [`STYLE-RULES.md`](tech/STYLE-RULES.md) | 风格类实现：`AstDispatcher`、`AstCheckerRegistry`、典型 checker 模式 |
 | [`MODULE-MERGE.md`](tech/MODULE-MERGE.md) | 模块合并方案与依赖图 |
 | [`CACHE.md`](tech/CACHE.md) | 磁盘 IR 缓存：`--output-dir` 机制、文件格式、key、兼容性 |
 

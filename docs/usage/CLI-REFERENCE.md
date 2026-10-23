@@ -91,7 +91,7 @@ checks:
   taint: true
   style: true
   divByZero: true
-  # ... 一共 42 项
+  # ... 一共 46 项
 ```
 
 `Configs.bool` 字段全部默认 `true`（除少数 off：`incorrectReturn` / `threadRun` / `catchGeneric`）。详细字段清单见 §3。
@@ -117,35 +117,47 @@ checks:
   catchGeneric: {enabled: false}   # sub-dict 形式覆盖默认
 ```
 
-### 12.3 R-836 emit-id 风格与 yaml 兼容性
+### 12.3 emit-id 风格与 yaml 兼容性
 
-R-836 引入新 emit-id 命名规范（`ast-style-<bare>-style`），同时保留兼容老风格（`plumb.style.<bare>`）。
+style 规则的 emit-id 格式是 `ast-<category>-<bare>`（category = checker 所在子包名）。
+实测 `plumb-style/src/main/java` 下 582 个 `new RuleId("...")` 字面量里，**没有一个
+以 `-style` 结尾** —— `ast-style-random-iv-cbc-style` 这类带后缀的字符串只作为
+`RuleDef` 的 **alias** 保留（兼容老 YAML 白名单），不再是任何规则的 emit-id。
 
-**ScanRunner.isRuleIdAllowed 已修复**（R837 P2）：yaml entry 写哪种风格都能匹配 emit-id：
+`ScanRunner.isRuleIdAllowed` 对 yaml entry 做多形态匹配，下列写法都能命中
+emit-id `ast-style-random-iv-cbc`：
 
 ```yaml
-# 这两种 yaml 写法都对 emit-id `ast-style-random-iv-cbc-style` 生效：
 rules:
   enabled:
-    - ast-style-random-iv-cbc-style   # R-836 风格
-    - plumb.style.random-iv-cbc       # R791 旧风格（兼容保留）
-    - random-iv-cbc                  # bare slug（也会被剥 prefix + suffix 后匹配）
+    - ast-style-random-iv-cbc        # emit-id（推荐）
+    - ast-style-random-iv-cbc-style  # 老 alias（兼容保留）
+    - random-iv-cbc                  # bare slug（剥 prefix 后比较）
 ```
 
-底层逻辑（`ScanRunner.java` line 1874-1896 + 2459-2461）：对每个 yaml entry，先试 `endsWith(.<bare>)`，再剥 `ast-style-` prefix 和 `-style` suffix 跟 bare slug 比较。三种命中任一即放行。
+DFA taint 规则的 emit-id 是 `dfa-taint-<bare>`（例如 `dfa-taint-null-dereference`）。
 
-### 12.4 `rules.parameters`（planned）
+底层逻辑（`ScanRunner.java:1882-1924`）：对每个 yaml entry，先试 `endsWith(.<bare>)`，
+再剥 `ast-style-` prefix 和 `-style` suffix 跟 bare slug 比较。任一命中即放行。
 
-R-参数化路线图。当前 `plumb-main` 不解析 `rules.parameters.*` 段——改参数要改源码 `new RuleParameter(...)` 的 default 重建。**未来**：
+### 12.4 规则参数覆盖（已支持）
+
+运行时参数覆盖的 YAML 路径是 **`checks.<rule-id>.params.<param-name>`**：
 
 ```yaml
-rules:
-  parameters:
-    pl-0249-method-too-long:
-      maxLines: 120                  # 覆盖源码里 80 的默认值
-    pl-0233-avoid-print-stack-trace:
-      allowInTests: true
+checks:
+  line-length:
+    enabled: true
+    params:
+      max: 120                  # 覆盖源码里 100 的默认值
+      ignoreComments: false
 ```
 
-实现路径：在 `ConfigLoader.fromMapImpl` 加一段处理 `rules.parameters` 段，把覆盖值塞进运行时 `RuleDef.parameters` 的 `value`，checker 调 `param.value()` 时优先用 YAML。
+`ConfigLoader.fromMapImpl`（`plumb-main/.../ConfigLoader.java:343-357`）把它读进
+`ScanConfig.ruleParams`，`ScanRunner` 构造 `StyleContext` 时传入，
+`StyleContext` 按 rule id 分发（`StyleContext.java:132-140`）。
+`<rule-id>` 是 checker 的 `name()` 或它的 canonical rule id；参数名必须和
+`RuleParameter` 里声明的名字一致。
+
+覆盖测试见 `R761ParamsTest` 与 `R822StyleContextParamOverrideTest`。
 

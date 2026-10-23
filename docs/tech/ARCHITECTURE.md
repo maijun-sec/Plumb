@@ -1,4 +1,4 @@
-﻿# 架构总览
+# 架构总览
 
 本文档是 Plumb 项目的全局架构视角。各模块的深入说明见：
 
@@ -16,7 +16,7 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
 | --- | --- |
 | Taint 分析为主 | per-checker 正向数据流（`TaintedCheckerBase` 统一传播），source/sink 正则表驱动 |
 | 多源输入 | JavaParser（源码）+ SootUp（字节码）都进同一份 TAC IR |
-| 风格类检查独立 | 590+ AST 规则不依赖 TAC/DFA |
+| 风格类检查独立 | 595 个 AST checker 不依赖 TAC/DFA |
 | 大型仓库可扩展 | 磁盘 IR 缓存、阶段化流水线、可配置并发 |
 | 报告工业标准 | NDJSON（机器可读）+ console（人类可读）+ SARIF（IDE） |
 | AI 辅助 | plumb-ai Re-Act 多轮 LLM agent 给出 TP/FP verdict（可选） |
@@ -34,7 +34,7 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
         │                              │                              │
         ▼                              │                              │
    Phase 2: style (parallel)             │                              │
-   AstDispatcher → 590+ checks           │                              │
+   AstDispatcher → 595 checks           │                              │
         │                              │                              │
         └──────────────────────────────┴──────────────────────────────┘
                                        │
@@ -89,7 +89,7 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
 | `plumb-tac` | CompilationUnit → TacProgram，含 CFG builder、IR 序列化 | plumb-parser, sootup |
 | `plumb-rules` | 规则元数据（ID/Name/Severity/Type/CWE） | 无 |
 | `plumb-reporter` | Finding 模型 + NDJSON/console/SARIF 输出 | plumb-rules |
-| `plumb-style` | 590+ AST visitor 规则（JavaParser 单一来源） | plumb-parser, plumb-rules, plumb-reporter |
+| `plumb-style` | 595 个 AST visitor checker（JavaParser 单一来源） | plumb-parser, plumb-rules, plumb-reporter |
 | `plumb-dfa` | 污点 / 边界 / 指向 / 控制流四类分析的统一 DFA 引擎 | plumb-tac, plumb-rules, plumb-reporter |
 | `plumb-main` | CLI + YAML 配置 + 流水线编排 + build-system adapter | 上述全部 + plumb-build |
 | `plumb-build` | BuildAdapter：Maven / Gradle / Bazel / Ant 自动探 → sourceFiles/classpathJars | （外部工具） |
@@ -102,7 +102,7 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
 
 | 形态 | 数量 | 含义 |
 | --- | ---: | --- |
-| **TaintedCheckerBase 子类** | 47 | 继承统一污点传播基类，`checkers/taint/` 下绝大多数 |
+| **TaintedCheckerBase 子类** | 46 | 继承统一污点传播基类，`checkers/taint/` 下绝大多数（不含基类自身） |
 | **直接 `implements DfaChecker`** | 20 | 自带逻辑，不共享传播层；`checkers/controlflow/` 的 16 个全在此列 |
 | **PathSensitiveCheckerBase 子类** | 1 | 反向检测底座（alloc-without-close 类） |
 | **求解器 / 格 / 引擎 / SPI** | 其余 | `points/`、`solver/`、`summary/`、`taint/`、`engine/` |
@@ -372,23 +372,35 @@ Plumb 严格区分「喂 TypeSolver 的路径」与「扫 findings 的路径」�
 
 ## 8. rule-id 一致性
 
-style 规则的 emit-id 采用 `ast-style-<bare>-style` 命名。这个命名被**四处**引用，任一处失同步
-都会静默丢 finding：
+style 规则的 emit-id 采用 `ast-<category>-<bare>` 命名（category 取 checker 所在子包名：
+`style` / `naming` / `security` / `error` / `bug` / `design` / `performance` /
+`quality` / `concurrency`）。实测 `plumb-style/src/main/java` 下 582 个
+`new RuleId("...")` 字面量里，**没有一个以 `-style` 结尾**：
+
+| 前缀 | 数量 | | 前缀 | 数量 |
+| --- | ---: | --- | --- | ---: |
+| `ast-style` | 347 | | `ast-security` | 36 |
+| `ast-performance` | 62 | | `ast-error` | 34 |
+| `ast-naming` | 50 | | `ast-bug` | 19 |
+| `ast-design` | 18 | | `ast-quality` | 10 |
+| `ast-concurrency` | 2 | | `dfa-style` / `dfa-security` | 3 / 1 |
+
+这个命名被**四处**引用，任一处失同步都会静默丢 finding：
 
 | 引用方 | 作用 |
 | --- | --- |
-| `*Check.java` 的 `new RuleId("ast-style-foo-style", ...)` | 产生 emit id |
-| `plumb-style/.../CheckerCategories.java` | classpath-scan 注册表（591 项 `m.put(...)`） |
+| `*Check.java` 的 `new RuleId("ast-style-foo", ...)` | 产生 emit id |
+| `plumb-style/.../CheckerCategories.java` | classpath-scan 注册表（593 项 `m.put(...)`） |
 | `plumb-main/.../ScanRunner.java::isRuleIdAllowed`（`:1823`、`:1834`） | 规则过滤；需要同时接受 canonical id、bare slug 与短横线形式 |
 | `juliet-coverage/data/plumb_rule_to_cwe.json` | rule_id → CWE 映射 |
 
 **数据流**：
 
 ```
-*Check.java                 new RuleId("ast-style-foo-style", ...)
+*Check.java                 new RuleId("ast-style-foo", ...)
     │                              │
     ▼                              ▼
-emit rule_id="ast-style-foo-style"
+emit rule_id="ast-style-foo"
     │
     ▼
 ScanRunner.isRuleIdAllowed(emit, registry)   ← canonical / bare / 短横线多形态匹配
@@ -397,8 +409,13 @@ ScanRunner.isRuleIdAllowed(emit, registry)   ← canonical / bare / 短横线多
 emit 进入最终 finding 集合
     │
     ▼
-NDJSON 输出，cwe 字段来自 plumb_rule_to_cwe.json["ast-style-foo-style"]
+NDJSON 输出，cwe 字段来自 plumb_rule_to_cwe.json["ast-style-foo"]
 ```
+
+**历史别名**：早期版本的 emit-id 带 `-style` 后缀（`ast-style-random-iv-cbc-style`）。
+现在这个字符串只作为 `RuleDef` 的 **alias** 保留（用于兼容老的 YAML 白名单），
+不再是任何规则的 emit-id。`ScanRunner.isRuleIdAllowed` 里的
+`ast-style-` 前缀 / `-style` 后缀剥离逻辑就是为兼容这些 alias 服务的。
 
 **架构要点**：
 
@@ -455,7 +472,7 @@ NDJSON 输出，cwe 字段来自 plumb_rule_to_cwe.json["ast-style-foo-style"]
 3. rebuild：`mvn -o -pl plumb-style install`
 4. 验证：`sast-scan --list-rules | grep FooCheck`
 
-⚠️ 第 2 步漏掉的后果是**静默丢失**：`StyleCheckRegistry.discoverAvailable()` 找不到这条规则，
+⚠️ 第 2 步漏掉的后果是**静默丢失**：`AstCheckerRegistry.builtins()` 找不到这条规则，
 不 emit 也不报错。classpath-scan 注册机制要求同时满足 (a) 在 `CHECKER_CATEGORIES` 注册 +
 (b) 提供 `rule()` 方法，少一个就 silently drop。
 

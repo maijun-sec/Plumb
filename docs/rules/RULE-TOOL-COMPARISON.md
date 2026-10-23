@@ -2,24 +2,33 @@
 
 本文档把 Plumb 跟主流 Java 静态分析工具做全方位对比——**实现机制、CWE 覆盖、误报率、Juliet 实测数据**，帮助用户理解 Plumb 的定位与边界。
 
-> 数据基线（2026-10-16）：
-> - **R294** 工具覆盖达成 4 工具 95%+（PMD 302/318 / Sonar 671/706 / SpotBugs 492/518 / Checkstyle 146/150）
-> - **R-836 v2 + R-837** Juliet corpus 全 112 重跑：cwe_matched prec **0.4537**（vs R791 baseline 0.4378，+1.59 pp）
-> - **checker 构成**（实测）：style 592 个 `*Check.java`；DFA 侧 47 个继承 `TaintedCheckerBase` + 20 个直接 `implements DfaChecker`，其中 16 个在 `checkers.yaml` 里启用
-> - **COV_JAVA_INDEX.md** Coverity Java 35 个顶层 checker 71.4% 覆盖
+> 数据基线（2026-10-23 实测）：
+> - **checker 构成**：style 595 个 checker 类（`CheckerCategories` 登记 593）；
+>   DFA 侧 60 个继承 `TaintedCheckerBase` + 18 个直接 `implements DfaChecker`，
+>   其中 `checkers.yaml` 声明 16 条（14 启用 / 2 禁用），
+>   `ScanRunner.buildDfaCheckers()` 实际注册 66 个
+> - **taint 模式**：`sink-families.yaml` 39 个 family（5 个 source family → 19 条
+>   source 模式；34 个 sink family → 397 条 sink 模式）
+> - **taint rule**：`TaintRuleRegistry` 12 条
+> - **rule → CWE 映射**：`juliet-coverage/data/plumb_rule_to_cwe.json` 367 条
+>
+> **不可从本仓库复现的数字**（外部语料 / 外部工具清单 / 基准测试，仓库里没有
+> 对应数据或 harness）：Juliet corpus 的 prec 数值、PMD/Sonar/SpotBugs/Checkstyle
+> 的规则覆盖条数、性能耗时、jlink / 压缩包体积。涉及这些数字的表格请当作历史
+> 记录看，不要当作当前可复现的度量。
 
 ## 1. 实现机制对比
 
 | 维度 | Plumb | PMD | SonarQube | SpotBugs (FindBugs) | Coverity | Checkstyle |
 | --- | --- | --- | --- | --- | --- | --- |
-| **主实现** | TAC IR + 590 AST + 42 Taint + 66 DFA unified | AST + 数据流 | AST + symbol table + taint | 字节码（BCEL）扫描 | 抽象语法树 + 路径敏感 | AST + 文本匹配 |
-| **Taint 引擎** | IFDS 风格数据流 + 跨函数 summary（两阶段） | CPD 拷贝-粘贴检测，无完整 taint | SonarCFamily 引擎（半商业） | 部分数据流（BugInstance-level） | 商业引擎，路径敏感 | 无 |
-| **跨函数分析** | ✅ **两阶段 summary**（Phase 1 path-insensitive → Phase 2 fully context-sensitive + Z3 path-condition） | ❌（PMD 6.x 起有实验性数据流） | 部分（call graph 1-hop） | 部分（BugInstance 共享） | ✅ 全局 | ❌ |
-| **AST 检查器** | 590 条（JavaParser） | ~80 条（JavaCC） | ~700 条（自研） | — | — | ~150 条 |
-| **DFA unified** | 66 条（TaintDomain / Numeric / Pointer / Mixed） | 部分（TypeResolvingVisitor） | 部分 | ~518 rules（字节码） | 35 个顶层（Java） | — |
-| **Z3 路径条件** | ✅（Phase 2 per-finding Z3 query） | ❌ | ❌ | ❌ | ✅（商业） | ❌ |
+| **主实现** | TAC IR + 595 AST checker + 12 taint rule + 66 DFA checker | AST + 数据流 | AST + symbol table + taint | 字节码（BCEL）扫描 | 抽象语法树 + 路径敏感 | AST + 文本匹配 |
+| **Taint 引擎** | summary-based 跨函数数据流（两阶段）+ Z3 误报过滤 | CPD 拷贝-粘贴检测，无完整 taint | SonarCFamily 引擎（半商业） | 部分数据流（BugInstance-level） | 商业引擎，路径敏感 | 无 |
+| **跨函数分析** | ✅ **两阶段 summary**（Phase 1 path-insensitive → Phase 2 flow-sensitive + Z3 path-condition） | ❌（PMD 6.x 起有实验性数据流） | 部分（call graph 1-hop） | 部分（BugInstance 共享） | ✅ 全局 | ❌ |
+| **AST 检查器** | 595 个（JavaParser） | ~80 条（JavaCC） | ~700 条（自研） | — | — | ~150 条 |
+| **DFA checker** | 66 个实际注册 | 部分（TypeResolvingVisitor） | 部分 | ~518 rules（字节码） | 35 个顶层（Java） | — |
+| **Z3 路径条件** | ✅（Phase 2 per-finding Z3 query，仅作误报过滤） | ❌ | ❌ | ❌ | ✅（商业） | ❌ |
 | **AI 集成** | ✅ plumb-ai Re-Act agent（可选） | ❌ | SonarAI LLM（实验） | ❌ | ❌ | ❌ |
-| **跨 CWE 联合** | plumb_rule_to_cwe.json 393 entries 双向 | rule 自带 CWE | rule 自带 CWE | BugPattern 自带 CWE | checker 自带 CWE | check 自带 CWE |
+| **跨 CWE 联合** | plumb_rule_to_cwe.json 367 条（短名或 emit-id 作 key） | rule 自带 CWE | rule 自带 CWE | BugPattern 自带 CWE | checker 自带 CWE | check 自带 CWE |
 
 ### 1.1 核心差异：Plumb 的"两阶段 summary"是独有的
 
@@ -42,7 +51,7 @@ Plumb 的选择：
 
 | 形态 | 数量 | 含义 |
 | --- | ---: | --- |
-| **TaintedCheckerBase 子类** | 47 | 继承统一污点传播基类，`checkers/taint/` 下绝大多数 |
+| **TaintedCheckerBase 子类** | 46 | 继承统一污点传播基类，`checkers/taint/` 下绝大多数（不含基类自身） |
 | **直接 implements DfaChecker** | 20 | 自带逻辑；`checkers/controlflow/` 的 16 个全在此列 |
 | **PathSensitiveCheckerBase 子类** | 1 | 反向检测底座（alloc-without-close 类） |
 | **求解器 / 格 / 引擎 / SPI** | 其余 | `points/`、`solver/`、`summary/`、`taint/`、`engine/` |
@@ -51,26 +60,34 @@ Plumb 的选择：
 用于 Spring `@GetMapping` / `@NonNull`）与 SRC-正则（走 `SourceReader` 纯正则，不用 TAC IR）。
 完整分类见 [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) §3.0。
 
-> **关键教训**（来自 `R-CROSS-FUNCTION-ANALYSIS.md §12.3`）：**如果一个规则是 style rule，不要用 DFA 实现**。Style rule 只看 AST 形态，不需要 taint / 跨函数 / 数据流——用 DFA 重写既不提升精度也不提升召回，只是把"AST 上数节点"的逻辑硬塞进 IR visitor，徒增维护成本。
+> **关键教训**：**如果一个规则是 style rule，不要用 DFA 实现**。Style rule 只看 AST 形态，不需要 taint / 跨函数 / 数据流——用 DFA 重写既不提升精度也不提升召回，只是把"AST 上数节点"的逻辑硬塞进 IR visitor，徒增维护成本。
+>
+> 这条原则的落地方式：`plumb-style` 有 595 个 AST checker，`plumb-dfa` 只有 66 个
+> 实际注册的 DFA checker —— 数量差本身就是"什么该放哪"的答案。完整的
+> DFA checker 分类见 [`../tech/CROSS-FUNCTION-AI-TRACE.md`](../tech/CROSS-FUNCTION-AI-TRACE.md) §12。
 
 ## 2. CWE 覆盖对比
 
-### 2.1 Plumb 全量规则（R-837 后）
+### 2.1 Plumb 全量规则（实测 2026-10-23）
 
-| 类别 | 数量 | CWE 主要范围 |
-| --- | ---: | --- |
-| Taint sources | 10 | CWE-20, 532 |
-| Taint sinks | 17 | CWE-22 / 77 / 78 / 79 / 89 / 94 / 95 / 117 / 1333 / 502 / 601 / 918 / 470 / 90 / 91 / 93 / 134 / 943 / 15 |
-| DFA unified | 66 | 跨 CWE（rule 走 `plumb.<family>.<bare>`） |
-| Style | 590 | 跨 CWE 350+ 类（含 PMD / Sonar / SpotBugs / Checkstyle 等价） |
-| Legacy DFA | 36 | 同 DFA unified |
-| **合计** | **~720 条** | **~270+ CWE family** |
+| 类别 | 数量 | 来源 | CWE 主要范围 |
+| --- | ---: | --- | --- |
+| Taint source 模式 | 19 | `sink-families.yaml` 的 5 个 `taint.sources.*` family | CWE-20, 532 等 |
+| Taint sink 模式 | 397 | `sink-families.yaml` 的 34 个 `*.sinks` family | CWE-22 / 77 / 78 / 79 / 89 / 94 / 95 / 117 / 1333 / 502 / 601 / 918 等 |
+| Taint rule | 12 | `TaintRuleRegistry` | SQL / LDAP / 命令注入 / 格式化串 / XSS / 日志注入 / 路径穿越 / SSRF / XXE / 反序列化 / 弱加密 / 弱随机 |
+| DFA checker（实际注册） | 66 | `ScanRunner.buildDfaCheckers()` | 跨 CWE（rule id 走 `dfa-taint-<bare>`） |
+| Style checker | 595 | `plumb-style/**`（`CheckerCategories` 登记 593） | 跨 CWE 350+ 类（含 PMD / Sonar / SpotBugs / Checkstyle 等价） |
+
+> **合计没有单一权威数字**：style checker 与 DFA checker 是两套不同粒度的
+> 东西（595 个 checker 类 vs 66 个注册的 DFA checker），把它们相加得到的
+> "总数" 取决于你想数什么。本文档不给一个合计值 —— 要具体数字请按上面的
+> 来源分别统计。
 
 ### 2.2 各工具 CWE 覆盖广度
 
 | 工具 | 总规则数 | CWE 覆盖 | 工具专长 |
 | --- | ---: | ---: | --- |
-| **Plumb** | 720+ | ~270+ | 跨函数 taint + DFA + AI |
+| **Plumb** | 595 style + 66 DFA | 跨 CWE 350+ | 跨函数 taint + DFA + AI |
 | **PMD** | 318 | ~110 | Java 编码风格 + 静态数据流 |
 | **SonarQube** | 706 | ~250 | 代码异味 + 安全 + 测试覆盖 |
 | **SpotBugs** | 518 | ~150 | 字节码 bug pattern（无 taint） |
@@ -203,7 +220,7 @@ Plumb 在 **精度优先** 的同时通过 R217 并行 worklist + 缓存优化�
 
 | 工具 | AI 能力 | 模式 |
 | --- | --- | --- |
-| **Plumb** | ✅ plumb-ai Re-Act agent + 单 prompt 两种模式 | 可选，per-rule prompt 覆盖链 + 9 个 tool 调度 |
+| **Plumb** | ✅ plumb-ai Re-Act agent + 单 prompt 两种模式 | 可选，per-rule prompt 覆盖链 + 12 个 tool 调度 |
 | PMD | ❌ | — |
 | SonarQube | ⚠️ SonarAI（实验） | 单 LLM 调用 |
 | SpotBugs | ❌ | — |
@@ -217,18 +234,18 @@ Plumb 在 **精度优先** 的同时通过 R217 并行 worklist + 缓存优化�
 | 维度 | Plumb 定位 | 跟其他工具的关系 |
 | --- | --- | --- |
 | **核心引擎** | TAC IR + 跨函数 summary | 跟 Coverity 商业同档；优于 PMD/Sonar/SpotBugs |
-| **Style 覆盖** | 590 条（PMD/Sonar/SpotBugs/Checkstyle 95%+ 等价） | **完全覆盖**开源 4 工具 |
-| **Taint 精度** | 27 source/sink + 跨函数 + Z3 | 优于 PMD/Sonar/SpotBugs（开源 taint 最强） |
-| **DFA unified** | 66 条（数字 / 资源 / 跨函数） | SpotBugs 字节码风格，但 Plumb 走源码 |
+| **Style 覆盖** | 595 个 AST checker（每条带 PMD/Sonar/SpotBugs/Checkstyle 等价 ID） | **完全覆盖**开源 4 工具 |
+| **Taint 精度** | 19 source 模式 + 397 sink 模式 + 跨函数 + Z3 | 优于 PMD/Sonar/SpotBugs（开源 taint 最强） |
+| **DFA checker** | 66 个实际注册（`ScanRunner.buildDfaCheckers()`） | SpotBugs 字节码风格，但 Plumb 走源码 |
 | **AI 集成** | 可选 Re-Act agent | Sonar / Coverity 实验性，Plumb 更深入 |
-| **开源 vs 商业** | Apache 2.0 + 透明实现 | 跟 Coverity 商业引擎对标 |
+| **开源 vs 商业** | 内部使用（无 LICENSE 文件，见 README §9） | 跟 Coverity 商业引擎对标 |
 
 **Plumb 适合的场景**：
 - 需要**跨函数 taint**（Spring / Jakarta / 大型企业项目）
 - 需要**路径敏感数值分析**（CWE-190/191/252/253）
 - 需要**等价 PMD + Sonar + SpotBugs + Checkstyle**（不想装 4 个工具）
-- 想跑 Juliet corpus 验证精度（cwe_matched prec 0.4537 已超 R791 baseline）
-- 需要**透明实现**（Apache 2.0，每条 rule 的 SPI 都有文档）
+- 想跑 Juliet corpus 验证精度
+- 需要**透明实现**（每条 rule 的 SPI 都有文档）
 
 **Plumb 不适合的场景**：
 - 需要 Coverity 商业级 0.70+ prec（Plumb 当前 0.4537）

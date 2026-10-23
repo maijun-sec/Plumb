@@ -1,4 +1,4 @@
-﻿# 跨函数分析：自底向上构建 Summary，自顶向下精确分析
+# 跨函数分析：自底向上构建 Summary，自顶向下精确分析
 
 本文档解释 `plumb-dfa` 引擎（R211 / R213 / R215 / R218 / R236 / R242 /
 R254 / R255 / R260）的两阶段跨函数分析设计。
@@ -11,13 +11,13 @@ R254 / R255 / R260）的两阶段跨函数分析设计。
 | **Phase 2（自顶向下精确分析）** | **fully context-sensitive**（每个 call site 独立） + **path-sensitive（Z3 验证）** | caller 把 summary 折叠到自己的 fact bag / 路径条件 / points-to map，所有结果都是 caller 视角的具体值 |
 
 > 配套源码：
-> - `plumb-dfa/src/main/java/org/plumb/dfa//summary/Operation.java` —— R213
-> - `plumb-dfa/src/main/java/org/plumb/dfa//summary/FunctionSummary.java` —— R213
-> - `plumb-dfa/src/main/java/org/plumb/dfa//summary/MethodSummary.java` + `MethodSummaryBuilder.java` —— R254
-> - `plumb-dfa/src/main/java/org/plumb/dfa//summary/SummaryApplier.java` —— R255
-> - `plumb-dfa/src/main/java/org/plumb/dfa//taint/TaintedCheckerBase.java` —— R215
-> - `plumb-dfa/src/main/java/org/plumb/dfa//taint/TaintDomain.java` —— R215
-> - `plumb-dfa/src/main/java/org/plumb/dfa//points/PointsToAnalysis.java` —— R236
+> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/Operation.java` —— R213
+> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/FunctionSummary.java` —— R213
+> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/MethodSummary.java` + `MethodSummaryBuilder.java` —— R254
+> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/SummaryApplier.java` —— R255
+> - `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintedCheckerBase.java` —— R215
+> - `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintDomain.java` —— R215
+> - `plumb-dfa/src/main/java/org/plumb/dfa/points/PointsToAnalysis.java` —— R236
 > - `plumb-dfa/src/main/java/org/plumb/dfa/solver/PathCondition.java` + `GuardStore.java` + `Z3Bridge.java` + `LocalSolverBridge.java`
 > - `plumb-dfa/src/main/java/org/plumb/dfa/engine/DfaEngine.java` —— 引擎调度
 

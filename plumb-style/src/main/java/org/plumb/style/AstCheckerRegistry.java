@@ -26,8 +26,8 @@ import java.util.regex.Pattern;
  * <p>Three loading modes:
  *
  * <ul>
- *   <li>{@link #builtins()} : register every checker (the default; ~500 checkers across the seven
- *       subdirectories).
+ *   <li>{@link #builtins()} : register every checker (the default; 595 checkers across the nine
+ *       category subdirectories plus one at the package root).
  *   <li>{@link #load(String...)} : register by glob on the simple class name. * etc. * exactly one.
  *   <li>{@link #byCategory(String...)} : register by the subdirectory a checker lives in. all 51
  *       naming-related checkers.
@@ -66,8 +66,8 @@ public final class AstCheckerRegistry {
   }
 
   /**
-   * Register every available checker (~500 across seven subdirectories: bug, design, error, naming,
-   * performance, security, style).
+   * Register every available checker (595 across nine category subdirectories plus one at the
+   * package root: bug, concurrency, design, error, naming, performance, quality, security, style).
    */
   public AstCheckerRegistry builtins() {
     // Resolve each entry by its simple class name. The

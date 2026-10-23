@@ -2,21 +2,26 @@
 
 本文档说明 Plumb 项目的模块划分、依赖图，以及历史上一次**"试图合并 plumb-parser 到 plumb-main"**的回滚原因。最终结论：**plumb-parser 必须作为独立模块存在**。
 
-## 1. 当前模块结构（最终方案）
+## 1. 当前模块结构
+
+根 `pom.xml` 的 `<modules>` 里一共 9 个模块：
 
 ```
 plumb  (root POM)
-├── plumb-parser      ── JavaParser 包装，ParsingSource + JavaSourceParser
+├── plumb-parser      ── JavaParser 包装，ParsedSource + JavaSourceParser
 ├── plumb-tac         ── TAC IR + AST→TAC 翻译器 + CFG builder + IrSerializer
-├── plumb-rules       ── RuleDef / RuleId / RuleRegistry 元数据
-├── plumb-dfa         ── IFDS 风格 taint + legacy DFA checkers
-├── plumb-dfa ── 新一代 DFA 引擎（CallGraph + Z3 + summary）
-├── plumb-style       ── 500+ AST 风格类规则
-├── plumb-reporter    ── Finding 数据模型 + NDJSON / console 输出
+├── plumb-rules       ── RuleDef / RuleId / RuleParameter / RuleRegistry 元数据
+├── plumb-style       ── 595 个 AST 风格 checker（JavaParser AST visitor）
+├── plumb-reporter    ── Finding 数据模型 + NDJSON / console / SARIF 输出
+├── plumb-dfa         ── DFA 引擎（CallGraph + Z3 + 跨函数 summary + checkers）
+├── plumb-build       ── build-system adapter（Maven / Gradle / Bazel / Ant）
+├── plumb-ai          ── LLM FP 消减（ReActAgent + ToolRegistry）
 └── plumb-main        ── CLI + YAML 配置 + 流水线编排
 ```
 
 ## 2. 模块依赖图
+
+（从各模块 `pom.xml` 的 `<artifactId>plumb-*</artifactId>` 实测得出）
 
 ```
                 ┌──────────────────┐
@@ -26,26 +31,45 @@ plumb  (root POM)
             ┌────────────┴─────────────┐
             ▼                          ▼
       ┌──────────┐              ┌──────────────┐
-      │ plumb-tac │              │ plumb-style   │  ← plumb-parser + plumb-rules + plumb-reporter
-      │           │              └──────┬────────┘
-      └─────┬─────┘                     │
+      │ plumb-tac │              │ plumb-style  │
+      └─────┬─────┘              └──────┬───────┘
             │                           │
-            │   ┌────────────┐          │
-            │   │ plumb-rules │◀─────────┘
-            │   └─────┬──────┘
-            │         │
-            ▼         ▼
-       ┌──────────┐  ┌──────────────┐  ┌──────────────┐
-       │ plumb-dfa │  │plumb-reporter│  │plumb-dfa-unif│
-       └─────┬─────┘  └──────┬───────┘  └──────┬───────┘
-             │               │                │
-             └───────────────┴────────────────┘
-                             │
-                             ▼
-                       ┌──────────┐
-                       │plumb-main│  (orchestration)
-                       └──────────┘
+            ▼                           ▼
+      ┌──────────┐               ┌─────────────┐
+      │plumb-rules│◀──────────────┤plumb-reporter│
+      └────┬─────┘               └──────┬──────┘
+           │                            │
+           │   ┌────────────┐           │
+           └──▶│  plumb-dfa  │◀──────────┘
+               └─────┬──────┘
+                     │
+        ┌────────────┼────────────┐
+        ▼            ▼            ▼
+  ┌──────────┐ ┌──────────┐ ┌──────────┐
+  │plumb-build│ │ plumb-ai │ │plumb-style│
+  └────┬─────┘ └────┬─────┘ └────┬─────┘
+       │            │            │
+       └────────────┴────────────┘
+                    │
+                    ▼
+              ┌──────────┐
+              │plumb-main│  (orchestration)
+              └──────────┘
 ```
+
+实际的直接依赖（每个模块的 `pom.xml`）：
+
+| 模块 | 依赖的 plumb 模块 |
+| --- | --- |
+| `plumb-parser` | （无） |
+| `plumb-tac` | `plumb-parser` |
+| `plumb-rules` | `plumb-tac` |
+| `plumb-reporter` | `plumb-rules` |
+| `plumb-style` | `plumb-parser`, `plumb-rules`, `plumb-reporter` |
+| `plumb-dfa` | `plumb-parser`, `plumb-tac`, `plumb-rules`, `plumb-reporter` |
+| `plumb-build` | `plumb-rules` |
+| `plumb-ai` | `plumb-rules`, `plumb-reporter` |
+| `plumb-main` | 以上全部 |
 
 关键边：
 
@@ -98,7 +122,7 @@ plumb-tac/src/main/java/.../TacTranslator.java:[21,24]
 
 ### 3.5 第二次失败：`Finding` 在 `plumb-dfa` 里的位置
 
-`plumb-style` 的 500+ 风格类 checker 全部需要构造 `Finding` 对象，代码里写的是 `import org.plumb.dfa.Finding`。这意味着 `plumb-style` 间接依赖 `plumb-dfa`，而 `plumb-dfa` 又依赖 `plumb-tac`。即便 `plumb-style` 不写 `plumb-tac` import，传递依赖也会把它拉进来。
+`plumb-style` 的 595 个风格 checker 全部需要构造 `Finding` 对象，代码里写的是 `import org.plumb.dfa.Finding`。这意味着 `plumb-style` 间接依赖 `plumb-dfa`，而 `plumb-dfa` 又依赖 `plumb-tac`。即便 `plumb-style` 不写 `plumb-tac` import，传递依赖也会把它拉进来。
 
 ### 3.6 解决
 
@@ -237,6 +261,6 @@ NDJSON / console
 
 - **打包优化**：用 `maven-shade-plugin` 把所有 `plumb-*.jar` 打成**单一发布包**（实际已经在 plumb-main/target/ 做了）
 - **接口收敛**：把 `plumb-parser` 的 public API 缩到 1-2 个类，未来可以打包成更小的 submodule
-- **代码内嵌**：把 500+ style checker 拆成多个 jar，按需加载（已经是 `StyleCheckRegistry.discoverAvailable()` 实现的）
+- **代码内嵌**：把 595 个 style checker 拆成多个 jar，按需加载（已经是 `AstCheckerRegistry.builtins()` 实现的）
 
 合并 `plumb-parser` 到 `plumb-main` 不可行（导致 plumb-style 传递拉进 plumb-tac）；其它合并需要重新做依赖图审查。

@@ -13,16 +13,22 @@ For each rule we extract:
   - Constraints  (the rule's parameters, with name, type,
     default value, and doc string)
 
-Output: doc/plumb-style-rules.md
+Output: docs/plumb-style-rules.md
 """
 import re
 import sys
 from pathlib import Path
 
 MAIN_ROOT = Path("plumb-style/src/main/java/org/plumb/style")
-DOC_DIR = Path("doc")
+DOC_DIR = Path("docs")
 RULE_ID_RE = re.compile(
     r'new RuleId\(\s*"([^"]+)",\s*"([^"]+)"\)',
+    re.DOTALL,
+)
+# Some checkers hold the rule id in a `static final String` constant and
+# pass the constant to `new RuleId(...)` instead of an inline literal.
+RULE_ID_CONST_RE = re.compile(
+    r'static\s+final\s+String\s+(\w+)\s*=\s*"([^"]+)"',
     re.DOTALL,
 )
 PKG_RE = re.compile(r"^package\s+([\w\.]+)\s*;", re.MULTILINE)
@@ -111,6 +117,35 @@ def extract_rule_id(text: str) -> tuple[str, str, str, str, list[str]] | None:
     the DEFAULT_RULE constant, or None if no RuleDef is found."""
     m = RULE_ID_RE.search(text)
     if not m:
+        # Some checkers declare the id (and sometimes the short name) as
+        # `static final String` constants instead of inline literals:
+        #     private static final String RULE_ID = "ast-security-runtime-exec";
+        #     private static final String RULE_NAME = "RUNTIME_EXEC";
+        #     new RuleId(RULE_ID, RULE_NAME)
+        # Resolve the constants so those checkers are not dropped.
+        cm = RULE_ID_CONST_RE.search(text)
+        if cm:
+            const_name, const_value = cm.group(1), cm.group(2)
+            cm2 = re.search(
+                r'new\s+RuleId\(\s*' + re.escape(const_name) + r'\s*,\s*([\w"]+)',
+                text,
+            )
+            if cm2:
+                short_tok = cm2.group(1)
+                if short_tok.startswith('"'):
+                    short = short_tok.strip('"')
+                else:
+                    sm = re.search(
+                        r'static\s+final\s+String\s+' + re.escape(short_tok)
+                        + r'\s*=\s*"([^"]+)"',
+                        text,
+                    )
+                    if not sm:
+                        return None
+                    short = sm.group(1)
+                return _finish_rule(
+                    _FakeMatch(const_value, short, cm2.end()), text
+                )
         # Some checkers (e.g. CatchGenericCheck) look up the
         # rule via `ctx.rules().byId(RuleRegistry.STYLE_*)`.
         # The actual rule is registered elsewhere (in
@@ -119,6 +154,28 @@ def extract_rule_id(text: str) -> tuple[str, str, str, str, list[str]] | None:
         # Look for the registration constant — they're
         # defined in plumb-rules.
         return None
+    return _finish_rule(m, text)
+
+
+class _FakeMatch:
+    """Minimal stand-in for a re.Match with .group(1)/.group(2)/.end().
+
+    `end` is the offset just past the matched `new RuleId(...)` call so the
+    severity / type / CWE window can be read from the source that follows.
+    """
+
+    def __init__(self, g1: str, g2: str, end: int = 0) -> None:
+        self._g = (g1, g2)
+        self._end = end
+
+    def group(self, n: int) -> str:
+        return self._g[n - 1]
+
+    def end(self) -> int:
+        return self._end
+
+
+def _finish_rule(m, text: str) -> tuple[str, str, str, str, list[str]]:
     pl_id, short = m.group(1), m.group(2)
     # Look at the surrounding RuleDef ctor to extract
     # severity, type, cwes.
@@ -130,6 +187,51 @@ def extract_rule_id(text: str) -> tuple[str, str, str, str, list[str]] | None:
     typ = typ_m.group(1) if typ_m else "?"
     cwes = re.findall(r'List\.of\(\s*"(CWE-[\d]+)"', window)
     return pl_id, short, sev, typ, cwes
+
+
+def load_registry_rules() -> dict[str, tuple[str, str, str, str, list[str]]]:
+    """Index `plumb-rules/.../RuleRegistry.java` by the checker FQN it registers.
+
+    Some checkers do not declare a `RuleDef` of their own — they look the rule
+    up by id from `RuleRegistry` at report time. Their canonical metadata
+    (id / short name / severity / type / cwes) lives in the registry, so the
+    generator reads it from there instead of dropping the rule.
+
+    The registry entries look like:
+        register(def(
+            STYLE_SYSTEM_OUT,
+            "STYLE_SYSTEM_OUT",
+            "Avoid System.out / System.err in production code",
+            RuleDef.Severity.LOW,
+            RuleDef.Type.STYLE,
+            List.of(),
+            "org.plumb.style.SystemOutCheck"));
+    """
+    registry = Path("plumb-rules/src/main/java/org/plumb/rules/RuleRegistry.java")
+    if not registry.exists():
+        return {}
+    text = registry.read_text(encoding="utf-8", errors="ignore")
+    out: dict[str, tuple[str, str, str, str, list[str]]] = {}
+    pattern = re.compile(
+        r'def\(\s*([A-Z][A-Z0-9_]*)\s*,\s*"([^"]+)"\s*,'
+        r'\s*"((?:[^"\\]|\\.)*)"\s*,'
+        r'\s*RuleDef\.Severity\.(\w+)\s*,'
+        r'\s*RuleDef\.Type\.(\w+)\s*,'
+        r'\s*List\.of\(([^)]*)\)\s*,'
+        r'\s*"([\w.]+)"\s*\)',
+        re.DOTALL,
+    )
+    for m in pattern.finditer(text):
+        const, short, _desc, sev, typ, cwe_blob, fqn = m.groups()
+        cwes = re.findall(r'"(CWE-[\d]+)"', cwe_blob)
+        # The id is the constant's value; resolve it from the constant table.
+        id_m = re.search(
+            r'String\s+' + re.escape(const) + r'\s*=\s*"([^"]+)"', text
+        )
+        if not id_m:
+            continue
+        out[fqn] = (id_m.group(1), short, sev, typ, cwes)
+    return out
 
 
 def extract_description(text: str) -> str:
@@ -235,6 +337,7 @@ def is_checker(text: str) -> bool:
 
 def collect() -> list[dict]:
     rows = []
+    registry_rules = load_registry_rules()
     for p in sorted(MAIN_ROOT.rglob("*.java")):
         if "$" in p.name:
             continue
@@ -253,14 +356,23 @@ def collect() -> list[dict]:
             continue
         rule = extract_rule_id(text)
         if not rule:
-            # Fall back: synthesise a minimal entry from
-            # a RuleRegistry constant, if any.
-            rm = REGISTRY_CONST_RE.search(text)
-            if rm is None:
-                continue
-            pl_id = "pl-registry-" + rm.group(1).lower()
-            short = rm.group(1)
-            rule = (pl_id, short, "?", "?", [])
+            # The checker does not declare its own RuleDef — it looks the
+            # rule up by id from RuleRegistry at report time. Read the
+            # canonical metadata from there.
+            reg = registry_rules.get(pkg) or registry_rules.get(
+                "org.plumb.style." + simple
+            )
+            if reg is not None:
+                rule = reg
+            else:
+                # Fall back: synthesise a minimal entry from
+                # a RuleRegistry constant, if any.
+                rm = REGISTRY_CONST_RE.search(text)
+                if rm is None:
+                    continue
+                pl_id = "pl-registry-" + rm.group(1).lower()
+                short = rm.group(1)
+                rule = (pl_id, short, "?", "?", [])
         pl_id, short, sev, typ, cwes = rule
         params = extract_params(text)
         desc = extract_description(text)
@@ -330,9 +442,28 @@ def render(rows: list[dict]) -> str:
     out.append("- 每个 checker 通过 `ctx.report(line, col, rule, message, severity, dataflowHead)`"
                 " 上报违规。`RuleDef` 提供规则 ID、严重度、类型 (BUG / STYLE / BAD_PRACTICE) 等元数据。")
     out.append("- 注册方式有三种：")
-    out.append("  - `StyleCheckRegistry.builtins()` — 全部 504 条")
-    out.append("  - `StyleCheckRegistry.load(\"Foo.*\")` — 按简单名 glob 过滤")
-    out.append("  - `StyleCheckRegistry.byCategory(\"security\")` — 按子包分类过滤")
+    out.append(f"  - `AstCheckerRegistry.builtins()` — 全部 {len(rows)} 条")
+    out.append("  - `AstCheckerRegistry.load(\"Foo.*\")` — 按简单名 glob 过滤")
+    out.append("  - `AstCheckerRegistry.byCategory(\"security\")` — 按子包分类过滤")
+    # A rule id can be shared by more than one checker class when one of them
+    # looks the rule up by id instead of declaring its own RuleDef.
+    id_counts: dict[str, int] = {}
+    for r in rows:
+        id_counts[r["pl_id"]] = id_counts.get(r["pl_id"], 0) + 1
+    shared = {k: v for k, v in id_counts.items() if v > 1}
+    if shared:
+        out.append("")
+        out.append(
+            f"- 下列 {len(shared)} 个规则 ID 被多个 checker 共享 —— "
+            "其中一个 checker 直接内联声明 `RuleId`，另一个则通过 "
+            "`ctx.rules().byId(RuleRegistry.<CONST>)` 查同一规则："
+        )
+        out.append("")
+        for pid in sorted(shared):
+            owners = sorted(
+                r["simple"] for r in rows if r["pl_id"] == pid
+            )
+            out.append(f"  - `{pid}` — " + ", ".join(f"`{o}`" for o in owners))
     out.append("")
     # Stats
     cat_count: dict[str, int] = {}
@@ -439,7 +570,7 @@ def render(rows: list[dict]) -> str:
 def main() -> int:
     rows = collect()
     print(f"Collected {len(rows)} checker rows")
-    DOC_DIR.mkdir(exist_ok=True)
+    DOC_DIR.mkdir(parents=True, exist_ok=True)
     md = render(rows)
     out_path = DOC_DIR / "plumb-style-rules.md"
     out_path.write_text(md, encoding="utf-8")

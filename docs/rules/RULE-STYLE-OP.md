@@ -1,45 +1,62 @@
-# 规则操作：Style 590 / 启用禁用 / 改参数
+# 规则操作：Style 595 / 启用禁用 / 改参数
 
 本文档是 `RULES.md` 的 §7-§9 拆分版本。规则主清单（数量 / 严重度 / 类型 / emit-id / taint / DFA）见 `RULES.md`；规则开发（AI prompt / CWE 标签 / 外部工具 ID / 加新规则）见 `RULE-AUTHORING.md`。
 
-## 1. Style 规则（590 条）
+## 1. Style 规则（595 个 checker 类）
 
-Style 规则**不写进 `plumb-rules/RuleRegistry`**，而是通过 `StyleCheckRegistry` 在启动时 classpath 扫描。9 大子目录的实际分布（实测 2026-10-16）：
+Style 规则**不写进 `plumb-rules/RuleRegistry`**，而是通过 `AstCheckerRegistry` 在启动时 classpath 扫描。9 大子目录的实际分布（实测 2026-10-23）：
 
 | 目录 | 数量 | 主题 |
 | --- | ---: | --- |
-| `plumb-style/style/` | **352** | 编码风格（注释、Javadoc、缩进、imports、控制流、声明） |
+| `plumb-style/style/` | **354** | 编码风格（注释、Javadoc、缩进、imports、控制流、声明） |
 | `plumb-style/performance/` | **63** | 性能（字符串、boxed、BigDecimal、Random） |
 | `plumb-style/naming/` | **51** | 命名约定（类型、方法、字段、参数、局部变量、包） |
-| `plumb-style/security/` | **40** | 安全相关（deserialization、URL sanitization） |
+| `plumb-style/security/` | **41** | 安全相关（deserialization、URL sanitization） |
 | `plumb-style/error/` | **35** | 错误处理（catch、finally、throw、synchronized） |
-| `plumb-style/bug/` | **19** | 明确 bug 模式（compareTo、equals、null 检查） |
-| `plumb-style/design/` | **18** | 设计度量（圈复杂度、耦合、深度、NPath） |
+| `plumb-style/bug/` | **20** | 明确 bug 模式（compareTo、equals、null 检查） |
+| `plumb-style/design/` | **18** | 设计度量（圈复杂度、耦合、深度） |
 | `plumb-style/quality/` | **10** | 质量（regex confusion、ORM 模式） |
 | `plumb-style/concurrency/` | **2** | 并发（servlet 原子性、singleton race） |
+| `plumb-style/`（根目录） | **1** | `ObjectHijackCheck` |
 | `plumb-style/annotations/` | 0 | 注解 IR 工具（不是 checker） |
-| **合计** | **590** | — |
+| **合计** | **595** | — |
+
+`CheckerCategories.CHECKER_CATEGORIES` 登记了 **593** 条（差的 2 条见
+[`../tech/STYLE-RULES.md`](../tech/STYLE-RULES.md) §6）。
 
 > 完整列表 + 每条规则的 Javadoc + PMD/SpotBugs/SonarQube/Coverity 等价映射见 `docs/plumb-style-rules.md`（自动生成，由 `scripts/gen_rules_doc.py`）。索引见 `docs/plumb-style-rules-index.md`（由 `scripts/gen_rules_index.py`）。
 
 ### 7.1 style 规则的 emit-id
 
 ```java
-// plumb-style/security/RandomIvCheck.java
-public class RandomIvCheck extends AstCheck {
-    public Rule rule() {
-        return new RuleId("ast-style-random-iv-cbc-style", ...);  // R-836 风格
-    }
+// plumb-style/style/RandomIvCheck.java
+public final class RandomIvCheck implements AstChecker {
+  private static final RuleDef DEFAULT_RULE =
+      new RuleDef(
+          new RuleId("ast-style-random-iv-cbc", "RANDOM_IV_CBC"),
+          "AES/CBC cipher uses a non-random Initialization Vector (CWE-329).",
+          RuleDef.Severity.MEDIUM,
+          RuleDef.Type.BAD_PRACTICE,
+          List.of("CWE-329"),
+          "org.plumb.style.RandomIvCheck",
+          true,
+          List.of("ast-style-random-iv-cbc-style", "random-iv-cbc")   // 历史 alias
+      );
 }
 ```
 
-yaml 里写三种风格都能匹配：
+emit-id 的格式是 `ast-<category>-<bare>`（category = checker 所在子包名）。
+带 `-style` 后缀的 `ast-style-random-iv-cbc-style` **只是 alias**，不再是任何规则的
+emit-id —— 实测 `plumb-style/src/main/java` 下 582 个 `new RuleId("...")` 字面量里
+没有一个以 `-style` 结尾。
+
+yaml 里写下面几种风格都能匹配：
 
 ```yaml
 rules:
   enabled:
-    - ast-style-random-iv-cbc-style   # 推荐
-    - plumb.style.random-iv-cbc       # R791 旧风格（仍兼容）
+    - ast-style-random-iv-cbc        # emit-id（推荐）
+    - ast-style-random-iv-cbc-style  # 老 alias（仍兼容）
     - random-iv-cbc                  # bare slug
 ```
 
@@ -51,8 +68,8 @@ rules:
 
 ```yaml
 checks:
-  taint: false         # 关闭所有 17 条 taint 规则
-  style: false         # 关闭 590 条 AST 风格规则
+  taint: false         # 关闭所有 taint 规则（TaintRuleRegistry 里 12 条）
+  style: false         # 关闭全部 AST 风格规则
   divByZero: false     # 关闭 DIV_BY_ZERO
 ```
 
@@ -71,17 +88,16 @@ checks:
 
 ### 8.2 细粒度：`rules.enabled` / `rules.disabled`
 
-`rules.enabled` 把列出的规则**强制置为 on**；`rules.disabled` 强制置为 off。接受**规则 UUID**（如 `bu-0201-style-empty-catch`）、**规则名**（如 `STYLE_EMPTY_CATCH`）、**emit-id**（如 `ast-style-empty-catch-style` 或 `plumb.style.empty-catch`）：
+`rules.enabled` 把列出的规则**强制置为 on**；`rules.disabled` 强制置为 off。接受**规则 UUID**（如 `bu-0201-style-empty-catch`）、**规则名**（如 `STYLE_EMPTY_CATCH`）、**emit-id**（如 `ast-style-system-out-println`）：
 
 ```yaml
 rules:
   disabled:
     - STYLE_SYSTEM_OUT            # 规则名
-    - pl-0006-system-out          # UUID
-    - ast-style-system-out-style  # R-836 emit-id
+    - ast-style-system-out-println  # style emit-id
   enabled:
     - bu-0401-weak-crypto         # 即便大类 off 也强制开
-    - plumb.boundary.integer-overflow  # DFA unified
+    - dfa-taint-null-dereference  # DFA taint emit-id
 ```
 
 实际行为：规则注册阶段（`RuleRegistry.withBuiltinDefaults()` 之后）会重新设置 `enabled` 标志。代码路径在 `ScanRunner.buildRegistry()`：
@@ -124,7 +140,7 @@ R-834 把"启用/禁用"从 1 层（`checks.*`）扩到 5 层。**修改 disable
 ┌──────────────────────────────────────────────────────────┐
 │ 1. RuleDef.enabled (checker 静态 DEFAULT_RULE 字段)        │
 │    - 默认 true. R-834 codemod 改 25 个 disabled rule 为 false│
-│    - Registry.fromChecker 走 updateInPlace path 持久化       │
+│    - RuleRegistry.registerFromChecker 走 updateInPlace path 持久化 │
 └──────────────────────────────────────────────────────────┘
                             ↓
 ┌──────────────────────────────────────────────────────────┐
@@ -159,44 +175,57 @@ R-834 把"启用/禁用"从 1 层（`checks.*`）扩到 5 层。**修改 disable
 - 想 disable 某个 rule 走 **层 2**（`yaml rules.disabled`）— 是普通用户路径
 - 想 force enable 某个 rule 走 **层 5**（`yaml rules.enabled` 或 `--rule`）— 强制 override
 - 改 `RuleDef` 默认值需要 rebuild + 重新发布 image（**层 1** 是 compile-time）
-- 当前 `plumb-dfa/src/main/resources/checkers.yaml` 的 16 个 checker 中有 3 个
-  `enabled: false`，它们必须显式 enable 才会跑
+- 当前 `plumb-dfa/src/main/resources/checkers.yaml` 的 16 个 checker 中有 2 个
+  `enabled: false`（`SingletonRaceDfa` / `ServletAtomicityDfa`），它们必须显式
+  enable 才会跑
 
 ## 3. 改规则参数
 
-每条 `RuleDef` 可以挂载 `RuleParameter`（见 `plumb-rules/RuleParameter.java`）。
+每条 `RuleDef` 可以挂载 `RuleParameter`（见 `plumb-rules/src/main/java/org/plumb/rules/RuleParameter.java`）。
 
-### 9.1 当前路径
+### 9.1 运行时参数覆盖（已支持）
 
-**plumb-main 的 YAML 加载器尚未支持运行时参数覆盖**——所有规则使用代码里 hard-code 的 default。改法：
+**YAML 路径是 `checks.<rule-id>.params.<param-name>`**（不是 `rules.parameters.*`）。
+`ConfigLoader.fromMapImpl`（`plumb-main/.../ConfigLoader.java:343-357`）把
+`checks:` 下每个 rule 块的 `params:` 扁平 map 读进 `ScanConfig.ruleParams`，
+值按字面量类型强制成 Integer / Boolean / String。`ScanRunner` 构造
+`StyleContext` 时把它传进去（`ScanRunner.java:2061`、`:2454`），
+`StyleContext` 再按 rule id 分发（`StyleContext.java:132-140`）。
+
+```yaml
+checks:
+  line-length:
+    enabled: true
+    params:
+      max: 120                 # 覆盖 LineLengthCheck 的 max 默认值 100
+      ignoreComments: false
+```
+
+`<rule-id>` 是 checker 的 `name()`（例如 `line-length`）或它的 canonical rule id。
+参数名必须和 `RuleParameter` 里声明的名字一致。
+
+`R761ParamsTest`（`plumb-main/src/test/.../R761ParamsTest.java`）覆盖这条路径，
+`R822StyleContextParamOverrideTest` 覆盖 `StyleContext` 侧的参数分发。
+
+### 9.2 改默认值（需要 rebuild）
+
+改代码里的 `RuleParameter` 默认值：
 
 1. 找到 `plumb-style/src/main/java/.../<Rule>Check.java` 里的 `new RuleParameter(...)` 调用。
 2. 改 default 字符串。
 3. `mvn install` 重新构建。
 
-例如把 `MethodLengthCheck` 的阈值从 80 改到 120：
+例如把 `LineLengthCheck` 的行长阈值从 100 改到 120：
 
 ```java
-// plumb-style/style/MethodLengthCheck.java
-public Rule rule() {
-    return new Rule("pl-0249-method-too-long")
-        .parameter(new RuleParameter("maxLines", "80", "Maximum lines per method"));  // ← 改这里
-        // ...
-}
+// plumb-style/style/LineLengthCheck.java
+private static final RuleParameter[] PARAMS = {
+  new RuleParameter("max", "Maximum allowed line length", RuleParameter.Type.INT, "120"),
+  // ...
+};
 ```
 
-### 9.2 未来 R-参数化路径（planned）
-
-引入 `rules.parameters.<rule-id>.<param-name>: <value>` 段，逻辑写在 `ConfigLoader.fromMapImpl` 里（参考同文件的 `checks.*` 处理代码段）。届时 `RuleParameter.value()` 会优先返回 YAML 提供的值，fallback 才是 `default`。
-
-```yaml
-rules:
-  parameters:
-    pl-0249-method-too-long:
-      maxLines: 120
-    pl-0233-avoid-print-stack-trace:
-      allowInTests: true
-```
+**不 rebuild 也能改** —— 走 §9.1 的 YAML 覆盖即可，且优先级更高。
 
 ### 9.3 `aggressiveness` 已废弃
 

@@ -126,8 +126,8 @@ initEngine(ctx)
 
 - 状态：`taintedVars: Map<TacVar, String>`（`:140`）与 `taintPaths`（`:149`）
 - 传播：`propagateMOVE`（`:1158`）等按指令种类分派
-- sink 判定：按 `sinkFamilyKey` 查 `SinkFamilyRegistry`（`taint/SinkFamilyRegistry.java:22`），
-  **不是** IFDS 框架
+- sink 判定：按 `sinkFamilyKey` 查 `SinkFamilyRegistry`（`config/SinkFamilyRegistry.java:22`，在
+  `org.plumb.dfa.config` 包），**不是** IFDS 框架
 - 跨函数：`FunctionSummary` + `Operation.TaintPropagate`
 
 **source / sink / sanitizer 表在哪里**：没有 `TaintCatalog`。实际是两个 registry：

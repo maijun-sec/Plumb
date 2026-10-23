@@ -236,11 +236,11 @@ public final class SastMain {
             .hasArg()
             .argName("cha|rta|vta|1cfa|stub|global|cached:<name>:<path>")
             .desc(
-                "Call-graph construction strategy for the unified engine (default: vta). "
-                    + "vta=Variable Type Analysis (most precise, slow), "
+                "Call-graph construction strategy for the unified engine (default: global). "
+                    + "global=cross-TU signature lookup (default), "
+                    + "vta=Variable Type Analysis (TU-local, most precise, slow), "
                     + "cha=Class Hierarchy (TU-local, fast/over-approx), "
                     + "rta=Rapid Type, 1cfa=1-CFA, stub=direct-only, "
-                    + "global=cross-TU signature lookup, "
                     + "cached:<name>:<path>=wrap with disk cache")
             .build());
     // R-? Step 7 — AI options. (The --ai-scan and
