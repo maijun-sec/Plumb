@@ -48,7 +48,7 @@ plumb-<ver>/
     └── logback.xml             默认日志（INFO 级别）
 ```
 
-> **注意**：瘦发布包**不打包** `examples/` 树，避免 jar 与 doc fixtures 重复占空间。baseline `conf/default-config.yaml` 是足够拉起一个真实扫描所需的最小配置；用户用 `-i <path>` 把自己的源码喂进来即可。
+> **注意**：瘦发布包**不打包** `testcase/` 树（测试 fixture），避免 jar 与 fixtures 重复占空间。baseline `conf/default-config.yaml` 是足够拉起一个真实扫描所需的最小配置；用户用 `-i <path>` 把自己的源码喂进来即可。
 
 ### 2.1 瘦发布包内容
 
@@ -130,7 +130,7 @@ exec "$JAVA" $JVM_OPTS \
   org.plumb.main.SastMain "$@"
 ```
 
-`-Dplumb.home` 让应用知道安装根，方便 `examples/`、`conf/`、`logback.xml` 的相对路径解析。
+`-Dplumb.home` 让应用知道安装根，方便 `conf/`、`logback.xml` 的相对路径解析。
 
 ### 3.3 安装与拉起示例（解压即用）
 

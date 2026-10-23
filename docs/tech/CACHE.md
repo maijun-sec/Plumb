@@ -57,11 +57,16 @@ Plumb 用 **`ObjectOutputStream` / `ObjectInputStream`**（Java 内建序列化�
 
 Plumb 的 TAC IR 是**小数据量 + 异构字段 + 长生命周期**（cache 跨 run 复用）的场景：
 
-- **数据量小**：21 个 example 文件总共 174 KB；Spring 6 估算 150 MB，对磁盘 IO 不是瓶颈
-- **字段异构**：15 个 IR 类有各自的可变字段（`TacInstruction.line` / `column`、`TacOperand` 的 sealed 形态、`SourceMap.Loc` record、`TacProgram.sourcePath` 是 `java.nio.file.Path`）—— 每加一个字段 Kryo 都要重新注册
+- **数据量小**：单个 TU 的 TAC IR 只有几十 KB 量级；万级文件的大型项目估算
+  150 MB，对磁盘 IO 不是瓶颈
+- **字段异构**：10 个 `Serializable` 的 IR 类各自有可变字段
+  （`TacInstruction.line` / `column`、`TacOperand` 的 sealed 形态、
+  `SourceMap.Loc` record、`TacProgram.sourcePath` 是 `java.nio.file.Path`）——
+  每加一个字段 Kryo 都要重新注册
 - **长生命周期**：cache 文件可能跨 JVM 启动被读回；标准库是"装载-实例化-读"的稳定接口
 
-> **何时切到 Kryo**：等磁盘 IO 真成瓶颈（TB 级 cache 或 10000+ 文件仓库）再换。当前的 `Performance` §10 数据（单文件 10 ms / 21 文件 150 ms）说明原生够用。
+> **何时切到 Kryo**：等磁盘 IO 真成瓶颈（TB 级 cache 或万级文件仓库）再换。
+> §10 的历史数据（单文件 10 ms / 21 文件 150 ms）说明原生够用。
 
 ### 3.2 源映射（line / column / SourceMap）保留契约
 
@@ -206,9 +211,19 @@ private TranslatedFile translateAndStyleOne(Path file, RuleRegistry rules) {
 
 ## 10. 性能
 
+> **本节的数字不可复现。** 仓库里没有 benchmark harness，原始测量所用的
+> `examples/` 目录也已并入 `testcase/`。下面是历史测量记录，供选型时参考
+> 量级，**不是当前可验证的度量**。要重新测量，请自己写一个针对
+> `IrSerializer.writeProgram` / `readProgram` 的计时循环。
+
 - 单文件 (Java 源码 ~5 KB)：序列化 ~10 ms，反序列化 ~5 ms
-- 21 文件 (examples/ 目录)：序列化 ~150 ms，磁盘 100 KB ~ 130 KB
-- Spring 6 (~5000 文件)：估算序列化 30-60 秒，磁盘 ~150 MB
+- 21 文件：序列化 ~150 ms，磁盘 100 KB ~ 130 KB
+- ~5000 文件的大型项目：估算序列化 30-60 秒，磁盘 ~150 MB
+
+**选型结论不受影响**：TAC IR 是小数据量 + 异构字段 + 长生命周期（cache 跨
+run 复用）的场景，Java 原生序列化的启动成本在这个量级上不是瓶颈。真正
+要换 Kryo 的信号是磁盘 IO 成为实测瓶颈（TB 级 cache 或万级文件仓库），
+而不是估算值。
 
 ## 11. 未来扩展
 

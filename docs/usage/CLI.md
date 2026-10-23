@@ -13,11 +13,11 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar --help
 
 # 最小扫描（使用内置规则）
 java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
-     -i examples/style-bad.java
+     -i testcase/01-taint-crossfile/src/ChainOrchestrator.java
 
 # 配置文件驱动
 java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
-     -c examples/min.yaml -i src/main/java
+     -c testcase/config/min.yaml -i src/main/java
 ```
 
 ## 2. 全部命令行参数

@@ -69,15 +69,24 @@ if (ins.binop == BinaryOperator.EQ || ins.binop == BinaryOperator.NE) {
 
 **常见 bug 源**：`BinaryOperator.EQ.toString()` 是字符串 `"EQ"`，**不是** `"=="`。写 BRANCH null checker 必须用 `==` 操作符对象的 `.equals()` 比对，不要字符串比较。
 
-### 2.4 Inter-procedural field tracking
+### 2.4 跨函数字段跟踪
 
-`SingletonRace` 和 `ServletAtomicity` 走的是同一种模式：
+跨函数字段跟踪在 DFA 引擎里由 `FunctionSummary` + `Operation.WriteToField`
+承担（见 [`CROSS-FUNCTION-OPERATION.md`](./CROSS-FUNCTION-OPERATION.md) §5.7）：
+callee 在 summary 里写出它改了哪些字段，caller 的 `SummaryApplier` 把这些
+写进 caller 的 fact bag。
 
-1. 第一次 checkInstruction 遇到 CALL 时，把 callee 的 FunctionSummary 拉过来
-2. 维护一个**跨函数累积**的状态：每条 CALL 的"做了什么"都记到当前 function 的状态里
-3. finishFunction 时如果累积状态命中 bad pattern，报
+`SingletonRace` 和 `ServletAtomicity` 这两条规则**没有**走这条路 —— 它们已
+迁移到 `plumb-style`，是纯 AST checker：
 
-这个模式跟 2.1 的 FunctionSummary 是组合关系——不是替代。
+- `plumb-style/.../concurrency/SingletonRaceCheck.java` — 覆写
+  `visit(ClassOrInterfaceDeclaration, StyleContext)`
+- `plumb-style/.../concurrency/ServletAtomicityCheck.java` — 覆写
+  `visit(MethodDeclaration, StyleContext)`
+
+对应的 DFA 版（`SingletonRaceDfaChecker` / `ServletAtomicityDfaChecker`）
+仍在源码里但**不注册**（`ScanRunner.buildDfaCheckers()` 里注册语句被注释掉），
+因为 AST 版的精度更好。
 
 ## 3. 5 个 DFA 增强 checker 详解
 

@@ -1,4 +1,4 @@
-﻿# 三地址码（TAC）格式规范
+# 三地址码（TAC）格式规范
 
 本文档定义 Plumb 中间表示（IR）的 TAC 格式。所有 Java 源代码 / 字节码最终都翻译成 TAC，再交给 DFA 引擎分析。
 
@@ -7,9 +7,9 @@
 | 目标 | 说明 |
 | --- | --- |
 | 数据流友好 | 单一定义/单一使用（SSA-lite），便于 forward/backward flow analysis |
-| 可序列化 | IR 类全部 `implements Serializable`，可通过 `IrSerializer` 写盘（见 §6） |
+| 可序列化 | IR 类（`TacProgram` / `TacFunction` / `TacInstruction` / `TacCfg` / `TacBasicBlock` / `TacType` / `TacOperand` / `MergedProgram` / `SourceMap` 等 10 个）全部 `implements Serializable`，可通过 `IrSerializer` 写盘（见 §6） |
 | 与语言无关 | 名字 + 类型的命名约定，不嵌 Java 17 语法糖 |
-| 紧凑 | 一份 Spring 6 仓库（~5000 文件）的 IR 序列化到磁盘 ~150 MB 量级 |
+| 紧凑 | 一份 ~5000 文件的仓库，其 IR 序列化到磁盘约 150 MB 量级 |
 
 ## 2. 顶层容器
 

@@ -112,7 +112,6 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
 - **注解通道**：数据流之外，靠 `TacFunction.classAnnotations()` / `methodAnnotations()` /
   `paramAnnotations()` 做结构判定（Spring `@GetMapping`、`@RequestParam`、`@NonNull`）
 - **SRC-正则**：走 `SourceReader` 读源文件、纯正则匹配，TAC IR 完全不用（legacy）
-- **STUB**：已迁移到 plumb-style 的占位类，构造时抛 `UnsupportedOperationException`
 
 详细的污点/边界/指向/控制流四类分析见 [`DATA-FLOW.md`](./DATA-FLOW.md)。
 
@@ -195,9 +194,13 @@ PathSensitiveCheckerBase (plumb-dfa/taint/PathSensitiveCheckerBase.java):
 `FieldHardcodedPasswordCheck` 等**在代码库中不存在的类**，现已改写为只陈述仍然成立的
 决策。
 
-#### 1. TAC 用 var name 字符串作 identity key
-IR 以变量名字符串作为 identity key，而不是 `TacVar` 对象的全字段相等。简化 hash/equals；
-`type` / `isTemp` 不参与 identity。代价是同名变量的 SSA 版本必须由 translator 保证唯一。
+#### 1. Fact 的 identity 来自 `TacOperand`
+IR 变量是 `TacOperand.TacVar`（含 `name` / `type` / `isTemp` 三个字段），
+`equals` / `hashCode` 覆盖**全部三个字段**（`Objects.hash(name, type, isTemp)`）。
+`Fact` 持有 `TacOperand` 本身，所以 fact bag 的 key 就是这个对象 —— 同名但类型
+不同、或一个是 temp 一个不是的变量，**不会**被当成同一个 fact 的主体。
+代价是 translator 必须保证同一函数内的 SSA 版本名唯一，否则两个语义不同的
+变量会共享 identity。
 
 #### 2. Call graph 边用 call-site-style key
 边用 `wrapper/1` 这样的 call-site-style key，函数用 qualified signature。避免完整限定名解析；
@@ -466,20 +469,22 @@ NDJSON 输出，cwe 字段来自 plumb_rule_to_cwe.json["ast-style-foo"]
 
 ### 10.1 加新 style 规则的具体步骤
 
-1. 在 `plumb-style/src/main/java/org/plumb/style/<category>/FooCheck.java` 写规则，实现 `AstCheck`
-   接口
-2. **在 `CheckerCategories.java` 加 `m.put("FooCheck", "<category>");`**（按字母序）
+1. 在 `plumb-style/src/main/java/org/plumb/style/<category>/FooCheck.java` 写规则，实现 `AstChecker`
+   接口（覆写自己关心的那个 per-node `visit(X, ctx)` 重载）
+2. **在 `CheckerCategories.java` 加 `m.put("FooCheck", "<category>");`**（按字母序；
+   该文件由 `scripts/gen_categories.py` 生成）
 3. rebuild：`mvn -o -pl plumb-style install`
 4. 验证：`sast-scan --list-rules | grep FooCheck`
 
-⚠️ 第 2 步漏掉的后果是**静默丢失**：`AstCheckerRegistry.builtins()` 找不到这条规则，
-不 emit 也不报错。classpath-scan 注册机制要求同时满足 (a) 在 `CHECKER_CATEGORIES` 注册 +
+⚠️ 第 2 步漏掉的后果是**静默丢失**：`AstCheckerRegistry.byCategory(...)` 找不到这条规则，
+不 emit 也不报错。（`AstCheckerRegistry.builtins()` 走 classpath 扫描，不依赖
+`CheckerCategories`；漏登记影响的是按分类加载的路径。）
+classpath-scan 注册机制要求同时满足 (a) 在 `CHECKER_CATEGORIES` 注册 +
 (b) 提供 `rule()` 方法，少一个就 silently drop。
 
 ## 11. 未来路线
 
 - **R-output-dir v2**：写 merged.tac / callgraph.tac 到磁盘（当前只有 program cache）
-- **R-参数化规则**：YAML `rules.parameters.<id>.<name>: <value>` 覆盖默认（路线图已写，详见 `docs/usage/CLI-REFERENCE.md` §12 + `docs/usage/CLI.md` §4 改规则参数）
 - **R-ignore-file**：项目级 `.plumb-ignore` 文件
 - **R-SARIF**（部分完成，Phase 6 已支持 `sarif` format）：输出 SARIF 2.1.0 给 IDE / GitHub Code Scanning
 - **R-incremental-DFA**：监视 `cache/programs/<sha1>.tac` mtime，只对变更文件重跑 DFA
