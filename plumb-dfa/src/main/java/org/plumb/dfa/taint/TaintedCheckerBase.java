@@ -202,6 +202,16 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private final ArrayTaintTracker arrayTaintTracker = new ArrayTaintTracker();
 
   /**
+   * R1115: the equality-allowlist proof.
+   *
+   * <p>Kept as its own tracker rather than folded into {@link #stringOps} because it answers a
+   * different question: not "was this string built from a tainted piece" but "is this variable
+   * still allowed to hold anything a user typed". Only the second one can license suppressing a
+   * finding, so it has to be a separate, auditable fact.
+   */
+  private final EqualityAllowlistTracker equalityAllowlists = new EqualityAllowlistTracker();
+
+  /**
    * R-804 eager dual-write: v2 trace accumulator. Parallel to {@link #taintPaths} (the v1 {@code
    * List<FlowStep>} list): each entry maps a tainted {@link TacOperand.TacVar} to the v2 {@link
    * TraceNode} id that represents the "latest" node on its path. The full DAG is held in {@link
@@ -635,6 +645,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     fieldTaintTracker.clear();
     arrayTaintTracker.clear(); // R694 T1
     classRefVars.clear();
+    // R1115: per-function allowlist proof. Carried per checker like the other trackers, because the
+    // proof is about names in one method's scope.
+    equalityAllowlists.reset(fn.signature());
     // R-804: clear the v2 trace accumulator. The
     // builder is reset so node ids restart from 0
     // for the new function (avoids cross-function
@@ -652,6 +665,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
 
   @Override
   public void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
+    // R1115: observe BEFORE the per-kind handlers, so the MOVE handler can see a completed
+    // allowlist proof when it decides whether to keep the prior input label.
+    //
+    // Clearing the taint label happens in propagateMOVE rather than here: the sink argument is the
+    // BINOP temp (`t_t6`), never the allowlisted name, so a name-based check at the sink cannot
+    // work at all. Clearing at the MOVE lets ordinary propagation carry the cleanliness through the
+    // concatenation and leaves every rule's sink code untouched.
+    equalityAllowlists.observe(ins, fn);
     switch (ins.kind) {
       case MOVE -> propagateMOVE(ins);
       // FIELDLOAD: dest = this.f
@@ -1209,6 +1230,19 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // and the bad-sink at the join point silently
       // dropped. (Lesson 1050.)
       String priorLabel = taintedVars.get(dv);
+      // R1115: an allowlist proof outranks the entry-boundary label.
+      //
+      // The branch below deliberately keeps a `param:` label across a reassignment, because the
+      // MOVE is path-insensitive and the bad path may still carry the input. An allowlist is the
+      // exception, and provably so: it required a NEGATED guard, so every path that could hold an
+      // unlisted value was closed by the substitution. There is no surviving bad path, so the
+      // prior label must go -- otherwise `col` stays tainted forever and the substitution is
+      // invisible.
+      if (equalityAllowlists.isAllowlisted(dv)) {
+        taintedVars.remove(dv);
+        taintPaths.remove(dv);
+        return;
+      }
       if (priorLabel != null
           && (priorLabel.startsWith("param:") || priorLabel.startsWith("input:"))) {
         // Keep the prior input/param label across

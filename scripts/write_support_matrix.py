@@ -57,11 +57,14 @@ VERDICT = {
         "the three-frame cross-method case. The CWE-117 support needed two fixes: the "
         "`log.sinks` family had no checker bound to it at all, and a logger held in a "
         "static field lowered to the callee signature `LOG.info/1` with no type, so no "
-        "FQN-anchored sink pattern could match. Two cases remain, and they are genuine "
-        "gaps: `CVE-915-coap-header` has no CWE-78 finding for the assembled command "
-        "string, and `SQL-orderby-allowlist-tn` is a true false positive because an "
-        "identifier allowlist is the only correct fix for ORDER BY and the engine has no "
-        "allowlist-style sanitizer.",
+        "FQN-anchored sink pattern could match. R1115 closed the third: an identifier allowlist is "
+        "the only correct fix for ORDER BY / table / column, because bind variables cannot bind "
+        "identifiers, and the engine modelled sanitizers purely by callee signature -- an allowlist "
+        "is not a call, it is a value being narrowed. It is now recognised, and only in the "
+        "reject-and-assign form: `if (!\"a\".equals(x)) { x = \"a\"; }` closes every path that could "
+        "carry an unlisted value, while `if (\"a\".equals(x)) { x = \"a\"; }` does not, because its "
+        "fall-through keeps the user's value. One case remains, a genuine gap: `CVE-915-coap-header` "
+        "has no CWE-78 finding for the assembled command string.",
 }
 
 rows = []

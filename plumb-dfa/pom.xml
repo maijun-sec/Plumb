@@ -211,6 +211,12 @@
                              distinct: definitely-null reports, guarded
                              is silent, unknown is silent. -->
                         <include>org/plumb/dfa/checkers/taint/R1114NullFactDomainTest.java</include>
+                        <!-- R1115: the equality allowlist, which is the
+                             ONLY correct fix for identifier injection
+                             (bind variables cannot bind identifiers).
+                             A bare comparison must NOT suppress: its
+                             fall-through still carries user input. -->
+                        <include>org/plumb/dfa/checkers/taint/R1115AllowlistSanitizerTest.java</include>
                     </includes>
                 </configuration>
             </plugin>
