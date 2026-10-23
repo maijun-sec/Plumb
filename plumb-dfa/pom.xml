@@ -229,6 +229,13 @@
                              disjunction does not prove the substitution
                              runs, so it must not clear SQL taint. -->
                         <include>org/plumb/dfa/checkers/taint/R1120DisjunctiveGuardTest.java</include>
+                        <!-- R1122: four stale-fact suppressions found by the
+                             third independent audit: a loop-exit guard leak, a
+                             stale copy-equivalence alias transfer, a may-set
+                             read as proof of freshness, and two sources of
+                             truth read inside one method. Each has a control
+                             that must stay silent. -->
+                        <include>org/plumb/dfa/checkers/taint/R1122StaleFactSuppressionTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

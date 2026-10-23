@@ -237,6 +237,26 @@ public final class NullDerefChecker extends TaintedCheckerBase {
       // No alias information. Fall through and report: absence of proof is not proof of safety.
       return null;
     }
+    // R1122: the receiver's OWN nullability vetoes the alias argument.
+    //
+    // Copy-equivalence is a union-find: `String b = a;` unions b into a's class, and union-find is
+    // monotonic, so a later `b = getNullValue();` can never un-union it. b then carries a's
+    // "proven non-null" forever, even though it denotes a different reference:
+    //
+    //     String a = head;
+    //     if (a == null) { return 0; }   // a proven non-null
+    //     String b = a;                   // b joins a's class
+    //     b = getNullValue();             // b rebound to a possibly-null call result
+    //     b.length();                     // REAL NPE, suppressed via the STALE alias `a`
+    //
+    // The sibling rule `NullDerefFromReturnDfaChecker.isFullyGuardedByAlias` already consults the
+    // receiver's own nullability for exactly this reason, which is why the two rules disagreed on
+    // identical code. Consulted here too, so both suppress or neither does.
+    //
+    // Conservative direction: a true answer can only regain a finding.
+    if (ctx.mayBeNull(fn.signature(), receiver)) {
+      return null;
+    }
     java.util.Set<TacOperand.TacVar> proven = this.nullGuards.provenNonNullVars();
     for (TacOperand.TacVar alias : aliases) {
       if (proven.contains(alias)) {

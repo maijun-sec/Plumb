@@ -608,6 +608,27 @@ public final class GuardTracker {
       activeFalseEdgeGuards.clear();
       guardsPendingFalseEdge.clear();
     }
+    // R1122: entering a loop's EXIT label retires the guards the loop CONDITION pushed.
+    //
+    // `while (a != null) { ... } a.length();` is a real NPE -- the loop may have exited precisely
+    // because `a` was null -- but the condition's guard survives the loop:
+    //
+    //     t_t0 = a NE null
+    //     if t_t0 goto L_WHILE_BODY_1 else goto L_WHILE_END_2   // pushes `a != null`
+    //     L_WHILE_BODY_1: ...
+    //       goto L_WHILE_COND_0        // back edge: isBlockTerminatingJump says false, no pop
+    //     L_WHILE_END_2:               // the exit edge FALLS THROUGH -- there is no JUMP here
+    //       a.length()                 // still "guarded" -> suppressed
+    //
+    // The exit edge carries no JUMP, so no pop can ever fire for it. The only place the join is
+    // visible is the label itself, so that is where the condition's guards have to go.
+    //
+    // This is the conservative direction: dropping a guard can only regain a false positive, never
+    // hide one. It is scoped to loop-exit labels so an `if`'s merge point, which legitimately
+    // inherits its branch's facts, is untouched.
+    if (isLoopExitLabel(name)) {
+      retireGuardsIntroducedByLoopCondition();
+    }
     java.util.List<Guard> pending = guardsPendingFalseEdge.get(name);
     if (pending == null || pending.isEmpty()) return;
     activeFalseEdgeGuards.computeIfAbsent(name, k -> new java.util.ArrayList<>()).addAll(pending);
@@ -654,6 +675,38 @@ public final class GuardTracker {
     if (label == null || label.isEmpty()) return false;
     final String upper = label.toUpperCase(java.util.Locale.ROOT);
     return upper.contains("_BODY_");
+  }
+
+  /**
+   * R1122: is this the EXIT label of a loop, i.e. the point control reaches when the loop
+   * condition finally fails?
+   *
+   * <p>The translator emits {@code L_WHILE_END_n} / {@code L_FOR_END_n} / {@code L_DO_END_n}. A
+   * {@code break} also targets an {@code _END_} label, but reaching that label is the same join
+   * either way: past it, no fact established inside the loop still holds.
+   */
+  private static boolean isLoopExitLabel(String label) {
+    if (label == null || label.isEmpty()) return false;
+    final String upper = label.toUpperCase(java.util.Locale.ROOT);
+    return upper.startsWith("L_WHILE_END")
+        || upper.startsWith("L_FOR_END")
+        || upper.startsWith("L_DO_END");
+  }
+
+  /**
+   * R1122: retire every guard still active when control reaches a loop's exit join.
+   *
+   * <p>Clearing wholesale rather than popping to a frame marker is deliberate. Any guard whose
+   * {@code if}-block already ended has been popped by that block's own JUMP, so what remains on the
+   * stack at the loop join belongs to the loop condition. Clearing more can only regain a false
+   * positive, never hide a finding.
+   */
+  private void retireGuardsIntroducedByLoopCondition() {
+    if (activeGuards.isEmpty()) return;
+    activeGuards.clear();
+    frameMarkers.clear();
+    guardedVars.clear();
+    propagatableSources.clear();
   }
 
   /**
