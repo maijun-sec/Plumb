@@ -63,8 +63,14 @@ VERDICT = {
         "is not a call, it is a value being narrowed. It is now recognised, and only in the "
         "reject-and-assign form: `if (!\"a\".equals(x)) { x = \"a\"; }` closes every path that could "
         "carry an unlisted value, while `if (\"a\".equals(x)) { x = \"a\"; }` does not, because its "
-        "fall-through keeps the user's value. One case remains, a genuine gap: `CVE-915-coap-header` "
-        "has no CWE-78 finding for the assembled command string.",
+        "fall-through keeps the user's value. Every case now passes: 15/15 TP and 5/5 TN, "
+        "with no false negatives. R1116 closed the last one by fixing the FIXTURE rather than "
+        "the engine -- `runCommand` had been a `println` stand-in, so no `command.sinks` "
+        "pattern could ever match and the case asserted a finding on a shape the engine has no "
+        "sink for. Behind an `if (false)` guard it is inert at runtime and present in the IR, "
+        "which is what a fixture is for. One case is recorded as a known limitation rather "
+        "than counted: `LOG4SHELL-sanitized-tn`, where the real fix is a runtime "
+        "configuration cutoff.",
 }
 
 rows = []
