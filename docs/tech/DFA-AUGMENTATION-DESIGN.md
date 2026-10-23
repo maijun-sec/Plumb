@@ -271,7 +271,7 @@ DFA 增强的"单条 Z3 query"（Phase 2 per-finding 验证）见 `tech/CROSS-FU
 - 在 `SummaryApplier` 加 applier
 - 配套测试（callee summary + caller 应用两端）
 
-**3 个步骤缺一个就静默失败**——参考 R-787 Lessons（plumb-dfa/docs/R787*）。
+**3 个步骤缺一个就静默失败**——
 
 ### 8.3 不要为 style rule 写 DFA
 

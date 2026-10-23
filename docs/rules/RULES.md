@@ -3,8 +3,8 @@
 本文档列出 Plumb 自带的所有规则、其参数、严重度、类型、CWE 标签、emit-id 命名风格，以及如何启用 / 禁用 / 修改参数。
 
 > **自动生成文档**：
-> - `doc/plumb-style-rules.md`（5600+ 行）— 每条 style rule 的 Javadoc + 等价工具（PMD/SpotBugs/SonarQube/Coverity）映射，由 `scripts/gen_rules_doc.py` 生成
-> - `doc/plumb-style-rules-index.md`（508 行）— style rule 索引，由 `scripts/gen_rules_index.py` 生成
+> - `docs/plumb-style-rules.md`（5600+ 行）— 每条 style rule 的 Javadoc + 等价工具（PMD/SpotBugs/SonarQube/Coverity）映射，由 `scripts/gen_rules_doc.py` 生成
+> - `docs/plumb-style-rules-index.md`（508 行）— style rule 索引，由 `scripts/gen_rules_index.py` 生成
 > - `juliet-coverage/data/plumb_rule_to_cwe.json`（393 entries）— rule → CWE 双向映射，由 `tmp/r837_extract_mapping.py` 从 source 自动 grep 重建（**不要人工维护**）
 
 ## 1. 数量概览（R-837 后）
@@ -59,26 +59,28 @@ Plumb 对主流 SAST 工具的等价覆盖（实测 2026-08-03，R293 终止）�
 | **Checkstyle** | 95% | ~146 / 150 rules | R287 |
 | **总 Plumb rules** | — | **2436** | R271–R293 |
 
-每条 Plumb 规则通过 `RuleDef.aliases` 字段携带 PMD / SpotBugs / SonarQube / Coverity 的对应 ID（见 `doc/plumb-style-rules.md`）。迁移历史与 pitfall 见 `docs/R294-FINAL-COVERAGE-REPORT.md`。
+每条 Plumb 规则通过 `RuleDef.aliases` 字段携带 PMD / SpotBugs / SonarQube / Coverity 的对应 ID（见 `docs/plumb-style-rules.md`）。每条规则的等价工具 ID 见 `docs/plumb-style-rules.md`。
 
 **完整对比（实现机制 / CWE 覆盖 / Juliet 实测 / 误报率 / 性能 / AI 集成）见 `RULE-TOOL-COMPARISON.md`**。
 
-### 1.3 按实现机制分类（4 大 taxonomy）
+### 1.3 按实现机制分类
 
-`docs/CHECKERS.md`（R684 终态）把所有 626 个 checker 按"实现机制"归为 4 类：
+checker 按"跑在哪一层"分成两大类，AI 不构成第三类——它是 findings 的后置 dedup 层，
+不写新 checker：
 
-| Class | 数量 | 触发器 | 例子 | 适用场景 |
-| --- | ---: | --- | --- | --- |
-| **A. AST-only** (`AstChecker`) | **515** | 仅 JavaParser | `EmptyCatchBlockCheck`, `CompareStringsWithEqualsCheck` | 编码风格、命名、纯结构 bug |
-| **B. DFA-direct** (`DfaChecker`) | **69** | TAC + CFG（无 taint） | `InsecureCryptoChecker`, `ReachableAssertionChecker` | 需跨语句 def-use、type-tracking、注解通道 |
-| **C. Taint-primary** (`TaintedCheckerBase`) | **42** | TAC + taint engine + summary | `SqlInjectionChecker`, `CommandInjectionChecker` | source-to-sink 数据流 |
-| **D. AI-primary** | 0（内置） | n/a | n/a | AI 是 dedup 层，不写新 checker |
+| 类别 | 位置 | 数量（实测） | 触发器 | 适用场景 |
+| --- | --- | ---: | --- | --- |
+| **Style**（AST-only） | `plumb-style/` | **592** 个 `*Check.java` | 仅 JavaParser | 编码风格、命名、纯结构 bug |
+| **DFA** | `plumb-dfa/` | **47** 个继承 `TaintedCheckerBase` + **20** 个直接 `implements DfaChecker` | TAC + CFG（污点 / 数值 / 资源 / 控制流） | 需跨语句 def-use、type-tracking、source-to-sink 数据流 |
 
-完整 626 checker 索引见 `docs/CHECKERS.md`。其中 B/C 类的"为什么用 DFA 而不是 AST"逐条分析见 `plumb-dfa/docs/AUDIT-checkers-2026-10-12.md`（93 KB，按 DFA-真 / DFA-注解通道 / DFA-taint / SRC-正则 / AI-启发 / STUB 6 标签细分）。
+DFA 内部的实现形态细分见 [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) §3.0，
+四类分析（污点 / 边界 / 指向 / 控制流）见 [`../tech/DATA-FLOW.md`](../tech/DATA-FLOW.md)。
+
+各实现形态的数量与选择理由见 [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) §3.0。
 
 ### 1.4 Style 规则命名 vs DFA 规则命名的差异
 
-| 维度 | Style (590) | DFA unified (66) | Taint (27) |
+| 维度 | Style (590) | DFA checker (16 启用) | Taint rule |
 | --- | --- | --- | --- |
 | 写在哪 | `plumb-style/<cat>/*Check.java` | `plumb-dfa/checkers/<family>/*Checker.java` | `plumb-rules/.../TaintRule.java` |
 | 怎么注册 | classpath scan + CheckerCategories | `RuleRegistry.withBuiltinDefaults()` | `BuiltinTaintRules` |

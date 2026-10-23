@@ -1,20 +1,15 @@
 # plumb 文档索引
 
-`docs/` 是 Plumb 项目的文档中心。文档分两类，**不要混在一起看**：
+`docs/` 只放**产品文档**：描述系统**是什么、怎么工作、怎么扩展**。全部以当前代码为准，
+改代码就要改对应文档。
 
-| 类别 | 目录 | 性质 |
-| --- | --- | --- |
-| **产品文档** | `tech/` `rules/` `usage/` `build/` | 描述系统**是什么、怎么工作**。以当前代码为准，改代码就要改这里。 |
-| **过程文档** | `process/` `archive/` | 记录**怎么走到今天**（某轮改了什么、审计发现了什么、评测数据）。是历史，不是规格。 |
-
-判断一份文档该放哪里的标准很简单：**如果它的内容在一次重构后仍然成立，它属于产品文档；
-如果它描述的是「某次改动 / 某次审计 / 某轮评测」，它属于过程文档。**
+判断一份内容该不该进这里：**如果它在一次重构后仍然成立，它属于产品文档。**
+反之（记录某次改动、某轮审计、某次评测）就不要写进来——那类内容一旦沉淀进产品文档就会
+变成无法验证的断言。
 
 ---
 
-## 产品文档
-
-### `tech/` — 技术架构
+## `tech/` — 技术架构
 
 | 文件 | 内容 |
 | --- | --- |
@@ -29,45 +24,31 @@
 | [`MODULE-MERGE.md`](tech/MODULE-MERGE.md) | 模块合并方案与依赖图 |
 | [`CACHE.md`](tech/CACHE.md) | 磁盘 IR 缓存：`--output-dir` 机制、文件格式、key、兼容性 |
 
-### `rules/` — 规则
+## `rules/` — 规则
 
 | 文件 | 内容 |
 | --- | --- |
 | [`RULES.md`](rules/RULES.md) | 主清单：数量概览（数字均从配置文件实测）、严重度 / 类型 / emit-id、taint 与 DFA checker |
-| [`RULE-STYLE-OP.md`](rules/RULE-STYLE-OP.md) | Style 规则操作：分布、启用/禁用机制、改规则参数 |
+| [`RULE-STYLE-OP.md`](rules/RULE-STYLE-OP.md) | Style 规则操作：分布、5 层启用/禁用机制、改规则参数 |
 | [`RULE-AUTHORING.md`](rules/RULE-AUTHORING.md) | 规则开发：加新规则的步骤、CWE 标签一致性、AST checker 选型 |
 | [`RULE-TOOL-COMPARISON.md`](rules/RULE-TOOL-COMPARISON.md) | Plumb vs PMD / SonarQube / SpotBugs / Coverity / Checkstyle |
 | [`plumb-style-rules.md`](plumb-style-rules.md) | 自动生成：每条 style rule 的 Javadoc + 外部工具等价映射 |
 | [`plumb-style-rules-index.md`](plumb-style-rules-index.md) | 自动生成：style rule 索引 |
 
-### `usage/` — 使用
+## `usage/` — 使用
 
 | 文件 | 内容 |
 | --- | --- |
 | [`CLI.md`](usage/CLI.md) | CLI 完整手册：flag 列表、YAML schema、AI augmentation、退出码、故障排查 |
 | [`CLI-EXAMPLES.md`](usage/CLI-EXAMPLES.md) | 典型场景示例 + 命令与默认配置对照 |
 | [`CLI-REFERENCE.md`](usage/CLI-REFERENCE.md) | 项目路径族 / build-system 自动发现 / YAML v2 速查 |
+| [`ENVIRONMENT.md`](usage/ENVIRONMENT.md) | 环境变量与 AI 配置：代码实际读取哪些变量、AI provider 配置、CI 示例 |
 
-### `build/` — 打包发布
+## `build/` — 打包发布
 
 | 文件 | 内容 |
 | --- | --- |
 | [`PACKAGE.md`](build/PACKAGE.md) | 发布形态、启动器逻辑、smoke test、跨平台注意 |
-
----
-
-## 过程文档
-
-| 目录 | 内容 |
-| --- | --- |
-| `process/` | R\* 轮次总结、覆盖率分析、审计报告、优化路径 |
-| `process/audits/` | checker 分类审计、trace 覆盖率审计 |
-| `archive/` | R\* 单次改动流水（按轮次分目录） |
-
-**不要把过程文档当规格引用。** 例如某轮报告写「某 checker 归类为 X」，那是当时的快照；
-`tech/ARCHITECTURE.md` 才是当前的分类依据。
-
----
 
 ## 端到端测量
 
@@ -85,35 +66,38 @@
 
 | 问题 | 去哪 |
 | --- | --- |
-| 第一次用 | `usage/CLI.md` |
-| 具体场景 | `usage/CLI-EXAMPLES.md` |
-| flag / YAML 写法 | `usage/CLI-REFERENCE.md` |
-| 有哪些规则 | `rules/RULES.md` |
-| 加自定义规则 | `rules/RULE-AUTHORING.md`、`tech/ARCHITECTURE.md` §10 |
-| 系统整体怎么跑 | `tech/ARCHITECTURE.md` |
-| **数据流分析怎么工作** | **`tech/DATA-FLOW.md`** |
-| 指向分析 / 可空性 / 污点 | `tech/DATA-FLOW.md` §3–§5 |
-| 跨函数怎么总结 | `tech/CROSS-FUNCTION-ANALYSIS.md` |
-| 磁盘缓存 | `tech/CACHE.md` |
-| 出包上线 | `build/PACKAGE.md` |
-| 跟其他工具怎么比 | `rules/RULE-TOOL-COMPARISON.md` |
-| 精确率 / 召回率现状 | `testcase/SUPPORT-MATRIX.md` |
+| 第一次用 | [`usage/CLI.md`](usage/CLI.md) |
+| 具体场景 | [`usage/CLI-EXAMPLES.md`](usage/CLI-EXAMPLES.md) |
+| flag / YAML 写法 | [`usage/CLI-REFERENCE.md`](usage/CLI-REFERENCE.md) |
+| 环境变量 / API key | [`usage/ENVIRONMENT.md`](usage/ENVIRONMENT.md) |
+| 有哪些规则 | [`rules/RULES.md`](rules/RULES.md) |
+| 加自定义规则 | [`rules/RULE-AUTHORING.md`](rules/RULE-AUTHORING.md)、[`tech/ARCHITECTURE.md`](tech/ARCHITECTURE.md) §10 |
+| 系统整体怎么跑 | [`tech/ARCHITECTURE.md`](tech/ARCHITECTURE.md) |
+| **数据流分析怎么工作** | **[`tech/DATA-FLOW.md`](tech/DATA-FLOW.md)** |
+| 指向分析 / 可空性 / 污点 | [`tech/DATA-FLOW.md`](tech/DATA-FLOW.md) §3–§5 |
+| 跨函数怎么总结 | [`tech/CROSS-FUNCTION-ANALYSIS.md`](tech/CROSS-FUNCTION-ANALYSIS.md) |
+| 磁盘缓存 | [`tech/CACHE.md`](tech/CACHE.md) |
+| 出包上线 | [`build/PACKAGE.md`](build/PACKAGE.md) |
+| 跟其他工具怎么比 | [`rules/RULE-TOOL-COMPARISON.md`](rules/RULE-TOOL-COMPARISON.md) |
+| 精确率 / 召回率现状 | [`../testcase/SUPPORT-MATRIX.md`](../testcase/SUPPORT-MATRIX.md) |
 
 ---
 
 ## 维护约定
 
-1. **产品文档以代码为准。** 引用类名必须能在源码里搜到；引用数字必须能从配置或测试跑出来。
-2. **数字不要手写。** 规则数、source/sink 模式数、testcase 得分都有生成或测量路径。
+1. **引用类名必须能在源码里搜到。** 文档里出现的每个 Java 类都要真实存在——重构会静默地
+   让引用失效（包路径段被删是最常见的一种）。
+2. **数字不要手写。** 规则数、source/sink 模式数、testcase 得分都有生成或测量路径；
+   写不出测量命令的数字就不要写。
 3. **改动架构时同步改文档。** `DATA-FLOW.md` 描述引擎骨架，`ARCHITECTURE.md` 描述模块边界；
    改动其中之一必须检查另一处是否还在说同一件事。
-4. **过程文档留在 `process/`。** 不要把某轮结论直接搬进 `tech/`——如果它现在仍然成立，
-   就用当前代码验证一遍再写进去，并去掉轮次编号。
+4. **不要写轮次流水。** 变更记录属于 git log，不属于 `docs/`。文档只写「现在是什么样」。
+5. **过程文档不进 `docs/`。** 审计报告、覆盖率快照、优化路径这类内容要么不留，要么把**已经
+   验证过**的结论直接写进对应的产品文档，并去掉轮次编号。
 
 ---
 
 ## 其他位置
 
-- `fathom-dfa/docs/` — 另一个项目的早期架构参考，本地保留、不进版本库。
-- `plumb-dfa/src/main/resources/docs/` — 源码内嵌资源（classpath 加载），不属于本目录。
 - `testcase/config/min.yaml` — 最小配置示例（引用的是历史 demo 路径，仅作字段参考）。
+- `plumb-dfa/src/main/resources/docs/` — 源码内嵌资源（classpath 加载），不属于本目录。

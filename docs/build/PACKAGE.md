@@ -248,7 +248,7 @@ ai:
   temperature: 0.0
 ```
 
-> 完整的 keys 与每个字段语义见 `doc/usage/CLI.md` §3。
+> 完整的 keys 与每个字段语义见 `docs/usage/CLI.md` §3。
 
 ## 7. 4 个 smoke test（每次出包必跑）
 

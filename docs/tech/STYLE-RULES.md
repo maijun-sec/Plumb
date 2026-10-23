@@ -215,7 +215,7 @@ addAlias("bu-0201-style-empty-catch", List.of("PMD:EmptyCatchBlock", "SonarQube:
 `plumb-style` 一共 500+ 条，全部默认 **enabled = true**。细粒度控制：
 
 - **`checks.style: false`**：关掉全部 500+ 风格规则（开关在 `ScanConfig.runStyle`）。
-- **`rules.disabled`** / **`rules.enabled`**：按规则 ID 或 name 单独控制（见 `doc/usage/CLI.md` §4）。
+- **`rules.disabled`** / **`rules.enabled`**：按规则 ID 或 name 单独控制（见 `docs/usage/CLI.md` §4）。
 - **修改源代码**：如果只针对自己项目不想跑某条，**目前没有"项目级 disable file"机制**——只能走 YAML `rules.disabled` 或在代码里把 `addAlias` 那行删掉 + `RuleRegistry.STYLE_XXX` 设为 `withEnabled(false)`。
 
 未来 R-version 会引入 `.plumb-ignore` 文件（类似 `.gitignore`），按 path glob 屏蔽。

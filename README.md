@@ -199,7 +199,7 @@ usage: sast-scan [-c <yaml>] [--cache-mode <off|read|write|readwrite>] [-D <dir>
 | 文档总索引 | [`docs/README.md`](docs/README.md) |
 | 规则清单 | [`docs/rules/RULES.md`](docs/rules/RULES.md) |
 | 精确率 / 召回率实测 | [`testcase/SUPPORT-MATRIX.md`](testcase/SUPPORT-MATRIX.md) |
-| 环境变量 + API key | [`docs/archive/docs-_misc/ENVIRONMENT.md`](docs/archive/docs-_misc/ENVIRONMENT.md) |
+| 环境变量 + AI 配置 | [`docs/usage/ENVIRONMENT.md`](docs/usage/ENVIRONMENT.md) |
 | 完整 CLI + YAML | [`docs/usage/CLI.md`](docs/usage/CLI.md) |
 | 打包 / 启动 | [`docs/build/PACKAGE.md`](docs/build/PACKAGE.md) |
 | 项目架构 + 关键决策 | [`docs/tech/ARCHITECTURE.md`](docs/tech/ARCHITECTURE.md) |

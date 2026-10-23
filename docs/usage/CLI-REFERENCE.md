@@ -4,7 +4,6 @@
 
 ## 10. 项目路径族（`--source-root` / `--module-root` / `--classpath`）
 
-
 R797（Oct 2026）引入三个**专门给 JavaParser TypeSolver 喂料**的 flag。它们和 `--input` 的根本区别是：
 
 | 维度 | `--input` | `--source-root` / `--module-root` / `--classpath` |

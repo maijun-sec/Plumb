@@ -128,7 +128,7 @@ public final class TacType implements Serializable {
 - **`FINALLY_ENTER` (`finally:`)** —— finally 块入口。CFG builder 给所有 try 内基本块 + 所有 catch 块（以 `THROW` 结尾的）都加一条到 FINALLY 块的 exception edge，模拟"无论 try/catch 怎么走，finally 一定跑"的语义。
 - 旧 R151 的 `L_CATCH_<Type>` / `L_FINALLY` 标签名 pattern 保留——Label-based tooling（UnusedLabelChecker / SARIF / R259 cache-key normaliser）不破。
 
-详细背景与 CWE396 调优过程见 `docs/R261-TRY-CATCH-FINALLY-IR-AND-DATAFLOW.md`。
+详细背景与 CWE396 调优过程
 
 ### 4.1 二元 / 一元运算符
 
@@ -194,7 +194,7 @@ public final class TacBasicBlock implements Serializable {
 └──────────┴──────────────┴─────────────────┘
 ```
 
-文件命名见 `doc/usage/CLI.md` §5.3 与 `plumb-main/.../OutputLayout.java`。
+文件命名见 `docs/usage/CLI.md` §5.3 与 `plumb-main/.../OutputLayout.java`。
 
 ## 7. TAC 生成流水线
 

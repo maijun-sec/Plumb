@@ -4,7 +4,6 @@
 
 ## 1. 典型场景示例
 
-
 ### 6.1 单文件快速扫描
 
 ```bash
@@ -91,9 +90,7 @@ java -jar plumb-...-all.jar -i src --max-parallelism 6
 
 `--max-parallelism 0` = auto = `Runtime.availableProcessors() - 1`，floor 1。
 
-
 ## 2. 命令与默认配置对照
-
 
 `conf/default-config.yaml` 随包带——它的全部字段都注释掉，等于"全部默认"。下表给出每个字段的默认值 + 改它的方式：
 

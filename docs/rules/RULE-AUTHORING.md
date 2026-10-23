@@ -4,7 +4,6 @@
 
 ## 1. AI augmentation 与每条规则的 prompt
 
-
 R-? Step 7 起，每条 `DfaChecker` / `AstChecker` 自己持有 `getAiPrompt(Finding) -> String`：
 
 - 返回 `null` = 该规则**不走** AI dedup
@@ -22,7 +21,7 @@ prompt 默认由 checker 提供。手写 override 见：
 2. DfaChecker / AstChecker 手写 inline `getAiPrompt`（少数高价值规则）
 3. `--rule-prompts-dir` 用户 `.md` 覆盖（最优先）
 
-详见 `doc/usage/CLI.md` §2.2。
+详见 `docs/usage/CLI.md` §2.2。
 
 ## 2. CWE 标签与 mapping 一致性
 
@@ -36,11 +35,9 @@ prompt 默认由 checker 提供。手写 override 见：
 - mapping 从 278 → **393 entries**（+115 新 emit-style rule，-3 mismatch）
 - 维护原则：**不要手改 mapping**，改完源码就重跑 rebuild script
 
-Lesson 完整记录见 `plumb-dfa/docs/R837-FINAL-REPORT-2026-10-16.md`。
-
 ## 3. 与外部工具的等价 ID
 
-每条 `RuleDef.aliases` 字段携带 PMD / SpotBugs / SonarQube / Coverity 的对应 ID。详细映射见 `doc/plumb-style-rules.md` 的每条规则详细条目。
+每条 `RuleDef.aliases` 字段携带 PMD / SpotBugs / SonarQube / Coverity 的对应 ID。详细映射见 `docs/plumb-style-rules.md` 的每条规则详细条目。
 
 举例：
 
@@ -50,7 +47,7 @@ Lesson 完整记录见 `plumb-dfa/docs/R837-FINAL-REPORT-2026-10-16.md`。
 | `WEAK_CRYPTO` | `WeakCryptographicAlgorithm` | `WEAK_MESSAGE_DIGEST` | `java:S3271` | `WEAK_CRYPTO_ALGORITHM` |
 | `STATIC_API_KEY` | `HardcodedCredential` | `HARD_CODE_KEY` | `java:S6411` | `HARDCODED_CREDENTIAL` |
 
-完整表由 `scripts/gen_rules_doc.py` 生成在 `doc/plumb-style-rules.md`。
+完整表由 `scripts/gen_rules_doc.py` 生成在 `docs/plumb-style-rules.md`。
 
 **全方位对比**（实现机制 / CWE 覆盖 / Juliet prec / 误报率 / 性能 / AI 集成 / Plumb 定位）见 [`RULE-TOOL-COMPARISON.md`](./RULE-TOOL-COMPARISON.md)。
 
@@ -94,28 +91,30 @@ Lesson 完整记录见 `plumb-dfa/docs/R837-FINAL-REPORT-2026-10-16.md`。
 - ⚠️ **限制** Pattern A 最多 2 次 findAll；超过必须降级到 Pattern D
 - ✅ **优先** Pattern D（per-node visit 重载，AstDispatcher 单次 walk）
 
-**当前 plumb-style 587 个 checker 分布**（R-815 审计）：
+**当前 plumb-style checker 的 walk 模式评价**：
 
-| Pattern | 数量 | walks/file | 评价 |
-| --- | ---: | ---: | --- |
-| A | 167 | 1 | ✓ 已最优 |
-| B | 37 | 2-10 | ⚠️ 反模式（要改造） |
-| C | 8 | 1-6 | ⚠️ 反模式（要改造） |
-| D | 333 | 1 | ✓ 推荐 |
-| D+ | 3 | 2 | ⚠️ 二选一 |
-| E | 33 | 0 | 🔍 待确认 |
-| E0 | 6 | 0 | 🐛 实现 broken |
+| Pattern | 评价 |
+| --- | --- |
+| A（单次 findAll） | ✓ 已最优 |
+| B（多次 findAll） | ⚠️ 反模式，改成 A 或 D |
+| C（多次 walk） | ⚠️ 反模式，改成 A 或 D |
+| D（per-node visit 重载） | ✓ 推荐，AstDispatcher 单次 walk |
+| D+（per-node + CU 同时存在） | ⚠️ 二选一 |
+| E / E0（不属上述分类） | 需单独确认 |
 
-**当前总 walk 数** 621 walk/file。**优化空间**：B/C 改造为 A/D 可省 61 walk/file (~10%)。Pattern D+ 清理省 3。
-
-详细审计 + 改造模板见 `docs/process/R815-AST-SCAN-OPTIMIZATION-REPORT-2026-10-14.md`。
+**改造方向**：B / C 是主要优化目标，改为 A 或 D 可把每文件的 walk 数降下来。定量盘点脚本
+不随文档保留，需要时直接扫 `plumb-style/src/main/java` 下各 `*Check.java` 的
+`n.walk(` / `n.findAll(` 调用次数重新统计。
 
 ### 13.1 加新 Style 规则
 
 1. 在 `plumb-style/src/main/java/org/plumb/style/<category>/FooCheck.java` 写规则，实现 `AstCheck` 接口。
 2. 在 `CheckerCategories.java` 加 `m.put("FooCheck", "<category>");`（按字母序）。
-3. **自动化路径**：`scripts/gen_categories.py` 扫所有子目录 + 重写 `CheckerCategories.java`。不要手写。
-4. 跑 `mvn -pl plumb-style install` rebuild。
+3. 跑 `mvn -o -pl plumb-style install` rebuild。
+4. `sast-scan --list-rules | grep FooCheck` 验证。
+
+⚠️ 第 2 步漏掉会**静默丢失**：`StyleCheckRegistry.discoverAvailable()` 找不到规则，不 emit
+也不报错。
 5. `bin/sast-scan --list-rules | grep FooCheck` 验证。
 
 如果忘了 (2)/(3)，`StyleCheckRegistry.discoverAvailable()` 会找不到规则，**静默丢失**——emit 不出来但报错也没有。Lesson 1319 的修复就是为这种情况加 warning log + 周期性 codemod 同步。

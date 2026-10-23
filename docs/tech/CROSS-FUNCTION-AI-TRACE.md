@@ -4,7 +4,6 @@
 
 ## 6. R217 并行 worklist
 
-
 Phase 1 的"callee 先于 caller"是 RPO 的硬约束，但 R217 不必等整层 RPO 跑完才开
 始下一层——只要一个函数所有**在程序里有 body 的 callee** 都总结完，caller 就可以
 开工。
@@ -92,7 +91,7 @@ worker:
 3. **`.tac` 缓存复用 summary**。当前 `IrSerializer` 只序列 IR，summary 是
    per-run 重算。把 `FunctionSummaryCache` 跟着 `merged.tac` 一起序列化
    （不变量 = source path 不变 + rule set 不变）可以省掉 Phase 1。详见
-   `doc/tech/CACHE.md` "Future extensions"。
+   `docs/tech/CACHE.md` "Future extensions"。
 4. **Native / Reflection 不可见**。`HasUnmodelledBehavior("native")` 让 caller
    直接退到最保守的"可能产生任何副作用"。如果想给 JNI 做白名单分析，需要
    在 `MethodSummary` 加一个 `nativeSemantics` 子结构。
@@ -106,10 +105,10 @@ worker:
 
 ## 10. 进一步阅读
 
-- `doc/tech/DATA-FLOW.md` —— 区间抽象 + Z3 路径条件
-- `doc/tech/ARCHITECTURE.md` —— 模块边界（`plumb-dfa` 老引擎 vs `plumb-dfa`）
-- `doc/tech/TAC.md` —— TAC IR（summary 的输入）
-- `doc/tech/CACHE.md` —— 磁盘 IR 缓存与 `merged.tac`
+- `docs/tech/DATA-FLOW.md` —— 区间抽象 + Z3 路径条件
+- `docs/tech/ARCHITECTURE.md` —— 模块边界（`plumb-dfa` 老引擎 vs `plumb-dfa`）
+- `docs/tech/TAC.md` —— TAC IR（summary 的输入）
+- `docs/tech/CACHE.md` —— 磁盘 IR 缓存与 `merged.tac`
 
 ## 11. R-? — Trace 覆盖率审计 (R-?)
 
@@ -183,7 +182,7 @@ checker 全部换成这个工厂。`FlowStep` role 列表收敛为
   验证 3 步 trace 的精确行号；`sqlInjectionCheckerEmitsSummaryFoldAcrossFunctions`
   验证跨函数 `helper(s) → s` 的 `summary-fold` step）。
 - 详细修复 + before/after 路径对比见
-  `doc/tech/TRACE-COVERAGE-AUDIT-2026-08-13.md`。
+  
 
 ## 12. R-? — plumb-dfa → plumb-dfa checker 迁移
 
@@ -904,7 +903,7 @@ FP_RATIO=$(bin/sast-scan -c conf/default-config.yaml -i src \
 - 加 multi-finding batch API (让 model 一次 review 多个 finding 共享 context)
 - slim dist 用 mvn profile 完全 shade 不带 plumb-ai (invasive, skip)
 
-**文档**: `doc/usage/CLI.md` §2.4 (R-? AI dedup 报告 --ai-dedup-stats)
+**文档**: `docs/usage/CLI.md` §2.4 (R-? AI dedup 报告 --ai-dedup-stats)
 
 ### 14.7.11 Step 7 — slim plumb-ai / rule-owned prompts / no reflection
 

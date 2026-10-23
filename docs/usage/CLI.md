@@ -206,7 +206,7 @@ tool call）。Dev inner loop 不需要这个 — 5 个 LLM test 默认
 **为什么不用 Spring-AI**：`plumb-ai` 用裸 `java.net.http` + Jackson，client 代码 ~50
 行，OpenAI function-calling JSON 直接拼。Spring-AI / LangChain4j 多 3MB Spring
 依赖 + 调用栈深 6-8 层，调试 print 不到 raw reply。详细实现见
-`doc/tech/CROSS-FUNCTION-ANALYSIS.md` §14。
+`docs/tech/CROSS-FUNCTION-ANALYSIS.md` §14。
 
 ### 2.4 R-? AI dedup 报告（`--ai-dedup-stats`）
 
@@ -257,11 +257,9 @@ Top 10 rules by FP ratio (FP / total):
 `UNKNOWN` 通常来自：网络超时、模型编不出 JSON、模型编出非 TP/FP 的 verdict
 （被规范化为 UNKNOWN）。`UNKNOWN` 高的话看 stderr 末尾 `ai_reason` 字段。
 
-**实现细节**：见 `doc/tech/CROSS-FUNCTION-ANALYSIS.md` §14.7.10。`--ai-dedup-stats`
+**实现细节**：见 `docs/tech/CROSS-FUNCTION-ANALYSIS.md` §14.7.10。`--ai-dedup-stats`
 不带 `--ai-dedup` 是 no-op；不带 `--ai-dedup` 又配 `ai.dedup: true` 的 YAML
 才有用。
-
-
 
 ### 2.1 Call-graph 策略（`--cg-strategy`）
 
@@ -287,7 +285,7 @@ cg-strategy: vta               # snake_case 也接受
 校验在 `ScanConfig.validate()` 里做，未知策略名 / 格式错误的 `cached:...` 会在
 启动时报 `IllegalArgumentException` 并打印可用值。
 
-实现细节见 `doc/tech/CROSS-FUNCTION-ANALYSIS.md` §2.1"两条路"对比。
+实现细节见 `docs/tech/CROSS-FUNCTION-ANALYSIS.md` §2.1"两条路"对比。
 
 ## 3. YAML 配置详解
 
@@ -545,7 +543,7 @@ src/main/java/Foo.java:42:5  [HIGH] TAINT_SINK_SQL_INJECTION  Tainted id flows i
     └── findings.console         人类可读（如果 -f console）
 ```
 
-详见 `doc/build/PACKAGE.md` §5。
+详见 `docs/build/PACKAGE.md` §5。
 
 ## 6. 退出码
 

@@ -462,7 +462,7 @@ NDJSON 输出，cwe 字段来自 plumb_rule_to_cwe.json["ast-style-foo-style"]
 ## 11. 未来路线
 
 - **R-output-dir v2**：写 merged.tac / callgraph.tac 到磁盘（当前只有 program cache）
-- **R-参数化规则**：YAML `rules.parameters.<id>.<name>: <value>` 覆盖默认（路线图已写，详见 `doc/usage/CLI-REFERENCE.md` §12 + `doc/usage/CLI.md` §4 改规则参数）
+- **R-参数化规则**：YAML `rules.parameters.<id>.<name>: <value>` 覆盖默认（路线图已写，详见 `docs/usage/CLI-REFERENCE.md` §12 + `docs/usage/CLI.md` §4 改规则参数）
 - **R-ignore-file**：项目级 `.plumb-ignore` 文件
 - **R-SARIF**（部分完成，Phase 6 已支持 `sarif` format）：输出 SARIF 2.1.0 给 IDE / GitHub Code Scanning
 - **R-incremental-DFA**：监视 `cache/programs/<sha1>.tac` mtime，只对变更文件重跑 DFA

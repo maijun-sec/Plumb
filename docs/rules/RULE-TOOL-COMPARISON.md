@@ -5,7 +5,7 @@
 > 数据基线（2026-10-16）：
 > - **R294** 工具覆盖达成 4 工具 95%+（PMD 302/318 / Sonar 671/706 / SpotBugs 492/518 / Checkstyle 146/150）
 > - **R-836 v2 + R-837** Juliet corpus 全 112 重跑：cwe_matched prec **0.4537**（vs R791 baseline 0.4378，+1.59 pp）
-> - **CHECKERS.md** 626 checker 4 大 taxonomy（A=AST 515 / B=DFA-direct 69 / C=Taint-primary 42 / D=AI-primary 0）
+> - **checker 构成**（实测）：style 592 个 `*Check.java`；DFA 侧 47 个继承 `TaintedCheckerBase` + 20 个直接 `implements DfaChecker`，其中 16 个在 `checkers.yaml` 里启用
 > - **COV_JAVA_INDEX.md** Coverity Java 35 个顶层 checker 71.4% 覆盖
 
 ## 1. 实现机制对比
@@ -38,16 +38,18 @@ Plumb 的选择：
 
 ### 1.2 DFA 引擎 vs AST 的工程取舍
 
-5 大 DFA 分类标签（来自 `plumb-dfa/docs/AUDIT-checkers-2026-10-12.md`）：
+`plumb-dfa/src/main/java` 下 148 个 `.java` 按实现形态可分成几类（数量为实测）：
 
-| 标签 | 含义 | 例子 | Plumb 中的占比 |
-| --- | --- | --- | --- |
-| **DFA-真** | TAC IR + 跨语句 def-use + 跨函数 summary | MOVE/BINOP/FIELDLOAD 跟踪 | ~30% |
-| **DFA-注解通道** | `TacFunction.classAnnotations()` 等 | Spring `@GetMapping` / `@NonNull` | ~25% |
-| **DFA-taint** | 继承 `TaintedCheckerBase` | `taint/*` 包下绝大多数 | ~30% |
-| **SRC-正则** | 走 `SourceReader` + 纯正则 | 几条 R759 legacy | <5% |
-| **AI-启发** | 静态宽松，AI 主过滤 | CleartextSocketUsage | <5% |
-| **STUB** | R787 阶段已迁 plumb-style | 15 个占位 | 0% |
+| 形态 | 数量 | 含义 |
+| --- | ---: | --- |
+| **TaintedCheckerBase 子类** | 47 | 继承统一污点传播基类，`checkers/taint/` 下绝大多数 |
+| **直接 implements DfaChecker** | 20 | 自带逻辑；`checkers/controlflow/` 的 16 个全在此列 |
+| **PathSensitiveCheckerBase 子类** | 1 | 反向检测底座（alloc-without-close 类） |
+| **求解器 / 格 / 引擎 / SPI** | 其余 | `points/`、`solver/`、`summary/`、`taint/`、`engine/` |
+
+其中还有两个少数派形态：注解通道（靠 `TacFunction.classAnnotations()` 等做结构判定，
+用于 Spring `@GetMapping` / `@NonNull`）与 SRC-正则（走 `SourceReader` 纯正则，不用 TAC IR）。
+完整分类见 [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) §3.0。
 
 > **关键教训**（来自 `R-CROSS-FUNCTION-ANALYSIS.md §12.3`）：**如果一个规则是 style rule，不要用 DFA 实现**。Style rule 只看 AST 形态，不需要 taint / 跨函数 / 数据流——用 DFA 重写既不提升精度也不提升召回，只是把"AST 上数节点"的逻辑硬塞进 IR visitor，徒增维护成本。
 

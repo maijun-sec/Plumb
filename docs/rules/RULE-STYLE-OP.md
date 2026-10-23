@@ -4,7 +4,6 @@
 
 ## 1. Style 规则（590 条）
 
-
 Style 规则**不写进 `plumb-rules/RuleRegistry`**，而是通过 `StyleCheckRegistry` 在启动时 classpath 扫描。9 大子目录的实际分布（实测 2026-10-16）：
 
 | 目录 | 数量 | 主题 |
@@ -21,7 +20,7 @@ Style 规则**不写进 `plumb-rules/RuleRegistry`**，而是通过 `StyleCheckR
 | `plumb-style/annotations/` | 0 | 注解 IR 工具（不是 checker） |
 | **合计** | **590** | — |
 
-> 完整列表 + 每条规则的 Javadoc + PMD/SpotBugs/SonarQube/Coverity 等价映射见 `doc/plumb-style-rules.md`（自动生成，由 `scripts/gen_rules_doc.py`）。索引见 `doc/plumb-style-rules-index.md`（由 `scripts/gen_rules_index.py`）。
+> 完整列表 + 每条规则的 Javadoc + PMD/SpotBugs/SonarQube/Coverity 等价映射见 `docs/plumb-style-rules.md`（自动生成，由 `scripts/gen_rules_doc.py`）。索引见 `docs/plumb-style-rules-index.md`（由 `scripts/gen_rules_index.py`）。
 
 ### 7.1 style 规则的 emit-id
 
@@ -159,10 +158,9 @@ R-834 把"启用/禁用"从 1 层（`checks.*`）扩到 5 层。**修改 disable
 
 - 想 disable 某个 rule 走 **层 2**（`yaml rules.disabled`）— 是普通用户路径
 - 想 force enable 某个 rule 走 **层 5**（`yaml rules.enabled` 或 `--rule`）— 强制 override
-- R-834 默认 disable 了 25 个 0-TP pure-FP rule（见 R-836 step_f），用户必须显式 enable 才会跑
-- 改 RuleDef 默认值需要 rebuild + 重新发布 image（**层 1** 是 compile-time）
-
-详细实施 + 28 个 disable rule 列表见 `docs/process/R834-DISABLE-DEFAULT-2026-10-15.md`。
+- 改 `RuleDef` 默认值需要 rebuild + 重新发布 image（**层 1** 是 compile-time）
+- 当前 `plumb-dfa/src/main/resources/checkers.yaml` 的 16 个 checker 中有 3 个
+  `enabled: false`，它们必须显式 enable 才会跑
 
 ## 3. 改规则参数
 
