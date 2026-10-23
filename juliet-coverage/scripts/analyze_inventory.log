@@ -1,0 +1,99 @@
+﻿================================================================================
+Rule ID naming style distribution (696 unique)
+================================================================================
+   179  pl- (PMD-style)
+        pl-0025-empty-sync-block
+        pl-0027-cn-idiom-no-super-call
+        pl-0028-compare-classes
+        ... +176 more
+   129  UPPER_SNAKE (PMD name)
+        ABSENT_CODEBLOCK_IN_CASE
+        ALWAYS_NULL
+        AMBIGUOUS_PRECEDENCE
+        ... +126 more
+    94  bu- (SpotBugs-style)
+        bu-0001-taint-request-param
+        bu-0002-taint-request-header
+        bu-0003-taint-system-in
+        ... +91 more
+    83  PascalCase (ClassName)
+        AssignmentInConditionCheck
+        AvoidPrintStackTraceCheck
+        BadShift
+        ... +80 more
+    75  plumb.X.Y (3-level dotted)
+        plumb.ai.cleartext-socket-usage
+        plumb.ai.comment-info-leak
+        plumb.ai.error-message-info-leak
+        ... +72 more
+    51  dfa.X-Y (DFA loose-style)
+        dfa.class-based-issue
+        dfa.cwe193-off-by-one-loop
+        dfa.cwe325-missing-crypto-step
+        ... +48 more
+    39  lowercase-kebab (misc)
+        avoid-print-stack-trace
+        call-to-thread-run
+        catch-nullpointer-exception
+        ... +36 more
+    12  cov- (Coverity-style)
+        cov-0001-missing-break
+        cov-hibernate-bad-hashcode
+        cov-orm-load-null-check
+        ... +9 more
+     9  loose.X.Y (loose-class checker)
+        loose.numeric.divide-by-zero
+        loose.numeric.integer-overflow
+        loose.numeric.integer-underflow
+        ... +6 more
+     2  OTHER:SensitiveDataLeak_re
+        SensitiveDataLeak_reflection
+        SensitiveDataLeak_regex
+     1  JUNK
+         + name + 
+     1  OTHER:Cwe325
+        Cwe325
+     1  OTHER:Cwe329RandomIv
+        Cwe329RandomIv
+     1  OTHER:Cwe600
+        Cwe600
+     1  OTHER:Cwe674Recursion
+        Cwe674Recursion
+     1  OTHER:Cwe832UnlockNotLocke
+        Cwe832UnlockNotLocked
+     1  OTHER:Cwe833Deadlock
+        Cwe833Deadlock
+     1  OTHER:ResourceLeak_CloseOn
+        ResourceLeak_CloseOnPath
+     1  OTHER:SensitiveDataLeak_co
+        SensitiveDataLeak_command
+     1  OTHER:SensitiveDataLeak_de
+        SensitiveDataLeak_deserialize
+     1  OTHER:SensitiveDataLeak_fi
+        SensitiveDataLeak_file
+     1  OTHER:SensitiveDataLeak_fo
+        SensitiveDataLeak_format
+     1  OTHER:SensitiveDataLeak_he
+        SensitiveDataLeak_header
+     1  OTHER:SensitiveDataLeak_ld
+        SensitiveDataLeak_ldap
+     1  OTHER:SensitiveDataLeak_lo
+        SensitiveDataLeak_log
+     1  OTHER:SensitiveDataLeak_no
+        SensitiveDataLeak_nosql
+     1  OTHER:SensitiveDataLeak_og
+        SensitiveDataLeak_ognl
+     1  OTHER:SensitiveDataLeak_op
+        SensitiveDataLeak_openRedirect
+     1  OTHER:SensitiveDataLeak_sq
+        SensitiveDataLeak_sql
+     1  OTHER:SensitiveDataLeak_ur
+        SensitiveDataLeak_url
+     1  OTHER:SensitiveDataLeak_xm
+        SensitiveDataLeak_xml
+     1  OTHER:SensitiveDataLeak_xp
+        SensitiveDataLeak_xpath
+     1  OTHER:x
+        x
+
+Wrote D:\work\workspace\idea\engine\Plumb\juliet-coverage\data\rule_id_classification.csv

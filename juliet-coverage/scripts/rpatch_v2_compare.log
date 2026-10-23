@@ -1,0 +1,51 @@
+﻿Alias map: 760 entries
+Ground truth file��cwe: 0
+
+Aggregating R759-D pre-alias...
+  R759-D: 236 unique (rule, cwe) buckets
+
+Aggregating R-PATCH v2 post-alias...
+  R-PATCH v2: 227 unique (rule, cwe) buckets
+
+--------------------------------------------------------------------------------
+Per-rule delta (R759-D pre vs R-PATCH v2 post):
+rule_id                                                 R759-D finds RPATCH v2 finds    delta
+--------------------------------------------------------------------------------
+
+Gains (164):
+  +178864  plumb.boundary.integer-overflow
+  +142074  plumb.ast.cwe397-generic-throw-exception
+  +128872  plumb.ast.unchecked-return
+  +118453  plumb.ast.cwe482-compare-instead-of-assign
+  +73006  plumb.ast.equal-comparison
+  +30820  plumb.boundary.unchecked-array-index
+  +29190  plumb.boundary.integer-underflow
+  +22342  plumb.ast.leak
+  +20128  plumb.ast.expression-always-true
+  +18780  plumb.ast.comments-indentation
+  +15716  plumb.ast.final-parameters
+  +15608  plumb.ast.method-arg-could-be-final
+  +14238  plumb.boundary.truncation
+  +13948  plumb.ast.cwe681-numeric-conversion
+  +11264  plumb.boundary.divide-by-zero
+
+Losses (170):
+  -142074  dfa.cwe397-generic-throw-exception
+  -132906  loose.numeric.integer-overflow
+  -128872  UncheckedReturn
+  -118453  dfa.cwe482-compare-instead-of-assign
+  -73006  pl-0132-equal-comparison
+  -45958  plumb.numeric.integer-overflow
+  -22920  plumb.numeric.integer-underflow
+  -22342  plumb.resource.leak
+  -21454  loose.numeric.unchecked-array-index
+  -20128  bu-1109-expression-always-true
+  -18780  pl-604-comments-indentation
+  -15716  pl-0409-final-parameters
+  -15608  pl-0104-method-arg-could-be-final
+  -14238  loose.numeric.truncation
+  -13948  dfa.cwe681-numeric-conversion
+
+Stable (no change): 60
+Total gains: 1044648
+Total losses: 1044648

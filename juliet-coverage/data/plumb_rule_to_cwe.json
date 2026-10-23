@@ -1,0 +1,1120 @@
+{
+  "ABSENT_CODEBLOCK_IN_CASE": [
+    "484"
+  ],
+  "ALWAYS_FALSE": [
+    "570"
+  ],
+  "ALWAYS_NULL": [
+    "476"
+  ],
+  "ALWAYS_TRUE": [
+    "571"
+  ],
+  "AMBIGUOUS_PRECEDENCE": [
+    "783"
+  ],
+  "AMBIGUOUS_PRECEDENCE_LEGACY": [
+    "783"
+  ],
+  "AND": [
+    "783"
+  ],
+  "ARRAY_EQUALITY": [
+    "697"
+  ],
+  "ARRAY_HASHCODE_TOSTRING": [
+    "477"
+  ],
+  "ARRAY_INDEX": [
+    "129"
+  ],
+  "ARRAY_LENGTH": [
+    "129"
+  ],
+  "ARRAY_OFFSET": [
+    "129"
+  ],
+  "ASSIGNING_INSTEAD_COMPARING": [
+    "481"
+  ],
+  "ASSIGNMENT_IN_OPERAND_LEGACY": [
+    "481"
+  ],
+  "ASSIGNMENT_SELF": [
+    "682"
+  ],
+  "AS_KEY": [
+    "697"
+  ],
+  "AVOID_HARDCODED_IP": [
+    "547"
+  ],
+  "BAD_ARRAY_COMPARE": [
+    "697"
+  ],
+  "BAD_ARRAY_STORE": [
+    "704"
+  ],
+  "BAD_CAST_TO_ABSTRACT_COLLECTION": [
+    "704"
+  ],
+  "BAD_CHECK_FOR_ODD": [
+    "682"
+  ],
+  "BAD_FIELD": [
+    "684"
+  ],
+  "BAD_SHIFT": [
+    "758"
+  ],
+  "BIGDECIMAL_DOUBLE_CTOR": [
+    "682"
+  ],
+  "BIG_DECIMAL_EQUALS": [
+    "682"
+  ],
+  "BOOLEAN_RETURNS_NULL": [
+    "476"
+  ],
+  "CATCH_GENERIC_EXCEPTION": [
+    "396"
+  ],
+  "CATCH_NPE": [
+    "396"
+  ],
+  "CATCH_NPE_LEGACY": [
+    "396"
+  ],
+  "CLASS_BASED_ISSUE_491_STYLE": [
+    "491"
+  ],
+  "CLASS_VAR_VISIBILITY": [
+    "500"
+  ],
+  "CLEARTEXT_TRANSMISSION": [
+    "319"
+  ],
+  "CLONE": [
+    "668"
+  ],
+  "COLLECTION_IS_EMPTY_LEGACY": [
+    "1006"
+  ],
+  "COLLECTION_OF_URLS": [
+    "400"
+  ],
+  "COMPARE_ASSIGN_ISSUE": [
+    "482"
+  ],
+  "COMPARE_CLASSES": [
+    "697"
+  ],
+  "COMPARE_OBJECTS_WITH_EQUALS": [
+    "595"
+  ],
+  "COMPARE_STRINGS_WITH_EQUALS": [
+    "595"
+  ],
+  "COVARIANT_EQUALS": [
+    "697"
+  ],
+  "CTOR_CALLING_OVERRIDABLE": [
+    "688"
+  ],
+  "CWE580_CLONE_WITHOUT_SUPER_STYLE": [
+    "580"
+  ],
+  "CWE600_UNCAUGHT_EXCEPTION_STYLE": [
+    "600"
+  ],
+  "DC.DANGEROUS": [
+    "396",
+    "676"
+  ],
+  "DC.DEADLOCK": [
+    "662",
+    "764"
+  ],
+  "DEAD_STORE": [
+    "563"
+  ],
+  "DEFAULT_ENCODING": [
+    "176"
+  ],
+  "DEREF_OF_READLINE_VALUE": [
+    "476"
+  ],
+  "DIRECT_THREADS_IN_SERVLET": [
+    "383"
+  ],
+  "EMPTY_BLOCK_CWE398": [
+    "398"
+  ],
+  "EMPTY_CATCH_BLOCK": [
+    "390"
+  ],
+  "EMPTY_ERROR_BLOCK": [
+    "390",
+    "398"
+  ],
+  "EMPTY_STATEMENT": [
+    "398"
+  ],
+  "ENV_VAR": [
+    "526"
+  ],
+  "EQUALITY": [
+    "697"
+  ],
+  "EQUALS_ARG_TYPE": [
+    "697"
+  ],
+  "EQUALS_AVOID_NULL": [
+    "476"
+  ],
+  "EQUALS_HASHCODE": [
+    "697"
+  ],
+  "EQUALS_NO_NULL_CHECK": [
+    "697"
+  ],
+  "EQUAL_COMPARISON": [
+    "597"
+  ],
+  "ERROR_LOGGING": [
+    "390"
+  ],
+  "EXCEPTION_LOG": [
+    "390"
+  ],
+  "EXPLICIT_FINALIZE": [
+    "586"
+  ],
+  "EXPOSE_INTERNAL_REPRESENTATION": [
+    "374"
+  ],
+  "EXPOSE_REP2": [
+    "374"
+  ],
+  "EXPRESSION_ALWAYS_FALSE": [
+    "570"
+  ],
+  "EXPRESSION_ALWAYS_TRUE": [
+    "571"
+  ],
+  "FINALIZE": [
+    "568"
+  ],
+  "FINALIZE_ONLY_OVERRIDDEN": [
+    "586"
+  ],
+  "FINALIZE_WITHOUT_SUPER": [
+    "586"
+  ],
+  "FLOATING_POINT": [
+    "697"
+  ],
+  "GENERIC_THROW_EXCEPTION": [
+    "397"
+  ],
+  "HARDCODED_ABSOLUTE_PATH": [
+    "22"
+  ],
+  "HARDCODED_CREDENTIALS": [
+    "259",
+    "798"
+  ],
+  "HARDCODED_IP": [
+    "547"
+  ],
+  "HARDCODED_PASSWORD": [
+    "259",
+    "798"
+  ],
+  "HARDCODED_PASSWORD_SINK": [
+    "259",
+    "798"
+  ],
+  "HASHCODE_TOSTRING": [
+    "477"
+  ],
+  "HIBERNATE_BAD_HASHCODE": [
+    "579"
+  ],
+  "IDIOM": [
+    "664"
+  ],
+  "IGNORED_RESULT": [
+    "252"
+  ],
+  "IGNORED_RESULT_AST": [
+    "252"
+  ],
+  "INCOMPLETE_CLEANUP": [
+    "459"
+  ],
+  "INCORRECT_RETURN_COMPARISON": [
+    "253"
+  ],
+  "INFINITE_LOOP_STYLE": [
+    "835"
+  ],
+  "INFORMATION_EXPOSURE": [
+    "200"
+  ],
+  "INFO_EXPOSURE_IN_COMMENT": [
+    "615"
+  ],
+  "INFO_LEAK_ERROR": [
+    "209"
+  ],
+  "INSECURE_TEMP_FILE_PERMS": [
+    "378"
+  ],
+  "INSTANCE_BEFORE_FINALS_ASSIGNED": [
+    "457"
+  ],
+  "IN_FINALLY": [
+    "584"
+  ],
+  "ITERATOR_NEXT_EXCEPTION": [
+    "754"
+  ],
+  "JUMBLED_INCREMENTER_LOOP": [
+    "1284",
+    "190"
+  ],
+  "LOAD_OF_KNOWN_NULL_VALUE": [
+    "476"
+  ],
+  "LOCALE_ROOT": [
+    "758"
+  ],
+  "LOG_INFO_LEAK": [
+    "533",
+    "534"
+  ],
+  "LOOP_FLOAT": [
+    "682"
+  ],
+  "LOSING_EXCEPTION_INFORMATION": [
+    "209"
+  ],
+  "MISSING_AUTHORIZATION": [
+    "862"
+  ],
+  "MISSING_BREAK": [
+    "484"
+  ],
+  "MISSING_DEPRECATED": [
+    "477"
+  ],
+  "MISSING_INPUT_VALIDATION": [
+    "20"
+  ],
+  "MISSING_PASSWORD_MASKING": [
+    "549"
+  ],
+  "MISSING_SERIAL_VERSION_UID": [
+    "609"
+  ],
+  "MULTIPLE_BINDS_SAME_PORT": [
+    "605"
+  ],
+  "MUTABLE_STATIC_SHOULD_BE_FINAL": [
+    "500"
+  ],
+  "NEGATING_RESULT_OF_COMPARETO": [
+    "682"
+  ],
+  "NON_SERIALIZABLE_CLASS": [
+    "502"
+  ],
+  "NOT_CALL_GC": [
+    "401"
+  ],
+  "NULL_ARG_TO_VARARG_METHOD": [
+    "754"
+  ],
+  "NULL_DEREF_FROM_RETURN": [
+    "690"
+  ],
+  "NULL_DEREF_FROM_RETURN_STYLE": [
+    "690"
+  ],
+  "OBJECT_EQUAL_COMPARISON": [
+    "595"
+  ],
+  "OBJECT_HIJACK": [
+    "491"
+  ],
+  "OBSOLETE_FUNCTION": [
+    "477"
+  ],
+  "OF_DEMETER": [
+    "1060"
+  ],
+  "OF_THROWABLE": [
+    "396"
+  ],
+  "OPTIONAL_GET": [
+    "476"
+  ],
+  "OR": [
+    "783"
+  ],
+  "ORM_LOAD_NULL_CHECK": [
+    "252"
+  ],
+  "ORM_LOST_UPDATE": [
+    "459"
+  ],
+  "ORM_UNNECESSARY_GET": [
+    "252"
+  ],
+  "PARAM_HIDES_FIELD": [
+    "1006"
+  ],
+  "POOR_CODE_QUALITY_STYLE": [
+    "398"
+  ],
+  "PREDICTABLE_RNG_SEED": [
+    "332",
+    "336"
+  ],
+  "PREDICTABLE_SALT": [
+    "760"
+  ],
+  "PRIMITIVES_BOXED": [
+    "704"
+  ],
+  "PRINT_STACK_TRACE": [
+    "209"
+  ],
+  "PRINT_STACK_TRACE_ALPHA": [
+    "209"
+  ],
+  "PROCESS_CONTROL": [
+    "114"
+  ],
+  "QUESTIONABLE_BOOLEAN_ASSIGNMENT": [
+    "697"
+  ],
+  "RANDOM_IV_CBC_STYLE": [
+    "329"
+  ],
+  "REDIRECT_WITHOUT_EXIT": [
+    "698"
+  ],
+  "REGEX_CONFUSION": [
+    "184",
+    "625"
+  ],
+  "RESOURCE_USED_AS_BOTH_INPUT_AND_OUTPUT": [
+    "668"
+  ],
+  "RETURN_FROM_FINALLY": [
+    "584"
+  ],
+  "RETURN_IN_FINALLY": [
+    "584"
+  ],
+  "RETURN_VALUE_IGNORED_BAD_PRACTICE": [
+    "252"
+  ],
+  "REUSE_ENTRY_OBJECTS": [
+    "672"
+  ],
+  "SEEDED_RANDOM": [
+    "336"
+  ],
+  "SELF_ASSIGN": [
+    "398"
+  ],
+  "SELF_ASSIGNMENT_LEGACY": [
+    "682"
+  ],
+  "SELF_NO_OBJECT": [
+    "697"
+  ],
+  "SERVLET_ATOMICITY": [
+    "362"
+  ],
+  "SIGNED_CHECK": [
+    "682"
+  ],
+  "SIMPLEDATEFORMAT_LOCALE": [
+    "18"
+  ],
+  "SINGLETON_RACE": [
+    "366"
+  ],
+  "SLEEP_WITH_LOCK_HELD": [
+    "820"
+  ],
+  "STRING_BOXED": [
+    "820"
+  ],
+  "STRING_EQUALITY_WITH_EQUALS": [
+    "697"
+  ],
+  "STRING_LENGTH": [
+    "129"
+  ],
+  "SUPERFLUOUS_INSTANCEOF": [
+    "704"
+  ],
+  "SUSPICIOUS_COMMENT_STYLE": [
+    "546"
+  ],
+  "SYNCHRONIZED_LOCK": [
+    "820"
+  ],
+  "SYNC_INVOKED_ON_UNSHARED_VARIABLE": [
+    "820"
+  ],
+  "SYNC_STRING_BOXED": [
+    "820"
+  ],
+  "TAINT_SINK_COMMAND_INJECTION": [
+    "77",
+    "78"
+  ],
+  "TAINT_SINK_FORMAT_STRING": [
+    "134"
+  ],
+  "TAINT_SINK_HEADER_INJECTION": [
+    "93"
+  ],
+  "TAINT_SINK_LDAP_INJECTION": [
+    "90"
+  ],
+  "TAINT_SINK_LOG_INJECTION": [
+    "117"
+  ],
+  "TAINT_SINK_NOSQL_INJECTION": [
+    "943"
+  ],
+  "TAINT_SINK_OGNL_INJECTION": [
+    "94",
+    "95"
+  ],
+  "TAINT_SINK_OPEN_REDIRECT": [
+    "601"
+  ],
+  "TAINT_SINK_PATH_TRAVERSAL": [
+    "22"
+  ],
+  "TAINT_SINK_REFLECTION": [
+    "470"
+  ],
+  "TAINT_SINK_REGEX_INJECTION": [
+    "1333"
+  ],
+  "TAINT_SINK_SQL_INJECTION": [
+    "89"
+  ],
+  "TAINT_SINK_SSRF": [
+    "918"
+  ],
+  "TAINT_SINK_UNSAFE_DESERIALIZE": [
+    "502"
+  ],
+  "TAINT_SINK_XML_INJECTION": [
+    "91"
+  ],
+  "TAINT_SINK_XPATH_INJECTION": [
+    "643"
+  ],
+  "TAINT_SINK_XSS": [
+    "79"
+  ],
+  "TAINT_SOURCE_CONSOLE_READ": [
+    "20"
+  ],
+  "TAINT_SOURCE_DB_RESULT": [
+    "20"
+  ],
+  "TAINT_SOURCE_FILE_READ": [
+    "20"
+  ],
+  "TAINT_SOURCE_NETWORK_RECV": [
+    "20"
+  ],
+  "TAINT_SOURCE_PROPERTIES_FILE": [
+    "20"
+  ],
+  "TAINT_SOURCE_REQUEST_HEADER": [
+    "20"
+  ],
+  "TAINT_SOURCE_REQUEST_PARAM": [
+    "20"
+  ],
+  "TAINT_SOURCE_SENSITIVE_DATA": [
+    "532"
+  ],
+  "TAINT_SOURCE_SYSTEM_IN": [
+    "20"
+  ],
+  "TAINT_SOURCE_SYSTEM_PROPERTY": [
+    "20"
+  ],
+  "THROWABLE": [
+    "396"
+  ],
+  "THROWABLE_NOT_THROWN": [
+    "390"
+  ],
+  "UNBOUNDED_MEM_ALLOC": [
+    "789"
+  ],
+  "UNCLEARED_SENSITIVE_INFO": [
+    "226"
+  ],
+  "UNCONFIRMED_CAST": [
+    "704"
+  ],
+  "UNINIT_NONNULL": [
+    "457"
+  ],
+  "UNLOGGED_SECURITY_EXCEPTION": [
+    "223",
+    "778"
+  ],
+  "UNPROTECTED_CRED_TRANSPORT_STYLE": [
+    "523"
+  ],
+  "UNREACHABLE_CODE": [
+    "561"
+  ],
+  "UNSALTED_ONE_WAY_HASH_STYLE": [
+    "759"
+  ],
+  "UNUSED_ASSIGNMENT": [
+    "563"
+  ],
+  "UNUSED_FORMAL_PARAMETER": [
+    "1164"
+  ],
+  "UNUSED_VARIABLE_ASSIGNMENT": [
+    "563"
+  ],
+  "UncheckedLoopCondition": [
+    "606"
+  ],
+  "WAIT_NOTIFY_IN_LOOP": [
+    "662",
+    "833"
+  ],
+  "WEAK_CRYPTO": [
+    "327"
+  ],
+  "WEAK_PRNG": [
+    "338"
+  ],
+  "WEAK_URL_SANITIZATION": [
+    "20",
+    "601"
+  ],
+  "WRITE_TO_STATIC_FROM_INSTANCE_METHOD": [
+    "668"
+  ],
+  "WRONG_METHOD": [
+    "253",
+    "665"
+  ],
+  "ast-naming-compare-class-names": [
+    697
+  ],
+  "ast-naming-equals-hash": [
+    697
+  ],
+  "ast-naming-suspicious-equals": [
+    697
+  ],
+  "ast-security-insecure-temp-file-perms": [
+    378
+  ],
+  "ast-style-absent-codeblock-in-case": [
+    484
+  ],
+  "ast-style-ambiguous-precedence": [
+    783
+  ],
+  "ast-style-assign-in-operand": [
+    783
+  ],
+  "ast-style-assignment-in-condition": [
+    481
+  ],
+  "ast-style-avoid-messagedigest-field": [
+    362
+  ],
+  "ast-style-avoid-octal-values": [
+    682
+  ],
+  "ast-style-avoid-print-stack-trace": [
+    209
+  ],
+  "ast-style-bad-shift": [
+    758
+  ],
+  "ast-style-bc-equals-no-hash": [
+    697
+  ],
+  "ast-style-bigdec-double": [
+    682
+  ],
+  "ast-style-bit-signed-check": [
+    682
+  ],
+  "ast-style-bitwise-and": [
+    783
+  ],
+  "ast-style-bitwise-or": [
+    783
+  ],
+  "ast-style-boolean-method-returns-null": [
+    476
+  ],
+  "ast-style-call-to-thread-run": [
+    572
+  ],
+  "ast-style-catch-nullpointer-exception": [
+    395
+  ],
+  "ast-style-child-class-shadow-field": [
+    849
+  ],
+  "ast-style-class-based-issue-491": [
+    491
+  ],
+  "ast-style-clone-without-super": [
+    664
+  ],
+  "ast-style-comment-info-leak": [
+    615
+  ],
+  "ast-style-compare-instead-of-assigning": [
+    482
+  ],
+  "ast-style-conditional-constant": [
+    570
+  ],
+  "ast-style-ctor-method": [
+    665
+  ],
+  "ast-style-cwe580-clone-without-super": [
+    580
+  ],
+  "ast-style-cwe600-uncaught-exception": [
+    600
+  ],
+  "ast-style-deadcode": [
+    561
+  ],
+  "ast-style-double-checked-locking": [
+    609
+  ],
+  "ast-style-ec-incompatible": [
+    703
+  ],
+  "ast-style-ec-no-read": [
+    754
+  ],
+  "ast-style-ec-null-vararg": [
+    754
+  ],
+  "ast-style-empty-statement-block": [
+    398
+  ],
+  "ast-style-empty-sync-block": [
+    585
+  ],
+  "ast-style-env-var-info-exposure": [
+    526
+  ],
+  "ast-style-equals-arg-type": [
+    697
+  ],
+  "ast-style-equals-hashcode": [
+    697
+  ],
+  "ast-style-equals-no-object": [
+    697
+  ],
+  "ast-style-explicit-finalize": [
+    586
+  ],
+  "ast-style-expose-internal-representation": [
+    374
+  ],
+  "ast-style-expose-mutable-rep2": [
+    374
+  ],
+  "ast-style-expression-always-true": [
+    571
+  ],
+  "ast-style-fe-floating-point": [
+    697
+  ],
+  "ast-style-fieldselfassignment": [
+    682
+  ],
+  "ast-style-he-hashcode-signature": [
+    697
+  ],
+  "ast-style-icast-int-mult-long": [
+    190
+  ],
+  "ast-style-ignored-result": [
+    252
+  ],
+  "ast-style-iil-deref-readline": [
+    476
+  ],
+  "ast-style-il-container-sequencing": [
+    672
+  ],
+  "ast-style-im-average": [
+    190
+  ],
+  "ast-style-im-bad-check-odd": [
+    682
+  ],
+  "ast-style-incomplete-cleanup": [
+    459
+  ],
+  "ast-style-infinite-loop": [
+    835
+  ],
+  "ast-style-info-exposure-in-comment": [
+    615
+  ],
+  "ast-style-info-exposure-querystring": [
+    598
+  ],
+  "ast-style-insufficient-session-expiration": [
+    613
+  ],
+  "ast-style-io-resource-both": [
+    668
+  ],
+  "ast-style-literal-boolean-condition": [
+    570
+  ],
+  "ast-style-literals-first": [
+    476
+  ],
+  "ast-style-locale-root": [
+    758
+  ],
+  "ast-style-missing-break": [
+    484
+  ],
+  "ast-style-missing-crypto-step": [
+    325
+  ],
+  "ast-style-missing-deprecated": [
+    477
+  ],
+  "ast-style-missing-password-masking": [
+    549
+  ],
+  "ast-style-missing-serial-version-uid": [
+    609
+  ],
+  "ast-style-multiple-binds-same-port": [
+    605
+  ],
+  "ast-style-mutable-static-should-be-final": [
+    500
+  ],
+  "ast-style-no-effect-statement": [
+    398
+  ],
+  "ast-style-non-serializable-class": [
+    502
+  ],
+  "ast-style-non-serializable-in-session": [
+    579
+  ],
+  "ast-style-np-sync-unshared": [
+    820
+  ],
+  "ast-style-null-deref-from-return": [
+    690
+  ],
+  "ast-style-optional-get": [
+    476
+  ],
+  "ast-style-overly-broad-catch": [
+    396
+  ],
+  "ast-style-param-hides-field": [
+    1006
+  ],
+  "ast-style-poor-code-quality": [
+    398
+  ],
+  "ast-style-predictable-salt": [
+    760
+  ],
+  "ast-style-preserve-stack": [
+    209
+  ],
+  "ast-style-public-static-mutable-field": [
+    668
+  ],
+  "ast-style-pz-reuse-entry": [
+    672
+  ],
+  "ast-style-qba-questionable-boolean": [
+    697
+  ],
+  "ast-style-random-iv-cbc": [
+    329
+  ],
+  "ast-style-reassign-loop-var": [
+    563
+  ],
+  "ast-style-redirect-without-exit": [
+    698
+  ],
+  "ast-style-return-from-finally": [
+    584
+  ],
+  "ast-style-return-in-finally": [
+    584
+  ],
+  "ast-style-rv-return-ignored": [
+    252
+  ],
+  "ast-style-se-bad-field": [
+    684
+  ],
+  "ast-style-seeded-random": [
+    336
+  ],
+  "ast-style-si-instance-before-final": [
+    457
+  ],
+  "ast-style-simplifiedateformat-locale": [
+    18
+  ],
+  "ast-style-st-write-static-from-instance": [
+    668
+  ],
+  "ast-style-string-eq-operator": [
+    597
+  ],
+  "ast-style-super-clone": [
+    668
+  ],
+  "ast-style-suspicious-comment": [
+    546
+  ],
+  "ast-style-swl-sleep-lock": [
+    820
+  ],
+  "ast-style-synchronized-lock": [
+    820
+  ],
+  "ast-style-system-exit-usage": [
+    382
+  ],
+  "ast-style-thread-in-servlet": [
+    383
+  ],
+  "ast-style-unchecked-loop-condition": [
+    674
+  ],
+  "ast-style-uncleared-sensitive-info": [
+    226
+  ],
+  "ast-style-unconfirmed-cast": [
+    704
+  ],
+  "ast-style-unprotected-cred-transport": [
+    523
+  ],
+  "ast-style-unsalted-one-way-hash": [
+    759
+  ],
+  "ast-style-unused-assignment": [
+    563
+  ],
+  "ast-style-unused-formal-parameter": [
+    1164
+  ],
+  "ast-style-use-concurrenthashmap": [
+    362
+  ],
+  "ast-style-use-try-with-resources": [
+    400
+  ],
+  "ast-style-weak-crypto": [
+    327
+  ],
+  "dfa-boundary-array-out-of-bounds": [
+    129
+  ],
+  "dfa-boundary-divide-by-zero": [
+    369
+  ],
+  "dfa-boundary-integer-overflow": [
+    190
+  ],
+  "dfa-boundary-integer-underflow": [
+    191
+  ],
+  "dfa-controlflow-missing-crypto-init": [
+    "325"
+  ],
+  "dfa-style-empty-catch-block": [
+    390
+  ],
+  "dfa-style-self-assign": [
+    398
+  ],
+  "dfa-taint-assignment-in-conditional": [
+    481
+  ],
+  "dfa-taint-bad-cert-verification": [
+    295
+  ],
+  "dfa-taint-cleartext-network-credential-sink": [
+    319
+  ],
+  "dfa-taint-cleartext-tx": [
+    319
+  ],
+  "dfa-taint-command-injection": [
+    78
+  ],
+  "dfa-taint-data-leak": [
+    200
+  ],
+  "dfa-taint-divide-by-zero": [
+    369
+  ],
+  "dfa-taint-el-injection": [
+    94
+  ],
+  "dfa-taint-external-config-setting": [
+    15
+  ],
+  "dfa-taint-format-string": [
+    134
+  ],
+  "dfa-taint-hard-coded-crypto-key": [
+    "259",
+    "321"
+  ],
+  "dfa-taint-hard-coded-password-sink": [
+    "259"
+  ],
+  "dfa-taint-http-response-splitting": [
+    113
+  ],
+  "dfa-taint-insecure-random": [
+    330
+  ],
+  "dfa-taint-integer-overflow": [
+    190
+  ],
+  "dfa-taint-integer-underflow": [
+    191
+  ],
+  "dfa-taint-java-code-injection": [
+    94
+  ],
+  "dfa-taint-jcr-injection": [
+    94
+  ],
+  "dfa-taint-jsp-dynamic-include": [
+    829
+  ],
+  "dfa-taint-ldap-injection": [
+    90
+  ],
+  "dfa-taint-literal-boolean-condition": [
+    547
+  ],
+  "dfa-taint-null-dereference": [
+    476
+  ],
+  "dfa-taint-numeric-truncation": [
+    197
+  ],
+  "dfa-taint-ognl-injection": [
+    94
+  ],
+  "dfa-taint-open-redirect": [
+    601
+  ],
+  "dfa-taint-path-traversal": [
+    22
+  ],
+  "dfa-taint-pii-leak": [
+    359
+  ],
+  "dfa-taint-plaintext-password-sink": [
+    256
+  ],
+  "dfa-taint-resource-exhaustion": [
+    "400"
+  ],
+  "dfa-taint-session-fixation": [
+    384
+  ],
+  "dfa-taint-sql-injection": [
+    89
+  ],
+  "dfa-taint-trust-boundary-violation": [
+    501
+  ],
+  "dfa-taint-unchecked-array-index": [
+    129
+  ],
+  "dfa-taint-unchecked-loop-condition": [
+    606
+  ],
+  "dfa-taint-uncontrolled-mem-alloc": [
+    789
+  ],
+  "dfa-taint-uncontrolled-recursion": [
+    674
+  ],
+  "dfa-taint-unsafe-jni": [
+    114
+  ],
+  "dfa-taint-unsafe-reflection": [
+    470
+  ],
+  "dfa-taint-unused-assignment": [
+    563
+  ],
+  "dfa-taint-unused-local": [
+    563
+  ],
+  "dfa-taint-unused-parameter": [
+    563
+  ],
+  "dfa-taint-unused-private-field": [
+    563
+  ],
+  "dfa-taint-use-after-free": [
+    416
+  ],
+  "dfa-taint-xpath-injection": [
+    643
+  ],
+  "dfa-taint-xss-injection": [
+    79
+  ],
+  "plumb.numeric-truncation": [
+    "197"
+  ]
+}

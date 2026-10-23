@@ -1,0 +1,17 @@
+﻿RuleRegistry rules: 96
+AST checkers: 523
+Migration map: 694
+
+Generated 10 JSON files
+Skipped 311 entries (no migration mapping)
+Sample skipped:
+  bu-0708-taint-sink-ext-control: no migration mapping
+  bu-0401-weak-crypto: no migration mapping
+  bu-0402-insecure-random: no migration mapping
+  bu-0403-predictable-seed: no migration mapping
+  bu-0404-predictable-key-password: no migration mapping
+  bu-0405-static-api-key: no migration mapping
+  bu-0601-bad-shift: no migration mapping
+  bu-0602-infinite-loop: no migration mapping
+  bu-0603-constant-condition: no migration mapping
+  bu-0701-sensitive-data-leak: no migration mapping

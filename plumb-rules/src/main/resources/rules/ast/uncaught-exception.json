@@ -1,0 +1,12 @@
+{
+  "id": "plumb.ast.uncaught-exception",
+  "name": "UNCAUGHT_EXCEPTION",
+  "description": "throw new Error / Throwable not inside a try-catch block (CWE-248 uncaught exception).",
+  "severity": "HIGH",
+  "type": "BUG",
+  "cwe": ["CWE-248"],
+  "checkerClass": "org.plumb.style.UncaughtExceptionCheck",
+  "enabled": true,
+  "aliases": [],
+  "parameters": []
+}

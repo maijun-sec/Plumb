@@ -1,0 +1,2158 @@
+[
+  {
+    "id": "ALLOC_FREE_MISMATCH",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "ALLOC_FREE_MISMATCH reports many cases where a resource is allocated with a dedicated allocation function, and there is an associated dedicated freeing function, but instead a different freeing function was called. When a resource can be allocated in multiple incompatible ways, the C and C++ type systems cannot enforce correct API usage. Incorrect API usage can lead to memory leaks or memory corru"
+  },
+  {
+    "id": "ANDROID_CAPABILITY_LEAK",
+    "category": "Security Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "The ANDROID_CAPABILITY_LEAK checker reports a defect when Android app code exposes an Android capability without checking the calling application's permissions to use that capability. The Android API level, targeted by the application, determines the required permissions. For more information, see Options . This might allow malware to access unintended capabilities (such as network or Bluetooth co"
+  },
+  {
+    "id": "ANGULAR_ELEMENT_REFERENCE",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "ANGULAR_ELEMENT_REFERENCE reports uses of the ElementRef API where the underlying DOM element is accessed and used in a sensitive way. Accessing DOM elements directly can make your application more vulnerable to XSS defects. Make sure the use of ElementRef is necessary, and then audit the uses of this function to verify that untrusted data is sanitized or filtered before being written to the DOM."
+  },
+  {
+    "id": "ANGULAR_EXPRESSION_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "ANGULAR_EXPRESSION_INJECTION reports a defect in code that uses an untrusted value as part of an AngularJS expression. Such code might allow an attacker to affect the application's behavior by manipulating the AngularJS expression."
+  },
+  {
+    "id": "ANGULAR_SCE_DISABLED",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "The ANGULAR_SCE_DISABLED checker finds cases where Strict Contextual Escaping (SCE) is explicitly disabled. SCE is a mode in which AngularJS requires data bindings to result in safe values used in a certain context. SCE is enabled by default in AngularJS versions >= 1.2, but can be disabled manually."
+  },
+  {
+    "id": "ANONYMOUS_DB_CONNECTION",
+    "category": "Security Checker",
+    "supported_languages": "Go,",
+    "cwe": "",
+    "brief": "The ANONYMOUS_DB_CONNECTION checker flags the connection strings that initiate anonymous access to remotely hosted databases. The risk is that if an attacker can gain access to the network where the database is hosted, the attacker can connect to the database by just knowing the host and the port number, which is easy to obtain by mapping the network."
+  },
+  {
+    "id": "ARRAY_VS_SINGLETON",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "ARRAY_VS_SINGLETON reports some cases where a pointer to a single object is incorrectly treated like an array, which causes the program to access invalid memory. This results in either reading garbage/unintended values from memory or writing to unintended memory and corrupting it. ARRAY_VS_SINGLETON also reports cases where an array of base class objects is treated as an array of derived class obj"
+  },
+  {
+    "id": "ASPNET_MVC_VERSION_HEADER",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "ASPNET_MVC_VERSION_HEADER reports defects where an overrider of the method System.Web.HttpApplication.Application_Start does not set MvcHandler.DisableMvcResponseHeader to true or call a method that does. The X-AspNetMvc-Version header in ASP.NET web applications reveals information about the specific version of ASP.NET MVC that is running on the target system, which makes it vulnerable to attacks"
+  },
+  {
+    "id": "ASSERT_SIDE_EFFECT",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "ASSERT_SIDE_EFFECT reports some cases where an expression that has a side effect is used as the condition expression of an assertion. That is dangerous because assertions are often compiled away in a production build, which means that the program behaves differently in debug mode (with assertions present) than in production mode."
+  },
+  {
+    "id": "ASSIGN_NOT_RETURNING_STAR_THIS",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "ASSIGN_NOT_RETURNING_STAR_THIS reports many cases of assignment operator member functions that do not return the receiving object, *this , as a reference to a non-const object. The consequence is that the operator cannot be used the same way the built-in operators are, and in some cases, attempting to do so will lead to subtle logic errors."
+  },
+  {
+    "id": "ATOMICITY",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The ATOMICITY checker reports some cases where the code contains two critical sections in sequence, but it appears that they should be merged into a single critical section because the latter uses data computed in the former, but the data might possibly invalidated in between. This is a form of concurrent race condition."
+  },
+  {
+    "id": "ATTRIBUTE_NAME_CONFLICT",
+    "category": "Security Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "ATTRIBUTE_NAME_CONFLICT reports attributes that have been incorrectly repeated in a single JSP tag. This syntax is invalid but it is tolerated by some servlet containers and JSP compilers. The behavior of the rendered document is undefined. The impact of the error depends on the particular tag and attribute, whether its evaluation has side effects and how the values conflict. Some tags use attribu"
+  },
+  {
+    "id": "AUDIT.SPECULATIVE_EXECUTION_DATA_LEAK",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "AUDIT.SPECULATIVE_EXECUTION_DATA_LEAK finds code patterns that might cause a sensitive process (such as a kernel or virtual machine) to be vulnerable to the \"Spectre\" atttack. The code patterns that this checker finds might allow an attacker to read the process memory."
+  },
+  {
+    "id": "AUTO_CAUSES_COPY",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "AUTO_CAUSES_COPY finds instances where using the auto keyword causes a copy of class types that is likely unwanted. It reports on auto variable definitions as well as functions with auto return types. Copy of arithmetic, pointer, reference types and small classes are not reported."
+  },
+  {
+    "id": "BAD_ALLOC_ARITHMETIC",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "BAD_ALLOC_ARITHMETIC finds many calls to allocation routines with errant placement of the parenthesis when using - or + operators. It searches for malloc(x)+y or malloc(x)-y where it appears that the user intended to call malloc(x+y) or malloc(x-y) . These errors cause under-allocation or over-allocation, and unintended pointer arithmetic, which result in memory corruption or a potential security "
+  },
+  {
+    "id": "BAD_ALLOC_STRLEN",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "BAD_ALLOC_STRLEN reports defects when it finds strlen( p +1) used as the size argument of an allocation site. Assuming that the developer intended strlen( p )+1 to indicate the length of p plus an extra byte for a null terminator, strlen(p+1) is undefined when p is zero length and strlen( p )-1 otherwise. The result is a potential buffer overrun on the result of allocation, undefined behavior when"
+  },
+  {
+    "id": "BAD_CERT_VERIFICATION",
+    "category": "Security Checker",
+    "supported_languages": "Go, Java, JavaScript, Kotlin, Python, Ruby, TypeScript BAD_CERT_VERIFICATION looks for instances of incomplete or improper validation of",
+    "cwe": "CWE-295",
+    "brief": "BAD_CERT_VERIFICATION looks for instances of incomplete or improper validation of security certificates (CWE 295 and CWE 296). Improper checking of certificates can make the system vulnerable to \"man-in-the-middle\" attacks, which enable an attacker to eavesdrop or interfere with the traffic in the session."
+  },
+  {
+    "id": "BAD_CHECK_OF_WAIT_COND",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "BAD_CHECK_OF_WAIT_COND finds many cases where a thread calls wait() on a mutex without properly checking a wait condition. In Java, the wait() call is not provided the waiter's desired condition, so the programmer needs to ensure that the wait condition is false before waiting, and true after waiting. This check needs to take place before waiting inside of the locked region. Otherwise, the wait co"
+  },
+  {
+    "id": "BAD_COMPARE",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "BAD_COMPARE finds cases in which a comparison operator or function is misused. For example, it can find cases where a function is implicitly converted to its address and then compared with 0. Because function addresses are never 0, such comparisons always have a fixed result, which is usually not what the programmer intended."
+  },
+  {
+    "id": "BAD_EQ",
+    "category": "Quality Checker",
+    "supported_languages": "C# BAD_EQ is a statistical checker that determines whether two objects of a given type should be compared with structural e",
+    "cwe": "",
+    "brief": "BAD_EQ is a statistical checker that determines whether two objects of a given type should be compared with structural equality, such as using the Equals method, or referential equality, such as using the non-overloaded == operator. Incorrect comparisons can lead to hard-to-diagnose errors and incorrect behavior."
+  },
+  {
+    "id": "BAD_EQ_TYPES",
+    "category": "Quality Checker",
+    "supported_languages": "C# BAD_EQ_TYPES finds e",
+    "cwe": "",
+    "brief": "BAD_EQ_TYPES finds equality checks on object references of incompatible types. This is rarely intended because it is unusual to treat objects of different types as equal. The checker does not report an error when the comparison is part of an assertion."
+  },
+  {
+    "id": "BAD_FREE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "BAD_FREE finds many cases where a pointer is freed but not dynamically allocated. Freeing a pointer that does not point to dynamically allocated memory has undefined behavior. The typical effect is to corrupt memory, which later causes the program to crash."
+  },
+  {
+    "id": "BAD_LOCK_OBJECT",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "BAD_LOCK_OBJECT finds many cases where a critical section is guarded by locking on an inappropriate lock expression, such as an interned string, a boxed Java primitive, or a field whose contents could change during the execution of the critical section. Locking on such bad lock objects could cause nondeterministic behavior or deadlocks."
+  },
+  {
+    "id": "BAD_OVERRIDE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The BAD_OVERRIDE checker finds many cases where the code attempts to override a method in a base/parent class, but the method signature does not match, so the override does not occur. For example, it finds many defects in overriding virtual functions due to missing const modifiers, which result in type signature mismatches."
+  },
+  {
+    "id": "BAD_SHIFT",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "BAD_SHIFT finds bit shift operations where the value or the range of possible values for the shift amount (the right operand) is such that the operation might invoke undefined behavior or might not produce the expected result."
+  },
+  {
+    "id": "BAD_SIZEOF",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "BAD_SIZEOF reports the use of the sizeof operator when the argument is one of several suspicious categories such as the address of an object (usually the size of the object is intended). Unintended size values can lead to a variety of issues, such as insufficient or excessive allocation, buffer overruns, partial initialization or copying, and logic inconsistencies."
+  },
+  {
+    "id": "BUFFER_SIZE",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "BUFFER_SIZE finds many cases of possible buffer overflows due to incorrect size arguments being passed to buffer manipulation functions. These incorrect arguments, when passed to functions such as strncpy() or memcpy() , can cause memory corruption, security defects, and program crashes."
+  },
+  {
+    "id": "CALL_SUPER",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "CALL_SUPER finds many cases where a method is overridden, and the overriding method should call the superclass (for Java) or base class (for C# and Visual Basic) implementation, but it does not. The checker has a built-in list of methods for which all overriders should call the superclass or base class implementation. For others, it deduces that requirement by statistically analyzing the code that"
+  },
+  {
+    "id": "CHAR_IO",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "CHAR_IO reports a defect when the return value of a call to one of several stdio functions or wchar_t functions ( getwc , getwchar , fputwc , etc.) is incorrectly assigned to a char-typed variable instead of an int-typed variable. The return values of those functions should not be assigned to a char or a wchar_t . Typically, such assignments make the program confuse certain input characters with t"
+  },
+  {
+    "id": "CHECKED_RETURN",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "CHECKED_RETURN finds many cases where the return value of a function is ignored when it should have been checked. For example, it detects the case where the code neglects to handle an error code returned from a system call. This is a statistical type checker: it determines which functions should be checked based on use patterns. For this checker, you establish the pattern as a ratio between the nu"
+  },
+  {
+    "id": "CHROOT",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "CHROOT finds many instances where an application can possibly break out of a chroot() jail and modify the filesystem. To create a secure chroot jail, one must call chdir immediately after chroot to close the loophole of using paths relative to the working directory. This checker reports cases where the chdir call is missing."
+  },
+  {
+    "id": "COM.ADDROF_LEAK",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "COM.ADDROF_LEAK identifies uses of a CComBSTR or CComPtr instance that might cause memory leaks because the value of the pointer that is internal to the instance can be modified through the pointer address."
+  },
+  {
+    "id": "COM.BAD_FREE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "COM.BAD_FREE finds many cases where the code violates the Microsoft COM interface convention regarding the lifetime management of pointers to interfaces. COM specifies that this management should be accomplished through the AddRef and Release methods found on every COM interface. It is an error to circumvent the reference counting mechanism by explicitly freeing a pointer to an interface, because "
+  },
+  {
+    "id": "COM.BSTR.ALLOC",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "COM.BSTR.ALLOC finds many cases of violations of COM interface conventions regarding memory allocation for parameters whose type is BSTR or BSTR* . COM defines memory management rules that specify the allocation behavior across COM function calls. Failure to heed these rules can lead to use-after-free and resource leak errors, which can result in memory corruption and crashes. In code bases that d"
+  },
+  {
+    "id": "COM.BSTR.BAD_COMPARE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "COM.BSTR.BAD_COMPARE reports comparisons of BSTR-typed expressions that use the relational operators > , < , >= , and <= . Comparisons are treated as defects if either or both operands are BSTRs. The problem with using these operators is that relational comparisons are only valid for pointers that point to the same object, but each BSTR is an independent object, and a BSTR pointer always points to"
+  },
+  {
+    "id": "COM.BSTR.CONV",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "COM.BSTR.CONV finds many instances where something that is not declared to have type BSTR is converted to something that is declared to have type BSTR . This conversion is an issue because BSTRs have a special structure that ordinary wchar_t* does not have."
+  },
+  {
+    "id": "COM.BSTR.NE_NON_BSTR",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "COM.BSTR.NE_NON_BSTR finds many cases where a BSTR is compared to a non-BSTR expression. Sometimes this comparison occurs because the wrong pointers are compared, or the programmer intended to compare string contents. The checker reports any comparison of a BSTR expression that uses the operator == or != with a non-BSTR expression."
+  },
+  {
+    "id": "CONFIG.ANDROID_GRADLE_OBFUSCATION_NOT_ENABLED",
+    "category": "Security Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "The CONFIG.ANDROID_GRADLE_OBFUSCATION_NOT_ENABLED checker finds situations where an Android application is configured to not enable code shrinking or code obfuscation in the release build. Code shrinking can be disabled by setting minifyEnabled or isMinifyEnabled to false (or omitted, as the default value is false ). Code obfuscation can be disabled by omitting the proguardFiles setting. Not confi"
+  },
+  {
+    "id": "CONFIG.ASP_VIEWSTATE_MAC",
+    "category": "Security Checker",
+    "supported_languages": "C#",
+    "cwe": "",
+    "brief": "CONFIG.ASP_VIEWSTATE_MAC detects ASP.NET pages and applications where the generation of a View State Machine Authentication Code (MAC) is disabled. With ASP.NET version 4.5.1 and earlier, this setting might allow an attacker to upload and execute arbitrary code on the Web server."
+  },
+  {
+    "id": "CONFIG.ASPNET_VERSION_HEADER",
+    "category": "Security Checker",
+    "supported_languages": "C#",
+    "cwe": "",
+    "brief": "CONFIG.ASPNET_VERSION_HEADER finds cases where Web.Config files fail to disable the inclusion of the X-AspNet-Version header. By default, this header is included. It is best practice to hide the information about your framework by removing HTTP response headers. You can do this by setting the enableVersionHeader attribute to false , as shown in the example."
+  },
+  {
+    "id": "CONFIG.BEEGO_CSRF_PROTECTION_DISABLED",
+    "category": "Security Checker",
+    "supported_languages": "Go",
+    "cwe": "",
+    "brief": "The CONFIG.BEEGO_CSRF_PROTECTION_DISABLED checker reports cases where the beego framework's CSRF protection is disabled, allowing an attacker to exploit a web client's authenticated session to perform unwanted actions on a remote server resulting in unintended execution of sensitive functionality or exposure of data."
+  },
+  {
+    "id": "CONFIG.CONNECTION_STRING_PASSWORD",
+    "category": "Security Checker",
+    "supported_languages": "C#",
+    "cwe": "",
+    "brief": "CONFIG.CONNECTION_STRING_PASSWORD finds cases where Web.Config files have connection string passwords that are not encrypted. The checker will report a defect if the <add> child of <connectionStrings> within Web.Config takes a pwd= attribute as a value. Explicitly specifying pwd= in attribute <connectionStrings> leaks an unencrypted connection string password. It is best practice to use a protecte"
+  },
+  {
+    "id": "CONFIG.COOKIE_SIGNING_DISABLED",
+    "category": "Security Checker",
+    "supported_languages": "Go",
+    "cwe": "",
+    "brief": "The CONFIG.COOKIE_SIGNING_DISABLED checker finds cases where the cookie session signing is disabled. In that situation, malicious users can freely modify session data. This will lead to the abuse of any functionality that uses session data."
+  },
+  {
+    "id": "CONFIG.COOKIES_MISSING_HTTPONLY",
+    "category": "Security Checker",
+    "supported_languages": "C#",
+    "cwe": "",
+    "brief": "CONFIG.COOKIES_MISSING_HTTPONLY finds cases where the HttpOnly flag for a cookie is explicitly disabled or not set in a configuration file (for example, through Web.Config ). This flag is configured through an httpOnlyCookies attribute to httpCookies , as shown in the example below. The HttpOnly flag prevents client-side applications (JavaScript, for example) from getting access to a cookie. To pr"
+  },
+  {
+    "id": "CONFIG.DEAD_AUTHORIZATION_RULE",
+    "category": "Security Checker",
+    "supported_languages": "C#",
+    "cwe": "",
+    "brief": "CONFIG.DEAD_AUTHORIZATION_RULE identifies ASP.NET authorization rules that have no effect, which might indicate an error in the rule logic. Because the patterns are applied in the order in which they are written, a rule might never be applied if its pattern is dominated by an earlier one. Malicious users might exploit such errors to access unintended application content or to escalate privilege."
+  },
+  {
+    "id": "CONFIG.DJANGO_CSRF_PROTECTION_DISABLED",
+    "category": "Security Checker",
+    "supported_languages": "Python",
+    "cwe": "",
+    "brief": "The CONFIG.DJANGO_CSRF_PROTECTION_DISABLED checker flags cases where CsrfViewMiddleware plugin is not enabled."
+  },
+  {
+    "id": "CONFIG.DYNAMIC_DATA_HTML_COMMENT",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "CONFIG.DYNAMIC_DATA_HTML_COMMENT finds cases where dynamic data output goes from the server to an HTML comment context."
+  },
+  {
+    "id": "CONFIG.ENABLED_DEBUG_MODE",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The CONFIG.ENABLED_DEBUG_MODE checker finds cases where debugging mode is enabled in a Web application. Depending on the language, having debugging enabled might lead to unexpected application behavior or to leaking sensitive information about the application's code and environment."
+  },
+  {
+    "id": "CONFIG.ENABLED_TRACE_MODE",
+    "category": "Security Checker",
+    "supported_languages": "C#",
+    "cwe": "",
+    "brief": "CONFIG.ENABLED_TRACE_MODE finds cases where ASP.NET trace mode is enabled in a Web application. When this feature is enabled for a single page or entire application, sensitive information will be attached to server responses, such as application state, server variables, and configuration details. Exposing these diagnostics is a security risk."
+  },
+  {
+    "id": "CONFIG.HANA_XS_PREVENT_XSRF_DISABLED",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "CONFIG.HANA_XS_PREVENT_XSRF_DISABLED checker identifies HANA XS applications that do not have cross-site request forgery (XSRF) prevention enabled. This is recommended for all applications that are not strictly read-only."
+  },
+  {
+    "id": "CONFIG.HARDCODED_CREDENTIALS_AUDIT",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The CONFIG.HARDCODED_CREDENTIALS_AUDIT checker finds credentials directly in configuration files or in source code. Users with access to such files can then use these credentials to access production data or services."
+  },
+  {
+    "id": "CONFIG.HARDCODED_TOKEN",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "The CONFIG.HARDCODED_TOKEN checker finds tokens, passwords, or keys stored directly in configuration files. Attackers with access to such configuration files might then use these tokens to access production data or services."
+  },
+  {
+    "id": "CONFIG.MISSING_CUSTOM_ERROR_PAGE",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "CONFIG.MISSING_CUSTOM_ERROR_PAGE finds cases where Web.Config files turn off custom error messages. In the Web.Config file, under <system.web>, on the <customErrors> node there shall NOT be a mode attribute set to \"Off\", whose default value is \"RemoteOnly\". The third valid mode value is \"On\". Among those three values, only \"Off\" is insecure."
+  },
+  {
+    "id": "CONFIG.SYMFONY_CSRF_PROTECTION_DISABLED",
+    "category": "Security Checker",
+    "supported_languages": "PHP",
+    "cwe": "",
+    "brief": "The CONFIG.SYMFONY_CSRF_PROTECTION_DISABLED checker identifies Symfony applications with cross-site-request forgery (CSRF) protection disabled. Enabling CSRF protection is recommended for all applications that are not strictly read-only."
+  },
+  {
+    "id": "CONFIG.UNSAFE_SESSION_TIMEOUT",
+    "category": "Security Checker",
+    "supported_languages": "Go,",
+    "cwe": "",
+    "brief": "The CONFIG.UNSAFE_SESSION_TIMEOUT checker finds cases where a session exceeds 30 minutes."
+  },
+  {
+    "id": "CONFIG.VUE_ROUTER_PARAMS_EXPOSED_TO_PROPS",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "CWE-200",
+    "brief": "CONFIG.VUE_ROUTER_PARAMS_EXPOSED_TO_PROPS finds cases where Vue Router is configured to use props in Boolean mode on a route. In this case, the router passes all router parameters to a component as the component props . This is accomplished by setting the props attribute to true on a specific route. Such configuration is a bad practice that exposes all parameters to a component or a subcomponent a"
+  },
+  {
+    "id": "CONSTANT_EXPRESSION_RESULT",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "CONSTANT_EXPRESSION_RESULT finds many cases where an expression always evaluates to one particular value, but it looks like it is intended to evaluate to different values because it involves at least one variable. For example, the fragment if (x|1) appears to be trying to test the least significant bit of x , but the code uses bitwise OR rather than AND , so the condition always evaluates to true "
+  },
+  {
+    "id": "COOKIE_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "COOKIE_INJECTION reports a defect in code that uses a user-controllable string to construct a cookie. Such code might allow an attacker to set a session ID (session fixation), change the scope or expiration time of a cookie, or otherwise affect the application's behavior by setting new cookies."
+  },
+  {
+    "id": "COOKIE_SERIALIZER_CONFIG",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "",
+    "brief": "COOKIE_SERIALIZER_CONFIG determines when a web application has been configured with an unsafe serializing mechanism for cookies."
+  },
+  {
+    "id": "COPY_INSTEAD_OF_MOVE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "COPY_INSTEAD_OF_MOVE finds instances of a copy constructor or assignment operator being used when the class has a matching move constructor or move assignment operator that could be used instead."
+  },
+  {
+    "id": "COPY_PASTE_ERROR",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "COPY_PASTE_ERROR finds many instances in which a section of code was copied and pasted, and a systematic change was made to the copy. However, because that change was incomplete, it unintentionally left some portions of the copy unchanged."
+  },
+  {
+    "id": "COPY_WITHOUT_ASSIGN",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "COPY_WITHOUT_ASSIGN reports many cases where a class has at least one user-written copy constructor but lack a user-written assignment operator. In order to be considered as an assignment operator for the purposes of this rule an assignment operator must be usable to assign the entire object. Private copy constructors are assumed not to be meant for use and do not imply the need for an assignment "
+  },
+  {
+    "id": "CORS_MISCONFIGURATION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The CORS_MISCONFIGURATION checker finds insecure configurations of the Cross Origin Resource Sharing (CORS) policy, which uses additional HTTP headers to allow an application running at one origin to access selected resources from a different origin. The misconfiguration of this policy might lead to malicious applications (running at an external origin) accessing and modifying the resources of the"
+  },
+  {
+    "id": "CORS_MISCONFIGURATION_AUDIT",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The CORS_MISCONFIGURATION_AUDIT checker finds insecure configurations of the Cross Origin Resource Sharing (CORS) policy, which uses additional HTTP headers to allow an application running at one origin to access selected resources from a different origin. The misconfiguration of this policy might lead to malicious applications (running at an external origin) accessing and modifying the resources "
+  },
+  {
+    "id": "CSRF",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The CSRF checker finds cross-site request forgery (CSRF) vulnerabilities by identifying controller entry points that modify the server state, and it reports a defect when the entry point is not secured by a recognized CSRF protection scheme."
+  },
+  {
+    "id": "CSS_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "CSS_INJECTION reports a defect in client-side JavaScript code that employs a user-controllable string to read or modify the CSS of an element in the HTML document. With a carefully crafted string, an attacker might be able to steal user information such as CSRF tokens from the page, or to execute a cross-site scripting (XSS) attack."
+  },
+  {
+    "id": "CTOR_DTOR_LEAK",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "CTOR_DTOR_LEAK finds many instances where a constructor allocates memory and stores a pointer to it in an object field but the destructor does not free the memory."
+  },
+  {
+    "id": "CUDA.COLLECTIVE_WARP_SHUFFLE_WIDTH",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.COLLECTIVE_WARP_SHUFFLE_WIDTH checker looks for calls to collective shuffle operations (for example, __shfl_sync ) and checks whether the calls are passed an incorrect width parameter. A width parameter to the collective shuffle operation is correct if it is a power of 2 and less than or equal to the warp size (which is currently 32 for all architectures)."
+  },
+  {
+    "id": "CUDA.CUDEVICE_HANDLES",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.CUDEVICE_HANDLES checker looks for code treating integers as handles to internal CUDA driver device objects. CUdevice objects may be assigned integer values. There have been cases in which the CUDA driver interface has accepted CUdevice objects created by assigning an integer device ordinal to a CUdevice. But, this behavior might not persist and should not be relied on."
+  },
+  {
+    "id": "CUDA.DEVICE_DEPENDENT",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.DEVICE_DEPENDENT checker looks for cases where before host program initialization or after host program termination, an inappropriate operation is performed, such as ODR-using a managed storage duration object, launching CUDA kernels, or calling device-dependent CUDA runtime or driver interfaces. If a global variable of a class type exists, the constructor for this class will be called be"
+  },
+  {
+    "id": "CUDA.DEVICE_DEPENDENT_CALLBACKS",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.DEVICE_DEPENDENT_CALLBACKS checker looks for the ODR-use of managed storage duration object, kernel launching and device-dependent CUDA interface usage within CUDA callbacks."
+  },
+  {
+    "id": "CUDA.DIVERGENCE_AT_COLLECTIVE_OPERATION",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.DIVERGENCE_AT_COLLECTIVE_OPERATION checker flags a quality defect for CUDA. This defect occurs when a group of device threads participate in a device-thread-block or warp (pre Compute Capability 7.0) collective operation and not all participating device threads are converged, which might cause code execution to hang or which might produce unintended side effects. This happens when a colle"
+  },
+  {
+    "id": "CUDA.ERROR_INTERFACE",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.ERROR_INTERFACE checker looks for an unchecked CUresult or cudaError_t return value after calling any CUDA library interface. CUDA libraries report errors by returning numeric error codes from interfaces. Because of the existence of asynchronous errors, if a program fails to check whether an interface call returned an error, one of the following happens:"
+  },
+  {
+    "id": "CUDA.ERROR_KERNEL_LAUNCH",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.ERROR_KERNEL_LAUNCH checker looks for cases in which the cudaGetLastError function is not called to check errors after the code calls a kernel function."
+  },
+  {
+    "id": "CUDA.FORK",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.FORK checker looks for the calling of any CUDA library interface, the use of any objects residing in storage allocated by CUDA library interfaces, and the use of any managed storage duration object after a call to fork and before a subsequent call to exec . The program duplicates itself via a call to fork . When calling fork , CUDA internal data structures or threads are not copied to the"
+  },
+  {
+    "id": "CUDA.INACTIVE_THREAD_AT_COLLECTIVE_WARP",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.INACTIVE_THREAD_AT_COLLECTIVE_WARP checker finds defects in the following cases:"
+  },
+  {
+    "id": "CUDA.INITIATION_OBJECT_DEVICE_THREAD_BLOCK",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.INITIATION_OBJECT_DEVICE_THREAD_BLOCK checker looks for variables with device-thread-block storage duration, such as _ shared _ variables, that are read before being assigned a value. A device-thread-block storage duration object should not have an initializer or non-trivial type. Use of an uninitialized value leads to undefined behavior, therefore the first time a device-thread-block sto"
+  },
+  {
+    "id": "CUDA.INVALID_MEMORY_ACCESS",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.INVALID_MEMORY_ACCESS checker finds cases where pointers into host or device memory are used incorrectly. CUDA code is executed on the host (CPU) or on one of many devices (GPU cores). Memory can be allocated on the host, or on the device, or can be \"managed\" or \"shared\", meaning that the compiler will take care of copying its contents to the appropriate locations. Pointers can refer to a"
+  },
+  {
+    "id": "CUDA.SHARE_FUNCTION",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.SHARE_FUNCTION checker is a quality checker for CUDA. CUDA code is executed on the host (CPU) or on one of many devices (GPU cores). Functions with only __device__ signify that they can only be executed on the device. Similarly, functions with only __host__ specifier (or alternatively with none of the __host__ , __device__ or __global__ specifiers) can only be called on the host. This che"
+  },
+  {
+    "id": "CUDA.SHARE_OBJECT_STREAM_ASSOCIATED",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.SHARE_OBJECT_STREAM_ASSOCIATED checker finds instances when managed global variables associated with a stream are accessed from a different stream. All such cases are defects."
+  },
+  {
+    "id": "CUDA.SPECIFIERS_INCONSISTENCY",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.SPECIFIERS_INCONSISTENCY checker looks for inconsistencies in CUDA execution space ( __host__ and __device__ specifiers ) and kernel ( __global__ ) function specifiers across function declarations."
+  },
+  {
+    "id": "CUDA.SYNCHRONIZE_CALLBACKS",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.SYNCHRONIZE_CALLBACKS checker reports on cases where a CUDA callback is waiting for other callbacks, and thus might never complete executing."
+  },
+  {
+    "id": "CUDA.SYNCHRONIZE_TERMINATION",
+    "category": "Quality Checker",
+    "supported_languages": "CUDA",
+    "cwe": "",
+    "brief": "The CUDA.SYNCHRONIZE_TERMINATION checker looks for cases in which cudaDeviceSynchronize is not called to synchronize with all outstanding work on all devices before the host program terminates."
+  },
+  {
+    "id": "DC.DANGEROUS",
+    "category": "Security Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "DC.DANGEROUS detects unsafe calls to the deprecated stop() methods from java.lang.Thread and java.lang.ThreadGroup . It also detects calls to java.lang.Thread.destroy() because the method is not implemented, contrary to what a developer using that method might believe. Furthermore, calls to java.io.ObjectOutputStream$PutField.write(java.io.ObjectOutput) are detected because the calls might corrupt"
+  },
+  {
+    "id": "DC.DEADLOCK",
+    "category": "Security Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "DC.DEADLOCK detects deadlock-prone calls to the deprecated methods suspend() and resume() from java.lang.Thread and java.lang.ThreadGroup . In addition, calls to java.lang.Thread.countStackFrames() and java.lang.ThreadGroup.allowThreadSuspension(boolean) are detected because they depend on suspend() methods."
+  },
+  {
+    "id": "DC.DEBUGAPI",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "DC.DEBUGAPI issues defects when a debugging function is called (declared in debugapi.h on Windows). Leaving such calls may lead to security risks because debug code may change the behavior of the program and allows attackers access to debug functionality possibly exposing sensitive information. The checks looks for the following functions: IsDebuggerPresent OutputDebugStringA OutputDebugStringW De"
+  },
+  {
+    "id": "DC.PREDICTABLE_KEY_PASSWORD",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "DC.PREDICTABLE_KEY_PASSWORD detects calls to crypto APIs that result in the generation of weak or predictable keys."
+  },
+  {
+    "id": "DC.STREAM_BUFFER",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "DC.STREAM_BUFFER detects calls to unsafe I/O functions that are accessing a stream buffer (specifically, scanf , fscanf , gets ) that could cause buffer overflow."
+  },
+  {
+    "id": "DC.STRING_BUFFER",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "DC.STRING_BUFFER detects calls to functions that are accessing string buffers ( sprintf , sscanf , strcat , strcpy , and __builtin___sprintf_chk ) that could cause buffer overflow."
+  },
+  {
+    "id": "DC.WEAK_CRYPTO",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "DC.WEAK_CRYPTO detects calls to functions that produce unsafe sequences of pseudorandom numbers. The functions match these patterns: initstate , lcong48 , rand , random , seed48 , setstate , and [dejlmn]rand48 (includes a regular expression that identifies six separate functions). This checker also detects these two LibTomCrypt calls: yarrow_start and rc4_start . These functions set up a pseudoran"
+  },
+  {
+    "id": "DEADCODE",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "DEADCODE finds code that can never be reached due to branches whose condition will always evaluate exactly the same each time. In other words, DEADCODE reports false paths."
+  },
+  {
+    "id": "DELETE_ARRAY",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "DELETE_ARRAY finds many instances of using delete instead of delete[] to delete an array."
+  },
+  {
+    "id": "DELETE_VOID",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "DELETE_VOID finds cases where a pointer to a void is deleted. When a delete is applied to a pointer to void, the object itself is deallocated, but any destructor associated with the dynamic type is not run, which is a defect if that destructor does something important, such as freeing memory."
+  },
+  {
+    "id": "DENY_LIST_FOR_AUTHN",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "",
+    "brief": "DENY_LIST_FOR_AUTHN reports defects when a filter on a web controller is specified using a list of actions to which the filter applies, rather than a list of actions to which the filter does not apply."
+  },
+  {
+    "id": "DETEKT.*",
+    "category": "Quality Checker",
+    "supported_languages": "Kotlin",
+    "cwe": "",
+    "brief": "Coverity supports Detekt analysis (version 1.20.0 ) through the cov-analyze command. Detekt is an open source program for finding bugs (defects) in Kotlin code. The Coverity Analysis uses the following format to report Detekt issues: DETEKT. XXXX"
+  },
+  {
+    "id": "DISTRUSTED_DATA_DESERIALIZATION",
+    "category": "Security Checker",
+    "supported_languages": "Go",
+    "cwe": "",
+    "brief": "The DISTRUSTED_DATA_DESERIALIZATION checker reports an issue any time distrusted data is passed into a deserialization API. An attacker who can control the deserialized object might be able to subvert aspects of the application functionality. This audit mode checker flags these code patterns for review."
+  },
+  {
+    "id": "DIVIDE_BY_ZERO",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The DIVIDE_BY_ZERO checker finds instances in which an arithmetic division or modulus occurs when the divisor is zero. The result of such an operation is undefined but typically results in program termination. A defect is only reported if the evidence shows that a divisor can be exactly zero along a particular path."
+  },
+  {
+    "id": "DNS_PREFETCHING",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "The DNS_PREFETCHING checker finds situations where DNS prefetching is enabled by setting the allow property explicitly to true in the dnsPrefetchControl() function of the helmet middleware or in the configuration of the dns-prefetch-control middleware. If the property allow is set to true , the DNS prefetching is enabled, which might leak sensitive information to an attacker on the same network by"
+  },
+  {
+    "id": "DOM_XSS",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "DOM_XSS reports a defect on code that is vulnerable to a DOM-based XSS attack. In other words, it finds cases where an attacker can cause a victim's Web browser to execute JavaScript code of the attacker's choice or otherwise make the victim's Web browser behave in an unexpected and unintended way. In particular, this checker reports cases where data that is potentially under the control of an att"
+  },
+  {
+    "id": "DYNAMIC_OBJECT_ATTRIBUTES",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "CWE-915",
+    "brief": "DYNAMIC_OBJECT_ATTRIBUTES finds vulnerabilities that occur when a resource is updated with attribute names and values using uncontrolled dynamic data (CWE-915). This vulnerability might allow an attacker to update unintended fields in the resource. For example, an admin field might be set to true on a user object."
+  },
+  {
+    "id": "EL_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "EL_INJECTION finds Expression Language (EL) injection vulnerabilities, which arise when uncontrolled dynamic data is passed into an EL resolver. This might allow an attacker to bypass security checks or execute arbitrary code."
+  },
+  {
+    "id": "END_OF_LIFE_RAILS",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "",
+    "brief": "The END_OF_LIFE_RAILS checker reports on the use of a version of Rails that has or will reach end of life."
+  },
+  {
+    "id": "END_OF_LIFE_RUBY",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "",
+    "brief": "The END_OF_LIFE_RUBY checker reports on the use of a version of Ruby that has or will reach end of life."
+  },
+  {
+    "id": "ENUM_AS_BOOLEAN",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "ENUM_AS_BOOLEAN finds places where an enum-typed expression is inadvertently used in a Boolean context (such as a predicate), but the enumeration has more than two possible values. Usually, that is not what the programmer intended."
+  },
+  {
+    "id": "EVALUATION_ORDER",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "EVALUATION_ORDER identifies places in the code where the C/C++ language rules for expression evaluation do not determine the order in which side effects happen. Consequently, the behavior of the program potentially depends on the compiler, compiler version and optimization settings. Note that the name of the checker is misleading, since it finds side effect order problems as well as evaluation ord"
+  },
+  {
+    "id": "EXPLICIT_THIS_EXPECTED",
+    "category": "Quality Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "EXPLICIT_THIS_EXPECTED detects function calls having an implicit this argument when the callee references the this value explicitly, which suggests that an explicit this argument is expected. In such cases, an implicit this argument might be interpreted differently depending on the context and/or environment; the this value could default to undefined within code using strict mode, the window objec"
+  },
+  {
+    "id": "EXPOSED_NON_CONST_STATIC",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The EXPOSED_NON_CONST_STATIC reports on declarations of public, static, non-constant fields in C++ classes and structs. The checker will also report on non-const pointers to const types as well as const pointers to non-const types."
+  },
+  {
+    "id": "EXPOSED_PREFERENCES",
+    "category": "Security Checker",
+    "supported_languages": "Kotlin",
+    "cwe": "",
+    "brief": "EXPOSED_PREFERENCES finds instances of calls to android.content.Context.getSharedPreferences and android.app.Activity.getPreferences that do not use the MODE_PRIVATE mode. Using a mode other than MODE_PRIVATE may create a SharedPreferences object that is accessible to other applications. Malicious applications could read from or write to this SharedPreferences object."
+  },
+  {
+    "id": "EXPOSED_DIRECTORY_LISTING",
+    "category": "Security Checker",
+    "supported_languages": "Go",
+    "cwe": "",
+    "brief": "EXPOSED_DIRECTORY_LISTING finds cases where browsing a directory provides a complete list of files in the directory. Listing all directory files might enable attackers to learn the names of files in the directory, which can help them probe for insufficiently-protected files or target path traversal attacks."
+  },
+  {
+    "id": "EXPRESS_WINSTON_SENSITIVE_LOGGING",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "The EXPRESS_WINSTON_SENSITIVE_LOGGING checker finds several cases where sensitive data is automatically logged by the middleware component of express-winston . A defect is returned in the following circumstances:"
+  },
+  {
+    "id": "FB.* (SpotBugs)",
+    "category": "Quality Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "Coverity supports SpotBugs analysis through the cov-analyze command. SpotBugs (historically known as FindBugs) is an open source program for finding bugs (defects) in Java code. It provides a large group of SpotBugs bug patterns that can detect a wide variety of defects. The SpotBugs™ Checker Reference describes each of the SpotBugs bug patterns. (The descriptions come from the SpotBugs documentat"
+  },
+  {
+    "id": "FLOATING_POINT_EQUALITY",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++, CUDA, Objective-C/C++ The FLOATING_POINT_E",
+    "cwe": "",
+    "brief": "The FLOATING_POINT_EQUALITY checker requires that floating-point expressions not be directly or indirectly tested for equality or inequality. The inherent nature of floating-point types is such that comparisons of equality will often not evaluate to true , even when they are expected to. Also, the behavior of such a comparison cannot be predicted before execution, and might vary from across implem"
+  },
+  {
+    "id": "FORMAT_STRING_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "C/C++, CUDA, Objective-C/C++ FORMAT_STRING_INJECTION finds a",
+    "cwe": "",
+    "brief": "FORMAT_STRING_INJECTION finds a security vulnerability that occurs when an unscrutinized value from an untrusted source is used to construct a format string."
+  },
+  {
+    "id": "FORWARD_NULL",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "FORWARD_NULL finds errors that can result in program termination or a runtime exception. It finds many instances where a pointer or reference is checked against null or assigned null and then later dereferenced. For JavaScript, PHP, Python, and Ruby this checker finds many instances where a value is checked against or assigned null or undefined and later used as an object (that is, by accessing a "
+  },
+  {
+    "id": "GLOBAL_INIT_ORDER",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The GLOBAL_INIT_ORDER checker reports a defect when the code might behave differently depending on the order in which statically initialized global objects are constructed or destroyed. The order of construction is unspecified when the static objects are defined in different translation units. The order of destruction is in reverse order of completion of the constructors, and so is similarly varia"
+  },
+  {
+    "id": "GUARDED_BY_VIOLATION",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "GUARDED_BY_VIOLATION finds many instances of fields that are updated without locks, causing potential race conditions which can lead to unpredictable or incorrect program behavior."
+  },
+  {
+    "id": "HARDCODED_CREDENTIALS",
+    "category": "Security Checker",
+    "supported_languages": "C#, C/C++, CUDA, Go, Java, JavaScript, Kotlin, Objective-C/C++, PHP, Python, Ruby, TypeScript, Visual Basic HARDCODED_CREDENTIALS searches for passwords, cryptographic keys, and",
+    "cwe": "",
+    "brief": "HARDCODED_CREDENTIALS searches for passwords, cryptographic keys, and security tokens that are stored directly in source code (hardcoded). Users with access to such source code can then use these credentials to access production data or services. Changing these credentials requires changing the code and redeploying the application."
+  },
+  {
+    "id": "HEADER_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "HEADER_INJECTION finds header injection vulnerabilities, which arise from using uncontrolled dynamic data in an HTTP header name. This security vulnerability might allow an attacker to set or overwrite important header values."
+  },
+  {
+    "id": "HFA",
+    "category": "Quality Checker",
+    "supported_languages": "C",
+    "cwe": "",
+    "brief": "HFA , the header file analysis checker, finds many instances of unnecessary header file includes. This checker works only on C (not C++) code. An unnecessary header file include can occur when the header file prototypes functions and data structures that are not needed in that source file."
+  },
+  {
+    "id": "HIBERNATE_BAD_HASHCODE",
+    "category": "Quality Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "HIBERNATE_BAD_HASHCODE finds many instances where the hashCode() or equals() method of a Hibernate entity (or other Java Persistence API (JPA) entity) depends on the database primary key (usually annotated with @Id ). Because the key is not assigned until after persisting an object, it is unsafe to use such entities with Java or Kotlin collections before persisting. An incorrect hashCode() impleme"
+  },
+  {
+    "id": "HOST_HEADER_VALIDATION_DISABLED",
+    "category": "Security Checker",
+    "supported_languages": "Python",
+    "cwe": "",
+    "brief": "The HOST_HEADER_VALIDATION_DISABLED checker finds cases where host header validation list is set to allow access from all hosts. Not configuring host validation properly for a Django application may lead to host header attacks used to accomplish cross-site request forgery, cache poisoning, and poisoning links in emails."
+  },
+  {
+    "id": "IDENTICAL_BRANCHES",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "IDENTICAL_BRANCHES detects conditional statements and expressions that execute identical code regardless of the condition. Such duplicate code implies that the condition is unnecessary (or several conditions could be combined) or that the code should not be identical (so might be a copy-paste error). The checker treats Ruby case-when statements as if they were sequences of if-elsif clauses."
+  },
+  {
+    "id": "IDENTIFIER_TYPO",
+    "category": "Quality Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "IDENTIFIER_TYPO finds occurrences of identifiers that are suspiciously unique and suspiciously close in spelling to another identifier that is more common. Dynamic languages such as JavaScript, PHP, Python, Ruby, and TypeScript make heavy use of named entities that are resolved only at application run time, making such languages especially susceptible to typographical errors (typos) in identifiers"
+  },
+  {
+    "id": "IMPLICIT_INTENT",
+    "category": "Security Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "The IMPLICIT_INTENT checker reports a defect on code that uses an implicit Intent to start activities or to start, bind, or stop services. Using an Intent without a specific receiver component (an implicit intent) allows a malicious application to register to receive this Intent and see any information in it."
+  },
+  {
+    "id": "INCOMPATIBLE_CAST",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "INCOMPATIBLE_CAST finds many instances where an object in memory is accessed via a pointer cast to an incompatible type. Casting a pointer will not change memory layout so the defects reported by INCOMPATIBLE_CAST are potential out-of-bounds memory accesses or dependencies on byte order."
+  },
+  {
+    "id": "INEFFECTIVE_MOVE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The INEFFECTIVE_MOVE checker detects std::move calls that are ineffective because either the type of object being moved or the context of the call to move does not allow the move to take effect."
+  },
+  {
+    "id": "INEFFICIENT_RESERVE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The INEFFICIENT_RESERVE checker detects a particular unsafe pattern in the reserve() method on std::vector . The danger arises from the fact that, unlike the resize() method, the reserve() method makes no effort to adjust the capacity of the internal buffer in a way that minimizes copying of data."
+  },
+  {
+    "id": "INFINITE_LOOP",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "INFINITE_LOOP finds many cases of loops or recursion that never terminate, usually resulting in a program hang."
+  },
+  {
+    "id": "INSECURE_COMMUNICATION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The INSECURE_COMMUNICATION checker finds cases using unencrypted network connections. Communicating over insecure channels might allow an attacker to intercept and modify transmissions."
+  },
+  {
+    "id": "INSECURE_COOKIE",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The INSECURE_COOKIE checker reports cases where the Secure attribute is not set for cookies that might be used in HTTPS sessions. Setting the Secure attribute lets the client know that the cookie should not be sent over an unencrypted connection."
+  },
+  {
+    "id": "INSECURE_CSP",
+    "category": "Security Checker",
+    "supported_languages": "Go The INSECURE_CSP checker reports cases where the HTTP header is configured with insecure Content",
+    "cwe": "",
+    "brief": "The INSECURE_CSP checker reports cases where the HTTP header is configured with insecure Content Security Policy (CSP) that might cause cross-site scripting (XSS), clickjacking, or other client-side attacks that rely on executing malicious content in the context of a trusted web page. The insecure CSP includes:"
+  },
+  {
+    "id": "INSECURE_DIRECT_OBJECT_REFERENCE",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "CWE-639",
+    "brief": "INSECURE_DIRECT_OBJECT_REFERENCE finds code that might allow attackers to directly retrieve records via a simple identifier (CWE-639). If the code does not check authorization, an attacker might be able to access unauthorized records. Object references are often sequential integer IDs that correspond to database row ID values. These are easy for an attacker to guess and enumerate."
+  },
+  {
+    "id": "INSECURE_FILE_PERMISSIONS",
+    "category": "Security Checker",
+    "supported_languages": "Go",
+    "cwe": "",
+    "brief": "The INSECURE_FILE_PERMISSIONS checker finds cases where the file permissions are explicitly set to an insecure value making the file world-readable, world-writable or world-executable. When a file is given a permissions setting that provides access to a wider range of actors than required, it could lead to the exposure of sensitive information, or the modification of that resource by unintended pa"
+  },
+  {
+    "id": "INSECURE_NETWORK_BIND",
+    "category": "Security Checker",
+    "supported_languages": "Go,",
+    "cwe": "",
+    "brief": "The INSECURE_NETWORK_BIND checker finds a network connection that is bound to all interfaces, which means the application will accept connections from any address provided. This checker reports an address argument ( addr , address , or host ) in certain network commands when any of the following is detected:"
+  },
+  {
+    "id": "INSECURE_RANDOM",
+    "category": "Security Checker",
+    "supported_languages": "C#, Java, JavaScript, Kotlin, Python, TypeScript, Visual Basic INSECURE_RANDOM finds cases where cryptographically weak pseudo-random number generators (PRNGs) are used to generate insecure random values, which are then used in sensitive contexts where",
+    "cwe": "",
+    "brief": "INSECURE_RANDOM finds cases where cryptographically weak pseudo-random number generators (PRNGs) are used to generate insecure random values, which are then used in sensitive contexts where security relies on the unpredictability of these generated values. Otherwise, attackers might be able to guess further generated values and thereby gain restricted privileges or access to sensitive data."
+  },
+  {
+    "id": "INSECURE_REFERRER_POLICY",
+    "category": "Security Checker",
+    "supported_languages": "Python",
+    "cwe": "",
+    "brief": "The INSECURE_REFERRER_POLICY checker finds cases where the Referer-Policy HTTP header is set to any of the following values as it may leak Referrer header across origins:"
+  },
+  {
+    "id": "INSECURE_SALT",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "The INSECURE_SALT checker finds cases where an insufficiently random salt value is used as input to a hash function. If an attacker knows the salt value, they can conduct a brute-force attack to discover the input that yields the output that the hash function produced."
+  },
+  {
+    "id": "INSUFFICIENT_LOGGING",
+    "category": "Security Checker",
+    "supported_languages": "Go, JavaScript, Python, TypeScript The INSUFFICIENT_LOGGING checker reports a defect in code that handles a",
+    "cwe": "",
+    "brief": "The INSUFFICIENT_LOGGING checker reports a defect in code that handles a security event or error condition but does not properly log the event. Logging important security events facilitates earlier detection of security incidents, and encourages a better response to them."
+  },
+  {
+    "id": "INTEGER_OVERFLOW",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "INTEGER_OVERFLOW finds many cases of integer overflows and truncations resulting from arithmetic operations. Some forms of integer overflow can cause security vulnerabilities, for example, when the overflowed value is used as the argument to an allocation function. By default, the checker reports defects only when it determines that the operands are tainted sources, the operations are addition or "
+  },
+  {
+    "id": "INVALIDATE_ITERATOR",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "INVALIDATE_ITERATOR finds many uses of iterators that have been invalidated by a modification to the collection underlying the iterator. Depending on the API, language, compiler, and so on, use of an invalid iterator could cause undefined behavior, such as a crash or data corruption, or could throw an exception."
+  },
+  {
+    "id": "JAVA_CODE_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "JAVA_CODE_INJECTION finds Java code injection vulnerabilities, which arise when uncontrolled dynamic data is passed into an API that accepts Java source or bytecode. This security vulnerability might allow an attacker to bypass security checks or execute arbitrary code."
+  },
+  {
+    "id": "JCR_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "JCR_INJECTION finds Content Repository for Java (JCR) injection vulnerabilities, which arise when uncontrolled dynamic data is passed into a query API for JCR. This security vulnerability might allow an attacker to affect the behavior of the JCR, bypass security controls, or obtain unauthorized data."
+  },
+  {
+    "id": "JINJA2_AUTOESCAPE_DISABLED",
+    "category": "Security Checker",
+    "supported_languages": "Python",
+    "cwe": "",
+    "brief": "The JINJA2_AUTOESCAPE_DISABLED checker finds cases where the autoescape property is disabled for templates ending in .html , .htm or .xml when creating the Jinja2 environment. Unescaped input applied to an application might make the system vulnerable to cross-site scripting ( XSS ) attacks."
+  },
+  {
+    "id": "JSHINT.* (JSHint) Analysis",
+    "category": "Quality Checker",
+    "supported_languages": "JavaScript",
+    "cwe": "",
+    "brief": "Coverity supports a JSHint analysis of JavaScript code through the cov-analyze command. JSHint is an open source program for reporting issues in JavaScript code. It primarily finds issues related to coding style, coding standards, and code portability. The Coverity analysis uses the following format to report JSHint issues: JSHINT.XXXX"
+  },
+  {
+    "id": "JSONWEBTOKEN_UNTRUSTED_DECODE",
+    "category": "Security Checker",
+    "supported_languages": "Go",
+    "cwe": "",
+    "brief": "The JSONWEBTOKEN_UNTRUSTED_DECODE checker finds cases where JWT tokens are decoded but their signature is not verified. If the token is not verified, attackers might submit forged tokens and gain access to sensitive data and functionality."
+  },
+  {
+    "id": "JSP_DYNAMIC_INCLUDE",
+    "category": "Security Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "JSP_DYNAMIC_INCLUDE finds JSP dynamic include vulnerabilities, which arise when uncontrolled dynamic data is used as part of a JSP include path. An attacker can manipulate the local path of the JSP and bypass authorization or examine sensitive information."
+  },
+  {
+    "id": "JSP_SQL_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "Java JSP_SQL_INJECTION finds JSP SQL injection vulnerabilities, which arise when uncontrolled dynamic data is passed into a JSTL",
+    "cwe": "",
+    "brief": "JSP_SQL_INJECTION finds JSP SQL injection vulnerabilities, which arise when uncontrolled dynamic data is passed into a JSTL <sql:query> or <sql:update> tag. Similar to typical SQL injection, the injection of tainted data might change the intent of the query, which can bypass security checks or disclose unauthorized data."
+  },
+  {
+    "id": "LDAP_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "LDAP_INJECTION finds Lightweight Directory Access Protocol (LDAP) injection vulnerabilities, which arise when uncontrolled dynamic data is passed into an LDAP query. The injection of tainted data might change the intent of the query, which can bypass security checks or disclose unauthorized data."
+  },
+  {
+    "id": "LDAP_NOT_CONSTANT",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The LDAP_NOT_CONSTANT checker reports any LDAP query that is constructed using unescaped and non-constant values. It is best to escape all dynamic content, even if it comes from a trusted data source. The escaping prevents any malicious or rogue values from altering the intent of the LDAP query. Using the LDAP_NOT_CONSTANT checker is one way to protect your code against LDAP injection vulnerabilit"
+  },
+  {
+    "id": "LOCALSTORAGE_MANIPULATION",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "LOCALSTORAGE_MANIPULATION reports a defect in client-side JavaScript code that uses a user-controllable string to construct a key in localStorage . Such code might allow an attacker to alter the behavior of the application by overwriting data that is stored at a sensitive key, or by adding new keys."
+  },
+  {
+    "id": "LOCALSTORAGE_WRITE",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "LOCALSTORAGE_WRITE reports whenever any data is written to localStorage . It is recommended to not store sensitive information in localStorage . If an XSS exploit exists, it is easy for an attacker to retrieve the contents of localStorage . If a browser is shared among multiple users, any information in localStorage must be cleared once the user is logged out, otherwise different users can read ea"
+  },
+  {
+    "id": "LOCK",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "LOCK finds many cases where a lock/mutex is acquired but not released, or is locked twice without an intervening release. Usually, this issue occurs because an error-handling path fails to release a lock. The result is usually a deadlock."
+  },
+  {
+    "id": "LOCK_EVASION",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "LOCK_EVASION finds many instances in which the code evades the acquisition or sufficient holding of a lock that is protecting against modification of thread-shared data by checking a piece of that thread-shared data. The evasion might consist of not acquiring the lock or of releasing the lock early (leaving the modification itself unguarded). Evasion of holding a lock in this way can allow operati"
+  },
+  {
+    "id": "LOCK_INVERSION",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "LOCK_INVERSION finds many cases where the program acquires a pair of locks/mutexes in different orders in different places. This issue can lead to a deadlock if two threads simultaneously use the opposite order of acquisition."
+  },
+  {
+    "id": "LOG_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "LOG_INJECTION reports a defect when tainted data is stored in logs. If tainted data flows to a logging function, an attacker can forge log messages to confuse automated log parsing tools or developers trying to diagnose an attack or other problem."
+  },
+  {
+    "id": "MISMATCHED_ITERATOR",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "This C++ checker reports many occurrences when an iterator from an STL container is incorrectly passed to a function from another container. The checker also reports defects when an iterator from one container is compared to an iterator from a different container."
+  },
+  {
+    "id": "MISRA_CAST",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "MISRA_CAST finds violations of the Motor Industry Software Reliability Association (MISRA)-C:2004 Rules 10.1 through 10.5. These rules all pertain to explicit casts and implicit conversions that can, under some circumstances, lead to unexpected changes to integer or floating values in the course of evaluating expressions."
+  },
+  {
+    "id": "MISSING_ASSIGN",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "In Coverity Connect , MISSING_ASSIGN is a display name for defects that are found by the C++ MISSING_COPY_OR_ASSIGN checker. For more information, see MISSING_COPY_OR_ASSIGN ."
+  },
+  {
+    "id": "MISSING_AUTHZ",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "MISSING_AUTHZ reports cases where a method call is not guarded by an authorization check that is applied elsewhere in the code. The checker determines which functions should be protected by which authorization checks by statistically analyzing the correlation between the two across all code."
+  },
+  {
+    "id": "MISSING_BREAK",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "MISSING_BREAK finds many instances of missing break statements in switch statements. It reports defects when it finds missing break statements at the end of a block of code for a case or default statement. A missing break statement can lead to incorrect or unpredictable behavior. The Java version recognizes the SuppressWarnings annotation."
+  },
+  {
+    "id": "MISSING_COMMA",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The MISSING_COMMA checker finds omissions of a comma between lines in a string array initialization. A missing comma can lead to a single concatenated string element instead of separate string elements, and it can contribute to unexpected results or to an overrun."
+  },
+  {
+    "id": "MISSING_COPY",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "In Coverity Connect , MISSING_COPY is a display name for defects that are found by the C++ MISSING_COPY_OR_ASSIGN checker."
+  },
+  {
+    "id": "MISSING_COPY_OR_ASSIGN",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "MISSING_COPY_OR_ASSIGN reports many cases where a class that owns resources, such as dynamically allocated memory or operating system handles, lacks either a user-written copy constructor or a user-written assignment operator. When this is the case, the compiler will generate the missing operator, but the compiler-generator operator only does a shallow copy. Later, when the copies are destroyed, t"
+  },
+  {
+    "id": "MISSING_IFRAME_SANDBOX",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "CWE-829",
+    "brief": "MISSING_IFRAME_SANDBOX looks for instances of an iframe with its source attribute pointing to a remote URL but without a sandbox attribute (CWE 829). Loading untrusted websites in an iframe without a sandbox can allow an attacker to break out of the iframe and mount Clickjacking or Phishing attacks. To prevent such attacks it is best practice to set the sandbox attribute of the iframe to grant the"
+  },
+  {
+    "id": "MISSING_LOCK",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "MISSING_LOCK finds many cases where a variable or field is normally protected by a lock/mutex, but in at least one case, is accessed without the lock held. This is a form of concurrent race condition. Race conditions can lead to unpredictable or incorrect program behavior."
+  },
+  {
+    "id": "MISSING_MOVE_ASSIGNMENT",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "MISSING_MOVE_ASSIGNMENT reports cases where a class does not have a move assignment operator, and its copy assignment operator is found to be applied to rvalues . Moving rvalues , instead of copying them, can enhance program performance."
+  },
+  {
+    "id": "MISSING_PASSWORD_VALIDATOR",
+    "category": "Security Checker",
+    "supported_languages": "Python",
+    "cwe": "",
+    "brief": "Django has authentication middleware that may use a password validation. The MISSING_PASSWORD_VALIDATOR checker flags situations where no password validators are set in the Django configuration file through the AUTH_PASSWORD_VALIDATORS list. Without password validators users may set low complexity passwords that are easily guessable and quickly brute-forced by attackers."
+  },
+  {
+    "id": "MISSING_PERMISSION_FOR_BROADCAST",
+    "category": "Security Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "MISSING_PERMISSION_FOR_BROADCAST reports a defect on code that sends a broadcast without setting a permission. Sending a broadcast without requiring a permission allows a malicious application to receive that broadcast. MISSING_PERMISSION_FOR_BROADCAST also reports a defect on code that registers a BroadcastReceiver without setting a permission. Registering a BroadcastReceiver without requiring a "
+  },
+  {
+    "id": "MISSING_RESTORE",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The MISSING_RESTORE checker finds many instances in which a non-local state of a program is altered for local use but inconsistently restored. Non-local state refers to anything that is not a local variable of a function or method and is not being used to return a value."
+  },
+  {
+    "id": "MISSING_RETURN",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "MISSING_RETURN checker finds cases where a non-void function does not return a value, and optionally, when it returns more than one value."
+  },
+  {
+    "id": "MISSING_THROW",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "MISSING_THROW finds instances of exception objects that are being created but never thrown. It reports a defect when a statement consists only of the creation of an exception object. Failure to throw an exception when one is intended can lead to incorrect program behavior. In particular, if the exception was intended to prevent subsequent code from executing, a missing throw can cause undesired co"
+  },
+  {
+    "id": "MIXED_ENUMS",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "MIXED_ENUMS reports cases in which a symbol (such as a variable, field or member, or function) is treated as two different enum types in different places. In some cases, the symbol is explicitly declared to be an enum type. In others, the checker infers that a symbol that is declared only to have an integer type is effectively an enum type."
+  },
+  {
+    "id": "MOBILE_ID_MISUSE",
+    "category": "Security Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "MOBILE_ID_MISUSE reports a defect when a mobile device identifier is used in an authentication scheme. You can also set it to report on any code that obtains a mobile device identifier. Mobile device identifiers are predictable and should not be used as passwords, security tokens, cryptographic keys, or other values that need to be secure. An attacker could predict the mobile device identifier, th"
+  },
+  {
+    "id": "MULTIPLE_INIT_SMART_PTRS",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "MULTIPLE_INIT_SMART_PTRS reports cases where a raw pointer is used to initialize two different smart pointers, or where using the tracked pointer from one smart pointer is used to initialize another one."
+  },
+  {
+    "id": "NEGATIVE_RETURNS",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "NEGATIVE_RETURNS finds many misuses of negative integers. Negative integers and function return values that can potentially be negative must be checked before being used (for example, as array indexes, loop bounds, algebraic expression variables or size/length arguments to a system call)."
+  },
+  {
+    "id": "NESTING_INDENT_MISMATCH",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "NESTING_INDENT_MISMATCH reports many cases where the indentation structure of the code does not match the syntactic nesting. Often this is caused by forgetting to add braces where they are optional, for example, around the body of an if statement. The indentation of code implies a greater nesting level than the syntax indicates."
+  },
+  {
+    "id": "NO_EFFECT",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "NO_EFFECT finds many instances of statements or expressions that do not accomplish anything, or statements that perform an action that is not the intended action. Usually, this issue is caused by a typographical error, oversight, or misunderstanding of language rules, such as operator precedence."
+  },
+  {
+    "id": "NON_STATIC_GUARDING_STATIC",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "NON_STATIC_GUARDING_STATIC finds many instances in which a non-static field is locked to guard a static field. This could place a lock on many different objects, one for each instance of the class that contains the non-static field that is locked, which would be equivalent to having no lock at all."
+  },
+  {
+    "id": "NOSQL_QUERY_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "NOSQL_QUERY_INJECTION finds NoSQL query injection vulnerabilities, which arise when uncontrolled dynamic data is passed into a NoSQL database application such as CouchDB. This data is then used to construct a query. The injection of tainted data might change the intent of the query, which can bypass security checks or execute arbitrary code."
+  },
+  {
+    "id": "NULL_RETURNS",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "NULL_RETURNS finds errors that can result in program termination or a runtime exception."
+  },
+  {
+    "id": "OAUTH2_MISCONFIGURATION",
+    "category": "Security Checker",
+    "supported_languages": "Go",
+    "cwe": "",
+    "brief": "OAUTH2_MISCONFIGURATION reports cases where the function oauth2.Config.PasswordCredentialsToken() is called to exchange the resource owner's password credentials for an OAuth2 access token, exposing the credentials to the application and removing the resource owner from the scope verification process."
+  },
+  {
+    "id": "ODR_VIOLATION",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The ODR_VIOLATION checker reports violation of the C++ one-definition rule (ODR). Based on the MISRA C++-2008 Rule 3-2-2 rule implementation, it focuses on ODR violations that come from cases where multiple definitions are allowed but they must be identical."
+  },
+  {
+    "id": "OGNL_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "OGNL_INJECTION finds Object-Graph Navigation Language (OGNL) injection vulnerabilities, which arise when uncontrolled dynamic data is passed into an OGNL evaluation API. OGNL can execute arbitrary Java code, in addition to performing language functions similar to those performed by Java Expression Language (EL)."
+  },
+  {
+    "id": "OPEN_ARGS",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "OPEN_ARGS finds cases where a file is created with unspecified permissions. Specifically, the POSIX open() function can take either two or three arguments. The three-argument form should be used whenever the open flags include O_CREAT . The checker reports when the two-argument form is used with O_CREAT , because in that case, the file permissions are not specified and will be unpredictable."
+  },
+  {
+    "id": "OPEN_REDIRECT",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "CWE-601",
+    "brief": "OPEN_REDIRECT looks for instances where user-controlled input is used to specify a link to an external site that is then used in a redirect call ( CWE 601 ). An attacker can create a link to the trusted site that redirects to a malicious web site. This enables the attacker to mount a phishing attack that can allow them to steal user credentials."
+  },
+  {
+    "id": "ORDER_REVERSAL",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "ORDER_REVERSAL finds many cases where the program acquires a pair of locks/mutexes in different orders in different places. This issue can lead to a deadlock if two threads simultaneously use the opposite order of acquisition."
+  },
+  {
+    "id": "ORM_ABANDONED_TRANSIENT",
+    "category": "Quality Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "See ORM_LOST_UPDATE ."
+  },
+  {
+    "id": "ORM_LOST_UPDATE",
+    "category": "Quality Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "ORM_LOST_UPDATE finds several different errors involving the persistent object \"lifecycle\" of Object-Relational Mapping (ORM) systems such as JPA or Hibernate. The two main problems found by this checker are transient objects not being persisted and modified detached objects not being merged back into a session. This checker will also report ORM operations that will throw exceptions based on the c"
+  },
+  {
+    "id": "ORM_LOAD_NULL_CHECK",
+    "category": "Quality Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "ORM_LOAD_NULL_CHECK finds many instances of checking the result of a load operation for null."
+  },
+  {
+    "id": "ORM_UNNECESSARY_GET",
+    "category": "Quality Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "Because accessing the database is an expensive operation that should occur only when it is necessary, ORM_UNNECESSARY_GET finds cases in which the contents of an entity obtained through a call to Session.get(...) is not used on a given path, making the method call and consequent database access unnecessary. If only a reference to the object is used (such as storing it into a field of another objec"
+  },
+  {
+    "id": "OS_CMD_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "OS_CMD_INJECTION detects many instances in which an OS command is executed on the server and the command or its arguments can be manipulated by an attacker. An attacker who has control over part of the command string might be able to maliciously alter the intent of the operating system command. This change might result in the disclosure, destruction, or modification of sensitive data or operating "
+  },
+  {
+    "id": "OVERFLOW_BEFORE_WIDEN",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "OVERFLOW_BEFORE_WIDEN finds cases in which the value of an arithmetic expression might overflow before the result is widened to a larger data type. The checker only reports cases where the program already contains a widening operation, but that operation is performed too late. In most cases, the solution is to widen at least one operand to a wider type before performing the arithmetic operation."
+  },
+  {
+    "id": "OVERLAPPING_COPY",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "OVERLAPPING_COPY detects cases where data is copied to an overlapping location in an undefined manner, such as with assignment (undefined unless the overlap is exact and the types compatible) or memcpy (always undefined)."
+  },
+  {
+    "id": "OVERLY_BROAD_EXCEPTION",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The OVERLY_BROAD_EXCEPTION checker reports on throwing, catching, or specifying (in the dynamic exception specification syntax removed in C++17) an overly broad exception type."
+  },
+  {
+    "id": "OVERRUN",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "OVERRUN finds many instances where buffers are accessed out of bounds. Improper buffer access can corrupt memory and cause process crashes, security vulnerabilities and other severe system problems. OVERRUN looks for out-of-bounds indexing into both heap buffers and stack buffers."
+  },
+  {
+    "id": "PARSE_ERROR",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "PARSE_ERROR is not a typical checker. Rather, when the Coverity compiler cannot parse the source code, PARSE_ERROR will create a defect report containing the parse error message. These parsing errors usually occur because a compiler is misconfigured. When they occur, you need to review the compiler configurations and the Coverity build log. When the compiler cannot recover from a parse error, the "
+  },
+  {
+    "id": "PASS_BY_VALUE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The PASS_BY_VALUE checker finds instances of function parameters as well as variables captured in a C++ lambda expression, whose types are too big (by default, over 128 bytes). To avoid this defect, such parameters should be passed as pointers (in C) or as references (in C++). The checker does not report a defect for a write to a parameter because the write might be intentional. However, for C++ c"
+  },
+  {
+    "id": "PATH_MANIPULATION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "PATH_MANIPULATION detects many cases in which a filename or path is constructed unsafely."
+  },
+  {
+    "id": "PMD.*",
+    "category": "Quality Checker",
+    "supported_languages": "Apex",
+    "cwe": "",
+    "brief": "Coverity supports PMD 6.44.0 which enables the analysis of Apex and SalesForce VisualForce through the cov-analyze command. With the PMD.* checker enabled, Coverity Analysis finds bugs (defects) in Apex and SalesForce VisualForce code. Coverity reports bugs using the PMD.*<rulename> format."
+  },
+  {
+    "id": "PRECEDENCE_ERROR",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The PRECEDENCE_ERROR checker reports cases where two adjacent operators are applied in precedence order, but the context suggests that they were intended in the opposite order. The defect (or false positive report) is fixed by inserting parenthesis to clarify the grouping of operators and operands."
+  },
+  {
+    "id": "PREDICTABLE_RANDOM_SEED",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "PREDICTABLE_RANDOM_SEED reports a defect when a seed is used to construct a secure Random Number Generator (RNG) and the output of the RNG is used for cryptographic purposes. The seed can be a constant (such as a constant string or integer) or the system time. Because many secure RNGs are implemented using a pseudo-random number generator, the use of such seeds to construct the RNG will invalidate"
+  },
+  {
+    "id": "PRINTF_ARGS",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "PRINTF_ARGS reports invalid printf format strings or invalid arguments to those strings."
+  },
+  {
+    "id": "PROPERTY_MIXUP",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The PROPERTY_MIXUP checker detects property getters or setters that return or assign one class member when their name corresponds to a different class member. This error pattern might be the result of copying code or of an incomplete attempt to rename or refactor code. A method is considered a getter or setter if it is part of a property definition or if its name is prefixed with get or set . The "
+  },
+  {
+    "id": "PW.*, RW.*, SW.*: Compilation warnings",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "Unlike other Coverity checkers, compilation warning checkers only expose and filter warnings from the Coverity compiler and do not use interprocedural modeling. In other words, compilation warning checkers perform local analysis that does not consider the behavior of called functions."
+  },
+  {
+    "id": "PW.*",
+    "category": "Quality Checker",
+    "supported_languages": "C,",
+    "cwe": "",
+    "brief": "See PW.*, RW.*, SW.*: Compilation warnings ."
+  },
+  {
+    "id": "RAILS_DEFAULT_ROUTES",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "",
+    "brief": "RAILS_DEFAULT_ROUTES identifies vulnerabilities resulting from the failure to mark a controller method as private. In Ruby on Rails, default routes can be configured that will match any method on a controller class. All methods that are not intended to be routes must be marked private. If a method is not marked private, an attacker could execute a method not intended to be a public route."
+  },
+  {
+    "id": "RAILS_DEVISE_CONFIG",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "",
+    "brief": "RAILS_DEVISE_CONFIG reports on a number of best practices when configuring a Ruby on Rails application using the Devise authentication library."
+  },
+  {
+    "id": "RAILS_MISSING_FILTER_ACTION",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "",
+    "brief": "RAILS_MISSING_FILTER_ACTION finds code where a filter specifies an action that does not exist. In Ruby on Rails, filters for actions can be specified at the controller level. If a filter specifies an action that does not exist, it might indicate a typo, a reference to code that was removed, or a reference to a method that was renamed. In scenarios where the developer believes a filter is being app"
+  },
+  {
+    "id": "READLINK",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "READLINK reports many cases where the POSIX readlink() function is used but the program does not safely place a NULL terminator in the result buffer. The readlink() function places the contents of a symbolic link into a buffer of a specified size. The return value of readlink() can be anything between -1 and the size of the buffer, and both endpoints require special handling."
+  },
+  {
+    "id": "RW.*",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "See PW.*, RW.*, SW.*: Compilation warnings ."
+  },
+  {
+    "id": "REGEX_CONFUSION",
+    "category": "Quality Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "REGEX_CONFUSION finds cases where a developer who is unaware that a method or parameter takes a regular expression (regex) passes a string that contains special regex characters (for example, a filename that contains a period or dot). Such a mistake can cause the program to interpret the string in an unintended way that causes errors."
+  },
+  {
+    "id": "REGEX_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "REGEX_INJECTION finds vulnerabilities that occur when uncontrolled dynamic data is used as part of a regular expression. This might allow a malicious user to access all or part of the matched content or to alter the behavior of the program."
+  },
+  {
+    "id": "REGEX_MISSING_ANCHOR",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "CWE-777",
+    "brief": "REGEX_MISSING_ANCHOR finds regular expressions where proper anchors to the beginning and end of the string are not specified (CWE-777)."
+  },
+  {
+    "id": "RESOURCE_LEAK",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "RESOURCE_LEAK looks for cases in which a program fails to guarantee release of system resources as soon as possible. An application that fails to release acquired resources can suffer performance degradation, crashes, denial of service, or the inability to successfully obtain a given resource."
+  },
+  {
+    "id": "RETURN_LOCAL",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "RETURN_LOCAL finds many cases where the address of a local variable is returned from a function. The address is invalid as soon as the function returns, so the usual result is memory corruption and unpredictable behavior."
+  },
+  {
+    "id": "REVERSE_NEGATIVE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "REVERSE_NEGATIVE finds many cases where an integer is used as an array index, but then later checked to determine if it is negative. If the integer could be negative, the check takes place too late. If it could not be negative, the check is unnecessary."
+  },
+  {
+    "id": "REVERSE_INULL",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "REVERSE_INULL finds many instances of checks against null, Nothing, nil, or undefined values that occur after uses of the value that would have already failed if it were indeed null, Nothing, nil, or undefined. Such uses include dereferences in C/ C++/ C#/ Java/ Kotlin/ Visual Basic, unwrapping in C#, or Visual Basic, or a member or property access in other languages. The checker name derives from"
+  },
+  {
+    "id": "REVERSE_OVERRUN",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The REVERSE_OVERRUN checker finds cases where an array is accessed by an index before the index is checked against the sizeof expression."
+  },
+  {
+    "id": "REVERSE_TABNABBING",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "",
+    "brief": "REVERSE_TABNABBING finds cases where a link is dynamically generated and is set to open a new window by virtue of its target attribute being set to _blank . Third-party sites opened from such links are able to redirect the original window or tab to an arbitrary URL without user interaction. When returning to the original window or tab, a user might be tricked into disclosing sensitive information "
+  },
+  {
+    "id": "RISKY_CRYPTO",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "RISKY_CRYPTO finds uses of cryptographic algorithms that are vulnerable to cryptographic attacks or are otherwise risky. Examples include uses of an old algorithm that is weak by current standards and poor usage of a particular algorithm."
+  },
+  {
+    "id": "RUBY_VULNERABLE_LIBRARY",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "",
+    "brief": "The RUBY_VULNERABLE_LIBRARY checker reports a defect if your application uses a library that might be affected by one of the Ruby-on-Rails related vulnerabilities listed in Defect Anatomy ."
+  },
+  {
+    "id": "RULE_OF_ZERO_THREE_FIVE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The RULE_OF_ZERO_THREE_FIVE checker checks classes for violations of either the Rule of Zero, Rule of Three, or the Rule of Five. Rule of Zero: If a class does not need user-definitions for any of its special functions (copy constructor, copy assignment operator, move constructor, move assignment operator, destructor) or those user-definitions are similar to the default behavior, then they should "
+  },
+  {
+    "id": "SCRIPT_CODE_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "SCRIPT_CODE_INJECTION finds script code injection vulnerabilities, which occur when uncontrolled dynamic data is used to construct script code on the server. Examples of script code languages include JavaScript, Python, and Ruby."
+  },
+  {
+    "id": "SECURE_CODING",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "DEPRECATED in 7.5.0: The SECURE_CODING checker has been deprecated. As of release 2020.03, we recommend that you use CodeXM to implement custom checkers that can identify don't call issues. See Migrate DC Custom Checkers to CodeXM ."
+  },
+  {
+    "id": "SECURE_TEMP",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "SECURE_TEMP finds cases where a temporary file is created in an insecure manner. When that happens in a program that runs with elevated privileges, the program is vulnerable to race condition attacks and can be used to subvert system security."
+  },
+  {
+    "id": "SELF_ASSIGN",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "SELF_ASSIGN reports many cases where a C++ assignment member function does not check for the right-hand side of the assignment as being the same object as this before assigning to the fields of this . If the class of which this operator is a member owns resources, such as dynamically allocated memory or operating system handles, use-after-free errors might occur if an object is assigned to itself."
+  },
+  {
+    "id": "SW.*",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "See PW.*, RW.*, SW.*: Compilation warnings ."
+  },
+  {
+    "id": "SEALED_JAR_ESCAPE",
+    "category": "Security Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "The SEALED_JAR_ESCAPE security compliance checker flags sealed methods that should not be trusted. It first determines if the method under study is sealed. If it is, each callsite within that method is examined. If any call invokes a method that is not sealed, or is sealed in a JAR that is different from the JAR containing the method under study, a defect is logged."
+  },
+  {
+    "id": "SENSITIVE_DATA_LEAK",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "SENSITIVE_DATA_LEAK finds code that stores, transmits, or logs sensitive data without protecting it adequately, before use, with encryption. Showing exception stack traces or other program information on the UI can reveal data about an application, which makes it more susceptible to attacks. The SENSITIVE_DATA_LEAK checker then reports these sensitive data leaks."
+  },
+  {
+    "id": "SERVLET_ATOMICITY",
+    "category": "Security Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "SERVLET_ATOMICITY finds instances of atomicity violations on calls to getAttribute and setAttribute on the objects of the following types: javax.servlet.ServletContext ;"
+  },
+  {
+    "id": "SESSION_FIXATION",
+    "category": "Security Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "SESSION_FIXATION finds session fixation vulnerabilities, which arise when uncontrolled dynamic data is passed into an API that sets the session token in use by the application. In Java web applications, each container might expose an API to set the session token. While custom session tokens are also possible, they are not currently examined by this checker."
+  },
+  {
+    "id": "SESSION_MANIPULATION",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "",
+    "brief": "SESSION_MANIPULATION defects indicate that uncontrolled dynamic data is used to specify a key in a session. An attacker might use these defects to manipulate their session: for example, to change their user or upgrade their privileges."
+  },
+  {
+    "id": "SESSIONSTORAGE_MANIPULATION",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "SESSIONSTORAGE_MANIPULATION reports a defect in client-side JavaScript code that uses a user-controllable string to construct a key in sessionStorage . Such code might allow an attacker to alter the behavior of the application by overwriting data that is stored at a sensitive key, or by adding new keys."
+  },
+  {
+    "id": "SIGMA.*",
+    "category": "Unknown",
+    "supported_languages": "",
+    "cwe": "",
+    "brief": "Coverity Analysis can run Sigma checkers along with the native Coverity Analysis checkers. When run inside Coverity Analysis , Sigma checkers have the string \"SIGMA.\" prefixed to their name."
+  },
+  {
+    "id": "SIGN_EXTENSION",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "SIGN_EXTENSION finds many cases where a value is sign-extended when converting from a smaller data type to a larger data type, but it appears that sign extension is not intended because the quantity is essentially unsigned. Most commonly, this happens in code that does a 32-bit endian swap, storing the result in a 64-bit data type. The intermediate 32-bit result must be explicitly cast to an unsig"
+  },
+  {
+    "id": "SINGLETON_RACE",
+    "category": "Security Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "SINGLETON_RACE checker finds many cases where a singleton object can handle multiple requests simultaneously with different threads (for example, a servlet), but the code that handles the requests does not safely synchronize access to instance or static fields of the class. The checker reports these thread-unsafe updates as defects."
+  },
+  {
+    "id": "SIZECHECK",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "DEPRECATED as of version 7.0: SIZECHECK finds many instances of pointer assigned memory allocations where the pointer's target type is larger than the block allocated. For example, if a pointer to a long is assigned a block the size of an int . Note that checker options can expand the scope of defects that this checker finds."
+  },
+  {
+    "id": "SIZEOF_MISMATCH",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "SIZEOF_MISMATCH finds combinations of pointers and sizeof expressions that appear to be mismatched. When a pointer and sizeof expression occur together, the sizeof expression is usually the size of memory that the pointer points to."
+  },
+  {
+    "id": "SLEEP",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "SLEEP finds many cases where a function that sleeps is called while a lock/mutex is held. This will prevent other threads that are trying to acquire the same lock from continuing until the lock is released, which might take a long time, leading to performance degradation or even deadlock. SLEEP will not report anything until at least one primitive function is modeled as sleeping. Even the POSIX sl"
+  },
+  {
+    "id": "SOCKET_ACCEPT_ALL_ORIGINS",
+    "category": "Security Checker",
+    "supported_languages": "Go",
+    "cwe": "",
+    "brief": "The SOCKET_ACCEPT_ALL_ORIGINS checker finds cases where the WebSocket server is configured to accept requests from all origins. Accepting WebSocket connections from all origins allows anyone with network-level access to connect to the server, potentially exhausting server-side resources to create a denial of service condition or accessing sensitive information from the server."
+  },
+  {
+    "id": "SQL_NOT_CONSTANT",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The SQL_NOT_CONSTANT checker reports any concatenation of a non-constant value into an SQL command or query string. It is a best practice to use parameterized queries for incorporating dynamic values, whether they are from trusted data sources or not. The parameterization prevents any malicious or rogue values from altering the intent of the SQL command. Using the SQL_NOT_CONSTANT checker is one w"
+  },
+  {
+    "id": "SQLI",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "SQLI finds many instances where a method that interprets a string as SQL is given an argument that might be under the control of an attacker."
+  },
+  {
+    "id": "STACK_USE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "STACK_USE finds many instances of overall stack usage that exceeds a configurable maximum (default 250000 bytes), or of a single stack usage that exceed a configurable maximum (default 10000 bytes). Stack usage through indirection (function pointers) and recursion, direct or indirect, is not calculated. Instead, it can optionally report instances of these constructs as an aid to manual audits. The"
+  },
+  {
+    "id": "STATIC_API_KEY",
+    "category": "Security Checker",
+    "supported_languages": "Go",
+    "cwe": "",
+    "brief": "The STATIC_API_KEY checker looks for the function oauth2.StaticTokenSource() that returns a static, non-expiring token which an attacker could steal and bypass authentication."
+  },
+  {
+    "id": "STRAY_SEMICOLON",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "STRAY_SEMICOLON finds instances where an extraneous semicolon alters the logic of the code. This checker does not warn about redundant semicolons that have no effect on the behavior of the code. Fixing such defects is usually a matter of deleting the extraneous semicolon."
+  },
+  {
+    "id": "STREAM_FORMAT_STATE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "STREAM_FORMAT_STATE finds many instances where the formatting state of an ostream object is altered but not restored. This can have unintended effects on formatted output to that stream after the function returns."
+  },
+  {
+    "id": "STRICT_TRANSPORT_SECURITY",
+    "category": "Security Checker",
+    "supported_languages": "Ruby STRICT_TRANSPORT_",
+    "cwe": "",
+    "brief": "STRICT_TRANSPORT_SECURITY determines when a web application has not been configured to send the Strict-Transport-Security header (HSTS). This header ensures all subsequent connections are forced to use TLS."
+  },
+  {
+    "id": "STRING_NULL",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "STRING_NULL finds many cases where non-null-terminated strings (for example, a string contained in a network packet) are used unsafely."
+  },
+  {
+    "id": "STRING_OVERFLOW",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "STRING_OVERFLOW finds many cases where a string manipulation function (for example, strcpy ) might write past the end of the allocated array. It determines this based on the sizes of the arrays involved at the call site to the string manipulation function. It reports a defect if it finds a buffer copying function where the source string is larger than the destination string. It issues a warning fo"
+  },
+  {
+    "id": "STRING_SIZE",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "STRING_SIZE finds cases where a string manipulation function (for example, strcpy ) might write past the end of the allocated array. It determines this by following a string from its tainted source, past any length checking routines that might otherwise sanitize it, and to a trusted sink that does not check the length itself. Unlike STRING_OVERFLOW , which also finds array overruns involving strin"
+  },
+  {
+    "id": "SUPPRESSED_ERROR",
+    "category": "Security Checker",
+    "supported_languages": "Go",
+    "cwe": "",
+    "brief": "The SUPPRESSED_ERROR checker finds cases where the error returned by a function is not explicitly checked, which can occur if the error is completely ignored or if the underscore '_' was assigned. Ignoring error conditions might allow an attacker to quietly induce unexpected behavior. The SUPPRESSED_ERROR checker doesn't flag cases on the fmt.Print() , fmt.Printf() , fmt.Println() and Debug() func"
+  },
+  {
+    "id": "SWAPPED_ARGUMENTS",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "SWAPPED_ARGUMENTS finds many instances in which the arguments to a function are provided in an incorrect order. The checker attempts to determine a correct ordering by comparing call arguments with the names of parameters in the definition of the function."
+  },
+  {
+    "id": "SYMFONY_EL_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "PHP",
+    "cwe": "",
+    "brief": "The SYMFONY_EL_INJECTION checker finds Symfony Expression Language injection vulnerabilities in PHP code. These vulnerabilities occur when untrusted (tainted) data is evaluated by the Symfony Expression Language interpreter."
+  },
+  {
+    "id": "TAINT_ASSERT",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "TAINT_ASSERT identifies fields with a discrepancy between the user-asserted non-taintedness and the computed taint as determined by the Coverity analysis. This might indicate that the assertion is incorrect, and it should be reviewed as how the tainted data is inserted into the value (and the assertion removed if invalid). The presence of an incorrect assertion might suppress legitimate security d"
+  },
+  {
+    "id": "TAINTED_ENVIRONMENT_WITH_EXECUTION",
+    "category": "Security Checker",
+    "supported_languages": "Go,",
+    "cwe": "",
+    "brief": "TAINTED_ENVIRONMENT_WITH_EXECUTION finds vulnerabilities that occur when uncontrolled dynamic data is used to set an environment variable when spawning a new process. This might allow an attacker to alter the behavior of the process or expose sensitive data. In extreme cases, it allows an attacker to execute arbitrary code."
+  },
+  {
+    "id": "TAINTED_SCALAR",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "TAINTED_SCALAR finds many instances where scalars (for example, integers) are not properly bounds-checked ( sanitized ) before being used as array or pointer indexes, loop boundaries, or function arguments. Scalars that are not sanitized are considered tainted . Missing or inadequate scalar validation can cause buffer overflows, integer overflows, denials of service, memory corruption, and securit"
+  },
+  {
+    "id": "TAINTED_STRING",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "TAINTED_STRING finds many cases where a string flows from an untrusted (tainted) source, past any validation/sanitization routines that might otherwise catch dangerous content, to a sink that trusts its input, such as an interpreter. Strings that have not been properly validated ( sanitized ) are considered tainted . Improperly trusting tainted strings can cause unsafe resource reading or writing,"
+  },
+  {
+    "id": "TEMPLATE_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "Go,",
+    "cwe": "",
+    "brief": "TEMPLATE_INJECTION reports defects for code that can unintentionally allow the source of a Go, JavaScript or Python template (written in e.g. jade or mustache) to be modified by an attacker. That is, it finds cases where an attacker can change a template source string intended to be rendered by some template engine. Such instances can enable an attacker to glean information about the backend infra"
+  },
+  {
+    "id": "TOCTOU",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "TOCTOU, TOCTOU (an acronym for Time Of Check To Time Of Use), finds many cases where filenames are unsafely checked before being used. In a program that runs with elevated privileges, this can expose a file-based race condition vulnerability that can be used to subvert system security. A common code mistake is to do a filename access check and, if it succeeds, perform a privileged system call on t"
+  },
+  {
+    "id": "TRUST_BOUNDARY_VIOLATION",
+    "category": "Security Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "TRUST_BOUNDARY_VIOLATION reports a defect when tainted data flows to a data structure or context that is often assumed to be trustworthy. Because data from such sources might not be validated or sanitized, this data could be mistakenly used in an insecure manner."
+  },
+  {
+    "id": "UNCAUGHT_EXCEPT",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "UNCAUGHT_EXCEPT finds many cases in which an exception is thrown and never caught, or violates a function's exception specification. Usually, the result of such behavior is abnormal program termination."
+  },
+  {
+    "id": "UNCHECKED_ORIGIN",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "UNCHECKED_ORIGIN reports if a window message event handler does not validate the origin of received event message. An attacker can send arbitrary data through event messages. Unvalidated event messages can cause DOM-XSS or other injection-based security problems in a Web page."
+  },
+  {
+    "id": "UNENCRYPTED_SENSITIVE_DATA",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The UNENCRYPTED_SENSITIVE_DATA checker detects cases where sensitive data (for example, a password or a cryptographic key) is received via an unencrypted transmission or loaded from unencrypted storage. Storing or transmitting sensitive data without encrypting it allows an attacker to steal it or tamper with it. Fixing such a defect requires changes to all endpoints."
+  },
+  {
+    "id": "UNESCAPED_HTML",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "",
+    "brief": "UNESCAPED_HTML reports possible instances of cross-site scripting vulnerabilities. See the XSS checker for more details about cross-site scripting."
+  },
+  {
+    "id": "UNEXPECTED_CONTROL_FLOW",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "UNEXPECTED_CONTROL_FLOW reports uses of several idioms affecting flow through the program that are likely to have unexpected or mistaken meanings, other than cases of UNREACHABLE or MISSING_BREAK . A detailed description of each pattern detected is in the Options section below, under the option controlling the reporting of each pattern."
+  },
+  {
+    "id": "UNINIT",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "UNINIT finds many instances of variables that are used without being initialized. Stack variables do not have set values unless initialized. Using uninitialized variables can result in unpredictable behavior, crashes, and security holes."
+  },
+  {
+    "id": "UNINIT_CTOR",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The UNINIT_CTOR checker finds instances of a non-static data member of a class or struct that is declared with the class or struct, not in a parent class, and not initialized in a path in the constructor."
+  },
+  {
+    "id": "UNINIT_NONNULL",
+    "category": "Quality Checker",
+    "supported_languages": "Java",
+    "cwe": "",
+    "brief": "The UNINIT_NONNULL checker reports fields that are annotated as non-null, but are not assigned non-null values by the constructor. Class fields can be annotated as non-null using common annotation classes such as @NonNull or @NotNull . Non-null fields are not expected to have a null value outside of their class constructors. Each constructor implicitly initializes all fields of this instance as nu"
+  },
+  {
+    "id": "UNINTENDED_GLOBAL",
+    "category": "Quality Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "UNINTENDED_GLOBAL finds assignments to implicitly created global variables where an explicitly declared local variable was likely intended."
+  },
+  {
+    "id": "UNINTENDED_INTEGER_DIVISION",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "UNINTENDED_INTEGER_DIVISION detects code with an unexpected loss of arithmetic precision due to the use of integer division where floating-point division is probably intended. According to the language rules, dividing two values of integer types ( long , unsigned , and so on) computes the quotient as an integer (integer division), in effect, rounding toward zero or ignoring any remainder. Integer "
+  },
+  {
+    "id": "UNKNOWN_LANGUAGE_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "UNKNOWN_LANGUAGE_INJECTION finds unknown language injection vulnerabilities, which arise when uncontrolled dynamic data is passed into an API that creates grammars for languages through parsing or tokenization. An example is the ANTLR API. When injected data is inserted into the grammar construction itself, the data might change the intent of the grammar, potentially resulting in unauthorized acce"
+  },
+  {
+    "id": "UNLESS_CASE_SENSITIVE_ROUTE_MATCHING",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "The UNLESS_CASE_SENSITIVE_ROUTE_MATCHING checker finds cases where the unless function is called in an Express application with the path parameter that includes a case-sensitive negative regular expression. This might allow an attacker to bypass the provided route filtering by using routes with characters in different cases."
+  },
+  {
+    "id": "UNLOCKED_ACCESS",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The UNLOCKED_ACCESS checker reports on cases of thread-shared data that is accessed concurrently without any locking."
+  },
+  {
+    "id": "UNLOGGED_SECURITY_EXCEPTION",
+    "category": "Security Checker",
+    "supported_languages": "C#, Java, Kotlin, Visual Basic The UNLOGGED_",
+    "cwe": "",
+    "brief": "The UNLOGGED_SECURITY_EXCEPTION checker reports security exceptions that are caught but not logged."
+  },
+  {
+    "id": "UNREACHABLE",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "UNREACHABLE reports many instances in which the control flow cannot reach certain areas of the code base. Unlike the DEADCODE checker, which finds code that can never be reached because of branches whose condition will always evaluate the same way, the UNREACHABLE checker finds code that can never be reached regardless of the values of condition expressions."
+  },
+  {
+    "id": "UNRESTRICTED_ACCESS_TO_FILE",
+    "category": "Security Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "The UNRESTRICTED_ACCESS_TO_FILE checker finds cases where an application creates a file on its storage but does not apply access control to the file. Each Android application has a designated internal storage area which, by default, only the application can access. By explicitly setting the mode to MODE_WORLD_WRITEABLE or MODE_WORLD_READABLE , the application can create files on its internal stora"
+  },
+  {
+    "id": "UNRESTRICTED_DISPATCH",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "UNRESTRICTED_DISPATCH finds unrestricted dispatch vulnerabilities, which arise when uncontrolled dynamic data is passed into view dispatch method. The value passed to the dispatch method controls what view is rendered or what content is returned. This security vulnerability might allow an attacker to bypass security checks or obtain unauthorized data by potentially accessing access-controlled cont"
+  },
+  {
+    "id": "UNRESTRICTED_MESSAGE_TARGET",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "UNRESTRICTED_MESSAGE_TARGET reports a defect in code that sends cross-origin window messages without restricting the origin that can receive it. Such code might allow a malicious site to intercept the message by changing the location of the window."
+  },
+  {
+    "id": "UNSAFE_BASIC_AUTH",
+    "category": "Security Checker",
+    "supported_languages": "Go,",
+    "cwe": "",
+    "brief": "The UNSAFE_BASIC_AUTH checker reports use of Basic Authentication: the Basic Authentication scheme sends unencrypted credentials with every request from the web browser to the web server."
+  },
+  {
+    "id": "UNSAFE_BUFFER_METHOD",
+    "category": "Security Checker",
+    "supported_languages": "JavaScript,",
+    "cwe": "",
+    "brief": "The UNSAFE_BUFFER_METHOD checker finds cases where a segment of allocated memory is uninitialized (not zeroed-out), as its content could leak sensitive data from system memory."
+  },
+  {
+    "id": "UNSAFE_DESERIALIZATION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "UNSAFE_DESERIALIZATION finds unsafe deserialization injection vulnerabilities, which arise when uncontrolled dynamic data is used within an API that can deserialize or unmarshall an object. This security vulnerability might allow an attacker to bypass security checks or to execute arbitrary code."
+  },
+  {
+    "id": "UNSAFE_FUNCTIONALITY",
+    "category": "Security Checker",
+    "supported_languages": "Go",
+    "cwe": "",
+    "brief": "UNSAFE_FUNCTIONALITY reports cases where an unsafe function unsafe.Alignof() , unsafe.Offsetof() , unsafe.Sizeof() is called or the type unsafe.Pointer is used, allowing direct memory access which can cause an information leak, code flow redirection, buffer overflow, or malicious code execution."
+  },
+  {
+    "id": "UNSAFE_JNI",
+    "category": "Security Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "UNSAFE_JNI finds unsafe Java Native interface library injection vulnerabilities, which arise when uncontrolled dynamic data is used as a dynamic library path. This security vulnerability might allow an attacker to load an untrusted dynamic library and potentially execute unsafe code."
+  },
+  {
+    "id": "UNSAFE_NAMED_QUERY",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The UNSAFE_NAMED_QUERY checker reports cases where an untrusted string is used as a database query name."
+  },
+  {
+    "id": "UNSAFE_REFLECTION",
+    "category": "Security Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "UNSAFE_REFLECTION finds unsafe reflection vulnerabilities, which arise when uncontrolled dynamic data is used as a class, method, or field/property name. This name is then passed to a reflection API. This security vulnerability might allow an attacker to bypass security checks, obtain unauthorized data, or execute arbitrary code."
+  },
+  {
+    "id": "UNSAFE_SESSION_SETTING",
+    "category": "Security Checker",
+    "supported_languages": "Ruby",
+    "cwe": "",
+    "brief": "UNSAFE_SESSION_SETTING reports unsafe settings related to web server sessions."
+  },
+  {
+    "id": "UNSAFE_XML_PARSE_CONFIG",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "The UNSAFE_XML_PARSE_CONFIG checker finds unsafe XML parsing configurations from library and package functions. Unsafe XML parsing configurations can make the program vulnerable to attacks such as XML external entity attack, billion laughs attack, XML parsing recovery error attack, Xinclude attack, etc."
+  },
+  {
+    "id": "UNUSED_VALUE",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "UNUSED_VALUE finds many instances of values that are assigned to variables but never used. For example, it can find places where a typographical or cut-and-paste error means that the wrong variable is being accessed. The analysis should never report a value as unused if it actually is used. Contact the support team if this occurs."
+  },
+  {
+    "id": "URL_MANIPULATION",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "URL_MANIPULATION detects instances in which a URL or a URI is constructed unsafely. An attacker who has control over the URL schema can completely change the meaning of the URL, including targeting a different endpoint or a file. An attacker with control over the URL authority can mount a phishing attack by modifying the URL value to point to a malicious website. An attacker who controls the path "
+  },
+  {
+    "id": "USE_AFTER_FREE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The USE_AFTER_FREE checker finds many cases where memory or a resource is used after it has been freed or closed. The consequence of using memory after freeing it is almost always memory corruption and a later program crash. The consequence of using a resource after closing it depends on the API in use."
+  },
+  {
+    "id": "USE_AFTER_MOVE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The USE_AFTER_MOVE checker reports when an object is used after it has been moved without being reinitialized."
+  },
+  {
+    "id": "USELESS_CALL",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "USELESS_CALL identifies calls to functions that are considered useless because their return value is ignored and the function call has no other discernible effect, such as performing I/O. Such a defect usually indicates either that the programmer expected the call to modify existing data structures or to interact with the environment (in which case a different function needs to be called), or that"
+  },
+  {
+    "id": "USER_POINTER",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "USER_POINTER finds many cases where an operating system kernel unsafely dereferences user pointers. Operating systems cannot directly dereference user-space pointers safely. Instead, they must access the pointed-to data using special \"paranoid\" routines (for example: using the copyin() and copyout() functions on BSD derived systems, or the copy_from_user() and copy_to_user() functions on Linux der"
+  },
+  {
+    "id": "VARARGS",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "VARARGS verifies correct usage of the variable argument macros from the standard header stdarg.h ."
+  },
+  {
+    "id": "VCALL_IN_CTOR_DTOR",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "The VCALL_IN_CTOR_DTOR checker finds cases where a virtual method is called from a constructor or from the destructor of a class."
+  },
+  {
+    "id": "VIRTUAL_DTOR",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "VIRTUAL_DTOR looks for cases where the wrong destructor or no destructor is called by the delete operator because an object is upcast before it is deleted and the destructor is not virtual. The checker does not report a defect if the derived class destructor is implicitly defined and does the same thing as the base class destructor."
+  },
+  {
+    "id": "VOLATILE_ATOMICITY",
+    "category": "Quality Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "VOLATILE_ATOMICITY finds many cases where a non-atomic update (specifically, a write to a particular field that uses the data from a previous read of the field) is made to a volatile field of a class without holding a lock. Although the volatile keyword and @Volatile annotation guarantee that writes to a volatile field by some thread will be visible to other threads, they do not guarantee that upd"
+  },
+  {
+    "id": "WEAK_GUARD",
+    "category": "Security Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "CWE-291",
+    "brief": "WEAK_GUARD finds comparisons of unreliable data (for example, host names, IP addresses, and so on) to constant strings. Code that uses such a comparison instead of an authorization or authentication check is vulnerable to exploitation by attacks such as DNS poisoning, or IP spoofing. Coverity refers to such a check as a \"weak guard\"."
+  },
+  {
+    "id": "WEAK_PASSWORD_HASH",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "WEAK_PASSWORD_HASH finds code that applies a cryptographic hash function (also known as a one-way hash function) to password data in a cryptographically weak manner. In such cases, the computational effort required to retrieve passwords from their hashes might be insufficient to deter large-scale, password-cracking attacks. Examples of weak hashing include the following:"
+  },
+  {
+    "id": "WEAK_URL_SANITIZATION",
+    "category": "Security Checker",
+    "supported_languages": "Java, JavaScript, Python, TypeScript The WEAK_URL_SANITIZATION checker finds several cases of weak sanitization of URLs that can be used in a",
+    "cwe": "",
+    "brief": "The WEAK_URL_SANITIZATION checker finds several cases of weak sanitization of URLs that can be used in a security context:"
+  },
+  {
+    "id": "WRAPPER_ESCAPE",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "",
+    "brief": "WRAPPER_ESCAPE finds many instances where the internal representation of a string wrapper class (such as CComBSTR , _bstr_t , CString , or std::string ) for a local- or global-scope object escapes the current function. The usual effect is a use-after-free error because the object destroys its internal BSTR upon exit. Whatever uses the escaped pointer now has an invalid pointer."
+  },
+  {
+    "id": "WRITE_CONST_FIELD",
+    "category": "Quality Checker",
+    "supported_languages": "C,",
+    "cwe": "",
+    "brief": "The WRITE_CONST_FIELD checker points out issues when a function writes to a structure, class, or union and that write modifies a const-qualified field in the aggregate."
+  },
+  {
+    "id": "WRONG_METHOD",
+    "category": "Quality Checker",
+    "supported_languages": "Java,",
+    "cwe": "",
+    "brief": "WRONG_METHOD finds certain incorrect usage of Boolean.getBoolean , Integer.getInteger , and some of their variants. For example, Boolean.getBoolean and Integer.getInteger return the value of a given system property and parse it to Boolean and Integer type, respectively. So they expect a string (as the first argument) that represents the name of a system property. A typical misunderstanding is that"
+  },
+  {
+    "id": "XML_EXTERNAL_ENTITY",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "XML_EXTERNAL_ENTITY reports a defect when tainted data is passed (as XML input) to an improperly configured XML parser. A weakly configured XML parser can be exploited by an attacker to cause a wide range of issues such as denial of service, other excessive use of local resources, leaking sensitive data or generating unwanted server requests."
+  },
+  {
+    "id": "XML_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "XML_INJECTION finds cases where XML with user-controllable content is parsed. If the input data is not properly sanitized, a malicious user might be able to insert unintended content or structure to subvert the application's logic. This can be accomplished by escaping the intended context and inserting additional element tags. The security impact depends on the nature of the XML data and how it is"
+  },
+  {
+    "id": "XPATH_INJECTION",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "An XPATH_INJECTION defect shows a dataflow path by which uncontrolled dynamic (tainted) data is used as part of an XPath query. The dataflow path starts at a source of untrusted data, such as getting input from an HTTP request. From there, the events in the defect show how this tainted data flows through the program: for example, from the argument of a function call to the parameter of the called "
+  },
+  {
+    "id": "XSS",
+    "category": "Security Checker",
+    "supported_languages": "C#,",
+    "cwe": "",
+    "brief": "XSS reports a defect on code that is vulnerable to a cross-site scripting attack. Such code constructs HTML output using tainted strings (that is, strings that an attacker can control) without adequately sanitizing (filtering or escaping) them. Allowing such tainted data into HTML output creates a security breach through which one user (the attacker) of the Web application can inject arbitrary Jav"
+  },
+  {
+    "id": "Y2K38_SAFETY",
+    "category": "Quality Checker",
+    "supported_languages": "C/C++,",
+    "cwe": "CWE-476",
+    "brief": "The Y2K38_SAFETY checker is intended to point out two potential issues with the rollover of the 32-bit signed integer counter of seconds since epoch in the UNIX time_t type. Software that deals with dates, and which uses time_t to represent those dates, is susceptible to data corruption due to this rollover. Such corruption begins not on the day the counter rolls over, but when the software in que"
+  }
+]

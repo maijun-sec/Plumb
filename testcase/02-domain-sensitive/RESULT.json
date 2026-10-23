@@ -1,0 +1,299 @@
+{
+  "category": "02-domain-sensitive",
+  "scan_mode": "per-file",
+  "cg_strategy": "global",
+  "total_findings": 511,
+  "cases": [
+    {
+      "id": "L1-safe-guard",
+      "kind": "tn",
+      "file": "L1RangeNarrowing.java",
+      "line": 22,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeAfterGuard: index guarded to [0,2] against a length-3 array. Must stay silent.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "L1-unsafe-noguard",
+      "kind": "tp",
+      "file": "L1RangeNarrowing.java",
+      "line": 29,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "unsafeWithoutGuard: same array, no guard. Must fire.",
+      "status": "supported",
+      "hits": 2,
+      "hit_lines": [
+        29
+      ]
+    },
+    {
+      "id": "L1-safe-divisor",
+      "kind": "tn",
+      "file": "L1RangeNarrowing.java",
+      "line": 37,
+      "rule_ids": [
+        "dfa-boundary-divide-by-zero",
+        "dfa-taint-divide-by-zero"
+      ],
+      "note": "safeAfterDivisorCheck: b == 0 guarded before division. Must stay silent.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "L1-unsafe-divisor",
+      "kind": "tp",
+      "file": "L1RangeNarrowing.java",
+      "line": 42,
+      "rule_ids": [
+        "dfa-boundary-divide-by-zero",
+        "dfa-taint-divide-by-zero"
+      ],
+      "note": "unsafeDivisor: unguarded division. Must fire.",
+      "status": "supported",
+      "hits": 2,
+      "hit_lines": [
+        42
+      ]
+    },
+    {
+      "id": "L1-safe-clamp",
+      "kind": "tn",
+      "file": "L1RangeNarrowing.java",
+      "line": 53,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds"
+      ],
+      "note": "safeViaClamp: Math.max/min clamp into [0,2]. This is the key intra-procedural probe: a real range domain should silence it.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "L1-unsafe-clamp-shadowed",
+      "kind": "tp",
+      "file": "L1RangeNarrowing.java",
+      "line": 64,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "unsafeClampShadowed: a clamp exists but the RAW index is used. Must fire.",
+      "status": "supported",
+      "hits": 2,
+      "hit_lines": [
+        64
+      ]
+    },
+    {
+      "id": "L2-safe-caller",
+      "kind": "tn",
+      "file": "L2CrossMethodRange.java",
+      "line": 25,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeCallerIndex: caller clamps, callee indexes. Must stay silent IF the range is propagated in the summary.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "L2-unsafe-caller",
+      "kind": "tp",
+      "file": "L2CrossMethodRange.java",
+      "line": 18,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "unsafeCallerIndex: raw index passed to the callee. Must fire. [R1101: re-pinned to the callee operation site. The boundary checkers report where the index/division happens, which is inside the callee; the caller line was never going to carry this finding.]",
+      "sink_function": "indexNowhere",
+      "status": "supported",
+      "hits": 2,
+      "hit_lines": [
+        18
+      ]
+    },
+    {
+      "id": "L2-safe-2hop",
+      "kind": "tn",
+      "file": "L2CrossMethodRange.java",
+      "line": 39,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeTwoHopsAway: guard in a helper, use two frames away.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "L2-unsafe-2hop",
+      "kind": "tp",
+      "file": "L2CrossMethodRange.java",
+      "line": 18,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "unsafeTwoHopsAway: guard disabled via limit<0, use two frames away. [R1101: re-pinned to the callee operation site. The boundary checkers report where the index/division happens, which is inside the callee; the caller line was never going to carry this finding.]",
+      "sink_function": "indexNowhere",
+      "status": "supported",
+      "hits": 2,
+      "hit_lines": [
+        18
+      ]
+    },
+    {
+      "id": "L2-safe-divisor-x",
+      "kind": "tn",
+      "file": "L2CrossMethodRange.java",
+      "line": 59,
+      "rule_ids": [
+        "dfa-boundary-divide-by-zero",
+        "dfa-taint-divide-by-zero"
+      ],
+      "note": "safeDivisorAcrossBoundary: caller guards, callee divides.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "L2-unsafe-divisor-x",
+      "kind": "tp",
+      "file": "L2CrossMethodRange.java",
+      "line": 68,
+      "rule_ids": [
+        "dfa-boundary-divide-by-zero",
+        "dfa-taint-divide-by-zero"
+      ],
+      "note": "unsafeDivisorAcrossBoundary: no guard, division in the callee. [R1101: re-pinned to the callee operation site. The boundary checkers report where the index/division happens, which is inside the callee; the caller line was never going to carry this finding.]",
+      "sink_function": "divideNowhere",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        68
+      ]
+    },
+    {
+      "id": "L3-unsafe-boxing",
+      "kind": "tp",
+      "file": "L3LayeredValue.java",
+      "line": 133,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds"
+      ],
+      "note": "unsafeThroughBoxing: the Integer box carries the RAW index while a different variable is clamped. Must fire.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        133
+      ]
+    },
+    {
+      "id": "L3-safe-field",
+      "kind": "tn",
+      "file": "L3LayeredValue.java",
+      "line": 75,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeThroughField: clamped into a Holder field, read back, used.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "L3-safe-collection",
+      "kind": "tn",
+      "file": "L3LayeredValue.java",
+      "line": 105,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeThroughCollection: clamp survives a List round-trip.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "L4-safe-early-return",
+      "kind": "tn",
+      "file": "L4ControlFlowMerge.java",
+      "line": 129,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeEarlyReturn: every path reaching the access passed the bounds check.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "L4-safe-one-branch-returns",
+      "kind": "tn",
+      "file": "L4ControlFlowMerge.java",
+      "line": 63,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeOneBranchReturns: the join is unreachable on the returning path.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "L4-safe-switch",
+      "kind": "tn",
+      "file": "L4ControlFlowMerge.java",
+      "line": 103,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeSwitchAllCases: every reachable case narrows, default throws.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    }
+  ],
+  "summary": {
+    "tp_total": 7,
+    "tp_supported": 7,
+    "tp_false_negative": 0,
+    "tn_total": 11,
+    "tn_supported": 11,
+    "tn_false_positive": 0
+  },
+  "cwe_histogram": {
+    "CWE-563": 17,
+    "CWE-404": 13,
+    "CWE-129": 12,
+    "CWE-190": 12,
+    "CWE-191": 10,
+    "CWE-369": 4,
+    "CWE-697": 4,
+    "CWE-476": 4,
+    "CWE-484": 4,
+    "CWE-597": 2,
+    "CWE-690": 2,
+    "CWE-668": 2,
+    "CWE-400": 1,
+    "CWE-1006": 1
+  }
+}

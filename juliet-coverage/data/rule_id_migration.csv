@@ -1,0 +1,690 @@
+old_id,new_id,domain,detect_reason,source_count,in_yaml,in_finding,in_registry,in_dfa_hardcoded,in_ast,collision
+ABSENT_CODEBLOCK_IN_CASE,plumb.naming.absent-codeblock-in-case,naming,UPPER_SNAKE naming/style,1,True,False,False,False,False,
+ALWAYS_NULL,plumb.ast.always-null,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+AMBIGUOUS_PRECEDENCE,plumb.ast.ambiguous-precedence,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+AND,plumb.ast.and,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+ARRAY_INDEX,plumb.ast.array-index,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+ARRAY_LENGTH,plumb.ast.array-length,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+ARRAY_OFFSET,plumb.ast.array-offset,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+ASSIGNMENT,plumb.ast.assignment,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+ASSIGNMENT_IN_OPERAND,plumb.ast.assignment-in-operand,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+AS_KEY,plumb.ast.as-key,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+AVERAGE_COMPUTATION,plumb.ast.average-computation,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+AssignmentInConditionCheck,plumb.ast.assignment-in-condition-check,ast,PascalCase default,1,True,False,False,False,False,
+AvoidPrintStackTraceCheck,plumb.ast.avoid-print-stack-trace-check,ast,PascalCase default,1,True,False,False,False,False,
+BAD_ARRAY_COMPARE,plumb.ast.bad-array-compare,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+BAD_ARRAY_STORE,plumb.ast.bad-array-store,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+BAD_CAST_TO_ABSTRACT_COLLECTION,plumb.ast.bad-cast-to-abstract-collection,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+BAD_CHECK_FOR_ODD,plumb.ast.bad-check-for-odd,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+BAD_FIELD,plumb.ast.bad-field,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+BIGDECIMAL_DOUBLE,plumb.ast.bigdecimal-double,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+BOOLEAN_RETURNS_NULL,plumb.ast.boolean-returns-null,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+BOXED_PRIMITIVE_FOR_PARSING,plumb.ast.boxed-primitive-for-parsing,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+BadShift,plumb.ast.bad-shift,ast,PascalCase default,1,True,False,False,False,False,
+BoundaryArrayBounds,plumb.ast.boundary-array-bounds,ast,PascalCase default,1,True,False,False,False,False,
+BoundaryDivZero,plumb.ast.boundary-div-zero,ast,PascalCase default,1,True,False,False,False,False,
+BoundaryOverflow,plumb.ast.boundary-overflow,ast,PascalCase default,1,True,False,False,False,False,
+BoundaryUnderflow,plumb.ast.boundary-underflow,ast,PascalCase default,1,True,False,False,False,False,
+CLASS_SHADOW_FIELD,plumb.ast.class-shadow-field,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+CLONE,plumb.ast.clone,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+COLLECTION_OF_URLS,plumb.ast.collection-of-urls,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+COMPARE_CLASSES,plumb.ast.compare-classes,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+COMPARE_OBJECTS_WITH_EQUALS,plumb.ast.compare-objects-with-equals,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+COMPARE_STRINGS_WITH_EQUALS,plumb.ast.compare-strings-with-equals,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+COMPARISON,plumb.ast.comparison,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+CONCURRENT_HASHMAP,plumb.ast.concurrent-hashmap,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+CONDITIONAL_ON_CONSTANT,plumb.ast.conditional-on-constant,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+CONTAINER_SEQUENCING,plumb.ast.container-sequencing,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+COVARIANT_EQUALS,plumb.ast.covariant-equals,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+CTOR_CALLING_OVERRIDABLE,plumb.ast.ctor-calling-overridable,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+CallToThreadRunCheck,plumb.ast.call-to-thread-run-check,ast,PascalCase default,1,True,False,False,False,False,
+CatchGenericException,plumb.ast.catch-generic-exception,ast,PascalCase default,2,True,True,False,False,False,
+CatchNullPointerExceptionCheck,plumb.ast.catch-null-pointer-exception-check,ast,PascalCase default,1,True,False,False,False,False,
+CompareInsteadOfAssigningCheck,plumb.ast.compare-instead-of-assigning-check,ast,PascalCase default,1,True,False,False,False,False,
+ConstantCondition,plumb.ast.constant-condition,ast,PascalCase default,1,True,False,False,False,False,
+Cwe325,plumb.ast.cwe325,ast,CweXXX malformed,2,True,True,False,False,False,
+Cwe329RandomIv,plumb.ast.cwe329randomiv,ast,CweXXX malformed,2,True,True,False,False,False,
+Cwe600,plumb.ast.cwe600,ast,CweXXX malformed,1,True,False,False,False,False,
+Cwe674Recursion,plumb.ast.cwe674recursion,ast,CweXXX malformed,2,True,True,False,False,False,
+Cwe832UnlockNotLocked,plumb.ast.cwe832unlocknotlocked,ast,CweXXX malformed,1,True,False,False,False,False,
+Cwe833Deadlock,plumb.ast.cwe833deadlock,ast,CweXXX malformed,1,True,False,False,False,False,
+DEREF_OF_READLINE_VALUE,plumb.ast.deref-of-readline-value,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+DOUBLECHECK,plumb.ast.doublecheck,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+DivideByZero,plumb.ast.divide-by-zero,ast,PascalCase default,1,True,False,False,False,False,
+EQUALITY,plumb.ast.equality,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+EQUALS_ARG_TYPE,plumb.ast.equals-arg-type,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+EQUALS_AVOID_NULL,plumb.ast.equals-avoid-null,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+EQUALS_HASHCODE,plumb.ast.equals-hashcode,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+EQUALS_NO_HASHCODE,plumb.ast.equals-no-hashcode,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+EQUALS_NO_NULL_CHECK,plumb.ast.equals-no-null-check,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+ERROR_LOGGING,plumb.ast.error-logging,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+EXCEPTION_LOG,plumb.ast.exception-log,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+EXPLICIT_FINALIZE,plumb.ast.explicit-finalize,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+EXPOSE_INTERNAL_REPRESENTATION,plumb.ast.expose-internal-representation,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+EXPOSE_REP2,plumb.ast.expose-rep2,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+EmptyStatementBlockCheck,plumb.ast.empty-statement-block-check,ast,PascalCase default,1,True,False,False,False,False,
+EnvVarInfoExposure,plumb.ast.env-var-info-exposure,ast,PascalCase default,2,True,True,False,False,False,YES
+EnvVarInfoExposureAstCheck,plumb.ast.env-var-info-exposure-ast-check,ast,PascalCase default,1,True,False,False,False,False,
+EqualsCalledOnNull,plumb.ast.equals-called-on-null,ast,PascalCase default,1,True,False,False,False,False,
+ErrorMessageInfoLeak,plumb.ast.error-message-info-leak,ast,PascalCase default,1,False,True,False,False,False,YES
+ExplicitFinalizeCallCheck,plumb.ast.explicit-finalize-call-check,ast,PascalCase default,1,True,False,False,False,False,
+FINALIZE,plumb.ast.finalize,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+FINALIZE_ONLY_OVERRIDDEN,plumb.ast.finalize-only-overridden,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+FINALIZE_WITHOUT_SUPER,plumb.ast.finalize-without-super,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+FLOATING_POINT,plumb.ast.floating-point,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+HARDCODED_ABSOLUTE_PATH,plumb.ast.hardcoded-absolute-path,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+HARDCODED_CREDENTIALS,plumb.ast.hardcoded-credentials,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+HARDCODED_IP,plumb.ast.hardcoded-ip,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+HASHCODE_TOSTRING,plumb.ast.hashcode-tostring,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+HIBERNATE_BAD_HASHCODE,plumb.ast.hibernate-bad-hashcode,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+HIDES_FIELD,plumb.ast.hides-field,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+HardcodedPasswordSinkAstCheck,plumb.ast.hardcoded-password-sink-ast-check,ast,PascalCase default,1,True,False,False,False,False,
+IDIOM,plumb.ast.idiom,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+IGNORED_RESULT,plumb.ast.ignored-result,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+INCOMPATIBLE_TYPES,plumb.ast.incompatible-types,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+INSTANCE_BEFORE_FINALS_ASSIGNED,plumb.ast.instance-before-finals-assigned,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+INTEGER_MULTIPLY_CAST_TO_LONG,plumb.ast.integer-multiply-cast-to-long,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+IN_FINALLY,plumb.ast.in-finally,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+ITERATOR_NEXT_EXCEPTION,plumb.ast.iterator-next-exception,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+IncompleteCleanupCheck,plumb.ast.incomplete-cleanup-check,ast,PascalCase default,1,True,False,False,False,False,
+IncorrectBlockDelimitationCheck,plumb.ast.incorrect-block-delimitation-check,ast,PascalCase default,1,True,False,False,False,False,
+InfiniteLoop,plumb.ast.infinite-loop,ast,PascalCase default,1,True,False,False,False,False,YES
+InfoExposureInCommentCheck,plumb.ast.info-exposure-in-comment-check,ast,PascalCase default,1,True,False,False,False,False,
+InfoExposureQueryString,plumb.ast.info-exposure-query-string,ast,PascalCase default,2,True,True,False,False,False,
+InsecureCommunication,plumb.ast.insecure-communication,ast,PascalCase default,2,True,True,False,False,False,
+InsecureCrypto,plumb.ast.insecure-crypto,ast,PascalCase default,1,True,False,False,False,False,
+InsecureTempFileCheck,plumb.ast.insecure-temp-file-check,ast,PascalCase default,1,True,False,False,False,False,
+InsecureTempFilePermsCheck,plumb.ast.insecure-temp-file-perms-check,ast,PascalCase default,1,True,False,False,False,False,
+InsufficientSessionExpiration,plumb.ast.insufficient-session-expiration,ast,PascalCase default,2,True,True,False,False,False,YES
+IntegerOverflow,plumb.ast.integer-overflow,ast,PascalCase default,1,True,False,False,False,False,
+JUMBLED_INCREMENTER,plumb.ast.jumbled-incrementer,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+LITERALS_FIRST_IN_COMPARISONS,plumb.ast.literals-first-in-comparisons,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+LOAD_OF_KNOWN_NULL_VALUE,plumb.ast.load-of-known-null-value,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+LOCALE_ROOT,plumb.ast.locale-root,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+LOOP_FLOAT,plumb.ast.loop-float,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+LOSING_EXCEPTION_INFORMATION,plumb.ast.losing-exception-information,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+LiteralBooleanConditionCheck,plumb.ast.literal-boolean-condition-check,ast,PascalCase default,1,True,False,False,False,False,
+LogInfoLeakCheck,plumb.ast.log-info-leak-check,ast,PascalCase default,1,True,False,False,False,False,
+MESSAGEDIGEST_FIELD,plumb.ast.messagedigest-field,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+METHOD_CALL,plumb.ast.method-call,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+MISSING_BREAK,plumb.ast.missing-break,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+MISSING_DEPRECATED,plumb.ast.missing-deprecated,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+MISSING_SERIAL_VERSION_UID,plumb.ast.missing-serial-version-uid,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+MUTABLE_STATIC_SHOULD_BE_FINAL,plumb.ast.mutable-static-should-be-final,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+MissingBreakCheck,plumb.ast.missing-break-check,ast,PascalCase default,1,True,False,False,False,False,
+MissingDefaultCaseCheck,plumb.ast.missing-default-case-check,ast,PascalCase default,1,True,False,False,False,False,
+MissingPasswordMaskingCheck,plumb.ast.missing-password-masking-check,ast,PascalCase default,1,True,False,False,False,False,
+MultipleBindsSamePortCheck,plumb.ast.multiple-binds-same-port-check,ast,PascalCase default,1,True,False,False,False,False,
+NEGATING_RESULT_OF_COMPARETO,plumb.ast.negating-result-of-compareto,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+NON_SERIALIZABLE_CLASS,plumb.ast.non-serializable-class,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+NOT_CALL_GC,plumb.ast.not-call-gc,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+NO_READ_IF_EQUAL_TO_WRITE,plumb.ast.no-read-if-equal-to-write,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+NPE,plumb.ast.npe,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+NULL_ARG_TO_VARARG_METHOD,plumb.ast.null-arg-to-vararg-method,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+NoEffectStatementCheck,plumb.ast.no-effect-statement-check,ast,PascalCase default,1,True,False,False,False,False,
+NullDerefFromReturn,plumb.ast.null-deref-from-return,ast,PascalCase default,1,True,False,False,False,False,YES
+NullDerefFromReturnAstCheck,plumb.ast.null-deref-from-return-ast-check,ast,PascalCase default,1,True,False,False,False,False,
+NullDereference,plumb.ast.null-dereference,ast,PascalCase default,1,True,False,False,False,False,
+NumericConversionCheck,plumb.ast.numeric-conversion-check,ast,PascalCase default,1,True,False,False,False,False,
+OCTAL_VALUES,plumb.ast.octal-values,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+OF_DEMETER,plumb.ast.of-demeter,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+OF_THROWABLE,plumb.ast.of-throwable,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+OPTIONAL_GET,plumb.ast.optional-get,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+OR,plumb.ast.or,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+ORM_LOAD_NULL_CHECK,plumb.ast.orm-load-null-check,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+ORM_LOST_UPDATE,plumb.ast.orm-lost-update,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+ORM_UNNECESSARY_GET,plumb.ast.orm-unnecessary-get,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+OVERRIDE_EQUALS_AND_HASHCODE,plumb.ast.override-equals-and-hashcode,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+ObsoleteApiCheck,plumb.ast.obsolete-api-check,ast,PascalCase default,1,True,False,False,False,False,
+ObsoleteFunction,plumb.ast.obsolete-function,ast,PascalCase default,1,True,False,False,False,False,
+OffByOne,plumb.ast.off-by-one,ast,PascalCase default,1,True,False,False,False,False,
+OffByOneLoopCheck,plumb.ast.off-by-one-loop-check,ast,PascalCase default,1,True,False,False,False,False,
+OrmLoadNullCheckDfa,plumb.ast.orm-load-null-check-dfa,ast,PascalCase default,1,True,False,False,False,False,
+OrmLostUpdateDfa,plumb.ast.orm-lost-update-dfa,ast,PascalCase default,1,True,False,False,False,False,
+OrmUnnecessaryGetDfa,plumb.ast.orm-unnecessary-get-dfa,ast,PascalCase default,1,True,False,False,False,False,
+OverlyBroadCatchCheck,plumb.ast.overly-broad-catch-check,ast,PascalCase default,1,True,False,False,False,False,
+PRESERVE_STACK_TRACE,plumb.ast.preserve-stack-trace,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+PRIMITIVES_BOXED,plumb.ast.primitives-boxed,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+PRINT_STACK_TRACE,plumb.ast.print-stack-trace,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+PUBLIC_STATIC_MUTABLE,plumb.ast.public-static-mutable,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+PersistentCookieCheck,plumb.ast.persistent-cookie-check,ast,PascalCase default,1,True,False,False,False,False,
+PredictableSaltCheck,plumb.ast.predictable-salt-check,ast,PascalCase default,1,True,False,False,False,False,
+PrintStackTraceCheck,plumb.ast.print-stack-trace-check,ast,PascalCase default,1,True,False,False,False,False,
+QUESTIONABLE_BOOLEAN_ASSIGNMENT,plumb.ast.questionable-boolean-assignment,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+REASSIGNING_LOOP_VARIABLES,plumb.ast.reassigning-loop-variables,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+REDIRECT_WITHOUT_EXIT,plumb.ast.redirect-without-exit,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+REGEX_CONFUSION,plumb.ast.regex-confusion,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+RESOURCE_USED_AS_BOTH_INPUT_AND_OUTPUT,plumb.ast.resource-used-as-both-input-and-output,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+RETURN_FROM_FINALLY,plumb.ast.return-from-finally,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+RETURN_VALUE_IGNORED_BAD_PRACTICE,plumb.ast.return-value-ignored-bad-practice,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+REUSE_ENTRY_OBJECTS,plumb.ast.reuse-entry-objects,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+ReachableAssertion,plumb.ast.reachable-assertion,ast,PascalCase default,2,True,True,False,False,False,YES
+RedirectWithoutExitCheck,plumb.ast.redirect-without-exit-check,ast,PascalCase default,1,True,False,False,False,False,
+ResourceLeak,plumb.ast.resource-leak,ast,PascalCase default,1,True,False,False,False,False,
+ResourceLeak_CloseOnPath,plumb.ast.resourceleak-closeonpath,ast,fallback,1,True,False,False,False,False,
+ReturnInFinallyBlockCheck,plumb.ast.return-in-finally-block-check,ast,PascalCase default,1,True,False,False,False,False,
+RuntimeExecCheck,plumb.ast.runtime-exec-check,ast,PascalCase default,1,True,False,False,False,False,
+SELF_NO_OBJECT,plumb.ast.self-no-object,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+SERVLET_ATOMICITY,plumb.ast.servlet-atomicity,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+SIGNATURE_DECLARES_HASHCODE_OF_OBJECT,plumb.ast.signature-declares-hashcode-of-object,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+SIGNED_CHECK,plumb.ast.signed-check,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+SIMPLEDATEFORMAT_LOCALE,plumb.ast.simpledateformat-locale,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+SINGLETON_RACE,plumb.ast.singleton-race,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+SLEEP_WITH_LOCK_HELD,plumb.ast.sleep-with-lock-held,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+STRING_BOXED,plumb.ast.string-boxed,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+STRING_EQUALITY_WITH_EQUALS,plumb.ast.string-equality-with-equals,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+STRING_LENGTH,plumb.ast.string-length,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+SUSPICIOUS_EQUALS_METHOD_NAME,plumb.ast.suspicious-equals-method-name,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+SYNCHRONIZED_LOCK,plumb.ast.synchronized-lock,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+SYNC_BLOCK,plumb.ast.sync-block,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+SYNC_INVOKED_ON_UNSHARED_VARIABLE,plumb.ast.sync-invoked-on-unshared-variable,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+SYSTEM_EXIT,plumb.ast.system-exit,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+SeededRandomCheck,plumb.ast.seeded-random-check,ast,PascalCase default,1,True,False,False,False,False,
+SensitiveDataLeak,plumb.ast.sensitive-data-leak,ast,PascalCase default,1,True,False,False,False,False,
+SensitiveDataLeak_command,plumb.ast.sensitivedataleak-command,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_deserialize,plumb.ast.sensitivedataleak-deserialize,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_file,plumb.ast.sensitivedataleak-file,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_format,plumb.ast.sensitivedataleak-format,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_header,plumb.ast.sensitivedataleak-header,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_ldap,plumb.ast.sensitivedataleak-ldap,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_log,plumb.ast.sensitivedataleak-log,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_nosql,plumb.ast.sensitivedataleak-nosql,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_ognl,plumb.ast.sensitivedataleak-ognl,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_openRedirect,plumb.ast.sensitivedataleak-openredirect,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_reflection,plumb.ast.sensitivedataleak-reflection,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_regex,plumb.ast.sensitivedataleak-regex,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_sql,plumb.ast.sensitivedataleak-sql,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_url,plumb.ast.sensitivedataleak-url,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_xml,plumb.ast.sensitivedataleak-xml,ast,fallback,1,True,False,False,False,False,
+SensitiveDataLeak_xpath,plumb.ast.sensitivedataleak-xpath,ast,fallback,1,True,False,False,False,False,
+SensitiveInfoUncleared,plumb.ast.sensitive-info-uncleared,ast,PascalCase default,1,True,False,False,False,False,YES
+ServletAtomicityDfa,plumb.ast.servlet-atomicity-dfa,ast,PascalCase default,1,True,False,False,False,False,
+ShellErrorExposureCheck,plumb.ast.shell-error-exposure-check,ast,PascalCase default,1,True,False,False,False,False,
+SingletonRaceDfa,plumb.ast.singleton-race-dfa,ast,PascalCase default,1,True,False,False,False,False,
+StringEqOperatorCheck,plumb.ast.string-eq-operator-check,ast,PascalCase default,1,True,False,False,False,False,
+SuspiciousCommentCheck,plumb.ast.suspicious-comment-check,ast,PascalCase default,1,True,False,False,False,False,
+SystemExitUsageCheck,plumb.ast.system-exit-usage-check,ast,PascalCase default,1,True,False,False,False,False,
+THROWABLE,plumb.ast.throwable,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+THROWABLE_NOT_THROWN,plumb.ast.throwable-not-thrown,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+TO_THREAD_RUN,plumb.ast.to-thread-run,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+TRY_WITH_RESOURCES,plumb.ast.try-with-resources,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+ThreadInServletCheck,plumb.ast.thread-in-servlet-check,ast,PascalCase default,1,True,False,False,False,False,
+ThrowGenericException,plumb.ast.throw-generic-exception,ast,PascalCase default,1,True,False,False,False,False,
+ThrowGenericExceptionCheck,plumb.ast.throw-generic-exception-check,ast,PascalCase default,1,True,False,False,False,False,
+UNCONFIRMED_CAST,plumb.ast.unconfirmed-cast,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+UNINIT_NONNULL,plumb.ast.uninit-nonnull,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+UNLOGGED_SECURITY_EXCEPTION,plumb.ast.unlogged-security-exception,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+UNREACHABLE_CODE,plumb.ast.unreachable-code,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+UNUSED_ASSIGNMENT,plumb.ast.unused-assignment,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+UNUSED_FORMAL_PARAMETER,plumb.ast.unused-formal-parameter,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+UnboundedMemAllocCheck,plumb.ast.unbounded-mem-alloc-check,ast,PascalCase default,1,True,False,False,False,False,
+UncaughtException,plumb.ast.uncaught-exception,ast,PascalCase default,1,True,False,False,False,False,
+UncaughtExceptionPropagator,plumb.ast.uncaught-exception-propagator,ast,PascalCase default,2,True,True,False,False,False,
+UncheckedReturn,plumb.ast.unchecked-return,ast,PascalCase default,2,True,True,False,False,False,
+UnclearedSensitiveInfoCheck,plumb.ast.uncleared-sensitive-info-check,ast,PascalCase default,1,True,False,False,False,False,
+UninitNonnullDfa,plumb.ast.uninit-nonnull-dfa,ast,PascalCase default,1,True,False,False,False,False,
+UnprotectedCredTransport,plumb.ast.unprotected-cred-transport,ast,PascalCase default,2,True,True,False,False,False,YES
+UnsaltedOneWayHash,plumb.ast.unsalted-one-way-hash,ast,PascalCase default,2,True,True,False,False,False,YES
+UnusedVariableAstCheck,plumb.ast.unused-variable-ast-check,ast,PascalCase default,1,True,False,False,False,False,
+UseTryWithResourcesCheck,plumb.ast.use-try-with-resources-check,ast,PascalCase default,1,True,False,False,False,False,
+WAIT_NOTIFY_IN_LOOP,plumb.ast.wait-notify-in-loop,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+WEAK_URL_SANITIZATION,plumb.ast.weak-url-sanitization,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+WRITE_TO_STATIC_FROM_INSTANCE_METHOD,plumb.ast.write-to-static-from-instance-method,ast,UPPER_SNAKE default,1,True,False,False,False,False,
+WRONG_METHOD,plumb.ast.wrong-method,ast,UPPER_SNAKE default,1,True,False,False,False,False,YES
+WeakCryptoCheck,plumb.ast.weak-crypto-check,ast,PascalCase default,1,True,False,False,False,False,
+WeakHashChecker,plumb.ast.weak-hash-checker,ast,PascalCase default,1,True,False,False,False,False,
+WeakPrngCheck,plumb.ast.weak-prng-check,ast,PascalCase default,1,True,False,False,False,False,
+avoid-print-stack-trace,plumb.ast.avoid-print-stack-trace,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+bu-0001-taint-request-param,plumb.taint.taint-request-param,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0002-taint-request-header,plumb.taint.taint-request-header,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0003-taint-system-in,plumb.taint.taint-system-in,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0004-taint-file-read,plumb.taint.taint-file-read,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0005-taint-network-recv,plumb.taint.taint-network-recv,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0006-taint-console-read,plumb.taint.taint-console-read,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0007-taint-db-result,plumb.taint.taint-db-result,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0008-taint-source-sensitive-data,plumb.taint.taint-source-sensitive-data,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0009-taint-source-system-property,plumb.taint.taint-source-system-property,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0010-taint-source-properties-file,plumb.taint.taint-source-properties-file,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0101-taint-sink-sql,plumb.taint.taint-sink-sql,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0102-taint-sink-cmd,plumb.taint.taint-sink-cmd,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0103-taint-sink-path,plumb.taint.taint-sink-path,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0104-taint-sink-xss,plumb.taint.taint-sink-xss,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0105-taint-sink-deserialize,plumb.taint.taint-sink-deserialize,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0106-taint-sink-url,plumb.taint.taint-sink-url,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0107-taint-sink-reflection,plumb.taint.taint-sink-reflection,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0108-taint-sink-log,plumb.taint.taint-sink-log,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0109-taint-sink-xpath,plumb.taint.taint-sink-xpath,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0110-taint-sink-ldap,plumb.taint.taint-sink-ldap,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0111-taint-sink-xml,plumb.taint.taint-sink-xml,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0112-taint-sink-header,plumb.taint.taint-sink-header,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0113-taint-sink-format,plumb.taint.taint-sink-format,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0114-taint-sink-nosql,plumb.taint.taint-sink-nosql,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0115-taint-sink-ognl,plumb.taint.taint-sink-ognl,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0116-taint-sink-regex,plumb.taint.taint-sink-regex,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0117-taint-sink-open-redirect,plumb.taint.taint-sink-open-redirect,taint,bu- slug taint,1,False,False,True,False,False,
+bu-0201-style-empty-catch,plumb.style.style-empty-catch,style,bu- slug style,1,False,False,True,False,False,
+bu-0202-style-system-out,plumb.style.style-system-out,style,bu- slug style,1,False,False,True,False,False,
+bu-0203-style-unused-import,plumb.style.style-unused-import,style,bu- slug style,1,False,False,True,False,False,
+bu-0204-style-class-naming,plumb.style.style-class-naming,style,bu- slug style,1,False,False,True,False,False,
+bu-0205-style-method-naming,plumb.style.style-method-naming,style,bu- slug style,1,False,False,True,False,False,
+bu-0206-style-constant-naming,plumb.style.style-constant-naming,style,bu- slug style,1,False,False,True,False,False,
+bu-0207-style-method-too-long,plumb.style.style-method-too-long,style,bu- slug style,1,False,False,True,False,False,
+bu-0208-style-catch-generic,plumb.style.style-catch-generic,style,bu- slug style,1,False,False,True,False,False,
+bu-0209-style-empty-control-statement,plumb.style.style-empty-control-statement,style,bu- slug style,1,False,False,True,False,False,
+bu-0210-style-empty-block,plumb.style.style-empty-block,style,bu- slug style,1,False,False,True,False,False,
+bu-0400-assignment-in-operand,plumb.ast.assignment-in-operand,ast,bu- slug ast,1,False,False,True,False,False,YES
+bu-0406-avoid-hardcoded-ip,plumb.ast.avoid-hardcoded-ip,ast,bu- default,1,False,False,True,False,False,
+bu-0504-default-encoding,plumb.ast.default-encoding,ast,bu- default,1,False,False,True,False,False,
+bu-0505-superfluous-instanceof,plumb.ast.superfluous-instanceof,ast,bu- default,1,False,False,True,False,False,
+bu-0506-bigdecimal-double-ctor,plumb.ast.bigdecimal-double-ctor,ast,bu- default,1,False,False,True,False,False,
+bu-0507-random-used-once,plumb.ast.random-used-once,ast,bu- default,1,False,False,True,False,False,
+bu-0604-collection-is-empty,plumb.ast.collection-is-empty,ast,bu- slug ast,1,False,False,True,False,False,
+bu-0605-empty-statement,plumb.ast.empty-statement,ast,bu- slug ast,1,False,False,True,False,False,
+bu-0606-class-var-visibility,plumb.style.class-var-visibility,style,bu- slug style,2,False,True,True,False,False,
+bu-0607-big-decimal-equals,plumb.ast.big-decimal-equals,ast,bu- default,1,False,False,True,False,False,
+bu-0608-self-assignment,plumb.ast.self-assignment,ast,bu- slug ast,1,False,False,True,False,False,
+bu-0609-param-hides-field,plumb.ast.param-hides-field,ast,bu- default,1,False,False,True,False,False,
+bu-0610-collapsible-if,plumb.ast.collapsible-if,ast,bu- default,1,False,False,True,False,False,
+bu-0611-ignored-result,plumb.ast.ignored-result,ast,bu- default,1,False,False,True,False,False,YES
+bu-0612-ambiguous-precedence,plumb.ast.ambiguous-precedence,ast,bu- default,1,False,False,True,False,False,YES
+bu-0613-array-equality,plumb.ast.array-equality,ast,bu- default,1,False,False,True,False,False,
+bu-0614-test-no-assertion,plumb.ast.test-no-assertion,ast,bu- default,1,False,False,True,False,False,
+bu-0701-extends-object,plumb.ast.extends-object,ast,bu- default,1,False,False,True,False,False,
+bu-0702-empty-method-in-abstract,plumb.style.empty-method-in-abstract,style,bu- slug style,1,False,False,True,False,False,
+bu-0703-unnecessary-return,plumb.ast.unnecessary-return,ast,bu- default,1,False,False,True,False,False,
+bu-0704-local-variable-could-be-final,plumb.ast.local-variable-could-be-final,ast,bu- default,1,False,False,True,False,False,
+bu-0705-comment-default-access,plumb.style.comment-default-access,style,bu- slug style,1,False,False,True,False,False,
+bu-0801-array-hashcode-tostring,plumb.ast.array-hashcode-tostring,ast,bu- default,2,True,False,True,False,False,
+bu-0802-case-insensitive-comparison,plumb.ast.case-insensitive-comparison,ast,bu- default,1,False,False,True,False,False,
+bu-0803-catch-nullpointer-exception,plumb.ast.catch-nullpointer-exception,ast,bu- default,3,True,True,True,False,False,YES
+bu-0804-synchronization-on-string-or-boxed,plumb.ast.synchronization-on-string-or-boxed,ast,bu- default,2,True,False,True,False,False,
+bu-0805-boolean-method-returns-null,plumb.style.boolean-method-returns-null,style,bu- slug style,2,True,False,True,False,False,
+bu-0901-mutable-static-should-be-final,plumb.ast.mutable-static-should-be-final,ast,bu- default,3,True,True,True,False,False,YES
+bu-0902-locale-dependent-case-conversion,plumb.ast.locale-dependent-case-conversion,ast,bu- default,1,False,False,True,False,False,
+bu-0903-string-builder-concatenation-in-loop,plumb.ast.string-builder-concatenation-in-loop,ast,bu- default,1,False,False,True,False,False,
+bu-0904-useless-object,plumb.ast.useless-object,ast,bu- default,1,False,False,True,False,False,
+bu-0905-int-division-cast-to-double,plumb.ast.int-division-cast-to-double,ast,bu- default,1,False,False,True,False,False,
+bu-1001-unreachable-code,plumb.ast.unreachable-code,ast,bu- slug ast,2,True,False,True,False,False,YES
+bu-1101-unused-local-variable,plumb.ast.unused-local-variable,ast,bu- default,1,False,False,True,False,False,
+bu-1102-unused-formal-parameter,plumb.ast.unused-formal-parameter,ast,bu- default,1,False,False,True,False,False,YES
+bu-1103-avoid-print-stack-trace,plumb.ast.avoid-print-stack-trace,ast,bu- default,3,True,True,True,False,False,YES
+bu-1104-string-equality-with-equals,plumb.ast.string-equality-with-equals,ast,bu- default,3,True,True,True,False,False,YES
+bu-1105-expose-internal-representation,plumb.ast.expose-internal-representation,ast,bu- default,2,True,False,True,False,False,YES
+bu-1106-throwable-not-thrown,plumb.ast.throwable-not-thrown,ast,bu- default,2,True,False,True,False,False,YES
+bu-1107-explicit-finalize,plumb.ast.explicit-finalize,ast,bu- default,2,True,True,False,False,False,YES
+bu-1107-hardcoded-credentials,plumb.ast.hardcoded-credentials,ast,bu- default,2,True,False,True,False,False,YES
+bu-1108-dead-store,plumb.ast.dead-store,ast,bu- default,1,False,False,True,False,False,
+bu-1108-expression-always-false,plumb.ast.expression-always-false,ast,bu- default,2,True,True,False,False,False,YES
+bu-1109-expression-always-true,plumb.ast.expression-always-true,ast,bu- default,2,True,True,False,False,False,YES
+bu-1110-direct-use-of-threads-in-servlet,plumb.ast.direct-use-of-threads-in-servlet,ast,bu- default,2,True,True,False,False,False,
+bu-1111-missing-password-masking,plumb.ast.missing-password-masking,ast,bu- default,2,True,True,False,False,False,YES
+bu-1112-predictable-salt,plumb.ast.predictable-salt,ast,bu- default,2,True,True,False,False,False,YES
+bu-1113-insecure-temp-file-perms,plumb.ast.insecure-temp-file-perms,ast,bu- default,2,True,True,False,False,False,YES
+bu-1114-sensitive-info-uncleared,plumb.ast.sensitive-info-uncleared,ast,bu- default,2,True,True,False,False,False,YES
+bu-1115-info-exposure-in-comment,plumb.style.info-exposure-in-comment,style,bu- slug style,2,True,True,False,False,False,
+bu-1116-return-in-finally,plumb.ast.return-in-finally,ast,bu- default,2,True,True,False,False,False,YES
+bu-1117-multiple-binds-same-port,plumb.ast.multiple-binds-same-port,ast,bu- default,2,True,True,False,False,False,YES
+bu-1118-redirect-without-exit,plumb.taint.redirect-without-exit,taint,bu- slug taint,2,True,True,False,False,False,
+bu-1119-log-info-leak,plumb.ast.log-info-leak,ast,bu- default,2,True,True,False,False,False,YES
+bu-1120-seeded-random,plumb.ast.seeded-random,ast,bu- default,2,True,True,False,False,False,YES
+bu-1121-weak-crypto,plumb.ast.weak-crypto,ast,bu- default,2,True,True,False,False,False,YES
+bu-1122-incomplete-cleanup,plumb.ast.incomplete-cleanup,ast,bu- default,2,True,True,False,False,False,YES
+call-to-thread-run,plumb.ast.call-to-thread-run,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+catch-nullpointer-exception,plumb.ast.catch-nullpointer-exception,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+cov-0001-missing-break,plumb.ast.missing-break,ast,cov- default (need manual review),3,True,True,True,False,False,YES
+cov-hibernate-bad-hashcode,plumb.ast.hibernate-bad-hashcode,ast,cov- default (need manual review),1,True,False,False,False,False,YES
+cov-orm-load-null-check,plumb.ast.orm-load-null-check,ast,cov- default (need manual review),1,True,False,False,False,False,YES
+cov-orm-lost-update,plumb.ast.orm-lost-update,ast,cov- default (need manual review),1,True,False,False,False,False,YES
+cov-orm-unnecessary-get,plumb.ast.orm-unnecessary-get,ast,cov- default (need manual review),2,True,True,False,False,False,YES
+cov-regex-confusion,plumb.ast.regex-confusion,ast,cov- default (need manual review),1,True,False,False,False,False,YES
+cov-servlet-atomicity,plumb.ast.servlet-atomicity,ast,cov- default (need manual review),1,True,False,False,False,False,YES
+cov-singleton-race,plumb.ast.singleton-race,ast,cov- default (need manual review),1,True,False,False,False,False,YES
+cov-uninit-nonnull,plumb.ast.uninit-nonnull,ast,cov- default (need manual review),1,True,False,False,False,False,YES
+cov-unlogged-security-exception,plumb.ast.unlogged-security-exception,ast,cov- default (need manual review),1,True,False,False,False,False,YES
+cov-weak-url-sanitization,plumb.ast.weak-url-sanitization,ast,cov- default (need manual review),1,True,False,False,False,False,YES
+cov-wrong-method,plumb.ast.wrong-method,ast,cov- default (need manual review),1,True,False,False,False,False,YES
+dfa.class-based-issue,plumb.ast.class-based-issue,ast,dfa.* generic fallback,2,True,False,False,True,False,
+dfa.cwe193-off-by-one-loop,plumb.boundary.cwe193-off-by-one-loop,boundary,dfa.cwe prefix + CWE-193,1,True,False,False,False,False,
+dfa.cwe325-missing-crypto-step,plumb.crypto.cwe325-missing-crypto-step,crypto,dfa.cwe prefix + CWE-325,2,True,False,False,True,False,
+dfa.cwe379-insecure-temp-file,plumb.ast.cwe379-insecure-temp-file,ast,dfa.cwe prefix + CWE-379,1,True,False,False,False,False,
+dfa.cwe382-system-exit,plumb.ast.cwe382-system-exit,ast,dfa.cwe prefix + CWE-382,2,True,False,False,True,False,
+dfa.cwe390-empty-catch-block,plumb.ast.cwe390-empty-catch-block,ast,dfa.cwe prefix + CWE-390,2,True,True,False,False,False,
+dfa.cwe390-empty-error-block,plumb.ast.cwe390-empty-error-block,ast,dfa.cwe prefix + CWE-390,2,True,True,False,False,False,
+dfa.cwe396-catch-generic-exception,plumb.ast.cwe396-catch-generic-exception,ast,dfa.cwe prefix + CWE-396,2,True,True,False,False,False,
+dfa.cwe397-generic-throw-exception,plumb.ast.cwe397-generic-throw-exception,ast,dfa.cwe prefix + CWE-397,2,True,True,False,False,False,
+dfa.cwe398-empty-block,plumb.ast.cwe398-empty-block,ast,dfa.cwe prefix + CWE-398,2,True,True,False,False,False,
+dfa.cwe398-empty-statement,plumb.ast.cwe398-empty-statement,ast,dfa.cwe prefix + CWE-398,1,False,True,False,False,False,
+dfa.cwe398-self-assign,plumb.ast.cwe398-self-assign,ast,dfa.cwe prefix + CWE-398,1,False,True,False,False,False,
+dfa.cwe404-resource-shutdown,plumb.resource.cwe404-resource-shutdown,resource,dfa.cwe prefix + CWE-404,2,True,False,False,True,False,
+dfa.cwe477-obsolete-function,plumb.ast.cwe477-obsolete-function,ast,dfa.cwe prefix + CWE-477,3,True,True,False,True,False,
+dfa.cwe478-missing-default-case,plumb.ast.cwe478-missing-default-case,ast,dfa.cwe prefix + CWE-478,1,True,False,False,False,False,
+dfa.cwe481-assigning-instead-comparing,plumb.ast.cwe481-assigning-instead-comparing,ast,dfa.cwe prefix + CWE-481,2,True,True,False,False,False,
+dfa.cwe482-compare-instead-of-assign,plumb.ast.cwe482-compare-instead-of-assign,ast,dfa.cwe prefix + CWE-482,1,False,True,False,False,False,
+dfa.cwe483-incorrect-block-delimitation,plumb.ast.cwe483-incorrect-block-delimitation,ast,dfa.cwe prefix + CWE-483,1,True,False,False,False,False,
+dfa.cwe506-embedded-malicious-code,plumb.ast.cwe506-embedded-malicious-code,ast,dfa.cwe prefix + CWE-506,2,True,False,False,True,False,
+dfa.cwe510-trapdoor,plumb.ast.cwe510-trapdoor,ast,dfa.cwe prefix + CWE-510,2,True,False,False,True,False,
+dfa.cwe511-runtime-exec,plumb.ast.cwe511-runtime-exec,ast,dfa.cwe prefix + CWE-511,1,True,False,False,False,False,
+dfa.cwe526-env-var,plumb.ast.cwe526-env-var,ast,dfa.cwe prefix + CWE-526,2,True,False,False,True,False,
+dfa.cwe535-shell-error-exposure,plumb.info.cwe535-shell-error-exposure,info,dfa.cwe prefix + CWE-535,2,True,True,False,False,False,
+dfa.cwe539-persistent-cookie,plumb.info.cwe539-persistent-cookie,info,dfa.cwe prefix + CWE-539,2,True,True,False,False,False,
+dfa.cwe546-suspicious-comment,plumb.info.cwe546-suspicious-comment,info,dfa.cwe prefix + CWE-546,2,True,True,False,False,False,
+dfa.cwe566-auth-bypass,plumb.ast.cwe566-auth-bypass,ast,dfa.cwe prefix + CWE-566,2,True,False,False,True,False,
+dfa.cwe570-always-false,plumb.ast.cwe570-always-false,ast,dfa.cwe prefix + CWE-570,2,True,False,False,True,False,
+dfa.cwe571-always-true,plumb.ast.cwe571-always-true,ast,dfa.cwe prefix + CWE-571,2,True,False,False,True,False,
+dfa.cwe572-thread-run,plumb.ast.cwe572-thread-run,ast,dfa.cwe prefix + CWE-572,2,True,False,False,True,False,
+dfa.cwe579-non-serializable,plumb.ast.cwe579-non-serializable,ast,dfa.cwe prefix + CWE-579,2,True,False,False,True,False,
+dfa.cwe580-clone-without-super,plumb.ast.cwe580-clone-without-super,ast,dfa.cwe prefix + CWE-580,2,True,False,False,True,False,
+dfa.cwe581-object-model-violation,plumb.ast.cwe581-object-model-violation,ast,dfa.cwe prefix + CWE-581,2,True,False,False,True,False,
+dfa.cwe585-empty-sync,plumb.ast.cwe585-empty-sync,ast,dfa.cwe prefix + CWE-585,2,True,False,False,True,False,
+dfa.cwe600-uncaught-exception,plumb.ast.cwe600-uncaught-exception,ast,dfa.cwe prefix + CWE-600,2,True,False,False,True,False,
+dfa.cwe609-double-checked-locking,plumb.ast.cwe609-double-checked-locking,ast,dfa.cwe prefix + CWE-609,2,True,False,False,True,False,
+dfa.cwe681-numeric-conversion,plumb.ast.cwe681-numeric-conversion,ast,dfa.cwe prefix + CWE-681,1,True,False,False,False,False,
+dfa.cwe835-infinite-loop,plumb.concurrency.cwe835-infinite-loop,concurrency,dfa.cwe prefix + CWE-835,2,True,False,False,True,False,
+dfa.deadlock-ab-ba,plumb.ast.deadlock-ab-ba,ast,dfa.* generic fallback,2,True,False,False,True,False,
+dfa.env-var-info-exposure,plumb.ast.env-var-info-exposure,ast,dfa.* generic fallback,3,True,True,False,True,False,YES
+dfa.info-exposure-querystring,plumb.ast.info-exposure-querystring,ast,dfa.* generic fallback,2,True,False,False,True,False,
+dfa.insufficient-session-expiration,plumb.ast.insufficient-session-expiration,ast,dfa.* generic fallback,2,True,False,False,True,False,YES
+dfa.null-deref-from-return,plumb.ast.null-deref-from-return,ast,dfa.* generic fallback,2,True,False,False,True,False,YES
+dfa.poor-code-quality,plumb.ast.poor-code-quality,ast,dfa.* generic fallback,2,True,False,False,True,False,
+dfa.random-iv-cbc,plumb.ast.random-iv-cbc,ast,dfa.* generic fallback,2,True,False,False,True,False,
+dfa.reachable-assertion,plumb.ast.reachable-assertion,ast,dfa.* generic fallback,2,True,False,False,True,False,YES
+dfa.sensitive-info-uncleared,plumb.ast.sensitive-info-uncleared,ast,dfa.* generic fallback,2,True,False,False,True,False,YES
+dfa.uncontrolled-recursion,plumb.ast.uncontrolled-recursion,ast,dfa.* generic fallback,2,True,False,False,True,False,
+dfa.uninit-nonnull,plumb.ast.uninit-nonnull,ast,dfa.* generic fallback,1,True,False,False,False,False,YES
+dfa.unlock-not-locked,plumb.ast.unlock-not-locked,ast,dfa.* generic fallback,2,True,False,False,True,False,
+dfa.unprotected-cred-transport,plumb.ast.unprotected-cred-transport,ast,dfa.* generic fallback,2,True,False,False,True,False,YES
+dfa.unsalted-one-way-hash,plumb.ast.unsalted-one-way-hash,ast,dfa.* generic fallback,2,True,False,False,True,False,YES
+do-while,plumb.ast.do-while,ast,lowercase-kebab default,1,False,False,False,False,True,
+env-var-info-exposure-ast,plumb.ast.env-var-info-exposure-ast,ast,lowercase-kebab default,1,True,False,False,False,False,
+explicit-finalize,plumb.ast.explicit-finalize,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+expression-always-false,plumb.ast.expression-always-false,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+expression-always-true,plumb.ast.expression-always-true,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+for,plumb.ast.for,ast,lowercase-kebab default,1,False,False,False,False,True,
+for-each,plumb.ast.for-each,ast,lowercase-kebab default,1,False,False,False,False,True,
+hardcoded-password-sink-ast,plumb.ast.hardcoded-password-sink-ast,ast,lowercase-kebab default,1,True,False,False,False,False,
+if,plumb.ast.if,ast,lowercase-kebab default,1,False,False,False,False,True,
+if-else,plumb.ast.if-else,ast,lowercase-kebab default,1,False,False,False,False,True,
+incomplete-cleanup,plumb.ast.incomplete-cleanup,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+info-exposure-in-comment,plumb.ast.info-exposure-in-comment,ast,lowercase-kebab default,1,True,False,False,False,False,
+insecure-temp-file-perms,plumb.ast.insecure-temp-file-perms,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+literal,plumb.ast.literal,ast,lowercase-kebab default,1,False,False,False,False,False,
+literal-boolean-condition,plumb.ast.literal-boolean-condition,ast,lowercase-kebab default,1,True,False,False,False,False,
+log-info-leak,plumb.ast.log-info-leak,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+# R760 (Oct 2026): loose checkers removed entirely. The 9 loose.* entries
+# below were aliases to plumb.boundary.* but the source checkers no
+# longer exist, so the alias is meaningless. Removed from the migration
+# table; old eval data is preserved in .aethercode/ history snapshots.
+missing-break,plumb.ast.missing-break,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+missing-password-masking,plumb.ast.missing-password-masking,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+multiple-binds-same-port,plumb.ast.multiple-binds-same-port,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+no-effect-statement,plumb.ast.no-effect-statement,ast,lowercase-kebab default,1,True,False,False,False,False,
+null-deref-from-return-ast,plumb.ast.null-deref-from-return-ast,ast,lowercase-kebab default,1,True,False,False,False,False,
+password,plumb.ast.password,ast,lowercase-kebab default,1,False,False,False,False,False,
+pl-0025-empty-sync-block,plumb.ast.empty-sync-block,ast,pl- default,1,True,False,False,False,False,
+pl-0027-cn-idiom-no-super-call,plumb.ast.cn-idiom-no-super-call,ast,pl- default,1,True,False,False,False,False,
+pl-0028-compare-classes,plumb.ast.compare-classes,ast,pl- default,1,True,False,False,False,False,YES
+pl-0030-explicit-finalize,plumb.ast.explicit-finalize,ast,pl- default,2,True,True,False,False,False,YES
+pl-0031-finalize-only-overridden,plumb.ast.finalize-only-overridden,ast,pl- default,1,True,False,False,False,False,YES
+pl-0032-finalize-without-super,plumb.ast.finalize-without-super,ast,pl- default,1,True,False,False,False,False,YES
+pl-0036-public-static-mutable,plumb.ast.public-static-mutable,ast,pl- default,1,True,False,False,False,False,YES
+pl-0039-redirect-without-exit,plumb.ast.redirect-without-exit,ast,pl- default,1,True,False,False,False,False,YES
+pl-0041-system-exit,plumb.ast.system-exit,ast,pl- default,2,True,True,False,False,False,YES
+pl-0045-use-arraylist-instead-of-vector,plumb.ast.use-arraylist-instead-of-vector,ast,pl- default,1,False,True,False,False,False,
+pl-0047-call-to-thread-run,plumb.ast.call-to-thread-run,ast,pl- default,2,True,True,False,False,False,YES
+pl-0048-double-checked-locking,plumb.ast.double-checked-locking,ast,pl- default,1,True,False,False,False,False,
+pl-0052-use-try-with-resources,plumb.ast.use-try-with-resources,ast,pl- default,1,True,False,False,False,False,YES
+pl-0058-law-of-demeter,plumb.ast.law-of-demeter,ast,pl- default,1,True,False,False,False,False,
+pl-0062-for-loop-float,plumb.ast.for-loop-float,ast,pl- default,1,True,False,False,False,False,
+pl-0069-javadoc-method,plumb.ast.javadoc-method,ast,pl- default,1,False,True,False,False,False,
+pl-0073-do-not-call-gc,plumb.ast.do-not-call-gc,ast,pl- default,1,True,False,False,False,False,
+pl-0075-avoid-messagedigest-field,plumb.ast.avoid-messagedigest-field,ast,pl- default,1,True,False,False,False,False,
+pl-0078-avoid-octal-values,plumb.ast.avoid-octal-values,ast,pl- default,1,True,False,False,False,False,
+pl-0092-use-concurrenthashmap,plumb.ast.use-concurrenthashmap,ast,pl- default,1,True,False,False,False,False,
+pl-0096-use-diamond,plumb.ast.use-diamond,ast,pl- default,1,False,True,False,False,False,
+pl-0097-unnecessary-fqn,plumb.ast.unnecessary-fqn,ast,pl- default,1,False,True,False,False,False,
+pl-0099-unused-assignment,plumb.ast.unused-assignment,ast,pl- default,2,True,True,False,False,False,YES
+pl-0101-unused-formal-parameter,plumb.ast.unused-formal-parameter,ast,pl- default,2,True,True,False,False,False,YES
+pl-0103-style-unused-import,plumb.ast.style-unused-import,ast,pl- default,1,False,True,False,False,False,
+pl-0104-method-arg-could-be-final,plumb.ast.method-arg-could-be-final,ast,pl- default,1,False,True,False,False,False,
+pl-0105-local-var-could-be-final,plumb.ast.local-var-could-be-final,ast,pl- default,1,False,True,False,False,False,
+pl-0107-return-from-finally,plumb.ast.return-from-finally,ast,pl- default,1,True,False,False,False,False,YES
+pl-0108-use-stringbuffer,plumb.ast.use-stringbuffer,ast,pl- default,1,False,True,False,False,False,
+pl-0110-at-least-one-constructor,plumb.ast.at-least-one-constructor,ast,pl- default,1,False,True,False,False,False,
+pl-0114-premature-declaration,plumb.ast.premature-declaration,ast,pl- default,1,False,True,False,False,False,
+pl-0116-simpledateformat-locale,plumb.ast.simpledateformat-locale,ast,pl- default,1,True,False,False,False,False,YES
+pl-0117-parse-error,plumb.ast.parse-error,ast,pl- default,1,True,False,False,False,False,
+pl-0119-literals-first,plumb.ast.literals-first,ast,pl- default,1,True,False,False,False,False,
+pl-0123-lose-exception-info,plumb.ast.lose-exception-info,ast,pl- default,1,True,False,False,False,False,
+pl-0132-equal-comparison,plumb.ast.equal-comparison,ast,pl- default,2,True,True,False,False,False,
+pl-0135-redundant-init,plumb.ast.redundant-init,ast,pl- default,1,False,True,False,False,False,
+pl-0137-suspicious-equals,plumb.ast.suspicious-equals,ast,pl- default,1,True,False,False,False,False,
+pl-0142-while-literal-boolean,plumb.ast.while-literal-boolean,ast,pl- default,1,False,True,False,False,False,
+pl-0151-preserve-stack,plumb.ast.preserve-stack,ast,pl- default,1,True,False,False,False,False,
+pl-0152-reassign-loop-var,plumb.ast.reassign-loop-var,ast,pl- default,1,True,False,False,False,False,
+pl-0154-compare-objects-with-equals,plumb.ast.compare-objects-with-equals,ast,pl- default,1,True,False,False,False,False,YES
+pl-0162-assign-in-operand,plumb.ast.assign-in-operand,ast,pl- default,1,True,False,False,False,False,
+pl-0167-bigdec-double,plumb.ast.bigdec-double,ast,pl- default,1,True,False,False,False,False,
+pl-0189-method-naming,plumb.ast.method-naming,ast,pl- default,1,False,True,False,False,False,
+pl-0190-hardcoded-uri,plumb.ast.hardcoded-uri,ast,pl- default,1,False,True,False,False,False,
+pl-0191-nested-block,plumb.ast.nested-block,ast,pl- default,1,False,True,False,False,False,
+pl-0196-return-bool,plumb.ast.return-bool,ast,pl- default,1,False,True,False,False,False,
+pl-0200-throw-finally,plumb.ast.throw-finally,ast,pl- default,1,True,False,False,False,False,
+pl-0202-catch-throwable,plumb.ast.catch-throwable,ast,pl- default,1,True,False,False,False,False,
+pl-0204-dup-string,plumb.ast.dup-string,ast,pl- default,1,False,True,False,False,False,
+pl-0204-style-class-naming,plumb.ast.style-class-naming,ast,pl- default,1,False,True,False,False,False,
+pl-0206-equals-hash,plumb.ast.equals-hash,ast,pl- default,1,True,False,False,False,False,
+pl-0213-string-eq,plumb.ast.string-eq,ast,pl- default,1,True,False,False,False,False,
+pl-0215-ctor-method,plumb.ast.ctor-method,ast,pl- default,1,True,False,False,False,False,
+pl-0216-conditional-constant,plumb.ast.conditional-constant,ast,pl- default,2,True,True,False,False,False,
+pl-0219-null-assignment,plumb.ast.null-assignment,ast,pl- default,1,False,True,False,False,False,
+pl-0222-short-variable,plumb.ast.short-variable,ast,pl- default,1,False,True,False,False,False,
+pl-0226-singular-field,plumb.ast.singular-field,ast,pl- default,1,False,True,False,False,False,
+pl-0229-missing-serial-version-uid,plumb.ast.missing-serial-version-uid,ast,pl- default,1,True,False,False,False,False,YES
+pl-0229-use-varargs,plumb.ast.use-varargs,ast,pl- default,1,False,True,False,False,False,
+pl-0232-package-case,plumb.ast.package-case,ast,pl- default,1,False,True,False,False,False,
+pl-0246-array-key,plumb.ast.array-key,ast,pl- default,2,True,True,False,False,False,
+pl-0250-switch-few,plumb.ast.switch-few,ast,pl- default,1,False,True,False,False,False,
+pl-0251-class-name-long,plumb.ast.class-name-long,ast,pl- default,1,False,True,False,False,False,
+pl-0257-catch-log,plumb.ast.catch-log,ast,pl- default,1,True,False,False,False,False,
+pl-0258-bool-if,plumb.ast.bool-if,ast,pl- default,1,False,True,False,False,False,
+pl-0259-reduce-visibility,plumb.ast.reduce-visibility,ast,pl- default,1,False,True,False,False,False,
+pl-0260-bc-unconfirmed-cast,plumb.ast.bc-unconfirmed-cast,ast,pl- default,2,True,True,False,False,False,
+pl-0262-bit-and,plumb.ast.bit-and,ast,pl- default,1,True,False,False,False,False,
+pl-0263-bit-signed-check,plumb.ast.bit-signed-check,ast,pl- default,1,True,False,False,False,False,
+pl-0265-ei-expose-rep2,plumb.ast.ei-expose-rep2,ast,pl- default,1,True,False,False,False,False,
+pl-0267-st-write-static-from-instance,plumb.ast.st-write-static-from-instance,ast,pl- default,1,True,False,False,False,False,
+pl-0268-eq-self-no-object,plumb.ast.eq-self-no-object,ast,pl- default,1,True,False,False,False,False,
+pl-0269-se-bad-field,plumb.ast.se-bad-field,ast,pl- default,1,True,False,False,False,False,
+pl-0270-bit-or,plumb.ast.bit-or,ast,pl- default,1,True,False,False,False,False,
+pl-0273-generic-exception,plumb.ast.generic-exception,ast,pl- default,1,False,True,False,False,False,
+pl-0275-field-naming,plumb.ast.field-naming,ast,pl- default,1,False,True,False,False,False,
+pl-0281-loop-once,plumb.ast.loop-once,ast,pl- default,1,False,True,False,False,False,
+pl-0282-synchronized-lock,plumb.ast.synchronized-lock,ast,pl- default,1,True,False,False,False,False,YES
+pl-0287-infinite-loop,plumb.ast.infinite-loop,ast,pl- default,1,False,True,False,False,False,YES
+pl-0288-primitives-boxed,plumb.ast.primitives-boxed,ast,pl- default,1,True,False,False,False,False,YES
+pl-0290-optional-get,plumb.ast.optional-get,ast,pl- default,1,True,False,False,False,False,YES
+pl-0293-locale-root,plumb.ast.locale-root,ast,pl- default,1,True,False,False,False,False,YES
+pl-0296-dm-boxed-primitive,plumb.ast.dm-boxed-primitive,ast,pl- default,1,True,False,False,False,False,
+pl-0297-np-always-null,plumb.ast.np-always-null,ast,pl- default,1,True,False,False,False,False,
+pl-0298-ec-incompatible,plumb.ast.ec-incompatible,ast,pl- default,1,True,False,False,False,False,
+pl-0300-ec-bad-array-compare,plumb.ast.ec-bad-array-compare,ast,pl- default,1,True,False,False,False,False,
+pl-0302-fe-floating-point,plumb.ast.fe-floating-point,ast,pl- default,2,True,True,False,False,False,
+pl-0303-fi-useless-block,plumb.ast.fi-useless-block,ast,pl- default,1,False,True,False,False,False,
+pl-0305-icast-int-mult-long,plumb.ast.icast-int-mult-long,ast,pl- default,1,True,False,False,False,False,
+pl-0306-im-average,plumb.ast.im-average,ast,pl- default,1,True,False,False,False,False,
+pl-0307-im-bad-check-odd,plumb.ast.im-bad-check-odd,ast,pl- default,1,True,False,False,False,False,
+pl-0308-io-resource-both,plumb.ast.io-resource-both,ast,pl- default,2,True,True,False,False,False,
+pl-0312-pz-reuse-entry,plumb.ast.pz-reuse-entry,ast,pl- default,1,True,False,False,False,False,
+pl-0313-qba-boolean-assign,plumb.ast.qba-boolean-assign,ast,pl- default,1,True,False,False,False,False,
+pl-0314-rv-negating-compareto,plumb.ast.rv-negating-compareto,ast,pl- default,1,True,False,False,False,False,
+pl-0316-rv-return-ignored,plumb.ast.rv-return-ignored,ast,pl- default,1,True,False,False,False,False,
+pl-0317-si-instance-before-final,plumb.ast.si-instance-before-final,ast,pl- default,1,True,False,False,False,False,
+pl-0318-swl-sleep-lock,plumb.ast.swl-sleep-lock,ast,pl- default,1,True,False,False,False,False,
+pl-0321-il-container-sequencing,plumb.ast.il-container-sequencing,ast,pl- default,1,True,False,False,False,False,
+pl-0322-range-array-length,plumb.ast.range-array-length,ast,pl- default,1,True,False,False,False,False,
+pl-0323-range-array-offset,plumb.ast.range-array-offset,ast,pl- default,1,True,False,False,False,False,
+pl-0324-range-string-length,plumb.ast.range-string-length,ast,pl- default,1,True,False,False,False,False,
+pl-0326-range-array-index,plumb.ast.range-array-index,ast,pl- default,1,True,False,False,False,False,
+pl-0328-np-sync-unshared,plumb.ast.np-sync-unshared,ast,pl- default,1,True,False,False,False,False,
+pl-0329-np-load-null,plumb.ast.np-load-null,ast,pl- default,1,True,False,False,False,False,
+pl-0330-bc-equals-no-null,plumb.ast.bc-equals-no-null,ast,pl- default,1,True,False,False,False,False,
+pl-0331-bc-equals-no-hash,plumb.ast.bc-equals-no-hash,ast,pl- default,1,True,False,False,False,False,
+pl-0332-bc-bad-cast-abstract,plumb.ast.bc-bad-cast-abstract,ast,pl- default,1,True,False,False,False,False,
+pl-0333-ec-no-read,plumb.ast.ec-no-read,ast,pl- default,1,True,False,False,False,False,
+pl-0335-ec-null-vararg,plumb.ast.ec-null-vararg,ast,pl- default,1,True,False,False,False,False,
+pl-0336-ec-bad-array-store,plumb.ast.ec-bad-array-store,ast,pl- default,1,True,False,False,False,False,
+pl-0338-he-hashcode-signature,plumb.ast.he-hashcode-signature,ast,pl- default,1,True,False,False,False,False,
+pl-0339-dmi-hardcoded-path,plumb.ast.dmi-hardcoded-path,ast,pl- default,1,True,False,False,False,False,
+pl-0340-dmi-bad-month,plumb.ast.dmi-bad-month,ast,pl- default,1,False,True,False,False,False,
+pl-0341-dmi-collection-urls,plumb.ast.dmi-collection-urls,ast,pl- default,1,True,False,False,False,False,
+pl-0344-iil-deref-readline,plumb.ast.iil-deref-readline,ast,pl- default,1,True,False,False,False,False,
+pl-0405-design-for-extension,plumb.ast.design-for-extension,ast,pl- default,1,False,True,False,False,False,
+pl-0406-equals-hashcode,plumb.ast.equals-hashcode,ast,pl- default,1,True,False,False,False,False,YES
+pl-0408-final-local-variable,plumb.ast.final-local-variable,ast,pl- default,1,False,True,False,False,False,
+pl-0409-final-parameters,plumb.ast.final-parameters,ast,pl- default,1,False,True,False,False,False,
+pl-0413-left-curly,plumb.ast.left-curly,ast,pl- default,1,False,True,False,False,False,
+pl-0420-package-declaration,plumb.ast.package-declaration,ast,pl- default,1,False,True,False,False,False,
+pl-0424-super-clone,plumb.ast.super-clone,ast,pl- default,1,True,False,False,False,False,
+pl-0425-super-finalize,plumb.ast.super-finalize,ast,pl- default,1,True,False,False,False,False,
+pl-0432-bad-abstract-class-name,plumb.ast.bad-abstract-class-name,ast,pl- default,1,False,True,False,False,False,
+pl-0435-catch-of-throwable,plumb.ast.catch-of-throwable,ast,pl- default,1,True,False,False,False,False,
+pl-0437-child-class-shadow-field,plumb.ast.child-class-shadow-field,ast,pl- default,1,True,False,False,False,False,
+pl-0439-collection-inappropriate,plumb.ast.collection-inappropriate,ast,pl- default,1,False,True,False,False,False,
+pl-0441-ctor-calling-overridable,plumb.ast.ctor-calling-overridable,ast,pl- default,1,True,False,False,False,False,YES
+pl-0442-diamond-operator,plumb.ast.diamond-operator,ast,pl- default,1,False,True,False,False,False,
+pl-0444-equals-arg-type,plumb.ast.equals-arg-type,ast,pl- default,1,True,False,False,False,False,YES
+pl-0446-hardcoded-ip,plumb.ast.hardcoded-ip,ast,pl- default,1,True,False,False,False,False,YES
+pl-0447-iterator-next-exception,plumb.ast.iterator-next-exception,ast,pl- default,1,True,False,False,False,False,YES
+pl-0454-package-info,plumb.ast.package-info,ast,pl- default,1,False,True,False,False,False,
+pl-0462-annotation-table,plumb.ast.annotation-table,ast,pl- default,1,False,True,False,False,False,
+pl-0464-avoid-nested-blocks,plumb.ast.avoid-nested-blocks,ast,pl- default,1,False,True,False,False,False,
+pl-0470-explicit-initialization,plumb.ast.explicit-initialization,ast,pl- default,1,False,True,False,False,False,
+pl-0477-javadoc-type-strict,plumb.ast.javadoc-type-strict,ast,pl- default,1,False,True,False,False,False,
+pl-0538-declaration-order,plumb.ast.declaration-order,ast,pl- default,1,False,True,False,False,False,
+pl-0551-abstract-naming,plumb.ast.abstract-naming,ast,pl- default,1,False,True,False,False,False,
+pl-0552-array-naming-strict,plumb.ast.array-naming-strict,ast,pl- default,1,False,True,False,False,False,
+pl-0557-literals-in-if,plumb.ast.literals-in-if,ast,pl- default,1,False,True,False,False,False,
+pl-0575-immutable-field-strict,plumb.ast.immutable-field-strict,ast,pl- default,1,False,True,False,False,False,
+pl-0579-long-var-strict,plumb.ast.long-var-strict,ast,pl- default,1,False,True,False,False,False,
+pl-0589-type-name,plumb.ast.type-name,ast,pl- default,1,False,True,False,False,False,
+pl-0595-import-control,plumb.ast.import-control,ast,pl- default,1,False,True,False,False,False,
+pl-0608--self-assignment,plumb.ast.self-assignment,ast,pl- default,1,True,False,False,False,False,
+pl-0609--param-hides-field,plumb.ast.param-hides-field,ast,pl- default,1,True,False,False,False,False,
+pl-0611--ignored-result,plumb.ast.ignored-result,ast,pl- default,1,True,False,False,False,False,
+pl-0612--ambiguous-precedence,plumb.ast.ambiguous-precedence,ast,pl- default,1,True,False,False,False,False,
+pl-0613--array-equality,plumb.ast.array-equality,ast,pl- default,1,True,False,False,False,False,
+pl-0700-missing-deprecated,plumb.ast.missing-deprecated,ast,pl- default,1,True,False,False,False,False,YES
+pl-0707-equals-avoid-null,plumb.ast.equals-avoid-null,ast,pl- default,2,True,True,False,False,False,YES
+pl-0708-jumbled-incrementer,plumb.ast.jumbled-incrementer,ast,pl- default,1,True,False,False,False,False,YES
+pl-0711-non-serializable-class,plumb.ast.non-serializable-class,ast,pl- default,1,True,False,False,False,False,YES
+pl-0712-absent-codeblock-in-case,plumb.ast.absent-codeblock-in-case,ast,pl- default,2,True,True,False,False,False,
+pl-0712-assignment-to-non-final-static,plumb.ast.assignment-to-non-final-static,ast,pl- default,1,False,True,False,False,False,
+pl-0713-wait-notify-in-loop,plumb.ast.wait-notify-in-loop,ast,pl- default,1,True,False,False,False,False,YES
+pl-0714-unused-throws,plumb.ast.unused-throws,ast,pl- default,1,False,True,False,False,False,
+pl-0715-newline-at-eof,plumb.ast.newline-at-eof,ast,pl- default,1,False,True,False,False,False,
+pl-0719-line-length,plumb.ast.line-length,ast,pl- default,1,False,True,False,False,False,
+pl-0720-avoid-star-import,plumb.ast.avoid-star-import,ast,pl- default,1,False,True,False,False,False,
+pl-0721-unused-imports,plumb.ast.unused-imports,ast,pl- default,1,False,True,False,False,False,
+pl-0724-print-stack-trace,plumb.ast.print-stack-trace,ast,pl- default,2,True,True,False,False,False,YES
+pl-0726-magic-number,plumb.ast.magic-number,ast,pl- default,1,False,True,False,False,False,
+pl-0728-covariant-equals,plumb.ast.covariant-equals,ast,pl- default,1,True,False,False,False,False,YES
+pl-604-comments-indentation,plumb.ast.comments-indentation,ast,pl- default,1,False,True,False,False,False,
+pl-607-indentation,plumb.ast.indentation,ast,pl- default,1,False,True,False,False,False,
+pl-611-missing-javadoc-method,plumb.ast.missing-javadoc-method,ast,pl- default,1,False,True,False,False,False,
+pl-612-missing-javadoc-package,plumb.ast.missing-javadoc-package,ast,pl- default,1,False,True,False,False,False,
+pl-613-missing-javadoc-type,plumb.ast.missing-javadoc-type,ast,pl- default,1,False,True,False,False,False,
+pl-616-no-code-in-file,plumb.ast.no-code-in-file,ast,pl- default,1,False,True,False,False,False,
+pl-637-confused-inheritance,plumb.ast.confused-inheritance,ast,pl- default,1,False,True,False,False,False,
+pl-644-jdk-obsolete-collection,plumb.ast.jdk-obsolete-collection,ast,pl- default,1,False,True,False,False,False,
+pl-655-questionable-boolean-assign,plumb.ast.questionable-boolean-assign,ast,pl- default,1,False,True,False,False,False,
+pl-663-unnecessary-enum-case,plumb.ast.unnecessary-enum-case,ast,pl- default,1,False,True,False,False,False,
+pl-664-unnecessary-fully-qualified-enum,plumb.ast.unnecessary-fully-qualified-enum,ast,pl- default,1,False,True,False,False,False,
+plumb.ai.cleartext-socket-usage,plumb.ast.cleartext-socket-usage,ast,plumb.ai.* → mapped to plumb.ast.*,2,True,False,False,True,False,
+plumb.ai.comment-info-leak,plumb.ast.comment-info-leak,ast,plumb.ai.* → mapped to plumb.ast.*,2,True,False,False,True,False,
+plumb.ai.error-message-info-leak,plumb.ast.error-message-info-leak,ast,plumb.ai.* → mapped to plumb.ast.*,2,True,False,False,True,False,YES
+plumb.ai.missing-password-masking,plumb.ast.missing-password-masking,ast,plumb.ai.* → mapped to plumb.ast.*,2,True,False,False,True,False,YES
+plumb.ai.suspicious-comment,plumb.ast.suspicious-comment,ast,plumb.ai.* → mapped to plumb.ast.*,2,True,False,False,True,False,
+plumb.ast.hard-coded-password-sink,plumb.ast.hard-coded-password-sink,ast,plumb.ast.* → mapped to plumb.ast.*,2,True,True,False,False,False,
+plumb.ast.null-deref-from-return,plumb.ast.null-deref-from-return,ast,plumb.ast.* → mapped to plumb.ast.*,1,False,True,False,False,False,YES
+plumb.ast.unused-variable-assignment,plumb.ast.unused-variable-assignment,ast,plumb.ast.* → mapped to plumb.ast.*,2,True,True,False,False,False,YES
+plumb.ast.weak-prng,plumb.ast.weak-prng,ast,plumb.ast.* → mapped to plumb.ast.*,1,False,True,False,False,False,YES
+plumb.boundary.array-out-of-bounds,plumb.boundary.array-out-of-bounds,boundary,plumb.boundary.* → mapped to plumb.boundary.*,2,True,True,False,False,False,
+plumb.boundary.divide-by-zero,plumb.boundary.divide-by-zero,boundary,plumb.boundary.* → mapped to plumb.boundary.*,2,True,True,False,False,False,YES
+plumb.boundary.integer-overflow,plumb.boundary.integer-overflow,boundary,plumb.boundary.* → mapped to plumb.boundary.*,2,True,True,False,False,False,YES
+plumb.boundary.integer-underflow,plumb.boundary.integer-underflow,boundary,plumb.boundary.* → mapped to plumb.boundary.*,2,True,True,False,False,False,YES
+plumb.dfa.compare-classes-by-name,plumb.dfa.compare-classes-by-name,dfa,plumb.dfa.* → mapped to plumb.dfa.*,3,True,True,False,True,False,
+plumb.dfa.cwe835-infinite-loop,plumb.dfa.cwe835-infinite-loop,dfa,plumb.dfa.* → mapped to plumb.dfa.*,1,False,True,False,False,False,
+plumb.dfa.deadlock-ab-ba,plumb.dfa.deadlock-ab-ba,dfa,plumb.dfa.* → mapped to plumb.dfa.*,1,False,True,False,False,False,
+plumb.dfa.hard-coded-crypto-key,plumb.dfa.hard-coded-crypto-key,dfa,plumb.dfa.* → mapped to plumb.dfa.*,3,True,True,False,True,False,
+plumb.dfa.hard-coded-password-sink,plumb.dfa.hard-coded-password-sink,dfa,plumb.dfa.* → mapped to plumb.dfa.*,3,True,True,False,True,False,
+plumb.dfa.insecure-cookie,plumb.dfa.insecure-cookie,dfa,plumb.dfa.* → mapped to plumb.dfa.*,3,True,True,False,True,False,
+plumb.dfa.insecure-temp-file-perms,plumb.dfa.insecure-temp-file-perms,dfa,plumb.dfa.* → mapped to plumb.dfa.*,2,True,False,False,True,False,
+plumb.dfa.missing-crypto-init,plumb.dfa.missing-crypto-init,dfa,plumb.dfa.* → mapped to plumb.dfa.*,3,True,True,False,True,False,
+plumb.dfa.process-control,plumb.dfa.process-control,dfa,plumb.dfa.* → mapped to plumb.dfa.*,3,True,True,False,True,False,
+plumb.dfa.reachable-assertion,plumb.dfa.reachable-assertion,dfa,plumb.dfa.* → mapped to plumb.dfa.*,1,True,False,False,False,False,
+plumb.dfa.resource-exhaustion,plumb.dfa.resource-exhaustion,dfa,plumb.dfa.* → mapped to plumb.dfa.*,3,True,True,False,True,False,
+plumb.dfa.unchecked-loop-condition,plumb.dfa.unchecked-loop-condition,dfa,plumb.dfa.* → mapped to plumb.dfa.*,2,True,False,False,True,False,
+plumb.dfa.weak-prng,plumb.dfa.weak-prng,dfa,plumb.dfa.* → mapped to plumb.dfa.*,2,True,False,False,True,False,
+plumb.numeric.divide-by-zero,plumb.boundary.divide-by-zero,boundary,plumb.numeric.* → mapped to plumb.boundary.*,3,True,True,False,True,False,YES
+plumb.numeric.integer-overflow,plumb.boundary.integer-overflow,boundary,plumb.numeric.* → mapped to plumb.boundary.*,3,True,True,False,True,False,YES
+plumb.numeric.integer-underflow,plumb.boundary.integer-underflow,boundary,plumb.numeric.* → mapped to plumb.boundary.*,3,True,True,False,True,False,YES
+plumb.numeric.unchecked-array-index,plumb.boundary.unchecked-array-index,boundary,plumb.numeric.* → mapped to plumb.boundary.*,3,True,True,False,True,False,YES
+plumb.numeric.unchecked-loop-condition,plumb.boundary.unchecked-loop-condition,boundary,plumb.numeric.* → mapped to plumb.boundary.*,1,True,False,False,False,False,
+plumb.pointer.null-dereference,plumb.dfa.null-dereference,dfa,plumb.pointer.* → mapped to plumb.dfa.*,3,True,True,False,True,False,
+plumb.pointer.use-after-free,plumb.dfa.use-after-free,dfa,plumb.pointer.* → mapped to plumb.dfa.*,2,True,False,False,True,False,
+plumb.resource.leak,plumb.ast.leak,ast,plumb.resource.* → mapped to plumb.ast.*,2,True,True,False,False,False,
+plumb.sensitive.data-leak,plumb.info.data-leak,info,plumb.sensitive.* → mapped to plumb.info.*,3,True,True,False,True,False,
+plumb.sensitive.pii-leak,plumb.info.pii-leak,info,plumb.sensitive.* → mapped to plumb.info.*,3,True,True,False,True,False,
+plumb.style.assignment-in-conditional,plumb.style.assignment-in-conditional,style,plumb.style.* → mapped to plumb.style.*,2,True,False,False,True,False,
+plumb.style.literal-boolean-condition,plumb.style.literal-boolean-condition,style,plumb.style.* → mapped to plumb.style.*,3,True,True,False,True,False,
+plumb.style.uncontrolled-recursion,plumb.style.uncontrolled-recursion,style,plumb.style.* → mapped to plumb.style.*,3,True,True,False,True,False,
+plumb.style.unused-assignment,plumb.style.unused-assignment,style,plumb.style.* → mapped to plumb.style.*,3,True,True,False,True,False,
+plumb.style.unused-local,plumb.style.unused-local,style,plumb.style.* → mapped to plumb.style.*,3,True,True,False,True,False,
+plumb.style.unused-parameter,plumb.style.unused-parameter,style,plumb.style.* → mapped to plumb.style.*,3,True,True,False,True,False,
+plumb.style.unused-private-field,plumb.style.unused-private-field,style,plumb.style.* → mapped to plumb.style.*,3,True,True,False,True,False,
+plumb.taint.bad-cert-verification,plumb.taint.bad-cert-verification,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.cleartext-network-credential-sink,plumb.taint.cleartext-network-credential-sink,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,True,False,False,False,
+plumb.taint.cleartext-tx,plumb.taint.cleartext-tx,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,True,False,False,False,
+plumb.taint.command-injection,plumb.taint.command-injection,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.el-injection,plumb.taint.el-injection,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.external-config-setting,plumb.taint.external-config-setting,taint,plumb.taint.* → mapped to plumb.taint.*,1,True,False,False,False,False,
+plumb.taint.format-string,plumb.taint.format-string,taint,plumb.taint.* → mapped to plumb.taint.*,3,True,True,False,True,False,
+plumb.taint.http-response-splitting,plumb.taint.http-response-splitting,taint,plumb.taint.* → mapped to plumb.taint.*,3,True,True,False,True,False,
+plumb.taint.insecure-random,plumb.taint.insecure-random,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.java-code-injection,plumb.taint.java-code-injection,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.jcr-injection,plumb.taint.jcr-injection,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.jsp-dynamic-include,plumb.taint.jsp-dynamic-include,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.ldap-injection,plumb.taint.ldap-injection,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.log-injection,plumb.taint.log-injection,taint,plumb.taint.* → mapped to plumb.taint.*,1,True,False,False,False,False,
+plumb.taint.ognl-injection,plumb.taint.ognl-injection,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.open-redirect,plumb.taint.open-redirect,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.path-traversal,plumb.taint.path-traversal,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.plaintext-password-sink,plumb.taint.plaintext-password-sink,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,True,False,False,False,
+plumb.taint.session-fixation,plumb.taint.session-fixation,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.sql-injection,plumb.taint.sql-injection,taint,plumb.taint.* → mapped to plumb.taint.*,3,True,True,False,True,False,
+plumb.taint.ssrf,plumb.taint.ssrf,taint,plumb.taint.* → mapped to plumb.taint.*,1,True,False,False,False,False,
+plumb.taint.trust-boundary-violation,plumb.taint.trust-boundary-violation,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.uncontrolled-mem-alloc,plumb.taint.uncontrolled-mem-alloc,taint,plumb.taint.* → mapped to plumb.taint.*,3,True,True,False,True,False,
+plumb.taint.unsafe-deserialization,plumb.taint.unsafe-deserialization,taint,plumb.taint.* → mapped to plumb.taint.*,1,True,False,False,False,False,
+plumb.taint.unsafe-jni,plumb.taint.unsafe-jni,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.unsafe-reflection,plumb.taint.unsafe-reflection,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.weak-crypto,plumb.taint.weak-crypto,taint,plumb.taint.* → mapped to plumb.taint.*,1,True,False,False,False,False,
+plumb.taint.weak-prng,plumb.taint.weak-prng,taint,plumb.taint.* → mapped to plumb.taint.*,1,True,False,False,False,False,
+plumb.taint.xpath-injection,plumb.taint.xpath-injection,taint,plumb.taint.* → mapped to plumb.taint.*,2,True,False,False,True,False,
+plumb.taint.xss,plumb.taint.xss,taint,plumb.taint.* → mapped to plumb.taint.*,1,True,False,False,False,False,
+plumb.taint.xss-injection,plumb.taint.xss-injection,taint,plumb.taint.* → mapped to plumb.taint.*,3,True,True,False,True,False,
+plumb.taint.xxe,plumb.taint.xxe,taint,plumb.taint.* → mapped to plumb.taint.*,1,True,False,False,False,False,
+predictable-salt,plumb.ast.predictable-salt,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+print-stack-trace,plumb.ast.print-stack-trace,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+redirect-without-exit,plumb.ast.redirect-without-exit,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+return-in-finally,plumb.ast.return-in-finally,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+seeded-random,plumb.ast.seeded-random,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+string-eq-operator,plumb.ast.string-eq-operator,ast,lowercase-kebab default,1,True,False,False,False,False,
+thread-in-servlet,plumb.ast.thread-in-servlet,ast,lowercase-kebab default,1,True,False,False,False,False,
+unbounded-mem-alloc,plumb.ast.unbounded-mem-alloc,ast,lowercase-kebab default,1,True,False,False,False,False,
+uncleared-sensitive-info,plumb.ast.uncleared-sensitive-info,ast,lowercase-kebab default,1,True,False,False,False,False,
+unused-variable-assignment,plumb.ast.unused-variable-assignment,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+use-try-with-resources,plumb.ast.use-try-with-resources,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+weak-crypto,plumb.ast.weak-crypto,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+weak-prng,plumb.ast.weak-prng,ast,lowercase-kebab default,1,True,False,False,False,False,YES
+while,plumb.ast.while,ast,lowercase-kebab default,1,False,False,False,False,True,

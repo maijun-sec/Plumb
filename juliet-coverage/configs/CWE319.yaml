@@ -1,0 +1,10 @@
+maxParallelism: 4
+cgStrategy: vta
+aggressiveness: medium
+
+rules:
+  mode: all
+  enabled: []
+
+ai:
+  enabled: false

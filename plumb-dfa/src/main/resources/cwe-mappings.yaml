@@ -1,0 +1,45 @@
+# R208 — cwe-mappings.yaml
+#
+# Maps a finding key (e.g. "SensitiveDataLeak_sql") to
+# its CWE family. The key format is
+# "{CheckerName}" or "{CheckerName}_{SinkFamilyShortName}".
+#
+# A checker can emit multiple CWE families from a
+# single analysis pass. For example,
+# SensitiveDataLeak emits different CWEs for SQL,
+# LDAP, command, file-path, and format-string sinks.
+#
+# Adding a new mapping:
+#   mappings:
+#     MyChecker: CWE-XXX
+#     MyChecker_sub: CWE-YYY
+#
+# Used by the SARIF / NDJSON reporter to attach a CWE
+# label to each finding.
+
+mappings:
+  DivideByZero: CWE-369
+  IntegerOverflow: CWE-190
+  NullDereference: CWE-476
+  ResourceLeak: CWE-404
+  ResourceLeak_CloseOnPath: CWE-459
+  SensitiveDataLeak_sql: CWE-89
+  SensitiveDataLeak_ldap: CWE-90
+  SensitiveDataLeak_command: CWE-78
+  SensitiveDataLeak_file: CWE-22
+  SensitiveDataLeak_url: CWE-918
+  SensitiveDataLeak_reflection: CWE-470
+  SensitiveDataLeak_format: CWE-134
+  SensitiveDataLeak_log: CWE-117
+  SensitiveDataLeak_deserialize: CWE-502
+  SensitiveDataLeak_xpath: CWE-643
+  SensitiveDataLeak_regex: CWE-1333
+  SensitiveDataLeak_header: CWE-93
+  SensitiveDataLeak_nosql: CWE-943
+  SensitiveDataLeak_ognl: CWE-94
+  SensitiveDataLeak_openRedirect: CWE-601
+  SensitiveDataLeak_xml: CWE-91
+  UncheckedReturn: CWE-252
+  InfiniteLoop: CWE-835
+  ConstantCondition: CWE-570
+  BadShift: CWE-758

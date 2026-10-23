@@ -1,0 +1,82 @@
+# R209 — fact-kinds.yaml
+#
+# Defines the typed dataflow facts used across checkers.
+# A fact kind is a semantic property a checker cares
+# about. Each fact has a name, a description, a set of
+# traits (declarative propagation rules), and an
+# optional owner checker.
+#
+# Adding a new fact kind:
+#   fact_kinds:
+#     MyFact:
+#       description: "..."
+#       traits: [PROPAGATED_BY_DECL]
+#       owner: MyChecker
+#
+# Available traits:
+#   PROPAGATED_BY_DECL        — flows from SSA def to all uses
+#   PROPAGATED_THROUGH_CALL   — may propagate across fn boundaries
+#   UNTRUSTED_SOURCE          — value came from outside trust boundary
+#   UNTRUSTED_SINK            — call site consumes sensitive values
+#   NOT_PROPAGATED_THROUGH_LOOP — fact dropped on loop back-edges
+#   JOINED_BY_AND             — facts joined with AND, not OR
+#   IS_PATH_SINK              — instruction is candidate path sink
+
+fact_kinds:
+  # ===== Taint family =====
+  UntrustedSource:
+    description: "Value came from outside the trust boundary"
+    traits: [UNTRUSTED_SOURCE, PROPAGATED_BY_DECL, PROPAGATED_THROUGH_CALL]
+    owner: TaintedChecker
+  UntrustedSink:
+    description: "Call site that consumes sensitive values"
+    traits: [UNTRUSTED_SINK, IS_PATH_SINK]
+    owner: TaintedChecker
+
+  # ===== Numeric facts =====
+  MayBeZero:
+    description: "Variable may hold the value 0"
+    traits: [PROPAGATED_BY_DECL, IS_PATH_SINK]
+    owner: DivideByZeroChecker
+  MayBeNonZero:
+    description: "Variable is known to be non-zero"
+    traits: [PROPAGATED_BY_DECL, IS_PATH_SINK]
+    owner: DivideByZeroChecker
+  BoundedInt:
+    description: "Integer variable is bounded [lo, hi]"
+    traits: [PROPAGATED_BY_DECL, JOINED_BY_AND]
+    owner: IntegerOverflowChecker
+  MayOverflow:
+    description: "Integer operation may overflow"
+    traits: [PROPAGATED_BY_DECL, IS_PATH_SINK]
+    owner: IntegerOverflowChecker
+
+  # ===== Reference / nullness =====
+  MayBeNull:
+    description: "Variable may hold null"
+    traits: [PROPAGATED_BY_DECL, PROPAGATED_THROUGH_CALL, IS_PATH_SINK]
+    owner: NullDereferenceChecker
+  KnownNonNull:
+    description: "Variable is known to be non-null"
+    traits: [PROPAGATED_BY_DECL, IS_PATH_SINK]
+    owner: NullDereferenceChecker
+
+  # ===== Resource / I/O =====
+  OpenResource:
+    description: "Resource opened by callee; needs close"
+    traits: [PROPAGATED_THROUGH_CALL, IS_PATH_SINK]
+    owner: ResourceLeakChecker
+  Closeable:
+    description: "Call site closes a resource"
+    traits: [PROPAGATED_BY_DECL]
+    owner: ResourceLeakChecker
+
+  # ===== Allocation / lifetime =====
+  AllocSource:
+    description: "Heap allocation site (defines object identity)"
+    traits: [PROPAGATED_BY_DECL]
+    owner: UseAfterFreeChecker
+  Freed:
+    description: "Pointer has been freed at this point"
+    traits: [PROPAGATED_BY_DECL, IS_PATH_SINK]
+    owner: UseAfterFreeChecker

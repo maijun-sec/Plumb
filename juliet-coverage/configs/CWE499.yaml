@@ -1,0 +1,18 @@
+# Per-CWE YAML v2 for CWE499
+# Whitelist (DFA rule ids Plumb actually emits): ['CatchGenericException', 'UncheckedReturn', 'plumb.resource.leak']
+# R759-F: added dfa.cwe482-compare-instead-of-assign (covers `if (x = y)` in CWE499 sensitive data flow)
+
+maxParallelism: 4
+cgStrategy: global
+aggressiveness: medium
+
+rules:
+  mode: whitelist
+  enabled:
+    - CatchGenericException
+    - UncheckedReturn
+    - plumb.resource.leak
+    - dfa.cwe482-compare-instead-of-assign
+
+ai:
+  enabled: false

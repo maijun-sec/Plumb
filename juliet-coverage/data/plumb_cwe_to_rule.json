@@ -1,0 +1,415 @@
+{
+  "20": [
+    "MISSING_INPUT_VALIDATION",
+    "MissingInputValidation",
+    "TAINT_SOURCE_CONSOLE_READ",
+    "TAINT_SOURCE_DB_RESULT",
+    "TAINT_SOURCE_FILE_READ",
+    "TAINT_SOURCE_NETWORK_RECV",
+    "TAINT_SOURCE_PROPERTIES_FILE",
+    "TAINT_SOURCE_REQUEST_HEADER",
+    "TAINT_SOURCE_REQUEST_PARAM",
+    "TAINT_SOURCE_SYSTEM_IN",
+    "TAINT_SOURCE_SYSTEM_PROPERTY"
+  ],
+  "89": [
+    "TAINT_SINK_SQL_INJECTION",
+    "plumb.taint.sql-injection"
+  ],
+  "77": [
+    "TAINT_SINK_COMMAND_INJECTION"
+  ],
+  "78": [
+    "TAINT_SINK_COMMAND_INJECTION",
+    "plumb.taint.command-injection"
+  ],
+  "22": [
+    "TAINT_SINK_PATH_TRAVERSAL",
+    "plumb.taint.path-traversal"
+  ],
+  "79": [
+    "TAINT_SINK_XSS",
+    "plumb.taint.xss-injection"
+  ],
+  "502": [
+    "TAINT_SINK_UNSAFE_DESERIALIZE"
+  ],
+  "918": [
+    "TAINT_SINK_SSRF"
+  ],
+  "470": [
+    "TAINT_SINK_REFLECTION",
+    "plumb.taint.unsafe-reflection"
+  ],
+  "117": [
+    "TAINT_SINK_LOG_INJECTION"
+  ],
+  "643": [
+    "TAINT_SINK_XPATH_INJECTION",
+    "plumb.taint.xpath-injection"
+  ],
+  "90": [
+    "TAINT_SINK_LDAP_INJECTION",
+    "plumb.taint.ldap-injection"
+  ],
+  "91": [
+    "TAINT_SINK_XML_INJECTION"
+  ],
+  "93": [
+    "TAINT_SINK_HEADER_INJECTION"
+  ],
+  "134": [
+    "TAINT_SINK_FORMAT_STRING",
+    "loose.string.format-string",
+    "plumb.taint.format-string"
+  ],
+  "943": [
+    "TAINT_SINK_NOSQL_INJECTION"
+  ],
+  "94": [
+    "TAINT_SINK_OGNL_INJECTION",
+    "plumb.taint.el-injection",
+    "plumb.taint.java-code-injection",
+    "plumb.taint.jcr-injection",
+    "plumb.taint.ognl-injection"
+  ],
+  "95": [
+    "TAINT_SINK_OGNL_INJECTION"
+  ],
+  "1333": [
+    "TAINT_SINK_REGEX_INJECTION"
+  ],
+  "601": [
+    "TAINT_SINK_OPEN_REDIRECT",
+    "plumb.taint.open-redirect"
+  ],
+  "481": [
+    "ASSIGNMENT_IN_OPERAND",
+    "plumb.style.assignment-in-conditional"
+  ],
+  "547": [
+    "AVOID_HARDCODED_IP",
+    "plumb.style.literal-boolean-condition"
+  ],
+  "176": [
+    "DEFAULT_ENCODING"
+  ],
+  "704": [
+    "SUPERFLUOUS_INSTANCEOF"
+  ],
+  "682": [
+    "BIGDECIMAL_DOUBLE_CTOR",
+    "BIG_DECIMAL_EQUALS",
+    "SELF_ASSIGNMENT"
+  ],
+  "1006": [
+    "COLLECTION_IS_EMPTY",
+    "PARAM_HIDES_FIELD"
+  ],
+  "500": [
+    "CLASS_VAR_VISIBILITY",
+    "MUTABLE_STATIC_SHOULD_BE_FINAL"
+  ],
+  "484": [
+    "MISSING_BREAK"
+  ],
+  "252": [
+    "IGNORED_RESULT",
+    "UncheckedReturn"
+  ],
+  "783": [
+    "AMBIGUOUS_PRECEDENCE"
+  ],
+  "697": [
+    "ARRAY_EQUALITY",
+    "STRING_EQUALITY_WITH_EQUALS"
+  ],
+  "15": [
+    "TAINT_SINK_EXT_CONTROL",
+    "plumb.taint.external-config-setting"
+  ],
+  "477": [
+    "ARRAY_HASHCODE_TOSTRING",
+    "Cwe477",
+    "ObsoleteFunction"
+  ],
+  "396": [
+    "CATCH_NPE",
+    "CatchGenericException"
+  ],
+  "820": [
+    "IteratorConcurrentModification",
+    "SYNC_STRING_BOXED"
+  ],
+  "476": [
+    "BOOLEAN_RETURNS_NULL",
+    "plumb.pointer.null-dereference"
+  ],
+  "561": [
+    "UNREACHABLE_CODE"
+  ],
+  "374": [
+    "EXPOSE_INTERNAL_REPRESENTATION"
+  ],
+  "390": [
+    "THROWABLE_NOT_THROWN"
+  ],
+  "259": [
+    "FIELD_HARDCODED_PASSWORD",
+    "HARDCODED_CREDENTIALS",
+    "PREDICTABLE_KEY_PASSWORD",
+    "STATIC_API_KEY",
+    "plumb.dfa.hard-coded-password-sink"
+  ],
+  "798": [
+    "FIELD_HARDCODED_PASSWORD",
+    "FieldHardcodedPassword",
+    "HARDCODED_CREDENTIALS",
+    "PREDICTABLE_KEY_PASSWORD",
+    "PredictableKeyPassword",
+    "STATIC_API_KEY",
+    "StaticApiKey"
+  ],
+  "563": [
+    "DEAD_STORE",
+    "plumb.style.unused-assignment",
+    "plumb.style.unused-local",
+    "plumb.style.unused-parameter",
+    "plumb.style.unused-private-field"
+  ],
+  "327": [
+    "InsecureCrypto",
+    "WEAK_CRYPTO"
+  ],
+  "328": [
+    "InsecureCrypto",
+    "WEAK_CRYPTO"
+  ],
+  "330": [
+    "INSECURE_RANDOM",
+    "plumb.taint.insecure-random"
+  ],
+  "332": [
+    "PREDICTABLE_RANDOM_SEED",
+    "PredictableRandomSeed"
+  ],
+  "336": [
+    "PREDICTABLE_RANDOM_SEED",
+    "plumb.dfa.weak-prng"
+  ],
+  "758": [
+    "BAD_SHIFT",
+    "BadShift"
+  ],
+  "835": [
+    "Cwe835",
+    "INFINITE_LOOP"
+  ],
+  "570": [
+    "CONSTANT_CONDITION",
+    "Cwe570"
+  ],
+  "571": [
+    "CONSTANT_CONDITION",
+    "Cwe571"
+  ],
+  "532": [
+    "SENSITIVE_DATA_LEAK",
+    "TAINT_SOURCE_SENSITIVE_DATA"
+  ],
+  "285": [
+    "MISSING_AUTHORIZATION"
+  ],
+  "862": [
+    "MISSING_AUTHORIZATION",
+    "MissingAuthorization"
+  ],
+  "200": [
+    "INFORMATION_EXPOSURE",
+    "InformationExposure",
+    "plumb.sensitive.data-leak"
+  ],
+  "319": [
+    "INSECURE_COMMUNICATION",
+    "InsecureCommunication",
+    "plumb.taint.cleartext-network-credential-sink"
+  ],
+  "942": [
+    "CORS_MISCONFIGURATION",
+    "CorsMisconfiguration"
+  ],
+  "1004": [
+    "INSECURE_COOKIE"
+  ],
+  "614": [
+    "INSECURE_COOKIE",
+    "plumb.dfa.insecure-cookie"
+  ],
+  "382": [
+    "Cwe382"
+  ],
+  "526": [
+    "Cwe526",
+    "EnvVarInfoExposure"
+  ],
+  "572": [
+    "Cwe572"
+  ],
+  "579": [
+    "Cwe579"
+  ],
+  "585": [
+    "Cwe585"
+  ],
+  "609": [
+    "Cwe609"
+  ],
+  "754": [
+    "CollectionSelfReference"
+  ],
+  "486": [
+    "plumb.dfa.compare-classes-by-name"
+  ],
+  "833": [
+    "Cwe833Deadlock"
+  ],
+  "321": [
+    "plumb.dfa.hard-coded-crypto-key"
+  ],
+  "598": [
+    "InfoExposureQueryString"
+  ],
+  "780": [
+    "InsecureCrypto"
+  ],
+  "613": [
+    "InsufficientSessionExpiration"
+  ],
+  "129": [
+    "loose.numeric.unchecked-array-index",
+    "plumb.numeric.unchecked-array-index"
+  ],
+  "506": [
+    "Cwe506"
+  ],
+  "510": [
+    "Cwe510"
+  ],
+  "566": [
+    "Cwe566"
+  ],
+  "404": [
+    "Cwe404",
+    "plumb.resource.leak"
+  ],
+  "369": [
+    "loose.numeric.divide-by-zero",
+    "plumb.numeric.divide-by-zero"
+  ],
+  "113": [
+    "loose.taint.http-response-splitting",
+    "plumb.taint.http-response-splitting"
+  ],
+  "190": [
+    "loose.numeric.integer-overflow",
+    "plumb.numeric.integer-overflow"
+  ],
+  "191": [
+    "loose.numeric.integer-underflow",
+    "plumb.numeric.integer-underflow"
+  ],
+  "197": [
+    "NumericTruncation",
+    "loose.numeric.truncation",
+    "plumb.numeric.numeric-truncation"
+  ],
+  "325": [
+    "Cwe325",
+    "plumb.dfa.missing-crypto-init"
+  ],
+  "690": [
+    "NullDerefFromReturn"
+  ],
+  "580": [
+    "Cwe580"
+  ],
+  "581": [
+    "Cwe581"
+  ],
+  "193": [
+    "OffByOne"
+  ],
+  "114": [
+    "plumb.dfa.process-control",
+    "plumb.taint.unsafe-jni"
+  ],
+  "329": [
+    "Cwe329RandomIv"
+  ],
+  "617": [
+    "ReachableAssertion"
+  ],
+  "674": [
+    "Cwe674Recursion",
+    "plumb.style.uncontrolled-recursion"
+  ],
+  "400": [
+    "plumb.dfa.resource-exhaustion"
+  ],
+  "226": [
+    "SensitiveInfoUncleared"
+  ],
+  "295": [
+    "plumb.taint.bad-cert-verification"
+  ],
+  "256": [
+    "plumb.taint.plaintext-password-sink"
+  ],
+  "829": [
+    "plumb.taint.jsp-dynamic-include"
+  ],
+  "359": [
+    "plumb.sensitive.pii-leak"
+  ],
+  "384": [
+    "plumb.taint.session-fixation"
+  ],
+  "501": [
+    "plumb.taint.trust-boundary-violation"
+  ],
+  "606": [
+    "UncheckedLoopCondition",
+    "plumb.numeric.unchecked-loop-condition"
+  ],
+  "789": [
+    "plumb.taint.uncontrolled-mem-alloc"
+  ],
+  "416": [
+    "plumb.pointer.use-after-free"
+  ],
+  "397": [
+    "ThrowGenericException"
+  ],
+  "248": [
+    "UncaughtException",
+    "UncaughtExceptionPropagator"
+  ],
+  "600": [
+    "Cwe600"
+  ],
+  "832": [
+    "Cwe832UnlockNotLocked"
+  ],
+  "523": [
+    "UnprotectedCredTransport"
+  ],
+  "759": [
+    "UnsaltedOneWayHash"
+  ],
+  "338": [
+    "plumb.dfa.weak-prng"
+  ],
+  "611": [
+    "Xxe"
+  ]
+}

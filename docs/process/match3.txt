@@ -1,0 +1,17 @@
+﻿Matched: 13
+Unmatched: 479
+
+All matches:
+  FB.BC_UNCONFIRMED_CAST                                  -> style/UnconfirmedCastCheck.java
+  FB.BOA_BADLY_OVERRIDDEN_ADAPTER                         -> style/BadlyOverriddenAdapterCheck.java
+  FB.CI_CONFUSED_INHERITANCE                              -> design/ConfusedInheritanceCheck.java
+  FB.DP_DO_INSIDE_DO_PRIVILEGED                           -> style/DoInsideDoPrivilegedCheck.java
+  FB.IL_INFINITE_LOOP                                     -> style/InfiniteLoopCheck.java
+  FB.IM_BAD_CHECK_FOR_ODD                                 -> style/BadCheckForOddCheck.java
+  FB.ME_MUTABLE_ENUM_FIELD                                -> style/MutableEnumFieldCheck.java
+  FB.NM_FIELD_NAMING_CONVENTION                           -> naming/FieldNamingConventionCheck.java
+  FB.PZLA_PREFER_ZERO_LENGTH_ARRAYS                       -> performance/PreferZeroLengthArraysCheck.java
+  FB.QBA_QUESTIONABLE_BOOLEAN_ASSIGNMENT                  -> style/QuestionableBooleanAssignmentCheck.java
+  FB.SA_FIELD_SELF_ASSIGNMENT                             -> style/FieldSelfAssignmentCheck.java
+  FB.SIO_SUPERFLUOUS_INSTANCEOF                           -> style/SuperfluousInstanceofCheck.java
+  FB.UC_USELESS_OBJECT                                    -> style/UselessObjectCheck.java

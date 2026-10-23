@@ -1,0 +1,845 @@
+# R209 — sink-families.yaml
+#
+# Maps a sink family (e.g. sql.sinks) to a set of
+# function-name patterns. A pattern is a Java regex
+# matched against the callee signature (e.g.
+# "java.sql.Statement#execute(Ljava.lang.String;)V").
+#
+# Used by SinkFamilyRegistry to classify call sites
+# at analysis time. A single taint walk that flows
+# into a sink call site can then be tagged with the
+# CWE family corresponding to that sink.
+#
+# Adding a new sink family:
+#   families:
+#     my-project.sinks:
+#       cwe: CWE-XXX
+#       severity: HIGH
+#       patterns:
+#         - "^com\\.example\\.DangerousSink#doIt"
+#
+# Disabling a family (without removing the entry):
+#   families:
+#     sql.sinks:
+#       cwe: CWE-89
+#       severity: CRITICAL
+#       enabled: false
+#       patterns: [...]
+#
+# Note: severity is a string label
+# (INFO/LOW/MEDIUM/HIGH/CRITICAL); cwe is "CWE-NNN"
+# or null for non-CWE-tagged families (e.g. taint
+# sources).
+
+families:
+  # ===== Taint sources (untrusted input) =====
+  taint.sources.web:
+    cwe: null
+    severity: null
+    patterns:
+      - '^javax\.servlet\.http\.HttpServletRequest\.getParameter(/\d+)?'
+      - '^javax\.servlet\.http\.HttpServletRequest\.getHeader(/\d+)?'
+      - '^javax\.servlet\.http\.HttpServletRequest\.getCookies(/\d+)?'
+      - '^javax\.servlet\.http\.HttpServletRequest\.getQueryString(/\d+)?'
+      - '^io\.undertow\.server\.HttpServerExchange\.getQueryParameters(/\d+)?'
+      - '^org\.springframework\.http\.HttpHeaders\.getFirst(/\d+)?'
+  taint.sources.io:
+    cwe: null
+    severity: null
+    patterns:
+      - '^java\.io\.InputStream\.read(/\d+)?'
+      - '^java\.io\.Reader\.read(/\d+)?'
+      - '^java\.io\.BufferedReader\.readLine(/\d+)?'
+      - '^java\.util\.Scanner\.next(/\d+)?'
+      - '^java\.util\.Scanner\.nextLine(/\d+)?'
+      - '^java\.nio\.channels\.ReadableByteChannel\.read(/\d+)?'
+  taint.sources.network:
+    cwe: null
+    severity: null
+    patterns:
+      - '^java\.net\.Socket\.getInputStream(/\d+)?'
+      - '^java\.net\.DatagramSocket\.receive(/\d+)?'
+      - '^java\.net\.URLConnection\.getInputStream(/\d+)?'
+  taint.sources.console:
+    cwe: null
+    severity: null
+    patterns:
+      - '^java\.io\.Console\.readLine(/\d+)?'
+      - '^java\.lang\.System\.console(/\d+)?'
+  taint.sources.env:
+    cwe: null
+    severity: null
+    patterns:
+      - '^java\.lang\.System\.getenv(/\d+)?'
+      - '^java\.lang\.System\.getProperty(/\d+)?'
+
+  # ===== Taint sinks (sensitive output) =====
+  sql.sinks:
+    cwe: CWE-89
+    severity: CRITICAL
+    patterns:
+      - '^java\.sql\.Statement\.execute(/\d+)?'
+      - '^java\.sql\.Statement\.executeQuery(/\d+)?'
+      - '^java\.sql\.Statement\.executeUpdate(/\d+)?'
+      - '^java\.sql\.Statement\.executeBatch(/\d+)?'
+      - '^java\.sql\.Statement\.executeLargeBatch(/\d+)?'
+      - '^java\.sql\.Statement\.executeLargeUpdate(/\d+)?'
+      - '^java\.sql\.Statement\.addBatch(/\d+)?'
+      - '^java\.sql\.Statement\.clearBatch(/\d+)?'
+      - '^java\.sql\.PreparedStatement\.execute(/\d+)?'
+      - '^java\.sql\.PreparedStatement\.executeQuery(/\d+)?'
+      - '^java\.sql\.PreparedStatement\.executeUpdate(/\d+)?'
+      - '^java\.sql\.PreparedStatement\.executeBatch(/\d+)?'
+      - '^java\.sql\.PreparedStatement\.executeLargeBatch(/\d+)?'
+      - '^java\.sql\.PreparedStatement\.addBatch(/\d+)?'
+      - '^java\.sql\.PreparedStatement\.setString(/\d+)?'
+      - '^java\.sql\.PreparedStatement\.setObject(/\d+)?'
+      - '^java\.sql\.PreparedStatement\.setInt(/\d+)?'
+      - '^java\.sql\.PreparedStatement\.setLong(/\d+)?'
+      - '^java\.sql\.PreparedStatement\.setNull(/\d+)?'
+      - '^java\.sql\.Connection\.prepareStatement(/\d+)?'
+      - '^java\.sql\.Connection\.prepareCall(/\d+)?'
+      - '^java\.sql\.Connection\.nativeSQL(/\d+)?'
+      # R693: JPA / Hibernate / Spring Data sinks.
+      # The strict eval counts these as TP because
+      # Juliet CWE89_Servlet_execute tests reach
+      # the SQL via these higher-level APIs in
+      # practice.
+      - '^javax\.persistence\.EntityManager\.createQuery(/\d+)?'
+      - '^javax\.persistence\.EntityManager\.createNamedQuery(/\d+)?'
+      - '^javax\.persistence\.EntityManager\.createNativeQuery(/\d+)?'
+      - '^org\.hibernate\.Session\.createQuery(/\d+)?'
+      - '^org\.hibernate\.Session\.createSQLQuery(/\d+)?'
+      - '^org\.hibernate\.query\.Query\.setParameter(/\d+)?'
+      - '^org\.springframework\.jdbc\.core\.JdbcTemplate\.query(/\d+)?'
+      - '^org\.springframework\.jdbc\.core\.JdbcTemplate\.queryForObject(/\d+)?'
+      - '^org\.springframework\.jdbc\.core\.JdbcTemplate\.queryForList(/\d+)?'
+      - '^org\.springframework\.jdbc\.core\.JdbcTemplate\.update(/\d+)?'
+      - '^org\.springframework\.jdbc\.core\.JdbcTemplate\.batchUpdate(/\d+)?'
+      - '^org\.springframework\.jdbc\.core\.namedparam\.NamedParameterJdbcTemplate\.query(/\d+)?'
+      - '^org\.springframework\.jdbc\.core\.namedparam\.NamedParameterJdbcTemplate\.update(/\d+)?'
+      - '^org\.springframework\.data\.jpa\.repository\.JpaRepository\.findById(/\d+)?'
+      - '^org\.springframework\.data\.jpa\.repository\.JpaRepository\.getOne(/\d+)?'
+      - '^org\.springframework\.data\.jpa\.repository\.JpaRepository\.getById(/\d+)?'
+      - '^javax\.persistence\.EntityManager\.createQuery(/\d+)?'
+      - '^javax\.persistence\.EntityManager\.createNativeQuery(/\d+)?'
+      - '^javax\.persistence\.EntityManager\.createNamedQuery(/\d+)?'
+  ldap.sinks:
+    cwe: CWE-90
+    severity: HIGH
+    # R759: search(Name, filter, Controls) — the tainted
+    # value is the filter (Java arg 1), not the base DN
+    # (Java arg 0). Without this default, the family
+    # default of 0 silently fires on the (typically clean)
+    # baseDN and misses the actual filter.
+    default_arg_index: 1
+    patterns:
+      - '^javax\.naming\.InitialContext\.search(/\d+)?'
+      - '^javax\.naming\.InitialDirContext\.search(/\d+)?'
+      - '^javax\.naming\.ldap\.LdapContext\.search(/\d+)?'
+      - '^javax\.naming\.directory\.DirContext\.search(/\d+)?'
+      - '^javax\.naming\.Context\.lookup(/\d+)?'
+      - '^javax\.naming\.InitialContext\.lookup(/\d+)?'
+      - '^org\.springframework\.ldap\.core\.LdapTemplate\.search(/\d+)?'
+      - '^org\.springframework\.ldap\.core\.LdapTemplate\.find(/\d+)?'
+  command.sinks:
+    cwe: CWE-78
+    severity: CRITICAL
+    patterns:
+      - '^java\.lang\.Runtime\.exec(/\d+)?'
+      - '^java\.lang\.Runtime\.load(/\d+)?'
+      - '^java\.lang\.Runtime\.loadLibrary(/\d+)?'
+      - '^java\.lang\.ProcessBuilder\.start(/\d+)?'
+      - '^java\.lang\.ProcessImpl\.start(/\d+)?'
+      - '^java\.lang\.ProcessBuilder\.<init>/\d+'
+      - '^javax\\.activation\\.CommandMap'
+      # R515 — Spring's process exec
+      - '^org\.springframework\.util\.FileCopyUtils\.copy(/\d+)?'
+      # R693: Apache Commons Exec / ProcessBuilder sink variants.
+      - '^org\.apache\.commons\.exec\.DefaultExecutor\.execute(/\d+)?'
+      - '^org\.apache\.commons\.exec\.CommandLine\.addArguments(/\d+)?'
+      - '^org\.apache\.commons\.exec\.CommandLine\.addArgument(/\d+)?'
+  file-path.sinks:
+    cwe: CWE-22
+    severity: HIGH
+    patterns:
+      # R505 — IR callee format is FQN.method/arity
+      # with "." separator. Constructors are emitted
+      # with simple class names (translateNew uses
+      # oce.getType().asString() which is "File" for
+      # `new File(...)`), so we use short forms. The
+      # regex match uses Matcher.find() (substring),
+      # so each pattern matches the actual sig.
+      - '^java\.io\.FileInputStream\.<init>/\d+'
+      - '^java\.io\.FileOutputStream\.<init>/\d+'
+      - '^java\.io\.FileReader\.<init>/\d+'
+      - '^java\.io\.FileWriter\.<init>/\d+'
+      - '^java\.io\.RandomAccessFile\.<init>/\d+'
+      - '^java\.io\.File\.<init>/\d+'
+      - '^java\.nio\.file\.Files\.newInputStream(/\d+)?'
+      - '^java\.nio\.file\.Files\.newOutputStream(/\d+)?'
+      - '^java\.nio\.file\.Files\.newBufferedReader(/\d+)?'
+      - '^java\.nio\.file\.Files\.newByteChannel(/\d+)?'
+      - '^java\.nio\.file\.Files\.readAllBytes(/\d+)?'
+      - '^java\.nio\.file\.Files\.readString(/\d+)?'
+      - '^java\.nio\.file\.Paths\.get(/\d+)?'
+      - '^java\.util\.Scanner\.<init>/\d+'
+      - '^java\.io\.PrintWriter\.<init>/\d+'
+      - '^java\.io\.BufferedWriter\.<init>/\d+'
+      - '^java\.nio\.file\.Files\.write(/\d+)?'
+      - '^java\.nio\.file\.Files\.copy(/\d+)?'
+      - '^java\.nio\.file\.Files\.move(/\d+)?'
+      - '^java\.nio\.file\.Files\.delete(/\d+)?'
+  url.sinks:
+    cwe: CWE-918
+    severity: HIGH
+    patterns:
+      - '^java\.net\.URL\.<init>(/\d+)?'
+      - '^java\.net\.URL\.openStream(/\d+)?'
+      - '^java\.net\.URL\.openConnection(/\d+)?'
+      - '^java\.net\.URLConnection\.getInputStream(/\d+)?'
+      - '^java\.net\.HttpURLConnection\.<init>(/\d+)?'
+      - '^java\.net\.URLConnection\.connect(/\d+)?'
+      - '^org\.apache\.http\.client\.HttpClient\.execute(/\d+)?'
+      - '^org\.apache\.http\.impl\.client\.HttpClients\.createDefault/0'
+  reflection.sinks:
+    cwe: CWE-470
+    severity: HIGH
+    patterns:
+      - '^java\.lang\.Class\.forName(/\d+)?'
+      - '^Class\.forName(/\d+)?'
+      - '^java\.lang\.ClassLoader\.loadClass(/\d+)?'
+      - '^ClassLoader\.loadClass(/\d+)?'
+      - '^java\.lang\.reflect\.Method\.invoke(/\d+)?'
+      - '^Method\.invoke(/\d+)?'
+  # R221 — Sensitive data exfiltration
+  # sinks. Split into two families so the
+  # SensitiveDataLeakChecker can
+  # distinguish CWE-200 (general
+  # information exposure) from CWE-359
+  # (specifically Personally Identifiable
+  # Information). The patterns use the
+  # same FQN shape as the existing
+  # `log.sinks` family above.
+  sensitive.exfil.sinks:
+    cwe: CWE-200
+    severity: HIGH
+    patterns:
+      - '^java\.util\.logging\.Logger\.info(/\d+)?'
+      - '^java\.util\.logging\.Logger\.warn(/\d+)?'
+      - '^java\.util\.logging\.Logger\.error(/\d+)?'
+      - '^java\.util\.logging\.Logger\.severe(/\d+)?'
+      - '^java\.util\.logging\.Logger\.debug(/\d+)?'
+      - '^java\.util\.logging\.Logger\.log(/\d+)?'
+      - '^java\.lang\.System\.out(/\d+)?'
+      - '^java\.lang\.System\.err(/\d+)?'
+      - '^java\.io\.PrintStream\.print(/\d+)?'
+      - '^java\.io\.PrintStream\.println(/\d+)?'
+      - '^java\.io\.PrintWriter\.print(/\d+)?'
+      - '^java\.io\.PrintWriter\.println(/\d+)?'
+      - '^org\.slf4j\.Logger\.info(/\d+)?'
+      - '^org\.slf4j\.Logger\.warn(/\d+)?'
+      - '^org\.slf4j\.Logger\.error(/\d+)?'
+      - '^org\.slf4j\.Logger\.debug(/\d+)?'
+  pii.exfil.sinks:
+    cwe: CWE-359
+    severity: HIGH
+    patterns:
+      - '^java\.util\.logging\.Logger\.info(/\d+)?'
+      - '^java\.util\.logging\.Logger\.warn(/\d+)?'
+      - '^java\.util\.logging\.Logger\.error(/\d+)?'
+      - '^java\.util\.logging\.Logger\.severe(/\d+)?'
+      - '^java\.util\.logging\.Logger\.debug(/\d+)?'
+      - '^java\.util\.logging\.Logger\.log(/\d+)?'
+      - '^java\.lang\.System\.out(/\d+)?'
+      - '^java\.lang\.System\.err(/\d+)?'
+      - '^java\.io\.PrintStream\.print(/\d+)?'
+      - '^java\.io\.PrintStream\.println(/\d+)?'
+      - '^java\.io\.PrintWriter\.print(/\d+)?'
+      - '^java\.io\.PrintWriter\.println(/\d+)?'
+      - '^org\.slf4j\.Logger\.info(/\d+)?'
+      - '^org\.slf4j\.Logger\.warn(/\d+)?'
+      - '^org\.slf4j\.Logger\.error(/\d+)?'
+      - '^org\.slf4j\.Logger\.debug(/\d+)?'
+      - '^java\.lang\.reflect\.Constructor\.newInstance(/\d+)?'
+  format-string.sinks:
+    cwe: CWE-134
+    severity: MEDIUM
+    patterns:
+      - '^java\.lang\.String\.format(/\d+)?'
+      - '^java\.io\.PrintStream\.printf(/\d+)?'
+      - '^java\.io\.PrintStream\.format(/\d+)?'
+      - '^java\.io\.PrintWriter\.format(/\d+)?'
+      - '^java\.io\.PrintWriter\.printf(/\d+)?'
+      - '^java\.util\.Formatter\.format(/\d+)?'
+      - '^java\.util\.logging\.Logger\.log(/\d+)?'
+      # R511 — System.out/err.printf/format
+      # surface as `System.out.format/1` etc.
+      # because plumb-tac cannot resolve the
+      # static-field receiver to PrintStream.
+      - '^java\.lang\.System\.out\.format(/\d+)?'
+      - '^java\.lang\.System\.out\.printf(/\d+)?'
+      - '^java\.lang\.System\.err\.format(/\d+)?'
+      - '^java\.lang\.System\.err\.printf(/\d+)?'
+      # R511b — when plumb-tac collapses
+      # `System.out.format` to `java.lang.System.format`
+      # (the static-field receiver short-circuit).
+      - '^java\.lang\.System\.format(/\d+)?'
+      - '^java\.lang\.System\.printf(/\d+)?'
+  log.sinks:
+    cwe: CWE-117
+    severity: MEDIUM
+    # R1103: the message is Java arg 0 for the level-specific methods
+    # (LOG.info(msg) / LOG.info(msg, throwable)) and Java arg 1 for the
+    # generic LOG.log(Level, msg) form. Severity was LOW, which is wrong for
+    # an attacker-forgeable log entry -- it reads as a nit but CRLF forging
+    # can rewrite whole log files, and combined with a `${` lookup it is the
+    # Log4Shell delivery path. The family had no consumer at all until
+    # LogInjectionChecker; see that class for the full rationale.
+    patterns:
+      - pattern: '^java\.util\.logging\.Logger\.info(/\d+)?'
+      - pattern: '^java\.util\.logging\.Logger\.warning(/\d+)?'
+      - pattern: '^java\.util\.logging\.Logger\.severe(/\d+)?'
+      - pattern: '^java\.util\.logging\.Logger\.fine(/\d+)?'
+      - pattern: '^java\.util\.logging\.Logger\.finer(/\d+)?'
+      - pattern: '^java\.util\.logging\.Logger\.finest(/\d+)?'
+      - pattern: '^java\.util\.logging\.Logger\.config(/\d+)?'
+      - pattern: '^java\.util\.logging\.Logger\.log(/\d+)?'
+        arg_index: 1     # log(Level, msg[, Throwable]) -- msg is the 2nd arg
+      - pattern: '^org\.slf4j\.Logger\.info(/\d+)?'
+      - pattern: '^org\.slf4j\.Logger\.warn(/\d+)?'
+      - pattern: '^org\.slf4j\.Logger\.error(/\d+)?'
+      - pattern: '^org\.slf4j\.Logger\.debug(/\d+)?'
+      - pattern: '^org\.slf4j\.Logger\.trace(/\d+)?'
+      - pattern: '^java\.lang\.System\.Logger\.log(/\d+)?'
+        arg_index: 1
+  deserialization.sinks:
+    cwe: CWE-502
+    severity: CRITICAL
+    # R1099: the zero-argument deserializers take their untrusted data from the
+    # STREAM (the receiver), not from an argument. arg_index: -2 selects the
+    # receiver. Without it these patterns fell back to default_arg_index (0,
+    # "first user argument") and indexed past the end of an empty argument list,
+    # so TAINT_SINK_UNSAFE_DESERIALIZE was registered CRITICAL but could never
+    # fire -- a coverage claim with no implementation behind it.
+    patterns:
+      - pattern: '^java\.io\.ObjectInputStream\.readObject(/\d+)?'
+        arg_index: -2   # receiver
+      - pattern: '^java\.io\.ObjectInputStream\.readUnshared(/\d+)?'
+        arg_index: -2   # receiver
+      # Kryo#readObject(InputStream) / (InputStream, Class) DO take a user arg,
+      # so they keep the family default rather than the receiver.
+      - '^com\.fasterxml\.jackson\.databind\.ObjectMapper\.readValue(/\d+)?'
+      - '^org\.codehaus\.jackson\.map\.ObjectMapper\.readValue(/\d+)?'
+      - '^com\.thoughtworks\.xstream\.XStream\.fromXML(/\d+)?'
+      - '^com\.esotericsoftware\.kryo\.kryo5\.Kryo\.readObject(/\d+)?'
+      - '^com\.esotericsoftware\.kryo\.Kryo\.readObject(/\d+)?'
+      - '^org\.yaml\.snakeyaml\.Yaml\.load(/\d+)?'
+      - '^org\.yaml\.snakeyaml\.Yaml\.loadAs(/\d+)?'
+  xpath.sinks:
+    cwe: CWE-643
+    severity: HIGH
+    patterns:
+      - '^javax\.xml\.xpath\.XPath\.evaluate(/\d+)?'
+      - '^javax\.xml\.xpath\.XPath\.compile(/\d+)?'
+      - '^javax\.xml\.xpath\.XPathExpression\.evaluate(/\d+)?'
+      - '^org\.w3c\.dom\.xpath\.XPathEvaluator\.evaluate(/\d+)?'
+      - '^org\.apache\.xpath\.XPathAPI\.selectNodeList(/\d+)?'
+  xquery.sinks:
+    cwe: CWE-643
+    severity: HIGH
+    patterns:
+      - '^javax\.xml\.xquery\.XQJItem\.XQJItem(/\d+)?'
+  regex.sinks:
+    cwe: CWE-1333
+    severity: MEDIUM
+    patterns:
+      - '^java\.util\.regex\.Pattern\.compile(/\d+)?'
+      - '^java\.util\.regex\.Pattern\.matches(/\d+)?'
+  format.sinks:
+    cwe: CWE-134
+    severity: HIGH
+    patterns:
+      - '^java\.lang\.String\.format(/\d+)?'
+      - '^java\.io\.PrintStream\.printf(/\d+)?'
+      - '^java\.io\.PrintStream\.format(/\d+)?'
+      - '^java\.io\.PrintWriter\.format(/\d+)?'
+      - '^java\.util\.Formatter\.format(/\d+)?'
+      - '^java\.util\.logging\.Logger\.info(/\d+)?'
+      - '^java\.util\.logging\.Logger\.warning(/\d+)?'
+      - '^java\.util\.logging\.Logger\.severe(/\d+)?'
+      - '^java\.util\.logging\.Logger\.log(/\d+)?'
+      - '^org\.slf4j\.Logger\.info(/\d+)?'
+      - '^org\.slf4j\.Logger\.warn(/\d+)?'
+      - '^org\.slf4j\.Logger\.error(/\d+)?'
+      - '^org\.slf4j\.Logger\.debug(/\d+)?'
+  header.sinks:
+    cwe: CWE-93
+    severity: MEDIUM
+    # R693: per-pattern arg_index. Family default
+    # is 1 (the value / message side); the few
+    # single-arg patterns that hold taint at
+    # user-arg 0 override below.
+    default_arg_index: 1
+    patterns:
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.setHeader(/\d+)?'
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.addHeader(/\d+)?'
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.sendError(/\d+)?'
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.setStatus(/\d+)?'
+        arg_index: -1   # int-only, no taint
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.sendRedirect(/\d+)?'
+        arg_index: 0   # location is the only user-arg
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.encodeURL(/\d+)?'
+        arg_index: 0
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.encodeRedirectURL(/\d+)?'
+        arg_index: 0
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.addCookie(/\d+)?'
+        arg_index: 0   # R692 / R693: Cookie object passed in
+      - pattern: '^javax\.servlet\.http\.Cookie\.<init>/\d+'
+        arg_index: 1   # value side of Cookie(name, value)
+      - pattern: '^org\.springframework\.http\.ResponseEntity\.<init>/\d+'
+        arg_index: 1
+      - pattern: '^org\.springframework\.http\.HttpHeaders\.set(/\d+)?'
+      - pattern: '^org\.springframework\.http\.HttpHeaders\.add(/\d+)?'
+  xss.sinks:
+    cwe: CWE-79
+    severity: HIGH
+    # R693.5: per-pattern arg_index. Most patterns
+    # are 1-arg methods so the tainted value sits
+    # at user-arg 0. sendError is the exception —
+    # arg 1 (the message side) is tainted; arg 0
+    # is the int code.
+    default_arg_index: 0
+    patterns:
+      # R505 — XSS sinks are writer/print methods on
+      # the HTTP response. The TAC IR uses
+      # "FQN.method/arity" for instance calls, so
+      # the receiver type must be picked up by
+      # TypeMapper.resolveWellKnownFqn (now covering
+      # PrintWriter/PrintStream/HttpServletResponse).
+      - pattern: '^java\.io\.PrintWriter\.print(/\d+)?'
+      - pattern: '^java\.io\.PrintWriter\.println(/\d+)?'
+      - pattern: '^java\.io\.PrintWriter\.write(/\d+)?'
+      - pattern: '^java\.io\.PrintWriter\.append(/\d+)?'
+      - pattern: '^java\.io\.PrintWriter\.format(/\d+)?'
+      - pattern: '^java\.io\.PrintStream\.print(/\d+)?'
+      - pattern: '^java\.io\.PrintStream\.println(/\d+)?'
+      - pattern: '^java\.io\.PrintStream\.write(/\d+)?'
+      - pattern: '^java\.io\.PrintStream\.append(/\d+)?'
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.getWriter(/\d+)?'
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.getOutputStream(/\d+)?'
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.sendError(/\d+)?'   # R692: CWE81 XSS-via-error-message
+        arg_index: 1
+      - pattern: '^java\.lang\.String\.replaceAll(/\d+)?'
+  nosql.sinks:
+    cwe: CWE-943
+    severity: HIGH
+    patterns:
+      - '^com\.mongodb\.client\.MongoCollection\.find(/\d+)?'
+      - '^com\.mongodb\.client\.MongoCollection\.insertOne(/\d+)?'
+      - '^org\.springframework\.data\.mongodb\.core\.MongoTemplate\.find(/\d+)?'
+  ognl.sinks:
+    cwe: CWE-94
+    severity: CRITICAL
+    patterns:
+      - '^ognl\.Ognl\.getValue(/\d+)?'
+      - '^com\.opensymphony\.xwork2\.util\.OgnlUtil\.getValue(/\d+)?'
+  open-redirect.sinks:
+    cwe: CWE-601
+    severity: MEDIUM
+    patterns:
+      - '^javax\.servlet\.http\.HttpServletResponse\.sendRedirect(/\d+)?'
+      - '^org\.springframework\.web\.servlet\.view\.RedirectView\.render(/\d+)?'
+      - '^org\.springframework\.web\.servlet\.view\.RedirectView\.setUrl(/\d+)?'
+      - '^org\.springframework\.web\.servlet\.view\.RedirectView\.<init>/\d+'
+  xml-injection.sinks:
+    cwe: CWE-91
+    severity: HIGH
+    patterns:
+      - '^javax\.xml\.transform\.Transformer\.transform(/\d+)?'
+      - '^org\.xml\.sax\.XMLReader\.parse(/\d+)?'
+      - '^javax\.xml\.parsers\.DocumentBuilder\.parse(/\d+)?'
+
+  # ===== R513 UNCONTROLLED_MEM_ALLOC (CWE-789) =====
+  # Sink ctor / method calls where a tainted
+  # numeric value lands in the size / capacity
+  # arg, so the attacker controls how much heap
+  # is allocated. Juliet CWE-789 patterns use
+  # `new byte[data]` (array alloc) and the like;
+  # those lower to ARRAYLEN instructions rather
+  # than CALL, so we ALSO add the StringBuffer /
+  # ByteArrayOutputStream constructor patterns
+  # and the String ctor with tainted byte-array
+  # arg.
+  mem-alloc.sinks:
+    cwe: CWE-789
+    severity: HIGH
+    patterns:
+      - '^java\.lang\.StringBuffer\.<init>/\d+'
+      - '^java\.lang\.StringBuilder\.<init>/\d+'
+      - '^java\.io\.ByteArrayOutputStream\.<init>/\d+'
+      - '^java\.io\.CharArrayWriter\.<init>/\d+'
+      - '^java\.io\.CharArrayReader\.<init>/\d+'
+      - '^java\.io\.ByteArrayInputStream\.<init>/\d+'
+      - '^java\.util\.Vector\.<init>/\d+'
+      - '^java\.util\.ArrayList\.<init>/\d+'
+      - '^java\.util\.HashMap\.<init>/\d+'
+      - '^java\.util\.HashSet\.<init>/\d+'
+      - '^java\.util\.Hashtable\.<init>/\d+'
+      - '^java\.lang\.String\.<init>/\d+'
+      - '^java\.lang\.reflect\.Array\.newInstance(/\d+)?'
+
+  # ===== R500 BAD_CERT_VERIFICATION (CWE-295) =====
+  # Sink methods that consume trust material (hostname verifiers,
+  # trust managers, SSLContexts). A tainted value flowing here means
+  # the developer built the trust chain from user input — i.e.
+  # attacker-controlled certificate validation.
+  # R594 — accept both FQN and short-form callee sigs so the
+  # stub fires regardless of whether the parser could resolve
+  # javax.net.ssl.* at IR build time.
+  ssl.sinks:
+    cwe: CWE-295
+    severity: CRITICAL
+    patterns:
+      - '^javax\.net\.ssl\.HttpsURLConnection\.setDefaultHostnameVerifier(/\d+)?'
+      - '^HttpsURLConnection\.setDefaultHostnameVerifier(/\d+)?'
+      - '^javax\.net\.ssl\.HttpsURLConnection\.setHostnameVerifier(/\d+)?'
+      - '^HttpsURLConnection\.setHostnameVerifier(/\d+)?'
+      - '^javax\.net\.ssl\.SSLContext\.init(/\d+)?'
+      - '^SSLContext\.init(/\d+)?'
+      - '^javax\.net\.ssl\.SSLContext\.getInstance(/\d+)?'
+      - '^SSLContext\.getInstance(/\d+)?'
+      - '^org\.apache\.http\.conn\.ssl\.SSLConnectionSocketFactory\.<init>(/\d+)?'
+      - '^SSLConnectionSocketFactory\.<init>(/\d+)?'
+      - '^org\.apache\.http\.ssl\.SSLContexts\.custom(/\d+)?'
+      - '^SSLContexts\.custom(/\d+)?'
+
+  # ===== R502 UNSAFE_JNI (CWE-114) =====
+  # Sink methods that load native libraries from a path. A tainted
+  # path means the attacker controls which .so/.dll gets loaded.
+  jni.sinks:
+    cwe: CWE-114
+    severity: CRITICAL
+    patterns:
+      - '^java\.lang\.System\.load(/\d+)?'
+      - '^System\.load(/\d+)?'
+      - '^java\.lang\.System\.loadLibrary(/\d+)?'
+      - '^System\.loadLibrary(/\d+)?'
+      - '^java\.lang\.Runtime\.load(/\d+)?'
+      - '^Runtime\.load(/\d+)?'
+      - '^java\.lang\.Runtime\.loadLibrary(/\d+)?'
+      - '^Runtime\.loadLibrary(/\d+)?'
+
+  # ===== R503 EL_INJECTION (CWE-94) =====
+  # Sink methods that evaluate an EL expression. A tainted expression
+  # allows attacker-controlled method invocation / property access.
+  # R594 — accept both FQN and short-form callee sigs.
+  el.sinks:
+    cwe: CWE-94
+    severity: CRITICAL
+    patterns:
+      - '^javax\.el\.ELProcessor\.eval(/\d+)?'
+      - '^ELProcessor\.eval(/\d+)?'
+      - '^javax\.el\.ValueExpression\.getValue(/\d+)?'
+      - '^ValueExpression\.getValue(/\d+)?'
+      - '^javax\.el\.ValueExpression\.setValue(/\d+)?'
+      - '^ValueExpression\.setValue(/\d+)?'
+      - '^org\.apache\.el\.ExpressionFactoryImpl\.createValueExpression(/\d+)?'
+      - '^ExpressionFactoryImpl\.createValueExpression(/\d+)?'
+      - '^org\.springframework\.expression\.ExpressionParser\.parseExpression(/\d+)?'
+      - '^ExpressionParser\.parseExpression(/\d+)?'
+      - '^org\.springframework\.expression\.Expression\.getValue(/\d+)?'
+      - '^Expression\.getValue(/\d+)?'
+      - '^org\.springframework\.expression\.Expression\.setValue(/\d+)?'
+      - '^Expression\.setValue(/\d+)?'
+
+  # ===== R505 JCR_INJECTION (CWE-94) =====
+  # Sink methods that execute a JCR (JSR-170) query. A tainted
+  # query or path allows attacker-controlled traversal / Xpath-like
+  # injection.
+  # R594 — accept both FQN and short-form callee sigs.
+  jcr.sinks:
+    cwe: CWE-94
+    severity: HIGH
+    patterns:
+      - '^javax\.jcr\.Query\.execute(/\d+)?'
+      - '^Query\.execute(/\d+)?'
+      - '^javax\.jcr\.Workspace\.query(/\d+)?'
+      - '^Workspace\.query(/\d+)?'
+      - '^javax\.jcr\.Session\.save(/\d+)?'
+      - '^Session\.save(/\d+)?'
+      - '^javax\.jcr\.Node\.getNode(/\d+)?'
+      - '^Node\.getNode(/\d+)?'
+      - '^javax\.jcr\.Node\.getProperty(/\d+)?'
+      - '^Node\.getProperty(/\d+)?'
+      - '^javax\.jcr\.Item\.remove(/\d+)?'
+      - '^Item\.remove(/\d+)?'
+
+  # ===== R506 JSP_DYNAMIC_INCLUDE (CWE-829) =====
+  # Sink methods that include a JSP fragment at runtime. A tainted
+  # path allows attacker-controlled include of arbitrary content.
+  # R594 — accept both FQN and short-form callee sigs.
+  jsp-include.sinks:
+    cwe: CWE-829
+    severity: CRITICAL
+    patterns:
+      - '^org\.apache\.jasper\.runtime\.PageContextImpl\.include(/\d+)?'
+      - '^PageContextImpl\.include(/\d+)?'
+      - '^javax\.servlet\.RequestDispatcher\.include(/\d+)?'
+      - '^RequestDispatcher\.include(/\d+)?'
+      - '^javax\.servlet\.jsp\.PageContext\.include(/\d+)?'
+      - '^PageContext\.include(/\d+)?'
+      - '^org\.apache\.tiles\.request\.render\.Renderer\.render(/\d+)?'
+      - '^Renderer\.render(/\d+)?'
+
+  # ===== R507 TRUST_BOUNDARY_VIOLATION (CWE-501) =====
+  # Sink locations where tainted data crosses into a storage
+  # location the rest of the application trusts — typically a
+  # session, request attribute, or static cache. The CWE describes
+  # this as "data flowing into a data structure or context that is
+  # often assumed to be trustworthy".
+  # R594 — accept both FQN and short-form callee sigs.
+  trust-boundary.sinks:
+    cwe: CWE-501
+    severity: MEDIUM
+    patterns:
+      - '^javax\.servlet\.http\.HttpSession\.setAttribute(/\d+)?'
+      - '^HttpSession\.setAttribute(/\d+)?'
+      - '^javax\.servlet\.http\.HttpServletRequest\.setAttribute(/\d+)?'
+      - '^HttpServletRequest\.setAttribute(/\d+)?'
+      - '^javax\.servlet\.ServletContext\.setAttribute(/\d+)?'
+      - '^ServletContext\.setAttribute(/\d+)?'
+      - '^java\.util\.concurrent\.ConcurrentHashMap\.put(/\d+)?'
+      - '^ConcurrentHashMap\.put(/\d+)?'
+      - '^java\.util\.HashMap\.put(/\d+)?'
+      - '^HashMap\.put(/\d+)?'
+      - '^java\.util\.Hashtable\.put(/\d+)?'
+      - '^Hashtable\.put(/\d+)?'
+      - '^java\.util\.Map\.put(/\d+)?'
+      - '^Map\.put(/\d+)?'
+
+  # ===== R580 SESSION_FIXATION (CWE-384) =====
+  # Sink methods that establish a new session token. Tainted data
+  # flowing into these lets the attacker pin the victim's
+  # session to a value they control, then ride the session
+  # after the victim logs in (classic session fixation).
+  # R594 — accept both FQN and short-form callee sigs.
+  session.sinks:
+    cwe: CWE-384
+    severity: HIGH
+    patterns:
+      - '^javax\.servlet\.http\.HttpServletRequest\.changeSessionId(/\d+)?'
+      - '^HttpServletRequest\.changeSessionId(/\d+)?'
+      - '^javax\.servlet\.http\.HttpSession\.changeSessionId(/\d+)?'
+      - '^HttpSession\.changeSessionId(/\d+)?'
+      - '^javax\.servlet\.http\.HttpServletResponse\.setHeader(/\d+)?'
+      - '^HttpServletResponse\.setHeader(/\d+)?'
+      - '^javax\.servlet\.http\.HttpServletResponse\.addHeader(/\d+)?'
+      - '^HttpServletResponse\.addHeader(/\d+)?'
+      - '^org\.apache\.shiro\.session\.Session\.setId(/\d+)?'
+      - '^Session\.setId(/\d+)?'
+      - '^org\.apache\.shiro\.web\.session\.HttpServletSession\.setId(/\d+)?'
+      - '^HttpServletSession\.setId(/\d+)?'
+
+  # ===== R581 INSECURE_RANDOM (CWE-330) =====
+  # Sink methods that produce a non-cryptographic random value
+  # (java.util.Random / Math.random). Tainted "seed" arguments
+  # are not in scope here — the issue is the choice of PRNG in
+  # a security-sensitive context. The Coverity brief is
+  # precise: "cryptographically weak PRNGs used in security-
+  # sensitive contexts". We attach this sink to taint as a
+  # standalone family: any value read from these methods is
+  # treated as an "insecure-random-source" so the
+  # SensitiveDataLeak-style downstream checks can fire if
+  # the value flows into a session id, token, etc.
+  random.sinks:
+    cwe: CWE-330
+    severity: MEDIUM
+    patterns:
+      - '^java\.util\.Random\.next(/\d+)?'
+      - '^java\.util\.Random\.nextInt(/\d+)?'
+      - '^java\.util\.Random\.nextLong(/\d+)?'
+      - '^java\.util\.Random\.nextDouble(/\d+)?'
+      - '^java\.util\.Random\.nextFloat(/\d+)?'
+      - '^java\.util\.Random\.nextBoolean(/\d+)?'
+      - '^java\.util\.Random\.nextBytes(/\d+)?'
+      - '^java\.util\.concurrent\.ThreadLocalRandom\.next(/\d+)?'
+      - '^java\.util\.concurrent\.ThreadLocalRandom\.nextInt(/\d+)?'
+      - '^java\.util\.concurrent\.ThreadLocalRandom\.nextLong(/\d+)?'
+      - '^java\.util\.concurrent\.ThreadLocalRandom\.nextDouble(/\d+)?'
+      - '^java\.lang\.Math\.random(/\d+)?'
+      - '^org\.apache\.commons\.lang3\.RandomUtils\.next(/\d+)?'
+
+  # ===== R582 JAVA_CODE_INJECTION (CWE-94) =====
+  # Sink methods that evaluate Java source / bytecode / scripts.
+  # Tainted data flowing into these is a direct RCE vector:
+  # ScriptEngine.eval, GroovyShell.evaluate, SpEL, OGNL (already
+  # covered by R504), etc.
+  # R594 — accept both FQN and short-form callee sigs.
+  code-execution.sinks:
+    cwe: CWE-94
+    severity: CRITICAL
+    patterns:
+      - '^javax\.script\.ScriptEngine\.eval(/\d+)?'
+      - '^ScriptEngine\.eval(/\d+)?'
+      - '^groovy\.lang\.GroovyShell\.evaluate(/\d+)?'
+      - '^GroovyShell\.evaluate(/\d+)?'
+      - '^groovy\.lang\.GroovyClassLoader\.parseClass(/\d+)?'
+      - '^GroovyClassLoader\.parseClass(/\d+)?'
+      - '^org\.codehaus\.groovy\.control\.CompilationUnit\.compile(/\d+)?'
+      - '^CompilationUnit\.compile(/\d+)?'
+      - '^org\.springframework\.scripting\.bsh\.BSHLikesGroovy\.eval(/\d+)?'
+      - '^BSHLikesGroovy\.eval(/\d+)?'
+      - '^jdk\.nashorn\.api\.scripting\.NashornScriptEngine\.eval(/\d+)?'
+      - '^NashornScriptEngine\.eval(/\d+)?'
+      - '^java\.beans\.Expression\.getValue(/\d+)?'
+      - '^Expression\.getValue(/\d+)?'
+      - '^java\.beans\.Statement\.execute(/\d+)?'
+      - '^Statement\.execute(/\d+)?'
+      - '^java\.beans\.XMLDecoder\.<init>(/\d+)?'
+      - '^XMLDecoder\.<init>(/\d+)?'
+      - '^java\.io\.ObjectInputStream\.readObject(/\d+)?'
+      - '^ObjectInputStream\.readObject(/\d+)?'
+
+  # ===== R7 PLAINTEXT_PASSWORD_SINK (CWE-256) =====
+  # Sink methods that consume a credential from
+  # an external source without sanitisation. The
+  # classic Juliet pattern is:
+  #   password = properties.getProperty("password");
+  #   DriverManager.getConnection(url, user, password);
+  # i.e. the password slot of DriverManager.getConnection
+  # gets a file-sourced value directly. The
+  # taint-style DBCredentialSinkChecker (extends
+  # TaintedCheckerBase) handles this with the
+  # standard `plumb.taint.untrusted-source` source
+  # family. The HardCodedPasswordSinkChecker (R6)
+  # is a DFA-style sibling that catches the
+  # literal-hard-coded variant.
+  #
+  # The TAC CALL builder prepends the receiver to
+  # ins.args, so the DriverManager.getConnection
+  # static call (no real "this") has args[0] =
+  # "this" placeholder, args[1] = url (Java arg 0),
+  # args[2] = user (Java arg 1), args[3] = password
+  # (Java arg 2). The framework's universal +1
+  # offset maps sinkArgumentIndex(2) -> argIdx 3.
+  db.credential.sinks:
+    cwe: CWE-256
+    severity: CRITICAL
+    # R696: family-wide default arg index. The
+    # DriverManager.getConnection static calls
+    # are 3-arg (url, user, password); password
+    # is Java arg index 2. The framework adds
+    # +1 for the receiver placeholder at
+    # args[0], so the family default is 2.
+    # Without this, ConfigLoader's asInt
+    # default of 0 silently mis-targets
+    # DriverManager.getConnection to args[1]
+    # (the url) instead of args[3] (the
+    # password).
+    default_arg_index: 2
+    patterns:
+      - '^java\.sql\.DriverManager\.getConnection(/\d+)?'
+      - '^DriverManager\.getConnection(/\d+)?'
+      - '^javax\.sql\.DataSource\.getConnection(/\d+)?'
+      - '^DataSource\.getConnection(/\d+)?'
+      - '^org\.springframework\.jdbc\.datasource\.DriverManagerDataSource\.<init>(/\d+)?'
+      # R696: PasswordAuthentication.<init>(String user, char[] password).
+      # NEW instructions pass the ctor arg list directly
+      # (no receiver +1 offset), so arg_index 1 is the
+      # char[] password in TAC args. The per-pattern
+      # arg_index overrides the family default_arg_index
+      # (2) because ctor's java arg 1 is char[] password,
+      # not java arg 2.
+      - pattern: '^java\.net\.PasswordAuthentication\.<init>(/\d+)?'
+        arg_index: 1
+      - pattern: '^PasswordAuthentication\.<init>(/\d+)?'
+        arg_index: 1
+      # R696: KerberosKey.<init>(KerberosPrincipal, char[] password, int).
+      # arg 1 is the char[] password; arg 2 is the key
+      # type (algorithm index, not sensitive).
+      - pattern: '^javax\.security\.auth\.kerberos\.KerberosKey\.<init>(/\d+)?'
+        arg_index: 1
+      - pattern: '^KerberosKey\.<init>(/\d+)?'
+        arg_index: 1
+      # R696: PasswordAuthentication.<init>(String user, char[] password).
+      # NEW instructions pass the ctor arg list directly
+      # (no receiver +1 offset), so arg_index 1 is the
+      # char[] password in TAC args.
+      - pattern: '^java\.net\.PasswordAuthentication\.<init>(/\d+)?'
+        arg_index: 1
+      - pattern: '^PasswordAuthentication\.<init>(/\d+)?'
+        arg_index: 1
+      # R696: KerberosKey.<init>(KerberosPrincipal, char[] password, int).
+      # arg 1 is the char[] password; arg 2 is the key
+      # type (algorithm index, not sensitive).
+      - pattern: '^javax\.security\.auth\.kerberos\.KerberosKey\.<init>(/\d+)?'
+        arg_index: 1
+      - pattern: '^KerberosKey\.<init>(/\d+)?'
+        arg_index: 1
+
+  # R543 — external.config.sinks (CWE-15). System /
+  # configuration setters that should not be called
+  # with attacker-controlled values.
+  external.config.sinks:
+    cwe: CWE-15
+    severity: CRITICAL
+    patterns:
+      - '^java\.lang\.System\.setProperty(/\d+)?'
+      - '^System\.setProperty(/\d+)?'
+      - '^java\.sql\.Connection\.setCatalog(/\d+)?'
+      - '^Connection\.setCatalog(/\d+)?'
+      - '^java\.util\.Locale\.setDefault(/\d+)?'
+      - '^Locale\.setDefault(/\d+)?'
+      - '^java\.util\.TimeZone\.setDefault(/\d+)?'
+      - '^TimeZone\.setDefault(/\d+)?'
+      - '^java\.net\.URL\.setURLStreamHandlerFactory(/\d+)?'
+      - '^URL\.setURLStreamHandlerFactory(/\d+)?'
+      - '^javax\.swing\.UIManager\.setLookAndFeel(/\d+)?'
+      - '^UIManager\.setLookAndFeel(/\d+)?'
+      - '^java\.sql\.DriverManager\.setLogStream(/\d+)?'
+      - '^DriverManager\.setLogStream(/\d+)?'
+      - '^java\.sql\.DriverManager\.setLogWriter(/\d+)?'
+      - '^DriverManager\.setLogWriter(/\d+)?'
+
+  # ===== R721-C2: cleartext-tx sinks (CWE-319) =====
+  # General-purpose taint-style sink family for data
+  # that flows into a network-channel write. The
+  # canonical Juliet pattern is
+  #   new PrintWriter(socket.getOutputStream(), true).println(data)
+  # but the rule is broader: ANY tainted value written
+  # via PrintWriter / OutputStream / Writer / to a
+  # Socket's output stream is a CWE-319 candidate.
+  # The AI prompt filters FP (e.g. writing to a local
+  # log file or System.out that is NOT a network
+  # channel). The pattern uses substring regex
+  # matching, so family patterns that match overloads
+  # like PrintWriter.print(String),
+  # PrintWriter.println(int) etc. are all captured by
+  # the `^.../(\d+)?` trailing.
+  cleartext-tx.sinks:
+    cwe: CWE-319
+    severity: HIGH
+    patterns:
+      - '^java\.io\.PrintWriter\.print(/\d+)?'
+      - '^java\.io\.PrintWriter\.println(/\d+)?'
+      - '^java\.io\.PrintWriter\.write(/\d+)?'
+      - '^java\.io\.PrintWriter\.append(/\d+)?'
+      - '^java\.io\.PrintWriter\.format(/\d+)?'
+      - '^java\.io\.PrintWriter\.printf(/\d+)?'
+      - '^java\.io\.OutputStream\.write(/\d+)?'
+      - '^java\.io\.OutputStream\.print(/\d+)?'
+      - '^java\.io\.OutputStream\.println(/\d+)?'
+      - '^java\.io\.FilterOutputStream\.write(/\d+)?'
+      - '^java\.io\.BufferedOutputStream\.write(/\d+)?'
+      - '^java\.io\.DataOutputStream\.write(/\d+)?'
+      - '^java\.io\.OutputStreamWriter\.write(/\d+)?'
+      - '^java\.io\.Writer\.write(/\d+)?'
+      - '^java\.io\.BufferedWriter\.write(/\d+)?'
+      - '^java\.io\.PrintStream\.write(/\d+)?'
+      - '^java\.net\.Socket\.getOutputStream(/\d+)?'
+      - '^java\.net\.URLConnection\.getOutputStream(/\d+)?'
+      - '^java\.net\.HttpURLConnection\.getOutputStream(/\d+)?'
+      - '^java\.nio\.channels\.SocketChannel\.write(/\d+)?'
+      - '^java\.nio\.channels\.WritableByteChannel\.write(/\d+)?'
+

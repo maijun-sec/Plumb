@@ -1,0 +1,417 @@
+src\main\java\org\plumb\style\style\AbsentCodeblockInCaseCheck.java:  public void visit(SwitchStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AmbiguousOperatorPrecedenceCheck.java:  public void visit(BinaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AnnotationLocationCheck.java:  public void visit(MethodCallExpr m, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AnnotationOnSameLineCheck.java:  public void visit(MethodDeclaration m, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AnnoTblCheck.java:  public void visit(ClassOrInterfaceDeclaration c, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AnonInnerLengthCheck.java:  public void visit(ObjectCreationExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AssertionBoundaryCheck.java:  public void visit(AssertStmt a, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AssignmentInConditionCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AssignmentInConditionCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AssignmentInConditionCheck.java:  public void visit(DoStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AssignmentInOperandCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AssignmentInOperandCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AssignmentInOperandCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AssignmentInOperandCheck.java:  public void visit(DoStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AssignmentToNonFinalStaticCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AtclauseOrderCheck.java:  public void visit(MethodDeclaration m, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidDeeplyNestedIfStmtsCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidEnumsCheck.java:  public void visit(EnumDeclaration e, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidEscapedUnicodeCharactersCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidLiteralsInIfConditionCheck.java:  public void visit(IfStmt ifs, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidMessageDigestFieldCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidNativeMethodsCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidNestedBlocksCheck.java:  public void visit(BlockStmt b, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidPrintStackTraceCheck.java:  public void visit(CatchClause n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidPrintStackTraceCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidProtectedFieldInFinalClassCheck.java:  public void visit(FieldDeclaration f, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidProtectedMethodInFinalClassCheck.java:  public void visit(MethodDeclaration m, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidReassigningLoopVariablesCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidReassigningLoopVariablesCheck.java:  public void visit(ForEachStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidReassigningParametersCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidStarImportCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidStaticImportCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidThreadGroupCheck.java:  public void visit(ClassOrInterfaceType n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidUsingOctalValuesCheck.java:  public void visit(IntegerLiteralExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\AvoidUsingVolatileCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\BadCheckForOddCheck.java:  public void visit(BinaryExpr be, StyleContext ctx) {
+src\main\java\org\plumb\style\style\BadlyOverriddenAdapterCheck.java:  public void visit(MethodDeclaration m, StyleContext ctx) {
+src\main\java\org\plumb\style\style\BadShiftCheck.java:  public void visit(BinaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\BadSyntaxInRegexCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\BcEqualsNoHashcodeCallCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\BigDecimalDoubleConstructorCheck.java:  public void visit(ObjectCreationExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\BitwiseAndCheck.java:  public void visit(BinaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\BitwiseOrCheck.java:  public void visit(BinaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\BooleanLiteralInIfCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\BooleanLiteralInIfCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\BooleanLiteralNegationCheck.java:  public void visit(UnaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\BooleanMethodReturnCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CallSuperInConstructorCheck.java:  public void visit(ConstructorDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CallToThreadRunCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CallToUnsupportedMethodCheck.java:  public void visit(MethodCallExpr m, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CastArithmeticOperandCheck.java:  public void visit(CastExpr ce, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CatchNullPointerExceptionCheck.java:  public void visit(CatchClause n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CheckTypeOfResultOfComparatorCheck.java:  public void visit(MethodDeclaration m, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ChildClassShadowFieldCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ChildClassShadowFieldCheck.java:  public void visit(ClassOrInterfaceDeclaration c, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ClassBasedIssueCheck.java:  public void visit(MethodDeclaration m, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ClassFieldShadowingCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ClassMembersShouldBePrivateCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ClassVariableVisibilityCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ClassWithOnlyPrivateConstructorsShouldBeFinalCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CloneWithoutSuperCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CollapsibleIfCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CollapsibleIfStatementsCheck.java:  public void visit(IfStmt outer, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CommentDefaultAccessCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CommentInfoLeakCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CommentsIndentationCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CompareInsteadOfAssigningCheck.java:  public void visit(BinaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ConditionalOnConstantCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ConditionalOnConstantCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ConfusingTernaryCheck.java:  public void visit(ConditionalExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ConstantsInInterfaceCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ControlStatementBracesCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ControlStatementBracesCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ControlStatementBracesCheck.java:  public void visit(ForEachStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ControlStatementBracesCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\CtorParameterCountCheck.java:  public void visit(ConstructorDeclaration c, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DataflowAnomalyAnalysisCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DeadcodeCheck.java:  public void visit(BlockStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DeclarationOrderCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DefaultCharsetCheck.java:  public void visit(ObjectCreationExpr o, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DefaultPackageCheck.java:  public void visit(ClassOrInterfaceDeclaration c, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DeprecatedAnnotationCheck.java:  public void visit(MarkerAnnotationExpr ann, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DiamondOperatorCheck.java:  public void visit(ObjectCreationExpr oc, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DmiBadMonthCheck.java:  public void visit(IntegerLiteralExpr lit, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DmiDoneCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DmiRandomCheck.java:  public void visit(ObjectCreationExpr oc, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DmiUselessMethodCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DoInsideDoPrivilegedCheck.java:  public void visit(MethodCallExpr m, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DontImportJavaLangCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DontImportSunCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DoubleCheckedLockingCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\DuplicateImportsCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EcIncompatibleTypesCheck.java:  public void visit(ThrowStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EcNoReadIfEqualToWriteCheck.java:  public void visit(AssignExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EcNullArgToVarargCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EcUnrelatedInterfacesCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EcUnrelatedTypesCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyBlockCheck.java:  public void visit(BlockStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyConstructorCheck.java:  public void visit(ConstructorDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyControlStatementCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyControlStatementCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyControlStatementCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyControlStatementCheck.java:  public void visit(ForEachStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyControlStatementCheck.java:  public void visit(DoStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyFinallyBlockCheck.java:  public void visit(TryStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyIfStmtCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyLineSeparatorCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyMethodInAbstractCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyStatementBlockCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyStatementBlockCheck.java:  public void visit(CatchClause n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyStatementBlockCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyStatementBlockCheck.java:  public void visit(ForEachStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyStatementBlockCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyStatementBlockCheck.java:  public void visit(DoStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyStatementBlockCheck.java:  public void visit(SwitchEntry n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyStatementBlockCheck.java:  public void visit(BlockStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyStatementBlockCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyStatementCheck.java:  public void visit(EmptyStmt es, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyStatementUsageCheck.java:  public void visit(EmptyStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyStaticInitializerCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptySwitchStatementsCheck.java:  public void visit(SwitchStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptySyncBlockCheck.java:  public void visit(SynchronizedStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyTryBlockCheck.java:  public void visit(TryStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyWhileStmtCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EmptyZipEntryCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EnumAbstractMethodCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EnumIdiomCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EnvVarInfoExposureCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EqualComparisonCheck.java:  public void visit(BinaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EqualsArgumentTypeCheck.java:  public void visit(MethodDeclaration, ctx) {
+src\main\java\org\plumb\style\style\EqualsHashCodeCheck.java:  public void visit(ClassOrInterfaceDeclaration, ctx) {
+src\main\java\org\plumb\style\style\EqualsNoObjectCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\EsyncEmptySyncCheck.java:  public void visit(SynchronizedStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ExplicitFinalizeCallCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ExplicitInitializationCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ExposeInternalRepresentationCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ExposeMutableRepStorageCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ExposeMutableRepStorageCheck.java:  public void visit(ConstructorDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ExposeMutableRepStorageCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ExtendsObjectCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\FallThroughCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\FeFloatingPointCheck.java:  public void visit(BinaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\FieldSelfAssignmentCheck.java:  public void visit(AssignExpr ae, StyleContext ctx) {
+src\main\java\org\plumb\style\style\FileTabCharacterCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\FinalClassCheck.java:  public void visit(ClassOrInterfaceDeclaration c, StyleContext ctx) {
+src\main\java\org\plumb\style\style\FinalParametersCheck.java:  public void visit(MethodDeclaration, ctx) {
+src\main\java\org\plumb\style\style\FiUselessBlockCheck.java:  public void visit(IfStmt ifs, StyleContext ctx) {
+src\main\java\org\plumb\style\style\FiUselessBlockCheck.java:  public void visit(WhileStmt w, StyleContext ctx) {
+src\main\java\org\plumb\style\style\FiUselessBlockCheck.java:  public void visit(ForStmt f, StyleContext ctx) {
+src\main\java\org\plumb\style\style\FiUselessBlockCheck.java:  public void visit(ForEachStmt fe, StyleContext ctx) {
+src\main\java\org\plumb\style\style\FiUselessBlockCheck.java:  public void visit(DoStmt d, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ForLoopCanBeForeachCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ForLoopFalseConditionCheck.java:  public void visit(ForStmt, ctx) {
+src\main\java\org\plumb\style\style\ForLoopVariableCountCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\HeSignatureDeclaresHashcodeOfObjectCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\HiddenFieldCheck.java:  public void visit(ClassOrInterfaceDeclaration, ctx) {
+src\main\java\org\plumb\style\style\HideUtilityClassConstructorCheck.java:  public void visit(ClassOrInterfaceDeclaration, ctx) {
+src\main\java\org\plumb\style\style\IcastIntegerMultiplyCastToLongCheck.java:  public void visit(CastExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IcSuperclassGenericCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IdempotentOperationsCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IfElseStmtCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IilDereOfReadlineCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IlContainerSequencingCheck.java:  public void visit(ForEachStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ImAverageComputationCheck.java:  public void visit(BinaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ImBadCheckForOddCheck.java:  public void visit(BinaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ImmutableFieldCheck.java:  public void visit(ClassOrInterfaceDeclaration, ctx) {
+src\main\java\org\plumb\style\style\ImportControlCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ImportFromSamePackageCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IncompatibleMaskCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IncompleteClassDeclarationCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IncompleteCleanupCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IncorrectBlockDelimitationCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IndentationCheck.java:  public void visit(ClassOrInterfaceDeclaration, ctx) {
+src\main\java\org\plumb\style\style\InfiniteLoopCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\InfiniteLoopCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\InfiniteLoopCheck.java:  public void visit(DoStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\InfiniteLoopCheck.java:          public void visit(AssignExpr ae, Void arg) {
+src\main\java\org\plumb\style\style\InfiniteLoopCheck.java:          public void visit(BreakStmt b, Void a) {
+src\main\java\org\plumb\style\style\InfiniteLoopCheck.java:          public void visit(ReturnStmt r, Void a) {
+src\main\java\org\plumb\style\style\InfiniteLoopCheck.java:          public void visit(ThrowStmt t, Void a) {
+src\main\java\org\plumb\style\style\InfoExposureInCommentCheck.java:  public void visit(StringLiteralExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\InfoExposureQueryStringCheck.java:  public void visit(StringLiteralExpr, ctx) {
+src\main\java\org\plumb\style\style\InnerAssignmentCheck.java:  public void visit(AssignExpr, ctx) {
+src\main\java\org\plumb\style\style\InsecureTempFilePermsCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\InstantiationToGetClassCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\InsufficientSessionExpirationCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IntDivisionCastToDoubleCheck.java:  public void visit(CastExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IoResourceBothCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\IteratorIdiomaticCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\JavadocMethodCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\JavadocParagraphCheck.java:  public void visit(MethodDeclaration, ctx) {
+src\main\java\org\plumb\style\style\JavadocTypeCheck.java:  public void visit(ClassOrInterfaceDeclaration, ctx) {
+src\main\java\org\plumb\style\style\JUnitAssertionsShouldIncludeMessageCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\JUnitTestsShouldIncludeAssertCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\LambdaBodyLengthCheck.java:  public void visit(LambdaExpr, ctx) {
+src\main\java\org\plumb\style\style\LambdaParameterShadowingCheck.java:  public void visit(LambdaExpr, ctx) {
+src\main\java\org\plumb\style\style\LeftCurlyCheck.java:  public void visit(MethodDeclaration, ctx) {
+src\main\java\org\plumb\style\style\LineLengthCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\LiteralBooleanConditionCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\LiteralsFirstInComparisonsCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\LocaleDependentCaseConversionCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\LocaleRootCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\LoggersDeclarationCheck.java:  public void visit(ClassOrInterfaceDeclaration, ctx) {
+src\main\java\org\plumb\style\style\LoggerShouldBeFinalCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\LogInfoLeakCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\LoopsWithMultipleBreaksCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\LoopsWithMultipleBreaksCheck.java:  public void visit(ForEachStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\LoopsWithMultipleBreaksCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\LoopsWithMultipleBreaksCheck.java:  public void visit(DoStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MagicNumberCheck.java:  public void visit(IntegerLiteralExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MagicNumberCheck.java:  public void visit(LongLiteralExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MagicNumberCheck.java:  public void visit(DoubleLiteralExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MalformedSyncCheck.java:  public void visit(SynchronizedStmt, ctx) {
+src\main\java\org\plumb\style\style\MathematicalOperationCheck.java:  public void visit(BinaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MCReturnsVoidCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MethodArgumentCouldBeFinalCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MethodCallsFromConstructorCheck.java:  public void visit(ConstructorDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MethodTooComplexCheck.java:  public void visit(MethodDeclaration, ctx) {
+src\main\java\org\plumb\style\style\MethodTooLongCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MfClassMasksFieldCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MfMethodMasksFieldCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MissingBreakCheck.java:  public void visit(SwitchStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MissingCryptoStepCheck.java:  public void visit(MethodCallExpr, ctx) {
+src\main\java\org\plumb\style\style\MissingDefaultCaseCheck.java:  public void visit(SwitchStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MissingDeprecatedCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MissingJavadocMethodCheck.java:  public void visit(MethodDeclaration, ctx) {
+src\main\java\org\plumb\style\style\MissingJavadocPackageCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MissingJavadocTypeCheck.java:  public void visit(ClassOrInterfaceDeclaration, ctx) {
+src\main\java\org\plumb\style\style\MissingPasswordMaskingCheck.java:  public void visit(StringLiteralExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MissingSerialVersionUIDCheck.java:  public void visit(ClassOrInterfaceDeclaration, ctx) {
+src\main\java\org\plumb\style\style\MissingStaticMethodInNonInstantiableClassCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MissingSwitchDefaultCheck.java:  public void visit(SwitchStmt, ctx) {
+src\main\java\org\plumb\style\style\ModifierOrderCheck.java:  public void visit(com.github.javaparser.ast.CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MoreThanOneLoggerCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MultipleBindsSamePortCheck.java:  public void visit(MethodDeclaration m, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MultipleVariableDeclarationsCheck.java:  public void visit(VariableDeclarationExpr, ctx) {
+src\main\java\org\plumb\style\style\MutableEnumFieldCheck.java:  public void visit(EnumDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\MutableStaticShouldBeFinalCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NestedBlockCheck.java:  public void visit(BlockStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NestedForDepthCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NestedForDepthCheck.java:          public void visit(ForStmt f, Void arg) {
+src\main\java\org\plumb\style\style\NestedForDepthCheck.java:          public void visit(ForEachStmt f, Void arg) {
+src\main\java\org\plumb\style\style\NestedForDepthCheck.java:          public void visit(WhileStmt w, Void arg) {
+src\main\java\org\plumb\style\style\NestedForDepthCheck.java:          public void visit(DoStmt d, Void arg) {
+src\main\java\org\plumb\style\style\NestedIfDepthCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NestedIfDepthCheck.java:          public void visit(IfStmt f, Void arg) {
+src\main\java\org\plumb\style\style\NestedSwitchCheck.java:  public void visit(SwitchStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NewlineAtEndOfFileCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NmConfusingInspectionCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NmConfusingInspectionCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NmSameSimpleNameAsSuperCheck.java:  public void visit(ClassOrInterfaceDeclaration, ctx) {
+src\main\java\org\plumb\style\style\NoCodeInFileCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NoEffectStatementCheck.java:  public void visit(EmptyStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NoEffectStatementCheck.java:  public void visit(AssignExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NoEnumTrailingCommaCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NoLogStatementCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NoLongLiteralCheck.java:  public void visit(LongLiteralExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NonCaseLabelInSwitchStatementCheck.java:  public void visit(SwitchEntry n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NonSerializableClassInSerializableContextCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NonSerializableFieldCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NonSerializableInSessionCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NonStaticInitializerCheck.java:  public void visit(InitializerDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NoPackageCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NotifyCheck.java:  public void visit(MethodCallExpr, ctx) {
+src\main\java\org\plumb\style\style\NpSyncOnUnsharedVarCheck.java:  public void visit(SynchronizedStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NullAssignmentCheck.java:  public void visit(AssignExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NullDerefFromReturnCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\NumericConversionCheck.java:  public void visit(CastExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ObjectModelCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ObjectsEqualityCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OffByOneLoopCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OffByOneLoopCheck.java:  public void visit(DoStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OffByOneLoopCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OneStatementPerLineCheck.java:  public void visit(MethodDeclaration m, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OneStatementPerLineCheck.java:  public void visit(ConstructorDeclaration c, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OnlyOneReturnCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OnlyOneReturnPerMethodCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OperatorWrapCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OptionalGetCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OptionalReturnCheck.java:  public void visit(MethodDeclaration, ctx) {
+src\main\java\org\plumb\style\style\OuterTypeNumberCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OverloadMethodsDeclarationOrderCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OverlyBroadCatchCheck.java:  public void visit(CatchClause n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\OverridingMethodMustInvokeSuperCheck.java:  public void visit(MethodDeclaration, ctx) {
+src\main\java\org\plumb\style\style\PackageAnnotationCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PackageDeclarationCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PackageInfoCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ParameterHidesFieldCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ParenPadCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PoorCodeQualityCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PredictableSaltCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PrematureDeclarationCheck.java:  public void visit(VariableDeclarationExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PreserveStackTraceCheck.java:  public void visit(CatchClause n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PreserveStackTraceCheck.java:  public void visit(ThrowStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PrintfFailCheck.java:  public void visit(MethodCallExpr, ctx) {
+src\main\java\org\plumb\style\style\PrintfFormatCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PrintStackTraceCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ProperLoggerCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PublicFieldAccessedInSynchronizedContextCheck.java:  public void visit(SynchronizedStmt, ctx) {
+src\main\java\org\plumb\style\style\PublicMethodsPublicFieldCheck.java:  public void visit(MethodDeclaration, ctx) {
+src\main\java\org\plumb\style\style\PublicProtectedFieldInEnumCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PublicStaticFieldAccessedInSubclassCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PublicStaticMutableFieldCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\PzReuseEntryCheck.java:  public void visit(ForEachStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\QbaQuestionableBooleanCheck.java:  public void visit(AssignExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\QbaQuestionableBooleanCheck.java:  public void visit(com.github.javaparser.ast.stmt.ExpressionStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\QuestionableBooleanAssignmentCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\RandomIvCheck.java:  public void visit(ObjectCreationExpr oc, StyleContext ctx) {
+src\main\java\org\plumb\style\style\RandomUsedOnceCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ReachableAssertionCheck.java:  public void visit(com.github.javaparser.ast.body.MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\RedirectWithoutExitCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ReduceVisibilityCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\RedundantFieldInitializerCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\RedundantImportCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\RedundantMethodCallCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\RegexGroupCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\RelationalOperatorSymmetryCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\RequireThisCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ResultOfMethodCallIgnoredCheck.java:  public void visit(ExpressionStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ReturnBooleanLiteralCheck.java:  public void visit(ReturnStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ReturnFromFinallyBlockCheck.java:  public void visit(ReturnStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ReturnInFinallyBlockCheck.java:  public void visit(ReturnStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\RightCurlyCheck.java:  public void visit(MethodDeclaration, ctx) {
+src\main\java\org\plumb\style\style\RvRemoveRepeatCallsCheck.java:  public void visit(com.github.javaparser.ast.body.MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\RvReturnValueIgnoredCheck.java:  public void visit(ExpressionStmt, ctx) {
+src\main\java\org\plumb\style\style\SeededRandomCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SeededRandomCheck.java:  public void visit(ObjectCreationExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SelfAssignmentCheck.java:  public void visit(ExpressionStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SeparatorWrapCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SerializableSubclassCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SerializableSuperConstructorCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SignedBitCheckCheck.java:  public void visit(BinaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SignOfAdditionCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SiInstanceBeforeFinalCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SimpleDateFormatNeedsLocaleCheck.java:  public void visit(ObjectCreationExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SimpleDateFormatWithoutLocaleCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SimplifyBooleanExpressionCheck.java:  public void visit(BinaryExpr, ctx) {
+src\main\java\org\plumb\style\style\SimplifyBooleanReturnsCheck.java:  public void visit(ReturnStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SingleSpaceSeparatorCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SingletonClassReturningNewInstanceCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SingularFieldCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SleepWithoutInterruptCheck.java:  public void visit(MethodCallExpr, ctx) {
+src\main\java\org\plumb\style\style\StandardFunctionalInterfaceCheck.java:  public void visit(ClassOrInterfaceDeclaration, ctx) {
+src\main\java\org\plumb\style\style\StartWhereGreaterThanEndCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\StaticMethodNeedNotBeSynchronizedCheck.java:  public void visit(MethodDeclaration, ctx) {
+src\main\java\org\plumb\style\style\StaticWriteFromInstanceCheck.java:  public void visit(AssignExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\StringEqOperatorCheck.java:  public void visit(BinaryExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SuperCloneCheck.java:  public void visit(MethodDeclaration m, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SuperfluousInstanceofCheck.java:  public void visit(IfStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SuperfluousInstanceofCheck.java:    public void visit(CastExpr n, Void arg) {
+src\main\java\org\plumb\style\style\SuppressWarningsCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SuspiciousCommentCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SuspiciousIntegerDivisionCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SwitchDefaultLastCheck.java:  public void visit(SwitchStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SwitchDensityCheck.java:  public void visit(SwitchStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SwitchWithoutDefaultCheck.java:  public void visit(SwitchStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SwitchWithTooFewCasesCheck.java:  public void visit(SwitchStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SwlSleepWithLockCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SynchronizedLockCheck.java:  public void visit(SynchronizedStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SystemExitUsageCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SystemOutCheck.java:  public void visit(MethodCallExpr mce, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SystemOutPrintlnCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\SystemPrintlnCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\TabCharacterCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\TestWithoutAssertionCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ThreadInServletCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ThreadInServletCheck.java:  public void visit(ObjectCreationExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\ThreadInServletCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\TodoCommentCheck.java:  public void visit(Comment, ctx) {
+src\main\java\org\plumb\style\style\TooManyFieldsCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\TooManyLocalsCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\TooManyMethodsCheck.java:  public void visit(ClassOrInterfaceDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\TooManyParametersCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\TooManyParametersCheck.java:  public void visit(ConstructorDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UcUselessObjectCheck.java:  public void visit(ExpressionStmt, ctx) {
+src\main\java\org\plumb\style\style\UncaughtExceptionCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UncheckedLoopConditionCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UncheckedLoopConditionCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UncheckedLoopConditionCheck.java:  public void visit(DoStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnclearedSensitiveInfoCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnclearedSensitiveInfoCheck.java:  public void visit(com.github.javaparser.ast.expr.VariableDeclarationExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnconfirmedCastCheck.java:  public void visit(CastExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnnecessaryEnumCaseCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnnecessaryLocalBeforeReturnCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnnecessaryParenthesesCheck.java:  public void visit(EnclosedExpr, ctx) {
+src\main\java\org\plumb\style\style\UnnecessaryParenthesesMethodCallsCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnnecessaryReturnCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnprotectedCredTransportCheck.java:  public void visit(StringLiteralExpr, ctx) {
+src\main\java\org\plumb\style\style\UnsaltedOneWayHashCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnusedAssignmentCheck.java:  public void visit(ExpressionStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnusedFormalParameterCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnusedImportCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnusedImportsCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnusedLabelCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UnusedPrivateFieldCheck.java:  public void visit(ClassOrInterfaceDeclaration c, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UppercaseSuffixCheck.java:  public void visit(LongLiteralExpr, ctx) {
+src\main\java\org\plumb\style\style\UpperEllCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UseAssertNullInsteadOfAssertTrueCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UseAssertSameInsteadOfAssertTrueCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UseConcurrentHashMapCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UseDiamondOperatorCheck.java:  public void visit(ObjectCreationExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UseEnumerationInsteadOfIteratorCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UselessObjectCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UselessOperationOnImmutableCheck.java:  public void visit(MethodCallExpr, ctx) {
+src\main\java\org\plumb\style\style\UseObjectForClearerAPI.java:  public void visit(MethodDeclaration, ctx) {
+src\main\java\org\plumb\style\style\UseTryWithResourcesCheck.java:  public void visit(TryStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UseVarargsCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\UwfFieldNotInitializedCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\VisibilityModifierCheck.java:  public void visit(FieldDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\WaitNotifyCheck.java:  public void visit(MethodDeclaration n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\WeakCryptoCheck.java:  public void visit(MethodCallExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\WeakCryptoCheck.java:  public void visit(ObjectCreationExpr n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\WhileLoopWithLiteralBooleanCheck.java:  public void visit(WhileStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\WhileLoopWithLiteralBooleanCheck.java:  public void visit(ForStmt n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\WhitespaceAfterCheck.java:  public void visit(CompilationUnit n, StyleContext ctx) {
+src\main\java\org\plumb\style\style\WhitespaceAroundCheck.java:  public void visit(com.github.javaparser.ast.expr.BinaryExpr, ctx) {
+src\main\java\org\plumb\style\style\WmiWrongMapIteratorCheck.java:  public void visit(ForEachStmt n, StyleContext ctx) {

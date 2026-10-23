@@ -1,0 +1,97 @@
+rule_id,rule_name,description,severity,type,cwe_list,n_cwe,checker_class
+bu-0001-taint-request-param,TAINT_SOURCE_REQUEST_PARAM,Tainted from HTTP request parameter,INFO,TAINT,20,1,org.plumb.dfa.taint.RequestParamSource
+bu-0002-taint-request-header,TAINT_SOURCE_REQUEST_HEADER,Tainted from HTTP request header,INFO,TAINT,20,1,org.plumb.dfa.taint.RequestHeaderSource
+bu-0003-taint-system-in,TAINT_SOURCE_SYSTEM_IN,Tainted from System.* input stream,INFO,TAINT,20,1,org.plumb.dfa.taint.SystemInSource
+bu-0004-taint-file-read,TAINT_SOURCE_FILE_READ,Tainted from file read,INFO,TAINT,20,1,org.plumb.dfa.taint.FileReadSource
+bu-0005-taint-network-recv,TAINT_SOURCE_NETWORK_RECV,Tainted from network receive,INFO,TAINT,20,1,org.plumb.dfa.taint.NetworkRecvSource
+bu-0006-taint-console-read,TAINT_SOURCE_CONSOLE_READ,Tainted from console read,INFO,TAINT,20,1,org.plumb.dfa.taint.ConsoleReadSource
+bu-0007-taint-db-result,TAINT_SOURCE_DB_RESULT,Tainted from database read,INFO,TAINT,20,1,org.plumb.dfa.taint.DbResultSource
+bu-0009-taint-source-system-property,TAINT_SOURCE_SYSTEM_PROPERTY,Tainted from JVM system property or environment variable,INFO,TAINT,20,1,org.plumb.dfa.taint.SystemPropertySource
+bu-0010-taint-source-properties-file,TAINT_SOURCE_PROPERTIES_FILE,Tainted from Java .properties file (Properties.getProperty / .get),INFO,TAINT,20,1,org.plumb.dfa.taint.PropertiesFileSource
+bu-0101-taint-sink-sql,TAINT_SINK_SQL_INJECTION,SQL statement built from tainted data,HIGH,TAINT,89,1,org.plumb.dfa.taint.SqlSink
+bu-0102-taint-sink-cmd,TAINT_SINK_COMMAND_INJECTION,OS command built from tainted data,CRITICAL,TAINT,"78,77",2,org.plumb.dfa.taint.CommandSink
+bu-0103-taint-sink-path,TAINT_SINK_PATH_TRAVERSAL,Filesystem path built from tainted data,HIGH,TAINT,22,1,org.plumb.dfa.taint.PathSink
+bu-0104-taint-sink-xss,TAINT_SINK_XSS,Web response output built from tainted data,HIGH,TAINT,79,1,org.plumb.dfa.taint.XssSink
+bu-0105-taint-sink-deserialize,TAINT_SINK_UNSAFE_DESERIALIZE,Deserialization of tainted data,CRITICAL,TAINT,502,1,org.plumb.dfa.taint.DeserializeSink
+bu-0106-taint-sink-url,TAINT_SINK_SSRF,URL connection opened from tainted data (SSRF),HIGH,TAINT,918,1,org.plumb.dfa.taint.UrlOpenSink
+bu-0107-taint-sink-reflection,TAINT_SINK_REFLECTION,Reflection target built from tainted data,HIGH,TAINT,470,1,org.plumb.dfa.taint.ReflectionSink
+bu-0108-taint-sink-log,TAINT_SINK_LOG_INJECTION,Log entry built from tainted data,LOW,TAINT,117,1,org.plumb.dfa.taint.LogInjectionSink
+bu-0109-taint-sink-xpath,TAINT_SINK_XPATH_INJECTION,XPath expression built from tainted data,HIGH,TAINT,643,1,org.plumb.dfa.taint.XPathSink
+bu-0110-taint-sink-ldap,TAINT_SINK_LDAP_INJECTION,LDAP search/lookup built from tainted data,HIGH,TAINT,90,1,org.plumb.dfa.taint.LdapSink
+bu-0111-taint-sink-xml,TAINT_SINK_XML_INJECTION,XML transform / parse built from tainted data,HIGH,TAINT,91,1,org.plumb.dfa.taint.XmlSink
+bu-0112-taint-sink-header,TAINT_SINK_HEADER_INJECTION,HTTP response header set from tainted data,MEDIUM,TAINT,93,1,org.plumb.dfa.taint.HeaderSink
+bu-0113-taint-sink-format,TAINT_SINK_FORMAT_STRING,Format string built from tainted data,MEDIUM,TAINT,134,1,org.plumb.dfa.taint.FormatStringSink
+bu-0114-taint-sink-nosql,TAINT_SINK_NOSQL_INJECTION,NoSQL query built from tainted data,HIGH,TAINT,943,1,org.plumb.dfa.taint.NoSqlSink
+bu-0115-taint-sink-ognl,TAINT_SINK_OGNL_INJECTION,Expression language / OGNL evaluated from tainted data,CRITICAL,TAINT,"94,95",2,org.plumb.dfa.taint.OgnlSink
+bu-0116-taint-sink-regex,TAINT_SINK_REGEX_INJECTION,Regular expression compiled from tainted data (ReDoS / bypass),MEDIUM,TAINT,1333,1,org.plumb.dfa.taint.RegexSink
+bu-0117-taint-sink-open-redirect,TAINT_SINK_OPEN_REDIRECT,Redirect URL built from tainted data,MEDIUM,TAINT,601,1,org.plumb.dfa.taint.OpenRedirectSink
+bu-0201-style-empty-catch,STYLE_EMPTY_CATCH,Empty catch block swallows exceptions,LOW,STYLE,,0,org.plumb.style.EmptyCatchCheck
+bu-0202-style-system-out,STYLE_SYSTEM_OUT,Avoid System.out / System.err in production code,LOW,STYLE,,0,org.plumb.style.SystemOutCheck
+bu-0203-style-unused-import,STYLE_UNUSED_IMPORT,Unused import statement,LOW,STYLE,,0,org.plumb.style.UnusedImportCheck
+bu-0204-style-class-naming,STYLE_CLASS_NAMING,Type name should follow PascalCase,LOW,NAMING,,0,org.plumb.style.ClassNamingCheck
+bu-0205-style-method-naming,STYLE_METHOD_NAMING,Method name should follow camelCase,LOW,NAMING,,0,org.plumb.style.MethodNamingCheck
+bu-0206-style-constant-naming,STYLE_CONSTANT_NAMING,Static final field should be UPPER_SNAKE_CASE,LOW,NAMING,,0,org.plumb.style.ConstantNamingCheck
+bu-0207-style-method-too-long,STYLE_METHOD_TOO_LONG,Method body exceeds configured length threshold,LOW,STYLE,,0,org.plumb.style.MethodLengthCheck
+bu-0208-style-catch-generic,STYLE_CATCH_GENERIC,Catching generic Exception or Throwable,LOW,STYLE,,0,org.plumb.style.CatchGenericCheck
+bu-0209-style-empty-control-statement,STYLE_EMPTY_CONTROL_STATEMENT,control statement with empty body,LOW,STYLE,,0,org.plumb.style.EmptyControlStatementCheck
+bu-0210-style-empty-block,STYLE_EMPTY_BLOCK,control block with no statements,LOW,STYLE,,0,org.plumb.style.EmptyBlockCheck
+bu-0400-assignment-in-operand,ASSIGNMENT_IN_OPERAND,avoid assignments in operands,MEDIUM,STYLE,481,1,org.plumb.dfa.checker.AssignmentInOperandCheck
+bu-0406-avoid-hardcoded-ip,AVOID_HARDCODED_IP,hard-coded IP address,MEDIUM,STYLE,547,1,org.plumb.dfa.checker.HardcodedIPCheck
+bu-0504-default-encoding,DEFAULT_ENCODING,reliance on default platform encoding,MEDIUM,CORRECTNESS,176,1,org.plumb.dfa.checker.DefaultEncodingCheck
+bu-0505-superfluous-instanceof,SUPERFLUOUS_INSTANCEOF,unnecessary instanceof check,LOW,STYLE,704,1,org.plumb.style.SuperfluousInstanceofCheck
+bu-0506-bigdecimal-double-ctor,BIGDECIMAL_DOUBLE_CTOR,new BigDecimal(double) is precision-lossy,MEDIUM,CORRECTNESS,682,1,org.plumb.dfa.checker.BigDecimalDoubleConstructorCheck
+bu-0507-random-used-once,RANDOM_USED_ONCE,new Random() used only once,LOW,PERFORMANCE,,0,org.plumb.style.RandomUsedOnceCheck
+bu-0604-collection-is-empty,COLLECTION_IS_EMPTY,prefer Collection.isEmpty() over size() == 0,LOW,STYLE,1006,1,org.plumb.style.CollectionIsEmptyCheck
+bu-0605-empty-statement,EMPTY_STATEMENT,empty statement (naked semicolon),LOW,STYLE,,0,org.plumb.style.EmptyStatementUsageCheck
+bu-0606-class-var-visibility,CLASS_VAR_VISIBILITY,public static field should be final or non-public,LOW,STYLE,500,1,org.plumb.style.ClassVariableVisibilityCheck
+bu-0607-big-decimal-equals,BIG_DECIMAL_EQUALS,"BigDecimal.equals is value-and-scale, use compareTo",MEDIUM,CORRECTNESS,682,1,org.plumb.style.BigDecimalEqualsCheck
+cov-0001-missing-break,MISSING_BREAK,switch case falls through to the next case without break/return/throw/continue,LOW,CORRECTNESS,484,1,org.plumb.style.MissingBreakCheck
+bu-0608-self-assignment,SELF_ASSIGNMENT,"variable should not be self-assigned (no-op, likely copy-paste bug)",MEDIUM,CORRECTNESS,682,1,org.plumb.style.SelfAssignmentCheck
+bu-0609-param-hides-field,PARAM_HIDES_FIELD,method parameter shadows a class field,MEDIUM,CORRECTNESS,1006,1,org.plumb.style.ParameterHidesFieldCheck
+bu-0610-collapsible-if,COLLAPSIBLE_IF,nested if statements can be collapsed into one with &&,LOW,STYLE,,0,org.plumb.style.CollapsibleIfCheck
+bu-0611-ignored-result,IGNORED_RESULT,result of comparison-style method call is ignored,MEDIUM,CORRECTNESS,252,1,org.plumb.style.ResultOfMethodCallIgnoredCheck
+bu-0612-ambiguous-precedence,AMBIGUOUS_PRECEDENCE,"ambiguous operator precedence, add explicit parentheses",MEDIUM,CORRECTNESS,783,1,org.plumb.style.AmbiguousOperatorPrecedenceCheck
+bu-0613-array-equality,ARRAY_EQUALITY,arrays should not be compared with == (use Arrays.equals instead),MEDIUM,CORRECTNESS,697,1,org.plumb.style.ArrayEqualityCheck
+bu-0614-test-no-assertion,TEST_NO_ASSERTION,test method should include at least one assertion,MEDIUM,CORRECTNESS,,0,org.plumb.style.TestWithoutAssertionCheck
+bu-0701-extends-object,EXTENDS_OBJECT,"Class explicitly extends Object, the declaration is redundant",LOW,STYLE,,0,org.plumb.style.ExtendsObjectCheck
+bu-0702-empty-method-in-abstract,EMPTY_METHOD_IN_ABSTRACT,Empty method body in abstract class should be marked abstract,LOW,STYLE,,0,org.plumb.style.EmptyMethodInAbstractCheck
+bu-0703-unnecessary-return,UNNECESSARY_RETURN,"Void method ends with `return;` (no value, no effect)",LOW,STYLE,,0,org.plumb.style.UnnecessaryReturnCheck
+bu-0704-local-variable-could-be-final,LOCAL_VAR_COULD_BE_FINAL,Local variable assigned only once can be final,LOW,STYLE,,0,org.plumb.style.LocalVariableCouldBeFinalCheck
+bu-0705-comment-default-access,COMMENT_DEFAULT_ACCESS,Default access modifier should be commented,LOW,STYLE,,0,org.plumb.style.CommentDefaultAccessCheck
+bu-0708-taint-sink-ext-control,TAINT_SINK_EXT_CONTROL,External control of system or configuration setting (CWE-15: setCatalog / setSchema / JNDI bind with tainted input),MEDIUM,SECURITY,15,1,org.plumb.dfa.taint.TaintAnalysis
+bu-0801-array-hashcode-tostring,ARRAY_HASHCODE_TOSTRING,arr.toString() / arr.hashCode() should use Arrays.toString / Arrays.hashCode,MEDIUM,CORRECTNESS,477,1,org.plumb.style.ArrayHashCodeAndToStringCheck
+bu-0802-case-insensitive-comparison,CASE_INSENSITIVE_COMPARISON,Use equalsIgnoreCase() instead of toLowerCase/toUpperCase before equals,MEDIUM,CORRECTNESS,,0,org.plumb.style.CaseInsensitiveComparisonCheck
+bu-0803-catch-nullpointer-exception,CATCH_NPE,Avoid catching NullPointerException (likely swallows a real bug),MEDIUM,BAD_PRACTICE,396,1,org.plumb.style.CatchNpeCheck
+bu-0804-synchronization-on-string-or-boxed,SYNC_STRING_BOXED,Synchronize on interned String / boxed primitive is unsafe (use a private Object lock),HIGH,MULTITHREADING,820,1,org.plumb.style.SynchronizationOnStringOrBoxedCheck
+bu-0805-boolean-method-returns-null,BOOLEAN_RETURNS_NULL,Boolean-returning method that returns null is dangerous (autoboxing NPE),HIGH,BUG,476,1,org.plumb.style.BooleanMethodReturnCheck
+bu-0901-mutable-static-should-be-final,MUTABLE_STATIC_SHOULD_BE_FINAL,Mutable static field should be final (mutable global state),MEDIUM,MALICIOUS_CODE,500,1,org.plumb.style.MutableStaticShouldBeFinalCheck
+bu-0902-locale-dependent-case-conversion,LOCALE_DEPENDENT_CASE_CONVERSION,String.toLowerCase/toUpperCase without Locale (locale-dependent),LOW,I18N,,0,org.plumb.style.LocaleDependentCaseConversionCheck
+bu-0903-string-builder-concatenation-in-loop,STRING_BUILDER_CONCATENATION_IN_LOOP,String concatenation in a loop should use StringBuilder,MEDIUM,PERFORMANCE,,0,org.plumb.style.StringBuilderConcatenationCheck
+bu-0904-useless-object,USELESS_OBJECT,Object created and discarded without use,LOW,PERFORMANCE,,0,org.plumb.style.UselessObjectCheck
+bu-0905-int-division-cast-to-double,INT_DIVISION_CAST_TO_DOUBLE,Integer division cast to double (precision loss; cast one operand instead),LOW,STYLE,,0,org.plumb.style.IntDivisionCastToDoubleCheck
+bu-1001-unreachable-code,UNREACHABLE_CODE,Code after return/throw/break/continue is unreachable,LOW,CORRECTNESS,561,1,org.plumb.style.DeadcodeCheck
+bu-1101-unused-local-variable,UNUSED_LOCAL_VARIABLE,Local variable declared but never read,LOW,STYLE,,0,org.plumb.style.UnusedLocalVariableCheck
+bu-1102-unused-formal-parameter,UNUSED_FORMAL_PARAMETER,Method parameter declared but never used,LOW,STYLE,,0,org.plumb.style.UnusedFormalParameterCheck
+bu-1103-avoid-print-stack-trace,AVOID_PRINT_STACK_TRACE,Avoid Throwable.printStackTrace(); use a logger or re-throw,LOW,STYLE,,0,org.plumb.style.AvoidPrintStackTraceCheck
+bu-1104-string-equality-with-equals,STRING_EQUALITY_WITH_EQUALS,String comparison with == (should use .equals()),MEDIUM,CORRECTNESS,697,1,org.plumb.style.StringEqualityWithEqualsCheck
+bu-1105-expose-internal-representation,EXPOSE_INTERNAL_REPRESENTATION,Getter returns a mutable internal array or collection (defensive copy required),MEDIUM,CORRECTNESS,374,1,org.plumb.style.ExposeInternalRepresentationCheck
+bu-1106-throwable-not-thrown,THROWABLE_NOT_THROWN,Caught exception is silently swallowed (re-throw or log instead),MEDIUM,BAD_PRACTICE,390,1,org.plumb.style.ThrowableNotThrownCheck
+bu-1107-hardcoded-credentials,HARDCODED_CREDENTIALS,String literal assigned to a credential-named variable (use config / secrets manager),CRITICAL,SECURITY,"798,259",2,org.plumb.style.HardcodedCredentialsCheck
+bu-1108-dead-store,DEAD_STORE,Value assigned to variable is overwritten before being read,LOW,CORRECTNESS,563,1,org.plumb.dfa.checker.DeadStoreCheck
+bu-0401-weak-crypto,WEAK_CRYPTO,Use of cryptographically weak algorithm (MD5/SHA-1/DES/RC4/ECB),HIGH,SECURITY,"327,328",2,org.plumb.dfa.WeakCryptoCheck
+bu-0402-insecure-random,INSECURE_RANDOM,Use of java.util.Random in security-sensitive context,MEDIUM,SECURITY,330,1,org.plumb.dfa.InsecureRandomCheck
+bu-0403-predictable-seed,PREDICTABLE_RANDOM_SEED,Random generator seeded with a compile-time constant,HIGH,SECURITY,"332,336",2,org.plumb.dfa.PredictableRandomSeedCheck
+bu-0404-predictable-key-password,PREDICTABLE_KEY_PASSWORD,Key material / password is a compile-time literal,CRITICAL,SECURITY,"259,798",2,org.plumb.dfa.PredictableKeyPasswordCheck
+bu-0405-static-api-key,STATIC_API_KEY,Static final field holding a literal API key / secret,CRITICAL,SECURITY,"798,259",2,org.plumb.dfa.StaticApiKeyCheck
+bu-0601-bad-shift,BAD_SHIFT,Suspicious shift count: negative or exceeds operand bit width,MEDIUM,CORRECTNESS,758,1,org.plumb.dfa.BadShiftCheck
+bu-0602-infinite-loop,INFINITE_LOOP,Loop with a constant-true condition and no visible exit,LOW,CORRECTNESS,835,1,org.plumb.dfa.InfiniteLoopCheck
+bu-0603-constant-condition,CONSTANT_CONDITION,Branch condition is a compile-time boolean constant,LOW,CORRECTNESS,"570,571",2,org.plumb.dfa.ConstantConditionCheck
+bu-0008-taint-source-sensitive-data,TAINT_SOURCE_SENSITIVE_DATA,Tainted from sensitive data source (password / session / secret / token),INFO,TAINT,532,1,org.plumb.dfa.taint.SensitiveSource
+bu-0701-sensitive-data-leak,SENSITIVE_DATA_LEAK,Sensitive data (password / session / secret) flows to log / throw / file,CRITICAL,SECURITY,532,1,org.plumb.dfa.SensitiveDataLeakCheck
+bu-0801-field-hardcoded-password,FIELD_HARDCODED_PASSWORD,Field with credential-like name is assigned a literal password / secret,CRITICAL,SECURITY,"798,259",2,org.plumb.dfa.FieldHardcodedPasswordCheck
+bu-0901-missing-authorization,MISSING_AUTHORIZATION,Web endpoint method lacks an authorization annotation (@PreAuthorize / @RolesAllowed / @Secured),HIGH,SECURITY,"862,285",2,org.plumb.dfa.MissingAuthorizationCheck
+bu-1001-missing-input-validation,MISSING_INPUT_VALIDATION,Web endpoint accepts user input without Bean Validation (@Valid / @Validated),MEDIUM,SECURITY,20,1,org.plumb.dfa.MissingInputValidationCheck
+bu-1101-information-exposure,INFORMATION_EXPOSURE,Web endpoint returns a user-declared class (consider a sanitized DTO),MEDIUM,SECURITY,200,1,org.plumb.dfa.InformationExposureCheck
+bu-0501-insecure-comms,INSECURE_COMMUNICATION,Unencrypted (http/ftp) URL used for sensitive endpoint,MEDIUM,SECURITY,319,1,org.plumb.dfa.InsecureCommunicationCheck
+bu-0502-cors-misconfig,CORS_MISCONFIGURATION,CORS configuration allows any origin ('*'),HIGH,SECURITY,942,1,org.plumb.dfa.CorsMisconfigurationCheck
+bu-0503-insecure-cookie,INSECURE_COOKIE,Cookie constructed without Secure / HttpOnly flags,MEDIUM,SECURITY,"614,1004",2,org.plumb.dfa.InsecureCookieCheck

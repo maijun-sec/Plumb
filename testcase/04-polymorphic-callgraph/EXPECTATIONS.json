@@ -1,0 +1,121 @@
+{
+  "category": "04-polymorphic-callgraph",
+  "notes": [
+    "RUN THIS CATEGORY WITH --per-file. VtaCallGraphStrategy types every CALL result as Object and its override filter admits every same-name/arity candidate when the receiver's points-to set contains Object. Because handle/1 is reused across layers 1, 3, 5 and 6, scanning them as one program fans each call site out to unrelated implementations and the numbers stop meaning anything.",
+    "A finding's sink_function is the SINK CALLEE, not the enclosing method. So the L4 rows pin a specific sink callee plus a line, which together identify the intended site.",
+    "The two decisive results are L3_INSTANTIATION_GATE (L3a and L3b are byte-identical, so the instantiation gate is inert) and L4_INT_OVERLOAD_FP (a primitive int overload reports CWE-89). Read SUPPORT-STATUS.md before changing any number here."
+  ],
+  "cases": [
+    {
+      "id": "L3a_has_sql_findings",
+      "kind": "tp",
+      "file": "L3aLateImplNotInstantiated.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Counts SQL findings in L3a (sink class NEVER instantiated). L3b exists only to add one `new`, so the L3a-vs-L3b DELTA is the measurement. On this build the two files produce byte-identical output, which means the instantiation gate documented in VtaCallGraphStrategy is not implemented. See SUPPORT-STATUS.md result 1."
+    },
+    {
+      "id": "L3b_has_sql_findings",
+      "kind": "tp",
+      "file": "L3bLateImplInstantiated.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Counts SQL findings in L3b (sink class instantiated once). Compare against L3a_has_sql_findings: L3b MUST exceed L3a for the gate to be observable. It does not."
+    },
+    {
+      "id": "L4_INT_OVERLOAD_FP",
+      "kind": "tn",
+      "file": "L4OverloadAmbiguity.java",
+      "line": 72,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "A PROVABLE false positive if reported. process(int code) takes a primitive int, so no string taint can flow into it, yet the sink on line 75 is reachable. A finding here proves name+arity resolution bound the call site to a process(String) overload. This is the cleanest precision case in the whole suite. NOTE: line 72 is the method declaration; the sink call is line 75. Both the method and the sink resolve to the same `java.sql.Statement.executeQuery/1` callee, so this row is satisfied if ANY executeQuery finding in this file lands on either line."
+    },
+    {
+      "id": "L4_string_overload_tp",
+      "kind": "tp",
+      "file": "L4OverloadAmbiguity.java",
+      "line": 48,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "The genuine sink: StringProcessor.process(String input) concatenates into executeQuery on line 48. Must fire."
+    },
+    {
+      "id": "L4_second_string_overload_tp",
+      "kind": "tp",
+      "file": "L4OverloadAmbiguity.java",
+      "line": 100,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "A third class declaring process(String), widening the name+arity key. The same sink must still fire."
+    },
+    {
+      "id": "L4_arity_control_tp",
+      "kind": "tp",
+      "file": "L4OverloadAmbiguity.java",
+      "line": 117,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "ReportProcessor.process(String, String) - arity 2, so the resolution key differs from process/1. Proves arity is honoured. [R1102: re-pinned from line 110, a javadoc line; the executeQuery sink is at 117. R1099 also made the key type-aware, so this now exercises arity AND parameter type. R1104: dropped the sink_function constraint -- it was meant to pin the enclosing overload, but a boundary finding names the sink callee (java.sql.Statement.executeQuery/1), so the constraint excluded the very finding it was added to find.]"
+    },
+    {
+      "id": "L1-interface-dispatch",
+      "kind": "tp",
+      "file": "L1InterfaceDispatch.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Interface with two implementations, one a sink and one a control. Findings must appear in the sink implementation."
+    },
+    {
+      "id": "L1-control-tn",
+      "kind": "tn",
+      "file": "L1InterfaceDispatch.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "anchor_fn": "dispatchControlsOnly",
+      "note": "The non-sink implementation reached through the same interface. NOTE this anchor is informational: sink_function is the callee, so this row currently matches the whole file. Treat the L1 sink-vs-control distinction as an open gap in the harness, not as an engine result."
+    },
+    {
+      "id": "L2-abstract-hierarchy",
+      "kind": "tp",
+      "file": "L2AbstractHierarchy.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Three-level abstract chain with an abstract method declared in the grandparent, dispatched through the grandparent type."
+    },
+    {
+      "id": "L5-diamond",
+      "kind": "tp",
+      "file": "L5DiamondInheritance.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Diamond: Top / Left / Right / DiamondImpl, dispatched through the root interface. Probes duplicate edges from two inheritance paths to the same concrete type."
+    },
+    {
+      "id": "L6-collection-polymorphism",
+      "kind": "tp",
+      "file": "L6CollectionPolymorphism.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "A List<Handler> with mixed implementations, iterated, with a tainted element dispatched polymorphically. Container plus dispatch together."
+    }
+  ]
+}

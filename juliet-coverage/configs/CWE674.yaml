@@ -1,0 +1,19 @@
+# Per-CWE YAML v2 for CWE674
+# Whitelist (DFA rule ids Plumb actually emits): ['CatchGenericException', 'plumb.numeric.integer-overflow', 'plumb.resource.leak']
+# R759-F: added plumb.style.uncontrolled-recursion + plumb.dfa.resource-exhaustion (covers BAD recursion in CWE674)
+
+maxParallelism: 4
+cgStrategy: global
+aggressiveness: medium
+
+rules:
+  mode: whitelist
+  enabled:
+    - CatchGenericException
+    - plumb.numeric.integer-overflow
+    - plumb.resource.leak
+    - plumb.style.uncontrolled-recursion
+    - plumb.dfa.resource-exhaustion
+
+ai:
+  enabled: false

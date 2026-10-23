@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.plumb</groupId>
+    <artifactId>plumb</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>plumb</name>
+    <description>
+        A Java static analysis playground: JavaParser-based AST,
+        Three-Address-Code IR, dataflow analysis (taint-focused)
+        and structured/style checks. Inspired by the architecture of
+        Fathom but a completely independent Java-only project.
+    </description>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- dependency versions -->
+        <javaparser.version>3.26.4</javaparser.version>
+        <slf4j.version>2.0.13</slf4j.version>
+        <logback.version>1.5.6</logback.version>
+        <jackson.version>2.17.2</jackson.version>
+        <snakeyaml.version>2.2</snakeyaml.version>
+        <commons-cli.version>1.9.0</commons-cli.version>
+        <junit.version>5.10.3</junit.version>
+        <assertj.version>3.26.3</assertj.version>
+        <z3.turnkey.version>4.14.0</z3.turnkey.version>
+
+        <!-- R140: SootUp for bytecode (.jar/.class) analysis. -->
+        <sootup.version>3.0.0</sootup.version>
+
+        <!-- Maven plugin versions -->
+        <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
+        <maven.surefire.plugin.version>3.3.1</maven.surefire.plugin.version>
+        <maven.jar.plugin.version>3.4.1</maven.jar.plugin.version>
+        <maven.shade.plugin.version>3.6.0</maven.shade.plugin.version>
+        <maven.install.plugin.version>3.1.2</maven.install.plugin.version>
+    </properties>
+
+    <modules>
+        <module>plumb-parser</module>
+        <module>plumb-tac</module>
+        <module>plumb-rules</module>
+        <module>plumb-style</module>
+        <module>plumb-reporter</module>
+        <module>plumb-dfa</module>
+        <module>plumb-build</module>
+        <module>plumb-ai</module>
+        <module>plumb-main</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.plumb</groupId>
+                <artifactId>plumb-parser</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
+                <artifactId>plumb-tac</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
+                <artifactId>plumb-rules</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
+                <artifactId>plumb-style</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
+                <artifactId>plumb-reporter</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
+                <artifactId>plumb-dfa</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
+                <artifactId>plumb-build</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
+                <artifactId>plumb-ai</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
+                <artifactId>plumb-main</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+
+            <!-- third-party -->
+            <dependency>
+                <groupId>com.github.javaparser</groupId>
+                <artifactId>javaparser-symbol-solver-core</artifactId>
+                <version>${javaparser.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.yaml</groupId>
+                <artifactId>snakeyaml</artifactId>
+                <version>${snakeyaml.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-cli</groupId>
+                <artifactId>commons-cli</artifactId>
+                <version>${commons-cli.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.assertj</groupId>
+                <artifactId>assertj-core</artifactId>
+                <version>${assertj.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>tools.aqua</groupId>
+                <artifactId>z3-turnkey</artifactId>
+                <version>${z3.turnkey.version}</version>
+            </dependency>
+
+            <!-- R140: SootUp for bytecode analysis. 3.0.0 is the
+                 latest release (2026-07-16). We need the bytecode
+                 frontend to convert .jar/.class → Jimple, the core
+                 for the Project / SootClass / Body APIs, the java
+                 core for Java-specific type information, and
+                 interceptors for the analysis pipeline. -->
+            <dependency>
+                <groupId>org.soot-oss</groupId>
+                <artifactId>sootup.core</artifactId>
+                <version>${sootup.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.soot-oss</groupId>
+                <artifactId>sootup.java.core</artifactId>
+                <version>${sootup.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.soot-oss</groupId>
+                <artifactId>sootup.java.bytecode.frontend</artifactId>
+                <version>${sootup.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.soot-oss</groupId>
+                <artifactId>sootup.interceptors</artifactId>
+                <version>${sootup.version}</version>
+            </dependency>
+
+            <!-- R-833 P0: Maven model reader for the MavenAdapter.
+                 The other adapters (Gradle / Bazel / Ant) live in
+                 plumb-build and pull their own deps if needed. -->
+            <dependency>
+                <groupId>org.apache.maven</groupId>
+                <artifactId>maven-model</artifactId>
+                <version>3.9.9</version>
+            </dependency>
+            <dependency>
+                <groupId>org.codehaus.plexus</groupId>
+                <artifactId>plexus-utils</artifactId>
+                <version>3.5.1</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${maven.compiler.plugin.version}</version>
+                    <configuration>
+                        <release>17</release>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven.surefire.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>${maven.jar.plugin.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

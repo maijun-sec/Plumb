@@ -1,0 +1,48 @@
+﻿python : D:\work\workspace\idea\engine\Plumb\juliet-coverage\scripts\build_rule_id_migration.py:21: SyntaxWarning: "\w"
+ is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\w"? A raw string is also an
+ option.
+所在位置 行:1 字符: 171
++ ... liet-coverage\scripts; python build_rule_id_migration.py 2>&1 | Out-F ...
++                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\work\workspa...also an option.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  - D:\work\workspace\idea\engine\Plumb\juliet-coverage\data\rule_id_migration.csv
+Migration entries: 694
+Review needed: 2
+Collisions: 80
+  2x  plumb.ast.ambiguous-precedence
+  2x  plumb.ast.assignment-in-operand
+  2x  plumb.ast.compare-classes
+  2x  plumb.ast.compare-objects-with-equals
+  2x  plumb.ast.covariant-equals
+  2x  plumb.ast.ctor-calling-overridable
+  2x  plumb.ast.equals-arg-type
+  2x  plumb.ast.equals-avoid-null
+  2x  plumb.ast.equals-hashcode
+  4x  plumb.ast.explicit-finalize
+  2x  plumb.ast.expose-internal-representation
+  2x  plumb.ast.env-var-info-exposure
+  2x  plumb.ast.error-message-info-leak
+  2x  plumb.ast.finalize-only-overridden
+  2x  plumb.ast.finalize-without-super
+  2x  plumb.ast.hardcoded-credentials
+  2x  plumb.ast.hardcoded-ip
+  2x  plumb.ast.hibernate-bad-hashcode
+  2x  plumb.ast.ignored-result
+  2x  plumb.ast.iterator-next-exception
+
+Written to D:\work\workspace\idea\engine\Plumb\juliet-coverage\data\rule_id_migration.csv
+Written to D:\work\workspace\idea\engine\Plumb\juliet-coverage\data\rule_id_migration_review_needed.csv
+
+Distribution by domain:
+  ast          569
+  taint        60
+  style        22
+  boundary     19
+  dfa          15
+  info         5
+  naming       1
+  crypto       1
+  resource     1
+  concurrency  1

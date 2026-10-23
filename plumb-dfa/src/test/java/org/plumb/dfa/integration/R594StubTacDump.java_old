@@ -1,0 +1,139 @@
+/*
+ * R594-debug — Dump TAC for representative programs to
+ * diagnose why most stub checkers don't fire.
+ */
+package org.plumb.dfa.unified.integration;
+
+import org.junit.jupiter.api.Test;
+import org.plumb.dfa.unified.checkers.taint.OgnlInjectionChecker;
+import org.plumb.dfa.unified.config.ConfigLoader;
+import org.plumb.dfa.unified.config.EngineConfig;
+import org.plumb.dfa.unified.engine.DfaChecker;
+import org.plumb.dfa.unified.engine.DfaEngine;
+import org.plumb.dfa.unified.engine.FindingReporter;
+import org.plumb.parser.JavaSourceParser;
+import org.plumb.parser.ParsedSource;
+import org.plumb.tac.ir.TacFunction;
+import org.plumb.tac.ir.TacInstruction;
+import org.plumb.tac.ir.TacProgram;
+import org.plumb.tac.translate.TacTranslator;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
+
+class R594StubTacDump {
+
+    private static final String EL_PROG = """
+            package com.example.el;
+            public class ElServlet {
+                public void bad(javax.servlet.http.HttpServletRequest req) throws Exception {
+                    javax.el.ELProcessor processor = new javax.el.ELProcessor();
+                    String expr = req.getParameter("expr");
+                    processor.eval(expr);
+                }
+            }
+            """;
+
+    private static final String CODE_PROG = """
+            package com.example.code;
+            public class CodeServlet {
+                public void bad(javax.servlet.http.HttpServletRequest req) throws Exception {
+                    javax.script.ScriptEngine engine = new javax.script.ScriptEngineManager().getEngineByName("js");
+                    String script = req.getParameter("script");
+                    engine.eval(script);
+                }
+            }
+            """;
+
+    private static final String JCR_PROG = """
+            package com.example.jcr;
+            public class JcrServlet {
+                public void bad(javax.servlet.http.HttpServletRequest req,
+                                javax.jcr.Session session) throws Exception {
+                    String query = req.getParameter("q");
+                    javax.jcr.Node root = session.getRootNode();
+                    root.getNode(query);
+                }
+            }
+            """;
+
+    private static final String JNI_PROG = """
+            package com.example.jni;
+            public class JniServlet {
+                public void bad(javax.servlet.http.HttpServletRequest req) throws Exception {
+                    String libPath = req.getParameter("lib");
+                    System.load(libPath);
+                }
+            }
+            """;
+
+    private static final String SETATTR_PROG = """
+            package com.example.trust;
+            public class TrustServlet {
+                public void bad(javax.servlet.http.HttpServletRequest req,
+                                javax.servlet.http.HttpSession session) throws Exception {
+                    String data = req.getParameter("data");
+                    session.setAttribute("userData", data);
+                }
+            }
+            """;
+
+    private static final String SETHEADER_PROG = """
+            package com.example.session;
+            public class SessionServlet {
+                public void bad(javax.servlet.http.HttpServletRequest req,
+                                javax.servlet.http.HttpServletResponse resp) throws Exception {
+                    String id = req.getParameter("id");
+                    resp.setHeader("X-Session-Id", id);
+                }
+            }
+            """;
+
+    private static final String SQL_R566 = """
+            package com.example.web;
+            public class SqlServlet {
+                public void bad(javax.servlet.http.HttpServletRequest req,
+                                java.sql.Connection conn) throws Exception {
+                    String userId = req.getParameter("id");
+                    java.sql.Statement stmt = conn.createStatement();
+                    stmt.execute("SELECT * FROM users WHERE id=" + userId);
+                }
+            }
+            """;
+
+    @Test
+    void dumpTac() throws Exception {
+        JavaSourceParser parser = new JavaSourceParser();
+        String[] names = {"EL", "CODE", "JCR", "JNI", "SETATTR", "SETHEADER", "SQL_R566"};
+        String[] progs = {EL_PROG, CODE_PROG, JCR_PROG, JNI_PROG, SETATTR_PROG, SETHEADER_PROG, SQL_R566};
+        for (int i = 0; i < names.length; i++) {
+            String className = "com/example/r594d/" + names[i].toLowerCase() + "/X";
+            Path virtualPath = Paths.get("D:/work/temp/realcode/" + className + ".java");
+            Files.createDirectories(virtualPath.getParent());
+            Files.writeString(virtualPath, progs[i], StandardCharsets.UTF_8);
+            ParsedSource src = parser.parse(virtualPath);
+            TacProgram prog = new TacTranslator(src).translate();
+            System.out.println("===== " + names[i] + " =====");
+            for (TacFunction fn : prog.functions()) {
+                System.out.println("Function: " + fn.name());
+                int idx = 0;
+                for (TacInstruction ins : fn.instructions()) {
+                    switch (ins.kind) {
+                        case CALL -> System.out.println("  " + idx + " CALL callee=" + ins.calleeSig
+                                + " args=" + ins.args + " dest=" + ins.dest);
+                        case NEW -> System.out.println("  " + idx + " NEW ctor=" + ins.ctorType
+                                + " args=" + ins.args + " dest=" + ins.dest);
+                        case MOVE -> System.out.println("  " + idx + " MOVE dest=" + ins.dest
+                                + " src=" + ins.lhs1);
+                        default -> { /* skip */ }
+                    }
+                    idx++;
+                }
+            }
+        }
+    }
+}

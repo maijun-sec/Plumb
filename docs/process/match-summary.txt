@@ -1,0 +1,83 @@
+﻿Plumb-style existing checks: 510
+
+Existing style categories:
+  style: 317
+  bug: 19
+  design: 18
+  error: 33
+  naming: 51
+  performance: 63
+  security: 9
+
+Matched: 0
+Unmatched: 492
+
+Sample matches:
+
+Top 30 unmatched by category:
+  SpotBugs: Correctness (163):
+    FB.BAC_BAD_APPLET_CONSTRUCTOR                           |          | This constructor calls methods in the parent Applet that rely on the AppletStub. Since the AppletStu
+    FB.BC_IMPOSSIBLE_CAST                                   | CWE-570  | This cast will always throw a ClassCastException. SpotBugs tracks type information from instanceof c
+    FB.BC_IMPOSSIBLE_CAST_PRIMITIVE_ARRAY                   |          | This cast will always throw a ClassCastException.
+    FB.BC_IMPOSSIBLE_DOWNCAST                               | CWE-570  | This cast will always throw a ClassCastException. The analysis believes it knows the precise type of
+    FB.BC_IMPOSSIBLE_DOWNCAST_OF_TOARRAY                    | CWE-570  | This code is casting the result of calling toArray() on a collection to a type more specific than Ob
+
+  SpotBugs: Bad practice (97):
+    FB.AM_CREATES_EMPTY_JAR_FILE_ENTRY                      | CWE-227  | The code calls putNextEntry() , immediately followed by a call to closeEntry() . This results in an 
+    FB.AM_CREATES_EMPTY_ZIP_FILE_ENTRY                      | CWE-227  | The code calls putNextEntry() , immediately followed by a call to closeEntry() . This results in an 
+    FB.BC_EQUALS_METHOD_SHOULD_WORK_FOR_ALL_OBJECTS         |          | The equals(Object o) method shouldn't make any assumptions about the type of o . It should simply re
+    FB.BIT_SIGNED_CHECK                                     |          | This method compares an expression such as ((event.detail & SWT.SELECTED) > 0) . Using bit arithmeti
+    FB.CNT_ROUGH_CONSTANT_VALUE                             |          | It's recommended to use the predefined library constant for code clarity and better precision.
+
+  SpotBugs: Dodgy code (91):
+    FB.BC_BAD_CAST_TO_ABSTRACT_COLLECTION                   |          | This code casts a Collection to an abstract collection (such as List , Set , or Map ). Ensure that y
+    FB.BC_BAD_CAST_TO_CONCRETE_COLLECTION                   |          | This code casts an abstract collection (such as a Collection, List, or Set) to a specific concrete i
+    FB.BC_UNCONFIRMED_CAST                                  |          | This cast is unchecked, and not all instances of the type casted from can be cast to the type it is 
+    FB.BC_UNCONFIRMED_CAST_OF_RETURN_VALUE                  |          | This code performs an unchecked cast of the return value of a method. The code might be calling the 
+    FB.BC_VACUOUS_INSTANCEOF                                | CWE-571  | This instanceof test will always return true (unless the value being tested is null). Although this 
+
+  SpotBugs: Multithreaded correctness (50):
+    FB.AT_OPERATION_SEQUENCE_ON_CONCURRENT_ABSTRACTION      |          | 
+    FB.DC_DOUBLECHECK                                       | CWE-609  | This method may contain an instance of double-checked locking. This idiom is not correct according t
+    FB.DC_PARTIALLY_CONSTRUCTED                             | CWE-609  | Looks like this method uses lazy field initialization with double-checked locking. While the field i
+    FB.DL_SYNCHRONIZATION_ON_BOOLEAN                        |          | The code synchronizes on a boxed primitive constant, such as a Boolean.
+    FB.DL_SYNCHRONIZATION_ON_BOXED_PRIMITIVE                |          | The code synchronizes on a boxed primitive constant, such as an Integer.
+
+  SpotBugs: Performance (38):
+    FB.BX_BOXING_IMMEDIATELY_UNBOXED                        |          | A primitive is boxed, and then immediately unboxed. This probably is due to a manual boxing in a pla
+    FB.BX_BOXING_IMMEDIATELY_UNBOXED_TO_PERFORM_COERCION    | CWE-192  | A primitive boxed value constructed and then immediately converted into a different primitive type (
+    FB.BX_UNBOXED_AND_COERCED_FOR_TERNARY_OPERATOR          |          | A wrapped primitive value is unboxed and converted to another primitive type as part of the evaluati
+    FB.BX_UNBOXING_IMMEDIATELY_REBOXED                      |          | A boxed value is unboxed and then immediately reboxed.
+    FB.DMI_BLOCKING_METHODS_ON_URL                          | CWE-440  | The equals and hashCode method of URL perform domain name resolution, this can result in a big perfo
+
+  SpotBugs: Malicious code vulnerability (27):
+    FB.DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED           |          | This code creates a classloader, which needs permission if a security manage is installed. If this c
+    FB.DP_DO_INSIDE_DO_PRIVILEGED                           |          | This code invokes a method that requires a security permission check. If this code will be granted s
+    FB.EI_EXPOSE_BUF                                        | CWE-374  | Returning a reference to a buffer (java.nio.*Buffer) which wraps an array stored in one of the objec
+    FB.EI_EXPOSE_BUF2                                       | CWE-374  | This code creates a buffer which stores a reference to an external array or the array of an external
+    FB.EI_EXPOSE_REP                                        | CWE-374  | Returning a reference to a mutable object value stored in one of the object's fields exposes the int
+
+  SpotBugs: Security (11):
+    FB.DMI_CONSTANT_DB_PASSWORD                             | CWE-259  | This code creates a database connect using a hardcoded, constant password. Anyone with access to eit
+    FB.DMI_EMPTY_DB_PASSWORD                                | CWE-259  | This code creates a database connect using a blank or empty password. This indicates that the databa
+    FB.HRS_REQUEST_PARAMETER_TO_COOKIE                      | CWE-113  | This code constructs an HTTP Cookie using an untrusted HTTP parameter. If this cookie is added to an
+    FB.HRS_REQUEST_PARAMETER_TO_HTTP_HEADER                 | CWE-113  | This code directly writes an HTTP parameter to an HTTP header, which allows for a HTTP response spli
+    FB.PT_ABSOLUTE_PATH_TRAVERSAL                           | CWE-36   | The software uses an HTTP request parameter to construct a pathname that should be within a restrict
+
+  SpotBugs: Experimental (9):
+    FB.LG_LOST_LOGGER_DUE_TO_WEAK_REFERENCE                 |          | OpenJDK introduces a potential incompatibility. In particular, the java.util.logging.Logger behavior
+    FB.OBL_UNSATISFIED_OBLIGATION                           |          | This method may fail to clean up (close, dispose of) a stream, database object, or other resource re
+    FB.OBL_UNSATISFIED_OBLIGATION_EXCEPTION_EDGE            |          | This method may fail to clean up (close, dispose of) a stream, database object, or other resource re
+    FB.SKIPPED_CLASS_TOO_BIG                                |          | This class is bigger than can be effectively handled, and was not fully analyzed for errors.
+    FB.TESTING                                              |          | This bug pattern is only generated by new, incompletely implemented bug detectors.
+
+  SpotBugs: Bogus random noise (4):
+    FB.NOISE_FIELD_REFERENCE                                |          | Bogus warning.
+    FB.NOISE_METHOD_CALL                                    |          | Bogus warning.
+    FB.NOISE_NULL_DEREFERENCE                               |          | Bogus warning.
+    FB.NOISE_OPERATION                                      |          | Bogus warning.
+
+  SpotBugs: Internationalization (2):
+    FB.DM_CONVERT_CASE                                      |          | A String is being converted to upper or lowercase, using the platform's default encoding. This may r
+    FB.DM_DEFAULT_ENCODING                                  |          | Found a call to a method which will perform a byte to String (or String to byte) conversion, and wil
+

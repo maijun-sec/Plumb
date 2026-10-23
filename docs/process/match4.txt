@@ -1,0 +1,39 @@
+﻿Matched: 32
+Unmatched: 460
+
+All matches (sorted by fb id):
+  FB.BC_BAD_CAST_TO_ABSTRACT_COLLECTION                   -> performance/BcBadCastToAbstractCollectionCheck.java
+  FB.BC_UNCONFIRMED_CAST                                  -> style/UnconfirmedCastCheck.java
+  FB.BOA_BADLY_OVERRIDDEN_ADAPTER                         -> style/BadlyOverriddenAdapterCheck.java
+  FB.CI_CONFUSED_INHERITANCE                              -> design/ConfusedInheritanceCheck.java
+  FB.DMI_BAD_MONTH                                        -> style/DmiBadMonthCheck.java
+  FB.DMI_COLLECTION_OF_URLS                               -> performance/DmiCollectionOfUrlsCheck.java
+  FB.DM_BOXED_PRIMITIVE_FOR_PARSING                       -> performance/DmBoxedPrimitiveForParsingCheck.java
+  FB.DP_DO_INSIDE_DO_PRIVILEGED                           -> style/DoInsideDoPrivilegedCheck.java
+  FB.EC_BAD_ARRAY_COMPARE                                 -> performance/EcBadArrayCompareCheck.java
+  FB.EC_UNRELATED_INTERFACES                              -> style/EcUnrelatedInterfacesCheck.java
+  FB.EC_UNRELATED_TYPES                                   -> style/EcUnrelatedTypesCheck.java
+  FB.ESYNC_EMPTY_SYNC                                     -> style/EsyncEmptySyncCheck.java
+  FB.ICAST_INTEGER_MULTIPLY_CAST_TO_LONG                  -> style/IcastIntegerMultiplyCastToLongCheck.java
+  FB.IL_INFINITE_LOOP                                     -> style/InfiniteLoopCheck.java
+  FB.IM_BAD_CHECK_FOR_ODD                                 -> style/BadCheckForOddCheck.java
+  FB.ME_MUTABLE_ENUM_FIELD                                -> style/MutableEnumFieldCheck.java
+  FB.MF_CLASS_MASKS_FIELD                                 -> style/MfClassMasksFieldCheck.java
+  FB.MF_METHOD_MASKS_FIELD                                -> style/MfMethodMasksFieldCheck.java
+  FB.NM_FIELD_NAMING_CONVENTION                           -> naming/FieldNamingConventionCheck.java
+  FB.NP_ALWAYS_NULL                                       -> bug/NpAlwaysNullCheck.java
+  FB.PZLA_PREFER_ZERO_LENGTH_ARRAYS                       -> performance/PreferZeroLengthArraysCheck.java
+  FB.QBA_QUESTIONABLE_BOOLEAN_ASSIGNMENT                  -> style/QuestionableBooleanAssignmentCheck.java
+  FB.RANGE_ARRAY_INDEX                                    -> performance/RangeArrayIndexCheck.java
+  FB.RANGE_ARRAY_LENGTH                                   -> performance/RangeArrayLengthCheck.java
+  FB.RANGE_ARRAY_OFFSET                                   -> performance/RangeArrayOffsetCheck.java
+  FB.RANGE_STRING_INDEX                                   -> performance/RangeStringIndexCheck.java
+  FB.RCN_REDUNDANT_NULLCHECK_OF_NULL_VALUE                -> bug/RedundantNullCheckOfNullValueCheck.java
+  FB.RV_RETURN_VALUE_IGNORED                              -> style/RvReturnValueIgnoredCheck.java
+  FB.SA_FIELD_SELF_ASSIGNMENT                             -> style/FieldSelfAssignmentCheck.java
+  FB.SIO_SUPERFLUOUS_INSTANCEOF                           -> style/SuperfluousInstanceofCheck.java
+  FB.UC_USELESS_OBJECT                                    -> style/UcUselessObjectCheck.java
+  FB.WMI_WRONG_MAP_ITERATOR                               -> style/WmiWrongMapIteratorCheck.java
+
+Coverage: 6.5%
+Saved unmatched to spotbugs-unmatched.json

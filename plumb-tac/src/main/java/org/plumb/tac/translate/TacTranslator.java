@@ -1,0 +1,637 @@
+package org.plumb.tac.translate;
+
+import com.github.javaparser.Range;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.NodeList;
+import com.github.javaparser.ast.body.BodyDeclaration;
+import com.github.javaparser.ast.body.CallableDeclaration;
+import com.github.javaparser.ast.body.ConstructorDeclaration;
+import com.github.javaparser.ast.body.FieldDeclaration;
+import com.github.javaparser.ast.body.InitializerDeclaration;
+import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.Parameter;
+import com.github.javaparser.ast.body.TypeDeclaration;
+import com.github.javaparser.ast.body.VariableDeclarator;
+import com.github.javaparser.ast.expr.AnnotationExpr;
+import com.github.javaparser.ast.expr.Expression;
+import com.github.javaparser.ast.expr.VariableDeclarationExpr;
+import com.github.javaparser.ast.stmt.BlockStmt;
+import com.github.javaparser.ast.type.Type;
+import java.util.ArrayList;
+import java.util.List;
+import org.plumb.parser.ParsedSource;
+import org.plumb.tac.ir.BinaryOperator;
+import org.plumb.tac.ir.SourceMap;
+import org.plumb.tac.ir.TacFunction;
+import org.plumb.tac.ir.TacInstruction;
+import org.plumb.tac.ir.TacOperand;
+import org.plumb.tac.ir.TacProgram;
+import org.plumb.tac.ir.TacType;
+import org.plumb.tac.ir.UnaryOperator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Top-level AST⇒⇒AC translator. One instance per {@link TacProgram} being built.
+ *
+ * <p>The translator intentionally emits a "linear" instruction stream (not yet a CFG). {@link
+ * org.plumb.tac.ir.TacCfgBuilder} runs over the result to split it into basic blocks.
+ *
+ * <p>Scope of supported Java constructs (intentionally narrow, see the README for the design
+ * goals):
+ *
+ * <ul>
+ *   <li>Method / constructor bodies: declarations, assignments, if/else, while / do-while / for /
+ *       for-each, try-catch-finally (skeleton), return, throw, switch as if-else chain, expression
+ *       statements.
+ *   <li>Expressions: binary, unary, assignment, conditional, method call, {@code new}, array
+ *       creation, field access, array access, cast, {@code instanceof}, literals, {@code this}.
+ *   <li>Out of scope: lambdas, anonymous inner classes (skipped), record patterns, sealed-type
+ *       patterns, annotations on local decls (ignored for now).
+ * </ul>
+ */
+public final class TacTranslator {
+
+  private static final Logger LOG = LoggerFactory.getLogger(TacTranslator.class);
+
+  private final ParsedSource source;
+  private final TacProgram program;
+  private final ExpressionTranslator exprTranslator;
+  private final StatementTranslator stmtTranslator;
+
+  public TacTranslator(ParsedSource source) {
+    this.source = source;
+    this.program = new TacProgram(source.path(), source.primaryTypeName());
+    this.exprTranslator = new ExpressionTranslator(this);
+    this.stmtTranslator = new StatementTranslator(this);
+  }
+
+  public TacProgram program() {
+    return program;
+  }
+
+  public ParsedSource source() {
+    return source;
+  }
+
+  public SourceMap sourceMap() {
+    return program.sourceMap();
+  }
+
+  public ExpressionTranslator exprs() {
+    return exprTranslator;
+  }
+
+  public StatementTranslator stmts() {
+    return stmtTranslator;
+  }
+
+  /**
+   * Register a synthetic function (e.g. a lambda body). The function is added to the program with
+   * its spec preserved.
+   */
+  public void registerLambda(TacBuilder b) {
+    TacFunction fn = b.build();
+    program.addFunction(fn);
+  }
+
+  /**
+   * Bind a user-var to a lambda's signature. The inter-procedural taint engine uses this to follow
+   * {@code f.apply(...)} into the lambda body.
+   */
+  public void bindLambda(String varName, String lambdaSignature) {
+    program.bindLambda(varName, lambdaSignature);
+  }
+
+  public TacProgram translate() {
+    CompilationUnit unit = source.unit();
+    for (TypeDeclaration<?> td : unit.getTypes()) {
+      translateType(td);
+    }
+    return program;
+  }
+
+  private void translateType(TypeDeclaration<?> td) {
+    translateTypeWithPrefix(td, "");
+  }
+
+  /**
+   * Translate a (possibly nested) type declaration. The {@code prefix} qualifies inner-class method
+   * names with the enclosing-class hierarchy (using {@code $} as the separator, matching the
+   * JVM-style inner-class naming). For top-level types the prefix is empty.
+   */
+  private void translateTypeWithPrefix(TypeDeclaration<?> td, String prefix) {
+    // Capture class-level annotations (e.g.
+    // {@code @RestController}, {@code @Configuration}). These
+    // are propagated to every function emitted from this class
+    // so checkers can recognise roles from any function they
+    // look at.
+    List<String> classAnns = extractAnnotationNames(td.getAnnotations());
+    // Capture the class hierarchy. We only model the
+    // direct parent (Java has no multiple-inheritance of
+    // classes); interfaces go into a separate concept that
+    // the CallResolver doesn't yet consume. The full FQN of
+    // the extended class is reduced to its short name to
+    // match {@link TacFunction#enclosingClass()}, which is
+    // set just below when we hand each function its
+    // declaring class. The translation is deliberately
+    // tolerant: a type with no {@code extends} clause (most
+    // Juliet test cases) leaves the map untouched.
+    String classShortName = td.getNameAsString();
+    if (prefix.isEmpty()
+        && td instanceof com.github.javaparser.ast.body.ClassOrInterfaceDeclaration cid) {
+      // Only register the parent at the top-level class
+      // declaration; inner classes get a synthetic prefix
+      // (e.g. {@code Outer$Inner}) and are not what the
+      // CHA walk matches against.
+      for (com.github.javaparser.ast.type.ClassOrInterfaceType ext : cid.getExtendedTypes()) {
+        String parentName = ext.getNameAsString();
+        if (parentName != null && !parentName.isEmpty()) {
+          program.registerClassParent(classShortName, parentName);
+        }
+      }
+      // Also walk the implemented
+      // interfaces and register each as a
+      // synthetic parent. The classToParent map
+      // is flat (no separate implements list),
+      // so a class that "implements
+      // Serializable" ends up with Serializable
+      // in its parent chain. This lets a checker
+      // (e.g. MissingSerialVersionUIDChecker)
+      // walk the parent chain via
+      // {@code program.classToParent()} to ask
+      // "is this class Serializable?" without a
+      // dedicated interface-tracking pass.
+      for (com.github.javaparser.ast.type.ClassOrInterfaceType impl : cid.getImplementedTypes()) {
+        String ifName = impl.getNameAsString();
+        if (ifName != null && !ifName.isEmpty()) {
+          program.registerClassParent(classShortName, ifName);
+        }
+      }
+    }
+    if (prefix.contains("$")) {
+      // Inner class: also include the outer class's
+      // annotations so a {@code @RestController} on the
+      // outer controller class is visible from the inner's
+      // methods too. The outer prefix's annotations are
+      // already accumulated on the outer class's child
+      // builders; we just record them at lookup time below.
+    }
+
+    // Collect static field initializers into a synthetic <clinit>.
+    // Collect static field initializers into a synthetic <clinit>.
+    List<BodyDeclaration<?>> members = td.getMembers();
+    TacBuilder clinit = null;
+    for (BodyDeclaration<?> bd : members) {
+      if (!(bd instanceof FieldDeclaration fd)) continue;
+      if (!fd.isStatic()) continue;
+      boolean anyInit = false;
+      for (VariableDeclarator v : fd.getVariables()) {
+        if (v.getInitializer().isPresent()) {
+          anyInit = true;
+          break;
+        }
+      }
+      if (!anyInit) continue;
+      if (clinit == null) {
+        clinit =
+            newBuilder(
+                new TacBuilder.FunctionSpec("<clinit>", "<clinit>()", TacType.VOID), List.of());
+        // The synthetic <clinit> also belongs to
+        // this class for CHA walk purposes.
+        if (prefix.isEmpty()) clinit.setEnclosingClass(classShortName);
+      }
+      clinit.addClassAnnotations(classAnns);
+      // Field-level annotations on static fields (e.g.
+      // {@code @Value("${...}")} on a static config field).
+      for (VariableDeclarator v : fd.getVariables()) {
+        List<String> fAnns = extractAnnotationNames(fd.getAnnotations());
+        if (!fAnns.isEmpty()) {
+          clinit.addFieldAnnotations(v.getNameAsString(), fAnns);
+        }
+      }
+      for (VariableDeclarator v : fd.getVariables()) {
+        if (v.getInitializer().isPresent()) {
+          emitFieldInit(clinit, fd, v, v.getInitializer().get());
+        }
+      }
+    }
+    // Collect instance field initializers into a synthetic
+    // {@code <init>}. The translator previously dropped
+    // non-static field declarations entirely (only static
+    // fields were captured into {@code <clinit>}), which
+    // made {@code private String password = "literal"} invisible
+    // to FIELDSTORE-based checks. We emit a default-argument
+    // {@code <init>} that holds one FIELDSTORE per initialized
+    // instance field; if a real constructor is present, the
+    // real one wins (we don't double-emit). The synthetic
+    // {@code <init>} is what {@link
+    // org.plumb.dfa.checker.FieldHardcodedPasswordCheck}
+    // looks at.
+    boolean hasExplicitCtor = false;
+    for (BodyDeclaration<?> bd : members) {
+      if (bd instanceof ConstructorDeclaration) {
+        hasExplicitCtor = true;
+        break;
+      }
+    }
+    TacBuilder syntheticInit = null;
+    if (!hasExplicitCtor) {
+      for (BodyDeclaration<?> bd : members) {
+        if (!(bd instanceof FieldDeclaration fd)) continue;
+        if (fd.isStatic()) continue;
+        boolean anyInit = false;
+        for (VariableDeclarator v : fd.getVariables()) {
+          if (v.getInitializer().isPresent()) {
+            anyInit = true;
+            break;
+          }
+        }
+        if (!anyInit) continue;
+        if (syntheticInit == null) {
+          String qualifiedCtor = prefix.isEmpty() ? "<init>" : prefix + ".<init>";
+          syntheticInit =
+              newBuilder(
+                  new TacBuilder.FunctionSpec(qualifiedCtor, qualifiedCtor + "()", TacType.VOID),
+                  List.of());
+          // Synthetic instance <init> belongs to
+          // this class. Inner-class inits use the
+          // qualified name (which already encodes the
+          // outer-class scope), so we only set the
+          // short class for top-level types.
+          if (prefix.isEmpty()) syntheticInit.setEnclosingClass(classShortName);
+        }
+        syntheticInit.addClassAnnotations(classAnns);
+        // Field-level annotations on instance fields
+        // (e.g. {@code @Value("${app.password}")} on a
+        // {@code @ConfigurationProperties} class).
+        for (VariableDeclarator v : fd.getVariables()) {
+          List<String> fAnns = extractAnnotationNames(fd.getAnnotations());
+          if (!fAnns.isEmpty()) {
+            syntheticInit.addFieldAnnotations(v.getNameAsString(), fAnns);
+          }
+        }
+        for (VariableDeclarator v : fd.getVariables()) {
+          if (v.getInitializer().isPresent()) {
+            emitInstanceFieldInit(syntheticInit, fd, v, v.getInitializer().get());
+          }
+        }
+      }
+    }
+    for (BodyDeclaration<?> bd : members) {
+      if (bd instanceof MethodDeclaration md) {
+        String qualified =
+            prefix.isEmpty() ? md.getNameAsString() : prefix + "." + md.getNameAsString();
+        translateCallable(
+            md,
+            qualified,
+            signatureOf(qualified, md.getParameters(), md.getType()),
+            md.getType(),
+            md.getBody().orElse(null),
+            classAnns,
+            extractAnnotationNames(md.getAnnotations()),
+            prefix.isEmpty() ? classShortName : null);
+      } else if (bd instanceof ConstructorDeclaration cd) {
+        String qualifiedCtor = prefix.isEmpty() ? "<init>" : prefix + ".<init>";
+        translateCallable(
+            cd,
+            qualifiedCtor,
+            signatureOf(prefix.isEmpty() ? td.getNameAsString() : prefix, cd.getParameters(), null),
+            null,
+            cd.getBody(),
+            classAnns,
+            List.of(),
+            prefix.isEmpty() ? classShortName : null);
+      } else if (bd instanceof InitializerDeclaration id) {
+        String fnName = id.isStatic() ? "<clinit>" : "<init>";
+        TacBuilder.FunctionSpec spec =
+            new TacBuilder.FunctionSpec(fnName, fnName + "()", TacType.VOID);
+        TacBuilder b = newBuilder(spec, List.of());
+        b.addClassAnnotations(classAnns);
+        if (prefix.isEmpty()) b.setEnclosingClass(classShortName);
+        BlockStmt body = id.getBody();
+        if (body != null) stmtTranslator.translateBlock(body, b);
+        finishFunction(b, nodeLine(id));
+      } else if (bd instanceof com.github.javaparser.ast.body.ClassOrInterfaceDeclaration inner) {
+        String newPrefix =
+            prefix.isEmpty() ? inner.getNameAsString() : prefix + "$" + inner.getNameAsString();
+        translateTypeWithPrefix(inner, newPrefix);
+      } else if (bd instanceof com.github.javaparser.ast.body.EnumDeclaration en) {
+        String newPrefix =
+            prefix.isEmpty() ? en.getNameAsString() : prefix + "$" + en.getNameAsString();
+        translateTypeWithPrefix(en, newPrefix);
+      }
+    }
+    if (clinit != null) finishFunction(clinit, -1);
+    if (syntheticInit != null) finishFunction(syntheticInit, -1);
+  }
+
+  /**
+   * Emit an instance-field initializer as a MOVE + FIELDSTORE pair. The MOVE evaluates the
+   * initializer expression into a temp; the FIELDSTORE assigns the temp to {@code this.field}. A
+   * bare FIELDSTORE with a literal destination would lose array / object initializers that need a
+   * temp, so we route the initializer through the same statement-translation path the
+   * variable-declarator code uses (so {@code new int[]{1,2,3}} works, etc.) and then emit a
+   * follow-up FIELDSTORE.
+   */
+  private void emitInstanceFieldInit(
+      TacBuilder b, FieldDeclaration fd, VariableDeclarator v, Expression init) {
+    // Translate the initializer into a temp var. We synthesize
+    // a VariableDeclarationExpr that uses the same name as the
+    // field; the translation emits a MOVE (or whatever the
+    // initializer lowers to) into a TacVar that the next call
+    // can FIELDSTORE from.
+    VariableDeclarationExpr vde =
+        new VariableDeclarationExpr(com.github.javaparser.ast.NodeList.nodeList(v));
+    stmtTranslator.translate(new com.github.javaparser.ast.stmt.ExpressionStmt(vde), b);
+    // Now emit {@code this.<field> = <temp>} where the temp is
+    // the TacVar the statement-translation just produced. We
+    // look up the last MOVE / NEWARRAY / etc. that wrote to
+    // a temp named like the field, and emit the FIELDSTORE
+    // targeting that temp.
+    TacOperand rhs = null;
+    java.util.List<TacInstruction> insns = b.instructions();
+    for (int i = insns.size() - 1; i >= 0; i--) {
+      TacInstruction ins = insns.get(i);
+      if (ins.dest instanceof TacOperand.TacVar dv && dv.name().equals(v.getNameAsString())) {
+        rhs = dv;
+        break;
+      }
+    }
+    if (rhs == null) {
+      // Fall back: the initializer may have been folded into a
+      // single instruction (e.g. CONST). Walk back to the
+      // last instruction overall and use its dest.
+      for (int i = insns.size() - 1; i >= 0; i--) {
+        TacInstruction ins = insns.get(i);
+        if (ins.dest != null) {
+          rhs = ins.dest;
+          break;
+        }
+      }
+    }
+    if (rhs == null) return; // give up; better no FIELDSTORE than a wrong one
+    b.emit(
+        TacInstruction.builder(TacInstruction.Kind.FIELDSTORE)
+            .lhs1(new TacOperand.TacVar("this", TacType.UNKNOWN, false))
+            .fieldName(v.getNameAsString())
+            .dest(rhs)
+            .line(nodeLine(v))
+            .build());
+  }
+
+  private void emitFieldInit(
+      TacBuilder b, FieldDeclaration fd, VariableDeclarator v, Expression init) {
+    // Synthesize a VariableDeclarationExpr and route through the
+    // existing statement-translation path.
+    VariableDeclarationExpr vde =
+        new VariableDeclarationExpr(com.github.javaparser.ast.NodeList.nodeList(v));
+    stmtTranslator.translate(new com.github.javaparser.ast.stmt.ExpressionStmt(vde), b);
+  }
+
+  private <T extends CallableDeclaration<T>> void translateCallable(
+      T decl, String name, String signature, Type retType, BlockStmt body) {
+    translateCallable(decl, name, signature, retType, body, List.of(), List.of(), null);
+  }
+
+  private <T extends CallableDeclaration<T>> void translateCallable(
+      T decl,
+      String name,
+      String signature,
+      Type retType,
+      BlockStmt body,
+      List<String> classAnns,
+      List<String> methodAnns) {
+    translateCallable(decl, name, signature, retType, body, classAnns, methodAnns, null);
+  }
+
+  /**
+   * Translate a method/constructor while threading its enclosing class's annotation list and its
+   * own method-level annotation list. Both are stored as simple names (e.g. {@code "PreAuthorize"}
+   * not {@code "org.springframework.security.access.prepost.PreAuthorize"}).
+   *
+   * <p>The {@code enclosingClass} parameter carries the short name of the declaring class (e.g.
+   * {@code "MyThread"}), used by the CHA-style resolver to walk the class hierarchy when a call's
+   * receiver type is known. {@code null} means "no enclosing class" (free functions, synthetic
+   * inits where the class isn't available, etc.).
+   */
+  private <T extends CallableDeclaration<T>> void translateCallable(
+      T decl,
+      String name,
+      String signature,
+      Type retType,
+      BlockStmt body,
+      List<String> classAnns,
+      List<String> methodAnns,
+      String enclosingClass) {
+
+    TacType mappedRet =
+        retType == null
+            ? TacType.VOID
+            // Preserve generic type args on the
+            // return type so INFORMATION_EXPOSURE can
+            // inspect ResponseEntity<User> /
+            // List<User> / Map<String, User>. The
+            // param types still use the lossy map()
+            // because param type-arg inspection isn't
+            // a current consumer.
+            : TypeMapper.mapPreservingTypeArgs(retType);
+    TacBuilder.FunctionSpec spec = new TacBuilder.FunctionSpec(name, signature, mappedRet);
+    List<TacOperand.TacVar> params = new ArrayList<>();
+    for (Parameter p : decl.getParameters()) {
+      TacType pt = TypeMapper.map(p.getType());
+      params.add(new TacOperand.TacVar(p.getNameAsString(), pt, false));
+    }
+    TacBuilder b = newBuilder(spec, params);
+    // Tag every emitted function with its declaring
+    // class. The translator always passes either the
+    // current top-level class's short name or null; inner
+    // classes' method names already encode the outer
+    // scope (e.g. {@code Outer$Inner.action}) so the
+    // enclosingClass short name would not match the
+    // outer-class's lookup anyway.
+    if (enclosingClass != null) b.setEnclosingClass(enclosingClass);
+    // Class-level annotations always propagate into the
+    // function (so a {@code @RestController} on the class makes
+    // every method recognizable as an endpoint from the IR),
+    // and method-level annotations are added on top.
+    b.addClassAnnotations(classAnns);
+    b.addMethodAnnotations(methodAnns);
+    // Capture parameter-level annotations. Bean Validation
+    // markers like {@code @Valid} / {@code @Validated} are
+    // usually on the parameter (or the form-backing object
+    // type); Spring's {@code @RequestParam} / {@code @PathVariable}
+    // / {@code @RequestBody} are also parameter-level.
+    for (Parameter p : decl.getParameters()) {
+      List<String> pAnns = extractAnnotationNames(p.getAnnotations());
+      if (!pAnns.isEmpty()) {
+        b.addParamAnnotations(p.getNameAsString(), pAnns);
+      }
+    }
+    if (!decl.isStatic() && !(decl instanceof ConstructorDeclaration)) {
+      b.locals()
+          .add(new TacOperand.TacVar("this", TacType.ofClass(source.primaryTypeName()), false));
+    }
+    if (body != null) stmtTranslator.translateBlock(body, b);
+    ensureReturn(b, mappedRet);
+    finishFunction(b, nodeLine(decl));
+  }
+
+  /**
+   * Convert a JavaParser annotation list to simple-name form. The FQN {@code
+   * org.springframework.beans.factory.annotation.Value} becomes {@code Value} ? that's the only
+   * shape checkers need. Strips the leading {@code @}. Deduplicates within the list.
+   */
+  private static List<String> extractAnnotationNames(NodeList<AnnotationExpr> anns) {
+    List<String> out = new ArrayList<>();
+    if (anns == null || anns.isEmpty()) return out;
+    for (AnnotationExpr a : anns) {
+      String n = a.getNameAsString();
+      // Strip the leading "@" if any (defensive : getNameAsString
+      // usually returns it without the "@", but older JavaParser
+      // builds vary).
+      if (n.startsWith("@")) n = n.substring(1);
+      // Convert FQN to simple name: take the last segment.
+      int dot = n.lastIndexOf('.');
+      if (dot >= 0) n = n.substring(dot + 1);
+      if (!n.isEmpty() && !out.contains(n)) out.add(n);
+    }
+    return out;
+  }
+
+  private TacBuilder newBuilder(TacBuilder.FunctionSpec spec, List<TacOperand.TacVar> params) {
+    return new TacBuilder(spec, params);
+  }
+
+  private void ensureReturn(TacBuilder b, TacType retType) {
+    var insns = b.instructions();
+    if (insns.isEmpty()) {
+      b.emit(TacInstruction.builder(TacInstruction.Kind.RETURN).build());
+      return;
+    }
+    TacInstruction.Kind last = insns.get(insns.size() - 1).kind;
+    if (last == TacInstruction.Kind.RETURN || last == TacInstruction.Kind.THROW) return;
+    if (retType == TacType.VOID) {
+      b.emit(TacInstruction.builder(TacInstruction.Kind.RETURN).build());
+    }
+  }
+
+  private void finishFunction(TacBuilder b, int lineHint) {
+    TacFunction fn = b.build();
+    program.addFunction(fn);
+    for (int i = 0; i < fn.instructions().size(); i++) {
+      TacInstruction ins = fn.instructionAt(i);
+      if (ins.line > 0) {
+        program.sourceMap().record(fn.signature(), i, ins.line, ins.column);
+      } else if (lineHint > 0) {
+        program.sourceMap().record(fn.signature(), i, lineHint, -1);
+      }
+    }
+  }
+
+  private static String signatureOf(String name, List<Parameter> params, Type ret) {
+    StringBuilder sb = new StringBuilder(name).append('(');
+    for (int i = 0; i < params.size(); i++) {
+      if (i > 0) sb.append(',');
+      sb.append(params.get(i).getType().asString());
+    }
+    sb.append(')');
+    if (ret != null) sb.append(':').append(ret.asString());
+    return sb.toString();
+  }
+
+  // ------------------------------------------------------------------
+  // Helpers shared with sub-translators.
+  // ------------------------------------------------------------------
+
+  public static int nodeLine(Node n) {
+    return n.getRange().map(r -> r.begin.line).orElse(-1);
+  }
+
+  public static int nodeColumn(Node n) {
+    return n.getRange().map(r -> r.begin.column).orElse(-1);
+  }
+
+  public static Range nodeRange(Node n) {
+    return n.getRange().orElse(null);
+  }
+
+  public static String methodSig(String receiver, String methodName, int argCount) {
+    return (receiver == null ? "" : receiver + ".") + methodName + "/" + argCount;
+  }
+
+  public static String ctorSig(String typeName, int argCount) {
+    return typeName + ".<init>/" + argCount;
+  }
+
+  // ------------------------------------------------------------------
+  // Common BinaryOperator / UnaryOperator mappings from JavaParser.
+  // ------------------------------------------------------------------
+
+  public static BinaryOperator mapBinOp(com.github.javaparser.ast.expr.BinaryExpr.Operator op) {
+    return switch (op) {
+      case PLUS -> BinaryOperator.ADD;
+      case MINUS -> BinaryOperator.SUB;
+      case MULTIPLY -> BinaryOperator.MUL;
+      case DIVIDE -> BinaryOperator.DIV;
+      case REMAINDER -> BinaryOperator.MOD;
+      case BINARY_AND -> BinaryOperator.AND;
+      case BINARY_OR -> BinaryOperator.OR;
+      case XOR -> BinaryOperator.XOR;
+      case LEFT_SHIFT -> BinaryOperator.SHL;
+      case SIGNED_RIGHT_SHIFT -> BinaryOperator.SHR;
+      case UNSIGNED_RIGHT_SHIFT -> BinaryOperator.USHR;
+      case EQUALS -> BinaryOperator.EQ;
+      case NOT_EQUALS -> BinaryOperator.NE;
+      case LESS -> BinaryOperator.LT;
+      case LESS_EQUALS -> BinaryOperator.LE;
+      case GREATER -> BinaryOperator.GT;
+      case GREATER_EQUALS -> BinaryOperator.GE;
+      case AND -> BinaryOperator.LAND;
+      case OR -> BinaryOperator.LOR;
+    };
+  }
+
+  public static BinaryOperator mapAssignOp(com.github.javaparser.ast.expr.AssignExpr.Operator op) {
+    return switch (op) {
+      case PLUS -> BinaryOperator.ADD;
+      case MINUS -> BinaryOperator.SUB;
+      case MULTIPLY -> BinaryOperator.MUL;
+      case DIVIDE -> BinaryOperator.DIV;
+      case REMAINDER -> BinaryOperator.MOD;
+      case BINARY_AND -> BinaryOperator.AND;
+      case BINARY_OR -> BinaryOperator.OR;
+      case XOR -> BinaryOperator.XOR;
+      case LEFT_SHIFT -> BinaryOperator.SHL;
+      case SIGNED_RIGHT_SHIFT -> BinaryOperator.SHR;
+      case UNSIGNED_RIGHT_SHIFT -> BinaryOperator.USHR;
+      default -> null;
+    };
+  }
+
+  public static UnaryOperator mapPreIncDec(com.github.javaparser.ast.expr.UnaryExpr.Operator op) {
+    return switch (op) {
+      case PREFIX_INCREMENT -> UnaryOperator.PRE_INC;
+      case PREFIX_DECREMENT -> UnaryOperator.PRE_DEC;
+      default -> null;
+    };
+  }
+
+  public static UnaryOperator mapPostIncDec(com.github.javaparser.ast.expr.UnaryExpr.Operator op) {
+    return switch (op) {
+      case POSTFIX_INCREMENT -> UnaryOperator.POST_INC;
+      case POSTFIX_DECREMENT -> UnaryOperator.POST_DEC;
+      default -> null;
+    };
+  }
+
+  public static UnaryOperator mapUnary(com.github.javaparser.ast.expr.UnaryExpr.Operator op) {
+    return switch (op) {
+      case MINUS -> UnaryOperator.NEG;
+      case LOGICAL_COMPLEMENT -> UnaryOperator.NOT;
+      case BITWISE_COMPLEMENT -> UnaryOperator.BITNOT;
+      default -> null;
+    };
+  }
+}

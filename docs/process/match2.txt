@@ -1,0 +1,466 @@
+﻿Matched: 20
+Unmatched: 472
+
+Sample matches (first 30):
+  FB.BC_BAD_CAST_TO_ABSTRACT_COLLECTION                   -> performance/BcBadCastToAbstractCollectionCheck.java
+  FB.DMI_BAD_MONTH                                        -> style/DmiBadMonthCheck.java
+  FB.DMI_COLLECTION_OF_URLS                               -> performance/DmiCollectionOfUrlsCheck.java
+  FB.DM_BOXED_PRIMITIVE_FOR_PARSING                       -> performance/DmBoxedPrimitiveForParsingCheck.java
+  FB.EC_BAD_ARRAY_COMPARE                                 -> performance/EcBadArrayCompareCheck.java
+  FB.EC_UNRELATED_INTERFACES                              -> style/EcUnrelatedInterfacesCheck.java
+  FB.EC_UNRELATED_TYPES                                   -> style/EcUnrelatedTypesCheck.java
+  FB.ESYNC_EMPTY_SYNC                                     -> style/EsyncEmptySyncCheck.java
+  FB.ICAST_INTEGER_MULTIPLY_CAST_TO_LONG                  -> style/IcastIntegerMultiplyCastToLongCheck.java
+  FB.IM_BAD_CHECK_FOR_ODD                                 -> style/ImBadCheckForOddCheck.java
+  FB.MF_CLASS_MASKS_FIELD                                 -> style/MfClassMasksFieldCheck.java
+  FB.MF_METHOD_MASKS_FIELD                                -> style/MfMethodMasksFieldCheck.java
+  FB.NP_ALWAYS_NULL                                       -> bug/NpAlwaysNullCheck.java
+  FB.RANGE_ARRAY_INDEX                                    -> performance/RangeArrayIndexCheck.java
+  FB.RANGE_ARRAY_LENGTH                                   -> performance/RangeArrayLengthCheck.java
+  FB.RANGE_ARRAY_OFFSET                                   -> performance/RangeArrayOffsetCheck.java
+  FB.RANGE_STRING_INDEX                                   -> performance/RangeStringIndexCheck.java
+  FB.RV_RETURN_VALUE_IGNORED                              -> style/RvReturnValueIgnoredCheck.java
+  FB.UC_USELESS_OBJECT                                    -> style/UcUselessObjectCheck.java
+  FB.WMI_WRONG_MAP_ITERATOR                               -> style/WmiWrongMapIteratorCheck.java
+
+Last 20 matches:
+  FB.BC_BAD_CAST_TO_ABSTRACT_COLLECTION                   -> performance/BcBadCastToAbstractCollectionCheck.java
+  FB.DMI_BAD_MONTH                                        -> style/DmiBadMonthCheck.java
+  FB.DMI_COLLECTION_OF_URLS                               -> performance/DmiCollectionOfUrlsCheck.java
+  FB.DM_BOXED_PRIMITIVE_FOR_PARSING                       -> performance/DmBoxedPrimitiveForParsingCheck.java
+  FB.EC_BAD_ARRAY_COMPARE                                 -> performance/EcBadArrayCompareCheck.java
+  FB.EC_UNRELATED_INTERFACES                              -> style/EcUnrelatedInterfacesCheck.java
+  FB.EC_UNRELATED_TYPES                                   -> style/EcUnrelatedTypesCheck.java
+  FB.ESYNC_EMPTY_SYNC                                     -> style/EsyncEmptySyncCheck.java
+  FB.ICAST_INTEGER_MULTIPLY_CAST_TO_LONG                  -> style/IcastIntegerMultiplyCastToLongCheck.java
+  FB.IM_BAD_CHECK_FOR_ODD                                 -> style/ImBadCheckForOddCheck.java
+  FB.MF_CLASS_MASKS_FIELD                                 -> style/MfClassMasksFieldCheck.java
+  FB.MF_METHOD_MASKS_FIELD                                -> style/MfMethodMasksFieldCheck.java
+  FB.NP_ALWAYS_NULL                                       -> bug/NpAlwaysNullCheck.java
+  FB.RANGE_ARRAY_INDEX                                    -> performance/RangeArrayIndexCheck.java
+  FB.RANGE_ARRAY_LENGTH                                   -> performance/RangeArrayLengthCheck.java
+  FB.RANGE_ARRAY_OFFSET                                   -> performance/RangeArrayOffsetCheck.java
+  FB.RANGE_STRING_INDEX                                   -> performance/RangeStringIndexCheck.java
+  FB.RV_RETURN_VALUE_IGNORED                              -> style/RvReturnValueIgnoredCheck.java
+  FB.UC_USELESS_OBJECT                                    -> style/UcUselessObjectCheck.java
+  FB.WMI_WRONG_MAP_ITERATOR                               -> style/WmiWrongMapIteratorCheck.java
+
+Unmatched by SpotBugs subcategory:
+    35 : NP: Null pointer dereference
+    FB.BC_NULL_INSTANCEOF                                   | tried: ['BCNullInstanceofCheck', 'BCNullInstanceofChecker']
+    FB.NP_ALWAYS_NULL_EXCEPTION                             | tried: ['NPAlwaysNullExceptionCheck', 'NPAlwaysNullExceptionChecker']
+    FB.NP_ARGUMENT_MIGHT_BE_NULL                            | tried: ['NPArgumentMightBeNullCheck', 'NPArgumentMightBeNullChecker']
+    23 : Dm: Dubious method used
+    FB.DMI_ANNOTATION_IS_NOT_VISIBLE_TO_REFLECTION          | tried: ['DMIAnnotationIsNotVisibleToReflectionCheck', 'DMIAnnotationIsNotVisibleToReflectionChecker']
+    FB.DMI_BLOCKING_METHODS_ON_URL                          | tried: ['DMIBlockingMethodsOnUrlCheck', 'DMIBlockingMethodsOnUrlChecker']
+    FB.DMI_CONSTANT_DB_PASSWORD                             | tried: ['DMIConstantDbPasswordCheck', 'DMIConstantDbPasswordChecker']
+    17 : Nm: Confusing name
+    FB.NM_BAD_EQUAL                                         | tried: ['NMBadEqualCheck', 'NMBadEqualChecker']
+    FB.NM_CLASS_NAMING_CONVENTION                           | tried: ['NMClassNamingConventionCheck', 'NMClassNamingConventionChecker']
+    FB.NM_CLASS_NOT_EXCEPTION                               | tried: ['NMClassNotExceptionCheck', 'NMClassNotExceptionChecker']
+    16 : Se: Incorrect definition of Serializable class
+    FB.SE_BAD_FIELD                                         | tried: ['SEBadFieldCheck', 'SEBadFieldChecker']
+    FB.SE_BAD_FIELD_INNER_CLASS                             | tried: ['SEBadFieldInnerClassCheck', 'SEBadFieldInnerClassChecker']
+    FB.SE_BAD_FIELD_STORE                                   | tried: ['SEBadFieldStoreCheck', 'SEBadFieldStoreChecker']
+    15 : Eq: Problems with implementation of equals()
+    FB.EQ_ABSTRACT_SELF                                     | tried: ['EQAbstractSelfCheck', 'EQAbstractSelfChecker']
+    FB.EQ_ALWAYS_FALSE                                      | tried: ['EQAlwaysFalseCheck', 'EQAlwaysFalseChecker']
+    FB.EQ_ALWAYS_TRUE                                       | tried: ['EQAlwaysTrueCheck', 'EQAlwaysTrueChecker']
+    15 : RV: Bad use of return value
+    FB.RV_01_TO_INT                                         | tried: ['RV01ToIntCheck', 'RV01ToIntChecker']
+    FB.RV_ABSOLUTE_VALUE_OF_HASHCODE                        | tried: ['RVAbsoluteValueOfHashcodeCheck', 'RVAbsoluteValueOfHashcodeChecker']
+    FB.RV_ABSOLUTE_VALUE_OF_RANDOM_INT                      | tried: ['RVAbsoluteValueOfRandomIntCheck', 'RVAbsoluteValueOfRandomIntChecker']
+    14 : DMI: Dubious method invocation
+    FB.DMI_ARGUMENTS_WRONG_ORDER                            | tried: ['DMIArgumentsWrongOrderCheck', 'DMIArgumentsWrongOrderChecker']
+    FB.DMI_BIGDECIMAL_CONSTRUCTED_FROM_DOUBLE               | tried: ['DMIBigdecimalConstructedFromDoubleCheck', 'DMIBigdecimalConstructedFromDoubleChecker']
+    FB.DMI_CALLING_NEXT_FROM_HASNEXT                        | tried: ['DMICallingNextFromHasnextCheck', 'DMICallingNextFromHasnextChecker']
+    14 : MS: Mutable static field
+    FB.EI_EXPOSE_STATIC_BUF2                                | tried: ['EIExposeStaticBuf2Check', 'EIExposeStaticBuf2Checker']
+    FB.EI_EXPOSE_STATIC_REP2                                | tried: ['EIExposeStaticRep2Check', 'EIExposeStaticRep2Checker']
+    FB.MS_CANNOT_BE_FINAL                                   | tried: ['MSCannotBeFinalCheck', 'MSCannotBeFinalChecker']
+    10 : BC: Bad casts of object references
+    FB.BC_BAD_CAST_TO_CONCRETE_COLLECTION                   | tried: ['BCBadCastToConcreteCollectionCheck', 'BCBadCastToConcreteCollectionChecker']
+    FB.BC_EQUALS_METHOD_SHOULD_WORK_FOR_ALL_OBJECTS         | tried: ['BCEqualsMethodShouldWorkForAllObjectsCheck', 'BCEqualsMethodShouldWorkForAllObjectsChecker']
+    FB.BC_IMPOSSIBLE_CAST                                   | tried: ['BCImpossibleCastCheck', 'BCImpossibleCastChecker']
+    10 : FS: Format string problem
+    FB.VA_FORMAT_STRING_ARG_MISMATCH                        | tried: ['VAFormatStringArgMismatchCheck', 'VAFormatStringArgMismatchChecker']
+    FB.VA_FORMAT_STRING_BAD_ARGUMENT                        | tried: ['VAFormatStringBadArgumentCheck', 'VAFormatStringBadArgumentChecker']
+    FB.VA_FORMAT_STRING_BAD_CONVERSION                      | tried: ['VAFormatStringBadConversionCheck', 'VAFormatStringBadConversionChecker']
+     9 : SA: Useless self-operation
+    FB.SA_FIELD_DOUBLE_ASSIGNMENT                           | tried: ['SAFieldDoubleAssignmentCheck', 'SAFieldDoubleAssignmentChecker']
+    FB.SA_FIELD_SELF_ASSIGNMENT                             | tried: ['SAFieldSelfAssignmentCheck', 'SAFieldSelfAssignmentChecker']
+    FB.SA_FIELD_SELF_COMPARISON                             | tried: ['SAFieldSelfComparisonCheck', 'SAFieldSelfComparisonChecker']
+     8 : Bx: Questionable Boxing of primitive value
+    FB.BX_BOXING_IMMEDIATELY_UNBOXED                        | tried: ['BXBoxingImmediatelyUnboxedCheck', 'BXBoxingImmediatelyUnboxedChecker']
+    FB.BX_BOXING_IMMEDIATELY_UNBOXED_TO_PERFORM_COERCION    | tried: ['BXBoxingImmediatelyUnboxedToPerformCoercionCheck', 'BXBoxingImmediatelyUnboxedToPerformCoercionChecker']
+    FB.BX_UNBOXED_AND_COERCED_FOR_TERNARY_OPERATOR          | tried: ['BXUnboxedAndCoercedForTernaryOperatorCheck', 'BXUnboxedAndCoercedForTernaryOperatorChecker']
+     8 : FI: Incorrect use of finalizers
+    FB.FI_EMPTY                                             | tried: ['FIEmptyCheck', 'FIEmptyChecker']
+    FB.FI_EXPLICIT_INVOCATION                               | tried: ['FIExplicitInvocationCheck', 'FIExplicitInvocationChecker']
+    FB.FI_FINALIZER_NULLS_FIELDS                            | tried: ['FIFinalizerNullsFieldsCheck', 'FIFinalizerNullsFieldsChecker']
+     8 : TQ: Inconsistent use of type qualifier annotations
+    FB.TQ_ALWAYS_VALUE_USED_WHERE_NEVER_REQUIRED            | tried: ['TQAlwaysValueUsedWhereNeverRequiredCheck', 'TQAlwaysValueUsedWhereNeverRequiredChecker']
+    FB.TQ_COMPARING_VALUES_WITH_INCOMPATIBLE_TYPE_QUALIFIERS | tried: ['TQComparingValuesWithIncompatibleTypeQualifiersCheck', 'TQComparingValuesWithIncompatibleTypeQualifiersChecker']
+    FB.TQ_EXPLICIT_UNKNOWN_SOURCE_VALUE_REACHES_ALWAYS_SINK | tried: ['TQExplicitUnknownSourceValueReachesAlwaysSinkCheck', 'TQExplicitUnknownSourceValueReachesAlwaysSinkChecker']
+     7 : BIT: Suspicious bitwise logical expression
+    FB.BIT_ADD_OF_SIGNED_BYTE                               | tried: ['BITAddOfSignedByteCheck', 'BITAddOfSignedByteChecker']
+    FB.BIT_AND                                              | tried: ['BITAndCheck', 'BITAndChecker']
+    FB.BIT_AND_ZZ                                           | tried: ['BITAndZzCheck', 'BITAndZzChecker']
+     7 : DLS: Dead local store
+    FB.DLS_DEAD_LOCAL_INCREMENT_IN_RETURN                   | tried: ['DLSDeadLocalIncrementInReturnCheck', 'DLSDeadLocalIncrementInReturnChecker']
+    FB.DLS_DEAD_LOCAL_STORE                                 | tried: ['DLSDeadLocalStoreCheck', 'DLSDeadLocalStoreChecker']
+    FB.DLS_DEAD_LOCAL_STORE_IN_RETURN                       | tried: ['DLSDeadLocalStoreInReturnCheck', 'DLSDeadLocalStoreInReturnChecker']
+     7 : HE: Equal objects must have equal hashcodes
+    FB.HE_EQUALS_NO_HASHCODE                                | tried: ['HEEqualsNoHashcodeCheck', 'HEEqualsNoHashcodeChecker']
+    FB.HE_EQUALS_USE_HASHCODE                               | tried: ['HEEqualsUseHashcodeCheck', 'HEEqualsUseHashcodeChecker']
+    FB.HE_HASHCODE_NO_EQUALS                                | tried: ['HEHashcodeNoEqualsCheck', 'HEHashcodeNoEqualsChecker']
+     6 : IJU: Improperly implemented JUnit TestCase
+    FB.IJU_ASSERT_METHOD_INVOKED_FROM_RUN_METHOD            | tried: ['IJUAssertMethodInvokedFromRunMethodCheck', 'IJUAssertMethodInvokedFromRunMethodChecker']
+    FB.IJU_BAD_SUITE_METHOD                                 | tried: ['IJUBadSuiteMethodCheck', 'IJUBadSuiteMethodChecker']
+    FB.IJU_NO_TESTS                                         | tried: ['IJUNoTestsCheck', 'IJUNoTestsChecker']
+     6 : INT: Suspicious integer expression
+    FB.INT_BAD_COMPARISON_WITH_INT_VALUE                    | tried: ['INTBadComparisonWithIntValueCheck', 'INTBadComparisonWithIntValueChecker']
+    FB.INT_BAD_COMPARISON_WITH_NONNEGATIVE_VALUE            | tried: ['INTBadComparisonWithNonnegativeValueCheck', 'INTBadComparisonWithNonnegativeValueChecker']
+    FB.INT_BAD_COMPARISON_WITH_SIGNED_BYTE                  | tried: ['INTBadComparisonWithSignedByteCheck', 'INTBadComparisonWithSignedByteChecker']
+     5 : SQL: Potential SQL Problem
+    FB.BRSA_BAD_RESULTSET_ACCESS                            | tried: ['BRSABadResultsetAccessCheck', 'BRSABadResultsetAccessChecker']
+    FB.SQL_BAD_PREPARED_STATEMENT_ACCESS                    | tried: ['SQLBadPreparedStatementAccessCheck', 'SQLBadPreparedStatementAccessChecker']
+    FB.SQL_BAD_RESULTSET_ACCESS                             | tried: ['SQLBadResultsetAccessCheck', 'SQLBadResultsetAccessChecker']
+     5 : EC: Comparing incompatible types for equality
+    FB.EC_ARRAY_AND_NONARRAY                                | tried: ['ECArrayAndNonarrayCheck', 'ECArrayAndNonarrayChecker']
+    FB.EC_INCOMPATIBLE_ARRAY_COMPARE                        | tried: ['ECIncompatibleArrayCompareCheck', 'ECIncompatibleArrayCompareChecker']
+    FB.EC_NULL_ARG                                          | tried: ['ECNullArgCheck', 'ECNullArgChecker']
+     5 : RCN: Redundant comparison to null
+    FB.RCN_REDUNDANT_COMPARISON_OF_NULL_AND_NONNULL_VALUE   | tried: ['RCNRedundantComparisonOfNullAndNonnullValueCheck', 'RCNRedundantComparisonOfNullAndNonnullValueChecker']
+    FB.RCN_REDUNDANT_COMPARISON_TWO_NULL_VALUES             | tried: ['RCNRedundantComparisonTwoNullValuesCheck', 'RCNRedundantComparisonTwoNullValuesChecker']
+    FB.RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE             | tried: ['RCNRedundantNullcheckOfNonnullValueCheck', 'RCNRedundantNullcheckOfNonnullValueChecker']
+     5 : TEST: Testing prototype and incomplete bug pattern
+    FB.TESTING                                              | tried: []
+    FB.TESTING1                                             | tried: []
+    FB.TESTING2                                             | tried: []
+     4 : CAA: Covariant array assignment
+    FB.CAA_COVARIANT_ARRAY_ELEMENT_STORE                    | tried: ['CAACovariantArrayElementStoreCheck', 'CAACovariantArrayElementStoreChecker']
+    FB.CAA_COVARIANT_ARRAY_FIELD                            | tried: ['CAACovariantArrayFieldCheck', 'CAACovariantArrayFieldChecker']
+    FB.CAA_COVARIANT_ARRAY_LOCAL                            | tried: ['CAACovariantArrayLocalCheck', 'CAACovariantArrayLocalChecker']
+     4 : CN: Bad implementation of cloneable idiom
+    FB.CN_IDIOM                                             | tried: ['CNIdiomCheck', 'CNIdiomChecker']
+    FB.CN_IDIOM_NO_SUPER_CALL                               | tried: ['CNIdiomNoSuperCallCheck', 'CNIdiomNoSuperCallChecker']
+    FB.CN_IMPLEMENTS_CLONE_BUT_NOT_CLONEABLE                | tried: ['CNImplementsCloneButNotCloneableCheck', 'CNImplementsCloneButNotCloneableChecker']
+     4 : Co: Problems with implementation of compareTo()
+    FB.CO_ABSTRACT_SELF                                     | tried: ['COAbstractSelfCheck', 'COAbstractSelfChecker']
+    FB.CO_COMPARETO_INCORRECT_FLOATING                      | tried: ['COComparetoIncorrectFloatingCheck', 'COComparetoIncorrectFloatingChecker']
+    FB.CO_COMPARETO_RESULTS_MIN_VALUE                       | tried: ['COComparetoResultsMinValueCheck', 'COComparetoResultsMinValueChecker']
+     4 : DL: Unintended contention or possible deadlock due to locking on shared objects
+    FB.DL_SYNCHRONIZATION_ON_BOOLEAN                        | tried: ['DLSynchronizationOnBooleanCheck', 'DLSynchronizationOnBooleanChecker']
+    FB.DL_SYNCHRONIZATION_ON_BOXED_PRIMITIVE                | tried: ['DLSynchronizationOnBoxedPrimitiveCheck', 'DLSynchronizationOnBoxedPrimitiveChecker']
+    FB.DL_SYNCHRONIZATION_ON_SHARED_CONSTANT                | tried: ['DLSynchronizationOnSharedConstantCheck', 'DLSynchronizationOnSharedConstantChecker']
+     4 : DP: Use doPrivileged
+    FB.DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEDGED          | tried: ['DPCreateClassloaderInsideDoPriviledgedCheck', 'DPCreateClassloaderInsideDoPriviledgedChecker']
+    FB.DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED           | tried: ['DPCreateClassloaderInsideDoPrivilegedCheck', 'DPCreateClassloaderInsideDoPrivilegedChecker']
+    FB.DP_DO_INSIDE_DO_PRIVILEDGED                          | tried: ['DPDoInsideDoPriviledgedCheck', 'DPDoInsideDoPriviledgedChecker']
+     4 : ICAST: Casting from integer values
+    FB.ICAST_IDIV_CAST_TO_DOUBLE                            | tried: ['ICASTIdivCastToDoubleCheck', 'ICASTIdivCastToDoubleChecker']
+    FB.ICAST_INT_2_LONG_AS_INSTANT                          | tried: ['ICASTInt2LongAsInstantCheck', 'ICASTInt2LongAsInstantChecker']
+    FB.ICAST_INT_CAST_TO_DOUBLE_PASSED_TO_CEIL              | tried: ['ICASTIntCastToDoublePassedToCeilCheck', 'ICASTIntCastToDoublePassedToCeilChecker']
+     4 : IIL: Inefficient code which can be moved outside of the loop
+    FB.IIL_ELEMENTS_GET_LENGTH_IN_LOOP                      | tried: ['IILElementsGetLengthInLoopCheck', 'IILElementsGetLengthInLoopChecker']
+    FB.IIL_PATTERN_COMPILE_IN_LOOP                          | tried: ['IILPatternCompileInLoopCheck', 'IILPatternCompileInLoopChecker']
+    FB.IIL_PATTERN_COMPILE_IN_LOOP_INDIRECT                 | tried: ['IILPatternCompileInLoopIndirectCheck', 'IILPatternCompileInLoopIndirectChecker']
+     4 : NOISE: Bogus random warning
+    FB.NOISE_FIELD_REFERENCE                                | tried: ['NOISEFieldReferenceCheck', 'NOISEFieldReferenceChecker']
+    FB.NOISE_METHOD_CALL                                    | tried: ['NOISEMethodCallCheck', 'NOISEMethodCallChecker']
+    FB.NOISE_NULL_DEREFERENCE                               | tried: ['NOISENullDereferenceCheck', 'NOISENullDereferenceChecker']
+     4 : SF: Switch case falls through
+    FB.SF_DEAD_STORE_DUE_TO_SWITCH_FALLTHROUGH              | tried: ['SFDeadStoreDueToSwitchFallthroughCheck', 'SFDeadStoreDueToSwitchFallthroughChecker']
+    FB.SF_DEAD_STORE_DUE_TO_SWITCH_FALLTHROUGH_TO_THROW     | tried: ['SFDeadStoreDueToSwitchFallthroughToThrowCheck', 'SFDeadStoreDueToSwitchFallthroughToThrowChecker']
+    FB.SF_SWITCH_FALLTHROUGH                                | tried: ['SFSwitchFallthroughCheck', 'SFSwitchFallthroughChecker']
+     4 : SIC: Inner class could be made static
+    FB.SIC_INNER_SHOULD_BE_STATIC                           | tried: ['SICInnerShouldBeStaticCheck', 'SICInnerShouldBeStaticChecker']
+    FB.SIC_INNER_SHOULD_BE_STATIC_ANON                      | tried: ['SICInnerShouldBeStaticAnonCheck', 'SICInnerShouldBeStaticAnonChecker']
+    FB.SIC_INNER_SHOULD_BE_STATIC_NEEDS_THIS                | tried: ['SICInnerShouldBeStaticNeedsThisCheck', 'SICInnerShouldBeStaticNeedsThisChecker']
+     4 : STCAL: Static use of type Calendar or DateFormat
+    FB.STCAL_INVOKE_ON_STATIC_CALENDAR_INSTANCE             | tried: ['STCALInvokeOnStaticCalendarInstanceCheck', 'STCALInvokeOnStaticCalendarInstanceChecker']
+    FB.STCAL_INVOKE_ON_STATIC_DATE_FORMAT_INSTANCE          | tried: ['STCALInvokeOnStaticDateFormatInstanceCheck', 'STCALInvokeOnStaticDateFormatInstanceChecker']
+    FB.STCAL_STATIC_CALENDAR_INSTANCE                       | tried: ['STCALStaticCalendarInstanceCheck', 'STCALStaticCalendarInstanceChecker']
+     4 : UC: Useless code
+    FB.UC_USELESS_CONDITION                                 | tried: ['UCUselessConditionCheck', 'UCUselessConditionChecker']
+    FB.UC_USELESS_CONDITION_TYPE                            | tried: ['UCUselessConditionTypeCheck', 'UCUselessConditionTypeChecker']
+    FB.UC_USELESS_OBJECT_STACK                              | tried: ['UCUselessObjectStackCheck', 'UCUselessObjectStackChecker']
+     4 : UwF: Unwritten field
+    FB.UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR             | tried: ['UWFFieldNotInitializedInConstructorCheck', 'UWFFieldNotInitializedInConstructorChecker']
+    FB.UWF_NULL_FIELD                                       | tried: ['UWFNullFieldCheck', 'UWFNullFieldChecker']
+    FB.UWF_UNWRITTEN_FIELD                                  | tried: ['UWFUnwrittenFieldCheck', 'UWFUnwrittenFieldChecker']
+     3 : BSHIFT: Bad shift
+    FB.BSHIFT_WRONG_ADD_PRIORITY                            | tried: ['BSHIFTWrongAddPriorityCheck', 'BSHIFTWrongAddPriorityChecker']
+    FB.ICAST_BAD_SHIFT_AMOUNT                               | tried: ['ICASTBadShiftAmountCheck', 'ICASTBadShiftAmountChecker']
+    FB.ICAST_QUESTIONABLE_UNSIGNED_RIGHT_SHIFT              | tried: ['ICASTQuestionableUnsignedRightShiftCheck', 'ICASTQuestionableUnsignedRightShiftChecker']
+     3 : USELESS_STRING: Useless/non-informative string generated
+    FB.DMI_INVOKING_TOSTRING_ON_ANONYMOUS_ARRAY             | tried: ['DMIInvokingTostringOnAnonymousArrayCheck', 'DMIInvokingTostringOnAnonymousArrayChecker']
+    FB.DMI_INVOKING_TOSTRING_ON_ARRAY                       | tried: ['DMIInvokingTostringOnArrayCheck', 'DMIInvokingTostringOnArrayChecker']
+    FB.VA_FORMAT_STRING_BAD_CONVERSION_FROM_ARRAY           | tried: ['VAFormatStringBadConversionFromArrayCheck', 'VAFormatStringBadConversionFromArrayChecker']
+     3 : IL: Infinite Loop
+    FB.IL_CONTAINER_ADDED_TO_ITSELF                         | tried: ['ILContainerAddedToItselfCheck', 'ILContainerAddedToItselfChecker']
+    FB.IL_INFINITE_LOOP                                     | tried: ['ILInfiniteLoopCheck', 'ILInfiniteLoopChecker']
+    FB.IL_INFINITE_RECURSIVE_LOOP                           | tried: ['ILInfiniteRecursiveLoopCheck', 'ILInfiniteRecursiveLoopChecker']
+     3 : IS: Inconsistent synchronization
+    FB.IS2_INCONSISTENT_SYNC                                | tried: ['IS2InconsistentSyncCheck', 'IS2InconsistentSyncChecker']
+    FB.IS_FIELD_NOT_GUARDED                                 | tried: ['ISFieldNotGuardedCheck', 'ISFieldNotGuardedChecker']
+    FB.IS_INCONSISTENT_SYNC                                 | tried: ['ISInconsistentSyncCheck', 'ISInconsistentSyncChecker']
+     3 : JLM: Synchronization on java.util.concurrent objects
+    FB.JLM_JSR166_LOCK_MONITORENTER                         | tried: ['JLMJsr166LockMonitorenterCheck', 'JLMJsr166LockMonitorenterChecker']
+    FB.JLM_JSR166_UTILCONCURRENT_MONITORENTER               | tried: ['JLMJsr166UtilconcurrentMonitorenterCheck', 'JLMJsr166UtilconcurrentMonitorenterChecker']
+    FB.JML_JSR166_CALLING_WAIT_RATHER_THAN_AWAIT            | tried: ['JMLJsr166CallingWaitRatherThanAwaitCheck', 'JMLJsr166CallingWaitRatherThanAwaitChecker']
+     3 : LI: Unsynchronized Lazy Initialization
+    FB.LI_LAZY_INIT_INSTANCE                                | tried: ['LILazyInitInstanceCheck', 'LILazyInitInstanceChecker']
+    FB.LI_LAZY_INIT_STATIC                                  | tried: ['LILazyInitStaticCheck', 'LILazyInitStaticChecker']
+    FB.LI_LAZY_INIT_UPDATE_STATIC                           | tried: ['LILazyInitUpdateStaticCheck', 'LILazyInitUpdateStaticChecker']
+     3 : RC: Questionable use of reference equality rather than calling equals
+    FB.RC_REF_COMPARISON                                    | tried: ['RCRefComparisonCheck', 'RCRefComparisonChecker']
+    FB.RC_REF_COMPARISON_BAD_PRACTICE                       | tried: ['RCRefComparisonBadPracticeCheck', 'RCRefComparisonBadPracticeChecker']
+    FB.RC_REF_COMPARISON_BAD_PRACTICE_BOOLEAN               | tried: ['RCRefComparisonBadPracticeBooleanCheck', 'RCRefComparisonBadPracticeBooleanChecker']
+     3 : RE: Regular expressions
+    FB.RE_BAD_SYNTAX_FOR_REGULAR_EXPRESSION                 | tried: ['REBadSyntaxForRegularExpressionCheck', 'REBadSyntaxForRegularExpressionChecker']
+    FB.RE_CANT_USE_FILE_SEPARATOR_AS_REGULAR_EXPRESSION     | tried: ['RECantUseFileSeparatorAsRegularExpressionCheck', 'RECantUseFileSeparatorAsRegularExpressionChecker']
+    FB.RE_POSSIBLE_UNINTENDED_PATTERN                       | tried: ['REPossibleUnintendedPatternCheck', 'REPossibleUnintendedPatternChecker']
+     3 : THROWS: Exception throwing related problems
+    FB.THROWS_METHOD_THROWS_CLAUSE_BASIC_EXCEPTION          | tried: ['THROWSMethodThrowsClauseBasicExceptionCheck', 'THROWSMethodThrowsClauseBasicExceptionChecker']
+    FB.THROWS_METHOD_THROWS_CLAUSE_THROWABLE                | tried: ['THROWSMethodThrowsClauseThrowableCheck', 'THROWSMethodThrowsClauseThrowableChecker']
+    FB.THROWS_METHOD_THROWS_RUNTIMEEXCEPTION                | tried: ['THROWSMethodThrowsRuntimeexceptionCheck', 'THROWSMethodThrowsRuntimeexceptionChecker']
+     3 : XSS: Cross site scripting vulnerability
+    FB.XSS_REQUEST_PARAMETER_TO_JSP_WRITER                  | tried: ['XSSRequestParameterToJspWriterCheck', 'XSSRequestParameterToJspWriterChecker']
+    FB.XSS_REQUEST_PARAMETER_TO_SEND_ERROR                  | tried: ['XSSRequestParameterToSendErrorCheck', 'XSSRequestParameterToSendErrorChecker']
+    FB.XSS_REQUEST_PARAMETER_TO_SERVLET_WRITER              | tried: ['XSSRequestParameterToServletWriterCheck', 'XSSRequestParameterToServletWriterChecker']
+     2 : AM: API misuse
+    FB.AM_CREATES_EMPTY_JAR_FILE_ENTRY                      | tried: ['AMCreatesEmptyJarFileEntryCheck', 'AMCreatesEmptyJarFileEntryChecker']
+    FB.AM_CREATES_EMPTY_ZIP_FILE_ENTRY                      | tried: ['AMCreatesEmptyZipFileEntryCheck', 'AMCreatesEmptyZipFileEntryChecker']
+     2 : DB: Duplicate Branches
+    FB.DB_DUPLICATE_BRANCHES                                | tried: ['DBDuplicateBranchesCheck', 'DBDuplicateBranchesChecker']
+    FB.DB_DUPLICATE_SWITCH_CLAUSES                          | tried: ['DBDuplicateSwitchClausesCheck', 'DBDuplicateSwitchClausesChecker']
+     2 : DC: Double-check pattern
+    FB.DC_DOUBLECHECK                                       | tried: ['DCDoublecheckCheck', 'DCDoublecheckChecker']
+    FB.DC_PARTIALLY_CONSTRUCTED                             | tried: ['DCPartiallyConstructedCheck', 'DCPartiallyConstructedChecker']
+     2 : DE: Dropped or ignored exception
+    FB.DE_MIGHT_DROP                                        | tried: ['DEMightDropCheck', 'DEMightDropChecker']
+    FB.DE_MIGHT_IGNORE                                      | tried: ['DEMightIgnoreCheck', 'DEMightIgnoreChecker']
+     2 : EI: Exposes internal representation
+    FB.EI_EXPOSE_BUF                                        | tried: ['EIExposeBufCheck', 'EIExposeBufChecker']
+    FB.EI_EXPOSE_REP                                        | tried: ['EIExposeRepCheck', 'EIExposeRepChecker']
+     2 : EI2: Storing reference to mutable object
+    FB.EI_EXPOSE_BUF2                                       | tried: ['EIExposeBuf2Check', 'EIExposeBuf2Checker']
+    FB.EI_EXPOSE_REP2                                       | tried: ['EIExposeRep2Check', 'EIExposeRep2Checker']
+     2 : ES: Checking String equality using == or !=
+    FB.ES_COMPARING_PARAMETER_STRING_WITH_EQ                | tried: ['ESComparingParameterStringWithEqCheck', 'ESComparingParameterStringWithEqChecker']
+    FB.ES_COMPARING_STRINGS_WITH_EQ                         | tried: ['ESComparingStringsWithEqCheck', 'ESComparingStringsWithEqChecker']
+     2 : FB: SpotBugs did not produce the expected warnings on a method
+    FB.FB_MISSING_EXPECTED_WARNING                          | tried: ['FBMissingExpectedWarningCheck', 'FBMissingExpectedWarningChecker']
+    FB.FB_UNEXPECTED_WARNING                                | tried: ['FBUnexpectedWarningCheck', 'FBUnexpectedWarningChecker']
+     2 : FE: Test for floating point equality
+    FB.FE_FLOATING_POINT_EQUALITY                           | tried: ['FEFloatingPointEqualityCheck', 'FEFloatingPointEqualityChecker']
+    FB.FE_TEST_IF_EQUAL_TO_NOT_A_NUMBER                     | tried: ['FETestIfEqualToNotANumberCheck', 'FETestIfEqualToNotANumberChecker']
+     2 : FL: Use of floating point precision
+    FB.FL_FLOATS_AS_LOOP_COUNTERS                           | tried: ['FLFloatsAsLoopCountersCheck', 'FLFloatsAsLoopCountersChecker']
+    FB.FL_MATH_USING_FLOAT_PRECISION                        | tried: ['FLMathUsingFloatPrecisionCheck', 'FLMathUsingFloatPrecisionChecker']
+     2 : GC: Suspicious calls to generic collection methods
+    FB.GC_UNCHECKED_TYPE_IN_GENERIC_CALL                    | tried: ['GCUncheckedTypeInGenericCallCheck', 'GCUncheckedTypeInGenericCallChecker']
+    FB.GC_UNRELATED_TYPES                                   | tried: ['GCUnrelatedTypesCheck', 'GCUnrelatedTypesChecker']
+     2 : HRS: HTTP Response splitting vulnerability
+    FB.HRS_REQUEST_PARAMETER_TO_COOKIE                      | tried: ['HRSRequestParameterToCookieCheck', 'HRSRequestParameterToCookieChecker']
+    FB.HRS_REQUEST_PARAMETER_TO_HTTP_HEADER                 | tried: ['HRSRequestParameterToHttpHeaderCheck', 'HRSRequestParameterToHttpHeaderChecker']
+     2 : IC: Initialization circularity
+    FB.IC_INIT_CIRCULARITY                                  | tried: ['ICInitCircularityCheck', 'ICInitCircularityChecker']
+    FB.IC_SUPERCLASS_USES_SUBCLASS_DURING_INITIALIZATION    | tried: ['ICSuperclassUsesSubclassDuringInitializationCheck', 'ICSuperclassUsesSubclassDuringInitializationChecker']
+     2 : IIO: Inefficient use of String.indexOf(String) or String.lastIndexOf(String)
+    FB.IIO_INEFFICIENT_INDEX_OF                             | tried: ['IIOInefficientIndexOfCheck', 'IIOInefficientIndexOfChecker']
+    FB.IIO_INEFFICIENT_LAST_INDEX_OF                        | tried: ['IIOInefficientLastIndexOfCheck', 'IIOInefficientLastIndexOfChecker']
+     2 : IM: Questionable integer math
+    FB.IM_AVERAGE_COMPUTATION_COULD_OVERFLOW                | tried: ['IMAverageComputationCouldOverflowCheck', 'IMAverageComputationCouldOverflowChecker']
+    FB.IM_MULTIPLYING_RESULT_OF_IREM                        | tried: ['IMMultiplyingResultOfIremCheck', 'IMMultiplyingResultOfIremChecker']
+     2 : MC: Dangerous call to overridable method
+    FB.MC_OVERRIDABLE_METHOD_CALL_IN_CLONE                  | tried: ['MCOverridableMethodCallInCloneCheck', 'MCOverridableMethodCallInCloneChecker']
+    FB.MC_OVERRIDABLE_METHOD_CALL_IN_CONSTRUCTOR            | tried: ['MCOverridableMethodCallInConstructorCheck', 'MCOverridableMethodCallInConstructorChecker']
+     2 : ME: Mutable enum field
+    FB.ME_ENUM_FIELD_SETTER                                 | tried: ['MEEnumFieldSetterCheck', 'MEEnumFieldSetterChecker']
+    FB.ME_MUTABLE_ENUM_FIELD                                | tried: ['MEMutableEnumFieldCheck', 'MEMutableEnumFieldChecker']
+     2 : ML: Synchronization on updated field (Mutable Lock)
+    FB.ML_SYNC_ON_FIELD_TO_GUARD_CHANGING_THAT_FIELD        | tried: ['MLSyncOnFieldToGuardChangingThatFieldCheck', 'MLSyncOnFieldToGuardChangingThatFieldChecker']
+    FB.ML_SYNC_ON_UPDATED_FIELD                             | tried: ['MLSyncOnUpdatedFieldCheck', 'MLSyncOnUpdatedFieldChecker']
+     2 : MTIA: Multithreaded Instance Access
+    FB.MTIA_SUSPECT_SERVLET_INSTANCE_FIELD                  | tried: ['MTIASuspectServletInstanceFieldCheck', 'MTIASuspectServletInstanceFieldChecker']
+    FB.MTIA_SUSPECT_STRUTS_INSTANCE_FIELD                   | tried: ['MTIASuspectStrutsInstanceFieldCheck', 'MTIASuspectStrutsInstanceFieldChecker']
+     2 : MWN: Mismatched wait() or notify()
+    FB.MWN_MISMATCHED_NOTIFY                                | tried: ['MWNMismatchedNotifyCheck', 'MWNMismatchedNotifyChecker']
+    FB.MWN_MISMATCHED_WAIT                                  | tried: ['MWNMismatchedWaitCheck', 'MWNMismatchedWaitChecker']
+     2 : NS: Suspicious use of non-short-circuit boolean operator
+    FB.NS_DANGEROUS_NON_SHORT_CIRCUIT                       | tried: ['NSDangerousNonShortCircuitCheck', 'NSDangerousNonShortCircuitChecker']
+    FB.NS_NON_SHORT_CIRCUIT                                 | tried: ['NSNonShortCircuitCheck', 'NSNonShortCircuitChecker']
+     2 : OBL: Unsatisfied obligation to clean up stream or resource
+    FB.OBL_UNSATISFIED_OBLIGATION                           | tried: ['OBLUnsatisfiedObligationCheck', 'OBLUnsatisfiedObligationChecker']
+    FB.OBL_UNSATISFIED_OBLIGATION_EXCEPTION_EDGE            | tried: ['OBLUnsatisfiedObligationExceptionEdgeCheck', 'OBLUnsatisfiedObligationExceptionEdgeChecker']
+     2 : ODR: Database resource not closed on all paths
+    FB.ODR_OPEN_DATABASE_RESOURCE                           | tried: ['ODROpenDatabaseResourceCheck', 'ODROpenDatabaseResourceChecker']
+    FB.ODR_OPEN_DATABASE_RESOURCE_EXCEPTION_PATH            | tried: ['ODROpenDatabaseResourceExceptionPathCheck', 'ODROpenDatabaseResourceExceptionPathChecker']
+     2 : OS: Stream not closed on all paths
+    FB.OS_OPEN_STREAM                                       | tried: ['OSOpenStreamCheck', 'OSOpenStreamChecker']
+    FB.OS_OPEN_STREAM_EXCEPTION_PATH                        | tried: ['OSOpenStreamExceptionPathCheck', 'OSOpenStreamExceptionPathChecker']
+     2 : PT: Path traversal
+    FB.PT_ABSOLUTE_PATH_TRAVERSAL                           | tried: ['PTAbsolutePathTraversalCheck', 'PTAbsolutePathTraversalChecker']
+    FB.PT_RELATIVE_PATH_TRAVERSAL                           | tried: ['PTRelativePathTraversalCheck', 'PTRelativePathTraversalChecker']
+     2 : RR: Method ignores results of InputStream.read()
+    FB.RR_NOT_CHECKED                                       | tried: ['RRNotCheckedCheck', 'RRNotCheckedChecker']
+    FB.SR_NOT_CHECKED                                       | tried: ['SRNotCheckedCheck', 'SRNotCheckedChecker']
+     2 : STI: Suspicious Thread Interrupted
+    FB.STI_INTERRUPTED_ON_CURRENTTHREAD                     | tried: ['STIInterruptedOnCurrentthreadCheck', 'STIInterruptedOnCurrentthreadChecker']
+    FB.STI_INTERRUPTED_ON_UNKNOWNTHREAD                     | tried: ['STIInterruptedOnUnknownthreadCheck', 'STIInterruptedOnUnknownthreadChecker']
+     2 : TLW: Wait with two locks held
+    FB.TLW_TWO_LOCK_NOTIFY                                  | tried: ['TLWTwoLockNotifyCheck', 'TLWTwoLockNotifyChecker']
+    FB.TLW_TWO_LOCK_WAIT                                    | tried: ['TLWTwoLockWaitCheck', 'TLWTwoLockWaitChecker']
+     2 : UCF: Useless control flow
+    FB.UCF_USELESS_CONTROL_FLOW                             | tried: ['UCFUselessControlFlowCheck', 'UCFUselessControlFlowChecker']
+    FB.UCF_USELESS_CONTROL_FLOW_NEXT_LINE                   | tried: ['UCFUselessControlFlowNextLineCheck', 'UCFUselessControlFlowNextLineChecker']
+     2 : UL: Lock not released on all paths
+    FB.UL_UNRELEASED_LOCK                                   | tried: ['ULUnreleasedLockCheck', 'ULUnreleasedLockChecker']
+    FB.UL_UNRELEASED_LOCK_EXCEPTION_PATH                    | tried: ['ULUnreleasedLockExceptionPathCheck', 'ULUnreleasedLockExceptionPathChecker']
+     2 : UrF: Unread field
+    FB.URF_UNREAD_FIELD                                     | tried: ['URFUnreadFieldCheck', 'URFUnreadFieldChecker']
+    FB.URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD                 | tried: ['URFUnreadPublicOrProtectedFieldCheck', 'URFUnreadPublicOrProtectedFieldChecker']
+     2 : UR: Uninitialized read of field in constructor
+    FB.UR_UNINIT_READ                                       | tried: ['URUninitReadCheck', 'URUninitReadChecker']
+    FB.UR_UNINIT_READ_CALLED_FROM_SUPER_CONSTRUCTOR         | tried: ['URUninitReadCalledFromSuperConstructorCheck', 'URUninitReadCalledFromSuperConstructorChecker']
+     2 : USM: Useless method
+    FB.USM_USELESS_ABSTRACT_METHOD                          | tried: ['USMUselessAbstractMethodCheck', 'USMUselessAbstractMethodChecker']
+    FB.USM_USELESS_SUBCLASS_METHOD                          | tried: ['USMUselessSubclassMethodCheck', 'USMUselessSubclassMethodChecker']
+     2 : UuF: Unused field
+    FB.UUF_UNUSED_FIELD                                     | tried: ['UUFUnusedFieldCheck', 'UUFUnusedFieldChecker']
+    FB.UUF_UNUSED_PUBLIC_OR_PROTECTED_FIELD                 | tried: ['UUFUnusedPublicOrProtectedFieldCheck', 'UUFUnusedPublicOrProtectedFieldChecker']
+     2 : VO: Use of volatile
+    FB.VO_VOLATILE_INCREMENT                                | tried: ['VOVolatileIncrementCheck', 'VOVolatileIncrementChecker']
+    FB.VO_VOLATILE_REFERENCE_TO_ARRAY                       | tried: ['VOVolatileReferenceToArrayCheck', 'VOVolatileReferenceToArrayChecker']
+     2 : Wa: Wait not in loop
+    FB.WA_AWAIT_NOT_IN_LOOP                                 | tried: ['WAAwaitNotInLoopCheck', 'WAAwaitNotInLoopChecker']
+    FB.WA_NOT_IN_LOOP                                       | tried: ['WANotInLoopCheck', 'WANotInLoopChecker']
+     1 : AT: Possible atomicity violation
+    FB.AT_OPERATION_SEQUENCE_ON_CONCURRENT_ABSTRACTION      | tried: ['ATOperationSequenceOnConcurrentAbstractionCheck', 'ATOperationSequenceOnConcurrentAbstractionChecker']
+     1 : BAC: Bad Applet Constructor
+    FB.BAC_BAD_APPLET_CONSTRUCTOR                           | tried: ['BACBadAppletConstructorCheck', 'BACBadAppletConstructorChecker']
+     1 : BOA: Badly Overridden Adapter
+    FB.BOA_BADLY_OVERRIDDEN_ADAPTER                         | tried: ['BOABadlyOverriddenAdapterCheck', 'BOABadlyOverriddenAdapterChecker']
+     1 : CD: Circular Dependencies
+    FB.CD_CIRCULAR_DEPENDENCY                               | tried: ['CDCircularDependencyCheck', 'CDCircularDependencyChecker']
+     1 : CI: Confused Inheritance
+    FB.CI_CONFUSED_INHERITANCE                              | tried: ['CIConfusedInheritanceCheck', 'CIConfusedInheritanceChecker']
+     1 : CNT: Rough value of known constant
+    FB.CNT_ROUGH_CONSTANT_VALUE                             | tried: ['CNTRoughConstantValueCheck', 'CNTRoughConstantValueChecker']
+     1 : DCN: Don't Catch NullPointer Exception
+    FB.DCN_NULLPOINTER_EXCEPTION                            | tried: ['DCNNullpointerExceptionCheck', 'DCNNullpointerExceptionChecker']
+     1 : EOS: Bad End of Stream check
+    FB.EOS_BAD_END_OF_STREAM_CHECK                          | tried: ['EOSBadEndOfStreamCheckCheck', 'EOSBadEndOfStreamCheckChecker']
+     1 : HSC: Huge String constants
+    FB.HSC_HUGE_SHARED_STRING_CONSTANT                      | tried: ['HSCHugeSharedStringConstantCheck', 'HSCHugeSharedStringConstantChecker']
+     1 : IA: Ambiguous invocation
+    FB.IA_AMBIGUOUS_INVOCATION_OF_INHERITED_OR_OUTER_METHOD | tried: ['IAAmbiguousInvocationOfInheritedOrOuterMethodCheck', 'IAAmbiguousInvocationOfInheritedOrOuterMethodChecker']
+     1 : IMA: Inefficient Member Access
+    FB.IMA_INEFFICIENT_MEMBER_ACCESS                        | tried: ['IMAInefficientMemberAccessCheck', 'IMAInefficientMemberAccessChecker']
+     1 : IMSE: Dubious catching of IllegalMonitorStateException
+    FB.IMSE_DONT_CATCH_IMSE                                 | tried: ['IMSEDontCatchImseCheck', 'IMSEDontCatchImseChecker']
+     1 : IO: Input/Output problem
+    FB.IO_APPENDING_TO_OBJECT_OUTPUT_STREAM                 | tried: ['IOAppendingToObjectOutputStreamCheck', 'IOAppendingToObjectOutputStreamChecker']
+     1 : IP: Ignored parameter
+    FB.IP_PARAMETER_IS_DEAD_BUT_OVERWRITTEN                 | tried: ['IPParameterIsDeadButOverwrittenCheck', 'IPParameterIsDeadButOverwrittenChecker']
+     1 : IRA: Inefficient use of String.replaceAll(String, String)
+    FB.IRA_INEFFICIENT_REPLACEALL                           | tried: ['IRAInefficientReplaceallCheck', 'IRAInefficientReplaceallChecker']
+     1 : ISC: Instantiated Static Class
+    FB.ISC_INSTANTIATE_STATIC_CLASS                         | tried: ['ISCInstantiateStaticClassCheck', 'ISCInstantiateStaticClassChecker']
+     1 : ITA: Inefficient use of collection.toArray(new Foo[0])
+    FB.ITA_INEFFICIENT_TO_ARRAY                             | tried: ['ITAInefficientToArrayCheck', 'ITAInefficientToArrayChecker']
+     1 : It: Incorrect definition of Iterator
+    FB.IT_NO_SUCH_ELEMENT                                   | tried: ['ITNoSuchElementCheck', 'ITNoSuchElementChecker']
+     1 : J2EE: J2EE error
+    FB.J2EE_STORE_OF_NON_SERIALIZABLE_OBJECT_INTO_SESSION   | tried: ['J2EEStoreOfNonSerializableObjectIntoSessionCheck', 'J2EEStoreOfNonSerializableObjectIntoSessionChecker']
+     1 : JCIP: Violation of net.jcip annotations
+    FB.JCIP_FIELD_ISNT_FINAL_IN_IMMUTABLE_CLASS             | tried: ['JCIPFieldIsntFinalInImmutableClassCheck', 'JCIPFieldIsntFinalInImmutableClassChecker']
+     1 : JUA: Problems in JUnit Assertions
+    FB.JUA_DONT_ASSERT_INSTANCEOF_IN_TESTS                  | tried: ['JUADontAssertInstanceofInTestsCheck', 'JUADontAssertInstanceofInTestsChecker']
+     1 : LG: Logger problem
+    FB.LG_LOST_LOGGER_DUE_TO_WEAK_REFERENCE                 | tried: ['LGLostLoggerDueToWeakReferenceCheck', 'LGLostLoggerDueToWeakReferenceChecker']
+     1 : MSF: Mutable servlet field
+    FB.MSF_MUTABLE_SERVLET_FIELD                            | tried: ['MSFMutableServletFieldCheck', 'MSFMutableServletFieldChecker']
+     1 : NN: Naked notify
+    FB.NN_NAKED_NOTIFY                                      | tried: ['NNNakedNotifyCheck', 'NNNakedNotifyChecker']
+     1 : No: Using notify() rather than notifyAll()
+    FB.NO_NOTIFY_NOT_NOTIFYALL                              | tried: ['NONotifyNotNotifyallCheck', 'NONotifyNotNotifyallChecker']
+     1 : PERM: Custom class loader does not call its superclass's getPermissions()
+    FB.PERM_SUPER_NOT_CALLED_IN_GETPERMISSIONS              | tried: ['PERMSuperNotCalledInGetpermissionsCheck', 'PERMSuperNotCalledInGetpermissionsChecker']
+     1 : PS: Public Semaphores
+    FB.PS_PUBLIC_SEMAPHORES                                 | tried: ['PSPublicSemaphoresCheck', 'PSPublicSemaphoresChecker']
+     1 : PZLA: Prefer zero length arrays to null to indicate no results
+    FB.PZLA_PREFER_ZERO_LENGTH_ARRAYS                       | tried: ['PZLAPreferZeroLengthArraysCheck', 'PZLAPreferZeroLengthArraysChecker']
+     1 : PZ: Warning inspired by Joshua Bloch's and Neal Gafter's Programming Puzzlers
+    FB.PZ_DONT_REUSE_ENTRY_OBJECTS_IN_ITERATORS             | tried: ['PZDontReuseEntryObjectsInIteratorsCheck', 'PZDontReuseEntryObjectsInIteratorsChecker']
+     1 : QBA: Questionable Boolean Assignment
+    FB.QBA_QUESTIONABLE_BOOLEAN_ASSIGNMENT                  | tried: ['QBAQuestionableBooleanAssignmentCheck', 'QBAQuestionableBooleanAssignmentChecker']
+     1 : QF: Questionable for loops
+    FB.QF_QUESTIONABLE_FOR_LOOP                             | tried: ['QFQuestionableForLoopCheck', 'QFQuestionableForLoopChecker']
+     1 : REC: RuntimeException capture
+    FB.REC_CATCH_EXCEPTION                                  | tried: ['RECCatchExceptionCheck', 'RECCatchExceptionChecker']
+     1 : REFLC: Reflection increasing accessibility of classes
+    FB.REFLC_REFLECTION_MAY_INCREASE_ACCESSIBILITY_OF_CLASS | tried: ['REFLCReflectionMayIncreaseAccessibilityOfClassCheck', 'REFLCReflectionMayIncreaseAccessibilityOfClassChecker']
+     1 : REFLF: Reflection increasing accessibility of fields
+    FB.REFLF_REFLECTION_MAY_INCREASE_ACCESSIBILITY_OF_FIELD | tried: ['REFLFReflectionMayIncreaseAccessibilityOfFieldCheck', 'REFLFReflectionMayIncreaseAccessibilityOfFieldChecker']
+     1 : RI: Redundant Interfaces
+    FB.RI_REDUNDANT_INTERFACES                              | tried: ['RIRedundantInterfacesCheck', 'RIRedundantInterfacesChecker']
+     1 : RS: Class's readObject() method is synchronized
+    FB.RS_READOBJECT_SYNC                                   | tried: ['RSReadobjectSyncCheck', 'RSReadobjectSyncChecker']
+     1 : Ru: Method invokes run()
+    FB.RU_INVOKE_RUN                                        | tried: ['RUInvokeRunCheck', 'RUInvokeRunChecker']
+     1 : RpC: Repeated conditional test
+    FB.RPC_REPEATED_CONDITIONAL_TEST                        | tried: ['RPCRepeatedConditionalTestCheck', 'RPCRepeatedConditionalTestChecker']
+     1 : SBSC: String concatenation in loop using + operator
+    FB.SBSC_USE_STRINGBUFFER_CONCATENATION                  | tried: ['SBSCUseStringbufferConcatenationCheck', 'SBSCUseStringbufferConcatenationChecker']
+     1 : SC: Constructor invokes Thread.start()
+    FB.SC_START_IN_CTOR                                     | tried: ['SCStartInCtorCheck', 'SCStartInCtorChecker']
+     1 : SnVI: Serializable class with no Version ID
+    FB.SE_NO_SERIALVERSIONID                                | tried: ['SENoSerialversionidCheck', 'SENoSerialversionidChecker']
+     1 : SIO: Superfluous instanceof
+    FB.SIO_SUPERFLUOUS_INSTANCEOF                           | tried: ['SIOSuperfluousInstanceofCheck', 'SIOSuperfluousInstanceofChecker']
+     1 : SI: Suspicious static initializer
+    FB.SI_INSTANCE_BEFORE_FINALS_ASSIGNED                   | tried: ['SIInstanceBeforeFinalsAssignedCheck', 'SIInstanceBeforeFinalsAssignedChecker']
+     1 : SKIPPED: Analysis skipped
+    FB.SKIPPED_CLASS_TOO_BIG                                | tried: ['SKIPPEDClassTooBigCheck', 'SKIPPEDClassTooBigChecker']
+     1 : SP: Method spins on field
+    FB.SP_SPIN_ON_FIELD                                     | tried: ['SPSpinOnFieldCheck', 'SPSpinOnFieldChecker']
+     1 : SSD: Do not use an instance lock to protect shared static data
+    FB.SSD_DO_NOT_USE_INSTANCE_LOCK_ON_SHARED_STATIC_DATA   | tried: ['SSDDoNotUseInstanceLockOnSharedStaticDataCheck', 'SSDDoNotUseInstanceLockOnSharedStaticDataChecker']
+     1 : SS: Unread field should be static
+    FB.SS_SHOULD_BE_STATIC                                  | tried: ['SSShouldBeStaticCheck', 'SSShouldBeStaticChecker']
+     1 : ST: Misuse of static fields
+    FB.ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD              | tried: ['STWriteToStaticFromInstanceMethodCheck', 'STWriteToStaticFromInstanceMethodChecker']
+     1 : SWL: Sleep with lock held
+    FB.SWL_SLEEP_WITH_LOCK_HELD                             | tried: ['SWLSleepWithLockHeldCheck', 'SWLSleepWithLockHeldChecker']
+     1 : SW: Swing coding rules
+    FB.SW_SWING_METHODS_INVOKED_IN_SWING_THREAD             | tried: ['SWSwingMethodsInvokedInSwingThreadCheck', 'SWSwingMethodsInvokedInSwingThreadChecker']
+     1 : UG: Unsynchronized get method, synchronized set method
+    FB.UG_SYNC_SET_UNSYNC_GET                               | tried: ['UGSyncSetUnsyncGetCheck', 'UGSyncSetUnsyncGetChecker']
+     1 : UI: Unsafe inheritance
+    FB.UI_INHERITANCE_UNSAFE_GETRESOURCE                    | tried: ['UIInheritanceUnsafeGetresourceCheck', 'UIInheritanceUnsafeGetresourceChecker']
+     1 : UMAC: Uncallable method of anonymous class
+    FB.UMAC_UNCALLABLE_METHOD_OF_ANONYMOUS_CLASS            | tried: ['UMACUncallableMethodOfAnonymousClassCheck', 'UMACUncallableMethodOfAnonymousClassChecker']
+     1 : UM: Unnecessary Math on constants
+    FB.UM_UNNECESSARY_MATH                                  | tried: ['UMUnnecessaryMathCheck', 'UMUnnecessaryMathChecker']
+     1 : UOE: Use Object Equals
+    FB.UOE_USE_OBJECT_EQUALS                                | tried: ['UOEUseObjectEqualsCheck', 'UOEUseObjectEqualsChecker']
+     1 : UPM: Private method is never called
+    FB.UPM_UNCALLED_PRIVATE_METHOD                          | tried: ['UPMUncalledPrivateMethodCheck', 'UPMUncalledPrivateMethodChecker']
+     1 : USC: Potential security check based on untrusted source
+    FB.USC_POTENTIAL_SECURITY_CHECK_BASED_ON_UNTRUSTED_SOURCE | tried: ['USCPotentialSecurityCheckBasedOnUntrustedSourceCheck', 'USCPotentialSecurityCheckBasedOnUntrustedSourceChecker']
+     1 : UW: Unconditional wait
+    FB.UW_UNCOND_WAIT                                       | tried: ['UWUncondWaitCheck', 'UWUncondWaitChecker']
+     1 : VA: Vararg problems
+    FB.VA_PRIMITIVE_ARRAY_PASSED_TO_OBJECT_VARARG           | tried: ['VAPrimitiveArrayPassedToObjectVarargCheck', 'VAPrimitiveArrayPassedToObjectVarargChecker']
+     1 : VR: Version compatibility issue
+    FB.VR_UNRESOLVABLE_REFERENCE                            | tried: ['VRUnresolvableReferenceCheck', 'VRUnresolvableReferenceChecker']
+     1 : WL: Possible locking on wrong object
+    FB.WL_USING_GETCLASS_RATHER_THAN_CLASS_LITERAL          | tried: ['WLUsingGetclassRatherThanClassLiteralCheck', 'WLUsingGetclassRatherThanClassLiteralChecker']
+     1 : WS: Class's writeObject() method is synchronized but nothing else is
+    FB.WS_WRITEOBJECT_SYNC                                  | tried: ['WSWriteobjectSyncCheck', 'WSWriteobjectSyncChecker']
+     1 : XFB: XML Factory Bypass
+    FB.XFB_XML_FACTORY_BYPASS                               | tried: ['XFBXmlFactoryBypassCheck', 'XFBXmlFactoryBypassChecker']

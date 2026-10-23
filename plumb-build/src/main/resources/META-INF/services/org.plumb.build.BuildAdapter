@@ -1,0 +1,4 @@
+org.plumb.build.maven.MavenAdapter
+org.plumb.build.gradle.GradleAdapter
+org.plumb.build.bazel.BazelAdapter
+org.plumb.build.ant.AntAdapter

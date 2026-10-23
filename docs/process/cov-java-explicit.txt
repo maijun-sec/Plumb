@@ -1,0 +1,86 @@
+﻿Total checkers parsed: 308
+
+Top 20 supported-languages patterns:
+  104 : 'C/C++,'
+   69 : 'C#,'
+   23 : 'JavaScript,'
+   16 : 'CUDA'
+   15 : 'Java,'
+   15 : 'Java'
+   15 : 'Ruby'
+   11 : 'Go'
+    6 : 'Go,'
+    6 : 'C#'
+    5 : 'Python'
+    2 : 'PHP'
+    2 : 'Kotlin'
+    2 : 'C,'
+    1 : 'Go, Java, JavaScript, Kotlin, Python, Ruby, TypeScript BAD_CERT_VERIFICATION looks for instances of incomplete or improper validation of'
+    1 : 'C# BAD_EQ is a statistical checker that determines whether two objects of a given type should be compared with structural e'
+    1 : 'C# BAD_EQ_TYPES finds e'
+    1 : 'C/C++, CUDA, Objective-C/C++ The FLOATING_POINT_E'
+    1 : 'C/C++, CUDA, Objective-C/C++ FORMAT_STRING_INJECTION finds a'
+    1 : 'C#, C/C++, CUDA, Go, Java, JavaScript, Kotlin, Objective-C/C++, PHP, Python, Ruby, TypeScript, Visual Basic HARDCODED_CREDENTIALS searches for passwords, cryptographic keys, and'
+
+Java explicit: 61
+  ANDROID_CAPABILITY_LEAK                       | Java,                                                        | Security Checker   | 
+  ANGULAR_ELEMENT_REFERENCE                     | JavaScript,                                                  | Security Checker   | 
+  ANGULAR_EXPRESSION_INJECTION                  | JavaScript,                                                  | Security Checker   | 
+  ANGULAR_SCE_DISABLED                          | JavaScript,                                                  | Security Checker   | 
+  ATTRIBUTE_NAME_CONFLICT                       | Java                                                         | Security Checker   | 
+  BAD_CERT_VERIFICATION                         | Go, Java, JavaScript, Kotlin, Python, Ruby, TypeScript BAD_CERT_VERIFICATION looks for instances of incomplete or improper validation of | Security Checker   | CWE-295
+  CONFIG.ANDROID_GRADLE_OBFUSCATION_NOT_ENABLED | Java,                                                        | Security Checker   | 
+  CONFIG.HANA_XS_PREVENT_XSRF_DISABLED          | JavaScript,                                                  | Security Checker   | 
+  CONFIG.HARDCODED_TOKEN                        | JavaScript,                                                  | Security Checker   | 
+  CONFIG.VUE_ROUTER_PARAMS_EXPOSED_TO_PROPS     | JavaScript,                                                  | Security Checker   | CWE-200
+  COOKIE_INJECTION                              | JavaScript,                                                  | Security Checker   | 
+  CSS_INJECTION                                 | JavaScript,                                                  | Security Checker   | 
+  DC.DANGEROUS                                  | Java,                                                        | Security Checker   | 
+  DC.DEADLOCK                                   | Java,                                                        | Security Checker   | 
+  DNS_PREFETCHING                               | JavaScript,                                                  | Security Checker   | 
+  DOM_XSS                                       | JavaScript,                                                  | Security Checker   | 
+  EL_INJECTION                                  | Java                                                         | Security Checker   | 
+  EXPLICIT_THIS_EXPECTED                        | JavaScript,                                                  | Quality Checker    | 
+  EXPRESS_WINSTON_SENSITIVE_LOGGING             | JavaScript,                                                  | Security Checker   | 
+  FB.* (SpotBugs)                               | Java                                                         | Quality Checker    | 
+  HARDCODED_CREDENTIALS                         | C#, C/C++, CUDA, Go, Java, JavaScript, Kotlin, Objective-C/C++, PHP, Python, Ruby, TypeScript, Visual Basic HARDCODED_CREDENTIALS searches for passwords, cryptographic keys, and | Security Checker   | 
+  HIBERNATE_BAD_HASHCODE                        | Java,                                                        | Quality Checker    | 
+  IDENTIFIER_TYPO                               | JavaScript,                                                  | Quality Checker    | 
+  IMPLICIT_INTENT                               | Java,                                                        | Security Checker   | 
+  INSECURE_RANDOM                               | C#, Java, JavaScript, Kotlin, Python, TypeScript, Visual Basic INSECURE_RANDOM finds cases where cryptographically weak pseudo-random number generators (PRNGs) are used to generate insecure random values, which are then used in sensitive contexts where | Security Checker   | 
+  INSECURE_SALT                                 | JavaScript,                                                  | Security Checker   | 
+  INSUFFICIENT_LOGGING                          | Go, JavaScript, Python, TypeScript The INSUFFICIENT_LOGGING checker reports a defect in code that handles a | Security Checker   | 
+  JAVA_CODE_INJECTION                           | Java                                                         | Security Checker   | 
+  JCR_INJECTION                                 | Java                                                         | Security Checker   | 
+  JSHINT.* (JSHint) Analysis                    | JavaScript                                                   | Quality Checker    | 
+  JSP_DYNAMIC_INCLUDE                           | Java                                                         | Security Checker   | 
+  JSP_SQL_INJECTION                             | Java JSP_SQL_INJECTION finds JSP SQL injection vulnerabilities, which arise when uncontrolled dynamic data is passed into a JSTL | Security Checker   | 
+  LOCALSTORAGE_MANIPULATION                     | JavaScript,                                                  | Security Checker   | 
+  LOCALSTORAGE_WRITE                            | JavaScript,                                                  | Security Checker   | 
+  MISSING_IFRAME_SANDBOX                        | JavaScript,                                                  | Security Checker   | CWE-829
+  MISSING_PERMISSION_FOR_BROADCAST              | Java,                                                        | Security Checker   | 
+  MOBILE_ID_MISUSE                              | Java,                                                        | Security Checker   | 
+  OGNL_INJECTION                                | Java                                                         | Security Checker   | 
+  ORM_ABANDONED_TRANSIENT                       | Java                                                         | Quality Checker    | 
+  ORM_LOST_UPDATE                               | Java                                                         | Quality Checker    | 
+  ORM_LOAD_NULL_CHECK                           | Java,                                                        | Quality Checker    | 
+  ORM_UNNECESSARY_GET                           | Java,                                                        | Quality Checker    | 
+  REGEX_CONFUSION                               | Java,                                                        | Quality Checker    | 
+  SEALED_JAR_ESCAPE                             | Java                                                         | Security Checker   | 
+  SERVLET_ATOMICITY                             | Java                                                         | Security Checker   | 
+  SESSION_FIXATION                              | Java                                                         | Security Checker   | 
+  SESSIONSTORAGE_MANIPULATION                   | JavaScript,                                                  | Security Checker   | 
+  SINGLETON_RACE                                | Java                                                         | Security Checker   | 
+  TRUST_BOUNDARY_VIOLATION                      | Java                                                         | Security Checker   | 
+  UNCHECKED_ORIGIN                              | JavaScript,                                                  | Security Checker   | 
+  UNINIT_NONNULL                                | Java                                                         | Quality Checker    | 
+  UNINTENDED_GLOBAL                             | JavaScript,                                                  | Quality Checker    | 
+  UNLESS_CASE_SENSITIVE_ROUTE_MATCHING          | JavaScript,                                                  | Security Checker   | 
+  UNLOGGED_SECURITY_EXCEPTION                   | C#, Java, Kotlin, Visual Basic The UNLOGGED_                 | Security Checker   | 
+  UNRESTRICTED_ACCESS_TO_FILE                   | Java,                                                        | Security Checker   | 
+  UNRESTRICTED_MESSAGE_TARGET                   | JavaScript,                                                  | Security Checker   | 
+  UNSAFE_BUFFER_METHOD                          | JavaScript,                                                  | Security Checker   | 
+  UNSAFE_JNI                                    | Java,                                                        | Security Checker   | 
+  UNSAFE_REFLECTION                             | Java,                                                        | Security Checker   | 
+  WEAK_URL_SANITIZATION                         | Java, JavaScript, Python, TypeScript The WEAK_URL_SANITIZATION checker finds several cases of weak sanitization of URLs that can be used in a | Security Checker   | 
+  WRONG_METHOD                                  | Java,                                                        | Quality Checker    | 

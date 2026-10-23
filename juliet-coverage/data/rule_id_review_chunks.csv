@@ -1,0 +1,695 @@
+chunk,domain,old_id,new_id,detect_reason,review_status
+chunk_001,ast,ALWAYS_NULL,plumb.ast.always-null,UPPER_SNAKE default,TODO
+chunk_001,ast,AMBIGUOUS_PRECEDENCE,plumb.ast.ambiguous-precedence,UPPER_SNAKE default,TODO
+chunk_001,ast,AND,plumb.ast.and,UPPER_SNAKE default,TODO
+chunk_001,ast,ARRAY_INDEX,plumb.ast.array-index,UPPER_SNAKE default,TODO
+chunk_001,ast,ARRAY_LENGTH,plumb.ast.array-length,UPPER_SNAKE default,TODO
+chunk_001,ast,ARRAY_OFFSET,plumb.ast.array-offset,UPPER_SNAKE default,TODO
+chunk_001,ast,ASSIGNMENT,plumb.ast.assignment,UPPER_SNAKE default,TODO
+chunk_001,ast,ASSIGNMENT_IN_OPERAND,plumb.ast.assignment-in-operand,UPPER_SNAKE default,TODO
+chunk_001,ast,AS_KEY,plumb.ast.as-key,UPPER_SNAKE default,TODO
+chunk_001,ast,AVERAGE_COMPUTATION,plumb.ast.average-computation,UPPER_SNAKE default,TODO
+chunk_001,ast,AssignmentInConditionCheck,plumb.ast.assignment-in-condition-check,PascalCase default,TODO
+chunk_001,ast,AvoidPrintStackTraceCheck,plumb.ast.avoid-print-stack-trace-check,PascalCase default,TODO
+chunk_001,ast,BAD_ARRAY_COMPARE,plumb.ast.bad-array-compare,UPPER_SNAKE default,TODO
+chunk_001,ast,BAD_ARRAY_STORE,plumb.ast.bad-array-store,UPPER_SNAKE default,TODO
+chunk_001,ast,BAD_CAST_TO_ABSTRACT_COLLECTION,plumb.ast.bad-cast-to-abstract-collection,UPPER_SNAKE default,TODO
+chunk_001,ast,BAD_CHECK_FOR_ODD,plumb.ast.bad-check-for-odd,UPPER_SNAKE default,TODO
+chunk_001,ast,BAD_FIELD,plumb.ast.bad-field,UPPER_SNAKE default,TODO
+chunk_001,ast,BIGDECIMAL_DOUBLE,plumb.ast.bigdecimal-double,UPPER_SNAKE default,TODO
+chunk_001,ast,BOOLEAN_RETURNS_NULL,plumb.ast.boolean-returns-null,UPPER_SNAKE default,TODO
+chunk_001,ast,BOXED_PRIMITIVE_FOR_PARSING,plumb.ast.boxed-primitive-for-parsing,UPPER_SNAKE default,TODO
+chunk_001,ast,BadShift,plumb.ast.bad-shift,PascalCase default,TODO
+chunk_001,ast,BoundaryArrayBounds,plumb.ast.boundary-array-bounds,PascalCase default,TODO
+chunk_001,ast,BoundaryDivZero,plumb.ast.boundary-div-zero,PascalCase default,TODO
+chunk_001,ast,BoundaryOverflow,plumb.ast.boundary-overflow,PascalCase default,TODO
+chunk_001,ast,BoundaryUnderflow,plumb.ast.boundary-underflow,PascalCase default,TODO
+chunk_001,ast,CLASS_SHADOW_FIELD,plumb.ast.class-shadow-field,UPPER_SNAKE default,TODO
+chunk_001,ast,CLONE,plumb.ast.clone,UPPER_SNAKE default,TODO
+chunk_001,ast,COLLECTION_OF_URLS,plumb.ast.collection-of-urls,UPPER_SNAKE default,TODO
+chunk_001,ast,COMPARE_CLASSES,plumb.ast.compare-classes,UPPER_SNAKE default,TODO
+chunk_001,ast,COMPARE_OBJECTS_WITH_EQUALS,plumb.ast.compare-objects-with-equals,UPPER_SNAKE default,TODO
+chunk_003,ast,COMPARE_STRINGS_WITH_EQUALS,plumb.ast.compare-strings-with-equals,UPPER_SNAKE default,TODO
+chunk_003,ast,COMPARISON,plumb.ast.comparison,UPPER_SNAKE default,TODO
+chunk_003,ast,CONCURRENT_HASHMAP,plumb.ast.concurrent-hashmap,UPPER_SNAKE default,TODO
+chunk_003,ast,CONDITIONAL_ON_CONSTANT,plumb.ast.conditional-on-constant,UPPER_SNAKE default,TODO
+chunk_003,ast,CONTAINER_SEQUENCING,plumb.ast.container-sequencing,UPPER_SNAKE default,TODO
+chunk_003,ast,COVARIANT_EQUALS,plumb.ast.covariant-equals,UPPER_SNAKE default,TODO
+chunk_003,ast,CTOR_CALLING_OVERRIDABLE,plumb.ast.ctor-calling-overridable,UPPER_SNAKE default,TODO
+chunk_003,ast,CallToThreadRunCheck,plumb.ast.call-to-thread-run-check,PascalCase default,TODO
+chunk_003,ast,CatchGenericException,plumb.ast.catch-generic-exception,PascalCase default,TODO
+chunk_003,ast,CatchNullPointerExceptionCheck,plumb.ast.catch-null-pointer-exception-check,PascalCase default,TODO
+chunk_003,ast,CompareInsteadOfAssigningCheck,plumb.ast.compare-instead-of-assigning-check,PascalCase default,TODO
+chunk_003,ast,ConstantCondition,plumb.ast.constant-condition,PascalCase default,TODO
+chunk_003,ast,Cwe325,plumb.ast.cwe325,CweXXX malformed,TODO
+chunk_003,ast,Cwe329RandomIv,plumb.ast.cwe329randomiv,CweXXX malformed,TODO
+chunk_003,ast,Cwe600,plumb.ast.cwe600,CweXXX malformed,TODO
+chunk_003,ast,Cwe674Recursion,plumb.ast.cwe674recursion,CweXXX malformed,TODO
+chunk_003,ast,Cwe832UnlockNotLocked,plumb.ast.cwe832unlocknotlocked,CweXXX malformed,TODO
+chunk_003,ast,Cwe833Deadlock,plumb.ast.cwe833deadlock,CweXXX malformed,TODO
+chunk_003,ast,DEREF_OF_READLINE_VALUE,plumb.ast.deref-of-readline-value,UPPER_SNAKE default,TODO
+chunk_003,ast,DOUBLECHECK,plumb.ast.doublecheck,UPPER_SNAKE default,TODO
+chunk_003,ast,DivideByZero,plumb.ast.divide-by-zero,PascalCase default,TODO
+chunk_003,ast,EQUALITY,plumb.ast.equality,UPPER_SNAKE default,TODO
+chunk_003,ast,EQUALS_ARG_TYPE,plumb.ast.equals-arg-type,UPPER_SNAKE default,TODO
+chunk_003,ast,EQUALS_AVOID_NULL,plumb.ast.equals-avoid-null,UPPER_SNAKE default,TODO
+chunk_003,ast,EQUALS_HASHCODE,plumb.ast.equals-hashcode,UPPER_SNAKE default,TODO
+chunk_003,ast,EQUALS_NO_HASHCODE,plumb.ast.equals-no-hashcode,UPPER_SNAKE default,TODO
+chunk_003,ast,EQUALS_NO_NULL_CHECK,plumb.ast.equals-no-null-check,UPPER_SNAKE default,TODO
+chunk_003,ast,ERROR_LOGGING,plumb.ast.error-logging,UPPER_SNAKE default,TODO
+chunk_003,ast,EXCEPTION_LOG,plumb.ast.exception-log,UPPER_SNAKE default,TODO
+chunk_003,ast,EXPLICIT_FINALIZE,plumb.ast.explicit-finalize,UPPER_SNAKE default,TODO
+chunk_005,ast,EXPOSE_INTERNAL_REPRESENTATION,plumb.ast.expose-internal-representation,UPPER_SNAKE default,TODO
+chunk_005,ast,EXPOSE_REP2,plumb.ast.expose-rep2,UPPER_SNAKE default,TODO
+chunk_005,ast,EmptyStatementBlockCheck,plumb.ast.empty-statement-block-check,PascalCase default,TODO
+chunk_005,ast,EnvVarInfoExposure,plumb.ast.env-var-info-exposure,PascalCase default,TODO
+chunk_005,ast,EnvVarInfoExposureAstCheck,plumb.ast.env-var-info-exposure-ast-check,PascalCase default,TODO
+chunk_005,ast,EqualsCalledOnNull,plumb.ast.equals-called-on-null,PascalCase default,TODO
+chunk_005,ast,ErrorMessageInfoLeak,plumb.ast.error-message-info-leak,PascalCase default,TODO
+chunk_005,ast,ExplicitFinalizeCallCheck,plumb.ast.explicit-finalize-call-check,PascalCase default,TODO
+chunk_005,ast,FINALIZE,plumb.ast.finalize,UPPER_SNAKE default,TODO
+chunk_005,ast,FINALIZE_ONLY_OVERRIDDEN,plumb.ast.finalize-only-overridden,UPPER_SNAKE default,TODO
+chunk_005,ast,FINALIZE_WITHOUT_SUPER,plumb.ast.finalize-without-super,UPPER_SNAKE default,TODO
+chunk_005,ast,FLOATING_POINT,plumb.ast.floating-point,UPPER_SNAKE default,TODO
+chunk_005,ast,HARDCODED_ABSOLUTE_PATH,plumb.ast.hardcoded-absolute-path,UPPER_SNAKE default,TODO
+chunk_005,ast,HARDCODED_CREDENTIALS,plumb.ast.hardcoded-credentials,UPPER_SNAKE default,TODO
+chunk_005,ast,HARDCODED_IP,plumb.ast.hardcoded-ip,UPPER_SNAKE default,TODO
+chunk_005,ast,HASHCODE_TOSTRING,plumb.ast.hashcode-tostring,UPPER_SNAKE default,TODO
+chunk_005,ast,HIBERNATE_BAD_HASHCODE,plumb.ast.hibernate-bad-hashcode,UPPER_SNAKE default,TODO
+chunk_005,ast,HIDES_FIELD,plumb.ast.hides-field,UPPER_SNAKE default,TODO
+chunk_005,ast,HardcodedPasswordSinkAstCheck,plumb.ast.hardcoded-password-sink-ast-check,PascalCase default,TODO
+chunk_005,ast,IDIOM,plumb.ast.idiom,UPPER_SNAKE default,TODO
+chunk_005,ast,IGNORED_RESULT,plumb.ast.ignored-result,UPPER_SNAKE default,TODO
+chunk_005,ast,INCOMPATIBLE_TYPES,plumb.ast.incompatible-types,UPPER_SNAKE default,TODO
+chunk_005,ast,INSTANCE_BEFORE_FINALS_ASSIGNED,plumb.ast.instance-before-finals-assigned,UPPER_SNAKE default,TODO
+chunk_005,ast,INTEGER_MULTIPLY_CAST_TO_LONG,plumb.ast.integer-multiply-cast-to-long,UPPER_SNAKE default,TODO
+chunk_005,ast,IN_FINALLY,plumb.ast.in-finally,UPPER_SNAKE default,TODO
+chunk_005,ast,ITERATOR_NEXT_EXCEPTION,plumb.ast.iterator-next-exception,UPPER_SNAKE default,TODO
+chunk_005,ast,IncompleteCleanupCheck,plumb.ast.incomplete-cleanup-check,PascalCase default,TODO
+chunk_005,ast,IncorrectBlockDelimitationCheck,plumb.ast.incorrect-block-delimitation-check,PascalCase default,TODO
+chunk_005,ast,InfiniteLoop,plumb.ast.infinite-loop,PascalCase default,TODO
+chunk_005,ast,InfoExposureInCommentCheck,plumb.ast.info-exposure-in-comment-check,PascalCase default,TODO
+chunk_007,ast,InfoExposureQueryString,plumb.ast.info-exposure-query-string,PascalCase default,TODO
+chunk_007,ast,InsecureCommunication,plumb.ast.insecure-communication,PascalCase default,TODO
+chunk_007,ast,InsecureCrypto,plumb.ast.insecure-crypto,PascalCase default,TODO
+chunk_007,ast,InsecureTempFileCheck,plumb.ast.insecure-temp-file-check,PascalCase default,TODO
+chunk_007,ast,InsecureTempFilePermsCheck,plumb.ast.insecure-temp-file-perms-check,PascalCase default,TODO
+chunk_007,ast,InsufficientSessionExpiration,plumb.ast.insufficient-session-expiration,PascalCase default,TODO
+chunk_007,ast,IntegerOverflow,plumb.ast.integer-overflow,PascalCase default,TODO
+chunk_007,ast,JUMBLED_INCREMENTER,plumb.ast.jumbled-incrementer,UPPER_SNAKE default,TODO
+chunk_007,ast,LITERALS_FIRST_IN_COMPARISONS,plumb.ast.literals-first-in-comparisons,UPPER_SNAKE default,TODO
+chunk_007,ast,LOAD_OF_KNOWN_NULL_VALUE,plumb.ast.load-of-known-null-value,UPPER_SNAKE default,TODO
+chunk_007,ast,LOCALE_ROOT,plumb.ast.locale-root,UPPER_SNAKE default,TODO
+chunk_007,ast,LOOP_FLOAT,plumb.ast.loop-float,UPPER_SNAKE default,TODO
+chunk_007,ast,LOSING_EXCEPTION_INFORMATION,plumb.ast.losing-exception-information,UPPER_SNAKE default,TODO
+chunk_007,ast,LiteralBooleanConditionCheck,plumb.ast.literal-boolean-condition-check,PascalCase default,TODO
+chunk_007,ast,LogInfoLeakCheck,plumb.ast.log-info-leak-check,PascalCase default,TODO
+chunk_007,ast,MESSAGEDIGEST_FIELD,plumb.ast.messagedigest-field,UPPER_SNAKE default,TODO
+chunk_007,ast,METHOD_CALL,plumb.ast.method-call,UPPER_SNAKE default,TODO
+chunk_007,ast,MISSING_BREAK,plumb.ast.missing-break,UPPER_SNAKE default,TODO
+chunk_007,ast,MISSING_DEPRECATED,plumb.ast.missing-deprecated,UPPER_SNAKE default,TODO
+chunk_007,ast,MISSING_SERIAL_VERSION_UID,plumb.ast.missing-serial-version-uid,UPPER_SNAKE default,TODO
+chunk_007,ast,MUTABLE_STATIC_SHOULD_BE_FINAL,plumb.ast.mutable-static-should-be-final,UPPER_SNAKE default,TODO
+chunk_007,ast,MissingBreakCheck,plumb.ast.missing-break-check,PascalCase default,TODO
+chunk_007,ast,MissingDefaultCaseCheck,plumb.ast.missing-default-case-check,PascalCase default,TODO
+chunk_007,ast,MissingPasswordMaskingCheck,plumb.ast.missing-password-masking-check,PascalCase default,TODO
+chunk_007,ast,MultipleBindsSamePortCheck,plumb.ast.multiple-binds-same-port-check,PascalCase default,TODO
+chunk_007,ast,NEGATING_RESULT_OF_COMPARETO,plumb.ast.negating-result-of-compareto,UPPER_SNAKE default,TODO
+chunk_007,ast,NON_SERIALIZABLE_CLASS,plumb.ast.non-serializable-class,UPPER_SNAKE default,TODO
+chunk_007,ast,NOT_CALL_GC,plumb.ast.not-call-gc,UPPER_SNAKE default,TODO
+chunk_007,ast,NO_READ_IF_EQUAL_TO_WRITE,plumb.ast.no-read-if-equal-to-write,UPPER_SNAKE default,TODO
+chunk_007,ast,NPE,plumb.ast.npe,UPPER_SNAKE default,TODO
+chunk_009,ast,NULL_ARG_TO_VARARG_METHOD,plumb.ast.null-arg-to-vararg-method,UPPER_SNAKE default,TODO
+chunk_009,ast,NoEffectStatementCheck,plumb.ast.no-effect-statement-check,PascalCase default,TODO
+chunk_009,ast,NullDerefFromReturn,plumb.ast.null-deref-from-return,PascalCase default,TODO
+chunk_009,ast,NullDerefFromReturnAstCheck,plumb.ast.null-deref-from-return-ast-check,PascalCase default,TODO
+chunk_009,ast,NullDereference,plumb.ast.null-dereference,PascalCase default,TODO
+chunk_009,ast,NumericConversionCheck,plumb.ast.numeric-conversion-check,PascalCase default,TODO
+chunk_009,ast,OCTAL_VALUES,plumb.ast.octal-values,UPPER_SNAKE default,TODO
+chunk_009,ast,OF_DEMETER,plumb.ast.of-demeter,UPPER_SNAKE default,TODO
+chunk_009,ast,OF_THROWABLE,plumb.ast.of-throwable,UPPER_SNAKE default,TODO
+chunk_009,ast,OPTIONAL_GET,plumb.ast.optional-get,UPPER_SNAKE default,TODO
+chunk_009,ast,OR,plumb.ast.or,UPPER_SNAKE default,TODO
+chunk_009,ast,ORM_LOAD_NULL_CHECK,plumb.ast.orm-load-null-check,UPPER_SNAKE default,TODO
+chunk_009,ast,ORM_LOST_UPDATE,plumb.ast.orm-lost-update,UPPER_SNAKE default,TODO
+chunk_009,ast,ORM_UNNECESSARY_GET,plumb.ast.orm-unnecessary-get,UPPER_SNAKE default,TODO
+chunk_009,ast,OVERRIDE_EQUALS_AND_HASHCODE,plumb.ast.override-equals-and-hashcode,UPPER_SNAKE default,TODO
+chunk_009,ast,ObsoleteApiCheck,plumb.ast.obsolete-api-check,PascalCase default,TODO
+chunk_009,ast,ObsoleteFunction,plumb.ast.obsolete-function,PascalCase default,TODO
+chunk_009,ast,OffByOne,plumb.ast.off-by-one,PascalCase default,TODO
+chunk_009,ast,OffByOneLoopCheck,plumb.ast.off-by-one-loop-check,PascalCase default,TODO
+chunk_009,ast,OrmLoadNullCheckDfa,plumb.ast.orm-load-null-check-dfa,PascalCase default,TODO
+chunk_009,ast,OrmLostUpdateDfa,plumb.ast.orm-lost-update-dfa,PascalCase default,TODO
+chunk_009,ast,OrmUnnecessaryGetDfa,plumb.ast.orm-unnecessary-get-dfa,PascalCase default,TODO
+chunk_009,ast,OverlyBroadCatchCheck,plumb.ast.overly-broad-catch-check,PascalCase default,TODO
+chunk_009,ast,PRESERVE_STACK_TRACE,plumb.ast.preserve-stack-trace,UPPER_SNAKE default,TODO
+chunk_009,ast,PRIMITIVES_BOXED,plumb.ast.primitives-boxed,UPPER_SNAKE default,TODO
+chunk_009,ast,PRINT_STACK_TRACE,plumb.ast.print-stack-trace,UPPER_SNAKE default,TODO
+chunk_009,ast,PUBLIC_STATIC_MUTABLE,plumb.ast.public-static-mutable,UPPER_SNAKE default,TODO
+chunk_009,ast,PersistentCookieCheck,plumb.ast.persistent-cookie-check,PascalCase default,TODO
+chunk_009,ast,PredictableSaltCheck,plumb.ast.predictable-salt-check,PascalCase default,TODO
+chunk_009,ast,PrintStackTraceCheck,plumb.ast.print-stack-trace-check,PascalCase default,TODO
+chunk_011,ast,QUESTIONABLE_BOOLEAN_ASSIGNMENT,plumb.ast.questionable-boolean-assignment,UPPER_SNAKE default,TODO
+chunk_011,ast,REASSIGNING_LOOP_VARIABLES,plumb.ast.reassigning-loop-variables,UPPER_SNAKE default,TODO
+chunk_011,ast,REDIRECT_WITHOUT_EXIT,plumb.ast.redirect-without-exit,UPPER_SNAKE default,TODO
+chunk_011,ast,REGEX_CONFUSION,plumb.ast.regex-confusion,UPPER_SNAKE default,TODO
+chunk_011,ast,RESOURCE_USED_AS_BOTH_INPUT_AND_OUTPUT,plumb.ast.resource-used-as-both-input-and-output,UPPER_SNAKE default,TODO
+chunk_011,ast,RETURN_FROM_FINALLY,plumb.ast.return-from-finally,UPPER_SNAKE default,TODO
+chunk_011,ast,RETURN_VALUE_IGNORED_BAD_PRACTICE,plumb.ast.return-value-ignored-bad-practice,UPPER_SNAKE default,TODO
+chunk_011,ast,REUSE_ENTRY_OBJECTS,plumb.ast.reuse-entry-objects,UPPER_SNAKE default,TODO
+chunk_011,ast,ReachableAssertion,plumb.ast.reachable-assertion,PascalCase default,TODO
+chunk_011,ast,RedirectWithoutExitCheck,plumb.ast.redirect-without-exit-check,PascalCase default,TODO
+chunk_011,ast,ResourceLeak,plumb.ast.resource-leak,PascalCase default,TODO
+chunk_011,ast,ResourceLeak_CloseOnPath,plumb.ast.resourceleak-closeonpath,fallback,TODO
+chunk_011,ast,ReturnInFinallyBlockCheck,plumb.ast.return-in-finally-block-check,PascalCase default,TODO
+chunk_011,ast,RuntimeExecCheck,plumb.ast.runtime-exec-check,PascalCase default,TODO
+chunk_011,ast,SELF_NO_OBJECT,plumb.ast.self-no-object,UPPER_SNAKE default,TODO
+chunk_011,ast,SERVLET_ATOMICITY,plumb.ast.servlet-atomicity,UPPER_SNAKE default,TODO
+chunk_011,ast,SIGNATURE_DECLARES_HASHCODE_OF_OBJECT,plumb.ast.signature-declares-hashcode-of-object,UPPER_SNAKE default,TODO
+chunk_011,ast,SIGNED_CHECK,plumb.ast.signed-check,UPPER_SNAKE default,TODO
+chunk_011,ast,SIMPLEDATEFORMAT_LOCALE,plumb.ast.simpledateformat-locale,UPPER_SNAKE default,TODO
+chunk_011,ast,SINGLETON_RACE,plumb.ast.singleton-race,UPPER_SNAKE default,TODO
+chunk_011,ast,SLEEP_WITH_LOCK_HELD,plumb.ast.sleep-with-lock-held,UPPER_SNAKE default,TODO
+chunk_011,ast,STRING_BOXED,plumb.ast.string-boxed,UPPER_SNAKE default,TODO
+chunk_011,ast,STRING_EQUALITY_WITH_EQUALS,plumb.ast.string-equality-with-equals,UPPER_SNAKE default,TODO
+chunk_011,ast,STRING_LENGTH,plumb.ast.string-length,UPPER_SNAKE default,TODO
+chunk_011,ast,SUSPICIOUS_EQUALS_METHOD_NAME,plumb.ast.suspicious-equals-method-name,UPPER_SNAKE default,TODO
+chunk_011,ast,SYNCHRONIZED_LOCK,plumb.ast.synchronized-lock,UPPER_SNAKE default,TODO
+chunk_011,ast,SYNC_BLOCK,plumb.ast.sync-block,UPPER_SNAKE default,TODO
+chunk_011,ast,SYNC_INVOKED_ON_UNSHARED_VARIABLE,plumb.ast.sync-invoked-on-unshared-variable,UPPER_SNAKE default,TODO
+chunk_011,ast,SYSTEM_EXIT,plumb.ast.system-exit,UPPER_SNAKE default,TODO
+chunk_011,ast,SeededRandomCheck,plumb.ast.seeded-random-check,PascalCase default,TODO
+chunk_013,ast,SensitiveDataLeak,plumb.ast.sensitive-data-leak,PascalCase default,TODO
+chunk_013,ast,SensitiveDataLeak_command,plumb.ast.sensitivedataleak-command,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_deserialize,plumb.ast.sensitivedataleak-deserialize,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_file,plumb.ast.sensitivedataleak-file,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_format,plumb.ast.sensitivedataleak-format,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_header,plumb.ast.sensitivedataleak-header,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_ldap,plumb.ast.sensitivedataleak-ldap,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_log,plumb.ast.sensitivedataleak-log,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_nosql,plumb.ast.sensitivedataleak-nosql,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_ognl,plumb.ast.sensitivedataleak-ognl,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_openRedirect,plumb.ast.sensitivedataleak-openredirect,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_reflection,plumb.ast.sensitivedataleak-reflection,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_regex,plumb.ast.sensitivedataleak-regex,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_sql,plumb.ast.sensitivedataleak-sql,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_url,plumb.ast.sensitivedataleak-url,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_xml,plumb.ast.sensitivedataleak-xml,fallback,TODO
+chunk_013,ast,SensitiveDataLeak_xpath,plumb.ast.sensitivedataleak-xpath,fallback,TODO
+chunk_013,ast,SensitiveInfoUncleared,plumb.ast.sensitive-info-uncleared,PascalCase default,TODO
+chunk_013,ast,ServletAtomicityDfa,plumb.ast.servlet-atomicity-dfa,PascalCase default,TODO
+chunk_013,ast,ShellErrorExposureCheck,plumb.ast.shell-error-exposure-check,PascalCase default,TODO
+chunk_013,ast,SingletonRaceDfa,plumb.ast.singleton-race-dfa,PascalCase default,TODO
+chunk_013,ast,StringEqOperatorCheck,plumb.ast.string-eq-operator-check,PascalCase default,TODO
+chunk_013,ast,SuspiciousCommentCheck,plumb.ast.suspicious-comment-check,PascalCase default,TODO
+chunk_013,ast,SystemExitUsageCheck,plumb.ast.system-exit-usage-check,PascalCase default,TODO
+chunk_013,ast,THROWABLE,plumb.ast.throwable,UPPER_SNAKE default,TODO
+chunk_013,ast,THROWABLE_NOT_THROWN,plumb.ast.throwable-not-thrown,UPPER_SNAKE default,TODO
+chunk_013,ast,TO_THREAD_RUN,plumb.ast.to-thread-run,UPPER_SNAKE default,TODO
+chunk_013,ast,TRY_WITH_RESOURCES,plumb.ast.try-with-resources,UPPER_SNAKE default,TODO
+chunk_013,ast,ThreadInServletCheck,plumb.ast.thread-in-servlet-check,PascalCase default,TODO
+chunk_013,ast,ThrowGenericException,plumb.ast.throw-generic-exception,PascalCase default,TODO
+chunk_015,ast,ThrowGenericExceptionCheck,plumb.ast.throw-generic-exception-check,PascalCase default,TODO
+chunk_015,ast,UNCONFIRMED_CAST,plumb.ast.unconfirmed-cast,UPPER_SNAKE default,TODO
+chunk_015,ast,UNINIT_NONNULL,plumb.ast.uninit-nonnull,UPPER_SNAKE default,TODO
+chunk_015,ast,UNLOGGED_SECURITY_EXCEPTION,plumb.ast.unlogged-security-exception,UPPER_SNAKE default,TODO
+chunk_015,ast,UNREACHABLE_CODE,plumb.ast.unreachable-code,UPPER_SNAKE default,TODO
+chunk_015,ast,UNUSED_ASSIGNMENT,plumb.ast.unused-assignment,UPPER_SNAKE default,TODO
+chunk_015,ast,UNUSED_FORMAL_PARAMETER,plumb.ast.unused-formal-parameter,UPPER_SNAKE default,TODO
+chunk_015,ast,UnboundedMemAllocCheck,plumb.ast.unbounded-mem-alloc-check,PascalCase default,TODO
+chunk_015,ast,UncaughtException,plumb.ast.uncaught-exception,PascalCase default,TODO
+chunk_015,ast,UncaughtExceptionPropagator,plumb.ast.uncaught-exception-propagator,PascalCase default,TODO
+chunk_015,ast,UncheckedReturn,plumb.ast.unchecked-return,PascalCase default,TODO
+chunk_015,ast,UnclearedSensitiveInfoCheck,plumb.ast.uncleared-sensitive-info-check,PascalCase default,TODO
+chunk_015,ast,UninitNonnullDfa,plumb.ast.uninit-nonnull-dfa,PascalCase default,TODO
+chunk_015,ast,UnprotectedCredTransport,plumb.ast.unprotected-cred-transport,PascalCase default,TODO
+chunk_015,ast,UnsaltedOneWayHash,plumb.ast.unsalted-one-way-hash,PascalCase default,TODO
+chunk_015,ast,UnusedVariableAstCheck,plumb.ast.unused-variable-ast-check,PascalCase default,TODO
+chunk_015,ast,UseTryWithResourcesCheck,plumb.ast.use-try-with-resources-check,PascalCase default,TODO
+chunk_015,ast,WAIT_NOTIFY_IN_LOOP,plumb.ast.wait-notify-in-loop,UPPER_SNAKE default,TODO
+chunk_015,ast,WEAK_URL_SANITIZATION,plumb.ast.weak-url-sanitization,UPPER_SNAKE default,TODO
+chunk_015,ast,WRITE_TO_STATIC_FROM_INSTANCE_METHOD,plumb.ast.write-to-static-from-instance-method,UPPER_SNAKE default,TODO
+chunk_015,ast,WRONG_METHOD,plumb.ast.wrong-method,UPPER_SNAKE default,TODO
+chunk_015,ast,WeakCryptoCheck,plumb.ast.weak-crypto-check,PascalCase default,TODO
+chunk_015,ast,WeakHashChecker,plumb.ast.weak-hash-checker,PascalCase default,TODO
+chunk_015,ast,WeakPrngCheck,plumb.ast.weak-prng-check,PascalCase default,TODO
+chunk_015,ast,avoid-print-stack-trace,plumb.ast.avoid-print-stack-trace,lowercase-kebab default,TODO
+chunk_015,ast,bu-0400-assignment-in-operand,plumb.ast.assignment-in-operand,bu- slug ast,TODO
+chunk_015,ast,bu-0406-avoid-hardcoded-ip,plumb.ast.avoid-hardcoded-ip,bu- default,TODO
+chunk_015,ast,bu-0504-default-encoding,plumb.ast.default-encoding,bu- default,TODO
+chunk_015,ast,bu-0505-superfluous-instanceof,plumb.ast.superfluous-instanceof,bu- default,TODO
+chunk_015,ast,bu-0506-bigdecimal-double-ctor,plumb.ast.bigdecimal-double-ctor,bu- default,TODO
+chunk_017,ast,bu-0507-random-used-once,plumb.ast.random-used-once,bu- default,TODO
+chunk_017,ast,bu-0604-collection-is-empty,plumb.ast.collection-is-empty,bu- slug ast,TODO
+chunk_017,ast,bu-0605-empty-statement,plumb.ast.empty-statement,bu- slug ast,TODO
+chunk_017,ast,bu-0607-big-decimal-equals,plumb.ast.big-decimal-equals,bu- default,TODO
+chunk_017,ast,bu-0608-self-assignment,plumb.ast.self-assignment,bu- slug ast,TODO
+chunk_017,ast,bu-0609-param-hides-field,plumb.ast.param-hides-field,bu- default,TODO
+chunk_017,ast,bu-0610-collapsible-if,plumb.ast.collapsible-if,bu- default,TODO
+chunk_017,ast,bu-0611-ignored-result,plumb.ast.ignored-result,bu- default,TODO
+chunk_017,ast,bu-0612-ambiguous-precedence,plumb.ast.ambiguous-precedence,bu- default,TODO
+chunk_017,ast,bu-0613-array-equality,plumb.ast.array-equality,bu- default,TODO
+chunk_017,ast,bu-0614-test-no-assertion,plumb.ast.test-no-assertion,bu- default,TODO
+chunk_017,ast,bu-0701-extends-object,plumb.ast.extends-object,bu- default,TODO
+chunk_017,ast,bu-0703-unnecessary-return,plumb.ast.unnecessary-return,bu- default,TODO
+chunk_017,ast,bu-0704-local-variable-could-be-final,plumb.ast.local-variable-could-be-final,bu- default,TODO
+chunk_017,ast,bu-0801-array-hashcode-tostring,plumb.ast.array-hashcode-tostring,bu- default,TODO
+chunk_017,ast,bu-0802-case-insensitive-comparison,plumb.ast.case-insensitive-comparison,bu- default,TODO
+chunk_017,ast,bu-0803-catch-nullpointer-exception,plumb.ast.catch-nullpointer-exception,bu- default,TODO
+chunk_017,ast,bu-0804-synchronization-on-string-or-boxed,plumb.ast.synchronization-on-string-or-boxed,bu- default,TODO
+chunk_017,ast,bu-0901-mutable-static-should-be-final,plumb.ast.mutable-static-should-be-final,bu- default,TODO
+chunk_017,ast,bu-0902-locale-dependent-case-conversion,plumb.ast.locale-dependent-case-conversion,bu- default,TODO
+chunk_017,ast,bu-0903-string-builder-concatenation-in-loop,plumb.ast.string-builder-concatenation-in-loop,bu- default,TODO
+chunk_017,ast,bu-0904-useless-object,plumb.ast.useless-object,bu- default,TODO
+chunk_017,ast,bu-0905-int-division-cast-to-double,plumb.ast.int-division-cast-to-double,bu- default,TODO
+chunk_017,ast,bu-1001-unreachable-code,plumb.ast.unreachable-code,bu- slug ast,TODO
+chunk_017,ast,bu-1101-unused-local-variable,plumb.ast.unused-local-variable,bu- default,TODO
+chunk_017,ast,bu-1102-unused-formal-parameter,plumb.ast.unused-formal-parameter,bu- default,TODO
+chunk_017,ast,bu-1103-avoid-print-stack-trace,plumb.ast.avoid-print-stack-trace,bu- default,TODO
+chunk_017,ast,bu-1104-string-equality-with-equals,plumb.ast.string-equality-with-equals,bu- default,TODO
+chunk_017,ast,bu-1105-expose-internal-representation,plumb.ast.expose-internal-representation,bu- default,TODO
+chunk_017,ast,bu-1106-throwable-not-thrown,plumb.ast.throwable-not-thrown,bu- default,TODO
+chunk_019,ast,bu-1107-explicit-finalize,plumb.ast.explicit-finalize,bu- default,TODO
+chunk_019,ast,bu-1107-hardcoded-credentials,plumb.ast.hardcoded-credentials,bu- default,TODO
+chunk_019,ast,bu-1108-dead-store,plumb.ast.dead-store,bu- default,TODO
+chunk_019,ast,bu-1108-expression-always-false,plumb.ast.expression-always-false,bu- default,TODO
+chunk_019,ast,bu-1109-expression-always-true,plumb.ast.expression-always-true,bu- default,TODO
+chunk_019,ast,bu-1110-direct-use-of-threads-in-servlet,plumb.ast.direct-use-of-threads-in-servlet,bu- default,TODO
+chunk_019,ast,bu-1111-missing-password-masking,plumb.ast.missing-password-masking,bu- default,TODO
+chunk_019,ast,bu-1112-predictable-salt,plumb.ast.predictable-salt,bu- default,TODO
+chunk_019,ast,bu-1113-insecure-temp-file-perms,plumb.ast.insecure-temp-file-perms,bu- default,TODO
+chunk_019,ast,bu-1114-sensitive-info-uncleared,plumb.ast.sensitive-info-uncleared,bu- default,TODO
+chunk_019,ast,bu-1116-return-in-finally,plumb.ast.return-in-finally,bu- default,TODO
+chunk_019,ast,bu-1117-multiple-binds-same-port,plumb.ast.multiple-binds-same-port,bu- default,TODO
+chunk_019,ast,bu-1119-log-info-leak,plumb.ast.log-info-leak,bu- default,TODO
+chunk_019,ast,bu-1120-seeded-random,plumb.ast.seeded-random,bu- default,TODO
+chunk_019,ast,bu-1121-weak-crypto,plumb.ast.weak-crypto,bu- default,TODO
+chunk_019,ast,bu-1122-incomplete-cleanup,plumb.ast.incomplete-cleanup,bu- default,TODO
+chunk_019,ast,call-to-thread-run,plumb.ast.call-to-thread-run,lowercase-kebab default,TODO
+chunk_019,ast,catch-nullpointer-exception,plumb.ast.catch-nullpointer-exception,lowercase-kebab default,TODO
+chunk_019,ast,cov-0001-missing-break,plumb.ast.missing-break,cov- default (need manual review),TODO
+chunk_019,ast,cov-hibernate-bad-hashcode,plumb.ast.hibernate-bad-hashcode,cov- default (need manual review),TODO
+chunk_019,ast,cov-orm-load-null-check,plumb.ast.orm-load-null-check,cov- default (need manual review),TODO
+chunk_019,ast,cov-orm-lost-update,plumb.ast.orm-lost-update,cov- default (need manual review),TODO
+chunk_019,ast,cov-orm-unnecessary-get,plumb.ast.orm-unnecessary-get,cov- default (need manual review),TODO
+chunk_019,ast,cov-regex-confusion,plumb.ast.regex-confusion,cov- default (need manual review),TODO
+chunk_019,ast,cov-servlet-atomicity,plumb.ast.servlet-atomicity,cov- default (need manual review),TODO
+chunk_019,ast,cov-singleton-race,plumb.ast.singleton-race,cov- default (need manual review),TODO
+chunk_019,ast,cov-uninit-nonnull,plumb.ast.uninit-nonnull,cov- default (need manual review),TODO
+chunk_019,ast,cov-unlogged-security-exception,plumb.ast.unlogged-security-exception,cov- default (need manual review),TODO
+chunk_019,ast,cov-weak-url-sanitization,plumb.ast.weak-url-sanitization,cov- default (need manual review),TODO
+chunk_019,ast,cov-wrong-method,plumb.ast.wrong-method,cov- default (need manual review),TODO
+chunk_021,ast,dfa.class-based-issue,plumb.ast.class-based-issue,dfa.* generic fallback,TODO
+chunk_021,ast,dfa.cwe379-insecure-temp-file,plumb.ast.cwe379-insecure-temp-file,dfa.cwe prefix + CWE-379,TODO
+chunk_021,ast,dfa.cwe382-system-exit,plumb.ast.cwe382-system-exit,dfa.cwe prefix + CWE-382,TODO
+chunk_021,ast,dfa.cwe390-empty-catch-block,plumb.ast.cwe390-empty-catch-block,dfa.cwe prefix + CWE-390,TODO
+chunk_021,ast,dfa.cwe390-empty-error-block,plumb.ast.cwe390-empty-error-block,dfa.cwe prefix + CWE-390,TODO
+chunk_021,ast,dfa.cwe396-catch-generic-exception,plumb.ast.cwe396-catch-generic-exception,dfa.cwe prefix + CWE-396,TODO
+chunk_021,ast,dfa.cwe397-generic-throw-exception,plumb.ast.cwe397-generic-throw-exception,dfa.cwe prefix + CWE-397,TODO
+chunk_021,ast,dfa.cwe398-empty-block,plumb.ast.cwe398-empty-block,dfa.cwe prefix + CWE-398,TODO
+chunk_021,ast,dfa.cwe398-empty-statement,plumb.ast.cwe398-empty-statement,dfa.cwe prefix + CWE-398,TODO
+chunk_021,ast,dfa.cwe398-self-assign,plumb.ast.cwe398-self-assign,dfa.cwe prefix + CWE-398,TODO
+chunk_021,ast,dfa.cwe477-obsolete-function,plumb.ast.cwe477-obsolete-function,dfa.cwe prefix + CWE-477,TODO
+chunk_021,ast,dfa.cwe478-missing-default-case,plumb.ast.cwe478-missing-default-case,dfa.cwe prefix + CWE-478,TODO
+chunk_021,ast,dfa.cwe481-assigning-instead-comparing,plumb.ast.cwe481-assigning-instead-comparing,dfa.cwe prefix + CWE-481,TODO
+chunk_021,ast,dfa.cwe482-compare-instead-of-assign,plumb.ast.cwe482-compare-instead-of-assign,dfa.cwe prefix + CWE-482,TODO
+chunk_021,ast,dfa.cwe483-incorrect-block-delimitation,plumb.ast.cwe483-incorrect-block-delimitation,dfa.cwe prefix + CWE-483,TODO
+chunk_021,ast,dfa.cwe506-embedded-malicious-code,plumb.ast.cwe506-embedded-malicious-code,dfa.cwe prefix + CWE-506,TODO
+chunk_021,ast,dfa.cwe510-trapdoor,plumb.ast.cwe510-trapdoor,dfa.cwe prefix + CWE-510,TODO
+chunk_021,ast,dfa.cwe511-runtime-exec,plumb.ast.cwe511-runtime-exec,dfa.cwe prefix + CWE-511,TODO
+chunk_021,ast,dfa.cwe526-env-var,plumb.ast.cwe526-env-var,dfa.cwe prefix + CWE-526,TODO
+chunk_021,ast,dfa.cwe566-auth-bypass,plumb.ast.cwe566-auth-bypass,dfa.cwe prefix + CWE-566,TODO
+chunk_021,ast,dfa.cwe570-always-false,plumb.ast.cwe570-always-false,dfa.cwe prefix + CWE-570,TODO
+chunk_021,ast,dfa.cwe571-always-true,plumb.ast.cwe571-always-true,dfa.cwe prefix + CWE-571,TODO
+chunk_021,ast,dfa.cwe572-thread-run,plumb.ast.cwe572-thread-run,dfa.cwe prefix + CWE-572,TODO
+chunk_021,ast,dfa.cwe579-non-serializable,plumb.ast.cwe579-non-serializable,dfa.cwe prefix + CWE-579,TODO
+chunk_021,ast,dfa.cwe580-clone-without-super,plumb.ast.cwe580-clone-without-super,dfa.cwe prefix + CWE-580,TODO
+chunk_021,ast,dfa.cwe581-object-model-violation,plumb.ast.cwe581-object-model-violation,dfa.cwe prefix + CWE-581,TODO
+chunk_021,ast,dfa.cwe585-empty-sync,plumb.ast.cwe585-empty-sync,dfa.cwe prefix + CWE-585,TODO
+chunk_021,ast,dfa.cwe600-uncaught-exception,plumb.ast.cwe600-uncaught-exception,dfa.cwe prefix + CWE-600,TODO
+chunk_021,ast,dfa.cwe609-double-checked-locking,plumb.ast.cwe609-double-checked-locking,dfa.cwe prefix + CWE-609,TODO
+chunk_021,ast,dfa.cwe681-numeric-conversion,plumb.ast.cwe681-numeric-conversion,dfa.cwe prefix + CWE-681,TODO
+chunk_023,ast,dfa.deadlock-ab-ba,plumb.ast.deadlock-ab-ba,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.env-var-info-exposure,plumb.ast.env-var-info-exposure,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.info-exposure-querystring,plumb.ast.info-exposure-querystring,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.insufficient-session-expiration,plumb.ast.insufficient-session-expiration,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.null-deref-from-return,plumb.ast.null-deref-from-return,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.poor-code-quality,plumb.ast.poor-code-quality,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.random-iv-cbc,plumb.ast.random-iv-cbc,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.reachable-assertion,plumb.ast.reachable-assertion,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.sensitive-info-uncleared,plumb.ast.sensitive-info-uncleared,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.uncontrolled-recursion,plumb.ast.uncontrolled-recursion,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.uninit-nonnull,plumb.ast.uninit-nonnull,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.unlock-not-locked,plumb.ast.unlock-not-locked,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.unprotected-cred-transport,plumb.ast.unprotected-cred-transport,dfa.* generic fallback,TODO
+chunk_023,ast,dfa.unsalted-one-way-hash,plumb.ast.unsalted-one-way-hash,dfa.* generic fallback,TODO
+chunk_023,ast,do-while,plumb.ast.do-while,lowercase-kebab default,TODO
+chunk_023,ast,env-var-info-exposure-ast,plumb.ast.env-var-info-exposure-ast,lowercase-kebab default,TODO
+chunk_023,ast,explicit-finalize,plumb.ast.explicit-finalize,lowercase-kebab default,TODO
+chunk_023,ast,expression-always-false,plumb.ast.expression-always-false,lowercase-kebab default,TODO
+chunk_023,ast,expression-always-true,plumb.ast.expression-always-true,lowercase-kebab default,TODO
+chunk_023,ast,for,plumb.ast.for,lowercase-kebab default,TODO
+chunk_023,ast,for-each,plumb.ast.for-each,lowercase-kebab default,TODO
+chunk_023,ast,hardcoded-password-sink-ast,plumb.ast.hardcoded-password-sink-ast,lowercase-kebab default,TODO
+chunk_023,ast,if,plumb.ast.if,lowercase-kebab default,TODO
+chunk_023,ast,if-else,plumb.ast.if-else,lowercase-kebab default,TODO
+chunk_023,ast,incomplete-cleanup,plumb.ast.incomplete-cleanup,lowercase-kebab default,TODO
+chunk_023,ast,info-exposure-in-comment,plumb.ast.info-exposure-in-comment,lowercase-kebab default,TODO
+chunk_023,ast,insecure-temp-file-perms,plumb.ast.insecure-temp-file-perms,lowercase-kebab default,TODO
+chunk_023,ast,literal,plumb.ast.literal,lowercase-kebab default,TODO
+chunk_023,ast,literal-boolean-condition,plumb.ast.literal-boolean-condition,lowercase-kebab default,TODO
+chunk_023,ast,log-info-leak,plumb.ast.log-info-leak,lowercase-kebab default,TODO
+chunk_025,ast,missing-break,plumb.ast.missing-break,lowercase-kebab default,TODO
+chunk_025,ast,missing-password-masking,plumb.ast.missing-password-masking,lowercase-kebab default,TODO
+chunk_025,ast,multiple-binds-same-port,plumb.ast.multiple-binds-same-port,lowercase-kebab default,TODO
+chunk_025,ast,no-effect-statement,plumb.ast.no-effect-statement,lowercase-kebab default,TODO
+chunk_025,ast,null-deref-from-return-ast,plumb.ast.null-deref-from-return-ast,lowercase-kebab default,TODO
+chunk_025,ast,password,plumb.ast.password,lowercase-kebab default,TODO
+chunk_025,ast,pl-0025-empty-sync-block,plumb.ast.empty-sync-block,pl- default,TODO
+chunk_025,ast,pl-0027-cn-idiom-no-super-call,plumb.ast.cn-idiom-no-super-call,pl- default,TODO
+chunk_025,ast,pl-0028-compare-classes,plumb.ast.compare-classes,pl- default,TODO
+chunk_025,ast,pl-0030-explicit-finalize,plumb.ast.explicit-finalize,pl- default,TODO
+chunk_025,ast,pl-0031-finalize-only-overridden,plumb.ast.finalize-only-overridden,pl- default,TODO
+chunk_025,ast,pl-0032-finalize-without-super,plumb.ast.finalize-without-super,pl- default,TODO
+chunk_025,ast,pl-0036-public-static-mutable,plumb.ast.public-static-mutable,pl- default,TODO
+chunk_025,ast,pl-0039-redirect-without-exit,plumb.ast.redirect-without-exit,pl- default,TODO
+chunk_025,ast,pl-0041-system-exit,plumb.ast.system-exit,pl- default,TODO
+chunk_025,ast,pl-0045-use-arraylist-instead-of-vector,plumb.ast.use-arraylist-instead-of-vector,pl- default,TODO
+chunk_025,ast,pl-0047-call-to-thread-run,plumb.ast.call-to-thread-run,pl- default,TODO
+chunk_025,ast,pl-0048-double-checked-locking,plumb.ast.double-checked-locking,pl- default,TODO
+chunk_025,ast,pl-0052-use-try-with-resources,plumb.ast.use-try-with-resources,pl- default,TODO
+chunk_025,ast,pl-0058-law-of-demeter,plumb.ast.law-of-demeter,pl- default,TODO
+chunk_025,ast,pl-0062-for-loop-float,plumb.ast.for-loop-float,pl- default,TODO
+chunk_025,ast,pl-0069-javadoc-method,plumb.ast.javadoc-method,pl- default,TODO
+chunk_025,ast,pl-0073-do-not-call-gc,plumb.ast.do-not-call-gc,pl- default,TODO
+chunk_025,ast,pl-0075-avoid-messagedigest-field,plumb.ast.avoid-messagedigest-field,pl- default,TODO
+chunk_025,ast,pl-0078-avoid-octal-values,plumb.ast.avoid-octal-values,pl- default,TODO
+chunk_025,ast,pl-0092-use-concurrenthashmap,plumb.ast.use-concurrenthashmap,pl- default,TODO
+chunk_025,ast,pl-0096-use-diamond,plumb.ast.use-diamond,pl- default,TODO
+chunk_025,ast,pl-0097-unnecessary-fqn,plumb.ast.unnecessary-fqn,pl- default,TODO
+chunk_025,ast,pl-0099-unused-assignment,plumb.ast.unused-assignment,pl- default,TODO
+chunk_025,ast,pl-0101-unused-formal-parameter,plumb.ast.unused-formal-parameter,pl- default,TODO
+chunk_027,ast,pl-0103-style-unused-import,plumb.ast.style-unused-import,pl- default,TODO
+chunk_027,ast,pl-0104-method-arg-could-be-final,plumb.ast.method-arg-could-be-final,pl- default,TODO
+chunk_027,ast,pl-0105-local-var-could-be-final,plumb.ast.local-var-could-be-final,pl- default,TODO
+chunk_027,ast,pl-0107-return-from-finally,plumb.ast.return-from-finally,pl- default,TODO
+chunk_027,ast,pl-0108-use-stringbuffer,plumb.ast.use-stringbuffer,pl- default,TODO
+chunk_027,ast,pl-0110-at-least-one-constructor,plumb.ast.at-least-one-constructor,pl- default,TODO
+chunk_027,ast,pl-0114-premature-declaration,plumb.ast.premature-declaration,pl- default,TODO
+chunk_027,ast,pl-0116-simpledateformat-locale,plumb.ast.simpledateformat-locale,pl- default,TODO
+chunk_027,ast,pl-0117-parse-error,plumb.ast.parse-error,pl- default,TODO
+chunk_027,ast,pl-0119-literals-first,plumb.ast.literals-first,pl- default,TODO
+chunk_027,ast,pl-0123-lose-exception-info,plumb.ast.lose-exception-info,pl- default,TODO
+chunk_027,ast,pl-0132-equal-comparison,plumb.ast.equal-comparison,pl- default,TODO
+chunk_027,ast,pl-0135-redundant-init,plumb.ast.redundant-init,pl- default,TODO
+chunk_027,ast,pl-0137-suspicious-equals,plumb.ast.suspicious-equals,pl- default,TODO
+chunk_027,ast,pl-0142-while-literal-boolean,plumb.ast.while-literal-boolean,pl- default,TODO
+chunk_027,ast,pl-0151-preserve-stack,plumb.ast.preserve-stack,pl- default,TODO
+chunk_027,ast,pl-0152-reassign-loop-var,plumb.ast.reassign-loop-var,pl- default,TODO
+chunk_027,ast,pl-0154-compare-objects-with-equals,plumb.ast.compare-objects-with-equals,pl- default,TODO
+chunk_027,ast,pl-0162-assign-in-operand,plumb.ast.assign-in-operand,pl- default,TODO
+chunk_027,ast,pl-0167-bigdec-double,plumb.ast.bigdec-double,pl- default,TODO
+chunk_027,ast,pl-0189-method-naming,plumb.ast.method-naming,pl- default,TODO
+chunk_027,ast,pl-0190-hardcoded-uri,plumb.ast.hardcoded-uri,pl- default,TODO
+chunk_027,ast,pl-0191-nested-block,plumb.ast.nested-block,pl- default,TODO
+chunk_027,ast,pl-0196-return-bool,plumb.ast.return-bool,pl- default,TODO
+chunk_027,ast,pl-0200-throw-finally,plumb.ast.throw-finally,pl- default,TODO
+chunk_027,ast,pl-0202-catch-throwable,plumb.ast.catch-throwable,pl- default,TODO
+chunk_027,ast,pl-0204-dup-string,plumb.ast.dup-string,pl- default,TODO
+chunk_027,ast,pl-0204-style-class-naming,plumb.ast.style-class-naming,pl- default,TODO
+chunk_027,ast,pl-0206-equals-hash,plumb.ast.equals-hash,pl- default,TODO
+chunk_027,ast,pl-0213-string-eq,plumb.ast.string-eq,pl- default,TODO
+chunk_029,ast,pl-0215-ctor-method,plumb.ast.ctor-method,pl- default,TODO
+chunk_029,ast,pl-0216-conditional-constant,plumb.ast.conditional-constant,pl- default,TODO
+chunk_029,ast,pl-0219-null-assignment,plumb.ast.null-assignment,pl- default,TODO
+chunk_029,ast,pl-0222-short-variable,plumb.ast.short-variable,pl- default,TODO
+chunk_029,ast,pl-0226-singular-field,plumb.ast.singular-field,pl- default,TODO
+chunk_029,ast,pl-0229-missing-serial-version-uid,plumb.ast.missing-serial-version-uid,pl- default,TODO
+chunk_029,ast,pl-0229-use-varargs,plumb.ast.use-varargs,pl- default,TODO
+chunk_029,ast,pl-0232-package-case,plumb.ast.package-case,pl- default,TODO
+chunk_029,ast,pl-0246-array-key,plumb.ast.array-key,pl- default,TODO
+chunk_029,ast,pl-0250-switch-few,plumb.ast.switch-few,pl- default,TODO
+chunk_029,ast,pl-0251-class-name-long,plumb.ast.class-name-long,pl- default,TODO
+chunk_029,ast,pl-0257-catch-log,plumb.ast.catch-log,pl- default,TODO
+chunk_029,ast,pl-0258-bool-if,plumb.ast.bool-if,pl- default,TODO
+chunk_029,ast,pl-0259-reduce-visibility,plumb.ast.reduce-visibility,pl- default,TODO
+chunk_029,ast,pl-0260-bc-unconfirmed-cast,plumb.ast.bc-unconfirmed-cast,pl- default,TODO
+chunk_029,ast,pl-0262-bit-and,plumb.ast.bit-and,pl- default,TODO
+chunk_029,ast,pl-0263-bit-signed-check,plumb.ast.bit-signed-check,pl- default,TODO
+chunk_029,ast,pl-0265-ei-expose-rep2,plumb.ast.ei-expose-rep2,pl- default,TODO
+chunk_029,ast,pl-0267-st-write-static-from-instance,plumb.ast.st-write-static-from-instance,pl- default,TODO
+chunk_029,ast,pl-0268-eq-self-no-object,plumb.ast.eq-self-no-object,pl- default,TODO
+chunk_029,ast,pl-0269-se-bad-field,plumb.ast.se-bad-field,pl- default,TODO
+chunk_029,ast,pl-0270-bit-or,plumb.ast.bit-or,pl- default,TODO
+chunk_029,ast,pl-0273-generic-exception,plumb.ast.generic-exception,pl- default,TODO
+chunk_029,ast,pl-0275-field-naming,plumb.ast.field-naming,pl- default,TODO
+chunk_029,ast,pl-0281-loop-once,plumb.ast.loop-once,pl- default,TODO
+chunk_029,ast,pl-0282-synchronized-lock,plumb.ast.synchronized-lock,pl- default,TODO
+chunk_029,ast,pl-0287-infinite-loop,plumb.ast.infinite-loop,pl- default,TODO
+chunk_029,ast,pl-0288-primitives-boxed,plumb.ast.primitives-boxed,pl- default,TODO
+chunk_029,ast,pl-0290-optional-get,plumb.ast.optional-get,pl- default,TODO
+chunk_029,ast,pl-0293-locale-root,plumb.ast.locale-root,pl- default,TODO
+chunk_031,ast,pl-0296-dm-boxed-primitive,plumb.ast.dm-boxed-primitive,pl- default,TODO
+chunk_031,ast,pl-0297-np-always-null,plumb.ast.np-always-null,pl- default,TODO
+chunk_031,ast,pl-0298-ec-incompatible,plumb.ast.ec-incompatible,pl- default,TODO
+chunk_031,ast,pl-0300-ec-bad-array-compare,plumb.ast.ec-bad-array-compare,pl- default,TODO
+chunk_031,ast,pl-0302-fe-floating-point,plumb.ast.fe-floating-point,pl- default,TODO
+chunk_031,ast,pl-0303-fi-useless-block,plumb.ast.fi-useless-block,pl- default,TODO
+chunk_031,ast,pl-0305-icast-int-mult-long,plumb.ast.icast-int-mult-long,pl- default,TODO
+chunk_031,ast,pl-0306-im-average,plumb.ast.im-average,pl- default,TODO
+chunk_031,ast,pl-0307-im-bad-check-odd,plumb.ast.im-bad-check-odd,pl- default,TODO
+chunk_031,ast,pl-0308-io-resource-both,plumb.ast.io-resource-both,pl- default,TODO
+chunk_031,ast,pl-0312-pz-reuse-entry,plumb.ast.pz-reuse-entry,pl- default,TODO
+chunk_031,ast,pl-0313-qba-boolean-assign,plumb.ast.qba-boolean-assign,pl- default,TODO
+chunk_031,ast,pl-0314-rv-negating-compareto,plumb.ast.rv-negating-compareto,pl- default,TODO
+chunk_031,ast,pl-0316-rv-return-ignored,plumb.ast.rv-return-ignored,pl- default,TODO
+chunk_031,ast,pl-0317-si-instance-before-final,plumb.ast.si-instance-before-final,pl- default,TODO
+chunk_031,ast,pl-0318-swl-sleep-lock,plumb.ast.swl-sleep-lock,pl- default,TODO
+chunk_031,ast,pl-0321-il-container-sequencing,plumb.ast.il-container-sequencing,pl- default,TODO
+chunk_031,ast,pl-0322-range-array-length,plumb.ast.range-array-length,pl- default,TODO
+chunk_031,ast,pl-0323-range-array-offset,plumb.ast.range-array-offset,pl- default,TODO
+chunk_031,ast,pl-0324-range-string-length,plumb.ast.range-string-length,pl- default,TODO
+chunk_031,ast,pl-0326-range-array-index,plumb.ast.range-array-index,pl- default,TODO
+chunk_031,ast,pl-0328-np-sync-unshared,plumb.ast.np-sync-unshared,pl- default,TODO
+chunk_031,ast,pl-0329-np-load-null,plumb.ast.np-load-null,pl- default,TODO
+chunk_031,ast,pl-0330-bc-equals-no-null,plumb.ast.bc-equals-no-null,pl- default,TODO
+chunk_031,ast,pl-0331-bc-equals-no-hash,plumb.ast.bc-equals-no-hash,pl- default,TODO
+chunk_031,ast,pl-0332-bc-bad-cast-abstract,plumb.ast.bc-bad-cast-abstract,pl- default,TODO
+chunk_031,ast,pl-0333-ec-no-read,plumb.ast.ec-no-read,pl- default,TODO
+chunk_031,ast,pl-0335-ec-null-vararg,plumb.ast.ec-null-vararg,pl- default,TODO
+chunk_031,ast,pl-0336-ec-bad-array-store,plumb.ast.ec-bad-array-store,pl- default,TODO
+chunk_031,ast,pl-0338-he-hashcode-signature,plumb.ast.he-hashcode-signature,pl- default,TODO
+chunk_033,ast,pl-0339-dmi-hardcoded-path,plumb.ast.dmi-hardcoded-path,pl- default,TODO
+chunk_033,ast,pl-0340-dmi-bad-month,plumb.ast.dmi-bad-month,pl- default,TODO
+chunk_033,ast,pl-0341-dmi-collection-urls,plumb.ast.dmi-collection-urls,pl- default,TODO
+chunk_033,ast,pl-0344-iil-deref-readline,plumb.ast.iil-deref-readline,pl- default,TODO
+chunk_033,ast,pl-0405-design-for-extension,plumb.ast.design-for-extension,pl- default,TODO
+chunk_033,ast,pl-0406-equals-hashcode,plumb.ast.equals-hashcode,pl- default,TODO
+chunk_033,ast,pl-0408-final-local-variable,plumb.ast.final-local-variable,pl- default,TODO
+chunk_033,ast,pl-0409-final-parameters,plumb.ast.final-parameters,pl- default,TODO
+chunk_033,ast,pl-0413-left-curly,plumb.ast.left-curly,pl- default,TODO
+chunk_033,ast,pl-0420-package-declaration,plumb.ast.package-declaration,pl- default,TODO
+chunk_033,ast,pl-0424-super-clone,plumb.ast.super-clone,pl- default,TODO
+chunk_033,ast,pl-0425-super-finalize,plumb.ast.super-finalize,pl- default,TODO
+chunk_033,ast,pl-0432-bad-abstract-class-name,plumb.ast.bad-abstract-class-name,pl- default,TODO
+chunk_033,ast,pl-0435-catch-of-throwable,plumb.ast.catch-of-throwable,pl- default,TODO
+chunk_033,ast,pl-0437-child-class-shadow-field,plumb.ast.child-class-shadow-field,pl- default,TODO
+chunk_033,ast,pl-0439-collection-inappropriate,plumb.ast.collection-inappropriate,pl- default,TODO
+chunk_033,ast,pl-0441-ctor-calling-overridable,plumb.ast.ctor-calling-overridable,pl- default,TODO
+chunk_033,ast,pl-0442-diamond-operator,plumb.ast.diamond-operator,pl- default,TODO
+chunk_033,ast,pl-0444-equals-arg-type,plumb.ast.equals-arg-type,pl- default,TODO
+chunk_033,ast,pl-0446-hardcoded-ip,plumb.ast.hardcoded-ip,pl- default,TODO
+chunk_033,ast,pl-0447-iterator-next-exception,plumb.ast.iterator-next-exception,pl- default,TODO
+chunk_033,ast,pl-0454-package-info,plumb.ast.package-info,pl- default,TODO
+chunk_033,ast,pl-0462-annotation-table,plumb.ast.annotation-table,pl- default,TODO
+chunk_033,ast,pl-0464-avoid-nested-blocks,plumb.ast.avoid-nested-blocks,pl- default,TODO
+chunk_033,ast,pl-0470-explicit-initialization,plumb.ast.explicit-initialization,pl- default,TODO
+chunk_033,ast,pl-0477-javadoc-type-strict,plumb.ast.javadoc-type-strict,pl- default,TODO
+chunk_033,ast,pl-0538-declaration-order,plumb.ast.declaration-order,pl- default,TODO
+chunk_033,ast,pl-0551-abstract-naming,plumb.ast.abstract-naming,pl- default,TODO
+chunk_033,ast,pl-0552-array-naming-strict,plumb.ast.array-naming-strict,pl- default,TODO
+chunk_033,ast,pl-0557-literals-in-if,plumb.ast.literals-in-if,pl- default,TODO
+chunk_035,ast,pl-0575-immutable-field-strict,plumb.ast.immutable-field-strict,pl- default,TODO
+chunk_035,ast,pl-0579-long-var-strict,plumb.ast.long-var-strict,pl- default,TODO
+chunk_035,ast,pl-0589-type-name,plumb.ast.type-name,pl- default,TODO
+chunk_035,ast,pl-0595-import-control,plumb.ast.import-control,pl- default,TODO
+chunk_035,ast,pl-0608--self-assignment,plumb.ast.-self-assignment,pl- default,TODO
+chunk_035,ast,pl-0609--param-hides-field,plumb.ast.-param-hides-field,pl- default,TODO
+chunk_035,ast,pl-0611--ignored-result,plumb.ast.-ignored-result,pl- default,TODO
+chunk_035,ast,pl-0612--ambiguous-precedence,plumb.ast.-ambiguous-precedence,pl- default,TODO
+chunk_035,ast,pl-0613--array-equality,plumb.ast.-array-equality,pl- default,TODO
+chunk_035,ast,pl-0700-missing-deprecated,plumb.ast.missing-deprecated,pl- default,TODO
+chunk_035,ast,pl-0707-equals-avoid-null,plumb.ast.equals-avoid-null,pl- default,TODO
+chunk_035,ast,pl-0708-jumbled-incrementer,plumb.ast.jumbled-incrementer,pl- default,TODO
+chunk_035,ast,pl-0711-non-serializable-class,plumb.ast.non-serializable-class,pl- default,TODO
+chunk_035,ast,pl-0712-absent-codeblock-in-case,plumb.ast.absent-codeblock-in-case,pl- default,TODO
+chunk_035,ast,pl-0712-assignment-to-non-final-static,plumb.ast.assignment-to-non-final-static,pl- default,TODO
+chunk_035,ast,pl-0713-wait-notify-in-loop,plumb.ast.wait-notify-in-loop,pl- default,TODO
+chunk_035,ast,pl-0714-unused-throws,plumb.ast.unused-throws,pl- default,TODO
+chunk_035,ast,pl-0715-newline-at-eof,plumb.ast.newline-at-eof,pl- default,TODO
+chunk_035,ast,pl-0719-line-length,plumb.ast.line-length,pl- default,TODO
+chunk_035,ast,pl-0720-avoid-star-import,plumb.ast.avoid-star-import,pl- default,TODO
+chunk_035,ast,pl-0721-unused-imports,plumb.ast.unused-imports,pl- default,TODO
+chunk_035,ast,pl-0724-print-stack-trace,plumb.ast.print-stack-trace,pl- default,TODO
+chunk_035,ast,pl-0726-magic-number,plumb.ast.magic-number,pl- default,TODO
+chunk_035,ast,pl-0728-covariant-equals,plumb.ast.covariant-equals,pl- default,TODO
+chunk_035,ast,pl-604-comments-indentation,plumb.ast.604-comments-indentation,pl- default,TODO
+chunk_035,ast,pl-607-indentation,plumb.ast.607-indentation,pl- default,TODO
+chunk_035,ast,pl-611-missing-javadoc-method,plumb.ast.611-missing-javadoc-method,pl- default,TODO
+chunk_035,ast,pl-612-missing-javadoc-package,plumb.ast.612-missing-javadoc-package,pl- default,TODO
+chunk_035,ast,pl-613-missing-javadoc-type,plumb.ast.613-missing-javadoc-type,pl- default,TODO
+chunk_035,ast,pl-616-no-code-in-file,plumb.ast.616-no-code-in-file,pl- default,TODO
+chunk_037,ast,pl-637-confused-inheritance,plumb.ast.637-confused-inheritance,pl- default,TODO
+chunk_037,ast,pl-644-jdk-obsolete-collection,plumb.ast.644-jdk-obsolete-collection,pl- default,TODO
+chunk_037,ast,pl-655-questionable-boolean-assign,plumb.ast.655-questionable-boolean-assign,pl- default,TODO
+chunk_037,ast,pl-663-unnecessary-enum-case,plumb.ast.663-unnecessary-enum-case,pl- default,TODO
+chunk_037,ast,pl-664-unnecessary-fully-qualified-enum,plumb.ast.664-unnecessary-fully-qualified-enum,pl- default,TODO
+chunk_037,ast,plumb.ai.cleartext-socket-usage,plumb.ast.cleartext-socket-usage,plumb.ai.* → mapped to plumb.ast.*,TODO
+chunk_037,ast,plumb.ai.comment-info-leak,plumb.ast.comment-info-leak,plumb.ai.* → mapped to plumb.ast.*,TODO
+chunk_037,ast,plumb.ai.error-message-info-leak,plumb.ast.error-message-info-leak,plumb.ai.* → mapped to plumb.ast.*,TODO
+chunk_037,ast,plumb.ai.missing-password-masking,plumb.ast.missing-password-masking,plumb.ai.* → mapped to plumb.ast.*,TODO
+chunk_037,ast,plumb.ai.suspicious-comment,plumb.ast.suspicious-comment,plumb.ai.* → mapped to plumb.ast.*,TODO
+chunk_037,ast,plumb.ast.hard-coded-password-sink,plumb.ast.hard-coded-password-sink,plumb.ast.* → mapped to plumb.ast.*,TODO
+chunk_037,ast,plumb.ast.null-deref-from-return,plumb.ast.null-deref-from-return,plumb.ast.* → mapped to plumb.ast.*,TODO
+chunk_037,ast,plumb.ast.unused-variable-assignment,plumb.ast.unused-variable-assignment,plumb.ast.* → mapped to plumb.ast.*,TODO
+chunk_037,ast,plumb.ast.weak-prng,plumb.ast.weak-prng,plumb.ast.* → mapped to plumb.ast.*,TODO
+chunk_037,ast,plumb.resource.leak,plumb.ast.leak,plumb.resource.* → mapped to plumb.ast.*,TODO
+chunk_037,ast,predictable-salt,plumb.ast.predictable-salt,lowercase-kebab default,TODO
+chunk_037,ast,print-stack-trace,plumb.ast.print-stack-trace,lowercase-kebab default,TODO
+chunk_037,ast,redirect-without-exit,plumb.ast.redirect-without-exit,lowercase-kebab default,TODO
+chunk_037,ast,return-in-finally,plumb.ast.return-in-finally,lowercase-kebab default,TODO
+chunk_037,ast,seeded-random,plumb.ast.seeded-random,lowercase-kebab default,TODO
+chunk_037,ast,string-eq-operator,plumb.ast.string-eq-operator,lowercase-kebab default,TODO
+chunk_037,ast,thread-in-servlet,plumb.ast.thread-in-servlet,lowercase-kebab default,TODO
+chunk_037,ast,unbounded-mem-alloc,plumb.ast.unbounded-mem-alloc,lowercase-kebab default,TODO
+chunk_037,ast,uncleared-sensitive-info,plumb.ast.uncleared-sensitive-info,lowercase-kebab default,TODO
+chunk_037,ast,unused-variable-assignment,plumb.ast.unused-variable-assignment,lowercase-kebab default,TODO
+chunk_037,ast,use-try-with-resources,plumb.ast.use-try-with-resources,lowercase-kebab default,TODO
+chunk_037,ast,weak-crypto,plumb.ast.weak-crypto,lowercase-kebab default,TODO
+chunk_037,ast,weak-prng,plumb.ast.weak-prng,lowercase-kebab default,TODO
+chunk_037,ast,while,plumb.ast.while,lowercase-kebab default,TODO
+chunk_037,boundary,dfa.cwe193-off-by-one-loop,plumb.boundary.cwe193-off-by-one-loop,dfa.cwe prefix + CWE-193,TODO
+chunk_039,boundary,loose.numeric.divide-by-zero,plumb.boundary.divide-by-zero,loose.* prefix,TODO
+chunk_039,boundary,loose.numeric.integer-overflow,plumb.boundary.integer-overflow,loose.* prefix,TODO
+chunk_039,boundary,loose.numeric.integer-underflow,plumb.boundary.integer-underflow,loose.* prefix,TODO
+chunk_039,boundary,loose.numeric.truncation,plumb.boundary.truncation,loose.* prefix,TODO
+chunk_039,boundary,loose.numeric.unchecked-array-index,plumb.boundary.unchecked-array-index,loose.* prefix,TODO
+chunk_039,boundary,loose.string.format-string,plumb.boundary.format-string,loose.* prefix,TODO
+chunk_039,boundary,loose.taint.format-string-sink,plumb.boundary.format-string-sink,loose.* prefix,TODO
+chunk_039,boundary,loose.taint.http-response-splitting,plumb.boundary.http-response-splitting,loose.* prefix,TODO
+chunk_039,boundary,loose.taint.sql-injection-sink,plumb.boundary.sql-injection-sink,loose.* prefix,TODO
+chunk_039,boundary,plumb.boundary.array-out-of-bounds,plumb.boundary.array-out-of-bounds,plumb.boundary.* → mapped to plumb.boundary.*,TODO
+chunk_039,boundary,plumb.boundary.divide-by-zero,plumb.boundary.divide-by-zero,plumb.boundary.* → mapped to plumb.boundary.*,TODO
+chunk_039,boundary,plumb.boundary.integer-overflow,plumb.boundary.integer-overflow,plumb.boundary.* → mapped to plumb.boundary.*,TODO
+chunk_039,boundary,plumb.boundary.integer-underflow,plumb.boundary.integer-underflow,plumb.boundary.* → mapped to plumb.boundary.*,TODO
+chunk_039,boundary,plumb.numeric.divide-by-zero,plumb.boundary.divide-by-zero,plumb.numeric.* → mapped to plumb.boundary.*,TODO
+chunk_039,boundary,plumb.numeric.integer-overflow,plumb.boundary.integer-overflow,plumb.numeric.* → mapped to plumb.boundary.*,TODO
+chunk_039,boundary,plumb.numeric.integer-underflow,plumb.boundary.integer-underflow,plumb.numeric.* → mapped to plumb.boundary.*,TODO
+chunk_039,boundary,plumb.numeric.unchecked-array-index,plumb.boundary.unchecked-array-index,plumb.numeric.* → mapped to plumb.boundary.*,TODO
+chunk_039,boundary,plumb.numeric.unchecked-loop-condition,plumb.boundary.unchecked-loop-condition,plumb.numeric.* → mapped to plumb.boundary.*,TODO
+chunk_039,concurrency,dfa.cwe835-infinite-loop,plumb.concurrency.cwe835-infinite-loop,dfa.cwe prefix + CWE-835,TODO
+chunk_039,crypto,dfa.cwe325-missing-crypto-step,plumb.crypto.cwe325-missing-crypto-step,dfa.cwe prefix + CWE-325,TODO
+chunk_039,dfa,plumb.dfa.compare-classes-by-name,plumb.dfa.compare-classes-by-name,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_039,dfa,plumb.dfa.cwe835-infinite-loop,plumb.dfa.cwe835-infinite-loop,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_039,dfa,plumb.dfa.deadlock-ab-ba,plumb.dfa.deadlock-ab-ba,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_039,dfa,plumb.dfa.hard-coded-crypto-key,plumb.dfa.hard-coded-crypto-key,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_039,dfa,plumb.dfa.hard-coded-password-sink,plumb.dfa.hard-coded-password-sink,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_039,dfa,plumb.dfa.insecure-cookie,plumb.dfa.insecure-cookie,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_039,dfa,plumb.dfa.insecure-temp-file-perms,plumb.dfa.insecure-temp-file-perms,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_039,dfa,plumb.dfa.missing-crypto-init,plumb.dfa.missing-crypto-init,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_039,dfa,plumb.dfa.process-control,plumb.dfa.process-control,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_039,dfa,plumb.dfa.reachable-assertion,plumb.dfa.reachable-assertion,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_041,dfa,plumb.dfa.resource-exhaustion,plumb.dfa.resource-exhaustion,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_041,dfa,plumb.dfa.unchecked-loop-condition,plumb.dfa.unchecked-loop-condition,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_041,dfa,plumb.dfa.weak-prng,plumb.dfa.weak-prng,plumb.dfa.* → mapped to plumb.dfa.*,TODO
+chunk_041,dfa,plumb.pointer.null-dereference,plumb.dfa.null-dereference,plumb.pointer.* → mapped to plumb.dfa.*,TODO
+chunk_041,dfa,plumb.pointer.use-after-free,plumb.dfa.use-after-free,plumb.pointer.* → mapped to plumb.dfa.*,TODO
+chunk_041,info,dfa.cwe535-shell-error-exposure,plumb.info.cwe535-shell-error-exposure,dfa.cwe prefix + CWE-535,TODO
+chunk_041,info,dfa.cwe539-persistent-cookie,plumb.info.cwe539-persistent-cookie,dfa.cwe prefix + CWE-539,TODO
+chunk_041,info,dfa.cwe546-suspicious-comment,plumb.info.cwe546-suspicious-comment,dfa.cwe prefix + CWE-546,TODO
+chunk_041,info,plumb.sensitive.data-leak,plumb.info.data-leak,plumb.sensitive.* → mapped to plumb.info.*,TODO
+chunk_041,info,plumb.sensitive.pii-leak,plumb.info.pii-leak,plumb.sensitive.* → mapped to plumb.info.*,TODO
+chunk_041,naming,ABSENT_CODEBLOCK_IN_CASE,plumb.naming.absent-codeblock-in-case,UPPER_SNAKE naming/style,TODO
+chunk_041,resource,dfa.cwe404-resource-shutdown,plumb.resource.cwe404-resource-shutdown,dfa.cwe prefix + CWE-404,TODO
+chunk_041,style,bu-0201-style-empty-catch,plumb.style.style-empty-catch,bu- slug style,TODO
+chunk_041,style,bu-0202-style-system-out,plumb.style.style-system-out,bu- slug style,TODO
+chunk_041,style,bu-0203-style-unused-import,plumb.style.style-unused-import,bu- slug style,TODO
+chunk_041,style,bu-0204-style-class-naming,plumb.style.style-class-naming,bu- slug style,TODO
+chunk_041,style,bu-0205-style-method-naming,plumb.style.style-method-naming,bu- slug style,TODO
+chunk_041,style,bu-0206-style-constant-naming,plumb.style.style-constant-naming,bu- slug style,TODO
+chunk_041,style,bu-0207-style-method-too-long,plumb.style.style-method-too-long,bu- slug style,TODO
+chunk_041,style,bu-0208-style-catch-generic,plumb.style.style-catch-generic,bu- slug style,TODO
+chunk_041,style,bu-0209-style-empty-control-statement,plumb.style.style-empty-control-statement,bu- slug style,TODO
+chunk_041,style,bu-0210-style-empty-block,plumb.style.style-empty-block,bu- slug style,TODO
+chunk_041,style,bu-0606-class-var-visibility,plumb.style.class-var-visibility,bu- slug style,TODO
+chunk_041,style,bu-0702-empty-method-in-abstract,plumb.style.empty-method-in-abstract,bu- slug style,TODO
+chunk_041,style,bu-0705-comment-default-access,plumb.style.comment-default-access,bu- slug style,TODO
+chunk_041,style,bu-0805-boolean-method-returns-null,plumb.style.boolean-method-returns-null,bu- slug style,TODO
+chunk_041,style,bu-1115-info-exposure-in-comment,plumb.style.info-exposure-in-comment,bu- slug style,TODO
+chunk_041,style,plumb.style.assignment-in-conditional,plumb.style.assignment-in-conditional,plumb.style.* → mapped to plumb.style.*,TODO
+chunk_041,style,plumb.style.literal-boolean-condition,plumb.style.literal-boolean-condition,plumb.style.* → mapped to plumb.style.*,TODO
+chunk_041,style,plumb.style.uncontrolled-recursion,plumb.style.uncontrolled-recursion,plumb.style.* → mapped to plumb.style.*,TODO
+chunk_043,style,plumb.style.unused-assignment,plumb.style.unused-assignment,plumb.style.* → mapped to plumb.style.*,TODO
+chunk_043,style,plumb.style.unused-local,plumb.style.unused-local,plumb.style.* → mapped to plumb.style.*,TODO
+chunk_043,style,plumb.style.unused-parameter,plumb.style.unused-parameter,plumb.style.* → mapped to plumb.style.*,TODO
+chunk_043,style,plumb.style.unused-private-field,plumb.style.unused-private-field,plumb.style.* → mapped to plumb.style.*,TODO
+chunk_043,taint,bu-0001-taint-request-param,plumb.taint.taint-request-param,bu- slug taint,TODO
+chunk_043,taint,bu-0002-taint-request-header,plumb.taint.taint-request-header,bu- slug taint,TODO
+chunk_043,taint,bu-0003-taint-system-in,plumb.taint.taint-system-in,bu- slug taint,TODO
+chunk_043,taint,bu-0004-taint-file-read,plumb.taint.taint-file-read,bu- slug taint,TODO
+chunk_043,taint,bu-0005-taint-network-recv,plumb.taint.taint-network-recv,bu- slug taint,TODO
+chunk_043,taint,bu-0006-taint-console-read,plumb.taint.taint-console-read,bu- slug taint,TODO
+chunk_043,taint,bu-0007-taint-db-result,plumb.taint.taint-db-result,bu- slug taint,TODO
+chunk_043,taint,bu-0008-taint-source-sensitive-data,plumb.taint.taint-source-sensitive-data,bu- slug taint,TODO
+chunk_043,taint,bu-0009-taint-source-system-property,plumb.taint.taint-source-system-property,bu- slug taint,TODO
+chunk_043,taint,bu-0010-taint-source-properties-file,plumb.taint.taint-source-properties-file,bu- slug taint,TODO
+chunk_043,taint,bu-0101-taint-sink-sql,plumb.taint.taint-sink-sql,bu- slug taint,TODO
+chunk_043,taint,bu-0102-taint-sink-cmd,plumb.taint.taint-sink-cmd,bu- slug taint,TODO
+chunk_043,taint,bu-0103-taint-sink-path,plumb.taint.taint-sink-path,bu- slug taint,TODO
+chunk_043,taint,bu-0104-taint-sink-xss,plumb.taint.taint-sink-xss,bu- slug taint,TODO
+chunk_043,taint,bu-0105-taint-sink-deserialize,plumb.taint.taint-sink-deserialize,bu- slug taint,TODO
+chunk_043,taint,bu-0106-taint-sink-url,plumb.taint.taint-sink-url,bu- slug taint,TODO
+chunk_043,taint,bu-0107-taint-sink-reflection,plumb.taint.taint-sink-reflection,bu- slug taint,TODO
+chunk_043,taint,bu-0108-taint-sink-log,plumb.taint.taint-sink-log,bu- slug taint,TODO
+chunk_043,taint,bu-0109-taint-sink-xpath,plumb.taint.taint-sink-xpath,bu- slug taint,TODO
+chunk_043,taint,bu-0110-taint-sink-ldap,plumb.taint.taint-sink-ldap,bu- slug taint,TODO
+chunk_043,taint,bu-0111-taint-sink-xml,plumb.taint.taint-sink-xml,bu- slug taint,TODO
+chunk_043,taint,bu-0112-taint-sink-header,plumb.taint.taint-sink-header,bu- slug taint,TODO
+chunk_043,taint,bu-0113-taint-sink-format,plumb.taint.taint-sink-format,bu- slug taint,TODO
+chunk_043,taint,bu-0114-taint-sink-nosql,plumb.taint.taint-sink-nosql,bu- slug taint,TODO
+chunk_043,taint,bu-0115-taint-sink-ognl,plumb.taint.taint-sink-ognl,bu- slug taint,TODO
+chunk_043,taint,bu-0116-taint-sink-regex,plumb.taint.taint-sink-regex,bu- slug taint,TODO
+chunk_045,taint,bu-0117-taint-sink-open-redirect,plumb.taint.taint-sink-open-redirect,bu- slug taint,TODO
+chunk_045,taint,bu-1118-redirect-without-exit,plumb.taint.redirect-without-exit,bu- slug taint,TODO
+chunk_045,taint,plumb.taint.bad-cert-verification,plumb.taint.bad-cert-verification,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.cleartext-network-credential-sink,plumb.taint.cleartext-network-credential-sink,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.cleartext-tx,plumb.taint.cleartext-tx,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.command-injection,plumb.taint.command-injection,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.el-injection,plumb.taint.el-injection,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.external-config-setting,plumb.taint.external-config-setting,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.format-string,plumb.taint.format-string,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.http-response-splitting,plumb.taint.http-response-splitting,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.insecure-random,plumb.taint.insecure-random,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.java-code-injection,plumb.taint.java-code-injection,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.jcr-injection,plumb.taint.jcr-injection,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.jsp-dynamic-include,plumb.taint.jsp-dynamic-include,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.ldap-injection,plumb.taint.ldap-injection,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.log-injection,plumb.taint.log-injection,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.ognl-injection,plumb.taint.ognl-injection,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.open-redirect,plumb.taint.open-redirect,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.path-traversal,plumb.taint.path-traversal,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.plaintext-password-sink,plumb.taint.plaintext-password-sink,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.session-fixation,plumb.taint.session-fixation,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.sql-injection,plumb.taint.sql-injection,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.ssrf,plumb.taint.ssrf,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.trust-boundary-violation,plumb.taint.trust-boundary-violation,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.uncontrolled-mem-alloc,plumb.taint.uncontrolled-mem-alloc,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.unsafe-deserialization,plumb.taint.unsafe-deserialization,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.unsafe-jni,plumb.taint.unsafe-jni,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.unsafe-reflection,plumb.taint.unsafe-reflection,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.weak-crypto,plumb.taint.weak-crypto,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_045,taint,plumb.taint.weak-prng,plumb.taint.weak-prng,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_047,taint,plumb.taint.xpath-injection,plumb.taint.xpath-injection,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_047,taint,plumb.taint.xss,plumb.taint.xss,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_047,taint,plumb.taint.xss-injection,plumb.taint.xss-injection,plumb.taint.* → mapped to plumb.taint.*,TODO
+chunk_047,taint,plumb.taint.xxe,plumb.taint.xxe,plumb.taint.* → mapped to plumb.taint.*,TODO

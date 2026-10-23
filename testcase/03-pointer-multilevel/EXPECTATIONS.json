@@ -1,0 +1,222 @@
+{
+  "category": "03-pointer-multilevel",
+  "notes": [
+    "R1113: rebuilt a second time. The first version scored CWE-416 use-after-free, which is not a valid Java defect -- Java has no free(), close() followed by another call is legal, and the rule was removed in R1105. The fixtures were then rewritten as genuine Java alias scenarios.",
+    "R1113 also fixed the fixtures themselves. Several methods carried comments saying SAFE or UNSAFE that contradicted their code: `immutableValueIsSafe` read `alias.length()` with no null check, and `aliasThroughContainer` dereferenced an unguarded `store.get(..)`. Those were real null dereferences, and because the precision gates were file-scoped they failed for reasons that had nothing to do with aliasing. A fixture that mislabels its own safety turns every measurement downstream of it into a coin flip.",
+    "R1113 scoping: TN cases are scoped to a line RANGE, not to a whole file. A file-level TN is unusable in this category because each fixture file deliberately contains both guarded (negative) and unguarded (positive) methods -- that pairing is the measurement. `anchor_fn` cannot be used either: findings carry no enclosing-method field, and for null-dereference the reported `sink_function` is the CALLEE (`StringBuilder.append/1`), never the fixture's own method.",
+    "Two different things are measured. L1-L5 are alias-INFRASTRUCTURE cases: no Java rule has 'an alias exists' as its defect, so they assert only that nothing is reported on the safe methods. They are precision gates whose failure mode is an over-approximating alias answer inventing a finding. L6 is the CONSUMER cases: the rules that actually read alias information, carrying true positives plus the negative controls proving they do not over-report.",
+    "R1112 measured a disagreement between the two layers answering the same question. ast-security-null-deref-from-return-ast and dfa-taint-null-deref-from-return both express the rule name NULL_DEREF_FROM_RETURN and both stay registered. The AST rule reports guarded references reached through a copy or a container because its null check looks for the same VARIABLE NAME; the dataflow rule follows the object. Recorded as known-limitation: each rule behaves as designed and the measurement is the distance between them, not a defect in either."
+  ],
+  "cases": [
+    {
+      "id": "L1-independent-objects",
+      "kind": "tn",
+      "file": "L1BasicAlias.java",
+      "line_from": 29,
+      "line_to": 36,
+      "cwes": [
+        "CWE-476"
+      ],
+      "note": "LAYER 1 CONTROL: two separate allocations. If the solver answered 'may alias' for these, every precision gate in this category would be vacuous.",
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ]
+    },
+    {
+      "id": "L1-alias-through-container",
+      "kind": "tn",
+      "file": "L1BasicAlias.java",
+      "line_from": 45,
+      "line_to": 56,
+      "cwes": [
+        "CWE-476"
+      ],
+      "note": "LAYER 1: the container is allocated inside the method, one object is put under a key and read back, the guard is on the stored name and the dereference is on the retrieved alias. Needs container store/load edges (R1112) plus guard transfer to stay silent. A container taken as a PARAMETER would not work: it has no points-to set because the method has no caller.",
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ]
+    },
+    {
+      "id": "L1-independent-container-entries",
+      "kind": "tn",
+      "file": "L1BasicAlias.java",
+      "line_from": 61,
+      "line_to": 74,
+      "cwes": [
+        "CWE-476"
+      ],
+      "note": "LAYER 1 CONTROL: two entries under two keys holding different objects. A single merged cell per container would conflate them, and because guard transfer READS that answer the imprecision would become a false safe.",
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ]
+    },
+    {
+      "id": "L2-distinct-children-not-aliased",
+      "kind": "tn",
+      "file": "L2FieldAlias.java",
+      "line_from": 31,
+      "line_to": 36,
+      "cwes": [
+        "CWE-476"
+      ],
+      "note": "LAYER 2 CONTROL: the same field name on two different receivers holds different objects. A field-insensitive analysis conflating (class, name) would conflate them here and in a guard-transfer consumer.",
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ]
+    },
+    {
+      "id": "L3-distinct-elements-not-aliased",
+      "kind": "tn",
+      "file": "L3CollectionCarrier.java",
+      "line_from": 31,
+      "line_to": 45,
+      "cwes": [
+        "CWE-476"
+      ],
+      "note": "LAYER 3 CONTROL: two elements of one list. List.add writes the ANY cell because the index is unknown at the call, so the two elements are deliberately NOT separable -- this case pins that the analysis does not pretend otherwise by reporting a defect it cannot justify.",
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ]
+    },
+    {
+      "id": "L3-map-keys-hold-distinct-objects",
+      "kind": "tn",
+      "file": "L3CollectionCarrier.java",
+      "line_from": 62,
+      "line_to": 72,
+      "cwes": [
+        "CWE-476"
+      ],
+      "note": "LAYER 3 CONTROL, and the sharpest probe in the category: one map holding two objects under two keys, guarded on the first and read back as the second. A merged cell per container would make get(\"b\") return the object stored under \"a\", and the guard would then silence an unrelated dereference -- a false safe produced by imprecision rather than by a real alias.",
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ]
+    },
+    {
+      "id": "L4-returned-object-aliased-in-caller",
+      "kind": "tn",
+      "file": "L4CrossMethodAlias.java",
+      "line_from": 27,
+      "line_to": 36,
+      "cwes": [
+        "CWE-476"
+      ],
+      "note": "LAYER 4: a callee's returned object bound to two locals, guarded on one and mutated through the other. Cross-method identity is answered by the 1-CFA points-to solver, NOT by CopyEquivalence -- union-find cannot express 'same origin, different call site, therefore distinct', and assuming it could produced exactly such a false negative in R1111.",
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ]
+    },
+    {
+      "id": "L4-unreturned-allocation-does-not-leak",
+      "kind": "tn",
+      "file": "L4CrossMethodAlias.java",
+      "line_from": 49,
+      "line_to": 55,
+      "cwes": [
+        "CWE-476"
+      ],
+      "note": "LAYER 4 CONTROL: the callee allocates two objects and returns one. The unreturned one must not reach the caller; an over-broad return summary would make it appear to.",
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ]
+    },
+    {
+      "id": "L5-old-value-reachable-after-reassignment",
+      "kind": "tn",
+      "file": "L5ReassignmentSsaGap.java",
+      "line_from": 15,
+      "line_to": 22,
+      "cwes": [
+        "CWE-476"
+      ],
+      "note": "LAYER 5: a local reassigned across two allocations with the first object still reachable through a field. Reassignment must not erase the old binding.",
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ]
+    },
+    {
+      "id": "L6-guarded-alias-across-callee-and-container",
+      "kind": "tn",
+      "file": "L6CombinedPipeline.java",
+      "line_from": 42,
+      "line_to": 53,
+      "cwes": [
+        "CWE-476"
+      ],
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ],
+      "note": "LAYER 6 CONSUMER, NEGATIVE: the value crosses a callee boundary and a container, is null-checked under one name, and dereferenced through an alias of that name. A guard constrains the OBJECT, so this is safe and the dataflow rule must stay silent."
+    },
+    {
+      "id": "L6-guarded-alias-through-list",
+      "kind": "tn",
+      "file": "L6CombinedPipeline.java",
+      "line_from": 101,
+      "line_to": 112,
+      "cwes": [
+        "CWE-476"
+      ],
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ],
+      "note": "LAYER 6 CONSUMER, NEGATIVE: the same transfer through a List element."
+    },
+    {
+      "id": "L6-shared-node-guarded-through-one-root",
+      "kind": "tn",
+      "file": "L6CombinedPipeline.java",
+      "line_from": 88,
+      "line_to": 97,
+      "cwes": [
+        "CWE-476"
+      ],
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ],
+      "note": "LAYER 6 CONSUMER, NEGATIVE: one Node reached through two roots' fields, null-checked through the left root, dereferenced through the right. Needs field sensitivity plus guard transfer."
+    },
+    {
+      "id": "L6-unguarded-list-position",
+      "kind": "tp",
+      "file": "L6CombinedPipeline.java",
+      "line": 125,
+      "cwes": [
+        "CWE-476"
+      ],
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ],
+      "note": "LAYER 6 CONSUMER, POSITIVE: the guard is on list position 0 and the dereference is on position 1, so the guard protects a different object."
+    },
+    {
+      "id": "L6-unguarded-sibling-field",
+      "kind": "tp",
+      "file": "L6CombinedPipeline.java",
+      "line": 82,
+      "cwes": [
+        "CWE-476"
+      ],
+      "rule_ids": [
+        "dfa-taint-null-deref-from-return"
+      ],
+      "note": "LAYER 6 CONSUMER, POSITIVE BUT UNREACHABLE: the guard protects one root's node and the other root's node is explicitly assigned null and dereferenced, which is a real CWE-476. It is recorded as a known limitation, not a defect in the rule's reasoning, because the missing capability is upstream of the checker: PointsToSolver's fact domain is a set of abstract objects with no null element, so `right.node = null` records nothing and the later load answers an empty set. An empty set must keep meaning 'unknown' -- treating it as null would invent a finding for every unmodelled field read. Closing this needs a tri-valued field fact, which is a change to the solver's fact domain rather than to this consumer. See R1113-null-field-limitation.json for the measurements, including the IR check that ruled out a translator defect.",
+      "status_override": "unreachable-known-limitation"
+    },
+    {
+      "id": "L6-AST-cannot-follow-the-alias",
+      "kind": "tn",
+      "file": "L6CombinedPipeline.java",
+      "line_from": 42,
+      "line_to": 53,
+      "cwes": [
+        "CWE-690"
+      ],
+      "rule_ids": [
+        "ast-security-null-deref-from-return-ast"
+      ],
+      "status_override": "known-limitation",
+      "note": "LAYER 6 CROSS-LAYER DISAGREEMENT: the AST rule looks for a null check on the SAME VARIABLE NAME, so it reports a reference reached through a copy or a container even when the object is guarded. The dataflow rule stays silent on the same code. Recorded as known-limitation rather than false-positive: each rule behaves as designed, and what is measured is the distance between them. Closing it means either giving the AST rule the alias analysis (changing its model from syntactic to semantic) or retiring it in favour of the dataflow one."
+    }
+  ]
+}

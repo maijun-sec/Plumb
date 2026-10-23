@@ -1,0 +1,20 @@
+﻿# Per-CWE YAML v2 for CWE191
+# R759-G: removed loose.numeric.integer-underflow (R759-F already
+# dropped it from the broad cross-CWE list). Kept plumb.boundary + plumb.numeric
+# (true positive rules).
+
+maxParallelism: 4
+cgStrategy: global
+aggressiveness: medium
+
+rules:
+  mode: whitelist
+  enabled:
+    - plumb.numeric.integer-underflow
+    - plumb.boundary.integer-underflow
+    - CatchGenericException
+    - UncheckedReturn
+    - plumb.resource.leak
+
+ai:
+  enabled: false

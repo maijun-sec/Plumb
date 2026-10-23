@@ -1,0 +1,40 @@
+/* Test what JavaParser does with escaped quotes in source. */
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.expr.StringLiteralExpr;
+
+public class Test {
+  public static void main(String[] args) {
+    // Source: r.getWriter().println("<form method=\"get\">");
+    //         r.getWriter().println("<input name=\"password\">");
+    // In Java source file, the inner quotes are escaped as \", and the whole
+    // thing is wrapped in a Java string literal, so in the test source we see:
+    //   r.getWriter().println(\"<form method=\\\"get\\\">\");
+    // which in the test's compiled String equals:
+    //   r.getWriter().println("<form method=\"get\">");
+    // The argument of println is then the literal:
+    //   <form method="get">
+    // JavaParser's StringLiteralExpr.getValue() should return the unescaped form
+    // (i.e. <form method="get">).
+    String realSrc =
+        "class C {\n"
+            + "  void m() {\n"
+            + "    r.getWriter().println(\"<form method=\\\"get\\\">\");\n"
+            + "    r.getWriter().println(\"<input name=\\\"password\\\">\");\n"
+            + "  }\n"
+            + "}\n";
+    System.out.println("=== Source string (debug) ===");
+    System.out.println(realSrc);
+    System.out.println("=== Source bytes ===");
+    for (char c : realSrc.toCharArray()) {
+      System.out.printf("  U+%04X%n", (int) c);
+    }
+    CompilationUnit cu = new JavaParser().parse(realSrc).getResult().get();
+    cu.findAll(StringLiteralExpr.class).forEach(s -> {
+      System.out.println("Found literal:");
+      System.out.println("  toString = " + s.toString());
+      System.out.println("  getValue = " + s.getValue());
+      System.out.println("  asString = " + s.asString());
+    });
+  }
+}

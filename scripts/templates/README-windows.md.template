@@ -1,0 +1,51 @@
+# Plumb __VERSION__ — 解压即用版 (Windows __ARCH__)
+
+> **自带 JRE 17**:解压即可运行,无需安装 Java。
+
+## 快速开始
+
+```cmd
+:: 1. 解压到任意目录
+::    (右键 plumb-__VERSION__-jre-windows-__ARCH__.zip -> Extract All...)
+
+:: 2. 打开 cmd, 进入目录
+cd plumb-__VERSION__-jre-windows-__ARCH__
+
+:: 3. 跑最小扫描
+bin\plumb.bat --help
+bin\plumb.bat -i C:\path\to\your\src\
+
+:: 4. NDJSON 输出到文件
+bin\plumb.bat -i C:\path\to\your\src\ -o findings.ndjson
+```
+
+## 启用 AI FP 消减 (可选)
+
+```cmd
+set MINIMAX_API_KEY=sk-...
+bin\plumb.bat -c conf\default-config.yaml -i C:\path\to\your\src\ --ai-dedup
+```
+
+## PowerShell 用法
+
+```powershell
+$env:MINIMAX_API_KEY = "sk-..."
+& ".\bin\plumb.bat" -i "C:\path\to\your\src\" --ai-dedup
+```
+
+## 内容
+
+- `bin\plumb.bat` — Windows cmd 启动器
+- `bin\plumb` — POSIX fallback (WSL / Git Bash)
+- `jre\` — jlink 优化后的最小 JRE 17 (~95 MB)
+- `lib\plumb-*.jar` — shaded uber-jar (76 MB,含所有依赖)
+- `conf\` — default-config.yaml + logback.xml
+- `docs\` — OVERVIEW + CHECKERS + ENVIRONMENT + CLI
+
+## 环境变量
+
+详见 `docs\ENVIRONMENT.md`。
+- `MINIMAX_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` — AI (可选)
+- `PLUMB_JAVA_OPTS` — 透传 JVM 参数 (默认 `-Xmx4g -XX:+UseG1GC`)
+- `PLUMB_DEBUG` — DEBUG 日志 (默认 false)
+- `http_proxy` / `https_proxy` — AI 出站代理

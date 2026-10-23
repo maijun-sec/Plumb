@@ -1,0 +1,26 @@
+﻿Alias map: 760 entries
+Rewrote 1044648 / 1613855 findings
+  Already canonical: 566091
+  Unknown ids (no alias): 3116
+
+Top 20 unknown ids (will need manual review):
+    1665  pl-0098-singleton-returning-new
+     301  plumb.ast.unbounded-mem-alloc
+     296  pl-0713-use-underscores-in-numeric-literals
+     144  pl-0723-system-out-println
+     144  pl-0149-system-println
+     100  pl-0451-method-too-complex
+     100  pl-0029-cyclomatic-complexity
+      51  dfa.cwe328-weak-hash
+      40  pl-0411-illegal-catch
+      36  pl-0113-empty-method-in-abstract
+      36  pl-0700-empty-method
+      36  pl-0343-dmi-useless-method
+      36  pl-0554-catch-throwable
+      31  pl-0130-empty-try-block
+      31  pl-0725-empty-block
+      21  pl-0727-java-ncss
+       8  pl-605-file-tab-character
+       8  pl-0271-tab-character
+       4  pl-0252-loop-breaks
+       4  pl-0146-use-utility-class

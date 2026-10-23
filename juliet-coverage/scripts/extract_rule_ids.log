@@ -1,0 +1,42 @@
+﻿Scanning 109 ndjson files...
+  0/109
+  20/109
+  40/109
+  60/109
+  80/109
+  100/109
+Done. Unique finding rule ids: 181
+
+Wrote 696 unique rule ids to D:\work\workspace\idea\engine\Plumb\juliet-coverage\data\rule_ids_inventory.csv
+
+Top 30 by source count:
+    3  plumb.numeric.unchecked-array-index                           finding[n=8942]
+    3  loose.numeric.unchecked-array-index                           finding[n=20062]
+    3  plumb.taint.format-string                                     finding[n=1152]
+    3  plumb.numeric.integer-overflow                                finding[n=18527]
+    3  plumb.numeric.integer-underflow                               finding[n=9404]
+    3  loose.numeric.integer-overflow                                finding[n=53619]
+    3  loose.numeric.integer-underflow                               finding[n=1875]
+    3  loose.numeric.truncation                                      finding[n=8423]
+    3  plumb.pointer.null-dereference                                finding[n=1566]
+    3  plumb.dfa.insecure-cookie                                     finding[n=2145]
+    3  plumb.numeric.divide-by-zero                                  finding[n=4]
+    3  loose.numeric.divide-by-zero                                  finding[n=4469]
+    3  plumb.dfa.resource-exhaustion                                 finding[n=8964]
+    3  plumb.taint.sql-injection                                     finding[n=3689]
+    3  bu-0803-catch-nullpointer-exception                           RuleRegistry
+    3  bu-0901-mutable-static-should-be-final                        RuleRegistry
+    3  bu-1103-avoid-print-stack-trace                               RuleRegistry
+    3  bu-1104-string-equality-with-equals                           RuleRegistry
+    3  cov-0001-missing-break                                        RuleRegistry
+    3  dfa.cwe477-obsolete-function                                  finding[n=68]
+    3  dfa.env-var-info-exposure                                     finding[n=12]
+    3  plumb.dfa.compare-classes-by-name                             finding[n=34]
+    3  plumb.dfa.hard-coded-crypto-key                               finding[n=36]
+    3  plumb.dfa.hard-coded-password-sink                            finding[n=392]
+    3  plumb.dfa.missing-crypto-init                                 finding[n=68]
+    3  plumb.dfa.process-control                                     finding[n=68]
+    3  plumb.sensitive.data-leak                                     finding[n=1263]
+    3  plumb.sensitive.pii-leak                                      finding[n=1263]
+    3  plumb.style.literal-boolean-condition                         finding[n=6360]
+    3  plumb.style.uncontrolled-recursion                            finding[n=6421]

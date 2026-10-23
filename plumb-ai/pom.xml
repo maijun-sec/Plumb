@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.plumb</groupId>
+        <artifactId>plumb</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>plumb-ai</artifactId>
+    <name>plumb-ai</name>
+    <description>
+        R-? Step 7 — Slim agent framework used by plumb-style
+        and plumb-dfa checkers (and the runner in
+        plumb-main) to ask an LLM to judge a finding.
+
+        Contains:
+        * agent/ — ReAct framework (LlmProvider interface,
+        LlmMessage, LlmReply, ToolCall, ToolResult,
+        ToolDefinition, AgentTask, AgentResult, ReActAgent,
+        OpenAiCompatibleLlmProvider, LlmConnection)
+        * tools/ — 12 Claude Code-style tools (read_source,
+        grep, glob, list_dir, search_pattern, find_definitions,
+        find_callers, has_sanitizer_on_path,
+        get_method_annotations, get_class_hierarchy,
+        get_full_class, get_dataflow_trace_with_facts)
+        * prompts/AgentPrompts — system prompts for the
+        two agents (FP reducer, bug scanner). The
+        rule-specific knowledge lives on each checker's
+        getAiPrompt(Finding) method.
+
+        No dependency on plumb-dfa: the per-rule
+        prompts are owned by the checkers, not by plumb-ai.
+    </description>
+    <dependencies>
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-rules</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-reporter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

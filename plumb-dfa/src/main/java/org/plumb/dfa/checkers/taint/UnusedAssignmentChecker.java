@@ -1,0 +1,127 @@
+/*
+ * Decompiled with CFR 0.152.
+ *
+ * Could not load the following classes:
+ *  org.plumb.dfa.engine.AnalysisContext
+ *  org.plumb.dfa.engine.Finding
+ *  org.plumb.dfa.taint.TaintDomain
+ *  org.plumb.dfa.taint.TaintDomain$PointerTaint
+ *  org.plumb.dfa.taint.TaintRule
+ *  org.plumb.dfa.taint.TaintedCheckerBase
+ *  org.plumb.tac.ir.TacFunction
+ *  org.plumb.tac.ir.TacInstruction
+ *  org.plumb.tac.ir.TacInstruction$Kind
+ *  org.plumb.tac.ir.TacOperand
+ *  org.plumb.tac.ir.TacOperand$TacVar
+ */
+package org.plumb.dfa.checkers.taint;
+
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+import org.plumb.dfa.engine.AnalysisContext;
+import org.plumb.dfa.taint.TaintDomain;
+import org.plumb.dfa.taint.TaintRule;
+import org.plumb.dfa.taint.TaintedCheckerBase;
+import org.plumb.reporter.Finding;
+import org.plumb.tac.ir.TacFunction;
+import org.plumb.tac.ir.TacInstruction;
+import org.plumb.tac.ir.TacOperand;
+
+public final class UnusedAssignmentChecker extends TaintedCheckerBase {
+  private final Map<TacOperand.TacVar, TacInstruction> firstWrite =
+      new LinkedHashMap<TacOperand.TacVar, TacInstruction>();
+  private final Set<TacOperand.TacVar> read = new LinkedHashSet<TacOperand.TacVar>();
+  private final Set<TacOperand.TacVar> emitted = new LinkedHashSet<TacOperand.TacVar>();
+
+  public UnusedAssignmentChecker() {
+    // R-836 step_f: disabled by default. R-832 P3 Juliet baseline
+    // showed 0 TP / 188k FP for this rule. Users can opt in
+    // by editing the constructor to pass `true` to the
+    // 7-arg `new TaintRule(..., enabled)` overload.
+    super(
+        new TaintRule(
+            "dfa-taint-unused-assignment",
+            "plumb.nullable.may-be-null",
+            "pointer.deref.sinks",
+            "CWE-563",
+            "LOW",
+            (TaintDomain) TaintDomain.PointerTaint.INSTANCE,
+            false));
+  }
+
+  public void initFunction(AnalysisContext ctx, TacFunction fn) {
+    super.initFunction(ctx, fn);
+    this.firstWrite.clear();
+    this.read.clear();
+    this.emitted.clear();
+  }
+
+  public void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
+    TacOperand tacOperand;
+    super.checkInstruction(ins, fn, ctx);
+    if (ins.kind == TacInstruction.Kind.MOVE
+        && (tacOperand = ins.dest) instanceof TacOperand.TacVar) {
+      TacOperand.TacVar d = (TacOperand.TacVar) tacOperand;
+      if (!this.firstWrite.containsKey(d) && !this.read.contains(d)) {
+        this.firstWrite.put(d, ins);
+      } else if (!this.read.contains(d)) {
+        this.emitIfNew(ctx, d, this.firstWrite.get(d));
+        this.firstWrite.put(d, ins);
+      } else {
+        this.firstWrite.put(d, ins);
+      }
+    } else {
+      TacOperand.TacVar d;
+      tacOperand = ins.dest;
+      if (tacOperand instanceof TacOperand.TacVar
+          && this.firstWrite.containsKey(d = (TacOperand.TacVar) tacOperand)
+          && !this.read.contains(d)) {
+        this.firstWrite.remove(d);
+      }
+    }
+    this.recordRead(ins.lhs1);
+    this.recordRead(ins.lhs2);
+    if (ins.args != null) {
+      for (TacOperand a : ins.args) {
+        this.recordRead(a);
+      }
+    }
+  }
+
+  private void recordRead(TacOperand op) {
+    if (op instanceof TacOperand.TacVar) {
+      TacOperand.TacVar v = (TacOperand.TacVar) op;
+      if (this.firstWrite.containsKey(v)) {
+        this.firstWrite.remove(v);
+      }
+      this.read.add(v);
+    }
+  }
+
+  private void emitIfNew(AnalysisContext ctx, TacOperand.TacVar d, TacInstruction dead) {
+    // R-836 step_f: honor rule.enabled() flag. R-834 codemod set this
+    // to false (0 TP / 100% FP on Juliet R-832 baseline) but the
+    // emit path was not honoring the flag. R-836 disables emission
+    // here so the R-834 disable becomes effective.
+    if (!this.rule.enabled()) {
+      return;
+    }
+    if (!this.emitted.add(d)) {
+      return;
+    }
+    Finding finding =
+        Finding.dfa(
+            this.rule.ruleId(),
+            this.rule.ruleId(),
+            "Unused assignment to '" + d.name() + "' (overwritten before read)",
+            this.rule.severity(),
+            this.rule.cwe(),
+            "",
+            dead.line,
+            dead.column,
+            "unused-assignment: " + d.name());
+    ctx.reporter().report(finding);
+  }
+}

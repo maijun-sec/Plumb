@@ -1,0 +1,899 @@
+﻿============================================================
+SUMMARY
+============================================================
+Coverity Java non-FB checkers: 36
+SpotBugs (FB.*) checkers: 492
+  Matched to plumb-style: 32 (6.5%)
+  Unmatched: 460
+Plumb-style checkers: 510
+Plumb-dfa checkers (source files): 32
+Plumb-dfa checkers (yaml-registered, enabled): 9
+
+DFA source files not in yaml (development, not registered):
+  CollectionSelfReferenceChecker (CollectionSelfReferenceChecker.java)
+  CompareWithSelfChecker (CompareWithSelfChecker.java)
+  EmptyCatchHandlerChecker (EmptyCatchHandlerChecker.java)
+  EqualsCalledOnNullChecker (EqualsCalledOnNullChecker.java)
+  InsecureCryptoChecker (InsecureCryptoChecker.java)
+  IteratorConcurrentModificationChecker (IteratorConcurrentModificationChecker.java)
+  OffByOneChecker (OffByOneChecker.java)
+  ReturnFromFinallyChecker (ReturnFromFinallyChecker.java)
+  TryCatchFinallyChecker (TryCatchFinallyChecker.java)
+  UncaughtExceptionPropagator (UncaughtExceptionPropagator.java)
+  XxeChecker (XxeChecker.java)
+  ArrayIndexChecker (taint/ArrayIndexChecker.java)
+  AssignmentInConditionalChecker (taint/AssignmentInConditionalChecker.java)
+  CommandInjectionChecker (taint/CommandInjectionChecker.java)
+  DivByZeroChecker (taint/DivByZeroChecker.java)
+  IntOverflowChecker (taint/IntOverflowChecker.java)
+  IntUnderflowChecker (taint/IntUnderflowChecker.java)
+  LdapInjectionChecker (taint/LdapInjectionChecker.java)
+  LiteralBooleanConditionChecker (taint/LiteralBooleanConditionChecker.java)
+  NullDerefChecker (taint/NullDerefChecker.java)
+  PathTraversalChecker (taint/PathTraversalChecker.java)
+  SensitivePIILeakChecker (taint/SensitivePIILeakChecker.java)
+  SqlInjectionChecker (taint/SqlInjectionChecker.java)
+  UncontrolledRecursionChecker (taint/UncontrolledRecursionChecker.java)
+  UnusedAssignmentChecker (taint/UnusedAssignmentChecker.java)
+  UnusedFieldChecker (taint/UnusedFieldChecker.java)
+  UnusedParameterChecker (taint/UnusedParameterChecker.java)
+  UnusedVariableChecker (taint/UnusedVariableChecker.java)
+  UseAfterFreeChecker (taint/UseAfterFreeChecker.java)
+
+============================================================
+Unmatched SpotBugs by subcategory (priority targets)
+============================================================
+
+### NP: Null pointer dereference  (35 patterns)
+  - FB.BC_NULL_INSTANCEOF  CWE=CWE-476
+    This instanceof test will always return false, since the value being checked is guaranteed to be null. Although this is safe, make sure it isn't an indication o
+  - FB.NP_ALWAYS_NULL_EXCEPTION  CWE=CWE-476
+    A pointer which is null on an exception path is dereferenced here. This will lead to a NullPointerException when the code is executed. Note that because SpotBug
+  - FB.NP_ARGUMENT_MIGHT_BE_NULL  CWE=CWE-476
+    A parameter to this method has been identified as a value that should always be checked to see whether or not it is null, but it is being dereferenced without a
+  ... and 32 more
+
+### Dm: Dubious method used  (23 patterns)
+  - FB.DMI_ANNOTATION_IS_NOT_VISIBLE_TO_REFLECTION  CWE=CWE-440
+    Unless an annotation has itself been annotated with @Retention(RetentionPolicy.RUNTIME), the annotation cannot be observed using reflection (e.g., by using the 
+  - FB.DMI_BLOCKING_METHODS_ON_URL  CWE=CWE-440
+    The equals and hashCode method of URL perform domain name resolution, this can result in a big performance hit. See http://michaelscharf.blogspot.com/2006/11/ja
+  - FB.DMI_CONSTANT_DB_PASSWORD  CWE=CWE-259
+    This code creates a database connect using a hardcoded, constant password. Anyone with access to either the source code or the compiled code can easily learn th
+  ... and 20 more
+
+### Nm: Confusing name  (16 patterns)
+  - FB.NM_BAD_EQUAL  CWE=-
+    This class defines a method equal(Object) . This method does not override the equals(Object) method in java.lang.Object , which is probably what was intended.
+  - FB.NM_CLASS_NAMING_CONVENTION  CWE=-
+    Class names should be nouns, in mixed case with the first letter of each internal word capitalized. Try to keep your class names simple and descriptive. Use who
+  - FB.NM_CLASS_NOT_EXCEPTION  CWE=-
+    This class is not derived from another exception, but ends with 'Exception'. This will be confusing to users of this class.
+  ... and 13 more
+
+### Se: Incorrect definition of Serializable class  (16 patterns)
+  - FB.SE_BAD_FIELD  CWE=-
+    This Serializable class defines a non-primitive instance field which is neither transient, Serializable, or java.lang.Object , and does not appear to implement 
+  - FB.SE_BAD_FIELD_INNER_CLASS  CWE=-
+    This Serializable class is an inner class of a non-serializable class. Thus, attempts to serialize it will also attempt to associate instance of the outer class
+  - FB.SE_BAD_FIELD_STORE  CWE=-
+    A non-serializable value is stored into a non-transient field of a serializable class.
+  ... and 13 more
+
+### Eq: Problems with implementation of equals()  (15 patterns)
+  - FB.EQ_ABSTRACT_SELF  CWE=CWE-595
+    This class defines a covariant version of equals() . To correctly override the equals() method in java.lang.Object , the parameter of equals() must have type ja
+  - FB.EQ_ALWAYS_FALSE  CWE=CWE-595
+    This class defines an equals method that always returns false. This means that an object is not equal to itself, and it is impossible to create useful Maps or S
+  - FB.EQ_ALWAYS_TRUE  CWE=CWE-595
+    This class defines an equals method that always returns true. This is imaginative, but not very smart. Plus, it means that the equals method is not symmetric.
+  ... and 12 more
+
+### RV: Bad use of return value  (15 patterns)
+  - FB.RV_01_TO_INT  CWE=CWE-440
+    A random value from 0 to 1 is being coerced to the integer value 0. You probably want to multiply the random value by something else before coercing it to an in
+  - FB.RV_ABSOLUTE_VALUE_OF_HASHCODE  CWE=CWE-440
+    This code generates a hashcode and then computes the absolute value of that hashcode. If the hashcode is Integer.MIN_VALUE , then the result will be negative as
+  - FB.RV_ABSOLUTE_VALUE_OF_RANDOM_INT  CWE=CWE-440
+    This code generates a random signed integer and then computes the absolute value of that random integer. If the number returned by the random number generator i
+  ... and 12 more
+
+### DMI: Dubious method invocation  (14 patterns)
+  - FB.DMI_ARGUMENTS_WRONG_ORDER  CWE=CWE-440
+    The arguments to this method call seem to be in the wrong order. For example, a call Preconditions.checkNotNull("message", message) has reserved arguments: the 
+  - FB.DMI_BIGDECIMAL_CONSTRUCTED_FROM_DOUBLE  CWE=CWE-440
+    This code creates a BigDecimal from a double value that doesn't translate well to a decimal number. For example, one might assume that writing new BigDecimal(0.
+  - FB.DMI_CALLING_NEXT_FROM_HASNEXT  CWE=CWE-440
+    The hasNext() method invokes the next() method. This is almost certainly wrong, since the hasNext() method is not supposed to change the state of the iterator, 
+  ... and 11 more
+
+### MS: Mutable static field  (14 patterns)
+  - FB.EI_EXPOSE_STATIC_BUF2  CWE=CWE-218
+    This code creates a buffer which stores a reference to an external array or the array of an external buffer into a static field. If unchecked changes to the arr
+  - FB.EI_EXPOSE_STATIC_REP2  CWE=CWE-218
+    This code stores a reference to an externally mutable object into a static field. If unchecked changes to the mutable object would compromise security or other 
+  - FB.MS_CANNOT_BE_FINAL  CWE=CWE-218
+    A mutable static field could be changed by malicious code or by accident from another package. Unfortunately, the way the field is used doesn't allow any easy f
+  ... and 11 more
+
+### FS: Format string problem  (10 patterns)
+  - FB.VA_FORMAT_STRING_ARG_MISMATCH  CWE=-
+    A format-string method with a variable number of arguments is called, but the number of arguments passed does not match with the number of % placeholders in the
+  - FB.VA_FORMAT_STRING_BAD_ARGUMENT  CWE=-
+    The format string placeholder is incompatible with the corresponding argument. For example, System.out.println("%d\n", "hello"); The %d placeholder requires a n
+  - FB.VA_FORMAT_STRING_BAD_CONVERSION  CWE=-
+    One of the arguments is incompatible with the corresponding format string specifier. As a result, this will generate a runtime exception when executed. For exam
+  ... and 7 more
+
+### BC: Bad casts of object references  (9 patterns)
+  - FB.BC_BAD_CAST_TO_CONCRETE_COLLECTION  CWE=-
+    This code casts an abstract collection (such as a Collection, List, or Set) to a specific concrete implementation (such as an ArrayList or HashSet). This might 
+  - FB.BC_EQUALS_METHOD_SHOULD_WORK_FOR_ALL_OBJECTS  CWE=-
+    The equals(Object o) method shouldn't make any assumptions about the type of o . It should simply return false if o is not the same type as this .
+  - FB.BC_IMPOSSIBLE_CAST  CWE=CWE-570
+    This cast will always throw a ClassCastException. SpotBugs tracks type information from instanceof checks, and also uses more precise information about the type
+  ... and 6 more
+
+### Bx: Questionable Boxing of primitive value  (8 patterns)
+  - FB.BX_BOXING_IMMEDIATELY_UNBOXED  CWE=-
+    A primitive is boxed, and then immediately unboxed. This probably is due to a manual boxing in a place where an unboxed value is required, thus forcing the comp
+  - FB.BX_BOXING_IMMEDIATELY_UNBOXED_TO_PERFORM_COERCION  CWE=CWE-192
+    A primitive boxed value constructed and then immediately converted into a different primitive type (e.g., new Double(d).intValue() ). Just perform direct primit
+  - FB.BX_UNBOXED_AND_COERCED_FOR_TERNARY_OPERATOR  CWE=-
+    A wrapped primitive value is unboxed and converted to another primitive type as part of the evaluation of a conditional ternary operator (the b ? e1 : e2 operat
+  ... and 5 more
+
+### FI: Incorrect use of finalizers  (8 patterns)
+  - FB.FI_EMPTY  CWE=CWE-586
+    Empty finalize() methods are useless, so they should be deleted.
+  - FB.FI_EXPLICIT_INVOCATION  CWE=CWE-586
+    This method contains an explicit invocation of the finalize() method on an object. Because finalizer methods are supposed to be executed once, and only by the V
+  - FB.FI_FINALIZER_NULLS_FIELDS  CWE=CWE-586
+    This finalizer nulls out fields. This is usually an error, as it does not aid garbage collection, and the object is going to be garbage collected anyway.
+  ... and 5 more
+
+### SA: Useless self-operation  (8 patterns)
+  - FB.SA_FIELD_DOUBLE_ASSIGNMENT  CWE=-
+    This method contains a double assignment of a field; e.g.
+  - FB.SA_FIELD_SELF_COMPARISON  CWE=-
+    This method compares a field with itself, and may indicate a typo or a logic error. Make sure that you are comparing the right things.
+  - FB.SA_FIELD_SELF_COMPUTATION  CWE=-
+    This method performs a nonsensical computation of a field with another reference to the same field (e.g., x&x or x-x). Because of the nature of the computation,
+  ... and 5 more
+
+### TQ: Inconsistent use of type qualifier annotations  (8 patterns)
+  - FB.TQ_ALWAYS_VALUE_USED_WHERE_NEVER_REQUIRED  CWE=-
+    A value specified as carrying a type qualifier annotation is consumed in a location or locations requiring that the value not carry that annotation.
+  - FB.TQ_COMPARING_VALUES_WITH_INCOMPATIBLE_TYPE_QUALIFIERS  CWE=-
+    A value specified as carrying a type qualifier annotation is compared with a value that doesn't ever carry that qualifier.
+  - FB.TQ_EXPLICIT_UNKNOWN_SOURCE_VALUE_REACHES_ALWAYS_SINK  CWE=-
+    A value is used in a way that requires it to be always be a value denoted by a type qualifier, but there is an explicit annotation stating that it is not known 
+  ... and 5 more
+
+### BIT: Suspicious bitwise logical expression  (7 patterns)
+  - FB.BIT_ADD_OF_SIGNED_BYTE  CWE=-
+    Adds a byte value and a value which is known to have the 8 lower bits clear. Values loaded from a byte array are sign extended to 32 bits before any bitwise ope
+  - FB.BIT_AND  CWE=-
+    This method compares an expression of the form (e & C) to D, which will always compare unequal due to the specific values of constants C and D. This may indicat
+  - FB.BIT_AND_ZZ  CWE=-
+    This method compares an expression of the form (e & 0) to 0, which will always compare equal. This may indicate a logic error or typo.
+  ... and 4 more
+
+### DLS: Dead local store  (7 patterns)
+  - FB.DLS_DEAD_LOCAL_INCREMENT_IN_RETURN  CWE=CWE-563
+    This statement has a return such as return x++; / return x--; . A postfix increment/decrement does not impact the value of the expression, so this increment/dec
+  - FB.DLS_DEAD_LOCAL_STORE  CWE=CWE-563
+    This instruction assigns a value to a local variable, but the value is not read or used in any subsequent instruction. Often, this indicates an error, because t
+  - FB.DLS_DEAD_LOCAL_STORE_IN_RETURN  CWE=CWE-563
+    This statement assigns to a local variable in a return statement. This assignment has no effect. Please verify that this statement does the right thing.
+  ... and 4 more
+
+### HE: Equal objects must have equal hashcodes  (7 patterns)
+  - FB.HE_EQUALS_NO_HASHCODE  CWE=-
+    This class overrides equals(Object) , but does not override hashCode() . Therefore, the class may violate the invariant that equal objects must have equal hashc
+  - FB.HE_EQUALS_USE_HASHCODE  CWE=-
+    This class overrides equals(Object) , but does not override hashCode() , and inherits the implementation of hashCode() from java.lang.Object (which returns the 
+  - FB.HE_HASHCODE_NO_EQUALS  CWE=-
+    This class defines a hashCode() method but not an equals() method. Therefore, the class may violate the invariant that equal objects must have equal hashcodes.
+  ... and 4 more
+
+### IJU: Improperly implemented JUnit TestCase  (6 patterns)
+  - FB.IJU_ASSERT_METHOD_INVOKED_FROM_RUN_METHOD  CWE=-
+    A JUnit assertion is performed in a run method. Failed JUnit assertions just result in exceptions being thrown. Thus, if this exception occurs in a thread other
+  - FB.IJU_BAD_SUITE_METHOD  CWE=-
+    Class is a JUnit TestCase and defines a suite() method. However, the suite method needs to be declared as either
+  - FB.IJU_NO_TESTS  CWE=-
+    Class is a JUnit TestCase but has not implemented any test methods.
+  ... and 3 more
+
+### INT: Suspicious integer expression  (6 patterns)
+  - FB.INT_BAD_COMPARISON_WITH_INT_VALUE  CWE=-
+    This code compares an int value with a long constant that is outside the range of values that can be represented as an int value. This comparison is vacuous and
+  - FB.INT_BAD_COMPARISON_WITH_NONNEGATIVE_VALUE  CWE=-
+    This code compares a value that is guaranteed to be non-negative with a negative constant or zero.
+  - FB.INT_BAD_COMPARISON_WITH_SIGNED_BYTE  CWE=-
+    Signed bytes can only have a value in the range -128 to 127. Comparing a signed byte with a value outside that range is vacuous and likely to be incorrect. To c
+  ... and 3 more
+
+### SQL: Potential SQL Problem  (5 patterns)
+  - FB.BRSA_BAD_RESULTSET_ACCESS  CWE=-
+    A call to getXXX or updateXXX methods of a result set was made where the field index is 0. As ResultSet fields start at index 1, this is always a mistake.
+  - FB.SQL_BAD_PREPARED_STATEMENT_ACCESS  CWE=-
+    A call to a setXXX method of a prepared statement was made where the parameter index is 0. As parameter indexes start at index 1, this is always a mistake.
+  - FB.SQL_BAD_RESULTSET_ACCESS  CWE=-
+    A call to getXXX or updateXXX methods of a result set was made where the field index is 0. As ResultSet fields start at index 1, this is always a mistake.
+  ... and 2 more
+
+### EC: Comparing incompatible types for equality  (5 patterns)
+  - FB.EC_ARRAY_AND_NONARRAY  CWE=-
+    This method invokes the .equals(Object o) to compare an array and a reference that doesn't seem to be an array. If things being compared are of different types,
+  - FB.EC_INCOMPATIBLE_ARRAY_COMPARE  CWE=-
+    This method invokes the .equals(Object o) to compare two arrays, but the arrays of of incompatible types (e.g., String[] and StringBuffer[], or String[] and int
+  - FB.EC_NULL_ARG  CWE=-
+    This method calls equals(Object), passing a null value as the argument. According to the contract of the equals() method, this call should always return false .
+  ... and 2 more
+
+### TEST: Testing prototype and incomplete bug pattern  (5 patterns)
+  - FB.TESTING  CWE=-
+    This bug pattern is only generated by new, incompletely implemented bug detectors.
+  - FB.TESTING1  CWE=-
+    This bug pattern is only generated by new, incompletely implemented bug detectors.
+  - FB.TESTING2  CWE=-
+    This bug pattern is only generated by new, incompletely implemented bug detectors.
+  ... and 2 more
+
+### CAA: Covariant array assignment  (4 patterns)
+  - FB.CAA_COVARIANT_ARRAY_ELEMENT_STORE  CWE=-
+    Value is stored into the array and the value type doesn't match the array type. It's known from the analysis that actual array type is narrower than the declare
+  - FB.CAA_COVARIANT_ARRAY_FIELD  CWE=-
+    Array of covariant type is assigned to a field. This is confusing and may lead to ArrayStoreException at runtime if the reference of some other type will be sto
+  - FB.CAA_COVARIANT_ARRAY_LOCAL  CWE=-
+    Array of covariant type is assigned to a local variable. This is confusing and may lead to ArrayStoreException at runtime if the reference of some other type wi
+  ... and 1 more
+
+### CN: Bad implementation of cloneable idiom  (4 patterns)
+  - FB.CN_IDIOM  CWE=CWE-580
+    Class implements Cloneable but does not define or use the clone method.
+  - FB.CN_IDIOM_NO_SUPER_CALL  CWE=CWE-580
+    This non-final class defines a clone() method that does not call super.clone(). If this class (" A ") is extended by a subclass (" B "), and the subclass B call
+  - FB.CN_IMPLEMENTS_CLONE_BUT_NOT_CLONEABLE  CWE=CWE-580
+    This class defines a clone() method but the class doesn't implement Cloneable. There are some situations in which this is OK (e.g., you want to control how subc
+  ... and 1 more
+
+### Co: Problems with implementation of compareTo()  (4 patterns)
+  - FB.CO_ABSTRACT_SELF  CWE=-
+    This class defines a covariant version of compareTo() . To correctly override the compareTo() method in the Comparable interface, the parameter of compareTo() m
+  - FB.CO_COMPARETO_INCORRECT_FLOATING  CWE=-
+    This method compares double or float values using pattern like this: val1 > val2 ? 1 : val1 < val2 ? -1 : 0. This pattern works incorrectly for -0.0 and NaN val
+  - FB.CO_COMPARETO_RESULTS_MIN_VALUE  CWE=-
+    
+  ... and 1 more
+
+### DL: Unintended contention or possible deadlock due to locking on shared objects  (4 patterns)
+  - FB.DL_SYNCHRONIZATION_ON_BOOLEAN  CWE=-
+    The code synchronizes on a boxed primitive constant, such as a Boolean.
+  - FB.DL_SYNCHRONIZATION_ON_BOXED_PRIMITIVE  CWE=-
+    The code synchronizes on a boxed primitive constant, such as an Integer.
+  - FB.DL_SYNCHRONIZATION_ON_SHARED_CONSTANT  CWE=-
+    The code synchronizes on interned String.
+  ... and 1 more
+
+### ICAST: Casting from integer values  (4 patterns)
+  - FB.ICAST_IDIV_CAST_TO_DOUBLE  CWE=CWE-192
+    This code casts the result of an integral division (e.g., int or long division) operation to double or float. Doing division on integers truncates the result to
+  - FB.ICAST_INT_2_LONG_AS_INSTANT  CWE=CWE-192
+    This code converts a 32-bit int value to a 64-bit long value, and then passes that value for a method parameter that requires an absolute time value. An absolut
+  - FB.ICAST_INT_CAST_TO_DOUBLE_PASSED_TO_CEIL  CWE=CWE-192
+    This code converts an integral value (e.g., int or long) to a double precision floating point number and then passing the result to the Math.ceil() function, wh
+  ... and 1 more
+
+### IIL: Inefficient code which can be moved outside of the loop  (4 patterns)
+  - FB.IIL_ELEMENTS_GET_LENGTH_IN_LOOP  CWE=-
+    The method calls NodeList.getLength() inside the loop and NodeList was produced by getElementsByTagName call. This NodeList doesn't store its length, but comput
+  - FB.IIL_PATTERN_COMPILE_IN_LOOP  CWE=-
+    The method calls Pattern.compile inside the loop passing the constant arguments. If the Pattern should be used several times there's no reason to compile it for
+  - FB.IIL_PATTERN_COMPILE_IN_LOOP_INDIRECT  CWE=-
+    The method creates the same regular expression inside the loop, so it will be compiled every iteration. It would be more optimal to precompile this regular expr
+  ... and 1 more
+
+### NOISE: Bogus random warning  (4 patterns)
+  - FB.NOISE_FIELD_REFERENCE  CWE=-
+    Bogus warning.
+  - FB.NOISE_METHOD_CALL  CWE=-
+    Bogus warning.
+  - FB.NOISE_NULL_DEREFERENCE  CWE=-
+    Bogus warning.
+  ... and 1 more
+
+### RCN: Redundant comparison to null  (4 patterns)
+  - FB.RCN_REDUNDANT_COMPARISON_OF_NULL_AND_NONNULL_VALUE  CWE=CWE-476
+    This method contains a reference known to be non-null with another reference known to be null.
+  - FB.RCN_REDUNDANT_COMPARISON_TWO_NULL_VALUES  CWE=CWE-476
+    This method contains a redundant comparison of two references known to both be definitely null.
+  - FB.RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE  CWE=CWE-476
+    This method contains a redundant check of a known non-null value against the constant null.
+  ... and 1 more
+
+### SF: Switch case falls through  (4 patterns)
+  - FB.SF_DEAD_STORE_DUE_TO_SWITCH_FALLTHROUGH  CWE=CWE-484
+    A value stored in the previous switch case is overwritten here due to a switch fall through. It is likely that you forgot to put a break or return at the end of
+  - FB.SF_DEAD_STORE_DUE_TO_SWITCH_FALLTHROUGH_TO_THROW  CWE=CWE-484
+    A value stored in the previous switch case is ignored here due to a switch fall through to a place where an exception is thrown. It is likely that you forgot to
+  - FB.SF_SWITCH_FALLTHROUGH  CWE=CWE-484
+    This method contains a switch statement where one case branch will fall through to the next case. Usually you need to end this case with a break or return.
+  ... and 1 more
+
+### SIC: Inner class could be made static  (4 patterns)
+  - FB.SIC_INNER_SHOULD_BE_STATIC  CWE=-
+    This class is an inner class, but does not use its embedded reference to the object which created it. This reference makes the instances of the class larger, an
+  - FB.SIC_INNER_SHOULD_BE_STATIC_ANON  CWE=-
+    This class is an inner class, but does not use its embedded reference to the object which created it. This reference makes the instances of the class larger, an
+  - FB.SIC_INNER_SHOULD_BE_STATIC_NEEDS_THIS  CWE=-
+    This class is an inner class, but does not use its embedded reference to the object which created it except during construction of the inner object. This refere
+  ... and 1 more
+
+### STCAL: Static use of type Calendar or DateFormat  (4 patterns)
+  - FB.STCAL_INVOKE_ON_STATIC_CALENDAR_INSTANCE  CWE=CWE-366
+    Even though the JavaDoc does not contain a hint about it, Calendars are inherently unsafe for multithreaded use. The detector has found a call to an instance of
+  - FB.STCAL_INVOKE_ON_STATIC_DATE_FORMAT_INSTANCE  CWE=CWE-366
+    As the JavaDoc states, DateFormats are inherently unsafe for multithreaded use. The detector has found a call to an instance of DateFormat that has been obtaine
+  - FB.STCAL_STATIC_CALENDAR_INSTANCE  CWE=CWE-366
+    Even though the JavaDoc does not contain a hint about it, Calendars are inherently unsafe for multithreaded use. Sharing a single instance across thread boundar
+  ... and 1 more
+
+### UC: Useless code  (4 patterns)
+  - FB.UC_USELESS_CONDITION  CWE=-
+    This condition always produces the same result as the value of the involved variable that was narrowed before. Probably something else was meant or the conditio
+  - FB.UC_USELESS_CONDITION_TYPE  CWE=-
+    This condition always produces the same result due to the type range of the involved variable. Probably something else was meant or the condition can be removed
+  - FB.UC_USELESS_OBJECT_STACK  CWE=-
+    This object is created just to perform some modifications which don't have any side-effect. Probably something else was meant or the object can be removed.
+  ... and 1 more
+
+### UwF: Unwritten field  (4 patterns)
+  - FB.UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR  CWE=-
+    This field is never initialized within any constructor, and is therefore could be null after the object is constructed. Elsewhere, it is loaded and dereferenced
+  - FB.UWF_NULL_FIELD  CWE=-
+    All writes to this field are of the constant value null, and thus all reads of the field will return null. Check for errors, or remove it if it is useless.
+  - FB.UWF_UNWRITTEN_FIELD  CWE=-
+    This field is never written. All reads of it will return the default value. Check for errors (should it have been initialized?), or remove it if it is useless.
+  ... and 1 more
+
+### BSHIFT: Bad shift  (3 patterns)
+  - FB.BSHIFT_WRONG_ADD_PRIORITY  CWE=-
+    The code performs an operation like (x << 8 + y). Although this might be correct, probably it was meant to perform (x << 8) + y, but shift operation has a lower
+  - FB.ICAST_BAD_SHIFT_AMOUNT  CWE=CWE-192
+    The code performs shift of a 32 bit int by a constant amount outside the range -31..31. The effect of this is to use the lower 5 bits of the integer value to de
+  - FB.ICAST_QUESTIONABLE_UNSIGNED_RIGHT_SHIFT  CWE=CWE-192
+    The code performs an unsigned right shift, whose result is then cast to a short or byte, which discards the upper bits of the result. Since the upper bits are d
+
+### USELESS_STRING: Useless/non-informative string generated  (3 patterns)
+  - FB.DMI_INVOKING_TOSTRING_ON_ANONYMOUS_ARRAY  CWE=CWE-440
+    The code invokes toString on an (anonymous) array. Calling toString on an array generates a fairly useless result such as [C@16f0472. Consider using Arrays.toSt
+  - FB.DMI_INVOKING_TOSTRING_ON_ARRAY  CWE=CWE-440
+    The code invokes toString on an array, which will generate a fairly useless result such as [C@16f0472. Consider using Arrays.toString to convert the array into 
+  - FB.VA_FORMAT_STRING_BAD_CONVERSION_FROM_ARRAY  CWE=-
+    One of the arguments being formatted with a format string is an array. This will be formatted using a fairly useless format, such as [I@304282, which doesn't ac
+
+### DP: Use doPrivileged  (3 patterns)
+  - FB.DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEDGED  CWE=-
+    This code creates a classloader, which requires a security manager. If this code will be granted security permissions, but might be invoked by code that does no
+  - FB.DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED  CWE=-
+    This code creates a classloader, which needs permission if a security manage is installed. If this code might be invoked by code that does not have security per
+  - FB.DP_DO_INSIDE_DO_PRIVILEDGED  CWE=-
+    This code invokes a method that requires a security permission check. If this code will be granted security permissions, but might be invoked by code that does 
+
+### IS: Inconsistent synchronization  (3 patterns)
+  - FB.IS2_INCONSISTENT_SYNC  CWE=CWE-366
+    The fields of this class appear to be accessed inconsistently with respect to synchronization. This bug report indicates that the bug pattern detector judged th
+  - FB.IS_FIELD_NOT_GUARDED  CWE=CWE-366
+    This field is annotated with net.jcip.annotations.GuardedBy or javax.annotation.concurrent.GuardedBy, but can be accessed in a way that seems to violate those a
+  - FB.IS_INCONSISTENT_SYNC  CWE=CWE-366
+    The fields of this class appear to be accessed inconsistently with respect to synchronization. This bug report indicates that the bug pattern detector judged th
+
+### JLM: Synchronization on java.util.concurrent objects  (3 patterns)
+  - FB.JLM_JSR166_LOCK_MONITORENTER  CWE=-
+    This method performs synchronization on an object that implements java.util.concurrent.locks.Lock. Such an object is locked/unlocked using acquire() / release()
+  - FB.JLM_JSR166_UTILCONCURRENT_MONITORENTER  CWE=-
+    This method performs synchronization on an object that is an instance of a class from the java.util.concurrent package (or its subclasses). Instances of these c
+  - FB.JML_JSR166_CALLING_WAIT_RATHER_THAN_AWAIT  CWE=-
+    This method calls wait() , notify() or notifyAll() on an object that also provides an await() , signal() , signalAll() method (such as util.concurrent Condition
+
+### LI: Unsynchronized Lazy Initialization  (3 patterns)
+  - FB.LI_LAZY_INIT_INSTANCE  CWE=-
+    This method contains an unsynchronized lazy initialization of a non-volatile field. Because the compiler or processor may reorder instructions, threads are not 
+  - FB.LI_LAZY_INIT_STATIC  CWE=CWE-543
+    This method contains an unsynchronized lazy initialization of a non-volatile static field. Because the compiler or processor may reorder instructions, threads a
+  - FB.LI_LAZY_INIT_UPDATE_STATIC  CWE=CWE-543
+    This method contains an unsynchronized lazy initialization of a static field. After the field is set, the object stored into that location is further updated or
+
+### RC: Questionable use of reference equality rather than calling equals  (3 patterns)
+  - FB.RC_REF_COMPARISON  CWE=-
+    This method compares two reference values using the == or != operator, where the correct way to compare instances of this type is generally with the equals() me
+  - FB.RC_REF_COMPARISON_BAD_PRACTICE  CWE=-
+    This method compares a reference value to a constant using the == or != operator, where the correct way to compare instances of this type is generally with the 
+  - FB.RC_REF_COMPARISON_BAD_PRACTICE_BOOLEAN  CWE=-
+    This method compares two Boolean values using the == or != operator. Normally, there are only two Boolean values (Boolean.TRUE and Boolean.FALSE), but it is pos
+
+### RE: Regular expressions  (3 patterns)
+  - FB.RE_BAD_SYNTAX_FOR_REGULAR_EXPRESSION  CWE=CWE-185
+    The code here uses a regular expression that is invalid according to the syntax for regular expressions. This statement will throw a PatternSyntaxException when
+  - FB.RE_CANT_USE_FILE_SEPARATOR_AS_REGULAR_EXPRESSION  CWE=CWE-185
+    The code here uses File.separator where a regular expression is required. This will fail on Windows platforms, where the File.separator is a backslash, which is
+  - FB.RE_POSSIBLE_UNINTENDED_PATTERN  CWE=CWE-185
+    A String function is being invoked and "." or "|" is being passed to a parameter that takes a regular expression as an argument. Is this what you intended? For 
+
+### THROWS: Exception throwing related problems  (3 patterns)
+  - FB.THROWS_METHOD_THROWS_CLAUSE_BASIC_EXCEPTION  CWE=-
+    Method lists Exception in its throws clause. When declaring a method, the types of exceptions in the throws clause should be the most specific. Therefore, using
+  - FB.THROWS_METHOD_THROWS_CLAUSE_THROWABLE  CWE=-
+    Method lists Throwable in its throws clause. When declaring a method, the types of exceptions in the throws clause should be the most specific. Therefore, using
+  - FB.THROWS_METHOD_THROWS_RUNTIMEEXCEPTION  CWE=-
+    Method intentionally throws RuntimeException. According to the SEI CERT ERR07-J rule , throwing a RuntimeException may cause errors, like the caller not being a
+
+### XSS: Cross site scripting vulnerability  (3 patterns)
+  - FB.XSS_REQUEST_PARAMETER_TO_JSP_WRITER  CWE=CWE-79
+    This code directly writes an HTTP parameter to JSP output, which allows for a cross site scripting vulnerability. See http://en.wikipedia.org/wiki/Cross-site_sc
+  - FB.XSS_REQUEST_PARAMETER_TO_SEND_ERROR  CWE=CWE-81
+    This code directly writes an HTTP parameter to a Server error page (using HttpServletResponse.sendError). Echoing this untrusted input allows for a reflected cr
+  - FB.XSS_REQUEST_PARAMETER_TO_SERVLET_WRITER  CWE=CWE-79
+    This code directly writes an HTTP parameter to Servlet output, which allows for a reflected cross site scripting vulnerability. See http://en.wikipedia.org/wiki
+
+### AM: API misuse  (2 patterns)
+  - FB.AM_CREATES_EMPTY_JAR_FILE_ENTRY  CWE=CWE-227
+    The code calls putNextEntry() , immediately followed by a call to closeEntry() . This results in an empty JarFile entry. The contents of the entry should be wri
+  - FB.AM_CREATES_EMPTY_ZIP_FILE_ENTRY  CWE=CWE-227
+    The code calls putNextEntry() , immediately followed by a call to closeEntry() . This results in an empty ZipFile entry. The contents of the entry should be wri
+
+### DB: Duplicate Branches  (2 patterns)
+  - FB.DB_DUPLICATE_BRANCHES  CWE=-
+    This method uses the same code to implement two branches of a conditional branch. Check to ensure that this isn't a coding mistake.
+  - FB.DB_DUPLICATE_SWITCH_CLAUSES  CWE=-
+    This method uses the same code to implement two clauses of a switch statement. This could be a case of duplicate code, but it might also indicate a coding mista
+
+### DC: Double-check pattern  (2 patterns)
+  - FB.DC_DOUBLECHECK  CWE=CWE-609
+    This method may contain an instance of double-checked locking. This idiom is not correct according to the semantics of the Java memory model. For more informati
+  - FB.DC_PARTIALLY_CONSTRUCTED  CWE=CWE-609
+    Looks like this method uses lazy field initialization with double-checked locking. While the field is correctly declared as volatile, it's possible that the int
+
+### DE: Dropped or ignored exception  (2 patterns)
+  - FB.DE_MIGHT_DROP  CWE=CWE-391
+    This method might drop an exception. In general, exceptions should be handled or reported in some way, or they should be thrown out of the method.
+  - FB.DE_MIGHT_IGNORE  CWE=CWE-391
+    This method might ignore an exception. In general, exceptions should be handled or reported in some way, or they should be thrown out of the method.
+
+### EI: Exposes internal representation  (2 patterns)
+  - FB.EI_EXPOSE_BUF  CWE=CWE-374
+    Returning a reference to a buffer (java.nio.*Buffer) which wraps an array stored in one of the object's fields exposes the internal representation of the array 
+  - FB.EI_EXPOSE_REP  CWE=CWE-374
+    Returning a reference to a mutable object value stored in one of the object's fields exposes the internal representation of the object. If instances are accesse
+
+### EI2: Storing reference to mutable object  (2 patterns)
+  - FB.EI_EXPOSE_BUF2  CWE=CWE-374
+    This code creates a buffer which stores a reference to an external array or the array of an external buffer into the internal representation of the object. If i
+  - FB.EI_EXPOSE_REP2  CWE=CWE-374
+    This code stores a reference to an externally mutable object into the internal representation of the object. If instances are accessed by untrusted code, and un
+
+### ES: Checking String equality using == or !=  (2 patterns)
+  - FB.ES_COMPARING_PARAMETER_STRING_WITH_EQ  CWE=CWE-597
+    This code compares a java.lang.String parameter for reference equality using the == or != operators. Requiring callers to pass only String constants or interned
+  - FB.ES_COMPARING_STRINGS_WITH_EQ  CWE=CWE-597
+    This code compares java.lang.String objects for reference equality using the == or != operators. Unless both strings are either constants in a source file, or h
+
+### FB: SpotBugs did not produce the expected warnings on a method  (2 patterns)
+  - FB.FB_MISSING_EXPECTED_WARNING  CWE=-
+    SpotBugs didn't generate a warning that, according to an @ExpectedWarning annotation, is expected or desired.
+  - FB.FB_UNEXPECTED_WARNING  CWE=-
+    SpotBugs generated a warning that, according to a @NoWarning annotation, is unexpected or undesired.
+
+### FE: Test for floating point equality  (2 patterns)
+  - FB.FE_FLOATING_POINT_EQUALITY  CWE=-
+    This operation compares two floating point values for equality. Because floating point calculations may involve rounding, calculated float and double values may
+  - FB.FE_TEST_IF_EQUAL_TO_NOT_A_NUMBER  CWE=-
+    This code checks to see if a floating point value is equal to the special Not A Number value (e.g., if (x == Double.NaN) ). However, because of the special sema
+
+### FL: Use of floating point precision  (2 patterns)
+  - FB.FL_FLOATS_AS_LOOP_COUNTERS  CWE=-
+    Using floating-point variables should not be used as loop counters, as they are not precise, which may result in incorrect loops. A loop counter is a variable t
+  - FB.FL_MATH_USING_FLOAT_PRECISION  CWE=-
+    The method performs math operations using floating point precision. Floating point precision is very imprecise. For example, 16777216.0f + 1.0f = 16777216.0f. C
+
+### GC: Suspicious calls to generic collection methods  (2 patterns)
+  - FB.GC_UNCHECKED_TYPE_IN_GENERIC_CALL  CWE=-
+    This call to a generic collection method passes an argument while compile type Object where a specific type from the generic type parameters is expected. Thus, 
+  - FB.GC_UNRELATED_TYPES  CWE=-
+    This call to a generic collection method contains an argument with an incompatible class from that of the collection's parameter (i.e., the type of the argument
+
+### HRS: HTTP Response splitting vulnerability  (2 patterns)
+  - FB.HRS_REQUEST_PARAMETER_TO_COOKIE  CWE=CWE-113
+    This code constructs an HTTP Cookie using an untrusted HTTP parameter. If this cookie is added to an HTTP response, it will allow a HTTP response splitting vuln
+  - FB.HRS_REQUEST_PARAMETER_TO_HTTP_HEADER  CWE=CWE-113
+    This code directly writes an HTTP parameter to an HTTP header, which allows for a HTTP response splitting vulnerability. See http://en.wikipedia.org/wiki/HTTP_r
+
+### IC: Initialization circularity  (2 patterns)
+  - FB.IC_INIT_CIRCULARITY  CWE=-
+    A circularity was detected in the static initializers of the two classes referenced by the bug instance. Many kinds of unexpected behavior may arise from such c
+  - FB.IC_SUPERCLASS_USES_SUBCLASS_DURING_INITIALIZATION  CWE=-
+    During the initialization of a class, the class makes an active use of a subclass. That subclass will not yet be initialized at the time of this use. For exampl
+
+### IIO: Inefficient use of String.indexOf(String) or String.lastIndexOf(String)  (2 patterns)
+  - FB.IIO_INEFFICIENT_INDEX_OF  CWE=-
+    This code passes a constant string of length 1 to String.indexOf(). It is more efficient to use the integer implementations of String.indexOf(). f. e. call mySt
+  - FB.IIO_INEFFICIENT_LAST_INDEX_OF  CWE=-
+    This code passes a constant string of length 1 to String.lastIndexOf(). It is more efficient to use the integer implementations of String.lastIndexOf(). f. e. c
+
+### IL: Infinite Loop  (2 patterns)
+  - FB.IL_CONTAINER_ADDED_TO_ITSELF  CWE=-
+    A collection is added to itself. As a result, computing the hashCode of this set will throw a StackOverflowException.
+  - FB.IL_INFINITE_RECURSIVE_LOOP  CWE=CWE-674
+    This method unconditionally invokes itself. This would seem to indicate an infinite recursive loop that will result in a stack overflow.
+
+### IM: Questionable integer math  (2 patterns)
+  - FB.IM_AVERAGE_COMPUTATION_COULD_OVERFLOW  CWE=-
+    The code computes the average of two integers using either division or signed right shift, and then uses the result as the index of an array. If the values bein
+  - FB.IM_MULTIPLYING_RESULT_OF_IREM  CWE=-
+    The code multiplies the result of an integer remaining by an integer constant. Be sure you don't have your operator precedence confused. For example i % 60 * 10
+
+### MC: Dangerous call to overridable method  (2 patterns)
+  - FB.MC_OVERRIDABLE_METHOD_CALL_IN_CLONE  CWE=-
+    Calling overridable methods from the clone() method is insecure because a subclass could override the method, affecting the behavior of clone(). It can also obs
+  - FB.MC_OVERRIDABLE_METHOD_CALL_IN_CONSTRUCTOR  CWE=-
+    Calling an overridable method during in a constructor may result in the use of uninitialized data. It may also leak the this reference of the partially construc
+
+### ML: Synchronization on updated field (Mutable Lock)  (2 patterns)
+  - FB.ML_SYNC_ON_FIELD_TO_GUARD_CHANGING_THAT_FIELD  CWE=-
+    This method synchronizes on a field in what appears to be an attempt to guard against simultaneous updates to that field. But guarding a field gets a lock on th
+  - FB.ML_SYNC_ON_UPDATED_FIELD  CWE=-
+    This method synchronizes on an object referenced from a mutable field. This is unlikely to have useful semantics, since different threads may be synchronizing o
+
+### MTIA: Multithreaded Instance Access  (2 patterns)
+  - FB.MTIA_SUSPECT_SERVLET_INSTANCE_FIELD  CWE=-
+    This class extends from a Servlet class, and uses an instance member variable. Since only one instance of a Servlet class is created by the J2EE framework, and 
+  - FB.MTIA_SUSPECT_STRUTS_INSTANCE_FIELD  CWE=-
+    This class extends from a Struts Action class, and uses an instance member variable. Since only one instance of a struts Action class is created by the Struts f
+
+### MWN: Mismatched wait() or notify()  (2 patterns)
+  - FB.MWN_MISMATCHED_NOTIFY  CWE=-
+    This method calls Object.notify() or Object.notifyAll() without obviously holding a lock on the object. Calling notify() or notifyAll() without a lock held will
+  - FB.MWN_MISMATCHED_WAIT  CWE=-
+    This method calls Object.wait() without obviously holding a lock on the object. Calling wait() without a lock held will result in an IllegalMonitorStateExceptio
+
+### NS: Suspicious use of non-short-circuit boolean operator  (2 patterns)
+  - FB.NS_DANGEROUS_NON_SHORT_CIRCUIT  CWE=-
+    This code seems to be using non-short-circuit logic (e.g., & or |) rather than short-circuit logic (&& or ||). In addition, it seem possible that, depending on 
+  - FB.NS_NON_SHORT_CIRCUIT  CWE=-
+    This code seems to be using non-short-circuit logic (e.g., & or |) rather than short-circuit logic (&& or ||). Non-short-circuit logic causes both sides of the 
+
+### OBL: Unsatisfied obligation to clean up stream or resource  (2 patterns)
+  - FB.OBL_UNSATISFIED_OBLIGATION  CWE=-
+    This method may fail to clean up (close, dispose of) a stream, database object, or other resource requiring an explicit cleanup operation.
+  - FB.OBL_UNSATISFIED_OBLIGATION_EXCEPTION_EDGE  CWE=-
+    This method may fail to clean up (close, dispose of) a stream, database object, or other resource requiring an explicit cleanup operation.
+
+### ODR: Database resource not closed on all paths  (2 patterns)
+  - FB.ODR_OPEN_DATABASE_RESOURCE  CWE=-
+    The method creates a database resource (such as a database connection or row set), does not assign it to any fields, pass it to other methods, or return it, and
+  - FB.ODR_OPEN_DATABASE_RESOURCE_EXCEPTION_PATH  CWE=-
+    The method creates a database resource (such as a database connection or row set), does not assign it to any fields, pass it to other methods, or return it, and
+
+### OS: Stream not closed on all paths  (2 patterns)
+  - FB.OS_OPEN_STREAM  CWE=-
+    The method creates an IO stream object, does not assign it to any fields, pass it to other methods that might close it, or return it, and does not appear to clo
+  - FB.OS_OPEN_STREAM_EXCEPTION_PATH  CWE=-
+    The method creates an IO stream object, does not assign it to any fields, pass it to other methods, or return it, and does not appear to close it on all possibl
+
+### PT: Path traversal  (2 patterns)
+  - FB.PT_ABSOLUTE_PATH_TRAVERSAL  CWE=CWE-36
+    The software uses an HTTP request parameter to construct a pathname that should be within a restricted directory, but it does not properly neutralize absolute p
+  - FB.PT_RELATIVE_PATH_TRAVERSAL  CWE=CWE-23
+    The software uses an HTTP request parameter to construct a pathname that should be within a restricted directory, but it does not properly neutralize sequences 
+
+### RR: Method ignores results of InputStream.read()  (2 patterns)
+  - FB.RR_NOT_CHECKED  CWE=-
+    This method ignores the return value of one of the variants of java.io.InputStream.read() which can return multiple bytes. If the return value is not checked, t
+  - FB.SR_NOT_CHECKED  CWE=-
+    This method ignores the return value of java.io.InputStream.skip() which can skip multiple bytes. If the return value is not checked, the caller will not be abl
+
+### STI: Suspicious Thread Interrupted  (2 patterns)
+  - FB.STI_INTERRUPTED_ON_CURRENTTHREAD  CWE=-
+    This method invokes the Thread.currentThread() call, just to call the interrupted() method. As interrupted() is a static method, it is more simple and clear to 
+  - FB.STI_INTERRUPTED_ON_UNKNOWNTHREAD  CWE=-
+    This method invokes the Thread.interrupted() method on a Thread object that appears to be a Thread object that is not the current thread. As the interrupted() m
+
+### TLW: Wait with two locks held  (2 patterns)
+  - FB.TLW_TWO_LOCK_NOTIFY  CWE=-
+    The code calls notify() or notifyAll() while two locks are held. If this notification is intended to wake up a wait() that is holding the same locks, it may dea
+  - FB.TLW_TWO_LOCK_WAIT  CWE=-
+    Waiting on a monitor while two locks are held may cause deadlock. Performing a wait only releases the lock on the object being waited on, not any other locks. T
+
+### UCF: Useless control flow  (2 patterns)
+  - FB.UCF_USELESS_CONTROL_FLOW  CWE=-
+    This method contains a useless control flow statement, where control flow continues onto the same place regardless of whether or not the branch is taken. For ex
+  - FB.UCF_USELESS_CONTROL_FLOW_NEXT_LINE  CWE=-
+    This method contains a useless control flow statement in which control flow follows to the same or following line regardless of whether or not the branch is tak
+
+### UL: Lock not released on all paths  (2 patterns)
+  - FB.UL_UNRELEASED_LOCK  CWE=-
+    This method acquires a JSR-166 ( java.util.concurrent ) lock, but does not release it on all paths out of the method. In general, the correct idiom for using a 
+  - FB.UL_UNRELEASED_LOCK_EXCEPTION_PATH  CWE=-
+    This method acquires a JSR-166 ( java.util.concurrent ) lock, but does not release it on all exception paths out of the method. In general, the correct idiom fo
+
+### UrF: Unread field  (2 patterns)
+  - FB.URF_UNREAD_FIELD  CWE=-
+    This field is never read. Consider removing it from the class.
+  - FB.URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD  CWE=-
+    This field is never read. The field is public or protected, so perhaps it is intended to be used with classes not seen as part of the analysis. If not, consider
+
+### UR: Uninitialized read of field in constructor  (2 patterns)
+  - FB.UR_UNINIT_READ  CWE=-
+    This constructor reads a field which has not yet been assigned a value. This is often caused when the programmer mistakenly uses the field instead of one of the
+  - FB.UR_UNINIT_READ_CALLED_FROM_SUPER_CONSTRUCTOR  CWE=-
+    This method is invoked in the constructor of the superclass. At this point, the fields of the class have not yet initialized.
+
+### USM: Useless method  (2 patterns)
+  - FB.USM_USELESS_ABSTRACT_METHOD  CWE=-
+    This abstract method is already defined in an interface that is implemented by this abstract class. This method can be removed, as it provides no additional val
+  - FB.USM_USELESS_SUBCLASS_METHOD  CWE=-
+    This derived method merely calls the same superclass method passing in the exact parameters received. This method can be removed, as it provides no additional v
+
+### UuF: Unused field  (2 patterns)
+  - FB.UUF_UNUSED_FIELD  CWE=-
+    This field is never used. Consider removing it from the class.
+  - FB.UUF_UNUSED_PUBLIC_OR_PROTECTED_FIELD  CWE=-
+    This field is never used. The field is public or protected, so perhaps it is intended to be used with classes not seen as part of the analysis. If not, consider
+
+### VO: Use of volatile  (2 patterns)
+  - FB.VO_VOLATILE_INCREMENT  CWE=-
+    This code increments/decrements a volatile field. Increments/Decrements of volatile fields aren't atomic. If more than one thread is incrementing/decrementing t
+  - FB.VO_VOLATILE_REFERENCE_TO_ARRAY  CWE=-
+    This declares a volatile reference to an array, which might not be what you want. With a volatile reference to an array, reads and writes of the reference to th
+
+### Wa: Wait not in loop  (2 patterns)
+  - FB.WA_AWAIT_NOT_IN_LOOP  CWE=-
+    This method contains a call to java.util.concurrent.await() (or variants) which is not in a loop. If the object is used for multiple conditions, the condition t
+  - FB.WA_NOT_IN_LOOP  CWE=-
+    This method contains a call to java.lang.Object.wait() which is not in a loop. If the monitor is used for multiple conditions, the condition the caller intended
+
+### AT: Possible atomicity violation  (1 patterns)
+  - FB.AT_OPERATION_SEQUENCE_ON_CONCURRENT_ABSTRACTION  CWE=-
+    
+
+### BAC: Bad Applet Constructor  (1 patterns)
+  - FB.BAC_BAD_APPLET_CONSTRUCTOR  CWE=-
+    This constructor calls methods in the parent Applet that rely on the AppletStub. Since the AppletStub isn't initialized until the init() method of this applet i
+
+### CD: Circular Dependencies  (1 patterns)
+  - FB.CD_CIRCULAR_DEPENDENCY  CWE=-
+    This class has a circular dependency with other classes. This makes building these classes difficult, as each is dependent on the other to build correctly. Cons
+
+### CNT: Rough value of known constant  (1 patterns)
+  - FB.CNT_ROUGH_CONSTANT_VALUE  CWE=-
+    It's recommended to use the predefined library constant for code clarity and better precision.
+
+### DCN: Don't Catch NullPointer Exception  (1 patterns)
+  - FB.DCN_NULLPOINTER_EXCEPTION  CWE=-
+    According to SEI CERT rule ERR08-J NullPointerException should not be caught. Handling NullPointerException is considered an inferior alternative to null-checki
+
+### EOS: Bad End of Stream check  (1 patterns)
+  - FB.EOS_BAD_END_OF_STREAM_CHECK  CWE=-
+    The method java.io.FileInputStream.read() returns an int. If this int is converted to a byte then -1 (which indicates an EOF) and the byte 0xFF become indisting
+
+### HSC: Huge String constants  (1 patterns)
+  - FB.HSC_HUGE_SHARED_STRING_CONSTANT  CWE=-
+    A large String constant is duplicated across multiple class files. This is likely because a final field is initialized to a String constant, and the Java langua
+
+### IA: Ambiguous invocation  (1 patterns)
+  - FB.IA_AMBIGUOUS_INVOCATION_OF_INHERITED_OR_OUTER_METHOD  CWE=-
+    An inner class is invoking a method that could be resolved to either a inherited method or a method defined in an outer class. For example, you invoke foo(17) ,
+
+### IMA: Inefficient Member Access  (1 patterns)
+  - FB.IMA_INEFFICIENT_MEMBER_ACCESS  CWE=-
+    This method of an inner class reads from or writes to a private member variable of the owning class, or calls a private method of the owning class. The compiler
+
+### IMSE: Dubious catching of IllegalMonitorStateException  (1 patterns)
+  - FB.IMSE_DONT_CATCH_IMSE  CWE=-
+    IllegalMonitorStateException is generally only thrown in case of a design flaw in your code (calling wait or notify on an object you do not hold a lock on).
+
+### IO: Input/Output problem  (1 patterns)
+  - FB.IO_APPENDING_TO_OBJECT_OUTPUT_STREAM  CWE=-
+    This code opens a file in append mode and then wraps the result in an object output stream like as follows:
+
+### IP: Ignored parameter  (1 patterns)
+  - FB.IP_PARAMETER_IS_DEAD_BUT_OVERWRITTEN  CWE=CWE-563
+    The initial value of this parameter is ignored, and the parameter is overwritten here. This often indicates a mistaken belief that the write to the parameter wi
+
+### IRA: Inefficient use of String.replaceAll(String, String)  (1 patterns)
+  - FB.IRA_INEFFICIENT_REPLACEALL  CWE=-
+    This method uses replaceAll(String regex, String replacement) without any special regex characters. It is more efficient to use myString.replace(CharSequence ta
+
+### ISC: Instantiated Static Class  (1 patterns)
+  - FB.ISC_INSTANTIATE_STATIC_CLASS  CWE=-
+    This class allocates an object that is based on a class that only supplies static methods. This object does not need to be created, just access the static metho
+
+### ITA: Inefficient use of collection.toArray(new Foo[0])  (1 patterns)
+  - FB.ITA_INEFFICIENT_TO_ARRAY  CWE=-
+    This method uses the toArray() method of a collection derived class, and passes in a zero-length prototype array argument. It is more efficient to use myCollect
+
+### It: Incorrect definition of Iterator  (1 patterns)
+  - FB.IT_NO_SUCH_ELEMENT  CWE=-
+    This class implements the java.util.Iterator interface. However, its next() method is not capable of throwing java.util.NoSuchElementException . The next() meth
+
+### J2EE: J2EE error  (1 patterns)
+  - FB.J2EE_STORE_OF_NON_SERIALIZABLE_OBJECT_INTO_SESSION  CWE=CWE-579
+    This code seems to be storing a non-serializable object into an HttpSession. If this session is passivated or migrated, an error will result.
+
+### JCIP: Violation of net.jcip annotations  (1 patterns)
+  - FB.JCIP_FIELD_ISNT_FINAL_IN_IMMUTABLE_CLASS  CWE=-
+    The class is annotated with net.jcip.annotations.Immutable or javax.annotation.concurrent.Immutable, and the rules for those annotations require that all fields
+
+### JUA: Problems in JUnit Assertions  (1 patterns)
+  - FB.JUA_DONT_ASSERT_INSTANCEOF_IN_TESTS  CWE=-
+    Asserting type checks in tests is not recommended as a class cast exception message could better indicate the cause of an instance of the wrong class being used
+
+### LG: Logger problem  (1 patterns)
+  - FB.LG_LOST_LOGGER_DUE_TO_WEAK_REFERENCE  CWE=-
+    OpenJDK introduces a potential incompatibility. In particular, the java.util.logging.Logger behavior has changed. Instead of using strong references, it now use
+
+### ME: Mutable enum field  (1 patterns)
+  - FB.ME_ENUM_FIELD_SETTER  CWE=-
+    This public method declared in public enum unconditionally sets enum field, thus this field can be changed by malicious code or by accident from another package
+
+### MSF: Mutable servlet field  (1 patterns)
+  - FB.MSF_MUTABLE_SERVLET_FIELD  CWE=-
+    
+
+### NN: Naked notify  (1 patterns)
+  - FB.NN_NAKED_NOTIFY  CWE=-
+    A call to notify() or notifyAll() was made without any (apparent) accompanying modification to mutable object state. In general, calling a notify method on a mo
+
+### No: Using notify() rather than notifyAll()  (1 patterns)
+  - FB.NO_NOTIFY_NOT_NOTIFYALL  CWE=-
+    This method calls notify() rather than notifyAll() . Java monitors are often used for multiple conditions. Calling notify() only wakes up one thread, meaning th
+
+### PERM: Custom class loader does not call its superclass's getPermissions()  (1 patterns)
+  - FB.PERM_SUPER_NOT_CALLED_IN_GETPERMISSIONS  CWE=-
+    SEI CERT rule SEC07-J requires that custom class loaders must always call their superclass's getPermissions() method in their own getPermissions() method to ini
+
+### PS: Public Semaphores  (1 patterns)
+  - FB.PS_PUBLIC_SEMAPHORES  CWE=-
+    This class uses synchronization along with wait(), notify() or notifyAll() on itself (the this reference). Client classes that use this class, may, in addition,
+
+### PZ: Warning inspired by Joshua Bloch's and Neal Gafter's Programming Puzzlers  (1 patterns)
+  - FB.PZ_DONT_REUSE_ENTRY_OBJECTS_IN_ITERATORS  CWE=-
+    The entrySet() method is allowed to return a view of the underlying Map which is both an Iterator and Map.Entry. This clever idea was used in several Map implem
+
+### QF: Questionable for loops  (1 patterns)
+  - FB.QF_QUESTIONABLE_FOR_LOOP  CWE=-
+    Are you sure this for loop is incrementing/decrementing the correct variable? It appears that another variable is being initialized and checked by the for loop.
+
+### REC: RuntimeException capture  (1 patterns)
+  - FB.REC_CATCH_EXCEPTION  CWE=CWE-396
+    This catch block for Exception also catches any RuntimeException, which could mask programming errors. This code could have been made to compile using a number 
+
+### REFLC: Reflection increasing accessibility of classes  (1 patterns)
+  - FB.REFLC_REFLECTION_MAY_INCREASE_ACCESSIBILITY_OF_CLASS  CWE=-
+    The SEI CERT SEC05-J rule forbids the use of reflection to increase accessibility of classes, methods or fields. If a class in a package provides a public metho
+
+### REFLF: Reflection increasing accessibility of fields  (1 patterns)
+  - FB.REFLF_REFLECTION_MAY_INCREASE_ACCESSIBILITY_OF_FIELD  CWE=-
+    The SEI CERT SEC05-J rule forbids the use of reflection to increase accessibility of classes, methods or fields. If a class in a package provides a public metho
+
+### RI: Redundant Interfaces  (1 patterns)
+  - FB.RI_REDUNDANT_INTERFACES  CWE=-
+    This class declares that it implements an interface that is also implemented by a superclass. This is redundant because once a superclass implements an interfac
+
+### RS: Class's readObject() method is synchronized  (1 patterns)
+  - FB.RS_READOBJECT_SYNC  CWE=-
+    This serializable class defines a readObject() which is synchronized. By definition, an object created by deserialization is only reachable by one thread, and t
+
+### Ru: Method invokes run()  (1 patterns)
+  - FB.RU_INVOKE_RUN  CWE=CWE-572
+    This method explicitly invokes run() on an object. In general, classes implement the Runnable interface because they are going to have their run() method invoke
+
+### RpC: Repeated conditional test  (1 patterns)
+  - FB.RPC_REPEATED_CONDITIONAL_TEST  CWE=-
+    The code contains a conditional test is performed twice, one right after the other (e.g., x == 0 || x == 0 ). Perhaps the second occurrence is intended to be so
+
+### SBSC: String concatenation in loop using + operator  (1 patterns)
+  - FB.SBSC_USE_STRINGBUFFER_CONCATENATION  CWE=-
+    The method seems to be building a String using concatenation in a loop. In each iteration, the String is converted to a StringBuffer/StringBuilder, appended to,
+
+### SC: Constructor invokes Thread.start()  (1 patterns)
+  - FB.SC_START_IN_CTOR  CWE=-
+    The constructor starts a thread. This is likely to be wrong if the class is ever extended/subclassed, since the thread will be started before the subclass const
+
+### SnVI: Serializable class with no Version ID  (1 patterns)
+  - FB.SE_NO_SERIALVERSIONID  CWE=-
+    This class implements the Serializable interface, but does not define a serialVersionUID field. A change as simple as adding a reference to a .class object will
+
+### SI: Suspicious static initializer  (1 patterns)
+  - FB.SI_INSTANCE_BEFORE_FINALS_ASSIGNED  CWE=-
+    The class's static initializer creates an instance of the class before all of the static fields are assigned.
+
+### SKIPPED: Analysis skipped  (1 patterns)
+  - FB.SKIPPED_CLASS_TOO_BIG  CWE=-
+    This class is bigger than can be effectively handled, and was not fully analyzed for errors.
+
+### SP: Method spins on field  (1 patterns)
+  - FB.SP_SPIN_ON_FIELD  CWE=-
+    This method spins in a loop which reads a field. The compiler may legally hoist the read out of the loop, turning the code into an infinite loop. The class shou
+
+### SSD: Do not use an instance lock to protect shared static data  (1 patterns)
+  - FB.SSD_DO_NOT_USE_INSTANCE_LOCK_ON_SHARED_STATIC_DATA  CWE=-
+    If the lock or the synchronized method is not static, that modifies the static field, that could leave the shared static data unprotected against concurrent acc
+
+### SS: Unread field should be static  (1 patterns)
+  - FB.SS_SHOULD_BE_STATIC  CWE=-
+    This class contains an instance final field that is initialized to a compile-time static value. Consider making the field static.
+
+### ST: Misuse of static fields  (1 patterns)
+  - FB.ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD  CWE=-
+    This instance method writes to a static field. This is tricky to get correct if multiple instances are being manipulated, and generally bad practice.
+
+### SWL: Sleep with lock held  (1 patterns)
+  - FB.SWL_SLEEP_WITH_LOCK_HELD  CWE=-
+    This method calls Thread.sleep() with a lock held. This may result in very poor performance and scalability, or a deadlock, since other threads may be waiting t
+
+### SW: Swing coding rules  (1 patterns)
+  - FB.SW_SWING_METHODS_INVOKED_IN_SWING_THREAD  CWE=-
+    ( From JDC Tech Tip ): The Swing methods show(), setVisible(), and pack() will create the associated peer for the frame. With the creation of the peer, the syst
+
+### UG: Unsynchronized get method, synchronized set method  (1 patterns)
+  - FB.UG_SYNC_SET_UNSYNC_GET  CWE=-
+    This class contains similarly-named get and set methods where the set method is synchronized and the get method is not. This may result in incorrect behavior at
+
+### UI: Unsafe inheritance  (1 patterns)
+  - FB.UI_INHERITANCE_UNSAFE_GETRESOURCE  CWE=-
+    Calling this.getClass().getResource(...) could give results other than expected if this class is extended by a class in another package.
+
+### UMAC: Uncallable method of anonymous class  (1 patterns)
+  - FB.UMAC_UNCALLABLE_METHOD_OF_ANONYMOUS_CLASS  CWE=-
+    This anonymous class defines a method that is not directly invoked and does not override a method in a superclass. Since methods in other classes cannot directl
+
+### UM: Unnecessary Math on constants  (1 patterns)
+  - FB.UM_UNNECESSARY_MATH  CWE=-
+    This method uses a static method from java.lang.Math on a constant value. This method's result in this case, can be determined statically, and is faster and som
+
+### UOE: Use Object Equals  (1 patterns)
+  - FB.UOE_USE_OBJECT_EQUALS  CWE=-
+    This method invokes the .equals(Object o) method on a final class that doesn't override the equals method in the Object class, effectively making the equals met
+
+### UPM: Private method is never called  (1 patterns)
+  - FB.UPM_UNCALLED_PRIVATE_METHOD  CWE=-
+    This private method is never called. Although it is possible that the method will be invoked through reflection, it is more likely that the method is never used
+
+### USC: Potential security check based on untrusted source  (1 patterns)
+  - FB.USC_POTENTIAL_SECURITY_CHECK_BASED_ON_UNTRUSTED_SOURCE  CWE=-
+    A public method of a public class may be called from outside the package which means that untrusted data may be passed to it. Calling a method before the doPriv
+
+### UW: Unconditional wait  (1 patterns)
+  - FB.UW_UNCOND_WAIT  CWE=-
+    This method contains a call to java.lang.Object.wait() which is not guarded by conditional control flow. The code should verify that condition it intends to wai
+
+### VA: Vararg problems  (1 patterns)
+  - FB.VA_PRIMITIVE_ARRAY_PASSED_TO_OBJECT_VARARG  CWE=-
+    This code passes a primitive array to a function that takes a variable number of object arguments. This creates an array of length one to hold the primitive arr
+
+### VR: Version compatibility issue  (1 patterns)
+  - FB.VR_UNRESOLVABLE_REFERENCE  CWE=-
+    This class makes a reference to a class or method that cannot be resolved using against the libraries it is being analyzed with.
+
+### WL: Possible locking on wrong object  (1 patterns)
+  - FB.WL_USING_GETCLASS_RATHER_THAN_CLASS_LITERAL  CWE=-
+    This instance method synchronizes on this.getClass() . If this class is subclassed, subclasses will synchronize on the class object for the subclass, which isn'
+
+### WS: Class's writeObject() method is synchronized but nothing else is  (1 patterns)
+  - FB.WS_WRITEOBJECT_SYNC  CWE=-
+    This class has a writeObject() method which is synchronized; however, no other method of the class is synchronized.
+
+### XFB: XML Factory Bypass  (1 patterns)
+  - FB.XFB_XML_FACTORY_BYPASS  CWE=-
+    This method allocates a specific implementation of an xml interface. It is preferable to use the supplied factory classes to create these objects so that the im
+
+============================================================
+Coverage report by CWE
+============================================================
+Total CWE families referenced: 36
+
+Saved master to gap-master.json

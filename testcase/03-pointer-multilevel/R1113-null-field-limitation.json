@@ -1,0 +1,18 @@
+{
+  "case": "L6-unguarded-sibling-field",
+  "status": "known-limitation",
+  "measured_on": "2026-10-23",
+  "finding": "The dataflow null-dereference rule does not report a field explicitly assigned null and then dereferenced.",
+  "root_cause": "PointsToSolver represents heap facts as sets of abstract objects and has no null element, so FIELDSTORE dest=Const(NULL) contributes nothing. The subsequent FIELDLOAD therefore returns an empty points-to set, which the checker is required to read as 'unknown' rather than 'null' -- absence of proof must not become proof of nullness.",
+  "why_not_fixed": "Closing it needs a tri-valued field fact (holds-an-object / holds-null / unknown). That is a change to the solver's fact domain, not to the consumer, and a consumer that treated the empty set as null would invent a null-deref finding for every unmodelled field read.",
+  "ir_is_correct": "Verified: FIELDSTORE carries dest=Const(Kind.NULL) with fieldName=node and lhs1=right. An earlier reading that called this a translator defect was wrong -- Const.ofNull() simply renders as blank in the instruction's toString.",
+  "affected_scope": [
+    "explicit `x.f = null` followed by a dereference of x.f",
+    "field arrays and containers holding an explicit null element"
+  ],
+  "not_affected": [
+    "call results (marked nullable directly by the checker)",
+    "null locals (`x = null` -> MOVE, handled)",
+    "container elements reached through a locally allocated container"
+  ]
+}

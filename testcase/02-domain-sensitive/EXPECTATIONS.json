@@ -1,0 +1,209 @@
+{
+  "category": "02-domain-sensitive",
+  "notes": [
+    "Line numbers are the ARRAY LOAD / DIVISION site as reported by the engine.",
+    "Most findings land on the private helper (use / indexNowhere / divideNowhere) rather than on the caller that holds the range fact. That is the headline result: the range domain is computed per-method and is not carried in interprocedural summaries.",
+    "Line 68 in L3 and line 23 in L4 are the private helpers; the caller-specific cases are scored separately below."
+  ],
+  "cases": [
+    {
+      "id": "L1-safe-guard",
+      "kind": "tn",
+      "file": "L1RangeNarrowing.java",
+      "line": 22,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeAfterGuard: index guarded to [0,2] against a length-3 array. Must stay silent."
+    },
+    {
+      "id": "L1-unsafe-noguard",
+      "kind": "tp",
+      "file": "L1RangeNarrowing.java",
+      "line": 29,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "unsafeWithoutGuard: same array, no guard. Must fire."
+    },
+    {
+      "id": "L1-safe-divisor",
+      "kind": "tn",
+      "file": "L1RangeNarrowing.java",
+      "line": 37,
+      "rule_ids": [
+        "dfa-boundary-divide-by-zero",
+        "dfa-taint-divide-by-zero"
+      ],
+      "note": "safeAfterDivisorCheck: b == 0 guarded before division. Must stay silent."
+    },
+    {
+      "id": "L1-unsafe-divisor",
+      "kind": "tp",
+      "file": "L1RangeNarrowing.java",
+      "line": 42,
+      "rule_ids": [
+        "dfa-boundary-divide-by-zero",
+        "dfa-taint-divide-by-zero"
+      ],
+      "note": "unsafeDivisor: unguarded division. Must fire."
+    },
+    {
+      "id": "L1-safe-clamp",
+      "kind": "tn",
+      "file": "L1RangeNarrowing.java",
+      "line": 53,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds"
+      ],
+      "note": "safeViaClamp: Math.max/min clamp into [0,2]. This is the key intra-procedural probe: a real range domain should silence it."
+    },
+    {
+      "id": "L1-unsafe-clamp-shadowed",
+      "kind": "tp",
+      "file": "L1RangeNarrowing.java",
+      "line": 64,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "unsafeClampShadowed: a clamp exists but the RAW index is used. Must fire."
+    },
+    {
+      "id": "L2-safe-caller",
+      "kind": "tn",
+      "file": "L2CrossMethodRange.java",
+      "line": 25,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeCallerIndex: caller clamps, callee indexes. Must stay silent IF the range is propagated in the summary."
+    },
+    {
+      "id": "L2-unsafe-caller",
+      "kind": "tp",
+      "file": "L2CrossMethodRange.java",
+      "line": 18,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "unsafeCallerIndex: raw index passed to the callee. Must fire. [R1101: re-pinned to the callee operation site. The boundary checkers report where the index/division happens, which is inside the callee; the caller line was never going to carry this finding.]",
+      "sink_function": "indexNowhere"
+    },
+    {
+      "id": "L2-safe-2hop",
+      "kind": "tn",
+      "file": "L2CrossMethodRange.java",
+      "line": 39,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeTwoHopsAway: guard in a helper, use two frames away."
+    },
+    {
+      "id": "L2-unsafe-2hop",
+      "kind": "tp",
+      "file": "L2CrossMethodRange.java",
+      "line": 18,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "unsafeTwoHopsAway: guard disabled via limit<0, use two frames away. [R1101: re-pinned to the callee operation site. The boundary checkers report where the index/division happens, which is inside the callee; the caller line was never going to carry this finding.]",
+      "sink_function": "indexNowhere"
+    },
+    {
+      "id": "L2-safe-divisor-x",
+      "kind": "tn",
+      "file": "L2CrossMethodRange.java",
+      "line": 59,
+      "rule_ids": [
+        "dfa-boundary-divide-by-zero",
+        "dfa-taint-divide-by-zero"
+      ],
+      "note": "safeDivisorAcrossBoundary: caller guards, callee divides."
+    },
+    {
+      "id": "L2-unsafe-divisor-x",
+      "kind": "tp",
+      "file": "L2CrossMethodRange.java",
+      "line": 68,
+      "rule_ids": [
+        "dfa-boundary-divide-by-zero",
+        "dfa-taint-divide-by-zero"
+      ],
+      "note": "unsafeDivisorAcrossBoundary: no guard, division in the callee. [R1101: re-pinned to the callee operation site. The boundary checkers report where the index/division happens, which is inside the callee; the caller line was never going to carry this finding.]",
+      "sink_function": "divideNowhere"
+    },
+    {
+      "id": "L3-unsafe-boxing",
+      "kind": "tp",
+      "file": "L3LayeredValue.java",
+      "line": 133,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds"
+      ],
+      "note": "unsafeThroughBoxing: the Integer box carries the RAW index while a different variable is clamped. Must fire."
+    },
+    {
+      "id": "L3-safe-field",
+      "kind": "tn",
+      "file": "L3LayeredValue.java",
+      "line": 75,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeThroughField: clamped into a Holder field, read back, used."
+    },
+    {
+      "id": "L3-safe-collection",
+      "kind": "tn",
+      "file": "L3LayeredValue.java",
+      "line": 105,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeThroughCollection: clamp survives a List round-trip."
+    },
+    {
+      "id": "L4-safe-early-return",
+      "kind": "tn",
+      "file": "L4ControlFlowMerge.java",
+      "line": 129,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeEarlyReturn: every path reaching the access passed the bounds check."
+    },
+    {
+      "id": "L4-safe-one-branch-returns",
+      "kind": "tn",
+      "file": "L4ControlFlowMerge.java",
+      "line": 63,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeOneBranchReturns: the join is unreachable on the returning path."
+    },
+    {
+      "id": "L4-safe-switch",
+      "kind": "tn",
+      "file": "L4ControlFlowMerge.java",
+      "line": 103,
+      "rule_ids": [
+        "dfa-boundary-array-out-of-bounds",
+        "dfa-taint-unchecked-array-index"
+      ],
+      "note": "safeSwitchAllCases: every reachable case narrows, default throws."
+    }
+  ]
+}

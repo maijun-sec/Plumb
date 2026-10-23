@@ -1,0 +1,17 @@
+# Per-CWE YAML v2 for CWE585
+# R759-F: added plumb.ast.empty-sync-block (JulietAstChecksCheck) for CWE-585 Empty Synchronized Block
+
+maxParallelism: 4
+cgStrategy: global
+aggressiveness: medium
+
+rules:
+  mode: whitelist
+  enabled:
+    - CatchGenericException
+    - plumb.resource.leak
+    - empty-sync-block
+    - EmptySyncBlockCheck
+
+ai:
+  enabled: false

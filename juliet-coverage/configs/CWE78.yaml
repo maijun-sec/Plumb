@@ -1,0 +1,10 @@
+maxParallelism: 4
+cgStrategy: global
+aggressiveness: medium
+
+rules:
+  mode: all
+  enabled: []
+
+ai:
+  enabled: false

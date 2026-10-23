@@ -1,0 +1,57 @@
+package org.plumb.style.design;
+
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.ConstructorDeclaration;
+import java.util.List;
+import org.plumb.reporter.Finding;
+import org.plumb.rules.RuleDef;
+import org.plumb.rules.RuleId;
+import org.plumb.style.AstChecker;
+import org.plumb.style.StyleContext;
+
+/**
+ * Abstract class should not have a {@code public} constructor.
+ *
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
+ * visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)} before. The inner per-ctor
+ * walk stays as a local loop because we need to know the enclosing class is abstract.
+ */
+public final class PublicConstructorInAbstractClassCheck implements AstChecker {
+
+  private static final RuleDef DEFAULT_RULE =
+      new RuleDef(
+          new RuleId("ast-design-public-ctor-abstract", "PUBLIC_CTOR_ABSTRACT"),
+          "abstract class should not have public constructor",
+          RuleDef.Severity.LOW,
+          RuleDef.Type.STYLE,
+          List.of(),
+          "org.plumb.style.PublicConstructorInAbstractClassCheck",
+          true,
+          List.of("ast-design-public-ctor-abstract", "public-ctor-abstract")
+      );
+
+  @Override
+  public String name() {
+    return "public-ctor-abstract";
+  }
+
+  @Override
+  public void init(StyleContext ctx) {}
+
+  @Override
+  public void visit(ClassOrInterfaceDeclaration c, StyleContext ctx) {
+    if (!c.isAbstract()) return;
+    for (ConstructorDeclaration ctor : c.getConstructors()) {
+      if (!ctor.isPublic()) continue;
+      int line = ctor.getBegin().map(p -> p.line).orElse(-1);
+      int col = ctor.getBegin().map(p -> p.column).orElse(-1);
+      ctx.report(
+          line,
+          col,
+          DEFAULT_RULE,
+          "Abstract class " + c.getNameAsString() + " should not have public constructor",
+          RuleDef.Severity.LOW,
+          c.getNameAsString());
+    }
+  }
+}

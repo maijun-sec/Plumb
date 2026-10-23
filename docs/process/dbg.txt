@@ -1,0 +1,4 @@
+﻿<a name="FB.AM_CREATES_EMPTY_JAR_FILE_ENTRY"/>
+<span style="font-size:1.4em;font-weight:bold;">FB.AM_CREATES_EMPTY_JAR_FILE_ENTRY</span>
+<table border=0 width="100%">
+<tr><td width="40%" bgcolor="B0B0B0">SpotBugs: Bad practice</td><td bgcolor="B0B0B0">AM: API misuse</td><td bgcolor="B0B0B0"><a href="http://cwe.mitre.org/data/definitions/227.html">CWE-227</a></td></tr></table>

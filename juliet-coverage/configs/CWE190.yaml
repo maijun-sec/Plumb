@@ -1,0 +1,21 @@
+﻿# Per-CWE YAML v2 for CWE190
+# R759-G: removed loose.numeric.integer-overflow (84% of total FP, ~3708
+# false positives in badSink/goodG2BSink helper methods Juliet classifies
+# as "other"). plumb.boundary + plumb.numeric remain as true positive
+# rules (4,882 hits in bad() method). Also removed UncheckedReturn
+# (cross-CWE FP — that's CWE-252, not 190).
+
+maxParallelism: 4
+cgStrategy: global
+aggressiveness: medium
+
+rules:
+  mode: whitelist
+  enabled:
+    - plumb.numeric.integer-overflow
+    - plumb.boundary.integer-overflow
+    - CatchGenericException
+    - plumb.resource.leak
+
+ai:
+  enabled: false

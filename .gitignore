@@ -1,0 +1,134 @@
+﻿# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Build output 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+target/
+**/target/
+*.class
+*.jar
+*.war
+hs_err_pid*.log
+replay_pid*.log
+
+# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Maven 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+mvn.err
+mvn.out
+mvn-*.log
+mvn-*.log.err
+
+# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ IDE 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/shelf/
+.idea/dictionaries/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ OS junk 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ One-off test scratch 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+in.txt
+out.txt
+tmp_out.txt
+# R1113: this was a bare `ndjson`, which git matches as a DIRECTORY name, so it never
+# excluded anything -- including examples/out.ndjson. The catch-all `*.ndjson` at the
+# bottom of this file is the rule that actually does the work.
+*.ndjson
+messages.xml
+*.bak
+_*.txt
+_*.log
+_*.yaml
+_*.cjs
+_*.cmd
+_*.err
+_*.ps1
+_*.sh
+_*.html
+_*.json
+_*.err.log
+_*.tmp
+
+# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Trash / experimental 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+_trash/
+
+# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Smoke-test outputs (regenerable) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+smoke_juliet/
+smoke_perf/
+smoke_cve/
+smoke_petclinic/
+
+# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Decompiled code (CFR/SootUp output) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+com/
+edu/
+sootup/
+.fathom-cache/
+
+# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Distribution output 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+dist/
+
+# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Plumb-internal test outputs 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+smoke_*/_trash/
+**/integration/_trash/
+**/r180_eval/_trash/
+
+# M-6 (audit 2026-10-08): build / debug / scratch
+log.txt
+log1.txt
+log2.txt
+log*.txt
+replay_pid*.log
+build.log
+_audit-scratch/
+# 90 GB scratch — never commit
+_trash/
+_cleanup_trash/
+# M-6: agent scratch, not product
+.aethercode/sessions/
+.aethercode/r*_bulk/
+
+# R1113 (2026-10-23): agent scratch and stale code.
+#
+# `.aethercode/` holds probe scripts, maven logs and archived scratch from
+# measurement rounds. It is not product and it grows without bound, so the whole
+# directory is excluded rather than a growing list of patterns inside it.
+.aethercode/
+
+# These two preserve code that no longer compiles or no longer has an active
+# gate. They are kept on disk deliberately (see plumb-dfa/pom.xml's surefire
+# include list, which excludes ~120 legacy R-XXX files), but they are not part of
+# the build and do not belong in history.
+_backup_disabled_tests/
+_backup_pre_existing_broken/
+
+# Local distribution output from scripts/package-*.sh / dist-jlink-*.ps1
+dist-jlink/
+dist-test-package/
+
+# R1113: IntelliJ project metadata. `*.iml`, `.idea/workspace.xml` and the other
+# per-user files were already excluded above; these are the shared-looking ones
+# (compiler.xml, encodings.xml, misc.xml) that would otherwise pin every contributor
+# to one machine's JDK and encoding choices.
+.idea/
+
+# R1113: per-category raw scanner output. Regenerate with
+#   python testcase/run_category.py testcase/<category> --per-file --keep-raw
+testcase/**/_raw.ndjson
+testcase/**/_raw.jsonl
+
+# R1113: 746 MB of prior scan OUTPUT sitting under src/main/resources.
+#
+# plumb-dfa/src/main/resources/scripts holds the real corpus (614 .java fixtures).
+# Alongside them are 22 .ndjson files that are captured *results* of earlier sweep
+# runs -- r696_test_cwe89.ndjson alone is 98 MB, and r696_final_CWE319.ndjson,
+# r696_scan/CWE319_*.ndjson, and the r697_{s01,s02,s03} copies across three output
+# directories are byte-identical duplicates of one another.
+#
+# No source or test reads any of them (checked: zero references outside these files),
+# they are not inputs to the build, and they are reproducible by re-running the scan.
+# Committing them would put ~450 MB of duplicated binary-ish payload into permanent
+# history, where it cannot be removed by a later .gitignore edit.
+*.ndjson

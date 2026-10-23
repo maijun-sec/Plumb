@@ -1,0 +1,23 @@
+# Per-CWE YAML v2 for CWE400
+# R693: include the dual-mapped rules
+# (plumb.dfa.resource-exhaustion + plumb.numeric.unchecked-loop-condition)
+# that the resource-exhaustion checker fires for.
+
+maxParallelism: 4
+cgStrategy: global
+aggressiveness: medium
+
+rules:
+  mode: whitelist
+  enabled:
+    - CatchGenericException
+    - InsecureCommunication
+    - UncheckedReturn
+    - plumb.numeric.integer-overflow
+    - plumb.numeric.integer-underflow
+    - plumb.resource.leak
+    - plumb.dfa.resource-exhaustion
+    - plumb.numeric.unchecked-loop-condition
+
+ai:
+  enabled: false

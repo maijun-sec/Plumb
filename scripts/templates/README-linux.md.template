@@ -1,0 +1,42 @@
+# Plumb __VERSION__ — 解压即用版 (Linux x64)
+
+> **自带 JRE 17**:解压即可运行,无需安装 Java。
+
+## 快速开始
+
+```bash
+tar -xzf plumb-__VERSION__-jre-linux-__ARCH__.tar.gz
+cd plumb-__VERSION__-jre-linux-__ARCH__
+
+# 1. 看帮助
+./bin/plumb --help
+
+# 2. 扫你的代码
+./bin/plumb -i /path/to/your/src/
+
+# 3. NDJSON 输出到文件
+./bin/plumb -i /path/to/your/src/ -o findings.ndjson
+```
+
+## 启用 AI FP 消减 (可选)
+
+```bash
+export MINIMAX_API_KEY=sk-...
+./bin/plumb -c conf/default-config.yaml -i /path/to/your/src/ --ai-dedup
+```
+
+## 内容
+
+- `bin/plumb` — POSIX 启动器 (Linux / macOS,WSL,Git Bash)
+- `jre/` — jlink 优化后的最小 JRE 17 (~95 MB)
+- `lib/plumb-*.jar` — shaded uber-jar (76 MB,含所有依赖)
+- `conf/` — default-config.yaml + logback.xml
+- `docs/` — OVERVIEW + CHECKERS + ENVIRONMENT + CLI
+
+## 环境变量
+
+详见 `docs/ENVIRONMENT.md`。
+- `MINIMAX_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` — AI (可选)
+- `PLUMB_JAVA_OPTS` — 透传 JVM 参数 (默认 `-Xmx4g -XX:+UseG1GC`)
+- `PLUMB_DEBUG` — DEBUG 日志 (默认 false)
+- `http_proxy` / `https_proxy` — AI 出站代理

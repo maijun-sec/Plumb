@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <root level="ERROR">
+    </root>
+    <logger name="org.plumb" level="DEBUG"/>
+    <logger name="org.plumb.ai" level="DEBUG"/>
+</configuration>

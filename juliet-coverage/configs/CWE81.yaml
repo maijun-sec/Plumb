@@ -1,0 +1,14 @@
+# Per-CWE YAML for CWE81 (R693 final)
+# Use mode: all — let the taint checker pick the right rule_id
+# (xss-injection vs http-response-splitting) per sink family match.
+
+maxParallelism: 4
+cgStrategy: global
+aggressiveness: medium
+
+rules:
+  mode: all
+  enabled: []
+
+ai:
+  enabled: false

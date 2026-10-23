@@ -1,0 +1,18 @@
+# Per-CWE YAML v2 for CWE581
+# Whitelist (DFA rule ids Plumb actually emits): ['CatchGenericException', 'plumb.resource.leak']
+# R759-F: added assignment-in-conditional + literal-boolean-condition (covers BAD hashCode pattern)
+
+maxParallelism: 4
+cgStrategy: global
+aggressiveness: medium
+
+rules:
+  mode: whitelist
+  enabled:
+    - CatchGenericException
+    - plumb.resource.leak
+    - plumb.style.assignment-in-conditional
+    - plumb.style.literal-boolean-condition
+
+ai:
+  enabled: false

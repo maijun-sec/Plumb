@@ -1,0 +1,19 @@
+inputs:
+  - examples/demo/src/main/java
+  - examples/style-bad.java
+
+output:
+  format: NDJSON
+  path: examples/out.ndjson
+
+checks:
+  taint: true
+  style: true
+  divByZero: true
+
+rules:
+  disabled: []
+  enabled: []
+
+style:
+  methodLengthThreshold: 80

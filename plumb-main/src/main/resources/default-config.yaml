@@ -1,0 +1,192 @@
+﻿# Plumb default configuration
+# ============================
+# This file is shipped with the distribution as a baseline you
+# can edit. Run with:
+#
+#   bin/sast-scan -c conf/default-config.yaml -i path/to/your/src
+#
+# All fields are optional — anything you omit falls back to the
+# built-in default documented in doc/usage/CLI.md. Both camelCase
+# (cgStrategy) and snake_case (cg-strategy) keys are accepted;
+# camelCase wins when both are present.
+#
+# To make the package small, no examples/ tree is shipped. The
+# baseline config below intentionally leaves `inputs` empty so
+# the user has to set -i on the command line; if you prefer
+# config-driven inputs, add an `inputs:` block here.
+
+# ---- output ----
+# Default is console-on-stdout. Uncomment + edit to
+# write a file. The default-config intentionally omits
+# `output.path` so stdout gets the findings — users who
+# want a file add `output.path: build/sast.ndjson` here
+# or pass `-o build/sast.ndjson` on the command line.
+# output:
+#   path: build/sast.ndjson
+#   format: ndjson             # console | ndjson
+
+# ---- on-disk IR cache ----
+# Uncomment to enable. R-? — when on, the parse + translate
+# stage writes per-source TAC to <outputDir>/cache/programs/
+# and a merged view to <outputDir>/cache/merged.tac, so
+# re-running the same scan skips translation. Schema
+# bumps on `ir version` invalidate automatically.
+# outputDir: build/plumb-out
+# cacheMode: readwrite         # off | read | write | readwrite
+maxParallelism: 4             # parse+translate parallelism; 0 = nCPU-1
+
+# R761 audit (Oct 2026): default is now `global` (was `vta`).
+# The project directive is that analysis must be global —
+# `cgStrategy: vta` is a TU-local strategy that drops
+# cross-file call resolution, which is what catches most
+# cross-TU taint patterns. `RcgStrategyTest:34` already
+# asserts `global` as the default. Trade-offs:
+#
+#   global — DEFAULT. Cross-TU signature lookup via
+#            `GlobalTACStore`. Slowest, but the only mode
+#            that catches Juliet's cross-TU taint cases.
+#   vta    — Variable Type Analysis, TU-local, precise.
+#   cha    — Class Hierarchy Analysis, fast / over-approx.
+#            Use for very large codebases.
+#   rta    — Rapid Type Analysis, between cha and vta.
+#   1cfa   — 1-CFA context-sensitive. Slow.
+#   stub   — direct calls only. Tests / debug only.
+#   cached:<name>:<path>  — wrap any of the above with a
+#                            disk cache at <path>.
+cgStrategy: global
+
+# ---- rule switches (uncomment + edit to opt in/out) ----
+# rules:
+#   enabled:                   # force-enable (even if default-off)
+#     - bu-0401-weak-crypto
+#   disabled:                  # force-disable
+#     - STYLE_SYSTEM_OUT
+
+# ---- R-? aggressiveness (low | medium | high) ----
+# REMOVED 2026-10-08 (audit C-3): the aggressiveness flag is no
+# longer honored. Per-rule firing is driven by `checks.<rule>:
+# {enabled: true/false}` in this YAML, or `--rule <id>` on the
+# CLI.  The flag is removed from SastMain and from this file.
+# This block is kept as a single comment so old configs that
+# still mention `aggressiveness:` get a clear error at startup
+# (see ConfigLoader.fromMapImpl).
+
+# ---- checker families ----
+# All true by default. Set any to false to disable.
+# `aiDedup: true` means the AI FP-reducer agent reviews
+# findings for that rule family (the LLM gets the rule
+# prompt + the finding's source context + dataflow trace
+# and returns TP/FP/UNKNOWN). The verifier tags findings
+# in the NDJSON output as `ai_verdict` + `ai_reason`.
+checks:
+  # --- Taint master switch (33 unified taint checkers) ---
+  taint: true
+  # --- Style / structural checks ---
+  style: true
+  # --- Numeric / safety taint ---
+  divByZero:           {enabled: true,  aiDedup: true}
+  resourceLeak:        {enabled: true,  aiDedup: true}
+  nullDeref:           {enabled: true,  aiDedup: true}
+  hardcodedCred:       {enabled: true,  aiDedup: true}
+  intOverflow:         {enabled: true,  aiDedup: true}
+  intUnderflow:        {enabled: true,  aiDedup: true}
+  arrayBounds:         {enabled: true,  aiDedup: true}
+  weakCrypto:          {enabled: true,  aiDedup: true}
+  insecureRandom:      {enabled: true,  aiDedup: true}
+  predictableSeed:     {enabled: true,  aiDedup: true}
+  predictableKey:      {enabled: true,  aiDedup: true}
+  staticApiKey:        {enabled: true,  aiDedup: true}
+  insecureComms:       {enabled: true,  aiDedup: true}
+  corsMisconfig:       {enabled: true,  aiDedup: true}
+  insecureCookie:      {enabled: true,  aiDedup: true}
+  badShift:            {enabled: true,  aiDedup: true}
+  infiniteLoop:        {enabled: true,  aiDedup: true}
+  constantCondition:   {enabled: true,  aiDedup: true}
+  sensitiveDataLeak:   {enabled: true,  aiDedup: true}
+  fieldHardcodedPassword: {enabled: true, aiDedup: true}
+  missingAuthorization:   {enabled: true, aiDedup: true}
+  missingInputValidation: {enabled: true, aiDedup: true}
+  informationExposure:     {enabled: true, aiDedup: true}
+  uncheckedReturn:         {enabled: true, aiDedup: true}
+  incorrectReturn:         {enabled: false, aiDedup: true} # style-ish
+  threadRun:               {enabled: false, aiDedup: false} # style
+  stringEquality:           {enabled: true,  aiDedup: true}
+  catchGeneric:            {enabled: false, aiDedup: false} # style
+  obsoleteFunction:        {enabled: true,  aiDedup: true}
+  tryCatchFinally:         {enabled: true,  aiDedup: false}
+  offByOne:                {enabled: true,  aiDedup: true}
+  equalsCalledOnNull:      {enabled: true,  aiDedup: true}
+  compareWithSelf:         {enabled: true,  aiDedup: true}
+  xxe:                     {enabled: true,  aiDedup: true}
+  returnFromFinally:       {enabled: true,  aiDedup: false}
+  emptyCatchHandler:       {enabled: true,  aiDedup: true}
+  iteratorConcurrentModification: {enabled: true, aiDedup: true}
+  collectionSelfReference:  {enabled: true,  aiDedup: false}
+  uncaughtExceptionPropagator:    {enabled: true,  aiDedup: false}
+  uncheckedLoopCondition:   {enabled: true,  aiDedup: true}
+  uncontrolledMemAlloc:    {enabled: true,  aiDedup: true}
+  numericTruncation:       {enabled: true,  aiDedup: true}
+  # R-? — 8 plumb-dfa → plumb-dfa DfaChecker ports
+  # (Category A — direct IR pattern, no taint). Each is a
+  # structural check that doesn't propagate data flow.
+  bigDecimalDoubleConstructor: {enabled: true, aiDedup: true}  # CWE-682
+  defaultEncoding:             {enabled: true, aiDedup: true}  # CWE-176
+  # R760 (Oct 2026): loose checkers removed entirely. The
+  # `loose:` key below was deleted; existing configs that
+  # still mention it are silently ignored (see ConfigLoader).
+  # Coverage is held by the strict `plumb.numeric.*` /
+  # `plumb.boundary.*` precise rules + new `plumb.ast.*`
+  # rules. See commit log for empirical numbers.
+
+# ---- style thresholds ----
+# R761 audit (Oct 2026): removed `style.methodLengthThreshold` —
+# was a dead field (no style checker read it; plumb-style has its
+# own hard-coded 80-line limit). When plumb-style grows per-checker
+# thresholds, they will be added here under the `style:` block.
+
+# ---- R-? AI augmentation layer (plumb-ai) ----
+# FP-reducer agent only (CLI: --ai-dedup / ai.dedup: true).
+# At scan-finish time, every finding whose rule id is
+# listed under `ai.dedupRules` (or every rule if the
+# list is empty) is sent to the LLM with the rule's
+# prompt + the source context + the dataflow trace.
+# The LLM returns {"verdict":"TP|FP|UNKNOWN",
+# "reason":"..."}. The verdict lands in the NDJSON
+# output as `ai_verdict` / `ai_reason`. When
+# `ai.dropOnAiFp: true` FP findings are dropped from
+# the report entirely.
+#
+# REMOVED 2026-10-08 (audit C-3 + m-6):
+#   * ai.enabled    (master switch) — `--ai-dedup` itself is
+#                   the switch; the `enabled` field was
+#                   silently ignored.
+#   * ai.scan       (bug scanner / `--ai-scan`) — the CLI flag
+#                   and the YAML key were both dead code.
+#                   Re-introduce in a future release.
+#   * ai.contextLines — never read; the runner uses its
+#                   own `extractSourceContext(f, 3)`.
+#   * ai.rulePromptsDir (YAML only) — the CLI flag
+#                   `--rule-prompts-dir` is the supported
+#                   path; the YAML key was dead.
+#   * ai.sendAstContext — never read.
+#
+# The package deliberately does NOT use Spring-AI to keep
+# the jar footprint small (~3MB saved). The agent speaks
+# any OpenAI-compatible chat-completion API (OpenAI,
+# Azure, Ollama, vLLM, LocalAI) or Anthropic /v1/messages.
+#
+# SECURITY: do NOT commit a real apiKey. Use the ${ENV_VAR}
+# syntax so the key is read from the environment at
+# startup. The runtime never logs the key.
+ai:
+  dedup: false                      # FP reducer (CLI: --ai-dedup)
+  dropOnAiFp: false                 # drop FP findings vs keep them with ai_verdict=FP
+  dedupRules: []                    # empty = every rule is reviewed; populate to narrow
+  provider: openai                  # openai | anthropic | openai_compatible
+  baseUrl: https://api.openai.com
+  apiKey: ${OPENAI_API_KEY}         # read from env at startup
+  model: gpt-4o-mini                # any model name your endpoint accepts
+  header:                           # optional extra request header
+  timeoutSeconds: 30
+  maxConcurrent: 4                  # parallel dedup requests
+  temperature: 0.0                  # deterministic verdict (FP reducer)

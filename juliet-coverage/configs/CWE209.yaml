@@ -1,0 +1,18 @@
+# Per-CWE YAML for CWE209 (R695)
+# Information Leak Through Error Message — needs
+# the ErrorMessageInfoLeakChecker (CWE209 sink:
+# `e.printStackTrace()` / `log.error(e.getMessage())`).
+# We also enable the catch+log error message taint
+# flow via plumb.taint.xss-injection (CWE81 has
+# the same bad pattern).
+
+maxParallelism: 4
+cgStrategy: vta
+aggressiveness: medium
+
+rules:
+  mode: all
+  enabled: []
+
+ai:
+  enabled: false

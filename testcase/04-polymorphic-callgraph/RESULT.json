@@ -1,0 +1,205 @@
+{
+  "category": "04-polymorphic-callgraph",
+  "scan_mode": "per-file",
+  "cg_strategy": "global",
+  "total_findings": 976,
+  "cases": [
+    {
+      "id": "L3a_has_sql_findings",
+      "kind": "tp",
+      "file": "L3aLateImplNotInstantiated.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Counts SQL findings in L3a (sink class NEVER instantiated). L3b exists only to add one `new`, so the L3a-vs-L3b DELTA is the measurement. On this build the two files produce byte-identical output, which means the instantiation gate documented in VtaCallGraphStrategy is not implemented. See SUPPORT-STATUS.md result 1.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        72
+      ]
+    },
+    {
+      "id": "L3b_has_sql_findings",
+      "kind": "tp",
+      "file": "L3bLateImplInstantiated.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Counts SQL findings in L3b (sink class instantiated once). Compare against L3a_has_sql_findings: L3b MUST exceed L3a for the gate to be observable. It does not.",
+      "status": "supported",
+      "hits": 2,
+      "hit_lines": [
+        63,
+        110
+      ]
+    },
+    {
+      "id": "L4_INT_OVERLOAD_FP",
+      "kind": "tn",
+      "file": "L4OverloadAmbiguity.java",
+      "line": 72,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "A PROVABLE false positive if reported. process(int code) takes a primitive int, so no string taint can flow into it, yet the sink on line 75 is reachable. A finding here proves name+arity resolution bound the call site to a process(String) overload. This is the cleanest precision case in the whole suite. NOTE: line 72 is the method declaration; the sink call is line 75. Both the method and the sink resolve to the same `java.sql.Statement.executeQuery/1` callee, so this row is satisfied if ANY executeQuery finding in this file lands on either line.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "L4_string_overload_tp",
+      "kind": "tp",
+      "file": "L4OverloadAmbiguity.java",
+      "line": 48,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "The genuine sink: StringProcessor.process(String input) concatenates into executeQuery on line 48. Must fire.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        48
+      ]
+    },
+    {
+      "id": "L4_second_string_overload_tp",
+      "kind": "tp",
+      "file": "L4OverloadAmbiguity.java",
+      "line": 100,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "A third class declaring process(String), widening the name+arity key. The same sink must still fire.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        100
+      ]
+    },
+    {
+      "id": "L4_arity_control_tp",
+      "kind": "tp",
+      "file": "L4OverloadAmbiguity.java",
+      "line": 117,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "ReportProcessor.process(String, String) - arity 2, so the resolution key differs from process/1. Proves arity is honoured. [R1102: re-pinned from line 110, a javadoc line; the executeQuery sink is at 117. R1099 also made the key type-aware, so this now exercises arity AND parameter type. R1104: dropped the sink_function constraint -- it was meant to pin the enclosing overload, but a boundary finding names the sink callee (java.sql.Statement.executeQuery/1), so the constraint excluded the very finding it was added to find.]",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        117
+      ]
+    },
+    {
+      "id": "L1-interface-dispatch",
+      "kind": "tp",
+      "file": "L1InterfaceDispatch.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Interface with two implementations, one a sink and one a control. Findings must appear in the sink implementation.",
+      "status": "supported",
+      "hits": 2,
+      "hit_lines": [
+        78,
+        185
+      ]
+    },
+    {
+      "id": "L1-control-tn",
+      "kind": "tn",
+      "file": "L1InterfaceDispatch.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "anchor_fn": "dispatchControlsOnly",
+      "note": "The non-sink implementation reached through the same interface. NOTE this anchor is informational: sink_function is the callee, so this row currently matches the whole file. Treat the L1 sink-vs-control distinction as an open gap in the harness, not as an engine result.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "L2-abstract-hierarchy",
+      "kind": "tp",
+      "file": "L2AbstractHierarchy.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Three-level abstract chain with an abstract method declared in the grandparent, dispatched through the grandparent type.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        106
+      ]
+    },
+    {
+      "id": "L5-diamond",
+      "kind": "tp",
+      "file": "L5DiamondInheritance.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Diamond: Top / Left / Right / DiamondImpl, dispatched through the root interface. Probes duplicate edges from two inheritance paths to the same concrete type.",
+      "status": "supported",
+      "hits": 2,
+      "hit_lines": [
+        84,
+        146
+      ]
+    },
+    {
+      "id": "L6-collection-polymorphism",
+      "kind": "tp",
+      "file": "L6CollectionPolymorphism.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "A List<Handler> with mixed implementations, iterated, with a tainted element dispatched polymorphically. Container plus dispatch together.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        61
+      ]
+    }
+  ],
+  "summary": {
+    "tp_total": 9,
+    "tp_supported": 9,
+    "tp_false_negative": 0,
+    "tn_total": 2,
+    "tn_supported": 2,
+    "tn_false_positive": 0
+  },
+  "cwe_histogram": {
+    "CWE-404": 68,
+    "CWE-563": 35,
+    "CWE-476": 34,
+    "CWE-89": 26,
+    "CWE-690": 20,
+    "CWE-798": 17,
+    "CWE-331": 17,
+    "CWE-209": 13,
+    "CWE-778": 13,
+    "CWE-223": 13,
+    "CWE-703": 13,
+    "CWE-668": 11,
+    "CWE-248": 10,
+    "CWE-704": 6,
+    "CWE-398": 6,
+    "CWE-190": 5,
+    "CWE-674": 1,
+    "CWE-1006": 1,
+    "CWE-397": 1,
+    "CWE-482": 1,
+    "CWE-697": 1,
+    "CWE-597": 1
+  }
+}

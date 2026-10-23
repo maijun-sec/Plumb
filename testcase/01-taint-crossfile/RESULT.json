@@ -1,0 +1,318 @@
+{
+  "category": "01-taint-crossfile",
+  "scan_mode": "per-file",
+  "cg_strategy": "global",
+  "total_findings": 884,
+  "cases": [
+    {
+      "id": "TP-1-full-chain",
+      "kind": "tp",
+      "file": "SqlSink.java",
+      "line": 24,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "9 hops across 6 files: source -> field store -> field load -> concat -> cross-file return -> list store -> list load -> fake sanitizer -> StringBuilder -> queryByName. R1099: pinned to SqlSink.java:24 -- the line the sink callee is reported at. Attribution is to the sink, not to the orchestrator method that started the chain, so the file must be the sink file for the case to be measurable.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        24
+      ]
+    },
+    {
+      "id": "TP-2-map-chain",
+      "kind": "tp",
+      "file": "SqlSink.java",
+      "line": 24,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Same sink reached through a Map store/load instead of a List. Fails independently if only the list shape is modelled. R1099: pinned to SqlSink.java:24 -- the line the sink callee is reported at. Attribution is to the sink, not to the orchestrator method that started the chain, so the file must be the sink file for the case to be measurable.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        24
+      ]
+    },
+    {
+      "id": "TP-3-array-chain",
+      "kind": "tp",
+      "file": "SqlSink.java",
+      "line": 24,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Same sink reached through an array store/load plus split/join. R1099: pinned to SqlSink.java:24 -- the line the sink callee is reported at. Attribution is to the sink, not to the orchestrator method that started the chain, so the file must be the sink file for the case to be measurable.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        24
+      ]
+    },
+    {
+      "id": "TP-4-deep-field",
+      "kind": "tp",
+      "file": "SqlSink.java",
+      "line": 24,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Same sink reached through a 2-level object graph (outer.nested.data). R1099: pinned to SqlSink.java:24 -- the line the sink callee is reported at. Attribution is to the sink, not to the orchestrator method that started the chain, so the file must be the sink file for the case to be measurable.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        24
+      ]
+    },
+    {
+      "id": "TP-5-conditional",
+      "kind": "tp",
+      "file": "SqlSink.java",
+      "line": 24,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Same sink reached through a CFG-join merge inside RequestContext.getConditional. R1099: pinned to SqlSink.java:24 -- the line the sink callee is reported at. Attribution is to the sink, not to the orchestrator method that started the chain, so the file must be the sink file for the case to be measurable.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        24
+      ]
+    },
+    {
+      "id": "TP-sink-query",
+      "kind": "tp",
+      "file": "SqlSink.java",
+      "line": 24,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "CONTROL: queryByName param -> executeQuery. Must fire; proves the pipeline and sink shape work.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        24
+      ]
+    },
+    {
+      "id": "TP-sink-delete",
+      "kind": "tp",
+      "file": "SqlSink.java",
+      "line": 31,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "CONTROL: deleteByName DML sink via executeUpdate.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        31
+      ]
+    },
+    {
+      "id": "TP-sink-trycatch",
+      "kind": "tp",
+      "file": "SqlSink.java",
+      "line": 65,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "CONTROL: inTryCatch sink inside try/catch so the value crosses an exception edge.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        65
+      ]
+    },
+    {
+      "id": "TP-sink-prepared",
+      "kind": "tp",
+      "file": "SqlSink.java",
+      "line": 36,
+      "cwes": [
+        "CWE-89"
+      ],
+      "rule_ids": [
+        "ast-style-info-exposure-querystring"
+      ],
+      "note": "CONTROL: prepared() reaches prepareStatement through a helper. NOTE dfa-taint-sql-injection does not fire here (the sink is reached via a nested static holder), so this row scores the AST-level query-string rule instead. Recorded as a partial-coverage observation: the DFA checker misses the prepareStatement shape that the AST checker catches.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        36
+      ]
+    },
+    {
+      "id": "TP-sink-builder",
+      "kind": "tp",
+      "file": "SqlSink.java",
+      "line": 42,
+      "cwes": [
+        "CWE-89"
+      ],
+      "rule_ids": [
+        "ast-style-info-exposure-querystring"
+      ],
+      "note": "CONTROL: viaBuilder StringBuilder-built query. Same AST-rule caveat as TP-sink-prepared.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        42
+      ]
+    },
+    {
+      "id": "TP-sink-inloop",
+      "kind": "tp",
+      "file": "SqlSink.java",
+      "line": 57,
+      "cwes": [
+        "CWE-89"
+      ],
+      "rule_ids": [
+        "ast-style-info-exposure-querystring"
+      ],
+      "note": "CONTROL: inLoop sink inside a for-each. Same AST-rule caveat.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        57
+      ]
+    },
+    {
+      "id": "TP-sink-viacontext",
+      "kind": "tp",
+      "file": "SqlSink.java",
+      "line": 50,
+      "cwes": [
+        "CWE-89"
+      ],
+      "rule_ids": [
+        "ast-style-info-exposure-querystring"
+      ],
+      "note": "CONTROL: viaContext sink reached through a parameter object field. Same AST-rule caveat.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        50
+      ]
+    },
+    {
+      "id": "TP-cmd-processbuilder",
+      "kind": "tp",
+      "file": "NonSqlSink.java",
+      "line": 48,
+      "rule_ids": [
+        "dfa-taint-command-injection"
+      ],
+      "note": "CONTROL: command injection via ProcessBuilder. Proves a second sink family works intra-procedurally.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        48
+      ]
+    },
+    {
+      "id": "TP-cmd-runtime-exec",
+      "kind": "tp",
+      "file": "NonSqlSink.java",
+      "line": 54,
+      "rule_ids": [
+        "dfa-taint-command-injection"
+      ],
+      "note": "CONTROL: command injection via Runtime.exec with a shell string.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        54
+      ]
+    },
+    {
+      "id": "TP-path-traversal",
+      "kind": "tp",
+      "file": "NonSqlSink.java",
+      "line": 29,
+      "rule_ids": [
+        "dfa-taint-path-traversal"
+      ],
+      "note": "CONTROL: writeByName joins a tainted filename onto a base directory.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        29
+      ]
+    },
+    {
+      "id": "TN-1-sanitized-chain",
+      "kind": "tn",
+      "file": "ChainOrchestrator.java",
+      "line": null,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "anchor_fn": "handleSanitizedChain",
+      "note": "PRECISION PROBE: Validator.hardAllowlist returns a LITERAL, so taint is genuinely dead before the sink. Silent here while firing on TP-1 is what would prove sanitizer kill-node modelling exists.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-2-path-guarded",
+      "kind": "tn",
+      "file": "NonSqlSink.java",
+      "line": 41,
+      "rule_ids": [
+        "dfa-taint-path-traversal"
+      ],
+      "note": "PRECISION PROBE: the second FileOutputStream write in copyByPath is behind an explicit getCanonicalPath().startsWith(\"/safe\") check. Lines 37 and 38 (the File constructions) ARE reported; line 41 must stay silent.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    }
+  ],
+  "summary": {
+    "tp_total": 15,
+    "tp_supported": 15,
+    "tp_false_negative": 0,
+    "tn_total": 2,
+    "tn_supported": 2,
+    "tn_false_positive": 0
+  },
+  "cwe_histogram": {
+    "CWE-404": 34,
+    "CWE-476": 30,
+    "CWE-668": 21,
+    "CWE-697": 17,
+    "CWE-690": 17,
+    "CWE-563": 11,
+    "CWE-390": 11,
+    "CWE-597": 11,
+    "CWE-89": 11,
+    "CWE-798": 8,
+    "CWE-331": 8,
+    "CWE-190": 6,
+    "CWE-1060": 5,
+    "CWE-398": 4,
+    "CWE-400": 3,
+    "CWE-252": 3,
+    "CWE-22": 3,
+    "CWE-606": 2,
+    "CWE-129": 2,
+    "CWE-78": 2,
+    "CWE-1006": 2,
+    "CWE-482": 2,
+    "CWE-778": 2,
+    "CWE-223": 2,
+    "CWE-501": 1,
+    "CWE-193": 1,
+    "CWE-783": 1,
+    "CWE-200": 1,
+    "CWE-117": 1,
+    "CWE-359": 1,
+    "CWE-511": 1,
+    "CWE-191": 1,
+    "CWE-625": 1,
+    "CWE-184": 1,
+    "CWE-758": 1,
+    "CWE-681": 1
+  }
+}

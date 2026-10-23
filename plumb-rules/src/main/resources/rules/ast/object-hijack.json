@@ -1,0 +1,12 @@
+{
+  "id": "plumb.ast.object-hijack",
+  "name": "OBJECT_HIJACK",
+  "description": "Class implements Cloneable but is not declared final (CWE-491 object hijack via clone).",
+  "severity": "HIGH",
+  "type": "BAD_PRACTICE",
+  "cwe": ["CWE-491"],
+  "checkerClass": "org.plumb.style.ObjectHijackCheck",
+  "enabled": true,
+  "aliases": [],
+  "parameters": []
+}

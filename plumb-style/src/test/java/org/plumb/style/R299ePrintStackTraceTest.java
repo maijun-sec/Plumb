@@ -1,0 +1,83 @@
+package org.plumb.style;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import java.nio.file.Path;
+import org.junit.jupiter.api.Test;
+import org.plumb.parser.JavaSourceParser;
+import org.plumb.parser.ParsedSource;
+import org.plumb.rules.RuleRegistry;
+import org.plumb.style.style.PrintStackTraceCheck;
+
+/** PrintStackTraceCheck — e.printStackTrace() should be replaced with a logger. */
+class R299ePrintStackTraceTest {
+
+  private final RuleRegistry registry = new RuleRegistry().withBuiltinDefaults(true);
+  private final JavaSourceParser parser = new JavaSourceParser();
+
+  private long run(String src) {
+    ParsedSource ps = parser.parseFromString(Path.of("Test.java"), src);
+    StyleContext ctx = new StyleContext(ps, registry);
+    // R-816: use AstDispatcher so per-node visit overloads fire.
+    new AstDispatcher().register(new PrintStackTraceCheck()).run(ctx);
+    return ctx.findings().stream()
+        .filter(f -> f.rule().ruleId().id().equals("ast-style-print-stack-trace"))
+        .count();
+  }
+
+  @Test
+  void firesOnPrintStackTrace() {
+    String src =
+        """
+        class T {
+        void doWork() {
+        try {
+        int x = 1 / 0;
+        } catch (Exception e) {
+        e.printStackTrace();
+        }
+        }
+        }
+        """;
+    long n = run(src);
+    assertEquals(1, n, "e.printStackTrace() — should fire");
+  }
+
+  @Test
+  void noFireOnOtherMethod() {
+    String src =
+        """
+        class T {
+        void doWork() {
+        try {
+        int x = 1 / 0;
+        } catch (Exception e) {
+        e.getMessage();
+        }
+        }
+        }
+        """;
+    long n = run(src);
+    assertEquals(0, n, "e.getMessage() — no fire");
+  }
+
+  @Test
+  void noFireOnPrintStackTraceWithStream() {
+    // The overloaded `printStackTrace(PrintStream)` is fine —
+    // the user is making a deliberate decision.
+    String src =
+        """
+        class T {
+        void doWork() {
+        try {
+        int x = 1 / 0;
+        } catch (Exception e) {
+        e.printStackTrace(System.out);
+        }
+        }
+        }
+        """;
+    long n = run(src);
+    assertEquals(0, n, "printStackTrace(stream) — not flagged");
+  }
+}

@@ -1,0 +1,26 @@
+# Plumb __VERSION__ — __ARCH__ 解压即用版
+
+__DATE__
+
+## 变更
+
+- **R684 wrap-up**:完整梳理 + 626 检查器文档 + 3 个打包脚本 + 解压即用版本
+- **R683**:Juliet v1.3 全 112 CWE 扫描 (Recall 100% / Precision 30% raw,M3 AI dedup 99.96% in-scope accuracy)
+- **R675**:模块重命名 `plumb-dfa-unified` → `plumb-dfa`;规则名去除 Cwe 前缀
+- **R676**:删除 9 个 dfa-unified 重复 checker (635 → 626)
+- **R672.1**:v11 prompt 验证 88% filter / 97.7% FP-P / 0% bug loss
+- **R670-R672**:AI FP 消减生产可用 (OpenAI / Anthropic / MiniMax 兼容)
+- **R668-R669**:v9 提示词成为新生产 FP-reducer
+- **R355-R655**:50+ rounds 的 DFA / taint / Z3 / 跨函数 / Juliet 优化
+
+## 内容
+
+- `bin\plumb.bat` — Windows 启动器 (优先用捆绑 `jre\`,失败回退 `%JAVA_HOME%` 或 PATH)
+- `jre\` — jlink 优化后的最小 JRE 17 (~95 MB)
+- `lib\plumb-*.jar` — shaded uber-jar (76 MB,含所有依赖)
+- `conf\` — default-config.yaml + logback.xml
+- `docs\` — OVERVIEW + CHECKERS + ENVIRONMENT + CLI
+
+## 环境变量
+
+详见 `docs\ENVIRONMENT.md`。

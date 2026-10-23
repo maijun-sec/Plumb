@@ -1,0 +1,38 @@
+# R208 — tuning.yaml
+#
+# Engine-wide tuning knobs. Defaults are tuned for
+# mid-size projects (10K-100K LoC). For larger
+# projects, increase worklist_max_size and
+# z3_timeout_ms; for smaller projects, you can lower
+# context_depth to 1 for faster analysis.
+#
+# All values can be overridden at runtime via CLI
+# flags (-X engine.context_depth=1 etc.) or by
+# passing a custom YAML to ConfigLoader.
+
+engine:
+  context_depth: 2                    # k-CFA depth (0/1/2/3)
+  worklist_max_size: 10000            # max in-flight worklist entries
+  z3_timeout_ms: 5000                 # per-query Z3 timeout
+  summary_cache_size: 1000            # per-program summary cache
+  reverse_walk_max_depth: 8           # max depth for ReverseTaintWalker
+  pre_scan_enabled: true              # run CrossFunctionConstantPropagation pre-scan
+  library_call_classification: true   # treat jdk methods as opaque
+  taint_caller_string_concat: true    # include StringBuilder.append in taint propagation
+
+# Path sensitivity:
+#   full     — full CFG path condition
+#   windowed — bounded backward scan (default 8 inst)
+#   none     — no path condition
+path_sensitivity: full
+
+# Reporting:
+reporting:
+  include_fp_candidates: false        # if true, also report suppressed-as-fp findings
+  group_by: cwe_family                # how to group findings in summary
+  output_format: sarif                 # sarif | ndjson | console
+
+# Performance:
+performance:
+  parallel: false                      # multi-threaded analysis (WIP)
+  per_function_timeout_ms: 30000       # per-function analysis timeout
