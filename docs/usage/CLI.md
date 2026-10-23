@@ -72,10 +72,10 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system <maven|gradle|b
 > 返回非 null = LLM 收到这条规则的 prompt + finding 详情 +
 > dataflow trace + 源码窗口，输出 TP / FP / UNKNOWN。
 >
-> 规则的 prompt 默认由 checker 持有。手写 override 见
-> `plumb-dfa/src/main/java/org/plumb/dfa/unified/checkers/HardcodedCredentialChecker.java` 等
-> 18 个 `DfaChecker` + `TaintedCheckerBase`（auto-generated from
-> `TaintRule` 元数据）+ `plumb-style/src/main/java/org/plumb/style/security/HardcodedCredentialsCheck.java` + `plumb-style/src/main/java/org/plumb/style/error/EmptyCatchBlockCheck.java`。
+> 规则的 prompt 默认由 checker 持有。`plumb-dfa` 里 23 个类覆写 `getAiPrompt`，例如
+> `plumb-dfa/src/main/java/org/plumb/dfa/checkers/...` 下的各 checker，加上
+> `plumb-style/src/main/java/org/plumb/style/security/HardcodedCredentialsCheck.java`、
+> `plumb-style/src/main/java/org/plumb/style/error/EmptyCatchBlockCheck.java`。
 > 用户的 `--rule-prompts-dir` 仍可 override（`<rule-name>.md` 文件覆盖对应 checker 的 inline `getAiPrompt` 返回值）。
 
 ### 2.2 R-? AI 集成

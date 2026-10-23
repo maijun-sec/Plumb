@@ -211,7 +211,7 @@ public final class TacBasicBlock implements Serializable {
                                           TacCfgBuilder  →  TacCfg
                                                   │
                                                   ▼
-                                          DFA / TaintAnalysis
+                                          DfaEngine（plumb-dfa）
 ```
 
 `TacTranslator` 的实现位于 `plumb-tac/src/main/java/org/plumb/tac/translate/TacTranslator.java`。它递归访问 CompilationUnit 的每个节点，把 statement 翻译成线性的 `TacInstruction` 流。CFG 由 `TacCfgBuilder` 离线构建（`plumb-tac/.../TacCfgBuilder.java`）。

@@ -2,10 +2,10 @@
 
 > **Java 静态分析工具链** — JavaParser → TAC IR → DFA (含 taint) + AST 风格规则 → NDJSON 报告,**可选** LLM FP 消减。
 
-[![Version](https://img.shields.io/badge/version-0.1.0--SNAPSHOT-blue)](Plumb-OVERVIEW.md)
+[![Version](https://img.shields.io/badge/version-0.1.0--SNAPSHOT-blue)](docs/README.md)
 [![Tests](https://img.shields.io/badge/tests-~320%20files-green)](pom.xml)
-[![Checkers](https://img.shields.io/badge/checkers-626-orange)](docs/CHECKERS.md)
-[![License](https://img.shields.io/badge/license-internal-lightgrey)](LICENSE)
+[![Support](https://img.shields.io/badge/tests-passing-brightgreen)](testcase/SUPPORT-MATRIX.md)
+[![License](https://img.shields.io/badge/license-internal-lightgrey)](#9-license)
 
 独立 Java 项目 (NOT a port of Fathom),架构灵感来自 Fathom 但完全 Java-only。
 
@@ -69,7 +69,7 @@
        └─────────────────┘                        │
 ```
 
-详见 [`Plumb-OVERVIEW.md`](Plumb-OVERVIEW.md)。
+详见 [`docs/README.md`](docs/README.md)。
 
 ---
 
@@ -173,7 +173,7 @@ usage: sast-scan [-c <yaml>] [--cache-mode <off|read|write|readwrite>] [-D <dir>
 | `-h, --help` | 帮助 |
 | `-v, --version` | 版本 |
 
-完整文档:[`doc/usage/CLI.md`](doc/usage/CLI.md)。
+完整文档见 [`docs/README.md`](docs/README.md) 与 [`docs/usage/CLI.md`](docs/usage/CLI.md)。
 
 ---
 
@@ -196,17 +196,18 @@ usage: sast-scan [-c <yaml>] [--cache-mode <off|read|write|readwrite>] [-D <dir>
 
 | 想了解… | 看 |
 | --- | --- |
-| 626 个检查器清单 | [`docs/CHECKERS.md`](docs/CHECKERS.md) |
-| 项目架构 + 关键决策 | [`Plumb-OVERVIEW.md`](Plumb-OVERVIEW.md) |
-| 环境变量 + API key | [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) |
-| 完整 CLI + YAML | [`doc/usage/CLI.md`](doc/usage/CLI.md) |
-| 打包 / 启动 | [`doc/build/PACKAGE.md`](doc/build/PACKAGE.md) |
-| TAC IR 格式 | [`doc/tech/TAC.md`](doc/tech/TAC.md) |
-| 数据流算法 | [`doc/tech/DATA-FLOW.md`](doc/tech/DATA-FLOW.md) |
-| 风格规则实现 | [`doc/tech/STYLE-RULES.md`](doc/tech/STYLE-RULES.md) |
-| 缓存机制 | [`doc/tech/CACHE.md`](doc/tech/CACHE.md) |
-| 跨函数分析 | [`doc/tech/CROSS-FUNCTION-ANALYSIS.md`](doc/tech/CROSS-FUNCTION-ANALYSIS.md) |
-| 历史 R-round | `docs/R*.md` (R1-R355) + agent memory (R356+) |
+| 文档总索引 | [`docs/README.md`](docs/README.md) |
+| 规则清单 | [`docs/rules/RULES.md`](docs/rules/RULES.md) |
+| 精确率 / 召回率实测 | [`testcase/SUPPORT-MATRIX.md`](testcase/SUPPORT-MATRIX.md) |
+| 环境变量 + API key | [`docs/archive/docs-_misc/ENVIRONMENT.md`](docs/archive/docs-_misc/ENVIRONMENT.md) |
+| 完整 CLI + YAML | [`docs/usage/CLI.md`](docs/usage/CLI.md) |
+| 打包 / 启动 | [`docs/build/PACKAGE.md`](docs/build/PACKAGE.md) |
+| 项目架构 + 关键决策 | [`docs/tech/ARCHITECTURE.md`](docs/tech/ARCHITECTURE.md) |
+| TAC IR 格式 | [`docs/tech/TAC.md`](docs/tech/TAC.md) |
+| **数据流分析（污点 / 边界 / 指向 / 控制流）** | [`docs/tech/DATA-FLOW.md`](docs/tech/DATA-FLOW.md) |
+| 风格规则实现 | [`docs/tech/STYLE-RULES.md`](docs/tech/STYLE-RULES.md) |
+| 缓存机制 | [`docs/tech/CACHE.md`](docs/tech/CACHE.md) |
+| 跨函数分析 | [`docs/tech/CROSS-FUNCTION-ANALYSIS.md`](docs/tech/CROSS-FUNCTION-ANALYSIS.md) |
 
 ---
 
@@ -281,6 +282,6 @@ Internal / 内部使用。具体 license 询问项目维护者。
 | 维护者 | Plumb team |
 | 当前 round | **R684** (收尾 wrap-up) |
 | 上次 release | R683 (2026-08-23) |
-| 已知限制 | 见 `Plumb-OVERVIEW.md` § 14 |
+| 已知限制 | 见各 category 的 `testcase/*/EXPECTATIONS.json` 与 [`testcase/SUPPORT-MATRIX.md`](testcase/SUPPORT-MATRIX.md) |
 
-R685+ 路线图见 `Plumb-OVERVIEW.md` § 16。
+路线图与已知限制集中在 `docs/tech/ARCHITECTURE.md` §11 与 `testcase/SUPPORT-MATRIX.md`。

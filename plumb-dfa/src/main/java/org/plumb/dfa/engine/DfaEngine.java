@@ -72,9 +72,11 @@ import org.slf4j.LoggerFactory;
  *       call graph start in the initial {@code readyQ}; each function completes and decrements its
  *       callers' dependency counter; when a caller's count hits zero it's enqueued. A bounded
  *       {@link ExecutorService} runs the batch.
- *   <li>{@link #bbRpoOrder(TacFunction)} : BB-RPO + intra-block reverse. Single-block functions
- *       (the common case for small getters / setters) get the same order as the linear instruction
- *       list, so this is backward-compatible for the simple case.
+ *   <li>{@link #bbRpoOrder(TacFunction)} : BB-RPO, and <b>forward</b> inside each block.
+ *       Blocks are emitted in reverse post-order; the instructions inside a block keep their
+ *       original forward order. Single-block functions (the common case for small getters /
+ *       setters) therefore get exactly the linear instruction order, so this is
+ *       backward-compatible for the simple case.
  * </ul>
  *
  * <h3>Why BB-RPO and not just RPO</h3>
@@ -85,16 +87,13 @@ import org.slf4j.LoggerFactory;
  * doesn't have this guarantee : without BB-RPO the engine would have to rely on each checker
  * maintaining its own forward-flow worklist, duplicating the scheduling work.
  *
- * <h3>Why intra-block reverse</h3>
+ * <h3>Why the intra-block direction stays forward</h3>
  *
- * <p>A backward-flow use-def walk (the "summary" step: collect all uses of a value so the summary
- * can record them) is best done in reverse: the last use is the most recent observation, and the
- * summary we attach to the value should reflect it. Combined with BB-RPO, intra-block reverse means
- * "we process the last use of a value first". The taint-check / null-check sinks are typically the
- * last use, so they fire earliest : once the source has been processed.
- *
- * <p>The instruction ordering is therefore: <b>BB-RPO at the CFG level, reverse inside each
- * block</b>.
+ * <p>The instruction order within a block is deliberately NOT reversed. Every checker in this engine
+ * propagates a forward lattice -- taint labels, nullable facts, interval bounds -- so reversing a
+ * block would visit uses before defs and silently break the propagation those checkers depend on.
+ * The engine's summary step reads the facts the forward walk already produced rather than doing its
+ * own backward use-def walk.
  *
  * <h3>Backward compatibility</h3>
  *
@@ -102,10 +101,10 @@ import org.slf4j.LoggerFactory;
  *   <li>The 4-arg constructor sets {@code parallelism = 0} : the engine runs sequentially.
  *       Sequential behaviour is preserved bit-for-bit for single-block functions.
  *   <li>Sequential mode uses the same {@code bbRpoOrder} helper, so the instruction iteration order
- *       is "BB-RPO, intra-block reverse" for both sequential and parallel. Tests that relied on the
- *       linear order of a single-block function (the common case) see the same order; tests that
- *       relied on the linear order of a multi-block function (rare) may observe a different order
- *       : the expected change.
+ *       is "BB-RPO, forward inside each block" for both sequential and parallel. Tests that relied
+ *       on the linear order of a single-block function (the common case) see the same order; tests
+ *       that relied on the linear order of a multi-block function (rare) may observe a different
+ *       order : the expected change.
  *   <li>The engine's public API ({@code run}, {@code name}, constructor signatures) is unchanged
  *       for existing callers.
  * </ul>

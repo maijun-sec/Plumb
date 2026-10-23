@@ -1,4 +1,4 @@
-# 跨函数分析周边：并行 worklist / IFDS 对比 / Trace 审计 / checker 迁移 / AI 增强
+# 跨函数分析周边：并行 worklist / tabulation 对比 / Trace 审计 / checker 迁移 / AI 增强
 
 本文档是 `CROSS-FUNCTION-ANALYSIS.md` 的 §6-§14 拆分版本。Phase 1+2 主干（动机、CallGraph、Phase 1 Summary、Phase 2 精确分析）见 `CROSS-FUNCTION-ANALYSIS.md`；Operation 体系与 6 套子分析见 `CROSS-FUNCTION-OPERATION.md`。
 
@@ -34,42 +34,37 @@ worker:
 
 `R217 worklist` 的设计取舍详见 `DfaEngine.runWorklist` 的注释。
 
-## 7. 与传统 IFDS / IDE 的对比
+## 7. 与 tabulation（IFDS / IDE）方案的对比
 
-| 维度 | IFDS / IDE 单 worklist | Plumb summary-based two-phase |
+> 本节是**设计取舍的论证**，不是对 Plumb 自身的描述。Plumb 本身既不是 IFDS 也不是 IDE，
+> 它的实际结构见 [`DATA-FLOW.md`](./DATA-FLOW.md)。
+
+| 维度 | IFDS / IDE 单 worklist | Plumb summary-based |
 | --- | --- | --- |
-| 状态 | 一个统一的 `(program-point × fact)` 图 + 全局 worklist | 每函数一份不可变 `FunctionSummary` + `MethodSummary`；per-function checker 状态 |
-| Phase 1 精度 | 不分两阶段，fact 在 call/return 边实时传播 | **path-insensitive + context-insensitive** summary，模板化 |
-| Phase 2 精度 | 天然 path-sensitive (IFDS 区分 IF-function) | **fully context-sensitive**（per call site + caller 自己的 args / facts）+ **path-sensitive via Z3**（每条 finding 单条 Z3 query） |
+| 状态 | 一个统一的 `(program-point × fact)` 图 + 全局 worklist | 每函数一份 `FunctionSummary` + `MethodSummary`；per-function checker 状态 |
+| 两阶段 | 不分两阶段，fact 在 call/return 边实时传播 | summary 预热（path-insensitive）+ 正向遍历（flow-sensitive） |
 | 调用代价 | 每次 CALL 边都展开一份 callee 的 facts | O(1) cache lookup，summary 一次构建多次复用 |
-| 并行化 | worklist 是共享的，几乎没法并行 | callee 之间独立，可以 worklist 并行（R217） |
-| 域扩展 | 新加一类 fact（如 points-to）要重建 lattice | 新加一类 `Operation` 变体 + 配套 `Fact` 即可，旧 checker 不动 |
-| Call graph 策略 | 与求解器耦合（IFDS 自己维护 explode / context） | summary 跟 call graph 解耦——CHA / RTA / 0-CFA / 1-CFA / VTA 都 drop-in |
-| 异构分析 | 同一 lattice 难装多套分析 | summary 是模板，**6 套子分析**（常量 / points-to / null / 数值 / Z3 / 副作用）共用同一框架 |
-| 精度 vs 速度 | 高精度但代价大 | summary 边界处会 over-approximate（多分支 return 折叠成 `top`），但漏报为 0 |
-| 适用问题 | 单 checker / 同质 fact 域 | 异构 checker（taint + null + points-to + side effect + Z3）并行 |
+| 并行化 | worklist 是共享的，分区策略复杂 | callee 之间独立，可按依赖计数并行 |
+| 域扩展 | 新加一类 fact（如 points-to）要重建 lattice | 新加一类 `Operation` 变体，旧 checker 不动 |
+| Call graph 策略 | 与求解器耦合（IFDS 自己维护 explode / context） | summary 与 call graph 解耦——`cha` / `rta` / `vta` / `1cfa` / `2cfa` / `stub` 都可插拔 |
+| 异构分析 | 同一 lattice 难装多套分析 | summary 是模板，多套子分析（常量 / points-to / null / 数值 / 副作用）共用框架 |
 
-**为什么 Plumb 选 summary 而非 IFDS**：
+**为什么选 summary 而非 tabulation**：
 
-1. **异构 fact 难统一 lattice**。Taint domain 分 4 类（String/Numeric/Pointer/
-   Mixed），nullability 是三值，points-to 是 set-of-alloc。IFDS 要把它们
-   flatten 成一个整数 ID，checkers 之间相互污染。
-2. **可扩展性**。新增 checker 只要加一个新 `Operation` 变体（或复用现有
-   `TaintPropagate` / `Sink` / `WriteToField`），不用动 RPO 调度本身。
-3. **缓存天然命中率高**。同一个 callee 被 N 个 caller 调 → summary 只算 N 次
-   lookup，IFDS 重复算 N 份。
-4. **并行不是事后补丁**。R217 worklist 直接基于 dep-count，IFDS 的 explode 在
-   并行下要复杂得多的 partition 策略。
-5. **call graph 策略可插拔**。`FunctionSummaryCache` 是 signature→summary 映射，
-   call graph 算法只决定"有哪些 callee 可达"，不参与求解。
+1. **异构 fact 难统一 lattice**。Taint 分多类（String / Numeric / Pointer / Mixed），
+   nullability 是三值，points-to 是 set-of-alloc。tabulation 要把它们 flatten 成统一 ID，
+   checker 之间容易相互污染。
+2. **可扩展性**。新增 checker 只需加一个新 `Operation` 变体（或复用 `TaintPropagate` /
+   `Sink` / `WriteToField`），不用动 RPO 调度本身。
+3. **缓存天然命中率高**。同一个 callee 被 N 个 caller 调用 → summary 只算 N 次；tabulation
+   方案要为每个调用点各算一份。
+4. **并行不是事后补丁**。worklist 直接基于依赖计数，按调用图拓扑分批。
+5. **call graph 策略可插拔**。`FunctionSummaryCache` 是 signature→summary 映射，call graph
+   算法只决定「有哪些 callee 可达」，不参与求解。
 
-代价是 **summary 边界处的 over-approximation**：`staticReturnsTrue` 永远
-`const:true`，但 `choosePath(boolean b) { if (b) return 1; else return "x"; }`
-的两个 return 一个 const、一个 string，summary 会被 `buildReturnShape` 退到
-`UNKNOWN("multiple returns with mismatched shapes")`——caller 看到 `top`，可能
-丢精度。这条用 R218 / R242 的 Z3 path-condition bridge 在 Phase 2 单条 finding
-上验证 SAT/UNSAT 补，但补不完整（多分支 return 的事实已经被 summary 合并
-掉了，Z3 也救不回来）。
+代价是 **summary 边界处的 over-approximation**：多分支 return 被折叠成 `top`，caller 看到的是
+合并后的事实，可能丢精度。注意 Z3 在这里是**误报过滤器**而非精度恢复器——它只在
+`pathConditionForSink` 非空时被调用，不能恢复已被 summary 合并掉的 return 细节。
 
 ## 8. 跨文件验证
 
@@ -210,7 +205,7 @@ checker 全部换成这个工厂。`FlowStep` role 列表收敛为
 
 ### 12.1 文件清单
 
-**Category A (DfaChecker, 新增)** — `plumb-dfa/src/main/java/org/plumb/dfa/unified/checkers/`:
+**Category A (DfaChecker, 新增)** — `plumb-dfa/src/main/java/org/plumb/dfa//checkers/`:
 - `PredictableRandomSeedChecker.java` (CWE-332/336)
 - `PredictableKeyPasswordChecker.java` (CWE-259/798)
 - `StaticApiKeyChecker.java` (CWE-798, static field)
@@ -227,13 +222,13 @@ checker 全部换成这个工厂。`FlowStep` role 列表收敛为
 - `ObsoleteFunctionChecker.java` (CWE-477, R-?)
 - `StringEqualityChecker.java` (CWE-597, R-?)
 
-**Category B (TaintedCheckerBase, 已有 + 新增)** — `plumb-dfa/src/main/java/org/plumb/dfa/unified/checkers/taint/`:
+**Category B (TaintedCheckerBase, 已有 + 新增)** — `plumb-dfa/src/main/java/org/plumb/dfa//checkers/taint/`:
 - `NumericTruncationChecker.java` (CWE-197, R-?)
 - `UncontrolledMemAllocChecker.java` (CWE-789, R-?)
 - `UncheckedLoopConditionChecker.java` (CWE-606, R-?)
 - (其余 30 个 taint checker 上一轮已就位)
 
-**Category C (annotation-aware, 新增)** — `plumb-dfa/src/main/java/org/plumb/dfa/unified/checkers/`:
+**Category C (annotation-aware, 新增)** — `plumb-dfa/src/main/java/org/plumb/dfa//checkers/`:
 - `MissingInputValidationChecker.java` (CWE-20, R-?)
 - `InformationExposureChecker.java` (CWE-200, R-?)
 
@@ -963,7 +958,7 @@ plumb-ai/
 **Rule prompt 所有权模型**:
 
 ```java
-// plumb-dfa/src/main/java/org/plumb/dfa/unified/engine/DfaChecker.java
+// plumb-dfa/src/main/java/org/plumb/dfa//engine/DfaChecker.java
 default String getAiPrompt(Finding finding) {
     return null;  // no AI dedup
 }

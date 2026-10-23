@@ -1,4 +1,4 @@
-﻿# 模块合并方案（plumb-parser → plumb-tac → plumb-main 关系）
+# 模块合并方案（plumb-parser → plumb-tac → plumb-main 关系）
 
 本文档说明 Plumb 项目的模块划分、依赖图，以及历史上一次**"试图合并 plumb-parser 到 plumb-main"**的回滚原因。最终结论：**plumb-parser 必须作为独立模块存在**。
 

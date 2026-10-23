@@ -131,6 +131,8 @@ Lesson 完整记录见 `plumb-dfa/docs/R837-FINAL-REPORT-2026-10-16.md`。
 ### 13.3 加新 Taint Rule
 
 1. 在 `plumb-rules/.../TaintRule.java` 的 `BuiltinTaintRules` 加 `new TaintRule("name", ...)`。
-2. 在 `TaintCatalog.java` 注册 source / sink / sanitizer。
+2. **在 `plumb-dfa/src/main/resources/sink-families.yaml` 注册 source / sink 模式**（不存在
+   `TaintCatalog` 这个类——早期文档提到的它从未存在）。sanitizer 若不是某个 sink family 的
+   固有属性，则在对应 checker 的 `isSanitizer` 里判定。
 3. 在 `juliet-coverage/data/plumb_rule_to_cwe.json` 加 mapping。
 4. rebuild + verify。

@@ -196,7 +196,7 @@ private TranslatedFile translateAndStyleOne(Path file, RuleRegistry rules) {
 - 升级 Plumb 大版本后（VERSION 改了）
 - 改了源文件路径（key 变了，旧 cache 自然失效）
 - 改 `RuleRegistry` 的某些硬编码源/汇签名（虽然 cache 内容没变，但 finding 结果会变）
-- 改 Z3 / SootUp 版本（影响 IFDS / 路径条件求解）
+- 改 Z3 / SootUp 版本（影响污点 / 路径条件求解）
 
 ## 9. 序列化失败的处理
 

@@ -212,7 +212,7 @@ public final class BuiltinFactKinds {
   public static final Set<Trait> SIDE_EFFECT_RECORDED_TRAITS = EnumSet.of(Trait.PROPAGATED_BY_DECL);
 
   /**
-   * Build a fresh {@link FactKindRegistry} pre-populated with all 12 built-in kinds. Used by the
+   * Build a fresh {@link FactKindRegistry} pre-populated with all 15 built-in kinds. Used by the
    * engine's default config so that the most common dataflow categories are available out of the
    * box.
    */

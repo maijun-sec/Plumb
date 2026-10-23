@@ -11,19 +11,19 @@ R254 / R255 / R260）的两阶段跨函数分析设计。
 | **Phase 2（自顶向下精确分析）** | **fully context-sensitive**（每个 call site 独立） + **path-sensitive（Z3 验证）** | caller 把 summary 折叠到自己的 fact bag / 路径条件 / points-to map，所有结果都是 caller 视角的具体值 |
 
 > 配套源码：
-> - `plumb-dfa/src/main/java/org/plumb/dfa/unified/summary/Operation.java` —— R213
-> - `plumb-dfa/src/main/java/org/plumb/dfa/unified/summary/FunctionSummary.java` —— R213
-> - `plumb-dfa/src/main/java/org/plumb/dfa/unified/summary/MethodSummary.java` + `MethodSummaryBuilder.java` —— R254
-> - `plumb-dfa/src/main/java/org/plumb/dfa/unified/summary/SummaryApplier.java` —— R255
-> - `plumb-dfa/src/main/java/org/plumb/dfa/unified/taint/TaintedCheckerBase.java` —— R215
-> - `plumb-dfa/src/main/java/org/plumb/dfa/unified/taint/TaintDomain.java` —— R215
-> - `plumb-dfa/src/main/java/org/plumb/dfa/unified/points/PointsToAnalysis.java` —— R236
-> - `plumb-dfa/src/main/java/org/plumb/dfa/unified/solver/PathCondition.java` + `GuardStore.java` + `Z3Bridge.java` + `LocalSolverBridge.java` —— R218 / R242
-> - `plumb-dfa/src/main/java/org/plumb/dfa/unified/engine/DfaEngine.java` —— R211 / R217 / R260 调度
+> - `plumb-dfa/src/main/java/org/plumb/dfa//summary/Operation.java` —— R213
+> - `plumb-dfa/src/main/java/org/plumb/dfa//summary/FunctionSummary.java` —— R213
+> - `plumb-dfa/src/main/java/org/plumb/dfa//summary/MethodSummary.java` + `MethodSummaryBuilder.java` —— R254
+> - `plumb-dfa/src/main/java/org/plumb/dfa//summary/SummaryApplier.java` —— R255
+> - `plumb-dfa/src/main/java/org/plumb/dfa//taint/TaintedCheckerBase.java` —— R215
+> - `plumb-dfa/src/main/java/org/plumb/dfa//taint/TaintDomain.java` —— R215
+> - `plumb-dfa/src/main/java/org/plumb/dfa//points/PointsToAnalysis.java` —— R236
+> - `plumb-dfa/src/main/java/org/plumb/dfa/solver/PathCondition.java` + `GuardStore.java` + `Z3Bridge.java` + `LocalSolverBridge.java`
+> - `plumb-dfa/src/main/java/org/plumb/dfa/engine/DfaEngine.java` —— 引擎调度
 
 ## 1. 设计动机
 
-传统 IFDS / IDE 风格的跨函数分析把所有 fact 装进一个共享 worklist：
+tabulation（IFDS / IDE）风格的跨函数分析把所有 fact 装进一个共享 worklist：
 
 ```text
 每个 caller 的 (call-site, fact) → 沿 call/return 边串成一条工作流
@@ -477,9 +477,9 @@ void saveUser(int id) {
    caller 的 `pointsTo(dest)`，于是 `isUseAfterFree` 能在 caller 视角正确
    看到 "callee 内部分配的指针，流到了 caller 的 dest"。
 
-use-after-free / alias 类的 checker 是这套设计最大的受益者——传统 IFDS 把
-points-to 当成又一个 fact 加进 worklist 会让性能雪崩，Plumb 用 summary 把它
-完全旁路出去。
+use-after-free / alias 类的 checker 是这套设计最大的受益者——tabulation 方案把
+points-to 当成又一个 fact 加进 worklist 会让状态空间膨胀；Plumb 用独立的指向性求解器
+（`PointsToSolver`，全程序一次求解）+ summary 把这一维度旁路出去。
 
 ### 3.5 R242：cross-checker GuardStore
 

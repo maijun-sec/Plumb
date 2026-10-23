@@ -11,14 +11,25 @@
 
 | 类别 | 模块 | 数量 | 实现方式 | 阶段 |
 | --- | --- | ---: | --- | --- |
-| Taint sources | plumb-rules | 10 | IFDS 数据流 | taint |
-| Taint sinks | plumb-rules | 17 | IFDS 数据流 | taint |
-| DFA 检查器 | plumb-dfa | 36 | Intraprocedural + cross-function | dfa |
+| Taint source 模式 | plumb-dfa | **19** | `sink-families.yaml` 的 5 个 `taint.sources.*` family | taint |
+| Taint sink 模式 | plumb-dfa | **397** | `sink-families.yaml` 的 34 个 `*.sinks` family | taint |
+| DFA checker（引擎配置） | plumb-dfa | **16** | `checkers.yaml` 实际启用的 checker | dfa |
 | Style / 命名 / 设计 | plumb-style | **590** | JavaParser AST visitor | style |
-| DFA unified | plumb-dfa | **66** | 新一代 DFA 引擎（IFDS + 区间 + Z3） | dfa |
-| **合计** | — | **~720** | — | — |
 
-> 风格类 590 条由 `StyleCheckRegistry.discoverAvailable()` 在启动时通过 classpath 扫描动态加载；不写进 `RuleRegistry` 的常量表。**新增一个 `*Check.java` 类即可自动被注册**，但**必须**同时往 `CheckerCategories.java` 加 `m.put(...)` —— 否则静默丢失（Lesson 1319）。
+> 以上数字均为**从配置文件实测**，不是手工维护：
+> - source/sink 模式：`plumb-dfa/src/main/resources/sink-families.yaml`（39 个 family，
+>   19 条 source + 397 条 sink 正则）
+> - DFA checker：`plumb-dfa/src/main/resources/checkers.yaml:19-179`（16 项）
+> - style 规则：`StyleCheckRegistry.discoverAvailable()` 启动时 classpath 扫描动态加载，不写进
+>   `RuleRegistry` 常量表。**新增一个 `*Check.java` 类即可自动注册**，但**必须**同时往
+>   `CheckerCategories.java` 加 `m.put(...)` —— 否则静默丢失（Lesson 1319）。
+>
+> ⚠️ **不要用 `plumb-rules` 的 `RuleRegistry.java` 推断规则总数**：它有 85 处 `register(...)`，
+>   其中大量 `org.plumb.dfa.checker.*` / `org.plumb.dfa.taint.*` 类名在 `plumb-dfa` 下并不存在
+>   （例如 `:1010` 指向 `org.plumb.dfa.taint.TaintAnalysis`），该 registry 已陈旧。
+>
+> 早期版本此表写着「DFA 检查器 36 / DFA unified 66 / 合计 ~720」，三个数字都无法从任何配置
+> 或代码复现，已删除。
 
 ### 1.1 Style 规则子目录分布（实测）
 

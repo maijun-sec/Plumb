@@ -61,8 +61,10 @@ import org.plumb.tac.ir.TacType;
  * <p>Under {@link Policy#CALL_SITE} and {@link Policy#OBJECT} each method is analysed once per
  * distinct context, and a local variable's key is qualified by that context. That is what keeps
  * {@code id()} called from two sites with two different receivers from having its locals merged.
- * The default is {@link Policy#CONTEXT_INSENSITIVE}: it is what the engine's existing callgraph
- * strategies assume, and precision can be raised per-run once the consumers are in place.
+ * The default is {@link Policy#CALL_SITE} (1-CFA over the heap), as decided by {@link
+ * org.plumb.dfa.points.AbstractObject#defaultPolicy()} and overridable per run through {@code
+ * TuningConfig.effectivePointsToPolicy()}. Precision can be lowered to {@link
+ * Policy#CONTEXT_INSENSITIVE} per run once a caller wants the cheaper solve.
  *
  * <h2>Field sensitivity</h2>
  *

@@ -1,86 +1,52 @@
-# _archive/ — 已处理过程文档归档
+# docs/archive/ — 过程文档归档
 
-本目录是 R-840 / R-841 / R-842 文档整理 + R-843 合并归档的产物。
-所有过程文档从这里可找回: `mv _archive/{bucket}/{file}.md <原目录>/`
+本目录存放**过程文档**：按轮次记录的改动流水、审计报告、评测数据、覆盖率分析。
+
+这些文档**不是规格**。它们记录的是某一时刻的快照，描述「某轮做了什么」，而不是「系统现在
+是什么样」。需要了解当前系统行为时，请读 [`../tech/`](../tech/)、[`../rules/`](../rules/)、
+[`../usage/`](../usage/)、[`../build/`](../build/)。
 
 ## 目录结构
 
-子目录命名约定: `{原文档目录}-{R 轮次}`, 例如 `docs-R100-199/` 表示原本在 `docs/`, R100-R199 轮次.
+子目录命名约定：`{原文档目录}-R<轮次范围>`。
 
-| 子目录 | 原位置 | R 轮次 | 文件数 |
+| 子目录 | 原位置 | 轮次 | 文件数 |
 | --- | --- | --- | ---: |
-| `_archive/docs-R100-199/` | `docs/` | R100-R199 | 83 |
-| `_archive/docs-R200-299/` | `docs/` | R200-R299 | 81 |
-| `_archive/docs-R300-399/` | `docs/` | R300-R399 | 34 |
-| `_archive/docs-R600-699/` | `docs/` | R600-R699 | 1 |
-| `_archive/docs-_misc/` | `docs/` | misc | 1 |
-| `_archive/plumb-dfa-docs-R0-099/` | `plumb-dfa/docs/` | R0-R99 | 29 |
-| `_archive/plumb-dfa-docs-R500-599/` | `plumb-dfa/docs/` | R500-R599 | 6 |
-| `_archive/plumb-dfa-docs-R600-699/` | `plumb-dfa/docs/` | R600-R699 | 27 |
-| `_archive/plumb-dfa-docs-_misc/` | `plumb-dfa/docs/` | misc | 4 |
+| `docs-R100-199/` | `docs/` | R100-R199 | 83 |
+| `docs-R200-299/` | `docs/` | R200-R299 | 81 |
+| `docs-R300-399/` | `docs/` | R300-R399 | 34 |
+| `docs-R600-699/` | `docs/` | R600-R699 | 1 |
+| `docs-_misc/` | `docs/` | misc | 1 |
+| `plumb-dfa-docs-R0-099/` | `plumb-dfa/docs/` | R0-R99 | 29 |
+| `plumb-dfa-docs-R500-599/` | `plumb-dfa/docs/` | R500-R599 | 6 |
+| `plumb-dfa-docs-R600-699/` | `plumb-dfa/docs/` | R600-R699 | 27 |
+| `plumb-dfa-docs-_misc/` | `plumb-dfa/docs/` | misc | 4 |
 
-**总计**: 266 文件, 2,026,638 bytes (1.93 MB)
+各轮次段的大致主题：
 
-## 源 README 内容（R-843 整理时合并进来）
-
-### 源: `docs/_archive/README.md`
-
-```
-# docs/_archive/ — 已处理过程文档
-
-本目录是 R-840 / R-841 / R-842 文档整理阶段**被产品 doc 完全覆盖**的过程日志归档。
-
-## 目录结构
-
-docs/_archive/
-├── R0-099/      # R1-R99 早期单 bug 修复流水
-├── R100-199/    # R100-R199 跨函数 taint / 注解 IR
-├── R200-299/    # R200-R299 JPA/Annotation/并发
-├── R300-399/    # R300-R399 style checker batch
-├── R500-599/    # R500-R582 Coverity Java 移植
-├── R600-699/    # R600-R683 comment cleanup / duplicate removal
-└── _misc/       # 不带 R 号的文件 (e.g. ENVIRONMENT.md / match*.txt)
-
-同理:
-- plumb-dfa/docs/_archive/ — plumb-dfa 引擎 R27-R85x 单 bug 流水
-- plumb-rules/docs/ 没有 _archive (RULE_AUTHORING.md 保留作参考)
-- fathom-dfa/docs/ (13 个 R1-R24) 属于另一个项目，R1117 起不再进版本库（仍在磁盘上）
-
-## 怎么处理
-
-- 不需要看: 用户/开发者日常查文档走 doc/ (产品文档中心)
-- 需要查历史: 本目录的 R 号文件名跟 git log / commit 关联, 按 R 轮次翻
-- 找回某个文件: mv docs/_archive/R100-199/R136-SMOKE-TEST.md docs/ 即可
-- 彻底删除: 用 git rm 加 commit (推荐) — 文件历史在 git 里仍然有
-```
-
-### 源: `plumb-dfa/docs/_archive/README.md`
-
-```
-# plumb-dfa/docs/_archive/ — plumb-dfa 引擎 R* 过程日志归档
-
-本目录是 R-840 文档整理阶段**被产品 doc 完全覆盖**的 plumb-dfa 引擎 R* 单 bug 修复流水。
-
-## 目录结构
-
-plumb-dfa/docs/_archive/
-├── R0-099/      # R27-R59 cross-fn summary / 跨函数 baseline
-├── R500-599/    # R556-R592 stub checker sweep
-├── R600-699/    # R601-R683 full Juliet / comment cleanup
-└── _misc/       # 单 bug 流水无 R 号
-
-## 跟产品 doc 的对应
-
-| _archive 内容 | 已沉到产品 doc |
+| 轮次段 | 主题 |
 | --- | --- |
-| R27-R59 跨函数 summary 优化 | doc/tech/CROSS-FUNCTION-ANALYSIS.md §3 Phase 1 |
-| R601-R651 full Juliet eval | doc/tech/ARCHITECTURE.md §9 (390 dfa + 74 style) |
-| R671-R683 comment cleanup | (纯 cleanup, 无产品价值) |
-| AUDIT-checkers-2026-10-12.md (保留在顶层) | doc/tech/ARCHITECTURE.md §3.0 DFA SPI |
-| R803-R837 时期 final report (保留在顶层) | doc/tech/ARCHITECTURE.md §8 / §12 |
-| 单 bug 流水 (R27-R85x 大部分) | 移到 _archive/ |
+| R0-R99 | 早期单 bug 修复、跨函数 summary 基础 |
+| R100-R199 | 跨函数 taint、注解 IR、call graph 策略 |
+| R200-R299 | JPA / Annotation / 并发 checker、Z3 路径条件 |
+| R300-R399 | style checker 批量新增、source-to-sink path 设计 |
+| R500-R599 | Coverity Java 规则移植、stub checker sweep |
+| R600-R699 | 全量 Juliet 评测、注释清理、重复 checker 移除 |
+| R800+ | 优化、覆盖率、trace 审计、testcase 分类测量 |
 
-## 怎么找回
+## 怎么用
 
-mv plumb-dfa/docs/_archive/<bucket>/<file>.md plumb-dfa/docs/
-```
+- **日常查文档** → 不看这里，走 `docs/README.md` 的产品文档索引。
+- **查历史** → 文件名的 R 号与 git log / commit 关联，按轮次翻。
+- **找回某份文件** → `mv docs/archive/<bucket>/<file>.md docs/process/`，然后按内容性质决定
+  放 `process/` 还是 `tech/`。
+- **彻底删除** → `git rm` + commit，历史仍在 git 里。
+
+## 归档不等于已验证
+
+归档的前提是「结论已沉淀到产品文档」。这个前提**曾经不成立**：本目录里的多份文档描述的类名
+（例如 `TaintAnalysis`、`CallResolver`、`TaintCatalog`）在当前代码库中并不存在，文档描述的
+是更早的代码形态。
+
+因此从本目录引用任何技术结论前，**必须回到源码验证**。同理，若某份归档文档的结论需要成为
+产品文档的一部分，应当按当前代码重新验证一次再写进去，并去掉轮次编号。
