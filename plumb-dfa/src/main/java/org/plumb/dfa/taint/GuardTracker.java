@@ -315,9 +315,28 @@ public final class GuardTracker {
         }
       }
       case BRANCH -> onBranch(ins);
-      case JUMP -> onJump();
+      case JUMP -> onJump(ins.label);
       case LABEL -> onLabel(ins);
       case MOVE -> {
+        // R1119: rebinding a variable retires every guard proved for its previous value.
+        //
+        // A guard constrains a binding, not a name. `if (x == null) { break; }` establishes
+        // `x != null` for whatever `x` holds at that point; a later `x = peek(cur)` binds a
+        // different value, and consulting the old fact by name alone hides a real dereference:
+        //
+        //     while (cur != null) {
+        //       StringBuilder x = peek(cur);
+        //       if (x == null) { break; }
+        //       x = peek(cur);        // new binding
+        //       x.length();           // suppressed by the PREVIOUS binding's guard
+        //     }
+        //
+        // Retiring early can only regain a false positive, so this is the safe direction.
+        if (ins.dest instanceof TacOperand.TacVar rebound
+            && ins.lhs1 instanceof TacOperand.TacVar source
+            && rebound != source) {
+          retireGuardsFor(rebound);
+        }
         if (!propagatableSources.isEmpty()) {
           recordMoveIfApplicable(ins);
         }
@@ -566,13 +585,120 @@ public final class GuardTracker {
   private void onLabel(TacInstruction ins) {
     final String name = ins.label;
     if (name == null || name.isEmpty()) return;
+    // R1119: entering a loop body invalidates every fact proved before it.
+    //
+    // The false-edge table is keyed by label and consulted BY NAME, so without this it lives for
+    // the rest of the function. Inside a loop that silently suppressed real findings on every later
+    // round:
+    //
+    //     while (cur != null) {
+    //       StringBuilder x = peek(cur);     // nullable
+    //       if (x == null) { break; }        // records "x != null" for the rest of the function
+    //       x = peek(cur);
+    //       x.length();                      // round 2: DROPPED
+    //     }
+    //
+    // On the next iteration `x` holds a value produced INSIDE the body, which nothing established
+    // outside the loop can constrain. Dropping the facts is the conservative direction: it can only
+    // regain a false positive, never hide one.
+    //
+    // Only the BODY label clears. `L_WHILE_COND_0` is the condition, evaluated before any body fact
+    // exists, so clearing there would discard the loop's own guard for no reason.
+    if (isLoopBodyLabel(name)) {
+      activeFalseEdgeGuards.clear();
+      guardsPendingFalseEdge.clear();
+    }
     java.util.List<Guard> pending = guardsPendingFalseEdge.get(name);
     if (pending == null || pending.isEmpty()) return;
     activeFalseEdgeGuards.computeIfAbsent(name, k -> new java.util.ArrayList<>()).addAll(pending);
   }
 
-  private void onJump() {
+  /**
+   * R1119: drop every guard that constrains {@code v}, because {@code v} is being rebound.
+   *
+   * <p>Covers all three places a guard can live: the active stack, the pending false-edge queue,
+   * and the label-keyed false-edge table. Missing the last one is what made the loop case look
+   * unaffected by the earlier attempts, because {@code isProvenNonNull} falls back to
+   * {@link #isRefutedBy}, which reads that table and nowhere else.
+   */
+  private void retireGuardsFor(TacOperand.TacVar v) {
+    if (v == null) return;
+    activeGuards.removeIf(g -> g.boundedVar().equals(v));
+    guardedVars.remove(v);
+    propagatableSources.remove(v);
+    lastCompare.remove(v);
+    java.util.Iterator<java.util.Map.Entry<String, java.util.List<Guard>>> it =
+        activeFalseEdgeGuards.entrySet().iterator();
+    while (it.hasNext()) {
+      java.util.Map.Entry<String, java.util.List<Guard>> e = it.next();
+      e.getValue().removeIf(g -> g.boundedVar().equals(v));
+      if (e.getValue().isEmpty()) it.remove();
+    }
+    java.util.Iterator<java.util.Map.Entry<String, java.util.List<Guard>>> pit =
+        guardsPendingFalseEdge.entrySet().iterator();
+    while (pit.hasNext()) {
+      java.util.Map.Entry<String, java.util.List<Guard>> e = pit.next();
+      e.getValue().removeIf(g -> g.boundedVar().equals(v));
+      if (e.getValue().isEmpty()) pit.remove();
+    }
+  }
+
+  /**
+   * R1119: is this the BODY label of a loop?
+   *
+   * <p>The translator emits {@code L_WHILE_BODY_n} / {@code L_FOR_BODY_n} for the body and
+   * {@code L_WHILE_COND_n} / {@code L_WHILE_END_n} for the condition and the exit. Only the body is
+   * the region where pre-loop facts stop applying.
+   */
+  private static boolean isLoopBodyLabel(String label) {
+    if (label == null || label.isEmpty()) return false;
+    final String upper = label.toUpperCase(java.util.Locale.ROOT);
+    return upper.contains("_BODY_");
+  }
+
+  /**
+   * R1119: is this JUMP the one that closes an if-block, rather than loop control?
+   *
+   * <p>True for the jump to a merge label, false for the jump a {@code break} / {@code continue}
+   * lowers to. Those target the loop's own labels ({@code L_WHILE_BODY_1}, {@code L_WHILE_END_2},
+   * {@code L_FOR_*}...), which belong to the enclosing loop rather than to the guarded block.
+   *
+   * <p>An unrecognised target answers {@code true}, preserving the pre-R1119 behaviour. That
+   * direction can only regain a false positive; misjudging a real block-terminating jump the other
+   * way would hide a finding.
+   */
+  private static boolean isBlockTerminatingJump(String target) {
+    if (target == null || target.isEmpty()) return true;
+    final String upper = target.toUpperCase(java.util.Locale.ROOT);
+    return !(upper.startsWith("L_WHILE")
+        || upper.startsWith("L_FOR")
+        || upper.startsWith("L_DO")
+        || upper.contains("CONTINUE")
+        || upper.contains("BREAK"));
+  }
+
+  private void onJump(String target) {
     if (activeGuards.isEmpty()) return;
+    // R1119: only the JUMP that ENDS a branch block may pop.
+    //
+    // `break` and `continue` also lower to an unconditional JUMP, and popping on those
+    // desynchronises the stack: two pops for one push, so an outer scope inherits guards it never
+    // had. A loop like
+    //
+    //     while (cur != null) {
+    //       StringBuilder x = peek(cur);
+    //       if (x == null) { break; }   // JUMP to the loop's end label
+    //       x = peek(cur);
+    //       x.length();                  // real NPE, suppressed by a leaked guard
+    //     }
+    //
+    // reported nothing, while the identical loop without the `break` reported correctly.
+    //
+    // The only signal the linear IR carries is the target label. Loop-control targets belong to the
+    // enclosing loop, not to the if-block whose guard is on the stack.
+    if (!isBlockTerminatingJump(target)) {
+      return;
+    }
     // Pop to the recorded frame
     // size. The frameMarkers stack records
     // the stack size BEFORE the BRANCH push;

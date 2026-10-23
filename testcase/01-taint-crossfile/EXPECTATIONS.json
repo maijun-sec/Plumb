@@ -173,12 +173,11 @@
       "id": "TN-1-sanitized-chain",
       "kind": "tn",
       "file": "ChainOrchestrator.java",
-      "line": null,
+      "line": 75,
       "rule_ids": [
         "dfa-taint-sql-injection"
       ],
-      "anchor_fn": "handleSanitizedChain",
-      "note": "PRECISION PROBE: Validator.hardAllowlist returns a LITERAL, so taint is genuinely dead before the sink. Silent here while firing on TP-1 is what would prove sanitizer kill-node modelling exists."
+      "note": "PRECISION PROBE: Validator.hardAllowlist returns a LITERAL, so taint is genuinely dead before the sink. Silent here while firing on TP-1 is what would prove sanitizer kill-node modelling exists. R1121: this case used `anchor_fn: handleSanitizedChain`, an ENCLOSING METHOD that plumb reports only as a substring of other findings' sink_function -- so the harness's anchor check was answered by an unrelated dfa-taint-leak finding on the same method, and the gate passed without ever asking whether the SQL rule fired. R1121's hardened harness now refuses to score any anchor that is not a sink callee (`Class.method/arity`); this case is pinned to the exact SQL sink line instead."
     },
     {
       "id": "TN-2-path-guarded",

@@ -122,10 +122,22 @@ public final class NullDerefChecker extends TaintedCheckerBase {
         && ins.dest instanceof TacOperand.TacVar mvDest) {
       if (this.nullTaintedVars.containsKey(mvSrc)) {
         this.nullTaintedVars.put(mvDest, "move-from:" + mvSrc.name());
-      } else {
-        // Source is CLEAN: dest is being reassigned
-        // to a non-null value, so remove any
-        // pre-existing null-taint.
+      } else if (!isFunctionLocalOrParam(fn, mvSrc)) {
+        // R1119: clear ONLY when the source is provably a fresh non-null value.
+        //
+        // The previous test was "the source is absent from the map", which conflates two very
+        // different things and is wrong in the direction that hides findings:
+        //
+        //   - the source is a CALL result the null heuristic declined to mark (e.g.
+        //     File.createTempFile), which really is a fresh value and must clear the dest, or the
+        //     try/finally pattern above fires hundreds of CWE-378 / CWE-459 false positives;
+        //   - the source is merely a LOCAL or PARAMETER with no recorded fact, which proves
+        //     nothing at all.
+        //
+        // So the removal is conditioned on the source actually being a call result rather than on
+        // its absence from the map. This also fixes the loop case the same bug caused in
+        // NullDerefFromReturnDfaChecker: on a back edge a call result is re-marked, and the
+        // erasure can no longer destroy a fact the back edge just reintroduced.
         this.nullTaintedVars.remove(mvDest);
       }
     }
@@ -232,5 +244,23 @@ public final class NullDerefChecker extends TaintedCheckerBase {
       }
     }
     return null;
+  }
+
+  /**
+   * R1119: is this variable one of the function's own locals or parameters?
+   *
+   * <p>A TAC temp is not. That distinction is the whole fix: a temp holding a CALL result is a fresh
+   * value, whereas a local or parameter with no recorded null-fact proves nothing about what it
+   * holds. Keying on "absent from the map" instead is what let a real nullable fact be erased.
+   */
+  private static boolean isFunctionLocalOrParam(TacFunction fn, TacOperand.TacVar v) {
+    if (fn == null || v == null) return false;
+    for (TacOperand.TacVar local : fn.locals()) {
+      if (local == v) return true;
+    }
+    for (TacOperand.TacVar param : fn.params()) {
+      if (param == v) return true;
+    }
+    return false;
   }
 }

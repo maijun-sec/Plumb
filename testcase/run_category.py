@@ -292,19 +292,32 @@ def main() -> int:
         # cannot measure the case.
         anchor = case.get("anchor_fn")
         dfa_findings = [f for f in findings if not _is_lint(f)]
-        if anchor and not any(
-            anchor in (f.get("sink_function") or "") for f in dfa_findings
-        ):
-            # No finding anywhere attributes to this anchor as a sink callee.
-            # Distinguish "the sink callee never fired" from "this case asks
-            # about an enclosing method, which the output does not carry".
-            sink_ish = "/" in anchor
-            if not sink_ish:
-                results.append({**case, "status": "unscorable", "hits": 0,
-                                "hit_lines": [],
-                                "detail": "anchor_fn names an enclosing method, "
-                                          "which plumb does not report"})
-                continue
+        # R1121: a finding's `sink_function` sometimes carries the ENCLOSING METHOD
+        # with its signature rather than the sink callee (`runCommand(String,String):void`),
+        # and some rules do not report through a sink at all. So a substring hit on an
+        # enclosing-method anchor is NOT evidence that the anchored code was examined.
+        #
+        # The decision therefore cannot be "did any finding match this string" -- it has
+        # to be "is this anchor a sink callee at all". `Class.method/arity` is the only
+        # spelling that is guaranteed to be matched against a real sink.
+        anchored_sink = bool(anchor) and "/" in anchor
+        if anchor and not anchored_sink:
+            # R1121: an UNSCORABLE TN is never a pass. For a TP, "the engine does not
+            # expose the enclosing method" is a real, honest gap. For a TN it is the
+            # opposite: the gate asserts the ABSENCE of a finding, and an absence the
+            # harness cannot actually look for is a blind spot, not a measurement.
+            # Scoring it `supported` manufactures a precision number out of that blind
+            # spot -- which is how CVE-915-filtered-tn came to "pass" with a real
+            # Runtime.exec planted in the very method it claimed to be measuring.
+            status = "unscorable"
+            detail = (
+                "anchor_fn names an enclosing method, which plumb does not report as a "
+                "sink callee; this case cannot verify what it claims to measure. Pin the "
+                "real sink (anchor_fn containing '/') or use line_from/line_to."
+            )
+            results.append({**case, "status": status, "hits": 0,
+                            "hit_lines": [], "detail": detail})
+            continue
         if anchor:
             scoped = [f for f in dfa_findings
                       if anchor in (f.get("sink_function") or "")]
@@ -353,6 +366,26 @@ def main() -> int:
                             "hit_lines": [],
                             "detail": "capability absent by design; the fact is not"
                                       " representable, so no finding is expected"})
+            continue
+        if override == "unreachable-known-limitation" and hits:
+            # R1121: the gate says "this mitigation must silence the rule", but the engine
+            # has no representation for the mitigating fact, so it cannot.
+            #
+            # R1113 introduced this override for the opposite polarity -- it assumed the
+            # engine was SILENT where it should have been loud, so `not hits` was the only
+            # case that mattered. That assumption is what made this branch unreachable here,
+            # and an unreachable override is an invisible one: the case silently fell through
+            # and scored as a false positive, which asserts the rule is WRONG rather than
+            # INCOMPLETE.
+            #
+            # Both polarities are the same defect -- a mitigation the fact domain cannot hold --
+            # so both are scored outside the tallies, with the hit lines kept visible.
+            results.append({**case, "status": "known-limitation", "hits": len(hits),
+                            "hit_lines": sorted({h.get("line") for h in hits}),
+                            "detail": "mitigation modelled here is not representable in the "
+                                      "fact domain, so the rule cannot honour it; the "
+                                      "finding above is that missing capability, not a "
+                                      "wrong result"})
             continue
         if override == "known-limitation" and hits:
             results.append({**case, "status": "known-limitation", "hits": len(hits),

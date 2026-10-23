@@ -274,7 +274,7 @@ class R1110NullDerefFromReturnDfaTest {
    * line and report on {@code f.delete()}.
    */
   @Test
-  void reassignmentOverANullableNameClearsIt() throws Exception {
+  void reassignmentFromAParameterDoesNotClearTheNullableMark() throws Exception {
     String src =
         "import java.io.*;\n"
             + "class T {\n"
@@ -286,9 +286,12 @@ class R1110NullDerefFromReturnDfaTest {
             + "}\n";
     assertThat(scan(src, "Reassigned.java"))
         .as(
-            "after reassignment the reference is `other`, so the earlier null literal no longer"
-                + " constrains it")
-        .isEmpty();
+            "R1119: this used to assert silence, encoding the bug the audit found. `other` is a"
+                + " parameter and carries no recorded fact, which means \"unknown\" -- not"
+                + " \"proven non-null\". A caller may pass null, so the dereference is real."
+                + " The case that legitimately clears is a fresh allocation, covered by"
+                + " R1119FlowInsensitiveNullFactTest#aFreshAllocationStaysSilent")
+        .isNotEmpty();
   }
 
   /**

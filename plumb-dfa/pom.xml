@@ -217,6 +217,18 @@
                              A bare comparison must NOT suppress: its
                              fall-through still carries user input. -->
                         <include>org/plumb/dfa/checkers/taint/R1115AllowlistSanitizerTest.java</include>
+                        <!-- R1119: a MISSING null fact means
+                             UNKNOWN, never "not null". The pre-R1119
+                             MOVE handler cleared nullability whenever the
+                             source was absent from the map, so an
+                             unrecorded read laundered a may-null fact into
+                             a proven-safe one. -->
+                        <include>org/plumb/dfa/checkers/taint/R1119FlowInsensitiveNullFactTest.java</include>
+                        <!-- R1120: polarity is necessary but NOT
+                             sufficient. A negated equality inside a
+                             disjunction does not prove the substitution
+                             runs, so it must not clear SQL taint. -->
+                        <include>org/plumb/dfa/checkers/taint/R1120DisjunctiveGuardTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

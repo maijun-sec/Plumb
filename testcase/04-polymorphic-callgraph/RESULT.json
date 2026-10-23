@@ -117,8 +117,9 @@
       "rule_ids": [
         "dfa-taint-sql-injection"
       ],
-      "anchor_fn": "dispatchControlsOnly",
-      "note": "The non-sink implementation reached through the same interface. NOTE this anchor is informational: sink_function is the callee, so this row currently matches the whole file. Treat the L1 sink-vs-control distinction as an open gap in the harness, not as an engine result.",
+      "line_from": 127,
+      "line_to": 131,
+      "note": "The non-sink implementation reached through the same interface: `dispatchToNonSqlHandler` builds a LoggingHandler, whose handle(String) logs rather than queries. R1121: this row previously carried `anchor_fn: dispatchControlsOnly` -- a method that DOES NOT EXIST in the fixture -- and its own note admitted 'this anchor is informational, so this row currently matches the whole file'. A row that admits it measures the whole file is a file-level TN wearing a method-level label: it could never distinguish this control from the true positives two methods above it. R1121 pins it to the control method's line range instead, which is what the harness's line_from/line_to path was built for and which category-03 already exercises.",
       "status": "supported",
       "hits": 0,
       "hit_lines": []

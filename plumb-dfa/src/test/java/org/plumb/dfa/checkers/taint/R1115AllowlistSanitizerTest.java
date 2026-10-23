@@ -173,4 +173,140 @@ class R1115AllowlistSanitizerTest {
             "NoAllowlist.java");
     assertThat(out).isNotEmpty();
   }
+
+  /**
+   * R1118: a bare literal assignment is NOT an allowlist.
+   *
+   * <p>Added because a deeper mutation battery showed the rule could drop its "the variable was
+   * actually compared against literals first" requirement with every test still green. That
+   * relaxation is the dangerous one: there are ~1358 {@code = "literal"} assignments across the
+   * corpus, so forgetting the comparison turns the tracker into a taint eraser.
+   *
+   * <p>The comparison is what makes the later substitution meaningful. Without it, any
+   * {@code x = "safe"} anywhere would clear {@code x}, and the real taint on the fall-through
+   * would disappear with it.
+   */
+  @Test
+  void aLiteralAssignmentWithoutAComparisonIsStillReported() throws Exception {
+    List<Finding> out =
+        scan(
+            """
+            import java.sql.*;
+            class T {
+              String notAnAllowlist(Connection conn, String col) throws SQLException {
+                Statement st = conn.createStatement();
+                // A plain reassignment. Nothing constrains `col`; this is a bug, not a sanitizer.
+                col = "id";
+                return st.executeQuery("SELECT * FROM t ORDER BY " + col + col).toString();
+              }
+            }
+            """,
+            "LiteralWithoutCompare.java");
+    assertThat(out)
+        .as("no comparison, so the reassignment proves nothing and the input still flows")
+        .isNotEmpty();
+  }
+
+  /**
+   * R1118: a negated guard must not certify an unrelated variable.
+   *
+   * <p>The second surviving mutation allowed a negated comparison to mark <em>every</em> compared
+   * variable as allowlisted, so one guard on {@code col} would silence an unrelated {@code other}
+   * that still carries user input. Caught only because the test suite happened to have no shape
+   * where two variables are involved.
+   */
+  @Test
+  void aNegatedGuardDoesNotCertifyAnUnrelatedVariable() throws Exception {
+    List<Finding> out =
+        scan(
+            """
+            import java.sql.*;
+            class T {
+              String twoVars(Connection conn, String col, String other) throws SQLException {
+                Statement st = conn.createStatement();
+                if (!"id".equals(col) && !"name".equals(col)) {
+                  col = "id";
+                }
+                // `other` was never constrained. The guard on `col` says nothing about it.
+                return st.executeQuery("SELECT * FROM t WHERE a = '" + other + "' ORDER BY " + col)
+                    .toString();
+              }
+            }
+            """,
+            "TwoVars.java");
+    assertThat(out).as("`other` is still fully attacker-controlled").isNotEmpty();
+  }
+
+  /**
+   * R1118: only an equality against a STRING LITERAL counts as a comparison.
+   *
+   * <p>A third surviving mutation accepted a comparison where neither side was a literal.
+   * {@code if (!a.equals(b)) { x = "safe"; }} constrains nothing about either operand, so treating
+   * it as an allowlist would be unsound.
+   */
+  @Test
+  void aComparisonBetweenTwoVariablesIsNotAnAllowlist() throws Exception {
+    List<Finding> out =
+        scan(
+            """
+            import java.sql.*;
+            class T {
+              String varVsVar(Connection conn, String col, String other) throws SQLException {
+                Statement st = conn.createStatement();
+                if (!other.equals(col)) {
+                  col = "id";
+                }
+                return st.executeQuery("SELECT * FROM t ORDER BY " + col + other).toString();
+              }
+            }
+            """,
+            "VarVsVar.java");
+    assertThat(out)
+        .as("`other.equals(col)` proves nothing about `col`; both stay tainted")
+        .isNotEmpty();
+  }
+
+  /**
+   * R1118: a variable wrongly marked allowlisted must not survive a later literal MOVE.
+   *
+   * <p>This is the shape that catches the last surviving mutation, in which a negated comparison
+   * was allowed to certify <em>every</em> compared variable rather than just the one it tested.
+   *
+   * <p>Why the simpler {@code twoVars} case did not catch it: {@link
+   * org.plumb.dfa.taint.EqualityAllowlistTracker#isAllowlisted} is consulted in exactly one place --
+   * the MOVE handler, for the MOVE's destination. A variable that is merely <em>marked</em> but
+   * never reassigned is inert. So the bug only becomes observable when the wrongly-certified
+   * variable later receives a literal assignment of its own, which is exactly what happens here.
+   *
+   * <p>Recorded because it is a latent trap rather than a live defect: suppression currently lives
+   * at the MOVE, so the mutation changes no behaviour today. If suppression is ever moved to the
+   * sink -- which is the more obvious place, and the first thing tried in R1115 -- the same
+   * mutation silently starts hiding findings.
+   */
+  @Test
+  void anOverCertifiedVariableDoesNotKeepItsTaintAfterALaterLiteralMove() throws Exception {
+    List<Finding> out =
+        scan(
+            """
+            import java.sql.*;
+            class T {
+              String overCertified(Connection conn, String col, String other) throws SQLException {
+                Statement st = conn.createStatement();
+                if (!"id".equals(col) && !"name".equals(col)) {
+                  col = "id";
+                }
+                // `other` gets its own literal MOVE, but no guard ever constrained IT. If the
+                // guard on `col` were allowed to certify every compared variable, this MOVE would
+                // be treated as the proof and the second `other` below would be silenced.
+                other = "safe";
+                return st.executeQuery("SELECT * FROM t WHERE x = '" + other + "' ORDER BY " + other)
+                    .toString();
+              }
+            }
+            """,
+            "OverCertified.java");
+    assertThat(out)
+        .as("`other = \"safe\"` is a plain assignment, not an allowlist substitution")
+        .isNotEmpty();
+  }
 }

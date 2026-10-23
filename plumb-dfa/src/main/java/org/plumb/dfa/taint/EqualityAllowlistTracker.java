@@ -1,7 +1,10 @@
 package org.plumb.dfa.taint;
 
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import org.plumb.tac.ir.BinaryOperator;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
@@ -43,6 +46,23 @@ import org.plumb.tac.ir.TacOperand;
  * <p>Both spellings are recognised, negated ({@code !"a".equals(x)}) and positive-with-early-return
  * ({@code if (!x.equals("a")) return; }), because real code uses both and they differ only in the
  * shape of the join, not in what they guarantee.
+ *
+ * <h2>R1120: a negated equality must GOVERN the body, not merely appear in the condition</h2>
+ *
+ * <p>Polarity alone is necessary but not sufficient, and the second independent audit found the
+ * gap. These two shapes are byte-identical to the negation handler:
+ *
+ * <pre>
+ *   sound:    t2 = NOT t1 ;          if t2 goto L_THEN
+ *   unsound:  t2 = NOT t1 ; t5 = t2 LOR t4 ; if t5 goto L_THEN
+ * </pre>
+ *
+ * <p>In the second, {@code other == "users"} makes the disjunction true whatever {@code col} is, so
+ * the {@code col = "createdAt"} substitution never runs and {@code col} reaches the sink fully
+ * attacker-controlled. Recording the negation at the UNARYOP -- which is what R1115 did -- cannot
+ * tell these apart, so the proof is deferred to the BRANCH, the only point at which the boolean
+ * combine is known. Conjunctions remain sound and stay supported: every conjunct must hold for the
+ * body to run, so an {@code &&} allowlist is the correct idiom.
  */
 public final class EqualityAllowlistTracker {
 
@@ -78,6 +98,9 @@ public final class EqualityAllowlistTracker {
     this.newlyProved = false;
     this.testedByResult.clear();
     this.pendingNegatedGuards.clear();
+    this.candidateNegated.clear();
+    this.andLeaves.clear();
+    this.orResults.clear();
   }
 
   /**
@@ -142,9 +165,58 @@ public final class EqualityAllowlistTracker {
       // The negation does not flip which edge rejects -- it is folded into the comparison value
       // itself, so the polarity still comes from which label the branch names.
       testedByResult.put(negated.name(), testedByResult.get(from.name()));
-      // R1115: a NEGATED equality guard is the reject-and-assign idiom. Only these may license
-      // proving the variable safe; a positive guard's THEN block leaves the fall-through tainted.
-      pendingNegatedGuards.add(testedByResult.get(from.name()));
+      // R1115: a NEGATED equality guard is the reject-and-assign idiom. Only these may
+      // license proving the variable safe; a positive guard's THEN block leaves the
+      // fall-through tainted.
+      //
+      // R1120: recording the candidate here is NECESSARY BUT NOT SUFFICIENT. At this point we know
+      // only that *something* was negated -- not that the negation governs the body. The proof is
+      // completed in the BRANCH case below, once we know how the negated temp was combined into the
+      // condition. Promoting from here (the pre-R1120 behaviour) is exactly the false negative:
+      //   t2 = NOT t1 ; t5 = t2 LOR t4 ; if t5 goto L_THEN
+      // `t4` makes the branch true no matter what `t2` says, so the body may never execute.
+      candidateNegated.put(negated.name(), testedByResult.get(from.name()));
+      return false;
+    }
+
+    if (ins.kind == TacInstruction.Kind.BINOP
+        && ins.lhs1 instanceof TacOperand.TacVar a
+        && ins.lhs2 instanceof TacOperand.TacVar b) {
+      // R1120: record how this logical combine consumed its operands, so the BRANCH that follows
+      // can tell a conjunction from a disjunction. Deciding at the combine -- rather than at the
+      // branch -- is what lets us retire OR-derived facts before anything downstream reads them.
+      if (ins.binop == BinaryOperator.LOR) {
+        if (candidateNegated.containsKey(a.name())) orResults.add(a.name());
+        if (candidateNegated.containsKey(b.name())) orResults.add(b.name());
+      } else if (ins.binop == BinaryOperator.LAND) {
+        if (candidateNegated.containsKey(a.name())) andLeaves.add(a.name());
+        if (candidateNegated.containsKey(b.name())) andLeaves.add(b.name());
+      }
+      return false;
+    }
+
+    if (ins.kind == TacInstruction.Kind.BRANCH && ins.lhs1 instanceof TacOperand.TacVar cond) {
+      // R1120: this is the only point where "which comparison governs the body" is decidable.
+      //
+      // A variable may be proven safe only when its negated comparison reaches the branch as the
+      // WHOLE condition, or as a conjunct of an AND. Both mean the body runs only when every
+      // rejection test held, so every path carrying a non-listed value is the one that gets
+      // substituted.
+      //
+      // An OR-derived negation proves nothing at all: the sibling disjunct can make the condition
+      // true by itself, the body is then skipped, and the user's value flows straight through.
+      for (Map.Entry<String, String> e : List.copyOf(candidateNegated.entrySet())) {
+        String tempName = e.getKey();
+        String subject = e.getValue();
+        boolean governs = tempName.equals(cond.name()) || andLeaves.contains(tempName);
+        if (!governs || orResults.contains(tempName)) continue;
+        pendingNegatedGuards.add(subject);
+      }
+      // Candidates are function-scoped state, so drop them once their branch has been judged. A
+      // later guard must be re-argued from its own comparisons, never inherit this one's proof.
+      candidateNegated.clear();
+      andLeaves.clear();
+      orResults.clear();
       return false;
     }
 
@@ -200,15 +272,31 @@ public final class EqualityAllowlistTracker {
   private final Set<String> pendingNegatedGuards = new LinkedHashSet<>();
 
   /**
-   * The variable an allowlist BRANCH tests, or {@code null} when the condition is unrelated.
+   * Negated-comparison temp -&gt; the variable that comparison tested, as of the last UNARYOP.
    *
-   * <p>Returns the subject only so the caller can tell an allowlist guard from an arbitrary
-   * branch; the subject is recorded in {@link #compared} by the CALL handler.
+   * <p>R1120. A candidate is a claim that is <em>not yet proved</em>: the negation exists, but
+   * nothing has established that it governs the guarded body. Promotion into {@link
+   * #pendingNegatedGuards} happens only in the BRANCH case, once the boolean combine is known.
    */
-  private String branchSubject(TacInstruction ins) {
-    if (!(ins.lhs1 instanceof TacOperand.TacVar cond)) return null;
-    return testedByResult.get(cond.name());
-  }
+  private final java.util.Map<String, String> candidateNegated = new java.util.LinkedHashMap<>();
+
+  /**
+   * Negated-comparison temps consumed as a CONJUNCT by an {@code AND} since the last branch.
+   *
+   * <p>R1120. A conjunct is safe to promote: the body runs only when every conjunct holds, so a
+   * sibling conjunct can only make the body run <em>less</em> often, never skip it for an unrelated
+   * reason. A {@code &&} allowlist is the correct idiom and must keep working.
+   */
+  private final Set<String> andLeaves = new LinkedHashSet<>();
+
+  /**
+   * Negated-comparison temps consumed as a DISJUNCT by an {@code OR} since the last branch.
+   *
+   * <p>R1120. Permanently disqualifying, because an OR sibling can make the condition true on its
+   * own: the body is then skipped while the variable keeps its value. Recorded so a temp that was
+   * both conjuncted and disjuncted cannot be laundered through the conjunction.
+   */
+  private final Set<String> orResults = new LinkedHashSet<>();
 
   /**
    * If this call is {@code <literal>.equals(v)} or {@code v.equals(<literal>)} return {@code v}'s

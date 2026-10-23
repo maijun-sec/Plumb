@@ -117,12 +117,43 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
           return;
         }
         if (ins.lhs1 instanceof TacOperand.TacVar src) {
-          // Copy propagation. When the source is NOT nullable the dest is being reassigned to
-          // something known non-null, so any earlier nullable mark must be cleared -- otherwise a
-          // `File f = null; f = open(); f.close();` reports on a perfectly valid file handle.
+          // R1119: copy propagation is ADDITIVE and never subtracts.
+          //
+          // The previous code cleared the destination whenever the source was absent from the map.
+          // That reads absence as "known non-null", which inverts a may-fact into a must-claim --
+          // the exact error every other part of this engine is careful about (see the empty-set
+          // contract on PointsToSolver.pointsTo, on aliasClassOf, and in the coverage check below).
+          //
+          // Two defects fell out of it, both silent:
+          //
+          //   direct:   x = peek();  y = clean();  x.length()
+          //             -- `clean` has no recorded fact, so the mark on `x` was erased and the
+          //             dereference was never even considered.
+          //
+          //   in a loop: the state is one map walked in linear order, with no fixpoint and no
+          //             predecessor merge. On a later round the erasure destroys a fact the back
+          //             edge just re-introduced, so a correctly-guarded `while (cur != null)` looked
+          //             safe on round 1 and the real round-2 NPE disappeared.
+          //
+          // Why additivity is also the PRECISE answer here, not just the safe one: a may-analysis
+          // cannot retract facts, so once `x` may be null anywhere, a later assignment cannot make
+          // it not-null for the paths already traversed. The `File f = null; f = open();` case the
+          // old comment worried about is handled correctly anyway -- `open()` is a CALL, and the
+          // CALL handler marks the result nullable on its own.
           if (this.nullableVars.containsKey(src)) {
             this.nullableVars.put(dest, "copy of " + src.name());
-          } else {
+          } else if (isFreshAllocation(fn, src, ctx)) {
+            // R1119: the ONE case where a MOVE may subtract.
+            //
+            // Copy propagation cannot retract, because a may-fact about a name is not a fact about
+            // the value a later assignment brings. A fresh allocation is different in kind: `new X()`
+            // is an object by construction, so `x = new StringBuilder(..)` genuinely makes every
+            // later read of `x` non-null. Without this branch, making MOVE additive turns the
+            // Juliet `File temp = null; ... temp = new File(..); temp.close();` shape into a
+            // false positive.
+            //
+            // The test is deliberately narrow -- a pointer to an object the solver actually knows
+            // -- rather than "the source has no facts", which is the inversion this round removed.
             this.nullableVars.remove(dest);
           }
         }
@@ -266,6 +297,23 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
    * ({@code b = a;} guarded {@code a}), because there both names denote the same set of objects. It
    * stops suppressing the imprecision case, which is where the coverage is incomplete.
    */
+  /**
+   * R1119: does this variable provably point at a fresh object?
+   *
+   * <p>The single subtraction MOVE is allowed to perform. {@code x = new StringBuilder(..)} binds a
+   * value that is an object by construction, so any earlier may-null fact about the previous binding
+   * is genuinely irrelevant to later reads.
+   *
+   * <p>Asks the points-to solver rather than inspecting names: a non-empty points-to set means the
+   * solver has seen an allocation reach this variable. That is the opposite of the inversion removed
+   * in this round -- here a fact must be PRESENT to justify the subtraction, rather than absent.
+   */
+  private boolean isFreshAllocation(
+      TacFunction fn, TacOperand.TacVar v, AnalysisContext ctx) {
+    if (fn == null || ctx == null || v == null) return false;
+    return !ctx.pointsTo(fn.signature(), v).isEmpty();
+  }
+
   private boolean isFullyGuardedByAlias(
       TacOperand.TacVar receiver, TacFunction fn, AnalysisContext ctx) {
     Set<TacOperand.TacVar> aliases = ctx.aliasClassOf(fn.signature(), receiver);

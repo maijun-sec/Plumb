@@ -2,7 +2,7 @@
   "category": "03-pointer-multilevel",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 648,
+  "total_findings": 649,
   "cases": [
     {
       "id": "L1-independent-objects",
@@ -278,7 +278,7 @@
     "CWE-404": 66,
     "CWE-563": 28,
     "CWE-668": 23,
-    "CWE-476": 19,
+    "CWE-476": 20,
     "CWE-697": 18,
     "CWE-690": 17,
     "CWE-789": 12,
