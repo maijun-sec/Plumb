@@ -70,13 +70,11 @@ Build adapter 'maven' discovered: 1247 sources, 89 classpath jars, 3 modules.
 
 Adapter 输出的 `sourceFiles` / `sourceRoots` / `moduleRoots` / `classpathJars` 全部喂给 runner，**用户传的 `--input` / `--classpath` 仍生效**——adapter 提供的是"项目标准集合"，用户可以追加/覆盖。
 
-**YAML 等价**：
-
-```yaml
-buildSystem:
-  name: maven
-  projectRoot: /opt/my-spring-app
-```
+**注意：build-system 只能走 CLI，没有 YAML 等价键。** `ConfigLoader` 不读
+`buildSystem:`，`--build-system` / `--project-root` 是 CLI-only 的（见
+`SastMain.applyBuildSystem`）。想用 YAML 表达同样的效果，只能把 adapter
+解析出来的路径写进 `inputs:` / `sourceRoots:` / `moduleRoots:` /
+`classpath:`。
 
 未实现功能（planned）：`buildSystem.compileClasspath: true`（只在编译期 classpath 跑，默认 true）、`buildSystem.excludeTestSources: true`（剔除 `src/test/java`，默认 false）。
 
@@ -91,10 +89,22 @@ checks:
   taint: true
   style: true
   divByZero: true
-  # ... 一共 46 项
+  # ... 一共 47 个 checker family，外加 taint / style 两个总开关 = 49 个键
 ```
 
-`Configs.bool` 字段全部默认 `true`（除少数 off：`incorrectReturn` / `threadRun` / `catchGeneric`）。详细字段清单见 §3。
+`ConfigLoader.fromMapImpl` 一共从 `checks:` map 上读 **47 个 checker family**
+（每个对应一个 `ScanConfig.run*` 布尔字段），外加 `taint` / `style` 两个总开关
+—— 合计 49 个键。每个 family 都同时接受 camelCase（canonical）和
+snake_case（legacy alias）两种拼写，camelCase 优先。
+
+`ScanConfig.run*` 布尔字段一共 55 个，其中 6 个**没有**对应的 YAML key，
+只能改代码或走 `--rule` / `rules.enabled`：
+`runOrmLoadNullCheck` / `runOrmLostUpdate` / `runOrmUnnecessaryGet` /
+`runUnlockNotLocked`（默认恒为 true）、`runServletAtomicity` /
+`runSingletonRace`（默认恒为 false，且两者是纯 AST checker）。
+
+各 family 默认值全部为 `true`（除少数 off：`incorrectReturn` / `threadRun` /
+`catchGeneric`）。详细字段清单见 §3。
 
 ### 12.2 sub-dict 形式（同时配 aiDedup 或显式 enabled）
 

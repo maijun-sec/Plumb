@@ -158,7 +158,7 @@ bin/sast-scan -c conf/default-config.yaml -i src \
 ### 2.3 R-? Re-Act 多轮工具调用
 
 `--ai-dedup` 默认走 **Re-Act 多轮循环**（不是单次问答）—— LLM 在判 TP/FP 之前可以调
-13 个工具去看更多代码、查 caller 有没有 sanitize、检查 trace 路径上有无 guard：
+12 个工具去看更多代码、查 caller 有没有 sanitize、检查 trace 路径上有无 guard：
 
 | 工具 | 干啥 | IR 依赖 | 何时用 |
 |------|------|--------|--------|
@@ -193,15 +193,10 @@ scanner max 8 turn），框架在 4 个条件之一停：
 3. provider null — 网络 / auth 失败，标 `UNKNOWN`
 4. tool 抛错 — 错误信息回喂 LLM 让它 adapt
 
-**手动关掉 Re-Act 走单轮**（YAML）：
-
-```yaml
-ai:
-  enabled: true
-  dedup: true
-  # 关闭 Re-Act 回到单轮 LLM 调用（去掉 tool calling）
-  reactive: false
-```
+**Re-Act 不能从 YAML 关闭。** `ai:` 块里没有 `reactive` 之类的开关——
+`ConfigLoader` 只认 `provider` / `baseUrl` / `apiKey` / `model` / `header` /
+`timeoutSeconds` / `maxConcurrent` / `temperature` / `dedup` / `dropOnAiFp` /
+`dedupRules`。`--ai-dedup` 走的就是 Re-Act 多轮循环，没有单轮模式可切。
 
 **plumb-ai 是 hard dep of plumb-main**（Step 7 之后）：`plumb-main` 直接
 `import org.plumb.ai.agent.*` 构造 `LlmProvider` / `ReActAgent` /
@@ -212,7 +207,7 @@ agent 框架壳的干净定位。静态分析本身**不**依赖 plumb-ai；只�
 
 **Slim dist** (用 `pwsh scripts/package-slim.ps1` 生成):
 - bin / conf / lib 跟 full dist 一样
-- `conf/default-config.yaml` 重写为 `ai.enabled: false`
+- `conf/default-config.yaml` 重写为 `ai.dedup: false`（真正的 AI 闸门；`ai.enabled` 早已从 schema 删除）
 - 全 jar 包含 plumb-ai classes (off)，但 runner 短路 AI passes
 - 想完全剥 plumb-ai classes: 改用 `mvn -pl plumb-main package
   -Pno-ai -DskipTests=true` (mvn profile)，或者直接 fork 仓库
@@ -401,9 +396,18 @@ checks:
   uncheckedLoopCondition:   {enabled: true,  aiDedup: true}
   uncontrolledMemAlloc:    {enabled: true,  aiDedup: true}
   numericTruncation:       {enabled: true,  aiDedup: true}
+  resourceExhaustion:      {enabled: true,  aiDedup: true}  # CWE-400
   # R-? — 8 plumb-dfa → plumb-dfa DfaChecker ports
   bigDecimalDoubleConstructor: {enabled: true, aiDedup: true}  # CWE-682
   defaultEncoding:             {enabled: true, aiDedup: true}  # CWE-176
+
+# errorMessageInfoLeak / commentInfoLeak 这两个 key 会被 ConfigLoader 解析，
+# 但对应的 DFA checker 已经迁到 plumb-style，现在**不再切换任何东西**。
+# 要关掉它们请用 AST rule id:
+#   rules:
+#     disabled:
+#       - ast-error-error-message-info-leak
+#       - ast-style-comment-info-leak
 
 # ---- 项目路径 ----
 # R797/R833 — 跟 build-system adapter 配合使用。详见 §10。
@@ -489,28 +493,40 @@ java -jar plumb-...-all.jar -c /tmp/disable.yaml -i src/main/java
 ### 4.4 改规则参数
 
 每条 `RuleDef` 可以携带 `RuleParameter`（见 `plumb-rules/src/main/java/org/plumb/rules/RuleParameter.java`）。
-**当前 plumb-main 的 YAML 加载器尚未支持 YAML 端运行时参数覆盖**——所有规则
-使用代码里 hard-code 的 default。如果需要修改：
-
-- **简单路径**：改源代码里 `new RuleParameter(name, type, "default")` 中的 default，rebuild。
-- **planned 路径**（R-参数化 路线图）：引入 `rules.parameters.<rule-id>.<param-name>: <value>` 段，逻辑写在 `ConfigLoader.fromMapImpl` 里（参考同文件的 `checks.*` 处理代码段）。届时 `RuleParameter.value()` 会优先返回 YAML 提供的值，fallback 才是 `default`。
-
-> Style checker 的阈值属于 R-参数化的首批候选。例如未来会有：
+**YAML 端运行时参数覆盖已支持**，路径是 `checks.<rule-id>.params.<param-name>`：
 
 ```yaml
-rules:
-  parameters:
-    pl-0249-method-too-long:
-      maxLines: 120
-    pl-0233-avoid-print-stack-trace:
-      allowInTests: true
+checks:
+  line-length:
+    enabled: true
+    params:
+      max: 120                  # 覆盖源码里 LineLengthCheck 的默认值 100
+      ignoreComments: false
 ```
+
+链路：`ConfigLoader.fromMapImpl` 把它收进 `ScanConfig.ruleParams`
+（外层 key = 规则 id，内层 key = 参数名，值按 YAML 字面量类型保留
+String / Integer / Boolean），`ScanRunner` 构造 `StyleContext` 时传进去，
+`AstDispatcher` 在每个 checker 的 `init()` / `visit()` 前调
+`setCurrentRule(checker.name())`，checker 通过
+`ctx.paramOverride(name, type)` 读取。命中 override 就用 override，
+没命中则回落到 `RuleDef.parameters()` 里声明的 default。
+
+> 外层 key 必须是 checker 的 `name()`，也就是 kebab-case slug（`line-length`）。
+> **canonical rule id（`ast-style-line-length`）和短名（`LINE_LENGTH`）都不生效**——
+> 查找是 `checker.name() + "." + paramName` 的直接拼键，不做别名解析。
+
+只有 plumb-style 的 checker 走这条路径——`plumb-rules` 里声明了
+`RuleParameter` 但没有 `StyleContext` 上下文的其他规则类型，用的还是
+代码里的 hard-code default。
 
 #### 4.4.1 `aggressiveness` 已废弃
 
-**REMOVED 2026-10-08 (audit C-3)**：`aggressiveness: low|medium|high` 不再被识别。
+`aggressiveness: low|medium|high` 不再被识别。
 - CLI 没有 `--aggressiveness` flag（已删除）。
-- YAML 里写 `aggressiveness:` 会被 `ConfigLoader.fromMapImpl` 报清晰错误。
+- YAML 里写 `aggressiveness:` 时，`ConfigLoader.fromMapImpl` 会往 stderr 打一条
+  `[plumb] warning: 'aggressiveness' in YAML is no longer supported; ...`，
+  **但扫描照常继续**——这不是致命错误。
 - 替代品：`checks.<rule>: {enabled: true|false}` 段或 `--rule <id>` 命令行临时过滤。
 
 ## 5. 输出格式

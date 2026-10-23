@@ -126,6 +126,20 @@ checks:
   uncheckedLoopCondition:   {enabled: true,  aiDedup: true}
   uncontrolledMemAlloc:    {enabled: true,  aiDedup: true}
   numericTruncation:       {enabled: true,  aiDedup: true}
+  # CWE-400: Thread.sleep + unbounded for-loop (plumb-dfa ResourceExhaustionChecker)
+  resourceExhaustion:      {enabled: true,  aiDedup: true}
+  # R-787f / R-812: errorMessageInfoLeak and commentInfoLeak used to gate
+  # plumb-dfa checkers of the same name. Both checkers were MIGRATED to
+  # plumb-style (org.plumb.style.error.ErrorMessageInfoLeakCheck /
+  # org.plumb.style.style.CommentInfoLeakCheck), so these two YAML keys no
+  # longer switch anything off — the style checkers are registered
+  # unconditionally and are controlled via `rules.disabled` with the AST rule
+  # id instead:
+  #   rules:
+  #     disabled:
+  #       - ast-error-error-message-info-leak
+  #       - ast-style-comment-info-leak
+  # The keys are still parsed so old configs keep loading without a warning.
   # R-? — 8 plumb-dfa → plumb-dfa DfaChecker ports
   # (Category A — direct IR pattern, no taint). Each is a
   # structural check that doesn't propagate data flow.

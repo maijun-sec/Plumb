@@ -201,7 +201,9 @@ checks:
       ignoreComments: false
 ```
 
-`<rule-id>` 是 checker 的 `name()`（例如 `line-length`）或它的 canonical rule id。
+外层 key 必须是 checker 的 `name()`（kebab-case slug，例如 `line-length`）。
+**canonical rule id（`ast-style-line-length`）和短名（`LINE_LENGTH`）都不生效**——
+查找是 `checker.name() + "." + paramName` 的直接拼键，不做别名解析。
 参数名必须和 `RuleParameter` 里声明的名字一致。
 
 `R761ParamsTest`（`plumb-main/src/test/.../R761ParamsTest.java`）覆盖这条路径，
@@ -229,8 +231,10 @@ private static final RuleParameter[] PARAMS = {
 
 ### 9.3 `aggressiveness` 已废弃
 
-**REMOVED 2026-10-08 (audit C-3)**：`aggressiveness: low|medium|high` 不再被识别。
+`aggressiveness: low|medium|high` 不再被识别。
 - CLI 没有 `--aggressiveness` flag（已删除）。
-- YAML 里写 `aggressiveness:` 会被 `ConfigLoader.fromMapImpl` 报清晰错误。
+- YAML 里写 `aggressiveness:` 时，`ConfigLoader.fromMapImpl` 往 stderr 打一条
+  `[plumb] warning: 'aggressiveness' in YAML is no longer supported; ...`，
+  **但扫描照常继续**——这不是致命错误。
 - 替代品：`checks.<rule>: {enabled: true|false}` 段或 `--rule <id>` 命令行临时过滤。
 

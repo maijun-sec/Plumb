@@ -3,7 +3,7 @@
 > **Java 静态分析工具链** — JavaParser → TAC IR → DFA (含 taint) + AST 风格规则 → NDJSON 报告,**可选** LLM FP 消减。
 
 [![Version](https://img.shields.io/badge/version-0.1.0--SNAPSHOT-blue)](docs/README.md)
-[![Tests](https://img.shields.io/badge/tests-378%20java%20test%20files-green)](pom.xml)
+[![Tests](https://img.shields.io/badge/tests-262%20java%20test%20files-green)](pom.xml)
 [![Support](https://img.shields.io/badge/tests-passing-brightgreen)](testcase/SUPPORT-MATRIX.md)
 [![License](https://img.shields.io/badge/license-internal-lightgrey)](#9-license)
 
@@ -26,10 +26,10 @@
 | 维度 | 数据 | 来源 |
 | --- | --- | --- |
 | Style checker | **595** 个（`CheckerCategories` 登记 593） | `plumb-style/**` |
-| DFA checker | **66** 个实际注册 | `ScanRunner.buildDfaCheckers()` |
+| DFA checker | **71** 个实际注册 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | **12** 条 | `TaintRuleRegistry` |
 | Taint source / sink 模式 | **19** / **397** | `sink-families.yaml` |
-| 单元测试 | **378** 个 java test 文件（其中 333 个 `*Test.java`） | 各模块 `src/test/` |
+| 单元测试 | **262** 个 java test 文件（其中 219 个 `*Test.java`） | 各模块 `src/test/` |
 
 > 下面的行需要外部语料 / 基准环境才能复现，本仓库里没有对应的数据或 harness：
 > Juliet corpus 的 CWE 覆盖率与召回、AI dedup 准确率、启动与单文件扫描耗时、
@@ -112,7 +112,7 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
   -i path/to/your/src/
 ```
 
-`default-config.yaml` 含 46 个规则家族的开关、AI 配置、调用图策略、缓存模式。
+`default-config.yaml` 含 47 个 `checks:` 键（45 个 checker family + `taint` / `style` 两个总开关）、AI 配置、调用图策略、缓存模式。
 
 ### 3.4 启用 AI FP 消减
 

@@ -189,10 +189,7 @@ PathSensitiveCheckerBase (plumb-dfa/taint/PathSensitiveCheckerBase.java):
 
 ### 3.2 关键设计决策
 
-以下 8 条解释 Plumb 在架构层面的取舍。**注意**：本节早期版本按轮次编号（R99/R116/R121…）
-组织，并引用了 `CallResolver`、`TaintCatalog`、`SensitiveDataLeakCheck`、`TypeTable`、
-`FieldHardcodedPasswordCheck` 等**在代码库中不存在的类**，现已改写为只陈述仍然成立的
-决策。
+以下 8 条解释 Plumb 在架构层面的取舍。
 
 #### 1. Fact 的 identity 来自 `TacOperand`
 IR 变量是 `TacOperand.TacVar`（含 `name` / `type` / `isTemp` 三个字段），
@@ -415,10 +412,10 @@ emit 进入最终 finding 集合
 NDJSON 输出，cwe 字段来自 plumb_rule_to_cwe.json["ast-style-foo"]
 ```
 
-**历史别名**：早期版本的 emit-id 带 `-style` 后缀（`ast-style-random-iv-cbc-style`）。
-现在这个字符串只作为 `RuleDef` 的 **alias** 保留（用于兼容老的 YAML 白名单），
-不再是任何规则的 emit-id。`ScanRunner.isRuleIdAllowed` 里的
-`ast-style-` 前缀 / `-style` 后缀剥离逻辑就是为兼容这些 alias 服务的。
+**别名**：带 `-style` 后缀的字符串（`ast-style-random-iv-cbc-style`）只作为
+`RuleDef` 的 **alias** 保留（用于兼容老的 YAML 白名单），不是任何规则的
+emit-id。`ScanRunner.isRuleIdAllowed` 里的
+`ast-style-` 前缀 / `-style` 后缀剥离逻辑就是为匹配这些 alias 服务的。
 
 **架构要点**：
 

@@ -167,7 +167,7 @@ callee signature 的 source 模式表。IR 里同一方法的 signature 可能�
 | **pattern-based** | 直接 `implements DfaChecker` | 16（`checkers/controlflow/`）+ 2（`checkers/taint/`） | 无 taint 传播，靠 IR 局部模式匹配；用 `Finding.violation(...)` 发单步 trace |
 
 `ScanRunner.buildDfaCheckers()`（`plumb-main/.../ScanRunner.java`）**实际注册
-66 个** DFA checker。注册受 YAML 的 per-rule flag 控制（例如
+71 个** DFA checker。注册受 YAML 的 per-rule flag 控制（例如
 `config.runIntOverflow`、`config.runNullDeref`），`config.runTaint` 是
 taint 全家桶的总开关。
 
@@ -279,14 +279,10 @@ LocalAI / MiniMax）都能接；Anthropic 走 `Provider.ANTHROPIC` 的原生
 `/v1/messages`，但只支持单 prompt，tool-calling 会抛
 `UnsupportedOperationException`。
 
-> **注意**：本节早期版本描述过一个 `--ai-scan`（LLM 主动找静态规则漏掉的 bug）、
-> `--aggressiveness` 开关、`AIConfig` / `AIServiceFactory` / `AIDedupService` /
-> `AIScanService` / `RulePromptRegistry` / `Aggressiveness` 一组类，以及
-> `plumb-ai/src/main/resources/rule-prompts/` 目录。**这些都不存在**。
-> `--ai-scan` 与 `--aggressiveness` 已被移除（前者从未接线，后者是无操作：
-> `ConfigLoader` 忽略 YAML 里的 `aggressiveness` 键，`SastMain` 也从不读 CLI 值），
-> 规则级开关改由 YAML 的 `checks.<rule>.enabled` 与 `--rule <id>` 控制；
-> per-rule prompt 现在由 checker 自己持有。
+**AI 层没有 bug scanner。** `--ai-scan`（LLM 主动找静态规则漏掉的 bug）和
+`--aggressiveness` 都不存在：规则级开关由 YAML 的 `checks.<rule>.enabled` 与
+`--rule <id>` 控制（YAML 里的 `aggressiveness` 键被 `ConfigLoader` 忽略，
+`SastMain` 也从不读 CLI 值）；per-rule prompt 由 checker 自己持有。
 
 ## 14. Re-Act 框架：让 LLM 能「看代码」
 
@@ -351,16 +347,12 @@ org.plumb.ai.tools.ToolContext ctx = new org.plumb.ai.tools.ToolContext(...);   
 `org.plumb.ai.agent.LlmConnection`（一个纯数据 record）与 `plumb-ai` 交互，
 LLM 不可用时静态分析照常跑完。配置见 [`../usage/ENVIRONMENT.md`](../usage/ENVIRONMENT.md)。
 
-### 14.5 去掉的是什么
+### 14.5 AI 只做 FP 判定
 
-早期设计里存在一个「AI bug scanner」——把整个函数丢给 LLM 让它找静态规则漏掉的漏洞，
-输出 `rule_id=AI_SCANNER` 的 finding。`AgentTask.bugScan(...)` 这个工厂方法仍在，
-但**没有任何调用方**：`--ai-scan` 开关不存在，扫描流水线里也没有这条支路。
-AI 当前只做 FP 判定（`AgentTask.fpReduction(...)`）。
+AI 层没有 bug scanner。`AgentTask.bugScan(...)` 这个工厂方法存在，但
+**没有任何调用方**——扫描流水线里没有这条支路。AI 当前只做 FP 判定
+（`AgentTask.fpReduction(...)`）。
 
-> 本节早期版本提到的 `AIDedupService` / `AIScanService` / `AIServiceFactory` /
-> `AIConfig` / `AIDedupResult` / `AIScanFinding` / `RulePromptRegistry` /
-> `Aggressiveness` 这一组类，**在代码库中都不存在**——它们已被
-> `ReActAgent` + `LlmConnection` + `ToolRegistry` 取代。per-rule prompt 现在由
-> checker 的 `getAiPrompt(Finding)` 持有，不再集中在一个 registry 里。
+per-rule prompt 由 checker 自己持有（`AstChecker.getAiPrompt(Finding)`），
+不集中在一个 registry 里。
 

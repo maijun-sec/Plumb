@@ -3,11 +3,8 @@
 本文档描述 `plumb-dfa` 的实际实现。全部内容对照源码核实；文中每个类名都可在
 `plumb-dfa/src/main/java/org/plumb/dfa/` 下找到，引用格式为 `文件:行号`。
 
-> **更正记录**：本文档早期版本把引擎描述为「IFDS 风格的污点传播」，并引用了
-> `TaintAnalysis` / `TaintPropagator` / `TaintCatalog` / `CallResolver` / `Interval` /
-> `IrDispatcher` 等类。**这些类在代码库中都不存在。** 引擎既不是 IFDS，也不是
-> tabulation solver；它是一个 per-checker 的正向数据流引擎，配一个独立的指向性求解器
-> 和一个只在特定检查里启用的 Z3 误报过滤器。下面的内容是重写后的真实结构。
+引擎既不是 IFDS，也不是 tabulation solver；它是一个 per-checker 的正向数据流引擎，
+配一个独立的指向性求解器和一个只在特定检查里启用的 Z3 误报过滤器。
 
 ---
 
@@ -120,9 +117,11 @@ initEngine(ctx)
 
 ### 3.1 污点分析（taint）
 
-**驱动类**：`taint/TaintedCheckerBase.java`。它**同时是抽象基类和传播引擎**——这与文档里
-「子类只需几行」的印象不同：`checkers/taint/` 下约 46 个具体 checker 大量覆写
-`checkInstruction`。
+**驱动类**：`taint/TaintedCheckerBase.java`（注意它在 `dfa/taint/` 包下，不在
+`dfa/checkers/taint/`）。它**同时是抽象基类和传播引擎**——这与文档里
+「子类只需几行」的印象不同：`checkers/taint/` 下 45 个具体子类大量覆写
+`checkInstruction`（全仓库共 47 个 `extends TaintedCheckerBase`，
+另外两个是 `BoundaryConstraintChecker` 和基类自身）。
 
 - 状态：`taintedVars: Map<TacVar, String>`（`:140`）与 `taintPaths`（`:149`）
 - 传播：`propagateMOVE`（`:1158`）等按指令种类分派

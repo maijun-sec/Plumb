@@ -34,9 +34,6 @@
 > ⚠️ **不要用 `plumb-rules` 的 `RuleRegistry.java` 推断规则总数**：它有 84 处 `register(...)`，
 >   其中大量 `org.plumb.dfa.checker.*` / `org.plumb.dfa.taint.*` 类名在 `plumb-dfa` 下并不存在
 >   （例如 `:1010` 指向 `org.plumb.dfa.taint.TaintAnalysis`），该 registry 已陈旧。
->
-> 早期版本此表写着「DFA 检查器 36 / DFA unified 66 / 合计 ~720」，三个数字都无法从任何配置
-> 或代码复现，已删除。
 
 ### 1.1 Style 规则子目录分布（实测）
 
