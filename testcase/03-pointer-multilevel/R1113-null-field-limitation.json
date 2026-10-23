@@ -1,6 +1,6 @@
 {
   "case": "L6-unguarded-sibling-field",
-  "status": "known-limitation",
+  "status": "closed-by-R1114",
   "measured_on": "2026-10-23",
   "finding": "The dataflow null-dereference rule does not report a field explicitly assigned null and then dereferenced.",
   "root_cause": "PointsToSolver represents heap facts as sets of abstract objects and has no null element, so FIELDSTORE dest=Const(NULL) contributes nothing. The subsequent FIELDLOAD therefore returns an empty points-to set, which the checker is required to read as 'unknown' rather than 'null' -- absence of proof must not become proof of nullness.",
@@ -14,5 +14,19 @@
     "call results (marked nullable directly by the checker)",
     "null locals (`x = null` -> MOVE, handled)",
     "container elements reached through a locally allocated container"
-  ]
+  ],
+  "closed_on": "2026-10-23",
+  "closed_by": "R1114 added the null direction to PointsToSolver's fact domain. `L6-unguarded-sibling-field` is now scored normally and fires; category-03 moved from TP 1/1 (with this case excluded as a known limitation) to TP 2/2.",
+  "how": [
+    "Nullness is a SEPARATE channel (nullFields, nullArrayCells, nullContainerCells, nullReturns, nullVars), not an Obj sentinel. One shared null sentinel would make every null in the program compare equal, so it would leak into mayAlias and into the guard-coverage test, where 'the guard covers this null' is exactly the false negative R1113 removed.",
+    "Every slot is tri-valued by construction: objects non-empty and no null fact means definitely an object; objects empty and a null fact means definitely null; objects empty and no null fact means UNKNOWN. The third state is why an empty set cannot be read as null.",
+    "The guard-coverage test consults mayBeNull explicitly. A guard on an alias silences the object possibilities; it also proves that reference non-null, but a receiver the solver has seen be null is reported unless the guard genuinely excludes it."
+  ],
+  "verified_by": [
+    "R1114NullFactDomainTest - 6 tests, all three states pinned",
+    "Mutation battery: M1 (no null facts) RED, M2 (empty set means null) RED, M3 (guard ignores null) RED",
+    "plumb-dfa 197 tests / 0 failures; plumb-tac 49 / 0; plumb-style 1175 / 0",
+    "category-03 TP 2/2, TN 12/12; categories 01, 02, 04, 05 unchanged"
+  ],
+  "supersedes_note": "The 'why_not_fixed' section below describes the situation as of R1113 and is kept for the before/after. The reason it was not fixed then was that it needed a change to the solver's fact domain rather than to a consumer -- which is exactly what R1114 made."
 }

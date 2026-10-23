@@ -205,6 +205,12 @@
                              pin both directions so a stricter rule that
                              stops suppressing sound cases also fails. -->
                         <include>org/plumb/dfa/checkers/taint/R1113AliasGuardCoverageTest.java</include>
+                        <!-- R1114: the heap's NULL direction. The fact
+                             domain held objects only, so `x.f = null`
+                             recorded nothing. Three states must stay
+                             distinct: definitely-null reports, guarded
+                             is silent, unknown is silent. -->
+                        <include>org/plumb/dfa/checkers/taint/R1114NullFactDomainTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

@@ -2,7 +2,7 @@
   "category": "03-pointer-multilevel",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 647,
+  "total_findings": 648,
   "cases": [
     {
       "id": "L1-independent-objects",
@@ -237,12 +237,12 @@
       "rule_ids": [
         "dfa-taint-null-deref-from-return"
       ],
-      "note": "LAYER 6 CONSUMER, POSITIVE BUT UNREACHABLE: the guard protects one root's node and the other root's node is explicitly assigned null and dereferenced, which is a real CWE-476. It is recorded as a known limitation, not a defect in the rule's reasoning, because the missing capability is upstream of the checker: PointsToSolver's fact domain is a set of abstract objects with no null element, so `right.node = null` records nothing and the later load answers an empty set. An empty set must keep meaning 'unknown' -- treating it as null would invent a finding for every unmodelled field read. Closing this needs a tri-valued field fact, which is a change to the solver's fact domain rather than to this consumer. See R1113-null-field-limitation.json for the measurements, including the IR check that ruled out a translator defect.",
-      "status_override": "unreachable-known-limitation",
-      "status": "known-limitation",
-      "hits": 0,
-      "hit_lines": [],
-      "detail": "capability absent by design; the fact is not representable, so no finding is expected"
+      "note": "LAYER 6 CONSUMER, POSITIVE: the guard protects one root's node; the other root's node is explicitly assigned null and dereferenced without any check. Field sensitivity keeps the two apart, and R1114 supplies the missing fact -- the points-to domain held objects only, so `right.node = null` used to record nothing and the case was unreachable. Nullness is now a separate channel from the object sets: a shared null sentinel would have made every null in the program compare equal and leaked into mayAlias and the guard-coverage test.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        82
+      ]
     },
     {
       "id": "L6-AST-cannot-follow-the-alias",
@@ -267,8 +267,8 @@
     }
   ],
   "summary": {
-    "tp_total": 1,
-    "tp_supported": 1,
+    "tp_total": 2,
+    "tp_supported": 2,
     "tp_false_negative": 0,
     "tn_total": 12,
     "tn_supported": 12,
@@ -278,7 +278,7 @@
     "CWE-404": 66,
     "CWE-563": 28,
     "CWE-668": 23,
-    "CWE-476": 18,
+    "CWE-476": 19,
     "CWE-697": 18,
     "CWE-690": 17,
     "CWE-789": 12,

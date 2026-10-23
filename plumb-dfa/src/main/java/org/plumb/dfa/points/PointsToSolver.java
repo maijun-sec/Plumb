@@ -101,6 +101,40 @@ public final class PointsToSolver {
    */
   private final Map<ContextKey, Set<Obj>> returns = new LinkedHashMap<>();
 
+  // ── R1114: the null direction ─────────────────────────────────────────────────────
+  //
+  // The five stores above answer "which objects". They cannot answer "which of these slots hold
+  // NULL", because `Obj` is an allocation-site identity: two null references are not the same
+  // object, and giving null an `Obj` would make every null in the program compare equal. That
+  // single sentinel would then flow into `mayAlias` and into the guard-coverage test, where
+  // `covered.containsAll(held)` would read "the guard covers this null" -- exactly the false
+  // negative R1113 removed two rounds ago.
+  //
+  // So nullness is a SEPARATE channel, and every slot is tri-valued by construction:
+  //
+  //   objects non-empty, null not present   -> definitely an object
+  //   objects empty,       null present     -> definitely null
+  //   objects empty,       null absent      -> UNKNOWN (never "null")
+  //
+  // The third row is why `nullFields` cannot be collapsed into an empty-set signal: absence of a
+  // fact must keep meaning "the analysis does not know", or every unmodelled field read in the
+  // corpus would become a CWE-476 finding.
+
+  /** {@code (receiver, field) -> "this slot was assigned the null literal"}. */
+  private final java.util.Set<AbstractField> nullFields = new java.util.LinkedHashSet<>();
+
+  /** {@code (array, index) -> "this cell was assigned the null literal"}. */
+  private final java.util.Set<AbstractArrayIndex> nullArrayCells = new java.util.LinkedHashSet<>();
+
+  /** {@code (container object, key) -> "this cell holds the null literal". */
+  private final java.util.Set<ContainerCell> nullContainerCells = new java.util.LinkedHashSet<>();
+
+  /** {@code (signature, context) -> "this method returns null on some path"}. */
+  private final java.util.Set<ContextKey> nullReturns = new java.util.LinkedHashSet<>();
+
+  /** Per-variable "assigned the null literal", mirroring {@link #pts} but for nullness. */
+  private final java.util.Set<VarKey> nullVars = new java.util.LinkedHashSet<>();
+
   /**
    * Call sites that consume a (method, context) return value.
    *
@@ -234,17 +268,40 @@ public final class PointsToSolver {
   private boolean step(String signature, Context ctx, TacInstruction ins, int index) {
     switch (ins.kind) {
       case MOVE -> {
-        if (ins.dest instanceof TacOperand.TacVar d && ins.lhs1 instanceof TacOperand.TacVar s) {
-          return add(key(signature, d, ctx), points(signature, s, ctx));
+        if (!(ins.dest instanceof TacOperand.TacVar d)) return false;
+        // R1114: a null literal on either side of the copy propagates nullness. Handling this as a
+        // plain TacVar copy would miss `b = null`, which is the single most common way a reference
+        // becomes null in the corpus.
+        if (ins.lhs1 instanceof TacOperand.Const c
+            && c.kind() == TacOperand.Const.Kind.NULL) {
+          return nullVars.add(key(signature, d, ctx));
+        }
+        if (ins.lhs1 instanceof TacOperand.TacVar s) {
+          boolean ch = add(key(signature, d, ctx), points(signature, s, ctx));
+          // Copy the null direction alongside the object direction. This is NOT a may-analysis
+          // "remove on reassignment": a name is never proven non-null here, so the copied fact
+          // stays a may-fact about the alias, exactly like the object sets.
+          if (nullVars.contains(key(signature, s, ctx))) {
+            ch |= nullVars.add(key(signature, d, ctx));
+          }
+          return ch;
         }
         return false;
       }
       case FIELDSTORE -> {
         if (!(ins.lhs1 instanceof TacOperand.TacVar recv)) return false;
         boolean ch = false;
+        boolean storeNull = ins.dest instanceof TacOperand.Const c
+            && c.kind() == TacOperand.Const.Kind.NULL;
         for (Obj o : points(signature, recv, ctx)) {
           AbstractField slot = new AbstractField(o, fieldNameOf(ins));
-          ch |= addField(slot, points(signature, asVar(ins.lhs2), ctx));
+          if (storeNull) {
+            // R1114: record the NULL direction, not just the object direction. This is the fact
+            // that lets a consumer tell "assigned null" apart from "never assigned".
+            ch |= nullFields.add(slot);
+          } else {
+            ch |= addField(slot, points(signature, asVar(ins.dest), ctx));
+          }
         }
         return ch;
       }
@@ -253,7 +310,14 @@ public final class PointsToSolver {
         if (!(ins.lhs1 instanceof TacOperand.TacVar recv)) return false;
         boolean ch = false;
         for (Obj o : points(signature, recv, ctx)) {
-          ch |= add(key(signature, d, ctx), fieldObjects(new AbstractField(o, fieldNameOf(ins))));
+          AbstractField slot = new AbstractField(o, fieldNameOf(ins));
+          ch |= add(key(signature, d, ctx), fieldObjects(slot));
+          // A load of a slot that may hold null makes the destination nullable. The ANY analogue
+          // is intentionally absent: unlike an unknown array index, an unknown FIELD is not
+          // modelled here, so this does not over-approximate across unrelated fields.
+          if (nullFields.contains(slot)) {
+            ch |= nullVars.add(key(signature, d, ctx));
+          }
         }
         return ch;
       }
@@ -262,11 +326,15 @@ public final class PointsToSolver {
         // dest -- not in lhs2. Getting this backwards silently loses every array write.
         if (!(ins.lhs1 instanceof TacOperand.TacVar arr)) return false;
         TacOperand.TacVar value = asVar(ins.dest);
-        if (value == null) return false;
+        boolean storeNull = value == null && ins.dest instanceof TacOperand.Const c
+            && c.kind() == TacOperand.Const.Kind.NULL;
+        if (value == null && !storeNull) return false;
         boolean ch = false;
         for (Obj o : points(signature, arr, ctx)) {
-          ch |= addArray(AbstractArrayIndex.of(o, literalIndex(ins)),
-              points(signature, value, ctx));
+          AbstractArrayIndex cell = AbstractArrayIndex.of(o, literalIndex(ins));
+          ch |= storeNull
+              ? nullArrayCells.add(cell)
+              : addArray(cell, points(signature, value, ctx));
         }
         return ch;
       }
@@ -278,6 +346,13 @@ public final class PointsToSolver {
           ch |= add(key(signature, d, ctx),
               arrayObjects(AbstractArrayIndex.of(o, literalIndex(ins))));
           ch |= add(key(signature, d, ctx), arrayObjects(AbstractArrayIndex.any(o)));
+          // R1114: a known index must also see null written at an unknown index, mirroring the
+          // ANY read above. Without this a `new String[n]` default-initialised cell -- which is
+          // null by language definition -- would be invisible.
+          if (nullArrayCells.contains(AbstractArrayIndex.of(o, literalIndex(ins)))
+              || nullArrayCells.contains(AbstractArrayIndex.any(o))) {
+            ch |= nullVars.add(key(signature, d, ctx));
+          }
         }
         return ch;
       }
@@ -324,13 +399,30 @@ public final class PointsToSolver {
           }
         }
         ch |= bindReturn(callee, calleeCtx, signature, ctx, ins);
+        // R1114: the null half of the return summary. `StringBuilder b = mayReturnNull();` was
+        // previously indistinguishable from one returning a fresh object, because the return
+        // store had no way to record null.
+        if (ins.dest instanceof TacOperand.TacVar dst
+            && nullReturns.contains(new ContextKey(callee, qual(calleeCtx)))) {
+          ch |= nullVars.add(key(signature, dst, ctx));
+        }
         return ch;
       }
       case RETURN -> {
+        ContextKey ck = new ContextKey(signature, qual(ctx));
+        if (ins.lhs1 instanceof TacOperand.Const c
+            && c.kind() == TacOperand.Const.Kind.NULL) {
+          // R1114: `return null` is the same shape as any other return fact.
+          return nullReturns.add(ck);
+        }
         if (ins.lhs1 instanceof TacOperand.TacVar r) {
           // Keyed by the returning method's own context, so a value returned under one call
           // site's context is never visible to another's.
-          return addReturn(new ContextKey(signature, qual(ctx)), points(signature, r, ctx));
+          boolean ch = addReturn(ck, points(signature, r, ctx));
+          if (nullVars.contains(key(signature, r, ctx))) {
+            ch |= nullReturns.add(ck);
+          }
+          return ch;
         }
         return false;
       }
@@ -688,7 +780,17 @@ public final class PointsToSolver {
     boolean isLoad = "get".equals(bareName(ins.calleeSig));
     if (!isLoad && args.size() >= 2) {
       int valueIdx = "set".equals(bareName(ins.calleeSig)) ? 2 : args.size() - 1;
-      if (valueIdx < args.size() && args.get(valueIdx) instanceof TacOperand.TacVar value) {
+      // R1114: `store.put(k, null)` and `list.add(null)` store the null literal. The operand is a
+      // Const rather than a TacVar, so it has to be recognised before the TacVar branch below --
+      // otherwise the store is silently dropped, which is the whole gap being closed.
+      boolean storeNull = valueIdx < args.size()
+          && args.get(valueIdx) instanceof TacOperand.Const kc
+          && kc.kind() == TacOperand.Const.Kind.NULL;
+      if (storeNull) {
+        for (Obj o : points(signature, recv, ctx)) {
+          nullContainerCells.add(new ContainerCell(o, key, mapCell));
+        }
+      } else if (valueIdx < args.size() && args.get(valueIdx) instanceof TacOperand.TacVar value) {
         Set<Obj> stored = points(signature, value, ctx);
         for (Obj o : points(signature, recv, ctx)) {
           // R1112: a literal key populates ONLY its own cell.
@@ -715,6 +817,9 @@ public final class PointsToSolver {
           for (ContainerCell cell : containerCellsOf(o, mapCell)) {
             add(key(signature, dest, ctx), containerObjects(cell));
           }
+          for (ContainerCell cell : nullContainerCellsOf(o, mapCell)) {
+            nullVars.add(key(signature, dest, ctx));
+          }
         } else {
           // A literal key is exact: its own cell, plus the ANY cell holding facts written under an
           // unrecognised key. No other entry can leak in.
@@ -722,9 +827,101 @@ public final class PointsToSolver {
           add(
               key(signature, dest, ctx),
               containerObjects(new ContainerCell(o, ContainerCell.ANY_KEY, mapCell)));
+          if (nullContainerCells.contains(new ContainerCell(o, key, mapCell))
+              || nullContainerCells.contains(new ContainerCell(o, ContainerCell.ANY_KEY, mapCell))) {
+            nullVars.add(key(signature, dest, ctx));
+          }
         }
       }
     }
+  }
+
+  /** Every null-marked cell of one container object, used when the access key is unknown. */
+  private java.util.List<ContainerCell> nullContainerCellsOf(Obj container, boolean mapCell) {
+    java.util.List<ContainerCell> out = new ArrayList<>();
+    for (ContainerCell cell : nullContainerCells) {
+      if (cell.container().equals(container) && cell.mapCell() == mapCell) {
+        out.add(cell);
+      }
+    }
+    return out;
+  }
+
+  // ── R1114: the null direction, as a query ──────────────────────────────────────────
+
+  /**
+   * R1114: may this local hold the null literal?
+   *
+   * <p>Tri-valued, and the third state is the one that matters. {@code false} means the analysis
+   * found no null path; it does <em>not</em> mean the reference is proven non-null, because an
+   * unmodelled write (through a parameter, across a TU boundary, or via a callee the solver could
+   * not resolve) leaves no trace here at all.
+   *
+   * <p>A consumer must therefore treat {@code false} as "nothing known", never as "safe". That is
+   * the same rule that governs the empty points-to set, and it is why this is a may-query and not a
+   * proof obligation.
+   */
+  public boolean mayBeNull(String signature, TacOperand.TacVar v, Context ctx) {
+    return v != null && nullVars.contains(key(signature, v, ctx));
+  }
+
+  public boolean mayBeNull(String signature, TacOperand.TacVar v) {
+    return mayBeNull(signature, v, Context.empty());
+  }
+
+  /** R1114: may this field slot hold null? Same "unknown is not false" contract. */
+  public boolean fieldMayBeNull(AbstractField slot) {
+    return slot != null && nullFields.contains(slot);
+  }
+
+  /** R1114: may this array cell hold null? */
+  public boolean arrayMayBeNull(AbstractArrayIndex cell) {
+    return cell != null && nullArrayCells.contains(cell);
+  }
+
+  /** R1114: may this container cell hold null? */
+  public boolean containerMayBeNull(Obj container, String key, boolean mapCell) {
+    return container != null
+        && (nullContainerCells.contains(new ContainerCell(container, key, mapCell))
+            || nullContainerCells.contains(
+                new ContainerCell(container, ContainerCell.ANY_KEY, mapCell)));
+  }
+
+  /** R1114: may this method return null in this context? */
+  public boolean returnMayBeNull(String signature, Context ctx) {
+    return signature != null && nullReturns.contains(new ContextKey(signature, qual(ctx)));
+  }
+
+  /**
+   * R1114: every local of {@code signature} that may hold null.
+   *
+   * <p>Exists so a consumer does not have to iterate locals itself when it needs a suppression set.
+   */
+  public Set<TacOperand.TacVar> nullableVars(String signature, Context ctx) {
+    Set<TacOperand.TacVar> out = new java.util.LinkedHashSet<>();
+    TacFunction fn = functions.get(signature);
+    if (fn == null) return out;
+    for (VarKey vk : nullVars) {
+      if (!vk.signature().equals(signature)) continue;
+      if (!policy.isContextSensitive() || vk.context().equals(qual(ctx))) {
+        TacOperand.TacVar v = varOf(signature, vk.varName());
+        if (v != null) out.add(v);
+      }
+    }
+    return out;
+  }
+
+  /** The declared TacVar for a name in a function, or null when the function is unknown. */
+  private TacOperand.TacVar varOf(String signature, String name) {
+    TacFunction fn = functions.get(signature);
+    if (fn == null) return null;
+    for (TacOperand.TacVar v : fn.locals()) {
+      if (v.name().equals(name)) return v;
+    }
+    for (TacOperand.TacVar v : fn.params()) {
+      if (v.name().equals(name)) return v;
+    }
+    return null;
   }
 
   // ── queries for checkers ──────────────────────────────────────────────

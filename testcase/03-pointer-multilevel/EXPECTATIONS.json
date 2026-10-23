@@ -200,8 +200,7 @@
       "rule_ids": [
         "dfa-taint-null-deref-from-return"
       ],
-      "note": "LAYER 6 CONSUMER, POSITIVE BUT UNREACHABLE: the guard protects one root's node and the other root's node is explicitly assigned null and dereferenced, which is a real CWE-476. It is recorded as a known limitation, not a defect in the rule's reasoning, because the missing capability is upstream of the checker: PointsToSolver's fact domain is a set of abstract objects with no null element, so `right.node = null` records nothing and the later load answers an empty set. An empty set must keep meaning 'unknown' -- treating it as null would invent a finding for every unmodelled field read. Closing this needs a tri-valued field fact, which is a change to the solver's fact domain rather than to this consumer. See R1113-null-field-limitation.json for the measurements, including the IR check that ruled out a translator defect.",
-      "status_override": "unreachable-known-limitation"
+      "note": "LAYER 6 CONSUMER, POSITIVE: the guard protects one root's node; the other root's node is explicitly assigned null and dereferenced without any check. Field sensitivity keeps the two apart, and R1114 supplies the missing fact -- the points-to domain held objects only, so `right.node = null` used to record nothing and the case was unreachable. Nullness is now a separate channel from the object sets: a shared null sentinel would have made every null in the program compare equal and leaked into mayAlias and the guard-coverage test."
     },
     {
       "id": "L6-AST-cannot-follow-the-alias",

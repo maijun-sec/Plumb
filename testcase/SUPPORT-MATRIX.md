@@ -7,7 +7,7 @@ Re-run `python testcase/run_category.py testcase/<category>` to refresh.
 |---|---|---|
 | 01-taint-crossfile | TP 15/15 | TN 2/2 |
 | 02-domain-sensitive | TP 7/7 | TN 11/11 |
-| 03-pointer-multilevel | TP 1/1 | TN 12/12 (2 known-limitation) |
+| 03-pointer-multilevel | TP 2/2 | TN 12/12 (1 known-limitation) |
 | 04-polymorphic-callgraph | TP 9/9 | TN 2/2 |
 | 05-real-cve-derived | TP 14/15 | TN 4/5 (1 known-limitation) |
 
@@ -35,13 +35,12 @@ Known limitations:
 
 ### 03-pointer-multilevel
 
-**Field-, array- and container-sensitive aliasing is sound, and its guard transfer is sound with it.** Allocation-site identity, field sensitivity, per-key container cells, cross-method returns and call-site context all resolve; every alias precision gate (12 TN) holds. R1113 found the one way guard transfer was still unsound: the rule suppressed a finding whenever *some* alias was guarded, but the alias map is a may-relation, so a guard on `first` silenced a dereference of a `List.get` result that could equally be an unguarded `second`. It now requires the guard to cover the receiver's whole points-to set. Two limits are recorded rather than hidden: an explicit `x.f = null` is invisible because the fact domain has no null element, and the AST rule cannot follow an alias at all.
+**Field-, array- and container-sensitive aliasing is sound, and its guard transfer is sound with it.** Allocation-site identity, field sensitivity, per-key container cells, cross-method returns and call-site context all resolve; every alias precision gate (12 TN) holds. R1113 found the one way guard transfer was still unsound: the rule suppressed a finding whenever *some* alias was guarded, but the alias map is a may-relation, so a guard on `first` silenced a dereference of a `List.get` result that could equally be an unguarded `second`. It now requires the guard to cover the receiver's whole points-to set. R1114 added the null direction to the heap facts -- as a separate channel rather than a null sentinel, because one shared sentinel would make every null in the program compare equal and leak into the guard test -- which closes the `x.f = null` gap the fact domain previously could not express. One limit remains recorded: the AST rule cannot follow an alias at all.
 
 Outstanding: 
 - none
 
 Known limitations: 
-- `L6-unguarded-sibling-field`
 - `L6-AST-cannot-follow-the-alias`
 
 ### 04-polymorphic-callgraph

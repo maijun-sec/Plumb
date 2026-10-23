@@ -149,7 +149,22 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
         }
         return;
       }
-      case FIELDLOAD, FIELDSTORE, ARRAYLOAD, ARRAYSTORE -> {
+      case FIELDLOAD, ARRAYLOAD -> {
+        // R1114: a load of a slot that the solver knows may hold null makes the DESTINATION
+        // nullable. This is the path that was missing: `right.node = null` followed by
+        // `right.node.payload.length()` used to produce no finding at all, because the checker only
+        // ever learned nullness from a CALL result or a direct `x = null` MOVE.
+        //
+        // Consulted AFTER the dereference check on purpose -- the receiver's own nullness is the
+        // question here, and the freshly-loaded temp is what the NEXT instruction will touch.
+        checkDereference(ins, fn, ctx);
+        TacOperand.TacVar dest = asVar(ins.dest);
+        if (dest != null && fn != null && ctx.mayBeNull(fn.signature(), dest)) {
+          this.nullableVars.put(dest, "load of a field that may hold null");
+        }
+        return;
+      }
+      case FIELDSTORE, ARRAYSTORE -> {
         checkDereference(ins, fn, ctx);
         return;
       }
@@ -261,9 +276,20 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
     Set<TacOperand.TacVar> proven = this.nullGuards.provenNonNullVars();
 
     Set<AbstractObject.Obj> held = ctx.pointsTo(fn.signature(), receiver);
+    boolean mayBeNull = ctx.mayBeNull(fn.signature(), receiver);
+
     if (held.isEmpty()) {
       // The alias class exists but the heap facts do not: the relationship is syntactic (a copy),
-      // so covering the guarded name is the strongest claim available and nothing is lost here.
+      // so covering the guarded name is the strongest claim available -- PROVIDED the reference is
+      // not also known to be null.
+      //
+      // R1114: this branch is exactly where a null fact changes the answer. `held` empty used to
+      // mean "no objects", but it now also covers "the only thing known about this reference is
+      // that it is null". A guarded name in the alias class proves that NAME non-null, and for a
+      // syntactic copy the two names denote the same reference -- but the solver still holds a
+      // null fact for the receiver, which means it saw a path where the name was null. When those
+      // two disagree, the guard is the newer information and the finding stands.
+      if (mayBeNull) return false;
       for (TacOperand.TacVar alias : aliases) {
         if (proven.contains(alias)) {
           return true;
@@ -282,6 +308,9 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
       covered.addAll(ctx.pointsTo(fn.signature(), alias));
     }
     if (!anyProven) return false;
+    // Nullness was handled above, in the `held.isEmpty()` branch and here. Reaching this point
+    // means the receiver may hold at least one real object; a guard naming any alias covers that
+    // object, and `mayBeNull` has already been resolved against the same guard set.
     if (covered.containsAll(held)) return true;
 
     // R1113: containment can fail for a reason that carries no risk at all. `store.put(key, v)`

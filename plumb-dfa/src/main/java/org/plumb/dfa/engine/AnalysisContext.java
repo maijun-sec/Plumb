@@ -381,6 +381,20 @@ public final class AnalysisContext {
   }
 
   /**
+   * R1114: may this local hold the null literal?
+   *
+   * <p>{@code false} means "no null path was found", which is <em>not</em> a proof of non-null: an
+   * unmodelled write leaves no trace, so a checker must keep its normal conservative behaviour when
+   * this answers false. Only the engine's own guard tracker and the points-to solver's explicit
+   * null facts together make a reference provably safe.
+   */
+  public boolean mayBeNull(
+      String signature, org.plumb.tac.ir.TacOperand.TacVar v) {
+    org.plumb.dfa.points.PointsToSolver s = this.pointsToSolver;
+    return s != null && s.mayBeNull(signature, v, org.plumb.dfa.points.AbstractObject.Context.empty());
+  }
+
+  /**
    * Per-function {@link SideEffectConsumer}. The engine creates one fresh consumer at the start of
    * every function and discards it at the end. Checkers consult it to learn which operands have
    * been invalidated by a side-effect CALL during the current function's analysis.

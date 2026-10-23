@@ -64,20 +64,18 @@ real detection as a miss. Anchor scoping is now restricted to DFA findings.
 `unsupported` and `unscorable` are excluded from the TP/TN tallies: counting them as
 misses understates support, counting them as passes would overstate it.
 
-`known-limitation` is excluded too, and it covers two genuinely different situations:
+`known-limitation` is excluded too. It means the engine is sound and the *mitigation* the
+fixture models is not statically decidable — `LOG4SHELL-sanitized-tn`: the real Log4Shell fix
+is a runtime configuration cutoff. Such cases are listed in `SUPPORT-MATRIX.md` under "Known
+limitations", so a gap that cannot be scored stays visible instead of surviving behind a
+green tally.
 
-- **reachable** — the engine has the capability and behaves soundly, but the *mitigation* the
-  fixture models cannot be decided statically. `LOG4SHELL-sanitized-tn`: the real Log4Shell
-  fix is a runtime configuration cutoff.
-- **unreachable** (`status_override: "unreachable-known-limitation"`) — the engine cannot
-  *represent* the fact at all, so no finding is expected.
-  `L6-unguarded-sibling-field`: an explicit `x.f = null` followed by a dereference of `x.f`
-  is a real CWE-476, but `PointsToSolver`'s facts are sets of abstract objects with no null
-  element, so the null store records nothing. An empty set has to keep meaning "unknown" —
-  treating it as null would invent a finding for every unmodelled field read.
-
-Both are listed in `SUPPORT-MATRIX.md` under "Known limitations", so a capability gap that
-cannot be scored stays visible instead of surviving behind a green tally.
+The harness also accepts `status_override: "unreachable-known-limitation"` for the mirror case:
+the engine cannot *represent* the fact at all, so no finding is expected. It existed for exactly
+one case — `L6-unguarded-sibling-field`, where an explicit `x.f = null` recorded nothing because
+`PointsToSolver`'s facts were sets of abstract objects with no null element. R1114 closed that
+gap, so no manifest uses the override today; it stays in the harness because "sound but
+undecidable" and "not representable" are different things and the next gap will need it.
 
 ### Measuring a rule, not the absence of other rules
 
@@ -85,9 +83,7 @@ Every alias TN in category-03 pins `rule_ids: ["dfa-taint-null-deref-from-return
 Without that, the unscoped CWE-476 filter also matched `ast-bug-equals-avoid-null` — a style
 rule that fires on the `null == x` *spelling of the guard itself*. Three of twelve TN gates
 were scored as false positives of the alias analysis when the only finding in range was a
-correct style warning about the test's own guard. See
-[`03-pointer-multilevel/R1113-null-field-limitation.json`](03-pointer-multilevel/R1113-null-field-limitation.json)
-for the measurement behind the second limitation.
+correct style warning about the test's own guard.
 
 ## Probes
 

@@ -41,8 +41,10 @@ VERDICT = {
         "suppressed a finding whenever *some* alias was guarded, but the alias map is a may-"
         "relation, so a guard on `first` silenced a dereference of a `List.get` result that "
         "could equally be an unguarded `second`. It now requires the guard to cover the "
-        "receiver's whole points-to set. Two limits are recorded rather than hidden: an "
-        "explicit `x.f = null` is invisible because the fact domain has no null element, and "
+        "receiver's whole points-to set. R1114 added the null direction to the heap facts -- as a "
+        "separate channel rather than a null sentinel, because one shared sentinel would make "
+        "every null in the program compare equal and leak into the guard test -- which closes the "
+        "`x.f = null` gap the fact domain previously could not express. One limit remains recorded: "
         "the AST rule cannot follow an alias at all.",
     "04-polymorphic-callgraph":
         "**Dispatch is sound and type-precise.** Interface / abstract / diamond "
