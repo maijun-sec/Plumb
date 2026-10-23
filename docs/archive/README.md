@@ -43,7 +43,8 @@ docs/_archive/
 
 同理:
 - plumb-dfa/docs/_archive/ — plumb-dfa 引擎 R27-R85x 单 bug 流水
-- plumb-rules/docs/ 和 fathom-dfa/docs/ 没有 _archive (13 个 R1-R24 + RULE_AUTHORING.md 全部保留作早期架构参考)
+- plumb-rules/docs/ 没有 _archive (RULE_AUTHORING.md 保留作参考)
+- fathom-dfa/docs/ (13 个 R1-R24) 属于另一个项目，R1117 起不再进版本库（仍在磁盘上）
 
 ## 怎么处理
 

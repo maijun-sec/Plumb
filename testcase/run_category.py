@@ -238,6 +238,37 @@ def main() -> int:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     cases = manifest["cases"]
 
+    # R1117: refuse to score a category whose TN gates filter on a CWE alone.
+    #
+    # A CWE is a CATEGORY, not an identity. Category-03 was caught by exactly
+    # this: a TN filtered on `cwes: ["CWE-476"]` counted
+    # `ast-bug-equals-avoid-null` -- a style rule that fires on the `null == x`
+    # spelling of the test's OWN guard -- as a false positive of the alias
+    # analysis, and three of twelve precision gates failed for that reason.
+    #
+    # This is a hard error rather than a warning because the failure mode is
+    # silent in both directions: the gate reports a false positive that does not
+    # exist, or hides a real one behind a passing count. Either way the number
+    # stops measuring the rule it claims to measure.
+    unscoped = [
+        c["id"]
+        for c in cases
+        if c["kind"] == "tn" and not c.get("rule_ids")
+    ]
+    if unscoped:
+        print(
+            "ERROR: TN cases filter on a CWE with no explicit rule_ids: "
+            + ", ".join(unscoped),
+            file=sys.stderr,
+        )
+        print(
+            "       Pin each to the rule it is meant to measure, e.g.\n"
+            "         {\"id\": \"...\", \"kind\": \"tn\", \"rule_ids\": [\"dfa-...\"], ...}\n"
+            "       Category-03's ast-bug-equals-avoid-null false positive is why.",
+            file=sys.stderr,
+        )
+        return 2
+
     findings = run_scan(jar, src, args.per_file, args.cg)
 
     if args.keep_raw or args.out:

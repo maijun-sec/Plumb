@@ -80,7 +80,7 @@
 - `archive/` — R* 单 bug 流水（~267 文件，R-843 移入，R-844 统一到根目录，R-846 改名为 `archive/`）
 - `plumb-style-rules*.md` — 自动生成（5600+ 行 / 508 行索引）
 
-`fathom-dfa/docs/` 是其他项目的早期架构参考（13 个 R1-R24），**不参与本目录**。
+`fathom-dfa/docs/` 是其他项目的早期架构参考（13 个 R1-R24）。R1117 起它**不再进版本库**——Plumb 是独立的 Java-only 项目，那些文件记录的是另一个代码库。文件仍在磁盘上，只是不再被 track。
 
 `plumb-dfa/src/main/resources/docs/DFA_ARCHITECTURE.md` 是源码内嵌资源（classpath 加载），**不参与本目录**。
 

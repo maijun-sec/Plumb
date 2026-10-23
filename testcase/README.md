@@ -79,11 +79,23 @@ undecidable" and "not representable" are different things and the next gap will 
 
 ### Measuring a rule, not the absence of other rules
 
-Every alias TN in category-03 pins `rule_ids: ["dfa-taint-null-deref-from-return"]`.
-Without that, the unscoped CWE-476 filter also matched `ast-bug-equals-avoid-null` — a style
-rule that fires on the `null == x` *spelling of the guard itself*. Three of twelve TN gates
-were scored as false positives of the alias analysis when the only finding in range was a
-correct style warning about the test's own guard.
+**Every TN gate pins an explicit `rule_ids`.** This is enforced, not merely documented:
+`run_category.py` refuses to score a category containing a TN case with no `rule_ids`
+(exit code 2, with the offending ids listed).
+
+A CWE is a **category**, not an identity. Category-03 was caught by exactly this: a TN
+filtered on `cwes: ["CWE-476"]` also matched `ast-bug-equals-avoid-null`, a style rule
+that fires on the `null == x` *spelling of the test's own guard*. Three of twelve alias
+precision gates were scored as false positives when the only finding in range was a
+correct style warning. R1117 pinned the remaining three gates in category-05 — unharmed
+only because each of those CWEs happened to have exactly one rule bound to it, which is
+a property of today's rule table rather than of the manifest.
+
+The failure is silent in both directions: the gate either reports a false positive that
+does not exist, or hides a real one behind a passing count. Either way the number stops
+measuring the rule it claims to measure, so the harness refuses rather than warns.
+
+Measure a rule, not the absence of other rules.
 
 ## Probes
 

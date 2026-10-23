@@ -67,6 +67,14 @@ edu/
 sootup/
 .fathom-cache/
 
+# R1117: another project's early architecture reference (13 R1-R24 markdown files).
+#
+# Plumb is an independent Java-only project inspired by Fathom, not a port of it, so these
+# files document a codebase that is not this one. They stay on disk -- the docs/README.md
+# and docs/archive/README.md both record them as a deliberate reference -- but they are not
+# part of Plumb and do not belong in its history.
+fathom-dfa/
+
 # 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Distribution output 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 dist/
 
