@@ -2,7 +2,7 @@
   "category": "01-taint-crossfile",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 884,
+  "total_findings": 885,
   "cases": [
     {
       "id": "TP-1-full-chain",
@@ -227,6 +227,21 @@
       ]
     },
     {
+      "id": "TP-format-string-tainted",
+      "kind": "tp",
+      "file": "TextOps.java",
+      "line": 66,
+      "rule_ids": [
+        "dfa-taint-format-string"
+      ],
+      "note": "CONTROL: the attacker controls the FORMAT STRING itself, not just an argument -- a genuine CWE-134. The fixture's own comment says it is expected to be reported. It stayed unreported until the sink matcher learned to accept the simple-name callee form: the IR writes 'String.format/1' when the symbol solver cannot qualify the receiver, and the sink pattern is anchored to 'java.lang.String.format'.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        66
+      ]
+    },
+    {
       "id": "TP-path-traversal",
       "kind": "tp",
       "file": "NonSqlSink.java",
@@ -269,8 +284,8 @@
     }
   ],
   "summary": {
-    "tp_total": 15,
-    "tp_supported": 15,
+    "tp_total": 16,
+    "tp_supported": 16,
     "tp_false_negative": 0,
     "tn_total": 2,
     "tn_supported": 2,
@@ -308,6 +323,7 @@
     "CWE-117": 1,
     "CWE-359": 1,
     "CWE-511": 1,
+    "CWE-134": 1,
     "CWE-191": 1,
     "CWE-625": 1,
     "CWE-184": 1,

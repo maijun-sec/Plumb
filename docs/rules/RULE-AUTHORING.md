@@ -136,3 +136,45 @@ prompt 默认由 checker 提供。手写 override 见：
    固有属性，则在对应 checker 的 `isSanitizer` 里判定。
 3. 在 `juliet-coverage/data/plumb_rule_to_cwe.json` 加 mapping。
 4. rebuild + verify。
+
+#### sink pattern 怎么写（重要）
+
+sink pattern 用**全限定名**写，并**锚定**在 `^`：
+
+```yaml
+- '^org\.springframework\.jdbc\.core\.JdbcTemplate\.query(/\d+)?'
+```
+
+锚定是必要的：`SinkPattern` 用 `Matcher.find()` 做**子串**匹配，
+`^org\.apache\.commons\.io\.IOUtils\.read` 不锚定就会匹配到
+`...IOUtils\.readAllBytes` 这样的别的方法。
+
+**不要**因为「怕写错包名」而把包名省略。匹配时会自动派生一份
+**前缀可选**的变体（见 `SinkFamily.SinkPattern.relaxedForm`）：
+
+```
+^org\.springframework\.jdbc\.core\.JdbcTemplate\.query(/\d+)?
+        ↓
+^(?:[\w.]+\.)?JdbcTemplate\.query\b(/\d+)?
+```
+
+这解决的是 TAC 的一个硬约束：**callee signature 只有在符号解析器能解析
+接收者类型时才是全限定名**。第三方依赖的 jar 不在分析 classpath 上时
+（扫描一个不带依赖 jar 的项目是常态），IR 里写的是 simple name：
+
+```
+org.springframework.jdbc.core.JdbcTemplate.query/2   ← 解析成功
+JdbcTemplate.query/2                                   ← 解析失败
+```
+
+没有这份前缀可选的变体，**所有框架 sink（Spring JdbcTemplate、MyBatis、
+Jackson、Guava）会静默失配**——分析照常跑完，只是一条 finding 都不报。
+
+变体的三条边界：
+
+- **只在接收者是 simple name 时启用**。全限定名的 callee 走严格形式，
+  所以精确匹配永远优先。
+- **只放宽包前缀**，类名和方法名仍然必须精确匹配。
+  `JdbcTemplate.query` 不会匹配 `NamedParameterJdbcTemplate.query`。
+- **方法名后加了词边界 `\b`**。否则 `JdbcTemplate.query` 会连
+  `JdbcTemplate.queryForList` 一起匹配上，而这两者的参数下标不同。

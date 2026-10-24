@@ -236,6 +236,17 @@
                              truth read inside one method. Each has a control
                              that must stay silent. -->
                         <include>org/plumb/dfa/checkers/taint/R1122StaleFactSuppressionTest.java</include>
+
+                        <!-- Sink matching has to tolerate the SIMPLE-NAME callee
+                             form. The TAC writes a fully qualified receiver type
+                             only when the symbol solver can resolve it; for a
+                             third-party class whose jar is not on the analysis
+                             classpath the IR keeps the simple name
+                             ("JdbcTemplate.query/2"). Every sink pattern is
+                             anchored to a fully qualified name, so without this
+                             every framework sink (Spring JdbcTemplate, MyBatis,
+                             Jackson, Guava) was unreachable without any error. -->
+                        <include>org/plumb/dfa/config/SinkPatternNameFormTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

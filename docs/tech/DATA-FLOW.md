@@ -133,6 +133,23 @@ initEngine(ctx)
 `TaintRuleRegistry`（`taint/TaintRuleRegistry.java:27`，按 rule id 与 sink family 建索引）与
 `SinkFamilyRegistry`（`:22`，带 `lookupAll` 缓存）。
 
+**sink pattern 的名字形式**：TAC 的 callee signature 只有在符号解析器能解析接收者
+类型时才是全限定名（`java.sql.Statement.executeQuery/1`）；解析不了时保留 simple
+name（`JdbcTemplate.query/2`）——扫描一个不带依赖 jar 的项目时，第三方类型全部走这条
+路径。`SinkPattern` 因此除了严格形式，还机械派生一份**前缀可选**的变体
+（`SinkFamily.SinkPattern.relaxedForm`）：
+
+```
+^org\.springframework\.jdbc\.core\.JdbcTemplate\.query(/\d+)?
+        ↓
+^(?:[\w.]+\.)?JdbcTemplate\.query\b(/\d+)?
+```
+
+变体只在接收者是 simple name 时启用，且只放宽包前缀：类名与方法名仍须精确匹配，
+方法名后还有词边界 `\b`，所以 `JdbcTemplate.query` 不会连 `queryForList` 一起匹配。
+没有这份变体，所有框架 sink 会静默失配。细节见
+[规则编写指南](../rules/RULE-AUTHORING.md#133-加新-taint-rule)。
+
 ### 3.2 边界分析（boundary）
 
 `checkers/boundary/`，全部继承 `BoundaryConstraintChecker`（`:64`）。每个子类把算术谓词
