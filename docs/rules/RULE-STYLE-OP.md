@@ -206,6 +206,12 @@ checks:
 查找是 `checker.name() + "." + paramName` 的直接拼键，不做别名解析。
 参数名必须和 `RuleParameter` 里声明的名字一致。
 
+没命中 override 时回落到 `RuleDef.parameters()` 里声明的 default。这条回落路径按 slug
+解析规则，`RuleRegistry` 保证每个 checker 的 slug 指向它自己那条规则——所以 slug 与
+规则名的对应关系是注册表维护的，不依赖每个 checker 手工把 slug 写进 alias 列表。
+`CheckerSlugResolutionTest`（`plumb-style/src/test/.../CheckerSlugResolutionTest.java`）
+覆盖这条不变式。
+
 `R761ParamsTest`（`plumb-main/src/test/.../R761ParamsTest.java`）覆盖这条路径，
 `R822StyleContextParamOverrideTest` 覆盖 `StyleContext` 侧的参数分发。
 

@@ -29,7 +29,7 @@ public final class JumbledIncrementerCheck implements AstChecker {
 
   @Override
   public String name() {
-    return "jumbled-incrementer";
+    return "jumbled-incrementer-step";
   }
 
   @Override

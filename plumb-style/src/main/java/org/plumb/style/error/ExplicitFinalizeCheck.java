@@ -25,7 +25,7 @@ public final class ExplicitFinalizeCheck implements AstChecker {
 
   @Override
   public String name() {
-    return "explicit-finalize";
+    return "explicit-finalize-call";
   }
 
   @Override

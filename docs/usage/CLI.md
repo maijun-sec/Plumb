@@ -524,6 +524,11 @@ String / Integer / Boolean），`ScanRunner` 构造 `StyleContext` 时传进去�
 > **canonical rule id（`ast-style-line-length`）和短名（`LINE_LENGTH`）都不生效**——
 > 查找是 `checker.name() + "." + paramName` 的直接拼键，不做别名解析。
 
+没有命中 override 时，回落到 `RuleDef.parameters()` 里声明的 default。这条回落路径
+按 slug 解析规则：每个 checker 的 slug 都在 `RuleRegistry` 里指向**它自己那条规则**，
+所以任何 checker 声明的 default 都能通过自己的 slug 读到。slug 与规则名的对应关系由
+注册表保证，不依赖每个 checker 手工把 slug 写进自己的 alias 列表。
+
 只有 plumb-style 的 checker 走这条路径——`plumb-rules` 里声明了
 `RuleParameter` 但没有 `StyleContext` 上下文的其他规则类型，用的还是
 代码里的 hard-code default。

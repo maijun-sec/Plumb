@@ -34,12 +34,12 @@ public final class JumbledIncrementerLoopCheck implements AstChecker {
           RuleDef.Type.BUG,
           List.of("CWE-190", "CWE-1284"),
           "org.plumb.style.JumbledIncrementerLoopCheck",
-          true,List.of("ast-performance-jumbled-incrementer-loop", "jumbled-incrementer"),
+          true,List.of("ast-performance-jumbled-incrementer-loop", "jumbled-incrementer-loop"),
           List.of(PARAMS));
 
   @Override
   public String name() {
-    return "jumbled-incrementer";
+    return "jumbled-incrementer-loop";
   }
 
   @Override

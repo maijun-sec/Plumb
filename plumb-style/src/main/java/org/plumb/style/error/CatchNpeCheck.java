@@ -27,7 +27,7 @@ public final class CatchNpeCheck implements AstChecker {
 
   @Override
   public String name() {
-    return "catch-nullpointer-exception";
+    return "catch-npe-swallow";
   }
 
   @Override

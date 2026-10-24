@@ -23,12 +23,12 @@ public final class LoosePackageCouplingCheck implements AstChecker {
           List.of(),
           "org.plumb.style.LoosePackageCouplingCheck",
           true,
-          List.of("ast-design-package-coupling", "loose-coupling")
+          List.of("ast-design-package-coupling", "loose-package-coupling")
       );
 
   @Override
   public String name() {
-    return "loose-coupling";
+    return "loose-package-coupling";
   }
 
   @Override

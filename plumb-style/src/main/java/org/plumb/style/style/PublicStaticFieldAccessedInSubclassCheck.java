@@ -20,12 +20,12 @@ public final class PublicStaticFieldAccessedInSubclassCheck implements AstChecke
           List.of(),
           "org.plumb.style.PublicStaticFieldAccessedInSubclassCheck",
           true,
-          List.of("ast-style-default-package-public-static-field-accessed-in-subclass", "default-package")
+          List.of("ast-style-default-package-public-static-field-accessed-in-subclass", "public-static-field-in-default-package")
       );
 
   @Override
   public String name() {
-    return "default-package";
+    return "public-static-field-in-default-package";
   }
 
   @Override

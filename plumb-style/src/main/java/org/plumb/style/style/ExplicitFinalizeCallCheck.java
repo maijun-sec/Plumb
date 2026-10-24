@@ -38,14 +38,14 @@ public final class ExplicitFinalizeCallCheck implements AstChecker {
           List.of("CWE-586"),
           "org.plumb.style.ExplicitFinalizeCallCheck",
           true,
-          List.of("ast-style-explicit-finalize-call", "explicit-finalize")
+          List.of("ast-style-explicit-finalize-call", "explicit-finalize-qualified-call")
       );
 
   private final Set<String> reported = new HashSet<>();
 
   @Override
   public String name() {
-    return "explicit-finalize";
+    return "explicit-finalize-qualified-call";
   }
 
   @Override

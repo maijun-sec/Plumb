@@ -23,12 +23,12 @@ public final class EmptyStatementUsageCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EmptyStatementUsageCheck",
           true,
-          List.of("ast-style-statement-empty-usage", "empty-statement")
+          List.of("ast-style-statement-empty-usage", "empty-statement-usage")
       );
 
   @Override
   public String name() {
-    return "empty-statement";
+    return "empty-statement-usage";
   }
 
   @Override

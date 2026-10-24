@@ -173,9 +173,28 @@ public final class RuleRegistry {
     byUuid.put(def.ruleId().id(), def);
     byName.put(def.ruleId().name(), def);
     for (String alias : def.aliases()) {
-      byAlias.put(alias, def.ruleId().id());
+      claimAlias(alias, def.ruleId().id());
     }
     return this;
+  }
+
+  /**
+   * Record that {@code alias} names the rule with id {@code ruleId}.
+   *
+   * <p>Two rules may legitimately declare the same alias: that is how a foreign tool id (e.g.
+   * {@code SonarQube:java:S00108}) maps onto several equivalent Plumb rules. When that happens the
+   * first registration wins, so the mapping does not depend on the order in which the two rules
+   * happened to be registered.
+   *
+   * <p>An alias that is already a canonical id or a rule name of a <em>different</em> rule is not
+   * recorded. The canonical id is the stronger claim: it is what findings are emitted with, and
+   * letting an alias shadow it would make that rule unreachable by id.
+   */
+  private void claimAlias(String alias, String ruleId) {
+    if (alias == null || alias.isEmpty()) return;
+    if (byUuid.containsKey(alias) && !alias.equals(ruleId)) return;
+    if (byName.containsKey(alias) && !alias.equals(ruleId)) return;
+    byAlias.putIfAbsent(alias, ruleId);
   }
 
   /**
@@ -191,11 +210,11 @@ public final class RuleRegistry {
     // Preserve aliases from the prior registration
     if (previous != null) {
       for (String alias : previous.aliases()) {
-        byAlias.putIfAbsent(alias, def.ruleId().id());
+        claimAlias(alias, def.ruleId().id());
       }
     }
     for (String alias : def.aliases()) {
-      byAlias.put(alias, def.ruleId().id());
+      claimAlias(alias, def.ruleId().id());
     }
     return this;
   }
@@ -211,10 +230,29 @@ public final class RuleRegistry {
   /**
    * Look up a {@link RuleDef} by either its canonical id, a registered alias, or a legacy / foreign
    * rule id. Returns empty if neither matches.
+   *
+   * <h2>Resolution order</h2>
+   *
+   * <ol>
+   *   <li>The canonical id ({@code byUuid}). A canonical id is the strongest claim on a string: it
+   *       is the id a finding is actually emitted with, so it must win over any alias that happens
+   *       to spell the same text.
+   *   <li>The rule name ({@code byName}), i.e. the UPPER_SNAKE short name.
+   *   <li>The alias index ({@code byAlias}).
+   * </ol>
+   *
+   * <p>The alias index is last because aliases are a compatibility mechanism: they carry foreign
+   * tool ids (PMD, SpotBugs, SonarQube) and historical Plumb spellings. A rule that declares
+   * another rule's slug as an alias would otherwise hijack that slug, and the rule that genuinely
+   * owns the slug would become unreachable by name. Resolving the canonical id first makes the
+   * lookup deterministic regardless of registration order.
    */
   public Optional<RuleDef> byAlias(String alias) {
+    if (alias == null) return Optional.empty();
     RuleDef direct = byUuid.get(alias);
     if (direct != null) return Optional.of(direct);
+    RuleDef byNameHit = byName.get(alias);
+    if (byNameHit != null) return Optional.of(byNameHit);
     String canonical = byAlias.get(alias);
     if (canonical == null) return Optional.empty();
     return Optional.ofNullable(byUuid.get(canonical));
@@ -250,6 +288,7 @@ public final class RuleRegistry {
         } else {
           register(rd);
         }
+        claimCheckerSlug(checker, rd);
       }
     } catch (NoSuchMethodException ignored) {
       // Not an AstChecker (e.g. a DfaChecker) — skip.
@@ -258,6 +297,35 @@ public final class RuleRegistry {
           "Failed to read rule() from " + checker.getClass().getName(), ex);
     }
     return this;
+  }
+
+  /**
+   * Record the checker's own {@code name()} as an alias of its rule.
+   *
+   * <p>The checker slug is the key {@link org.plumb.style.StyleContext#setCurrentRule(String)} uses
+   * to scope parameter overrides, and the key a user writes in {@code checks.<slug>} or passes to
+   * {@code --rule}. If the slug is not resolvable to the checker's own rule, a {@code
+   * checks.<slug>.params.*} override silently lands on the wrong rule (or nowhere), and the
+   * rule's declared parameter defaults become unreachable through the slug.
+   *
+   * <p>Claiming the slug here makes that guarantee structural: a checker cannot forget to list its
+   * own slug, because the registry derives it from the checker itself. The slug is only claimed
+   * when it is not already a canonical id or rule name of a different rule, so a canonical id is
+   * never shadowed.
+   */
+  private void claimCheckerSlug(Object checker, RuleDef rd) {
+    try {
+      java.lang.reflect.Method nameMethod = checker.getClass().getMethod("name");
+      Object slug = nameMethod.invoke(checker);
+      if (slug instanceof String s && !s.isEmpty()) {
+        claimAlias(s, rd.ruleId().id());
+      }
+    } catch (NoSuchMethodException ignored) {
+      // Not an AstChecker — nothing to claim.
+    } catch (ReflectiveOperationException ex) {
+      throw new IllegalStateException(
+          "Failed to read name() from " + checker.getClass().getName(), ex);
+    }
   }
 
   /**

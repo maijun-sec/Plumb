@@ -54,12 +54,12 @@ public final class LooseCouplingCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.LooseCouplingCheck",
-          true,List.of("ast-design-loose-coupling", "design-loose-coupling"),
+          true,List.of("ast-design-loose-coupling", "design-loose-coupling", "loose-type-coupling"),
           List.of(PARAMS));
 
   @Override
   public String name() {
-    return "loose-coupling";
+    return "loose-type-coupling";
   }
 
   @Override
