@@ -25,8 +25,7 @@ public final class ParseErrorLoggingCheck implements AstChecker {
           List.of("CWE-390"),
           "org.plumb.style.ParseErrorLoggingCheck",
           true,
-          List.of("ast-error-error-logging", "parse-error-logging")
-      );
+          List.of("ast-error-error-logging", "parse-error-logging"));
 
   /** Catch-parameter names in the current method. */
   private Set<String> catchParamNames = new HashSet<>();

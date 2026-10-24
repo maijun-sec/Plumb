@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class FinalClassCheck implements AstChecker {
           List.of(),
           "org.plumb.style.FinalClassCheck",
           true,
-          List.of("ast-style-class-final", "final-class")
-      );
+          List.of("ast-style-class-final", "final-class"));
 
   @Override
   public String name() {

@@ -27,9 +27,9 @@ import org.slf4j.LoggerFactory;
  * Thin wrapper around JavaParser. Single entry point used by the rest of the pipeline; one {@link
  * ParsedSource} per source file.
  *
- * <p>The parser is configured with UTF-8 source encoding by default and a language level pinned
- * to Java 17. Records / sealed types / pattern matching are all enabled. Callers that need a
- * different level / encoding should use the appropriate constructor.
+ * <p>The parser is configured with UTF-8 source encoding by default and a language level pinned to
+ * Java 17. Records / sealed types / pattern matching are all enabled. Callers that need a different
+ * level / encoding should use the appropriate constructor.
  *
  * <p><b>Type and symbol resolution.</b> Pass a {@link TypeSolver} to the constructor (or call
  * {@link #withTypeSolver(TypeSolver)}) and the parser attaches a {@link JavaSymbolSolver} to the
@@ -71,9 +71,7 @@ public final class JavaSourceParser {
   }
 
   public JavaSourceParser(
-      ParserConfiguration.LanguageLevel level,
-      Charset sourceEncoding,
-      TypeSolver typeSolver) {
+      ParserConfiguration.LanguageLevel level, Charset sourceEncoding, TypeSolver typeSolver) {
     Objects.requireNonNull(level, "level");
     Objects.requireNonNull(sourceEncoding, "sourceEncoding");
     Objects.requireNonNull(typeSolver, "typeSolver");
@@ -107,22 +105,19 @@ public final class JavaSourceParser {
    * and Maven/Gradle/Bazel auto-discovery are R797+ future work (see {@code
    * juliet-coverage/reports/r797/PLAN.md}).
    *
-   * <p><b>Cardinal rule.</b> The {@code classpath} is consumed by the {@link TypeSolver} only.
-   * It is never routed into the TAC pipeline or the SootUp bytecode path ? third-party jars exist
+   * <p><b>Cardinal rule.</b> The {@code classpath} is consumed by the {@link TypeSolver} only. It
+   * is never routed into the TAC pipeline or the SootUp bytecode path ? third-party jars exist
    * solely so the user source can resolve "what does {@code com.example.Foo} look like".
    *
-   * <p>The parser's language level is determined by the first non-null {@link JavaModule#languageLevel}
-   * value; if all modules report null, falls back to {@link ParserConfiguration.LanguageLevel#JAVA_17}.
-   * The source encoding follows the same rule.
+   * <p>The parser's language level is determined by the first non-null {@link
+   * JavaModule#languageLevel} value; if all modules report null, falls back to {@link
+   * ParserConfiguration.LanguageLevel#JAVA_17}. The source encoding follows the same rule.
    *
    * <p>An empty or null {@code modules} list is allowed; the resulting parser behaves identically
    * to the JDK-only default constructor.
    */
   public JavaSourceParser(ParserConfiguration.LanguageLevel level, List<JavaModule> modules) {
-    this(
-        level,
-        deriveEncoding(modules),
-        buildTypeSolverFor(modules));
+    this(level, deriveEncoding(modules), buildTypeSolverFor(modules));
   }
 
   /** Convenience overload that picks a default language level. */
@@ -138,9 +133,9 @@ public final class JavaSourceParser {
    * we can inspect the underlying solver composition without going through JavaParser's full
    * pipeline.
    *
-   * <p>Duplicate jar / class-folder entries (same canonical path) are deduplicated so the
-   * resulting {@link CombinedTypeSolver} does not carry multiple solvers for the same jar ? this
-   * is both faster and avoids the "two solvers disagree on the same type" pathology.
+   * <p>Duplicate jar / class-folder entries (same canonical path) are deduplicated so the resulting
+   * {@link CombinedTypeSolver} does not carry multiple solvers for the same jar ? this is both
+   * faster and avoids the "two solvers disagree on the same type" pathology.
    */
   public static TypeSolver buildTypeSolverFor(List<JavaModule> modules) {
     CombinedTypeSolver combined = new CombinedTypeSolver();

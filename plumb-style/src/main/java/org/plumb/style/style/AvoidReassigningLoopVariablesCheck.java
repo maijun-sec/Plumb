@@ -7,7 +7,6 @@ import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.ForEachStmt;
 import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class AvoidReassigningLoopVariablesCheck implements AstChecker {
           List.of("CWE-563"),
           "org.plumb.style.AvoidReassigningLoopVariablesCheck",
           true,
-          List.of("ast-style-reassigning-loop-variables", "reassign-loop-var")
-      );
+          List.of("ast-style-reassigning-loop-variables", "reassign-loop-var"));
 
   @Override
   public String name() {

@@ -9,7 +9,6 @@ import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.stmt.ThrowStmt;
 import java.util.List;
 import java.util.Optional;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -27,8 +26,7 @@ public final class RedundantNullCheckCheck implements AstChecker {
           List.of(),
           "org.plumb.style.RedundantNullCheckCheck",
           true,
-          List.of("ast-bug-redundant-nullcheck", "redundant-nullcheck")
-      );
+          List.of("ast-bug-redundant-nullcheck", "redundant-nullcheck"));
 
   @Override
   public String name() {

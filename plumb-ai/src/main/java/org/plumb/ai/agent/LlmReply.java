@@ -22,35 +22,31 @@ import java.util.List;
  */
 public record LlmReply(String content, List<ToolCall> toolCalls, String finishReason) {
 
-    public LlmReply {
-        if (toolCalls == null) toolCalls = List.of();
-    }
+  public LlmReply {
+    if (toolCalls == null) toolCalls = List.of();
+  }
 
-    /**
-     * True when the model produced no tool calls.
-     */
-    public boolean noToolCalls() {
-        return toolCalls.isEmpty();
-    }
+  /** True when the model produced no tool calls. */
+  public boolean noToolCalls() {
+    return toolCalls.isEmpty();
+  }
 
-    /**
-     * True when the reply is the model's final answer. The model signals "I'm done" by writing {@code
-     * "FINAL:"} at the start of its reply (the system prompt instructs this). Tool calls + FINAL: on
-     * the same turn is allowed but the Re-Act loop ignores the FINAL: in that case (it'll be picked
-     * up on the next iteration after the tool results come back).
-     */
-    public boolean isFinalAnswer() {
-        if (!noToolCalls()) return false;
-        return content != null && content.trim().startsWith("FINAL:");
-    }
+  /**
+   * True when the reply is the model's final answer. The model signals "I'm done" by writing {@code
+   * "FINAL:"} at the start of its reply (the system prompt instructs this). Tool calls + FINAL: on
+   * the same turn is allowed but the Re-Act loop ignores the FINAL: in that case (it'll be picked
+   * up on the next iteration after the tool results come back).
+   */
+  public boolean isFinalAnswer() {
+    if (!noToolCalls()) return false;
+    return content != null && content.trim().startsWith("FINAL:");
+  }
 
-    /**
-     * Strip the {@code "FINAL:"} prefix and return the remainder. Used to parse the final JSON.
-     */
-    public String finalBody() {
-        if (content == null) return "";
-        String trimmed = content.trim();
-        if (!trimmed.startsWith("FINAL:")) return trimmed;
-        return trimmed.substring("FINAL:".length()).trim();
-    }
+  /** Strip the {@code "FINAL:"} prefix and return the remainder. Used to parse the final JSON. */
+  public String finalBody() {
+    if (content == null) return "";
+    String trimmed = content.trim();
+    if (!trimmed.startsWith("FINAL:")) return trimmed;
+    return trimmed.substring("FINAL:".length()).trim();
+  }
 }

@@ -2,7 +2,6 @@ package org.plumb.style.bug;
 
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class NpLoadOfKnownNullCheck implements AstChecker {
           List.of("CWE-476"),
           "org.plumb.style.NpLoadOfKnownNullCheck",
           true,
-          List.of("ast-bug-load-of-known-null-value", "np-load-null")
-      );
+          List.of("ast-bug-load-of-known-null-value", "np-load-null"));
 
   @Override
   public String name() {

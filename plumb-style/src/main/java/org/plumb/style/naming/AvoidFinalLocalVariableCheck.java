@@ -4,7 +4,6 @@ import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class AvoidFinalLocalVariableCheck implements AstChecker {
           List.of(),
           "org.plumb.style.AvoidFinalLocalVariableCheck",
           true,
-          List.of("ast-naming-final-local", "avoid-final-local-variable")
-      );
+          List.of("ast-naming-final-local", "avoid-final-local-variable"));
 
   @Override
   public String name() {

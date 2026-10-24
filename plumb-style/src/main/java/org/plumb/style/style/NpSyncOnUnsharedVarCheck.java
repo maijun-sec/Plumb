@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.stmt.SynchronizedStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class NpSyncOnUnsharedVarCheck implements AstChecker {
           List.of("CWE-820"),
           "org.plumb.style.NpSyncOnUnsharedVarCheck",
           true,
-          List.of("ast-style-sync-invoked-on-unshared-variable", "np-sync-unshared")
-      );
+          List.of("ast-style-sync-invoked-on-unshared-variable", "np-sync-unshared"));
 
   @Override
   public String name() {

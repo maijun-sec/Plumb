@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class LoopExecutingAtMostOnceCheck implements AstChecker {
           List.of(),
           "org.plumb.style.LoopExecutingAtMostOnceCheck",
           true,
-          List.of("ast-security-executing-at-most-once", "loop-once")
-      );
+          List.of("ast-security-executing-at-most-once", "loop-once"));
 
   @Override
   public String name() {

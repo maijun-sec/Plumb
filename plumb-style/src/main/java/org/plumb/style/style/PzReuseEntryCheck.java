@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.stmt.ForEachStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class PzReuseEntryCheck implements AstChecker {
           List.of("CWE-672"),
           "org.plumb.style.PzReuseEntryCheck",
           true,
-          List.of("ast-style-reuse-entry-objects", "pz-reuse-entry")
-      );
+          List.of("ast-style-reuse-entry-objects", "pz-reuse-entry"));
 
   @Override
   public String name() {

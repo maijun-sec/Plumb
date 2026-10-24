@@ -3,7 +3,6 @@ package org.plumb.style.error;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,8 +11,8 @@ import org.plumb.style.StyleContext;
 /**
  * Throwing raw {@code Exception} / {@code RuntimeException} / {@code Throwable}.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ObjectCreationExpr.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ObjectCreationExpr.class)} before.
  */
 public final class RawExceptionCheck implements AstChecker {
 
@@ -26,8 +25,7 @@ public final class RawExceptionCheck implements AstChecker {
           List.of(),
           "org.plumb.style.RawExceptionCheck",
           true,
-          List.of("ast-error-exception", "raw-exception")
-      );
+          List.of("ast-error-exception", "raw-exception"));
 
   @Override
   public String name() {
@@ -42,7 +40,8 @@ public final class RawExceptionCheck implements AstChecker {
     if (!(oc.getType() instanceof ClassOrInterfaceType)) return;
     ClassOrInterfaceType t = (ClassOrInterfaceType) oc.getType();
     String name = t.getNameAsString();
-    if (!"Exception".equals(name) && !"RuntimeException".equals(name) && !"Throwable".equals(name)) return;
+    if (!"Exception".equals(name) && !"RuntimeException".equals(name) && !"Throwable".equals(name))
+      return;
     int line = oc.getBegin().map(p -> p.line).orElse(-1);
     int col = oc.getBegin().map(p -> p.column).orElse(-1);
     ctx.report(

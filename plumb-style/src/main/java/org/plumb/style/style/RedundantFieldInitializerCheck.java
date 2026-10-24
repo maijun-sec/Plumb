@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.*;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,11 @@ public final class RedundantFieldInitializerCheck implements AstChecker {
           List.of(),
           "org.plumb.style.RedundantFieldInitializerCheck",
           false,
-          List.of("ast-style-redundant-field-initializer", "redundant-init")
-      ); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832 baseline)
+          List.of(
+              "ast-style-redundant-field-initializer",
+              "redundant-init")); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832
+
+  // baseline)
 
   @Override
   public String name() {

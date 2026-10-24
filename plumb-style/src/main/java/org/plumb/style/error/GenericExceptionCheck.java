@@ -5,7 +5,6 @@ import com.github.javaparser.ast.stmt.ThrowStmt;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.Type;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class GenericExceptionCheck implements AstChecker {
           List.of(),
           "org.plumb.style.GenericExceptionCheck",
           true,
-          List.of("ast-error-generic-exception", "generic-exception")
-      );
+          List.of("ast-error-generic-exception", "generic-exception"));
 
   @Override
   public String name() {

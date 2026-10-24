@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.stmt.SwitchStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class UnnecessaryEnumCaseCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UnnecessaryEnumCaseCheck",
           true,
-          List.of("ast-style-unnecessary-enum-case", "unnecessaryenumcase_sb")
-      );
+          List.of("ast-style-unnecessary-enum-case", "unnecessaryenumcase_sb"));
 
   @Override
   public String name() {

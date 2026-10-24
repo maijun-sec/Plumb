@@ -2,7 +2,6 @@ package org.plumb.style.performance;
 
 import com.github.javaparser.ast.expr.ArrayCreationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -11,8 +10,8 @@ import org.plumb.style.StyleContext;
 /**
  * Array created with too-large initial size (4+ digits).
  *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ArrayCreationExpr.class)} before.
+ * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ArrayCreationExpr.class)} before.
  */
 public final class ArrayTooLargeCheck implements AstChecker {
 
@@ -25,8 +24,7 @@ public final class ArrayTooLargeCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ArrayTooLargeCheck",
           true,
-          List.of("ast-performance-too-large", "array-too-large")
-      );
+          List.of("ast-performance-too-large", "array-too-large"));
 
   @Override
   public String name() {

@@ -2,7 +2,6 @@ package org.plumb.style.performance;
 
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -13,15 +12,15 @@ public final class AvoidCalendarDateInstanceCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-performance-avoid-calendar-date-instance", "AVOID_CALENDAR_DATE_INSTANCE"),
+          new RuleId(
+              "ast-performance-avoid-calendar-date-instance", "AVOID_CALENDAR_DATE_INSTANCE"),
           "avoid new Date() : use Calendar.getInstance() or LocalDate.now()",
           RuleDef.Severity.LOW,
           RuleDef.Type.BAD_PRACTICE,
           List.of(),
           "org.plumb.style.AvoidCalendarDateInstanceCheck",
           true,
-          List.of("ast-performance-calendar-date-instance", "avoid-calendar-date-instance")
-      );
+          List.of("ast-performance-calendar-date-instance", "avoid-calendar-date-instance"));
 
   @Override
   public String name() {

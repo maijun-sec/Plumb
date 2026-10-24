@@ -3,7 +3,6 @@ package org.plumb.style.naming;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.type.TypeParameter;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,9 +11,9 @@ import org.plumb.style.StyleContext;
 /**
  * Interface type parameter name should be uppercase single letter.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)} before. Only fires when
- * {@code c.isInterface()} is true (ClassTypeParameterNameCheck handles class declarations).
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ClassOrInterfaceDeclaration.class)} before. Only fires when {@code c.isInterface()} is
+ * true (ClassTypeParameterNameCheck handles class declarations).
  */
 public final class InterfaceTypeParameterNameCheck implements AstChecker {
 
@@ -27,8 +26,7 @@ public final class InterfaceTypeParameterNameCheck implements AstChecker {
           List.of(),
           "org.plumb.style.InterfaceTypeParameterNameCheck",
           true,
-          List.of("ast-naming-interface-type-param", "interface-type-parameter-name")
-      );
+          List.of("ast-naming-interface-type-param", "interface-type-parameter-name"));
 
   @Override
   public String name() {

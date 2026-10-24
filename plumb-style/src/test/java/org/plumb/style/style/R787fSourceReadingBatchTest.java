@@ -107,8 +107,7 @@ class R787fSourceReadingBatchTest {
             + "        r.getWriter().println(\"PATH=\" + System.getenv(\"PATH\"));\n"
             + "    }\n"
             + "}\n";
-    assertThat(
-            countByRuleId(runAll("Cwe526Bad.java", src), "ast-style-env-var-info-exposure"))
+    assertThat(countByRuleId(runAll("Cwe526Bad.java", src), "ast-style-env-var-info-exposure"))
         .as("System.getenv piped to response writer fires")
         .isEqualTo(1L);
   }
@@ -142,9 +141,7 @@ class R787fSourceReadingBatchTest {
             + "        r.getWriter().println(\"<input name=\\\"password\\\">\");\n"
             + "    }\n"
             + "}\n";
-    assertThat(
-            countByRuleId(
-                runAll("Cwe598Bad.java", src), "ast-style-form-get-password"))
+    assertThat(countByRuleId(runAll("Cwe598Bad.java", src), "ast-style-form-get-password"))
         .as("form method=get + password field in same file fires")
         .isEqualTo(1L);
   }
@@ -159,9 +156,7 @@ class R787fSourceReadingBatchTest {
             + "        r.getWriter().println(\"<input name=\\\"password\\\">\");\n"
             + "    }\n"
             + "}\n";
-    assertThat(
-            countByRuleId(
-                runAll("Cwe598Good1.java", src), "ast-style-form-get-password"))
+    assertThat(countByRuleId(runAll("Cwe598Good1.java", src), "ast-style-form-get-password"))
         .as("form method=post does not fire")
         .isZero();
   }
@@ -282,29 +277,22 @@ class R787fSourceReadingBatchTest {
             + "    }\n"
             + "}\n";
     List<Finding> findings = runAll("R787fRuleIds.java", src);
-    assertThat(
-            findings.stream().anyMatch(f -> "ast-style-comment-info-leak".equals(f.ruleId())))
+    assertThat(findings.stream().anyMatch(f -> "ast-style-comment-info-leak".equals(f.ruleId())))
         .as("at least one Cwe615 finding")
         .isTrue();
     assertThat(
-            findings.stream()
-                .anyMatch(f -> "ast-style-env-var-info-exposure".equals(f.ruleId())))
+            findings.stream().anyMatch(f -> "ast-style-env-var-info-exposure".equals(f.ruleId())))
         .as("at least one Cwe526 finding")
         .isTrue();
-    assertThat(
-            findings.stream()
-                .anyMatch(f -> "ast-style-form-get-password".equals(f.ruleId())))
+    assertThat(findings.stream().anyMatch(f -> "ast-style-form-get-password".equals(f.ruleId())))
         .as("at least one Cwe598 finding (form method=get + password)")
         .isTrue();
     assertThat(
             findings.stream()
-                .anyMatch(
-                    f -> "ast-style-insufficient-session-expiration".equals(f.ruleId())))
+                .anyMatch(f -> "ast-style-insufficient-session-expiration".equals(f.ruleId())))
         .as("at least one Cwe613 finding")
         .isTrue();
-    assertThat(
-            findings.stream()
-                .anyMatch(f -> "ast-style-missing-crypto-step".equals(f.ruleId())))
+    assertThat(findings.stream().anyMatch(f -> "ast-style-missing-crypto-step".equals(f.ruleId())))
         .as("at least one Cwe325 finding")
         .isTrue();
   }

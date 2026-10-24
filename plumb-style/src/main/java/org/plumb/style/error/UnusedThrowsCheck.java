@@ -6,7 +6,6 @@ import com.github.javaparser.ast.type.ReferenceType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -39,7 +38,8 @@ public final class UnusedThrowsCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.UnusedThrowsCheck",
-          true,List.of("ast-error-unused-throws", "unused-throws"),
+          true,
+          List.of("ast-error-unused-throws", "unused-throws"),
           List.of(PARAMS));
 
   @Override

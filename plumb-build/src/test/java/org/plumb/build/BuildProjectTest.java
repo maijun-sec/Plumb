@@ -94,7 +94,8 @@ class BuildProjectTest {
 
   @Test
   void scope_fromString_handlesGradleAliases() {
-    assertThat(BuildProject.Scope.fromString("implementation")).isEqualTo(BuildProject.Scope.COMPILE);
+    assertThat(BuildProject.Scope.fromString("implementation"))
+        .isEqualTo(BuildProject.Scope.COMPILE);
     assertThat(BuildProject.Scope.fromString("api")).isEqualTo(BuildProject.Scope.COMPILE);
     assertThat(BuildProject.Scope.fromString("compileOnly")).isEqualTo(BuildProject.Scope.PROVIDED);
     assertThat(BuildProject.Scope.fromString("runtimeOnly")).isEqualTo(BuildProject.Scope.RUNTIME);

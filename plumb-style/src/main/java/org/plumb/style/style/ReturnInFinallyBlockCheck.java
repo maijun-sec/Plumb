@@ -16,7 +16,6 @@ import com.github.javaparser.ast.stmt.TryStmt;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -33,8 +32,7 @@ public final class ReturnInFinallyBlockCheck implements AstChecker {
           List.of("CWE-584"),
           "org.plumb.style.ReturnInFinallyBlockCheck",
           true,
-          List.of("ast-style-return-in-finally", "return-in-finally")
-      );
+          List.of("ast-style-return-in-finally", "return-in-finally"));
 
   private final Set<String> reported = new HashSet<>();
 

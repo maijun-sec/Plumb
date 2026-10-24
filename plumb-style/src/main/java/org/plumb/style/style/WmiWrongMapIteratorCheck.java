@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.stmt.ForEachStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class WmiWrongMapIteratorCheck implements AstChecker {
           List.of(),
           "org.plumb.style.WmiWrongMapIteratorCheck",
           true,
-          List.of("ast-style-wrong-map-iterator", "wmi-wrong-map-iter")
-      );
+          List.of("ast-style-wrong-map-iterator", "wmi-wrong-map-iter"));
 
   @Override
   public String name() {

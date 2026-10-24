@@ -18,7 +18,6 @@ import com.github.javaparser.ast.comments.LineComment;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -51,8 +50,7 @@ public final class SuspiciousCommentCheck implements AstChecker {
           List.of("CWE-546"),
           "org.plumb.style.style.SuspiciousCommentCheck",
           true,
-          List.of("ast-style-suspicious-comment-style", "suspicious-comment")
-      );
+          List.of("ast-style-suspicious-comment-style", "suspicious-comment"));
 
   @Override
   public String name() {
@@ -89,11 +87,7 @@ public final class SuspiciousCommentCheck implements AstChecker {
         line,
         -1,
         DEFAULT_RULE,
-        "Suspicious `"
-            + kw
-            + "` "
-            + kind
-            + " comment indicates unfinished or buggy code (CWE-546)",
+        "Suspicious `" + kw + "` " + kind + " comment indicates unfinished or buggy code (CWE-546)",
         RuleDef.Severity.LOW,
         kw);
   }

@@ -4,7 +4,6 @@ import com.github.javaparser.ast.stmt.LabeledStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.stmt.SwitchEntry;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class NonCaseLabelInSwitchStatementCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NonCaseLabelInSwitchStatementCheck",
           true,
-          List.of("ast-style-case-label-in-switch-statement", "non-case-label")
-      );
+          List.of("ast-style-case-label-in-switch-statement", "non-case-label"));
 
   @Override
   public String name() {

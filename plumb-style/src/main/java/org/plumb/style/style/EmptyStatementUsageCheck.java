@@ -5,7 +5,6 @@ import com.github.javaparser.ast.stmt.ForEachStmt;
 import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class EmptyStatementUsageCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EmptyStatementUsageCheck",
           true,
-          List.of("ast-style-statement-empty-usage", "empty-statement-usage")
-      );
+          List.of("ast-style-statement-empty-usage", "empty-statement-usage"));
 
   @Override
   public String name() {

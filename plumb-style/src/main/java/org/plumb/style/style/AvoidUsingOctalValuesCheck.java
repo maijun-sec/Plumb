@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class AvoidUsingOctalValuesCheck implements AstChecker {
           List.of("CWE-682"),
           "org.plumb.style.AvoidUsingOctalValuesCheck",
           true,
-          List.of("ast-style-octal-values", "avoid-octal-values")
-      );
+          List.of("ast-style-octal-values", "avoid-octal-values"));
 
   @Override
   public String name() {

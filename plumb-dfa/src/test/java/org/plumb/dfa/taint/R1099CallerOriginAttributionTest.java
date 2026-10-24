@@ -20,8 +20,8 @@ import org.plumb.tac.ir.TacProgram;
 import org.plumb.tac.translate.TacTranslator;
 
 /**
- * R1099 regression gate: a cross-file taint finding must name the CALLER's parameter as the
- * taint source, not the sink method's own parameter.
+ * R1099 regression gate: a cross-file taint finding must name the CALLER's parameter as the taint
+ * source, not the sink method's own parameter.
  *
  * <h2>Why this matters</h2>
  *
@@ -40,8 +40,8 @@ import org.plumb.tac.translate.TacTranslator;
  * <ul>
  *   <li>the sink is still reported exactly once (no regression in detection);
  *   <li>the reported source is the caller's parameter, not the callee's;
- *   <li>a single-file program with no caller keeps the honest {@code param:} label, since there
- *       is genuinely no upstream provenance to report.
+ *   <li>a single-file program with no caller keeps the honest {@code param:} label, since there is
+ *       genuinely no upstream provenance to report.
  * </ul>
  */
 class R1099CallerOriginAttributionTest {
@@ -97,7 +97,19 @@ class R1099CallerOriginAttributionTest {
             base.checkers(),
             base.cweMappings(),
             new org.plumb.dfa.config.TuningConfig(
-                2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family", "sarif", false, 0),
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
     FindingReporter reporter =
         new DfaEngine(cfg, List.of(new SqlInjectionChecker()), "global", null)

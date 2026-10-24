@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.LongLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class UpperEllCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UpperEllCheck",
           true,
-          List.of("ast-style-ell", "upperellcheck")
-      );
+          List.of("ast-style-ell", "upperellcheck"));
 
   @Override
   public String name() {

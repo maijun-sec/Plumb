@@ -5,7 +5,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.LongLiteralExpr;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class UppercaseSuffixCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UppercaseSuffixCheck",
           true,
-          List.of("ast-style-uppercase-suffix", "uppercase-suffix")
-      );
+          List.of("ast-style-uppercase-suffix", "uppercase-suffix"));
   private static final Pattern LOWER_L = Pattern.compile(".*\\d+l$");
 
   @Override

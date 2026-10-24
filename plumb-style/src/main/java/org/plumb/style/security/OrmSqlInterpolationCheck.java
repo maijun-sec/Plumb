@@ -30,41 +30,40 @@ import org.plumb.style.StyleContext;
  *   User findByName(String name);
  * </pre>
  *
- * <p>The tainted value is spliced into the ANNOTATION's string constant. No call ever
- * carries it, so there is no data-flow edge for a taint engine to follow -- the value never
- * becomes a call argument. The TAC does not even carry annotations: the mapper method lowers
- * to a bare {@code RETURN}. Reaching this shape therefore needs the annotation itself, which
- * only the AST has.
+ * <p>The tainted value is spliced into the ANNOTATION's string constant. No call ever carries it,
+ * so there is no data-flow edge for a taint engine to follow -- the value never becomes a call
+ * argument. The TAC does not even carry annotations: the mapper method lowers to a bare {@code
+ * RETURN}. Reaching this shape therefore needs the annotation itself, which only the AST has.
  *
  * <h2>What the rule knows about the frameworks</h2>
  *
- * <p>The two MyBatis placeholder forms have opposite safety properties, and that difference is
- * the whole point of the rule:
+ * <p>The two MyBatis placeholder forms have opposite safety properties, and that difference is the
+ * whole point of the rule:
  *
  * <ul>
- *   <li>{@code #{name}} becomes a {@code PreparedStatement} placeholder ({@code ?}). The value
- *       is bound as data and cannot change the SQL structure. This is the safe form.
- *   <li>{@code ${name}} is a raw string substitution. The value becomes part of the SQL text
- *       and can change the statement. This is the dangerous form.
+ *   <li>{@code #{name}} becomes a {@code PreparedStatement} placeholder ({@code ?}). The value is
+ *       bound as data and cannot change the SQL structure. This is the safe form.
+ *   <li>{@code ${name}} is a raw string substitution. The value becomes part of the SQL text and
+ *       can change the statement. This is the dangerous form.
  * </ul>
  *
- * <p>{@code ${}} does have legitimate uses -- a dynamic table name, a dynamic column, an
- * {@code ORDER BY} direction -- because a prepared-statement placeholder cannot stand in for
- * SQL structure. So the rule does not report every {@code ${}}; it reports a {@code ${}}
- * whose placeholder names a method parameter. A {@code ${}} that names nothing the method
- * receives cannot be influenced by the caller and is left alone.
+ * <p>{@code ${}} does have legitimate uses -- a dynamic table name, a dynamic column, an {@code
+ * ORDER BY} direction -- because a prepared-statement placeholder cannot stand in for SQL
+ * structure. So the rule does not report every {@code ${}}; it reports a {@code ${}} whose
+ * placeholder names a method parameter. A {@code ${}} that names nothing the method receives cannot
+ * be influenced by the caller and is left alone.
  *
- * <p>The same distinction applies to the JPA / Hibernate annotation forms that take raw JPQL
- * or HQL: {@code @Query("... " + value)} and {@code @Query("... ${value}")} are reported, and
- * a query whose text carries no interpolation is not.
+ * <p>The same distinction applies to the JPA / Hibernate annotation forms that take raw JPQL or
+ * HQL: {@code @Query("... " + value)} and {@code @Query("... ${value}")} are reported, and a query
+ * whose text carries no interpolation is not.
  *
  * <h2>What is reported</h2>
  *
  * <ul>
  *   <li>A mapper SQL annotation whose text contains a {@code ${...}} naming one of the method's
  *       parameters.
- *   <li>A query annotation whose text is built by concatenating a method parameter into the
- *       query string.
+ *   <li>A query annotation whose text is built by concatenating a method parameter into the query
+ *       string.
  * </ul>
  *
  * <p>Both are reported at the annotation, because that is where the SQL text lives.
@@ -80,14 +79,13 @@ public final class OrmSqlInterpolationCheck implements AstChecker {
           List.of("CWE-89"),
           "org.plumb.style.security.OrmSqlInterpolationCheck",
           true,
-          List.of("ast-security-orm-sql-interpolation", "orm-sql-interpolation")
-      );
+          List.of("ast-security-orm-sql-interpolation", "orm-sql-interpolation"));
 
   /**
    * The MyBatis raw-substitution placeholder: {@code ${name}}.
    *
-   * <p>Note the escaped form matters here: in the SQL text, {@code ${}} is a dollar sign
-   * followed by braces. A regex for it is {@code \$\{([^}]*)\}}.
+   * <p>Note the escaped form matters here: in the SQL text, {@code ${}} is a dollar sign followed
+   * by braces. A regex for it is {@code \$\{([^}]*)\}}.
    */
   private static final Pattern DOLLAR_INTERPOLATION = Pattern.compile("\\$\\{([^}]*)\\}");
 
@@ -95,8 +93,8 @@ public final class OrmSqlInterpolationCheck implements AstChecker {
    * The MyBatis / JPA bound-parameter placeholder: {@code #{name}}.
    *
    * <p>Used only to tell the two apart, so it must be matched BEFORE the {@code ${}} form is
-   * considered: the text {@code #{name}} contains a hash, not a dollar, so the two patterns
-   * cannot overlap -- but a bound placeholder must never be reported as an interpolation.
+   * considered: the text {@code #{name}} contains a hash, not a dollar, so the two patterns cannot
+   * overlap -- but a bound placeholder must never be reported as an interpolation.
    */
   private static final Pattern HASH_PLACEHOLDER = Pattern.compile("#\\{[^}]*\\}");
 
@@ -108,9 +106,9 @@ public final class OrmSqlInterpolationCheck implements AstChecker {
    * {@code @InsertProvider}.
    *
    * <p>Spring Data JPA: {@code @Query}. Hibernate also has {@code @NamedNativeQuery} and
-   * {@code @Formula}, but those take SQL that is fixed at build time -- a native query's SQL
-   * cannot reference a method parameter, because the query is bound to the entity rather than
-   * to the method. They are therefore not listed.
+   * {@code @Formula}, but those take SQL that is fixed at build time -- a native query's SQL cannot
+   * reference a method parameter, because the query is bound to the entity rather than to the
+   * method. They are therefore not listed.
    */
   private static final List<String> SQL_ANNOTATIONS =
       List.of(
@@ -166,15 +164,15 @@ public final class OrmSqlInterpolationCheck implements AstChecker {
   }
 
   /**
-   * The parameter whose value ends up inside the statement, or {@code null} when the statement
-   * is safe.
+   * The parameter whose value ends up inside the statement, or {@code null} when the statement is
+   * safe.
    *
    * <p>Two ways the value can get in:
    *
    * <ol>
    *   <li>A {@code ${name}} placeholder inside the statement text that names one of the method's
-   *       parameters. The placeholder is a raw substitution, so the parameter's value becomes
-   *       SQL text.
+   *       parameters. The placeholder is a raw substitution, so the parameter's value becomes SQL
+   *       text.
    *   <li>The statement text is built by CONCATENATING a parameter into the string, as in
    *       {@code @Query("SELECT ... " + value)}. Here the annotation's value is not a literal at
    *       all, so the text has to be read from the expression.
@@ -196,9 +194,9 @@ public final class OrmSqlInterpolationCheck implements AstChecker {
   /**
    * The expression that carries the statement, or {@code null} when the annotation has none.
    *
-   * <p>Handles the three shapes an annotation can take: a single member ({@code @Select("...")}),
-   * a normal member list ({@code @Query(value = "...", nativeQuery = true)}), and a marker with
-   * no value at all ({@code @SelectProvider}), which has no statement of its own.
+   * <p>Handles the three shapes an annotation can take: a single member ({@code @Select("...")}), a
+   * normal member list ({@code @Query(value = "...", nativeQuery = true)}), and a marker with no
+   * value at all ({@code @SelectProvider}), which has no statement of its own.
    */
   private static Expression statementExpression(AnnotationExpr annotation) {
     if (annotation instanceof SingleMemberAnnotationExpr single) {
@@ -229,16 +227,14 @@ public final class OrmSqlInterpolationCheck implements AstChecker {
   }
 
   /**
-   * Find the parameter that is CONCATENATED into the statement, or {@code null} when there is
-   * none.
+   * Find the parameter that is CONCATENATED into the statement, or {@code null} when there is none.
    *
-   * <p>The shape is {@code @Query("SELECT ... " + value)}: the annotation's value is a
-   * {@code BinaryExpr} whose right-hand side is the method's parameter. The parameter's value
-   * becomes part of the query text, exactly as with a {@code ${}} placeholder.
+   * <p>The shape is {@code @Query("SELECT ... " + value)}: the annotation's value is a {@code
+   * BinaryExpr} whose right-hand side is the method's parameter. The parameter's value becomes part
+   * of the query text, exactly as with a {@code ${}} placeholder.
    *
-   * <p>The concatenation nests: {@code "a " + name + " b"} parses as
-   * {@code ("a " + name) + " b"}, so the search has to walk the whole tree rather than look at
-   * the top level only.
+   * <p>The concatenation nests: {@code "a " + name + " b"} parses as {@code ("a " + name) + " b"},
+   * so the search has to walk the whole tree rather than look at the top level only.
    *
    * <p>Only a parameter is an offender. A concatenation of two literals, or of a constant the
    * method cannot influence, is not.
@@ -258,11 +254,11 @@ public final class OrmSqlInterpolationCheck implements AstChecker {
   }
 
   /**
-   * Find the parameter whose value ends up inside the statement, or {@code null} when the
-   * statement is safe.
+   * Find the parameter whose value ends up inside the statement, or {@code null} when the statement
+   * is safe.
    *
-   * <p>Only the {@code ${...}} placeholder form is handled here; the concatenated form is
-   * handled by {@link #concatenatedOffender}.
+   * <p>Only the {@code ${...}} placeholder form is handled here; the concatenated form is handled
+   * by {@link #concatenatedOffender}.
    */
   private static String interpolationOffender(String statement, MethodDeclaration method) {
     // Case 1: a ${...} placeholder naming a parameter of this method.
@@ -283,8 +279,8 @@ public final class OrmSqlInterpolationCheck implements AstChecker {
    * True when the method declares a parameter with the given name.
    *
    * <p>Both the plain parameter name and the {@code @Param("...")} alias are accepted, because
-   * MyBatis resolves a {@code ${}} placeholder against the {@code @Param} name when one is
-   * present and against the parameter name otherwise.
+   * MyBatis resolves a {@code ${}} placeholder against the {@code @Param} name when one is present
+   * and against the parameter name otherwise.
    */
   private static boolean namesParameter(MethodDeclaration method, String name) {
     for (var parameter : method.getParameters()) {
@@ -320,9 +316,7 @@ public final class OrmSqlInterpolationCheck implements AstChecker {
     return null;
   }
 
-  /**
-   * The method's parameter names, lower-cased, for diagnostics.
-   */
+  /** The method's parameter names, lower-cased, for diagnostics. */
   static String describeParameters(MethodDeclaration method) {
     StringBuilder sb = new StringBuilder();
     for (var parameter : method.getParameters()) {

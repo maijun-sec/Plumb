@@ -16,7 +16,6 @@ import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -33,8 +32,7 @@ public final class WeakUrlSanitizationCheck implements AstChecker {
           List.of("CWE-20", "CWE-601"),
           "org.plumb.style.WeakUrlSanitizationCheck",
           true,
-          List.of("ast-security-weak-url-sanitization", "weak-url-sanitization")
-      );
+          List.of("ast-security-weak-url-sanitization", "weak-url-sanitization"));
 
   private static final Set<String> WEAK_METHODS =
       Set.of("contains", "indexOf", "matches", "find", "lookingAt", "regionMatches");

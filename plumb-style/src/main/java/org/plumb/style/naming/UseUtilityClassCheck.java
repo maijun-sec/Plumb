@@ -4,7 +4,6 @@ import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class UseUtilityClassCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UseUtilityClassCheck",
           true,
-          List.of("ast-naming-utility-class", "use-utility-class")
-      );
+          List.of("ast-naming-utility-class", "use-utility-class"));
 
   @Override
   public String name() {

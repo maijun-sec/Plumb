@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class PrintStackTraceCheck implements AstChecker {
           List.of("CWE-209"),
           "org.plumb.style.PrintStackTraceCheck",
           true,
-          List.of("ast-style-print-stack-trace-alpha", "print-stack-trace")
-      );
+          List.of("ast-style-print-stack-trace-alpha", "print-stack-trace"));
 
   @Override
   public String name() {

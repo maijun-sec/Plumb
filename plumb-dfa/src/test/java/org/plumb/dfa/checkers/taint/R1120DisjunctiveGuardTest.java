@@ -25,8 +25,8 @@ import org.plumb.tac.translate.TacTranslator;
  *
  * <p>Found by the second independent audit, against R1115's own rule.
  *
- * <p>The tracker recorded a variable as allowlisted from any UNARYOP negation of an equality result,
- * without checking that the negation was the whole branch condition. These two shapes are
+ * <p>The tracker recorded a variable as allowlisted from any UNARYOP negation of an equality
+ * result, without checking that the negation was the whole branch condition. These two shapes are
  * byte-identical to the tracker:
  *
  * <pre>
@@ -34,12 +34,12 @@ import org.plumb.tac.translate.TacTranslator;
  *   unsound:  t2 = NOT t1 ; t5 = t2 LOR t4 ; if t5 goto L_THEN
  * </pre>
  *
- * <p>In the second, {@code other == "users"} makes the {@code OR} true no matter what {@code col} is,
- * so the {@code col = "createdAt"} substitution <em>never runs</em> and {@code col} reaches the sink
- * fully attacker-controlled. The rule suppressed the finding anyway.
+ * <p>In the second, {@code other == "users"} makes the {@code OR} true no matter what {@code col}
+ * is, so the {@code col = "createdAt"} substitution <em>never runs</em> and {@code col} reaches the
+ * sink fully attacker-controlled. The rule suppressed the finding anyway.
  *
- * <p>The {@code &&} form is sound by accident -- all conjuncts must fail before the body runs -- which
- * is why every pre-existing allowlist test passed and none used {@code ||}.
+ * <p>The {@code &&} form is sound by accident -- all conjuncts must fail before the body runs --
+ * which is why every pre-existing allowlist test passed and none used {@code ||}.
  */
 class R1120DisjunctiveGuardTest {
 
@@ -59,8 +59,20 @@ class R1120DisjunctiveGuardTest {
             BuiltinFactKinds.registryWithBuiltins(),
             base.checkers(),
             base.cweMappings(),
-            new TuningConfig(2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family",
-                "sarif", false, 0),
+            new TuningConfig(
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
     FindingReporter reporter =
         new DfaEngine(cfg, List.of(new SqlInjectionChecker()), "global", null)

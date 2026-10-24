@@ -78,7 +78,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -95,8 +94,7 @@ public final class UnusedVariableAstCheck implements AstChecker {
           List.of("CWE-563"),
           "org.plumb.style.security.UnusedVariableAstCheck",
           true,
-          List.of("ast-security-unused-variable-assignment", "unused-variable-assignment")
-      );
+          List.of("ast-security-unused-variable-assignment", "unused-variable-assignment"));
 
   /** varName -> list of source-line numbers of assignments. */
   private final Map<String, List<Integer>> assigns = new HashMap<>();

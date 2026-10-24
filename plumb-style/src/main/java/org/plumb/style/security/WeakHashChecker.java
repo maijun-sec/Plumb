@@ -60,7 +60,6 @@ import com.github.javaparser.ast.stmt.BlockStmt;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -87,13 +86,12 @@ public final class WeakHashChecker implements AstChecker {
           List.of("MD2", "MD4", "MD5", "SHA", "SHA1", "SHA-1", "HmacMD5", "HmacMD4"));
 
   /**
-   * R-AST-FIX-2026-10-18: AST-side ruleId was historically misspelled
-   * with the {@code dfa-} prefix (this is an AST checker, not a DFA
-   * one ? see {@link org.plumb.style.AstDispatcher}). Any consumer
-   * pinning the old id needs to track via {@code RuleRegistry} alias
-   * resolution.
+   * R-AST-FIX-2026-10-18: AST-side ruleId was historically misspelled with the {@code dfa-} prefix
+   * (this is an AST checker, not a DFA one ? see {@link org.plumb.style.AstDispatcher}). Any
+   * consumer pinning the old id needs to track via {@code RuleRegistry} alias resolution.
    */
   private static final String RULE_ID = "ast-security-weak-hash";
+
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
           new RuleId(RULE_ID, "WEAK_HASH"),

@@ -39,7 +39,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -56,8 +55,7 @@ public final class UnloggedSecurityExceptionCheck implements AstChecker {
           List.of("CWE-778", "CWE-223"),
           "org.plumb.style.UnloggedSecurityExceptionCheck",
           true,
-          List.of("ast-security-unlogged-security-exception", "unlogged-security-exception")
-      );
+          List.of("ast-security-unlogged-security-exception", "unlogged-security-exception"));
 
   private static final Set<String> LOG_METHODS =
       Set.of(
@@ -80,10 +78,9 @@ public final class UnloggedSecurityExceptionCheck implements AstChecker {
   private boolean enableStandardOutputLogging = false;
 
   /**
-   * Per-file map of local SecurityException subclasses. Populated in {@link
-   * #visit(CompilationUnit, StyleContext)} and consumed in {@link
-   * #visit(CatchClause, StyleContext)}. Cleared at the start of each CU visit to avoid
-   * cross-file state pollution.
+   * Per-file map of local SecurityException subclasses. Populated in {@link #visit(CompilationUnit,
+   * StyleContext)} and consumed in {@link #visit(CatchClause, StyleContext)}. Cleared at the start
+   * of each CU visit to avoid cross-file state pollution.
    */
   private final Map<String, Boolean> localSecurityExceptions = new HashMap<>();
 

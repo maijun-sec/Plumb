@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class LocaleRootCheck implements AstChecker {
           List.of("CWE-758"),
           "org.plumb.style.LocaleRootCheck",
           true,
-          List.of("ast-style-locale-root", "locale-root")
-      );
+          List.of("ast-style-locale-root", "locale-root"));
 
   private static final Set<String> METHODS =
       Set.of(

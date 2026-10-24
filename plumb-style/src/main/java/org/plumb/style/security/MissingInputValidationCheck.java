@@ -19,7 +19,6 @@ import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -72,8 +71,7 @@ public final class MissingInputValidationCheck implements AstChecker {
           List.of("CWE-20"),
           "org.plumb.style.security.MissingInputValidationCheck",
           true,
-          List.of("ast-security-missing-input-validation", "missing-input-validation")
-      );
+          List.of("ast-security-missing-input-validation", "missing-input-validation"));
 
   @Override
   public String name() {

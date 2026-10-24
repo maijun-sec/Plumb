@@ -6,7 +6,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import org.plumb.dfa.config.CheckerConfig;
 import org.plumb.dfa.config.EngineConfig;
 import org.plumb.dfa.config.SinkFamily;
@@ -255,16 +254,16 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R1099: strip the intra-procedural bookkeeping prefixes off a taint label so the
-   * remainder can be published as a summary entry's caller-side {@code origin}.
+   * R1099: strip the intra-procedural bookkeeping prefixes off a taint label so the remainder can
+   * be published as a summary entry's caller-side {@code origin}.
    *
-   * <p>The per-function fold writes labels like {@code "callee:<sig>"},
-   * {@code "rcv-passthrough:<label>"} and {@code "param:<name>"} as it propagates. Those
-   * prefixes describe <em>how</em> the value reached this function, not <em>where it came
-   * from</em>, so carrying them into the next hop's finding would just move the
-   * mis-attribution one level up. Unwrapping a {@code rcv-passthrough:} wrapper recursively
-   * keeps the inner real source. Anything we don't recognise is returned unchanged, so an
-   * unknown label degrades to today's behaviour rather than to {@code null}.
+   * <p>The per-function fold writes labels like {@code "callee:<sig>"}, {@code
+   * "rcv-passthrough:<label>"} and {@code "param:<name>"} as it propagates. Those prefixes describe
+   * <em>how</em> the value reached this function, not <em>where it came from</em>, so carrying them
+   * into the next hop's finding would just move the mis-attribution one level up. Unwrapping a
+   * {@code rcv-passthrough:} wrapper recursively keeps the inner real source. Anything we don't
+   * recognise is returned unchanged, so an unknown label degrades to today's behaviour rather than
+   * to {@code null}.
    */
   private static String taintOriginOf(String label) {
     if (label == null) return null;
@@ -279,20 +278,20 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R1099: resolve a taint label that is still stuck at this function's own entry boundary
-   * ({@code "param:<name>"}) into the origin the CALLER actually passed in.
+   * R1099: resolve a taint label that is still stuck at this function's own entry boundary ({@code
+   * "param:<name>"}) into the origin the CALLER actually passed in.
    *
-   * <p>Callees are analysed before callers (reverse post-order), so a summary lookup at
-   * sink-emit time cannot see where the value came from — the caller's {@link FunctionSummary}
-   * simply does not exist yet. That is why {@code beginFunction}'s unconditional
-   * {@code param:<name>} seeding is what a sink method reports, and why cross-file taint looked
-   * absent even though propagation worked.
+   * <p>Callees are analysed before callers (reverse post-order), so a summary lookup at sink-emit
+   * time cannot see where the value came from — the caller's {@link FunctionSummary} simply does
+   * not exist yet. That is why {@code beginFunction}'s unconditional {@code param:<name>} seeding
+   * is what a sink method reports, and why cross-file taint looked absent even though propagation
+   * worked.
    *
-   * <p>The resolution therefore comes from {@link AnalysisContext#paramOrigin(String, int)},
-   * which the engine populates in a pre-pass (before the analysis loop) from the method-summary
-   * warm-up. Only origins the engine could establish unambiguously are published; when callers
-   * disagree, or the only known origin is another function's own entry boundary, nothing is
-   * recorded and the original {@code param:} label stands.
+   * <p>The resolution therefore comes from {@link AnalysisContext#paramOrigin(String, int)}, which
+   * the engine populates in a pre-pass (before the analysis loop) from the method-summary warm-up.
+   * Only origins the engine could establish unambiguously are published; when callers disagree, or
+   * the only known origin is another function's own entry boundary, nothing is recorded and the
+   * original {@code param:} label stands.
    *
    * @param label the current taint label for the sink argument
    * @return the resolved origin, or {@code null} to keep {@code label}
@@ -786,7 +785,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // numeric dest clean even though it's
         // attacker-controlled. That's exactly the
         // CWE-789 / CWE-190 / CWE-191 attack
-        // pattern: tainted String : parseInt : 
+        // pattern: tainted String : parseInt :
         // tainted int : memory allocation /
         // arithmetic. Skip the sanitizer when the
         // call is itself an input-source call so
@@ -1151,7 +1150,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // plaintext bytes (whose secrecy is the whole point of
     // the cipher). Either way, the dest cannot carry the
     // caller's input taint. Without this, Juliet
-    // CWE-319 connect_tcp_passwordAuth_*.goodB2G : 
+    // CWE-319 connect_tcp_passwordAuth_*.goodB2G :
     //   password = readerBuffered.readLine();   // tainted
     //   aesCipher.init(Cipher.DECRYPT_MODE, ...);
     //   password = new String(
@@ -1343,12 +1342,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * <p>This unlocks three Juliet FN classes that the previous code missed:
    *
    * <ul>
-   *   <li><b>CWE113 addCookieServlet</b> :  {@code new Cookie("lang", data)} followed by {@code
+   *   <li><b>CWE113 addCookieServlet</b> : {@code new Cookie("lang", data)} followed by {@code
    *       response.addCookie(...)} silently dropped taint at the constructor because Cookie.<init>
    *       has no plumb-side summary.
    *   <li><b>CWE789</b> : {@code new ArrayList(data)} carries the tainted size forward into
    *       downstream operations on the collection.
-   *   <li><b>CWE89 generic-collection</b> :  {@code new ArrayList<>(taintedSource)} carries taint
+   *   <li><b>CWE89 generic-collection</b> : {@code new ArrayList<>(taintedSource)} carries taint
    *       through the constructor into subsequent indexed access.
    * </ul>
    *
@@ -2012,9 +2011,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    *
    * <ul>
    *   <li>{@code java.lang.String.toLowerCase/1} : {@code "toLowerCase"}
-   *   <li>{@code String.toLowerCase/1} :  {@code "toLowerCase"}
-   *   <li>{@code toLowerCase/1} :  {@code "toLowerCase"}
-   *   <li>{@code java.lang.String#toLowerCase/1} (Jimple form) :  {@code "toLowerCase"}
+   *   <li>{@code String.toLowerCase/1} : {@code "toLowerCase"}
+   *   <li>{@code toLowerCase/1} : {@code "toLowerCase"}
+   *   <li>{@code java.lang.String#toLowerCase/1} (Jimple form) : {@code "toLowerCase"}
    * </ul>
    *
    * Returns {@code null} when the calleeSig is null, empty, or has an unrecognised shape.
@@ -2266,7 +2265,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // It is safe to write the
       // class-level key here because
       // "this" can only refer to one
-      // instance per enclosing class : 
+      // instance per enclosing class :
       // cross-fn calls inside the
       // same class share `this`. The
       // POJO getter concern (h1.data
@@ -3485,7 +3484,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // call's arg i. The user-arg index
     // is the param index; the call's
     // matching TAC arg is at i + 1
-    // (instance method convention : 
+    // (instance method convention :
     // args[0] is the receiver, args[1+]
     // are the user args). The new loop is
     // bounds-checked on the callee's
@@ -3648,7 +3647,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         taintPaths.put(destVar, java.util.Collections.unmodifiableList(fold));
       }
     }
-    // Conservative caller-arg : 
+    // Conservative caller-arg :
     // dest taint passthrough. The
     // existing summary-fold marks the dest
     // tainted only if the callee's
@@ -3968,7 +3967,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         }
         // else: args[0] is a String /
         // primitive / UNKNOWN /
-        // empty-name TacVar : 
+        // empty-name TacVar :
         // likely a user arg of a
         // same-class call. Default
         // to "this".
@@ -4035,13 +4034,13 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   /**
    * Legacy subclass hook: which argument of a sink call carries the tainted value.
    *
-   * <p><b>R693</b> moved arg-index selection into {@code sink-families.yaml} ({@code arg_index}
-   * per pattern, {@code default_arg_index} per family). This hook is now vestigial and, in practice,
+   * <p><b>R693</b> moved arg-index selection into {@code sink-families.yaml} ({@code arg_index} per
+   * pattern, {@code default_arg_index} per family). This hook is now vestigial and, in practice,
    * <b>unreachable for every shipped checker</b> — see the reachability note on {@link
    * #patternArgIndex}.
    *
-   * <p>Do not rely on overriding this. To change which argument is inspected, set {@code
-   * arg_index} on the pattern in {@code sink-families.yaml}.
+   * <p>Do not rely on overriding this. To change which argument is inspected, set {@code arg_index}
+   * on the pattern in {@code sink-families.yaml}.
    */
   protected int sinkArgumentIndex(SinkFamily family, TacInstruction call) {
     return DEFAULT_SINK_ARG_INDEX;
@@ -4059,12 +4058,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * either the pattern's explicit index or the family's default — and {@code ConfigLoader} defaults
    * {@code default_arg_index} to {@code 0}, never {@code -1}. Hence {@link #sinkArgumentIndex} is
    * unreachable for every shipped family. {@code R1100SinkArgIndexPrecedenceTest} proves this
-   * exhaustively over every pattern in the yaml: each resolves to {@code >= 0} or to the
-   * receiver sentinel, never to {@code -1}.
+   * exhaustively over every pattern in the yaml: each resolves to {@code >= 0} or to the receiver
+   * sentinel, never to {@code -1}.
    *
    * <p>Note that the overrides are therefore <i>not</i> a source of disagreement with the yaml —
-   * several happen to agree ({@code XssInjectionChecker} returns 1, which is exactly what
-   * {@code xss.sinks} declares for the sink it cares about). They must not be mistaken for live
+   * several happen to agree ({@code XssInjectionChecker} returns 1, which is exactly what {@code
+   * xss.sinks} declares for the sink it cares about). They must not be mistaken for live
    * configuration; edit the yaml instead.
    */
   private int patternArgIndex(SinkFamily family, String calleeSig, TacInstruction call) {
@@ -4092,10 +4091,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * <p>Examples:
    *
    * <ul>
-   *   <li>Callee has empty stringOps : 
-   *   <li>Callee has {@code [StringOp("toLowerCase"), StringOp("trim")]} :  {@code
+   *   <li>Callee has empty stringOps :
+   *   <li>Callee has {@code [StringOp("toLowerCase"), StringOp("trim")]} : {@code
    *       "callee-ret:Helper#m[toLowerCase,trim]"}.
-   *   <li>Callee has only {@code [StringOp("valueOf")]} :  {@code "callee-ret:Helper#m[valueOf]"}.
+   *   <li>Callee has only {@code [StringOp("valueOf")]} : {@code "callee-ret:Helper#m[valueOf]"}.
    * </ul>
    *
    * <p>The label is purely a human-readable marker; consumers can parse the bracketed chain if they
@@ -4501,8 +4500,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * <p>Examples:
    *
    * <ul>
-   *   <li>{@code "Helper.setData/1"} :  {@code "setData/1"}
-   *   <li>{@code "com.example.Helper.setData/1"} :  {@code "setData/1"} (only the last {@code .} is
+   *   <li>{@code "Helper.setData/1"} : {@code "setData/1"}
+   *   <li>{@code "com.example.Helper.setData/1"} : {@code "setData/1"} (only the last {@code .} is
    *       stripped, the FQN prefix is dropped as a unit)
    *   <li>{@code "setData/1"} : {@code null} (already bare-name)
    *   <li>{@code "setData"} : {@code null} (no arity suffix)

@@ -2,7 +2,6 @@ package org.plumb.style.performance;
 
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class StringInstantiationCheck implements AstChecker {
           List.of(),
           "org.plumb.style.StringInstantiationCheck",
           true,
-          List.of("ast-performance-string-instantiation", "string-instantiation")
-      );
+          List.of("ast-performance-string-instantiation", "string-instantiation"));
 
   @Override
   public String name() {

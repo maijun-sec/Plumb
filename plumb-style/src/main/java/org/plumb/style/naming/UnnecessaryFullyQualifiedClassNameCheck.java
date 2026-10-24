@@ -3,7 +3,6 @@ package org.plumb.style.naming;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.resolution.declarations.ResolvedDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -29,8 +28,7 @@ public final class UnnecessaryFullyQualifiedClassNameCheck implements AstChecker
           List.of(),
           "org.plumb.style.UnnecessaryFullyQualifiedClassNameCheck",
           true,
-          List.of("ast-naming-unnecessary-fully-qualified-name", "unnecessary-fqn")
-      );
+          List.of("ast-naming-unnecessary-fully-qualified-name", "unnecessary-fqn"));
 
   @Override
   public String name() {

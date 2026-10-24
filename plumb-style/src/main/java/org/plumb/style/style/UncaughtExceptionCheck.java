@@ -11,7 +11,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -32,8 +31,7 @@ public final class UncaughtExceptionCheck implements AstChecker {
           List.of("CWE-600"),
           "org.plumb.style.UncaughtExceptionCheck",
           true,
-          List.of("ast-style-cwe600-uncaught-exception-style", "cwe600-uncaught-exception")
-      );
+          List.of("ast-style-cwe600-uncaught-exception-style", "cwe600-uncaught-exception"));
 
   private final Set<String> reported = new HashSet<>();
 

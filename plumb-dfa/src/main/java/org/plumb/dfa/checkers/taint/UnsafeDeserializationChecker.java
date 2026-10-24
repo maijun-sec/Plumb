@@ -12,16 +12,16 @@ import org.plumb.reporter.Finding;
  *
  * <p>The {@code deserialization.sinks} family has been present in {@code sink-families.yaml} with
  * {@code severity: CRITICAL} for some time, but <em>no checker consumed it</em>. A registered rule
- * with no implementation is worse than an absent one: the coverage report claims CWE-502 is
- * handled while nothing can ever report it.
+ * with no implementation is worse than an absent one: the coverage report claims CWE-502 is handled
+ * while nothing can ever report it.
  *
  * <h2>The receiver is the sink argument</h2>
  *
  * <p>{@code ObjectInputStream#readObject()} takes no arguments — the untrusted bytes arrive on the
  * stream itself. That is expressed with {@link org.plumb.dfa.config.SinkFamily#RECEIVER_ARG_INDEX}
  * ({@code arg_index: -2}) in the YAML, which makes the checker inspect the call's receiver rather
- * than a user argument. Sinks that DO take the untrusted data as an argument (Jackson
- * {@code readValue}, SnakeYAML {@code load}, Kryo {@code readObject(InputStream)}) keep the family
+ * than a user argument. Sinks that DO take the untrusted data as an argument (Jackson {@code
+ * readValue}, SnakeYAML {@code load}, Kryo {@code readObject(InputStream)}) keep the family
  * default.
  *
  * <p>The motivating real-world cases are Apache Camel MINA and Log4j-style gadget chains, where a

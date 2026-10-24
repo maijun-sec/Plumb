@@ -2,7 +2,6 @@ package org.plumb.style.naming;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -26,8 +25,11 @@ public final class TypeNameCheck implements AstChecker {
           List.of(),
           "org.plumb.style.TypeNameCheck",
           false,
-          List.of("ast-naming-name", "type-name")
-      ); // R-836 step_f: disabled by default (0 TP / 100% FP on Juliet R-832 baseline)
+          List.of(
+              "ast-naming-name",
+              "type-name")); // R-836 step_f: disabled by default (0 TP / 100% FP on Juliet R-832
+
+  // baseline)
 
   @Override
   public String name() {

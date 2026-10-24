@@ -16,11 +16,11 @@ import org.plumb.style.StyleContext;
 /**
  * String literal assigned to a credential-named variable / field (use config / secrets manager).
  *
- * <p>S2 audit (2026-10-17) fixed the type filter ? the original {@code
- * if (!primitiveType && !"String".equals(...)) if(!"char".equals(...))} chain was confusing and
- * the {@code char} branch was dead code (the {@code char} case had already been let through by the
- * first check). The new filter is a clean predicate: accept {@code String} and {@code char[]}
- * (the two practical representations of credential material) and reject everything else.
+ * <p>S2 audit (2026-10-17) fixed the type filter ? the original {@code if (!primitiveType &&
+ * !"String".equals(...)) if(!"char".equals(...))} chain was confusing and the {@code char} branch
+ * was dead code (the {@code char} case had already been let through by the first check). The new
+ * filter is a clean predicate: accept {@code String} and {@code char[]} (the two practical
+ * representations of credential material) and reject everything else.
  */
 public final class HardcodedCredentialsCheck implements AstChecker {
 
@@ -33,8 +33,7 @@ public final class HardcodedCredentialsCheck implements AstChecker {
           List.of("CWE-798", "CWE-259"),
           "org.plumb.style.HardcodedCredentialsCheck",
           true,
-          List.of("ast-security-hardcoded-credentials", "hardcoded-credentials")
-      );
+          List.of("ast-security-hardcoded-credentials", "hardcoded-credentials"));
 
   @Override
   public String name() {
@@ -42,9 +41,9 @@ public final class HardcodedCredentialsCheck implements AstChecker {
   }
 
   /**
-   * R?  Step 7 ? the rule prompt the LLM sees when judging one of our hardcoded-credential
-   * findings. Describes when the rule is a true positive vs a false positive (test fixtures,
-   * example docs, framework defaults).
+   * R? Step 7 ? the rule prompt the LLM sees when judging one of our hardcoded-credential findings.
+   * Describes when the rule is a true positive vs a false positive (test fixtures, example docs,
+   * framework defaults).
    */
   private static final String AI_PROMPT =
       """

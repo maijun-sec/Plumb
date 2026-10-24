@@ -2,7 +2,6 @@ package org.plumb.style.performance;
 
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleRegistry;
 import org.plumb.style.AstChecker;

@@ -5,17 +5,17 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Array index uses {@code i + 1} / {@code i - 1} pattern ? confirm it doesn't reach the array length.
+ * Array index uses {@code i + 1} / {@code i - 1} pattern ? confirm it doesn't reach the array
+ * length.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ArrayAccessExpr.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ArrayAccessExpr.class)} before.
  */
 public final class RangeArrayIndexCheck implements AstChecker {
 
@@ -28,8 +28,7 @@ public final class RangeArrayIndexCheck implements AstChecker {
           List.of("CWE-129"),
           "org.plumb.style.RangeArrayIndexCheck",
           true,
-          List.of("ast-performance-array-index", "range-array-index")
-      );
+          List.of("ast-performance-array-index", "range-array-index"));
 
   @Override
   public String name() {

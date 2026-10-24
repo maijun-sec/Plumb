@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class JUnitTestsShouldIncludeAssertCheck implements AstChecker {
           List.of(),
           "org.plumb.style.JUnitTestsShouldIncludeAssertCheck",
           true,
-          List.of("ast-style-tests-should-include-assert", "junit-no-assert")
-      );
+          List.of("ast-style-tests-should-include-assert", "junit-no-assert"));
 
   @Override
   public String name() {

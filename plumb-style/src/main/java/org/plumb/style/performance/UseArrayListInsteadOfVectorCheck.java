@@ -3,7 +3,6 @@ package org.plumb.style.performance;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -14,15 +13,16 @@ public final class UseArrayListInsteadOfVectorCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-performance-use-arraylist-instead-of-vector", "USE_ARRAYLIST_INSTEAD_OF_VECTOR"),
+          new RuleId(
+              "ast-performance-use-arraylist-instead-of-vector", "USE_ARRAYLIST_INSTEAD_OF_VECTOR"),
           "use ArrayList instead of Vector",
           RuleDef.Severity.LOW,
           RuleDef.Type.PERFORMANCE,
           List.of(),
           "org.plumb.style.UseArrayListInsteadOfVectorCheck",
           true,
-          List.of("ast-performance-arraylist-instead-of-vector", "use-arraylist-instead-of-vector")
-      );
+          List.of(
+              "ast-performance-arraylist-instead-of-vector", "use-arraylist-instead-of-vector"));
 
   @Override
   public String name() {

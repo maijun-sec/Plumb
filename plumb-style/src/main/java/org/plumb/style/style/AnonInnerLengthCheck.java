@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.Position;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -34,7 +33,8 @@ public final class AnonInnerLengthCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.AnonInnerLengthCheck",
-          true,List.of("ast-style-inner-length", "anon-inner-length"),
+          true,
+          List.of("ast-style-inner-length", "anon-inner-length"),
           List.of(PARAMS));
 
   @Override
@@ -68,5 +68,4 @@ public final class AnonInnerLengthCheck implements AstChecker {
         RuleDef.Severity.LOW,
         "anon-class");
   }
-
-  }
+}

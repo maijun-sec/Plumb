@@ -9,7 +9,6 @@ import com.github.javaparser.ast.stmt.TryStmt;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -27,8 +26,7 @@ public final class UseTryWithResourcesCheck implements AstChecker {
           List.of("CWE-400"),
           "org.plumb.style.UseTryWithResourcesCheck",
           true,
-          List.of("ast-style-try-with-resources", "use-try-with-resources")
-      );
+          List.of("ast-style-try-with-resources", "use-try-with-resources"));
 
   @Override
   public String name() {

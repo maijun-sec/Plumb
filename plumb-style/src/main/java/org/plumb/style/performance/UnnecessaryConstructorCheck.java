@@ -2,7 +2,6 @@ package org.plumb.style.performance;
 
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class UnnecessaryConstructorCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UnnecessaryConstructorCheck",
           true,
-          List.of("ast-performance-unnecessary-constructor", "unnecessary-constructor")
-      );
+          List.of("ast-performance-unnecessary-constructor", "unnecessary-constructor"));
 
   @Override
   public String name() {

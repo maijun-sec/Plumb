@@ -7,7 +7,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.comments.Comment;
 import java.util.List;
 import java.util.Optional;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class CommentDefaultAccessCheck implements AstChecker {
           List.of(),
           "org.plumb.style.CommentDefaultAccessCheck",
           true,
-          List.of("ast-style-comment-default-access", "comment-default-access")
-      );
+          List.of("ast-style-comment-default-access", "comment-default-access"));
 
   @Override
   public String name() {

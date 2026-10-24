@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.ConditionalExpr;
 import com.github.javaparser.ast.expr.Expression;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class BitwiseOrCheck implements AstChecker {
           List.of("CWE-783"),
           "org.plumb.style.BitwiseOrCheck",
           true,
-          List.of("ast-style-or", "bitwise-or")
-      );
+          List.of("ast-style-or", "bitwise-or"));
 
   @Override
   public String name() {

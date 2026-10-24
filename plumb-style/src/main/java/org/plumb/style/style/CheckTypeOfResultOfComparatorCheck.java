@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class CheckTypeOfResultOfComparatorCheck implements AstChecker {
           List.of(),
           "org.plumb.style.CheckTypeOfResultOfComparatorCheck",
           true,
-          List.of("ast-style-comparator-result", "comparator-result")
-      );
+          List.of("ast-style-comparator-result", "comparator-result"));
 
   @Override
   public String name() {

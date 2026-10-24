@@ -7,7 +7,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.stmt.IfStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class NestedIfDepthCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NestedIfDepthCheck",
           true,
-          List.of("ast-style-nested-if-depth", "nested-if-depth")
-      );
+          List.of("ast-style-nested-if-depth", "nested-if-depth"));
 
   @Override
   public String name() {
@@ -50,12 +48,7 @@ public final class NestedIfDepthCheck implements AstChecker {
       int line = f.getBegin().map(p -> p.line).orElse(-1);
       int col = f.getBegin().map(p -> p.column).orElse(-1);
       ctx.report(
-          line,
-          col,
-          DEFAULT_RULE,
-          "Nested if depth > 2; refactor",
-          RuleDef.Severity.LOW,
-          "if");
+          line, col, DEFAULT_RULE, "Nested if depth > 2; refactor", RuleDef.Severity.LOW, "if");
     }
   }
 }

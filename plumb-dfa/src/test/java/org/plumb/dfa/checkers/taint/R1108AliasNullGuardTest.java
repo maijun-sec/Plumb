@@ -32,8 +32,8 @@ import org.plumb.tac.translate.TacTranslator;
  *
  * <p>Every branch of the suppression logic can only conclude "this path already proves the receiver
  * safe". None of them can conclude "this path might make it less safe". That asymmetry is the
- * point: the alias map is conservative, so any use of it that could <em>add</em> findings would fire
- * on unrelated same-type locals and turn a precision fix into a false-positive generator.
+ * point: the alias map is conservative, so any use of it that could <em>add</em> findings would
+ * fire on unrelated same-type locals and turn a precision fix into a false-positive generator.
  *
  * <p>So the tests below pair every positive with the control that must keep firing.
  */
@@ -84,15 +84,15 @@ class R1108AliasNullGuardTest {
         new org.plumb.dfa.points.PointsToSolver(
             org.plumb.dfa.points.AbstractObject.Policy.CALL_SITE);
     solver.solve(p.functions());
-    java.util.Set<TacOperand.TacVar> out = new java.util.LinkedHashSet<>(
-        solver.aliasesOf(
-            fn.signature(), a, org.plumb.dfa.points.AbstractObject.Context.empty()));
+    java.util.Set<TacOperand.TacVar> out =
+        new java.util.LinkedHashSet<>(
+            solver.aliasesOf(
+                fn.signature(), a, org.plumb.dfa.points.AbstractObject.Context.empty()));
     // Copy equivalence: `b = a` makes the two names the same reference regardless of whether
     // either has a points-to set. A parameter has none by construction (nobody calls the entry
     // method), so the points-to-only answer is empty and the alias question would be unanswerable
     // for exactly the commonest case: a guarded parameter.
-    out.addAll(
-        org.plumb.dfa.points.CopyEquivalence.of(p.functions()).classOf(fn.signature(), a));
+    out.addAll(org.plumb.dfa.points.CopyEquivalence.of(p.functions()).classOf(fn.signature(), a));
     return out;
   }
 
@@ -219,17 +219,16 @@ class R1108AliasNullGuardTest {
     TacProgram p = parse(source, "A4.java");
     TacOperand.TacVar a = var(p, "run", "a");
     TacOperand.TacVar b = var(p, "run", "b");
-    assertThat(provenNonNullAtUse(p, "run", a, b))
-        .as("no guard anywhere on this path")
-        .isFalse();
+    assertThat(provenNonNullAtUse(p, "run", a, b)).as("no guard anywhere on this path").isFalse();
   }
 
   /**
    * An empty alias class must not be read as "no aliases".
    *
-   * <p>The receiver here is a parameter, whose points-to set is empty, so the solver reports nothing.
-   * Treating that as "provably unshared" would suppress every unguarded parameter dereference — i.e.
-   * it would silently disable the rule. The suppression must fall through to reporting.
+   * <p>The receiver here is a parameter, whose points-to set is empty, so the solver reports
+   * nothing. Treating that as "provably unshared" would suppress every unguarded parameter
+   * dereference — i.e. it would silently disable the rule. The suppression must fall through to
+   * reporting.
    */
   @Test
   void anUnknownReceiverIsNotTreatedAsProvablySafe() throws Exception {

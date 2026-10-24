@@ -7,7 +7,6 @@ import com.github.javaparser.ast.type.ArrayType;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.Type;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,9 @@ public final class ReturnEmptyCollectionRatherThanNullCheck implements AstChecke
           List.of(),
           "org.plumb.style.ReturnEmptyCollectionRatherThanNullCheck",
           true,
-          List.of("ast-performance-return-empty-collection-rather-than-null", "return-null-collection")
-      );
+          List.of(
+              "ast-performance-return-empty-collection-rather-than-null",
+              "return-null-collection"));
 
   @Override
   public String name() {

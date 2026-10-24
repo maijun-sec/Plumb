@@ -7,7 +7,6 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.PrimitiveType;
 import com.github.javaparser.ast.type.Type;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class EqualsNoObjectCheck implements AstChecker {
           List.of("CWE-697"),
           "org.plumb.style.EqualsNoObjectCheck",
           true,
-          List.of("ast-style-self-no-object", "equals-no-object")
-      );
+          List.of("ast-style-self-no-object", "equals-no-object"));
 
   @Override
   public String name() {

@@ -2,7 +2,6 @@ package org.plumb.style.error;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -11,8 +10,8 @@ import org.plumb.style.StyleContext;
 /**
  * Do not override {@code finalize()} ? deprecated in Java 9+.
  *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit)
- * + findAll(MethodDeclaration.class)} before.
+ * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(MethodDeclaration.class)} before.
  */
 public final class NoFinalizerCheck implements AstChecker {
 
@@ -25,8 +24,7 @@ public final class NoFinalizerCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NoFinalizerCheck",
           true,
-          List.of("ast-error-finalizer-no", "no-finalizer")
-      );
+          List.of("ast-error-finalizer-no", "no-finalizer"));
 
   @Override
   public String name() {

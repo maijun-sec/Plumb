@@ -6,7 +6,6 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.Type;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -54,7 +53,8 @@ public final class LooseCouplingCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.LooseCouplingCheck",
-          true,List.of("ast-design-loose-coupling", "design-loose-coupling", "loose-type-coupling"),
+          true,
+          List.of("ast-design-loose-coupling", "design-loose-coupling", "loose-type-coupling"),
           List.of(PARAMS));
 
   @Override

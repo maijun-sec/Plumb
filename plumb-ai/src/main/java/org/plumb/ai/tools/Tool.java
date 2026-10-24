@@ -25,29 +25,27 @@ import org.plumb.ai.agent.ToolResult;
  */
 public interface Tool {
 
-    /**
-     * Stable tool id. Used as the OpenAI function name and in {@code tool_calls[].function.name}.
-     * Must be unique within a {@link ToolRegistry}.
-     */
-    String name();
+  /**
+   * Stable tool id. Used as the OpenAI function name and in {@code tool_calls[].function.name}.
+   * Must be unique within a {@link ToolRegistry}.
+   */
+  String name();
 
-    /**
-     * Human prose. The LLM uses this to decide when to call the tool. Keep it short and concrete.
-     */
-    String description();
+  /** Human prose. The LLM uses this to decide when to call the tool. Keep it short and concrete. */
+  String description();
 
-    /**
-     * The JSON Schema the LLM uses to construct the arguments object. Built once at registration time
-     * and cached.
-     */
-    ToolDefinition definition();
+  /**
+   * The JSON Schema the LLM uses to construct the arguments object. Built once at registration time
+   * and cached.
+   */
+  ToolDefinition definition();
 
-    /**
-     * Run the tool. The {@code args} is a parsed JSON object (Jackson {@link JsonNode}); tool
-     * implementations navigate it with {@code args.path("foo").asText()}.
-     *
-     * @return a {@link ToolResult.ok}/{@link ToolResult.error} that the agent will feed back to the
-     * LLM.
-     */
-    ToolResult execute(ToolContext ctx, JsonNode args);
+  /**
+   * Run the tool. The {@code args} is a parsed JSON object (Jackson {@link JsonNode}); tool
+   * implementations navigate it with {@code args.path("foo").asText()}.
+   *
+   * @return a {@link ToolResult.ok}/{@link ToolResult.error} that the agent will feed back to the
+   *     LLM.
+   */
+  ToolResult execute(ToolContext ctx, JsonNode args);
 }

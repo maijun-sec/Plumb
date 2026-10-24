@@ -4,7 +4,6 @@ import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -37,7 +36,8 @@ public final class CollapsibleIfStatementsCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.CollapsibleIfStatementsCheck",
-          true,List.of("ast-style-collapsible-if-statements", "collapsible-if-statements"),
+          true,
+          List.of("ast-style-collapsible-if-statements", "collapsible-if-statements"),
           List.of(PARAMS));
 
   @Override

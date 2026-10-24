@@ -17,7 +17,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -33,8 +32,7 @@ public final class CompareToReturnValueCheck implements AstChecker {
           List.of(),
           "org.plumb.style.CompareToReturnValueCheck",
           true,
-          List.of("ast-bug-compareto-return-value", "compareto-return-value")
-      );
+          List.of("ast-bug-compareto-return-value", "compareto-return-value"));
 
   @Override
   public String name() {

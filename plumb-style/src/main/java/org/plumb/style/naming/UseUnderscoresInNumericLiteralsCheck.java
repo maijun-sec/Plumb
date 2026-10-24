@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import com.github.javaparser.ast.expr.LiteralExpr;
 import com.github.javaparser.ast.expr.LongLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -36,13 +35,18 @@ public final class UseUnderscoresInNumericLiteralsCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-naming-use-underscores-in-numeric-literals", "USE_UNDERSCORES_IN_NUMERIC_LITERALS"),
+          new RuleId(
+              "ast-naming-use-underscores-in-numeric-literals",
+              "USE_UNDERSCORES_IN_NUMERIC_LITERALS"),
           "Numeric literal should use underscore separators for readability",
           RuleDef.Severity.LOW,
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.UseUnderscoresInNumericLiteralsCheck",
-          true,List.of("ast-naming-use-underscores-in-numeric-literals", "use-underscores-in-numeric-literals"),
+          true,
+          List.of(
+              "ast-naming-use-underscores-in-numeric-literals",
+              "use-underscores-in-numeric-literals"),
           List.of(PARAMS));
 
   @Override

@@ -3,7 +3,6 @@ package org.plumb.style.performance;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,8 +11,8 @@ import org.plumb.style.StyleContext;
 /**
  * Comparing {@code String} literals with {@code ==} / {@code !=} ? use {@code .equals()}.
  *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit)
- * + findAll(BinaryExpr.class)} before.
+ * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(BinaryExpr.class)} before.
  */
 public final class StringLiteralEqualityCheck implements AstChecker {
 
@@ -26,8 +25,7 @@ public final class StringLiteralEqualityCheck implements AstChecker {
           List.of(),
           "org.plumb.style.StringLiteralEqualityCheck",
           true,
-          List.of("ast-performance-string-literal-equality", "string-literal-equality")
-      );
+          List.of("ast-performance-string-literal-equality", "string-literal-equality"));
 
   @Override
   public String name() {

@@ -52,8 +52,20 @@ class R1115AllowlistSanitizerTest {
             BuiltinFactKinds.registryWithBuiltins(),
             base.checkers(),
             base.cweMappings(),
-            new TuningConfig(2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family",
-                "sarif", false, 0),
+            new TuningConfig(
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
 
     FindingReporter reporter =
@@ -85,9 +97,7 @@ class R1115AllowlistSanitizerTest {
             }
             """,
             "AllowlistedIdentifier.java");
-    assertThat(out)
-        .as("every path out of the guard holds one of two literals")
-        .isEmpty();
+    assertThat(out).as("every path out of the guard holds one of two literals").isEmpty();
   }
 
   /**
@@ -182,9 +192,9 @@ class R1115AllowlistSanitizerTest {
    * relaxation is the dangerous one: there are ~1358 {@code = "literal"} assignments across the
    * corpus, so forgetting the comparison turns the tracker into a taint eraser.
    *
-   * <p>The comparison is what makes the later substitution meaningful. Without it, any
-   * {@code x = "safe"} anywhere would clear {@code x}, and the real taint on the fall-through
-   * would disappear with it.
+   * <p>The comparison is what makes the later substitution meaningful. Without it, any {@code x =
+   * "safe"} anywhere would clear {@code x}, and the real taint on the fall-through would disappear
+   * with it.
    */
   @Test
   void aLiteralAssignmentWithoutAComparisonIsStillReported() throws Exception {
@@ -240,9 +250,9 @@ class R1115AllowlistSanitizerTest {
   /**
    * R1118: only an equality against a STRING LITERAL counts as a comparison.
    *
-   * <p>A third surviving mutation accepted a comparison where neither side was a literal.
-   * {@code if (!a.equals(b)) { x = "safe"; }} constrains nothing about either operand, so treating
-   * it as an allowlist would be unsound.
+   * <p>A third surviving mutation accepted a comparison where neither side was a literal. {@code if
+   * (!a.equals(b)) { x = "safe"; }} constrains nothing about either operand, so treating it as an
+   * allowlist would be unsound.
    */
   @Test
   void aComparisonBetweenTwoVariablesIsNotAnAllowlist() throws Exception {
@@ -273,8 +283,8 @@ class R1115AllowlistSanitizerTest {
    * was allowed to certify <em>every</em> compared variable rather than just the one it tested.
    *
    * <p>Why the simpler {@code twoVars} case did not catch it: {@link
-   * org.plumb.dfa.taint.EqualityAllowlistTracker#isAllowlisted} is consulted in exactly one place --
-   * the MOVE handler, for the MOVE's destination. A variable that is merely <em>marked</em> but
+   * org.plumb.dfa.taint.EqualityAllowlistTracker#isAllowlisted} is consulted in exactly one place
+   * -- the MOVE handler, for the MOVE's destination. A variable that is merely <em>marked</em> but
    * never reassigned is inert. So the bug only becomes observable when the wrongly-certified
    * variable later receives a literal assignment of its own, which is exactly what happens here.
    *

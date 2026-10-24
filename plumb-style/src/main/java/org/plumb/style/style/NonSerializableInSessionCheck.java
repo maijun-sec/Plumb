@@ -8,7 +8,6 @@ import com.github.javaparser.resolution.declarations.ResolvedTypeDeclaration;
 import com.github.javaparser.resolution.types.ResolvedType;
 import java.util.List;
 import java.util.Locale;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -57,8 +56,7 @@ public final class NonSerializableInSessionCheck implements AstChecker {
           List.of("CWE-579"),
           "org.plumb.style.NonSerializableInSessionCheck",
           true,
-          List.of("ast-style-non-serializable-in-session-style", "non-serializable-in-session")
-      );
+          List.of("ast-style-non-serializable-in-session-style", "non-serializable-in-session"));
 
   private static final String SERIALIZABLE = "java.io.Serializable";
   private static final String HTTP_SESSION = "javax.servlet.http.HttpSession";

@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.stmt.BlockStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class NestedBlockCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NestedBlockCheck",
           true,
-          List.of("ast-style-nested-block", "nested-block")
-      );
+          List.of("ast-style-nested-block", "nested-block"));
 
   @Override
   public String name() {

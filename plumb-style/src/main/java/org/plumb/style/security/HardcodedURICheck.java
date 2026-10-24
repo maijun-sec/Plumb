@@ -2,7 +2,6 @@ package org.plumb.style.security;
 
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class HardcodedURICheck implements AstChecker {
           List.of(),
           "org.plumb.style.HardcodedURICheck",
           true,
-          List.of("ast-security-hardcoded-uri", "hardcoded-uri")
-      );
+          List.of("ast-security-hardcoded-uri", "hardcoded-uri"));
 
   @Override
   public String name() {

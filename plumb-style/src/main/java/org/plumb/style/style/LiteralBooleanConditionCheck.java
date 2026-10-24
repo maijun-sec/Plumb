@@ -58,7 +58,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -75,8 +74,7 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
           List.of("CWE-570"),
           "org.plumb.style.LiteralBooleanConditionCheck",
           true,
-          List.of("ast-style-literal-boolean-condition", "literal-boolean-condition")
-      );
+          List.of("ast-style-literal-boolean-condition", "literal-boolean-condition"));
 
   private static final RuleDef ALWAYS_TRUE =
       new RuleDef(
@@ -87,8 +85,7 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
           List.of("CWE-571"),
           "org.plumb.style.LiteralBooleanConditionCheck",
           true,
-          List.of("ast-style-expression-always-false", "literal-boolean-condition")
-      );
+          List.of("ast-style-expression-always-false", "literal-boolean-condition"));
 
   private final Set<String> reported = new HashSet<>();
   private final Map<String, Boolean> constantBools = new HashMap<>();

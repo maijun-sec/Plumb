@@ -706,8 +706,8 @@
 
 **规则说明**
 
-> A {@link java.util.Comparator#compare(Object, Object) Comparator.compare()} method that returns
-> a raw `1` or `-1` literal instead of delegating to {@link Integer#compare(int, int)}.
+> A {@link java.util.Comparator#compare(Object, Object) Comparator.compare()} method that returns a
+> raw `1` or `-1` literal instead of delegating to {@link Integer#compare(int, int)}.
 >
 > The previous implementation had two bugs (S1 audit 2026-10-17):
 >
@@ -806,11 +806,10 @@
 
 > Comparing with null using `.equals(null)` ? should be `==`.
 >
-> M5 part-2 migration (2026-10-17): the previous implementation used `visit(CompilationUnit) + findAll(MethodCallExpr.class)`, which costs one full-AST walk per
-> file just to find `MethodCallExpr` nodes ? wasted work because the dispatcher already
-> gives us a `visit(MethodCallExpr)` callback that fires once per `MethodCallExpr`
-> with no extra walking. This rewrite uses the per-node-type callback directly; behaviour is
-> unchanged.
+> M5 part-2 migration (2026-10-17): the previous implementation used `visit(CompilationUnit) + findAll(MethodCallExpr.class)`, which costs one full-AST walk per file
+> just to find `MethodCallExpr` nodes ? wasted work because the dispatcher already gives us a
+> `visit(MethodCallExpr)` callback that fires once per `MethodCallExpr` with no extra
+> walking. This rewrite uses the per-node-type callback directly; behaviour is unchanged.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1081,9 +1080,8 @@
 
 > Boolean expression too complex (default threshold 3 ? meaning 3+ `&&`/`||` literals).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(BinaryExpr.class)` before. The complexity count uses a stack
-> walk on each `BinaryExpr` subtree so we don't recurse the whole tree at each top-level
-> `AND`/`OR`.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(BinaryExpr.class)` before. The complexity count uses a stack walk on each `BinaryExpr` subtree so we don't recurse the whole tree at each top-level `AND`/`OR`.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1140,16 +1138,16 @@
 > The pre-S4 implementation flagged every class that had `extends` + empty `implements` list, which produced 100% false positives ? almost every JPA / Spring class has
 > exactly this shape (`class User extends BaseEntity implements Serializable`).
 >
-> S4 audit (2026-10-17) replaced that with a meaningful check: walk the extends/implements
-> list of the parent class as written in the same compilation unit (single-file resolution) and
-> flag the child only when it declares an interface that the parent already declares.
+> S4 audit (2026-10-17) replaced that with a meaningful check: walk the extends/implements list
+> of the parent class as written in the same compilation unit (single-file resolution) and flag the
+> child only when it declares an interface that the parent already declares.
 >
 > <b>M5 part-2 migration (2026-10-17):</b> the original used `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceDeclaration)` (1 walk) + a manual per-class loop. This rewrite keeps
-> the per-class logic in `visit(ClassOrInterfaceDeclaration, ctx)` ? the dispatcher hands
-> each declaration to us directly. The class-by-name index is still needed (we look up the
-> parent's interfaces by simple name) and is built lazily in `init` so the work is
-> amortised across every `visit` call within the same file.
+> findAll(ClassOrInterfaceDeclaration)` (1 walk) + a manual per-class loop. This rewrite keeps the
+> per-class logic in `visit(ClassOrInterfaceDeclaration, ctx)` ? the dispatcher hands each
+> declaration to us directly. The class-by-name index is still needed (we look up the parent's
+> interfaces by simple name) and is built lazily in `init` so the work is amortised across
+> every `visit` call within the same file.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1220,11 +1218,11 @@
 
 **规则说明**
 
-> Public method in non-`final` class should be `abstract`, `final`, or
-> `private` (DESIGN_FOR_EXTENSION).
+> Public method in non-`final` class should be `abstract`, `final`, or `private` (DESIGN_FOR_EXTENSION).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)` before. The inner per-method
-> walk stays as a local loop because we need to know the enclosing class is non-`final`.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ClassOrInterfaceDeclaration.class)` before. The inner per-method walk stays as a local
+> loop because we need to know the enclosing class is non-`final`.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1333,7 +1331,8 @@
 
 > Class has too many methods (default threshold 100).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ClassOrInterfaceDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1349,8 +1348,9 @@
 
 > Abstract class should not have a `public` constructor.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)` before. The inner per-ctor
-> walk stays as a local loop because we need to know the enclosing class is abstract.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ClassOrInterfaceDeclaration.class)` before. The inner per-ctor walk stays as a local loop
+> because we need to know the enclosing class is abstract.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1380,8 +1380,8 @@
 
 > Catching `Throwable` is too broad.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit)
-> + findAll(CatchClause.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(CatchClause.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1471,7 +1471,8 @@
 
 > Catching `Throwable` / `Error` is too broad.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(CatchClause.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(CatchClause.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1516,7 +1517,8 @@
 
 > Exception is dropped ? empty `catch` block with no logging or rethrow.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(CatchClause.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(CatchClause.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1532,8 +1534,8 @@
 
 > Empty catch block ? strict.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit)
-> + findAll(CatchClause.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(CatchClause.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1665,8 +1667,8 @@
 
 > Catching `Exception` or `Throwable` is too broad.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit)
-> + findAll(CatchClause.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(CatchClause.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1711,8 +1713,8 @@
 
 > Do not override `finalize()` ? deprecated in Java 9+.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit)
-> + findAll(MethodDeclaration.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(MethodDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1742,7 +1744,8 @@
 
 > `finalize()` should not be overloaded (i.e., should take no parameters).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(MethodDeclaration.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(MethodDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1787,7 +1790,8 @@
 
 > Throwing raw `Exception` / `RuntimeException` / `Throwable`.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ObjectCreationExpr.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ObjectCreationExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1870,7 +1874,8 @@
 
 > Method declares too many checked exceptions (default threshold 4).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(MethodDeclaration.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(MethodDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1932,7 +1937,8 @@
 
 > Abstract class should be named starting with `Abstract` (heuristic).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ClassOrInterfaceDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1949,9 +1955,9 @@
 
 > Array variable name should be plural or end with `s`.
 >
-> M5 part-3 migration (2026-10-17): the previous implementation used `visit(CompilationUnit) + findAll(VariableDeclarator.class)` (1 walk per file). This rewrite
-> uses the per-node-type callback directly; the dispatcher hands each `VariableDeclarator`
-> to us with no extra walking.
+> M5 part-3 migration (2026-10-17): the previous implementation used `visit(CompilationUnit) + findAll(VariableDeclarator.class)` (1 walk per file). This rewrite uses
+> the per-node-type callback directly; the dispatcher hands each `VariableDeclarator` to us
+> with no extra walking.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2052,7 +2058,8 @@
 
 > Class has too many instance fields (data abstraction coupling).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ClassOrInterfaceDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2110,9 +2117,9 @@
 
 > Class type parameter name should be uppercase single letter (`T`, `K`, `V`).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)` before. Note this rule
-> applies to BOTH classes and interfaces (inter-class parameter names) ? interface parameters
-> follow the same convention.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ClassOrInterfaceDeclaration.class)` before. Note this rule applies to BOTH classes and
+> interfaces (inter-class parameter names) ? interface parameters follow the same convention.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2128,7 +2135,8 @@
 
 > Class with only private constructors should be `final`.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ClassOrInterfaceDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2299,8 +2307,9 @@
 
 > Interface type parameter name should be uppercase single letter.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)` before. Only fires when
-> `c.isInterface()` is true (ClassTypeParameterNameCheck handles class declarations).
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ClassOrInterfaceDeclaration.class)` before. Only fires when `c.isInterface()` is
+> true (ClassTypeParameterNameCheck handles class declarations).
 
 **规则约束 / 可调参数**: (无)
 
@@ -2330,8 +2339,9 @@
 
 > Local final variable name should be camelCase.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(VariableDeclarator.class)` before. The "final" filter is
-> preserved by inspecting the parent `VariableDeclarationExpr`.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(VariableDeclarator.class)` before. The "final" filter is preserved by inspecting the
+> parent `VariableDeclarationExpr`.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2377,8 +2387,9 @@
 
 > Local variable name should be camelCase.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(VariableDeclarator.class)` before. The "skip final" filter is
-> preserved by inspecting the parent `VariableDeclarationExpr`.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(VariableDeclarator.class)` before. The "skip final" filter is preserved by inspecting the
+> parent `VariableDeclarationExpr`.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2437,7 +2448,8 @@
 
 > Long variable name (`> 20` chars, strict).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(VariableDeclarator.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(VariableDeclarator.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2472,7 +2484,8 @@
 
 > Method name should be camelCase.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(MethodDeclaration.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(MethodDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2490,10 +2503,9 @@
 > Method name should be camelCase.
 >
 > M1 audit (2026-10-17) widened the test-method exemption: the previous version only skipped
-> methods whose name started with `test`, which works for JUnit 3 / 4 conventions but
-> misses JUnit 5's `@Test`-annotated methods with arbitrary names (e.g.
-> `shouldHandleEmptyInput()`, `returns_404_when_path_does_not_exist()`). The new
-> version also accepts any method carrying a JUnit `@Test` / `@ParameterizedTest` /
+> methods whose name started with `test`, which works for JUnit 3 / 4 conventions but misses
+> JUnit 5's `@Test`-annotated methods with arbitrary names (e.g. `shouldHandleEmptyInput()`, `returns_404_when_path_does_not_exist()`). The new version also
+> accepts any method carrying a JUnit `@Test` / `@ParameterizedTest` /
 > `@RepeatedTest` / `@TestFactory` / `@TestTemplate` annotation.
 
 **规则约束 / 可调参数**: (无)
@@ -2510,8 +2522,9 @@
 
 > Method override missing `@Override` annotation.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)` before. The inner
-> per-method walk stays as a local loop because we need the enclosing class.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ClassOrInterfaceDeclaration.class)` before. The inner per-method walk stays as a local
+> loop because we need the enclosing class.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2525,10 +2538,10 @@
 
 **规则说明**
 
-> Local variable starting with uppercase letter (non-`String` types) ? should be
-> camelCase.
+> Local variable starting with uppercase letter (non-`String` types) ? should be camelCase.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(VariableDeclarator.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(VariableDeclarator.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2545,8 +2558,8 @@
 > Outer type filename should match the type name.
 >
 > This rule is intrinsically per-file (one check per `CompilationUnit`) ? no useful
-> per-node-type migration here. Kept as `visit(CompilationUnit)` since the dispatcher
-> hands the file root directly.
+> per-node-type migration here. Kept as `visit(CompilationUnit)` since the dispatcher hands
+> the file root directly.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2579,9 +2592,8 @@
 >
 > Disabled by default (R-834) ? 0 TP / 100% FP on Juliet R-832 baseline. M5 part-4 migration
 > (2026-10-17): per-node-type callback already; this checker was already in modern form. Kept
-> `visit(CompilationUnit)` because `PackageDeclaration` is visited once per file at
-> the top level (the dispatcher hands the `CompilationUnit` directly; we don't need
-> `findAll` here).
+> `visit(CompilationUnit)` because `PackageDeclaration` is visited once per file at the
+> top level (the dispatcher hands the `CompilationUnit` directly; we don't need `findAll` here).
 
 **规则约束 / 可调参数**: (无)
 
@@ -2723,10 +2735,11 @@
 
 > Unnecessary fully-qualified enum name (should be a simple reference with import).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(FieldAccessExpr.class)` before. Note this checker fires on
-> ANY `FieldAccessExpr` with a dot ? same caveat as `UnnecessaryFullyQualifiedClassNameCheck`
-> — it's a heuristic. The M4 fix in plumb-ai only checks for type references; here we keep
-> the simple-name heuristic since this is purely AST-level.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(FieldAccessExpr.class)` before. Note this checker fires on ANY `FieldAccessExpr`
+> with a dot ? same caveat as `UnnecessaryFullyQualifiedClassNameCheck` — it's a heuristic.
+> The M4 fix in plumb-ai only checks for type references; here we keep the simple-name heuristic
+> since this is purely AST-level.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2742,9 +2755,9 @@
 
 > Local variable declared but never used.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(MethodDeclaration.class)` before. The inner per-variable walk
-> stays as a local loop because we need to count `NameExpr` references inside the
-> enclosing method.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(MethodDeclaration.class)` before. The inner per-variable walk stays as a local loop
+> because we need to count `NameExpr` references inside the enclosing method.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2844,7 +2857,8 @@
 
 > Array store of incompatible type.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(VariableDeclarator.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(VariableDeclarator.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2860,7 +2874,8 @@
 
 > Array created with too-large initial size (4+ digits).
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ArrayCreationExpr.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ArrayCreationExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2974,8 +2989,8 @@
 > Boxed constructor usage (`new Integer(...)` / `new Long(...)` / `new
 > Double(...)`). Use `Integer.valueOf` or autoboxing instead.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit)
-> + findAll(ObjectCreationExpr.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ObjectCreationExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2992,7 +3007,8 @@
 > Using `Hashtable` / `Vector` / `Stack` ? prefer `java.util.concurrent`
 > alternatives or `ArrayList` / `HashMap`.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ClassOrInterfaceType.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ClassOrInterfaceType.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3010,10 +3026,8 @@
 > `==` / `!=` comparison on a {@link String} value. Use `.equals()` instead.
 >
 > S3 audit (2026-10-17) replaced the previous name-heuristic with JavaParser's type resolver.
-> The old code accepted any `NameExpr` whose text contained `str/name/text/msg/word/label`
-> which produced both false positives (`stream`, `strong`, `buffer`, etc.) and
-> false negatives (`query`, `command`, `input`). The new code asks
-> `StyleContext.resolvedTypeOf(...)` whether the operand is actually `java.lang.String`.
+> The old code accepted any `NameExpr` whose text contained `str/name/text/msg/word/label` which produced both false positives (`stream`, `strong`, `buffer`, etc.) and false negatives (`query`, `command`, `input`). The new code asks `StyleContext.resolvedTypeOf(...)` whether the operand is
+> actually `java.lang.String`.
 >
 > When the type solver cannot resolve (e.g. the project isn't on the classpath or the symbol is
 > declared in a different module), we fall back to: a `StringLiteralExpr` is always
@@ -3080,8 +3094,8 @@
 
 > Don't use `float` / `double` as a `for`-loop counter.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit)
-> + findAll(ForStmt.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ForStmt.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3127,9 +3141,10 @@
 
 > Array literal has heterogeneous types (EC_BAD_ARRAY_STORE).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ArrayCreationExpr.class)` before. The inner traversal of the
-> initializer values stays as a local loop (not a per-node callback) because we need to compare
-> adjacent element types and break on the first mismatch.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ArrayCreationExpr.class)` before. The inner traversal of the initializer values stays as
+> a local loop (not a per-node callback) because we need to compare adjacent element types and
+> break on the first mismatch.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3145,7 +3160,8 @@
 
 > `for` loop with a `float` / `double` counter.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ForStmt.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ForStmt.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3178,10 +3194,9 @@
 > inside the loop condition re-evaluates on every iteration; for `ArrayList` and similar
 > implementations that's O(1) but it's still wasted work and a smell.
 >
-> S5 audit (2026-10-17) broadened coverage: the previous version only checked the right
-> operand of `<` in `ForStmt`, missing `<=` / `>` / `>=`, the
-> `for (int i = list.size(); ...)` form (size on the left), and the `while`
-> counterpart entirely.
+> S5 audit (2026-10-17) broadened coverage: the previous version only checked the right operand
+> of `<` in `ForStmt`, missing `<=` / `>` / `>=`, the `for (int
+> i = list.size(); ...)` form (size on the left), and the `while` counterpart entirely.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3197,7 +3212,8 @@
 
 > Use non-obsolete JDK collection (e.g. `Vector`, `Hashtable`, `Stack`).
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ObjectCreationExpr.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ObjectCreationExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3251,7 +3267,8 @@
 
 > Malformed `printf` / `format` string literal.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(MethodCallExpr.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(MethodCallExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3267,7 +3284,8 @@
 
 > Non-`void` method with empty body ? should return a value.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(MethodDeclaration.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(MethodDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3283,7 +3301,8 @@
 
 > Array initialisation should not have a trailing comma.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ArrayInitializerExpr.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ArrayInitializerExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3299,7 +3318,8 @@
 
 > `new Boolean/Integer/Long(primitive)` ? use `valueOf` instead.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ObjectCreationExpr.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ObjectCreationExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3333,9 +3353,8 @@
 
 > Return an empty array instead of `null` for array-returning methods.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ReturnStmt.class)` before. The parent-method lookup is
-> preserved via `n.findAncestor(MethodDeclaration.class)` so we still skip non-array
-> returns.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ReturnStmt.class)` before. The parent-method lookup is preserved via `n.findAncestor(MethodDeclaration.class)` so we still skip non-array returns.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3365,9 +3384,11 @@
 
 **规则说明**
 
-> Array index uses `i + 1` / `i - 1` pattern ? confirm it doesn't reach the array length.
+> Array index uses `i + 1` / `i - 1` pattern ? confirm it doesn't reach the array
+> length.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ArrayAccessExpr.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ArrayAccessExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3384,7 +3405,8 @@
 
 > Array index uses `.length` directly ? should be `.length - 1` (RANGE_ARRAY_LENGTH).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ArrayAccessExpr.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ArrayAccessExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3472,7 +3494,8 @@
 
 > Return empty collection instead of `null`.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ReturnStmt.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ReturnStmt.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3530,9 +3553,9 @@
 
 > `StringBuffer` field in a {@link Serializable} class is not thread-safe ? use `StringBuilder`.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)` before. The inner per-field
-> walk stays as a local loop because we need to compare against the enclosing class's
-> implements list.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ClassOrInterfaceDeclaration.class)` before. The inner per-field walk stays as a local
+> loop because we need to compare against the enclosing class's implements list.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3591,8 +3614,8 @@
 
 > Comparing `String` literals with `==` / `!=` ? use `.equals()`.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit)
-> + findAll(BinaryExpr.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(BinaryExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3623,8 +3646,8 @@
 
 > Unnecessary primitive boxing (`new Integer(5)` etc.) ? prefer autoboxing or `Integer.valueOf`.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit)
-> + findAll(ObjectCreationExpr.class)` before.
+> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(ObjectCreationExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3794,7 +3817,8 @@
 
 > Hard-coded IP address in code.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(StringLiteralExpr.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(StringLiteralExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3808,10 +3832,10 @@
 
 **规则说明**
 
-> Case-insensitive `String` comparison should use `equalsIgnoreCase` rather than
-> `toLowerCase()/toUpperCase() + equals()`.
+> Case-insensitive `String` comparison should use `equalsIgnoreCase` rather than `toLowerCase()/toUpperCase() + equals()`.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(MethodCallExpr.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(MethodCallExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3910,7 +3934,8 @@
 
 > Hard-coded absolute path (DMI_HARDCODED_ABSOLUTE_PATH, CWE-22).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(StringLiteralExpr.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(StringLiteralExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3942,10 +3967,11 @@
 
 > String literal assigned to a credential-named variable / field (use config / secrets manager).
 >
-> S2 audit (2026-10-17) fixed the type filter ? the original `if (!primitiveType && !"String".equals(...)) if(!"char".equals(...))` chain was confusing and
-> the `char` branch was dead code (the `char` case had already been let through by the
-> first check). The new filter is a clean predicate: accept `String` and `char[]`
-> (the two practical representations of credential material) and reject everything else.
+> S2 audit (2026-10-17) fixed the type filter ? the original `if (!primitiveType &&
+> !"String".equals(...)) if(!"char".equals(...))` chain was confusing and the `char` branch
+> was dead code (the `char` case had already been let through by the first check). The new
+> filter is a clean predicate: accept `String` and `char[]` (the two practical
+> representations of credential material) and reject everything else.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3962,7 +3988,8 @@
 
 > Hardcoded IP address in source.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(StringLiteralExpr.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(StringLiteralExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -4186,8 +4213,7 @@
 
 **规则说明**
 
-> R740-R743: AST-level CWE-690 (NULL Pointer Dereference
-> From Return) checker.
+> R740-R743: AST-level CWE-690 (NULL Pointer Dereference From Return) checker.
 
 **规则约束 / 可调参数**: (无)
 
@@ -4233,38 +4259,35 @@
 >
 > ```
 >
-> The tainted value is spliced into the ANNOTATION's string constant. No call ever
-> carries it, so there is no data-flow edge for a taint engine to follow -- the value never
-> becomes a call argument. The TAC does not even carry annotations: the mapper method lowers
-> to a bare `RETURN`. Reaching this shape therefore needs the annotation itself, which
-> only the AST has.
+> The tainted value is spliced into the ANNOTATION's string constant. No call ever carries it,
+> so there is no data-flow edge for a taint engine to follow -- the value never becomes a call
+> argument. The TAC does not even carry annotations: the mapper method lowers to a bare `RETURN`. Reaching this shape therefore needs the annotation itself, which only the AST has.
 >
 > <h2>What the rule knows about the frameworks</h2>
 >
-> The two MyBatis placeholder forms have opposite safety properties, and that difference is
-> the whole point of the rule:
+> The two MyBatis placeholder forms have opposite safety properties, and that difference is the
+> whole point of the rule:
 >
-> <li>`#{name`} becomes a `PreparedStatement` placeholder (`?`). The value
-> is bound as data and cannot change the SQL structure. This is the safe form.
-> <li>`${name`} is a raw string substitution. The value becomes part of the SQL text
-> and can change the statement. This is the dangerous form.
+> <li>`#{name`} becomes a `PreparedStatement` placeholder (`?`). The value is
+> bound as data and cannot change the SQL structure. This is the safe form.
+> <li>`${name`} is a raw string substitution. The value becomes part of the SQL text and
+> can change the statement. This is the dangerous form.
 >
-> `${`} does have legitimate uses -- a dynamic table name, a dynamic column, an
-> `ORDER BY` direction -- because a prepared-statement placeholder cannot stand in for
-> SQL structure. So the rule does not report every `${`}; it reports a `${`}
-> whose placeholder names a method parameter. A `${`} that names nothing the method
-> receives cannot be influenced by the caller and is left alone.
+> `${`} does have legitimate uses -- a dynamic table name, a dynamic column, an `ORDER BY` direction -- because a prepared-statement placeholder cannot stand in for SQL
+> structure. So the rule does not report every `${`}; it reports a `${`} whose
+> placeholder names a method parameter. A `${`} that names nothing the method receives cannot
+> be influenced by the caller and is left alone.
 >
-> The same distinction applies to the JPA / Hibernate annotation forms that take raw JPQL
-> or HQL: `@Query("... " + value)` and `@Query("... ${value`")} are reported, and
-> a query whose text carries no interpolation is not.
+> The same distinction applies to the JPA / Hibernate annotation forms that take raw JPQL or
+> HQL: `@Query("... " + value)` and `@Query("... ${value`")} are reported, and a query
+> whose text carries no interpolation is not.
 >
 > <h2>What is reported</h2>
 >
 > <li>A mapper SQL annotation whose text contains a `${...`} naming one of the method's
 > parameters.
-> <li>A query annotation whose text is built by concatenating a method parameter into the
-> query string.
+> <li>A query annotation whose text is built by concatenating a method parameter into the query
+> string.
 >
 > Both are reported at the annotation, because that is where the SQL text lives.
 
@@ -4282,7 +4305,8 @@
 
 > Path manipulation via `getCanonicalPath()` / `getAbsolutePath()`.
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) + findAll(MethodCallExpr.class)` before.
+> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
+> findAll(MethodCallExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -5615,8 +5639,7 @@
 
 **规则说明**
 
-> Month literal in `1..12` range passed to `set/add`/`MONTH` ? use
-> `Calendar.JANUARY (0)` .. `Calendar.DECEMBER (11)` instead (DMI_BAD_MONTH).
+> Month literal in `1..12` range passed to `set/add`/`MONTH` ? use `Calendar.JANUARY (0)` .. `Calendar.DECEMBER (11)` instead (DMI_BAD_MONTH).
 
 **规则约束 / 可调参数**: (无)
 
@@ -6456,10 +6479,9 @@
 
 **规则说明**
 
-> Matches a `<form ... method="get" ...>` tag (single- or double-quoted
-> value). Operates on `StringLiteralExpr.asString()`, which is the
-> canonical un-escaped form (the Java-escape sequences are stripped by
-> the parser, so we get the actual HTML text).
+> Matches a `<form ... method="get" ...>` tag (single- or double-quoted value). Operates on
+> `StringLiteralExpr.asString()`, which is the canonical un-escaped form (the Java-escape
+> sequences are stripped by the parser, so we get the actual HTML text).
 
 **规则约束 / 可调参数**: (无)
 
@@ -6811,9 +6833,9 @@
 > User-controlled input in a SQL query string (CWE-89).
 >
 > Heuristic: flag any `StringLiteralExpr` whose name suggests a query (`"sql"`,
-> `"query"`, `"hql"`, `"jpql"`, `"select ..."`, `"from "`) and
-> whose enclosing context is a controller endpoint. We use the simple-name heuristic because
-> AST-only analysis can't see runtime data flow.
+> `"query"`, `"hql"`, `"jpql"`, `"select ..."`, `"from "`) and whose
+> enclosing context is a controller endpoint. We use the simple-name heuristic because AST-only
+> analysis can't see runtime data flow.
 
 **规则约束 / 可调参数**: (无)
 

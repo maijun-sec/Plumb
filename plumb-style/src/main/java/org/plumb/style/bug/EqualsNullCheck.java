@@ -3,7 +3,6 @@ package org.plumb.style.bug;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NullLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -13,11 +12,10 @@ import org.plumb.style.StyleContext;
  * Comparing with null using {@code .equals(null)} ? should be {@code ==}.
  *
  * <p>M5 part-2 migration (2026-10-17): the previous implementation used {@code
- * visit(CompilationUnit) + findAll(MethodCallExpr.class)}, which costs one full-AST walk per
- * file just to find {@code MethodCallExpr} nodes ? wasted work because the dispatcher already
- * gives us a {@code visit(MethodCallExpr)} callback that fires once per {@code MethodCallExpr}
- * with no extra walking. This rewrite uses the per-node-type callback directly; behaviour is
- * unchanged.
+ * visit(CompilationUnit) + findAll(MethodCallExpr.class)}, which costs one full-AST walk per file
+ * just to find {@code MethodCallExpr} nodes ? wasted work because the dispatcher already gives us a
+ * {@code visit(MethodCallExpr)} callback that fires once per {@code MethodCallExpr} with no extra
+ * walking. This rewrite uses the per-node-type callback directly; behaviour is unchanged.
  */
 public final class EqualsNullCheck implements AstChecker {
 
@@ -30,8 +28,7 @@ public final class EqualsNullCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EqualsNullCheck",
           true,
-          List.of("ast-bug-equals-null", "equals-null")
-      );
+          List.of("ast-bug-equals-null", "equals-null"));
 
   @Override
   public String name() {

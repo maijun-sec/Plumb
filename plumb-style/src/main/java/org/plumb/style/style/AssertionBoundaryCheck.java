@@ -43,8 +43,7 @@ public final class AssertionBoundaryCheck implements AstChecker {
           List.of(),
           "org.plumb.style.AssertionBoundaryCheck",
           /* enabled */ true,
-          List.of("ast-style-assertion-boundary", "assertion-boundary")
-      );
+          List.of("ast-style-assertion-boundary", "assertion-boundary"));
 
   @Override
   public String name() {
@@ -65,7 +64,11 @@ public final class AssertionBoundaryCheck implements AstChecker {
         line,
         col,
         DEFAULT_RULE,
-        "Assertion uses `" + hit.operator + "` boundary (" + hit.snippet + ") — review: strict `<`/`>` may be intended",
+        "Assertion uses `"
+            + hit.operator
+            + "` boundary ("
+            + hit.snippet
+            + ") — review: strict `<`/`>` may be intended",
         RuleDef.Severity.LOW,
         hit.snippet);
   }

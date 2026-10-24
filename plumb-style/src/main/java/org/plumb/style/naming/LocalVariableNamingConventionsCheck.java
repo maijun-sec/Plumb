@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class LocalVariableNamingConventionsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.LocalVariableNamingConventionsCheck",
           true,
-          List.of("ast-naming-variable-naming-conventions", "local-var-naming")
-      );
+          List.of("ast-naming-variable-naming-conventions", "local-var-naming"));
 
   private static final Pattern CAMEL_CASE = Pattern.compile("^[a-z][a-zA-Z0-9]*$");
 

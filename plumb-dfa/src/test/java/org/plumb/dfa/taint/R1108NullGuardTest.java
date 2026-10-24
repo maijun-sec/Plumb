@@ -29,10 +29,10 @@ import org.plumb.tac.translate.TacTranslator;
  * <p>Both spellings of the idiom are covered, and they are covered separately because they are
  * carried by <em>different</em> structures. {@code if (v != null) {...}} leaves the fact on the
  * active guard stack; {@code if (v == null) return;} leaves it on the false-edge map, because the
- * JUMP that ends the then-block pops the guard before the trailing use is reached. An implementation
- * that consulted only the active stack would pass the first shape and fail the second — which is
- * the more common real-world spelling, so the gap would have been noticed immediately in practice
- * and is worth pinning here instead.
+ * JUMP that ends the then-block pops the guard before the trailing use is reached. An
+ * implementation that consulted only the active stack would pass the first shape and fail the
+ * second — which is the more common real-world spelling, so the gap would have been noticed
+ * immediately in practice and is worth pinning here instead.
  */
 class R1108NullGuardTest {
 
@@ -50,11 +50,11 @@ class R1108NullGuardTest {
    * performs a call on {@code probe}'s receiver.
    *
    * <p>Driving the real tracker over real IR rather than hand-built instructions: the point of the
-   * gate is that the <em>translation</em> plus the tracker together produce the fact, so a test that
-   * injected a synthetic guard would pass even if the IR never emitted the comparison.
+   * gate is that the <em>translation</em> plus the tracker together produce the fact, so a test
+   * that injected a synthetic guard would pass even if the IR never emitted the comparison.
    */
-  private java.util.Set<TacOperand.TacVar> provenNonNullAtCall(TacProgram p, String fnName,
-      String probe) {
+  private java.util.Set<TacOperand.TacVar> provenNonNullAtCall(
+      TacProgram p, String fnName, String probe) {
     for (TacFunction fn : p.functions()) {
       if (fn.name() == null || !fn.name().equals(fnName)) continue;
       GuardTracker tracker = new GuardTracker();
@@ -167,12 +167,11 @@ class R1108NullGuardTest {
   }
 
   /**
-   * A non-null comparison against something other than {@code null} proves nothing about
-   * null-ness.
+   * A non-null comparison against something other than {@code null} proves nothing about null-ness.
    *
-   * <p>This is the negative control that keeps {@code isProvenNonNull} from degenerating into
-   * "any NE guard counts". Matching the operator alone would make {@code if (v != other)} suppress
-   * a genuine null dereference.
+   * <p>This is the negative control that keeps {@code isProvenNonNull} from degenerating into "any
+   * NE guard counts". Matching the operator alone would make {@code if (v != other)} suppress a
+   * genuine null dereference.
    */
   @Test
   void comparisonAgainstANonNullLiteralDoesNotProveNonNull() throws Exception {

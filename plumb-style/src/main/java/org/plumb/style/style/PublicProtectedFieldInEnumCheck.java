@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.EnumDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class PublicProtectedFieldInEnumCheck implements AstChecker {
           List.of(),
           "org.plumb.style.PublicProtectedFieldInEnumCheck",
           true,
-          List.of("ast-style-public-field-enum", "publicprotectedfieldinenumcheck")
-      );
+          List.of("ast-style-public-field-enum", "publicprotectedfieldinenumcheck"));
 
   @Override
   public String name() {

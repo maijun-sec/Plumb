@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.BooleanLiteralExpr;
 import com.github.javaparser.ast.expr.UnaryExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class BooleanLiteralNegationCheck implements AstChecker {
           List.of(),
           "org.plumb.style.BooleanLiteralNegationCheck",
           true,
-          List.of("ast-style-boolean-literal-negation", "bool-negation")
-      );
+          List.of("ast-style-boolean-literal-negation", "bool-negation"));
 
   @Override
   public String name() {

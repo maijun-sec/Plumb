@@ -2,7 +2,6 @@ package org.plumb.style.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.Locale;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -61,8 +60,7 @@ class CheckerConfigTest {
                 .equals(CheckerConfig.credentialNameKeywords()))
         .isTrue();
     // Mutating a copy must not affect the central set.
-    java.util.Set<String> copy =
-        new java.util.HashSet<>(CheckerConfig.credentialNameKeywords());
+    java.util.Set<String> copy = new java.util.HashSet<>(CheckerConfig.credentialNameKeywords());
     copy.add("hacked");
     assertThat(CheckerConfig.credentialNameKeywords()).doesNotContain("hacked");
   }
@@ -85,7 +83,9 @@ class CheckerConfigTest {
   void controllerAnnotationsContainsSpringAndJakarta() {
     assertThat(CheckerConfig.controllerAnnotations())
         .as("Spring @Controller/@RestController (short and FQN) must remain in the singleton set")
-        .contains("Controller", "RestController",
+        .contains(
+            "Controller",
+            "RestController",
             "org.springframework.stereotype.Controller",
             "org.springframework.web.bind.annotation.RestController");
   }
@@ -94,7 +94,8 @@ class CheckerConfigTest {
   void servletSuperclassesContainsAllVariants() {
     assertThat(CheckerConfig.servletSuperclasses())
         .as("javax.servlet + jakarta.servlet variants must all be present")
-        .contains("javax.servlet.Servlet",
+        .contains(
+            "javax.servlet.Servlet",
             "javax.servlet.http.HttpServlet",
             "jakarta.servlet.Servlet",
             "jakarta.servlet.http.HttpServlet");

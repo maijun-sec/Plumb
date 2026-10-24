@@ -6,7 +6,6 @@ import com.github.javaparser.ast.stmt.Statement;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class RvRemoveRepeatCallsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.RvRemoveRepeatCallsCheck",
           true,
-          List.of("ast-style-remove-repeat-method-calls", "rv-remove-repeat-calls")
-      );
+          List.of("ast-style-remove-repeat-method-calls", "rv-remove-repeat-calls"));
 
   @Override
   public String name() {

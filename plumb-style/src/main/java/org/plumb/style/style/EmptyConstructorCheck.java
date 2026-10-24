@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class EmptyConstructorCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EmptyConstructorCheck",
           true,
-          List.of("ast-style-constructor-empty", "empty-constructor")
-      );
+          List.of("ast-style-constructor-empty", "empty-constructor"));
 
   @Override
   public String name() {

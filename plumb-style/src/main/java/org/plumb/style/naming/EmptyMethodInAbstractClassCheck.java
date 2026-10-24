@@ -3,7 +3,6 @@ package org.plumb.style.naming;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -37,7 +36,9 @@ public final class EmptyMethodInAbstractClassCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.EmptyMethodInAbstractClassCheck",
-          true,List.of("ast-naming-uncommented-empty-method-in-abstract-class", "uncommented-empty-method"),
+          true,
+          List.of(
+              "ast-naming-uncommented-empty-method-in-abstract-class", "uncommented-empty-method"),
           List.of(PARAMS));
 
   @Override

@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.stmt.SynchronizedStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class SwlSleepWithLockCheck implements AstChecker {
           List.of("CWE-820"),
           "org.plumb.style.SwlSleepWithLockCheck",
           true,
-          List.of("ast-style-sleep-with-lock-held", "swl-sleep-lock")
-      );
+          List.of("ast-style-sleep-with-lock-held", "swl-sleep-lock"));
 
   @Override
   public String name() {

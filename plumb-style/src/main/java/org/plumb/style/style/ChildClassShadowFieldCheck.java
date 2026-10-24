@@ -17,7 +17,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -34,8 +33,7 @@ public final class ChildClassShadowFieldCheck implements AstChecker {
           List.of("CWE-849"),
           "org.plumb.style.ChildClassShadowFieldCheck",
           true,
-          List.of("ast-style-class-shadow-field", "child-class-shadow-field")
-      );
+          List.of("ast-style-class-shadow-field", "child-class-shadow-field"));
 
   @Override
   public String name() {

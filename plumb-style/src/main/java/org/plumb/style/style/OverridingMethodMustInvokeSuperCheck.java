@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -15,15 +14,15 @@ public final class OverridingMethodMustInvokeSuperCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-style-overridingmethodmustinvokesuper-sb", "OVERRIDINGMETHODMUSTINVOKESUPER_SB"),
+          new RuleId(
+              "ast-style-overridingmethodmustinvokesuper-sb", "OVERRIDINGMETHODMUSTINVOKESUPER_SB"),
           "Overriding method must invoke super",
           RuleDef.Severity.LOW,
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.OverridingMethodMustInvokeSuperCheck",
           true,
-          List.of("ast-style-overriding-must-invoke-super", "overridingmethodmustinvokesuper_sb")
-      );
+          List.of("ast-style-overriding-must-invoke-super", "overridingmethodmustinvokesuper_sb"));
 
   @Override
   public String name() {

@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,11 @@ public final class SystemPrintlnCheck implements AstChecker {
           List.of(),
           "org.plumb.style.SystemPrintlnCheck",
           false,
-          List.of("ast-style-system-println", "system-println")
-      ); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832 baseline)
+          List.of(
+              "ast-style-system-println",
+              "system-println")); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832
+
+  // baseline)
 
   @Override
   public String name() {

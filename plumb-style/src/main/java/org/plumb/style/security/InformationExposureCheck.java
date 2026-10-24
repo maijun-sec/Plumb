@@ -21,7 +21,6 @@ import com.github.javaparser.ast.type.PrimitiveType;
 import com.github.javaparser.ast.type.Type;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -120,8 +119,7 @@ public final class InformationExposureCheck implements AstChecker {
           List.of("CWE-200"),
           "org.plumb.style.security.InformationExposureCheck",
           true,
-          List.of("ast-security-information-exposure", "information-exposure")
-      );
+          List.of("ast-security-information-exposure", "information-exposure"));
 
   @Override
   public String name() {

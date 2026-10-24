@@ -16,9 +16,9 @@ import org.plumb.tac.ir.TacProgram;
 /**
  * The implicit {@code this} must carry the type of the class that DECLARES the method.
  *
- * <p>The translator used to type every {@code this} as {@code source.primaryTypeName()} — the
- * FIRST top-level class of the compilation unit. In a file with more than one class, every class
- * after the first was therefore typed as the first class:
+ * <p>The translator used to type every {@code this} as {@code source.primaryTypeName()} — the FIRST
+ * top-level class of the compilation unit. In a file with more than one class, every class after
+ * the first was therefore typed as the first class:
  *
  * <pre>
  *   class Repository { }
@@ -137,7 +137,8 @@ class ThisReceiverTypeTest {
 
   @Test
   void staticMethodHasNoThisReceiver() {
-    String src = "class A { public static void s(String a) { } }\nclass B { public void b() { } }\n";
+    String src =
+        "class A { public static void s(String a) { } }\nclass B { public void b() { } }\n";
 
     for (TacFunction f : translate(src).functions()) {
       for (TacInstruction ins : f.instructions()) {

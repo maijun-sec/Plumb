@@ -18,7 +18,6 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.ReferenceType;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -44,8 +43,7 @@ public final class OverlyBroadCatchCheck implements AstChecker {
           List.of("CWE-396"),
           "org.plumb.style.style.OverlyBroadCatchCheck",
           true,
-          List.of("dfa-style-catch-generic-exception", "overly-broad-catch")
-      );
+          List.of("dfa-style-catch-generic-exception", "overly-broad-catch"));
 
   @Override
   public String name() {

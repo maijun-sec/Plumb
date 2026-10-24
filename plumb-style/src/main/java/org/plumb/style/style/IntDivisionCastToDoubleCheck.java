@@ -6,7 +6,6 @@ import com.github.javaparser.ast.expr.EnclosedExpr;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.type.PrimitiveType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class IntDivisionCastToDoubleCheck implements AstChecker {
           List.of(),
           "org.plumb.style.IntDivisionCastToDoubleCheck",
           true,
-          List.of("ast-style-division-cast-to-double", "int-division-cast-to-double")
-      );
+          List.of("ast-style-division-cast-to-double", "int-division-cast-to-double"));
 
   @Override
   public String name() {

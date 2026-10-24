@@ -116,10 +116,9 @@ class JavaSourceParserTest {
 
   /**
    * R797: the same jar referenced from N modules must produce only one JarTypeSolver in the
-   * CombinedTypeSolver, not N ? the previous code added a fresh solver per module,
-   * which is both slow and a potential source of "two solvers disagree on the same type"
-   * pathologies. We assert indirectly: passing the same jar twice still produces a working
-   * parser.
+   * CombinedTypeSolver, not N ? the previous code added a fresh solver per module, which is both
+   * slow and a potential source of "two solvers disagree on the same type" pathologies. We assert
+   * indirectly: passing the same jar twice still produces a working parser.
    */
   @Test
   void duplicateJarEntriesAreDeduped(@TempDir Path root) throws IOException {
@@ -148,13 +147,14 @@ class JavaSourceParserTest {
             ParserConfiguration.LanguageLevel.JAVA_17,
             java.nio.charset.StandardCharsets.ISO_8859_1,
             new com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver(
-                new com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver()));
+                new com.github.javaparser.symbolsolver.resolution.typesolvers
+                    .ReflectionTypeSolver()));
     assertThat(p.sourceEncoding()).isEqualTo(java.nio.charset.StandardCharsets.ISO_8859_1);
   }
 
   /**
-   * R797 (post-fix): when a module's encoding is set, it propagates through buildTypeSolverFor
-   * to the parser.
+   * R797 (post-fix): when a module's encoding is set, it propagates through buildTypeSolverFor to
+   * the parser.
    */
   @Test
   void moduleEncodingDerivesParserEncoding() {
@@ -174,8 +174,7 @@ class JavaSourceParserTest {
   @Test
   void moduleScopeFromString() {
     assertThat(JavaModule.Scope.fromString("test")).isEqualTo(JavaModule.Scope.TEST);
-    assertThat(JavaModule.Scope.fromString("testImplementation"))
-        .isEqualTo(JavaModule.Scope.TEST);
+    assertThat(JavaModule.Scope.fromString("testImplementation")).isEqualTo(JavaModule.Scope.TEST);
     assertThat(JavaModule.Scope.fromString(null)).isEqualTo(JavaModule.Scope.COMPILE);
   }
 }

@@ -4,7 +4,6 @@ package org.plumb.style.bug;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class UnusedNullCheckInEqualsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UnusedNullCheckInEqualsCheck",
           true,
-          List.of("ast-bug-unused-null-check-equals", "unusednullinequals")
-      );
+          List.of("ast-bug-unused-null-check-equals", "unusednullinequals"));
 
   @Override
   public String name() {

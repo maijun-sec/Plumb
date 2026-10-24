@@ -1,6 +1,5 @@
 package org.plumb.rules;
 
-import org.plumb.rules.RuleDef;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -305,8 +304,8 @@ public final class RuleRegistry {
    * <p>The checker slug is the key {@link org.plumb.style.StyleContext#setCurrentRule(String)} uses
    * to scope parameter overrides, and the key a user writes in {@code checks.<slug>} or passes to
    * {@code --rule}. If the slug is not resolvable to the checker's own rule, a {@code
-   * checks.<slug>.params.*} override silently lands on the wrong rule (or nowhere), and the
-   * rule's declared parameter defaults become unreachable through the slug.
+   * checks.<slug>.params.*} override silently lands on the wrong rule (or nowhere), and the rule's
+   * declared parameter defaults become unreachable through the slug.
    *
    * <p>Claiming the slug here makes that guarantee structural: a checker cannot forget to list its
    * own slug, because the registry derives it from the checker itself. The slug is only claimed

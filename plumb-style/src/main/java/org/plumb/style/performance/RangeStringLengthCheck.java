@@ -3,7 +3,6 @@ package org.plumb.style.performance;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class RangeStringLengthCheck implements AstChecker {
           List.of("CWE-129"),
           "org.plumb.style.RangeStringLengthCheck",
           true,
-          List.of("ast-performance-string-length", "range-string-length")
-      );
+          List.of("ast-performance-string-length", "range-string-length"));
 
   @Override
   public String name() {

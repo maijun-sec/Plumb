@@ -8,7 +8,6 @@ import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.stmt.Statement;
 import java.util.List;
 import java.util.Optional;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -19,15 +18,18 @@ public final class StringBuilderConcatenationCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-performance-string-builder-concatenation-in-loop", "STRING_BUILDER_CONCATENATION_IN_LOOP"),
+          new RuleId(
+              "ast-performance-string-builder-concatenation-in-loop",
+              "STRING_BUILDER_CONCATENATION_IN_LOOP"),
           "String concatenation in a loop should use StringBuilder",
           RuleDef.Severity.MEDIUM,
           RuleDef.Type.PERFORMANCE,
           List.of(),
           "org.plumb.style.StringBuilderConcatenationCheck",
           true,
-          List.of("ast-performance-string-builder-concatenation-in-loop", "string-builder-concatenation-in-loop")
-      );
+          List.of(
+              "ast-performance-string-builder-concatenation-in-loop",
+              "string-builder-concatenation-in-loop"));
 
   @Override
   public String name() {

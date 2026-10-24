@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.type.ArrayType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class UseVarargsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UseVarargsCheck",
           true,
-          List.of("ast-style-varargs", "use-varargs")
-      );
+          List.of("ast-style-varargs", "use-varargs"));
 
   @Override
   public String name() {

@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class ResultOfMethodCallIgnoredCheck implements AstChecker {
           List.of("CWE-252"),
           "org.plumb.style.ResultOfMethodCallIgnoredCheck",
           true,
-          List.of("ast-style-ignored-result-ast", "ignored-result")
-      );
+          List.of("ast-style-ignored-result-ast", "ignored-result"));
 
   /**
    * The set of method names that look like "comparison / predicate" methods whose return value

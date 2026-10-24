@@ -3,7 +3,6 @@ package org.plumb.style.naming;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,9 +11,9 @@ import org.plumb.style.StyleContext;
 /**
  * Method override missing {@code @Override} annotation.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)} before. The inner
- * per-method walk stays as a local loop because we need the enclosing class.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ClassOrInterfaceDeclaration.class)} before. The inner per-method walk stays as a local
+ * loop because we need the enclosing class.
  */
 public final class MissingOverrideCheck implements AstChecker {
 
@@ -27,8 +26,7 @@ public final class MissingOverrideCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MissingOverrideCheck",
           true,
-          List.of("ast-naming-missing-override-strict", "missing-override")
-      );
+          List.of("ast-naming-missing-override-strict", "missing-override"));
 
   @Override
   public String name() {

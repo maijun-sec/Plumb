@@ -11,8 +11,8 @@ import java.util.Set;
  * consult to decide whether a finding is warranted.
  *
  * <p><b>M7 audit (2026-10-17):</b> before this class existed, each checker hard-coded its keywords,
- * sanitiser names, and other reference data inline. Operators wanting to extend a checker (e.g.
- * add a new weak crypto algorithm to {@code InsecureCryptoCheck}'s blacklist, or a new credential
+ * sanitiser names, and other reference data inline. Operators wanting to extend a checker (e.g. add
+ * a new weak crypto algorithm to {@code InsecureCryptoCheck}'s blacklist, or a new credential
  * keyword to {@code HardcodedCredentialsCheck}'s name heuristic) had to find the source file and
  * edit it. {@link CheckerConfig} pulls those tables out of the checkers so they're visible in one
  * place and easy to override.
@@ -24,8 +24,8 @@ import java.util.Set;
  *       org.plumb.style.security.InsecureCryptoCheck} (algorithm blacklist) and {@link
  *       org.plumb.style.security.HardcodedCredentialsCheck} (credential-name keywords). The other
  *       ~591 checkers still hard-code their data and will be migrated as a follow-up.
- *   <li>Each table is a {@code Map.ofEntries} / {@link Set#of} constant (immutable). Operators
- *       can read them but cannot mutate at runtime.
+ *   <li>Each table is a {@code Map.ofEntries} / {@link Set#of} constant (immutable). Operators can
+ *       read them but cannot mutate at runtime.
  *   <li>If a future checker needs a configurable list, add the table here, then have the checker
  *       consult {@link #weakCryptoAlgorithms()} / {@link #credentialNameKeywords()} etc.
  * </ol>
@@ -33,8 +33,8 @@ import java.util.Set;
  * <p><b>Why this isn't tied to the rule-config system:</b> plumb-rules has its own parameter
  * mechanism ({@code RuleDef.parameters[]}) for per-rule overrides. These tables are different —
  * they're static reference data, not per-scan configuration. Forcing them through the
- * rule-parameter system would mean every scanner has to wire a parameter map for data that
- * 99% of operators never touch.
+ * rule-parameter system would mean every scanner has to wire a parameter map for data that 99% of
+ * operators never touch.
  */
 public final class CheckerConfig {
 

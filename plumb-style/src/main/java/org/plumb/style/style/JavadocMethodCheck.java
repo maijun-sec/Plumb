@@ -4,7 +4,6 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class JavadocMethodCheck implements AstChecker {
           List.of(),
           "org.plumb.style.JavadocMethodCheck",
           true,
-          List.of("ast-style-javadoc-method", "javadoc-method")
-      );
+          List.of("ast-style-javadoc-method", "javadoc-method"));
 
   @Override
   public String name() {

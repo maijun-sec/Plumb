@@ -6,7 +6,6 @@ import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -62,7 +61,8 @@ public final class NonSerializableClassInSerializableContextCheck implements Ast
           RuleDef.Type.BUG,
           List.of("CWE-502"),
           "org.plumb.style.NonSerializableClassInSerializableContextCheck",
-          true,List.of("ast-style-non-serializable-class", "non-serializable-class"),
+          true,
+          List.of("ast-style-non-serializable-class", "non-serializable-class"),
           List.of(PARAMS));
 
   @Override

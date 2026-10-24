@@ -5,7 +5,6 @@ import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -14,8 +13,8 @@ import org.plumb.style.StyleContext;
 /**
  * {@code for} loop with a {@code float} / {@code double} counter.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ForStmt.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ForStmt.class)} before.
  */
 public final class FloatingPointLoopsCheck implements AstChecker {
 
@@ -28,8 +27,7 @@ public final class FloatingPointLoopsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.FloatingPointLoopsCheck",
           true,
-          List.of("ast-performance-floating-point-loops", "floating-point-loops")
-      );
+          List.of("ast-performance-floating-point-loops", "floating-point-loops"));
 
   @Override
   public String name() {

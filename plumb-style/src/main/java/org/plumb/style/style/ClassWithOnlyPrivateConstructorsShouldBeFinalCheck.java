@@ -4,7 +4,6 @@ import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,8 @@ public final class ClassWithOnlyPrivateConstructorsShouldBeFinalCheck implements
           List.of(),
           "org.plumb.style.ClassWithOnlyPrivateConstructorsShouldBeFinalCheck",
           true,
-          List.of("ast-style-with-only-private-constructors-should-be-final", "private-ctors-final")
-      );
+          List.of(
+              "ast-style-with-only-private-constructors-should-be-final", "private-ctors-final"));
 
   @Override
   public String name() {

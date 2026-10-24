@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test;
 import org.plumb.parser.JavaSourceParser;
 import org.plumb.parser.ParsedSource;
 import org.plumb.rules.RuleRegistry;
-import org.plumb.style.AstDispatcher;
 import org.plumb.style.style.ImportControlCheck;
 
 /** ImportControlCheck — imports should be in canonical order: java, javax, other. */

@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.BinaryExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class WhitespaceAroundCheck implements AstChecker {
           List.of(),
           "org.plumb.style.WhitespaceAroundCheck",
           true,
-          List.of("ast-style-whitespace-around", "whitespacearound")
-      );
+          List.of("ast-style-whitespace-around", "whitespacearound"));
 
   @Override
   public String name() {
@@ -36,8 +34,7 @@ public final class WhitespaceAroundCheck implements AstChecker {
   @Override
   public void visit(BinaryExpr b, StyleContext ctx) {
     String s = b.toString();
-    if (s.matches(".*[a-zA-Z0-9][+][a-zA-Z0-9].*")
-        || s.matches(".*[a-zA-Z0-9][-][a-zA-Z0-9].*")) {
+    if (s.matches(".*[a-zA-Z0-9][+][a-zA-Z0-9].*") || s.matches(".*[a-zA-Z0-9][-][a-zA-Z0-9].*")) {
       int line = b.getBegin().map(p -> p.line).orElse(-1);
       int col = b.getBegin().map(p -> p.column).orElse(-1);
       ctx.report(

@@ -33,7 +33,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -49,8 +48,7 @@ public final class FinalLocalVariableCheck implements AstChecker {
           List.of(),
           "org.plumb.style.FinalLocalVariableCheck",
           true,
-          List.of("ast-naming-local-variable", "final-local-variable")
-      );
+          List.of("ast-naming-local-variable", "final-local-variable"));
 
   @Override
   public String name() {

@@ -22,7 +22,6 @@ import com.github.javaparser.ast.stmt.Statement;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -39,8 +38,7 @@ public final class RedirectWithoutExitCheck implements AstChecker {
           List.of("CWE-698"),
           "org.plumb.style.RedirectWithoutExitCheck",
           true,
-          List.of("ast-style-redirect-without-exit", "redirect-without-exit")
-      );
+          List.of("ast-style-redirect-without-exit", "redirect-without-exit"));
 
   private final Set<String> reported = new HashSet<>();
 

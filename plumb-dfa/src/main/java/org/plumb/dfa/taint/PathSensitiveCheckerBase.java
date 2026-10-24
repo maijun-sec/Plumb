@@ -1,6 +1,5 @@
 package org.plumb.dfa.taint;
 
-import org.plumb.rules.RuleDef;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,6 +10,7 @@ import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.engine.DfaChecker;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.reporter.Finding;
+import org.plumb.rules.RuleDef;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;

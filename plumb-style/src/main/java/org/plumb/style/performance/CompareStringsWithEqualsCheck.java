@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.github.javaparser.resolution.types.ResolvedType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -14,10 +13,11 @@ import org.plumb.style.StyleContext;
  * {@code ==} / {@code !=} comparison on a {@link String} value. Use {@code .equals()} instead.
  *
  * <p>S3 audit (2026-10-17) replaced the previous name-heuristic with JavaParser's type resolver.
- * The old code accepted any {@code NameExpr} whose text contained {@code str/name/text/msg/word/label}
- * which produced both false positives ({@code stream}, {@code strong}, {@code buffer}, etc.) and
- * false negatives ({@code query}, {@code command}, {@code input}). The new code asks
- * {@code StyleContext.resolvedTypeOf(...)} whether the operand is actually {@code java.lang.String}.
+ * The old code accepted any {@code NameExpr} whose text contained {@code
+ * str/name/text/msg/word/label} which produced both false positives ({@code stream}, {@code
+ * strong}, {@code buffer}, etc.) and false negatives ({@code query}, {@code command}, {@code
+ * input}). The new code asks {@code StyleContext.resolvedTypeOf(...)} whether the operand is
+ * actually {@code java.lang.String}.
  *
  * <p>When the type solver cannot resolve (e.g. the project isn't on the classpath or the symbol is
  * declared in a different module), we fall back to: a {@code StringLiteralExpr} is always
@@ -36,8 +36,7 @@ public final class CompareStringsWithEqualsCheck implements AstChecker {
           List.of("CWE-595"),
           "org.plumb.style.CompareStringsWithEqualsCheck",
           true,
-          List.of("ast-performance-compare-strings-with-equals", "string-eq")
-      );
+          List.of("ast-performance-compare-strings-with-equals", "string-eq"));
 
   @Override
   public String name() {

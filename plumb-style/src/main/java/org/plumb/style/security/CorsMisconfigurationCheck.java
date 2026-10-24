@@ -16,7 +16,6 @@ import com.github.javaparser.ast.expr.NormalAnnotationExpr;
 import com.github.javaparser.ast.expr.SingleMemberAnnotationExpr;
 import java.util.List;
 import java.util.Locale;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -44,8 +43,7 @@ public final class CorsMisconfigurationCheck implements AstChecker {
           List.of("CWE-942"),
           "org.plumb.style.security.CorsMisconfigurationCheck",
           true,
-          List.of("dfa-security-cors-misconfig", "cors-misconfig")
-      );
+          List.of("dfa-security-cors-misconfig", "cors-misconfig"));
 
   @Override
   public String name() {

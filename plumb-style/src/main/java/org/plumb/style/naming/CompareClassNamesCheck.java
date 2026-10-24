@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.TypeExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class CompareClassNamesCheck implements AstChecker {
           List.of("CWE-697"),
           "org.plumb.style.CompareClassNamesCheck",
           true,
-          List.of("ast-naming-compare-classes", "compare-class-names")
-      );
+          List.of("ast-naming-compare-classes", "compare-class-names"));
 
   @Override
   public String name() {

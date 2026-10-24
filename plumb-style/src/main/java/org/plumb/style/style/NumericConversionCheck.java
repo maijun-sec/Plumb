@@ -17,7 +17,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.CastExpr;
 import java.util.List;
 import java.util.Map;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;

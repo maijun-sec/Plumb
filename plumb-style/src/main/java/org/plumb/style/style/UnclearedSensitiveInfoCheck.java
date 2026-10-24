@@ -30,7 +30,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -47,8 +46,7 @@ public final class UnclearedSensitiveInfoCheck implements AstChecker {
           List.of("CWE-226"),
           "org.plumb.style.UnclearedSensitiveInfoCheck",
           true,
-          List.of("ast-style-uncleared-sensitive-info", "uncleared-sensitive-info")
-      );
+          List.of("ast-style-uncleared-sensitive-info", "uncleared-sensitive-info"));
 
   private static final Pattern SENSITIVE_NAME =
       Pattern.compile("(?i)(password|passwd|secret|credential|token|pin|ssn|key)");

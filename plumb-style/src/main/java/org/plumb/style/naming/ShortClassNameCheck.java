@@ -2,7 +2,6 @@ package org.plumb.style.naming;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class ShortClassNameCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ShortClassNameCheck",
           true,
-          List.of("ast-naming-class-name", "short-class")
-      );
+          List.of("ast-naming-class-name", "short-class"));
 
   @Override
   public String name() {

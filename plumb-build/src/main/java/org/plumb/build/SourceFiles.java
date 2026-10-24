@@ -7,8 +7,8 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * R-833 ? Shared utilities for the four adapters. Path walking and classpath dedup logic lives
- * here so each adapter only deals with build-system-specific parsing.
+ * R-833 ? Shared utilities for the four adapters. Path walking and classpath dedup logic lives here
+ * so each adapter only deals with build-system-specific parsing.
  */
 public final class SourceFiles {
 
@@ -24,16 +24,16 @@ public final class SourceFiles {
    * .git} point back into the source tree).
    *
    * <p>Hidden directories (names starting with {@code .}) are skipped so {@code .git}, {@code
-   * .idea}, {@code .gradle}, {@code .vscode} etc. do not contribute to the source set. This
-   * matches what IDEs and Maven do.
+   * .idea}, {@code .gradle}, {@code .vscode} etc. do not contribute to the source set. This matches
+   * what IDEs and Maven do.
    *
    * <p>The walk is bounded to {@value #MAX_DEPTH} levels so even a buggy symlink chain cannot
    * exhaust the JVM stack.
    *
    * <p>{@code root} itself is included if it matches.
    *
-   * <p>This is a pure filesystem walk; the adapter is responsible for picking the right roots
-   * (e.g. {@code src/main/java} for production, {@code src/test/java} for tests).
+   * <p>This is a pure filesystem walk; the adapter is responsible for picking the right roots (e.g.
+   * {@code src/main/java} for production, {@code src/test/java} for tests).
    *
    * @param root the directory to walk
    * @param extensions filename suffixes to accept (e.g. {@code ".java"}); may not be null

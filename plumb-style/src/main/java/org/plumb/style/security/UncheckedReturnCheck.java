@@ -28,7 +28,6 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -77,8 +76,7 @@ public final class UncheckedReturnCheck implements AstChecker {
           List.of("CWE-252"),
           "org.plumb.style.security.UncheckedReturnCheck",
           true,
-          List.of("dfa-security-unchecked-return", "unchecked-return")
-      );
+          List.of("dfa-security-unchecked-return", "unchecked-return"));
 
   @Override
   public String name() {

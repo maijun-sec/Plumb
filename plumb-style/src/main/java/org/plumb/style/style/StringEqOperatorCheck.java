@@ -31,7 +31,6 @@ import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -48,8 +47,7 @@ public final class StringEqOperatorCheck implements AstChecker {
           List.of("CWE-597"),
           "org.plumb.style.StringEqOperatorCheck",
           true,
-          List.of("legacy-equal-comparison", "string-eq-operator")
-      );
+          List.of("legacy-equal-comparison", "string-eq-operator"));
 
   private final Set<String> reported = new HashSet<>();
 

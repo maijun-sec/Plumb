@@ -21,27 +21,27 @@ import java.util.List;
  * expects. No Spring-AI, no agent framework.
  */
 public record LlmMessage(
-        String role,
-        String content,
-        String toolCallId, // non-null when role == "tool"
-        String name, // non-null when role == "tool"
-        List<ToolCall> toolCalls // non-null when role == "assistant"
-) {
+    String role,
+    String content,
+    String toolCallId, // non-null when role == "tool"
+    String name, // non-null when role == "tool"
+    List<ToolCall> toolCalls // non-null when role == "assistant"
+    ) {
 
-    public static LlmMessage system(String content) {
-        return new LlmMessage("system", content, null, null, null);
-    }
+  public static LlmMessage system(String content) {
+    return new LlmMessage("system", content, null, null, null);
+  }
 
-    public static LlmMessage user(String content) {
-        return new LlmMessage("user", content, null, null, null);
-    }
+  public static LlmMessage user(String content) {
+    return new LlmMessage("user", content, null, null, null);
+  }
 
-    public static LlmMessage assistant(String content, List<ToolCall> toolCalls) {
-        return new LlmMessage(
-                "assistant", content, null, null, toolCalls == null ? List.of() : toolCalls);
-    }
+  public static LlmMessage assistant(String content, List<ToolCall> toolCalls) {
+    return new LlmMessage(
+        "assistant", content, null, null, toolCalls == null ? List.of() : toolCalls);
+  }
 
-    public static LlmMessage tool(String toolCallId, String name, String content) {
-        return new LlmMessage("tool", content, toolCallId, name, null);
-    }
+  public static LlmMessage tool(String toolCallId, String name, String content) {
+    return new LlmMessage("tool", content, toolCallId, name, null);
+  }
 }

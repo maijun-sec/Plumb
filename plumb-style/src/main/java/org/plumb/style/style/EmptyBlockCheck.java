@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.stmt.*;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -37,7 +36,8 @@ public final class EmptyBlockCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.EmptyBlockCheck",
-          true,List.of("ast-style-empty-block", "empty-block"),
+          true,
+          List.of("ast-style-empty-block", "empty-block"),
           List.of(PARAMS));
 
   @Override

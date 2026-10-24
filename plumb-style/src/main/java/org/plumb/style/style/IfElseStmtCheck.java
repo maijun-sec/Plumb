@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class IfElseStmtCheck implements AstChecker {
           List.of(),
           "org.plumb.style.IfElseStmtCheck",
           true,
-          List.of("ast-style-else-stmt", "if-else-stmt")
-      );
+          List.of("ast-style-else-stmt", "if-else-stmt"));
 
   @Override
   public String name() {

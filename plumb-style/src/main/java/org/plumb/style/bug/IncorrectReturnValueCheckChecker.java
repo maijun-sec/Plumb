@@ -2,7 +2,6 @@ package org.plumb.style.bug;
 
 import com.github.javaparser.ast.expr.*;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -35,7 +34,8 @@ public final class IncorrectReturnValueCheckChecker implements AstChecker {
           RuleDef.Type.STYLE,
           List.of("CWE-253"),
           "org.plumb.style.IncorrectReturnValueCheckChecker",
-          true,List.of("ast-bug-incorrect-return-check", "incorrect-return-check"),
+          true,
+          List.of("ast-bug-incorrect-return-check", "incorrect-return-check"),
           List.of(PARAMS));
 
   @Override

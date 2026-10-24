@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.SuperExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class CloneWithoutSuperCheck implements AstChecker {
           List.of("CWE-664"),
           "org.plumb.style.CloneWithoutSuperCheck",
           true,
-          List.of("ast-style-idiom", "clone-without-super")
-      );
+          List.of("ast-style-idiom", "clone-without-super"));
 
   @Override
   public String name() {

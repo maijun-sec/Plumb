@@ -14,7 +14,6 @@ package org.plumb.style.performance;
 
 import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -30,8 +29,7 @@ public final class LoopsWithSameConditionCheck implements AstChecker {
           List.of(),
           "org.plumb.style.LoopsWithSameConditionCheck",
           true,
-          List.of("ast-performance-same-condition", "loops-same-condition")
-      );
+          List.of("ast-performance-same-condition", "loops-same-condition"));
 
   @Override
   public String name() {

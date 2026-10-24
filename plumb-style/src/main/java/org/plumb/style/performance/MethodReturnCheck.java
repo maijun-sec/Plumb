@@ -2,7 +2,6 @@ package org.plumb.style.performance;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -11,8 +10,8 @@ import org.plumb.style.StyleContext;
 /**
  * Non-{@code void} method with empty body ? should return a value.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(MethodDeclaration.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(MethodDeclaration.class)} before.
  */
 public final class MethodReturnCheck implements AstChecker {
 
@@ -25,8 +24,7 @@ public final class MethodReturnCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MethodReturnCheck",
           true,
-          List.of("ast-performance-method-return-check", "method-return")
-      );
+          List.of("ast-performance-method-return-check", "method-return"));
 
   @Override
   public String name() {

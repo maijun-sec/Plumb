@@ -20,7 +20,6 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -38,8 +37,7 @@ public final class ExplicitFinalizeCallCheck implements AstChecker {
           List.of("CWE-586"),
           "org.plumb.style.ExplicitFinalizeCallCheck",
           true,
-          List.of("ast-style-explicit-finalize-call", "explicit-finalize-qualified-call")
-      );
+          List.of("ast-style-explicit-finalize-call", "explicit-finalize-qualified-call"));
 
   private final Set<String> reported = new HashSet<>();
 

@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.ArrayAccessExpr;
 import com.github.javaparser.ast.expr.ArrayCreationExpr;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class EcBadArrayCompareCheck implements AstChecker {
           List.of("CWE-697"),
           "org.plumb.style.EcBadArrayCompareCheck",
           true,
-          List.of("ast-performance-bad-array-compare", "ec-bad-array-compare")
-      );
+          List.of("ast-performance-bad-array-compare", "ec-bad-array-compare"));
 
   @Override
   public String name() {

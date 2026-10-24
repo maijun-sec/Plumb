@@ -7,7 +7,6 @@ import com.github.javaparser.ast.expr.LongLiteralExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.UnaryExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,15 +22,17 @@ public final class InsufficientSessionExpirationCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-style-insufficient-session-expiration", "INSUFFICIENT_SESSION_EXPIRATION"),
+          new RuleId(
+              "ast-style-insufficient-session-expiration", "INSUFFICIENT_SESSION_EXPIRATION"),
           "HttpSession.setMaxInactiveInterval with non-positive value (CWE-613).",
           RuleDef.Severity.MEDIUM,
           RuleDef.Type.BAD_PRACTICE,
           List.of("CWE-613"),
           "org.plumb.style.InsufficientSessionExpirationCheck",
           true,
-          List.of("ast-style-insufficient-session-expiration-style", "insufficient-session-expiration")
-      );
+          List.of(
+              "ast-style-insufficient-session-expiration-style",
+              "insufficient-session-expiration"));
 
   @Override
   public String name() {

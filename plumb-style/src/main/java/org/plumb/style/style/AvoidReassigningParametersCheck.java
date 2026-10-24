@@ -5,7 +5,6 @@ import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.expr.AssignExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class AvoidReassigningParametersCheck implements AstChecker {
           List.of(),
           "org.plumb.style.AvoidReassigningParametersCheck",
           true,
-          List.of("ast-style-reassigning-parameters", "reassign-parameter")
-      );
+          List.of("ast-style-reassigning-parameters", "reassign-parameter"));
 
   @Override
   public String name() {

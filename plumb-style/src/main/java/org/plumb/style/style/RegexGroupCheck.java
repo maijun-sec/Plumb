@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class RegexGroupCheck implements AstChecker {
           List.of(),
           "org.plumb.style.RegexGroupCheck",
           true,
-          List.of("ast-style-group", "regex-group")
-      );
+          List.of("ast-style-group", "regex-group"));
 
   @Override
   public String name() {

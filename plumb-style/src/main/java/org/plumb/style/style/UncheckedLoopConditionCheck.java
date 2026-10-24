@@ -31,7 +31,6 @@ import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.stmt.ThrowStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -51,8 +50,7 @@ public final class UncheckedLoopConditionCheck implements AstChecker {
           List.of("CWE-674"),
           "org.plumb.style.style.UncheckedLoopConditionCheck",
           true,
-          List.of("ast-style-unchecked-loop-condition", "unchecked-loop-condition")
-      );
+          List.of("ast-style-unchecked-loop-condition", "unchecked-loop-condition"));
 
   @Override
   public String name() {

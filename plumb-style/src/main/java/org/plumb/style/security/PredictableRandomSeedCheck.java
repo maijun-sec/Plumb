@@ -27,7 +27,6 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -46,8 +45,7 @@ public final class PredictableRandomSeedCheck implements AstChecker {
           List.of("CWE-332", "CWE-336"),
           "org.plumb.style.security.PredictableRandomSeedCheck",
           true,
-          List.of("dfa-security-predictable-rng-seed", "predictable-random-seed")
-      );
+          List.of("dfa-security-predictable-rng-seed", "predictable-random-seed"));
 
   @Override
   public String name() {

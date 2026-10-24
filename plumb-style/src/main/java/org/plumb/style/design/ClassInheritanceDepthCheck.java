@@ -2,7 +2,6 @@ package org.plumb.style.design;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class ClassInheritanceDepthCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ClassInheritanceDepthCheck",
           true,
-          List.of("ast-design-inheritance-depth", "inheritance-depth")
-      );
+          List.of("ast-design-inheritance-depth", "inheritance-depth"));
 
   private static final int DEFAULT_MAX = 5;
 

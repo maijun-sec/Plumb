@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.AssignExpr;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,8 @@ public final class StaticWriteFromInstanceCheck implements AstChecker {
           List.of("CWE-668"),
           "org.plumb.style.StaticWriteFromInstanceCheck",
           true,
-          List.of("ast-style-write-to-static-from-instance-method", "st-write-static-from-instance")
-      );
+          List.of(
+              "ast-style-write-to-static-from-instance-method", "st-write-static-from-instance"));
 
   @Override
   public String name() {

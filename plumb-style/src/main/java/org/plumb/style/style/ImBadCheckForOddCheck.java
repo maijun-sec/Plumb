@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class ImBadCheckForOddCheck implements AstChecker {
           List.of("CWE-682"),
           "org.plumb.style.ImBadCheckForOddCheck",
           true,
-          List.of("legacy-bad-check-for-odd", "im-bad-check-odd")
-      );
+          List.of("legacy-bad-check-for-odd", "im-bad-check-odd"));
 
   @Override
   public String name() {

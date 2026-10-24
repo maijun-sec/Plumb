@@ -33,207 +33,199 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class InMemoryMockProvider implements LlmProvider {
 
-    private final List<ScriptedReply> script;
-    private final AtomicInteger cursor = new AtomicInteger(0);
-    private final List<List<LlmMessage>> seenMessages = new ArrayList<>();
-    private final List<String> seenToolChoices = new ArrayList<>();
-    private volatile boolean available = true;
+  private final List<ScriptedReply> script;
+  private final AtomicInteger cursor = new AtomicInteger(0);
+  private final List<List<LlmMessage>> seenMessages = new ArrayList<>();
+  private final List<String> seenToolChoices = new ArrayList<>();
+  private volatile boolean available = true;
 
-    private InMemoryMockProvider(List<ScriptedReply> script) {
-        this.script = script;
+  private InMemoryMockProvider(List<ScriptedReply> script) {
+    this.script = script;
+  }
+
+  /**
+   * Script a sequence of replies. The Nth call returns the Nth entry. Each entry may be a final
+   * answer, a tool call, or a mix (use the {@link ScriptedReply} factory methods).
+   */
+  public static InMemoryMockProvider script(List<ScriptedReply> script) {
+    Objects.requireNonNull(script, "script");
+    return new InMemoryMockProvider(new ArrayList<>(script));
+  }
+
+  /**
+   * Every call returns the same final-answer reply. Scripts enough entries to outlive a 32-turn
+   * loop (caller can override {@code turns} if they need more).
+   */
+  public static InMemoryMockProvider alwaysFinalAnswer(String body) {
+    return alwaysFinalAnswer(body, 32);
+  }
+
+  public static InMemoryMockProvider alwaysFinalAnswer(String body, int turns) {
+    java.util.List<ScriptedReply> entries = new java.util.ArrayList<>(turns);
+    for (int i = 0; i < turns; i++) {
+      entries.add(ScriptedReply.finalAnswer(body));
+    }
+    return script(entries);
+  }
+
+  /**
+   * Every call returns {@code null} (simulate network failure). The Re-Act agent should map this to
+   * {@code PROVIDER_ERROR}.
+   */
+  public static InMemoryMockProvider alwaysNull() {
+    return alwaysNull(32);
+  }
+
+  public static InMemoryMockProvider alwaysNull(int turns) {
+    java.util.List<ScriptedReply> entries = new java.util.ArrayList<>(turns);
+    for (int i = 0; i < turns; i++) {
+      entries.add(ScriptedReply.nullReply());
+    }
+    return script(entries);
+  }
+
+  /**
+   * Every call returns a single tool call with the given name + arguments. The agent never sees a
+   * FINAL: reply, so it should hit {@code MAX_TURNS_EXCEEDED}.
+   */
+  public static InMemoryMockProvider alwaysToolCall(String toolName, String argsJson) {
+    return alwaysToolCall(toolName, argsJson, 32);
+  }
+
+  public static InMemoryMockProvider alwaysToolCall(String toolName, String argsJson, int turns) {
+    java.util.List<ScriptedReply> entries = new java.util.ArrayList<>(turns);
+    for (int i = 0; i < turns; i++) {
+      entries.add(ScriptedReply.toolCall(toolName, argsJson));
+    }
+    return script(entries);
+  }
+
+  @Override
+  public LlmReply chatWithTools(
+      List<LlmMessage> messages,
+      List<ToolDefinition> tools,
+      String toolChoice,
+      String model,
+      double temperature) {
+    seenMessages.add(new ArrayList<>(messages));
+    seenToolChoices.add(toolChoice == null ? "(null)" : toolChoice);
+    int idx = cursor.getAndIncrement();
+    if (idx >= script.size()) {
+      // The loop asked for more turns than we
+      // scripted. Default behaviour: throw, so a
+      // test that didn't anticipate the extra turn
+      // fails loudly. (Tests that want the
+      // max-turns path supply just enough entries
+      // for {@code maxTurns - 1} turns and rely on
+      // this throw to surface the runaway.)
+      throw new AssertionError(
+          "InMemoryMockProvider ran out of scripted replies "
+              + "after "
+              + script.size()
+              + " turn(s); got turn "
+              + (idx + 1));
+    }
+    return script.get(idx).resolve();
+  }
+
+  @Override
+  public boolean isAvailable() {
+    return available;
+  }
+
+  /**
+   * Force {@link #isAvailable()} to return {@code false} for the test of the "agent short-circuits
+   * on missing LLM" path.
+   */
+  public InMemoryMockProvider setAvailable(boolean v) {
+    this.available = v;
+    return this;
+  }
+
+  /** Number of {@code chatWithTools} calls the agent made. */
+  public int callCount() {
+    return cursor.get();
+  }
+
+  /** Most recent conversation history the agent sent. */
+  public List<LlmMessage> lastMessages() {
+    if (seenMessages.isEmpty()) return List.of();
+    return seenMessages.get(seenMessages.size() - 1);
+  }
+
+  /**
+   * Every {@code tool_choice} the agent asked for, in call order. tests use this to assert the
+   * first-turn {@code "required"} behaviour.
+   */
+  public List<String> seenToolChoices() {
+    return List.copyOf(seenToolChoices);
+  }
+
+  /** Every conversation history snapshot, in call order. */
+  public List<List<LlmMessage>> allMessages() {
+    return List.copyOf(seenMessages);
+  }
+
+  /**
+   * One scripted reply. The LLM may produce: text only, a tool call only, or text + tool call (the
+   * LLM occasionally does this on the final turn). The mock builder below covers the three shapes.
+   */
+  public static final class ScriptedReply {
+    private final String content;
+    private final List<ToolCall> toolCalls;
+    private final boolean asNull;
+    private final String finishReason;
+
+    private ScriptedReply(
+        String content, List<ToolCall> toolCalls, boolean asNull, String finishReason) {
+      this.content = content;
+      this.toolCalls = toolCalls == null ? List.of() : toolCalls;
+      this.asNull = asNull;
+      this.finishReason = finishReason;
+    }
+
+    LlmReply resolve() {
+      if (asNull) return null;
+      return new LlmReply(content == null ? "" : content, toolCalls, finishReason);
     }
 
     /**
-     * Script a sequence of replies. The Nth call returns the Nth entry. Each entry may be a final
-     * answer, a tool call, or a mix (use the {@link ScriptedReply} factory methods).
+     * The model said {@code "FINAL: <body>"} (no tool calls). The Re-Act loop treats this as the
+     * stop condition.
      */
-    public static InMemoryMockProvider script(List<ScriptedReply> script) {
-        Objects.requireNonNull(script, "script");
-        return new InMemoryMockProvider(new ArrayList<>(script));
+    public static ScriptedReply finalAnswer(String body) {
+      String text = "FINAL: " + (body == null ? "" : body);
+      return new ScriptedReply(text, List.of(), false, "stop");
     }
 
     /**
-     * Every call returns the same final-answer reply. Scripts enough entries to outlive a 32-turn
-     * loop (caller can override {@code turns} if they need more).
+     * The model said nothing useful and just called one tool. The agent will execute the tool and
+     * loop.
      */
-    public static InMemoryMockProvider alwaysFinalAnswer(String body) {
-        return alwaysFinalAnswer(body, 32);
-    }
-
-    public static InMemoryMockProvider alwaysFinalAnswer(String body, int turns) {
-        java.util.List<ScriptedReply> entries = new java.util.ArrayList<>(turns);
-        for (int i = 0; i < turns; i++) {
-            entries.add(ScriptedReply.finalAnswer(body));
-        }
-        return script(entries);
+    public static ScriptedReply toolCall(String toolName, String argsJson) {
+      com.fasterxml.jackson.databind.ObjectMapper m =
+          new com.fasterxml.jackson.databind.ObjectMapper();
+      com.fasterxml.jackson.databind.JsonNode args;
+      try {
+        args = m.readTree(argsJson == null ? "{}" : argsJson);
+      } catch (Exception e) {
+        args = m.createObjectNode();
+      }
+      ToolCall tc = new ToolCall("call_mock_" + System.nanoTime(), toolName, args);
+      return new ScriptedReply("", List.of(tc), false, "tool_calls");
     }
 
     /**
-     * Every call returns {@code null} (simulate network failure). The Re-Act agent should map this to
-     * {@code PROVIDER_ERROR}.
+     * The model produced a text reply without FINAL: or tool calls. The Re-Act loop nudges it once,
+     * then bails. Useful for testing the "model went silent" path.
      */
-    public static InMemoryMockProvider alwaysNull() {
-        return alwaysNull(32);
+    public static ScriptedReply silentText(String text) {
+      return new ScriptedReply(text, List.of(), false, "stop");
     }
 
-    public static InMemoryMockProvider alwaysNull(int turns) {
-        java.util.List<ScriptedReply> entries = new java.util.ArrayList<>(turns);
-        for (int i = 0; i < turns; i++) {
-            entries.add(ScriptedReply.nullReply());
-        }
-        return script(entries);
+    /** Network failure: returns null. */
+    public static ScriptedReply nullReply() {
+      return new ScriptedReply(null, List.of(), true, null);
     }
-
-    /**
-     * Every call returns a single tool call with the given name + arguments. The agent never sees a
-     * FINAL: reply, so it should hit {@code MAX_TURNS_EXCEEDED}.
-     */
-    public static InMemoryMockProvider alwaysToolCall(String toolName, String argsJson) {
-        return alwaysToolCall(toolName, argsJson, 32);
-    }
-
-    public static InMemoryMockProvider alwaysToolCall(String toolName, String argsJson, int turns) {
-        java.util.List<ScriptedReply> entries = new java.util.ArrayList<>(turns);
-        for (int i = 0; i < turns; i++) {
-            entries.add(ScriptedReply.toolCall(toolName, argsJson));
-        }
-        return script(entries);
-    }
-
-    @Override
-    public LlmReply chatWithTools(
-            List<LlmMessage> messages,
-            List<ToolDefinition> tools,
-            String toolChoice,
-            String model,
-            double temperature) {
-        seenMessages.add(new ArrayList<>(messages));
-        seenToolChoices.add(toolChoice == null ? "(null)" : toolChoice);
-        int idx = cursor.getAndIncrement();
-        if (idx >= script.size()) {
-            // The loop asked for more turns than we
-            // scripted. Default behaviour: throw, so a
-            // test that didn't anticipate the extra turn
-            // fails loudly. (Tests that want the
-            // max-turns path supply just enough entries
-            // for {@code maxTurns - 1} turns and rely on
-            // this throw to surface the runaway.)
-            throw new AssertionError(
-                    "InMemoryMockProvider ran out of scripted replies "
-                            + "after "
-                            + script.size()
-                            + " turn(s); got turn "
-                            + (idx + 1));
-        }
-        return script.get(idx).resolve();
-    }
-
-    @Override
-    public boolean isAvailable() {
-        return available;
-    }
-
-    /**
-     * Force {@link #isAvailable()} to return {@code false} for the test of the "agent short-circuits
-     * on missing LLM" path.
-     */
-    public InMemoryMockProvider setAvailable(boolean v) {
-        this.available = v;
-        return this;
-    }
-
-    /**
-     * Number of {@code chatWithTools} calls the agent made.
-     */
-    public int callCount() {
-        return cursor.get();
-    }
-
-    /**
-     * Most recent conversation history the agent sent.
-     */
-    public List<LlmMessage> lastMessages() {
-        if (seenMessages.isEmpty()) return List.of();
-        return seenMessages.get(seenMessages.size() - 1);
-    }
-
-    /**
-     * Every {@code tool_choice} the agent asked for, in call order. tests use this to assert the
-     * first-turn {@code "required"} behaviour.
-     */
-    public List<String> seenToolChoices() {
-        return List.copyOf(seenToolChoices);
-    }
-
-    /**
-     * Every conversation history snapshot, in call order.
-     */
-    public List<List<LlmMessage>> allMessages() {
-        return List.copyOf(seenMessages);
-    }
-
-    /**
-     * One scripted reply. The LLM may produce: text only, a tool call only, or text + tool call (the
-     * LLM occasionally does this on the final turn). The mock builder below covers the three shapes.
-     */
-    public static final class ScriptedReply {
-        private final String content;
-        private final List<ToolCall> toolCalls;
-        private final boolean asNull;
-        private final String finishReason;
-
-        private ScriptedReply(
-                String content, List<ToolCall> toolCalls, boolean asNull, String finishReason) {
-            this.content = content;
-            this.toolCalls = toolCalls == null ? List.of() : toolCalls;
-            this.asNull = asNull;
-            this.finishReason = finishReason;
-        }
-
-        LlmReply resolve() {
-            if (asNull) return null;
-            return new LlmReply(content == null ? "" : content, toolCalls, finishReason);
-        }
-
-        /**
-         * The model said {@code "FINAL: <body>"} (no tool calls). The Re-Act loop treats this as the
-         * stop condition.
-         */
-        public static ScriptedReply finalAnswer(String body) {
-            String text = "FINAL: " + (body == null ? "" : body);
-            return new ScriptedReply(text, List.of(), false, "stop");
-        }
-
-        /**
-         * The model said nothing useful and just called one tool. The agent will execute the tool and
-         * loop.
-         */
-        public static ScriptedReply toolCall(String toolName, String argsJson) {
-            com.fasterxml.jackson.databind.ObjectMapper m =
-                    new com.fasterxml.jackson.databind.ObjectMapper();
-            com.fasterxml.jackson.databind.JsonNode args;
-            try {
-                args = m.readTree(argsJson == null ? "{}" : argsJson);
-            } catch (Exception e) {
-                args = m.createObjectNode();
-            }
-            ToolCall tc = new ToolCall("call_mock_" + System.nanoTime(), toolName, args);
-            return new ScriptedReply("", List.of(tc), false, "tool_calls");
-        }
-
-        /**
-         * The model produced a text reply without FINAL: or tool calls. The Re-Act loop nudges it once,
-         * then bails. Useful for testing the "model went silent" path.
-         */
-        public static ScriptedReply silentText(String text) {
-            return new ScriptedReply(text, List.of(), false, "stop");
-        }
-
-        /**
-         * Network failure: returns null.
-         */
-        public static ScriptedReply nullReply() {
-            return new ScriptedReply(null, List.of(), true, null);
-        }
-    }
+  }
 }

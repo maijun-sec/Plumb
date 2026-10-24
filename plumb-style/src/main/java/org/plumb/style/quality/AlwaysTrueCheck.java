@@ -31,7 +31,6 @@ import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -48,8 +47,7 @@ public final class AlwaysTrueCheck implements AstChecker {
           List.of("CWE-571"),
           "org.plumb.style.quality.AlwaysTrueCheck",
           true,
-          List.of("ast-quality-always-true", "always-true")
-      );
+          List.of("ast-quality-always-true", "always-true"));
 
   @Override
   public String name() {

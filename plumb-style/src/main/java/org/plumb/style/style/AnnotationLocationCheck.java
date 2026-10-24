@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class AnnotationLocationCheck implements AstChecker {
           List.of(),
           "org.plumb.style.AnnotationLocationCheck",
           true,
-          List.of("ast-style-annotation-location", "annotation-location")
-      );
+          List.of("ast-style-annotation-location", "annotation-location"));
 
   @Override
   public String name() {
@@ -37,11 +35,6 @@ public final class AnnotationLocationCheck implements AstChecker {
     int line = m.getBegin().map(p -> p.line).orElse(-1);
     int col = m.getBegin().map(p -> p.column).orElse(-1);
     ctx.report(
-        line,
-        col,
-        DEFAULT_RULE,
-        "Annotation location check",
-        RuleDef.Severity.LOW,
-        "annotation");
+        line, col, DEFAULT_RULE, "Annotation location check", RuleDef.Severity.LOW, "annotation");
   }
 }

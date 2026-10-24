@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class MultipleVariableDeclarationsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MultipleVariableDeclarationsCheck",
           true,
-          List.of("ast-style-multiple-variable-declarations", "multiple-var-decls")
-      );
+          List.of("ast-style-multiple-variable-declarations", "multiple-var-decls"));
 
   @Override
   public String name() {

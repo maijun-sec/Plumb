@@ -54,11 +54,11 @@ public final class ScanConfig {
   public List<Path> classpathJars = new ArrayList<>();
 
   /**
-   * When the user invoked {@code --build-system} (or auto-detection kicked in), this is the
-   * {@link org.plumb.build.BuildProject} the adapter produced. {@code ScanRunner.buildModules}
-   * prefers the per-module classpath in {@link org.plumb.build.BuildProject#modules()} over the
-   * flat {@link #classpathJars} list so a multi-module Maven project correctly scopes compile vs.
-   * test classpath.
+   * When the user invoked {@code --build-system} (or auto-detection kicked in), this is the {@link
+   * org.plumb.build.BuildProject} the adapter produced. {@code ScanRunner.buildModules} prefers the
+   * per-module classpath in {@link org.plumb.build.BuildProject#modules()} over the flat {@link
+   * #classpathJars} list so a multi-module Maven project correctly scopes compile vs. test
+   * classpath.
    */
   public org.plumb.build.BuildProject buildProject;
 

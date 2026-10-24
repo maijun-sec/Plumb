@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.stmt.TryStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class EmptyFinallyBlockCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EmptyFinallyBlockCheck",
           true,
-          List.of("ast-style-finally-block", "empty-finally-block")
-      );
+          List.of("ast-style-finally-block", "empty-finally-block"));
 
   @Override
   public String name() {

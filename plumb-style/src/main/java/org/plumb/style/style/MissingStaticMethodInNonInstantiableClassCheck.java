@@ -4,7 +4,6 @@ import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -15,15 +14,17 @@ public final class MissingStaticMethodInNonInstantiableClassCheck implements Ast
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-style-missing-static-in-non-instantiable", "MISSING_STATIC_IN_NON_INSTANTIABLE"),
+          new RuleId(
+              "ast-style-missing-static-in-non-instantiable", "MISSING_STATIC_IN_NON_INSTANTIABLE"),
           "non-instantiable class should have a static method or field",
           RuleDef.Severity.MEDIUM,
           RuleDef.Type.BAD_PRACTICE,
           List.of(),
           "org.plumb.style.MissingStaticMethodInNonInstantiableClassCheck",
           true,
-          List.of("ast-style-missing-static-in-non-instantiable", "missing-static-in-non-instantiable")
-      );
+          List.of(
+              "ast-style-missing-static-in-non-instantiable",
+              "missing-static-in-non-instantiable"));
 
   @Override
   public String name() {

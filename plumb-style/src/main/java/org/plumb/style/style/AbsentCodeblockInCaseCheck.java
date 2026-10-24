@@ -5,7 +5,6 @@ import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.stmt.SwitchEntry;
 import com.github.javaparser.ast.stmt.SwitchStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -38,7 +37,8 @@ public final class AbsentCodeblockInCaseCheck implements AstChecker {
           RuleDef.Type.BUG,
           List.of("CWE-484"),
           "org.plumb.style.AbsentCodeblockInCaseCheck",
-          true,List.of("ast-style-absent-codeblock-in-case", "absent-codeblock-in-case"),
+          true,
+          List.of("ast-style-absent-codeblock-in-case", "absent-codeblock-in-case"),
           List.of(PARAMS));
 
   @Override

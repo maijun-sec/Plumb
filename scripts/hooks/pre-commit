@@ -1,0 +1,82 @@
+#!/usr/bin/env sh
+#
+# Pre-commit hook: refuse a commit that contains unformatted Java.
+#
+# The rule is "the sources must be formatted before they are committed".
+# This hook makes that a property of the repository rather than a
+# habit: an unformatted file cannot be committed.
+#
+# It runs the formatter in --check mode over the files that are STAGED
+# for commit, so the check is fast and scoped to the change. The
+# formatter itself lives in scripts/format.py, which is the single
+# implementation of the file set and the exclusion list.
+#
+# To install:
+#     sh scripts/install-hooks.sh
+#
+# To bypass for one commit (use sparingly):
+#     git commit --no-verify
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Collect the staged Java files. `git diff --cached --name-only` lists
+# them; a rename shows both the old and the new path, and only the new
+# one is in the index, so filter against what is actually staged.
+STAGED_JAVA=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.java$' || true)
+
+if [ -z "$STAGED_JAVA" ]; then
+    exit 0
+fi
+
+# The formatter's own file set is the authority on what is in scope.
+# Ask it to check, then confirm that the staged set is a subset of what
+# it looked at -- if a staged file is outside that set (a Juliet corpus
+# fixture, a testcase measurement fixture), it must not block the
+# commit.
+CHECK_OUTPUT=$(python scripts/format.py --check 2>&1) || true
+
+UNFORMATTED=$(printf '%s\n' "$CHECK_OUTPUT" | sed -n 's/^    \(.*\.java\)$/\1/p')
+
+if [ -z "$UNFORMATTED" ]; then
+    # Either everything is formatted, or the formatter failed. A failure
+    # must not silently pass: report it and let the commit through only
+    # if the formatter could not run at all (a missing jar), which
+    # format.py signals with exit code 2.
+    if printf '%s' "$CHECK_OUTPUT" | grep -q 'could not be parsed'; then
+        echo "pre-commit: the formatter could not parse a file:" >&2
+        printf '%s\n' "$CHECK_OUTPUT" | grep -A5 'could not be parsed' >&2
+        echo "pre-commit: commit refused" >&2
+        exit 1
+    fi
+    exit 0
+fi
+
+# Only the staged files matter. A file that was already unformatted in
+# HEAD and is not part of this commit is not this commit's business.
+BLOCKING=""
+for f in $UNFORMATTED; do
+    if printf '%s\n' "$STAGED_JAVA" | grep -qx "$f"; then
+        BLOCKING="$BLOCKING $f"
+    fi
+done
+
+if [ -z "$BLOCKING" ]; then
+    exit 0
+fi
+
+cat >&2 <<EOF
+pre-commit: these staged files are not formatted:
+
+$(for f in $BLOCKING; do echo "    $f"; done)
+
+Run:
+    scripts/format.ps1          (Windows)
+    scripts/format.sh           (Linux / macOS)
+
+and stage the result. To skip this check for one commit:
+    git commit --no-verify
+EOF
+exit 1

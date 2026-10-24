@@ -4,7 +4,6 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class SiInstanceBeforeFinalCheck implements AstChecker {
           List.of("CWE-457"),
           "org.plumb.style.SiInstanceBeforeFinalCheck",
           true,
-          List.of("ast-style-instance-before-finals-assigned", "si-instance-before-final")
-      );
+          List.of("ast-style-instance-before-finals-assigned", "si-instance-before-final"));
 
   @Override
   public String name() {

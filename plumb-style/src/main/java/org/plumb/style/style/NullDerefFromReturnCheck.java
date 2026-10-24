@@ -21,15 +21,12 @@ import com.github.javaparser.ast.stmt.Statement;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * CWE-690 (NULL Pointer Dereference From Return).
- */
+/** CWE-690 (NULL Pointer Dereference From Return). */
 public final class NullDerefFromReturnCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
@@ -41,8 +38,7 @@ public final class NullDerefFromReturnCheck implements AstChecker {
           List.of("CWE-690"),
           "org.plumb.style.NullDerefFromReturnCheck",
           true,
-          List.of("ast-style-null-deref-from-return-style", "null-deref-from-return")
-      );
+          List.of("ast-style-null-deref-from-return-style", "null-deref-from-return"));
 
   private final Set<String> reported = new HashSet<>();
 

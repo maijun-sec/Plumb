@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.stmt.EmptyStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class EmptyWhileStmtCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EmptyWhileStmtCheck",
           true,
-          List.of("ast-style-while-stmt", "empty-while")
-      );
+          List.of("ast-style-while-stmt", "empty-while"));
 
   @Override
   public String name() {

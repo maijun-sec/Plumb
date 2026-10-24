@@ -55,7 +55,6 @@ import com.github.javaparser.ast.stmt.BlockStmt;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -168,8 +167,7 @@ public final class ObsoleteApiCheck implements AstChecker {
           List.of("CWE-477"),
           "org.plumb.style.security.ObsoleteApiCheck",
           true,
-          List.of("dfa-security-obsolete-function", "obsolete-api")
-      );
+          List.of("dfa-security-obsolete-function", "obsolete-api"));
 
   @Override
   public String name() {

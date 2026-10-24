@@ -76,7 +76,6 @@
  */
 package org.plumb.dfa.checkers.taint;
 
-import org.plumb.rules.RuleDef;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -90,6 +89,7 @@ import org.plumb.reporter.trace.OperandRef;
 import org.plumb.reporter.trace.Trace;
 import org.plumb.reporter.trace.TraceBuilder;
 import org.plumb.reporter.trace.TraceNode;
+import org.plumb.rules.RuleDef;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
@@ -411,7 +411,7 @@ public final class HardCodedPasswordSinkChecker implements DfaChecker {
   }
 
   private static final String AI_PROMPT =
-      """
+"""
         RULE: Hard-coded password in credential sink (CWE-259).
         This rule fires when a credential sink is called with a
         string literal as the password (3 forms caught):

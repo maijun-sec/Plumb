@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class EqualsArgumentTypeCheck implements AstChecker {
           List.of("CWE-697"),
           "org.plumb.style.EqualsArgumentTypeCheck",
           true,
-          List.of("ast-style-equals-arg-type", "equals-arg-type")
-      );
+          List.of("ast-style-equals-arg-type", "equals-arg-type"));
 
   @Override
   public String name() {
@@ -44,8 +42,7 @@ public final class EqualsArgumentTypeCheck implements AstChecker {
           line,
           col,
           DEFAULT_RULE,
-          "equals() argument type should be java.lang.Object, found "
-              + p.getTypeAsString(),
+          "equals() argument type should be java.lang.Object, found " + p.getTypeAsString(),
           RuleDef.Severity.MEDIUM,
           p.getTypeAsString());
     }

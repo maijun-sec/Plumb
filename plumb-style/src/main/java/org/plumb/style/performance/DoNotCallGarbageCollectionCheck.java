@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class DoNotCallGarbageCollectionCheck implements AstChecker {
           List.of("CWE-401"),
           "org.plumb.style.DoNotCallGarbageCollectionCheck",
           true,
-          List.of("ast-performance-not-call-gc", "do-not-call-gc")
-      );
+          List.of("ast-performance-not-call-gc", "do-not-call-gc"));
 
   @Override
   public String name() {

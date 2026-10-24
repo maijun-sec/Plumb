@@ -4,7 +4,6 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.PackageDeclaration;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -15,9 +14,9 @@ import org.plumb.style.StyleContext;
  *
  * <p>Disabled by default (R-834) ? 0 TP / 100% FP on Juliet R-832 baseline. M5 part-4 migration
  * (2026-10-17): per-node-type callback already; this checker was already in modern form. Kept
- * {@code visit(CompilationUnit)} because {@code PackageDeclaration} is visited once per file at
- * the top level (the dispatcher hands the {@code CompilationUnit} directly; we don't need
- * {@code findAll} here).
+ * {@code visit(CompilationUnit)} because {@code PackageDeclaration} is visited once per file at the
+ * top level (the dispatcher hands the {@code CompilationUnit} directly; we don't need {@code
+ * findAll} here).
  */
 public final class PackageCaseCheck implements AstChecker {
 
@@ -30,8 +29,10 @@ public final class PackageCaseCheck implements AstChecker {
           List.of(),
           "org.plumb.style.PackageCaseCheck",
           false,
-          List.of("ast-naming-package-case", "package-case")
-      ); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832 baseline)
+          List.of(
+              "ast-naming-package-case",
+              "package-case")); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832
+  // baseline)
 
   private static final Pattern LOWERCASE =
       Pattern.compile("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$");

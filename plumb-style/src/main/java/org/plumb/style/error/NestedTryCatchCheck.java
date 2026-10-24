@@ -3,7 +3,6 @@ package org.plumb.style.error;
 import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.stmt.TryStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class NestedTryCatchCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NestedTryCatchCheck",
           true,
-          List.of("ast-error-nested-try-catch", "nested-try")
-      );
+          List.of("ast-error-nested-try-catch", "nested-try"));
 
   @Override
   public String name() {

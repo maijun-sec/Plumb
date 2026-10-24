@@ -3,7 +3,6 @@ package org.plumb.style.error;
 import com.github.javaparser.ast.stmt.ThrowStmt;
 import com.github.javaparser.ast.stmt.TryStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class ThrowInFinallyCheck implements AstChecker {
           List.of("CWE-584"),
           "org.plumb.style.ThrowInFinallyCheck",
           true,
-          List.of("ast-error-in-finally", "throw-in-finally")
-      );
+          List.of("ast-error-in-finally", "throw-in-finally"));
 
   @Override
   public String name() {

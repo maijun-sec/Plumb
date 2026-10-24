@@ -55,8 +55,8 @@ public final class AnalysisContext {
    * <p>Alias information is an input to the rules, not a finding of its own. A checker that asks
    * "is this the same object whose null-ness I already proved?", "can this field be null?", or
    * "does this write land in the reference I sanitised?" needs the same answer, and deriving it per
-   * checker guarantees they disagree. This used to be a private map inside a single rule
-   * ({@code UseAfterFreeChecker}, removed in R1105), which is why no other rule could consult it.
+   * checker guarantees they disagree. This used to be a private map inside a single rule ({@code
+   * UseAfterFreeChecker}, removed in R1105), which is why no other rule could consult it.
    *
    * <p>{@code null} until the engine installs one, so a checker used standalone in a test does not
    * have to build a solver. Query through {@link #pointsTo()} rather than touching the field, so
@@ -85,8 +85,8 @@ public final class AnalysisContext {
   }
 
   /**
-   * Every local of {@code signature} that may be the same <em>object or reference</em> as
-   * {@code receiver}, combining both analyses.
+   * Every local of {@code signature} that may be the same <em>object or reference</em> as {@code
+   * receiver}, combining both analyses.
    *
    * <p>Union of {@link #aliasesOf} (points-to: reaches through fields and containers, conservative)
    * and {@link org.plumb.dfa.points.CopyEquivalence#classOf} (copy: exact for assignment and
@@ -204,11 +204,11 @@ public final class AnalysisContext {
    * R1099: per-function map of {@code "signature#paramIndex" -> taint origin}, populated by the
    * engine before the analysis loop via {@link #setParamOrigins(java.util.Map)}.
    *
-   * <p>Reverse post-order analyses a callee before any of its callers, so a summary-based lookup
-   * at sink-emit time cannot see where the value came from — the caller's summary simply does not
-   * exist yet. This map is computed from the {@link org.plumb.dfa.summary.MethodSummaryCache} warm-up
-   * (which the engine already runs before the analysis loop) and is therefore available for every
-   * function, including callees.
+   * <p>Reverse post-order analyses a callee before any of its callers, so a summary-based lookup at
+   * sink-emit time cannot see where the value came from — the caller's summary simply does not
+   * exist yet. This map is computed from the {@link org.plumb.dfa.summary.MethodSummaryCache}
+   * warm-up (which the engine already runs before the analysis loop) and is therefore available for
+   * every function, including callees.
    *
    * <p>Empty (never null) by default so callers can index it without a null check.
    */
@@ -234,19 +234,19 @@ public final class AnalysisContext {
    *
    * <h3>Why this exists</h3>
    *
-   * <p>Every parameter is seeded as a taint source at the function entry boundary, so a method whose
-   * parameter reaches a sink reports regardless of what any caller passed. That is a defensible
-   * default for a method nobody calls — the entry boundary really is a trust boundary — but it makes
-   * "the caller sanitised the value" inexpressible, so every such negative case fails and no amount
-   * of precision work elsewhere can fix it.
+   * <p>Every parameter is seeded as a taint source at the function entry boundary, so a method
+   * whose parameter reaches a sink reports regardless of what any caller passed. That is a
+   * defensible default for a method nobody calls — the entry boundary really is a trust boundary —
+   * but it makes "the caller sanitised the value" inexpressible, so every such negative case fails
+   * and no amount of precision work elsewhere can fix it.
    *
    * <h3>The contract, and why it is narrow on purpose</h3>
    *
    * <p>An entry is present only when the parameter has at least one resolved call site and
    * <em>every</em> one of them passes a literal. A literal is the only form of positive proof
-   * available here: the absence of a taint label on a variable is <em>not</em> proof of cleanliness,
-   * because a variable only gains a label once something tainted reaches it, so an unlabelled
-   * variable is far more often "unanalysed" than "safe".
+   * available here: the absence of a taint label on a variable is <em>not</em> proof of
+   * cleanliness, because a variable only gains a label once something tainted reaches it, so an
+   * unlabelled variable is far more often "unanalysed" than "safe".
    *
    * <p>Absent means "unknown", and every consumer must keep its previous behaviour on absent.
    */
@@ -263,8 +263,8 @@ public final class AnalysisContext {
   /**
    * Is this parameter known to receive only provably-clean values?
    *
-   * @return {@code false} when unknown, which callers must treat as "no information" rather than
-   *     as "dirty".
+   * @return {@code false} when unknown, which callers must treat as "no information" rather than as
+   *     "dirty".
    */
   public boolean isParamAlwaysClean(String signature, int paramIndex) {
     return Boolean.TRUE.equals(paramCleanliness.get(signature + "#" + paramIndex));
@@ -342,7 +342,9 @@ public final class AnalysisContext {
    * own precision.
    */
   public boolean mayAlias(
-      String signature, org.plumb.tac.ir.TacOperand.TacVar a, org.plumb.tac.ir.TacOperand.TacVar b) {
+      String signature,
+      org.plumb.tac.ir.TacOperand.TacVar a,
+      org.plumb.tac.ir.TacOperand.TacVar b) {
     org.plumb.dfa.points.PointsToSolver s = this.pointsToSolver;
     return s != null && s.mayAlias(signature, a, b);
   }
@@ -350,8 +352,8 @@ public final class AnalysisContext {
   /**
    * R1108: every local of {@code signature} that may be the same object as {@code receiver}.
    *
-   * <p>Returns an <em>empty</em> set when no alias map is installed or the receiver is unknown. That
-   * empty set means "no alias information", not "no aliases" — a checker must fall back to its
+   * <p>Returns an <em>empty</em> set when no alias map is installed or the receiver is unknown.
+   * That empty set means "no alias information", not "no aliases" — a checker must fall back to its
    * behaviour without alias data rather than conclude the reference is provably unshared.
    */
   public java.util.Set<org.plumb.tac.ir.TacOperand.TacVar> aliasesOf(
@@ -366,9 +368,9 @@ public final class AnalysisContext {
    *
    * <p>Added because a consumer that transfers a guard along aliases needs more than "may these two
    * be the same object": it has to know whether the guarded name's fact set <em>covers</em> the
-   * guarded-for name's. {@code mayAlias} answers "is there any overlap", which is too weak to justify
-   * suppressing a finding -- a may-relation that overlaps in one object still leaves the other
-   * objects unguarded.
+   * guarded-for name's. {@code mayAlias} answers "is there any overlap", which is too weak to
+   * justify suppressing a finding -- a may-relation that overlaps in one object still leaves the
+   * other objects unguarded.
    *
    * <p>Returns an empty set when no solver is installed or the reference is unknown, which again
    * means "no information" rather than "points to nothing".
@@ -388,10 +390,10 @@ public final class AnalysisContext {
    * this answers false. Only the engine's own guard tracker and the points-to solver's explicit
    * null facts together make a reference provably safe.
    */
-  public boolean mayBeNull(
-      String signature, org.plumb.tac.ir.TacOperand.TacVar v) {
+  public boolean mayBeNull(String signature, org.plumb.tac.ir.TacOperand.TacVar v) {
     org.plumb.dfa.points.PointsToSolver s = this.pointsToSolver;
-    return s != null && s.mayBeNull(signature, v, org.plumb.dfa.points.AbstractObject.Context.empty());
+    return s != null
+        && s.mayBeNull(signature, v, org.plumb.dfa.points.AbstractObject.Context.empty());
   }
 
   /**

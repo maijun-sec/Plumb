@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class ConstantsInInterfaceCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ConstantsInInterfaceCheck",
           true,
-          List.of("ast-style-constants-in-interface", "interface-constants")
-      );
+          List.of("ast-style-constants-in-interface", "interface-constants"));
 
   @Override
   public String name() {

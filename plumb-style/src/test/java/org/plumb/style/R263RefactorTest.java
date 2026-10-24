@@ -1,6 +1,5 @@
 package org.plumb.style;
 
-import org.plumb.rules.RuleDef;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;

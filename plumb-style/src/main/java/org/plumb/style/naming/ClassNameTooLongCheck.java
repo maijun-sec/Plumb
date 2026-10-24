@@ -2,7 +2,6 @@ package org.plumb.style.naming;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,10 @@ public final class ClassNameTooLongCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ClassNameTooLongCheck",
           false,
-          List.of("ast-naming-name-too-long", "class-name-long")
-      ); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832 baseline)
+          List.of(
+              "ast-naming-name-too-long",
+              "class-name-long")); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832
+  // baseline)
 
   private static final int MAX_LENGTH = 30;
 

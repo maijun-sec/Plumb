@@ -5,7 +5,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.comments.Comment;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class TodoCommentCheck implements AstChecker {
           List.of(),
           "org.plumb.style.TodoCommentCheck",
           true,
-          List.of("ast-style-comment", "todo-comment")
-      );
+          List.of("ast-style-comment", "todo-comment"));
   private static final Pattern TODO = Pattern.compile("(?i)\\b(TODO|FIXME|XXX)\\b");
 
   @Override
@@ -34,7 +32,7 @@ public final class TodoCommentCheck implements AstChecker {
   @Override
   public void init(StyleContext ctx) {}
 
-    public void visit(Comment c, StyleContext ctx) {
+  public void visit(Comment c, StyleContext ctx) {
     if (TODO.matcher(c.getContent()).find()) {
       int line = c.getBegin().map(p -> p.line).orElse(-1);
       int col = c.getBegin().map(p -> p.column).orElse(-1);

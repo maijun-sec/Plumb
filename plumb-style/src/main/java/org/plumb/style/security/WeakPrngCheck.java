@@ -31,7 +31,6 @@ import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -48,8 +47,7 @@ public final class WeakPrngCheck implements AstChecker {
           List.of("CWE-338"),
           "org.plumb.style.security.WeakPrngCheck",
           true,
-          List.of("ast-security-weak-prng", "weak-prng")
-      );
+          List.of("ast-security-weak-prng", "weak-prng"));
 
   private final Set<String> reported = new HashSet<>();
 

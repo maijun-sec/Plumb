@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -27,8 +26,7 @@ public final class ConstantNameCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ConstantNameCheck",
           true,
-          List.of("ast-naming-constant-name", "constant-name")
-      );
+          List.of("ast-naming-constant-name", "constant-name"));
 
   private static final Pattern UPPER = Pattern.compile("^[A-Z][A-Z0-9_]*$");
 

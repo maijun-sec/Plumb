@@ -33,7 +33,6 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -50,8 +49,10 @@ public final class UnusedImportsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UnusedImportsCheck",
           false,
-          List.of("ast-style-unused-imports", "unused-imports")
-      ); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832 baseline)
+          List.of(
+              "ast-style-unused-imports",
+              "unused-imports")); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832
+  // baseline)
 
   private final List<ImportDeclaration> importsBuffer = new java.util.ArrayList<>();
   private final Set<String> usedNames = new HashSet<>();

@@ -3,7 +3,6 @@ package org.plumb.style.naming;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class SuspiciousEqualsMethodNameCheck implements AstChecker {
           List.of("CWE-697"),
           "org.plumb.style.SuspiciousEqualsMethodNameCheck",
           true,
-          List.of("ast-naming-suspicious-equals-method-name", "suspicious-equals")
-      );
+          List.of("ast-naming-suspicious-equals-method-name", "suspicious-equals"));
 
   @Override
   public String name() {

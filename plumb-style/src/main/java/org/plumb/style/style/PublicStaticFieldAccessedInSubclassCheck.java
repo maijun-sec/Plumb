@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,9 @@ public final class PublicStaticFieldAccessedInSubclassCheck implements AstChecke
           List.of(),
           "org.plumb.style.PublicStaticFieldAccessedInSubclassCheck",
           true,
-          List.of("ast-style-default-package-public-static-field-accessed-in-subclass", "public-static-field-in-default-package")
-      );
+          List.of(
+              "ast-style-default-package-public-static-field-accessed-in-subclass",
+              "public-static-field-in-default-package"));
 
   @Override
   public String name() {

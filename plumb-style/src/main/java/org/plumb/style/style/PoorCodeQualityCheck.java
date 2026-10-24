@@ -8,15 +8,12 @@ import com.github.javaparser.ast.stmt.Statement;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * CWE-398 (Indicator of Poor Code Quality) ? file-wide check for empty blocks, cases, methods.
- */
+/** CWE-398 (Indicator of Poor Code Quality) ? file-wide check for empty blocks, cases, methods. */
 public final class PoorCodeQualityCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
@@ -28,8 +25,7 @@ public final class PoorCodeQualityCheck implements AstChecker {
           List.of("CWE-398"),
           "org.plumb.style.PoorCodeQualityCheck",
           true,
-          List.of("ast-style-poor-code-quality-style", "poor-code-quality")
-      );
+          List.of("ast-style-poor-code-quality-style", "poor-code-quality"));
 
   private final Set<String> reported = new HashSet<>();
 

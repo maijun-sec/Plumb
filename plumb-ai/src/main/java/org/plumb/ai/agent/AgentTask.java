@@ -23,44 +23,44 @@ package org.plumb.ai.agent;
  * </ul>
  */
 public record AgentTask(
-        String systemPrompt,
-        String userPrompt,
-        String taskKind,
-        int maxTurns,
-        String model,
-        double temperature,
-        boolean forceFirstTurnToolRequired) {
+    String systemPrompt,
+    String userPrompt,
+    String taskKind,
+    int maxTurns,
+    String model,
+    double temperature,
+    boolean forceFirstTurnToolRequired) {
 
-    public static AgentTask fpReduction(
-            String systemPrompt, String userPrompt, String model, double temperature) {
-        return new AgentTask(
-                systemPrompt,
-                userPrompt,
-                "fp-reduction",
-                5,
-                model,
-                temperature,
-                /* forceFirstTurnToolRequired */ true);
-    }
+  public static AgentTask fpReduction(
+      String systemPrompt, String userPrompt, String model, double temperature) {
+    return new AgentTask(
+        systemPrompt,
+        userPrompt,
+        "fp-reduction",
+        5,
+        model,
+        temperature,
+        /* forceFirstTurnToolRequired */ true);
+  }
 
-    public static AgentTask bugScan(
-            String systemPrompt, String userPrompt, String model, double temperature) {
-        return new AgentTask(
-                systemPrompt,
-                userPrompt,
-                "bug-scan",
-                8,
-                model,
-                temperature,
-                /* forceFirstTurnToolRequired */ true);
-    }
+  public static AgentTask bugScan(
+      String systemPrompt, String userPrompt, String model, double temperature) {
+    return new AgentTask(
+        systemPrompt,
+        userPrompt,
+        "bug-scan",
+        8,
+        model,
+        temperature,
+        /* forceFirstTurnToolRequired */ true);
+  }
 
-    public AgentTask withMaxTurns(int max) {
-        return new AgentTask(
-                systemPrompt, userPrompt, taskKind, max, model, temperature, forceFirstTurnToolRequired);
-    }
+  public AgentTask withMaxTurns(int max) {
+    return new AgentTask(
+        systemPrompt, userPrompt, taskKind, max, model, temperature, forceFirstTurnToolRequired);
+  }
 
-    public AgentTask withForceFirstTurnToolRequired(boolean v) {
-        return new AgentTask(systemPrompt, userPrompt, taskKind, maxTurns, model, temperature, v);
-    }
+  public AgentTask withForceFirstTurnToolRequired(boolean v) {
+    return new AgentTask(systemPrompt, userPrompt, taskKind, maxTurns, model, temperature, v);
+  }
 }

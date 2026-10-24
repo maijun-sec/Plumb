@@ -16,8 +16,8 @@ import org.junit.jupiter.api.Test;
  * <ul>
  *   <li>{@link AstCheckerRegistry#builtins()} : register every checker (~500 across 7
  *       subdirectories).
- *   <li>{@link AstCheckerRegistry#load(String...)} :  register by glob on the simple class name.
- *   <li>{@link AstCheckerRegistry#byCategory(String...)} :  register by subdirectory.
+ *   <li>{@link AstCheckerRegistry#load(String...)} : register by glob on the simple class name.
+ *   <li>{@link AstCheckerRegistry#byCategory(String...)} : register by subdirectory.
  * </ul>
  */
 class R311cDynamicLoadTest {

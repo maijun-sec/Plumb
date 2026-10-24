@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -16,15 +15,16 @@ public final class LocaleDependentCaseConversionCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-style-locale-dependent-case-conversion", "LOCALE_DEPENDENT_CASE_CONVERSION"),
+          new RuleId(
+              "ast-style-locale-dependent-case-conversion", "LOCALE_DEPENDENT_CASE_CONVERSION"),
           "String.toLowerCase/toUpperCase without Locale (locale-dependent)",
           RuleDef.Severity.LOW,
           RuleDef.Type.I18N,
           List.of(),
           "org.plumb.style.LocaleDependentCaseConversionCheck",
           true,
-          List.of("ast-style-locale-dependent-case-conversion", "locale-dependent-case-conversion")
-      );
+          List.of(
+              "ast-style-locale-dependent-case-conversion", "locale-dependent-case-conversion"));
 
   private static final Set<String> CASE_METHODS = Set.of("toLowerCase", "toUpperCase");
 

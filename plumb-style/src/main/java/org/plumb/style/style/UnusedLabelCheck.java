@@ -7,7 +7,6 @@ import com.github.javaparser.ast.stmt.LabeledStmt;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class UnusedLabelCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UnusedLabelCheck",
           true,
-          List.of("ast-style-unused-label", "unused-label")
-      );
+          List.of("ast-style-unused-label", "unused-label"));
 
   @Override
   public String name() {

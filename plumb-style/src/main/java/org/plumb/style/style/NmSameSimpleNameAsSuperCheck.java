@@ -5,7 +5,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class NmSameSimpleNameAsSuperCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NmSameSimpleNameAsSuperCheck",
           true,
-          List.of("ast-style-same-simple-name-as-superclass", "nm-same-name-super")
-      );
+          List.of("ast-style-same-simple-name-as-superclass", "nm-same-name-super"));
 
   @Override
   public String name() {

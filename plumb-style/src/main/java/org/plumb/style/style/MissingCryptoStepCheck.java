@@ -7,7 +7,6 @@ import com.github.javaparser.ast.expr.NameExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -39,11 +38,11 @@ public final class MissingCryptoStepCheck implements AstChecker {
           List.of("CWE-325"),
           "org.plumb.style.MissingCryptoStepCheck",
           true,
-          List.of("ast-style-missing-crypto-step-style", "missing-crypto-step")
-      );
+          List.of("ast-style-missing-crypto-step-style", "missing-crypto-step"));
 
   /** Per-file accumulator state. Cleared in init() before each file's walk. */
   private final Set<Integer> cipherLines = new HashSet<>();
+
   private boolean hasMac = false;
   private boolean reported = false;
 

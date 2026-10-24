@@ -25,7 +25,6 @@ import com.github.javaparser.ast.stmt.Statement;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -44,8 +43,7 @@ public final class UninitNonnullCheck implements AstChecker {
           List.of("CWE-457"),
           "org.plumb.style.UninitNonnullCheck",
           true,
-          List.of("ast-quality-uninit-nonnull", "uninit-nonnull")
-      );
+          List.of("ast-quality-uninit-nonnull", "uninit-nonnull"));
 
   @Override
   public String name() {

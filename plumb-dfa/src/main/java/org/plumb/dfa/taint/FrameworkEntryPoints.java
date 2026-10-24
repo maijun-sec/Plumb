@@ -9,9 +9,8 @@ import org.plumb.tac.ir.TacFunction;
  * Framework entry points: parameter annotations that BIND a request value to a method parameter.
  *
  * <p>A servlet-aware scanner recognises {@code HttpServletRequest.getParameter(...)} as a taint
- * source. A Spring MVC application has no such call anywhere: the framework binds the request
- * value to the method parameter BY ANNOTATION, and the controller body never touches a request
- * object.
+ * source. A Spring MVC application has no such call anywhere: the framework binds the request value
+ * to the method parameter BY ANNOTATION, and the controller body never touches a request object.
  *
  * <pre>
  *   &#64;GetMapping("/orders")
@@ -29,9 +28,9 @@ import org.plumb.tac.ir.TacFunction;
  * rather than a bare parameter name, so a finding names the actual trust boundary instead of an
  * opaque local.
  *
- * <p>The annotation list is the same one the AST checkers use for input validation
- * ({@code MissingInputValidationCheck}), so the two layers agree on what "user input" means in
- * this codebase.
+ * <p>The annotation list is the same one the AST checkers use for input validation ({@code
+ * MissingInputValidationCheck}), so the two layers agree on what "user input" means in this
+ * codebase.
  */
 public final class FrameworkEntryPoints {
 
@@ -40,8 +39,8 @@ public final class FrameworkEntryPoints {
    *
    * <p>The Spring MVC / Spring Data group comes first, then the JAX-RS and Jakarta EE groups, then
    * the servlet-adjacent and Quarkus / Micronaut groups. They are matched by SIMPLE NAME, which is
-   * what the IR records: {@code @RequestParam} and a hypothetical
-   * {@code @org.acme.RequestParam} are the same name to this model.
+   * what the IR records: {@code @RequestParam} and a hypothetical {@code @org.acme.RequestParam}
+   * are the same name to this model.
    */
   public static final Set<String> USER_INPUT_PARAM_ANNOTATIONS =
       Set.of(
@@ -78,8 +77,8 @@ public final class FrameworkEntryPoints {
 
   /**
    * The class-level annotation groups that make a method a framework endpoint. Used to qualify a
-   * source label, so the finding says WHERE the value entered ("spring-mvc") rather than only
-   * WHICH annotation bound it.
+   * source label, so the finding says WHERE the value entered ("spring-mvc") rather than only WHICH
+   * annotation bound it.
    */
   private static final Map<String, String> FRAMEWORK_BY_ENDPOINT_ANNOTATION =
       Map.ofEntries(

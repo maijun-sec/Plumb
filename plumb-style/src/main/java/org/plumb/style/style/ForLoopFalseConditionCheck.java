@@ -6,7 +6,6 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class ForLoopFalseConditionCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ForLoopFalseConditionCheck",
           true,
-          List.of("ast-style-loop-false-condition", "for-loop-false-condition")
-      );
+          List.of("ast-style-loop-false-condition", "for-loop-false-condition"));
 
   @Override
   public String name() {

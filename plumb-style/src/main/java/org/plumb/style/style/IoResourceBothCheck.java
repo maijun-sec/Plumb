@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class IoResourceBothCheck implements AstChecker {
           List.of("CWE-668"),
           "org.plumb.style.IoResourceBothCheck",
           true,
-          List.of("ast-style-resource-used-as-both-input-and-output", "io-resource-both")
-      );
+          List.of("ast-style-resource-used-as-both-input-and-output", "io-resource-both"));
 
   private static final Set<String> READ_METHODS =
       Set.of(

@@ -3,7 +3,6 @@ package org.plumb.style.security;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,8 +11,8 @@ import org.plumb.style.StyleContext;
 /**
  * Hard-coded absolute path (DMI_HARDCODED_ABSOLUTE_PATH, CWE-22).
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(StringLiteralExpr.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(StringLiteralExpr.class)} before.
  */
 public final class DmiHardcodedAbsolutePathCheck implements AstChecker {
 
@@ -26,8 +25,7 @@ public final class DmiHardcodedAbsolutePathCheck implements AstChecker {
           List.of("CWE-22"),
           "org.plumb.style.DmiHardcodedAbsolutePathCheck",
           true,
-          List.of("ast-security-hardcoded-absolute-path", "hardcoded-absolute-path")
-      );
+          List.of("ast-security-hardcoded-absolute-path", "hardcoded-absolute-path"));
 
   private static final Pattern ABS =
       Pattern.compile("^(/usr/|/etc/|/var/|/opt/|/home/|C:\\\\|D:\\\\)");

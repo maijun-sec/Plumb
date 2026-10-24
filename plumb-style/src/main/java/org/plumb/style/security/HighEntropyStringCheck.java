@@ -27,7 +27,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -79,8 +78,7 @@ public final class HighEntropyStringCheck implements AstChecker {
           List.of("CWE-798", "CWE-331"),
           "org.plumb.style.security.HighEntropyStringCheck",
           true,
-          List.of("dfa-security-high-entropy-string", "high-entropy-string")
-      );
+          List.of("dfa-security-high-entropy-string", "high-entropy-string"));
 
   @Override
   public String name() {

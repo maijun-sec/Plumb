@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.*;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class UnconfirmedCastCheck implements AstChecker {
           List.of("CWE-704"),
           "org.plumb.style.UnconfirmedCastCheck",
           true,
-          List.of("ast-style-unconfirmed-cast", "unconfirmed-cast")
-      );
+          List.of("ast-style-unconfirmed-cast", "unconfirmed-cast"));
 
   @Override
   public String name() {

@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -43,7 +42,8 @@ public final class ArrayTypeCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.ArrayTypeCheck",
-          true,List.of("ast-performance-array-type", "array-type"),
+          true,
+          List.of("ast-performance-array-type", "array-type"),
           List.of(PARAMS));
 
   @Override

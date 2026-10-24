@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class AvoidNativeMethodsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.AvoidNativeMethodsCheck",
           true,
-          List.of("ast-style-native-methods", "avoid-native-methods")
-      );
+          List.of("ast-style-native-methods", "avoid-native-methods"));
 
   @Override
   public String name() {

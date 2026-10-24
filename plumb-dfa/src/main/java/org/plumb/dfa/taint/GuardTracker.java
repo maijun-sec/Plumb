@@ -142,9 +142,9 @@ public final class GuardTracker {
    * </pre>
    *
    * <p>The guard is popped by the JUMP before the else block is reached, so the active stack is
-   * empty at the sink and the early-return idiom looks unguarded -- which is why
-   * {@code if (data == 0) return 0; a / data} fired while the symmetric
-   * {@code if (data != 0) { a / data; }} was correctly suppressed.
+   * empty at the sink and the early-return idiom looks unguarded -- which is why {@code if (data ==
+   * 0) return 0; a / data} fired while the symmetric {@code if (data != 0) { a / data; }} was
+   * correctly suppressed.
    *
    * <p>Recording the negation against the BRANCH's {@code falseLabel} and consulting it when that
    * label is reached is the only reading under which the fact is sound: the negation holds on the
@@ -411,9 +411,7 @@ public final class GuardTracker {
     // R1101: FALSE_EDGE_OPS is recorded too, so the BRANCH's false edge can carry the
     // "this literal is excluded here" fact. It is not a bound and never becomes an
     // active guard -- see the FALSE_EDGE_OPS javadoc.
-    if (!BOUNDING_OPS.contains(op)
-        && !NON_ZERO_OPS.contains(op)
-        && !FALSE_EDGE_OPS.contains(op)) {
+    if (!BOUNDING_OPS.contains(op) && !NON_ZERO_OPS.contains(op) && !FALSE_EDGE_OPS.contains(op)) {
       return;
     }
     if (ins.dest == null || !(ins.dest instanceof TacOperand.TacVar dest)) {
@@ -559,23 +557,21 @@ public final class GuardTracker {
    *
    * <p>{@code if (v == L) {...} else {...}} reaching the else block means {@code v != L}, and
    * {@code if (v != L) {...} else {...}} means {@code v == L} -- neither excludes a value, so only
-   * the EQ case records anything. Bounding operators are skipped: their negation is a range, not
-   * an excluded value.
+   * the EQ case records anything. Bounding operators are skipped: their negation is a range, not an
+   * excluded value.
    */
   private void recordFalseEdge(String falseLabel, Guard g) {
     if (falseLabel == null || falseLabel.isEmpty()) return;
     if (g.op() != BinaryOperator.EQ) return;
-    guardsPendingFalseEdge
-        .computeIfAbsent(falseLabel, k -> new java.util.ArrayList<>())
-        .add(g);
+    guardsPendingFalseEdge.computeIfAbsent(falseLabel, k -> new java.util.ArrayList<>()).add(g);
   }
 
   /**
    * R1101: activate the guards whose <i>false</i> edge is this label.
    *
-   * <p>Reaching {@code L_ELSE_1} in {@code if (v == L) {...} else {...}} proves {@code v != L}.
-   * The corresponding true-branch guard was already popped by the JUMP that skips the else block,
-   * so without this the else body looks unguarded.
+   * <p>Reaching {@code L_ELSE_1} in {@code if (v == L) {...} else {...}} proves {@code v != L}. The
+   * corresponding true-branch guard was already popped by the JUMP that skips the else block, so
+   * without this the else body looks unguarded.
    *
    * <p>False-edge guards are never deactivated here. In a linear IR the else block runs to the
    * merge label and control then falls through into whatever follows, so the fact stays valid for
@@ -639,8 +635,8 @@ public final class GuardTracker {
    *
    * <p>Covers all three places a guard can live: the active stack, the pending false-edge queue,
    * and the label-keyed false-edge table. Missing the last one is what made the loop case look
-   * unaffected by the earlier attempts, because {@code isProvenNonNull} falls back to
-   * {@link #isRefutedBy}, which reads that table and nowhere else.
+   * unaffected by the earlier attempts, because {@code isProvenNonNull} falls back to {@link
+   * #isRefutedBy}, which reads that table and nowhere else.
    */
   private void retireGuardsFor(TacOperand.TacVar v) {
     if (v == null) return;
@@ -667,9 +663,9 @@ public final class GuardTracker {
   /**
    * R1119: is this the BODY label of a loop?
    *
-   * <p>The translator emits {@code L_WHILE_BODY_n} / {@code L_FOR_BODY_n} for the body and
-   * {@code L_WHILE_COND_n} / {@code L_WHILE_END_n} for the condition and the exit. Only the body is
-   * the region where pre-loop facts stop applying.
+   * <p>The translator emits {@code L_WHILE_BODY_n} / {@code L_FOR_BODY_n} for the body and {@code
+   * L_WHILE_COND_n} / {@code L_WHILE_END_n} for the condition and the exit. Only the body is the
+   * region where pre-loop facts stop applying.
    */
   private static boolean isLoopBodyLabel(String label) {
     if (label == null || label.isEmpty()) return false;
@@ -678,8 +674,8 @@ public final class GuardTracker {
   }
 
   /**
-   * R1122: is this the EXIT label of a loop, i.e. the point control reaches when the loop
-   * condition finally fails?
+   * R1122: is this the EXIT label of a loop, i.e. the point control reaches when the loop condition
+   * finally fails?
    *
    * <p>The translator emits {@code L_WHILE_END_n} / {@code L_FOR_END_n} / {@code L_DO_END_n}. A
    * {@code break} also targets an {@code _END_} label, but reaching that label is the same join
@@ -794,8 +790,8 @@ public final class GuardTracker {
    *   return a / data;          // isRefutedBy(data, "0") == true
    * </pre>
    *
-   * <p>Only false-edge negations count. A guard on the active stack is an if-true
-   * condition and says nothing about the value once the block is left.
+   * <p>Only false-edge negations count. A guard on the active stack is an if-true condition and
+   * says nothing about the value once the block is left.
    */
   public boolean isRefutedBy(TacOperand.TacVar var, String literal) {
     if (var == null || literal == null) return false;
@@ -905,10 +901,10 @@ public final class GuardTracker {
   /**
    * R1108: is {@code var} provably <em>null</em> on this path?
    *
-   * <p>Only a true-edge {@code EQ} guard establishes this. A false-edge {@code NE} guard
-   * ({@code if (v != null) return;}) leaves {@code v} either null or unreachable, which is not the
-   * same as "is null", so it is deliberately not consulted: answering true there would make the
-   * NullDeref checker fire on the safe tail of a guard that already returned.
+   * <p>Only a true-edge {@code EQ} guard establishes this. A false-edge {@code NE} guard ({@code if
+   * (v != null) return;}) leaves {@code v} either null or unreachable, which is not the same as "is
+   * null", so it is deliberately not consulted: answering true there would make the NullDeref
+   * checker fire on the safe tail of a guard that already returned.
    */
   public boolean isProvenNull(TacOperand.TacVar var) {
     if (var == null) return false;

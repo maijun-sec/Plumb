@@ -114,8 +114,7 @@ class CheckerSlugResolutionTest {
             };
         Object viaSlug = registry.param(checker.name(), parameter.name(), type);
         if (viaSlug == null) {
-          unreachable.add(
-              checker.name() + "." + parameter.name() + " (" + own.ruleId().id() + ")");
+          unreachable.add(checker.name() + "." + parameter.name() + " (" + own.ruleId().id() + ")");
         }
       }
     }
@@ -245,7 +244,8 @@ class CheckerSlugResolutionTest {
     // The canonical id must win, otherwise the first rule becomes unreachable.
     RuleRegistry registry = new RuleRegistry();
     registry.register(syntheticRule("ast-other-rule", "OTHER_RULE", List.of(), List.of()));
-    registry.register(syntheticRule("ast-hijacker", "HIJACKER", List.of("ast-other-rule"), List.of()));
+    registry.register(
+        syntheticRule("ast-hijacker", "HIJACKER", List.of("ast-other-rule"), List.of()));
 
     assertThat(registry.byAlias("ast-other-rule"))
         .isPresent()
@@ -259,8 +259,10 @@ class CheckerSlugResolutionTest {
     // A foreign tool id may legitimately be declared by several equivalent
     // rules. It must still resolve to one of them.
     RuleRegistry registry = new RuleRegistry();
-    registry.register(syntheticRule("ast-first", "FIRST", List.of("SonarQube:java:S00108"), List.of()));
-    registry.register(syntheticRule("ast-second", "SECOND", List.of("SonarQube:java:S00108"), List.of()));
+    registry.register(
+        syntheticRule("ast-first", "FIRST", List.of("SonarQube:java:S00108"), List.of()));
+    registry.register(
+        syntheticRule("ast-second", "SECOND", List.of("SonarQube:java:S00108"), List.of()));
 
     RuleDef resolved = registry.byAlias("SonarQube:java:S00108").orElse(null);
     assertThat(resolved).isNotNull();
@@ -273,8 +275,10 @@ class CheckerSlugResolutionTest {
     // rules. It must resolve to one of them, and to the same one on every
     // lookup (no order-of-lookup flakiness).
     RuleRegistry registry = new RuleRegistry();
-    registry.register(syntheticRule("ast-first", "FIRST", List.of("SonarQube:java:S00108"), List.of()));
-    registry.register(syntheticRule("ast-second", "SECOND", List.of("SonarQube:java:S00108"), List.of()));
+    registry.register(
+        syntheticRule("ast-first", "FIRST", List.of("SonarQube:java:S00108"), List.of()));
+    registry.register(
+        syntheticRule("ast-second", "SECOND", List.of("SonarQube:java:S00108"), List.of()));
 
     RuleDef first = registry.byAlias("SonarQube:java:S00108").orElse(null);
     RuleDef second = registry.byAlias("SonarQube:java:S00108").orElse(null);
@@ -322,8 +326,8 @@ class CheckerSlugResolutionTest {
    * A checker whose rule deliberately does not list its own slug as an alias.
    *
    * <p>The class is {@code public} on purpose: {@link RuleRegistry#registerFromChecker} invokes
-   * {@code rule()} and {@code name()} reflectively, and a package-private or private checker
-   * class makes that call fail with an access error rather than a rule problem.
+   * {@code rule()} and {@code name()} reflectively, and a package-private or private checker class
+   * makes that call fail with an access error rather than a rule problem.
    */
   public static final class SlugOnlyChecker implements AstChecker {
     private static final RuleDef RULE =

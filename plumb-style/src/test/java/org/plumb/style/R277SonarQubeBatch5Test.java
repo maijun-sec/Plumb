@@ -40,7 +40,7 @@ import org.plumb.style.style.RelationalOperatorSymmetryCheck;
 import org.plumb.style.style.StandardFunctionalInterfaceCheck;
 import org.plumb.style.style.UppercaseSuffixCheck;
 
-/** :  batch 5 (31 new rules, pl-0431 through pl-0461). Each rule has a fire + no-fire test. */
+/** : batch 5 (31 new rules, pl-0431 through pl-0461). Each rule has a fire + no-fire test. */
 class R277SonarQubeBatch5Test {
 
   private final RuleRegistry rules = new RuleRegistry().withBuiltinDefaults(true);

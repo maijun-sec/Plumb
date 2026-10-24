@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.stmt.SwitchEntry;
 import com.github.javaparser.ast.stmt.SwitchStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class SwitchDefaultLastCheck implements AstChecker {
           List.of(),
           "org.plumb.style.SwitchDefaultLastCheck",
           true,
-          List.of("ast-style-switch-default-last", "switch-default-last")
-      );
+          List.of("ast-style-switch-default-last", "switch-default-last"));
 
   @Override
   public String name() {

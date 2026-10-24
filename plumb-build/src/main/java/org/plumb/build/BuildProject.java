@@ -36,10 +36,9 @@ import java.util.Objects;
  *   <li>{@link #languageLevel} ? the Java source level declared by the project (e.g. {@code "8"},
  *       {@code "11"}, {@code "17"}). May be {@code null} when the adapter could not determine the
  *       level ? the parser then falls back to its default.
- *   <li>{@link #sourceEncoding} ? the source-file charset declared by the project (typical
- *       {@code UTF-8}, occasionally {@code ISO-8859-1} on legacy European codebases). May be
- *       {@code null} when the adapter could not determine the encoding ? the parser falls back to
- *       UTF-8.
+ *   <li>{@link #sourceEncoding} ? the source-file charset declared by the project (typical {@code
+ *       UTF-8}, occasionally {@code ISO-8859-1} on legacy European codebases). May be {@code null}
+ *       when the adapter could not determine the encoding ? the parser falls back to UTF-8.
  * </ul>
  */
 public final class BuildProject {

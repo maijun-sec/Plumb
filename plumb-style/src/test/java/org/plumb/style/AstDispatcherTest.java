@@ -32,10 +32,10 @@ import org.plumb.rules.RuleRegistry;
  *       invoked the default no-op 600 times per file.
  *   <li>Default no-op {@code visit(...)} methods declared on the {@link AstChecker} interface
  *       itself must NOT be invoked. Only concrete subclass overrides are dispatched.
- *   <li>Two checkers both overriding {@code visit(IfStmt, ...)} must each be called once per
- *       IfStmt in pre-order.
- *   <li>The total visit count for a checker that overrides a single node type equals the count
- *       of that node type in the file, NOT the total node count.
+ *   <li>Two checkers both overriding {@code visit(IfStmt, ...)} must each be called once per IfStmt
+ *       in pre-order.
+ *   <li>The total visit count for a checker that overrides a single node type equals the count of
+ *       that node type in the file, NOT the total node count.
  * </ul>
  */
 class AstDispatcherTest {
@@ -223,7 +223,9 @@ class AstDispatcherTest {
         .as("M4/M5: checker overriding only visit(IfStmt) must fire once per IfStmt")
         .isEqualTo(1);
     assertThat(stringVisits.get())
-        .as("M4/M5: separate checker overriding only visit(StringLiteralExpr) sees only string literals")
+        .as(
+            "M4/M5: separate checker overriding only visit(StringLiteralExpr) sees only string"
+                + " literals")
         .isEqualTo(2);
   }
 
@@ -237,8 +239,7 @@ class AstDispatcherTest {
     ParsedSource ps =
         new JavaSourceParser()
             .parseFromString(
-                Path.of("N.java"),
-                "class N { int m(int x) { if (x > 0) return 1; return 0; } }");
+                Path.of("N.java"), "class N { int m(int x) { if (x > 0) return 1; return 0; } }");
     StyleContext ctx = new StyleContext(ps, new RuleRegistry().withBuiltinDefaults(true));
 
     AtomicInteger invokes = new AtomicInteger();
@@ -283,8 +284,7 @@ class AstDispatcherTest {
     ParsedSource ps =
         new JavaSourceParser()
             .parseFromString(
-                Path.of("N.java"),
-                "class N { void m(int x) { if (x > 0) {} if (x > 1) {} } }");
+                Path.of("N.java"), "class N { void m(int x) { if (x > 0) {} if (x > 1) {} } }");
     StyleContext ctx = new StyleContext(ps, new RuleRegistry().withBuiltinDefaults(true));
 
     AtomicInteger a = new AtomicInteger();
@@ -337,8 +337,7 @@ class AstDispatcherTest {
     ParsedSource ps =
         new JavaSourceParser()
             .parseFromString(
-                Path.of("N.java"),
-                "class N { int m(int x) { if (x > 0) return 1; return 0; } }");
+                Path.of("N.java"), "class N { int m(int x) { if (x > 0) return 1; return 0; } }");
     StyleContext ctx = new StyleContext(ps, new RuleRegistry().withBuiltinDefaults(true));
 
     AtomicInteger ifHits = new AtomicInteger();
@@ -367,9 +366,7 @@ class AstDispatcherTest {
                 });
     d.run(ctx);
 
-    assertThat(ifHits.get())
-        .as("multi-visit checker: visit(IfStmt) fires once")
-        .isEqualTo(1);
+    assertThat(ifHits.get()).as("multi-visit checker: visit(IfStmt) fires once").isEqualTo(1);
     assertThat(returnHits.get())
         .as("multi-visit checker: visit(ReturnStmt) fires twice")
         .isEqualTo(2);
@@ -412,8 +409,6 @@ class AstDispatcherTest {
 
     // The file has exactly 1 BinaryExpr (x > 0). Default
     // methods must NOT count.
-    assertThat(binaryHits.get())
-        .as("default-visit-methods don't double-invoke")
-        .isEqualTo(1);
+    assertThat(binaryHits.get()).as("default-visit-methods don't double-invoke").isEqualTo(1);
   }
 }

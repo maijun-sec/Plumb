@@ -27,8 +27,8 @@ import org.plumb.tac.translate.TacTranslator;
  * <p>The tempting case is "the helper's sink parameter is tainted but the caller's argument is
  * clean". That case cannot be written against this engine: {@code TaintedCheckerBase.initFunction}
  * unconditionally marks every parameter as a source, so a "clean" parameter does not exist. An
- * earlier draft of this test assumed one and produced a false failure that looked like an index bug.
- * Worth recording, because the failure mode reads exactly like a real defect.
+ * earlier draft of this test assumed one and produced a false failure that looked like an index
+ * bug. Worth recording, because the failure mode reads exactly like a real defect.
  *
  * <h2>What alias reasoning can actually add here</h2>
  *
@@ -146,7 +146,19 @@ class R1109AliasTaintAcrossCallTest {
             base.checkers(),
             base.cweMappings(),
             new org.plumb.dfa.config.TuningConfig(
-                2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family", "sarif", false, 0),
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
     String dir = "q" + uid();
     FindingReporter reporter =

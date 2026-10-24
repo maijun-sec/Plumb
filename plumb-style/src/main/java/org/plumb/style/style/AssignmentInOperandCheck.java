@@ -6,7 +6,6 @@ import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class AssignmentInOperandCheck implements AstChecker {
           List.of("CWE-783"),
           "org.plumb.style.AssignmentInOperandCheck",
           true,
-          List.of("ast-style-assignment-in-operand", "assign-in-operand")
-      );
+          List.of("ast-style-assignment-in-operand", "assign-in-operand"));
 
   @Override
   public String name() {

@@ -29,7 +29,6 @@ import com.github.javaparser.ast.stmt.SwitchEntry;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
 import java.util.Optional;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -47,8 +46,7 @@ public final class EmptyStatementBlockCheck implements AstChecker {
           List.of("CWE-398"),
           "org.plumb.style.style.EmptyStatementBlockCheck",
           true,
-          List.of("ast-style-empty-statement-block", "empty-statement-block")
-      );
+          List.of("ast-style-empty-statement-block", "empty-statement-block"));
 
   private static final RuleDef EMPTY_CATCH_RULE =
       new RuleDef(
@@ -59,8 +57,7 @@ public final class EmptyStatementBlockCheck implements AstChecker {
           List.of("CWE-390"),
           "org.plumb.style.style.EmptyStatementBlockCheck",
           true,
-          List.of("ast-style-empty-statement-block", "empty-statement-block")
-      );
+          List.of("ast-style-empty-statement-block", "empty-statement-block"));
 
   private static final RuleDef EMPTY_IF_RULE =
       new RuleDef(
@@ -71,8 +68,7 @@ public final class EmptyStatementBlockCheck implements AstChecker {
           List.of("CWE-390", "CWE-398"),
           "org.plumb.style.style.EmptyStatementBlockCheck",
           true,
-          List.of("dfa-style-empty-block-cwe398", "empty-statement-block")
-      );
+          List.of("dfa-style-empty-block-cwe398", "empty-statement-block"));
 
   @Override
   public String name() {

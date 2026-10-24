@@ -31,19 +31,19 @@ import org.plumb.tac.translate.TacTranslator;
  * </pre>
  *
  * <p>Absence means "nothing was recorded", not "known safe". Every other part of the engine states
- * this explicitly — the points-to solver's empty set, {@code AnalysisContext.aliasClassOf}'s
- * "empty means no alias information", and this same class's coverage check. This one line inverted
- * a may-fact into a must-claim, which is the direction that hides findings.
+ * this explicitly — the points-to solver's empty set, {@code AnalysisContext.aliasClassOf}'s "empty
+ * means no alias information", and this same class's coverage check. This one line inverted a
+ * may-fact into a must-claim, which is the direction that hides findings.
  *
  * <p>Two distinct defects fall out of it, and both are silent:
  *
  * <ol>
  *   <li><b>Direct.</b> {@code x = peek(); y = cleanSource(); } — any MOVE from a non-recorded name
  *       erases an earlier nullable mark on the destination.
- *   <li><b>Through a loop.</b> The state is a single per-function map walked in linear order with no
- *       fixpoint and no predecessor merge, so on a later round the erasure destroys a fact the back
- *       edge just re-introduced. A guard that is correct on round 1 makes the code look safe and the
- *       round-2 finding disappears.
+ *   <li><b>Through a loop.</b> The state is a single per-function map walked in linear order with
+ *       no fixpoint and no predecessor merge, so on a later round the erasure destroys a fact the
+ *       back edge just re-introduced. A guard that is correct on round 1 makes the code look safe
+ *       and the round-2 finding disappears.
  * </ol>
  *
  * <p>The loop case is the one that matters in practice: a {@code while (cur != null)} traversal
@@ -69,8 +69,20 @@ class R1119FlowInsensitiveNullFactTest {
             BuiltinFactKinds.registryWithBuiltins(),
             base.checkers(),
             base.cweMappings(),
-            new TuningConfig(2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family",
-                "sarif", false, 0),
+            new TuningConfig(
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
 
     FindingReporter reporter =

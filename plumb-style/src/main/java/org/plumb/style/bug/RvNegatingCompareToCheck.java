@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.UnaryExpr;
 import com.github.javaparser.ast.expr.UnaryExpr.Operator;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class RvNegatingCompareToCheck implements AstChecker {
           List.of("CWE-682"),
           "org.plumb.style.RvNegatingCompareToCheck",
           true,
-          List.of("ast-bug-negating-result-of-compareto", "rv-negating-compareto")
-      );
+          List.of("ast-bug-negating-result-of-compareto", "rv-negating-compareto"));
 
   @Override
   public String name() {

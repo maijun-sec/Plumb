@@ -6,7 +6,6 @@ import com.github.javaparser.ast.expr.EnclosedExpr;
 import com.github.javaparser.ast.expr.Expression;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class AmbiguousOperatorPrecedenceCheck implements AstChecker {
           List.of("CWE-783"),
           "org.plumb.style.AmbiguousOperatorPrecedenceCheck",
           true,
-          List.of("ast-style-ambiguous-precedence", "ambiguous-precedence")
-      );
+          List.of("ast-style-ambiguous-precedence", "ambiguous-precedence"));
 
   private static final Set<Operator> BITWISE_OPS =
       Set.of(Operator.BINARY_AND, Operator.BINARY_OR, Operator.XOR);

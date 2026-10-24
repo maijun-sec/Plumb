@@ -5,7 +5,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -29,8 +28,7 @@ public final class EnvVarInfoExposureCheck implements AstChecker {
           List.of("CWE-526"),
           "org.plumb.style.EnvVarInfoExposureCheck",
           true,
-          List.of("ast-style-env-var-info-exposure-style", "env-var-info-exposure")
-      );
+          List.of("ast-style-env-var-info-exposure-style", "env-var-info-exposure"));
 
   @Override
   public String name() {

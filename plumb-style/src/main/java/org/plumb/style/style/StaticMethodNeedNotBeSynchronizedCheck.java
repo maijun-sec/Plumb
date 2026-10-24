@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -15,15 +14,16 @@ public final class StaticMethodNeedNotBeSynchronizedCheck implements AstChecker 
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-style-staticmethodneednotbesynchronized-sb", "STATICMETHODNEEDNOTBESYNCHRONIZED_SB"),
+          new RuleId(
+              "ast-style-staticmethodneednotbesynchronized-sb",
+              "STATICMETHODNEEDNOTBESYNCHRONIZED_SB"),
           "Static method need not be synchronized",
           RuleDef.Severity.LOW,
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.StaticMethodNeedNotBeSynchronizedCheck",
           true,
-          List.of("ast-style-static-method-need-not-sync", "staticmethodneednotbesynchronized_sb")
-      );
+          List.of("ast-style-static-method-need-not-sync", "staticmethodneednotbesynchronized_sb"));
 
   @Override
   public String name() {

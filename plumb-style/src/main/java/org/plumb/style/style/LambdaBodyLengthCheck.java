@@ -6,7 +6,6 @@ import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class LambdaBodyLengthCheck implements AstChecker {
           List.of(),
           "org.plumb.style.LambdaBodyLengthCheck",
           true,
-          List.of("ast-style-lambda-body-length", "lambda-body-length")
-      );
+          List.of("ast-style-lambda-body-length", "lambda-body-length"));
 
   private static final int DEFAULT_MAX = 3;
 
@@ -37,7 +35,7 @@ public final class LambdaBodyLengthCheck implements AstChecker {
   @Override
   public void init(StyleContext ctx) {}
 
-    public void visit(LambdaExpr lambda, StyleContext ctx) {
+  public void visit(LambdaExpr lambda, StyleContext ctx) {
     Statement body = lambda.getBody();
     if (!(body instanceof BlockStmt)) return;
     BlockStmt b = (BlockStmt) body;

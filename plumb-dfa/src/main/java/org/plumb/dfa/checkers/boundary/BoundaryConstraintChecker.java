@@ -250,9 +250,9 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   /**
    * R1099: model {@code Math.min(a, b)} / {@code Math.max(a, b)} as a range clamp.
    *
-   * <p>{@code min} yields a value no greater than either argument and no less than the lower of
-   * the two; {@code max} is the dual. In range terms both are the MEET (intersection) of the
-   * argument ranges when both are known, which is precisely the fact a guard-based narrowing would
+   * <p>{@code min} yields a value no greater than either argument and no less than the lower of the
+   * two; {@code max} is the dual. In range terms both are the MEET (intersection) of the argument
+   * ranges when both are known, which is precisely the fact a guard-based narrowing would
    * establish. This is what makes {@code Math.min(n, 16)} suppress the overflow / divide-by-zero /
    * allocation findings that the equivalent {@code if (n > 16) n = 16;} already suppresses.
    *
@@ -263,10 +263,16 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     if (!(ins.dest instanceof TacOperand.TacVar dest)) return false;
     String sig = ins.calleeSig;
     if (sig == null) return false;
-    boolean isMin = sig.equals("Math.min/2") || sig.equals("java.lang.Math.min/2")
-        || sig.startsWith("Math.min/") || sig.startsWith("java.lang.Math.min/");
-    boolean isMax = sig.equals("Math.max/2") || sig.equals("java.lang.Math.max/2")
-        || sig.startsWith("Math.max/") || sig.startsWith("java.lang.Math.max/");
+    boolean isMin =
+        sig.equals("Math.min/2")
+            || sig.equals("java.lang.Math.min/2")
+            || sig.startsWith("Math.min/")
+            || sig.startsWith("java.lang.Math.min/");
+    boolean isMax =
+        sig.equals("Math.max/2")
+            || sig.equals("java.lang.Math.max/2")
+            || sig.startsWith("Math.max/")
+            || sig.startsWith("java.lang.Math.max/");
     if (!isMin && !isMax) return false;
     // args[0] is the synthesised receiver slot; user args are args[1] and args[2].
     if (ins.args.size() < 3) return false;

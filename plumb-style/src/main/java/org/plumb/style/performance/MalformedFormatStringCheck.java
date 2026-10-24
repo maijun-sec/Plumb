@@ -3,7 +3,6 @@ package org.plumb.style.performance;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,8 +11,8 @@ import org.plumb.style.StyleContext;
 /**
  * Malformed {@code printf} / {@code format} string literal.
  *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(MethodCallExpr.class)} before.
+ * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(MethodCallExpr.class)} before.
  */
 public final class MalformedFormatStringCheck implements AstChecker {
 
@@ -26,8 +25,7 @@ public final class MalformedFormatStringCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MalformedFormatStringCheck",
           true,
-          List.of("ast-performance-malformed-format-string", "malformed-format-string")
-      );
+          List.of("ast-performance-malformed-format-string", "malformed-format-string"));
 
   @Override
   public String name() {
@@ -49,12 +47,7 @@ public final class MalformedFormatStringCheck implements AstChecker {
       int line = mc.getBegin().map(p -> p.line).orElse(-1);
       int col = mc.getBegin().map(p -> p.column).orElse(-1);
       ctx.report(
-          line,
-          col,
-          DEFAULT_RULE,
-          "Malformed format string: " + fmt,
-          RuleDef.Severity.MEDIUM,
-          fmt);
+          line, col, DEFAULT_RULE, "Malformed format string: " + fmt, RuleDef.Severity.MEDIUM, fmt);
     }
   }
 }

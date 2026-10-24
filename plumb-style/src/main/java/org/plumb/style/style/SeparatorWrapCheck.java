@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class SeparatorWrapCheck implements AstChecker {
           List.of(),
           "org.plumb.style.SeparatorWrapCheck",
           true,
-          List.of("ast-style-separator-wrap", "separatorwrap")
-      );
+          List.of("ast-style-separator-wrap", "separatorwrap"));
 
   @Override
   public String name() {

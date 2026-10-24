@@ -7,7 +7,6 @@ import com.github.javaparser.ast.stmt.ReturnStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import java.util.List;
 import java.util.Optional;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class EmptyMethodInAbstractCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EmptyMethodInAbstractCheck",
           true,
-          List.of("ast-style-method-in-abstract", "empty-method-in-abstract")
-      );
+          List.of("ast-style-method-in-abstract", "empty-method-in-abstract"));
 
   @Override
   public String name() {

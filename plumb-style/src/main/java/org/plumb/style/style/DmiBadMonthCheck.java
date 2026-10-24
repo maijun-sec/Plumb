@@ -4,15 +4,14 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Month literal in {@code 1..12} range passed to {@code set/add}/{@code MONTH} ? use
- * {@code Calendar.JANUARY (0)} .. {@code Calendar.DECEMBER (11)} instead (DMI_BAD_MONTH).
+ * Month literal in {@code 1..12} range passed to {@code set/add}/{@code MONTH} ? use {@code
+ * Calendar.JANUARY (0)} .. {@code Calendar.DECEMBER (11)} instead (DMI_BAD_MONTH).
  */
 public final class DmiBadMonthCheck implements AstChecker {
 
@@ -25,8 +24,7 @@ public final class DmiBadMonthCheck implements AstChecker {
           List.of(),
           "org.plumb.style.DmiBadMonthCheck",
           true,
-          List.of("ast-style-bad-month", "dmi-bad-month")
-      );
+          List.of("ast-style-bad-month", "dmi-bad-month"));
 
   @Override
   public String name() {

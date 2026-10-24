@@ -9,7 +9,6 @@ import com.github.javaparser.ast.stmt.ReturnStmt;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -32,8 +31,7 @@ public final class ObjectModelCheck implements AstChecker {
           List.of("CWE-580"),
           "org.plumb.style.ObjectModelCheck",
           true,
-          List.of("ast-style-cwe580-clone-without-super-style", "cwe580-clone-without-super")
-      );
+          List.of("ast-style-cwe580-clone-without-super-style", "cwe580-clone-without-super"));
 
   private final Set<String> reported = new HashSet<>();
 

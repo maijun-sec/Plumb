@@ -3,7 +3,6 @@ package org.plumb.style.error;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class EmptyFinalizerCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EmptyFinalizerCheck",
           true,
-          List.of("ast-error-finalizer", "empty-finalizer")
-      );
+          List.of("ast-error-finalizer", "empty-finalizer"));
 
   @Override
   public String name() {

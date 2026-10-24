@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class ConditionalOnConstantCheck implements AstChecker {
           List.of("CWE-570"),
           "org.plumb.style.ConditionalOnConstantCheck",
           true,
-          List.of("ast-style-conditional-on-constant", "conditional-constant")
-      );
+          List.of("ast-style-conditional-on-constant", "conditional-constant"));
 
   @Override
   public String name() {

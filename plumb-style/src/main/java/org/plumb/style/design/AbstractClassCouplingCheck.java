@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -42,7 +41,8 @@ public final class AbstractClassCouplingCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.AbstractClassCouplingCheck",
-          true,List.of("ast-design-abstract-coupling", "abstract-coupling"),
+          true,
+          List.of("ast-design-abstract-coupling", "abstract-coupling"),
           List.of(PARAMS));
 
   @Override
@@ -85,5 +85,4 @@ public final class AbstractClassCouplingCheck implements AstChecker {
         RuleDef.Severity.LOW,
         "coupling");
   }
-
-  }
+}

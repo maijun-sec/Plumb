@@ -49,7 +49,19 @@ class R1113LocalContainerDetectionTest {
             base.checkers(),
             base.cweMappings(),
             new org.plumb.dfa.config.TuningConfig(
-                2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family", "sarif", false, 0),
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
     FindingReporter reporter =
         new DfaEngine(cfg, List.of(new NullDerefFromReturnDfaChecker()), "global", null)

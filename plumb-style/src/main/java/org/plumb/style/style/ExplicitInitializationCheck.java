@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.VariableDeclarator;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class ExplicitInitializationCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ExplicitInitializationCheck",
           true,
-          List.of("ast-style-explicit-initialization", "explicitinitializationcheck")
-      );
+          List.of("ast-style-explicit-initialization", "explicitinitializationcheck"));
 
   @Override
   public String name() {

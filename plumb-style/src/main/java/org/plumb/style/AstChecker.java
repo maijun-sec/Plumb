@@ -1,6 +1,5 @@
 package org.plumb.style;
 
-import org.plumb.rules.RuleDef;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
@@ -116,7 +115,7 @@ public interface AstChecker {
   }
 
   /**
-   * R?  Step 7 ? The rule-specific knowledge the LLM is told about this check before it judges a
+   * R? Step 7 ? The rule-specific knowledge the LLM is told about this check before it judges a
    * finding.
    *
    * <p>Default {@code null} (no AI dedup). Override on the checks that benefit from LLM judgement.

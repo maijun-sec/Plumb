@@ -24,7 +24,6 @@ import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -41,8 +40,7 @@ public final class SeededRandomCheck implements AstChecker {
           List.of("CWE-336"),
           "org.plumb.style.SeededRandomCheck",
           true,
-          List.of("ast-style-seeded-random", "seeded-random")
-      );
+          List.of("ast-style-seeded-random", "seeded-random"));
 
   private static final Set<String> RANDOM_TYPES = Set.of("Random", "SecureRandom");
 

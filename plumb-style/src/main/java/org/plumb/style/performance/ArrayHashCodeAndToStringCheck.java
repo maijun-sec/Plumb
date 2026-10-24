@@ -9,7 +9,6 @@ import com.github.javaparser.ast.expr.ThisExpr;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -27,8 +26,7 @@ public final class ArrayHashCodeAndToStringCheck implements AstChecker {
           List.of("CWE-477"),
           "org.plumb.style.ArrayHashCodeAndToStringCheck",
           true,
-          List.of("ast-performance-hashcode-tostring", "array-hashcode-tostring")
-      );
+          List.of("ast-performance-hashcode-tostring", "array-hashcode-tostring"));
 
   /**
    * Names that indicate an array variable. We use a narrow whitelist: names ending with "[]" or

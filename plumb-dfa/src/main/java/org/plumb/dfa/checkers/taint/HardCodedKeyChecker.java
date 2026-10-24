@@ -57,7 +57,6 @@
  */
 package org.plumb.dfa.checkers.taint;
 
-import org.plumb.rules.RuleDef;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -73,6 +72,7 @@ import org.plumb.reporter.trace.OperandRef;
 import org.plumb.reporter.trace.Trace;
 import org.plumb.reporter.trace.TraceBuilder;
 import org.plumb.reporter.trace.TraceNode;
+import org.plumb.rules.RuleDef;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
@@ -221,7 +221,7 @@ public final class HardCodedKeyChecker implements DfaChecker {
   }
 
   private static final String AI_PROMPT =
-      """
+"""
         RULE: Hard-coded cryptographic key (CWE-321).
         This rule fires when a SecretKeySpec is constructed
         from a string literal (or the byte[] of one) and

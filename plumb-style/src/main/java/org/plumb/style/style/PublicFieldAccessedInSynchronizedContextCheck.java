@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.stmt.SynchronizedStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -15,15 +14,18 @@ public final class PublicFieldAccessedInSynchronizedContextCheck implements AstC
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-style-publicfieldaccessedinsynchronizedcontext-sb", "PUBLICFIELDACCESSEDINSYNCHRONIZEDCONTEXT_SB"),
+          new RuleId(
+              "ast-style-publicfieldaccessedinsynchronizedcontext-sb",
+              "PUBLICFIELDACCESSEDINSYNCHRONIZEDCONTEXT_SB"),
           "Public field accessed in synchronized context",
           RuleDef.Severity.LOW,
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.PublicFieldAccessedInSynchronizedContextCheck",
           true,
-          List.of("ast-style-public-field-sync-context", "publicfieldaccessedinsynchronizedcontext_sb")
-      );
+          List.of(
+              "ast-style-public-field-sync-context",
+              "publicfieldaccessedinsynchronizedcontext_sb"));
 
   @Override
   public String name() {

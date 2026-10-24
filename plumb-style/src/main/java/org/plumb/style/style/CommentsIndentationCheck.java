@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.comments.Comment;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class CommentsIndentationCheck implements AstChecker {
           List.of(),
           "org.plumb.style.CommentsIndentationCheck",
           true,
-          List.of("ast-style-comments-indentation", "commentsindentation")
-      );
+          List.of("ast-style-comments-indentation", "commentsindentation"));
 
   @Override
   public String name() {

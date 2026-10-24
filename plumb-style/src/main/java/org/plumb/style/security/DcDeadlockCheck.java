@@ -24,7 +24,6 @@ import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.resolution.types.ResolvedType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -42,8 +41,7 @@ public final class DcDeadlockCheck implements AstChecker {
           List.of("CWE-662", "CWE-764"),
           "org.plumb.style.DcDeadlockCheck",
           true,
-          List.of("ast-security-dc-deadlock", "dc-deadlock")
-      );
+          List.of("ast-security-dc-deadlock", "dc-deadlock"));
 
   @Override
   public String name() {

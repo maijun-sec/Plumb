@@ -11,7 +11,6 @@ import com.github.javaparser.ast.type.Type;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -29,8 +28,7 @@ public final class ExposeMutableRepStorageCheck implements AstChecker {
           List.of("CWE-374"),
           "org.plumb.style.ExposeMutableRepStorageCheck",
           true,
-          List.of("ast-style-expose-rep2", "expose-mutable-rep2")
-      );
+          List.of("ast-style-expose-rep2", "expose-mutable-rep2"));
 
   @Override
   public String name() {

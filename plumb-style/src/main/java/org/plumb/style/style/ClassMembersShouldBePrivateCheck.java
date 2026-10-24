@@ -21,8 +21,7 @@ public final class ClassMembersShouldBePrivateCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ClassMembersShouldBePrivateCheck",
           true,
-          List.of("ast-style-members-should-be-private", "private-members")
-      );
+          List.of("ast-style-members-should-be-private", "private-members"));
 
   @Override
   public String name() {

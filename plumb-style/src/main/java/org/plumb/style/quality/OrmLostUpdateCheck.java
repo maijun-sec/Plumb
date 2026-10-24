@@ -17,10 +17,10 @@ package org.plumb.style.quality;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.AssignExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
-import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
@@ -29,7 +29,6 @@ import com.github.javaparser.ast.stmt.Statement;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -47,8 +46,7 @@ public final class OrmLostUpdateCheck implements AstChecker {
           List.of("CWE-459"),
           "org.plumb.style.OrmLostUpdateCheck",
           true,
-          List.of("ast-quality-orm-lost-update", "orm-lost-update")
-      );
+          List.of("ast-quality-orm-lost-update", "orm-lost-update"));
 
   private static final Set<String> PERSIST_METHODS =
       new HashSet<>(
@@ -57,13 +55,13 @@ public final class OrmLostUpdateCheck implements AstChecker {
   /**
    * Per-file set of entity-class simple names. Populated in {@link
    * #visit(ClassOrInterfaceDeclaration, StyleContext)} and consumed in {@link
-   * #visit(MethodDeclaration, StyleContext)}. Cleared at the start of each scan via
-   * {@link #init(StyleContext)} to avoid cross-file state pollution.
+   * #visit(MethodDeclaration, StyleContext)}. Cleared at the start of each scan via {@link
+   * #init(StyleContext)} to avoid cross-file state pollution.
    *
-   * <p>P1#7 invariant: the dispatcher must visit the enclosing class *before* any of
-   * its inner method declarations. {@code CompilationUnit#walk(Consumer)} is
-   * documented as pre-order DFS, which satisfies this; {@link #checkOrderingInvariant}
-   * is the defensive smoke-test if that ever changes.
+   * <p>P1#7 invariant: the dispatcher must visit the enclosing class *before* any of its inner
+   * method declarations. {@code CompilationUnit#walk(Consumer)} is documented as pre-order DFS,
+   * which satisfies this; {@link #checkOrderingInvariant} is the defensive smoke-test if that ever
+   * changes.
    */
   private Set<String> entityClassNames = new HashSet<>();
 
@@ -89,7 +87,8 @@ public final class OrmLostUpdateCheck implements AstChecker {
     // methods have already been visited — which would cause a silent miss when the
     // first class is the "consumer" and the second is the @Entity being mutated.
     // Using findAll here breaks the dependency on visit order.
-    com.github.javaparser.ast.CompilationUnit unit = ctx.source() != null ? ctx.source().unit() : null;
+    com.github.javaparser.ast.CompilationUnit unit =
+        ctx.source() != null ? ctx.source().unit() : null;
     if (unit != null) {
       for (ClassOrInterfaceDeclaration cls : unit.findAll(ClassOrInterfaceDeclaration.class)) {
         classesSeenInThisFile++;
@@ -225,12 +224,12 @@ public final class OrmLostUpdateCheck implements AstChecker {
   }
 
   /**
-   * P1#7 invariant check. The dispatcher walks the AST in pre-order (parent before
-   * children), so {@link #visit(ClassOrInterfaceDeclaration, StyleContext)} must run
-   * before {@code visit(MethodDeclaration, StyleContext)} for any class. If the
-   * method body references an entity class name that we have not yet collected, the
-   * dispatcher has changed its walk order ? log a single warning per file so the
-   * operator can fix the dispatcher before findings silently degrade.
+   * P1#7 invariant check. The dispatcher walks the AST in pre-order (parent before children), so
+   * {@link #visit(ClassOrInterfaceDeclaration, StyleContext)} must run before {@code
+   * visit(MethodDeclaration, StyleContext)} for any class. If the method body references an entity
+   * class name that we have not yet collected, the dispatcher has changed its walk order ? log a
+   * single warning per file so the operator can fix the dispatcher before findings silently
+   * degrade.
    */
   private void checkOrderingInvariant(MethodDeclaration md, BlockStmt body) {
     if (entityClassNames.isEmpty()) {

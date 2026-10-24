@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.AssignExpr;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class QbaQuestionableBooleanCheck implements AstChecker {
           List.of("CWE-697"),
           "org.plumb.style.QbaQuestionableBooleanCheck",
           true,
-          List.of("ast-style-questionable-boolean-assignment", "qba-questionable-boolean")
-      );
+          List.of("ast-style-questionable-boolean-assignment", "qba-questionable-boolean"));
 
   @Override
   public String name() {

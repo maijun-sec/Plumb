@@ -4,7 +4,6 @@ import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,11 @@ public final class MutableStaticShouldBeFinalCheck implements AstChecker {
           List.of("CWE-500"),
           "org.plumb.style.MutableStaticShouldBeFinalCheck",
           false,
-          List.of("ast-style-mutable-static-should-be-final", "mutable-static-should-be-final")
-      ); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832 baseline)
+          List.of(
+              "ast-style-mutable-static-should-be-final",
+              "mutable-static-should-be-final")); // R-834: disabled by default (0 TP / 100% FP on
+
+  // Juliet R-832 baseline)
 
   @Override
   public String name() {

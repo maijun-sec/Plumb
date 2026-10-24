@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.*;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;

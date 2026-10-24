@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.NullLiteralExpr;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class ReturnEmptyCollectionNotNullCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ReturnEmptyCollectionNotNullCheck",
           true,
-          List.of("ast-performance-return-empty-not-null", "return-empty-not-null")
-      );
+          List.of("ast-performance-return-empty-not-null", "return-empty-not-null"));
 
   @Override
   public String name() {

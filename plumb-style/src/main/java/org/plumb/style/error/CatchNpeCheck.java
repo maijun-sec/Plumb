@@ -4,7 +4,6 @@ import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.Type;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class CatchNpeCheck implements AstChecker {
           List.of("CWE-396"),
           "org.plumb.style.CatchNpeCheck",
           true,
-          List.of("ast-error-catch-npe", "error-catch-npe")
-      );
+          List.of("ast-error-catch-npe", "error-catch-npe"));
 
   @Override
   public String name() {

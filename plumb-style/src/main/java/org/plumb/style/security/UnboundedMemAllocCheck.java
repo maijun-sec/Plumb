@@ -35,7 +35,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -52,8 +51,7 @@ public final class UnboundedMemAllocCheck implements AstChecker {
           List.of("CWE-789"),
           "org.plumb.style.security.UnboundedMemAllocCheck",
           true,
-          List.of("ast-security-unbounded-mem-alloc", "unbounded-mem-alloc")
-      );
+          List.of("ast-security-unbounded-mem-alloc", "unbounded-mem-alloc"));
 
   /** Minimum allocation size to flag (64 KB). */
   private static final long MIN_ALLOC_SIZE = 65536L;

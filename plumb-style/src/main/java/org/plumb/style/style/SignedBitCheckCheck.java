@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.expr.UnaryExpr.Operator;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class SignedBitCheckCheck implements AstChecker {
           List.of("CWE-682"),
           "org.plumb.style.SignedBitCheckCheck",
           true,
-          List.of("ast-style-signed-check", "bit-signed-check")
-      );
+          List.of("ast-style-signed-check", "bit-signed-check"));
 
   @Override
   public String name() {

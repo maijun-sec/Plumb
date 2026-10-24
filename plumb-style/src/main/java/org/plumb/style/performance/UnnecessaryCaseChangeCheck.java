@@ -3,7 +3,6 @@ package org.plumb.style.performance;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class UnnecessaryCaseChangeCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UnnecessaryCaseChangeCheck",
           true,
-          List.of("ast-performance-unnecessary-case-change", "unnecessary-case-change")
-      );
+          List.of("ast-performance-unnecessary-case-change", "unnecessary-case-change"));
 
   @Override
   public String name() {

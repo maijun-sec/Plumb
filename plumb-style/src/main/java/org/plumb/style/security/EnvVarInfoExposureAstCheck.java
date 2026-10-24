@@ -35,7 +35,6 @@ import com.github.javaparser.ast.stmt.ExpressionStmt;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -53,8 +52,7 @@ public final class EnvVarInfoExposureAstCheck implements AstChecker {
           List.of("CWE-526"),
           "org.plumb.style.security.EnvVarInfoExposureAstCheck",
           true,
-          List.of("dfa-security-env-var-info-exposure", "env-var-info-exposure-ast")
-      );
+          List.of("dfa-security-env-var-info-exposure", "env-var-info-exposure-ast"));
 
   @Override
   public String name() {

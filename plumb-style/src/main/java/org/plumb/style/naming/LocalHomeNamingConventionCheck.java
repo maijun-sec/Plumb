@@ -29,8 +29,7 @@ public final class LocalHomeNamingConventionCheck implements AstChecker {
   private static final RuleDef DISABLED_RULE =
       new RuleDef(
           new RuleId(
-              "ast-naming-local-home-naming-NOT-IMPLEMENTED",
-              "LOCAL_HOME_NAMING_NOT_IMPLEMENTED"),
+              "ast-naming-local-home-naming-NOT-IMPLEMENTED", "LOCAL_HOME_NAMING_NOT_IMPLEMENTED"),
           "EJB LocalHome should end with LocalHome — STUB, not registered",
           RuleDef.Severity.LOW,
           RuleDef.Type.STYLE,

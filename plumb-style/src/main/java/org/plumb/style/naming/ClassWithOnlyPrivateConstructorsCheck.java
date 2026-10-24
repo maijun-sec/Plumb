@@ -3,7 +3,6 @@ package org.plumb.style.naming;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,8 +11,8 @@ import org.plumb.style.StyleContext;
 /**
  * Class with only private constructors should be {@code final}.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ClassOrInterfaceDeclaration.class)} before.
  */
 public final class ClassWithOnlyPrivateConstructorsCheck implements AstChecker {
 
@@ -26,8 +25,7 @@ public final class ClassWithOnlyPrivateConstructorsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ClassWithOnlyPrivateConstructorsCheck",
           true,
-          List.of("ast-naming-only-private-ctors", "class-only-private-ctors")
-      );
+          List.of("ast-naming-only-private-ctors", "class-only-private-ctors"));
 
   @Override
   public String name() {

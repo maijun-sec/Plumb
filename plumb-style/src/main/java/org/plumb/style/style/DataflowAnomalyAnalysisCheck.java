@@ -30,8 +30,7 @@ public final class DataflowAnomalyAnalysisCheck implements AstChecker {
   private static final RuleDef DISABLED_RULE =
       new RuleDef(
           new RuleId(
-              "ast-style-dataflow-anomaly-NOT-IMPLEMENTED",
-              "DATAFLOW_ANOMALY_NOT_IMPLEMENTED"),
+              "ast-style-dataflow-anomaly-NOT-IMPLEMENTED", "DATAFLOW_ANOMALY_NOT_IMPLEMENTED"),
           "data flow anomaly (UR, DU, DD) — STUB; equivalent in plumb-dfa",
           RuleDef.Severity.LOW,
           RuleDef.Type.STYLE,

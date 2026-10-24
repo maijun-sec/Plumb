@@ -27,11 +27,11 @@ import org.plumb.tac.translate.TacTranslator;
  * nothing, and the later load of {@code x.f} returned an empty set -- which by contract means
  * "unknown", not "null". Every consumer was right to ignore it and none could use it.
  *
- * <p>Nullness is now a separate channel ({@code nullFields}, {@code nullArrayCells},
- * {@code nullContainerCells}, {@code nullReturns}, {@code nullVars}), deliberately NOT an
- * {@code Obj}: one shared null sentinel would make every null in the program compare equal, so it
- * would leak into {@code mayAlias} and into the guard-coverage test, where "the guard covers this
- * null" is exactly the false negative R1113 removed.
+ * <p>Nullness is now a separate channel ({@code nullFields}, {@code nullArrayCells}, {@code
+ * nullContainerCells}, {@code nullReturns}, {@code nullVars}), deliberately NOT an {@code Obj}: one
+ * shared null sentinel would make every null in the program compare equal, so it would leak into
+ * {@code mayAlias} and into the guard-coverage test, where "the guard covers this null" is exactly
+ * the false negative R1113 removed.
  *
  * <p>The tests pin all three states, because the third is the one that must not regress:
  * <b>definitely null</b> (report), <b>guarded</b> (silent), <b>unknown</b> (silent -- inventing a
@@ -56,8 +56,20 @@ class R1114NullFactDomainTest {
             BuiltinFactKinds.registryWithBuiltins(),
             base.checkers(),
             base.cweMappings(),
-            new TuningConfig(2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family",
-                "sarif", false, 0),
+            new TuningConfig(
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
 
     FindingReporter reporter =
@@ -203,7 +215,8 @@ class R1114NullFactDomainTest {
             }
             """,
             "NullAliasWithGuard.java");
-    assertThat(out).as("the solver knows `a` is null; a guard on its copy does not erase that")
+    assertThat(out)
+        .as("the solver knows `a` is null; a guard on its copy does not erase that")
         .isNotEmpty();
   }
 }

@@ -22,8 +22,8 @@ import org.plumb.tac.translate.TacTranslator;
  * <h2>Why this is not the same as an array</h2>
  *
  * <p>A Java container is reached through a CALL, so {@code store.get("k")} carries no indexed
- * instruction for the heap model to hook. Without a dedicated rule the retrieved reference simply has
- * no points-to set, and every question asked of it -- "is this the object I checked?" -- is
+ * instruction for the heap model to hook. Without a dedicated rule the retrieved reference simply
+ * has no points-to set, and every question asked of it -- "is this the object I checked?" -- is
  * unanswerable. That is why the container case was previously measured as a gap rather than worked
  * around.
  *
@@ -34,9 +34,9 @@ import org.plumb.tac.translate.TacTranslator;
  * the difference between a precise answer and a wrong "safe", and both controls below exist to keep
  * it.
  *
- * <p>{@code List.add} cannot know the index it will occupy, so it writes the {@code ANY_KEY} cell and
- * two elements of one list are not separable. That is recorded in the positive test's own wording
- * rather than being left to be discovered.
+ * <p>{@code List.add} cannot know the index it will occupy, so it writes the {@code ANY_KEY} cell
+ * and two elements of one list are not separable. That is recorded in the positive test's own
+ * wording rather than being left to be discovered.
  */
 class R1112ContainerCellsTest {
 
@@ -140,8 +140,8 @@ class R1112ContainerCellsTest {
   /**
    * Two different keys are two different cells.
    *
-   * <p>This is the control that matters most. A single merged cell per container would make
-   * {@code get("b")} see {@code put("a", ..)}'s value, and then a guard on one entry would silence a
+   * <p>This is the control that matters most. A single merged cell per container would make {@code
+   * get("b")} see {@code put("a", ..)}'s value, and then a guard on one entry would silence a
    * dereference of an unrelated entry -- a false "safe" produced by imprecision rather than by a
    * real alias.
    */
@@ -168,9 +168,7 @@ class R1112ContainerCellsTest {
     Set<Obj> fetched = solver.pointsTo(sig, var(p, "go", "fetchedB"));
     Set<Obj> underA = solver.pointsTo(sig, var(p, "go", "a"));
 
-    assertThat(fetched)
-        .as("get(\"b\") must see the object stored under \"b\"")
-        .isNotEmpty();
+    assertThat(fetched).as("get(\"b\") must see the object stored under \"b\"").isNotEmpty();
     assertThat(fetched)
         .as("get(\"b\") must not see the object stored under \"a\"")
         .doesNotContainAnyElementsOf(underA);

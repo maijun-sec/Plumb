@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.SuperExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class FinalizeWithoutSuperCheck implements AstChecker {
           List.of("CWE-586"),
           "org.plumb.style.FinalizeWithoutSuperCheck",
           true,
-          List.of("ast-error-finalize-without-super", "finalize-without-super")
-      );
+          List.of("ast-error-finalize-without-super", "finalize-without-super"));
 
   @Override
   public String name() {

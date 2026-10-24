@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import com.github.javaparser.ast.stmt.TryStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class ReturnFromFinallyBlockCheck implements AstChecker {
           List.of("CWE-584"),
           "org.plumb.style.ReturnFromFinallyBlockCheck",
           true,
-          List.of("ast-style-return-from-finally", "return-from-finally")
-      );
+          List.of("ast-style-return-from-finally", "return-from-finally"));
 
   @Override
   public String name() {

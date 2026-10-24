@@ -5,7 +5,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class FinalParametersCheck implements AstChecker {
           List.of(),
           "org.plumb.style.FinalParametersCheck",
           true,
-          List.of("ast-style-parameters", "final-parameters")
-      );
+          List.of("ast-style-parameters", "final-parameters"));
 
   @Override
   public String name() {
@@ -35,18 +33,18 @@ public final class FinalParametersCheck implements AstChecker {
 
   @Override
   public void visit(MethodDeclaration m, StyleContext ctx) {
-for (Parameter p : m.getParameters()) {
-  if (p.isFinal()) return;
-  String pname = p.getNameAsString();
-  int line = p.getBegin().map(b -> b.line).orElse(-1);
-  int col = p.getBegin().map(b -> b.column).orElse(-1);
-  ctx.report(
-      line,
-      col,
-      DEFAULT_RULE,
-      "Parameter " + pname + " should be final",
-      RuleDef.Severity.LOW,
-      pname);
-}
+    for (Parameter p : m.getParameters()) {
+      if (p.isFinal()) return;
+      String pname = p.getNameAsString();
+      int line = p.getBegin().map(b -> b.line).orElse(-1);
+      int col = p.getBegin().map(b -> b.column).orElse(-1);
+      ctx.report(
+          line,
+          col,
+          DEFAULT_RULE,
+          "Parameter " + pname + " should be final",
+          RuleDef.Severity.LOW,
+          pname);
+    }
   }
 }

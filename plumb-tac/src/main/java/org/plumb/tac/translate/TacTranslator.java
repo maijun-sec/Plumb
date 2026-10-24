@@ -124,9 +124,9 @@ public final class TacTranslator {
   /**
    * The qualified name of the type that declares a callable.
    *
-   * <p>Top-level types are their own short name. Nested types use the JVM-style
-   * {@code $} separator, matching the prefix the translator already builds for
-   * inner-class method names (e.g. {@code "Outer$Inner"}).
+   * <p>Top-level types are their own short name. Nested types use the JVM-style {@code $}
+   * separator, matching the prefix the translator already builds for inner-class method names (e.g.
+   * {@code "Outer$Inner"}).
    */
   private static String qualifiedDeclaringType(String prefix, String classShortName) {
     if (prefix == null || prefix.isEmpty()) {
@@ -507,9 +507,10 @@ public final class TacTranslator {
       // identity. DeclaringType is the qualified declaring type
       // ("Controller", or "Outer$Inner" for a nested type); fall back
       // to the primary type only when it is genuinely unavailable.
-      String thisType = (declaringType != null && !declaringType.isEmpty())
-          ? declaringType
-          : source.primaryTypeName();
+      String thisType =
+          (declaringType != null && !declaringType.isEmpty())
+              ? declaringType
+              : source.primaryTypeName();
       b.locals().add(new TacOperand.TacVar("this", TacType.ofClass(thisType), false));
     }
     if (body != null) stmtTranslator.translateBlock(body, b);

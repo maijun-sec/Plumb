@@ -5,7 +5,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.type.TypeParameter;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -45,7 +44,8 @@ public final class GenericNamingCheck implements AstChecker {
           RuleDef.Type.NAMING,
           List.of(),
           "org.plumb.style.GenericNamingCheck",
-          true,List.of("ast-naming-generic-naming", "generic-naming"),
+          true,
+          List.of("ast-naming-generic-naming", "generic-naming"),
           List.of(PARAMS));
 
   @Override

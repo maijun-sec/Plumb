@@ -7,7 +7,6 @@ import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.stmt.SynchronizedStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -40,7 +39,8 @@ public final class WaitNotifyCheck implements AstChecker {
           RuleDef.Type.MULTITHREADING,
           List.of("CWE-662", "CWE-833"),
           "org.plumb.style.WaitNotifyCheck",
-          true,List.of("ast-style-wait-notify-in-loop", "wait-notify-in-loop"),
+          true,
+          List.of("ast-style-wait-notify-in-loop", "wait-notify-in-loop"),
           List.of(PARAMS));
 
   @Override

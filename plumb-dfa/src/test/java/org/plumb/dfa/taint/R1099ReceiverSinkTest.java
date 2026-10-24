@@ -41,13 +41,13 @@ class R1099ReceiverSinkTest {
   /**
    * A receiver-tainted sink is reachable.
    *
-   * <p>NOTE ON SCOPE: this asserts the plumbing — that a pattern declaring {@code
-   * arg_index: -2} causes the checker to inspect the receiver operand (TAC {@code args[0]}) and
-   * report when that operand carries taint. It deliberately marks the receiver as tainted through
-   * a direct parameter alias rather than through a constructor chain, because taint propagation
-   * INTO an object under construction is a separate, still-open gap (the NEW instruction does not
-   * yet taint its dest from a tainted constructor argument). Fixing that is tracked independently;
-   * bundling it here would make this regression gate fail for an unrelated reason.
+   * <p>NOTE ON SCOPE: this asserts the plumbing — that a pattern declaring {@code arg_index: -2}
+   * causes the checker to inspect the receiver operand (TAC {@code args[0]}) and report when that
+   * operand carries taint. It deliberately marks the receiver as tainted through a direct parameter
+   * alias rather than through a constructor chain, because taint propagation INTO an object under
+   * construction is a separate, still-open gap (the NEW instruction does not yet taint its dest
+   * from a tainted constructor argument). Fixing that is tracked independently; bundling it here
+   * would make this regression gate fail for an unrelated reason.
    */
   private static final String TAINTED_RECEIVER =
       """

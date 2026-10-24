@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,11 @@ public final class IndentationCheck implements AstChecker {
           List.of(),
           "org.plumb.style.IndentationCheck",
           false,
-          List.of("ast-style-indentation", "indentation")
-      ); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832 baseline)
+          List.of(
+              "ast-style-indentation",
+              "indentation")); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832
+
+  // baseline)
 
   @Override
   public String name() {
@@ -40,12 +42,7 @@ public final class IndentationCheck implements AstChecker {
     int col = c.getBegin().map(p -> p.column).orElse(-1);
     if (col > 0) {
       ctx.report(
-          line,
-          col,
-          DEFAULT_RULE,
-          "Indentation check",
-          RuleDef.Severity.LOW,
-          c.getNameAsString());
+          line, col, DEFAULT_RULE, "Indentation check", RuleDef.Severity.LOW, c.getNameAsString());
     }
   }
 }

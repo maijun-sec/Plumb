@@ -22,7 +22,6 @@ import com.github.javaparser.ast.stmt.DoStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -40,8 +39,7 @@ public final class AssignmentInConditionCheck implements AstChecker {
           List.of("CWE-481"),
           "org.plumb.style.style.AssignmentInConditionCheck",
           true,
-          List.of("dfa-style-assigning-instead-comparing", "assignment-in-condition")
-      );
+          List.of("dfa-style-assigning-instead-comparing", "assignment-in-condition"));
 
   @Override
   public String name() {

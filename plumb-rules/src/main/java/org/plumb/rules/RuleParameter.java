@@ -1,6 +1,5 @@
 package org.plumb.rules;
 
-import org.plumb.rules.RuleDef;
 import java.util.Objects;
 
 /**

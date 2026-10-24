@@ -2,7 +2,6 @@ package org.plumb.style.naming;
 
 import com.github.javaparser.ast.body.VariableDeclarator;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -11,8 +10,8 @@ import org.plumb.style.StyleContext;
 /**
  * Long variable name ({@code > 20} chars, strict).
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(VariableDeclarator.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(VariableDeclarator.class)} before.
  */
 public final class LongVariableCheck implements AstChecker {
 
@@ -25,8 +24,7 @@ public final class LongVariableCheck implements AstChecker {
           List.of(),
           "org.plumb.style.LongVariableCheck",
           true,
-          List.of("ast-naming-var-strict", "long-variable")
-      );
+          List.of("ast-naming-var-strict", "long-variable"));
 
   @Override
   public String name() {

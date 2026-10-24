@@ -7,7 +7,6 @@ import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.AssignExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -40,7 +39,8 @@ public final class AssignmentToNonFinalStaticCheck implements AstChecker {
           RuleDef.Type.BAD_PRACTICE,
           List.of(),
           "org.plumb.style.AssignmentToNonFinalStaticCheck",
-          true,List.of("ast-style-assignment-to-non-final-static", "assignment-to-non-final-static"),
+          true,
+          List.of("ast-style-assignment-to-non-final-static", "assignment-to-non-final-static"),
           List.of(PARAMS));
 
   @Override

@@ -2,7 +2,6 @@ package org.plumb.style.performance;
 
 import com.github.javaparser.ast.expr.ConditionalExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class SimplifyConditionalCheck implements AstChecker {
           List.of(),
           "org.plumb.style.SimplifyConditionalCheck",
           true,
-          List.of("ast-performance-simplify-conditional", "simplify-conditional")
-      );
+          List.of("ast-performance-simplify-conditional", "simplify-conditional"));
 
   @Override
   public String name() {

@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class UseAssertSameInsteadOfAssertTrueCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UseAssertSameInsteadOfAssertTrueCheck",
           true,
-          List.of("ast-style-assertsame-instead-of-asserttrue", "use-assertsame")
-      );
+          List.of("ast-style-assertsame-instead-of-asserttrue", "use-assertsame"));
 
   @Override
   public String name() {

@@ -447,8 +447,7 @@ public final class StyleContext {
   }
 
   /** Build a {@code name(p1,p2,...):returnType} signature string for a method. */
-  private static String formatSignature(
-      com.github.javaparser.ast.body.MethodDeclaration m) {
+  private static String formatSignature(com.github.javaparser.ast.body.MethodDeclaration m) {
     StringBuilder sig = new StringBuilder();
     sig.append(m.getNameAsString()).append('(');
     com.github.javaparser.ast.NodeList<com.github.javaparser.ast.body.Parameter> params =

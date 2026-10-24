@@ -22,8 +22,8 @@ import org.plumb.parser.ParsedSource;
  *
  * <h2>Why this test exists</h2>
  *
- * <p>R1103 stalled for a round on a false conclusion. JavaParser refused to resolve a field reference
- * with:
+ * <p>R1103 stalled for a round on a false conclusion. JavaParser refused to resolve a field
+ * reference with:
  *
  * <pre>
  *   LOG.calculateResolvedType() -&gt; IllegalStateException:
@@ -32,9 +32,9 @@ import org.plumb.parser.ParsedSource;
  *
  * <p>Read literally, that says the translator is walking a different tree from the one the parser
  * produced, and an investigation was started into a parser/translator handoff defect that does not
- * exist. The message is misleading: the parent chain is fully populated and {@code
- * resolve()} does work. {@code NameExpr.resolve()} fails for a different reason — the reference's
- * ancestor chain contains the {@code VariableDeclarationExpr} that declared it — and {@code
+ * exist. The message is misleading: the parent chain is fully populated and {@code resolve()} does
+ * work. {@code NameExpr.resolve()} fails for a different reason — the reference's ancestor chain
+ * contains the {@code VariableDeclarationExpr} that declared it — and {@code
  * calculateResolvedType()} fails differently again.
  *
  * <p>The actual fix reads the field declaration syntactically, which needs no resolver at all. This
@@ -75,7 +75,9 @@ class R1104AstParentChainDiagnosisTest {
     NameExpr ref = logRef(unit);
 
     assertThat(ref.getParentNode())
-        .as("the reference's parent must be present -- 'not inserted in a CompilationUnit' is a lie")
+        .as(
+            "the reference's parent must be present -- 'not inserted in a CompilationUnit' is a"
+                + " lie")
         .isPresent();
     assertThat(ref.getParentNode().orElseThrow().getParentNode())
         .as("and so must its grandparent")
@@ -97,8 +99,7 @@ class R1104AstParentChainDiagnosisTest {
     NameExpr ref = logRef(unit);
 
     // The API that works. This is what the false conclusion was built on top of.
-    assertThat(ref.resolve().getType().describe())
-        .isEqualTo("java.util.logging.Logger");
+    assertThat(ref.resolve().getType().describe()).isEqualTo("java.util.logging.Logger");
 
     // Called directly on the parser's own tree, calculateResolvedType() also succeeds. The
     // "The node is not inserted in a CompilationUnit" failure only appears when the translator
@@ -129,14 +130,14 @@ class R1104AstParentChainDiagnosisTest {
     // Sanity: a solver configured at parse time already resolves these nodes, so there is no
     // missing-injection defect either.
     CombinedTypeSolver solver = new CombinedTypeSolver(new ReflectionTypeSolver());
-    var fresh = new com.github.javaparser.JavaParser(
-            new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17)
-                .setSymbolResolver(new JavaSymbolSolver(solver)))
-        .parse(STATIC_FIELD)
-        .getResult()
-        .orElseThrow();
-    assertThat(logRef(fresh).resolve().getType().describe())
-        .isEqualTo("java.util.logging.Logger");
+    var fresh =
+        new com.github.javaparser.JavaParser(
+                new ParserConfiguration()
+                    .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17)
+                    .setSymbolResolver(new JavaSymbolSolver(solver)))
+            .parse(STATIC_FIELD)
+            .getResult()
+            .orElseThrow();
+    assertThat(logRef(fresh).resolve().getType().describe()).isEqualTo("java.util.logging.Logger");
   }
 }

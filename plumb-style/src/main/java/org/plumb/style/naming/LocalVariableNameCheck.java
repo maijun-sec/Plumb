@@ -3,7 +3,6 @@ package org.plumb.style.naming;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,9 +11,9 @@ import org.plumb.style.StyleContext;
 /**
  * Local variable name should be camelCase.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(VariableDeclarator.class)} before. The "skip final" filter is
- * preserved by inspecting the parent {@code VariableDeclarationExpr}.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(VariableDeclarator.class)} before. The "skip final" filter is preserved by inspecting the
+ * parent {@code VariableDeclarationExpr}.
  */
 public final class LocalVariableNameCheck implements AstChecker {
 
@@ -27,8 +26,7 @@ public final class LocalVariableNameCheck implements AstChecker {
           List.of(),
           "org.plumb.style.LocalVariableNameCheck",
           true,
-          List.of("ast-naming-var-name", "local-variable-name")
-      );
+          List.of("ast-naming-var-name", "local-variable-name"));
 
   @Override
   public String name() {

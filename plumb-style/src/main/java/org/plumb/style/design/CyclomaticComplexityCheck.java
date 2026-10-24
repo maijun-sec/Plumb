@@ -19,7 +19,6 @@ import com.github.javaparser.ast.stmt.SwitchStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -43,8 +42,7 @@ public final class CyclomaticComplexityCheck implements AstChecker {
           List.of(),
           "org.plumb.style.CyclomaticComplexityCheck",
           true,
-          List.of("ast-design-cyclomatic-complexity", "cyclomatic-complexity")
-      );
+          List.of("ast-design-cyclomatic-complexity", "cyclomatic-complexity"));
 
   @Override
   public String name() {

@@ -478,19 +478,20 @@ public final class ScanRunner {
    * prompt for each finding by its rule id. Findings whose rule is not in the map keep their {@code
    * ai_verdict} as UNKNOWN (no AI review was performed).
    *
-   * <p><b>R1124 (2026-10-24) — the map must be keyed by the id the FINDING carries, not only by
-   * the checker's slug.</b> {@link #ruleNameOf(Finding)} returns {@code finding.rule().ruleId().id()}
+   * <p><b>R1124 (2026-10-24) — the map must be keyed by the id the FINDING carries, not only by the
+   * checker's slug.</b> {@link #ruleNameOf(Finding)} returns {@code finding.rule().ruleId().id()}
    * (the canonical emit id, e.g. {@code ast-bug-bc-equals-no-null}), but the map used to be keyed
    * only by {@code checker.name()} (the kebab-case slug, e.g. {@code bc-equals-no-null}). Those two
    * strings are equal for <em>zero</em> of the 595 AST checkers, so every AST finding fell into the
    * {@code "(no-rule-prompt)"} branch and the AI FP-reducer never reviewed a single style rule. The
-   * DFA taint family was unaffected because {@code TaintedCheckerBase.name()} returns
-   * {@code rule.ruleId()} by construction.
+   * DFA taint family was unaffected because {@code TaintedCheckerBase.name()} returns {@code
+   * rule.ruleId()} by construction.
    *
-   * <p>So each checker is registered under BOTH keys: its slug (so a user's {@code --rule-prompts-dir}
-   * override and any slug-keyed lookup keep working) and the id of the rule it actually emits (so
-   * the finding's own id finds its prompt). The emitted id is read from the checker's own {@code
-   * rule()}, which is the same source of truth {@code StyleContext.report()} uses.
+   * <p>So each checker is registered under BOTH keys: its slug (so a user's {@code
+   * --rule-prompts-dir} override and any slug-keyed lookup keep working) and the id of the rule it
+   * actually emits (so the finding's own id finds its prompt). The emitted id is read from the
+   * checker's own {@code rule()}, which is the same source of truth {@code StyleContext.report()}
+   * uses.
    */
   private java.util.Map<String, java.util.function.Function<Finding, String>> buildPromptByRuleMap(
       List<org.plumb.dfa.engine.DfaChecker> dfaCheckers,
@@ -536,8 +537,8 @@ public final class ScanRunner {
   /**
    * R1124: map each AST checker's emitted rule id back to the checker's slug.
    *
-   * <p>Used by the {@code ai.dedupRules} allowlist so a user may name a rule either way. The key
-   * is the id the finding carries; the value is {@code checker.name()}.
+   * <p>Used by the {@code ai.dedupRules} allowlist so a user may name a rule either way. The key is
+   * the id the finding carries; the value is {@code checker.name()}.
    */
   private java.util.Map<String, String> buildSlugByEmittedIdMap(
       List<org.plumb.style.AstChecker> styleChecks) {
@@ -552,11 +553,10 @@ public final class ScanRunner {
   /**
    * R1124: does this finding's rule appear in the {@code ai.dedupRules} allowlist?
    *
-   * <p>The allowlist may name a rule either by its canonical emit id
-   * ({@code ast-bug-bc-equals-no-null}) or by the checker's slug
-   * ({@code bc-equals-no-null}). Both spellings are accepted, because the
-   * finding only carries the emit id while the slug is what a user reads in
-   * the rule catalogue and what {@code --rule-prompts-dir} names a file after.
+   * <p>The allowlist may name a rule either by its canonical emit id ({@code
+   * ast-bug-bc-equals-no-null}) or by the checker's slug ({@code bc-equals-no-null}). Both
+   * spellings are accepted, because the finding only carries the emit id while the slug is what a
+   * user reads in the rule catalogue and what {@code --rule-prompts-dir} names a file after.
    */
   private boolean matchesAiDedupRules(String ruleName, String slug) {
     if (config.aiDedupRules.contains(ruleName)) return true;
@@ -822,7 +822,7 @@ public final class ScanRunner {
     return m + "m" + rs + "s";
   }
 
-    // package-private test accessors ──────────────────────────────
+  // package-private test accessors ──────────────────────────────
   // (R-? --ai-dedup-stats unit tests use these to
   //  exercise the format helpers + printer without
   //  spinning up a real AIDedupService.)
@@ -1087,10 +1087,11 @@ public final class ScanRunner {
     // Per-module BuildProject.Module entries (from a build-system adapter) take
     // precedence: each one carries its own classpath, scope, languageLevel and
     // sourceEncoding so a multi-module project correctly scopes compile vs. test.
-    if (config.buildProject != null && config.buildProject.modules() != null
+    if (config.buildProject != null
+        && config.buildProject.modules() != null
         && !config.buildProject.modules().isEmpty()) {
-      for (Map.Entry<String, org.plumb.build.BuildProject.Module> e
-          : config.buildProject.modules().entrySet()) {
+      for (Map.Entry<String, org.plumb.build.BuildProject.Module> e :
+          config.buildProject.modules().entrySet()) {
         org.plumb.build.BuildProject.Module m = e.getValue();
         modules.add(toJavaModule(m, idx++));
       }
@@ -1102,12 +1103,8 @@ public final class ScanRunner {
               root,
               config.classpathJars,
               JavaModule.Scope.COMPILE,
-              config.buildProject != null
-                  ? config.buildProject.languageLevel()
-                  : null,
-              config.buildProject != null
-                  ? config.buildProject.sourceEncoding()
-                  : null));
+              config.buildProject != null ? config.buildProject.languageLevel() : null,
+              config.buildProject != null ? config.buildProject.sourceEncoding() : null));
     }
     for (Path root : config.moduleRoots) {
       modules.add(
@@ -1116,24 +1113,18 @@ public final class ScanRunner {
               root,
               config.classpathJars,
               JavaModule.Scope.COMPILE,
-              config.buildProject != null
-                  ? config.buildProject.languageLevel()
-                  : null,
-              config.buildProject != null
-                  ? config.buildProject.sourceEncoding()
-                  : null));
+              config.buildProject != null ? config.buildProject.languageLevel() : null,
+              config.buildProject != null ? config.buildProject.sourceEncoding() : null));
     }
     return modules;
   }
 
   /**
-   * Convert a {@link org.plumb.build.BuildProject.Module} into a {@link JavaModule}
-   * suitable for {@link JavaSourceParser}. The per-module classpath, scope,
-   * languageLevel and sourceEncoding are propagated so multi-module scans get
-   * correctly scoped symbol resolution.
+   * Convert a {@link org.plumb.build.BuildProject.Module} into a {@link JavaModule} suitable for
+   * {@link JavaSourceParser}. The per-module classpath, scope, languageLevel and sourceEncoding are
+   * propagated so multi-module scans get correctly scoped symbol resolution.
    */
-  private static JavaModule toJavaModule(
-      org.plumb.build.BuildProject.Module m, int idx) {
+  private static JavaModule toJavaModule(org.plumb.build.BuildProject.Module m, int idx) {
     JavaModule.Scope scope = JavaModule.Scope.fromString(m.scope().canonical());
     return JavaModule.singleRoot(
         m.id(),

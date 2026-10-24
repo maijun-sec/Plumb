@@ -41,7 +41,6 @@ import com.github.javaparser.ast.stmt.BlockStmt;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -60,8 +59,7 @@ public final class HibernateBadHashcodeCheck implements AstChecker {
           List.of("CWE-579"),
           "org.plumb.style.HibernateBadHashcodeCheck",
           true,
-          List.of("ast-quality-hibernate-bad-hashcode", "hibernate-bad-hashcode")
-      );
+          List.of("ast-quality-hibernate-bad-hashcode", "hibernate-bad-hashcode"));
 
   @Override
   public String name() {

@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NullLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class EcNullArgToVarargCheck implements AstChecker {
           List.of("CWE-754"),
           "org.plumb.style.EcNullArgToVarargCheck",
           true,
-          List.of("ast-style-null-arg-to-vararg-method", "ec-null-vararg")
-      );
+          List.of("ast-style-null-arg-to-vararg-method", "ec-null-vararg"));
 
   @Override
   public String name() {

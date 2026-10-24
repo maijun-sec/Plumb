@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.AssignExpr;
 import com.github.javaparser.ast.expr.NullLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class NullAssignmentCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NullAssignmentCheck",
           true,
-          List.of("ast-style-assignment-null", "null-assignment")
-      );
+          List.of("ast-style-assignment-null", "null-assignment"));
 
   @Override
   public String name() {

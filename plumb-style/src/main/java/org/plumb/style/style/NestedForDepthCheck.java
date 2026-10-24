@@ -10,7 +10,6 @@ import com.github.javaparser.ast.stmt.ForEachStmt;
 import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -26,8 +25,7 @@ public final class NestedForDepthCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NestedForDepthCheck",
           true,
-          List.of("ast-style-nested-for-depth", "nested-for-depth")
-      );
+          List.of("ast-style-nested-for-depth", "nested-for-depth"));
 
   @Override
   public String name() {
@@ -43,12 +41,7 @@ public final class NestedForDepthCheck implements AstChecker {
       int line = f.getBegin().map(p -> p.line).orElse(-1);
       int col = f.getBegin().map(p -> p.column).orElse(-1);
       ctx.report(
-          line,
-          col,
-          DEFAULT_RULE,
-          "Nested loop depth > 2; refactor",
-          RuleDef.Severity.LOW,
-          "for");
+          line, col, DEFAULT_RULE, "Nested loop depth > 2; refactor", RuleDef.Severity.LOW, "for");
     }
   }
 
@@ -73,12 +66,7 @@ public final class NestedForDepthCheck implements AstChecker {
       int line = d.getBegin().map(p -> p.line).orElse(-1);
       int col = d.getBegin().map(p -> p.column).orElse(-1);
       ctx.report(
-          line,
-          col,
-          DEFAULT_RULE,
-          "Nested loop depth > 2; refactor",
-          RuleDef.Severity.LOW,
-          "do");
+          line, col, DEFAULT_RULE, "Nested loop depth > 2; refactor", RuleDef.Severity.LOW, "do");
     }
   }
 

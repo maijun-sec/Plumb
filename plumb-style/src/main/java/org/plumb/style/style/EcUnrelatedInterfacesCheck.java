@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class EcUnrelatedInterfacesCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EcUnrelatedInterfacesCheck",
           true,
-          List.of("ast-style-unrelated-interfaces", "ec-unrelated-iface")
-      );
+          List.of("ast-style-unrelated-interfaces", "ec-unrelated-iface"));
 
   @Override
   public String name() {

@@ -5,7 +5,6 @@ import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class FieldNamingConventionCheck implements AstChecker {
           List.of(),
           "org.plumb.style.FieldNamingConventionCheck",
           true,
-          List.of("legacy-naming-convention", "field-naming")
-      );
+          List.of("legacy-naming-convention", "field-naming"));
 
   private static final Pattern CAMEL = Pattern.compile("^[a-z][a-zA-Z0-9]*$");
 

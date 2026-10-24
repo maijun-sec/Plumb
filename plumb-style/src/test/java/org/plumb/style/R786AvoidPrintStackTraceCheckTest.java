@@ -9,7 +9,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.plumb.parser.JavaSourceParser;
 import org.plumb.parser.ParsedSource;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleRegistry;
 import org.plumb.style.style.AvoidPrintStackTraceCheck;
 
@@ -59,18 +58,15 @@ class R786AvoidPrintStackTraceCheckTest {
             + "    e.printStackTrace();\n"
             + "  }\n"
             + "}";
-    assertEquals(1, run(src),
-        "Only m1's e.printStackTrace() is a catch param; m2's local `e` is not");
+    assertEquals(
+        1, run(src), "Only m1's e.printStackTrace() is a catch param; m2's local `e` is not");
   }
 
   @Test
   void doesNotFireOnOtherMethod() {
     // Sanity: two methods, neither uses printStackTrace.
     String src =
-        "class N {\n"
-            + "  void m1() { int x = 1; }\n"
-            + "  void m2() { int y = 2; }\n"
-            + "}";
+        "class N {\n" + "  void m1() { int x = 1; }\n" + "  void m2() { int y = 2; }\n" + "}";
     assertEquals(0, run(src));
   }
 }

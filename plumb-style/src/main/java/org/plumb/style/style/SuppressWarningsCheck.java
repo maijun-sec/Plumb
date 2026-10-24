@@ -21,8 +21,8 @@ import org.plumb.style.StyleContext;
  * @SuppressWarnings should be specific ? unimplemented.
  *
  * <p>Detection requires annotation processing / symbol resolution which is outside the AST pass.
- *     Kept as a registry-skipped placeholder; an analyzer-level checker should replace this when
- *     needed.
+ * Kept as a registry-skipped placeholder; an analyzer-level checker should replace this when
+ * needed.
  */
 @Deprecated
 public final class SuppressWarningsCheck implements AstChecker {
@@ -34,8 +34,7 @@ public final class SuppressWarningsCheck implements AstChecker {
   private static final RuleDef DISABLED_RULE =
       new RuleDef(
           new RuleId(
-              "ast-style-suppress-warnings-NOT-IMPLEMENTED",
-              "SUPPRESS_WARNINGS_NOT_IMPLEMENTED"),
+              "ast-style-suppress-warnings-NOT-IMPLEMENTED", "SUPPRESS_WARNINGS_NOT_IMPLEMENTED"),
           "@SuppressWarnings not specific — STUB, not registered",
           RuleDef.Severity.LOW,
           RuleDef.Type.STYLE,

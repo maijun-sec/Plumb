@@ -8,7 +8,6 @@ import com.github.javaparser.ast.expr.NameExpr;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -34,8 +33,7 @@ public final class UnusedPrivateFieldCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UnusedPrivateFieldCheck",
           true,
-          List.of("ast-style-unused-private-field", "unused-private-field")
-      );
+          List.of("ast-style-unused-private-field", "unused-private-field"));
 
   @Override
   public String name() {

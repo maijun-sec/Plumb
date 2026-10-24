@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.InitializerDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class EmptyStaticInitializerCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EmptyStaticInitializerCheck",
           true,
-          List.of("ast-style-static-init", "emptystaticinitializercheck")
-      );
+          List.of("ast-style-static-init", "emptystaticinitializercheck"));
 
   @Override
   public String name() {
@@ -39,12 +37,7 @@ public final class EmptyStaticInitializerCheck implements AstChecker {
       int line = init.getBegin().map(p -> p.line).orElse(-1);
       int col = init.getBegin().map(p -> p.column).orElse(-1);
       ctx.report(
-          line,
-          col,
-          DEFAULT_RULE,
-          "Empty static initializer",
-          RuleDef.Severity.LOW,
-          "static init");
+          line, col, DEFAULT_RULE, "Empty static initializer", RuleDef.Severity.LOW, "static init");
     }
   }
 }

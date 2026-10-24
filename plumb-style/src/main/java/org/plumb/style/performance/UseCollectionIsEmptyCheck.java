@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.UnaryExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class UseCollectionIsEmptyCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UseCollectionIsEmptyCheck",
           true,
-          List.of("ast-performance-collection-is-empty", "use-collection-is-empty")
-      );
+          List.of("ast-performance-collection-is-empty", "use-collection-is-empty"));
 
   @Override
   public String name() {

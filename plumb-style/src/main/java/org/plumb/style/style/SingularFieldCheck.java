@@ -8,7 +8,6 @@ import com.github.javaparser.ast.expr.NameExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -26,8 +25,11 @@ public final class SingularFieldCheck implements AstChecker {
           List.of(),
           "org.plumb.style.SingularFieldCheck",
           false,
-          List.of("ast-style-singular-field", "singular-field")
-      ); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832 baseline)
+          List.of(
+              "ast-style-singular-field",
+              "singular-field")); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832
+
+  // baseline)
 
   @Override
   public String name() {

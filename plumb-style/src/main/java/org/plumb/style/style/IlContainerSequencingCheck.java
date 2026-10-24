@@ -5,7 +5,6 @@ import com.github.javaparser.ast.stmt.ExpressionStmt;
 import com.github.javaparser.ast.stmt.ForEachStmt;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class IlContainerSequencingCheck implements AstChecker {
           List.of("CWE-672"),
           "org.plumb.style.IlContainerSequencingCheck",
           true,
-          List.of("ast-style-container-sequencing", "il-container-sequencing")
-      );
+          List.of("ast-style-container-sequencing", "il-container-sequencing"));
 
   private static final Set<String> MUTATORS =
       Set.of("add", "remove", "addAll", "removeAll", "retainAll", "clear");

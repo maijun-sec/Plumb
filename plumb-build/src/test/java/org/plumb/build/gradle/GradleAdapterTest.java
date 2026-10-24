@@ -139,9 +139,7 @@ class GradleAdapterTest {
   @Test
   void discover_versionCatalogResolvesLibsAlias(@TempDir Path tmp) throws IOException {
     // Top-level build.gradle that references libs.guava from the version catalog.
-    Files.writeString(
-        tmp.resolve("settings.gradle"),
-        "rootProject.name = 'demo'\n");
+    Files.writeString(tmp.resolve("settings.gradle"), "rootProject.name = 'demo'\n");
     Files.writeString(
         tmp.resolve("build.gradle"),
         """
@@ -174,9 +172,7 @@ class GradleAdapterTest {
 
   @Test
   void discover_customSourceDirsOverride(@TempDir Path tmp) throws IOException {
-    Files.writeString(
-        tmp.resolve("settings.gradle"),
-        "rootProject.name = 'demo'\n");
+    Files.writeString(tmp.resolve("settings.gradle"), "rootProject.name = 'demo'\n");
     Files.writeString(
         tmp.resolve("build.gradle"),
         """
@@ -191,7 +187,8 @@ class GradleAdapterTest {
     Files.createDirectories(tmp.resolve("gensrc/test/java"));
     Files.writeString(tmp.resolve("gensrc/test/java/CTest.java"), "class CTest {}");
     Files.createDirectories(tmp.resolve("src/main/java"));
-    Files.writeString(tmp.resolve("src/main/java/SHOULD_NOT_PICK_UP.java"), "class SHOULD_NOT_PICK_UP {}");
+    Files.writeString(
+        tmp.resolve("src/main/java/SHOULD_NOT_PICK_UP.java"), "class SHOULD_NOT_PICK_UP {}");
 
     BuildProject bp = new GradleAdapter(tmp.resolve("empty-repo")).discover(tmp);
     // Sources must include both gensrc/main/java and extra-src but NOT src/main/java (since the
@@ -246,9 +243,7 @@ class GradleAdapterTest {
 
   @Test
   void discover_rejectsPathTraversalInInclude(@TempDir Path tmp) throws IOException {
-    Files.writeString(
-        tmp.resolve("settings.gradle"),
-        "include '../escape'\n");
+    Files.writeString(tmp.resolve("settings.gradle"), "include '../escape'\n");
     Files.writeString(tmp.resolve("build.gradle"), "// root build");
     Files.createDirectories(tmp.resolve("src/main/java"));
     Files.writeString(tmp.resolve("src/main/java/Foo.java"), "class Foo {}");

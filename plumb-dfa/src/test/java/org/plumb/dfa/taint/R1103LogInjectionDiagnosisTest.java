@@ -29,8 +29,8 @@ import org.plumb.tac.translate.TacTranslator;
  * <h2>Layer 1 — the missing checker</h2>
  *
  * <p>{@code log.sinks} (CWE-117) was configured in {@code sink-families.yaml} with no rule bound to
- * it, exactly like the {@code deserialization.sinks} gap closed in R1099. {@link LogInjectionChecker}
- * now consumes it, and the family-resolution test pins that half.
+ * it, exactly like the {@code deserialization.sinks} gap closed in R1099. {@link
+ * LogInjectionChecker} now consumes it, and the family-resolution test pins that half.
  *
  * <h2>Layer 2 — the receiver type that made it unmatchable</h2>
  *
@@ -47,14 +47,14 @@ import org.plumb.tac.translate.TacTranslator;
  * static-field form matched nothing. This is not logging-specific: it affects every object reached
  * through a field, and in real code most loggers and most connection holders are fields.
  *
- * <p>The declared type is read syntactically from the enclosing type's field declarations rather than
- * through JavaParser's resolver. Both resolver entry points fail on this shape — {@code
+ * <p>The declared type is read syntactically from the enclosing type's field declarations rather
+ * than through JavaParser's resolver. Both resolver entry points fail on this shape — {@code
  * NameExpr.resolve()} because the reference's ancestor chain contains the {@code
  * VariableDeclarationExpr} that declared it, {@code calculateResolvedType()} with {@code "not
- * inserted in a CompilationUnit"} — and neither failure means the parent chain is broken. An earlier
- * round concluded the parser and translator shared disjoint trees on the strength of that message;
- * that conclusion was wrong, and the diagnostic test {@code R1104AstParentChainDiagnosisTest} exists
- * to keep it from being repeated.
+ * inserted in a CompilationUnit"} — and neither failure means the parent chain is broken. An
+ * earlier round concluded the parser and translator shared disjoint trees on the strength of that
+ * message; that conclusion was wrong, and the diagnostic test {@code
+ * R1104AstParentChainDiagnosisTest} exists to keep it from being repeated.
  *
  * <h2>What is proved here</h2>
  *

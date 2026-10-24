@@ -23,7 +23,6 @@ import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -40,8 +39,7 @@ public final class WeakCryptoCheck implements AstChecker {
           List.of("CWE-327"),
           "org.plumb.style.WeakCryptoCheck",
           true,
-          List.of("ast-style-weak-crypto", "weak-crypto")
-      );
+          List.of("ast-style-weak-crypto", "weak-crypto"));
 
   private static final Set<String> WEAK_ALGORITHMS =
       Set.of(

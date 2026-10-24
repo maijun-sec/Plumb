@@ -7,7 +7,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -36,8 +35,7 @@ public final class UnprotectedCredTransportCheck implements AstChecker {
           List.of("CWE-523"),
           "org.plumb.style.UnprotectedCredTransportCheck",
           true,
-          List.of("ast-style-unprotected-cred-transport-style", "unprotected-cred-transport")
-      );
+          List.of("ast-style-unprotected-cred-transport-style", "unprotected-cred-transport"));
 
   private static final Pattern HTTP_URL = Pattern.compile("(?<!s)http://");
   private static final Pattern LOGIN_FORM =

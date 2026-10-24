@@ -15,39 +15,40 @@ import org.slf4j.LoggerFactory;
 /**
  * Single-pass dispatcher for {@link AstChecker}s.
  *
- * <p><b>M4 / M5 audit (2026-10-17):</b> the previous implementation listed 30+ per-node-type
- * visit overrides ({@code visit(CompilationUnit, Void)}, {@code visit(IfStmt, Void)}, …) each
- * with the same boilerplate: iterate every registered checker, catch RuntimeException, call
- * {@code super.visit(n, arg)}. The result was 900+ lines of repetition AND a per-node cost of
- * {@code O(checkers)} invocations ? for a typical file with 10K AST nodes and 600 checkers,
- * that's 6M invocations where 99.9% are no-ops (the checker didn't override that visit type).
+ * <p><b>M4 / M5 audit (2026-10-17):</b> the previous implementation listed 30+ per-node-type visit
+ * overrides ({@code visit(CompilationUnit, Void)}, {@code visit(IfStmt, Void)}, …) each with the
+ * same boilerplate: iterate every registered checker, catch RuntimeException, call {@code
+ * super.visit(n, arg)}. The result was 900+ lines of repetition AND a per-node cost of {@code
+ * O(checkers)} invocations ? for a typical file with 10K AST nodes and 600 checkers, that's 6M
+ * invocations where 99.9% are no-ops (the checker didn't override that visit type).
  *
  * <p>This rewrite collapses the dispatcher into two responsibilities:
  *
  * <ol>
- *   <li><b>Build the dispatch table once</b> at first {@link #run(StyleContext)}. For each
- *       checker we reflect over its declared {@code visit(NodeType, StyleContext)} methods and
- *       register an entry under the NodeType key. Default no-op methods declared on {@link
- *       AstChecker} are skipped.
+ *   <li><b>Build the dispatch table once</b> at first {@link #run(StyleContext)}. For each checker
+ *       we reflect over its declared {@code visit(NodeType, StyleContext)} methods and register an
+ *       entry under the NodeType key. Default no-op methods declared on {@link AstChecker} are
+ *       skipped.
  *   <li><b>Walk the tree once</b> via {@link CompilationUnit#walk(java.util.function.Consumer)},
  *       invoking on each node only the checkers that declared a matching per-type visit method.
- *       Per-node cost drops to {@code O(checkers_that_care_about_node_type)} ? typically
- *       1-5 instead of 600.
+ *       Per-node cost drops to {@code O(checkers_that_care_about_node_type)} ? typically 1-5
+ *       instead of 600.
  * </ol>
  *
- * <p><b>Why walk(Consumer) and not a custom VoidVisitorAdapter:</b> JavaParser's
- * {@code VoidVisitor} interface (and {@code VoidVisitorAdapter}) defines ~100 typed
- * {@code visit(TypedNode, A)} methods but NO generic {@code visit(Node, A)} fallback in
- * 3.26.4 ? overriding one would either re-introduce the boilerplate or skip nodes not covered
- * by the 100 overloads. The tree {@link Node#walk(Consumer)} traversal visits every Node in
- * pre-order and is the API the original dispatcher was approximating by hand.
+ * <p><b>Why walk(Consumer) and not a custom VoidVisitorAdapter:</b> JavaParser's {@code
+ * VoidVisitor} interface (and {@code VoidVisitorAdapter}) defines ~100 typed {@code
+ * visit(TypedNode, A)} methods but NO generic {@code visit(Node, A)} fallback in 3.26.4 ?
+ * overriding one would either re-introduce the boilerplate or skip nodes not covered by the 100
+ * overloads. The tree {@link Node#walk(Consumer)} traversal visits every Node in pre-order and is
+ * the API the original dispatcher was approximating by hand.
  *
  * <p>Side benefits:
+ *
  * <ul>
  *   <li>Checkers no longer need to be aware of the dispatcher. They just override {@code
- *       visit(FooStmt, StyleContext)} for whatever node types they care about. The old
- *       "findAll inside visit(CompilationUnit)" anti-pattern becomes unnecessary ? the dispatcher
- *       already gives each checker a per-node-type callback for free.
+ *       visit(FooStmt, StyleContext)} for whatever node types they care about. The old "findAll
+ *       inside visit(CompilationUnit)" anti-pattern becomes unnecessary ? the dispatcher already
+ *       gives each checker a per-node-type callback for free.
  *   <li>Adding a new {@code visit(SomeNewNode, StyleContext)} method to {@link AstChecker} (e.g.
  *       when JavaParser adds a new node type) is automatically picked up ? no dispatcher edit
  *       required.
@@ -60,13 +61,15 @@ public final class AstDispatcher {
   private final List<AstChecker> checkers = new ArrayList<>();
 
   /**
-   * Dispatch table: node class → list of (checker, visit-method). Built lazily on the first
-   * {@link #run(StyleContext)} call so register order doesn't matter and tests that swap checkers
+   * Dispatch table: node class → list of (checker, visit-method). Built lazily on the first {@link
+   * #run(StyleContext)} call so register order doesn't matter and tests that swap checkers
    * mid-flight behave correctly.
    */
   private Map<Class<? extends Node>, List<Entry>> dispatch;
 
-  /** One row in the dispatch table: a single (checker, visit-method) pair for a specific node type. */
+  /**
+   * One row in the dispatch table: a single (checker, visit-method) pair for a specific node type.
+   */
   private record Entry(AstChecker checker, Method method) {}
 
   public AstDispatcher register(AstChecker c) {
@@ -82,9 +85,9 @@ public final class AstDispatcher {
   }
 
   /**
-   * Initialize every checker with the context, walk the unit once, then call each checker's
-   * {@link AstChecker#finish}. Returns the number of findings produced (delta on
-   * {@code ctx.findings()}, useful for timing reports).
+   * Initialize every checker with the context, walk the unit once, then call each checker's {@link
+   * AstChecker#finish}. Returns the number of findings produced (delta on {@code ctx.findings()},
+   * useful for timing reports).
    */
   public int run(StyleContext ctx) {
     int before = ctx.findings().size();
@@ -150,9 +153,7 @@ public final class AstDispatcher {
                         cause == null ? ite.toString() : cause.toString());
                   } catch (IllegalAccessException ex) {
                     LOG.warn(
-                        "AstChecker {} visit access denied: {}",
-                        e.checker().name(),
-                        ex.toString());
+                        "AstChecker {} visit access denied: {}", e.checker().name(), ex.toString());
                   }
                 }
               }

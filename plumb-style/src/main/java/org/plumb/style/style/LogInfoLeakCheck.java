@@ -20,7 +20,6 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -37,8 +36,7 @@ public final class LogInfoLeakCheck implements AstChecker {
           List.of("CWE-533", "CWE-534"),
           "org.plumb.style.LogInfoLeakCheck",
           true,
-          List.of("ast-style-log-info-leak", "log-info-leak")
-      );
+          List.of("ast-style-log-info-leak", "log-info-leak"));
 
   private static final Set<String> LOG_METHOD_NAMES =
       Set.of(

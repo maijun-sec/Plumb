@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class HeSignatureDeclaresHashcodeOfObjectCheck implements AstChecke
           List.of("CWE-697"),
           "org.plumb.style.HeSignatureDeclaresHashcodeOfObjectCheck",
           true,
-          List.of("ast-style-signature-declares-hashcode-of-object", "he-hashcode-signature")
-      );
+          List.of("ast-style-signature-declares-hashcode-of-object", "he-hashcode-signature"));
 
   @Override
   public String name() {

@@ -25,7 +25,6 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -42,11 +41,15 @@ public final class UnusedImportCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UnusedImportCheck",
           false,
-          List.of("ast-style-unused-import", "unused-import")
-      ); // R-836 step_f: disabled by default (0 TP / 100% FP on Juliet R-832 baseline)
+          List.of(
+              "ast-style-unused-import",
+              "unused-import")); // R-836 step_f: disabled by default (0 TP / 100% FP on Juliet
+
+  // R-832 baseline)
 
   /** Per-file: all import declarations for the current CU. Populated in init(). */
   private final List<ImportDeclaration> importsBuffer = new java.util.ArrayList<>();
+
   private final Set<String> usedNames = new HashSet<>();
   private final Set<String> usedTypes = new HashSet<>();
   private final Set<String> usedAnnotations = new HashSet<>();
@@ -78,9 +81,9 @@ public final class UnusedImportCheck implements AstChecker {
   }
 
   /**
-   * R-AST-FIX-2026-10-18: register concrete annotation subtypes so the dispatcher's
-   * exact-class lookup fires. {@code visit(AnnotationExpr)} (the base type) was previously
-   * never invoked because the dispatcher indexes by the runtime node class.
+   * R-AST-FIX-2026-10-18: register concrete annotation subtypes so the dispatcher's exact-class
+   * lookup fires. {@code visit(AnnotationExpr)} (the base type) was previously never invoked
+   * because the dispatcher indexes by the runtime node class.
    */
   public void visit(AnnotationExpr a, StyleContext ctx) {
     usedAnnotations.add(a.getNameAsString());

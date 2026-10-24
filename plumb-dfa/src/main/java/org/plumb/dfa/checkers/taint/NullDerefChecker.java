@@ -56,7 +56,8 @@ public final class NullDerefChecker extends TaintedCheckerBase {
    * DivByZeroChecker} owns one: the guard state is per-function and per-checker, and the base class
    * keeps its own instance private.
    */
-  private final org.plumb.dfa.taint.GuardTracker nullGuards = new org.plumb.dfa.taint.GuardTracker();
+  private final org.plumb.dfa.taint.GuardTracker nullGuards =
+      new org.plumb.dfa.taint.GuardTracker();
 
   /**
    * Clear per-function state on function boundary. The earlier code cleared on the first
@@ -204,12 +205,12 @@ public final class NullDerefChecker extends TaintedCheckerBase {
   /**
    * R1108: why this dereference must NOT be reported, or {@code null} to report it.
    *
-   * <p>A non-null guard constrains the <em>object</em>, not the variable name. So when
-   * {@code if (a != null)} holds on this path and {@code b} may hold the same object as {@code a},
-   * {@code b} is non-null here as well — and the reverse-scan that flagged {@code b} has simply
-   * missed that the path already established the fact. That is why consulting the alias class
-   * removes findings instead of adding them: every branch below can only conclude "this path proves
-   * the receiver safe", never "this path might make it less safe".
+   * <p>A non-null guard constrains the <em>object</em>, not the variable name. So when {@code if (a
+   * != null)} holds on this path and {@code b} may hold the same object as {@code a}, {@code b} is
+   * non-null here as well — and the reverse-scan that flagged {@code b} has simply missed that the
+   * path already established the fact. That is why consulting the alias class removes findings
+   * instead of adding them: every branch below can only conclude "this path proves the receiver
+   * safe", never "this path might make it less safe".
    *
    * <p>What this deliberately does NOT do, because it would invert the guarantee:
    *
@@ -269,9 +270,9 @@ public final class NullDerefChecker extends TaintedCheckerBase {
   /**
    * R1119: is this variable one of the function's own locals or parameters?
    *
-   * <p>A TAC temp is not. That distinction is the whole fix: a temp holding a CALL result is a fresh
-   * value, whereas a local or parameter with no recorded null-fact proves nothing about what it
-   * holds. Keying on "absent from the map" instead is what let a real nullable fact be erased.
+   * <p>A TAC temp is not. That distinction is the whole fix: a temp holding a CALL result is a
+   * fresh value, whereas a local or parameter with no recorded null-fact proves nothing about what
+   * it holds. Keying on "absent from the map" instead is what let a real nullable fact be erased.
    */
   private static boolean isFunctionLocalOrParam(TacFunction fn, TacOperand.TacVar v) {
     if (fn == null || v == null) return false;

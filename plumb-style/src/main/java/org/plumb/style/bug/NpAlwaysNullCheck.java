@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.NullLiteralExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class NpAlwaysNullCheck implements AstChecker {
           List.of("CWE-476"),
           "org.plumb.style.NpAlwaysNullCheck",
           true,
-          List.of("ast-bug-always-null", "np-always-null")
-      );
+          List.of("ast-bug-always-null", "np-always-null"));
 
   @Override
   public String name() {

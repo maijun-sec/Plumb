@@ -46,22 +46,23 @@ public final class FormGetPasswordCheck implements AstChecker {
           /* enabled */ true);
 
   /**
-   * Matches a {@code <form ... method="get" ...>} tag (single- or double-quoted
-   * value). Operates on {@code StringLiteralExpr.asString()}, which is the
-   * canonical un-escaped form (the Java-escape sequences are stripped by
-   * the parser, so we get the actual HTML text).
+   * Matches a {@code <form ... method="get" ...>} tag (single- or double-quoted value). Operates on
+   * {@code StringLiteralExpr.asString()}, which is the canonical un-escaped form (the Java-escape
+   * sequences are stripped by the parser, so we get the actual HTML text).
    */
-  private static final Pattern FORM_TAG = Pattern.compile(
-      "<form\\b[^>]*?\\bmethod\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')",
-      Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+  private static final Pattern FORM_TAG =
+      Pattern.compile(
+          "<form\\b[^>]*?\\bmethod\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')",
+          Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
   /**
-   * Matches a sensitive input name attribute. Covers {@code name="password"},
-   * {@code name='passwd'}, {@code name="pwd"}, etc.
+   * Matches a sensitive input name attribute. Covers {@code name="password"}, {@code
+   * name='passwd'}, {@code name="pwd"}, etc.
    */
-  private static final Pattern SENSITIVE_INPUT = Pattern.compile(
-      "<input\\b[^>]*?\\bname\\s*=\\s*(?:\"(password|passwd|pwd|ssn|credit[_-]?card)\"|'(password|passwd|pwd|ssn|credit[_-]?card)')",
-      Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+  private static final Pattern SENSITIVE_INPUT =
+      Pattern.compile(
+          "<input\\b[^>]*?\\bname\\s*=\\s*(?:\"(password|passwd|pwd|ssn|credit[_-]?card)\"|'(password|passwd|pwd|ssn|credit[_-]?card)')",
+          Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
   @Override
   public String name() {
@@ -111,7 +112,8 @@ public final class FormGetPasswordCheck implements AstChecker {
         DEFAULT_RULE,
         "Form method=get transmits `"
             + (sensitiveField == null ? "password" : sensitiveField)
-            + "` field via query string (CWE-598). Switch to method=post or move the field to a request body.",
+            + "` field via query string (CWE-598). Switch to method=post or move the field to a"
+            + " request body.",
         RuleDef.Severity.MEDIUM,
         "form-get-method:" + (sensitiveField == null ? "password" : sensitiveField));
   }
@@ -123,9 +125,7 @@ public final class FormGetPasswordCheck implements AstChecker {
     return method != null && method.trim().equalsIgnoreCase("get");
   }
 
-  /**
-   * Returns the first sensitive field name matched, or null if none.
-   */
+  /** Returns the first sensitive field name matched, or null if none. */
   private static String firstSensitiveFieldName(String s) {
     Matcher m = SENSITIVE_INPUT.matcher(s);
     if (!m.find()) return null;

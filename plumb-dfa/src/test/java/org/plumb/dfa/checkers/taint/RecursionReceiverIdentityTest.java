@@ -21,8 +21,8 @@ import org.plumb.tac.ir.TacProgram;
 import org.plumb.tac.translate.TacTranslator;
 
 /**
- * A call with the same method name and arity as the enclosing method is NOT self-recursion when
- * the receiver is a different object.
+ * A call with the same method name and arity as the enclosing method is NOT self-recursion when the
+ * receiver is a different object.
  *
  * <p>The checker used to classify a call as self-recursion from the method name and arity alone:
  *
@@ -40,9 +40,9 @@ import org.plumb.tac.translate.TacTranslator;
  *   }
  * </pre>
  *
- * <p>Receiver identity is what distinguishes the two cases. The IR records the receiver operand
- * as {@code args[0]} ahead of the declared arguments, so a scoped call can be told from an
- * unqualified one, and the receiver's declared type says which object it is.
+ * <p>Receiver identity is what distinguishes the two cases. The IR records the receiver operand as
+ * {@code args[0]} ahead of the declared arguments, so a scoped call can be told from an unqualified
+ * one, and the receiver's declared type says which object it is.
  *
  * <p>Each defect case below has a control that must stay silent, so the test cannot pass for the
  * wrong reason.
@@ -66,8 +66,20 @@ class RecursionReceiverIdentityTest {
             BuiltinFactKinds.registryWithBuiltins(),
             base.checkers(),
             base.cweMappings(),
-            new TuningConfig(2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family",
-                "sarif", false, 0),
+            new TuningConfig(
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
 
     FindingReporter reporter =
@@ -102,9 +114,7 @@ class RecursionReceiverIdentityTest {
             }
             """,
             "Delegation.java");
-    assertThat(out)
-        .as("delegating to a different object is not a self-call")
-        .isEmpty();
+    assertThat(out).as("delegating to a different object is not a self-call").isEmpty();
   }
 
   /**
@@ -139,10 +149,9 @@ class RecursionReceiverIdentityTest {
         }
         """);
 
-    List<Finding> out = scanFiles(repoDir.resolve("OrderRepository.java"), ctlDir.resolve("OrderController.java"));
-    assertThat(out)
-        .as("a cross-class call with the same name and arity is delegation")
-        .isEmpty();
+    List<Finding> out =
+        scanFiles(repoDir.resolve("OrderRepository.java"), ctlDir.resolve("OrderController.java"));
+    assertThat(out).as("a cross-class call with the same name and arity is delegation").isEmpty();
   }
 
   /** Control: a genuine unqualified self-call must still be reported. */
@@ -202,9 +211,9 @@ class RecursionReceiverIdentityTest {
   /**
    * Control: a field of ANOTHER type, holding an object whose method has the same name.
    *
-   * <p>This is the shape that forced the fallback: the receiver's type is unknown here too, so
-   * the class named in the callee signature is what decides. It is {@code T}, not the enclosing
-   * {@code U}, so the call leaves the enclosing method.
+   * <p>This is the shape that forced the fallback: the receiver's type is unknown here too, so the
+   * class named in the callee signature is what decides. It is {@code T}, not the enclosing {@code
+   * U}, so the call leaves the enclosing method.
    */
   @Test
   void aFieldOfAnotherTypeHoldingTheSameMethodNameIsNotRecursion() throws Exception {
@@ -278,8 +287,20 @@ class RecursionReceiverIdentityTest {
             BuiltinFactKinds.registryWithBuiltins(),
             base.checkers(),
             base.cweMappings(),
-            new TuningConfig(2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family",
-                "sarif", false, 0),
+            new TuningConfig(
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
 
     FindingReporter reporter =

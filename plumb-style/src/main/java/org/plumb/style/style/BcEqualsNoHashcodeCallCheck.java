@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class BcEqualsNoHashcodeCallCheck implements AstChecker {
           List.of("CWE-697"),
           "org.plumb.style.BcEqualsNoHashcodeCallCheck",
           true,
-          List.of("ast-style-equals-no-hashcode", "bc-equals-no-hash")
-      );
+          List.of("ast-style-equals-no-hashcode", "bc-equals-no-hash"));
 
   @Override
   public String name() {

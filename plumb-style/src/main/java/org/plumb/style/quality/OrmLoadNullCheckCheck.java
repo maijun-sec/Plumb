@@ -25,7 +25,6 @@ import com.github.javaparser.ast.stmt.Statement;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -42,8 +41,7 @@ public final class OrmLoadNullCheckCheck implements AstChecker {
           List.of("CWE-252"),
           "org.plumb.style.OrmLoadNullCheckCheck",
           true,
-          List.of("ast-quality-orm-load-null-check", "orm-load-null-check")
-      );
+          List.of("ast-quality-orm-load-null-check", "orm-load-null-check"));
 
   private static final Set<String> LOAD_METHODS =
       new HashSet<>(List.of("load", "getReference", "loadById", "getOne"));

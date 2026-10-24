@@ -38,16 +38,16 @@ import org.xml.sax.SAXException;
  * <ul>
  *   <li><b>source directories</b> — resolved by walking the Ant project for a target with {@code
  *       <javac srcdir="..."/>} (including multiple srcdirs separated by {@code :} or {@code ;} on
- *       the OS path-separator / Ant's antlib-style), the {@code <src><path>...</path></src>}
- *       nested form, or {@code <fileset dir="..."/>} and {@code <dirset dir="..."/>}. We support
- *       both literal {@code srcdir} attributes and {@code srcdir="${src.dir}"} property
- *       references: when a property reference is encountered we resolve it against the {@code
- *       <property>} entries in the same file (in document order).
+ *       the OS path-separator / Ant's antlib-style), the {@code <src><path>...</path></src>} nested
+ *       form, or {@code <fileset dir="..."/>} and {@code <dirset dir="..."/>}. We support both
+ *       literal {@code srcdir} attributes and {@code srcdir="${src.dir}"} property references: when
+ *       a property reference is encountered we resolve it against the {@code <property>} entries in
+ *       the same file (in document order).
  *   <li><b>classpath</b> — from a target's nested {@code <classpath><pathelement
  *       path="..."/>...</classpath>}. Multiple classpaths are concatenated; {@code pathelement
  *       path="..."} is split on the OS path separator.
- *   <li><b>import</b> — {@code <import file="sub-build.xml"/>} is followed so a multi-file
- *       Ant project contributes its sources and classpath. Cycle detection guards against
+ *   <li><b>import</b> — {@code <import file="sub-build.xml"/>} is followed so a multi-file Ant
+ *       project contributes its sources and classpath. Cycle detection guards against
  *       self-referential imports.
  * </ul>
  *
@@ -211,8 +211,8 @@ public final class AntAdapter implements BuildAdapter {
   /**
    * Split an Ant srcdir into multiple directories. Ant supports {@code srcdir="a:b:c"} (Unix
    * path-separator) and {@code srcdir="a;b;c"} (Ant's explicit multi-srcdir separator); some
-   * scripts also use {@code srcdir="a,c"} or {@code srcdir="a c"} (whitespace) by convention.
-   * We honour the OS path-separator, {@code ;}, {@code :}, {@code ,}, and whitespace.
+   * scripts also use {@code srcdir="a,c"} or {@code srcdir="a c"} (whitespace) by convention. We
+   * honour the OS path-separator, {@code ;}, {@code :}, {@code ,}, and whitespace.
    */
   private static List<String> splitSrcdir(String value) {
     if (value == null || value.isBlank()) return List.of();

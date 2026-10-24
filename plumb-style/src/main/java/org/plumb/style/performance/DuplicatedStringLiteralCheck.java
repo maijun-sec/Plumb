@@ -7,15 +7,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * duplicated string literal ? extract a constant.
- */
+/** duplicated string literal ? extract a constant. */
 public final class DuplicatedStringLiteralCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
@@ -27,8 +24,7 @@ public final class DuplicatedStringLiteralCheck implements AstChecker {
           List.of(),
           "org.plumb.style.DuplicatedStringLiteralCheck",
           true,
-          List.of("ast-performance-duplicated-string-literal", "dup-string")
-      );
+          List.of("ast-performance-duplicated-string-literal", "dup-string"));
 
   private static final int MIN_DUPLICATES = 3;
   private static final int MIN_LENGTH = 5;

@@ -8,7 +8,6 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.Type;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -39,8 +38,7 @@ public final class PublicStaticMutableFieldCheck implements AstChecker {
           List.of("CWE-668"),
           "org.plumb.style.PublicStaticMutableFieldCheck",
           true,
-          List.of("ast-style-public-static-mutable", "public-static-mutable-field")
-      );
+          List.of("ast-style-public-static-mutable", "public-static-mutable-field"));
 
   @Override
   public String name() {

@@ -41,9 +41,7 @@ class R787dEmptySyncBlockCheckTest {
   }
 
   private static long countCwe585(List<Finding> findings) {
-    return findings.stream()
-        .filter(f -> "ast-style-empty-sync-block".equals(f.ruleId()))
-        .count();
+    return findings.stream().filter(f -> "ast-style-empty-sync-block".equals(f.ruleId())).count();
   }
 
   // ─────── Positive cases (must fire) ───────

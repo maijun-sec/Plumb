@@ -8,15 +8,14 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * A {@link java.util.Comparator#compare(Object, Object) Comparator.compare()} method that returns
- * a raw {@code 1} or {@code -1} literal instead of delegating to {@link Integer#compare(int, int)}.
+ * A {@link java.util.Comparator#compare(Object, Object) Comparator.compare()} method that returns a
+ * raw {@code 1} or {@code -1} literal instead of delegating to {@link Integer#compare(int, int)}.
  *
  * <p>The previous implementation had two bugs (S1 audit 2026-10-17):
  *
@@ -44,8 +43,7 @@ public final class ComparatorCompareCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ComparatorCompareCheck",
           true,
-          List.of("ast-bug-comparator-compare", "comparator-compare")
-      );
+          List.of("ast-bug-comparator-compare", "comparator-compare"));
 
   @Override
   public String name() {
@@ -125,8 +123,8 @@ public final class ComparatorCompareCheck implements AstChecker {
 
   /**
    * True when {@code e} is the literal {@code 1} or {@code -1}. {@code +1} is accepted too for
-   * completeness ? any literal ±1 is suspect in a Comparator because the right idiom is to
-   * delegate to {@code Integer.compare}.
+   * completeness ? any literal ±1 is suspect in a Comparator because the right idiom is to delegate
+   * to {@code Integer.compare}.
    */
   private static boolean isLiteralOneOrMinusOne(com.github.javaparser.ast.expr.Expression e) {
     if (e instanceof IntegerLiteralExpr ili) {

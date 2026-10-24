@@ -3,7 +3,6 @@ package org.plumb.style.design;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class EmptyMethodInAbstractClass2Check implements AstChecker {
           List.of(),
           "org.plumb.style.EmptyMethodInAbstractClass2Check",
           true,
-          List.of("ast-design-uncommented-empty-method", "uncommented-empty")
-      );
+          List.of("ast-design-uncommented-empty-method", "uncommented-empty"));
 
   @Override
   public String name() {

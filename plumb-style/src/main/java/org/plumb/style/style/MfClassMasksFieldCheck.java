@@ -6,7 +6,6 @@ import com.github.javaparser.ast.body.VariableDeclarator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class MfClassMasksFieldCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MfClassMasksFieldCheck",
           true,
-          List.of("ast-style-class-masks-field", "mf-class-masks-field")
-      );
+          List.of("ast-style-class-masks-field", "mf-class-masks-field"));
 
   @Override
   public String name() {

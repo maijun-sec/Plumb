@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.AssignExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class InnerAssignmentCheck implements AstChecker {
           List.of(),
           "org.plumb.style.InnerAssignmentCheck",
           true,
-          List.of("ast-style-assignment", "inner-assignment")
-      );
+          List.of("ast-style-assignment", "inner-assignment"));
 
   @Override
   public String name() {

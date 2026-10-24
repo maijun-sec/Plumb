@@ -3,7 +3,6 @@ package org.plumb.style.naming;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -51,7 +50,8 @@ public final class EmptyMethodCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.EmptyMethodCheck",
-          true,List.of("ast-naming-empty-method", "empty-method"),
+          true,
+          List.of("ast-naming-empty-method", "empty-method"),
           List.of(PARAMS));
 
   @Override

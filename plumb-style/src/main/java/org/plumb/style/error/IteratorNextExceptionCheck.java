@@ -13,7 +13,6 @@ package org.plumb.style.error;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -29,8 +28,7 @@ public final class IteratorNextExceptionCheck implements AstChecker {
           List.of("CWE-754"),
           "org.plumb.style.IteratorNextExceptionCheck",
           true,
-          List.of("ast-error-iterator-next-exception", "iterator-next-exception")
-      );
+          List.of("ast-error-iterator-next-exception", "iterator-next-exception"));
 
   @Override
   public String name() {

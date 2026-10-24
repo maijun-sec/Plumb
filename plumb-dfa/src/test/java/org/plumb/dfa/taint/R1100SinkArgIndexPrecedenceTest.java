@@ -82,8 +82,9 @@ class R1100SinkArgIndexPrecedenceTest {
             .isTrue();
         int idx = f.argIndexFor(probe);
         assertThat(idx == SinkFamily.RECEIVER_ARG_INDEX || idx >= 0)
-            .as("family %s resolved arg index %d for %s; only >= 0 or the receiver sentinel may"
-                + " reach the sink path, anything else falls through to the legacy hook",
+            .as(
+                "family %s resolved arg index %d for %s; only >= 0 or the receiver sentinel may"
+                    + " reach the sink path, anything else falls through to the legacy hook",
                 f.name(), idx, probe)
             .isTrue();
       }
@@ -92,9 +93,9 @@ class R1100SinkArgIndexPrecedenceTest {
   }
 
   /**
-   * Derives a callee signature guaranteed to match the given pattern by substituting {@code /0}
-   * for the trailing arity group that every sink pattern ends with. Returns null for patterns with
-   * no arity group, which cannot be probed this way.
+   * Derives a callee signature guaranteed to match the given pattern by substituting {@code /0} for
+   * the trailing arity group that every sink pattern ends with. Returns null for patterns with no
+   * arity group, which cannot be probed this way.
    */
   private static String probeSignature(SinkFamily.SinkPattern p) {
     String regex = p.pattern();
@@ -122,7 +123,8 @@ class R1100SinkArgIndexPrecedenceTest {
     // ObjectMapper.readValue takes the untrusted data as a real argument, so it must NOT be
     // treated as receiver-tainted. This guards against over-broad sentinel propagation within a
     // family once one pattern opts into arg_index: -2.
-    assertThat(deserialization.argIndexFor("com.fasterxml.jackson.databind.ObjectMapper.readValue/1"))
+    assertThat(
+            deserialization.argIndexFor("com.fasterxml.jackson.databind.ObjectMapper.readValue/1"))
         .isNotEqualTo(SinkFamily.RECEIVER_ARG_INDEX);
   }
 

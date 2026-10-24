@@ -20,7 +20,6 @@
  */
 package org.plumb.dfa.engine;
 
-import org.plumb.rules.RuleDef;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
@@ -29,6 +28,7 @@ import org.plumb.reporter.Finding;
 import org.plumb.reporter.FlowStep;
 import org.plumb.reporter.trace.Trace;
 import org.plumb.reporter.trace.Trace.CompressionLevel;
+import org.plumb.rules.RuleDef;
 
 class R803V2TraceChannelTest {
 

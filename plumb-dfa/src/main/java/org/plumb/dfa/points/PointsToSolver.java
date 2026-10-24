@@ -18,8 +18,8 @@ import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacType;
 
 /**
- * A domain-sensitive points-to analysis for Java, built as shared DFA infrastructure rather than
- * as a rule.
+ * A domain-sensitive points-to analysis for Java, built as shared DFA infrastructure rather than as
+ * a rule.
  *
  * <h2>Why infrastructure</h2>
  *
@@ -27,9 +27,9 @@ import org.plumb.tac.ir.TacType;
  * object I already validated?", "can this field be null?", or "does this write reach the reference
  * I sanitised?" needs the same answer. Keeping that in one place — {@link
  * org.plumb.dfa.engine.AnalysisContext#pointsTo()} — is what makes the answers consistent. The
- * previous arrangement attached a points-to map to a single checker
- * ({@code UseAfterFreeChecker}, since removed) so no other rule could consult it, and the map it
- * used was keyed by allocation site with no field or array path at all.
+ * previous arrangement attached a points-to map to a single checker ({@code UseAfterFreeChecker},
+ * since removed) so no other rule could consult it, and the map it used was keyed by allocation
+ * site with no field or array path at all.
  *
  * <h2>Shape</h2>
  *
@@ -88,8 +88,8 @@ public final class PointsToSolver {
    * R1112: {@code (container object, key) -> objects}, for Map and List cells.
    *
    * <p>Separate from {@link #arrayCells} because a Java container is reached through a CALL, not
-   * through an indexed instruction, so it needs its own accessor path rather than an overload of the
-   * array one. Keeping them apart also keeps the array abstraction unchanged for real arrays.
+   * through an indexed instruction, so it needs its own accessor path rather than an overload of
+   * the array one. Keeping them apart also keeps the array abstraction unchanged for real arrays.
    */
   private final Map<ContainerCell, Set<Obj>> containerCells = new LinkedHashMap<>();
 
@@ -155,7 +155,9 @@ public final class PointsToSolver {
   /** Method signature -> the contexts in which it has been (or must be) analysed. */
   private final Map<String, Set<Context>> methodContexts = new LinkedHashMap<>();
 
-  /** Every function seen, so the solver can iterate to a fixpoint without re-walking the program. */
+  /**
+   * Every function seen, so the solver can iterate to a fixpoint without re-walking the program.
+   */
   private final Map<String, TacFunction> functions = new LinkedHashMap<>();
 
   /**
@@ -190,7 +192,8 @@ public final class PointsToSolver {
    * A method analysed under one specific context.
    *
    * <p>Needed as a map key for the return flow: two invocations of the same method under 1-CFA have
-   * the same signature and different contexts, so the signature alone cannot address a return value.
+   * the same signature and different contexts, so the signature alone cannot address a return
+   * value.
    */
   private record ContextKey(String signature, Context context) {}
 
@@ -209,7 +212,8 @@ public final class PointsToSolver {
       if (fn == null) continue;
       functions.put(fn.signature(), fn);
       paramsBySignature.put(fn.signature(), List.copyOf(fn.params()));
-      methodContexts.computeIfAbsent(fn.signature(), k -> new LinkedHashSet<>())
+      methodContexts
+          .computeIfAbsent(fn.signature(), k -> new LinkedHashSet<>())
           .add(Context.empty());
       String name = fn.name();
       if (name != null && !name.isEmpty()) {
@@ -274,8 +278,7 @@ public final class PointsToSolver {
         // R1114: a null literal on either side of the copy propagates nullness. Handling this as a
         // plain TacVar copy would miss `b = null`, which is the single most common way a reference
         // becomes null in the corpus.
-        if (ins.lhs1 instanceof TacOperand.Const c
-            && c.kind() == TacOperand.Const.Kind.NULL) {
+        if (ins.lhs1 instanceof TacOperand.Const c && c.kind() == TacOperand.Const.Kind.NULL) {
           return nullVars.add(key(signature, d, ctx));
         }
         if (ins.lhs1 instanceof TacOperand.TacVar s) {
@@ -293,8 +296,8 @@ public final class PointsToSolver {
       case FIELDSTORE -> {
         if (!(ins.lhs1 instanceof TacOperand.TacVar recv)) return false;
         boolean ch = false;
-        boolean storeNull = ins.dest instanceof TacOperand.Const c
-            && c.kind() == TacOperand.Const.Kind.NULL;
+        boolean storeNull =
+            ins.dest instanceof TacOperand.Const c && c.kind() == TacOperand.Const.Kind.NULL;
         for (Obj o : points(signature, recv, ctx)) {
           AbstractField slot = new AbstractField(o, fieldNameOf(ins));
           if (storeNull) {
@@ -328,15 +331,16 @@ public final class PointsToSolver {
         // dest -- not in lhs2. Getting this backwards silently loses every array write.
         if (!(ins.lhs1 instanceof TacOperand.TacVar arr)) return false;
         TacOperand.TacVar value = asVar(ins.dest);
-        boolean storeNull = value == null && ins.dest instanceof TacOperand.Const c
-            && c.kind() == TacOperand.Const.Kind.NULL;
+        boolean storeNull =
+            value == null
+                && ins.dest instanceof TacOperand.Const c
+                && c.kind() == TacOperand.Const.Kind.NULL;
         if (value == null && !storeNull) return false;
         boolean ch = false;
         for (Obj o : points(signature, arr, ctx)) {
           AbstractArrayIndex cell = AbstractArrayIndex.of(o, literalIndex(ins));
-          ch |= storeNull
-              ? nullArrayCells.add(cell)
-              : addArray(cell, points(signature, value, ctx));
+          ch |=
+              storeNull ? nullArrayCells.add(cell) : addArray(cell, points(signature, value, ctx));
         }
         return ch;
       }
@@ -345,8 +349,10 @@ public final class PointsToSolver {
         if (!(ins.lhs1 instanceof TacOperand.TacVar arr)) return false;
         boolean ch = false;
         for (Obj o : points(signature, arr, ctx)) {
-          ch |= add(key(signature, d, ctx),
-              arrayObjects(AbstractArrayIndex.of(o, literalIndex(ins))));
+          ch |=
+              add(
+                  key(signature, d, ctx),
+                  arrayObjects(AbstractArrayIndex.of(o, literalIndex(ins))));
           ch |= add(key(signature, d, ctx), arrayObjects(AbstractArrayIndex.any(o)));
           // R1114: a known index must also see null written at an unknown index, mirroring the
           // ANY read above. Without this a `new String[n]` default-initialised cell -- which is
@@ -388,16 +394,21 @@ public final class PointsToSolver {
             if (p < formals.size()) {
               // Bound into the CALLEE's context, not the empty one: under a context-sensitive
               // policy this is what keeps two invocations' parameters disjoint.
-              ch |= add(new VarKey(callee, formals.get(p).name(), qual(calleeCtx)),
-                  points(signature, actual, ctx));
+              ch |=
+                  add(
+                      new VarKey(callee, formals.get(p).name(), qual(calleeCtx)),
+                      points(signature, actual, ctx));
             }
           }
           // The receiver binds to the `this` / first formal, which is params[0] for an
           // instance method in this IR's convention when there is one.
-          if (!ins.args.isEmpty() && ins.args.get(0) instanceof TacOperand.TacVar recv
+          if (!ins.args.isEmpty()
+              && ins.args.get(0) instanceof TacOperand.TacVar recv
               && !formals.isEmpty()) {
-            ch |= add(new VarKey(callee, formals.get(0).name(), qual(calleeCtx)),
-                points(signature, recv, ctx));
+            ch |=
+                add(
+                    new VarKey(callee, formals.get(0).name(), qual(calleeCtx)),
+                    points(signature, recv, ctx));
           }
         }
         ch |= bindReturn(callee, calleeCtx, signature, ctx, ins);
@@ -412,8 +423,7 @@ public final class PointsToSolver {
       }
       case RETURN -> {
         ContextKey ck = new ContextKey(signature, qual(ctx));
-        if (ins.lhs1 instanceof TacOperand.Const c
-            && c.kind() == TacOperand.Const.Kind.NULL) {
+        if (ins.lhs1 instanceof TacOperand.Const c && c.kind() == TacOperand.Const.Kind.NULL) {
           // R1114: `return null` is the same shape as any other return fact.
           return nullReturns.add(ck);
         }
@@ -439,10 +449,10 @@ public final class PointsToSolver {
   /**
    * R1112: one cell of a Java container.
    *
-   * <p>{@code key} is the literal string or index when the access site used one, and {@link #ANY_KEY}
-   * otherwise. Distinguishing keys is what keeps two map entries separate: with a single merged cell
-   * per container, a guard on one entry would silence a dereference of a different entry, which is a
-   * wrong "safe" of exactly the kind a guard-transfer rule must not produce.
+   * <p>{@code key} is the literal string or index when the access site used one, and {@link
+   * #ANY_KEY} otherwise. Distinguishing keys is what keeps two map entries separate: with a single
+   * merged cell per container, a guard on one entry would silence a dereference of a different
+   * entry, which is a wrong "safe" of exactly the kind a guard-transfer rule must not produce.
    *
    * <p>{@code ANY_KEY} aliases every concrete key of the same container. An access with a computed
    * key could be reading any entry, so claiming otherwise would be unsound in the other direction.
@@ -450,16 +460,16 @@ public final class PointsToSolver {
   /**
    * R1112: one cell of a Java container: {@code container[key]}.
    *
-   * <p>Keys match <em>exactly</em>, the opposite of {@link AbstractArrayIndex}, and the difference is
-   * load-bearing. An array's ANY cell exists because a computed index genuinely cannot say which
+   * <p>Keys match <em>exactly</em>, the opposite of {@link AbstractArrayIndex}, and the difference
+   * is load-bearing. An array's ANY cell exists because a computed index genuinely cannot say which
    * element it touches. A container's literal key is known: {@code store.get("b")} is about exactly
    * one entry, and letting its cell alias {@code put("a", ..)}'s cell would report two unrelated
    * entries as one object. For a guard-transfer rule that is a false "safe" manufactured by
    * imprecision rather than by a real alias.
    *
    * <p>The conservative direction is confined to the access sites: an unrecognised key stores under
-   * {@link #ANY_KEY} and reads consult every cell of the container, so no fact is ever lost, while a
-   * recognised key stays exact.
+   * {@link #ANY_KEY} and reads consult every cell of the container, so no fact is ever lost, while
+   * a recognised key stays exact.
    */
   private record ContainerCell(Obj container, String key, boolean mapCell) {
     static final String ANY_KEY = "\u0000*";
@@ -485,8 +495,8 @@ public final class PointsToSolver {
    * </pre>
    *
    * <p>Only signatures ending in the bare method name are matched, so {@code Map.put} and a user
-   * {@code Foo.put} do not collide. An explicit {@code java.util.Map.put} style signature is matched
-   * exactly.
+   * {@code Foo.put} do not collide. An explicit {@code java.util.Map.put} style signature is
+   * matched exactly.
    *
    * <p>{@code list.add} cannot know the index it will occupy, so it writes {@link
    * ContainerCell#ANY_KEY}. A {@code list.get(0)} then observes it. The consequence is that two
@@ -531,18 +541,22 @@ public final class PointsToSolver {
   }
 
   private static boolean isJdkContainer(String qualifier) {
-    return qualifier.startsWith("java.util.") || qualifier.startsWith("java.lang.")
-        || qualifier.contains("Map") || qualifier.contains("List")
-        || qualifier.contains("Set") || qualifier.contains("Queue")
-        || qualifier.contains("Deque") || qualifier.contains("Collection");
+    return qualifier.startsWith("java.util.")
+        || qualifier.startsWith("java.lang.")
+        || qualifier.contains("Map")
+        || qualifier.contains("List")
+        || qualifier.contains("Set")
+        || qualifier.contains("Queue")
+        || qualifier.contains("Deque")
+        || qualifier.contains("Collection");
   }
 
   /**
    * The key text of a map access, or {@code null} when it is not a literal.
    *
    * <p>Only literals are recognised on purpose. A computed key could be any entry, so admitting it
-   * with its text would claim a precision the IR does not have; {@link ContainerCell#ANY_KEY} is the
-   * honest answer, and a read through it still sees every literal-keyed write.
+   * with its text would claim a precision the IR does not have; {@link ContainerCell#ANY_KEY} is
+   * the honest answer, and a read through it still sees every literal-keyed write.
    */
   private static String keyOf(TacOperand op) {
     if (op instanceof TacOperand.Const c && c.kind() == TacOperand.Const.Kind.STRING) {
@@ -571,9 +585,9 @@ public final class PointsToSolver {
    * Qualify a context for use as a map key.
    *
    * <p>Under {@link Policy#CONTEXT_INSENSITIVE} every variable shares one context, so any context
-   * collapses to {@link Context#empty()} here. Naming this separately from {@link
-   * #key(String, TacOperand.TacVar, Context)} matters: the two look almost identical at a call site
-   * and mixing them up compiles into a key with the wrong arity.
+   * collapses to {@link Context#empty()} here. Naming this separately from {@link #key(String,
+   * TacOperand.TacVar, Context)} matters: the two look almost identical at a call site and mixing
+   * them up compiles into a key with the wrong arity.
    */
   private Context qual(Context ctx) {
     return policy.isContextSensitive() ? ctx : Context.empty();
@@ -665,17 +679,19 @@ public final class PointsToSolver {
   /**
    * The context a callee is analysed under, given the caller's context and this call site.
    *
-   * <p>1-CFA: the caller's context extended with a call-site identity. The element is
-   * {@code callerSignature#instructionIndex}, which is unique inside the caller, so two distinct
-   * call sites in the same method yield two distinct callee contexts and the callee's locals never
-   * merge. That is exactly the property that stops taint on one call path from appearing on another.
+   * <p>1-CFA: the caller's context extended with a call-site identity. The element is {@code
+   * callerSignature#instructionIndex}, which is unique inside the caller, so two distinct call
+   * sites in the same method yield two distinct callee contexts and the callee's locals never
+   * merge. That is exactly the property that stops taint on one call path from appearing on
+   * another.
    *
-   * <p>k-OBJ extends the same element set with the receiver's abstract object, so even two different
-   * call sites dispatching to the same method on different receivers stay apart. The receiver is
-   * looked up in the caller's context, which is the context the call site is actually in.
+   * <p>k-OBJ extends the same element set with the receiver's abstract object, so even two
+   * different call sites dispatching to the same method on different receivers stay apart. The
+   * receiver is looked up in the caller's context, which is the context the call site is actually
+   * in.
    */
-  private Context calleeContext(String callerSig, Context callerCtx, TacInstruction ins,
-      int index) {
+  private Context calleeContext(
+      String callerSig, Context callerCtx, TacInstruction ins, int index) {
     if (policy == Policy.CONTEXT_INSENSITIVE) {
       return Context.empty();
     }
@@ -684,9 +700,7 @@ public final class PointsToSolver {
       return base.append(callerSig + "#" + index);
     }
     // Policy.OBJECT
-    TacOperand.TacVar recv = ins.args == null || ins.args.isEmpty()
-        ? null
-        : asVar(ins.args.get(0));
+    TacOperand.TacVar recv = ins.args == null || ins.args.isEmpty() ? null : asVar(ins.args.get(0));
     List<String> elements = new ArrayList<>(base.elements());
     elements.add(callerSig + "#" + index);
     if (recv != null) {
@@ -730,12 +744,12 @@ public final class PointsToSolver {
   /**
    * Connect a call site's destination to the callee's return value in that callee's context.
    *
-   * <p>Two things are recorded: the destination becomes a reader of {@code (callee, calleeCtx)}, and
-   * it is seeded with whatever is known so far. The registration is idempotent per call site because
-   * {@code drain} revisits instructions until the fixpoint is reached.
+   * <p>Two things are recorded: the destination becomes a reader of {@code (callee, calleeCtx)},
+   * and it is seeded with whatever is known so far. The registration is idempotent per call site
+   * because {@code drain} revisits instructions until the fixpoint is reached.
    */
-  private boolean bindReturn(String callee, Context calleeCtx, String callerSig, Context callerCtx,
-      TacInstruction ins) {
+  private boolean bindReturn(
+      String callee, Context calleeCtx, String callerSig, Context callerCtx, TacInstruction ins) {
     TacOperand.TacVar dest = asVar(ins.dest);
     if (dest == null) return false;
     ContextKey ck = new ContextKey(callee, qual(calleeCtx));
@@ -751,15 +765,16 @@ public final class PointsToSolver {
    *
    * <p>Each concrete-keyed cell is read together with the {@link ContainerCell#ANY_KEY} cell, in
    * both directions: a read through an unknown key must see every literal-keyed write, and a write
-   * through an unknown key must be visible to every literal-keyed read. Reading only the literal cell
-   * would be unsound, and writing only the literal cell would lose the entry entirely.
+   * through an unknown key must be visible to every literal-keyed read. Reading only the literal
+   * cell would be unsound, and writing only the literal cell would lose the entry entirely.
    */
   /**
    * R1112: apply one container store or load.
    *
    * @return {@code true} when this instruction was a container access and has been fully handled
-   *     here, whether or not a fact grew. An empty-cell write is still a handled access, and running
-   *     the callee path on it as well is what previously let a second object reach the destination.
+   *     here, whether or not a fact grew. An empty-cell write is still a handled access, and
+   *     running the callee path on it as well is what previously let a second object reach the
+   *     destination.
    * @return {@code false} when this is an ordinary call and the caller should continue.
    */
   private boolean applyContainerOp(String signature, Context ctx, TacInstruction ins) {
@@ -769,15 +784,15 @@ public final class PointsToSolver {
     return true;
   }
 
-  private void applyContainerFacts(
-      String signature, Context ctx, TacInstruction ins, String op) {
+  private void applyContainerFacts(String signature, Context ctx, TacInstruction ins, String op) {
     List<TacOperand> args = ins.args;
     if (args == null || args.size() < 2) return;
     if (!(args.get(0) instanceof TacOperand.TacVar recv)) return;
     boolean mapCell = !op.startsWith("list:");
-    String key = op.startsWith("map:") || op.startsWith("list:")
-        ? op.substring(op.indexOf(':') + 1)
-        : ContainerCell.ANY_KEY;
+    String key =
+        op.startsWith("map:") || op.startsWith("list:")
+            ? op.substring(op.indexOf(':') + 1)
+            : ContainerCell.ANY_KEY;
     // The stored value is the LAST argument for put/set, the only argument for add/offer/push.
     boolean isLoad = "get".equals(bareName(ins.calleeSig));
     if (!isLoad && args.size() >= 2) {
@@ -785,9 +800,10 @@ public final class PointsToSolver {
       // R1114: `store.put(k, null)` and `list.add(null)` store the null literal. The operand is a
       // Const rather than a TacVar, so it has to be recognised before the TacVar branch below --
       // otherwise the store is silently dropped, which is the whole gap being closed.
-      boolean storeNull = valueIdx < args.size()
-          && args.get(valueIdx) instanceof TacOperand.Const kc
-          && kc.kind() == TacOperand.Const.Kind.NULL;
+      boolean storeNull =
+          valueIdx < args.size()
+              && args.get(valueIdx) instanceof TacOperand.Const kc
+              && kc.kind() == TacOperand.Const.Kind.NULL;
       if (storeNull) {
         for (Obj o : points(signature, recv, ctx)) {
           nullContainerCells.add(new ContainerCell(o, key, mapCell));
@@ -830,7 +846,8 @@ public final class PointsToSolver {
               key(signature, dest, ctx),
               containerObjects(new ContainerCell(o, ContainerCell.ANY_KEY, mapCell)));
           if (nullContainerCells.contains(new ContainerCell(o, key, mapCell))
-              || nullContainerCells.contains(new ContainerCell(o, ContainerCell.ANY_KEY, mapCell))) {
+              || nullContainerCells.contains(
+                  new ContainerCell(o, ContainerCell.ANY_KEY, mapCell))) {
             nullVars.add(key(signature, dest, ctx));
           }
         }
@@ -1000,8 +1017,8 @@ public final class PointsToSolver {
    * function's locals itself and issue a pairwise {@link #mayAlias} per combination.
    *
    * <p>Returns an empty set for an unknown reference. Callers must treat empty as "no alias
-   * information" and fall back to their previous behaviour -- never as "definitely not aliased
-   * with anything", because that reading would turn missing information into a suppressed finding.
+   * information" and fall back to their previous behaviour -- never as "definitely not aliased with
+   * anything", because that reading would turn missing information into a suppressed finding.
    */
   public Set<Obj> objectsOf(String signature, TacOperand.TacVar receiver, Context ctx) {
     if (signature == null || receiver == null) return Set.of();
@@ -1009,12 +1026,12 @@ public final class PointsToSolver {
   }
 
   /**
-   * R1108: every local of {@code signature} that may hold an object also reachable from
-   * {@code receiver}.
+   * R1108: every local of {@code signature} that may hold an object also reachable from {@code
+   * receiver}.
    *
-   * <p>This is the "alias class" of a reference, and it is what makes a null-ness guard transferable
-   * between names: if {@code a} is proven non-null on this path and {@code b} is in {@code a}'s alias
-   * class, then {@code b} denotes the same object and is non-null here too.
+   * <p>This is the "alias class" of a reference, and it is what makes a null-ness guard
+   * transferable between names: if {@code a} is proven non-null on this path and {@code b} is in
+   * {@code a}'s alias class, then {@code b} denotes the same object and is non-null here too.
    *
    * <p>The result always contains {@code receiver} itself when its points-to set is non-empty, so
    * callers can use membership without special-casing the seed. Empty when the receiver is unknown.
@@ -1090,11 +1107,10 @@ public final class PointsToSolver {
   /**
    * The declared signature of a CALL's callee, or null when it cannot be resolved.
    *
-   * <p>The IR spells a call two ways and they do not match each other: a same-class call is
-   * {@code make/0} or {@code Class.method/arity}, while a declared function is
-   * {@code make():Object} or {@code Class.method(Type):Ret}. Both namespaces have to be reduced to
-   * {@code name/arity} before a callee can be found, which is the same normalisation the callgraph
-   * strategies perform.
+   * <p>The IR spells a call two ways and they do not match each other: a same-class call is {@code
+   * make/0} or {@code Class.method/arity}, while a declared function is {@code make():Object} or
+   * {@code Class.method(Type):Ret}. Both namespaces have to be reduced to {@code name/arity} before
+   * a callee can be found, which is the same normalisation the callgraph strategies perform.
    */
   private String resolveCallee(TacInstruction ins) {
     String sig = ins.calleeSig;

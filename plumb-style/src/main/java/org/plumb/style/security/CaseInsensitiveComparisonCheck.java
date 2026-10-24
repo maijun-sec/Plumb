@@ -2,18 +2,17 @@ package org.plumb.style.security;
 
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Case-insensitive {@code String} comparison should use {@code equalsIgnoreCase} rather than
- * {@code toLowerCase()/toUpperCase() + equals()}.
+ * Case-insensitive {@code String} comparison should use {@code equalsIgnoreCase} rather than {@code
+ * toLowerCase()/toUpperCase() + equals()}.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(MethodCallExpr.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(MethodCallExpr.class)} before.
  */
 public final class CaseInsensitiveComparisonCheck implements AstChecker {
 
@@ -26,8 +25,7 @@ public final class CaseInsensitiveComparisonCheck implements AstChecker {
           List.of(),
           "org.plumb.style.CaseInsensitiveComparisonCheck",
           true,
-          List.of("ast-security-insensitive-comparison", "case-insensitive-comparison")
-      );
+          List.of("ast-security-insensitive-comparison", "case-insensitive-comparison"));
 
   @Override
   public String name() {

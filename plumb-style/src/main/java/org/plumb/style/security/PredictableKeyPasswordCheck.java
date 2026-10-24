@@ -19,7 +19,6 @@ import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -46,8 +45,7 @@ public final class PredictableKeyPasswordCheck implements AstChecker {
           List.of("CWE-259", "CWE-798"),
           "org.plumb.style.security.PredictableKeyPasswordCheck",
           true,
-          List.of("dfa-security-hardcoded-password", "predictable-key-password")
-      );
+          List.of("dfa-security-hardcoded-password", "predictable-key-password"));
 
   @Override
   public String name() {

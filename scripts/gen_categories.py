@@ -24,6 +24,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _formatter import format_source, formatter_jar  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 STYLE_ROOT = ROOT / "plumb-style/src/main/java/org/plumb/style"
 OUT = STYLE_ROOT / "CheckerCategories.java"
@@ -102,12 +105,30 @@ def render(entries: dict[str, str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_formatted(entries: dict[str, str]) -> str:
+    """Render the file the way the formatter would write it.
+
+    The generator compares its output against the file on disk, byte for
+    byte. If it emitted unformatted code, the format gate and this
+    generator would fight: the generator writes unformatted code, the
+    formatter rewrites it, and `--check` fails again. Emitting FORMATTED
+    code makes the two agree.
+    """
+    raw = render(entries)
+    try:
+        jar = formatter_jar()
+    except Exception as exc:  # noqa: BLE001
+        print(f"ERROR: could not obtain the formatter: {exc}", file=sys.stderr)
+        raise
+    return format_source(jar, raw, "CheckerCategories.java")
+
+
 def main() -> int:
     entries = collect()
     if not entries:
         print("ERROR: no checkers found - is the path right?", file=sys.stderr)
         return 1
-    new_text = render(entries)
+    new_text = render_formatted(entries)
     old_text = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
 
     if "--check" in sys.argv:

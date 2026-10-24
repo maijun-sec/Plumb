@@ -15,7 +15,6 @@ import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -32,8 +31,7 @@ public final class RegexConfusionCheck implements AstChecker {
           List.of("CWE-625", "CWE-184"),
           "org.plumb.style.RegexConfusionCheck",
           true,
-          List.of("ast-quality-regex-confusion", "regex-confusion")
-      );
+          List.of("ast-quality-regex-confusion", "regex-confusion"));
 
   private static final Set<String> TARGET_METHODS = Set.of("replaceAll", "replaceFirst", "split");
 
@@ -93,9 +91,7 @@ public final class RegexConfusionCheck implements AstChecker {
           m.toString());
       return;
     }
-    if (reportCharacterHiding
-        && value.length() == 1
-        && REGEX_METACHARS.contains(value.charAt(0))) {
+    if (reportCharacterHiding && value.length() == 1 && REGEX_METACHARS.contains(value.charAt(0))) {
       ctx.report(
           line,
           col,

@@ -25,7 +25,6 @@ import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -47,8 +46,7 @@ public final class InsecureCommunicationCheck implements AstChecker {
           List.of("CWE-319"),
           "org.plumb.style.security.InsecureCommunicationCheck",
           true,
-          List.of("dfa-security-cleartext-transmission", "insecure-communication")
-      );
+          List.of("dfa-security-cleartext-transmission", "insecure-communication"));
 
   @Override
   public String name() {

@@ -39,7 +39,7 @@ class R171SpotBugsSuperfluousInstanceofTest {
 
   @Test
   void noFindingWhenThenBlockHasNoCast() {
-    // instanceof check without redundant cast : 
+    // instanceof check without redundant cast :
     // proper code, no finding.
     String src =
         "class N {"
@@ -54,7 +54,7 @@ class R171SpotBugsSuperfluousInstanceofTest {
 
   @Test
   void noFindingForDifferentCastType() {
-    // Cast type is different from instanceof type : 
+    // Cast type is different from instanceof type :
     // not redundant.
     String src =
         "class N {"

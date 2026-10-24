@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class EqualComparisonCheck implements AstChecker {
           List.of("CWE-595"),
           "org.plumb.style.EqualComparisonCheck",
           true,
-          List.of("ast-style-object-equal-comparison", "equal-comparison")
-      );
+          List.of("ast-style-object-equal-comparison", "equal-comparison"));
 
   @Override
   public String name() {

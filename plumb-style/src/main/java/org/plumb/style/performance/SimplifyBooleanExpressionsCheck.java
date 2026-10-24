@@ -3,7 +3,6 @@ package org.plumb.style.performance;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.BooleanLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class SimplifyBooleanExpressionsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.SimplifyBooleanExpressionsCheck",
           true,
-          List.of("ast-performance-simplify-boolean-expressions", "simplify-bool")
-      );
+          List.of("ast-performance-simplify-boolean-expressions", "simplify-bool"));
 
   @Override
   public String name() {

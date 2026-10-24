@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class SerializableSuperConstructorCheck implements AstChecker {
           List.of(),
           "org.plumb.style.SerializableSuperConstructorCheck",
           true,
-          List.of("ast-style-serializable-super-ctor", "serializablesuperconstructor")
-      );
+          List.of("ast-style-serializable-super-ctor", "serializablesuperconstructor"));
 
   @Override
   public String name() {

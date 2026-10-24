@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.NullLiteralExpr;
 import com.github.javaparser.ast.stmt.IfStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class BcEqualsNoNullCheckCheck implements AstChecker {
           List.of("CWE-697"),
           "org.plumb.style.BcEqualsNoNullCheckCheck",
           true,
-          List.of("ast-bug-equals-no-null-check", "bc-equals-no-null")
-      );
+          List.of("ast-bug-equals-no-null-check", "bc-equals-no-null"));
 
   @Override
   public String name() {

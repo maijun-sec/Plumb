@@ -76,7 +76,8 @@ class R323ScanRunnerUnifiedE2ETest {
     Path tmp = dir.resolve("Sample.java");
     Files.writeString(tmp, src);
     Path outFile = dir.resolve("out.ndjson");
-    try {      ScanConfig cfg = new ScanConfig();
+    try {
+      ScanConfig cfg = new ScanConfig();
       cfg.inputs.add(tmp);
       cfg.outputPath = outFile;
       cfg.outputFormat = ScanConfig.OutputFormat.NDJSON;

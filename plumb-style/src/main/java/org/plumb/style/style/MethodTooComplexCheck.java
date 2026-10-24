@@ -35,7 +35,6 @@ import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.SwitchEntry;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -51,8 +50,7 @@ public final class MethodTooComplexCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MethodTooComplexCheck",
           true,
-          List.of("ast-style-method-too-complex", "method-too-complex")
-      );
+          List.of("ast-style-method-too-complex", "method-too-complex"));
 
   @Override
   public String name() {

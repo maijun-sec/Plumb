@@ -5,7 +5,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.stmt.SwitchEntry;
 import com.github.javaparser.ast.stmt.SwitchStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class MissingSwitchDefaultCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MissingSwitchDefaultCheck",
           true,
-          List.of("ast-style-missing-switch-default", "missing-switch-default")
-      );
+          List.of("ast-style-missing-switch-default", "missing-switch-default"));
 
   @Override
   public String name() {

@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class PrintfFormatCheck implements AstChecker {
           List.of(),
           "org.plumb.style.PrintfFormatCheck",
           true,
-          List.of("ast-style-printf-format", "printf-format")
-      );
+          List.of("ast-style-printf-format", "printf-format"));
 
   @Override
   public String name() {

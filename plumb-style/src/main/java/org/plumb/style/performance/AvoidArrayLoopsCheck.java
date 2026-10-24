@@ -6,7 +6,6 @@ import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class AvoidArrayLoopsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.AvoidArrayLoopsCheck",
           true,
-          List.of("ast-performance-array-loops", "avoid-array-loops")
-      );
+          List.of("ast-performance-array-loops", "avoid-array-loops"));
 
   @Override
   public String name() {

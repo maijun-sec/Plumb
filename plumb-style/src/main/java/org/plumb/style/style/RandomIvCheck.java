@@ -54,7 +54,6 @@ import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -71,8 +70,7 @@ public final class RandomIvCheck implements AstChecker {
           List.of("CWE-329"),
           "org.plumb.style.RandomIvCheck",
           true,
-          List.of("ast-style-random-iv-cbc-style", "random-iv-cbc")
-      );
+          List.of("ast-style-random-iv-cbc-style", "random-iv-cbc"));
 
   @Override
   public String name() {

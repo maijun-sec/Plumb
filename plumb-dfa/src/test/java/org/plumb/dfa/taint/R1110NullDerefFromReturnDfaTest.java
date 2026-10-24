@@ -26,16 +26,17 @@ import org.plumb.tac.translate.TacTranslator;
  *
  * <p>A checker whose rule does not match any configured sink family is structurally unreachable and
  * still compiles, still registers, and still reports zero — indistinguishable from a rule that is
- * working and finding nothing. That is not hypothetical: {@code NullDerefChecker} is configured with
- * a sink family absent from {@code sink-families.yaml} and survives only because it implements its own
- * {@code checkInstruction} dispatch instead of going through the base class's sink lookup. This rule
- * takes the same self-contained route, so the positive cases below are what keep that route honest.
+ * working and finding nothing. That is not hypothetical: {@code NullDerefChecker} is configured
+ * with a sink family absent from {@code sink-families.yaml} and survives only because it implements
+ * its own {@code checkInstruction} dispatch instead of going through the base class's sink lookup.
+ * This rule takes the same self-contained route, so the positive cases below are what keep that
+ * route honest.
  *
  * <h2>The naming</h2>
  *
- * <p>The AST counterpart keeps its own id ({@code ast-security-null-deref-from-return-ast}) and both
- * rules express the name {@code NULL_DEREF_FROM_RETURN}. Nothing here filters by name, so a future
- * de-duplication that collapses the two ids would show up as these findings disappearing.
+ * <p>The AST counterpart keeps its own id ({@code ast-security-null-deref-from-return-ast}) and
+ * both rules express the name {@code NULL_DEREF_FROM_RETURN}. Nothing here filters by name, so a
+ * future de-duplication that collapses the two ids would show up as these findings disappearing.
  */
 class R1110NullDerefFromReturnDfaTest {
 
@@ -55,7 +56,19 @@ class R1110NullDerefFromReturnDfaTest {
             base.checkers(),
             base.cweMappings(),
             new org.plumb.dfa.config.TuningConfig(
-                2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family", "sarif", false, 0),
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
     FindingReporter reporter =
         new DfaEngine(cfg, List.of(new NullDerefFromReturnDfaChecker()), "global", null)
@@ -150,12 +163,12 @@ class R1110NullDerefFromReturnDfaTest {
    * A guard on one name covers the same object reached through a container.
    *
    * <p>This is the case the AST rule cannot reach, and the reason the dataflow version exists.
-   * Whether {@code store.get("k")} yields the guarded object is a question about the heap, not about
-   * names: no syntactic walk from {@code b} reaches {@code a}.
+   * Whether {@code store.get("k")} yields the guarded object is a question about the heap, not
+   * about names: no syntactic walk from {@code b} reaches {@code a}.
    *
    * <p>It was a measured gap until R1112 modelled {@code Map.put} / {@code Map.get} as store and
-   * load edges. The gap was recorded with its diagnosis rather than asserted away, which is what made
-   * it worth closing: the failure mode had a name and a mechanism, not just a red test.
+   * load edges. The gap was recorded with its diagnosis rather than asserted away, which is what
+   * made it worth closing: the failure mode had a name and a mechanism, not just a red test.
    */
   @Test
   void guardCoversAContainerRoundTrip() throws Exception {
@@ -199,13 +212,18 @@ class R1110NullDerefFromReturnDfaTest {
             + "  }\n"
             + "}\n";
     assertThat(scan(src, "DistinctKeys.java"))
-        .as("fetched holds the object stored under \"b\", which the guard on \"a\" says nothing about")
+        .as(
+            "fetched holds the object stored under \"b\", which the guard on \"a\" says nothing"
+                + " about")
         .isNotEmpty();
   }
 
   // ── controls: must not over-suppress ─────────────────────────────────
 
-  /** Two independent call results are not the same object; guarding one says nothing about the other. */
+  /**
+   * Two independent call results are not the same object; guarding one says nothing about the
+   * other.
+   */
   @Test
   void guardingADifferentObjectDoesNotSuppress() throws Exception {
     String src =
@@ -217,9 +235,7 @@ class R1110NullDerefFromReturnDfaTest {
             + "    b.length();\n"
             + "  }\n"
             + "}\n";
-    assertThat(scan(src, "DistinctObjects.java"))
-        .as("b is a different allocation")
-        .isNotEmpty();
+    assertThat(scan(src, "DistinctObjects.java")).as("b is a different allocation").isNotEmpty();
   }
 
   /** An unguarded copy is still reported. */
@@ -246,9 +262,7 @@ class R1110NullDerefFromReturnDfaTest {
             + "    a.length();\n"
             + "  }\n"
             + "}\n";
-    assertThat(scan(src, "FreshAllocation.java"))
-        .as("`new` cannot produce null")
-        .isEmpty();
+    assertThat(scan(src, "FreshAllocation.java")).as("`new` cannot produce null").isEmpty();
   }
 
   /** A guarded call result directly is silent. */
@@ -270,8 +284,8 @@ class R1110NullDerefFromReturnDfaTest {
    *
    * <p>Pinned with a reassignment from a name the rule does not treat as a call result, because the
    * question here is whether the state is cleared at all: {@code f = null;} then {@code f = other;}
-   * leaves {@code f} holding {@code other}, and with no clear it would keep the marking from the first
-   * line and report on {@code f.delete()}.
+   * leaves {@code f} holding {@code other}, and with no clear it would keep the marking from the
+   * first line and report on {@code f.delete()}.
    */
   @Test
   void reassignmentFromAParameterDoesNotClearTheNullableMark() throws Exception {

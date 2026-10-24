@@ -15,7 +15,6 @@ package org.plumb.style.design;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -31,8 +30,7 @@ public final class ConstructorCallingOverridableCheck implements AstChecker {
           List.of("CWE-688"),
           "org.plumb.style.ConstructorCallingOverridableCheck",
           true,
-          List.of("ast-design-ctor-calling-overridable", "ctor-calling-overridable")
-      );
+          List.of("ast-design-ctor-calling-overridable", "ctor-calling-overridable"));
 
   @Override
   public String name() {

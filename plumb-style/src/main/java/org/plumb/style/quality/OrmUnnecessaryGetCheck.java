@@ -16,7 +16,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -53,8 +52,7 @@ public final class OrmUnnecessaryGetCheck implements AstChecker {
           List.of("CWE-252"),
           "org.plumb.style.OrmUnnecessaryGetCheck",
           true,
-          List.of("ast-quality-orm-unnecessary-get", "orm-unnecessary-get")
-      );
+          List.of("ast-quality-orm-unnecessary-get", "orm-unnecessary-get"));
 
   private static final Set<String> GET_METHODS =
       new HashSet<>(List.of("get", "find", "findById", "getById", "read"));

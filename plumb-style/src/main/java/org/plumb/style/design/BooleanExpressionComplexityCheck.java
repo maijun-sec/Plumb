@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -14,10 +13,9 @@ import org.plumb.style.StyleContext;
 /**
  * Boolean expression too complex (default threshold 3 ? meaning 3+ {@code &&}/{@code ||} literals).
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(BinaryExpr.class)} before. The complexity count uses a stack
- * walk on each {@code BinaryExpr} subtree so we don't recurse the whole tree at each top-level
- * {@code AND}/{@code OR}.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(BinaryExpr.class)} before. The complexity count uses a stack walk on each {@code
+ * BinaryExpr} subtree so we don't recurse the whole tree at each top-level {@code AND}/{@code OR}.
  */
 public final class BooleanExpressionComplexityCheck implements AstChecker {
 
@@ -30,8 +28,7 @@ public final class BooleanExpressionComplexityCheck implements AstChecker {
           List.of(),
           "org.plumb.style.BooleanExpressionComplexityCheck",
           true,
-          List.of("ast-design-expr-complexity", "boolean-expression-complexity")
-      );
+          List.of("ast-design-expr-complexity", "boolean-expression-complexity"));
 
   @Override
   public String name() {
@@ -43,8 +40,8 @@ public final class BooleanExpressionComplexityCheck implements AstChecker {
 
   @Override
   public void visit(BinaryExpr be, StyleContext ctx) {
-    if (be.getOperator() != BinaryExpr.Operator.AND
-        && be.getOperator() != BinaryExpr.Operator.OR) return;
+    if (be.getOperator() != BinaryExpr.Operator.AND && be.getOperator() != BinaryExpr.Operator.OR)
+      return;
 
     // Walk down through nested &&/|| to count leaf operators.
     int count = 0;

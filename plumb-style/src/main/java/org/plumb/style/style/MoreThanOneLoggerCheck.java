@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class MoreThanOneLoggerCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MoreThanOneLoggerCheck",
           true,
-          List.of("ast-style-than-one-logger", "more-than-one-logger")
-      );
+          List.of("ast-style-than-one-logger", "more-than-one-logger"));
 
   @Override
   public String name() {

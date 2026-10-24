@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -73,8 +72,7 @@ public final class StaticApiKeyCheck implements AstChecker {
           List.of("CWE-798", "CWE-259"),
           "org.plumb.style.security.StaticApiKeyCheck",
           true,
-          List.of("dfa-security-static-api-key", "static-api-key")
-      );
+          List.of("dfa-security-static-api-key", "static-api-key"));
 
   @Override
   public String name() {

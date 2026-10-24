@@ -29,7 +29,6 @@ import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -46,8 +45,7 @@ public final class NoEffectStatementCheck implements AstChecker {
           List.of("CWE-398"),
           "org.plumb.style.NoEffectStatementCheck",
           true,
-          List.of("ast-style-no-effect-statement", "no-effect-statement")
-      );
+          List.of("ast-style-no-effect-statement", "no-effect-statement"));
 
   private static final RuleDef SELF_ASSIGN_RULE =
       new RuleDef(
@@ -58,8 +56,7 @@ public final class NoEffectStatementCheck implements AstChecker {
           List.of("CWE-398"),
           "org.plumb.style.NoEffectStatementCheck",
           true,
-          List.of("dfa-style-empty-statement", "no-effect-statement")
-      );
+          List.of("dfa-style-empty-statement", "no-effect-statement"));
 
   private final Set<String> reported = new HashSet<>();
 

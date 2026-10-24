@@ -6,7 +6,6 @@ import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class HideUtilityClassConstructorCheck implements AstChecker {
           List.of(),
           "org.plumb.style.HideUtilityClassConstructorCheck",
           true,
-          List.of("ast-style-utility-class-ctor", "hide-utility-class-ctor")
-      );
+          List.of("ast-style-utility-class-ctor", "hide-utility-class-ctor"));
 
   @Override
   public String name() {
@@ -36,26 +34,26 @@ public final class HideUtilityClassConstructorCheck implements AstChecker {
 
   @Override
   public void visit(ClassOrInterfaceDeclaration c, StyleContext ctx) {
-boolean allStatic = false;
-for (MethodDeclaration m : c.getMethods()) {
-  if (m.isStatic()) {
-    allStatic = true;
-    break;
-  }
-}
-if (!allStatic) return;
-for (ConstructorDeclaration ctor : c.getConstructors()) {
-  if (ctor.isPublic()) {
-    int line = ctor.getBegin().map(p -> p.line).orElse(-1);
-    int col = ctor.getBegin().map(p -> p.column).orElse(-1);
-    ctx.report(
-        line,
-        col,
-        DEFAULT_RULE,
-        "Utility class " + c.getNameAsString() + " should not have public constructor",
-        RuleDef.Severity.LOW,
-        c.getNameAsString());
-  }
-}
+    boolean allStatic = false;
+    for (MethodDeclaration m : c.getMethods()) {
+      if (m.isStatic()) {
+        allStatic = true;
+        break;
+      }
+    }
+    if (!allStatic) return;
+    for (ConstructorDeclaration ctor : c.getConstructors()) {
+      if (ctor.isPublic()) {
+        int line = ctor.getBegin().map(p -> p.line).orElse(-1);
+        int col = ctor.getBegin().map(p -> p.column).orElse(-1);
+        ctx.report(
+            line,
+            col,
+            DEFAULT_RULE,
+            "Utility class " + c.getNameAsString() + " should not have public constructor",
+            RuleDef.Severity.LOW,
+            c.getNameAsString());
+      }
+    }
   }
 }

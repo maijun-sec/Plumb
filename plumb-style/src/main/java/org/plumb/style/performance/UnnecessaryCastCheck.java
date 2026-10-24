@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.CastExpr;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.PrimitiveType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class UnnecessaryCastCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UnnecessaryCastCheck",
           true,
-          List.of("ast-performance-unnecessary-cast", "unnecessary-cast")
-      );
+          List.of("ast-performance-unnecessary-cast", "unnecessary-cast"));
 
   @Override
   public String name() {

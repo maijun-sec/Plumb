@@ -5,7 +5,6 @@ import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.type.ArrayType;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class DmiCollectionOfUrlsCheck implements AstChecker {
           List.of("CWE-400"),
           "org.plumb.style.DmiCollectionOfUrlsCheck",
           true,
-          List.of("ast-performance-collection-of-urls", "dmi-collection-urls")
-      );
+          List.of("ast-performance-collection-of-urls", "dmi-collection-urls"));
 
   @Override
   public String name() {

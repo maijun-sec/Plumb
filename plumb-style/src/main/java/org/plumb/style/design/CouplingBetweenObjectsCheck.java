@@ -5,7 +5,6 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class CouplingBetweenObjectsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.CouplingBetweenObjectsCheck",
           true,
-          List.of("ast-design-coupling-between-objects", "coupling")
-      );
+          List.of("ast-design-coupling-between-objects", "coupling"));
 
   private static final int MAX_COUPLING = 20;
 

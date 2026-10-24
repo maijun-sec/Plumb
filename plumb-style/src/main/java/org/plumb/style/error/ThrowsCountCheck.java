@@ -2,7 +2,6 @@ package org.plumb.style.error;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -11,8 +10,8 @@ import org.plumb.style.StyleContext;
 /**
  * Method declares too many checked exceptions (default threshold 4).
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(MethodDeclaration.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(MethodDeclaration.class)} before.
  */
 public final class ThrowsCountCheck implements AstChecker {
 
@@ -25,8 +24,7 @@ public final class ThrowsCountCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ThrowsCountCheck",
           true,
-          List.of("ast-error-throws-count", "throws-count")
-      );
+          List.of("ast-error-throws-count", "throws-count"));
 
   @Override
   public String name() {
@@ -46,7 +44,10 @@ public final class ThrowsCountCheck implements AstChecker {
         line,
         col,
         DEFAULT_RULE,
-        "Method " + m.getNameAsString() + " declares " + nthrows
+        "Method "
+            + m.getNameAsString()
+            + " declares "
+            + nthrows
             + " checked exceptions; consider wrapping or splitting",
         RuleDef.Severity.LOW,
         m.getNameAsString());

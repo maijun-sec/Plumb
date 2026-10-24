@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class SelfAssignmentCheck implements AstChecker {
           List.of("CWE-682"),
           "org.plumb.style.SelfAssignmentCheck",
           true,
-          List.of("ast-style-assignment-self", "self-assignment")
-      );
+          List.of("ast-style-assignment-self", "self-assignment"));
 
   @Override
   public String name() {

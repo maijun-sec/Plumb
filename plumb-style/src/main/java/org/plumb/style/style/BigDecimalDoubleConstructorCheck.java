@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.DoubleLiteralExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class BigDecimalDoubleConstructorCheck implements AstChecker {
           List.of("CWE-682"),
           "org.plumb.style.BigDecimalDoubleConstructorCheck",
           true,
-          List.of("ast-style-bigdecimal-double", "bigdec-double")
-      );
+          List.of("ast-style-bigdecimal-double", "bigdec-double"));
 
   @Override
   public String name() {

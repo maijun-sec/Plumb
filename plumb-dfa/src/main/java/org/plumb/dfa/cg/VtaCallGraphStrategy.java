@@ -234,8 +234,8 @@ public final class VtaCallGraphStrategy implements CallGraphStrategy {
    *
    * <p>This is a necessary (not sufficient) condition for an override to be a legal target. It
    * exists because resolving virtual calls on {@code name/arity} alone produced provable false
-   * positives: a call {@code handler.process(42)} was bound to {@code process(String)}, so the
-   * int argument was treated as flowing into a string sink and reported as SQL injection.
+   * positives: a call {@code handler.process(42)} was bound to {@code process(String)}, so the int
+   * argument was treated as flowing into a string sink and reported as SQL injection.
    *
    * <p>The check is deliberately permissive where the IR is imprecise — an unknown or boxed
    * argument type is accepted rather than rejected, because a false negative here would silently
@@ -264,13 +264,13 @@ public final class VtaCallGraphStrategy implements CallGraphStrategy {
    *
    * <p>The cases we DO reject are exactly the ones that produced provable false positives: a
    * primitive argument offered to a {@code String} parameter (or vice versa), and two different
-   * primitives. A primitive cannot be a String, and the engine has no boxing model, so binding
-   * them together is never correct — it is what made {@code numbers.process(7)} reach a
-   * {@code process(String)} SQL sink.
+   * primitives. A primitive cannot be a String, and the engine has no boxing model, so binding them
+   * together is never correct — it is what made {@code numbers.process(7)} reach a {@code
+   * process(String)} SQL sink.
    *
-   * <p>Reference-to-reference pairs are accepted: this IR exposes no subtype lattice, so
-   * {@code String -> CharSequence} and {@code ArrayList -> List} are both legal and we have no
-   * cheap way to tell them apart from an illegal widening.
+   * <p>Reference-to-reference pairs are accepted: this IR exposes no subtype lattice, so {@code
+   * String -> CharSequence} and {@code ArrayList -> List} are both legal and we have no cheap way
+   * to tell them apart from an illegal widening.
    */
   private static boolean isAssignable(TacType from, TacType to) {
     if (from == null || to == null) return true;

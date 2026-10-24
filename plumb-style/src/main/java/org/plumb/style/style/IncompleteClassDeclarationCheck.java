@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,9 @@ public final class IncompleteClassDeclarationCheck implements AstChecker {
           List.of(),
           "org.plumb.style.IncompleteClassDeclarationCheck",
           true,
-          List.of("ast-style-only-private-ctors-incomplete-class-declaration", "incomplete-class-declaration")
-      );
+          List.of(
+              "ast-style-only-private-ctors-incomplete-class-declaration",
+              "incomplete-class-declaration"));
 
   @Override
   public String name() {

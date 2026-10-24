@@ -2,7 +2,6 @@ package org.plumb.style.naming;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -11,8 +10,8 @@ import org.plumb.style.StyleContext;
 /**
  * Abstract class should be named starting with {@code Abstract} (heuristic).
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ClassOrInterfaceDeclaration.class)} before.
  */
 public final class AbstractNamingCheck implements AstChecker {
 
@@ -25,8 +24,7 @@ public final class AbstractNamingCheck implements AstChecker {
           List.of(),
           "org.plumb.style.AbstractNamingCheck",
           true,
-          List.of("ast-naming-abstract-naming", "abstract-naming")
-      );
+          List.of("ast-naming-abstract-naming", "abstract-naming"));
 
   @Override
   public String name() {

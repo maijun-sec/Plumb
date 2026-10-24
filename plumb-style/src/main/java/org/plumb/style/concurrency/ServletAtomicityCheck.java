@@ -28,7 +28,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -45,8 +44,7 @@ public final class ServletAtomicityCheck implements AstChecker {
           List.of("CWE-362"),
           "org.plumb.style.ServletAtomicityCheck",
           true,
-          List.of("ast-concurrency-servlet-atomicity", "servlet-atomicity")
-      );
+          List.of("ast-concurrency-servlet-atomicity", "servlet-atomicity"));
 
   private static final Set<String> SERVLET_RECEIVER_TYPES =
       Set.of(

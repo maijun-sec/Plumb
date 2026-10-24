@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.CompilationUnit;
 import java.util.List;
 import org.plumb.parser.ParsedSource;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -33,7 +32,8 @@ public final class NewlineAtEndOfFileCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.NewlineAtEndOfFileCheck",
-          true,List.of("ast-style-newline-at-eof", "newline-at-eof"),
+          true,
+          List.of("ast-style-newline-at-eof", "newline-at-eof"),
           List.of(PARAMS));
 
   @Override

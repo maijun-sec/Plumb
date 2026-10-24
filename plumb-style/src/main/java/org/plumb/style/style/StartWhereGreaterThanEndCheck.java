@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class StartWhereGreaterThanEndCheck implements AstChecker {
           List.of(),
           "org.plumb.style.StartWhereGreaterThanEndCheck",
           true,
-          List.of("ast-style-greater-end", "startwheregreaterthanendcheck")
-      );
+          List.of("ast-style-greater-end", "startwheregreaterthanendcheck"));
 
   @Override
   public String name() {

@@ -50,14 +50,13 @@ class R1124AiDedupRuleReachTest {
   }
 
   /**
-   * Invoke the runner's private buildPromptByRuleMap the same way runAiDedup
-   * does, and return the set of keys it holds.
+   * Invoke the runner's private buildPromptByRuleMap the same way runAiDedup does, and return the
+   * set of keys it holds.
    */
   @SuppressWarnings("unchecked")
   private static Map<String, ?> promptMapKeys(List<AstChecker> styleChecks) throws Exception {
     ScanRunner runner = new ScanRunner(new ScanConfig());
-    Method m = ScanRunner.class.getDeclaredMethod(
-        "buildPromptByRuleMap", List.class, List.class);
+    Method m = ScanRunner.class.getDeclaredMethod("buildPromptByRuleMap", List.class, List.class);
     m.setAccessible(true);
     return (Map<String, ?>) m.invoke(runner, new ArrayList<>(), styleChecks);
   }

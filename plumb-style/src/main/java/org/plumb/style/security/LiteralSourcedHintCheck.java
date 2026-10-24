@@ -25,7 +25,6 @@ import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import java.util.List;
 import java.util.Locale;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -77,8 +76,7 @@ public final class LiteralSourcedHintCheck implements AstChecker {
           List.of("CWE-798"),
           "org.plumb.style.security.LiteralSourcedHintCheck",
           true,
-          List.of("ast-security-literal-sourced-hint", "literal-sourced-hint")
-      );
+          List.of("ast-security-literal-sourced-hint", "literal-sourced-hint"));
 
   // Canonical DEFAULT_RULE — the registry mirror uses this to get
   // a non-synthetic RuleDef with full CWE list. The visit() method
@@ -97,8 +95,7 @@ public final class LiteralSourcedHintCheck implements AstChecker {
           List.of("CWE-798"),
           "org.plumb.style.security.LiteralSourcedHintCheck",
           true,
-          List.of("dfa-security-literal-sourced-sensitive", "literal-sourced-hint")
-      );
+          List.of("dfa-security-literal-sourced-sensitive", "literal-sourced-hint"));
 
   @Override
   public String name() {

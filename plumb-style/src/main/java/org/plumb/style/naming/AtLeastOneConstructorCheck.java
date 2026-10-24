@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.EnumDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -40,7 +39,8 @@ public final class AtLeastOneConstructorCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.AtLeastOneConstructorCheck",
-          true,List.of("ast-naming-at-least-one-constructor", "at-least-one-constructor"),
+          true,
+          List.of("ast-naming-at-least-one-constructor", "at-least-one-constructor"),
           List.of(PARAMS));
 
   @Override

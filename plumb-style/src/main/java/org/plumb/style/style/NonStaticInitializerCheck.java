@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.InitializerDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class NonStaticInitializerCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NonStaticInitializerCheck",
           true,
-          List.of("ast-style-non-static-initializer", "non-static-initializer")
-      );
+          List.of("ast-style-non-static-initializer", "non-static-initializer"));
 
   @Override
   public String name() {

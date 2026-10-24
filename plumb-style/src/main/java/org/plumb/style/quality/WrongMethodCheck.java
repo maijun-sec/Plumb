@@ -15,7 +15,6 @@ import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -33,8 +32,7 @@ public final class WrongMethodCheck implements AstChecker {
           List.of("CWE-253", "CWE-665"),
           "org.plumb.style.WrongMethodCheck",
           true,
-          List.of("ast-quality-wrong-method", "wrong-method")
-      );
+          List.of("ast-quality-wrong-method", "wrong-method"));
 
   /** Mirrors the Coverity default option {@code ignore_pattern}. */
   private static final Pattern IGNORE_PATTERN = Pattern.compile("(?i).*prop.*|.*name");
@@ -67,9 +65,7 @@ public final class WrongMethodCheck implements AstChecker {
       // fall back to scope text
     }
 
-    if (owner != null
-        && !"java.lang.Boolean".equals(owner)
-        && !"java.lang.Integer".equals(owner)) {
+    if (owner != null && !"java.lang.Boolean".equals(owner) && !"java.lang.Integer".equals(owner)) {
       return;
     }
     if (!(argc == 1 || (owner == null && m.getArguments().size() == 1))) return;

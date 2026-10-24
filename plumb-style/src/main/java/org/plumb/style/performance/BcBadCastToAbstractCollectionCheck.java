@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.CastExpr;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class BcBadCastToAbstractCollectionCheck implements AstChecker {
           List.of("CWE-704"),
           "org.plumb.style.BcBadCastToAbstractCollectionCheck",
           true,
-          List.of("ast-performance-bad-cast-to-abstract-collection", "bc-bad-cast-abstract")
-      );
+          List.of("ast-performance-bad-cast-to-abstract-collection", "bc-bad-cast-abstract"));
 
   private static final Set<String> ABSTRACT =
       Set.of(

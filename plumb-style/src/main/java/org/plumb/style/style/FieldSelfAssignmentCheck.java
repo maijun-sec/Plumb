@@ -20,7 +20,6 @@ import com.github.javaparser.ast.expr.NameExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -37,8 +36,7 @@ public final class FieldSelfAssignmentCheck implements AstChecker {
           List.of(),
           "org.plumb.style.FieldSelfAssignmentCheck",
           true,
-          List.of("legacy-self-assignment", "fieldselfassignmentcheck")
-      );
+          List.of("legacy-self-assignment", "fieldselfassignmentcheck"));
 
   @Override
   public String name() {

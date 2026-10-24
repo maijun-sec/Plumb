@@ -80,10 +80,9 @@ public final class UncontrolledRecursionChecker extends TaintedCheckerBase {
   /**
    * Decide whether the call targets the enclosing method itself.
    *
-   * <p>The comparison uses the method name, the arity, AND the receiver's
-   * identity. Name + arity alone is not enough: two unrelated classes
-   * commonly share a method name and an arity, and treating that as
-   * recursion produces a false positive on ordinary delegation.</p>
+   * <p>The comparison uses the method name, the arity, AND the receiver's identity. Name + arity
+   * alone is not enough: two unrelated classes commonly share a method name and an arity, and
+   * treating that as recursion produces a false positive on ordinary delegation.
    */
   static boolean isSelfRecursion(TacInstruction ins, TacFunction fn) {
     String callee = ins.calleeSig;
@@ -175,9 +174,8 @@ public final class UncontrolledRecursionChecker extends TaintedCheckerBase {
   /**
    * The receiver operand of a scoped call, or {@code null} for an unscoped call.
    *
-   * <p>The IR stores the receiver as {@code args[0]}, ahead of the declared
-   * arguments, so the receiver is present exactly when the argument count
-   * exceeds the callee's arity by one.</p>
+   * <p>The IR stores the receiver as {@code args[0]}, ahead of the declared arguments, so the
+   * receiver is present exactly when the argument count exceeds the callee's arity by one.
    */
   private static TacOperand receiverOf(TacInstruction ins, int calleeArity) {
     if (ins.args == null || ins.args.isEmpty()) {

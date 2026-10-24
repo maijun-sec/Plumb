@@ -25,7 +25,6 @@ import com.github.javaparser.ast.expr.LambdaExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -41,8 +40,7 @@ public final class LambdaParameterShadowingCheck implements AstChecker {
           List.of(),
           "org.plumb.style.LambdaParameterShadowingCheck",
           true,
-          List.of("ast-style-lambda-param-shadowing", "lambda-param-shadowing")
-      );
+          List.of("ast-style-lambda-param-shadowing", "lambda-param-shadowing"));
 
   @Override
   public String name() {
@@ -52,28 +50,28 @@ public final class LambdaParameterShadowingCheck implements AstChecker {
   @Override
   public void init(StyleContext ctx) {}
 
-    public void visit(LambdaExpr lam, StyleContext ctx) {
-ClassOrInterfaceDeclaration c =
-    lam.findAncestor(ClassOrInterfaceDeclaration.class).orElse(null);
-if (c == null) return;
-Set<String> fieldNames = new HashSet<>();
-for (FieldDeclaration f : c.getFields()) {
-  for (VariableDeclarator v : f.getVariables()) {
-    fieldNames.add(v.getNameAsString());
-  }
-}
-if (fieldNames.isEmpty()) return;
-for (Parameter p : lam.getParameters()) {
-  if (!fieldNames.contains(p.getNameAsString())) return;
-  int line = p.getBegin().map(b -> b.line).orElse(-1);
-  int col = p.getBegin().map(b -> b.column).orElse(-1);
-  ctx.report(
-      line,
-      col,
-      DEFAULT_RULE,
-      "Lambda parameter '" + p.getNameAsString() + "' shadows outer field",
-      RuleDef.Severity.LOW,
-      p.getNameAsString());
-}
+  public void visit(LambdaExpr lam, StyleContext ctx) {
+    ClassOrInterfaceDeclaration c =
+        lam.findAncestor(ClassOrInterfaceDeclaration.class).orElse(null);
+    if (c == null) return;
+    Set<String> fieldNames = new HashSet<>();
+    for (FieldDeclaration f : c.getFields()) {
+      for (VariableDeclarator v : f.getVariables()) {
+        fieldNames.add(v.getNameAsString());
+      }
+    }
+    if (fieldNames.isEmpty()) return;
+    for (Parameter p : lam.getParameters()) {
+      if (!fieldNames.contains(p.getNameAsString())) return;
+      int line = p.getBegin().map(b -> b.line).orElse(-1);
+      int col = p.getBegin().map(b -> b.column).orElse(-1);
+      ctx.report(
+          line,
+          col,
+          DEFAULT_RULE,
+          "Lambda parameter '" + p.getNameAsString() + "' shadows outer field",
+          RuleDef.Severity.LOW,
+          p.getNameAsString());
+    }
   }
 }

@@ -5,7 +5,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.NullLiteralExpr;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -28,8 +27,7 @@ public final class NullReturnedToStringCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NullReturnedToStringCheck",
           true,
-          List.of("ast-performance-returned-tostring", "null-returned-tostring")
-      );
+          List.of("ast-performance-returned-tostring", "null-returned-tostring"));
 
   @Override
   public String name() {

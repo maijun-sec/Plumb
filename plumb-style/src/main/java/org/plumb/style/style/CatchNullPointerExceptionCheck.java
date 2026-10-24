@@ -27,7 +27,6 @@ import com.github.javaparser.ast.type.UnionType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -44,8 +43,7 @@ public final class CatchNullPointerExceptionCheck implements AstChecker {
           List.of("CWE-395"),
           "org.plumb.style.CatchNullPointerExceptionCheck",
           true,
-          List.of("ast-style-catch-nullpointer-exception", "catch-nullpointer-exception")
-      );
+          List.of("ast-style-catch-nullpointer-exception", "catch-nullpointer-exception"));
 
   private final Set<String> reported = new HashSet<>();
 

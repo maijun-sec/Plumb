@@ -3,7 +3,6 @@ package org.plumb.style.design;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class AbstractClassWithoutAbstractMethodCheck implements AstChecker
           List.of(),
           "org.plumb.style.AbstractClassWithoutAbstractMethodCheck",
           true,
-          List.of("ast-design-abstract-class-without-abstract-method", "abstract-no-method")
-      );
+          List.of("ast-design-abstract-class-without-abstract-method", "abstract-no-method"));
 
   @Override
   public String name() {

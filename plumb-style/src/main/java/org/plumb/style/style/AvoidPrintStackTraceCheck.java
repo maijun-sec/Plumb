@@ -7,7 +7,6 @@ import com.github.javaparser.ast.stmt.CatchClause;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class AvoidPrintStackTraceCheck implements AstChecker {
           List.of("CWE-209"),
           "org.plumb.style.AvoidPrintStackTraceCheck",
           true,
-          List.of("legacy-print-stack-trace", "avoid-print-stack-trace")
-      );
+          List.of("legacy-print-stack-trace", "avoid-print-stack-trace"));
 
   /** Catch-parameter names in the current method. */
   private Set<String> catchParamNames = new HashSet<>();

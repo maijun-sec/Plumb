@@ -3,7 +3,6 @@ package org.plumb.style.naming;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.type.TypeParameter;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,10 +11,9 @@ import org.plumb.style.StyleContext;
 /**
  * Class type parameter name should be uppercase single letter ({@code T}, {@code K}, {@code V}).
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)} before. Note this rule
- * applies to BOTH classes and interfaces (inter-class parameter names) ? interface parameters
- * follow the same convention.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ClassOrInterfaceDeclaration.class)} before. Note this rule applies to BOTH classes and
+ * interfaces (inter-class parameter names) ? interface parameters follow the same convention.
  */
 public final class ClassTypeParameterNameCheck implements AstChecker {
 
@@ -28,8 +26,7 @@ public final class ClassTypeParameterNameCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ClassTypeParameterNameCheck",
           true,
-          List.of("ast-naming-type-param", "class-type-parameter-name")
-      );
+          List.of("ast-naming-type-param", "class-type-parameter-name"));
 
   @Override
   public String name() {

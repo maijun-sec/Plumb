@@ -33,7 +33,6 @@
  */
 package org.plumb.dfa.checkers.taint;
 
-import org.plumb.rules.RuleDef;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -48,6 +47,7 @@ import org.plumb.reporter.FlowStep;
 import org.plumb.reporter.trace.OperandRef;
 import org.plumb.reporter.trace.Trace;
 import org.plumb.reporter.trace.TraceNode;
+import org.plumb.rules.RuleDef;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
@@ -374,7 +374,7 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
   }
 
   private static final String AI_PROMPT =
-      """
+"""
             RULE: Resource exhaustion via Thread.sleep (CWE-400).
             This rule fires when Thread.sleep(duration) is called
             with a tainted duration value (one that came from

@@ -20,8 +20,8 @@ import org.plumb.tac.ir.TacOperand;
  * <h2>Relation to the AST rule</h2>
  *
  * <p>This is the dataflow counterpart of {@code
- * org.plumb.style.security.NullDerefFromReturnAstCheck}. Both express the same rule name
- * ({@code NULL_DEREF_FROM_RETURN}) and are registered under different ids — the AST one as {@code
+ * org.plumb.style.security.NullDerefFromReturnAstCheck}. Both express the same rule name ({@code
+ * NULL_DEREF_FROM_RETURN}) and are registered under different ids — the AST one as {@code
  * ast-security-null-deref-from-return-ast}, this one as {@code dfa-taint-null-deref-from-return} —
  * deliberately, so both run. Neither is a migration of the other:
  *
@@ -41,12 +41,11 @@ import org.plumb.tac.ir.TacOperand;
  *       method whose name contains {@code Bad}/{@code Null}/{@code Nullable} — a heuristic aimed at
  *       the Juliet corpus. This rule treats <em>any</em> value arriving from a call as possibly
  *       null, which is what a caller of an unknown method actually has to assume.
- *   <li><b>A guard transfers across aliases, but only where it covers the whole
- *       reference.</b> {@code if (a == null) return;} constrains the object {@code a} denotes, so
- *       it covers every name whose points-to set is <em>contained</em> in {@code a}'s. It does not
- *       cover a name that may also hold some other, unguarded object; see {@link
- *       #isFullyGuardedByAlias} for why the weaker "some alias is guarded" test manufactures false
- *       negatives.
+ *   <li><b>A guard transfers across aliases, but only where it covers the whole reference.</b>
+ *       {@code if (a == null) return;} constrains the object {@code a} denotes, so it covers every
+ *       name whose points-to set is <em>contained</em> in {@code a}'s. It does not cover a name
+ *       that may also hold some other, unguarded object; see {@link #isFullyGuardedByAlias} for why
+ *       the weaker "some alias is guarded" test manufactures false negatives.
  *   <li><b>A fresh allocation is never null.</b> {@code new X()} followed by a dereference is not
  *       reported, because the points-to set proves an object is there.
  * </ol>
@@ -58,8 +57,8 @@ import org.plumb.tac.ir.TacOperand;
  * "maybe the same object", so such a rule would fire on unrelated same-typed locals and trade a
  * precision fix for a false-positive generator.
  *
- * <p>An empty alias class means "no alias information", not "provably unshared", so it falls back to
- * reporting. Absence of proof is never treated as proof of safety.
+ * <p>An empty alias class means "no alias information", not "provably unshared", so it falls back
+ * to reporting. Absence of proof is never treated as proof of safety.
  */
 public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
 
@@ -68,9 +67,9 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
    *
    * <p>Separate from the base class's {@code taintedVars} on purpose. That map marks every method
    * parameter as an untrusted <em>source</em> at the entry boundary, which is right for taint and
-   * catastrophically wrong for null-ness: every parameter would be "maybe null" and every use of one
-   * would be reported. {@link NullDerefChecker} hit exactly this and carries its own map for the same
-   * reason.
+   * catastrophically wrong for null-ness: every parameter would be "maybe null" and every use of
+   * one would be reported. {@link NullDerefChecker} hit exactly this and carries its own map for
+   * the same reason.
    */
   private final Map<TacOperand.TacVar, String> nullableVars = new LinkedHashMap<>();
 
@@ -112,8 +111,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
       case MOVE -> {
         TacOperand.TacVar dest = asVar(ins.dest);
         if (dest == null) return;
-        if (ins.lhs1 instanceof TacOperand.Const c
-            && c.kind() == TacOperand.Const.Kind.NULL) {
+        if (ins.lhs1 instanceof TacOperand.Const c && c.kind() == TacOperand.Const.Kind.NULL) {
           this.nullableVars.put(dest, "assigned null literal");
           return;
         }
@@ -121,7 +119,8 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
           // R1122: a rebinding replaces the variable's current value, so it also retires the
           // fresh-allocation claim the previous binding earned. Without this, `h = new String(..)`
           // followed by `h = b.v` would still let a later `x = h` erase x's nullable fact.
-          // R1122: decide BEFORE recording this binding. Whether this MOVE is a copy or a rebinding is
+          // R1122: decide BEFORE recording this binding. Whether this MOVE is a copy or a rebinding
+          // is
           // exactly what `reboundAwayFromAlias` hinges on.
           final boolean destAlreadyBound = this.everBound.contains(dest);
           if (dest != src) {
@@ -145,7 +144,8 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
           //
           //   in a loop: the state is one map walked in linear order, with no fixpoint and no
           //             predecessor merge. On a later round the erasure destroys a fact the back
-          //             edge just re-introduced, so a correctly-guarded `while (cur != null)` looked
+          //             edge just re-introduced, so a correctly-guarded `while (cur != null)`
+          // looked
           //             safe on round 1 and the real round-2 NPE disappeared.
           //
           // Why additivity is also the PRECISE answer here, not just the safe one: a may-analysis
@@ -179,7 +179,8 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
             // R1119: the ONE case where a MOVE may subtract.
             //
             // Copy propagation cannot retract, because a may-fact about a name is not a fact about
-            // the value a later assignment brings. A fresh allocation is different in kind: `new X()`
+            // the value a later assignment brings. A fresh allocation is different in kind: `new
+            // X()`
             // is an object by construction, so `x = new StringBuilder(..)` genuinely makes every
             // later read of `x` non-null. Without this branch, making MOVE additive turns the
             // Juliet `File temp = null; ... temp = new File(..); temp.close();` shape into a
@@ -305,13 +306,13 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
   /**
    * R1113: is every object this receiver may hold covered by a guard?
    *
-   * <p><b>This method is the reason the rule does not under-report.</b> The tempting version is "some
-   * alias of the receiver is proven non-null, therefore the receiver is safe". It is wrong, and
-   * wrong in the direction that hides real bugs.
+   * <p><b>This method is the reason the rule does not under-report.</b> The tempting version is
+   * "some alias of the receiver is proven non-null, therefore the receiver is safe". It is wrong,
+   * and wrong in the direction that hides real bugs.
    *
-   * <p>The alias map is a <em>may</em>-relation: membership means "these two names could be the same
-   * object", never "they are". Confusing the two reads as proof is how a guard on one reference
-   * silences a dereference of an unrelated one:
+   * <p>The alias map is a <em>may</em>-relation: membership means "these two names could be the
+   * same object", never "they are". Confusing the two reads as proof is how a guard on one
+   * reference silences a dereference of an unrelated one:
    *
    * <pre>
    *   items.add(first); items.add(second);
@@ -320,8 +321,8 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
    *   other.length();                       // `second` was never guarded
    * </pre>
    *
-   * <p>{@code other} aliases {@code first} only because {@code List.add} cannot know the index it will
-   * occupy, so both elements share one {@code ANY_KEY} cell. The conservative imprecision is
+   * <p>{@code other} aliases {@code first} only because {@code List.add} cannot know the index it
+   * will occupy, so both elements share one {@code ANY_KEY} cell. The conservative imprecision is
    * correct; acting on it as if it were precision is not. Suppressing here would be a false
    * negative manufactured by imprecision rather than by a real alias -- the one failure mode a
    * guard-transfer rule may never have.
@@ -343,8 +344,8 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
    * R1119/R1122: does this variable provably point at a fresh object?
    *
    * <p>The single subtraction MOVE is allowed to perform. {@code x = new StringBuilder(..)} binds a
-   * value that is an object by construction, so any earlier may-null fact about the previous binding
-   * is genuinely irrelevant to later reads.
+   * value that is an object by construction, so any earlier may-null fact about the previous
+   * binding is genuinely irrelevant to later reads.
    *
    * <p>R1122: the test can no longer be "the points-to set is non-empty". Points-to is a
    * MAY-analysis that never retracts, so a variable that once received an allocation keeps that
@@ -366,8 +367,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
    *
    * <p>Conservative direction: answering false can only regain a finding.
    */
-  private boolean isFreshAllocation(
-      TacFunction fn, TacOperand.TacVar v, AnalysisContext ctx) {
+  private boolean isFreshAllocation(TacFunction fn, TacOperand.TacVar v, AnalysisContext ctx) {
     if (fn == null || ctx == null || v == null) return false;
     return this.allocatedHere.contains(v);
   }
@@ -387,22 +387,24 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
    * <p>Feeds the copy-inheritance in the MOVE handler: {@code b = sink.get()} lowers to a CALL into
    * a temp plus {@code b = t_t1}, so the fact recorded on the temp has to travel with the MOVE.
    */
-  private final java.util.Set<TacOperand.TacVar> lastBindingWasCall = new java.util.LinkedHashSet<>();
+  private final java.util.Set<TacOperand.TacVar> lastBindingWasCall =
+      new java.util.LinkedHashSet<>();
 
   /**
    * R1122: variables that were REBOUND to a call result after previously aliasing something else.
    *
-   * <p>Not "holds a call result" -- a plain copy of a call result must stay suppressible, because the
-   * two names denote one reference. Set only when a MOVE assigns a call result's temp into a variable
-   * that already held a value, i.e. exactly when copy-equivalence's monotonic union stops describing
-   * the truth. Cleared whenever the variable is bound again from something that is not a call result.
+   * <p>Not "holds a call result" -- a plain copy of a call result must stay suppressible, because
+   * the two names denote one reference. Set only when a MOVE assigns a call result's temp into a
+   * variable that already held a value, i.e. exactly when copy-equivalence's monotonic union stops
+   * describing the truth. Cleared whenever the variable is bound again from something that is not a
+   * call result.
    */
   private final java.util.Set<TacOperand.TacVar> reboundAwayFromAlias =
       new java.util.LinkedHashSet<>();
 
   /**
-   * R1122: variables that have ever received a value, so a later MOVE can tell a FIRST binding
-   * (a copy) from a REBINDING.
+   * R1122: variables that have ever received a value, so a later MOVE can tell a FIRST binding (a
+   * copy) from a REBINDING.
    */
   private final java.util.Set<TacOperand.TacVar> everBound = new java.util.LinkedHashSet<>();
 
@@ -562,8 +564,8 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
    * {@link NullDerefChecker} documents. For the field and array forms the receiver is {@code lhs1}.
    *
    * <p>Returns {@code null} rather than guessing when the slot holds a constant, which happens for
-   * a static call: {@code Arrays.asList(..)} has no receiver, and treating its first argument as one
-   * would report a dereference that does not exist.
+   * a static call: {@code Arrays.asList(..)} has no receiver, and treating its first argument as
+   * one would report a dereference that does not exist.
    */
   private static TacOperand.TacVar receiverOf(TacInstruction ins) {
     if (ins.kind == TacInstruction.Kind.CALL) {

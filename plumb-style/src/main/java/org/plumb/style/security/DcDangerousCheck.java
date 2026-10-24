@@ -23,7 +23,6 @@ import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.resolution.types.ResolvedType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -40,8 +39,7 @@ public final class DcDangerousCheck implements AstChecker {
           List.of("CWE-676", "CWE-396"),
           "org.plumb.style.DcDangerousCheck",
           true,
-          List.of("ast-security-dc-dangerous", "dc-dangerous")
-      );
+          List.of("ast-security-dc-dangerous", "dc-dangerous"));
 
   @Override
   public String name() {
@@ -54,7 +52,9 @@ public final class DcDangerousCheck implements AstChecker {
   @Override
   public void visit(MethodCallExpr m, StyleContext ctx) {
     String methodName = m.getNameAsString();
-    if (!"stop".equals(methodName) && !"destroy".equals(methodName) && !"write".equals(methodName)) {
+    if (!"stop".equals(methodName)
+        && !"destroy".equals(methodName)
+        && !"write".equals(methodName)) {
       return;
     }
     String hitReason = classifyDangerous(m, methodName);
@@ -62,12 +62,7 @@ public final class DcDangerousCheck implements AstChecker {
     int line = m.getBegin().map(p -> p.line).orElse(-1);
     int col = m.getBegin().map(p -> p.column).orElse(-1);
     ctx.report(
-        line,
-        col,
-        DEFAULT_RULE,
-        "DC.DANGEROUS: " + hitReason,
-        RuleDef.Severity.HIGH,
-        m.toString());
+        line, col, DEFAULT_RULE, "DC.DANGEROUS: " + hitReason, RuleDef.Severity.HIGH, m.toString());
   }
 
   /**

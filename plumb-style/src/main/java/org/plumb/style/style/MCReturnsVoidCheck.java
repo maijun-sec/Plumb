@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.type.VoidType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -38,7 +37,8 @@ public final class MCReturnsVoidCheck implements AstChecker {
           RuleDef.Type.BUG,
           List.of(),
           "org.plumb.style.MCReturnsVoidCheck",
-          true,List.of("ast-style-mc-returns-void", "mc-returns-void"),
+          true,
+          List.of("ast-style-mc-returns-void", "mc-returns-void"),
           List.of(PARAMS));
 
   @Override

@@ -13,7 +13,6 @@ import com.github.javaparser.ast.stmt.SynchronizedStmt;
 import com.github.javaparser.ast.stmt.TryStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -31,8 +30,7 @@ public final class AvoidNestedBlocksCheck implements AstChecker {
           List.of(),
           "org.plumb.style.AvoidNestedBlocksCheck",
           true,
-          List.of("ast-style-nested-blocks", "avoid-nested-blocks")
-      );
+          List.of("ast-style-nested-blocks", "avoid-nested-blocks"));
 
   @Override
   public String name() {

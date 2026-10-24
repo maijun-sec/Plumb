@@ -3,7 +3,6 @@ package org.plumb.style.performance;
 import com.github.javaparser.ast.expr.ArrayAccessExpr;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class ArrayEqualityCheck implements AstChecker {
           List.of("CWE-697"),
           "org.plumb.style.ArrayEqualityCheck",
           true,
-          List.of("ast-performance-equality", "array-equality")
-      );
+          List.of("ast-performance-equality", "array-equality"));
 
   @Override
   public String name() {

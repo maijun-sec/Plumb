@@ -18,7 +18,6 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -35,8 +34,7 @@ public final class ClassFanOutComplexityCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ClassFanOutComplexityCheck",
           true,
-          List.of("ast-design-fanout-complexity", "classfanoutcomplexitycheck")
-      );
+          List.of("ast-design-fanout-complexity", "classfanoutcomplexitycheck"));
 
   @Override
   public String name() {

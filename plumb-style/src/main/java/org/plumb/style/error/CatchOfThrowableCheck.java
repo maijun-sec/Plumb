@@ -3,7 +3,6 @@ package org.plumb.style.error;
 import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,8 +11,8 @@ import org.plumb.style.StyleContext;
 /**
  * Catching {@code Throwable} / {@code Error} is too broad.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(CatchClause.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(CatchClause.class)} before.
  */
 public final class CatchOfThrowableCheck implements AstChecker {
 
@@ -26,8 +25,7 @@ public final class CatchOfThrowableCheck implements AstChecker {
           List.of("CWE-396"),
           "org.plumb.style.CatchOfThrowableCheck",
           true,
-          List.of("ast-error-of-throwable", "catch-of-throwable")
-      );
+          List.of("ast-error-of-throwable", "catch-of-throwable"));
 
   @Override
   public String name() {

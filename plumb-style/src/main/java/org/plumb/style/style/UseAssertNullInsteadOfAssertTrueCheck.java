@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NullLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class UseAssertNullInsteadOfAssertTrueCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UseAssertNullInsteadOfAssertTrueCheck",
           true,
-          List.of("ast-style-assertnull-instead-of-asserttrue", "use-assertnull")
-      );
+          List.of("ast-style-assertnull-instead-of-asserttrue", "use-assertnull"));
 
   @Override
   public String name() {

@@ -7,7 +7,6 @@ import com.github.javaparser.ast.stmt.Statement;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -30,8 +29,7 @@ public final class OneStatementPerLineCheck implements AstChecker {
           List.of(),
           "org.plumb.style.OneStatementPerLineCheck",
           true,
-          List.of("ast-style-statement-per-line", "one-statement-per-line")
-      );
+          List.of("ast-style-statement-per-line", "one-statement-per-line"));
 
   @Override
   public String name() {

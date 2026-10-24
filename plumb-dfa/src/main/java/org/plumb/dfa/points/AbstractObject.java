@@ -7,9 +7,9 @@ import java.util.Objects;
  * The heap abstraction: an identity for "the object a reference might point at".
  *
  * <p>Modelled on Qilin's PAG nodes and heap abstractors (ECOOP'22, He/Lu/Xue), reduced to what
- * Plumb's {@code TacProgram} can express. An abstract object is a
- * {@code (context, allocation site, type)} triple, so two {@code new FileInputStream(..)} calls
- * in different contexts are distinguishable while a single one is not confused with anything else.
+ * Plumb's {@code TacProgram} can express. An abstract object is a {@code (context, allocation site,
+ * type)} triple, so two {@code new FileInputStream(..)} calls in different contexts are
+ * distinguishable while a single one is not confused with anything else.
  *
  * <h2>Why allocation-site identity rather than type</h2>
  *
@@ -21,8 +21,8 @@ import java.util.Objects;
  * <h2>Field and array abstraction</h2>
  *
  * <p>A field access does not produce a new heap object; it produces an <em>access path</em> into an
- * existing one, modelled by {@link AbstractField} and {@link AbstractArrayIndex}. Aliasing through a
- * field is then a question about paths, not about a second object.
+ * existing one, modelled by {@link AbstractField} and {@link AbstractArrayIndex}. Aliasing through
+ * a field is then a question about paths, not about a second object.
  */
 public final class AbstractObject {
 
@@ -47,8 +47,8 @@ public final class AbstractObject {
       return new Obj(functionSignature + "#" + instructionIndex, type, Context.EMPTY);
     }
 
-    public static Obj at(String functionSignature, int instructionIndex, String type,
-        Context context) {
+    public static Obj at(
+        String functionSignature, int instructionIndex, String type, Context context) {
       return new Obj(functionSignature + "#" + instructionIndex, type, context);
     }
 
@@ -90,9 +90,9 @@ public final class AbstractObject {
   /**
    * A reference to a field of an abstract object: {@code receiver.field}.
    *
-   * <p>This is not a heap object of its own — it is a named slot inside one. Two fields of the
-   * same object are always distinct; the same field of two different objects is distinct because
-   * the receivers are distinct.
+   * <p>This is not a heap object of its own — it is a named slot inside one. Two fields of the same
+   * object are always distinct; the same field of two different objects is distinct because the
+   * receivers are distinct.
    */
   public static final class AbstractField {
     private final Obj receiver;
@@ -132,10 +132,10 @@ public final class AbstractObject {
   /**
    * A reference to one array cell: {@code receiver[index]}.
    *
-   * <p>A literal index keeps {@code arr[0]} and {@code arr[1]} distinct, which is what makes
-   * "two elements of the same list" separable. A computed index degrades to {@link #ANY}, and any
-   * two {@code ANY} cells of the same array alias — sound, and the reason a loop-indexed access
-   * cannot be proven distinct.
+   * <p>A literal index keeps {@code arr[0]} and {@code arr[1]} distinct, which is what makes "two
+   * elements of the same list" separable. A computed index degrades to {@link #ANY}, and any two
+   * {@code ANY} cells of the same array alias — sound, and the reason a loop-indexed access cannot
+   * be proven distinct.
    */
   public static final class AbstractArrayIndex {
     private final Obj array;
@@ -185,12 +185,13 @@ public final class AbstractObject {
     }
 
     /** Sentinel for an unknown / computed index. */
-    public static final Object ANY = new Object() {
-      @Override
-      public String toString() {
-        return "*";
-      }
-    };
+    public static final Object ANY =
+        new Object() {
+          @Override
+          public String toString() {
+            return "*";
+          }
+        };
   }
 
   /**
@@ -298,8 +299,8 @@ public final class AbstractObject {
      * <p>{@link #CALL_SITE}: chosen over {@link #CONTEXT_INSENSITIVE} because insensitivity merges
      * two invocations of the same method into one formal and one return set, and every consumer of
      * the alias map (null-dereference, taint propagation, sanitiser reach) inherits that merge.
-     * Chosen over {@link #OBJECT} because receiver discrimination multiplies contexts on polymorphic
-     * call sites, and the marginal precision is not worth the cost on ordinary code.
+     * Chosen over {@link #OBJECT} because receiver discrimination multiplies contexts on
+     * polymorphic call sites, and the marginal precision is not worth the cost on ordinary code.
      */
     public static Policy defaultPolicy() {
       return CALL_SITE;

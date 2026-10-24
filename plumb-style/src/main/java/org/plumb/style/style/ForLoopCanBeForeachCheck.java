@@ -6,7 +6,6 @@ import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class ForLoopCanBeForeachCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ForLoopCanBeForeachCheck",
           true,
-          List.of("ast-style-loop-can-be-foreach", "for-foreach")
-      );
+          List.of("ast-style-loop-can-be-foreach", "for-foreach"));
 
   @Override
   public String name() {

@@ -4,7 +4,6 @@ import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class LoggerShouldBeFinalCheck implements AstChecker {
           List.of(),
           "org.plumb.style.LoggerShouldBeFinalCheck",
           true,
-          List.of("ast-style-logger-should-be-final", "logger-final")
-      );
+          List.of("ast-style-logger-should-be-final", "logger-final"));
 
   @Override
   public String name() {

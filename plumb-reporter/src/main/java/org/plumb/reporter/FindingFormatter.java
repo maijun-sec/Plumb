@@ -1,6 +1,5 @@
 package org.plumb.reporter;
 
-
 import java.util.Locale;
 
 /** Convert a {@link Finding} into a human-readable line for stdout. */

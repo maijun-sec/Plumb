@@ -5,7 +5,6 @@ import com.github.javaparser.ast.ImportDeclaration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class RedundantImportCheck implements AstChecker {
           List.of(),
           "org.plumb.style.RedundantImportCheck",
           true,
-          List.of("ast-style-redundant-import", "redundant-import")
-      );
+          List.of("ast-style-redundant-import", "redundant-import"));
 
   @Override
   public String name() {
@@ -40,7 +38,7 @@ public final class RedundantImportCheck implements AstChecker {
     if (imports.size() < 2) return;
     Set<String> seen = new HashSet<>();
     for (ImportDeclaration id : imports) {
-      // `x.*` imports are not redundant against `x.Y` : 
+      // `x.*` imports are not redundant against `x.Y` :
       // they refer to a different set. Compare asterisks
       // together and explicit imports together.
       String key = (id.isAsterisk() ? "*" : "") + "::" + id.getNameAsString();

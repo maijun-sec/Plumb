@@ -151,10 +151,7 @@ class OrmSqlInterpolationCheckTest {
   @Test
   void aMethodWithNoAnnotationsIsIgnored() {
     List<Finding> findings =
-        run(
-            "class Plain {\n"
-                + "  Object findByName(String name) { return null; }\n"
-                + "}\n");
+        run("class Plain {\n" + "  Object findByName(String name) { return null; }\n" + "}\n");
 
     assertThat(findings).isEmpty();
   }

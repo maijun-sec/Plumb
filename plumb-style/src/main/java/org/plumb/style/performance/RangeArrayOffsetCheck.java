@@ -3,7 +3,6 @@ package org.plumb.style.performance;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class RangeArrayOffsetCheck implements AstChecker {
           List.of("CWE-129"),
           "org.plumb.style.RangeArrayOffsetCheck",
           true,
-          List.of("ast-performance-array-offset", "range-array-offset")
-      );
+          List.of("ast-performance-array-offset", "range-array-offset"));
 
   @Override
   public String name() {

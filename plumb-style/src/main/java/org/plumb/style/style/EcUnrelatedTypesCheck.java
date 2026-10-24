@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class EcUnrelatedTypesCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EcUnrelatedTypesCheck",
           true,
-          List.of("ast-style-unrelated-types", "ec-unrelated")
-      );
+          List.of("ast-style-unrelated-types", "ec-unrelated"));
 
   @Override
   public String name() {

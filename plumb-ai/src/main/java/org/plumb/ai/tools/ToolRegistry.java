@@ -1,16 +1,15 @@
 package org.plumb.ai.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.*;
 import org.plumb.ai.agent.ToolDefinition;
 import org.plumb.ai.agent.ToolResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
-
 /**
- * Name → {@link Tool} map. The Re-Act agent looks up a tool by name when the LLM emits a tool
- * call, executes it under the call's {@link ToolContext}, and returns the result back to the LLM.
+ * Name → {@link Tool} map. The Re-Act agent looks up a tool by name when the LLM emits a tool call,
+ * executes it under the call's {@link ToolContext}, and returns the result back to the LLM.
  *
  * <p>Two things the registry owns:
  *
@@ -29,57 +28,54 @@ import java.util.*;
  */
 public class ToolRegistry {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ToolRegistry.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ToolRegistry.class);
 
-    private final Map<String, Tool> tools = new LinkedHashMap<>();
+  private final Map<String, Tool> tools = new LinkedHashMap<>();
 
-    public ToolRegistry() {
+  public ToolRegistry() {}
+
+  public ToolRegistry register(Tool tool) {
+    Objects.requireNonNull(tool, "tool");
+    if (tools.containsKey(tool.name())) {
+      throw new IllegalArgumentException("Duplicate tool name: " + tool.name());
     }
+    tools.put(tool.name(), tool);
+    return this;
+  }
 
-    public ToolRegistry register(Tool tool) {
-        Objects.requireNonNull(tool, "tool");
-        if (tools.containsKey(tool.name())) {
-            throw new IllegalArgumentException("Duplicate tool name: " + tool.name());
-        }
-        tools.put(tool.name(), tool);
-        return this;
-    }
+  public Tool get(String name) {
+    return tools.get(name);
+  }
 
-    public Tool get(String name) {
-        return tools.get(name);
-    }
+  /** Names of every registered tool, in registration order. */
+  public List<String> toolNames() {
+    return new ArrayList<>(tools.keySet());
+  }
 
-    /**
-     * Names of every registered tool, in registration order.
-     */
-    public List<String> toolNames() {
-        return new ArrayList<>(tools.keySet());
-    }
+  /**
+   * Build the {@code tools} field of the OpenAI request body ? one {@link ToolDefinition} per
+   * registered tool, in registration order.
+   */
+  public List<ToolDefinition> definitions() {
+    List<ToolDefinition> out = new ArrayList<>(tools.size());
+    for (Tool t : tools.values()) out.add(t.definition());
+    return out;
+  }
 
-    /**
-     * Build the {@code tools} field of the OpenAI request body ? one {@link ToolDefinition} per
-     * registered tool, in registration order.
-     */
-    public List<ToolDefinition> definitions() {
-        List<ToolDefinition> out = new ArrayList<>(tools.size());
-        for (Tool t : tools.values()) out.add(t.definition());
-        return out;
+  /**
+   * Look up a tool by name and run it. Returns {@link ToolResult#error(String)} if the tool is not
+   * registered (so the LLM can adjust), or if the tool throws an exception (logged at WARN).
+   */
+  public ToolResult execute(String name, ToolContext ctx, JsonNode args) {
+    Tool tool = tools.get(name);
+    if (tool == null) {
+      return ToolResult.error("unknown tool: " + name + " (registered: " + toolNames() + ")");
     }
-
-    /**
-     * Look up a tool by name and run it. Returns {@link ToolResult#error(String)} if the tool is not
-     * registered (so the LLM can adjust), or if the tool throws an exception (logged at WARN).
-     */
-    public ToolResult execute(String name, ToolContext ctx, JsonNode args) {
-        Tool tool = tools.get(name);
-        if (tool == null) {
-            return ToolResult.error("unknown tool: " + name + " (registered: " + toolNames() + ")");
-        }
-        try {
-            return tool.execute(ctx, args);
-        } catch (Exception e) {
-            LOG.warn("Tool {} threw: {}", name, e.toString());
-            return ToolResult.error("exception in " + name + ": " + e.getMessage());
-        }
+    try {
+      return tool.execute(ctx, args);
+    } catch (Exception e) {
+      LOG.warn("Tool {} threw: {}", name, e.toString());
+      return ToolResult.error("exception in " + name + ": " + e.getMessage());
     }
+  }
 }

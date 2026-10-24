@@ -5,7 +5,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class OverloadMethodsDeclarationOrderCheck implements AstChecker {
           List.of(),
           "org.plumb.style.OverloadMethodsDeclarationOrderCheck",
           true,
-          List.of("ast-style-overload-methods-declaration-order", "overload-methods-order")
-      );
+          List.of("ast-style-overload-methods-declaration-order", "overload-methods-order"));
 
   @Override
   public String name() {

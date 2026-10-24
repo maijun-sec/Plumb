@@ -29,10 +29,10 @@ import org.plumb.tac.translate.TacTranslator;
  *       the callee with the callee's own parameter as the taint source.
  * </ul>
  *
- * <p>The first row is the defect: a value that needs no interprocedural reasoning at all is the
- * one case that is missed, while the same value routed through a call is caught. When the fix
- * lands, invert {@code inlineSinkIsCurrentlyMissed} and add a positive assertion for
- * {@code forwardedSinkReports}.
+ * <p>The first row is the defect: a value that needs no interprocedural reasoning at all is the one
+ * case that is missed, while the same value routed through a call is caught. When the fix lands,
+ * invert {@code inlineSinkIsCurrentlyMissed} and add a positive assertion for {@code
+ * forwardedSinkReports}.
  */
 class R1094InterprocBoundaryTest {
 
@@ -67,9 +67,7 @@ class R1094InterprocBoundaryTest {
   }
 
   private static long sqlFindings(FindingReporter rep) {
-    return rep.all().stream()
-        .filter(f -> "dfa-taint-sql-injection".equals(f.ruleId()))
-        .count();
+    return rep.all().stream().filter(f -> "dfa-taint-sql-injection".equals(f.ruleId())).count();
   }
 
   @Test

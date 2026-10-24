@@ -7,7 +7,6 @@ import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -18,15 +17,15 @@ public final class UnnecessaryLocalBeforeReturnCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-style-unnecessary-local-before-return", "UNNECESSARY_LOCAL_BEFORE_RETURN"),
+          new RuleId(
+              "ast-style-unnecessary-local-before-return", "UNNECESSARY_LOCAL_BEFORE_RETURN"),
           "return the expression directly (no need for the local)",
           RuleDef.Severity.LOW,
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.UnnecessaryLocalBeforeReturnCheck",
           true,
-          List.of("ast-style-unnecessary-local-before-return", "unnecessary-local-before-return")
-      );
+          List.of("ast-style-unnecessary-local-before-return", "unnecessary-local-before-return"));
 
   @Override
   public String name() {

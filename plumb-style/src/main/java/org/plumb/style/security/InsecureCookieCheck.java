@@ -40,7 +40,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -57,8 +56,7 @@ public final class InsecureCookieCheck implements AstChecker {
           List.of("CWE-614"),
           "org.plumb.style.security.InsecureCookieCheck",
           true,
-          List.of("dfa-security-insecure-cookie", "insecure-cookie")
-      );
+          List.of("dfa-security-insecure-cookie", "insecure-cookie"));
 
   /**
    * Per-method set of variable base names on which {@code setSecure(...)} has been called. Used as

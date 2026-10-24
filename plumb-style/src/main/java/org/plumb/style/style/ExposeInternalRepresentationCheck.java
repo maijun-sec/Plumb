@@ -13,7 +13,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -31,8 +30,7 @@ public final class ExposeInternalRepresentationCheck implements AstChecker {
           List.of("CWE-374"),
           "org.plumb.style.ExposeInternalRepresentationCheck",
           true,
-          List.of("ast-style-expose-internal-representation", "expose-internal-representation")
-      );
+          List.of("ast-style-expose-internal-representation", "expose-internal-representation"));
 
   private static final List<String> MUTABLE_RETURN_TYPES =
       List.of(

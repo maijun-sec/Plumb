@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.NullLiteralExpr;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -13,10 +12,9 @@ import org.plumb.style.StyleContext;
 /**
  * Return an empty array instead of {@code null} for array-returning methods.
  *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ReturnStmt.class)} before. The parent-method lookup is
- * preserved via {@code n.findAncestor(MethodDeclaration.class)} so we still skip non-array
- * returns.
+ * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ReturnStmt.class)} before. The parent-method lookup is preserved via {@code
+ * n.findAncestor(MethodDeclaration.class)} so we still skip non-array returns.
  */
 public final class PreferZeroLengthArraysCheck implements AstChecker {
 
@@ -29,8 +27,7 @@ public final class PreferZeroLengthArraysCheck implements AstChecker {
           List.of(),
           "org.plumb.style.PreferZeroLengthArraysCheck",
           true,
-          List.of("ast-performance-prefer-zero-length-arrays", "prefer-zero-length-arrays")
-      );
+          List.of("ast-performance-prefer-zero-length-arrays", "prefer-zero-length-arrays"));
 
   @Override
   public String name() {

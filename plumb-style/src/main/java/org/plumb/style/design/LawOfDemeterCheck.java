@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class LawOfDemeterCheck implements AstChecker {
           List.of("CWE-1060"),
           "org.plumb.style.LawOfDemeterCheck",
           true,
-          List.of("ast-design-of-demeter", "law-of-demeter")
-      );
+          List.of("ast-design-of-demeter", "law-of-demeter"));
 
   @Override
   public String name() {

@@ -33,16 +33,14 @@ import org.plumb.style.StyleContext;
 public final class InsecureTempFilePermsCheck implements AstChecker {
 
   /**
-   * R-AST-FIX-2026-10-18: enabled=false. {@link
-   * org.plumb.style.AstCheckerRegistry} calls {@link #rule()} on the
-   * freshly-instantiated checker and skips registration when {@code
+   * R-AST-FIX-2026-10-18: enabled=false. {@link org.plumb.style.AstCheckerRegistry} calls {@link
+   * #rule()} on the freshly-instantiated checker and skips registration when {@code
    * rule().enabled()} is false.
    */
   private static final RuleDef DISABLED_RULE =
       new RuleDef(
           new RuleId(
-              "ast-style-insecure-temp-file-perms-DEDUPED",
-              "INSECURE_TEMP_FILE_PERMS_DEDUPED"),
+              "ast-style-insecure-temp-file-perms-DEDUPED", "INSECURE_TEMP_FILE_PERMS_DEDUPED"),
           "DEPRECATED stub — canonical owner is security/InsecureTempFilePermsCheck",
           RuleDef.Severity.LOW,
           RuleDef.Type.SECURITY,

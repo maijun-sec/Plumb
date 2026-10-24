@@ -19,7 +19,6 @@ import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -36,8 +35,7 @@ public final class MissingPasswordMaskingCheck implements AstChecker {
           List.of("CWE-549"),
           "org.plumb.style.MissingPasswordMaskingCheck",
           true,
-          List.of("ast-style-missing-password-masking", "missing-password-masking")
-      );
+          List.of("ast-style-missing-password-masking", "missing-password-masking"));
 
   // JavaParser's StringLiteralExpr.getValue() returns the
   // raw text including the `\"` escapes — the raw

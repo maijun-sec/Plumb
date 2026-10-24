@@ -6,7 +6,6 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class RvReturnValueIgnoredCheck implements AstChecker {
           List.of("CWE-252"),
           "org.plumb.style.RvReturnValueIgnoredCheck",
           true,
-          List.of("ast-style-return-value-ignored-bad-practice", "rv-return-ignored")
-      );
+          List.of("ast-style-return-value-ignored-bad-practice", "rv-return-ignored"));
 
   private static final Set<String> IGNORED = Set.of("intern", "trim", "toString", "getClass");
 

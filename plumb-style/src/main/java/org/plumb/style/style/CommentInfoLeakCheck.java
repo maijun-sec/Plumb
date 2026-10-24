@@ -5,7 +5,6 @@ import com.github.javaparser.ast.comments.Comment;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -46,8 +45,7 @@ public final class CommentInfoLeakCheck implements AstChecker {
           List.of("CWE-615"),
           "org.plumb.style.CommentInfoLeakCheck",
           true,
-          List.of("ast-style-comment-info-leak-style", "comment-info-leak")
-      );
+          List.of("ast-style-comment-info-leak-style", "comment-info-leak"));
 
   /**
    * Combined LEAK regex. Each alternative is a self-contained "sensitive data indicator":

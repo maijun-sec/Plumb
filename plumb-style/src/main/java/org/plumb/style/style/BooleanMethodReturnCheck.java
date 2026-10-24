@@ -7,7 +7,6 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.Type;
 import java.util.List;
 import java.util.Optional;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class BooleanMethodReturnCheck implements AstChecker {
           List.of("CWE-476"),
           "org.plumb.style.BooleanMethodReturnCheck",
           true,
-          List.of("ast-style-boolean-returns-null", "boolean-method-returns-null")
-      );
+          List.of("ast-style-boolean-returns-null", "boolean-method-returns-null"));
 
   @Override
   public String name() {

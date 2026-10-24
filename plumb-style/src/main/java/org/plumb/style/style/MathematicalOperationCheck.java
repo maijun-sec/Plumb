@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import com.github.javaparser.ast.expr.LongLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class MathematicalOperationCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MathematicalOperationCheck",
           true,
-          List.of("ast-style-op-literal", "math-op-literal")
-      );
+          List.of("ast-style-op-literal", "math-op-literal"));
 
   @Override
   public String name() {

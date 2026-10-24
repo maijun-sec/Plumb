@@ -19,7 +19,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -36,8 +35,7 @@ public final class InfoExposureInCommentCheck implements AstChecker {
           List.of("CWE-615"),
           "org.plumb.style.InfoExposureInCommentCheck",
           true,
-          List.of("ast-style-info-exposure-in-comment", "info-exposure-in-comment")
-      );
+          List.of("ast-style-info-exposure-in-comment", "info-exposure-in-comment"));
 
   // JavaParser StringLiteralExpr.getValue() returns
   // raw text WITH \" escapes. So the needles must be

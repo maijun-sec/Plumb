@@ -2,7 +2,6 @@ package org.plumb.style.error;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class DoNotExtendJavaLangErrorCheck implements AstChecker {
           List.of(),
           "org.plumb.style.DoNotExtendJavaLangErrorCheck",
           true,
-          List.of("ast-error-not-extend-error", "do-not-extend-error")
-      );
+          List.of("ast-error-not-extend-error", "do-not-extend-error"));
 
   @Override
   public String name() {

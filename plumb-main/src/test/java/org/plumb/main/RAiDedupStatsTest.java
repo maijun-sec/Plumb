@@ -12,7 +12,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.plumb.reporter.Finding;
-
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 

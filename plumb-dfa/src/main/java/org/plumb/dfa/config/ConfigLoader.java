@@ -344,13 +344,13 @@ public final class ConfigLoader {
     // an absent key must follow the engine default even if that default later changes, while
     // `context_insensitive` must mean exactly that.
     String ptsPolicy = asString(e.get("points_to_policy"));
-    TuningConfig tuning = new TuningConfig(
-        ctxDepth, wlMax, z3ms, scSize, rwDepth, preScan, libCls, taintSC, pathSens, groupBy,
-        outputFmt, parallel, perFnMs);
+    TuningConfig tuning =
+        new TuningConfig(
+            ctxDepth, wlMax, z3ms, scSize, rwDepth, preScan, libCls, taintSC, pathSens, groupBy,
+            outputFmt, parallel, perFnMs);
     return ptsPolicy == null
         ? tuning
-        : tuning.withPointsToPolicy(
-            org.plumb.dfa.points.AbstractObject.Policy.fromName(ptsPolicy));
+        : tuning.withPointsToPolicy(org.plumb.dfa.points.AbstractObject.Policy.fromName(ptsPolicy));
   }
 
   // ===== YAML helpers =====

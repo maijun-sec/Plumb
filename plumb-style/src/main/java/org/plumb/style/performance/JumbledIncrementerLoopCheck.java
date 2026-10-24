@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.UnaryExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -34,7 +33,8 @@ public final class JumbledIncrementerLoopCheck implements AstChecker {
           RuleDef.Type.BUG,
           List.of("CWE-190", "CWE-1284"),
           "org.plumb.style.JumbledIncrementerLoopCheck",
-          true,List.of("ast-performance-jumbled-incrementer-loop", "jumbled-incrementer-loop"),
+          true,
+          List.of("ast-performance-jumbled-incrementer-loop", "jumbled-incrementer-loop"),
           List.of(PARAMS));
 
   @Override

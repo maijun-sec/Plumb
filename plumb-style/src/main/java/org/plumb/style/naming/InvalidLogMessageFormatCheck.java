@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class InvalidLogMessageFormatCheck implements AstChecker {
           List.of(),
           "org.plumb.style.InvalidLogMessageFormatCheck",
           true,
-          List.of("ast-naming-invalid-log-message-format", "invalid-log")
-      );
+          List.of("ast-naming-invalid-log-message-format", "invalid-log"));
 
   @Override
   public String name() {

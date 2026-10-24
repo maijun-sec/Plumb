@@ -3,7 +3,6 @@ package org.plumb.style.performance;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class UseAssertEqualsInsteadOfAssertTrueCheck implements AstChecker
           List.of(),
           "org.plumb.style.UseAssertEqualsInsteadOfAssertTrueCheck",
           true,
-          List.of("ast-performance-assertequals-instead-of-asserttrue", "use-assertequals")
-      );
+          List.of("ast-performance-assertequals-instead-of-asserttrue", "use-assertequals"));
 
   @Override
   public String name() {

@@ -24,7 +24,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -41,8 +40,7 @@ public final class ClassBasedIssueCheck implements AstChecker {
           List.of("CWE-491"),
           "org.plumb.style.ClassBasedIssueCheck",
           true,
-          List.of("ast-style-class-based-issue-491-style", "class-based-issue-491")
-      );
+          List.of("ast-style-class-based-issue-491-style", "class-based-issue-491"));
 
   private final Set<String> reported = new HashSet<>();
 

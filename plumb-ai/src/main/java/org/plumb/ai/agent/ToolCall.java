@@ -25,11 +25,11 @@ import com.fasterxml.jackson.databind.JsonNode;
  * a real {@link JsonNode} they can navigate with {@code .path("path").asText()}.
  */
 public record ToolCall(String id, String name, JsonNode args) {
-    public ToolCall {
-        if (args == null) {
-            // Tolerate missing arguments (some models emit "{}" or
-            // null when the tool has no required parameters).
-            args = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
-        }
+  public ToolCall {
+    if (args == null) {
+      // Tolerate missing arguments (some models emit "{}" or
+      // null when the tool has no required parameters).
+      args = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
     }
+  }
 }

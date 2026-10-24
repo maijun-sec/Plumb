@@ -2,7 +2,6 @@ package org.plumb.style.error;
 
 import com.github.javaparser.ast.stmt.CatchClause;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -11,8 +10,8 @@ import org.plumb.style.StyleContext;
 /**
  * Exception is dropped ? empty {@code catch} block with no logging or rethrow.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(CatchClause.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(CatchClause.class)} before.
  */
 public final class DroppedExceptionCheck implements AstChecker {
 
@@ -25,8 +24,7 @@ public final class DroppedExceptionCheck implements AstChecker {
           List.of(),
           "org.plumb.style.DroppedExceptionCheck",
           true,
-          List.of("ast-error-dropped-exception", "dropped-exception")
-      );
+          List.of("ast-error-dropped-exception", "dropped-exception"));
 
   @Override
   public String name() {

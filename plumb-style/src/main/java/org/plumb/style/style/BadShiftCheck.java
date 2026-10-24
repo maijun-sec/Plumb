@@ -68,8 +68,7 @@ public final class BadShiftCheck implements AstChecker {
           List.of("CWE-758"),
           "org.plumb.style.style.BadShiftCheck",
           true,
-          List.of("dfa-style-bad-shift", "bad-shift")
-      );
+          List.of("dfa-style-bad-shift", "bad-shift"));
 
   @Override
   public String name() {

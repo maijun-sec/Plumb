@@ -15,7 +15,6 @@ import com.github.javaparser.ast.expr.AssignExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.stmt.CatchClause;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,15 +24,15 @@ public final class AssignmentToCatchBlockParameterCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-error-assignmenttocatchblockparameter", "ASSIGNMENTTOCATCHBLOCKPARAMETER"),
+          new RuleId(
+              "ast-error-assignmenttocatchblockparameter", "ASSIGNMENTTOCATCHBLOCKPARAMETER"),
           "catch block parameter should not be reassigned",
           RuleDef.Severity.LOW,
           RuleDef.Type.BUG,
           List.of(),
           "org.plumb.style.AssignmentToCatchBlockParameterCheck",
           true,
-          List.of("ast-error-assign-catch-var", "assignmenttocatchblockparametercheck")
-      );
+          List.of("ast-error-assign-catch-var", "assignmenttocatchblockparametercheck"));
 
   @Override
   public String name() {

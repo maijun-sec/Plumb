@@ -10,7 +10,6 @@ import com.github.javaparser.ast.expr.LongLiteralExpr;
 import com.github.javaparser.ast.expr.NullLiteralExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -19,10 +18,10 @@ import org.plumb.style.StyleContext;
 /**
  * Array literal has heterogeneous types (EC_BAD_ARRAY_STORE).
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ArrayCreationExpr.class)} before. The inner traversal of the
- * initializer values stays as a local loop (not a per-node callback) because we need to compare
- * adjacent element types and break on the first mismatch.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ArrayCreationExpr.class)} before. The inner traversal of the initializer values stays as
+ * a local loop (not a per-node callback) because we need to compare adjacent element types and
+ * break on the first mismatch.
  */
 public final class EcBadArrayStoreCheck implements AstChecker {
 
@@ -35,8 +34,7 @@ public final class EcBadArrayStoreCheck implements AstChecker {
           List.of("CWE-704"),
           "org.plumb.style.EcBadArrayStoreCheck",
           true,
-          List.of("ast-performance-bad-array-store", "ec-bad-array-store")
-      );
+          List.of("ast-performance-bad-array-store", "ec-bad-array-store"));
 
   @Override
   public String name() {

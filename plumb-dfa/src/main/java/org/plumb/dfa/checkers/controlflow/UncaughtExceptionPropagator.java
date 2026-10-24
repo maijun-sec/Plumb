@@ -1,6 +1,5 @@
 package org.plumb.dfa.checkers.controlflow;
 
-import org.plumb.rules.RuleDef;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -14,6 +13,7 @@ import org.plumb.reporter.trace.OperandRef;
 import org.plumb.reporter.trace.Trace;
 import org.plumb.reporter.trace.TraceBuilder;
 import org.plumb.reporter.trace.TraceNode;
+import org.plumb.rules.RuleDef;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 

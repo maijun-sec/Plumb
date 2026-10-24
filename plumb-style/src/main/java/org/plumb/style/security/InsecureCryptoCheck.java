@@ -38,8 +38,7 @@ public final class InsecureCryptoCheck implements AstChecker {
           List.of("CWE-327"),
           "org.plumb.style.InsecureCryptoCheck",
           /* enabled */ true,
-          List.of("ast-security-insecure-crypto", "insecure-crypto")
-      );
+          List.of("ast-security-insecure-crypto", "insecure-crypto"));
 
   @Override
   public String name() {

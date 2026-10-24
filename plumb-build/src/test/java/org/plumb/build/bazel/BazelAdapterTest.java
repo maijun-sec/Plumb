@@ -124,8 +124,7 @@ class BazelAdapterTest {
     BuildProject bp = new BazelAdapter().discover(tmp);
     assertThat(bp.sourceFiles()).contains(tmp.resolve("UI.java"));
     // We at least one module key whose id ends with :ui.
-    boolean hasUi =
-        bp.modules().keySet().stream().anyMatch(k -> k.endsWith(":ui"));
+    boolean hasUi = bp.modules().keySet().stream().anyMatch(k -> k.endsWith(":ui"));
     assertThat(hasUi).as("expected a module key ending in :ui").isTrue();
   }
 }

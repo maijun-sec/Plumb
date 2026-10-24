@@ -2,7 +2,6 @@ package org.plumb.style.bug;
 
 import com.github.javaparser.ast.expr.*;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class CompareObjectsWithEqualsCheck implements AstChecker {
           List.of("CWE-595"),
           "org.plumb.style.CompareObjectsWithEqualsCheck",
           true,
-          List.of("ast-bug-compare-objects-with-equals", "compare-objects-with-equals")
-      );
+          List.of("ast-bug-compare-objects-with-equals", "compare-objects-with-equals"));
 
   @Override
   public String name() {

@@ -3,7 +3,6 @@ package org.plumb.style.error;
 import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class PublicMethodNoUncheckedExceptionCheck implements AstChecker {
           List.of(),
           "org.plumb.style.PublicMethodNoUncheckedExceptionCheck",
           true,
-          List.of("ast-error-public-method-unchecked-throws", "unchecked-throws")
-      );
+          List.of("ast-error-public-method-unchecked-throws", "unchecked-throws"));
 
   @Override
   public String name() {

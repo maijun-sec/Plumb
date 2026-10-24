@@ -2,7 +2,6 @@ package org.plumb.style.performance;
 
 import com.github.javaparser.ast.body.VariableDeclarator;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -11,8 +10,8 @@ import org.plumb.style.StyleContext;
 /**
  * Array store of incompatible type.
  *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(VariableDeclarator.class)} before.
+ * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(VariableDeclarator.class)} before.
  */
 public final class ArrayStoreIncompatibleCheck implements AstChecker {
 
@@ -25,8 +24,7 @@ public final class ArrayStoreIncompatibleCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ArrayStoreIncompatibleCheck",
           true,
-          List.of("ast-performance-store-incompatible", "array-store-incompatible")
-      );
+          List.of("ast-performance-store-incompatible", "array-store-incompatible"));
 
   @Override
   public String name() {

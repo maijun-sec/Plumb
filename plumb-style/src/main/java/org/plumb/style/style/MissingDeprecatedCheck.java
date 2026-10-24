@@ -5,7 +5,6 @@ import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -44,7 +43,8 @@ public final class MissingDeprecatedCheck implements AstChecker {
           RuleDef.Type.BUG,
           List.of("CWE-477"),
           "org.plumb.style.MissingDeprecatedCheck",
-          true,List.of("ast-style-missing-deprecated", "missing-deprecated"),
+          true,
+          List.of("ast-style-missing-deprecated", "missing-deprecated"),
           List.of(PARAMS));
 
   @Override

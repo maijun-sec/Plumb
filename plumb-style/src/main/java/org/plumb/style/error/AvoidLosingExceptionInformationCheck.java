@@ -8,7 +8,6 @@ import com.github.javaparser.ast.stmt.ThrowStmt;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -26,8 +25,7 @@ public final class AvoidLosingExceptionInformationCheck implements AstChecker {
           List.of("CWE-209"),
           "org.plumb.style.AvoidLosingExceptionInformationCheck",
           true,
-          List.of("ast-error-losing-exception-information", "lose-exception-info")
-      );
+          List.of("ast-error-losing-exception-information", "lose-exception-info"));
 
   /** Catch-param names in the current method. */
   private Set<String> catchParamNames = new HashSet<>();

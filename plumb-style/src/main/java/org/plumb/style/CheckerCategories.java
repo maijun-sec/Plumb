@@ -9,7 +9,8 @@ final class CheckerCategories {
   private CheckerCategories() {}
 
   /**
-   * Simple class name -> subdirectory category. Categories: bug, concurrency, design, error, naming, performance, quality, security, style.
+   * Simple class name -> subdirectory category. Categories: bug, concurrency, design, error,
+   * naming, performance, quality, security, style.
    */
   static final Map<String, String> CHECKER_CATEGORIES = build();
 

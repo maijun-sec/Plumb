@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class PublicMethodsPublicFieldCheck implements AstChecker {
           List.of(),
           "org.plumb.style.PublicMethodsPublicFieldCheck",
           true,
-          List.of("ast-style-public-method-public-field", "publicmethodspublicfield_sb")
-      );
+          List.of("ast-style-public-method-public-field", "publicmethodspublicfield_sb"));
 
   @Override
   public String name() {

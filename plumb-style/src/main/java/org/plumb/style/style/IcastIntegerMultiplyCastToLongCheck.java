@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.CastExpr;
 import com.github.javaparser.ast.expr.Expression;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class IcastIntegerMultiplyCastToLongCheck implements AstChecker {
           List.of("CWE-190"),
           "org.plumb.style.IcastIntegerMultiplyCastToLongCheck",
           true,
-          List.of("ast-style-integer-multiply-cast-to-long", "icast-int-mult-long")
-      );
+          List.of("ast-style-integer-multiply-cast-to-long", "icast-int-mult-long"));
 
   @Override
   public String name() {

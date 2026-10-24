@@ -100,7 +100,9 @@ public record JavaModule(
     return singleRoot(name, sourceRoot, classpath, scope, null, null);
   }
 
-  /** Same as {@link #singleRoot(String, Path, List)} with {@link Scope} + language level + encoding. */
+  /**
+   * Same as {@link #singleRoot(String, Path, List)} with {@link Scope} + language level + encoding.
+   */
   public static JavaModule singleRoot(
       String name,
       Path sourceRoot,
@@ -132,8 +134,8 @@ public record JavaModule(
    * no-follow ? defence against infinite recursion when a checkout contains self-referential
    * symlinks.
    *
-   * <p>Depth is bounded to {@value #MAX_DEPTH} so even a malformed symlink chain cannot exhaust
-   * the JVM stack.
+   * <p>Depth is bounded to {@value #MAX_DEPTH} so even a malformed symlink chain cannot exhaust the
+   * JVM stack.
    *
    * <p>I/O errors are propagated to the caller so a misconfigured CLI flag does not silently
    * produce an empty source set.

@@ -33,7 +33,6 @@ import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -51,8 +50,7 @@ public final class HardcodedPasswordSinkAstCheck implements AstChecker {
           List.of("CWE-259", "CWE-798"),
           "org.plumb.style.security.HardcodedPasswordSinkAstCheck",
           true,
-          List.of("ast-security-hardcoded-password-sink", "hardcoded-password-sink-ast")
-      );
+          List.of("ast-security-hardcoded-password-sink", "hardcoded-password-sink-ast"));
 
   private final Set<String> reported = new HashSet<>();
 

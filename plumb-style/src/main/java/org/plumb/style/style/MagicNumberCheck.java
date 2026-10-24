@@ -9,7 +9,6 @@ import com.github.javaparser.ast.expr.LongLiteralExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -48,7 +47,8 @@ public final class MagicNumberCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.MagicNumberCheck",
-          true,List.of("ast-style-magic-number", "magic-number"),
+          true,
+          List.of("ast-style-magic-number", "magic-number"),
           List.of(PARAMS));
 
   @Override

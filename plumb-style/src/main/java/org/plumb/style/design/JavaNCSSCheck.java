@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -44,7 +43,8 @@ public final class JavaNCSSCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.JavaNCSSCheck",
-          true,List.of("ast-design-java-ncss", "java-ncss"),
+          true,
+          List.of("ast-design-java-ncss", "java-ncss"),
           List.of(PARAMS));
 
   @Override
@@ -108,5 +108,4 @@ public final class JavaNCSSCheck implements AstChecker {
         RuleDef.Severity.LOW,
         n.getNameAsString());
   }
-
-  }
+}

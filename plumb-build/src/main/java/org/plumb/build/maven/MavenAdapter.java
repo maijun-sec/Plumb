@@ -17,8 +17,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.apache.maven.model.Dependency;
-import org.apache.maven.model.DependencyManagement;
-import org.apache.maven.model.Exclusion;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Parent;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
@@ -43,9 +41,9 @@ import org.slf4j.LoggerFactory;
  *       <artifactId>}.
  *   <li>Standard Maven layout: {@code src/main/java} for production, {@code src/test/java} for
  *       tests, plus {@code <build><sourceDirectory>/<testSourceDirectory>} overrides.
- *   <li>Parent inheritance: {@code <parent>} chain is followed to inherit {@code groupId},
- *       {@code version}, {@code properties}, and {@code <dependencyManagement>}. {@code
- *       ${...}} placeholders in properties / dependency coordinates are resolved.
+ *   <li>Parent inheritance: {@code <parent>} chain is followed to inherit {@code groupId}, {@code
+ *       version}, {@code properties}, and {@code <dependencyManagement>}. {@code ${...}}
+ *       placeholders in properties / dependency coordinates are resolved.
  *   <li>Local repository resolution of {@code compile} / {@code runtime} / {@code provided} /
  *       {@code system} scope dependencies, with classifier / packaging / SNAPSHOT support.
  *   <li>Path-traversal safety: a {@code <module>} containing {@code ../} is rejected.
@@ -57,12 +55,12 @@ import org.slf4j.LoggerFactory;
  *
  * <ol>
  *   <li>Resolve properties so {@code ${some.version}} becomes a concrete version.
- *   <li>Look up the {@code groupId:artifactId} in the merged {@code <dependencyManagement>} map so a
- *       sub-module dependency without a {@code <version>} inherits its parent-managed version.
+ *   <li>Look up the {@code groupId:artifactId} in the merged {@code <dependencyManagement>} map so
+ *       a sub-module dependency without a {@code <version>} inherits its parent-managed version.
  *   <li>Match the dependency against sibling {@code target/classes} directories (multi-module
  *       local-classpath short-circuit).
- *   <li>Otherwise resolve against {@code ~/.m2/repository}. SNAPSHOT dependencies read the
- *       local {@code maven-metadata-*.xml} to pick the timestamped jar.
+ *   <li>Otherwise resolve against {@code ~/.m2/repository}. SNAPSHOT dependencies read the local
+ *       {@code maven-metadata-*.xml} to pick the timestamped jar.
  *   <li>Honor {@code <classifier>} ({@code foo-1.0-jdk17.jar}) and {@code <type>} ({@code .jar},
  *       {@code .aar}, {@code .war}). Skip {@code <packaging>pom</packaging>} imports correctly.
  *   <li>Honor {@code <scope>system</scope>} by reading {@code <systemPath>} verbatim.
@@ -120,8 +118,7 @@ public final class MavenAdapter implements BuildAdapter {
   @Override
   public BuildProject discover(Path projectRoot) {
     if (!probe(projectRoot)) {
-      throw new BuildAdapterException(
-          "Maven project root must contain a pom.xml: " + projectRoot);
+      throw new BuildAdapterException("Maven project root must contain a pom.xml: " + projectRoot);
     }
     Path rootPom = projectRoot.resolve("pom.xml");
     Model rawRoot = readModel(rootPom);
@@ -148,8 +145,10 @@ public final class MavenAdapter implements BuildAdapter {
 
   private BuildProject buildSingle(Path root, EffectiveModel effective) {
     Model m = effective.model;
-    Path mainJava = resolveSourceDir(root, m, "src/main/java", buildSourceDir(m, "sourceDirectory"));
-    Path testJava = resolveSourceDir(root, m, "src/test/java", buildSourceDir(m, "testSourceDirectory"));
+    Path mainJava =
+        resolveSourceDir(root, m, "src/main/java", buildSourceDir(m, "sourceDirectory"));
+    Path testJava =
+        resolveSourceDir(root, m, "src/test/java", buildSourceDir(m, "testSourceDirectory"));
 
     List<Path> sources = SourceFiles.walk(mainJava, sourceExtensions());
     List<Path> tests = SourceFiles.walk(testJava, sourceExtensions());
@@ -204,7 +203,8 @@ public final class MavenAdapter implements BuildAdapter {
       Path mainJava =
           resolveSourceDir(childDir, cm, "src/main/java", buildSourceDir(cm, "sourceDirectory"));
       Path testJava =
-          resolveSourceDir(childDir, cm, "src/test/java", buildSourceDir(cm, "testSourceDirectory"));
+          resolveSourceDir(
+              childDir, cm, "src/test/java", buildSourceDir(cm, "testSourceDirectory"));
 
       List<Path> srcs = SourceFiles.walk(mainJava, sourceExtensions());
       List<Path> tsts = SourceFiles.walk(testJava, sourceExtensions());
@@ -244,11 +244,10 @@ public final class MavenAdapter implements BuildAdapter {
 
   /**
    * Resolve the actual source directory for a build. Honours the {@code <build><sourceDirectory>}
-   * override (with {@code ${...}} property substitution) but falls back to the conventional
-   * default when the override is missing, blank, or absent.
+   * override (with {@code ${...}} property substitution) but falls back to the conventional default
+   * when the override is missing, blank, or absent.
    */
-  private Path resolveSourceDir(
-      Path moduleRoot, Model model, String defaultRel, String override) {
+  private Path resolveSourceDir(Path moduleRoot, Model model, String defaultRel, String override) {
     if (override != null && !override.isBlank()) {
       // Maven resolves sourceDirectory relative to the module root.
       Path p = Path.of(override);
@@ -263,7 +262,10 @@ public final class MavenAdapter implements BuildAdapter {
     if (model == null) return null;
     var build = model.getBuild();
     if (build == null) return null;
-    String v = "testSourceDirectory".equals(which) ? build.getTestSourceDirectory() : build.getSourceDirectory();
+    String v =
+        "testSourceDirectory".equals(which)
+            ? build.getTestSourceDirectory()
+            : build.getSourceDirectory();
     if (v == null || v.isBlank()) return null;
     return v;
   }
@@ -273,13 +275,13 @@ public final class MavenAdapter implements BuildAdapter {
   /**
    * Resolve the {@code compile} / {@code runtime} / {@code provided} / {@code system}-scope
    * dependencies of {@code model} against the local Maven repository. Returns absolute {@link
-   * Path}s to the resolved jars / class-folders; entries that cannot be resolved are skipped with
-   * a warning (the caller may pass them as {@code --classpath} manually).
+   * Path}s to the resolved jars / class-folders; entries that cannot be resolved are skipped with a
+   * warning (the caller may pass them as {@code --classpath} manually).
    *
    * <p>Provided-scope deps are kept in the compile classpath (they're needed to compile against
    * servlet API etc.). System-scope deps resolve via {@code <systemPath>}. Test-scope deps are
-   * <b>not</b> added here ? they're scanned separately under {@code testSourceFiles} and added
-   * to the per-module test classpath in R797+ work.
+   * <b>not</b> added here ? they're scanned separately under {@code testSourceFiles} and added to
+   * the per-module test classpath in R797+ work.
    */
   private List<Path> resolveCompileClasspath(
       Path moduleRoot, Model model, EffectiveModel effective) {
@@ -304,11 +306,7 @@ public final class MavenAdapter implements BuildAdapter {
           continue;
         }
         if (gid == null || aid == null || ver == null) {
-          LOG.debug(
-              "Maven: skipping dependency with missing coordinates: {}:{}:{}",
-              gid,
-              aid,
-              ver);
+          LOG.debug("Maven: skipping dependency with missing coordinates: {}:{}:{}", gid, aid, ver);
           continue;
         }
 
@@ -343,12 +341,7 @@ public final class MavenAdapter implements BuildAdapter {
         if (resolved != null) {
           jars.add(resolved);
         } else {
-          LOG.warn(
-              "Maven: could not resolve dependency {}:{}:{} in {}",
-              gid,
-              aid,
-              ver,
-              moduleRoot);
+          LOG.warn("Maven: could not resolve dependency {}:{}:{} in {}", gid, aid, ver, moduleRoot);
         }
       }
     }
@@ -401,8 +394,8 @@ public final class MavenAdapter implements BuildAdapter {
    * <p>For non-SNAPSHOT versions we look at the conventional layout.
    *
    * <p>{@code classifier} and {@code type} are honoured: the jar filename becomes {@code
-   * <artifactId>-<version>-<classifier>.<type>} (classifier omitted when blank) ? matches the
-   * Maven convention for {@code foo-1.0-jdk17.jar} etc.
+   * <artifactId>-<version>-<classifier>.<type>} (classifier omitted when blank) ? matches the Maven
+   * convention for {@code foo-1.0-jdk17.jar} etc.
    */
   private Path resolveArtifact(
       String groupId, String artifactId, String version, String classifier, String type) {
@@ -431,8 +424,8 @@ public final class MavenAdapter implements BuildAdapter {
 
   /**
    * Read {@code <latest>} (or {@code <release>}) from a maven-metadata file. Returns the timestamp
-   * string (e.g. {@code 1.0.0-20240101.000000-1}) or {@code null} if the file is absent / cannot
-   * be parsed.
+   * string (e.g. {@code 1.0.0-20240101.000000-1}) or {@code null} if the file is absent / cannot be
+   * parsed.
    */
   private String readSnapshotVersion(Path metadataFile) {
     if (!Files.isRegularFile(metadataFile)) return null;
@@ -440,8 +433,7 @@ public final class MavenAdapter implements BuildAdapter {
       String xml = Files.readString(metadataFile, StandardCharsets.UTF_8);
       // <latest>1.0.0-20240101.000000-1</latest>  OR  <release>...</release>
       java.util.regex.Matcher m =
-          java.util.regex.Pattern
-              .compile("<(?:latest|release)>([^<]+)</(?:latest|release)>")
+          java.util.regex.Pattern.compile("<(?:latest|release)>([^<]+)</(?:latest|release)>")
               .matcher(xml);
       if (m.find()) return m.group(1).trim();
     } catch (IOException e) {
@@ -469,7 +461,8 @@ public final class MavenAdapter implements BuildAdapter {
     final Map<String, Dependency> managedDeps;
     final Path localRepo;
 
-    EffectiveModel(Model model, Properties properties, Map<String, Dependency> managedDeps, Path localRepo) {
+    EffectiveModel(
+        Model model, Properties properties, Map<String, Dependency> managedDeps, Path localRepo) {
       this.model = model;
       this.properties = properties;
       this.managedDeps = managedDeps;
@@ -487,16 +480,15 @@ public final class MavenAdapter implements BuildAdapter {
   }
 
   /**
-   * Recursive effective-model loader. {@code inheritedProps} and {@code inheritedManaged} come
-   * from the parent aggregator.
+   * Recursive effective-model loader. {@code inheritedProps} and {@code inheritedManaged} come from
+   * the parent aggregator.
    */
   private EffectiveModel loadEffective(
       Path moduleRoot,
       Model rawModel,
       Properties inheritedProps,
       Map<String, Dependency> inheritedManaged) {
-    return loadEffective(
-        moduleRoot, rawModel, inheritedProps, inheritedManaged, 0);
+    return loadEffective(moduleRoot, rawModel, inheritedProps, inheritedManaged, 0);
   }
 
   /** Inner recursive helper that guards against parent cycles. */
@@ -598,9 +590,9 @@ public final class MavenAdapter implements BuildAdapter {
   }
 
   /**
-   * Resolve {@code ${...}} placeholders in {@code value} using {@code props}. Multiple
-   * placeholders are supported; unknown keys are left as the literal placeholder so the caller
-   * sees a meaningful warning.
+   * Resolve {@code ${...}} placeholders in {@code value} using {@code props}. Multiple placeholders
+   * are supported; unknown keys are left as the literal placeholder so the caller sees a meaningful
+   * warning.
    */
   private static String resolveProperties(String value, Properties props) {
     if (value == null || !value.contains("${")) return value;
@@ -638,11 +630,11 @@ public final class MavenAdapter implements BuildAdapter {
   // ---------------- language level / encoding ----------------
 
   /**
-   * Read the project's Java source / target level. Looks at {@code maven.compiler.source} /
-   * {@code maven.compiler.target} properties, falls back to {@code java.version}, and finally
-   * returns null so the parser falls back to its default (Java 17). Plugin {@code
-   * <configuration>} inspection is skipped for now because plexus's PlexusConfiguration isn't on
-   * the classpath; the property lookup catches the common case.
+   * Read the project's Java source / target level. Looks at {@code maven.compiler.source} / {@code
+   * maven.compiler.target} properties, falls back to {@code java.version}, and finally returns null
+   * so the parser falls back to its default (Java 17). Plugin {@code <configuration>} inspection is
+   * skipped for now because plexus's PlexusConfiguration isn't on the classpath; the property
+   * lookup catches the common case.
    */
   private static String detectLanguageLevel(Model m) {
     if (m == null) return null;
@@ -660,8 +652,8 @@ public final class MavenAdapter implements BuildAdapter {
   }
 
   /**
-   * Read {@code <project><properties><project.build.sourceEncoding>} when present. Null when
-   * absent ? caller falls back to UTF-8.
+   * Read {@code <project><properties><project.build.sourceEncoding>} when present. Null when absent
+   * ? caller falls back to UTF-8.
    */
   private static Charset detectEncoding(Model m) {
     if (m == null) return null;
@@ -680,8 +672,8 @@ public final class MavenAdapter implements BuildAdapter {
   // ---------------- safety helpers ----------------
 
   /**
-   * Resolve {@code rel} against {@code root} and verify the result is still under {@code root}
-   * (no path traversal via {@code ../}). Returns null when the result escapes.
+   * Resolve {@code rel} against {@code root} and verify the result is still under {@code root} (no
+   * path traversal via {@code ../}). Returns null when the result escapes.
    */
   private static Path safeResolveInside(Path root, String rel) {
     if (rel == null || rel.isBlank()) return null;

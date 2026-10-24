@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.SynchronizedStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class EsyncEmptySyncCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EsyncEmptySyncCheck",
           true,
-          List.of("ast-style-empty-sync", "esync-empty")
-      );
+          List.of("ast-style-empty-sync", "esync-empty"));
 
   @Override
   public String name() {

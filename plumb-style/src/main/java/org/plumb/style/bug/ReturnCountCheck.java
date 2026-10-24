@@ -4,7 +4,6 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -26,8 +25,7 @@ public final class ReturnCountCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ReturnCountCheck",
           true,
-          List.of("ast-bug-return-count", "return-count")
-      );
+          List.of("ast-bug-return-count", "return-count"));
 
   @Override
   public String name() {

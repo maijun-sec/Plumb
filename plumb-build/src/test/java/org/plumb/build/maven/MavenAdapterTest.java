@@ -427,8 +427,7 @@ class MavenAdapterTest {
         </project>
         """);
     Path repo = tmp.resolve("repo");
-    Path classifierJar =
-        repo.resolve("org/example/lib/1.0/lib-1.0-jdk17.jar");
+    Path classifierJar = repo.resolve("org/example/lib/1.0/lib-1.0-jdk17.jar");
     Files.createDirectories(classifierJar.getParent());
     Files.writeString(classifierJar, "fake");
     BuildProject bp = new MavenAdapter(repo).discover(tmp);
@@ -526,9 +525,7 @@ class MavenAdapterTest {
 
   @Test
   void discover_dedupsAcrossMultipleInvocations(@TempDir Path tmp) throws IOException {
-    Files.writeString(
-        tmp.resolve("pom.xml"),
-        MULTI_POM);
+    Files.writeString(tmp.resolve("pom.xml"), MULTI_POM);
     Path core = tmp.resolve("core");
     Files.createDirectories(core.resolve("src/main/java"));
     Files.writeString(core.resolve("pom.xml"), CHILD_POM);

@@ -64,8 +64,20 @@ class FrameworkEntryPointSourceTest {
             BuiltinFactKinds.registryWithBuiltins(),
             base.checkers(),
             base.cweMappings(),
-            new TuningConfig(2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family",
-                "sarif", false, 0),
+            new TuningConfig(
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
 
     FindingReporter reporter =
@@ -78,7 +90,9 @@ class FrameworkEntryPointSourceTest {
     return out;
   }
 
-  /** The source label the finding carries, e.g. {@code "param:customer@spring-mvc:RequestParam"}. */
+  /**
+   * The source label the finding carries, e.g. {@code "param:customer@spring-mvc:RequestParam"}.
+   */
   private String sourceLabelOf(Finding f) {
     String dataflow = f.dataflowHead();
     if (dataflow == null || !dataflow.startsWith("taint: ")) {

@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.AssignExpr;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class UnusedAssignmentCheck implements AstChecker {
           List.of("CWE-563"),
           "org.plumb.style.UnusedAssignmentCheck",
           true,
-          List.of("ast-style-unused-assignment", "unused-assignment")
-      );
+          List.of("ast-style-unused-assignment", "unused-assignment"));
 
   @Override
   public String name() {

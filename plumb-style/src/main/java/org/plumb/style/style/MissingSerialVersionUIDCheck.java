@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class MissingSerialVersionUIDCheck implements AstChecker {
           List.of("CWE-609"),
           "org.plumb.style.MissingSerialVersionUIDCheck",
           true,
-          List.of("ast-style-missing-serial-version-uid", "missing-serial-version-uid")
-      );
+          List.of("ast-style-missing-serial-version-uid", "missing-serial-version-uid"));
 
   @Override
   public String name() {

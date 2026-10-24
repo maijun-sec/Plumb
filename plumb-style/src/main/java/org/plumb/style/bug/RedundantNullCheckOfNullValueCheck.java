@@ -4,7 +4,6 @@ package org.plumb.style.bug;
 
 import com.github.javaparser.ast.expr.BinaryExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class RedundantNullCheckOfNullValueCheck implements AstChecker {
           List.of(),
           "org.plumb.style.RedundantNullCheckOfNullValueCheck",
           true,
-          List.of("ast-bug-redundant-null-check-null", "redundantnullofnullvalue_sb")
-      );
+          List.of("ast-bug-redundant-null-check-null", "redundantnullofnullvalue_sb"));
 
   @Override
   public String name() {
@@ -41,12 +39,7 @@ public final class RedundantNullCheckOfNullValueCheck implements AstChecker {
         int line = b.getBegin().map(p -> p.line).orElse(-1);
         int col = b.getBegin().map(p -> p.column).orElse(-1);
         ctx.report(
-            line,
-            col,
-            DEFAULT_RULE,
-            "Redundant null check of null value",
-            RuleDef.Severity.LOW,
-            s);
+            line, col, DEFAULT_RULE, "Redundant null check of null value", RuleDef.Severity.LOW, s);
       }
     }
   }

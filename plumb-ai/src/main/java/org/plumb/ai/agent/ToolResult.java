@@ -1,8 +1,8 @@
 package org.plumb.ai.agent;
 
 /**
- * One tool execution result. The agent sends this back to the LLM as a {@code "tool"} role
- * message (paired with the originating tool call's {@code id}).
+ * One tool execution result. The agent sends this back to the LLM as a {@code "tool"} role message
+ * (paired with the originating tool call's {@code id}).
  *
  * <p>Two flavours:
  *
@@ -19,18 +19,16 @@ package org.plumb.ai.agent;
  */
 public record ToolResult(boolean ok, String body) {
 
-    public static ToolResult ok(String body) {
-        return new ToolResult(true, body == null ? "" : body);
-    }
+  public static ToolResult ok(String body) {
+    return new ToolResult(true, body == null ? "" : body);
+  }
 
-    public static ToolResult error(String message) {
-        return new ToolResult(false, "error: " + (message == null ? "(no message)" : message));
-    }
+  public static ToolResult error(String message) {
+    return new ToolResult(false, "error: " + (message == null ? "(no message)" : message));
+  }
 
-    /**
-     * Format for the OpenAI {@code "tool"} role content.
-     */
-    public String render() {
-        return body == null ? "" : body;
-    }
+  /** Format for the OpenAI {@code "tool"} role content. */
+  public String render() {
+    return body == null ? "" : body;
+  }
 }

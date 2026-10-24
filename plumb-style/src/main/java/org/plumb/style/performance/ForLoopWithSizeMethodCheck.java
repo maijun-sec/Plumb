@@ -6,7 +6,6 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -17,10 +16,9 @@ import org.plumb.style.StyleContext;
  * inside the loop condition re-evaluates on every iteration; for {@code ArrayList} and similar
  * implementations that's O(1) but it's still wasted work and a smell.
  *
- * <p>S5 audit (2026-10-17) broadened coverage: the previous version only checked the right
- * operand of {@code <} in {@code ForStmt}, missing {@code <=} / {@code >} / {@code >=}, the
- * {@code for (int i = list.size(); ...)} form (size on the left), and the {@code while}
- * counterpart entirely.
+ * <p>S5 audit (2026-10-17) broadened coverage: the previous version only checked the right operand
+ * of {@code <} in {@code ForStmt}, missing {@code <=} / {@code >} / {@code >=}, the {@code for (int
+ * i = list.size(); ...)} form (size on the left), and the {@code while} counterpart entirely.
  */
 public final class ForLoopWithSizeMethodCheck implements AstChecker {
 
@@ -33,8 +31,7 @@ public final class ForLoopWithSizeMethodCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ForLoopWithSizeMethodCheck",
           true,
-          List.of("ast-performance-loop-with-size-method", "for-size")
-      );
+          List.of("ast-performance-loop-with-size-method", "for-size"));
 
   @Override
   public String name() {
@@ -69,8 +66,8 @@ public final class ForLoopWithSizeMethodCheck implements AstChecker {
 
   /**
    * Check both operands of any ordering comparison. The four ordering operators are the ones where
-   * a {@code .size()} call (or {@code .length()} field access ? that one we leave to other
-   * checks) is the loop's termination bound.
+   * a {@code .size()} call (or {@code .length()} field access ? that one we leave to other checks)
+   * is the loop's termination bound.
    */
   private static void checkBinaryExpr(BinaryExpr b, int line, int col, StyleContext ctx) {
     switch (b.getOperator()) {
@@ -96,7 +93,9 @@ public final class ForLoopWithSizeMethodCheck implements AstChecker {
 
   /** True when {@code e} is (or contains) a {@code .size()} call. */
   private static boolean containsSizeCall(Expression e) {
-    if (e instanceof MethodCallExpr m && "size".equals(m.getNameAsString()) && m.getArguments().isEmpty()) {
+    if (e instanceof MethodCallExpr m
+        && "size".equals(m.getNameAsString())
+        && m.getArguments().isEmpty()) {
       return true;
     }
     // Nested cases — e.g. (a + b).size() or map.get(k).size().

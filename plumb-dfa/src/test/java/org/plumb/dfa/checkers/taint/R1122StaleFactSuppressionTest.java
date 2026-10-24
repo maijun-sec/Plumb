@@ -32,20 +32,22 @@ import org.plumb.tac.translate.TacTranslator;
  *       guard, but the loop's exit edge is the BRANCH's false edge and <em>falls through with no
  *       JUMP</em>, so nothing ever pops it. {@code while (a != null) {...} a.length();} reported
  *       nothing.
- *   <li><b>Stale alias transfer</b> (NullDerefChecker). Copy-equivalence is a monotonic union-find, so
- *       {@code b = a} followed by {@code b = call()} leaves {@code b} in {@code a}'s class forever,
- *       and a guard on {@code a} silenced {@code b}. The sibling rule disagreed on identical code.
- *   <li><b>Stale points-to as proof of freshness</b> (isFreshAllocation). Points-to is a may-analysis
- *       that never retracts, so a variable that once received {@code new} still answers "fresh" after
- *       being rebound — erasing a real nullable fact.
+ *   <li><b>Stale alias transfer</b> (NullDerefChecker). Copy-equivalence is a monotonic union-find,
+ *       so {@code b = a} followed by {@code b = call()} leaves {@code b} in {@code a}'s class
+ *       forever, and a guard on {@code a} silenced {@code b}. The sibling rule disagreed on
+ *       identical code.
+ *   <li><b>Stale points-to as proof of freshness</b> (isFreshAllocation). Points-to is a
+ *       may-analysis that never retracts, so a variable that once received {@code new} still
+ *       answers "fresh" after being rebound — erasing a real nullable fact.
  *   <li><b>Two sources of truth</b> (isFullyGuardedByAlias). The finding is driven by the checker's
  *       {@code nullableVars}, but the suppression consulted only the solver's null fact. An
- *       unresolvable callee leaves the solver with no fact, and absence was read as proof of safety.
+ *       unresolvable callee leaves the solver with no fact, and absence was read as proof of
+ *       safety.
  * </ol>
  *
- * <p>Each case is paired with a CONTROL that must stay silent. That pairing is the point: a fix that
- * simply stopped suppressing would pass the positive half while quietly breaking the copy-equivalence
- * coverage R1110/R1113 exist to provide.
+ * <p>Each case is paired with a CONTROL that must stay silent. That pairing is the point: a fix
+ * that simply stopped suppressing would pass the positive half while quietly breaking the
+ * copy-equivalence coverage R1110/R1113 exist to provide.
  */
 class R1122StaleFactSuppressionTest {
 
@@ -72,8 +74,20 @@ class R1122StaleFactSuppressionTest {
             BuiltinFactKinds.registryWithBuiltins(),
             base.checkers(),
             base.cweMappings(),
-            new TuningConfig(2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family",
-                "sarif", false, 0),
+            new TuningConfig(
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
 
     FindingReporter reporter =
@@ -89,8 +103,8 @@ class R1122StaleFactSuppressionTest {
   // ── BUG-1: the loop condition's guard must not survive the loop ───────────
 
   /**
-   * {@code while (a != null) { ... } a.length();} is a real NPE -- the loop may have exited precisely
-   * because {@code a} was null.
+   * {@code while (a != null) { ... } a.length();} is a real NPE -- the loop may have exited
+   * precisely because {@code a} was null.
    */
   @Test
   void aWhileConditionGuardDoesNotSurviveTheLoopExit() throws Exception {
@@ -114,7 +128,9 @@ class R1122StaleFactSuppressionTest {
         .isNotEmpty();
   }
 
-  /** CONTROL: the same code with no loop must still report, so the test is not passing vacuously. */
+  /**
+   * CONTROL: the same code with no loop must still report, so the test is not passing vacuously.
+   */
   @Test
   void theUnguardedFormStillReports() throws Exception {
     List<Finding> out =
@@ -135,8 +151,8 @@ class R1122StaleFactSuppressionTest {
   // ── BUG-2: a rebinding retires the alias relationship a guard relied on ──
 
   /**
-   * Copy-equivalence cannot un-union, so {@code b} keeps {@code a}'s alias class after being rebound.
-   * The guard on {@code a} says nothing about the value {@code b} now holds.
+   * Copy-equivalence cannot un-union, so {@code b} keeps {@code a}'s alias class after being
+   * rebound. The guard on {@code a} says nothing about the value {@code b} now holds.
    */
   @Test
   void aReboundVariableIsNotCoveredByItsFormerAliasGuard() throws Exception {
@@ -178,9 +194,7 @@ class R1122StaleFactSuppressionTest {
             }
             """,
             "PlainCopy.java");
-    assertThat(out)
-        .as("b and a denote ONE reference, so the guard on a covers b")
-        .isEmpty();
+    assertThat(out).as("b and a denote ONE reference, so the guard on a covers b").isEmpty();
   }
 
   // ── BUG-3: freshness is a property of the binding, not of the may-set ───
@@ -228,9 +242,7 @@ class R1122StaleFactSuppressionTest {
             }
             """,
             "RealFresh.java");
-    assertThat(out)
-        .as("a fresh allocation is an object by construction")
-        .isEmpty();
+    assertThat(out).as("a fresh allocation is an object by construction").isEmpty();
   }
 
   // ── BUG-4: one method must not read two different sources of truth ──────
@@ -256,9 +268,7 @@ class R1122StaleFactSuppressionTest {
             }
             """,
             "UnresolvableCallee.java");
-    assertThat(out)
-        .as("the value came from outside; no guard in scope constrains it")
-        .isNotEmpty();
+    assertThat(out).as("the value came from outside; no guard in scope constrains it").isNotEmpty();
   }
 
   /** CONTROL: the same copy without the rebinding stays silent. */

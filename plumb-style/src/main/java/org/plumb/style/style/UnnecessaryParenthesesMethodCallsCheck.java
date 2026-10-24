@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.EnclosedExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class UnnecessaryParenthesesMethodCallsCheck implements AstChecker 
           List.of(),
           "org.plumb.style.UnnecessaryParenthesesMethodCallsCheck",
           true,
-          List.of("ast-style-method-call-unnecessary-parentheses-calls", "paren-method")
-      );
+          List.of("ast-style-method-call-unnecessary-parentheses-calls", "paren-method"));
 
   @Override
   public String name() {

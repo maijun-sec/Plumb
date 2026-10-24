@@ -3,19 +3,18 @@ package org.plumb.style.design;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Public method in non-{@code final} class should be {@code abstract}, {@code final}, or
- * {@code private} (DESIGN_FOR_EXTENSION).
+ * Public method in non-{@code final} class should be {@code abstract}, {@code final}, or {@code
+ * private} (DESIGN_FOR_EXTENSION).
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)} before. The inner per-method
- * walk stays as a local loop because we need to know the enclosing class is non-{@code final}.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ClassOrInterfaceDeclaration.class)} before. The inner per-method walk stays as a local
+ * loop because we need to know the enclosing class is non-{@code final}.
  */
 public final class DesignForExtensionCheck implements AstChecker {
 
@@ -28,8 +27,7 @@ public final class DesignForExtensionCheck implements AstChecker {
           List.of(),
           "org.plumb.style.DesignForExtensionCheck",
           true,
-          List.of("ast-design-design-for-extension", "design-for-extension")
-      );
+          List.of("ast-design-design-for-extension", "design-for-extension"));
 
   @Override
   public String name() {

@@ -138,8 +138,8 @@ public final class TuningConfig {
    * <p>{@code null} means "not configured", which resolves to {@link
    * org.plumb.dfa.points.AbstractObject.Policy#defaultPolicy()} rather than to any particular
    * policy. Keeping the unset case distinct from an explicit choice matters: a caller that never
-   * mentions this knob must still get the engine default, and a caller that writes
-   * {@code context_insensitive} must get exactly that even if the default later changes.
+   * mentions this knob must still get the engine default, and a caller that writes {@code
+   * context_insensitive} must get exactly that even if the default later changes.
    *
    * <p>Deliberately not part of the main constructor's parameter list. That constructor already
    * takes fifteen arguments and is called from a dozen places; adding a sixteenth would have made
@@ -166,11 +166,23 @@ public final class TuningConfig {
 
   /** A copy with an explicit points-to policy. */
   public TuningConfig withPointsToPolicy(org.plumb.dfa.points.AbstractObject.Policy policy) {
-    TuningConfig copy = new TuningConfig(
-        contextDepth, worklistMaxSize, z3TimeoutMs, summaryCacheSize, reverseWalkMaxDepth,
-        preScanEnabled, libraryCallClassification, taintCallerStringConcat, pathSensitivity,
-        reportingGroupBy, outputFormat, parallel, perFunctionTimeoutMs, analysedOrigins,
-        analyseSystemLibraries);
+    TuningConfig copy =
+        new TuningConfig(
+            contextDepth,
+            worklistMaxSize,
+            z3TimeoutMs,
+            summaryCacheSize,
+            reverseWalkMaxDepth,
+            preScanEnabled,
+            libraryCallClassification,
+            taintCallerStringConcat,
+            pathSensitivity,
+            reportingGroupBy,
+            outputFormat,
+            parallel,
+            perFunctionTimeoutMs,
+            analysedOrigins,
+            analyseSystemLibraries);
     copy.pointsToPolicy = policy;
     return copy;
   }

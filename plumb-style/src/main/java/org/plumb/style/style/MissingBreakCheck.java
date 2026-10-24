@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.stmt.*;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class MissingBreakCheck implements AstChecker {
           List.of("CWE-484"),
           "org.plumb.style.MissingBreakCheck",
           true,
-          List.of("ast-style-missing-break", "missing-break")
-      );
+          List.of("ast-style-missing-break", "missing-break"));
 
   @Override
   public String name() {

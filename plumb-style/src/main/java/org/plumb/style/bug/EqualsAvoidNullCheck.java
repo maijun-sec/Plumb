@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.EnclosedExpr;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.NullLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -39,7 +38,8 @@ public final class EqualsAvoidNullCheck implements AstChecker {
           RuleDef.Type.BAD_PRACTICE,
           List.of("CWE-476"),
           "org.plumb.style.EqualsAvoidNullCheck",
-          true,List.of("ast-bug-equals-avoid-null", "equals-avoid-null"),
+          true,
+          List.of("ast-bug-equals-avoid-null", "equals-avoid-null"),
           List.of(PARAMS));
 
   @Override

@@ -1,7 +1,6 @@
 package org.plumb.style.error;
 
 import com.github.javaparser.ast.stmt.CatchClause;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleRegistry;
 import org.plumb.style.AstChecker;

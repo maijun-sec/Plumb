@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.body.EnumDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class AvoidEnumsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.AvoidEnumsCheck",
           true,
-          List.of("ast-style-enum", "avoid-enums")
-      );
+          List.of("ast-style-enum", "avoid-enums"));
 
   @Override
   public String name() {

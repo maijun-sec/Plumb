@@ -32,7 +32,6 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -50,8 +49,7 @@ public final class PredictableSaltCheck implements AstChecker {
           List.of("CWE-760"),
           "org.plumb.style.PredictableSaltCheck",
           true,
-          List.of("ast-style-predictable-salt", "predictable-salt")
-      );
+          List.of("ast-style-predictable-salt", "predictable-salt"));
 
   private static final Set<String> HASH_METHODS = Set.of("update", "digest");
 

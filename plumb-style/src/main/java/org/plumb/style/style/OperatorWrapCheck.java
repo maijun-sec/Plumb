@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.BinaryExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class OperatorWrapCheck implements AstChecker {
           List.of(),
           "org.plumb.style.OperatorWrapCheck",
           true,
-          List.of("ast-style-operator-wrap", "operatorwrap")
-      );
+          List.of("ast-style-operator-wrap", "operatorwrap"));
 
   @Override
   public String name() {

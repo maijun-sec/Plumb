@@ -26,8 +26,8 @@ import java.util.regex.Pattern;
  * <p>{@link SinkPattern#RECEIVER_ARG_INDEX} ({@code -2}) declares that the tainted value is the
  * <em>receiver</em>, not a user argument. {@code ObjectInputStream#readObject()} is the motivating
  * case: it takes zero arguments, and the untrusted data is in the stream itself. Before this
- * sentinel existed, such a pattern fell back to {@link #defaultArgIndex()} ({@code 0}, "first
- * user argument") and indexed past the end of an empty argument list — so {@code
+ * sentinel existed, such a pattern fell back to {@link #defaultArgIndex()} ({@code 0}, "first user
+ * argument") and indexed past the end of an empty argument list — so {@code
  * TAINT_SINK_UNSAFE_DESERIALIZE} was registered CRITICAL yet was structurally unreachable. That is
  * worse than having no rule, because the coverage report claims the CWE is handled.
  */
@@ -51,27 +51,28 @@ public final class SinkFamily {
     private final String pattern;
     private final int argIndex; // -1 = use family default, -2 = receiver
     private final Pattern compiled;
+
     /**
      * The same sink, written so that the class-name prefix is optional.
      *
-     * <p>Why this exists. The TAC callee signature carries a fully qualified receiver type
-     * ({@code java.sql.Statement.executeQuery/1}) only when the symbol solver can resolve the
-     * receiver's type. When it cannot -- which is the normal case for a third-party type whose
-     * jar is not on the analysis classpath -- the IR keeps the simple name
-     * ({@code JdbcTemplate.query/2}). A pattern anchored to a fully qualified name
-     * ({@code ^org\.springframework\.jdbc\.core\.JdbcTemplate\.query}) then matches nothing, and
-     * every framework sink -- Spring's JdbcTemplate, MyBatis, Jackson, Guava -- becomes
-     * unreachable without any error.
+     * <p>Why this exists. The TAC callee signature carries a fully qualified receiver type ({@code
+     * java.sql.Statement.executeQuery/1}) only when the symbol solver can resolve the receiver's
+     * type. When it cannot -- which is the normal case for a third-party type whose jar is not on
+     * the analysis classpath -- the IR keeps the simple name ({@code JdbcTemplate.query/2}). A
+     * pattern anchored to a fully qualified name ({@code
+     * ^org\.springframework\.jdbc\.core\.JdbcTemplate\.query}) then matches nothing, and every
+     * framework sink -- Spring's JdbcTemplate, MyBatis, Jackson, Guava -- becomes unreachable
+     * without any error.
      *
      * <p>So each pattern also gets a "prefix optional" variant, derived mechanically from the
      * pattern text: the leading {@code ^} and the dotted package prefix become optional. The
-     * relaxed variant is only consulted for a callee whose type part is a bare simple name, and
-     * it is a fallback: the fully qualified form always wins when it matches.
+     * relaxed variant is only consulted for a callee whose type part is a bare simple name, and it
+     * is a fallback: the fully qualified form always wins when it matches.
      *
-     * <p>The relaxation is deliberately narrow. It only relaxes the PACKAGE prefix of the
-     * receiver class; the class name itself and the method name must still match exactly, so
-     * {@code JdbcTemplate.query} cannot be matched by a pattern for {@code NamedParameterJdbcTemplate}
-     * or by a pattern for some unrelated {@code query} method.
+     * <p>The relaxation is deliberately narrow. It only relaxes the PACKAGE prefix of the receiver
+     * class; the class name itself and the method name must still match exactly, so {@code
+     * JdbcTemplate.query} cannot be matched by a pattern for {@code NamedParameterJdbcTemplate} or
+     * by a pattern for some unrelated {@code query} method.
      */
     private final Pattern relaxed;
 
@@ -115,9 +116,10 @@ public final class SinkFamily {
     /**
      * Derive the prefix-optional variant of a sink pattern.
      *
-     * <p>Input patterns look like {@code ^org\.springframework\.jdbc\.core\.JdbcTemplate\.query(/\d+)?}
-     * -- a leading {@code ^}, a fully qualified class name whose separators are escaped dots, then
-     * an escaped dot, then the method name.
+     * <p>Input patterns look like {@code
+     * ^org\.springframework\.jdbc\.core\.JdbcTemplate\.query(/\d+)?} -- a leading {@code ^}, a
+     * fully qualified class name whose separators are escaped dots, then an escaped dot, then the
+     * method name.
      *
      * <p>The relaxed form makes the PACKAGE prefix optional while keeping the class name and the
      * method name mandatory:
@@ -132,11 +134,11 @@ public final class SinkFamily {
      * {@code JdbcTemplate.query} into a match for some other {@code query} method.
      *
      * <p>The relaxed form also requires a WORD BOUNDARY after the method name. Sink patterns are
-     * matched as substrings, so without a boundary the pattern for
-     * {@code JdbcTemplate.query} would also match {@code JdbcTemplate.queryForList} and
-     * {@code JdbcTemplate.queryForObject} -- which are different sinks with different argument
-     * indexes. The strict form does not need the boundary because the fully qualified prefix is
-     * already distinctive; the relaxed form is the one that needs it.
+     * matched as substrings, so without a boundary the pattern for {@code JdbcTemplate.query} would
+     * also match {@code JdbcTemplate.queryForList} and {@code JdbcTemplate.queryForObject} -- which
+     * are different sinks with different argument indexes. The strict form does not need the
+     * boundary because the fully qualified prefix is already distinctive; the relaxed form is the
+     * one that needs it.
      *
      * <p>A pattern that does not have the {@code ^fully\.qualified\.Class\.method} shape is
      * returned unchanged -- there is nothing to relax, and guessing would be unsafe.
@@ -176,9 +178,7 @@ public final class SinkFamily {
       String tail = classAndMethod.substring(methodEnd);
       // Already bounded (e.g. the pattern spells its own boundary) -- leave it alone.
       if (tail.startsWith("\\b") || tail.startsWith("(?:\\b")) return relaxed;
-      return relaxed.substring(0, relaxed.length() - tail.length())
-          + "\\b"
-          + tail;
+      return relaxed.substring(0, relaxed.length() - tail.length()) + "\\b" + tail;
     }
 
     /**
@@ -201,8 +201,8 @@ public final class SinkFamily {
 
     /**
      * The leading part of the pattern: a {@code ^} followed by escaped dotted package segments
-     * (each segment a lowercase-ish identifier). Anything else means the pattern is not the
-     * fully qualified shape this relaxation understands.
+     * (each segment a lowercase-ish identifier). Anything else means the pattern is not the fully
+     * qualified shape this relaxation understands.
      */
     private static final java.util.regex.Pattern PACKAGE_PREFIX =
         java.util.regex.Pattern.compile("\\^((?:[A-Za-z_$][A-Za-z0-9_$]*\\\\\\.)+)");
@@ -292,9 +292,9 @@ public final class SinkFamily {
    * <p>When the callee's receiver type is a bare simple name -- which is what the TAC emits for a
    * type the symbol solver could not resolve, e.g. a third-party class whose jar is not on the
    * analysis classpath -- the fully qualified form of the pattern cannot match. In that case the
-   * pattern's prefix-optional variant is tried as well, so framework sinks stay reachable. A
-   * callee whose receiver type is already fully qualified is matched by the strict form only, so
-   * an exact fully qualified name always wins over the relaxed fallback.
+   * pattern's prefix-optional variant is tried as well, so framework sinks stay reachable. A callee
+   * whose receiver type is already fully qualified is matched by the strict form only, so an exact
+   * fully qualified name always wins over the relaxed fallback.
    */
   public SinkPattern matchPattern(String calleeSignature) {
     if (!enabled) return null;
@@ -310,8 +310,8 @@ public final class SinkFamily {
   }
 
   /**
-   * True when the callee signature's receiver type is a bare simple name (no dot), i.e. the
-   * symbol solver did not resolve it to a fully qualified type.
+   * True when the callee signature's receiver type is a bare simple name (no dot), i.e. the symbol
+   * solver did not resolve it to a fully qualified type.
    *
    * <p>The signature shape is {@code Type.method/arity}:
    *
@@ -328,7 +328,7 @@ public final class SinkFamily {
     int slash = calleeSignature.lastIndexOf('/');
     String typeAndMethod = slash < 0 ? calleeSignature : calleeSignature.substring(0, slash);
     int dot = typeAndMethod.lastIndexOf('.');
-    if (dot < 0) return false;   // no receiver type at all (e.g. "hasNext/0")
+    if (dot < 0) return false; // no receiver type at all (e.g. "hasNext/0")
     String receiverType = typeAndMethod.substring(0, dot);
     return receiverType.indexOf('.') < 0;
   }

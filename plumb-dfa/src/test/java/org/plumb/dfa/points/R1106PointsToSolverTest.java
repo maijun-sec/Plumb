@@ -72,18 +72,23 @@ class R1106PointsToSolverTest {
     System.out.println("=== array IR ===");
     for (TacFunction fn : arr.functions()) {
       for (org.plumb.tac.ir.TacInstruction ins : fn.instructions()) {
-        System.out.printf("  %-12s dest=%-20s lhs1=%-18s lhs2=%-14s ctorType=%s%n",
-            ins.kind, String.valueOf(ins.dest), String.valueOf(ins.lhs1),
-            String.valueOf(ins.lhs2), String.valueOf(ins.ctorType));
+        System.out.printf(
+            "  %-12s dest=%-20s lhs1=%-18s lhs2=%-14s ctorType=%s%n",
+            ins.kind,
+            String.valueOf(ins.dest),
+            String.valueOf(ins.lhs1),
+            String.valueOf(ins.lhs2),
+            String.valueOf(ins.ctorType));
       }
     }
     TacProgram fac = parse(RETURN_ALLOC, "Factory.java");
     System.out.println("=== factory IR ===");
     for (TacFunction fn : fac.functions()) {
-      System.out.println("  fn " + fn.signature() + " params="
-          + fn.params() + " locals=" + fn.locals());
+      System.out.println(
+          "  fn " + fn.signature() + " params=" + fn.params() + " locals=" + fn.locals());
       for (org.plumb.tac.ir.TacInstruction ins : fn.instructions()) {
-        System.out.printf("  %-12s dest=%-20s lhs1=%-18s callee=%s%n",
+        System.out.printf(
+            "  %-12s dest=%-20s lhs1=%-18s callee=%s%n",
             ins.kind, String.valueOf(ins.dest), String.valueOf(ins.lhs1), ins.calleeSig);
       }
     }
@@ -216,9 +221,7 @@ class R1106PointsToSolverTest {
     PointsToSolver solver = new PointsToSolver(Policy.CONTEXT_INSENSITIVE);
     solver.solve(p.functions());
     Set<Obj> first = solver.pointsTo("go():void", var(p, "go", "first"));
-    assertThat(first)
-        .as("arr[0] reads back exactly the object stored at index 0")
-        .hasSize(1);
+    assertThat(first).as("arr[0] reads back exactly the object stored at index 0").hasSize(1);
   }
 
   // ── precision: context sensitivity ─────────────────────────────────────
@@ -245,13 +248,18 @@ class R1106PointsToSolverTest {
     // Two separate allocations, so the two `Object x` locals must not share an object.
     // Same-named locals in different methods are DIFFERENT variables; asking mayAlias with one
     // signature would compare one entry against itself, which is why mayAliasAcross exists.
-    assertThat(solver.mayAliasAcross("a():void", var(p, "a", "x"), "b():void", var(p, "b", "x"),
-        AbstractObject.Context.empty()))
-            .as("distinct allocation sites stay distinct even for same-named locals")
-            .isFalse();
+    assertThat(
+            solver.mayAliasAcross(
+                "a():void",
+                var(p, "a", "x"),
+                "b():void",
+                var(p, "b", "x"),
+                AbstractObject.Context.empty()))
+        .as("distinct allocation sites stay distinct even for same-named locals")
+        .isFalse();
     assertThat(solver.mayAlias("a():void", var(p, "a", "x"), var(p, "a", "x")))
-            .as("a variable trivially aliases itself, so a caller that mixes methods gets a true")
-            .isTrue();
+        .as("a variable trivially aliases itself, so a caller that mixes methods gets a true")
+        .isTrue();
   }
 
   @Test

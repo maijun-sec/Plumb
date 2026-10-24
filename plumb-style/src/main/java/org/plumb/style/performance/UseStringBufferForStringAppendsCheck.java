@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class UseStringBufferForStringAppendsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UseStringBufferForStringAppendsCheck",
           true,
-          List.of("ast-performance-stringbuffer-for-string-appends", "use-stringbuffer")
-      );
+          List.of("ast-performance-stringbuffer-for-string-appends", "use-stringbuffer"));
 
   @Override
   public String name() {

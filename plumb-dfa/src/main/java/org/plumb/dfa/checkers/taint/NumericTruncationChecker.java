@@ -1,6 +1,5 @@
 package org.plumb.dfa.checkers.taint;
 
-import org.plumb.rules.RuleDef;
 import java.util.HashSet;
 import java.util.Set;
 import org.plumb.dfa.engine.AnalysisContext;
@@ -9,6 +8,7 @@ import org.plumb.dfa.taint.TaintDomain;
 import org.plumb.dfa.taint.TaintRule;
 import org.plumb.dfa.taint.TaintedCheckerBase;
 import org.plumb.reporter.Finding;
+import org.plumb.rules.RuleDef;
 import org.plumb.tac.ir.BinaryOperator;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;

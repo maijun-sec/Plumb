@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class ForLoopVariableCountCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ForLoopVariableCountCheck",
           true,
-          List.of("ast-style-loop-variable-count", "for-var-count")
-      );
+          List.of("ast-style-loop-variable-count", "for-var-count"));
 
   @Override
   public String name() {

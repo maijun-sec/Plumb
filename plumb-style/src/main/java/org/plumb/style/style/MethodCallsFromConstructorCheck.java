@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.ThisExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class MethodCallsFromConstructorCheck implements AstChecker {
           List.of("CWE-665"),
           "org.plumb.style.MethodCallsFromConstructorCheck",
           true,
-          List.of("ast-style-method-call", "ctor-method")
-      );
+          List.of("ast-style-method-call", "ctor-method"));
 
   @Override
   public String name() {

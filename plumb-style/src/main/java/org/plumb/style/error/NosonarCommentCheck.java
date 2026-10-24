@@ -8,7 +8,6 @@ package org.plumb.style.error;
 import com.github.javaparser.ast.comments.BlockComment;
 import com.github.javaparser.ast.comments.LineComment;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class NosonarCommentCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NosonarCommentCheck",
           true,
-          List.of("ast-error-suppression-marker", "suppression-marker-comment")
-      );
+          List.of("ast-error-suppression-marker", "suppression-marker-comment"));
 
   /** Per-file short-circuit: stop scanning once a NOSONAR is found. */
   private boolean found = false;
@@ -44,7 +42,10 @@ public final class NosonarCommentCheck implements AstChecker {
   public void visit(LineComment n, StyleContext ctx) {
     if (found) return;
     if (n.getContent().toUpperCase().contains("NOSONAR")) {
-      report(n.getBegin().map(p -> p.line).orElse(-1), n.getBegin().map(p -> p.column).orElse(-1), ctx);
+      report(
+          n.getBegin().map(p -> p.line).orElse(-1),
+          n.getBegin().map(p -> p.column).orElse(-1),
+          ctx);
       found = true;
     }
   }
@@ -52,7 +53,10 @@ public final class NosonarCommentCheck implements AstChecker {
   public void visit(BlockComment n, StyleContext ctx) {
     if (found) return;
     if (n.getContent().toUpperCase().contains("NOSONAR")) {
-      report(n.getBegin().map(p -> p.line).orElse(-1), n.getBegin().map(p -> p.column).orElse(-1), ctx);
+      report(
+          n.getBegin().map(p -> p.line).orElse(-1),
+          n.getBegin().map(p -> p.column).orElse(-1),
+          ctx);
       found = true;
     }
   }

@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.LongLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class NoLongLiteralCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NoLongLiteralCheck",
           true,
-          List.of("ast-style-literal-suffix", "no-long-literal")
-      );
+          List.of("ast-style-literal-suffix", "no-long-literal"));
 
   @Override
   public String name() {

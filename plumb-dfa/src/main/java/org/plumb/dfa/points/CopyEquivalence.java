@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.plumb.tac.ir.TacFunction;
@@ -44,13 +43,13 @@ import org.plumb.tac.ir.TacOperand;
  * </ul>
  *
  * <p>A checker that wants to transfer a fact from one name to another must consult both. Using only
- * points-to silently fails on parameters; using only copy equivalence silently fails on
- * {@code list.get(0)} aliases.
+ * points-to silently fails on parameters; using only copy equivalence silently fails on {@code
+ * list.get(0)} aliases.
  *
  * <h2>Precision and limits</h2>
  *
- * <p>Equivalence is a union-find over (function, variable) pairs. The propagation rules are the ones
- * that make two names provably the same reference:
+ * <p>Equivalence is a union-find over (function, variable) pairs. The propagation rules are the
+ * ones that make two names provably the same reference:
  *
  * <pre>
  *   MOVE        dest and src are the same reference
@@ -77,8 +76,8 @@ public final class CopyEquivalence {
    * The variables of a function, by name.
    *
    * <p>{@link #classOf} filters candidates through this and needs the real {@link
-   * TacOperand.TacVar} instances, because a checker's guard set is keyed by those objects. Populated
-   * by {@link #of(Collection)}, which already walks every function.
+   * TacOperand.TacVar} instances, because a checker's guard set is keyed by those objects.
+   * Populated by {@link #of(Collection)}, which already walks every function.
    */
   private final Map<String, Map<String, TacOperand.TacVar>> varsBySignature = new LinkedHashMap<>();
 

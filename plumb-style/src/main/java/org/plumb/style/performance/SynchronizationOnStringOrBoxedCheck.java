@@ -14,7 +14,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,15 +24,16 @@ public final class SynchronizationOnStringOrBoxedCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          new RuleId("ast-performance-synchronization-on-string-or-boxed", "SYNCHRONIZATION_ON_STRING_OR_BOXED"),
+          new RuleId(
+              "ast-performance-synchronization-on-string-or-boxed",
+              "SYNCHRONIZATION_ON_STRING_OR_BOXED"),
           "Synchronize on interned String / boxed primitive is unsafe (use a private Object lock)",
           RuleDef.Severity.HIGH,
           RuleDef.Type.MULTITHREADING,
           List.of("CWE-820"),
           "org.plumb.style.SynchronizationOnStringOrBoxedCheck",
           true,
-          List.of("ast-performance-string-boxed", "synchronization-on-string-or-boxed")
-      );
+          List.of("ast-performance-string-boxed", "synchronization-on-string-or-boxed"));
 
   /**
    * The FORBIDDEN_TYPES set narrowed to the most common narrowed to the most common Java SE types

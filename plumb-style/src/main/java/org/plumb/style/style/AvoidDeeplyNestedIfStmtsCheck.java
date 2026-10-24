@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.stmt.IfStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class AvoidDeeplyNestedIfStmtsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.AvoidDeeplyNestedIfStmtsCheck",
           true,
-          List.of("ast-style-deeply-nested-if-stmts", "deeply-nested-if")
-      );
+          List.of("ast-style-deeply-nested-if-stmts", "deeply-nested-if"));
 
   private static final int MAX_DEPTH = 4;
 

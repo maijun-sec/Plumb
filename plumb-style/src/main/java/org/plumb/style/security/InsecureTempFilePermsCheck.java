@@ -28,7 +28,6 @@ package org.plumb.style.security;
 
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -47,8 +46,7 @@ public final class InsecureTempFilePermsCheck implements AstChecker {
           List.of("CWE-378"),
           "org.plumb.style.security.InsecureTempFilePermsCheck",
           true,
-          List.of("ast-style-insecure-temp-file-perms", "insecure-temp-file-perms")
-      );
+          List.of("ast-style-insecure-temp-file-perms", "insecure-temp-file-perms"));
 
   @Override
   public String name() {

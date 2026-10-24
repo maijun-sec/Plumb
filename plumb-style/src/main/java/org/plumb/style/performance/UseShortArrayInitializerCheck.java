@@ -2,7 +2,6 @@ package org.plumb.style.performance;
 
 import com.github.javaparser.ast.expr.ArrayCreationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class UseShortArrayInitializerCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UseShortArrayInitializerCheck",
           true,
-          List.of("ast-performance-short-array-initializer", "use-short-array-init")
-      );
+          List.of("ast-performance-short-array-initializer", "use-short-array-init"));
 
   @Override
   public String name() {

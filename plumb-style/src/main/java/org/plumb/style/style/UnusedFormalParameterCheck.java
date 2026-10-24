@@ -5,7 +5,6 @@ import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class UnusedFormalParameterCheck implements AstChecker {
           List.of("CWE-1164"),
           "org.plumb.style.UnusedFormalParameterCheck",
           true,
-          List.of("ast-style-unused-formal-parameter", "unused-formal-parameter")
-      );
+          List.of("ast-style-unused-formal-parameter", "unused-formal-parameter"));
 
   @Override
   public String name() {

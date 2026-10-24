@@ -6,7 +6,6 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -50,10 +49,10 @@ public final class UnsaltedOneWayHashCheck implements AstChecker {
           List.of("CWE-759"),
           "org.plumb.style.UnsaltedOneWayHashCheck",
           true,
-          List.of("ast-style-unsalted-one-way-hash-style", "unsalted-one-way-hash")
-      );
+          List.of("ast-style-unsalted-one-way-hash-style", "unsalted-one-way-hash"));
 
   private final Set<String> reported = new HashSet<>();
+
   /** Per-file: line of the most recent MessageDigest.getInstance call. -1 = none pending. */
   private int getInstanceLine = -1;
 

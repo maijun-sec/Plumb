@@ -4,7 +4,6 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -13,8 +12,8 @@ import org.plumb.style.StyleContext;
 /**
  * Don't use {@code float} / {@code double} as a {@code for}-loop counter.
  *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit)
- * + findAll(ForStmt.class)} before.
+ * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ForStmt.class)} before.
  */
 public final class DontUseFloatTypeForLoopIndicesCheck implements AstChecker {
 
@@ -27,8 +26,7 @@ public final class DontUseFloatTypeForLoopIndicesCheck implements AstChecker {
           List.of(),
           "org.plumb.style.DontUseFloatTypeForLoopIndicesCheck",
           true,
-          List.of("ast-performance-loop-index-strict", "no-float-loop-index")
-      );
+          List.of("ast-performance-loop-index-strict", "no-float-loop-index"));
 
   @Override
   public String name() {
@@ -47,12 +45,7 @@ public final class DontUseFloatTypeForLoopIndicesCheck implements AstChecker {
       int line = f.getBegin().map(p -> p.line).orElse(-1);
       int col = f.getBegin().map(p -> p.column).orElse(-1);
       ctx.report(
-          line,
-          col,
-          DEFAULT_RULE,
-          "Float/double for loop counter",
-          RuleDef.Severity.LOW,
-          type);
+          line, col, DEFAULT_RULE, "Float/double for loop counter", RuleDef.Severity.LOW, type);
     }
   }
 }

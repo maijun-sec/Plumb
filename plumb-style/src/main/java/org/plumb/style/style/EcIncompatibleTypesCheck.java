@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.stmt.ThrowStmt;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class EcIncompatibleTypesCheck implements AstChecker {
           List.of("CWE-703"),
           "org.plumb.style.EcIncompatibleTypesCheck",
           true,
-          List.of("ast-style-incompatible-types", "ec-incompatible")
-      );
+          List.of("ast-style-incompatible-types", "ec-incompatible"));
 
   @Override
   public String name() {

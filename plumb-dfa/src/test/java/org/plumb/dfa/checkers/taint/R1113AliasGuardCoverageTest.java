@@ -65,7 +65,19 @@ class R1113AliasGuardCoverageTest {
             base.checkers(),
             base.cweMappings(),
             new org.plumb.dfa.config.TuningConfig(
-                2, 1000, 1000, 100, 4, false, false, false, "full", "cwe_family", "sarif", false, 0),
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
             base.receiverPassthroughPatterns());
 
     FindingReporter reporter =
@@ -102,9 +114,7 @@ class R1113AliasGuardCoverageTest {
             }
             """,
             "ListPartialCover.java");
-    assertThat(out)
-        .as("`other` may be `second`, which no guard covers")
-        .isNotEmpty();
+    assertThat(out).as("`other` may be `second`, which no guard covers").isNotEmpty();
   }
 
   /** Same argument through a Map whose unknown key merges two entries. */
@@ -157,8 +167,8 @@ class R1113AliasGuardCoverageTest {
   }
 
   /**
-   * A symmetric container round trip: one write, one read, same unknown key. The possibility set
-   * is wider than reality, but every object in it was put there by the guarded name.
+   * A symmetric container round trip: one write, one read, same unknown key. The possibility set is
+   * wider than reality, but every object in it was put there by the guarded name.
    */
   @Test
   void aSymmetricContainerRoundTripStaysSilent() throws Exception {

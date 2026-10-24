@@ -7,7 +7,6 @@ import com.github.javaparser.ast.stmt.ThrowStmt;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.Type;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class ThrowableNotThrownCheck implements AstChecker {
           List.of("CWE-390"),
           "org.plumb.style.ThrowableNotThrownCheck",
           true,
-          List.of("ast-error-throwable-not-thrown", "throwable-not-thrown")
-      );
+          List.of("ast-error-throwable-not-thrown", "throwable-not-thrown"));
 
   @Override
   public String name() {

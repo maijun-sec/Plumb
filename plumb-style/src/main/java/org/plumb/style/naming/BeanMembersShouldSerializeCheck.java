@@ -3,7 +3,6 @@ package org.plumb.style.naming;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class BeanMembersShouldSerializeCheck implements AstChecker {
           List.of(),
           "org.plumb.style.BeanMembersShouldSerializeCheck",
           true,
-          List.of("ast-naming-members-should-serialize", "bean-members-serialize")
-      );
+          List.of("ast-naming-members-should-serialize", "bean-members-serialize"));
 
   @Override
   public String name() {

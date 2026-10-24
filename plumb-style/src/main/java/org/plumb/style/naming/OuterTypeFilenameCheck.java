@@ -2,7 +2,6 @@ package org.plumb.style.naming;
 
 import com.github.javaparser.ast.CompilationUnit;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,8 +11,8 @@ import org.plumb.style.StyleContext;
  * Outer type filename should match the type name.
  *
  * <p>This rule is intrinsically per-file (one check per {@code CompilationUnit}) ? no useful
- * per-node-type migration here. Kept as {@code visit(CompilationUnit)} since the dispatcher
- * hands the file root directly.
+ * per-node-type migration here. Kept as {@code visit(CompilationUnit)} since the dispatcher hands
+ * the file root directly.
  */
 public final class OuterTypeFilenameCheck implements AstChecker {
 
@@ -26,8 +25,7 @@ public final class OuterTypeFilenameCheck implements AstChecker {
           List.of(),
           "org.plumb.style.OuterTypeFilenameCheck",
           true,
-          List.of("ast-naming-type-filename", "outer-type-filename")
-      );
+          List.of("ast-naming-type-filename", "outer-type-filename"));
 
   @Override
   public String name() {

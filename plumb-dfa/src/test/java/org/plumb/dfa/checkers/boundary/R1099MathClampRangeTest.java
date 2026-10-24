@@ -21,11 +21,11 @@ import org.plumb.tac.translate.TacTranslator;
 /**
  * R1099 regression gate: {@code Math.min} / {@code Math.max} narrow the range domain.
  *
- * <p>{@code int c = Math.max(0, Math.min(index, 2)); arr[c];} is the canonical bounds-safe
- * idiom and is semantically identical to writing the guard out by hand. Before this, the clamp
- * call was treated as an ordinary call with no summary, so {@code c} kept an unknown range and
- * the array-bounds checker reported {@code out-of-bounds: (c < 0)} — a false positive on code
- * that is correct.
+ * <p>{@code int c = Math.max(0, Math.min(index, 2)); arr[c];} is the canonical bounds-safe idiom
+ * and is semantically identical to writing the guard out by hand. Before this, the clamp call was
+ * treated as an ordinary call with no summary, so {@code c} kept an unknown range and the
+ * array-bounds checker reported {@code out-of-bounds: (c < 0)} — a false positive on code that is
+ * correct.
  *
  * <p>The subtle part: a clamp bounds the result on ONE side even when the other argument is
  * entirely unbounded. {@code min(x, 2)} is at most 2 no matter what {@code x} is. A plain range

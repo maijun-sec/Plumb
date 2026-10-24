@@ -53,11 +53,11 @@ public final class AstCheckerRegistry {
   }
 
   /**
-   * Variant of {@link #all()} that excludes checkers whose {@code DEFAULT_RULE.enabled()} is
-   * {@code false} (stubs). The public surface ? {@link #builtins()}, {@link #load}, and
-   * {@link #byCategory} ? returns this filtered view; the mirror path inside
-   * {@code RuleRegistry.tryMirrorAstCheckers} uses {@link #all()} so it can still see the
-   * stubs and force-enable them when {@code withBuiltinDefaults(true)} is in play.
+   * Variant of {@link #all()} that excludes checkers whose {@code DEFAULT_RULE.enabled()} is {@code
+   * false} (stubs). The public surface ? {@link #builtins()}, {@link #load}, and {@link
+   * #byCategory} ? returns this filtered view; the mirror path inside {@code
+   * RuleRegistry.tryMirrorAstCheckers} uses {@link #all()} so it can still see the stubs and
+   * force-enable them when {@code withBuiltinDefaults(true)} is in play.
    */
   public List<AstChecker> enabledList() {
     List<AstChecker> out = new ArrayList<>(checks.size());
@@ -167,10 +167,10 @@ public final class AstCheckerRegistry {
   }
 
   /**
-   * True if the given checker is enabled-by-default (i.e. its DEFAULT_RULE says {@code enabled=true}).
-   * Used by the public surface to filter out stubs from {@link #builtins()}, {@link #load}, and
-   * {@link #byCategory}. The full registered list (including stubs) is still available via
-   * {@link #all()}.
+   * True if the given checker is enabled-by-default (i.e. its DEFAULT_RULE says {@code
+   * enabled=true}). Used by the public surface to filter out stubs from {@link #builtins()}, {@link
+   * #load}, and {@link #byCategory}. The full registered list (including stubs) is still available
+   * via {@link #all()}.
    */
   private static boolean isEnabled(AstChecker c) {
     try {
@@ -253,7 +253,7 @@ public final class AstCheckerRegistry {
     // ("style/EmptyBlockCheck") when the classpath scan
     // recursed into a subdirectory. The new layout puts
     // each rule under org.plumb.style.<category>, so we
-    // must use the full FQN : not the legacy flat one : 
+    // must use the full FQN : not the legacy flat one :
     // to resolve the class. The AVAILABLE map still
     // keys on the simple name so the existing
     // registeredNames() / load("Foo.*") / listAvailable()
@@ -283,7 +283,7 @@ public final class AstCheckerRegistry {
   private static Map<String, String> categoryOf() {
     // The category is baked at build time by
     // scripts/gen_categories.py into
-    // {@link CheckerCategories#CHECKER_CATEGORIES} : 
+    // {@link CheckerCategories#CHECKER_CATEGORIES} :
     // we can't infer it from the compiled classpath
     // because Maven flattens the.class files into a
     // single package directory.

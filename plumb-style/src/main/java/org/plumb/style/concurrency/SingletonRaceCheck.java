@@ -33,7 +33,6 @@ import com.github.javaparser.ast.stmt.SynchronizedStmt;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.HashSet;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -52,8 +51,7 @@ public final class SingletonRaceCheck implements AstChecker {
           List.of("CWE-366"),
           "org.plumb.style.SingletonRaceCheck",
           true,
-          List.of("ast-concurrency-singleton-race", "singleton-race")
-      );
+          List.of("ast-concurrency-singleton-race", "singleton-race"));
 
   // M7: controller-annotation and servlet-superclass tables
   // now live in CheckerConfig — operators can extend them in

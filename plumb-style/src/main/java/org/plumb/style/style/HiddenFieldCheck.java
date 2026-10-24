@@ -7,7 +7,6 @@ import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class HiddenFieldCheck implements AstChecker {
           List.of(),
           "org.plumb.style.HiddenFieldCheck",
           true,
-          List.of("ast-style-hidden-field", "hiddenfield")
-      );
+          List.of("ast-style-hidden-field", "hiddenfield"));
 
   @Override
   public String name() {

@@ -6,7 +6,6 @@ import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class UwfFieldNotInitializedCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UwfFieldNotInitializedCheck",
           true,
-          List.of("ast-style-field-not-initialized-in-constructor", "uwf-field-not-init")
-      );
+          List.of("ast-style-field-not-initialized-in-constructor", "uwf-field-not-init"));
 
   @Override
   public String name() {

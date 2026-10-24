@@ -23,11 +23,10 @@ import org.slf4j.LoggerFactory;
  * R-833 P1 ? Gradle build-system adapter.
  *
  * <p>Recognises the standard marker files {@code build.gradle} (Groovy DSL), {@code
- * build.gradle.kts} (Kotlin DSL) and {@code settings.gradle}, {@code settings.gradle.kts}, plus
- * the version-catalog file {@code gradle/libs.versions.toml}. The adapter is parser-light:
- * rather than pulling in Gradle Tooling API (huge dependency, requires a running Gradle daemon) we
- * extract the project structure from {@code settings.gradle} and the per-module {@code sourceSets}
- * blocks.
+ * build.gradle.kts} (Kotlin DSL) and {@code settings.gradle}, {@code settings.gradle.kts}, plus the
+ * version-catalog file {@code gradle/libs.versions.toml}. The adapter is parser-light: rather than
+ * pulling in Gradle Tooling API (huge dependency, requires a running Gradle daemon) we extract the
+ * project structure from {@code settings.gradle} and the per-module {@code sourceSets} blocks.
  *
  * <h2>What we parse</h2>
  *
@@ -39,9 +38,9 @@ import org.slf4j.LoggerFactory;
  *   <li><b>dependencies</b> — {@code dependencies { implementation 'g:a:v' } } / {@code api(...)} /
  *       {@code compileOnly(...)} blocks. We collect the {@code group:artifact:version} triples and
  *       resolve them against the local Maven repository (Gradle re-uses {@code ~/.m2/repository}
- *       via {@code mavenLocal()}). The version-catalog {@code gradle/libs.versions.toml} is
- *       parsed for {@code alias -> g:a:v} mappings so {@code implementation libs.foo.bar}
- *       references resolve to a concrete coordinate.
+ *       via {@code mavenLocal()}). The version-catalog {@code gradle/libs.versions.toml} is parsed
+ *       for {@code alias -> g:a:v} mappings so {@code implementation libs.foo.bar} references
+ *       resolve to a concrete coordinate.
  *   <li><b>version-catalog</b> — {@code gradle/libs.versions.toml}: alias names from the {@code
  *       [libraries]} section.
  * </ul>
@@ -77,9 +76,9 @@ public final class GradleAdapter implements BuildAdapter {
               + "version\\s*:\\s*['\"]([\\w.\\-+\\.]+)['\"]");
 
   /**
-   * Kotlin DSL {@code implementation("group:artifact:version")} / {@code api("group:artifact:version")}
-   * and friends. Identical regex to {@link #SHORT_DEP} but kept separate for documentation /
-   * future divergence.
+   * Kotlin DSL {@code implementation("group:artifact:version")} / {@code
+   * api("group:artifact:version")} and friends. Identical regex to {@link #SHORT_DEP} but kept
+   * separate for documentation / future divergence.
    */
   private static final Pattern KOTLIN_DEP =
       Pattern.compile("['\"]([\\w.\\-]+):([\\w.\\-]+):([\\w.\\-+\\.]+)['\"]");
@@ -91,7 +90,9 @@ public final class GradleAdapter implements BuildAdapter {
   private static final Pattern CATALOG_REF =
       Pattern.compile("\\blibs\\.([a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*)");
 
-  /** {@code sourceSets.main.java.srcDirs = [...]} / {@code sourceSets["main"].java.srcDirs(...)}. */
+  /**
+   * {@code sourceSets.main.java.srcDirs = [...]} / {@code sourceSets["main"].java.srcDirs(...)}.
+   */
   private static final Pattern SRCDIRS_BLOCK =
       Pattern.compile(
           "sourceSets?\\s*[\\.\"']?\\s*([\\w\"']+)?\\s*[\\.\"']?\\s*(?:java|kotlin)?\\s*[\\.\"']?"
@@ -417,23 +418,21 @@ public final class GradleAdapter implements BuildAdapter {
     }
     // First, collect [versions] refs.
     Map<String, String> versions = new LinkedHashMap<>();
-    Pattern verTbl =
-        Pattern.compile("\\[versions\\](.+?)(?=\\n\\[|\\z)", Pattern.DOTALL);
+    Pattern verTbl = Pattern.compile("\\[versions\\](.+?)(?=\\n\\[|\\z)", Pattern.DOTALL);
     Matcher vm = verTbl.matcher(text);
     while (vm.find()) {
-      Matcher entry = Pattern.compile("^(\\w[\\w-]*)\\s*=\\s*\"([^\"]+)\"", Pattern.MULTILINE).matcher(vm.group(1));
+      Matcher entry =
+          Pattern.compile("^(\\w[\\w-]*)\\s*=\\s*\"([^\"]+)\"", Pattern.MULTILINE)
+              .matcher(vm.group(1));
       while (entry.find()) versions.put(entry.group(1), entry.group(2));
     }
     // Then, the [libraries] table.
     Map<String, String> libs = new LinkedHashMap<>();
-    Pattern libTbl =
-        Pattern.compile("\\[libraries\\](.+?)(?=\\n\\[|\\z)", Pattern.DOTALL);
+    Pattern libTbl = Pattern.compile("\\[libraries\\](.+?)(?=\\n\\[|\\z)", Pattern.DOTALL);
     Matcher lm = libTbl.matcher(text);
     while (lm.find()) {
       Matcher entry =
-          Pattern.compile(
-                  "(\\w[\\w-]*)\\s*=\\s*\\{([^}]+)\\}",
-                  Pattern.MULTILINE)
+          Pattern.compile("(\\w[\\w-]*)\\s*=\\s*\\{([^}]+)\\}", Pattern.MULTILINE)
               .matcher(lm.group(1));
       while (entry.find()) {
         String alias = entry.group(1);
@@ -454,8 +453,7 @@ public final class GradleAdapter implements BuildAdapter {
 
   /** Extract {@code key = "value"} from a body string. Returns null if not found. */
   private static String extractString(String body, String key) {
-    Matcher m =
-        Pattern.compile(key + "\\s*=\\s*\"([^\"]+)\"").matcher(body);
+    Matcher m = Pattern.compile(key + "\\s*=\\s*\"([^\"]+)\"").matcher(body);
     return m.find() ? m.group(1) : null;
   }
 
@@ -517,8 +515,8 @@ public final class GradleAdapter implements BuildAdapter {
   // ---------------- safety ----------------
 
   /**
-   * Resolve {@code rel} against {@code root} and verify the result is still under {@code root}
-   * (no path traversal via {@code ../}). Returns null when the result escapes.
+   * Resolve {@code rel} against {@code root} and verify the result is still under {@code root} (no
+   * path traversal via {@code ../}). Returns null when the result escapes.
    */
   private static Path safeResolveInside(Path root, String rel) {
     if (rel == null || rel.isBlank()) return null;

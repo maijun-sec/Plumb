@@ -34,16 +34,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * R740-R743: AST-level CWE-690 (NULL Pointer Dereference
- * From Return) checker.
- */
+/** R740-R743: AST-level CWE-690 (NULL Pointer Dereference From Return) checker. */
 public final class NullDerefFromReturnAstCheck implements AstChecker {
 
   private static final RuleDef RULE =
@@ -55,8 +51,7 @@ public final class NullDerefFromReturnAstCheck implements AstChecker {
           List.of("CWE-690"),
           "org.plumb.style.security.NullDerefFromReturnAstCheck",
           true,
-          List.of("ast-security-null-deref-from-return", "null-deref-from-return-ast")
-      );
+          List.of("ast-security-null-deref-from-return", "null-deref-from-return-ast"));
 
   private final Set<String> reported = new HashSet<>();
   private final Map<String, AssignRecord> assigns = new HashMap<>();
@@ -75,12 +70,14 @@ public final class NullDerefFromReturnAstCheck implements AstChecker {
      * anywhere else (a call result, a container lookup, an unknown expression).
      *
      * <p>Only a syntactically explicit reference copy sets this. It is what lets a null check on
-     * {@code a} be honoured for a dereference of {@code b} when the code says {@code b = a}:
-     * the two names denote one object, so the guard holds for both.
+     * {@code a} be honoured for a dereference of {@code b} when the code says {@code b = a}: the
+     * two names denote one object, so the guard holds for both.
      */
     final String copiedFrom;
 
-    AssignRecord(int line, Statement stmt) { this(line, stmt, null); }
+    AssignRecord(int line, Statement stmt) {
+      this(line, stmt, null);
+    }
 
     AssignRecord(int line, Statement stmt, String copiedFrom) {
       this.line = line;
@@ -92,11 +89,17 @@ public final class NullDerefFromReturnAstCheck implements AstChecker {
   private static class UseRecord {
     final int line;
     final Statement stmt;
-    UseRecord(int line, Statement stmt) { this.line = line; this.stmt = stmt; }
+
+    UseRecord(int line, Statement stmt) {
+      this.line = line;
+      this.stmt = stmt;
+    }
   }
 
   @Override
-  public String name() { return "null-deref-from-return-ast"; }
+  public String name() {
+    return "null-deref-from-return-ast";
+  }
 
   @Override
   public void init(StyleContext ctx) {
@@ -307,9 +310,9 @@ public final class NullDerefFromReturnAstCheck implements AstChecker {
   /**
    * R1110: {@code varName} plus the transitive chain of variables it was copied from.
    *
-   * <p>The variable itself comes first so a check on it still wins, keeping the original
-   * behaviour intact for the common case. Bounded by {@link #COPY_CHAIN_LIMIT} and by refusing to
-   * revisit a name, so {@code a = a} or a cycle terminates.
+   * <p>The variable itself comes first so a check on it still wins, keeping the original behaviour
+   * intact for the common case. Bounded by {@link #COPY_CHAIN_LIMIT} and by refusing to revisit a
+   * name, so {@code a = a} or a cycle terminates.
    */
   private java.util.LinkedHashSet<String> guardCandidates(String varName) {
     java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
@@ -429,7 +432,8 @@ public final class NullDerefFromReturnAstCheck implements AstChecker {
           RULE,
           "Variable `"
               + varName
-              + "` is dereferenced without a null check after assignment from a method call (CWE-690).",
+              + "` is dereferenced without a null check after assignment from a method call"
+              + " (CWE-690).",
           RuleDef.Severity.MEDIUM,
           varName);
     }

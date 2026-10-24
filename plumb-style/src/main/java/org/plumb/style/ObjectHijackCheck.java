@@ -4,7 +4,6 @@ import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 
@@ -32,8 +31,7 @@ public final class ObjectHijackCheck implements AstChecker {
           List.of("CWE-491"),
           "org.plumb.style.ObjectHijackCheck",
           true,
-          List.of("ast-misc-object-hijack", "object-hijack")
-      );
+          List.of("ast-misc-object-hijack", "object-hijack"));
 
   @Override
   public String name() {

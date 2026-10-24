@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class TestWithoutAssertionCheck implements AstChecker {
           List.of(),
           "org.plumb.style.TestWithoutAssertionCheck",
           true,
-          List.of("ast-style-no-assertion", "test-no-assertion")
-      );
+          List.of("ast-style-no-assertion", "test-no-assertion"));
 
   /** Method names that count as "assertions" in tests. */
   private static final Set<String> ASSERTION_PREFIXES = Set.of("assert", "fail", "verify");

@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class ParenPadCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ParenPadCheck",
           true,
-          List.of("ast-style-pad", "parenpad")
-      );
+          List.of("ast-style-pad", "parenpad"));
 
   @Override
   public String name() {

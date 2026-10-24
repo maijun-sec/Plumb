@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class JUnitAssertionsShouldIncludeMessageCheck implements AstChecke
           List.of(),
           "org.plumb.style.JUnitAssertionsShouldIncludeMessageCheck",
           true,
-          List.of("ast-style-assertions-should-include-message", "junit-message")
-      );
+          List.of("ast-style-assertions-should-include-message", "junit-message"));
 
   @Override
   public String name() {

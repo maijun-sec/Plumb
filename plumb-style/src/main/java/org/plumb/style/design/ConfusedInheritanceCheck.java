@@ -1,7 +1,6 @@
 package org.plumb.style.design;
 
 import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.HashMap;
@@ -9,7 +8,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -30,16 +28,16 @@ import org.plumb.style.StyleContext;
  * implements} list, which produced 100% false positives ? almost every JPA / Spring class has
  * exactly this shape ({@code class User extends BaseEntity implements Serializable}).
  *
- * <p>S4 audit (2026-10-17) replaced that with a meaningful check: walk the extends/implements
- * list of the parent class as written in the same compilation unit (single-file resolution) and
- * flag the child only when it declares an interface that the parent already declares.
+ * <p>S4 audit (2026-10-17) replaced that with a meaningful check: walk the extends/implements list
+ * of the parent class as written in the same compilation unit (single-file resolution) and flag the
+ * child only when it declares an interface that the parent already declares.
  *
  * <p><b>M5 part-2 migration (2026-10-17):</b> the original used {@code visit(CompilationUnit) +
- * findAll(ClassOrInterfaceDeclaration)} (1 walk) + a manual per-class loop. This rewrite keeps
- * the per-class logic in {@code visit(ClassOrInterfaceDeclaration, ctx)} ? the dispatcher hands
- * each declaration to us directly. The class-by-name index is still needed (we look up the
- * parent's interfaces by simple name) and is built lazily in {@code init} so the work is
- * amortised across every {@code visit} call within the same file.
+ * findAll(ClassOrInterfaceDeclaration)} (1 walk) + a manual per-class loop. This rewrite keeps the
+ * per-class logic in {@code visit(ClassOrInterfaceDeclaration, ctx)} ? the dispatcher hands each
+ * declaration to us directly. The class-by-name index is still needed (we look up the parent's
+ * interfaces by simple name) and is built lazily in {@code init} so the work is amortised across
+ * every {@code visit} call within the same file.
  */
 public final class ConfusedInheritanceCheck implements AstChecker {
 
@@ -52,12 +50,15 @@ public final class ConfusedInheritanceCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ConfusedInheritanceCheck",
           false,
-          List.of("ast-design-confused-inheritance", "confused-inheritance")
-      ); // R-834: disabled by default until Juliet baseline re-measured.
+          List.of(
+              "ast-design-confused-inheritance",
+              "confused-inheritance")); // R-834: disabled by default until Juliet baseline
+
+  // re-measured.
 
   /**
-   * Per-file index of class declarations by simple name. Populated by {@link #init} and consumed
-   * by {@link #visit(ClassOrInterfaceDeclaration, StyleContext)}. Cleared in {@code init} so the
+   * Per-file index of class declarations by simple name. Populated by {@link #init} and consumed by
+   * {@link #visit(ClassOrInterfaceDeclaration, StyleContext)}. Cleared in {@code init} so the
    * checker is re-entrant across multiple files (the dispatcher shares one checker instance per
    * type but invokes init + visit per file).
    */

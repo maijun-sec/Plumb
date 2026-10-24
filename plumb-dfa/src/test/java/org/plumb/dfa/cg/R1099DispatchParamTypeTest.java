@@ -34,22 +34,21 @@ class R1099DispatchParamTypeTest {
   @Test
   void intArgumentIsNotAssignableToStringParameter() {
     // This is the exact FP: `numbers.process(7)` binding to `process(String)`.
-    assertThat(VtaCallGraphStrategy.isAssignableForTest(t(TacType.Kind.INT), t(TacType.Kind.STRING)))
+    assertThat(
+            VtaCallGraphStrategy.isAssignableForTest(t(TacType.Kind.INT), t(TacType.Kind.STRING)))
         .as("a primitive int must not be treated as assignable to a String parameter")
         .isFalse();
   }
 
   @Test
   void samePrimitiveIsAssignable() {
-    assertThat(
-            VtaCallGraphStrategy.isAssignableForTest(t(TacType.Kind.INT), t(TacType.Kind.INT)))
+    assertThat(VtaCallGraphStrategy.isAssignableForTest(t(TacType.Kind.INT), t(TacType.Kind.INT)))
         .isTrue();
   }
 
   @Test
   void differentPrimitivesAreNotAssignable() {
-    assertThat(
-            VtaCallGraphStrategy.isAssignableForTest(t(TacType.Kind.INT), t(TacType.Kind.LONG)))
+    assertThat(VtaCallGraphStrategy.isAssignableForTest(t(TacType.Kind.INT), t(TacType.Kind.LONG)))
         .as("int does not widen to long implicitly at a call site the engine models")
         .isFalse();
     assertThat(
@@ -61,8 +60,7 @@ class R1099DispatchParamTypeTest {
   void referenceToReferenceIsAlwaysAccepted() {
     // No subtype lattice is available, so every reference pairing stays admissible.
     assertThat(
-            VtaCallGraphStrategy.isAssignableForTest(
-                t(TacType.Kind.STRING), t(TacType.Kind.CLASS)))
+            VtaCallGraphStrategy.isAssignableForTest(t(TacType.Kind.STRING), t(TacType.Kind.CLASS)))
         .isTrue();
     assertThat(
             VtaCallGraphStrategy.isAssignableForTest(t(TacType.Kind.CLASS), t(TacType.Kind.STRING)))

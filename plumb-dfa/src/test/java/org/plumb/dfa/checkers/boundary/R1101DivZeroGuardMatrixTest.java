@@ -24,8 +24,8 @@ import org.plumb.tac.translate.TacTranslator;
  * <h2>The defect</h2>
  *
  * <p>{@code if (data == 0) { return 0; } a / data;} is the most common way real code avoids
- * divide-by-zero, and it fired as a false positive while the mirror-image {@code if (data != 0)
- * { a / data; }} was correctly suppressed. The asymmetry was structural:
+ * divide-by-zero, and it fired as a false positive while the mirror-image {@code if (data != 0) { a
+ * / data; }} was correctly suppressed. The asymmetry was structural:
  *
  * <pre>
  *   BINOP t0 = data EQ 0
@@ -38,11 +38,11 @@ import org.plumb.tac.translate.TacTranslator;
  *     a / data
  * </pre>
  *
- * <p>Two things had to be true for the false positive, and both were false. First,
- * {@code GuardTracker} never recorded {@code EQ} at all -- it was excluded from both
- * {@code BOUNDING_OPS} and {@code NON_ZERO_OPS}, correctly, because "equals a literal" is not a
- * range bound. Second, the fact the else edge establishes is a false-edge one, and the tracker had
- * no notion of false edges at all.
+ * <p>Two things had to be true for the false positive, and both were false. First, {@code
+ * GuardTracker} never recorded {@code EQ} at all -- it was excluded from both {@code BOUNDING_OPS}
+ * and {@code NON_ZERO_OPS}, correctly, because "equals a literal" is not a range bound. Second, the
+ * fact the else edge establishes is a false-edge one, and the tracker had no notion of false edges
+ * at all.
  *
  * <h2>The fix</h2>
  *

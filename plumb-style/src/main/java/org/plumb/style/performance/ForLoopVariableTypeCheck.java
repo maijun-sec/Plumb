@@ -6,7 +6,6 @@ import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.type.PrimitiveType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class ForLoopVariableTypeCheck implements AstChecker {
           List.of("CWE-682"),
           "org.plumb.style.ForLoopVariableTypeCheck",
           true,
-          List.of("ast-performance-loop-float", "for-loop-variable-type")
-      );
+          List.of("ast-performance-loop-float", "for-loop-variable-type"));
 
   @Override
   public String name() {

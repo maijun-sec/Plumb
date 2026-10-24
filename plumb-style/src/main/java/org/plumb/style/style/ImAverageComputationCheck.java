@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.Expression;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class ImAverageComputationCheck implements AstChecker {
           List.of("CWE-190"),
           "org.plumb.style.ImAverageComputationCheck",
           true,
-          List.of("ast-style-average-computation", "im-average")
-      );
+          List.of("ast-style-average-computation", "im-average"));
 
   @Override
   public String name() {

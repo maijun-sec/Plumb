@@ -69,10 +69,7 @@ class AstCheckerSmokeTest {
     // (CLASS) and FinalClassCheck (CLASS_FINAL).
     assertThat(
             findings.stream()
-                .anyMatch(
-                    f ->
-                        f.rule() != null
-                            && f.rule().ruleId().name().equals("CLASS_NAMING")))
+                .anyMatch(f -> f.rule() != null && f.rule().ruleId().name().equals("CLASS_NAMING")))
         .isTrue();
   }
 

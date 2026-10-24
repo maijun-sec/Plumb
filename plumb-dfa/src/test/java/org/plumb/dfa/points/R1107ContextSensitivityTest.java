@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.plumb.dfa.points.AbstractObject.Context;
 import org.plumb.dfa.points.AbstractObject.Obj;
 import org.plumb.dfa.points.AbstractObject.Policy;
 import org.plumb.parser.JavaSourceParser;
@@ -41,8 +40,8 @@ import org.plumb.tac.translate.TacTranslator;
  * <p>Taint rides on the same edges. When {@code pick} is a source-adjacent helper and the two call
  * sites carry different provenance, a merged context is indistinguishable from taint leaking
  * between unrelated call paths, and no rule-level fix can recover the distinction because the
- * information was already merged inside the solver. So this is tested as a solver property, not
- * as a taint property.
+ * information was already merged inside the solver. So this is tested as a solver property, not as
+ * a taint property.
  *
  * <p>Each policy is exercised, and {@link Policy#CONTEXT_INSENSITIVE} is asserted to answer the
  * <em>opposite</em> way. That is the negative control: without it, a solver that ignored the policy
@@ -138,7 +137,8 @@ class R1107ContextSensitivityTest {
   /**
    * Negative control: the context-insensitive policy must answer differently on the same program.
    *
-   * <p>Without this, "no alias everywhere" passes {@link #callSiteSensitivityKeepsTheTwoInvocationsApart}.
+   * <p>Without this, "no alias everywhere" passes {@link
+   * #callSiteSensitivityKeepsTheTwoInvocationsApart}.
    */
   @Test
   void contextInsensitivityMergesTheTwoInvocations() throws Exception {
@@ -168,8 +168,8 @@ class R1107ContextSensitivityTest {
    * call-site answer must be strictly sharper.
    *
    * <p>This pins the relationship between the two policies: {@code CALL_SITE} is a refinement of
-   * the insensitive answer, never a different analysis. If a future change made CALL_SITE report
-   * an alias the insensitive run does not, the refinement property would be violated.
+   * the insensitive answer, never a different analysis. If a future change made CALL_SITE report an
+   * alias the insensitive run does not, the refinement property would be violated.
    */
   @Test
   void callSiteAnswerIsAStrRefinementOfTheInsensitiveOne() throws Exception {
@@ -180,12 +180,13 @@ class R1107ContextSensitivityTest {
     TacOperand.TacVar v2 = var(p, "main", "v2");
     String mainSig = signatureOf(p, "main");
 
-    List<String[]> pairs = List.of(
-        new String[] {"v1", "o1"},
-        new String[] {"v1", "o2"},
-        new String[] {"v2", "o1"},
-        new String[] {"v2", "o2"},
-        new String[] {"v1", "v2"});
+    List<String[]> pairs =
+        List.of(
+            new String[] {"v1", "o1"},
+            new String[] {"v1", "o2"},
+            new String[] {"v2", "o1"},
+            new String[] {"v2", "o2"},
+            new String[] {"v1", "v2"});
 
     PointsToSolver insens = new PointsToSolver(Policy.CONTEXT_INSENSITIVE);
     insens.solve(parse(IDENTITY_TWICE, "CompareInsens.java").functions());
@@ -193,10 +194,9 @@ class R1107ContextSensitivityTest {
     cs.solve(parse(IDENTITY_TWICE, "CompareCs.java").functions());
 
     for (String[] pair : pairs) {
-      boolean insensSays = insens.mayAlias(mainSig,
-          var(p, "main", pair[0]), var(p, "main", pair[1]));
-      boolean csSays = cs.mayAlias(mainSig,
-          var(p, "main", pair[0]), var(p, "main", pair[1]));
+      boolean insensSays =
+          insens.mayAlias(mainSig, var(p, "main", pair[0]), var(p, "main", pair[1]));
+      boolean csSays = cs.mayAlias(mainSig, var(p, "main", pair[0]), var(p, "main", pair[1]));
       assertThat(csSays)
           .as("CALL_SITE may only remove aliases, never add them (%s, %s)", pair[0], pair[1])
           .isEqualTo(insensSays && csSays);

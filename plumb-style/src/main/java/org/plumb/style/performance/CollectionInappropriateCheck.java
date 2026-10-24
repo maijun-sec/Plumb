@@ -2,7 +2,6 @@ package org.plumb.style.performance;
 
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,8 +11,8 @@ import org.plumb.style.StyleContext;
  * Using {@code Hashtable} / {@code Vector} / {@code Stack} ? prefer {@code java.util.concurrent}
  * alternatives or {@code ArrayList} / {@code HashMap}.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ClassOrInterfaceType.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ClassOrInterfaceType.class)} before.
  */
 public final class CollectionInappropriateCheck implements AstChecker {
 
@@ -26,8 +25,7 @@ public final class CollectionInappropriateCheck implements AstChecker {
           List.of(),
           "org.plumb.style.CollectionInappropriateCheck",
           true,
-          List.of("ast-performance-collection-inappropriate", "collection-inappropriate")
-      );
+          List.of("ast-performance-collection-inappropriate", "collection-inappropriate"));
 
   @Override
   public String name() {
@@ -47,9 +45,11 @@ public final class CollectionInappropriateCheck implements AstChecker {
         line,
         col,
         DEFAULT_RULE,
-        "Use " + name
+        "Use "
+            + name
             + " from java.util.concurrent or ArrayList/HashMap; "
-            + name + " is legacy/synchronized",
+            + name
+            + " is legacy/synchronized",
         RuleDef.Severity.LOW,
         name);
   }

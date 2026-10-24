@@ -22,7 +22,6 @@ import com.github.javaparser.ast.expr.NameExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -39,8 +38,11 @@ public final class ImmutableFieldCheck implements AstChecker {
           List.of(),
           "org.plumb.style.ImmutableFieldCheck",
           false,
-          List.of("ast-style-immutable-field-strict", "immutablefieldcheck")
-      ); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832 baseline)
+          List.of(
+              "ast-style-immutable-field-strict",
+              "immutablefieldcheck")); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832
+
+  // baseline)
 
   @Override
   public String name() {
@@ -52,32 +54,32 @@ public final class ImmutableFieldCheck implements AstChecker {
 
   @Override
   public void visit(ClassOrInterfaceDeclaration c, StyleContext ctx) {
-// Single walk per class to collect the set of
-// target-name strings that are reassigned anywhere
-// in the class body.
-Set<String> reassigned = new HashSet<>();
-c.walk(
-    AssignExpr.class,
-    ae -> {
-      if (ae.getTarget() instanceof NameExpr ne) {
-        reassigned.add(ne.getNameAsString());
+    // Single walk per class to collect the set of
+    // target-name strings that are reassigned anywhere
+    // in the class body.
+    Set<String> reassigned = new HashSet<>();
+    c.walk(
+        AssignExpr.class,
+        ae -> {
+          if (ae.getTarget() instanceof NameExpr ne) {
+            reassigned.add(ne.getNameAsString());
+          }
+        });
+    for (FieldDeclaration f : c.getFields()) {
+      if (f.isFinal() || f.isStatic()) return;
+      for (VariableDeclarator v : f.getVariables()) {
+        String name = v.getNameAsString();
+        if (reassigned.contains(name)) return;
+        int line = v.getBegin().map(p -> p.line).orElse(-1);
+        int col = v.getBegin().map(p -> p.column).orElse(-1);
+        ctx.report(
+            line,
+            col,
+            DEFAULT_RULE,
+            "Field " + name + " could be final (never reassigned)",
+            RuleDef.Severity.LOW,
+            name);
       }
-    });
-for (FieldDeclaration f : c.getFields()) {
-  if (f.isFinal() || f.isStatic()) return;
-  for (VariableDeclarator v : f.getVariables()) {
-    String name = v.getNameAsString();
-    if (reassigned.contains(name)) return;
-    int line = v.getBegin().map(p -> p.line).orElse(-1);
-    int col = v.getBegin().map(p -> p.column).orElse(-1);
-    ctx.report(
-        line,
-        col,
-        DEFAULT_RULE,
-        "Field " + name + " could be final (never reassigned)",
-        RuleDef.Severity.LOW,
-        name);
-  }
-}
+    }
   }
 }

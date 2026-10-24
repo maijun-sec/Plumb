@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class InstantiationToGetClassCheck implements AstChecker {
           List.of(),
           "org.plumb.style.InstantiationToGetClassCheck",
           true,
-          List.of("ast-style-instantiation-to-class", "instantiationtogetclasscheck")
-      );
+          List.of("ast-style-instantiation-to-class", "instantiationtogetclasscheck"));
 
   @Override
   public String name() {

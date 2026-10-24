@@ -7,7 +7,6 @@ import com.github.javaparser.ast.stmt.ThrowStmt;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class PreserveStackTraceCheck implements AstChecker {
           List.of("CWE-209"),
           "org.plumb.style.PreserveStackTraceCheck",
           true,
-          List.of("ast-style-preserve-stack-trace", "preserve-stack")
-      );
+          List.of("ast-style-preserve-stack-trace", "preserve-stack"));
 
   private Set<String> catchParamNames = new HashSet<>();
 

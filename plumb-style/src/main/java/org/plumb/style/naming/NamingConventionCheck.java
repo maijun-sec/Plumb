@@ -2,18 +2,16 @@ package org.plumb.style.naming;
 
 import com.github.javaparser.ast.body.VariableDeclarator;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Local variable starting with uppercase letter (non-{@code String} types) ? should be
- * camelCase.
+ * Local variable starting with uppercase letter (non-{@code String} types) ? should be camelCase.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(VariableDeclarator.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(VariableDeclarator.class)} before.
  */
 public final class NamingConventionCheck implements AstChecker {
 
@@ -26,8 +24,7 @@ public final class NamingConventionCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NamingConventionCheck",
           true,
-          List.of("ast-naming-naming-convention-alpha", "naming-convention")
-      );
+          List.of("ast-naming-naming-convention-alpha", "naming-convention"));
 
   @Override
   public String name() {
@@ -45,7 +42,6 @@ public final class NamingConventionCheck implements AstChecker {
     if ("String".equals(v.getTypeAsString())) return;
     int line = v.getBegin().map(p -> p.line).orElse(-1);
     int col = v.getBegin().map(p -> p.column).orElse(-1);
-    ctx.report(
-        line, col, DEFAULT_RULE, "Naming convention: " + name, RuleDef.Severity.LOW, name);
+    ctx.report(line, col, DEFAULT_RULE, "Naming convention: " + name, RuleDef.Severity.LOW, name);
   }
 }

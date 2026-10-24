@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class AvoidUsingVolatileCheck implements AstChecker {
           List.of(),
           "org.plumb.style.AvoidUsingVolatileCheck",
           true,
-          List.of("ast-style-volatile", "avoid-volatile")
-      );
+          List.of("ast-style-volatile", "avoid-volatile"));
 
   @Override
   public String name() {

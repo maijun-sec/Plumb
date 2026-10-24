@@ -4,7 +4,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.stmt.SwitchStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class FallThroughCheck implements AstChecker {
           List.of(),
           "org.plumb.style.FallThroughCheck",
           true,
-          List.of("ast-style-fallthrough", "fallthroughcheck")
-      );
+          List.of("ast-style-fallthrough", "fallthroughcheck"));
 
   @Override
   public String name() {
@@ -35,29 +33,29 @@ public final class FallThroughCheck implements AstChecker {
 
   @Override
   public void visit(SwitchStmt s, StyleContext ctx) {
-java.util.List<com.github.javaparser.ast.stmt.SwitchEntry> entries = s.getEntries();
-for (int i = 0; i + 1 < entries.size(); i++) {
-  com.github.javaparser.ast.stmt.SwitchEntry e = entries.get(i);
-  com.github.javaparser.ast.stmt.SwitchEntry next = entries.get(i + 1);
-  if (e.getLabels().isEmpty() || e.getStatements().isEmpty()) return;
-  com.github.javaparser.ast.stmt.Statement last =
-      e.getStatements().get(e.getStatements().size() - 1);
-  boolean hasFallthrough = false;
-  if (last instanceof com.github.javaparser.ast.stmt.ReturnStmt) hasFallthrough = true;
-  else if (last instanceof com.github.javaparser.ast.stmt.BreakStmt) hasFallthrough = true;
-  else if (last instanceof com.github.javaparser.ast.stmt.ContinueStmt) hasFallthrough = true;
-  else if (last instanceof com.github.javaparser.ast.stmt.ThrowStmt) hasFallthrough = true;
-  if (!hasFallthrough) {
-    int line = e.getBegin().map(p -> p.line).orElse(-1);
-    int col = e.getBegin().map(p -> p.column).orElse(-1);
-    ctx.report(
-        line,
-        col,
-        DEFAULT_RULE,
-        "Switch case fallthrough without break/return/throw",
-        RuleDef.Severity.LOW,
-        "case");
-  }
-}
+    java.util.List<com.github.javaparser.ast.stmt.SwitchEntry> entries = s.getEntries();
+    for (int i = 0; i + 1 < entries.size(); i++) {
+      com.github.javaparser.ast.stmt.SwitchEntry e = entries.get(i);
+      com.github.javaparser.ast.stmt.SwitchEntry next = entries.get(i + 1);
+      if (e.getLabels().isEmpty() || e.getStatements().isEmpty()) return;
+      com.github.javaparser.ast.stmt.Statement last =
+          e.getStatements().get(e.getStatements().size() - 1);
+      boolean hasFallthrough = false;
+      if (last instanceof com.github.javaparser.ast.stmt.ReturnStmt) hasFallthrough = true;
+      else if (last instanceof com.github.javaparser.ast.stmt.BreakStmt) hasFallthrough = true;
+      else if (last instanceof com.github.javaparser.ast.stmt.ContinueStmt) hasFallthrough = true;
+      else if (last instanceof com.github.javaparser.ast.stmt.ThrowStmt) hasFallthrough = true;
+      if (!hasFallthrough) {
+        int line = e.getBegin().map(p -> p.line).orElse(-1);
+        int col = e.getBegin().map(p -> p.column).orElse(-1);
+        ctx.report(
+            line,
+            col,
+            DEFAULT_RULE,
+            "Switch case fallthrough without break/return/throw",
+            RuleDef.Severity.LOW,
+            "case");
+      }
+    }
   }
 }

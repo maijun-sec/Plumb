@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.stmt.EmptyStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class EmptyStatementCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EmptyStatementCheck",
           true,
-          List.of("ast-style-statement", "style-statement")
-      );
+          List.of("ast-style-statement", "style-statement"));
 
   @Override
   public String name() {
@@ -36,11 +34,6 @@ public final class EmptyStatementCheck implements AstChecker {
     int line = es.getBegin().map(p -> p.line).orElse(-1);
     int col = es.getBegin().map(p -> p.column).orElse(-1);
     ctx.report(
-        line,
-        col,
-        DEFAULT_RULE,
-        "Empty statement (useless semicolon)",
-        RuleDef.Severity.LOW,
-        ";");
+        line, col, DEFAULT_RULE, "Empty statement (useless semicolon)", RuleDef.Severity.LOW, ";");
   }
 }

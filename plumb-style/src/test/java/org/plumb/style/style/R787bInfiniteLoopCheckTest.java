@@ -17,7 +17,6 @@
  */
 package org.plumb.style.style;
 
-import org.plumb.rules.RuleDef;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.javaparser.ParserConfiguration;
@@ -60,9 +59,7 @@ class R787bInfiniteLoopCheckTest {
     // f.ruleId() and looks up CWE via
     // plumb_rule_to_cwe.json, which is exactly the
     // shape we want.
-    return findings.stream()
-        .filter(f -> "ast-style-infinite-loop".equals(f.ruleId()))
-        .count();
+    return findings.stream().filter(f -> "ast-style-infinite-loop".equals(f.ruleId())).count();
   }
 
   // ─────── Constant-true detection (R759-E regression) ───────

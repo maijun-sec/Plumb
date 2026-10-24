@@ -3,7 +3,6 @@ package org.plumb.style.bug;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class MethodSignatureCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MethodSignatureCheck",
           true,
-          List.of("ast-bug-method-signature", "method-signature")
-      );
+          List.of("ast-bug-method-signature", "method-signature"));
 
   @Override
   public String name() {

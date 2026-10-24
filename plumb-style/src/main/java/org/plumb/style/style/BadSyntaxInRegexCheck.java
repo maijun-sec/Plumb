@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.CompilationUnit;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class BadSyntaxInRegexCheck implements AstChecker {
           List.of(),
           "org.plumb.style.BadSyntaxInRegexCheck",
           true,
-          List.of("ast-style-syntax-in-regex", "badsyntaxinregex")
-      );
+          List.of("ast-style-syntax-in-regex", "badsyntaxinregex"));
 
   @Override
   public String name() {

@@ -179,7 +179,6 @@ class R790cNullDerefFromReturnCheckTest {
             + "  }\n"
             + "}\n";
     assertThat(run(src)).hasSize(1);
-    assertThat(run(src).get(0).rule().ruleId().id())
-        .isEqualTo("ast-style-null-deref-from-return");
+    assertThat(run(src).get(0).rule().ruleId().id()).isEqualTo("ast-style-null-deref-from-return");
   }
 }

@@ -44,7 +44,6 @@ import com.github.javaparser.ast.stmt.Statement;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -92,8 +91,7 @@ public final class CleartextSocketUsageCheck implements AstChecker {
           List.of("CWE-319"),
           "org.plumb.style.security.CleartextSocketUsageCheck",
           true,
-          List.of("dfa-security-cleartext-socket", "cleartext-socket-usage")
-      );
+          List.of("dfa-security-cleartext-socket", "cleartext-socket-usage"));
 
   @Override
   public String name() {

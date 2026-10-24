@@ -23,9 +23,9 @@ import org.plumb.tac.ir.TacOperand;
  *   st.executeQuery("... ORDER BY " + allowed);   // safe, and the rule said otherwise
  * </pre>
  *
- * <p>Nothing in the engine modelled this. Sanitizers were matched by callee signature
- * ({@code Integer.parseInt}, {@code URLEncoder.encode}); an allowlist is not a call, it is a
- * <em>value</em> being narrowed to a finite set, so no signature can express it.
+ * <p>Nothing in the engine modelled this. Sanitizers were matched by callee signature ({@code
+ * Integer.parseInt}, {@code URLEncoder.encode}); an allowlist is not a call, it is a <em>value</em>
+ * being narrowed to a finite set, so no signature can express it.
  *
  * <h2>Why the narrowing has to be conservative in both directions</h2>
  *
@@ -35,8 +35,8 @@ import org.plumb.tac.ir.TacOperand;
  * <ul>
  *   <li>{@code if (name.equals("a")) use(name);} does NOT make {@code name} safe <em>on the other
  *       edge</em>, and the fall-through of that if still carries arbitrary input;
- *   <li>{@code if (!"a".equals(x) &amp;&amp; !"b".equals(x)) { x = "a"; } } DOES make {@code x} safe
- *       afterwards, because both exits from the guard are bounded to a literal.
+ *   <li>{@code if (!"a".equals(x) &amp;&amp; !"b".equals(x)) { x = "a"; } } DOES make {@code x}
+ *       safe afterwards, because both exits from the guard are bounded to a literal.
  * </ul>
  *
  * <p>The difference is whether the narrowing is <b>definitely reassigned</b> on the
@@ -73,14 +73,14 @@ public final class EqualityAllowlistTracker {
    * Variables that have been compared against literals but NOT yet proven safe.
    *
    * <p>Tracked separately because "compared" and "bounded" are different conclusions, and only the
-   * second one may clear taint. Collapsing them would silence
-   * {@code if (name.equals("a")) use(name);} on its fall-through edge.
+   * second one may clear taint. Collapsing them would silence {@code if (name.equals("a"))
+   * use(name);} on its fall-through edge.
    */
   private final Set<String> compared = new LinkedHashSet<>();
 
   /**
-   * Set when {@link #observe} newly proved a variable safe, and cleared by
-   * {@link #consumeNewlyProved()}.
+   * Set when {@link #observe} newly proved a variable safe, and cleared by {@link
+   * #consumeNewlyProved()}.
    *
    * <p>Exists so the checker can clear taint labels exactly once per new proof instead of
    * re-scanning every local on every instruction. A plain boolean is enough: what matters is
@@ -254,10 +254,10 @@ public final class EqualityAllowlistTracker {
   /**
    * Comparison-result temp -> the variable that comparison tested.
    *
-   * <p>Follows through negation, so both {@code if (x.equals("a"))} and {@code if
-   * (!"a".equals(x))} attribute the BRANCH to {@code x}. One map rather than a set plus a second
-   * side table, because the association is the whole point: knowing WHICH variable a branch tests
-   * is what lets the later reassignment be checked against the right name.
+   * <p>Follows through negation, so both {@code if (x.equals("a"))} and {@code if (!"a".equals(x))}
+   * attribute the BRANCH to {@code x}. One map rather than a set plus a second side table, because
+   * the association is the whole point: knowing WHICH variable a branch tests is what lets the
+   * later reassignment be checked against the right name.
    */
   private final java.util.Map<String, String> testedByResult = new java.util.LinkedHashMap<>();
 

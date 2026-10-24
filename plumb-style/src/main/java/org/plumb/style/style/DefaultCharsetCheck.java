@@ -2,7 +2,6 @@ package org.plumb.style.style;
 
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class DefaultCharsetCheck implements AstChecker {
           List.of(),
           "org.plumb.style.DefaultCharsetCheck",
           true,
-          List.of("ast-style-default-charset", "default-charset")
-      );
+          List.of("ast-style-default-charset", "default-charset"));
 
   @Override
   public String name() {
@@ -38,7 +36,6 @@ public final class DefaultCharsetCheck implements AstChecker {
     if (!o.getArguments().isEmpty()) return;
     int line = o.getBegin().map(p -> p.line).orElse(-1);
     int col = o.getBegin().map(p -> p.column).orElse(-1);
-    ctx.report(
-        line, col, DEFAULT_RULE, "Default charset usage: " + s, RuleDef.Severity.MEDIUM, s);
+    ctx.report(line, col, DEFAULT_RULE, "Default charset usage: " + s, RuleDef.Severity.MEDIUM, s);
   }
 }

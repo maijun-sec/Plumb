@@ -61,14 +61,13 @@
  */
 package org.plumb.ai.tools;
 
-import org.plumb.reporter.trace.OperandRef;
-import org.plumb.reporter.trace.Trace;
-import org.plumb.reporter.trace.TraceNode;
-
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import org.plumb.reporter.trace.OperandRef;
+import org.plumb.reporter.trace.Trace;
+import org.plumb.reporter.trace.TraceNode;
 
 /**
  * produces a compact one-line summary of a v2 {@link Trace} for inline injection into the
@@ -78,164 +77,157 @@ import java.util.Set;
  */
 public final class V2TraceSummarizer {
 
-    /**
-     * Hard cap on the summary line length. Keeps the ReAct user turn bounded regardless of trace
-     * size; the full trace is reachable via {@code get_dataflow_trace_with_facts}.
-     */
-    public static final int MAX_SUMMARY_CHARS = 200;
+  /**
+   * Hard cap on the summary line length. Keeps the ReAct user turn bounded regardless of trace
+   * size; the full trace is reachable via {@code get_dataflow_trace_with_facts}.
+   */
+  public static final int MAX_SUMMARY_CHARS = 200;
 
-    /**
-     * Maximum number of sink ids we list in the summary.
-     */
-    private static final int MAX_SINKS_IN_SUMMARY = 3;
+  /** Maximum number of sink ids we list in the summary. */
+  private static final int MAX_SINKS_IN_SUMMARY = 3;
 
-    /**
-     * Cap on the number of distinct op names we list ? beyond this, the chain becomes a noise signal.
-     */
-    private static final int MAX_OPS_IN_SUMMARY = 8;
+  /**
+   * Cap on the number of distinct op names we list ? beyond this, the chain becomes a noise signal.
+   */
+  private static final int MAX_OPS_IN_SUMMARY = 8;
 
-    private V2TraceSummarizer() {
+  private V2TraceSummarizer() {}
+
+  /**
+   * Summarize a v2 trace into a one-line description. Returns the empty string when {@code trace}
+   * is null or has no nodes ? callers should skip the inline injection in that case.
+   */
+  public static String summarize(Trace trace) {
+    if (trace == null || trace.nodes() == null || trace.nodes().isEmpty()) {
+      return "";
+    }
+    List<TraceNode> nodes = trace.nodes();
+
+    // ---- (1) root source role / op ----
+    int rootId = trace.rootId();
+    String rootRole = "(no-root)";
+    String rootOp = "(no-root)";
+    if (rootId >= 0 && rootId < nodes.size()) {
+      TraceNode root = nodes.get(rootId);
+      rootRole = root.role().name();
+      rootOp = root.op().name();
     }
 
-    /**
-     * Summarize a v2 trace into a one-line description. Returns the empty string when {@code trace}
-     * is null or has no nodes ? callers should skip the inline injection in that case.
-     */
-    public static String summarize(Trace trace) {
-        if (trace == null || trace.nodes() == null || trace.nodes().isEmpty()) {
-            return "";
-        }
-        List<TraceNode> nodes = trace.nodes();
+    // ---- (2) unique op enum names in insertion order ----
+    Set<String> ops = new LinkedHashSet<>();
+    for (TraceNode n : nodes) {
+      ops.add(n.op().name());
+      if (ops.size() >= MAX_OPS_IN_SUMMARY) break;
+    }
+    String opsPart = ops.toString();
 
-        // ---- (1) root source role / op ----
-        int rootId = trace.rootId();
-        String rootRole = "(no-root)";
-        String rootOp = "(no-root)";
-        if (rootId >= 0 && rootId < nodes.size()) {
-            TraceNode root = nodes.get(rootId);
-            rootRole = root.role().name();
-            rootOp = root.op().name();
-        }
+    // ---- (3) sink ids (capped) ----
+    StringBuilder sinks = new StringBuilder("[");
+    List<Integer> sinkIds = trace.sinkOrViolationIds();
+    int listed = 0;
+    for (int i = 0; i < sinkIds.size() && listed < MAX_SINKS_IN_SUMMARY; i++) {
+      if (listed > 0) sinks.append(',');
+      sinks.append(sinkIds.get(i));
+      listed++;
+    }
+    if (sinkIds.size() > MAX_SINKS_IN_SUMMARY) {
+      sinks.append(",...+").append(sinkIds.size() - MAX_SINKS_IN_SUMMARY);
+    }
+    sinks.append(']');
 
-        // ---- (2) unique op enum names in insertion order ----
-        Set<String> ops = new LinkedHashSet<>();
-        for (TraceNode n : nodes) {
-            ops.add(n.op().name());
-            if (ops.size() >= MAX_OPS_IN_SUMMARY) break;
-        }
-        String opsPart = ops.toString();
-
-        // ---- (3) sink ids (capped) ----
-        StringBuilder sinks = new StringBuilder("[");
-        List<Integer> sinkIds = trace.sinkOrViolationIds();
-        int listed = 0;
-        for (int i = 0; i < sinkIds.size() && listed < MAX_SINKS_IN_SUMMARY; i++) {
-            if (listed > 0) sinks.append(',');
-            sinks.append(sinkIds.get(i));
-            listed++;
-        }
-        if (sinkIds.size() > MAX_SINKS_IN_SUMMARY) {
-            sinks.append(",...+").append(sinkIds.size() - MAX_SINKS_IN_SUMMARY);
-        }
-        sinks.append(']');
-
-        // ---- (4) typed const-source count + orphan count ----
-        int constSourceCount = 0;
-        int orphanSourceCount = 0;
-        for (TraceNode n : nodes) {
-            if (n.role() != TraceNode.Role.SOURCE) continue;
-            if (hasTypedConstOperand(n)) {
-                constSourceCount++;
-            }
-            if (n.parentIds().isEmpty()) {
-                orphanSourceCount++;
-            }
-        }
-
-        // ---- assemble ----
-        String summary =
-                "v2:"
-                        + nodes.size()
-                        + " nodes, "
-                        + "root="
-                        + rootRole
-                        + "/"
-                        + rootOp
-                        + ", "
-                        + "ops="
-                        + opsPart
-                        + ", "
-                        + "sinks="
-                        + sinks
-                        + ", "
-                        + "const="
-                        + constSourceCount
-                        + ", "
-                        + "orphan="
-                        + orphanSourceCount;
-
-        if (summary.length() > MAX_SUMMARY_CHARS) {
-            // Defensive: the components above are bounded but
-            // opsPart could be long if the chain has many
-            // distinct op enums (very unlikely in practice).
-            // Truncate with a trailing ellipsis to keep the
-            // line under the cap.
-            summary = summary.substring(0, MAX_SUMMARY_CHARS - 3) + "...";
-        }
-        return summary;
+    // ---- (4) typed const-source count + orphan count ----
+    int constSourceCount = 0;
+    int orphanSourceCount = 0;
+    for (TraceNode n : nodes) {
+      if (n.role() != TraceNode.Role.SOURCE) continue;
+      if (hasTypedConstOperand(n)) {
+        constSourceCount++;
+      }
+      if (n.parentIds().isEmpty()) {
+        orphanSourceCount++;
+      }
     }
 
-    /**
-     * True when {@code n} carries a typed {@link OperandRef.Const*} operand. We use this to count
-     * "data = \"\"" / "data = null" style initialisers that propagateMOVE emitted as v2 SOURCE nodes
-     * (R-807).
-     */
-    private static boolean hasTypedConstOperand(TraceNode n) {
-        if (n.operands() == null) return false;
-        for (OperandRef op : n.operands()) {
-            if (op instanceof OperandRef.ConstStr
-                    || op instanceof OperandRef.ConstInt
-                    || op instanceof OperandRef.ConstFloat
-                    || op instanceof OperandRef.ConstNull) {
-                return true;
-            }
-        }
-        return false;
-    }
+    // ---- assemble ----
+    String summary =
+        "v2:"
+            + nodes.size()
+            + " nodes, "
+            + "root="
+            + rootRole
+            + "/"
+            + rootOp
+            + ", "
+            + "ops="
+            + opsPart
+            + ", "
+            + "sinks="
+            + sinks
+            + ", "
+            + "const="
+            + constSourceCount
+            + ", "
+            + "orphan="
+            + orphanSourceCount;
 
-    // Test-only entry points (package-private for the
-    // R808TraceSummaryTest hermetic coverage).
-
-    /**
-     * Visible for tests ? the orphan-counting rule.
-     */
-    static int countOrphanSources(List<TraceNode> nodes) {
-        int j = 0;
-        for (TraceNode n : nodes) {
-            if (n.role() == TraceNode.Role.SOURCE && (n.parentIds() == null || n.parentIds().isEmpty())) {
-                j++;
-            }
-        }
-        return j;
+    if (summary.length() > MAX_SUMMARY_CHARS) {
+      // Defensive: the components above are bounded but
+      // opsPart could be long if the chain has many
+      // distinct op enums (very unlikely in practice).
+      // Truncate with a trailing ellipsis to keep the
+      // line under the cap.
+      summary = summary.substring(0, MAX_SUMMARY_CHARS - 3) + "...";
     }
+    return summary;
+  }
 
-    /**
-     * Visible for tests ? the const-source-counting rule.
-     */
-    static int countTypedConstSources(List<TraceNode> nodes) {
-        int k = 0;
-        for (TraceNode n : nodes) {
-            if (n.role() == TraceNode.Role.SOURCE && hasTypedConstOperand(n)) {
-                k++;
-            }
-        }
-        return k;
+  /**
+   * True when {@code n} carries a typed {@link OperandRef.Const*} operand. We use this to count
+   * "data = \"\"" / "data = null" style initialisers that propagateMOVE emitted as v2 SOURCE nodes
+   * (R-807).
+   */
+  private static boolean hasTypedConstOperand(TraceNode n) {
+    if (n.operands() == null) return false;
+    for (OperandRef op : n.operands()) {
+      if (op instanceof OperandRef.ConstStr
+          || op instanceof OperandRef.ConstInt
+          || op instanceof OperandRef.ConstFloat
+          || op instanceof OperandRef.ConstNull) {
+        return true;
+      }
     }
+    return false;
+  }
 
-    // Suppress unused-import warning for ArrayList (kept
-    // around for the day we add a "top-N operations" mode).
-    @SuppressWarnings("unused")
-    private static List<String> unused() {
-        return new ArrayList<>();
+  // Test-only entry points (package-private for the
+  // R808TraceSummaryTest hermetic coverage).
+
+  /** Visible for tests ? the orphan-counting rule. */
+  static int countOrphanSources(List<TraceNode> nodes) {
+    int j = 0;
+    for (TraceNode n : nodes) {
+      if (n.role() == TraceNode.Role.SOURCE && (n.parentIds() == null || n.parentIds().isEmpty())) {
+        j++;
+      }
     }
+    return j;
+  }
+
+  /** Visible for tests ? the const-source-counting rule. */
+  static int countTypedConstSources(List<TraceNode> nodes) {
+    int k = 0;
+    for (TraceNode n : nodes) {
+      if (n.role() == TraceNode.Role.SOURCE && hasTypedConstOperand(n)) {
+        k++;
+      }
+    }
+    return k;
+  }
+
+  // Suppress unused-import warning for ArrayList (kept
+  // around for the day we add a "top-N operations" mode).
+  @SuppressWarnings("unused")
+  private static List<String> unused() {
+    return new ArrayList<>();
+  }
 }

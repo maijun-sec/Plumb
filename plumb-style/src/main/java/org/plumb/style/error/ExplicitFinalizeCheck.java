@@ -2,7 +2,6 @@ package org.plumb.style.error;
 
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -20,8 +19,7 @@ public final class ExplicitFinalizeCheck implements AstChecker {
           List.of("CWE-586"),
           "org.plumb.style.ExplicitFinalizeCheck",
           true,
-          List.of("ast-error-explicit-finalize", "error-explicit-finalize")
-      );
+          List.of("ast-error-explicit-finalize", "error-explicit-finalize"));
 
   @Override
   public String name() {

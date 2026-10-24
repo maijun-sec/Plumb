@@ -5,7 +5,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class UcUselessObjectCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UcUselessObjectCheck",
           true,
-          List.of("legacy-useless-object", "uc-useless-object")
-      );
+          List.of("legacy-useless-object", "uc-useless-object"));
 
   @Override
   public String name() {

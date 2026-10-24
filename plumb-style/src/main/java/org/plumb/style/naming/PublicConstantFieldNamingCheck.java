@@ -5,7 +5,6 @@ import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class PublicConstantFieldNamingCheck implements AstChecker {
           List.of(),
           "org.plumb.style.PublicConstantFieldNamingCheck",
           true,
-          List.of("ast-naming-public-constant-field-naming", "public-constant")
-      );
+          List.of("ast-naming-public-constant-field-naming", "public-constant"));
 
   private static final Pattern SNAKE_CASE = Pattern.compile("^[A-Z][A-Z0-9_]*$");
 

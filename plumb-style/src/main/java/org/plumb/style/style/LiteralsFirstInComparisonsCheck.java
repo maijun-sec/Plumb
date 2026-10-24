@@ -5,7 +5,6 @@ import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NullLiteralExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class LiteralsFirstInComparisonsCheck implements AstChecker {
           List.of("CWE-476"),
           "org.plumb.style.LiteralsFirstInComparisonsCheck",
           true,
-          List.of("ast-style-literals-first-in-comparisons", "literals-first")
-      );
+          List.of("ast-style-literals-first-in-comparisons", "literals-first"));
 
   @Override
   public String name() {

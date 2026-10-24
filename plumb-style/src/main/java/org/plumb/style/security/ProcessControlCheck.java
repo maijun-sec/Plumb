@@ -16,7 +16,6 @@ import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -33,8 +32,7 @@ public final class ProcessControlCheck implements AstChecker {
           List.of("CWE-114"),
           "org.plumb.style.security.ProcessControlCheck",
           true,
-          List.of("ast-security-process-control", "process-control")
-      );
+          List.of("ast-security-process-control", "process-control"));
 
   @Override
   public String name() {

@@ -18,7 +18,6 @@ import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -35,8 +34,7 @@ public final class FiUselessBlockCheck implements AstChecker {
           List.of(),
           "org.plumb.style.FiUselessBlockCheck",
           true,
-          List.of("ast-style-useless-block", "fi-useless-block")
-      );
+          List.of("ast-style-useless-block", "fi-useless-block"));
 
   @Override
   public String name() {

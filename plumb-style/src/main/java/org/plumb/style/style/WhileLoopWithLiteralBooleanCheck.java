@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.BooleanLiteralExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class WhileLoopWithLiteralBooleanCheck implements AstChecker {
           List.of(),
           "org.plumb.style.WhileLoopWithLiteralBooleanCheck",
           true,
-          List.of("ast-style-loop-with-literal-boolean", "while-literal-boolean")
-      );
+          List.of("ast-style-loop-with-literal-boolean", "while-literal-boolean"));
 
   @Override
   public String name() {

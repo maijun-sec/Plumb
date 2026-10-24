@@ -1,6 +1,5 @@
 package org.plumb.dfa.taint;
 
-import org.plumb.rules.RuleDef;
 import java.util.Objects;
 
 /**

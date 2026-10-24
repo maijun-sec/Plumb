@@ -5,7 +5,6 @@ import com.github.javaparser.ast.ImportDeclaration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class DuplicateImportsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.DuplicateImportsCheck",
           true,
-          List.of("ast-style-duplicate-imports", "duplicate-imports")
-      );
+          List.of("ast-style-duplicate-imports", "duplicate-imports"));
 
   @Override
   public String name() {

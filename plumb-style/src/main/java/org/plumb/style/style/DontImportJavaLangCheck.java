@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class DontImportJavaLangCheck implements AstChecker {
           List.of(),
           "org.plumb.style.DontImportJavaLangCheck",
           true,
-          List.of("ast-style-import-java-lang", "dont-import-javalang")
-      );
+          List.of("ast-style-import-java-lang", "dont-import-javalang"));
 
   @Override
   public String name() {

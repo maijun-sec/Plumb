@@ -4,7 +4,6 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class UnnecessaryReturnCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UnnecessaryReturnCheck",
           true,
-          List.of("ast-style-unnecessary-return", "unnecessary-return")
-      );
+          List.of("ast-style-unnecessary-return", "unnecessary-return"));
 
   @Override
   public String name() {

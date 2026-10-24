@@ -5,7 +5,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -16,10 +15,10 @@ import org.plumb.style.annotations.AnnotationExtractor;
  * Method name should be camelCase.
  *
  * <p>M1 audit (2026-10-17) widened the test-method exemption: the previous version only skipped
- * methods whose name started with {@code test}, which works for JUnit 3 / 4 conventions but
- * misses JUnit 5's {@code @Test}-annotated methods with arbitrary names (e.g.
- * {@code shouldHandleEmptyInput()}, {@code returns_404_when_path_does_not_exist()}). The new
- * version also accepts any method carrying a JUnit {@code @Test} / {@code @ParameterizedTest} /
+ * methods whose name started with {@code test}, which works for JUnit 3 / 4 conventions but misses
+ * JUnit 5's {@code @Test}-annotated methods with arbitrary names (e.g. {@code
+ * shouldHandleEmptyInput()}, {@code returns_404_when_path_does_not_exist()}). The new version also
+ * accepts any method carrying a JUnit {@code @Test} / {@code @ParameterizedTest} /
  * {@code @RepeatedTest} / {@code @TestFactory} / {@code @TestTemplate} annotation.
  */
 public final class MethodNamingConventionsCheck implements AstChecker {
@@ -28,8 +27,8 @@ public final class MethodNamingConventionsCheck implements AstChecker {
 
   /**
    * JUnit {@code @Test} family annotations. Both JUnit 4 ({@code org.junit.Test}) and JUnit 5
-   * ({@code org.junit.jupiter.api.Test}) + variants. The set is unordered at the language level
-   * but exposed as a {@link LinkedHashSet} so iteration is deterministic for log messages.
+   * ({@code org.junit.jupiter.api.Test}) + variants. The set is unordered at the language level but
+   * exposed as a {@link LinkedHashSet} so iteration is deterministic for log messages.
    */
   private static final Set<String> JUNIT_TEST =
       Set.of(
@@ -54,8 +53,7 @@ public final class MethodNamingConventionsCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MethodNamingConventionsCheck",
           true,
-          List.of("ast-naming-method-naming-conventions", "method-naming")
-      );
+          List.of("ast-naming-method-naming-conventions", "method-naming"));
 
   @Override
   public String name() {

@@ -19,9 +19,9 @@ import org.plumb.style.StyleContext;
  *
  * <h2>The defect</h2>
  *
- * <p>{@code NullDerefFromReturnAstCheck} decides a dereference is guarded by scanning the statements
- * between the assignment and the use for an {@code if (x == null)} that names <em>the same
- * variable</em>. That is a name check wearing a value check's clothes, and it produces a false
+ * <p>{@code NullDerefFromReturnAstCheck} decides a dereference is guarded by scanning the
+ * statements between the assignment and the use for an {@code if (x == null)} that names <em>the
+ * same variable</em>. That is a name check wearing a value check's clothes, and it produces a false
  * positive on the single most common Java shape for carrying a value around:
  *
  * <pre>
@@ -86,9 +86,9 @@ class R1110AliasAwareNullCheckTest {
    * result assigned from a call, then dereferenced through a scoped method call.
    *
    * <p>Written against {@code StringBuilder} rather than {@code Object} because that is what the
-   * rule reacts to — an earlier draft used {@code Object} with a {@code len(Object)} helper and every
-   * case scored zero findings, which looked like the defect was absent when in fact the fixture had
-   * simply never triggered the rule.
+   * rule reacts to — an earlier draft used {@code Object} with a {@code len(Object)} helper and
+   * every case scored zero findings, which looked like the defect was absent when in fact the
+   * fixture had simply never triggered the rule.
    */
   private static String wrap(String body) {
     return "import java.util.*;\n"
@@ -110,9 +110,7 @@ class R1110AliasAwareNullCheckTest {
                 + "    if (a == null) { return; }\n"
                 + "    b.length();\n"
                 + "  }\n");
-    assertThat(run(src))
-        .as("b is a copy of the guarded a, so b cannot be null here")
-        .isEmpty();
+    assertThat(run(src)).as("b is a copy of the guarded a, so b cannot be null here").isEmpty();
   }
 
   /**
@@ -123,10 +121,10 @@ class R1110AliasAwareNullCheckTest {
    * container lookup whose result depends on what was put in the map, which needs the heap model
    * rather than a name walk.
    *
-   * <p>Flipping this to {@code isEmpty()} would document a capability the rule does not have, and the
-   * assertion would then keep passing after someone removed the reporting path entirely — a test
- * that cannot tell "handled correctly" from "stopped working" is worse than no test. Keeping it
- * red-named is what forces the gap to stay visible.
+   * <p>Flipping this to {@code isEmpty()} would document a capability the rule does not have, and
+   * the assertion would then keep passing after someone removed the reporting path entirely — a
+   * test that cannot tell "handled correctly" from "stopped working" is worse than no test. Keeping
+   * it red-named is what forces the gap to stay visible.
    */
   @Test
   void aContainerRoundTripIsStillReportedAndThatGapIsDeliberate() {
@@ -142,8 +140,8 @@ class R1110AliasAwareNullCheckTest {
                 + "  }\n");
     assertThat(run(src))
         .as(
-            "KNOWN GAP: a container round trip needs a heap model, not a copy-chain walk. Recorded as"
-                + " still-reporting so the gap stays visible instead of being asserted away.")
+            "KNOWN GAP: a container round trip needs a heap model, not a copy-chain walk. Recorded"
+                + " as still-reporting so the gap stays visible instead of being asserted away.")
         .hasSize(1);
   }
 

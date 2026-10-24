@@ -11,8 +11,8 @@ import org.plumb.style.StyleContext;
 /**
  * Empty catch block ? strict.
  *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit)
- * + findAll(CatchClause.class)} before.
+ * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(CatchClause.class)} before.
  */
 public final class EmptyCatchBlockCheck implements AstChecker {
 
@@ -25,8 +25,7 @@ public final class EmptyCatchBlockCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EmptyCatchBlockCheck",
           true,
-          List.of("ast-error-catch-block-strict", "empty-catch-block")
-      );
+          List.of("ast-error-catch-block-strict", "empty-catch-block"));
 
   @Override
   public String name() {
@@ -34,9 +33,9 @@ public final class EmptyCatchBlockCheck implements AstChecker {
   }
 
   /**
-   * R?  Step 7 ? the rule prompt the LLM sees when judging an empty-catch finding. Empty catches
-   * are common in test cleanup / Optional.orElse(null)-style code paths where the intent is "I
-   * really mean to ignore this".
+   * R? Step 7 ? the rule prompt the LLM sees when judging an empty-catch finding. Empty catches are
+   * common in test cleanup / Optional.orElse(null)-style code paths where the intent is "I really
+   * mean to ignore this".
    */
   private static final String AI_PROMPT =
       """

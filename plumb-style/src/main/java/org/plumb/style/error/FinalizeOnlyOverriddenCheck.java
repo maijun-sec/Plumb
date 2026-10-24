@@ -4,7 +4,6 @@ import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class FinalizeOnlyOverriddenCheck implements AstChecker {
           List.of("CWE-586"),
           "org.plumb.style.FinalizeOnlyOverriddenCheck",
           true,
-          List.of("ast-error-finalize-only-overridden", "finalize-only-overridden")
-      );
+          List.of("ast-error-finalize-only-overridden", "finalize-only-overridden"));
 
   @Override
   public String name() {

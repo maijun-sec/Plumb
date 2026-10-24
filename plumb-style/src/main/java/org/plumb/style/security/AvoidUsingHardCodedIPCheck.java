@@ -2,7 +2,6 @@ package org.plumb.style.security;
 
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -11,8 +10,8 @@ import org.plumb.style.StyleContext;
 /**
  * Hard-coded IP address in code.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(StringLiteralExpr.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(StringLiteralExpr.class)} before.
  */
 public final class AvoidUsingHardCodedIPCheck implements AstChecker {
 
@@ -25,8 +24,7 @@ public final class AvoidUsingHardCodedIPCheck implements AstChecker {
           List.of(),
           "org.plumb.style.AvoidUsingHardCodedIPCheck",
           true,
-          List.of("ast-security-coded-ip", "avoid-coded-ip")
-      );
+          List.of("ast-security-coded-ip", "avoid-coded-ip"));
 
   @Override
   public String name() {

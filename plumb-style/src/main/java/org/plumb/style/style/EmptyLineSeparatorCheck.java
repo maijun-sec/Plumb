@@ -11,7 +11,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.ArrayList;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -28,8 +27,7 @@ public final class EmptyLineSeparatorCheck implements AstChecker {
           List.of(),
           "org.plumb.style.EmptyLineSeparatorCheck",
           true,
-          List.of("ast-style-line-separator-strict", "emptylineseparatorcheck_cs")
-      );
+          List.of("ast-style-line-separator-strict", "emptylineseparatorcheck_cs"));
 
   private final List<MethodDeclaration> methods = new ArrayList<>();
 

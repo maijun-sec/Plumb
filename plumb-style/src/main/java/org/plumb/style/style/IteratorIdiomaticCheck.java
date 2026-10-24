@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.rules.RuleParameter;
@@ -43,7 +42,8 @@ public final class IteratorIdiomaticCheck implements AstChecker {
           RuleDef.Type.STYLE,
           List.of(),
           "org.plumb.style.IteratorIdiomaticCheck",
-          true,List.of("ast-style-iterator-idiomatic", "iterator-idiomatic"),
+          true,
+          List.of("ast-style-iterator-idiomatic", "iterator-idiomatic"),
           List.of(PARAMS));
 
   @Override

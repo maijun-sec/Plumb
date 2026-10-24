@@ -2,7 +2,6 @@ package org.plumb.style.design;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -11,8 +10,8 @@ import org.plumb.style.StyleContext;
 /**
  * Class has too many methods (default threshold 100).
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ClassOrInterfaceDeclaration.class)} before.
  */
 public final class MethodCountCheck implements AstChecker {
 
@@ -25,8 +24,7 @@ public final class MethodCountCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MethodCountCheck",
           true,
-          List.of("ast-design-method-count", "method-count")
-      );
+          List.of("ast-design-method-count", "method-count"));
 
   @Override
   public String name() {

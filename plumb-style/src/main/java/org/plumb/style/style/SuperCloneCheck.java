@@ -4,7 +4,6 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -26,8 +25,7 @@ public final class SuperCloneCheck implements AstChecker {
           List.of("CWE-668"),
           "org.plumb.style.SuperCloneCheck",
           true,
-          List.of("ast-style-clone", "super-clone")
-      );
+          List.of("ast-style-clone", "super-clone"));
 
   @Override
   public String name() {

@@ -5,7 +5,6 @@ import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.AssignExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -23,8 +22,7 @@ public final class LocalVariableCouldBeFinalCheck implements AstChecker {
           List.of(),
           "org.plumb.style.LocalVariableCouldBeFinalCheck",
           true,
-          List.of("ast-naming-var-could-be-final", "local-var-could-be-final")
-      );
+          List.of("ast-naming-var-could-be-final", "local-var-could-be-final"));
 
   @Override
   public String name() {

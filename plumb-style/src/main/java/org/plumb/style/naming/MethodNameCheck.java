@@ -3,7 +3,6 @@ package org.plumb.style.naming;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -12,8 +11,8 @@ import org.plumb.style.StyleContext;
 /**
  * Method name should be camelCase.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(MethodDeclaration.class)} before.
+ * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(MethodDeclaration.class)} before.
  */
 public final class MethodNameCheck implements AstChecker {
 
@@ -26,8 +25,7 @@ public final class MethodNameCheck implements AstChecker {
           List.of(),
           "org.plumb.style.MethodNameCheck",
           true,
-          List.of("ast-naming-method-name", "method-name")
-      );
+          List.of("ast-naming-method-name", "method-name"));
 
   private static final Pattern CAMEL = Pattern.compile("^[a-z][a-zA-Z0-9_]*$");
 

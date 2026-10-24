@@ -15,7 +15,6 @@ import java.util.regex.Pattern;
 import org.plumb.build.BuildAdapter;
 import org.plumb.build.BuildAdapterException;
 import org.plumb.build.BuildProject;
-import org.plumb.build.SourceFiles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,11 +58,11 @@ public final class BazelAdapter implements BuildAdapter {
 
   /** {@code srcs = [...]} or {@code srcs = glob([...])} — matches until the closing bracket. */
   private static final Pattern SRCS_ATTR =
-      Pattern.compile("\\bsrcs\\s*=\\s*(\\[[^\\]]*\\]|glob\\s*\\(\\s*\\[[^\\]]*\\]\\s*(?:,\\s*exclude\\s*=\\s*\\[[^\\]]*\\])?\\s*\\))");
+      Pattern.compile(
+          "\\bsrcs\\s*=\\s*(\\[[^\\]]*\\]|glob\\s*\\(\\s*\\[[^\\]]*\\]\\s*(?:,\\s*exclude\\s*=\\s*\\[[^\\]]*\\])?\\s*\\))");
 
   /** {@code jars = [...]} — literal file paths, including {@code java_import}'s {@code jars}. */
-  private static final Pattern JARS_ATTR =
-      Pattern.compile("\\bjars\\s*=\\s*(\\[[^\\]]*\\])");
+  private static final Pattern JARS_ATTR = Pattern.compile("\\bjars\\s*=\\s*(\\[[^\\]]*\\])");
 
   /** String inside a list: {@code "foo"} or {@code 'foo'}. */
   private static final Pattern LIST_STRING = Pattern.compile("['\"]([^'\"]+)['\"]");
@@ -116,8 +115,8 @@ public final class BazelAdapter implements BuildAdapter {
               })
           .forEach(
               buildFile ->
-                      parseBuildFile(
-                          projectRoot, buildFile, modules, allSources, allCp, visitedPackages));
+                  parseBuildFile(
+                      projectRoot, buildFile, modules, allSources, allCp, visitedPackages));
     } catch (IOException e) {
       throw new BuildAdapterException(
           "Failed to walk Bazel project root " + projectRoot + ": " + e.getMessage(), e);
@@ -165,7 +164,8 @@ public final class BazelAdapter implements BuildAdapter {
     // packages with the same leaf name ("core" / "core") don't collide on key "core:core".
     String packageKey = packageDir.toAbsolutePath().normalize().toString();
     // Slice the text by rule. Each rule starts with a Java-like keyword.
-    // We split on the regex "(java_library|java_binary|java_test|java_import|java_proto_library|android_library)\s*\(".
+    // We split on the regex
+    // "(java_library|java_binary|java_test|java_import|java_proto_library|android_library)\s*\(".
     Pattern ruleStart =
         Pattern.compile(
             "(java_library|java_binary|java_test|java_import|java_proto_library|android_library)"
@@ -270,8 +270,8 @@ public final class BazelAdapter implements BuildAdapter {
   }
 
   /**
-   * Pull the {@code exclude = ["a", "b"]} list out of a glob / srcs body. Returns an empty set
-   * when no exclude is present.
+   * Pull the {@code exclude = ["a", "b"]} list out of a glob / srcs body. Returns an empty set when
+   * no exclude is present.
    */
   private static Set<String> extractExcludes(String body) {
     Matcher em = EXCLUDE_LIST.matcher(body);
@@ -324,8 +324,7 @@ public final class BazelAdapter implements BuildAdapter {
             .forEach(
                 p -> {
                   String rel = rootDir.relativize(p).toString();
-                  if (!excludes.contains(rel)
-                      && !excludes.contains(p.getFileName().toString())) {
+                  if (!excludes.contains(rel) && !excludes.contains(p.getFileName().toString())) {
                     out.add(rel);
                   }
                 });

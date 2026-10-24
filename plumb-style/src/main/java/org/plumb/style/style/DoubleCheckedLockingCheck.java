@@ -15,7 +15,6 @@ import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.stmt.SynchronizedStmt;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -83,8 +82,7 @@ public final class DoubleCheckedLockingCheck implements AstChecker {
           List.of("CWE-609"),
           "org.plumb.style.DoubleCheckedLockingCheck",
           true,
-          List.of("ast-style-double-checked-locking-style", "double-checked-locking")
-      );
+          List.of("ast-style-double-checked-locking-style", "double-checked-locking"));
 
   @Override
   public String name() {

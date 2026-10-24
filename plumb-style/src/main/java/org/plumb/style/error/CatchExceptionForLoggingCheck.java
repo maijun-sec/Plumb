@@ -3,7 +3,6 @@ package org.plumb.style.error;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.stmt.CatchClause;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class CatchExceptionForLoggingCheck implements AstChecker {
           List.of("CWE-390"),
           "org.plumb.style.CatchExceptionForLoggingCheck",
           true,
-          List.of("ast-error-exception-log", "catch-log")
-      );
+          List.of("ast-error-exception-log", "catch-log"));
 
   @Override
   public String name() {

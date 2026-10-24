@@ -7,7 +7,6 @@ import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.List;
 import java.util.Optional;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class StringEqualityWithEqualsCheck implements AstChecker {
           List.of("CWE-697"),
           "org.plumb.style.StringEqualityWithEqualsCheck",
           true,
-          List.of("ast-performance-string-equality-with-equals", "string-equality-with-equals")
-      );
+          List.of("ast-performance-string-equality-with-equals", "string-equality-with-equals"));
 
   @Override
   public String name() {

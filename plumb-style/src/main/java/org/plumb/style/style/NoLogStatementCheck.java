@@ -3,7 +3,6 @@ package org.plumb.style.style;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -21,8 +20,7 @@ public final class NoLogStatementCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NoLogStatementCheck",
           true,
-          List.of("ast-style-log-at-disabled-level", "no-log-statement")
-      );
+          List.of("ast-style-log-at-disabled-level", "no-log-statement"));
 
   private static final Set<String> LOG_METHODS =
       Set.of("trace", "debug", "info", "warn", "error", "fatal");

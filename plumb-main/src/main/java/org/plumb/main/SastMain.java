@@ -1,6 +1,5 @@
 package org.plumb.main;
 
-import org.plumb.rules.RuleDef;
 import java.nio.file.Path;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.DefaultParser;

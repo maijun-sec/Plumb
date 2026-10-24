@@ -30,7 +30,6 @@ import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.TypeExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -49,8 +48,7 @@ public final class CompareClassesByNameCheck implements AstChecker {
           List.of("CWE-273"),
           "org.plumb.style.security.CompareClassesByNameCheck",
           true,
-          List.of("dfa-security-compare-classes-by-name", "compare-classes-by-name")
-      );
+          List.of("dfa-security-compare-classes-by-name", "compare-classes-by-name"));
 
   @Override
   public String name() {

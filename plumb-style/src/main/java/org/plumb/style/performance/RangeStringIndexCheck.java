@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -22,8 +21,7 @@ public final class RangeStringIndexCheck implements AstChecker {
           List.of(),
           "org.plumb.style.RangeStringIndexCheck",
           true,
-          List.of("ast-performance-string-index", "range-string-index")
-      );
+          List.of("ast-performance-string-index", "range-string-index"));
 
   @Override
   public String name() {

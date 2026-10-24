@@ -4,7 +4,6 @@ import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -14,8 +13,8 @@ import org.plumb.style.StyleContext;
  * Unnecessary primitive boxing ({@code new Integer(5)} etc.) ? prefer autoboxing or {@code
  * Integer.valueOf}.
  *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit)
- * + findAll(ObjectCreationExpr.class)} before.
+ * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ObjectCreationExpr.class)} before.
  */
 public final class UnnecessaryBoxingCheck implements AstChecker {
 
@@ -28,8 +27,7 @@ public final class UnnecessaryBoxingCheck implements AstChecker {
           List.of(),
           "org.plumb.style.UnnecessaryBoxingCheck",
           true,
-          List.of("ast-performance-unnecessary-boxing", "unnecessary-boxing")
-      );
+          List.of("ast-performance-unnecessary-boxing", "unnecessary-boxing"));
 
   @Override
   public String name() {

@@ -17,7 +17,6 @@ import com.github.javaparser.ast.expr.NameExpr;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -34,8 +33,7 @@ public final class EnvVarCheck implements AstChecker {
           List.of("CWE-526"),
           "org.plumb.style.quality.EnvVarCheck",
           true,
-          List.of("ast-quality-env-var", "env-var")
-      );
+          List.of("ast-quality-env-var", "env-var"));
 
   private final Set<String> fired = new HashSet<>();
 

@@ -6,7 +6,6 @@ import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -24,8 +23,7 @@ public final class SingletonClassCheck implements AstChecker {
           List.of(),
           "org.plumb.style.SingletonClassCheck",
           true,
-          List.of("ast-naming-singleton-class", "singleton-class")
-      );
+          List.of("ast-naming-singleton-class", "singleton-class"));
 
   @Override
   public String name() {

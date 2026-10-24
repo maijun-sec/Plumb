@@ -1,14 +1,13 @@
 package org.plumb.dfa.checkers.controlflow;
 
-import org.plumb.rules.RuleDef;
 import java.util.HashSet;
 import java.util.Set;
 import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.engine.DfaChecker;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.trace.PatternTrace;
-import org.plumb.reporter.Finding;
 import org.plumb.reporter.trace.TraceNode;
+import org.plumb.rules.RuleDef;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
@@ -219,7 +218,7 @@ public final class XxeChecker implements DfaChecker {
   }
 
   private static final String AI_PROMPT =
-      """
+"""
         RULE: XML External Entity (XXE) vulnerability (CWE-611).
         This rule fires when an XML parser is constructed
         without disabling external entity processing

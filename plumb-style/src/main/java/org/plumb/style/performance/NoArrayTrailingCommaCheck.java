@@ -2,7 +2,6 @@ package org.plumb.style.performance;
 
 import com.github.javaparser.ast.expr.ArrayInitializerExpr;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -11,8 +10,8 @@ import org.plumb.style.StyleContext;
 /**
  * Array initialisation should not have a trailing comma.
  *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ArrayInitializerExpr.class)} before.
+ * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
+ * findAll(ArrayInitializerExpr.class)} before.
  */
 public final class NoArrayTrailingCommaCheck implements AstChecker {
 
@@ -25,8 +24,7 @@ public final class NoArrayTrailingCommaCheck implements AstChecker {
           List.of(),
           "org.plumb.style.NoArrayTrailingCommaCheck",
           true,
-          List.of("ast-performance-array-trailing-comma", "no-array-trailing-comma")
-      );
+          List.of("ast-performance-array-trailing-comma", "no-array-trailing-comma"));
 
   @Override
   public String name() {

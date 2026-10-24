@@ -2,7 +2,6 @@ package org.plumb.style.naming;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import java.util.List;
-import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
@@ -25,8 +24,7 @@ public final class BadAbstractClassNameCheck implements AstChecker {
           List.of(),
           "org.plumb.style.BadAbstractClassNameCheck",
           true,
-          List.of("ast-naming-abstract-class-name", "bad-abstract-class-name")
-      );
+          List.of("ast-naming-abstract-class-name", "bad-abstract-class-name"));
 
   @Override
   public String name() {
