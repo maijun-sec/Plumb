@@ -28,15 +28,21 @@ Why the exclusions:
     `testcase/` tree holds measurement fixtures with hand-placed line
     pins; reformatting those would move the lines the manifests point
     at, so they are excluded too.
+
+Why the whole tree in one formatter run:
+    The pre-commit hook calls --check on every commit. Invoking the
+    formatter once per file costs a JVM start-up per file -- 11 minutes
+    over this repository, which is exactly long enough that people
+    start passing --no-verify. One run over all the files costs about
+    30 seconds. The gate is only useful if it is cheap enough to keep.
 """
 import argparse
 import io
 import os
-import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _formatter import JVM_EXPORTS, format_source, formatter_jar  # noqa: E402
+from _formatter import format_paths, formatter_jar  # noqa: E402
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
@@ -100,45 +106,6 @@ def ensure_formatter():
         return None
 
 
-def format_file(jar, path, write):
-    """Format one file.
-
-    Returns True when the file on disk was already formatted.
-
-    `write` is False for --check: the formatted text is compared against
-    the file but NEVER written back. A check that edits the tree is not
-    a check -- it would make the working tree depend on whether a gate
-    ran, and the pre-commit hook would silently reformat the whole
-    repository on every commit.
-
-    The formatter's output is decoded as UTF-8 EXPLICITLY. Decoding it
-    with the platform locale corrupts every non-ASCII character in the
-    file: this codebase has em-dashes and arrows in its javadoc, and a
-    GBK console decodes the UTF-8 bytes as mojibake. The formatter then
-    "changes" the file on every run, because the corrupted text it
-    reads back is not the text it wrote. The file must be read and
-    written as bytes and decoded as UTF-8 on both sides.
-
-    An EMPTY output is treated as a failure, never as "the formatted
-    file". google-java-format decides the language from the file
-    extension and SKIPS a file it does not recognise -- printing
-    "Skipping non-Java file: ..." to stderr and exiting 0 with EMPTY
-    stdout. Writing that empty output would DESTROY the source. Since
-    a Java source file is never legitimately empty, an empty result
-    means the formatter did not process the file, and the file must be
-    left alone.
-    """
-    with open(path, "r", encoding="utf-8", newline="") as fh:
-        original = fh.read()
-    formatted = format_source(jar, original, os.path.basename(path))
-    if formatted == original:
-        return True
-    if write:
-        with open(path, "w", encoding="utf-8", newline="") as fh:
-            fh.write(formatted)
-    return False
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true",
@@ -154,37 +121,33 @@ def main():
         print("no source files found")
         return 2
 
-    changed = []
-    failed = []
-    for path in files:
-        rel = os.path.relpath(path, REPO).replace(os.sep, "/")
-        try:
-            if not format_file(jar, path, write=not args.check):
-                changed.append(rel)
-        except RuntimeError as exc:
-            failed.append((rel, str(exc)))
-
-    print("checked %d source files" % len(files))
-    if changed:
+    try:
         if args.check:
-            print("%d file(s) are NOT formatted:" % len(changed))
-            for rel in changed[:40]:
-                print("    " + rel)
-            if len(changed) > 40:
-                print("    ... and %d more" % (len(changed) - 40))
+            unformatted = format_paths(jar, files, replace=False)
         else:
-            print("reformatted %d file(s)" % len(changed))
-    else:
-        print("all files are formatted")
-
-    if failed:
-        print("%d file(s) could not be parsed by the formatter:" % len(failed))
-        for rel, err in failed[:10]:
-            print("    %s: %s" % (rel, err.replace("\n", " ")[:200]))
+            format_paths(jar, files, replace=True)
+            # After rewriting, ask again so the report names the files
+            # that are STILL not formatted. Anything left here is a
+            # file the formatter could not converge on, which is worth
+            # surfacing rather than hiding behind "reformatted N".
+            unformatted = format_paths(jar, files, replace=False)
+    except RuntimeError as exc:
+        print("the formatter could not process the sources:")
+        print(str(exc))
         return 2
 
-    if args.check and changed:
-        return 1
+    print("checked %d source files" % len(files))
+    if unformatted:
+        print("%d file(s) are NOT formatted:" % len(unformatted))
+        for path in unformatted[:40]:
+            print("    " + os.path.relpath(path, REPO).replace(os.sep, "/"))
+        if len(unformatted) > 40:
+            print("    ... and %d more" % (len(unformatted) - 40))
+        if args.check:
+            return 1
+        return 2
+
+    print("all files are formatted")
     return 0
 
 

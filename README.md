@@ -92,7 +92,38 @@ ls -lh plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar
 # ~115 MB
 ```
 
-### 3.2 最小扫描
+### 3.2 代码格式
+
+源码用 Google Java Format 风格(2 空格缩进、100 列)。提交前必须格式化:
+
+```bash
+./scripts/format.sh                      # Linux / macOS
+./scripts/format.ps1                     # Windows PowerShell
+
+./scripts/format.sh --check              # 只检查,不修改(有未格式化文件时退出码 1)
+```
+
+格式器版本是钉死的 **google-java-format 1.37.0**。不用 `fmt-maven-plugin`,
+因为它捆绑的是 1.7 —— 那个版本读不懂 text block,会报"需要';'"。
+
+仓库自带一个 git pre-commit 钩子,**含有未格式化 Java 的提交会被直接拒绝**。
+新克隆的仓库需要装一次:
+
+```bash
+sh scripts/install-hooks.sh
+```
+
+钩子只拦截**本次提交暂存的文件**。已经存在于 HEAD 里的未格式化文件不会阻塞
+后续提交,除非你这次动了它。全量检查一次约 30 秒(1107 个源文件,单次 JVM 运行),
+所以"提交前先格式化"不会变成一个你等不起的步骤。
+
+被排除在格式化之外的有两类文件,原因都是它们不是产品源码:
+
+- `plumb-dfa/src/main/resources/scripts/` —— 614 个 Juliet 语料样本,故意包含
+  无法解析的文件;重新格式化会破坏用来度量引擎的语料。
+- `testcase/` —— 带手工行号锚点的度量样本;重新格式化会移动清单指向的行。
+
+### 3.3 最小扫描
 
 ```bash
 java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
@@ -104,7 +135,7 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
   -o findings.ndjson
 ```
 
-### 3.3 用 YAML 配置
+### 3.4 用 YAML 配置
 
 ```bash
 java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
@@ -114,7 +145,7 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
 
 `default-config.yaml` 含 47 个 `checks:` 键（45 个 checker family + `taint` / `style` 两个总开关）、AI 配置、调用图策略、缓存模式。
 
-### 3.4 启用 AI FP 消减
+### 3.5 启用 AI FP 消减
 
 ```bash
 # 设置 API key (环境变量 + 配置文件双通道,详见 docs/usage/ENVIRONMENT.md)
@@ -129,7 +160,7 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
 
 NDJSON 输出每行多两个字段:`ai_verdict` (TP/FP/UNKNOWN) + `ai_reason`。
 
-### 3.5 解压即用 (生产)
+### 3.6 解压即用 (生产)
 
 下载 `plumb-0.1.0-SNAPSHOT-jre-linux-x64.tar.gz` (~180 MB) 或 `-windows-x64.zip`,解压后:
 
