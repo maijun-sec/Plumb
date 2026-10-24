@@ -121,6 +121,20 @@ public final class TacTranslator {
    * names with the enclosing-class hierarchy (using {@code $} as the separator, matching the
    * JVM-style inner-class naming). For top-level types the prefix is empty.
    */
+  /**
+   * The qualified name of the type that declares a callable.
+   *
+   * <p>Top-level types are their own short name. Nested types use the JVM-style
+   * {@code $} separator, matching the prefix the translator already builds for
+   * inner-class method names (e.g. {@code "Outer$Inner"}).
+   */
+  private static String qualifiedDeclaringType(String prefix, String classShortName) {
+    if (prefix == null || prefix.isEmpty()) {
+      return classShortName;
+    }
+    return prefix;
+  }
+
   private void translateTypeWithPrefix(TypeDeclaration<?> td, String prefix) {
     // Capture class-level annotations (e.g.
     // {@code @RestController}, {@code @Configuration}). These
@@ -291,7 +305,8 @@ public final class TacTranslator {
             md.getBody().orElse(null),
             classAnns,
             extractAnnotationNames(md.getAnnotations()),
-            prefix.isEmpty() ? classShortName : null);
+            prefix.isEmpty() ? classShortName : null,
+            qualifiedDeclaringType(prefix, classShortName));
       } else if (bd instanceof ConstructorDeclaration cd) {
         String qualifiedCtor = prefix.isEmpty() ? "<init>" : prefix + ".<init>";
         translateCallable(
@@ -302,7 +317,8 @@ public final class TacTranslator {
             cd.getBody(),
             classAnns,
             List.of(),
-            prefix.isEmpty() ? classShortName : null);
+            prefix.isEmpty() ? classShortName : null,
+            qualifiedDeclaringType(prefix, classShortName));
       } else if (bd instanceof InitializerDeclaration id) {
         String fnName = id.isStatic() ? "<clinit>" : "<init>";
         TacBuilder.FunctionSpec spec =
@@ -392,7 +408,7 @@ public final class TacTranslator {
 
   private <T extends CallableDeclaration<T>> void translateCallable(
       T decl, String name, String signature, Type retType, BlockStmt body) {
-    translateCallable(decl, name, signature, retType, body, List.of(), List.of(), null);
+    translateCallable(decl, name, signature, retType, body, List.of(), List.of(), null, null);
   }
 
   private <T extends CallableDeclaration<T>> void translateCallable(
@@ -403,7 +419,7 @@ public final class TacTranslator {
       BlockStmt body,
       List<String> classAnns,
       List<String> methodAnns) {
-    translateCallable(decl, name, signature, retType, body, classAnns, methodAnns, null);
+    translateCallable(decl, name, signature, retType, body, classAnns, methodAnns, null, null);
   }
 
   /**
@@ -415,6 +431,10 @@ public final class TacTranslator {
    * {@code "MyThread"}), used by the CHA-style resolver to walk the class hierarchy when a call's
    * receiver type is known. {@code null} means "no enclosing class" (free functions, synthetic
    * inits where the class isn't available, etc.).
+   *
+   * <p>The {@code declaringType} parameter carries the qualified name of the type that declares
+   * this callable (e.g. {@code "Controller"} for a top-level class, {@code "Outer$Inner"} for a
+   * nested one). It is the type assigned to the implicit {@code this} local.
    */
   private <T extends CallableDeclaration<T>> void translateCallable(
       T decl,
@@ -424,7 +444,8 @@ public final class TacTranslator {
       BlockStmt body,
       List<String> classAnns,
       List<String> methodAnns,
-      String enclosingClass) {
+      String enclosingClass,
+      String declaringType) {
 
     TacType mappedRet =
         retType == null
@@ -470,8 +491,26 @@ public final class TacTranslator {
       }
     }
     if (!decl.isStatic() && !(decl instanceof ConstructorDeclaration)) {
-      b.locals()
-          .add(new TacOperand.TacVar("this", TacType.ofClass(source.primaryTypeName()), false));
+      // The implicit `this` must carry the type of the class that
+      // DECLARES this callable -- not the primary type of the whole
+      // compilation unit. `source.primaryTypeName()` is the FIRST
+      // top-level class of the file, so using it here typed every
+      // class after the first as the first class: in a file with
+      // `class Repository` and `class Controller`, `Controller.this`
+      // was typed `Repository`, and `this.helper(...)` produced the
+      // callee signature `Repository.helper/1`.
+      //
+      // That wrong type propagates everywhere the receiver's type is
+      // read: FQN-anchored sink patterns, the cross-function field
+      // taint fold (`classNameOfType(recv.type())`), the CHA
+      // resolver's receiver-type lookup, and the points-to receiver
+      // identity. DeclaringType is the qualified declaring type
+      // ("Controller", or "Outer$Inner" for a nested type); fall back
+      // to the primary type only when it is genuinely unavailable.
+      String thisType = (declaringType != null && !declaringType.isEmpty())
+          ? declaringType
+          : source.primaryTypeName();
+      b.locals().add(new TacOperand.TacVar("this", TacType.ofClass(thisType), false));
     }
     if (body != null) stmtTranslator.translateBlock(body, b);
     ensureReturn(b, mappedRet);

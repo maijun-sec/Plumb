@@ -31,6 +31,7 @@ import org.plumb.dfa.resolve.SourcePathResolver;
 import org.plumb.dfa.resolve.StaticFieldResolver;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.summary.SummaryApplier;
+import org.plumb.dfa.taint.FrameworkEntryPoints;
 import org.plumb.dfa.taint.TaintedCheckerBase;
 import org.plumb.tac.ir.SourceOrigin;
 import org.plumb.tac.ir.TacBasicBlock;
@@ -706,10 +707,18 @@ public final class DfaEngine {
         for (TacFunction fn : program.functions()) {
             HashMap<String, String> lab = new HashMap<>();
             // Entry boundary: every parameter is a trust boundary in its own right.
+            //
+            // A parameter bound by a FRAMEWORK entry point (@RequestParam, @PathVariable,
+            // ...) is labelled with the framework qualifier as well, so the origin that
+            // reaches a caller names the trust boundary the value came from.
             for (int i = 0; i < fn.params().size(); i++) {
                 String name = fn.params().get(i).name();
-                lab.put(name, "param:" + name);
-                origin.put(key(fn, i), "param:" + name);
+                String label = FrameworkEntryPoints.sourceLabelFor(fn, name);
+                if (label == null) {
+                    label = "param:" + name;
+                }
+                lab.put(name, label);
+                origin.put(key(fn, i), label);
             }
             localLabel.put(fn.signature(), lab);
         }

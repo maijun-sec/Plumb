@@ -1,0 +1,240 @@
+{
+  "category": "06-framework-orms",
+  "scan_mode": "per-file",
+  "cg_strategy": "global",
+  "total_findings": 188,
+  "cases": [
+    {
+      "id": "TP-jdbc-query-for-list",
+      "kind": "tp",
+      "file": "OrderRepository.java",
+      "line": 30,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "Spring JDBC queryForList with the tainted customer name concatenated into the SQL text. The receiver is an unresolved third-party type, so the IR writes 'JdbcTemplate.queryForList/1'.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        30
+      ]
+    },
+    {
+      "id": "TP-jdbc-query",
+      "kind": "tp",
+      "file": "OrderRepository.java",
+      "line": 35,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "The same shape through JdbcTemplate.query rather than queryForList. The sink matcher must not treat 'query' as matching 'queryForList' -- these are two different methods, and each is pinned separately.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        35
+      ]
+    },
+    {
+      "id": "TP-jdbc-update",
+      "kind": "tp",
+      "file": "OrderRepository.java",
+      "line": 40,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "A tainted value reaches a write statement through JdbcTemplate.update. The statement is an UPDATE with two tainted parameters.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        40
+      ]
+    },
+    {
+      "id": "TP-named-jdbc-query",
+      "kind": "tp",
+      "file": "OrderRepository.java",
+      "line": 45,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "The named-parameter template variant. The receiver simple name is 'NamedParameterJdbcTemplate', so this case proves the relaxed sink pattern matches the SIMPLE NAME of the receiver, not only the class named in the pattern.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        45
+      ]
+    },
+    {
+      "id": "TP-framework-entry-point",
+      "kind": "tp",
+      "file": "DirectSinkController.java",
+      "line": 22,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "A Spring @RequestParam bound parameter reaching the SQL sink IN THE SAME METHOD. There is no getParameter() call anywhere in this file -- the framework binds the value by annotation -- so the source is the parameter annotation, not a call. The finding's source is 'param:customer@spring-mvc:RequestParam': it names the trust boundary rather than an opaque parameter.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        22
+      ]
+    },
+    {
+      "id": "TP-mybatis-select-raw",
+      "kind": "tp",
+      "file": "UserMapper.java",
+      "line": 27,
+      "rule_ids": [
+        "ast-security-orm-sql-interpolation"
+      ],
+      "note": "MyBatis @Select with a raw '${name}' substitution. The placeholder names the method's own parameter, so the caller controls the SQL text.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        27
+      ]
+    },
+    {
+      "id": "TP-mybatis-update-raw",
+      "kind": "tp",
+      "file": "UserMapper.java",
+      "line": 39,
+      "rule_ids": [
+        "ast-security-orm-sql-interpolation"
+      ],
+      "note": "MyBatis @Update with a raw '${name}' substitution, mixed with a bound '#{id}'. The two placeholder forms in one statement must be told apart: only the raw one is reported.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        39
+      ]
+    },
+    {
+      "id": "TP-mybatis-delete-raw",
+      "kind": "tp",
+      "file": "UserMapper.java",
+      "line": 43,
+      "rule_ids": [
+        "ast-security-orm-sql-interpolation"
+      ],
+      "note": "MyBatis @Delete with a raw '${name}' substitution.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        43
+      ]
+    },
+    {
+      "id": "TP-mybatis-insert-raw",
+      "kind": "tp",
+      "file": "UserMapper.java",
+      "line": 47,
+      "rule_ids": [
+        "ast-security-orm-sql-interpolation"
+      ],
+      "note": "MyBatis @Insert with a raw '${name}' substitution.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        47
+      ]
+    },
+    {
+      "id": "TN-jdbc-bound-parameter",
+      "kind": "tn",
+      "file": "OrderRepository.java",
+      "line": 50,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "PRECISION PROBE: the customer name is passed as a bound parameter to a '?' placeholder, so it cannot change the statement. The same receiver and the same method name as TP-jdbc-query-for-list, so this case fails if the matcher only looks at the call shape.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-jdbc-log-only",
+      "kind": "tn",
+      "file": "OrderRepository.java",
+      "line": 55,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "PRECISION PROBE: the tainted value is only logged; it never reaches a SQL sink. System.out.println is not a CWE-89 sink.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-framework-entry-point-no-sink",
+      "kind": "tn",
+      "file": "SafeController.java",
+      "line": 25,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "PRECISION PROBE for the framework entry-point model: a @RequestParam parameter is labelled as a request-bound value, but it only reaches a log call. A model that tainted every value a request touches would report here. The line is the call site of the log-only repository method; the finding, if there were one, would be attributed to the sink in OrderRepository.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-mybatis-bound-parameter",
+      "kind": "tn",
+      "file": "UserMapper.java",
+      "line": 31,
+      "rule_ids": [
+        "ast-security-orm-sql-interpolation"
+      ],
+      "note": "PRECISION PROBE: '#{name}' is a bound parameter. The value is bound as data and cannot change the statement. Reporting it would be a false positive on the single most common MyBatis placeholder form.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-mybatis-no-matching-parameter",
+      "kind": "tn",
+      "file": "UserMapper.java",
+      "line": 35,
+      "rule_ids": [
+        "ast-security-orm-sql-interpolation"
+      ],
+      "note": "PRECISION PROBE: '${tableName}' names a table the method does not receive, so the caller cannot influence it. A dynamic table name is a legitimate use of raw substitution.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-mybatis-insert-bound",
+      "kind": "tn",
+      "file": "UserMapper.java",
+      "line": 51,
+      "rule_ids": [
+        "ast-security-orm-sql-interpolation"
+      ],
+      "note": "PRECISION PROBE: a bound '#{name}' in an @Insert.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    }
+  ],
+  "summary": {
+    "tp_total": 9,
+    "tp_supported": 9,
+    "tp_false_negative": 0,
+    "tn_total": 6,
+    "tn_supported": 6,
+    "tn_false_positive": 0
+  },
+  "cwe_histogram": {
+    "CWE-89": 24,
+    "CWE-563": 19,
+    "CWE-798": 15,
+    "CWE-331": 15,
+    "CWE-862": 6,
+    "CWE-20": 5,
+    "CWE-190": 2,
+    "CWE-754": 1,
+    "CWE-668": 1
+  }
+}

@@ -1,6 +1,6 @@
 # Plumb analysis test cases
 
-Five independent fixtures, one per analysis capability, plus a scorer. Each category is
+Six independent fixtures, one per analysis capability, plus a scorer. Each category is
 self-contained so its support verdict can be read and re-measured on its own.
 
 | Directory | Capability under test |
@@ -10,6 +10,7 @@ self-contained so its support verdict can be read and re-measured on its own.
 | `03-pointer-multilevel` | Field-, array- and container-sensitive alias analysis with context-sensitive cross-method returns |
 | `04-polymorphic-callgraph` | Dispatch through interfaces, abstract classes, diamond inheritance |
 | `05-real-cve-derived` | CVE-shaped real-world cases |
+| `06-framework-orms` | Spring JDBC and MyBatis sinks, with the dependency jars absent from the analysis classpath |
 
 ## Support matrix (measured)
 

@@ -1,6 +1,6 @@
 # plumb-style — 规则快查表
 
-本表是 `582` 条规则的扁平索引，每行一条。详细说明请看 `plumb-style-rules.md`。
+本表是 `583` 条规则的扁平索引，每行一条。详细说明请看 `plumb-style-rules.md`。
 
 | 规则 ID | 短名 | 分类 | 严重度 | 类型 | 规则类 | 外部等价 (PMD / SpotBugs / Checkstyle / SonarQube) |
 | ------- | ---- | ---- | ------ | ---- | ------ | --------------------------------------------- |
@@ -215,6 +215,7 @@
 | `ast-security-missing-input-validation` | `MISSING_INPUT_VALIDATION` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.MissingInputValidationCheck` | — |
 | `ast-security-null-deref-from-return-ast` | `NULL_DEREF_FROM_RETURN_AST` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.NullDerefFromReturnAstCheck` | — |
 | `ast-security-obsolete-api` | `OBSOLETE_API` | `security` | LOW | BAD_PRACTICE | `org.plumb.style.security.ObsoleteApiCheck` | — |
+| `ast-security-orm-sql-interpolation` | `ORM_SQL_INTERPOLATION` | `security` | HIGH | SECURITY | `org.plumb.style.security.OrmSqlInterpolationCheck` | — |
 | `ast-security-path` | `PATH` | `security` | LOW | STYLE | `org.plumb.style.security.PathCheck` | — |
 | `ast-security-predictable-key-password` | `PREDICTABLE_KEY_PASSWORD` | `security` | HIGH | SECURITY | `org.plumb.style.security.PredictableKeyPasswordCheck` | — |
 | `ast-security-predictable-random-seed` | `PREDICTABLE_RANDOM_SEED` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.PredictableRandomSeedCheck` | — |

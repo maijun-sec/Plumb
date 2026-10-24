@@ -299,8 +299,21 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    */
   private String resolveUpstreamOrigin(String label, TacFunction fn, AnalysisContext ctx) {
     if (label == null || !label.startsWith("param:") || fn == null || ctx == null) return null;
+    // A framework-bound parameter carries a qualifier after the name
+    // ("param:customer@spring-mvc:RequestParam"), so compare the NAME
+    // rather than the whole label.
+    String paramName = FrameworkEntryPoints.paramNameOf(label);
+    if (paramName == null) return null;
+    // A FRAMEWORK entry point outranks the caller's origin. The value was
+    // bound to this parameter by the framework from the HTTP request; no
+    // caller can supply a more specific origin for it, and the caller's
+    // label would name an unrelated parameter in an unrelated class.
+    if (FrameworkEntryPoints.qualifierOf(label) != null) {
+      return null;
+    }
     for (int i = 0; i < fn.params().size(); i++) {
-      if (("param:" + fn.params().get(i).name()).equals(label)) {
+      if (("param:" + fn.params().get(i).name()).equals(label)
+          || (paramName.equals(fn.params().get(i).name()))) {
         String r = ctx.paramOrigin(fn.signature(), i);
         return r;
       }
@@ -659,7 +672,18 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     for (TacOperand.TacVar p : fn.params()) {
       // ins=null means "no specific call site : the function entry
       // itself is the boundary".
-      markSource(p, "param:" + p.name(), null, fn.signature(), "param:" + p.name());
+      //
+      // A parameter bound by a FRAMEWORK entry point (@RequestParam,
+      // @PathVariable, @QueryParam, ...) is a stronger source than a bare
+      // parameter: the framework put a request-supplied value there. Label it
+      // with the framework annotation so a finding names the actual trust
+      // boundary instead of an opaque parameter name.
+      String frameworkLabel = FrameworkEntryPoints.sourceLabelFor(fn, p.name());
+      if (frameworkLabel != null) {
+        markSource(p, frameworkLabel, null, fn.signature(), frameworkLabel);
+      } else {
+        markSource(p, "param:" + p.name(), null, fn.signature(), "param:" + p.name());
+      }
     }
   }
 
@@ -1956,8 +1980,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // matching parameter index. The label
     // format is set in
     // {@link #initFunction} via
-    // {@link #markSource}.
-    String paramName = label.substring("param:".length());
+    // {@link #markSource}. A framework-bound
+    // parameter appends a qualifier after the
+    // name, so parse the name, not the label.
+    String paramName = FrameworkEntryPoints.paramNameOf(label);
+    if (paramName == null) return;
     int paramIndex = -1;
     List<TacOperand.TacVar> params = fn.params();
     for (int i = 0; i < params.size(); i++) {
@@ -2140,9 +2167,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       if (label.startsWith("param:")) {
         // The tainted source is a
         // param (BINOP result, etc.).
-        // Find that param's index.
-        String paramName = label.substring("param:".length());
-        for (int i = 0; i < params.size(); i++) {
+        // Find that param's index. A
+        // framework-bound parameter
+        // appends a qualifier after the
+        // name, so parse the name.
+        String paramName = FrameworkEntryPoints.paramNameOf(label);
+        for (int i = 0; paramName != null && i < params.size(); i++) {
           if (params.get(i).name().equals(paramName)) {
             paramIndex = i;
             break;
@@ -3084,9 +3114,16 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // something tainted reaches it, so an unlabelled variable is usually "unanalysed", not "safe".
     if (fn != null) {
       int r1109ParamIdx = fn.params().indexOf(av);
+      // Compare the PARAM NAME, not the whole label: a framework-bound parameter carries a
+      // qualifier after the name ("param:customer@spring-mvc:RequestParam"), and the
+      // suppression must still apply to it. The suppression proves the VALUE is clean at
+      // every call site; that proof does not depend on how the source is named.
+      String avLabel = taintedVars.get(av);
+      String avParamName = FrameworkEntryPoints.paramNameOf(avLabel);
       if (r1109ParamIdx >= 0
           && ctx.isParamAlwaysClean(fn.signature(), r1109ParamIdx)
-          && ("param:" + av.name()).equals(taintedVars.get(av))) {
+          && avParamName != null
+          && avParamName.equals(av.name())) {
         LOG.debug(
             "R1109: suppressing sink finding -- {}{} is tainted only by the entry seed and every"
                 + " call site proves it clean",

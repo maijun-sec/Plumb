@@ -247,6 +247,27 @@
                              every framework sink (Spring JdbcTemplate, MyBatis,
                              Jackson, Guava) was unreachable without any error. -->
                         <include>org/plumb/dfa/config/SinkPatternNameFormTest.java</include>
+
+                        <!-- A call with the same method name and arity as
+                             the enclosing method is NOT self-recursion when
+                             the receiver is a different object. The checker
+                             used to compare name + arity alone, so ordinary
+                             delegation ("repository.rename(a, b)" from
+                             "Controller.rename(a, b)") was reported as
+                             uncontrolled recursion. Receiver identity is
+                             the discriminator. Each defect case has a
+                             control that must stay silent. -->
+                        <include>org/plumb/dfa/checkers/taint/RecursionReceiverIdentityTest.java</include>
+
+                        <!-- A parameter bound by a FRAMEWORK entry point
+                             (@RequestParam, @PathVariable, @QueryParam, ...)
+                             is a taint source whose origin is the HTTP
+                             request. A Spring controller has no
+                             getParameter() call anywhere: the framework
+                             binds the value BY ANNOTATION, so without this
+                             model a request-bound value is
+                             indistinguishable from an internal one. -->
+                        <include>org/plumb/dfa/taint/FrameworkEntryPointSourceTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

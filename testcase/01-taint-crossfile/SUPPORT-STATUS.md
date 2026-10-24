@@ -4,7 +4,7 @@
 
 ## Measured
 
-- True positives: **TP 15/15**
+- True positives: **TP 16/16**
 - True negatives: **TN 2/2**
 - Scan mode: per-file, callgraph strategy: `global`.
 

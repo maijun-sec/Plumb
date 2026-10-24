@@ -400,6 +400,7 @@ final class CheckerCategories {
     m.put("OptionalReturnCheck", "style");
     m.put("OrmLoadNullCheckCheck", "quality");
     m.put("OrmLostUpdateCheck", "quality");
+    m.put("OrmSqlInterpolationCheck", "security");
     m.put("OrmUnnecessaryGetCheck", "quality");
     m.put("OuterTypeFilenameCheck", "naming");
     m.put("OuterTypeNumberCheck", "style");

@@ -35,7 +35,7 @@
 - 这意味着 *N* 个 checker 遍历一份 *M* 节点的 AST，只需 *O(M·N)* 次方法分派，而不是每个 checker 独立遍历一次 (那样是 *O(M·N²)* 节点访问)。
 - 每个 checker 通过 `ctx.report(line, col, rule, message, severity, dataflowHead)` 上报违规。`RuleDef` 提供规则 ID、严重度、类型 (BUG / STYLE / BAD_PRACTICE) 等元数据。
 - 注册方式有三种：
-  - `AstCheckerRegistry.builtins()` — 全部 582 条
+  - `AstCheckerRegistry.builtins()` — 全部 583 条
   - `AstCheckerRegistry.load("Foo.*")` — 按简单名 glob 过滤
   - `AstCheckerRegistry.byCategory("security")` — 按子包分类过滤
 
@@ -45,7 +45,7 @@
 
 ## 统计概览
 
-- 总规则数: **582**
+- 总规则数: **583**
 
 | 分类 | 数量 | 说明 |
 | ---- | ---- | ---- |
@@ -54,7 +54,7 @@
 | `error` | 35 | 错误处理 (异常、try/catch、finalize) |
 | `naming` | 51 | 命名 (标识符、命名风格) |
 | `performance` | 63 | 性能 (低效实现、可优化写法) |
-| `security` | 41 | 安全 (注入、硬编码、加密) |
+| `security` | 42 | 安全 (注入、硬编码、加密) |
 | `style` | 354 | 风格 (代码风格、格式) |
 
 ## 按分类索引
@@ -271,7 +271,7 @@
 | `ast-performance-useless-string-valueof` | `USELESS_STRING_VALUEOF` | LOW | PERFORMANCE | `UselessStringValueOfCheck` |
 | `bu-0607-big-decimal-equals` | `BIG_DECIMAL_EQUALS` | MEDIUM | CORRECTNESS | `BigDecimalEqualsCheck` |
 
-### security  (41 条)
+### security  (42 条)
 
 | 规则 ID | 短名 | 严重度 | 类型 | 规则类 |
 | ------- | ---- | ------ | ---- | ------ |
@@ -300,6 +300,7 @@
 | `ast-security-missing-input-validation` | `MISSING_INPUT_VALIDATION` | MEDIUM | SECURITY | `MissingInputValidationCheck` |
 | `ast-security-null-deref-from-return-ast` | `NULL_DEREF_FROM_RETURN_AST` | MEDIUM | SECURITY | `NullDerefFromReturnAstCheck` |
 | `ast-security-obsolete-api` | `OBSOLETE_API` | LOW | BAD_PRACTICE | `ObsoleteApiCheck` |
+| `ast-security-orm-sql-interpolation` | `ORM_SQL_INTERPOLATION` | HIGH | SECURITY | `OrmSqlInterpolationCheck` |
 | `ast-security-path` | `PATH` | LOW | STYLE | `PathCheck` |
 | `ast-security-predictable-key-password` | `PREDICTABLE_KEY_PASSWORD` | HIGH | SECURITY | `PredictableKeyPasswordCheck` |
 | `ast-security-predictable-random-seed` | `PREDICTABLE_RANDOM_SEED` | MEDIUM | SECURITY | `PredictableRandomSeedCheck` |
@@ -4205,6 +4206,67 @@
 >
 > Detects deprecated / discouraged JDK methods and recommends a modern replacement in the AI
 > prompt.
+
+**规则约束 / 可调参数**: (无)
+
+### ast-security-orm-sql-interpolation  —  `ORM_SQL_INTERPOLATION`
+
+- **规则类**: `org.plumb.style.security.OrmSqlInterpolationCheck`
+- **分类**: `security`
+- **严重度**: HIGH
+- **类型**: SECURITY
+- **CWE**: CWE-89
+- **外部等价规则**: (无明显等价规则或为本仓库自研启发式)
+
+**规则说明**
+
+> CWE-89: an ORM mapper method whose SQL is built by string interpolation.
+>
+> <h2>Why this is not a taint rule</h2>
+>
+> The dangerous MyBatis / JPA shape is:
+>
+> ```
+>
+> &#64;Select("SELECT * FROM users WHERE name = '${name}'")
+> User findByName(String name);
+>
+> ```
+>
+> The tainted value is spliced into the ANNOTATION's string constant. No call ever
+> carries it, so there is no data-flow edge for a taint engine to follow -- the value never
+> becomes a call argument. The TAC does not even carry annotations: the mapper method lowers
+> to a bare `RETURN`. Reaching this shape therefore needs the annotation itself, which
+> only the AST has.
+>
+> <h2>What the rule knows about the frameworks</h2>
+>
+> The two MyBatis placeholder forms have opposite safety properties, and that difference is
+> the whole point of the rule:
+>
+> <li>`#{name`} becomes a `PreparedStatement` placeholder (`?`). The value
+> is bound as data and cannot change the SQL structure. This is the safe form.
+> <li>`${name`} is a raw string substitution. The value becomes part of the SQL text
+> and can change the statement. This is the dangerous form.
+>
+> `${`} does have legitimate uses -- a dynamic table name, a dynamic column, an
+> `ORDER BY` direction -- because a prepared-statement placeholder cannot stand in for
+> SQL structure. So the rule does not report every `${`}; it reports a `${`}
+> whose placeholder names a method parameter. A `${`} that names nothing the method
+> receives cannot be influenced by the caller and is left alone.
+>
+> The same distinction applies to the JPA / Hibernate annotation forms that take raw JPQL
+> or HQL: `@Query("... " + value)` and `@Query("... ${value`")} are reported, and
+> a query whose text carries no interpolation is not.
+>
+> <h2>What is reported</h2>
+>
+> <li>A mapper SQL annotation whose text contains a `${...`} naming one of the method's
+> parameters.
+> <li>A query annotation whose text is built by concatenating a method parameter into the
+> query string.
+>
+> Both are reported at the annotation, because that is where the SQL text lives.
 
 **规则约束 / 可调参数**: (无)
 
