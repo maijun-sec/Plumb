@@ -231,6 +231,9 @@ public final class ScanRunner {
     // which case the prompt is null = no AI dedup).
     java.util.Map<String, java.util.function.Function<Finding, String>> promptByRule =
         buildPromptByRuleMap(dfaCheckers, styleChecks);
+    // R1124: the reverse map (emitted rule id -> the checker's slug), so an
+    // `ai.dedupRules` entry written as a slug still matches the finding.
+    java.util.Map<String, String> slugByEmittedId = buildSlugByEmittedIdMap(styleChecks);
 
     // Allow CLI / YAML override: a user-supplied
     // --rule-prompts-dir can replace each checker's
@@ -258,16 +261,23 @@ public final class ScanRunner {
       java.util.List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>();
       for (Finding f : findings) {
         String ruleName = ruleNameOf(f);
+        String slug = slugByEmittedId.get(ruleName);
         String inlinePrompt =
             promptByRule.containsKey(ruleName) ? promptByRule.get(ruleName).apply(f) : null;
+        // R1124: an override file is named after the checker's slug (that is
+        // what the rule catalogue shows the user), but the finding carries the
+        // emit id -- so try the slug too.
         String overridePrompt = overrides.get(ruleName);
+        if (overridePrompt == null && slug != null) {
+          overridePrompt = overrides.get(slug);
+        }
         String finalPrompt = (overridePrompt != null) ? overridePrompt : inlinePrompt;
         if (finalPrompt == null) {
           // No prompt ⇒?skip AI dedup for this rule.
           verdictByKey.put(keyOf(f), "(no-rule-prompt)");
           continue;
         }
-        if (!config.aiDedupRules.isEmpty() && !config.aiDedupRules.contains(ruleName)) {
+        if (!config.aiDedupRules.isEmpty() && !matchesAiDedupRules(ruleName, slug)) {
           verdictByKey.put(keyOf(f), "(not-in-aiDedupRules)");
           continue;
         }
@@ -467,6 +477,20 @@ public final class ScanRunner {
    * R-? Step 7 ⇒?build a rule-name -> prompt-producer map. The runner uses this to look up the rule
    * prompt for each finding by its rule id. Findings whose rule is not in the map keep their {@code
    * ai_verdict} as UNKNOWN (no AI review was performed).
+   *
+   * <p><b>R1124 (2026-10-24) — the map must be keyed by the id the FINDING carries, not only by
+   * the checker's slug.</b> {@link #ruleNameOf(Finding)} returns {@code finding.rule().ruleId().id()}
+   * (the canonical emit id, e.g. {@code ast-bug-bc-equals-no-null}), but the map used to be keyed
+   * only by {@code checker.name()} (the kebab-case slug, e.g. {@code bc-equals-no-null}). Those two
+   * strings are equal for <em>zero</em> of the 595 AST checkers, so every AST finding fell into the
+   * {@code "(no-rule-prompt)"} branch and the AI FP-reducer never reviewed a single style rule. The
+   * DFA taint family was unaffected because {@code TaintedCheckerBase.name()} returns
+   * {@code rule.ruleId()} by construction.
+   *
+   * <p>So each checker is registered under BOTH keys: its slug (so a user's {@code --rule-prompts-dir}
+   * override and any slug-keyed lookup keep working) and the id of the rule it actually emits (so
+   * the finding's own id finds its prompt). The emitted id is read from the checker's own {@code
+   * rule()}, which is the same source of truth {@code StyleContext.report()} uses.
    */
   private java.util.Map<String, java.util.function.Function<Finding, String>> buildPromptByRuleMap(
       List<org.plumb.dfa.engine.DfaChecker> dfaCheckers,
@@ -480,8 +504,63 @@ public final class ScanRunner {
     for (org.plumb.style.AstChecker c : styleChecks) {
       String name = c.name();
       map.put(name, f -> c.getAiPrompt(f));
+      // R1124: also key by the emitted rule id. Without this the map's key
+      // never equals the finding's ruleId().id(), and every AST finding was
+      // skipped as "(no-rule-prompt)".
+      String emittedId = emittedRuleIdOf(c);
+      if (emittedId != null && !emittedId.isEmpty() && !emittedId.equals(name)) {
+        map.putIfAbsent(emittedId, f -> c.getAiPrompt(f));
+      }
     }
     return map;
+  }
+
+  /**
+   * R1124: the canonical rule id an AST checker emits, read from its own {@code rule()}.
+   *
+   * <p>Returns null when the checker exposes no rule metadata, or when the id is blank. Never
+   * throws: a checker with a broken {@code rule()} must not break the whole AI pass.
+   */
+  private static String emittedRuleIdOf(org.plumb.style.AstChecker c) {
+    try {
+      org.plumb.rules.RuleDef def = c.rule();
+      if (def == null || def.ruleId() == null) return null;
+      String id = def.ruleId().id();
+      return (id == null || id.isEmpty()) ? null : id;
+    } catch (RuntimeException ex) {
+      LOG.debug("Could not read rule() from {}: {}", c.getClass().getName(), ex.toString());
+      return null;
+    }
+  }
+
+  /**
+   * R1124: map each AST checker's emitted rule id back to the checker's slug.
+   *
+   * <p>Used by the {@code ai.dedupRules} allowlist so a user may name a rule either way. The key
+   * is the id the finding carries; the value is {@code checker.name()}.
+   */
+  private java.util.Map<String, String> buildSlugByEmittedIdMap(
+      List<org.plumb.style.AstChecker> styleChecks) {
+    java.util.Map<String, String> out = new java.util.HashMap<>();
+    for (org.plumb.style.AstChecker c : styleChecks) {
+      String id = emittedRuleIdOf(c);
+      if (id != null) out.putIfAbsent(id, c.name());
+    }
+    return out;
+  }
+
+  /**
+   * R1124: does this finding's rule appear in the {@code ai.dedupRules} allowlist?
+   *
+   * <p>The allowlist may name a rule either by its canonical emit id
+   * ({@code ast-bug-bc-equals-no-null}) or by the checker's slug
+   * ({@code bc-equals-no-null}). Both spellings are accepted, because the
+   * finding only carries the emit id while the slug is what a user reads in
+   * the rule catalogue and what {@code --rule-prompts-dir} names a file after.
+   */
+  private boolean matchesAiDedupRules(String ruleName, String slug) {
+    if (config.aiDedupRules.contains(ruleName)) return true;
+    return slug != null && config.aiDedupRules.contains(slug);
   }
 
   /**

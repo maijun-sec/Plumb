@@ -96,6 +96,7 @@ ai:
   dedup: false                  # FP reducer（CLI: --ai-dedup）
   dropOnAiFp: false             # false=保留 FP 标记，true=丢掉
   dedupRules: []                # 空=每条规则都过；填了只审这些
+
   provider: openai              # openai | anthropic | openai_compatible
   baseUrl: https://api.openai.com
   apiKey: ${OPENAI_API_KEY}     # ${ENV_VAR} 语法
@@ -105,6 +106,13 @@ ai:
   maxConcurrent: 4              # 并发 dedup 请求数
   temperature: 0.0              # 0 = 确定性判 FP
 ```
+
+`ai.dedupRules` 里可以写规则的**两种拼法**，两种都认：
+
+- slug（checker 的 `name()`，也就是规则目录里显示的名字）——`bc-equals-no-null`
+- canonical emit id（finding 里带的 `rule_id`）——`ast-bug-bc-equals-no-null`
+
+`--rule-prompts-dir` 里的覆盖文件同理：文件名按 slug 命名即可。
 
 **已被移除的 key**（`ConfigLoader` 会打 warning 并忽略）：
 

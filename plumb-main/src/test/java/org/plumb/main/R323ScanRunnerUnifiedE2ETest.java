@@ -60,11 +60,23 @@ class R323ScanRunnerUnifiedE2ETest {
             }
         }
         """;
-    Path tmp = Files.createTempFile("R323E2E", ".java");
+    // R1124: the fixture goes into its OWN directory.
+    //
+    // ScanRunner.maybeExpandForCrossTu() lists the parent directory of a
+    // single-file input and pulls in sibling .java files (the cross-TU
+    // auto-expand, capped at CROSS_TU_AUTO_EXPAND_LIMIT siblings). A fixture
+    // written straight into the shared system temp directory therefore
+    // drags in whatever else happens to be sitting there -- a stray
+    // QE-R744-backup.java left by an earlier session was enough to make
+    // this test fail, with findings the fixture never contained.
+    //
+    // An isolated per-test directory has exactly one .java file in it, so
+    // the expansion is a no-op and the assertions measure this fixture only.
+    Path dir = Files.createTempDirectory("R323E2E");
+    Path tmp = dir.resolve("Sample.java");
     Files.writeString(tmp, src);
-    Path outFile = Files.createTempFile("R323E2E", ".ndjson");
-    try {
-      ScanConfig cfg = new ScanConfig();
+    Path outFile = dir.resolve("out.ndjson");
+    try {      ScanConfig cfg = new ScanConfig();
       cfg.inputs.add(tmp);
       cfg.outputPath = outFile;
       cfg.outputFormat = ScanConfig.OutputFormat.NDJSON;
@@ -124,10 +136,17 @@ class R323ScanRunnerUnifiedE2ETest {
           .as(
               "plumb-style EmptyCatchBlockCheck should fire on catch (Error e) {} (R676 — dfa"
                   + " EmptyCatchHandler removed, plumb-style covers it)")
-          .contains("ast-error-catch-block-strict");
+          // R1124: the emitted rule_id is the CANONICAL id
+          // ("ast-error-empty-catch-block"), not the legacy alias
+          // ("ast-error-catch-block-strict"). The alias exists only for
+          // backwards compatibility with old YAML whitelists; the NDJSON
+          // contract carries the canonical id. This test asserted the alias
+          // and had therefore never passed since the initial commit.
+          .contains("ast-error-empty-catch-block");
     } finally {
-      Files.deleteIfExists(tmp);
       Files.deleteIfExists(outFile);
+      Files.deleteIfExists(tmp);
+      Files.deleteIfExists(dir);
     }
   }
 
@@ -138,9 +157,14 @@ class R323ScanRunnerUnifiedE2ETest {
     // findings for a clean fixture
     // (other legacy checkers also off).
     String src = "class Sample { void m() { int x = 1; } }";
-    Path tmp = Files.createTempFile("R323Off", ".java");
+    // R1124: isolated directory, same reason as the test above -- the
+    // cross-TU auto-expand pulls in sibling .java files from the input's
+    // parent directory, and the shared system temp directory is not a
+    // controlled environment.
+    Path dir = Files.createTempDirectory("R323Off");
+    Path tmp = dir.resolve("Sample.java");
     Files.writeString(tmp, src);
-    Path outFile = Files.createTempFile("R323Off", ".ndjson");
+    Path outFile = dir.resolve("out.ndjson");
     try {
       ScanConfig cfg = new ScanConfig();
       cfg.inputs.add(tmp);
@@ -188,8 +212,9 @@ class R323ScanRunnerUnifiedE2ETest {
       String ndjson = Files.readString(outFile);
       assertThat(ndjson.trim()).isEmpty();
     } finally {
-      Files.deleteIfExists(tmp);
       Files.deleteIfExists(outFile);
+      Files.deleteIfExists(tmp);
+      Files.deleteIfExists(dir);
     }
   }
 }

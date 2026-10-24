@@ -212,8 +212,7 @@ ai:
   provider: openai_compatible
   baseUrl: https://api.openai.com
   apiKey: ${OPENAI_API_KEY}
-  model: gpt-4o-mini
-  timeoutSeconds: 30
+  model: gpt-4o-mini  timeoutSeconds: 30
   maxConcurrent: 4
   temperature: 0.0
 ```
@@ -270,6 +269,18 @@ parse -> translate -> style + DFA
 `ai.dedupRules` 过滤后，为每条 finding 找到拥有该 rule 的 checker，取它的 prompt，
 交给 `ReActAgent` 判定，结果写回 `ai_verdict` / `ai_reason`。
 `--ai-dedup-stats` 额外打印判定分布。
+
+**规则怎么对上（两种拼法都认）**：finding 携带的是 canonical emit id
+（如 `ast-bug-bc-equals-no-null`），checker 的 `name()` 是 kebab-case slug
+（如 `bc-equals-no-null`）。这两个字符串**对 595 个 AST checker 而言没有一对是相等的**，
+所以 prompt 表同时用两种 key 登记：
+
+- **slug**（`checker.name()`）——用户看到的规则名，也是 `--rule-prompts-dir`
+  里文件名对应的 key；
+- **emit id**（`checker.rule().ruleId().id()`）——finding 实际携带的 id。
+
+`ai.dedupRules` 白名单同样两种写法都接受。DFA 侧不受影响：
+`TaintedCheckerBase.name()` 直接返回 `rule.ruleId()`，两种拼法本来就相等。
 
 ### 13.4 为什么不用 Spring-AI
 
