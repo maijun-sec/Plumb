@@ -2,7 +2,7 @@
   "category": "06-framework-orms",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 294,
+  "total_findings": 345,
   "cases": [
     {
       "id": "TP-jdbc-query-for-list",
@@ -287,6 +287,67 @@
       "hit_lines": []
     },
     {
+      "id": "TP-beanparam-field-entry-point",
+      "kind": "tp",
+      "file": "QuarkusBeanParamResource.java",
+      "line": 60,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "param:params.customer@quarkus-rest:RestQuery",
+      "note": "A @RestBeanParam request bean's FIELD reaching the SQL sink in the same method. The container annotation names the BEAN; the binding annotation sits on the FIELD, so the source must name the field and the field's own annotation: 'param:params.customer@quarkus-rest:RestQuery'. Before the field-level model the bean class produced no function in the IR at all -- it declares no method and no initializer -- so its @RestQuery was invisible and the finding named an opaque parameter instead. The label is ASSERTED, so an implementation that attributed this to the container ('param:params@quarkus-rest:RestBeanParam') would fail here.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        60
+      ]
+    },
+    {
+      "id": "TP-beanparam-second-field-entry-point",
+      "kind": "tp",
+      "file": "QuarkusBeanParamResource.java",
+      "line": 71,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "param:params.region@quarkus-rest:RestQuery",
+      "note": "A second bound field of the SAME bean. The resolution is per FIELD, not per bean: the field name comes from the FIELDLOAD and the annotation from that field's own declaration. Without this case an implementation that always picked the bean's FIRST bound field would pass the previous one.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        71
+      ]
+    },
+    {
+      "id": "TP-beanparam-unbound-field-carrier",
+      "kind": "tp",
+      "file": "QuarkusBeanParamResource.java",
+      "line": 82,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "param:params@carrier",
+      "note": "A field the framework did NOT bind ('internalNote' carries no binding annotation). It IS reported -- it is a value derived from a request-supplied bean -- but the source must be the CARRIER label 'param:params@carrier', not a framework entry point. Claiming a framework origin here would be a false claim: no annotation bound that field. The assertion is on the whole head, so 'param:params.customer@quarkus-rest:RestQuery' would NOT satisfy it. Without this case, a model that attributed every field of a container-bound bean to the framework would pass the two cases above.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        82
+      ]
+    },
+    {
+      "id": "TN-beanparam-field-no-sink",
+      "kind": "tn",
+      "file": "QuarkusBeanParamResource.java",
+      "line": 88,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "PRECISION PROBE for the request-bean model: a bound field ('params.customer') that only reaches a log call. The field IS a framework entry point, but it never reaches a SQL sink. A model that reported every field of every request bean would report here. The line is the call site of the log; the finding, if there were one, would be attributed to the sink.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
       "id": "TN-mybatis-bound-parameter",
       "kind": "tn",
       "file": "UserMapper.java",
@@ -327,22 +388,22 @@
     }
   ],
   "summary": {
-    "tp_total": 15,
-    "tp_supported": 15,
+    "tp_total": 18,
+    "tp_supported": 18,
     "tp_false_negative": 0,
-    "tn_total": 7,
-    "tn_supported": 7,
+    "tn_total": 8,
+    "tn_supported": 8,
     "tn_false_positive": 0
   },
   "cwe_histogram": {
-    "CWE-89": 32,
-    "CWE-563": 25,
-    "CWE-798": 19,
-    "CWE-331": 19,
-    "CWE-862": 16,
-    "CWE-20": 13,
+    "CWE-89": 38,
+    "CWE-563": 27,
+    "CWE-798": 22,
+    "CWE-331": 22,
+    "CWE-862": 20,
+    "CWE-20": 17,
     "CWE-190": 2,
-    "CWE-754": 1,
-    "CWE-668": 1
+    "CWE-668": 2,
+    "CWE-754": 1
   }
 }

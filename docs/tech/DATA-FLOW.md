@@ -192,6 +192,42 @@ Java 侧由 `scripts/gen_framework_annotations.py` 生成。
 `param:customer@spring-mvc:RequestParam` —— 前缀 `param:` 保持不变（几十处
 `startsWith("param:")` 判断依赖它），框架限定词是**后缀**。
 
+### 3.1.2 请求 Bean：源不是一次调用，也不是参数注解，而是字段声明
+
+**容器注解**（`@RestBeanParam` `@BeanParam` `@RequestBean`）绑定的不是一个值，而是一
+**组**值：框架把请求值绑到 bean 的**字段**上，绑定注解在字段上，不在参数上。
+
+```java
+public class Parameters {
+  @RestQuery("customer")     // 绑定注解在这里
+  public String customer;
+}
+
+public void search(@RestBeanParam Parameters params) {
+  repository.findByCustomer(params.customer);   // 值在这里进入
+}
+```
+
+难点在于**怎么找到那个字段**。bean 类没有任何方法，也没有初始化器，所以它在 IR 里
+**根本不产生任何函数** —— `TacFunction.fieldAnnotations()` 只能描述"声明该函数的类"的字段，
+一个没有函数的类就没有字段注解，于是 `@RestQuery` 对整个引擎**完全不可见**：到达 SQL
+sink 的值没有框架来源可写。
+
+修法分两层：
+
+- **TAC**：`TacProgram.classFieldAnnotations()` 记录**每一个**被声明的类的字段注解，不管
+  该类有没有函数；`MergedProgram` 把它跨编译单元聚合（和 `classToParent` 一样）。
+- **DFA**：`FrameworkFieldBindings` 在 `FIELDLOAD` 处解析：接收者的**类型**决定看哪个类
+  的字段，**字段名**决定看哪个字段，字段上的**绑定注解**决定来源和框架。
+
+所以标签是 `param:params.customer@quarkus-rest:RestQuery` —— 名字是**限定过的字段
+表达式**，因为读者需要知道是哪个 bean 的哪个字段。
+
+**容器参数本身是"载体"（carrier），不是源**：它的标签是 `param:params@carrier`。框架
+**没有**绑定的字段不能报成框架入口点 —— 那是个假声明，因为没有任何注解绑过它。这个模型
+**不抑制任何 finding**：载体仍然是污点的，所以从请求 bean 派生出来的值照样到达 sink、照样
+被报出来。
+
 ### 3.2 边界分析（boundary）
 
 `checkers/boundary/`，全部继承 `BoundaryConstraintChecker`（`:64`）。每个子类把算术谓词

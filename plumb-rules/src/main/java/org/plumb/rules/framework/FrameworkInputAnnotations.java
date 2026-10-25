@@ -73,6 +73,29 @@ public final class FrameworkInputAnnotations {
    */
   private static final Map<String, String> FRAMEWORK_BY_ENDPOINT_ANNOTATION;
 
+  /**
+   * Annotations that bind a CONTAINER of values rather than a single value, mapped to the framework
+   * that defines them.
+   *
+   * <p>A bean parameter is not itself the request value: the framework binds each FIELD of the bean
+   * class to its own request value, so the binding annotation lives on the bean's FIELD:
+   *
+   * <pre>
+   *   public class Parameters {
+   *     &#64;RestQuery("customer")
+   *     public String customer;
+   *   }
+   *
+   *   public void search(&#64;RestBeanParam Parameters params) {
+   *     repository.findByCustomer(params.customer);
+   *   }
+   * </pre>
+   *
+   * <p>The parameter is a CARRIER, and the fields it carries are the sources. The taint engine has
+   * to read the FIELD's annotation to learn where the value came from.
+   */
+  private static final Map<String, String> CONTAINER_TO_FRAMEWORK;
+
   static {
     Map<String, String> m = new LinkedHashMap<>();
 
@@ -117,6 +140,12 @@ public final class FrameworkInputAnnotations {
     m.put("WebParam", FRAMEWORK_JAKARTA_SERVLET);
 
     ANNOTATION_TO_FRAMEWORK = Collections.unmodifiableMap(m);
+
+    Map<String, String> c = new LinkedHashMap<>();
+    c.put("BeanParam", FRAMEWORK_JAX_RS);
+    c.put("RequestBean", FRAMEWORK_MICRONAUT);
+    c.put("RestBeanParam", FRAMEWORK_QUARKUS_REST);
+    CONTAINER_TO_FRAMEWORK = Collections.unmodifiableMap(c);
 
     Map<String, String> e = new LinkedHashMap<>();
     e.put("Controller", FRAMEWORK_MICRONAUT);
@@ -177,6 +206,32 @@ public final class FrameworkInputAnnotations {
   /** The number of binding annotations in the catalogue. */
   public static int size() {
     return ANNOTATION_TO_FRAMEWORK.size();
+  }
+
+  /**
+   * Every annotation that binds a CONTAINER of request values to a parameter.
+   *
+   * <p>Matched by SIMPLE NAME, like {@link #USER_INPUT_PARAM_ANNOTATIONS}.
+   */
+  public static final Set<String> CONTAINER_BINDING_ANNOTATIONS =
+      Collections.unmodifiableSet(new LinkedHashSet<>(CONTAINER_TO_FRAMEWORK.keySet()));
+
+  /**
+   * Whether {@code annotation} binds a container of request values to a parameter.
+   *
+   * @param annotation the annotation's simple name, as the IR records it
+   */
+  public static boolean isContainerAnnotation(String annotation) {
+    return annotation != null && CONTAINER_TO_FRAMEWORK.containsKey(annotation);
+  }
+
+  /**
+   * The framework that defines the container annotation {@code annotation}, or {@link
+   * #FRAMEWORK_UNKNOWN} when it is not a container annotation.
+   */
+  public static String frameworkOfContainerAnnotation(String annotation) {
+    String framework = CONTAINER_TO_FRAMEWORK.get(annotation);
+    return framework != null ? framework : FRAMEWORK_UNKNOWN;
   }
 
   /**

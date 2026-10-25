@@ -110,7 +110,19 @@ public final class FrameworkEntryPoints {
       return null;
     }
     for (String annotation : annotations) {
-      if (annotation != null && USER_INPUT_PARAM_ANNOTATIONS.contains(annotation)) {
+      if (annotation == null) {
+        continue;
+      }
+      // A CONTAINER annotation names a bean of bound parameters, not a
+      // request value. The bean parameter is a CARRIER: the values that
+      // entered the program are its FIELDS, each bound by its own
+      // annotation. Labelling the parameter itself as the entry point
+      // would claim the whole bean came from the request, which is a
+      // different (and unproven) statement. See FrameworkFieldBindings.
+      if (FrameworkInputAnnotations.isContainerAnnotation(annotation)) {
+        continue;
+      }
+      if (USER_INPUT_PARAM_ANNOTATIONS.contains(annotation)) {
         return new EntryPoint(annotation, frameworkOf(fn, annotation));
       }
     }

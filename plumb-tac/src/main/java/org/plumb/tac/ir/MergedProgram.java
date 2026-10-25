@@ -200,6 +200,20 @@ public final class MergedProgram implements java.io.Serializable {
         stub.registerClassParent(e.getKey(), e.getValue());
       }
     }
+    // Aggregate the per-file FIELD annotation tables the same way, so a
+    // request bean declared in one .java file is still visible to an
+    // endpoint declared in another. Without this, the container-binding
+    // shape (@RestBeanParam Parameters params, with @RestQuery on
+    // Parameters.customer) only resolves when the bean and the endpoint
+    // happen to share a compilation unit.
+    for (TacProgram src : sources) {
+      for (var classEntry : src.classFieldAnnotations().entrySet()) {
+        for (var fieldEntry : classEntry.getValue().entrySet()) {
+          stub.addClassFieldAnnotations(
+              classEntry.getKey(), fieldEntry.getKey(), fieldEntry.getValue());
+        }
+      }
+    }
     return stub;
   }
 

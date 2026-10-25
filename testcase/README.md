@@ -10,7 +10,7 @@ self-contained so its support verdict can be read and re-measured on its own.
 | `03-pointer-multilevel` | Field-, array- and container-sensitive alias analysis with context-sensitive cross-method returns |
 | `04-polymorphic-callgraph` | Dispatch through interfaces, abstract classes, diamond inheritance |
 | `05-real-cve-derived` | CVE-shaped real-world cases |
-| `06-framework-orms` | Spring JDBC and MyBatis sinks, with the dependency jars absent from the analysis classpath; Spring, Quarkus REST and Micronaut annotation-bound entry points |
+| `06-framework-orms` | Spring JDBC and MyBatis sinks, with the dependency jars absent from the analysis classpath; Spring, Quarkus REST and Micronaut annotation-bound entry points; request beans whose fields carry the binding annotation |
 
 ## Support matrix (measured)
 

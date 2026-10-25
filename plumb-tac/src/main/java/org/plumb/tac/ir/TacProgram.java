@@ -92,6 +92,32 @@ public final class TacProgram implements java.io.Serializable {
    */
   private final Map<String, String> lambdaBindings = new java.util.HashMap<>();
 
+  /**
+   * Field annotations, keyed by DECLARING class, then by field name.
+   *
+   * <p>This table exists because {@link TacFunction#fieldAnnotations()} cannot carry the
+   * information. A function's field annotations describe the fields of the class that DECLARES the
+   * function, and they are only recorded when that class happens to emit a synthetic {@code
+   * <clinit>} or {@code <init>} -- which needs a static field or an initialized instance field. A
+   * request bean is the shape that breaks this:
+   *
+   * <pre>
+   *   public class Parameters {
+   *     &#64;RestQuery("customer")
+   *     public String customer;      // no initializer, no methods
+   *   }
+   * </pre>
+   *
+   * <p>That class emits NO function at all, so its {@code @RestQuery} was invisible to the whole
+   * engine: the endpoint that reads {@code params.customer} had no way to learn that the field was
+   * bound to the request.
+   *
+   * <p>The key is the DECLARING class's short name, matching {@link TacFunction#enclosingClass()}
+   * and {@link #classToParent}. The inner value maps the field name to its annotation simple names.
+   */
+  private final Map<String, Map<String, List<String>>> classFieldAnnotations =
+      new LinkedHashMap<>();
+
   public TacProgram(Path sourcePath, String typeName) {
     this.sourcePath = sourcePath;
     this.typeName = typeName;
@@ -154,6 +180,63 @@ public final class TacProgram implements java.io.Serializable {
 
   public SourceMap sourceMap() {
     return sourceMap;
+  }
+
+  /**
+   * Record that the class {@code className} declares a field {@code fieldName} carrying the
+   * annotation simple names {@code annotations}.
+   *
+   * <p>Called by the translator for EVERY declared class, whether or not the class has methods, so
+   * that an annotation-only request bean is still representable in the IR.
+   */
+  public void addClassFieldAnnotations(
+      String className, String fieldName, List<String> annotations) {
+    if (className == null || fieldName == null || annotations == null || annotations.isEmpty()) {
+      return;
+    }
+    Map<String, List<String>> byField =
+        classFieldAnnotations.computeIfAbsent(className, k -> new LinkedHashMap<>());
+    List<String> existing = byField.computeIfAbsent(fieldName, k -> new ArrayList<>());
+    for (String annotation : annotations) {
+      if (annotation != null && !annotation.isEmpty() && !existing.contains(annotation)) {
+        existing.add(annotation);
+      }
+    }
+  }
+
+  /**
+   * The annotation simple names on {@code fieldName} of {@code className}, or an empty list when
+   * the class or the field is unknown.
+   *
+   * <p>An empty list means UNKNOWN, never "no annotations": a missing class is a missing fact, not
+   * a proof that the field carries no binding annotation.
+   */
+  public List<String> fieldAnnotationsOf(String className, String fieldName) {
+    if (className == null || fieldName == null) {
+      return List.of();
+    }
+    Map<String, List<String>> byField = classFieldAnnotations.get(className);
+    if (byField == null) {
+      return List.of();
+    }
+    List<String> annotations = byField.get(fieldName);
+    return annotations == null ? List.of() : List.copyOf(annotations);
+  }
+
+  /**
+   * The whole field-annotation table, keyed by declaring class then field name. The map is
+   * unmodifiable; the inner lists are copies.
+   */
+  public Map<String, Map<String, List<String>>> classFieldAnnotations() {
+    Map<String, Map<String, List<String>>> copy = new LinkedHashMap<>();
+    for (Map.Entry<String, Map<String, List<String>>> entry : classFieldAnnotations.entrySet()) {
+      Map<String, List<String>> inner = new LinkedHashMap<>();
+      for (Map.Entry<String, List<String>> field : entry.getValue().entrySet()) {
+        inner.put(field.getKey(), List.copyOf(field.getValue()));
+      }
+      copy.put(entry.getKey(), Collections.unmodifiableMap(inner));
+    }
+    return Collections.unmodifiableMap(copy);
   }
 
   /**

@@ -680,10 +680,51 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       String frameworkLabel = FrameworkEntryPoints.sourceLabelFor(fn, p.name());
       if (frameworkLabel != null) {
         markSource(p, frameworkLabel, null, fn.signature(), frameworkLabel);
-      } else {
-        markSource(p, "param:" + p.name(), null, fn.signature(), "param:" + p.name());
+        continue;
       }
+      // A CONTAINER parameter (@RestBeanParam, @BeanParam, @RequestBean) is
+      // a CARRIER, not a source: the request values it carries are its
+      // FIELDS, each bound by its own annotation. Marking the parameter as
+      // a source would claim the whole bean came from the request, which is
+      // a different (and unproven) statement -- and it would let a finding
+      // name "the bean" as the origin instead of the field that actually
+      // entered the program.
+      //
+      // So the container is labelled as a carrier, and its fields become the
+      // sources when they are read (see markContainerBoundFieldSource).
+      if (FrameworkFieldBindings.containerAnnotationFor(fn, p.name()) != null) {
+        markCarrier(p, fn);
+        continue;
+      }
+      markSource(p, "param:" + p.name(), null, fn.signature(), "param:" + p.name());
     }
+  }
+
+  /**
+   * Mark a parameter as a CARRIER of request-bound values, rather than as a source itself.
+   *
+   * <p>A carrier holds values that came from the request, but it is not itself one of them. The
+   * difference matters in the report: a finding that names a carrier points at the bean, while a
+   * finding that names a source points at the value that actually entered the program.
+   *
+   * <p>The label keeps the {@code "param:"} prefix -- the parameter IS a parameter -- and adds a
+   * {@code "carrier:"} qualifier, so every consumer that understands a parameter label still
+   * understands this one.
+   */
+  private void markCarrier(TacOperand.TacVar v, TacFunction fn) {
+    String label = "param:" + v.name() + "@carrier";
+    taintedVars.put(v, label);
+    taintPaths.put(v, java.util.List.of(new FlowStep("carrier", "", 1, 1, fn.signature(), label)));
+    int handle =
+        v2Builder.addSource(
+            TraceNode.Op.MARK_SOURCE,
+            List.of(new OperandRef.Var(v.name(), 0)),
+            label,
+            "",
+            1,
+            1,
+            fn.signature());
+    v2TraceHandle.put(v, handle);
   }
 
   @Override
@@ -711,6 +752,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       case FIELDLOAD -> {
         propagateMOVE(ins);
         recordClassRef(ins);
+        // A request bean's FIELD is the entry point, not the bean parameter.
+        // The parameter only names the container; the binding annotation
+        // lives on the field, so the taint flow starts at the field load.
+        // This runs BEFORE restoreFieldTaintOnLoad so the framework label
+        // is the one the reader sees.
+        markContainerBoundFieldSource(ins, fn, ctx);
         // R-810: pass ctx so the FIELDLOAD path
         // can consult ctx.staticFields() and
         // attach a real parent to a static
@@ -2445,6 +2492,69 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     String className = classRefVars.get(tv);
     if (className != null) return className;
     return n;
+  }
+
+  /**
+   * Mark a FIELDLOAD that reads a framework-bound field of a request bean as a taint SOURCE.
+   *
+   * <p>The container-binding shape is:
+   *
+   * <pre>
+   *   public class Parameters {
+   *     &#64;RestQuery("customer")
+   *     public String customer;
+   *   }
+   *
+   *   public void search(&#64;RestBeanParam Parameters params) {
+   *     repository.findByCustomer(params.customer);
+   *   }
+   * </pre>
+   *
+   * <p>Three facts have to line up, and each comes from a different place:
+   *
+   * <ol>
+   *   <li>the RECEIVER is a parameter of this function carrying a CONTAINER annotation -- that
+   *       comes from {@link TacFunction#paramAnnotations()};
+   *   <li>the receiver's TYPE names the bean class -- that comes from the {@code FIELDLOAD}'s scope
+   *       operand;
+   *   <li>the FIELD carries a binding annotation -- that comes from the merged program's class
+   *       field-annotation table, because the bean class is declared in another compilation unit
+   *       and produced no function of its own.
+   * </ol>
+   *
+   * <p>When all three line up, the field load becomes a source labelled {@code
+   * "param:params.customer@quarkus-rest:RestQuery"} -- the same label shape the parameter-level
+   * model uses, with the qualified field expression as the name.
+   *
+   * <p><b>Nothing is suppressed here.</b> When the facts do not line up, this method does nothing
+   * and the ordinary parameter treatment applies. The container parameter is still a parameter, so
+   * the value stays tainted either way; all this adds is a precise statement of WHERE it entered.
+   */
+  private void markContainerBoundFieldSource(
+      TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
+    if (ins.fieldName == null || ins.fieldName.isEmpty()) return;
+    if (!(ins.lhs1 instanceof TacOperand.TacVar recv)) return;
+    if (!(ins.dest instanceof TacOperand.TacVar dv)) return;
+    if (ctx == null) return;
+
+    // (1) The receiver must be a parameter carrying a container annotation.
+    String containerAnnotation = FrameworkFieldBindings.containerAnnotationFor(fn, recv.name());
+    if (containerAnnotation == null) return;
+
+    // (2) The receiver's type names the bean class.
+    String beanType = FrameworkFieldBindings.beanTypeOf(recv);
+    if (beanType == null) return;
+
+    // (3) The field must carry a binding annotation.
+    String label =
+        FrameworkFieldBindings.sourceLabelFor(ctx.program(), recv.name(), beanType, ins.fieldName);
+    if (label == null) return;
+
+    // The carrier parameter keeps its carrier label: the report should be
+    // able to say "this bean came from the request" as well as "this field
+    // did". The FIELD's label wins on the dest, because the field is the
+    // value that actually entered the program.
+    markSource(dv, label, ins, fn.signature(), label);
   }
 
   /**

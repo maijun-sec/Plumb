@@ -7,6 +7,7 @@
     "SHAPE 2 (MyBatis / Spring Data, AST): the TAC does not carry annotations and a mapper method lowers to a bare RETURN, so the taint engine cannot see a '${}' placeholder. This detection is therefore an AST rule, 'ast-security-orm-sql-interpolation'.",
     "SHAPE 3 (framework entry points, DFA): a Spring controller has no 'getParameter()' call anywhere -- the framework binds the request value to the method parameter BY ANNOTATION. The taint engine therefore treats a parameter carrying @RequestParam / @PathVariable / @QueryParam as a source whose origin is the HTTP request, and the finding names that origin ('param:customer@spring-mvc:RequestParam'). The 'TP-framework-entry-point' case is the one where the sink is in the SAME method, so the source label is visible in the finding itself; the cross-file cases are attributed to the sink, the same way category 01 is.",
     "SHAPE 4 (Quarkus REST and Micronaut, DFA): the same entry-point model, but each framework names its binding annotations differently. Quarkus uses @RestQuery / @RestHeader / @RestCookie; Micronaut uses @QueryValue / @Header / @Body. Micronaut's names were entirely missing from the taint engine's list, which instead held 'HeaderValue' and 'PathValue' -- names no framework defines -- so a value from a Micronaut request reached the SQL sink with no taint flow to follow. The trust boundary is identified by the BINDING annotation, not the endpoint annotation: Quarkus REST shares @Path and @GET with JAX-RS, so the endpoint annotation alone cannot tell them apart, but @RestQuery versus @QueryParam can.",
+    "SHAPE 5 (request beans, DFA): a CONTAINER annotation (@RestBeanParam, @BeanParam, @RequestBean) does not bind a value -- it binds a bean OF values, and the binding annotation sits on the bean's FIELD. The bean class declares no method and no initializer, so it produced NO function in the IR and its @RestQuery was invisible: the value that reached the sink had no framework origin to name. The TAC now records every declared class's field annotations, and the finding names the FIELD and the field's own annotation ('param:params.customer@quarkus-rest:RestQuery'). The container parameter itself is a CARRIER, not a source: it is labelled 'param:params@carrier', so a field the framework did not bind is not reported as a framework entry point.",
     "The two ORM placeholder forms have opposite safety semantics: '#{name}' becomes a PreparedStatement placeholder and the value is bound as DATA; '${name}' is a raw string substitution and the value becomes part of the SQL TEXT. Only the raw form is reported.",
     "A '${}' that names something the method does not receive is not a finding: a dynamic table name or column is a legitimate use of raw substitution, because a prepared-statement placeholder cannot stand in for SQL structure.",
     "The style findings on these fixtures are NOT part of this category. The category scores the two framework rules; the style noise is measured by the style categories."
@@ -206,6 +207,49 @@
         "dfa-taint-sql-injection"
       ],
       "note": "PRECISION PROBE: a @RestCookie parameter is labelled as a request-bound value, but it only reaches a log call. A model that tainted every value a request touches would report here."
+    },
+    {
+      "id": "TP-beanparam-field-entry-point",
+      "kind": "tp",
+      "file": "QuarkusBeanParamResource.java",
+      "line": 60,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "param:params.customer@quarkus-rest:RestQuery",
+      "note": "A @RestBeanParam request bean's FIELD reaching the SQL sink in the same method. The container annotation names the BEAN; the binding annotation sits on the FIELD, so the source must name the field and the field's own annotation: 'param:params.customer@quarkus-rest:RestQuery'. Before the field-level model the bean class produced no function in the IR at all -- it declares no method and no initializer -- so its @RestQuery was invisible and the finding named an opaque parameter instead. The label is ASSERTED, so an implementation that attributed this to the container ('param:params@quarkus-rest:RestBeanParam') would fail here."
+    },
+    {
+      "id": "TP-beanparam-second-field-entry-point",
+      "kind": "tp",
+      "file": "QuarkusBeanParamResource.java",
+      "line": 71,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "param:params.region@quarkus-rest:RestQuery",
+      "note": "A second bound field of the SAME bean. The resolution is per FIELD, not per bean: the field name comes from the FIELDLOAD and the annotation from that field's own declaration. Without this case an implementation that always picked the bean's FIRST bound field would pass the previous one."
+    },
+    {
+      "id": "TP-beanparam-unbound-field-carrier",
+      "kind": "tp",
+      "file": "QuarkusBeanParamResource.java",
+      "line": 82,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "param:params@carrier",
+      "note": "A field the framework did NOT bind ('internalNote' carries no binding annotation). It IS reported -- it is a value derived from a request-supplied bean -- but the source must be the CARRIER label 'param:params@carrier', not a framework entry point. Claiming a framework origin here would be a false claim: no annotation bound that field. The assertion is on the whole head, so 'param:params.customer@quarkus-rest:RestQuery' would NOT satisfy it. Without this case, a model that attributed every field of a container-bound bean to the framework would pass the two cases above."
+    },
+    {
+      "id": "TN-beanparam-field-no-sink",
+      "kind": "tn",
+      "file": "QuarkusBeanParamResource.java",
+      "line": 88,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "PRECISION PROBE for the request-bean model: a bound field ('params.customer') that only reaches a log call. The field IS a framework entry point, but it never reaches a SQL sink. A model that reported every field of every request bean would report here. The line is the call site of the log; the finding, if there were one, would be attributed to the sink."
     },
     {
       "id": "TN-mybatis-bound-parameter",

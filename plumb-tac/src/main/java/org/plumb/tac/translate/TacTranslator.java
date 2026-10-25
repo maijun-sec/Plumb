@@ -193,9 +193,36 @@ public final class TacTranslator {
       // builders; we just record them at lookup time below.
     }
 
-    // Collect static field initializers into a synthetic <clinit>.
-    // Collect static field initializers into a synthetic <clinit>.
     List<BodyDeclaration<?>> members = td.getMembers();
+
+    // Record the field annotations of THIS class, on the program itself.
+    //
+    // A function's own fieldAnnotations() describes the fields of the class
+    // that DECLARES the function, and it is only populated when the class
+    // happens to emit a synthetic <clinit> or <init> -- which needs a static
+    // field or an initialized instance field. A request bean is exactly the
+    // shape that breaks this:
+    //
+    //   public class Parameters {
+    //     @RestQuery("customer")
+    //     public String customer;      // no initializer, no methods
+    //   }
+    //
+    // Such a class emits NO function at all, so its binding annotation was
+    // invisible to the whole engine. The program-level table below records
+    // the annotations of EVERY declared class, so a bean with nothing but
+    // annotated fields is still representable in the IR.
+    String declaringClassName = prefix.isEmpty() ? classShortName : prefix;
+    for (BodyDeclaration<?> member : members) {
+      if (!(member instanceof FieldDeclaration memberField)) continue;
+      List<String> fieldAnns = extractAnnotationNames(memberField.getAnnotations());
+      if (fieldAnns.isEmpty()) continue;
+      for (VariableDeclarator variable : memberField.getVariables()) {
+        program.addClassFieldAnnotations(declaringClassName, variable.getNameAsString(), fieldAnns);
+      }
+    }
+
+    // Collect static field initializers into a synthetic <clinit>.
     TacBuilder clinit = null;
     for (BodyDeclaration<?> bd : members) {
       if (!(bd instanceof FieldDeclaration fd)) continue;

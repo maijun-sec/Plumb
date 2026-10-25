@@ -25,7 +25,11 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from framework_input_annotations import ANNOTATIONS, ENDPOINT_ANNOTATIONS  # noqa: E402
+from framework_input_annotations import (  # noqa: E402
+    ANNOTATIONS,
+    CONTAINER_ANNOTATIONS,
+    ENDPOINT_ANNOTATIONS,
+)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -41,6 +45,20 @@ LAYERS = (
         os.path.join(REPO, "plumb-style", "src", "main", "java", "org", "plumb", "style",
                      "security", "MissingInputValidationCheck.java"),
         "USER_INPUT_PARAM_ANNOS",
+    ),
+)
+
+# Layers that consume the CONTAINER classification. A container annotation
+# binds a bean of parameters rather than a value, so the taint engine has to
+# tell "this parameter is a carrier" from "this parameter is a source". A
+# layer that keeps its own container list can drift exactly like the binding
+# list did, so it is checked the same way.
+CONTAINER_LAYERS = (
+    (
+        "DFA field bindings",
+        os.path.join(REPO, "plumb-dfa", "src", "main", "java", "org", "plumb", "dfa",
+                     "taint", "FrameworkFieldBindings.java"),
+        "isContainerAnnotation",
     ),
 )
 
@@ -124,6 +142,40 @@ def main():
         print()
 
     print("endpoint annotations: %d" % len(ENDPOINT_ANNOTATIONS))
+    print()
+
+    # --- the CONTAINER classification -------------------------------
+    #
+    # A container annotation binds a BEAN of parameters, not a value. The
+    # layers that consume it must read the shared catalogue rather than
+    # keep their own list, for the same reason the binding list is shared:
+    # a copy can drift.
+    containers = set(CONTAINER_ANNOTATIONS)
+    print("container annotations: %d" % len(containers))
+    for name, path, marker in CONTAINER_LAYERS:
+        print("=== %s ===" % name)
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+        if marker not in text:
+            problems.append("%s never consults the shared container catalogue (%s)"
+                            % (name, marker))
+            print("  NEVER consults the shared container catalogue")
+        else:
+            print("  consults the shared container catalogue")
+        for copy_pattern in ("new java.util.LinkedHashSet<>(", "new LinkedHashSet<>(",
+                             "Set.copyOf("):
+            if copy_pattern in text:
+                problems.append("%s holds a COPY of the container catalogue -- a copy can drift"
+                                % name)
+                print("  HOLDS A COPY of the container catalogue")
+                break
+    # Every container annotation must also be a binding annotation: a bean
+    # parameter is a request-supplied object, so it binds request values.
+    not_binding = sorted(containers - set(ANNOTATIONS))
+    if not_binding:
+        problems.append("container annotation(s) that are not binding annotations: %s"
+                        % ", ".join(not_binding))
+        print("  NOT BINDING ANNOTATIONS: %s" % ", ".join(not_binding))
     print()
 
     if problems:

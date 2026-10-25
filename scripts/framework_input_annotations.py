@@ -76,6 +76,36 @@ FRAMEWORKS = (
     "jakarta-servlet",
 )
 
+# Annotations that bind a CONTAINER of values rather than a single value.
+#
+# A bean parameter is not itself the request value: the framework binds
+# each FIELD of the bean class to its own request value. The binding
+# annotation therefore lives on the bean's FIELD, not on the parameter:
+#
+#   public class Parameters {
+#     @RestQuery("customer")     <-- the binding annotation is here
+#     public String customer;
+#   }
+#
+#   public void search(@RestBeanParam Parameters params) {   <-- only names the container
+#     repository.findByCustomer(params.customer);
+#   }
+#
+# The taint engine has to look at the FIELD to learn where the value came
+# from. These three annotations are the ones that introduce a container,
+# and they are also the only ones whose parameter is not itself a source:
+# the parameter is a carrier, and the fields it carries are the sources.
+#
+# ModelAttribute (Spring) is deliberately NOT here: it binds a whole
+# object model, and its fields are not request values in the same
+# per-field sense -- the framework populates the bean from the request,
+# but there is no single per-field binding annotation to read.
+CONTAINER_ANNOTATIONS = {
+    "BeanParam": "jax-rs",
+    "RestBeanParam": "quarkus-rest",
+    "RequestBean": "micronaut",
+}
+
 # Annotations that mark a class or method as a framework endpoint, mapped to
 # the framework they identify.
 #

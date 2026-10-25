@@ -15,6 +15,10 @@ import org.junit.jupiter.api.Test;
  * symmetric: thirteen annotations were an HTTP trust boundary to the taint engine but invisible to
  * the validation checker, and the taint engine listed three names that no framework defines at all
  * -- one of which, {@code CookieValue2}, was a typo.
+ *
+ * <p>The catalogue also distinguishes CONTAINER annotations -- the ones that bind a bean of
+ * parameters rather than a single value -- because the two have different meanings for the taint
+ * engine. A container parameter is a carrier: its FIELDS are the sources.
  */
 class FrameworkInputAnnotationsTest {
 
@@ -182,5 +186,82 @@ class FrameworkInputAnnotationsTest {
         .isEqualTo(FrameworkInputAnnotations.FRAMEWORK_MICRONAUT);
     assertThat(FrameworkInputAnnotations.frameworkOfEndpointAnnotation("NotAnEndpoint")).isNull();
     assertThat(FrameworkInputAnnotations.frameworkOfEndpointAnnotation(null)).isNull();
+  }
+
+  /**
+   * The container annotations are present, and each names its own framework.
+   *
+   * <p>A container annotation binds a BEAN of parameters, not a value: {@code @BeanParam} (JAX-RS),
+   * {@code @RestBeanParam} (Quarkus REST) and {@code @RequestBean} (Micronaut). The parameter they
+   * sit on is a carrier -- the request values are the bean's FIELDS.
+   */
+  @Test
+  void everyContainerAnnotationIsPresent() {
+    assertThat(FrameworkInputAnnotations.isContainerAnnotation("BeanParam")).isTrue();
+    assertThat(FrameworkInputAnnotations.frameworkOfContainerAnnotation("BeanParam"))
+        .isEqualTo(FrameworkInputAnnotations.FRAMEWORK_JAX_RS);
+    assertThat(FrameworkInputAnnotations.isContainerAnnotation("RestBeanParam")).isTrue();
+    assertThat(FrameworkInputAnnotations.frameworkOfContainerAnnotation("RestBeanParam"))
+        .isEqualTo(FrameworkInputAnnotations.FRAMEWORK_QUARKUS_REST);
+    assertThat(FrameworkInputAnnotations.isContainerAnnotation("RequestBean")).isTrue();
+    assertThat(FrameworkInputAnnotations.frameworkOfContainerAnnotation("RequestBean"))
+        .isEqualTo(FrameworkInputAnnotations.FRAMEWORK_MICRONAUT);
+  }
+
+  /**
+   * A container annotation is also a binding annotation, so the two sets OVERLAP.
+   *
+   * <p>The container set is not a partition of the binding set: {@code @RestBeanParam} binds a
+   * request-supplied bean, so it is a binding annotation too. The container set is an ADDITIONAL
+   * classification, used to tell "this parameter is a carrier" from "this parameter is a value".
+   */
+  @Test
+  void aContainerAnnotationIsAlsoABindingAnnotation() {
+    for (String name : FrameworkInputAnnotations.CONTAINER_BINDING_ANNOTATIONS) {
+      assertThat(FrameworkInputAnnotations.isUserInputAnnotation(name))
+          .as("%s binds a request-supplied bean, so it binds a request value too", name)
+          .isTrue();
+    }
+  }
+
+  /**
+   * A plain binding annotation is NOT a container annotation.
+   *
+   * <p>This is the direction that matters: {@code @RequestParam} binds a VALUE to the parameter, so
+   * the parameter is the source. Treating it as a container would move the source to a field that
+   * does not exist.
+   */
+  @Test
+  void aPlainBindingAnnotationIsNotAContainerAnnotation() {
+    for (String name :
+        new String[] {
+          "RequestParam", "PathVariable", "QueryParam", "RestQuery", "QueryValue", "Header", "Body"
+        }) {
+      assertThat(FrameworkInputAnnotations.isContainerAnnotation(name))
+          .as("%s binds a value, not a bean of values", name)
+          .isFalse();
+    }
+  }
+
+  /** An unrelated annotation is not a container annotation either. */
+  @Test
+  void anUnrelatedAnnotationIsNotAContainerAnnotation() {
+    for (String name :
+        new String[] {"Autowired", "Valid", "Override", "Nullable", "NotAnAnnotation"}) {
+      assertThat(FrameworkInputAnnotations.isContainerAnnotation(name)).isFalse();
+    }
+    assertThat(FrameworkInputAnnotations.isContainerAnnotation(null)).isFalse();
+    assertThat(FrameworkInputAnnotations.frameworkOfContainerAnnotation(null))
+        .isEqualTo(FrameworkInputAnnotations.FRAMEWORK_UNKNOWN);
+  }
+
+  /** The container set is unmodifiable, like every other shared set. */
+  @Test
+  void theContainerSetCannotBeModified() {
+    assertThat(
+            org.junit.jupiter.api.Assertions.assertThrows(
+                UnsupportedOperationException.class,
+                () -> FrameworkInputAnnotations.CONTAINER_BINDING_ANNOTATIONS.add("Injected")))
+        .isNotNull();
   }
 }
