@@ -1,0 +1,1 @@
+**Dispatch is sound and type-precise.** Interface / abstract / diamond hierarchies resolve; overloads are filtered by parameter type, so an `int` argument no longer binds to a `String` overload, and an arity-2 overload in the same class resolves on its own key.

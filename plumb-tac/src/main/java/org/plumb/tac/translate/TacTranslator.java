@@ -385,9 +385,8 @@ public final class TacTranslator {
     // field; the translation emits a MOVE (or whatever the
     // initializer lowers to) into a TacVar that the next call
     // can FIELDSTORE from.
-    VariableDeclarationExpr vde =
-        new VariableDeclarationExpr(com.github.javaparser.ast.NodeList.nodeList(v));
-    stmtTranslator.translate(new com.github.javaparser.ast.stmt.ExpressionStmt(vde), b);
+    stmtTranslator.translate(
+        new com.github.javaparser.ast.stmt.ExpressionStmt(syntheticDeclaration(v)), b);
     // Now emit {@code this.<field> = <temp>} where the temp is
     // the TacVar the statement-translation just produced. We
     // look up the last MOVE / NEWARRAY / etc. that wrote to
@@ -428,9 +427,39 @@ public final class TacTranslator {
       TacBuilder b, FieldDeclaration fd, VariableDeclarator v, Expression init) {
     // Synthesize a VariableDeclarationExpr and route through the
     // existing statement-translation path.
-    VariableDeclarationExpr vde =
-        new VariableDeclarationExpr(com.github.javaparser.ast.NodeList.nodeList(v));
-    stmtTranslator.translate(new com.github.javaparser.ast.stmt.ExpressionStmt(vde), b);
+    stmtTranslator.translate(
+        new com.github.javaparser.ast.stmt.ExpressionStmt(syntheticDeclaration(v)), b);
+  }
+
+  /**
+   * A detached copy of {@code declarator}, wrapped in a {@link VariableDeclarationExpr}.
+   *
+   * <p><b>Why the copy matters.</b> The obvious spelling is
+   *
+   * <pre>
+   *   new VariableDeclarationExpr(NodeList.nodeList(v));
+   * </pre>
+   *
+   * but {@code NodeList.nodeList(v)} RE-PARENTS the original declarator: it is removed from its
+   * {@link FieldDeclaration} and attached to the new node. The new node is not attached to the
+   * {@code CompilationUnit}, so the declarator's parent chain no longer reaches the compilation
+   * unit -- and JavaParser's {@code getSymbolResolver()} walks that chain to find the unit. The
+   * result is that {@code resolve()} on the declarator and everything under it throws {@code
+   * IllegalStateException: com.github.javaparser.ast.expr.VariableDeclarationExpr}.
+   *
+   * <p>That is not a cosmetic problem. The scan pipeline TRANSLATES to TAC and only then runs the
+   * AST checkers, so a translation that breaks the parent chain silently disables type resolution
+   * for every AST checker that runs afterwards. A checker that needs to know whether a method
+   * returns {@code void} cannot answer, and has to assume the worst.
+   *
+   * <p>Cloning leaves the original tree intact: the copy carries its own children, and the original
+   * declarator keeps its parent, so both trees resolve.
+   *
+   * @param declarator the declarator to copy
+   */
+  private VariableDeclarationExpr syntheticDeclaration(VariableDeclarator declarator) {
+    VariableDeclarator copy = declarator.clone();
+    return new VariableDeclarationExpr(com.github.javaparser.ast.NodeList.nodeList(copy));
   }
 
   private <T extends CallableDeclaration<T>> void translateCallable(

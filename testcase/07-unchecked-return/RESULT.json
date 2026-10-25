@@ -1,0 +1,217 @@
+{
+  "category": "07-unchecked-return",
+  "scan_mode": "per-file",
+  "cg_strategy": "global",
+  "total_findings": 86,
+  "cases": [
+    {
+      "id": "TP-bare-statement",
+      "kind": "tp",
+      "file": "DiscardedReturn.java",
+      "line": 28,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "The bare statement shape: the expression statement drops the value. This is the shape the old name-only rule found, and it is the rarest of the three in real code.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        28
+      ]
+    },
+    {
+      "id": "TP-assigned-but-unread",
+      "kind": "tp",
+      "file": "DiscardedReturn.java",
+      "line": 33,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "The value is stored in 'ok', and 'ok' is never read, so nothing observes the deletion's result. This is the MOST COMMON shape in real code, and the old rule missed every one of them: it only looked at bare expression statements. Deciding it needs a use analysis of the method's locals -- a local that is written but never read is not observed.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        33
+      ]
+    },
+    {
+      "id": "TP-discarded-argument",
+      "kind": "tp",
+      "file": "DiscardedReturn.java",
+      "line": 46,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "The value is passed to a logger, which prints it and acts on neither it nor its own result, so the deletion's success flag is discarded just as surely as in the bare statement. The rule knows which callees IGNORE their arguments (println, print, log, trace, debug, info, warn, error) and which USE them (valueOf, compare, equals, requireNonNull, ...).",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        46
+      ]
+    },
+    {
+      "id": "TP-collection-mutation-ignored",
+      "kind": "tp",
+      "file": "DiscardedReturn.java",
+      "line": 51,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "A collection's boolean says whether the collection actually changed. 'add' returns false when the element was already present, so ignoring the result hides a real difference in behaviour.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        51
+      ]
+    },
+    {
+      "id": "TP-boolean-sibling-of-a-void-method",
+      "kind": "tp",
+      "file": "VoidReturnValue.java",
+      "line": 66,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "Files.deleteIfExists(Path) returns a boolean, while Files.delete(Path) in the same file is void. The pair is what makes the void check measurable: an implementation that skipped every 'delete'-named call would miss this one, and an implementation that reported every 'delete'-named call would report the void one.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        66
+      ]
+    },
+    {
+      "id": "TN-assigned-and-read",
+      "kind": "tn",
+      "file": "DiscardedReturn.java",
+      "line": 38,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: the value is stored AND read in a condition, so it is observed. A rule that reported every assignment of a must-check call would report here. The old rule happened to pass this case for the wrong reason -- it never looked at assignments at all.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-compared",
+      "kind": "tn",
+      "file": "DiscardedReturn.java",
+      "line": 56,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: the value is the condition, so it is observed.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-returned",
+      "kind": "tn",
+      "file": "DiscardedReturn.java",
+      "line": 63,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: the value is returned, so the CALLER observes it.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-void-close",
+      "kind": "tn",
+      "file": "VoidReturnValue.java",
+      "line": 41,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: InputStream.close() is 'public void close() throws IOException'. There is no return value to discard, so reporting it is a false positive -- the old name-only rule reported every 'close' on anything. The JDK signature is the authority.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-void-commit",
+      "kind": "tn",
+      "file": "VoidReturnValue.java",
+      "line": 46,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: Connection.commit() is void. A transaction that fails throws SQLException; it does not return a flag.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-void-flush",
+      "kind": "tn",
+      "file": "VoidReturnValue.java",
+      "line": 51,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: Writer.flush() is void; it throws IOException on failure.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-void-delete",
+      "kind": "tn",
+      "file": "VoidReturnValue.java",
+      "line": 56,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: Files.delete(Path) is void. Its boolean sibling deleteIfExists(Path) IS reported, in the same file, so the two cannot be confused.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-void-close-in-a-chain",
+      "kind": "tn",
+      "file": "VoidReturnValue.java",
+      "line": 61,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: a void call is still void when it is reached through a chain.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-user-void-method",
+      "kind": "tn",
+      "file": "VoidReturnValue.java",
+      "line": 71,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: the user's own void method happens to be named 'close'. A name-only rule reports it. There is no return value to check.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    }
+  ],
+  "summary": {
+    "tp_total": 5,
+    "tp_supported": 5,
+    "tp_false_negative": 0,
+    "tn_total": 9,
+    "tn_supported": 9,
+    "tn_false_positive": 0
+  },
+  "cwe_histogram": {
+    "CWE-397": 6,
+    "CWE-252": 5,
+    "CWE-668": 3,
+    "CWE-398": 3,
+    "CWE-481": 1,
+    "CWE-476": 1,
+    "CWE-563": 1
+  }
+}

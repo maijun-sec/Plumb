@@ -24,6 +24,10 @@ The gates are:
     check_dataflow_constraint
                               the manifest's dataflow constraint is not a
                               no-op
+    check_support_matrix_coverage
+                              the support matrix covers every measured
+                              category, and every row matches its
+                              measurement
     linkcheck                 no broken relative link in the markdown
 
 The generators that WRITE (gen_rules_doc, gen_rules_index) are run
@@ -55,6 +59,8 @@ GATES = (
      ["python", "scripts/check_catalogue_drift_numbers.py"], "check"),
     ("check_dataflow_constraint",
      ["python", "scripts/check_dataflow_constraint.py"], "check"),
+    ("check_support_matrix_coverage",
+     ["python", "scripts/check_support_matrix_coverage.py"], "check"),
     ("linkcheck", ["python", ".aethercode/linkcheck.py"], "check"),
 )
 

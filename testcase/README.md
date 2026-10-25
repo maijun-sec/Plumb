@@ -1,6 +1,6 @@
 # Plumb analysis test cases
 
-Six independent fixtures, one per analysis capability, plus a scorer. Each category is
+Seven independent fixtures, one per analysis capability, plus a scorer. Each category is
 self-contained so its support verdict can be read and re-measured on its own.
 
 | Directory | Capability under test |
@@ -11,6 +11,7 @@ self-contained so its support verdict can be read and re-measured on its own.
 | `04-polymorphic-callgraph` | Dispatch through interfaces, abstract classes, diamond inheritance |
 | `05-real-cve-derived` | CVE-shaped real-world cases |
 | `06-framework-orms` | Spring JDBC and MyBatis sinks, with the dependency jars absent from the analysis classpath; Spring, Quarkus REST and Micronaut annotation-bound entry points; request beans whose fields carry the binding annotation |
+| `07-unchecked-return` | CWE-252: a return value that cannot influence anything, in all three discard shapes; and the void methods that have no return value to discard |
 
 ## Support matrix (measured)
 
@@ -19,6 +20,21 @@ See [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md). Regenerate with:
 ```
 python scripts/write_support_matrix.py
 ```
+
+The generator discovers the categories from the directories that hold a `RESULT.json`, so a
+measured category cannot be left out of the matrix. The numbers come from `RESULT.json`; the
+prose comes from each category's own files, so the generator never overwrites it:
+
+| File | Holds |
+|---|---|
+| `RESULT.json` | the measurement: the counts and the per-case status |
+| `EXPECTATIONS.json` | what each case is supposed to show, and why |
+| `VERDICT.md` | the prose assessment of the capability |
+| `LIMITATIONS.md` | the prose description of what the engine cannot decide (optional; a category whose limitations are all measured cases does not need one) |
+| `SUPPORT-STATUS.md` | GENERATED -- the verdict plus the measured counts |
+
+`python scripts/check_support_matrix_coverage.py` checks that the matrix really covers every
+measured category and that no row disagrees with its `RESULT.json`.
 
 ## Running a category
 
