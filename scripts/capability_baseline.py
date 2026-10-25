@@ -58,6 +58,11 @@ def yaml_families(path):
     <p>Read as text rather than through a YAML library so the measurement does not depend on
     a parser's idea of the file's structure -- the measurement should change only when the
     content changes.
+
+    <p>The file's own top-level key ("families") is a CONTAINER, not a family. It used to be
+    picked up as one, which put an empty "families" entry in the surface and made the
+    family list look empty to every consumer that read it -- the generated comparison
+    document reported "0 / 0" taint sources and sinks because of it.
     """
     if not path.is_file():
         return {}
@@ -71,14 +76,19 @@ def yaml_families(path):
         # A family header is an indented key with no value.
         m = re.match(r"^([\w.\-]+):\s*$", stripped)
         if m and not line.startswith("    "):
-            current = m.group(1)
+            name = m.group(1)
+            current = name
             families.setdefault(current, [])
             continue
         # A pattern is a list item.
         m = re.match(r"^-\s*[\"'](.+?)[\"']\s*$", stripped)
         if m and current is not None:
             families[current].append(m.group(1))
-    return {k: sorted(v) for k, v in families.items()}
+    # The container key is not a family. It is reported separately, as the list of names.
+    names = sorted(k for k in families if k != "families")
+    result = {k: sorted(v) for k, v in families.items() if k != "families"}
+    result["families"] = names
+    return result
 
 
 def registered_rules():
@@ -102,9 +112,12 @@ def registered_rules():
             continue
         for path in root.rglob("*.java"):
             text = path.read_text(encoding="utf-8", errors="replace")
-            for m in re.finditer(r'new RuleId\(\s*"([a-z0-9\-]+)"', text):
+            # Only CODE lines count. A RuleId mentioned in a comment is not a rule the engine
+            # can emit -- the same reason the checker registration scan skips comments.
+            code = "\n".join(_code_lines(text))
+            for m in re.finditer(r'new RuleId\(\s*"([a-z0-9\-]+)"', code):
                 rules.add(m.group(1))
-            for m in re.finditer(r'new RuleId\(\s*"([a-z0-9\-]+)"\s*,\s*"([A-Z_]+)"', text):
+            for m in re.finditer(r'new RuleId\(\s*"([a-z0-9\-]+)"\s*,\s*"([A-Z_]+)"', code):
                 rules.add(m.group(2))
     return sorted(rules)
 
@@ -121,13 +134,19 @@ def live_checkers():
     is what runs, the second is what a future registration could use. A class that is deleted
     loses the second even if nobody registered it yet -- and that is the right signal, because
     a checker that is written but never wired up is a capability that was never delivered.
+
+    <p>The registration scan SKIPS COMMENTED-OUT lines. A commented-out
+    {@code checkers.add(new XChecker())} registers nothing: the checker does not run. Counting
+    it made the baseline claim five checkers that the engine never executed -- and the
+    "capability" it was protecting was a comment.
     """
     registered = set()
     runner = REPO / "plumb-main" / "src" / "main" / "java" / "org" / "plumb" / "main" / "ScanRunner.java"
     if runner.is_file():
         text = runner.read_text(encoding="utf-8", errors="replace")
-        for m in re.finditer(r"add\(new\s+(?:org\.plumb\.[\w.]+\.)?(\w+)\(\)\)", text):
-            registered.add(m.group(1))
+        for line in _code_lines(text):
+            for m in re.finditer(r"add\(new\s+(?:org\.plumb\.[\w.]+\.)?(\w+)\(\)\)", line):
+                registered.add(m.group(1))
 
     classes = set()
     for root in (AST_CHECKER_DIR, DFA_CHECKER_DIR):
@@ -137,6 +156,30 @@ def live_checkers():
             if path.name.endswith("Checker.java") or path.name.endswith("Check.java"):
                 classes.add(path.stem)
     return sorted(registered), sorted(classes)
+
+
+def _code_lines(text):
+    """The lines of a java file that are CODE, not comments.
+
+    <p>Used by the measurements that must not count a commented-out registration.
+    """
+    in_block = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if in_block:
+            if "*/" in stripped:
+                in_block = False
+            continue
+        if stripped.startswith("//"):
+            continue
+        if stripped.endswith("/*") and not stripped.startswith("/*"):
+            in_block = True
+            continue
+        if stripped.startswith("/*"):
+            if "*/" not in stripped:
+                in_block = True
+            continue
+        yield line
 
 
 def input_source_patterns():

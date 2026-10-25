@@ -30,10 +30,20 @@ The gates are:
                               measurement
     check_javadoc_links        every javadoc @link target names a type
                               that exists
+    check_doc_hygiene          the product documentation describes the
+                              CURRENT state: no round numbers, no
+                              past-state wording, no unreproducible
+                              measurement presented as fact
     capability_baseline --check
                               no rule, sink pattern, source pattern,
                               checker or fact kind was lost
     linkcheck                 no broken relative link in the markdown
+    gen_tool_comparison --check
+                              the tool comparison document's numbers
+                              still match the source
+    gen_rules_overview --check
+                              the rules overview's numbers still match
+                              the source
 
 The generators that WRITE (gen_rules_doc, gen_rules_index) are run
 afterwards, and their output is reported as a working-tree change, so
@@ -68,8 +78,14 @@ GATES = (
      ["python", "scripts/check_support_matrix_coverage.py"], "check"),
     ("check_javadoc_links",
      ["python", "scripts/check_javadoc_links.py"], "check"),
+    ("check_doc_hygiene",
+     ["python", "scripts/check_doc_hygiene.py"], "check"),
     ("capability_baseline",
      ["python", "scripts/capability_baseline.py", "--check"], "check"),
+    ("gen_tool_comparison",
+     ["python", "scripts/gen_tool_comparison.py", "--check"], "check"),
+    ("gen_rules_overview",
+     ["python", "scripts/gen_rules_overview.py", "--check"], "check"),
     ("linkcheck", ["python", ".aethercode/linkcheck.py"], "check"),
 )
 
