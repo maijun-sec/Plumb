@@ -1,6 +1,6 @@
 # 规则开发：AI prompt / CWE 标签 / 外部工具 ID / 加新规则
 
-本文档是 `RULES.md` 的 §10-§13 拆分版本。规则主清单见 `RULES.md`；Style 规则操作（590 条 / 启用禁用 / 改参数）见 `RULE-STYLE-OP.md`。
+本文档是 `RULES.md` 的 §10-§13 拆分版本。规则主清单见 `RULES.md`；Style 规则操作（启用禁用 / 改参数）见 `RULE-STYLE-OP.md`。
 
 ## 1. AI augmentation 与每条规则的 prompt
 

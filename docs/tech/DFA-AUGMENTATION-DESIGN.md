@@ -232,17 +232,15 @@ FunctionSummary 用什么作 key？
 
 所有测试在 `plumb-dfa/src/test/.../unified/checkers/` 下，每个 checker 至少 5 个测试。-DA 通过 8 个测试，含 -DA OrmLostUpdateDfaChecker。
 
-## 6. — Coverity-style aggressiveness knob
+## 6. 规则的默认开关
 
-`--aggressiveness=low|medium|high` 控制 AST/DFA 版的默认开/关：
+AST 版和 DFA 版的默认开/关，由 YAML 的 `checks.<rule>: {enabled: true|false}` 段控制
+（DFA 侧还有 `plumb-dfa/src/main/resources/checkers.yaml` 里的同名条目）。
 
-| aggressiveness | AST 版默认 | DFA 版默认 | 备注 |
-| --- | --- | --- | --- |
-| **low** | off | off | 极保守，几乎不报 |
-| **medium** | on | off | 默认平衡 |
-| **high** | on | on | 全开，召回最大 |
-
-**注意**：`aggressiveness` 在 2026-10-08 audit C-3 后**已废弃**（`RULES.md §9.3`）。改用 `checks.<rule>: {enabled: true|false, aiDedup: true|false}` 段。
+有一个 Coverity 风格的 `aggressiveness` 旋钮（`--aggressiveness=low|medium|high`）已经
+废弃：CLI 没有这个 flag，YAML 里写 `aggressiveness:` 会被 `ConfigLoader` 忽略并往
+stderr 打一条警告，扫描照常继续。改用 `checks.<rule>: {enabled: true|false,
+aiDedup: true|false}` 段。
 
 ## 7. 后续工作
 

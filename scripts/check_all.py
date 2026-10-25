@@ -34,6 +34,8 @@ The gates are:
                               CURRENT state: no round numbers, no
                               past-state wording, no unreproducible
                               measurement presented as fact
+    check_doc_numbers          the counts quoted in the hand-written
+                              documentation still match the source
     capability_baseline --check
                               no rule, sink pattern, source pattern,
                               checker or fact kind was lost
@@ -80,6 +82,8 @@ GATES = (
      ["python", "scripts/check_javadoc_links.py"], "check"),
     ("check_doc_hygiene",
      ["python", "scripts/check_doc_hygiene.py"], "check"),
+    ("check_doc_numbers",
+     ["python", "scripts/check_doc_numbers.py"], "check"),
     ("capability_baseline",
      ["python", "scripts/capability_baseline.py", "--check"], "check"),
     ("gen_tool_comparison",

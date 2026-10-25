@@ -144,10 +144,19 @@ python scripts/check_all.py
 | `check_dataflow_constraint` | 清单的 `dataflow_contains` 约束不是空断言 |
 | `check_support_matrix_coverage` | 支持矩阵覆盖了每个已测量的类别,且每行的数字和 `RESULT.json` 对得上 |
 | `check_javadoc_links` | javadoc 里 `{@link}` 指向的类型真的存在 |
+| `check_doc_hygiene` | 产品文档描述的是**当前**状态:没有轮次号、没有过去式措辞、没有无法复现的测量当事实 |
+| `check_doc_numbers` | 手写文档里引用的数字仍然和源码对得上 |
 | `capability_baseline --check` | 没有丢掉任何规则、sink 模式、污点源模式、checker 或事实种类 |
 | `linkcheck` | markdown 里的相对链接没有断链 |
 
 跑完还会重新生成 `docs/plumb-style-rules*.md`,并报告生成结果和已提交版本是否一致。
+
+**关于"手写文档里的数字"**:生成的文档(`RULES.md`、`RULE-TOOL-COMPARISON.md`)的数字
+由生成器实测,`--check` 模式能证明它们没过期。但**手写**文档里的数字没人管 —— 仓库里
+曾经同时写着"595 个 checker 类"和"596 个",而实际是 596;`ARCHITECTURE.md` 写着
+"71 个 DFA checker",而引擎实际注册 67 个。`check_doc_numbers` 把这些数字对着源码
+重新测一遍,包括 `RULE-STYLE-OP.md` 里那张按子目录分类的表。数字要么改成实测值,
+要么搬进生成文档里让生成器负责 —— 不能靠记忆。
 
 **关于"注释里的数字"**:注释里引用一个数字,这个数字就会腐烂 —— 仓库里曾经同时写着
 "thirteen" 和 "seventeen",描述的是同一个历史漂移。`check_catalogue_drift_numbers`

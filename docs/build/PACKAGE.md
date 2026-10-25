@@ -245,7 +245,7 @@ checks:
   taint: true
   style: true
   divByZero:           {enabled: true, aiDedup: true}
-  # ... 一共 46 项 ...
+  # ... 一共 47 项 ...
 
 # ---- AI augmentation ----
 ai:
@@ -324,7 +324,7 @@ gpg --armor --detach-sign --output dist/plumb-<ver>/lib/plumb-main-<ver>-all.jar
 
 | 组件 | 大小 |
 | --- | ---: |
-| `plumb-main-<ver>-all.jar` (shaded uber-jar) | ~115 MB |
+| `plumb-main-<ver>-all.jar` (shaded uber-jar) | ~81 MB |
 | jlink 最小 JRE 17（含 14 个 module） | ~95 MB |
 | 解压即用 tar.gz (Linux x64) | ~80 MB（gzip 压缩后） |
 | 解压即用 zip (Windows x64) | ~180 MB |

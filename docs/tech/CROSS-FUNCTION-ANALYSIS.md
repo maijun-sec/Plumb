@@ -218,7 +218,7 @@ initEngine (per-engine, 一次)
 `MethodSummaryBuilder.build(fn)` 对一个 `TacFunction` 做一次**路径不敏感**
 （path-insensitive）的扫描。
 
-- **返回值形状**（10 种 `ReturnShape.Kind`）：
+- **返回值形状**（9 种 `ReturnShape.Kind`）：
 
   ```text
   RETURN_VOID          // 没有 return / bare `return;`

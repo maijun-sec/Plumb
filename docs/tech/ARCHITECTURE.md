@@ -16,7 +16,7 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
 | --- | --- |
 | Taint 分析为主 | per-checker 正向数据流（`TaintedCheckerBase` 统一传播），source/sink 正则表驱动 |
 | 多源输入 | JavaParser（源码）+ SootUp（字节码）都进同一份 TAC IR |
-| 风格类检查独立 | 595 个 AST checker 不依赖 TAC/DFA |
+| 风格类检查独立 | AST checker 不依赖 TAC/DFA |
 | 大型仓库可扩展 | 磁盘 IR 缓存、阶段化流水线、可配置并发 |
 | 报告工业标准 | NDJSON（机器可读）+ console（人类可读）+ SARIF（IDE） |
 | AI 辅助 | plumb-ai Re-Act 多轮 LLM agent 给出 TP/FP verdict（可选） |
@@ -89,7 +89,7 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
 | `plumb-tac` | CompilationUnit → TacProgram，含 CFG builder、IR 序列化 | plumb-parser, sootup |
 | `plumb-rules` | 规则元数据（ID/Name/Severity/Type/CWE） | 无 |
 | `plumb-reporter` | Finding 模型 + NDJSON/console/SARIF 输出 | plumb-rules |
-| `plumb-style` | 595 个 AST visitor checker（JavaParser 单一来源） | plumb-parser, plumb-rules, plumb-reporter |
+| `plumb-style` | AST visitor checker（JavaParser 单一来源）；数量见 `docs/rules/RULES.md` | plumb-parser, plumb-rules, plumb-reporter |
 | `plumb-dfa` | 污点 / 边界 / 指向 / 控制流四类分析的统一 DFA 引擎 | plumb-tac, plumb-rules, plumb-reporter |
 | `plumb-main` | CLI + YAML 配置 + 流水线编排 + build-system adapter | 上述全部 + plumb-build |
 | `plumb-build` | BuildAdapter：Maven / Gradle / Bazel / Ant 自动探 → sourceFiles/classpathJars | （外部工具） |
@@ -97,13 +97,13 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
 
 ### 3.0 DFA checker 的实现形态
 
-`plumb-dfa/src/main/java` 下共 148 个 `.java`，并非每个都是独立的分析器。按**实际实现
+`plumb-dfa/src/main/java` 下共 150 个 `.java`，并非每个都是独立的分析器。按**实际实现
 机制**可分成几类（数量为实测）：
 
 | 形态 | 数量 | 含义 |
 | --- | ---: | --- |
-| **TaintedCheckerBase 子类** | 46 | 继承统一污点传播基类，`checkers/taint/` 下绝大多数（不含基类自身） |
-| **直接 `implements DfaChecker`** | 20 | 自带逻辑，不共享传播层；`checkers/controlflow/` 的 16 个全在此列 |
+| **TaintedCheckerBase 子类** | 47 | 继承统一污点传播基类，`checkers/taint/` 下绝大多数（不含基类自身） |
+| **直接 `implements DfaChecker`** | 19 | 自带逻辑，不共享传播层；`checkers/controlflow/` 的 15 个全在此列 |
 | **PathSensitiveCheckerBase 子类** | 1 | 反向检测底座（alloc-without-close 类） |
 | **求解器 / 格 / 引擎 / SPI** | 其余 | `points/`、`solver/`、`summary/`、`taint/`、`engine/` |
 
@@ -374,12 +374,12 @@ Plumb 严格区分「喂 TypeSolver 的路径」与「扫 findings 的路径」�
 
 style 规则的 emit-id 采用 `ast-<category>-<bare>` 命名（category 取 checker 所在子包名：
 `style` / `naming` / `security` / `error` / `bug` / `design` / `performance` /
-`quality` / `concurrency`）。实测 `plumb-style/src/main/java` 下 582 个
+`quality` / `concurrency`）。实测 `plumb-style/src/main/java` 下 579 个
 `new RuleId("...")` 字面量里，**没有一个以 `-style` 结尾**：
 
 | 前缀 | 数量 | | 前缀 | 数量 |
 | --- | ---: | --- | --- | ---: |
-| `ast-style` | 347 | | `ast-security` | 36 |
+| `ast-style` | 347 | | `ast-security` | 37 |
 | `ast-performance` | 62 | | `ast-error` | 34 |
 | `ast-naming` | 50 | | `ast-bug` | 19 |
 | `ast-design` | 18 | | `ast-quality` | 10 |
@@ -390,7 +390,7 @@ style 规则的 emit-id 采用 `ast-<category>-<bare>` 命名（category 取 che
 | 引用方 | 作用 |
 | --- | --- |
 | `*Check.java` 的 `new RuleId("ast-style-foo", ...)` | 产生 emit id |
-| `plumb-style/.../CheckerCategories.java` | classpath-scan 注册表（593 项 `m.put(...)`） |
+| `plumb-style/.../CheckerCategories.java` | classpath-scan 注册表（594 项 `m.put(...)`） |
 | `plumb-main/.../ScanRunner.java::isRuleIdAllowed`（`:1823`、`:1834`） | 规则过滤；需要同时接受 canonical id、bare slug 与短横线形式 |
 
 **数据流**：

@@ -167,7 +167,7 @@ callee signature 的 source 模式表。IR 里同一方法的 signature 可能�
 | **pattern-based** | 直接 `implements DfaChecker` | 16（`checkers/controlflow/`）+ 2（`checkers/taint/`） | 无 taint 传播，靠 IR 局部模式匹配；用 `Finding.violation(...)` 发单步 trace |
 
 `ScanRunner.buildDfaCheckers()`（`plumb-main/.../ScanRunner.java`）**实际注册
-71 个** DFA checker。注册受 YAML 的 per-rule flag 控制（例如
+67 个** DFA checker。注册受 YAML 的 per-rule flag 控制（例如
 `config.runIntOverflow`、`config.runNullDeref`），`config.runTaint` 是
 taint 全家桶的总开关。
 
@@ -270,7 +270,7 @@ parse -> translate -> style + DFA
 
 **规则怎么对上（两种拼法都认）**：finding 携带的是 canonical emit id
 （如 `ast-bug-bc-equals-no-null`），checker 的 `name()` 是 kebab-case slug
-（如 `bc-equals-no-null`）。这两个字符串**对 595 个 AST checker 而言没有一对是相等的**，
+（如 `bc-equals-no-null`）。这两个字符串**对 AST checker 而言没有一对是相等的**，
 所以 prompt 表同时用两种 key 登记：
 
 - **slug**（`checker.name()`）——用户看到的规则名，也是 `--rule-prompts-dir`
