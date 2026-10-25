@@ -121,21 +121,22 @@ public final class AstCheckerRegistry {
 
 | 目录 | 主题 | 文件数 | 注册数 | 典型规则 |
 | --- | --- | ---: | ---: | --- |
-| `style/` | 编码风格（注释、Javadoc、缩进、imports、控制流） | 354 | 353 | `AbsentCodeblockInCaseCheck`, `AssignmentInOperandCheck` |
+| `style/` | 编码风格（注释、Javadoc、缩进、imports、控制流） | 353 | 354 | `AbsentCodeblockInCaseCheck`, `AssignmentInOperandCheck` |
 | `naming/` | 命名约定 | 51 | 51 | `AbstractCheck`, `ArrayNamingCheck` |
 | `performance/` | 性能 | 63 | 63 | `ArrayEqualityCheck`, `ArrayStoreIncompatibleCheck` |
-| `security/` | 安全相关 | 41 | 41 | `AvoidUsingHardCodedIPCheck`, `HardcodedCredentialsCheck` |
+| `security/` | 安全相关 | 42 | 41 | `AvoidUsingHardCodedIPCheck`, `HardcodedCredentialsCheck` |
 | `error/` | 错误处理 | 35 | 35 | `AssignmentToCatchBlockParameterCheck`, `AvoidCatchingThrowableCheck` |
 | `bug/` | 明确 bug 模式 | 20 | 20 | `CompareObjectsWithEqualsCheck`, `IncorrectReturnValueCheckChecker` |
 | `design/` | 设计度量（圈复杂度、耦合、深度） | 18 | 18 | `AbstractClassCouplingCheck`, `BooleanExpressionComplexityCheck` |
 | `quality/` | ORM 等领域 | 10 | 10 | `AlwaysFalseCheck`, `OrmLoadNullCheckCheck` |
 | `concurrency/` | 并发 | 2 | 2 | `ServletAtomicityCheck`, `SingletonRaceCheck` |
-| **合计** | | **595** | **593** | |
+| **合计** | | **596** | **594** | |
 
 补充说明：
 
-- `plumb-style/src/main/java/org/plumb/style/` **根目录**下还有 1 个 checker
-  （`ObjectHijackCheck`）不属于任何子目录分类，`byCategory(...)` 过滤时不会被选中。
+- `plumb-style/src/main/java/org/plumb/style/` **根目录**下还有 2 个类
+  （`AstChecker` 接口和 `ObjectHijackCheck`）不属于任何子目录分类，
+  `byCategory(...)` 过滤时不会被选中。
 - `annotations/` 与 `config/` 目录不含 checker，是给 DFA 引擎用的注解 IR 工具。
 - 文件数与注册数不一致的 2 个条目：
   - 未登记：`ObjectHijackCheck`（根目录）—— `byCategory` 加载不到它，只能靠

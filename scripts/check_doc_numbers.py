@@ -78,6 +78,20 @@ def taint_rules():
     return len(re.findall(r"new TaintRule\(|TaintRule\.of\(", text))
 
 
+def internal_module_deps(module):
+    """The plumb-* modules a module's pom depends on."""
+    pom = REPO / module / "pom.xml"
+    if not pom.is_file():
+        return []
+    text = pom.read_text(encoding="utf-8", errors="replace")
+    deps = []
+    for m in re.finditer(r"<dependency>(.*?)</dependency>", text, re.DOTALL):
+        a = re.search(r"<artifactId>\s*plumb-([a-z\-]+)\s*</artifactId>", m.group(1))
+        if a:
+            deps.append(a.group(1))
+    return deps
+
+
 def default_config_checks():
     """The number of entries under `checks:` in the default config."""
     p = REPO / "plumb-main" / "src" / "main" / "resources" / "default-config.yaml"
@@ -263,6 +277,20 @@ CHECKS = [
     ("docs/build/PACKAGE.md", "一共 47 项", default_config_checks),
 ]
 
+# Claims whose content is a SET of module names rather than a count.
+#
+# The dependency list is compared as a SET: the order the pom happens to list
+# the dependencies in is not a fact worth pinning, and the order a reader wants
+# (leaf first) is not the order the pom uses.
+SET_CHECKS = [
+    ("docs/tech/MODULE-MERGE.md", "style"),
+    ("docs/tech/MODULE-MERGE.md", "dfa"),
+    ("docs/tech/MODULE-MERGE.md", "ai"),
+    ("docs/tech/MODULE-MERGE.md", "reporter"),
+    ("docs/tech/MODULE-MERGE.md", "build"),
+    ("docs/tech/MODULE-MERGE.md", "tac"),
+]
+
 def main():
     failures = []
     for rel, literal, measure in CHECKS:
@@ -286,6 +314,27 @@ def main():
             failures.append(
                 "%s: %r says %d, the source says %d"
                 % (rel, literal, claimed, expected))
+
+    # The set claims: the dependency list of a module, compared as a SET.
+    for rel, module in SET_CHECKS:
+        path = REPO / rel
+        if not path.is_file():
+            failures.append("%s: the document does not exist" % rel)
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        row = re.search(r"\|\s*`plumb-%s`\s*\|\s*([^|]+?)\s*\|" % re.escape(module),
+                        text)
+        if not row:
+            failures.append("%s: the row for plumb-%s is gone" % (rel, module))
+            continue
+        claimed = set(re.findall(r"`plumb-([a-z\-]+)`", row.group(1)))
+        expected = set(internal_module_deps("plumb-" + module))
+        if claimed != expected:
+            failures.append(
+                "%s: plumb-%s -- the document says %s, the poms say %s"
+                % (rel, module,
+                   ", ".join(sorted(claimed)) or "(none)",
+                   ", ".join(sorted(expected)) or "(none)"))
 
     # The per-directory table: every row must carry the count the source has.
     table_path = REPO / DIRECTORY_TABLE

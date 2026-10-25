@@ -1,6 +1,8 @@
-# 模块合并方案（plumb-parser → plumb-tac → plumb-main 关系）
+# 模块结构与依赖边界
 
-本文档说明 Plumb 项目的模块划分、依赖图，以及历史上一次**"试图合并 plumb-parser 到 plumb-main"**的回滚原因。最终结论：**plumb-parser 必须作为独立模块存在**。
+本文档说明 Plumb 项目的模块划分、依赖图，以及每个模块的边界。
+
+一句话结论：**`plumb-parser` 必须是独立模块**。它被 `plumb-tac`、`plumb-style` 和 `plumb-dfa` 同时消费，如果它被合并进任何一个下游模块，另外两个就会被迫拉进那个模块的全部传递依赖。
 
 ## 1. 当前模块结构
 
@@ -11,7 +13,7 @@ plumb  (root POM)
 ├── plumb-parser      ── JavaParser 包装，ParsedSource + JavaSourceParser
 ├── plumb-tac         ── TAC IR + AST→TAC 翻译器 + CFG builder + IrSerializer
 ├── plumb-rules       ── RuleDef / RuleId / RuleParameter / RuleRegistry 元数据
-├── plumb-style       ── 595 个 AST 风格 checker（JavaParser AST visitor）
+├── plumb-style       ── AST 风格 checker（JavaParser AST visitor）
 ├── plumb-reporter    ── Finding 数据模型 + NDJSON / console / SARIF 输出
 ├── plumb-dfa         ── DFA 引擎（CallGraph + Z3 + 跨函数 summary + checkers）
 ├── plumb-build       ── build-system adapter（Maven / Gradle / Bazel / Ant）
@@ -79,61 +81,10 @@ plumb  (root POM)
 - `plumb-dfa` / `plumb-dfa` 依赖 `plumb-tac` + `plumb-rules` + `plumb-reporter`
 - `plumb-main` 依赖全部下游模块，做编排
 
-## 3. 历史尝试：把 `plumb-parser` 合并到 `plumb-main`
 
-### 3.1 背景
+## 3. 模块边界
 
-用户提出"减少模块数量"，把 `plumb-parser` 合并到 `plumb-main`。
-
-### 3.2 实现
-
-```bash
-# 1) 复制源文件
-cp plumb-parser/src/main/java/org/plumb/parser/*.java \
-   plumb-main/src/main/java/org/plumb/parser/
-
-# 2) 删除 plumb-parser 模块
-# 3) 从根 pom 中删除 <module>plumb-parser</module>
-# 4) 从 plumb-main/pom.xml 中删除对 plumb-parser 的依赖
-```
-
-### 3.3 失败
-
-合并后 `mvn clean compile` 失败：
-
-```
-plumb-tac/src/main/java/.../TacTranslator.java:[21,24]
-    程序包org.plumb.parser不存在
-```
-
-原因：`plumb-tac` 也使用 `org.plumb.parser.ParsedSource`，但**不**通过 `plumb-main` 中转（那会形成循环依赖：`plumb-main → plumb-tac → plumb-main`）。
-
-### 3.4 第一次失败后的退让：把 parser 合并到 `plumb-tac`
-
-把 `plumb-parser` 的源文件改放到 `plumb-tac/src/main/java/org/plumb/parser/`，让 `plumb-style` 显式依赖 `plumb-tac`。
-
-**问题**：`plumb-style` 之前**不**依赖 `plumb-tac`（架构原则是 plumb-style 只看 AST），引入 `plumb-tac` 依赖会传递地把 `sootup.core` / `sootup.java.core` / `sootup.interceptors` 拉进 `plumb-style` 的 classpath（`plumb-tac` 包含 SootUp 用于 `.jar` 分析）。
-
-后果：
-
-- 风格类检查器**运行期**不需要 SootUp
-- 任何运行 `sast-scan` 的人都要下载 SootUp 的 native 依赖
-- 单测 `plumb-style` 模块时也要拉 SootUp，**无谓的 30 MB 传递依赖**
-
-### 3.5 第二次失败：`Finding` 在 `plumb-dfa` 里的位置
-
-`plumb-style` 的 595 个风格 checker 全部需要构造 `Finding` 对象，代码里写的是 `import org.plumb.dfa.Finding`。这意味着 `plumb-style` 间接依赖 `plumb-dfa`，而 `plumb-dfa` 又依赖 `plumb-tac`。即便 `plumb-style` 不写 `plumb-tac` import，传递依赖也会把它拉进来。
-
-### 3.6 解决
-
-1. **恢复 `plumb-parser` 为独立模块**（回到原状）
-2. **把 `Finding` 从 `plumb-dfa` 迁移到 `plumb-reporter`**，删除 `plumb-dfa → plumb-reporter` 的循环依赖
-3. **删除 `plumb-reporter → plumb-dfa` 的依赖**（现在 reporter 不再用 dfa 的任何类型）
-4. 批量重写 600+ 源文件 + 30+ 测试文件里的 `import org.plumb.dfa.Finding` → `import org.plumb.reporter.Finding`
-
-## 4. 最终方案：模块边界
-
-### 4.1 plumb-parser（独立）
+### 3.1 plumb-parser（独立）
 
 ```xml
 <dependencies>
@@ -148,7 +99,7 @@ plumb-tac/src/main/java/.../TacTranslator.java:[21,24]
 
 没有 SootUp，没有 plumb-* 内部依赖。
 
-### 4.2 plumb-tac
+### 3.2 plumb-tac
 
 ```xml
 <dependencies>
@@ -161,7 +112,7 @@ plumb-tac/src/main/java/.../TacTranslator.java:[21,24]
 </dependencies>
 ```
 
-### 4.3 plumb-style
+### 3.3 plumb-style
 
 ```xml
 <dependencies>
@@ -175,7 +126,7 @@ plumb-tac/src/main/java/.../TacTranslator.java:[21,24]
 
 **不**包含 `plumb-tac`、`plumb-dfa`、`plumb-dfa`。
 
-### 4.4 plumb-reporter
+### 3.4 plumb-reporter
 
 ```xml
 <dependencies>
@@ -184,9 +135,9 @@ plumb-tac/src/main/java/.../TacTranslator.java:[21,24]
 </dependencies>
 ```
 
-**不**依赖 `plumb-dfa`（已移除）。循环依赖破除。
+**不**依赖 `plumb-dfa`。
 
-### 4.5 plumb-dfa
+### 3.5 plumb-dfa
 
 ```xml
 <dependencies>
@@ -197,7 +148,7 @@ plumb-tac/src/main/java/.../TacTranslator.java:[21,24]
 </dependencies>
 ```
 
-### 4.6 plumb-main
+### 3.6 plumb-main
 
 ```xml
 <dependencies>
@@ -214,7 +165,7 @@ plumb-tac/src/main/java/.../TacTranslator.java:[21,24]
 </dependencies>
 ```
 
-## 5. 流水线数据流
+## 4. 流水线数据流
 
 ```
 .java
@@ -230,7 +181,7 @@ TacProgram
   ▼  plumb-tac (CFG)
 TacCfg
   │
-  ▼  plumb-dfa / plumb-dfa
+  ▼  plumb-dfa
 List<Finding> (dfa)
   │
   ▼  plumb-reporter
@@ -241,26 +192,10 @@ NDJSON / console
 
 - plumb-style 直接消费 ParsedSource
 - plumb-tac 用 TacTranslator 把 ParsedSource 翻译成 TacProgram
-- plumb-dfa / plumb-dfa 只看 TacProgram，不看 ParsedSource
+- plumb-dfa 只看 TacProgram，不看 ParsedSource
 
 这意味着：
 - plumb-style 的检查**和 TAC 无关**，可以在没有 TAC 模块的情况下独立运行（用于纯风格检查工具）
 - plumb-dfa 的检查**和 AST 无关**，可以在没有 plumb-style 的情况下独立运行（用于纯数据流分析工具）
 
-## 6. 经验教训
 
-1. **架构边界比模块数量更重要**。少一个模块但是把不该连的依赖连上，比多一个模块但边界清晰要差。
-2. **传递依赖是真实的耦合**。即便 `plumb-style` 自身不 import `plumb-tac`，只要 `plumb-style` 依赖 `plumb-dfa`，`plumb-tac` 就进了 classpath。
-3. **共享数据类型应当放在叶子节点**。`Finding` 是所有 checker 的输出，本应放在最底层的 `plumb-reporter`；`plumb-dfa` 只是消费方。
-4. **不要让数据模型依赖实现**。`plumb.dfa.Finding` 这个名字暗示"DFA 的 Finding"，但实际是通用数据模型——名字本身就在鼓励错误的依赖。
-5. **合并前先做依赖图审查**。把模块 A 合并到 B 之前，先看 A 的下游使用方：是不是有人**只**依赖 A 而不依赖 B？如果是，合并会强迫它们依赖 B 的全部传递依赖。
-
-## 7. 替代方案：保留独立 + 简化构建
-
-如果用户仍然觉得模块太多，**比合并更温和**的方案：
-
-- **打包优化**：用 `maven-shade-plugin` 把所有 `plumb-*.jar` 打成**单一发布包**（实际已经在 plumb-main/target/ 做了）
-- **接口收敛**：把 `plumb-parser` 的 public API 缩到 1-2 个类，未来可以打包成更小的 submodule
-- **代码内嵌**：把 595 个 style checker 拆成多个 jar，按需加载（已经是 `AstCheckerRegistry.builtins()` 实现的）
-
-合并 `plumb-parser` 到 `plumb-main` 不可行（导致 plumb-style 传递拉进 plumb-tac）；其它合并需要重新做依赖图审查。

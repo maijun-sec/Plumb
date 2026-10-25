@@ -88,11 +88,13 @@ callee 在 summary 里写出它改了哪些字段，caller 的 `SummaryApplier` 
 仍在源码里但**不注册**（`ScanRunner.buildDfaCheckers()` 里注册语句被注释掉），
 因为 AST 版的精度更好。
 
-## 3. 5 个 DFA 增强 checker 详解
+## 3. DFA 增强 checker 详解
 
-### 3.1 -DA: UninitNonnullDfaChecker
+### 3.1 不可为 null 的字段：只有 AST 版
 
-**AST 漏报场景**：
+`@NonNull` 字段的初始化检查目前只有 AST 版
+（`plumb-style/.../quality/UninitNonnullCheck.java`）。它看不到的场景是
+helper method 赋值：
 
 ```java
 @Entity
@@ -111,20 +113,13 @@ class User {
 }
 ```
 
-AST 看到 `setEmail()` 不知道它会写字段 email。DFA 看 `setEmail()` 的 FunctionSummary（含 `Operation.WriteToField("email")`），在 ctor 里就标 email 已被赋值。
+AST 看到 `setEmail()` 不知道它会写字段 email。要覆盖这个场景，需要在 ctor 的
+`initFunction` 里收集 `@NonNull` 字段作为必填集合，遍历 ctor 的所有 instruction
+（`FIELDSTORE` 标字段已写；`CALL` 拉 callee 的 `FunctionSummary.returnOps()`，含
+`WriteToField(f)` 就标 f 已写；`this(other)` 走另一个 ctor 的 summary 取并集），最后
+`finishFunction` 时必填集合减去已写集合非空就报。
 
-**DFA 检测**：
-
-```java
-// 在每个 ctor 的 initFunction
-// 1. 收集 @NonNull 字段 → 必填集合 required = {name, email}
-// 2. 遍历 ctor 的所有 instruction
-//    - FIELDSTORE: 标字段已写
-//    - CALL with dest that is FIELDSTORE: 标字段已写
-//    - CALL 拉 callee FunctionSummary.returnOps()，如含 WriteToField(f)，标 f 已写
-//    - "this(other)" 走 another ctor 的 summary，union
-// 3. finishFunction: required - 已写 != ∅ → fire
-```
+DFA 侧还没有这条规则，所以下面 3.2 到 3.6 是已实现的。
 
 ### 3.2 -DA: OrmLoadNullCheckDfaChecker
 
@@ -224,13 +219,13 @@ FunctionSummary 用什么作 key？
 
 每个 DFA 增强 checker 配 3 类测试：
 
-| 测试类型 | 目的 | 例子 |
-| --- | --- | --- |
-| **正样本** | 给一段能命中的代码，验证 fire | `UninitNonnullDfaCheckerTest.bothFieldsAssigned_helperMethod()` |
-| **负样本** | 给 AST 版本会漏、DFA 版本能命中的代码 | `UninitNonnullDfaCheckerTest.helperMethodWritesField()` |
-| **回归样本** | AST 版本已能命中、DFA 版本不破坏 | `UninitNonnullDfaCheckerTest.directFieldAssign()` |
+| 测试类型 | 目的 |
+| --- | --- |
+| **正样本** | 给一段能命中的代码，验证 fire |
+| **负样本** | 给 AST 版本会漏、DFA 版本能命中的代码 |
+| **回归样本** | AST 版本已能命中、DFA 版本不破坏 |
 
-所有测试在 `plumb-dfa/src/test/.../unified/checkers/` 下，每个 checker 至少 5 个测试。-DA 通过 8 个测试，含 -DA OrmLostUpdateDfaChecker。
+测试放在 `plumb-dfa/src/test/java/org/plumb/dfa/checkers/` 下的对应包里。
 
 ## 6. 规则的默认开关
 
@@ -242,20 +237,22 @@ AST 版和 DFA 版的默认开/关，由 YAML 的 `checks.<rule>: {enabled: true
 stderr 打一条警告，扫描照常继续。改用 `checks.<rule>: {enabled: true|false,
 aiDedup: true|false}` 段。
 
-## 7. 后续工作
+## 7. 尚未实现的 DFA 增强
 
-### 7.1 -DA — 更多 DFA 增强
+已经落地的 DFA 增强：ORM 的四个（`OrmLoadNullCheckDfaChecker`、
+`OrmUnnecessaryGetDfaChecker`、`OrmLostUpdateDfaChecker`、`NullDerefFromReturnDfaChecker`），
+以及 `SingletonRaceDfaChecker` / `ServletAtomicityDfaChecker`（这两条有 AST 版且
+精度更好，DFA 版留在源码里但不注册）。
 
-- 之后，下一批候选（按 ROI 倒序）：
+还没有对应实现的：
 
-| DFA 增强 | ROI | 备注 |
-| --- | ---: | --- |
-| `ORM_LAZY_INIT` | 高 | Hibernate lazy 加载 + 跨方法 |
-| `NULL_DEREF_FROM_RETURN` | 高 | R83 已修（UseAfterFree 路径） |
-| `CONCURRENT_ITERATION` | 中 | 跨方法集合迭代 |
-| `THREAD_LOCAL_LEAK` | 低 | 跟 servlet 强相关 |
+| DFA 增强 | 场景 |
+| --- | --- |
+| `ORM_LAZY_INIT` | Hibernate lazy 加载 + 跨方法 |
+| `CONCURRENT_ITERATION` | 跨方法集合迭代 |
+| `THREAD_LOCAL_LEAK` | 跟 servlet 强相关 |
 
-### 7.2 Z3 集成
+### 7.1 Z3 集成
 
 DFA 增强的"单条 Z3 query"（Phase 2 per-finding 验证）见 `tech/CROSS-FUNCTION-ANALYSIS.md §5.5`（Operation.SolverZ3Predicate）。
 
