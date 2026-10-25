@@ -1,4 +1,4 @@
-# R209 — sink-families.yaml
+# sink-families.yaml
 #
 # Maps a sink family (e.g. sql.sinks) to a set of
 # function-name patterns. A pattern is a Java regex
@@ -100,7 +100,7 @@ families:
       - '^java\.sql\.Connection\.prepareStatement(/\d+)?'
       - '^java\.sql\.Connection\.prepareCall(/\d+)?'
       - '^java\.sql\.Connection\.nativeSQL(/\d+)?'
-      # R693: JPA / Hibernate / Spring Data sinks.
+# JPA / Hibernate / Spring Data sinks.
       # The strict eval counts these as TP because
       # Juliet CWE89_Servlet_execute tests reach
       # the SQL via these higher-level APIs in
@@ -127,7 +127,7 @@ families:
   ldap.sinks:
     cwe: CWE-90
     severity: HIGH
-    # R759: search(Name, filter, Controls) — the tainted
+# search(Name, filter, Controls) — the tainted
     # value is the filter (Java arg 1), not the base DN
     # (Java arg 0). Without this default, the family
     # default of 0 silently fires on the (typically clean)
@@ -153,9 +153,9 @@ families:
       - '^java\.lang\.ProcessImpl\.start(/\d+)?'
       - '^java\.lang\.ProcessBuilder\.<init>/\d+'
       - '^javax\\.activation\\.CommandMap'
-      # R515 — Spring's process exec
+# Spring's process exec
       - '^org\.springframework\.util\.FileCopyUtils\.copy(/\d+)?'
-      # R693: Apache Commons Exec / ProcessBuilder sink variants.
+# Apache Commons Exec / ProcessBuilder sink variants.
       - '^org\.apache\.commons\.exec\.DefaultExecutor\.execute(/\d+)?'
       - '^org\.apache\.commons\.exec\.CommandLine\.addArguments(/\d+)?'
       - '^org\.apache\.commons\.exec\.CommandLine\.addArgument(/\d+)?'
@@ -163,7 +163,7 @@ families:
     cwe: CWE-22
     severity: HIGH
     patterns:
-      # R505 — IR callee format is FQN.method/arity
+# IR callee format is FQN.method/arity
       # with "." separator. Constructors are emitted
       # with simple class names (translateNew uses
       # oce.getType().asString() which is "File" for
@@ -212,7 +212,7 @@ families:
       - '^ClassLoader\.loadClass(/\d+)?'
       - '^java\.lang\.reflect\.Method\.invoke(/\d+)?'
       - '^Method\.invoke(/\d+)?'
-  # R221 — Sensitive data exfiltration
+# Sensitive data exfiltration
   # sinks. Split into two families so the
   # SensitiveDataLeakChecker can
   # distinguish CWE-200 (general
@@ -273,7 +273,7 @@ families:
       - '^java\.io\.PrintWriter\.printf(/\d+)?'
       - '^java\.util\.Formatter\.format(/\d+)?'
       - '^java\.util\.logging\.Logger\.log(/\d+)?'
-      # R511 — System.out/err.printf/format
+# System.out/err.printf/format
       # surface as `System.out.format/1` etc.
       # because plumb-tac cannot resolve the
       # static-field receiver to PrintStream.
@@ -281,7 +281,7 @@ families:
       - '^java\.lang\.System\.out\.printf(/\d+)?'
       - '^java\.lang\.System\.err\.format(/\d+)?'
       - '^java\.lang\.System\.err\.printf(/\d+)?'
-      # R511b — when plumb-tac collapses
+# when plumb-tac collapses
       # `System.out.format` to `java.lang.System.format`
       # (the static-field receiver short-circuit).
       - '^java\.lang\.System\.format(/\d+)?'
@@ -289,7 +289,7 @@ families:
   log.sinks:
     cwe: CWE-117
     severity: MEDIUM
-    # R1103: the message is Java arg 0 for the level-specific methods
+# the message is Java arg 0 for the level-specific methods
     # (LOG.info(msg) / LOG.info(msg, throwable)) and Java arg 1 for the
     # generic LOG.log(Level, msg) form. Severity was LOW, which is wrong for
     # an attacker-forgeable log entry -- it reads as a nit but CRLF forging
@@ -316,7 +316,7 @@ families:
   deserialization.sinks:
     cwe: CWE-502
     severity: CRITICAL
-    # R1099: the zero-argument deserializers take their untrusted data from the
+# the zero-argument deserializers take their untrusted data from the
     # STREAM (the receiver), not from an argument. arg_index: -2 selects the
     # receiver. Without it these patterns fell back to default_arg_index (0,
     # "first user argument") and indexed past the end of an empty argument list,
@@ -376,7 +376,7 @@ families:
   header.sinks:
     cwe: CWE-93
     severity: MEDIUM
-    # R693: per-pattern arg_index. Family default
+# per-pattern arg_index. Family default
     # is 1 (the value / message side); the few
     # single-arg patterns that hold taint at
     # user-arg 0 override below.
@@ -394,7 +394,7 @@ families:
       - pattern: '^javax\.servlet\.http\.HttpServletResponse\.encodeRedirectURL(/\d+)?'
         arg_index: 0
       - pattern: '^javax\.servlet\.http\.HttpServletResponse\.addCookie(/\d+)?'
-        arg_index: 0   # R692 / R693: Cookie object passed in
+        arg_index: 0   # Cookie object passed in
       - pattern: '^javax\.servlet\.http\.Cookie\.<init>/\d+'
         arg_index: 1   # value side of Cookie(name, value)
       - pattern: '^org\.springframework\.http\.ResponseEntity\.<init>/\d+'
@@ -404,14 +404,14 @@ families:
   xss.sinks:
     cwe: CWE-79
     severity: HIGH
-    # R693.5: per-pattern arg_index. Most patterns
+# per-pattern arg_index. Most patterns
     # are 1-arg methods so the tainted value sits
     # at user-arg 0. sendError is the exception —
     # arg 1 (the message side) is tainted; arg 0
     # is the int code.
     default_arg_index: 0
     patterns:
-      # R505 — XSS sinks are writer/print methods on
+# XSS sinks are writer/print methods on
       # the HTTP response. The TAC IR uses
       # "FQN.method/arity" for instance calls, so
       # the receiver type must be picked up by
@@ -428,7 +428,7 @@ families:
       - pattern: '^java\.io\.PrintStream\.append(/\d+)?'
       - pattern: '^javax\.servlet\.http\.HttpServletResponse\.getWriter(/\d+)?'
       - pattern: '^javax\.servlet\.http\.HttpServletResponse\.getOutputStream(/\d+)?'
-      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.sendError(/\d+)?'   # R692: CWE81 XSS-via-error-message
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.sendError(/\d+)?'   # CWE81 XSS-via-error-message
         arg_index: 1
       - pattern: '^java\.lang\.String\.replaceAll(/\d+)?'
   nosql.sinks:
@@ -460,7 +460,7 @@ families:
       - '^org\.xml\.sax\.XMLReader\.parse(/\d+)?'
       - '^javax\.xml\.parsers\.DocumentBuilder\.parse(/\d+)?'
 
-  # ===== R513 UNCONTROLLED_MEM_ALLOC (CWE-789) =====
+# ===== UNCONTROLLED_MEM_ALLOC (CWE-789) =====
   # Sink ctor / method calls where a tainted
   # numeric value lands in the size / capacity
   # arg, so the attacker controls how much heap
@@ -489,12 +489,12 @@ families:
       - '^java\.lang\.String\.<init>/\d+'
       - '^java\.lang\.reflect\.Array\.newInstance(/\d+)?'
 
-  # ===== R500 BAD_CERT_VERIFICATION (CWE-295) =====
+# ===== BAD_CERT_VERIFICATION (CWE-295) =====
   # Sink methods that consume trust material (hostname verifiers,
   # trust managers, SSLContexts). A tainted value flowing here means
   # the developer built the trust chain from user input — i.e.
   # attacker-controlled certificate validation.
-  # R594 — accept both FQN and short-form callee sigs so the
+# accept both FQN and short-form callee sigs so the
   # stub fires regardless of whether the parser could resolve
   # javax.net.ssl.* at IR build time.
   ssl.sinks:
@@ -514,7 +514,7 @@ families:
       - '^org\.apache\.http\.ssl\.SSLContexts\.custom(/\d+)?'
       - '^SSLContexts\.custom(/\d+)?'
 
-  # ===== R502 UNSAFE_JNI (CWE-114) =====
+# ===== UNSAFE_JNI (CWE-114) =====
   # Sink methods that load native libraries from a path. A tainted
   # path means the attacker controls which .so/.dll gets loaded.
   jni.sinks:
@@ -530,10 +530,10 @@ families:
       - '^java\.lang\.Runtime\.loadLibrary(/\d+)?'
       - '^Runtime\.loadLibrary(/\d+)?'
 
-  # ===== R503 EL_INJECTION (CWE-94) =====
+# ===== EL_INJECTION (CWE-94) =====
   # Sink methods that evaluate an EL expression. A tainted expression
   # allows attacker-controlled method invocation / property access.
-  # R594 — accept both FQN and short-form callee sigs.
+# accept both FQN and short-form callee sigs.
   el.sinks:
     cwe: CWE-94
     severity: CRITICAL
@@ -553,11 +553,11 @@ families:
       - '^org\.springframework\.expression\.Expression\.setValue(/\d+)?'
       - '^Expression\.setValue(/\d+)?'
 
-  # ===== R505 JCR_INJECTION (CWE-94) =====
+# ===== JCR_INJECTION (CWE-94) =====
   # Sink methods that execute a JCR (JSR-170) query. A tainted
   # query or path allows attacker-controlled traversal / Xpath-like
   # injection.
-  # R594 — accept both FQN and short-form callee sigs.
+# accept both FQN and short-form callee sigs.
   jcr.sinks:
     cwe: CWE-94
     severity: HIGH
@@ -575,10 +575,10 @@ families:
       - '^javax\.jcr\.Item\.remove(/\d+)?'
       - '^Item\.remove(/\d+)?'
 
-  # ===== R506 JSP_DYNAMIC_INCLUDE (CWE-829) =====
+# ===== JSP_DYNAMIC_INCLUDE (CWE-829) =====
   # Sink methods that include a JSP fragment at runtime. A tainted
   # path allows attacker-controlled include of arbitrary content.
-  # R594 — accept both FQN and short-form callee sigs.
+# accept both FQN and short-form callee sigs.
   jsp-include.sinks:
     cwe: CWE-829
     severity: CRITICAL
@@ -592,13 +592,13 @@ families:
       - '^org\.apache\.tiles\.request\.render\.Renderer\.render(/\d+)?'
       - '^Renderer\.render(/\d+)?'
 
-  # ===== R507 TRUST_BOUNDARY_VIOLATION (CWE-501) =====
+# ===== TRUST_BOUNDARY_VIOLATION (CWE-501) =====
   # Sink locations where tainted data crosses into a storage
   # location the rest of the application trusts — typically a
   # session, request attribute, or static cache. The CWE describes
   # this as "data flowing into a data structure or context that is
   # often assumed to be trustworthy".
-  # R594 — accept both FQN and short-form callee sigs.
+# accept both FQN and short-form callee sigs.
   trust-boundary.sinks:
     cwe: CWE-501
     severity: MEDIUM
@@ -618,12 +618,12 @@ families:
       - '^java\.util\.Map\.put(/\d+)?'
       - '^Map\.put(/\d+)?'
 
-  # ===== R580 SESSION_FIXATION (CWE-384) =====
+# ===== SESSION_FIXATION (CWE-384) =====
   # Sink methods that establish a new session token. Tainted data
   # flowing into these lets the attacker pin the victim's
   # session to a value they control, then ride the session
   # after the victim logs in (classic session fixation).
-  # R594 — accept both FQN and short-form callee sigs.
+# accept both FQN and short-form callee sigs.
   session.sinks:
     cwe: CWE-384
     severity: HIGH
@@ -641,7 +641,7 @@ families:
       - '^org\.apache\.shiro\.web\.session\.HttpServletSession\.setId(/\d+)?'
       - '^HttpServletSession\.setId(/\d+)?'
 
-  # ===== R581 INSECURE_RANDOM (CWE-330) =====
+# ===== INSECURE_RANDOM (CWE-330) =====
   # Sink methods that produce a non-cryptographic random value
   # (java.util.Random / Math.random). Tainted "seed" arguments
   # are not in scope here — the issue is the choice of PRNG in
@@ -670,12 +670,12 @@ families:
       - '^java\.lang\.Math\.random(/\d+)?'
       - '^org\.apache\.commons\.lang3\.RandomUtils\.next(/\d+)?'
 
-  # ===== R582 JAVA_CODE_INJECTION (CWE-94) =====
+# ===== JAVA_CODE_INJECTION (CWE-94) =====
   # Sink methods that evaluate Java source / bytecode / scripts.
   # Tainted data flowing into these is a direct RCE vector:
   # ScriptEngine.eval, GroovyShell.evaluate, SpEL, OGNL (already
-  # covered by R504), etc.
-  # R594 — accept both FQN and short-form callee sigs.
+  # covered by the expression-injection family), etc.
+# accept both FQN and short-form callee sigs.
   code-execution.sinks:
     cwe: CWE-94
     severity: CRITICAL
@@ -726,7 +726,7 @@ families:
   db.credential.sinks:
     cwe: CWE-256
     severity: CRITICAL
-    # R696: family-wide default arg index. The
+    # family-wide default arg index. The
     # DriverManager.getConnection static calls
     # are 3-arg (url, user, password); password
     # is Java arg index 2. The framework adds
@@ -744,7 +744,7 @@ families:
       - '^javax\.sql\.DataSource\.getConnection(/\d+)?'
       - '^DataSource\.getConnection(/\d+)?'
       - '^org\.springframework\.jdbc\.datasource\.DriverManagerDataSource\.<init>(/\d+)?'
-      # R696: PasswordAuthentication.<init>(String user, char[] password).
+      # PasswordAuthentication.<init>(String user, char[] password).
       # NEW instructions pass the ctor arg list directly
       # (no receiver +1 offset), so arg_index 1 is the
       # char[] password in TAC args. The per-pattern
@@ -755,14 +755,14 @@ families:
         arg_index: 1
       - pattern: '^PasswordAuthentication\.<init>(/\d+)?'
         arg_index: 1
-      # R696: KerberosKey.<init>(KerberosPrincipal, char[] password, int).
+      # KerberosKey.<init>(KerberosPrincipal, char[] password, int).
       # arg 1 is the char[] password; arg 2 is the key
       # type (algorithm index, not sensitive).
       - pattern: '^javax\.security\.auth\.kerberos\.KerberosKey\.<init>(/\d+)?'
         arg_index: 1
       - pattern: '^KerberosKey\.<init>(/\d+)?'
         arg_index: 1
-      # R696: PasswordAuthentication.<init>(String user, char[] password).
+      # PasswordAuthentication.<init>(String user, char[] password).
       # NEW instructions pass the ctor arg list directly
       # (no receiver +1 offset), so arg_index 1 is the
       # char[] password in TAC args.
@@ -770,7 +770,7 @@ families:
         arg_index: 1
       - pattern: '^PasswordAuthentication\.<init>(/\d+)?'
         arg_index: 1
-      # R696: KerberosKey.<init>(KerberosPrincipal, char[] password, int).
+      # KerberosKey.<init>(KerberosPrincipal, char[] password, int).
       # arg 1 is the char[] password; arg 2 is the key
       # type (algorithm index, not sensitive).
       - pattern: '^javax\.security\.auth\.kerberos\.KerberosKey\.<init>(/\d+)?'
@@ -778,7 +778,7 @@ families:
       - pattern: '^KerberosKey\.<init>(/\d+)?'
         arg_index: 1
 
-  # R543 — external.config.sinks (CWE-15). System /
+  # external.config.sinks (CWE-15). System /
   # configuration setters that should not be called
   # with attacker-controlled values.
   external.config.sinks:
@@ -802,7 +802,7 @@ families:
       - '^java\.sql\.DriverManager\.setLogWriter(/\d+)?'
       - '^DriverManager\.setLogWriter(/\d+)?'
 
-  # ===== R721-C2: cleartext-tx sinks (CWE-319) =====
+  # ===== cleartext-tx sinks (CWE-319) =====
   # General-purpose taint-style sink family for data
   # that flows into a network-channel write. The
   # canonical Juliet pattern is

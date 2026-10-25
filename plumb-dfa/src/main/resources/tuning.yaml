@@ -1,4 +1,4 @@
-# R208 — tuning.yaml
+# tuning.yaml
 #
 # Engine-wide tuning knobs. Defaults are tuned for
 # mid-size projects (10K-100K LoC). For larger

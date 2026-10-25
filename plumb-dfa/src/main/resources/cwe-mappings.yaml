@@ -1,4 +1,4 @@
-# R208 — cwe-mappings.yaml
+# cwe-mappings.yaml
 #
 # Maps a finding key (e.g. "SensitiveDataLeak_sql") to
 # its CWE family. The key format is

@@ -1,4 +1,4 @@
-# R209 — fact-kinds.yaml
+# fact-kinds.yaml
 #
 # Defines the typed dataflow facts used across checkers.
 # A fact kind is a semantic property a checker cares

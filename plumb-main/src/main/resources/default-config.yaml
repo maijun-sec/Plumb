@@ -35,8 +35,7 @@
 # cacheMode: readwrite         # off | read | write | readwrite
 maxParallelism: 4             # parse+translate parallelism; 0 = nCPU-1
 
-# R761 audit (Oct 2026): default is now `global` (was `vta`).
-# The project directive is that analysis must be global —
+# The default call-graph strategy is `global`.
 # `cgStrategy: vta` is a TU-local strategy that drops
 # cross-file call resolution, which is what catches most
 # cross-TU taint patterns. `RcgStrategyTest:34` already
@@ -44,7 +43,7 @@ maxParallelism: 4             # parse+translate parallelism; 0 = nCPU-1
 #
 #   global — DEFAULT. Cross-TU signature lookup via
 #            `GlobalTACStore`. Slowest, but the only mode
-#            that catches Juliet's cross-TU taint cases.
+#            that catches cross-TU taint cases.
 #   vta    — Variable Type Analysis, TU-local, precise.
 #   cha    — Class Hierarchy Analysis, fast / over-approx.
 #            Use for very large codebases.
@@ -62,14 +61,11 @@ cgStrategy: global
 #   disabled:                  # force-disable
 #     - STYLE_SYSTEM_OUT
 
-# ---- R-? aggressiveness (low | medium | high) ----
-# REMOVED 2026-10-08 (audit C-3): the aggressiveness flag is no
-# longer honored. Per-rule firing is driven by `checks.<rule>:
-# {enabled: true/false}` in this YAML, or `--rule <id>` on the
-# CLI.  The flag is removed from SastMain and from this file.
-# This block is kept as a single comment so old configs that
-# still mention `aggressiveness:` get a clear error at startup
-# (see ConfigLoader.fromMapImpl).
+# ---- aggressiveness ----
+# The `aggressiveness:` key is not read. Per-rule firing is driven by
+# `checks.<rule>: {enabled: true/false}` in this YAML, or `--rule <id>` on
+# the CLI. A config that still mentions `aggressiveness:` gets a warning at
+# startup (see ConfigLoader).
 
 # ---- checker families ----
 # All true by default. Set any to false to disable.
@@ -79,7 +75,7 @@ cgStrategy: global
 # and returns TP/FP/UNKNOWN). The verifier tags findings
 # in the NDJSON output as `ai_verdict` + `ai_reason`.
 checks:
-  # --- Taint master switch (33 unified taint checkers) ---
+  # --- Taint master switch (the unified taint checkers) ---
   taint: true
   # --- Style / structural checks ---
   style: true
@@ -128,35 +124,27 @@ checks:
   numericTruncation:       {enabled: true,  aiDedup: true}
   # CWE-400: Thread.sleep + unbounded for-loop (plumb-dfa ResourceExhaustionChecker)
   resourceExhaustion:      {enabled: true,  aiDedup: true}
-  # R-787f / R-812: errorMessageInfoLeak and commentInfoLeak used to gate
-  # plumb-dfa checkers of the same name. Both checkers were MIGRATED to
-  # plumb-style (org.plumb.style.error.ErrorMessageInfoLeakCheck /
-  # org.plumb.style.style.CommentInfoLeakCheck), so these two YAML keys no
-  # longer switch anything off — the style checkers are registered
-  # unconditionally and are controlled via `rules.disabled` with the AST rule
-  # id instead:
+  # errorMessageInfoLeak and commentInfoLeak are parsed so old configs keep
+  # loading, but they do NOT switch the AST checkers off: those are
+  # registered unconditionally by AstCheckerRegistry.builtins(). Turn them
+  # off with `rules.disabled` and the AST rule id instead:
   #   rules:
   #     disabled:
   #       - ast-error-error-message-info-leak
   #       - ast-style-comment-info-leak
-  # The keys are still parsed so old configs keep loading without a warning.
-  # R-? — 8 plumb-dfa → plumb-dfa DfaChecker ports
-  # (Category A — direct IR pattern, no taint). Each is a
-  # structural check that doesn't propagate data flow.
+  # The two DfaChecker ports below are structural checks that read the IR
+  # directly and do not propagate data flow.
   bigDecimalDoubleConstructor: {enabled: true, aiDedup: true}  # CWE-682
   defaultEncoding:             {enabled: true, aiDedup: true}  # CWE-176
-  # R760 (Oct 2026): loose checkers removed entirely. The
-  # `loose:` key below was deleted; existing configs that
-  # still mention it are silently ignored (see ConfigLoader).
-  # Coverage is held by the strict `plumb.numeric.*` /
-  # `plumb.boundary.*` precise rules + new `plumb.ast.*`
-  # rules. See commit log for empirical numbers.
+  # The `loose:` key is not read. A config that still mentions it is
+  # ignored, not an error. The strict `plumb.numeric.*` /
+  # `plumb.boundary.*` rules and the `plumb.ast.*` rules carry the
+  # coverage.
 
 # ---- style thresholds ----
-# R761 audit (Oct 2026): removed `style.methodLengthThreshold` —
-# was a dead field (no style checker read it; plumb-style has its
-# own hard-coded 80-line limit). When plumb-style grows per-checker
-# thresholds, they will be added here under the `style:` block.
+# `style.methodLengthThreshold` is not read. plumb-style has its own
+# hard-coded 80-line limit. When plumb-style grows per-checker thresholds,
+# they will be added here under the `style:` block.
 
 # ---- R-? AI augmentation layer (plumb-ai) ----
 # FP-reducer agent only (CLI: --ai-dedup / ai.dedup: true).
@@ -170,22 +158,21 @@ checks:
 # `ai.dropOnAiFp: true` FP findings are dropped from
 # the report entirely.
 #
-# REMOVED 2026-10-08 (audit C-3 + m-6):
+# The `ai:` block has five keys that are not read. A config that still
+# mentions them gets a warning at startup, not an error:
 #   * ai.enabled    (master switch) — `--ai-dedup` itself is
-#                   the switch; the `enabled` field was
-#                   silently ignored.
+#                   the switch; the `enabled` field is ignored.
 #   * ai.scan       (bug scanner / `--ai-scan`) — the CLI flag
-#                   and the YAML key were both dead code.
-#                   Re-introduce in a future release.
-#   * ai.contextLines — never read; the runner uses its
+#                   and the YAML key are both absent.
+#   * ai.contextLines — not read; the runner uses its
 #                   own `extractSourceContext(f, 3)`.
 #   * ai.rulePromptsDir (YAML only) — the CLI flag
 #                   `--rule-prompts-dir` is the supported
-#                   path; the YAML key was dead.
-#   * ai.sendAstContext — never read.
+#                   path; the YAML key is not read.
+#   * ai.sendAstContext — not read.
 #
 # The package deliberately does NOT use Spring-AI to keep
-# the jar footprint small (~3MB saved). The agent speaks
+# the jar footprint small. The agent speaks
 # any OpenAI-compatible chat-completion API (OpenAI,
 # Azure, Ollama, vLLM, LocalAI) or Anthropic /v1/messages.
 #

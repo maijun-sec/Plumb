@@ -1,4 +1,4 @@
-# R698 — receiver-passthrough configuration
+# receiver-passthrough configuration
 #
 # When the receiver-taint passthrough
 # fallback fires in
@@ -95,7 +95,7 @@ families:
       - '^((?:[\w.]+\.)*)Cookie\.getPath(/\d+)?'
       - '^((?:[\w.]+\.)*)Cookie\.getComment(/\d+)?'
       - '^((?:[\w.]+\.)*)Cookie\.getVersion(/\d+)?'
-      # R698 Juliet IR quirk: the Juliet
+# Juliet IR quirk: the Juliet
       # testcases use Cookie as a real
       # JDK class but plumb-tac's symbol
       # resolver does not always find
