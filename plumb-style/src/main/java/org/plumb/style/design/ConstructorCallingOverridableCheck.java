@@ -1,7 +1,7 @@
 /*
  * constructor calls overridable method.
  *
- * <p><b>R-818 (2026-10-14): pattern D rewrite.</b> The previous
+ * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(ConstructorDeclaration)} (1 walk) + for each
  * ctor {@code ctor.findAll(MethodCallExpr)} (1 walk per ctor).

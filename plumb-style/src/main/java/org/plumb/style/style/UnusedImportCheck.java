@@ -1,7 +1,7 @@
 /*
  * unused import ? remove it.
  *
- * <p><b>R-819 (2026-10-14): pattern A rewrite.</b> The previous
+ * <p><b>pattern A rewrite.</b> The previous
  * implementation had a {@code for (ImportDeclaration)} loop
  * with THREE {@code n.findAll(...)} calls inside it
  * (NameExpr + ClassOrInterfaceType + AnnotationExpr) ? worst
@@ -12,8 +12,6 @@
  * file (was N_imp × 3).</p>
  */
 package org.plumb.style.style;
-
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
 
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.expr.AnnotationExpr;
@@ -45,7 +43,7 @@ public final class UnusedImportCheck implements AstChecker {
               "ast-style-unused-import",
               "unused-import")); // R-836 step_f: disabled by default (0 TP / 100% FP on Juliet
 
-  // R-832 baseline)
+  // baseline)
 
   /** Per-file: all import declarations for the current CU. Populated in init(). */
   private final List<ImportDeclaration> importsBuffer = new java.util.ArrayList<>();
@@ -80,11 +78,7 @@ public final class UnusedImportCheck implements AstChecker {
     usedTypes.add(t.asString());
   }
 
-  /**
-   * R-AST-FIX-2026-10-18: register concrete annotation subtypes so the dispatcher's exact-class
-   * lookup fires. {@code visit(AnnotationExpr)} (the base type) was previously never invoked
-   * because the dispatcher indexes by the runtime node class.
-   */
+  /** */
   public void visit(AnnotationExpr a, StyleContext ctx) {
     usedAnnotations.add(a.getNameAsString());
   }

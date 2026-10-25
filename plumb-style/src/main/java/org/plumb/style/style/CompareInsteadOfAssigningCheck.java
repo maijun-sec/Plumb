@@ -1,5 +1,5 @@
 /*
- * R721-C4: AST-style CWE-482 (Comparing Instead of
+ * C4: AST-style CWE-482 (Comparing Instead of
  * Assigning) checker.
  *
  * <p>Fires when the source uses {@code ==} or

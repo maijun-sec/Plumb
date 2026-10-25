@@ -8,12 +8,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Return empty collection instead of {@code null}.
- *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ReturnStmt.class)} before.
- */
+/** Return empty collection instead of {@code null}. */
 public final class ReturnsNullInsteadOfEmptyCollectionCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

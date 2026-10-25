@@ -3,7 +3,7 @@
  * non-synchronized read-modify-write of an instance / static
  * field in a singleton class (servlet, Spring controller).
  *
- * <p><b>R-817 (2026-10-14): pattern D rewrite.</b> The previous
+ * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(ClassOrInterfaceDeclaration)} (1 walk) +
  * per-class per-field per-method

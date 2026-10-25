@@ -14,9 +14,6 @@
  *       controls {@code suspend()} behavior project-wide and inherits the same deadlock hazards.
  * </ul>
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(MethodCallExpr.class)} before. The type-resolution logic
- * inside {@link #classifyDeadlock} is unchanged.
  */
 package org.plumb.style.security;
 

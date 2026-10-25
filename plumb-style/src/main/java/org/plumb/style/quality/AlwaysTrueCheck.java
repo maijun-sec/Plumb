@@ -1,5 +1,5 @@
 /*
- * R-813: AST-style CWE-571 (Expression is Always True) checker.
+ * AST-style CWE-571 (Expression is Always True) checker.
  *
  * <p>Fires on expressions that are provably always true:</p>
  * <ul>
@@ -9,9 +9,9 @@
  * </ul>
  *
  * <p>Replaces the plumb-dfa {@code ClassSourceChecker.AlwaysTrueChecker}
- * inner class (R-812 audit cleanup 2026-10-14).</p>
+ * inner class ( audit cleanup 2026-10-14).</p>
  *
- * <p><b>R-816 (2026-10-14): pattern D rewrite.</b> Same rewrite as
+ * <p><b>pattern D rewrite.</b> Same rewrite as
  * {@link AlwaysFalseCheck}: per-node visit overloads
  * ({@code IfStmt} / {@code WhileStmt} / {@code BinaryExpr}) instead
  * of three {@code findAll} calls in {@code visit(CompilationUnit)}.

@@ -1,5 +1,5 @@
 /*
- * R728-C3 / R737-C1 / R739-C1 / R744-C1 / R745-C1 / R746: AST
+ * C3 / -C1 / -C1 / -C1 / -C1 / AST
  * check for CWE-570 / CWE-571 (Expression Always False
  * / Always True). Fires when an IfStmt condition is
  * provably constant.
@@ -15,19 +15,19 @@
  *     <li>{@code if (s.equals("true"))} where local
  *         {@code String s = "false"}  string-literal
  *         equality.</li>
- *     <li>R744: arithmetic on locals, e.g. {@code int
+ *     <li>arithmetic on locals, e.g. {@code int
  *         n = 30; if (n == (n - 1))}.</li>
- *     <li>R744: {@code IO.staticFalse},
+ *     <li>{@code IO.staticFalse},
  *         {@code IO.STATIC_FINAL_FALSE}, etc.</li>
- *     <li>R745: same-file private method returning a
+ *     <li>same-file private method returning a
  *         literal boolean, e.g. {@code if
  *         (privateReturnsFalse())}.</li>
- *     <li>R745: {@code IO.staticReturnsFalse()} and
+ *     <li>{@code IO.staticReturnsFalse()} and
  *         {@code IO.staticReturnsTrue()} (testcasesupport
  *         helpers with constant return).</li>
- *     <li>R745: {@code Integer.MIN_VALUE} /
+ *     <li>{@code Integer.MIN_VALUE} /
  *         {@code Integer.MAX_VALUE} recognition.</li>
- *     <li>R746: {@code IO.staticFive},
+ *     <li>{@code IO.staticFive},
  *         {@code IO.STATIC_FINAL_FIVE},
  *         {@code IO.privateFive},
  *         {@code IO.PRIVATE_STATIC_FINAL_FIVE},
@@ -92,7 +92,7 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
   private final Map<String, Long> constantInts = new HashMap<>();
 
   /**
-   * R747: variables initialised from {@code nextInt()}-family methods (SecureRandom / Random /
+   * variables initialised from {@code nextInt()}-family methods (SecureRandom / Random /
    * ThreadLocalRandom). name -> [min, max] inclusive.
    */
   private final Map<String, long[]> randomInts = new HashMap<>();
@@ -100,13 +100,13 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
   private final Map<String, String> constantStrings = new HashMap<>();
 
   /**
-   * R748: declared type per variable name (per-CU, last-write-wins). Used to recognise {@code
+   * declared type per variable name (per-CU, last-write-wins). Used to recognise {@code
    * a.getClass().equals(b.getClass())} when a and b are declared as different concrete classes.
    */
   private final Map<String, String> declaredTypes = new HashMap<>();
 
   /**
-   * R745: same-CU private methods that always return the same boolean literal. methodName -> return
+   * same-CU private methods that always return the same boolean literal. methodName -> return
    * value.
    */
   private final Map<String, Boolean> privateBoolReturns = new HashMap<>();
@@ -170,7 +170,7 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
       if (constantBools.containsKey(name)) continue;
       if (constantInts.containsKey(name)) continue;
       if (randomInts.containsKey(name)) continue;
-      // R748: capture declared type once (first wins).
+      // capture declared type once (first wins).
       if (!declaredTypes.containsKey(name)) {
         declaredTypes.put(name, typeName);
       }
@@ -191,7 +191,7 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
         } catch (NumberFormatException ex) {
         }
       }
-      // R747: capture range from Random / SecureRandom / ThreadLocalRandom
+      // capture range from Random / SecureRandom / ThreadLocalRandom
       // .nextInt() / .nextLong() calls (no arg → int range).
       if (init instanceof MethodCallExpr mc
           && ("int".equals(typeName) || "long".equals(typeName))
@@ -209,7 +209,7 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
         constantStrings.put(name, sle.getValue());
       }
     }
-    // (c) R745: walk every method declaration in
+    // (c) walk every method declaration in
     //     the same CU. If the body is a single
     //     `return boolean-literal;` (possibly with
     //     other empty statements around it), mark
@@ -225,10 +225,7 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
     }
   }
 
-  /**
-   * R745: if {@code md}'s body returns a boolean literal (always), return that value. Otherwise
-   * null.
-   */
+  /** if {@code md}'s body returns a boolean literal (always), return that value. Otherwise null. */
   private static Boolean constantReturnValue(MethodDeclaration md) {
     if (md.getBody() == null) return null;
     Boolean result = null;
@@ -282,7 +279,7 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
     if (e instanceof BooleanLiteralExpr ble) {
       return ble.getValue();
     }
-    // R748: `!inner` flips the resolved boolean.
+    // `!inner` flips the resolved boolean.
     if (e instanceof UnaryExpr ue && ue.getOperator() == UnaryExpr.Operator.LOGICAL_COMPLEMENT) {
       Boolean inner = resolveAsBoolean(ue.getExpression());
       return inner == null ? null : !inner;
@@ -292,7 +289,7 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
       return constantBools.get(n);
     }
     if (e instanceof FieldAccessExpr fae) {
-      // R744: well-known boolean static fields.
+      // well-known boolean static fields.
       String s = fae.toString();
       if (s.endsWith(".staticFalse") || s.endsWith(".STATIC_FINAL_FALSE")) {
         return Boolean.FALSE;
@@ -304,18 +301,18 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
     }
     if (e instanceof MethodCallExpr mc) {
       String name = mc.getNameAsString();
-      // R745: IO.staticReturnsFalse() / staticReturnsTrue()
+      // IO.staticReturnsFalse() / staticReturnsTrue()
       // (testcasesupport helpers, no-arg, return literal).
       // CRITICAL: check NAME first regardless of scope (Lesson 1024).
       if ("staticReturnsFalse".equals(name)) return Boolean.FALSE;
       if ("staticReturnsTrue".equals(name)) return Boolean.TRUE;
-      // R748: a.getClass().equals(b.getClass()) — if both a, b
+      // a.getClass().equals(b.getClass()) — if both a, b
       // are declared as different concrete classes, equals is false.
       if ("equals".equals(name) && mc.getArguments().size() == 1) {
         Boolean cls = resolveClassEquals(mc);
         if (cls != null) return cls;
       }
-      // R747: `String s.equals(stringLiteral)` returns boolean
+      // `String s.equals(stringLiteral)` returns boolean
       // — if s's value and the literal are both known, decide.
       String sResult = stringValue(e);
       if (sResult != null) {
@@ -350,7 +347,7 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
             return null;
         }
       }
-      // R747: range vs constant — if one side is a known
+      // range vs constant — if one side is a known
       // [min,max] range and the other is a literal, decide.
       // Three-way: range < val true; range >= val false; partial → null.
       if (leftVal != null || rightVal != null) {
@@ -471,7 +468,7 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
       return constantInts.get(ne.getNameAsString());
     }
     if (e instanceof FieldAccessExpr fae) {
-      // R745/R746: well-known numeric constants.
+      // well-known numeric constants.
       String s = fae.toString();
       if (s.endsWith(".Integer.MIN_VALUE")
           || s.endsWith(".MIN_VALUE")
@@ -485,7 +482,7 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
       }
       if (s.endsWith(".Long.MIN_VALUE")) return Long.MIN_VALUE;
       if (s.endsWith(".Long.MAX_VALUE")) return Long.MAX_VALUE;
-      // R746: testcasesupport IO numeric helpers.
+      // testcasesupport IO numeric helpers.
       if (s.endsWith(".staticFive")
           || s.endsWith(".STATIC_FINAL_FIVE")
           || s.endsWith(".privateFive")
@@ -521,8 +518,8 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
   }
 
   /**
-   * R747: numeric range for an expression. Returns [min, max] inclusive, or null if unknown.
-   * Currently only handles {@code NameExpr} that resolves to a {@code randomInts} entry.
+   * numeric range for an expression. Returns [min, max] inclusive, or null if unknown. Currently
+   * only handles {@code NameExpr} that resolves to a {@code randomInts} entry.
    */
   private long[] numericRange(Expression e) {
     if (e instanceof EnclosedExpr ee) {
@@ -535,8 +532,8 @@ public final class LiteralBooleanConditionCheck implements AstChecker {
   }
 
   /**
-   * R748: handle {@code a.getClass().equals(b.getClass())}. Returns true if both sides are declared
-   * as the same concrete class; false if declared as different concrete classes; null otherwise
+   * handle {@code a.getClass().equals(b.getClass())}. Returns true if both sides are declared as
+   * the same concrete class; false if declared as different concrete classes; null otherwise
    * (unknown).
    */
   private Boolean resolveClassEquals(MethodCallExpr mc) {

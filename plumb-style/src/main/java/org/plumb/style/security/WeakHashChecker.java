@@ -1,5 +1,5 @@
 /*
- * R721-C4: AST-style CWE-328 (Use of Weak Hash) checker.
+ * C4: AST-style CWE-328 (Use of Weak Hash) checker.
  *
  * <p>Fires when {@link java.security.MessageDigest#getInstance(String)}
  * (or any other {@code getInstance}-style factory) is
@@ -86,7 +86,6 @@ public final class WeakHashChecker implements AstChecker {
           List.of("MD2", "MD4", "MD5", "SHA", "SHA1", "SHA-1", "HmacMD5", "HmacMD4"));
 
   /**
-   * R-AST-FIX-2026-10-18: AST-side ruleId was historically misspelled with the {@code dfa-} prefix
    * (this is an AST checker, not a DFA one ? see {@link org.plumb.style.AstDispatcher}). Any
    * consumer pinning the old id needs to track via {@code RuleRegistry} alias resolution.
    */
@@ -101,7 +100,7 @@ public final class WeakHashChecker implements AstChecker {
           List.of("CWE-328"),
           "org.plumb.style.security.WeakHashChecker",
           true,
-          // R786-P1-2-2026-10-18: preserve historical dfa-security-weak-hash id
+          // P1-2-2026-10-18: preserve historical dfa-security-weak-hash id
           // as an alias so consumers (juliet-coverage CSVs, custom configs) that
           // pinned the pre-Pass-C id can still resolve via RuleRegistry.byAlias.
           List.of("ast-security-weak-hash", "dfa-security-weak-hash", "weak-hash"));

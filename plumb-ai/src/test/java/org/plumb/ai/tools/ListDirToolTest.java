@@ -11,7 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.plumb.ai.agent.ToolResult;
 
-/** R-? — Tests for {@link ListDirTool}. */
+/** — Tests for {@link ListDirTool}. */
 class ListDirToolTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();

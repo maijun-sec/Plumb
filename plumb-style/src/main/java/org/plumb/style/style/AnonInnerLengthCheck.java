@@ -17,7 +17,6 @@ import org.plumb.style.StyleContext;
  * <p>| Name | Type | Default | Description | | ---- | ---- | ------- | ----------- | | `max` | INT
  * | `20` | Maximum allowed lines for an anonymous class |
  */
-// R-AST-FIX-2026-10-18 (Pass B): removed duplicate paramInt helper.
 public final class AnonInnerLengthCheck implements AstChecker {
 
   private static final RuleParameter[] PARAMS = {

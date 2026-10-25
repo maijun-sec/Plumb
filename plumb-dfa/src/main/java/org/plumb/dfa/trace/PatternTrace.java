@@ -1,5 +1,5 @@
 /*
- * R-812 ? shared v2 trace helpers for DFA checkers
+ * ? shared v2 trace helpers for DFA checkers
  * that detect patterns at a single call site
  * (no data flow, no cross-function propagation).
  *
@@ -43,7 +43,7 @@ public final class PatternTrace {
    * Emit a single-node v2 trace as a {@code VIOLATION} and report the finding via {@code
    * reportWithTrace}. The legacy v1 {@code dataflowSteps} are populated by {@link
    * Finding#dfaWithTrace} flattening the single-node trace ? v1 consumers see a one-step path,
-   * identical to the pre-R-812 shape (a single violation step).
+   * identical to the pre- shape (a single violation step).
    */
   public static void report(
       AnalysisContext ctx,
@@ -76,7 +76,7 @@ public final class PatternTrace {
   }
 
   /**
-   * R-812 follow-up: same as {@link #report} but the operand is a {@link OperandRef.Free} tag (e.g.
+   * follow-up: same as {@link #report} but the operand is a {@link OperandRef.Free} tag (e.g.
    * {@code "receiver:foo"}) rather than a {@link OperandRef.CallRef}. Used by checkers that detect
    * "the receiver of a known-NULL flow" or "the value of a field compared with itself" ? the
    * pattern is still a single-node VIOLATION but the "what's the call" question doesn't apply.
@@ -112,12 +112,12 @@ public final class PatternTrace {
   }
 
   /**
-   * R-812 file-level scan variant. Used by DFA checkers that detect patterns in the source TEXT
-   * (regex / comment / string literal scan) rather than in the TAC IR. Examples: {@code
-   * Cwe382SystemExit}, {@code Cwe526EnvVar}, {@code Cwe570AlwaysFalse}, {@code Cwe571AlwaysTrue}.
-   * The shared shape is still a single-node VIOLATION trace ? the only difference is that we don't
-   * have a {@link TacInstruction} to point at; instead we record the source line / column
-   * discovered by the regex matcher.
+   * file-level scan variant. Used by DFA checkers that detect patterns in the source TEXT (regex /
+   * comment / string literal scan) rather than in the TAC IR. Examples: {@code Cwe382SystemExit},
+   * {@code Cwe526EnvVar}, {@code Cwe570AlwaysFalse}, {@code Cwe571AlwaysTrue}. The shared shape is
+   * still a single-node VIOLATION trace ? the only difference is that we don't have a {@link
+   * TacInstruction} to point at; instead we record the source line / column discovered by the regex
+   * matcher.
    */
   public static void reportFileLevel(
       AnalysisContext ctx,
@@ -151,7 +151,7 @@ public final class PatternTrace {
   }
 
   /**
-   * R-812 follow-up: a checker fired in {@code finishFunction} (or similar) where there's no {@link
+   * follow-up: a checker fired in {@code finishFunction} (or similar) where there's no {@link
    * TacInstruction} to point at, but we still have a {@link TacFunction} signature + line/column.
    * The {@code detail} string flows into the v2 trace {@code note} + a {@link OperandRef.Free}
    * operand so the AI dedup layer can see "this is a per- function rollup, not a per-call finding".

@@ -7,12 +7,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Do not override {@code finalize()} ? deprecated in Java 9+.
- *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(MethodDeclaration.class)} before.
- */
+/** Do not override {@code finalize()} ? deprecated in Java 9+. */
 public final class NoFinalizerCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

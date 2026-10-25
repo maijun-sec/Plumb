@@ -1,15 +1,11 @@
 /*
- * R-813: AST-style CWE-862 (Missing Authorization) checker.
+ * AST-style CWE-862 (Missing Authorization) checker.
  *
  * <p>Fires on Spring / Jakarta web endpoint methods that expose a web route but lack an
  * authorization annotation ({@code @PreAuthorize}, {@code @Secured}, {@code @RolesAllowed},
  * ...). The fix is either to add the annotation, or to enable method-level security globally
  * via {@code @EnableMethodSecurity} / etc.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)} before. The enclosing
- * class (for the controller / global-security annotations) is recovered via {@code
- * findAncestor(ClassOrInterfaceDeclaration.class)}.
  */
 package org.plumb.style.security;
 

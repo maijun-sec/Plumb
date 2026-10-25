@@ -21,7 +21,7 @@ public final class EngineConfig {
   private final TuningConfig tuning;
 
   /**
-   * R698: compiled regex patterns for the receiver-passthrough fallback. The passthrough in {@code
+   * compiled regex patterns for the receiver-passthrough fallback. The passthrough in {@code
    * TaintedCheckerBase.propagateTaintFromCalleeSummary} only fires when the callee signature
    * matches one of these patterns. Without this gate the fallback would mark ANY JDK method
    * returning data from a tainted receiver as tainted, producing FP on POJO getters, util-class
@@ -75,14 +75,14 @@ public final class EngineConfig {
     return tuning;
   }
 
-  /** R698: receiver-passthrough patterns. */
+  /** receiver-passthrough patterns. */
   public List<Pattern> receiverPassthroughPatterns() {
     return receiverPassthroughPatterns;
   }
 
   /**
-   * R698: true iff the callee signature matches one of the configured receiver-passthrough
-   * patterns. The passthrough fallback uses this to gate the receiver → dest taint inference.
+   * true iff the callee signature matches one of the configured receiver-passthrough patterns. The
+   * passthrough fallback uses this to gate the receiver → dest taint inference.
    */
   public boolean isReceiverPassthroughEligible(String calleeSig) {
     if (calleeSig == null) return false;

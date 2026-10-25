@@ -1,7 +1,5 @@
 package org.plumb.style.style;
 
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
-
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.HashSet;
 import java.util.List;
@@ -17,11 +15,6 @@ import org.plumb.style.StyleContext;
  * <p>Detects {@code MessageDigest.getInstance("SHA-...")} followed by {@code .digest(...)} with no
  * intervening {@code .update(...)} call. Without a salt (mixed in via {@code .update(salt)}), the
  * digest is vulnerable to rainbow-table attack.
- *
- * <p>Juliet's CWE-759 corpus (17 files) uses the same template: {@code bad()} calls {@code
- * MessageDigest.getInstance("SHA-512")} then {@code .digest("hash me".getBytes(...))} with no
- * {@code .update(...)}; {@code good1()} inserts a {@code hash.update(prng.generateSeed(32))} before
- * the digest call.
  *
  * <p>Detection: linear AST walk over every {@code Statement}. For each top-level (or any-depth)
  * {@code ExpressionStmt}:

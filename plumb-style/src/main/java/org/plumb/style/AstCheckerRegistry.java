@@ -147,13 +147,6 @@ public final class AstCheckerRegistry {
     try {
       // Prefer the no-arg ctor. Every checker has one.
       AstChecker inst = cls.getDeclaredConstructor().newInstance();
-      // R-AST-FIX-2026-10-18 (rev 2): the previous version
-      // skipped registration when DEFAULT_RULE.enabled() was
-      // false. That broke the smoke-test path
-      // RuleRegistry#tryMirrorAstCheckers, which calls
-      // AstCheckerRegistry.builtins() and relies on
-      // forceAllEnabledIf(true) to flip every rule (including
-      // the by-default-disabled stubs) for the test. The fix:
       // always register here; let the public surface
       // ({@link #builtins()}, {@link #load(String...)},
       // {@link #byCategory(String...)}) filter the disabled

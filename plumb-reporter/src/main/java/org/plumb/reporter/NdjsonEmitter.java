@@ -37,7 +37,7 @@ public final class NdjsonEmitter {
     sb.append("\"column\":").append(f.column()).append(',');
     kv(sb, "severity", f.severity().name().toLowerCase(Locale.ROOT));
     sb.append(',');
-    // R776: when a RuleDef is present, use it as the canonical
+    // when a RuleDef is present, use it as the canonical
     // source for rule_id/rule_name/rule_type/cwe. When absent
     // (DFA-emitted finding before ScanRunner enrichment), fall
     // back to the legacy ruleId/cwe fields so the NDJSON line
@@ -89,7 +89,7 @@ public final class NdjsonEmitter {
       }
       sb.append(']');
     }
-    // R-803 P3.2: emit the v2 structured trace as
+    // P3.2: emit the v2 structured trace as
     // a JSON object. Only emitted when the finding
     // was dual-written (P2 + P3.1 emit path). v1-only
     // findings have trace() == null and the field

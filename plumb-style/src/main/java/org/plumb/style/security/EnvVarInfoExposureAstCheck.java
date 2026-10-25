@@ -1,5 +1,5 @@
 /*
- * R727-C1: AST-level CWE-526 (Info Exposure Through
+ * C1: AST-level CWE-526 (Info Exposure Through
  * Environment Variables) detector. The TAC-based
  * EnvVarInfoExposureChecker reads source lines via
  * SourceReader.readLines(prog), which returns empty

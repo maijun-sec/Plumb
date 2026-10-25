@@ -1,5 +1,5 @@
 /*
- * R730-C2: AST-style CWE-398 (Indicator of Poor Code
+ * C2: AST-style CWE-398 (Indicator of Poor Code
  * Quality) checker — `;` empty-statement-as-statement
  * (the `;` line at the top of `bad()`) and
  * self-assignment (`x = x`).

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.plumb.ai.agent.ToolResult;
 
-/** R-? — Tests for {@link GlobTool}. */
+/** — Tests for {@link GlobTool}. */
 class GlobToolTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();

@@ -85,7 +85,7 @@ public final class GuardTracker {
   private static final Set<BinaryOperator> NON_ZERO_OPS = Set.of(BinaryOperator.NE);
 
   /**
-   * R1101: operators whose <i>false</i> edge excludes exactly one value.
+   * operators whose <i>false</i> edge excludes exactly one value.
    *
    * <p>{@code EQ} is deliberately absent from {@link #BOUNDING_OPS} — "the variable equals a
    * literal" is not a range bound, so it can never help the overflow / bounds checkers. But it is
@@ -125,8 +125,8 @@ public final class GuardTracker {
   private final Set<TacOperand.TacVar> guardedVars = new HashSet<>();
 
   /**
-   * R1101: negation of every {@code ==} / {@code !=} guard seen in this function, keyed by the
-   * false-edge label that establishes it.
+   * negation of every {@code ==} / {@code !=} guard seen in this function, keyed by the false-edge
+   * label that establishes it.
    *
    * <p>The linear IR puts an if-else like this:
    *
@@ -198,10 +198,10 @@ public final class GuardTracker {
   private final Set<TacOperand.TacVar> derivedGuardedVars = new HashSet<>();
 
   /**
-   * R690: maximum entries kept per derived-guard list. Without this DERIVED_GUARD_CAP, Juliet
-   * cross-file scans (variant 22 / 51 / 81 with 1000+ files) blow up the per-dest / per-src lists
-   * unbounded. 64 is well above the realistic per-var guard count (single digits), so the FP / FN
-   * surface is unchanged for typical Juliet inputs.
+   * maximum entries kept per derived-guard list. Without this DERIVED_GUARD_CAP, Juliet cross-file
+   * scans (variant 22 / 51 / 81 with 1000+ files) blow up the per-dest / per-src lists unbounded.
+   * 64 is well above the realistic per-var guard count (single digits), so the FP / FN surface is
+   * unchanged for typical Juliet inputs.
    */
   private static final int DERIVED_GUARD_CAP = 64;
 
@@ -318,7 +318,7 @@ public final class GuardTracker {
       case JUMP -> onJump(ins.label);
       case LABEL -> onLabel(ins);
       case MOVE -> {
-        // R1119: rebinding a variable retires every guard proved for its previous value.
+        // rebinding a variable retires every guard proved for its previous value.
         //
         // A guard constrains a binding, not a name. `if (x == null) { break; }` establishes
         // `x != null` for whatever `x` holds at that point; a later `x = peek(cur)` binds a
@@ -408,7 +408,7 @@ public final class GuardTracker {
     // Both sets are recorded so the
     // checker can ask isGuardedBy(op) to
     // see which kind of guard applies.
-    // R1101: FALSE_EDGE_OPS is recorded too, so the BRANCH's false edge can carry the
+    // FALSE_EDGE_OPS is recorded too, so the BRANCH's false edge can carry the
     // "this literal is excluded here" fact. It is not a bound and never becomes an
     // active guard -- see the FALSE_EDGE_OPS javadoc.
     if (!BOUNDING_OPS.contains(op) && !NON_ZERO_OPS.contains(op) && !FALSE_EDGE_OPS.contains(op)) {
@@ -526,7 +526,7 @@ public final class GuardTracker {
     // active stack, then mirror onto guardedVars
     // and allGuardsSeen.
     //
-    // R1101: only push a frame marker if something is actually going on the active
+    // only push a frame marker if something is actually going on the active
     // stack. A BRANCH whose guards are all false-edge-only (EQ) pushes nothing, and a
     // marker with no matching push would desynchronise the JUMP pop counts.
     final boolean anyPushable = guards.stream().anyMatch(g -> !FALSE_EDGE_OPS.contains(g.op()));
@@ -535,7 +535,7 @@ public final class GuardTracker {
     }
     for (Guard g : guards) {
       allGuardsSeen.add(g);
-      // R1101: an EQ guard is NOT a bound. "data == 0" says the variable equals a literal,
+      // an EQ guard is NOT a bound. "data == 0" says the variable equals a literal,
       // which cannot justify the interval reasoning that isGuarded / isGuardedBy / the Range
       // lattice perform, so it must never enter the active stack or guardedVars. It is
       // recorded against the false edge below and consulted only through isRefutedBy.
@@ -552,8 +552,8 @@ public final class GuardTracker {
   }
 
   /**
-   * R1101: record, against the BRANCH's false target, the single value an {@code ==} / {@code !=}
-   * guard rules out on that edge.
+   * record, against the BRANCH's false target, the single value an {@code ==} / {@code !=} guard
+   * rules out on that edge.
    *
    * <p>{@code if (v == L) {...} else {...}} reaching the else block means {@code v != L}, and
    * {@code if (v != L) {...} else {...}} means {@code v == L} -- neither excludes a value, so only
@@ -567,7 +567,7 @@ public final class GuardTracker {
   }
 
   /**
-   * R1101: activate the guards whose <i>false</i> edge is this label.
+   * activate the guards whose <i>false</i> edge is this label.
    *
    * <p>Reaching {@code L_ELSE_1} in {@code if (v == L) {...} else {...}} proves {@code v != L}. The
    * corresponding true-branch guard was already popped by the JUMP that skips the else block, so
@@ -581,7 +581,7 @@ public final class GuardTracker {
   private void onLabel(TacInstruction ins) {
     final String name = ins.label;
     if (name == null || name.isEmpty()) return;
-    // R1119: entering a loop body invalidates every fact proved before it.
+    // entering a loop body invalidates every fact proved before it.
     //
     // The false-edge table is keyed by label and consulted BY NAME, so without this it lives for
     // the rest of the function. Inside a loop that silently suppressed real findings on every later
@@ -604,7 +604,7 @@ public final class GuardTracker {
       activeFalseEdgeGuards.clear();
       guardsPendingFalseEdge.clear();
     }
-    // R1122: entering a loop's EXIT label retires the guards the loop CONDITION pushed.
+    // entering a loop's EXIT label retires the guards the loop CONDITION pushed.
     //
     // `while (a != null) { ... } a.length();` is a real NPE -- the loop may have exited precisely
     // because `a` was null -- but the condition's guard survives the loop:
@@ -631,7 +631,7 @@ public final class GuardTracker {
   }
 
   /**
-   * R1119: drop every guard that constrains {@code v}, because {@code v} is being rebound.
+   * drop every guard that constrains {@code v}, because {@code v} is being rebound.
    *
    * <p>Covers all three places a guard can live: the active stack, the pending false-edge queue,
    * and the label-keyed false-edge table. Missing the last one is what made the loop case look
@@ -661,7 +661,7 @@ public final class GuardTracker {
   }
 
   /**
-   * R1119: is this the BODY label of a loop?
+   * is this the BODY label of a loop?
    *
    * <p>The translator emits {@code L_WHILE_BODY_n} / {@code L_FOR_BODY_n} for the body and {@code
    * L_WHILE_COND_n} / {@code L_WHILE_END_n} for the condition and the exit. Only the body is the
@@ -674,7 +674,7 @@ public final class GuardTracker {
   }
 
   /**
-   * R1122: is this the EXIT label of a loop, i.e. the point control reaches when the loop condition
+   * is this the EXIT label of a loop, i.e. the point control reaches when the loop condition
    * finally fails?
    *
    * <p>The translator emits {@code L_WHILE_END_n} / {@code L_FOR_END_n} / {@code L_DO_END_n}. A
@@ -690,7 +690,7 @@ public final class GuardTracker {
   }
 
   /**
-   * R1122: retire every guard still active when control reaches a loop's exit join.
+   * retire every guard still active when control reaches a loop's exit join.
    *
    * <p>Clearing wholesale rather than popping to a frame marker is deliberate. Any guard whose
    * {@code if}-block already ended has been popped by that block's own JUMP, so what remains on the
@@ -706,15 +706,15 @@ public final class GuardTracker {
   }
 
   /**
-   * R1119: is this JUMP the one that closes an if-block, rather than loop control?
+   * is this JUMP the one that closes an if-block, rather than loop control?
    *
    * <p>True for the jump to a merge label, false for the jump a {@code break} / {@code continue}
    * lowers to. Those target the loop's own labels ({@code L_WHILE_BODY_1}, {@code L_WHILE_END_2},
    * {@code L_FOR_*}...), which belong to the enclosing loop rather than to the guarded block.
    *
-   * <p>An unrecognised target answers {@code true}, preserving the pre-R1119 behaviour. That
-   * direction can only regain a false positive; misjudging a real block-terminating jump the other
-   * way would hide a finding.
+   * <p>An unrecognised target answers {@code true}, preserving the pre- behaviour. That direction
+   * can only regain a false positive; misjudging a real block-terminating jump the other way would
+   * hide a finding.
    */
   private static boolean isBlockTerminatingJump(String target) {
     if (target == null || target.isEmpty()) return true;
@@ -728,7 +728,7 @@ public final class GuardTracker {
 
   private void onJump(String target) {
     if (activeGuards.isEmpty()) return;
-    // R1119: only the JUMP that ENDS a branch block may pop.
+    // only the JUMP that ENDS a branch block may pop.
     //
     // `break` and `continue` also lower to an unconditional JUMP, and popping on those
     // desynchronises the stack: two pops for one push, so an outer scope inherits guards it never
@@ -781,7 +781,7 @@ public final class GuardTracker {
   }
 
   /**
-   * R1101: has {@code var} been proven not to equal {@code literal} on this path?
+   * has {@code var} been proven not to equal {@code literal} on this path?
    *
    * <p>Answers the "early-return guard" idiom:
    *
@@ -807,8 +807,8 @@ public final class GuardTracker {
   }
 
   /**
-   * R1101: name-based variant of {@link #isRefutedBy}, for callers that only have the variable name
-   * parsed out of a sink predicate string.
+   * name-based variant of {@link #isRefutedBy}, for callers that only have the variable name parsed
+   * out of a sink predicate string.
    */
   public boolean isRefutedBy(String varName, String literal) {
     if (varName == null || literal == null) return false;
@@ -824,7 +824,7 @@ public final class GuardTracker {
   }
 
   /**
-   * R1101: has {@code var} been proven non-zero on this path?
+   * has {@code var} been proven non-zero on this path?
    *
    * <p>Unifies the two shapes that establish the fact, so {@code DivByZeroChecker} (taint family)
    * and {@code BoundaryConstraintChecker} (boundary family) agree instead of one of them reporting
@@ -863,7 +863,7 @@ public final class GuardTracker {
   // ── null-ness guards ──────────────────────────────────────────────────
 
   /**
-   * R1108: is {@code var} provably non-null on this path?
+   * is {@code var} provably non-null on this path?
    *
    * <p>Two source constructs establish the fact, and both are needed because they appear in
    * opposite halves of the same idiom:
@@ -878,7 +878,7 @@ public final class GuardTracker {
    * #activeFalseEdgeGuards} rather than {@link #activeGuards}: the JUMP that ends the then-block
    * pops the guard before the code after the {@code if} is reached, so at the use site the active
    * stack is empty and the fact only exists on the false edge. Reading it from the active stack
-   * alone would make the two spellings disagree, which is the same defect R1101 fixed for the
+   * alone would make the two spellings disagree, which is the same defect fixed for the
    * divide-by-zero case.
    *
    * <p>Only {@code null} is special-cased. {@code v != someOtherValue} says nothing about
@@ -899,7 +899,7 @@ public final class GuardTracker {
   }
 
   /**
-   * R1108: is {@code var} provably <em>null</em> on this path?
+   * is {@code var} provably <em>null</em> on this path?
    *
    * <p>Only a true-edge {@code EQ} guard establishes this. A false-edge {@code NE} guard ({@code if
    * (v != null) return;}) leaves {@code v} either null or unreachable, which is not the same as "is
@@ -1063,7 +1063,7 @@ public final class GuardTracker {
         dest,
         newDerived,
         (old, add) -> {
-          // -- R690: bound the merged list. Without this,
+          // -- bound the merged list. Without this,
           // the merge lambdas accumulate without DERIVED_GUARD_CAP, and a
           // 3682-file Juliet dir OOMs in the recordMove path
           // even with the early-return guard. DERIVED_GUARD_CAP at DERIVED_GUARD_CAP.
@@ -1094,7 +1094,7 @@ public final class GuardTracker {
     // Fast-path: see recordArithIfApplicable
     // for the same gate.
     if (!propagatableSources.contains(src)) return;
-    // R690 --bound the per-dest and per-src derived-guards
+    // -bound the per-dest and per-src derived-guards
     // lists. Without this, Juliet variant 22 / 51 / 81 cross-
     // file scans blow up the list unbounded: every MOVE on a
     // propagated var adds a new entry, and merge() then
@@ -1114,7 +1114,7 @@ public final class GuardTracker {
     }
     // Same as recordArithIfApplicable, use
     // allGuardsSeen for worklist-order robustness.
-    // -- R690: bound srcGuards. allGuardsSeen grows
+    // -- bound srcGuards. allGuardsSeen grows
     // unbounded as Juliet variant 22 / 51 chains accumulate
     // guards across 1000+ files; iterating the full set
     // and copying entries that match src turns srcGuards
@@ -1153,7 +1153,7 @@ public final class GuardTracker {
         dest,
         newDerived,
         (old, add) -> {
-          // -- R690: bound the merged list. Without this,
+          // -- bound the merged list. Without this,
           // the merge lambdas accumulate without DERIVED_GUARD_CAP, and a
           // 3682-file Juliet dir OOMs in the recordMove path
           // even with the early-return guard. DERIVED_GUARD_CAP at DERIVED_GUARD_CAP.

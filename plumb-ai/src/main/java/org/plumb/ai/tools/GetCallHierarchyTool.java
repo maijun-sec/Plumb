@@ -6,9 +6,9 @@ import org.plumb.ai.agent.ToolDefinition;
 import org.plumb.ai.agent.ToolResult;
 
 /**
- * R-? Step 3 ? return the full call hierarchy of a method: who calls it (callers), and
- * (transitively) who calls them. Walks {@link FindCallersTool} until the caller set stabilises or
- * the depth cap is hit.
+ * Step 3 ? return the full call hierarchy of a method: who calls it (callers), and (transitively)
+ * who calls them. Walks {@link FindCallersTool} until the caller set stabilises or the depth cap is
+ * hit.
  *
  * <p>This is the tool the LLM uses to verify a finding's "this is reachable from public HTTP" claim
  * — a SQL injection in a private helper is much less severe than one reachable from a public

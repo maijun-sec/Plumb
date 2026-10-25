@@ -1,17 +1,16 @@
 /*
- * R728-C5: AST check for CWE-549 (Missing Password
+ * C5: AST check for CWE-549 (Missing Password
  * Masking). Fires when a string literal containing
  * `name="password"` (with optional preceding whitespace)
  * is followed in the same statement by `type="text"`.
  *
  * <p>Pattern is: input element with a `password` name
  * attribute whose `type` attribute is `text` instead of
- * `password`. Juliet's CWE-549 corpus emits exactly this
- * pattern in the bad() method of a servlet.</p>
+ * `password`.</p>
  *
- * <p>Generic ? the heuristic is "password literal
+ * <p>Generic — the heuristic is "password literal
  * field rendered without type=password mask". Does
- * not depend on Juliet-specific filenames.</p>
+ * not depend on any specific file layout.</p>
  */
 package org.plumb.style.style;
 
@@ -40,7 +39,7 @@ public final class MissingPasswordMaskingCheck implements AstChecker {
   // JavaParser's StringLiteralExpr.getValue() returns the
   // raw text including the `\"` escapes — the raw
   // sequence for `<input name=\"password\" ...>` is
-  // backslash + quote + password + backslash + quote.
+  // backslash quote + password + backslash + quote.
   // We probe for the password-name attribute and a
   // bad-type attribute in the SAME string literal.
   private static final String NEEDLE_PASSWORD = "name=\\\"password\\\"";

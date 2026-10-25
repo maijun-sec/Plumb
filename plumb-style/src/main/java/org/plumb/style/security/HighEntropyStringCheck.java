@@ -1,5 +1,5 @@
 /*
- * R-812 Batch 3 ? high-entropy string literal (CWE-798 / CWE-331).
+ * Batch 3 ? high-entropy string literal (CWE-798 / CWE-331).
  *
  * <p>Sketch migration of the {@code EntropyDetector}
  * logic to a plumb-style AST checker. The original DFA

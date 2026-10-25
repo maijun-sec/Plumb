@@ -5,8 +5,6 @@
  * Integer#valueOf(String)}; {@code getBoolean} / {@code getInteger} actually look up a system
  * property of that name.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(MethodCallExpr.class)} before.
  */
 package org.plumb.style.quality;
 

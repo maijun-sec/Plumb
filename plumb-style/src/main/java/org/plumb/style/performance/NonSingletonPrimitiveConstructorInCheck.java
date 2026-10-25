@@ -8,12 +8,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * {@code new Boolean/Integer/Long(primitive)} ? use {@code valueOf} instead.
- *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ObjectCreationExpr.class)} before.
- */
+/** {@code new Boolean/Integer/Long(primitive)} ? use {@code valueOf} instead. */
 public final class NonSingletonPrimitiveConstructorInCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

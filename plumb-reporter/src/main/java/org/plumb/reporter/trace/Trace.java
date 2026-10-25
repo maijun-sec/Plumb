@@ -1,5 +1,5 @@
 /*
- * R-802: Trace ? the structured source-to-sink trace
+ * Trace ? the structured source-to-sink trace
  * attached to a {@link org.plumb.reporter.Finding} for
  * v2-aware checkers.
  *

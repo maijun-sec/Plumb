@@ -12,11 +12,10 @@ import org.plumb.style.StyleContext;
 /**
  * Package name should be all lowercase.
  *
- * <p>Disabled by default (R-834) ? 0 TP / 100% FP on Juliet R-832 baseline. M5 part-4 migration
- * (2026-10-17): per-node-type callback already; this checker was already in modern form. Kept
- * {@code visit(CompilationUnit)} because {@code PackageDeclaration} is visited once per file at the
- * top level (the dispatcher hands the {@code CompilationUnit} directly; we don't need {@code
- * findAll} here).
+ * <p>: per-node-type callback already; this checker was already in modern form. Kept {@code
+ * visit(CompilationUnit)} because {@code PackageDeclaration} is visited once per file at the top
+ * level (the dispatcher hands the {@code CompilationUnit} directly; we don't need {@code findAll}
+ * here).
  */
 public final class PackageCaseCheck implements AstChecker {
 

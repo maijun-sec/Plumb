@@ -1,5 +1,5 @@
 /*
- * R721-C3: AST-style CWE-477 (Use of Obsolete
+ * C3: AST-style CWE-477 (Use of Obsolete
  * Functions) checker.
  *
  * <p>Fires when the source uses a JDK API that has

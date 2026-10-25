@@ -12,8 +12,8 @@ import org.plumb.style.StyleContext;
 /**
  * method should have a single return (heuristic).
  *
- * <p>Pattern D R-818: per-method visit. If method body has more than one {@link ReturnStmt}
- * descendant, fire.
+ * <p>Pattern D per-method visit. If method body has more than one {@link ReturnStmt} descendant,
+ * fire.
  */
 public final class ReturnCountCheck implements AstChecker {
   private static final RuleDef DEFAULT_RULE =

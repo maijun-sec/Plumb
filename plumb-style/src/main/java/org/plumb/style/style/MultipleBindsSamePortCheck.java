@@ -1,5 +1,5 @@
 /*
- * R729-A5: AST check for CWE-605 (Multiple Binds to
+ * A5: AST check for CWE-605 (Multiple Binds to
  * the Same Port). Fires when, within a single method
  * body, the same `new InetSocketAddress(<port>)` port
  * literal appears in two or more `bind(...)` /

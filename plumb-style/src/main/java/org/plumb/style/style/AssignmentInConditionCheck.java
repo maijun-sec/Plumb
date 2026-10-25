@@ -1,5 +1,5 @@
 /*
- * R726-C2: AST-style CWE-481 (Assigning Instead of Comparing) checker.
+ * C2: AST-style CWE-481 (Assigning Instead of Comparing) checker.
  *
  * <p>Fires when a single {@code =} (assignment) appears
  * in a position the developer likely meant to use

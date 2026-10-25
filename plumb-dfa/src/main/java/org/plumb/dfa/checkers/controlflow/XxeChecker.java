@@ -192,7 +192,7 @@ public final class XxeChecker implements DfaChecker {
       TacFunction fn,
       String parserVar,
       String factoryVar) {
-    // R-812 v2 trace: single-node VIOLATION
+    // v2 trace: single-node VIOLATION
     // with XXE op + a Free operand encoding
     // the "parser:factory" shape so the AI
     // dedup layer can see the pair without

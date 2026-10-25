@@ -44,7 +44,7 @@ public final class AvoidPrintStackTraceCheck implements AstChecker {
     catchParamNames.clear();
   }
 
-  // R786-P1-1-2026-10-18: reset catchParamNames at the start of each method to
+  // P1-1-2026-10-18: reset catchParamNames at the start of each method to
   // prevent cross-method leak (a previous method's catch param would otherwise be
   // matched against a local variable / parameter of the same name in the next method).
   @Override

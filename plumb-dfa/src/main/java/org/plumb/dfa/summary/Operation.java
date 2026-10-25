@@ -88,19 +88,19 @@ public sealed interface Operation
    * (1.0 = certain; 0.0 = speculative). The TaintedChecker can weight this against its own
    * threshold.
    *
-   * <h2>R1099: taint origin</h2>
+   * <h2>taint origin</h2>
    *
    * <p>{@code origin} carries the <em>caller-side</em> taint label this value arrived with, so the
    * next hop's finding can name the real source instead of re-labelling the value as {@code
    * "param:<this function's own param>"}.
    *
-   * <p>Before R1099 every function's entry boundary minted a fresh {@code param:<name>} source
-   * ({@code TaintedCheckerBase#beginFunction}), so a finding emitted inside a sink method always
-   * reported the sink's own parameter as the source. That is indistinguishable in the output from
-   * "taint never crossed the call boundary" — which is exactly why cross-file taint looked absent
-   * even though propagation worked. {@code origin} is {@code null} when the value entered as a
-   * genuinely fresh source (a real input-source call, or the function-entry boundary with no known
-   * caller), which preserves the old {@code param:} labelling for those cases.
+   * <p>Before every function's entry boundary minted a fresh {@code param:<name>} source ({@code
+   * TaintedCheckerBase#beginFunction}), so a finding emitted inside a sink method always reported
+   * the sink's own parameter as the source. That is indistinguishable in the output from "taint
+   * never crossed the call boundary" — which is exactly why cross-file taint looked absent even
+   * though propagation worked. {@code origin} is {@code null} when the value entered as a genuinely
+   * fresh source (a real input-source call, or the function-entry boundary with no known caller),
+   * which preserves the old {@code param:} labelling for those cases.
    */
   record TaintPropagate(String sourceId, double confidence, String origin) implements Operation {
     /** Back-compatible 2-arg form: a taint with no known caller-side origin. */
@@ -217,15 +217,14 @@ public sealed interface Operation
   }
 
   /**
-   * R775: caller-side {@link Range} seed for a parameter. When a function parameter is known to
-   * arrive in a specific value range at the call site (e.g. the caller passed {@code
-   * Byte.MIN_VALUE} or the parameter is the {@code data} field of a Container that was just
-   * assigned a constant), the caller records this {@code RangeSeed} in the callee's summary at the
-   * matching {@code paramIndex}. The callee-side {@link
-   * org.plumb.dfa.checkers.boundary.BoundaryConstraintChecker} consults these seeds at {@code
-   * checkInstruction} time and meets the seeded range with the live range, so a boundary check that
-   * would have fired on the BOTTOM over-approximation is correctly refuted (or held against the
-   * caller if the seed is itself a violation).
+   * caller-side {@link Range} seed for a parameter. When a function parameter is known to arrive in
+   * a specific value range at the call site (e.g. the caller passed {@code Byte.MIN_VALUE} or the
+   * parameter is the {@code data} field of a Container that was just assigned a constant), the
+   * caller records this {@code RangeSeed} in the callee's summary at the matching {@code
+   * paramIndex}. The callee-side {@link org.plumb.dfa.checkers.boundary.BoundaryConstraintChecker}
+   * consults these seeds at {@code checkInstruction} time and meets the seeded range with the live
+   * range, so a boundary check that would have fired on the BOTTOM over-approximation is correctly
+   * refuted (or held against the caller if the seed is itself a violation).
    *
    * <p>The range is stored as a value object (not a symbolic expression) because {@link Range} is
    * already the engine's canonical interval representation. Callers with parametric ranges (e.g.

@@ -60,8 +60,8 @@
  * <p>The cache is keyed on the absolute {@link Path} of
  * the source file and stores the line list. It's a
  * plain {@link java.util.concurrent.ConcurrentHashMap}
- * with no size bound ? Juliet Java's full corpus is
- * ~13k files, ~1.5MB of line-lists, well under any
+ * with no size bound ? a whole source tree is
+ * still only a few megabytes of line-lists, well under any
  * realistic heap limit. Real-codebase scans (single
  * file) cost one entry. Tests should call
  * {@link #clearCache()} in {@code &#64;BeforeEach} to
@@ -220,7 +220,7 @@ public final class SourceReader {
     // enclosing-class → source path map. The
     // public API is `sourcePathForEnclosingClass`
     // but there's no `allSourcePaths` getter
-    // — pre-R727 checkers used the source-path
+    // — pre- checkers used the source-path
     // map exclusively for the filePath-filling
     // pass. To avoid widening the public API
     // surface for this single feature, walk the

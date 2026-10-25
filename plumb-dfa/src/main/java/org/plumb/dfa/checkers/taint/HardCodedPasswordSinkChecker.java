@@ -65,14 +65,6 @@
  *       </ul>
  *       Fire CWE-259 on the first match.</li>
  * </ol>
- *
- * <p>The Juliet CWE-259 dir has 180 files
- * split across 3 sink families: 60 each in
- * {@code driverManager} / {@code kerberosKey}
- * / {@code passwordAuth}. The driverManager
- * detector fires on 18/60; the kerberosKey +
- * passwordAuth detectors add the
- * 120 remaining files.</p>
  */
 package org.plumb.dfa.checkers.taint;
 
@@ -106,9 +98,9 @@ public final class HardCodedPasswordSinkChecker implements DfaChecker {
   private final LiteralSourcedTracker tracker = new LiteralSourcedTracker();
 
   /**
-   * R-812 v2 trace state. Per-function map from each literal-sourced (or derived-of-literal) var to
-   * its v2 handle. Lets each sink fire wire its parent edge to the literal's MOVE source —
-   * preserving the "literal flowed into the sink" data path that AI dedup consumers need.
+   * v2 trace state. Per-function map from each literal-sourced (or derived-of-literal) var to its
+   * v2 handle. Lets each sink fire wire its parent edge to the literal's MOVE source — preserving
+   * the "literal flowed into the sink" data path that AI dedup consumers need.
    */
   private final java.util.Map<TacOperand.TacVar, Integer> v2HandleByVar = new java.util.HashMap<>();
 
@@ -144,7 +136,7 @@ public final class HardCodedPasswordSinkChecker implements DfaChecker {
     //    the TacVar receiver case.
     boolean trackedPassthrough = tracker.handlePassthroughCall(ins);
 
-    // R-812: emit v2 nodes for the tracked
+    // emit v2 nodes for the tracked
     // MOVE / passthrough in parallel with the
     // tracker's bookkeeping. Each tracked MOVE
     // becomes a MARK_SOURCE; each passthrough
@@ -299,9 +291,9 @@ public final class HardCodedPasswordSinkChecker implements DfaChecker {
   }
 
   /**
-   * R-812 sink-emit helper. Builds a v2 sink node parented to the password-slot var's v2 handle
-   * (the literal MOVE that flowed into the sink), records it on the per- function builder, and
-   * reports the finding with the v2 trace attached.
+   * sink-emit helper. Builds a v2 sink node parented to the password-slot var's v2 handle (the
+   * literal MOVE that flowed into the sink), records it on the per- function builder, and reports
+   * the finding with the v2 trace attached.
    *
    * <p>For the inline-literal case (the slot is a {@link TacOperand.Const} STRING, not a var) we
    * use a fresh orphan {@code MARK_SOURCE} so the AI dedup layer still sees the literal as the

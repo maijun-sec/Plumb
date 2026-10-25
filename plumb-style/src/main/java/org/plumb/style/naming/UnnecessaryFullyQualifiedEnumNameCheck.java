@@ -10,8 +10,7 @@ import org.plumb.style.StyleContext;
 /**
  * Unnecessary fully-qualified enum name (should be a simple reference with import).
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(FieldAccessExpr.class)} before. Note this checker fires on ANY {@code FieldAccessExpr}
+ * <p>findAll(FieldAccessExpr.class)} before. Note this checker fires on ANY {@code FieldAccessExpr}
  * with a dot ? same caveat as {@code UnnecessaryFullyQualifiedClassNameCheck} — it's a heuristic.
  * The M4 fix in plumb-ai only checks for type references; here we keep the simple-name heuristic
  * since this is purely AST-level.

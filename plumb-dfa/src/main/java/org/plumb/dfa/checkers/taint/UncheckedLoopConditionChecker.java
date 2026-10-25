@@ -19,14 +19,14 @@ import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 
 /**
- * R-? — UncheckedLoopCondition checker (CWE-606).
+ * — UncheckedLoopCondition checker (CWE-606).
  *
  * <p>Juliet CWE-606 pattern:
  *
  * <pre>{@code
  * data = req.getQueryString();
  * int n = Integer.parseInt(data);
- * for (int i = 0; i < n; i++) {   // ⇒?bad: loop bound is tainted
+ * for (int i = 0; i < n; i++) {   // →bad: loop bound is tainted
  *     ...
  * }
  * }</pre>
@@ -118,7 +118,7 @@ public final class UncheckedLoopConditionChecker extends TaintedCheckerBase {
   }
 
   private boolean isTainted(TacOperand a, TacOperand b) {
-    // R759: was `taintedVars.containsKey(v1.name())`
+    // was `taintedVars.containsKey(v1.name())`
     // — passing a String as key into a
     // `Map<TacOperand.TacVar, String>`. Always
     // false, so the checker was silently dead.
@@ -141,7 +141,7 @@ public final class UncheckedLoopConditionChecker extends TaintedCheckerBase {
   }
 
   private String taintedName(TacOperand a, TacOperand b) {
-    // R759: same containsKey(name()) bug as isTainted;
+    // same containsKey(name()) bug as isTainted;
     // would always return "<unknown>".
     if (a instanceof TacOperand.TacVar v1 && containsVar(v1)) {
       return v1.name();

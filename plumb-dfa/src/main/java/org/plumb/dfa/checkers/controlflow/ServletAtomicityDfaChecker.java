@@ -110,7 +110,7 @@ public final class ServletAtomicityDfaChecker implements DfaChecker {
       // get+set is the AST's job.
       if (all.size() < 2) continue;
       if (gets.isEmpty() || sets.isEmpty()) continue;
-      // R-812 v2 trace: cross-method summary
+      // v2 trace: cross-method summary
       // shape. The two method sets
       // (get-sites, set-sites) are the parents
       // of a single VIOLATION node. Each

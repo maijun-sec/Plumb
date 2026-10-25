@@ -37,8 +37,8 @@ import org.plumb.style.StyleContext;
  * "target of an assignment to a field", we fire. Any use that accesses another field or method on
  * the entity suppresses the finding.
  *
- * <p>Pattern D R-818: per-method visit. For each variable assigned from a get/find we run ONE local
- * body walk with instance-of dispatch (replaces N_stmts × {@code s.findAll(NameExpr.class)} walks).
+ * <p>Pattern D per-method visit. For each variable assigned from a get/find we run ONE local body
+ * walk with instance-of dispatch (replaces N_stmts × {@code s.findAll(NameExpr.class)} walks).
  */
 public final class OrmUnnecessaryGetCheck implements AstChecker {
 
@@ -154,11 +154,11 @@ public final class OrmUnnecessaryGetCheck implements AstChecker {
    * inside {@code body}. The origin statement itself is excluded so we don't count the LHS of the
    * original assignment.
    *
-   * <p>R-818: single walk of body, instance-of dispatch with a {@code pastOrigin} flag toggled on
+   * <p>single walk of body, instance-of dispatch with a {@code pastOrigin} flag toggled on
    * encountering the origin statement (replaces N_stmts × {@code s.findAll(NameExpr.class)} walks).
    */
   private static List<NameExpr> collectUses(BlockStmt body, String var, Statement origin) {
-    // R-818: collect NameExpr for {@code var} only in
+    // collect NameExpr for {@code var} only in
     // statements whose index is greater than
     // {@code origin}'s. Use a single body walk with
     // per-node enclosing-statement lookup.

@@ -1,7 +1,5 @@
 package org.plumb.style.style;
 
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
-
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import java.util.HashSet;
@@ -20,7 +18,7 @@ import org.plumb.style.StyleContext;
  * CWE-325 requires.
  *
  * <p>The previous implementation was a file-wide regex scan ({@code
- * ClassThreadChecker.MissingCryptoStepChecker}). R787f replaces it with an AST walk of every {@link
+ * ClassThreadChecker.MissingCryptoStepChecker}). replaces it with an AST walk of every {@link
  * MethodCallExpr}: any call to {@code Cipher.getInstance / init / doFinal / update} without any
  * sibling {@code Mac.*} call in the same file fires the finding on the first cipher call line.
  */
@@ -28,7 +26,7 @@ public final class MissingCryptoStepCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          // R787f: rule_id aligned with
+          // rule_id aligned with
           // plumb_rule_to_cwe.json (`Cwe325` —
           // ["325"]).
           new RuleId("ast-style-missing-crypto-step", "MISSING_CRYPTO_STEP"),

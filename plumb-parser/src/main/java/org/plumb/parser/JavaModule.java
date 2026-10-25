@@ -9,18 +9,17 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * R797 (Oct 2026) ? a logical Java module: one root of source files (typically a Maven module, a
- * Gradle subproject, or a single-project source root) plus the classpath needed to resolve types
- * declared inside that source set.
+ * ? a logical Java module: one root of source files (typically a Maven module, a Gradle subproject,
+ * or a single-project source root) plus the classpath needed to resolve types declared inside that
+ * source set.
  *
- * <p>The record is intentionally minimal. R797 treats each {@code --source-root} / {@code
- * --module-root} as a flat {@code JavaModule}; the per-module classpath and the Maven/Gradle/Bazel
- * module auto-discovery are R797+ future work (see {@code juliet-coverage/reports/r797/PLAN.md}
- * section 7).
+ * <p>The record is intentionally minimal. treats each {@code --source-root} / {@code --module-root}
+ * as a flat {@code JavaModule}; the per-module classpath and the Maven/Gradle/Bazel module
+ * auto-discovery are + future work (see {@code juliet-coverage/reports/r797/PLAN.md} section 7).
  *
  * <p><b>What this record is NOT for.</b> The {@code classpath} list is consumed <em>only</em> by
  * {@link JavaSourceParser}'s {@code TypeSolver}. It is <b>never</b> routed into the TAC translation
- * pipeline or into {@code BytecodeAnalyzer}. That boundary is the cardinal rule of R797 (per user
+ * pipeline or into {@code BytecodeAnalyzer}. That boundary is the cardinal rule of (per user
  * constraint: "不希望分析 第三方 jar 的内容").
  *
  * <p><b>Discovery helpers.</b> The static factories walk the {@code sourceRoot} for {@code .java}
@@ -87,8 +86,8 @@ public record JavaModule(
    * Build a single-root module: walks {@code sourceRoot} for {@code .java} files and attaches the
    * supplied {@code classpath} (third-party jar / class-folder list).
    *
-   * <p>The classpath is shared across all modules in R797; the per-module classpath is R797+ work
-   * (paired with the Maven/Gradle/Bazel module auto-discovery).
+   * <p>The classpath is shared across all modules in ; the per-module classpath is + work (paired
+   * with the Maven/Gradle/Bazel module auto-discovery).
    */
   public static JavaModule singleRoot(String name, Path sourceRoot, List<Path> classpath) {
     return singleRoot(name, sourceRoot, classpath, Scope.COMPILE, null, null);

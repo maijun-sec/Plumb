@@ -1,8 +1,8 @@
 /*
- * R-813: AST-style CWE-571 (Expression is Always True) checker pattern, applied to
+ * AST-style CWE-571 (Expression is Always True) checker pattern, applied to
  * cyclomatic complexity. Walks the method body ONCE with a single VoidVisitorAdapter
  * that increments the counter on each decision point, instead of issuing 8 separate
- * {@code findAll} calls (one per node type). M3 audit (2026-10-17).
+ * {@code findAll} calls (one per node type). M3 audit.
  */
 package org.plumb.style.design;
 
@@ -56,15 +56,15 @@ public final class CyclomaticComplexityCheck implements AstChecker {
   public void visit(MethodDeclaration n, StyleContext ctx) {
     if (n.getBody().isEmpty()) return;
 
-    // M3 (2026-10-17): single-walk implementation. The
+    // M3: single-walk implementation. The
     // previous version issued 8 separate findAll() calls
     // (one per node type), which is 8 full traversals of
     // the method body. We use a VoidVisitorAdapter that
     // bumps the counter on each decision point. This
     // matches the canonical PMD / Checkstyle formula:
     //   cc = 1 + (branches) + (loops) + (catch clauses)
-    //       + (conditional expressions) + (case labels)
-    //       + (&& and || short-circuit operators)
+    //       (conditional expressions) + (case labels)
+    //       (&& and || short-circuit operators)
     final int[] cc = {1};
     n.getBody()
         .get()

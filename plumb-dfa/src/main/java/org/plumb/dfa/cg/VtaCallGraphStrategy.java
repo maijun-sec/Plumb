@@ -83,7 +83,7 @@ public final class VtaCallGraphStrategy implements CallGraphStrategy {
     Map<String, Map<TacOperand.TacVar, Set<String>>> pointsTo = computePointsTo(program);
 
     // 2. Index functions by simple
-    //    name + arity so we can resolve
+    //    name arity so we can resolve
     //    virtual calls.
     Map<String, List<TacFunction>> bySimpleName = indexBySimpleName(program);
 
@@ -140,7 +140,7 @@ public final class VtaCallGraphStrategy implements CallGraphStrategy {
           String overrideClass = overrideClassName(override.signature());
           if (overrideClass == null) continue;
           if (!receiverTypes.contains(overrideClass) && !receiverTypes.contains(OBJECT)) continue;
-          // R1099: filter candidates by PARAMETER TYPE, not just name and arity.
+          // filter candidates by PARAMETER TYPE, not just name and arity.
           // Keying on `method/arity` alone let `process(int)` bind to a
           // `process(String)` override, so a primitive int call site was treated
           // as flowing into a String sink and reported (e.g. a bogus CWE-89). A
@@ -229,8 +229,7 @@ public final class VtaCallGraphStrategy implements CallGraphStrategy {
   }
 
   /**
-   * R1099: can {@code candidate}'s declared parameter types accept the actual arguments at this
-   * call site?
+   * can {@code candidate}'s declared parameter types accept the actual arguments at this call site?
    *
    * <p>This is a necessary (not sufficient) condition for an override to be a legal target. It
    * exists because resolving virtual calls on {@code name/arity} alone produced provable false
@@ -259,8 +258,8 @@ public final class VtaCallGraphStrategy implements CallGraphStrategy {
   }
 
   /**
-   * R1099: a conservative assignability test over {@link TacType}. Returns {@code true} whenever
-   * either side is unknown, so imprecision only ever widens the call graph.
+   * a conservative assignability test over {@link TacType}. Returns {@code true} whenever either
+   * side is unknown, so imprecision only ever widens the call graph.
    *
    * <p>The cases we DO reject are exactly the ones that produced provable false positives: a
    * primitive argument offered to a {@code String} parameter (or vice versa), and two different
@@ -304,7 +303,7 @@ public final class VtaCallGraphStrategy implements CallGraphStrategy {
     };
   }
 
-  /** R1099: test seam for {@link #isAssignable}, which is otherwise private. */
+  /** test seam for {@link #isAssignable}, which is otherwise private. */
   static boolean isAssignableForTest(TacType from, TacType to) {
     return isAssignable(from, to);
   }

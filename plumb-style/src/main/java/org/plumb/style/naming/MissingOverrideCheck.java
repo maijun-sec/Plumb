@@ -8,13 +8,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Method override missing {@code @Override} annotation.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ClassOrInterfaceDeclaration.class)} before. The inner per-method walk stays as a local
- * loop because we need the enclosing class.
- */
+/** Method override missing {@code @Override} annotation. */
 public final class MissingOverrideCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

@@ -1,7 +1,7 @@
 /*
  * catch block parameter should not be reassigned.
  *
- * <p><b>R-818 (2026-10-14): pattern A rewrite.</b> The previous
+ * <p><b>pattern A rewrite.</b> The previous
  * implementation called {@code n.findAll(CatchClause.class)} +
  * for EACH catch {@code cc.findAll(AssignExpr.class)} ? N·M walks
  * per file. The new implementation uses

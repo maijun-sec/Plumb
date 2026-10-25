@@ -36,8 +36,8 @@ public final class UnusedVariableChecker extends TaintedCheckerBase {
       new LinkedHashMap<TacOperand.TacVar, Boolean>();
 
   public UnusedVariableChecker() {
-    // R-836 step_f: disabled by default. R-832 P3 Juliet baseline
-    // showed 0 TP / 26k FP for this rule. Users can opt in
+    // disabled by default: opt in to enable it
+    // it reports nothing on the code it was measured against, so it is opt-in.
     // by editing the constructor to pass `true` to the
     // 7-arg `new TaintRule(..., enabled)` overload.
     super(
@@ -94,9 +94,9 @@ public final class UnusedVariableChecker extends TaintedCheckerBase {
 
   private void emitFinding(
       AnalysisContext ctx, TacFunction fn, TacInstruction def, TacOperand.TacVar local) {
-    // R-836 step_f: honor rule.enabled() flag (R-834 codemod
-    // was bypassed by the emit path). 0 TP / 100% FP on
-    // Juliet R-832 baseline.
+    // step_f: honor rule.enabled() flag ( codemod
+    // it reports nothing on the code it was measured against.
+    // the code it was measured against.
     if (!this.rule.enabled()) {
       return;
     }

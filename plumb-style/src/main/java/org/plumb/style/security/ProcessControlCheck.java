@@ -1,13 +1,10 @@
 /*
- * R-813: AST-style CWE-114 (Process Control) checker.
+ * AST-style CWE-114 (Process Control) checker.
  *
  * <p>Fires on calls to {@code System.loadLibrary(name)} or {@code Runtime.loadLibrary(name)} (the
  * unsafe JVM / OS path search). The fix is {@code System.load(fullPath + name)} with an explicit
  * fully-qualified path.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(MethodCallExpr.class)} before. The {@code System/Runtime}
- * scope check is preserved via {@link #isSystemOrRuntimeScope(com.github.javaparser.ast.expr.Expression)}.
  */
 package org.plumb.style.security;
 

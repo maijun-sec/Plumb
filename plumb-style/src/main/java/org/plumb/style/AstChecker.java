@@ -39,9 +39,9 @@ import org.plumb.reporter.Finding;
  * <em>not</em> call into {@link com.github.javaparser.ast.Node#walk} on their own ? that is the
  * dispatcher's job).
  *
- * <p><b>R-820 (2026-10-14):</b> the prior {@code StyleCheck} interface has been retired ? all 636
- * checkers now implement {@code AstChecker} (the strict superset). There is no longer any other
- * checker interface; {@link AstCheckerRegistry} is the single registration entry point.
+ * <p><b></b> the prior {@code StyleCheck} interface has been retired ? all 636 checkers now
+ * implement {@code AstChecker} (the strict superset). There is no longer any other checker
+ * interface; {@link AstCheckerRegistry} is the single registration entry point.
  */
 public interface AstChecker {
 
@@ -58,11 +58,11 @@ public interface AstChecker {
   default void finish(StyleContext ctx) {}
 
   /**
-   * R-821 (2026-10-14): single source of truth for this checker's rule metadata. The default
-   * implementation reflects the checker's class for a static field named {@code DEFAULT_RULE} (or
-   * {@code RULE}, or {@code <UpperCamel>_RULE}) of type {@link org.plumb.rules.RuleDef}. If found,
-   * the value is returned. If not, a synthetic {@code RuleDef} is derived from {@link #name()}
-   * ({@code "kebab-case"} becomes {@code "UPPER_SNAKE_CASE"}) and the FQCN of the checker class.
+   * single source of truth for this checker's rule metadata. The default implementation reflects
+   * the checker's class for a static field named {@code DEFAULT_RULE} (or {@code RULE}, or {@code
+   * <UpperCamel>_RULE}) of type {@link org.plumb.rules.RuleDef}. If found, the value is returned.
+   * If not, a synthetic {@code RuleDef} is derived from {@link #name()} ({@code "kebab-case"}
+   * becomes {@code "UPPER_SNAKE_CASE"}) and the FQCN of the checker class.
    *
    * <p>The {@link org.plumb.style.AstCheckerRegistry} uses this to populate the {@link
    * org.plumb.rules.RuleRegistry} at registration time, and {@link StyleContext#report} uses it as
@@ -88,7 +88,7 @@ public interface AstChecker {
         // skip — try next
       }
     }
-    // // R-831 (2026-10-14): use the new `<engine>-<topic>-<slug>`
+    // //use the new `<engine>-<topic>-<slug>`
     // format so the synthetic id matches the convention.
     // Engine is always "ast" (DFA checkers don't fall through
     // this path - they are not AstCheckers). Topic is the

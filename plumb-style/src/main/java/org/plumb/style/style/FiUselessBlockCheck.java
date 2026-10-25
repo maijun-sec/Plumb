@@ -1,7 +1,7 @@
 /*
  * useless single-statement block (FI_USELESS_BLOCK) ? drop the braces.
  *
- * <p><b>R-817 (2026-10-14): pattern D rewrite.</b> The previous
+ * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} + 5 separate
  * {@code n.findAll} calls (IfStmt / WhileStmt / ForStmt / ForEachStmt
  * / DoStmt), each triggering a full AST walk: 5 walks per file.

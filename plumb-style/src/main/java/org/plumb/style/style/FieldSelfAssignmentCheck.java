@@ -1,7 +1,7 @@
 /*
  * field self-assignment (this.x = x).
  *
- * <p><b>R-818 (2026-10-14): pattern D rewrite.</b> The previous
+ * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(ClassOrInterfaceDeclaration)} (1 walk) + for
  * each (class, method) pair

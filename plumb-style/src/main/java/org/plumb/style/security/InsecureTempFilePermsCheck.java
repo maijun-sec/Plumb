@@ -1,5 +1,5 @@
 /*
- * R-812 ? InsecureTempFilePermsCheck (CWE-378) migrated
+ * ? InsecureTempFilePermsCheck (CWE-378) migrated
  * from plumb-dfa/.../InsecureTempFilePermsChecker.java to
  * plumb-style AST.
  *

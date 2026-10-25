@@ -1,5 +1,5 @@
 /*
- * R-812 ? ErrorMessageInfoLeakCheck (CWE-209) migrated
+ * ? ErrorMessageInfoLeakCheck (CWE-209) migrated
  * from plumb-dfa/.../ErrorMessageInfoLeakChecker.java to
  * plumb-style AST.
  *

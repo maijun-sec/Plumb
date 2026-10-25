@@ -1,7 +1,5 @@
 package org.plumb.style.performance;
 
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
-
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.ArrayList;
 import java.util.HashMap;

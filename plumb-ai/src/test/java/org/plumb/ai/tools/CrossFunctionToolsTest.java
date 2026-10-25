@@ -16,8 +16,8 @@ import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 
 /**
- * R-? Step 3 ? Tests for the 6 new cross-function tools. Each test exercises a single tool with a
- * small pre-cooked source tree and asserts the formatted response.
+ * Step 3 ? Tests for the 6 new cross-function tools. Each test exercises a single tool with a small
+ * pre-cooked source tree and asserts the formatted response.
  */
 class CrossFunctionToolsTest {
 

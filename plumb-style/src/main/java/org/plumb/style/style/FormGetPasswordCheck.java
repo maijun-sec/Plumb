@@ -17,7 +17,6 @@
  * <p>The complementary case (form method="post") is the Juliet good
  * path and is NOT reported.
  *
- * <p>R-AST-FIX-2026-10-18: rule created to back the R787f cwe598
  * smoke tests; absent this checker the tests were failing
  * with "expected 1 finding, got 0".
  */
@@ -74,16 +73,11 @@ public final class FormGetPasswordCheck implements AstChecker {
 
   @Override
   public void visit(CompilationUnit n, StyleContext ctx) {
-    // R-AST-FIX-2026-10-18: file-level pattern. Scan every
-    // StringLiteralExpr in pre-order; fire once if both shapes
-    // are present in the same file.
     int formLine = -1;
     int passwordLine = -1;
     String sensitiveField = null;
 
     for (StringLiteralExpr s : n.findAll(StringLiteralExpr.class)) {
-      // R-AST-FIX-2026-10-18: use asString() (the canonical un-escaped
-      // form) — not getValue() (which preserves the raw escape
       // characters and so keeps `\"` in the returned string). For
       // a Java source literal "<form method=\"get\">", getValue()
       // returns "<form method\\\"get\\\">" while asString() returns

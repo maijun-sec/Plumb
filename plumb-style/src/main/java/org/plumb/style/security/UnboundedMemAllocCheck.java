@@ -1,5 +1,5 @@
 /*
- * R736-C1 / R738-C1: AST-style CWE-789
+ * C1 / -C1: AST-style CWE-789
  * (Uncontrolled Memory Allocation) checker.
  *
  * <p>Fires on three patterns:

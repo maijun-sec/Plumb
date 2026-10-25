@@ -1,5 +1,5 @@
 /*
- * R724-C1: AST-style CWE-398 (Indicator of Poor
+ * C1: AST-style CWE-398 (Indicator of Poor
  * Code Quality) checker ? empty block / case /
  * else / for / function / if / while.
  *

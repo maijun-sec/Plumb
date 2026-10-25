@@ -1,18 +1,16 @@
 /*
  * non-final field is never reassigned (should be final).
  *
- * <p><b>R-818 (2026-10-14): pattern A rewrite.</b> The previous
+ * <p><b>pattern A rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(ClassOrInterfaceDeclaration)} (1 walk) + for
  * each (class, field) pair
  * {@code c.findAll(AssignExpr)} (1 walk per field). Worst case:
- * 1 + N_class·N_field walks. The new implementation does 1 walk
+ * 1 N_class·N_field walks. The new implementation does 1 walk
  * to build a per-class Set of assigned-target names, then checks
  * the field-set membership.</p>
  */
 package org.plumb.style.style;
-
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;

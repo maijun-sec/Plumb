@@ -5,9 +5,6 @@
  * proxy can only be used to read back the ID it was created with; any other access throws an
  * exception. A {@code null} check on the result is therefore dead code.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(MethodDeclaration.class)} before. The inner per-statement
- * inspection stays as a local loop because we compare adjacent statements (assign + null check).
  */
 package org.plumb.style.quality;
 

@@ -17,7 +17,7 @@ import org.plumb.tac.ir.TacType;
 import org.plumb.tac.ir.UnaryOperator;
 
 /**
- * R-? — NumericTruncation checker (CWE-197).
+ * — NumericTruncation checker (CWE-197).
  *
  * <p>Casts a tainted int / long / double into a narrower type (byte / short / char) silently
  * truncates high bits, producing an attacker-controllable value. The fix is to validate the range

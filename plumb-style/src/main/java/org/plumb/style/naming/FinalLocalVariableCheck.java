@@ -1,7 +1,7 @@
 /*
  * local variable never reassigned should be final.
  *
- * <p><b>R-817 (2026-10-14): pattern D rewrite.</b> The previous
+ * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(MethodDeclaration)} (1 walk) + per-method
  * {@code m.findAll(VariableDeclarator)} + for EACH variable a
@@ -14,7 +14,7 @@
  * {@link #visit(AssignExpr, StyleContext)}; per-variable decision
  * is delayed to {@link #finish} so reassignments that appear
  * AFTER the variable declaration are correctly counted. The
- * 1 + N_v + N_v walks → 1 walk per file.</p>
+ * 1 N_v + N_v walks → 1 walk per file.</p>
  *
  * <p>Note: {@code AstChecker} exposes
  * {@code visit(VariableDeclarationExpr)} (not

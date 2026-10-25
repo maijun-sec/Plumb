@@ -7,10 +7,6 @@
  * {@link CheckerConfig#weakCryptoAlgorithms()}; new entries can be added by editing the central
  * config (a single file) rather than 591 checkers.
  *
- * <p>R-AST-FIX-2026-10-18 (Pass A): migrated to per-type {@code visit(MethodCallExpr, ...)}.
- *
- * <p>R-AST-FIX-2026-10-18 (Pass B cleanup): previous version called {@code ruleFor(message)} once
- * per finding ? allocating a fresh {@code RuleDef} per emission. That defeated the RuleRegistry's
  * alias-resolution cache (StyleContext#report uses RuleDef identity to short-circuit redundant
  * lookups). Single DEFAULT_RULE now serves all emissions; the CWE tag from the algorithm-
  * specific message is informational only.

@@ -58,7 +58,7 @@ public final class SystemExitUsageCheck implements AstChecker {
     if (scope instanceof NameExpr ne) {
       return "System".equals(ne.getNameAsString()) || "Runtime".equals(ne.getNameAsString());
     }
-    // R721-C3: handle the chained-call form
+    // C3: handle the chained-call form
     //   Runtime.getRuntime().exit(1)
     // The {@code exit(1)} MethodCallExpr has a
     // scope that is itself a MethodCallExpr

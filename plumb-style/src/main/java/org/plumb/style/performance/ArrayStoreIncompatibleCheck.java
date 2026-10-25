@@ -7,12 +7,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Array store of incompatible type.
- *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(VariableDeclarator.class)} before.
- */
+/** Array store of incompatible type. */
 public final class ArrayStoreIncompatibleCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

@@ -10,7 +10,7 @@
  * named {@code clone} (no params). If the modifier set contains
  * {@code protected} but NOT {@code final}, fire CWE-491.</p>
  *
- * <p><b>R-816 (2026-10-14): pattern D rewrite.</b> The previous
+ * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.walk(MethodDeclaration.class, ...)} (1 explicit walk,
  * redundant with the dispatcher's walk). The new implementation

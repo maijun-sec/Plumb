@@ -56,15 +56,15 @@ public final class ConfigLoader {
   }
 
   /**
-   * R-? — Coerce a YAML value into a boolean. The legacy format was {@code checks.<rule>: true};
-   * the new format is {@code checks.<rule>: {enabled: true, aiDedup: true}}. This helper accepts
-   * both, returning {@code defaultValue} when the key is absent or unparseable.
+   * — Coerce a YAML value into a boolean. The legacy format was {@code checks.<rule>: true}; the
+   * new format is {@code checks.<rule>: {enabled: true, aiDedup: true}}. This helper accepts both,
+   * returning {@code defaultValue} when the key is absent or unparseable.
    */
   /**
-   * R761 (Oct 2026): coerce a YAML scalar into a String / Integer / Boolean. SnakeYAML parses
-   * {@code 80} as {@link Integer}, {@code true} as {@link Boolean}, and quoted strings as {@link
-   * String}. The StyleContext lookup handles the string→int / string→bool coercion at read time, so
-   * a mis-typed user value (e.g. {@code max: "80"} with quotes) still works.
+   * coerce a YAML scalar into a String / Integer / Boolean. SnakeYAML parses {@code 80} as {@link
+   * Integer}, {@code true} as {@link Boolean}, and quoted strings as {@link String}. The
+   * StyleContext lookup handles the string→int / string→bool coercion at read time, so a mis-typed
+   * user value (e.g. {@code max: "80"} with quotes) still works.
    */
   private static Object coerceParamValue(Object v) {
     if (v == null) return null;
@@ -114,7 +114,7 @@ public final class ConfigLoader {
     Object single = root.get("input");
     if (single != null) cfg.inputs.add(Path.of(String.valueOf(single)));
 
-    // R797 (Oct 2026): external type-resolution inputs. These
+    // external type-resolution inputs. These
     // three lists are consumed by JavaSourceParser's
     // TypeSolver only — never enter the TAC translation
     // pipeline or the SootUp bytecode path. They are
@@ -268,14 +268,14 @@ public final class ConfigLoader {
                 + cm.get("style")
                 + " instead.");
       }
-      // R-? — 8 plumb-dfa → plumb-dfa ports
+      // — 8 plumb-dfa → plumb-dfa ports
       Object bdc =
           firstNonNull(
               cm.get("bigDecimalDoubleConstructor"), cm.get("big_decimal_double_constructor"));
       if (bdc != null) cfg.runBigDecimalDoubleConstructor = asBoolean(bdc, true);
       Object de = firstNonNull(cm.get("defaultEncoding"), cm.get("default_encoding"));
       if (de != null) cfg.runDefaultEncoding = asBoolean(de, true);
-      // R760 (Oct 2026): loose checkers removed entirely.
+      // loose checkers removed entirely.
       // The `loose` / `loose_rules` YAML keys are silently
       // ignored — old configs that still mention them just
       // get a warning at the [plumb] level, never crash.
@@ -317,7 +317,7 @@ public final class ConfigLoader {
       // Numeric truncation (CWE-197)
       Object nt = firstNonNull(cm.get("numericTruncation"), cm.get("numeric_truncation"));
       if (nt != null) cfg.runNumericTruncation = asBoolean(nt, true);
-      // R761 audit (Oct 2026): the 3 keys below were ScanConfig
+      // audit: the 3 keys below were ScanConfig
       // fields and ScanRunner read them, but ConfigLoader didn't
       // parse the YAML — `checks.X: false` in user yaml was
       // silently ignored (always on). Wiring them up here.
@@ -327,7 +327,7 @@ public final class ConfigLoader {
       if (cil != null) cfg.runCommentInfoLeak = asBoolean(cil, true);
       Object rex = firstNonNull(cm.get("resourceExhaustion"), cm.get("resource_exhaustion"));
       if (rex != null) cfg.runResourceExhaustion = asBoolean(rex, true);
-      // R761 (Oct 2026): per-rule parameter overrides.
+      // per-rule parameter overrides.
       // YAML shape:
       //   checks:
       //     line-length:
@@ -373,7 +373,7 @@ public final class ConfigLoader {
         cfg.whitelistMode = true;
       }
     }
-    // R761 audit (Oct 2026): `style.methodLengthThreshold` was
+    // audit: `style.methodLengthThreshold` was
     // a dead field — ScanConfig had the int, ConfigLoader parsed
     // it, default-config.yaml set it, but no style checker ever
     // read it. The parser block is removed; old YAML files that
@@ -389,7 +389,7 @@ public final class ConfigLoader {
     if (exc instanceof List<?> list) {
       for (Object o : list) cfg.excludeGlobs.add(String.valueOf(o));
     }
-    // R-? Step 7 — AI dedup config. Accepts both `ai.*`
+    // Step 7 — AI dedup config. Accepts both `ai.*`
     // and `ai-dedup.*` (snake_case compat). Missing
     // key leaves the fields at their defaults.
     Object ai = root.get("ai");
@@ -421,7 +421,7 @@ public final class ConfigLoader {
                   + replacement);
         }
       }
-      // R-? Step 7 — the YAML's `ai.*` block now
+      // Step 7 — the YAML's `ai.*` block now
       // populates 4 small fields on ScanConfig
       // (aiDedup / dropOnAiFp / aiDedupRules /
       // aiMaxConcurrent) plus a single
@@ -441,7 +441,7 @@ public final class ConfigLoader {
         Object v = e.getValue();
         switch (k) {
           case "provider" -> {
-            // R761 audit (Oct 2026): OPENAI and
+            // audit: OPENAI and
             // OPENAI_COMPATIBLE are wired through the
             // same code path in OpenAiCompatibleLlmProvider
             // (it only branches on ANTHROPIC). Treat the
@@ -497,7 +497,7 @@ public final class ConfigLoader {
               provider, baseUrl, apiKey, model, timeoutSeconds, extraHeader, null);
     }
 
-    // R-? Step 7 — the `aggressiveness` YAML key is
+    // Step 7 — the `aggressiveness` YAML key is
     // ignored (deleted). Per-rule firing is driven
     // by `checks.<rule>.enabled`; per-rule AI
     // dedup is driven by each checker's

@@ -130,10 +130,9 @@ public final class TypeMapper {
    * patterns in {@code sink-families.yaml} are FQN-only.
    *
    * <p>Resolving every import per file would require a symbol-table pass. The 100+ class table
-   * below covers the common JDK classes that appear in security-sensitive code (Juliet corpus,
-   * real-world apps). For non-JDK classes, we return the simple name as a best effort (the legacy
-   * {@code *.info/*}-style patterns still work via {@link
-   * org.plumb.dfa.taint.InputSourcePatterns}).
+   * below covers the common JDK classes that appear in security-sensitive code. For non-JDK
+   * classes, we return the simple name as a best effort (the legacy {@code *.info/*}-style patterns
+   * still work via {@link org.plumb.dfa.taint.InputSourcePatterns}).
    */
   public static String resolveWellKnownFqnStatic(String simpleName) {
     return resolveWellKnownFqn(simpleName);

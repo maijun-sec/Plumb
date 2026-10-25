@@ -86,10 +86,10 @@ public final class EmptyBlockCheck implements AstChecker {
   }
 
   private static boolean paramBool(StyleContext ctx, String name, boolean def) {
-    // R-825 (2026-10-14): the per-rule fallback is now
+    // the per-rule fallback is now
     // provided by StyleContext.paramOverride() itself,
     // which falls back to the rule's declared
-    // DEFAULT_RULE.parameters[] default (R-822).
+    // DEFAULT_RULE.parameters[] default.
     // The {@code def} argument is kept as a final
     // backstop for tests / tool callers that have no
     // StyleContext + RuleRegistry pair attached.

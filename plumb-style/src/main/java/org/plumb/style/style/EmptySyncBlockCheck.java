@@ -17,29 +17,19 @@ import org.plumb.style.StyleContext;
  * happening between, which either (a) is leftover from a refactor, or (b) is a placeholder that was
  * never filled in, or (c) ? in the worst case ? is intentional but misleading (the developer was
  * trying to use the monitor for memory-visibility side effects, which requires more than just
- * acquisition + release).
+ * acquisition release).
  *
- * <p>The previous implementation was a regex on source text ({@code
- * ClassThreadChecker.EmptySyncBlockChecker}, R759-E): {@code synchronized\s*\([^)]*\)\s*\{\s*\}}.
- * R787d migrates the detection to plumb-style AST per the cardinal principles (AST → style module,
- * DFA → dfa module, prefer AST when feasible). The AST check walks the {@link
- * com.github.javaparser.ast.CompilationUnit} via {@link
+ * <p>The check walks the {@link com.github.javaparser.ast.CompilationUnit} via {@link
  * com.github.javaparser.ast.visitor.VoidVisitorAdapter} (the standard plumb-style {@code
  * AstDispatcher}) and checks the body of each {@code synchronized} statement structurally: an empty
  * body is one of {@link BlockStmt} with no statements, an {@link EmptyStmt} (just {@code ;}), or a
  * body that contains only nested empty statements.
- *
- * <p>Juliet CWE-585 test cases use the {@code synchronized(LOCK) { }} shape literally (no
- * statements inside the braces), so the AST check catches the same patterns as the regex did. The
- * AST check additionally catches {@code synchronized(LOCK);} (the single-statement form with {@link
- * EmptyStmt} as body) which the regex would not have caught because of the brace-matching
- * difference.
  */
 public final class EmptySyncBlockCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          // R787d: rule_id aligned with plumb_rule_to_cwe.json
+          // rule_id aligned with plumb_rule_to_cwe.json
           // (`Cwe585` → ["585"]). Legacy id
           // `dfa.cwe585-empty-sync` is preserved as the
           // short_name so any external whitelist still
@@ -73,7 +63,7 @@ public final class EmptySyncBlockCheck implements AstChecker {
         col = p.column;
       }
     }
-    // R787d (Lesson 1165): find the enclosing
+    // (Lesson 1165): find the enclosing
     // MethodDeclaration so the eval harness can
     // locate it via sink_function. Without this,
     // findings in helperBad() (Juliet CWE-585

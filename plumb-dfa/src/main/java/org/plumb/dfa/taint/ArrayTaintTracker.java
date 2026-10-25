@@ -12,9 +12,9 @@ import org.plumb.tac.ir.TacOperand;
  * Per-function tracker for per-element taint propagation through arrays ({@code a[i] = v}, {@code x
  * = a[i]}).
  *
- * <p>R694 task T1: addresses ARRAY-INSENSITIVITY (where the taint framework previously treated
- * whole arrays as either tainted or clean via a single {@code propagateMOVE} on {@code ARRAYLOAD}).
- * The tracker keeps a per-array {@code Map<IndexKey, TaintedEntry>}, allowing taint to flow through
+ * <p>task T1: addresses ARRAY-INSENSITIVITY (where the taint framework previously treated whole
+ * arrays as either tainted or clean via a single {@code propagateMOVE} on {@code ARRAYLOAD}). The
+ * tracker keeps a per-array {@code Map<IndexKey, TaintedEntry>}, allowing taint to flow through
  * {@code a[0] = tainted; x = a[0]} without contaminating unrelated indices.
  *
  * <h2>Index keys</h2>
@@ -53,12 +53,11 @@ public final class ArrayTaintTracker {
   /**
    * A snapshot of an array element's taint state.
    *
-   * <p><b>R-804 follow-up</b> — {@code v2Handle} is the v2 {@code Trace} node id of the source this
+   * <p><b> follow-up</b> — {@code v2Handle} is the v2 {@code Trace} node id of the source this
    * array store propagated from. When a subsequent {@code ARRAYLOAD} reads the array, the loader
    * attaches a real parent to the new PROPAGATE node via {@code addPropagate(parents=[v2Handle],
    * ...)} instead of treating the load as a fresh orphan SOURCE. {@code v2Handle=-1} means no
-   * recovered handle (legacy / non-tracked) ? loaders fall back to the orphan-SOURCE shape from
-   * R-804.
+   * recovered handle (legacy / non-tracked) ? loaders fall back to the orphan-SOURCE shape from .
    */
   public record TaintedEntry(String label, List<FlowStep> path, int v2Handle) {
     public TaintedEntry {
@@ -140,11 +139,11 @@ public final class ArrayTaintTracker {
   }
 
   /**
-   * R-804 follow-up ? overload that records the v2 {@code Trace} handle of the source this array
-   * store propagated from. The handle is later recovered by {@link #readLoad} consumers (notably
-   * {@code TaintedCheckerBase}'s {@code restoreArrayTaintOnLoad} site) so the load can attach a
-   * real parent to the v2 PROPAGATE node instead of a fresh orphan SOURCE. Pass {@code -1} if the
-   * source is unknown.
+   * follow-up ? overload that records the v2 {@code Trace} handle of the source this array store
+   * propagated from. The handle is later recovered by {@link #readLoad} consumers (notably {@code
+   * TaintedCheckerBase}'s {@code restoreArrayTaintOnLoad} site) so the load can attach a real
+   * parent to the v2 PROPAGATE node instead of a fresh orphan SOURCE. Pass {@code -1} if the source
+   * is unknown.
    */
   public void recordStore(
       TacOperand.TacVar arr,

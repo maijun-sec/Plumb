@@ -121,7 +121,7 @@ class R559Cwe674Sweep {
         .append("        - __missing_base_01.helperBad (bad, 1 fire)\n")
         .append("        - __missing_base_01.helperGood1 (good, 1 fire — FP)\n")
         .append("        TP: 2/2 bad. FP: 2/2 good. Recall: 100%.\n")
-        .append("        AI dedup (R-? Step 7) is expected to grade\n")
+        .append("        AI dedup (Step 7) is expected to grade\n")
         .append("        the FPs down based on base-case analysis.\n");
     if (!firedFileNames.isEmpty()) {
       sb.append("  Fired files:\n");

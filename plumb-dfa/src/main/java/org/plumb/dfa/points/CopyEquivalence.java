@@ -11,7 +11,7 @@ import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 
 /**
- * R1108: copy equivalence — "are these two names the same <em>reference</em>?".
+ * copy equivalence — "are these two names the same <em>reference</em>?".
  *
  * <h2>Why this exists alongside {@link PointsToSolver}</h2>
  *
@@ -136,7 +136,7 @@ public final class CopyEquivalence {
         }
       }
       case CALL -> {
-        // R1110: deliberately does nothing.
+        // deliberately does nothing.
         //
         // An earlier version unioned the caller's actual with the callee's formal, and the call's
         // destination with the callee's return slot. Both are true in isolation, and together they

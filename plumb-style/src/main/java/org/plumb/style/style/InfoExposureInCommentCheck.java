@@ -1,5 +1,5 @@
 /*
- * R729-A3: AST check for CWE-615 (Information
+ * A3: AST check for CWE-615 (Information
  * Exposure by Comment). Fires when a
  * `StringLiteralExpr` contains BOTH `<!--` and a
  * `password = ` / `username = ` / `secret = ` /
@@ -7,7 +7,7 @@
  * matches HTML comments carrying credentials, which
  * Juliet's CWE-615 emits via
  * `response.getWriter().println("<!--DB username = ..."
- * + ...)`.
+ * ...)`.
  *
  * <p>Generic ? any HTML-comment-looking literal with a
  * credential-looking assignment is suspicious.</p>

@@ -1,12 +1,7 @@
 /*
- * R-812 ? CORS misconfiguration (CWE-942).
+ * ? CORS misconfiguration (CWE-942).
  */
 package org.plumb.style.security;
-
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
-// Note: NormalAnnotationExpr / SingleMemberAnnotationExpr are not in the AstChecker
-// interface, so their visit methods here are picked up by the dispatcher via
-// reflection but lack @Override.
 
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.expr.ArrayInitializerExpr;

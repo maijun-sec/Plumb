@@ -1,5 +1,5 @@
 /*
- * R722-C7: AST-style CWE-379 (Insecure Temp File / Insecure Directory
+ * C7: AST-style CWE-379 (Insecure Temp File / Insecure Directory
  * Creation) checker.
  *
  * <p>Fires when:

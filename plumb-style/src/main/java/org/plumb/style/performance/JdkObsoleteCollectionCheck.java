@@ -7,12 +7,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Use non-obsolete JDK collection (e.g. {@code Vector}, {@code Hashtable}, {@code Stack}).
- *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ObjectCreationExpr.class)} before.
- */
+/** Use non-obsolete JDK collection (e.g. {@code Vector}, {@code Hashtable}, {@code Stack}). */
 public final class JdkObsoleteCollectionCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

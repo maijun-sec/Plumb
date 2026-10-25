@@ -6,9 +6,9 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * R-? — A scripted {@link LlmProvider} for unit tests. The mock is fed a list of {@link
- * ScriptedReply} entries ahead of time and returns them in order, regardless of the conversation
- * history. Useful for testing the Re-Act loop without going through the network.
+ * — A scripted {@link LlmProvider} for unit tests. The mock is fed a list of {@link ScriptedReply}
+ * entries ahead of time and returns them in order, regardless of the conversation history. Useful
+ * for testing the Re-Act loop without going through the network.
  *
  * <h2>Behaviours</h2>
  *

@@ -23,9 +23,7 @@ public final class MutableStaticShouldBeFinalCheck implements AstChecker {
           false,
           List.of(
               "ast-style-mutable-static-should-be-final",
-              "mutable-static-should-be-final")); // R-834: disabled by default (0 TP / 100% FP on
-
-  // Juliet R-832 baseline)
+              "mutable-static-should-be-final")); // disabled by default: the rule is opt-in
 
   @Override
   public String name() {

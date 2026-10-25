@@ -3,7 +3,6 @@
  */
 package org.plumb.style.style;
 
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
 // Note: this checker needs cross-method state (compare each method to the next one),
 // so the implementation uses init() to collect the list of methods in document order
 // and finish() to fire per-pair reports.

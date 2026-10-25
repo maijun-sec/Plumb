@@ -16,7 +16,7 @@ import org.plumb.reporter.Finding;
 
 public final class SqlInjectionChecker extends TaintedCheckerBase {
   /**
-   * R-? Step 7 ? the rule prompt the LLM sees when judging one of our findings. Describes the
+   * Step 7 ? the rule prompt the LLM sees when judging one of our findings. Describes the
    * SQL-injection rule + the common sanitizer patterns we recognise (PreparedStatement, setXxx,
    * allow-list).
    */

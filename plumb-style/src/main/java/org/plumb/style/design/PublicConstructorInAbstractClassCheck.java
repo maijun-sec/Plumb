@@ -8,13 +8,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Abstract class should not have a {@code public} constructor.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ClassOrInterfaceDeclaration.class)} before. The inner per-ctor walk stays as a local loop
- * because we need to know the enclosing class is abstract.
- */
+/** Abstract class should not have a {@code public} constructor. */
 public final class PublicConstructorInAbstractClassCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

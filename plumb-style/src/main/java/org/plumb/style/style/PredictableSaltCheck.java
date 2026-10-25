@@ -1,5 +1,5 @@
 /*
- * R728-C6: AST check for CWE-760 (Use of One-Way Hash
+ * C6: AST check for CWE-760 (Use of One-Way Hash
  * with a Predictable Salt). Fires when `MessageDigest
  * .update(...)` (or any ObjectCreationExpr whose type
  * is MessageDigest with chained `update` calls) gets

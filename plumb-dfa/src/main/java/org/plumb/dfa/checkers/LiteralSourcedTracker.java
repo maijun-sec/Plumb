@@ -76,7 +76,7 @@ public final class LiteralSourcedTracker {
   private final Map<TacOperand.TacVar, String> literalSourced = new HashMap<>();
 
   /**
-   * R-812 line tracking: line of the MOVE that last assigned {@link TacOperand.TacVar} to a
+   * line tracking: line of the MOVE that last assigned {@link TacOperand.TacVar} to a
    * literal-sourced value. Lets the v2 trace emit a {@code MARK_SOURCE} node with the correct line
    * for the literal origin, even when the {@code SecretKeySpec} / sink construction is several
    * statements later. Keyed by the same {@code TacVar} as {@link #literalSourced}.
@@ -91,9 +91,9 @@ public final class LiteralSourcedTracker {
   private final Map<TacOperand.TacVar, String> derivedOfLiteral = new HashMap<>();
 
   /**
-   * R-812 line tracking: line of the {@code toCharArray} / {@code getBytes} passthrough call that
-   * last assigned {@link TacOperand.TacVar} from a literal-sourced receiver. Same key space as
-   * {@link #derivedOfLiteral}.
+   * line tracking: line of the {@code toCharArray} / {@code getBytes} passthrough call that last
+   * assigned {@link TacOperand.TacVar} from a literal-sourced receiver. Same key space as {@link
+   * #derivedOfLiteral}.
    */
   private final Map<TacOperand.TacVar, Integer> derivedOfLiteralLine = new HashMap<>();
 
@@ -223,7 +223,7 @@ public final class LiteralSourcedTracker {
   }
 
   /**
-   * R-812 line-of-origin lookup for a literal-sourced var. Returns the line of the MOVE that last
+   * line-of-origin lookup for a literal-sourced var. Returns the line of the MOVE that last
    * assigned {@code var} from a string constant, or {@code -1} if the var is not literal-sourced.
    * Used by v2 trace builders to emit {@code MARK_SOURCE} with the literal's actual source line,
    * not the sink line.
@@ -234,10 +234,10 @@ public final class LiteralSourcedTracker {
   }
 
   /**
-   * R-812 line-of-origin lookup for a derived-of-literal var. Returns the line of the {@code
-   * toCharArray} / {@code getBytes} call that last assigned {@code var} from a literal-sourced
-   * receiver, or {@code -1} if the var is not derived-of-literal. Used by v2 trace builders to emit
-   * {@code MOVE} or {@code FIELDLOAD} nodes with the correct passthrough line.
+   * line-of-origin lookup for a derived-of-literal var. Returns the line of the {@code toCharArray}
+   * / {@code getBytes} call that last assigned {@code var} from a literal-sourced receiver, or
+   * {@code -1} if the var is not derived-of-literal. Used by v2 trace builders to emit {@code MOVE}
+   * or {@code FIELDLOAD} nodes with the correct passthrough line.
    */
   public int derivedLineOf(TacOperand.TacVar var) {
     Integer line = derivedOfLiteralLine.get(var);

@@ -16,7 +16,7 @@ import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 
 /**
- * R-? Step 7 ? Tests for {@code ScanRunner.computeDedupStats} and the {@link ScanRunner.DedupStats}
+ * Step 7 ? Tests for {@code ScanRunner.computeDedupStats} and the {@link ScanRunner.DedupStats}
  * helpers, plus the {@code --ai-dedup-stats} stderr printer. The verdict map is now {@code
  * Map<String, String>} with values formatted as {@code "VERDICT|reason"} (Step 6 used {@code
  * Map<String, AIDedupResult>} via reflection; Step 7 drops the indirection and the test inputs are

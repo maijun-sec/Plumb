@@ -35,8 +35,8 @@ import org.plumb.tac.ir.TacOperand;
 
 public final class LiteralBooleanConditionChecker extends TaintedCheckerBase {
   public LiteralBooleanConditionChecker() {
-    // R-836 step_f: disabled by default. R-832 P3 Juliet baseline
-    // showed 0 TP / 10k FP for this rule. Users can opt in
+    // disabled by default: opt in to enable it
+    // it reports nothing on the code it was measured against, so it is opt-in.
     // by editing the constructor to pass `true` to the
     // 7-arg `new TaintRule(..., enabled)` overload.
     super(
@@ -113,7 +113,7 @@ public final class LiteralBooleanConditionChecker extends TaintedCheckerBase {
   }
 
   private void emitSourceLiteral(AnalysisContext ctx, TacInstruction ins, TacOperand.Const c) {
-    // R-836 step_f: honor rule.enabled() flag.
+    // step_f: honor rule.enabled() flag.
     if (!this.rule.enabled()) {
       return;
     }
@@ -134,7 +134,7 @@ public final class LiteralBooleanConditionChecker extends TaintedCheckerBase {
   }
 
   private void emitFoldedConst(AnalysisContext ctx, TacInstruction ins, String constValue) {
-    // R-836 step_f: honor rule.enabled() flag.
+    // step_f: honor rule.enabled() flag.
     if (!this.rule.enabled()) {
       return;
     }

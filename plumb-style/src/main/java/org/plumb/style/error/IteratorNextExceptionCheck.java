@@ -1,7 +1,7 @@
 /*
  * iterator.next() without hasNext() check.
  *
- * <p><b>R-818 (2026-10-14): pattern A rewrite.</b> The previous
+ * <p><b>pattern A rewrite.</b> The previous
  * implementation called {@code n.findAll(MethodCallExpr)} +
  * {@code n.findAll(StringLiteralExpr)} (2 walks). The new
  * implementation uses a single

@@ -1,5 +1,5 @@
 /*
- * R-812 ? PredictableRandomSeedCheck (CWE-332 / CWE-336)
+ * ? PredictableRandomSeedCheck (CWE-332 / CWE-336)
  * migrated from plumb-dfa/.../PredictableRandomSeedChecker.java
  * to plumb-style AST.
  *

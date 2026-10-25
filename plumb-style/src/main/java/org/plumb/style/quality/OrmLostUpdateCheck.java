@@ -3,16 +3,10 @@
  * a transient JPA entity is created and mutated but never passed to {@code persist}/{@code save}
  * (or {@code merge}/{@code update} for a detached entity).
  *
- * <p>M5 part-4 migration (2026-10-17): the outer loop now uses {@code visit(MethodDeclaration)} (one
- * visit per method) and the body walk inside the per-method helper stays as before. The class-level
- * entity-class collection is in {@link #visit(ClassOrInterfaceDeclaration, StyleContext)} ? the
- * dispatcher walks the AST in pre-order (parent before children), so the class visit fires
  * before any of its inner method visits. {@link #checkOrderingInvariant} is a defensive
  * smoke-test that logs if a future dispatcher change breaks this assumption.
  */
 package org.plumb.style.quality;
-
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
 
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
@@ -81,7 +75,7 @@ public final class OrmLostUpdateCheck implements AstChecker {
   public void init(StyleContext ctx) {
     entityClassNames.clear();
     classesSeenInThisFile = 0;
-    // R784-OrmOrder-2026-10-18: pre-collect entity class names from the entire
+    // OrmOrder-2026-10-18: pre-collect entity class names from the entire
     // CompilationUnit before any visit fires. The walk is pre-order DFS, so a class
     // declared AFTER the first top-level class is not seen until that first class's
     // methods have already been visited — which would cause a silent miss when the

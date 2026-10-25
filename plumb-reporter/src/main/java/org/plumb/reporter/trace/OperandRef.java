@@ -1,5 +1,5 @@
 /*
- * R-802: OperandRef ? the structured operand of a
+ * OperandRef ? the structured operand of a
  * {@link TraceNode}. v1's {@link FlowStep#expr()} was a
  * free-form string ("MOVE x -> y", "String.toLowerCase
  * passthrough -> dest"); AI dedup and SARIF consumers
@@ -148,14 +148,14 @@ public sealed interface OperandRef {
   }
 
   /**
-   * R-810 ? a reference to a {@code public static} field of a class (e.g. {@code Level.WARNING},
-   * {@code IO.logger}). Distinct from {@link FieldRef} because the receiver is a <i>class</i>, not
-   * an instance, and the declaration site is the class body (not an instance's field write). Pair
-   * with {@link TraceNode.Op#STATIC_FIELD_DECL} to mark the field's initializer node.
+   * ? a reference to a {@code public static} field of a class (e.g. {@code Level.WARNING}, {@code
+   * IO.logger}). Distinct from {@link FieldRef} because the receiver is a <i>class</i>, not an
+   * instance, and the declaration site is the class body (not an instance's field write). Pair with
+   * {@link TraceNode.Op#STATIC_FIELD_DECL} to mark the field's initializer node.
    *
    * <p>{@code isFinal} is captured so consumers can tell the difference between {@code public
    * static final} (which the resolver can fold) and {@code public static} mutable (which Phase 2 of
-   * R-810 ? init-path resolution ? will handle).
+   * ? init-path resolution ? will handle).
    */
   record StaticFieldRef(String className, String fieldName, boolean isFinal) implements OperandRef {
     public StaticFieldRef {

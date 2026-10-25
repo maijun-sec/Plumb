@@ -1,5 +1,5 @@
 /*
- * R732-A2: AST-level fallback for CWE-259
+ * A2: AST-level fallback for CWE-259
  * (Hard-Coded Password). The DFA-level
  * `HardCodedPasswordSinkChecker` only fires when the
  * password argument to a credential sink resolves to a

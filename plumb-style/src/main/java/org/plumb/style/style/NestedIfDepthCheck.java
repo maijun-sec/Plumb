@@ -3,8 +3,6 @@
  */
 package org.plumb.style.style;
 
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
-
 import com.github.javaparser.ast.stmt.IfStmt;
 import java.util.List;
 import org.plumb.rules.RuleDef;

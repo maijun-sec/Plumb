@@ -1,5 +1,5 @@
 /*
- * R721-C3: AST-style CWE-397 (Declaration of Throws
+ * C3: AST-style CWE-397 (Declaration of Throws
  * for Generic Exception) checker.
  *
  * <p>Fires when a method is declared with

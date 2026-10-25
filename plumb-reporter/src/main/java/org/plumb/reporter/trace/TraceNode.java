@@ -1,5 +1,5 @@
 /*
- * R-802: TraceNode ? a single node in a structured
+ * TraceNode ? a single node in a structured
  * source-to-sink trace (DAG, not list).
  *
  * <p>Replaces {@code List<FlowStep>} for new DFA
@@ -190,13 +190,13 @@ public final class TraceNode {
     CORS_WILDCARD,
     LOAD_NOT_NULL,
     UNCHECKED_RETURN,
-    // R-812 — OrmUnnecessaryGetDfaChecker: a JPA
+    // — OrmUnnecessaryGetDfaChecker: a JPA
     // get/find call whose result is never used in a
     // content access. The DB hit is wasted; the
     // caller should use Session.load() /
     // EntityManager.getReference() instead.
     UNUSED_GET_RESULT,
-    // R-812 — InsecureCryptoChecker: a
+    // — InsecureCryptoChecker: a
     // Cryptographic.getInstance("MD5" / "DES" / etc.)
     // call (direct literal OR via const variable
     // flow). Distinct from SINK_CRYPTO_INIT (which
@@ -228,7 +228,7 @@ public final class TraceNode {
     SUMMARY_PASS_THROUGH,
     SUMMARY_SINK,
     SUMMARY_ALLOC,
-    // ---- R-810: static-field declaration site ----
+    // ---- static-field declaration site ----
     // Emitted by the engine when a FIELDLOAD's
     // receiver is a class reference (e.g.
     // {@code Level.WARNING}, {@code IO.logger}) and

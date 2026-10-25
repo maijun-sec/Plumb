@@ -109,7 +109,7 @@ public final class OpenAiCompatibleLlmProvider implements LlmProvider {
   // ─── Re-Act path ─────────────────────────────────────
 
   /**
-   * R-? — Re-Act entry point. One chat-completion call carrying the full conversation history + the
+   * — Re-Act entry point. One chat-completion call carrying the full conversation history + the
    * tool catalog. Returns the model's reply (one turn): text + optional tool calls. Returns {@code
    * null} on transport / parse failure; the Re-Act agent treats that as a fatal run error.
    *
@@ -243,7 +243,7 @@ public final class OpenAiCompatibleLlmProvider implements LlmProvider {
     ObjectNode root = MAPPER.createObjectNode();
     root.put("model", model);
     if (conn.provider() == LlmConnection.Provider.ANTHROPIC) {
-      // R-? Anthropic's Messages API also supports
+      // Anthropic's Messages API also supports
       // tool_use, but the request shape is different
       // (the `tools` field is a list of
       // {name, description, input_schema} objects

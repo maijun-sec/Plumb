@@ -33,7 +33,7 @@ public final class TaintRuleRegistry {
     Map<String, TaintRule> idMap = new LinkedHashMap<>();
     Map<String, java.util.List<TaintRule>> famMap = new LinkedHashMap<>();
     for (TaintRule r : rules.values()) {
-      // R-834: filter disabled-by-default rules at registry
+      // filter disabled-by-default rules at registry
       // construction time. Downstream code (byRuleId / bySinkFamily
       // / all) will simply not see them. The user can still opt
       // in via `TaintRule.withEnabled(true)` in a config or test.

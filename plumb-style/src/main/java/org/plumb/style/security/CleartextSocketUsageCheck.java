@@ -1,5 +1,5 @@
 /*
- * R-812 ? Cleartext socket usage (CWE-319) migrated from
+ * ? Cleartext socket usage (CWE-319) migrated from
  * plumb-dfa/.../checkers/CleartextSocketUsageChecker.java to
  * plumb-style AST.
  *

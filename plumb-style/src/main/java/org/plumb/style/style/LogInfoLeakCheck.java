@@ -1,5 +1,5 @@
 /*
- * R729-A7: AST check for CWE-533 / CWE-534
+ * A7: AST check for CWE-533 / CWE-534
  * (Information Exposure Through Server-Log /
  * Debug-Log Files). Fires when a method-call whose
  * name is `log` / `info` / `warning` / `severe` /
@@ -9,10 +9,8 @@
  * `getUsername()` — universal "logging sensitive
  * info" pattern.
  *
- * <p>Generic. Juliet's CWE-533 / 534 corpus emits
- * exactly this shape: a `log(...session.getId()...)`
- * line in the bad() method, and a non-id log message
- * in good().</p>
+ * <p>Generic: the rule matches the shape of the call, not any
+ * particular file or fixture layout.</p>
  */
 package org.plumb.style.style;
 

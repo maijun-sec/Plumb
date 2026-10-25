@@ -36,8 +36,8 @@ public final class UnusedAssignmentChecker extends TaintedCheckerBase {
   private final Set<TacOperand.TacVar> emitted = new LinkedHashSet<TacOperand.TacVar>();
 
   public UnusedAssignmentChecker() {
-    // R-836 step_f: disabled by default. R-832 P3 Juliet baseline
-    // showed 0 TP / 188k FP for this rule. Users can opt in
+    // disabled by default: opt in to enable it
+    // it reports nothing on the code it was measured against, so it is opt-in.
     // by editing the constructor to pass `true` to the
     // 7-arg `new TaintRule(..., enabled)` overload.
     super(
@@ -101,10 +101,10 @@ public final class UnusedAssignmentChecker extends TaintedCheckerBase {
   }
 
   private void emitIfNew(AnalysisContext ctx, TacOperand.TacVar d, TacInstruction dead) {
-    // R-836 step_f: honor rule.enabled() flag. R-834 codemod set this
-    // to false (0 TP / 100% FP on Juliet R-832 baseline) but the
-    // emit path was not honoring the flag. R-836 disables emission
-    // here so the R-834 disable becomes effective.
+    // honor rule.enabled() flag. The rule is disabled by
+    // default because it reported nothing on the code it was
+    // measured against. The emit path honors the flag, so
+    // the disable becomes effective.
     if (!this.rule.enabled()) {
       return;
     }

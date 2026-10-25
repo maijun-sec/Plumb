@@ -41,7 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Recursive JavaParser-expression ⇒?TAC translator. Returns an {@link ExpressionResult}; side
+ * Recursive JavaParser-expression →TAC translator. Returns an {@link ExpressionResult}; side
  * effects (emitted instructions) are accumulated on the supplied {@link TacBuilder}.
  */
 public final class ExpressionTranslator {
@@ -418,7 +418,7 @@ public final class ExpressionTranslator {
       }
       return f;
     }
-    // R1103: resolve the DECLARED type of a field reference used as a call
+    // resolve the DECLARED type of a field reference used as a call
     // receiver.
     //
     // `private static final Logger LOG = ...; LOG.info(msg)` produced the callee
@@ -448,7 +448,7 @@ public final class ExpressionTranslator {
   }
 
   /**
-   * R1103: the declared type of a field used as a call receiver, as an FQN string.
+   * the declared type of a field used as a call receiver, as an FQN string.
    *
    * <p>Needed because {@code private static final Logger LOG = ...; LOG.info(msg)} lowers to the
    * callee signature {@code LOG.info/1} — the bare variable name, no type — so every FQN-anchored
@@ -656,7 +656,7 @@ public final class ExpressionTranslator {
   }
 
   private ExpressionResult translateFieldAccess(FieldAccessExpr fae, TacBuilder b) {
-    // R-719: recognise well-known static final fields
+    // recognise well-known static final fields
     // (Integer.MAX_VALUE, Long.MAX_VALUE, Integer.MIN_VALUE,
     // Long.MIN_VALUE, etc.) at translation time and emit a
     // direct CONST load. Without this fold, the IR sees
@@ -690,7 +690,7 @@ public final class ExpressionTranslator {
   }
 
   /**
-   * R-719: fold a small set of well-known {@code public static final} numeric constants to a {@link
+   * fold a small set of well-known {@code public static final} numeric constants to a {@link
    * TacOperand.Const}. Returns {@code null} if the {@code (class, field)} pair is not in the
    * catalogue.
    *
@@ -805,7 +805,7 @@ public final class ExpressionTranslator {
   /**
    * Translate a lambda expression. We lower the body to a synthetic function on the enclosing type
    * and emit a CALL to that function. The returned {@link ExpressionResult} carries the lambda's
-   * signature so the caller (typically {@code translateVarDecl}) can register the user-var ⇒?lambda
+   * signature so the caller (typically {@code translateVarDecl}) can register the user-var →lambda
    * binding.
    */
   private ExpressionResult translateLambda(LambdaExpr le, TacBuilder b) {
@@ -915,7 +915,7 @@ public final class ExpressionTranslator {
       // the check filters to non-<clinit> methods
       // and won't double-report static-field patterns.)
       //
-      // R717: reuse the `this` from b.locals() if
+      // reuse the `this` from b.locals() if
       // present, instead of synthesising a fresh
       // TacVar("this", UNKNOWN). The locals form is
       // typed with the enclosing class name

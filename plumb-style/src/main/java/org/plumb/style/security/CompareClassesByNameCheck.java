@@ -1,5 +1,5 @@
 /*
- * R-812 ? Compare classes by name (CWE-486) migrated from
+ * ? Compare classes by name (CWE-486) migrated from
  * plumb-dfa/.../checkers/CompareClassesByNameChecker.java to
  * plumb-style AST.
  *

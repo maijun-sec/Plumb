@@ -5,7 +5,7 @@
  * {@code ServletContext} / {@code HttpSession} / {@code JspContext}
  * occur outside of the same locked context.
  *
- * <p><b>R-818 (2026-10-14): pattern D rewrite.</b> The previous
+ * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(MethodDeclaration)} (1 walk) + for each method
  * {@code body.findAll(MethodCallExpr)} (1 walk per method). The

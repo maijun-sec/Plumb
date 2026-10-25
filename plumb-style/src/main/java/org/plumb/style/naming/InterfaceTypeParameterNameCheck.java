@@ -8,13 +8,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Interface type parameter name should be uppercase single letter.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ClassOrInterfaceDeclaration.class)} before. Only fires when {@code c.isInterface()} is
- * true (ClassTypeParameterNameCheck handles class declarations).
- */
+/** Interface type parameter name should be uppercase single letter. */
 public final class InterfaceTypeParameterNameCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

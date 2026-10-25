@@ -20,7 +20,6 @@ import org.plumb.style.StyleContext;
  * | `20` | Maximum distinct instantiable types per class | | `excludeLocalVariables` | BOOLEAN |
  * `false` | Only count types stored in fields |
  */
-// R-AST-FIX-2026-10-18 (Pass B): removed duplicate paramInt helper.
 public final class AbstractClassCouplingCheck implements AstChecker {
 
   private static final RuleParameter[] PARAMS = {

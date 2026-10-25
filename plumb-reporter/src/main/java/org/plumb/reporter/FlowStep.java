@@ -1,5 +1,5 @@
 /*
- * R776: unified FlowStep. Originally lived in
+ * unified FlowStep. Originally lived in
  * {@code plumb-dfa.engine.FlowStep}; moved to
  * {@code plumb.reporter} so that the reporter, the
  * NDJSON emitter, and the unified engine share a
@@ -66,13 +66,13 @@ public record FlowStep(
   }
 
   /**
-   * R-802: convert a v2 {@link org.plumb.reporter.trace.TraceNode} into the canonical {@code
-   * FlowStep} form used by the v1 reporters (NDJSON, SARIF, console). The role mapping is the one
-   * documented in {@link org.plumb.reporter.trace.Trace#toFlowSteps()}: {@code SOURCE} -> {@code
-   * "source"}, {@code SINK} -> {@code "sink"}, {@code VIOLATION} -> {@code "violation"}, everything
-   * else -> {@code "propagate"}. The {@code expr} is built as {@code "<OpName> <op1>, <op2>, ... —
-   * <note>"} (or the empty string if no operands and no note). Used by v2 checkers to emit findings
-   * that the legacy reporter pipeline can still consume without modification.
+   * convert a v2 {@link org.plumb.reporter.trace.TraceNode} into the canonical {@code FlowStep}
+   * form used by the v1 reporters (NDJSON, SARIF, console). The role mapping is the one documented
+   * in {@link org.plumb.reporter.trace.Trace#toFlowSteps()}: {@code SOURCE} -> {@code "source"},
+   * {@code SINK} -> {@code "sink"}, {@code VIOLATION} -> {@code "violation"}, everything else ->
+   * {@code "propagate"}. The {@code expr} is built as {@code "<OpName> <op1>, <op2>, ... — <note>"}
+   * (or the empty string if no operands and no note). Used by v2 checkers to emit findings that the
+   * legacy reporter pipeline can still consume without modification.
    */
   public static FlowStep of(org.plumb.reporter.trace.TraceNode n) {
     org.plumb.reporter.trace.TraceNode.Role role = n.role();
@@ -102,7 +102,7 @@ public record FlowStep(
 
   /**
    * Format a single step in the canonical {@code "<role> | <file>:<line>:<col> | <expr>"} form,
-   * matching the legacy single-string format the NDJSON emitter used before R776 unified {@code
+   * matching the legacy single-string format the NDJSON emitter used before unified {@code
    * FlowStep} into the reporter. Used by {@code FindingFormatter} and the SARIF renderer for
    * human-readable output.
    */

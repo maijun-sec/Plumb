@@ -1,5 +1,5 @@
 /*
- * R728-C5: AST check for CWE-395 (Use of
+ * C5: AST check for CWE-395 (Use of
  * NullPointerException Catch to Detect NULL Pointer
  * Dereference). Fires when a CatchClause catches
  * NullPointerException directly.

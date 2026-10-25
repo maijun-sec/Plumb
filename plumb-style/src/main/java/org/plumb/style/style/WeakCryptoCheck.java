@@ -1,5 +1,5 @@
 /*
- * R729-A9: AST check for CWE-327 (Use of Broken or
+ * A9: AST check for CWE-327 (Use of Broken or
  * Risky Cryptographic Algorithm). Fires when
  * `Cipher.getInstance(<weak_alg>)` /
  * `KeyGenerator.getInstance(<weak_alg>)` /
@@ -9,11 +9,8 @@
  * algorithm: DES, DESede, 3DES, RC2, RC4, IDEA,
  * Blowfish, MD5, MD2, MD4, SHA-1 (legacy).
  *
- * <p>Generic. Juliet's CWE-327 corpus emits
- * `Cipher.getInstance("DESede")` /
- * `SecretKeySpec(byteKey, "DESede")` in bad() and the
- * matching AES variants in good(); the heuristic
- * fires on the bad ones.</p>
+ * <p>Generic: the rule matches the algorithm name, not any particular
+ * file or fixture layout.</p>
  */
 package org.plumb.style.style;
 

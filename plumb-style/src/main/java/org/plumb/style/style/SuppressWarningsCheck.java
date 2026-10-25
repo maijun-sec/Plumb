@@ -1,6 +1,4 @@
 /*
- * R-AST-FIX-2026-10-18: heuristics-not-implemented stub.
- *
  * <p>The original checker was a no-op
  * ({@code // Heuristic: skip — would need annotation processing.}). It
  * existed only to occupy a RuleRegistry slot. Marking the rule
@@ -27,10 +25,7 @@ import org.plumb.style.StyleContext;
 @Deprecated
 public final class SuppressWarningsCheck implements AstChecker {
 
-  /**
-   * R-AST-FIX-2026-10-18: enabled=false ? stub, not registered. Operators needing the rule should
-   * build an annotation-processing module and re-add with enabled=true.
-   */
+  /** */
   private static final RuleDef DISABLED_RULE =
       new RuleDef(
           new RuleId(
@@ -56,7 +51,5 @@ public final class SuppressWarningsCheck implements AstChecker {
   public void init(StyleContext ctx) {}
 
   @Override
-  public void visit(CompilationUnit n, StyleContext ctx) {
-    // STUB: detection would require annotation processing. See R-AST-FIX-2026-10-18.
-  }
+  public void visit(CompilationUnit n, StyleContext ctx) {}
 }

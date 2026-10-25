@@ -1,5 +1,5 @@
 /*
- * R728-C4: AST check for CWE-383 (J2EE Bad Practices:
+ * C4: AST check for CWE-383 (J2EE Bad Practices:
  * Direct Use of Threads). Fires when a class that
  * appears to be a servlet (extends HttpServlet, or has
  * HttpServletRequest / HttpServletResponse parameter

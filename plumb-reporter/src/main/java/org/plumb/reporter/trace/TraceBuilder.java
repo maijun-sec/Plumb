@@ -1,5 +1,5 @@
 /*
- * R-802: TraceBuilder ? the single construction entry
+ * TraceBuilder ? the single construction entry
  * point for v2 structured traces.
  *
  * <p>Checkers (and {@code TaintedCheckerBase}) call
@@ -372,7 +372,7 @@ public final class TraceBuilder {
       for (int parentId : n.parentIds()) {
         // Sentinel: parentId == -1 means
         // "no parent / orphan root" — used
-        // by R-804 eager dual-write when
+        // by eager dual-write when
         // a cross-fn summary fold is
         // added without a recovered
         // source handle. The node stands

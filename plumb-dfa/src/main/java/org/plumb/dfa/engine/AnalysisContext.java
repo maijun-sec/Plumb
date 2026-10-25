@@ -50,13 +50,13 @@ public final class AnalysisContext {
   private final FieldDefUseTracker fieldDefUseTracker;
 
   /**
-   * R1106: the program's alias map, solved once per run and shared by every checker.
+   * the program's alias map, solved once per run and shared by every checker.
    *
    * <p>Alias information is an input to the rules, not a finding of its own. A checker that asks
    * "is this the same object whose null-ness I already proved?", "can this field be null?", or
    * "does this write land in the reference I sanitised?" needs the same answer, and deriving it per
    * checker guarantees they disagree. This used to be a private map inside a single rule ({@code
-   * UseAfterFreeChecker}, removed in R1105), which is why no other rule could consult it.
+   * UseAfterFreeChecker}, removed in ), which is why no other rule could consult it.
    *
    * <p>{@code null} until the engine installs one, so a checker used standalone in a test does not
    * have to build a solver. Query through {@link #pointsTo()} rather than touching the field, so
@@ -65,7 +65,7 @@ public final class AnalysisContext {
   private volatile org.plumb.dfa.points.PointsToSolver pointsToSolver;
 
   /**
-   * R1108: the program's copy-equivalence classes, solved once per run alongside the points-to map.
+   * the program's copy-equivalence classes, solved once per run alongside the points-to map.
    *
    * <p>Complements {@link #pointsToSolver} rather than duplicating it. Points-to answers "same
    * object?" and needs an allocation site; a method parameter has none, so the points-to answer for
@@ -201,8 +201,8 @@ public final class AnalysisContext {
   }
 
   /**
-   * R1099: per-function map of {@code "signature#paramIndex" -> taint origin}, populated by the
-   * engine before the analysis loop via {@link #setParamOrigins(java.util.Map)}.
+   * per-function map of {@code "signature#paramIndex" -> taint origin}, populated by the engine
+   * before the analysis loop via {@link #setParamOrigins(java.util.Map)}.
    *
    * <p>Reverse post-order analyses a callee before any of its callers, so a summary-based lookup at
    * sink-emit time cannot see where the value came from — the caller's summary simply does not
@@ -228,7 +228,7 @@ public final class AnalysisContext {
   }
 
   /**
-   * R1109: parameters whose every observed call site passes a value the analysis can prove clean.
+   * parameters whose every observed call site passes a value the analysis can prove clean.
    *
    * <p>Keyed the same way as {@link #paramOrigins}: {@code "signature#paramIndex"}.
    *
@@ -350,7 +350,7 @@ public final class AnalysisContext {
   }
 
   /**
-   * R1108: every local of {@code signature} that may be the same object as {@code receiver}.
+   * every local of {@code signature} that may be the same object as {@code receiver}.
    *
    * <p>Returns an <em>empty</em> set when no alias map is installed or the receiver is unknown.
    * That empty set means "no alias information", not "no aliases" — a checker must fall back to its
@@ -364,7 +364,7 @@ public final class AnalysisContext {
   }
 
   /**
-   * R1113: the abstract objects a local of {@code signature} may point at.
+   * the abstract objects a local of {@code signature} may point at.
    *
    * <p>Added because a consumer that transfers a guard along aliases needs more than "may these two
    * be the same object": it has to know whether the guarded name's fact set <em>covers</em> the
@@ -383,7 +383,7 @@ public final class AnalysisContext {
   }
 
   /**
-   * R1114: may this local hold the null literal?
+   * may this local hold the null literal?
    *
    * <p>{@code false} means "no null path was found", which is <em>not</em> a proof of non-null: an
    * unmodelled write leaves no trace, so a checker must keep its normal conservative behaviour when
@@ -426,13 +426,13 @@ public final class AnalysisContext {
    * whose checker left it empty.
    */
   public void setCurrentFunction(org.plumb.tac.ir.TacFunction fn) {
-    // R778a — ThreadLocal so the parallel worklist's
+    // — ThreadLocal so the parallel worklist's
     // worker pool doesn't race on a single field.
     // Each worker thread now sees its own
     // currentFunction, so FindingReporter.report()
     // resolves to the function currently being
     // analysed on THIS worker (not the most recent
-    // write from any worker). Pre-R778a: the field
+    // write from any worker). Pre-the field
     // was a plain reference that any worker could
     // overwrite; the synchronized report() block
     // didn't prevent Worker B's analyseOneFunction
@@ -447,7 +447,7 @@ public final class AnalysisContext {
    * whose checker didn't set it.
    */
   public org.plumb.tac.ir.TacFunction currentFunction() {
-    // R778a — read the per-thread value. Falls back
+    // — read the per-thread value. Falls back
     // to null if no function is currently being
     // analysed on the calling thread.
     return currentFunction.get();
@@ -476,27 +476,26 @@ public final class AnalysisContext {
   }
 
   /**
-   * R-810 ? the engine's {@link org.plumb.dfa.resolve.StaticFieldResolver} for resolving {@code
-   * public static final} initializers. Set by the engine after {@link
+   * ? the engine's {@link org.plumb.dfa.resolve.StaticFieldResolver} for resolving {@code public
+   * static final} initializers. Set by the engine after {@link
    * org.plumb.dfa.resolve.ProjectCompilationContext#index()} is called; defaults to {@code null}
    * for tests that build an {@link AnalysisContext} directly (in which case the field-LOAD path
-   * falls back to the orphan-SOURCE shape ? same behaviour as pre-R-810).
+   * falls back to the orphan-SOURCE shape ? same behaviour as pre-).
    */
   private volatile org.plumb.dfa.resolve.StaticFieldResolver staticFields;
 
   /**
-   * R-810 ? install the {@link org.plumb.dfa.resolve.StaticFieldResolver} used by FIELDLOAD
-   * resolution. Volatile so a checker running on a different thread (parallel analysis) sees the
-   * published value on its next read.
+   * ? install the {@link org.plumb.dfa.resolve.StaticFieldResolver} used by FIELDLOAD resolution.
+   * Volatile so a checker running on a different thread (parallel analysis) sees the published
+   * value on its next read.
    */
   public void setStaticFieldResolver(org.plumb.dfa.resolve.StaticFieldResolver r) {
     this.staticFields = r;
   }
 
   /**
-   * R-810 ? return the {@link org.plumb.dfa.resolve.StaticFieldResolver} previously installed via
-   * {@link #setStaticFieldResolver}, or {@code null} if none was installed. Callers must
-   * null-check.
+   * ? return the {@link org.plumb.dfa.resolve.StaticFieldResolver} previously installed via {@link
+   * #setStaticFieldResolver}, or {@code null} if none was installed. Callers must null-check.
    */
   public org.plumb.dfa.resolve.StaticFieldResolver staticFields() {
     return staticFields;

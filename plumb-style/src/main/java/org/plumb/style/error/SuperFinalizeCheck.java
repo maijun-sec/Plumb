@@ -12,9 +12,9 @@ import org.plumb.style.StyleContext;
 /**
  * finalize() must call super.finalize().
  *
- * <p>Pattern D R-818: per-method visit. If method name is {@code "finalize"} and no descendant
- * {@code super.finalize()} call, fire (preserves original behavior for abstract / native methods
- * which lack a body).
+ * <p>Pattern D per-method visit. If method name is {@code "finalize"} and no descendant {@code
+ * super.finalize()} call, fire (preserves original behavior for abstract / native methods which
+ * lack a body).
  */
 public final class SuperFinalizeCheck implements AstChecker {
   private static final RuleDef DEFAULT_RULE =

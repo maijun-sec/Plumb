@@ -27,8 +27,8 @@ public final class FindingReporter {
   private final java.util.Set<String> seen = new java.util.HashSet<>();
 
   /**
-   * R-803 P2: optional v2 {@link Trace} cache. When a checker attaches a v2 trace to a finding via
-   * {@link #attachV2Trace(Finding, Trace)}, it is stored here keyed by the (post-rewrite) Finding
+   * P2: optional v2 {@link Trace} cache. When a checker attaches a v2 trace to a finding via {@link
+   * #attachV2Trace(Finding, Trace)}, it is stored here keyed by the (post-rewrite) Finding
    * identity. v1 reporters (NDJSON, SARIF, console) continue to consume the flattened {@code
    * dataflowSteps} list on the Finding itself; v2-aware consumers (R-PATCH v3+ AI dedup, SARIF with
    * the {@code v2Trace} extension, future Plumb-UI trace viewer) read from this cache. The cache
@@ -111,7 +111,7 @@ public final class FindingReporter {
         if (resolved != null && !resolved.isEmpty()) {
           ff = ff.withFilePath(resolved);
         } else {
-          // R778a — last-resort fallback. If the
+          // — last-resort fallback. If the
           // enclosingClass lookup fails (e.g. for
           // synthesized functions whose enclosing class
           // wasn't registered in the path map), fall
@@ -196,7 +196,7 @@ public final class FindingReporter {
       }
       return;
     }
-    // R-803 P2: if a v2 trace was stashed by
+    // P2: if a v2 trace was stashed by
     // reportWithTrace, attach it to the
     // post-rewrite finding instance (ff, not the
     // pre-rewrite input). This is the
@@ -225,9 +225,9 @@ public final class FindingReporter {
   }
 
   /**
-   * R-803 P2: attach a v2 {@link Trace} to a {@link Finding}. The trace is cached under the
-   * finding's identity (IdentityHashMap) and made available via {@link #traceFor(Finding)} for
-   * v2-aware consumers.
+   * P2: attach a v2 {@link Trace} to a {@link Finding}. The trace is cached under the finding's
+   * identity (IdentityHashMap) and made available via {@link #traceFor(Finding)} for v2-aware
+   * consumers.
    *
    * <p>Call order: invoke <em>after</em> the finding has been reported (the cache key is the
    * finding instance passed in; if v1's {@link #report(Finding)} rewrote the finding via {@code
@@ -250,10 +250,9 @@ public final class FindingReporter {
   }
 
   /**
-   * R-803 P2: read the v2 {@link Trace} previously attached via {@link #attachV2Trace(Finding,
-   * Trace)}. Returns {@code null} when no v2 trace was attached (v1-only finding). v2-aware
-   * consumers (SARIF with {@code v2Trace} extension, AI dedup tool) call this once per finding they
-   * render.
+   * P2: read the v2 {@link Trace} previously attached via {@link #attachV2Trace(Finding, Trace)}.
+   * Returns {@code null} when no v2 trace was attached (v1-only finding). v2-aware consumers (SARIF
+   * with {@code v2Trace} extension, AI dedup tool) call this once per finding they render.
    */
   public synchronized Trace traceFor(Finding finding) {
     if (finding == null) return null;
@@ -261,7 +260,7 @@ public final class FindingReporter {
   }
 
   /**
-   * R-803 P2: composite v1+v2 report. Equivalent to {@code attachV2Trace(finding, trace);
+   * P2: composite v1+v2 report. Equivalent to {@code attachV2Trace(finding, trace);
    * report(finding);} but the v2 trace is attached under the <em>final</em> (post-rewrite) Finding
    * instance, so {@link #traceFor(Finding)} succeeds when called against the same instance returned
    * by {@link #all()}.
@@ -290,8 +289,8 @@ public final class FindingReporter {
   }
 
   /**
-   * R-803 P2: per-thread handoff for v2 trace so {@link #reportWithTrace(Finding, Trace)} can stash
-   * the trace while {@link #report(Finding)} is rewriting the Finding, then re-key on the final
+   * P2: per-thread handoff for v2 trace so {@link #reportWithTrace(Finding, Trace)} can stash the
+   * trace while {@link #report(Finding)} is rewriting the Finding, then re-key on the final
    * instance. {@link ThreadLocal} (not a global field) so parallel checkers don't trample each
    * other ? each thread sees its own handoff.
    */

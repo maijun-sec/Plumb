@@ -96,11 +96,11 @@ public final class IteratorConcurrentModificationChecker implements DfaChecker {
       TacFunction fn,
       String collectionName,
       String detail) {
-    // R-812 v2 trace: single-node VIOLATION
+    // v2 trace: single-node VIOLATION
     // with ITERATOR_CME op + a Free operand
     // encoding the "cme: <detail>" shape so
     // the AI dedup layer can see the collection
-    // name + mutation op without regex-parsing
+    // name mutation op without regex-parsing
     // the legacy flow string.
     PatternTrace.reportFree(
         ctx,

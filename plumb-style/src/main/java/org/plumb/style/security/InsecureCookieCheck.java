@@ -1,5 +1,5 @@
 /*
- * R-812 ? InsecureCookieCheck (CWE-614) migrated from
+ * ? InsecureCookieCheck (CWE-614) migrated from
  * plumb-dfa/.../InsecureCookieChecker.java to plumb-style AST.
  *
  * <p>Flags construction of a {@code Cookie} (or

@@ -1,7 +1,7 @@
 /*
  * lambda parameter name shadows outer variable.
  *
- * <p><b>R-818 (2026-10-14): pattern A rewrite.</b> The previous
+ * <p><b>pattern A rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(ClassOrInterfaceDeclaration)} (1 walk) + for
  * each class {@code c.findAll(LambdaExpr)} (1 walk per class).
@@ -14,8 +14,6 @@
  * used here.</p>
  */
 package org.plumb.style.style;
-
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;

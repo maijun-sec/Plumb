@@ -8,12 +8,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Comparing {@code String} literals with {@code ==} / {@code !=} ? use {@code .equals()}.
- *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(BinaryExpr.class)} before.
- */
+/** Comparing {@code String} literals with {@code ==} / {@code !=} ? use {@code .equals()}. */
 public final class StringLiteralEqualityCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

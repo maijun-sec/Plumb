@@ -20,7 +20,6 @@ import org.plumb.style.StyleContext;
  * | INT | `4` | Minimum consecutive digits to require underscores | | `includeFloat` | BOOLEAN |
  * `true` | Also check float/double literals |
  */
-// R-AST-FIX-2026-10-18 (Pass B): removed duplicate paramInt helper.
 public final class UseUnderscoresInNumericLiteralsCheck implements AstChecker {
 
   private static final RuleParameter[] PARAMS = {

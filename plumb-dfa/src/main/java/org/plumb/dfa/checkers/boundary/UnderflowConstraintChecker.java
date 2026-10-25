@@ -12,7 +12,7 @@ import org.plumb.tac.ir.UnaryOperator;
 /**
  * CWE-191: integer underflow.
  *
- * <p>Fires when an arithmetic op ({@code -} or {@code *}, both R704-C2 / Lesson 912) or {@code --}
+ * <p>Fires when an arithmetic op ({@code -} or {@code *}, both -C2 / Lesson 912) or {@code --}
  * unary on int / long / byte / short could wrap below the type's lower bound.
  *
  * <p>Multiplication is a CWE-191 hazard because for byte / short a large positive times a large
@@ -59,7 +59,7 @@ public final class UnderflowConstraintChecker extends BoundaryConstraintChecker 
   protected String sinkPredicate(TacInstruction ins, AnalysisContext ctx) {
     if (!(ins.dest instanceof TacOperand.TacVar dest)) return null;
     TacType t = dest.type();
-    // R759-D: TAC IR often leaves UNARYOP / BINOP
+    // D: TAC IR often leaves UNARYOP / BINOP
     // dest type as <unknown> (the front-end
     // hasn't propagated the operand type to
     // the new temp). Fall back to lhs1 type

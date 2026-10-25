@@ -15,17 +15,8 @@
  * to a simple-name and AST-text heuristic so it still catches the obvious
  * shapes.</p>
  *
- * <p>M5 part-4 migration (2026-10-17): two-stage pattern —
- * {@link #visit(CompilationUnit, StyleContext)} collects the set of local
- * SecurityException subclasses in a single walk, then {@link
- * #visit(CatchClause, StyleContext)} consumes it. The dispatcher guarantees
- * the CU visit fires before any per-node visits for the same file, so the
- * order is safe. The {@code localSecurityExceptions} field is cleared in
- * {@code visit(CU)} so state doesn't leak across files.
  */
 package org.plumb.style.security;
-
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.expr.MethodCallExpr;
@@ -226,9 +217,9 @@ public final class UnloggedSecurityExceptionCheck implements AstChecker {
   }
 
   /**
-   * Returns true if any statement in the catch clause body looks like a logging call. R-819:
-   * replaces the original per-statement {@code s.findAll(MethodCallExpr)} loop with a single walk
-   * of {@code cc.getBody()}.
+   * Returns true if any statement in the catch clause body looks like a logging call. replaces the
+   * original per-statement {@code s.findAll(MethodCallExpr)} loop with a single walk of {@code
+   * cc.getBody()}.
    */
   private boolean containsLogging(CatchClause cc) {
     final boolean[] found = {false};

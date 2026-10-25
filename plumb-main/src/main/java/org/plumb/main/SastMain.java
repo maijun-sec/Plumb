@@ -49,11 +49,9 @@ public final class SastMain {
           cfg.inputs.add(Path.of(s));
         }
       }
-      // R797 (Oct 2026): external type-resolution inputs.
+      // external type-resolution inputs.
       // These are consumed by JavaSourceParser's TypeSolver
-      // only — never enter the TAC pipeline. See
-      // juliet-coverage/reports/r797/PLAN.md for the
-      // per-category contract.
+      // only — never enter the TAC pipeline.
       if (cli.hasOption("source-root")) {
         for (String s : cli.getOptionValues("source-root")) {
           cfg.sourceRoots.add(Path.of(s));
@@ -90,7 +88,7 @@ public final class SastMain {
         cfg.cgStrategy = cli.getOptionValue("cg-strategy");
       }
       if (cli.hasOption("ai-dedup")) {
-        // R-? Step 7 — flip the master switch. The
+        // Step 7 — flip the master switch. The
         // LlmConnection (baseUrl / apiKey / model /
         // timeout) is loaded from the YAML or env
         // vars; the CLI flag is just the
@@ -113,7 +111,7 @@ public final class SastMain {
       if (cli.hasOption("ai-dedup-stats")) {
         cfg.cliAiDedupStats = true;
       }
-      // R-833 P2: build-system discovery. When --build-system is
+      // P2: build-system discovery. When --build-system is
       // given (or auto-detected via --project-root), the chosen
       // adapter's BuildProject feeds cfg.inputs / cfg.sourceRoots /
       // cfg.moduleRoots / cfg.classpathJars.
@@ -154,12 +152,11 @@ public final class SastMain {
             .argName("path")
             .desc("Input file or directory (may be repeated)")
             .build());
-    // R797 (Oct 2026): three new options that feed
+    // three new options that feed
     // JavaSourceParser's TypeSolver. None of them are
     // scanned for findings; the third-party jars in
     // --classpath in particular never enter the TAC
-    // pipeline. See juliet-coverage/reports/r797/PLAN.md
-    // for the full contract.
+    // pipeline.
     opts.addOption(
         Option.builder()
             .longOpt("source-root")
@@ -242,7 +239,7 @@ public final class SastMain {
                     + "rta=Rapid Type, 1cfa=1-CFA, stub=direct-only, "
                     + "cached:<name>:<path>=wrap with disk cache")
             .build());
-    // R-? Step 7 — AI options. (The --ai-scan and
+    // Step 7 — AI options. (The --ai-scan and
     // --aggressiveness flags from earlier rounds are
     // gone: per-rule prompts live on the checker now,
     // and "scan" / "aggressiveness" folded into the
@@ -300,7 +297,7 @@ public final class SastMain {
                     + "a fresh codebase. No effect without "
                     + "--ai-dedup (or ai.dedup: true in YAML).")
             .build());
-    // R-833 P2: build-system integration. --build-system
+    // P2: build-system integration. --build-system
     // explicitly picks an adapter; --project-root sets the project
     // root the adapter will resolve. When only --project-root is
     // given, the registry auto-detects the adapter (Maven / Gradle
@@ -337,7 +334,7 @@ public final class SastMain {
   }
 
   /**
-   * R-833 P2: Resolve the build system and feed its {@link BuildProject} into the running {@link
+   * P2: Resolve the build system and feed its {@link BuildProject} into the running {@link
    * ScanConfig}. The adapter's sourceRoots and moduleRoots are added to the corresponding {@code
    * cfg} lists; the classpathJars and source files are appended as well. The user retains full
    * control: explicit {@code --input} / {@code --classpath} flags are kept in addition to whatever
@@ -383,13 +380,13 @@ public final class SastMain {
   }
 
   /**
-   * R-? — print the list of known rule ids (sourced from the plumb-ai RulePromptRegistry's bundled
+   * — print the list of known rule ids (sourced from the plumb-ai RulePromptRegistry's bundled
    * list, which covers the long tail of rules the engine ships). Used by the --list-rules CLI flag.
    */
   private static void printRuleList() {
     System.out.println("Available rules (rule id / CWE / class):");
     System.out.println();
-    // R-? Step 7 — rule prompts are now embedded in
+    // Step 7 — rule prompts are now embedded in
     // each checker's getAiPrompt() method, not in a
     // central registry. --list-rules still shows the
     // rule names that have a built-in prompt (the

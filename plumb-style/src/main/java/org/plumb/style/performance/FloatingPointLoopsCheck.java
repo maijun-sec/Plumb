@@ -10,12 +10,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * {@code for} loop with a {@code float} / {@code double} counter.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ForStmt.class)} before.
- */
+/** {@code for} loop with a {@code float} / {@code double} counter. */
 public final class FloatingPointLoopsCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

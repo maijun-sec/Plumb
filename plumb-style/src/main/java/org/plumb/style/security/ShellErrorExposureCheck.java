@@ -1,5 +1,5 @@
 /*
- * R722-C9: AST-style CWE-535 (Information Exposure Through
+ * C9: AST-style CWE-535 (Information Exposure Through
  * Shell Error) checker.
  *
  * <p>Fires when a write to {@link System#err} / an

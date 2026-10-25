@@ -199,7 +199,7 @@ public final class UncaughtExceptionPropagator implements DfaChecker {
   }
 
   private void emit(AnalysisContext ctx, TacInstruction ins, TacFunction fn, String calleeSig) {
-    // R-812 v2 trace: cross-function summary-fold
+    // v2 trace: cross-function summary-fold
     // shape. The CALL is the entry point; the
     // callee's THROW is the unhandled source; the
     // VIOLATION fires on the call site because the
@@ -211,7 +211,7 @@ public final class UncaughtExceptionPropagator implements DfaChecker {
     // not data flowing through a tracked var. We
     // surface the callee signature in the operands
     // so the AI dedup layer can see "callee throws
-    // + caller has no catch" without parsing the
+    // caller has no catch" without parsing the
     // legacy flow string.
     TraceBuilder b = new TraceBuilder();
     int handle =

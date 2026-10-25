@@ -133,7 +133,7 @@ public final class TuningConfig {
   }
 
   /**
-   * R1107: the context-sensitivity policy the shared points-to analysis runs under.
+   * the context-sensitivity policy the shared points-to analysis runs under.
    *
    * <p>{@code null} means "not configured", which resolves to {@link
    * org.plumb.dfa.points.AbstractObject.Policy#defaultPolicy()} rather than to any particular

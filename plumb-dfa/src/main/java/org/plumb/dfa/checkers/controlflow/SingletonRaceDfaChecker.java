@@ -211,7 +211,7 @@ public final class SingletonRaceDfaChecker implements DfaChecker {
       int dot = key.indexOf("::");
       String cls = key.substring(0, dot);
       String field = key.substring(dot + 2);
-      // R-812 v2 trace: cross-method summary
+      // v2 trace: cross-method summary
       // shape. The (class, field) pair is
       // encoded in the FieldRef operand;
       // method counts go in a Free operand so

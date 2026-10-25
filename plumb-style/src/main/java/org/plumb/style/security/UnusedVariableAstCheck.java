@@ -1,5 +1,5 @@
 /*
- * R742-C1: AST-level CWE-563 (Assignment to Variable
+ * C1: AST-level CWE-563 (Assignment to Variable
  * without Use) checker.
  *
  * <p>Companion / replacement for the noisy
@@ -17,7 +17,7 @@
  * <p>The good pattern uses {@code data} later; the bad
  * pattern does not.</p>
  *
- * <p>R742 strategy: cross-block data-flow on
+ * <p> strategy: cross-block data-flow on
  * {@link com.github.javaparser.ast.body.MethodDeclaration}:
  * for every local variable in the method body, build a
  * chronological list of {@code (line, kind)} records
@@ -139,7 +139,7 @@ public final class UnusedVariableAstCheck implements AstChecker {
 
     // Walk ALL BlockStmts in the method body and
     // collect statements in source order. This
-    // matches the R741 cross-block tracking pattern.
+    // matches the cross-block tracking pattern.
     List<Statement> allStmts = new ArrayList<>();
     for (BlockStmt block : n.findAll(BlockStmt.class)) {
       for (Statement s : block.getStatements()) {
@@ -185,7 +185,7 @@ public final class UnusedVariableAstCheck implements AstChecker {
 
     // Second pass: collect every NameExpr that is
     // not the LHS of an assignment (= a READ).
-    // R751: skip reads inside opaque if-branches
+    // skip reads inside opaque if-branches
     // (if (IO.staticReturnsTrueOrFalse())) because
     // those branches may not execute — a FLAW path
     // could leave the variable unused.
@@ -205,7 +205,7 @@ public final class UnusedVariableAstCheck implements AstChecker {
       }
     }
 
-    // R749: parameter-overwrite and unused-parameter detection.
+    // parameter-overwrite and unused-parameter detection.
     // For each parameter, walk statements in source
     // order. Track first mention, whether first
     // mention is an assign, and whether it was ever
@@ -432,8 +432,8 @@ public final class UnusedVariableAstCheck implements AstChecker {
   }
 
   /**
-   * R751: returns true if {@code s} is inside a then- or else-branch of an {@code if} whose
-   * condition is {@code IO.staticReturnsTrueOrFalse()} (the testcasesupport opaque helper).
+   * returns true if {@code s} is inside a then- or else-branch of an {@code if} whose condition is
+   * {@code IO.staticReturnsTrueOrFalse()} (the testcasesupport opaque helper).
    */
   private static boolean isInsideOpaqueIfBranch(Statement s) {
     Node parent = s.getParentNode().orElse(null);

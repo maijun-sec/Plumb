@@ -1,5 +1,5 @@
 /*
- * R722-C12: AST-style CWE-193 (Off-by-one Error) checker.
+ * C12: AST-style CWE-193 (Off-by-one Error) checker.
  *
  * <p>Fires on a comparison with {@code <= array.length}
  * or {@code <= array.length - 1} that is the loop

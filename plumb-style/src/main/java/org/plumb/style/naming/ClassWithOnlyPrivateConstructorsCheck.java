@@ -8,12 +8,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Class with only private constructors should be {@code final}.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ClassOrInterfaceDeclaration.class)} before.
- */
+/** Class with only private constructors should be {@code final}. */
 public final class ClassWithOnlyPrivateConstructorsCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

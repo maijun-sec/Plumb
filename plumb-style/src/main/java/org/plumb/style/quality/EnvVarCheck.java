@@ -1,13 +1,9 @@
 /*
- * R-813: AST-style CWE-526 (Info Exposure Env Vars) checker.
+ * AST-style CWE-526 (Info Exposure Env Vars) checker.
  *
  * <p>Fires on calls to {@code System.getenv(...)} which can leak sensitive environment data
  * (passwords, API keys, internal hostnames) into logs / responses / errors.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(MethodCallExpr.class)} before. Per-line dedup is kept as
- * an instance field cleared in {@link #init(StyleContext)} so the dispatcher can reuse one
- * checker instance across files.
  */
 package org.plumb.style.quality;
 

@@ -2,10 +2,6 @@
  * Coverity <code>UNINIT_NONNULL</code> (CWE-457) ? reports fields that are annotated as non-null but
  * are not assigned a non-null value by <em>every</em> constructor.
  *
- * <p>M5 part-4 migration (2026-10-17): the outer class loop now uses {@code
- * visit(ClassOrInterfaceDeclaration, StyleContext)} (one visit per class) so the dispatcher does
- * the outer traversal. The per-constructor / per-field body walks stay as local loops because we
- * need to compare each field against each constructor's body.
  */
 package org.plumb.style.quality;
 

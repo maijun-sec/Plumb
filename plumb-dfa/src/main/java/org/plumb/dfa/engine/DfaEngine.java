@@ -127,19 +127,19 @@ public final class DfaEngine {
   private java.util.Map<String, java.nio.file.Path> functionSourcePaths;
 
   /**
-   * R-810 ? the {@link org.plumb.dfa.resolve.StaticFieldResolver} installed on every {@link
+   * ? the {@link org.plumb.dfa.resolve.StaticFieldResolver} installed on every {@link
    * AnalysisContext} the engine builds during {@link #run}. Set by the caller (e.g. ScanRunner via
    * {@link ProjectCompilationContext#staticFields()}) before {@link #run}; {@code null} means the
    * engine skips the const-static-field resolution branch and FIELDLOAD falls back to the
-   * orphan-SOURCE shape (same behaviour as pre-R-810). The field is read by every {@code new
+   * orphan-SOURCE shape (same behaviour as pre-). The field is read by every {@code new
    * AnalysisContext(...)} site at {@link #run}-time and installed via {@link
    * AnalysisContext#setStaticFieldResolver}.
    */
   private org.plumb.dfa.resolve.StaticFieldResolver staticFieldResolver;
 
   /**
-   * R-810 ? install the {@link org.plumb.dfa.resolve.StaticFieldResolver} used by the engine.
-   * Volatile so parallel workers see the published value. Idempotent.
+   * ? install the {@link org.plumb.dfa.resolve.StaticFieldResolver} used by the engine. Volatile so
+   * parallel workers see the published value. Idempotent.
    */
   public void setStaticFieldResolver(org.plumb.dfa.resolve.StaticFieldResolver r) {
     this.staticFieldResolver = r;
@@ -200,7 +200,7 @@ public final class DfaEngine {
    */
   public DfaEngine withFunctionSourcePaths(java.util.Map<String, java.nio.file.Path> paths) {
     this.functionSourcePaths = paths;
-    // R-810: lazily build a
+    // lazily build a
     // {@link StaticFieldResolver} keyed off the
     // first source path. The resolver walks the
     // project root and indexes every
@@ -214,7 +214,7 @@ public final class DfaEngine {
     // throws (rare — only on filesystem
     // permission failures), the resolver stays
     // null and FIELDLOADs fall back to the
-    // pre-R-810 orphan behaviour.
+    // pre- orphan behaviour.
     if (this.staticFieldResolver == null && paths != null && !paths.isEmpty()) {
       java.nio.file.Path sample = null;
       for (java.nio.file.Path p : paths.values()) {
@@ -236,7 +236,7 @@ public final class DfaEngine {
           } catch (Exception ignore) {
             // Leave staticFieldResolver null;
             // FIELDLOADs fall through to the
-            // orphan-SOURCE shape (pre-R-810
+            // orphan-SOURCE shape (pre-
             // behaviour). The exception is
             // swallowed because resolver
             // failure is non-fatal — every
@@ -262,9 +262,9 @@ public final class DfaEngine {
   }
 
   /**
-   * R-810 ? pick the narrowest root the StaticFieldResolver can walk without timing out. Walks up
-   * from the input file's directory and prefers {@code <ancestor>/src/testcasesupport} (Juliet's IO
-   * + helper root), then {@code <ancestor>/src} (Juliet's full tree, capped), then the file's own
+   * ? pick the narrowest root the StaticFieldResolver can walk without timing out. Walks up from
+   * the input file's directory and prefers {@code <ancestor>/src/testcasesupport} (Juliet's IO
+   * helper root), then {@code <ancestor>/src} (Juliet's full tree, capped), then the file's own
    * parent (single-file unit-test case). Returns {@code null} if no usable root can be found below
    * the safety budget.
    */
@@ -424,7 +424,7 @@ public final class DfaEngine {
           ctx.summaryCache().put(fn.signature(), merged2);
           summaryCount++;
         }
-        // R716: qualified-alias put. Juliet's cross-TU
+        // qualified-alias put. Juliet's cross-TU
         // scan goes through {@code runWithGlobalStore}
         // (this code path). Without this helper call the
         // bare {@code method/arity} alias collides across
@@ -434,7 +434,7 @@ public final class DfaEngine {
         r716putQualifiedAliasSummary(ctx, fn, merged2);
       }
     }
-    // R717: drain any functions that need re-analysis because
+    // drain any functions that need re-analysis because
     // a FIELDSTORE populated crossFnClassFieldTaint for a
     // field they had already read (their first walk ran when
     // the map was empty). The checkers track the queue; we
@@ -538,7 +538,7 @@ public final class DfaEngine {
                     if (!m.isTrivial() || m.hasBody()) {
                       ctx.summaryCache().put(sig, m);
                     }
-                    // R716: qualified-alias put
+                    // qualified-alias put
                     // for the parallel global worklist.
                     // ConcurrentHashMap.put is
                     // last-writer-wins per key, but
@@ -622,8 +622,8 @@ public final class DfaEngine {
   }
 
   /**
-   * R1099: compute, for every function and parameter index, the taint ORIGIN its callers pass in,
-   * and publish it on {@link AnalysisContext#setParamOrigins(java.util.Map)}.
+   * compute, for every function and parameter index, the taint ORIGIN its callers pass in, and
+   * publish it on {@link AnalysisContext#setParamOrigins(java.util.Map)}.
    *
    * <p>Why this has to be a pre-pass: functions are analysed in reverse post-order, so a callee is
    * analysed before ANY of its callers. When a sink inside the callee emits a finding, the caller's
@@ -648,7 +648,7 @@ public final class DfaEngine {
    * is the actual untrusted entry point rather than an intermediate parameter name.
    */
   /**
-   * R1106: solve the program's alias map once, before any checker runs.
+   * solve the program's alias map once, before any checker runs.
    *
    * <p>Points-to is a whole-program property: a fact learned in one function routinely changes the
    * answer in another, so a per-function solve would be both wrong and more expensive. Solving once
@@ -662,7 +662,7 @@ public final class DfaEngine {
    */
   private void solvePointsTo(AnalysisContext ctx, TacProgram program) {
     try {
-      // R1107: the policy is a configuration knob, not a hard-coded choice. The default is
+      // the policy is a configuration knob, not a hard-coded choice. The default is
       // CALL_SITE (1-CFA) because context insensitivity merges two invocations of the same
       // method into one formal and one return set, and every consumer of this map inherits
       // that merge -- see PointsToSolver's class comment.
@@ -670,7 +670,7 @@ public final class DfaEngine {
       org.plumb.dfa.points.PointsToSolver solver = new org.plumb.dfa.points.PointsToSolver(policy);
       solver.solve(program.functions());
       ctx.setPointsToSolver(solver);
-      // R1108: copy equivalence is solved in the same pass so a checker can transfer a fact from
+      // copy equivalence is solved in the same pass so a checker can transfer a fact from
       // one name to another even when the receiver has no points-to set (a parameter, typically).
       ctx.setCopyEquivalence(org.plumb.dfa.points.CopyEquivalence.of(program.functions()));
       LOG.debug("points-to analysis solved under policy {}", policy);
@@ -688,7 +688,7 @@ public final class DfaEngine {
     // returnKey(fn) holds the origin of the function's return value.
     HashMap<String, String> origin = new HashMap<>();
     HashSet<String> ambiguous = new HashSet<>();
-    // R1109: parameters every observed call site supplies with a value the analysis can
+    // parameters every observed call site supplies with a value the analysis can
     // positively prove clean. See setParamCleanliness for the contract.
     HashSet<String> cleanArgs = new HashSet<>();
     HashSet<String> dirtyArgs = new HashSet<>();
@@ -778,7 +778,7 @@ public final class DfaEngine {
 
       // (b) cross-function transfer.
       //
-      // R1099: edges come from the TAC CALL instructions, NOT from the call graph.
+      // edges come from the TAC CALL instructions, NOT from the call graph.
       // The global call graph namespaces a node as "Class :: signature" while the
       // merged TacProgram uses the bare signature, so matching them by equality
       // silently yields zero edges -- which is exactly the bug this replaced.
@@ -794,7 +794,7 @@ public final class DfaEngine {
             int argIdx = j + 1; // args[0] is the receiver slot
             if (argIdx >= args.size()) break;
             String k = key(callee, j);
-            // R1109: was this argument a literal? Only a literal is positive proof
+            // was this argument a literal? Only a literal is positive proof
             // of cleanliness -- see the CLEAN_ARGUMENTS contract.
             //
             // This must be evaluated BEFORE the TacVar guard below: a literal is not a
@@ -814,7 +814,7 @@ public final class DfaEngine {
             if (src == null) continue;
             if (ambiguous.contains(k)) continue;
             String prev = origin.get(k);
-            // R1099: the entry-boundary seed (`param:<own name>`) is a PLACEHOLDER,
+            // the entry-boundary seed (`param:<own name>`) is a PLACEHOLDER,
             // not a real finding about provenance -- a callee always has one, which is
             // exactly why it used to shadow every propagated origin and leave the
             // reported source stuck at the callee's own parameter. So a propagated
@@ -842,7 +842,7 @@ public final class DfaEngine {
       origin.remove(k);
     }
     ctx.setParamOrigins(Map.copyOf(origin));
-    // R1109: only parameters with at least one call site and no non-literal call site count
+    // only parameters with at least one call site and no non-literal call site count
     // as clean. A parameter nobody calls keeps "unknown", which preserves the historical
     // behaviour where a method analysed as an entry point still treats its parameters as
     // trust boundaries.
@@ -851,18 +851,18 @@ public final class DfaEngine {
       if (!dirtyArgs.contains(k)) clean.put(k, Boolean.TRUE);
     }
     ctx.setParamCleanliness(java.util.Collections.unmodifiableMap(clean));
-    /* R1099 diag removed */
+    /* diag removed */
   }
 
-  /** R1099: name of the variable an instruction writes, or {@code null}. */
+  /** name of the variable an instruction writes, or {@code null}. */
   private static String destVarName(TacInstruction ins) {
     if (ins == null) return null;
     return (ins.dest instanceof org.plumb.tac.ir.TacOperand.TacVar d) ? d.name() : null;
   }
 
   /**
-   * R1099: the first non-null label among the instruction's operands, or {@code null} when none of
-   * them carries taint. Used for both dest-inherits-operand and RETURN.
+   * the first non-null label among the instruction's operands, or {@code null} when none of them
+   * carries taint. Used for both dest-inherits-operand and RETURN.
    */
   private static String labelOfAnyArg(TacInstruction ins, HashMap<String, String> lab) {
     if (ins == null || lab == null) return null;
@@ -876,10 +876,10 @@ public final class DfaEngine {
   }
 
   /**
-   * R1099: resolve a CALL's {@code calleeSig} (e.g. {@code "SourceLayer.readRequestParam/1"}) to
-   * the function in the program whose declared signature is {@code
-   * "readRequestParam(String):String"}. The two use different naming schemes, so we reduce both to
-   * {@code name/arity} and then disambiguate.
+   * resolve a CALL's {@code calleeSig} (e.g. {@code "SourceLayer.readRequestParam/1"}) to the
+   * function in the program whose declared signature is {@code "readRequestParam(String):String"}.
+   * The two use different naming schemes, so we reduce both to {@code name/arity} and then
+   * disambiguate.
    *
    * <p>When the {@code name/arity} key has more than one candidate (overloads, or the same method
    * name in different classes of a merged program) we prefer a candidate in the class named by the
@@ -910,7 +910,7 @@ public final class DfaEngine {
     return null;
   }
 
-  /** R1099: {@code "SourceLayer.readRequestParam/1"} -> {@code "readRequestParam/1"}. */
+  /** {@code "SourceLayer.readRequestParam/1"} -> {@code "readRequestParam/1"}. */
   private static String nameArityOfCall(String calleeSig) {
     if (calleeSig == null) return "";
     String s = calleeSig;
@@ -924,7 +924,7 @@ public final class DfaEngine {
     return head + s.substring(slash);
   }
 
-  /** R1099: {@code "SourceLayer.readRequestParam/1"} -> {@code "SourceLayer"}. */
+  /** {@code "SourceLayer.readRequestParam/1"} -> {@code "SourceLayer"}. */
   private static String qualifierOf(String calleeSig) {
     if (calleeSig == null) return null;
     String s = calleeSig;
@@ -937,9 +937,9 @@ public final class DfaEngine {
   }
 
   /**
-   * R1099: {@code "readRequestParam(String):String"} -> {@code "readRequestParam/1"}. Arity is the
-   * number of top-level commas in the parameter list, so a generic parameter containing a comma
-   * ({@code Map<String,Integer>}) is counted as one parameter, not two.
+   * {@code "readRequestParam(String):String"} -> {@code "readRequestParam/1"}. Arity is the number
+   * of top-level commas in the parameter list, so a generic parameter containing a comma ({@code
+   * Map<String,Integer>}) is counted as one parameter, not two.
    */
   private static String nameArity(String fnSignature) {
     if (fnSignature == null) return "";
@@ -968,7 +968,7 @@ public final class DfaEngine {
     return name + "/" + n;
   }
 
-  /** R1099: index of the ')' matching the '(' at {@code open}, or -1. */
+  /** index of the ')' matching the '(' at {@code open}, or -1. */
   private static int matchingParen(String s, int open) {
     int depth = 0;
     for (int i = open; i < s.length(); i++) {
@@ -987,10 +987,10 @@ public final class DfaEngine {
   }
 
   /**
-   * R1099: the entry-boundary placeholder for a parameter — the label every function starts with
-   * before any caller has contributed a real origin. Used to tell "nothing propagated yet" apart
-   * from "a real origin was already established", so a propagated origin can overwrite the
-   * placeholder without being mistaken for a conflicting second source.
+   * the entry-boundary placeholder for a parameter — the label every function starts with before
+   * any caller has contributed a real origin. Used to tell "nothing propagated yet" apart from "a
+   * real origin was already established", so a propagated origin can overwrite the placeholder
+   * without being mistaken for a conflicting second source.
    */
   private static String placeholderFor(TacFunction fn, int paramIndex) {
     if (fn == null || paramIndex < 0 || paramIndex >= fn.params().size()) return null;

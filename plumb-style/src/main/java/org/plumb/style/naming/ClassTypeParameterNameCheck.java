@@ -10,10 +10,6 @@ import org.plumb.style.StyleContext;
 
 /**
  * Class type parameter name should be uppercase single letter ({@code T}, {@code K}, {@code V}).
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ClassOrInterfaceDeclaration.class)} before. Note this rule applies to BOTH classes and
- * interfaces (inter-class parameter names) ? interface parameters follow the same convention.
  */
 public final class ClassTypeParameterNameCheck implements AstChecker {
 

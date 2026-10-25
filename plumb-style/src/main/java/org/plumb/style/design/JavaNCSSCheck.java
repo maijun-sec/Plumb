@@ -20,7 +20,6 @@ import org.plumb.style.StyleContext;
  * | `1500` | Maximum number of statements in a class | | `constructorMaximum` | INT | `80` |
  * Maximum number of statements in a constructor |
  */
-// R-AST-FIX-2026-10-18 (Pass B): removed duplicate paramInt helper.
 public final class JavaNCSSCheck implements AstChecker {
 
   private static final RuleParameter[] PARAMS = {

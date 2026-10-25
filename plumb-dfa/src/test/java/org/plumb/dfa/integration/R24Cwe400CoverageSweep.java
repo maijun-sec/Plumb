@@ -78,7 +78,7 @@ class R24Cwe400CoverageSweep {
   void runBatch() throws Exception {
     long start = System.currentTimeMillis();
     StringBuilder out = new StringBuilder();
-    out.append("R24 ⇒?Resource / exception coverage sweep\n");
+    out.append("R24 →Resource / exception coverage sweep\n");
     out.append("=".repeat(60)).append('\n');
 
     EngineConfig base = ConfigLoader.loadFromClasspath();

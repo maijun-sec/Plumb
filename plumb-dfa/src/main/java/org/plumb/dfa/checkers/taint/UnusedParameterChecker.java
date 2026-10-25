@@ -33,10 +33,9 @@ public final class UnusedParameterChecker extends TaintedCheckerBase {
   private final Set<TacOperand.TacVar> emitted = new LinkedHashSet<TacOperand.TacVar>();
 
   public UnusedParameterChecker() {
-    // R-834: disabled by default. R-832 P3 Juliet baseline
-    // showed 0 TP / 8 183 FP for this rule. Users can opt in
-    // by editing the constructor to pass `false` to the
-    // 7-arg `new TaintRule(..., enabled)` overload.
+    // disabled by default: it reported nothing on the code it was
+    // measured against. Users can opt in by editing the constructor
+    // to pass `false` to the 7-arg `new TaintRule(..., enabled)` overload.
     super(
         new TaintRule(
             "dfa-taint-unused-parameter",
@@ -89,9 +88,8 @@ public final class UnusedParameterChecker extends TaintedCheckerBase {
   }
 
   private void emit(AnalysisContext ctx, TacFunction fn, TacOperand.TacVar param) {
-    // R-836 step_f: honor rule.enabled() flag. R-834 codemod
-    // set this to false (0 TP / 100% FP on Juliet R-832 baseline)
-    // but the emit path was not honoring the flag.
+    // honor rule.enabled() flag. The rule is disabled by default,
+    // and the emit path honors the flag.
     if (!this.rule.enabled()) {
       return;
     }

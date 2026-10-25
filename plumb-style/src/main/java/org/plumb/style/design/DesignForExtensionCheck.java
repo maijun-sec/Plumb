@@ -11,10 +11,6 @@ import org.plumb.style.StyleContext;
 /**
  * Public method in non-{@code final} class should be {@code abstract}, {@code final}, or {@code
  * private} (DESIGN_FOR_EXTENSION).
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ClassOrInterfaceDeclaration.class)} before. The inner per-method walk stays as a local
- * loop because we need to know the enclosing class is non-{@code final}.
  */
 public final class DesignForExtensionCheck implements AstChecker {
 

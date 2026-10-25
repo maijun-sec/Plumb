@@ -1,5 +1,5 @@
 /*
- * R729-A10: AST check for CWE-459 (Incomplete
+ * A10: AST check for CWE-459 (Incomplete
  * Cleanup). Fires when a `deleteOnExit()` call is
  * detected anywhere ? keeping a file alive until JVM
  * shutdown is the canonical incomplete-cleanup

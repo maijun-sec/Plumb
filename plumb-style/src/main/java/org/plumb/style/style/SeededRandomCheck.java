@@ -1,21 +1,14 @@
 /*
- * R729-A8: AST check for CWE-336 (Same Seed in
+ * A8: AST check for CWE-336 (Same Seed in
  * PRNG). Fires when a `*.setSeed(...)` call appears
  * on a Random / SecureRandom receiver, OR when a
  * `new Random(long_literal)` /
  * `new SecureRandom(long_literal)` constructor
  * carries a literal seed.
  *
- * <p>Generic. Juliet's CWE-336 corpus emits exactly
- * `secureRandom.setSeed(SEED)` (where SEED is a
- * hardcoded byte[] literal) in bad() and no setSeed
- * in good(). The heuristic fires on any setSeed()
- * call regardless of whether the seed is hardcoded
- * — Juliet's good() never calls setSeed so the
- * pattern matches only bad() sources in this suite.
- * Real codebases that use setSeed for legitimate
- * deterministic-PRNG testing will need a narrower
- * filter (skip `setSeed(0)` etc.).</p>
+ * <p>Generic: the heuristic fires on any {@code setSeed()} call. Code that uses
+ * {@code setSeed} for legitimate deterministic-PRNG testing needs a narrower
+ * filter (skip {@code setSeed(0)} etc.).</p>
  */
 package org.plumb.style.style;
 

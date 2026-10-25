@@ -24,7 +24,7 @@ import org.plumb.reporter.Finding;
 import org.plumb.tac.ir.TacProgram;
 import org.plumb.tac.translate.TacTranslator;
 
-/** R543 ⇒?single-checker sweep on CWE-15 + CWE-470 + CWE-606. */
+/** R543 →single-checker sweep on CWE-15 + CWE-470 + CWE-606. */
 @Disabled(
     "R787f+: pre-existing TacProgram import drift in plumb-dfa test code; references"
         + " org.plumb.tac.ir.TacProgram but plumb-style uses different unqualified paths. Out of"

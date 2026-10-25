@@ -15,14 +15,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Array literal has heterogeneous types (EC_BAD_ARRAY_STORE).
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ArrayCreationExpr.class)} before. The inner traversal of the initializer values stays as
- * a local loop (not a per-node callback) because we need to compare adjacent element types and
- * break on the first mismatch.
- */
+/** Array literal has heterogeneous types (EC_BAD_ARRAY_STORE). */
 public final class EcBadArrayStoreCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

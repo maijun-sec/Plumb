@@ -1,5 +1,5 @@
 /*
- * R-803 P3.2: serialize a {@link Trace} (DAG of
+ * P3.2: serialize a {@link Trace} (DAG of
  * {@link TraceNode}s) to a JSON object literal.
  *
  * <p>Used by {@code NdjsonEmitter} to emit the
@@ -93,9 +93,9 @@ public final class TraceJsonSerializer {
   }
 
   /**
-   * R-803 P3.2: extract the v2 trace attached to a finding via the {@code
-   * FindingReporter.traceFor()} side channel. Convenience wrapper so the {@code NdjsonEmitter}
-   * doesn't have to know about the reporter.
+   * P3.2: extract the v2 trace attached to a finding via the {@code FindingReporter.traceFor()}
+   * side channel. Convenience wrapper so the {@code NdjsonEmitter} doesn't have to know about the
+   * reporter.
    *
    * <p>Returns {@code null} when no v2 trace was attached (v1-only finding) ? the caller should
    * omit the {@code v2_trace} field in that case to keep back-compat with consumers that don't

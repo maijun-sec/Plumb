@@ -49,7 +49,7 @@ import org.plumb.tac.ir.TacInstruction;
  * ctx.reporter().report(...)} during {@code checkInstruction} and never reaches the summary. The
  * summary is only for effects that matter to a caller.
  *
- * <h2>AI dedup (R-? Step 7)</h2>
+ * <h2>AI dedup (Step 7)</h2>
  *
  * <p>Each checker owns its own rule prompt. The runner calls {@link #getAiPrompt(Finding)} for
  * every finding the checker emitted, passes the prompt + finding context to a Re-Act agent (in
@@ -109,7 +109,7 @@ public interface DfaChecker {
   }
 
   /**
-   * R-? Step 7 ? The rule-specific knowledge the LLM is told about this checker before it judges a
+   * Step 7 ? The rule-specific knowledge the LLM is told about this checker before it judges a
    * finding. The runner prepends the system prompt (FP reducer / bug scanner role) + the dataflow
    * trace + the source context, and sends the whole thing through the Re-Act agent.
    *

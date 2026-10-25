@@ -1,5 +1,5 @@
 /*
- * R728-C2: AST check for CWE-597 (Use of '=='
+ * C2: AST check for CWE-597 (Use of '=='
  * instead of equals() to compare Strings). Fires
  * when a BinaryExpr with operator '==' or '!=' has
  * at least one String-typed operand.

@@ -8,12 +8,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Malformed {@code printf} / {@code format} string literal.
- *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(MethodCallExpr.class)} before.
- */
+/** Malformed {@code printf} / {@code format} string literal. */
 public final class MalformedFormatStringCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

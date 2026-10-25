@@ -1,7 +1,7 @@
 /*
  * modifier order should be public/protected/private static final abstract.
  *
- * <p><b>R-818 (2026-10-14): pattern A rewrite.</b> The previous
+ * <p><b>pattern A rewrite.</b> The previous
  * implementation used 2 findAll (FieldDeclaration +
  * MethodDeclaration). The new implementation uses a single
  * walk with instanceof dispatch. Total: 1 walk per file.</p>

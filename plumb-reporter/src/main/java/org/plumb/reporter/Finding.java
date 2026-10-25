@@ -10,15 +10,15 @@ import org.plumb.rules.RuleDef;
 
 /**
  * One issue produced by a checker. Canonical home for the unified finding model: file + line +
- * severity + rule + message + optional flow trace.
+ * severity rule + message + optional flow trace.
  *
- * <p><b>R776 unification</b>: the legacy {@code org.plumb.dfa.engine.Finding} type was deleted
- * (moved here). DFA checkers now construct findings via the {@link #dfa(String, String, String,
- * String, int, int, org.plumb.rules.RuleDef.Severity, String, String, java.util.List) dfa(...)}
- * factory which carries the DFA-only fields {@code checkerName / ruleId / cwe / flow}. The
- * reporter-only fields {@code rule(RuleDef) / dataflowHead / sinkFunction / aiVerdict / aiReason}
- * stay on the canonical type. Both styles share the same {@link #dataflowSteps} list (now always
- * {@code List<FlowStep>}).
+ * <p><b> unification</b>: the legacy {@code org.plumb.dfa.engine.Finding} type was deleted (moved
+ * here). DFA checkers now construct findings via the {@link #dfa(String, String, String, String,
+ * int, int, org.plumb.rules.RuleDef.Severity, String, String, java.util.List) dfa(...)} factory
+ * which carries the DFA-only fields {@code checkerName / ruleId / cwe / flow}. The reporter-only
+ * fields {@code rule(RuleDef) / dataflowHead / sinkFunction / aiVerdict / aiReason} stay on the
+ * canonical type. Both styles share the same {@link #dataflowSteps} list (now always {@code
+ * List<FlowStep>}).
  *
  * <p>When a {@link RuleDef} is available (style checkers / post-DFA enrichment in {@code
  * ScanRunner}), it carries the canonical rule identity for downstream reporters (NDJSON, AI dedup).
@@ -78,7 +78,7 @@ public final class Finding {
   private final String dataflowHead;
 
   /**
-   * Structured source-to-sink trace (R776: type changed from {@code List<String>} to {@code
+   * Structured source-to-sink trace (type changed from {@code List<String>} to {@code
    * List<FlowStep>}). Each step is a {@link FlowStep} record carrying the role, file, line, column,
    * function signature, and a free-form {@code expr}. Reporters flatten each step to its canonical
    * {@code "<role> | <file>:<line>:<col> | <expr>"} string via {@link
@@ -104,7 +104,7 @@ public final class Finding {
   private final String sinkFunction;
 
   /**
-   * R-803 P3 PATCH: optional v2 structured trace. {@code null} for findings that have not been
+   * P3 PATCH: optional v2 structured trace. {@code null} for findings that have not been
    * dual-written (the v1 {@code dataflowSteps} list remains the source of truth and reporters fall
    * back to the legacy flat-path rendering). Threaded through {@code withFilePath} / {@code
    * withRuleId} / {@code withAiVerdict} so the side-channel trace survives the reporter's withX
@@ -128,10 +128,10 @@ public final class Finding {
   // ===================================================================
 
   /**
-   * R-812: pull the first CWE id from a {@link RuleDef}'s CWE list, so AST findings carry the same
-   * CWE tag that the rule definition declares. Returns null when the rule is null or its CWE list
-   * is empty / null. The Finding CWE field is single-valued (one CWE per Finding); when a rule
-   * covers multiple CWEs the downstream eval heuristic keys on the first.
+   * pull the first CWE id from a {@link RuleDef}'s CWE list, so AST findings carry the same CWE tag
+   * that the rule definition declares. Returns null when the rule is null or its CWE list is empty
+   * / null. The Finding CWE field is single-valued (one CWE per Finding); when a rule covers
+   * multiple CWEs the downstream eval heuristic keys on the first.
    */
   private static String firstCwe(RuleDef rule) {
     if (rule == null) return null;
@@ -257,9 +257,9 @@ public final class Finding {
   }
 
   /**
-   * R-803 P3 PATCH: same as the 11-arg constructor but with an optional v2 {@link Trace} attached.
-   * Used by {@code ScanRunner.convertUnifiedFinding} to thread the post-rewrite trace from a DFA
-   * finding through to the reporter pipeline (NdjsonEmitter, SARIF v2 extension). The {@code trace}
+   * P3 PATCH: same as the 11-arg constructor but with an optional v2 {@link Trace} attached. Used
+   * by {@code ScanRunner.convertUnifiedFinding} to thread the post-rewrite trace from a DFA finding
+   * through to the reporter pipeline (NdjsonEmitter, SARIF v2 extension). The {@code trace}
    * parameter is null for findings that have not been dual-written.
    */
   public Finding(
@@ -295,12 +295,12 @@ public final class Finding {
   }
 
   // ===================================================================
-  //  DFA-only constructor — RuleDef-less path (R776)
+  //  DFA-only constructor — RuleDef-less path
   // ===================================================================
 
   /**
-   * R776 ? DFA-only constructor. DFA checkers emit findings that carry a {@code checkerName /
-   * ruleId / cwe / flow} identity but no {@link RuleDef} (RuleDef is only constructed at the {@code
+   * ? DFA-only constructor. DFA checkers emit findings that carry a {@code checkerName / ruleId /
+   * cwe / flow} identity but no {@link RuleDef} (RuleDef is only constructed at the {@code
    * ScanRunner.convertUnifiedFinding} stage where the {@link org.plumb.rules.RuleRegistry} is
    * available). The {@code File} is passed as a string path because DFA checkers don't always have
    * a {@link Path} (they get the file path from the engine via {@code withFilePath} later).
@@ -320,7 +320,7 @@ public final class Finding {
       int column,
       String flow,
       List<FlowStep> flowSteps) {
-    // R777 — preserve "empty filePath" as the empty string,
+    // — preserve "empty filePath" as the empty string,
     // not "unknown". The DFA-side FindingReporter
     // (org.plumb.dfa.engine.FindingReporter) checks
     // filePath() for emptiness to decide whether to
@@ -350,10 +350,10 @@ public final class Finding {
   }
 
   /**
-   * R776 ? DFA convenience factory without an explicit {@link FlowStep} list. Use this when the
-   * checker emits a finding but does not track a structured trace (typically when the legacy DFA
-   * Finding constructor was called with only 9 positional args). Equivalent to {@code dfa(...)}
-   * with {@code flowSteps = List.of()}.
+   * ? DFA convenience factory without an explicit {@link FlowStep} list. Use this when the checker
+   * emits a finding but does not track a structured trace (typically when the legacy DFA Finding
+   * constructor was called with only 9 positional args). Equivalent to {@code dfa(...)} with {@code
+   * flowSteps = List.of()}.
    */
   public static Finding dfa(
       String checkerName,
@@ -370,8 +370,8 @@ public final class Finding {
   }
 
   /**
-   * R-838: 10-arg overload that takes a {@code sinkFunction} string (e.g. {@code "bad():void"}).
-   * Used by DFA checkers that can resolve the enclosing method name (e.g. via {@code
+   * 10-arg overload that takes a {@code sinkFunction} string (e.g. {@code "bad():void"}). Used by
+   * DFA checkers that can resolve the enclosing method name (e.g. via {@code
    * StyleContext.findEnclosingMethod} semantics) so the eval harness can classify the finding by
    * Juliet's bad/good* method heuristic.
    *
@@ -424,9 +424,9 @@ public final class Finding {
   }
 
   /**
-   * R776 ? DFA-only convenience factory for a single-step "violation" finding (no full trace, just
-   * one FlowStep at the violation site). Used by structural checkers that don't propagate data —
-   * every finding still has a non-empty {@link #dataflowSteps} list, so the trace renderer can show
+   * ? DFA-only convenience factory for a single-step "violation" finding (no full trace, just one
+   * FlowStep at the violation site). Used by structural checkers that don't propagate data — every
+   * finding still has a non-empty {@link #dataflowSteps} list, so the trace renderer can show
    * "violation at this line".
    *
    * <p>Returns a {@link Finding} with a single {@link FlowStep} of role {@code "violation"} at the
@@ -444,12 +444,12 @@ public final class Finding {
       int column,
       String functionSig,
       String flow) {
-    // R778a — preserve empty filePath so the DFA-side
+    // — preserve empty filePath so the DFA-side
     // FindingReporter can enrich via
     // ctx.sourcePathForEnclosingClass(...). The
-    // pre-R778a factory wrote Path.of("unknown") here
+    // pre- factory wrote Path.of("unknown") here
     // which short-circuited the enrichment gate (same
-    // Lesson 1138 as Finding.dfa in R777). Finding.violation
+    // Lesson 1138 as Finding.dfa in ). Finding.violation
     // is the legacy 9-arg path used by structural checkers
     // that do not know the source path at construction time
     // (UncheckedReturnChecker, InsecureCommunicationChecker,
@@ -481,11 +481,11 @@ public final class Finding {
   }
 
   // ===================================================================
-  //  R-802 — v2 structured-trace factory
+  //  — v2 structured-trace factory
   // ===================================================================
 
   /**
-   * R-802 ? v2-aware DFA factory. The caller passes a {@link org.plumb.reporter.trace.Trace} (a
+   * ? v2-aware DFA factory. The caller passes a {@link org.plumb.reporter.trace.Trace} (a
    * structured DAG of {@link org.plumb.reporter.trace.TraceNode}s) and an explicit {@link
    * org.plumb.reporter.trace.Trace.CompressionLevel}; the factory flattens the trace to a {@code
    * List<FlowStep>} via {@link org.plumb.reporter.trace.Trace#toFlowSteps()} and stores it in the
@@ -496,12 +496,12 @@ public final class Finding {
    * <p>The trade-off is that v2 traces are flattened to {@code FlowStep}s at construction time. The
    * full DAG is <em>not</em> retained on the {@code Finding} ? callers that need the structured
    * trace (e.g. SARIF 2.1 codeFlows with a threadflow JSON tree) must keep their own reference.
-   * This is intentional for P1 ? the P3 / R-803 round will revisit {@link
-   * org.plumb.reporter.Finding} to persist the {@code Trace} when the v2 reporter lands.
+   * This is intentional for P1 ? the P3 / round will revisit {@link org.plumb.reporter.Finding} to
+   * persist the {@code Trace} when the v2 reporter lands.
    *
    * <p>Like {@link #dfa}, {@code filePath} is preserved as the empty string (not {@code "unknown"})
    * so the DFA-side {@code FindingReporter} can enrich via {@code
-   * ctx.sourcePathForEnclosingClass(...)}. See the R777 comment on {@link #dfa} for the reasoning.
+   * ctx.sourcePathForEnclosingClass(...)}. See the comment on {@link #dfa} for the reasoning.
    */
   public static Finding dfaWithTrace(
       String checkerName,
@@ -591,8 +591,8 @@ public final class Finding {
   }
 
   /**
-   * R776 alias for {@link #file()} returning the path as a string. Kept for source-compat with
-   * tests that used the legacy DFA Finding API (which exposed {@code filePath()} as a String).
+   * alias for {@link #file()} returning the path as a string. Kept for source-compat with tests
+   * that used the legacy DFA Finding API (which exposed {@code filePath()} as a String).
    */
   public String filePath() {
     return file == null ? "" : file.toString();
@@ -652,8 +652,8 @@ public final class Finding {
   }
 
   /**
-   * R776 alias for {@link #dataflowSteps()} ? kept for source-compat with tests that used the
-   * legacy DFA Finding API.
+   * alias for {@link #dataflowSteps()} ? kept for source-compat with tests that used the legacy DFA
+   * Finding API.
    */
   public List<FlowStep> flowSteps() {
     return dataflowSteps;
@@ -678,17 +678,17 @@ public final class Finding {
   }
 
   /**
-   * R-803 P3 PATCH: optional v2 structured trace (DAG of {@code TraceNode}s). Returns {@code null}
-   * for findings that have not been dual-written. Consumers (NdjsonEmitter, SARIF v2 extension)
-   * call this to emit the {@code v2_trace} field; v1-only consumers ignore it and fall back to
-   * {@code dataflowSteps}.
+   * P3 PATCH: optional v2 structured trace (DAG of {@code TraceNode}s). Returns {@code null} for
+   * findings that have not been dual-written. Consumers (NdjsonEmitter, SARIF v2 extension) call
+   * this to emit the {@code v2_trace} field; v1-only consumers ignore it and fall back to {@code
+   * dataflowSteps}.
    */
   public Trace trace() {
     return trace;
   }
 
   /**
-   * R-803 P3 PATCH: return a copy with the given v2 trace attached. Used by {@code
+   * P3 PATCH: return a copy with the given v2 trace attached. Used by {@code
    * FindingReporter.reportWithTrace} to fold the trace into the post-rewrite Finding record
    * (eliminating the side-channel IdentityHashMap lookup that P2 had to do with thread-local
    * handoff). Idempotent: passing the same {@code trace} returns {@code this}.

@@ -1,5 +1,5 @@
 /*
- * R721-C2: Taint-style CWE-319 (Cleartext
+ * C2: Taint-style CWE-319 (Cleartext
  * Transmission of Sensitive Information) sink
  * checker.
  *
@@ -147,7 +147,7 @@ public final class CleartextTxChecker extends TaintedCheckerBase {
     // MOVE / BINOP / CALL taint propagation +
     // sink-check paths fire normally.
     super.checkInstruction(ins, fn, ctx);
-    // R721-C2: extend the source set with the
+    // C2: extend the source set with the
     // canonical credential-construction calls
     // that the CWE-319 Juliet "send_*" pattern
     // relies on. Without these, hardcoded

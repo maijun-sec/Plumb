@@ -1,5 +1,5 @@
 /*
- * R729-A6: AST check for CWE-698 (Redirect Without
+ * A6: AST check for CWE-698 (Redirect Without
  * Exit). Fires when a `sendRedirect(...)` call appears
  * in a method body that contains further statements
  * after the redirect. The fix in Juliet's good()

@@ -19,8 +19,8 @@ import org.plumb.tac.ir.TacType;
  * org.plumb.dfa.solver.SolverZ3Bridge} evaluates against recorded guards.
  *
  * <p>For NEWARRAY specifically, the {@code mem-alloc.sinks} family (sink-families.yaml) only
- * matches CALL patterns (Lesson 918). R708 fixed this for the strict taint checker; this checker
- * handles NEWARRAY independently via {@link #isBoundarySensitive}.
+ * matches CALL patterns (Lesson 918). fixed this for the strict taint checker; this checker handles
+ * NEWARRAY independently via {@link #isBoundarySensitive}.
  */
 public final class ArrayBoundsConstraintChecker extends BoundaryConstraintChecker {
 

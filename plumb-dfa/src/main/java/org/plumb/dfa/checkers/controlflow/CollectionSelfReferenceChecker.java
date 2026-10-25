@@ -137,7 +137,7 @@ public final class CollectionSelfReferenceChecker implements DfaChecker {
       String recv,
       String arg,
       String callee) {
-    // R-812 v2 trace: single-node VIOLATION
+    // v2 trace: single-node VIOLATION
     // with COLLECTION_SELF_REF op + a Free
     // operand encoding the "self-ref: <callee>
     // on <recv> with <arg>" shape so the AI

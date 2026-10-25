@@ -192,8 +192,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private final FieldTaintTracker fieldTaintTracker = new FieldTaintTracker();
 
   /**
-   * Per-function per-element array taint tracker (R694 T1). Tracks {@code a[i] = tainted} writes
-   * and propagates the taint to {@code x = a[i]} reads. Promotes the array to {@link
+   * Per-function per-element array taint tracker ( T1). Tracks {@code a[i] = tainted} writes and
+   * propagates the taint to {@code x = a[i]} reads. Promotes the array to {@link
    * ArrayTaintTracker#ANY} when the index itself is tainted (one tainted write touches all
    * subsequent reads). Cleared at every function boundary; cross-function array taint goes through
    * the {@link org.plumb.dfa.summary.FunctionSummary} cache.
@@ -201,7 +201,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private final ArrayTaintTracker arrayTaintTracker = new ArrayTaintTracker();
 
   /**
-   * R1115: the equality-allowlist proof.
+   * the equality-allowlist proof.
    *
    * <p>Kept as its own tracker rather than folded into {@link #stringOps} because it answers a
    * different question: not "was this string built from a tainted piece" but "is this variable
@@ -211,7 +211,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private final EqualityAllowlistTracker equalityAllowlists = new EqualityAllowlistTracker();
 
   /**
-   * R-804 eager dual-write: v2 trace accumulator. Parallel to {@link #taintPaths} (the v1 {@code
+   * eager dual-write: v2 trace accumulator. Parallel to {@link #taintPaths} (the v1 {@code
    * List<FlowStep>} list): each entry maps a tainted {@link TacOperand.TacVar} to the v2 {@link
    * TraceNode} id that represents the "latest" node on its path. The full DAG is held in {@link
    * #v2Builder}; per-variable handles here give the propagate sites a cheap O(1) parent-id lookup.
@@ -221,14 +221,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private final Map<TacOperand.TacVar, Integer> v2TraceHandle = new LinkedHashMap<>();
 
   /**
-   * R-804 eager dual-write: per-function {@link TraceBuilder}. Each {@code addSource} / {@code
+   * eager dual-write: per-function {@link TraceBuilder}. Each {@code addSource} / {@code
    * addPropagate} / {@code addSink} call appends a node to the builder, wires the parent edges, and
    * returns a node id. The builder is reset at every function boundary (see {@link #initFunction}).
    */
   private TraceBuilder v2Builder = new TraceBuilder();
 
   /**
-   * R-812 follow-up: protected getter for the per-var v2 trace handle. Lets subclasses (e.g. {@code
+   * follow-up: protected getter for the per-var v2 trace handle. Lets subclasses (e.g. {@code
    * ResourceExhaustionChecker}) wire their own sink/violation nodes back to the taint source by id,
    * without re-exposing the full {@code v2TraceHandle} map.
    *
@@ -242,7 +242,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R-812 follow-up: protected getter for the per-var taint source label (e.g. "input
+   * follow-up: protected getter for the per-var taint source label (e.g. "input
    * java.io.BufferedReader.readLine/0"). Lets subclasses build a v2 source node with the same
    * free-text label the base class uses, for consistency in the rendered trace.
    *
@@ -254,8 +254,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R1099: strip the intra-procedural bookkeeping prefixes off a taint label so the remainder can
-   * be published as a summary entry's caller-side {@code origin}.
+   * strip the intra-procedural bookkeeping prefixes off a taint label so the remainder can be
+   * published as a summary entry's caller-side {@code origin}.
    *
    * <p>The per-function fold writes labels like {@code "callee:<sig>"}, {@code
    * "rcv-passthrough:<label>"} and {@code "param:<name>"} as it propagates. Those prefixes describe
@@ -278,7 +278,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R1099: resolve a taint label that is still stuck at this function's own entry boundary ({@code
+   * resolve a taint label that is still stuck at this function's own entry boundary ({@code
    * "param:<name>"}) into the origin the CALLER actually passed in.
    *
    * <p>Callees are analysed before callers (reverse post-order), so a summary lookup at sink-emit
@@ -321,17 +321,17 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R-812 follow-up: protected accessor for the per-function {@link TraceBuilder}. Lets subclasses
-   * append their own nodes (sink / violation) onto the same DAG the base class has been populating
-   * with MARK_SOURCE + PROPAGATE nodes.
+   * follow-up: protected accessor for the per-function {@link TraceBuilder}. Lets subclasses append
+   * their own nodes (sink / violation) onto the same DAG the base class has been populating with
+   * MARK_SOURCE + PROPAGATE nodes.
    */
   protected TraceBuilder v2Builder() {
     return v2Builder;
   }
 
   /**
-   * R-804: tracking the sink-role node ids that terminate each taint path. Cleared per function.
-   * Used by {@link #buildV2TraceForSink(TacOperand.TacVar)} to construct the {@link Trace}'s {@code
+   * tracking the sink-role node ids that terminate each taint path. Cleared per function. Used by
+   * {@link #buildV2TraceForSink(TacOperand.TacVar)} to construct the {@link Trace}'s {@code
    * sinkOrViolationIds} list.
    */
   private final List<Integer> v2SinkHandles = new ArrayList<>();
@@ -379,12 +379,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R717: drain the queue of {@link TacFunction}s that must be re-analysed because a {@code
-   * FIELDSTORE} populated {@link #crossFnClassFieldTaint} for a field they had already read (so
-   * their first analysis missed the cross-fn taint). Called by {@code DfaEngine} after the main
-   * worklist finishes. Each re-analysed function gets a fresh taintedVars state (the per-function
-   * tracker clears on {@link #initFunction}) so the re-walked {@code FIELDLOAD} sees the
-   * now-populated {@link #crossFnClassFieldTaint} entry and marks its dest tainted.
+   * drain the queue of {@link TacFunction}s that must be re-analysed because a {@code FIELDSTORE}
+   * populated {@link #crossFnClassFieldTaint} for a field they had already read (so their first
+   * analysis missed the cross-fn taint). Called by {@code DfaEngine} after the main worklist
+   * finishes. Each re-analysed function gets a fresh taintedVars state (the per-function tracker
+   * clears on {@link #initFunction}) so the re-walked {@code FIELDLOAD} sees the now-populated
+   * {@link #crossFnClassFieldTaint} entry and marks its dest tainted.
    *
    * @param engine the engine instance (used to invoke {@code analyseOneFunction} / {@code
    *     summariseOneFunction})
@@ -408,9 +408,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R717: enqueue a {@link TacFunction} for re-analysis after the main worklist. Called from the
-   * {@code FIELDSTORE} path after a fresh {@link #crossFnClassFieldTaint} entry is written, for
-   * each previously-observed reader of the same {@code (ClassName, fieldName)} pair.
+   * enqueue a {@link TacFunction} for re-analysis after the main worklist. Called from the {@code
+   * FIELDSTORE} path after a fresh {@link #crossFnClassFieldTaint} entry is written, for each
+   * previously-observed reader of the same {@code (ClassName, fieldName)} pair.
    */
   static void requestRerun(TacFunction fn) {
     if (fn == null) return;
@@ -418,9 +418,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R717: register {@code fn} as a reader of the field whose key is {@code "ClassName.fieldName"}.
-   * Called from the {@code FIELDLOAD} path so a later {@code FIELDSTORE} can locate the reader and
-   * request re-analysis.
+   * register {@code fn} as a reader of the field whose key is {@code "ClassName.fieldName"}. Called
+   * from the {@code FIELDLOAD} path so a later {@code FIELDSTORE} can locate the reader and request
+   * re-analysis.
    */
   static void recordFieldReader(String classFieldKey, TacFunction fn) {
     if (classFieldKey == null || classFieldKey.isEmpty() || fn == null) return;
@@ -430,7 +430,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R717: snapshot the current readers for a {@code "ClassName.fieldName"} key (used by the {@code
+   * snapshot the current readers for a {@code "ClassName.fieldName"} key (used by the {@code
    * FIELDSTORE} path to enqueue re-analysis).
    */
   static java.util.Set<TacFunction> readersOf(String classFieldKey) {
@@ -456,7 +456,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * is a class name) from <i>aliased</i> writes (receiver has a declared class type). The {@code
    * kind} field is one of {@link #KIND_STATIC} or {@link #KIND_ALIASED}.
    *
-   * <p><b>R-804 follow-up</b> — {@code v2Handle} is the v2 {@code Trace} node id of the source that
+   * <p><b> follow-up</b> — {@code v2Handle} is the v2 {@code Trace} node id of the source that
    * wrote this field, propagated through the cross-function summary fold. A subsequent {@code
    * FIELDLOAD} recovers the handle via {@code crossFnClassFieldSource.get(key)} and attaches a real
    * parent to the new PROPAGATE node instead of a fresh orphan SOURCE. {@code v2Handle=-1} means
@@ -502,8 +502,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private static final Map<String, FieldSource> crossFnClassFieldSource = new java.util.HashMap<>();
 
   /**
-   * R717: per {@code "ClassName.fieldName"} key, the set of functions whose standalone analysis ran
-   * a {@code FIELDLOAD} of that field. Populated by {@link #restoreFieldTaintOnLoad} so a later
+   * per {@code "ClassName.fieldName"} key, the set of functions whose standalone analysis ran a
+   * {@code FIELDLOAD} of that field. Populated by {@link #restoreFieldTaintOnLoad} so a later
    * cross-fn {@code FIELDSTORE} (which only fires when the caller has seen a tainted value) can
    * locate the affected readers and request re-analysis. Without re-analysis, a callee whose {@code
    * FIELDLOAD} ran BEFORE the caller's {@code FIELDSTORE} would never see the field taint (the
@@ -516,8 +516,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       new java.util.HashMap<>();
 
   /**
-   * R717: queue of {@link TacFunction}s that must be re-analysed after the main worklist finishes.
-   * A function is enqueued when a {@code FIELDSTORE} writes a fresh entry to {@link
+   * queue of {@link TacFunction}s that must be re-analysed after the main worklist finishes. A
+   * function is enqueued when a {@code FIELDSTORE} writes a fresh entry to {@link
    * #crossFnClassFieldTaint} for a field the function had previously read (so the read taint was
    * empty when the function ran the first time). The {@code DfaEngine} drains this queue after the
    * main worklist completes. See {@link #requestRerunForFieldReaders} for the enqueue path.
@@ -610,7 +610,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     int col = ins == null ? -1 : ins.column;
     String sig = fnSig == null ? "" : fnSig;
     taintPaths.put(v, java.util.List.of(new FlowStep("source", "", line, col, sig, expr)));
-    // R-804: dual-write v2 SOURCE node. The op
+    // dual-write v2 SOURCE node. The op
     // is "MARK_SOURCE" with the param name as the
     // sole operand (Var). The function signature
     // becomes the functionSig field; for parameter
@@ -657,10 +657,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     fieldTaintTracker.clear();
     arrayTaintTracker.clear(); // R694 T1
     classRefVars.clear();
-    // R1115: per-function allowlist proof. Carried per checker like the other trackers, because the
+    // per-function allowlist proof. Carried per checker like the other trackers, because the
     // proof is about names in one method's scope.
     equalityAllowlists.reset(fn.signature());
-    // R-804: clear the v2 trace accumulator. The
+    // clear the v2 trace accumulator. The
     // builder is reset so node ids restart from 0
     // for the new function (avoids cross-function
     // id collisions in the rare case a node id
@@ -729,7 +729,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
 
   @Override
   public void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
-    // R1115: observe BEFORE the per-kind handlers, so the MOVE handler can see a completed
+    // observe BEFORE the per-kind handlers, so the MOVE handler can see a completed
     // allowlist proof when it decides whether to keep the prior input label.
     //
     // Clearing the taint label happens in propagateMOVE rather than here: the sink argument is the
@@ -758,7 +758,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // This runs BEFORE restoreFieldTaintOnLoad so the framework label
         // is the one the reader sees.
         markContainerBoundFieldSource(ins, fn, ctx);
-        // R-810: pass ctx so the FIELDLOAD path
+        // pass ctx so the FIELDLOAD path
         // can consult ctx.staticFields() and
         // attach a real parent to a static
         // field access instead of falling
@@ -767,7 +767,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       }
       case BINOP -> propagateBINOP(ins);
       case ARRAYLOAD -> {
-        // R694 T1: per-element array taint.
+        // T1: per-element array taint.
         // Standard propagation first (whole-array
         // MOVE handles the case where the array
         // itself is tainted). Then restore the
@@ -784,7 +784,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // tainted, record the write in the per-fn
       // array tracker so subsequent ARRAYLOADs
       // through the same (or any) index see the
-      // taint. R694 T1.
+      // taint. T1.
       case ARRAYSTORE -> recordArrayStore(ins);
       // FIELDSTORE: y.f = x. If the
       // receiver (lhs1) is `this` and the
@@ -824,7 +824,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // summary-fold path. The dest is set to
         // CLEAN unconditionally for these calls.
         //
-        // R699: BUT parseInt/parseLong are ALSO in
+        // BUT parseInt/parseLong are ALSO in
         // InputSourcePatterns : the dest was JUST
         // seeded with `input:parseInt` five lines
         // above (line ~556). The sanitizer would
@@ -844,7 +844,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           taintedVars.remove(sanDv);
           taintPaths.remove(sanDv);
         }
-        // R759-C: passthrough propagation MUST run BEFORE
+        // C: passthrough propagation MUST run BEFORE
         // checkSinkAtCall so the sink check sees taint on
         // concat / append / split / substring / etc. results.
         // Otherwise a pattern like
@@ -909,7 +909,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           // rest.
           checkSinkAtNew(ins, fn, ctx);
         }
-        // R693: forward taint through the
+        // forward taint through the
         // constructor. If any constructor
         // arg is currently tainted, the
         // freshly-built object is tainted
@@ -938,8 +938,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         //   -----------------------------
         //     List<String> names = data.split("-");
         //     sqlStatement.execute("... IN ("
-        //         + String.join(",", names)
-        //         + ")");
+        //         String.join(",", names)
+        //         ")");
         //
         // The earlier code skipped this case
         // because Cookie.<init> is a JDK
@@ -1190,7 +1190,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         || calleeSig.startsWith("java.lang.Boolean.parseBoolean/")) {
       return true;
     }
-    // R696: javax.crypto.Cipher.doFinal : the canonical
+    // javax.crypto.Cipher.doFinal : the canonical
     // cryptographic trust-boundary crossing. ENCRYPT_MODE
     // produces fresh ciphertext bytes (not derived from the
     // input bytes semantically); DECRYPT_MODE produces
@@ -1221,9 +1221,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   /**
    * MOVE / UNARYOP / LOAD: the dest is tainted iff the source is tainted.
    *
-   * <p>R-? : also propagates the source-to-here path: the new var gets a copy of the source's path
-   * plus a fresh {@code "propagate"} step recording this instruction's line / column / destination
-   * name. If the source isn't tainted, the destination's path (if any) is removed.
+   * <p>: also propagates the source-to-here path: the new var gets a copy of the source's path plus
+   * a fresh {@code "propagate"} step recording this instruction's line / column / destination name.
+   * If the source isn't tainted, the destination's path (if any) is removed.
    */
   private void propagateMOVE(TacInstruction ins) {
     if (ins.dest == null || !(ins.dest instanceof TacOperand.TacVar dv)) {
@@ -1238,7 +1238,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           new FlowStep(
               "propagate", "", ins.line, ins.column, "", "MOVE " + sv.name() + " -> " + dv.name()));
       taintPaths.put(dv, java.util.Collections.unmodifiableList(newPath));
-      // R-804: dual-write v2 PROPAGATE node with
+      // dual-write v2 PROPAGATE node with
       // op=MOVE. The parent is the v2 handle of
       // the source; the new handle becomes the
       // dest's latest node on the path.
@@ -1257,7 +1257,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         v2TraceHandle.put(dv, handle);
       }
     } else {
-      // R-? R690 — path-insensitive taint preservation.
+      // — path-insensitive taint preservation.
       // The standard semantics of an unconditional MOVE
       // to a constant is "the variable now holds this
       // constant; drop any prior taint". But this is a
@@ -1283,8 +1283,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // reassignment kills the taint globally and the
       // sink never fires.
       //
-      // R759-C: extend R690 to cover RHS being a
-      // CLEAN TacVar too. The original R690 condition
+      // C: extend to cover RHS being a
+      // CLEAN TacVar too. The original condition
       // excluded TacVar RHS, which silently killed
       // taint when a good-branch reassigned the
       // variable to a sanitizer-clean TacVar (e.g.
@@ -1300,7 +1300,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // and the bad-sink at the join point silently
       // dropped. (Lesson 1050.)
       String priorLabel = taintedVars.get(dv);
-      // R1115: an allowlist proof outranks the entry-boundary label.
+      // an allowlist proof outranks the entry-boundary label.
       //
       // The branch below deliberately keeps a `param:` label across a reassignment, because the
       // MOVE is path-insensitive and the bad path may still carry the input. An allowlist is the
@@ -1317,7 +1317,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           && (priorLabel.startsWith("param:") || priorLabel.startsWith("input:"))) {
         // Keep the prior input/param label across
         // the move; the rhs is either a literal
-        // (R690) or a clean TacVar (R759-C
+        //  or a clean TacVar (-C
         // extension). The next read of `data` is
         // path-sensitive — the bad path may still
         // have data carrying the input/param
@@ -1326,7 +1326,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       }
       taintedVars.remove(dv);
       taintPaths.remove(dv);
-      // R-807: const-source emission. When the
+      // const-source emission. When the
       // RHS is a literal constant (e.g.
       // {@code this.Level = Level.WARNING} in
       // Juliet CWE89 logger scaffolding), the dest
@@ -1343,7 +1343,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // FieldTaintTracker with label "const-source"
       // — the FIELDLOAD side then attaches the
       // recovered handle as a real parent
-      // (R-804 follow-up sites 8/9/10) instead
+      // ( follow-up sites 8/9/10) instead
       // of an orphan SOURCE. Suppress for
       // param: / input: prior labels above; this
       // branch only fires when the var is fully
@@ -1365,10 +1365,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R-807: turn a {@link TacOperand.Const} into its structured {@link OperandRef} counterpart so
-   * the const shows up in the v2 trace DAG as a typed operand (ConstInt / ConstStr / ConstFloat /
-   * ConstNull) rather than a free-text blob. Renders CHAR and BOOL as quoted strings since the
-   * SARIF / AI-dedup consumers prefer a single text channel for those.
+   * turn a {@link TacOperand.Const} into its structured {@link OperandRef} counterpart so the const
+   * shows up in the v2 trace DAG as a typed operand (ConstInt / ConstStr / ConstFloat / ConstNull)
+   * rather than a free-text blob. Renders CHAR and BOOL as quoted strings since the SARIF /
+   * AI-dedup consumers prefer a single text channel for those.
    */
   private static OperandRef renderConst(TacOperand.Const c) {
     return switch (c.kind()) {
@@ -1382,9 +1382,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R693: forward taint through a {@code NEW} (constructor) instruction. If any of the
-   * constructor's TacVar arguments is currently tainted, mark the freshly-built object as tainted
-   * too.
+   * forward taint through a {@code NEW} (constructor) instruction. If any of the constructor's
+   * TacVar arguments is currently tainted, mark the freshly-built object as tainted too.
    *
    * <p>This unlocks three Juliet FN classes that the previous code missed:
    *
@@ -1419,7 +1418,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       }
     }
     if (src == null) return;
-    // R690-fix: don't override a param-derived
+    // fix: don't override a param-derived
     // label that survived the path-insensitive
     // MOVE merge. A literal-null MOVE that
     // landed just after the NEW would otherwise
@@ -1442,10 +1441,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             ins.calleeSig == null ? "" : ins.calleeSig,
             ins.calleeSig + " -> " + dv.name()));
     taintPaths.put(dv, java.util.Collections.unmodifiableList(newPath));
-    // R-804: dual-write v2 PROPAGATE node. The op
+    // dual-write v2 PROPAGATE node. The op
     // is CALL_INSTANCE because this is the
     // "tainted arg in ctor/new flows to dest"
-    // path. (Future R-804 follow-up: split into
+    // path. (Future follow-up: split into
     // CALL_CTOR for new T and CALL_INSTANCE for
     // static method calls; P2 only has the
     // "first tainted arg drives dest" semantic.)
@@ -1470,9 +1469,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * BINOP: the dest is tainted iff either operand is tainted. The label is the join of the two
    * sources (or whichever one fired).
    *
-   * <p>R-? : propagates the path: when one operand is tainted, the dest inherits its path plus a
-   * fresh {@code "propagate"} step. When both operands are tainted, the longer path is used
-   * (arbitrary tie-break by operand order) and merged with a "BINOP" step that names both operands.
+   * <p>: propagates the path: when one operand is tainted, the dest inherits its path plus a fresh
+   * {@code "propagate"} step. When both operands are tainted, the longer path is used (arbitrary
+   * tie-break by operand order) and merged with a "BINOP" step that names both operands.
    */
   private void propagateBINOP(TacInstruction ins) {
     if (ins.dest == null || !(ins.dest instanceof TacOperand.TacVar dv)) {
@@ -1495,7 +1494,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       newPath.add(
           new FlowStep("propagate", "", ins.line, ins.column, "", "BINOP lhs+rhs -> " + dv.name()));
       taintPaths.put(dv, java.util.Collections.unmodifiableList(newPath));
-      // R-804: dual-write v2 PROPAGATE node with
+      // dual-write v2 PROPAGATE node with
       // op=BINOP_ADD. Two parents (lhs, rhs)
       // — an ALIAS role in v2. We synthesise
       // the multi-parent DAG node via the
@@ -1527,7 +1526,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       newPath.add(
           new FlowStep("propagate", "", ins.line, ins.column, "", "BINOP lhs -> " + dv.name()));
       taintPaths.put(dv, java.util.Collections.unmodifiableList(newPath));
-      // R-804: single-parent BINOP_ADD.
+      // single-parent BINOP_ADD.
       int lh = v2TraceHandle.getOrDefault((TacOperand.TacVar) ins.lhs1, -1);
       if (lh >= 0) {
         int handle =
@@ -1551,7 +1550,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       newPath.add(
           new FlowStep("propagate", "", ins.line, ins.column, "", "BINOP rhs -> " + dv.name()));
       taintPaths.put(dv, java.util.Collections.unmodifiableList(newPath));
-      // R-804: single-parent BINOP_ADD (rhs).
+      // single-parent BINOP_ADD (rhs).
       int rh = v2TraceHandle.getOrDefault((TacOperand.TacVar) ins.lhs2, -1);
       if (rh >= 0) {
         int handle =
@@ -1571,7 +1570,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     } else {
       taintedVars.remove(dv);
       taintPaths.remove(dv);
-      // R-804: if both labels are null, the
+      // if both labels are null, the
       // dest loses its v2 handle too.
       v2TraceHandle.remove(dv);
     }
@@ -1628,7 +1627,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // on Integer.parseInt have been observed to fire FP
     // findings.
     if (isSanitizer(calleeSig)) {
-      // R699: skip when the call is itself
+      // skip when the call is itself
       // an input-source. The input-source
       // seeding on line ~556 put `input:parseInt`
       // on the dest; unconditionally removing
@@ -1673,14 +1672,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             || calleeSig.startsWith("java.lang.String.concat/");
     boolean isAppend =
         calleeSig.contains(".StringBuilder.append/") || calleeSig.contains(".StringBuffer.append/");
-    // 2026-10-08 (audit): the R759-C debug block that
+    // 2026-10-08 (audit): the -C debug block that
     // spammed `[R759C-DEBUG] propagateStringPassthroughs ...`
     // to stderr on every concat / StringBuilder call is
     // removed. It shipped in the 9-26 dist and polluted
     // scan output (see audit report C-3 follow-up).
-    // (R759-C was the round that introduced this; the
+    // (-C was the round that introduced this; the
     // production code path does not need it.)
-    // R693: StringTokenizer / Scanner / regex
+    // StringTokenizer / Scanner / regex
     // matchers all surface tainted substrings
     // out of a tainted haystack. Juliet CWE89
     // __getQueryString_Servlet_execute parses
@@ -1695,12 +1694,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             || calleeSig.startsWith("java.util.Scanner.nextLine/")
             || calleeSig.startsWith("java.util.regex.Pattern.split/")
             || calleeSig.startsWith("java.util.regex.Matcher.group/");
-    // R693.5: Throwable message passthrough.
+    // Throwable message passthrough.
     // Juliet CWE209 / CWE81 (XSS in Error Message)
     // and many try-with-resources / catch chains
     // do `catch (Exception e) { ... e.getMessage() ... }`
     // or `e.toString()`. The catch param `e` is
-    // tainted (R690 path-insensitive MOVE
+    // tainted ( path-insensitive MOVE
     // preserves the `param:` / `input:` label
     // across joins, and the CATCH_HANDLER
     // wires the thrown taint to the catch
@@ -1733,7 +1732,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             || calleeSig.startsWith("java.io.IOException.toString/")
             || calleeSig.startsWith("java.sql.SQLException.getMessage/")
             || calleeSig.startsWith("java.sql.SQLException.toString/");
-    // R696: String.toCharArray / String.getBytes /
+    // String.toCharArray / String.getBytes /
     // SecretKey.getEncoded / PasswordAuthentication.getPassword /
     // Object.clone. The classic Juliet CWE-319 pattern
     //     password = readerBuffered.readLine();
@@ -1778,7 +1777,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     java.util.List<TacOperand> sources = new java.util.ArrayList<>();
     if (isAppend || calleeSig.startsWith("java.lang.String.concat/")) {
       // Append: receiver (this StringBuilder)
-      // + the appended value both can be
+      // the appended value both can be
       // tainted.
       if (!ins.args.isEmpty()
           && ins.args.get(0) instanceof TacOperand.TacVar t0
@@ -1821,7 +1820,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             calleeSig + " passthrough -> " + dv.name()));
     taintedVars.put(dv, label.toString());
     taintPaths.put(dv, java.util.Collections.unmodifiableList(path));
-    // R-804: dual-write v2 SUMMARY_FOLD node
+    // dual-write v2 SUMMARY_FOLD node
     // (op=SUMMARY_PASS_THROUGH) for the
     // single-source passthrough case. For
     // multi-source (append / concat) the v2
@@ -1928,7 +1927,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             || calleeSig.startsWith("java.lang.String.concat/");
     boolean isAppend =
         calleeSig.contains(".StringBuilder.append/") || calleeSig.contains(".StringBuffer.append/");
-    // R693: StringTokenizer / Scanner / regex
+    // StringTokenizer / Scanner / regex
     // matchers all surface tainted substrings
     // out of a tainted haystack. Juliet CWE89
     // __getQueryString_Servlet_execute parses
@@ -1943,7 +1942,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             || calleeSig.startsWith("java.util.Scanner.nextLine/")
             || calleeSig.startsWith("java.util.regex.Pattern.split/")
             || calleeSig.startsWith("java.util.regex.Matcher.group/");
-    // R693.5: Throwable message passthrough : mirror
+    // Throwable message passthrough : mirror
     // propagateStringPassthroughs so cross-function
     // summaries record the e.getMessage() flow.
     // See propagateStringPassthroughs for the
@@ -1967,7 +1966,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             || calleeSig.startsWith("java.io.IOException.toString/")
             || calleeSig.startsWith("java.sql.SQLException.getMessage/")
             || calleeSig.startsWith("java.sql.SQLException.toString/");
-    // R696: mirror the new char[] / byte[] passthroughs
+    // mirror the new char[] / byte[] passthroughs
     // (String.toCharArray, String.getBytes, SecretKey.getEncoded,
     // PasswordAuthentication.getPassword, Object.clone) so cross-fn
     // summaries record the flow. See propagateStringPassthroughs
@@ -2143,7 +2142,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // signal. Skip.
     if (paramIndex < 0
         && !taintedVars.containsKey(valueVar)
-        // R-807: const-source path — a
+        // const-source path — a
         // const MOVE emits a v2 source
         // node (recorded in v2TraceHandle)
         // even though the dest is not
@@ -2155,7 +2154,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         && !v2TraceHandle.containsKey(valueVar)) {
       return;
     }
-    // R-807: const-source field-write — the value
+    // const-source field-write — the value
     // is a constant literal (e.g. `this.Level =
     // Level.WARNING` in Juliet CWE89 logger
     // scaffolding). The dest isn't tainted, but
@@ -2280,7 +2279,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (taintedVars.containsKey(valueVar)) {
       fldLabel = taintedVars.get(valueVar);
       fldPath = taintPaths.get(valueVar);
-      // R-804 follow-up: pass the v2 handle of the
+      // follow-up: pass the v2 handle of the
       // source we're recording so a subsequent
       // FIELDLOAD can attach a real parent. The
       // handle is recovered from the v2 trace map;
@@ -2292,7 +2291,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       fieldTaintTracker.recordWrite(recvName, ins.fieldName, fldLabel, fldPath, srcV2Handle);
     } else {
       boolean isParamSeeded = fldLabel != null && fldLabel.startsWith("param:");
-      // R702: also write when the
+      // also write when the
       // receiver is literally "this"
       // (i.e. an instance field write
       // on the enclosing class). The
@@ -2332,7 +2331,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       if (!isParamSeeded && (isLikelyClassName(recvName) || thisRecvTypeName != null)) {
         String key = (thisRecvTypeName != null ? thisRecvTypeName : recvName) + "." + ins.fieldName;
         crossFnClassFieldTaint.put(key, fldLabel);
-        // R717: enqueue every previously-observed
+        // enqueue every previously-observed
         // reader of this (class, field) for
         // re-analysis. Their first walk ran when
         // crossFnClassFieldTaint was empty, so the
@@ -2351,14 +2350,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             new FieldSource(
                 fn.signature(),
                 "this".equals(recvName) ? FieldSource.KIND_ALIASED : FieldSource.KIND_STATIC,
-                // R-804 follow-up: thread
+                // follow-up: thread
                 // the v2 handle of the
                 // source so a subsequent
                 // FIELDLOAD can attach a
                 // real parent.
                 v2TraceHandle.getOrDefault(valueVar, -1)));
       }
-      // R694 T2: per-class aliasing
+      // T2: per-class aliasing
       // write (recvTypeName + field)
       // is INTENTIONALLY OMITTED for
       // non-"this" TacVar receivers
@@ -2383,10 +2382,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // literal "this", which are
       // already handled by the
       // isLikelyClassName branch
-      // above (and the new R702
+      // above (and the new
       // "this" branch).
     }
-    // R-807 / R-806 fix: the original source
+    // / fix: the original source
     // had a `} else {` here which made the
     // if/else chain invalid (orphan second
     // `else`). The clearField cleanup below is
@@ -2403,7 +2402,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // else syntax.
     fieldTaintTracker.clearField(recvName, ins.fieldName);
     // Same cleanup for the unified
-    // class-field tracker. R702
+    // class-field tracker.
     // also clears the "this"-keyed
     // entry (matching the write
     // path's new branch).
@@ -2583,7 +2582,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     String recvName = resolveReceiverName(recv);
     if (recvName == null || recvName.isEmpty()) return;
     if (!(ins.dest instanceof TacOperand.TacVar dv)) return;
-    // R-810 P1.5: fidelity mark for the
+    // P1.5: fidelity mark for the
     // synthetic {@code this.<Class>} form. The IR
     // encodes a class-identity load (e.g. before a
     // chained {@code t.STATIC_FINAL_FIVE} read) as
@@ -2602,7 +2601,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // set so any subsequent chained {@code t.f} FIELDLOAD
     // (which already routes via classRefVars + the
     // isLikelyClassName branch above) still attaches
-    // its true STATIC_FIELD_DECL parent. R-810 Phase 2
+    // its true STATIC_FIELD_DECL parent. Phase 2
     // can later upgrade this node to attach the real
     // class body as a parent once cross-TU class-index
     // hits the Juliet testcasesupport subset.
@@ -2622,7 +2621,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       v2TraceHandle.put(dv, handle);
       return;
     }
-    // R-810: if the receiver is a class reference
+    // if the receiver is a class reference
     // (Juliet `Level.WARNING`, `IO.logger` style),
     // try the static-field resolver before
     // falling through to the orphan-SOURCE shape.
@@ -2633,7 +2632,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // Logger.getLogger(...)`) still fall
     // through to the orphan path with a
     // structured "static-field init not
-    // resolved" note (R-810 Phase 2 candidate).
+    // resolved" note ( Phase 2 candidate).
     if (isLikelyClassName(recvName)) {
       int staticDeclHandle = tryResolveStaticFieldDecl(recvName, ins.fieldName, ins, fn, ctx);
       if (staticDeclHandle >= 0) {
@@ -2658,7 +2657,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // static-field nature is
       // recorded in the node's
       // note via the StaticFieldRef
-      // operand (R-810 Phase 2 will
+      // operand ( Phase 2 will
       // upgrade to a real parent
       // once init-path resolution
       // is in place).
@@ -2679,7 +2678,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       FieldSource foundSource = null;
       if (recvTypeName != null) {
         String aliasKey = recvTypeName + "." + ins.fieldName;
-        // R717: register this function as a reader
+        // register this function as a reader
         // of recvTypeName.fieldName so a later
         // cross-TU FIELDSTORE can request
         // re-analysis.
@@ -2693,7 +2692,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       }
       if (foundLabel == null && isLikelyClassName(recvName)) {
         String globalKey = recvName + "." + ins.fieldName;
-        // R717: register (class-name key form).
+        // register (class-name key form).
         recordFieldReader(globalKey, fn);
         String globalLabel = crossFnClassFieldTaint.get(globalKey);
         if (globalLabel != null) {
@@ -2727,16 +2726,16 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                     + dv.name()));
         taintPaths.put(dv, java.util.Collections.unmodifiableList(newPath));
       }
-      // R-804 follow-up: dual-write v2 FIELDLOAD
+      // follow-up: dual-write v2 FIELDLOAD
       // node. If the cross-fn FieldSource was
       // written by a fold that already had a v2
-      // handle (R-804 site 12/13 thread it
+      // handle ( site 12/13 thread it
       // through seedCrossFnClassFieldTaintFromFold),
       // attach that handle as the parent of this
       // PROPAGATE so the DAG stays connected.
       // Otherwise (legacy / pre-dual-write source),
       // fall back to the orphan-SOURCE shape from
-      // R-804 (a fresh trust boundary).
+      // (a fresh trust boundary).
       int recoveredHandle = foundSource == null ? -1 : foundSource.v2Handle();
       int handle;
       if (recoveredHandle >= 0) {
@@ -2755,7 +2754,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                 fn.signature());
       } else {
         // Orphan: no recovered source — treat as
-        // trust boundary (R-804 first-cut shape).
+        // trust boundary ( first-cut shape).
         handle =
             v2Builder.addSource(
                 TraceNode.Op.FIELDLOAD,
@@ -2787,15 +2786,15 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             fn.signature(),
             "FIELDLOAD " + recvName + "." + ins.fieldName + " -> " + dv.name()));
     taintPaths.put(dv, java.util.Collections.unmodifiableList(newPath));
-    // R-804 follow-up: dual-write v2 FIELDLOAD
+    // follow-up: dual-write v2 FIELDLOAD
     // node. If the writer recorded a v2 handle
-    // (R-804 site 8 / cross-fn field folds thread
+    // ( site 8 / cross-fn field folds thread
     // it through recordWrite/seedCrossFnClassFieldTaintFromFold),
     // attach that handle as the parent of this
     // PROPAGATE so the DAG stays connected to the
     // original SOURCE. Otherwise (legacy / pre-
     // dual-write writer), fall back to the orphan-
-    // SOURCE shape from R-804 (a fresh trust
+    // SOURCE shape from (a fresh trust
     // boundary).
     int recoveredHandle = tracked.v2Handle();
     int handle;
@@ -2814,7 +2813,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
               fn.signature());
     } else {
       // Orphan: no recovered source — trust
-      // boundary (R-804 first-cut shape).
+      // boundary ( first-cut shape).
       handle =
           v2Builder.addSource(
               TraceNode.Op.FIELDLOAD,
@@ -2830,7 +2829,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     v2TraceHandle.put(dv, handle);
   }
 
-  // ---------- R694 T1: per-element array taint ----------
+  // ---------- T1: per-element array taint ----------
 
   /**
    * Record a write {@code arr[index] = value}. Called from the {@code ARRAYSTORE} branch in {@link
@@ -2843,14 +2842,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    */
 
   /**
-   * R-810: look up {@code className.fieldName} in the {@link
-   * org.plumb.dfa.resolve.StaticFieldResolver} carried by {@code ctx.staticFields()}. If a literal
-   * initializer is recorded, emit a fresh {@link TraceNode.Op#STATIC_FIELD_DECL} v2 SOURCE node and
-   * return its handle so {@link #restoreFieldTaintOnLoad} can attach it as the parent of the
-   * FIELDLOAD's PROPAGATE. Returns {@code -1} when the resolver is absent, the field is unknown, or
-   * the field's initializer is not a literal (e.g. a method call ? the Juliet {@code static final
-   * Logger logger = Logger.getLogger(...)} pattern). Phase 2 of R-810 will add init-path resolution
-   * so method-call initializers also resolve.
+   * look up {@code className.fieldName} in the {@link org.plumb.dfa.resolve.StaticFieldResolver}
+   * carried by {@code ctx.staticFields()}. If a literal initializer is recorded, emit a fresh
+   * {@link TraceNode.Op#STATIC_FIELD_DECL} v2 SOURCE node and return its handle so {@link
+   * #restoreFieldTaintOnLoad} can attach it as the parent of the FIELDLOAD's PROPAGATE. Returns
+   * {@code -1} when the resolver is absent, the field is unknown, or the field's initializer is not
+   * a literal (e.g. a method call ? the Juliet {@code static final Logger logger =
+   * Logger.getLogger(...)} pattern). Phase 2 of will add init-path resolution so method-call
+   * initializers also resolve.
    */
   private int tryResolveStaticFieldDecl(
       String className, String fieldName, TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
@@ -2872,9 +2871,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R-810: turn a {@link org.plumb.dfa.resolve.StaticFieldResolver.LiteralValue} into a typed
-   * {@link OperandRef} so the STATIC_FIELD_DECL node carries the actual value (mirrors the R-807
-   * {@code renderConst} helper in {@code propagateMOVE}).
+   * turn a {@link org.plumb.dfa.resolve.StaticFieldResolver.LiteralValue} into a typed {@link
+   * OperandRef} so the STATIC_FIELD_DECL node carries the actual value (mirrors the {@code
+   * renderConst} helper in {@code propagateMOVE}).
    */
   private static OperandRef literalValueToOperand(
       org.plumb.dfa.resolve.StaticFieldResolver.LiteralValue lit) {
@@ -2909,7 +2908,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       arrayTaintTracker.recordStore(arr, ins.lhs2, null, null, false);
       return;
     }
-    // R-804 follow-up: pass the v2 handle of the
+    // follow-up: pass the v2 handle of the
     // value's source so a subsequent ARRAYLOAD
     // can attach a real parent. dv is the
     // value-bearing var (ins.dest); if the
@@ -2967,7 +2966,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                 + dv.name()));
     taintedVars.put(dv, tracked.label());
     taintPaths.put(dv, java.util.Collections.unmodifiableList(newPath));
-    // R-804 follow-up: dual-write v2 ARRAYLOAD
+    // follow-up: dual-write v2 ARRAYLOAD
     // node. If the writer recorded a v2 handle
     // (recordArrayStore threads it through
     // arrayTaintTracker.recordStore's v2Handle
@@ -2975,7 +2974,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // this PROPAGATE so the DAG stays connected.
     // Otherwise (legacy / pre-dual-write writer),
     // fall back to the orphan-SOURCE shape from
-    // R-804 (a fresh trust boundary).
+    // (a fresh trust boundary).
     int recoveredHandle = tracked.v2Handle();
     int arrHandle;
     if (recoveredHandle >= 0) {
@@ -3000,7 +2999,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
               "");
     } else {
       // Orphan: no recovered source — trust
-      // boundary (R-804 first-cut shape).
+      // boundary ( first-cut shape).
       arrHandle =
           v2Builder.addSource(
               TraceNode.Op.ARRAYLOAD,
@@ -3063,7 +3062,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       AnalysisContext ctx,
       SinkFamily family,
       String calleeSig) {
-    // R693: arg index is now per-pattern from
+    // arg index is now per-pattern from
     // the SinkFamily. The legacy
     // sinkArgumentIndex() override on the
     // checker is honoured as a fallback for
@@ -3094,7 +3093,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         new FlowStep(
             "sink", "", ins.line, ins.column, calleeSig, calleeSig + " (" + family.name() + ")"));
     String msg = findingMessage(ins, family, arg);
-    // R1099: same caller-origin preference as the CALL sink path (see resolveUpstreamOrigin).
+    // same caller-origin preference as the CALL sink path (see resolveUpstreamOrigin).
     String ctorOrigin = resolveUpstreamOrigin(taintedVars.get(av), fn, ctx);
     String ctorSourceLabel = ctorOrigin != null ? ctorOrigin : taintedVars.get(av);
     Finding finding =
@@ -3109,7 +3108,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             ins.column,
             "taint: " + ctorSourceLabel + " -> " + family.cweOrNull(),
             java.util.Collections.unmodifiableList(fullPath));
-    // R-804: eager dual-write — build the v2 Trace
+    // eager dual-write — build the v2 Trace
     // from the in-memory v2Builder instead of
     // upgrading the v1 path. The v2 trace has
     // specific op enums (MOVE / INPUT_READLINE /
@@ -3156,7 +3155,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       AnalysisContext ctx,
       SinkFamily family,
       String calleeSig) {
-    // R693: per-pattern arg index from SinkFamily
+    // per-pattern arg index from SinkFamily
     // (yaml-configurable). Falls back to the
     // legacy sinkArgumentIndex() override for
     // checkers that haven't migrated.
@@ -3170,7 +3169,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // added, override this in a checker that
     // distinguishes.)
     //
-    // R1099: RECEIVER_ARG_INDEX (-2) selects the receiver itself, which in
+    // RECEIVER_ARG_INDEX (-2) selects the receiver itself, which in
     // the TAC encoding is args[0] with NO offset. This is what makes
     // zero-argument sinks like ObjectInputStream#readObject reachable:
     // they have no user argument at all, and the untrusted data is the
@@ -3200,7 +3199,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // silently dropped the Sink op in that
     // case.
     //
-    // R1099: for a receiver-tainted sink the receiver is not a parameter at
+    // for a receiver-tainted sink the receiver is not a parameter at
     // all, so there is no param index to record. Recording -1 would make
     // summarizeFunction's `so.argIndex < params.size()` guard true for a
     // 0-param function and attribute the sink to param 0 wrongly, so we
@@ -3212,7 +3211,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     }
     if (!(arg instanceof TacOperand.TacVar av)) return;
     if (!taintedVars.containsKey(av)) return;
-    // R1109: this parameter is tainted here only because of the entry-boundary seed, and only
+    // this parameter is tainted here only because of the entry-boundary seed, and only
     // because of it when its own name is the recorded source. If every resolved call site
     // proved the value clean, that taint is not real and the finding is a false positive.
     //
@@ -3291,7 +3290,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         }
       }
     }
-    // R-? -- build the structured source-to-sink trace.
+    // -- build the structured source-to-sink trace.
     // The path of the sink arg is the source-to-here
     // path; we append a final "sink" step recording
     // the call site (line / column / callee / family).
@@ -3305,7 +3304,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     fullPath.add(
         new FlowStep(
             "sink", "", ins.line, ins.column, calleeSig, calleeSig + " (" + family.name() + ")"));
-    // R-? -- emit the Z3 path condition (if any) as a
+    // -- emit the Z3 path condition (if any) as a
     // "z3-fact" FlowStep. The AI dedup agent's
     // get_dataflow_trace_with_facts tool reads these
     // and the FP reducer uses them to reason about
@@ -3324,7 +3323,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     }
     // Emit the finding.
     String msg = findingMessage(ins, family, arg);
-    // R1099: prefer the caller's real taint origin over this function's own entry-boundary
+    // prefer the caller's real taint origin over this function's own entry-boundary
     // `param:<name>` label, so a finding inside a sink method names where the value actually
     // came from. See resolveUpstreamOrigin for why this can only be resolved here.
     String origin = resolveUpstreamOrigin(taintedVars.get(av), fn, ctx);
@@ -3341,7 +3340,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             ins.column,
             "taint: " + sourceLabel + " -> " + family.cweOrNull(),
             java.util.Collections.unmodifiableList(fullPath));
-    // R-804: eager dual-write — build the v2 trace
+    // eager dual-write — build the v2 trace
     // from the in-memory v2Builder instead of
     // upgrading the v1 path. The v2 trace has
     // specific op enums (MOVE / INPUT_READLINE /
@@ -3462,7 +3461,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // to know about. The engine populates these
     // in the cache.
     if (calleeSummary == null || (calleeSummary.isTrivial() && !calleeSummary.hasBody())) {
-      // R716: in merged mode the bare alias collides across
+      // in merged mode the bare alias collides across
       // files (Juliet Variant 42/45 all share {@code badSource/0}).
       // The {@code r53StripClassPrefix} helper returns null for an
       // already-bare sig (no {@code ClassName.} prefix), but in
@@ -3503,7 +3502,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       }
     }
     if (calleeSummary == null || (calleeSummary.isTrivial() && !calleeSummary.hasBody())) {
-      // R698: receiver : dest taint passthrough
+      // receiver : dest taint passthrough
       // for JDK getter-style methods with no
       // plumb-side summary. The classic
       // Juliet CWE89 pattern
@@ -3519,7 +3518,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // is CLEAN and the downstream SQL
       // injection sink never sees the taint.
       //
-      // R698 config gate: the passthrough is
+      // config gate: the passthrough is
       // ONLY allowed for callee signatures
       // that match a configured pattern in
       // receiver-passthrough.yaml. Without
@@ -3560,7 +3559,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                 calleeSig,
                 "receiver-tainted dest inherits: " + rcvLabel));
         taintPaths.put(rcvDest, java.util.Collections.unmodifiableList(rcvFold));
-        // R-804: dual-write v2 SUMMARY_FOLD
+        // dual-write v2 SUMMARY_FOLD
         // node. Op=SUMMARY_TAINT_PROPAGATE
         // (the summary that says "this
         // receiver-tainted method
@@ -3634,7 +3633,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
               .orElse(null);
       boolean tainted = taintOp != null;
       if (tainted) {
-        // R1099: the caller's argument inherits the CALLEE's taint origin, not a
+        // the caller's argument inherits the CALLEE's taint origin, not a
         // synthetic `callee:<sig>` label. The callee seeds its own params as
         // `param:<name>` at the entry boundary, so without this the next hop's
         // finding would name the callee's parameter instead of the real source
@@ -3653,7 +3652,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // the call site itself.
         List<FlowStep> fold = new ArrayList<>();
         List<FlowStep> prevPath = taintPaths.get(av);
-        // R1099: when the callee told us where the value came from, carry the
+        // when the callee told us where the value came from, carry the
         // caller's existing path so the trace shows the full chain instead of
         // restarting at this call site.
         if (prevPath != null) fold.addAll(prevPath);
@@ -3666,7 +3665,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                 calleeSig,
                 "call " + calleeSig + " arg#" + i + " carries taint through"));
         taintPaths.put(av, java.util.Collections.unmodifiableList(fold));
-        // R-804: dual-write v2 SUMMARY_FOLD
+        // dual-write v2 SUMMARY_FOLD
         // node. The callee summary says
         // "arg i is TaintPropagate" — we
         // mark the caller's arg as a
@@ -3728,7 +3727,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                 ins.column,
                 calleeSig,
                 "call " + calleeSig + " returns taint"));
-        // R-804: dual-write v2 SUMMARY_FOLD
+        // dual-write v2 SUMMARY_FOLD
         // node for the return value. Same
         // orphan-parent treatment as the
         // arg-taint site — the cross-fn
@@ -3874,7 +3873,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
               // the first
               // matching key. The
               // recordFieldOpForStore
-              // + read path already
+              // read path already
               // do this work; the
               // simplest correct
               // query is to reuse
@@ -3930,7 +3929,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // the callee applied.
         appendPassthroughStepsForSummary(r40Fold, calleeSummary, ins);
         taintPaths.put(r40Dest, java.util.Collections.unmodifiableList(r40Fold));
-        // R-804: dual-write v2 SUMMARY_FOLD
+        // dual-write v2 SUMMARY_FOLD
         // node with op=SUMMARY_PASS_THROUGH.
         // Orphan parent (-1) — the
         // conservative passthrough is
@@ -3984,7 +3983,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // FieldOp that has a non-negative
     // sourceParamIndex, the matching
     // caller arg (at index
-    // sourceParamIndex + 1 for instance
+    // sourceParamIndex 1 for instance
     // methods, sourceParamIndex for
     // static methods) carries the taint
     // that should now appear in the
@@ -3992,7 +3991,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // conservative approximation here:
     // assume the call is an instance
     // method (the common case) and use
-    // sourceParamIndex + 1. A future
+    // sourceParamIndex 1. A future
     // enhancement can detect static vs
     // instance via the callee's
     // signature.
@@ -4127,7 +4126,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             ins.args,
             taintedVars,
             taintPaths,
-            // R-804 follow-up: thread
+            // follow-up: thread
             // the v2 handle map so
             // the fold can record a
             // real source handle for
@@ -4144,7 +4143,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   /**
    * Legacy subclass hook: which argument of a sink call carries the tainted value.
    *
-   * <p><b>R693</b> moved arg-index selection into {@code sink-families.yaml} ({@code arg_index} per
+   * <p><b></b> moved arg-index selection into {@code sink-families.yaml} ({@code arg_index} per
    * pattern, {@code default_arg_index} per family). This hook is now vestigial and, in practice,
    * <b>unreachable for every shipped checker</b> — see the reachability note on {@link
    * #patternArgIndex}.
@@ -4157,12 +4156,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R693: resolve the effective user-arg index for the callee signature. Looks up the matching
-   * pattern's {@code arg_index} (with the family's {@code default_arg_index} as a fallback) and
-   * only consults the legacy {@link #sinkArgumentIndex} override when the family returns a
-   * non-positive index (i.e. neither family nor pattern has a configured value).
+   * resolve the effective user-arg index for the callee signature. Looks up the matching pattern's
+   * {@code arg_index} (with the family's {@code default_arg_index} as a fallback) and only consults
+   * the legacy {@link #sinkArgumentIndex} override when the family returns a non-positive index
+   * (i.e. neither family nor pattern has a configured value).
    *
-   * <p><b>Reachability of the legacy hook (audited R1100).</b> This method is only reached after a
+   * <p><b>Reachability of the legacy hook (audited ).</b> This method is only reached after a
    * family has already matched the callee, but {@link SinkFamily#argIndexFor} returns {@code -1}
    * <i>only</i> when no pattern matches. So whenever a family is present, {@code fromFamily} is
    * either the pattern's explicit index or the family's default — and {@code ConfigLoader} defaults
@@ -4178,7 +4177,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    */
   private int patternArgIndex(SinkFamily family, String calleeSig, TacInstruction call) {
     int fromFamily = family.argIndexFor(calleeSig);
-    // R1099: `fromFamily >= 0` alone silently discarded the receiver sentinel
+    // `fromFamily >= 0` alone silently discarded the receiver sentinel
     // (-2): it is negative, so it fell through to the checker's
     // sinkArgumentIndex() override, which returned the family default 0 — and
     // for a zero-argument sink like ObjectInputStream#readObject() that indexes
@@ -4291,7 +4290,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     //    TaintPropagate op so callers see the
     //    taint.
     //
-    //    R1099: also carry the param's taint
+    //    also carry the param's taint
     //    label as the op's `origin`. The entry
     //    boundary seeds every param as
     //    `param:<name>` (beginFunction), but
@@ -4315,7 +4314,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                 taintOriginOf(taintedVars.get(p))));
       }
     }
-    // 1b. R-? : For each tainted passed-out
+    // 1b. : For each tainted passed-out
     //    value (recorded by the RETURN case
     //    in checkInstruction), record a
     //    TaintPropagate op on the returnOps
@@ -4439,7 +4438,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R-? Step 7 : default rule prompt auto-generated from the {@link TaintRule} metadata. Individual
+   * Step 7 : default rule prompt auto-generated from the {@link TaintRule} metadata. Individual
    * checkers (e.g. {@code SqlInjectionChecker}) can override this for a more specific, hand-tuned
    * prompt; the default here covers the common case where the rule's source kind + sink family +
    * CWE are enough to let the LLM judge TP / FP / UNKNOWN sensibly.
@@ -4554,7 +4553,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * R-804 follow-up ? overload that threads the v2 {@code Trace} handle of the source this fold
+   * follow-up ? overload that threads the v2 {@code Trace} handle of the source this fold
    * propagated from. The handle is recovered by {@code restoreFieldTaintOnLoad} via {@code
    * crossFnClassFieldSource.get(key)} and attached to the new {@code PROPAGATE} node as a real
    * parent. Pass {@code -1} if the source predates dual-write.

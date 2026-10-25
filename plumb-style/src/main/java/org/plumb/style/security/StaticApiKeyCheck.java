@@ -1,5 +1,5 @@
 /*
- * R-812 ? StaticApiKeyCheck (CWE-798 / CWE-259) migrated
+ * ? StaticApiKeyCheck (CWE-798 / CWE-259) migrated
  * from plumb-dfa/.../StaticApiKeyChecker.java to
  * plumb-style AST.
  *

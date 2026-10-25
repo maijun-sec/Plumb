@@ -43,25 +43,19 @@ import org.plumb.tac.ir.TacOperand;
 /**
  * Heuristic, taint-derived unchecked-array-index checker.
  *
- * <p><b>Deprecated since R767 (Oct 2026):</b> the {@code plumb.numeric.unchecked-array-index} rule
- * is fully superseded by the boundary framework ({@link
- * org.plumb.dfa.checkers.boundary.ArrayBoundsConstraintChecker}, rule {@code
- * plumb.boundary.array-out-of-bounds}), which is a Range-lattice + Z3 SMT-solver implementation
- * rather than a taint-only heuristic. R765 evaluation showed the boundary rule at <b>0.636
- * precision</b> versus the heuristic at <b>0.294 precision</b> on Juliet CWE-129 (a +0.342 absolute
- * improvement, more than 2x relative). See {@code juliet-coverage/reports/r765/SUMMARY.md} for the
- * empirical comparison.
+ * <p><b>Deprecated.</b> The {@code plumb.numeric.unchecked-array-index} rule is superseded by the
+ * boundary framework ({@link org.plumb.dfa.checkers.boundary.ArrayBoundsConstraintChecker}, rule
+ * {@code plumb.boundary.array-out-of-bounds}), which is a Range-lattice + Z3 SMT-solver
+ * implementation rather than a taint-only heuristic, and which reaches the out-of-bounds cases the
+ * taint chain cannot follow.
  *
  * <p>Class kept (not deleted) because:
  *
  * <ol>
- *   <li>unit tests (R19Cwe129Sweep, R225PlusEmitGuardsTest, R247CrossCheckerGuardTest,
- *       R576ArrayIndexFingerprint, and 13 integration tests) still exercise the heuristic path as a
- *       regression baseline;
+ *   <li>unit tests still exercise the heuristic path as a regression baseline;
  *   <li>existing user configs may explicitly enable {@code checks.arrayBounds: true} as a fallback
  *       for callers that have not migrated to {@code plumb.boundary.array-out-of-bounds};
- *   <li>{@code juliet-coverage/configs/CWE129.yaml} keeps {@code
- *       plumb.numeric.unchecked-array-index} in the whitelist for direct A/B comparison.
+ *   <li>a caller may want to compare the heuristic against the boundary rule directly.
  * </ol>
  *
  * <p>To disable this rule while keeping boundary active, set {@code checks.arrayBounds: {enabled:
@@ -102,7 +96,7 @@ public final class ArrayIndexChecker extends TaintedCheckerBase {
       this.taintedVars.put(d, "input:" + callee);
     }
     this.guards.track(ins);
-    // R708: also handle NEWARRAY (`new T[size]`) — the
+    // also handle NEWARRAY (`new T[size]`) — the
     // canonical CWE-129 array-allocation sink. The size
     // operand lives in lhs1 (per TacInstruction.NEWARRAY
     // shape). When size is tainted AND not bounds-checked
@@ -119,7 +113,7 @@ public final class ArrayIndexChecker extends TaintedCheckerBase {
       String src = (String) this.taintedVars.get(size);
       String msg = "Array allocation with tainted size: new T[" + size.name() + "]";
       String newArrayFlow = "unchecked-newarray: " + src;
-      // R779 — single "violation" FlowStep. The taint
+      // — single "violation" FlowStep. The taint
       // source is the input that flowed into `size`; the
       // step's expr carries the label.
       FlowStep newArrayStep =
@@ -165,7 +159,7 @@ public final class ArrayIndexChecker extends TaintedCheckerBase {
                 : "Array index out of bounds: store at index ")
             + index.name();
     String arrayOpFlow = "unchecked-index: " + src;
-    // R779 — single "violation" FlowStep at the
+    // — single "violation" FlowStep at the
     // ARRAYLOAD / ARRAYSTORE site.
     FlowStep arrayOpStep =
         new FlowStep(

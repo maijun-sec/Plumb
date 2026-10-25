@@ -14,7 +14,7 @@
  * may produce a smaller key than desired, leading to
  * weaker security and interoperability issues.</p>
  *
- * <h2>v2 trace (R-812)</h2>
+ * <h2>v2 trace</h2>
  *
  * <p>The check is a per-function data flow:
  * factory → optional init → sink. The v2 trace
@@ -34,7 +34,7 @@
  *
  * <p>The v1 {@code dataflow_steps} flattens to a
  * SOURCE → (optional SANITIZER) → SINK shape so
- * pre-R-812 reporters see no change.</p>
+ * pre- reporters see no change.</p>
  */
 package org.plumb.dfa.checkers.controlflow;
 

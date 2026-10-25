@@ -135,7 +135,7 @@ public final class CompareWithSelfChecker implements DfaChecker {
       String message,
       String flow) {
     String ruleId = cwe.toLowerCase().replace('-', '.');
-    // R-812 v2 trace: single-node VIOLATION
+    // v2 trace: single-node VIOLATION
     // with COMPARE_WITH_SELF op. The "x == x"
     // pattern is captured by the op enum +
     // the comparison's operand shape (encoded

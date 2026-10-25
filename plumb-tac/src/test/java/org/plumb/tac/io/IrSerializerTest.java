@@ -89,7 +89,7 @@ class IrSerializerTest {
   }
 
   /**
-   * R-? — verify that {@code TacInstruction.line} / {@code column} (the per-instruction source
+   * — verify that {@code TacInstruction.line} / {@code column} (the per-instruction source
    * position) survive a serialize + deserialize round-trip. Findings reporters rely on these fields
    * to map back to the original .java file.
    */
@@ -134,8 +134,8 @@ class IrSerializerTest {
   }
 
   /**
-   * R-? — verify that {@link org.plumb.tac.ir.SourceMap} (a separate {@code (functionSig, insnIdx)
-   * -> Loc} map used by the CFG builder) round-trips through {@code IrSerializer}'s generic {@code
+   * — verify that {@link org.plumb.tac.ir.SourceMap} (a separate {@code (functionSig, insnIdx) ->
+   * Loc} map used by the CFG builder) round-trips through {@code IrSerializer}'s generic {@code
    * writeObject} / {@code readObject} path. Source positions for findings are derived either from
    * {@code TacInstruction.line} (above) or from a {@code SourceMap} that the translator may attach
    * post-hoc; both must survive the cache.
@@ -157,10 +157,10 @@ class IrSerializerTest {
   }
 
   /**
-   * R-? — verify that {@code TacProgram.sourcePath} (the original .java file the program was
-   * translated from) round- trips. Findings that need to point back to the source file consult
-   * this; if it deserialised as {@code null} the reporter would fall back to "unknown" and the user
-   * would lose per-file filtering.
+   * — verify that {@code TacProgram.sourcePath} (the original .java file the program was translated
+   * from) round- trips. Findings that need to point back to the source file consult this; if it
+   * deserialised as {@code null} the reporter would fall back to "unknown" and the user would lose
+   * per-file filtering.
    */
   @Test
   void roundTripPreservesSourcePath(@TempDir Path tmp) throws Exception {

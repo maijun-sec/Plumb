@@ -1,5 +1,5 @@
 /*
- * R722-C10: AST-style CWE-511 (Logic / Time Bomb) checker.
+ * C10: AST-style CWE-511 (Logic / Time Bomb) checker.
  *
  * <p>Fires on any {@code Runtime.exec} / {@code ProcessBuilder.start}
  * call (the canonical "launch an executable" pattern). The

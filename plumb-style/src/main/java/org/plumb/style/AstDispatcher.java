@@ -15,12 +15,12 @@ import org.slf4j.LoggerFactory;
 /**
  * Single-pass dispatcher for {@link AstChecker}s.
  *
- * <p><b>M4 / M5 audit (2026-10-17):</b> the previous implementation listed 30+ per-node-type visit
- * overrides ({@code visit(CompilationUnit, Void)}, {@code visit(IfStmt, Void)}, …) each with the
- * same boilerplate: iterate every registered checker, catch RuntimeException, call {@code
- * super.visit(n, arg)}. The result was 900+ lines of repetition AND a per-node cost of {@code
- * O(checkers)} invocations ? for a typical file with 10K AST nodes and 600 checkers, that's 6M
- * invocations where 99.9% are no-ops (the checker didn't override that visit type).
+ * <p><b>M4 / M5 audit:</b> the previous implementation listed 30+ per-node-type visit overrides
+ * ({@code visit(CompilationUnit, Void)}, {@code visit(IfStmt, Void)}, …) each with the same
+ * boilerplate: iterate every registered checker, catch RuntimeException, call {@code super.visit(n,
+ * arg)}. The result was 900+ lines of repetition AND a per-node cost of {@code O(checkers)}
+ * invocations ? for a typical file with 10K AST nodes and 600 checkers, that's 6M invocations where
+ * 99.9% are no-ops (the checker didn't override that visit type).
  *
  * <p>This rewrite collapses the dispatcher into two responsibilities:
  *
@@ -92,7 +92,7 @@ public final class AstDispatcher {
   public int run(StyleContext ctx) {
     int before = ctx.findings().size();
 
-    // init phase — per-checker param scope set by dispatcher (R761).
+    // init phase — per-checker param scope set by dispatcher.
     // Errors here are isolated to one checker and never abort the run.
     for (AstChecker c : checkers) {
       try {

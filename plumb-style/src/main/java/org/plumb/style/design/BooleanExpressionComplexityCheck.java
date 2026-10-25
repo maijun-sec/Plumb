@@ -13,8 +13,7 @@ import org.plumb.style.StyleContext;
 /**
  * Boolean expression too complex (default threshold 3 ? meaning 3+ {@code &&}/{@code ||} literals).
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(BinaryExpr.class)} before. The complexity count uses a stack walk on each {@code
+ * <p>findAll(BinaryExpr.class)} before. The complexity count uses a stack walk on each {@code
  * BinaryExpr} subtree so we don't recurse the whole tree at each top-level {@code AND}/{@code OR}.
  */
 public final class BooleanExpressionComplexityCheck implements AstChecker {

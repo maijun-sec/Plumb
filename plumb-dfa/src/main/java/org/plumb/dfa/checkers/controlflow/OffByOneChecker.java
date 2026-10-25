@@ -222,7 +222,7 @@ public final class OffByOneChecker implements DfaChecker {
 
   private static void emit(
       AnalysisContext ctx, TacInstruction ins, TacFunction fn, String loopVar, String lenExpr) {
-    // R-812 v2 trace: single-node VIOLATION
+    // v2 trace: single-node VIOLATION
     // with REGEX_DOS op (closest available for
     // "loop bound off-by-one"; no dedicated
     // enum — the off-by-one bucket is currently

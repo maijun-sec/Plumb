@@ -43,7 +43,7 @@ import org.plumb.style.StyleContext;
  * partially-constructed object on a thread other than the one that performed the initialization
  * (the JMM publication guarantee requires {@code volatile} or equivalent).
  *
- * <p>Detection strategy (R787e):
+ * <p>Detection strategy:
  *
  * <ol>
  *   <li>Walk every {@link IfStmt} via the standard {@code AstDispatcher}. The condition must be
@@ -58,17 +58,15 @@ import org.plumb.style.StyleContext;
  *       publication issue).
  * </ol>
  *
- * <p>Juliet CWE-609 has two test cases ({@code CWE609__Servlet_01}, {@code CWE609__Thread_01}). The
- * {@code helperBad()} form puts the bad pattern in a helper, the {@code good1()} form marks the
- * field {@code volatile} (which suppresses the AST check). The {@code good2-5} forms use different
- * idioms (method-synchronized, fully-synchronized, ReentrantLock) which structurally don't match
- * the dcl shape and are correctly suppressed.
+ * <p>Equivalent safe idioms — a {@code volatile} field, a method-level {@code synchronized}, a
+ * fully-synchronized block, or a {@code ReentrantLock} — do not have the double-check shape and are
+ * correctly not reported.
  */
 public final class DoubleCheckedLockingCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          // R787e: rule_id aligned with
+          // rule_id aligned with
           // plumb_rule_to_cwe.json (`Cwe609` →
           // ["609"]). Legacy id
           // `dfa.cwe609-double-checked-locking` is
@@ -113,7 +111,7 @@ public final class DoubleCheckedLockingCheck implements AstChecker {
       Statement inner = sync.getBody();
       AssignExpr assign = findInnerAssignNullCheck(inner, var);
       if (assign == null) continue;
-      // R787e: the target `X` must be a field
+      // the target `X` must be a field
       // declaration that does NOT carry the
       // `volatile` modifier. Local variables
       // are not affected by the JMM publication
@@ -128,7 +126,7 @@ public final class DoubleCheckedLockingCheck implements AstChecker {
           col = p.column;
         }
       }
-      // R787d (Lesson 1165): set sinkFunction
+      // (Lesson 1165): set sinkFunction
       // from the enclosing MethodDeclaration so
       // the eval harness can locate it.
       String sink = null;
@@ -177,7 +175,7 @@ public final class DoubleCheckedLockingCheck implements AstChecker {
     if (!(rhs instanceof NullLiteralExpr)) return null;
     // LHS must be a simple name reference (we
     // don't handle obj.field == null here; the
-    // dcl pattern in Juliet is always a bare
+    // dcl pattern is always a bare
     // static-field access).
     if (lhs instanceof NameExpr ne) return ne.getNameAsString();
     return null;

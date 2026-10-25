@@ -1,5 +1,5 @@
 /*
- * R-812 Batch 3 ? literal-sourced string assignment
+ * Batch 3 ? literal-sourced string assignment
  * (CWE-798 hint).
  *
  * <p>Sketch migration of the {@code LiteralSourcedTracker}

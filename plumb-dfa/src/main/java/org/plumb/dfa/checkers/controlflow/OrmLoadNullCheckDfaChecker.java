@@ -58,8 +58,8 @@ public final class OrmLoadNullCheckDfaChecker implements DfaChecker {
   private Map<String, TacInstruction> loadCallSite;
 
   /**
-   * R-812 v2 trace state. Per-function map from "from-load" var name to its v2 handle ? the load
-   * call's {@code CALL_INSTANCE} source node, propagated through alias MOVEs. Lets the final {@code
+   * v2 trace state. Per-function map from "from-load" var name to its v2 handle ? the load call's
+   * {@code CALL_INSTANCE} source node, propagated through alias MOVEs. Lets the final {@code
    * LOAD_NOT_NULL} violation fire wire its parent edge back to the load call site.
    */
   private Map<String, Integer> v2HandleByVar;
@@ -107,7 +107,7 @@ public final class OrmLoadNullCheckDfaChecker implements DfaChecker {
       String dest = ((TacOperand.TacVar) ins.dest).name();
       fromLoadVars.put(dest, true);
       loadCallSite.put(dest, ins);
-      // R-812: emit CALL_INSTANCE source for
+      // emit CALL_INSTANCE source for
       // the load call. The dest var's v2
       // handle points back to this node.
       int handle =
@@ -133,7 +133,7 @@ public final class OrmLoadNullCheckDfaChecker implements DfaChecker {
       if (fromLoadVars.containsKey(from)) {
         fromLoadVars.put(to, true);
         loadCallSite.put(to, loadCallSite.get(from));
-        // R-812: emit a MOVE propagate
+        // emit a MOVE propagate
         // chained to the source handle.
         Integer parent = v2HandleByVar.get(from);
         if (parent != null) {
@@ -186,7 +186,7 @@ public final class OrmLoadNullCheckDfaChecker implements DfaChecker {
       if (!isNullCompare) continue;
       TacInstruction origin = loadCallSite.get(varSide);
       if (origin == null) continue;
-      // R-812: emit LOAD_NOT_NULL violation
+      // emit LOAD_NOT_NULL violation
       // with the null-check's BRANCH as the
       // line (semantically the dead check
       // site) and the load call as the

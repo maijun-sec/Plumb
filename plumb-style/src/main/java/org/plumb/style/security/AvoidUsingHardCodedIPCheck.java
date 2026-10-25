@@ -7,12 +7,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Hard-coded IP address in code.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(StringLiteralExpr.class)} before.
- */
+/** Hard-coded IP address in code. */
 public final class AvoidUsingHardCodedIPCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

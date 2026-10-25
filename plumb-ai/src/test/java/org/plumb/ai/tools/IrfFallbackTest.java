@@ -15,8 +15,8 @@ import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 
 /**
- * R-? — Tests that the IR-aware tools (find_definitions, find_callers, has_sanitizer_on_path) fall
- * back to raw-text regex search when the {@code TacProgram} is {@code null}. The user said: "tools
+ * — Tests that the IR-aware tools (find_definitions, find_callers, has_sanitizer_on_path) fall back
+ * to raw-text regex search when the {@code TacProgram} is {@code null}. The user said: "tools
  * shouldn't all bind to AST / TAC; the LLM should be able to look at the code even when IR is
  * unavailable."
  */

@@ -246,10 +246,10 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
    * Default emit helper. Subclasses call this from their own decision logic if they want the
    * standard "alloc + no close on any path" finding message.
    *
-   * <p>R-? — emits a two-step {@link org.plumb.reporter.FlowStep} trace: a {@code "source"} step at
-   * the allocation site (where the resource was created) and a {@code "violation"} step at the
-   * function entry (the leak manifests when the function returns without closing). The two-step
-   * shape matches the taint-style checkers' {@code source → sink} trace so reporters can render
+   * <p>— emits a two-step {@link org.plumb.reporter.FlowStep} trace: a {@code "source"} step at the
+   * allocation site (where the resource was created) and a {@code "violation"} step at the function
+   * entry (the leak manifests when the function returns without closing). The two-step shape
+   * matches the taint-style checkers' {@code source → sink} trace so reporters can render
    * consistently.
    */
   protected void emitLeakFinding(

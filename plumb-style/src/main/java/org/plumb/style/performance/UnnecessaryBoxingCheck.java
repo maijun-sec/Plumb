@@ -12,9 +12,6 @@ import org.plumb.style.StyleContext;
 /**
  * Unnecessary primitive boxing ({@code new Integer(5)} etc.) ? prefer autoboxing or {@code
  * Integer.valueOf}.
- *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ObjectCreationExpr.class)} before.
  */
 public final class UnnecessaryBoxingCheck implements AstChecker {
 

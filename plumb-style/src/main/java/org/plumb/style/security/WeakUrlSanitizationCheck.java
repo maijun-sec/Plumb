@@ -2,8 +2,6 @@
  * Coverity <code>WEAK_URL_SANITIZATION</code> — flags weak URL/host sanitization that is likely
  * bypassable by an attacker.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(MethodCallExpr.class)} before. The
  * {@link #isUnderAssertion(MethodCallExpr)} helper uses parent pointers, which JavaParser maintains
  * for nodes attached to a parsed tree ? works identically whether the dispatch comes from
  * findAll or from the dispatcher.

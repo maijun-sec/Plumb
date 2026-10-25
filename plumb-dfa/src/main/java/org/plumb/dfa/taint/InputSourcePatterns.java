@@ -83,7 +83,7 @@ public final class InputSourcePatterns {
           "getPathVariable",
           "getRequestParam",
           "getHeaderNames",
-          // R693: JDBC ResultSet sources for the
+          // JDBC ResultSet sources for the
           // Juliet CWE89 __database__ variants
           // (and any real-world app that does
           // "read row from DB → forward into SQL").

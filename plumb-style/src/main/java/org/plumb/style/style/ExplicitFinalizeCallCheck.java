@@ -1,18 +1,17 @@
 /*
- * R728-C1: AST check for CWE-586 (Explicit Call
+ * C1: AST check for CWE-586 (Explicit Call
  * to Finalize). Fires when a MethodCallExpr named
  * `finalize` with a non-empty scope appears
  * anywhere in the CompilationUnit.
  *
- * <p>Juliet's CWE-586 corpus uses the exact pattern
- * {@code obj.finalize()} in a {@code finally}
- * block ? explicit invocation breaks the GC
- * contract. The check is generic ? any explicit
+ * <p>Any explicit
  * {@code X.finalize()} call (where X is not
  * literally the literal `finalize` keyword in a
- * constructor) is suspicious.</p>
+ * constructor) is suspicious: an explicit invocation breaks the GC
+ * contract, because the object's finalizer may run twice — once from the
+ * explicit call and once from the garbage collector.</p>
  *
- * <p>Generic, no Juliet-specific patterns.</p>
+ * <p>Generic: no pattern-specific matching.</p>
  */
 package org.plumb.style.style;
 

@@ -1,5 +1,5 @@
 /*
- * R-812 ? BadShift check (CWE-758) migrated from
+ * ? BadShift check (CWE-758) migrated from
  * plumb-dfa/.../checkers/BadShiftChecker.java to
  * plumb-style AST.
  *

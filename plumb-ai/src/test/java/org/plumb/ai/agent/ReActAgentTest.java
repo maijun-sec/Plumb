@@ -13,7 +13,7 @@ import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 
 /**
- * R-? — Tests for {@link ReActAgent} driven by an {@link InMemoryMockProvider}. The mock returns
+ * — Tests for {@link ReActAgent} driven by an {@link InMemoryMockProvider}. The mock returns
  * scripted {@link LlmReply} values so we can exercise the loop without a network round-trip.
  *
  * <p>Each test covers one stop condition / one tool path. The tests are deliberately small and

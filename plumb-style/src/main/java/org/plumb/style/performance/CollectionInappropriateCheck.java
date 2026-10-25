@@ -10,9 +10,6 @@ import org.plumb.style.StyleContext;
 /**
  * Using {@code Hashtable} / {@code Vector} / {@code Stack} ? prefer {@code java.util.concurrent}
  * alternatives or {@code ArrayList} / {@code HashMap}.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ClassOrInterfaceType.class)} before.
  */
 public final class CollectionInappropriateCheck implements AstChecker {
 

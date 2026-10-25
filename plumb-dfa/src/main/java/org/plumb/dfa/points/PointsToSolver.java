@@ -85,7 +85,7 @@ public final class PointsToSolver {
   private final Map<AbstractArrayIndex, Set<Obj>> arrayCells = new LinkedHashMap<>();
 
   /**
-   * R1112: {@code (container object, key) -> objects}, for Map and List cells.
+   * {@code (container object, key) -> objects}, for Map and List cells.
    *
    * <p>Separate from {@link #arrayCells} because a Java container is reached through a CALL, not
    * through an indexed instruction, so it needs its own accessor path rather than an overload of
@@ -103,14 +103,14 @@ public final class PointsToSolver {
    */
   private final Map<ContextKey, Set<Obj>> returns = new LinkedHashMap<>();
 
-  // ── R1114: the null direction ─────────────────────────────────────────────────────
+  // ── the null direction ─────────────────────────────────────────────────────
   //
   // The five stores above answer "which objects". They cannot answer "which of these slots hold
   // NULL", because `Obj` is an allocation-site identity: two null references are not the same
   // object, and giving null an `Obj` would make every null in the program compare equal. That
   // single sentinel would then flow into `mayAlias` and into the guard-coverage test, where
   // `covered.containsAll(held)` would read "the guard covers this null" -- exactly the false
-  // negative R1113 removed two rounds ago.
+  // negative removed two rounds ago.
   //
   // So nullness is a SEPARATE channel, and every slot is tri-valued by construction:
   //
@@ -275,7 +275,7 @@ public final class PointsToSolver {
     switch (ins.kind) {
       case MOVE -> {
         if (!(ins.dest instanceof TacOperand.TacVar d)) return false;
-        // R1114: a null literal on either side of the copy propagates nullness. Handling this as a
+        // a null literal on either side of the copy propagates nullness. Handling this as a
         // plain TacVar copy would miss `b = null`, which is the single most common way a reference
         // becomes null in the corpus.
         if (ins.lhs1 instanceof TacOperand.Const c && c.kind() == TacOperand.Const.Kind.NULL) {
@@ -301,7 +301,7 @@ public final class PointsToSolver {
         for (Obj o : points(signature, recv, ctx)) {
           AbstractField slot = new AbstractField(o, fieldNameOf(ins));
           if (storeNull) {
-            // R1114: record the NULL direction, not just the object direction. This is the fact
+            // record the NULL direction, not just the object direction. This is the fact
             // that lets a consumer tell "assigned null" apart from "never assigned".
             ch |= nullFields.add(slot);
           } else {
@@ -354,7 +354,7 @@ public final class PointsToSolver {
                   key(signature, d, ctx),
                   arrayObjects(AbstractArrayIndex.of(o, literalIndex(ins))));
           ch |= add(key(signature, d, ctx), arrayObjects(AbstractArrayIndex.any(o)));
-          // R1114: a known index must also see null written at an unknown index, mirroring the
+          // a known index must also see null written at an unknown index, mirroring the
           // ANY read above. Without this a `new String[n]` default-initialised cell -- which is
           // null by language definition -- would be invisible.
           if (nullArrayCells.contains(AbstractArrayIndex.of(o, literalIndex(ins)))
@@ -366,10 +366,10 @@ public final class PointsToSolver {
       }
       case CALL -> {
         boolean ch = false;
-        // R1112: container store/load BEFORE callee resolution. `map.get` resolves to no function
+        // container store/load BEFORE callee resolution. `map.get` resolves to no function
         // in this program, so handling it after resolution would make it unreachable -- the same
         // structural defect that left the CWE-502 rule registered but unfireable.
-        // R1112: a container access returns a container cell, not the result of a call into this
+        // a container access returns a container cell, not the result of a call into this
         // program. Letting it fall through to the callee path as well is how a second object
         // reached the destination: the caller-side return binding contributed whatever the
         // resolved signature happened to yield, and the cell's value was unioned with it.
@@ -412,7 +412,7 @@ public final class PointsToSolver {
           }
         }
         ch |= bindReturn(callee, calleeCtx, signature, ctx, ins);
-        // R1114: the null half of the return summary. `StringBuilder b = mayReturnNull();` was
+        // the null half of the return summary. `StringBuilder b = mayReturnNull();` was
         // previously indistinguishable from one returning a fresh object, because the return
         // store had no way to record null.
         if (ins.dest instanceof TacOperand.TacVar dst
@@ -424,7 +424,7 @@ public final class PointsToSolver {
       case RETURN -> {
         ContextKey ck = new ContextKey(signature, qual(ctx));
         if (ins.lhs1 instanceof TacOperand.Const c && c.kind() == TacOperand.Const.Kind.NULL) {
-          // R1114: `return null` is the same shape as any other return fact.
+          // `return null` is the same shape as any other return fact.
           return nullReturns.add(ck);
         }
         if (ins.lhs1 instanceof TacOperand.TacVar r) {
@@ -444,10 +444,10 @@ public final class PointsToSolver {
     }
   }
 
-  // ── container cells (R1112) ───────────────────────────────────────────
+  // ── container cells ───────────────────────────────────────────
 
   /**
-   * R1112: one cell of a Java container.
+   * one cell of a Java container.
    *
    * <p>{@code key} is the literal string or index when the access site used one, and {@link
    * #ANY_KEY} otherwise. Distinguishing keys is what keeps two map entries separate: with a single
@@ -458,7 +458,7 @@ public final class PointsToSolver {
    * key could be reading any entry, so claiming otherwise would be unsound in the other direction.
    */
   /**
-   * R1112: one cell of a Java container: {@code container[key]}.
+   * one cell of a Java container: {@code container[key]}.
    *
    * <p>Keys match <em>exactly</em>, the opposite of {@link AbstractArrayIndex}, and the difference
    * is load-bearing. An array's ANY cell exists because a computed index genuinely cannot say which
@@ -480,7 +480,7 @@ public final class PointsToSolver {
   }
 
   /**
-   * R1112: container operations modelled as store and load edges.
+   * container operations modelled as store and load edges.
    *
    * <p>Modelled by callee signature, with the receiver at {@code args[0]} per the TAC convention:
    *
@@ -761,7 +761,7 @@ public final class PointsToSolver {
   }
 
   /**
-   * R1112: apply one container store or load. Returns true when a fact grew.
+   * apply one container store or load. Returns true when a fact grew.
    *
    * <p>Each concrete-keyed cell is read together with the {@link ContainerCell#ANY_KEY} cell, in
    * both directions: a read through an unknown key must see every literal-keyed write, and a write
@@ -769,7 +769,7 @@ public final class PointsToSolver {
    * cell would be unsound, and writing only the literal cell would lose the entry entirely.
    */
   /**
-   * R1112: apply one container store or load.
+   * apply one container store or load.
    *
    * @return {@code true} when this instruction was a container access and has been fully handled
    *     here, whether or not a fact grew. An empty-cell write is still a handled access, and
@@ -797,7 +797,7 @@ public final class PointsToSolver {
     boolean isLoad = "get".equals(bareName(ins.calleeSig));
     if (!isLoad && args.size() >= 2) {
       int valueIdx = "set".equals(bareName(ins.calleeSig)) ? 2 : args.size() - 1;
-      // R1114: `store.put(k, null)` and `list.add(null)` store the null literal. The operand is a
+      // `store.put(k, null)` and `list.add(null)` store the null literal. The operand is a
       // Const rather than a TacVar, so it has to be recognised before the TacVar branch below --
       // otherwise the store is silently dropped, which is the whole gap being closed.
       boolean storeNull =
@@ -811,7 +811,7 @@ public final class PointsToSolver {
       } else if (valueIdx < args.size() && args.get(valueIdx) instanceof TacOperand.TacVar value) {
         Set<Obj> stored = points(signature, value, ctx);
         for (Obj o : points(signature, recv, ctx)) {
-          // R1112: a literal key populates ONLY its own cell.
+          // a literal key populates ONLY its own cell.
           //
           // Writing the ANY_KEY cell as well is the "conservative" choice and it is wrong here:
           // every literal-keyed read consults ANY_KEY, so one extra write under a literal makes
@@ -866,10 +866,10 @@ public final class PointsToSolver {
     return out;
   }
 
-  // ── R1114: the null direction, as a query ──────────────────────────────────────────
+  // ── the null direction, as a query ──────────────────────────────────────────
 
   /**
-   * R1114: may this local hold the null literal?
+   * may this local hold the null literal?
    *
    * <p>Tri-valued, and the third state is the one that matters. {@code false} means the analysis
    * found no null path; it does <em>not</em> mean the reference is proven non-null, because an
@@ -888,17 +888,17 @@ public final class PointsToSolver {
     return mayBeNull(signature, v, Context.empty());
   }
 
-  /** R1114: may this field slot hold null? Same "unknown is not false" contract. */
+  /** may this field slot hold null? Same "unknown is not false" contract. */
   public boolean fieldMayBeNull(AbstractField slot) {
     return slot != null && nullFields.contains(slot);
   }
 
-  /** R1114: may this array cell hold null? */
+  /** may this array cell hold null? */
   public boolean arrayMayBeNull(AbstractArrayIndex cell) {
     return cell != null && nullArrayCells.contains(cell);
   }
 
-  /** R1114: may this container cell hold null? */
+  /** may this container cell hold null? */
   public boolean containerMayBeNull(Obj container, String key, boolean mapCell) {
     return container != null
         && (nullContainerCells.contains(new ContainerCell(container, key, mapCell))
@@ -906,13 +906,13 @@ public final class PointsToSolver {
                 new ContainerCell(container, ContainerCell.ANY_KEY, mapCell)));
   }
 
-  /** R1114: may this method return null in this context? */
+  /** may this method return null in this context? */
   public boolean returnMayBeNull(String signature, Context ctx) {
     return signature != null && nullReturns.contains(new ContextKey(signature, qual(ctx)));
   }
 
   /**
-   * R1114: every local of {@code signature} that may hold null.
+   * every local of {@code signature} that may hold null.
    *
    * <p>Exists so a consumer does not have to iterate locals itself when it needs a suppression set.
    */
@@ -1010,7 +1010,7 @@ public final class PointsToSolver {
   }
 
   /**
-   * R1108: the objects {@code receiver} may point at, restricted to one context.
+   * the objects {@code receiver} may point at, restricted to one context.
    *
    * <p>Exposed so an alias-aware checker can start from a suspect reference and ask "which other
    * references in this function could be the same object?", rather than having to enumerate the
@@ -1026,8 +1026,7 @@ public final class PointsToSolver {
   }
 
   /**
-   * R1108: every local of {@code signature} that may hold an object also reachable from {@code
-   * receiver}.
+   * every local of {@code signature} that may hold an object also reachable from {@code receiver}.
    *
    * <p>This is the "alias class" of a reference, and it is what makes a null-ness guard
    * transferable between names: if {@code a} is proven non-null on this path and {@code b} is in
@@ -1054,7 +1053,7 @@ public final class PointsToSolver {
   }
 
   /**
-   * R1112: does this reference reach {@code candidate} through a container cell?
+   * does this reference reach {@code candidate} through a container cell?
    *
    * <p>Separate from {@link #mayAlias} because the answer may hold even when neither variable has a
    * points-to set of its own: the value lives in a map cell, and the two references are the writer

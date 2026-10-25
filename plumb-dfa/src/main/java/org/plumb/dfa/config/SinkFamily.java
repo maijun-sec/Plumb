@@ -16,12 +16,12 @@ import java.util.regex.Pattern;
  *
  * <p>Each pattern may carry an optional {@code argIndex} override that names the user-visible Java
  * argument index holding the tainted value. The family's {@link #defaultArgIndex()} applies when a
- * pattern's index is unset. R693 moved the per-checker {@code sinkArgumentIndex()} override out of
- * the checker layer and into the pattern definition so that a single family (e.g. {@code
- * header.sinks}) can mix patterns whose tainted value sits at user-arg 0 ({@code sendRedirect})
- * with patterns whose tainted value sits at user-arg 1 ({@code setHeader}).
+ * pattern's index is unset. moved the per-checker {@code sinkArgumentIndex()} override out of the
+ * checker layer and into the pattern definition so that a single family (e.g. {@code header.sinks})
+ * can mix patterns whose tainted value sits at user-arg 0 ({@code sendRedirect}) with patterns
+ * whose tainted value sits at user-arg 1 ({@code setHeader}).
  *
- * <h2>R1099: receiver-tainted sinks</h2>
+ * <h2>receiver-tainted sinks</h2>
  *
  * <p>{@link SinkPattern#RECEIVER_ARG_INDEX} ({@code -2}) declares that the tainted value is the
  * <em>receiver</em>, not a user argument. {@code ObjectInputStream#readObject()} is the motivating
@@ -217,11 +217,11 @@ public final class SinkFamily {
 
   public SinkFamily(
       String name, String cwe, String severityLabel, boolean enabled, List<String> patterns) {
-    // R693.5: legacy string-list constructor.
+    // legacy string-list constructor.
     // Default to -1 (no opinion) so the
     // TaintedCheckerBase.patternArgIndex helper
     // falls back to the checker's
-    // sinkArgumentIndex() override. Pre-R693.5
+    // sinkArgumentIndex() override. Pre-
     // this hardcoded 0, which silently broke
     // XssInjectionChecker.sinkArgumentIndex=1
     // for the legacy-form xss.sinks family
@@ -231,7 +231,7 @@ public final class SinkFamily {
   }
 
   /**
-   * R693: full constructor. Pass {@link SinkPattern} entries whose {@code argIndex} carries the
+   * full constructor. Pass {@link SinkPattern} entries whose {@code argIndex} carries the
    * per-pattern override; use {@code -1} to fall back to the family-wide {@code defaultArgIndex}.
    */
   public SinkFamily(
@@ -272,7 +272,7 @@ public final class SinkFamily {
   /**
    * Family-wide default arg index. Used when a pattern's own {@link SinkPattern#argIndex()} is
    * {@code -1} (unset). Defaults to {@code 0} (first user-visible arg after the receiver) to match
-   * Plumb's pre-R693 default.
+   * Plumb's pre- default.
    */
   public int defaultArgIndex() {
     return defaultArgIndex;

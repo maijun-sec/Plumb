@@ -1,5 +1,5 @@
 /*
- * R-808 ? V2 trace summary inline-injection for the FP-reducer
+ * ? V2 trace summary inline-injection for the FP-reducer
  * ReAct prompt. The summarizer produces a single short line
  * (≤ 200 chars) that captures the SHAPE of a v2 structured
  * {@link Trace} so the LLM sees the trace structure on the
@@ -20,11 +20,11 @@
  *       function of (a) is the source user-controlled,
  *       (b) did the path go through a sanitiser,
  *       (c) is the sink exploitable. The shape — "op
- *       distribution + typed-const count + orphan count" —
+ *       distribution typed-const count + orphan count" —
  *       already gives the LLM 80% of the signal it needs to
  *       decide TP vs FP without rendering every node.</li>
  *   <li>Detail on demand: if the LLM needs more, it calls
- *       {@code get_dataflow_trace_with_facts} (R-806) which
+ *       {@code get_dataflow_trace_with_facts} which
  *       walks the full DAG.</li>
  * </ul>
  *
@@ -55,7 +55,7 @@
  *   <li>{@code orphan=<J>} ? number of SOURCE-role nodes with
  *       no parents (i.e. trust-boundary nodes that the engine
  *       couldn't recover a source handle for). High orphan
- *       count is an FP signal (R-804 follow-up noted Juliet
+ *       count is an FP signal ( follow-up noted Juliet
  *       logger scaffolding produces 17 orphans per finding).</li>
  * </ul>
  */
@@ -184,7 +184,7 @@ public final class V2TraceSummarizer {
   /**
    * True when {@code n} carries a typed {@link OperandRef.Const*} operand. We use this to count
    * "data = \"\"" / "data = null" style initialisers that propagateMOVE emitted as v2 SOURCE nodes
-   * (R-807).
+   * .
    */
   private static boolean hasTypedConstOperand(TraceNode n) {
     if (n.operands() == null) return false;

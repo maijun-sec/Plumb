@@ -1,6 +1,4 @@
 /*
- * R-AST-FIX-2026-10-18: dataflow-anomaly stub.
- *
  * <p>The previous checker was a no-op
  * ({@code // Heuristic: skip — would need full dataflow analysis.}). It
  * existed only to occupy a RuleRegistry slot. Marking the rule
@@ -52,7 +50,5 @@ public final class DataflowAnomalyAnalysisCheck implements AstChecker {
   public void init(StyleContext ctx) {}
 
   @Override
-  public void visit(CompilationUnit n, StyleContext ctx) {
-    // STUB: detection requires full dataflow analysis. See R-AST-FIX-2026-10-18.
-  }
+  public void visit(CompilationUnit n, StyleContext ctx) {}
 }

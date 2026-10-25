@@ -12,7 +12,7 @@ import org.plumb.style.StyleContext;
 /**
  * clone() must call super.clone().
  *
- * <p>Pattern D R-818: per-method visit. If method name is {@code "clone"} and no descendant {@code
+ * <p>Pattern D per-method visit. If method name is {@code "clone"} and no descendant {@code
  * super.clone()} call, fire.
  */
 public final class SuperCloneCheck implements AstChecker {

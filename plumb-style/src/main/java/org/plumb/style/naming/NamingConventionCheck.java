@@ -9,9 +9,6 @@ import org.plumb.style.StyleContext;
 
 /**
  * Local variable starting with uppercase letter (non-{@code String} types) ? should be camelCase.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(VariableDeclarator.class)} before.
  */
 public final class NamingConventionCheck implements AstChecker {
 

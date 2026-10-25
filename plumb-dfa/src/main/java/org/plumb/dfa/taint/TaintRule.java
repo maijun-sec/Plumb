@@ -68,8 +68,9 @@ public record TaintRule(
   }
 
   /**
-   * R-834: build a rule with an explicit {@code enabled} flag. Use {@code false} for rules that
-   * have 0 TP / 100% FP on the Juliet baseline and should be opt-in instead of on by default.
+   * build a rule with an explicit {@code enabled} flag. Use {@code false} for rules that have 0 TP
+   * that reported nothing on the code it was measured against, and should be opt-in instead of on
+   * by default.
    */
   public static TaintRule of(
       String ruleId,
@@ -81,7 +82,7 @@ public record TaintRule(
     return new TaintRule(ruleId, sourceKindName, sinkFamilyKey, cwe, "HIGH", domain, enabled);
   }
 
-  /** R-834: copy with {@code enabled} flipped. */
+  /** copy with {@code enabled} flipped. */
   public TaintRule withEnabled(boolean e) {
     return new TaintRule(ruleId, sourceKindName, sinkFamilyKey, cwe, severityLabel, domain, e);
   }

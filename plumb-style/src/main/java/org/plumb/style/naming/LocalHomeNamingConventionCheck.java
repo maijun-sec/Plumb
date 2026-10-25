@@ -1,6 +1,4 @@
 /*
- * R-AST-FIX-2026-10-18: EJB-LocalHome-naming stub.
- *
  * <p>The previous checker was a no-op
  * ({@code // Heuristic: skip — would need EJB type resolution.}). It
  * existed only to occupy a RuleRegistry slot. Marking the rule
@@ -51,7 +49,5 @@ public final class LocalHomeNamingConventionCheck implements AstChecker {
   public void init(StyleContext ctx) {}
 
   @Override
-  public void visit(CompilationUnit n, StyleContext ctx) {
-    // STUB: detection requires EJB type resolution. See R-AST-FIX-2026-10-18.
-  }
+  public void visit(CompilationUnit n, StyleContext ctx) {}
 }

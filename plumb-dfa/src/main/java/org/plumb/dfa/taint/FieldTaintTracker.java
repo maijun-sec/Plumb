@@ -112,13 +112,13 @@ public final class FieldTaintTracker {
   /**
    * A snapshot of a field's taint state.
    *
-   * <p><b>R-804 follow-up</b> — {@code v2Handle} is the v2 {@code Trace} node id of the source this
+   * <p><b> follow-up</b> — {@code v2Handle} is the v2 {@code Trace} node id of the source this
    * field write propagated from. When a subsequent {@code FIELDLOAD} reads the field, the loader
    * can attach a real parent to the new {@code PROPAGATE} node via {@code
    * addPropagate(parents=[v2Handle], ...)} instead of treating the load as a fresh orphan SOURCE
    * entry. {@code v2Handle=-1} means "no recovered handle (the writer predates v2 dual-write, or
    * the taint came from a non-tracked path)" — in that case the loader still falls back to the
-   * orphan-SOURCE shape from R-804.
+   * orphan-SOURCE shape from .
    */
   public record TrackedTaint(String label, List<FlowStep> path, int v2Handle) {
     public TrackedTaint {
@@ -181,11 +181,11 @@ public final class FieldTaintTracker {
   }
 
   /**
-   * R-804 follow-up ? overload that records the v2 {@code Trace} handle of the source this field
-   * write propagated from. The handle is later recovered by {@link #readField} consumers (notably
-   * {@code TaintedCheckerBase}'s {@code restoreFieldTaintOnLoad} site) so the load can attach a
-   * real parent to the v2 PROPAGATE node instead of a fresh orphan SOURCE. Pass {@code -1} if the
-   * source is unknown (legacy call sites that haven't been dual-written yet).
+   * follow-up ? overload that records the v2 {@code Trace} handle of the source this field write
+   * propagated from. The handle is later recovered by {@link #readField} consumers (notably {@code
+   * TaintedCheckerBase}'s {@code restoreFieldTaintOnLoad} site) so the load can attach a real
+   * parent to the v2 PROPAGATE node instead of a fresh orphan SOURCE. Pass {@code -1} if the source
+   * is unknown (legacy call sites that haven't been dual-written yet).
    */
   public void recordWrite(
       String receiver, String fieldName, String label, List<FlowStep> path, int v2Handle) {
@@ -347,8 +347,8 @@ public final class FieldTaintTracker {
   }
 
   /**
-   * R-804 follow-up ? overload that threads the caller's v2 {@code Trace} handle map through the
-   * fold path so the field write can record a real source handle (subsequent {@code FIELDLOAD} will
+   * follow-up ? overload that threads the caller's v2 {@code Trace} handle map through the fold
+   * path so the field write can record a real source handle (subsequent {@code FIELDLOAD} will
    * attach a real parent to its PROPAGATE node instead of an orphan SOURCE). Pass {@code
    * java.util.Collections.emptyMap()} for legacy call sites.
    */
@@ -467,7 +467,7 @@ public final class FieldTaintTracker {
             callColumn,
             calleeSig,
             "call " + calleeSig + " writes " + receiverName + "." + fieldName));
-    // R-804 follow-up: thread the caller's v2
+    // follow-up: thread the caller's v2
     // handle so a subsequent FIELDLOAD can
     // attach a real parent. Look up by
     // caller arg var; -1 if absent.

@@ -1,15 +1,11 @@
 /*
- * R-813: AST-style CWE-20 (Improper Input Validation) checker.
+ * AST-style CWE-20 (Improper Input Validation) checker.
  *
  * <p>Fires on web endpoint methods that accept user input via parameter annotations
  * ({@code @RequestParam}, {@code @PathVariable}, {@code @RequestBody}, ...) but don't opt into
  * Bean Validation through {@code @Valid}, {@code @Validated}, or a class-level
  * {@code @Validated}.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)} before. The enclosing
- * class (for the controller / class-level validation annotations) is recovered via
- * {@code findAncestor(ClassOrInterfaceDeclaration.class)}.
  */
 package org.plumb.style.security;
 

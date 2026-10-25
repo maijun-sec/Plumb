@@ -18,26 +18,19 @@ import org.plumb.style.StyleContext;
  * ids, Stripe live/test keys, GitHub PATs, etc. The static half is intentionally lenient; the AI
  * dedup pass judges TP / FP from the actual source context.
  *
- * <p>The previous implementation was a file-wide {@code finish()} scan with manual {@code /* ...
- * *}{@code /} / {@code //} / HTML comment tracking (dfa-style source-reading). The R787f AST
- * implementation walks every comment via the standard {@link
+ * <p>The AST implementation walks every comment via the standard {@link
  * com.github.javaparser.ast.comments.Comment} attachment system that JavaParser already populates
- * when it parses the source. This drops the manual block-comment accumulation code (JavaParser
- * handles multi-line comments) but adds a separate HTML-comment pass because Juliet CWE-615 test
- * cases use {@code <!-- ... -->} for credential leaks in servlet responses (the Java-comment parser
- * misses these).
+ * when it parses the source, so multi-line comments are handled without manual accumulation. HTML
+ * comments ({@code <!-- ... -->}) are covered by a separate pass, because the Java-comment parser
+ * does not see them.
  */
 public final class CommentInfoLeakCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          // R787f: rule_id aligned with
-          // plumb_rule_to_cwe.json (`Cwe615` →
-          // ["615"]). Legacy dfa rule id
-          // `plumb.ai.comment-info-leak` is
-          // preserved as the short_name so any
-          // external whitelist still matches
-          // (Lesson 1154).
+          // The legacy dfa rule id `plumb.ai.comment-info-leak` is
+          // preserved as the short_name so any external whitelist
+          // still matches.
           new RuleId("ast-style-comment-info-leak", "COMMENT_INFO_LEAK"),
           "Comment contains sensitive-looking data (CWE-615)",
           RuleDef.Severity.LOW,

@@ -13,12 +13,12 @@
  *       baseline)</li>
  * </ul>
  *
- * <p>R-718: converted from a standalone DfaChecker to a
+ * <p>converted from a standalone DfaChecker to a
  * {@link TaintedCheckerBase} subclass so the cross-fn
- * field re-analysis (R-717) extends to this rule. The
+ * field re-analysis extends to this rule. The
  * V-41 / V-42 / V-45 Juliet patterns (private-field /
  * cross-method-return) need the cross-fn fold to fire
- * this checker. Before R-718, ResourceExhaustionChecker
+ * this checker. Before , ResourceExhaustionChecker
  * was a standalone checker, so V-41 / V-42 / V-45
  * always read clean field taints and missed.</p>
  *
@@ -91,7 +91,7 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
     // this call (count wasn't in taintedVars yet).
     super.checkInstruction(ins, fn, ctx);
 
-    // 2) R-719: seed high-value CONST literal sources.
+    // 2) seed high-value CONST literal sources.
     // `count = Integer.MAX_VALUE` is the Juliet
     // CWE-400 bad-source pattern; we treat it as
     // tainted via markSource so the label is in this
@@ -148,7 +148,7 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
           String srcLabel = taintedVars.get(av);
           String key = fn.enclosingClass() + "#" + fn.signature() + "|" + ins.line + "|400-sleep";
           if (!reported.add(key)) return;
-          // R-812: wire this Thread.sleep
+          // wire this Thread.sleep
           // sink back to the taint source
           // the base class recorded for
           // `av` via a v2 trace. The base
@@ -179,9 +179,9 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
           // handle as the sink id.
           Trace v2Trace =
               v2Builder().build(java.util.List.of(sinkHandle), Trace.CompressionLevel.FULL);
-          // R776 — keep the v1 source+violation
+          // — keep the v1 source+violation
           // FlowStep pair so v1 consumers see
-          // the same trace as pre-R-812.
+          // the same trace as pre-.
           List<FlowStep> steps = new ArrayList<>(2);
           steps.add(
               new FlowStep(
@@ -219,7 +219,7 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
     }
 
     // 4) Sink 2: BRANCH-with-tainted-bound : for_loop
-    // (the Juliet V01-V17 baseline pattern).
+    // (a loop bound that is itself tainted).
     if (ins.kind == TacInstruction.Kind.BRANCH && ins.lhs1 instanceof TacOperand.TacVar condVar) {
       int branchIdx = fn.instructions().indexOf(ins);
       if (branchIdx < 0) return;
@@ -240,7 +240,7 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
       if (label == null) return;
       String key = fn.enclosingClass() + "#" + fn.signature() + "|" + ins.line + "|400-for";
       if (!reported.add(key)) return;
-      // R-812: same v2 trace wiring as the
+      // same v2 trace wiring as the
       // Thread.sleep branch — append a
       // SINK_MEM_ALLOC sink onto the base
       // class's per-function DAG, parented
@@ -265,7 +265,7 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
                     fn.signature());
         Trace v2Trace =
             v2Builder().build(java.util.List.of(sinkHandle), Trace.CompressionLevel.FULL);
-        // R776 — same source/violation FlowStep pair as the
+        // — same source/violation FlowStep pair as the
         // Thread.sleep branch. Reports where the tainted bound
         // came from + the actual violation site.
         List<FlowStep> steps = new ArrayList<>(2);
@@ -302,7 +302,7 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
 
   @Override
   public FunctionSummary summarizeFunction(AnalysisContext ctx, TacFunction fn) {
-    // R-719: use the base-class summary builder so the
+    // use the base-class summary builder so the
     // cross-fn propagation for V42 (data returned from
     // one method to another) and V45 (private field)
     // works. Returning {@code FunctionSummary.empty()}
@@ -319,7 +319,7 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
     // and do not match any
     // {@link org.plumb.dfa.config.SinkFamily}), so the
     // summary size is bounded by the propagated taint
-    // + sink entries. The R-718 commit originally
+    // sink entries. The commit originally
     // returned empty here because the V41/V42/V45
     // private-field / cross-method-return patterns
     // relied on {@code crossFnClassFieldTaint} only :         // which handles V45 but NOT V42's
@@ -345,7 +345,7 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R-719: recognise "high-value constant" sources.
+   * recognise "high-value constant" sources.
    *
    * <p>A literal is high-value when:
    *

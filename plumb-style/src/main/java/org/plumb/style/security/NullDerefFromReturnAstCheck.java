@@ -1,6 +1,5 @@
 package org.plumb.style.security;
 
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
 // This checker is necessarily two-phase: init() walks the CU to build the
 // inter-proc map (which method params are dereferenced without null check),
 // then visit(MethodDeclaration) consumes that map for the call-site check.
@@ -39,7 +38,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/** R740-R743: AST-level CWE-690 (NULL Pointer Dereference From Return) checker. */
+/** AST-level CWE-690 (NULL Pointer Dereference From Return) checker. */
 public final class NullDerefFromReturnAstCheck implements AstChecker {
 
   private static final RuleDef RULE =
@@ -66,8 +65,8 @@ public final class NullDerefFromReturnAstCheck implements AstChecker {
     final Statement stmt;
 
     /**
-     * R1110: the variable this one was copied from, or {@code null} when the value came from
-     * anywhere else (a call result, a container lookup, an unknown expression).
+     * the variable this one was copied from, or {@code null} when the value came from anywhere else
+     * (a call result, a container lookup, an unknown expression).
      *
      * <p>Only a syntactically explicit reference copy sets this. It is what lets a null check on
      * {@code a} be honoured for a dereference of {@code b} when the code says {@code b = a}: the
@@ -110,7 +109,7 @@ public final class NullDerefFromReturnAstCheck implements AstChecker {
     lineToStmt.clear();
     interprocUnsafeParams.clear();
     interprocMethodParams.clear();
-    // R743 pre-pass: walk every method declaration, record
+    // pre-pass: walk every method declaration, record
     // params and identify which params are dereferenced
     // without a null check (the "unsafe" set per method).
     com.github.javaparser.ast.CompilationUnit unit = ctx.source().unit();
@@ -226,7 +225,7 @@ public final class NullDerefFromReturnAstCheck implements AstChecker {
   }
 
   /**
-   * R1110: the variable name an expression copies a reference from, or {@code null}.
+   * the variable name an expression copies a reference from, or {@code null}.
    *
    * <p>Deliberately restricted to a bare {@link NameExpr}. Anything else -- a method call, a field
    * access, a container lookup -- is a value whose provenance this rule cannot establish, and
@@ -276,8 +275,7 @@ public final class NullDerefFromReturnAstCheck implements AstChecker {
   }
 
   /**
-   * R1110: is the dereference guarded by a check on {@code varName} or on any name it was copied
-   * from?
+   * is the dereference guarded by a check on {@code varName} or on any name it was copied from?
    *
    * <p>A null check constrains the <em>object</em>, not the name. When the code says {@code b = a},
    * a check on {@code a} between the assignment and the use covers {@code b} as well, because both
@@ -308,7 +306,7 @@ public final class NullDerefFromReturnAstCheck implements AstChecker {
   }
 
   /**
-   * R1110: {@code varName} plus the transitive chain of variables it was copied from.
+   * {@code varName} plus the transitive chain of variables it was copied from.
    *
    * <p>The variable itself comes first so a check on it still wins, keeping the original behaviour
    * intact for the common case. Bounded by {@link #COPY_CHAIN_LIMIT} and by refusing to revisit a
@@ -326,7 +324,7 @@ public final class NullDerefFromReturnAstCheck implements AstChecker {
   }
 
   /**
-   * R1110: how far to follow a copy chain.
+   * how far to follow a copy chain.
    *
    * <p>Well above any hand-written chain and far below anything a cyclic program could use to spin.
    * The cycle guard in {@link #guardCandidates} is the real termination proof; this only bounds the

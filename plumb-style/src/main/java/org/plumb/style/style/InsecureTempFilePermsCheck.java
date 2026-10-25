@@ -1,11 +1,9 @@
 /*
- * R-AST-FIX-2026-10-18 (deduplication).
- *
  * <p>Previously this class independently implemented ruleId
- * {@code "ast-style-insecure-temp-file-perms"} (R729-A1). The
+ * {@code "ast-style-insecure-temp-file-perms"} (-A1). The
  * canonical owner is
  * {@code org.plumb.style.security.InsecureTempFilePermsCheck} (the
- * original R-812 migration target). Keeping both produced a
+ * original migration target). Keeping both produced a
  * ruleId collision in {@code RuleRegistry} that intermittently
  * shadowed findings.
  *
@@ -32,11 +30,7 @@ import org.plumb.style.StyleContext;
 @Deprecated
 public final class InsecureTempFilePermsCheck implements AstChecker {
 
-  /**
-   * R-AST-FIX-2026-10-18: enabled=false. {@link org.plumb.style.AstCheckerRegistry} calls {@link
-   * #rule()} on the freshly-instantiated checker and skips registration when {@code
-   * rule().enabled()} is false.
-   */
+  /** */
   private static final RuleDef DISABLED_RULE =
       new RuleDef(
           new RuleId(

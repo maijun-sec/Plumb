@@ -9,13 +9,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Local variable declared but never used.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(MethodDeclaration.class)} before. The inner per-variable walk stays as a local loop
- * because we need to count {@code NameExpr} references inside the enclosing method.
- */
+/** Local variable declared but never used. */
 public final class UnusedLocalVariableCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

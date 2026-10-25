@@ -1,7 +1,7 @@
 /*
  * method cyclomatic complexity > 10.
  *
- * <p><b>R-817 (2026-10-14): pattern A rewrite.</b> The previous
+ * <p><b>pattern A rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(MethodDeclaration)} (1 walk) + a per-method
  * {@code complexity(m)} helper that called 10 separate
@@ -20,8 +20,6 @@
  * during the visit(CU) loop (no per-node state needed).</p>
  */
 package org.plumb.style.style;
-
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
 
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.MethodDeclaration;

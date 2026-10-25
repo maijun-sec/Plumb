@@ -15,7 +15,7 @@ import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 
 /**
- * R1110: null-dereference of a value that came from a call, decided with alias knowledge.
+ * null-dereference of a value that came from a call, decided with alias knowledge.
  *
  * <h2>Relation to the AST rule</h2>
  *
@@ -38,9 +38,9 @@ import org.plumb.tac.ir.TacOperand;
  * <ol>
  *   <li><b>Every call result is nullable, not just ones with suggestive names.</b> The AST rule and
  *       {@link NullDerefChecker} both restrict "might be null" to a {@code null} literal or a
- *       method whose name contains {@code Bad}/{@code Null}/{@code Nullable} — a heuristic aimed at
- *       the Juliet corpus. This rule treats <em>any</em> value arriving from a call as possibly
- *       null, which is what a caller of an unknown method actually has to assume.
+ *       method whose name contains {@code Bad}/{@code Null}/{@code Nullable} — a name-based
+ *       heuristic. This rule treats <em>any</em> value arriving from a call as possibly null, which
+ *       is what a caller of an unknown method actually has to assume.
  *   <li><b>A guard transfers across aliases, but only where it covers the whole reference.</b>
  *       {@code if (a == null) return;} constrains the object {@code a} denotes, so it covers every
  *       name whose points-to set is <em>contained</em> in {@code a}'s. It does not cover a name
@@ -74,7 +74,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
   private final Map<TacOperand.TacVar, String> nullableVars = new LinkedHashMap<>();
 
   /**
-   * R1110: path-sensitive null guards for the current function.
+   * path-sensitive null guards for the current function.
    *
    * <p>Owned per checker, matching {@link DivByZeroChecker} and {@link NullDerefChecker}: the guard
    * state is per-function, and the base class keeps its own instance private.
@@ -116,10 +116,10 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
           return;
         }
         if (ins.lhs1 instanceof TacOperand.TacVar src) {
-          // R1122: a rebinding replaces the variable's current value, so it also retires the
+          // a rebinding replaces the variable's current value, so it also retires the
           // fresh-allocation claim the previous binding earned. Without this, `h = new String(..)`
           // followed by `h = b.v` would still let a later `x = h` erase x's nullable fact.
-          // R1122: decide BEFORE recording this binding. Whether this MOVE is a copy or a rebinding
+          // decide BEFORE recording this binding. Whether this MOVE is a copy or a rebinding
           // is
           // exactly what `reboundAwayFromAlias` hinges on.
           final boolean destAlreadyBound = this.everBound.contains(dest);
@@ -129,7 +129,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
             this.reboundAwayFromAlias.remove(dest);
           }
           if (dest != null) this.everBound.add(dest);
-          // R1119: copy propagation is ADDITIVE and never subtracts.
+          // copy propagation is ADDITIVE and never subtracts.
           //
           // The previous code cleared the destination whenever the source was absent from the map.
           // That reads absence as "known non-null", which inverts a may-fact into a must-claim --
@@ -155,7 +155,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
           // CALL handler marks the result nullable on its own.
           if (this.nullableVars.containsKey(src)) {
             this.nullableVars.put(dest, "copy of " + src.name());
-            // R1122: the copy inherits WHERE the value came from. `b = sink.get()` lowers to a
+            // the copy inherits WHERE the value came from. `b = sink.get()` lowers to a
             // CALL into a temp followed by `b = t_t1`, so the flag recorded on the temp has to
             // travel with the MOVE -- otherwise the receiver looks like an ordinary copy and an
             // alias guard covers it.
@@ -176,7 +176,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
               reboundAwayFromAlias.remove(dest);
             }
           } else if (isFreshAllocation(fn, src, ctx)) {
-            // R1119: the ONE case where a MOVE may subtract.
+            // the ONE case where a MOVE may subtract.
             //
             // Copy propagation cannot retract, because a may-fact about a name is not a fact about
             // the value a later assignment brings. A fresh allocation is different in kind: `new
@@ -199,7 +199,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
         TacOperand.TacVar dest = asVar(ins.dest);
         if (dest != null && ins.calleeSig != null && !ins.calleeSig.isEmpty()) {
           this.nullableVars.put(dest, "result of " + ins.calleeSig);
-          // R1122: a call result is a value that arrived from outside; no guard already in scope
+          // a call result is a value that arrived from outside; no guard already in scope
           // can constrain it, so a later alias guard must not suppress on its behalf.
           this.lastBindingWasCall.add(dest);
           this.allocatedHere.remove(dest);
@@ -216,7 +216,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
         TacOperand.TacVar dest = asVar(ins.dest);
         if (dest != null) {
           this.nullableVars.remove(dest);
-          // R1122: record that this variable's CURRENT binding is the allocation, which is what
+          // record that this variable's CURRENT binding is the allocation, which is what
           // licenses the single subtraction MOVE. Noted on the binding, not on the name.
           this.allocatedHere.add(dest);
           this.lastBindingWasCall.remove(dest);
@@ -224,7 +224,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
         return;
       }
       case FIELDLOAD, ARRAYLOAD -> {
-        // R1114: a load of a slot that the solver knows may hold null makes the DESTINATION
+        // a load of a slot that the solver knows may hold null makes the DESTINATION
         // nullable. This is the path that was missing: `right.node = null` followed by
         // `right.node.payload.length()` used to produce no finding at all, because the checker only
         // ever learned nullness from a CALL result or a direct `x = null` MOVE.
@@ -304,7 +304,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R1113: is every object this receiver may hold covered by a guard?
+   * is every object this receiver may hold covered by a guard?
    *
    * <p><b>This method is the reason the rule does not under-report.</b> The tempting version is
    * "some alias of the receiver is proven non-null, therefore the receiver is safe". It is wrong,
@@ -341,15 +341,15 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
    * stops suppressing the imprecision case, which is where the coverage is incomplete.
    */
   /**
-   * R1119/R1122: does this variable provably point at a fresh object?
+   * does this variable provably point at a fresh object?
    *
    * <p>The single subtraction MOVE is allowed to perform. {@code x = new StringBuilder(..)} binds a
    * value that is an object by construction, so any earlier may-null fact about the previous
    * binding is genuinely irrelevant to later reads.
    *
-   * <p>R1122: the test can no longer be "the points-to set is non-empty". Points-to is a
-   * MAY-analysis that never retracts, so a variable that once received an allocation keeps that
-   * allocation in its set for the rest of the function even after being rebound:
+   * <p>the test can no longer be "the points-to set is non-empty". Points-to is a MAY-analysis that
+   * never retracts, so a variable that once received an allocation keeps that allocation in its set
+   * for the rest of the function even after being rebound:
    *
    * <pre>
    *   String h = new String("x");   // pointsTo(h) = { that allocation }
@@ -373,7 +373,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R1122: variables whose CURRENT binding is a {@code NEW} result.
+   * variables whose CURRENT binding is a {@code NEW} result.
    *
    * <p>Populated by the {@code NEW} handler and cleared whenever the variable is rebound, so a
    * stale allocation cannot survive the binding that displaced it. Per-function, like the rest of
@@ -382,7 +382,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
   private final java.util.Set<TacOperand.TacVar> allocatedHere = new java.util.LinkedHashSet<>();
 
   /**
-   * R1122: variables whose most recent binding came from a CALL result.
+   * variables whose most recent binding came from a CALL result.
    *
    * <p>Feeds the copy-inheritance in the MOVE handler: {@code b = sink.get()} lowers to a CALL into
    * a temp plus {@code b = t_t1}, so the fact recorded on the temp has to travel with the MOVE.
@@ -391,7 +391,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
       new java.util.LinkedHashSet<>();
 
   /**
-   * R1122: variables that were REBOUND to a call result after previously aliasing something else.
+   * variables that were REBOUND to a call result after previously aliasing something else.
    *
    * <p>Not "holds a call result" -- a plain copy of a call result must stay suppressible, because
    * the two names denote one reference. Set only when a MOVE assigns a call result's temp into a
@@ -403,12 +403,12 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
       new java.util.LinkedHashSet<>();
 
   /**
-   * R1122: variables that have ever received a value, so a later MOVE can tell a FIRST binding (a
-   * copy) from a REBINDING.
+   * variables that have ever received a value, so a later MOVE can tell a FIRST binding (a copy)
+   * from a REBINDING.
    */
   private final java.util.Set<TacOperand.TacVar> everBound = new java.util.LinkedHashSet<>();
 
-  /** R1122: reset the per-function binding-origin state alongside the other checker state. */
+  /** reset the per-function binding-origin state alongside the other checker state. */
   private void resetAllocatedHere() {
     allocatedHere.clear();
     lastBindingWasCall.clear();
@@ -427,7 +427,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
 
     Set<AbstractObject.Obj> held = ctx.pointsTo(fn.signature(), receiver);
     boolean mayBeNull = ctx.mayBeNull(fn.signature(), receiver);
-    // R1122: a receiver REBOUND to a fresh call result is not covered by a guard on a
+    // a receiver REBOUND to a fresh call result is not covered by a guard on a
     // variable that is merely still in its (monotonic) copy-equivalence class.
     //
     // The finding below is driven by `nullableVars`, which marks EVERY call result nullable. The
@@ -443,7 +443,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
     //     b.length();                     // reads mayBeNull == false as proof -> suppressed
     //
     // The discriminator is not "is this variable's value a call result" -- a plain copy of a call
-    // result is exactly the shape R1110/R1113 require to stay silent:
+    // result is exactly the shape require to stay silent:
     //
     //     StringBuilder a = make(input);  // call result
     //     StringBuilder b = a;            // ONE reference, two names
@@ -465,7 +465,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
       // so covering the guarded name is the strongest claim available -- PROVIDED the reference is
       // not also known to be null.
       //
-      // R1114: this branch is exactly where a null fact changes the answer. `held` empty used to
+      // this branch is exactly where a null fact changes the answer. `held` empty used to
       // mean "no objects", but it now also covers "the only thing known about this reference is
       // that it is null". A guarded name in the alias class proves that NAME non-null, and for a
       // syntactic copy the two names denote the same reference -- but the solver still holds a
@@ -495,7 +495,7 @@ public final class NullDerefFromReturnDfaChecker extends TaintedCheckerBase {
     // object, and `mayBeNull` has already been resolved against the same guard set.
     if (covered.containsAll(held)) return true;
 
-    // R1113: containment can fail for a reason that carries no risk at all. `store.put(key, v)`
+    // containment can fail for a reason that carries no risk at all. `store.put(key, v)`
     // followed by `w = store.get(key)` with the SAME unknown `key` lands in one ANY_KEY cell, so
     // the write and the read are symmetric: every object the read can return is an object the
     // write put there. The set of possibilities is wider than reality, but its ENDPOINTS are the

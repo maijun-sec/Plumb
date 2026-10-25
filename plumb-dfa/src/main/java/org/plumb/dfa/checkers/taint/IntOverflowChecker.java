@@ -79,13 +79,13 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
     }
     this.guards.track(ins);
     if (ins.kind == TacInstruction.Kind.UNARYOP) {
-      // R692: PRE_INC / POST_INC can overflow the operand
+      // PRE_INC / POST_INC can overflow the operand
       // just like ADD with literal 1. The Juliet CWE-190
       // postinc / preinc variants use `data++` / `++data`
       // patterns; without UNARYOP handling they silently
       // miss every pre/post-inc overflow.
       //
-      // R780: PRE_DEC / POST_DEC are now IntUnderflowChecker's
+      // PRE_DEC / POST_DEC are now IntUnderflowChecker's
       // territory. Previously both checkers fired on the
       // same instruction, but IntOverflowChecker tagged
       // the finding CWE-191 while its rule_id was
@@ -116,7 +116,7 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
               String label = "arith:" + uop.name();
               this.taintedVars.put(destVar, label);
               String unopFlow = "overflow-hazard: " + this.taintedVars.get(operand);
-              // R780b: same UNKNOWN-fallback as the
+              // same UNKNOWN-fallback as the
               // BINOP branch — if dest is UNKNOWN,
               // use the operand's type.
               TacType unopType = (dt == TacType.UNKNOWN && operand != null) ? operand.type() : dt;
@@ -156,11 +156,11 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
       return;
     }
     BinaryOperator op = ins.binop;
-    // R780: IntOverflowChecker now owns ADD and MUL only.
+    // IntOverflowChecker now owns ADD and MUL only.
     // SUB underflow is IntUnderflowChecker's territory
     // (it tags CWE-191 on every SUB finding, which keeps
     // the rule_id ↔ finding-CWE invariant for the eval
-    // pipeline's CWE-alignment check). Pre-R780 both
+    // pipeline's CWE-alignment check). Pre- both
     // checkers fired on SUB but IntOverflowChecker tagged
     // CWE-191 while rule_id was plumb.numeric.integer-overflow
     // (rule-level CWE = ['190']) — every such finding was
@@ -196,14 +196,14 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
       if (this.isGuardBoundedOverflow(ins)) {
         return;
       }
-      // R781 — direction split. When one operand is a
+      // — direction split. When one operand is a
       // literal int/long constant, the math can only go
       // one direction (overflow or underflow, not both).
       // For example `byte - 1` only underflows (lhs hits
       // MIN, no overflow possible because -1 doesn't
-      // push lhs above MAX). Pre-R781 both checkers fired
+      // push lhs above MAX). Pre- both checkers fired
       // on every ADD/MUL/SUB, then eval's CWE-alignment
-      // skipped the wrong-direction one. R781 lets each
+      // skipped the wrong-direction one. lets each
       // checker ONLY emit when its direction is
       // mathematically possible. The two-taint-operand
       // case (no const rhs) still fires both directions
@@ -221,19 +221,19 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
         int possible = IntOverflowChecker.possibleDirections(op, constRhs);
         if ((possible & 1) == 0) {
           // overflow direction not possible for this
-          // op + const rhs. Skip IntOverflowChecker's
+          // op const rhs. Skip IntOverflowChecker's
           // emit; IntUnderflowChecker (if direction
           // bit 2 is set) will fire instead.
           return;
         }
       }
-      // R779 — single "violation" FlowStep at the
-      // binary-op itself. R780 — message includes the
+      // — single "violation" FlowStep at the
+      // binary-op itself. — message includes the
       // actual Java type (byte / short / int / long)
       // so the human reader sees what's at risk, not
       // just "int/long" as the legacy message claimed.
       //
-      // R780b: when the dest's type is UNKNOWN (e.g. the
+      // when the dest's type is UNKNOWN (e.g. the
       // translator inferred `<unknown>` for the result
       // because the source operand's type didn't
       // propagate through the BINOP), fall back to the
@@ -285,7 +285,7 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R781 ? extract the literal constant on the non-hazard side of the BINOP. Returns null if the
+   * ? extract the literal constant on the non-hazard side of the BINOP. Returns null if the
    * non-hazard side is a taint var (no const rhs to inspect) or if the const is not int/long
    * (float/double/char etc., which the existing type filter already excludes ? defensive).
    */
@@ -308,9 +308,9 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R781 ? direction bitmask for `taint op const` on a signed integer type. Bit 1 (value 1) =
-   * overflow possible; bit 2 (value 2) = underflow possible. Returns 0 when no risk, 1 when only
-   * overflow, 2 when only underflow, 3 when both.
+   * ? direction bitmask for `taint op const` on a signed integer type. Bit 1 (value 1) = overflow
+   * possible; bit 2 (value 2) = underflow possible. Returns 0 when no risk, 1 when only overflow, 2
+   * when only underflow, 3 when both.
    *
    * <p>For signed types the math is direction-asymmetric:
    *
@@ -354,12 +354,12 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R780 ? human-readable Java type name for the numeric overflow message. TacType enum values
-   * include {@code BYTE}, {@code SHORT}, {@code INT}, {@code LONG} but also {@code UNKNOWN} (when
-   * the translator loses the source-level type) and {@code FLOAT}/{@code DOUBLE} (which this
-   * checker filters out, but defensive). The Juliet corpus uses {@code byte}/{@code short}/{@code
-   * int} /{@code long} (signed) extensively; for unknown types we fall back to "int/long" so the
-   * message is at least directionally correct.
+   * ? human-readable Java type name for the numeric overflow message. TacType enum values include
+   * {@code BYTE}, {@code SHORT}, {@code INT}, {@code LONG} but also {@code UNKNOWN} (when the
+   * translator loses the source-level type) and {@code FLOAT}/{@code DOUBLE} (which this checker
+   * filters out, but defensive). Signed types ({@code byte}/{@code short}/{@code int}/{@code long})
+   * are the common case; for unknown types we fall back to "int/long" so the message is at least
+   * directionally correct.
    */
   private static String typeName(TacType dt) {
     if (dt == null) return "int/long";

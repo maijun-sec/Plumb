@@ -1,27 +1,17 @@
 /*
  * Import is never used.
  *
- * <p><b>R-819 (2026-10-14): pattern A rewrite.</b> The previous
+ * <p><b>pattern A rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} + 3
  * separate {@code n.findAll(...)} calls (NameExpr +
- * ClassOrInterfaceType + MethodCallExpr) ? 3 walks per file.
+ * ClassOrInterfaceType MethodCallExpr) ? 3 walks per file.
  * The new implementation uses a single walk of the
  * CompilationUnit with instance-of dispatch and collects
  * the 3 sets of used names in one pass. Total: 1 walk per
  * file (was 3).</p>
  *
- * <p><b>R-AST-FIX-2026-10-18 (2nd-pass fix):</b> also collect
- * the simple name from each {@code MarkerAnnotationExpr} and
- * {@code SingleMemberAnnotationExpr} so annotation imports
- * (e.g. {@code import jakarta.persistence.Id; @Id int id;})
- * are correctly classified as used. Without this, the
- * checker would FPs on every Spring/JPA-style import
- * (R137 baseline: 100% FP on the PetClinic-shaped
- * {@code AstCheckerSmokeTest.multipleAnnotationImportsNotReportedAsUnused}).
  */
 package org.plumb.style.style;
-
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
 
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.expr.MarkerAnnotationExpr;

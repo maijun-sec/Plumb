@@ -16,14 +16,14 @@ import java.util.Optional;
  * <ul>
  *   <li>{@link #withBuiltinDefaults()} ? register the 115 hard-coded entries for DFA checkers and
  *       the early-round taint / style / spotbugs-style rules. This is the only canonical list of
- *       pre-R-821 rules and the only code that mutates the {@link #byAlias} reverse index for
- *       cross-tool equivalence (PMD / SpotBugs / SonarQube Java / Checkstyle / Coverity).
+ *       pre- rules and the only code that mutates the {@link #byAlias} reverse index for cross-tool
+ *       equivalence (PMD / SpotBugs / SonarQube Java / Checkstyle / Coverity).
  *   <li>{@link #registerFromChecker(Object)} ? read the {@code DEFAULT_RULE} static field (or its
  *       synthetic {@code rule()} derivation) from an {@link org.plumb.style.AstChecker} and add it
  *       to the registry. The {@code AstChecker} is the single source of truth for its own metadata;
- *       the registry is just an index. This is how R-821 unified the 600+ AST checker rules with
- *       the existing 115 DFA entries. Bulk operation {@link #registerFromCheckers(Iterable)} is
- *       what {@code ScanRunner.buildRegistry()} calls.
+ *       the registry is just an index. This is how unified the 600+ AST checker rules with the
+ *       existing 115 DFA entries. Bulk operation {@link #registerFromCheckers(Iterable)} is what
+ *       {@code ScanRunner.buildRegistry()} calls.
  * </ul>
  *
  * <h2>Alias resolution</h2>
@@ -258,12 +258,12 @@ public final class RuleRegistry {
   }
 
   /**
-   * R-821 (2026-10-14): register a {@link RuleDef} sourced from an {@link
-   * org.plumb.style.AstChecker} via that checker's own {@code rule()} method. This is the single
-   * source of truth for AST checkers ? the {@link org.plumb.style.AstCheckerRegistry} calls this
-   * for every discovered checker, and the resulting {@code RuleDef} entry replaces any duplicate
-   * {@code withBuiltinDefaults()} registration (the by-UUID / by-name indices are updated in place,
-   * so {@code byAlias()} lookups for the canonical id still work).
+   * register a {@link RuleDef} sourced from an {@link org.plumb.style.AstChecker} via that
+   * checker's own {@code rule()} method. This is the single source of truth for AST checkers ? the
+   * {@link org.plumb.style.AstCheckerRegistry} calls this for every discovered checker, and the
+   * resulting {@code RuleDef} entry replaces any duplicate {@code withBuiltinDefaults()}
+   * registration (the by-UUID / by-name indices are updated in place, so {@code byAlias()} lookups
+   * for the canonical id still work).
    *
    * <p>Returns silently when {@code checker.rule()} is null (no metadata available) or when the
    * resulting rule id is blank. The intent is for this method to be safe to call from any context,
@@ -328,9 +328,9 @@ public final class RuleRegistry {
   }
 
   /**
-   * R-821: bulk-register a collection of checkers via {@link #registerFromChecker(Object)}. The
-   * {@link org.plumb.style.AstCheckerRegistry} calls this to mirror the 636 built-in {@code
-   * AstChecker}s into the rule catalog.
+   * bulk-register a collection of checkers via {@link #registerFromChecker(Object)}. The {@link
+   * org.plumb.style.AstCheckerRegistry} calls this to mirror the 636 built-in {@code AstChecker}s
+   * into the rule catalog.
    */
   public RuleRegistry registerFromCheckers(Iterable<? extends Object> checkers) {
     if (checkers == null) return this;
@@ -341,10 +341,10 @@ public final class RuleRegistry {
   }
 
   /**
-   * R-822 (2026-10-14): look up a configured parameter for a rule. The registry itself doesn't
-   * store per-file overrides ? those live on the {@link org.plumb.style.StyleContext} (R761) ? so
-   * this method returns the <em>declared default</em> from the rule's own {@link
-   * RuleDef#parameters()} list, looked up by the parameter {@code name}.
+   * look up a configured parameter for a rule. The registry itself doesn't store per-file overrides
+   * ? those live on the {@link org.plumb.style.StyleContext} ? so this method returns the
+   * <em>declared default</em> from the rule's own {@link RuleDef#parameters()} list, looked up by
+   * the parameter {@code name}.
    *
    * <p>This is the runtime API that AST checkers use to honour {@code
    * checks.<ruleId>.params.<name>} entries in {@code checkers.yaml}. Per-file overrides should be
@@ -378,7 +378,7 @@ public final class RuleRegistry {
    */
   public <T> T param(String ruleId, String name, Class<T> type) {
     if (ruleId == null || name == null) return null;
-    // R-822 + R-823: accept the checker-facing slug
+    // accept the checker-facing slug
     // (e.g. "empty-block") in addition to the
     // canonical RuleId.name (e.g. "EMPTY_BLOCK")
     // and the UUID. Convert kebab-case to upper
@@ -431,9 +431,9 @@ public final class RuleRegistry {
   }
 
   /**
-   * R-834: re-walk {@link #byUuid} and flip every {@link RuleDef#enabled()} to {@code true}
-   * regardless of its declared default. Used by {@link #withBuiltinDefaults(boolean)} after the AST
-   * checker mirror pass to make sure the disable-by-default flag a AST checker sets on its {@code
+   * re-walk {@link #byUuid} and flip every {@link RuleDef#enabled()} to {@code true} regardless of
+   * its declared default. Used by {@link #withBuiltinDefaults(boolean)} after the AST checker
+   * mirror pass to make sure the disable-by-default flag a AST checker sets on its {@code
    * DEFAULT_RULE} doesn't shadow the test mode override.
    */
   private void forceAllEnabledIf(boolean forceAllEnabled) {
@@ -446,13 +446,12 @@ public final class RuleRegistry {
   }
 
   /**
-   * R-834: reflection-load every {@code AstChecker} on the classpath via {@code plumb-style}'s
-   * {@code AstCheckerRegistry}, then {@link #registerFromChecker(Object) mirror} each checker's
-   * {@code DEFAULT_RULE} into this registry. Best-effort: a {@code ClassNotFoundException} means
-   * {@code plumb-style} is not on the classpath (e.g. an isolated {@code plumb-ai} test); the
-   * mirror step silently no-ops in that case. A {@code ReflectiveOperationException} of any other
-   * kind is logged and swallowed ? smoke tests should not depend on this side-effect for their
-   * correctness.
+   * reflection-load every {@code AstChecker} on the classpath via {@code plumb-style}'s {@code
+   * AstCheckerRegistry}, then {@link #registerFromChecker(Object) mirror} each checker's {@code
+   * DEFAULT_RULE} into this registry. Best-effort: a {@code ClassNotFoundException} means {@code
+   * plumb-style} is not on the classpath (e.g. an isolated {@code plumb-ai} test); the mirror step
+   * silently no-ops in that case. A {@code ReflectiveOperationException} of any other kind is
+   * logged and swallowed ? smoke tests should not depend on this side-effect for their correctness.
    *
    * <p>{@code plumb-rules} keeps a clean compile-time edge to {@code plumb-style} (the AST checker
    * types live in plumb-style), so this lookup goes through {@link Class#forName(String)} plus
@@ -490,11 +489,10 @@ public final class RuleRegistry {
   }
 
   /**
-   * R-834: {@code withBuiltinDefaults} overload that takes a {@code forceAllEnabled} flag. When
-   * {@code true}, every registered rule is force-enabled, overriding the disable-by-default flag
-   * that some STYLE / NAMING checkers set in their {@code DEFAULT_RULE}. Production never calls
-   * this; smoke tests that want to exercise a rule's detection logic regardless of the disable flag
-   * use it.
+   * {@code withBuiltinDefaults} overload that takes a {@code forceAllEnabled} flag. When {@code
+   * true}, every registered rule is force-enabled, overriding the disable-by-default flag that some
+   * STYLE / NAMING checkers set in their {@code DEFAULT_RULE}. Production never calls this; smoke
+   * tests that want to exercise a rule's detection logic regardless of the disable flag use it.
    *
    * <p>Side effect when {@code forceAllEnabled} is true: the method also walks the {@code
    * plumb-style} {@code AstCheckerRegistry} via reflection (to avoid pulling {@code plumb-style}
@@ -510,7 +508,7 @@ public final class RuleRegistry {
   public RuleRegistry withBuiltinDefaults(boolean forceAllEnabled) {
     // Idempotency: if a previous call already populated
     // the registry, skip the heavy builtin + mirror
-    // blocks. This lets R825-style double-invocation
+    // blocks. This lets -style double-invocation
     // tests like
     //   `new RuleRegistry()
     //      .withBuiltinDefaults(true)
@@ -1364,15 +1362,15 @@ public final class RuleRegistry {
     addAlias("bu-1001-missing-input-validation", "SonarQube:java:S00114");
     addAlias("bu-1101-information-exposure", "SonarQube:java:S00108");
 
-    // ─── R788 ──────────────────────────────────────────────────────
-    // Canonical plumb.style.* rules for R787a-j source-reading
-    // checkers. The `CweNNN` (R787a-j) and the dfa-side
+    // ─── ──────────────────────────────────────────────────────
+    // Canonical plumb.style.* rules for -j source-reading
+    // checkers. The `CweNNN` (-j) and the dfa-side
     // `dfa.<slug>` ids are registered as aliases so the
     // Finding.ruleId() emitted to NDJSON is the canonical
     // `plumb.style.<slug>` form, with back-compat aliases for
     // any consumer that still uses the legacy ids.
 
-    // R-834: only when the caller asked for forceAllEnabled,
+    // only when the caller asked for forceAllEnabled,
     // pull in the AST checker mirror so any checker with
     // DEFAULT_RULE.enabled=false is still registered
     // (and then flipped back to enabled=true below).
@@ -1384,7 +1382,7 @@ public final class RuleRegistry {
       tryMirrorAstCheckers();
     }
 
-    // R-834: optionally force-enable every registered rule.
+    // optionally force-enable every registered rule.
     // The first pass walks the DFA builtin rules and the
     // AST mirror set (added by tryMirrorAstCheckers when
     // forceAllEnabled is true) so any checker whose
@@ -1418,8 +1416,8 @@ public final class RuleRegistry {
   }
 
   /**
-   * R788: overload that takes enabled flag + aliases, used by the canonical plumb.style.*
-   * registrations. Backed by RuleDef's 8-arg constructor.
+   * overload that takes enabled flag + aliases, used by the canonical plumb.style.* registrations.
+   * Backed by RuleDef's 8-arg constructor.
    */
   private static RuleDef def(
       String id,

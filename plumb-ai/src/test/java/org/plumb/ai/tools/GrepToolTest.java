@@ -12,9 +12,9 @@ import org.junit.jupiter.api.Test;
 import org.plumb.ai.agent.ToolResult;
 
 /**
- * R-? — Tests for the file-ops toolset (Grep / Glob / ListDir). These tools are IR-independent —
- * they survive {@code TacProgram == null}, so the FP reducer and bug scanner keep working even when
- * the static analyzer's IR layer is unavailable.
+ * — Tests for the file-ops toolset (Grep / Glob / ListDir). These tools are IR-independent — they
+ * survive {@code TacProgram == null}, so the FP reducer and bug scanner keep working even when the
+ * static analyzer's IR layer is unavailable.
  */
 class GrepToolTest {
 

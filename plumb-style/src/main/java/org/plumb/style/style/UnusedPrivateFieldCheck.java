@@ -16,9 +16,9 @@ import org.plumb.style.StyleContext;
 /**
  * private field is never read.
  *
- * <p>Pattern D R-818: per-class visit + single body walk that collects a {@code name -> count} map
- * for {@link NameExpr}. For each private field, look up its uses in the pre-computed map (O(1)
- * instead of N_field × c.findAll(NameExpr)).
+ * <p>Pattern D per-class visit + single body walk that collects a {@code name -> count} map for
+ * {@link NameExpr}. For each private field, look up its uses in the pre-computed map (O(1) instead
+ * of N_field × c.findAll(NameExpr)).
  *
  * <p>Replaces the original visit(CU) + findAll(ClassOrInterfaceDeclaration) + N_field ×
  * c.findAll(NameExpr) ? N×M walks/file down to 2 walks/file.

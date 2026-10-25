@@ -44,7 +44,7 @@ import org.plumb.tac.ir.TacType;
  * But all four share the same range-propagation + GuardStore + GuardTracker infrastructure. This
  * class factors those out.
  *
- * <h2>Reverse + forward architecture (R694)</h2>
+ * <h2>Reverse + forward architecture</h2>
  *
  * <p>This checker reads ranges forward (BB-RPO order, intra-block forward per {@code
  * DfaEngine#bbRpoOrder}) but writes guards both forward (on BRANCH we push) and backward (we
@@ -53,7 +53,7 @@ import org.plumb.tac.ir.TacType;
  * function by the engine's {@code warmUpMethodSummaries} pre-pass and cached; the forward pass
  * consumes it.
  *
- * <h2>Constraint solving (R712, R710 insight)</h2>
+ * <h2>Constraint solving (, insight)</h2>
  *
  * <p>Before reporting a finding the checker asks {@link SolverZ3Bridge#check(String, Map)}: "given
  * the current path guards, is the sink-constraint predicate satisfiable?" If UNSAT, the path can't
@@ -73,7 +73,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
    * Per-var MOVE lineage. {@code lineage[x] = a} records that the most recent assignment to {@code
    * x} was {@code x = a} (a direct MOVE). When {@code a}'s range is later narrowed (e.g. by a
    * guard), every {@code y} such that {@code lineage[y] = a} inherits the narrower range ? this
-   * lets us answer the R710 user-insight pattern {@code int x = a; if (a < MAX-5) { x++; }} without
+   * lets us answer the user-insight pattern {@code int x = a; if (a < MAX-5) { x++; }} without
    * re-traversing MOVE chains.
    *
    * <p>Chain propagation (e.g. {@code y = x, x = a}): handled by re-running the propagation loop in
@@ -86,11 +86,11 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
    * var x bounded by ...?" and we can reuse cross-checker guards (e.g. DivZeroChecker records
    * {@code data != 0}, our overflow check consumes it).
    *
-   * <p>R769: value is a {@code List<String>} rather than a single string so that nested BRANCH
-   * guards on the same variable (e.g. Juliet CWE-190 s67b goodB2GSink: {@code if (data > 0) { if
-   * (data < Byte.MAX_VALUE/2) { data * 2 }}}) are all conjoined in the Z3 path condition.
-   * Previously this map was {@code Map<TacVar, String>}; a second {@code emitGuard} call on the
-   * same var overwrote the first, and nested guards never reached the solver.
+   * <p>value is a {@code List<String>} rather than a single string so that nested BRANCH guards on
+   * the same variable (e.g. Juliet CWE-190 s67b goodB2GSink: {@code if (data > 0) { if (data <
+   * Byte.MAX_VALUE/2) { data * 2 }}}) are all conjoined in the Z3 path condition. Previously this
+   * map was {@code Map<TacVar, String>}; a second {@code emitGuard} call on the same var overwrote
+   * the first, and nested guards never reached the solver.
    */
   private final Map<TacOperand.TacVar, java.util.List<String>> guards = new LinkedHashMap<>();
 
@@ -145,13 +145,13 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     reported.clear();
   }
 
-  // ─────────── Cross-function range seed (R775) ───────────
+  // ─────────── Cross-function range seed ───────────
 
   /**
-   * R775: emit a {@link Operation.RangeSeed} per parameter whose range is concrete (not BOTTOM).
-   * The caller-side {@link BoundaryConstraintChecker#propagateRangeFromCalleeSummary} consults
-   * these at every {@code CALL} site to narrow the callee's view of the parameter to whatever the
-   * caller actually passed in.
+   * emit a {@link Operation.RangeSeed} per parameter whose range is concrete (not BOTTOM). The
+   * caller-side {@link BoundaryConstraintChecker#propagateRangeFromCalleeSummary} consults these at
+   * every {@code CALL} site to narrow the callee's view of the parameter to whatever the caller
+   * actually passed in.
    *
    * <p>Range tracking in this checker is intra-proc ? without this seed, the callee sees {@code
    * data} as BOTTOM and over-refutes (or fails to refute) on the wide range. With this seed, the
@@ -163,7 +163,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     FunctionSummary base = super.summarizeFunction(ctx, fn);
     FunctionSummary.Builder b = new FunctionSummary.Builder(fn.signature());
     // 1. Carry forward the parent's taint / sink /
-    //    passthrough observations verbatim. R775
+    //    passthrough observations verbatim.
     //    only adds range seeds on top.
     for (var entry : base.paramOps().entrySet()) {
       int i = entry.getKey();
@@ -174,7 +174,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     for (Operation op : base.returnOps()) {
       b.recordReturnOp(op);
     }
-    // 2. R775: emit a RangeSeed per param whose range
+    // 2. emit a RangeSeed per param whose range
     //    is concrete (not BOTTOM). The caller-side
     //    will pick this up via the summary cache and
     //    feed the seeded range into the effective
@@ -195,7 +195,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R775: at every {@code CALL}, consult the callee's {@link FunctionSummary} for {@link
+   * at every {@code CALL}, consult the callee's {@link FunctionSummary} for {@link
    * Operation.RangeSeed}s and apply them to the corresponding caller-side arguments. Stores the
    * seeded ranges in {@link #callerSeededRanges} (a per-fn map keyed by the param's effective
    * {@link org.plumb.tac.ir.TacOperand.TacVar} in the caller's view). The actual meet happens at
@@ -217,7 +217,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     callerSeededRanges.clear();
     String calleeSig = ins.calleeSig;
     if (calleeSig == null) return;
-    // R1099: Math.min / Math.max are clamp primitives, not ordinary calls. The
+    // Math.min / Math.max are clamp primitives, not ordinary calls. The
     // result's range is the intersection of the arguments' ranges, which is
     // exactly the narrowing a guard would express as
     // `if (x > LIMIT) x = LIMIT;`. Without this, `Math.min(n, 16)` left `n`
@@ -248,7 +248,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R1099: model {@code Math.min(a, b)} / {@code Math.max(a, b)} as a range clamp.
+   * model {@code Math.min(a, b)} / {@code Math.max(a, b)} as a range clamp.
    *
    * <p>{@code min} yields a value no greater than either argument and no less than the lower of the
    * two; {@code max} is the dual. In range terms both are the MEET (intersection) of the argument
@@ -308,7 +308,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R775: query-time meet of the live {@link #ranges} with the per-fn {@link #callerSeededRanges}.
+   * query-time meet of the live {@link #ranges} with the per-fn {@link #callerSeededRanges}.
    * Mirrors {@link #withGuardsMetRanges}: never mutates {@link #ranges}; produces a new map the
    * caller uses for Tier-0 refutation. The caller's seeded range is joined (max over-approximation)
    * with the live range so a boundary check on a parameter that the caller narrowed sees the
@@ -327,7 +327,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
       // callee-summary; widening the live
       // range by it lets us keep the
       // over-approximation guarantee from
-      // R759+ Range::join semantics.
+      // Range::join semantics.
       Range joined = live.join(seed);
       out.put(v, joined);
     }
@@ -355,7 +355,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
       if (predicate == null) return;
       // Ask Z3 whether the sink-constraint is
       // satisfiable given the current path
-      // guards + ranges.
+      // guards ranges.
       if (!isReachable(ctx, predicate, ins)) {
         return;
       }
@@ -372,7 +372,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
       // narrowing of `src`'s range can
       // cascade to `dest` (and through it
       // to whatever was MOVE-copied from
-      // `dest`). Without this, R710's
+      // `dest`). Without this, 's
       // `int x = a; if (a < MAX-5) { x++; }`
       // pattern leaves x with the OLD range
       // of a (BOTTOM), and Z3 can't prove
@@ -467,13 +467,13 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
       // range when `b` is a known single-
       // point value — either a literal
       // constant (existing case) or a
-      // single-point TacVar (R712.5:
+      // single-point TacVar (
       // `a < MAX-5` where MAX-5 was
       // computed into a temp). The
       // single-point TacVar case was
-      // missed before R712.5, which is
+      // missed before , which is
       // why the safe-guard case in the
-      // R710 user brief still fired.
+      // user brief still fired.
       if (ins.lhs2 instanceof TacOperand.Const c && ins.lhs1 instanceof TacOperand.TacVar lv) {
         Long cv = asLong(c);
         if (cv != null) {
@@ -492,7 +492,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
           propagate(rv);
         }
       }
-      // R712.5 — single-point TacVar RHS.
+      // — single-point TacVar RHS.
       // If `b` is a known single-point var
       // (e.g. `t_t2 = MAX-5` followed by
       // `a < t_t2`), use its concrete
@@ -536,14 +536,14 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     // original source (e.g. `int x = a;
     // ++x` means x is a+1 but lineage[x] =
     // a). Removing the lineage breaks the
-    // R712.5 cascade for in-place unary
+    // cascade for in-place unary
     // ops on MOVE-copied vars.
   }
 
   private void propagateFieldLoad(TacInstruction ins) {
     // FIELDLOAD: dest = lhs1.fieldName
     //
-    // R712.6 — special-case well-known
+    // — special-case well-known
     // static-final constants. The receiver
     // (lhs1) is the Class object; we look
     // up the value by (className, fieldName)
@@ -553,7 +553,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     //
     // General field-range tracking (for
     // instance fields) is out of scope
-    // here — that's R709 territory.
+    // here — that's territory.
     if (!(ins.dest instanceof TacOperand.TacVar dest)) return;
     String className = receiverClassName(ins.lhs1);
     Range known = lookupStaticFinal(className, ins.fieldName);
@@ -598,9 +598,9 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R712.6 ? return the concrete Range of a well-known static-final field given the simple class
-   * name and the field name. Returns null if the field is not in the table (e.g. user-defined
-   * constants ? those go through FIELDSTORE tracking which is out of scope here).
+   * ? return the concrete Range of a well-known static-final field given the simple class name and
+   * the field name. Returns null if the field is not in the table (e.g. user-defined constants ?
+   * those go through FIELDSTORE tracking which is out of scope here).
    */
   private static Range lookupStaticFinal(String className, String fieldName) {
     if (className == null || fieldName == null) return null;
@@ -611,8 +611,8 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R712.6 ? table of well-known static-final field values. Only compile-time constants that appear
-   * as FIELDLOAD in TAC (not as literal Const).
+   * ? table of well-known static-final field values. Only compile-time constants that appear as
+   * FIELDLOAD in TAC (not as literal Const).
    */
   private static final Map<String, Range> STATIC_FINAL_TABLE = new LinkedHashMap<>();
 
@@ -645,7 +645,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   private void propagatePhi(TacInstruction ins) {
     // TAC doesn't have a dedicated PHI kind
     // (uses MOVE / MOVE-merge at join
-    // blocks). No-op for now; future R712+
+    // blocks). No-op for now; future +
     // work can introduce explicit phi
     // tracking if needed.
   }
@@ -657,7 +657,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
    * guard onto the {@link GuardStore} so other checkers can consume it.
    */
   private void emitGuard(TacOperand.TacVar v, BinaryOperator op, String literal) {
-    // R769: emit the operator as a Z3 DSL symbol
+    // emit the operator as a Z3 DSL symbol
     // (`<`, `>`, `<=`, `>=`) rather than the Java
     // enum's `toString()` form (`LT`, `GT`, ...),
     // which the LocalSolverBridge does not
@@ -677,7 +677,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
           default -> op.toString();
         };
     String desc = v.name() + " " + opSym + " " + literal;
-    // R769: append rather than overwrite so nested
+    // append rather than overwrite so nested
     // BRANCH guards on the same variable stack up
     // and all reach the Z3 conjunction in isReachable.
     guards.computeIfAbsent(v, k -> new java.util.ArrayList<>()).add(desc);
@@ -698,7 +698,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
    * </ol>
    */
   private boolean isReachable(AnalysisContext ctx, String sinkPredicate, TacInstruction ins) {
-    // R782 — Tier -2 NE-zero quick check. See
+    // — Tier -2 NE-zero quick check. See
     // isRefutedByNonZeroGuard for full rationale.
     // Short version: the classic CWE-369 FP is
     // `if (data != 0) { 100 / data; }`. Tier 0
@@ -711,30 +711,30 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     if (sinkPredicate != null && isRefutedByNonZeroGuard(sinkPredicate)) {
       return false;
     }
-    // R772b: Tier -1 type-bound refutation. The
-    // classic R769/772a-blind cases look like
+    // Tier -1 type-bound refutation. The
+    // classic /772a-blind cases look like
     // `(data < -2147483648)` (data is int — that
     // literal is below Integer.MIN_VALUE, so the
     // comparison is provably false regardless of
-    // the data range). R772a Tier 0 only handles
+    // the data range). Tier 0 only handles
     // ranges recorded in `ranges`/`guards`; the
     // type's own [-MIN, MAX] bound is not in those
     // structures, so these semantic-impossible
     // predicates fall through to Tier 1, where
     // the LocalSolverBridge treats `data` as a
     // free variable and conservatively returns
-    // SAT. R772b parses the predicate and refutes
+    // SAT. parses the predicate and refutes
     // any compare whose literal is provably
     // outside the var's declared type.
     //
-    // R772b E2E outcome (R772b investigation):
+    // E2E outcome ( investigation):
     // 2016 over-refutations of `((t_t0 - -128)) <
     // -2147483648` style predicates where the
     // arithOp shifts the var's value out of the
     // type range entirely (e.g. byte `t_t0 + 128`
     // is always ≥ 0, so `< MIN` is always true
     // and the predicate IS reachable, not
-    // refutable). R772b's `adjLit` adjustment
+    // refutable). 's `adjLit` adjustment
     // trick (treating `(var + k) < lit` as
     // `var < lit - k` and comparing against
     // typeR.lo) is correct in the *single-var-no-
@@ -742,33 +742,33 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     // value (a byte + 128 is in [0, 255], not in
     // [-128, 127]). Reverted before ship; the
     // LocalSolverBridge already correctly handles
-    // the no-shift case (see R772b smoke test
-    // in TestSolver3.java), so R772b is redundant
+    // the no-shift case (see smoke test
+    // in TestSolver3.java), so is redundant
     // for the case it tries to address.
     //
-    // R772b reverted: do not invoke the helper.
-    // R772a: temporarily meet the in-ranges map
+    // reverted: do not invoke the helper.
+    // temporarily meet the in-ranges map
     // with ranges derived from the active guard
     // stack (one-shot, no Map mutation — preserves
-    // the R759+ `Range::join` path-insensitive
+    // the `Range::join` path-insensitive
     // over-approximation between BRANCH back-edges).
     // This lets Tier 0 (`intervalRefutesSinkPredicate`)
     // see the conjuncted range and refute nested-guard
     // patterns like `if (data > 0) { if (data < 63) {
     // data * 2 }}` without requiring a worklist
-    // re-analysis (the blocker 1 of R769).
+    // re-analysis (the blocker 1 of ).
     //
-    // R775: also fold in the per-fn caller-seeded
+    // also fold in the per-fn caller-seeded
     // ranges from the most recent CALL (if any).
     // Layered: live ranges -> guards meet -> caller
     // seeds join. Same read-only discipline as
-    // R772a; never mutates `ranges`.
+    // never mutates `ranges`.
     Map<TacOperand.TacVar, Range> effective = withCallerSeededRanges();
     if (intervalRefutesSinkPredicateWith(sinkPredicate, withGuardsMetRanges(effective))) {
       return false;
     }
     // Tier 1: build bindings from single-point
-    // ranges + per-variable range guard clauses.
+    // ranges per-variable range guard clauses.
     Map<String, Object> bindings = new LinkedHashMap<>();
     StringBuilder conjunction = new StringBuilder();
     for (var entry : ranges.entrySet()) {
@@ -808,7 +808,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     try {
       r = bridge.check(conjunction.toString(), bindings);
     } catch (NoClassDefFoundError ncde) {
-      // R715: in rare cases (e.g. shade-plugin inner-class loader
+      // in rare cases (e.g. shade-plugin inner-class loader
       // issues when scanning very large merged directories), the
       // bridge's transitive classes may not be loadable. Treat as
       // "solver unavailable" → conservatively report (SAT) so the
@@ -827,7 +827,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R782 ? Tier -2 NE-zero quick check. The classic CWE-369 false positive comes from Juliet {@code
+   * ? Tier -2 NE-zero quick check. The classic CWE-369 false positive comes from Juliet {@code
    * good*} functions that gate a divisor with an explicit non-zero check, e.g.:
    *
    * <pre>{@code
@@ -857,16 +857,16 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
    * {@code data < c1 || data > c2} ranges that exclude 0 are not handled here ? Tier 0's {@code
    * withGuardsMetRanges} already meets those into the effective range and refutes when the literal
    * 0 is outside. Future R-Round could lift this helper to a generic "active-guards vs.
-   * sink-predicate" SMT mini- solver, but R782 keeps the surface tight.
+   * sink-predicate" SMT mini- solver, but keeps the surface tight.
    *
    * <h2>Why not just emit NE into {@code guards}</h2>
    *
    * <p>NE guards carry no useful <em>narrowing</em> information for the Range lattice (the variable
    * could still be any value except the literal), so emitting them would inflate the Tier-1
    * conjunction without helping Tier 0. The proper destination is a separate {@code nonZeroGuards}
-   * map consulted only by refutation helpers ? that's a larger refactor. For R782 we read
-   * GuardTracker directly because it already holds the right set and is the same source of truth
-   * the {@code isGuardedBy(rhs, NE)} query would consult.
+   * map consulted only by refutation helpers ? that's a larger refactor. For we read GuardTracker
+   * directly because it already holds the right set and is the same source of truth the {@code
+   * isGuardedBy(rhs, NE)} query would consult.
    */
   private boolean isRefutedByNonZeroGuard(String sinkPredicate) {
     if (sinkPredicate == null || guardTracker == null) return false;
@@ -948,7 +948,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
         }
       }
     }
-    // R1101: the early-return guard idiom.
+    // the early-return guard idiom.
     //
     //   if (data == 0) { return 0; }
     //   return a / data;
@@ -975,25 +975,25 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
    * {@code false} (don't refute).
    */
   private boolean intervalRefutesSinkPredicate(String sinkPredicate) {
-    // R772a: build an effective-range map that
+    // build an effective-range map that
     // meets every active guard's derived range
     // into the corresponding `ranges` entry,
     // then run the standard Tier 0 check against
     // that effective map. This is read-only —
     // it does NOT mutate `this.ranges`, so the
-    // R759+ path-insensitive over-approximation
+    // path-insensitive over-approximation
     // (Range::join) is preserved between BRANCH
     // back-edges.
     return intervalRefutesSinkPredicateWith(sinkPredicate, withGuardsMetRanges());
   }
 
   /**
-   * R772a: returns a copy of {@code ranges} with each var's range intersected with the range
-   * derived from every active guard on that var. Returns the original map unchanged when no guards
-   * are present (so existing case is a no-op).
+   * returns a copy of {@code ranges} with each var's range intersected with the range derived from
+   * every active guard on that var. Returns the original map unchanged when no guards are present
+   * (so existing case is a no-op).
    *
    * <p>Guard strings are in the canonical {@code "<name> <sym> <literal>"} format that {@link
-   * #emitGuard} emits (post-R769b). We parse them to recover the implied range and meet it with the
+   * #emitGuard} emits (post-). We parse them to recover the implied range and meet it with the
    * current range.
    */
   private Map<TacOperand.TacVar, Range> withGuardsMetRanges() {
@@ -1001,8 +1001,8 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R775: same as {@link #withGuardsMetRanges()} but operates on a caller-supplied range map. Used
-   * to layer the guard-derived meet on top of the caller-seeded meet. The input map is treated as
+   * same as {@link #withGuardsMetRanges()} but operates on a caller-supplied range map. Used to
+   * layer the guard-derived meet on top of the caller-seeded meet. The input map is treated as
    * read-only; we copy.
    */
   private Map<TacOperand.TacVar, Range> withGuardsMetRanges(Map<TacOperand.TacVar, Range> base) {
@@ -1055,7 +1055,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R772a: Tier-0 refutation check using a caller-supplied range map (so we can run it against the
+   * Tier-0 refutation check using a caller-supplied range map (so we can run it against the
    * effective ranges after meeting in active guards, without mutating {@link #ranges}).
    */
   private boolean intervalRefutesSinkPredicateWith(
@@ -1089,23 +1089,23 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R772b: Tier -1 type-bound refutation. Walks the sink predicate and refutes any atomic compare
-   * whose literal is provably outside the instruction's destination type's [lo, hi] range. Catches
-   * the classic free-var-conservative-SAT cases that R772a Tier 0 cannot see (e.g. `(data <
-   * -2147483648)` for an int `data`).
+   * Tier -1 type-bound refutation. Walks the sink predicate and refutes any atomic compare whose
+   * literal is provably outside the instruction's destination type's [lo, hi] range. Catches the
+   * classic free-var-conservative-SAT cases that Tier 0 cannot see (e.g. `(data < -2147483648)` for
+   * an int `data`).
    *
    * <p>Same shape as {@link #atomicRefutesWith} but uses the <b>type's</b> type range (not the
    * recorded per-var range), since the type range is the most-over-approximated possible bound for
-   * any value of the var. Combined with the active guard stack (R772a), this gives the free `data`
-   * var a useful refutation context.
+   * any value of the var. Combined with the active guard stack, this gives the free `data` var a
+   * useful refutation context.
    */
-  // R772b helper methods removed (reverted before
-  // ship — see R772b SUMMARY for full root cause).
+  // helper methods removed (reverted before
+  // ship — see SUMMARY for full root cause).
 
   /**
-   * R772a: like {@link #atomicRefutes} but consults a caller-supplied range map instead of the live
-   * {@link #ranges}. The supplied map is what {@link #withGuardsMetRanges} produced (live ranges
-   * already met with guard-derived ranges for each var).
+   * like {@link #atomicRefutes} but consults a caller-supplied range map instead of the live {@link
+   * #ranges}. The supplied map is what {@link #withGuardsMetRanges} produced (live ranges already
+   * met with guard-derived ranges for each var).
    */
   private boolean atomicRefutesWith(String p, Map<TacOperand.TacVar, Range> effective) {
     java.util.regex.Matcher m =
@@ -1218,8 +1218,8 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     // so we can handle the `(x + 1) > 127`
     // and the `(x * 2) > 127` shapes that
     // overflow / underflow predicates take
-    // without needing Z3. R771a extended the
-    // arith-op group to include `*` (R769
+    // without needing Z3. extended the
+    // arith-op group to include `*` (
     // blocker 3) so the classic CWE-190 /
     // CWE-191 overflow predicate
     // `((data * 2)) > 127` can be refuted
@@ -1251,7 +1251,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
       }
     }
     if (r == null || r.isBottom) return false;
-    // R771a: when arithOp is `*`, we cannot
+    // when arithOp is `*`, we cannot
     // simply `adjustedLit = lit - arithV` like
     // +/- (which is linear). Instead, the
     // entire `<expr> <op> <lit>` shape is
@@ -1318,7 +1318,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
       title = Character.toUpperCase(title.charAt(0)) + title.substring(1);
     }
     String flow = hazardKind() + ": " + sinkPred;
-    // R765b: emit a single-step violation FlowStep with the enclosing
+    // emit a single-step violation FlowStep with the enclosing
     // function's signature so ScanRunner.toReporterFinding can lift it
     // into the NDJSON `sink_function` field. Boundary series fire at
     // the hazard point itself (no taint propagation), so role="violation"

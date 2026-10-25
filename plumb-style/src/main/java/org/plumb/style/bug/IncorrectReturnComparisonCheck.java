@@ -13,15 +13,15 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * R763 (Oct 2026): detects CWE-253 (Incorrect Check of Function Return Value) when a method call
- * whose return indicates a count or sentinel is compared against the wrong literal.
+ * detects CWE-253 (Incorrect Check of Function Return Value) when a method call whose return
+ * indicates a count or sentinel is compared against the wrong literal.
  *
- * <p>The classic Juliet pattern is {@code if (input.read(buf) == 0)} ? a check for "zero bytes
+ * <p>The representative pattern is {@code if (input.read(buf) == 0)} — a check for "zero bytes
  * read" — but {@code read()} returns {@code -1} on EOF and {@code 1..buf.length} on a normal read,
- * so {@code == 0} never matches the actual failure mode. The CWE-253 good() side checks {@code ==
- * -1} or {@code < buf.length}.
+ * so {@code == 0} never matches the actual failure mode. The correct check is {@code == -1} or
+ * {@code < buf.length}.
  *
- * <p>Heuristic (Juliet-flavoured, intentionally narrow to keep FP low):
+ * <p>Heuristic, intentionally narrow to keep the false-positive rate low:
  *
  * <ul>
  *   <li>Method call on the LHS of a {@code ==} or {@code !=} {@link BinaryExpr}
@@ -31,9 +31,8 @@ import org.plumb.style.StyleContext;
  *       (currently {@code {-1}})
  * </ul>
  *
- * <p>Outside the Juliet test suite the FP rate will be higher; users who want broader coverage
- * should switch to AI dedup. The curated list mirrors the R-PATCH v2 rule {@code
- * plumb.ast.incorrect-return-comparison}.
+ * <p>The curated list bounds what this rule reports. Code that needs broader coverage than the list
+ * provides can use the AI deduplication mode instead.
  */
 public final class IncorrectReturnComparisonCheck implements AstChecker {
 

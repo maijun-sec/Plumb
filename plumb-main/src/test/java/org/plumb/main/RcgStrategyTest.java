@@ -26,7 +26,7 @@ class RcgStrategyTest {
 
   @Test
   void defaultIsGlobal() {
-    // R-? — the project directive is that analysis must be
+    // — the project directive is that analysis must be
     // global, so the default is now "global" (not "cha").
     ScanConfig cfg = ConfigLoader.fromMap(Map.of());
     assertThat(cfg.cgStrategy).isEqualTo("global");
@@ -164,7 +164,7 @@ class RcgStrategyTest {
 
   @Test
   void defaultCgStrategyIsGlobal() {
-    // R-? — global is now the default. "analysis must be
+    // — global is now the default. "analysis must be
     // global" per the project directive.
     ScanConfig cfg = new ScanConfig();
     assertThat(cfg.cgStrategy).isEqualTo("global");

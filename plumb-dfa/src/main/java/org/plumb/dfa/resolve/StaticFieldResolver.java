@@ -331,7 +331,7 @@ public final class StaticFieldResolver {
     if (fqcn == null || field == null) return null;
     LiteralValue v = values.get(fqcn + "." + field);
     if (v != null) return v;
-    // R-810: tolerate short class
+    // tolerate short class
     // names. The DFA engine passes
     // `recv` straight from the IR
     // (which strips the package for

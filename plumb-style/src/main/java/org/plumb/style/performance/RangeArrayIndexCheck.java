@@ -13,9 +13,6 @@ import org.plumb.style.StyleContext;
 /**
  * Array index uses {@code i + 1} / {@code i - 1} pattern ? confirm it doesn't reach the array
  * length.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ArrayAccessExpr.class)} before.
  */
 public final class RangeArrayIndexCheck implements AstChecker {
 

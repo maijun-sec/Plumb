@@ -1,5 +1,5 @@
 /*
- * R-812 ? PredictableKeyPasswordCheck (CWE-259 / CWE-798) migrated from
+ * ? PredictableKeyPasswordCheck (CWE-259 / CWE-798) migrated from
  * plumb-dfa/.../PredictableKeyPasswordChecker.java to
  * plumb-style AST.
  *

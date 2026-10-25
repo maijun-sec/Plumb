@@ -65,8 +65,7 @@ public final class ParsedSource {
   }
 
   /**
-   * R263: the type solver attached to the parser, or {@code null} if symbol resolution was not
-   * enabled.
+   * the type solver attached to the parser, or {@code null} if symbol resolution was not enabled.
    */
   public TypeSolver typeSolver() {
     return typeSolver;

@@ -1,7 +1,5 @@
 package org.plumb.style.style;
 
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
-
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.HashSet;
 import java.util.List;
@@ -16,13 +14,11 @@ import org.plumb.style.StyleContext;
  * CWE-523 (Unprotected Transport of Credentials).
  *
  * <p>Detects a servlet-emitting string literal that contains a non-SSL {@code http://} URL AND a
- * login form field ({@code j_security_check} / {@code j_username} / {@code j_password}) ?the
+ * login form field ({@code j_security_check} / {@code j_username} / {@code j_password}) — the
  * credentials will be POSTed in cleartext over the non-SSL channel.
  *
- * <p>Juliet's CWE-523 corpus (17 files) uses the same template: {@code bad()} emits the vulnerable
- * form, {@code good1()} emits the same form with {@code https://} in the action URL. The {@code
- * (?<!s)http://} regex tolerates the {@code https://} form (no fire) while matching the bad case
- * (fire).
+ * <p>The {@code (?<!s)http://} pattern tolerates the {@code https://} form, so a form whose action
+ * URL is already TLS is not reported.
  */
 public final class UnprotectedCredTransportCheck implements AstChecker {
 

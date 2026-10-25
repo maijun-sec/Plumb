@@ -30,7 +30,7 @@
  * in {@code DriverManager.getConnection}) is
  * covered by {@link HardCodedPasswordSinkChecker}.</p>
  *
- * <h2>v2 trace (R-812)</h2>
+ * <h2>v2 trace</h2>
  *
  * <p>The check is a per-function data flow:
  * literal MOVE → optional getBytes/toCharArray → sink
@@ -53,7 +53,7 @@
  *
  * <p>The v1 {@code dataflow_steps} flattens to a
  * SOURCE → (optional MOVE) → SINK shape so
- * pre-R-812 reporters see no change.</p>
+ * pre- reporters see no change.</p>
  */
 package org.plumb.dfa.checkers.taint;
 
@@ -89,7 +89,7 @@ public final class HardCodedKeyChecker implements DfaChecker {
   private final LiteralSourcedTracker tracker = new LiteralSourcedTracker(4);
 
   /**
-   * R-812 v2 trace state. Per-function map from the literal-sourced var (or derived var) to its v2
+   * v2 trace state. Per-function map from the literal-sourced var (or derived var) to its v2
    * handle, so the SecretKeySpec ctor can wire its parent edge to the right node.
    */
   private final Map<TacOperand.TacVar, Integer> v2HandleByVar = new HashMap<>();

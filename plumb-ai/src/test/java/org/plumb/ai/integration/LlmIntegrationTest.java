@@ -14,8 +14,7 @@ import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
 
 /**
- * R-? — Real-LLM integration tests. Skipped unless {@code MINIMAX_API_KEY} is set in the
- * environment.
+ * — Real-LLM integration tests. Skipped unless {@code MINIMAX_API_KEY} is set in the environment.
  *
  * <p>These tests exercise the full Re-Act loop against the configured LLM endpoint (default:
  * MiniMax's OpenAI-compatible {@code /v1/chat/completions}). They're slow (each call is a real

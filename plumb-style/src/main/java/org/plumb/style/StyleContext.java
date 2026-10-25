@@ -39,17 +39,17 @@ public final class StyleContext {
   private final List<Finding> findings = new ArrayList<>();
 
   /**
-   * R-834: a set of rule ids that bypass the {@code enabled} gate in {@link #report}. Production
-   * code never populates this set; smoke tests that exercise a rule's detection logic can call
-   * {@link #forceEnable(String...)} so the disable-by-default flag (a Juliet-driven policy
-   * decision) doesn't blank the finding list.
+   * a set of rule ids that bypass the {@code enabled} gate in {@link #report}. Production code
+   * never populates this set; smoke tests that exercise a rule's detection logic can call {@link
+   * #forceEnable(String...)} so the disable-by-default flag (a Juliet-driven policy decision)
+   * doesn't blank the finding list.
    */
   private final java.util.Set<String> forcedRuleIds = new java.util.HashSet<>();
 
   /**
-   * R761 (Oct 2026): parameter overrides keyed by {@code <ruleId>.<paramName>}. The full map is
-   * built once at construction (from the ScanConfig's {@code checks.<ruleId>.params.<name>} block)
-   * and never mutated. Lookups go through {@link #paramOverride(String, Class)} after {@link
+   * parameter overrides keyed by {@code <ruleId>.<paramName>}. The full map is built once at
+   * construction (from the ScanConfig's {@code checks.<ruleId>.params.<name>} block) and never
+   * mutated. Lookups go through {@link #paramOverride(String, Class)} after {@link
    * #setCurrentRule(String)} has been called by the runner, so the per-check per-file lookup is a
    * single {@link HashMap#get} with no thread-local magic.
    *
@@ -61,9 +61,9 @@ public final class StyleContext {
   private final Map<String, Object> paramOverrides = new HashMap<>();
 
   /**
-   * R761: the rule id (or short name) that the current {@code init()} call belongs to. Set by the
-   * runner before each checker's {@code init()}. Lookups in {@link #paramOverride(String, Class)}
-   * prefix the param name with this value to scope per-checker.
+   * the rule id (or short name) that the current {@code init()} call belongs to. Set by the runner
+   * before each checker's {@code init()}. Lookups in {@link #paramOverride(String, Class)} prefix
+   * the param name with this value to scope per-checker.
    */
   private String currentRule = "";
 
@@ -74,26 +74,26 @@ public final class StyleContext {
   private String aggressiveness = "medium";
 
   /**
-   * R792 (Oct 2026): cross-file static-method cache for nullness / null-return analysis. Keyed by
-   * {@code <FQCN>#<methodName>} (e.g. {@code "testcases.CWE690_...Helper#getStringGood"}), value is
-   * the {@link com.github.javaparser.ast.body.MethodDeclaration} of the static method. Populated by
+   * cross-file static-method cache for nullness / null-return analysis. Keyed by {@code
+   * <FQCN>#<methodName>} (e.g. {@code "testcases.CWE690_...Helper#getStringGood"}), value is the
+   * {@link com.github.javaparser.ast.body.MethodDeclaration} of the static method. Populated by
    * {@code plumb-main}'s {@code ScanRunner} from every source-root / module-root supplied via
    * {@code --source-root} / {@code --module-root}, and passed in via the new {@link
    * #StyleContext(ParsedSource, RuleRegistry, Map, Map)} constructor.
    *
-   * <p>Used by {@link org.plumb.style.style.NullDerefFromReturnCheck} (R792) to determine whether a
-   * {@code data = Helper.foo()} assignment's RHS is definitely-non-null (because {@code
-   * Helper.foo()} returns a literal or a freshly constructed object). The cache is per-scan
-   * immutable so AST walkers can read concurrently.
+   * <p>Used by {@link org.plumb.style.style.NullDerefFromReturnCheck} to determine whether a {@code
+   * data = Helper.foo()} assignment's RHS is definitely-non-null (because {@code Helper.foo()}
+   * returns a literal or a freshly constructed object). The cache is per-scan immutable so AST
+   * walkers can read concurrently.
    */
   private final Map<String, com.github.javaparser.ast.body.MethodDeclaration> staticMethodByFqcn =
       new HashMap<>();
 
   /**
-   * M2 (2026-10-17): per-file cache of top-level method ranges, sorted by start line. Built lazily
-   * on the first {@link #findEnclosingMethod} call and reused for every subsequent call. Before
-   * this cache, every finding triggered a full {@code unit.walk(MethodDeclaration)} ? for a file
-   * that produces N findings, that's N redundant traversals.
+   * M2: per-file cache of top-level method ranges, sorted by start line. Built lazily on the first
+   * {@link #findEnclosingMethod} call and reused for every subsequent call. Before this cache,
+   * every finding triggered a full {@code unit.walk(MethodDeclaration)} ? for a file that produces
+   * N findings, that's N redundant traversals.
    *
    * <p>{@link #methodRanges} holds tuples {@code [startLine, endLine, signatureHash]}; {@link
    * #signatureByHash} maps a signature string hash to the formatted {@code name(p1,...):ret}
@@ -110,8 +110,8 @@ public final class StyleContext {
   }
 
   /**
-   * R761 (Oct 2026): construct a context with a pre-populated per-rule parameter map. The map's
-   * outer key is the rule id (or short name) ? the same string the runner will pass to {@link
+   * construct a context with a pre-populated per-rule parameter map. The map's outer key is the
+   * rule id (or short name) ? the same string the runner will pass to {@link
    * #setCurrentRule(String)} before each {@code init()}. The inner key is the parameter name (e.g.
    * {@code "max"}, {@code "ignoreNumbers"}). Values are {@link String}, {@link Integer}, or {@link
    * Boolean} (see {@link RuleParameter.Type}). A null {@code ruleParams} is treated as empty.
@@ -122,8 +122,8 @@ public final class StyleContext {
   }
 
   /**
-   * R792 (Oct 2026): full constructor with the cross-file static-method cache. {@code
-   * staticMethods} keys are {@code <FQCN>#<methodName>}, values are the parsed {@link
+   * full constructor with the cross-file static-method cache. {@code staticMethods} keys are {@code
+   * <FQCN>#<methodName>}, values are the parsed {@link
    * com.github.javaparser.ast.body.MethodDeclaration}. A null map is treated as empty.
    */
   public StyleContext(
@@ -151,10 +151,10 @@ public final class StyleContext {
   }
 
   /**
-   * R-834: bypass the {@code enabled} gate for the given rule ids. Production code never calls
-   * this; the prod scan runner uses {@code RuleRegistry}'s whitelist / blacklist instead. Smoke
-   * tests that want to exercise a disable-by-default rule's detection logic can call this on the
-   * {@link StyleContext} they build for the test.
+   * bypass the {@code enabled} gate for the given rule ids. Production code never calls this; the
+   * prod scan runner uses {@code RuleRegistry}'s whitelist / blacklist instead. Smoke tests that
+   * want to exercise a disable-by-default rule's detection logic can call this on the {@link
+   * StyleContext} they build for the test.
    */
   public void forceEnable(String... ruleIds) {
     for (String id : ruleIds) {
@@ -179,8 +179,8 @@ public final class StyleContext {
   }
 
   /**
-   * R792: look up a static method by FQCN + method name. The key is {@code <FQCN>#<methodName>},
-   * e.g. {@code
+   * look up a static method by FQCN + method name. The key is {@code <FQCN>#<methodName>}, e.g.
+   * {@code
    * "testcases.CWE690_NULL_Deref_From_Return.CWE690_NULL_Deref_From_Return__Class_Helper#getStringGood"}.
    * Returns null if the cache has no entry for that key. The returned declaration is the same
    * {@link com.github.javaparser.ast.body.MethodDeclaration} the runner extracted at scan-prep
@@ -237,10 +237,10 @@ public final class StyleContext {
   }
 
   /**
-   * R761 (Oct 2026): set the current rule id so subsequent {@link #paramOverride(String, Class)}
-   * lookups prefix the name with the rule id. Called by the runner before each checker's {@code
-   * init()}. Pass the same string that was used as the outer key of the {@code ruleParams} map at
-   * construction time (usually the checker's {@code name()} or its canonical rule id).
+   * set the current rule id so subsequent {@link #paramOverride(String, Class)} lookups prefix the
+   * name with the rule id. Called by the runner before each checker's {@code init()}. Pass the same
+   * string that was used as the outer key of the {@code ruleParams} map at construction time
+   * (usually the checker's {@code name()} or its canonical rule id).
    */
   public StyleContext setCurrentRule(String ruleId) {
     this.currentRule = ruleId == null ? "" : ruleId;
@@ -261,14 +261,14 @@ public final class StyleContext {
     if (currentRule.isEmpty()) {
       // Backwards compat: if no rule scope is set, fall
       // back to the bare name. This lets very old
-      // AstChecker call sites (pre-R761) keep working.
+      // AstChecker call sites (pre-) keep working.
       return legacyLookup(name, type);
     }
     Object v = paramOverrides.get(compositeKey(currentRule, name));
     if (v != null) {
       return coerce(v, type);
     }
-    // R-822 (2026-10-14): no per-file override for this
+    // no per-file override for this
     // rule. Fall back to the rule's declared default
     // from its {@link RuleDef#parameters()} list. This
     // makes the {@code DEFAULT_RULE.parameters[]} array
@@ -308,8 +308,8 @@ public final class StyleContext {
   }
 
   /**
-   * R787d: AST findings need a {@code sinkFunction} on the emitted {@link Finding} so the eval
-   * harness's {@code eval_findings_cwe_matched.py} can locate the enclosing method via {@code
+   * AST findings need a {@code sinkFunction} on the emitted {@link Finding} so the eval harness's
+   * {@code eval_findings_cwe_matched.py} can locate the enclosing method via {@code
    * parse_method_spans}. The DFA path populates {@code sinkFunction} via its flow analysis; the AST
    * path must derive it from the line number by finding the enclosing method declaration in the
    * {@link com.github.javaparser.ast.CompilationUnit}.
@@ -332,7 +332,7 @@ public final class StyleContext {
       RuleDef.Severity severity,
       String dataflowHead,
       String sinkFunction) {
-    // R-834: a rule is dropped from emission when ALL of these
+    // a rule is dropped from emission when ALL of these
     // are true:
     //   1. The checker's static DEFAULT_RULE has enabled=false
     //   2. The rule id is not in the smoke-test-only forcedRuleIds
@@ -355,8 +355,8 @@ public final class StyleContext {
     // canonical plumb.<domain>.<name>.
     RuleDef resolved = resolveViaAlias(rule);
 
-    // R787d: also resolve sinkFunction if the AST
-    // checker didn't supply one. M2 (2026-10-17): the
+    // also resolve sinkFunction if the AST
+    // checker didn't supply one. M2: the
     // enclosing-method lookup is now cached in
     // findEnclosingMethod() — 1 walk per file, not 1
     // per finding. A 1K-line file with 50 findings

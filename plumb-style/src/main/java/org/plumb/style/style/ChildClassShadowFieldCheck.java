@@ -3,7 +3,6 @@
  */
 package org.plumb.style.style;
 
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
 // Note: this checker has a documented two-phase pattern (build class-name map in
 // visit(CompilationUnit) before per-class visits fire). The map is now built
 // in init() (called once per file) and consumed in visit(ClassOrInterfaceDeclaration).

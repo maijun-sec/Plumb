@@ -22,14 +22,6 @@
  *   }
  * </pre>
  *
- * <p>Juliet's CWE-833 corpus (6 files,
- * {@code CWE833_Deadlock/}) uses the same
- * template: a class with two helper
- * methods that each acquire the same two
- * locks in opposite orders, plus a
- * {@code bad()} method that spawns two
- * threads to demonstrate the deadlock.</p>
- *
  * <p>Detection strategy (narrow
  * heuristic):</p>
  *
@@ -123,7 +115,7 @@ public final class DeadlockChecker implements DfaChecker {
   private static final String RULE_ID = "dfa-controlflow-deadlock-ab-ba";
 
   /** Per-program dedup. */
-  // R759-E: cross-finish dedup. DfaEngine
+  // E: cross-finish dedup. DfaEngine
   // calls finish() multiple times for the
   // same checker across worklist reruns
   // and taint drains, but the pair set
@@ -183,9 +175,9 @@ public final class DeadlockChecker implements DfaChecker {
         sequence.add(lockId);
       }
     }
-    // R759-E: store the TacFunction so
+    // E: store the TacFunction so
     // finish() can resolve the filePath
-    // for the finding. Pre-R759-E the
+    // for the finding. Pre--E the
     // checker only stashed the lock
     // sequence; finding.filePath came from
     // AnalysisContext.currentFunction() at
@@ -203,7 +195,7 @@ public final class DeadlockChecker implements DfaChecker {
     // currentFunction() then to the
     // merged typeName.
     if (sequence.size() >= 2) {
-      // R759-E: use the merged key
+      // E: use the merged key
       // (enclosingClass + signature)
       // not just fn.signature(), so
       // same-named helpers in different
@@ -295,9 +287,9 @@ public final class DeadlockChecker implements DfaChecker {
         if (sameOrder(seqA, seqB)) continue;
         // Different order, same set →
         // potential AB-BA deadlock.
-        // R759-E: dedup key is the
+        // E: dedup key is the
         // (enclosing class, sigA, sigB)
-        // tuple — pre-R759-E used
+        // tuple — pre--E used
         // prog.typeName() which under
         // MergedProgram collapsed every
         // pair to the same dedup key
@@ -309,12 +301,12 @@ public final class DeadlockChecker implements DfaChecker {
         // own finding.
         String encA = lockA.fn.enclosingClass();
         String encB = lockB.fn.enclosingClass();
-        // R759-E: only fire when the two
+        // E: only fire when the two
         // helpers live in the SAME
         // enclosing class. Without this
         // filter, every Juliet CWE833
         // file defines a
-        // helperAddBad + helperMultiplyBad
+        // helperAddBad helperMultiplyBad
         // with the SAME lock-identifier
         // strings ("BAD_NUMBER1_REENTRANTLOCK"
         // etc), so cross-file pair
@@ -335,7 +327,7 @@ public final class DeadlockChecker implements DfaChecker {
                 + sigB;
         if (!reported.add(key)) continue;
         String filePath = resolveFilePath(ctx, lockA.fn);
-        // R-812 v2 trace: cross-fn summary
+        // v2 trace: cross-fn summary
         // shape. The two lock-ordering
         // sequences are the parents of a
         // single DEADLOCK_PAIR violation.

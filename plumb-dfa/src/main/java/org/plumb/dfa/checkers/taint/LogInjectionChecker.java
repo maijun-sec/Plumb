@@ -10,7 +10,7 @@ import org.plumb.reporter.Finding;
  *
  * <h2>Why this checker exists</h2>
  *
- * <p>Same defect shape as the CWE-502 gap closed in R1099: the {@code log.sinks} family has been
+ * <p>Same defect shape as the CWE-502 gap closed in the {@code log.sinks} family has been
  * listed in {@code sink-families.yaml} (CWE-117, with {@code java.util.logging.Logger}, {@code
  * org.slf4j.Logger} and friends) but <em>no checker consumed it</em>. A family that no rule reads
  * cannot produce a finding, so the coverage claim was empty. The same applied to {@code

@@ -57,10 +57,9 @@ public final class GlobalTACStore {
   private final Map<String, TacFunction> bySignature = new LinkedHashMap<>();
 
   /**
-   * R723: secondary index by merged key (enclosingClass :: signature) so that functions with
-   * identical signatures across different enclosing classes (e.g. {@code bad_source():int} declared
-   * in 16 Juliet V21 files) are all retained. Without this, {@code bySignature} silently drops 15
-   * of 16 duplicates.
+   * secondary index by merged key (enclosingClass :: signature) so that functions with identical
+   * signatures across different enclosing classes are all retained. Without this, {@code
+   * bySignature} silently drops the duplicates.
    */
   private final Map<String, TacFunction> byMergedKey = new LinkedHashMap<>();
 
@@ -94,7 +93,7 @@ public final class GlobalTACStore {
       LOG.warn("Signature collision; replacing: {}", sig);
     }
     bySignature.put(sig, fn);
-    // R723: index by merged key too so cross-file duplicates aren't lost
+    // index by merged key too so cross-file duplicates aren't lost
     String mk = mergedKey(fn);
     if (mk != null && !mk.isEmpty()) {
       byMergedKey.put(mk, fn);
@@ -117,7 +116,7 @@ public final class GlobalTACStore {
       String sig = fn.signature();
       if (sig == null || sig.isEmpty()) continue;
       bySignature.put(sig, fn);
-      // R723: keep a separate index by merged key (enclosingClass :: sig)
+      // keep a separate index by merged key (enclosingClass :: sig)
       // so cross-file duplicates are not silently dropped.
       String mk = mergedKey(fn);
       if (mk != null && !mk.isEmpty()) {
@@ -157,16 +156,16 @@ public final class GlobalTACStore {
   }
 
   /**
-   * All registered function signatures, in registration order. R723: returns signatures from the
-   * {@link #byMergedKey} index (which is superset of {@link #bySignature} for duplicate sigs) so
-   * consumers see every unique merged-key function.
+   * All registered function signatures, in registration order. returns signatures from the {@link
+   * #byMergedKey} index (which is superset of {@link #bySignature} for duplicate sigs) so consumers
+   * see every unique merged-key function.
    */
   public List<String> allSignatures() {
     return List.copyOf(byMergedKey.keySet());
   }
 
   /**
-   * All registered functions, in registration order. R723: returns functions from the {@link
+   * All registered functions, in registration order. returns functions from the {@link
    * #byMergedKey} index so cross-file duplicates aren't dropped (bug that should have happened
    * here). Use {@link #functionBySignature(String)} if you specifically need the signature-keyed
    * view.
@@ -176,8 +175,8 @@ public final class GlobalTACStore {
   }
 
   /**
-   * R723: build a MergedProgram-style merged key for a {@link TacFunction}: {@code enclosingClass +
-   * " :: " + signature}. Returns empty string if enclosing class is missing.
+   * build a MergedProgram-style merged key for a {@link TacFunction}: {@code enclosingClass + " ::
+   * " + signature}. Returns empty string if enclosing class is missing.
    */
   private static String mergedKey(TacFunction fn) {
     String enc = fn.enclosingClass();

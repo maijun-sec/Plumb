@@ -1,5 +1,5 @@
 /*
- * R-810 static-field resolution ⇒?hermetic fidelity gate
+ * R-810 static-field resolution →hermetic fidelity gate
  * for the STATIC_FIELD_DECL emission path added in R-810.
  *
  * <p>R-810 adds two new v2 shape primitives to the trace
@@ -8,7 +8,7 @@
  * {@code IO.logger}) can attach a real parent instead of
  * falling through to the orphan-SOURCE shape:</p>
  * <ul>
- *   <li>{@link TraceNode.Op#STATIC_FIELD_DECL} ⇒?emitted
+ *   <li>{@link TraceNode.Op#STATIC_FIELD_DECL} →emitted
  *       by the resolver when a {@code public static
  *       final Foo = <literal>} field's value is folded at
  *       scan time. The node carries the
@@ -18,7 +18,7 @@
  *       {@link OperandRef.ConstStr} /
  *       {@link OperandRef.ConstFloat} /
  *       {@link OperandRef.ConstNull}).</li>
- *   <li>{@link OperandRef.StaticFieldRef} ⇒?the
+ *   <li>{@link OperandRef.StaticFieldRef} →the
  *       structural marker for a static-field access. Pairs
  *       with the FIELDLOAD PROPAGATE that consumes the
  *       declaration. {@code isFinal=true} captures the
@@ -242,7 +242,7 @@ class R810StaticFieldDeclTest {
     // (e.g. `t.STATIC_FINAL_FIVE` after
     // `t = this.IO`) still attaches the
     // STATIC_FIELD_DECL as its real parent. The
-    // class identity bind is orthogonal ⇒?it's
+    // class identity bind is orthogonal →it's
     // a fidelity mark for the intermediate
     // load, not the declaration of a static
     // field.
@@ -289,7 +289,7 @@ class R810StaticFieldDeclTest {
             -1,
             "bad():void");
     // Suppress the unused-var warning for
-    // `bind` ⇒?it's here to lock the
+    // `bind` →it's here to lock the
     // "class identity bind is also a real
     // trace node, even though the chained
     // load doesn't reach it" contract.
@@ -301,7 +301,7 @@ class R810StaticFieldDeclTest {
     assertThat(chainedNode.parentIds())
         .as(
             "chained FIELDLOAD still resolves via "
-                + "STATIC_FIELD_DECL ⇒?class identity "
+                + "STATIC_FIELD_DECL →class identity "
                 + "bind is not in the chain")
         .containsExactly(decl);
   }
@@ -357,7 +357,7 @@ class R810StaticFieldDeclTest {
     // pretending to be a static field
     // declaration).
     assertThat(bind.operands())
-        .as("class identity bind carries only Var " + "operands ⇒?never a StaticFieldRef")
+        .as("class identity bind carries only Var " + "operands →never a StaticFieldRef")
         .noneMatch(o -> o instanceof OperandRef.StaticFieldRef);
     // The decl carries StaticFieldRef +
     // typed Const.

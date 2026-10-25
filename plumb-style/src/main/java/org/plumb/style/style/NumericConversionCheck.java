@@ -1,5 +1,5 @@
 /*
- * R722-C11: AST-style CWE-681 (Incorrect Conversion Between
+ * C11: AST-style CWE-681 (Incorrect Conversion Between
  * Numeric Types) checker.
  *
  * <p>Fires on a primitive-narrowing cast where the source

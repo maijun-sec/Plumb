@@ -11,9 +11,7 @@
  * at runtime ? the lock isn't held by
  * the current thread.</p>
  *
- * <p>Juliet's CWE-832 corpus (2 files,
- * {@code CWE832_Unlock_Not_Locked/}) uses
- * the same template:</p>
+ * <p>The shape it detects:</p>
  *
  * <pre>
  *   static private final ReentrantLock

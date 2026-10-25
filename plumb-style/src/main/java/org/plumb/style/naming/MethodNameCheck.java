@@ -8,12 +8,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Method name should be camelCase.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(MethodDeclaration.class)} before.
- */
+/** Method name should be camelCase. */
 public final class MethodNameCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

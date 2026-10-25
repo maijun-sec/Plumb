@@ -12,10 +12,10 @@ import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacProgram;
 
 /**
- * R-? — find where a symbol (variable or method) is defined in the current function. The LLM uses
- * this to chase a tainted variable back to its MOVE / NEW / CALL definition site so it can reason
- * about where the value came from (constant? request input? helper return?). For methods, the tool
- * finds the actual METHOD DECLARATION (the function itself) ? not the call sites. (Call sites are a
+ * — find where a symbol (variable or method) is defined in the current function. The LLM uses this
+ * to chase a tainted variable back to its MOVE / NEW / CALL definition site so it can reason about
+ * where the value came from (constant? request input? helper return?). For methods, the tool finds
+ * the actual METHOD DECLARATION (the function itself) ? not the call sites. (Call sites are a
  * different tool: {@link FindCallersTool}. The previous version of this tool returned call sites
  * for {@code kind=method}, which confused the LLM's mental model ? M2.)
  *

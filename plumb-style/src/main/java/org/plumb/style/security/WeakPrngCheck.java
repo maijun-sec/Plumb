@@ -1,5 +1,5 @@
 /*
- * R734-C1: AST-style CWE-338 (Use of
+ * C1: AST-style CWE-338 (Use of
  * Cryptographically Weak Pseudo-Random Number
  * Generator / PRNG) checker.
  *

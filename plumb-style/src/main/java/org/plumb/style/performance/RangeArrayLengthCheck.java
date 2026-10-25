@@ -10,9 +10,6 @@ import org.plumb.style.StyleContext;
 
 /**
  * Array index uses {@code .length} directly ? should be {@code .length - 1} (RANGE_ARRAY_LENGTH).
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ArrayAccessExpr.class)} before.
  */
 public final class RangeArrayLengthCheck implements AstChecker {
 

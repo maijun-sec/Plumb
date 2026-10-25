@@ -48,23 +48,19 @@ import org.plumb.tac.ir.UnaryOperator;
 /**
  * Heuristic, taint-derived integer-underflow checker.
  *
- * <p><b>Deprecated since R765 (Oct 2026):</b> the {@code plumb.numeric.integer-underflow} rule is
- * fully superseded by the boundary framework ({@link
- * org.plumb.dfa.checkers.boundary.UnderflowConstraintChecker}, rule {@code
- * plumb.boundary.integer-underflow}), which is a Range-lattice + Z3 SMT-solver implementation
- * rather than a taint-only heuristic. The boundary rule achieves 100% precision on Juliet CWE-191
- * bad() methods and 0 findings on abstract-method dispatch (which the taint-based heuristic
- * severs). See {@code juliet-coverage/reports/r764/SUMMARY.md} for the empirical comparison.
+ * <p><b>Deprecated since </b> the {@code plumb.numeric.integer-underflow} rule is fully superseded
+ * by the boundary framework ({@link org.plumb.dfa.checkers.boundary.UnderflowConstraintChecker},
+ * rule {@code plumb.boundary.integer-underflow}), which is a Range-lattice + Z3 SMT-solver
+ * implementation rather than a taint-only heuristic. The boundary rule reaches the underflow shapes
+ * that the taint-based heuristic severs at abstract-method dispatch.
  *
  * <p>Class kept (not deleted) because:
  *
  * <ol>
- *   <li>unit tests (R222bIntUnderflowCheckerTest) still exercise the heuristic path as a regression
- *       baseline;
+ *   <li>unit tests still exercise the heuristic path as a regression baseline;
  *   <li>existing user configs may explicitly enable {@code checks.intUnderflow: true} as a fallback
  *       for callers that have not migrated to {@code plumb.boundary.integer-underflow};
- *   <li>{@code juliet-coverage/configs/CWE191.yaml} keeps {@code plumb.numeric.integer-underflow}
- *       in the whitelist for direct A/B comparison.
+ *   <li>a caller may want to compare the heuristic against the boundary rule directly.
  * </ol>
  *
  * <p>To disable this rule while keeping boundary active, set {@code checks.intUnderflow: {enabled:
@@ -133,14 +129,14 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
       if (this.isGuardBoundedUnderflowByOperand(ins.lhs1)) {
         return;
       }
-      // R780 — message includes the actual Java type.
+      // — message includes the actual Java type.
       // Also: this is the SOLE owner of PRE_DEC/POST_DEC
       // findings (IntOverflowChecker used to fire on the
       // same instructions with a mismatched CWE-191
       // tag). Force CWE-191 here so every PRE_DEC
       // finding has consistent rule_id ↔ CWE.
       //
-      // R780b: see IntOverflowChecker — fall back to
+      // see IntOverflowChecker — fall back to
       // the operand's type when dest is UNKNOWN.
       String unopFlow = "underflow-hazard: " + operandLabel;
       TacType unopType =
@@ -197,7 +193,7 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
       if (this.isGuardBoundedUnderflow(ins)) {
         return;
       }
-      // R781 — direction split. When one operand is a
+      // — direction split. When one operand is a
       // literal int/long constant, the math can only
       // go one direction. Mirror of IntOverflowChecker's
       // direction gate: underflow bit (value 2) is
@@ -214,14 +210,14 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
           return;
         }
       }
-      // R780 — message includes actual Java type, CWE
+      // — message includes actual Java type, CWE
       // forced to CWE-191 to match rule_id. The op
       // (SUB / ADD / MUL) is preserved because Juliet
       // CWE-191 uses both SUB (e.g. `data - 1` when
       // data is MIN_VALUE) and MUL (e.g. `data * 2`
       // when data is in the underflow range).
       //
-      // R780b: see IntOverflowChecker — fall back to the
+      // see IntOverflowChecker — fall back to the
       // hazardous operand's type when dest is UNKNOWN.
       TacType destType = destVar.type();
       if (destType == TacType.UNKNOWN) {
@@ -261,7 +257,7 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R781 ? see IntOverflowChecker#constRhsValue. Mirror helper for the underflow checker; identical
+   * ? see IntOverflowChecker#constRhsValue. Mirror helper for the underflow checker; identical
    * body, kept as a separate method so each checker owns its own copy (the two checkers are already
    * parallel implementations of TaintedCheckerBase's emit logic; we don't want to introduce a
    * shared util just for two static methods).
@@ -284,9 +280,9 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R781 ? see IntOverflowChecker#possibleDirections. Same direction bitmask. Underflow-only cases
-   * (bit 2 set) are the cases IntUnderflowChecker handles; the int underflow checker is the only
-   * owner of those.
+   * ? see IntOverflowChecker#possibleDirections. Same direction bitmask. Underflow-only cases (bit
+   * 2 set) are the cases IntUnderflowChecker handles; the int underflow checker is the only owner
+   * of those.
    */
   static int possibleDirections(BinaryOperator op, long rhs) {
     if (op == BinaryOperator.ADD) {
@@ -307,7 +303,7 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R780 ? see IntOverflowChecker#typeName. Same mapping to keep the human-readable type in the
+   * ? see IntOverflowChecker#typeName. Same mapping to keep the human-readable type in the
    * underflow message consistent with the overflow message.
    */
   private static String typeName(TacType dt) {

@@ -10,9 +10,9 @@ import org.plumb.style.StyleContext;
 /**
  * Type name should be PascalCase.
  *
- * <p>Disabled by default (R-836 step_f) ? 0 TP / 100% FP on Juliet R-832 baseline. M5 part-4
- * migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ClassOrInterfaceDeclaration.class)} before.
+ * <p>A type name is reported when it does not match {@code [A-Z][A-Za-z0-9]*}. This rule is
+ * disabled by default; enable it explicitly when the naming convention is part of the project's own
+ * standard.
  */
 public final class TypeNameCheck implements AstChecker {
 
@@ -27,9 +27,7 @@ public final class TypeNameCheck implements AstChecker {
           false,
           List.of(
               "ast-naming-name",
-              "type-name")); // R-836 step_f: disabled by default (0 TP / 100% FP on Juliet R-832
-
-  // baseline)
+              "type-name")); // disabled by default: the naming convention is opt-in
 
   @Override
   public String name() {

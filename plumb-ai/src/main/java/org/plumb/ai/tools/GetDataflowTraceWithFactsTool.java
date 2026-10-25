@@ -69,8 +69,8 @@ public class GetDataflowTraceWithFactsTool implements Tool {
         .append(":")
         .append(f.line())
         .append(":\n\n");
-    // R-806: prefer the v2 structured Trace when present
-    // (R-803 P3.1 dual-write + R-804 eager). The v2 path
+    // prefer the v2 structured Trace when present
+    // ( P3.1 dual-write + eager). The v2 path
     // exposes specific op enums; v1 is a flat string list
     // with heuristic role classification.
     Trace v2 = f.trace();
@@ -101,8 +101,8 @@ public class GetDataflowTraceWithFactsTool implements Tool {
   }
 
   /**
-   * R-806 ? render the v2 structured trace by walking the DAG from the root via parentIds/childIds,
-   * and label each visited node with its {@link TraceNode.Op} enum + operands (typed via {@link
+   * ? render the v2 structured trace by walking the DAG from the root via parentIds/childIds, and
+   * label each visited node with its {@link TraceNode.Op} enum + operands (typed via {@link
    * OperandRef}). Sinks (nodes in {@code trace.sinkOrViolationIds()}) are marked explicitly.
    * Multi-parent ALIAS nodes are rendered once (the first time they're visited) to avoid
    * duplicating shared sub-paths.
@@ -171,7 +171,7 @@ public class GetDataflowTraceWithFactsTool implements Tool {
     }
   }
 
-  /** R-806 ? render a single v2 node: file:line:col + functionSig + typed operands + note. */
+  /** ? render a single v2 node: file:line:col + functionSig + typed operands + note. */
   private static String renderNode(TraceNode n) {
     StringBuilder sb = new StringBuilder();
     if (n.filePath() != null && !n.filePath().isEmpty()) {
@@ -198,7 +198,7 @@ public class GetDataflowTraceWithFactsTool implements Tool {
     return sb.toString();
   }
 
-  /** R-806 ? translate v2 TraceNode role + sink flag into the LLM-facing role label. */
+  /** ? translate v2 TraceNode role + sink flag into the LLM-facing role label. */
   private static String roleOf(TraceNode n, boolean isSink) {
     return switch (n.role()) {
       case SOURCE -> "source";
@@ -213,8 +213,8 @@ public class GetDataflowTraceWithFactsTool implements Tool {
   }
 
   /**
-   * v1 path ? preserved for findings emitted by checkers that don't dual-write the v2 trace (R-803
-   * P3.1 was the gating commit; pre-P3.1 findings still flow through here). Heuristic role
+   * v1 path ? preserved for findings emitted by checkers that don't dual-write the v2 trace ( P3.1
+   * was the gating commit; pre-P3.1 findings still flow through here). Heuristic role
    * classification based on the FlowStep.role() field + canonical-string fallback.
    */
   private static void renderV1Steps(StringBuilder sb, Finding f) {

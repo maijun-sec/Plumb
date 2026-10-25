@@ -12,10 +12,6 @@ import org.plumb.style.StyleContext;
 /**
  * {@code StringBuffer} field in a {@link Serializable} class is not thread-safe ? use {@code
  * StringBuilder}.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ClassOrInterfaceDeclaration.class)} before. The inner per-field walk stays as a local
- * loop because we need to compare against the enclosing class's implements list.
  */
 public final class StringBufferFieldInSerialClassCheck implements AstChecker {
 

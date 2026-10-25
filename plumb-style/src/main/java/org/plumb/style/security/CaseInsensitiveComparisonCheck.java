@@ -10,9 +10,6 @@ import org.plumb.style.StyleContext;
 /**
  * Case-insensitive {@code String} comparison should use {@code equalsIgnoreCase} rather than {@code
  * toLowerCase()/toUpperCase() + equals()}.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(MethodCallExpr.class)} before.
  */
 public final class CaseInsensitiveComparisonCheck implements AstChecker {
 

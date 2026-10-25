@@ -1,7 +1,7 @@
 /*
  * class has too many other class references (fan-out).
  *
- * <p><b>R-818 (2026-10-14): pattern D rewrite.</b> The previous
+ * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(ClassOrInterfaceDeclaration)} (1 walk) + for
  * each class {@code c.findAll(ClassOrInterfaceType)} (1 walk per

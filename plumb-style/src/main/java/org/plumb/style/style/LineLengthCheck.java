@@ -19,7 +19,6 @@ import org.plumb.style.StyleContext;
  * ignore (after trim) | | `ignoreImports` | BOOLEAN | `false` | Skip import statements | |
  * `ignoreComments` | BOOLEAN | `true` | Skip comment lines |
  */
-// R-AST-FIX-2026-10-18 (Pass B): removed duplicate paramInt helper.
 public final class LineLengthCheck implements AstChecker {
 
   private static final RuleParameter[] PARAMS = {

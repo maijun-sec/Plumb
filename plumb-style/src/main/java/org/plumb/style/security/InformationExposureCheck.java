@@ -1,15 +1,11 @@
 /*
- * R-813: AST-style CWE-200 (Information Exposure) checker.
+ * AST-style CWE-200 (Information Exposure) checker.
  *
  * <p>Fires on Spring / Jakarta web endpoint methods that return a user-declared class (a JPA
  * entity, a domain object, or a generic wrapper around one) directly to the client. The fix is
  * to project to a sanitized DTO so internal fields (passwords, IDs, emails) are not serialized
  * into the response.
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(ClassOrInterfaceDeclaration.class)} before. The enclosing
- * class (for the controller annotation) is recovered via
- * {@code findAncestor(ClassOrInterfaceDeclaration.class)}.
  */
 package org.plumb.style.security;
 

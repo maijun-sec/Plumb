@@ -65,7 +65,7 @@ public final class OrmUnnecessaryGetDfaChecker implements DfaChecker {
   private Map<String, TacInstruction> getCallSite;
 
   /**
-   * R-812 v2 trace state. Per-function map from "from-get" var name to its v2 handle ? the {@code
+   * v2 trace state. Per-function map from "from-get" var name to its v2 handle ? the {@code
    * CALL_INSTANCE} source node, propagated through alias MOVEs.
    */
   private Map<String, Integer> v2HandleByVar;
@@ -115,7 +115,7 @@ public final class OrmUnnecessaryGetDfaChecker implements DfaChecker {
       String dest = ((TacOperand.TacVar) ins.dest).name();
       fromGetVars.put(dest, true);
       getCallSite.put(dest, ins);
-      // R-812: emit CALL_INSTANCE source for
+      // emit CALL_INSTANCE source for
       // the get/find call. The dest var's
       // v2 handle points back to this node.
       int handle =
@@ -141,7 +141,7 @@ public final class OrmUnnecessaryGetDfaChecker implements DfaChecker {
       if (fromGetVars.containsKey(from)) {
         fromGetVars.put(to, true);
         getCallSite.put(to, getCallSite.get(from));
-        // R-812: emit a MOVE propagate
+        // emit a MOVE propagate
         // chained to the source handle.
         Integer parent = v2HandleByVar.get(from);
         if (parent != null) {
@@ -172,7 +172,7 @@ public final class OrmUnnecessaryGetDfaChecker implements DfaChecker {
       if (usedInContentAccess(fn, var)) continue;
       TacInstruction origin = getCallSite.get(var);
       if (origin == null) continue;
-      // R-812: emit VIOLATION with the
+      // emit VIOLATION with the
       // unused-result op wired back to the
       // get call's source handle.
       Integer parent = v2HandleByVar.get(var);

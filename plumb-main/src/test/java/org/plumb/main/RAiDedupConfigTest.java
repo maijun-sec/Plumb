@@ -9,7 +9,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * R-? Step 7 ? Tests for the AI dedup YAML config loader. Covers the {@code ai.*} block (provider /
+ * Step 7 ? Tests for the AI dedup YAML config loader. Covers the {@code ai.*} block (provider /
  * baseUrl / apiKey / model / timeoutSeconds / maxConcurrent / dedup / dropOnAiFp / dedupRules /
  * temperature) + the {@code --ai-dedup} CLI flag plumbing.
  */

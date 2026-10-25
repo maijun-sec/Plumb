@@ -1,5 +1,5 @@
 /*
- * R-812 ? InsecureCommunicationCheck (CWE-319) migrated from
+ * ? InsecureCommunicationCheck (CWE-319) migrated from
  * plumb-dfa/.../InsecureCommunicationChecker.java to
  * plumb-style AST.
  *

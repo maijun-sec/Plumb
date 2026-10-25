@@ -12,9 +12,7 @@ import org.plumb.style.StyleContext;
 /**
  * Return an empty array instead of {@code null} for array-returning methods.
  *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ReturnStmt.class)} before. The parent-method lookup is preserved via {@code
- * n.findAncestor(MethodDeclaration.class)} so we still skip non-array returns.
+ * <p>n.findAncestor(MethodDeclaration.class)} so we still skip non-array returns.
  */
 public final class PreferZeroLengthArraysCheck implements AstChecker {
 

@@ -22,12 +22,12 @@ import org.plumb.style.quality.UninitNonnullCheck;
  * <p>Cases covered:
  *
  * <ul>
- *   <li>{@code @NonNull} field not assigned in ctor ⇒?fires.
- *   <li>{@code @NonNull} field assigned in ctor ⇒?does not fire.
- *   <li>No {@code @NonNull} annotation ⇒?does not fire.
- *   <li>Field initialised inline ({@code @NonNull String x = "y";}) ⇒?does not fire.
- *   <li>Two ctors, only one assigns the field ⇒?fires on the unassigned ctor.
- *   <li>{@code @NonNull} field assigned {@code null} ⇒?fires (null literal is the "not non-null"
+ *   <li>{@code @NonNull} field not assigned in ctor →fires.
+ *   <li>{@code @NonNull} field assigned in ctor →does not fire.
+ *   <li>No {@code @NonNull} annotation →does not fire.
+ *   <li>Field initialised inline ({@code @NonNull String x = "y";}) →does not fire.
+ *   <li>Two ctors, only one assigns the field →fires on the unassigned ctor.
+ *   <li>{@code @NonNull} field assigned {@code null} →fires (null literal is the "not non-null"
  *       case).
  * </ul>
  */

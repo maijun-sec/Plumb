@@ -101,8 +101,8 @@ public final class ConfigLoader {
   }
 
   /**
-   * R698: parse {@code receiver-passthrough.yaml}. Returns a compiled-regex list whose entries gate
-   * the receiver → dest passthrough fallback in {@code
+   * parse {@code receiver-passthrough.yaml}. Returns a compiled-regex list whose entries gate the
+   * receiver → dest passthrough fallback in {@code
    * TaintedCheckerBase.propagateTaintFromCalleeSummary}.
    *
    * <p>YAML shape mirrors {@code sink-families.yaml} (top-level {@code families} map; each entry
@@ -188,11 +188,11 @@ public final class ConfigLoader {
       // missing; set false only if explicitly
       // present and false.
       enabled = !Boolean.FALSE.equals(spec.get("enabled"));
-      // R693: optional family-wide default
+      // optional family-wide default
       // arg index (used when no per-pattern
       // arg_index is set).
       int defaultArgIdx = asInt(spec.get("default_arg_index"), 0);
-      // R693: each pattern may be a bare
+      // each pattern may be a bare
       // string or {pattern: "...", arg_index: N}.
       List<SinkFamily.SinkPattern> parsedPatterns = parsePatterns(spec.get("patterns"));
       out.put(name, new SinkFamily(name, cwe, sev, enabled, defaultArgIdx, parsedPatterns));
@@ -201,8 +201,8 @@ public final class ConfigLoader {
   }
 
   /**
-   * R693: parse a patterns list whose entries are either bare strings or maps with {@code pattern}
-   * and optional {@code arg_index}.
+   * parse a patterns list whose entries are either bare strings or maps with {@code pattern} and
+   * optional {@code arg_index}.
    */
   @SuppressWarnings("unchecked")
   private static List<SinkFamily.SinkPattern> parsePatterns(Object raw) {
@@ -339,7 +339,7 @@ public final class ConfigLoader {
       parallel = asBoolean(((Map<String, Object>) performance).get("parallel"));
       perFnMs = asInt(((Map<String, Object>) performance).get("per_function_timeout_ms"), 30000);
     }
-    // R1107: the points-to context-sensitivity policy. Read as the RAW string and kept unset
+    // the points-to context-sensitivity policy. Read as the RAW string and kept unset
     // (null) when absent, so "not configured" stays distinguishable from an explicit choice --
     // an absent key must follow the engine default even if that default later changes, while
     // `context_insensitive` must mean exactly that.

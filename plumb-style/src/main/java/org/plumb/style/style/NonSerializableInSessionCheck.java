@@ -14,37 +14,28 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * CWE-579 ? store a non-{@link java.io.Serializable} object in an {@code HttpSession}.
+ * CWE-579 — store a non-{@link java.io.Serializable} object in an {@code HttpSession}.
  *
  * <p>Detects calls of the shape {@code session.setAttribute(name, value)} where:
  *
  * <ol>
- *   <li>The receiver's resolved type descends from {@code javax.servlet.http.HttpSession} (or
- *       {@code javax.servlet.http.HttpSession.getAttribute}'s declared binding context). Falls
+ *   <li>The receiver's resolved type descends from {@code javax.servlet.http.HttpSession}. Falls
  *       through to a name-heuristic when symbol resolution fails (e.g. servlet-api.jar not on the
  *       classpath).
  *   <li>The value argument's type either (a) explicitly constructs {@code new Hashtable()}, {@code
- *       new HashMap()}, {@code new ArrayList()} (well-known non-{@code Serializable} containers
- *       historically flagged), or (b) resolves to a reference type that does NOT implement {@code
- *       java.io.Serializable} and is NOT a primitive (R787c enhancement: covers Juliet's {@code new
- *       BadObject()} shape).
+ *       new HashMap()}, {@code new ArrayList()} (well-known non-{@code Serializable} containers),
+ *       or (b) resolves to a reference type that does NOT implement {@code java.io.Serializable}
+ *       and is NOT a primitive.
  * </ol>
  *
- * <p>The previous implementation was a regex on source text ({@code
- * ClassThreadChecker.NonSerializableInSessionChecker}, R759-E). R787c migrates the detection to
- * plumb-style AST per the cardinal principles (AST → style module, DFA → dfa module, prefer AST
- * when feasible) and uses the symbol solver for receiver type resolution. Juliet CWE579 has only
- * one test case file and the {@code bad()} form is {@code new BadObject()} ? a custom non-{@code
- * Serializable} nested class. The regex never fired on it (only matched {@code new
- * Hashtable|HashMap|ArrayList} literals). The AST version catches both forms and keeps Juliet
- * precision bit-identical at {@code 0/0} (no regression; the rule was never going to fire on this
- * Juliet test under either implementation).
+ * <p>The receiver type is resolved with the symbol solver, so a custom non-{@code Serializable}
+ * class is caught as well as the well-known container literals.
  */
 public final class NonSerializableInSessionCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          // R787c: rule_id aligned with plumb_rule_to_cwe.json
+          // rule_id aligned with plumb_rule_to_cwe.json
           // (`Cwe579` → ["579"]). Legacy id
           // `dfa.cwe579-non-serializable` is preserved as
           // the short_name so any external whitelist still
@@ -137,8 +128,8 @@ public final class NonSerializableInSessionCheck implements AstChecker {
 
   /**
    * Heuristic name-based fallback. Used when symbol resolution fails (servlet-api not on classpath,
-   * etc.). Mirrors R787a's CallToThreadRunCheck.isThreadReceiverByName pattern ? same Lesson
-   * 1151/1152 reasoning.
+   * etc.). Mirrors 's CallToThreadRunCheck.isThreadReceiverByName pattern ? same Lesson 1151/1152
+   * reasoning.
    *
    * <p>Two receiver shapes are recognized:
    *
@@ -176,8 +167,8 @@ public final class NonSerializableInSessionCheck implements AstChecker {
    * True if the value argument is non-Serializable. Two detection branches:
    *
    * <ol>
-   *   <li><b>Symbol-solver type check</b> (R787c primary): resolve the value's static type. If it's
-   *       a reference type that does NOT descend from {@link java.io.Serializable}, flag it. This
+   *   <li><b>Symbol-solver type check</b> ( primary): resolve the value's static type. If it's a
+   *       reference type that does NOT descend from {@link java.io.Serializable}, flag it. This
    *       covers Juliet's {@code new BadObject()} shape (a non-Serializable nested class) AND
    *       preserves regex parity for {@code new Hashtable()} (Hashtable is Serializable since Java
    *       1 ? actually Hashtable implements {@code java.util.Map} which extends nothing about
@@ -187,7 +178,7 @@ public final class NonSerializableInSessionCheck implements AstChecker {
    *       suppresses it.).
    *   <li><b>Literal constructor shape</b> (regex parity fallback): when symbol resolution fails
    *       (servlet-api not on classpath, generic wildcard without bound), fall back to the
-   *       well-known container constructor names that the R759-E regex caught. This keeps the rule
+   *       well-known container constructor names that the -E regex caught. This keeps the rule
    *       firing on patterns the regex caught even when the symbol-solver can't resolve the value's
    *       type.
    * </ol>
@@ -219,7 +210,7 @@ public final class NonSerializableInSessionCheck implements AstChecker {
       // Fall through to literal-constructor fallback.
     }
     // Branch 2 (fallback): literal-constructor names
-    // the R759-E regex caught. Used when symbol
+    // the -E regex caught. Used when symbol
     // resolution is unavailable.
     if (value instanceof ObjectCreationExpr oc) {
       String typeName = oc.getType().getNameAsString();

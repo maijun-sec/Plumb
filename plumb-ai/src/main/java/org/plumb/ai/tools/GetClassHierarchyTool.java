@@ -12,9 +12,9 @@ import org.plumb.ai.agent.ToolDefinition;
 import org.plumb.ai.agent.ToolResult;
 
 /**
- * R-? Step 3 ? return the {@code extends} / {@code implements} chain for a given class. Used by the
- * bug scanner to spot trust-boundary violations: a class extending {@code AbstractTrustedService}
- * has different security expectations than a plain POJO, and a class implementing
+ * Step 3 ? return the {@code extends} / {@code implements} chain for a given class. Used by the bug
+ * scanner to spot trust-boundary violations: a class extending {@code AbstractTrustedService} has
+ * different security expectations than a plain POJO, and a class implementing
  * {@code @FunctionalInterface} is almost certainly a lambda body that the static analyzer already
  * mis-read.
  *

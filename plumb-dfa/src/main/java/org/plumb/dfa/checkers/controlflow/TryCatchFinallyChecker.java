@@ -180,7 +180,7 @@ public final class TryCatchFinallyChecker implements DfaChecker {
       String message,
       String flow) {
     String ruleId = cwe.toLowerCase().replace('-', '.');
-    // R-812 v2 trace: single-node VIOLATION
+    // v2 trace: single-node VIOLATION
     // with NULL_DEREF_GENERIC as the closest
     // generic-exception op. The CWE code is
     // carried in the Free operand so the AI

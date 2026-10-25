@@ -1,11 +1,11 @@
 /*
- * R-812 Batch 3 ? Unchecked loop condition (CWE-674)
+ * Batch 3 ? Unchecked loop condition (CWE-674)
  * migrated from
  * plumb-dfa/.../checkers/UncheckedLoopConditionChecker.java.
  *
  * <p>The DFA source at
  * {@code plumb-dfa/.../checkers/UncheckedLoopConditionChecker.java}
- * is a deprecated placeholder (R784) ? the active
+ * is a deprecated placeholder ? the active
  * implementation lives in
  * {@code plumb-dfa/.../checkers/taint/UncheckedLoopConditionChecker.java}
  * (CWE-606 tainted loop bound). This AST check is the
@@ -14,7 +14,7 @@
  * no break / return / throw.</p>
  *
  * <p>Note: a richer CWE-835 implementation already lives
- * at {@code plumb-style/.../InfiniteLoopCheck.java} (R787b).
+ * at {@code plumb-style/.../InfiniteLoopCheck.java}.
  * This rule is intentionally narrower ? constant-true
  * loops only, no modulo proof ? and uses a distinct CWE
  * label (CWE-674 = unchecked recursion / unbounded loop)

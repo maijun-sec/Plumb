@@ -13,7 +13,7 @@ import org.plumb.rules.RuleId;
  * <p>Fires when a class implements {@code Cloneable} but is not declared {@code final}, allowing a
  * subclass to override the (non-final) {@code clone()} method and hijack the cloned instance.
  *
- * <p><b>R-818 (2026-10-14): pattern D+ cleanup.</b> The previous implementation had an empty {@code
+ * <p><b>pattern D+ cleanup.</b> The previous implementation had an empty {@code
  * visit(CompilationUnit, ...)} stub ("// Per-class dispatch below.") alongside the per-class {@code
  * visit(ClassOrInterfaceDeclaration, ...)} handler. This was a D+ anti-pattern (both overloads
  * fire, doubling the walk). The empty stub has been removed; only the {@code

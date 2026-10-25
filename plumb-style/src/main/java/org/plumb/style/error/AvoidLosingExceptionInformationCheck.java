@@ -45,7 +45,7 @@ public final class AvoidLosingExceptionInformationCheck implements AstChecker {
     catchParamNames.clear();
   }
 
-  // R786-P1-1-2026-10-18: reset catchParamNames at the start of each method to
+  // P1-1-2026-10-18: reset catchParamNames at the start of each method to
   // prevent cross-method leak. See AvoidPrintStackTraceCheck for the same fix.
   @Override
   public void visit(MethodDeclaration n, StyleContext ctx) {

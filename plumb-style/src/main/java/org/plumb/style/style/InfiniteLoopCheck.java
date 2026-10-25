@@ -36,10 +36,9 @@ import org.plumb.style.StyleContext;
  * </ol>
  *
  * <p>The original implementation lived in {@code plumb-dfa} as {@code
- * ClassThreadChecker$InfiniteLoopChecker} (R774, AST-on-CompilationUnit via re-parsed source).
- * R787b migrates it here so the rule lives where AST rules belong per the cardinal principles (AST
- * → style module, DFA → dfa module, prefer AST when feasible). The dfa-side is replaced with a
- * deprecated stub.
+ * ClassThreadChecker$InfiniteLoopChecker} (, AST-on-CompilationUnit via re-parsed source). migrates
+ * it here so the rule lives where AST rules belong per the cardinal principles (AST → style module,
+ * DFA → dfa module, prefer AST when feasible). The dfa-side is replaced with a deprecated stub.
  */
 public final class InfiniteLoopCheck implements AstChecker {
 
@@ -332,13 +331,7 @@ public final class InfiniteLoopCheck implements AstChecker {
   }
 
   /**
-   * R-AST-FIX-2026-10-18: was previously a {@code static ThreadLocal<Set<String>>} for "per-file
-   * dedup". The {@link org.plumb.style.AstDispatcher} walks one file at a time on the calling
-   * thread, so a thread-local is just a static with extra indirection. We replaced it with a plain
-   * instance {@code HashSet} cleared in {@link #init(StyleContext)} ? every (file, scan) gets a
-   * fresh dedup set.
-   *
-   * <p>Was {@code static final Set<String> SEEN} before P1#6 hardening; now per-instance so the
+   * Was {@code static final Set<String> SEEN} before P1#6 hardening; now per-instance so the
    * dispatcher can safely parallelise the file scan (each thread gets its own checker instance)
    * without cross-contaminating the dedup set. Each scan also constructs a fresh checker via {@code
    * AstCheckerRegistry.tryRegister} which calls {@code

@@ -1,5 +1,5 @@
 /*
- * R722-C8: AST-style CWE-539 (Information Exposure Through
+ * C8: AST-style CWE-539 (Information Exposure Through
  * Persistent Cookie) checker.
  *
  * <p>Fires when a {@code Cookie.setMaxAge(int)} call has an

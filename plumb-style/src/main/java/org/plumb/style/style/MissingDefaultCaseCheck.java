@@ -1,5 +1,5 @@
 /*
- * R722-C5: AST-style CWE-478 (Missing Default Case in Switch) checker.
+ * C5: AST-style CWE-478 (Missing Default Case in Switch) checker.
  *
  * <p>Fires when a {@link com.github.javaparser.ast.stmt.SwitchStmt}
  * has at least one {@code case} entry but no

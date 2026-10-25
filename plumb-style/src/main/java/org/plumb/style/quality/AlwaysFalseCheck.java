@@ -1,5 +1,5 @@
 /*
- * R-813: AST-style CWE-570 (Expression is Always False) checker.
+ * AST-style CWE-570 (Expression is Always False) checker.
  *
  * <p>Fires on expressions that are provably always false:</p>
  * <ul>
@@ -10,9 +10,9 @@
  * </ul>
  *
  * <p>Replaces the plumb-dfa {@code ClassSourceChecker.AlwaysFalseChecker}
- * inner class (R-812 audit cleanup 2026-10-14).</p>
+ * inner class ( audit cleanup 2026-10-14).</p>
  *
- * <p><b>R-816 (2026-10-14): pattern D rewrite.</b> The previous
+ * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(IfStmt)} + {@code n.findAll(WhileStmt)} +
  * {@code n.findAll(BinaryExpr)} (3 AST walks per file). The new
@@ -122,7 +122,7 @@ public final class AlwaysFalseCheck implements AstChecker {
     String l = bareName(lhs);
     if (l == null) return false;
     if (rhs instanceof BinaryExpr inner) {
-      // X + N or X - N
+      // X N or X - N
       if (inner.getOperator() != BinaryExpr.Operator.PLUS
           && inner.getOperator() != BinaryExpr.Operator.MINUS) {
         return false;

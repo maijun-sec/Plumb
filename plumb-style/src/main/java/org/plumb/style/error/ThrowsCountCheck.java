@@ -7,12 +7,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Method declares too many checked exceptions (default threshold 4).
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(MethodDeclaration.class)} before.
- */
+/** Method declares too many checked exceptions (default threshold 4). */
 public final class ThrowsCountCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

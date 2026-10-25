@@ -7,12 +7,6 @@
  * {@code .nextBytes(arg)} call between declaration and the
  * IvParameterSpec constructor.</p>
  *
- * <p>Juliet's CWE-329 corpus (17 files) uses the same template:
- * {@code bad()} builds an IV as a hardcoded byte array and passes
- * it to {@code new IvParameterSpec(iv)}; {@code good1/good2} fill
- * the IV with {@code SecureRandom.nextBytes(iv)} before the
- * constructor call.</p>
- *
  * <p>Detection strategy: per-node visit on every {@code ObjectCreationExpr}
  * for {@code IvParameterSpec} (bare or FQN). For each:
  * <ol>
@@ -26,7 +20,7 @@
  *       declaration and the IvParameterSpec, fire.</li>
  * </ol>
  *
- * <p><b>R-816 (2026-10-14): pattern D rewrite.</b> The previous
+ * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} + a single
  * {@code n.walk(ObjectCreationExpr, ...)} + 3 sub-walks per matched
  * node ({@code scope.walk(VariableDeclarationExpr)} +
@@ -95,9 +89,9 @@ public final class RandomIvCheck implements AstChecker {
     // Case 2: variable reference — find its declaration.
     if (!(arg instanceof NameExpr ne)) return;
     String varName = ne.getNameAsString();
-    // R790: prefer the enclosing method scope to avoid picking
+    // prefer the enclosing method scope to avoid picking
     // bad()'s first decl when goodN() reuses the same var name.
-    // R-816 (follow-up): Juliet CWE-329 places the byte[] field
+    // (follow-up): Juliet CWE-329 places the byte[] field
     // at class scope (e.g. `private static final byte[]
     // initializationVector;`), not inside the bad() method. So
     // we must ALSO consider the enclosing CompilationUnit when
@@ -106,7 +100,7 @@ public final class RandomIvCheck implements AstChecker {
     Node enclosingMethod = findEnclosingMethodDecl(oc);
     Node cu = oc.findRootNode();
 
-    // R-816: single enclosing walk with instanceof dispatch,
+    // single enclosing walk with instanceof dispatch,
     // replacing the previous 3 separate sub-walks. The walk
     // collects three booleans in one pass:
     //   - hasVarDecl:     is there a `byte[] varName = ...`?
@@ -219,7 +213,7 @@ public final class RandomIvCheck implements AstChecker {
   }
 
   /**
-   * R790: find the enclosing method declaration, so we can scope the `varName` decl lookup and the
+   * find the enclosing method declaration, so we can scope the `varName` decl lookup and the
    * `nextBytes` line-window to the same method (Juliet puts each test case in its own method, so a
    * file-wide first-decl lookup always picks bad()'s decl and FPs goodN()).
    */

@@ -1,5 +1,5 @@
 /*
- * R729-A2: AST check for CWE-226 (Sensitive
+ * A2: AST check for CWE-226 (Sensitive
  * Information Uncleared Before Release). Fires when
  * a `char[]` field whose name suggests a credential
  * (`password`, `secret`, `key`, `pin`, `credential`,

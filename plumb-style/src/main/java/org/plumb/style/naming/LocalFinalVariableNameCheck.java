@@ -8,13 +8,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Local final variable name should be camelCase.
- *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(VariableDeclarator.class)} before. The "final" filter is preserved by inspecting the
- * parent {@code VariableDeclarationExpr}.
- */
+/** Local final variable name should be camelCase. */
 public final class LocalFinalVariableNameCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

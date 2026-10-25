@@ -52,7 +52,7 @@ public final class XssInjectionChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R692: Override default sink arg index to 1 (the value side). Default 0 works for
+   * Override default sink arg index to 1 (the value side). Default 0 works for
    * PrintWriter.print(String) where the string is the only user-visible arg, but fails for sinks
    * like HttpServletResponse.sendError(int code, String msg) where the int code at user-arg 0 is
    * never tainted and the string at user-arg 1 carries the XSS payload.

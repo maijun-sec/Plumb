@@ -131,7 +131,7 @@ public final class EqualsCalledOnNullChecker implements DfaChecker {
       String flow) {
     String name = "EqualsCalledOnNull";
     String ruleId = cwe.toLowerCase().replace('-', '.');
-    // R-812 v2 trace: single-node VIOLATION
+    // v2 trace: single-node VIOLATION
     // with NULL_DEREF_GENERIC op. The flow
     // argument encodes "receiver <var> known
     // null"; pass that as a Free operand so

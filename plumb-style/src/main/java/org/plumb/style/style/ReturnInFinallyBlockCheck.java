@@ -1,5 +1,5 @@
 /*
- * R729-A4: AST check for CWE-584 (Return in Finally
+ * A4: AST check for CWE-584 (Return in Finally
  * Block). Fires when a ReturnStmt's ancestors include
  * a TryStmt where the ReturnStmt lives INSIDE the
  * finally block (not the try or catch block).

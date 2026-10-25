@@ -14,31 +14,22 @@ import org.plumb.style.StyleContext;
 /**
  * Call {@code Thread.start()} not {@code Thread.run()}.
  *
- * <p>CWE-572. The original detection heuristic lived in the dfa module ({@code
- * dfa.cwe572-thread-run}, regex-based source-reading) and was deprecated in R787a. The canonical
- * detector is this {@link AstChecker}, which walks the {@link
+ * <p>CWE-572. The canonical detector is this {@link AstChecker}, which walks the {@link
  * com.github.javaparser.ast.CompilationUnit} via {@code AstDispatcher} and verifies the call's
  * receiver is a {@code Thread} (or subclass) instance.
  *
- * <p><b>R787a enhancement.</b> The original heuristic was name-based (variable name contains {@code
- * "Thread"} / {@code "task"} / {@code "worker"} / {@code "Runnable"}). That matched Juliet but was
- * structurally dishonest about real code. R787a keeps the name fallback as a safety net but prefers
- * symbol-solver type resolution via {@link StyleContext#resolvedTypeOf}: if the receiver's resolved
- * type descends from {@code java.lang.Thread}, fire; otherwise fall through to the name heuristic.
+ * <p>Receiver type comes from symbol-solver type resolution via {@link
+ * StyleContext#resolvedTypeOf}: if the receiver's resolved type descends from {@code
+ * java.lang.Thread}, the rule fires. When symbol resolution fails, the rule falls back to a
+ * name-based heuristic on the receiver name ({@code "Thread"} / {@code "task"} / {@code "worker"} /
+ * {@code "Runnable"}).
  */
 public final class CallToThreadRunCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
-          // R787a: rule_id aligned with the eval harness's
-          // plumb_rule_to_cwe.json mapping (`Cwe572` →
-          // ["572"]). The previous id `pl-0047-call-to-thread-run`
-          // predated the eval harness and was not in the
-          // map, so all 17 findings we emitted on Juliet
-          // CWE-572 were being cwe-mismatch-skipped during
-          // strict eval. The legacy id is preserved as the
-          // short_name so any external whitelist still
-          // matches.
+          // The legacy id `pl-0047-call-to-thread-run` is preserved as
+          // the short_name so any external whitelist still matches.
           new RuleId("ast-style-call-to-thread-run", "CALL_TO_THREAD_RUN"),
           "call Thread.start() not Thread.run()",
           RuleDef.Severity.HIGH,
@@ -60,12 +51,12 @@ public final class CallToThreadRunCheck implements AstChecker {
     if (!"run".equals(n.getNameAsString())) return;
     com.github.javaparser.ast.expr.Expression scope = n.getScope().orElse(null);
     if (scope == null) return;
-    // R787a: prefer the symbol-solver. If the receiver's
+    // prefer the symbol-solver. If the receiver's
     // resolved type is Thread (or a Thread subclass), this
     // is a structural hit. Fall through to the name
     // heuristic only when resolution fails (e.g. type
     // not on the classpath, generic wildcard without
-    // bound) so we don't regress Juliet CWE-572 precision.
+    // bound) so the rule does not fire on unrelated names.
     if (isThreadReceiverByType(ctx, scope)) {
       reportRun(n, ctx, "type-resolved");
       return;
@@ -124,8 +115,8 @@ public final class CallToThreadRunCheck implements AstChecker {
   }
 
   /**
-   * Pre-R787a name-based heuristic. Kept as a safety net for cases where the symbol solver can't
-   * resolve the receiver type (e.g. {@code Thread-typed} variable declared in a library not on the
+   * Pre- name-based heuristic. Kept as a safety net for cases where the symbol solver can't resolve
+   * the receiver type (e.g. {@code Thread-typed} variable declared in a library not on the
    * classpath, or {@code Runnable} that happens to also have a {@code run()} method).
    */
   private static boolean isThreadReceiverByName(com.github.javaparser.ast.expr.Expression scope) {

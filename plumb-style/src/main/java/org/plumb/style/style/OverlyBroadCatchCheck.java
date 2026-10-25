@@ -1,5 +1,5 @@
 /*
- * R726-C1: AST-style CWE-396 (Catch Generic Exception) checker.
+ * C1: AST-style CWE-396 (Catch Generic Exception) checker.
  *
  * <p>Fires when a {@code catch} block declares an overly broad
  * exception type such as {@link Exception} or {@link Throwable}.

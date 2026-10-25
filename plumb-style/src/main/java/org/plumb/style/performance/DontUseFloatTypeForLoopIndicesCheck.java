@@ -9,12 +9,7 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/**
- * Don't use {@code float} / {@code double} as a {@code for}-loop counter.
- *
- * <p>M5 part-3 migration (2026-10-17): per-node-type callback; was {@code visit(CompilationUnit) +
- * findAll(ForStmt.class)} before.
- */
+/** Don't use {@code float} / {@code double} as a {@code for}-loop counter. */
 public final class DontUseFloatTypeForLoopIndicesCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =

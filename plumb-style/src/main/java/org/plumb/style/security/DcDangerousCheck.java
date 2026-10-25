@@ -13,9 +13,6 @@
  *       streams because the field was never committed to the stream.
  * </ul>
  *
- * <p>M5 part-4 migration (2026-10-17): per-node-type callback; was {@code
- * visit(CompilationUnit) + findAll(MethodCallExpr.class)} before. The type-resolution logic
- * inside {@link #classifyDangerous} is unchanged.
  */
 package org.plumb.style.security;
 

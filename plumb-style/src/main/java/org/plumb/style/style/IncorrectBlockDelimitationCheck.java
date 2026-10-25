@@ -1,5 +1,5 @@
 /*
- * R722-C6: AST-style CWE-483 (Incorrect Block Delimitation) checker.
+ * C6: AST-style CWE-483 (Incorrect Block Delimitation) checker.
  *
  * <p>Fires when an {@code if} statement body is a single
  * statement (no braces) AND there is at least one

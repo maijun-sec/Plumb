@@ -18,7 +18,7 @@
  * anywhere ? assignment, comparison, return, method-call
  * argument ? fire.</p>
  *
- * <p><b>R-817 (2026-10-14): pattern D rewrite.</b> The previous
+ * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(ClassOrInterfaceDeclaration.class)} (1 walk).
  * The new implementation uses {@code visit(ClassOrInterfaceDeclaration)}

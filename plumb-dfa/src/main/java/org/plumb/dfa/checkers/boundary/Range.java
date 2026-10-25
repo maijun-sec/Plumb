@@ -146,7 +146,7 @@ public final class Range {
   }
 
   /**
-   * R769: intersection (greatest lower bound) of two intervals. Returns the largest range that is
+   * intersection (greatest lower bound) of two intervals. Returns the largest range that is
    * contained in both {@code this} and {@code other}. Used by {@code BoundaryConstraintChecker}
    * when a second guard on the same variable arrives (e.g. Juliet CWE-190 s67b goodB2GSink nested
    * {@code if (data > 0) { if (data < 63) {...}}}) ? the conjunction of two ranges on the same var

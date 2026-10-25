@@ -94,15 +94,15 @@ public final class JavaSourceParser {
   }
 
   /**
-   * R797 (Oct 2026): build a parser whose {@link TypeSolver} combines (1) the JDK reflection
-   * solver, (2) one {@link JavaParserTypeSolver} per {@link JavaModule} so the module's own source
-   * files can be used to resolve cross-module type references, and (3) a {@link JarTypeSolver} for
-   * every classpath jar / class-folder the module declares.
+   * build a parser whose {@link TypeSolver} combines (1) the JDK reflection solver, (2) one {@link
+   * JavaParserTypeSolver} per {@link JavaModule} so the module's own source files can be used to
+   * resolve cross-module type references, and (3) a {@link JarTypeSolver} for every classpath jar /
+   * class-folder the module declares.
    *
    * <p>This is the entry point the {@code plumb-main} CLI uses when the user supplies {@code
    * --source-root}, {@code --module-root} or {@code --classpath} on the command line (or the
-   * equivalent YAML keys). R797 still treats every input as a flat module ? per-module classpath
-   * and Maven/Gradle/Bazel auto-discovery are R797+ future work (see {@code
+   * equivalent YAML keys). still treats every input as a flat module ? per-module classpath and
+   * Maven/Gradle/Bazel auto-discovery are + future work (see {@code
    * juliet-coverage/reports/r797/PLAN.md}).
    *
    * <p><b>Cardinal rule.</b> The {@code classpath} is consumed by the {@link TypeSolver} only. It

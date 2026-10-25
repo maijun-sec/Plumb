@@ -1,7 +1,7 @@
 /*
  * nested loops have same condition.
  *
- * <p><b>R-818 (2026-10-14): pattern D rewrite.</b> The previous
+ * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(ForStmt)} (1 walk) + for each
  * {@code outer.getBody().findAll(ForStmt)} (1 walk per outer

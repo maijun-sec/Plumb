@@ -47,31 +47,21 @@ import org.plumb.tac.ir.TacType;
 /**
  * Heuristic, taint-derived divide-by-zero checker.
  *
- * <p><b>Deprecated since R768 (Oct 2026):</b> the {@code plumb.numeric.divide-by-zero} rule is
- * fully superseded by the boundary framework ({@link
- * org.plumb.dfa.checkers.boundary.DivZeroConstraintChecker}, rule {@code
- * plumb.boundary.divide-by-zero}), which is a Range-lattice + Z3 SMT-solver implementation rather
- * than a taint-only heuristic. R765 evaluation found that the boundary rule is the <b>only</b> rule
- * that fires on Juliet CWE-369 ? the taint-based {@code DivByZeroChecker} produced 0 findings
- * across the entire CWE-369 corpus (the taint chain is severed by abstract-method dispatch in s81 /
- * cross-file propagation in s67a variants, which the boundary framework's Range lattice handles
- * directly via {@code (divisor != 0)} refutation). See {@code
- * juliet-coverage/reports/r765/SUMMARY.md} for the empirical comparison.
- *
- * <p>CWE-369 has the lowest boundary precision of the 4 numeric CWE (0.282 in R765) because Juliet
- * div-zero templates are sparse (s01-s04 only, no s05/s06) and the {@code (divisor != 0)} Z3
- * predicate is harder to refute than array-bounds. That said, the boundary rule's 0.282 is strictly
- * better than zero findings from the heuristic, so deprecation remains warranted.
+ * <p><b>Deprecated since </b> the {@code plumb.numeric.divide-by-zero} rule is fully superseded by
+ * the boundary framework ({@link org.plumb.dfa.checkers.boundary.DivZeroConstraintChecker}, rule
+ * {@code plumb.boundary.divide-by-zero}), which is a Range-lattice + Z3 SMT-solver implementation
+ * rather than a taint-only heuristic. The boundary rule is the only rule that fires on
+ * divide-by-zero shapes that the taint chain cannot reach — the taint chain is severed by
+ * abstract-method dispatch and by cross-file propagation, which the boundary framework's Range
+ * lattice handles directly via {@code (divisor != 0)} refutation.
  *
  * <p>Class kept (not deleted) because:
  *
  * <ol>
- *   <li>unit tests (R215MirrorCheckersTest, R225PlusEmitGuardsTest, R247CrossCheckerGuardTest)
- *       still exercise the heuristic path as a regression baseline;
+ *   <li>unit tests still exercise the heuristic path as a regression baseline;
  *   <li>existing user configs may explicitly enable {@code checks.divByZero: true} as a fallback
  *       for callers that have not migrated to {@code plumb.boundary.divide-by-zero};
- *   <li>{@code juliet-coverage/configs/CWE369.yaml} keeps {@code plumb.numeric.divide-by-zero} in
- *       the whitelist for direct A/B comparison (currently 0 vs boundary's 6568 findings).
+ *   <li>a caller may want to compare the heuristic against the boundary rule directly.
  * </ol>
  *
  * <p>To disable this rule while keeping boundary active, set {@code checks.divByZero: {enabled:
@@ -125,11 +115,11 @@ public final class DivByZeroChecker extends TaintedCheckerBase {
       return;
     }
     if (ins.lhs2 instanceof TacOperand.TacVar rhs && taintedVars.containsKey(rhs)) {
-      // R1101: `isProvenNonZero` covers both the active `data != 0` guard and the
+      // `isProvenNonZero` covers both the active `data != 0` guard and the
       // false-edge fact from `if (data == 0) { return 0; }`. The previous
       // `isGuardedBy(rhs, NE)` handled only the first, which is why the early-return
       // idiom was a false positive here while the boundary-family checker (after the
-      // same R1101 fix) had already learned to stay silent -- two rules, one bug,
+      // same fix) had already learned to stay silent -- two rules, one bug,
       // two different answers.
       if (guards.isProvenNonZero(rhs)) return;
       if (currentCtx != null

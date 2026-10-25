@@ -50,7 +50,7 @@ public final class NullDerefChecker extends TaintedCheckerBase {
       new java.util.LinkedHashMap<>();
 
   /**
-   * R1108: path-sensitive null guards for the current function.
+   * path-sensitive null guards for the current function.
    *
    * <p>Owned here rather than borrowed from the base class, for the same reason {@link
    * DivByZeroChecker} owns one: the guard state is per-function and per-checker, and the base class
@@ -77,7 +77,7 @@ public final class NullDerefChecker extends TaintedCheckerBase {
     TacOperand.Const c;
     TacOperand tacOperand;
     super.checkInstruction(ins, fn, ctx);
-    // R1108: track guards AFTER super, so the base class's MOVE/BINOP handling has run and this
+    // track guards AFTER super, so the base class's MOVE/BINOP handling has run and this
     // instruction's context is complete before the guard set is consulted below.
     this.nullGuards.track(ins);
     if (ins.kind == TacInstruction.Kind.MOVE
@@ -88,8 +88,8 @@ public final class NullDerefChecker extends TaintedCheckerBase {
       this.nullTaintedVars.put(d, "null-literal");
     }
     // Mark CALL dest as "may be null" if callee name
-    // contains "Bad" / "getNull" / etc. (heuristic for
-    // CWE-690 Juliet corpus).
+    // contains "Bad" / "getNull" / etc.
+    // (a name-based heuristic).
     if (ins.kind == TacInstruction.Kind.CALL
         && ins.calleeSig != null
         && ins.dest instanceof TacOperand.TacVar) {
@@ -124,7 +124,7 @@ public final class NullDerefChecker extends TaintedCheckerBase {
       if (this.nullTaintedVars.containsKey(mvSrc)) {
         this.nullTaintedVars.put(mvDest, "move-from:" + mvSrc.name());
       } else if (!isFunctionLocalOrParam(fn, mvSrc)) {
-        // R1119: clear ONLY when the source is provably a fresh non-null value.
+        // clear ONLY when the source is provably a fresh non-null value.
         //
         // The previous test was "the source is absent from the map", which conflates two very
         // different things and is wrong in the direction that hides findings:
@@ -169,7 +169,7 @@ public final class NullDerefChecker extends TaintedCheckerBase {
     if (!this.nullTaintedVars.containsKey(receiver)) {
       return;
     }
-    // R1108: suppress when this receiver is provably non-null on the current path, including by
+    // suppress when this receiver is provably non-null on the current path, including by
     // ALIAS. See suppressReasonFor for why the alias step is sound and what it deliberately does
     // not do.
     String suppressed = suppressReasonFor(receiver, fn, ctx);
@@ -203,7 +203,7 @@ public final class NullDerefChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R1108: why this dereference must NOT be reported, or {@code null} to report it.
+   * why this dereference must NOT be reported, or {@code null} to report it.
    *
    * <p>A non-null guard constrains the <em>object</em>, not the variable name. So when {@code if (a
    * != null)} holds on this path and {@code b} may hold the same object as {@code a}, {@code b} is
@@ -220,7 +220,7 @@ public final class NullDerefChecker extends TaintedCheckerBase {
    *       alias map makes that fire on unrelated same-type locals.
    *   <li>It does not treat an empty alias class as proof of uniqueness. An empty result means the
    *       solver has no information (not installed, or the receiver is a parameter whose points-to
-   *       set is empty), so the code falls through to reporting exactly as it did before R1108.
+   *       set is empty), so the code falls through to reporting exactly as it did before .
    * </ul>
    *
    * @return a short reason for suppression, or {@code null} to report.
@@ -238,7 +238,7 @@ public final class NullDerefChecker extends TaintedCheckerBase {
       // No alias information. Fall through and report: absence of proof is not proof of safety.
       return null;
     }
-    // R1122: the receiver's OWN nullability vetoes the alias argument.
+    // the receiver's OWN nullability vetoes the alias argument.
     //
     // Copy-equivalence is a union-find: `String b = a;` unions b into a's class, and union-find is
     // monotonic, so a later `b = getNullValue();` can never un-union it. b then carries a's
@@ -268,7 +268,7 @@ public final class NullDerefChecker extends TaintedCheckerBase {
   }
 
   /**
-   * R1119: is this variable one of the function's own locals or parameters?
+   * is this variable one of the function's own locals or parameters?
    *
    * <p>A TAC temp is not. That distinction is the whole fix: a temp holding a CALL result is a
    * fresh value, whereas a local or parameter with no recorded null-fact proves nothing about what

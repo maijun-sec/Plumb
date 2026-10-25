@@ -1,11 +1,10 @@
 /*
- * R725-C1: AST-style CWE-546 (Suspicious Comment) checker.
+ * C1: AST-style CWE-546 (Suspicious Comment) checker.
  */
 package org.plumb.style.style;
 
-// R-AST-FIX-2026-10-18 (Pass A): migrated from walk-inside-CU-visit to per-type visit.
 // Note: this checker needs cross-cutting enumeration (getAllContainedComments
-// + getOrphanComments). The Comment / LineComment / BlockComment types are
+// getOrphanComments). The Comment / LineComment / BlockComment types are
 // not in the AstChecker interface, so per-type visit wouldn't be dispatched.
 // We keep visit(CompilationUnit) as a legitimate cross-file scan, justified
 // by the orphan-comment requirement. Add a TODO for future dispatcher

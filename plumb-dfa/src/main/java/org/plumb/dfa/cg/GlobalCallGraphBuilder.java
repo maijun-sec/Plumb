@@ -134,7 +134,7 @@ public final class GlobalCallGraphBuilder {
     }
 
     for (TacFunction fn : store.allFunctions()) {
-      // R721: use the MergedProgram's merged key
+      // use the MergedProgram's merged key
       // (enclosingClass :: signature) as the FunctionNode
       // id so {@code program.function(nodeSig)} in
       // {@link org.plumb.dfa.engine.DfaEngine#orderedFunctions}
@@ -155,14 +155,14 @@ public final class GlobalCallGraphBuilder {
       int callCount = 0;
       List<TacInstruction> insns = fn.instructions();
       for (TacInstruction insn : insns) if (insn.kind == TacInstruction.Kind.CALL) callCount++;
-      // (R723 dbg instrumentation removed before bulk re-scan)
+      // ( dbg instrumentation removed before bulk re-scan)
       for (int i = 0; i < insns.size(); i++) {
         TacInstruction ins = insns.get(i);
         if (ins.kind != TacInstruction.Kind.CALL) continue;
         String calleeSig = ins.calleeSig;
         if (calleeSig == null || calleeSig.isEmpty()) continue;
         if (!includeLibraries && isLibrary(calleeSig)) continue;
-        // R723: prefer same-enclosing-class match over the
+        // prefer same-enclosing-class match over the
         // global bare-name map. Without this, a call like
         // {@code bad_source()} from 16 different V21 files
         // would all resolve to the FIRST candidate with that
@@ -172,7 +172,7 @@ public final class GlobalCallGraphBuilder {
         String nodeSig =
             r723ResolveCalleeSigGlobal(calleeSig, callerMk, bareNameToCanonical, ins.args);
 
-        // R721: normalize to MergedProgram merged key so
+        // normalize to MergedProgram merged key so
         // {@link org.plumb.dfa.engine.DfaEngine#orderedFunctions}
         // can resolve the FunctionNode back to a TacFunction.
         // The store keys by bare signature, so look up the
@@ -226,11 +226,11 @@ public final class GlobalCallGraphBuilder {
    * </ol>
    */
   /**
-   * R723: variant of {@link #r45ResolveCalleeSigGlobal} that prefers a candidate whose enclosing
-   * class matches the caller's enclosing class. Without this preference, a call like {@code
-   * bad_source()} from a file in package X resolves to the FIRST registered function with the bare
-   * name, even if that function lives in package Y. That collapses all cross-file variants onto one
-   * callee node and breaks the per-file summary fold (V21 CWE789 etc.).
+   * variant of {@link #r45ResolveCalleeSigGlobal} that prefers a candidate whose enclosing class
+   * matches the caller's enclosing class. Without this preference, a call like {@code bad_source()}
+   * from a file in package X resolves to the FIRST registered function with the bare name, even if
+   * that function lives in package Y. That collapses all cross-file variants onto one callee node
+   * and breaks the per-file summary fold (V21 CWE789 etc.).
    */
   private String r723ResolveCalleeSigGlobal(
       String calleeSig,
@@ -337,12 +337,12 @@ public final class GlobalCallGraphBuilder {
   }
 
   /**
-   * R721: build a MergedProgram-style merged key for a {@link TacFunction} so the FunctionNode id
-   * matches the key {@link org.plumb.tac.ir.MergedProgram} uses to index its {@code function} map.
-   * Without this, lookups via {@code program.function(nodeSig)} in {@code
-   * DfaEngine.orderedFunctions} silently return null for every cross-method / cross-file Juliet
-   * CWE789/400 variant (V21/V22/V42/V45/V52/V66-V75/V81) so the cross-function summary-fold missed
-   * the taint propagation.
+   * build a MergedProgram-style merged key for a {@link TacFunction} so the FunctionNode id matches
+   * the key {@link org.plumb.tac.ir.MergedProgram} uses to index its {@code function} map. Without
+   * this, lookups via {@code program.function(nodeSig)} in {@code DfaEngine.orderedFunctions}
+   * silently return null for every cross-method / cross-file Juliet CWE789/400 variant
+   * (V21/V22/V42/V45/V52/V66-V75/V81) so the cross-function summary-fold missed the taint
+   * propagation.
    */
   private static String mergedKey(final TacFunction fn) {
     String enc = fn.enclosingClass();

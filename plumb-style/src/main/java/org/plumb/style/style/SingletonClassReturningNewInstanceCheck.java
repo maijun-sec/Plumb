@@ -25,7 +25,7 @@ public final class SingletonClassReturningNewInstanceCheck implements AstChecker
               "ast-style-singleton-returning-new",
               "singleton-returning-new")); // R-834: disabled by default (0 TP / 100% FP on Juliet
 
-  // R-832 baseline)
+  // baseline)
 
   @Override
   public String name() {

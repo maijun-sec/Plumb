@@ -23,7 +23,7 @@ public final class MissingJavadocPackageCheck implements AstChecker {
               "ast-style-missing-javadoc-package",
               "missingjavadocpackage")); // R-834: disabled by default (0 TP / 100% FP on Juliet
 
-  // R-832 baseline)
+  // baseline)
 
   @Override
   public String name() {
