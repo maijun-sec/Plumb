@@ -1,0 +1,304 @@
+"""Measure the engine's capability surface, so a change cannot quietly shrink it.
+
+"Capability" here is the set of things the engine can DETECT. It is the product. A change that
+removes a rule, a sink pattern, a source pattern or a checker does not "simplify" the product --
+it removes a capability, and the category matrix will not necessarily show it, because the
+category fixtures only cover a handful of the rules.
+
+So the surface is measured directly, from the sources that define it:
+
+  * the registered rules, from the generated {@code CheckerCategories} plus the live
+    registrations in the AST and DFA checkers;
+  * the sink families and their patterns, from {@code sink-families.yaml};
+  * the input-source patterns, from {@code InputSourcePatterns};
+  * the fact kinds, from {@code fact-kinds.yaml} plus the built-in kinds;
+  * the receiver-passthrough families, from {@code receiver-passthrough.yaml}.
+
+The output is a stable, sorted fingerprint per surface. It is written to a baseline file, and
+the gate compares the current measurement against that baseline. A REMOVAL is an error; an
+ADDITION is reported and accepted (more capability is the goal), but the baseline has to be
+updated deliberately.
+
+    python scripts/capability_baseline.py --report      # print the current surface
+    python scripts/capability_baseline.py --check       # compare against the baseline
+    python scripts/capability_baseline.py --update      # accept the current surface
+
+Exit code 0 when nothing was lost, 1 when something was.
+"""
+
+import argparse
+import io
+import json
+import pathlib
+import re
+import sys
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+
+BASELINE = REPO / "scripts" / "capability-baseline.json"
+
+SINK_FAMILIES = REPO / "plumb-dfa" / "src" / "main" / "resources" / "sink-families.yaml"
+FACT_KINDS = REPO / "plumb-dfa" / "src" / "main" / "resources" / "fact-kinds.yaml"
+RECEIVER_PASSTHROUGH = REPO / "plumb-dfa" / "src" / "main" / "resources" / "receiver-passthrough.yaml"
+CHECKER_CATEGORIES = REPO / "plumb-style" / "src" / "main" / "java" / "org" / "plumb" / "style" / "CheckerCategories.java"
+INPUT_SOURCE_PATTERNS = (REPO / "plumb-dfa" / "src" / "main" / "java" / "org" / "plumb" / "dfa"
+                          / "taint" / "InputSourcePatterns.java")
+
+# The checkers that actually run. A checker class that exists but is not registered detects
+# nothing, so the LIVE registration is what matters -- the class list alone would overstate.
+AST_CHECKER_DIR = REPO / "plumb-style" / "src" / "main" / "java" / "org" / "plumb" / "style"
+DFA_CHECKER_DIR = REPO / "plumb-dfa" / "src" / "main" / "java" / "org" / "plumb" / "dfa" / "checkers"
+
+
+def yaml_families(path):
+    """The pattern list of every family in a sink/passthrough YAML file.
+
+    <p>Read as text rather than through a YAML library so the measurement does not depend on
+    a parser's idea of the file's structure -- the measurement should change only when the
+    content changes.
+    """
+    if not path.is_file():
+        return {}
+    text = path.read_text(encoding="utf-8", errors="replace")
+    families = {}
+    current = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        # A family header is an indented key with no value.
+        m = re.match(r"^([\w.\-]+):\s*$", stripped)
+        if m and not line.startswith("    "):
+            current = m.group(1)
+            families.setdefault(current, [])
+            continue
+        # A pattern is a list item.
+        m = re.match(r"^-\s*[\"'](.+?)[\"']\s*$", stripped)
+        if m and current is not None:
+            families[current].append(m.group(1))
+    return {k: sorted(v) for k, v in families.items()}
+
+
+def registered_rules():
+    """The rule ids the engine registers.
+
+    <p>Two sources, because a rule is registered in one of two ways: the AST checkers declare
+    their rule inside the checker class, and the DFA checkers declare theirs the same way. The
+    generated category list is the third: it is the catalogue the docs and the AI prompt use.
+    """
+    rules = set()
+
+    # The generated catalogue: it lists every category's rules.
+    if CHECKER_CATEGORIES.is_file():
+        text = CHECKER_CATEGORIES.read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(r'"(ast-[a-z0-9\-]+)"', text):
+            rules.add(m.group(1))
+
+    # The live registrations: a RuleId built inside a checker.
+    for root in (AST_CHECKER_DIR, DFA_CHECKER_DIR):
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*.java"):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for m in re.finditer(r'new RuleId\(\s*"([a-z0-9\-]+)"', text):
+                rules.add(m.group(1))
+            for m in re.finditer(r'new RuleId\(\s*"([a-z0-9\-]+)"\s*,\s*"([A-Z_]+)"', text):
+                rules.add(m.group(2))
+    return sorted(rules)
+
+
+def live_checkers():
+    """The checker classes that are actually REGISTERED with the engine.
+
+    <p>A checker class that exists but is never registered detects nothing, so counting the
+    files would overstate the capability. The live registration is a
+    {@code checkers.add(new org.plumb.dfa.checkers...SomeChecker())} call in the runner, and
+    the AST side registers by class through the rule registry.
+
+    <p>Both the registered instances and the checker CLASSES that exist are recorded: the first
+    is what runs, the second is what a future registration could use. A class that is deleted
+    loses the second even if nobody registered it yet -- and that is the right signal, because
+    a checker that is written but never wired up is a capability that was never delivered.
+    """
+    registered = set()
+    runner = REPO / "plumb-main" / "src" / "main" / "java" / "org" / "plumb" / "main" / "ScanRunner.java"
+    if runner.is_file():
+        text = runner.read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(r"add\(new\s+(?:org\.plumb\.[\w.]+\.)?(\w+)\(\)\)", text):
+            registered.add(m.group(1))
+
+    classes = set()
+    for root in (AST_CHECKER_DIR, DFA_CHECKER_DIR):
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*.java"):
+            if path.name.endswith("Checker.java") or path.name.endswith("Check.java"):
+                classes.add(path.stem)
+    return sorted(registered), sorted(classes)
+
+
+def input_source_patterns():
+    """The input-source substrings, from the shared catalogue."""
+    if not INPUT_SOURCE_PATTERNS.is_file():
+        return []
+    text = INPUT_SOURCE_PATTERNS.read_text(encoding="utf-8", errors="replace")
+    start = text.find("DEFAULT_PATTERNS")
+    if start < 0:
+        return []
+    brace = text.find("List.of(", start)
+    if brace < 0:
+        return []
+    depth = 0
+    end = None
+    i = brace
+    in_string = False
+    quote = ""
+    while i < len(text):
+        ch = text[i]
+        if in_string:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                in_string = False
+        elif ch in ("'", '"'):
+            in_string = True
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+        i += 1
+    if end is None:
+        return []
+    return sorted(re.findall(r'"([^"]*)"', text[brace:end]))
+
+
+def fact_kinds():
+    """The fact kinds, from the YAML plus the built-in catalogue."""
+    names = set()
+    if FACT_KINDS.is_file():
+        text = FACT_KINDS.read_text(encoding="utf-8", errors="replace")
+        in_families = False
+        for line in text.splitlines():
+            if line.startswith("fact_kinds:"):
+                in_families = True
+                continue
+            if in_families:
+                m = re.match(r"^  (\w+):\s*$", line)
+                if m:
+                    names.add(m.group(1))
+    builtins = REPO / "plumb-dfa" / "src" / "main" / "java" / "org" / "plumb" / "dfa" / "fact" / "BuiltinFactKinds.java"
+    if builtins.is_file():
+        text = builtins.read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(r'public static final FactKind\s+(\w+)', text):
+            names.add(m.group(1))
+    return sorted(names)
+
+
+def measure():
+    """The current capability surface."""
+    registered_checkers, checker_classes = live_checkers()
+    return {
+        "registered_rules": registered_rules(),
+        "registered_checkers": registered_checkers,
+        "checker_classes": checker_classes,
+        "input_source_patterns": input_source_patterns(),
+        "fact_kinds": fact_kinds(),
+        "sink_families": yaml_families(SINK_FAMILIES),
+        "receiver_passthrough_families": yaml_families(RECEIVER_PASSTHROUGH),
+    }
+
+
+def flatten(surface):
+    """The surface as a flat set of strings, so a removal is a set difference."""
+    out = set()
+    for key, value in surface.items():
+        if isinstance(value, list):
+            for item in value:
+                out.add("%s:%s" % (key, item))
+        else:
+            for family, patterns in value.items():
+                for pattern in patterns:
+                    out.add("%s:%s:%s" % (key, family, pattern))
+                # A family with no patterns still exists; its presence matters.
+                out.add("%s-family:%s" % (key, family))
+    return out
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--report", action="store_true", help="print the current surface")
+    parser.add_argument("--check", action="store_true", help="compare against the baseline")
+    parser.add_argument("--update", action="store_true", help="accept the current surface")
+    args = parser.parse_args()
+
+    surface = measure()
+
+    if args.report:
+        print(json.dumps(surface, indent=2, sort_keys=True, ensure_ascii=False))
+        return 0
+
+    if args.update:
+        BASELINE.write_text(
+            json.dumps(surface, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+            encoding="utf-8")
+        print("baseline updated: %d rules, %d registered checkers, %d checker classes, "
+              "%d source patterns, %d fact kinds, %d sink families, %d passthrough families"
+              % (len(surface["registered_rules"]), len(surface["registered_checkers"]),
+                 len(surface["checker_classes"]),
+                 len(surface["input_source_patterns"]), len(surface["fact_kinds"]),
+                 len(surface["sink_families"]), len(surface["receiver_passthrough_families"])))
+        return 0
+
+    if not BASELINE.is_file():
+        print("FAIL: no capability baseline at %s" % BASELINE.relative_to(REPO))
+        print("Create it with: python scripts/capability_baseline.py --update")
+        return 1
+
+    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    before = flatten(baseline)
+    after = flatten(surface)
+
+    lost = sorted(before - after)
+    gained = sorted(after - before)
+
+    for name, value in sorted(surface.items()):
+        old = baseline.get(name)
+        if isinstance(value, list):
+            old_len = len(old) if isinstance(old, list) else 0
+            print("  %-32s %d (baseline %d)" % (name, len(value), old_len))
+        else:
+            old_len = len(old) if isinstance(old, dict) else 0
+            print("  %-32s %d families (baseline %d)" % (name, len(value), old_len))
+
+    if gained:
+        print()
+        print("ADDED since the baseline (%d):" % len(gained))
+        for item in gained:
+            print("  + %s" % item)
+
+    if lost:
+        print()
+        print("LOST since the baseline (%d):" % len(lost))
+        for item in lost:
+            print("  - %s" % item)
+        print()
+        print("Removing a rule, a sink pattern, a source pattern, a checker or a fact kind is a "
+              "CAPABILITY REGRESSION.")
+        print("If the removal is deliberate, update the baseline with:")
+        print("  python scripts/capability_baseline.py --update")
+        return 1
+
+    print()
+    print("OK: no capability was lost.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

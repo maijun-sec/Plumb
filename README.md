@@ -144,6 +144,7 @@ python scripts/check_all.py
 | `check_dataflow_constraint` | 清单的 `dataflow_contains` 约束不是空断言 |
 | `check_support_matrix_coverage` | 支持矩阵覆盖了每个已测量的类别,且每行的数字和 `RESULT.json` 对得上 |
 | `check_javadoc_links` | javadoc 里 `{@link}` 指向的类型真的存在 |
+| `capability_baseline --check` | 没有丢掉任何规则、sink 模式、污点源模式、checker 或事实种类 |
 | `linkcheck` | markdown 里的相对链接没有断链 |
 
 跑完还会重新生成 `docs/plumb-style-rules*.md`,并报告生成结果和已提交版本是否一致。
@@ -159,6 +160,12 @@ python scripts/check_all.py
 `check_javadoc_links` 用 Maven 给出的真实依赖 classpath 来解析每一个 `{@link}`:
 `org.plumb.*` 必须在源码里能找到,裸名字必须在源码、JDK 或依赖 jar 里能找到。
 找不到就报错 —— 注释里指向一个不存在的类,是对代码的假陈述。
+
+**关于"能力没有变弱"**:类别矩阵只覆盖了少数规则,所以"少了一条规则"这件事
+矩阵未必看得出来。`capability_baseline` 直接测量能力面本身:已注册的规则、
+已注册的 checker、checker 类、污点源模式、事实种类、sink 家族及其模式。
+任何一项减少都会被拒绝;增加会被报告出来,并且需要**显式**更新基线才算接受。
+这样"顺手清理一下"就不可能悄悄变成"少支持一类问题"。
 
 ### 3.4 最小扫描
 

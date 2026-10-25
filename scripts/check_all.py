@@ -30,6 +30,9 @@ The gates are:
                               measurement
     check_javadoc_links        every javadoc @link target names a type
                               that exists
+    capability_baseline --check
+                              no rule, sink pattern, source pattern,
+                              checker or fact kind was lost
     linkcheck                 no broken relative link in the markdown
 
 The generators that WRITE (gen_rules_doc, gen_rules_index) are run
@@ -65,6 +68,8 @@ GATES = (
      ["python", "scripts/check_support_matrix_coverage.py"], "check"),
     ("check_javadoc_links",
      ["python", "scripts/check_javadoc_links.py"], "check"),
+    ("capability_baseline",
+     ["python", "scripts/capability_baseline.py", "--check"], "check"),
     ("linkcheck", ["python", ".aethercode/linkcheck.py"], "check"),
 )
 
