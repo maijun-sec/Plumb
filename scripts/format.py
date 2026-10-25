@@ -21,8 +21,8 @@ Why a script and not a Maven plugin:
     jar keeps the formatter version explicit.
 
 Why the exclusions:
-    `plumb-dfa/src/main/resources/scripts/` holds Juliet corpus fixtures.
-    They are TEST DATA, not Plumb source: they are deliberately
+    `plumb-dfa/src/test/resources/juliet-corpus/` holds Juliet corpus
+    fixtures. They are TEST DATA, not Plumb source: they are deliberately
     malformed (two of them do not even parse), and reformatting them
     would corrupt the corpus the engine is measured against. The
     `testcase/` tree holds measurement fixtures with hand-placed line
@@ -50,7 +50,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Directory prefixes (relative to the repo root) that are NOT Plumb source.
 EXCLUDED_PREFIXES = (
-    "plumb-dfa/src/main/resources/scripts/",
+    "plumb-dfa/src/test/resources/juliet-corpus/",
     "testcase/",
     ".aethercode/",
     "target/",

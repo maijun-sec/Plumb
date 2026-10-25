@@ -1,5 +1,0 @@
-CWE,Rule,R693_TP,R698R699B_TP,Delta_TP,R693_FP,R698R699B_FP,Delta_FP
-CWE369,LooseDivByZero,0,222,0,125
-CWE369,plumb.numeric.divide-by-zero,1,2,1,2
-CWE789,plumb.taint.uncontrolled-mem-alloc,96,819,57,276
-CWE89,plumb.taint.sql-injection,1110,1255,395,480
