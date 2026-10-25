@@ -78,9 +78,11 @@ public final class FormGetPasswordCheck implements AstChecker {
     String sensitiveField = null;
 
     for (StringLiteralExpr s : n.findAll(StringLiteralExpr.class)) {
-      // characters and so keeps `\"` in the returned string). For
-      // a Java source literal "<form method=\"get\">", getValue()
-      // returns "<form method\\\"get\\\">" while asString() returns
+      // Use asString() (the canonical un-escaped form) — not getValue()
+      // (which preserves the raw escape characters and so keeps `\"` in
+      // the returned string). For a Java source literal
+      // "<form method=\"get\">", getValue() returns
+      // "<form method\\\"get\\\">" while asString() returns
       // "<form method=\"get\">" (the un-escaped HTML).
       String unescaped = s.asString();
       if (unescaped != null) {

@@ -186,11 +186,11 @@ public final class BuiltinFactKinds {
    * symbolic description of the fold result, in one of the forms
    *
    * <pre>
-   *   const:&lt;literal&gt;     — the callee returned a literal
-   *   param:&lt;i&gt;          — the callee returned parameter i
-   *   this-field:&lt;name&gt;  — the callee returned this.&lt;name&gt;
+   *   const:&lt;literal&gt; — the callee returned a literal
+   *   param:&lt;i&gt; — the callee returned parameter i
+   *   this-field:&lt;name&gt; — the callee returned this.&lt;name&gt;
    *   static-field:&lt;FQCN.field&gt; — the callee returned a static field
-   *   new:&lt;type&gt;         — the callee returned a fresh allocation
+   *   new:&lt;type&gt; — the callee returned a fresh allocation
    *   top                   ? the callee was UNKNOWN; this is the
    *                           unknown-callee fallback
    *   void                  ? the callee has no return value

@@ -63,8 +63,8 @@ public final class ConfigLoader {
   /**
    * coerce a YAML scalar into a String / Integer / Boolean. SnakeYAML parses {@code 80} as {@link
    * Integer}, {@code true} as {@link Boolean}, and quoted strings as {@link String}. The
-   * StyleContext lookup handles the string→int / string→bool coercion at read time, so a mis-typed
-   * user value (e.g. {@code max: "80"} with quotes) still works.
+   * StyleContext lookup handles the string → int / string → bool coercion at read time, so a
+   * mis-typed user value (e.g. {@code max: "80"} with quotes) still works.
    */
   private static Object coerceParamValue(Object v) {
     if (v == null) return null;

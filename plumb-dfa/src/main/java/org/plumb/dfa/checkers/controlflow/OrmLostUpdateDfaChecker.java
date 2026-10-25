@@ -315,7 +315,7 @@ public final class OrmLostUpdateDfaChecker implements DfaChecker {
 
     // 3. Cross-method: any CALLEE whose
     //    FunctionSummary says "persists param N"
-    //    — propagate to the corresponding arg
+    // — propagate to the corresponding arg
     //    in the call site. At "low"
     //    aggressiveness we skip the cross-method
     //    summary lookup to favour precision over

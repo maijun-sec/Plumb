@@ -24,7 +24,8 @@ public final class SystemPrintlnCheck implements AstChecker {
               "ast-style-system-println",
               "system-println")); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832
 
-  // baseline)
+  // Disabled by default: printing to stdout is a common choice in scripts and CLIs, so this reports
+  // by default only when the caller opts in.
 
   @Override
   public String name() {

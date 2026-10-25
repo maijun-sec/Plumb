@@ -106,7 +106,7 @@ public final class ScanRunner {
 
       // build the cross-file static-method cache once
       // per scan. Empty map when no source/module roots are
-      // configured →same as back-compat.
+      // configured — same as back-compat.
       if (staticMethodCache == null) {
         staticMethodCache = buildStaticMethodCache(buildModules());
       }
@@ -121,7 +121,7 @@ public final class ScanRunner {
       List<Path> bytecodeInputs = new ArrayList<>();
       for (Path input : config.inputs) {
         if (isBytecodeArtifact(input)) {
-          // .jar / .class / .war →route to the
+          // .jar / .class / .war — route to the
           // SootUp-backed BytecodeAnalyzer. The bytecode
           // path is a single "merged" scan because
           // BytecodeAnalyzer already produces one
@@ -148,7 +148,7 @@ public final class ScanRunner {
         return 0;
       }
 
-      // Step 7 →build the checker lists once so
+      // Step 7 — build the checker lists once so
       // the unified engine AND the AI dedup pass can
       // use the same instances. Each checker's
       // getAiPrompt() is consulted at dedup time to
@@ -161,7 +161,7 @@ public final class ScanRunner {
         all.addAll(scanBytecode(bytecodeInputs, rules, dfaCheckers, styleChecks));
       }
       if (!javaFiles.isEmpty()) {
-        // →cross-TU is the default. When
+        // — cross-TU is the default. When
         // only one file is requested but its
         // parent directory contains other
         // .java files (e.g. sibling helpers /
@@ -181,7 +181,7 @@ public final class ScanRunner {
         }
       }
 
-      // Step 7 →optional LLM dedup pass. The
+      // Step 7 — optional LLM dedup pass. The
       // per-rule prompts live on each checker (see
       // DfaChecker.getAiPrompt / AstChecker.getAiPrompt);
       // the runner iterates the findings, looks up the
@@ -205,15 +205,15 @@ public final class ScanRunner {
   }
 
   /**
-   * Step 7 →run the AI dedup pass over the list of findings. The rule-specific prompts live on each
-   * checker (see {@link org.plumb.dfa.engine.DfaChecker#getAiPrompt} and {@link
+   * Step 7 — run the AI dedup pass over the list of findings. The rule-specific prompts live on
+   * each checker (see {@link org.plumb.dfa.engine.DfaChecker#getAiPrompt} and {@link
    * org.plumb.style.AstChecker#getAiPrompt}); the runner looks up the checker for each finding and
    * asks the LLM to judge. Verdicts land on the finding as {@code ai_verdict} / {@code ai_reason}.
    * Findings tagged FP are dropped when {@code config.dropOnAiFp} is true.
    *
    * <p>Direct-import (no reflection): plumb-ai is a hard dep of plumb-main, and the AI layer is the
    * single source of truth for the LLM HTTP client, Re-Act agent, and 12 tools. Static analysis
-   * still works when {@code aiConn.isUsable()} is false (no apiKey / no model) →we just skip the
+   * still works when {@code aiConn.isUsable()} is false (no apiKey / no model) — we just skip the
    * pass.
    *
    * <p>When {@code config.cliAiDedupStats} is true, the runner writes a verdict-distribution +
@@ -272,7 +272,7 @@ public final class ScanRunner {
         }
         String finalPrompt = (overridePrompt != null) ? overridePrompt : inlinePrompt;
         if (finalPrompt == null) {
-          // No prompt →skip AI dedup for this rule.
+          // No prompt — skip AI dedup for this rule.
           verdictByKey.put(keyOf(f), "(no-rule-prompt)");
           continue;
         }
@@ -311,7 +311,7 @@ public final class ScanRunner {
       String k = keyOf(f);
       String v = verdictByKey.getOrDefault(k, "UNKNOWN");
       if (v.startsWith("(") && v.endsWith(")")) {
-        // "no-rule-prompt" / "not-in-aiDedupRules" →keep as UNKNOWN for stats
+        // "no-rule-prompt" / "not-in-aiDedupRules" — keep as UNKNOWN for stats
         cleanVerdicts.put(k, "UNKNOWN");
       } else {
         cleanVerdicts.put(k, v);
@@ -327,7 +327,7 @@ public final class ScanRunner {
       String reason;
       String verdict;
       if (v.startsWith("(") && v.endsWith(")")) {
-        // "no-rule-prompt" / "not-in-aiDedupRules" →pass through
+        // "no-rule-prompt" / "not-in-aiDedupRules" — pass through
         verdict = "UNKNOWN";
         reason = v;
       } else {
@@ -356,7 +356,7 @@ public final class ScanRunner {
   }
 
   /**
-   * Step 7 →run one LLM call for one finding. Returns a {@code "VERDICT|reason"} string. Failure
+   * Step 7 — run one LLM call for one finding. Returns a {@code "VERDICT|reason"} string. Failure
    * modes (provider null, agent max-turns) are mapped to UNKNOWN.
    */
   private String judgeOne(Finding f, String rulePrompt, org.plumb.ai.agent.ReActAgent agent) {
@@ -367,7 +367,7 @@ public final class ScanRunner {
     // the trace structure on the first turn without
     // having to call get_dataflow_trace_with_facts.
     // The summary covers op distribution, sink ids,
-    // typed-const source count, and orphan count →
+    // typed-const source count, and orphan count —
     // the four signals the LLM needs most to
     // distinguish TP from FP ( lesson: const
     // sources are FP; follow-up: orphan count
@@ -421,7 +421,7 @@ public final class ScanRunner {
   }
 
   /**
-   * Step 7 →parse the agent's FINAL body into a single-line "{verdict}|{reason}" string. The
+   * Step 7 — parse the agent's FINAL body into a single-line "{verdict}|{reason}" string. The
    * agent's final body is a JSON object like {@code {"verdict":"TP","reason":"..."}}. Tolerant to:
    * missing fields, leading/trailing junk, fences.
    */
@@ -453,7 +453,7 @@ public final class ScanRunner {
   }
 
   /**
-   * Step 7 →build the tool registry used by the dedup agent. 12 tools (IR-aware + Grep fallback
+   * Step 7 — build the tool registry used by the dedup agent. 12 tools (IR-aware + Grep fallback
    * Claude Code-style file ops). See {@link org.plumb.ai.tools} for each tool's docs.
    */
   private org.plumb.ai.tools.ToolRegistry buildToolRegistry() {
@@ -473,7 +473,7 @@ public final class ScanRunner {
   }
 
   /**
-   * Step 7 →build a rule-name -> prompt-producer map. The runner uses this to look up the rule
+   * Step 7 — build a rule-name -> prompt-producer map. The runner uses this to look up the rule
    * prompt for each finding by its rule id. Findings whose rule is not in the map keep their {@code
    * ai_verdict} as UNKNOWN (no AI review was performed).
    *
@@ -563,7 +563,7 @@ public final class ScanRunner {
   }
 
   /**
-   * Step 7 →load user-supplied rule prompt overrides from {@code --rule-prompts-dir}. Each file
+   * Step 7 — load user-supplied rule prompt overrides from {@code --rule-prompts-dir}. Each file
    * {@code <rule-name>.md} replaces the corresponding checker's inline {@code getAiPrompt} return
    * value. Files are plain Markdown; the content is passed verbatim to the LLM.
    */
@@ -592,8 +592,9 @@ public final class ScanRunner {
   }
 
   /**
-   * Step 7 →best-effort source root for the agent. Uses the first input that exists as a directory;
-   * falls back to a synthetic path so the tools can still report "file not found" cleanly.
+   * Step 7 — best-effort source root for the agent. Uses the first input that exists as a
+   * directory; falls back to a synthetic path so the tools can still report "file not found"
+   * cleanly.
    */
   private java.nio.file.Path sourceRoot() {
     for (java.nio.file.Path p : config.inputs) {
@@ -603,7 +604,7 @@ public final class ScanRunner {
   }
 
   /**
-   * Step 7 →extract the human-readable rule name from a finding for the per-rule FP ratio column.
+   * Step 7 — extract the human-readable rule name from a finding for the per-rule FP ratio column.
    * Falls back to {@code "(no-rule)"} when the finding has no rule attached.
    *
    * <p>Returns the {@link org.plumb.rules.RuleId#name()} (the simple class-style name like {@code
@@ -623,10 +624,10 @@ public final class ScanRunner {
   }
 
   /**
-   * Step 7 →build a {@link DedupStats} from the findings + the AI-dedup-returned verdict map (keyed
-   * by {@code file:line:messageHash}). Verdicts are plain strings (TP / FP / UNKNOWN, with optional
-   * reason suffix). Verdicts are clamped to TP / FP / UNKNOWN; any other string the LLM returns is
-   * bucketed as UNKNOWN.
+   * Step 7 — build a {@link DedupStats} from the findings + the AI-dedup-returned verdict map
+   * (keyed by {@code file:line:messageHash}). Verdicts are plain strings (TP / FP / UNKNOWN, with
+   * optional reason suffix). Verdicts are clamped to TP / FP / UNKNOWN; any other string the LLM
+   * returns is bucketed as UNKNOWN.
    */
   static DedupStats computeDedupStats(
       List<Finding> findings, java.util.Map<String, String> verdicts, boolean dropOnAiFp) {
@@ -670,7 +671,7 @@ public final class ScanRunner {
   }
 
   /**
-   * →write a one-shot AI dedup stats report to {@code stderr}. Layout:
+   * — write a one-shot AI dedup stats report to {@code stderr}. Layout:
    *
    * <pre>
    *   AI dedup stats
@@ -845,7 +846,7 @@ public final class ScanRunner {
   }
 
   /**
-   * →verdict enum for --ai-dedup-stats. Clamps any unknown verdict string (e.g. a model that
+   * — verdict enum for --ai-dedup-stats. Clamps any unknown verdict string (e.g. a model that
    * invents "MAYBE") to UNKNOWN so the report doesn't blow up. Package-private so the unit tests
    * can assert on specific buckets.
    */
@@ -888,7 +889,7 @@ public final class ScanRunner {
   }
 
   /**
-   * →return a copy of {@code f} with the AI verdict + reason attached. The Finding record is
+   * — return a copy of {@code f} with the AI verdict + reason attached. The Finding record is
    * immutable, so this builds a new instance via the full constructor (which carries the new
    * fields).
    */
@@ -909,7 +910,7 @@ public final class ScanRunner {
   /**
    * Bytecode scan: feed a list of .jar / .class / .war paths to {@link BytecodeAnalyzer} and run
    * the DFA engine over the resulting {@link TacProgram}s. The engine setup is the same as {@link
-   * #scanMerged} →same set of checkers, same {@link AnalysisContext} shape →so existing findings
+   * #scanMerged} — same set of checkers, same {@link AnalysisContext} shape — so existing findings
    * look the same whether they came from a Java source scan or a bytecode scan.
    */
   private List<Finding> scanBytecode(
@@ -1076,7 +1077,7 @@ public final class ScanRunner {
    * {@code --module-root} becomes one flat module; the {@code --classpath} list is shared across
    * all modules.
    *
-   * <p>Empty input →empty list, which makes the downstream {@code JavaSourceParser} behave exactly
+   * <p>Empty input — empty list, which makes the downstream {@code JavaSourceParser} behave exactly
    * like the JDK-only default constructor (back-compat with ).
    */
   private List<JavaModule> buildModules() {
@@ -1139,11 +1140,11 @@ public final class ScanRunner {
    * keyed by {@code <FQCN>#<methodName>}.
    *
    * <p>The cache lets AST checkers (currently {@code NullDerefFromReturnCheck}) reason about the
-   * nullness of a {@code data = Helper.foo()} call RHS by reading the callee body →without the
+   * nullness of a {@code data = Helper.foo()} call RHS by reading the callee body — without the
    * checker needing to do its own cross-file symbol resolution. Building the cache once per scan
    * (not per file) keeps the cost O(M) where M is the total number of methods across all modules.
    *
-   * <p>Empty {@code sourceRoots + moduleRoots} →empty map (back-compat with / no cross-file
+   * <p>Empty {@code sourceRoots + moduleRoots} — empty map (back-compat with / no cross-file
    * indexing).
    */
   private static final int R792_CACHE_MAX_FILES = 200;
@@ -1191,7 +1192,7 @@ public final class ScanRunner {
       }
     }
     LOG.info(
-        "R792: static-method cache built →{} entries across {} module(s)",
+        "R792: static-method cache built → {} entries across {} module(s)",
         out.size(),
         modules.size());
     return out;
@@ -1200,7 +1201,7 @@ public final class ScanRunner {
   /**
    * Best-effort package name inferred from a source root's directory layout. Looks for a {@code
    * src/main/java} or {@code src/test/java} segment and treats the remainder as the package.
-   * Returns empty string when the layout doesn't match →the caller's per-file {@code
+   * Returns empty string when the layout doesn't match — the caller's per-file {@code
    * ParsedSource.packageName()} takes precedence.
    */
   private static String packageNameOf(Path sourceRoot) {
@@ -1221,7 +1222,7 @@ public final class ScanRunner {
   private JavaSourceParser buildParser() {
     List<JavaModule> modules = buildModules();
     if (modules.isEmpty()) {
-      // Fast path: no user-supplied source/classpath →
+      // Fast path: no user-supplied source/classpath —
       // JDK-only default. Keeps behaviour bit-identical.
       return new JavaSourceParser();
     }
@@ -1347,7 +1348,7 @@ public final class ScanRunner {
       List<org.plumb.dfa.engine.DfaChecker> checkers) {
     // H audit: removed -E debug comment
     // (had been a multi-line TEMP note about a
-    // hang investigation →root cause was found
+    // hang investigation — root cause was found
     // elsewhere and the temp note was left behind).
     List<Finding> out = new ArrayList<>();
     try {
@@ -1431,8 +1432,8 @@ public final class ScanRunner {
     if (config.runUnlockNotLocked)
       checkers.add(new org.plumb.dfa.checkers.controlflow.UnlockNotLockedChecker());
     // ServletAtomicityDfa and
-    // SingletonRaceDfa intentionally NOT registered by
-    // default →plumb-style has AST equivalents
+    // SingletonRaceDfa are intentionally NOT registered by
+    // default: plumb-style has AST equivalents
     // (ServletAtomicityCheck / SingletonRaceCheck in
     // org.plumb.style.concurrency) that cover the same
     // CWE-362 / CWE-366 with better precision. The DFA
@@ -1440,103 +1441,88 @@ public final class ScanRunner {
     // implementation; flip config.runServletAtomicity /
     // runSingletonRace to true to enable them.
     if (config.runServletAtomicity) {
-      // intentionally empty →the plumb-style AST equivalent
+      // intentionally empty: the plumb-style AST equivalent
       // handles this CWE.
     }
     if (config.runSingletonRace) {
-      // intentionally empty →the plumb-style AST equivalent
+      // intentionally empty: the plumb-style AST equivalent
       // handles this CWE.
     }
-    // CWE-942). Auto-registered above in buildStyleChecks() via
-    // AstCheckerRegistry.builtins(). The legacy DFA class lives in
+    // CORS misconfiguration is covered by the AST checker
+    // org.plumb.style.security.CorsMisconfigurationCheck (CWE-942),
+    // auto-registered above in buildStyleChecks() via
+    // AstCheckerRegistry.builtins().
     if (config.runCorsMisconfig) {
-      // intentionally empty →the plumb-style AST equivalent
+      // intentionally empty: the plumb-style AST equivalent
       // handles this CWE.
     }
-    // InsecureCommunicationChecker, InsecureCookieChecker,
-    // PredictableKeyPasswordChecker, PredictableRandomSeedChecker
-    // removed →migrated to plumb-style AST equivalents:
-    //   org.plumb.style.security.InsecureCommunicationCheck
-    //   (CWE-319) and the plumb-style cipher/password/rng checks.
-    // The plumb-style AstCheckerRegistry.builtins() auto-registers
-    // it above in buildStyleChecks(). The legacy DFA class lives in
+    // Missing authorization is covered by the AST checker
+    // org.plumb.style.security.MissingAuthorizationCheck, auto-registered
+    // above in buildStyleChecks() via AstCheckerRegistry.builtins().
     if (config.runMissingAuthorization) {
-      // intentionally empty →the plumb-style AST equivalent handles this CWE.
+      // intentionally empty: the plumb-style AST equivalent handles this CWE.
     }
-    // runDefaultEncoding removed (plumb-style DefaultCharsetCheck covers it)
-    // CWE-252). Auto-registered above in buildStyleChecks() via
-    // AstCheckerRegistry.builtins(). The legacy DFA class lives in
+    // Unchecked return values are covered by the AST checker
+    // org.plumb.style.security.UncheckedReturnCheck (CWE-252),
+    // auto-registered above in buildStyleChecks() via
+    // AstCheckerRegistry.builtins().
     if (config.runUncheckedReturn) {
-      // intentionally empty →the plumb-style AST equivalent
+      // intentionally empty: the plumb-style AST equivalent
       // handles this CWE.
     }
-    // CWE-327 / CWE-328 / CWE-780). Auto-registered above in
-    // buildStyleChecks() via AstCheckerRegistry.builtins(). The legacy DFA
-    // class lives in tmp/_backup_audit_2026-10-14/InsecureCryptoChecker.java.
+    // Weak crypto is covered by the AST checkers
+    // org.plumb.style.security.InsecureCryptoCheck and
+    // org.plumb.style.style.WeakCryptoCheck (CWE-327 / CWE-328 / CWE-780),
+    // auto-registered above in buildStyleChecks() via
+    // AstCheckerRegistry.builtins().
     if (config.runWeakCrypto) {
-      // intentionally empty →the plumb-style AST equivalent handles this CWE.
+      // intentionally empty: the plumb-style AST equivalent handles this CWE.
     }
-    // ---- 8 new DfaChecker ports (this turn) ----
-    // CWE-798 / CWE-259). Auto-registered above in buildStyleChecks() via
-    // AstCheckerRegistry.builtins(). The legacy DFA class lives in
-    // tmp/_backup_audit_2026-10-14/FieldHardcodedPasswordChecker.java.
+    // A hardcoded password in a field is covered by the AST checker
+    // org.plumb.style.security.HardcodedCredentialsCheck (CWE-798 / CWE-259),
+    // auto-registered above in buildStyleChecks() via
+    // AstCheckerRegistry.builtins().
     if (config.runFieldHardcodedPassword) {
-      // intentionally empty →the plumb-style AST equivalent handles this CWE.
+      // intentionally empty: the plumb-style AST equivalent handles this CWE.
     }
+    // Obsolete API use is covered by the AST checker
+    // org.plumb.style.security.ObsoleteApiCheck (CWE-477); the
+    // (class, method, arity) whitelist pattern is reachable via
+    // MethodCallExpr.
     if (config.runObsoleteFunction) {
-      // intentionally empty →the plumb-style AST equivalent handles this CWE.
+      // intentionally empty: the plumb-style AST equivalent handles this CWE.
     }
+    // Information exposure is an annotation-only structural check with no
+    // MOVE/CALL dataflow; the class/method annotation channels it uses are
+    // reachable from the AST. It is covered by
+    // org.plumb.style.security.InformationExposureCheck, auto-registered
+    // above in buildStyleChecks() via AstCheckerRegistry.builtins().
     if (config.runInformationExposure) {
-      // intentionally empty →the plumb-style AST equivalent handles this CWE.
+      // intentionally empty: the plumb-style AST equivalent handles this CWE.
     }
-    // bulk-register the previously-unwired
-    // DfaCheckers. Each has a default rule id; we wire
+    // Bulk-register the DfaCheckers. Each has a default rule id; we wire
     // them by class reference so adding new checkers
     // in the future is just a matter of dropping a
     // class into plumb-dfa/.../checkers/ and adding
     // it to this list. Each has a default rule id and
-    // its own AI prompt; per-CWE CWE mapping is
-    // declared in plumb_rule_to_cwe.csv.
-    // CWE-319). Auto-registered above in buildStyleChecks()
-    // via AstCheckerRegistry.builtins(). The legacy DFA
-    // class lives in
-    // CWE-273). Auto-registered above in buildStyleChecks()
-    // via AstCheckerRegistry.builtins(). The legacy DFA
-    // class lives in
-    // plumb-style as AstCheckers (see
-    // plumb-style/src/main/java/.../style/*Check.java).
-    // The plumb-style AstCheckerRegistry.builtins()
-    // auto-registers them above in
-    // buildStyleChecks(); do NOT add the dfa-side
-    // stubs here (their private-ctor throws).
+    // its own AI prompt; the per-CWE mapping is
+    // declared in plumb-dfa/src/main/resources/cwe-mappings.yaml.
     checkers.add(new org.plumb.dfa.checkers.taint.HardCodedKeyChecker());
     checkers.add(new org.plumb.dfa.checkers.taint.HardCodedPasswordSinkChecker());
-    // CWE-378). Auto-registered above in buildStyleChecks() via
-    // AstCheckerRegistry.builtins(). The legacy DFA class lives in
+    // Missing crypto initialisation is a DFA checker; it stays on the DFA
+    // side because the state it needs is cross-method.
     checkers.add(new org.plumb.dfa.checkers.controlflow.MissingCryptoInitChecker());
-    // plumb-style (auto-registered via AstCheckerRegistry).
-    // migrated to plumb-style (CWE-674; self-recursive call is a
-    // MethodCallExpr scope match). The legacy DFA class lives in
-    // tmp/_backup_audit_2026-10-14/RecursionChecker.java.
-    // it uses TAC IR for cross-function propagation.)
-    // it uses TAC IR for cross-function propagation.)
+    // Uncontrolled recursion is a DFA checker: it needs the TAC IR to
+    // follow the recursion across functions.
     checkers.add(new org.plumb.dfa.checkers.controlflow.DeadlockChecker());
-    // register the
-    // ErrorMessageInfoLeakChecker.
-    // Pre- this checker was
-    // written but never wired into
-    // the scan pipeline, so CWE209
-    // (Information Leak Through
-    // Error Message) had 0 TP.
-    // CWE-209). Auto-registered above in buildStyleChecks() via
-    // AstCheckerRegistry.builtins(). The legacy DFA class lives in
-    // (see org.plumb.style.style.CommentInfoLeakCheck).
-    // AstCheckerRegistry.builtins() auto-registers
-    // it; do NOT add the dfa-side stub here.
+    // Error message information leak (CWE-209) is covered by the AST
+    // checker org.plumb.style.error.ErrorMessageInfoLeakCheck,
+    // auto-registered above in buildStyleChecks() via
+    // AstCheckerRegistry.builtins().
     if (config.runMissingInputValidation) {
-      // intentionally empty →the plumb-style AST equivalent handles this CWE.
+      // intentionally empty: the plumb-style AST equivalent handles this CWE.
     }
-    // ---- plumb-dfa →unified taint checkers (33) ----
+    // ---- plumb-dfa taint checkers ----
     if (config.runTaint) {
       if (config.runNullDeref) checkers.add(new org.plumb.dfa.checkers.taint.NullDerefChecker());
       if (config.runIntUnderflow)
@@ -1545,7 +1531,7 @@ public final class ScanRunner {
         checkers.add(new org.plumb.dfa.checkers.taint.IntOverflowChecker());
       if (config.runArrayBounds) checkers.add(new org.plumb.dfa.checkers.taint.ArrayIndexChecker());
       if (config.runDivByZero) checkers.add(new org.plumb.dfa.checkers.taint.DivByZeroChecker());
-      // →boundary constraint checkers
+      // Boundary constraint checkers
       // (range lattice + Z3). Cheap (only
       // fires on arithmetic / array ops);
       // per-CWE YAML whitelist decides
@@ -1601,7 +1587,7 @@ public final class ScanRunner {
       checkers.add(new org.plumb.dfa.checkers.taint.JavaCodeInjectionChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.JcrInjectionChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.JspDynamicIncludeChecker());
-      // →XSS + Open Redirect + Http Response Splitting + XPath
+      // — XSS + Open Redirect + Http Response Splitting + XPath
       // Injection Format String. These checkers exist in
       // plumb-dfa/.../taint/ with matching sink families defined in
       // sink-families.yaml (xss.sinks, open-redirect.sinks,
@@ -1609,14 +1595,14 @@ public final class ScanRunner {
       // never wired into the engine. Adding them here is a no-op
       // when their sink family doesn't match the current file
       // (checkSinkAtCall returns cleanly), so the registration is
-      // cheap. The bug is purely "missing registrations" →the
+      // cheap. The bug is purely "missing registrations" —  the
       // engine path itself is sound after the config fix.
       checkers.add(new org.plumb.dfa.checkers.taint.XssInjectionChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.OpenRedirectChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.HttpResponseSplittingChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.XPathInjectionChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.FormatStringChecker());
-      // →cleartext / DB credential / external config sinks.
+      // — cleartext / DB credential / external config sinks.
       // These were also silently missing from the registration.
       // DBCredentialSinkChecker fires on
       // DriverManager.getConnection(...) with a tainted password
@@ -1673,7 +1659,7 @@ public final class ScanRunner {
       // LDAP / EL / OGNL / CodeInjection / JCR / JspDynamicInclude /
       // ...) silently no-ops: their checkSinkAtCall() returns
       // immediately when the registry is empty.
-      // →the older minimal config used
+      // — the older minimal config used
       // SinkFamilyRegistry.empty() + CheckerRegistry.empty() for
       // the 7 baseline DFA checkers (NullDeref, IntOverflow, ...),
       // which don't need sink families. But the same call also
@@ -1770,7 +1756,7 @@ public final class ScanRunner {
   }
 
   /**
-   * R-PATCH v2 →decide whether a finding whose rule id is {@code ruleId} should be emitted under
+   * R-PATCH v2 — decide whether a finding whose rule id is {@code ruleId} should be emitted under
    * the current {@code rules.disabled} / {@code rules.enabled} / {@code rules.mode} configuration.
    * Mirrors the registry-side check in {@link #buildRegistry()} so DFA + style findings stay in
    * sync with the user's per-CWE whitelist.
@@ -1831,7 +1817,7 @@ public final class ScanRunner {
     // is written with the bare form (matching
     // RuleRegistry plumb_rule_to_cwe.csv) but
     // the engine's Finding.ruleId() carries the
-    // "plumb." prefix →without this dual-form
+    // "plumb." prefix — without this dual-form
     // match every DFA-only rule would be silently
     // dropped by the whitelist filter.
     if (config.whitelistMode && !config.enabledRuleNames.isEmpty()) {
@@ -2027,8 +2013,8 @@ public final class ScanRunner {
       // C3: also accept the checker's class simple
       // name (e.g. "SystemExitUsageCheck") as a whitelist
       // key. Some AST checkers don't expose their RuleId
-      // via name() →the AST interface only requires a
-      // "human-readable name" →so the whitelist entry
+      // via name() — the AST interface only requires a
+      // "human-readable name" — so the whitelist entry
       // for them is the class name. Accept either form.
       if (!isRuleIdAllowed(c.name()) && !isRuleIdAllowed(c.getClass().getSimpleName())) continue;
       d.register(c);
@@ -2039,7 +2025,7 @@ public final class ScanRunner {
       LOG.warn("Style dispatcher failed for {}: {}", file, ex);
     }
     // R-PATCH v2: also filter after-style findings by rule
-    // id (defensive →should be a no-op given the loop above
+    // id (defensive — should be a no-op given the loop above
     // but mirrors the DFA filter exactly).
     //
     // C3: also accept the rule_id.name() and the
@@ -2063,7 +2049,7 @@ public final class ScanRunner {
         // full "plumb." prefix. Without the bare
         // form fallback, loose-class / composite
         // checkers fire correctly but their
-        // findings get dropped here →the
+        // findings get dropped here —  the
         // pre-emit isEnabled() check (line 1486)
         // does the dual-form match, this post-
         // emit filter didn't.
@@ -2109,7 +2095,7 @@ public final class ScanRunner {
   }
 
   /**
-   * Step 7 →the list of {@link org.plumb.style.AstChecker}s the runner uses for AI dedup. Built
+   * Step 7 — the list of {@link org.plumb.style.AstChecker}s the runner uses for AI dedup. Built
    * once and shared with {@link #runStyleChecks(ParsedSource, Path, RuleRegistry, List)} so the AI
    * dedup pass can look up the rule prompt for each style finding by its rule id.
    */
@@ -2203,7 +2189,7 @@ public final class ScanRunner {
             // directory convention). The
             // previous filter
             // `!path.contains("test\")`
-            // was too aggressive →it
+            // was too aggressive —  it
             // excluded any path whose
             // name happened to contain
             // `test` (e.g.
@@ -2223,7 +2209,7 @@ public final class ScanRunner {
    * in the same directory).
    *
    * <p>Threshold: cap the sibling count at {@link #CROSS_TU_AUTO_EXPAND_LIMIT}. Beyond that the
-   * directory is clearly a large test corpus →better to let the user opt in by passing the
+   * directory is clearly a large test corpus — better to let the user opt in by passing the
    * directory as the input than to silently run a 1000-file scan per single-file command.
    *
    * <p>Returns the original list unchanged if there's no opportunity to expand (single file with no
@@ -2245,7 +2231,7 @@ public final class ScanRunner {
               .toList();
       if (siblings.isEmpty()) return original;
       if (siblings.size() > CROSS_TU_AUTO_EXPAND_LIMIT) {
-        // Large directory →fall back to
+        // Large directory —  fall back to
         // single-file mode. The user
         // should pass the directory
         // explicitly to enable
@@ -2385,7 +2371,7 @@ public final class ScanRunner {
       // Without this the Juliet
       // single-file run skips
       // StaticFieldResolver.init()
-      // (empty map →no SourcePath walk)
+      // (empty map — no SourcePath walk)
       // and FIELDLOADs on class
       // references fall through to the
       // orphan-SOURCE shape.

@@ -41,7 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Recursive JavaParser-expression →TAC translator. Returns an {@link ExpressionResult}; side
+ * Recursive JavaParser-expression → TAC translator. Returns an {@link ExpressionResult}; side
  * effects (emitted instructions) are accumulated on the supplied {@link TacBuilder}.
  */
 public final class ExpressionTranslator {
@@ -354,7 +354,7 @@ public final class ExpressionTranslator {
   }
 
   /**
-   * Hardcoded getter→FQN map for the most common chain-call receivers. JavaParser's symbol solver
+   * Hardcoded getter → FQN map for the most common chain-call receivers. JavaParser's symbol solver
    * is not wired up with a JDK type solver, so {@code response.getWriter().println(...)} ends up
    * with the dest TacVar of `getWriter()` carrying type UNKNOWN and the chained `println` call
    * emitting a "scope" receiver (e.g. {@code scope.println/1}) that no sink-family pattern matches.
@@ -805,7 +805,7 @@ public final class ExpressionTranslator {
   /**
    * Translate a lambda expression. We lower the body to a synthetic function on the enclosing type
    * and emit a CALL to that function. The returned {@link ExpressionResult} carries the lambda's
-   * signature so the caller (typically {@code translateVarDecl}) can register the user-var →lambda
+   * signature so the caller (typically {@code translateVarDecl}) can register the user-var → lambda
    * binding.
    */
   private ExpressionResult translateLambda(LambdaExpr le, TacBuilder b) {

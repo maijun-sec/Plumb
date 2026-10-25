@@ -68,9 +68,8 @@ public record TaintRule(
   }
 
   /**
-   * build a rule with an explicit {@code enabled} flag. Use {@code false} for rules that have 0 TP
-   * that reported nothing on the code it was measured against, and should be opt-in instead of on
-   * by default.
+   * build a rule with an explicit {@code enabled} flag. Use {@code false} for rules that have
+   * nothing to report on the code they run against, and should be opt-in instead of on by default.
    */
   public static TaintRule of(
       String ruleId,

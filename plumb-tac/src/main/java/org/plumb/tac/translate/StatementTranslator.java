@@ -469,7 +469,7 @@ public final class StatementTranslator {
     // each catch body in source order. This was conservative
     // — any exception thrown inside try was treated as
     // flowing out of the whole try, never landing in a catch
-    // block. The CFG had no try→catch edges, so taint, null
+    // block. The CFG had no try → catch edges, so taint, null
     // analysis, and resource tracking could not see that the
     // exception value (or an allocated resource) reached a
     // catch handler.

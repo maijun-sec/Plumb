@@ -101,10 +101,9 @@ public final class UnusedAssignmentChecker extends TaintedCheckerBase {
   }
 
   private void emitIfNew(AnalysisContext ctx, TacOperand.TacVar d, TacInstruction dead) {
-    // honor rule.enabled() flag. The rule is disabled by
-    // default because it reported nothing on the code it was
-    // measured against. The emit path honors the flag, so
-    // the disable becomes effective.
+    // Honor rule.enabled() flag. The rule is disabled by
+    // default, so the emit path has to honor the flag for
+    // the disable to take effect.
     if (!this.rule.enabled()) {
       return;
     }

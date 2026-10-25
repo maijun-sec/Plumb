@@ -14,8 +14,8 @@
  * <p>Special cases:
  * <ul>
  *   <li>{@code assert i <= max} → fire (auditor verifies strict-less).
- *   <li>{@code assert i >= 0}   → fire (auditor verifies strict-greater).
- *   <li>{@code assert i < max && j > 0}  → no fire (strict on both).
+ *   <li>{@code assert i >= 0} → fire (auditor verifies strict-greater).
+ *   <li>{@code assert i < max && j > 0} → no fire (strict on both).
  *   <li>{@code assert i <= max && i < max} → fire (the
  *       {@code i <= max} conjunct is the suspect one).
  * </ul>

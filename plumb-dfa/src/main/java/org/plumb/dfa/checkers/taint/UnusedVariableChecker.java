@@ -94,9 +94,8 @@ public final class UnusedVariableChecker extends TaintedCheckerBase {
 
   private void emitFinding(
       AnalysisContext ctx, TacFunction fn, TacInstruction def, TacOperand.TacVar local) {
-    // step_f: honor rule.enabled() flag ( codemod
-    // it reports nothing on the code it was measured against.
-    // the code it was measured against.
+    // Honor rule.enabled() flag. The emit path can otherwise
+    // report a rule the caller switched off.
     if (!this.rule.enabled()) {
       return;
     }

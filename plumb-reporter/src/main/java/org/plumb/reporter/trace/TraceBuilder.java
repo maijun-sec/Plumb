@@ -131,7 +131,7 @@ public final class TraceBuilder {
   }
 
   /**
-   * Append a {@link TraceNode.Role#SANITIZER} node. Used to mark a TP→FP pivot (e.g. {@code
+   * Append a {@link TraceNode.Role#SANITIZER} node. Used to mark a TP → FP pivot (e.g. {@code
    * PreparedStatement.setString} on the path). AI dedup consumers treat SANITIZER nodes as strong
    * evidence for "the data was parameterised, the finding is likely FP".
    */

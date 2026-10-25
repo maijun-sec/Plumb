@@ -23,7 +23,7 @@ public final class EmptyTryBlockCheck implements AstChecker {
               "ast-style-try-block",
               "empty-try-block")); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832
 
-  // baseline)
+  // Disabled by default: this rule reports a style preference rather than a defect.
 
   @Override
   public String name() {

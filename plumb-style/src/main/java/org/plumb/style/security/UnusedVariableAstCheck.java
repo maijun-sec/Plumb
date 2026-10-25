@@ -214,7 +214,7 @@ public final class UnusedVariableAstCheck implements AstChecker {
     //       value AND no read precedes it →
     //       _parameter_value_* (caller value discarded).
     //   (b) Parameter is never mentioned in body
-    //       → _parameter_variable_* (dead parameter).
+    // → _parameter_variable_* (dead parameter).
     for (Parameter p : n.getParameters()) {
       String paramName = p.getNameAsString();
       int paramDeclLine = p.getBegin().map(q -> q.line).orElse(-1);

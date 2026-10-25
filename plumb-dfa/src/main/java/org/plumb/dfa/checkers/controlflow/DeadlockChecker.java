@@ -33,7 +33,7 @@
  *       the lock identifier (the receiver
  *       TacVar's name).</li>
  *   <li>Build a per-function "lock sequence"
- *       — the ordered list of unique locks
+ * — the ordered list of unique locks
  *       acquired in that function. Dedupe
  *       repeated locks (a function that
  *       locks and unlocks the same lock

@@ -88,7 +88,7 @@ public final class UnusedParameterChecker extends TaintedCheckerBase {
   }
 
   private void emit(AnalysisContext ctx, TacFunction fn, TacOperand.TacVar param) {
-    // honor rule.enabled() flag. The rule is disabled by default,
+    // Honor rule.enabled() flag. The rule is disabled by default,
     // and the emit path honors the flag.
     if (!this.rule.enabled()) {
       return;

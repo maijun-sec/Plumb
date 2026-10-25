@@ -67,8 +67,8 @@ public sealed interface TaintDomain
 
   /**
    * "A number" ? int / long / float / double. Drives array-index, allocation-size, divide-by-zero,
-   * integer-overflow checks. String→Number conversions ({@code Integer.parseInt}) can also produce
-   * a NumericTaint from a StringTaint source.
+   * integer-overflow checks. String → Number conversions ({@code Integer.parseInt}) can also
+   * produce a NumericTaint from a StringTaint source.
    */
   record NumericTaint() implements TaintDomain {
     public static final NumericTaint INSTANCE = new NumericTaint();

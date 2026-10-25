@@ -26,7 +26,7 @@ import org.plumb.tac.ir.TacOperand;
  * <pre>{@code
  * data = req.getQueryString();
  * int n = Integer.parseInt(data);
- * for (int i = 0; i < n; i++) {   // →bad: loop bound is tainted
+ * for (int i = 0; i < n; i++) {   // — bad: loop bound is tainted
  *     ...
  * }
  * }</pre>

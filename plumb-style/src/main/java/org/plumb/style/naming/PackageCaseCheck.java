@@ -31,7 +31,7 @@ public final class PackageCaseCheck implements AstChecker {
           List.of(
               "ast-naming-package-case",
               "package-case")); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832
-  // baseline)
+  // Disabled by default: this rule reports a style preference rather than a defect.
 
   private static final Pattern LOWERCASE =
       Pattern.compile("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$");

@@ -220,8 +220,8 @@ public final class GuardTracker {
    * field (e.g. {@code Byte.MAX_VALUE}, {@code Long.MIN_VALUE}). The dest is recorded in {@link
    * #knownConstants}.
    *
-   * <p>Array length tracking is disabled by default. Re-enable to restore the CWE-129 81_goodB2G FP
-   * elimination (13 FP).
+   * <p>Array length tracking is disabled by default. Re-enable it to restore the array-length bound
+   * that suppresses the CWE-129 false positives.
    */
   private void recordConstantLoadIfApplicable(TacInstruction ins) {
     if (ins.dest == null || !(ins.dest instanceof TacOperand.TacVar dest)) {

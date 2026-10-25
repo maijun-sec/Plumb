@@ -354,7 +354,7 @@ public final class FunctionSummary {
     // signal, so the Operation filter
     // doesn't apply. Consumers that want
     // to scope the conservative
-    // arg→dest passthrough rule to a
+    // arg → dest passthrough rule to a
     // subset of callers can filter on
     // hasBody themselves.
     if (hasBody) b.markHasBody();

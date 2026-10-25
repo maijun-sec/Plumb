@@ -35,8 +35,7 @@ import org.plumb.tac.ir.TacOperand;
 
 public final class LiteralBooleanConditionChecker extends TaintedCheckerBase {
   public LiteralBooleanConditionChecker() {
-    // disabled by default: opt in to enable it
-    // it reports nothing on the code it was measured against, so it is opt-in.
+    // Disabled by default. Users can opt in
     // by editing the constructor to pass `true` to the
     // 7-arg `new TaintRule(..., enabled)` overload.
     super(

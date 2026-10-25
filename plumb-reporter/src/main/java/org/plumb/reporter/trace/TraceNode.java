@@ -62,7 +62,7 @@ public final class TraceNode {
     PROPAGATE,
     /**
      * Sanitizer (parameterised binding / encode / allow-list) seen on the path. AI dedup can use
-     * this as a TP→FP signal.
+     * this as a TP → FP signal.
      */
     SANITIZER,
     /**

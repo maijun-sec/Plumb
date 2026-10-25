@@ -43,7 +43,7 @@ public final class UnusedImportCheck implements AstChecker {
               "ast-style-unused-import",
               "unused-import")); // R-836 step_f: disabled by default (0 TP / 100% FP on Juliet
 
-  // baseline)
+  // Disabled by default: this rule reports a style preference rather than a defect.
 
   /** Per-file: all import declarations for the current CU. Populated in init(). */
   private final List<ImportDeclaration> importsBuffer = new java.util.ArrayList<>();

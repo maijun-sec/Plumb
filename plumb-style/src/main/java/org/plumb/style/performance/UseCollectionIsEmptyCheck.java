@@ -52,7 +52,7 @@ public final class UseCollectionIsEmptyCheck implements AstChecker {
         && u.getOperator() == UnaryExpr.Operator.MINUS
         && u.getExpression() instanceof IntegerLiteralExpr
         && "1".equals(((IntegerLiteralExpr) u.getExpression()).getValue())) {
-      // .size() - 1 == 0 →size() == 1
+      // .size() - 1 == 0 → size() == 1
       return;
     }
     // Strip unary minus on size side.

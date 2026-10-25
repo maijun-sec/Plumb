@@ -47,7 +47,7 @@ public final class EcUnrelatedTypesCheck implements AstChecker {
         if (!ret.getExpression().isPresent()) continue;
         Expression e = ret.getExpression().get();
         String exprText = e.toString();
-        // Strip field-access prefix: "Boolean.TRUE" →"Boolean"
+        // Strip field-access prefix: "Boolean.TRUE" → "Boolean"
         String head = exprText;
         int dot = exprText.indexOf('.');
         if (dot > 0) head = exprText.substring(0, dot);

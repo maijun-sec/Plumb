@@ -34,7 +34,7 @@ public final class LoopExecutingAtMostOnceCheck implements AstChecker {
 
   @Override
   public void visit(ForStmt n, StyleContext ctx) {
-    // Compare condition: `i < N` where N is a literal →1.
+    // Compare condition: `i < N` where N is a literal → 1.
     Expression cond = n.getCompare().orElse(null);
     if (cond instanceof BinaryExpr be) {
       if (isLiteralBound(be.getRight(), 1) || isLiteralBound(be.getLeft(), 1)) {
@@ -44,7 +44,7 @@ public final class LoopExecutingAtMostOnceCheck implements AstChecker {
             line,
             col,
             DEFAULT_RULE,
-            "for-loop bound is a literal →1 : loop runs at most once",
+            "for-loop bound is a literal → 1 : loop runs at most once",
             RuleDef.Severity.LOW,
             "for");
       }

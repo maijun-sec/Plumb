@@ -42,7 +42,7 @@ public final class UnusedImportsCheck implements AstChecker {
           List.of(
               "ast-style-unused-imports",
               "unused-imports")); // R-834: disabled by default (0 TP / 100% FP on Juliet R-832
-  // baseline)
+  // Disabled by default: this rule reports a style preference rather than a defect.
 
   private final List<ImportDeclaration> importsBuffer = new java.util.ArrayList<>();
   private final Set<String> usedNames = new HashSet<>();

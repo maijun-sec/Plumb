@@ -34,16 +34,16 @@ import org.plumb.tac.ir.TacOperand;
  * fixed and stable so checkers can match on it without coupling to the builder's internal types:
  *
  * <pre>
- *   RETURN_VOID          →  "void"
- *   RETURN_CONST         →  "const:&lt;literal&gt;"
- *   RETURN_PARAM         →  "param:&lt;i&gt;"
- *   RETURN_THIS_FIELD    →  "this-field:&lt;name&gt;"
- *   RETURN_STATIC_FIELD  →  "static-field:&lt;FQCN.field&gt;"
- *   RETURN_LOCAL_VAR     →  "local:&lt;name&gt;"
- *   RETURN_BINARY_OP     →  "binop:&lt;op&gt;:&lt;lhs&gt;:&lt;rhs&gt;"
- *   RETURN_CONDITIONAL   →  "cond:&lt;trueArm&gt;:&lt;falseArm&gt;"
- *   RETURN_NEW_INSTANCE  →  "new:&lt;type&gt;"
- *   UNKNOWN              →  "top"
+ *   RETURN_VOID → "void"
+ *   RETURN_CONST → "const:&lt;literal&gt;"
+ *   RETURN_PARAM → "param:&lt;i&gt;"
+ *   RETURN_THIS_FIELD → "this-field:&lt;name&gt;"
+ *   RETURN_STATIC_FIELD → "static-field:&lt;FQCN.field&gt;"
+ *   RETURN_LOCAL_VAR → "local:&lt;name&gt;"
+ *   RETURN_BINARY_OP → "binop:&lt;op&gt;:&lt;lhs&gt;:&lt;rhs&gt;"
+ *   RETURN_CONDITIONAL → "cond:&lt;trueArm&gt;:&lt;falseArm&gt;"
+ *   RETURN_NEW_INSTANCE → "new:&lt;type&gt;"
+ *   UNKNOWN → "top"
  * </pre>
  *
  * <h2>Side-effect encoding</h2>

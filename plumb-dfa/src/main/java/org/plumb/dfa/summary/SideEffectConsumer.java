@@ -31,10 +31,10 @@ import org.plumb.tac.ir.TacOperand;
  * {@code writes-static:Foo.bar}, …) is normalised into a stable key the checkers can match on:
  *
  * <pre>
- *   writes-this:&lt;name&gt;     → "this:&lt;name&gt;"
- *   writes-param:&lt;i&gt;       → "param:&lt;i&gt;"
- *   writes-static:&lt;FQCN.f&gt;  → "static:&lt;FQCN.f&gt;"
- *   may-throw, calls:*         → no per-operand invalidation
+ *   writes-this:&lt;name&gt; → "this:&lt;name&gt;"
+ *   writes-param:&lt;i&gt; → "param:&lt;i&gt;"
+ *   writes-static:&lt;FQCN.f&gt; → "static:&lt;FQCN.f&gt;"
+ *   may-throw, calls:* → no per-operand invalidation
  * </pre>
  *
  * <p>Checkers compare their operand's name to the consumer's {@link #invalidationKeys()} to decide

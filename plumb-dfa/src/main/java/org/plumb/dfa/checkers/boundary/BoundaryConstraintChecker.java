@@ -700,7 +700,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   private boolean isReachable(AnalysisContext ctx, String sinkPredicate, TacInstruction ins) {
     // — Tier -2 NE-zero quick check. See
     // isRefutedByNonZeroGuard for full rationale.
-    // Short version: the classic CWE-369 FP is
+    // Short version: the classic CWE-369 false positive is
     // `if (data != 0) { 100 / data; }`. Tier 0
     // (range bounds) can't refute `data == 0`
     // because the range is wide; Tier 1 (Z3) is

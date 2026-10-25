@@ -16,7 +16,7 @@
  *       (with an explicit Charset) is the
  *       replacement.</li>
  *   <li>{@code URL.equals(URL)} / {@code URL.hashCode()}
- *       — blocks DNS resolution which makes
+ * — blocks DNS resolution which makes
  *       {@code http://1.2.3.4/} and
  *       {@code http://hostname/} compare equal even
  *       when the hostnames map to different IPs.
@@ -31,7 +31,7 @@
  *       {@code Date.getYear()}, {@code getMonth()},
  *       {@code getDate()}, {@code getHours()},
  *       {@code getMinutes()}, {@code getSeconds()}
- *       — were deprecated in JDK 1.1 in favour of
+ * — were deprecated in JDK 1.1 in favour of
  *       {@link java.util.Calendar}.</li>
  * </ul>
  *

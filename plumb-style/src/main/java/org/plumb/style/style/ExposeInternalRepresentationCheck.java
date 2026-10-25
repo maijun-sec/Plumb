@@ -66,7 +66,7 @@ public final class ExposeInternalRepresentationCheck implements AstChecker {
         returnType.isPrimitiveType() == false && returnType instanceof ArrayType;
     final boolean isMutableCollection = isKnownMutableType(returnType);
     if (!isArray && !isMutableCollection) return;
-    // Build a map of field name →field type for
+    // Build a map of field name → field type for
     // the enclosing class.
     final Map<String, Type> fieldTypes = collectEnclosingFieldTypes(n);
     // Walk the body for return statements that
