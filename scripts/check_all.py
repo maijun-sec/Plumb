@@ -28,6 +28,8 @@ The gates are:
                               the support matrix covers every measured
                               category, and every row matches its
                               measurement
+    check_javadoc_links        every javadoc @link target names a type
+                              that exists
     linkcheck                 no broken relative link in the markdown
 
 The generators that WRITE (gen_rules_doc, gen_rules_index) are run
@@ -61,6 +63,8 @@ GATES = (
      ["python", "scripts/check_dataflow_constraint.py"], "check"),
     ("check_support_matrix_coverage",
      ["python", "scripts/check_support_matrix_coverage.py"], "check"),
+    ("check_javadoc_links",
+     ["python", "scripts/check_javadoc_links.py"], "check"),
     ("linkcheck", ["python", ".aethercode/linkcheck.py"], "check"),
 )
 

@@ -142,6 +142,8 @@ python scripts/check_all.py
 | `check_framework_annotations` | 污点引擎和 AST 校验检查器对"什么是用户输入"的理解一致 |
 | `check_catalogue_drift_numbers` | javadoc 里引用的历史漂移数字与 git 历史对得上 |
 | `check_dataflow_constraint` | 清单的 `dataflow_contains` 约束不是空断言 |
+| `check_support_matrix_coverage` | 支持矩阵覆盖了每个已测量的类别,且每行的数字和 `RESULT.json` 对得上 |
+| `check_javadoc_links` | javadoc 里 `{@link}` 指向的类型真的存在 |
 | `linkcheck` | markdown 里的相对链接没有断链 |
 
 跑完还会重新生成 `docs/plumb-style-rules*.md`,并报告生成结果和已提交版本是否一致。
@@ -150,6 +152,13 @@ python scripts/check_all.py
 "thirteen" 和 "seventeen",描述的是同一个历史漂移。`check_catalogue_drift_numbers`
 从 git 历史里读出漂移前的两份清单,算出真实的数字,再和注释里写的对账;注释写错就报错。
 历史不可用(浅克隆)时它会说明原因并放行,而不是假装通过。
+
+**关于"注释里的类名"**:同一件事也发生在类名上。仓库里曾经有一整套 javadoc 描述一个
+叫 `CallResolver` 的组件,说它"沿类层次解析虚调用" —— 而这个类在仓库里根本不存在,
+实际的虚调用解析是**按方法名 + 参数个数**匹配的(见 `ChaCallGraphStrategy`)。
+`check_javadoc_links` 用 Maven 给出的真实依赖 classpath 来解析每一个 `{@link}`:
+`org.plumb.*` 必须在源码里能找到,裸名字必须在源码、JDK 或依赖 jar 里能找到。
+找不到就报错 —— 注释里指向一个不存在的类,是对代码的假陈述。
 
 ### 3.4 最小扫描
 

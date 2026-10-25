@@ -4,8 +4,11 @@ package org.plumb.ai.prompts;
  * The two system prompts that turn a generic chat-completion LLM into a domain-specific agent.
  *
  * <p>Both prompts are deliberately short and rule-bound: the LLM sees a fixed JSON shape on the
- * user side, the system side just primes role + behaviour. The actual rule semantics live in {@link
- * RulePrompts} so the per-rule knowledge can be updated without touching the agent itself.
+ * user side, the system side just primes role + behaviour. The per-rule knowledge lives with each
+ * checker instead -- in its {@code getAiPrompt()} method ({@link
+ * org.plumb.style.AstChecker#getAiPrompt()} for the AST rules, and the equivalent on the DFA
+ * checkers) -- so a rule's semantics can be updated without touching the agent, and a user can
+ * replace any of them at scan time with {@code --rule-prompts-dir}.
  *
  * <h2>FP reducer prompt ({@link #FP_REDUCER})</h2>
  *

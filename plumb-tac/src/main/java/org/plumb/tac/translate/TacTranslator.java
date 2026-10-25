@@ -144,14 +144,18 @@ public final class TacTranslator {
     List<String> classAnns = extractAnnotationNames(td.getAnnotations());
     // Capture the class hierarchy. We only model the
     // direct parent (Java has no multiple-inheritance of
-    // classes); interfaces go into a separate concept that
-    // the CallResolver doesn't yet consume. The full FQN of
+    // classes); interfaces are not recorded. The full FQN of
     // the extended class is reduced to its short name to
     // match {@link TacFunction#enclosingClass()}, which is
     // set just below when we hand each function its
     // declaring class. The translation is deliberately
     // tolerant: a type with no {@code extends} clause (most
     // Juliet test cases) leaves the map untouched.
+    //
+    // The resulting table is not read by the current analysis
+    // (the call-graph strategies resolve a virtual call by
+    // simple name and arity), so it is recorded for a future
+    // hierarchy-aware resolver rather than used today.
     String classShortName = td.getNameAsString();
     if (prefix.isEmpty()
         && td instanceof com.github.javaparser.ast.body.ClassOrInterfaceDeclaration cid) {

@@ -269,11 +269,11 @@ public final class JimpleOperandConverter {
 
   /**
    * Build a callee signature string in the project's "FQN.method/Arity" form (matches the
-   * convention the existing AST translator uses, so the {@code CallResolver}'s {@code
-   * stripReceiver} can find the function by bare name).
+   * convention the existing AST translator uses, so the call-graph builder can find the function by
+   * bare name).
    *
    * <p>Previously this emitted {@code "FQN#method/Arity"} with a {@code #} separator, which the
-   * {@code CallResolver} could not strip ? cross-class call resolution in the bytecode path was
+   * call-graph builder could not strip ? cross-class call resolution in the bytecode path was
    * silently broken. The AST path always used {@code .}, so unifying the two formats lets
    * multi-input and single-input bytecode scans resolve callees consistently. The byte-code format
    * doc note in the original JimpleOperandConverter claimed the format matched AST; this was a

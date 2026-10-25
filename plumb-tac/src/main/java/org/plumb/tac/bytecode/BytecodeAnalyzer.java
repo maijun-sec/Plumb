@@ -50,7 +50,7 @@ import sootup.java.core.views.JavaView;
  * <p><b>Multi-input support.</b> The {@link #BytecodeAnalyzer(List)} constructor accepts a list of
  * paths and builds a single {@link JavaView} with all of them as input locations. The resulting
  * view sees classes from every path, so call resolution across the paths works through the standard
- * {@code CallResolver} (a callee class loaded from path 2 is resolvable from a caller in path 1).
+ * call-graph builder (a callee class loaded from path 2 is resolvable from a caller in path 1).
  * This is the fix for the previously doc-noted "commons-text references commons-lang3 silently fall
  * through" limitation: the user just needs to pass both .jars as inputs to a single {@code
  * BytecodeAnalyzer} call.

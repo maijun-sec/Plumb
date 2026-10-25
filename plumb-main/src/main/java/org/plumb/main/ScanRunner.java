@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  *                                     |
  *                                     +->  TacTranslator   ->  TacProgram
  *                                     |                         |
- *                                     |                         +->  TaintAnalysis / DivByZero
+ *                                     |                         +->  DfaEngine (taint, div-by-zero, ...)
  *                                     |
  *                                     +->  StyleChecks       ->  StyleContext
  * </pre>
@@ -923,7 +923,7 @@ public final class ScanRunner {
     // Pass the entire input list to a single
     // BytecodeAnalyzer so its single SootUp View spans all
     // inputs. Cross-input call resolution then works through
-    // the standard CallResolver (a callee in input[1] is
+    // the standard call-graph builder (a callee in input[1] is
     // resolvable from a caller in input[0]). Previously each
     // input got its own View, so cross-input calls silently
     // fell through.
@@ -997,18 +997,19 @@ public final class ScanRunner {
   /**
    * Cross-TU scan. Parses and translates each .java file to its own {@link
    * org.plumb.tac.ir.TacProgram}, then merges them into a single {@link
-   * org.plumb.tac.ir.MergedProgram} so the {@link TaintAnalysis} can follow calls across files
-   * (e.g. {@code com.foo.A.entry -> com.bar.B.wrap -> com.baz.C.clean}). Style checks still run
-   * per-file (they don't have a cross-TU view).
+   * org.plumb.tac.ir.MergedProgram} so the taint analysis can follow calls across files (e.g.
+   * {@code com.foo.A.entry -> com.bar.B.wrap -> com.baz.C.clean}). Style checks still run per-file
+   * (they don't have a cross-TU view).
    *
    * <p><b>Parallel Phase 1.</b> Parse + translate is embarrassingly parallel: each file gets its
    * own {@link JavaSourceParser} + {@link TacTranslator} + style registry, all of which are
    * stateless or per-instance. The DFA phase is sequential because cross-TU call resolution
-   * requires a single {@link org.plumb.tac.ir.MergedProgram} and a single {@link TaintAnalysis}
-   * instance (sharing {@code summaryCache} / {@code returnTaintCache} / {@code analyzing} across
-   * files). On Spring Framework 6 (~5000 .java files), parse+translate is ~30-40% of total wall
-   * time; the parallel change reduces that to the wall time of the longest single file
-   * (work-stealing) plus a small join overhead, yielding a 1.5-2.5x speedup on multi-core hosts.
+   * requires a single {@link org.plumb.tac.ir.MergedProgram} and a single {@link
+   * org.plumb.dfa.engine.DfaEngine} instance (sharing {@code summaryCache} / {@code
+   * returnTaintCache} / {@code analyzing} across files). On Spring Framework 6 (~5000 .java files),
+   * parse+translate is ~30-40% of total wall time; the parallel change reduces that to the wall
+   * time of the longest single file (work-stealing) plus a small join overhead, yielding a 1.5-2.5x
+   * speedup on multi-core hosts.
    */
   private List<Finding> scanMerged(
       List<Path> files,

@@ -68,19 +68,28 @@ public final class TacProgram implements java.io.Serializable {
   private final SourceMap sourceMap = new SourceMap();
 
   /**
-   * Simple class-hierarchy table for the {@link org.plumb.dfa.cg.CallResolver} CHA-style {@code
-   * resolveVirtual} walk. Key is the short class name as it appears in {@link
+   * Simple class-hierarchy table. Key is the short class name as it appears in {@link
    * TacFunction#enclosingClass()} (e.g. {@code "MyBase"}, {@code "MyDerived"}); value is the
    * immediate parent class's short name (also looked up in this map recursively), or {@code null}
    * for the class at the top of the hierarchy (e.g. {@code Object}). Empty map by default.
+   *
+   * <p><b>Currently unread by the analysis.</b> The CHA call-graph strategy ({@link
+   * org.plumb.dfa.cg.ChaCallGraphStrategy}) resolves a virtual call by matching the callee's simple
+   * name and arity against the program's functions; it does not walk these edges. The table is
+   * populated because the hierarchy is real information the IR already carries, and a
+   * hierarchy-aware resolver can consume it without changing the translator.
    */
   private final Map<String, String> classToParent = new java.util.HashMap<>();
 
   /**
    * Reverse class-hierarchy table ? for each parent, the list of direct children that {@code
    * extends} it. Maintained alongside {@link #classToParent} inside {@link #registerClassParent} so
-   * callers can ask "what classes implement this abstract method?" without scanning the whole
-   * program. Keyed by short class name exactly like {@link #classToParent}. Empty by default.
+   * a hierarchy-aware resolver can ask "what classes implement this abstract method?" without
+   * scanning the whole program. Keyed by short class name exactly like {@link #classToParent}.
+   * Empty by default.
+   *
+   * <p>Like {@link #classToParent}, this table is populated but not read by the current analysis --
+   * see that field's note.
    */
   private final Map<String, List<String>> classToChildren = new java.util.HashMap<>();
 
@@ -245,9 +254,9 @@ public final class TacProgram implements java.io.Serializable {
    * child} keeps the first call (the first parent declared is the "real" parent; Java doesn't
    * support multiple inheritance of classes).
    *
-   * <p>Also maintains {@link #classToChildren} in lock-step so {@link
-   * org.plumb.dfa.cg.CallResolver} can answer the reverse question "what classes implement this
-   * abstract method?" without scanning the program.
+   * <p>Also maintains {@link #classToChildren} in lock-step, so a hierarchy-aware resolver can
+   * answer the reverse question "what classes implement this abstract method?" without scanning the
+   * program.
    */
   public void registerClassParent(String child, String parent) {
     if (child == null || parent == null) return;

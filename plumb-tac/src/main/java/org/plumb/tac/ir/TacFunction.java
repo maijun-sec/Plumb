@@ -55,10 +55,10 @@ public final class TacFunction implements java.io.Serializable {
   // Enclosing class short name (e.g. "MyThread"). Filled
   // by the translator; null for functions emitted outside of
   // a type declaration (synthetic <clinit>, lambdas whose
-  // scope didn't carry a class). Used by the CHA-style
-  // {@link org.plumb.dfa.cg.CallResolver#resolveVirtual} to
-  // walk the class hierarchy when a call's receiver type is
-  // known at the call site.
+  // scope didn't carry a class). Distinguishes two
+  // same-named methods on different classes, so the merged
+  // program can keep both instead of collapsing them into one
+  // last-writer-wins entry.
   private final String enclosingClass;
   // Where this function's body came from. Default
   // SOURCE for everything the AST translator emits; the
@@ -173,9 +173,8 @@ public final class TacFunction implements java.io.Serializable {
   }
 
   /**
-   * Full constructor. Adds the {@code enclosingClass} parameter that lets the CHA-style resolver in
-   * {@link org.plumb.dfa.cg.CallResolver} walk the class hierarchy when a call's receiver type is
-   * known.
+   * Full constructor. Adds the {@code enclosingClass} parameter that lets the merged program
+   * distinguish two same-named methods on different classes.
    */
   public TacFunction(
       String name,
@@ -331,9 +330,8 @@ public final class TacFunction implements java.io.Serializable {
   /**
    * Short name of the enclosing class (e.g. {@code "MyThread"}) for the function's declaring type,
    * or {@code null} if the function was emitted outside of a type declaration (synthetic {@code
-   * <clinit>}, free functions, …). The CHA-style resolver in {@link
-   * org.plumb.dfa.cg.CallResolver#resolveVirtual} uses this to walk the class hierarchy when a
-   * call's receiver type is known.
+   * <clinit>}, free functions, …). Distinguishes two same-named methods on different classes, so
+   * the merged program can keep both instead of collapsing them into one entry.
    */
   public String enclosingClass() {
     return enclosingClass;

@@ -3,11 +3,13 @@
  * shape contract for {@link PatternTrace}.
  *
  * <p>PatternTrace is the shared helper used by
- * the R-812 batch-1 DFA checkers
- * ({@link org.plumb.dfa.checkers.WeakPrngChecker},
- * {@link org.plumb.dfa.checkers.ProcessControlChecker},
- * {@link org.plumb.dfa.checkers.ObsoleteFunctionChecker},
- * {@link org.plumb.dfa.checkers.RecursionChecker}).
+ * the DFA checkers that report a single
+ * violation: {@link
+ * org.plumb.dfa.checkers.controlflow.CollectionSelfReferenceChecker},
+ * {@link org.plumb.dfa.checkers.controlflow.CompareWithSelfChecker},
+ * {@link
+ * org.plumb.dfa.checkers.controlflow.EqualsCalledOnNullChecker}, {@link
+ * org.plumb.dfa.checkers.controlflow.OffByOneChecker} and others.
  * Each emits a single-node VIOLATION trace
  * with the chosen {@link TraceNode.Op} and an
  * {@link OperandRef.CallRef} for the offending

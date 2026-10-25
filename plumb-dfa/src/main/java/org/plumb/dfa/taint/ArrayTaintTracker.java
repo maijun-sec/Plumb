@@ -36,9 +36,10 @@ import org.plumb.tac.ir.TacOperand;
  *
  * <p>The tracker is per-function; {@link #clear()} is called from {@code
  * TaintedCheckerBase.initFunction} at every function boundary. The tracker does NOT persist across
- * functions; the cross-function flow goes through {@link org.plumb.dfa.summary.FunctionSummary}
- * (which is augmented with {@link org.plumb.dfa.summary.ArrayOp} entries analogous to the existing
- * {@link org.plumb.dfa.summary.FieldOp} entries).
+ * functions. The cross-function flow goes through {@link org.plumb.dfa.summary.FunctionSummary},
+ * which records {@link org.plumb.dfa.summary.StringOp} passthroughs and {@link
+ * org.plumb.dfa.summary.FieldOp} field writes -- but NOT array accesses: there is no array-op
+ * summary, so an array element's taint does not currently cross a function boundary.
  *
  * <h2>Soundness / false-positive control</h2>
  *

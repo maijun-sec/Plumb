@@ -19,9 +19,8 @@ import java.util.Objects;
  * <p>For the cross-TU taint analysis, the {@code ScanRunner} collects all parsed sources,
  * translates each to a {@link TacProgram}, and merges them. The merged program is functionally
  * equivalent to running each program separately for analysis purposes, but the engine sees a single
- * {@link CallResolver} / {@link org.plumb.dfa.taint.TaintAnalysis} view, so calls from one file's
- * function to another file's function are resolved and recursively analyzed just like intra-TU
- * calls.
+ * {@link org.plumb.dfa.engine.DfaEngine} view, so calls from one file's function to another file's
+ * function are resolved and recursively analyzed just like intra-TU calls.
  *
  * <p>Function signature collisions across TUs are handled by prefixing the type name: a function in
  * {@code com.foo.A} named {@code m} becomes {@code com.foo.A.m(...)} in the merged program,
@@ -160,18 +159,14 @@ public final class MergedProgram implements java.io.Serializable {
     // family: a `bad` subclass and a `goodG2B` subclass of
     // the same abstract base both implement the abstract
     // `action(String)` method with the same signature) don't
-    // collide in the stub's last-writer-wins map. Previously
-    // the CallResolver only saw the second-added
-    // implementation, so the CHA-walk would find the
-    // "good" variant when asked for the implementor of an
-    // abstract base and the engine's taint report would
-    // fire against the wrong file (false positive) or miss
-    // the "bad" sink entirely (false negative). The fix
-    // keys the stub map on signature + enclosing class so both
-    // variants survive the merge; the
-    // resolveImplementors can then walk classToChildren
-    // and find every implementor of the abstract base
-    // without losing one to a last-writer-wins collision.
+    // collide in the stub's last-writer-wins map. With a
+    // signature-only key the merge kept only the second-added
+    // implementation, and the engine's taint report would then
+    // fire against the wrong file (false positive) or miss the
+    // "bad" sink entirely (false negative). The fix keys the stub
+    // map on signature + enclosing class so both variants survive
+    // the merge and a resolver can tell them apart by their
+    // declaring type.
     int stubFnCount = 0;
     for (TacFunction fn : functions.values()) {
       String key = mergedKey(fn);
@@ -181,20 +176,20 @@ public final class MergedProgram implements java.io.Serializable {
     for (var e : lambdaBindings.entrySet()) {
       stub.bindLambda(e.getKey(), e.getValue());
     }
-    // Aggregate the per-file class hierarchy so the
-    // CHA-style {@link org.plumb.dfa.cg.CallResolver}
-    // can walk cross-TU extends/abstract-method
-    // relationships. Without this aggregation the
-    // resolver only sees extends edges that
-    // {@link TacTranslator} happened to register
-    // inside a single .java file (e.g. an inner class
-    // extends its outer), and the Juliet "flow 81+"
-    // pattern (one file declares an abstract base,
-    // another file declares a concrete subclass) is
-    // invisible to the implementor walk. The
-    // {@code registerClassParent} call is idempotent
-    // (putIfAbsent), so re-aggregating on every
-    // {@code asProgram} call is safe.
+    // Aggregate the per-file class hierarchy so the tables are complete across
+    // compilation units.
+    //
+    // NOTE: no analysis code reads these tables today. The CHA strategy
+    // (org.plumb.dfa.cg.ChaCallGraphStrategy) resolves a virtual call by matching the
+    // callee's SIMPLE NAME and arity against the functions in the program -- it does not
+    // walk the extends/abstract-method edges. The cross-TU abstract-base shape (one file
+    // declares an abstract base, another declares a concrete subclass) therefore resolves
+    // only because the subclass's method name matches, not because the hierarchy says so.
+    // The tables are still aggregated here so that a hierarchy-aware resolver can be added
+    // without having to revisit the merge, and so the per-file and merged views agree.
+    //
+    // The {@code registerClassParent} call is idempotent (putIfAbsent), so re-aggregating on
+    // every {@code asProgram} call is safe.
     for (TacProgram src : sources) {
       for (var e : src.classToParent().entrySet()) {
         stub.registerClassParent(e.getKey(), e.getValue());

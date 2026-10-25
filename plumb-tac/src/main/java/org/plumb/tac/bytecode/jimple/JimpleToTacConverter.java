@@ -113,7 +113,7 @@ public final class JimpleToTacConverter {
     // for instance methods), but the params list must
     // match the call-site arity (which counts only the
     // declared parameters, not the implicit receiver).
-    // Without this fix, CallResolver indexes byName with
+    // Without this fix, the call-graph builder indexes by name with
     // key "logIt/2" while the call site strips to
     // "logIt/1", so cross-class taint propagation silently
     // fails to resolve. The {@code this} local is
