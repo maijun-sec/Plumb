@@ -21,7 +21,7 @@
 | [`CROSS-FUNCTION-AI-TRACE.md`](tech/CROSS-FUNCTION-AI-TRACE.md) | 周边：并行 worklist、跨文件验证、已知限制、AI 增强层、Re-Act 框架 |
 | [`DFA-AUGMENTATION-DESIGN.md`](tech/DFA-AUGMENTATION-DESIGN.md) | 为什么 AST 不够用，以及 DFA 增强技术 |
 | [`STYLE-RULES.md`](tech/STYLE-RULES.md) | 风格类实现：`AstDispatcher`、`AstCheckerRegistry`、典型 checker 模式 |
-| [`MODULE-MERGE.md`](tech/MODULE-MERGE.md) | 模块合并方案与依赖图 |
+| [`MODULE-MERGE.md`](tech/MODULE-MERGE.md) | 模块结构与依赖边界 |
 | [`CACHE.md`](tech/CACHE.md) | 磁盘 IR 缓存：`--output-dir` 机制、文件格式、key、兼容性 |
 
 ## `rules/` — 规则
@@ -54,7 +54,7 @@
 
 | 文件 | 内容 |
 | --- | --- |
-| [`../testcase/SUPPORT-MATRIX.md`](../testcase/SUPPORT-MATRIX.md) | 五个 testcase category 的实测 TP / TN 数字与 known-limitation |
+| [`../testcase/SUPPORT-MATRIX.md`](../testcase/SUPPORT-MATRIX.md) | 每个 testcase category 的实测 TP / TN 数字与 known-limitation |
 | [`../testcase/README.md`](../testcase/README.md) | 怎么跑一个 category、harness 的语义、case 状态定义 |
 
 支持矩阵的数字由 `scripts/write_support_matrix.py` 从各 category 的 `RESULT.json` 生成，
@@ -99,5 +99,4 @@
 
 ## 其他位置
 
-- `testcase/config/min.yaml` — 最小配置示例（引用的是历史 demo 路径，仅作字段参考）。
-- `plumb-dfa/src/main/resources/docs/` — 源码内嵌资源（classpath 加载），不属于本目录。
+- `testcase/config/min.yaml` — 最小配置示例：`inputs` 指向仓库内的样例源码，可直接运行。

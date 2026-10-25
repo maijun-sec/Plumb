@@ -1,19 +1,37 @@
+# A minimal Plumb configuration.
+#
+# Every field is optional. Anything you omit falls back to the built-in default
+# documented in docs/usage/CLI.md. Both camelCase (cgStrategy) and snake_case
+# (cg-strategy) keys are accepted; camelCase wins when both are present.
+#
+# Run it against the repository's own sample sources:
+#
+#   java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
+#        -c testcase/config/min.yaml
+
+# ---- inputs ----
+# The directories to scan. Same meaning as `--input`, and repeatable.
 inputs:
-  - examples/demo/src/main/java
-  - examples/style-bad.java
+  - testcase/01-taint-crossfile/src
 
+# ---- output ----
+# `format` is console | ndjson. `path` defaults to stdout.
 output:
-  format: NDJSON
-  path: examples/out.ndjson
+  format: ndjson
+  path: build/plumb-out.ndjson
 
+# ---- checker families ----
+# `taint` and `style` are the two master switches. Every other key is one
+# rule family, in the `{enabled: ..., aiDedup: ...}` shape. `aiDedup` asks
+# the AI FP-reducer to review that family's findings.
 checks:
   taint: true
   style: true
-  divByZero: true
+  divByZero: {enabled: true, aiDedup: false}
 
+# ---- rule switches ----
+# Force-enable or force-disable individual rules by id. Both lists are
+# optional.
 rules:
   disabled: []
   enabled: []
-
-style:
-  methodLengthThreshold: 80
