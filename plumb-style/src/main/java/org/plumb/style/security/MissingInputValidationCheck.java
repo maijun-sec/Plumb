@@ -21,30 +21,44 @@ import java.util.List;
 import java.util.Set;
 import org.plumb.rules.RuleDef;
 import org.plumb.rules.RuleId;
+import org.plumb.rules.framework.FrameworkInputAnnotations;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 public final class MissingInputValidationCheck implements AstChecker {
 
+  /**
+   * The parameter annotations that bind a request value to a parameter.
+   *
+   * <p>This is the shared catalogue, not a local list. The taint engine decides where a taint flow
+   * STARTS from these annotations, and this checker decides whether the value is VALIDATED. The two
+   * have to agree: when each declared its own list, seventeen annotations were an HTTP trust
+   * boundary to the taint engine but invisible here, so a {@code @RestQuery} parameter was tracked
+   * as attacker-controlled by one layer and treated as trusted-by-default by the other.
+   */
   private static final Set<String> USER_INPUT_PARAM_ANNOS =
-      Set.of(
-          "RequestParam",
-          "PathVariable",
-          "RequestBody",
-          "RequestHeader",
-          "CookieValue",
-          "RequestPart",
-          "ModelAttribute",
-          "QueryParam",
-          "PathParam",
-          "HeaderParam",
-          "CookieParam",
-          "BeanParam",
-          "FormParam");
+      FrameworkInputAnnotations.USER_INPUT_PARAM_ANNOTATIONS;
 
   private static final Set<String> CLASS_OR_METHOD_VALIDATION = Set.of("Validated", "Valid");
 
-  private static final Set<String> CONTROLLER_ANNOS = Set.of("RestController", "Controller");
+  /**
+   * The class-level annotations that make a class a web endpoint holder.
+   *
+   * <p>JAX-RS and Quarkus REST put {@code @Path} on the CLASS and the HTTP method annotation on the
+   * METHOD, while Spring puts {@code @RestController} on the class and {@code @GetMapping} on the
+   * method. Micronaut puts {@code @Controller} on the class. So the class-level markers are not the
+   * same set as the method-level ones, and a checker that only recognised Spring's class annotation
+   * never fired on a JAX-RS resource at all.
+   */
+  private static final Set<String> CONTROLLER_ANNOS =
+      Set.of(
+          // Spring MVC
+          "RestController",
+          "RequestMapping",
+          // Micronaut
+          "Controller",
+          // JAX-RS / Quarkus REST
+          "Path");
 
   private static final Set<String> ENDPOINT_ANNOS =
       Set.of(
@@ -60,7 +74,16 @@ public final class MissingInputValidationCheck implements AstChecker {
           "DELETE",
           "HEAD",
           "OPTIONS",
-          "Path");
+          "PATCH",
+          "Path",
+          // Micronaut
+          "Get",
+          "Post",
+          "Put",
+          "Delete",
+          "Patch",
+          "Head",
+          "Options");
 
   private static final RuleDef RULE =
       new RuleDef(

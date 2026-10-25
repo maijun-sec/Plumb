@@ -150,6 +150,48 @@ name（`JdbcTemplate.query/2`）——扫描一个不带依赖 jar 的项目时�
 没有这份变体，所有框架 sink 会静默失配。细节见
 [规则编写指南](../rules/RULE-AUTHORING.md#133-加新-taint-rule)。
 
+### 3.1.1 框架入口点：源不是一次调用，而是一个参数注解
+
+只认 `HttpServletRequest.getParameter(...)` 的扫描器在 Spring 代码里**看不到任何源** ——
+框架是**按注解**把请求值绑到方法参数上的，controller 体内根本没有 request 对象：
+
+```java
+@GetMapping("/orders")
+public void search(@RequestParam("customer") String customer) {
+  repository.findByCustomer(customer);   // 值来自 HTTP 请求
+}
+```
+
+所以源是一个**参数注解**，IR 已经记了这些
+（`TacFunction.paramAnnotations()`）。
+
+注解清单只有一份：`plumb-rules` 的
+`org.plumb.rules.framework.FrameworkInputAnnotations`，共 **30** 个绑定注解，覆盖 5 个框架：
+
+| 框架 | 注解 |
+| --- | --- |
+| Spring MVC / Spring Data | `RequestParam` `PathVariable` `RequestBody` `RequestHeader` `RequestAttribute` `CookieValue` `RequestPart` `ModelAttribute` `SessionAttribute` `MatrixVariable` |
+| JAX-RS / Jakarta REST | `QueryParam` `PathParam` `HeaderParam` `CookieParam` `FormParam` `BeanParam` `MatrixParam` |
+| Quarkus REST | `RestPath` `RestQuery` `RestHeader` `RestCookie` `RestForm` `RestMatrix` `RestBeanParam` |
+| Micronaut | `Body` `Header` `QueryValue` `Part` `RequestBean` |
+| Jakarta Servlet | `WebParam` |
+
+清单的源头是 `scripts/framework_input_annotations.py`（每个名字都记了它被核对过的框架文档），
+Java 侧由 `scripts/gen_framework_annotations.py` 生成。
+
+**为什么必须只有一份**：污点引擎（决定污点流从哪开始）和 AST 的输入校验检查器
+（决定这个值要不要被校验）必须对"什么是用户输入"有同一个理解。这两层以前各写一份，
+而且漂移得并不对称：**13** 个注解在污点引擎眼里是 HTTP 信任边界，在校验检查器眼里
+根本不存在——于是 `@RestQuery` 参数被一层当攻击者可控、另一层当默认可信；
+反过来污点引擎还列了 **3** 个没有任何框架定义的名字（`CookieValue2` 是拼写错误，
+`HeaderValue` / `PathValue` 也不存在），真正该有的 Micronaut `Header` 反而漏了。
+
+**信任边界由绑定注解决定，不由端点注解决定**：JAX-RS 和 Quarkus REST 的端点注解
+**同名**（`@Path` `@GET` `@POST` …），光看端点注解分不出两者；但绑定注解不同
+（`@QueryParam` vs `@RestQuery`），而且这正是报告里该写清楚的东西。所以污点标签形如
+`param:customer@spring-mvc:RequestParam` —— 前缀 `param:` 保持不变（几十处
+`startsWith("param:")` 判断依赖它），框架限定词是**后缀**。
+
 ### 3.2 边界分析（boundary）
 
 `checkers/boundary/`，全部继承 `BoundaryConstraintChecker`（`:64`）。每个子类把算术谓词

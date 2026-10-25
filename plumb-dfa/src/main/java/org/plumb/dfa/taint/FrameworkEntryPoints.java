@@ -3,6 +3,7 @@ package org.plumb.dfa.taint;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.plumb.rules.framework.FrameworkInputAnnotations;
 import org.plumb.tac.ir.TacFunction;
 
 /**
@@ -37,53 +38,30 @@ public final class FrameworkEntryPoints {
   /**
    * Parameter annotations that bind a value supplied by the caller.
    *
-   * <p>The Spring MVC / Spring Data group comes first, then the JAX-RS and Jakarta EE groups, then
-   * the servlet-adjacent and Quarkus / Micronaut groups. They are matched by SIMPLE NAME, which is
-   * what the IR records: {@code @RequestParam} and a hypothetical {@code @org.acme.RequestParam}
-   * are the same name to this model.
+   * <p>The list lives in {@link FrameworkInputAnnotations}, which is the single catalogue shared
+   * with the AST input-validation checker. It must not be copied here: the two layers have to agree
+   * about what "user input" means, and they previously did not -- thirteen annotations were an HTTP
+   * trust boundary to the taint engine but invisible to the validation checker, and three names
+   * here were not defined by any framework at all.
+   *
+   * <p>Names are matched by SIMPLE NAME, which is what the IR records: {@code @RequestParam} and a
+   * hypothetical {@code @org.acme.RequestParam} are the same name to this model.
    */
   public static final Set<String> USER_INPUT_PARAM_ANNOTATIONS =
-      Set.of(
-          // Spring MVC / Spring Data
-          "RequestParam",
-          "PathVariable",
-          "RequestBody",
-          "RequestHeader",
-          "RequestAttribute",
-          "CookieValue",
-          "RequestPart",
-          "ModelAttribute",
-          "SessionAttribute",
-          "MatrixVariable",
-          // JAX-RS / Jakarta RESTful Web Services
-          "QueryParam",
-          "PathParam",
-          "HeaderParam",
-          "CookieParam",
-          "FormParam",
-          "BeanParam",
-          "MatrixParam",
-          // Jakarta Servlet (the annotation form, as opposed to the getter form)
-          "WebParam",
-          // Quarkus / Micronaut
-          "RestQuery",
-          "RestPath",
-          "RestHeader",
-          "RestForm",
-          "QueryValue",
-          "PathValue",
-          "HeaderValue",
-          "CookieValue2");
+      FrameworkInputAnnotations.USER_INPUT_PARAM_ANNOTATIONS;
 
   /**
    * The class-level annotation groups that make a method a framework endpoint. Used to qualify a
    * source label, so the finding says WHERE the value entered ("spring-mvc") rather than only WHICH
    * annotation bound it.
+   *
+   * <p>The map lives in the shared catalogue. It is only a HINT: JAX-RS and Quarkus REST use the
+   * SAME endpoint annotations ({@code @Path}, {@code @GET}, ...), so the endpoint annotation cannot
+   * distinguish them. The binding annotation on the parameter can, and it wins.
    */
   private static final Map<String, String> FRAMEWORK_BY_ENDPOINT_ANNOTATION =
       Map.ofEntries(
           Map.entry("RestController", "spring-mvc"),
-          Map.entry("Controller", "spring-mvc"),
           Map.entry("RequestMapping", "spring-mvc"),
           Map.entry("GetMapping", "spring-mvc"),
           Map.entry("PostMapping", "spring-mvc"),
@@ -94,7 +72,18 @@ public final class FrameworkEntryPoints {
           Map.entry("GET", "jax-rs"),
           Map.entry("POST", "jax-rs"),
           Map.entry("PUT", "jax-rs"),
-          Map.entry("DELETE", "jax-rs"));
+          Map.entry("DELETE", "jax-rs"),
+          Map.entry("HEAD", "jax-rs"),
+          Map.entry("OPTIONS", "jax-rs"),
+          Map.entry("PATCH", "jax-rs"),
+          Map.entry("Controller", "micronaut"),
+          Map.entry("Get", "micronaut"),
+          Map.entry("Post", "micronaut"),
+          Map.entry("Put", "micronaut"),
+          Map.entry("Delete", "micronaut"),
+          Map.entry("Patch", "micronaut"),
+          Map.entry("Head", "micronaut"),
+          Map.entry("Options", "micronaut"));
 
   /** A parameter bound by a framework entry point, and which annotation bound it. */
   public record EntryPoint(String annotation, String framework) {}
@@ -122,7 +111,7 @@ public final class FrameworkEntryPoints {
     }
     for (String annotation : annotations) {
       if (annotation != null && USER_INPUT_PARAM_ANNOTATIONS.contains(annotation)) {
-        return new EntryPoint(annotation, frameworkOf(fn));
+        return new EntryPoint(annotation, frameworkOf(fn, annotation));
       }
     }
     return null;
@@ -179,14 +168,23 @@ public final class FrameworkEntryPoints {
   }
 
   /**
-   * The framework a function belongs to, inferred from its class-level and method-level
-   * annotations.
+   * The framework a function belongs to, inferred from the binding annotation on the parameter and,
+   * failing that, from the class-level and method-level endpoint annotations.
    *
-   * <p>The endpoint annotations win over the class-level ones, because a mapping annotation is
-   * specific to the method that actually receives the request. When nothing identifies the
-   * framework, the label says only that a user-input annotation was present.
+   * <p>The BINDING annotation wins, because it is unambiguous. JAX-RS and Quarkus REST share the
+   * same endpoint annotations ({@code @Path}, {@code @GET}, {@code @POST}, ...), so an endpoint
+   * annotation cannot tell a Quarkus resource from a JAX-RS one -- but their binding annotations
+   * are different ({@code @RestQuery} versus {@code @QueryParam}), and that difference is exactly
+   * what a reader needs to see.
+   *
+   * <p>Within the endpoint annotations, the method-level ones win over the class-level ones,
+   * because a mapping annotation is specific to the method that actually receives the request.
    */
-  private static String frameworkOf(TacFunction fn) {
+  private static String frameworkOf(TacFunction fn, String bindingAnnotation) {
+    String fromBinding = FrameworkInputAnnotations.frameworkOf(bindingAnnotation);
+    if (!FrameworkInputAnnotations.FRAMEWORK_UNKNOWN.equals(fromBinding)) {
+      return fromBinding;
+    }
     List<String> methodAnns = fn.methodAnnotations();
     if (methodAnns != null) {
       for (String annotation : methodAnns) {
@@ -205,6 +203,6 @@ public final class FrameworkEntryPoints {
         }
       }
     }
-    return "framework";
+    return FrameworkInputAnnotations.FRAMEWORK_UNKNOWN;
   }
 }

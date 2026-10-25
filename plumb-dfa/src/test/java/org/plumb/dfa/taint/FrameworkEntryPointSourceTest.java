@@ -209,6 +209,64 @@ class FrameworkEntryPointSourceTest {
   }
 
   /**
+   * A Micronaut parameter is recognised too, and names the Micronaut framework.
+   *
+   * <p>Micronaut names its binding annotations differently from everyone else: {@code @Header}
+   * rather than {@code @RequestHeader}, {@code @QueryValue} rather than {@code @QueryParam}. Before
+   * the shared annotation catalogue, the taint engine's list held {@code HeaderValue} and {@code
+   * PathValue} -- names no framework defines -- while the real {@code @Header} was missing. A value
+   * from a Micronaut request header therefore reached the sink with no taint flow to follow.
+   */
+  @Test
+  void aMicronautHeaderIsRecognised() throws Exception {
+    List<Finding> out =
+        scan(
+            """
+            package app;
+            import io.micronaut.http.annotation.Header;
+            public class C {
+              private final java.sql.Statement statement = null;
+              public void search(@Header("X-Customer") String customer) {
+                statement.executeQuery("SELECT * FROM orders WHERE customer = '" + customer + "'");
+              }
+            }
+            """,
+            "MicronautController.java");
+    assertThat(out).as("the sink must be reached").hasSize(1);
+    String label = sourceLabelOf(out.get(0));
+    assertThat(label)
+        .as("the source must name the Micronaut entry point")
+        .isEqualTo("param:customer@micronaut:Header");
+  }
+
+  /**
+   * A Quarkus parameter is recognised too, and names the Quarkus framework.
+   *
+   * <p>{@code @RestCookie} and {@code @RestMatrix} were missing entirely before the shared
+   * catalogue, so a value from a Quarkus cookie reached the sink untainted.
+   */
+  @Test
+  void aQuarkusRestCookieIsRecognised() throws Exception {
+    List<Finding> out =
+        scan(
+            """
+            package app;
+            import org.jboss.resteasy.reactive.RestCookie;
+            public class C {
+              private final java.sql.Statement statement = null;
+              public void search(@RestCookie("customer") String customer) {
+                statement.executeQuery("SELECT * FROM orders WHERE customer = '" + customer + "'");
+              }
+            }
+            """,
+            "QuarkusResource.java");
+    assertThat(out).as("the sink must be reached").hasSize(1);
+    assertThat(sourceLabelOf(out.get(0)))
+        .as("the source must name the Quarkus entry point")
+        .isEqualTo("param:customer@quarkus-rest:RestCookie");
+  }
+
+  /**
    * A non-user-input annotation does NOT make the parameter a framework entry point.
    *
    * <p>{@code @Autowired} and friends say nothing about where the value came from.
