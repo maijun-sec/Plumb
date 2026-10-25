@@ -19,8 +19,12 @@ public final class CallSite {
     /** Static dispatch or invokestatic / invokevirtual with a single resolved target. */
     DIRECT,
     /**
-     * Virtual call (invokevirtual / invokeinterface) with one or more possible targets resolved via
-     * the class hierarchy.
+     * Virtual call (invokevirtual / invokeinterface) with one or more possible targets.
+     *
+     * <p>The targets are resolved by matching the callee's simple name and arity against the
+     * functions in the program -- NOT by walking the class hierarchy. That is the standard CHA
+     * over-approximation: every type that could be the receiver's dynamic type is a possible
+     * target, and the name+arity match reaches them all.
      */
     VIRTUAL,
     /**

@@ -85,31 +85,48 @@ initEngine(ctx)
 ## 2. Fact 域
 
 `fact/Fact.java` 的 `Fact` 是四元组 `(FactKind, operand, value, 来源指令)`。
-`FactKind.Trait` 位标记引擎自动传播方式（`BuiltinFactKinds.java:19-37`）。
 
-`BuiltinFactKinds.registryWithBuiltins()` 注册 **15 个**内置 kind（`:223-314`）：
+`FactKind.Trait` **不是引擎执行的机制,而是意图声明**。没有任何生产代码读取 trait:
+`FactKind.has(Trait)` 存在,但只有测试调用它,引擎从不调用。事实的实际传播由**拥有它的
+checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagateMOVE(...)` 里直接
+完成,和 trait 无关。`plumb-dfa/src/test/java/org/plumb/dfa/fact/FactTraitSemanticsTest.java`
+把这个事实钉住:它断言生产代码里不存在任何 `.has(...Trait...)` 调用。
 
-| kind 常量 | 位置 | trait |
-| --- | --- | --- |
-| `dfa-taint-untrusted-source` | `:50` | SOURCE, PROPAGATED_BY_DECL, THROUGH_CALL |
-| `dfa-taint-untrusted-sink` | `:60` | SINK, IS_PATH_SINK |
-| `plumb.nullable.may-be-null` | `:71` | PROPAGATED_BY_DECL |
-| `plumb.numeric.may-be-zero` | `:79` | PROPAGATED_BY_DECL |
-| `plumb.resource.alloc-source` | `:90` | PROPAGATED_BY_DECL, THROUGH_CALL |
-| `plumb.resource.free-sink` | `:100` | IS_PATH_SINK |
-| `plumb.pointer.deref-sink` | `:111` | IS_PATH_SINK |
-| `plumb.array.index-sink` | `:119` | IS_PATH_SINK |
-| `plumb.numeric.overflow-hazard` | `:129` | NOT_PROPAGATED_THROUGH_LOOP, IS_PATH_SINK |
-| `plumb.sensitive.data` | `:140` | SOURCE, BY_DECL, THROUGH_CALL |
-| `plumb.sensitive.pii` | `:150` | 同上 |
-| `plumb.loop.induction` | `:161` | NOT_PROPAGATED_THROUGH_LOOP |
-| `plumb.call.unmodeled-callee-ret` | `:172` | BY_DECL, THROUGH_CALL |
-| `plumb.call.return-value-folded` | `:198` | BY_DECL |
-| `plumb.call.side-effect-recorded` | `:210` | BY_DECL |
+> 为什么值得写清楚:`PROPAGATED_BY_DECL` 读起来像一个开关 —— 加上它,引擎就应该把事实从
+> 定义复制到所有使用处。实际不是这样。保留 trait 是有理由的(它们让清单可读、也是未来
+> trait 驱动传播的输入),但它们**今天不是机制**。
 
-**重要区分**：fact 域不等于「四类分析各有一个 fact kind」。实际只有 taint / sensitive
-有 source 类 kind；boundary、points-to、control-flow **都没有对应的 fact kind**，它们由各自
-独立的机制计算（见下）。
+`BuiltinFactKinds.registryWithBuiltins()` 注册 **15 个**内置 kind
+(`BuiltinFactKinds.java:225-320`):
+
+| kind 名 | 常量 | 位置 | 声明的 trait |
+| --- | --- | --- | --- |
+| `dfa-taint-untrusted-source` | `UNTRUSTED_SOURCE` | `:56` | SOURCE, BY_DECL, THROUGH_CALL |
+| `dfa-taint-untrusted-sink` | `UNTRUSTED_SINK` | `:66` | SINK, IS_PATH_SINK |
+| `plumb.nullable.may-be-null` | `MAY_BE_NULL` | `:77` | BY_DECL |
+| `plumb.numeric.may-be-zero` | `MAY_BE_ZERO` | `:85` | BY_DECL |
+| `plumb.resource.alloc-source` | `ALLOC_SOURCE` | `:96` | BY_DECL, THROUGH_CALL |
+| `plumb.resource.free-sink` | `FREE_SINK` | `:106` | IS_PATH_SINK |
+| `plumb.pointer.deref-sink` | `DEREF_SINK` | `:117` | IS_PATH_SINK |
+| `plumb.array.index-sink` | `INDEX_SINK` | `:125` | IS_PATH_SINK |
+| `plumb.numeric.overflow-hazard` | `NUMERIC_OVERFLOW_HAZARD` | `:135` | NOT_PROPAGATED_THROUGH_LOOP, IS_PATH_SINK |
+| `plumb.sensitive.data` | `SENSITIVE_DATA` | `:146` | SOURCE, BY_DECL, THROUGH_CALL |
+| `plumb.sensitive.pii` | `SENSITIVE_PII` | `:156` | SOURCE, BY_DECL, THROUGH_CALL |
+| `plumb.loop.induction` | `LOOP_INDUCTION` | `:167` | NOT_PROPAGATED_THROUGH_LOOP |
+| `plumb.call.unmodeled-callee-ret` | `UNMODELED_CALLEE_RET` | `:178` | BY_DECL, THROUGH_CALL |
+| `plumb.call.return-value-folded` | `RETURN_VALUE_FOLDED` | `:204` | BY_DECL |
+| `plumb.call.side-effect-recorded` | `SIDE_EFFECT_RECORDED` | `:216` | BY_DECL |
+
+**这是两个不同的清单,不是一个**:`ConfigLoader.parseFactKinds`
+(`config/ConfigLoader.java:227-264`)先把这 15 个内置 kind 放进 registry,再用
+`fact-kinds.yaml` 的 **12 个** 条目覆盖或追加 —— YAML 的条目用另一套命名
+(`UntrustedSource`、`MayBeNull`、`Freed` 等)。两者名字空间不同但**落在同一个 registry 里**,
+所以有效的事务种类是 27 个。`capability_baseline` 把两个清单分开测量(`builtin:` /
+`yaml:` 前缀),少任何一个都会被拒。
+
+**重要区分**:fact 域不等于「四类分析各有一个 fact kind」。实际只有 taint / sensitive
+有 source 类 kind;boundary、points-to、control-flow **都没有对应的 fact kind**,它们由各自
+独立的机制计算(见下)。
 
 ---
 

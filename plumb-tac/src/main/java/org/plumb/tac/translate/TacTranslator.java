@@ -488,9 +488,9 @@ public final class TacTranslator {
    * not {@code "org.springframework.security.access.prepost.PreAuthorize"}).
    *
    * <p>The {@code enclosingClass} parameter carries the short name of the declaring class (e.g.
-   * {@code "MyThread"}), used by the CHA-style resolver to walk the class hierarchy when a call's
-   * receiver type is known. {@code null} means "no enclosing class" (free functions, synthetic
-   * inits where the class isn't available, etc.).
+   * {@code "MyThread"}). It distinguishes two same-named methods on different classes, so the
+   * merged program can keep both instead of collapsing them into one entry. {@code null} means "no
+   * enclosing class" (free functions, synthetic inits where the class isn't available, etc.).
    *
    * <p>The {@code declaringType} parameter carries the qualified name of the type that declares
    * this callable (e.g. {@code "Controller"} for a top-level class, {@code "Outer$Inner"} for a

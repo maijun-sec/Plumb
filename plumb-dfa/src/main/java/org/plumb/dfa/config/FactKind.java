@@ -12,28 +12,45 @@ import java.util.Set;
  * UntrustedSource} marks a value as coming from outside the trust boundary; {@code MayBeZero} marks
  * a variable that may hold 0.
  *
- * <p>Each fact kind has a set of {@link Trait}s that declaratively describe how the engine
- * propagates it. The engine consults the trait bits when handling an instruction; checkers don't
- * need to write per-kind propagation code.
+ * <p>Each fact kind carries a set of {@link Trait}s that describe <em>how a fact of this kind is
+ * meant to propagate</em>. <b>The traits are documentation, not a policy the engine executes.</b>
+ * No production code reads them: the propagation is implemented per checker, and a checker
+ * propagates what it needs to propagate.
+ *
+ * <p>That is worth stating plainly, because the alternative reading is a plausible one: a reader
+ * could reasonably believe that adding {@code PROPAGATED_BY_DECL} to a kind makes the engine copy
+ * the fact from a def to its uses. It does not. {@link #has(Trait)} exists and is exercised by the
+ * tests, but the engine never calls it.
+ *
+ * <p>The traits are still worth keeping: they are the catalogue's own statement of intent, they are
+ * what {@code fact-kinds.yaml} configures, and they are what a future trait-driven propagation step
+ * would consume. What they are not is a mechanism that exists today.
  *
  * <p>Fact kinds are loaded from {@code fact-kinds.yaml} and registered via {@link
  * FactKindRegistry#register}.
  */
 public final class FactKind {
 
-  /** How a fact kind propagates through the IR. */
+  /**
+   * How a fact kind is meant to propagate through the IR.
+   *
+   * <p><b>These are declarations of intent, not behaviour the engine executes.</b> No production
+   * code reads a trait; the propagation is implemented by the checker that owns the kind. The enum
+   * values describe what a fact of that kind SHOULD do, so the catalogue stays readable and a
+   * future trait-driven step has something to consume.
+   */
   public enum Trait {
-    /** Flows from SSA def to all uses. */
+    /** Should flow from an SSA def to all its uses. */
     PROPAGATED_BY_DECL,
-    /** May propagate across function call boundaries. */
+    /** May cross a function call boundary. */
     PROPAGATED_THROUGH_CALL,
     /** Marks the value as untrusted (e.g. user input). */
     UNTRUSTED_SOURCE,
     /** Marks a use site that consumes sensitive values. */
     UNTRUSTED_SINK,
-    /** When set, the fact is dropped on loop back-edges. */
+    /** Should be dropped on loop back-edges. */
     NOT_PROPAGATED_THROUGH_LOOP,
-    /** Facts of this kind are joined with AND, not OR. */
+    /** Facts of this kind should be joined with AND, not OR. */
     JOINED_BY_AND,
     /** Marks the instruction as a candidate path sink. */
     IS_PATH_SINK

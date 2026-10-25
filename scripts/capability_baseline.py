@@ -11,7 +11,7 @@ So the surface is measured directly, from the sources that define it:
     registrations in the AST and DFA checkers;
   * the sink families and their patterns, from {@code sink-families.yaml};
   * the input-source patterns, from {@code InputSourcePatterns};
-  * the fact kinds, from {@code fact-kinds.yaml} plus the built-in kinds;
+  * the fact kinds, from the built-in catalogue plus {@code fact-kinds.yaml};
   * the receiver-passthrough families, from {@code receiver-passthrough.yaml}.
 
 The output is a stable, sorted fingerprint per surface. It is written to a baseline file, and
@@ -179,26 +179,79 @@ def input_source_patterns():
     return sorted(re.findall(r'"([^"]*)"', text[brace:end]))
 
 
+def builtin_fact_kinds():
+    """The fact kind names the built-in catalogue registers.
+
+    <p>Read from the constant that holds each name, because the constant IS the registered key:
+    {@code ConfigLoader.parseFactKinds} copies every {@link FactKind} out of
+    {@code BuiltinFactKinds.registryWithBuiltins()} into the registry under {@code kind.name()},
+    and the name is the string constant that the constant declares.
+
+    <p>An earlier version of this measurement looked for {@code public static final FactKind}.
+    No such field exists -- the built-ins declare their names as {@code String} constants -- so the
+    pattern matched nothing and the 15 built-in kinds were silently absent from the baseline. A
+    built-in kind could have been deleted without the gate noticing.
+    """
+    builtins = (REPO / "plumb-dfa" / "src" / "main" / "java" / "org" / "plumb" / "dfa" / "fact"
+                / "BuiltinFactKinds.java")
+    if not builtins.is_file():
+        return []
+    text = builtins.read_text(encoding="utf-8", errors="replace")
+    # Each kind is declared as a String constant holding the registered key. The registration in
+    # buildRegistry() refers to the CONSTANT, not to the literal, so the constant identifier is
+    # what has to be followed to the registration.
+    constants = []
+    for m in re.finditer(r'public static final String\s+(\w+)\s*=\s*"([^"]+)"', text):
+        constant, value = m.group(1), m.group(2)
+        # The *_TRAITS constants are Sets, not Strings, so they are not picked up here.
+        if constant.endswith("_TRAITS"):
+            continue
+        constants.append((constant, value))
+
+    # Only the kinds that registryWithBuiltins() actually registers count. A constant that is
+    # declared but never registered is not a capability.
+    registry_body = text[text.find("buildRegistry()"):] if "buildRegistry()" in text else ""
+    registered = []
+    for constant, value in constants:
+        if re.search(r'Map\.entry\(\s*%s\b' % re.escape(constant), registry_body) or \
+           re.search(r'new FactKind\(\s*%s\b' % re.escape(constant), registry_body):
+            registered.append(value)
+    return sorted(set(registered))
+
+
+def yaml_fact_kinds():
+    """The fact kind names the YAML config declares."""
+    if not FACT_KINDS.is_file():
+        return []
+    text = FACT_KINDS.read_text(encoding="utf-8", errors="replace")
+    names = []
+    in_kinds = False
+    for line in text.splitlines():
+        if line.startswith("fact_kinds:"):
+            in_kinds = True
+            continue
+        if in_kinds:
+            m = re.match(r"^  (\w+):\s*$", line)
+            if m:
+                names.append(m.group(1))
+    return sorted(set(names))
+
+
 def fact_kinds():
-    """The fact kinds, from the YAML plus the built-in catalogue."""
-    names = set()
-    if FACT_KINDS.is_file():
-        text = FACT_KINDS.read_text(encoding="utf-8", errors="replace")
-        in_families = False
-        for line in text.splitlines():
-            if line.startswith("fact_kinds:"):
-                in_families = True
-                continue
-            if in_families:
-                m = re.match(r"^  (\w+):\s*$", line)
-                if m:
-                    names.add(m.group(1))
-    builtins = REPO / "plumb-dfa" / "src" / "main" / "java" / "org" / "plumb" / "dfa" / "fact" / "BuiltinFactKinds.java"
-    if builtins.is_file():
-        text = builtins.read_text(encoding="utf-8", errors="replace")
-        for m in re.finditer(r'public static final FactKind\s+(\w+)', text):
-            names.add(m.group(1))
-    return sorted(names)
+    """The fact kinds, from the built-in catalogue plus the YAML.
+
+    <p>These are two distinct populations that {@code ConfigLoader.parseFactKinds} merges into ONE
+    registry: the built-in kinds first, then the YAML entries, which may override a built-in by
+    name or add new ones.
+
+    <p>They are measured with distinct prefixes because the namespaces overlap in meaning but not
+    in spelling -- the built-ins are {@code dfa-taint-untrusted-source} style, the YAML entries are
+    {@code UntrustedSource} style -- and a single flat set would let one mask the other.
+    """
+    return sorted(
+        ["builtin:" + name for name in builtin_fact_kinds()]
+        + ["yaml:" + name for name in yaml_fact_kinds()]
+    )
 
 
 def measure():

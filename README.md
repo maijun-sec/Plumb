@@ -167,6 +167,13 @@ python scripts/check_all.py
 任何一项减少都会被拒绝;增加会被报告出来,并且需要**显式**更新基线才算接受。
 这样"顺手清理一下"就不可能悄悄变成"少支持一类问题"。
 
+事实种类有两个来源,门禁**分开**测量(`builtin:` / `yaml:` 前缀):`BuiltinFactKinds`
+里注册的 15 个内置 kind,和 `fact-kinds.yaml` 里的 12 个条目。两者命名风格不同
+(`dfa-taint-untrusted-source` vs `UntrustedSource`),但 `ConfigLoader.parseFactKinds`
+会把它们合进同一个 registry —— 所以合起来是 27 个。分开测量是为了防止其中一个
+清单把另一个遮住:曾经有一版测量用一个永远匹配不到的 pattern 去数内置 kind,
+于是那 15 个**根本不在基线里**,删掉一个也不会被发现。
+
 ### 3.4 最小扫描
 
 ```bash

@@ -28,14 +28,14 @@ import org.plumb.tac.ir.TacOperand.TacVar;
  * <p>The fact layer is one of Plumb's three data-flow layers, alongside the FunctionSummary layer:
  *
  * <ul>
- *   <li><b>Layer 1 ? {@link FactKind} + {@code Trait} bits</b>: a global registry of "kinds of
- *       facts the analysis cares about" with a declarative propagation policy. Engine reads the
- *       traits to decide what to do automatically (e.g. {@code PROPAGATED_BY_DECL} → copy fact from
- *       def to all uses on the same var).
- *   <li><b>Layer 2 ? {@code Fact} instance</b>: a single "(operand, kind, value, origin)" tuple
+ *   <li><b>Layer 1 - {@link FactKind} + {@code Trait} bits</b>: a global registry of "kinds of
+ *       facts the analysis cares about", with a declarative statement of how each kind is meant to
+ *       propagate. The traits are documentation: no production code reads them, and the propagation
+ *       is implemented by the checker that owns the kind.
+ *   <li><b>Layer 2 - {@code Fact} instance</b>: a single "(operand, kind, value, origin)" tuple
  *       observed by a checker during analysis. Stored in a per-function {@link FactBag} for that
  *       run.
- *   <li><b>Layer 3 ? {@code FunctionSummary} + {@code Operation}</b>: the accumulated
+ *   <li><b>Layer 3 - {@code FunctionSummary} + {@code Operation}</b>: the accumulated
  *       cross-function view that summarises a callee's param-bound effects for callers to consume
  *       without re-analysing the callee body.
  * </ul>

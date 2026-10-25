@@ -4,11 +4,11 @@ package org.plumb.dfa.cg;
  * Cross-TU {@link CallGraphStrategy} backed by a {@link GlobalTACStore}.
  *
  * <p>Unlike the TU-local strategies (CHA, RTA, stub) which inspect a single {@link
- * org.plumb.tac.ir.TacProgram} and resolve callees by name + class hierarchy, this strategy
- * consults the global registry: the {@link GlobalTACStore} already knows every function defined
- * across every source file, so a call instruction's {@code calleeSig} is resolved by direct lookup.
- * Cross-TU calls land on the right node; library calls are filtered; the produced {@link CallGraph}
- * spans every loaded {@link org.plumb.tac.ir.TacProgram}.
+ * org.plumb.tac.ir.TacProgram} and resolve callees by simple name + arity, this strategy consults
+ * the global registry: the {@link GlobalTACStore} already knows every function defined across every
+ * source file, so a call instruction's {@code calleeSig} is resolved by direct lookup. Cross-TU
+ * calls land on the right node; library calls are filtered; the produced {@link CallGraph} spans
+ * every loaded {@link org.plumb.tac.ir.TacProgram}.
  *
  * <p>Selection via {@link CallGraphStrategyFactory}:
  *

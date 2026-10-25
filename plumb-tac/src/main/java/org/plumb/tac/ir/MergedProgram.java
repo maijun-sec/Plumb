@@ -76,11 +76,10 @@ public final class MergedProgram implements java.io.Serializable {
       // siblings) all survive the merge. The
       // prior signature-based key was last-writer-wins,
       // which silently dropped every implementor after the
-      // first; combined with the CHA-preferred
-      // resolveCall it would have caused a single
-      // "good" implementor to shadow the rest of the
-      // class hierarchy even when the classToChildren
-      // aggregate saw every child.
+      // first: a single "good" implementor would then be the
+      // only candidate left for the CHA name+arity match, so
+      // the "bad" sink vanished from the analysis and the
+      // report could fire against the wrong file.
       for (TacFunction fn : src.functions()) {
         String key = mergedKey(fn);
         functions.put(key, fn);

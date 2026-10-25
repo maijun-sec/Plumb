@@ -451,7 +451,7 @@ emit-id。`ScanRunner.isRuleIdAllowed` 里的
 | 想要 | 在哪里加 |
 | --- | --- |
 | 新加 taint source / sink 模式 | `plumb-dfa/src/main/resources/sink-families.yaml`（新增 `families.<name>.patterns`） |
-| 新加 fact kind | `plumb-dfa/.../fact/BuiltinFactKinds.java` 的 `registryWithBuiltins()` |
+| 新加 fact kind | `plumb-dfa/src/main/resources/fact-kinds.yaml`（配置清单）或 `plumb-dfa/.../fact/BuiltinFactKinds.java` 的 `registryWithBuiltins()`（内置清单） |
 | 新加 taint 规则 | `plumb-dfa/.../checkers/taint/<Name>Checker.java`，继承 `TaintedCheckerBase` |
 | 新加边界规则 | `plumb-dfa/.../checkers/boundary/`，继承 `BoundaryConstraintChecker` |
 | 新加控制流检查 | `plumb-dfa/.../checkers/controlflow/`，实现 `DfaChecker` |

@@ -12,11 +12,16 @@ import org.plumb.dfa.config.FactKindRegistry;
  * checkers in the same domain don't collide.
  *
  * <p>Each built-in has a one-line description of the dataflow role it plays and the {@link Trait}
- * set the engine consults to decide what to do automatically. Custom checkers can register their
- * own {@link FactKind}s on top of these; the registry is keyed by name, so no collision is possible
- * as long as the names are unique.
+ * set that states how a fact of that kind is <em>meant</em> to propagate. The traits are the
+ * catalogue's declaration of intent; no production code reads them -- propagation is implemented by
+ * the checker that owns the kind. Custom checkers can register their own {@link FactKind}s on top
+ * of these; the registry is keyed by name, so no collision is possible as long as the names are
+ * unique.
  *
  * <h2>How to pick the right trait set</h2>
+ *
+ * <p>These describe what a fact of the kind should do, so the catalogue stays readable and a future
+ * trait-driven step has something to consume:
  *
  * <ul>
  *   <li>{@code PROPAGATED_BY_DECL}: the fact should follow the variable through the IR (e.g. taint
@@ -25,7 +30,8 @@ import org.plumb.dfa.config.FactKindRegistry;
  *   <li>{@code PROPAGATED_THROUGH_CALL}: the fact should cross function boundaries. Most
  *       source-side facts have this; sink-side and "use site" facts don't.
  *   <li>{@code UNTRUSTED_SOURCE}: this fact marks the value as coming from outside the trust
- *       boundary. The engine uses this to drive "taint → sink" cross-checker cooperations.
+ *       boundary. It is the tag that pairs a source fact with a sink fact in the "taint -&gt; sink"
+ *       cooperation.
  *   <li>{@code UNTRUSTED_SINK}: this fact marks an instruction site that consumes sensitive values.
  *       Symmetric counterpart of {@code UNTRUSTED_SOURCE}.
  *   <li>{@code NOT_PROPAGATED_THROUGH_LOOP}: the fact is conservative on loop back-edges (e.g. an

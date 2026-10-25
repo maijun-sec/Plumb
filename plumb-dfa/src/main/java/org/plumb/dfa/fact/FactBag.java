@@ -30,13 +30,16 @@ import org.plumb.tac.ir.TacOperand.TacVar;
  *
  * <h2>Trait-driven propagation</h2>
  *
- * <p>The engine consults the {@link FactKind}'s {@code PROPAGATED_BY_DECL} trait when reading the
- * bag: a use of operand {@code x} at instruction {@code i} picks up the facts of the def that most
- * recently wrote {@code x} (last-write-wins). The {@code PROPAGATED_THROUGH_CALL} trait is the
- * bridge into the FunctionSummary: when a callee summary says "param 0 carries X", the engine
- * writes the corresponding fact onto the corresponding caller operand in the caller's bag. Concrete
- * propagation logic is the consumer's responsibility; the bag just stores facts and lets the
- * consumer walk them.
+ * <p><b>The bag does not propagate anything, and it does not read the traits.</b> It is a store: a
+ * checker records a fact during the function, and a checker (often the same one, sometimes another)
+ * reads it back and decides what to do. {@link FactKind#has(org.plumb.dfa.config.FactKind.Trait)}
+ * exists and is exercised by the tests, but no production code calls it -- the propagation is
+ * implemented per checker.
+ *
+ * <p>What the traits DO say is what the kind is meant to mean: {@code PROPAGATED_BY_DECL} means "a
+ * fact of this kind should follow the variable through the IR", {@code PROPAGATED_THROUGH_CALL}
+ * means "it should cross a function boundary". Those statements are the catalogue's contract with
+ * the reader, and the per-checker implementations are what honour them.
  */
 public final class FactBag {
 

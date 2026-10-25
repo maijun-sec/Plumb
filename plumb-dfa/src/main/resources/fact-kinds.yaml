@@ -3,8 +3,18 @@
 # Defines the typed dataflow facts used across checkers.
 # A fact kind is a semantic property a checker cares
 # about. Each fact has a name, a description, a set of
-# traits (declarative propagation rules), and an
-# optional owner checker.
+# traits (a declaration of intent), and an optional
+# owner checker.
+#
+# NOTE: the traits are a DECLARATION OF INTENT, not a policy the engine
+# executes. No production code reads them — propagation is implemented by
+# the checker that owns the kind. They are kept because they make the
+# catalogue readable and because a future trait-driven step would consume
+# them.
+#
+# This file's entries are merged with the 15 built-in kinds in
+# BuiltinFactKinds.registryWithBuiltins(); the two use different naming
+# conventions but end up in the same registry.
 #
 # Adding a new fact kind:
 #   fact_kinds:
@@ -13,7 +23,7 @@
 #       traits: [PROPAGATED_BY_DECL]
 #       owner: MyChecker
 #
-# Available traits:
+# Available traits (what a fact of the kind is MEANT to do):
 #   PROPAGATED_BY_DECL        — flows from SSA def to all uses
 #   PROPAGATED_THROUGH_CALL   — may propagate across fn boundaries
 #   UNTRUSTED_SOURCE          — value came from outside trust boundary
