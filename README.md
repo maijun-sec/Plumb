@@ -144,9 +144,12 @@ python scripts/check_all.py
 | `check_dataflow_constraint` | 清单的 `dataflow_contains` 约束不是空断言 |
 | `check_support_matrix_coverage` | 支持矩阵覆盖了每个已测量的类别,且每行的数字和 `RESULT.json` 对得上 |
 | `check_javadoc_links` | javadoc 里 `{@link}` 指向的类型真的存在 |
-| `check_doc_hygiene` | 产品文档描述的是**当前**状态:没有轮次号、没有过去式措辞、没有无法复现的测量当事实 |
+| `check_doc_index` | 文档索引列全了 `docs/` 下的每一份文档,索引里的链接也都能打开 |
+| `check_doc_hygiene` | 产品文档描述的是**当前**状态:没有轮次号、没有过去式措辞、没有无法复现的测量当事实 —— markdown、源码注释、随包发布的配置文件都查 |
 | `check_doc_numbers` | 手写文档里引用的数字仍然和源码对得上 |
 | `capability_baseline --check` | 没有丢掉任何规则、sink 模式、污点源模式、checker 或事实种类 |
+| `gen_tool_comparison --check` | 工具对比文档里的数字仍然和源码对得上 |
+| `gen_rules_overview --check` | 规则总览里的数字仍然和源码对得上 |
 | `linkcheck` | markdown 里的相对链接没有断链 |
 
 跑完还会重新生成 `docs/plumb-style-rules*.md`,并报告生成结果和已提交版本是否一致。

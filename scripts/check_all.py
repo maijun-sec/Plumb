@@ -30,10 +30,14 @@ The gates are:
                               measurement
     check_javadoc_links        every javadoc @link target names a type
                               that exists
+    check_doc_index            the documentation index lists every
+                              document, and every link in it resolves
     check_doc_hygiene          the product documentation describes the
                               CURRENT state: no round numbers, no
                               past-state wording, no unreproducible
-                              measurement presented as fact
+                              measurement presented as fact -- in the
+                              markdown, in the source comments, and in
+                              the shipped configuration files
     check_doc_numbers          the counts quoted in the hand-written
                               documentation still match the source
     capability_baseline --check
@@ -80,6 +84,8 @@ GATES = (
      ["python", "scripts/check_support_matrix_coverage.py"], "check"),
     ("check_javadoc_links",
      ["python", "scripts/check_javadoc_links.py"], "check"),
+    ("check_doc_index",
+     ["python", "scripts/check_doc_index.py"], "check"),
     ("check_doc_hygiene",
      ["python", "scripts/check_doc_hygiene.py"], "check"),
     ("check_doc_numbers",

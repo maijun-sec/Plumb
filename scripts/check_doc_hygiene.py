@@ -129,6 +129,31 @@ RULES = [
         "benchmark it was measured against",
     ),
     (
+        "benchmark-claim",
+        # A BENCHMARK CLAIM in a product source comment. A source comment
+        # documents the code; a comment that reports "0 TP / 100% FP on
+        # Juliet" is a claim about one past measurement, and the corpus is
+        # not in version control, so nobody can re-derive it.
+        #
+        # The three parts:
+        #   * a TP or FP count -- "0 TP / 100% FP", "3 TP";
+        #   * a percentage presented as a measurement -- "60% FP";
+        #   * the corpus named as the measuring stick -- "on Juliet", "the
+        #     Juliet baseline".
+        #
+        # A rule's DESIGN may be motivated by the shape of a corpus case.
+        # That is a statement about the rule and is allowed: it names the
+        # corpus without attaching a number to it.
+        re.compile(
+            r"\b\d+\s*TP\b|\b\d+\s*FP\b|\bTP\s*/\s*\d|\bFP\s*/\s*\d|"
+            r"\b\d{1,3}\s*%\s*(?:FP|TP)\b|"
+            r"(?<![A-Za-z0-9_])(?:Juliet|JULIET)(?![A-Za-z0-9_])"
+            r"[^。\n|]{0,40}?(?:baseline|测试集|corpus)"
+        ),
+        "benchmark claim: a source comment reports a measurement instead of "
+        "describing the code",
+    ),
+    (
         "dangling-subject",
         # Removing a round marker from the middle of a Chinese sentence can leave the
         # sentence without its subject:
@@ -265,6 +290,11 @@ def scan_product_resources():
          corpus takes and the shape no configuration takes.
 
     A configuration directory with a handful of YAML files is fine and is not flagged.
+
+    The CONTENT of a shipped configuration is checked too. A shipped YAML is a
+    user-facing document: the user copies it and edits it. So it must not carry
+    round markers (process history) or benchmark claims (measurements this
+    repository cannot re-derive) any more than `docs/` must.
     """
     hits = []
     for root in REPO.glob("plumb-*/src/main/resources"):
@@ -296,6 +326,21 @@ def scan_product_resources():
                 hits.append((entry, 0, "fixture-tree-in-product", str(count),
                              "a %d-file tree under src/main/resources is a test fixture, "
                              "and it is packaged into the product" % count))
+    # The CONTENT of a shipped configuration.
+    for root in REPO.glob("plumb-*/src/main/resources"):
+        if not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*.yaml")):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for lineno, line in enumerate(text.splitlines(), 1):
+                if not line.strip().startswith("#"):
+                    continue
+                for name, pattern, why in RULES:
+                    if name not in ("round-marker", "benchmark-claim",
+                                    "past-state", "unreproducible-measurement"):
+                        continue
+                    for m in pattern.finditer(line):
+                        hits.append((path, lineno, name, m.group(0), why))
     return hits
 
 

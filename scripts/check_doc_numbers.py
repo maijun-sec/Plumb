@@ -92,6 +92,33 @@ def internal_module_deps(module):
     return deps
 
 
+def measured_categories():
+    """The categories that have a measurement (a RESULT.json)."""
+    tc = REPO / "testcase"
+    if not tc.is_dir():
+        return 0
+    return sum(1 for d in tc.iterdir()
+               if d.is_dir() and (d / "RESULT.json").is_file())
+
+
+def category_directories():
+    """The category directory names, in order."""
+    tc = REPO / "testcase"
+    if not tc.is_dir():
+        return []
+    return sorted(d.name for d in tc.iterdir()
+                  if d.is_dir() and (d / "RESULT.json").is_file())
+
+
+def testcase_readme_category_rows():
+    """The category names the testcase README lists, in order."""
+    path = REPO / "testcase" / "README.md"
+    if not path.is_file():
+        return []
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return re.findall(r"^\|\s*`(\d\d-[a-z0-9\-]+)`\s*\|", text, re.MULTILINE)
+
+
 def default_config_checks():
     """The number of entries under `checks:` in the default config."""
     p = REPO / "plumb-main" / "src" / "main" / "resources" / "default-config.yaml"
@@ -379,6 +406,25 @@ def main():
                                 % (PREFIX_TABLE, label, claimed, expected))
     else:
         failures.append("%s: the document does not exist" % PREFIX_TABLE)
+
+    # The testcase README lists the categories. The list must be complete:
+    # a category that was measured but is not listed there is a category a
+    # reader cannot find.
+    measured = measured_categories()
+    listed = testcase_readme_category_rows()
+    expected = category_directories()
+    if len(listed) != measured:
+        failures.append(
+            "testcase/README.md: the table lists %d categor(y/ies), but %d "
+            "have been measured" % (len(listed), measured))
+    missing = [c for c in expected if c not in listed]
+    if missing:
+        failures.append("testcase/README.md: the table does not list %s"
+                        % ", ".join(missing))
+    extra = [c for c in listed if c not in expected]
+    if extra:
+        failures.append("testcase/README.md: the table lists %s, but there is "
+                        "no such measured category" % ", ".join(extra))
 
     if failures:
         print("FAIL: %d stale number(s) in the hand-written documentation"
