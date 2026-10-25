@@ -128,6 +128,30 @@ RULES = [
         "evaluation framing: the product documentation must describe the product, not the "
         "benchmark it was measured against",
     ),
+    (
+        "dangling-subject",
+        # Removing a round marker from the middle of a Chinese sentence can leave the
+        # sentence without its subject:
+        #
+        #     "`CATCH_HANDLER` 是 R261 加入的"  ->  "`CATCH_HANDLER` 是 加入的"
+        #
+        # The marker WAS the subject. Removing it without replacing it leaves a
+        # dangling predicate.
+        #
+        # The trace is the SPACE: a Chinese sentence never puts a space between a
+        # copula and its predicate, so a space there means something was removed and
+        # nothing took its place.
+        re.compile(
+            r"(?:是|为|由|在|从|跟|和|对|把|被|给|改成|扩展成|实现为|定义为|"
+            r"当作|当成|变成|成为|继承自|源自|来自)\s+"
+            r"(?:加入的|增加的|引入的|实现的|提供的|支持的|修复的|改写的|新增的|"
+            r"删除的|替换的|扩展的|调整的|优化的|重写的|提出的|新增|加入|引入|"
+            r"实现|提供|支持|修复|改写|删除|替换|扩展|调整|优化|重写|提出|建成|"
+            r"补充|配套)"
+        ),
+        "dangling subject: a round marker was removed from the middle of a sentence "
+        "and nothing replaced it",
+    ),
 ]
 # The rule catalogue is generated; the javadoc it mirrors is the real place to fix.
 JAVADOC_ROOTS = [

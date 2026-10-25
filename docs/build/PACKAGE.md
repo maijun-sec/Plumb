@@ -230,7 +230,7 @@ dist/plumb-0.1.0-SNAPSHOT-slim/
 
 maxParallelism: 4                # parse+translate 并发；0 = nCPU-1
 
-# R761 (Oct 2026): 默认值是 global（不是 vta）—— Juliet 跨 TU taint 必需
+# 默认值是 global（不是 vta）—— 跨 TU taint 分析必需
 cgStrategy: global               # global | vta | cha | rta | 1cfa | stub | cached:<...>
 
 # ---- 规则开关 ----

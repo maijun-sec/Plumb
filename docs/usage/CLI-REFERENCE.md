@@ -4,7 +4,7 @@
 
 ## 10. 项目路径族（`--source-root` / `--module-root` / `--classpath`）
 
-R797（Oct 2026）引入三个**专门给 JavaParser TypeSolver 喂料**的 flag。它们和 `--input` 的根本区别是：
+（Oct 2026）引入三个**专门给 JavaParser TypeSolver 喂料**的 flag。它们和 `--input` 的根本区别是：
 
 | 维度 | `--input` | `--source-root` / `--module-root` / `--classpath` |
 | --- | --- | --- |
@@ -27,7 +27,7 @@ bin/sast-scan \
 
 这样 Spring 注解的解析能正常进行（`@Autowired`、`@RequestMapping` 等），但 `spring-core.jar` 内部那 3000 多个 class 不会被扫成 finding。
 
-**为什么必须分开**：如果第三方程 jar 也走 TAC 流水线，10k+ 文件的项目 IR 缓存会爆炸、内存峰值翻倍、扫描时间 ×3+。R797 把"符号解析"和"扫描"严格解耦：
+**为什么必须分开**：如果第三方程 jar 也走 TAC 流水线，10k+ 文件的项目 IR 缓存会爆炸、内存峰值翻倍、扫描时间 ×3+。 把"符号解析"和"扫描"严格解耦：
 
 > **Cardinal rule（cardinal）**: `--classpath` 路径**永不**翻译成 TAC IR。
 > 它存在的唯一目的是让 `--input` 的用户源码能解析外部类型引用。
@@ -41,11 +41,11 @@ bin/sast-scan \
     --classpath    $(find ~/.m2/repository -name '*.jar' | tr '\n' ',')
 ```
 
-`--source-root` 和 `--module-root` 在 R797 **等价**，只是 UX 上分开——多模块项目可以让用户按模块列出。
+`--source-root` 和 `--module-root` 在 **等价**，只是 UX 上分开——多模块项目可以让用户按模块列出。
 
 ## 11. 构建系统自动发现（`--build-system` / `--project-root`）
 
-R833 把上面"手动喂 `--source-root` / `--classpath`"的繁琐步骤自动化。给定一个项目根，BuildAdapter 会去探：
+ 把上面"手动喂 `--source-root` / `--classpath`"的繁琐步骤自动化。给定一个项目根，BuildAdapter 会去探：
 
 | Adapter | 探测依据 | 输出 |
 | --- | --- | --- |
@@ -80,7 +80,7 @@ Adapter 输出的 `sourceFiles` / `sourceRoots` / `moduleRoots` / `classpathJars
 
 ## 12. YAML 格式速查（v2 + checks.sub-dict）
 
-R836 / R837 把 YAML 风格统一到一份完整 baseline。**两种检查器写法都接受**：
+ / 把 YAML 风格统一到一份完整 baseline。**两种检查器写法都接受**：
 
 ### 12.1 简单 bool（仅开关）
 

@@ -385,14 +385,13 @@ style 规则的 emit-id 采用 `ast-<category>-<bare>` 命名（category 取 che
 | `ast-design` | 18 | | `ast-quality` | 10 |
 | `ast-concurrency` | 2 | | `dfa-style` / `dfa-security` | 3 / 1 |
 
-这个命名被**四处**引用，任一处失同步都会静默丢 finding：
+这个命名被**三处**引用，任一处失同步都会静默丢 finding：
 
 | 引用方 | 作用 |
 | --- | --- |
 | `*Check.java` 的 `new RuleId("ast-style-foo", ...)` | 产生 emit id |
 | `plumb-style/.../CheckerCategories.java` | classpath-scan 注册表（593 项 `m.put(...)`） |
 | `plumb-main/.../ScanRunner.java::isRuleIdAllowed`（`:1823`、`:1834`） | 规则过滤；需要同时接受 canonical id、bare slug 与短横线形式 |
-| `juliet-coverage/data/plumb_rule_to_cwe.json` | rule_id → CWE 映射 |
 
 **数据流**：
 
@@ -409,8 +408,11 @@ ScanRunner.isRuleIdAllowed(emit, registry)   ← canonical / bare / 短横线多
 emit 进入最终 finding 集合
     │
     ▼
-NDJSON 输出，cwe 字段来自 plumb_rule_to_cwe.json["ast-style-foo"]
+NDJSON 输出，cwe 字段来自该规则的 RuleDef.cwe()
 ```
+
+DFA 侧的 finding key → CWE 映射来自 `plumb-dfa/src/main/resources/cwe-mappings.yaml`，
+与 AST 侧的 `RuleDef.cwe()` 是两份独立来源。
 
 **别名**：带 `-style` 后缀的字符串（`ast-style-random-iv-cbc-style`）只作为
 `RuleDef` 的 **alias** 保留（用于兼容老的 YAML 白名单），不是任何规则的
@@ -428,23 +430,14 @@ emit-id。`ScanRunner.isRuleIdAllowed` 里的
 
 ## 9. 测试体系
 
-每个模块独立 mvn 测试。下表为**最近一次全量构建的实测数字**（`mvn -o test`）：
+每个模块独立 mvn 测试。各模块的测试数量由 `scripts/gen_rules_overview.py` 从 surefire 报告
+实测生成，见 [`RULES.md`](../rules/RULES.md) 的测试统计一节。
 
-| 模块 | 测试数 | 测试类型 |
-| --- | ---: | --- |
-| plumb-parser | 3 | 单元 |
-| plumb-tac | 49 | 单元 + round-trip |
-| plumb-rules | 5 | 单元 |
-| plumb-reporter | 1 | 单元 |
-| plumb-style | 1175 | 单元（每条规则） |
-| plumb-dfa | 211（14 skipped） | 单元 + Juliet 测试样本 |
-| plumb-ai | 需 `PLUMB_AI_E2E=1` 才跑 | 真实 LLM E2E |
-| plumb-build | 8 | 单元 |
-| plumb-main | 19 | 端到端 E2E |
+端到端测量由 `testcase/` 下的 category 完成：每个 category 有独立的 fixture、manifest 与
+`RESULT.json`，逐 case 记录 TP / TN / FN / FP。支持的 category 与当前实测结果见
+[`testcase/SUPPORT-MATRIX.md`](../../testcase/SUPPORT-MATRIX.md)。
 
-另有五个 testcase category 做端到端测量（TP / TN 精确计数），见 `testcase/SUPPORT-MATRIX.md`。
-
-整体回归用 Juliet Java corpus 跑全量（112 个 corpus），参考 `juliet-coverage/`。
+`plumb-ai` 的真实 LLM 端到端测试需要 `PLUMB_AI_E2E=1` 才会运行。
 
 ## 10. 扩展点
 
@@ -479,66 +472,34 @@ emit-id。`ScanRunner.isRuleIdAllowed` 里的
 classpath-scan 注册机制要求同时满足 (a) 在 `CHECKER_CATEGORIES` 注册 +
 (b) 提供 `rule()` 方法，少一个就 silently drop。
 
-## 11. 未来路线
+## 11. 已知边界
 
-- **R-output-dir v2**：写 merged.tac / callgraph.tac 到磁盘（当前只有 program cache）
-- **R-ignore-file**：项目级 `.plumb-ignore` 文件
-- **R-SARIF**（部分完成，Phase 6 已支持 `sarif` format）：输出 SARIF 2.1.0 给 IDE / GitHub Code Scanning
-- **R-incremental-DFA**：监视 `cache/programs/<sha1>.tac` mtime，只对变更文件重跑 DFA
-- **R-rule-profiles**：按语言 / 框架 / 业务场景打包的 rule preset
-- **R-DFA sinkFunction enrichment**（Lesson 1320+）：`Finding.withSinkFunction()` + `FindingReporter` enrich 时填 `fn.name() + "()" + ":" + fn.returnType().name()`，修 CWE690 dfa-taint-null-dereference 退化
+以下行为是当前实现的已知边界，不是缺陷承诺：
 
-## 12. 全 Juliet corpus 评估的调度约束
+- **规则 id 匹配**：`<category>-<bare>` 是 canonical emit id；`-style` 后缀是兼容 alias，
+  不是独立规则。
+- **虚调用解析**：按方法名 + 参数个数匹配（`ChaCallGraphStrategy`），不做传递式的类层次
+  闭包；`classToParent()` / `classToChildren()` 表会被填充并跨编译单元聚合，但目前没有分析
+  消费它们。
+- **数组污点**：不跨函数边界传播。
+- **路径敏感性**：由 `SolverZ3Bridge` / `BoundaryConstraintChecker` 实现，但不是每条 sink 都
+  走这条路。
+- **缺失的事实不等于安全**：空的 points-to 集合、缺失的 null 事实、may-alias 重叠，都不能
+  用来证明一段代码是安全的。
 
-Juliet Java Test Suite 共 112 corpus。要在本地跑完一遍做 cwe_matched eval，必须满足以下两个前提，否则必须分批：
+## 12. 产物体积
 
-### 12.1 时间约束
+发布产物是 `plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar`。产品资源只有引擎运行
+需要的配置：
 
-| 阶段 | 单 corpus 实测 | 全 112 corpus 估算 |
-| --- | --- | --- |
-| 单 CWE strip + scan | 5–10 min（CWE190 587 s、CWE191 446 s、CWE129 299 s） | 10–18 h 串行 |
-| cwe_matched eval post-process | < 30 s / corpus | < 1 h |
+| 资源 | 作用 |
+| --- | --- |
+| `sink-families.yaml` | sink family 与 pattern 清单 |
+| `fact-kinds.yaml` | fact kind 清单（与内置 kind 合并） |
+| `checkers.yaml` | DFA checker 开关与参数 |
+| `cwe-mappings.yaml` | DFA finding key → CWE 映射 |
+| `receiver-passthrough.yaml` | receiver 透传 pattern |
+| `tuning.yaml` | 引擎调参 |
 
-外层调度器对单个 background shell task 的硬上限是 **30 min**（`maxRunMs=1800000ms`）。任何尝试"一条命令跑完 112 corpus"的 shell task 都会被这个上限强杀，必须改成：
-
-- 每个 task 只跑 1–4 个 corpus（5–40 min 内完成）
-- 用外部 scheduler（cron / 任务队列）串起来
-
-### 12.2 磁盘约束
-
-| 产物 | 单 corpus 体积（full / strip 后） | 全 112 corpus 估算 |
-| --- | --- | --- |
-| 全量 NDJSON | ~370 MB / corpus | ~41 GB |
-| strip 后 NDJSON（推荐） | ~190 MB / corpus | ~21 GB |
-| 压缩比（findings 去重后） | ~50% | — |
-
-默认 D: 盘只有 5–6 GB free，**全量一次跑**必爆盘。必须：
-
-- `tmp/r836_clean.py` 每批前清空 `r836_pipeline/corpus/`
-- 或者只保留 strip 后的 NDJSON（直接覆盖 full，不留原始）
-- 监控 free disk；剩余 < 3 GB 时暂停下一批
-
-### 12.3 推荐分批策略
-
-把 112 corpus 按 cwe_matched prec 倒序分成 4–5 批，每批 25 corpus 上下：
-
-| 批 | 范围 | 推荐依据 |
-| --- | --- | --- |
-| 1 | prec ≥ 0.6（25 corpus） | 首批拿到最大 precision 增益 |
-| 2 | 0.3 ≤ prec < 0.6（30 corpus） | 中间档 |
-| 3 | prec < 0.3（25 corpus） | 噪声密集，需要更激进 enable/disable 调整 |
-| 4 | zero-TP sink-based（9 corpus：491/499/500/561/568/580/581/582/607） | 低 ROI，跳过或专门写新 rule |
-
-每批一个 background task，跑完收集 `eval_step_c/per_cwe.csv` + `per_rule.csv`，汇总到 `r836_pipeline/all_per_cwe.csv`。
-
-### 12.4 评估产物的体积参考
-
-实测单 corpus 体积（findings 去重后）：
-
-| CWE | findings（去重后） | strip 前 KB | strip 后 KB | 压缩比 |
-| --- | ---: | ---: | ---: | ---: |
-| CWE190 | 777 693 | 377 259 | 186 356 | 49.4% |
-| CWE191 | 612 976 | 305 472 | 148 070 | 48.5% |
-| CWE129 | 571 176 | 294 530 | 162 717 | 55.2% |
-
-strip 步骤（去重 source-location-only finding）是体积压缩的主力，**保留 strip 后 NDJSON 就够了**，full 版本除非要做 sink-based 二次对比，否则可以删。
+测试语料在 `plumb-dfa/src/test/resources/juliet-corpus/`，属于测试资源，
+不随产品 jar 发布。

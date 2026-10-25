@@ -6,7 +6,7 @@
 
 ## 1. 背景：为什么 AST 不够用
 
-R540-R561 系列 checker 在 AST 层已经能捕获大部分情况。但 AST 的视野天然受限于**单方法**：
+- 系列 checker 在 AST 层已经能捕获大部分情况。但 AST 的视野天然受限于**单方法**：
 
 | 漏报场景 | AST 局限 | DFA 怎么修 |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ Coverity 商业引擎"真值"用 DFA 实现。本批次在 plumb-dfa 加 5 个 D
 
 ### 2.1 FunctionSummary（最常用）
 
-`plumb-dfa` 的 R215 框架已有 `FunctionSummary` 缓存机制：
+`plumb-dfa` 的框架已有 `FunctionSummary` 缓存机制：
 
 ```java
 // Operation.WriteToField 标记某方法会写某字段
@@ -90,7 +90,7 @@ callee 在 summary 里写出它改了哪些字段，caller 的 `SummaryApplier` 
 
 ## 3. 5 个 DFA 增强 checker 详解
 
-### 3.1 R540-DA: UninitNonnullDfaChecker
+### 3.1 -DA: UninitNonnullDfaChecker
 
 **AST 漏报场景**：
 
@@ -126,7 +126,7 @@ AST 看到 `setEmail()` 不知道它会写字段 email。DFA 看 `setEmail()` �
 // 3. finishFunction: required - 已写 != ∅ → fire
 ```
 
-### 3.2 R541-DA: OrmLoadNullCheckDfaChecker
+### 3.2 -DA: OrmLoadNullCheckDfaChecker
 
 JPA `EntityManager.find()` 返回的 entity 可能是 null（找不到记录时）。AST 看到 `find()` 调用不知道"接着有没有 null check"。
 
@@ -135,19 +135,19 @@ JPA `EntityManager.find()` 返回的 entity 可能是 null（找不到记录时�
 2. BRANCH `if (x == null)` 时从 `findResults` 移除 x
 3. CALL `x.getXxx()` / `x.setXxx()` / `x.field` 命中**仍**在 `findResults` 的 x → fire
 
-### 3.3 R542-DA: OrmUnnecessaryGetDfaChecker
+### 3.3 -DA: OrmUnnecessaryGetDfaChecker
 
 JPA `entity.getXxx()` 每次都查 DB，**但赋值给 local var 后多次用**——典型的"先 get 后丢弃"模式。
 
 **DFA 修法**：MOVE alias 传播跟踪 `local = entity.getXxx()`，第二次 `entity.getXxx()` 时 fire（除非中间修改了 entity）。
 
-### 3.4 R543-DA: OrmLostUpdateDfaChecker
+### 3.4 -DA: OrmLostUpdateDfaChecker
 
 JPA `find → 修改 → save` 模式在并发下可能丢失 update（last writer wins）。
 
 **DFA 修法**：跨函数累积 `find` + `save` 调用对，每对之间检查是否有 @Version 字段读写。
 
-### 3.5 R560-DA: SingletonRaceDfaChecker
+### 3.5 -DA: SingletonRaceDfaChecker
 
 singleton 的 field 在多个 servlet 请求间共享，非同步读写 → race condition。
 
@@ -156,7 +156,7 @@ singleton 的 field 在多个 servlet 请求间共享，非同步读写 → race
 2. 第二次遇到 FIELDLOAD，从 `state.writtenFields` 移除
 3. finishFunction：如果 `state.writtenFields != ∅` 且 class 是 singleton（私有 ctor + 静态 getInstance）→ fire
 
-### 3.6 R561-DA: ServletAtomicityDfaChecker
+### 3.6 -DA: ServletAtomicityDfaChecker
 
 `getAttribute` + `setAttribute` 跨方法调用，AST 看不见。
 
@@ -169,8 +169,8 @@ singleton 的 field 在多个 servlet 请求间共享，非同步读写 → race
 ### 4.1 AST/DFA 并存
 
 每个 checker 出**两个 rule id**：
-- AST 版：`ast-style-uninit-nonnull-style`（R-836 命名规范）
-- DFA 版：`plumb.dfa.uninit-nonnull`（R-836 命名规范）
+- AST 版：`ast-style-uninit-nonnull-style`（ 命名规范）
+- DFA 版：`plumb.dfa.uninit-nonnull`（ 命名规范）
 
 用户通过 yaml `rules.enabled` 二选一：
 
@@ -196,7 +196,7 @@ rules:
 FunctionSummary 用什么作 key？
 - ❌ 函数名（重载冲突）
 - ❌ 类名.函数名（inner class / lambda 命名差异）
-- ✅ **signature = "Class.method(param1,param2,...)"**（R-787 决定保留）
+- ✅ **signature = "Class.method(param1,param2,...)"**（ 决定保留）
 
 签名规范化的具体规则：
 - 内部类用 `$` qualifier（JVM 风格）
@@ -230,9 +230,9 @@ FunctionSummary 用什么作 key？
 | **负样本** | 给 AST 版本会漏、DFA 版本能命中的代码 | `UninitNonnullDfaCheckerTest.helperMethodWritesField()` |
 | **回归样本** | AST 版本已能命中、DFA 版本不破坏 | `UninitNonnullDfaCheckerTest.directFieldAssign()` |
 
-所有测试在 `plumb-dfa/src/test/.../unified/checkers/` 下，每个 checker 至少 5 个测试。R540-DA 通过 8 个测试，含 R543-DA OrmLostUpdateDfaChecker。
+所有测试在 `plumb-dfa/src/test/.../unified/checkers/` 下，每个 checker 至少 5 个测试。-DA 通过 8 个测试，含 -DA OrmLostUpdateDfaChecker。
 
-## 6. R585 — Coverity-style aggressiveness knob
+## 6. — Coverity-style aggressiveness knob
 
 `--aggressiveness=low|medium|high` 控制 AST/DFA 版的默认开/关：
 
@@ -246,9 +246,9 @@ FunctionSummary 用什么作 key？
 
 ## 7. 后续工作
 
-### 7.1 R526-DA — 更多 DFA 增强
+### 7.1 -DA — 更多 DFA 增强
 
-R540-R561 之后，下一批候选（按 ROI 倒序）：
+- 之后，下一批候选（按 ROI 倒序）：
 
 | DFA 增强 | ROI | 备注 |
 | --- | ---: | --- |
@@ -269,7 +269,7 @@ DFA 增强的"单条 Z3 query"（Phase 2 per-finding 验证）见 `tech/CROSS-FU
 
 1. **保留 AST 版**（不同 rule id），保证基本召回
 2. **加 DFA 版**作为补强，专注 AST 漏报的具体场景
-3. 用 R-720 套 per-CWE minimal yaml 让用户在两类间选择
+3. 用一套 per-CWE minimal yaml 让用户在两类间选择
 4. 长期看 DFA 召回追上 AST + 1 个数量级后，弃 AST 版
 
 ### 8.2 FunctionSummary 的边界

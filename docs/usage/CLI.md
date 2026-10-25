@@ -52,16 +52,16 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system <maven|gradle|b
 | — | `--rule-prompts-dir` | `<path>` | — | 用户自带的 rule prompt `.md` 目录。覆盖打包在 classpath 里的默认 prompt |
 | — | `--list-rules` | — | — | 列出所有已知 rule id 并退出 |
 
-**R797 / R833 项目路径族**（详见 §10）：
+** / 项目路径族**（详见 §10）：
 
 | 短选项 | 长选项 | 参数 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
-| — | `--source-root` | `<dir>` | — | 跨文件类型解析用的源码根（**可重复**）。R797 当成 `JavaModule` 看待；只喂 `JavaSourceParser.TypeSolver`，**不进 TAC 流水线也不扫 findings**。用于把第三方源码喂给符号解析，但不被 `cache/programs/` 索引 |
+| — | `--source-root` | `<dir>` | — | 跨文件类型解析用的源码根（**可重复**）。 当成 `JavaModule` 看待；只喂 `JavaSourceParser.TypeSolver`，**不进 TAC 流水线也不扫 findings**。用于把第三方源码喂给符号解析，但不被 `cache/programs/` 索引 |
 | — | `--module-root` | `<dir>` | — | 同 `--source-root`，语义分开是为了多 module 项目可按模块列出 |
 | — | `--classpath` | `<jar\|dir>` | — | 第三方依赖 jar 或 class 目录（**可重复**）。只喂 TypeSolver，**绝不被翻译成 TAC IR**。第三方程 jar 存在的唯一目的是让用户源码能解析外部类型引用 |
 | — | `--project-root` | `<dir>` | — | 传给 build-system adapter 的项目根 |
 | — | `--build-system` | `maven\|gradle\|bazel\|ant` | — | 显式挑 build-system adapter。缺省时按 `pom.xml` / `build.gradle` / `BUILD` / `build.xml` 自动探测 |
-| — | `--format` | `console\|ndjson\|sarif` | `console` | 输出格式（`sarif` 是 R-803 增加，IDE / GitHub Code Scanning 集成） |
+| — | `--format` | `console\|ndjson\|sarif` | `console` | 输出格式（`sarif` 输出 SARIF 2.1.0，供 IDE / GitHub Code Scanning 集成） |
 
 `--output-dir` 和 `--cache-mode` **不强制成对使用**，但要有意义就得配齐：
 
@@ -418,7 +418,7 @@ checks:
 #       - ast-style-comment-info-leak
 
 # ---- 项目路径 ----
-# R797/R833 — 跟 build-system adapter 配合使用。详见 §10。
+# — 跟 build-system adapter 配合使用。详见 §10。
 inputs:
   - src/main/java              # 主输入（同 --input，可重复）
 sourceRoots:
@@ -434,13 +434,13 @@ classpathJars:
 #   projectRoot: /path/to/proj  # 由 BuildAdapter 自动填 inputs/sourceRoots/moduleRoots/classpathJars
 
 # ---- 风格类阈值 ----
-# R761 audit (Oct 2026): 删了 `style.methodLengthThreshold`。
+# audit : 删了 `style.methodLengthThreshold`。
 # 死字段（无 checker 读它）。后续 checker 级阈值仍会回到 `style:` 块。
 ```
 
 ### 3.1 camelCase vs snake_case
 
-`ConfigLoader` 同时接受 camelCase 和 snake_case 两种 YAML 键，camelCase 优先。这是 R325 兼容性补丁，避免老配置失效。
+`ConfigLoader` 同时接受 camelCase 和 snake_case 两种 YAML 键，camelCase 优先。这是兼容性补丁，避免老配置失效。
 
 ```yaml
 checks:

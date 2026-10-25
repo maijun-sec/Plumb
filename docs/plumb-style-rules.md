@@ -824,15 +824,15 @@
 
 **规则说明**
 
-> R763 (Oct 2026): detects CWE-253 (Incorrect Check of Function Return Value) when a method call
-> whose return indicates a count or sentinel is compared against the wrong literal.
+> detects CWE-253 (Incorrect Check of Function Return Value) when a method call whose return
+> indicates a count or sentinel is compared against the wrong literal.
 >
-> The classic Juliet pattern is `if (input.read(buf) == 0)` ? a check for "zero bytes
+> The representative pattern is `if (input.read(buf) == 0)` — a check for "zero bytes
 > read" — but `read()` returns `-1` on EOF and `1..buf.length` on a normal read,
-> so `== 0` never matches the actual failure mode. The CWE-253 good() side checks `==
-> -1` or `< buf.length`.
+> so `== 0` never matches the actual failure mode. The correct check is `== -1` or
+> `< buf.length`.
 >
-> Heuristic (Juliet-flavoured, intentionally narrow to keep FP low):
+> Heuristic, intentionally narrow to keep the false-positive rate low:
 >
 > <li>Method call on the LHS of a `==` or `!=` {@link BinaryExpr}
 > <li>Method name is in a curated "count/sentinel" list (read, readLine, hashCode, compareTo,
@@ -840,8 +840,8 @@
 > <li>RHS is a literal {@link IntegerLiteralExpr} that is NOT in the "valid sentinel" set
 > (currently `{-1`})
 >
-> Outside the Juliet test suite the FP rate will be higher; users who want broader coverage
-> should switch to AI dedup. The curated list mirrors the R-PATCH v2 rule `plumb.ast.incorrect-return-comparison`.
+> The curated list bounds what this rule reports. Code that needs broader coverage than the list
+> provides can use the AI deduplication mode instead.
 
 **规则约束 / 可调参数**: (无)
 
@@ -981,8 +981,8 @@
 
 > method should have a single return (heuristic).
 >
-> Pattern D R-818: per-method visit. If method body has more than one {@link ReturnStmt}
-> descendant, fire.
+> Pattern D per-method visit. If method body has more than one {@link ReturnStmt} descendant,
+> fire.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1080,8 +1080,7 @@
 
 > Boolean expression too complex (default threshold 3 ? meaning 3+ `&&`/`||` literals).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(BinaryExpr.class)` before. The complexity count uses a stack walk on each `BinaryExpr` subtree so we don't recurse the whole tree at each top-level `AND`/`OR`.
+> findAll(BinaryExpr.class)} before. The complexity count uses a stack walk on each `BinaryExpr` subtree so we don't recurse the whole tree at each top-level `AND`/`OR`.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1138,11 +1137,11 @@
 > The pre-S4 implementation flagged every class that had `extends` + empty `implements` list, which produced 100% false positives ? almost every JPA / Spring class has
 > exactly this shape (`class User extends BaseEntity implements Serializable`).
 >
-> S4 audit (2026-10-17) replaced that with a meaningful check: walk the extends/implements list
-> of the parent class as written in the same compilation unit (single-file resolution) and flag the
-> child only when it declares an interface that the parent already declares.
+> S4 audit replaced that with a meaningful check: walk the extends/implements list of the parent
+> class as written in the same compilation unit (single-file resolution) and flag the child only
+> when it declares an interface that the parent already declares.
 >
-> <b>M5 part-2 migration (2026-10-17):</b> the original used `visit(CompilationUnit) +
+> <b>M5 part-2 migration:</b> the original used `visit(CompilationUnit) +
 > findAll(ClassOrInterfaceDeclaration)` (1 walk) + a manual per-class loop. This rewrite keeps the
 > per-class logic in `visit(ClassOrInterfaceDeclaration, ctx)` ? the dispatcher hands each
 > declaration to us directly. The class-by-name index is still needed (we look up the parent's
@@ -1219,10 +1218,6 @@
 **规则说明**
 
 > Public method in non-`final` class should be `abstract`, `final`, or `private` (DESIGN_FOR_EXTENSION).
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceDeclaration.class)` before. The inner per-method walk stays as a local
-> loop because we need to know the enclosing class is non-`final`.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1330,9 +1325,6 @@
 **规则说明**
 
 > Class has too many methods (default threshold 100).
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1347,10 +1339,6 @@
 **规则说明**
 
 > Abstract class should not have a `public` constructor.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceDeclaration.class)` before. The inner per-ctor walk stays as a local loop
-> because we need to know the enclosing class is abstract.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1379,9 +1367,6 @@
 **规则说明**
 
 > Catching `Throwable` is too broad.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(CatchClause.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1470,9 +1455,6 @@
 **规则说明**
 
 > Catching `Throwable` / `Error` is too broad.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(CatchClause.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1516,9 +1498,6 @@
 **规则说明**
 
 > Exception is dropped ? empty `catch` block with no logging or rethrow.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(CatchClause.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1533,9 +1512,6 @@
 **规则说明**
 
 > Empty catch block ? strict.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(CatchClause.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1564,7 +1540,7 @@
 
 **规则说明**
 
-> Catch-block exception-receiver sinks.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -1666,9 +1642,6 @@
 **规则说明**
 
 > Catching `Exception` or `Throwable` is too broad.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(CatchClause.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1712,9 +1685,6 @@
 **规则说明**
 
 > Do not override `finalize()` ? deprecated in Java 9+.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(MethodDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1728,7 +1698,7 @@
 
 **规则说明**
 
-> Per-file short-circuit: stop scanning once a NOSONAR is found.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -1743,9 +1713,6 @@
 **规则说明**
 
 > `finalize()` should not be overloaded (i.e., should take no parameters).
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(MethodDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1789,9 +1756,6 @@
 **规则说明**
 
 > Throwing raw `Exception` / `RuntimeException` / `Throwable`.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ObjectCreationExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1808,9 +1772,8 @@
 
 > finalize() must call super.finalize().
 >
-> Pattern D R-818: per-method visit. If method name is `"finalize"` and no descendant
-> `super.finalize()` call, fire (preserves original behavior for abstract / native methods
-> which lack a body).
+> Pattern D per-method visit. If method name is `"finalize"` and no descendant `super.finalize()` call, fire (preserves original behavior for abstract / native methods which
+> lack a body).
 
 **规则约束 / 可调参数**: (无)
 
@@ -1873,9 +1836,6 @@
 **规则说明**
 
 > Method declares too many checked exceptions (default threshold 4).
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(MethodDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -1936,9 +1896,6 @@
 **规则说明**
 
 > Abstract class should be named starting with `Abstract` (heuristic).
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2057,9 +2014,6 @@
 **规则说明**
 
 > Class has too many instance fields (data abstraction coupling).
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2116,10 +2070,6 @@
 **规则说明**
 
 > Class type parameter name should be uppercase single letter (`T`, `K`, `V`).
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceDeclaration.class)` before. Note this rule applies to BOTH classes and
-> interfaces (inter-class parameter names) ? interface parameters follow the same convention.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2134,9 +2084,6 @@
 **规则说明**
 
 > Class with only private constructors should be `final`.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2265,7 +2212,7 @@
 
 **规则说明**
 
-> Per-method set of names that are reassigned anywhere in the current method.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -2306,10 +2253,6 @@
 **规则说明**
 
 > Interface type parameter name should be uppercase single letter.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceDeclaration.class)` before. Only fires when `c.isInterface()` is
-> true (ClassTypeParameterNameCheck handles class declarations).
 
 **规则约束 / 可调参数**: (无)
 
@@ -2338,10 +2281,6 @@
 **规则说明**
 
 > Local final variable name should be camelCase.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(VariableDeclarator.class)` before. The "final" filter is preserved by inspecting the
-> parent `VariableDeclarationExpr`.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2386,10 +2325,6 @@
 **规则说明**
 
 > Local variable name should be camelCase.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(VariableDeclarator.class)` before. The "skip final" filter is preserved by inspecting the
-> parent `VariableDeclarationExpr`.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2447,9 +2382,6 @@
 **规则说明**
 
 > Long variable name (`> 20` chars, strict).
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(VariableDeclarator.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2483,9 +2415,6 @@
 **规则说明**
 
 > Method name should be camelCase.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(MethodDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2521,10 +2450,6 @@
 **规则说明**
 
 > Method override missing `@Override` annotation.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceDeclaration.class)` before. The inner per-method walk stays as a local
-> loop because we need the enclosing class.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2539,9 +2464,6 @@
 **规则说明**
 
 > Local variable starting with uppercase letter (non-`String` types) ? should be camelCase.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(VariableDeclarator.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2590,10 +2512,9 @@
 
 > Package name should be all lowercase.
 >
-> Disabled by default (R-834) ? 0 TP / 100% FP on Juliet R-832 baseline. M5 part-4 migration
-> (2026-10-17): per-node-type callback already; this checker was already in modern form. Kept
-> `visit(CompilationUnit)` because `PackageDeclaration` is visited once per file at the
-> top level (the dispatcher hands the `CompilationUnit` directly; we don't need `findAll` here).
+> : per-node-type callback already; this checker was already in modern form. Kept `visit(CompilationUnit)` because `PackageDeclaration` is visited once per file at the top
+> level (the dispatcher hands the `CompilationUnit` directly; we don't need `findAll`
+> here).
 
 **规则约束 / 可调参数**: (无)
 
@@ -2696,9 +2617,9 @@
 
 > Type name should be PascalCase.
 >
-> Disabled by default (R-836 step_f) ? 0 TP / 100% FP on Juliet R-832 baseline. M5 part-4
-> migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceDeclaration.class)` before.
+> A type name is reported when it does not match `[A-Z][A-Za-z0-9]*`. This rule is
+> disabled by default; enable it explicitly when the naming convention is part of the project's own
+> standard.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2735,8 +2656,7 @@
 
 > Unnecessary fully-qualified enum name (should be a simple reference with import).
 >
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(FieldAccessExpr.class)` before. Note this checker fires on ANY `FieldAccessExpr`
+> findAll(FieldAccessExpr.class)} before. Note this checker fires on ANY `FieldAccessExpr`
 > with a dot ? same caveat as `UnnecessaryFullyQualifiedClassNameCheck` — it's a heuristic.
 > The M4 fix in plumb-ai only checks for type references; here we keep the simple-name heuristic
 > since this is purely AST-level.
@@ -2754,10 +2674,6 @@
 **规则说明**
 
 > Local variable declared but never used.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(MethodDeclaration.class)` before. The inner per-variable walk stays as a local loop
-> because we need to count `NameExpr` references inside the enclosing method.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2856,9 +2772,6 @@
 **规则说明**
 
 > Array store of incompatible type.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(VariableDeclarator.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2873,9 +2786,6 @@
 **规则说明**
 
 > Array created with too-large initial size (4+ digits).
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ArrayCreationExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2988,9 +2898,6 @@
 
 > Boxed constructor usage (`new Integer(...)` / `new Long(...)` / `new
 > Double(...)`). Use `Integer.valueOf` or autoboxing instead.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ObjectCreationExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3006,9 +2913,6 @@
 
 > Using `Hashtable` / `Vector` / `Stack` ? prefer `java.util.concurrent`
 > alternatives or `ArrayList` / `HashMap`.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceType.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3093,9 +2997,6 @@
 **规则说明**
 
 > Don't use `float` / `double` as a `for`-loop counter.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ForStmt.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3140,11 +3041,6 @@
 **规则说明**
 
 > Array literal has heterogeneous types (EC_BAD_ARRAY_STORE).
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ArrayCreationExpr.class)` before. The inner traversal of the initializer values stays as
-> a local loop (not a per-node callback) because we need to compare adjacent element types and
-> break on the first mismatch.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3159,9 +3055,6 @@
 **规则说明**
 
 > `for` loop with a `float` / `double` counter.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ForStmt.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3211,9 +3104,6 @@
 **规则说明**
 
 > Use non-obsolete JDK collection (e.g. `Vector`, `Hashtable`, `Stack`).
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ObjectCreationExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3266,9 +3156,6 @@
 **规则说明**
 
 > Malformed `printf` / `format` string literal.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(MethodCallExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3283,9 +3170,6 @@
 **规则说明**
 
 > Non-`void` method with empty body ? should return a value.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(MethodDeclaration.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3300,9 +3184,6 @@
 **规则说明**
 
 > Array initialisation should not have a trailing comma.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ArrayInitializerExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3317,9 +3198,6 @@
 **规则说明**
 
 > `new Boolean/Integer/Long(primitive)` ? use `valueOf` instead.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ObjectCreationExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3353,8 +3231,7 @@
 
 > Return an empty array instead of `null` for array-returning methods.
 >
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ReturnStmt.class)` before. The parent-method lookup is preserved via `n.findAncestor(MethodDeclaration.class)` so we still skip non-array returns.
+> n.findAncestor(MethodDeclaration.class)} so we still skip non-array returns.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3386,9 +3263,6 @@
 
 > Array index uses `i + 1` / `i - 1` pattern ? confirm it doesn't reach the array
 > length.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ArrayAccessExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3404,9 +3278,6 @@
 **规则说明**
 
 > Array index uses `.length` directly ? should be `.length - 1` (RANGE_ARRAY_LENGTH).
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ArrayAccessExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3493,9 +3364,6 @@
 **规则说明**
 
 > Return empty collection instead of `null`.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ReturnStmt.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3552,10 +3420,6 @@
 **规则说明**
 
 > `StringBuffer` field in a {@link Serializable} class is not thread-safe ? use `StringBuilder`.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ClassOrInterfaceDeclaration.class)` before. The inner per-field walk stays as a local
-> loop because we need to compare against the enclosing class's implements list.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3613,9 +3477,6 @@
 **规则说明**
 
 > Comparing `String` literals with `==` / `!=` ? use `.equals()`.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(BinaryExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3645,9 +3506,6 @@
 **规则说明**
 
 > Unnecessary primitive boxing (`new Integer(5)` etc.) ? prefer autoboxing or `Integer.valueOf`.
->
-> M5 part-3 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(ObjectCreationExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3816,9 +3674,6 @@
 **规则说明**
 
 > Hard-coded IP address in code.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(StringLiteralExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3833,9 +3688,6 @@
 **规则说明**
 
 > Case-insensitive `String` comparison should use `equalsIgnoreCase` rather than `toLowerCase()/toUpperCase() + equals()`.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(MethodCallExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3901,8 +3753,7 @@
 
 **规则说明**
 
-> Returns a non-null reason string if the call matches one of the four dangerous signatures; null
-> otherwise.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -3933,9 +3784,6 @@
 **规则说明**
 
 > Hard-coded absolute path (DMI_HARDCODED_ABSOLUTE_PATH, CWE-22).
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(StringLiteralExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3987,9 +3835,6 @@
 **规则说明**
 
 > Hardcoded IP address in source.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(StringLiteralExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -4004,9 +3849,7 @@
 
 **规则说明**
 
-> Returns true if the expression is one we accept as "suspicious enough to warrant a CWE-259
-> finding": - String literal (high confidence TP) - String literal initializer wrapping - any
-> NameExpr (parameter / local / field, may carry a literal further up the call chain)
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -4054,7 +3897,7 @@
 
 **规则说明**
 
-> Types that are always safe to return from an endpoint.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -4084,9 +3927,7 @@
 
 **规则说明**
 
-> Per-method set of variable base names on which `setSecure(...)` has been called. Used as
-> a permissive signal that some cookie-like receiver was marked secure earlier in the same
-> method.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -4198,13 +4039,7 @@
 
 **规则说明**
 
-> The parameter annotations that bind a request value to a parameter.
->
-> This is the shared catalogue, not a local list. The taint engine decides where a taint flow
-> STARTS from these annotations, and this checker decides whether the value is VALIDATED. The two
-> have to agree: when each declared its own list, thirteen annotations were an HTTP trust
-> boundary to the taint engine but invisible here, so a `@RestQuery` parameter was tracked
-> as attacker-controlled by one layer and treated as trusted-by-default by the other.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -4219,7 +4054,7 @@
 
 **规则说明**
 
-> R740-R743: AST-level CWE-690 (NULL Pointer Dereference From Return) checker.
+> AST-level CWE-690 (NULL Pointer Dereference From Return) checker.
 
 **规则约束 / 可调参数**: (无)
 
@@ -4310,9 +4145,6 @@
 **规则说明**
 
 > Path manipulation via `getCanonicalPath()` / `getAbsolutePath()`.
->
-> M5 part-4 migration (2026-10-17): per-node-type callback; was `visit(CompilationUnit) +
-> findAll(MethodCallExpr.class)` before.
 
 **规则约束 / 可调参数**: (无)
 
@@ -4345,7 +4177,7 @@
 
 **规则说明**
 
-> Class types whose password / salt / secret-key argument must not be a compile-time literal.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -4426,7 +4258,7 @@
 
 **规则说明**
 
-> Credential-name regex (case-insensitive). Matches the DFA half's pattern so findings are 1:1.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -4441,7 +4273,7 @@
 
 **规则说明**
 
-> Minimum allocation size to flag (64 KB).
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -4471,7 +4303,7 @@
 
 **规则说明**
 
-> Set to true to treat System.out/System.err as logging.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -4486,7 +4318,7 @@
 
 **规则说明**
 
-> varName -> list of source-line numbers of assignments.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -4535,7 +4367,7 @@
 
 **规则说明**
 
-> True when the call site lives under an assertion call (excluded).
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -4653,7 +4485,7 @@
 
 **规则说明**
 
-> Strip parenthesised wrappers so `(a <= b)` becomes `a <= b`.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -5163,15 +4995,14 @@
 
 > Call `Thread.start()` not `Thread.run()`.
 >
-> CWE-572. The original detection heuristic lived in the dfa module (`dfa.cwe572-thread-run`, regex-based source-reading) and was deprecated in R787a. The canonical
-> detector is this {@link AstChecker}, which walks the {@link
+> CWE-572. The canonical detector is this {@link AstChecker}, which walks the {@link
 > com.github.javaparser.ast.CompilationUnit} via `AstDispatcher` and verifies the call's
 > receiver is a `Thread` (or subclass) instance.
 >
-> <b>R787a enhancement.</b> The original heuristic was name-based (variable name contains `"Thread"` / `"task"` / `"worker"` / `"Runnable"`). That matched Juliet but was
-> structurally dishonest about real code. R787a keeps the name fallback as a safety net but prefers
-> symbol-solver type resolution via {@link StyleContext#resolvedTypeOf}: if the receiver's resolved
-> type descends from `java.lang.Thread`, fire; otherwise fall through to the name heuristic.
+> Receiver type comes from symbol-solver type resolution via {@link
+> StyleContext#resolvedTypeOf}: if the receiver's resolved type descends from `java.lang.Thread`, the rule fires. When symbol resolution fails, the rule falls back to a
+> name-based heuristic on the receiver name (`"Thread"` / `"task"` / `"worker"` /
+> `"Runnable"`).
 
 **规则约束 / 可调参数**: (无)
 
@@ -5243,7 +5074,7 @@
 
 **规则说明**
 
-> Per-file map: class simple name -> declaration. Populated in init().
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -5403,14 +5234,11 @@
 > ids, Stripe live/test keys, GitHub PATs, etc. The static half is intentionally lenient; the AI
 > dedup pass judges TP / FP from the actual source context.
 >
-> The previous implementation was a file-wide `finish()` scan with manual `/* ...
-> *``/` / `//` / HTML comment tracking (dfa-style source-reading). The R787f AST
-> implementation walks every comment via the standard {@link
+> The AST implementation walks every comment via the standard {@link
 > com.github.javaparser.ast.comments.Comment} attachment system that JavaParser already populates
-> when it parses the source. This drops the manual block-comment accumulation code (JavaParser
-> handles multi-line comments) but adds a separate HTML-comment pass because Juliet CWE-615 test
-> cases use `<!-- ... -->` for credential leaks in servlet responses (the Java-comment parser
-> misses these).
+> when it parses the source, so multi-line comments are handled without manual accumulation. HTML
+> comments (`<!-- ... -->`) are covered by a separate pass, because the Java-comment parser
+> does not see them.
 
 **规则约束 / 可调参数**: (无)
 
@@ -5767,7 +5595,7 @@
 > partially-constructed object on a thread other than the one that performed the initialization
 > (the JMM publication guarantee requires `volatile` or equivalent).
 >
-> Detection strategy (R787e):
+> Detection strategy:
 >
 > <ol>
 > <li>Walk every {@link IfStmt} via the standard `AstDispatcher`. The condition must be
@@ -5782,11 +5610,9 @@
 > publication issue).
 > </ol>
 >
-> Juliet CWE-609 has two test cases (`CWE609__Servlet_01`, `CWE609__Thread_01`). The
-> `helperBad()` form puts the bad pattern in a helper, the `good1()` form marks the
-> field `volatile` (which suppresses the AST check). The `good2-5` forms use different
-> idioms (method-synchronized, fully-synchronized, ReentrantLock) which structurally don't match
-> the dcl shape and are correctly suppressed.
+> Equivalent safe idioms — a `volatile` field, a method-level `synchronized`, a
+> fully-synchronized block, or a `ReentrantLock` — do not have the double-check shape and are
+> correctly not reported.
 
 **规则约束 / 可调参数**: (无)
 
@@ -6079,21 +5905,12 @@
 > happening between, which either (a) is leftover from a refactor, or (b) is a placeholder that was
 > never filled in, or (c) ? in the worst case ? is intentional but misleading (the developer was
 > trying to use the monitor for memory-visibility side effects, which requires more than just
-> acquisition + release).
+> acquisition release).
 >
-> The previous implementation was a regex on source text (`ClassThreadChecker.EmptySyncBlockChecker`, R759-E): `synchronized\s*\([^)]*\)\s*\{\s*\`}.
-> R787d migrates the detection to plumb-style AST per the cardinal principles (AST → style module,
-> DFA → dfa module, prefer AST when feasible). The AST check walks the {@link
-> com.github.javaparser.ast.CompilationUnit} via {@link
+> The check walks the {@link com.github.javaparser.ast.CompilationUnit} via {@link
 > com.github.javaparser.ast.visitor.VoidVisitorAdapter} (the standard plumb-style `AstDispatcher`) and checks the body of each `synchronized` statement structurally: an empty
 > body is one of {@link BlockStmt} with no statements, an {@link EmptyStmt} (just `;`), or a
 > body that contains only nested empty statements.
->
-> Juliet CWE-585 test cases use the `synchronized(LOCK) { `} shape literally (no
-> statements inside the braces), so the AST check catches the same patterns as the regex did. The
-> AST check additionally catches `synchronized(LOCK);` (the single-statement form with {@link
-> EmptyStmt} as body) which the regex would not have caught because of the brace-matching
-> difference.
 
 **规则约束 / 可调参数**: (无)
 
@@ -6485,9 +6302,7 @@
 
 **规则说明**
 
-> Matches a `<form ... method="get" ...>` tag (single- or double-quoted value). Operates on
-> `StringLiteralExpr.asString()`, which is the canonical un-escaped form (the Java-escape
-> sequences are stripped by the parser, so we get the actual HTML text).
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -6803,10 +6618,9 @@
 > `[0, N-1]`).
 > </ol>
 >
-> The original implementation lived in `plumb-dfa` as `ClassThreadChecker$InfiniteLoopChecker` (R774, AST-on-CompilationUnit via re-parsed source).
-> R787b migrates it here so the rule lives where AST rules belong per the cardinal principles (AST
-> → style module, DFA → dfa module, prefer AST when feasible). The dfa-side is replaced with a
-> deprecated stub.
+> The original implementation lived in `plumb-dfa` as `ClassThreadChecker$InfiniteLoopChecker` (, AST-on-CompilationUnit via re-parsed source). migrates
+> it here so the rule lives where AST rules belong per the cardinal principles (AST → style module,
+> DFA → dfa module, prefer AST when feasible). The dfa-side is replaced with a deprecated stub.
 
 **规则约束 / 可调参数**: (无)
 
@@ -7117,8 +6931,7 @@
 
 **规则说明**
 
-> R747: variables initialised from `nextInt()`-family methods (SecureRandom / Random /
-> ThreadLocalRandom). name -> [min, max] inclusive.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -7419,7 +7232,7 @@
 > (message authentication) step. The encryption-only scheme omits the message authentication that
 > CWE-325 requires.
 >
-> The previous implementation was a file-wide regex scan (`ClassThreadChecker.MissingCryptoStepChecker`). R787f replaces it with an AST walk of every {@link
+> The previous implementation was a file-wide regex scan (`ClassThreadChecker.MissingCryptoStepChecker`). replaces it with an AST walk of every {@link
 > MethodCallExpr}: any call to `Cipher.getInstance / init / doFinal / update` without any
 > sibling `Mac.*` call in the same file fires the finding on the first cipher call line.
 
@@ -7901,27 +7714,21 @@
 
 **规则说明**
 
-> CWE-579 ? store a non-{@link java.io.Serializable} object in an `HttpSession`.
+> CWE-579 — store a non-{@link java.io.Serializable} object in an `HttpSession`.
 >
 > Detects calls of the shape `session.setAttribute(name, value)` where:
 >
 > <ol>
-> <li>The receiver's resolved type descends from `javax.servlet.http.HttpSession` (or
-> `javax.servlet.http.HttpSession.getAttribute`'s declared binding context). Falls
+> <li>The receiver's resolved type descends from `javax.servlet.http.HttpSession`. Falls
 > through to a name-heuristic when symbol resolution fails (e.g. servlet-api.jar not on the
 > classpath).
-> <li>The value argument's type either (a) explicitly constructs `new Hashtable()`, `new HashMap()`, `new ArrayList()` (well-known non-`Serializable` containers
-> historically flagged), or (b) resolves to a reference type that does NOT implement `java.io.Serializable` and is NOT a primitive (R787c enhancement: covers Juliet's `new
-> BadObject()` shape).
+> <li>The value argument's type either (a) explicitly constructs `new Hashtable()`, `new HashMap()`, `new ArrayList()` (well-known non-`Serializable` containers),
+> or (b) resolves to a reference type that does NOT implement `java.io.Serializable`
+> and is NOT a primitive.
 > </ol>
 >
-> The previous implementation was a regex on source text (`ClassThreadChecker.NonSerializableInSessionChecker`, R759-E). R787c migrates the detection to
-> plumb-style AST per the cardinal principles (AST → style module, DFA → dfa module, prefer AST
-> when feasible) and uses the symbol solver for receiver type resolution. Juliet CWE579 has only
-> one test case file and the `bad()` form is `new BadObject()` ? a custom non-`Serializable` nested class. The regex never fired on it (only matched `new
-> Hashtable|HashMap|ArrayList` literals). The AST version catches both forms and keeps Juliet
-> precision bit-identical at `0/0` (no regression; the rule was never going to fire on this
-> Juliet test under either implementation).
+> The receiver type is resolved with the symbol solver, so a custom non-`Serializable`
+> class is caught as well as the well-known container literals.
 
 **规则约束 / 可调参数**: (无)
 
@@ -8319,9 +8126,7 @@
 
 **规则说明**
 
-> Returns true if the expression subtree contains a call to a known predictable source (Random
-> .nextInt, System.currentTimeMillis, etc.). To avoid false positives on SecureRandom we look at
-> the receiver's name: if it starts with `secure` the call is considered safe.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -8537,9 +8342,7 @@
 
 **规则说明**
 
-> R790: find the enclosing method declaration, so we can scope the `varName` decl lookup and the
-> `nextBytes` line-window to the same method (Juliet puts each test case in its own method, so a
-> file-wide first-decl lookup always picks bad()'s decl and FPs goodN()).
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -9102,7 +8905,7 @@
 
 > clone() must call super.clone().
 >
-> Pattern D R-818: per-method visit. If method name is `"clone"` and no descendant `super.clone()` call, fire.
+> Pattern D per-method visit. If method name is `"clone"` and no descendant `super.clone()` call, fire.
 
 **规则约束 / 可调参数**: (无)
 
@@ -9364,9 +9167,7 @@
 
 **规则说明**
 
-> Decide whether the current class declaration is a servlet. Two heuristics: (a)
-> extends/implements one of the SERVLET_TYPES. (b) declares a method whose parameter list
-> contains HttpServletRequest/Response.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -9496,9 +9297,7 @@
 
 **规则说明**
 
-> Returns true if the compilation unit contains a cleanup call referencing the field. We accept
-> any method call whose argument-list contains the field name and whose callee is one of
-> setLength / fill / replace / clear / zeroize.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -9602,12 +9401,11 @@
 > CWE-523 (Unprotected Transport of Credentials).
 >
 > Detects a servlet-emitting string literal that contains a non-SSL `http://` URL AND a
-> login form field (`j_security_check` / `j_username` / `j_password`) ?the
+> login form field (`j_security_check` / `j_username` / `j_password`) — the
 > credentials will be POSTed in cleartext over the non-SSL channel.
 >
-> Juliet's CWE-523 corpus (17 files) uses the same template: `bad()` emits the vulnerable
-> form, `good1()` emits the same form with `https://` in the action URL. The `(?<!s)http://` regex tolerates the `https://` form (no fire) while matching the bad case
-> (fire).
+> The `(?<!s)http://` pattern tolerates the `https://` form, so a form whose action
+> URL is already TLS is not reported.
 
 **规则约束 / 可调参数**: (无)
 
@@ -9627,10 +9425,6 @@
 > Detects `MessageDigest.getInstance("SHA-...")` followed by `.digest(...)` with no
 > intervening `.update(...)` call. Without a salt (mixed in via `.update(salt)`), the
 > digest is vulnerable to rainbow-table attack.
->
-> Juliet's CWE-759 corpus (17 files) uses the same template: `bad()` calls `MessageDigest.getInstance("SHA-512")` then `.digest("hash me".getBytes(...))` with no
-> `.update(...)`; `good1()` inserts a `hash.update(prng.generateSeed(32))` before
-> the digest call.
 >
 > Detection: linear AST walk over every `Statement`. For each top-level (or any-depth)
 > `ExpressionStmt`:
@@ -9688,7 +9482,7 @@
 
 **规则说明**
 
-> Per-file: all import declarations for the current CU. Populated in init().
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -9703,7 +9497,7 @@
 
 **规则说明**
 
-> R-AST-FIX-2026-10-18: mark annotation imports as used.
+> (无说明)
 
 **规则约束 / 可调参数**: (无)
 
@@ -9733,9 +9527,9 @@
 
 > private field is never read.
 >
-> Pattern D R-818: per-class visit + single body walk that collects a `name -> count` map
-> for {@link NameExpr}. For each private field, look up its uses in the pre-computed map (O(1)
-> instead of N_field × c.findAll(NameExpr)).
+> Pattern D per-class visit + single body walk that collects a `name -> count` map for
+> {@link NameExpr}. For each private field, look up its uses in the pre-computed map (O(1) instead
+> of N_field × c.findAll(NameExpr)).
 >
 > Replaces the original visit(CU) + findAll(ClassOrInterfaceDeclaration) + N_field ×
 > c.findAll(NameExpr) ? N×M walks/file down to 2 walks/file.
@@ -10041,7 +9835,7 @@
 新增一条规则的步骤（无需改 plumb-style 的 package 布局）：
 
 1. 在合适的子包下新建 `*Check.java`（如 `src/main/java/org/plumb/style/naming/MyNewCheck.java`）。package 声明要与目录一致：`package org.plumb.style.naming;`。
-2. `implements AstChecker`，实现 `name()`、`init(StyleContext)`，以及 需要的 `visit(...)` 方法。
+2. `implements AstChecker`，实现 `name()`、`init(StyleContext)`，以及你关心的那个 `visit(...)` 方法。
 3. 在 `visit(...)` 内部用 `ctx.report(line, col, rule, msg, severity, dataflowHead)` 上报。
 4. 在 `src/test/java/org/plumb/style/` 下加一个对应的 `MyNewCheckTest.java`（或加进 `AllCheckersSmokeTest`），用最小源码片段验证 fire / no-fire。
 5. 跑 `python scripts/gen_rules_doc.py` 重新生成本文档。

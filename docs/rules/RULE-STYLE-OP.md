@@ -104,7 +104,7 @@ rules:
 
 ```java
 for (String enabled : config.enabledRuleNames) {
-    if (enabled.endsWith("." + bare)) return true;     // R791 兼容
+    if (enabled.endsWith("." + bare)) return true; // 兼容
     String astStyleBare = enabled;
     if (astStyleBare.startsWith("ast-style-")) {
         astStyleBare = astStyleBare.substring("ast-style-".length());
@@ -112,7 +112,7 @@ for (String enabled : config.enabledRuleNames) {
     if (astStyleBare.endsWith("-style")) {
         astStyleBare = astStyleBare.substring(0, astStyleBare.length() - "-style".length());
     }
-    if (astStyleBare.equals(bare)) return true;        // R-836 风格
+    if (astStyleBare.equals(bare)) return true; // 风格
 }
 ```
 
@@ -132,14 +132,14 @@ java -jar plumb-...-all.jar -c /tmp/disable.yaml -i src/main/java
 bin/sast-scan -i src --rule TAINT_SINK_SQL_INJECTION
 ```
 
-### 8.4 5 层 enabled gate 机制（R-834 引入）
+### 8.4 5 层 enabled gate 机制（ 引入）
 
-R-834 把"启用/禁用"从 1 层（`checks.*`）扩到 5 层。**修改 disable 行为时必须知道**这 5 层顺序——后一层覆盖前一层的设置：
+ 把"启用/禁用"从 1 层（`checks.*`）扩到 5 层。**修改 disable 行为时必须知道**这 5 层顺序——后一层覆盖前一层的设置：
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │ 1. RuleDef.enabled (checker 静态 DEFAULT_RULE 字段)        │
-│    - 默认 true. R-834 codemod 改 25 个 disabled rule 为 false│
+│ - 默认 true. codemod 改 25 个 disabled rule 为 false│
 │    - RuleRegistry.registerFromChecker 走 updateInPlace path 持久化 │
 └──────────────────────────────────────────────────────────┘
                             ↓

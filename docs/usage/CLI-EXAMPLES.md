@@ -103,7 +103,7 @@ java -jar plumb-...-all.jar -i src --max-parallelism 6
 | `outputDir` | (无) | YAML `outputDir:` 或 `-D <dir>` |
 | `cacheMode` | `off` | YAML `cacheMode:` 或 `--cache-mode` |
 | `maxParallelism` | `0`（= `nCPU-1`） | YAML `maxParallelism:` 或 `--max-parallelism` |
-| `cgStrategy` | `global`（R761 后） | YAML `cgStrategy:` 或 `--cg-strategy` |
+| `cgStrategy` | `global`（ 后） | YAML `cgStrategy:` 或 `--cg-strategy` |
 | `sourceRoots` | `[]` | YAML 或 `--source-root`（可重复） |
 | `moduleRoots` | `[]` | YAML 或 `--module-root` |
 | `classpathJars` | `[]` | YAML 或 `--classpath` |

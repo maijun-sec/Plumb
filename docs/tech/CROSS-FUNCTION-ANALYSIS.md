@@ -1,7 +1,7 @@
 # 跨函数分析：自底向上构建 Summary，自顶向下精确分析
 
-本文档解释 `plumb-dfa` 引擎（R211 / R213 / R215 / R218 / R236 / R242 /
-R254 / R255 / R260）的两阶段跨函数分析设计。
+本文档解释 `plumb-dfa` 引擎（ / /
+ / ）的两阶段跨函数分析设计。
 
 **两阶段的精度模型完全不同**：
 
@@ -11,13 +11,13 @@ R254 / R255 / R260）的两阶段跨函数分析设计。
 | **Phase 2（自顶向下精确分析）** | **fully context-sensitive**（每个 call site 独立） + **path-sensitive（Z3 验证）** | caller 把 summary 折叠到自己的 fact bag / 路径条件 / points-to map，所有结果都是 caller 视角的具体值 |
 
 > 配套源码：
-> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/Operation.java` —— R213
-> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/FunctionSummary.java` —— R213
-> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/MethodSummary.java` + `MethodSummaryBuilder.java` —— R254
-> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/SummaryApplier.java` —— R255
-> - `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintedCheckerBase.java` —— R215
-> - `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintDomain.java` —— R215
-> - `plumb-dfa/src/main/java/org/plumb/dfa/points/PointsToAnalysis.java` —— R236
+> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/Operation.java` —— 
+> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/FunctionSummary.java` —— 
+> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/MethodSummary.java` + `MethodSummaryBuilder.java` —— 
+> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/SummaryApplier.java` —— 
+> - `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintedCheckerBase.java` —— 
+> - `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintDomain.java` —— 
+> - `plumb-dfa/src/main/java/org/plumb/dfa/points/PointsToAnalysis.java` —— 
 > - `plumb-dfa/src/main/java/org/plumb/dfa/solver/PathCondition.java` + `GuardStore.java` + `Z3Bridge.java` + `LocalSolverBridge.java`
 > - `plumb-dfa/src/main/java/org/plumb/dfa/engine/DfaEngine.java` —— 引擎调度
 
@@ -49,7 +49,7 @@ Phase 2 (caller 套用模板)  ──►  精确分析  =  caller 视角的具�
 
 **关键性质**：callee 的摘要只算一次（cache by signature）；caller 之间不再互相
 等待——只要它所有 callee 算完，就可以开始。两阶段之间是**单向依赖**，因此可以做
-worklist 并行（R217）。
+worklist 并行。
 
 ## 2. CallGraph 视角：跨 TU 怎么工作？
 
@@ -107,7 +107,7 @@ merged key  com.bar.B :: m(int):int
 
 ### 2.3 路径 B：GlobalTACStore + Global strategy
 
-`GlobalTACStore` 是 R212 引入的**显式跨 TU 注册表**——它把多个 `TacProgram`
+`GlobalTACStore` 是**显式跨 TU 注册表**——它把多个 `TacProgram`
 的 `TacFunction` 按 canonical signature 索引到一张表里，提供 O(1) 解析。
 
 ```java
@@ -142,7 +142,7 @@ CallGraph cg = new GlobalCallGraphBuilder(store).build();
 路径 B 的缺点：
 - CLI 没接——`DfaEngine` 的 4-arg/5-arg 构造函数只接受 TU-local strategy name。
 - 想要走 Global 策略，得绕过 `DfaEngine.run`，直接用 `GlobalCallGraphBuilder` +
-  自定义遍历；这跟 R217 的并行 worklist / R260 预热都不兼容（`DfaEngine.run`
+  自定义遍历；这跟引擎的并行 worklist / 预热都不兼容（`DfaEngine.run`
   内部用 `CallGraphStrategyFactory.create(name, program, ...)`，Global 策略
   走不到）。
 
@@ -173,15 +173,15 @@ CallGraph cg = new GlobalCallGraphBuilder(store).build();
 
 > **TODO**（未来 R？）：把 Global strategy 接到 `DfaEngine` 主路径——新增
 > `DfaEngine.createCrossTu(EngineConfig, List<DfaChecker>, GlobalTACStore, int)`
-> 工厂方法，内部用 `createCrossTu` factory 建 strategy，跟 R217 worklist
+> 工厂方法，内部用 `createCrossTu` factory 建 strategy，跟 worklist
 > 集成。这样 CLI 就能用 `--cg-strategy global` 切到精确跨 TU 模式。
 
 ## 3. Phase 1（自底向上）—— Summary 构建
 
 ### 2.1 调用时机
 
-R211 单线程模式按 `CallGraph.reversePostOrder()` 遍历，callee 永远先于 caller。
-R217 并行模式用 dep-count worklist：每个函数的 dep 是"在程序里有 body 的 callee
+ 单线程模式按 `CallGraph.reversePostOrder()` 遍历，callee 永远先于 caller。
+ 并行模式用 dep-count worklist：每个函数的 dep 是"在程序里有 body 的 callee
 数量"，dep=0 的入 ready 队列，处理完后 decrement 其所有 caller 的 dep，归零的
 caller 进 ready 队列。两种模式都保证 Phase 1 早于 Phase 2。
 
@@ -194,26 +194,26 @@ initEngine (per-engine, 一次)
          for ins in bbRpoOrder(fn):   // BB-RPO + block 内 reverse
            if ins.kind == CALL:
              # Phase 2: caller 视角的精确分析入口
-             SummaryApplier.apply(ins, ctx, ins.args)        // R255 折叠
-             ctx.sideEffectConsumer().recordCall(ins, ctx)   // R258 副作用入袋
+             SummaryApplier.apply(ins, ctx, ins.args) // 折叠
+             ctx.sideEffectConsumer().recordCall(ins, ctx) // 副作用入袋
            checkInstruction(ins, fn, ctx)   # 每个 checker 一遍（Phase 2 checker logic）
          finishFunction(ctx, fn)
        # Phase 1: 每 checker 自报家门
        merged = summariseOneFunction(ctx, fn)
-       ctx.summaryCache().put(fn.signature(), merged)   # 写入 R213 cache
+       ctx.summaryCache().put(fn.signature(), merged) # 写入 cache
        finish(ctx) (per-engine, 一次)
 ```
 
 注意 Phase 2（SummaryApplier）**在 `checkInstruction` 之前**调用——意味着 checker
 在 `checkInstruction(ins)` 中看到的 fact bag 已经包含了上一行 CALL 的
-`RETURN_VALUE_FOLDED` 与 `SIDE_EFFECT_RECORDED` fact。R256 引入这一位置正是为了
+`RETURN_VALUE_FOLDED` 与 `SIDE_EFFECT_RECORDED` fact。 引入这一位置正是为了
 让"调用 + 用返回值"这种 pattern 在一次 instruction 访问里闭合。
 
 **Phase 1 跟 Phase 2 都在 `analyseOneFunction` 内部完成**——一个函数的所有 CALL
 都已经被 fold（Phase 2 局部完成），然后 `summariseOneFunction`（Phase 1 局部完
 成）写 summary，下一个 caller 才能用。
 
-### 2.2 R254：MethodSummary —— 返回值形状 + 副作用
+### 2.2 MethodSummary —— 返回值形状 + 副作用
 
 `MethodSummaryBuilder.build(fn)` 对一个 `TacFunction` 做一次**路径不敏感**
 （path-insensitive）的扫描。
@@ -240,7 +240,7 @@ initEngine (per-engine, 一次)
   `FIELDSTORE this / FIELDSTORE static / FIELDSTORE paramAlias / ARRAYSTORE paramAlias /
    CALL / THROW` 收集成四个集合。
 
-`MethodSummary` 是 immutable，构建后写进 `MethodSummaryCache`，由 R255 在
+`MethodSummary` 是 immutable，构建后写进 `MethodSummaryCache`，由引擎在
 caller 侧查。
 
 > **路径不敏感的代价**：`staticReturnsTrue` 永远返回 `const:true`，无论 caller
@@ -248,7 +248,7 @@ caller 侧查。
 > 任何路径下都"可能"返回的值，因此**永远不会漏报**，但可能误把多分支 return 折
 > 叠成 `top`（`ReturnShape.Kind.UNKNOWN`），从而丢精度。
 
-### 2.3 R213：FunctionSummary —— 每个形参的 Operation 集合
+### 2.3 FunctionSummary —— 每个形参的 Operation 集合
 
 `DfaChecker.summarizeFunction(ctx, fn)` 是 checker 主动汇报的钩子。
 `FunctionSummary` 由四部分组成：
@@ -267,24 +267,24 @@ caller 侧查。
 | `PassThrough()` | 形参原样流过函数 | 参数被 named / used 但没改 |
 | `Sink(familyKey, atParamIndex)` | 形参直接或间接流到 sink | 例如 SQL checker 看到 `prepareStatement(arg)` |
 | `WriteToField(fieldName)` | 形参的值被写到 enclosing class 的字段 | `this.field = arg` |
-| `TaintPropagate(sourceId, confidence)` | 形参带着 source 的污点流出 | R215 taint framework 写出 |
+| `TaintPropagate(sourceId, confidence)` | 形参带着 source 的污点流出 | taint framework 写出 |
 | `HasUnmodelledBehavior(reason)` | 函数有 native / JNI / reflection 等无法建模的副作用 | `native` 方法 / `Class.forName` 链 |
 | `UnmodelledCall(calleeSig, isLibrary)` | 函数调了一个 body 不可见的 callee | 未解析的虚调用 / 库函数 |
-| `SolverZ3Predicate(predicate, pathVars)` | 把这条调用链上的 guard 条件往 Z3 送 | R218 path-condition bridge |
-| `PointsToPropagate(allocSites)` | 函数暴露出来的 points-to 集合 | R236 跨函数 points-to |
-| `PersistsParam(paramIndex)` | 函数把形参对象 persist 进 DB | R543-DA ORM_LOST_UPDATE |
+| `SolverZ3Predicate(predicate, pathVars)` | 把这条调用链上的 guard 条件往 Z3 送 | path-condition bridge |
+| `PointsToPropagate(allocSites)` | 函数暴露出来的 points-to 集合 | 跨函数 points-to |
+| `PersistsParam(paramIndex)` | 函数把形参对象 persist 进 DB | -DA ORM_LOST_UPDATE |
 
 Sealed interface 的好处：caller 侧的 checker 用 Java 21 pattern matching 做
 exhaustive switch，编译器在新增变体时强制你考虑要不要消费它。
 
-### 2.4 R260：MethodSummaryCache 预热
+### 2.4 MethodSummaryCache 预热
 
-R260 之前，`MethodSummary` 是 analysis-loop 串行"算一个写一个"。R256/R257 在真
+ 之前，`MethodSummary` 是 analysis-loop 串行"算一个写一个"。 在真
 Juliet 上的 sweep 暴露了一个 corner case：merged program 里 `bad()` 跟它的 helper
 `staticReturnsTrue()` 在同一 RPO 边界上时，`bad()` 偶尔先被 visit，于是 cache 是
 冷的、`SummaryApplier` 看到 `UNKNOWN`，fold 失败。
 
-R260 在 analysis 之前**对程序里每一个 function 都跑一遍 `MethodSummaryBuilder.build()`**
+ 在 analysis 之前**对程序里每一个 function 都跑一遍 `MethodSummaryBuilder.build()`**
 写入 cache：
 
 ```java
@@ -336,7 +336,7 @@ summary 里 `RETURN_PARAM(0)` 只说"返回形参 0"，但折叠出来的 fact �
 Z3 验证时 `bindings` 用 caller 的具体值。同一个 callee 在不同 caller 里被
 展开成不同的 fact + 不同的 guard 集合。
 
-**R256 例子**说明 context-sensitivity：
+** 例子**说明 context-sensitivity：
 
 ```java
 // IO.java
@@ -366,7 +366,7 @@ void bad() {
 的是"callee 一般会返回什么"，但 caller 用的时候，**值是绑死在 caller 自己的
 变量上、走过 caller 自己的 BRANCH、用 caller 自己的 Z3 bindings 验证**。
 
-### 3.2 R255：SummaryApplier.apply(call, ctx, args)
+### 3.2 SummaryApplier.apply(call, ctx, args)
 
 每个 CALL 指令在 `checkInstruction` 之前由引擎调用：
 
@@ -376,7 +376,7 @@ public static MethodSummary apply(TacInstruction call,
                                    List<TacOperand> args) {
     String calleeSig = call.calleeSig;
     FunctionSignature sig = FunctionSignature.parse(calleeSig);
-    if (sig == null) sig = fallbackParse(calleeSig);   // R259 兜底
+    if (sig == null) sig = fallbackParse(calleeSig); // 兜底
     MethodSummary s = ctx.methodSummaryCache().get(sig);
     applyReturnValue(call, s, ctx, args);   // → RETURN_VALUE_FOLDED fact
     applySideEffect(call, s, ctx);          // → SIDE_EFFECT_RECORDED fact
@@ -411,7 +411,7 @@ Checkers（比如 `LiteralBooleanConditionChecker`）只看 `value` 字符串是
 `const:true` 开头，就能报 CWE-547 "dead branch"——它不需要知道 callee 是怎么
 得到 `true` 的。
 
-### 3.3 R215：TaintedCheckerBase 用 Operation.TaintPropagate
+### 3.3 TaintedCheckerBase 用 Operation.TaintPropagate
 
 Taint 类的 checker（`SqlInjectionChecker` / `CommandInjectionChecker` / 等 30 多个）
 继承 `TaintedCheckerBase`，由它统一处理 cross-function taint flow：
@@ -465,7 +465,7 @@ void saveUser(int id) {
 
 整条链跨两个函数、3 条指令，引擎不维护全局 worklist——只需要 cache lookup。
 
-### 3.4 R236：跨函数 PointsTo
+### 3.4 跨函数 PointsTo
 
 `PointsToAnalysis.applyCalleeSummary(dest, summary)` 把 `PointsToSummary.returnAllocSites`
 并入 caller 的 points-to map。流程：
@@ -481,7 +481,7 @@ use-after-free / alias 类的 checker 是这套设计最大的受益者——tab
 points-to 当成又一个 fact 加进 worklist 会让状态空间膨胀；Plumb 用独立的指向性求解器
 （`PointsToSolver`，全程序一次求解）+ summary 把这一维度旁路出去。
 
-### 3.5 R242：cross-checker GuardStore
+### 3.5 cross-checker GuardStore
 
 `GuardStore` 是**一个 engine run 共享**、**多个 checker 共同贡献**的"已知 guard"
 池。Checkers 在 `checkInstruction` 中遇到 `if (x > 0)` 之类的 BRANCH 就调

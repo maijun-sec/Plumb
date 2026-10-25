@@ -67,14 +67,28 @@ def find_fqn(name: str, pkg: str) -> str:
 
 def extract_class_javadoc(text: str) -> str:
     """Return the body of the class Javadoc, stripped of
-    the leading ` * ` decoration and trailing ` */`."""
-    # The Javadoc sits between the package + imports
-    # block and the class declaration. We pick the first
-    # `/**` ... `*/` block.
-    m = re.search(r"/\*\*(.*?)\*/", text, re.DOTALL)
-    if not m:
+    the leading ` * ` decoration and trailing ` */`.
+
+    The Javadoc must be the one attached to the CLASS declaration. An earlier version
+    took the first `/** ... */` block anywhere in the file, so a checker whose class had
+    no Javadoc of its own inherited the Javadoc of whichever private method came
+    first -- and that method's Javadoc described the method, not the rule. The
+    description shown to a user must describe the rule.
+    """
+    # The class Javadoc is the last `/** ... */` block that sits immediately before the
+    # class declaration (allowing for annotations in between). Anchoring on the class
+    # declaration is what makes this the class Javadoc and not some member's.
+    pattern = re.compile(
+        r"/\*\*(?P<body>.*?)\*/\s*"
+        r"(?:(?:@[\w.]+(?:\([^)]*\))?\s*)|(?:public\s+|final\s+|abstract\s+|sealed\s+))*"
+        r"class\s+\w+",
+        re.DOTALL)
+    m = None
+    for m in pattern.finditer(text):
+        pass  # keep the LAST match: the one attached to the class declaration
+    if m is None:
         return ""
-    body = m.group(1)
+    body = m.group("body")
     # Strip leading ` * ` and standalone `*` lines.
     lines = []
     for line in body.splitlines():
@@ -557,7 +571,7 @@ def render(rows: list[dict]) -> str:
                 "`src/main/java/org/plumb/style/naming/MyNewCheck.java`）。"
                 "package 声明要与目录一致：`package org.plumb.style.naming;`。")
     out.append("2. `implements AstChecker`，实现 `name()`、`init(StyleContext)`，以及"
-                " 需要的 `visit(...)` 方法。")
+                "你关心的那个 `visit(...)` 方法。")
     out.append("3. 在 `visit(...)` 内部用 `ctx.report(line, col, rule, msg, severity, dataflowHead)` 上报。")
     out.append("4. 在 `src/test/java/org/plumb/style/` 下加一个对应的 `MyNewCheckTest.java`"
                 "（或加进 `AllCheckersSmokeTest`），用最小源码片段验证 fire / no-fire。")

@@ -46,7 +46,7 @@ public final class MergedProgram implements Serializable {
 public final class TacFunction implements Serializable {
     private final String name;               // "main"
     private final String signature;         // "Demo#main"
-    private final String enclosingClass;    // "Demo"（R149）
+    private final String enclosingClass; // "Demo"
     private final TacType returnType;
     private final List<TacVar> params;
     private final List<TacVar> locals;
@@ -125,11 +125,11 @@ public final class TacType implements Serializable {
 | `FINALLY_ENTER` | `finally:` | 入口 finally 块 |
 | `NOP` | — | no-op |
 
-`CATCH_HANDLER` 和 `FINALLY_ENTER` 是 R261 加入的，让 try/catch/finally 显式进入 IR（R261 同时给 CFG 加 `exceptionSuccessors` 边）。具体语义：
+`CATCH_HANDLER` 和 `FINALLY_ENTER` 让 try/catch/finally 显式进入 IR（同时给 CFG 加 `exceptionSuccessors` 边）。具体语义：
 
 - **`CATCH_HANDLER` (`catch (<type>) -> dest`)** —— catch 块入口。`dest` 是 catch 参数绑定（运行时一定非 null，类型由 throws 推导）。`TaintedCheckerBase` 看到 `CATCH_HANDLER` 时把 `dest` 标记为 NNE（Non-Null Evidence），并把关联 `THROW` 指令的 taint label 透传到 `dest`。这是为什么 `NullDerefChecker` 不报"catch (NullPointerException e) { e.x ... }"——`e` 被绑死为非 null。
 - **`FINALLY_ENTER` (`finally:`)** —— finally 块入口。CFG builder 给所有 try 内基本块 + 所有 catch 块（以 `THROW` 结尾的）都加一条到 FINALLY 块的 exception edge，模拟"无论 try/catch 怎么走，finally 一定跑"的语义。
-- 旧 R151 的 `L_CATCH_<Type>` / `L_FINALLY` 标签名 pattern 保留——Label-based tooling（UnusedLabelChecker / SARIF / R259 cache-key normaliser）不破。
+- 旧的 `L_CATCH_<Type>` / `L_FINALLY` 标签名 pattern 保留——Label-based tooling（UnusedLabelChecker / SARIF / cache-key normaliser）不破。
 
 详细背景与 CWE396 调优过程
 

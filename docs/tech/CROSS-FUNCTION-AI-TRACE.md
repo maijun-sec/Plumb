@@ -2,9 +2,9 @@
 
 本文档是 `CROSS-FUNCTION-ANALYSIS.md` 的 §6-§14 拆分版本。Phase 1+2 主干（动机、CallGraph、Phase 1 Summary、Phase 2 精确分析）见 `CROSS-FUNCTION-ANALYSIS.md`；Operation 体系与 6 套子分析见 `CROSS-FUNCTION-OPERATION.md`。
 
-## 6. R217 并行 worklist
+## 6. 并行 worklist
 
-Phase 1 的"callee 先于 caller"是 RPO 的硬约束，但 R217 不必等整层 RPO 跑完才开
+Phase 1 的"callee 先于 caller"是 RPO 的硬约束，但不必等整层 RPO 跑完才开
 始下一层——只要一个函数所有**在程序里有 body 的 callee** 都总结完，caller 就可以
 开工。
 
@@ -26,12 +26,12 @@ worker:
 返回 `FunctionSummary.empty()`，caller 看到"没有 taint 流出"是 conservative 上界。
 
 并发安全靠两点：
-- `FunctionSummaryCache` 升级到 `ConcurrentHashMap` + `LongAdder`（R217），
+- `FunctionSummaryCache` 升级到 `ConcurrentHashMap` + `LongAdder`，
   跨 worker 写 / 读都无锁。
 - `FactBag` 与 `taintedVars` 等 per-function 状态在 `analyseOneFunction` 入口
   `clear()`、出口丢弃——同一时刻只被一个 worker 持有。
 
-`R217 worklist` 的设计取舍详见 `DfaEngine.runWorklist` 的注释。
+` worklist` 的设计取舍详见 `DfaEngine.runWorklist` 的注释。
 
 ## 7. 与 tabulation（IFDS / IDE）方案的对比
 
@@ -71,7 +71,7 @@ worker:
   跑 `IO.staticReturnsTrue` + `bad()`，验证 fold 出 `const:true` 后
   `LiteralBooleanConditionChecker` 报 finding。
 - `plumb-dfa/src/test/.../integration/R256JulietCrossFunctionSweepTest` +
-  `R257JulietCrossFunctionSweepTest` —— 在真实 Juliet corpus（`CWE129_Improper_
+  `R257JulietCrossFunctionSweepTest` —— 在真实 Java corpus（`CWE129_Improper_
   Validation_of_Array_Index` 的 `s01/`，672 个 TU）上跑 cross-function sweep。
 - `plumb-dfa/src/test/.../points/R236CrossFunctionPointsToTest` —— 验证
   `applyCalleeSummary` 把 callee 内的 `new` 接到 caller 的 dest 上。
@@ -83,10 +83,10 @@ worker:
    `UNKNOWN("multiple returns with mismatched shapes")`。如果想保留多分支精
    度，可以扩展 `ReturnShape` 加 `RETURN_MULTI` 形态（multi-value lattice），但
    路径敏感的代价会落到所有 caller。
-2. **跨 TU 缺 caller-free 形参传播**。R83 修过的 use-after-free 在跨 TU
+2. **跨 TU 缺 caller-free 形参传播**。use-after-free 在跨 TU
    时仍然需要 caller 在 callee 调用后做 free。summary 已经能看见
    `WriteToField`，但 caller 看不到"callee 内部把传进去的指针 close 了"——这
-   条信息目前在 `HasUnmodelledBehavior` 里被合并，丢失了精度。计划在 R560
+   条信息目前在 `HasUnmodelledBehavior` 里被合并，丢失了精度。计划在 
    加 `Operation.CloseParam(int)` 变体。
 3. **`.tac` 缓存复用 summary**。当前 `IrSerializer` 只序列 IR，summary 是
    per-run 重算。把 `FunctionSummaryCache` 跟着 `merged.tac` 一起序列化
@@ -99,7 +99,7 @@ worker:
    strategy name（`"cha" / "rta" / "vta" / "1cfa" / "stub" / "cached:..."`），
    不接受 `GlobalTACStore`。`GlobalCallGraphStrategy` 只能被集成测试用，要
    在 CLI 里用 `--cg-strategy global`，需要给 `DfaEngine` 加
-   `createCrossTu(cfg, checkers, store, threads)` 工厂，跟 R217 worklist
+   `createCrossTu(cfg, checkers, store, threads)` 工厂，跟 worklist
    集成，并把 `CallGraphStrategyFactory.create(...)` 的"name in {global}"分支
    删掉（避免 "Unknown strategy" 误报）。
 
@@ -171,17 +171,15 @@ callee signature 的 source 模式表。IR 里同一方法的 signature 可能�
 `config.runIntOverflow`、`config.runNullDeref`），`config.runTaint` 是
 taint 全家桶的总开关。
 
-另有 5 个 DFA checker **曾经存在但已从源码树删除**，注册语句的注释还留在
-`ScanRunner.buildDfaCheckers()` 里。它们已迁移到 `plumb-style` 的 AST 等价实现，
-由 `AstCheckerRegistry.builtins()` 自动注册：
+以下 CWE 由 `plumb-style` 的 AST checker 覆盖（`AstCheckerRegistry.builtins()` 自动注册）：
 
-| 已删除的 DFA checker | plumb-style 等价 | CWE |
-| --- | --- | --- |
-| `CleartextSocketUsageChecker` | `CleartextSocketUsageCheck` | CWE-319 |
-| `CompareClassesByNameChecker` | `CompareClassesByNameCheck` | CWE-273 |
-| `ProcessControlChecker` | `ProcessControlCheck` | CWE-114 |
-| `RecursionChecker` | `UncheckedLoopConditionCheck`（覆盖同一 CWE，但语义是无出口的循环而非自递归） | CWE-674 |
-| `UninitNonnullDfaChecker` | `UninitNonnullCheck` | CWE-457 |
+| CWE | plumb-style checker |
+| --- | --- |
+| CWE-319 明文传输 | `CleartextSocketUsageCheck` |
+| CWE-273 类比较 | `CompareClassesByNameCheck` |
+| CWE-114 调用外部进程 | `ProcessControlCheck` |
+| CWE-674 无出口循环 | `UncheckedLoopConditionCheck`（覆盖同一 CWE，但语义是无出口的循环而非自递归） |
+| CWE-457 未初始化字段 | `UninitNonnullCheck` |
 
 同理，`ServletAtomicityDfaChecker` 与 `SingletonRaceDfaChecker` **仍在源码里但
 不注册**：`plumb-style` 的 `ServletAtomicityCheck` / `SingletonRaceCheck`

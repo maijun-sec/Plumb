@@ -4,7 +4,7 @@
 
 ## 1. AI augmentation 与每条规则的 prompt
 
-R-? Step 7 起，每条 `DfaChecker` / `AstChecker` 自己持有 `getAiPrompt(Finding) -> String`：
+每条 `DfaChecker` / `AstChecker` 自己持有 `getAiPrompt(Finding) -> String`：
 
 - 返回 `null` = 该规则**不走** AI dedup
 - 返回非 null = LLM 收到这条规则的 prompt + finding 详情 + dataflow trace + 源码窗口，输出 TP / FP / UNKNOWN
@@ -23,19 +23,17 @@ prompt 默认由 checker 提供。手写 override 见：
 
 详见 `docs/usage/CLI.md` §2.2。
 
-## 2. CWE 标签与 mapping 一致性
+## 2. CWE 标签从哪来
 
-`juliet-coverage/data/plumb_rule_to_cwe.json`（**367** 条）是 rule → CWE 的映射，用于：
-- Juliet 评估的 cwe_matched eval 路径
-- NDJSON 输出里 `cwe` 字段填充
+CWE 标签有两个独立来源，新增规则时要知道自己的规则属于哪一个：
 
-**维护原则**：这个文件是**人工维护**的，仓库里没有自动 rebuild 脚本。key 有两种
-形态都能被 `ScanRunner.isRuleIdAllowed` 匹配：
-- 规则短名（大写下划线），例如 `ABSENT_CODEBLOCK_IN_CASE`
-- emit-id 字符串，例如 `ast-style-empty-catch-style`
+| 规则类型 | CWE 来源 | 怎么加 |
+| --- | --- | --- |
+| AST 规则（`plumb-style`） | `RuleDef` 构造参数里的 CWE 列表 | 在 `new RuleId(...)` 之后的 `RuleDef` 里传 `List.of("CWE-xxx")` |
+| DFA 规则（`plumb-dfa`） | `plumb-dfa/src/main/resources/cwe-mappings.yaml` | 在该 YAML 里加 `finding-key: CWE-xxx` 一项 |
 
-改 emit-id 字符串时**必须**同步更新这个 mapping —— 漏改会让 Juliet 的
-`cwe_matched` 评估路径静默跳过对应 finding。
+AST 规则的 CWE 会随 finding 进入 NDJSON 的 `cwe` 字段；DFA 规则的 finding key 则通过
+`cwe-mappings.yaml` 查表。**改 emit-id 字符串不影响 CWE**——两者不是同一份映射。
 
 ## 3. 与外部工具的等价 ID
 
@@ -51,13 +49,13 @@ prompt 默认由 checker 提供。手写 override 见：
 
 完整表由 `scripts/gen_rules_doc.py` 生成在 `docs/plumb-style-rules.md`。
 
-**全方位对比**（实现机制 / CWE 覆盖 / Juliet prec / 误报率 / 性能 / AI 集成 / Plumb 定位）见 [`RULE-TOOL-COMPARISON.md`](./RULE-TOOL-COMPARISON.md)。
+**全方位对比**（实现机制 / CWE 覆盖 / 误报率 / 性能 / AI 集成 / Plumb 定位）见 [`RULE-TOOL-COMPARISON.md`](./RULE-TOOL-COMPARISON.md)。
 
 ## 4. 添加新规则的步骤
 
 ### 13.0 Pattern 选型决策（Style 规则前置步骤）
 
-**写新 Style checker 之前先选 Pattern**。AstDispatcher 对 43 种节点各 `visit(X, Void)` 一次，单 checker 内部多次 `findAll` / `walk` 会导致每文件被 walk 多次。Pattern 选型决策表（R-815）：
+**写新 Style checker 之前先选 Pattern**。AstDispatcher 对 43 种节点各 `visit(X, Void)` 一次，单 checker 内部多次 `findAll` / `walk` 会导致每文件被 walk 多次。Pattern 选型决策表：
 
 ```
 [新 AST checker 写之前]
@@ -124,7 +122,7 @@ prompt 默认由 checker 提供。手写 override 见：
 1. 在 `plumb-dfa/src/main/java/org/plumb/dfa/checkers/<family>/FooChecker.java` 写规则，实现 `DfaChecker` 接口（或继承 `TaintedCheckerBase`）。
 2. 在 `ScanRunner.buildDfaCheckers()` 加一行 `checkers.add(new org.plumb.dfa.checkers.<family>.FooChecker());`，并挂上对应的 YAML flag。
 3. 在 `plumb-dfa/src/main/resources/checkers.yaml` 加一条 checker 条目（`enabled` 决定默认开关）。
-4. 在 `juliet-coverage/data/plumb_rule_to_cwe.json` 加 mapping（key 用规则短名或 emit-id，两者都能被匹配）。
+4. 在 `plumb-dfa/src/main/resources/cwe-mappings.yaml` 加一条 `finding-key: CWE-xxx` 映射。
 5. 跑 `mvn -pl plumb-dfa install` rebuild。
 6. `bin/sast-scan --list-rules | grep <rule-id>` 验证。
 
@@ -134,7 +132,7 @@ prompt 默认由 checker 提供。手写 override 见：
 2. **在 `plumb-dfa/src/main/resources/sink-families.yaml` 注册 source / sink 模式**（不存在
    `TaintCatalog` 这个类——早期文档提到的它从未存在）。sanitizer 若不是某个 sink family 的
    固有属性，则在对应 checker 的 `isSanitizer` 里判定。
-3. 在 `juliet-coverage/data/plumb_rule_to_cwe.json` 加 mapping。
+3. 在 `plumb-dfa/src/main/resources/cwe-mappings.yaml` 加一条对应映射。
 4. rebuild + verify。
 
 #### sink pattern 怎么写（重要）
