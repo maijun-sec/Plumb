@@ -4202,9 +4202,9 @@
 >
 > This is the shared catalogue, not a local list. The taint engine decides where a taint flow
 > STARTS from these annotations, and this checker decides whether the value is VALIDATED. The two
-> have to agree: when each declared its own list, seventeen annotations were an HTTP trust boundary
-> to the taint engine but invisible here, so a `@RestQuery` parameter was tracked as
-> attacker-controlled by one layer and treated as trusted-by-default by the other.
+> have to agree: when each declared its own list, thirteen annotations were an HTTP trust
+> boundary to the taint engine but invisible here, so a `@RestQuery` parameter was tracked
+> as attacker-controlled by one layer and treated as trusted-by-default by the other.
 
 **规则约束 / 可调参数**: (无)
 

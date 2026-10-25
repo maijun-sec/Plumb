@@ -123,7 +123,35 @@ sh scripts/install-hooks.sh
   无法解析的文件;重新格式化会破坏用来度量引擎的语料。
 - `testcase/` —— 带手工行号锚点的度量样本;重新格式化会移动清单指向的行。
 
-### 3.3 最小扫描
+### 3.3 提交前的门禁
+
+仓库里有一组门禁,每个都检查一件会静默腐化的事。**一个没人跑的门禁不是门禁**,
+所以它们都由一个命令统一驱动:
+
+```bash
+python scripts/check_all.py
+```
+
+它依次跑:
+
+| 门禁 | 检查什么 |
+| --- | --- |
+| `format --check` | 每个源文件都符合 google-java-format |
+| `gen_categories --check` | 生成的 checker 注册表是最新的 |
+| `gen_framework_annotations --check` | 生成的注解清单是最新的 |
+| `check_framework_annotations` | 污点引擎和 AST 校验检查器对"什么是用户输入"的理解一致 |
+| `check_catalogue_drift_numbers` | javadoc 里引用的历史漂移数字与 git 历史对得上 |
+| `check_dataflow_constraint` | 清单的 `dataflow_contains` 约束不是空断言 |
+| `linkcheck` | markdown 里的相对链接没有断链 |
+
+跑完还会重新生成 `docs/plumb-style-rules*.md`,并报告生成结果和已提交版本是否一致。
+
+**关于"注释里的数字"**:注释里引用一个数字,这个数字就会腐烂 —— 仓库里曾经同时写着
+"thirteen" 和 "seventeen",描述的是同一个历史漂移。`check_catalogue_drift_numbers`
+从 git 历史里读出漂移前的两份清单,算出真实的数字,再和注释里写的对账;注释写错就报错。
+历史不可用(浅克隆)时它会说明原因并放行,而不是假装通过。
+
+### 3.4 最小扫描
 
 ```bash
 java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
@@ -135,7 +163,7 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
   -o findings.ndjson
 ```
 
-### 3.4 用 YAML 配置
+### 3.5 用 YAML 配置
 
 ```bash
 java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
@@ -145,7 +173,7 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
 
 `default-config.yaml` 含 47 个 `checks:` 键（45 个 checker family + `taint` / `style` 两个总开关）、AI 配置、调用图策略、缓存模式。
 
-### 3.5 启用 AI FP 消减
+### 3.6 启用 AI FP 消减
 
 ```bash
 # 设置 API key (环境变量 + 配置文件双通道,详见 docs/usage/ENVIRONMENT.md)
@@ -160,7 +188,7 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
 
 NDJSON 输出每行多两个字段:`ai_verdict` (TP/FP/UNKNOWN) + `ai_reason`。
 
-### 3.6 解压即用 (生产)
+### 3.7 解压即用 (生产)
 
 下载 `plumb-0.1.0-SNAPSHOT-jre-linux-x64.tar.gz` (~180 MB) 或 `-windows-x64.zip`,解压后:
 
