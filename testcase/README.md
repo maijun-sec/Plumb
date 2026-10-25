@@ -10,7 +10,7 @@ self-contained so its support verdict can be read and re-measured on its own.
 | `03-pointer-multilevel` | Field-, array- and container-sensitive alias analysis with context-sensitive cross-method returns |
 | `04-polymorphic-callgraph` | Dispatch through interfaces, abstract classes, diamond inheritance |
 | `05-real-cve-derived` | CVE-shaped real-world cases |
-| `06-framework-orms` | Spring JDBC and MyBatis sinks, with the dependency jars absent from the analysis classpath |
+| `06-framework-orms` | Spring JDBC and MyBatis sinks, with the dependency jars absent from the analysis classpath; Spring, Quarkus REST and Micronaut annotation-bound entry points |
 
 ## Support matrix (measured)
 
@@ -50,6 +50,41 @@ reported as `unscorable` rather than as a false negative.
 `ast-style-commentsindentation` reports `sink_function: vulnerableDeserialize(...)`, so an
 enclosing-method anchor matched a STYLE finding and then failed the CWE check -- scoring a
 real detection as a miss. Anchor scoping is now restricted to DFA findings.
+
+**4. A finding can exist and still say the wrong thing.**
+A framework entry point is supposed to be reported as `param:customer@spring-mvc:RequestParam`
+-- the trust boundary it crossed -- and not as a bare `param:customer`. A case that only asserts
+"a finding exists at this line" passes for a model that produced the right NUMBER of findings
+with the wrong ORIGIN, and the origin is what a reader of the report actually sees. So a case
+may pin the source label with `dataflow_contains`, a substring test on the finding's dataflow
+head.
+
+```json
+{ "id": "TP-quarkus-framework-entry-point", "kind": "tp",
+  "file": "QuarkusOrderResource.java", "line": 61,
+  "rule_ids": ["dfa-taint-sql-injection"],
+  "dataflow_contains": "param:customer@quarkus-rest:RestQuery" }
+```
+
+The plain-parameter controls use the same field to assert the **absence** of a qualifier, by
+pinning the whole head (`"taint: param:customer ->"`), so a source of
+`param:customer@quarkus-rest:RestQuery` would not satisfy them.
+
+## Manifest fields
+
+| Field | Meaning |
+|---|---|
+| `id` | The case's name, unique within the category |
+| `kind` | `tp` (a finding is expected) or `tn` (no finding is expected) |
+| `file` | The fixture file the finding must be in |
+| `line` | The exact source line the finding must be reported at |
+| `line_from` / `line_to` | An inclusive line RANGE, for scoping a case to one method |
+| `rule_ids` | The canonical rule ids that may satisfy the case. Required for every TN |
+| `cwes` | The CWE list that may satisfy the case, when the rule id is not pinned |
+| `sink_function` | A substring of the finding's sink callee signature |
+| `dataflow_contains` | A substring of the finding's dataflow head, e.g. the source label |
+| `anchor_fn` | The sink callee the case is scoped to (`Class.method/arity`) |
+| `status_override` | `unsupported` or `unreachable-known-limitation` |
 
 ## Case statuses
 

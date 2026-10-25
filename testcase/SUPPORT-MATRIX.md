@@ -10,7 +10,7 @@ Re-run `python testcase/run_category.py testcase/<category>` to refresh.
 | 03-pointer-multilevel | TP 2/2 | TN 12/12 (1 known-limitation) |
 | 04-polymorphic-callgraph | TP 9/9 | TN 2/2 |
 | 05-real-cve-derived | TP 15/15 | TN 3/3 (3 known-limitation) |
-| 06-framework-orms | TP 9/9 | TN 6/6 |
+| 06-framework-orms | TP 15/15 | TN 7/7 |
 
 ## Verdicts
 

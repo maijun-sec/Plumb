@@ -6,6 +6,7 @@
     "SHAPE 1 (Spring JDBC, DFA): the receiver type cannot be resolved, so the TAC writes the callee signature with a SIMPLE receiver name ('JdbcTemplate.query/2') rather than a fully qualified one. Every sink pattern is anchored to a fully qualified name, so before the sink matcher learned to accept the simple-name form, none of these sinks was reachable and no error was raised. The 'dfa-taint-sql-injection' findings below are the evidence that the pattern now matches.",
     "SHAPE 2 (MyBatis / Spring Data, AST): the TAC does not carry annotations and a mapper method lowers to a bare RETURN, so the taint engine cannot see a '${}' placeholder. This detection is therefore an AST rule, 'ast-security-orm-sql-interpolation'.",
     "SHAPE 3 (framework entry points, DFA): a Spring controller has no 'getParameter()' call anywhere -- the framework binds the request value to the method parameter BY ANNOTATION. The taint engine therefore treats a parameter carrying @RequestParam / @PathVariable / @QueryParam as a source whose origin is the HTTP request, and the finding names that origin ('param:customer@spring-mvc:RequestParam'). The 'TP-framework-entry-point' case is the one where the sink is in the SAME method, so the source label is visible in the finding itself; the cross-file cases are attributed to the sink, the same way category 01 is.",
+    "SHAPE 4 (Quarkus REST and Micronaut, DFA): the same entry-point model, but each framework names its binding annotations differently. Quarkus uses @RestQuery / @RestHeader / @RestCookie; Micronaut uses @QueryValue / @Header / @Body. Micronaut's names were entirely missing from the taint engine's list, which instead held 'HeaderValue' and 'PathValue' -- names no framework defines -- so a value from a Micronaut request reached the SQL sink with no taint flow to follow. The trust boundary is identified by the BINDING annotation, not the endpoint annotation: Quarkus REST shares @Path and @GET with JAX-RS, so the endpoint annotation alone cannot tell them apart, but @RestQuery versus @QueryParam can.",
     "The two ORM placeholder forms have opposite safety semantics: '#{name}' becomes a PreparedStatement placeholder and the value is bound as DATA; '${name}' is a raw string substitution and the value becomes part of the SQL TEXT. Only the raw form is reported.",
     "A '${}' that names something the method does not receive is not a finding: a dynamic table name or column is a legitimate use of raw substitution, because a prepared-statement placeholder cannot stand in for SQL structure.",
     "The style findings on these fixtures are NOT part of this category. The category scores the two framework rules; the style noise is measured by the style categories."
@@ -59,7 +60,50 @@
       "rule_ids": [
         "dfa-taint-sql-injection"
       ],
-      "note": "A Spring @RequestParam bound parameter reaching the SQL sink IN THE SAME METHOD. There is no getParameter() call anywhere in this file -- the framework binds the value by annotation -- so the source is the parameter annotation, not a call. The finding's source is 'param:customer@spring-mvc:RequestParam': it names the trust boundary rather than an opaque parameter."
+      "dataflow_contains": "param:customer@spring-mvc:RequestParam",
+      "note": "A Spring @RequestParam bound parameter reaching the SQL sink IN THE SAME METHOD. There is no getParameter() call anywhere in this file -- the framework binds the value by annotation -- so the source is the parameter annotation, not a call. The finding's source is 'param:customer@spring-mvc:RequestParam': it names the trust boundary rather than an opaque parameter. The label is ASSERTED, not assumed: a model that produced the right number of findings with a bare parameter label would fail this case."
+    },
+    {
+      "id": "TP-quarkus-framework-entry-point",
+      "kind": "tp",
+      "file": "QuarkusOrderResource.java",
+      "line": 61,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "param:customer@quarkus-rest:RestQuery",
+      "note": "A Quarkus @RestQuery bound parameter reaching the SQL sink in the same method. The source is 'param:customer@quarkus-rest:RestQuery'. Quarkus REST uses the JAX-RS ENDPOINT annotations (@Path on the class, @GET on the method), so the endpoint annotation alone cannot identify it -- but the BINDING annotation can, and the finding names Quarkus rather than JAX-RS. The label is ASSERTED, so a model that attributed this to jax-rs would fail here."
+    },
+    {
+      "id": "TP-micronaut-framework-entry-point",
+      "kind": "tp",
+      "file": "MicronautOrderController.java",
+      "line": 59,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "param:customer@micronaut:QueryValue",
+      "note": "A Micronaut @QueryValue bound parameter reaching the SQL sink in the same method. The source is 'param:customer@micronaut:QueryValue'. Micronaut names its binding annotations differently from every other framework, and the taint engine's list used to contain 'HeaderValue' and 'PathValue' -- names no framework defines -- while the real @QueryValue was missing. The label is ASSERTED."
+    },
+    {
+      "id": "TP-quarkus-input-validation",
+      "kind": "tp",
+      "file": "QuarkusOrderResource.java",
+      "line": 35,
+      "rule_ids": [
+        "ast-security-missing-input-validation"
+      ],
+      "note": "A Quarkus resource method that takes a request value without Bean Validation. Before the shared annotation catalogue the validation checker knew thirteen binding annotations and the taint engine knew twenty-six, so a @RestQuery parameter was tracked as attacker-controlled by one layer and treated as trusted-by-default by the other -- and this rule never fired."
+    },
+    {
+      "id": "TP-micronaut-input-validation",
+      "kind": "tp",
+      "file": "MicronautOrderController.java",
+      "line": 32,
+      "rule_ids": [
+        "ast-security-missing-input-validation"
+      ],
+      "note": "A Micronaut controller method that takes a request value without Bean Validation. Micronaut's @QueryValue was invisible to the validation checker before the shared catalogue, so no CWE-20 finding was raised for a Micronaut application at all."
     },
     {
       "id": "TP-mybatis-select-raw",
@@ -130,6 +174,38 @@
         "dfa-taint-sql-injection"
       ],
       "note": "PRECISION PROBE for the framework entry-point model: a @RequestParam parameter is labelled as a request-bound value, but it only reaches a log call. A model that tainted every value a request touches would report here. The line is the call site of the log-only repository method; the finding, if there were one, would be attributed to the sink in OrderRepository."
+    },
+    {
+      "id": "TP-quarkus-plain-parameter",
+      "kind": "tp",
+      "file": "QuarkusOrderResource.java",
+      "line": 67,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "taint: param:customer ->",
+      "note": "A plain parameter with NO binding annotation reaches the same sink in the same class. It IS reported -- a plain parameter is an ordinary taint source -- so this is a true positive, not a false positive. Its value is as a LABEL probe: the source must stay 'param:customer' and must NOT acquire a framework qualifier. The assertion is on the whole 'taint: param:customer ->' head, so a source of 'param:customer@quarkus-rest:RestQuery' would NOT satisfy it. The trust boundary comes from the binding annotation, so a parameter without one carries none, even in a Quarkus resource."
+    },
+    {
+      "id": "TP-micronaut-plain-parameter",
+      "kind": "tp",
+      "file": "MicronautOrderController.java",
+      "line": 65,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "taint: param:customer ->",
+      "note": "The Micronaut counterpart of TP-quarkus-plain-parameter: reported, and the source stays a bare parameter with no framework qualifier. Without this control, a model that labelled EVERY parameter of a framework class would produce the right number of findings here while producing the WRONG source label, which is what a reader of the report actually sees."
+    },
+    {
+      "id": "TN-quarkus-entry-point-no-sink",
+      "kind": "tn",
+      "file": "QuarkusOrderResource.java",
+      "line": 47,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "PRECISION PROBE: a @RestCookie parameter is labelled as a request-bound value, but it only reaches a log call. A model that tainted every value a request touches would report here."
     },
     {
       "id": "TN-mybatis-bound-parameter",

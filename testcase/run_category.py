@@ -184,6 +184,22 @@ def match(finding: dict, case: dict) -> bool:
         if sink_fn not in actual:
             return False
 
+    # The SOURCE LABEL is often the whole point of a case. A framework entry point
+    # is supposed to be reported as "param:customer@spring-mvc:RequestParam" -- the
+    # trust boundary it crossed -- and not as a bare "param:customer". Asserting only
+    # that a finding EXISTS would pass for a model that produced the right NUMBER of
+    # findings with the wrong origin, which is what a reader of the report actually
+    # sees.
+    #
+    # The comparison is a substring test on the finding's dataflow head, so a case can
+    # pin the exact label ("param:customer@quarkus-rest:RestQuery") or just the
+    # framework part.
+    label = case.get("dataflow_contains")
+    if label:
+        dataflow = finding.get("dataflow") or ""
+        if label not in dataflow:
+            return False
+
     # R1113: a line RANGE scopes a case to one method without needing a method name in the
     # finding. Findings carry a line but no enclosing-method field, so `anchor_fn` cannot be used
     # for rules that do not report through a sink (null-dereference among them), and a file-level
@@ -436,6 +452,11 @@ def main() -> int:
     }
 
     print(f"=== {cat.name} ===")
+    # Print the manifest path, not just the category name. Two categories
+    # with the same name (a copy in a scratch directory, say) are
+    # indistinguishable otherwise, and a score reported against the
+    # wrong manifest is worse than no score at all.
+    print(f"manifest: {manifest_path}")
     print(f"findings: {len(findings)}   mode: {report['scan_mode']}   cg: {args.cg}")
     s = report["summary"]
     print(f"TP: {s['tp_supported']}/{s['tp_total']} supported, "

@@ -2,7 +2,7 @@
   "category": "06-framework-orms",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 188,
+  "total_findings": 294,
   "cases": [
     {
       "id": "TP-jdbc-query-for-list",
@@ -72,11 +72,74 @@
       "rule_ids": [
         "dfa-taint-sql-injection"
       ],
-      "note": "A Spring @RequestParam bound parameter reaching the SQL sink IN THE SAME METHOD. There is no getParameter() call anywhere in this file -- the framework binds the value by annotation -- so the source is the parameter annotation, not a call. The finding's source is 'param:customer@spring-mvc:RequestParam': it names the trust boundary rather than an opaque parameter.",
+      "dataflow_contains": "param:customer@spring-mvc:RequestParam",
+      "note": "A Spring @RequestParam bound parameter reaching the SQL sink IN THE SAME METHOD. There is no getParameter() call anywhere in this file -- the framework binds the value by annotation -- so the source is the parameter annotation, not a call. The finding's source is 'param:customer@spring-mvc:RequestParam': it names the trust boundary rather than an opaque parameter. The label is ASSERTED, not assumed: a model that produced the right number of findings with a bare parameter label would fail this case.",
       "status": "supported",
       "hits": 1,
       "hit_lines": [
         22
+      ]
+    },
+    {
+      "id": "TP-quarkus-framework-entry-point",
+      "kind": "tp",
+      "file": "QuarkusOrderResource.java",
+      "line": 61,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "param:customer@quarkus-rest:RestQuery",
+      "note": "A Quarkus @RestQuery bound parameter reaching the SQL sink in the same method. The source is 'param:customer@quarkus-rest:RestQuery'. Quarkus REST uses the JAX-RS ENDPOINT annotations (@Path on the class, @GET on the method), so the endpoint annotation alone cannot identify it -- but the BINDING annotation can, and the finding names Quarkus rather than JAX-RS. The label is ASSERTED, so a model that attributed this to jax-rs would fail here.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        61
+      ]
+    },
+    {
+      "id": "TP-micronaut-framework-entry-point",
+      "kind": "tp",
+      "file": "MicronautOrderController.java",
+      "line": 59,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "param:customer@micronaut:QueryValue",
+      "note": "A Micronaut @QueryValue bound parameter reaching the SQL sink in the same method. The source is 'param:customer@micronaut:QueryValue'. Micronaut names its binding annotations differently from every other framework, and the taint engine's list used to contain 'HeaderValue' and 'PathValue' -- names no framework defines -- while the real @QueryValue was missing. The label is ASSERTED.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        59
+      ]
+    },
+    {
+      "id": "TP-quarkus-input-validation",
+      "kind": "tp",
+      "file": "QuarkusOrderResource.java",
+      "line": 35,
+      "rule_ids": [
+        "ast-security-missing-input-validation"
+      ],
+      "note": "A Quarkus resource method that takes a request value without Bean Validation. Before the shared annotation catalogue the validation checker knew thirteen binding annotations and the taint engine knew twenty-six, so a @RestQuery parameter was tracked as attacker-controlled by one layer and treated as trusted-by-default by the other -- and this rule never fired.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        35
+      ]
+    },
+    {
+      "id": "TP-micronaut-input-validation",
+      "kind": "tp",
+      "file": "MicronautOrderController.java",
+      "line": 32,
+      "rule_ids": [
+        "ast-security-missing-input-validation"
+      ],
+      "note": "A Micronaut controller method that takes a request value without Bean Validation. Micronaut's @QueryValue was invisible to the validation checker before the shared catalogue, so no CWE-20 finding was raised for a Micronaut application at all.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        32
       ]
     },
     {
@@ -179,6 +242,51 @@
       "hit_lines": []
     },
     {
+      "id": "TP-quarkus-plain-parameter",
+      "kind": "tp",
+      "file": "QuarkusOrderResource.java",
+      "line": 67,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "taint: param:customer ->",
+      "note": "A plain parameter with NO binding annotation reaches the same sink in the same class. It IS reported -- a plain parameter is an ordinary taint source -- so this is a true positive, not a false positive. Its value is as a LABEL probe: the source must stay 'param:customer' and must NOT acquire a framework qualifier. The assertion is on the whole 'taint: param:customer ->' head, so a source of 'param:customer@quarkus-rest:RestQuery' would NOT satisfy it. The trust boundary comes from the binding annotation, so a parameter without one carries none, even in a Quarkus resource.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        67
+      ]
+    },
+    {
+      "id": "TP-micronaut-plain-parameter",
+      "kind": "tp",
+      "file": "MicronautOrderController.java",
+      "line": 65,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "dataflow_contains": "taint: param:customer ->",
+      "note": "The Micronaut counterpart of TP-quarkus-plain-parameter: reported, and the source stays a bare parameter with no framework qualifier. Without this control, a model that labelled EVERY parameter of a framework class would produce the right number of findings here while producing the WRONG source label, which is what a reader of the report actually sees.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        65
+      ]
+    },
+    {
+      "id": "TN-quarkus-entry-point-no-sink",
+      "kind": "tn",
+      "file": "QuarkusOrderResource.java",
+      "line": 47,
+      "rule_ids": [
+        "dfa-taint-sql-injection"
+      ],
+      "note": "PRECISION PROBE: a @RestCookie parameter is labelled as a request-bound value, but it only reaches a log call. A model that tainted every value a request touches would report here.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
       "id": "TN-mybatis-bound-parameter",
       "kind": "tn",
       "file": "UserMapper.java",
@@ -219,20 +327,20 @@
     }
   ],
   "summary": {
-    "tp_total": 9,
-    "tp_supported": 9,
+    "tp_total": 15,
+    "tp_supported": 15,
     "tp_false_negative": 0,
-    "tn_total": 6,
-    "tn_supported": 6,
+    "tn_total": 7,
+    "tn_supported": 7,
     "tn_false_positive": 0
   },
   "cwe_histogram": {
-    "CWE-89": 24,
-    "CWE-563": 19,
-    "CWE-798": 15,
-    "CWE-331": 15,
-    "CWE-862": 6,
-    "CWE-20": 5,
+    "CWE-89": 32,
+    "CWE-563": 25,
+    "CWE-798": 19,
+    "CWE-331": 19,
+    "CWE-862": 16,
+    "CWE-20": 13,
     "CWE-190": 2,
     "CWE-754": 1,
     "CWE-668": 1

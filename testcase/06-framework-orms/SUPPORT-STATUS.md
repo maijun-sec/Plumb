@@ -10,8 +10,8 @@ The third shape is the FRAMEWORK ENTRY POINT, and it is the one a servlet-aware 
 
 ## Measured
 
-- True positives: **TP 9/9**
-- True negatives: **TN 6/6**
+- True positives: **TP 15/15**
+- True negatives: **TN 7/7**
 - Scan mode: per-file, callgraph strategy: `global`.
 
 ## Outstanding cases
