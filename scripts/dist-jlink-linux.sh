@@ -210,7 +210,10 @@ if [ -z "$JAVA" ] || [ ! -x "$JAVA" ]; then
 fi
 JVM_OPTS="${PLUMB_JAVA_OPTS:--Xmx4g -XX:+UseG1GC}"
 if [ "${PLUMB_DEBUG:-false}" = "true" ]; then
-  JVM_OPTS="$JVM_OPTS -Dlogback.configurationFile=$DIR/conf/logback.xml -Droot.level=DEBUG"
+  # Only the log LEVEL is added here.  The logback config path is passed
+  # once, on the exec line below -- setting it here too would put the
+  # same -D property on the command line twice.
+  JVM_OPTS="$JVM_OPTS -Droot.level=DEBUG"
 fi
 exec "$JAVA" $JVM_OPTS \
   -Dplumb.home="$DIR" \
@@ -242,11 +245,23 @@ if not defined PLUMB_JAVA_OPTS set PLUMB_JAVA_OPTS=-Xmx4g -XX:+UseG1GC
 "%JAVA%" %PLUMB_JAVA_OPTS% -Dplumb.home="%DIR%" -Dlogback.configurationFile="%DIR%\conf\logback.xml" -cp "%DIR%\lib\*" org.plumb.main.SastMain %*
 EOF
 
-# 4e. docs (R684 — comprehensive review)
-cp Plumb-OVERVIEW.md        "$DIST/docs/"
-cp docs/CHECKERS.md         "$DIST/docs/"
-cp docs/ENVIRONMENT.md      "$DIST/docs/"
-cp doc/usage/CLI.md         "$DIST/docs/" 2>/dev/null || true
+# 4e. docs
+# Every source file is copied only if it exists: this script runs under
+# `set -euo pipefail`, so a missing file would abort the whole packaging run.
+copy_if_present() {
+  if [ -f "$1" ]; then
+    cp "$1" "$2/"
+  else
+    echo "  (skip, not found: $1)"
+  fi
+}
+copy_if_present README.md              "$DIST/docs/"
+copy_if_present docs/plumb-style-rules.md "$DIST/docs/"
+copy_if_present docs/usage/ENVIRONMENT.md "$DIST/docs/"
+copy_if_present docs/usage/CLI.md      "$DIST/docs/"
+copy_if_present docs/usage/CLI-REFERENCE.md "$DIST/docs/"
+copy_if_present docs/usage/CLI-EXAMPLES.md "$DIST/docs/"
+copy_if_present docs/rules/RULES.md    "$DIST/docs/"
 
 # 4f. dist README (template + sed for cross-platform consistency)
 DATE="$(date -u +'%Y-%m-%d')"

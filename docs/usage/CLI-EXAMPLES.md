@@ -35,13 +35,15 @@ java -jar plumb-...-all.jar \
 java -jar plumb-...-all.jar -c - <<EOF
 inputs: [src/main/java]
 checks:
+  # ---- 总开关 ----
   taint: false
+  # ---- DFA 类：48 个 family 全部显式关闭 ----
   divByZero: false
-  nullDeref: false
-  intOverflow: false
-  # 其余 DFA 类显式关闭
   resourceLeak: false
+  nullDeref: false
   hardcodedCred: false
+  intOverflow: false
+  intUnderflow: false
   arrayBounds: false
   weakCrypto: false
   insecureRandom: false
@@ -65,6 +67,9 @@ checks:
   stringEquality: false
   catchGeneric: false
   obsoleteFunction: false
+  assignmentInOperand: false
+  bigDecimalDoubleConstructor: false
+  defaultEncoding: false
   tryCatchFinally: false
   offByOne: false
   equalsCalledOnNull: false
@@ -78,8 +83,16 @@ checks:
   uncheckedLoopCondition: false
   uncontrolledMemAlloc: false
   numericTruncation: false
+  errorMessageInfoLeak: false
+  commentInfoLeak: false
+  resourceExhaustion: false
 EOF
 ```
+
+> `errorMessageInfoLeak` / `commentInfoLeak` 也在列表里：它们参与"要不要跑统一
+> DFA 那一层"的判断，两个都关掉才能真的把 DFA 关掉。漏了它们，
+> 这个片段仍然会跑 DFA。`checks:` 下的 48 个 family 少一个，
+> 那一条就还在跑 —— 用 `scripts/check_doc_claims.py` 守着这个列表。
 
 ### 6.4 并行度
 
@@ -92,7 +105,8 @@ java -jar plumb-...-all.jar -i src --max-parallelism 6
 
 ## 2. 命令与默认配置对照
 
-`conf/default-config.yaml` 随包带——它的全部字段都注释掉，等于"全部默认"。下表给出每个字段的默认值 + 改它的方式：
+`conf/default-config.yaml` 随包带。它**大部分**字段是注释掉的，但有 4 个顶层块是生效的：
+`maxParallelism: 4`、`cgStrategy: global`、`checks:`、`ai:`。下表给出每个字段的默认值 + 改它的方式：
 
 | 字段 | 默认值 | 改它的方式 |
 | --- | --- | --- |
@@ -102,13 +116,11 @@ java -jar plumb-...-all.jar -i src --max-parallelism 6
 | `output.format` | `console` | YAML `output.format:` 或 `-f console\|ndjson\|sarif` |
 | `outputDir` | (无) | YAML `outputDir:` 或 `-D <dir>` |
 | `cacheMode` | `off` | YAML `cacheMode:` 或 `--cache-mode` |
-| `maxParallelism` | `0`（= `nCPU-1`） | YAML `maxParallelism:` 或 `--max-parallelism` |
+| `maxParallelism` | `0`（= `nCPU-1`）；随包配置里是 `4` | YAML `maxParallelism:` 或 `--max-parallelism` |
 | `cgStrategy` | `global`（ 后） | YAML `cgStrategy:` 或 `--cg-strategy` |
 | `sourceRoots` | `[]` | YAML 或 `--source-root`（可重复） |
 | `moduleRoots` | `[]` | YAML 或 `--module-root` |
 | `classpathJars` | `[]` | YAML 或 `--classpath` |
-| `buildSystem.name` | (无) | YAML 或 `--build-system` |
-| `buildSystem.projectRoot` | (无) | YAML 或 `--project-root` |
 | `rules.enabled` / `rules.disabled` | `[]` / `[]` | 仅 YAML |
 | `checks.*` | 几乎全 `true`（详见 §3） | YAML 覆盖，CLI 用 `--rule <id>` 临时过滤 |
 | `ai.dedup` | `false` | YAML 或 `--ai-dedup` |

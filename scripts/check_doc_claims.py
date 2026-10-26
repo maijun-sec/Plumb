@@ -499,6 +499,68 @@ def check_maven_profiles(doc, failures):
             "defines it" % (doc.rel, name))
 
 
+def check_examples_snippet(doc, failures):
+    """The "style only" example must disable every checks.* family.
+
+    The snippet is a copy-paste recipe.  A family missing from it is one
+    that keeps running when the user thinks they turned the DFA off.
+    """
+    m = re.search(r"仅风格类检查.*?```bash\n(.*?)```", doc.text, re.S)
+    if not m:
+        m = re.search(r"###\s*6\.3.*?```bash\n(.*?)```", doc.text, re.S)
+    if not m:
+        return
+    snippet = m.group(1)
+    disabled = set(re.findall(r"^\s{2}([a-zA-Z][a-zA-Z0-9]*):\s*false", snippet, re.M))
+    families = loader_check_keys() - {"taint", "style"}
+    missing = sorted(families - disabled)
+    if missing:
+        failures.append(
+            "%s: the style-only example does not disable %d checks.* family(ies), "
+            "so they keep running: %s" % (doc.rel, len(missing), missing))
+    extra = sorted(disabled - loader_check_keys())
+    if extra:
+        failures.append(
+            "%s: the style-only example disables %d key(s) the loader never reads: %s"
+            % (doc.rel, len(extra), extra))
+
+
+def check_no_yaml_only_build_system(doc, failures):
+    """`buildSystem.*` is not a YAML key.
+
+    The build system is CLI-only: `ConfigLoader` never reads a `buildSystem`
+    key.  A table row that offers "YAML 或 --build-system" teaches the user
+    to write a key that is silently ignored.
+    """
+    if 'root.get("buildSystem")' in CONFIG_LOADER:
+        return  # the loader DOES read it -- the claim would be fine
+    for m in re.finditer(r"`buildSystem\.[a-zA-Z]+`", doc.text):
+        failures.append(
+            "%s: %s is documented as a YAML field, but the loader never reads a "
+            "buildSystem key -- it is CLI-only" % (doc.rel, m.group(0)))
+
+
+def check_config_defaults(doc, failures):
+    """The shipped config's active blocks must match what the document says.
+
+    The shipped `default-config.yaml` is what a user edits.  If a key is
+    active in the file, the document must not describe the file as
+    "everything commented out".
+    """
+    yaml = REPO / "plumb-main" / "src" / "main" / "resources" / "default-config.yaml"
+    if not yaml.is_file():
+        return
+    active = []
+    for line in yaml.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = re.match(r"^([a-zA-Z][a-zA-Z0-9]*):", line)
+        if m:
+            active.append(m.group(1))
+    if active and "全部字段都注释掉" in doc.text:
+        failures.append(
+            "%s says the shipped config has every field commented out, but %d "
+            "top-level block(s) are active: %s" % (doc.rel, len(active), active))
+
+
 def main():
     failures = []
 
@@ -529,6 +591,14 @@ def main():
         edoc = Doc(extra)
         check_optional_claims(edoc, failures)
         check_maven_profiles(edoc, failures)
+
+    # The examples document: the copy-paste recipe must stay complete.
+    examples = REPO / "docs" / "usage" / "CLI-EXAMPLES.md"
+    if examples.is_file():
+        exdoc = Doc(examples)
+        check_examples_snippet(exdoc, failures)
+        check_no_yaml_only_build_system(exdoc, failures)
+        check_config_defaults(exdoc, failures)
 
     if failures:
         print("FAIL: the product documentation does not match the source")

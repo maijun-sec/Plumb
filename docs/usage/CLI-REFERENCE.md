@@ -89,12 +89,12 @@ checks:
   taint: true
   style: true
   divByZero: true
-  # ... 一共 47 个 checker family，外加 taint / style 两个总开关 = 49 个键
+  # ... 一共 48 个 checker family，外加 taint / style 两个总开关 = 50 个键
 ```
 
-`ConfigLoader.fromMapImpl` 一共从 `checks:` map 上读 **47 个 checker family**
+`ConfigLoader.fromMapImpl` 一共从 `checks:` map 上读 **48 个 checker family**
 （每个对应一个 `ScanConfig.run*` 布尔字段），外加 `taint` / `style` 两个总开关
-—— 合计 49 个键。每个 family 都同时接受 camelCase（canonical）和
+—— 合计 50 个键。每个 family 都同时接受 camelCase（canonical）和
 snake_case（legacy alias）两种拼写，camelCase 优先。
 
 `ScanConfig.run*` 布尔字段一共 55 个，其中 6 个**没有**对应的 YAML key，
@@ -116,7 +116,7 @@ checks:
   # ...
 ```
 
-`aiDedup` 是 R-? Step 7 引入：当 `--ai-dedup` 启用时，**只有** `aiDedup: true` 的检查器走 LLM 复审。给纯 style 类（FP 几乎确定）开 `aiDedup: false` 能省 token。
+`aiDedup` 标志决定：启用 `--ai-dedup` 时，**只有** `aiDedup: true` 的检查器走 LLM 复审。给纯 style 类（FP 几乎确定）开 `aiDedup: false` 能省 token。
 
 两种写法**可以混用**：
 
@@ -130,7 +130,7 @@ checks:
 ### 12.3 emit-id 风格与 yaml 兼容性
 
 style 规则的 emit-id 格式是 `ast-<category>-<bare>`（category = checker 所在子包名）。
-实测 `plumb-style/src/main/java` 下 582 个 `new RuleId("...")` 字面量里，**没有一个
+实测 `plumb-style/src/main/java` 下 583 个 `new RuleId("...")` 字面量里，**没有一个
 以 `-style` 结尾** —— `ast-style-random-iv-cbc-style` 这类带后缀的字符串只作为
 `RuleDef` 的 **alias** 保留（兼容老 YAML 白名单），不再是任何规则的 emit-id。
 
@@ -145,10 +145,12 @@ rules:
     - random-iv-cbc                  # bare slug（剥 prefix 后比较）
 ```
 
-DFA taint 规则的 emit-id 是 `dfa-taint-<bare>`（例如 `dfa-taint-null-dereference`）。
+DFA taint 规则的 emit-id 是 `dfa-taint-<bare>`（例如 `dfa-taint-sql-injection`）。
 
-底层逻辑（`ScanRunner.java:1882-1924`）：对每个 yaml entry，先试 `endsWith(.<bare>)`，
-再剥 `ast-style-` prefix 和 `-style` suffix 跟 bare slug 比较。任一命中即放行。
+底层逻辑（`ScanRunner.isRuleIdAllowed`，`plumb-main/.../ScanRunner.java:1773-1863`）：
+对每个 yaml entry，先试 `endsWith(.<bare>)`，再剥 `ast-style-` prefix 和 `-style` suffix
+跟 bare slug 比较。任一命中即放行。剥前缀的辅助方法是同文件的
+`stripPlumbAndPlPrefix`（`:1869-1889`）。
 
 ### 12.4 规则参数覆盖（已支持）
 

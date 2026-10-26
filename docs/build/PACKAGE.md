@@ -42,10 +42,10 @@ plumb-<ver>/
 │   ├── sast-scan               POSIX 启动器（bash）
 │   └── sast-scan.bat           Windows cmd 启动器
 ├── lib/
-│   └── plumb-main-<ver>-all.jar     单文件 uber-jar（≈ 115 MB）
+│   └── plumb-main-<ver>-all.jar     单文件 uber-jar（≈ 77 MB）
 └── conf/
     ├── default-config.yaml     baseline YAML（详 §6）
-    └── logback.xml             默认日志（INFO 级别）
+    └── logback.xml             默认日志（root = ERROR，`org.plumb` = DEBUG）
 ```
 
 > **注意**：瘦发布包**不打包** `testcase/` 树（测试 fixture），避免 jar 与 fixtures 重复占空间。baseline `conf/default-config.yaml` 是足够拉起一个真实扫描所需的最小配置；用户用 `-i <path>` 把自己的源码喂进来即可。
@@ -56,9 +56,9 @@ plumb-<ver>/
 | --- | ---: | --- |
 | `bin/sast-scan` | ~300 B | POSIX shell 启动器。`exec java -cp $DIR/lib/* -Dlogback.configurationFile=$DIR/conf/logback.xml org.plumb.main.SastMain "$@"` |
 | `bin/sast-scan.bat` | ~250 B | Windows cmd 启动器。逻辑同 POSIX 版，靠 `%~dp0` 解路径 |
-| `lib/plumb-main-<ver>-all.jar` | ~115 MB | shade 后 uber-jar：plumb-* 全模块、JavaParser、SootUp、Z3 turnkey、Logback |
+| `lib/plumb-main-<ver>-all.jar` | ~77 MB | shade 后 uber-jar：plumb-* 全模块、JavaParser、SootUp、Z3 turnkey、Logback |
 | `conf/default-config.yaml` | ~9 KB | 全字段 baseline：inputs/output/outputDir/cacheMode/cgStrategy/checks/ai（详 §6） |
-| `conf/logback.xml` | ~200 B | 默认 INFO 级别；可用 `-Dlogback.configurationFile=...` 覆盖 |
+| `conf/logback.xml` | ~200 B | 默认 root = `ERROR`，`org.plumb` / `org.plumb.ai` = `DEBUG`；可用 `-Dlogback.configurationFile=...` 覆盖 |
 | `README.txt` | ~200 B | 启动命令 + 默认 conf 段说明 |
 
 ## 3. 解压即用包（jlink + 启动器）
@@ -94,11 +94,17 @@ plumb-<ver>-jre-{windows-x64|linux-x64}/
 │   ├── default-config.yaml
 │   └── logback.xml
 └── docs/
-    ├── Plumb-OVERVIEW.md
-    ├── CHECKERS.md
-    ├── ENVIRONMENT.md
-    └── CLI.md
+    ├── README.md                （仓库根 README）
+    ├── plumb-style-rules.md     规则目录
+    ├── RULES.md                 规则总览
+    ├── ENVIRONMENT.md           环境变量与 AI 配置
+    ├── CLI.md                   CLI 手册
+    ├── CLI-REFERENCE.md
+    └── CLI-EXAMPLES.md
 ```
+
+> 出包脚本按"文件存在才复制"的方式收集 docs/：某个文档被改名或删除时，
+> 出包**不会**因此失败，只会少拷一个文件。
 
 ### 3.2 启动器逻辑（plumb / plumb.bat）
 
@@ -291,7 +297,7 @@ dist\plumb-<ver>\bin\sast-scan.bat --help
 | --- | --- | --- |
 | Maven `package` | `plumb-main/target/plumb-main-<ver>-all.jar` | 单文件 jar |
 | `scripts/package.sh` | `dist/plumb-<ver>/` | bin + lib + conf（需系统 JRE 17+） |
-| `scripts/package-slim.ps1` | `dist/plumb-<ver>-slim/` | 同上，但 `ai.enabled: false` |
+| `scripts/package-slim.ps1` | `dist/plumb-<ver>-slim/` | 同上，但 `ai.dedup: false`（真正的 AI 闸门） |
 | `scripts/dist-jlink-linux.sh` | `dist-jlink/plumb-<ver>-jre-linux-x64.tar.gz` | 上者 + jre/ + docs/ + 自带 JRE |
 | `scripts/dist-jlink-windows.ps1` | `dist-jlink/plumb-<ver>-jre-windows-x64.zip` | 同上（zip） |
 
@@ -324,7 +330,7 @@ gpg --armor --detach-sign --output dist/plumb-<ver>/lib/plumb-main-<ver>-all.jar
 
 | 组件 | 大小 |
 | --- | ---: |
-| `plumb-main-<ver>-all.jar` (shaded uber-jar) | ~81 MB |
+| `plumb-main-<ver>-all.jar` (shaded uber-jar) | ~77 MB |
 | jlink 最小 JRE 17（含 14 个 module） | ~95 MB |
 | 解压即用 tar.gz (Linux x64) | ~80 MB（gzip 压缩后） |
 | 解压即用 zip (Windows x64) | ~180 MB |

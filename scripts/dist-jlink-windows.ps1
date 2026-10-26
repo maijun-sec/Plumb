@@ -241,11 +241,25 @@ exec "$JAVA" $JVM_OPTS -Dplumb.home="$DIR" -Dlogback.configurationFile="$DIR/con
 [System.IO.File]::WriteAllText((Join-Path $Dist 'bin\plumb'), $PlumbSh, [System.Text.Encoding]::UTF8)
 
 # 4e. docs
-Copy-Item -Force (Join-Path $ProjectRoot 'Plumb-OVERVIEW.md')   "$Dist\docs\"
-Copy-Item -Force (Join-Path $ProjectRoot 'docs\CHECKERS.md')    "$Dist\docs\"
-Copy-Item -Force (Join-Path $ProjectRoot 'docs\ENVIRONMENT.md') "$Dist\docs\"
-if (Test-Path (Join-Path $ProjectRoot 'doc\usage\CLI.md') -PathType Leaf) {
-    Copy-Item -Force (Join-Path $ProjectRoot 'doc\usage\CLI.md') "$Dist\docs\"
+# Every source file is copied only if it exists: this script runs under
+# $ErrorActionPreference = 'Stop', so Copy-Item of a missing file would
+# abort the whole packaging run.
+$DocsToCopy = @(
+    'README.md',
+    'docs\plumb-style-rules.md',
+    'docs\usage\ENVIRONMENT.md',
+    'docs\usage\CLI.md',
+    'docs\usage\CLI-REFERENCE.md',
+    'docs\usage\CLI-EXAMPLES.md',
+    'docs\rules\RULES.md'
+)
+foreach ($Doc in $DocsToCopy) {
+    $DocPath = Join-Path $ProjectRoot $Doc
+    if (Test-Path $DocPath -PathType Leaf) {
+        Copy-Item -Force $DocPath "$Dist\docs\"
+    } else {
+        Write-Host "  (skip, not found: $Doc)"
+    }
 }
 
 # 4f. dist README (use external UTF-8 template to avoid

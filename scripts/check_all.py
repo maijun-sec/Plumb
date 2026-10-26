@@ -45,6 +45,9 @@ The gates are:
                               key the loader reads, the CLI flags exist,
                               the section numbers are unique, and the
                               quoted counts are right
+    check_package_claims       the packaging scripts copy files that exist,
+                              and the packaging documentation's sizes and
+                              log level match the build
     capability_baseline --check
                               no rule, sink pattern, source pattern,
                               checker or fact kind was lost
@@ -97,6 +100,8 @@ GATES = (
      ["python", "scripts/check_doc_numbers.py"], "check"),
     ("check_doc_claims",
      ["python", "scripts/check_doc_claims.py"], "check"),
+    ("check_package_claims",
+     ["python", "scripts/check_package_claims.py"], "check"),
     ("capability_baseline",
      ["python", "scripts/capability_baseline.py", "--check"], "check"),
     ("gen_tool_comparison",
