@@ -804,11 +804,11 @@
 
 **规则说明**
 
-> Comparing with null using `.equals(null)` ? should be `==`.
+> Comparing with null using `.equals(null)` -- should be `==`.
 >
 > M5 part-2 migration (2026-10-17): the previous implementation used `visit(CompilationUnit) + findAll(MethodCallExpr.class)`, which costs one full-AST walk per file
-> just to find `MethodCallExpr` nodes ? wasted work because the dispatcher already gives us a
-> `visit(MethodCallExpr)` callback that fires once per `MethodCallExpr` with no extra
+> just to find `MethodCallExpr` nodes -- wasted work because the dispatcher already gives us
+> a `visit(MethodCallExpr)` callback that fires once per `MethodCallExpr` with no extra
 > walking. This rewrite uses the per-node-type callback directly; behaviour is unchanged.
 
 **规则约束 / 可调参数**: (无)
@@ -1078,7 +1078,8 @@
 
 **规则说明**
 
-> Boolean expression too complex (default threshold 3 ? meaning 3+ `&&`/`||` literals).
+> Boolean expression too complex (default threshold 3 -- meaning 3+ `&&`/`||`
+> literals).
 >
 > findAll(BinaryExpr.class)} before. The complexity count uses a stack walk on each `BinaryExpr` subtree so we don't recurse the whole tree at each top-level `AND`/`OR`.
 
@@ -1122,7 +1123,7 @@
 
 **规则说明**
 
-> Confused inheritance ? the class declares an `implements` interface that is already
+> Confused inheritance -- the class declares an `implements` interface that is already
 > inherited from its parent.
 >
 > The classic pattern is:
@@ -1134,7 +1135,7 @@
 >
 > ```
 >
-> The pre-S4 implementation flagged every class that had `extends` + empty `implements` list, which produced 100% false positives ? almost every JPA / Spring class has
+> The pre-S4 implementation flagged every class that had `extends` + empty `implements` list, which produced 100% false positives -- almost every JPA / Spring class has
 > exactly this shape (`class User extends BaseEntity implements Serializable`).
 >
 > S4 audit replaced that with a meaningful check: walk the extends/implements list of the parent
@@ -1143,7 +1144,7 @@
 >
 > <b>M5 part-2 migration:</b> the original used `visit(CompilationUnit) +
 > findAll(ClassOrInterfaceDeclaration)` (1 walk) + a manual per-class loop. This rewrite keeps the
-> per-class logic in `visit(ClassOrInterfaceDeclaration, ctx)` ? the dispatcher hands each
+> per-class logic in `visit(ClassOrInterfaceDeclaration, ctx)` -- the dispatcher hands each
 > declaration to us directly. The class-by-name index is still needed (we look up the parent's
 > interfaces by simple name) and is built lazily in `init` so the work is amortised across
 > every `visit` call within the same file.
@@ -2463,7 +2464,7 @@
 
 **规则说明**
 
-> Local variable starting with uppercase letter (non-`String` types) ? should be camelCase.
+> Local variable starting with uppercase letter (non-`String` types) -- should be camelCase.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2479,7 +2480,7 @@
 
 > Outer type filename should match the type name.
 >
-> This rule is intrinsically per-file (one check per `CompilationUnit`) ? no useful
+> This rule is intrinsically per-file (one check per `CompilationUnit`) -- no useful
 > per-node-type migration here. Kept as `visit(CompilationUnit)` since the dispatcher hands
 > the file root directly.
 
@@ -2640,7 +2641,7 @@
 > every `NameExpr` containing a dot, which meant every field access with a package-like
 > prefix (`this.foo.bar`, `outer.inner.field`, `MyClass.STATIC_FIELD`) was
 > flagged as "should use import". The corrected version resolves the `NameExpr` and only
-> fires when the resolution result is a class / interface type ? never on field accesses.
+> fires when the resolution result is a class / interface type -- never on field accesses.
 
 **规则约束 / 可调参数**: (无)
 
@@ -2657,7 +2658,7 @@
 > Unnecessary fully-qualified enum name (should be a simple reference with import).
 >
 > findAll(FieldAccessExpr.class)} before. Note this checker fires on ANY `FieldAccessExpr`
-> with a dot ? same caveat as `UnnecessaryFullyQualifiedClassNameCheck` — it's a heuristic.
+> with a dot -- same caveat as `UnnecessaryFullyQualifiedClassNameCheck` — it's a heuristic.
 > The M4 fix in plumb-ai only checks for type references; here we keep the simple-name heuristic
 > since this is purely AST-level.
 
@@ -2911,7 +2912,7 @@
 
 **规则说明**
 
-> Using `Hashtable` / `Vector` / `Stack` ? prefer `java.util.concurrent`
+> Using `Hashtable` / `Vector` / `Stack` -- prefer `java.util.concurrent`
 > alternatives or `ArrayList` / `HashMap`.
 
 **规则约束 / 可调参数**: (无)
@@ -2937,7 +2938,7 @@
 > declared in a different module), we fall back to: a `StringLiteralExpr` is always
 > considered string-like, and a `NameExpr` whose lowercased name contains `string`
 > (case-insensitive, very narrow) is considered string-like. We do NOT continue the old broad
-> substring heuristic ? that produced more noise than signal.
+> substring heuristic -- that produced more noise than signal.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3261,7 +3262,7 @@
 
 **规则说明**
 
-> Array index uses `i + 1` / `i - 1` pattern ? confirm it doesn't reach the array
+> Array index uses `i + 1` / `i - 1` pattern -- confirm it doesn't reach the array
 > length.
 
 **规则约束 / 可调参数**: (无)
@@ -3277,7 +3278,7 @@
 
 **规则说明**
 
-> Array index uses `.length` directly ? should be `.length - 1` (RANGE_ARRAY_LENGTH).
+> Array index uses `.length` directly -- should be `.length - 1` (RANGE_ARRAY_LENGTH).
 
 **规则约束 / 可调参数**: (无)
 
@@ -3419,7 +3420,7 @@
 
 **规则说明**
 
-> `StringBuffer` field in a {@link Serializable} class is not thread-safe ? use `StringBuilder`.
+> `StringBuffer` field in a {@link Serializable} class is not thread-safe -- use `StringBuilder`.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3505,7 +3506,7 @@
 
 **规则说明**
 
-> Unnecessary primitive boxing (`new Integer(5)` etc.) ? prefer autoboxing or `Integer.valueOf`.
+> Unnecessary primitive boxing (`new Integer(5)` etc.) -- prefer autoboxing or `Integer.valueOf`.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3815,7 +3816,7 @@
 
 > String literal assigned to a credential-named variable / field (use config / secrets manager).
 >
-> S2 audit (2026-10-17) fixed the type filter ? the original `if (!primitiveType &&
+> S2 audit (2026-10-17) fixed the type filter -- the original `if (!primitiveType &&
 > !"String".equals(...)) if(!"char".equals(...))` chain was confusing and the `char` branch
 > was dead code (the `char` case had already been let through by the first check). The new
 > filter is a clean predicate: accept `String` and `char[]` (the two practical
@@ -4336,7 +4337,7 @@
 > CWE-328: Use of Weak Hash.
 >
 > Detects calls to `java.security.MessageDigest.getInstance(String)` with a literal weak /
-> broken hash algorithm name. The rule is AST-only (no TAC, no data flow needed) ? a
+> broken hash algorithm name. The rule is AST-only (no TAC, no data flow needed) -- a
 > single-method-call shape with a string-literal first arg.
 
 **规则约束 / 可调参数**: (无)
@@ -5271,10 +5272,10 @@
 >
 > Detects `(variable == expr)` / `(variable != expr)` expressions where the variable
 > is a single-name writer elsewhere in the same method body. The semantic clue that distinguishes
-> TP from FP is the absence of any `=` assignment to that variable in the body ? i.e. the
+> TP from FP is the absence of any `=` assignment to that variable in the body -- i.e. the
 > variable is <em>never</em> written, so `==` is a legitimate comparison. If the variable IS
 > written elsewhere (e.g. `isZero = (zeroOrOne == 0)` appears in the same method), the
-> comparison `isZero == (...)` is most likely a typo for `isZero = (...)` ? the bug
+> comparison `isZero == (...)` is most likely a typo for `isZero = (...)` -- the bug
 > pattern.
 
 **规则约束 / 可调参数**: (无)
@@ -5473,7 +5474,7 @@
 
 **规则说明**
 
-> Month literal in `1..12` range passed to `set/add`/`MONTH` ? use `Calendar.JANUARY (0)` .. `Calendar.DECEMBER (11)` instead (DMI_BAD_MONTH).
+> Month literal in `1..12` range passed to `set/add`/`MONTH` -- use `Calendar.JANUARY (0)` .. `Calendar.DECEMBER (11)` instead (DMI_BAD_MONTH).
 
 **规则约束 / 可调参数**: (无)
 
@@ -5898,12 +5899,12 @@
 
 **规则说明**
 
-> CWE-585 ? empty `synchronized` block.
+> CWE-585 -- empty `synchronized` block.
 >
 > Fires when a {@link SynchronizedStmt} has an empty body. Empty synchronized blocks are always
 > a bug or dead code: they acquire a monitor and immediately release it without any synchronization
 > happening between, which either (a) is leftover from a refactor, or (b) is a placeholder that was
-> never filled in, or (c) ? in the worst case ? is intentional but misleading (the developer was
+> never filled in, or (c) -- in the worst case -- is intentional but misleading (the developer was
 > trying to use the monitor for memory-visibility side effects, which requires more than just
 > acquisition release).
 >
@@ -8934,7 +8935,7 @@
 
 **规则说明**
 
-> @SuppressWarnings should be specific ? unimplemented.
+> @SuppressWarnings should be specific -- unimplemented.
 >
 > Detection requires annotation processing / symbol resolution which is outside the AST pass.
 > Kept as a registry-skipped placeholder; an analyzer-level checker should replace this when
@@ -9266,7 +9267,7 @@
 
 **规则说明**
 
-> CWE-600 (Uncaught Exception in Servlet) ? file-wide check for risky checked-exception-throwing
+> CWE-600 (Uncaught Exception in Servlet) -- file-wide check for risky checked-exception-throwing
 > calls.
 
 **规则约束 / 可调参数**: (无)
@@ -9532,7 +9533,7 @@
 > of N_field × c.findAll(NameExpr)).
 >
 > Replaces the original visit(CU) + findAll(ClassOrInterfaceDeclaration) + N_field ×
-> c.findAll(NameExpr) ? N×M walks/file down to 2 walks/file.
+> c.findAll(NameExpr) -- N×M walks/file down to 2 walks/file.
 
 **规则约束 / 可调参数**: (无)
 

@@ -129,6 +129,22 @@ RULES = [
         "benchmark it was measured against",
     ),
     (
+        "dash-opening",
+        # A comment BLOCK whose FIRST line opens with a dash. A line that
+        # opens with a dash is usually a continuation of the line before
+        # it, and that is fine. But a BLOCK whose first line opens with a
+        # dash has lost its subject: there is nothing before it to
+        # continue from.
+        #
+        #     /*
+        #      * -- CORS misconfiguration (CWE-942).
+        #      */
+        #
+        # The subject was a round marker that the cleanup removed.
+        re.compile(r"^\s*(?://|\*)\s*(?:--|—|–)\s"),
+        "dash opening: the comment block lost its subject",
+    ),
+    (
         "benchmark-claim",
         # A BENCHMARK CLAIM in a product source comment. A source comment
         # documents the code; a comment that reports "0 TP / 100% FP on
@@ -187,7 +203,12 @@ JAVADOC_ROOTS = [
     REPO / "plumb-reporter" / "src" / "main" / "java",
     REPO / "plumb-ai" / "src" / "main" / "java",
     REPO / "plumb-main" / "src" / "main" / "java",
+    REPO / "plumb-build" / "src" / "main" / "java",
+    REPO / "plumb-parser" / "src" / "main" / "java",
 ]
+
+# A Java string literal, with the escapes handled.
+STRING_LITERAL = re.compile(r'"((?:\\.|[^"\\])*)"')
 
 
 def comment_lines(text):
@@ -267,11 +288,60 @@ def scan_javadoc():
                 if not is_comment:
                     continue
                 for name, pattern, why in RULES:
-                    if name in ("third-party-count", "juliet-measurement"):
+                    if name in ("third-party-count", "juliet-measurement",
+                                "dash-opening"):
+                        continue
+                    for m in pattern.finditer(line):
+                        hits.append((path, lineno, name, m.group(0), why))
+            # The dash-opening rule is about a BLOCK, not a line, so it is
+            # checked on the first line of each contiguous comment run.
+            for lineno in comment_block_starts(text):
+                line = text.splitlines()[lineno - 1]
+                for name, pattern, why in RULES:
+                    if name != "dash-opening":
                         continue
                     for m in pattern.finditer(line):
                         hits.append((path, lineno, name, m.group(0), why))
     return hits
+
+
+def comment_block_starts(text):
+    """The line numbers of the first CONTENT line of each comment block.
+
+    A run of `//` lines is ONE block, and only its first line carries
+    content. A `/* ... */` block is one block, and its first CONTENT line
+    is the one after the opening `/**` -- the opening line itself is just
+    the delimiter.
+    """
+    starts = []
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if stripped.startswith("//"):
+            starts.append(i + 1)
+            i += 1
+            while i < len(lines) and lines[i].strip().startswith("//"):
+                i += 1
+            continue
+        if stripped.startswith("/*"):
+            # The first line of the block that carries content.
+            j = i + 1
+            while j < len(lines):
+                s = lines[j].strip()
+                if s.startswith("*/"):
+                    break
+                body = s[1:].strip() if s.startswith("*") else s
+                if body:
+                    starts.append(j + 1)
+                    break
+                j += 1
+            while j < len(lines) and "*/" not in lines[j]:
+                j += 1
+            i = j + 1
+            continue
+        i += 1
+    return starts
 
 
 def scan_product_resources():
@@ -344,6 +414,34 @@ def scan_product_resources():
     return hits
 
 
+def scan_user_visible_strings():
+    """Round markers in the strings the USER reads.
+
+    A round marker in a source comment is process history in a place where
+    the reader can ignore it. A round marker in a string literal is
+    different: the string is printed.
+
+    The `--help` output, a log line, a finding message, a rule description,
+    an LLM prompt header -- all of those reach the user, and all of them
+    would carry a number the user has no way to interpret.
+    """
+    hits = []
+    for root in JAVADOC_ROOTS:
+        if not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*.java")):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for m in STRING_LITERAL.finditer(text):
+                body = m.group(1)
+                for name, pattern, why in RULES:
+                    if name != "round-marker":
+                        continue
+                    for hit in pattern.finditer(body):
+                        lineno = text[:m.start()].count("\n") + 1
+                        hits.append((path, lineno, name, hit.group(0), why))
+    return hits
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--list", action="store_true", help="list every hit")
@@ -352,25 +450,28 @@ def main():
     doc_hits = scan_docs()
     java_hits = scan_javadoc()
     resource_hits = scan_product_resources()
+    string_hits = scan_user_visible_strings()
 
     if args.list:
-        for path, lineno, name, text, why in doc_hits + java_hits:
+        for path, lineno, name, text, why in doc_hits + java_hits + string_hits:
             rel = path.relative_to(REPO)
             print("%s:%d  [%s] %r\n    %s" % (rel, lineno, name, text, why))
         for path, lineno, name, text, why in resource_hits:
             rel = path.relative_to(REPO)
             print("%s  [%s] %r\n    %s" % (rel, name, text, why))
         print()
-        print("%d hit(s) in docs/, %d in java comments, %d in product resources"
-              % (len(doc_hits), len(java_hits), len(resource_hits)))
+        print("%d hit(s) in docs/, %d in java comments, %d in user-visible strings, "
+              "%d in product resources"
+              % (len(doc_hits), len(java_hits), len(string_hits),
+                 len(resource_hits)))
         return 0
 
-    if not doc_hits and not java_hits and not resource_hits:
+    if not doc_hits and not java_hits and not resource_hits and not string_hits:
         print("  ok: no process history or unreproducible measurement in the documentation")
         return 0
 
     by_file = {}
-    for path, lineno, name, text, why in doc_hits + java_hits:
+    for path, lineno, name, text, why in doc_hits + java_hits + string_hits:
         by_file.setdefault(path, []).append((lineno, name, text, why))
 
     for path in sorted(by_file):
@@ -387,11 +488,14 @@ def main():
         print("%s\n  [%-26s] %r\n    %s" % (rel, name, text, why))
 
     print()
-    print("FAIL: %d hit(s) in docs/, %d in java comments, %d in product resources"
-          % (len(doc_hits), len(java_hits), len(resource_hits)))
+    print("FAIL: %d hit(s) in docs/, %d in java comments, %d in user-visible strings, "
+          "%d in product resources"
+          % (len(doc_hits), len(java_hits), len(string_hits), len(resource_hits)))
     print("Product documentation describes what the product does TODAY.")
     print("Round numbers and past measurements belong in git history.")
     print("Evaluation material belongs in test resources, not in the product jar.")
+    print("A string the user reads is part of the product, so it follows the")
+    print("same rule: no round numbers.")
     return 1
 
 
