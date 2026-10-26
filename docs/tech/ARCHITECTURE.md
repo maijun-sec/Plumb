@@ -185,7 +185,16 @@ PathSensitiveCheckerBase (plumb-dfa/taint/PathSensitiveCheckerBase.java):
         └──────────┘ └──────────┘ └──────────┘
 ```
 
-`plumb-ai` 和 `plumb-build` 都是 `plumb-main` 的**可选依赖**——剥掉它们不影响静态分析本身。
+`plumb-ai` 和 `plumb-build` 都是 `plumb-main` 的**编译期依赖**（`pom.xml` 里是普通
+`<dependency>`，没有 `<optional>`）——`plumb-main` 直接 import 它们的类型，所以
+剥掉这两个模块就编不过。
+
+可选的是**运行时行为**，不是依赖本身：
+
+- `plumb-ai`：`--ai-dedup` 不开的时候，静态分析照常跑；LLM 端点配不通也只是
+  把 verdict 标成 UNKNOWN。
+- `plumb-build`：不给 `--build-system` / `--project-root` 时，build-system
+  adapter 不会被调用，扫描目标由 `--input` 决定。
 
 ### 3.2 关键设计决策
 

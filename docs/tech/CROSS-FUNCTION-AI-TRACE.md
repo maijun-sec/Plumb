@@ -350,11 +350,15 @@ org.plumb.ai.tools.ToolContext ctx = new org.plumb.ai.tools.ToolContext(...);   
 
 每个 finding 走一次 `agent.run(task, ctx)`，结果里的判定写回 `ai_verdict` / `ai_reason`。
 
-### 14.4 静态分析是 core，AI 是 optional
+### 14.4 静态分析是 core，AI 的**运行**是可选的
 
-`plumb-ai` 是 `plumb-main` 的**可选**依赖。`plumb-main` 通过
-`org.plumb.ai.agent.LlmConnection`（一个纯数据 record）与 `plumb-ai` 交互，
-LLM 不可用时静态分析照常跑完。配置见 [`../usage/ENVIRONMENT.md`](../usage/ENVIRONMENT.md)。
+`plumb-ai` 是 `plumb-main` 的**编译期依赖**——`ConfigLoader`、`ScanConfig`、
+`ScanRunner` 都直接用 `org.plumb.ai.agent.*` 的类型，剥掉这个模块就编不过。
+
+可选的是**运行时行为**：不开 `--ai-dedup` 时静态分析照常跑完，
+LLM 不可用也只是把 verdict 标成 UNKNOWN。`plumb-main` 通过
+`org.plumb.ai.agent.LlmConnection`（一个纯数据 record）与 `plumb-ai` 交互。
+配置见 [`../usage/ENVIRONMENT.md`](../usage/ENVIRONMENT.md)。
 
 ### 14.5 AI 只做 FP 判定
 

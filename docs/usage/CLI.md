@@ -74,7 +74,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system <maven|gradle|b
 
 ### 2.1 单条规则的 AI 行为
 
-> **Step 7 之后的模型**：每条 `DfaChecker` / `AstChecker` 自己持有
+> **当前模型**：每条 `DfaChecker` / `AstChecker` 自己持有
 > `getAiPrompt(Finding) -> String`。返回 `null` = 该规则**不走** AI dedup；
 > 返回非 null = LLM 收到这条规则的 prompt + finding 详情 +
 > dataflow trace + 源码窗口，输出 TP / FP / UNKNOWN。
@@ -207,20 +207,23 @@ scanner max 8 turn），框架在 4 个条件之一停：
 `timeoutSeconds` / `maxConcurrent` / `temperature` / `dedup` / `dropOnAiFp` /
 `dedupRules`。`--ai-dedup` 走的就是 Re-Act 多轮循环，没有单轮模式可切。
 
-**plumb-ai 是 hard dep of plumb-main**（Step 7 之后）：`plumb-main` 直接
+**plumb-ai 是 plumb-main 的编译期依赖**：`plumb-main` 直接
 `import org.plumb.ai.agent.*` 构造 `LlmProvider` / `ReActAgent` /
 `ToolRegistry`，没有 reflection。`plumb-ai` 模块本身只依赖
 `plumb-rules` + `plumb-reporter`（不是 `plumb-dfa`），保持
-agent 框架壳的干净定位。静态分析本身**不**依赖 plumb-ai；只是
-`--ai-dedup` 开关触发它。
+agent 框架壳的干净定位。
+
+可选的是**运行时行为**，不是依赖本身：不开 `--ai-dedup` 时，静态分析
+不依赖任何 LLM 调用，照常跑完。
 
 **Slim dist** (用 `pwsh scripts/package-slim.ps1` 生成):
 - bin / conf / lib 跟 full dist 一样
 - `conf/default-config.yaml` 重写为 `ai.dedup: false`（真正的 AI 闸门；`ai.enabled` 早已从 schema 删除）
-- 全 jar 包含 plumb-ai classes (off)，但 runner 短路 AI passes
-- 想完全剥 plumb-ai classes: 改用 `mvn -pl plumb-main package
-  -Pno-ai -DskipTests=true` (mvn profile)，或者直接 fork 仓库
-  删除 plumb-ai 模块 + plumb-main 的 `runAiDedup` 逻辑
+- 全 jar 包含 plumb-ai classes（关着），但 runner 短路 AI passes
+- 想完全剥掉 plumb-ai classes 是做不到的：`ScanConfig` 的字段类型就是
+  `org.plumb.ai.agent.LlmConnection`，`plumb-main` 编译期就要这个类。
+  能做的是把 AI 闸门关掉（就是 slim dist 干的事），
+  或者 fork 仓库同时删掉 plumb-ai 模块和 `plumb-main` 里的 AI 相关代码。
 
 **真实 LLM E2E**: 设 `PLUMB_AI_E2E=1` env var 跑 `mvn -pl plumb-ai
 test` —— `LlmIntegrationTest` 的 5 个测试会真打 LLM 端点（默认

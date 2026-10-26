@@ -46,6 +46,7 @@ truth is rather than only that the document is wrong.
 import pathlib
 import re
 import sys
+import xml.etree.ElementTree as ET
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
@@ -366,6 +367,138 @@ def check_cli_flags(doc, failures):
             "%s does not document %d CLI flag(s): %s" % (doc.rel, len(undoc), undoc))
 
 
+# --------------------------------------------------------------------------- modules
+POM_NS = "{http://maven.apache.org/POM/4.0.0}"
+
+
+def module_poms():
+    """module -> the plumb-* modules it depends on, straight from the poms."""
+    out = {}
+    for pom in sorted(REPO.glob("plumb-*/pom.xml")):
+        name = pom.parent.name
+        root = ET.parse(pom).getroot()
+        deps = set()
+        for d in root.iter(f"{POM_NS}dependency"):
+            gid = d.findtext(f"{POM_NS}groupId") or ""
+            aid = d.findtext(f"{POM_NS}artifactId") or ""
+            optional = (d.findtext(f"{POM_NS}optional") or "false").strip().lower()
+            if gid == "org.plumb" and aid.startswith("plumb-") and aid != name:
+                deps.add(aid)
+                if optional == "true":
+                    deps.discard(aid)
+        out[name] = deps
+    return out
+
+
+def check_module_claims(doc, failures):
+    """The module dependency table must match the poms.
+
+    This covers the "a module is optional" family of claims: a module that
+    the pom declares as a plain compile dependency is NOT optional, and
+    saying so is a false statement about the build.
+    """
+    poms = module_poms()
+
+    # (a) the dependency table
+    rows = {}
+    summary = set()
+    for m in re.finditer(r"^\|\s*`(plumb-[a-z\-]+)`\s*\|\s*(.+?)\s*\|\s*$", doc.text, re.M):
+        mod, cell = m.group(1), m.group(2)
+        if "（无）" in cell or cell.strip() in ("无", "-"):
+            rows[mod] = set()
+        elif "以上全部" in cell:
+            summary.add(mod)
+            rows[mod] = None  # checked against "every other module"
+        else:
+            rows[mod] = {d for d in re.findall(r"`(plumb-[a-z\-]+)`", cell)}
+
+    for mod in sorted(poms):
+        if mod not in rows:
+            failures.append("%s does not mention the module %s" % (doc.rel, mod))
+            continue
+        if rows[mod] is None:
+            expected = set(poms) - {mod}
+            if poms[mod] != expected:
+                failures.append(
+                    "%s says %s depends on everything, but the pom says %s"
+                    % (doc.rel, mod, sorted(poms[mod])))
+            continue
+        if rows[mod] != poms[mod]:
+            failures.append(
+                "%s says %s depends on %s; the pom says %s"
+                % (doc.rel, mod, sorted(rows[mod]), sorted(poms[mod])))
+
+    # (b) "X / X" -- the same module named twice in one phrase is a typo
+    for m in re.finditer(r"`(plumb-[a-z\-]+)`\s*/\s*`(plumb-[a-z\-]+)`", doc.text):
+        if m.group(1) == m.group(2):
+            failures.append(
+                "%s names %s twice in one phrase -- one of them is wrong"
+                % (doc.rel, m.group(1)))
+
+    # (c) a module the prose names must exist
+    for name in sorted(set(re.findall(r"`(plumb-[a-z\-]+)`", doc.text))):
+        if name not in poms:
+            failures.append("%s names %s, which has no pom.xml" % (doc.rel, name))
+
+
+def check_optional_claims(doc, failures):
+    """A module declared as a plain dependency is NOT optional.
+
+    The word "optional" applied to a Maven dependency is a claim about the
+    build.  If the pom has no <optional>true</optional>, the claim is false.
+
+    The exemption is narrow: the claim may still say "optional" when it is
+    talking about the RUNTIME behaviour ("可选的是运行时行为").  That is a
+    true statement about a different subject, so it is not flagged.
+    """
+    poms = module_poms()
+    main_pom = (REPO / "plumb-main" / "pom.xml").read_text(encoding="utf-8")
+
+    # "`plumb-ai` 是 `plumb-main` 的**可选依赖**" and friends.
+    claim_re = re.compile(
+        r"`(plumb-[a-z\-]+)`[^。\n]{0,30}?\*\*[^*\n]*可选[^*\n]*\*\*")
+    for m in claim_re.finditer(doc.text):
+        mod = m.group(1)
+        if mod not in poms:
+            continue
+        # The sentence must not be about the runtime behaviour.
+        start = doc.text.rfind("。", 0, m.start()) + 1
+        end = doc.text.find("。", m.end())
+        sentence = doc.text[start:end if end != -1 else len(doc.text)]
+        if "运行时" in sentence:
+            continue
+        failures.append(
+            "%s calls %s an optional dependency, but the pom declares it as a "
+            "plain compile dependency" % (doc.rel, mod))
+
+    if "plumb-main" in poms:
+        # sanity: the gate must be looking at a real pom
+        if "plumb-ai" not in main_pom:
+            failures.append(
+                "%s: plumb-main/pom.xml no longer declares plumb-ai -- "
+                "review the optional-dependency claims" % doc.rel)
+
+
+def check_maven_profiles(doc, failures):
+    """A maven profile the document names must exist.
+
+    `mvn -P<name>` with an unknown profile fails the build, so a document
+    that tells the user to run it is teaching a broken command.
+    """
+    profiles = set()
+    for pom in sorted(REPO.glob("pom.xml")) + sorted(REPO.glob("plumb-*/pom.xml")):
+        text = pom.read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(r"<profile>\s*(?:<!--.*?-->\s*)*<id>([^<]+)</id>", text, re.S):
+            profiles.add(m.group(1).strip())
+    for m in re.finditer(r"-P([A-Za-z0-9_\-]+)", doc.text):
+        name = m.group(1)
+        if name in profiles:
+            continue
+        failures.append(
+            "%s tells the reader to use the maven profile -P%s, but no pom "
+            "defines it" % (doc.rel, name))
+
+
 def main():
     failures = []
 
@@ -380,6 +513,22 @@ def main():
     check_yaml_schema(doc, failures)
     check_counts(doc, failures)
     check_cli_flags(doc, failures)
+    check_optional_claims(doc, failures)
+    check_maven_profiles(doc, failures)
+
+    module_doc = REPO / "docs" / "tech" / "MODULE-MERGE.md"
+    if module_doc.is_file():
+        mdoc = Doc(module_doc)
+        check_module_claims(mdoc, failures)
+
+    # Every product document may make an "optional dependency" claim, and
+    # every one of them may name a maven profile that does not exist.
+    for extra in sorted((REPO / "docs").rglob("*.md")):
+        if extra in (cli_doc, module_doc):
+            continue
+        edoc = Doc(extra)
+        check_optional_claims(edoc, failures)
+        check_maven_profiles(edoc, failures)
 
     if failures:
         print("FAIL: the product documentation does not match the source")
@@ -391,9 +540,10 @@ def main():
         print("but make the two agree.")
         return 1
 
-    print("  ok: %s matches the source "
-          "(%d taint rules, %d registered AI tools, %d CLI flags)"
-          % (doc.rel, taint_rule_count(), len(registered_tool_names()), len(cli_flags())))
+    print("  ok: %s and %s match the source "
+          "(%d taint rules, %d registered AI tools, %d CLI flags, %d modules)"
+          % (doc.rel, "docs/tech/MODULE-MERGE.md", taint_rule_count(),
+             len(registered_tool_names()), len(cli_flags()), len(module_poms())))
     return 0
 
 

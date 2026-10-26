@@ -26,38 +26,41 @@ plumb  (root POM)
 （从各模块 `pom.xml` 的 `<artifactId>plumb-*</artifactId>` 实测得出）
 
 ```
-                ┌──────────────────┐
-                │   plumb-parser   │  (无 plumb 内部依赖，只用 javaparser)
-                └────────┬─────────┘
-                         │
-            ┌────────────┴─────────────┐
-            ▼                          ▼
-      ┌──────────┐              ┌──────────────┐
-      │ plumb-tac │              │ plumb-style  │
-      └─────┬─────┘              └──────┬───────┘
-            │                           │
-            ▼                           ▼
-      ┌──────────┐               ┌─────────────┐
-      │plumb-rules│◀──────────────┤plumb-reporter│
-      └────┬─────┘               └──────┬──────┘
-           │                            │
-           │   ┌────────────┐           │
-           └──▶│  plumb-dfa  │◀──────────┘
-               └─────┬──────┘
+                        ┌──────────────────┐
+                        │   plumb-parser   │  (无 plumb 内部依赖，只用 javaparser)
+                        └───┬──────────┬───┘
+                            │          │
+             ┌──────────────┘          └──────────────┐
+             ▼                                        ▼
+      ┌──────────┐                             ┌──────────────┐
+      │ plumb-tac │                             │ plumb-style  │
+      └─────┬─────┘                             └──────┬───────┘
+            │                                          │
+            ▼                                          ▼
+      ┌──────────┐   ◀─────────────────────────┌─────────────┐
+      │plumb-rules│                            │plumb-reporter│
+      └────┬─────┘                            └──────┬──────┘
+           │                                          │
+           │   ┌─────────────┐                       │
+           └──▶│  plumb-dfa  │◀──────────────────────┘
+               └──────┬──────┘
+                      │
+       ┌──────────────┼──────────────┐
+       ▼              ▼              ▼
+ ┌───────────┐ ┌───────────┐ ┌───────────┐
+ │plumb-build│ │ plumb-ai │ │plumb-style│
+ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘
+       └──────────────┴──────────────┘
                      │
-        ┌────────────┼────────────┐
-        ▼            ▼            ▼
-  ┌──────────┐ ┌──────────┐ ┌──────────┐
-  │plumb-build│ │ plumb-ai │ │plumb-style│
-  └────┬─────┘ └────┬─────┘ └────┬─────┘
-       │            │            │
-       └────────────┴────────────┘
-                    │
-                    ▼
-              ┌──────────┐
-              │plumb-main│  (orchestration)
-              └──────────┘
+                     ▼
+               ┌──────────┐
+               │plumb-main│  (orchestration)
+               └──────────┘
 ```
+
+（`plumb-style` 出现两次是因为它确实不依赖 `plumb-tac` / `plumb-dfa`：
+左边那条边是 `plumb-parser → plumb-style`，右边那条是
+`plumb-rules` / `plumb-reporter → plumb-style`。）
 
 实际的直接依赖（每个模块的 `pom.xml`）：
 
@@ -78,7 +81,7 @@ plumb  (root POM)
 - `plumb-parser` 是叶子节点，**不依赖**任何 plumb 内部模块（仅 JavaParser）
 - `plumb-tac` 只依赖 `plumb-parser`（因为 `TacTranslator` 接收 `ParsedSource`）
 - `plumb-style` 只依赖 `plumb-parser` + `plumb-rules` + `plumb-reporter` —— **不依赖 plumb-tac / plumb-dfa**（这是架构原则）
-- `plumb-dfa` / `plumb-dfa` 依赖 `plumb-tac` + `plumb-rules` + `plumb-reporter`
+- `plumb-dfa` 依赖 `plumb-parser` + `plumb-tac` + `plumb-rules` + `plumb-reporter`
 - `plumb-main` 依赖全部下游模块，做编排
 
 
