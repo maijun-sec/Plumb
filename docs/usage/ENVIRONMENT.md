@@ -28,17 +28,24 @@ MiniMax 这个名字，它只看到 `${...}` 就去读那个变量。
 
 ### 1.2 不被读取的（常见误解）
 
-以下变量在本仓库中**零引用**：
+以下变量在**Java 代码**里**零引用**：
 
 | 变量 | 状态 | 说明 |
 | --- | --- | --- |
-| `PLUMB_HOME` | ❌ 未读取 | 没有 `bin/plumb` 启动器，仓库里不存在该脚本 |
-| `PLUMB_JAVA_OPTS` | ❌ 未读取 | 同上；JVM 参数由启动 java 命令的人自己决定 |
-| `PLUMB_DEBUG` | ❌ 未读取 | 日志级别走 logback 配置文件，不看这个变量 |
+| `PLUMB_HOME` | ❌ 未读取 | 没有 `bin/plumb` 启动器，仓库里不存在该脚本。启动器用 `-Dplumb.home=` 系统属性传路径，不是环境变量 |
 | `PLUMB_CACHE_DIR` | ❌ 未读取 | 缓存目录由 `--output-dir` 决定 |
-| `MINIMAX_API_KEY` | ⚠️ 仅测试用 | `LlmIntegrationTest.java:146` 读取；主代码不读 |
+| `MINIMAX_API_KEY` | ⚠️ 仅测试用 | `LlmIntegrationTest.java:144` 读取；主代码不读 |
 | `ANTHROPIC_API_KEY` | ❌ 未读取 | 想用 Claude 需在 YAML 里写 `apiKey: ${ANTHROPIC_API_KEY}` |
 | `http_proxy` / `https_proxy` | ✅ 间接 | JDK `HttpClient` 默认读标准代理变量，非 Plumb 显式实现 |
+
+**但出包脚本会读两个**——它们不是 Java 代码，但随包发布，用户真的会设：
+
+| 变量 | 读取位置 | 用途 |
+| --- | --- | --- |
+| `PLUMB_JAVA_OPTS` | `scripts/dist-jlink-linux.sh` / `scripts/dist-jlink-windows.ps1` | 透传 JVM 参数，默认 `-Xmx4g -XX:+UseG1GC` |
+| `PLUMB_DEBUG` | `scripts/dist-jlink-linux.sh` / `scripts/dist-jlink-windows.ps1` | 设为 `true` 时给启动器加 `-Droot.level=DEBUG` |
+
+用 `java -jar` 直接跑 uber-jar 时这两个变量不起作用——JVM 参数由启动 `java` 命令的人自己决定。
 
 **AI 功能完全不用环境变量也可以跑**——不设任何变量、不传 `--ai-dedup` 即可，只做静态分析。
 
@@ -48,7 +55,7 @@ MiniMax 这个名字，它只看到 `${...}` 就去读那个变量。
 
 ### 2.1 默认配置
 
-`plumb-main/src/main/resources/default-config.yaml:181-192`：
+`plumb-main/src/main/resources/default-config.yaml:182-193`：
 
 ```yaml
 ai:
@@ -67,7 +74,7 @@ ai:
 
 ### 2.2 provider 取值
 
-`LlmConnection.Provider`（`plumb-ai/.../LlmConnection.java:148`）只有三个值：
+`LlmConnection.Provider`（`plumb-ai/.../LlmConnection.java:147`）只有三个值：
 
 | 取值 | 说明 |
 | --- | --- |
@@ -171,5 +178,14 @@ reasoning 模型（MiniMax-M3、带 thinking 的 Claude 等）可能在 `ai_reas
 2. `ConfigLoader.java` 里对应的 `System.getenv(...)`
 3. 若它是 AI 相关，`default-config.yaml` 的 `ai:` 注释
 
-反向检查：本仓库现存的环境变量读取只有 `ConfigLoader.java` 的两处。
-`grep -rn 'System.getenv' --include=*.java`（排除 `target/` 与 `src/test/`）应当只返回这两行。
+反向检查：本仓库现存的环境变量**读取**只有 `ConfigLoader.java` 的两处。
+
+```bash
+grep -rn 'System\.getenv(' --include=*.java plumb-*/src/main
+```
+
+这条命令会返回十几行，但只有两行是**真正的读取**——`ConfigLoader.java` 的
+`OPENAI_API_KEY` 和 `${VAR}` 展开。其余命中都是**检查器在用户代码里查找的字符串**
+（`EnvVarCheck` / `EnvVarInfoExposureCheck` 之类的规则在找 `System.getenv` 这个调用形状，
+它们自己不读环境变量）。区分方法是看命中处是不是一个真正的调用：
+`System.getenv(` 后面跟着参数并被赋值/使用，是读取；出现在字符串字面量或 javadoc 里，是规则模式。
