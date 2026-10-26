@@ -15,7 +15,7 @@ Phase 2 在 caller 视角上做的分析并不是单一类型，而是**多套�
 | 1 | **常量传播** | `MethodSummary.returnShape` 的 `RETURN_CONST` / `RETURN_PARAM` / `RETURN_BINARY_OP` / `RETURN_CONDITIONAL` 形态 | `SummaryApplier.applyReturnValue` 编码成 `RETURN_VALUE_FOLDED(dest, "const:N")` / `"param:0:callerArg"` / `"binop:op:lhs:rhs"` / `"cond:..."` 写入 caller fact bag；下游 checker 按 value 字符串决定后续分析 | `MethodSummaryBuilder` + `SummaryApplier` + `LiteralBooleanConditionChecker` |
 | 2 | **指向分析** | `Operation.PointsToPropagate(allocSites)` 收集 callee 内 `NEW / NEWARRAY` 的 `AllocSite` | `PointsToAnalysis.applyCalleeSummary(dest, summary)` 把 alloc sites 并入 caller 的 `pointsTo(dest)`；`mayAlias` / `isUseAfterFree` 在 caller 视角检查 | `PointsToAnalysis` + `PointsToSummary` |
 | 3 | **null / 资源分析** | `TaintedCheckerBase` 在 callee 体内维护 `taintedVars`（PointerTaint 域），summary 时把每个 tainted 形参写出成 `Operation.TaintPropagate(sourceId, confidence)` | `propagateTaintFromCalleeSummary` 把 caller 实参标为 tainted；`NullDerefChecker` / `ResourceLeakChecker` 在 caller 视角检查 receiver 是否可能 null / 是否已被 close | `TaintedCheckerBase` + `TaintDomain.PointerTaint` + `Operation.TaintPropagate` |
-| 4 | **数值范围 / 整数溢出** | `TaintedCheckerBase` 用 `TaintDomain.NumericTaint` 域；callee 算术结果若 `>= MAX_INT` 之类会触发对应 `Operation`（通过 `IntOverflowChecker.summarizeFunction`） | `propagateTaintFromCalleeSummary` 把数值域的 taint 沿 caller 实参传播；`IntOverflowChecker` / `IntUnderflowChecker` / `ArrayIndexChecker` / `DivByZeroChecker` 在 caller 视角用 `PathCondition` + Z3 验证条件 | `TaintedCheckerBase` + `TaintDomain.NumericTaint` + `PathCondition` + `Z3Bridge` |
+| 4 | **数值范围 / 整数溢出** | `TaintedCheckerBase` 用 `TaintDomain.NumericTaint` 域；callee 算术结果若 `>= MAX_INT` 之类会触发 `TaintedCheckerBase.summarizeFunction` 写出的 `Operation.TaintPropagate` | `propagateTaintFromCalleeSummary` 把数值域的 taint 沿 caller 实参传播；`IntOverflowChecker` / `IntUnderflowChecker` / `ArrayIndexChecker` / `DivByZeroChecker` 在 caller 视角用 `PathCondition` + Z3 验证条件 | `TaintedCheckerBase` + `TaintDomain.NumericTaint` + `PathCondition` + `Z3Bridge` |
 | 5 | **路径条件 / Z3 验证** | `Operation.SolverZ3Predicate(predicate, pathVars)` 把 callee 内 path-condition fragments 透出 | `TaintedCheckerBase.composePathCondition` 把 callee 的 fragments 串进 caller 的 `PathCondition`；Z3 用 caller 的 bindings 验证"antecedent && !sink-condition"是否 UNSAT（UNSAT ⇒ 路径不可达 ⇒ 抑制 finding） | `Operation.SolverZ3Predicate` + `PathCondition` + `Z3Bridge` / `LocalSolverBridge` + `GuardStore` |
 | 6 | **副作用失效** | `MethodSummary.sideEffect` 的四个集合（writes-this / writes-param / writes-static / calls / may-throw） | `SummaryApplier.applySideEffect` 编码成 `SIDE_EFFECT_RECORDED(dest, "writes-this:f,...")` fact；`ctx.sideEffectConsumer().recordCall(ins, ctx)` 把它写进 per-function `SideEffectConsumer`；alias / reallocation 类 checker 在 caller 视角看 invalidation | `MethodSummary.sideEffect` + `SideEffect` + `SideEffectConsumer` + `SummaryApplier.applySideEffect` |
 
@@ -74,9 +74,9 @@ Phase 2 在 caller 视角上做的分析并不是单一类型，而是**多套�
 
 跟 null/资源共用 `TaintedCheckerBase` 框架但走 `TaintDomain.NumericTaint`：
 
-- **Summary 端**：`IntOverflowChecker.summarizeFunction` 把算术上溢
-  (BINOP 结果 `> MAX_INT`) 的形参/返回值写 `TaintPropagate("numeric-overflow",
-  1.0)`，domain 是 `NumericTaint`。
+- **Summary 端**：`TaintedCheckerBase.summarizeFunction` 把算术上溢
+  (BINOP 结果 `> MAX_INT`) 的形参/返回值写成 `Operation.TaintPropagate`，
+  domain 是 `NumericTaint`。
 - **Phase 2 端**：`propagateTaintFromCalleeSummary` 在 caller 实参上设
   `taintedVars[arg] = "numeric-overflow"`，caller 视角的 `ArrayIndexChecker` /
   `DivByZeroChecker` 在做下标/除数检查时用 `PathCondition` 配合

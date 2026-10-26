@@ -49,6 +49,9 @@ The gates are:
                               still match the source: the class names, the
                               fields, the enum constants and the counts
                               the reader would code against
+    check_cross_fn_claims      the cross-function operation document's
+                              named symbols still exist: the classes, the
+                              Operation variants, the return shapes
     check_package_claims       the packaging scripts copy files that exist,
                               and the packaging documentation's sizes and
                               log level match the build
@@ -106,6 +109,8 @@ GATES = (
      ["python", "scripts/check_doc_claims.py"], "check"),
     ("check_tac_claims",
      ["python", "scripts/check_tac_claims.py"], "check"),
+    ("check_cross_fn_claims",
+     ["python", "scripts/check_cross_fn_claims.py"], "check"),
     ("check_package_claims",
      ["python", "scripts/check_package_claims.py"], "check"),
     ("capability_baseline",
