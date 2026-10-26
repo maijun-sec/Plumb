@@ -372,22 +372,84 @@ POM_NS = "{http://maven.apache.org/POM/4.0.0}"
 
 
 def module_poms():
-    """module -> the plumb-* modules it depends on, straight from the poms."""
+    """module -> the plumb-* modules it depends on, straight from the poms.
+
+    The glob is recursive: a module may itself be an aggregator whose
+    sub-modules live one level down (``plumb-build/plumb-build-core``).
+
+    Only the project's real ``<dependencies>`` count.  A ``<dependency>``
+    nested inside ``<dependencyManagement>`` pins a VERSION for a
+    dependency that is declared elsewhere (or in a consumer); it is not a
+    dependency of the module that declares it.  The same holds for
+    ``<plugin><dependencies>`` and for profiles that are not active by
+    default.  Counting those made the gate report an aggregator as
+    depending on its own sub-module.
+    """
     out = {}
-    for pom in sorted(REPO.glob("plumb-*/pom.xml")):
+    for pom in sorted(REPO.glob("plumb-*/pom.xml")) + sorted(REPO.glob("plumb-*/*/pom.xml")):
         name = pom.parent.name
         root = ET.parse(pom).getroot()
         deps = set()
-        for d in root.iter(f"{POM_NS}dependency"):
-            gid = d.findtext(f"{POM_NS}groupId") or ""
-            aid = d.findtext(f"{POM_NS}artifactId") or ""
-            optional = (d.findtext(f"{POM_NS}optional") or "false").strip().lower()
-            if gid == "org.plumb" and aid.startswith("plumb-") and aid != name:
-                deps.add(aid)
-                if optional == "true":
-                    deps.discard(aid)
+        for container in root.findall(f"{POM_NS}dependencies"):
+            # a top-level <dependencies> is the module's real dependency set
+            for d in container.findall(f"{POM_NS}dependency"):
+                gid = d.findtext(f"{POM_NS}groupId") or ""
+                aid = d.findtext(f"{POM_NS}artifactId") or ""
+                optional = (d.findtext(f"{POM_NS}optional") or "false").strip().lower()
+                if gid == "org.plumb" and aid.startswith("plumb-") and aid != name:
+                    deps.add(aid)
+                    if optional == "true":
+                        deps.discard(aid)
         out[name] = deps
     return out
+
+
+def module_in_flux(poms):
+    """The module set is being restructured right now.
+
+    Two shapes of in-flight restructure:
+
+      * a module the poms know about but the documentation does not
+        mention (a new sub-module appeared);
+      * a module whose pom depends on a sub-module (a module was split).
+
+    In both cases the dependency table is updated when the restructure
+    settles.  Reporting it as stale in the meantime is noise, not signal.
+
+    The tolerance is narrow on purpose: it applies ONLY to the modules
+    that the restructure touched.  A dependency that is stale for a
+    module the restructure did not touch is still reported.
+    """
+    doc = REPO / "docs" / "tech" / "MODULE-MERGE.md"
+    if not doc.is_file():
+        return False, set()
+    text = doc.read_text(encoding="utf-8", errors="replace")
+    named = set(re.findall(r"`(plumb-[a-z\-]+)`", text))
+    touched = set()
+    for module, deps in poms.items():
+        if module not in named:
+            touched.add(module)
+        if any(d not in named for d in deps):
+            touched.add(module)
+    return bool(touched), touched
+
+
+def check_no_module_in_flux(failures):
+    """No module may be mid-restructure.
+
+    A "the table is temporarily stale" tolerance is a permanent loophole:
+    once it is in the gate, every future module split silently disables the
+    dependency check for the modules it touches, and nobody notices that the
+    gate stopped checking.  The restructure is finished, so the tolerance is
+    removed -- and this gate makes sure it cannot come back unnoticed.
+    """
+    poms = module_poms()
+    in_flux, touched = module_in_flux(poms)
+    if in_flux:
+        failures.append(
+            "the module set is mid-restructure (%s); the dependency table must "
+            "be updated in the same change, not exempted"
+            % ", ".join(sorted(touched)))
 
 
 def check_module_claims(doc, failures):
@@ -486,7 +548,11 @@ def check_maven_profiles(doc, failures):
     that tells the user to run it is teaching a broken command.
     """
     profiles = set()
-    for pom in sorted(REPO.glob("pom.xml")) + sorted(REPO.glob("plumb-*/pom.xml")):
+    for pom in (
+        sorted(REPO.glob("pom.xml"))
+        + sorted(REPO.glob("plumb-*/pom.xml"))
+        + sorted(REPO.glob("plumb-*/*/pom.xml"))
+    ):
         text = pom.read_text(encoding="utf-8", errors="replace")
         for m in re.finditer(r"<profile>\s*(?:<!--.*?-->\s*)*<id>([^<]+)</id>", text, re.S):
             profiles.add(m.group(1).strip())
@@ -561,6 +627,118 @@ def check_config_defaults(doc, failures):
             "top-level block(s) are active: %s" % (doc.rel, len(active), active))
 
 
+def check_data_flow_counts(doc, failures):
+    """The fact-kind and checker counts in the data-flow document.
+
+    These are the numbers a reader uses to reason about the engine's
+    surface, so they are re-derived from the sources rather than trusted.
+    """
+    dfa = REPO / "plumb-dfa" / "src" / "main" / "java" / "org" / "plumb" / "dfa"
+
+    # built-in fact kinds: Map.entry(NAME, new FactKind(NAME, ...))
+    builtin_file = dfa / "fact" / "BuiltinFactKinds.java"
+    if builtin_file.is_file():
+        n_builtin = len(re.findall(
+            r"java\.util\.Map\.entry\(\s*([A-Z][A-Z0-9_]*)\s*,",
+            builtin_file.read_text(encoding="utf-8", errors="replace")))
+        for m in re.finditer(r"注册 \*\*(\d+) 个\*\*内置 kind", doc.text):
+            if int(m.group(1)) != n_builtin:
+                failures.append("%s says %d built-in fact kinds; the source has %d"
+                                % (doc.rel, int(m.group(1)), n_builtin))
+
+    # yaml fact kinds
+    yaml_file = REPO / "plumb-dfa" / "src" / "main" / "resources" / "fact-kinds.yaml"
+    if yaml_file.is_file():
+        n_yaml = len(re.findall(
+            r"^  ([A-Z][A-Za-z0-9]*):\s*$",
+            yaml_file.read_text(encoding="utf-8", errors="replace"), re.M))
+        for m in re.finditer(r"fact-kinds\.yaml` 的 \*\*(\d+) 个\*\*", doc.text):
+            if int(m.group(1)) != n_yaml:
+                failures.append("%s says %d yaml fact kinds; the file has %d"
+                                % (doc.rel, int(m.group(1)), n_yaml))
+        if builtin_file.is_file():
+            for m in re.finditer(r"所以有效的事务种类是 (\d+) 个", doc.text):
+                want = n_builtin + n_yaml
+                if int(m.group(1)) != want:
+                    failures.append(
+                        "%s says %d effective fact kinds; the source has %d "
+                        "(%d built-in + %d yaml)" % (doc.rel, int(m.group(1)), want,
+                                                    n_builtin, n_yaml))
+
+    # TaintedCheckerBase subclasses
+    n_sub = 0
+    for p in dfa.rglob("*.java"):
+        if "/main/" not in p.as_posix():
+            continue
+        if "extends TaintedCheckerBase" in p.read_text(encoding="utf-8", errors="replace"):
+            n_sub += 1
+    for m in re.finditer(r"全仓库共 (\d+) 个 `extends TaintedCheckerBase`", doc.text):
+        if int(m.group(1)) != n_sub:
+            failures.append("%s says %d TaintedCheckerBase subclasses; the source has %d"
+                            % (doc.rel, int(m.group(1)), n_sub))
+
+    # the framework binding annotations
+    cat = (REPO / "plumb-rules" / "src" / "main" / "java" / "org" / "plumb" / "rules"
+           / "framework" / "FrameworkInputAnnotations.java")
+    if cat.is_file():
+        body = cat.read_text(encoding="utf-8", errors="replace")
+        n_ann = len(set(re.findall(r'm\.put\("([A-Za-z]+)"', body)))
+        for m in re.finditer(r"共 \*\*(\d+)\*\* 个绑定注解", doc.text):
+            if int(m.group(1)) != n_ann:
+                failures.append("%s says %d binding annotations; the catalogue has %d"
+                                % (doc.rel, int(m.group(1)), n_ann))
+        n_fw = len(set(re.findall(r'm\.put\("\w+",\s*(FRAMEWORK_\w+)\)', body)))
+        for m in re.finditer(r"覆盖 (\d+) 个框架", doc.text):
+            if int(m.group(1)) != n_fw:
+                failures.append("%s says %d frameworks; the catalogue attributes %d"
+                                % (doc.rel, int(m.group(1)), n_fw))
+
+    # a line reference must CONTAIN the symbol it names
+    for m in re.finditer(
+            r"(plumb-[a-z\-]+/src/main/java/org/plumb/[A-Za-z0-9_/]*\.java):(\d+)-(\d+)",
+            doc.text):
+        rel, lo, hi = m.group(1), int(m.group(2)), int(m.group(3))
+        path = REPO / rel
+        if not path.is_file():
+            failures.append("%s cites %s, which does not exist" % (doc.rel, rel))
+            continue
+        body = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        block = body[lo - 1:hi]
+        if not block:
+            failures.append("%s cites %s:%d-%d, which is past the end of the file"
+                            % (doc.rel, rel, lo, hi))
+            continue
+        # The symbol the citation is FOR.  A citation is written as
+        # "`Symbol`（`path:lo-hi`）" or "`a.b.Symbol`\n(`path:lo-hi`）" --
+        # the symbol may sit in the previous LINE, so the lookup crosses
+        # newlines.  Take the LAST backticked identifier before the
+        # citation, preferring a dotted FQCN over a short name.
+        before = doc.text[max(0, m.start() - 300):m.start()]
+        names = re.findall(r"`([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)`", before)
+        symbol = None
+        for n in reversed(names):
+            # a table cell of the previous row is not the subject
+            if n.endswith(")") or n.endswith(":"):
+                continue
+            symbol = n
+            break
+        if symbol and not any(symbol.split(".")[-1] in l for l in block):
+            failures.append(
+                "%s cites %s:%d-%d for `%s`, but that range does not contain it"
+                % (doc.rel, rel, lo, hi, symbol))
+        elif symbol:
+            # The range must contain the symbol's DECLARATION, not just a
+            # mention of it.  A mention inside a comment is not enough.
+            simple = symbol.split(".")[-1]
+            decl = re.compile(
+                r"(?:public|private|protected|static|final|\s)*\b"
+                + re.escape(simple) + r"\s*\(")
+            if not any(decl.search(l) for l in block):
+                failures.append(
+                    "%s cites %s:%d-%d for `%s`, but that range does not contain its "
+                    "declaration" % (doc.rel, rel, lo, hi, symbol))
+
+
 def main():
     failures = []
 
@@ -583,6 +761,10 @@ def main():
         mdoc = Doc(module_doc)
         check_module_claims(mdoc, failures)
 
+    # No module may be mid-restructure: the dependency table is updated in
+    # the same change that changes the module set.
+    check_no_module_in_flux(failures)
+
     # Every product document may make an "optional dependency" claim, and
     # every one of them may name a maven profile that does not exist.
     for extra in sorted((REPO / "docs").rglob("*.md")):
@@ -599,6 +781,11 @@ def main():
         check_examples_snippet(exdoc, failures)
         check_no_yaml_only_build_system(exdoc, failures)
         check_config_defaults(exdoc, failures)
+
+    # The data-flow document: the fact-kind and checker counts.
+    dataflow = REPO / "docs" / "tech" / "DATA-FLOW.md"
+    if dataflow.is_file():
+        check_data_flow_counts(Doc(dataflow), failures)
 
     if failures:
         print("FAIL: the product documentation does not match the source")

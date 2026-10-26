@@ -117,12 +117,16 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 | `plumb.call.return-value-folded` | `RETURN_VALUE_FOLDED` | `:204` | BY_DECL |
 | `plumb.call.side-effect-recorded` | `SIDE_EFFECT_RECORDED` | `:216` | BY_DECL |
 
-**这是两个不同的清单,不是一个**:`ConfigLoader.parseFactKinds`
-(`config/ConfigLoader.java:227-264`)先把这 15 个内置 kind 放进 registry,再用
+**这是两个不同的清单,不是一个**:`org.plumb.dfa.config.ConfigLoader.parseFactKinds`
+(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:227-263`)先把这 15 个内置 kind 放进 registry,再用
 `fact-kinds.yaml` 的 **12 个** 条目覆盖或追加 —— YAML 的条目用另一套命名
 (`UntrustedSource`、`MayBeNull`、`Freed` 等)。两者名字空间不同但**落在同一个 registry 里**,
 所以有效的事务种类是 27 个。`capability_baseline` 把两个清单分开测量(`builtin:` /
 `yaml:` 前缀),少任何一个都会被拒。
+
+> 注意 `ConfigLoader` 有两个:`plumb-main` 的那个读扫描配置(YAML `inputs:` / `checks:`),
+> `plumb-dfa` 的这个读引擎配置(`sink-families.yaml` / `fact-kinds.yaml` / `checkers.yaml`)。
+> fact kind 属于后者。
 
 **重要区分**:fact 域不等于「四类分析各有一个 fact kind」。实际只有 taint / sensitive
 有 source 类 kind;boundary、points-to、control-flow **都没有对应的 fact kind**,它们由各自
