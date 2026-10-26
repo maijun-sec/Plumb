@@ -42,7 +42,7 @@ plumb-<ver>/
 │   ├── sast-scan               POSIX 启动器（bash）
 │   └── sast-scan.bat           Windows cmd 启动器
 ├── lib/
-│   └── plumb-main-<ver>-all.jar     单文件 uber-jar（≈ 77 MB）
+│   └── plumb-main-<ver>-all.jar     单文件 uber-jar（≈ 142 MB）
 └── conf/
     ├── default-config.yaml     baseline YAML（详 §6）
     └── logback.xml             默认日志（root = ERROR，`org.plumb` = DEBUG）
@@ -56,7 +56,7 @@ plumb-<ver>/
 | --- | ---: | --- |
 | `bin/sast-scan` | ~300 B | POSIX shell 启动器。`exec java -cp $DIR/lib/* -Dlogback.configurationFile=$DIR/conf/logback.xml org.plumb.main.SastMain "$@"` |
 | `bin/sast-scan.bat` | ~250 B | Windows cmd 启动器。逻辑同 POSIX 版，靠 `%~dp0` 解路径 |
-| `lib/plumb-main-<ver>-all.jar` | ~77 MB | shade 后 uber-jar：plumb-* 全模块、JavaParser、SootUp、Z3 turnkey、Logback |
+| `lib/plumb-main-<ver>-all.jar` | ~142 MB | shade 后 uber-jar：plumb-* 全模块、JavaParser、SootUp、Z3 turnkey、Logback、Kotlin 脚本引擎 |
 | `conf/default-config.yaml` | ~9 KB | 全字段 baseline：inputs/output/outputDir/cacheMode/cgStrategy/checks/ai（详 §6） |
 | `conf/logback.xml` | ~200 B | 默认 root = `ERROR`，`org.plumb` / `org.plumb.ai` = `DEBUG`；可用 `-Dlogback.configurationFile=...` 覆盖 |
 | `README.txt` | ~200 B | 启动命令 + 默认 conf 段说明 |
@@ -330,7 +330,7 @@ gpg --armor --detach-sign --output dist/plumb-<ver>/lib/plumb-main-<ver>-all.jar
 
 | 组件 | 大小 |
 | --- | ---: |
-| `plumb-main-<ver>-all.jar` (shaded uber-jar) | ~77 MB |
+| `plumb-main-<ver>-all.jar` (shaded uber-jar) | ~142 MB |
 | jlink 最小 JRE 17（含 14 个 module） | ~95 MB |
 | 解压即用 tar.gz (Linux x64) | ~80 MB（gzip 压缩后） |
 | 解压即用 zip (Windows x64) | ~180 MB |

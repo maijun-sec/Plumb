@@ -1,0 +1,271 @@
+﻿package org.plumb.dsl.kotlin
+
+import com.github.javaparser.ast.Node
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration
+import com.github.javaparser.ast.body.ConstructorDeclaration
+import com.github.javaparser.ast.body.FieldDeclaration
+import com.github.javaparser.ast.body.MethodDeclaration
+import com.github.javaparser.ast.body.Parameter
+import com.github.javaparser.ast.comments.Comment
+import com.github.javaparser.ast.expr.MethodCallExpr
+import com.github.javaparser.ast.stmt.BlockStmt
+import com.github.javaparser.ast.stmt.CatchClause
+import com.github.javaparser.ast.stmt.TryStmt
+import com.github.javaparser.ast.type.Type
+import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration
+import com.github.javaparser.resolution.types.ResolvedType
+
+/**
+ * The node-access facade.
+ *
+ * <p><b>Why a facade and not Kotlin extension properties.</b> The upstream
+ * project exposes its node helpers as Kotlin extension properties
+ * (`val Node.simpleName: String get() = ...`). A JSR-223 script cannot see
+ * them: the script compiler resolves extensions from the facade class's
+ * `@Metadata`, and it only reads that from the script's <em>compile</em>
+ * classpath -- which is not the runtime classpath the module's own classes
+ * live on. This was verified against Kotlin 2.2.0: with the script
+ * compiled against the module's classes, `n.simpleName` fails with
+ * "Unresolved reference: simpleName" while a plain static call
+ * `NodeAccess.simpleName(n)` resolves and runs.
+ *
+ * <p>So the helpers are exposed as static methods. The rule text keeps the
+ * upstream feel because the engine rewrites `a.b` into `NodeAccess.b(a)`
+ * before compiling. See [RuleMatcher] for the rewriter.
+ *
+ * <p><b>Chained access.</b> The upstream DSL chains properties off derived
+ * values -- `method.name`, `type.supers`, `exception.type`. To keep that
+ * shape, the helpers that return another node-ish value return a small
+ * wrapper ([MethodRef], [TypeRef], [ParameterRef]) whose own properties are
+ * what the upstream chain reads. The rewriter maps those wrapper properties
+ * onto the same facade calls, so `method.name` becomes
+ * `NodeAccess.methodName(NodeAccess.method(mce))`.
+ *
+ * <p>All methods are null-tolerant: a helper that does not apply to the
+ * node's type returns `null` (or `false`) rather than throwing, so a rule
+ * that matches a node it was not written for degrades to "no match"
+ * instead of blowing up the scan.
+ */
+object NodeAccess {
+
+    /** The node's simple class name, e.g. `CatchClause`. */
+    @JvmStatic
+    fun simpleName(node: Node?): String? = node?.javaClass?.simpleName
+
+    /** The node's fully qualified class name. */
+    @JvmStatic
+    fun qualifiedName(node: Node?): String? = node?.javaClass?.name
+
+    /** The method's name; null when the node is not a method declaration. */
+    @JvmStatic
+    fun methodName(node: Node?): String? =
+        (node as? MethodDeclaration)?.nameAsString
+
+    /** The constructor's name; null when the node is not a constructor. */
+    @JvmStatic
+    fun constructorName(node: Node?): String? =
+        (node as? ConstructorDeclaration)?.nameAsString
+
+    /** The parameter types of a method declaration; empty otherwise. */
+    @JvmStatic
+    fun parameterTypes(node: Node?): List<Type> =
+        (node as? MethodDeclaration)?.parameters?.map { it.type } ?: emptyList()
+
+    /** The parameters of a method declaration; empty otherwise. */
+    @JvmStatic
+    fun parameters(node: Node?): List<Parameter> =
+        (node as? MethodDeclaration)?.parameters ?: emptyList()
+
+    /** The caught exception's parameter; null when the node is not a catch clause. */
+    @JvmStatic
+    fun exception(node: Node?): ParameterRef? {
+        val parameter = (node as? CatchClause)?.parameter ?: return null
+        return ParameterRef(parameter)
+    }
+
+    /** The resolved type of a caught exception. */
+    @JvmStatic
+    fun exceptionType(parameterRef: ParameterRef?): TypeRef? = parameterRef?.type
+
+    /** The name of a caught exception's parameter. */
+    @JvmStatic
+    fun exceptionName(parameterRef: ParameterRef?): String? = parameterRef?.name
+
+    /** The enclosing method declaration; null when the node is not inside one. */
+    @JvmStatic
+    fun enclosingFunction(node: Node?): MethodDeclaration? {
+        if (node == null) return null
+        val found = node.findAncestor(MethodDeclaration::class.java)
+        return if (found.isPresent) found.get() else null
+    }
+
+    /** The enclosing class declaration; null when the node is not inside one. */
+    @JvmStatic
+    fun enclosingClass(node: Node?): ClassOrInterfaceDeclaration? {
+        if (node == null) return null
+        val found = node.findAncestor(ClassOrInterfaceDeclaration::class.java)
+        return if (found.isPresent) found.get() else null
+    }
+
+    /** True when the field / method / class is `static`. */
+    @JvmStatic
+    fun isStatic(node: Node?): Boolean =
+        when (node) {
+            is FieldDeclaration -> node.isStatic
+            is MethodDeclaration -> node.isStatic
+            is ClassOrInterfaceDeclaration -> node.isStatic
+            else -> false
+        }
+
+    /** True when the field / method / class is `final`. */
+    @JvmStatic
+    fun isFinal(node: Node?): Boolean =
+        when (node) {
+            is FieldDeclaration -> node.isFinal
+            is MethodDeclaration -> node.isFinal
+            is ClassOrInterfaceDeclaration -> node.isFinal
+            else -> false
+        }
+
+    /** The resolved type of a field declaration; null when it cannot be resolved. */
+    @JvmStatic
+    fun type(node: Node?): TypeRef? {
+        val resolved = (node as? FieldDeclaration)?.elementType?.resolve() ?: return null
+        return TypeRef(resolved)
+    }
+
+    /** The comment body; null when the node is not a comment. */
+    @JvmStatic
+    fun content(node: Node?): String? = (node as? Comment)?.content
+
+    /**
+     * The resolved method declaration behind a call site; null when the node
+     * is not a call site or the symbol solver cannot resolve it.
+     */
+    @JvmStatic
+    fun method(node: Node?): MethodRef? {
+        if (node !is MethodCallExpr) return null
+        val resolved: ResolvedMethodDeclaration = try {
+            node.resolve()
+        } catch (ex: RuntimeException) {
+            // The symbol solver throws when a type is not on the analysis
+            // classpath. A rule that asks "which class declares this call?"
+            // should simply not match, not abort the whole scan.
+            return null
+        }
+        return MethodRef(resolved)
+    }
+
+    /**
+     * The class that declares the resolved method behind a call site.
+     *
+     * <p>The upstream rule reads `method.enclosingClass`; this is the
+     * explicit-call form of it.
+     */
+    @JvmStatic
+    fun methodEnclosingClass(node: Node?): String? =
+        method(node)?.enclosingClass
+
+    /**
+     * The name of a resolved method reference.
+     *
+     * <p>The upstream rule reads `method.name`. The explicit-call form
+     * takes the [MethodRef] that [method] returns.
+     */
+    @JvmStatic
+    fun resolvedMethodName(methodRef: MethodRef?): String? = methodRef?.name
+
+    /**
+     * The class that declares a resolved method reference.
+     *
+     * <p>The upstream rule reads `method.enclosingClass`.
+     */
+    @JvmStatic
+    fun resolvedMethodEnclosingClass(methodRef: MethodRef?): String? = methodRef?.enclosingClass
+
+    /** The name of a resolved method behind a call site. */
+    @JvmStatic
+    fun methodNameOf(node: Node?): String? = method(node)?.name
+
+    /**
+     * True when the node's body is empty.
+     *
+     * <p>Covers the three shapes the upstream rules care about: a block
+     * statement, a catch clause's body, and a try statement's block.
+     */
+    @JvmStatic
+    fun isEmpty(node: Node?): Boolean =
+        when (node) {
+            is BlockStmt -> node.statements.isEmpty()
+            is CatchClause -> node.body.statements.isEmpty()
+            is TryStmt -> node.tryBlock.statements.isEmpty()
+            else -> false
+        }
+}
+
+/**
+ * A reference to a resolved method.
+ *
+ * <p>Carries the two properties the upstream rules read off a method:
+ * its name and the class that declares it.
+ */
+class MethodRef internal constructor(private val declaration: ResolvedMethodDeclaration) {
+
+    /** The method's name. */
+    val name: String
+        get() = declaration.name
+
+    /** The fully qualified name of the class that declares the method. */
+    val enclosingClass: String
+        get() = declaration.qualifiedName.substringBeforeLast('.', declaration.qualifiedName)
+
+    override fun toString(): String = declaration.qualifiedSignature
+}
+
+/**
+ * A reference to a resolved type.
+ *
+ * <p>Carries the properties the upstream rules read off a type: its own
+ * name and its ancestor chain.
+ */
+class TypeRef internal constructor(internal val resolvedType: ResolvedType) {
+
+    /** The type's fully qualified name. */
+    val typeName: String
+        get() = resolvedType.describe()
+
+    /**
+     * The "is-a" closure: the type itself plus its strict ancestors.
+     *
+     * <p>See [TypeAccess] for why this differs from the upstream
+     * `ResolvedType.supers`.
+     */
+    val supers: List<String>
+        get() = TypeAccess.supersOf(resolvedType)
+
+    /** The strict ancestors only -- the upstream `ResolvedType.supers`. */
+    val strictSupers: List<String>
+        get() = TypeAccess.strictSupersOf(resolvedType)
+
+    override fun toString(): String = resolvedType.describe()
+}
+
+/**
+ * A reference to a catch clause's exception parameter.
+ */
+class ParameterRef internal constructor(private val parameter: Parameter) {
+
+    /** The parameter's declared type. */
+    val type: TypeRef? =
+        try {
+            TypeRef(parameter.type.resolve())
+        } catch (ex: RuntimeException) {
+            null
+        }
+
+    /** The parameter's name. */
+    val name: String
+        get() = parameter.nameAsString
+
+    override fun toString(): String = parameter.toString()
+}

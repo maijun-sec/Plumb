@@ -91,6 +91,7 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
 | `plumb-reporter` | Finding 模型 + NDJSON/console/SARIF 输出 | plumb-rules |
 | `plumb-style` | AST visitor checker（JavaParser 单一来源）；数量见 `docs/rules/RULES.md` | plumb-parser, plumb-rules, plumb-reporter |
 | `plumb-dfa` | 污点 / 边界 / 指向 / 控制流四类分析的统一 DFA 引擎 | plumb-tac, plumb-rules, plumb-reporter |
+| `plumb-dsl-kotlin` | Kotlin DSL AST 规则引擎（用户自带 AST 规则，不写 Java） | plumb-parser, plumb-rules, plumb-reporter, plumb-style |
 | `plumb-main` | CLI + YAML 配置 + 流水线编排 + build-system adapter | 上述全部 + plumb-build-core + plumb-build-maven |
 | `plumb-build` | parent pom，聚合 build 自省子模块 | 无（pom） |
 | `plumb-build-core` | BuildAdapter SPI + Maven / Gradle / Bazel / Ant adapter → sourceFiles/classpathJars | plumb-rules, maven-model |
@@ -539,6 +540,7 @@ emit-id。`ScanRunner.isRuleIdAllowed` 里的
 | 新加控制流检查 | `plumb-dfa/.../checkers/controlflow/`，实现 `DfaChecker` |
 | 启用 / 关闭某 checker | `plumb-dfa/src/main/resources/checkers.yaml` |
 | 新加 style 规则 | `plumb-style/<category>/<Name>Check.java` + 在 `CheckerCategories.java` 加 `m.put(...)` |
+| 新加 **Kotlin DSL** AST 规则（不写 Java） | 写一个规则文件（XML / YAML），用 `--dsl-rules <file>` 传进去。见 [`KOTLIN-DSL.md`](KOTLIN-DSL.md) |
 | 新加 CLI flag | `plumb-main/.../SastMain.java` 的 `buildOptions()` |
 | 新加 YAML 段 | `plumb-main/.../ConfigLoader.java` 的 `fromMapImpl()` |
 | 新加输出格式 | `plumb-reporter/.../FindingFormatter.java` + `NdjsonEmitter` / `SarifEmitter` 同级 |
@@ -560,6 +562,24 @@ emit-id。`ScanRunner.isRuleIdAllowed` 里的
 `CheckerCategories`；漏登记影响的是按分类加载的路径。）
 classpath-scan 注册机制要求同时满足 (a) 在 `CHECKER_CATEGORIES` 注册 +
 (b) 提供 `rule()` 方法，少一个就 silently drop。
+
+### 10.2 用 Kotlin DSL 加 AST 规则（不写 Java）
+
+不想写 Java checker 时，可以用 `plumb-dsl-kotlin` 的规则引擎：
+
+1. 写一个规则文件（XML 或 YAML 格式）——见 [`KOTLIN-DSL.md`](KOTLIN-DSL.md) §2
+2. `sast-scan -i src/main/java --dsl-rules rules/ast-rules.yaml`
+
+DSL 规则和内置 style 规则走**同一条**产出路径：命中后产生同样的 `Finding`，
+进同样的 registry、同样的 whitelist / blacklist 过滤、同样的 reporter。
+
+唯一的结构性差别是**触发方式**：内置 checker 靠 `AstDispatcher` 的 per-node
+派发，而 DSL 规则在 `AstChecker.finish(ctx)` 里运行——因为 dispatcher 按精确
+节点类派发，既不会把 `CompilationUnit` 送给 checker，也无法表达
+`Statement` / `Comment` 这类抽象节点类型。细节见
+[`KOTLIN-DSL.md`](KOTLIN-DSL.md) §5.3。
+
+数据流 / 污点规则**不在**这个引擎里，仍由 `plumb-dfa` 的 YAML 配置驱动。
 
 ## 11. 已知边界
 

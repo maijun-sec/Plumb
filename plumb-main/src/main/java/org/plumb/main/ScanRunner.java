@@ -95,6 +95,24 @@ public final class ScanRunner {
       layout.ensureDirectories();
       LOG.info("R-output-dir: cache at {}, report at {}", layout.cacheDir(), layout.reportDir());
     }
+    // The DSL checker is built FIRST, before the registry.
+    //
+    // Why the order matters: the DSL rules are user-supplied, and a
+    // user-supplied rule has to appear in the live RuleRegistry
+    // for two reasons.
+    //
+    //   1. StyleContext.report() drops a finding whose rule is
+    //      "disabled by default" AND absent from the registry
+    //      (or present-but-disabled). A DSL rule that is not in
+    //      the registry therefore never emits.
+    //   2. The registry is what the per-finding whitelist /
+    //      blacklist filter consults, so an unregistered rule
+    //      cannot be selected either.
+    //
+    // Building it here also means the rules are compiled once
+    // per scan, not once per file.
+    buildDslChecker();
+
     RuleRegistry rules = buildRegistry();
     // stash the live registry so isRuleIdAllowed()
     // can consult def.enabled() for the disabled-by-default
@@ -2014,7 +2032,27 @@ public final class ScanRunner {
       // via name() — the AST interface only requires a
       // "human-readable name" — so the whitelist entry
       // for them is the class name. Accept either form.
-      if (!isRuleIdAllowed(c.name()) && !isRuleIdAllowed(c.getClass().getSimpleName())) continue;
+      if (!isRuleIdAllowed(c.name()) && !isRuleIdAllowed(c.getClass().getSimpleName())) {
+        // The DSL checker serves MANY rules, each with its own id.
+        // Gating it on the checker's own name ("dsl-kotlin") would
+        // drop every DSL rule in whitelist mode, because no
+        // whitelist entry can name a checker that stands for a
+        // whole rule set.
+        //
+        // So the DSL checker is admitted when at least one of its
+        // rules is allowed; the per-rule decision is made when the
+        // rule reports, against the rule's own id.
+        if (!(c instanceof org.plumb.dsl.kotlin.DslAstChecker dsl)) continue;
+        boolean anyAllowed = false;
+        for (RuleDef def : dsl.ruleDefs()) {
+          String id = def.ruleId().id();
+          if (isRuleIdAllowed(id) || isRuleIdAllowed(def.ruleId().name())) {
+            anyAllowed = true;
+            break;
+          }
+        }
+        if (!anyAllowed) continue;
+      }
       d.register(c);
     }
     try {
@@ -2104,8 +2142,53 @@ public final class ScanRunner {
       out.add(c);
     }
     out.add(new org.plumb.style.style.MethodTooLongCheck());
+    // The AST rules the user supplies through --dsl-rules / the YAML's
+    // `dsl.rules` block. They are compiled once, here, so the cost is
+    // paid once per scan rather than once per file. When no rule file is
+    // given, nothing is added and the scan is unaffected.
+    //
+    // The checker itself was already built by buildDslChecker(),
+    // which runs before buildRegistry() so the rules could be
+    // registered in the live registry.
+    if (dslChecker != null) {
+      out.add(dslChecker);
+    }
     return out;
   }
+
+  /**
+   * Build the DSL checker for this scan, if the user supplied any rule file.
+   *
+   * <p>The result is stored in {@link #dslChecker} so that both the check list and the rule
+   * registry can see the same instance. Building it twice would compile every rule twice.
+   *
+   * <p>The DSL rules are AST rules only. Data-flow and taint rules are configured in {@code
+   * plumb-dfa}'s YAML files and are not affected by this.
+   */
+  private void buildDslChecker() {
+    if (config == null) return;
+    List<java.nio.file.Path> files = config.dslRuleFiles;
+    if (files == null || files.isEmpty()) return;
+    try {
+      dslChecker = org.plumb.dsl.kotlin.DslAstChecker.Companion.from(files, config.dslStrict);
+    } catch (RuntimeException ex) {
+      // In strict mode a broken rule aborts the scan; otherwise the DSL
+      // checker logs and skips the broken rule.
+      if (config.dslStrict) {
+        throw ex;
+      }
+      LOG.warn("Failed to load the DSL rule files {}: {}", files, ex.toString());
+    }
+  }
+
+  /**
+   * The DSL checker built for this scan, or null when the user supplied no DSL rule file.
+   *
+   * <p>It is kept here because the same instance has to be visible in two places: the check list
+   * passed to the dispatcher, and the rule registry that {@link
+   * org.plumb.style.StyleContext#report} consults.
+   */
+  private org.plumb.dsl.kotlin.DslAstChecker dslChecker;
 
   private RuleRegistry buildRegistry() {
     // the rule catalog is now
@@ -2137,6 +2220,26 @@ public final class ScanRunner {
     RuleRegistry r = new RuleRegistry().withBuiltinDefaults();
     // Layer 2: every AST checker in the builtins set.
     r.registerFromCheckers(new org.plumb.style.AstCheckerRegistry().builtins().all());
+
+    // Layer 3: the user-supplied DSL rules.
+    //
+    // A DSL rule is not an AstChecker -- one checker serves many rules --
+    // so registerFromCheckers() cannot pick it up. Register the rule
+    // metadata directly instead, so the DSL rules take part in the
+    // whitelist / blacklist filters and in StyleContext.report()'s
+    // enabled gate exactly like every built-in rule.
+    if (dslChecker != null) {
+      for (RuleDef def : dslChecker.ruleDefs()) {
+        try {
+          r.register(def);
+        } catch (RuntimeException ex) {
+          // A duplicate id means another rule already claims this
+          // id. Log it and keep the first one rather than
+          // failing the whole scan.
+          LOG.warn("Could not register the DSL rule '{}': {}", def.ruleId().id(), ex.toString());
+        }
+      }
+    }
 
     boolean whitelistActive = config.whitelistMode && !config.enabledRuleNames.isEmpty();
     for (RuleDef def : r.all()) {
@@ -2392,10 +2495,19 @@ public final class ScanRunner {
       // (see the parallel runStyleChecks() above).
       StyleContext sctx = new StyleContext(ps, rules, config.ruleParams, staticMethodCache);
       org.plumb.style.AstDispatcher d = new org.plumb.style.AstDispatcher();
-      for (org.plumb.style.AstChecker c : new AstCheckerRegistry().builtins().all()) {
+      // Use the SHARED check list, not a freshly built one.
+      //
+      // The shared list is what buildStyleChecks() produced, and
+      // it is the only list that contains the user's DSL rules
+      // (the DslAstChecker). Rebuilding the list here from
+      // AstCheckerRegistry.builtins() would silently drop every
+      // DSL rule on the single-file path -- the multi-file path
+      // and the single-file path would then disagree about
+      // which rules ran.
+      for (org.plumb.style.AstChecker c : styleChecks) {
         if (c.name().equals("method-length")) continue;
-        // R-PATCH v2: skip style checkers whose id is
-        // not allowed under the current whitelist /
+        // R-PATCH v2: skip style checkers whose id is not
+        // allowed under the current whitelist /
         // blacklist. Same filter as runStyleChecks().
         //
         // C3: also accept the checker's class
@@ -2403,7 +2515,21 @@ public final class ScanRunner {
         // checkers don't expose their RuleId via
         // name(); the whitelist entry for them is
         // the class name.
-        if (!isRuleIdAllowed(c.name()) && !isRuleIdAllowed(c.getClass().getSimpleName())) continue;
+        if (!isRuleIdAllowed(c.name()) && !isRuleIdAllowed(c.getClass().getSimpleName())) {
+          // The DSL checker serves MANY rules, so it cannot be
+          // gated on its own name. Admit it when at least one
+          // of its rules is allowed; the per-rule decision is
+          // made at report time.
+          if (!(c instanceof org.plumb.dsl.kotlin.DslAstChecker dsl)) continue;
+          boolean anyAllowed = false;
+          for (RuleDef def : dsl.ruleDefs()) {
+            if (isRuleIdAllowed(def.ruleId().id()) || isRuleIdAllowed(def.ruleId().name())) {
+              anyAllowed = true;
+              break;
+            }
+          }
+          if (!anyAllowed) continue;
+        }
         d.register(c);
       }
       if (isRuleIdAllowed("method-length")) {
@@ -2468,7 +2594,15 @@ public final class ScanRunner {
       try {
         new NdjsonEmitter(w).emit(findings);
       } finally {
-        if (config.outputPath != null) w.close();
+        // The stdout branch MUST flush: the writer buffers, and
+        // SastMain calls System.exit() right after run() returns,
+        // which discards whatever is still buffered. See the
+        // console branch below for the full note.
+        if (config.outputPath != null) {
+          w.close();
+        } else {
+          w.flush();
+        }
       }
     } else if (config.outputFormat == ScanConfig.OutputFormat.SARIF) {
       // P3.3: SARIF 2.1.0 emitter with v2 trace
@@ -2482,7 +2616,15 @@ public final class ScanRunner {
       try {
         new org.plumb.reporter.SarifEmitter(w).emit(findings);
       } finally {
-        if (config.outputPath != null) w.close();
+        // The stdout branch MUST flush: the writer buffers, and
+        // SastMain calls System.exit() right after run() returns,
+        // which discards whatever is still buffered. See the
+        // console branch below for the full note.
+        if (config.outputPath != null) {
+          w.close();
+        } else {
+          w.flush();
+        }
       }
     } else {
       Writer w =
@@ -2495,7 +2637,27 @@ public final class ScanRunner {
           w.write('\n');
         }
       } finally {
-        if (config.outputPath != null) w.close();
+        // The console branch MUST flush.
+        //
+        // `System.out` is a PrintStream, but the code wraps
+        // it in an OutputStreamWriter, and that writer buffers.
+        // SastMain calls System.exit() right after run()
+        // returns, which bypasses the normal JVM shutdown and
+        // discards whatever is still in the writer's buffer.
+        //
+        // The symptom was silent: the last few findings were
+        // simply missing from the console output, and the final
+        // line was cut mid-string. The NDJSON and SARIF
+        // branches were unaffected because their emitters close
+        // the writer themselves.
+        //
+        // Lesson: any writer that is not closed MUST be flushed
+        // before the process exits.
+        if (config.outputPath != null) {
+          w.close();
+        } else {
+          w.flush();
+        }
       }
     }
   }

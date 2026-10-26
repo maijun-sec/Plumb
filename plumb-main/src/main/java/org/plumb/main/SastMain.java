@@ -123,6 +123,18 @@ public final class SastMain {
       if (cli.hasOption("rule-prompts-dir")) {
         cfg.cliRulePromptsDir = Path.of(cli.getOptionValue("rule-prompts-dir"));
       }
+      // AST rules for the Kotlin DSL engine. The CLI value is ADDED to
+      // whatever the YAML's `dsl.rules` block already listed, so a
+      // project can keep its rules in the config and add one file on
+      // the command line without losing the others.
+      if (cli.hasOption("dsl-rules")) {
+        for (String s : cli.getOptionValues("dsl-rules")) {
+          cfg.dslRuleFiles.add(Path.of(s));
+        }
+      }
+      if (cli.hasOption("dsl-strict")) {
+        cfg.dslStrict = true;
+      }
       if (cli.hasOption("list-rules")) {
         printRuleList();
         System.exit(0);
@@ -352,6 +364,29 @@ public final class SastMain {
                     + "for pom.xml / build.gradle / BUILD / build.xml. "
                     + "The adapter's output is added to the input set; "
                     + "any explicit --input flags are kept in addition.")
+            .build());
+    opts.addOption(
+        Option.builder()
+            .longOpt("dsl-rules")
+            .hasArg()
+            .argName("file")
+            .desc(
+                "AST rule file for the Kotlin DSL engine. The file is "
+                    + "in either the XML format the java-sca-ast-dsl "
+                    + "project uses, or in YAML. May be repeated to "
+                    + "load several files. The rules are compiled once "
+                    + "and evaluated against every matching JavaParser "
+                    + "node. This is the AST side only -- data-flow and "
+                    + "taint rules stay in plumb-dfa's YAML config.")
+            .build());
+    opts.addOption(
+        Option.builder()
+            .longOpt("dsl-strict")
+            .desc(
+                "Abort the scan when a DSL rule fails to compile. "
+                    + "Off by default: a broken rule is skipped and "
+                    + "logged, so it does not take the whole scan down. "
+                    + "Turn it on in CI.")
             .build());
     return opts;
   }

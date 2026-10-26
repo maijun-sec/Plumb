@@ -28,10 +28,10 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
 usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
        <maven-resolver|maven|gradle|bazel|ant>] [-c <yaml>] [--cache-mode
        <off|read|write|readwrite>] [--cg-strategy
-       <cha|rta|vta|1cfa|stub|global|cached:<name>:<path>>] [--classpath <jar|dir>] [-D <dir>] [-f
-       <console|ndjson|sarif>] [-h] [-i <path>] [--list-rules] [--max-parallelism <n>]
-       [--module-root <dir>] [-o <path>] [--project-root <dir>] [--rule <id>] [--rule-prompts-dir
-       <path>] [--source-root <dir>] [-v]
+       <cha|rta|vta|1cfa|stub|global|cached:<name>:<path>>] [--classpath <jar|dir>] [-D <dir>]
+       [--dsl-rules <file>] [--dsl-strict] [-f <console|ndjson|sarif>] [-h] [-i <path>]
+       [--list-rules] [--max-parallelism <n>] [--module-root <dir>] [-o <path>] [--project-root
+       <dir>] [--rule <id>] [--rule-prompts-dir <path>] [--source-root <dir>] [-v]
 ```
 
 | 短选项 | 长选项 | 参数 | 默认值 | 说明 |
@@ -50,6 +50,8 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
 | — | `--ai-dedup-stats` | — | off | AI dedup 跑完后，往 **stderr** 打 verdict 分布 + 每条规则的 FP 占比 Top 10。stdout 的 NDJSON 不变。配合 `--ai-dedup` 一起用，单独开 no-op。 |
 | — | `--rule` | `<id>` | — | 只跑指定 rule（**可重复**）。覆盖 YAML 的 `checks.*` 标志。**精确匹配** —— 要用真实的 rule id，例如 `--rule TAINT_SINK_SQL_INJECTION`；写不存在的 id 会静默产出 0 条 finding。用 `--list-rules` 查全部 id |
 | — | `--rule-prompts-dir` | `<path>` | — | 用户自带的 rule prompt `.md` 目录。覆盖打包在 classpath 里的默认 prompt |
+| — | `--dsl-rules` | `<file>` | — | Kotlin DSL 引擎的 AST 规则文件（**可重复**）。XML 或 YAML 格式，见 [`../tech/KOTLIN-DSL.md`](../tech/KOTLIN-DSL.md) |
+| — | `--dsl-strict` | — | off | DSL 规则编译失败时**中止扫描**，而不是跳过该条规则 |
 | — | `--list-rules` | — | — | 列出所有已知 rule id 并退出 |
 
 ** / 项目路径族**（详见 §3 的「项目路径」段）：
@@ -431,6 +433,14 @@ checks:
 #     disabled:
 #       - ast-error-error-message-info-leak
 #       - ast-style-comment-info-leak
+
+# ---- Kotlin DSL AST 规则 ----
+# AST 规则（语法形态、局部模式）用 Kotlin DSL 写；数据流 / 污点规则仍在
+# plumb-dfa 的 YAML 里，不在这里配。详见 tech/KOTLIN-DSL.md。
+dsl:
+  rules:                        # 规则文件列表（XML 或 YAML 格式）
+    - rules/ast-rules.yaml
+  strict: false                 # true = 规则编译失败时中止扫描
 
 # ---- 项目路径 ----
 # — 跟 build-system adapter 配合使用。详见 §2 的「项目路径族」表。

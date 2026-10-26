@@ -47,6 +47,8 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 MODULES = [
     "plumb-ai", "plumb-main", "plumb-dfa", "plumb-style", "plumb-rules",
     "plumb-tac", "plumb-parser", "plumb-reporter",
+    # The Kotlin AST rule engine. Its sources are under src/main/kotlin.
+    "plumb-dsl-kotlin",
     # plumb-build is an aggregator; its sub-modules carry the sources.
     "plumb-build/plumb-build-core",
     "plumb-build/plumb-build-maven",
@@ -87,13 +89,20 @@ JDK_NAMES = {
 
 
 def source_roots():
-    """Every java source root: main and test, for every module."""
+    """Every source root: main and test, for every module.
+
+    Both the `java` and the `kotlin` layouts are included.  The
+    `plumb-dsl-kotlin` module puts its sources under `src/main/kotlin`,
+    and a type declared there is just as real as one declared in Java
+    -- the documentation must be able to name it.
+    """
     roots = []
     for module in MODULES:
         for kind in ("main", "test"):
-            root = REPO / module / "src" / kind / "java"
-            if root.is_dir():
-                roots.append(root)
+            for lang in ("java", "kotlin"):
+                root = REPO / module / "src" / kind / lang
+                if root.is_dir():
+                    roots.append(root)
     return roots
 
 
@@ -103,14 +112,25 @@ def collect_declared():
     simple = set()
     packages = set()
     for root in source_roots():
-        for path in root.rglob("*.java"):
+        # Kotlin sources declare types too.  The project has a Kotlin
+        # module (`plumb-dsl-kotlin`), and a type name that the
+        # documentation names must resolve regardless of the language
+        # it is written in.  Kotlin's declaration forms are `class`,
+        # `object`, `interface`, `enum class`, and `data class`; the
+        # `data` / `enum` / `sealed` / `abstract` / `open` modifiers
+        # are optional prefixes, so the regex accepts them.
+        for path in list(root.rglob("*.java")) + list(root.rglob("*.kt")):
             text = path.read_text(encoding="utf-8", errors="replace")
             pkg = ""
             m = re.search(r"^package\s+([\w.]+);", text, re.M)
+            if not m:
+                m = re.search(r"^package\s+([\w.]+)\s*$", text, re.M)
             if m:
                 pkg = m.group(1)
                 packages.add(pkg)
-            for cm in re.finditer(r"\b(?:class|interface|enum|record)\s+(\w+)", text):
+            for cm in re.finditer(
+                r"\b(?:class|interface|enum|record|object)\s+(\w+)", text
+            ):
                 name = cm.group(1)
                 simple.add(name)
                 if pkg:

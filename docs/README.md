@@ -21,6 +21,7 @@
 | [`CROSS-FUNCTION-AI-TRACE.md`](tech/CROSS-FUNCTION-AI-TRACE.md) | 周边：并行 worklist、跨文件验证、已知限制、AI 增强层、Re-Act 框架 |
 | [`DFA-AUGMENTATION-DESIGN.md`](tech/DFA-AUGMENTATION-DESIGN.md) | 为什么 AST 不够用，以及 DFA 增强技术 |
 | [`STYLE-RULES.md`](tech/STYLE-RULES.md) | 风格类实现：`AstDispatcher`、`AstCheckerRegistry`、典型 checker 模式 |
+| [`KOTLIN-DSL.md`](tech/KOTLIN-DSL.md) | **Kotlin DSL AST 规则引擎**：规则文件格式、匹配器语言、编译/求值模型、`--dsl-rules` 用法 |
 | [`MODULE-MERGE.md`](tech/MODULE-MERGE.md) | 模块结构与依赖边界 |
 | [`CACHE.md`](tech/CACHE.md) | 磁盘 IR 缓存：`--output-dir` 机制、文件格式、key、兼容性 |
 
@@ -72,6 +73,7 @@
 | 环境变量 / API key | [`usage/ENVIRONMENT.md`](usage/ENVIRONMENT.md) |
 | 有哪些规则 | [`rules/RULES.md`](rules/RULES.md) |
 | 加自定义规则 | [`rules/RULE-AUTHORING.md`](rules/RULE-AUTHORING.md)、[`tech/ARCHITECTURE.md`](tech/ARCHITECTURE.md) §10 |
+| 用 Kotlin DSL 写 AST 规则 | [`tech/KOTLIN-DSL.md`](tech/KOTLIN-DSL.md) |
 | 系统整体怎么跑 | [`tech/ARCHITECTURE.md`](tech/ARCHITECTURE.md) |
 | **数据流分析怎么工作** | **[`tech/DATA-FLOW.md`](tech/DATA-FLOW.md)** |
 | 指向分析 / 可空性 / 污点 | [`tech/DATA-FLOW.md`](tech/DATA-FLOW.md) §3–§5 |

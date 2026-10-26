@@ -25,6 +25,16 @@
             <groupId>org.plumb</groupId>
             <artifactId>plumb-dfa</artifactId>
         </dependency>
+        <!--
+            The AST rule engine. Optional at runtime: without it the
+            dsl-rules flag is simply unavailable, and the scan is
+            unaffected. It is a compile dependency so the CLI can offer
+            the flag.
+        -->
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-dsl-kotlin</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.plumb</groupId>
             <artifactId>plumb-build-core</artifactId>

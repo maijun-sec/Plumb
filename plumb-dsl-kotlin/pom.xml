@@ -1,0 +1,144 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.plumb</groupId>
+        <artifactId>plumb</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>plumb-dsl-kotlin</artifactId>
+    <name>plumb-dsl-kotlin</name>
+    <description>
+        A Kotlin-scripting AST rule engine. Rules are written in a small
+        Kotlin-flavoured DSL and evaluated against JavaParser nodes, so a
+        project can ship its own AST rules without writing Java.
+
+        The engine compiles each rule ONCE and reuses the compiled script
+        for every matching node; the node under test is handed to the
+        script through a per-thread holder. Data-flow / taint rules are
+        NOT part of this module: they stay in plumb-dfa's YAML config.
+    </description>
+
+    <properties>
+        <!--
+          Inherited from the root pom. The comment there explains why the
+          version is pinned: the Kotlin script engine must understand the
+          JDK the scanner runs on.
+        -->
+        <kotlin.compiler.jvmTarget>17</kotlin.compiler.jvmTarget>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-parser</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-rules</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-reporter</artifactId>
+        </dependency>
+        <!--
+          The AstChecker SPI lives in plumb-style. This module implements
+          one, so it depends on plumb-style, but plumb-style does NOT
+          depend on this module, so there is no cycle.
+        -->
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-style</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.javaparser</groupId>
+            <artifactId>javaparser-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.javaparser</groupId>
+            <artifactId>javaparser-symbol-solver-core</artifactId>
+        </dependency>
+        <!--
+          The Kotlin JSR-223 scripting engine. This artifact pulls the
+          whole tree it needs (kotlin-reflect, kotlin-scripting-compiler-impl-embeddable, kotlinx-coroutines, trove4j, ...). Do NOT try
+          to hand-pick the jars: every one of them is required at runtime
+          and a partial set fails deep inside the compiler.
+        -->
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-scripting-jsr223</artifactId>
+            <version>${kotlin.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-stdlib</artifactId>
+            <version>${kotlin.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+        <!-- YAML rule files -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+        </dependency>
+        <!-- tests -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <sourceDirectory>${project.basedir}/src/main/kotlin</sourceDirectory>
+        <testSourceDirectory>${project.basedir}/src/test/kotlin</testSourceDirectory>
+        <plugins>
+            <plugin>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-maven-plugin</artifactId>
+                <version>${kotlin.version}</version>
+                <executions>
+                    <execution>
+                        <id>compile</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>compile</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>test-compile</id>
+                        <phase>test-compile</phase>
+                        <goals>
+                            <goal>test-compile</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <!--
+                      Plumb targets Java 17. The Kotlin compiler must emit
+                      17 bytecode too, otherwise the module cannot be used
+                      from a Java 17 runtime.
+                    -->
+                    <jvmTarget>17</jvmTarget>
+                    <args>
+                        <arg>-Xjvm-default=all</arg>
+                    </args>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

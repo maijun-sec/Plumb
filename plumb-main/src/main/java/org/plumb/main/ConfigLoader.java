@@ -389,6 +389,37 @@ public final class ConfigLoader {
     if (exc instanceof List<?> list) {
       for (Object o : list) cfg.excludeGlobs.add(String.valueOf(o));
     }
+    // AST rules for the Kotlin DSL engine. The `dsl:` block holds the
+    // rule files and whether a broken rule aborts the scan:
+    //
+    //   dsl:
+    //     rules: [rules/ast-rules.yaml]
+    //     strict: true
+    //
+    // A bare `dsl: <path>` is also accepted, and means a single rule
+    // file. Data-flow / taint rules are NOT configured here -- they
+    // stay in plumb-dfa's YAML.
+    Object dsl = root.get("dsl");
+    if (dsl instanceof String s && !s.isBlank()) {
+      cfg.dslRuleFiles.add(java.nio.file.Path.of(s));
+    } else if (dsl instanceof List<?> list) {
+      for (Object o : list) {
+        String s = String.valueOf(o);
+        if (!s.isBlank()) cfg.dslRuleFiles.add(java.nio.file.Path.of(s));
+      }
+    } else if (dsl instanceof Map<?, ?> dm) {
+      Object dslRules = dm.get("rules");
+      if (dslRules instanceof String s && !s.isBlank()) {
+        cfg.dslRuleFiles.add(java.nio.file.Path.of(s));
+      } else if (dslRules instanceof List<?> list) {
+        for (Object o : list) {
+          String s = String.valueOf(o);
+          if (!s.isBlank()) cfg.dslRuleFiles.add(java.nio.file.Path.of(s));
+        }
+      }
+      Object strict = dm.get("strict");
+      if (strict instanceof Boolean b) cfg.dslStrict = b;
+    }
     // Step 7 — AI dedup config. Accepts both `ai.*`
     // and `ai-dedup.*` (snake_case compat). Missing
     // key leaves the fields at their defaults.

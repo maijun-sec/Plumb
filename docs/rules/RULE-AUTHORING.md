@@ -53,6 +53,18 @@ AST 规则的 CWE 会随 finding 进入 NDJSON 的 `cwe` 字段；DFA 规则的 
 
 ## 4. 添加新规则的步骤
 
+**先选一条路。** AST 规则有两种加法：
+
+| | 写 Java checker | 写 Kotlin DSL 规则 |
+| --- | --- | --- |
+| 适合 | 进产品默认规则集、复杂逻辑、需要 AI dedup prompt | 项目自带规则、快速加一条形态检查、跟着上游规则走 |
+| 落地 | `plumb-style` 模块 + `CheckerCategories` 注册 | 一个规则文件（XML / YAML） |
+| 分发 | 跟代码一起发布 | 跟项目配置一起走 |
+| 文档 | 本文 §13.1 | [`../tech/KOTLIN-DSL.md`](../tech/KOTLIN-DSL.md) |
+
+数据流 / 污点规则**只有一条路**：YAML + `plumb-dfa` 的 checker（本文 §13.2 / §13.3）。
+DSL 引擎只做 AST 规则。
+
 ### 13.0 Pattern 选型决策（Style 规则前置步骤）
 
 **写新 Style checker 之前先选 Pattern**。AstDispatcher 对 43 种节点各 `visit(X, Void)` 一次，单 checker 内部多次 `findAll` / `walk` 会导致每文件被 walk 多次。Pattern 选型决策表：

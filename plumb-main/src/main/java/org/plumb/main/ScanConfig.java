@@ -324,6 +324,26 @@ public final class ScanConfig {
   public java.nio.file.Path cliRulePromptsDir;
 
   /**
+   * AST rule files for the Kotlin DSL engine (CLI {@code --dsl-rules}).
+   *
+   * <p>Each file is a rule file in either the XML format the upstream {@code java-sca-ast-dsl}
+   * project uses, or in YAML. The rules are compiled once and evaluated against every matching
+   * JavaParser node.
+   *
+   * <p>This is the AST side only. Data-flow and taint rules are NOT configured here -- they stay in
+   * {@code plumb-dfa}'s YAML files ({@code sink-families.yaml}, {@code checkers.yaml}).
+   */
+  public java.util.List<java.nio.file.Path> dslRuleFiles = new ArrayList<>();
+
+  /**
+   * When true, a DSL rule that fails to compile aborts the scan instead of being skipped.
+   *
+   * <p>Off by default: one broken rule file must not take a whole scan down. Turn it on in CI so a
+   * broken rule is caught immediately.
+   */
+  public boolean dslStrict = false;
+
+  /**
    * per-rule parameter overrides loaded from {@code checks.<ruleId>.params.<name>} in the YAML.
    * Outer key = rule id (the same string the AST checker uses as its {@code name()} or its
    * canonical rule id); inner key = parameter name (e.g. {@code "max"}, {@code "ignoreNumbers"});

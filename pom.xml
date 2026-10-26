@@ -33,6 +33,15 @@
         <assertj.version>3.26.3</assertj.version>
         <z3.turnkey.version>4.14.0</z3.turnkey.version>
 
+        <!--
+          Kotlin, for plumb-dsl-kotlin's script engine. 2.2.0 is the first
+          release whose script engine understands JDK 25; 2.1.0 fails with
+          "IllegalArgumentException: 25.0.1" and 1.9.22 does not know
+          JDK 25 at all. Do not downgrade without re-running the DSL
+          engine's self-test.
+        -->
+        <kotlin.version>2.2.0</kotlin.version>
+
         <!-- R140: SootUp for bytecode (.jar/.class) analysis. -->
         <sootup.version>3.0.0</sootup.version>
 
@@ -53,6 +62,7 @@
         <module>plumb-dfa</module>
         <module>plumb-build</module>
         <module>plumb-ai</module>
+        <module>plumb-dsl-kotlin</module>
         <module>plumb-main</module>
     </modules>
 
@@ -115,6 +125,11 @@
             </dependency>
             <dependency>
                 <groupId>org.plumb</groupId>
+                <artifactId>plumb-dsl-kotlin</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
                 <artifactId>plumb-main</artifactId>
                 <version>0.1.0-SNAPSHOT</version>
             </dependency>
@@ -123,6 +138,11 @@
             <dependency>
                 <groupId>com.github.javaparser</groupId>
                 <artifactId>javaparser-symbol-solver-core</artifactId>
+                <version>${javaparser.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.javaparser</groupId>
+                <artifactId>javaparser-core</artifactId>
                 <version>${javaparser.version}</version>
             </dependency>
             <dependency>
