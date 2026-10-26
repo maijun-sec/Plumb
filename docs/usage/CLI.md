@@ -639,18 +639,32 @@ src/main/java/Foo.java:42:5  [HIGH] TAINT_SINK_SQL_INJECTION  Tainted id flows i
 
 ## 7. 环境变量
 
+引擎本身只读两个环境变量（见 [`ENVIRONMENT.md`](ENVIRONMENT.md)）：
+
 | 变量 | 用途 |
 | --- | --- |
-| `JAVA_OPTS` | 传给 JVM 的额外参数，例如 `-Xmx4g -Dfile.encoding=UTF-8` |
-| `LOG_LEVEL` | Logback 根 logger 级别（覆盖 `conf/logback.xml`） |
+| `OPENAI_API_KEY` | `ai.apiKey` 没在 YAML 里指定时的默认值 |
+| YAML 里写的 `${任意变量名}` | 显式引用，比如 `ai.apiKey: ${MY_KEY}` |
 
-启动器自动把 `JAVA_OPTS` 拼到 `java` 命令上。
+**JVM 参数和日志级别不走环境变量。** 它们由启动器脚本决定：
+
+| 变量 | 谁读 | 用途 |
+| --- | --- | --- |
+| `PLUMB_JAVA_OPTS` | `scripts/dist-jlink-windows.ps1` / `scripts/dist-jlink-linux.sh` | 透传 JVM 参数，默认 `-Xmx4g -XX:+UseG1GC` |
+| `PLUMB_DEBUG` | 同上 | 设为 `true` 时追加 `-Droot.level=DEBUG` |
+| `JAVA_HOME` | 同上 | 定位 `java` |
+
+日志级别本身写在 `plumb-main/src/main/resources/logback.xml`（root = `ERROR`，
+`org.plumb` 和 `org.plumb.ai` = `DEBUG`），没有 `LOG_LEVEL` 这个环境变量。
+
+直接跑 `java -jar ...` 时这些变量都不生效，JVM 参数得自己加：
+`java -Xmx4g -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar -i src`。
 
 ## 8. 故障排查
 
 | 症状 | 解决 |
 | --- | --- |
-| `java.lang.OutOfMemoryError: Java heap space` | `JAVA_OPTS=-Xmx4g` |
+| `java.lang.OutOfMemoryError: Java heap space` | 用启动器跑就设 `PLUMB_JAVA_OPTS=-Xmx4g`；直接跑 `java` 就加 `-Xmx4g` 参数 |
 | finding 全是 `Parse problem` | 检查 Java 源码是否符合 JavaParser 17 语法；javac 17 编译验证 |
 | `--output-dir` 报错 `Permission denied` | 目录不可写；用 `chmod` / 选其他目录 |
 | `--cache-mode readwrite` 报 `Cache read failure` | 缓存文件 corrupt，删 `<output-dir>/cache/` 重跑 |

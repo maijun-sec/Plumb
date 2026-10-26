@@ -67,13 +67,13 @@ worker:
 
 ## 8. 跨文件验证
 
-- `plumb-dfa/src/test/.../summary/R256CrossFunctionFoldTest` —— 端到端
-  跑 `IO.staticReturnsTrue` + `bad()`，验证 fold 出 `const:true` 后
-  `LiteralBooleanConditionChecker` 报 finding。
-- `plumb-dfa/src/test/.../integration/R256JulietCrossFunctionSweepTest` +
-  `R257JulietCrossFunctionSweepTest` —— 在真实 Java corpus（`CWE129_Improper_
-  Validation_of_Array_Index` 的 `s01/`，672 个 TU）上跑 cross-function sweep。
-- `plumb-dfa/src/test/.../points/R236CrossFunctionPointsToTest` —— 验证
+- `plumb-dfa/src/test/.../summary/FunctionSummaryTest` —— `FunctionSummary` 的契约：
+  合并、投影、非法构造的校验。
+- `plumb-dfa/src/test/.../summary/R32FunctionSummaryEnhancementTest` ——
+  `MethodSummaryBuilder` 造出来的 summary 的形状。
+- `plumb-dfa/src/test/.../taint/GuardTrackerTest` —— guard 事实在跨函数传播中的
+  保留与失效。
+- `plumb-dfa/src/test/.../points/R1106PointsToSolverTest` ——
   `applyCalleeSummary` 把 callee 内的 `new` 接到 caller 的 dest 上。
 
 ## 9. 已知限制 / 未来工作

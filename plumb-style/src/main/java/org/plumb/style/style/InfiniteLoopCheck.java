@@ -35,10 +35,8 @@ import org.plumb.style.StyleContext;
  *       {@code [0, N-1]}).
  * </ol>
  *
- * <p>The original implementation lived in {@code plumb-dfa} as {@code
- * ClassThreadChecker$InfiniteLoopChecker} (, AST-on-CompilationUnit via re-parsed source). migrates
- * it here so the rule lives where AST rules belong per the cardinal principles (AST → style module,
- * DFA → dfa module, prefer AST when feasible). The dfa-side is replaced with a deprecated stub.
+ * <p>The rule lives in the style module because it is a pure AST analysis: it needs no
+ * cross-statement dataflow and no path conditions.
  */
 public final class InfiniteLoopCheck implements AstChecker {
 

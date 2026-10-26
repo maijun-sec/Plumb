@@ -61,17 +61,21 @@ TacProgram**，还是**多个 TU 合并的 TacProgram**？这决定跨文件调�
 | 路径 | 入口 | 怎么用 | 谁在用 |
 | --- | --- | --- | --- |
 | **(A) Merged Program + CHA**（**默认**） | `MergedProgram(List<TacProgram>).asProgram()` | 把多个 .java 文件的 `TacProgram` 合并成单个 `TacProgram` 视图（`MergedProgram` 用 `enclosing-class :: signature` 作为 merged key，避免同名方法冲突） | `plumb-main` 的 `ScanRunner`（生产 CLI） |
-| **(B) GlobalTACStore + Global strategy** | `GlobalTACStore(programs).freeze()` + `CallGraphStrategyFactory.createCrossTu("global", store, null)` | 直接把多个 `TacProgram` 注册到全局签名索引，`GlobalCallGraphStrategy` 按 `calleeSig` 直接 lookup 解析 | dfa-unified 自己的集成测试 (`R256JulietCrossFunctionSweepTest` 等)；CLI 暂未接 |
+| **(B) GlobalTACStore + Global strategy** | `GlobalTACStore(programs).freeze()` + `CallGraphStrategyFactory.createCrossTu("global", store, null)` | 直接把多个 `TacProgram` 注册到全局签名索引，`GlobalCallGraphStrategy` 按 `calleeSig` 直接 lookup 解析 | `plumb-main` 的 `ScanRunner`（**默认**，`cgStrategy=global` 时走 `DfaEngine.runWithGlobalStore`） |
 
-> 关键事实：`plumb-main` 走的是**路径 A**——`ScanRunner.runDfaCheckers` 把所有 TU
-> 合并成 `MergedProgram`，再把 `merged.asProgram()` 喂给
-> `new DfaEngine(cfg, checkers, "cha", null)`。`"cha"` 是 TU-local 策略，但它
-> 操作的是**合并后的 `TacProgram`**，所以跨 TU 直接调用能解析。
+> 关键事实：`plumb-main` 默认走的是**路径 B**——`ScanConfig.cgStrategy` 的默认值是
+> `"global"`，`ScanRunner` 因此调 `DfaEngine.runWithGlobalStore(...)`，把每个 TU
+> 注册进 `GlobalTACStore`，跨 TU 调用按 `calleeSig` 解析。
+>
+> 路径 A 仍然可用：把 `cgStrategy` 设成 `cha` / `rta` / `vta` / `1cfa` / `stub`
+> 就走 `DfaEngine.run(programView)`，其中 `programView` 是
+> `MergedProgram.asProgram()` 合并后的视图。两条路径都能解析跨 TU 直接调用，
+> 区别在于路径 A 靠**合并后的单个 TacProgram**，路径 B 靠**全局签名索引**。
 
 ### 2.2 路径 A：MergedProgram + CHA 怎么支持跨 TU
 
 ```java
-// plumb-main/ScanRunner.java (摘录)
+// plumb-main/ScanRunner.java (摘录) —— cgStrategy != "global" 时
 List<TacProgram> programs = translated.stream().map(t -> t.program).toList();
 MergedProgram merged = new MergedProgram(programs);
 TacProgram programView = merged.asProgram();
@@ -155,18 +159,21 @@ CallGraph cg = new GlobalCallGraphBuilder(store).build();
 | 跨 TU 直接调用 | ✅ 静态 `calleeSig` 在合并索引里命中 | ✅ 显式 lookup 命中 |
 | 跨 TU 虚调用 | ⚠️ CHA 同 simple-name + arity 全收，可能 over-approx | ✅ 严格按 signature 匹配（如果 IR 标了动态类型） |
 | Call graph 精度 | sound + 偏 over-approx | 取决于 IR 信息完整度 |
-| CLI 支持 | ✅ 默认 | ❌ 未接 |
-| 跟 `DfaEngine` 集成 | ✅ 一行 `engine.run(programView)` | ❌ 需要绕过 `engine.run` |
+| CLI 支持 | ✅ `cgStrategy` 设成 `cha` / `rta` / `vta` / `1cfa` / `stub` | ✅ **默认**（`cgStrategy=global`） |
+| 跟 `DfaEngine` 集成 | ✅ 一行 `engine.run(programView)` | ✅ `engine.runWithGlobalStore(programs, threads)` |
 | 跨 TU 缓存 | ❌ cache key 只看单文件 SHA-1 | ✅ cache key 含 source file set 哈希 |
-| 用在哪些测试 | 几乎所有 | `R256JulietCrossFunctionSweepTest` 等集成测试 |
+| 用在哪些测试 | 几乎所有 | 几乎所有 |
 
 **所以"在 plumb-dfa 中，分析使用的 CallGraph 是否为全局的 CallGraph，涉
 及到是否能指向跨 TU 分析"的答案是**：
 
-- **生产 CLI 默认是跨 TU 的**——通过 `MergedProgram` 合并 + `ChaCallGraphStrategy`，
-  跨文件调用能解析，能 follow，能做 Phase 1 summary 传递。
-- **不是严格意义的"全局" CallGraph**——是合并视图上的 CHA，不是按 Java type
-  hierarchy 显式构造的精确 call graph。
+- **生产 CLI 默认就是全局的**——`ScanConfig.cgStrategy` 默认 `"global"`，
+  `ScanRunner` 走 `DfaEngine.runWithGlobalStore(...)`：`GlobalTACStore.of(programs)`
+  把每个 TU 注册进全局签名索引，`GlobalCallGraphStrategy` 按 `calleeSig` 解析。
+- **路径 A 仍然可用**——把 `cgStrategy` 换成别的名字就退回
+  `DfaEngine.run(merged.asProgram())`，靠合并视图上的 CHA 解析跨 TU 调用。
+- **两条路都不是按 Java type hierarchy 显式构造的精确 call graph**：
+  虚调用仍然是 simple-name + arity 匹配。
 - **更精确的"Global" 路径存在但 CLI 没接**——`GlobalTACStore` +
   `GlobalCallGraphStrategy` 是给集成测试用的，要上线需要给 `DfaEngine`
   加 cross-TU 构造路径（接受 `GlobalTACStore` 而不是单 `TacProgram`）。

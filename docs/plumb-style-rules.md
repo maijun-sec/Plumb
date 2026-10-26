@@ -6619,9 +6619,8 @@
 > `[0, N-1]`).
 > </ol>
 >
-> The original implementation lived in `plumb-dfa` as `ClassThreadChecker$InfiniteLoopChecker` (, AST-on-CompilationUnit via re-parsed source). migrates
-> it here so the rule lives where AST rules belong per the cardinal principles (AST → style module,
-> DFA → dfa module, prefer AST when feasible). The dfa-side is replaced with a deprecated stub.
+> The rule lives in the style module because it is a pure AST analysis: it needs no
+> cross-statement dataflow and no path conditions.
 
 **规则约束 / 可调参数**: (无)
 
@@ -7233,9 +7232,8 @@
 > (message authentication) step. The encryption-only scheme omits the message authentication that
 > CWE-325 requires.
 >
-> The previous implementation was a file-wide regex scan (`ClassThreadChecker.MissingCryptoStepChecker`). replaces it with an AST walk of every {@link
-> MethodCallExpr}: any call to `Cipher.getInstance / init / doFinal / update` without any
-> sibling `Mac.*` call in the same file fires the finding on the first cipher call line.
+> The analysis is an AST walk of every {@link MethodCallExpr}: any call to `Cipher.getInstance / init / doFinal / update` without any sibling `Mac.*` call in the same
+> file fires the finding on the first cipher call line.
 
 **规则约束 / 可调参数**: (无)
 

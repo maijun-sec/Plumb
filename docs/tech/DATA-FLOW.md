@@ -197,11 +197,10 @@ public void search(@RequestParam("customer") String customer) {
 Java 侧由 `scripts/gen_framework_annotations.py` 生成。
 
 **为什么必须只有一份**：污点引擎（决定污点流从哪开始）和 AST 的输入校验检查器
-（决定这个值要不要被校验）必须对"什么是用户输入"有同一个理解。这两层以前各写一份，
-而且漂移得并不对称：**13** 个注解在污点引擎眼里是 HTTP 信任边界，在校验检查器眼里
-根本不存在——于是 `@RestQuery` 参数被一层当攻击者可控、另一层当默认可信；
-反过来污点引擎还列了 **3** 个没有任何框架定义的名字（`CookieValue2` 是拼写错误，
-`HeaderValue` / `PathValue` 也不存在），真正该有的 Micronaut `Header` 反而漏了。
+（决定这个值要不要被校验）必须对"什么是用户输入"有同一个理解。清单里有名字但两层
+只认一部分，或者两层各自写一份，信任边界就会不对称——一层当攻击者可控、另一层
+当默认可信。`scripts/check_framework_annotations.py` 守这个不变量：清单里的每个名字，
+两层都必须认。
 
 **信任边界由绑定注解决定，不由端点注解决定**：JAX-RS 和 Quarkus REST 的端点注解
 **同名**（`@Path` `@GET` `@POST` …），光看端点注解分不出两者；但绑定注解不同

@@ -17,10 +17,9 @@ import org.plumb.style.StyleContext;
  * (message authentication) step. The encryption-only scheme omits the message authentication that
  * CWE-325 requires.
  *
- * <p>The previous implementation was a file-wide regex scan ({@code
- * ClassThreadChecker.MissingCryptoStepChecker}). replaces it with an AST walk of every {@link
- * MethodCallExpr}: any call to {@code Cipher.getInstance / init / doFinal / update} without any
- * sibling {@code Mac.*} call in the same file fires the finding on the first cipher call line.
+ * <p>The analysis is an AST walk of every {@link MethodCallExpr}: any call to {@code
+ * Cipher.getInstance / init / doFinal / update} without any sibling {@code Mac.*} call in the same
+ * file fires the finding on the first cipher call line.
  */
 public final class MissingCryptoStepCheck implements AstChecker {
 

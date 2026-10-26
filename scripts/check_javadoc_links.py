@@ -76,6 +76,9 @@ JDK_NAMES = {
     "SuppressWarnings", "Deprecated", "Override", "FunctionalInterface", "SafeVarargs",
     "AssertionError", "IllegalMonitorStateException", "ObjectOutputStream",
     "BufferedOutputStream", "ServiceLoader",
+    "StringBuilder", "StringBuffer", "FileWriter", "FileReader", "OutputStreamWriter",
+    "InputStreamReader", "File", "FileInputStream", "FileOutputStream",
+    "PrintStream", "PrintWriter", "BufferedReader", "BufferedWriter",
 }
 
 
@@ -166,11 +169,124 @@ def classpath_simple_names(entries):
     return names
 
 
+# A backticked token in the markdown that looks like a type reference.
+# It must START with an uppercase letter and END with a type-ish suffix, so
+# that prose words ("File", "Path", "Config") are not mistaken for types.
+#
+# The token may be a PATH to a type ("plumb-dfa/src/test/.../FooTest").  The
+# type name is then the last path segment, so the pattern captures the whole
+# backticked token and the name is taken from it afterwards.
+MARKDOWN_TYPE_TOKEN = re.compile(
+    r"`([A-Za-z0-9_./$\\-]*[A-Z][A-Za-z0-9_$]*(?:Check|Checker|Test|Engine|Strategy|"
+    r"Builder|Program|Store|Registry|Resolver|Adapter|Finder|Reader|Writer|Emitter|"
+    r"Reporter|Tracker|Analyser|Analyzer|Controller|Loader|Context|Config|Summary|"
+    r"Graph|Bridge|Solver|Rule|Finding|Operation|Shape|Kind|Trace|Sink|Source|"
+    r"Factory|Impl|Info|Analysis)[A-Za-z0-9_$]*)`")
+
+
+def fact_kind_names():
+    """The fact kind names, read from the shipped fact-kinds.yaml.
+
+    A fact kind is a string constant, not a java type, but the documentation
+    names them in backticks exactly like types.  They must resolve too.
+    """
+    yaml = REPO / "plumb-dfa" / "src" / "main" / "resources" / "fact-kinds.yaml"
+    if not yaml.is_file():
+        return set()
+    names = set()
+    in_kinds = False
+    for line in yaml.read_text(encoding="utf-8", errors="replace").splitlines():
+        if re.match(r"^fact_kinds:\s*$", line):
+            in_kinds = True
+            continue
+        if in_kinds:
+            if re.match(r"^\S", line):
+                break  # a new top-level key
+            m = re.match(r"^  ([A-Z][A-Za-z0-9]*):\s*$", line)
+            if m:
+                names.add(m.group(1))
+    return names
+
+
+def configured_checker_names():
+    """The checker names configured in the shipped checkers.yaml.
+
+    These are configuration KEYS, not java class names: the yaml says
+    "OrmLoadNullCheckDfa" and the code that implements it is
+    "OrmLoadNullCheckDfaChecker".  The documentation quotes the yaml key, so
+    the gate must know it.
+    """
+    yaml = REPO / "plumb-dfa" / "src" / "main" / "resources" / "checkers.yaml"
+    if not yaml.is_file():
+        return set()
+    names = set()
+    for line in yaml.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = re.match(r"^  ([A-Z][A-Za-z0-9]*):\s*$", line)
+        if m:
+            names.add(m.group(1))
+    return names
+
+
+def check_markdown_types(known, declared_simple):
+    """Backticked type names in the product documentation must exist.
+
+    The same rule the javadoc half of this gate applies, applied to the
+    markdown.  A name that is neither a project type, a JDK type, nor a
+    dependency class is a phantom -- and a deleted test class documented as
+    if it existed is the usual way one gets there.
+
+    Only names that look like type references are checked.  A word in prose
+    that happens to be capitalised is not a type reference, and flagging
+    those would make the gate noise.
+    """
+    missing = collections.defaultdict(list)
+    docs = REPO / "docs"
+    if not docs.is_dir():
+        return missing
+    for doc in sorted(docs.rglob("*.md")):
+        text = doc.read_text(encoding="utf-8", errors="replace")
+        rel = doc.relative_to(REPO).as_posix()
+        # A code block shows real code; a class named there is either
+        # imported or local to the snippet, and is not a documentation claim.
+        in_fence = False
+        for i, line in enumerate(text.splitlines(), 1):
+            if line.lstrip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            for m in MARKDOWN_TYPE_TOKEN.finditer(line):
+                token = m.group(1)
+                # The token may be a path; the type name is its last segment.
+                name = token.replace("\\", "/").rsplit("/", 1)[-1]
+                if not name:
+                    continue
+                # "Type.member" -- a member reference.  The TYPE is the part
+                # before the LAST dot, and the member is a separate claim.
+                if "." in name:
+                    head = name.rsplit(".", 1)[0]
+                    if head and head[0].isupper():
+                        name = head
+                    else:
+                        # The prefix is not a type name ("engine.run(...)").
+                        # The reference names a method; there is no type claim.
+                        continue
+                # A nested class: "Outer$Inner".  The OUTER is what must exist.
+                if "$" in name:
+                    name = name.split("$")[0]
+                if not name or not name[0].isupper():
+                    continue
+                if name in known or name in declared_simple:
+                    continue
+                missing[name].append("%s:%d" % (rel, i))
+    return missing
+
+
 def main():
     fqcn, simple, packages = collect_declared()
     entries = classpath_entries()
     third_party = classpath_simple_names(entries)
-    known = simple | JDK_NAMES | third_party
+    known = simple | JDK_NAMES | third_party | fact_kind_names() | configured_checker_names()
 
     if not entries:
         print("NOTE: no dependency classpath found -- third-party names cannot be resolved.")
@@ -215,16 +331,35 @@ def main():
                 missing[target] += 1
                 where[target].append(rel)
 
-    if not missing:
-        print("OK: every javadoc @link target resolves to a type that exists.")
-        return 0
+    failed = False
 
-    print("javadoc @link targets that name a type that does NOT exist:\n")
-    for target, count in missing.most_common():
-        print("  %-46s x%-3d  e.g. %s" % (target, count, where[target][0]))
-    print()
-    print("A javadoc link to a class that does not exist is a false statement about the code.")
-    return 1
+    if missing:
+        failed = True
+        print("javadoc @link targets that name a type that does NOT exist:\n")
+        for target, count in missing.most_common():
+            print("  %-46s x%-3d  e.g. %s" % (target, count, where[target][0]))
+        print()
+        print("A javadoc link to a class that does not exist is a false statement about the code.")
+    else:
+        print("OK: every javadoc @link target resolves to a type that exists.")
+
+    # --- the same rule for the product documentation ------------------------
+    # The markdown names types in backticks rather than with {@link}.  A
+    # backticked class name that does not exist is exactly the same defect:
+    # a deleted test class kept being documented as if it existed.
+    doc_missing = check_markdown_types(known, simple)
+    if doc_missing:
+        failed = True
+        print()
+        print("backticked type names in the product documentation that do NOT exist:\n")
+        for target, where_list in sorted(doc_missing.items()):
+            print("  %-46s x%-3d  e.g. %s" % (target, len(where_list), where_list[0]))
+        print()
+        print("A documented class that does not exist is a false statement about the code.")
+    else:
+        print("OK: every backticked type name in the documentation resolves.")
+
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
