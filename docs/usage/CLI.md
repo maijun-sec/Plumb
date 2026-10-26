@@ -46,13 +46,13 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system <maven|gradle|b
 | — | `--cache-mode` | `off` \| `read` \| `write` \| `readwrite` | `off` | 磁盘 IR 缓存使用模式 |
 | — | `--cg-strategy` | 见下表 | `global` | Call-graph 构造策略，传给 `plumb-dfa` 引擎 |
 | — | `--max-parallelism` | `<n>` | `nCPU-1`（最小 1） | parse + translate 阶段并发上限 |
-| — | `--ai-dedup` | — | off | R-? — FP reducer 开关。把每条 finding 发给 LLM 判 TP/FP/UNKNOWN。verdict 写到 NDJSON 的 `ai_verdict` + `ai_reason` 字段。LLM 端点 + key 走 YAML（`ai.apiKey` / `ai.baseUrl` / `ai.model`） |
-| — | `--ai-dedup-stats` | — | off | R-? — AI dedup 跑完后，往 **stderr** 打 verdict 分布 + 每条规则的 FP 占比 Top 10。stdout 的 NDJSON 不变。配合 `--ai-dedup` 一起用，单独开 no-op。 |
+| — | `--ai-dedup` | — | off | FP reducer 开关。把每条 finding 发给 LLM 判 TP/FP/UNKNOWN。verdict 写到 NDJSON 的 `ai_verdict` + `ai_reason` 字段。LLM 端点 + key 走 YAML（`ai.apiKey` / `ai.baseUrl` / `ai.model`） |
+| — | `--ai-dedup-stats` | — | off | AI dedup 跑完后，往 **stderr** 打 verdict 分布 + 每条规则的 FP 占比 Top 10。stdout 的 NDJSON 不变。配合 `--ai-dedup` 一起用，单独开 no-op。 |
 | — | `--rule` | `<id>` | — | 只跑指定 rule（**可重复**）。覆盖 YAML 的 `checks.*` 标志。**精确匹配** —— 要用真实的 rule id，例如 `--rule TAINT_SINK_SQL_INJECTION`；写不存在的 id 会静默产出 0 条 finding。用 `--list-rules` 查全部 id |
 | — | `--rule-prompts-dir` | `<path>` | — | 用户自带的 rule prompt `.md` 目录。覆盖打包在 classpath 里的默认 prompt |
 | — | `--list-rules` | — | — | 列出所有已知 rule id 并退出 |
 
-** / 项目路径族**（详见 §10）：
+** / 项目路径族**（详见 §3 的「项目路径」段）：
 
 | 短选项 | 长选项 | 参数 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -72,7 +72,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system <maven|gradle|b
   `--output-dir` 决定，没给就没有 cache 目录可读可写
 - 两者都给：`--cache-mode` 决定 `cache/programs/*.tac` 的读写行为
 
-### 2.1 R-? 单条规则的 AI 行为
+### 2.1 单条规则的 AI 行为
 
 > **Step 7 之后的模型**：每条 `DfaChecker` / `AstChecker` 自己持有
 > `getAiPrompt(Finding) -> String`。返回 `null` = 该规则**不走** AI dedup；
@@ -86,7 +86,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system <maven|gradle|b
 > `security/HardcodedCredentialsCheck.java`。
 > 用户的 `--rule-prompts-dir` 仍可 override（`<rule-name>.md` 文件覆盖对应 checker 的 inline `getAiPrompt` 返回值）。
 
-### 2.2 R-? AI 集成
+### 2.2 AI 集成
 
 `plumb-ai` 模块提供一个 Re-Act 多轮 LLM Agent（OpenAI 兼容 / Anthropic 都行），
 启动 `--ai-dedup` 后给每条 finding 跑一遍。开关都在 YAML 的 `ai.*` 块：
@@ -163,7 +163,7 @@ bin/sast-scan -c conf/default-config.yaml -i src \
     --ai-dedup --rule-prompts-dir ./my-rule-prompts/
 ```
 
-### 2.3 R-? Re-Act 多轮工具调用
+### 2.3 Re-Act 多轮工具调用
 
 `--ai-dedup` 默认走 **Re-Act 多轮循环**（不是单次问答）—— LLM 在判 TP/FP 之前可以调
 12 个工具去看更多代码、查 caller 有没有 sanitize、检查 trace 路径上有无 guard：
@@ -183,9 +183,10 @@ bin/sast-scan -c conf/default-config.yaml -i src \
 | `get_full_class` | 按 class name 读整个 .java 源 | ✗ | "看 controller 完整 surface" |
 | `get_dataflow_trace_with_facts` | 重新格式化 dataflow trace + Z3 facts | ✗ | "trace 路径上 L7 的 BRANCH 是不是 sanitizer？" |
 
-`plumb-ai/.../tools/` 下还有第 13 个工具类 `GetCallHierarchyTool`（递归 walk caller
-chain，BFS depth ≤ 4），但它**没有注册进** `ScanRunner.buildToolRegistry()` ——
-`--ai-dedup` 的 LLM 拿不到它。
+`plumb-ai/.../tools/` 下共有 **13** 个具体工具类，其中 **12** 个注册进了
+`ScanRunner.buildToolRegistry()`（就是上表这 12 个）。剩下那个是
+`GetCallHierarchyTool`（递归 walk caller chain，BFS depth ≤ 4）——
+它**没有注册进** `ScanRunner.buildToolRegistry()`，`--ai-dedup` 的 LLM 拿不到它。
 
 `grep` / `glob` / `list_dir` / `search_pattern` / `get_class_hierarchy` /
 `get_full_class` / `get_dataflow_trace_with_facts` **完全不依赖 AST/TAC** —
@@ -233,7 +234,7 @@ tool call）。Dev inner loop 不需要这个 — 5 个 LLM test 默认
 依赖 + 调用栈深 6-8 层，调试 print 不到 raw reply。详细实现见
 `docs/tech/CROSS-FUNCTION-AI-TRACE.md` §14。
 
-### 2.4 R-? AI dedup 报告（`--ai-dedup-stats`）
+### 2.4 AI dedup 报告（`--ai-dedup-stats`）
 
 `--ai-dedup` 把每条 finding 发给 LLM 判 TP/FP，但 verdict 是埋进 NDJSON
 每条记录的 `ai_verdict` 字段里——**没法一眼看 AI 整体表现**。`--ai-dedup-stats`
@@ -286,7 +287,7 @@ Top 10 rules by FP ratio (FP / total):
 不带 `--ai-dedup` 是 no-op；不带 `--ai-dedup` 又配 `ai.dedup: true` 的 YAML
 才有用。
 
-### 2.1 Call-graph 策略（`--cg-strategy`）
+### 2.5 Call-graph 策略（`--cg-strategy`）
 
 传给 `plumb-dfa` 引擎的 call-graph 构造策略。可选值：
 
@@ -336,10 +337,10 @@ output:
   path: build/sast.ndjson     # 与 --output 等价
   format: ndjson              # console | ndjson
 
-outputDir: build/plumb-out    # 与 --output-dir 等价
-cacheMode: readwrite          # off | read | write | readwrite
-maxParallelism: 4             # 并发上限
-cgStrategy: rta               # 与 --cg-strategy 等价，见 §2.1 Call-graph 策略
+outputDir: build/plumb-out    # 与 --output-dir 等价；snake_case 写作 output-dir
+cacheMode: readwrite          # off | read | write | readwrite；snake_case 写作 cache-mode
+maxParallelism: 4             # 并发上限；snake_case 写作 max-parallelism
+cgStrategy: rta               # 与 --cg-strategy 等价，见 §2.5 Call-graph 策略
 
 # ---- 规则开关 ----
 rules:
@@ -355,7 +356,7 @@ rules:
 #
 #   (a) 简单 bool — 适用于只需开关的大类
 checks:
-  taint: true                 # 33 unified taint 主开关
+  taint: true                 # 13 条 taint rule 的总开关
   style: true                 # 全部 AST 风格规则
   divByZero: true
   # ...
@@ -405,20 +406,31 @@ checks:
   uncontrolledMemAlloc:    {enabled: true,  aiDedup: true}
   numericTruncation:       {enabled: true,  aiDedup: true}
   resourceExhaustion:      {enabled: true,  aiDedup: true}  # CWE-400
-  # R-? — 8 plumb-dfa → plumb-dfa DfaChecker ports
+  # 两个从 plumb-dfa 迁过来的 DfaChecker port
   bigDecimalDoubleConstructor: {enabled: true, aiDedup: true}  # CWE-682
   defaultEncoding:             {enabled: true, aiDedup: true}  # CWE-176
+  errorMessageInfoLeak: {enabled: true, aiDedup: true}
+  commentInfoLeak:      {enabled: true, aiDedup: true}
+  assignmentInOperand:  {enabled: true, aiDedup: true}   # 接受但忽略，见下
 
+# checks.assignmentInOperand 是**接受但忽略**的 key：它属于 style 大类，
+# 单独开关它没有意义。写上去 ConfigLoader 会往 stderr 打一条 warning，
+# 但扫描照常继续。真正要关它请用 AST rule id:
+#   rules:
+#     disabled:
+#       - ast-style-assignment-in-operand
+#
 # errorMessageInfoLeak / commentInfoLeak 这两个 key 会被 ConfigLoader 解析，
-# 但对应的 DFA checker 已经迁到 plumb-style，现在**不再切换任何东西**。
-# 要关掉它们请用 AST rule id:
+# 而且**仍然切换东西**：它们参与 ScanRunner 判断要不要跑统一 DFA 那一层，
+# 把两个都设成 false 会让那一层直接跳过。
+# 单独关掉这两条规则请用 AST rule id:
 #   rules:
 #     disabled:
 #       - ast-error-error-message-info-leak
 #       - ast-style-comment-info-leak
 
 # ---- 项目路径 ----
-# — 跟 build-system adapter 配合使用。详见 §10。
+# — 跟 build-system adapter 配合使用。详见 §2 的「项目路径族」表。
 inputs:
   - src/main/java              # 主输入（同 --input，可重复）
 sourceRoots:
@@ -429,13 +441,14 @@ classpathJars:
   - /opt/lib/spring-core.jar   # 第三方程 jar（TypeSolver only，不进 TAC）
 
 # ---- 构建系统自动发现 ----
-# buildSystem:
-#   name: maven                 # maven | gradle | bazel | ant
-#   projectRoot: /path/to/proj  # 由 BuildAdapter 自动填 inputs/sourceRoots/moduleRoots/classpathJars
+# YAML 里没有 buildSystem 块。构建系统只能通过 CLI 选：
+#   --build-system maven --project-root /path/to/proj
+# 这两个 flag 由 SastMain.applyBuildSystem() 处理（ConfigLoader 不解析它们），
+# adapter 填出来的 inputs/sourceRoots/moduleRoots/classpathJars 会并进扫描输入。
 
 # ---- 风格类阈值 ----
-# audit : 删了 `style.methodLengthThreshold`。
-# 死字段（无 checker 读它）。后续 checker 级阈值仍会回到 `style:` 块。
+# style.methodLengthThreshold 已被删除：它是一个死字段，没有任何 checker 读它。
+# 后续 checker 级阈值仍会回到 style: 块。
 ```
 
 ### 3.1 camelCase vs snake_case
@@ -448,6 +461,21 @@ checks:
   int_overflow: true   # 兼容，仍然识别
 ```
 
+顶层键同样有别名，表中左边的键**优先**（先命中左边的就用左边的）：
+
+| 优先 | 别名 |
+| --- | --- |
+| `outputDir` | `output-dir` |
+| `cacheMode` | `cache-mode` |
+| `maxParallelism` | `max-parallelism` |
+| `cgStrategy` | `cg-strategy` |
+| `classpath` | `classpathJars` |
+| `source_roots` | `sourceRoots` |
+| `module_roots` | `moduleRoots` |
+| `ai` | `aiDedup` / `ai-dedup` |
+
+注意 `classpath` 和 `classpathJars` 是一对，**`classpath` 优先**。
+
 ## 4. 启用 / 禁用规则
 
 ### 4.1 大类开关（`checks:`）
@@ -456,7 +484,7 @@ checks:
 
 ```yaml
 checks:
-  taint: false         # 关闭所有 17 条 taint 规则
+  taint: false         # 关闭所有 13 条 taint 规则
   style: false         # 关闭全部 AST 风格规则
   divByZero: false     # 关闭 DIV_BY_ZERO
 ```

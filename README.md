@@ -147,6 +147,7 @@ python scripts/check_all.py
 | `check_doc_index` | 文档索引列全了 `docs/` 下的每一份文档,索引里的链接也都能打开 |
 | `check_doc_hygiene` | 产品文档描述的是**当前**状态:没有轮次号、没有过去式措辞、没有无法复现的测量当事实 —— markdown、源码注释、随包发布的配置文件都查 |
 | `check_doc_numbers` | 手写文档里引用的数字仍然和源码对得上 |
+| `check_doc_claims` | 文档的结构性断言仍然和源码对得上:YAML schema 里出现的每个 key 都是 loader 真读的,CLI flag 都存在,章节编号不重复、交叉引用不悬空 |
 | `capability_baseline --check` | 没有丢掉任何规则、sink 模式、污点源模式、checker 或事实种类 |
 | `gen_tool_comparison --check` | 工具对比文档里的数字仍然和源码对得上 |
 | `gen_rules_overview --check` | 规则总览里的数字仍然和源码对得上 |

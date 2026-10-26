@@ -40,6 +40,11 @@ The gates are:
                               the shipped configuration files
     check_doc_numbers          the counts quoted in the hand-written
                               documentation still match the source
+    check_doc_claims           the documentation's structural claims still
+                              match the source: the YAML schema shows every
+                              key the loader reads, the CLI flags exist,
+                              the section numbers are unique, and the
+                              quoted counts are right
     capability_baseline --check
                               no rule, sink pattern, source pattern,
                               checker or fact kind was lost
@@ -90,6 +95,8 @@ GATES = (
      ["python", "scripts/check_doc_hygiene.py"], "check"),
     ("check_doc_numbers",
      ["python", "scripts/check_doc_numbers.py"], "check"),
+    ("check_doc_claims",
+     ["python", "scripts/check_doc_claims.py"], "check"),
     ("capability_baseline",
      ["python", "scripts/capability_baseline.py", "--check"], "check"),
     ("gen_tool_comparison",
