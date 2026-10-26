@@ -45,6 +45,10 @@ The gates are:
                               key the loader reads, the CLI flags exist,
                               the section numbers are unique, and the
                               quoted counts are right
+    check_tac_claims           the IR specification's structural claims
+                              still match the source: the class names, the
+                              fields, the enum constants and the counts
+                              the reader would code against
     check_package_claims       the packaging scripts copy files that exist,
                               and the packaging documentation's sizes and
                               log level match the build
@@ -100,6 +104,8 @@ GATES = (
      ["python", "scripts/check_doc_numbers.py"], "check"),
     ("check_doc_claims",
      ["python", "scripts/check_doc_claims.py"], "check"),
+    ("check_tac_claims",
+     ["python", "scripts/check_tac_claims.py"], "check"),
     ("check_package_claims",
      ["python", "scripts/check_package_claims.py"], "check"),
     ("capability_baseline",

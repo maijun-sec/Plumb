@@ -7,7 +7,7 @@
 | 目标 | 说明 |
 | --- | --- |
 | 数据流友好 | 单一定义/单一使用（SSA-lite），便于 forward/backward flow analysis |
-| 可序列化 | IR 类（`TacProgram` / `TacFunction` / `TacInstruction` / `TacCfg` / `TacBasicBlock` / `TacType` / `TacOperand` / `MergedProgram` / `SourceMap` 等 10 个）全部 `implements Serializable`，可通过 `IrSerializer` 写盘（见 §6） |
+| 可序列化 | IR 类（`TacProgram` / `TacFunction` / `TacInstruction` / `TacCfg` / `TacBasicBlock` / `TacType` / `TacOperand` / `MergedProgram` / `SourceMap` 等 9 个）全部 `implements Serializable`，可通过 `IrSerializer` 写盘（见 §6） |
 | 与语言无关 | 名字 + 类型的命名约定，不嵌 Java 17 语法糖 |
 | 紧凑 | 一份 ~5000 文件的仓库，其 IR 序列化到磁盘约 150 MB 量级 |
 
@@ -17,11 +17,11 @@
 
 ```java
 public final class TacProgram implements Serializable {
-    private final Path sourcePath;          // 来自 .java / .class / .jar
+    private transient Path sourcePath;       // 来自 .java / .class / .jar（transient，不参与序列化）
     private final String typeName;          // 主类名
     private final Map<String, TacFunction> functions;   // signature -> fn
     // 额外：classToParent, classToChildren, lambdaBindings
-    // 额外：sourceMap, programProblems
+    // 额外：sourceMap, programProblems, classFieldAnnotations
 }
 ```
 
@@ -46,13 +46,16 @@ public final class MergedProgram implements Serializable {
 public final class TacFunction implements Serializable {
     private final String name;               // "main"
     private final String signature;         // "Demo#main"
-    private final String enclosingClass; // "Demo"
+    private final String enclosingClass;    // "Demo"
     private final TacType returnType;
-    private final List<TacVar> params;
-    private final List<TacVar> locals;
+    private final List<TacOperand.TacVar> params;
+    private final List<TacOperand.TacVar> locals;
     private final List<TacInstruction> instructions;  // 线性流
-    // 额外：classAnnotations, methodAnnotations, fieldAnnotations,
+    // 额外：origin, classAnnotations, methodAnnotations, fieldAnnotations,
     //        paramAnnotations, tryRegions
+    // try/catch/finally 的区间（public final，供 CFG builder 用）：
+    //        tryStart/tryEnd, catchStart/catchEnd, catchLabels,
+    //        finallyLabel, finallyStart/finallyEnd
 }
 ```
 
@@ -61,7 +64,7 @@ public final class TacFunction implements Serializable {
 ### 3.2 `TacVar` 与 `TacOperand`
 
 ```java
-public sealed interface TacOperand
+public sealed interface TacOperand extends Serializable
         permits TacOperand.TacVar, TacOperand.Const { }
 
 public static final class TacVar implements TacOperand {
@@ -86,7 +89,7 @@ TAC 是 3 地址：每个 `TacInstruction` 最多 1 个 `dest`（目标）+ 2 �
 public final class TacType implements Serializable {
     public enum Kind {
         BOOLEAN, BYTE, SHORT, CHAR, INT, LONG, FLOAT, DOUBLE, STRING,
-        CLASS, ARRAY, VOID, NULL, UNKNOWN
+        CLASS, ARRAY, NULL, VOID, UNKNOWN
     }
     private final Kind kind;
     private final Object payload;   // kind == CLASS 时是短类名；
@@ -131,8 +134,6 @@ public final class TacType implements Serializable {
 - **`FINALLY_ENTER` (`finally:`)** —— finally 块入口。CFG builder 给所有 try 内基本块 + 所有 catch 块（以 `THROW` 结尾的）都加一条到 FINALLY 块的 exception edge，模拟"无论 try/catch 怎么走，finally 一定跑"的语义。
 - 旧的 `L_CATCH_<Type>` / `L_FINALLY` 标签名 pattern 保留——Label-based tooling（UnusedLabelChecker / SARIF / cache-key normaliser）不破。
 
-详细背景与 CWE396 调优过程
-
 ### 4.1 二元 / 一元运算符
 
 ```java
@@ -162,19 +163,23 @@ public enum UnaryOperator {
 
 ```java
 public final class TacCfg implements Serializable {
-    private final TacFunction function;
-    private final List<TacBasicBlock> blocks;     // 顺序排列
-    private final TacBasicBlock entry;
-    private final List<TacBasicBlock> exits;
+    private final String functionSig;
+    private final List<TacBasicBlock> blocks;      // 顺序排列
+    private final Map<Integer, List<Integer>> successors;          // block id -> 后继 id
+    private final Map<Integer, List<Integer>> exceptionSuccessors;  // block id -> 异常流后继 id
+    private final int entryId;
 }
 
 public final class TacBasicBlock implements Serializable {
-    private final String label;                   // 唯一
-    private final List<TacInstruction> instructions;
-    private final List<TacBasicBlock> successors;
-    private final List<TacBasicBlock> predecessors;
+    private final int id;                 // 块号
+    private final List<Integer> indices;  // 所属指令在 TacFunction.instructions 里的下标
 }
 ```
+
+基本块**不持有指令列表**，只持有下标；指令本身留在 `TacFunction.instructions` 里。
+边也**不是对象引用**，而是 `block id -> 后继 block id 列表` 的映射。
+数据流引擎用 `succs(blockId)` 取普通后继，用 `exceptionSuccs(blockId)` 取异常流后继
+（try 区域里的块抛异常时，通往对应 catch 块；try 有 finally 时还要通往 finally 块）。
 
 `TacCfgBuilder.build(fn)` 把 `TacFunction.instructions` 切分成基本块，正确处理：
 - 顺序流（MOVE/BINOP/CALL/...）落在同一块
@@ -231,4 +236,5 @@ Plumb TAC **不是完整 SSA**：
 - forward dataflow 需要在每条 BRANCH 上复制 last-def
 - 跨函数推理靠 `summaryCache`（callee summary 复用），不靠 SSA 形式
 
-后续 R-version 可能引入显式 SSA（参考 `plumb-dfa/.../solver/`）。
+约束求解（Z3）在 `plumb-dfa` 的 `solver` 包里，但那是**在 fact 上做约束求解**，
+不是把 TAC 改写成 SSA 形式：TAC 本身保持上面的非 SSA 形态。
