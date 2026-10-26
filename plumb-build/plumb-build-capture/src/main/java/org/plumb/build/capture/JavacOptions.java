@@ -56,6 +56,7 @@ public final class JavacOptions {
 
   private final List<String> rawArguments;
   private final Charset encoding;
+  private final String encodingName;
   private final String source;
   private final String target;
   private final List<Path> classpath;
@@ -67,6 +68,7 @@ public final class JavacOptions {
   private JavacOptions(Builder b) {
     this.rawArguments = List.copyOf(b.rawArguments);
     this.encoding = b.encoding;
+    this.encodingName = b.encodingName;
     this.source = b.source;
     this.target = b.target;
     this.classpath = List.copyOf(b.classpath);
@@ -83,6 +85,15 @@ public final class JavacOptions {
 
   public Charset encoding() {
     return encoding;
+  }
+
+  /**
+   * The encoding as javac was told, e.g. {@code UTF-8}.
+   *
+   * <p>Null when the command line did not say, which means the platform default applied.
+   */
+  public String encodingName() {
+    return encodingName;
   }
 
   /** The {@code -source} level, or {@code null} when javac was not told. */
@@ -159,6 +170,7 @@ public final class JavacOptions {
           String v = valueAt(arguments, ++i);
           if (v != null) {
             b.encoding = charset(v);
+            b.encodingName = v;
           }
         }
         case OPT_SOURCE -> {
@@ -216,22 +228,37 @@ public final class JavacOptions {
   /**
    * Split a classpath string into entries.
    *
-   * <p>Both {@code :} and {@code ;} are accepted as separators, because the
-   * separator is platform-dependent and a capture taken on one machine may be
-   * analysed on another.
+   * <p><b>The separator is platform-dependent, and the drive letter is part of the path.</b> On
+   * Windows the separator is {@code ;} and a path looks like {@code D:\cache\repo.jar}; on Unix
+   * it is {@code :} and a path looks like {@code /home/u/repo.jar}. Splitting on both
+   * separators at once turns {@code D:\cache\repo.jar} into {@code D} and {@code
+   * \cache\repo.jar} -- two paths that are both wrong, and the first one happens to look like a
+   * valid relative path, so the breakage is easy to miss.
+   *
+   * <p>So the separator is chosen by platform, and only that one is used.
    */
   private static List<Path> splitPath(String value) {
     List<Path> out = new ArrayList<>();
     if (value == null || value.isBlank()) {
       return out;
     }
-    for (String part : value.split("[:;]")) {
+    char separator = isWindows() ? ';' : ':';
+    for (String part : value.split(java.util.regex.Pattern.quote(String.valueOf(separator)))) {
       String trimmed = part.trim();
       if (!trimmed.isEmpty()) {
-        out.add(Path.of(trimmed));
+        try {
+          out.add(Path.of(trimmed));
+        } catch (RuntimeException e) {
+          // Not a path -- skip it rather than failing the whole capture.
+        }
       }
     }
     return out;
+  }
+
+  /** True when the platform separates classpath entries with {@code ;}. */
+  private static boolean isWindows() {
+    return System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
   }
 
   private static Charset charset(String name) {
@@ -246,6 +273,7 @@ public final class JavacOptions {
   private static final class Builder {
     List<String> rawArguments = List.of();
     Charset encoding = StandardCharsets.UTF_8;
+    String encodingName;
     String source;
     String target;
     List<Path> classpath = new ArrayList<>();

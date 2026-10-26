@@ -12,13 +12,21 @@
     <artifactId>plumb-build-capture</artifactId>
     <name>plumb-build-capture</name>
     <description>
-        A ByteBuddy agent that captures the real javac command line of a live
-        compile.
+        A ByteBuddy agent that captures the effective compile performed by a live
+        compiler.
 
         Some projects cannot be introspected statically: the classpath may be
         assembled by a script, a plugin, or an IDE. For those, the ground truth
-        is the argv javac actually received. This module hooks
-        com.sun.tools.javac.main.Main#compile and records the arguments.
+        is the compile the compiler actually performs. This module hooks the
+        compiler entry points -- the javac CLI, the javax.tools API, ECJ and
+        sjavac -- and records the effective compile: the classpath contents,
+        the source path, the encoding, the language level, the source files and
+        the output directory.
+
+        The entry points are declarative (CompilerEntryPoints), so adding one is
+        a data change. The hooks are ByteBuddy Advice, which is inlined into the
+        hooked method and therefore needs neither a super method nor a hand
+        written ASM visitor.
 
         The original project this descends from used btrace, which needs
         elevated privileges and a native agent. ByteBuddy needs neither: it

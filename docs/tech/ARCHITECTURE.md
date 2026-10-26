@@ -338,10 +338,11 @@ Plumb 严格区分「喂 TypeSolver 的路径」与「扫 findings 的路径」�
 │  └──────────────────┘                                    │
 │                                                           │
 │  ┌──────────────────┐                                    │
-│  │plumb-build-      │   javac 命令行抓取（ByteBuddy agent）│
+│  │plumb-build-      │   真实编译抓取（ByteBuddy agent）    │
 │  │capture           │                                    │
 │  │ CaptureAgent     │                                    │
-│  │ CaptureHook      │                                    │
+│  │ CompilerHooks    │                                    │
+│  │ CompilerEntryPt. │                                    │
 │  │ JavacOptions     │                                    │
 │  └──────────────────┘                                    │
 └───────────────────────────────────────────────────────────┘
@@ -361,7 +362,8 @@ Plumb 严格区分「喂 TypeSolver 的路径」与「扫 findings 的路径」�
 - `plumb-build/plumb-build-maven/src/main/java/org/plumb/build/maven/` —— `MavenSettings`、
   `TransitiveResolver`、`MavenResolverAdapter`、`MavenPom`、`ModuleDescriptor`
 - `plumb-build/plumb-build-capture/src/main/java/org/plumb/build/capture/` —— `CaptureAgent`、
-  `CaptureHook`、`CaptureSink`、`CaptureReader`、`JavacOptions`
+  `CompilerHooks`、`CompilerEntryPoints`、`GradleHooks`、`CaptureRecorder`、`CaptureEntry`、
+  `CaptureSink`、`CaptureReader`、`JavacOptions`
 
 每个 adapter 实现 `BuildAdapter.discover(Path)` 返回 `BuildProject`：
 
@@ -398,8 +400,47 @@ PLUMB_CAPTURE_DIR=/tmp/captures \
 java -cp plumb-build-capture.jar ... # CaptureReader.readAll(Path.of("/tmp/captures"))
 ```
 
-agent 挂的是 `com.sun.tools.javac.Main#compile`（命令行入口）和
-`com.sun.tools.javac.main.Main#compile`（`javax.tools` API 入口）——两条路互不重叠，都要挂。
+### 7.0.1 capture 挂哪些入口
+
+「javac 命令行」不是一个方法，而是**至少八个**，取决于是怎么走到编译器的：
+
+| 入口 | 谁会走这条路 |
+| --- | --- |
+| `com.sun.tools.javac.Main#compile(String[])` | `javac` 命令行（静态那一层） |
+| `com.sun.tools.javac.main.Main#compile(String[])` | `javac` 命令行（实例那一层） |
+| `com.sun.tools.javac.main.Main#compile(String[], Context)` | 带 context 的调用路径 |
+| `com.sun.tools.javac.api.JavacTool#getTask(...)` | **Gradle / Maven / IDE**（`javax.tools` API） |
+| `javax.tools.JavaCompiler#run(...)` | 老 API |
+| `org.eclipse.jdt.internal.compiler.batch.Main#compile(String[])` | Eclipse 编译器（ECJ） |
+| `com.sun.tools.sjavac.client.ClientMain#run(String[])` | sjavac client |
+| `com.sun.tools.sjavac.server.ServerMain#run(String[])` | sjavac server |
+
+只挂一个的后果是**静默失配**：扫描照跑，但那个路径上的编译根本没有 capture。
+所以入口清单是**声明式**的（`CompilerEntryPoints`），加一个入口是改数据不是改代码。
+
+挂法用 ByteBuddy 的 **`Advice`**（inline 织入），不用手写 ASM visitor：
+`Advice` 把 hook 的字节码**复制进**被测方法，所以不需要 super 方法、不需要 delegation target，
+`Main#compile(String[])` 这种静态方法照样能挂。手写 visitor 要自己算参数的 local slot
+（静态方法 0，实例方法 1），算错就破坏编译器的栈。
+
+### 7.0.2 capture 记的是什么
+
+不是 argv，是**这次编译实际用的东西**：classpath 的**实际内容**（不是 `-classpath` 参数本身）、
+source path、encoding、`--release`、源文件清单、输出目录、编译用的 JDK 版本。
+理由和 Coverity 一样：`javac` 没给 `-classpath` 和 `javac -classpath ""` 意思不一样，
+只有把环境一起看才能还原。
+
+### 7.0.3 Gradle：daemon 和 build cache
+
+Gradle 是最麻烦的一个：编译发生在**daemon 进程**里（agent 挂的那个 JVM 看不到），
+而且开了 build cache 时编译**根本没跑**（也就没什么可 capture）。
+
+`GradleHooks` 照 Coverity `common-capture.properties` 的做法 hook Gradle 自己的配置 API，
+把两件事改掉：`StartParameter#setBuildCacheEnabled` 强制 false、
+`DaemonParameters#isEnabled()` 强制 false。
+
+这两个 hook 是**可选的**（`plumb.capture.gradle.disable-daemon=true` 才开）——
+关掉 daemon 会让构建变慢，没要 capture 的用户不该为此买单。
 
 ### 7.1 关键设计决策
 
@@ -444,18 +485,28 @@ agent 挂的是 `com.sun.tools.javac.Main#compile`（命令行入口）和
   报 `IllegalArgumentException: Java 25 (69) is not supported`。
   而且这个异常**只在 `AgentBuilder.Listener.onError` 里出现**，默认 listener 是 `NoOp` →
   完全静默。诊断手段：一定要挂 `Listener.Adapter` 打印 root cause。
-- **`Advice` / `MethodDelegation` 不能用于不 override 任何东西的方法**：
-  `com.sun.tools.javac.main.Main#compile(String[])` 没有父方法，
-  `Advice.to(...)` 会报 `Cannot call super (or default) method`。
-  观察这类方法要用 **raw ASM**（`AsmVisitorWrapper.ForDeclaredMethods`），
-  直接在字节码里插一条调用。
+- **`Advice` 能挂不 override 任何东西的方法**：早期结论是
+  `com.sun.tools.javac.main.Main#compile(String[])` 没有父方法、`Advice` 会报
+  `Cannot call super (or default) method`，因此要退回手写 ASM。**这个结论是错的** ——
+  `Advice` 是**inline 织入**：把 hook 的字节码复制进被测方法，所以它既不需要 super 方法，
+  也不需要 delegation target。实测 `Main#compile(String[])`、`JavacTool#getTask`、
+  `JavacTaskImpl#call` 都能用 `Advice` 挂上。
+  → 所以**不要手写 ASM**：`Advice` 免掉局部变量槽的手工计算（静态方法槽 0 是参数，
+  实例方法槽 0 是 `this`、参数在槽 1 —— 算错就破坏编译器的栈），而且 JDK 内部类的
+  字节码形态会变，手写 visitor 跟着一起烂。
 - **agent 挂的类在 `jdk.compiler` 命名模块里**：被插桩的 `com.sun.tools.javac.Main`
   由 application class loader 加载，而 agent jar 只有 agent 自己的 loader 看得见 →
   `NoClassDefFoundError`。解法：把 hook 类**注入 bootstrap class loader**
   （`appendToBootstrapClassLoaderSearch`），它是所有 loader 的祖先，谁都看得见。
-  代价：hook 类**不能引用 bootstrap 之外的东西**（不能用 SLF4J）。
-- **静态方法 vs 实例方法，局部变量槽不同**：静态方法槽 0 就是参数；实例方法槽 0 是 `this`，
-  参数在槽 1。插桩时 `ALOAD` 哪个槽要按 `methodDescription.isStatic()` 分。
+  代价：hook 类**不能引用 bootstrap 之外的东西**（不能用 SLF4J，也不能直接引用
+  `javax.tools.FileObject`）。bootstrap jar 必须**依赖闭包完整**——包括嵌套类
+  （`JavacOptions$Builder`）。`Advice` 会**吞掉 `Throwable`**，所以缺一个类不会报错，
+  只会**静默不记录**。→ 用 `BootstrapInjectionTest` 读编译后 class 的常量池做结构门禁。
+- **bootstrap 侧要通过导出的接口反射调用**：`com.sun.tools.javac` 的实现类不是导出 API，
+  直接引用在 bootstrap 场景下不可达。源码路径等信息的读取一律走**导出的接口**
+  （`javax.tools.JavaFileObject` 等）反射取。
+- **classpath 要按平台分隔符切**：同时按 `:` 和 `;` 切会把 Windows 的盘符切碎
+  （`C:\foo` → `C` + `\foo`）。→ Windows 只切 `;`，其它平台只切 `:`。
 - **两个 javac 入口互不重叠**：命令行走 `com.sun.tools.javac.Main#compile`（静态），
   `javax.tools` API 走 `com.sun.tools.javac.main.Main#compile`（实例）。
   一次命令行编译会**先后经过这两个**，所以 capture 要去重。

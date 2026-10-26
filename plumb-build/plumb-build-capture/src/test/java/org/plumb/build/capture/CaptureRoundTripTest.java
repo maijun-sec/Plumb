@@ -12,48 +12,68 @@ import org.junit.jupiter.api.io.TempDir;
 /** Tests for the capture write/read round trip. */
 class CaptureRoundTripTest {
 
+  private static CaptureEntry sample(List<String> argv) {
+    return new CaptureEntry(
+        "cli",
+        argv,
+        "UTF-8",
+        "17",
+        Path.of("out"),
+        List.of(Path.of("a.jar"), Path.of("b.jar")),
+        List.of(Path.of("src")),
+        List.of(),
+        List.of(Path.of("src/Foo.java")),
+        "17.0.1",
+        "/opt/jdk",
+        "/work");
+  }
+
   @Test
   void writesAndReadsBackACapture(@TempDir Path dir) {
-    List<String> argv = List.of("-d", "out", "-classpath", "a.jar;b.jar", "src/Foo.java");
+    CaptureEntry entry = sample(List.of("-d", "out", "-classpath", "a.jar;b.jar", "src/Foo.java"));
 
     CaptureSink sink = CaptureSink.get();
     sink.clear();
     sink.setOutputDirectory(dir);
     try {
-      sink.record(argv);
+      sink.record(entry);
     } finally {
       sink.setOutputDirectory(null);
       sink.clear();
     }
 
-    List<JavacOptions> captures = CaptureReader.readAll(dir);
+    List<CaptureEntry> captures = CaptureReader.readAll(dir);
 
     assertThat(captures).hasSize(1);
-    JavacOptions options = captures.get(0);
-    assertThat(options.rawArguments()).isEqualTo(argv);
-    assertThat(options.outputDirectory()).isEqualTo(Path.of("out"));
-    assertThat(options.classpath()).containsExactly(Path.of("a.jar"), Path.of("b.jar"));
-    assertThat(options.sourceFiles()).containsExactly(Path.of("src/Foo.java"));
+    CaptureEntry read = captures.get(0);
+    assertThat(read.argv()).isEqualTo(entry.argv());
+    assertThat(read.outputDirectory()).isEqualTo(Path.of("out"));
+    assertThat(read.classpath()).containsExactly(Path.of("a.jar"), Path.of("b.jar"));
+    assertThat(read.sourceFiles()).containsExactly(Path.of("src/Foo.java"));
+    assertThat(read.encoding()).isEqualTo("UTF-8");
+    assertThat(read.languageLevel()).isEqualTo("17");
+    assertThat(read.api()).isEqualTo("cli");
   }
 
   @Test
   void escapesSpecialCharacters(@TempDir Path dir) {
-    List<String> argv = List.of("path with space", "quote\"inside", "back\\slash");
+    CaptureEntry entry =
+        sample(List.of("path with space", "quote\"inside", "back\\slash", "tab\there"));
 
     CaptureSink sink = CaptureSink.get();
     sink.clear();
     sink.setOutputDirectory(dir);
     try {
-      sink.record(argv);
+      sink.record(entry);
     } finally {
       sink.setOutputDirectory(null);
       sink.clear();
     }
 
-    List<JavacOptions> captures = CaptureReader.readAll(dir);
+    List<CaptureEntry> captures = CaptureReader.readAll(dir);
 
     assertThat(captures).hasSize(1);
-    assertThat(captures.get(0).rawArguments()).isEqualTo(argv);
+    assertThat(captures.get(0).argv()).isEqualTo(entry.argv());
   }
 
   @Test
@@ -67,27 +87,31 @@ class CaptureRoundTripTest {
   }
 
   @Test
-  void jsonWriterAndReaderAgree(@TempDir Path dir) {
-    List<String> argv = List.of("plain", "with space", "with\"quote", "with\\backslash", "");
+  void writerAndReaderAgreeOnAWrittenFile(@TempDir Path dir) {
+    CaptureEntry entry = sample(List.of("plain", "with space", "with\"quote", "with\\backslash", ""));
 
-    String json = CaptureHook.toJson(argv);
-    assertThat(CaptureReader.parseJsonArray(json)).isEqualTo(argv);
+    String json = entry.toJson();
+    CaptureEntry parsed = CaptureReader.parse(json);
+    assertThat(parsed).isNotNull();
+    assertThat(parsed.argv()).isEqualTo(entry.argv());
   }
 
   @Test
   void parsesUnicodeEscapes() {
-    assertThat(CaptureReader.parseJsonArray("[\"\\u0041\\u00e9\"]")).containsExactly("Aé");
+    CaptureEntry parsed = CaptureReader.parse("{\"argv\": [\"\\u0041\\u00e9\"]}");
+    assertThat(parsed).isNotNull();
+    assertThat(parsed.argv()).containsExactly("Aé");
   }
 
   @Test
   void writesAWellFormedJsonFile(@TempDir Path dir) throws Exception {
-    List<String> argv = List.of("-d", "out");
+    CaptureEntry entry = sample(List.of("-d", "out"));
 
     CaptureSink sink = CaptureSink.get();
     sink.clear();
     sink.setOutputDirectory(dir);
     try {
-      sink.record(argv);
+      sink.record(entry);
     } finally {
       sink.setOutputDirectory(null);
       sink.clear();
@@ -96,8 +120,19 @@ class CaptureRoundTripTest {
     try (var files = Files.list(dir)) {
       var file = files.findFirst().orElseThrow();
       String content = Files.readString(file, StandardCharsets.UTF_8);
-      assertThat(content).startsWith("[").endsWith("]");
+      assertThat(content.trim()).startsWith("{").endsWith("}");
       assertThat(content).contains("\"-d\"");
+      assertThat(content).contains("\"classpath\"");
+      assertThat(content).contains("\"api\"");
     }
+  }
+
+  @Test
+  void aMissingKeyReadsAsNull() {
+    CaptureEntry parsed = CaptureReader.parse("{\"argv\": []}");
+    assertThat(parsed).isNotNull();
+    assertThat(parsed.encoding()).isNull();
+    assertThat(parsed.outputDirectory()).isNull();
+    assertThat(parsed.classpath()).isEmpty();
   }
 }

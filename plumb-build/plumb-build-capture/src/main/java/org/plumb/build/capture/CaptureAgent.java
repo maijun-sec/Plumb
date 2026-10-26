@@ -2,35 +2,32 @@ package org.plumb.build.capture;
 
 import java.lang.instrument.Instrumentation;
 import java.util.List;
-import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.asm.AsmVisitorWrapper;
-import net.bytebuddy.description.method.MethodDescription;
-import net.bytebuddy.description.type.TypeDescription;
-import net.bytebuddy.implementation.Implementation;
-import net.bytebuddy.jar.asm.MethodVisitor;
-import net.bytebuddy.jar.asm.Opcodes;
-import net.bytebuddy.matcher.ElementMatchers;
-import net.bytebuddy.pool.TypePool;
-import net.bytebuddy.utility.JavaModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A ByteBuddy agent that records the javac command line.
+ * A ByteBuddy agent that captures the real javac compile.
  *
- * <p>It hooks {@code com.sun.tools.javac.main.Main#compile(String[])} -- the
- * entry point the {@code javac} command line driver reaches. That method
- * receives the raw argv, which is exactly what a static analyser needs to
- * reconstruct the compile.
+ * <p>Some projects cannot be introspected statically: the classpath may be assembled by a script,
+ * a plugin, or an IDE. For those, the ground truth is the compile the compiler actually performed.
+ * This agent hooks the compiler's entry points and records it.
  *
- * <h2>Why raw ASM instead of Advice</h2>
+ * <h2>Which entry points</h2>
  *
- * <p>{@code Advice} and {@code MethodDelegation} both work by delegating to a
- * super method. {@code Main#compile} overrides nothing, so there is no super
- * method to delegate to and ByteBuddy raises
- * {@code Cannot call super (or default) method}. Instrumenting the bytecode
- * directly sidesteps that entirely: the original body is left untouched and a
- * call to {@link CaptureHook#onArgs(String[])} is inserted in front of it.
+ * <p>See {@link CompilerEntryPoints} for the list. The short version: a "javac command line" is
+ * eight different methods depending on how the compiler was reached, and hooking only one
+ * of them means the capture silently misses every build that takes a different path.
+ *
+ * <h2>How</h2>
+ *
+ * <p>ByteBuddy's {@link net.bytebuddy.asm.Advice} does the instrumentation. Advice is
+ * <em>inlining</em>: the hook body is copied into the target method, so it needs no super method
+ * and no delegation target. That is what makes it work on a plain static method like {@code
+ * Main#compile(String[])}.
+ *
+ * <p>The original project this descends from used btrace, which needs elevated privileges and a
+ * native agent. ByteBuddy needs neither: it attaches through the standard {@code
+ * java.lang.instrument} API, so the capture runs as an ordinary user process.
  *
  * <h2>Usage</h2>
  *
@@ -50,33 +47,33 @@ public final class CaptureAgent {
 
   private static final Logger LOG = LoggerFactory.getLogger(CaptureAgent.class);
 
-  /** The class whose {@code compile} method is hooked. */
   /**
-   * The classes whose {@code compile} method is hooked.
+   * The classes that go into the bootstrap jar.
    *
-   * <p>There are two, and they cover different entry points:
+   * <p><b>This list has to be the recorder's whole dependency closure, including nested
+   * classes.</b> The recorder runs on the bootstrap class loader, which sees nothing but the JDK.
+   * If it references a class that is not in the jar, the call fails with {@code
+   * NoClassDefFoundError} -- and because the advice that calls it suppresses {@code Throwable},
+   * the failure is completely silent: the capture simply never appears.
+   *
+   * <p>That is not hypothetical. It happened twice:
    *
    * <ul>
-   *   <li>{@code com.sun.tools.javac.Main} -- the {@code javac} command-line
-   *       driver. Its {@code compile(String[])} is static.
-   *   <li>{@code com.sun.tools.javac.main.Main} -- the class behind the {@code
-   *       javax.tools} API. Its {@code compile(String[])} is an instance method.
+   *   <li>the recorder grew a dependency on {@link JavacOptions} while the jar carried only the
+   *       recorder class;
+   *   <li>the jar then carried {@code JavacOptions} but not {@code JavacOptions$Builder}, its
+   *       nested builder.
    * </ul>
    *
-   * <p>The two paths do not overlap: a command-line compile never reaches the
-   * second, and an API compile never reaches the first. Both are hooked so the
-   * capture works no matter how the compiler was invoked.
+   * <p>Every class listed here must be free of external dependencies (no SLF4J, no JSON library)
+   * and free of nested classes that are not listed too.
    */
-  private static final String[] JAVAC_MAIN_CLASSES = {
-    "com.sun.tools.javac.Main", "com.sun.tools.javac.main.Main"
+  private static final String[] BOOTSTRAP_CLASSES = {
+    "org/plumb/build/capture/CaptureRecorder",
+    "org/plumb/build/capture/CaptureEntry",
+    "org/plumb/build/capture/JavacOptions",
+    "org/plumb/build/capture/JavacOptions$Builder",
   };
-
-  /** The hook method the instrumented bytecode calls into. */
-  private static final String HOOK_CLASS = "org/plumb/build/capture/CaptureHook";
-
-  private static final String HOOK_METHOD = "onArgs";
-
-  private static final String HOOK_DESCRIPTOR = "([Ljava/lang/String;)V";
 
   private CaptureAgent() {}
 
@@ -103,136 +100,111 @@ public final class CaptureAgent {
   /** Install the instrumentation. */
   public static void install(Instrumentation inst) {
     CaptureSink.get().configureFromEnvironment();
-    injectHookClass(inst);
+    injectRecorder(inst);
     LOG.info("Capture: installing agent");
-
-    new AgentBuilder.Default()
-        .disableClassFormatChanges()
-        .with(AgentBuilder.Listener.NoOp.INSTANCE)
-        // The compiler's classes are usually already loaded when the agent
-        // attaches, so a redefinition pass is required to reach them.
-        .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
-        .type(ElementMatchers.namedOneOf(JAVAC_MAIN_CLASSES))
-        .transform(CaptureAgent::instrument)
-        .installOn(inst);
-
-    LOG.info("Capture: agent installed");
+    CompilerHooks.install(inst);
+    LOG.info(
+        "Capture: agent installed, hooking {} entry point(s)", CompilerEntryPoints.all().size());
+    if (GradleHooks.install(inst)) {
+      LOG.info(
+          "Capture: Gradle hooks installed (build cache and daemon disabled), so the "
+              + "compile happens in this JVM");
+    }
   }
 
   /**
-   * Make the hook class visible to the compiler's own classes.
+   * Make the recorder visible to the compiler's own classes.
    *
-   * <p>The instrumented bytecode lives in {@code com.sun.tools.javac.Main},
-   * which belongs to the {@code jdk.compiler} module and is loaded by the
-   * application class loader. The agent jar, meanwhile, is only visible to the
-   * agent's own class loader -- so a direct call from the compiler's code to
-   * the hook would fail with {@code NoClassDefFoundError}.
+   * <p>The instrumented bytecode lives in {@code com.sun.tools.javac.Main}, which belongs to the
+   * {@code jdk.compiler} module and is loaded by the application class loader. The agent jar, meanwhile,
+   * is only visible to the agent's own class loader -- so a direct call from the compiler's code to
+   * the recorder would fail with {@code NoClassDefFoundError}.
    *
-   * <p>Appending a small jar to the <b>bootstrap</b> class loader solves it:
-   * the bootstrap loader is the ancestor of every other loader, so the hook is
-   * reachable from the compiler's code, from the application, and from the
-   * agent alike.
+   * <p>Appending a small jar to the <b>bootstrap</b> class loader solves it: the bootstrap loader is
+   * the ancestor of every other loader, so the recorder is reachable from the compiler's code, from
+   * the application, and from the agent alike.
    */
-  private static void injectHookClass(Instrumentation inst) {
+  private static void injectRecorder(Instrumentation inst) {
     try {
-      java.io.File jar = buildHookJar();
+      java.io.File jar = buildRecorderJar();
       if (jar == null) {
-        LOG.warn("Capture: could not build the hook jar, the capture may fail");
+        LOG.warn("Capture: could not build the recorder jar, the capture may fail");
         return;
       }
       inst.appendToBootstrapClassLoaderSearch(new java.util.jar.JarFile(jar));
       LOG.debug("Capture: injected {} into the bootstrap class loader", jar);
     } catch (Exception e) {
-      LOG.warn("Capture: could not inject the hook class: {}", e.getMessage());
+      LOG.warn("Capture: could not inject the recorder class: {}", e.getMessage());
     }
   }
 
   /**
-   * Build a jar containing only the hook class, for the bootstrap loader.
+   * Build a jar containing the recorder and everything it needs, for the bootstrap loader.
+   *
+   * <p>Only the recorder's own classes go in: they are the ones the instrumented bytecode calls,
+   * and they are the ones that have to resolve on the bootstrap loader. The recorder must not
+   * reference anything outside the bootstrap loader, which is why it has no logging and no
+   * dependency on the rest of the module.
    *
    * @return the jar file, or {@code null} when it could not be built
    */
-  private static java.io.File buildHookJar() {
+  private static java.io.File buildRecorderJar() {
     try {
-      String classResource = HOOK_CLASS.replace('.', '/') + ".class";
-      java.io.InputStream in = CaptureAgent.class.getClassLoader().getResourceAsStream(classResource);
-      if (in == null) {
-        return null;
-      }
-      byte[] bytes;
-      try (in) {
-        bytes = in.readAllBytes();
-      }
-
-      java.io.File jar = java.io.File.createTempFile("plumb-capture-hook", ".jar");
+      java.io.File jar = java.io.File.createTempFile("plumb-capture-recorder", ".jar");
       jar.deleteOnExit();
       try (java.util.jar.JarOutputStream out =
           new java.util.jar.JarOutputStream(new java.io.FileOutputStream(jar))) {
-        out.putNextEntry(new java.util.zip.ZipEntry(classResource));
-        out.write(bytes);
-        out.closeEntry();
+        for (String classResource : bootstrapJarClasses()) {
+          byte[] bytes = readClassBytes(classResource);
+          if (bytes == null) {
+            LOG.warn("Capture: {} is missing from the agent jar", classResource);
+            continue;
+          }
+          out.putNextEntry(new java.util.zip.ZipEntry(classResource));
+          out.write(bytes);
+          out.closeEntry();
+        }
       }
       return jar;
     } catch (Exception e) {
-      LOG.debug("Capture: could not build the hook jar: {}", e.getMessage());
+      LOG.debug("Capture: could not build the recorder jar: {}", e.getMessage());
       return null;
     }
   }
 
   /**
-   * Build the bytecode transformation that inserts the capture hook.
+   * The class resources that go into the bootstrap jar.
    *
-   * @param builder the type builder
-   * @param typeDescription the type being transformed
-   * @param classLoader its class loader
-   * @param module its module
-   * @param pd its protection domain
-   * @return the builder, with the hook applied
+   * <p>Each one is looked up in the agent's own class loader. A class that cannot be found is
+   * reported rather than silently skipped, because a missing class in this jar means the capture
+   * fails silently at run time.
    */
-  private static net.bytebuddy.dynamic.DynamicType.Builder<?> instrument(
-      net.bytebuddy.dynamic.DynamicType.Builder<?> builder,
-      TypeDescription typeDescription,
-      ClassLoader classLoader,
-      JavaModule module,
-      java.security.ProtectionDomain pd) {
-    return builder.visit(
-        new AsmVisitorWrapper.ForDeclaredMethods()
-            .method(
-                ElementMatchers.named("compile")
-                    .and(ElementMatchers.takesArguments(String[].class)),
-                new AsmVisitorWrapper.ForDeclaredMethods.MethodVisitorWrapper() {
-                  @Override
-                  public MethodVisitor wrap(
-                      TypeDescription instrumentedType,
-                      MethodDescription methodDescription,
-                      MethodVisitor methodVisitor,
-                      Implementation.Context implementationContext,
-                      TypePool typePool,
-                      int writerFlags,
-                      int readerFlags) {
-                    LOG.debug("Capture: instrumenting {}", methodDescription);
-                    // The argument's local slot depends on whether the method
-                    // is static: slot 0 for a static method, slot 1 for an
-                    // instance method (where slot 0 holds `this`).
-                    int argumentSlot = methodDescription.isStatic() ? 0 : 1;
-                    return new MethodVisitor(Opcodes.ASM9, methodVisitor) {
-                      @Override
-                      public void visitCode() {
-                        super.visitCode();
-                        super.visitVarInsn(Opcodes.ALOAD, argumentSlot);
-                        super.visitMethodInsn(
-                            Opcodes.INVOKESTATIC, HOOK_CLASS, HOOK_METHOD, HOOK_DESCRIPTOR, false);
-                      }
-                    };
-                  }
-                }));
+  static java.util.List<String> bootstrapJarClasses() {
+    java.util.List<String> out = new java.util.ArrayList<>();
+    for (String name : BOOTSTRAP_CLASSES) {
+      out.add(name + ".class");
+    }
+    return out;
+  }
+
+  /** The bytes of one class, or {@code null} when it is not on the agent's classpath. */
+  private static byte[] readClassBytes(String classResource) {
+    try (java.io.InputStream in =
+        CaptureAgent.class.getClassLoader().getResourceAsStream(classResource)) {
+      if (in == null) {
+        return null;
+      }
+      return in.readAllBytes();
+    } catch (Exception e) {
+      return null;
+    }
   }
 
   /**
    * Attach this agent to a running JVM.
    *
-   * <p>The target is identified by its process id; the agent jar is located
-   * from this class's own code source, so the caller only needs the pid.
+   * <p>The target is identified by its process id; the agent jar is located from this class's own
+   * code source, so the caller only needs the pid.
    *
    * @param args the target process id
    * @throws Exception if the attachment fails
@@ -255,5 +227,10 @@ public final class CaptureAgent {
 
     net.bytebuddy.agent.ByteBuddyAgent.attach(agentJar, Long.toString(pid));
     System.out.println("Capture: attached to pid " + pid);
+  }
+
+  /** The entry points the agent hooks. Exposed for the tests and for documentation. */
+  public static List<CompilerEntryPoints.EntryPoint> entryPoints() {
+    return CompilerEntryPoints.all();
   }
 }

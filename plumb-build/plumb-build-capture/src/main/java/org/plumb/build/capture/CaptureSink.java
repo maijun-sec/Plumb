@@ -11,34 +11,32 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Where captured javac command lines are recorded.
+ * Where captured compiles are recorded.
  *
- * <p>The agent runs <em>inside</em> the compiler's JVM, which is a different
- * process from the analyser. So the capture has to travel back out. There are
- * two channels:
+ * <p>The agent runs <em>inside</em> the compiler's JVM, which is a different process from the
+ * analyser. So the capture has to travel back out. There are two channels:
  *
  * <ul>
- *   <li>a JSON file written into a directory the analyser watches -- this is
- *       what {@link CaptureHook} does, because the hook is loaded by the
- *       bootstrap class loader and cannot reach this class;
- *   <li>an in-memory list, for the case where the agent and the analyser
- *       share a JVM.
+ *   <li>a JSON file written into a directory the analyser watches -- this is what {@link
+ *       CaptureRecorder} does, because the recorder is loaded by the bootstrap class loader and
+ *       cannot reach this class;
+ *   <li>an in-memory list, for the case where the agent and the analyser share a JVM.
  * </ul>
  *
- * <p>The original {@code java-capture} project shipped a separate "collect"
- * module and shelled out to it from the agent. Writing a file directly is
- * simpler and avoids spawning a process from inside the compiler.
+ * <p>The original {@code java-capture} project shipped a separate "collect" module and shelled
+ * out to it from the agent. Writing a file directly is simpler and avoids spawning a process from
+ * inside the compiler.
  */
 public final class CaptureSink {
 
   private static final Logger LOG = LoggerFactory.getLogger(CaptureSink.class);
 
   /** Environment variable naming the directory captures are written to. */
-  public static final String ENV_OUTPUT_DIR = CaptureHook.ENV_OUTPUT_DIR;
+  public static final String ENV_OUTPUT_DIR = CaptureRecorder.ENV_OUTPUT_DIR;
 
   private static final CaptureSink INSTANCE = new CaptureSink();
 
-  private final List<List<String>> captures = new CopyOnWriteArrayList<>();
+  private final List<CaptureEntry> captures = new CopyOnWriteArrayList<>();
 
   private volatile Path outputDirectory;
 
@@ -51,8 +49,7 @@ public final class CaptureSink {
   /**
    * Configure the sink from the environment.
    *
-   * <p>Reads {@value #ENV_OUTPUT_DIR}; when it is unset the sink keeps captures
-   * in memory only.
+   * <p>Reads {@value #ENV_OUTPUT_DIR}; when it is unset the sink keeps captures in memory only.
    */
   public void configureFromEnvironment() {
     String dir = System.getenv(ENV_OUTPUT_DIR);
@@ -80,31 +77,30 @@ public final class CaptureSink {
   }
 
   /**
-   * Record one captured javac invocation.
+   * Record one captured compile.
    *
-   * @param arguments the argv javac received
+   * @param entry the capture
    */
-  public void record(List<String> arguments) {
-    if (arguments == null || arguments.isEmpty()) {
+  public void record(CaptureEntry entry) {
+    if (entry == null) {
       return;
     }
-    List<String> copy = List.copyOf(arguments);
-    captures.add(copy);
-    LOG.info("Capture: javac invoked with {} arguments", copy.size());
+    captures.add(entry);
+    LOG.info("Capture: compile recorded ({} argument(s))", entry.argv().size());
 
     Path dir = outputDirectory;
     if (dir != null) {
-      writeJson(dir, copy);
+      writeJson(dir, entry);
     }
   }
 
   /** Every capture recorded so far, in order. */
-  public List<List<String>> captures() {
+  public List<CaptureEntry> captures() {
     return new ArrayList<>(captures);
   }
 
   /** The most recent capture, or {@code null} when nothing was captured. */
-  public List<String> latest() {
+  public CaptureEntry latest() {
     return captures.isEmpty() ? null : captures.get(captures.size() - 1);
   }
 
@@ -114,15 +110,15 @@ public final class CaptureSink {
   }
 
   /**
-   * Write the capture as a JSON array of strings.
+   * Write the capture as JSON.
    *
-   * <p>Uses {@link CaptureHook#toJson(List)} so the on-disk format is identical
-   * no matter which channel produced the capture.
+   * <p>Uses {@link CaptureEntry#toJson()} so the on-disk format is identical no matter which
+   * channel produced the capture.
    */
-  private void writeJson(Path dir, List<String> arguments) {
+  private void writeJson(Path dir, CaptureEntry entry) {
     try {
       Path file = dir.resolve("javac-" + System.nanoTime() + ".json");
-      Files.writeString(file, CaptureHook.toJson(arguments), StandardCharsets.UTF_8);
+      Files.writeString(file, entry.toJson(), StandardCharsets.UTF_8);
       LOG.debug("Capture: wrote {}", file);
     } catch (IOException e) {
       LOG.warn("Capture: could not write capture file: {}", e.getMessage());

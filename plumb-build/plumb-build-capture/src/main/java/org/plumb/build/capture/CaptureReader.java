@@ -12,10 +12,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Reads back the captures written by {@link CaptureSink}.
+ * Reads back the captures written by the agent.
  *
- * <p>This is the analyser-side counterpart of the agent: it turns the JSON
- * files in a capture directory back into {@link JavacOptions}.
+ * <p>This is the analyser-side counterpart of the agent: it turns the JSON files in a capture
+ * directory back into {@link CaptureEntry} records.
+ *
+ * <p>The format is written by {@link CaptureEntry#toJson()}, which is deliberately a flat object
+ * with string arrays -- so the reader is a small hand-rolled parser rather than a JSON library
+ * dependency. The capture files are written from inside a compiler JVM, where a dependency would
+ * have to be resolvable from an arbitrary classpath.
  */
 public final class CaptureReader {
 
@@ -29,8 +34,8 @@ public final class CaptureReader {
    * @param directory the capture directory
    * @return the parsed captures
    */
-  public static List<JavacOptions> readAll(Path directory) {
-    List<JavacOptions> out = new ArrayList<>();
+  public static List<CaptureEntry> readAll(Path directory) {
+    List<CaptureEntry> out = new ArrayList<>();
     if (directory == null || !Files.isDirectory(directory)) {
       LOG.debug("Capture: no capture directory at {}", directory);
       return out;
@@ -42,9 +47,9 @@ public final class CaptureReader {
               .sorted(Comparator.comparingLong(CaptureReader::lastModified))
               .toList();
       for (Path file : files) {
-        JavacOptions options = read(file);
-        if (options != null) {
-          out.add(options);
+        CaptureEntry entry = read(file);
+        if (entry != null) {
+          out.add(entry);
         }
       }
     } catch (IOException e) {
@@ -59,8 +64,8 @@ public final class CaptureReader {
    * @param directory the capture directory
    * @return the parsed capture, or {@code null} when there is none
    */
-  public static JavacOptions readLatest(Path directory) {
-    List<JavacOptions> all = readAll(directory);
+  public static CaptureEntry readLatest(Path directory) {
+    List<CaptureEntry> all = readAll(directory);
     return all.isEmpty() ? null : all.get(all.size() - 1);
   }
 
@@ -68,13 +73,12 @@ public final class CaptureReader {
    * Read one capture file.
    *
    * @param file the JSON file
-   * @return the parsed options, or {@code null} when the file is unreadable
+   * @return the parsed capture, or {@code null} when the file is unreadable
    */
-  public static JavacOptions read(Path file) {
+  public static CaptureEntry read(Path file) {
     try {
-      String json = Files.readString(file, StandardCharsets.UTF_8).trim();
-      List<String> arguments = parseJsonArray(json);
-      return JavacOptions.parse(arguments);
+      String json = Files.readString(file, StandardCharsets.UTF_8);
+      return parse(json);
     } catch (IOException e) {
       LOG.warn("Capture: could not read {}: {}", file, e.getMessage());
       return null;
@@ -82,64 +86,159 @@ public final class CaptureReader {
   }
 
   /**
-   * Parse a JSON array of strings.
+   * Parse the capture JSON.
    *
-   * <p>Hand-rolled for the same reason the writer is: this module must load
-   * into an arbitrary compiler JVM without dragging in a JSON library.
+   * <p>The format is a flat object; every value is either a string, null, or an array of strings.
+   * The parser looks a key up by name and reads its value, so an unknown key is ignored and a
+   * missing key yields null -- a capture written by an older version still parses.
    */
-  static List<String> parseJsonArray(String json) {
-    List<String> out = new ArrayList<>();
-    if (json == null) {
-      return out;
+  static CaptureEntry parse(String json) {
+    if (json == null || json.isBlank()) {
+      return null;
     }
-    String trimmed = json.trim();
-    if (trimmed.startsWith("[")) {
-      trimmed = trimmed.substring(1);
-    }
-    if (trimmed.endsWith("]")) {
-      trimmed = trimmed.substring(0, trimmed.length() - 1);
-    }
+    return new CaptureEntry(
+        string(json, "api"),
+        stringArray(json, "argv"),
+        string(json, "encoding"),
+        string(json, "languageLevel"),
+        path(string(json, "outputDirectory")),
+        paths(stringArray(json, "classpath")),
+        paths(stringArray(json, "sourcePath")),
+        paths(stringArray(json, "modulePath")),
+        paths(stringArray(json, "sourceFiles")),
+        string(json, "javaVersion"),
+        string(json, "javaHome"),
+        string(json, "workingDirectory"));
+  }
 
-    StringBuilder current = new StringBuilder();
-    boolean inString = false;
-    boolean escaping = false;
+  private static Path path(String s) {
+    return s == null ? null : Path.of(s);
+  }
 
-    for (int i = 0; i < trimmed.length(); i++) {
-      char c = trimmed.charAt(i);
-      if (inString) {
-        if (escaping) {
-          switch (c) {
-            case '"' -> current.append('"');
-            case '\\' -> current.append('\\');
-            case '/' -> current.append('/');
-            case 'n' -> current.append('\n');
-            case 'r' -> current.append('\r');
-            case 't' -> current.append('\t');
-            case 'b' -> current.append('\b');
-            case 'f' -> current.append('\f');
-            case 'u' -> {
-              if (i + 4 < trimmed.length()) {
-                current.append((char) Integer.parseInt(trimmed.substring(i + 1, i + 5), 16));
-                i += 4;
-              }
-            }
-            default -> current.append(c);
-          }
-          escaping = false;
-        } else if (c == '\\') {
-          escaping = true;
-        } else if (c == '"') {
-          inString = false;
-          out.add(current.toString());
-          current.setLength(0);
-        } else {
-          current.append(c);
-        }
-      } else if (c == '"') {
-        inString = true;
-      }
+  private static List<Path> paths(List<String> values) {
+    List<Path> out = new ArrayList<>(values.size());
+    for (String v : values) {
+      out.add(Path.of(v));
     }
     return out;
+  }
+
+  /**
+   * The value of a top-level string key.
+   *
+   * <p>Returns null when the key is absent or its value is the JSON literal {@code null}.
+   */
+  static String string(String json, String key) {
+    String marker = "\"" + key + "\":";
+    int at = json.indexOf(marker);
+    if (at < 0) {
+      return null;
+    }
+    int i = at + marker.length();
+    while (i < json.length() && Character.isWhitespace(json.charAt(i))) {
+      i++;
+    }
+    if (i >= json.length()) {
+      return null;
+    }
+    if (json.charAt(i) == 'n' && json.startsWith("null", i)) {
+      return null;
+    }
+    if (json.charAt(i) != '"') {
+      // Not a string value -- read up to the next comma.
+      int end = json.indexOf(',', i);
+      if (end < 0) {
+        end = json.length();
+      }
+      return json.substring(i, end).trim();
+    }
+    return unquote(json, i);
+  }
+
+  /**
+   * The value of a top-level array-of-strings key.
+   */
+  static List<String> stringArray(String json, String key) {
+    String marker = "\"" + key + "\":";
+    int at = json.indexOf(marker);
+    if (at < 0) {
+      return List.of();
+    }
+    int i = at + marker.length();
+    while (i < json.length() && Character.isWhitespace(json.charAt(i))) {
+      i++;
+    }
+    if (i >= json.length() || json.charAt(i) != '[') {
+      return List.of();
+    }
+    int end = json.indexOf(']', i);
+    if (end < 0) {
+      end = json.length();
+    }
+    String body = json.substring(i + 1, end);
+
+    List<String> out = new ArrayList<>();
+    int p = 0;
+    while (p < body.length()) {
+      while (p < body.length() && (Character.isWhitespace(body.charAt(p)) || body.charAt(p) == ',')) {
+        p++;
+      }
+      if (p >= body.length() || body.charAt(p) != '"') {
+        break;
+      }
+      String value = unquote(body, p);
+      out.add(value);
+      // unquote returns the decoded value; find where the literal ended
+      p = skipString(body, p) + 1;
+    }
+    return out;
+  }
+
+  /** The index just past the closing quote of the string that starts at {@code start}. */
+  private static int skipString(String s, int start) {
+    int i = start + 1;
+    while (i < s.length()) {
+      char c = s.charAt(i);
+      if (c == '\\') {
+        i += 2;
+        continue;
+      }
+      if (c == '"') {
+        return i;
+      }
+      i++;
+    }
+    return s.length();
+  }
+
+  /** Read the quoted string starting at {@code start} and decode its escapes. */
+  private static String unquote(String s, int start) {
+    int end = skipString(s, start);
+    String raw = s.substring(start + 1, Math.min(end, s.length()));
+    StringBuilder sb = new StringBuilder(raw.length());
+    for (int i = 0; i < raw.length(); i++) {
+      char c = raw.charAt(i);
+      if (c != '\\' || i + 1 >= raw.length()) {
+        sb.append(c);
+        continue;
+      }
+      char n = raw.charAt(++i);
+      switch (n) {
+        case 'n' -> sb.append('\n');
+        case 'r' -> sb.append('\r');
+        case 't' -> sb.append('\t');
+        case 'b' -> sb.append('\b');
+        case 'f' -> sb.append('\f');
+        case 'u' -> {
+          if (i + 4 < raw.length()) {
+            sb.append((char) Integer.parseInt(raw.substring(i + 1, i + 5), 16));
+            i += 4;
+          }
+        }
+        default -> sb.append(n);
+      }
+    }
+    return sb.toString();
   }
 
   private static long lastModified(Path p) {
