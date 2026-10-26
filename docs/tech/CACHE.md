@@ -59,7 +59,7 @@ Plumb 的 TAC IR 是**小数据量 + 异构字段 + 长生命周期**（cache �
 
 - **数据量小**：单个 TU 的 TAC IR 只有几十 KB 量级；万级文件的大型项目估算
   150 MB，对磁盘 IO 不是瓶颈
-- **字段异构**：10 个 `Serializable` 的 IR 类各自有可变字段
+- **字段异构**：9 个 `Serializable` 的 IR 类各自有可变字段
   （`TacInstruction.line` / `column`、`TacOperand` 的 sealed 形态、
   `SourceMap.Loc` record、`TacProgram.sourcePath` 是 `java.nio.file.Path`）——
   每加一个字段 Kryo 都要重新注册
@@ -163,20 +163,26 @@ ScanRunner.run() [plumb-main]
 关键代码：
 
 ```java
-private TranslatedFile translateAndStyleOne(Path file, RuleRegistry rules) {
+private TranslatedFile translateAndStyleOne(
+    Path file, RuleRegistry rules, List<AstChecker> styleChecks) {
     TacProgram program = loadCachedProgram(file);
+    ParsedSource ps = null;
     if (program != null) {
         // re-parse only for style; cheap
-        ps = new JavaSourceParser().parse(file);
+        ps = buildParser().parse(file);
     } else {
-        ps = new JavaSourceParser().parse(file);
+        ps = buildParser().parse(file);
         program = new TacTranslator(ps).translate();
         storeCachedProgram(file, program);
     }
     // style always runs fresh (rule set may have changed)
-    return new TranslatedFile(file, ps, program, runStyleChecks(ps, file, rules));
+    List<Finding> styleFindings = runStyleChecks(ps, file, rules, styleChecks);
+    return new TranslatedFile(file, ps, program, styleFindings);
 }
 ```
+
+（源码里两处 parse 各自包在 `catch (Throwable)` 里，解析失败记 WARN 并返回 `null`，
+跳过这个文件——单个坏文件不该让整次扫描崩掉。）
 
 ## 7. 兼容性
 

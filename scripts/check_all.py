@@ -55,6 +55,9 @@ The gates are:
     check_environment_claims   the environment document still matches the
                               code: the variables that are read, the ones
                               that are not, and the line citations
+    check_cache_claims         the cache document still matches the code:
+                              the file format constants, the cache modes
+                              and their behaviour, the source-map contract
     check_package_claims       the packaging scripts copy files that exist,
                               and the packaging documentation's sizes and
                               log level match the build
@@ -116,6 +119,8 @@ GATES = (
      ["python", "scripts/check_cross_fn_claims.py"], "check"),
     ("check_environment_claims",
      ["python", "scripts/check_environment_claims.py"], "check"),
+    ("check_cache_claims",
+     ["python", "scripts/check_cache_claims.py"], "check"),
     ("check_package_claims",
      ["python", "scripts/check_package_claims.py"], "check"),
     ("capability_baseline",

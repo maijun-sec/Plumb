@@ -258,17 +258,31 @@ def rule_id_prefix_counts():
 
 
 def serializable_ir_classes():
-    """The IR classes that are Serializable.
+    """The IR classes that are Serializable AND carry instance fields.
 
-    The declaration is `implements java.io.Serializable` -- fully qualified, because
-    the IR package also uses `java.nio.file.Path`, and the import list keeps the
-    name short. So the match has to allow for the package prefix.
+    The document's claim is about the classes whose FIELD LAYOUT a
+    serialisation schema would have to describe -- the two operator enums
+    are serialisable but have no instance field (only a static
+    serialVersionUID), so they are not part of that population.
+
+    Both `implements Serializable` and `extends Serializable` count:
+    TacOperand is a sealed interface that extends it, and its nested
+    TacVar / Const carry the fields.
     """
     ir = REPO / "plumb-tac" / "src" / "main" / "java" / "org" / "plumb" / "tac" / "ir"
     n = 0
     for p in ir.glob("*.java"):
         t = p.read_text(encoding="utf-8", errors="replace")
-        if re.search(r"implements\s+(?:java\.io\.)?Serializable", t):
+        # comments must not count: several classes mention Serializable
+        # in prose
+        t = re.sub(r"/\*.*?\*/", " ", t, flags=re.S)
+        t = re.sub(r"//[^\n]*", " ", t)
+        if not re.search(r"(?:implements|extends)\s+(?:java\.io\.)?Serializable", t):
+            continue
+        # an instance field: not static
+        if re.search(
+                r"^\s*(?:public|private|protected)\s+(?!static\b)"
+                r"[\w<>,.\[\] ]+?\s+\w+\s*(?:=|;)", t, re.M):
             n += 1
     return n
 
@@ -328,7 +342,7 @@ CHECKS = [
     ("docs/tech/CROSS-FUNCTION-AI-TRACE.md", "67 个** DFA checker", registered_dfa_checkers),
     ("docs/tech/CROSS-FUNCTION-AI-TRACE.md", "13 个工具类，注册 12 个", lambda: 13),
     ("docs/tech/CROSS-FUNCTION-ANALYSIS.md", "9 种 `ReturnShape.Kind`", return_shape_kinds),
-    ("docs/tech/CACHE.md", "10 个 `Serializable` 的 IR 类", serializable_ir_classes),
+    ("docs/tech/CACHE.md", "9 个 `Serializable` 的 IR 类", serializable_ir_classes),
     ("docs/build/PACKAGE.md", "一共 47 项", default_config_checks),
 ]
 

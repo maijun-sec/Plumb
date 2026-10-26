@@ -151,6 +151,7 @@ python scripts/check_all.py
 | `check_tac_claims` | IR 规范里的结构性断言仍然和源码对得上:读者照着写的那些类名、字段名、枚举常量、计数都还在 |
 | `check_cross_fn_claims` | 跨函数 Operation 文档里点名的符号都还存在:类名、`Operation` 变体、return shape |
 | `check_environment_claims` | 环境变量文档跟代码对得上:哪些变量真的被读、哪些没被读(启动脚本读的也算)、行号引用指的是不是那一行 |
+| `check_cache_claims` | 缓存文档跟代码对得上:文件头常量、四种缓存模式及其行为、source map 保留契约里字段的类型 |
 | `check_package_claims` | 出包脚本拷的每个文件都真的存在(少一个就中断整个出包),出包文档里的体积和日志级别跟构建产物对得上 |
 | `capability_baseline --check` | 没有丢掉任何规则、sink 模式、污点源模式、checker 或事实种类 |
 | `gen_tool_comparison --check` | 工具对比文档里的数字仍然和源码对得上 |
