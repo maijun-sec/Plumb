@@ -7,8 +7,8 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * R-833 ? Shared utilities for the four adapters. Path walking and classpath dedup logic lives here
- * so each adapter only deals with build-system-specific parsing.
+ * Shared utilities for the four adapters. Path walking and classpath dedup logic lives here so each
+ * adapter only deals with build-system-specific parsing.
  */
 public final class SourceFiles {
 

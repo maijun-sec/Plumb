@@ -10,7 +10,7 @@
  *       info exposure by comment, CWE-598 HTML form
  *       method=get next to password fields)</li>
  *   <li>{@code assert} statements (CWE-617 reachable
- *       assertion ? {@code assert false;} produces no TAC
+ *       assertion -- {@code assert false;} produces no TAC
  *       because the assertion is dead code in the static
  *       view)</li>
  *   <li>Field / class modifiers (CWE-500 public static
@@ -60,7 +60,7 @@
  * <p>The cache is keyed on the absolute {@link Path} of
  * the source file and stores the line list. It's a
  * plain {@link java.util.concurrent.ConcurrentHashMap}
- * with no size bound ? a whole source tree is
+ * with no size bound -- a whole source tree is
  * still only a few megabytes of line-lists, well under any
  * realistic heap limit. Real-codebase scans (single
  * file) cost one entry. Tests should call
@@ -172,7 +172,7 @@ public final class SourceReader {
    * 1-based line number and the {@link Matcher} (so callers can extract groups). Multiline mode is
    * controlled by {@code pattern} flags.
    *
-   * <p>The {@link Matcher} passed in is reused across matches within the same line ? callers that
+   * <p>The {@link Matcher} passed in is reused across matches within the same line -- callers that
    * need a stable snapshot should call {@code match.group()} / {@code match.start()} inside the
    * action before returning.
    */
@@ -205,7 +205,7 @@ public final class SourceReader {
    * via {@code AnalysisContext.registerSourcePath}.
    *
    * <p>The returned map is keyed by absolute path and values are the line lists. Files that failed
-   * to read are silently skipped ? same failure semantics as {@link #readLines}. This is the right
+   * to read are silently skipped -- same failure semantics as {@link #readLines}. This is the right
    * entry point for source-reading DFA checkers that need ALL files in a cross-TU (MergedProgram)
    * run, since the synthetic {@code <merged>} program has a bogus {@code sourcePath} the regular
    * {@link #readLines} path can't resolve.

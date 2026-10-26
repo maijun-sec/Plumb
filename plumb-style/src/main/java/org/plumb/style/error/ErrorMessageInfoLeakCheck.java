@@ -1,7 +1,6 @@
 /*
- * ? ErrorMessageInfoLeakCheck (CWE-209) migrated
- * from plumb-dfa/.../ErrorMessageInfoLeakChecker.java to
- * plumb-style AST.
+ * Flags exception sinks inside catch blocks that leak the exception details
+ * (CWE-209).
  *
  * <p>Flags exception sinks inside {@code catch} blocks
  * that leak exception details:</p>

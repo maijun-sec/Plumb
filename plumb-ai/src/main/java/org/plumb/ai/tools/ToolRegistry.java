@@ -53,7 +53,7 @@ public class ToolRegistry {
   }
 
   /**
-   * Build the {@code tools} field of the OpenAI request body ? one {@link ToolDefinition} per
+   * Build the {@code tools} field of the OpenAI request body -- one {@link ToolDefinition} per
    * registered tool, in registration order.
    */
   public List<ToolDefinition> definitions() {

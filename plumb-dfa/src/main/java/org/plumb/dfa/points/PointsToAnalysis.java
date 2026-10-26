@@ -13,7 +13,7 @@ import org.plumb.tac.ir.TacOperand;
  * Per-function points-to analysis.
  *
  * <p>Tracks which heap allocations each variable can refer to. The {@link AllocSite} key is the
- * (function-signature, instruction-index) pair ? a unique identifier for each {@code NEW} in the
+ * (function-signature, instruction-index) pair -- a unique identifier for each {@code NEW} in the
  * program.
  *
  * <h2>Why this matters</h2>
@@ -268,7 +268,7 @@ public final class PointsToAnalysis {
    *
    * <p>Conservative: every potentially-returned variable's points-to set is recorded.
    * Cross-function propagation over-approximates (the caller gets a superset of the callee's actual
-   * points-to set) ? never under-approximates.
+   * points-to set) -- never under-approximates.
    */
   public PointsToSummary buildSummary() {
     PointsToSummary s = new PointsToSummary();

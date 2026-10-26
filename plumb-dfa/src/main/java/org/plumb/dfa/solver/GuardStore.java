@@ -12,7 +12,7 @@ import java.util.Set;
  * wants to know "is my missing guard implied by a guard someone else already recorded?" calls
  * {@link #impliedGuard}.
  *
- * <p>Keys are the guarded variable's name (string, not {@code TacVar} ? guards are surfaced in the
+ * <p>Keys are the guarded variable's name (string, not {@code TacVar} -- guards are surfaced in the
  * same flat string form the bridge speaks, so a single var name is enough). Values are the union of
  * predicates the various checkers have recorded for that variable.
  *

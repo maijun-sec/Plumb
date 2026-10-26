@@ -1,7 +1,6 @@
 /*
- * ? PredictableKeyPasswordCheck (CWE-259 / CWE-798) migrated from
- * plumb-dfa/.../PredictableKeyPasswordChecker.java to
- * plumb-style AST.
+ * Flags a key or password that is predictable rather than randomly
+ * generated (CWE-259 / CWE-798).
  *
  * <p>Flags a hardcoded password/seed/salt passed to
  * {@code PBEKeySpec}, {@code PBEParameterSpec},

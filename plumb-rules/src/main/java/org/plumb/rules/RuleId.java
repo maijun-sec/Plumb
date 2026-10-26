@@ -3,7 +3,7 @@ package org.plumb.rules;
 import java.util.Objects;
 
 /**
- * Stable, unique identifier for a rule. The {@code id} is the contract surface ? a rule's UUID
+ * Stable, unique identifier for a rule. The {@code id} is the contract surface -- a rule's UUID
  * never changes even if the rule is renamed, split, or merged. The {@code name} is the
  * human-readable slug used in CLI flags, suppression files, and dashboards.
  *

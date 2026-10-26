@@ -3,7 +3,7 @@
  *
  * <p>Fires when a {@code catch} block declares an overly broad
  * exception type such as {@link Exception} or {@link Throwable}.
- * Catching these swallows all subclasses ? including
+ * Catching these swallows all subclasses -- including
  * {@link RuntimeException} and {@link Error} —
  * which makes debugging hard and is usually a sign of
  * incomplete error handling.</p>
@@ -29,7 +29,7 @@ public final class OverlyBroadCatchCheck implements AstChecker {
   /**
    * Whitelist of overly broad catch types. We intentionally do <strong>not</strong> flag common
    * Java checked exception types that are already specific enough (IOException,
-   * NumberFormatException, etc.) ? those are valid catch targets.
+   * NumberFormatException, etc.) -- those are valid catch targets.
    */
   private static final Set<String> OVERLY_BROAD =
       Set.of("Exception", "Throwable", "RuntimeException", "Error");

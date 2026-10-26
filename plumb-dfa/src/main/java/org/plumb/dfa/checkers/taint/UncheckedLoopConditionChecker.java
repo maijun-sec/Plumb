@@ -19,7 +19,7 @@ import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 
 /**
- * — UncheckedLoopCondition checker (CWE-606).
+ * UncheckedLoopCondition checker (CWE-606).
  *
  * <p>Juliet CWE-606 pattern:
  *

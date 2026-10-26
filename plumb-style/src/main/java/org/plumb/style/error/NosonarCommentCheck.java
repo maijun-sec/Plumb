@@ -1,5 +1,5 @@
 /*
- * Suppression-marker comment suppresses a finding ? review and add a reason.
+ * Suppression-marker comment suppresses a finding -- review and add a reason.
  */
 package org.plumb.style.error;
 

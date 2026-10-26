@@ -1,5 +1,5 @@
 /*
- * R7 ? Taint-style CWE-256 (Plaintext Storage of
+ * R7 -- Taint-style CWE-256 (Plaintext Storage of
  * Password) sink checker.
  *
  * <p>Fires when a tainted value (e.g. one read
@@ -24,7 +24,7 @@
  * catches the literal-hard-coded variant
  * (password = "7e5tc4s3"). The taint-style
  * sibling here catches the file-sourced /
- * HTTP-sourced variant ? the testcases that the
+ * HTTP-sourced variant -- the testcases that the
  * DFA checker doesn't fire on.</p>
  *
  * <h3>Why a taint-style checker (not DFA)</h3>
@@ -35,13 +35,13 @@
  * taint flow goes through:
  *
  * <ol>
- *   <li>{@code FileInputStream.<init>(...)} ? file
+ *   <li>{@code FileInputStream.<init>(...)} -- file
  *       source</li>
  *   <li>{@code properties.load(streamFileInput)} —
  *       propagator</li>
  *   <li>{@code properties.getProperty("password")} —
  *       taint source (return value is tainted)</li>
- *   <li>{@code password = taint_source} ? local
+ *   <li>{@code password = taint_source} -- local
  *       binding (TAC MOVE / ASSIGN)</li>
  *   <li>{@code DriverManager.getConnection(url, user, password)} —
  *       sink (password slot is the taint carrier)</li>
@@ -84,7 +84,7 @@ public final class DBCredentialSinkChecker extends TaintedCheckerBase {
 
   /**
    * Custom AI prompt for CWE-256. The auto-generated default in TaintedCheckerBase would say
-   * "Tainted value flows to db.credential.sinks (CWE-256)" ? true but not very actionable. The LLM
+   * "Tainted value flows to db.credential.sinks (CWE-256)" -- true but not very actionable. The LLM
    * gets better verdicts with a focused rule that distinguishes TP (real tainted password reaching
    * a DB sink without sanitisation) from FP (the password is loaded from a vault / config that's
    * already trusted, or the sink is a JPA-managed credentials store).

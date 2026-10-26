@@ -24,10 +24,10 @@
  *       (e.g. {@code KeyGenerator.getInstance("AES")}) —
  *       records the instance was created.</li>
  *   <li>{@code SANITIZER} at the init call
- *       (e.g. {@code kg.init(256)}) ? records the
+ *       (e.g. {@code kg.init(256)}) -- records the
  *       instance was initialised.</li>
  *   <li>{@code SINK_CRYPTO_INIT} at the sink call
- *       (e.g. {@code kg.generateKey()}) ? fires
+ *       (e.g. {@code kg.generateKey()}) -- fires
  *       only when no SANITIZER was seen for the
  *       same TYPE on this path.</li>
  * </ol>
@@ -201,7 +201,7 @@ public final class MissingCryptoInitChecker implements DfaChecker {
   }
 
   /**
-   * Get the "crypto type" of a TacVar ? canonical short form. Both "javax.crypto.KeyGenerator" and
+   * Get the "crypto type" of a TacVar -- canonical short form. Both "javax.crypto.KeyGenerator" and
    * "KeyGenerator" map to the same key "KeyGenerator". Returns null if the type doesn't look like a
    * crypto class.
    */

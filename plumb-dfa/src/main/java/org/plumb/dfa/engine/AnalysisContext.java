@@ -114,7 +114,7 @@ public final class AnalysisContext {
   /**
    * The function the engine is currently analysing. Set by DfaEngine before each {@code
    * initFunction} call. Used by FindingReporter to fill in {@code filePath} on findings whose
-   * checker left it empty (newer DFA checkers don't carry the path themselves ? the IR doesn't
+   * checker left it empty (newer DFA checkers don't carry the path themselves -- the IR doesn't
    * either).
    */
   private final ThreadLocal<org.plumb.tac.ir.TacFunction> currentFunction = new ThreadLocal<>();
@@ -426,7 +426,7 @@ public final class AnalysisContext {
    * whose checker left it empty.
    */
   public void setCurrentFunction(org.plumb.tac.ir.TacFunction fn) {
-    // — ThreadLocal so the parallel worklist's
+    // ThreadLocal so the parallel worklist's
     // worker pool doesn't race on a single field.
     // Each worker thread now sees its own
     // currentFunction, so FindingReporter.report()
@@ -447,7 +447,7 @@ public final class AnalysisContext {
    * whose checker didn't set it.
    */
   public org.plumb.tac.ir.TacFunction currentFunction() {
-    // — read the per-thread value. Falls back
+    // Read the per-thread value. Falls back
     // to null if no function is currently being
     // analysed on the calling thread.
     return currentFunction.get();
@@ -476,16 +476,16 @@ public final class AnalysisContext {
   }
 
   /**
-   * ? the engine's {@link org.plumb.dfa.resolve.StaticFieldResolver} for resolving {@code public
+   * The engine's {@link org.plumb.dfa.resolve.StaticFieldResolver} for resolving {@code public
    * static final} initializers. Set by the engine after {@link
    * org.plumb.dfa.resolve.ProjectCompilationContext#index()} is called; defaults to {@code null}
    * for tests that build an {@link AnalysisContext} directly (in which case the field-LOAD path
-   * falls back to the orphan-SOURCE shape ? same behaviour as pre-).
+   * falls back to the orphan-SOURCE shape -- same behaviour as pre-).
    */
   private volatile org.plumb.dfa.resolve.StaticFieldResolver staticFields;
 
   /**
-   * ? install the {@link org.plumb.dfa.resolve.StaticFieldResolver} used by FIELDLOAD resolution.
+   * Install the {@link org.plumb.dfa.resolve.StaticFieldResolver} used by FIELDLOAD resolution.
    * Volatile so a checker running on a different thread (parallel analysis) sees the published
    * value on its next read.
    */
@@ -494,7 +494,7 @@ public final class AnalysisContext {
   }
 
   /**
-   * ? return the {@link org.plumb.dfa.resolve.StaticFieldResolver} previously installed via {@link
+   * Return the {@link org.plumb.dfa.resolve.StaticFieldResolver} previously installed via {@link
    * #setStaticFieldResolver}, or {@code null} if none was installed. Callers must null-check.
    */
   public org.plumb.dfa.resolve.StaticFieldResolver staticFields() {

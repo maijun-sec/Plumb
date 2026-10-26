@@ -10,7 +10,7 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Unnecessary primitive boxing ({@code new Integer(5)} etc.) ? prefer autoboxing or {@code
+ * Unnecessary primitive boxing ({@code new Integer(5)} etc.) -- prefer autoboxing or {@code
  * Integer.valueOf}.
  */
 public final class UnnecessaryBoxingCheck implements AstChecker {

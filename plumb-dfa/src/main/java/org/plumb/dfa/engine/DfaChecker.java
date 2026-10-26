@@ -109,7 +109,7 @@ public interface DfaChecker {
   }
 
   /**
-   * Step 7 ? The rule-specific knowledge the LLM is told about this checker before it judges a
+   * Step 7 -- The rule-specific knowledge the LLM is told about this checker before it judges a
    * finding. The runner prepends the system prompt (FP reducer / bug scanner role) + the dataflow
    * trace + the source context, and sends the whole thing through the Re-Act agent.
    *

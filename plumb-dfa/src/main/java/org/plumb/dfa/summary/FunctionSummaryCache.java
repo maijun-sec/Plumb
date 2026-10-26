@@ -23,16 +23,16 @@ import org.plumb.tac.ir.TacFunction;
  * <h2>Atomicity guarantees</h2>
  *
  * <ul>
- *   <li>{@link #get(String)} ? lock-free read on the {@code ConcurrentHashMap}; the hit / miss
+ *   <li>{@link #get(String)} -- lock-free read on the {@code ConcurrentHashMap}; the hit / miss
  *       {@link LongAdder}s do a thread-local increment and a (rare) contended write, so even hot
  *       loops scale.
- *   <li>{@link #put(String, FunctionSummary)} ? last-writer-wins on the {@code ConcurrentHashMap}.
+ *   <li>{@link #put(String, FunctionSummary)} -- last-writer-wins on the {@code ConcurrentHashMap}.
  *       Two parallel putters of the same signature race; either summary is acceptable to the engine
  *       because both come from the same analysis pass (deterministic for any given input).
- *   <li>{@link #computeIfAbsent(String, Function)} ? delegated to {@code
+ *   <li>{@link #computeIfAbsent(String, Function)} -- delegated to {@code
  *       ConcurrentMap.computeIfAbsent} which is atomic: the producer runs at most once per
  *       signature, even under contention.
- *   <li>{@link #clear()} ? best-effort reset. Concurrent readers may see stale data for one or two
+ *   <li>{@link #clear()} -- best-effort reset. Concurrent readers may see stale data for one or two
  *       operations after {@code clear()} returns. The engine calls {@code clear()} only at the
  *       start of a run, when no threads are yet reading, so this is acceptable.
  * </ul>
@@ -50,7 +50,7 @@ public final class FunctionSummaryCache {
 
   /**
    * Map<signature, summary>. Backed by {@link ConcurrentHashMap} for lock-free concurrent reads and
-   * atomic puts. Insertion order is no longer preserved (the engine no longer depends on it ? RPO
+   * atomic puts. Insertion order is no longer preserved (the engine no longer depends on it -- RPO
    * is the engine's scheduling order, not the cache's iteration order).
    */
   private final ConcurrentMap<String, FunctionSummary> map = new ConcurrentHashMap<>();
@@ -98,8 +98,8 @@ public final class FunctionSummaryCache {
    * Populate the cache entry for {@code signature} with {@code summary}. Replaces any prior entry.
    * Backed by {@code ConcurrentHashMap.put}, lock-free on the common path. Two parallel putters of
    * the same signature race; either summary wins (the engine analyses each function exactly once,
-   * so this can only happen if the same function is registered twice ? a user-error path the engine
-   * doesn't recover from gracefully).
+   * so this can only happen if the same function is registered twice -- a user-error path the
+   * engine doesn't recover from gracefully).
    */
   public void put(String signature, FunctionSummary summary) {
     if (signature == null || signature.isEmpty() || summary == null) {
@@ -122,7 +122,7 @@ public final class FunctionSummaryCache {
 
   /**
    * Conditional put: compute the summary via {@code producer} only if no entry exists for {@code
-   * signature}. Delegated to {@code ConcurrentMap.computeIfAbsent} which is atomic ? the producer
+   * signature}. Delegated to {@code ConcurrentMap.computeIfAbsent} which is atomic -- the producer
    * runs at most once per signature, even under contention.
    */
   public FunctionSummary computeIfAbsent(

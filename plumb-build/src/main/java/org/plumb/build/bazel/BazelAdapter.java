@@ -19,7 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * R-833 P1 ? Bazel build-system adapter.
+ * Bazel build-system adapter.
  *
  * <p>Recognises {@code BUILD}, {@code BUILD.bazel} and {@code MODULE.bazel} (Bzlmod) / {@code
  * WORKSPACE} (legacy) marker files. The adapter is parser-light: we extract {@code java_library} /
@@ -43,8 +43,8 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>External dependencies declared via {@code @maven//:jar_name} — the user must supply them
  *       via {@code --classpath}.
- *   <li>{@code deps} chains to other {@code java_library} rules ? they would require evaluating the
- *       whole {@code deps(...)} closure; user-supplied {@code --classpath} covers this.
+ *   <li>{@code deps} chains to other {@code java_library} rules -- they would require evaluating
+ *       the whole {@code deps(...)} closure; user-supplied {@code --classpath} covers this.
  * </ul>
  */
 public final class BazelAdapter implements BuildAdapter {

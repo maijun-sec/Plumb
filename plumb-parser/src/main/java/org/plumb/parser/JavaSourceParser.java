@@ -94,19 +94,18 @@ public final class JavaSourceParser {
   }
 
   /**
-   * build a parser whose {@link TypeSolver} combines (1) the JDK reflection solver, (2) one {@link
+   * Build a parser whose {@link TypeSolver} combines (1) the JDK reflection solver, (2) one {@link
    * JavaParserTypeSolver} per {@link JavaModule} so the module's own source files can be used to
    * resolve cross-module type references, and (3) a {@link JarTypeSolver} for every classpath jar /
    * class-folder the module declares.
    *
    * <p>This is the entry point the {@code plumb-main} CLI uses when the user supplies {@code
    * --source-root}, {@code --module-root} or {@code --classpath} on the command line (or the
-   * equivalent YAML keys). still treats every input as a flat module ? per-module classpath and
-   * Maven/Gradle/Bazel auto-discovery are + future work (see {@code
-   * juliet-coverage/reports/r797/PLAN.md}).
+   * equivalent YAML keys). Plumb treats every input as a flat module; the per-module classpath and
+   * Maven/Gradle/Bazel auto-discovery are not implemented yet.
    *
    * <p><b>Cardinal rule.</b> The {@code classpath} is consumed by the {@link TypeSolver} only. It
-   * is never routed into the TAC pipeline or the SootUp bytecode path ? third-party jars exist
+   * is never routed into the TAC pipeline or the SootUp bytecode path -- third-party jars exist
    * solely so the user source can resolve "what does {@code com.example.Foo} look like".
    *
    * <p>The parser's language level is determined by the first non-null {@link
@@ -134,7 +133,7 @@ public final class JavaSourceParser {
    * pipeline.
    *
    * <p>Duplicate jar / class-folder entries (same canonical path) are deduplicated so the resulting
-   * {@link CombinedTypeSolver} does not carry multiple solvers for the same jar ? this is both
+   * {@link CombinedTypeSolver} does not carry multiple solvers for the same jar -- this is both
    * faster and avoids the "two solvers disagree on the same type" pathology.
    */
   public static TypeSolver buildTypeSolverFor(List<JavaModule> modules) {

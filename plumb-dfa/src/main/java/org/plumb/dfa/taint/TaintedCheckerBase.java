@@ -402,7 +402,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       try {
         rerunOne.accept(fn, ctx);
       } catch (RuntimeException ex) {
-        LOG.warn("R717 re-analysis failed for {}: {}", fn.signature(), ex.toString());
+        LOG.warn("re-analysis failed for {}: {}", fn.signature(), ex.toString());
       }
     }
   }
@@ -1257,7 +1257,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         v2TraceHandle.put(dv, handle);
       }
     } else {
-      // — path-insensitive taint preservation.
+      // Path-insensitive taint preservation.
       // The standard semantics of an unconditional MOVE
       // to a constant is "the variable now holds this
       // constant; drop any prior taint". But this is a
@@ -2847,7 +2847,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * {@link TraceNode.Op#STATIC_FIELD_DECL} v2 SOURCE node and return its handle so {@link
    * #restoreFieldTaintOnLoad} can attach it as the parent of the FIELDLOAD's PROPAGATE. Returns
    * {@code -1} when the resolver is absent, the field is unknown, or the field's initializer is not
-   * a literal (e.g. a method call ? the Juliet {@code static final Logger logger =
+   * a literal (e.g. a method call -- the Juliet {@code static final Logger logger =
    * Logger.getLogger(...)} pattern). Phase 2 of will add init-path resolution so method-call
    * initializers also resolve.
    */
@@ -3233,7 +3233,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           && avParamName != null
           && avParamName.equals(av.name())) {
         LOG.debug(
-            "R1109: suppressing sink finding -- {}{} is tainted only by the entry seed and every"
+            "suppressing sink finding -- {}{} is tainted only by the entry seed and every"
                 + " call site proves it clean",
             fn.signature(),
             r1109ParamIdx);
@@ -3290,7 +3290,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         }
       }
     }
-    // -- build the structured source-to-sink trace.
+    // Build the structured source-to-sink trace.
     // The path of the sink arg is the source-to-here
     // path; we append a final "sink" step recording
     // the call site (line / column / callee / family).
@@ -3304,7 +3304,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     fullPath.add(
         new FlowStep(
             "sink", "", ins.line, ins.column, calleeSig, calleeSig + " (" + family.name() + ")"));
-    // -- emit the Z3 path condition (if any) as a
+    // Emit the Z3 path condition (if any) as a
     // "z3-fact" FlowStep. The AI dedup agent's
     // get_dataflow_trace_with_facts tool reads these
     // and the FP reducer uses them to reason about
@@ -4553,7 +4553,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * follow-up ? overload that threads the v2 {@code Trace} handle of the source this fold
+   * follow-up -- overload that threads the v2 {@code Trace} handle of the source this fold
    * propagated from. The handle is recovered by {@code restoreFieldTaintOnLoad} via {@code
    * crossFnClassFieldSource.get(key)} and attached to the new {@code PROPAGATE} node as a real
    * parent. Pass {@code -1} if the source predates dual-write.

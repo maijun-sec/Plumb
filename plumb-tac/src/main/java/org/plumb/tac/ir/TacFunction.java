@@ -348,7 +348,7 @@ public final class TacFunction implements java.io.Serializable {
   }
 
   /**
-   * Convenience ? is this function's origin in the given set? Returns true for an empty / null set
+   * Convenience -- is this function's origin in the given set? Returns true for an empty / null set
    * so callers that don't filter by origin get all functions (matches the earlier behavior).
    */
   public boolean hasOriginIn(java.util.Set<SourceOrigin> allowed) {
@@ -397,7 +397,7 @@ public final class TacFunction implements java.io.Serializable {
    *
    * <p>Re-throws inside a catch handler are NOT in the {@code catch} range: a {@code THROW} inside
    * a catch handler jumps straight to the finally block (or escapes the try if no finally). The CFG
-   * builder handles that via the {@code THROW} instruction's own exception-flow rules ? not via
+   * builder handles that via the {@code THROW} instruction's own exception-flow rules -- not via
    * this region's range.
    */
   public static final class TryRegion {

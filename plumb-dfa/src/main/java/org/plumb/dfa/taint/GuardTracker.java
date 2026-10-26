@@ -1063,7 +1063,7 @@ public final class GuardTracker {
         dest,
         newDerived,
         (old, add) -> {
-          // -- bound the merged list. Without this,
+          // Bound the merged list. Without this,
           // the merge lambdas accumulate without DERIVED_GUARD_CAP, and a
           // 3682-file Juliet dir OOMs in the recordMove path
           // even with the early-return guard. DERIVED_GUARD_CAP at DERIVED_GUARD_CAP.
@@ -1153,7 +1153,7 @@ public final class GuardTracker {
         dest,
         newDerived,
         (old, add) -> {
-          // -- bound the merged list. Without this,
+          // Bound the merged list. Without this,
           // the merge lambdas accumulate without DERIVED_GUARD_CAP, and a
           // 3682-file Juliet dir OOMs in the recordMove path
           // even with the early-return guard. DERIVED_GUARD_CAP at DERIVED_GUARD_CAP.

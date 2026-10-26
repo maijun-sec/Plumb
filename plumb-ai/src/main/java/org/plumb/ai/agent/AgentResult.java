@@ -6,21 +6,21 @@ import java.util.List;
  * The result of one Re-Act agent run. One of four shapes:
  *
  * <ul>
- *   <li>{@link #finalAnswer(LlmReply, String, String)} ? the model produced a {@code "FINAL:"}
+ *   <li>{@link #finalAnswer(LlmReply, String, String)} -- the model produced a {@code "FINAL:"}
  *       reply on the last turn. {@code verdict} is the body of the FINAL (the raw JSON string the
  *       model emitted). {@code taskKind} is the agent's role (e.g. {@code "fp-reduction"} or {@code
  *       "bug-scan"}). The {@link LlmReply} is the last assistant turn, useful for logging /
  *       metrics.
- *   <li>{@link #maxTurnsExceeded(int, LlmReply, List)} ? the model hit the iteration cap without
+ *   <li>{@link #maxTurnsExceeded(int, LlmReply, List)} -- the model hit the iteration cap without
  *       producing a FINAL. {@code maxTurns} is the configured cap. The {@link LlmReply} is the last
  *       assistant turn, useful for diagnosing the runaway (often the model is stuck in a tool-call
  *       loop and the LLM SDK doesn't add a guard). The {@code toolCallLog} captures every tool call
  *       the agent dispatched before the bail, so callers can see "the model called read_source 47
  *       times in a row and never finalised" without losing the diagnostic context.
- *   <li>{@link #providerError(String)} ? the {@link LlmProvider} returned {@code null} on the first
- *       call (network failure, auth error, etc.). The agent short-circuits the run with the given
- *       error message; the caller maps it to UNKNOWN.
- *   <li>{@link #toolError(String, LlmReply)} ? the agent dispatched one or more tool calls and
+ *   <li>{@link #providerError(String)} -- the {@link LlmProvider} returned {@code null} on the
+ *       first call (network failure, auth error, etc.). The agent short-circuits the run with the
+ *       given error message; the caller maps it to UNKNOWN.
+ *   <li>{@link #toolError(String, LlmReply)} -- the agent dispatched one or more tool calls and
  *       every single one returned an error, AND the model then gave up on the next turn (no tool
  *       calls, no FINAL:). Typical cause: all tools are mis-registered for this run (e.g. the
  *       FP-reducer agent was set up without the IR-dependent tools but the finding lives behind a

@@ -11,7 +11,7 @@ import org.plumb.style.StyleContext;
  * Unnecessary fully-qualified enum name (should be a simple reference with import).
  *
  * <p>findAll(FieldAccessExpr.class)} before. Note this checker fires on ANY {@code FieldAccessExpr}
- * with a dot ? same caveat as {@code UnnecessaryFullyQualifiedClassNameCheck} — it's a heuristic.
+ * with a dot -- same caveat as {@code UnnecessaryFullyQualifiedClassNameCheck} — it's a heuristic.
  * The M4 fix in plumb-ai only checks for type references; here we keep the simple-name heuristic
  * since this is purely AST-level.
  */

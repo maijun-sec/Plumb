@@ -66,7 +66,7 @@ public final class ForLoopWithSizeMethodCheck implements AstChecker {
 
   /**
    * Check both operands of any ordering comparison. The four ordering operators are the ones where
-   * a {@code .size()} call (or {@code .length()} field access ? that one we leave to other checks)
+   * a {@code .size()} call (or {@code .length()} field access -- that one we leave to other checks)
    * is the loop's termination bound.
    */
   private static void checkBinaryExpr(BinaryExpr b, int line, int col, StyleContext ctx) {

@@ -16,8 +16,8 @@ import org.plumb.tac.ir.TacInstruction;
  * read?" via {@link #isRead(String)} and "was it ever written?" via {@link #isWritten(String)}.
  *
  * <p>Used by the {@code UnusedFieldChecker} to suppress findings on private fields that are read
- * elsewhere in the program ? without the tracker the check would fire on every setter that no other
- * local function reads, which is the classic over-fire on POJO style code.
+ * elsewhere in the program -- without the tracker the check would fire on every setter that no
+ * other local function reads, which is the classic over-fire on POJO style code.
  */
 public final class FieldDefUseTracker {
 

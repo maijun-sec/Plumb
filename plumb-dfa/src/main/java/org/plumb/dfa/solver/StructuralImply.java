@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
  * Cheap syntactic implication check for arithmetic comparison guards.
  *
  * <p>Before falling back to a full SMT query the new cross-checker guard-sharing layer first asks
- * "does guard A obviously imply guard B?" ? for instance {@code x >= 1} obviously implies {@code x
+ * "does guard A obviously imply guard B?" -- for instance {@code x >= 1} obviously implies {@code x
  * != 0}. A positive answer here lets us suppress the finding without paying for a thousand-line Z3
  * solve.
  *

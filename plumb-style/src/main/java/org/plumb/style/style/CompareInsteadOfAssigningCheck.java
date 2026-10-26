@@ -60,10 +60,10 @@ import org.plumb.style.StyleContext;
  *
  * <p>Detects {@code (variable == expr)} / {@code (variable != expr)} expressions where the variable
  * is a single-name writer elsewhere in the same method body. The semantic clue that distinguishes
- * TP from FP is the absence of any {@code =} assignment to that variable in the body ? i.e. the
+ * TP from FP is the absence of any {@code =} assignment to that variable in the body -- i.e. the
  * variable is <em>never</em> written, so {@code ==} is a legitimate comparison. If the variable IS
  * written elsewhere (e.g. {@code isZero = (zeroOrOne == 0)} appears in the same method), the
- * comparison {@code isZero == (...)} is most likely a typo for {@code isZero = (...)} ? the bug
+ * comparison {@code isZero == (...)} is most likely a typo for {@code isZero = (...)} -- the bug
  * pattern.
  */
 public final class CompareInsteadOfAssigningCheck implements AstChecker {

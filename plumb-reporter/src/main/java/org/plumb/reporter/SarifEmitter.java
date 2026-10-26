@@ -1,5 +1,5 @@
 /*
- * P3.3 ? SARIF 2.1.0 emitter consuming the v2 structured
+ * P3.3 -- SARIF 2.1.0 emitter consuming the v2 structured
  * trace. The v1 dataflow_steps is rendered as standard SARIF
  * `codeFlows` (the conventional shape that SARIF-aware IDEs and
  * GitHub Code Scanning understand). The v2 trace is attached

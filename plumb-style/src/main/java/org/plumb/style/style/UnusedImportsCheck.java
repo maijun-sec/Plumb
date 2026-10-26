@@ -4,7 +4,7 @@
  * <p><b>pattern A rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} + 3
  * separate {@code n.findAll(...)} calls (NameExpr +
- * ClassOrInterfaceType MethodCallExpr) ? 3 walks per file.
+ * ClassOrInterfaceType MethodCallExpr) -- 3 walks per file.
  * The new implementation uses a single walk of the
  * CompilationUnit with instance-of dispatch and collects
  * the 3 sets of used names in one pass. Total: 1 walk per

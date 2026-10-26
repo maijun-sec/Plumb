@@ -30,7 +30,7 @@ import java.util.Set;
  * FQN. The output is the <em>union</em> of "short name" and "long name" forms so callers can match
  * against either spelling.
  *
- * <p>This class is read-only ? it does not mutate the AST.
+ * <p>This class is read-only -- it does not mutate the AST.
  */
 public final class AnnotationExtractor {
 
@@ -88,7 +88,7 @@ public final class AnnotationExtractor {
   /**
    * Returns the value of a named member of a single- or normal-annotation expression.
    * {@code @Foo(value = "x")} with {@code memberName == "value"} returns {@code Optional.of("x")}.
-   * The return value is the AST text of the right-hand side ? the caller is responsible for
+   * The return value is the AST text of the right-hand side -- the caller is responsible for
    * resolving to a typed value.
    */
   public static Optional<String> memberValue(AnnotationExpr a, String memberName) {

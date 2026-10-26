@@ -1,5 +1,5 @@
 /*
- * OperandRef ? the structured operand of a
+ * OperandRef -- the structured operand of a
  * {@link TraceNode}. v1's {@link FlowStep#expr()} was a
  * free-form string ("MOVE x -> y", "String.toLowerCase
  * passthrough -> dest"); AI dedup and SARIF consumers
@@ -118,7 +118,7 @@ public sealed interface OperandRef {
 
   /**
    * A constructor site reference. {@code typeName} is the simple class name (e.g. {@code
-   * "FileInputStream"}) or the FQN ? both shapes appear in the IR.
+   * "FileInputStream"}) or the FQN -- both shapes appear in the IR.
    */
   record CtorRef(String typeName) implements OperandRef {
     public CtorRef {
@@ -148,14 +148,14 @@ public sealed interface OperandRef {
   }
 
   /**
-   * ? a reference to a {@code public static} field of a class (e.g. {@code Level.WARNING}, {@code
+   * A reference to a {@code public static} field of a class (e.g. {@code Level.WARNING}, {@code
    * IO.logger}). Distinct from {@link FieldRef} because the receiver is a <i>class</i>, not an
    * instance, and the declaration site is the class body (not an instance's field write). Pair with
    * {@link TraceNode.Op#STATIC_FIELD_DECL} to mark the field's initializer node.
    *
    * <p>{@code isFinal} is captured so consumers can tell the difference between {@code public
    * static final} (which the resolver can fold) and {@code public static} mutable (which Phase 2 of
-   * ? init-path resolution ? will handle).
+   * -- init-path resolution -- will handle).
    */
   record StaticFieldRef(String className, String fieldName, boolean isFinal) implements OperandRef {
     public StaticFieldRef {
@@ -170,7 +170,7 @@ public sealed interface OperandRef {
   }
 
   /**
-   * Free-form text ? escape hatch for the rare case the engine cannot represent the operand
+   * Free-form text -- escape hatch for the rare case the engine cannot represent the operand
    * structurally (e.g. a folded "param + literal" expression that the v2 model has not yet been
    * taught to encode). New code SHOULD prefer the typed records above; this exists so the v2
    * migration can land without breaking unknown operand shapes.

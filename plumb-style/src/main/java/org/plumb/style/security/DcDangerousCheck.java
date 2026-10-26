@@ -2,10 +2,10 @@
  * Coverity <code>DC.DANGEROUS</code> — detects calls to dangerous Java APIs:
  *
  * <ul>
- *   <li>{@link Thread#stop()} and {@link ThreadGroup#stop()} ? deprecated and inherently unsafe:
+ *   <li>{@link Thread#stop()} and {@link ThreadGroup#stop()} -- deprecated and inherently unsafe:
  *       they release all locks the thread holds, which can leave shared objects in inconsistent
  *       states.
- *   <li>{@link Thread#destroy()} ? defined on {@code java.lang.Thread} but (as of JDK 17) only the
+ *   <li>{@link Thread#destroy()} -- defined on {@code java.lang.Thread} but (as of JDK 17) only the
  *       {@code ThreadGroup.destroy()} variant remains implemented; the {@code Thread.destroy()}
  *       declaration was removed. The checker still flags the call because the developer intent
  *       ("destroy a thread") is unsafe either way.

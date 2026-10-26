@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
  *       (static) type. Filter the virtual-target set to "subtypes of the declared type that are
  *       actually instantiated somewhere in the program".
  *   <li>Fall back to the declared-type's supertypes (i.e. CHA) only when no instantiated subtype
- *       exists ? this keeps analysis sound for virtual calls through base-class references whose
+ *       exists -- this keeps analysis sound for virtual calls through base-class references whose
  *       subclasses are all in libraries.
  * </ol>
  *
@@ -153,7 +153,7 @@ public final class RtaCallGraphStrategy implements CallGraphStrategy {
 
   /**
    * Returns true if {@code className} is in the instantiated set, OR if {@code className} is a
-   * JDK/library class (always considered "potentially instantiated" ? we can't enumerate library
+   * JDK/library class (always considered "potentially instantiated" -- we can't enumerate library
    * allocations). Library classes are conservatively treated as instantiated so we don't drop real
    * virtual calls through library receivers.
    */

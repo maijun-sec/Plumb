@@ -49,7 +49,7 @@ public final class BuiltinFactKinds {
   // ─────── 1. Taint sources / sinks ───────
 
   /**
-   * "This value comes from outside the trust boundary" ? request param, header, env var, file
+   * "This value comes from outside the trust boundary" -- request param, header, env var, file
    * content. Propagates through SSA def-use AND across call boundaries. The value carries the
    * concrete source id (e.g. {@code "bu-0001-taint-request-param"}).
    */
@@ -59,7 +59,7 @@ public final class BuiltinFactKinds {
       EnumSet.of(Trait.UNTRUSTED_SOURCE, Trait.PROPAGATED_BY_DECL, Trait.PROPAGATED_THROUGH_CALL);
 
   /**
-   * "This use site consumes sensitive values" ? a SQL {@code execute} call, a {@code system} call,
+   * "This use site consumes sensitive values" -- a SQL {@code execute} call, a {@code system} call,
    * a {@code Runtime.exec} call. The value carries the sink family key (e.g. {@code "sql.sinks"}).
    * Symmetric to {@link #UNTRUSTED_SOURCE}.
    */
@@ -89,7 +89,7 @@ public final class BuiltinFactKinds {
   // ─────── 3. Resource lifecycle ───────
 
   /**
-   * "This value is the handle of a freshly allocated resource" ? a {@code malloc} result, a {@code
+   * "This value is the handle of a freshly allocated resource" -- a {@code malloc} result, a {@code
    * FileInputStream} ref. Propagates across calls so a callee that returns an opened file can carry
    * the "needs close" obligation to its caller.
    */
@@ -99,9 +99,9 @@ public final class BuiltinFactKinds {
       EnumSet.of(Trait.PROPAGATED_BY_DECL, Trait.PROPAGATED_THROUGH_CALL);
 
   /**
-   * "This call is a resource release" ? a {@code free(p)}, a {@code close()}, an {@code fclose(f)}.
-   * The value carries the operand name so the consumer can match "this close releases the alloc
-   * tracked at instruction I".
+   * "This call is a resource release" -- a {@code free(p)}, a {@code close()}, an {@code
+   * fclose(f)}. The value carries the operand name so the consumer can match "this close releases
+   * the alloc tracked at instruction I".
    */
   public static final String FREE_SINK = "plumb.resource.free-sink";
 
@@ -110,7 +110,7 @@ public final class BuiltinFactKinds {
   // ─────── 4. Pointer / array access ───────
 
   /**
-   * "This instruction dereferences a pointer" ? a {@code Load} via GEP, a {@code *p} expression.
+   * "This instruction dereferences a pointer" -- a {@code Load} via GEP, a {@code *p} expression.
    * Carries the pointer operand name in the value. Combines with {@link #MAY_BE_NULL} to drive
    * NullPtrDereferenceChecker.
    */
@@ -140,7 +140,7 @@ public final class BuiltinFactKinds {
   // ─────── 6. Sensitivity ───────
 
   /**
-   * "This value carries sensitive data" ? credentials, tokens, PII. Same propagation as taint, but
+   * "This value carries sensitive data" -- credentials, tokens, PII. Same propagation as taint, but
    * consumed by SensitiveDataLeakChecker rather than a generic taint walker.
    */
   public static final String SENSITIVE_DATA = "plumb.sensitive.data";
@@ -149,7 +149,7 @@ public final class BuiltinFactKinds {
       EnumSet.of(Trait.UNTRUSTED_SOURCE, Trait.PROPAGATED_BY_DECL, Trait.PROPAGATED_THROUGH_CALL);
 
   /**
-   * "This value carries PII" ? a stricter subset of {@link #SENSITIVE_DATA}. Drives the CWE-359
+   * "This value carries PII" -- a stricter subset of {@link #SENSITIVE_DATA}. Drives the CWE-359
    * (Exposure of Private Personal Information) variant of SensitiveDataLeakChecker. A source tagged
    * as PII implies it's also SENSITIVE_DATA, so the CWE-200 variant still fires.
    */
@@ -172,8 +172,9 @@ public final class BuiltinFactKinds {
   // ─────── 8. Cross-function summaries bridge ───────
 
   /**
-   * "The value came from a parameter of an unknown callee" ? the analyzer has resolved the call but
-   * cannot determine the callee's body. The caller-side checker should treat the operand as opaque.
+   * "The value came from a parameter of an unknown callee" -- the analyzer has resolved the call
+   * but cannot determine the callee's body. The caller-side checker should treat the operand as
+   * opaque.
    */
   public static final String UNMODELED_CALLEE_RET = "plumb.call.unmodeled-callee-ret";
 

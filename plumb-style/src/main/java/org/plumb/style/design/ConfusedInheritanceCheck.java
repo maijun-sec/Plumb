@@ -14,7 +14,7 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Confused inheritance ? the class declares an {@code implements} interface that is already
+ * Confused inheritance -- the class declares an {@code implements} interface that is already
  * inherited from its parent.
  *
  * <p>The classic pattern is:
@@ -25,7 +25,7 @@ import org.plumb.style.StyleContext;
  * </pre>
  *
  * <p>The pre-S4 implementation flagged every class that had {@code extends} + empty {@code
- * implements} list, which produced 100% false positives ? almost every JPA / Spring class has
+ * implements} list, which produced 100% false positives -- almost every JPA / Spring class has
  * exactly this shape ({@code class User extends BaseEntity implements Serializable}).
  *
  * <p>S4 audit replaced that with a meaningful check: walk the extends/implements list of the parent
@@ -34,7 +34,7 @@ import org.plumb.style.StyleContext;
  *
  * <p><b>M5 part-2 migration:</b> the original used {@code visit(CompilationUnit) +
  * findAll(ClassOrInterfaceDeclaration)} (1 walk) + a manual per-class loop. This rewrite keeps the
- * per-class logic in {@code visit(ClassOrInterfaceDeclaration, ctx)} ? the dispatcher hands each
+ * per-class logic in {@code visit(ClassOrInterfaceDeclaration, ctx)} -- the dispatcher hands each
  * declaration to us directly. The class-by-name index is still needed (we look up the parent's
  * interfaces by simple name) and is built lazily in {@code init} so the work is amortised across
  * every {@code visit} call within the same file.

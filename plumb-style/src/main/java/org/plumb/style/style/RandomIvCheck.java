@@ -30,7 +30,7 @@
  * by the {@code AstDispatcher} once per file, and folds all three
  * sub-lookups into a single {@code enclosing.walk(Node.class, n -> ...)}
  * with an {@code instanceof} dispatch. Total walks: 1 per file
- * (the AstDispatcher's main walk) ? no nested walks.</p>
+ * (the AstDispatcher's main walk) -- no nested walks.</p>
  *
  * <p>Limitations: cross-function dataflow not supported (variable may
  * be filled by nextBytes in a helper). For Juliet's template this

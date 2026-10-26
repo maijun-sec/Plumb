@@ -8,19 +8,19 @@ import java.util.Objects;
  * <p>A {@code TaintRule} binds together everything a taint-style checker needs to fire a finding:
  *
  * <ul>
- *   <li>{@link #ruleId} ? stable id for SARIF and log correlation. The same id should be used by
+ *   <li>{@link #ruleId} -- stable id for SARIF and log correlation. The same id should be used by
  *       every emission of this rule so callers can dedup / group.
- *   <li>{@link #sourceKindName} ? the {@code FactKind.name()} that introduces a tainted value (e.g.
- *       {@code "dfa-taint-untrusted-source"} for untrusted input). The rule fires when a value
- *       carrying this kind flows to a sink.
- *   <li>{@link #sinkFamilyKey} ? the {@code SinkFamily.name()} of the sink that consumes the value
+ *   <li>{@link #sourceKindName} -- the {@code FactKind.name()} that introduces a tainted value
+ *       (e.g. {@code "dfa-taint-untrusted-source"} for untrusted input). The rule fires when a
+ *       value carrying this kind flows to a sink.
+ *   <li>{@link #sinkFamilyKey} -- the {@code SinkFamily.name()} of the sink that consumes the value
  *       (e.g. {@code "sql.sinks"}). The checker uses this to recognise sink calls; a call that
  *       doesn't match a family is ignored.
- *   <li>{@link #cwe} ? the CWE id emitted in the finding (e.g. {@code "CWE-89"} for SQL injection).
- *       Can be {@code null} for rules that don't have a CWE.
- *   <li>{@link #severityLabel} ? the {@code RuleDef.Severity} label ({@code "CRITICAL"} / {@code
+ *   <li>{@link #cwe} -- the CWE id emitted in the finding (e.g. {@code "CWE-89"} for SQL
+ *       injection). Can be {@code null} for rules that don't have a CWE.
+ *   <li>{@link #severityLabel} -- the {@code RuleDef.Severity} label ({@code "CRITICAL"} / {@code
  *       "HIGH"} / ...). Defaults to {@code "HIGH"} when null.
- *   <li>{@link #domain} ? the taint domain this rule expects. Mixed when the rule is
+ *   <li>{@link #domain} -- the taint domain this rule expects. Mixed when the rule is
  *       domain-agnostic.
  * </ul>
  *

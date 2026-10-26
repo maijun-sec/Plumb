@@ -1,7 +1,6 @@
 /*
- * ? PredictableRandomSeedCheck (CWE-332 / CWE-336)
- * migrated from plumb-dfa/.../PredictableRandomSeedChecker.java
- * to plumb-style AST.
+ * Flags a random seed that is predictable, so the generated values are
+ * too (CWE-332 / CWE-336).
  *
  * <p>Two patterns fire:</p>
  * <ol>
@@ -15,7 +14,7 @@
  * </ol>
  *
  * <p>Variable seeds (e.g. {@code System.currentTimeMillis()})
- * are out of scope here ? the DFA half used a
+ * are out of scope here -- the DFA half used a
  * const-var tracker that the AST half does not
  * re-implement.</p>
  */

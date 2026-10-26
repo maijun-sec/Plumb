@@ -2,15 +2,15 @@
  * Coverity <code>DC.DEADLOCK</code> — detects calls to deadlock-prone Java APIs:
  *
  * <ul>
- *   <li>{@link Thread#suspend()} and {@link ThreadGroup#suspend()} ? the target thread holds all
+ *   <li>{@link Thread#suspend()} and {@link ThreadGroup#suspend()} -- the target thread holds all
  *       monitors while suspended; any other thread that subsequently tries to enter one of those
  *       monitors deadlocks.
- *   <li>{@link Thread#resume()} and {@link ThreadGroup#resume()} ? the matching pair to {@code
+ *   <li>{@link Thread#resume()} and {@link ThreadGroup#resume()} -- the matching pair to {@code
  *       suspend()}; using either in isolation can leave threads in a state where they cannot make
  *       progress.
- *   <li>{@link Thread#countStackFrames()} ? implemented on top of {@code suspend()} so the call
+ *   <li>{@link Thread#countStackFrames()} -- implemented on top of {@code suspend()} so the call
  *       itself can deadlock.
- *   <li>{@link ThreadGroup#allowThreadSuspension(boolean)} ? the ThreadGroup-level knob that
+ *   <li>{@link ThreadGroup#allowThreadSuspension(boolean)} -- the ThreadGroup-level knob that
  *       controls {@code suspend()} behavior project-wide and inherits the same deadlock hazards.
  * </ul>
  *

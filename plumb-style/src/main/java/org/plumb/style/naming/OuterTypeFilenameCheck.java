@@ -10,7 +10,7 @@ import org.plumb.style.StyleContext;
 /**
  * Outer type filename should match the type name.
  *
- * <p>This rule is intrinsically per-file (one check per {@code CompilationUnit}) ? no useful
+ * <p>This rule is intrinsically per-file (one check per {@code CompilationUnit}) -- no useful
  * per-node-type migration here. Kept as {@code visit(CompilationUnit)} since the dispatcher hands
  * the file root directly.
  */

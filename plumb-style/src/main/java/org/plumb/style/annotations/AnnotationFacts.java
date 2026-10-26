@@ -77,7 +77,7 @@ public final class AnnotationFacts {
           "org.springframework.data.annotation.Persistent");
 
   /**
-   * {@code @Transient} ? a JPA / Java field that is not persisted. Used by ORM_LOST_UPDATE /
+   * {@code @Transient} -- a JPA / Java field that is not persisted. Used by ORM_LOST_UPDATE /
    * ORM_UNNECESSARY_GET to skip persistence checks for these fields.
    */
   public static final Set<String> JPA_TRANSIENT =
@@ -99,7 +99,7 @@ public final class AnnotationFacts {
           "jakarta.persistence.GeneratedValue");
 
   /**
-   * Transactional method / class. Drives ORM_LOST_UPDATE ? a {@code @Transactional}-annotated
+   * Transactional method / class. Drives ORM_LOST_UPDATE -- a {@code @Transactional}-annotated
    * method that mutates an entity is supposed to commit the change at the end of the method, so the
    * engine flags detached / transient entities that the method forgot to persist.
    */
@@ -113,7 +113,7 @@ public final class AnnotationFacts {
 
   /**
    * Field-level persistence annotations. A field with one of these is the project's
-   * <em>canonical</em> form of a persistent field ? we use this in ORM_UNNECESSARY_GET to know
+   * <em>canonical</em> form of a persistent field -- we use this in ORM_UNNECESSARY_GET to know
    * which fields can be addressed by their column attribute rather than by loading the full row.
    */
   public static final Set<String> JPA_COLUMN =

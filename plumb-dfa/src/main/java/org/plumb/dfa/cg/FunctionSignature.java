@@ -47,7 +47,7 @@ import java.util.regex.Pattern;
  *   <li>{@code com.example.Foo#<init>():void} (a constructor)
  * </ul>
  *
- * <p>Acceptable inputs: any string parseable by {@link #parse(String)} ? supports the JNI-style
+ * <p>Acceptable inputs: any string parseable by {@link #parse(String)} -- supports the JNI-style
  * {@code Lcom/example/Helper;.doIt(Ljava/lang/String;)V} and the older {@code com.example.Foo#doIt}
  * (no param types) for backward compat.
  */

@@ -1,5 +1,5 @@
 /*
- * Coverity <code>HIBERNATE_BAD_HASHCODE</code> (CWE-579) ? fires
+ * Coverity <code>HIBERNATE_BAD_HASHCODE</code> (CWE-579) -- fires
  * when a JPA entity's {@code hashCode()} or {@code equals()}
  * method depends on a field annotated {@code @Id} (or
  * {@code @GeneratedValue}). The key is not assigned until
@@ -15,14 +15,14 @@
  * find the {@code hashCode()} / {@code equals(Object)} methods
  * and inspect their bodies. If the method body references a
  * field annotated {@code @Id} or {@code @GeneratedValue}
- * anywhere ? assignment, comparison, return, method-call
- * argument ? fire.</p>
+ * anywhere -- assignment, comparison, return, method-call
+ * argument -- fire.</p>
  *
  * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(ClassOrInterfaceDeclaration.class)} (1 walk).
  * The new implementation uses {@code visit(ClassOrInterfaceDeclaration)}
- * dispatched by {@code AstDispatcher} in a single walk ? 0
+ * dispatched by {@code AstDispatcher} in a single walk -- 0
  * redundant top-level walks. The two sub-walks per matched
  * class ({@code body.findAll(FieldAccessExpr)} +
  * {@code body.findAll(NameExpr)}) are unchanged because they

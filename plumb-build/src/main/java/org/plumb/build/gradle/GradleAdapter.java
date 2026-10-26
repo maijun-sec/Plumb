@@ -20,7 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * R-833 P1 ? Gradle build-system adapter.
+ * Gradle build-system adapter.
  *
  * <p>Recognises the standard marker files {@code build.gradle} (Groovy DSL), {@code
  * build.gradle.kts} (Kotlin DSL) and {@code settings.gradle}, {@code settings.gradle.kts}, plus the
@@ -48,10 +48,10 @@ import org.slf4j.LoggerFactory;
  * <h2>What we do NOT parse (out of scope for the adapter)</h2>
  *
  * <ul>
- *   <li>Plugin DSL ? we assume the Java/Kotlin JVM plugin (default {@code src/main/java} layout).
+ *   <li>Plugin DSL -- we assume the Java/Kotlin JVM plugin (default {@code src/main/java} layout).
  *       Custom source-set extensions are silently ignored (we still pick up the default paths).
- *   <li>buildSrc / composite builds ? the user can pass {@code --classpath} manually for those.
- *   <li>{@code platform(...)} / {@code enforcedPlatform(...)} BOM imports ? recorded with a debug
+ *   <li>buildSrc / composite builds -- the user can pass {@code --classpath} manually for those.
+ *   <li>{@code platform(...)} / {@code enforcedPlatform(...)} BOM imports -- recorded with a debug
  *       log; the user can supply the BOM jar via {@code --classpath}.
  * </ul>
  */
@@ -85,7 +85,7 @@ public final class GradleAdapter implements BuildAdapter {
 
   /**
    * {@code libs.foo.bar} (with optional dot-delimited nested aliases). The {@code [a-zA-Z_]+}
-   * segment keeps things conservative ? we won't accidentally swallow other identifiers.
+   * segment keeps things conservative -- we won't accidentally swallow other identifiers.
    */
   private static final Pattern CATALOG_REF =
       Pattern.compile("\\blibs\\.([a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*)");

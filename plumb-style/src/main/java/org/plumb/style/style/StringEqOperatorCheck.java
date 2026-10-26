@@ -8,7 +8,7 @@
  * heuristic: the operand is either a NameExpr
  * referring to a parameter/local whose declared
  * type is String, or it is a String literal (which
- * we still report on ? the developer comparing a
+ * we still report on -- the developer comparing a
  * literal with `==` is the canonical bug pattern
  * anyway), or it is a method call whose return type
  * looks like String (heuristic: callee name ends

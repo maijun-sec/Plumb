@@ -5,7 +5,7 @@
  *
  * <p>Fires on:</p>
  * <ul>
- *   <li>{@code Math.random()} ? non-cryptographic
+ *   <li>{@code Math.random()} -- non-cryptographic
  *       PRNG, returns {@code double} in [0,1).</li>
  *   <li>{@code new java.util.Random()} /
  *       {@code new java.util.Random(seed)} —

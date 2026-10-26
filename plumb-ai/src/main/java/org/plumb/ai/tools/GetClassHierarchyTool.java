@@ -12,13 +12,13 @@ import org.plumb.ai.agent.ToolDefinition;
 import org.plumb.ai.agent.ToolResult;
 
 /**
- * Step 3 ? return the {@code extends} / {@code implements} chain for a given class. Used by the bug
- * scanner to spot trust-boundary violations: a class extending {@code AbstractTrustedService} has
- * different security expectations than a plain POJO, and a class implementing
+ * Step 3 -- return the {@code extends} / {@code implements} chain for a given class. Used by the
+ * bug scanner to spot trust-boundary violations: a class extending {@code AbstractTrustedService}
+ * has different security expectations than a plain POJO, and a class implementing
  * {@code @FunctionalInterface} is almost certainly a lambda body that the static analyzer already
  * mis-read.
  *
- * <p>No IR dependency ? the tool is regex-only. Java grammar is regular enough for this: a single
+ * <p>No IR dependency -- the tool is regex-only. Java grammar is regular enough for this: a single
  * regex pulls {@code class Foo extends Bar implements Baz, Qux} out of a source file.
  *
  * <p>Limitations:
@@ -26,7 +26,7 @@ import org.plumb.ai.agent.ToolResult;
  * <ul>
  *   <li>Only sees the class declaration, not the full transitive ancestor chain. The LLM can call
  *       {@code get_class_hierarchy} recursively on each super to walk the chain.
- *   <li>Doesn't resolve FQN ? returns simple names. The LLM can pass {@code FQN} as the {@code
+ *   <li>Doesn't resolve FQN -- returns simple names. The LLM can pass {@code FQN} as the {@code
  *       class_name} to filter.
  *   <li>Doesn't follow generic type parameters ({@code class Foo<T extends Bar>}). The super name
  *       is captured without the {@code <...>}.

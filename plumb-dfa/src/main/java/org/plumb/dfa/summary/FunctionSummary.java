@@ -24,23 +24,23 @@ import org.plumb.tac.ir.TacFunction;
  * <h2>What's IN the summary</h2>
  *
  * <ul>
- *   <li>{@code paramOps} ? for each parameter index (0-based, after the receiver if any), the set
+ *   <li>{@code paramOps} -- for each parameter index (0-based, after the receiver if any), the set
  *       of {@link Operation}s the function performs on that parameter's value. A parameter with no
  *       entries was either not used or its effects matched no known pattern (the engine is silent
  *       in that case; absence of an entry is NOT a guarantee of "no effect").
- *   <li>{@code returnOps} ? operations on the function's return value. These tell the caller what
+ *   <li>{@code returnOps} -- operations on the function's return value. These tell the caller what
  *       to expect when the return is used in a sink or stored in a field.
- *   <li>{@code calleesReached} ? signatures of all called functions (so the engine can reconstruct
+ *   <li>{@code calleesReached} -- signatures of all called functions (so the engine can reconstruct
  *       the call graph at summary time, without re-traversing the IR).
- *   <li>{@code hasUnmodelledBehavior} ? true if the function has at least one {@link
+ *   <li>{@code hasUnmodelledBehavior} -- true if the function has at least one {@link
  *       Operation.HasUnmodelledBehavior}. Stored as a flag for O(1) consumer queries, rather than
  *       forcing the consumer to walk the per-param sets.
- *   <li>{@code stringOps} ? ordered list of {@link StringOp} passthroughs observed inside this
+ *   <li>{@code stringOps} -- ordered list of {@link StringOp} passthroughs observed inside this
  *       function (e.g. {@code arg.toLowerCase()}, {@code arg.trim()}). The two-pass analyzer uses
  *       this list to re-apply the passthroughs at the call site so a {@code helper(tainted) →
  *       t.toLowerCase() → return t} chain propagates taint to the caller's dest through the
  *       intermediate local.
- *   <li>{@code fieldOps} ? ordered list of {@link FieldOp} writes observed inside this function
+ *   <li>{@code fieldOps} -- ordered list of {@link FieldOp} writes observed inside this function
  *       (e.g. {@code this.data = d}). Each {@code FieldOp} carries the parameter index of the
  *       source so the {@code FieldTaintTracker} can propagate taint from the matching caller arg to
  *       the field write.

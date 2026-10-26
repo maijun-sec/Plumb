@@ -14,11 +14,11 @@ import java.util.Optional;
  * <h2>Two composition layers</h2>
  *
  * <ul>
- *   <li>{@link #withBuiltinDefaults()} ? register the 115 hard-coded entries for DFA checkers and
+ *   <li>{@link #withBuiltinDefaults()} -- register the 115 hard-coded entries for DFA checkers and
  *       the early-round taint / style / spotbugs-style rules. This is the only canonical list of
  *       pre- rules and the only code that mutates the {@link #byAlias} reverse index for cross-tool
  *       equivalence (PMD / SpotBugs / SonarQube Java / Checkstyle / Coverity).
- *   <li>{@link #registerFromChecker(Object)} ? read the {@code DEFAULT_RULE} static field (or its
+ *   <li>{@link #registerFromChecker(Object)} -- read the {@code DEFAULT_RULE} static field (or its
  *       synthetic {@code rule()} derivation) from an {@link org.plumb.style.AstChecker} and add it
  *       to the registry. The {@code AstChecker} is the single source of truth for its own metadata;
  *       the registry is just an index. This is how unified the 600+ AST checker rules with the
@@ -28,9 +28,9 @@ import java.util.Optional;
  *
  * <h2>Alias resolution</h2>
  *
- * <p>Rules carry a list of aliases ? canonical rule ids and names of equivalent rules in other rule
- * sources (PMD, SpotBugs, SonarQube Java, Checkstyle, Coverity). When {@link #byAlias(String)} is
- * called with a legacy id or a foreign id, the registry returns the canonical Plumb {@code
+ * <p>Rules carry a list of aliases -- canonical rule ids and names of equivalent rules in other
+ * rule sources (PMD, SpotBugs, SonarQube Java, Checkstyle, Coverity). When {@link #byAlias(String)}
+ * is called with a legacy id or a foreign id, the registry returns the canonical Plumb {@code
  * RuleDef}. The {@link org.plumb.style.StyleContext#report} pipeline uses this to keep emitted
  * findings tagged with the canonical rule id even when the checker still carries a hardcoded legacy
  * {@code DEFAULT_RULE}.
@@ -259,7 +259,7 @@ public final class RuleRegistry {
 
   /**
    * register a {@link RuleDef} sourced from an {@link org.plumb.style.AstChecker} via that
-   * checker's own {@code rule()} method. This is the single source of truth for AST checkers ? the
+   * checker's own {@code rule()} method. This is the single source of truth for AST checkers -- the
    * {@link org.plumb.style.AstCheckerRegistry} calls this for every discovered checker, and the
    * resulting {@code RuleDef} entry replaces any duplicate {@code withBuiltinDefaults()}
    * registration (the by-UUID / by-name indices are updated in place, so {@code byAlias()} lookups
@@ -342,7 +342,7 @@ public final class RuleRegistry {
 
   /**
    * look up a configured parameter for a rule. The registry itself doesn't store per-file overrides
-   * ? those live on the {@link org.plumb.style.StyleContext} ? so this method returns the
+   * -- those live on the {@link org.plumb.style.StyleContext} -- so this method returns the
    * <em>declared default</em> from the rule's own {@link RuleDef#parameters()} list, looked up by
    * the parameter {@code name}.
    *
@@ -358,7 +358,7 @@ public final class RuleRegistry {
    *   Integer myParam = ctx.paramOverride("myParam", Integer.class);
    *   if (myParam == null) {
    *       RuleDef def = registry.byName("MY_RULE").orElse(null);
-   *       myParam = (def == null) ? 10
+   *       myParam = (def == null) -- 10
    *                                 : def.parameters().stream()
    *                                       .filter(p -> p.name().equals("myParam"))
    *                                       .findFirst()
@@ -371,7 +371,7 @@ public final class RuleRegistry {
    * encapsulates the rule-scoped lookup; the registry's default-value fallback is a safety net for
    * tests and tools that don't carry a context.
    *
-   * @param ruleId the rule id (canonical UUID, name, or alias ? same lookup as {@link
+   * @param ruleId the rule id (canonical UUID, name, or alias -- same lookup as {@link
    *     #byAlias(String)})
    * @param name the parameter name
    * @param type the expected parameter type
@@ -451,7 +451,8 @@ public final class RuleRegistry {
    * DEFAULT_RULE} into this registry. Best-effort: a {@code ClassNotFoundException} means {@code
    * plumb-style} is not on the classpath (e.g. an isolated {@code plumb-ai} test); the mirror step
    * silently no-ops in that case. A {@code ReflectiveOperationException} of any other kind is
-   * logged and swallowed ? smoke tests should not depend on this side-effect for their correctness.
+   * logged and swallowed -- smoke tests should not depend on this side-effect for their
+   * correctness.
    *
    * <p>{@code plumb-rules} keeps a clean compile-time edge to {@code plumb-style} (the AST checker
    * types live in plumb-style), so this lookup goes through {@link Class#forName(String)} plus

@@ -35,7 +35,7 @@ import java.util.Objects;
  * through catch paths. Blocks inside a catch range whose last instruction is a {@code THROW}
  * (rethrow) get an extra successor pointing to the region's finally block (if any). The normal
  * successors (try-completion fall-through into finally, catch-completion fall-through into finally)
- * are the translator's responsibility ? the translator emits explicit {@code JUMP} instructions to
+ * are the translator's responsibility -- the translator emits explicit {@code JUMP} instructions to
  * L_FINALLY labels. This builder only wires the <em>non-normal</em> paths.
  */
 public final class TacCfgBuilder {

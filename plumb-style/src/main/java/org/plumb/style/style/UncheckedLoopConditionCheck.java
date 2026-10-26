@@ -1,11 +1,10 @@
 /*
- * Batch 3 ? Unchecked loop condition (CWE-674)
- * migrated from
- * plumb-dfa/.../checkers/UncheckedLoopConditionChecker.java.
+ * Flags a loop whose condition is not checked, so the loop may run forever
+ * (CWE-674).
  *
  * <p>The DFA source at
  * {@code plumb-dfa/.../checkers/UncheckedLoopConditionChecker.java}
- * is a deprecated placeholder ? the active
+ * is a deprecated placeholder -- the active
  * implementation lives in
  * {@code plumb-dfa/.../checkers/taint/UncheckedLoopConditionChecker.java}
  * (CWE-606 tainted loop bound). This AST check is the
@@ -15,8 +14,8 @@
  *
  * <p>Note: a richer CWE-835 implementation already lives
  * at {@code plumb-style/.../InfiniteLoopCheck.java}.
- * This rule is intentionally narrower ? constant-true
- * loops only, no modulo proof ? and uses a distinct CWE
+ * This rule is intentionally narrower -- constant-true
+ * loops only, no modulo proof -- and uses a distinct CWE
  * label (CWE-674 = unchecked recursion / unbounded loop)
  * so the two rules don't double-fire.</p>
  */
@@ -89,7 +88,7 @@ public final class UncheckedLoopConditionCheck implements AstChecker {
   /**
    * True if {@code n} (an Expression) is the literal {@code true}. Recognises the {@link
    * com.github.javaparser.ast.expr.BooleanLiteralExpr} form. We intentionally do not chase unary
-   * negation (i.e. {@code !false}) ? those are usually intentional placeholders for code being
+   * negation (i.e. {@code !false}) -- those are usually intentional placeholders for code being
    * fleshed out and emit too many FPs.
    */
   private static boolean isTrueLiteral(com.github.javaparser.ast.expr.Expression n) {
@@ -98,7 +97,7 @@ public final class UncheckedLoopConditionCheck implements AstChecker {
 
   /**
    * True if the loop body contains a {@code break} / {@code return} / {@code throw} that exits the
-   * loop. The check is intentionally shallow ? a deep control- flow analysis (e.g. {@code break}
+   * loop. The check is intentionally shallow -- a deep control- flow analysis (e.g. {@code break}
    * inside an inner loop or {@code if (a) return;} inside a nested block) is left to the
    * value-bounded proof in {@code InfiniteLoopCheck}.
    */
@@ -116,7 +115,7 @@ public final class UncheckedLoopConditionCheck implements AstChecker {
    * Does this {@code break} exit {@code enclosingLoopBody}? A bare {@code break;} exits the
    * innermost loop in the source tree; a labelled {@code break label;} exits the loop whose {@code
    * LabeledStmt} ancestor carries that label. We treat a bare {@code break} as exiting the nearest
-   * enclosing loop ? which the inner loop, not the body under test, in most cases. For the
+   * enclosing loop -- which the inner loop, not the body under test, in most cases. For the
    * conservative sketch we require the break to be in the same BlockStmt as the loop body's
    * first-level statements. This misses {@code break} inside a nested if/else but stays
    * FP-resistant.

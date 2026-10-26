@@ -30,7 +30,7 @@ import org.plumb.tac.ir.TacOperand;
  *
  * <ul>
  *   <li>The {@code getAttribute("k")} is in {@code doGet} and the {@code setAttribute("k", ...)} is
- *       in {@code doPost} ? different methods on the same servlet. The AST version only checks
+ *       in {@code doPost} -- different methods on the same servlet. The AST version only checks
  *       per-method, so it misses this race entirely.
  * </ul>
  *
@@ -39,13 +39,13 @@ import org.plumb.tac.ir.TacOperand;
  * <ol>
  *   <li>For every class (in any file in the program), collect every {@code
  *       session.getAttribute("k")} and {@code session.setAttribute("k", ...)} call. The key {@code
- *       "k"} is the first argument (must be a string literal for the checker to fire ? runtime keys
- *       can't be analysed statically).
+ *       "k"} is the first argument (must be a string literal for the checker to fire -- runtime
+ *       keys can't be analysed statically).
  *   <li>For each key with at least one {@code get} and at least one {@code set} across the program,
  *       fire once.
  * </ol>
  *
- * <p>The DFA checker doesn't attempt to verify synchronization ? the AST checker does that for
+ * <p>The DFA checker doesn't attempt to verify synchronization -- the AST checker does that for
  * in-method accesses. The DFA version is purely the "is the same attribute touched from multiple
  * methods" signal, which the AST can't see.
  */

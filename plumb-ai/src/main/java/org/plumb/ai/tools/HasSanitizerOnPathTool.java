@@ -24,11 +24,11 @@ import org.plumb.tac.ir.TacProgram;
  *
  * <ul>
  *   <li>A {@link TacInstruction.Kind#BRANCH} in the range that involves the variable (directly or
- *       via one MOVE hop) ? likely a guard.
+ *       via one MOVE hop) -- likely a guard.
  *   <li>A {@code CALL} to a known sanitiser method (escape family, validate family, setString
  *       family, etc.).
  *   <li>A {@code MOVE} that replaces the variable's RHS with a constant (e.g. {@code t_userId =
- *       ""}) ? usually a default / safe value.
+ *       ""}) -- usually a default / safe value.
  * </ul>
  *
  * <p>Returns the list of guard / sanitiser lines in the form {@code "L<line>: <kind> <details>"}.
@@ -37,7 +37,7 @@ import org.plumb.tac.ir.TacProgram;
 public class HasSanitizerOnPathTool implements Tool {
 
   /**
-   * Method simple-names the tool recognises as sanitiser / guard helpers. Conservative ? we'd
+   * Method simple-names the tool recognises as sanitiser / guard helpers. Conservative -- we'd
    * rather miss a custom sanitiser than flag a real one as "no sanitiser". The user can extend this
    * list by editing the source.
    */
@@ -223,7 +223,7 @@ public class HasSanitizerOnPathTool implements Tool {
 
   /**
    * True if the BRANCH condition involves {@code var} directly or via a chain of one MOVE hop.
-   * Conservative (single hop) ? the LLM can re-issue this with different variable names if needed.
+   * Conservative (single hop) -- the LLM can re-issue this with different variable names if needed.
    */
   private static boolean involvesVar(TacInstruction br, String var, TacFunction fn) {
     if (br.lhs1 instanceof TacOperand.TacVar v && var.equals(v.name())) {

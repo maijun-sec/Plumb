@@ -8,11 +8,11 @@ import java.util.List;
  * <p>The reply carries:
  *
  * <ul>
- *   <li>{@link #content} ? the model's free-form text. Empty when the model decided to call tools
+ *   <li>{@link #content} -- the model's free-form text. Empty when the model decided to call tools
  *       without any prose. The "final answer" detection scans this for a {@code "FINAL:"} prefix.
- *   <li>{@link #toolCalls} ? the model's tool requests. Empty when the model decided to answer
+ *   <li>{@link #toolCalls} -- the model's tool requests. Empty when the model decided to answer
  *       directly.
- *   <li>{@link #finishReason} ? OpenAI's {@code choices[0].finish_reason} field. {@code "stop"}
+ *   <li>{@link #finishReason} -- OpenAI's {@code choices[0].finish_reason} field. {@code "stop"}
  *       means the model finished its turn, {@code "tool_calls"} means the model wants to call
  *       tools, {@code "length"} means it ran out of tokens.
  * </ul>

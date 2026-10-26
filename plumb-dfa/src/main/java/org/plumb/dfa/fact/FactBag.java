@@ -26,7 +26,7 @@ import org.plumb.tac.ir.TacOperand.TacVar;
  * record that operand {@code x} carries {@code UntrustedSource("user-input")} AND {@code
  * UntrustedSource("header-X-Forwarded-For")} (the var was assigned from a sequence of sources). The
  * bag is a list so the consumer can walk every source. Duplicate facts (identical operand, kind,
- * value) are still allowed ? the consumer is expected to dedup at use time, not the bag.
+ * value) are still allowed -- the consumer is expected to dedup at use time, not the bag.
  *
  * <h2>Trait-driven propagation</h2>
  *

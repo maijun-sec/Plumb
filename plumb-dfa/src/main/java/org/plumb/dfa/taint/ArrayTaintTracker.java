@@ -22,9 +22,9 @@ import org.plumb.tac.ir.TacOperand;
  * <p>The {@link IndexKey} distinguishes three flavours:
  *
  * <ul>
- *   <li>{@code CONSTANT n} ? literal integer {@code n}. Stored as-is, so {@code a[0]} and {@code
+ *   <li>{@code CONSTANT n} -- literal integer {@code n}. Stored as-is, so {@code a[0]} and {@code
  *       a[1]} can carry independent taint.
- *   <li>{@code VAR aTacVar} ? symbolic index (e.g. {@code a[i]} where {@code i} is a local). Two
+ *   <li>{@code VAR aTacVar} -- symbolic index (e.g. {@code a[i]} where {@code i} is a local). Two
  *       {@code ARRAYLOAD}s with the same symbolic index share taint state. If the index is itself
  *       tainted, the tracker maps the symbolic index to the {@code ANY} marker, so any subsequent
  *       load through any index is treated as tainted.
@@ -57,7 +57,7 @@ public final class ArrayTaintTracker {
    * array store propagated from. When a subsequent {@code ARRAYLOAD} reads the array, the loader
    * attaches a real parent to the new PROPAGATE node via {@code addPropagate(parents=[v2Handle],
    * ...)} instead of treating the load as a fresh orphan SOURCE. {@code v2Handle=-1} means no
-   * recovered handle (legacy / non-tracked) ? loaders fall back to the orphan-SOURCE shape from .
+   * recovered handle (legacy / non-tracked) -- loaders fall back to the orphan-SOURCE shape from .
    */
   public record TaintedEntry(String label, List<FlowStep> path, int v2Handle) {
     public TaintedEntry {
@@ -139,7 +139,7 @@ public final class ArrayTaintTracker {
   }
 
   /**
-   * follow-up ? overload that records the v2 {@code Trace} handle of the source this array store
+   * follow-up -- overload that records the v2 {@code Trace} handle of the source this array store
    * propagated from. The handle is later recovered by {@link #readLoad} consumers (notably {@code
    * TaintedCheckerBase}'s {@code restoreArrayTaintOnLoad} site) so the load can attach a real
    * parent to the v2 PROPAGATE node instead of a fresh orphan SOURCE. Pass {@code -1} if the source
@@ -181,7 +181,7 @@ public final class ArrayTaintTracker {
    *       entry.
    * </ul>
    *
-   * <p>Lookup order: {@link IndexKey#Any} first (conservative ? any-tainted array → every load is
+   * <p>Lookup order: {@link IndexKey#Any} first (conservative -- any-tainted array → every load is
    * tainted), then exact key.
    */
   public TaintedEntry readLoad(TacOperand.TacVar arr, TacOperand indexOp) {

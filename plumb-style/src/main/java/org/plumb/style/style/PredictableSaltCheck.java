@@ -15,7 +15,7 @@
  *   - `Runtime.getRuntime().freeMemory()` /
  *     `totalMemory()` / `maxMemory()` / `availableProcessors()`.
  *
- * <p>Generic ? Juliet's CWE-760 bad() methods follow
+ * <p>Generic -- Juliet's CWE-760 bad() methods follow
  * exactly this pattern. Juliet's good() methods use
  * SecureRandom.nextBytes() or generateSeed() instead.</p>
  *

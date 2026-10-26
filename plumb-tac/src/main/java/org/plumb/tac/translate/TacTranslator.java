@@ -580,7 +580,7 @@ public final class TacTranslator {
 
   /**
    * Convert a JavaParser annotation list to simple-name form. The FQN {@code
-   * org.springframework.beans.factory.annotation.Value} becomes {@code Value} ? that's the only
+   * org.springframework.beans.factory.annotation.Value} becomes {@code Value} -- that's the only
    * shape checkers need. Strips the leading {@code @}. Deduplicates within the list.
    */
   private static List<String> extractAnnotationNames(NodeList<AnnotationExpr> anns) {

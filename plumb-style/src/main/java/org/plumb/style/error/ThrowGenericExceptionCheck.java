@@ -50,7 +50,7 @@ public final class ThrowGenericExceptionCheck implements AstChecker {
   /**
    * The set of exception class names that are "too generic" for a {@code throws}-clause.
    *
-   * <p>{@code Exception} is the canonical CWE-397 pattern. {@code Throwable} is even worse ? it
+   * <p>{@code Exception} is the canonical CWE-397 pattern. {@code Throwable} is even worse -- it
    * includes checked and unchecked AND {@code Error} (which should never be caught). {@code
    * RuntimeException} is unchecked but still forces the caller to decide between catching a generic
    * runtime error or letting it propagate.

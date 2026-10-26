@@ -1,5 +1,5 @@
 /*
- * ? shared v2 trace helpers for DFA checkers
+ * shared v2 trace helpers for DFA checkers
  * that detect patterns at a single call site
  * (no data flow, no cross-function propagation).
  *
@@ -19,7 +19,7 @@
  * "track data flow" detector (HardCodedKey,
  * HardCodedPasswordSink, ...), the per-class
  * tracking code uses {@code TraceBuilder.addPropagate}
- * directly ? this helper is for the
+ * directly -- this helper is for the
  * single-node pattern case.</p>
  */
 package org.plumb.dfa.trace;
@@ -42,7 +42,7 @@ public final class PatternTrace {
   /**
    * Emit a single-node v2 trace as a {@code VIOLATION} and report the finding via {@code
    * reportWithTrace}. The legacy v1 {@code dataflowSteps} are populated by {@link
-   * Finding#dfaWithTrace} flattening the single-node trace ? v1 consumers see a one-step path,
+   * Finding#dfaWithTrace} flattening the single-node trace -- v1 consumers see a one-step path,
    * identical to the pre- shape (a single violation step).
    */
   public static void report(
@@ -78,7 +78,7 @@ public final class PatternTrace {
   /**
    * follow-up: same as {@link #report} but the operand is a {@link OperandRef.Free} tag (e.g.
    * {@code "receiver:foo"}) rather than a {@link OperandRef.CallRef}. Used by checkers that detect
-   * "the receiver of a known-NULL flow" or "the value of a field compared with itself" ? the
+   * "the receiver of a known-NULL flow" or "the value of a field compared with itself" -- the
    * pattern is still a single-node VIOLATION but the "what's the call" question doesn't apply.
    */
   public static void reportFree(
@@ -115,7 +115,7 @@ public final class PatternTrace {
    * file-level scan variant. Used by DFA checkers that detect patterns in the source TEXT (regex /
    * comment / string literal scan) rather than in the TAC IR. Examples: {@code Cwe382SystemExit},
    * {@code Cwe526EnvVar}, {@code Cwe570AlwaysFalse}, {@code Cwe571AlwaysTrue}. The shared shape is
-   * still a single-node VIOLATION trace ? the only difference is that we don't have a {@link
+   * still a single-node VIOLATION trace -- the only difference is that we don't have a {@link
    * TacInstruction} to point at; instead we record the source line / column discovered by the regex
    * matcher.
    */

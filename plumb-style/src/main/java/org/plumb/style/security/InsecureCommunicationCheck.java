@@ -1,7 +1,6 @@
 /*
- * ? InsecureCommunicationCheck (CWE-319) migrated from
- * plumb-dfa/.../InsecureCommunicationChecker.java to
- * plumb-style AST.
+ * Flags insecure network communication: data sent over a channel that is
+ * not encrypted (CWE-319).
  *
  * <p>Flags construction of {@code java.net.URL} /
  * {@code java.net.URI} (and the {@code openConnection}
@@ -15,7 +14,7 @@
  * DFA half: only literal-string arguments fire. The DFA
  * half additionally walked a single MOVE to recover
  * {@code String url = "http://..."; new URL(url);}. The
- * AST half misses that case ? re-enable the DFA half if
+ * AST half misses that case -- re-enable the DFA half if
  * the DFA coverage gap matters; otherwise the AST half
  * is the canonical implementation.</p>
  */

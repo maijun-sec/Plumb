@@ -44,7 +44,7 @@ import sootup.java.core.views.JavaView;
  *       cross-class identifiers.
  * </ol>
  *
- * <p>Errors at any step are logged and the offending class is skipped ? we never want a malformed
+ * <p>Errors at any step are logged and the offending class is skipped -- we never want a malformed
  * .class to bring down the whole scan.
  *
  * <p><b>Multi-input support.</b> The {@link #BytecodeAnalyzer(List)} constructor accepts a list of
@@ -252,7 +252,7 @@ public final class BytecodeAnalyzer {
    *   <li><b>Archive input</b> ({@code .jar} / {@code .war} / {@code .ear} / {@code .zip}): report
    *       the archive file path (e.g. {@code lib.jar}). SootUp's per-class {@code getSourcePath()}
    *       returns the path inside the archive (e.g. {@code com/foo/Lib.class}), which is not what
-   *       the user wants to see in findings ? they want to know which {@code .jar} the class came
+   *       the user wants to see in findings -- they want to know which {@code .jar} the class came
    *       from.
    *   <li><b>Directory input</b>: report the actual {@code .class} file path (e.g. {@code
    *       D:/src/com/foo/Lib.class}). This matches the per-{@code .java} granularity of the AST

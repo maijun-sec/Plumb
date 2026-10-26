@@ -9,12 +9,12 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Comparing with null using {@code .equals(null)} ? should be {@code ==}.
+ * Comparing with null using {@code .equals(null)} -- should be {@code ==}.
  *
  * <p>M5 part-2 migration (2026-10-17): the previous implementation used {@code
  * visit(CompilationUnit) + findAll(MethodCallExpr.class)}, which costs one full-AST walk per file
- * just to find {@code MethodCallExpr} nodes ? wasted work because the dispatcher already gives us a
- * {@code visit(MethodCallExpr)} callback that fires once per {@code MethodCallExpr} with no extra
+ * just to find {@code MethodCallExpr} nodes -- wasted work because the dispatcher already gives us
+ * a {@code visit(MethodCallExpr)} callback that fires once per {@code MethodCallExpr} with no extra
  * walking. This rewrite uses the per-node-type callback directly; behaviour is unchanged.
  */
 public final class EqualsNullCheck implements AstChecker {

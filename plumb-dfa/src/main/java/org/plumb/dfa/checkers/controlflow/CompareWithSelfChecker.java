@@ -19,9 +19,9 @@ import org.plumb.tac.ir.TacOperand;
  * <p>Detects the classic <em>compare-with-self</em> pattern:
  *
  * <ul>
- *   <li>{@code if (x == x) ...} ? always true (CWE-571). The body executes unconditionally. CWE-561
- *       (Dead Code) is a related but distinct finding for the same pattern.
- *   <li>{@code if (x != x) ...} ? always false (CWE-570). The body is unreachable.
+ *   <li>{@code if (x == x) ...} -- always true (CWE-571). The body executes unconditionally.
+ *       CWE-561 (Dead Code) is a related but distinct finding for the same pattern.
+ *   <li>{@code if (x != x) ...} -- always false (CWE-570). The body is unreachable.
  * </ul>
  *
  * <p>The DFA tracks per-function alias classes (the same mechanism as {@link

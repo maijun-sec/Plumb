@@ -23,7 +23,7 @@ import org.plumb.tac.ir.TacOperand;
  * on the call's destination operand, and writes the side-effect record as a {@code
  * SIDE_EFFECT_RECORDED} fact on the call site itself.
  *
- * <p>The applier does <i>not</i> decide whether the fold is semantically correct ? the builder is
+ * <p>The applier does <i>not</i> decide whether the fold is semantically correct -- the builder is
  * path- insensitive, the side- effect set is a sound over- approximation. The caller's checker
  * decides what to do with the fact (e.g. a divide-by-zero checker sees {@code const:5} on the
  * divisor's dest and concludes {@code divisor != 0} for that path).
@@ -63,7 +63,7 @@ public final class SummaryApplier {
    * RETURN_PARAM} with a real caller's operand name, when desired).
    *
    * <p>Returns the {@link MethodSummary} that was applied (or {@code null} if the cache has no
-   * entry for the callee ? e.g. a library call).
+   * entry for the callee -- e.g. a library call).
    */
   public static MethodSummary apply(
       TacInstruction call, AnalysisContext ctx, List<TacOperand> args) {
@@ -135,8 +135,8 @@ public final class SummaryApplier {
    * difference is acceptable because the {@link MethodSummary} is a per-method view (the {@link
    * org.plumb.dfa.summary.ReturnShape} encodes the return value regardless of arity, and the
    * side-effect set already tracks writes-param:N for any N). Multiple overloads of the same method
-   * name would collide ? for Juliet this never happens; the general case is a known limitation (see
-   * fallbackParse's doc for details).
+   * name would collide -- for Juliet this never happens; the general case is a known limitation
+   * (see fallbackParse's doc for details).
    */
   static FunctionSignature fallbackParse(String calleeSig) {
     if (calleeSig == null || calleeSig.isEmpty()) return null;

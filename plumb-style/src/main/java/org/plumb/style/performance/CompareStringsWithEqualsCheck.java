@@ -23,7 +23,7 @@ import org.plumb.style.StyleContext;
  * declared in a different module), we fall back to: a {@code StringLiteralExpr} is always
  * considered string-like, and a {@code NameExpr} whose lowercased name contains {@code string}
  * (case-insensitive, very narrow) is considered string-like. We do NOT continue the old broad
- * substring heuristic ? that produced more noise than signal.
+ * substring heuristic -- that produced more noise than signal.
  */
 public final class CompareStringsWithEqualsCheck implements AstChecker {
 

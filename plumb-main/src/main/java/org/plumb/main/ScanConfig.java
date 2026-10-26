@@ -63,8 +63,8 @@ public final class ScanConfig {
   public org.plumb.build.BuildProject buildProject;
 
   /**
-   * — Call-graph construction strategy passed to the {@code plumb-dfa} engine. Default is {@code
-   * "global"} (cross-TU signature lookup) ? the project directive is that analysis must be global,
+   * Call-graph construction strategy passed to the {@code plumb-dfa} engine. Default is {@code
+   * "global"} (cross-TU signature lookup) -- the project directive is that analysis must be global,
    * so the TU-local {@code "cha"} / {@code "rta"} / {@code "vta"} / {@code "1cfa"} / {@code "stub"}
    * paths are only used when the user explicitly asks. Accepts the same names {@link
    * org.plumb.dfa.cg.CallGraphStrategyFactory#create} and {@link
@@ -74,17 +74,17 @@ public final class ScanConfig {
    *   <li>{@code "global"} — <b>default</b>. Cross-TU resolution via {@link
    *       org.plumb.dfa.cg.GlobalTACStore} + signature lookup. Used by {@link
    *       org.plumb.dfa.engine.DfaEngine#runWithGlobalStore}.
-   *   <li>{@code "cha"} ? Class Hierarchy Analysis, fast / conservative (sound over-approximation
+   *   <li>{@code "cha"} -- Class Hierarchy Analysis, fast / conservative (sound over-approximation
    *       of virtual calls). TU-local.
-   *   <li>{@code "rta"} ? Rapid Type Analysis, more precise than CHA, slower. TU-local.
-   *   <li>{@code "vta"} ? Variable Type Analysis, tracks variable types through assignments, even
+   *   <li>{@code "rta"} -- Rapid Type Analysis, more precise than CHA, slower. TU-local.
+   *   <li>{@code "vta"} -- Variable Type Analysis, tracks variable types through assignments, even
    *       more precise than RTA. TU-local.
-   *   <li>{@code "1cfa"} ? 1-CFA context-sensitive analysis, distinguishes same-method invocations
+   *   <li>{@code "1cfa"} -- 1-CFA context-sensitive analysis, distinguishes same-method invocations
    *       from different call sites. TU-local.
-   *   <li>{@code "stub"} ? only direct calls, no virtual resolution. Fastest; for tests / debug.
+   *   <li>{@code "stub"} -- only direct calls, no virtual resolution. Fastest; for tests / debug.
    *       TU-local.
-   *   <li>{@code "cached:<name>:<path>"} ? wrap {@code <name>} with a disk cache at {@code <path>};
-   *       cache key is a hash of the source file set.
+   *   <li>{@code "cached:<name>:<path>"} -- wrap {@code <name>} with a disk cache at {@code
+   *       <path>}; cache key is a hash of the source file set.
    * </ul>
    */
   public String cgStrategy = "global"; // R694 T4: VTA was the legacy single-pass default; R761
@@ -246,7 +246,7 @@ public final class ScanConfig {
   // threshold field in plumb-style.
 
   /**
-   * R-PATCH: when true, rules.enabled acts as a strict whitelist ? every rule not listed is
+   * R-PATCH: when true, rules.enabled acts as a strict whitelist -- every rule not listed is
    * force-disabled. Default false (preserves original Plumb behavior of force-enabling).
    */
   public boolean whitelistMode = false;
@@ -283,13 +283,13 @@ public final class ScanConfig {
 
   /**
    * LLM connection settings. Replaces the old {@code AIConfig} (deleted). Holds the provider, base
-   * URL, API key, model, timeout ? just the HTTP plumbing, no behaviour flags.
+   * URL, API key, model, timeout -- just the HTTP plumbing, no behaviour flags.
    *
    * <p>Each checker's rule prompt lives in the checker itself ({@code DfaChecker.getAiPrompt} or
    * {@code AstChecker.getAiPrompt}). The runner looks up the right checker for each finding, calls
    * its {@code getAiPrompt}, and sends the prompt + finding context to the LLM.
    *
-   * <p>{@code aiDedupRules} is a per-rule allowlist ? empty means "every rule that has a prompt".
+   * <p>{@code aiDedupRules} is a per-rule allowlist -- empty means "every rule that has a prompt".
    * {@code dropOnAiFp} controls whether findings tagged FP are dropped or kept with {@code
    * ai_verdict=FP}.
    */
@@ -328,7 +328,7 @@ public final class ScanConfig {
    * Outer key = rule id (the same string the AST checker uses as its {@code name()} or its
    * canonical rule id); inner key = parameter name (e.g. {@code "max"}, {@code "ignoreNumbers"});
    * value = {@link String} / {@link Integer} / {@link Boolean} matching the rule's {@link
-   * org.plumb.rules.RuleParameter.Type}. Empty by default ? checker falls back to its declared
+   * org.plumb.rules.RuleParameter.Type}. Empty by default -- checker falls back to its declared
    * {@code RuleParameter.defaultValue()}.
    */
   public java.util.Map<String, java.util.Map<String, Object>> ruleParams =

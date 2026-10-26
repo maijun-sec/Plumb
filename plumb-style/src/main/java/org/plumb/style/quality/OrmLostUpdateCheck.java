@@ -1,5 +1,5 @@
 /*
- * Coverity <code>ORM_LOST_UPDATE</code> / <code>ORM_ABANDONED_TRANSIENT</code> (CWE-459) ? fires when
+ * Coverity <code>ORM_LOST_UPDATE</code> / <code>ORM_ABANDONED_TRANSIENT</code> (CWE-459) -- fires when
  * a transient JPA entity is created and mutated but never passed to {@code persist}/{@code save}
  * (or {@code merge}/{@code update} for a detached entity).
  *
@@ -221,7 +221,7 @@ public final class OrmLostUpdateCheck implements AstChecker {
    * P1#7 invariant check. The dispatcher walks the AST in pre-order (parent before children), so
    * {@link #visit(ClassOrInterfaceDeclaration, StyleContext)} must run before {@code
    * visit(MethodDeclaration, StyleContext)} for any class. If the method body references an entity
-   * class name that we have not yet collected, the dispatcher has changed its walk order ? log a
+   * class name that we have not yet collected, the dispatcher has changed its walk order -- log a
    * single warning per file so the operator can fix the dispatcher before findings silently
    * degrade.
    */

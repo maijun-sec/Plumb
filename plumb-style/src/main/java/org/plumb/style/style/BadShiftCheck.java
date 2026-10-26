@@ -1,7 +1,6 @@
 /*
- * ? BadShift check (CWE-758) migrated from
- * plumb-dfa/.../checkers/BadShiftChecker.java to
- * plumb-style AST.
+ * Flags a shift whose distance is out of range for the type being shifted
+ * (CWE-758).
  *
  * <p>Detects suspicious shift counts in {@code <<},
  * {@code >>}, {@code >>>}. Two patterns fire when the
@@ -27,7 +26,7 @@
  * <p><b>Migration note.</b> The previous DFA half walked
  * TAC IR and unwrapped a single {@code MOVE} or
  * {@code UNARYOP NEG} to recover a constant. The AST
- * version only fires on integer-literal RHS ? the
+ * version only fires on integer-literal RHS -- the
  * equivalent of "MOVE int" with no further unwrapping.
  * This is a strict subset of the DFA half: the AST
  * version is more conservative (fewer FPs at the cost of
@@ -121,8 +120,8 @@ public final class BadShiftCheck implements AstChecker {
 
   /**
    * Try to extract a constant int / long value from a literal expression. Returns {@link
-   * Long#MIN_VALUE} when the RHS is not a literal ? the visit() caller treats that as "not a static
-   * constant, skip".
+   * Long#MIN_VALUE} when the RHS is not a literal -- the visit() caller treats that as "not a
+   * static constant, skip".
    */
   private static long literalCount(Expression e) {
     if (e instanceof IntegerLiteralExpr il) {
@@ -156,7 +155,7 @@ public final class BadShiftCheck implements AstChecker {
 
   /**
    * Bit width derived from the LHS expression's declared type. Falls back to 32 (int) when the type
-   * is unknown ? matches the previous DFA half's assumption.
+   * is unknown -- matches the previous DFA half's assumption.
    *
    * <p>The signature accepts the surrounding {@link Expression} as well so we can inspect a wider
    * context when the LHS itself is a literal (e.g. {@code 1 << 32}: the literal's type comes from

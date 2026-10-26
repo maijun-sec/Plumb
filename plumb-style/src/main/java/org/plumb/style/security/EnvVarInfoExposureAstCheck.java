@@ -15,7 +15,7 @@
  *       (the source: env var read)
  * in the same statement.
  *
- * <p>Pattern is generic ? any Java servlet / handler
+ * <p>Pattern is generic -- any Java servlet / handler
  * that pulls a secret from an env var and shoves it
  * into an HTTP response / log line is flagged. No
  * Juliet-specific content.</p>

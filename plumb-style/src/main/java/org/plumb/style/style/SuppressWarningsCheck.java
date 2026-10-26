@@ -16,7 +16,7 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * @SuppressWarnings should be specific ? unimplemented.
+ * @SuppressWarnings should be specific -- unimplemented.
  *
  * <p>Detection requires annotation processing / symbol resolution which is outside the AST pass.
  * Kept as a registry-skipped placeholder; an analyzer-level checker should replace this when

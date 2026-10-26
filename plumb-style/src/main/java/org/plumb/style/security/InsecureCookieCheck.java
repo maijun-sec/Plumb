@@ -1,12 +1,12 @@
 /*
- * ? InsecureCookieCheck (CWE-614) migrated from
- * plumb-dfa/.../InsecureCookieChecker.java to plumb-style AST.
+ * Flags an insecure cookie: one that carries sensitive data without the
+ * Secure flag (CWE-614).
  *
  * <p>Flags construction of a {@code Cookie} (or
  * {@code javax.servlet.http.Cookie}) when the cookie is
  * added to the response (via {@code addCookie(...)})
  * without an obvious secure-flag set (heuristic: the
- * argument variable's name does not contain "Secure" ? a
+ * argument variable's name does not contain "Secure" -- a
  * conservative approximation; the DFA half tracked the
  * receiver's setSecure call per type).</p>
  *
@@ -17,7 +17,7 @@
  * {@code addCookie(myCookie)}). The DFA half additionally
  * tracked the case where the SAME receiver variable that
  * was passed to {@code new Cookie(...)} had
- * {@code .setSecure(true)} called on it earlier ? i.e. a
+ * {@code .setSecure(true)} called on it earlier -- i.e. a
  * flow-sensitive analysis that AST cannot easily reproduce
  * without per-method state. We use a simple per-method
  * {@code cookieNamesEverSetSecure} set populated by

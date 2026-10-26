@@ -10,14 +10,14 @@ import org.plumb.tac.ir.TacProgram;
  * <p>Selected by name. The CLI flag {@code --cg-strategy} maps to:
  *
  * <ul>
- *   <li>{@code cha} ? {@link ChaCallGraphStrategy} (default, fast, conservative)
- *   <li>{@code rta} ? {@link RtaCallGraphStrategy} (slower, more precise)
- *   <li>{@code vta} ? {@link VtaCallGraphStrategy} (per-variable points-to sets)
- *   <li>{@code 1cfa} ? {@link OneCfaCallGraphStrategy} (VTA + per-function union filter)
- *   <li>{@code 2cfa} ? {@link TwoCfaCallGraphStrategy} (2-hop forward context widening: f's own
+ *   <li>{@code cha} -- {@link ChaCallGraphStrategy} (default, fast, conservative)
+ *   <li>{@code rta} -- {@link RtaCallGraphStrategy} (slower, more precise)
+ *   <li>{@code vta} -- {@link VtaCallGraphStrategy} (per-variable points-to sets)
+ *   <li>{@code 1cfa} -- {@link OneCfaCallGraphStrategy} (VTA + per-function union filter)
+ *   <li>{@code 2cfa} -- {@link TwoCfaCallGraphStrategy} (2-hop forward context widening: f's own
  *       points-to ∪ all direct callees' points-to)
- *   <li>{@code stub} ? {@link StubCallGraphStrategy} (only direct calls)
- *   <li>{@code cached:<name>:<path>} ? wraps {@code <name>} with a JSON cache at {@code <path>}.
+ *   <li>{@code stub} -- {@link StubCallGraphStrategy} (only direct calls)
+ *   <li>{@code cached:<name>:<path>} -- wraps {@code <name>} with a JSON cache at {@code <path>}.
  *       The cache key is the SHA-256 of the program's source list, so different source roots get
  *       separate caches automatically.
  * </ul>
@@ -76,9 +76,9 @@ public final class CallGraphStrategyFactory {
    * available strategies are:
    *
    * <ul>
-   *   <li>{@code global} ? {@link GlobalCallGraphStrategy} (default, uses the global store to
+   *   <li>{@code global} -- {@link GlobalCallGraphStrategy} (default, uses the global store to
    *       resolve callees across TUs)
-   *   <li>{@code cached:global:<path>} ? wraps {@code global} with a JSON cache at {@code <path>}
+   *   <li>{@code cached:global:<path>} -- wraps {@code global} with a JSON cache at {@code <path>}
    * </ul>
    *
    * <p>Unlike the single-TU factory, these strategies do not depend on a CHA / RTA analysis of the

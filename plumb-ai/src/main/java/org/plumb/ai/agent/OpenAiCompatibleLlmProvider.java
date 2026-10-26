@@ -38,12 +38,12 @@ import org.slf4j.LoggerFactory;
  * <h2>Two entry points</h2>
  *
  * <ul>
- *   <li>{@link #chat(String, String)} ? single-prompt call. Used by the "single-prompt" fallback in
- *       {@link ReActAgent} when the model doesn't need tools. Supports both OpenAI-shape and
+ *   <li>{@link #chat(String, String)} -- single-prompt call. Used by the "single-prompt" fallback
+ *       in {@link ReActAgent} when the model doesn't need tools. Supports both OpenAI-shape and
  *       Anthropic native endpoints (it dispatches on {@link LlmConnection.Provider}).
- *   <li>{@link #chatWithTools(List, List, String, double)} ? Re-Act call. Carries the full
+ *   <li>{@link #chatWithTools(List, List, String, double)} -- Re-Act call. Carries the full
  *       conversation history and the tool catalog. Returns one {@link LlmReply} (text + optional
- *       tool calls). OpenAI-shape only ? throws {@link UnsupportedOperationException} for native
+ *       tool calls). OpenAI-shape only -- throws {@link UnsupportedOperationException} for native
  *       Anthropic. The Re-Act agent handles the loop, this method only speaks the wire protocol.
  * </ul>
  *
@@ -109,9 +109,9 @@ public final class OpenAiCompatibleLlmProvider implements LlmProvider {
   // ─── Re-Act path ─────────────────────────────────────
 
   /**
-   * — Re-Act entry point. One chat-completion call carrying the full conversation history + the
-   * tool catalog. Returns the model's reply (one turn): text + optional tool calls. Returns {@code
-   * null} on transport / parse failure; the Re-Act agent treats that as a fatal run error.
+   * Re-Act entry point. One chat-completion call carrying the full conversation history + the tool
+   * catalog. Returns the model's reply (one turn): text + optional tool calls. Returns {@code null}
+   * on transport / parse failure; the Re-Act agent treats that as a fatal run error.
    *
    * <p>OpenAI's tool-calling schema is just JSON: the {@code tools} field is an array of {@code
    * {"type":"function","function":{...}}}, the response has {@code choices[0].message.tool_calls}

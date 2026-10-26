@@ -26,16 +26,16 @@ import org.plumb.tac.ir.TacOperand;
  * <p><b>What the DFA version catches that AST misses.</b>
  *
  * <ul>
- *   <li>Persistence through a service wrapper ? {@code void create() { User u = new User();
+ *   <li>Persistence through a service wrapper -- {@code void create() { User u = new User();
  *       u.setName("x"); service.save(u); }} where {@code service.save} is a one-line method that
  *       calls {@code dao.persist(u)}. The AST only sees {@code service.save(u)} and doesn't know
  *       whether the call persists the entity. The DFA checker looks up {@code save}'s summary,
  *       finds a {@link Operation.PersistsParam} recorded on parameter 0, and concludes the entity
  *       was persisted.
- *   <li>Persistence through a chain of helpers ? {@code service.save(u)} → {@code
+ *   <li>Persistence through a chain of helpers -- {@code service.save(u)} → {@code
  *       repository.persist(u)} → {@code entityManager.persist(u)}: the FunctionSummary chain
  *       propagation handles arbitrary depth (each callee's summary is consulted, transitively).
- *   <li>Transient-with-mutation ? when the transient entity's field is mutated via a helper method
+ *   <li>Transient-with-mutation -- when the transient entity's field is mutated via a helper method
  *       (e.g. {@code u.setName("x")} inside a setter that writes the field), the DFA walker still
  *       detects the mutation (because FIELDSTORE happens inside the callee) and concludes the
  *       entity is "in flight" enough to warrant a finding if it never reaches a persist call.
@@ -59,12 +59,12 @@ import org.plumb.tac.ir.TacOperand;
  *   <li>At {@code finishFunction}, for every transient entity that was mutated but never reached a
  *       persist call (directly or transitively), report <code>ORM_LOST_UPDATE</code>.
  *   <li>At {@code summarizeFunction}, the checker contributes a {@code PersistsParam} Operation for
- *       every parameter that this function passes to a JPA persist method ? so callers (and other
+ *       every parameter that this function passes to a JPA persist method -- so callers (and other
  *       checkers) can see the persistence through the summary chain.
  * </ol>
  *
  * <p><b>What the DFA version deliberately does not do.</b> The DFA checker uses a pure-name
- * heuristic for "is this an entity type" ? any {@code new X()} where X is not on the JDK deny-list
+ * heuristic for "is this an entity type" -- any {@code new X()} where X is not on the JDK deny-list
  * is a candidate. This is intentionally permissive: the AST checker has the precise {@code @Entity}
  * annotation, the DFA checker would otherwise need cross-class metadata. The false-positive risk is
  * small because a "mutated but not persisted" allocation is almost always a real defect, regardless
@@ -82,7 +82,7 @@ public final class OrmLostUpdateDfaChecker implements DfaChecker {
   /**
    * JDK / primitive-constructor types that are emphatically not JPA entities. Matches by callee
    * signature prefix (the part before {@code "#"}). A constructor call of {@code
-   * java.util.ArrayList#<init>}, for example, is a collection, not an entity ? the AST's
+   * java.util.ArrayList#<init>}, for example, is a collection, not an entity -- the AST's
    * {@code @Entity} check would never match it but the DFA's broader heuristic would otherwise
    * treat it as a candidate.
    */

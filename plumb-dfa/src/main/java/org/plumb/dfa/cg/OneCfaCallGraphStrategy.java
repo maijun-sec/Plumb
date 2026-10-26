@@ -20,8 +20,8 @@ import org.slf4j.LoggerFactory;
  * further refinement: a virtual call is resolved only against overrides whose declaring class
  * appears in the <i>caller's</i> union of points-to sets (across all of the caller's variables).
  * The intuition is that a virtual call in {@code caller.m} can only ever dispatch to a type the
- * caller itself has seen ? if the caller never instantiates {@code Cat}, the override {@code Cat#m}
- * cannot fire there even if the receiver's declared type would let it.
+ * caller itself has seen -- if the caller never instantiates {@code Cat}, the override {@code
+ * Cat#m} cannot fire there even if the receiver's declared type would let it.
  *
  * <p>This is a coarse approximation of 1-CFA: a full 1-CFA would track the call stack at every call
  * site and instantiate a fresh function summary per (caller, callee) pair. Here we only narrow the
@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
  * which is one extra pass per function.
  *
  * <p>Note: the strategy intentionally does <b>not</b> track per-callsite context inside a single
- * caller ? if two different call sites in the same caller resolve to disjoint override sets, the
+ * caller -- if two different call sites in the same caller resolve to disjoint override sets, the
  * join at the caller's points-to union will still keep both. That's the standard 0-CFA-vs-1-CFA
  * trade-off; the implementation is closer to 0-CFA but with a callee-side "what does the caller
  * know" filter.

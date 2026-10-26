@@ -21,7 +21,7 @@ public final class TypeMapper {
   /**
    * Variant of {@link #map(Type)} that <em>preserves generic type arguments</em> in the resulting
    * {@link TacType}'s class-name payload. Use this for any context where the type-arg information
-   * matters ? e.g. the function's declared return type, so {@code ResponseEntity<User>} keeps its
+   * matters -- e.g. the function's declared return type, so {@code ResponseEntity<User>} keeps its
    * {@code <User>} tail and {@code InformationExposureCheck} can inspect it.
    *
    * <p>Primitives, {@code String}, arrays and unknown types are mapped exactly as in {@link

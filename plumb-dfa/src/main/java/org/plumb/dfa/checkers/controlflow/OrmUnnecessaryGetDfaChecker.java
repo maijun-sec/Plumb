@@ -29,9 +29,9 @@ import org.plumb.tac.ir.TacOperand;
  * <ul>
  *   <li>Result of a {@code get}/{@code find} call is <em>never used at all</em> in the function (a
  *       dead store from the JPA point of view). The AST version explicitly suppresses this case
- *       (it's a different finding ? unused variable); the DFA version fires too, because Coverity's
- *       <code>ORM_UNNECESSARY_GET</code> covers the "the result is loaded but the entity contents
- *       are never used" pattern, of which "never used at all" is a special case.
+ *       (it's a different finding -- unused variable); the DFA version fires too, because
+ *       Coverity's <code>ORM_UNNECESSARY_GET</code> covers the "the result is loaded but the entity
+ *       contents are never used" pattern, of which "never used at all" is a special case.
  *   <li>Result is propagated through a {@code MOVE} (aliasing) to a different variable, then used
  *       as an argument. The AST version tracks the original variable; the DFA version follows the
  *       alias.
@@ -43,11 +43,11 @@ import org.plumb.tac.ir.TacOperand;
  *   <li>On a {@code CALL} to one of the documented {@code get}/{@code find}/{@code getById}/{@code
  *       read} methods, mark the dest {@link TacOperand.TacVar} as "from-get" in a per-function map.
  *   <li>Propagate the "from-get" mark through {@code MOVE} (aliasing).
- *   <li>A "from-get" var that's never read anywhere in the function is unnecessary ? fire on the
+ *   <li>A "from-get" var that's never read anywhere in the function is unnecessary -- fire on the
  *       original {@code get}/{@code find} call site.
  *   <li>A "from-get" var that's only used as an argument to other calls (no {@code FIELDLOAD} on
  *       the var, no method call on the var as receiver, no assignment to a field from the var's
- *       contents) is also unnecessary ? fire.
+ *       contents) is also unnecessary -- fire.
  * </ol>
  *
  * <p>The DFA checker is registered alongside the AST one. Their rule ids differ ({@code -dfa}
@@ -65,7 +65,7 @@ public final class OrmUnnecessaryGetDfaChecker implements DfaChecker {
   private Map<String, TacInstruction> getCallSite;
 
   /**
-   * v2 trace state. Per-function map from "from-get" var name to its v2 handle ? the {@code
+   * v2 trace state. Per-function map from "from-get" var name to its v2 handle -- the {@code
    * CALL_INSTANCE} source node, propagated through alias MOVEs.
    */
   private Map<String, Integer> v2HandleByVar;
@@ -221,7 +221,7 @@ public final class OrmUnnecessaryGetDfaChecker implements DfaChecker {
   }
 
   /**
-   * True if the variable is ever used in a way that accesses its contents ? read as a field
+   * True if the variable is ever used in a way that accesses its contents -- read as a field
    * receiver (FIELDLOAD), or assigned to a field whose value is later loaded, or used as a call
    * argument AND the callee's summary has a PassThrough op on the param. For now, the conservative
    * check is "used as field receiver or call argument". An arg-only use is a "reference only" use;

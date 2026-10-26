@@ -12,21 +12,21 @@ import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacProgram;
 
 /**
- * — find where a symbol (variable or method) is defined in the current function. The LLM uses this
- * to chase a tainted variable back to its MOVE / NEW / CALL definition site so it can reason about
+ * Find where a symbol (variable or method) is defined in the current function. The LLM uses this to
+ * chase a tainted variable back to its MOVE / NEW / CALL definition site so it can reason about
  * where the value came from (constant? request input? helper return?). For methods, the tool finds
- * the actual METHOD DECLARATION (the function itself) ? not the call sites. (Call sites are a
+ * the actual METHOD DECLARATION (the function itself) -- not the call sites. (Call sites are a
  * different tool: {@link FindCallersTool}. The previous version of this tool returned call sites
- * for {@code kind=method}, which confused the LLM's mental model ? M2.)
+ * for {@code kind=method}, which confused the LLM's mental model -- M2.)
  *
  * <p>Arguments:
  *
  * <ul>
- *   <li>{@code symbol} (string, required) ? the variable or method name to look for. Variable match
- *       is by {@link TacOperand.TacVar#name()} on the instruction's destination; method match is by
- *       the function's name (e.g. {@code "exec"} or {@code "com.example.Exec.exec"}).
- *   <li>{@code kind} (string, optional) ? {@code "var"} (default) or {@code "method"}. Switches the
- *       lookup target.
+ *   <li>{@code symbol} (string, required) -- the variable or method name to look for. Variable
+ *       match is by {@link TacOperand.TacVar#name()} on the instruction's destination; method match
+ *       is by the function's name (e.g. {@code "exec"} or {@code "com.example.Exec.exec"}).
+ *   <li>{@code kind} (string, optional) -- {@code "var"} (default) or {@code "method"}. Switches
+ *       the lookup target.
  * </ul>
  *
  * <p>Returns one line per definition site in the form {@code "<line>: <kind> <name> = <rhs>"} so
@@ -123,7 +123,7 @@ public class FindDefinitionsTool implements Tool {
    * M2 / M1: a function name matches the query when either (a) it equals the query exactly, (b) the
    * query is the function's simple name (FQN match), or (c) the query is the FQN tail preceded by
    * {@code "."}. The third clause requires the {@code "."} separator to avoid "Foo" matching
-   * "MyFoo" ? same fix as {@link FindCallersTool#matches}.
+   * "MyFoo" -- same fix as {@link FindCallersTool#matches}.
    */
   private static boolean matchesFunctionName(String fnName, String query) {
     if (fnName.equals(query)) return true;

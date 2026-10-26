@@ -179,7 +179,7 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
           // handle as the sink id.
           Trace v2Trace =
               v2Builder().build(java.util.List.of(sinkHandle), Trace.CompressionLevel.FULL);
-          // — keep the v1 source+violation
+          // Keep the source+violation
           // FlowStep pair so v1 consumers see
           // the same trace as pre-.
           List<FlowStep> steps = new ArrayList<>(2);
@@ -265,7 +265,7 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
                     fn.signature());
         Trace v2Trace =
             v2Builder().build(java.util.List.of(sinkHandle), Trace.CompressionLevel.FULL);
-        // — same source/violation FlowStep pair as the
+        // The same source/violation FlowStep pair as the
         // Thread.sleep branch. Reports where the tainted bound
         // came from + the actual violation site.
         List<FlowStep> steps = new ArrayList<>(2);

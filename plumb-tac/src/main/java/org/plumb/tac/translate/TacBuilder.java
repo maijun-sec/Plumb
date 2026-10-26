@@ -46,7 +46,7 @@ public final class TacBuilder {
    * Per-function field-expression cache. Keyed by the textual form of a {@code FieldAccessExpr}
    * (e.g. {@code "o.a"}), value is the {@link TacOperand.TacVar} that holds (or will hold) the
    * result of that field read. Populated when the translator lowers {@code String t1 = o.a;} so
-   * that a later {@code o.a.b = X;} can reuse {@code t1} as the FIELDSTORE's {@code lhs1} ? making
+   * that a later {@code o.a.b = X;} can reuse {@code t1} as the FIELDSTORE's {@code lhs1} -- making
    * {@code fieldMap[t1][b]} the natural storage for the write, which the chain walk in {@link
    * org.plumb.dfa.taint.TaintFact#taintOfChain} then discovers transitively. Without this cache the
    * translator would emit a fresh temp for the FIELDLOAD scope of the chained write, and the chain

@@ -10,7 +10,7 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Month literal in {@code 1..12} range passed to {@code set/add}/{@code MONTH} ? use {@code
+ * Month literal in {@code 1..12} range passed to {@code set/add}/{@code MONTH} -- use {@code
  * Calendar.JANUARY (0)} .. {@code Calendar.DECEMBER (11)} instead (DMI_BAD_MONTH).
  */
 public final class DmiBadMonthCheck implements AstChecker {

@@ -1,12 +1,12 @@
 /*
- * Trace ? the structured source-to-sink trace
+ * Trace -- the structured source-to-sink trace
  * attached to a {@link org.plumb.reporter.Finding} for
  * v2-aware checkers.
  *
  * <p>A {@code Trace} holds the full DAG of {@link
  * TraceNode}s plus the canonical {@code rootId} (the
  * SOURCE node) and the {@code sinkOrViolationIds}
- * (one or more SINK / VIOLATION nodes ? a single finding
+ * (one or more SINK / VIOLATION nodes -- a single finding
  * can have multiple sink candidates when the same
  * tainted value reaches two sinks in the same path).
  * Reporters iterate the DAG from {@code rootId} down to
@@ -20,7 +20,7 @@
  * back to the v1 {@code List<FlowStep>} for legacy
  * reporters (NDJSON, SARIF, console). The DAG is the
  * canonical store; the flattened view is a derived
- * projection. Compression is reversible ? {@link
+ * projection. Compression is reversible -- {@link
  * CompressionLevel#FULL} always emits every node; {@link
  * CompressionLevel#SUMMARIZED} collapses runs of
  * consecutive {@code PROPAGATE}-role nodes longer than

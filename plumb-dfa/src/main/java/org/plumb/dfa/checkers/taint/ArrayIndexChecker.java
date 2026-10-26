@@ -113,7 +113,7 @@ public final class ArrayIndexChecker extends TaintedCheckerBase {
       String src = (String) this.taintedVars.get(size);
       String msg = "Array allocation with tainted size: new T[" + size.name() + "]";
       String newArrayFlow = "unchecked-newarray: " + src;
-      // — single "violation" FlowStep. The taint
+      // Emit a single "violation" FlowStep. The taint
       // source is the input that flowed into `size`; the
       // step's expr carries the label.
       FlowStep newArrayStep =
@@ -159,7 +159,7 @@ public final class ArrayIndexChecker extends TaintedCheckerBase {
                 : "Array index out of bounds: store at index ")
             + index.name();
     String arrayOpFlow = "unchecked-index: " + src;
-    // — single "violation" FlowStep at the
+    // Emit a single "violation" FlowStep at the
     // ARRAYLOAD / ARRAYSTORE site.
     FlowStep arrayOpStep =
         new FlowStep(

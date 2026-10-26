@@ -114,7 +114,7 @@ public class ToolContext {
   /**
    * Read a file's bytes, hitting the cache. Returns {@code null} if the file cannot be read (tools
    * convert that to a {@code ToolResult.error} so the LLM can adjust). Safe to call concurrently
-   * from multiple agent runs sharing the same {@link ToolContext} ? the cache uses {@link
+   * from multiple agent runs sharing the same {@link ToolContext} -- the cache uses {@link
    * java.util.concurrent.ConcurrentHashMap} and the read is de-duplicated per path via {@link
    * java.util.concurrent.ConcurrentHashMap#putIfAbsent}.
    */

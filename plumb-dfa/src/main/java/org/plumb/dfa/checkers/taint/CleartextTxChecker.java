@@ -29,7 +29,7 @@
  * <p>The credential-focused sibling
  * ({@link CleartextNetworkCredentialSinkChecker})
  * is tagged CWE-319 too, but only fires on the
- * {@code db.credential.sinks} family ? i.e. the
+ * {@code db.credential.sinks} family -- i.e. the
  * JDBC / Kerberos / password sink patterns where
  * the password is consumed by a credential
  * subsystem. The general send-to-channel pattern
@@ -59,7 +59,7 @@ public final class CleartextTxChecker extends TaintedCheckerBase {
 
   /**
    * Custom AI prompt for the general CWE-319 send-sink family. The auto-generated default in {@link
-   * TaintedCheckerBase} says "Tainted value flows to cleartext-tx.sinks (CWE-319)" ? true but not
+   * TaintedCheckerBase} says "Tainted value flows to cleartext-tx.sinks (CWE-319)" -- true but not
    * very actionable. The LLM gets better verdicts with a focused rule that distinguishes TP (real
    * tainted sensitive data reaching a network channel) from FP (the PrintWriter is over a local log
    * file or System.out, not a network channel; or the tainted data is non-sensitive like a public

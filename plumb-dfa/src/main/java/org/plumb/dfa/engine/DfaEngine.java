@@ -127,7 +127,7 @@ public final class DfaEngine {
   private java.util.Map<String, java.nio.file.Path> functionSourcePaths;
 
   /**
-   * ? the {@link org.plumb.dfa.resolve.StaticFieldResolver} installed on every {@link
+   * The {@link org.plumb.dfa.resolve.StaticFieldResolver} installed on every {@link
    * AnalysisContext} the engine builds during {@link #run}. Set by the caller (e.g. ScanRunner via
    * {@link ProjectCompilationContext#staticFields()}) before {@link #run}; {@code null} means the
    * engine skips the const-static-field resolution branch and FIELDLOAD falls back to the
@@ -138,7 +138,7 @@ public final class DfaEngine {
   private org.plumb.dfa.resolve.StaticFieldResolver staticFieldResolver;
 
   /**
-   * ? install the {@link org.plumb.dfa.resolve.StaticFieldResolver} used by the engine. Volatile so
+   * Install the {@link org.plumb.dfa.resolve.StaticFieldResolver} used by the engine. Volatile so
    * parallel workers see the published value. Idempotent.
    */
   public void setStaticFieldResolver(org.plumb.dfa.resolve.StaticFieldResolver r) {
@@ -262,11 +262,11 @@ public final class DfaEngine {
   }
 
   /**
-   * ? pick the narrowest root the StaticFieldResolver can walk without timing out. Walks up from
-   * the input file's directory and prefers {@code <ancestor>/src/testcasesupport} (Juliet's IO
-   * helper root), then {@code <ancestor>/src} (Juliet's full tree, capped), then the file's own
-   * parent (single-file unit-test case). Returns {@code null} if no usable root can be found below
-   * the safety budget.
+   * Pick the narrowest root the StaticFieldResolver can walk without timing out. Walks up from the
+   * input file's directory and prefers {@code <ancestor>/src/testcasesupport} (Juliet's IO helper
+   * root), then {@code <ancestor>/src} (Juliet's full tree, capped), then the file's own parent
+   * (single-file unit-test case). Returns {@code null} if no usable root can be found below the
+   * safety budget.
    */
   private static java.nio.file.Path chooseResolverRoot(java.nio.file.Path absSample) {
     if (absSample == null) return null;

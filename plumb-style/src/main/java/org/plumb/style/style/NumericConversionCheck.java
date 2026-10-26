@@ -9,7 +9,7 @@
  * values and may lose information.</p>
  *
  * <p><strong>Why AST not taint:</strong> the pattern is
- * structural ? a CastExpr with a primitive target type and
+ * structural -- a CastExpr with a primitive target type and
  * a primitive source expression. No data flow needed.</p>
  */
 package org.plumb.style.style;

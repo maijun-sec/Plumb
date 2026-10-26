@@ -84,7 +84,7 @@ import sootup.core.types.VoidType;
  *       statement layer to consult.
  * </ul>
  *
- * <p>Everything that doesn't fit a known shape falls through to {@code TacType.UNKNOWN} ? a
+ * <p>Everything that doesn't fit a known shape falls through to {@code TacType.UNKNOWN} -- a
  * defensive choice that keeps the dataflow engine running instead of crashing on an unhandled
  * Jimple instruction (we log and continue, just like the AST translator).
  */
@@ -273,7 +273,7 @@ public final class JimpleOperandConverter {
    * bare name).
    *
    * <p>Previously this emitted {@code "FQN#method/Arity"} with a {@code #} separator, which the
-   * call-graph builder could not strip ? cross-class call resolution in the bytecode path was
+   * call-graph builder could not strip -- cross-class call resolution in the bytecode path was
    * silently broken. The AST path always used {@code .}, so unifying the two formats lets
    * multi-input and single-input bytecode scans resolve callees consistently. The byte-code format
    * doc note in the original JimpleOperandConverter claimed the format matched AST; this was a

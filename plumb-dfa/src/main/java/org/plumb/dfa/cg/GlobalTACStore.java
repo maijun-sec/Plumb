@@ -131,7 +131,7 @@ public final class GlobalTACStore {
 
   /**
    * Disable further registration and publish a stable view. After this call the store behaves as an
-   * immutable snapshot ? concurrent lookups are safe and reflect every function registered up to
+   * immutable snapshot -- concurrent lookups are safe and reflect every function registered up to
    * the freeze.
    */
   public synchronized GlobalTACStore freeze() {

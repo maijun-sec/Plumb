@@ -125,12 +125,12 @@ public final class IteratorConcurrentModificationChecker implements DfaChecker {
    * are:
    *
    * <ul>
-   *   <li>{@code "iterator/0"} ? for-each loop expansion (see {@code
+   *   <li>{@code "iterator/0"} -- for-each loop expansion (see {@code
    *       StatementTranslator.translateForEach}, line 278). The iterable is the only arg.
-   *   <li>{@code "{var}.iterator/0"} or {@code "{var}.listIterator/0"} ? explicit {@code
+   *   <li>{@code "{var}.iterator/0"} or {@code "{var}.listIterator/0"} -- explicit {@code
    *       list.iterator()} call. The variable name is the receiver prefix.
-   *   <li>{@code "{class}#iterator"} or {@code "{class}#iterator/0"} ? older translations that used
-   *       the FQ class name.
+   *   <li>{@code "{class}#iterator"} or {@code "{class}#iterator/0"} -- older translations that
+   *       used the FQ class name.
    * </ul>
    *
    * <p>We accept any of these and only inspect the method-name segment.

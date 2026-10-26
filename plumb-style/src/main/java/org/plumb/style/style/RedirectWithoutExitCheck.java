@@ -7,7 +7,7 @@
  * here we report every sendRedirect call site that is
  * NOT the last statement of its enclosing block.
  *
- * <p>Generic ? applies to any
+ * <p>Generic -- applies to any
  * `HttpServletResponse.sendRedirect` use. False
  * positives may fire if the developer has a control
  * flow path that returns after the redirect; the

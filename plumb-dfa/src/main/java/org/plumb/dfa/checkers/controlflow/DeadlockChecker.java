@@ -46,7 +46,7 @@
  *             same set of locks).</li>
  *         <li>If the sets match, compare the
  *             ORDER. If the orders differ,
- *             fire CWE-833 ? this is a
+ *             fire CWE-833 -- this is a
  *             classic AB-BA deadlock.</li>
  *       </ul>
  *   </li>
@@ -208,8 +208,8 @@ public final class DeadlockChecker implements DfaChecker {
 
   /**
    * Build a per-file function key for the collected map. Mirrors {@link
-   * MergedProgram#functionByMergedKey} ? bare {@code fn.signature()} alone collides when two Juliet
-   * test files define a {@code helperAddBad():void} with the same signature under different
+   * MergedProgram#functionByMergedKey} -- bare {@code fn.signature()} alone collides when two
+   * Juliet test files define a {@code helperAddBad():void} with the same signature under different
    * enclosing classes.
    */
   private static String mergedKey(TacFunction fn) {

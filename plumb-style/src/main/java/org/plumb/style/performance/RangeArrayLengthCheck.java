@@ -9,7 +9,7 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Array index uses {@code .length} directly ? should be {@code .length - 1} (RANGE_ARRAY_LENGTH).
+ * Array index uses {@code .length} directly -- should be {@code .length - 1} (RANGE_ARRAY_LENGTH).
  */
 public final class RangeArrayLengthCheck implements AstChecker {
 

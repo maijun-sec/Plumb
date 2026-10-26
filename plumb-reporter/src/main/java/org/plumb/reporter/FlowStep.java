@@ -1,14 +1,12 @@
 /*
- * unified FlowStep. Originally lived in
- * {@code plumb-dfa.engine.FlowStep}; moved to
- * {@code plumb.reporter} so that the reporter, the
- * NDJSON emitter, and the unified engine share a
- * single structured source-to-sink trace type.
+ * One step of a structured source-to-sink trace. It lives in
+ * {@code plumb.reporter} so that the reporter, the NDJSON emitter, and the
+ * unified engine all share a single trace type.
  *
  * <p>Each step records:</p>
  * <ul>
  *   <li>the role ({@code "source"} for the taint
- *       entry point ? function param, input source
+ *       entry point -- function param, input source
  *       call, or explicit
  *       {@code UntrustedSource} fact;
  *       {@code "propagate"} for intra-procedural
@@ -18,7 +16,7 @@
  *       for the violation point in a taint-style
  *       checker; {@code "violation"} for a
  *       single-step structural finding where the
- *       check does not propagate data ? e.g.
+ *       check does not propagate data -- e.g.
  *       use-after-free, resource-leak,
  *       empty-catch),</li>
  *   <li>the source file (best-effort; may be empty for
@@ -39,7 +37,7 @@
  * (NDJSON, SARIF, console) can render the full
  * source-to-sink path. The legacy single-string
  * {@link Finding#dataflowHead()} field is kept for
- * backwards compatibility ? its value is
+ * backwards compatibility -- its value is
  * conventionally the {@code expr} of the last
  * {@code "sink"} step.</p>
  */

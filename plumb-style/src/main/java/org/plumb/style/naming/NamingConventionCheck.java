@@ -8,7 +8,7 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Local variable starting with uppercase letter (non-{@code String} types) ? should be camelCase.
+ * Local variable starting with uppercase letter (non-{@code String} types) -- should be camelCase.
  */
 public final class NamingConventionCheck implements AstChecker {
 

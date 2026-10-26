@@ -20,7 +20,7 @@ import org.plumb.tac.ir.TacType;
  *   <li><b>Constant 0</b>: {@code x / 0} ⇒ divisor range {@code {0}} ⇒ canBeZero() = true ⇒ fire.
  *   <li><b>Unknown divisor</b>: {@code x / data} ⇒ divisor range is BOTTOM ⇒ canBeZero() = true ⇒
  *       fire (unless a guard says otherwise).
- *   <li><b>Guarded</b>: {@code if (data != 0) { x / data; }} ? DivZeroChecker's existing guard
+ *   <li><b>Guarded</b>: {@code if (data != 0) { x / data; }} -- DivZeroChecker's existing guard
  *       (`data != 0`) is recorded in {@link org.plumb.dfa.solver.GuardStore}; we consume it via
  *       {@code impliedGuard} and don't fire.
  * </ul>

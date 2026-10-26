@@ -11,10 +11,10 @@ import java.util.Map;
  * <p>Two wire protocols are supported:
  *
  * <ul>
- *   <li>OpenAI {@code /v1/chat/completions} ? used for {@link Provider#OPENAI} and {@link
+ *   <li>OpenAI {@code /v1/chat/completions} -- used for {@link Provider#OPENAI} and {@link
  *       Provider#OPENAI_COMPATIBLE} (and for {@link Provider#ANTHROPIC} when an OpenAI-compatible
  *       proxy like LiteLLM is in front of the Anthropic API). Full tool-calling support.
- *   <li>Anthropic {@code /v1/messages} ? only used for {@link Provider#ANTHROPIC} without a proxy.
+ *   <li>Anthropic {@code /v1/messages} -- only used for {@link Provider#ANTHROPIC} without a proxy.
  *       Single-prompt chat is implemented; tool-calling throws {@link
  *       UnsupportedOperationException}. Most production users run an OpenAI-compatible proxy
  *       (LiteLLM) so they get tool calling and a uniform schema.
@@ -30,13 +30,13 @@ import java.util.Map;
  *   <li>the explicit {@link #maxTokens} field on this record (if non-null), else
  *   <li>{@link #defaultMaxTokensFor(Provider, String)}, which looks up a per-model known-good value
  *       (Claude Sonnet/Opus: 200K, GPT-4o: 128K, GPT-3.5: 16K, o1/o3: 200K, DeepSeek V3: 64K,
- *       MiniMax-M3: 200K ? see the lookup table), or
+ *       MiniMax-M3: 200K -- see the lookup table), or
  *   <li>{@link #DEFAULT_MAX_TOKENS} = 200_000 as the final fallback for unknown models.
  * </ol>
  *
  * <p>The 200K default matches the operator expectation that "modern large models support hundreds
  * of thousands of tokens". For models with smaller windows, the per-model map returns the right
- * value automatically ? no operator config required for the common case.
+ * value automatically -- no operator config required for the common case.
  */
 public record LlmConnection(
     Provider provider,
@@ -57,7 +57,7 @@ public record LlmConnection(
   /**
    * Per-model output-token caps. Keyed by lowercased substring of the model name so we match {@code
    * "claude-3-5-sonnet-20250101"} and {@code "claude-3-5-sonnet-latest"} the same way. Values are
-   * conservative ? most vendors allow more in beta, but we stay on the GA cap so over-eager
+   * conservative -- most vendors allow more in beta, but we stay on the GA cap so over-eager
    * providers don't 400 us.
    *
    * <p>Sourced from each vendor's published model card as of early 2026. Add new entries here when
@@ -156,7 +156,7 @@ public record LlmConnection(
      * Anthropic's native {@code /v1/messages} endpoint. The single-prompt {@code chat()} path is
      * supported (no tool calling); the tool-calling path requires an OpenAI-compatible proxy
      * (LiteLLM, etc.) and throws {@link UnsupportedOperationException} if invoked with this
-     * provider ? see {@link OpenAiCompatibleLlmProvider}. {@link LlmConnection#isUsable()} returns
+     * provider -- see {@link OpenAiCompatibleLlmProvider}. {@link LlmConnection#isUsable()} returns
      * {@code false} when no API key is set for this provider.
      */
     ANTHROPIC,

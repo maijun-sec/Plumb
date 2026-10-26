@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
  * </ol>
  *
  * <p>Library calls (e.g. {@code java.lang.String#length}) are NOT registered as {@link CallSite}s
- * by default ? they live in the JRE which the analysis treats as opaque. Callers wanting a
+ * by default -- they live in the JRE which the analysis treats as opaque. Callers wanting a
  * library-aware analysis can override the library filter via {@link
  * #withIncludeLibraries(boolean)}.
  */
@@ -338,7 +338,7 @@ public final class CallGraphBuilder {
    * FunctionSignature#parse}). A match is exact-by-FQN. If multiple candidates match, the first one
    * wins. If no candidates match, the first one wins as the fallback.
    *
-   * <p>For instance methods, the first arg is the receiver ? the param types start from the SECOND
+   * <p>For instance methods, the first arg is the receiver -- the param types start from the SECOND
    * arg. The candidate function's param types are compared with {@code args[1..]} (skipping
    * args[0]). For static methods, the first arg is the first user param.
    *
@@ -368,7 +368,7 @@ public final class CallGraphBuilder {
   /**
    * Core overload of {@link #r48ResolveCalleeSigWithArgs} that takes a function-existence predicate
    * instead of a {@link TacProgram}. This lets {@link GlobalCallGraphBuilder} (which has no single
-   * {@code TacProgram} ? it has a {@link GlobalTACStore}) share the exact same arg-type-aware
+   * {@code TacProgram} -- it has a {@link GlobalTACStore}) share the exact same arg-type-aware
    * overload disambiguation logic without re-implementing it.
    *
    * <p>Per-TU code path uses {@code sig -> program.function(sig) != null} as the predicate. Global

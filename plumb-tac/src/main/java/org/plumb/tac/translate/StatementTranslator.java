@@ -48,7 +48,7 @@ public final class StatementTranslator {
   private final ThreadLocal<LoopCtx> loopCtx = ThreadLocal.withInitial(LoopCtx::new);
 
   /**
-   * End label of the innermost enclosing switch ? used by {@code break;} statements inside case
+   * End label of the innermost enclosing switch -- used by {@code break;} statements inside case
    * bodies to jump past the switch. Switch statements are lowered to an if/else-if chain (see
    * {@link #translateSwitch}), and {@code break} inside a case body must emit a {@code JUMP} to the
    * switch-end label, otherwise the body of subsequent cases is unreachable in TAC and downstream
@@ -649,7 +649,7 @@ public final class StatementTranslator {
       }
       for (int i = 0; i < ss.getEntries().size(); i++) {
         SwitchEntry entry = ss.getEntries().get(i);
-        // For each label, emit (disc == label) ? goto case_i : fall through.
+        // For each label, emit (disc == label) -- goto case_i : fall through.
         if (entry.getLabels().isEmpty()) {
           // default — unconditional branch
           b.emit(TacInstruction.builder(TacInstruction.Kind.JUMP).label(caseLabels.get(i)).build());

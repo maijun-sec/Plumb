@@ -92,7 +92,7 @@ public final class StyleContext {
   /**
    * M2: per-file cache of top-level method ranges, sorted by start line. Built lazily on the first
    * {@link #findEnclosingMethod} call and reused for every subsequent call. Before this cache,
-   * every finding triggered a full {@code unit.walk(MethodDeclaration)} ? for a file that produces
+   * every finding triggered a full {@code unit.walk(MethodDeclaration)} -- for a file that produces
    * N findings, that's N redundant traversals.
    *
    * <p>{@link #methodRanges} holds tuples {@code [startLine, endLine, signatureHash]}; {@link
@@ -111,7 +111,7 @@ public final class StyleContext {
 
   /**
    * construct a context with a pre-populated per-rule parameter map. The map's outer key is the
-   * rule id (or short name) ? the same string the runner will pass to {@link
+   * rule id (or short name) -- the same string the runner will pass to {@link
    * #setCurrentRule(String)} before each {@code init()}. The inner key is the parameter name (e.g.
    * {@code "max"}, {@code "ignoreNumbers"}). Values are {@link String}, {@link Integer}, or {@link
    * Boolean} (see {@link RuleParameter.Type}). A null {@code ruleParams} is treated as empty.
@@ -415,7 +415,7 @@ public final class StyleContext {
 
   /**
    * Lazily build the per-file method-range cache. Invalidated whenever the underlying
-   * CompilationUnit reference changes (defensive ? production always uses one ctx per source).
+   * CompilationUnit reference changes (defensive -- production always uses one ctx per source).
    */
   private void buildMethodCacheOnce(com.github.javaparser.ast.CompilationUnit unit) {
     if (methodRangesBuiltFor == unit && methodRanges != null) return;

@@ -5,7 +5,7 @@
  * implementation used {@code visit(CompilationUnit)} +
  * {@code n.findAll(MethodDeclaration)} (1 walk) + per-method
  * {@code m.findAll(VariableDeclarator)} + for EACH variable a
- * {@code m.findAll(AssignExpr)} ? 1 + N_v + N_v walks per file.
+ * {@code m.findAll(AssignExpr)} -- 1 + N_v + N_v walks per file.
  * The new implementation uses {@code visit(MethodDeclaration)} +
  * {@code visit(VariableDeclarationExpr)} +
  * {@code visit(AssignExpr)} dispatched by {@code AstDispatcher}

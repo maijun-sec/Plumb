@@ -1,10 +1,10 @@
 /*
- * unused import ? remove it.
+ * unused import -- remove it.
  *
  * <p><b>pattern A rewrite.</b> The previous
  * implementation had a {@code for (ImportDeclaration)} loop
  * with THREE {@code n.findAll(...)} calls inside it
- * (NameExpr + ClassOrInterfaceType + AnnotationExpr) ? worst
+ * (NameExpr + ClassOrInterfaceType + AnnotationExpr) -- worst
  * case N_imp × 3 walks. The new implementation hoists the
  * 3 sets out of the loop: a single walk of the
  * CompilationUnit populates 3 sets, then we check each

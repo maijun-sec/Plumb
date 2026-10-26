@@ -7,44 +7,44 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * R-833 ? Uniform project model produced by every {@link BuildAdapter}.
+ * Uniform project model produced by every {@link BuildAdapter}.
  *
  * <p>One {@code BuildProject} corresponds to the result of resolving one {@code projectRoot} (which
  * may be a multi-module Maven/Gradle/Bazel tree). The fields carry enough information to feed
  * {@code JavaSourceParser}'s {@code TypeSolver}:
  *
  * <ul>
- *   <li>{@link #sourceFiles} ? every {@code .java} source that the user wrote (NOT generated, NOT
+ *   <li>{@link #sourceFiles} -- every {@code .java} source that the user wrote (NOT generated, NOT
  *       test, by default). One entry per file.
- *   <li>{@link #testSourceFiles} ? same, but under {@code src/test/java}. Optional: the caller
+ *   <li>{@link #testSourceFiles} -- same, but under {@code src/test/java}. Optional: the caller
  *       decides whether to scan these.
- *   <li>{@link #classpathJars} ? third-party dependency jars (and exploded class folders) that the
+ *   <li>{@link #classpathJars} -- third-party dependency jars (and exploded class folders) that the
  *       user source compiles against. These feed the project's TypeSolver but never the TAC
- *       pipeline. See {@code plumb-main} --classpath semantics (R797).
- *   <li>{@link #sourceRoots} ? root directories the user source lives under. May be repeated for
+ *       pipeline. See the {@code plumb-main} --classpath semantics.
+ *   <li>{@link #sourceRoots} -- root directories the user source lives under. May be repeated for
  *       multi-module projects; each entry becomes one {@code --source-root} on the {@code SastMain}
  *       CLI.
- *   <li>{@link #moduleRoots} ? same as source roots, but with module semantics. Empty for a
+ *   <li>{@link #moduleRoots} -- same as source roots, but with module semantics. Empty for a
  *       single-module project.
- *   <li>{@link #modules} ? sub-modules keyed by module id (Maven {@code <artifactId>}, Gradle
+ *   <li>{@link #modules} -- sub-modules keyed by module id (Maven {@code <artifactId>}, Gradle
  *       project path, Bazel label suffix, Ant target name). Each value is the sub-module's own
  *       source / classpath so the caller can scope scans per module.
- *   <li>{@link #systemName} ? the build-system id, for logging.
- *   <li>{@link #version} ? the build-system version we resolved against (e.g. {@code "Maven
+ *   <li>{@link #systemName} -- the build-system id, for logging.
+ *   <li>{@link #version} -- the build-system version we resolved against (e.g. {@code "Maven
  *       3.9.9"}, {@code "Gradle 8.7"}). {@code null} when the adapter could not determine the
  *       version.
- *   <li>{@link #languageLevel} ? the Java source level declared by the project (e.g. {@code "8"},
+ *   <li>{@link #languageLevel} -- the Java source level declared by the project (e.g. {@code "8"},
  *       {@code "11"}, {@code "17"}). May be {@code null} when the adapter could not determine the
- *       level ? the parser then falls back to its default.
- *   <li>{@link #sourceEncoding} ? the source-file charset declared by the project (typical {@code
+ *       level -- the parser then falls back to its default.
+ *   <li>{@link #sourceEncoding} -- the source-file charset declared by the project (typical {@code
  *       UTF-8}, occasionally {@code ISO-8859-1} on legacy European codebases). May be {@code null}
- *       when the adapter could not determine the encoding ? the parser falls back to UTF-8.
+ *       when the adapter could not determine the encoding -- the parser falls back to UTF-8.
  * </ul>
  */
 public final class BuildProject {
 
   /**
-   * Module scope ? controls whether the module contributes its source to the main scan and which
+   * Module scope -- controls whether the module contributes its source to the main scan and which
    * classpath is consulted. Maven/Gradle models expose {@code compile}, {@code test}, {@code
    * runtime}; we surface them so downstream code can filter appropriately.
    */
@@ -56,7 +56,7 @@ public final class BuildProject {
     SYSTEM;
 
     /**
-     * Lenient parser ? accepts the canonical Maven scopes, plus the Gradle aliases {@code
+     * Lenient parser -- accepts the canonical Maven scopes, plus the Gradle aliases {@code
      * implementation} / {@code api} / {@code testImplementation} / {@code runtimeOnly} / {@code
      * compileOnly}. Anything unknown is mapped to {@link #COMPILE} (matches the legacy behaviour
      * where unscoped deps contributed to compile).

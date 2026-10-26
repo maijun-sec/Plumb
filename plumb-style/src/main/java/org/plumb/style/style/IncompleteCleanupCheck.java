@@ -1,7 +1,7 @@
 /*
  * A10: AST check for CWE-459 (Incomplete
  * Cleanup). Fires when a `deleteOnExit()` call is
- * detected anywhere ? keeping a file alive until JVM
+ * detected anywhere -- keeping a file alive until JVM
  * shutdown is the canonical incomplete-cleanup
  * pattern.
  *
@@ -10,7 +10,7 @@
  * `tempFile.delete()` inside the finally block. The
  * heuristic also fires on the
  * `_temp_file_<NN>` "don't delete the temporary file"
- * family ? but those bad() sinks contain no
+ * family -- but those bad() sinks contain no
  * deleteOnExit either, so this check alone covers
  * only the Servlet_temp_file family (≈ 17 of 34
  * Juliet Pos cases).</p>

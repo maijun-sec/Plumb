@@ -22,10 +22,10 @@ import org.plumb.tac.ir.TacProgram;
  * <p>Arguments:
  *
  * <ul>
- *   <li>{@code method} (string, required) ? the simple method name (e.g. {@code "executeQuery"}) or
- *       the fully-qualified callee signature (e.g. {@code "java.sql.Statement.executeQuery"}).
+ *   <li>{@code method} (string, required) -- the simple method name (e.g. {@code "executeQuery"})
+ *       or the fully-qualified callee signature (e.g. {@code "java.sql.Statement.executeQuery"}).
  *       Either form is matched.
- *   <li>{@code max} (integer, optional, default 20) ? hard cap on returned call sites, so the LLM
+ *   <li>{@code max} (integer, optional, default 20) -- hard cap on returned call sites, so the LLM
  *       doesn't get a 100-call-site dump.
  * </ul>
  *
@@ -213,13 +213,13 @@ public class FindCallersTool implements Tool {
    *   <li>the signatures are equal (exact match);
    *   <li>the query equals the signature's simple name (covers both the simple-name and FQN forms
    *       of the query against the simple form of the sig);
-   *   <li>the query appears as the tail of the FQN ? i.e. preceded by {@code "."} (covers FQN
+   *   <li>the query appears as the tail of the FQN -- i.e. preceded by {@code "."} (covers FQN
    *       queries like {@code "Statement.executeQuery"} matching {@code
    *       "java.sql.Statement.executeQuery"}).
    * </ul>
    *
    * <p>Previously the third clause was a bare {@code endsWith(query)}, which produced false
-   * positives like {@code query="Foo"} matching {@code calleeSig="org.example.MyFoo"} ? see M1.
+   * positives like {@code query="Foo"} matching {@code calleeSig="org.example.MyFoo"} -- see M1.
    * Requiring the {@code "."} separator makes the suffix match FQN-shaped only.
    */
   private static boolean matches(String calleeSig, String query, String querySimple) {

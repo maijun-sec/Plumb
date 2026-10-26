@@ -11,15 +11,15 @@ import org.plumb.tac.ir.TacProgram;
  * <h2>Available strategies</h2>
  *
  * <ul>
- *   <li>{@link ChaCallGraphStrategy} ? Class Hierarchy Analysis. Conservatively resolves every
+ *   <li>{@link ChaCallGraphStrategy} -- Class Hierarchy Analysis. Conservatively resolves every
  *       virtual call to all implementors of the receiver's static type. Fast, imprecise.
- *   <li>{@link RtaCallGraphStrategy} ? Rapid Type Analysis. Adds a whole-program set of
+ *   <li>{@link RtaCallGraphStrategy} -- Rapid Type Analysis. Adds a whole-program set of
  *       instantiated types, then filters virtual-call targets to types that are actually
  *       instantiated. Slower than CHA, more precise.
- *   <li>{@link StubCallGraphStrategy} ? Conservative: only direct (static) calls are added; virtual
- *       calls are recorded but unresolved. Useful for very large projects where CHA / RTA would be
- *       too slow.
- *   <li>{@link CachedCallGraphStrategy} ? Wraps another strategy and loads/saves the resulting
+ *   <li>{@link StubCallGraphStrategy} -- Conservative: only direct (static) calls are added;
+ *       virtual calls are recorded but unresolved. Useful for very large projects where CHA / RTA
+ *       would be too slow.
+ *   <li>{@link CachedCallGraphStrategy} -- Wraps another strategy and loads/saves the resulting
  *       {@link CallGraph} to a local cache (JSON). Speeds up repeated analysis of the same
  *       codebase.
  * </ul>

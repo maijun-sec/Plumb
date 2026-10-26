@@ -15,7 +15,7 @@
  * {@code n.walk(MethodDeclaration.class, ...)} (1 explicit walk,
  * redundant with the dispatcher's walk). The new implementation
  * uses {@code visit(MethodDeclaration)} dispatched by
- * {@code AstDispatcher} in its single walk ? 0 redundant walks.</p>
+ * {@code AstDispatcher} in its single walk -- 0 redundant walks.</p>
  */
 package org.plumb.style.style;
 

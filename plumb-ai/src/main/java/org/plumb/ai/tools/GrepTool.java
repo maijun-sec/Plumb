@@ -21,16 +21,16 @@ import org.plumb.ai.agent.ToolResult;
  * <p>Arguments:
  *
  * <ul>
- *   <li>{@code pattern} (string, required) ? Java regex (case-sensitive by default).
- *   <li>{@code path} (string, optional) ? file or directory to search. Default = source root.
+ *   <li>{@code pattern} (string, required) -- Java regex (case-sensitive by default).
+ *   <li>{@code path} (string, optional) -- file or directory to search. Default = source root.
  *       Recurses into sub-directories when given a directory.
- *   <li>{@code max_results} (integer, optional, default 50) ? hard cap on the number of matching
+ *   <li>{@code max_results} (integer, optional, default 50) -- hard cap on the number of matching
  *       lines returned. The LLM can raise this if it needs more (cap of 500 to keep tool output
  *       bounded).
- *   <li>{@code ignore_case} (boolean, optional, default false) ? case-insensitive match.
- *   <li>{@code file_glob} (string, optional) ? restrict to files whose path matches this glob (e.g.
- *       {@code "*.java"} or {@code "**\/test\/**"}).
- *   <li>{@code max_bytes_per_file} (integer, optional, default 8192) ? cap on how many bytes of
+ *   <li>{@code ignore_case} (boolean, optional, default false) -- case-insensitive match.
+ *   <li>{@code file_glob} (string, optional) -- restrict to files whose path matches this glob
+ *       (e.g. {@code "*.java"} or {@code "**\/test\/**"}).
+ *   <li>{@code max_bytes_per_file} (integer, optional, default 8192) -- cap on how many bytes of
  *       each file to scan. Most source files are well under 8 KB; this default keeps the tool fast
  *       on large repos. The LLM can raise this when scanning generated / minified / vendored files,
  *       up to the {@link #MAX_BYTES_HARD_CAP} (256 KB) above which we refuse to avoid blowing the
@@ -61,7 +61,7 @@ public class GrepTool implements Tool {
   private static final int DEFAULT_MAX_BYTES_PER_FILE = 8192;
 
   /**
-   * Hard cap on bytes scanned per file. Above this we refuse to read further ? protects the
+   * Hard cap on bytes scanned per file. Above this we refuse to read further -- protects the
    * conversation token budget when the LLM asks for an unreasonably large window.
    */
   public static final int MAX_BYTES_HARD_CAP = 256 * 1024;
@@ -270,7 +270,7 @@ public class GrepTool implements Tool {
 
   /**
    * Tiny glob matcher: supports {@code *}, {@code **}, and {@code ?}. Backslash is honoured as an
-   * escape. Used for {@code file_glob} ? we don't pull in a glob library just for one tool.
+   * escape. Used for {@code file_glob} -- we don't pull in a glob library just for one tool.
    *
    * <p>M4: the previous implementation recursed on every {@code *} and every {@code **}, producing
    * exponential worst-case behaviour on patterns like {@code **.java} against long paths or

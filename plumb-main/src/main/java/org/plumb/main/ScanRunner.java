@@ -161,7 +161,7 @@ public final class ScanRunner {
         all.addAll(scanBytecode(bytecodeInputs, rules, dfaCheckers, styleChecks));
       }
       if (!javaFiles.isEmpty()) {
-        // — cross-TU is the default. When
+        // Cross-TU is the default. When
         // only one file is requested but its
         // parent directory contains other
         // .java files (e.g. sibling helpers /
@@ -671,7 +671,7 @@ public final class ScanRunner {
   }
 
   /**
-   * — write a one-shot AI dedup stats report to {@code stderr}. Layout:
+   * Write a one-shot AI dedup stats report to {@code stderr}. Layout:
    *
    * <pre>
    *   AI dedup stats
@@ -846,9 +846,9 @@ public final class ScanRunner {
   }
 
   /**
-   * — verdict enum for --ai-dedup-stats. Clamps any unknown verdict string (e.g. a model that
-   * invents "MAYBE") to UNKNOWN so the report doesn't blow up. Package-private so the unit tests
-   * can assert on specific buckets.
+   * Verdict enum for --ai-dedup-stats. Clamps any unknown verdict string (e.g. a model that invents
+   * "MAYBE") to UNKNOWN so the report doesn't blow up. Package-private so the unit tests can assert
+   * on specific buckets.
    */
   enum Verdict {
     TP,
@@ -889,7 +889,7 @@ public final class ScanRunner {
   }
 
   /**
-   * — return a copy of {@code f} with the AI verdict + reason attached. The Finding record is
+   * Return a copy of {@code f} with the AI verdict + reason attached. The Finding record is
    * immutable, so this builds a new instance via the full constructor (which carries the new
    * fields).
    */
@@ -1164,10 +1164,10 @@ public final class ScanRunner {
         try {
           ps = parser.parse(src);
         } catch (java.io.IOException ex) {
-          LOG.debug("R792 pre-parse failed for {}: {}", src, ex.getMessage());
+          LOG.debug("pre-parse failed for {}: {}", src, ex.getMessage());
           continue;
         } catch (RuntimeException ex) {
-          LOG.debug("R792 pre-parse failed for {}: {}", src, ex.getMessage());
+          LOG.debug("pre-parse failed for {}: {}", src, ex.getMessage());
           continue;
         }
         if (ps.unit() == null) continue;
@@ -1192,9 +1192,7 @@ public final class ScanRunner {
       }
     }
     LOG.info(
-        "R792: static-method cache built → {} entries across {} module(s)",
-        out.size(),
-        modules.size());
+        "static-method cache built -> {} entries across {} module(s)", out.size(), modules.size());
     return out;
   }
 
@@ -1587,7 +1585,7 @@ public final class ScanRunner {
       checkers.add(new org.plumb.dfa.checkers.taint.JavaCodeInjectionChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.JcrInjectionChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.JspDynamicIncludeChecker());
-      // — XSS + Open Redirect + Http Response Splitting + XPath
+      // XSS + Open Redirect + Http Response Splitting + XPath
       // Injection Format String. These checkers exist in
       // plumb-dfa/.../taint/ with matching sink families defined in
       // sink-families.yaml (xss.sinks, open-redirect.sinks,
@@ -1602,7 +1600,7 @@ public final class ScanRunner {
       checkers.add(new org.plumb.dfa.checkers.taint.HttpResponseSplittingChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.XPathInjectionChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.FormatStringChecker());
-      // — cleartext / DB credential / external config sinks.
+      // Cleartext / DB credential / external config sinks.
       // These were also silently missing from the registration.
       // DBCredentialSinkChecker fires on
       // DriverManager.getConnection(...) with a tainted password

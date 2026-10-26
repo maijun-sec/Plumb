@@ -188,7 +188,7 @@ public final class InputSourcePatterns {
 
   /**
    * Cache for {@link #isInputSourceCall}. Populated lazily on first call per signature; never
-   * invalidated (DEFAULT_PATTERNS is a static final list ? the only way to add a new pattern is to
+   * invalidated (DEFAULT_PATTERNS is a static final list -- the only way to add a new pattern is to
    * recompile).
    */
   private static final java.util.concurrent.ConcurrentHashMap<String, Boolean> inputSourceCache =

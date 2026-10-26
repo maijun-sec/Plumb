@@ -2,7 +2,7 @@
  * Assertion boundary check.
  *
  * <p>Off-by-one risk detection in JUnit {@code assert} statements. The
- * classic gotcha is {@code assert i <= max} ? usually the developer
+ * classic gotcha is {@code assert i <= max} -- usually the developer
  * meant {@code assert i < max} (or vice-versa for the lower bound).
  *
  * <p>The previous implementation matched the loose shape
@@ -85,7 +85,7 @@ public final class AssertionBoundaryCheck implements AstChecker {
    * Recursively scan the outermost relational operators. Returns the first {@code <=} / {@code >=}
    * hit; if the outermost operator is {@code <} / {@code >}, returns null even if a nested
    * conjunction contains {@code <=} (nested hits are acceptable when the top-level guard is
-   * strict). For {@code &&} / {@code ||}, both sides are scanned ? the audit fires once per assert
+   * strict). For {@code &&} / {@code ||}, both sides are scanned -- the audit fires once per assert
    * (on the first hit).
    */
   private static BoundaryHit scan(Expression e) {

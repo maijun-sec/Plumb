@@ -30,13 +30,13 @@ import java.util.Objects;
  * <h2>Subtypes</h2>
  *
  * <ul>
- *   <li>{@link StringTaint} ? a string (or anything that flows as a String through the program).
+ *   <li>{@link StringTaint} -- a string (or anything that flows as a String through the program).
  *       Used by SQL, LDAP, command, format-string, log-injection, XSS, and path-traversal sinks.
- *   <li>{@link NumericTaint} ? a number (int / long / float / double). Used by array-index,
+ *   <li>{@link NumericTaint} -- a number (int / long / float / double). Used by array-index,
  *       allocation-size, divide-by-zero, and integer-overflow sinks.
- *   <li>{@link PointerTaint} ? a pointer / handle that the engine can dereference. Used by
+ *   <li>{@link PointerTaint} -- a pointer / handle that the engine can dereference. Used by
  *       null-deref, use-after-free, and resource leak sinks.
- *   <li>{@link MixedTaint} ? a value that has been observed to participate in more than one of the
+ *   <li>{@link MixedTaint} -- a value that has been observed to participate in more than one of the
  *       above. The base class promotes to this when a checker can't decide a single domain (e.g. a
  *       value that is sometimes a number and sometimes a string). Sinks that don't care about
  *       domain see this the same as any other domain.
@@ -52,7 +52,7 @@ public sealed interface TaintDomain
   String label();
 
   /**
-   * "A string" ? text flowing through {@code String} references, {@code CharSequence} chains,
+   * "A string" -- text flowing through {@code String} references, {@code CharSequence} chains,
    * string-concat operations, and string-typed parameters. The most common domain: SQL, LDAP,
    * command, format string, XSS, log, path traversal all live here.
    */
@@ -66,7 +66,7 @@ public sealed interface TaintDomain
   }
 
   /**
-   * "A number" ? int / long / float / double. Drives array-index, allocation-size, divide-by-zero,
+   * "A number" -- int / long / float / double. Drives array-index, allocation-size, divide-by-zero,
    * integer-overflow checks. String → Number conversions ({@code Integer.parseInt}) can also
    * produce a NumericTaint from a StringTaint source.
    */
@@ -80,7 +80,7 @@ public sealed interface TaintDomain
   }
 
   /**
-   * "A pointer / handle" ? a reference that can be dereferenced (load, store, method call on a
+   * "A pointer / handle" -- a reference that can be dereferenced (load, store, method call on a
    * receiver) or closed (file, socket). Drives null-deref, use-after-free, resource-leak checks.
    * PointerTaint is typically introduced by an explicit {@code new} (allocation) and consumed by an
    * explicit {@code close} / {@code free}.
@@ -95,7 +95,7 @@ public sealed interface TaintDomain
   }
 
   /**
-   * "A value with multiple possible domains" ? the engine observed a value being used as a string
+   * "A value with multiple possible domains" -- the engine observed a value being used as a string
    * AND as a number (or pointer), and can't pick a single one. Sinks that care about a specific
    * domain should treat MixedTaint as "this MIGHT match"; sinks that don't care (e.g.
    * sensitive-data exfiltration) match it the same as any other domain.
@@ -114,7 +114,7 @@ public sealed interface TaintDomain
 
   /**
    * Parse a domain from the string form used in YAML / {@code CheckerConfig.taintDomain}.
-   * Case-insensitive. Returns {@link MixedTaint} for an unknown / null / empty string ? the safe
+   * Case-insensitive. Returns {@link MixedTaint} for an unknown / null / empty string -- the safe
    * default that a checker can always treat as "this might match".
    */
   static TaintDomain parse(String label) {
@@ -131,7 +131,7 @@ public sealed interface TaintDomain
 
   /**
    * Promote two domains. If they're equal, the result is that domain. If they differ, the result is
-   * {@link MixedTaint} ? the "couldn't decide" answer.
+   * {@link MixedTaint} -- the "couldn't decide" answer.
    */
   static TaintDomain join(TaintDomain a, TaintDomain b) {
     if (a == null) return b;

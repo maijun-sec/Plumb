@@ -1,5 +1,5 @@
 /*
- * Coverity <code>SERVLET_ATOMICITY</code> (CWE-362) ? fires when a
+ * Coverity <code>SERVLET_ATOMICITY</code> (CWE-362) -- fires when a
  * {@code getAttribute} and {@code setAttribute} on the same
  * attribute (same string key) on
  * {@code ServletContext} / {@code HttpSession} / {@code JspContext}

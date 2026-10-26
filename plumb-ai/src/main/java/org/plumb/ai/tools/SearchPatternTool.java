@@ -203,7 +203,7 @@ public class SearchPatternTool implements Tool {
 
   /**
    * Heuristic: declaration lines start with a visibility / type / annotation, or contain {@code =}
-   * at the end. Conservative ? false positives are fine for the LLM, false negatives miss real
+   * at the end. Conservative -- false positives are fine for the LLM, false negatives miss real
    * definitions.
    */
   private static boolean looksLikeDefinition(String line) {

@@ -354,7 +354,7 @@ public final class JimpleToTacConverter {
   /**
    * Build a list of {@link TacFunction.TryRegion} for a SootUp-converted function. SootUp's CFG
    * gives us catch-handler entry blocks and the set of stmts whose exceptional successors include
-   * them (the throw points) ? the union of those predecessor stmts is the approximated try block
+   * them (the throw points) -- the union of those predecessor stmts is the approximated try block
    * for the corresponding catch. We group catch handlers by overlap of their predecessor stmt sets
    * so the AST-translator-style "one region per try statement" model holds.
    */

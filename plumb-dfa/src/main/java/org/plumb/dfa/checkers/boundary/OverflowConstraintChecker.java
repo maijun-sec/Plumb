@@ -17,14 +17,14 @@ import org.plumb.tac.ir.UnaryOperator;
  * inherited {@link org.plumb.dfa.solver.GuardStore} + Z3 bridge give us:
  *
  * <ul>
- *   <li><b>Constant-only</b>: {@code int x = MAX_VALUE; x + 1;} ? range says {@code x = 127} (byte
+ *   <li><b>Constant-only</b>: {@code int x = MAX_VALUE; x + 1;} -- range says {@code x = 127} (byte
  *       case) or {@code x = 2147483647} (int); arithmetic overflows ⇒ fire.
- *   <li><b>Variable with literal guard</b>: {@code if (a &lt; MAX) { a + 1; }} ? range says {@code
+ *   <li><b>Variable with literal guard</b>: {@code if (a &lt; MAX) { a + 1; }} -- range says {@code
  *       a &lt; MAX} ⇒ {@code a+1 ≤ MAX} ⇒ safe; don't fire.
- *   <li><b>Variable with compound guard</b>: {@code if (a &lt; MAX - 5) { x = a; x++; }} ? Range
+ *   <li><b>Variable with compound guard</b>: {@code if (a &lt; MAX - 5) { x = a; x++; }} -- Range
  *       says {@code a &lt; MAX-5}; {@code MOVE x = a} narrows {@code x &lt; MAX-5}; {@code x++} ⇒
  *       {@code x+1 ≤ MAX-4} ⇒ safe; don't fire (Z3 confirms).
- *   <li><b>Type-bounded</b>: {@code byte b = (byte)(a + 1);} ? dest is byte, range narrows to
+ *   <li><b>Type-bounded</b>: {@code byte b = (byte)(a + 1);} -- dest is byte, range narrows to
  *       [-128, 127]; if the interval extended outside ⇒ fire.
  * </ul>
  */

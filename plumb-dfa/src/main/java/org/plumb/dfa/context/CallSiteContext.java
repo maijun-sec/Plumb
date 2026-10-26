@@ -62,7 +62,7 @@ public final class CallSiteContext {
   }
 
   /**
-   * The unique key for this call site ? caller signature, callee signature, and the line number of
+   * The unique key for this call site -- caller signature, callee signature, and the line number of
    * the CALL. Two contexts with the same key represent the same "edge" in the context- sensitive
    * call graph.
    */

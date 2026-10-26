@@ -12,7 +12,7 @@
  * propagation path), so tainted values
  * survive {@code Integer.parseInt(readLine())}
  * to reach the ctor. The domain is
- * NumericTaint, not StringTaint ? integer
+ * NumericTaint, not StringTaint -- integer
  * allocation sizes are numeric, not string.
  *
  * <p>Sink family: mem-alloc.sinks.

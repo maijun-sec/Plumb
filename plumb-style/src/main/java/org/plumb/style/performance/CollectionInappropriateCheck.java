@@ -8,7 +8,7 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Using {@code Hashtable} / {@code Vector} / {@code Stack} ? prefer {@code java.util.concurrent}
+ * Using {@code Hashtable} / {@code Vector} / {@code Stack} -- prefer {@code java.util.concurrent}
  * alternatives or {@code ArrayList} / {@code HashMap}.
  */
 public final class CollectionInappropriateCheck implements AstChecker {

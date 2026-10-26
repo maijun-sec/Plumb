@@ -11,7 +11,7 @@
  * HttpServlet OR declares a method with parameter type
  * HttpServletRequest / HttpServletResponse is treated
  * as servlet-like. Real J2EE rules forbid direct thread
- * management in servlet methods ? async work belongs
+ * management in servlet methods -- async work belongs
  * in a worker queue, not a Thread.</p>
  *
  * <p>Generic, no Juliet-specific patterns.</p>

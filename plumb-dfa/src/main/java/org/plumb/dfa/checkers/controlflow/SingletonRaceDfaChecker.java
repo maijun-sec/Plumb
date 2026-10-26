@@ -31,8 +31,8 @@ import org.plumb.tac.ir.TacOperand;
  *   <li>Field {@code counter} is incremented in {@code doGet} (the AST checker sees it) but also
  *       incremented in {@code doPost} via {@code helperIncrement(this.counter)} (which the AST
  *       checker doesn't know about because the increment is in a different method).
- *   <li>Field is read in {@code doGet} and written in {@code doPost} ? a classic servlet race where
- *       the AST version sees only one of the two access sites.
+ *   <li>Field is read in {@code doGet} and written in {@code doPost} -- a classic servlet race
+ *       where the AST version sees only one of the two access sites.
  * </ul>
  *
  * <p><b>Detection strategy.</b>
@@ -45,7 +45,7 @@ import org.plumb.tac.ir.TacOperand;
  *       on the field declaration site (or the class name if we don't have a declaration position).
  * </ol>
  *
- * <p>The DFA checker doesn't attempt to verify synchronization ? the AST checker does that for
+ * <p>The DFA checker doesn't attempt to verify synchronization -- the AST checker does that for
  * in-method accesses. The DFA version is purely the "is this field accessed from multiple methods"
  * signal, which the AST can't see.
  */

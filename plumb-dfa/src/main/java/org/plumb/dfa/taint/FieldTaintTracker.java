@@ -27,8 +27,8 @@ import org.plumb.tac.ir.TacType;
  *
  * <h2>Cross-instance field tracking</h2>
  *
- * <p>The base tracker only handled the {@code this.f} case ? the receiver was implicitly assumed to
- * be {@code this}. The tracker now handles <b>any</b> receiver:
+ * <p>The base tracker only handled the {@code this.f} case -- the receiver was implicitly assumed
+ * to be {@code this}. The tracker now handles <b>any</b> receiver:
  *
  * <pre>
  *   class Helper {
@@ -46,7 +46,7 @@ import org.plumb.tac.ir.TacType;
  *   }
  * </pre>
  *
- * The naive fold would seed {@code this.data} in the caller (which is wrong ? there's no {@code
+ * The naive fold would seed {@code this.data} in the caller (which is wrong -- there's no {@code
  * this.data} here; the field lives on {@code h}). The tracker keys by {@code (receiver, field)}
  * pairs and uses the actual receiver from {@code args[0]} at the call site. The {@code this.f} case
  * is now a strict subset (keyed as {@code ("this", f)}).
@@ -91,7 +91,7 @@ import org.plumb.tac.ir.TacType;
  *   <li><b>TacVar-name keying</b> — the receiver is the {@link TacOperand.TacVar#name()} of the
  *       FIELDSTORE/FIELDLOAD's {@code lhs1}. The fold uses the CALL's {@code args[0]} name
  *       directly. Multiple SSA versions of the same source-level variable share a name
- *       (conservative ? sound for path-insensitive intra-fn analysis).
+ *       (conservative -- sound for path-insensitive intra-fn analysis).
  * </ul>
  *
  * <h2>Where it fits in the engine</h2>
@@ -99,10 +99,10 @@ import org.plumb.tac.ir.TacType;
  * <p>Used by {@link TaintedCheckerBase}:
  *
  * <ul>
- *   <li>{@code initFunction} ? the tracker is cleared.
- *   <li>{@code checkInstruction} ? {@code FIELDSTORE} branch calls {@link #recordWrite(String,
+ *   <li>{@code initFunction} -- the tracker is cleared.
+ *   <li>{@code checkInstruction} -- {@code FIELDSTORE} branch calls {@link #recordWrite(String,
  *       String, List)}; {@code FIELDLOAD} branch calls {@link #readField(String)} to restore taint.
- *   <li>{@code propagateTaintFromCalleeSummary} ? walks the callee's {@code fieldOps} and calls
+ *   <li>{@code propagateTaintFromCalleeSummary} -- walks the callee's {@code fieldOps} and calls
  *       {@link #applyCalleeFieldOp(FieldOp, int, String, List, TacOperand, String, int, int,
  *       String)} for each.
  * </ul>
@@ -181,7 +181,7 @@ public final class FieldTaintTracker {
   }
 
   /**
-   * follow-up ? overload that records the v2 {@code Trace} handle of the source this field write
+   * follow-up -- overload that records the v2 {@code Trace} handle of the source this field write
    * propagated from. The handle is later recovered by {@link #readField} consumers (notably {@code
    * TaintedCheckerBase}'s {@code restoreFieldTaintOnLoad} site) so the load can attach a real
    * parent to the v2 PROPAGATE node instead of a fresh orphan SOURCE. Pass {@code -1} if the source
@@ -245,7 +245,7 @@ public final class FieldTaintTracker {
 
   /**
    * Whether a write has been recorded for {@code <receiver>.<fieldName>} (regardless of whether the
-   * written value is tainted ? see {@link #readField(String, String)} for the taint query).
+   * written value is tainted -- see {@link #readField(String, String)} for the taint query).
    */
   public boolean hasField(String receiver, String fieldName) {
     String k = keyOf(receiver, fieldName);
@@ -347,7 +347,7 @@ public final class FieldTaintTracker {
   }
 
   /**
-   * follow-up ? overload that threads the caller's v2 {@code Trace} handle map through the fold
+   * follow-up -- overload that threads the caller's v2 {@code Trace} handle map through the fold
    * path so the field write can record a real source handle (subsequent {@code FIELDLOAD} will
    * attach a real parent to its PROPAGATE node instead of an orphan SOURCE). Pass {@code
    * java.util.Collections.emptyMap()} for legacy call sites.

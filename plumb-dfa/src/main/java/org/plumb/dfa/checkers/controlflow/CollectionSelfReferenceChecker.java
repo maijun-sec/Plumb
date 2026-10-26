@@ -20,20 +20,20 @@ import org.plumb.tac.ir.TacOperand;
  * variable (or alias of it). These calls are at best useless and at worst catastrophic:
  *
  * <ul>
- *   <li>{@code list.addAll(list)} ? adds the list to itself, which (a) is a no-op for some
+ *   <li>{@code list.addAll(list)} -- adds the list to itself, which (a) is a no-op for some
  *       implementations, (b) throws CME during the iteration in {@code AbstractCollection.addAll},
  *       (c) silently produces an infinite loop in hand-rolled implementations.
- *   <li>{@code list.removeAll(list)} ? removes every element of the list from itself, which empties
- *       the list (probably not what the caller meant).
- *   <li>{@code list.retainAll(list)} ? keeps every element that's also in the list, i.e. keeps
+ *   <li>{@code list.removeAll(list)} -- removes every element of the list from itself, which
+ *       empties the list (probably not what the caller meant).
+ *   <li>{@code list.retainAll(list)} -- keeps every element that's also in the list, i.e. keeps
  *       everything. No-op (a hint the caller meant a different collection).
- *   <li>{@code list.contains(list)} ? a collection always contains itself; the result is always
+ *   <li>{@code list.contains(list)} -- a collection always contains itself; the result is always
  *       true. Almost certainly a bug (meant to test for a sub-element).
  * </ul>
  *
  * <p><b>Why DFA, not AST.</b> Detecting {@code list.addAll(list)} syntactically is easy, but the
  * more interesting case is aliasing: {@code a = list; b = list; a.addAll(b);} is the same bug. The
- * DFA's per-function data flow tracks the aliasing fact ? after the two {@code MOVE}s, both {@code
+ * DFA's per-function data flow tracks the aliasing fact -- after the two {@code MOVE}s, both {@code
  * a} and {@code b} point to the same collection, and the call to {@code a.addAll(b)} is a
  * self-reference that AST-level pattern matching would miss.
  *

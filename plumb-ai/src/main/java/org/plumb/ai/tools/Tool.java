@@ -10,7 +10,7 @@ import org.plumb.ai.agent.ToolResult;
  * <ul>
  *   <li>A stable {@link #name()} the LLM echoes in {@code tool_calls[].function.name}.
  *   <li>A short {@link #description()} the LLM uses to decide when to call the tool (this is the
- *       most important field for shaping agent behaviour ? a vague description produces vague tool
+ *       most important field for shaping agent behaviour -- a vague description produces vague tool
  *       use).
  *   <li>A {@link #definition()} the agent sends to the LLM as the JSON Schema for the tool's
  *       parameters.
@@ -19,7 +19,7 @@ import org.plumb.ai.agent.ToolResult;
  *       message.
  * </ul>
  *
- * <p>Tools are stateless across invocations ? all state (file cache, current finding, call graph)
+ * <p>Tools are stateless across invocations -- all state (file cache, current finding, call graph)
  * lives in the {@link ToolContext} passed in. This makes tools safe to register in a singleton
  * {@code ToolRegistry} and reuse across many agent runs.
  */

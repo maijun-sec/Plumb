@@ -15,7 +15,7 @@ import org.plumb.style.StyleContext;
  * every {@code NameExpr} containing a dot, which meant every field access with a package-like
  * prefix ({@code this.foo.bar}, {@code outer.inner.field}, {@code MyClass.STATIC_FIELD}) was
  * flagged as "should use import". The corrected version resolves the {@code NameExpr} and only
- * fires when the resolution result is a class / interface type ? never on field accesses.
+ * fires when the resolution result is a class / interface type -- never on field accesses.
  */
 public final class UnnecessaryFullyQualifiedClassNameCheck implements AstChecker {
 

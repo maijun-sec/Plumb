@@ -7,16 +7,16 @@ import java.util.List;
  * schema):
  *
  * <ul>
- *   <li>{@code system} ? role priming (set once at the start)
- *   <li>{@code user} ? the actual question (set once at the start, and again as the "user" turn the
- *       model sees between tool-call iterations if needed)
- *   <li>{@code assistant} ? the model's reply (may carry {@link #toolCalls} and may also carry
+ *   <li>{@code system} -- role priming (set once at the start)
+ *   <li>{@code user} -- the actual question (set once at the start, and again as the "user" turn
+ *       the model sees between tool-call iterations if needed)
+ *   <li>{@code assistant} -- the model's reply (may carry {@link #toolCalls} and may also carry
  *       {@link #content} when the model produces both a message and a tool call in the same turn)
- *   <li>{@code tool} ? the result of one tool execution, paired with the {@code tool_call_id} from
+ *   <li>{@code tool} -- the result of one tool execution, paired with the {@code tool_call_id} from
  *       the assistant turn that requested it
  * </ul>
  *
- * <p>The class is deliberately a plain record ? Jackson serialises it to JSON in {@code
+ * <p>The class is deliberately a plain record -- Jackson serialises it to JSON in {@code
  * AIProvider.chatWithTools}, and the JSON shape is exactly what OpenAI's function-calling API
  * expects. No Spring-AI, no agent framework.
  */

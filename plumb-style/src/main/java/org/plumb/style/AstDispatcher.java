@@ -19,8 +19,8 @@ import org.slf4j.LoggerFactory;
  * ({@code visit(CompilationUnit, Void)}, {@code visit(IfStmt, Void)}, …) each with the same
  * boilerplate: iterate every registered checker, catch RuntimeException, call {@code super.visit(n,
  * arg)}. The result was 900+ lines of repetition AND a per-node cost of {@code O(checkers)}
- * invocations ? for a typical file with 10K AST nodes and 600 checkers, that's 6M invocations where
- * 99.9% are no-ops (the checker didn't override that visit type).
+ * invocations -- for a typical file with 10K AST nodes and 600 checkers, that's 6M invocations
+ * where 99.9% are no-ops (the checker didn't override that visit type).
  *
  * <p>This rewrite collapses the dispatcher into two responsibilities:
  *
@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
  *       skipped.
  *   <li><b>Walk the tree once</b> via {@link CompilationUnit#walk(java.util.function.Consumer)},
  *       invoking on each node only the checkers that declared a matching per-type visit method.
- *       Per-node cost drops to {@code O(checkers_that_care_about_node_type)} ? typically 1-5
+ *       Per-node cost drops to {@code O(checkers_that_care_about_node_type)} -- typically 1-5
  *       instead of 600.
  * </ol>
  *
@@ -47,10 +47,10 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Checkers no longer need to be aware of the dispatcher. They just override {@code
  *       visit(FooStmt, StyleContext)} for whatever node types they care about. The old "findAll
- *       inside visit(CompilationUnit)" anti-pattern becomes unnecessary ? the dispatcher already
+ *       inside visit(CompilationUnit)" anti-pattern becomes unnecessary -- the dispatcher already
  *       gives each checker a per-node-type callback for free.
  *   <li>Adding a new {@code visit(SomeNewNode, StyleContext)} method to {@link AstChecker} (e.g.
- *       when JavaParser adds a new node type) is automatically picked up ? no dispatcher edit
+ *       when JavaParser adds a new node type) is automatically picked up -- no dispatcher edit
  *       required.
  * </ul>
  */

@@ -3,7 +3,7 @@
  *
  * <p><b>pattern A rewrite.</b> The previous
  * implementation called {@code n.findAll(CatchClause.class)} +
- * for EACH catch {@code cc.findAll(AssignExpr.class)} ? N·M walks
+ * for EACH catch {@code cc.findAll(AssignExpr.class)} -- N·M walks
  * per file. The new implementation uses
  * {@code visit(CatchClause)} (dispatched by AstDispatcher once
  * per catch) + a single {@code cc.walk(AssignExpr, ...)} per

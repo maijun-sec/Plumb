@@ -19,10 +19,10 @@ import org.plumb.ai.agent.ToolResult;
  * <p>Arguments:
  *
  * <ul>
- *   <li>{@code path} (string, optional) ? directory to list. Default = source root.
- *   <li>{@code max_depth} (integer, optional, default 1) ? recursion depth. 0 = just this dir, 1 =
+ *   <li>{@code path} (string, optional) -- directory to list. Default = source root.
+ *   <li>{@code max_depth} (integer, optional, default 1) -- recursion depth. 0 = just this dir, 1 =
  *       this + immediate children, etc. Cap 3.
- *   <li>{@code max_entries} (integer, optional, default 50) ? cap on returned entries.
+ *   <li>{@code max_entries} (integer, optional, default 50) -- cap on returned entries.
  * </ul>
  *
  * <p>Returns one line per entry: {@code "<kind> <name>"} where {@code kind} is {@code "[D]"} for

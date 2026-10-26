@@ -36,10 +36,10 @@ import org.plumb.reporter.Finding;
  *
  * <p>Each check implements only the per-type methods it cares about; the rest are default no-ops.
  * The dispatcher is responsible for walking the children of each node (so the checks must
- * <em>not</em> call into {@link com.github.javaparser.ast.Node#walk} on their own ? that is the
+ * <em>not</em> call into {@link com.github.javaparser.ast.Node#walk} on their own -- that is the
  * dispatcher's job).
  *
- * <p><b></b> the prior {@code StyleCheck} interface has been retired ? all 636 checkers now
+ * <p><b></b> the prior {@code StyleCheck} interface has been retired -- all 636 checkers now
  * implement {@code AstChecker} (the strict superset). There is no longer any other checker
  * interface; {@link AstCheckerRegistry} is the single registration entry point.
  */
@@ -115,8 +115,7 @@ public interface AstChecker {
   }
 
   /**
-   * R? Step 7 ? The rule-specific knowledge the LLM is told about this check before it judges a
-   * finding.
+   * The rule-specific knowledge the LLM is told about this check before it judges a finding.
    *
    * <p>Default {@code null} (no AI dedup). Override on the checks that benefit from LLM judgement.
    */
@@ -124,7 +123,7 @@ public interface AstChecker {
     return null;
   }
 
-  // -- per-node-type visit methods (default no-op) --
+  // per-node-type visit methods (default no-op) --
 
   default void visit(CompilationUnit n, StyleContext ctx) {}
 

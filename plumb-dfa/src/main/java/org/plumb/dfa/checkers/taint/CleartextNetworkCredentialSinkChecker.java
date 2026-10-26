@@ -6,7 +6,7 @@
  * <p>Companion to {@link DBCredentialSinkChecker}
  * (CWE-256). Same taint framework, same
  * {@code db.credential.sinks} family, same
- * {@code sinkArgumentIndex(2)} ? but the CWE label
+ * {@code sinkArgumentIndex(2)} -- but the CWE label
  * is CWE-319 (cleartext channel) instead of
  * CWE-256 (plaintext storage). The two checkers
  * run side-by-side and tag their findings with

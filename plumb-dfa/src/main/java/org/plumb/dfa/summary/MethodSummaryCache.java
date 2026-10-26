@@ -15,7 +15,7 @@ import org.plumb.tac.ir.TacFunction;
  * can be wrapped in a per-call-site layer.
  *
  * <p>Cache size is bounded by LRU eviction. A summary is built lazily on first miss; subsequent
- * queries return the same instance. The cache is thread-safe via a single monitor ? summary
+ * queries return the same instance. The cache is thread-safe via a single monitor -- summary
  * building is relatively cheap (a single linear pass over the IR), so the lock is unlikely to
  * become a bottleneck.
  *
@@ -74,7 +74,7 @@ public final class MethodSummaryCache {
 
   /**
    * Look up a summary by signature. If the signature is not cached, return a UNKNOWN sentinel
-   * without doing any work ? the engine is expected to call {@link #put(FunctionSignature,
+   * without doing any work -- the engine is expected to call {@link #put(FunctionSignature,
    * TacFunction)} after it has resolved the callee body. This split keeps the cache usable for
    * unresolvable callees (library, JDK, unknown) without forcing every cache miss to wait for a
    * body that may never arrive.

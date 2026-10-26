@@ -1,5 +1,5 @@
 /*
- * ? CORS misconfiguration (CWE-942).
+ * CORS misconfiguration (CWE-942).
  */
 package org.plumb.style.security;
 

@@ -1,12 +1,12 @@
 /*
- * R9 ? Shannon entropy + character-class
+ * R9 -- Shannon entropy + character-class
  * diversity detector for hard-coded
  * password FP suppression.
  *
  * <h3>Why both entropy and char-class</h3>
  *
  * <p>Pure Shannon entropy is unreliable
- * for short strings ? an 8-char string
+ * for short strings -- an 8-char string
  * with all unique characters has
  * {@code log2(8) = 3.0} bits/char, which
  * is the max possible at that length.
@@ -35,7 +35,7 @@
  *   "password"     |   2.75  | 1       | LOW  (placeholder)
  *   "test1234"     |   2.50  | 2       | LOW  (placeholder)
  *   "admin123"     |   2.66  | 2       | LOW  (placeholder)
- *   "abcdefgh"     |   3.00  | 1       | LOW  (random lowercase ? not a password)
+ *   "abcdefgh"     |   3.00  | 1       | LOW  (random lowercase -- not a password)
  * </pre>
  *
  * <h3>Algorithm</h3>
@@ -60,7 +60,7 @@
 package org.plumb.dfa.checkers;
 
 /**
- * R9 ? Static entropy + character-class diversity utilities for hard-coded credential FP
+ * R9 -- Static entropy + character-class diversity utilities for hard-coded credential FP
  * suppression.
  */
 public final class EntropyDetector {
@@ -80,7 +80,7 @@ public final class EntropyDetector {
   }
 
   /**
-   * R9 ? Entropy threshold below which literals are treated as low entropy. The actual max entropy
+   * R9 -- Entropy threshold below which literals are treated as low entropy. The actual max entropy
    * of an 8-char string is {@code log2(8) = 3.0} so 2.85 catches placeholders that have some
    * repeated characters ("password", "test1234") while keeping all-unique strings ("7e5tc4s3").
    */
@@ -92,7 +92,7 @@ public final class EntropyDetector {
   private EntropyDetector() {}
 
   /**
-   * R9 ? Shannon entropy of a string, in bits per character. For empty or single-char strings,
+   * R9 -- Shannon entropy of a string, in bits per character. For empty or single-char strings,
    * returns 0.
    *
    * <p>Formula:
@@ -121,7 +121,7 @@ public final class EntropyDetector {
   }
 
   /**
-   * R9 ? Count distinct character classes used in the string. The four classes are:
+   * R9 -- Count distinct character classes used in the string. The four classes are:
    *
    * <ol>
    *   <li><b>lowercase</b> — a-z
@@ -153,7 +153,7 @@ public final class EntropyDetector {
   }
 
   /**
-   * R9 ? Confidence bucket for a literal. Combines entropy with character-class diversity. The
+   * R9 -- Confidence bucket for a literal. Combines entropy with character-class diversity. The
    * 8-char entropy ceiling is {@code log2(8) = 3.0} bits/char, so the algorithm is calibrated for
    * short strings:
    *
@@ -165,8 +165,8 @@ public final class EntropyDetector {
    *       identifier, not a password).
    *   <li>Length &ge; 6, &ge; 3 char classes, entropy &ge; 2.85: HIGH (real random password with
    *       mixed case + digits + symbols like "P@ssw0rd!", "Aa1!Bb2@").
-   *   <li>Everything else: MEDIUM (2 classes + decent entropy like "7e5tc4s3" or "admin123" ? could
-   *       be a real password or a placeholder, hard to tell).
+   *   <li>Everything else: MEDIUM (2 classes + decent entropy like "7e5tc4s3" or "admin123" --
+   *       could be a real password or a placeholder, hard to tell).
    * </ul>
    */
   public static Confidence classify(String literal) {
@@ -182,7 +182,7 @@ public final class EntropyDetector {
   }
 
   /**
-   * R9 ? Should this literal be suppressed as a likely placeholder? Returns true when:
+   * Should this literal be suppressed as a likely placeholder? Returns true when:
    *
    * <ul>
    *   <li>Length &lt; 6 (short), OR

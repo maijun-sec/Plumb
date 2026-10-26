@@ -128,7 +128,7 @@ public final class NonSerializableInSessionCheck implements AstChecker {
 
   /**
    * Heuristic name-based fallback. Used when symbol resolution fails (servlet-api not on classpath,
-   * etc.). Mirrors 's CallToThreadRunCheck.isThreadReceiverByName pattern ? same Lesson 1151/1152
+   * etc.). Mirrors 's CallToThreadRunCheck.isThreadReceiverByName pattern -- same Lesson 1151/1152
    * reasoning.
    *
    * <p>Two receiver shapes are recognized:
@@ -136,7 +136,7 @@ public final class NonSerializableInSessionCheck implements AstChecker {
    * <ol>
    *   <li>Simple variable: {@code session}, {@code httpSession}, {@code sess}, {@code
    *       httpSessionRef} (case-insensitive substring match on the variable name).
-   *   <li>Method chain: {@code request.getSession(true)} ? the outermost call is {@code
+   *   <li>Method chain: {@code request.getSession(true)} -- the outermost call is {@code
    *       getSession(...)} or {@code getSession()}. This matches Juliet's canonical CWE-579 form.
    * </ol>
    */
@@ -171,7 +171,7 @@ public final class NonSerializableInSessionCheck implements AstChecker {
    *       reference type that does NOT descend from {@link java.io.Serializable}, flag it. This
    *       covers Juliet's {@code new BadObject()} shape (a non-Serializable nested class) AND
    *       preserves regex parity for {@code new Hashtable()} (Hashtable is Serializable since Java
-   *       1 ? actually Hashtable implements {@code java.util.Map} which extends nothing about
+   *       1 -- actually Hashtable implements {@code java.util.Map} which extends nothing about
    *       Serializable by default; let me re-check... Hashtable DOES implement {@code
    *       java.io.Serializable} via {@code java.util.Dictionary}. So the literal heuristic is
    *       actually a false positive for Hashtable on modern JDKs. The AST check correctly

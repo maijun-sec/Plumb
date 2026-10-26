@@ -9,8 +9,8 @@ import java.util.Objects;
 import java.util.ServiceLoader;
 
 /**
- * R-833 ? Registry of {@link BuildAdapter}s discovered via {@link ServiceLoader} (Java's standard
- * {@code META-INF/services} mechanism).
+ * Registry of {@link BuildAdapter}s discovered via {@link ServiceLoader} (Java's standard {@code
+ * META-INF/services} mechanism).
  *
  * <p>Built-in adapters (Maven / Gradle / Bazel / Ant) are listed explicitly in the {@code
  * META-INF/services/org.plumb.build.BuildAdapter} file under {@code

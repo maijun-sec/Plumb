@@ -8,17 +8,17 @@ import java.util.Set;
  *
  * <p>A {@code SolverZ3Bridge} answers one question: "given this predicate string and these variable
  * bindings, is the predicate satisfiable?" The caller-side checker uses the answer to filter
- * findings ? a finding whose source-to-sink path condition is UNSAT can't actually be taken, so
+ * findings -- a finding whose source-to-sink path condition is UNSAT can't actually be taken, so
  * emitting it would be a false positive.
  *
  * <h2>Bridge implementations</h2>
  *
  * <ul>
- *   <li>{@link LocalSolverBridge} ? a pure-Java implementation that handles a small arithmetic /
+ *   <li>{@link LocalSolverBridge} -- a pure-Java implementation that handles a small arithmetic /
  *       boolean DSL ({@code &amp;&amp;}, {@code ||}, {@code !}, {@code ==}, {@code !=}, {@code
  *       &lt;}, {@code &lt;}, {@code &gt;}, {@code &lt;=} etc.). Always available; the default for
  *       tests and small analyses.
- *   <li>{@code Z3Bridge} (future) ? wraps {@code tools.aqua.z3-turnkey}'s native context. Handles
+ *   <li>{@code Z3Bridge} (future) -- wraps {@code tools.aqua.z3-turnkey}'s native context. Handles
  *       the full Z3 input language. Falls back to {@code LocalSolverBridge} when the Z3 native
  *       library is not on the classpath (the production classpath usually has it; CI / dev machines
  *       sometimes don't).
@@ -46,7 +46,7 @@ public interface SolverZ3Bridge {
   /**
    * Check whether {@code predicate} is satisfiable under the given variable bindings. A variable
    * referenced in {@code predicate} but missing from {@code bindings} is treated as a free variable
-   * (the bridge may or may not return UNKNOWN ? implementations vary).
+   * (the bridge may or may not return UNKNOWN -- implementations vary).
    *
    * @param predicate a small predicate string (see {@link LocalSolverBridge} for the grammar)
    * @param bindings variable name → concrete value; values are {@link Long}/{@link Double}/ {@link

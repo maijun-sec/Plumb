@@ -1,5 +1,5 @@
 /*
- * Batch 3 ? high-entropy string literal (CWE-798 / CWE-331).
+ * Batch 3 -- high-entropy string literal (CWE-798 / CWE-331).
  *
  * <p>Sketch migration of the {@code EntropyDetector}
  * logic to a plumb-style AST checker. The original DFA
@@ -9,7 +9,7 @@
  * still used by
  * {@code plumb-dfa/.../checkers/HardCodedPasswordSinkChecker}
  * for FP suppression. It is therefore NOT moved to
- * backup ? the AST check here re-implements the
+ * backup -- the AST check here re-implements the
  * classification inline and emits a finding on every
  * {@code StringLiteralExpr} whose entropy + diversity
  * classifies as HIGH (looks like a real random secret).</p>
@@ -17,7 +17,7 @@
  * <p>The plumb-style module does not depend on
  * plumb-dfa, so the Shannon / char-class logic is
  * duplicated here rather than imported. The thresholds
- * match the DFA half exactly (R9) ? see the
+ * match the DFA half exactly (R9) -- see the
  * {@code plumb-dfa/docs/R9-ENTROPY-FP-SUPPRESS} note.</p>
  */
 package org.plumb.style.security;

@@ -1,5 +1,5 @@
 /*
- * Batch 3 ? literal-sourced string assignment
+ * Batch 3 -- literal-sourced string assignment
  * (CWE-798 hint).
  *
  * <p>Sketch migration of the {@code LiteralSourcedTracker}
@@ -44,7 +44,7 @@ public final class LiteralSourcedHintCheck implements AstChecker {
   /**
    * Variable names that suggest the literal is a credential. Names matching this pattern get the
    * higher-priority CWE-798; other long-string assignments get a softer INFO. The DFA half used
-   * length &gt; 8 in the tracker without a name filter ? we add the name filter for fewer FPs.
+   * length &gt; 8 in the tracker without a name filter -- we add the name filter for fewer FPs.
    */
   private static final java.util.regex.Pattern SENSITIVE_NAME =
       java.util.regex.Pattern.compile(

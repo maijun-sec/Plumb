@@ -64,7 +64,7 @@ public final class FindingReporter {
 
   /**
    * Legacy constructor. Use {@link #FindingReporter(AnalysisContext)} when an AnalysisContext is
-   * available ? the filePath-filling pass needs it. The legacy constructor creates a context-less
+   * available -- the filePath-filling pass needs it. The legacy constructor creates a context-less
    * reporter (filePath stays empty for all findings).
    */
   public FindingReporter() {
@@ -111,7 +111,7 @@ public final class FindingReporter {
         if (resolved != null && !resolved.isEmpty()) {
           ff = ff.withFilePath(resolved);
         } else {
-          // — last-resort fallback. If the
+          // Last-resort fallback. If the
           // enclosingClass lookup fails (e.g. for
           // synthesized functions whose enclosing class
           // wasn't registered in the path map), fall
@@ -234,11 +234,11 @@ public final class FindingReporter {
    * withFilePath} / {@code withRuleId}, the rewrite produced a new Finding instance and the v1
    * {@code final} seen by the reporter is what was actually added to {@link #all()}). The
    * TaintedCheckerBase emit path passes the post-rewrite Finding by re-calling {@link
-   * #traceFor(Finding)} after {@link #report(Finding)} returns ? but the cleaner pattern (see
+   * #traceFor(Finding)} after {@link #report(Finding)} returns -- but the cleaner pattern (see
    * R-PATCH v3) is to thread the original Finding through {@link #reportWithTrace(Finding, Trace)}.
    *
    * <p>If {@code trace} is {@code null}, the existing cache entry (if any) for this finding is
-   * removed ? the v1 path remains the source of truth and v2 is silent for this finding.
+   * removed -- the v1 path remains the source of truth and v2 is silent for this finding.
    */
   public synchronized void attachV2Trace(Finding finding, Trace trace) {
     if (finding == null) return;
@@ -292,7 +292,7 @@ public final class FindingReporter {
    * P2: per-thread handoff for v2 trace so {@link #reportWithTrace(Finding, Trace)} can stash the
    * trace while {@link #report(Finding)} is rewriting the Finding, then re-key on the final
    * instance. {@link ThreadLocal} (not a global field) so parallel checkers don't trample each
-   * other ? each thread sees its own handoff.
+   * other -- each thread sees its own handoff.
    */
   private final ThreadLocal<Trace> v2TraceHandoff = new ThreadLocal<>();
 

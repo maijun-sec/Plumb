@@ -1,7 +1,7 @@
 /*
  * Coverity <code>ORM_LOAD_NULL_CHECK</code> (CWE-252).
  *
- * <p>JPA "load" operations never return {@code null} ? they return a non-null proxy object. The
+ * <p>JPA "load" operations never return {@code null} -- they return a non-null proxy object. The
  * proxy can only be used to read back the ID it was created with; any other access throws an
  * exception. A {@code null} check on the result is therefore dead code.
  *

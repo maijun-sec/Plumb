@@ -15,11 +15,11 @@ import java.util.regex.Pattern;
  *
  * <p>Walks every file registered in a {@link SourcePathResolver} and extracts the value of every
  * {@code public static final} field whose initializer is a literal. The result is a map from {@code
- * FQCN.fieldName} to a {@link LiteralValue} ? the kind + numeric / string payload of the literal.
+ * FQCN.fieldName} to a {@link LiteralValue} -- the kind + numeric / string payload of the literal.
  *
  * <p>The resolver does not know what project it is pointed at. For Juliet this means that {@code
  * testcasesupport.IO.STATIC_FIVE} is resolved to the {@code int 5} declared in {@code
- * testcasesupport/IO.java} ? the resolution is <i>driven by the project source</i>, not by a
+ * testcasesupport/IO.java} -- the resolution is <i>driven by the project source</i>, not by a
  * hardcoded mapping. Any other project that uses the same source-path pattern (a project root with
  * {@code import} statements pointing at sibling files) gets the same benefit at zero configuration
  * cost.

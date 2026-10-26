@@ -77,7 +77,7 @@ public final class TuningConfig {
 
   /**
    * Full constructor. The {@code analysedOrigins} set controls which function bodies the DFA engine
-   * analyses. Default is {@code EnumSet.of(SOURCE)} ? only user source. Setting {@code LIBRARY}
+   * analyses. Default is {@code EnumSet.of(SOURCE)} -- only user source. Setting {@code LIBRARY}
    * turns on analysis of user-supplied library code; setting {@code SYSTEM_LIBRARY} turns on
    * analysis of JDK runtime bodies (only when such bodies are available, which is rare). The {@code
    * analyseSystemLibraries} flag is a convenience: when true, SYSTEM_LIBRARY is implicitly added to
@@ -249,7 +249,7 @@ public final class TuningConfig {
   }
 
   /**
-   * Convenience ? should this origin be analysed? Equivalent to {@code
+   * Convenience -- should this origin be analysed? Equivalent to {@code
    * analysedOrigins().contains(origin)}. Returns false for null origin (defensive; a null origin is
    * treated as SOURCE in {@code TacFunction.origin()}).
    */

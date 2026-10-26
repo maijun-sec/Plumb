@@ -15,7 +15,7 @@
  * </ol>
  *
  * <p>The empty-statement heuristic excludes `;` inside
- * `for (...; ; ...)` headers ? those are intentional
+ * `for (...; ; ...)` headers -- those are intentional
  * empty-statement placeholders in C for-loop syntax and
  * have semantic meaning.</p>
  */

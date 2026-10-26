@@ -9,7 +9,7 @@
  * `response.getWriter().println("<!--DB username = ..."
  * ...)`.
  *
- * <p>Generic ? any HTML-comment-looking literal with a
+ * <p>Generic -- any HTML-comment-looking literal with a
  * credential-looking assignment is suspicious.</p>
  */
 package org.plumb.style.style;

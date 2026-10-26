@@ -1,10 +1,9 @@
 /*
- * ? Compare classes by name (CWE-486) migrated from
- * plumb-dfa/.../checkers/CompareClassesByNameChecker.java to
- * plumb-style AST.
+ * Flags class comparisons that use the name instead of the type, so two
+ * different classes with the same name compare equal (CWE-486).
  *
  * <p>Detects {@code a.getClass() == b.getClass()} or
- * {@code a.getClass() == SomeClass.class} ? comparing
+ * {@code a.getClass() == SomeClass.class} -- comparing
  * classes by reference equality is unreliable across
  * classloaders. The DFA half only fired on
  * {@code getSimpleName()} calls (the indirect form via
@@ -106,7 +105,7 @@ public final class CompareClassesByNameCheck implements AstChecker {
   }
 
   /**
-   * True if {@code e} is a {@code .class} literal ? e.g. {@code String.class}. AST shape: {@link
+   * True if {@code e} is a {@code .class} literal -- e.g. {@code String.class}. AST shape: {@link
    * FieldAccessExpr} with name "class" and a type receiver.
    */
   private static boolean isClassLiteral(Expression e) {

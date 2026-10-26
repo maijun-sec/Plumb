@@ -17,7 +17,7 @@
  * discretionary for legacy reasons.</p>
  *
  * <p>Detection approach: this is an <em>AST</em>
- * check ? we walk every
+ * check -- we walk every
  * {@link MethodCallExpr} whose callee is
  * {@code getInstance} on a {@code MessageDigest}
  * receiver and inspect the string-literal first
@@ -69,7 +69,7 @@ import org.plumb.style.StyleContext;
  * CWE-328: Use of Weak Hash.
  *
  * <p>Detects calls to {@code java.security.MessageDigest.getInstance(String)} with a literal weak /
- * broken hash algorithm name. The rule is AST-only (no TAC, no data flow needed) ? a
+ * broken hash algorithm name. The rule is AST-only (no TAC, no data flow needed) -- a
  * single-method-call shape with a string-literal first arg.
  */
 public final class WeakHashChecker implements AstChecker {
@@ -86,7 +86,7 @@ public final class WeakHashChecker implements AstChecker {
           List.of("MD2", "MD4", "MD5", "SHA", "SHA1", "SHA-1", "HmacMD5", "HmacMD4"));
 
   /**
-   * (this is an AST checker, not a DFA one ? see {@link org.plumb.style.AstDispatcher}). Any
+   * (this is an AST checker, not a DFA one -- see {@link org.plumb.style.AstDispatcher}). Any
    * consumer pinning the old id needs to track via {@code RuleRegistry} alias resolution.
    */
   private static final String RULE_ID = "ast-security-weak-hash";

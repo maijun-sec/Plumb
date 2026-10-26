@@ -29,7 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * R-833 P0 ? Maven build-system adapter.
+ * Maven build-system adapter.
  *
  * <p>Resolves a Maven project root ({@code pom.xml} at the root) into a {@link BuildProject}.
  * Supports:
@@ -65,7 +65,7 @@ import org.slf4j.LoggerFactory;
  *       {@code .aar}, {@code .war}). Skip {@code <packaging>pom</packaging>} imports correctly.
  *   <li>Honor {@code <scope>system</scope>} by reading {@code <systemPath>} verbatim.
  *   <li>Honor {@code <scope>provided</scope>} by keeping the jar in the compile classpath (matches
- *       {@code javac} semantics ? provided jars are needed to compile against, just not to ship).
+ *       {@code javac} semantics -- provided jars are needed to compile against, just not to ship).
  *   <li>Deduplicate the result so a transitive reference appearing in N modules is added once.
  * </ol>
  *
@@ -280,8 +280,8 @@ public final class MavenAdapter implements BuildAdapter {
    *
    * <p>Provided-scope deps are kept in the compile classpath (they're needed to compile against
    * servlet API etc.). System-scope deps resolve via {@code <systemPath>}. Test-scope deps are
-   * <b>not</b> added here ? they're scanned separately under {@code testSourceFiles} and added to
-   * the per-module test classpath in R797+ work.
+   * <b>not</b> added here -- they're scanned separately under {@code testSourceFiles} and added to
+   * the per-module test classpath in a future release.
    */
   private List<Path> resolveCompileClasspath(
       Path moduleRoot, Model model, EffectiveModel effective) {
@@ -394,8 +394,8 @@ public final class MavenAdapter implements BuildAdapter {
    * <p>For non-SNAPSHOT versions we look at the conventional layout.
    *
    * <p>{@code classifier} and {@code type} are honoured: the jar filename becomes {@code
-   * <artifactId>-<version>-<classifier>.<type>} (classifier omitted when blank) ? matches the Maven
-   * convention for {@code foo-1.0-jdk17.jar} etc.
+   * <artifactId>-<version>-<classifier>.<type>} (classifier omitted when blank) -- matches the
+   * Maven convention for {@code foo-1.0-jdk17.jar} etc.
    */
   private Path resolveArtifact(
       String groupId, String artifactId, String version, String classifier, String type) {
@@ -453,7 +453,7 @@ public final class MavenAdapter implements BuildAdapter {
   /**
    * Wrapper around a {@link Model} after parent / properties / dependencyManagement have been
    * merged in. The {@code managedDeps} map keys on {@code groupId:artifactId} (type+classifier
-   * agnostic) ? that's what Maven actually does.
+   * agnostic) -- that's what Maven actually does.
    */
   static final class EffectiveModel {
     final Model model;
@@ -653,7 +653,7 @@ public final class MavenAdapter implements BuildAdapter {
 
   /**
    * Read {@code <project><properties><project.build.sourceEncoding>} when present. Null when absent
-   * ? caller falls back to UTF-8.
+   * -- caller falls back to UTF-8.
    */
   private static Charset detectEncoding(Model m) {
     if (m == null) return null;

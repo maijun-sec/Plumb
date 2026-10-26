@@ -29,7 +29,7 @@ import org.plumb.tac.ir.TacOperand;
  * expression), the {@code <=} operator (a single token), and the array length expression (a
  * separate AST expression). The naive AST approach is "find any {@code <=} in a for-loop header
  * where the RHS contains {@code .length} / {@code .size()}", but that pattern matches {@code for
- * (int i = 0; i <= n; i++)} where {@code n} is a parameter ? the off-by-one only happens when the
+ * (int i = 0; i <= n; i++)} where {@code n} is a parameter -- the off-by-one only happens when the
  * RHS is provably the same expression as the array index. The DFA pairs the BRANCH operands with
  * subsequent ARRAYLOAD / ARRAYSTORE to confirm the array access uses the same loop variable, then
  * fires only if the bound operator is {@code LE}.

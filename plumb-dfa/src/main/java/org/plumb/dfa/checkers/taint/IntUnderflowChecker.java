@@ -129,7 +129,7 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
       if (this.isGuardBoundedUnderflowByOperand(ins.lhs1)) {
         return;
       }
-      // — message includes the actual Java type.
+      // The message includes the actual Java type.
       // Also: this is the SOLE owner of PRE_DEC/POST_DEC
       // findings (IntOverflowChecker used to fire on the
       // same instructions with a mismatched CWE-191
@@ -193,7 +193,7 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
       if (this.isGuardBoundedUnderflow(ins)) {
         return;
       }
-      // — direction split. When one operand is a
+      // Direction split. When one operand is a
       // literal int/long constant, the math can only
       // go one direction. Mirror of IntOverflowChecker's
       // direction gate: underflow bit (value 2) is
@@ -210,7 +210,7 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
           return;
         }
       }
-      // — message includes actual Java type, CWE
+      // The message includes the actual Java type, and the CWE
       // forced to CWE-191 to match rule_id. The op
       // (SUB / ADD / MUL) is preserved because Juliet
       // CWE-191 uses both SUB (e.g. `data - 1` when
@@ -257,8 +257,8 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
   }
 
   /**
-   * ? see IntOverflowChecker#constRhsValue. Mirror helper for the underflow checker; identical
-   * body, kept as a separate method so each checker owns its own copy (the two checkers are already
+   * See IntOverflowChecker#constRhsValue. Mirror helper for the underflow checker; identical body,
+   * kept as a separate method so each checker owns its own copy (the two checkers are already
    * parallel implementations of TaintedCheckerBase's emit logic; we don't want to introduce a
    * shared util just for two static methods).
    */
@@ -280,9 +280,9 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
   }
 
   /**
-   * ? see IntOverflowChecker#possibleDirections. Same direction bitmask. Underflow-only cases (bit
-   * 2 set) are the cases IntUnderflowChecker handles; the int underflow checker is the only owner
-   * of those.
+   * See IntOverflowChecker#possibleDirections. Same direction bitmask. Underflow-only cases (bit 2
+   * set) are the cases IntUnderflowChecker handles; the int underflow checker is the only owner of
+   * those.
    */
   static int possibleDirections(BinaryOperator op, long rhs) {
     if (op == BinaryOperator.ADD) {
@@ -303,8 +303,8 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
   }
 
   /**
-   * ? see IntOverflowChecker#typeName. Same mapping to keep the human-readable type in the
-   * underflow message consistent with the overflow message.
+   * See IntOverflowChecker#typeName. Same mapping to keep the human-readable type in the underflow
+   * message consistent with the overflow message.
    */
   private static String typeName(TacType dt) {
     if (dt == null) return "int/long";

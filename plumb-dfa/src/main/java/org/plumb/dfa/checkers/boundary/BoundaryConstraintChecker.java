@@ -22,18 +22,18 @@ import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacType;
 
 /**
- * Abstract base for "boundary constraint" checkers ? those that fire when an arithmetic / division
+ * Abstract base for "boundary constraint" checkers -- those that fire when an arithmetic / division
  * / array-index operation could exceed the type's range, divide by zero, or step outside an array.
  *
  * <p>Each concrete subclass (Overflow / Underflow / DivZero / ArrayBounds) inherits the
  * range-propagation scaffolding here and only supplies the rule-specific bits:
  *
  * <ul>
- *   <li>{@link #isBoundarySensitive} ? does this instruction potentially overflow / underflow /
+ *   <li>{@link #isBoundarySensitive} -- does this instruction potentially overflow / underflow /
  *       divide by zero / array-OOB? (Subclass-specific.)
- *   <li>{@link #sinkPredicate} ? build the "is the path reachable?" predicate for {@code ins} given
- *       the current ranges (subclass-specific).
- *   <li>{@link #hazardKind} ? return the human-readable hazard name (e.g. {@code "overflow"},
+ *   <li>{@link #sinkPredicate} -- build the "is the path reachable?" predicate for {@code ins}
+ *       given the current ranges (subclass-specific).
+ *   <li>{@link #hazardKind} -- return the human-readable hazard name (e.g. {@code "overflow"},
  *       {@code "underflow"}, {@code "divide-by-zero"}, {@code "out-of-bounds"}).
  * </ul>
  *
@@ -59,7 +59,7 @@ import org.plumb.tac.ir.TacType;
  * the current path guards, is the sink-constraint predicate satisfiable?" If UNSAT, the path can't
  * actually be taken and the finding is suppressed. The user pointed out the original {@code
  * TaintedCheckerBase}-derived checkers had {@code solverBridge} wired up but never called it for
- * boundary checks ? this class fixes that.
+ * boundary checks -- this class fixes that.
  */
 public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
 
@@ -72,7 +72,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   /**
    * Per-var MOVE lineage. {@code lineage[x] = a} records that the most recent assignment to {@code
    * x} was {@code x = a} (a direct MOVE). When {@code a}'s range is later narrowed (e.g. by a
-   * guard), every {@code y} such that {@code lineage[y] = a} inherits the narrower range ? this
+   * guard), every {@code y} such that {@code lineage[y] = a} inherits the narrower range -- this
    * lets us answer the user-insight pattern {@code int x = a; if (a < MAX-5) { x++; }} without
    * re-traversing MOVE chains.
    *
@@ -153,7 +153,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
    * every {@code CALL} site to narrow the callee's view of the parameter to whatever the caller
    * actually passed in.
    *
-   * <p>Range tracking in this checker is intra-proc ? without this seed, the callee sees {@code
+   * <p>Range tracking in this checker is intra-proc -- without this seed, the callee sees {@code
    * data} as BOTTOM and over-refutes (or fails to refute) on the wide range. With this seed, the
    * caller's known-bounded {@code data = Byte.MIN_VALUE} reaches the callee and the callee
    * correctly refutes / fires based on the caller's view.
@@ -205,7 +205,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
       new LinkedHashMap<>();
 
   /**
-   * Caller-side entry point ? invoked from {@code checkInstruction} for every {@code CALL} after
+   * Caller-side entry point -- invoked from {@code checkInstruction} for every {@code CALL} after
    * the parent class has updated its taint state. Reads the callee's summary from {@code
    * ctx.summaryCache().get(calleeSig)} (with the same fallback chain {@link
    * org.plumb.dfa.taint.TaintedCheckerBase#propagateTaintFromCalleeSummary} uses), extracts the
@@ -492,7 +492,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
           propagate(rv);
         }
       }
-      // — single-point TacVar RHS.
+      // Single-point TacVar RHS.
       // If `b` is a known single-point var
       // (e.g. `t_t2 = MAX-5` followed by
       // `a < t_t2`), use its concrete
@@ -598,7 +598,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
-   * ? return the concrete Range of a well-known static-final field given the simple class name and
+   * Return the concrete Range of a well-known static-final field given the simple class name and
    * the field name. Returns null if the field is not in the table (e.g. user-defined constants ?
    * those go through FIELDSTORE tracking which is out of scope here).
    */
@@ -611,7 +611,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
-   * ? table of well-known static-final field values. Only compile-time constants that appear as
+   * Table of well-known static-final field values. Only compile-time constants that appear as
    * FIELDLOAD in TAC (not as literal Const).
    */
   private static final Map<String, Range> STATIC_FINAL_TABLE = new LinkedHashMap<>();
@@ -698,7 +698,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
    * </ol>
    */
   private boolean isReachable(AnalysisContext ctx, String sinkPredicate, TacInstruction ins) {
-    // — Tier -2 NE-zero quick check. See
+    // Tier -2 NE-zero quick check. See
     // isRefutedByNonZeroGuard for full rationale.
     // Short version: the classic CWE-369 false positive is
     // `if (data != 0) { 100 / data; }`. Tier 0
@@ -827,8 +827,8 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
-   * ? Tier -2 NE-zero quick check. The classic CWE-369 false positive comes from Juliet {@code
-   * good*} functions that gate a divisor with an explicit non-zero check, e.g.:
+   * Tier -2 NE-zero quick check. The classic CWE-369 false positive comes from Juliet {@code good*}
+   * functions that gate a divisor with an explicit non-zero check, e.g.:
    *
    * <pre>{@code
    * if (data != 0) {
@@ -854,7 +854,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
    *
    * <p>Only handles the literal-on-RHS shape {@code var != <literal>} (and the symmetric {@code
    * <literal> != var} emitted via {@code recordCompareIfApplicable}'s flipped branch). General
-   * {@code data < c1 || data > c2} ranges that exclude 0 are not handled here ? Tier 0's {@code
+   * {@code data < c1 || data > c2} ranges that exclude 0 are not handled here -- Tier 0's {@code
    * withGuardsMetRanges} already meets those into the effective range and refutes when the literal
    * 0 is outside. Future R-Round could lift this helper to a generic "active-guards vs.
    * sink-predicate" SMT mini- solver, but keeps the surface tight.
@@ -864,7 +864,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
    * <p>NE guards carry no useful <em>narrowing</em> information for the Range lattice (the variable
    * could still be any value except the literal), so emitting them would inflate the Tier-1
    * conjunction without helping Tier 0. The proper destination is a separate {@code nonZeroGuards}
-   * map consulted only by refutation helpers ? that's a larger refactor. For we read GuardTracker
+   * map consulted only by refutation helpers -- that's a larger refactor. For we read GuardTracker
    * directly because it already holds the right set and is the same source of truth the {@code
    * isGuardedBy(rhs, NE)} query would consult.
    */

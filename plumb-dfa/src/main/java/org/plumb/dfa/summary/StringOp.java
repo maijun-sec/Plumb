@@ -14,7 +14,7 @@ import java.util.Set;
  *
  * <p>Previously, the only way to encode this was {@link Operation.TaintPropagate} on the parameter
  * (with a 1.0 confidence), which worked but lost the structural information (e.g. the callee used
- * {@code toLowerCase} ? the consumer couldn't distinguish passthrough-by-toLowerCase from
+ * {@code toLowerCase} -- the consumer couldn't distinguish passthrough-by-toLowerCase from
  * passthrough-by-String-returned-as-is). A dedicated {@code StringOp} preserves that structural
  * information for the consumers that care (e.g. a two-pass analyzer that needs to know the chain of
  * transformations).

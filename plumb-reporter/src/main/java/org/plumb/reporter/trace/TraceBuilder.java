@@ -1,5 +1,5 @@
 /*
- * TraceBuilder ? the single construction entry
+ * TraceBuilder -- the single construction entry
  * point for v2 structured traces.
  *
  * <p>Checkers (and {@code TaintedCheckerBase}) call
@@ -12,7 +12,7 @@
  * <p>Why a builder rather than {@code new TraceNode(...)}:
  * the v1 free-for-all ({@code new FlowStep(...)} at
  * arbitrary call sites) is the exact thing that made the
- * 91-checker codebase inconsistent ? some checkers have
+ * 91-checker codebase inconsistent -- some checkers have
  * full traces, some have a single violation step, most
  * have nothing. A builder is the single chokepoint that
  * (a) guarantees id uniqueness, (b) maintains the
@@ -89,7 +89,7 @@ public final class TraceBuilder {
 
   /**
    * Append a {@link TraceNode.Role#PROPAGATE} node and return its id. {@code parents} is the list
-   * of immediate data-flow predecessors; pass an empty list for a root propagation (rare ? usually
+   * of immediate data-flow predecessors; pass an empty list for a root propagation (rare -- usually
    * only SOURCE nodes have no parents).
    */
   public int addPropagate(
@@ -106,7 +106,7 @@ public final class TraceBuilder {
   }
 
   /**
-   * Convenience overload for single-parent propagation ? the common case (MOVE, FIELDLOAD,
+   * Convenience overload for single-parent propagation -- the common case (MOVE, FIELDLOAD,
    * ARRAYLOAD, CALL passthrough).
    */
   public int addPropagate(
@@ -278,9 +278,9 @@ public final class TraceBuilder {
   }
 
   /**
-   * Append a {@link TraceNode.Role#VIOLATION} node ? the single-step structural-finding point (e.g.
-   * use-after-free, resource-leak). Pass an empty {@code parents} for a root violation, or the
-   * observation that triggered the finding (e.g. the close call site for a UAF).
+   * Append a {@link TraceNode.Role#VIOLATION} node -- the single-step structural-finding point
+   * (e.g. use-after-free, resource-leak). Pass an empty {@code parents} for a root violation, or
+   * the observation that triggered the finding (e.g. the close call site for a UAF).
    */
   public int addViolation(
       TraceNode.Op op,
@@ -481,7 +481,7 @@ public final class TraceBuilder {
   /**
    * Package-private entry point used by {@link Trace#fromFlowSteps(List)} to construct a
    * v1-imported node. Mirrors {@link #addNode} but is callable from outside the {@code
-   * TraceBuilder} class. Not part of the public API ? v2 checkers should use the {@code addSource}
+   * TraceBuilder} class. Not part of the public API -- v2 checkers should use the {@code addSource}
    * / {@code addPropagate} / etc. helpers above, which wire parent / child edges consistently.
    */
   int addNodeForCompat(

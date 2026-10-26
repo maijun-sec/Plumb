@@ -16,10 +16,10 @@ import org.plumb.ai.agent.ToolResult;
  * <p>Arguments:
  *
  * <ul>
- *   <li>{@code pattern} (string, required) ? glob pattern. Supports {@code *}, {@code ?}, and
+ *   <li>{@code pattern} (string, required) -- glob pattern. Supports {@code *}, {@code ?}, and
  *       {@code **}. Example: {@code "**\/UserService*.java"}.
- *   <li>{@code base_dir} (string, optional) ? directory to search. Default = source root.
- *   <li>{@code max_results} (integer, optional, default 50) ? hard cap on returned paths.
+ *   <li>{@code base_dir} (string, optional) -- directory to search. Default = source root.
+ *   <li>{@code max_results} (integer, optional, default 50) -- hard cap on returned paths.
  * </ul>
  *
  * <p>Returns the matching paths (one per line, relative to {@code base_dir} when possible), or a

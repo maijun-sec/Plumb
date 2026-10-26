@@ -15,7 +15,7 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * CWE-600 (Uncaught Exception in Servlet) ? file-wide check for risky checked-exception-throwing
+ * CWE-600 (Uncaught Exception in Servlet) -- file-wide check for risky checked-exception-throwing
  * calls.
  */
 public final class UncaughtExceptionCheck implements AstChecker {

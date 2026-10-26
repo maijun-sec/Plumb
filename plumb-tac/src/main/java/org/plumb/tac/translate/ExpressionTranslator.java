@@ -695,7 +695,7 @@ public final class ExpressionTranslator {
    * catalogue.
    *
    * <p>The current catalogue covers the JDK primitive wrapper {@code MAX_VALUE} / {@code MIN_VALUE}
-   * constants that Juliet uses as resource-exhaustion sources. Adding more is mechanical ? insert
+   * constants that Juliet uses as resource-exhaustion sources. Adding more is mechanical -- insert
    * the entry and the downstream CWE-400 / CWE-789 checkers will see the constant without further
    * changes.
    */
@@ -740,7 +740,7 @@ public final class ExpressionTranslator {
   }
 
   private ExpressionResult translateConditional(ConditionalExpr ce, TacBuilder b) {
-    // cond ? a : b
+    // cond -- a : b
     //   t1 = cond
     //   if t1 goto L_TRUE else goto L_FALSE
     // L_TRUE:
@@ -1013,7 +1013,7 @@ public final class ExpressionTranslator {
    * parses.
    *
    * <p>Previously the translator only called {@code Integer.parseInt} which doesn't accept {@code
-   * 0x} / {@code 0b} prefixes ? Juliet's {@code testcasesupport.IO} class uses {@code 0xff} in a
+   * 0x} / {@code 0b} prefixes -- Juliet's {@code testcasesupport.IO} class uses {@code 0xff} in a
    * regex-flag computation, so the entire {@code IO.java} file failed to translate, which meant
    * {@code IO.staticReturnsTrue()} had no {@link org.plumb.dfa.summary.MethodSummary} in the cache,
    * which meant fold consumers saw UNKNOWN and never produced findings on real Juliet CWE113 /

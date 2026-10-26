@@ -97,7 +97,7 @@ public final class TraceJsonSerializer {
    * side channel. Convenience wrapper so the {@code NdjsonEmitter} doesn't have to know about the
    * reporter.
    *
-   * <p>Returns {@code null} when no v2 trace was attached (v1-only finding) ? the caller should
+   * <p>Returns {@code null} when no v2 trace was attached (v1-only finding) -- the caller should
    * omit the {@code v2_trace} field in that case to keep back-compat with consumers that don't
    * recognise the new key.
    */

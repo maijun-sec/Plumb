@@ -15,16 +15,16 @@ import java.util.Objects;
  * <p>Schema fields:
  *
  * <ul>
- *   <li>{@code type} ? always {@code "function"}
- *   <li>{@code function.name} ? the tool's stable id; the model echoes this in {@code
+ *   <li>{@code type} -- always {@code "function"}
+ *   <li>{@code function.name} -- the tool's stable id; the model echoes this in {@code
  *       tool_calls[].function.name}.
- *   <li>{@code function.description} ? human prose; the model uses this to decide when to call the
+ *   <li>{@code function.description} -- human prose; the model uses this to decide when to call the
  *       tool.
- *   <li>{@code function.parameters} ? JSON Schema object; {@code type: "object"}, {@code
+ *   <li>{@code function.parameters} -- JSON Schema object; {@code type: "object"}, {@code
  *       properties: {...}}, {@code required: [...]}.
  * </ul>
  *
- * <p>Construction is plain {@link ObjectNode} JSON ? no Spring-AI, no BeanInfo magic. The {@link
+ * <p>Construction is plain {@link ObjectNode} JSON -- no Spring-AI, no BeanInfo magic. The {@link
  * #toJsonNode(ObjectMapper)} method converts to the wire shape that {@code AIProvider} serialises
  * into the request body.
  */

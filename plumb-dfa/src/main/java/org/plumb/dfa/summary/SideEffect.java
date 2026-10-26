@@ -11,20 +11,20 @@ import java.util.Set;
  * <p>Five buckets are tracked independently:
  *
  * <ul>
- *   <li>{@link #writesThisFields} ? names of {@code this.field} assignments the method performs.
+ *   <li>{@link #writesThisFields} -- names of {@code this.field} assignments the method performs.
  *       The engine uses this to invalidate caller-side read state.
- *   <li>{@link #writesParamIndices} ? indices of parameters the method may mutate (e.g. by calling
+ *   <li>{@link #writesParamIndices} -- indices of parameters the method may mutate (e.g. by calling
  *       {@code arg.add(...)} on a collection parameter).
- *   <li>{@link #writesStaticFields} ? {@code FQCN.field} keys for static field writes.
- *   <li>{@link #callsMethods} ? callee signatures of every method call in the body (used for
+ *   <li>{@link #writesStaticFields} -- {@code FQCN.field} keys for static field writes.
+ *   <li>{@link #callsMethods} -- callee signatures of every method call in the body (used for
  *       inter-procedural summary chaining).
- *   <li>{@link #mayThrow} ? true if the body contains a {@code THROW} instruction or calls a method
- *       known to throw. The engine uses this to decide whether the call site has a reachable
+ *   <li>{@link #mayThrow} -- true if the body contains a {@code THROW} instruction or calls a
+ *       method known to throw. The engine uses this to decide whether the call site has a reachable
  *       exception path.
  * </ul>
  *
  * <p>{@link #isPure()} is a fast O(1) check that returns true iff the method performs no writes, no
- * calls, and never throws ? i.e. the engine can freely re-evaluate it without observing state
+ * calls, and never throws -- i.e. the engine can freely re-evaluate it without observing state
  * changes.
  */
 public final class SideEffect {

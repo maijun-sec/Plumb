@@ -1,7 +1,5 @@
 /*
- * ? StaticApiKeyCheck (CWE-798 / CWE-259) migrated
- * from plumb-dfa/.../StaticApiKeyChecker.java to
- * plumb-style AST.
+ * Flags an API key hardcoded in a static field (CWE-798 / CWE-259).
  *
  * <p>Flags {@code static final} fields whose name
  * contains a credential-like token and whose value is a

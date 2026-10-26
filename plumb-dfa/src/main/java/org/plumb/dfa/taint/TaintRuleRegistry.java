@@ -12,7 +12,7 @@ import java.util.Optional;
  *
  * <p>Indexed by rule id and (for fast lookup at a call site) by sink family key. Built-in rules are
  * loaded by {@link #builtins()} and include SQL / LDAP / command / format-string / XSS /
- * log-injection / path-traversal / SSRF / XXE / deserialization / weak-crypto / weak-PRNG ? the
+ * log-injection / path-traversal / SSRF / XXE / deserialization / weak-crypto / weak-PRNG -- the
  * common taint-flavoured CWE families. A user can register additional rules at runtime; user rules
  * win on id collision.
  *

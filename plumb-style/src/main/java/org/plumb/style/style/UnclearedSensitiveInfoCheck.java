@@ -9,7 +9,7 @@
  * referring to that field.
  *
  * <p>Generic. We don't try to confirm cleanup runs
- * before release ? we just flag the suspicious
+ * before release -- we just flag the suspicious
  * "sensitive char[] field without any cleanup call"
  * pattern. Real codebases that always clear sensitive
  * fields before exit will fail this; mitigate with

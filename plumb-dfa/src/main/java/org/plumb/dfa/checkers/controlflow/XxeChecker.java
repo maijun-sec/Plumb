@@ -39,7 +39,7 @@ import org.plumb.tac.ir.TacOperand;
  *
  * <p><b>Why DFA, not AST.</b> A syntactic pass flags every {@code db.parse(...)} call as XXE, which
  * is wrong: the user may have correctly configured the factory. The DFA correlates the factory
- * construction, the secure configuration call, and the parse call ? missing the config call, the
+ * construction, the secure configuration call, and the parse call -- missing the config call, the
  * parse is XXE.
  */
 public final class XxeChecker implements DfaChecker {

@@ -120,7 +120,7 @@ public sealed interface Operation
    * The function has effects the engine cannot model: a {@code native} method, a JNI entry point,
    * reflection (e.g. {@code Class.forName} + {@code Method.invoke}), or any other side effect the
    * engine has no representation for. When a function's summary contains this operation, callers
-   * should treat the call as "opaque" ? anything might happen. The {@code reason} is a short
+   * should treat the call as "opaque" -- anything might happen. The {@code reason} is a short
    * human-readable label such as {@code "native"}, {@code "jni"}, {@code "reflection"}, {@code
    * "unsupported-call"}.
    */
@@ -153,8 +153,8 @@ public sealed interface Operation
    * SAT / UNSAT / UNKNOWN, and the checker suppresses the finding on UNSAT (the path can't actually
    * be taken).
    *
-   * <p>The predicate string is a small arithmetic / boolean DSL ? see {@code LocalSolverBridge} for
-   * the exact grammar. Real Z3 integration is layered on top: a {@code Z3Bridge} wraps {@code
+   * <p>The predicate string is a small arithmetic / boolean DSL -- see {@code LocalSolverBridge}
+   * for the exact grammar. Real Z3 integration is layered on top: a {@code Z3Bridge} wraps {@code
    * tools.aqua.z3-turnkey}'s native context, parses the same DSL into {@code BoolExpr} and asks Z3
    * to check satisfiability. The production implementation ships {@code LocalSolverBridge} (a
    * pure-Java fallback that's always available) and leaves the {@code Z3Bridge} as a future
@@ -163,7 +163,7 @@ public sealed interface Operation
    * <p>{@code pathVars} is the set of variable names that the predicate references; the bridge
    * binds each to a concrete value (a fact's {@code value} field, in the simplest case) before
    * evaluating. A predicate that references a name not in {@code pathVars} is conservatively
-   * treated as SAT ? the bridge can't know the value, so it assumes the path is reachable.
+   * treated as SAT -- the bridge can't know the value, so it assumes the path is reachable.
    */
   record SolverZ3Predicate(String predicate, java.util.Set<String> pathVars) implements Operation {
     public SolverZ3Predicate {
@@ -201,7 +201,7 @@ public sealed interface Operation
    * value bound to its {@code paramIndex}-th parameter records this Operation in the parameter's
    * {@code paramOps} bucket. A caller-side checker (e.g. the DFA-based ORM_LOST_UPDATE checker)
    * that sees the value still being a "transient" entity after the call knows the call has, in
-   * effect, persisted the entity ? even if the persistence happens one or more helper-method calls
+   * effect, persisted the entity -- even if the persistence happens one or more helper-method calls
    * down the stack.
    *
    * <p>The AST ORM_LOST_UPDATE checker only looks at the immediate function body. The DFA-augmented

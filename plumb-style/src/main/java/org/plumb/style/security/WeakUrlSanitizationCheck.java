@@ -3,7 +3,7 @@
  * bypassable by an attacker.
  *
  * {@link #isUnderAssertion(MethodCallExpr)} helper uses parent pointers, which JavaParser maintains
- * for nodes attached to a parsed tree ? works identically whether the dispatch comes from
+ * for nodes attached to a parsed tree -- works identically whether the dispatch comes from
  * findAll or from the dispatcher.
  */
 package org.plumb.style.security;

@@ -58,7 +58,7 @@ public final class OrmLoadNullCheckDfaChecker implements DfaChecker {
   private Map<String, TacInstruction> loadCallSite;
 
   /**
-   * v2 trace state. Per-function map from "from-load" var name to its v2 handle ? the load call's
+   * v2 trace state. Per-function map from "from-load" var name to its v2 handle -- the load call's
    * {@code CALL_INSTANCE} source node, propagated through alias MOVEs. Lets the final {@code
    * LOAD_NOT_NULL} violation fire wire its parent edge back to the load call site.
    */

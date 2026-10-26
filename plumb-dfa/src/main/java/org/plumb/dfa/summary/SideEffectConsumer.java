@@ -22,8 +22,8 @@ import org.plumb.tac.ir.TacOperand;
  * <p>The consumer sits between the {@link SummaryApplier} and the checkers that hold per-operand
  * caches of derived facts (e.g. "operand {@code x} is non-null", "operand {@code y} is non-zero",
  * "operand {@code z} is constant 5"). When a callee is known to write to a particular field or
- * parameter, any cached fact about that field / parameter is no longer valid ? the consumer records
- * the invalidation and exposes a lookup so checkers can decide what to do.
+ * parameter, any cached fact about that field / parameter is no longer valid -- the consumer
+ * records the invalidation and exposes a lookup so checkers can decide what to do.
  *
  * <h2>Invalidation keys</h2>
  *

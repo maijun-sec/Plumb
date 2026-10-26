@@ -17,10 +17,10 @@ import org.plumb.tac.ir.TacOperand;
  * bugs:
  *
  * <ol>
- *   <li><b>{@code obj.equals(null)} (CWE-754).</b> Always returns {@code false} ? the result cannot
- *       be {@code true} for any non-null receiver. The caller almost certainly meant the inverse:
- *       {@code obj == null} or {@code null == obj}. Catches the literal {@code null} argument at
- *       the TAC level (a {@link TacOperand.Const} with kind {@code NULL}).
+ *   <li><b>{@code obj.equals(null)} (CWE-754).</b> Always returns {@code false} -- the result
+ *       cannot be {@code true} for any non-null receiver. The caller almost certainly meant the
+ *       inverse: {@code obj == null} or {@code null == obj}. Catches the literal {@code null}
+ *       argument at the TAC level (a {@link TacOperand.Const} with kind {@code NULL}).
  *   <li><b>{@code obj.equals(arg)} where {@code obj} is known to be null (CWE-595 / CWE-476
  *       precursor).</b> The call will throw a {@link NullPointerException} at run time. The DFA
  *       tracks which local vars are assigned the literal {@code null} (or transitively inherit that

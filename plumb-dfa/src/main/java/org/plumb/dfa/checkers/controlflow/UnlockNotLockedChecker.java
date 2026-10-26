@@ -8,7 +8,7 @@
  * receiver in the same function (or on
  * the same code path). This throws
  * {@link IllegalMonitorStateException}
- * at runtime ? the lock isn't held by
+ * at runtime -- the lock isn't held by
  * the current thread.</p>
  *
  * <p>The shape it detects:</p>

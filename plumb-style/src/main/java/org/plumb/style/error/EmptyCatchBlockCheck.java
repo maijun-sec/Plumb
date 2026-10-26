@@ -28,9 +28,9 @@ public final class EmptyCatchBlockCheck implements AstChecker {
   }
 
   /**
-   * R? Step 7 ? the rule prompt the LLM sees when judging an empty-catch finding. Empty catches are
-   * common in test cleanup / Optional.orElse(null)-style code paths where the intent is "I really
-   * mean to ignore this".
+   * The rule prompt the LLM sees when judging an empty-catch finding. Empty catches are common in
+   * test cleanup / Optional.orElse(null)-style code paths where the intent is "I really mean to
+   * ignore this".
    */
   private static final String AI_PROMPT =
       """

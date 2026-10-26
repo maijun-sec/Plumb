@@ -8,7 +8,7 @@ import java.util.Objects;
  * also carry a {@code checkerClass} that names the analyzer implementation (DFA checker, style
  * visitor, ...).
  *
- * <p>A3: rules also carry an optional {@code aliases} list ? the canonical rule IDs and names of
+ * <p>A3: rules also carry an optional {@code aliases} list -- the canonical rule IDs and names of
  * equivalent rules in other rule sources (PMD, SpotBugs, SonarQube Java, Coverity). When two
  * sources ship overlapping rules (e.g. PMD {@code EmptyBlock} and SpotBugs {@code
  * SIO_SUPERFLUOUS_INSTANCEOF}-style checks), one is picked as the canonical Plumb rule and the

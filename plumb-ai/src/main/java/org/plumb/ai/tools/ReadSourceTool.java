@@ -15,10 +15,10 @@ import org.plumb.ai.agent.ToolResult;
  * <p>Arguments:
  *
  * <ul>
- *   <li>{@code path} (string, required) ? absolute or relative to the scan's source root.
- *   <li>{@code start} (integer, optional, default 1) ? 1-based first line to return.
- *   <li>{@code end} (integer, optional, default 200) ? 1-based last line to return (inclusive).
- *   <li>{@code max_lines} (integer, optional, default 200) ? hard cap on the response size; we
+ *   <li>{@code path} (string, required) -- absolute or relative to the scan's source root.
+ *   <li>{@code start} (integer, optional, default 1) -- 1-based first line to return.
+ *   <li>{@code end} (integer, optional, default 200) -- 1-based last line to return (inclusive).
+ *   <li>{@code max_lines} (integer, optional, default 200) -- hard cap on the response size; we
  *       slice if the user asks for more, so a runaway LLM can't pull a 100k-line file in one call.
  * </ul>
  *

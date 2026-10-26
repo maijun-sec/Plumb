@@ -9,18 +9,18 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * ? a logical Java module: one root of source files (typically a Maven module, a Gradle subproject,
+ * A logical Java module: one root of source files (typically a Maven module, a Gradle subproject,
  * or a single-project source root) plus the classpath needed to resolve types declared inside that
  * source set.
  *
- * <p>The record is intentionally minimal. treats each {@code --source-root} / {@code --module-root}
- * as a flat {@code JavaModule}; the per-module classpath and the Maven/Gradle/Bazel module
- * auto-discovery are + future work (see {@code juliet-coverage/reports/r797/PLAN.md} section 7).
+ * <p>The record is intentionally minimal. Plumb treats each {@code --source-root} / {@code
+ * --module-root} as a flat {@code JavaModule}; the per-module classpath and the Maven/Gradle/Bazel
+ * module auto-discovery are not implemented yet.
  *
  * <p><b>What this record is NOT for.</b> The {@code classpath} list is consumed <em>only</em> by
  * {@link JavaSourceParser}'s {@code TypeSolver}. It is <b>never</b> routed into the TAC translation
- * pipeline or into {@code BytecodeAnalyzer}. That boundary is the cardinal rule of (per user
- * constraint: "不希望分析 第三方 jar 的内容").
+ * pipeline or into {@code BytecodeAnalyzer}. That boundary is the cardinal rule of the design (per
+ * user constraint: "不希望分析 第三方 jar 的内容").
  *
  * <p><b>Discovery helpers.</b> The static factories walk the {@code sourceRoot} for {@code .java}
  * files eagerly so that downstream code can do a sanity check (e.g. log "0 .java files under
@@ -130,7 +130,7 @@ public record JavaModule(
    * contribute to the source set.
    *
    * <p><b>Symlinks are not followed.</b> Uses {@link Files#walk(Path, int)} which defaults to
-   * no-follow ? defence against infinite recursion when a checkout contains self-referential
+   * no-follow -- defence against infinite recursion when a checkout contains self-referential
    * symlinks.
    *
    * <p>Depth is bounded to {@value #MAX_DEPTH} so even a malformed symlink chain cannot exhaust the

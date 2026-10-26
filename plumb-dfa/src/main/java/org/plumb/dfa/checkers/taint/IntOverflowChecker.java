@@ -196,7 +196,7 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
       if (this.isGuardBoundedOverflow(ins)) {
         return;
       }
-      // — direction split. When one operand is a
+      // Direction split. When one operand is a
       // literal int/long constant, the math can only go
       // one direction (overflow or underflow, not both).
       // For example `byte - 1` only underflows (lhs hits
@@ -227,7 +227,7 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
           return;
         }
       }
-      // — single "violation" FlowStep at the
+      // Emit a single "violation" FlowStep at the
       // binary-op itself. — message includes the
       // actual Java type (byte / short / int / long)
       // so the human reader sees what's at risk, not
@@ -285,9 +285,9 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
   }
 
   /**
-   * ? extract the literal constant on the non-hazard side of the BINOP. Returns null if the
+   * Extract the literal constant on the non-hazard side of the BINOP. Returns null if the
    * non-hazard side is a taint var (no const rhs to inspect) or if the const is not int/long
-   * (float/double/char etc., which the existing type filter already excludes ? defensive).
+   * (float/double/char etc., which the existing type filter already excludes -- defensive).
    */
   private static Long constRhsValue(
       TacOperand lhs1, TacOperand lhs2, boolean lhs1Hazard, boolean lhs2Hazard) {
@@ -308,7 +308,7 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
   }
 
   /**
-   * ? direction bitmask for `taint op const` on a signed integer type. Bit 1 (value 1) = overflow
+   * Direction bitmask for `taint op const` on a signed integer type. Bit 1 (value 1) = overflow
    * possible; bit 2 (value 2) = underflow possible. Returns 0 when no risk, 1 when only overflow, 2
    * when only underflow, 3 when both.
    *
@@ -316,7 +316,7 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
    *
    * <ul>
    *   <li>ADD rhs > 0: only overflow (lhs + positive can't underflow because adding positive never
-   *       crosses the negative boundary ? at worst it crosses the positive boundary)
+   *       crosses the negative boundary -- at worst it crosses the positive boundary)
    *   <li>ADD rhs < 0: only underflow (adding negative crosses the negative boundary, not positive)
    *   <li>SUB rhs > 0: only underflow (subtracting positive pushes lhs down, can cross MIN)
    *   <li>SUB rhs < 0: only overflow (subtracting negative = adding positive)
@@ -354,7 +354,7 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
   }
 
   /**
-   * ? human-readable Java type name for the numeric overflow message. TacType enum values include
+   * Human-readable Java type name for the numeric overflow message. TacType enum values include
    * {@code BYTE}, {@code SHORT}, {@code INT}, {@code LONG} but also {@code UNKNOWN} (when the
    * translator loses the source-level type) and {@code FLOAT}/{@code DOUBLE} (which this checker
    * filters out, but defensive). Signed types ({@code byte}/{@code short}/{@code int}/{@code long})

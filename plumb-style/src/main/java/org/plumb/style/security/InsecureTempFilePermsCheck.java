@@ -1,7 +1,6 @@
 /*
- * ? InsecureTempFilePermsCheck (CWE-378) migrated
- * from plumb-dfa/.../InsecureTempFilePermsChecker.java to
- * plumb-style AST.
+ * Flags a temporary file created with permissions wider than the owner
+ * (CWE-378).
  *
  * <p>Flags construction of a temp file via
  * {@code File.createTempFile(...)} whose returned {@code
@@ -13,7 +12,7 @@
  * DFA half: it fires a single finding at the
  * {@code createTempFile} call site with message
  * "createTempFile result not passed through
- * setWritable/setReadable/setExecutable ? predictable
+ * setWritable/setReadable/setExecutable -- predictable
  * perms (CWE-378)". This loses the "did you set perms
  * later" precision that the DFA half had (the DFA half
  * tracked the receiver across CALLs within a single

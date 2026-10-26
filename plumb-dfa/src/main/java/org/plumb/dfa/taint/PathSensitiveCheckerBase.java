@@ -30,7 +30,7 @@ import org.plumb.tac.ir.TacOperand;
  * <p>The <em>alloc-without-close</em> pattern (CWE-404 / CWE-401, "resource leak") is the opposite:
  * an allocation creates a value, and a finding fires if the value is <em>not</em> closed (or
  * returned) on a path. The bug condition is the absence of a sink call, not its presence. The
- * {@link TaintedCheckerBase} template doesn't fit this shape well ? there's no "destination sink"
+ * {@link TaintedCheckerBase} template doesn't fit this shape well -- there's no "destination sink"
  * to check, only a "source alloc" whose close obligation must be tracked to the function exit.
  *
  * <p>This class is the right starting point for the alloc-without-close family. It tracks the alloc
@@ -52,7 +52,7 @@ import org.plumb.tac.ir.TacOperand;
  * <p>If a callee returns an allocated resource (e.g. {@code Connection#open()} returns a {@code
  * Connection}), the caller inherits the "needs close" obligation. We propagate this by checking the
  * callee's summary for an {@code Operation.PassThrough} (or a dedicated {@code
- * Operation.AllocReturn} ? this class just looks for any return-side TaintPropagate / PassThrough
+ * Operation.AllocReturn} -- this class just looks for any return-side TaintPropagate / PassThrough
  * that the caller-side checker can recognise) and recording a local alloc for the dest of the call.
  */
 public abstract class PathSensitiveCheckerBase implements DfaChecker {

@@ -11,7 +11,7 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Array index uses {@code i + 1} / {@code i - 1} pattern ? confirm it doesn't reach the array
+ * Array index uses {@code i + 1} / {@code i - 1} pattern -- confirm it doesn't reach the array
  * length.
  */
 public final class RangeArrayIndexCheck implements AstChecker {

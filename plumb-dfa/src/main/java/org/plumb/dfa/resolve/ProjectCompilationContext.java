@@ -14,14 +14,14 @@ import org.plumb.dfa.engine.BuildOutputFilter;
  *
  * <p>This is the public entry point for "scan a sub-tree of a Java project, but resolve cross-file
  * references in the whole project". The shape mirrors what {@code javac} does: the user tells the
- * compiler (1) where the project root is ? the single directory that contains every package the
- * analysis may need ? and (2) what sub-tree of that root to actually compile. The root is the
+ * compiler (1) where the project root is -- the single directory that contains every package the
+ * analysis may need -- and (2) what sub-tree of that root to actually compile. The root is the
  * search space; the sub-tree is the work list. The package declaration of every {@code .java} file
  * under the root is the indexing key, and the directory layout follows the package name, so an
  * {@code import a.b.C;} statement in a file under the sub-tree can always be resolved by looking
  * for {@code <root>/a/b/C.java}.
  *
- * <p>The context bundles the two pre-existing resolvers ? the {@link SourcePathResolver} indexes
+ * <p>The context bundles the two pre-existing resolvers -- the {@link SourcePathResolver} indexes
  * the whole root and is used to look up cross-file references; the {@link StaticFieldResolver}
  * extracts {@code public static final} literals from the same root and is used to fold constant
  * field accesses at the IR level. The class itself also exposes the work-list of files inside the
@@ -41,7 +41,7 @@ public final class ProjectCompilationContext {
 
   /**
    * Create a new context. Both arguments must be non-null and the {@code sourceRoot} must be a
-   * directory that lives inside {@code projectRoot} ? this mirrors javac's rule that the source
+   * directory that lives inside {@code projectRoot} -- this mirrors javac's rule that the source
    * path is a search space, not a list of disjoint roots.
    *
    * @throws IllegalArgumentException if the inputs do not satisfy the containment rule.

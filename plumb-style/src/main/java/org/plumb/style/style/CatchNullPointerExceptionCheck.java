@@ -4,7 +4,7 @@
  * Dereference). Fires when a CatchClause catches
  * NullPointerException directly.
  *
- * <p>Generic ? the pattern "catching NPE to detect
+ * <p>Generic -- the pattern "catching NPE to detect
  * null" is universally a code smell; the developer
  * should check for null before dereferencing. The
  * check fires for any CatchClause where the caught
@@ -12,7 +12,7 @@
  * java.lang.NullPointerException or short form).
  * Also matches catches of the supertype RuntimeException
  * / Exception that DECLARE a body that immediately
- * tests for null on an object ? but without symbol
+ * tests for null on an object -- but without symbol
  * resolution that heuristic is too noisy. So we
  * just match direct NPE catches.</p>
  *

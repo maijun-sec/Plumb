@@ -21,7 +21,7 @@ import org.plumb.style.StyleContext;
  * of N_field × c.findAll(NameExpr)).
  *
  * <p>Replaces the original visit(CU) + findAll(ClassOrInterfaceDeclaration) + N_field ×
- * c.findAll(NameExpr) ? N×M walks/file down to 2 walks/file.
+ * c.findAll(NameExpr) -- N×M walks/file down to 2 walks/file.
  */
 public final class UnusedPrivateFieldCheck implements AstChecker {
   private static final RuleDef DEFAULT_RULE =

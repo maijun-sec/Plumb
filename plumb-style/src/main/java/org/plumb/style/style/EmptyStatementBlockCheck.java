@@ -1,6 +1,6 @@
 /*
  * C1: AST-style CWE-398 (Indicator of Poor
- * Code Quality) checker ? empty block / case /
+ * Code Quality) checker -- empty block / case /
  * else / for / function / if / while.
  *
  * <p>Fires on empty bodies in the canonical Juliet
@@ -79,7 +79,7 @@ public final class EmptyStatementBlockCheck implements AstChecker {
   public void init(StyleContext ctx) {}
 
   /**
-   * Helper that returns {@code true} when a body is empty ? either the body is absent (abstract /
+   * Helper that returns {@code true} when a body is empty -- either the body is absent (abstract /
    * native method) or it has no statements. We also treat "only a single {@code break;}" as empty
    * for the CWE398 empty_case variant.
    */

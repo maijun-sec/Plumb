@@ -1,7 +1,6 @@
 /*
- * ? Cleartext socket usage (CWE-319) migrated from
- * plumb-dfa/.../checkers/CleartextSocketUsageChecker.java to
- * plumb-style AST.
+ * Flags cleartext socket usage: a socket that sends data without TLS
+ * (CWE-319).
  *
  * <p>Detects unencrypted TCP / UDP channels ({@code new
  * Socket(...)}, {@code new DatagramSocket(...)},
@@ -30,7 +29,7 @@
  * function produce one finding (matched on the first).
  * To split them, look up each
  * {@link ObjectCreationExpr} individually and emit on
- * each ? we trade simplicity for one-finding-per-method
+ * each -- we trade simplicity for one-finding-per-method
  * dedup.</p>
  */
 package org.plumb.style.security;

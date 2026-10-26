@@ -10,13 +10,13 @@ import org.plumb.tac.ir.TacType;
  * <p>The lattice has three levels:
  *
  * <ul>
- *   <li>{@link #BOTTOM} ? unanalyzable; the variable may take any value of its declared type. (We
+ *   <li>{@link #BOTTOM} -- unanalyzable; the variable may take any value of its declared type. (We
  *       use BOTTOM instead of "TOP" because the conservative direction for boundary checks is
  *       over-approximation.)
- *   <li>{@link #TOP} ? same as BOTTOM but a distinct marker for "we tried to refine and failed".
+ *   <li>{@link #TOP} -- same as BOTTOM but a distinct marker for "we tried to refine and failed".
  *       Subclasses of {@link BoundaryConstraintChecker} may treat BOTTOM and TOP differently when
  *       reporting (BOTTOM = unknown entry, TOP = lost precision).
- *   <li>A concrete {@code [lo, hi]} ? the variable is provably within this range at the current
+ *   <li>A concrete {@code [lo, hi]} -- the variable is provably within this range at the current
  *       program point.
  * </ul>
  *
@@ -149,7 +149,7 @@ public final class Range {
    * intersection (greatest lower bound) of two intervals. Returns the largest range that is
    * contained in both {@code this} and {@code other}. Used by {@code BoundaryConstraintChecker}
    * when a second guard on the same variable arrives (e.g. Juliet CWE-190 s67b goodB2GSink nested
-   * {@code if (data > 0) { if (data < 63) {...}}}) ? the conjunction of two ranges on the same var
+   * {@code if (data > 0) { if (data < 63) {...}}}) -- the conjunction of two ranges on the same var
    * is an intersection, not a union.
    *
    * <p>Returns {@link #BOTTOM} when the intervals are disjoint (no value can satisfy both guards
@@ -225,7 +225,7 @@ public final class Range {
 
   /**
    * Narrow this interval by the type bounds of {@code t}. Used after arithmetic to account for the
-   * implicit truncation (e.g. {@code (byte)(a + 1)} must fit in [-128, 127] ? overflows there are
+   * implicit truncation (e.g. {@code (byte)(a + 1)} must fit in [-128, 127] -- overflows there are
    * CWE-190 hazards).
    */
   public Range narrowToType(TacType t) {

@@ -44,7 +44,7 @@ import org.plumb.tac.ir.TacInstruction;
  * </ol>
  *
  * <p><b>Why DFA, not AST.</b> A pure AST checker can see the syntactic {@code try-catch} structure
- * of the caller and can resolve a callee's throws from its {@code throws} clause ? but real-world
+ * of the caller and can resolve a callee's throws from its {@code throws} clause -- but real-world
  * code rarely declares the {@code throws} clause for unchecked exceptions, and many real exceptions
  * escape via {@code RuntimeException} subclasses. The DFA walks the actual IR, so it sees the
  * {@code THROW} instructions even when the developer didn't declare the throws clause. It also
@@ -182,7 +182,7 @@ public final class UncaughtExceptionPropagator implements DfaChecker {
    *   <li>{@link TacFunction#signature()} returns the full declaration form {@code "foo(int,
    *       String):void"} — used by the engine internally.
    *   <li>{@link TacInstruction#calleeSig} on a CALL instruction returns the short form {@code
-   *       "foo/2"} (method name + arity) ? used by the translator when emitting call sites.
+   *       "foo/2"} (method name + arity) -- used by the translator when emitting call sites.
    * </ul>
    *
    * <p>The hasThrow / hasCatch maps are keyed by the short form so we can do a direct {@code

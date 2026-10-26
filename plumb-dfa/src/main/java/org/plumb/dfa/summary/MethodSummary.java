@@ -10,10 +10,10 @@ import org.plumb.dfa.cg.FunctionSignature;
  * <p>The summary has two parts:
  *
  * <ul>
- *   <li>{@link #returnShape} ? what the return value looks like (see {@link ReturnShape}). This is
+ *   <li>{@link #returnShape} -- what the return value looks like (see {@link ReturnShape}). This is
  *       what the engine uses to fold the call into a constant or parameter reference.
- *   <li>{@link #sideEffect} ? what state changes the method makes (see {@link SideEffect}). This is
- *       what the engine uses to invalidate caller-side read state.
+ *   <li>{@link #sideEffect} -- what state changes the method makes (see {@link SideEffect}). This
+ *       is what the engine uses to invalidate caller-side read state.
  * </ul>
  *
  * <p>A summary is keyed by the callee's {@link FunctionSignature}. The {@link MethodSummaryCache}

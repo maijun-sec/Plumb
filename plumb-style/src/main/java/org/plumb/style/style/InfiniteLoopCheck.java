@@ -213,7 +213,7 @@ public final class InfiniteLoopCheck implements AstChecker {
 
   /**
    * Recognize a {@code var >= 0} condition and return the induction variable name. The var name is
-   * taken from the LHS as printed; we don't need symbol resolution ? the body's modulo check uses
+   * taken from the LHS as printed; we don't need symbol resolution -- the body's modulo check uses
    * the same textual comparison.
    */
   private static String inductionVarForGeZero(Expression e) {

@@ -56,8 +56,8 @@ public final class ConfigLoader {
   }
 
   /**
-   * — Coerce a YAML value into a boolean. The legacy format was {@code checks.<rule>: true}; the
-   * new format is {@code checks.<rule>: {enabled: true, aiDedup: true}}. This helper accepts both,
+   * Coerce a YAML value into a boolean. The legacy format was {@code checks.<rule>: true}; the new
+   * format is {@code checks.<rule>: {enabled: true, aiDedup: true}}. This helper accepts both,
    * returning {@code defaultValue} when the key is absent or unparseable.
    */
   /**
@@ -268,7 +268,7 @@ public final class ConfigLoader {
                 + cm.get("style")
                 + " instead.");
       }
-      // — 8 plumb-dfa → plumb-dfa ports
+      // The DfaChecker ports
       Object bdc =
           firstNonNull(
               cm.get("bigDecimalDoubleConstructor"), cm.get("big_decimal_double_constructor"));

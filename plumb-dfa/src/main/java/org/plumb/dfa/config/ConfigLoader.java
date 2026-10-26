@@ -19,9 +19,9 @@ import org.yaml.snakeyaml.Yaml;
  * <p>Two loading modes:
  *
  * <ul>
- *   <li>{@link #loadFromClasspath()} ? uses the bundled defaults in {@code
+ *   <li>{@link #loadFromClasspath()} -- uses the bundled defaults in {@code
  *       plumb-dfa/src/main/resources/}. This is the default mode for production scans.
- *   <li>{@link #loadFromDirectory(Path)} ? uses a user-provided directory of YAML files (one per
+ *   <li>{@link #loadFromDirectory(Path)} -- uses a user-provided directory of YAML files (one per
  *       category). User files override the defaults; missing files fall back to classpath defaults.
  * </ul>
  *

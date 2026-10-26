@@ -100,7 +100,7 @@ public final class ComparatorCompareCheck implements AstChecker {
    * True when the enclosing class declares (directly) {@code java.util.Comparator}. We check the
    * immediate {@code implements} list. The subclass that doesn't redeclare the implements clause
    * but inherits compare() from a Comparator-implementing parent will still be flagged when the
-   * dispatcher visits THAT class's {@code compare} declaration ? see the comment in visit().
+   * dispatcher visits THAT class's {@code compare} declaration -- see the comment in visit().
    */
   private static boolean declaresComparator(MethodDeclaration n) {
     com.github.javaparser.ast.Node parent = n.getParentNode().orElse(null);
@@ -123,8 +123,8 @@ public final class ComparatorCompareCheck implements AstChecker {
 
   /**
    * True when {@code e} is the literal {@code 1} or {@code -1}. {@code +1} is accepted too for
-   * completeness ? any literal ±1 is suspect in a Comparator because the right idiom is to delegate
-   * to {@code Integer.compare}.
+   * completeness -- any literal ±1 is suspect in a Comparator because the right idiom is to
+   * delegate to {@code Integer.compare}.
    */
   private static boolean isLiteralOneOrMinusOne(com.github.javaparser.ast.expr.Expression e) {
     if (e instanceof IntegerLiteralExpr ili) {

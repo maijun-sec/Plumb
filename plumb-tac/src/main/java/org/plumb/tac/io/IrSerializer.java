@@ -23,15 +23,15 @@ import org.plumb.tac.ir.TacProgram;
  * serialization format is sufficient to persist them to disk and read them back unchanged.
  *
  * <p>The writer uses {@link ObjectOutputStream} wrapped in a {@link BufferedOutputStream}; the
- * reader mirrors the layout. Both are tolerant of the optional GZIP {@code .gz} suffix ? see {@link
- * #isGzip(Path)}.
+ * reader mirrors the layout. Both are tolerant of the optional GZIP {@code .gz} suffix -- see
+ * {@link #isGzip(Path)}.
  *
  * <h2>Why this lives here</h2>
  *
  * <p>The pipeline is staged (<em>parse → style → tac → dfa</em>). For large inputs the TAC stage
  * produces hundreds of MB of in-memory state (programs + call graph) that the DFA stage then walks.
- * Persisting TAC between the two stages keeps the working set bounded ? the DFA stage can page in a
- * {@link MergedProgram} one chunk at a time and the GC can collect the style phase's ASTs
+ * Persisting TAC between the two stages keeps the working set bounded -- the DFA stage can page in
+ * a {@link MergedProgram} one chunk at a time and the GC can collect the style phase's ASTs
  * immediately.
  *
  * <h2>File naming</h2>

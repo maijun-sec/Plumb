@@ -17,13 +17,13 @@ import org.plumb.reporter.trace.TraceNode;
  * source location, branch conditions, summary-folds across function boundaries).
  *
  * <p>The LLM uses this instead of the raw {@code Finding.dataflowSteps()} string when it needs to
- * reason about WHY the static analyzer flagged a finding ? e.g. "the value at the sink was tainted
+ * reason about WHY the static analyzer flagged a finding -- e.g. "the value at the sink was tainted
  * because the upstream BRANCH on line 32 was not negating the reachability".
  *
  * <p>when the finding carries a v2 structured {@code Trace}, this tool renders the DAG with the
  * specific {@link TraceNode.Op} enum (MOVE / BINOP_ADD / INPUT_READLINE / SINK_SQL / FIELDLOAD /
  * SUMMARY_TAINT_PROPAGATE / ...) instead of falling back to a v1 {@code FlowStep} string
- * projection. The v2 path is materially more precise ? the LLM can distinguish {@code MOVE x -> y}
+ * projection. The v2 path is materially more precise -- the LLM can distinguish {@code MOVE x -> y}
  * from {@code BINOP_ADD rhs -> t} from {@code FIELDLOAD this.IO -> t}, all of which collapsed to a
  * generic "propagate" string in v1. The v1 path is kept as a fallback for findings emitted by
  * checkers that don't dual-write.
@@ -101,7 +101,7 @@ public class GetDataflowTraceWithFactsTool implements Tool {
   }
 
   /**
-   * ? render the v2 structured trace by walking the DAG from the root via parentIds/childIds, and
+   * Render the v2 structured trace by walking the DAG from the root via parentIds/childIds, and
    * label each visited node with its {@link TraceNode.Op} enum + operands (typed via {@link
    * OperandRef}). Sinks (nodes in {@code trace.sinkOrViolationIds()}) are marked explicitly.
    * Multi-parent ALIAS nodes are rendered once (the first time they're visited) to avoid
@@ -213,7 +213,7 @@ public class GetDataflowTraceWithFactsTool implements Tool {
   }
 
   /**
-   * v1 path ? preserved for findings emitted by checkers that don't dual-write the v2 trace ( P3.1
+   * v1 path -- preserved for findings emitted by checkers that don't dual-write the v2 trace ( P3.1
    * was the gating commit; pre-P3.1 findings still flow through here). Heuristic role
    * classification based on the FlowStep.role() field + canonical-string fallback.
    */

@@ -28,7 +28,7 @@ import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
 /**
- * R-833 P1 ? Apache Ant build-system adapter.
+ * Apache Ant build-system adapter.
  *
  * <p>Recognises {@code build.xml} at the project root. Uses the standard JDK {@code
  * javax.xml.parsers} API (no extra dependency) to walk the Ant script.
@@ -54,8 +54,8 @@ import org.xml.sax.SAXException;
  * <h2>What we do NOT parse (out of scope)</h2>
  *
  * <ul>
- *   <li>Ant macros ({@code <macrodef>}) ? we only handle literal targets.
- *   <li>Custom Ant tasks ? only the standard javac / path / classpath.
+ *   <li>Ant macros ({@code <macrodef>}) -- we only handle literal targets.
+ *   <li>Custom Ant tasks -- only the standard javac / path / classpath.
  * </ul>
  */
 public final class AntAdapter implements BuildAdapter {
@@ -239,7 +239,7 @@ public final class AntAdapter implements BuildAdapter {
 
   /**
    * Resolve a single Ant value, substituting {@code ${prop}} placeholders from the properties map.
-   * Multiple placeholders are not supported ? the user is expected to keep values simple.
+   * Multiple placeholders are not supported -- the user is expected to keep values simple.
    */
   private static String resolveProperty(String value, Map<String, String> props) {
     if (value == null || !value.contains("${")) return value;

@@ -34,7 +34,7 @@ public final class Finding {
   // ---- rule identity (two supported flavors) ----
   /**
    * Canonical {@link RuleDef}, when available (style checkers, post-DFA enrichment). {@code null}
-   * when the producer is a DFA checker that does not own a RuleDef ? reporters fall back to {@link
+   * when the producer is a DFA checker that does not own a RuleDef -- reporters fall back to {@link
    * #ruleId}/{@link #checkerName}.
    */
   private final RuleDef rule;
@@ -299,8 +299,8 @@ public final class Finding {
   // ===================================================================
 
   /**
-   * ? DFA-only constructor. DFA checkers emit findings that carry a {@code checkerName / ruleId /
-   * cwe / flow} identity but no {@link RuleDef} (RuleDef is only constructed at the {@code
+   * DFA-only constructor. DFA checkers emit findings that carry a {@code checkerName / ruleId / cwe
+   * / flow} identity but no {@link RuleDef} (RuleDef is only constructed at the {@code
    * ScanRunner.convertUnifiedFinding} stage where the {@link org.plumb.rules.RuleRegistry} is
    * available). The {@code File} is passed as a string path because DFA checkers don't always have
    * a {@link Path} (they get the file path from the engine via {@code withFilePath} later).
@@ -320,7 +320,7 @@ public final class Finding {
       int column,
       String flow,
       List<FlowStep> flowSteps) {
-    // — preserve "empty filePath" as the empty string,
+    // Preserve "empty filePath" as the empty string,
     // not "unknown". The DFA-side FindingReporter
     // (org.plumb.dfa.engine.FindingReporter) checks
     // filePath() for emptiness to decide whether to
@@ -350,7 +350,7 @@ public final class Finding {
   }
 
   /**
-   * ? DFA convenience factory without an explicit {@link FlowStep} list. Use this when the checker
+   * DFA convenience factory without an explicit {@link FlowStep} list. Use this when the checker
    * emits a finding but does not track a structured trace (typically when the legacy DFA Finding
    * constructor was called with only 9 positional args). Equivalent to {@code dfa(...)} with {@code
    * flowSteps = List.of()}.
@@ -424,7 +424,7 @@ public final class Finding {
   }
 
   /**
-   * ? DFA-only convenience factory for a single-step "violation" finding (no full trace, just one
+   * DFA-only convenience factory for a single-step "violation" finding (no full trace, just one
    * FlowStep at the violation site). Used by structural checkers that don't propagate data — every
    * finding still has a non-empty {@link #dataflowSteps} list, so the trace renderer can show
    * "violation at this line".
@@ -444,7 +444,7 @@ public final class Finding {
       int column,
       String functionSig,
       String flow) {
-    // — preserve empty filePath so the DFA-side
+    // Preserve empty filePath so the DFA-side
     // FindingReporter can enrich via
     // ctx.sourcePathForEnclosingClass(...). The
     // pre- factory wrote Path.of("unknown") here
@@ -485,18 +485,18 @@ public final class Finding {
   // ===================================================================
 
   /**
-   * ? v2-aware DFA factory. The caller passes a {@link org.plumb.reporter.trace.Trace} (a
-   * structured DAG of {@link org.plumb.reporter.trace.TraceNode}s) and an explicit {@link
+   * v2-aware DFA factory. The caller passes a {@link org.plumb.reporter.trace.Trace} (a structured
+   * DAG of {@link org.plumb.reporter.trace.TraceNode}s) and an explicit {@link
    * org.plumb.reporter.trace.Trace.CompressionLevel}; the factory flattens the trace to a {@code
    * List<FlowStep>} via {@link org.plumb.reporter.trace.Trace#toFlowSteps()} and stores it in the
    * same {@link #dataflowSteps} field v1 checkers populate. This means the v1 reporter pipeline
-   * (NDJSON, SARIF, console) is unchanged ? the {@code dataflow_steps} array produced from a v2
+   * (NDJSON, SARIF, console) is unchanged -- the {@code dataflow_steps} array produced from a v2
    * trace is byte-identical in shape to the v1 {@code dataflow_steps} array.
    *
    * <p>The trade-off is that v2 traces are flattened to {@code FlowStep}s at construction time. The
-   * full DAG is <em>not</em> retained on the {@code Finding} ? callers that need the structured
+   * full DAG is <em>not</em> retained on the {@code Finding} -- callers that need the structured
    * trace (e.g. SARIF 2.1 codeFlows with a threadflow JSON tree) must keep their own reference.
-   * This is intentional for P1 ? the P3 / round will revisit {@link org.plumb.reporter.Finding} to
+   * This is intentional for P1 -- the P3 / round will revisit {@link org.plumb.reporter.Finding} to
    * persist the {@code Trace} when the v2 reporter lands.
    *
    * <p>Like {@link #dfa}, {@code filePath} is preserved as the empty string (not {@code "unknown"})
@@ -652,8 +652,8 @@ public final class Finding {
   }
 
   /**
-   * alias for {@link #dataflowSteps()} ? kept for source-compat with tests that used the legacy DFA
-   * Finding API.
+   * alias for {@link #dataflowSteps()} -- kept for source-compat with tests that used the legacy
+   * DFA Finding API.
    */
   public List<FlowStep> flowSteps() {
     return dataflowSteps;

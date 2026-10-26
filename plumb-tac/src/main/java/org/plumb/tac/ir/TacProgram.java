@@ -82,7 +82,7 @@ public final class TacProgram implements java.io.Serializable {
   private final Map<String, String> classToParent = new java.util.HashMap<>();
 
   /**
-   * Reverse class-hierarchy table ? for each parent, the list of direct children that {@code
+   * Reverse class-hierarchy table -- for each parent, the list of direct children that {@code
    * extends} it. Maintained alongside {@link #classToParent} inside {@link #registerClassParent} so
    * a hierarchy-aware resolver can ask "what classes implement this abstract method?" without
    * scanning the whole program. Keyed by short class name exactly like {@link #classToParent}.
@@ -311,7 +311,7 @@ public final class TacProgram implements java.io.Serializable {
 
   /**
    * See {@link #writeObject}. Restores {@code sourcePath} from its string form. {@code null} is
-   * allowed (e.g. for synthetic programs the translator builds without a real source file) ? the
+   * allowed (e.g. for synthetic programs the translator builds without a real source file) -- the
    * field stays {@code null} in that case and the cache file name is the source of truth on disk.
    */
   private void readObject(java.io.ObjectInputStream in)

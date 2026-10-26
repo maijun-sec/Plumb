@@ -84,7 +84,7 @@ public final class HardCodedKeyChecker implements DfaChecker {
   /**
    * Per-function literal-sourced tracker shared with {@link HardCodedPasswordSinkChecker} via the
    * shared DRY refactor. Uses a 4-char minimum (vs the password checker's 3-char) to preserve the
-   * original semantics ? keys need to be a bit longer to be plausibly an AES/DES key.
+   * original semantics -- keys need to be a bit longer to be plausibly an AES/DES key.
    */
   private final LiteralSourcedTracker tracker = new LiteralSourcedTracker(4);
 

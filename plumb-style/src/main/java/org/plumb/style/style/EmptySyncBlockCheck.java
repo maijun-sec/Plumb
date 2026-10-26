@@ -10,12 +10,12 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * CWE-585 ? empty {@code synchronized} block.
+ * CWE-585 -- empty {@code synchronized} block.
  *
  * <p>Fires when a {@link SynchronizedStmt} has an empty body. Empty synchronized blocks are always
  * a bug or dead code: they acquire a monitor and immediately release it without any synchronization
  * happening between, which either (a) is leftover from a refactor, or (b) is a placeholder that was
- * never filled in, or (c) ? in the worst case ? is intentional but misleading (the developer was
+ * never filled in, or (c) -- in the worst case -- is intentional but misleading (the developer was
  * trying to use the monitor for memory-visibility side effects, which requires more than just
  * acquisition release).
  *

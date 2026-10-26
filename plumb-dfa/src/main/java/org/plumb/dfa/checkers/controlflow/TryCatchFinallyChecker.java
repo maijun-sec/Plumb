@@ -29,7 +29,7 @@ import org.plumb.tac.ir.TacOperand;
  *       (Throwable t)} swallows everything. We flag any {@code CATCH_HANDLER} whose declared type
  *       is {@code Exception}, {@code RuntimeException}, or {@code Throwable}.
  *   <li><b>CWE-397 Declaration of Throws for Generic Exception.</b> A {@code throw new
- *       Exception("...")} is almost always wrong ? the caller has no specific exception type to
+ *       Exception("...")} is almost always wrong -- the caller has no specific exception type to
  *       catch. We flag any {@code THROW} whose operand is a {@code NEW} of {@code Exception},
  *       {@code RuntimeException}, or {@code Throwable}.
  * </ol>

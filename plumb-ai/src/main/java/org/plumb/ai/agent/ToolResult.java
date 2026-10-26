@@ -7,9 +7,9 @@ package org.plumb.ai.agent;
  * <p>Two flavours:
  *
  * <ul>
- *   <li>{@link #ok(String)} ? tool ran successfully; {@code body} is the human-readable result
+ *   <li>{@link #ok(String)} -- tool ran successfully; {@code body} is the human-readable result
  *       (plain text or short JSON).
- *   <li>{@link #error(String)} ? tool failed; the LLM sees the error message in the {@code "tool"}
+ *   <li>{@link #error(String)} -- tool failed; the LLM sees the error message in the {@code "tool"}
  *       reply and can adjust (e.g. try a different path, or conclude that the information isn't
  *       available).
  * </ul>

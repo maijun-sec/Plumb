@@ -31,7 +31,7 @@
  *   <li>The variable is local (declared in the method
  *       body, not a parameter, not a class field).</li>
  *   <li>The ASSIGN expression is a literal (string, int,
- *       long, etc.) ? method calls may have side effects
+ *       long, etc.) -- method calls may have side effects
  *       and are not flagged.</li>
  *   <li>The variable is not assigned a value derived from
  *       itself (no {@code t = t + 1} pattern).</li>
@@ -335,8 +335,8 @@ public final class UnusedVariableAstCheck implements AstChecker {
   }
 
   /**
-   * Returns true when {@code e} is plausibly a "may write to literal" expression ? string literals,
-   * int/long/double literals, char literals, boolean literals, null literals, or {@code
+   * Returns true when {@code e} is plausibly a "may write to literal" expression -- string
+   * literals, int/long/double literals, char literals, boolean literals, null literals, or {@code
    * FieldAccessExpr} for a known constant (e.g. {@code Integer.MAX_VALUE}). Method calls are
    * excluded because they may have side effects and are tracked by other checkers (CWE690 etc.).
    */
@@ -380,7 +380,7 @@ public final class UnusedVariableAstCheck implements AstChecker {
       return isLiteralOrLiteralField(be.getLeft()) && isLiteralOrLiteralField(be.getRight());
     }
     if (e instanceof ConditionalExpr ce) {
-      // `cond ? a : b` — only flag if both branches
+      // `cond -- a : b` — only flag if both branches
       // are literals (rare in Juliet CWE563).
       return isLiteralOrLiteralField(ce.getThenExpr()) && isLiteralOrLiteralField(ce.getElseExpr());
     }
@@ -405,7 +405,7 @@ public final class UnusedVariableAstCheck implements AstChecker {
   }
 
   /**
-   * Returns true when {@code typeName} is a "wrapper" type ? a class whose only purpose is to hold
+   * Returns true when {@code typeName} is a "wrapper" type -- a class whose only purpose is to hold
    * a literal value. ObjectCreationExpr on these types counts as a literal assignment for the
    * purposes of CWE-563 detection. Wrapper types: String, StringBuilder, StringBuffer,
    * Long/Integer/Short/Byte/Double/Float/Boolean/ Character.

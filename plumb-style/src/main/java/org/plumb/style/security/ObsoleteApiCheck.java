@@ -9,7 +9,7 @@
  * four canonical patterns:</p>
  *
  * <ul>
- *   <li>{@code DataInputStream.readLine()} ? uses
+ *   <li>{@code DataInputStream.readLine()} -- uses
  *       the default platform charset which is not
  *       safe to round-trip UTF-8 / Latin-1 bytes.
  *       {@link java.io.BufferedReader#readLine()}
@@ -22,7 +22,7 @@
  *       when the hostnames map to different IPs.
  *       {@link java.net.URI#equals(Object)} or a
  *       hostname check is the replacement.</li>
- *   <li>{@code Runtime.exec(String)} ? passes the
+ *   <li>{@code Runtime.exec(String)} -- passes the
  *       command through the platform shell, which
  *       is vulnerable to argument injection.
  *       {@link java.lang.ProcessBuilder} with an
@@ -219,7 +219,7 @@ public final class ObsoleteApiCheck implements AstChecker {
    * DataInputStream.readLine()}, returns {@code "DataInputStream"}. For {@code dis.readLine()}
    * (where {@code dis} is declared elsewhere), we look up the variable's declared type in the
    * enclosing method / block so a {@code DataInputStream x = ...} declaration is resolved to its
-   * declared class. This is the resolution-light variant ? we don't run the full JavaParser symbol
+   * declared class. This is the resolution-light variant -- we don't run the full JavaParser symbol
    * solver (which requires source jars + extra configuration), we just walk the enclosing method
    * body for {@code <Type> <name> = ...} patterns.
    */

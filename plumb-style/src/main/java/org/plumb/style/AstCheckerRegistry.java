@@ -54,8 +54,8 @@ public final class AstCheckerRegistry {
 
   /**
    * Variant of {@link #all()} that excludes checkers whose {@code DEFAULT_RULE.enabled()} is {@code
-   * false} (stubs). The public surface ? {@link #builtins()}, {@link #load}, and {@link
-   * #byCategory} ? returns this filtered view; the mirror path inside {@code
+   * false} (stubs). The public surface -- {@link #builtins()}, {@link #load}, and {@link
+   * #byCategory} -- returns this filtered view; the mirror path inside {@code
    * RuleRegistry.tryMirrorAstCheckers} uses {@link #all()} so it can still see the stubs and
    * force-enable them when {@code withBuiltinDefaults(true)} is in play.
    */

@@ -14,8 +14,8 @@ package org.plumb.ai.prompts;
  *
  * <p>Receives: rule metadata (id, cwe, severity, description) + a single finding's source context +
  * dataflow trace. Returns: one JSON line {@code {"verdict":"TP|FP|UNKNOWN","reason":"..."}}. The
- * prompt is conservative by design ? the LLM is told to default to TP unless a clear neutralisation
- * (sanitizer, guard, dead code) is visible in the source window.
+ * prompt is conservative by design -- the LLM is told to default to TP unless a clear
+ * neutralisation (sanitizer, guard, dead code) is visible in the source window.
  *
  * <h2>Bug scanner prompt ({@link #BUG_SCANNER})</h2>
  *
@@ -61,7 +61,7 @@ public final class AgentPrompts {
           + "to=<sink-line>) — precise check for any guard between the "
           + "source and the sink.\n"
           + "  5. If everything is verified, reply with FINAL:.\n\n"
-          + "=== RECOGNISING SAFE SOURCES (R668 lesson) ===\n"
+          + "=== RECOGNISING SAFE SOURCES ===\n"
           + "The source IS the data. If the data comes from a hardcoded "
           + "literal (`data = \"foo\";`, `data = 2;`, `data = MAX_VALUE;`, "
           + "`data = Boolean.TRUE;`) OR from a method call whose name "
@@ -86,7 +86,7 @@ public final class AgentPrompts {
           + "then you can call more tools or emit FINAL:.";
 
   /**
-   * FP reducer v10 ? default-to-FP variant. v9's "default to TP if no clear neutralization"
+   * FP reducer v10 -- default-to-FP variant. v9's "default to TP if no clear neutralization"
    * over-fires 12/15 times on real code: when the AI can't find a guard it says TP, but the code is
    * actually safe (constants, validated params, fixture helpers, unchecked exceptions, etc.). v10
    * flips the default to FP and requires POSITIVE evidence for TP.
@@ -183,7 +183,7 @@ public final class AgentPrompts {
           + "then you can call more tools or emit FINAL:.";
 
   /**
-   * FP reducer v11 ? default-to-FP + implicit-guarantee hint. v10 still over-fired on cases where
+   * FP reducer v11 -- default-to-FP + implicit-guarantee hint. v10 still over-fired on cases where
    * the source has an implicit guarantee that the local-window check cannot see: - Javadoc says
    * {@code @param X not null} or {@code @param X must not be null} - Variable is freshly
    * constructed at the call site ({@code final X x = new X(...)}) - Static utility method with
@@ -246,7 +246,7 @@ public final class AgentPrompts {
           + "with int multiplication — overflow is intentional and safe.\n"
           + "The resource is an exception object (new IllegalArgumentException(...)) "
           + "not an I/O resource that needs closing.\n\n"
-          + "=== IMPLICIT GUARANTEES — DEFAULT TO FP (R672.1 / v11) ===\n"
+          + "=== IMPLICIT GUARANTEES — DEFAULT TO FP ===\n"
           + "When you cannot find a direct null check in the local window, "
           + "look for IMPLICIT guarantees in the surrounding code. These "
           + "imply the variable cannot be null at the fire line and the "
@@ -314,7 +314,7 @@ public final class AgentPrompts {
           + "then you can call more tools or emit FINAL:.";
 
   /**
-   * Bug scanner ? looks for security bugs in a source snippet. The LLM is told the rule list (one
+   * Bug scanner -- looks for security bugs in a source snippet. The LLM is told the rule list (one
    * line per rule id + cwe) and is asked to return a JSON array of Finding-shaped objects. The
    * model is allowed to invent findings the static rules missed, but it must cite the source line
    * and the rule id from the supplied list (or "manual" if it is a brand-new bug category the model

@@ -21,7 +21,7 @@ import org.plumb.dfa.solver.SolverZ3Bridge.Result;
  *   <li>{@code DivByZeroChecker} records the guard {@code data != 0}.
  *   <li>{@code IntUnderflowChecker} records {@code data >= 1} (i.e. the developer is guarding
  *       against underflow).
- *   <li>A new finding wants to know "is this division safe?" ? the answer is yes iff the current
+ *   <li>A new finding wants to know "is this division safe?" -- the answer is yes iff the current
  *       path condition <em>implies</em> {@code data != 0}. If IntUnderflow already proved {@code
  *       data >= 1} (which implies {@code data != 0}), the finding can be suppressed without an
  *       extra Z3 query.

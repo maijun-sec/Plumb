@@ -10,7 +10,7 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * {@code StringBuffer} field in a {@link Serializable} class is not thread-safe ? use {@code
+ * {@code StringBuffer} field in a {@link Serializable} class is not thread-safe -- use {@code
  * StringBuilder}.
  */
 public final class StringBufferFieldInSerialClassCheck implements AstChecker {

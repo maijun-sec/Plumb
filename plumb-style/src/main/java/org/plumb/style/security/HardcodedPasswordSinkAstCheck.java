@@ -20,7 +20,7 @@
  *
  * <p>Juliet's good() sinks avoid the bad pattern, so
  * even non-position matches usually distinguish TP from
- * FP at the file granularity ? bad() has the call,
+ * FP at the file granularity -- bad() has the call,
  * good1()/good2() either don't call the sink at all or
  * use a non-literal / non-bad path.</p>
  */

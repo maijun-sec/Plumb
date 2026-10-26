@@ -6,7 +6,7 @@ import org.plumb.ai.agent.ToolDefinition;
 import org.plumb.ai.agent.ToolResult;
 
 /**
- * Step 3 ? return the full call hierarchy of a method: who calls it (callers), and (transitively)
+ * Step 3 -- return the full call hierarchy of a method: who calls it (callers), and (transitively)
  * who calls them. Walks {@link FindCallersTool} until the caller set stabilises or the depth cap is
  * hit.
  *
@@ -155,7 +155,7 @@ public class GetCallHierarchyTool implements Tool {
   /**
    * Convert a FindCallersTool "in" location into a function name. The location is a function name
    * in the TAC path and a file path in the grep path. We try to extract the function name from the
-   * actual line text (after the colon ? the original code line); failing that, we return the file
+   * actual line text (after the colon -- the original code line); failing that, we return the file
    * basename.
    */
   private static String extractFnFromLocation(String location, String line) {

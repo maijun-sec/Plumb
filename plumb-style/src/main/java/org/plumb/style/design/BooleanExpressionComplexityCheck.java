@@ -11,7 +11,8 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Boolean expression too complex (default threshold 3 ? meaning 3+ {@code &&}/{@code ||} literals).
+ * Boolean expression too complex (default threshold 3 -- meaning 3+ {@code &&}/{@code ||}
+ * literals).
  *
  * <p>findAll(BinaryExpr.class)} before. The complexity count uses a stack walk on each {@code
  * BinaryExpr} subtree so we don't recurse the whole tree at each top-level {@code AND}/{@code OR}.

@@ -1,12 +1,12 @@
 /*
- * useless single-statement block (FI_USELESS_BLOCK) ? drop the braces.
+ * useless single-statement block (FI_USELESS_BLOCK) -- drop the braces.
  *
  * <p><b>pattern D rewrite.</b> The previous
  * implementation used {@code visit(CompilationUnit)} + 5 separate
  * {@code n.findAll} calls (IfStmt / WhileStmt / ForStmt / ForEachStmt
  * / DoStmt), each triggering a full AST walk: 5 walks per file.
  * The new implementation uses 5 per-node visit overloads dispatched
- * by {@code AstDispatcher} in a single walk ? 0 redundant walks.</p>
+ * by {@code AstDispatcher} in a single walk -- 0 redundant walks.</p>
  */
 package org.plumb.style.style;
 

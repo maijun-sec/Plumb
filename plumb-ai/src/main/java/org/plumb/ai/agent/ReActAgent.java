@@ -18,10 +18,10 @@ import org.slf4j.LoggerFactory;
  * <pre>
  *   system:    <role-priming prompt from AgentTask>
  *   user:      <the actual question>
- *   assistant: <reply 1 ? may carry tool_calls>
+ *   assistant: <reply 1 -- may carry tool_calls>
  *   tool:      <result of tool 1, paired by tool_call_id>
  *   tool:      <result of tool 2, ...>
- *   assistant: <reply 2 ? may carry tool_calls>
+ *   assistant: <reply 2 -- may carry tool_calls>
  *   ...
  *   assistant: FINAL: {verdict, reason}            <-- stop
  * </pre>
@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
  *   <li>The {@link LlmProvider} returns {@code null} on a call (transport / parse failure).
  *   <li>The previous turn's tool calls all returned errors AND the model now gives up (no tool
  *       calls, no FINAL:). We bail with {@link AgentResult#toolError(String, LlmReply)} so the
- *       caller can map it to UNKNOWN ? this distinguishes "LLM didn't conclude" from "the tool
+ *       caller can map it to UNKNOWN -- this distinguishes "LLM didn't conclude" from "the tool
  *       layer is broken".
  * </ol>
  *
@@ -72,7 +72,7 @@ public class ReActAgent {
    *       model from skipping navigation on the first turn (finding: model was treating most cases
    *       as "trivial" and answering without any tool call, then hallucinating about the source
    *       code).
-   *   <li>Turn 1+: {@code "auto"} ? let the model decide. Once it has the source context, it can
+   *   <li>Turn 1+: {@code "auto"} -- let the model decide. Once it has the source context, it can
    *       finalise directly or chain more tool calls.
    * </ul>
    */
