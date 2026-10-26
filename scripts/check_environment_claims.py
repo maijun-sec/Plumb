@@ -101,31 +101,24 @@ note("checked %d line citations" % cited)
 # The two reads are cited by line.  The cited line must BE the read.
 # There are two ConfigLoader classes (plumb-main and plumb-dfa), so the
 # file is selected by the module in its path, not by name alone.
+#
+# The check is DERIVED, not pinned: the gate finds the reads itself (see
+# getenv_reads below) and then requires the document to cite exactly
+# those lines.  A stale citation fails; the fix is to update the
+# document, not to weaken the gate.
 MAIN_CONFIG_LOADER = (REPO / "plumb-main" / "src" / "main" / "java"
                       / "org" / "plumb" / "main" / "ConfigLoader.java")
 cl_lines = read(MAIN_CONFIG_LOADER).splitlines()
-for m in re.finditer(r"`ConfigLoader\.java:(\d+)`", doc):
-    lo = int(m.group(1))
-    if not (1 <= lo <= len(cl_lines)):
-        failures.append("ConfigLoader.java:%d is not a valid line" % lo)
-        continue
-    line = cl_lines[lo - 1]
-    if "System.getenv" not in line:
-        failures.append(
-            "the document cites ConfigLoader.java:%d for an environment "
-            "read, but that line is: %s" % (lo, line.strip()))
 
-# The inline `// :NNN` comments in the code block point at lines too.
-for m in re.finditer(r"//\s*:(\d+)", doc):
-    lo = int(m.group(1))
+
+def _cl_is_read(lo):
+    """Is ConfigLoader.java line `lo` one of the environment reads?"""
     if not (1 <= lo <= len(cl_lines)):
-        failures.append("the inline comment cites ConfigLoader.java:%d, which "
-                        "is not a valid line" % lo)
-        continue
-    if "System.getenv" not in cl_lines[lo - 1]:
-        failures.append(
-            "the inline comment cites ConfigLoader.java:%d for an environment "
-            "read, but that line is: %s" % (lo, cl_lines[lo - 1].strip()))
+        return False
+    line = cl_lines[lo - 1]
+    code = re.sub(r'"(?:[^"\\]|\\.)*"', '""', line)
+    return "System.getenv" in code
+
 
 # ------------------------------------------------- 2. getenv reads
 def getenv_reads(paths):
@@ -166,6 +159,31 @@ for p, i, c in main_reads:
 note("real getenv reads in test sources: %d" % len(test_reads))
 for p, i, c in test_reads:
     note("    %s:%d  %s" % (p.relative_to(REPO).as_posix(), i, c))
+
+# The document's line citations must name the lines the reads are ON.
+# The gate derives the read lines, so the check follows the code instead
+# of a hardcoded number that goes stale when the file shifts.
+if main_reads:
+    read_lines = {p.name: sorted(i for pp, i, _ in main_reads if pp.name == p.name)
+                  for p, _, _ in main_reads}
+    cl_read_lines = set(read_lines.get("ConfigLoader.java", []))
+    cited_lines = set()
+    for m in re.finditer(r"`ConfigLoader\.java:(\d+)`", doc):
+        cited_lines.add(int(m.group(1)))
+    for m in re.finditer(r"//\s*:(\d+)", doc):
+        cited_lines.add(int(m.group(1)))
+    note("the reads are on lines %s; the document cites %s"
+         % (sorted(cl_read_lines), sorted(cited_lines)))
+    if cited_lines != cl_read_lines:
+        failures.append(
+            "the document cites ConfigLoader.java line(s) %s, but the "
+            "environment reads are on %s"
+            % (sorted(cited_lines), sorted(cl_read_lines)))
+    for lo in sorted(cited_lines):
+        if not _cl_is_read(lo):
+            failures.append(
+                "the document cites ConfigLoader.java:%d for an environment "
+                "read, but that line is: %s" % (lo, cl_lines[lo - 1].strip()))
 
 # The document says there are exactly TWO reads in the main code.
 if len(main_reads) != 2:

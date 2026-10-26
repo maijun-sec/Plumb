@@ -58,6 +58,9 @@ The gates are:
     check_cache_claims         the cache document still matches the code:
                               the file format constants, the cache modes
                               and their behaviour, the source-map contract
+    check_style_rules_claims   the style-rules document still matches the
+                              code: the interface methods, the dispatcher
+                              API, the context API, the visit count
     check_package_claims       the packaging scripts copy files that exist,
                               and the packaging documentation's sizes and
                               log level match the build
@@ -121,6 +124,8 @@ GATES = (
      ["python", "scripts/check_environment_claims.py"], "check"),
     ("check_cache_claims",
      ["python", "scripts/check_cache_claims.py"], "check"),
+    ("check_style_rules_claims",
+     ["python", "scripts/check_style_rules_claims.py"], "check"),
     ("check_package_claims",
      ["python", "scripts/check_package_claims.py"], "check"),
     ("capability_baseline",
