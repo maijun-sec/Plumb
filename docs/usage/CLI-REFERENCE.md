@@ -49,17 +49,27 @@ bin/sast-scan \
 
 | Adapter | 探测依据 | 输出 |
 | --- | --- | --- |
+| `maven-resolver` | `pom.xml` | 同 `maven`，但 `classpathJars` 走 Maven Resolver 算**完整传递依赖树**（含版本冲突消解） |
 | `maven` | `pom.xml` | `sourceFiles`（解析 `<sourceDirectory>` / `<testSourceDirectory>`）、`classpathJars`（`~/.m2` 下所有依赖）、`modules`（reactor） |
 | `gradle` | `build.gradle(.kts)` | 类似 Maven |
 | `bazel` | `BUILD` 文件 | 解析 `java_library` / `java_binary` 规则 |
 | `ant` | `build.xml` | 解析 `<javac>` task |
 
-**自动检测**：只传 `--project-root` 时，`BuildSystemRegistry.detect(projectRoot)` 会按顺序试 `pom.xml` → `build.gradle` → `BUILD` → `build.xml`。
+**自动检测**：只传 `--project-root` 时，`BuildSystemRegistry.detect(projectRoot)` 会按顺序试
+`maven-resolver` → `maven` → `gradle` → `bazel` → `ant`。
+`maven-resolver` 排在 `maven` 前面，因为它算出的传递依赖树更准；`maven` 作为兜底，
+因为它无外部依赖，不会因为本地仓库坏了就失败。
 
 **显式指定**：
 
 ```bash
 bin/sast-scan --project-root /opt/my-spring-app --build-system maven
+```
+
+想要完整传递依赖：
+
+```bash
+bin/sast-scan --project-root /opt/my-spring-app --build-system maven-resolver
 ```
 
 输出到 stderr：

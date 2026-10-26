@@ -79,17 +79,45 @@ def taint_rules():
 
 
 def internal_module_deps(module):
-    """The plumb-* modules a module's pom depends on."""
-    pom = REPO / module / "pom.xml"
-    if not pom.is_file():
+    """The plumb-* modules a module's pom depends on.
+
+    A module may live one level down (an aggregator's sub-module), so the
+    pom is looked up by module NAME, not by a fixed path.
+
+    Only the top-level ``<dependencies>`` block counts.  A ``<dependency>``
+    inside ``<dependencyManagement>`` pins a version for a dependency that is
+    declared elsewhere; it is not a dependency of the module that declares it.
+    Counting those made an aggregator look like it depended on its own
+    sub-module.
+    """
+    pom = find_module_pom(module)
+    if pom is None:
         return []
     text = pom.read_text(encoding="utf-8", errors="replace")
+    # A <dependencies> inside <dependencyManagement> pins versions for
+    # dependencies declared elsewhere, so it must not be read as the module's
+    # own dependency set.  Drop the management block before matching.
+    text = re.sub(r"<dependencyManagement>.*?</dependencyManagement>", "", text, flags=re.DOTALL)
+    block = re.search(r"<dependencies>(.*?)</dependencies>", text, re.DOTALL)
+    if not block:
+        return []
     deps = []
-    for m in re.finditer(r"<dependency>(.*?)</dependency>", text, re.DOTALL):
+    for m in re.finditer(r"<dependency>(.*?)</dependency>", block.group(1), re.DOTALL):
         a = re.search(r"<artifactId>\s*plumb-([a-z\-]+)\s*</artifactId>", m.group(1))
         if a:
             deps.append(a.group(1))
     return deps
+
+
+def find_module_pom(module):
+    """The pom of a module, wherever it sits in the tree."""
+    direct = REPO / module / "pom.xml"
+    if direct.is_file():
+        return direct
+    for candidate in sorted(REPO.glob("plumb-*/*/pom.xml")):
+        if candidate.parent.name == module:
+            return candidate
+    return None
 
 
 def measured_categories():
@@ -315,6 +343,9 @@ SET_CHECKS = [
     ("docs/tech/MODULE-MERGE.md", "ai"),
     ("docs/tech/MODULE-MERGE.md", "reporter"),
     ("docs/tech/MODULE-MERGE.md", "build"),
+    ("docs/tech/MODULE-MERGE.md", "build-core"),
+    ("docs/tech/MODULE-MERGE.md", "build-maven"),
+    ("docs/tech/MODULE-MERGE.md", "build-capture"),
     ("docs/tech/MODULE-MERGE.md", "tac"),
 ]
 

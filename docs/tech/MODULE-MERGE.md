@@ -16,7 +16,10 @@ plumb  (root POM)
 ├── plumb-style       ── AST 风格 checker（JavaParser AST visitor）
 ├── plumb-reporter    ── Finding 数据模型 + NDJSON / console / SARIF 输出
 ├── plumb-dfa         ── DFA 引擎（CallGraph + Z3 + 跨函数 summary + checkers）
-├── plumb-build       ── build-system adapter（Maven / Gradle / Bazel / Ant）
+├── plumb-build       ── parent pom，聚合 build 自省子模块
+│   ├── plumb-build-core    ── BuildAdapter SPI + Maven / Gradle / Bazel / Ant adapter
+│   ├── plumb-build-maven   ── Maven Resolver（Aether）传递依赖解析
+│   └── plumb-build-capture ── ByteBuddy agent 抓真实 javac 命令行
 ├── plumb-ai          ── LLM FP 消减（ReActAgent + ToolRegistry）
 └── plumb-main        ── CLI + YAML 配置 + 流水线编排
 ```
@@ -72,9 +75,12 @@ plumb  (root POM)
 | `plumb-reporter` | `plumb-rules` |
 | `plumb-style` | `plumb-parser`, `plumb-rules`, `plumb-reporter` |
 | `plumb-dfa` | `plumb-parser`, `plumb-tac`, `plumb-rules`, `plumb-reporter` |
-| `plumb-build` | `plumb-rules` |
+| `plumb-build` | （parent pom，无内部依赖） |
+| `plumb-build-core` | `plumb-rules` |
+| `plumb-build-maven` | `plumb-build-core` |
+| `plumb-build-capture` | （无内部依赖） |
 | `plumb-ai` | `plumb-rules`, `plumb-reporter` |
-| `plumb-main` | 以上全部 |
+| `plumb-main` | `plumb-parser`, `plumb-tac`, `plumb-dfa`, `plumb-build-core`, `plumb-build-maven`, `plumb-ai`, `plumb-rules`, `plumb-style`, `plumb-reporter` |
 
 关键边：
 
@@ -82,6 +88,9 @@ plumb  (root POM)
 - `plumb-tac` 只依赖 `plumb-parser`（因为 `TacTranslator` 接收 `ParsedSource`）
 - `plumb-style` 只依赖 `plumb-parser` + `plumb-rules` + `plumb-reporter` —— **不依赖 plumb-tac / plumb-dfa**（这是架构原则）
 - `plumb-dfa` 依赖 `plumb-parser` + `plumb-tac` + `plumb-rules` + `plumb-reporter`
+- `plumb-build-maven` 依赖 `plumb-build-core`（要用 `BuildAdapter` / `BuildProject`）
+- `plumb-build-capture` **不依赖任何 plumb 内部模块** —— 它是个独立 agent，
+  被塞进任意编译器的 JVM 里跑，不该拖 plumb 的依赖进去
 - `plumb-main` 依赖全部下游模块，做编排
 
 

@@ -27,7 +27,13 @@
         </dependency>
         <dependency>
             <groupId>org.plumb</groupId>
-            <artifactId>plumb-build</artifactId>
+            <artifactId>plumb-build-core</artifactId>
+        </dependency>
+        <!-- The transitive-resolution Maven adapter. It registers itself
+             through the ServiceLoader, so the CLI can auto-detect it. -->
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-build-maven</artifactId>
         </dependency>
         <dependency>
             <groupId>org.plumb</groupId>

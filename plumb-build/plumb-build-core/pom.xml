@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.plumb</groupId>
+        <artifactId>plumb-build</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>plumb-build-core</artifactId>
+    <name>plumb-build-core</name>
+    <description>
+        The BuildAdapter SPI and the built-in build-system adapters (Maven,
+        Gradle, Bazel, Ant). Each adapter resolves a project root into a
+        uniform BuildProject: source files, classpath jars, modules,
+        dependencies. The output feeds JavaSourceParser's TypeSolver so
+        cross-module symbol resolution is accurate.
+    </description>
+
+    <dependencies>
+        <!-- shared API only; no transitive dependency on plumb-dfa / parser -->
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-rules</artifactId>
+        </dependency>
+        <!-- Maven: org.apache.maven:maven-model for classpath resolution.
+             Pulled in ALWAYS so MavenAdapter can compile, but only used
+             when the user runs scans against a Maven project. -->
+        <dependency>
+            <groupId>org.apache.maven</groupId>
+            <artifactId>maven-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.codehaus.plexus</groupId>
+            <artifactId>plexus-utils</artifactId>
+        </dependency>
+        <!-- logging shared with the rest of plumb -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+        <!-- tests -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

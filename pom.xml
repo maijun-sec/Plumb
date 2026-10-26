@@ -95,6 +95,21 @@
             </dependency>
             <dependency>
                 <groupId>org.plumb</groupId>
+                <artifactId>plumb-build-core</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
+                <artifactId>plumb-build-maven</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
+                <artifactId>plumb-build-capture</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
                 <artifactId>plumb-ai</artifactId>
                 <version>0.1.0-SNAPSHOT</version>
             </dependency>

@@ -1,0 +1,104 @@
+package org.plumb.build.capture;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/** Tests for {@link JavacOptions}. */
+class JavacOptionsTest {
+
+  @Test
+  void parsesOutputDirectory() {
+    JavacOptions options =
+        JavacOptions.parse(List.of("-d", "out", "Foo.java"));
+
+    assertThat(options.outputDirectory()).isEqualTo(Path.of("out"));
+  }
+
+  @Test
+  void parsesClasspath() {
+    JavacOptions options =
+        JavacOptions.parse(List.of("-classpath", "a.jar;b.jar", "Foo.java"));
+
+    assertThat(options.classpath()).containsExactly(Path.of("a.jar"), Path.of("b.jar"));
+  }
+
+  @Test
+  void acceptsTheCpSynonym() {
+    JavacOptions options = JavacOptions.parse(List.of("-cp", "a.jar", "Foo.java"));
+
+    assertThat(options.classpath()).containsExactly(Path.of("a.jar"));
+  }
+
+  @Test
+  void parsesSourceFiles() {
+    JavacOptions options =
+        JavacOptions.parse(List.of("-d", "out", "src/Foo.java", "src/Bar.java"));
+
+    assertThat(options.sourceFiles())
+        .containsExactly(Path.of("src/Foo.java"), Path.of("src/Bar.java"));
+  }
+
+  @Test
+  void parsesEncoding() {
+    JavacOptions options = JavacOptions.parse(List.of("-encoding", "ISO-8859-1", "Foo.java"));
+
+    assertThat(options.encoding()).isEqualTo(StandardCharsets.ISO_8859_1);
+  }
+
+  @Test
+  void parsesSourceAndTarget() {
+    JavacOptions options = JavacOptions.parse(List.of("-source", "11", "-target", "17", "Foo.java"));
+
+    assertThat(options.source()).isEqualTo("11");
+    assertThat(options.target()).isEqualTo("17");
+    assertThat(options.languageLevel()).isEqualTo("11");
+  }
+
+  @Test
+  void releaseSetsBothSourceAndTarget() {
+    JavacOptions options = JavacOptions.parse(List.of("--release", "17", "Foo.java"));
+
+    assertThat(options.source()).isEqualTo("17");
+    assertThat(options.target()).isEqualTo("17");
+    assertThat(options.languageLevel()).isEqualTo("17");
+  }
+
+  @Test
+  void parsesSourcePathAndModulePath() {
+    JavacOptions options =
+        JavacOptions.parse(
+            List.of("-sourcepath", "src", "--module-path", "mods", "Foo.java"));
+
+    assertThat(options.sourcePath()).containsExactly(Path.of("src"));
+    assertThat(options.modulePath()).containsExactly(Path.of("mods"));
+  }
+
+  @Test
+  void keepsTheRawArguments() {
+    List<String> argv = List.of("-d", "out", "Foo.java");
+
+    assertThat(JavacOptions.parse(argv).rawArguments()).isEqualTo(argv);
+  }
+
+  @Test
+  void emptyInputYieldsEmptyOptions() {
+    JavacOptions options = JavacOptions.parse(List.of());
+
+    assertThat(options.classpath()).isEmpty();
+    assertThat(options.sourceFiles()).isEmpty();
+    assertThat(options.outputDirectory()).isNull();
+  }
+
+  @Test
+  void aTrailingOptionWithoutAValueIsIgnored() {
+    JavacOptions options = JavacOptions.parse(List.of("-d"));
+
+    assertThat(options.outputDirectory()).isNull();
+  }
+}

@@ -46,7 +46,11 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 
 MODULES = [
     "plumb-ai", "plumb-main", "plumb-dfa", "plumb-style", "plumb-rules",
-    "plumb-tac", "plumb-parser", "plumb-reporter", "plumb-build",
+    "plumb-tac", "plumb-parser", "plumb-reporter",
+    # plumb-build is an aggregator; its sub-modules carry the sources.
+    "plumb-build/plumb-build-core",
+    "plumb-build/plumb-build-maven",
+    "plumb-build/plumb-build-capture",
 ]
 
 # The classpath file Maven writes. Maven resolves a relative -Dmdep.outputFile against the

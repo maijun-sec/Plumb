@@ -25,13 +25,13 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
 执行 `sast-scan --help` 输出：
 
 ```
-usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system <maven|gradle|bazel|ant>]
-                 [-c <yaml>] [--cache-mode <off|read|write|readwrite>]
-                 [--cg-strategy <cha|rta|vta|1cfa|stub|global|cached:<name>:<path>>]
-                 [--classpath <jar|dir>...] [-D <dir>] [-f <console|ndjson|sarif>] [-h]
-                 [-i <path>...] [--list-rules] [--max-parallelism <n>] [-o <path>]
-                 [--project-root <dir>] [--rule <id>...] [--rule-prompts-dir <path>]
-                 [--module-root <dir>...] [--source-root <dir>...] [-v]
+usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
+       <maven-resolver|maven|gradle|bazel|ant>] [-c <yaml>] [--cache-mode
+       <off|read|write|readwrite>] [--cg-strategy
+       <cha|rta|vta|1cfa|stub|global|cached:<name>:<path>>] [--classpath <jar|dir>] [-D <dir>] [-f
+       <console|ndjson|sarif>] [-h] [-i <path>] [--list-rules] [--max-parallelism <n>]
+       [--module-root <dir>] [-o <path>] [--project-root <dir>] [--rule <id>] [--rule-prompts-dir
+       <path>] [--source-root <dir>] [-v]
 ```
 
 | 短选项 | 长选项 | 参数 | 默认值 | 说明 |
@@ -60,7 +60,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system <maven|gradle|b
 | — | `--module-root` | `<dir>` | — | 同 `--source-root`，语义分开是为了多 module 项目可按模块列出 |
 | — | `--classpath` | `<jar\|dir>` | — | 第三方依赖 jar 或 class 目录（**可重复**）。只喂 TypeSolver，**绝不被翻译成 TAC IR**。第三方程 jar 存在的唯一目的是让用户源码能解析外部类型引用 |
 | — | `--project-root` | `<dir>` | — | 传给 build-system adapter 的项目根 |
-| — | `--build-system` | `maven\|gradle\|bazel\|ant` | — | 显式挑 build-system adapter。缺省时按 `pom.xml` / `build.gradle` / `BUILD` / `build.xml` 自动探测 |
+| — | `--build-system` | `maven-resolver\|maven\|gradle\|bazel\|ant` | — | 显式挑 build-system adapter。缺省时按 `pom.xml` / `build.gradle` / `BUILD` / `build.xml` 自动探测。`maven-resolver` 通过 Maven Resolver 算出**完整传递依赖树**，自动探测时优先于 `maven`；`maven` 只取 pom 里直接声明的依赖，依赖轻、启动快 |
 | — | `--format` | `console\|ndjson\|sarif` | `console` | 输出格式（`sarif` 输出 SARIF 2.1.0，供 IDE / GitHub Code Scanning 集成） |
 
 `--output-dir` 和 `--cache-mode` **不强制成对使用**，但要有意义就得配齐：
@@ -672,5 +672,6 @@ src/main/java/Foo.java:42:5  [HIGH] TAINT_SINK_SQL_INJECTION  Tainted id flows i
 | `--source-root` 写了，但 finding 不出现 | 预期行为：source-root 只给 TypeSolver，不进 TAC 流水线。要扫的源码放 `--input` |
 | `--classpath /path/spring.jar` 后无变化 | 预期行为：classpath 是给 JavaParser 解析类型用的，不是把它当输入扫。要扫 jar 内 class 走 `--input /path/spring.jar` |
 | `--build-system maven` 报 "no adapter found" | 检查 `pom.xml` 是否在 `--project-root` 路径下；或换 `--build-system gradle` |
+| `--build-system maven-resolver` 解析出的 classpath 比预期少 | 传递依赖要能取到才会进 classpath。检查 `settings.xml` 的 mirror id 是否与本地仓库 `_remote.repositories` 记录的一致；不一致时 Aether 会把已缓存的 artifact 判为 "present, but unavailable" |
 | `findings.ndjson` 里 `ai_verdict: UNKNOWN` 占比高 | 网络/认证/模型出错。看 stderr 的 `ai_reason`；或调大 `ai.timeoutSeconds` |
 

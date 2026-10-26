@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.plumb</groupId>
+        <artifactId>plumb-build</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>plumb-build-capture</artifactId>
+    <name>plumb-build-capture</name>
+    <description>
+        A ByteBuddy agent that captures the real javac command line of a live
+        compile.
+
+        Some projects cannot be introspected statically: the classpath may be
+        assembled by a script, a plugin, or an IDE. For those, the ground truth
+        is the argv javac actually received. This module hooks
+        com.sun.tools.javac.main.Main#compile and records the arguments.
+
+        The original project this descends from used btrace, which needs
+        elevated privileges and a native agent. ByteBuddy needs neither: it
+        attaches through the standard java.lang.instrument API, so the capture
+        runs as an ordinary user process.
+    </description>
+
+    <dependencies>
+        <!-- ByteBuddy: the instrumentation engine. byte-buddy-agent provides
+             the dynamic attach that replaces btrace's native agent. -->
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy-agent</artifactId>
+        </dependency>
+
+        <!-- The agent runs inside an arbitrary compiler JVM, so it must not
+             drag a logging implementation in with it. slf4j-api binds to
+             whatever the host JVM provides; with no binding it is a no-op. -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${maven.surefire.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <!-- The agent has to be packaged before it can be attached,
+                         so the end-to-end test runs in the integration-test
+                         phase rather than the unit-test phase. -->
+                    <includes>
+                        <include>**/*IT.java</include>
+                    </includes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>${maven.shade.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>shade</goal></goals>
+                        <configuration>
+                            <!-- The agent has to be self-contained: a
+                                 -javaagent jar is loaded with only its own
+                                 classes on the classpath, so ByteBuddy and the
+                                 logging bridge have to be inside it. -->
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedArtifactAttached>false</shadedArtifactAttached>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>org.plumb.build.capture.CaptureAgent</mainClass>
+                                    <manifestEntries>
+                                        <Premain-Class>org.plumb.build.capture.CaptureAgent</Premain-Class>
+                                        <Agent-Class>org.plumb.build.capture.CaptureAgent</Agent-Class>
+                                        <Can-Redefine-Classes>true</Can-Redefine-Classes>
+                                        <Can-Retransform-Classes>true</Can-Retransform-Classes>
+                                    </manifestEntries>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -326,10 +326,13 @@ public final class SastMain {
         Option.builder()
             .longOpt("build-system")
             .hasArg()
-            .argName("maven|gradle|bazel|ant")
+            .argName("maven-resolver|maven|gradle|bazel|ant")
             .desc(
                 "Build-system adapter to use. Plumb ships Maven, "
-                    + "Gradle, Bazel and Ant adapters. Combined with "
+                    + "Gradle, Bazel and Ant adapters, plus a "
+                    + "maven-resolver adapter that computes the full "
+                    + "transitive dependency tree through the Maven "
+                    + "Resolver. Combined with "
                     + "--project-root, the chosen adapter discovers "
                     + "the project's source files, classpath jars, "
                     + "and modules, which feed plumb-main's "
@@ -377,7 +380,7 @@ public final class SastMain {
       System.err.println(
           "No build-system adapter could handle "
               + projectRoot
-              + " (try --build-system maven|gradle|bazel|ant).");
+              + " (try --build-system maven-resolver|maven|gradle|bazel|ant).");
       System.exit(2);
       return;
     }

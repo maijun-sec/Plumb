@@ -83,7 +83,21 @@ class CliHelpOutputTest {
 
     // Every line that carries text at the description column has to carry
     // more than a character or two.
-    for (String line : help.lines().toList()) {
+    //
+    // The USAGE block is excluded. It starts at column 0, so slicing it at
+    // the description column cuts off whatever tail the usage text happens
+    // to end with, and its wrapped continuation lines are indented rather
+    // than aligned to the description column. The invariant is about how
+    // option DESCRIPTIONS wrap, so applying it to the usage block measures
+    // the usage text instead.
+    int usageEnd = usageBlockEnd(help);
+
+    var lines = help.lines().toList();
+    for (int i = 0; i < lines.size(); i++) {
+      if (i < usageEnd) {
+        continue; // the usage block, not an option description
+      }
+      String line = lines.get(i);
       if (line.length() <= descriptionColumn) {
         continue;
       }
@@ -92,9 +106,40 @@ class CliHelpOutputTest {
         continue; // a continuation line with nothing yet
       }
       assertThat(text.strip().length())
-          .as("the description column is too narrow, so the text is broken up: %r", line)
+          .as("the description column is too narrow, so the text is broken up: [" + line + "]")
           .isGreaterThan(3);
     }
+  }
+
+  /**
+   * The index of the first line AFTER the usage block.
+   *
+   * <p>The usage block is the {@code usage: sast-scan ...} line plus the wrapped continuation lines
+   * that follow it. It ends where the option list starts.
+   *
+   * @param help the whole {@code --help} output
+   * @return the line index where the option list begins, or -1 if there is no usage block at all
+   */
+  private static int usageBlockEnd(String help) {
+    var lines = help.lines().toList();
+    int start = -1;
+    for (int i = 0; i < lines.size(); i++) {
+      if (lines.get(i).startsWith("usage:")) {
+        start = i;
+        break;
+      }
+    }
+    if (start < 0) {
+      return -1;
+    }
+    // The option list begins with an option line: whitespace, then "--". The
+    // usage continuation lines are indented but do not start with "--".
+    for (int i = start + 1; i < lines.size(); i++) {
+      if (lines.get(i).strip().startsWith("--")) {
+        return i;
+      }
+    }
+    return lines.size();
   }
 
   @Test

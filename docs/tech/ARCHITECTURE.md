@@ -91,8 +91,11 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
 | `plumb-reporter` | Finding 模型 + NDJSON/console/SARIF 输出 | plumb-rules |
 | `plumb-style` | AST visitor checker（JavaParser 单一来源）；数量见 `docs/rules/RULES.md` | plumb-parser, plumb-rules, plumb-reporter |
 | `plumb-dfa` | 污点 / 边界 / 指向 / 控制流四类分析的统一 DFA 引擎 | plumb-tac, plumb-rules, plumb-reporter |
-| `plumb-main` | CLI + YAML 配置 + 流水线编排 + build-system adapter | 上述全部 + plumb-build |
-| `plumb-build` | BuildAdapter：Maven / Gradle / Bazel / Ant 自动探 → sourceFiles/classpathJars | （外部工具） |
+| `plumb-main` | CLI + YAML 配置 + 流水线编排 + build-system adapter | 上述全部 + plumb-build-core + plumb-build-maven |
+| `plumb-build` | parent pom，聚合 build 自省子模块 | 无（pom） |
+| `plumb-build-core` | BuildAdapter SPI + Maven / Gradle / Bazel / Ant adapter → sourceFiles/classpathJars | plumb-rules, maven-model |
+| `plumb-build-maven` | Maven Resolver（Aether）算完整传递依赖树；读 settings.xml 的 mirror | plumb-build-core, maven-resolver |
+| `plumb-build-capture` | ByteBuddy agent 抓真实 javac 命令行 | byte-buddy, byte-buddy-agent |
 | `plumb-ai` | Re-Act 多轮 LLM agent（OpenAI / Anthropic / 兼容） | plumb-rules, plumb-reporter |
 
 ### 3.0 DFA checker 的实现形态
@@ -185,15 +188,16 @@ PathSensitiveCheckerBase (plumb-dfa/taint/PathSensitiveCheckerBase.java):
         └──────────┘ └──────────┘ └──────────┘
 ```
 
-`plumb-ai` 和 `plumb-build` 都是 `plumb-main` 的**编译期依赖**（`pom.xml` 里是普通
+`plumb-ai` 和 `plumb-build-core` 都是 `plumb-main` 的**编译期依赖**（`pom.xml` 里是普通
 `<dependency>`，没有 `<optional>`）——`plumb-main` 直接 import 它们的类型，所以
-剥掉这两个模块就编不过。
+剥掉这两个模块就编不过。`plumb-build-maven` 同样如此：`plumb-main` 依赖它，
+`MavenResolverAdapter` 才会被 ServiceLoader 发现。
 
 可选的是**运行时行为**，不是依赖本身：
 
 - `plumb-ai`：`--ai-dedup` 不开的时候，静态分析照常跑；LLM 端点配不通也只是
   把 verdict 标成 UNKNOWN。
-- `plumb-build`：不给 `--build-system` / `--project-root` 时，build-system
+- `plumb-build-*`：不给 `--build-system` / `--project-root` 时，build-system
   adapter 不会被调用，扫描目标由 `--input` 决定。
 
 ### 3.2 关键设计决策
@@ -315,19 +319,31 @@ Plumb 严格区分「喂 TypeSolver 的路径」与「扫 findings 的路径」�
 
 ## 7. Build-system 自动发现（plumb-build）
 
-`plumb-build` 模块把「手动喂 `--source-root` / `--classpath`」自动化：
+`plumb-build` 把「手动喂 `--source-root` / `--classpath`」自动化。它是一个 **parent pom**，
+底下挂三个子模块：
 
 ```
-┌──────────────────┐
-│ plumb-build      │
-│                  │
-│  BuildSystemReg. │
-│    ├── Maven     │──── discover(projectRoot) ──── BuildProject
-│    ├── Gradle    │       ├ sourceFiles: List<Path>
-│    ├── Bazel     │       ├ sourceRoots: List<Path>
-│    └── Ant       │       ├ moduleRoots: List<Path>
-│                  │       └ classpathJars: List<Path>
-└──────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│ plumb-build (parent pom)                                  │
+│                                                           │
+│  ┌──────────────────┐   ┌──────────────────┐             │
+│  │ plumb-build-core │   │ plumb-build-maven│             │
+│  │                  │   │                  │             │
+│  │ BuildSystemReg.  │   │ TransitiveResolv.│             │
+│  │    ├── Maven     │   │ MavenSettings    │             │
+│  │    ├── Gradle    │   │ MavenResolverAd. │             │
+│  │    ├── Bazel     │   │                  │             │
+│  │    └── Ant       │   └──────────────────┘             │
+│  └──────────────────┘                                    │
+│                                                           │
+│  ┌──────────────────┐                                    │
+│  │plumb-build-      │   javac 命令行抓取（ByteBuddy agent）│
+│  │capture           │                                    │
+│  │ CaptureAgent     │                                    │
+│  │ CaptureHook      │                                    │
+│  │ JavacOptions     │                                    │
+│  └──────────────────┘                                    │
+└───────────────────────────────────────────────────────────┘
               │
               ▼
        ScanConfig.inputs / sourceRoots / moduleRoots / classpathJars
@@ -336,20 +352,53 @@ Plumb 严格区分「喂 TypeSolver 的路径」与「扫 findings 的路径」�
        ScanRunner 接受 BuildAdapter 喂的路径，继续走标准流水线
 ```
 
-实际类（`plumb-build/src/main/java/org/plumb/build/`）：`BuildAdapter`、`BuildProject`、
-`BuildSystemRegistry`、`MavenAdapter`、`GradleAdapter`、`BazelAdapter`、`AntAdapter`、
-`SourceFiles`、`BuildAdapterException`。
+实际类：
+
+- `plumb-build/plumb-build-core/src/main/java/org/plumb/build/` —— `BuildAdapter`、`BuildProject`、
+  `BuildSystemRegistry`、`MavenAdapter`、`GradleAdapter`、`BazelAdapter`、`AntAdapter`、
+  `SourceFiles`、`BuildAdapterException`
+- `plumb-build/plumb-build-maven/src/main/java/org/plumb/build/maven/` —— `MavenSettings`、
+  `TransitiveResolver`、`MavenResolverAdapter`、`MavenPom`、`ModuleDescriptor`
+- `plumb-build/plumb-build-capture/src/main/java/org/plumb/build/capture/` —— `CaptureAgent`、
+  `CaptureHook`、`CaptureSink`、`CaptureReader`、`JavacOptions`
 
 每个 adapter 实现 `BuildAdapter.discover(Path)` 返回 `BuildProject`：
 
 - `MavenAdapter` 解析 `pom.xml`，把 `<sourceDirectory>` / `<testSourceDirectory>` 当 sourceFiles，
   遍历 m2 仓库下依赖当 classpathJars
+- `MavenResolverAdapter`（`maven-resolver`）走 Maven Resolver（Aether）算**完整传递依赖树**，
+  顺带读 `settings.xml` 的 mirror / localRepository
 - `GradleAdapter` 同 Maven，但解析 `build.gradle(.kts)`
 - `BazelAdapter` 解析 `BUILD` 文件里的 `java_library` / `java_binary` 规则
 - `AntAdapter` 解析 `build.xml` 的 `<javac>` task
 
-`BuildSystemRegistry.detect(projectRoot)` 按 `pom.xml` → `build.gradle` → `BUILD` →
-`build.xml` 顺序探测。
+`BuildSystemRegistry.detect(projectRoot)` 按 `maven-resolver` → `maven` → `gradle` → `bazel` →
+`ant` 顺序探测。`maven-resolver` 排在 `maven` 前面，因为它算出的传递依赖树更准；
+`maven` 作为兜底，因为它无外部依赖、不会因为本地仓库坏了就失败。
+
+### 7.0 两条取 classpath 的路子
+
+| | `maven`（core） | `maven-resolver`（maven 模块） | `plumb-build-capture` |
+| --- | --- | --- | --- |
+| 手段 | 静态解析 `pom.xml` | Aether 解析传递依赖 | 抓真实 javac 命令行 |
+| 传递依赖 | ❌ 只取直接声明的 | ✅ 完整闭包 + 版本冲突消解 | ✅ 编译器实际看到的 |
+| 依赖 | 只 `maven-model` | Aether 全家桶 | ByteBuddy |
+| 适合 | 快速、离线、够用 | 依赖复杂的 Maven 工程 | 构建脚本拼出来的 classpath |
+
+`plumb-build-capture` 是前两者的补充，不是替代：它解决「classpath 是脚本 / 插件 / IDE 拼出来的」
+这类静态分析搞不定的工程。用法：
+
+```bash
+# 编译时挂 agent，把真实 javac 命令行落盘
+PLUMB_CAPTURE_DIR=/tmp/captures \
+  javac -javaagent:plumb-build-capture.jar -d out Foo.java
+
+# 之后再读回来
+java -cp plumb-build-capture.jar ... # CaptureReader.readAll(Path.of("/tmp/captures"))
+```
+
+agent 挂的是 `com.sun.tools.javac.Main#compile`（命令行入口）和
+`com.sun.tools.javac.main.Main#compile`（`javax.tools` API 入口）——两条路互不重叠，都要挂。
 
 ### 7.1 关键设计决策
 
@@ -358,13 +407,20 @@ Plumb 严格区分「喂 TypeSolver 的路径」与「扫 findings 的路径」�
 2. **ServiceLoader SPI** —— 不用 Spring / OSGi / DI 容器，走 JDK 标准 SPI
    （`META-INF/services/org.plumb.build.BuildAdapter`）。新增 adapter = 加一个 services 文件 +
    一个 class，不需要改 `plumb-main` 或 registry 代码。
-3. **Parser-light** —— 不依赖 Maven Embedder / Gradle Tooling API / Bazel Build API（避免
+3. **Parser-light（core）** —— 不依赖 Maven Embedder / Gradle Tooling API / Bazel Build API（避免
    巨大依赖 + running daemon + JDK 版本兼容麻烦），用文件解析覆盖常见用例。
+   `plumb-build-maven` 是 core 之外的**增强路径**：它要 Aether，代价是依赖体积和一次真实的解析。
+   注意它仍是 `plumb-main` 的编译期依赖（pom 里没有 `<optional>`）——「增强路径」说的是
+   运行时要不要走它，不是构建期能不能缺它。
 4. **默认保守** —— adapter 找不到依赖 / 解析错误 → warning，不 fail。用户永远可以用
    `--classpath` 兜底。
 5. **Classpath 委派 m2 repo** —— 跟 Gradle / Bazel 的默认行为一致。
 6. **Multi-module source dedup** —— Bazel / Gradle 可能有多个 target 引用同一 `.java`；adapter
    在 project 级别 dedupe。
+7. **Aether 的 repo id 必须和 settings.xml 一致** —— 本地仓库每个 artifact 旁边的
+   `_remote.repositories` 记着它是从哪个 repo id 下载的。硬编码 `central` 而本地仓库其实是
+   走 `alimaven` mirror 填的，离线解析会报 `(present, but unavailable)`。
+   所以 `MavenSettings` 读 `settings.xml` 的 `<mirrors>` 取真实 id + url。
 
 ### 7.2 实现约束（踩坑点）
 
@@ -372,12 +428,36 @@ Plumb 严格区分「喂 TypeSolver 的路径」与「扫 findings 的路径」�
 
 - **Maven pom 解析**：`maven-model` + `plexus-utils`（MavenXpp3Reader）是读 `pom.xml` 的最低
   依赖组合；不需要 `maven-core` / `maven-resolver`（带 daemon + embedder 副作用）。
+  → 这条约束针对 `plumb-build-core`。`plumb-build-maven` **就是要** `maven-resolver`，
+  因为它算的是传递依赖树，那是静态读 pom 拿不到的。
 - **测试隔离**：测试必须用 hermetic empty local repo，不能用开发者真实的 `~/.m2/repository`
   ——环境不确定会让测试 flaky。
+  → `plumb-build-core` 遵守这条。`plumb-build-maven` 的 `TransitiveResolverTest` 是**例外**：
+  它故意用真实本地仓库，因为要验证的正是「传递依赖真的解出来了」，用空仓库这个测试
+  就没有意义了。它的断言不依赖具体机器上有哪个版本（找不到就跳过）。
 - **Bazel glob 字面量**：Bazel `glob(["**/*.java"])` 里的 `*/` 不能直接写进 Java 源码字符串
   （javac 会误解析为 block comment 结束符），必须拆分拼接。
 - **Ant 相对路径**：`<pathelement path="lib/jar"/>` 是 relative to projectRoot（跟 javac 自身
   行为一致），必须以 projectRoot 为 base 解析，不能直接 `Path.of("lib/jar")`。
+- **ByteBuddy 版本必须支持目标 JDK**：1.15.11 不支持 Java 25（class file 69），
+  报 `IllegalArgumentException: Java 25 (69) is not supported`。
+  而且这个异常**只在 `AgentBuilder.Listener.onError` 里出现**，默认 listener 是 `NoOp` →
+  完全静默。诊断手段：一定要挂 `Listener.Adapter` 打印 root cause。
+- **`Advice` / `MethodDelegation` 不能用于不 override 任何东西的方法**：
+  `com.sun.tools.javac.main.Main#compile(String[])` 没有父方法，
+  `Advice.to(...)` 会报 `Cannot call super (or default) method`。
+  观察这类方法要用 **raw ASM**（`AsmVisitorWrapper.ForDeclaredMethods`），
+  直接在字节码里插一条调用。
+- **agent 挂的类在 `jdk.compiler` 命名模块里**：被插桩的 `com.sun.tools.javac.Main`
+  由 application class loader 加载，而 agent jar 只有 agent 自己的 loader 看得见 →
+  `NoClassDefFoundError`。解法：把 hook 类**注入 bootstrap class loader**
+  （`appendToBootstrapClassLoaderSearch`），它是所有 loader 的祖先，谁都看得见。
+  代价：hook 类**不能引用 bootstrap 之外的东西**（不能用 SLF4J）。
+- **静态方法 vs 实例方法，局部变量槽不同**：静态方法槽 0 就是参数；实例方法槽 0 是 `this`，
+  参数在槽 1。插桩时 `ALOAD` 哪个槽要按 `methodDescription.isStatic()` 分。
+- **两个 javac 入口互不重叠**：命令行走 `com.sun.tools.javac.Main#compile`（静态），
+  `javax.tools` API 走 `com.sun.tools.javac.main.Main#compile`（实例）。
+  一次命令行编译会**先后经过这两个**，所以 capture 要去重。
 
 ## 8. rule-id 一致性
 
@@ -463,7 +543,7 @@ emit-id。`ScanRunner.isRuleIdAllowed` 里的
 | 新加 YAML 段 | `plumb-main/.../ConfigLoader.java` 的 `fromMapImpl()` |
 | 新加输出格式 | `plumb-reporter/.../FindingFormatter.java` + `NdjsonEmitter` / `SarifEmitter` 同级 |
 | 新加 call graph 策略 | `plumb-dfa/.../cg/CallGraphStrategy.java` + `CallGraphStrategyFactory.java` |
-| 新加 build-system adapter | `plumb-build/.../<Name>Adapter.java` 实现 `BuildAdapter` + `META-INF/services` 注册 |
+| 新加 build-system adapter | `plumb-build/plumb-build-core/.../<Name>Adapter.java` 实现 `BuildAdapter` + `META-INF/services` 注册 |
 | 新加 AI rule prompt | checker 的 `getAiPrompt(Finding)` 方法（内联）或 `--rule-prompts-dir/<id>.md` 覆盖 |
 
 ### 10.1 加新 style 规则的具体步骤

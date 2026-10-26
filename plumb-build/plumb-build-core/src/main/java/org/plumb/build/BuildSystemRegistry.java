@@ -2,6 +2,7 @@ package org.plumb.build;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,18 @@ public final class BuildSystemRegistry {
 
   private static final BuildSystemRegistry INSTANCE = new BuildSystemRegistry();
 
+  /**
+   * The adapters consulted by {@link #detect(Path)}, in priority order.
+   *
+   * <p>Two adapters can claim the same project: {@code maven} and
+   * {@code maven-resolver} both probe for a {@code pom.xml}. The resolver is
+   * more accurate -- it computes the real transitive dependency tree -- so it
+   * is consulted first. The plain {@code maven} adapter stays as the fallback
+   * because it is dependency-light and cannot fail on a broken repository.
+   */
+  private static final List<String> DETECTION_ORDER =
+      List.of("maven-resolver", "maven", "gradle", "bazel", "ant");
+
   private final Map<String, BuildAdapter> byName;
 
   private BuildSystemRegistry() {
@@ -33,14 +46,15 @@ public final class BuildSystemRegistry {
     for (BuildAdapter a : ServiceLoader.load(BuildAdapter.class)) {
       map.put(a.systemName(), a);
     }
-    this.byName = Map.copyOf(map);
+    // LinkedHashMap keeps the discovery order; Map.copyOf would not.
+    this.byName = Collections.unmodifiableMap(map);
   }
 
   public static BuildSystemRegistry get() {
     return INSTANCE;
   }
 
-  /** All registered adapters, in insertion order. */
+  /** All registered adapters, in discovery order. */
   public List<BuildAdapter> adapters() {
     return new ArrayList<>(byName.values());
   }
@@ -51,14 +65,26 @@ public final class BuildSystemRegistry {
   }
 
   /**
-   * Auto-detect: returns the FIRST adapter whose {@link BuildAdapter#probe(Path)} returns {@code
-   * true}. Order is the ServiceLoader iteration order, so adapters register themselves with the
-   * right priority via the {@code META-INF/services} file.
+   * Auto-detect: returns the first adapter whose {@link BuildAdapter#probe(Path)} returns {@code
+   * true}.
+   *
+   * <p>Adapters are consulted in {@link #DETECTION_ORDER}. Any adapter that is
+   * not named there -- a third-party one, say -- is consulted afterwards, in
+   * discovery order.
    */
   public BuildAdapter detect(Path projectRoot) {
-    for (BuildAdapter a : byName.values()) {
-      if (a.probe(projectRoot)) {
-        return a;
+    for (String name : DETECTION_ORDER) {
+      BuildAdapter adapter = byName.get(name);
+      if (adapter != null && adapter.probe(projectRoot)) {
+        return adapter;
+      }
+    }
+    for (BuildAdapter adapter : byName.values()) {
+      if (DETECTION_ORDER.contains(adapter.systemName())) {
+        continue;
+      }
+      if (adapter.probe(projectRoot)) {
+        return adapter;
       }
     }
     return null;

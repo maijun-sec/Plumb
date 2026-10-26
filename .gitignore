@@ -136,6 +136,13 @@ __pycache__/
 # if someone runs an older copy of the script.
 doc/
 
+# Classpath dumps written by `mvn dependency:build-classpath`. Maven resolves a
+# relative -Dmdep.outputFile against the MODULE directory, so these land next to
+# the module's pom.xml -- and they embed this machine's absolute repository
+# paths, which are meaningless to anyone else.
+**/main_cp.txt
+**/cp.txt
+
 # R1113: 746 MB of prior scan OUTPUT sitting under src/main/resources.
 #
 # plumb-dfa/src/main/resources/scripts holds the real corpus (614 .java fixtures).
