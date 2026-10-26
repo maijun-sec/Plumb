@@ -14,7 +14,27 @@ import org.plumb.build.BuildSystemRegistry;
 /** CLI entry point. Run with {@code --help} for options. */
 public final class SastMain {
 
+  /**
+   * The width the help is printed at.
+   *
+   * <p>{@code HelpFormatter} defaults to 74 columns, and its wrapping algorithm degenerates when a
+   * description is longer than the space left for it: the text is broken one character per line.
+   * The longest option description here is several hundred characters, so the default width turned
+   * the help into well over a thousand single-character lines. 100 columns is wide enough for the
+   * option column and leaves a readable description column.
+   */
+  private static final int HELP_WIDTH = 100;
+
   private SastMain() {}
+
+  /** Print the option list, with a layout that does not collapse. */
+  private static void printHelp(Options opts) {
+    HelpFormatter formatter = new HelpFormatter();
+    formatter.setWidth(HELP_WIDTH);
+    formatter.setLeftPadding(2);
+    formatter.setDescPadding(1);
+    formatter.printHelp("sast-scan", opts, true);
+  }
 
   public static void main(String[] args) {
     Options opts = buildOptions();
@@ -23,13 +43,13 @@ public final class SastMain {
       cli = new DefaultParser().parse(opts, args);
     } catch (ParseException e) {
       System.err.println("Argument error: " + e.getMessage());
-      new HelpFormatter().printHelp("sast-scan", opts, true);
+      printHelp(opts);
       System.exit(2);
       return;
     }
 
     if (cli.hasOption("help")) {
-      new HelpFormatter().printHelp("sast-scan", opts, true);
+      printHelp(opts);
       return;
     }
     if (cli.hasOption("version")) {
@@ -164,7 +184,7 @@ public final class SastMain {
             .argName("dir")
             .desc(
                 "Project source root for cross-file symbol resolution "
-                    + "(may be repeated). Treated as a flat JavaModule in R797; "
+                    + "(may be repeated). Treated as a flat JavaModule; "
                     + "not scanned for findings, only used by JavaParser's "
                     + "TypeSolver.")
             .build());
@@ -175,7 +195,7 @@ public final class SastMain {
             .argName("dir")
             .desc(
                 "Module source root for cross-file symbol resolution "
-                    + "(may be repeated). Same effect as --source-root in R797; "
+                    + "(may be repeated). Same effect as --source-root; "
                     + "the two options differ only in UX semantics so a "
                     + "multi-module user can list modules separately.")
             .build());
@@ -308,7 +328,7 @@ public final class SastMain {
             .hasArg()
             .argName("maven|gradle|bazel|ant")
             .desc(
-                "Build-system adapter to use. R-833 ships Maven, "
+                "Build-system adapter to use. Plumb ships Maven, "
                     + "Gradle, Bazel and Ant adapters. Combined with "
                     + "--project-root, the chosen adapter discovers "
                     + "the project's source files, classpath jars, "
@@ -380,8 +400,8 @@ public final class SastMain {
   }
 
   /**
-   * — print the list of known rule ids (sourced from the plumb-ai RulePromptRegistry's bundled
-   * list, which covers the long tail of rules the engine ships). Used by the --list-rules CLI flag.
+   * Print the list of known rule ids (sourced from the plumb-ai RulePromptRegistry's bundled list,
+   * which covers the long tail of rules the engine ships). Used by the --list-rules CLI flag.
    */
   private static void printRuleList() {
     System.out.println("Available rules (rule id / CWE / class):");
