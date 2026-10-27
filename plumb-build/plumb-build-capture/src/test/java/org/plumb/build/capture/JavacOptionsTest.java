@@ -44,6 +44,37 @@ class JavacOptionsTest {
         .containsExactly(Path.of("src/Foo.java"), Path.of("src/Bar.java"));
   }
 
+  /**
+   * A jar is not a source file.
+   *
+   * <p>javac accepts a jar on the source path, so one can appear as a positional argument. It is
+   * not Java source, and recording it as one put an archive into the source list -- which is part
+   * of the compile identity, so two different compiles could collide, and the analyser would try
+   * to parse a jar as Java.
+   */
+  @Test
+  void aJarIsNotASourceFile() {
+    JavacOptions options = JavacOptions.parse(List.of("lib/dep.jar", "src/Foo.java"));
+
+    assertThat(options.sourceFiles()).containsExactly(Path.of("src/Foo.java"));
+  }
+
+  /**
+   * The value of a known option is never mistaken for a source.
+   *
+   * <p>The upstream project treated ANY argument ending in ".java" as a source, so the value of
+   * an option it did not know became a source file. Here the option table consumes the values, so
+   * only a positional argument can be one.
+   */
+  @Test
+  void anOptionValueIsNeverASourceFile() {
+    JavacOptions options =
+        JavacOptions.parse(List.of("--processor-path", "lib/processor.jar", "src/Foo.java"));
+
+    assertThat(options.sourceFiles()).containsExactly(Path.of("src/Foo.java"));
+    assertThat(options.processorPath()).containsExactly(Path.of("lib/processor.jar"));
+  }
+
   @Test
   void parsesEncoding() {
     JavacOptions options = JavacOptions.parse(List.of("-encoding", "ISO-8859-1", "Foo.java"));

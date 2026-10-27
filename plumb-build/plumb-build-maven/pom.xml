@@ -91,6 +91,19 @@
             <version>${maven.version}</version>
         </dependency>
 
+        <!-- The pom model: org.apache.maven.model.*, and the plugin
+             configuration is a plexus XML DOM, so the compiler plugin's
+             <release> and <encoding> can be read. -->
+        <dependency>
+            <groupId>org.apache.maven</groupId>
+            <artifactId>maven-model</artifactId>
+            <version>${maven.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.codehaus.plexus</groupId>
+            <artifactId>plexus-utils</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>

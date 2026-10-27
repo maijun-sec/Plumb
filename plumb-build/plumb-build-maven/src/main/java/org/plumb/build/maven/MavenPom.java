@@ -5,7 +5,6 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -17,7 +16,9 @@ import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Parent;
+import org.apache.maven.model.Plugin;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
+import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,6 +41,15 @@ final class MavenPom {
 
   /** Bound on the {@code <parent>} chain, to survive a self-referential pom. */
   private static final int MAX_PARENT_DEPTH = 32;
+
+  /**
+   * The artifact id of the plugin that compiles the sources.
+   *
+   * <p>The language level and the encoding are read from this plugin's configuration, so the
+   * lookup is by artifact id: another plugin's {@code <configuration>} must not be mistaken for
+   * the compiler's.
+   */
+  private static final String COMPILER_PLUGIN_ARTIFACT_ID = "maven-compiler-plugin";
 
   private final Model model;
   private final Properties properties;
@@ -212,26 +222,109 @@ final class MavenPom {
     return out;
   }
 
-  /** The declared Java language level, or {@code null} when unspecified. */
+  /**
+   * The declared Java language level, or {@code null} when unspecified.
+   *
+   * <p><b>Where the answer comes from.</b> There are two ways to say it, and a project may use
+   * either:
+   *
+   * <ol>
+   *   <li>the {@code maven.compiler.source} / {@code maven.compiler.release} properties;
+   *   <li>the {@code maven-compiler-plugin}'s own {@code <configuration>}.
+   * </ol>
+   *
+   * <p>The plugin's configuration is checked FIRST, because it is the more specific answer: it is
+   * the value the compiler plugin actually used. A project that declares {@code
+   * maven.compiler.source} of 8 and then pins {@code <release>17</release>} in the plugin is
+   * compiled at 17, and reporting 8 would be wrong.
+   *
+   * <p>Within the plugin's configuration, {@code <release>} beats {@code <source>}: the release
+   * pins the language level <em>and</em> the platform API, so it is the level the class files
+   * were actually produced for.
+   *
+   * <p>Nothing is guessed. The upstream project hard-coded {@code "1.8"} with a TODO next to
+   * it, so every project was reported as if it compiled at 1.8 -- a confident wrong answer, which
+   * is worse than an absent one because the analyser cannot tell it is a guess.
+   */
   String languageLevel() {
-    String source = properties.getProperty("maven.compiler.source");
-    if (source == null) {
-      source = properties.getProperty("maven.compiler.release");
+    String plugin = pluginConfiguration("release");
+    if (plugin == null) {
+      plugin = pluginConfiguration("source");
     }
-    return source == null ? null : resolve(source);
+    if (plugin != null) {
+      return plugin;
+    }
+    String property = properties.getProperty("maven.compiler.release");
+    if (property == null) {
+      property = properties.getProperty("maven.compiler.source");
+    }
+    return property == null ? null : resolve(property);
   }
 
-  /** The declared source encoding, or {@code null} when unspecified. */
+  /**
+   * The declared source encoding, or {@code null} when unspecified.
+   *
+   * <p>Read the same way as the language level: the compiler plugin's configuration first, then
+   * the {@code project.build.sourceEncoding} property. The upstream hard-coded {@code "UTF-8"},
+   * so a project compiled in another encoding was reported as UTF-8 -- and a source file read
+   * with the wrong encoding is a different program.
+   */
   Charset encoding() {
-    String enc = properties.getProperty("project.build.sourceEncoding");
-    if (enc == null) {
+    String plugin = pluginConfiguration("encoding");
+    if (plugin == null) {
+      String property = properties.getProperty("project.build.sourceEncoding");
+      if (property == null) {
+        return null;
+      }
+      plugin = resolve(property);
+    }
+    if (plugin == null || plugin.isBlank()) {
       return null;
     }
     try {
-      return Charset.forName(resolve(enc));
+      return Charset.forName(plugin);
     } catch (Exception e) {
-      return StandardCharsets.UTF_8;
+      LOG.debug("Maven: the declared encoding {} is not a known charset", plugin);
+      return null;
     }
+  }
+
+  /**
+   * A value from the {@code maven-compiler-plugin}'s configuration.
+   *
+   * <p>The plugin is looked up by its artifact id, so a different plugin's configuration cannot be
+   * mistaken for the compiler's. The value is resolved against the effective properties, because
+   * the usual way to write it is a placeholder: {@code <release>${java.version}</release>}.
+   *
+   * @param name the configuration element name, e.g. {@code release}
+   * @return the resolved value, or {@code null} when the plugin does not declare it
+   */
+  private String pluginConfiguration(String name) {
+    var build = model.getBuild();
+    if (build == null || build.getPlugins() == null) {
+      return null;
+    }
+    for (Plugin plugin : build.getPlugins()) {
+      if (!COMPILER_PLUGIN_ARTIFACT_ID.equals(plugin.getArtifactId())) {
+        continue;
+      }
+      Object configuration = plugin.getConfiguration();
+      if (!(configuration instanceof Xpp3Dom dom)) {
+        // The configuration is not DOM-shaped (an unusual pom); there is
+        // nothing to read.
+        continue;
+      }
+      Xpp3Dom child = dom.getChild(name);
+      if (child == null) {
+        continue;
+      }
+      String value = child.getValue();
+      if (value == null || value.isBlank()) {
+        continue;
+      }
+      return resolve(value);
+    }
+    return null;
   }
 
   /** Substitute {@code ${...}} placeholders from the effective properties. */

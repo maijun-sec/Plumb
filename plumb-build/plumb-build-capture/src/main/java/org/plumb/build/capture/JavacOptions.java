@@ -250,8 +250,22 @@ public final class JavacOptions {
       }
 
       if (option == null) {
-        // Not an option: it is a source file, or a file or directory to compile.
-        if (arg.endsWith(".java") || arg.endsWith(".jar")) {
+        // Not an option: it is a source file.
+        //
+        // A jar is NOT a source file, even though javac accepts one on the
+        // source path.  Recording it as one put a jar into the source list,
+        // and the source list is part of the compile identity -- so two
+        // genuinely different compiles could collide, and the analyser would
+        // try to parse an archive as Java source.
+        //
+        // The upstream project made the opposite mistake in the other
+        // direction: it treated ANY argument ending in ".java" as a source,
+        // including the VALUE of an option it did not know.  So
+        // "--processor-path some/where.jar" was dropped, and an unknown
+        // option whose value ended in ".java" was mistaken for a source.
+        // Here the option table consumes the values, so only a positional
+        // argument reaches this branch.
+        if (arg.endsWith(".java")) {
           b.sourceFiles.add(Path.of(arg));
         }
         continue;
