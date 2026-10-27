@@ -156,6 +156,8 @@ It runs, in order:
 | `mutate_dataflow_claims` | The data-flow gate is not checking air: every plausible drift is caught |
 | `check_dfaaug_claims` | The DFA-augmentation design document still describes the mechanism the code has: the rule ids, the checkers, the API its snippets use, the inert `Operation` variants |
 | `mutate_dfaaug_claims` | The design-document gate is not checking air: every plausible drift is caught |
+| `check_ruleauthoring_claims` | The rule-authoring document still tells a reader how to add a rule that works: the files it names exist, the commands it gives run, the counts it states match the source, and the aliases it quotes are the ones the source declares |
+| `mutate_ruleauthoring_claims` | The rule-authoring gate is not checking air: every plausible drift is caught |
 | `check_support_matrix_coverage` | The support matrix covers every measured category, and every row matches its `RESULT.json` |
 | `check_javadoc_links` | Every `{@link}` target in a javadoc names a type that exists |
 | `check_doc_index` | The documentation index lists every document under `docs/`, and every link in it resolves |

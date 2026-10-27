@@ -36,6 +36,14 @@ The gates are:
                               snippets use, the inert variants
     mutate_dfaaug_claims        the design-document gate is not checking
                               air: every plausible drift is caught
+    check_ruleauthoring_claims  the rule-authoring document still tells a
+                              reader how to add a rule that WORKS: the
+                              files it names exist, the commands it gives
+                              run, the counts it states match the source,
+                              and the aliases it quotes are the ones the
+                              source declares
+    mutate_ruleauthoring_claims the rule-authoring gate is not checking air:
+                              every plausible drift is caught
     check_support_matrix_coverage
                               the support matrix covers every measured
                               category, and every row matches its
@@ -170,6 +178,10 @@ GATES = (
      ["python", "scripts/check_dfaaug_claims.py"], "check"),
     ("mutate_dfaaug_claims",
      ["python", "scripts/mutate_dfaaug_claims.py"], "check"),
+    ("check_ruleauthoring_claims",
+     ["python", "scripts/check_ruleauthoring_claims.py"], "check"),
+    ("mutate_ruleauthoring_claims",
+     ["python", "scripts/mutate_ruleauthoring_claims.py"], "check"),
     ("check_support_matrix_coverage",
      ["python", "scripts/check_support_matrix_coverage.py"], "check"),
     ("check_javadoc_links",
