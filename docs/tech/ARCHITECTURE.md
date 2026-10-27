@@ -375,7 +375,8 @@ The actual classes:
   `TransitiveResolver`, `MavenResolverAdapter`, `MavenPom`, `ModuleDescriptor`
 - `plumb-build/plumb-build-capture/src/main/java/org/plumb/build/capture/` — `CaptureAgent`,
   `CompilerHooks`, `CompilerEntryPoints`, `CompilerOption`, `GradleHooks`, `CaptureRecorder`,
-  `CaptureEntry`, `CaptureSink`, `CaptureReader`, `JavacOptions`
+  `CaptureEntry`, `CaptureSink`, `CaptureReader`, `JavacOptions`, `CompiledSourcesAdvice`,
+  `CompiledSourcesBridge`
 
 Each adapter implements `BuildAdapter.discover(Path)` and returns a `BuildProject`:
 
@@ -452,7 +453,7 @@ the capture side observes the classpath the compiler actually received. The gate
 
 ### 7.0.1 Which entry points the capture hooks
 
-The "javac command line" is not one method but **twelve**, depending on how the compiler is reached:
+The "javac command line" is not one method but **fifteen**, depending on how the compiler is reached:
 
 | Entry point | Who goes down this path |
 | --- | --- |
@@ -464,6 +465,9 @@ The "javac command line" is not one method but **twelve**, depending on how the 
 | `com.sun.tools.javac.api.JavacTool#run(...)` | the old-style run API |
 | `com.sun.tools.javac.api.JavacTaskImpl#call()` | task-driven (build tool / IDE) |
 | `com.sun.tools.javac.api.JavacTaskImpl#generate()` | task-driven (the IDE path) |
+| `com.sun.tools.javac.main.JavaCompiler#parse(...)` | **every source the compiler parses** |
+| `com.sun.tools.javac.main.JavaCompiler#compile(...)` | **every compilation, at the moment it ends** |
+| `com.sun.tools.javac.main.JavaCompiler#generate(...)` | the IDE's generate path (which does not go through `compile`) |
 | `org.eclipse.jdt.internal.compiler.batch.Main#compile(String[])` | the Eclipse compiler (ECJ) |
 | `com.sun.tools.sjavac.client.ClientMain#run(String[])` | the sjavac client |
 | `com.sun.tools.sjavac.server.ServerMain#run(String[])` | the sjavac server |
@@ -482,6 +486,38 @@ The hooking uses ByteBuddy's **`Advice`** (inline weaving), not a hand-written A
 `Advice` **copies** the hook's bytecode into the method under test, so it needs no super method and no delegation target,
 and a static method such as `Main#compile(String[])` can be hooked just as well. A hand-written visitor has to compute the local slot of
 the parameters itself (0 for a static method, 1 for an instance method), and getting that wrong corrupts the compiler's stack.
+
+### 7.0.1.1 The sources the compiler really compiled
+
+The command line names the sources the compiler was **given**. The compiler also compiles the
+sources it **finds itself**: a class that is referenced but not named is looked up on the source
+path, parsed, and compiled. A capture that lists only the command-line sources therefore misses
+code the compiler really compiled — and that code is exactly what a static analyser has to look at.
+
+**The place that knows is `JavaCompiler#parse(JavaFileObject, CharSequence)`.** Every source the
+compiler parses goes through it, whichever way it got there: the ones it was given, through
+`parseFiles`, and the ones it found on the source path, through `readSourceFile`. So one hook
+there sees exactly the sources the compiler parsed — and a file in the source path that nobody
+referenced is never parsed, so it never appears.
+
+**The file manager's content cache was tried first, and it does not work.** It is the obvious
+place: it is the compiler's own record of the files it read. It stays **empty** after a normal
+compile, because the compiler reads a source file's content through the file object rather than
+through the manager's cache. That was measured, not assumed: a real compile of one explicit
+source plus one source-path source left the cache with zero entries. A cache that never fills
+cannot answer the question.
+
+**The capture is written when the compilation ends, not when it starts.** The sources the compiler
+really compiled are only known at the end, so a capture written at the start cannot report them.
+The options are known at the start, so they are **staged** until the compilation ends.
+
+**The staged compilation is matched, not taken by position.** One compilation is seen through
+several entry points — the command line reaches three of them — so it is staged more than once.
+And a build may have more than one compilation in flight: Gradle, for one, creates the task for
+the next module **before** the previous module's compilation has finished. So the staged
+compilation is chosen by **matching**: the one whose sources are the ones the compiler actually
+parsed. Taking the most recent one instead would report the next module's options for this
+module's compilation.
 
 ### 7.0.2 Where the options of the IDE path come from
 

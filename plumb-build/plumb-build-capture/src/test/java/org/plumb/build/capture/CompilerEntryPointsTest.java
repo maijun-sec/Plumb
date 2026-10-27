@@ -187,11 +187,23 @@ class CompilerEntryPointsTest {
         .isTrue();
   }
 
-  /** Whether the class declares a method with that name and that number of parameters. */
+  /**
+   * Whether the class declares a method with that name and that number of parameters.
+   *
+   * <p><b>Declared methods, not just public ones.</b> ByteBuddy instruments methods whatever their
+   * visibility, and two of the hooked methods are not public: {@code
+   * JavaCompiler#parse(JavaFileObject, CharSequence)} is protected, and the compiler's own parse
+   * step is the one that has to be hooked to see the sources the compiler really compiled. A check
+   * that only looked at the public methods would have called that entry point wrong.
+   *
+   * <p>The superclasses are searched too, because a method may be inherited.
+   */
   private static boolean hasMethodWithArity(Class<?> type, String name, int arity) {
-    for (var m : type.getMethods()) {
-      if (m.getName().equals(name) && m.getParameterCount() == arity) {
-        return true;
+    for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+      for (var m : c.getDeclaredMethods()) {
+        if (m.getName().equals(name) && m.getParameterCount() == arity) {
+          return true;
+        }
       }
     }
     return false;

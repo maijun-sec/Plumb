@@ -105,7 +105,121 @@ public final class CaptureRecorder {
    */
   private static final Map<Object, List<String>> TASK_SOURCES = new IdentityHashMap<>();
 
+  /**
+   * How many compiles are in flight on this thread.
+   *
+   * <p><b>Why the depth is counted.</b> The compiler's generate step is <em>inside</em> its compile
+   * step: {@code JavaCompiler#compile} desugars and then calls {@code JavaCompiler#generate}. Both
+   * are hooked, because the IDE's {@code JavacTaskImpl#generate()} path does not go through
+   * {@code compile} at all -- but a compile that goes through {@code compile} would then write two
+   * captures for one compile.
+   *
+   * <p>So the capture is written by the <em>outermost</em> step. The inner one sees a depth above
+   * one and does nothing.
+   */
+  private static final ThreadLocal<int[]> COMPILE_DEPTH = ThreadLocal.withInitial(() -> new int[1]);
+
+  /**
+   * The sources the compiler parsed during the compile in flight.
+   *
+   * <p><b>Why the argv is not enough.</b> The command line names the sources it was given. The
+   * compiler also compiles the sources it finds itself, through the source path: a class that is
+   * referenced but not named is looked up on the source path, parsed, and compiled. A capture that
+   * lists only the command-line sources therefore misses the code the compiler really compiled --
+   * and that code is exactly the code a static analyser has to look at.
+   *
+   * <p>So the compiler's own list of parsed sources is recorded, and it is what the capture reports
+   * as the source files. The command-line sources are still recorded, because a compile that names
+   * a file the parser never reached -- a file that failed to parse, say -- is still a compile.
+   *
+   * <p><b>Why it is a thread-local.</b> A build that compiles modules in parallel runs several
+   * compiles at once, and each one has its own parsed sources. A single shared set would mix them.
+   */
+  private static final ThreadLocal<java.util.LinkedHashSet<String>> PARSED_SOURCES =
+      ThreadLocal.withInitial(java.util.LinkedHashSet::new);
+
+  /**
+   * The options of the compiles that have started but not finished.
+   *
+   * <p><b>Why the capture is written when the compile ends.</b> The sources the compiler really
+   * compiled are only known once it has compiled them, so a capture written when the compile
+   * <em>starts</em> cannot report them. The options, on the other hand, are known at the start --
+   * the command line has them, and the API hands them over with the task -- so they are remembered
+   * until the compile ends and the capture is written with everything.
+   *
+   * <p>This is a stack, not a single value, because the entry points nest: the command-line driver
+   * is reached through two of them, and the API path through two others.
+   */
+  private static final java.util.Deque<PendingCompile> PENDING_COMPILES =
+      new java.util.concurrent.ConcurrentLinkedDeque<>();
+
+  /**
+   * A compile that has started but has not finished yet.
+   *
+   * @param api how the compile was reached
+   * @param compiler which compiler is doing it
+   * @param argv the compiler's arguments
+   * @param sources the source files the compile was given
+   */
+  private record PendingCompile(
+      String api, CompilerOption.Compiler compiler, List<String> argv, List<String> sources) {}
+
   private CaptureRecorder() {}
+
+  /**
+   * Remember a source the compiler parsed.
+   *
+   * <p>Called from the advice that runs inside the compiler, on the method every parsed source
+   * passes through.
+   *
+   * @param path the path of the parsed source
+   */
+  public static void rememberParsedSource(String path) {
+    if (path == null || path.isBlank()) {
+      return;
+    }
+    PARSED_SOURCES.get().add(path);
+  }
+
+  /**
+   * A compile step has begun.
+   *
+   * @return true when this is the outermost compile step
+   */
+  public static boolean enterCompileStep() {
+    int[] depth = COMPILE_DEPTH.get();
+    depth[0]++;
+    return depth[0] == 1;
+  }
+
+  /**
+   * A compile step has ended.
+   *
+   * @return true when this was the outermost compile step
+   */
+  public static boolean exitCompileStep() {
+    int[] depth = COMPILE_DEPTH.get();
+    if (depth[0] <= 0) {
+      return true;
+    }
+    depth[0]--;
+    return depth[0] == 0;
+  }
+
+  /**
+   * The sources the compiler parsed during the compile in flight.
+   *
+   * <p>Drained by the caller: the sources belong to one compile, and the next compile starts a
+   * fresh set.
+   *
+   * @return the parsed source paths, in the order they were parsed
+   */
+  static List<String> drainParsedSources() {
+    java.util.LinkedHashSet<String> set = PARSED_SOURCES.get();
+    List<String> out = new ArrayList<>(set);
+    set.clear();
+    return out;
+  }
 
   /**
    * Record a captured CLI invocation.
@@ -134,7 +248,194 @@ public final class CaptureRecorder {
     for (String a : arguments) {
       argv.add(a);
     }
-    record(buildCapture(argv, List.of(), "cli", compiler));
+    // The compile is staged, not written: the sources it really compiled are
+    // only known once it has compiled them.
+    PENDING_COMPILES.push(
+        new PendingCompile("cli", compiler, argv, givenSourcesOf(argv, compiler)));
+  }
+
+  /**
+   * The source files a command line names.
+   *
+   * <p>Only the positional {@code .java} arguments are sources. The other values belong to
+   * options, and a jar on the classpath is not a source.
+   *
+   * @param argv the compiler's arguments
+   * @param compiler which compiler received them
+   * @return the source paths the command line named
+   */
+  private static List<String> givenSourcesOf(List<String> argv, CompilerOption.Compiler compiler) {
+    List<String> out = new ArrayList<>();
+    for (java.nio.file.Path p : JavacOptions.parse(argv, compiler).sourceFiles()) {
+      out.add(p.toString());
+    }
+    return out;
+  }
+
+  /**
+   * Record a compile that has finished.
+   *
+   * <p>This is where the capture is written. The compile has run, so the sources it parsed are
+   * known -- including the ones it found on the source path -- and the capture can report the
+   * effective compile rather than the request for one.
+   *
+   * <p><b>Why the staged compile is matched, not just taken.</b> One compile is seen through several
+   * entry points -- the command line through three of them, the API through two others -- so the
+   * same compile is staged more than once. And a build may have more than one compile in flight:
+   * Gradle, for one, creates the task for the next module before the previous module's compile
+   * has finished.
+   *
+   * <p>So the staged compile is chosen by <em>matching</em>: the staged compile whose sources are
+   * the ones this compile actually parsed. The sources the compiler parsed are known at the end and
+   * name exactly the files of one compile, and a staged compile's sources are among them.
+   *
+   * <p>Taking the most recent staged compile instead would be wrong: the next module's task is
+   * created before the previous module's compile ends, so the previous module's capture would
+   * report the next module's options.
+   *
+   * @param compiler which compiler did the compile
+   */
+  public static void onCompileFinished(CompilerOption.Compiler compiler) {
+    try {
+      List<String> parsed = drainParsedSources();
+      PendingCompile pending = takePending(parsed);
+      if (pending == null) {
+        // A compile that was never staged -- for instance a compile the
+        // agent saw only at its very end. There is nothing to report: the
+        // options are unknown, and a capture without options is useless.
+        return;
+      }
+      record(buildCapture(pending.argv(), merge(pending.sources(), parsed), pending.api(), compiler));
+    } catch (Throwable t) {
+      // A capture must never break the compile.
+      System.err.println("[plumb-capture] could not record the compile: " + t);
+    }
+  }
+
+  /**
+   * The staged compile that belongs to the compile that just finished.
+   *
+   * <p>The staged compile whose sources appear among the parsed sources is the view of this
+   * compile. The most recent match wins: a compile that was staged again -- the command line
+   * reaches three entry points for one compile -- is staged more than once, and the most recent
+   * staging is the most complete one.
+   *
+   * @param parsed the sources the compiler parsed
+   * @return the staged compile, or {@code null} when none of them matches
+   */
+  private static PendingCompile takePending(List<String> parsed) {
+    List<PendingCompile> staged = new ArrayList<>();
+    PendingCompile candidate;
+    // The deque holds the most recent staging at its head, because the
+    // staging pushes to the head. So the head is taken first, and the staged
+    // compiles come out from the most recent to the oldest.
+    while ((candidate = PENDING_COMPILES.pollFirst()) != null) {
+      staged.add(candidate);
+    }
+    if (staged.isEmpty()) {
+      return null;
+    }
+    for (PendingCompile p : staged) {
+      if (overlap(p.sources(), parsed) > 0) {
+        return p;
+      }
+    }
+    // Nothing matched: the compile was staged without its sources, or the
+    // compiler parsed files that were never named. The most recent staged
+    // compile is the best guess.
+    return staged.get(0);
+  }
+
+  /**
+   * How many of a staged compile's sources appear among the parsed sources.
+   *
+   * <p>The paths are compared by their normalized form, because the same file can be named two
+   * ways: the command line may name it relative to the working directory, while the compiler
+   * reports it absolute.
+   *
+   * @param given the sources the staged compile was given
+   * @param parsed the sources the compiler parsed
+   * @return the number of sources they have in common
+   */
+  private static int overlap(List<String> given, List<String> parsed) {
+    int count = 0;
+    for (String s : given) {
+      if (containsSource(parsed, s)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Whether the parsed sources include a file.
+   *
+   * @param parsed the parsed source paths
+   * @param candidate the path to look for
+   * @return true when the file is among them
+   */
+  private static boolean containsSource(List<String> parsed, String candidate) {
+    if (parsed.contains(candidate)) {
+      return true;
+    }
+    String wanted = normalisePath(candidate);
+    for (String p : parsed) {
+      if (normalisePath(p).equals(wanted)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * A path in a form that can be compared.
+   *
+   * <p>The path is made absolute against the working directory, and its separators are made the
+   * same on every platform, so that a path written one way and reported another is still
+   * recognized as the same file.
+   *
+   * @param path the path to normalize
+   * @return the comparable form
+   */
+  private static String normalisePath(String path) {
+    if (path == null || path.isBlank()) {
+      return "";
+    }
+    try {
+      java.nio.file.Path p = java.nio.file.Path.of(path);
+      if (!p.isAbsolute()) {
+        p = java.nio.file.Path.of(System.getProperty("user.dir", ".")).resolve(p);
+      }
+      return p.normalize().toString().replace('\\', '/');
+    } catch (RuntimeException e) {
+      return path.replace('\\', '/');
+    }
+  }
+
+  /**
+   * The command-line sources and the parsed sources, together.
+   *
+   * <p>Both are kept. The command line names the sources the compile was given; the parsed sources
+   * are the ones it really compiled. A compile that names a file the parser never reached -- a file
+   * that failed to parse, say -- is still a compile, so its source stays in the list.
+   *
+   * @param given the sources the compile was given
+   * @param parsed the sources the compiler parsed
+   * @return both, without duplicates
+   */
+  private static List<String> merge(List<String> given, List<String> parsed) {
+    List<String> out = new ArrayList<>();
+    for (String s : given) {
+      if (s != null && !s.isBlank() && !out.contains(s)) {
+        out.add(s);
+      }
+    }
+    for (String s : parsed) {
+      if (s != null && !s.isBlank() && !out.contains(s)) {
+        out.add(s);
+      }
+    }
+    return out;
   }
 
   /**
@@ -196,11 +497,36 @@ public final class CaptureRecorder {
   }
 
   /**
+   * Remember the sources a task actually compiled.
+   *
+   * <p>Called from the advice that runs inside the compiler, where the list of parsed units is
+   * visible. The list is keyed by the task's identity, so two tasks never share it.
+   *
+   * @param task the task that was driven
+   * @param sources the source files the compiler compiled, as paths
+   */
+  public static void rememberCompiledSources(Object task, List<String> sources) {
+    if (task == null || sources == null) {
+      return;
+    }
+    // The task's own sources are the ones it was given; the parsed sources
+    // are collected separately and merged in when the compile is written.
+    synchronized (TASK_OPTIONS) {
+      TASK_SOURCES.put(task, merge(TASK_SOURCES.getOrDefault(task, List.of()), sources));
+    }
+  }
+
+  /**
    * Record a compile driven through a task object, as an IDE does.
    *
    * <p>{@code JavacTaskImpl#call()} and {@code JavacTaskImpl#generate()} carry no compiler
    * options: they were set on the task when it was created, by {@code JavacTool#getTask}. So the
    * options are looked up from the ones remembered then.
+   *
+   * <p><b>Why this does not stage a compile.</b> The {@code getTask} hook already staged it, and
+   * the compile-end hook takes that one. Staging a second copy here would leave a stale entry
+   * behind, and the <em>next</em> compile in the build would pick it up and report the previous
+   * compile's options.
    *
    * @param task the task object, or {@code null}
    */
@@ -209,31 +535,26 @@ public final class CaptureRecorder {
       return;
     }
     try {
-      doRecordTask(task);
+      releaseTask(task);
     } catch (Throwable t) {
       // A capture must never break the compile.
       System.err.println("[plumb-capture] could not record the compile: " + t);
     }
   }
 
-  private static void doRecordTask(Object task) {
-    List<String> options;
-    List<String> sourcePaths;
+  /**
+   * Release a task that has been driven.
+   *
+   * <p>The task is consumed: it will not be driven again, and holding on to it would keep the
+   * compiler's file manager alive.
+   *
+   * @param task the task that was driven
+   */
+  private static void releaseTask(Object task) {
     synchronized (TASK_OPTIONS) {
-      options = TASK_OPTIONS.get(task);
-      sourcePaths = TASK_SOURCES.get(task);
-      // The task is consumed: it will not be driven again, and holding on
-      // to it would keep the compiler's file manager alive.
       TASK_OPTIONS.remove(task);
       TASK_SOURCES.remove(task);
     }
-    if (options == null || options.isEmpty()) {
-      return;
-    }
-    if (sourcePaths == null) {
-      sourcePaths = List.of();
-    }
-    record(buildCapture(options, sourcePaths, "api"));
   }
 
   /**
@@ -310,7 +631,10 @@ public final class CaptureRecorder {
         }
       }
     }
-    record(buildCapture(argv, sourcePaths, "api"));
+    // Staged, not written: the compile has not run yet, so the sources it
+    // really compiles are not known.
+    PENDING_COMPILES.push(
+        new PendingCompile("api", CompilerOption.Compiler.JAVAC, argv, sourcePaths));
   }
 
   /**
@@ -440,6 +764,12 @@ public final class CaptureRecorder {
     }
     if (source instanceof Path p) {
       return p.toString();
+    }
+    if (source instanceof String s) {
+      // A plain path. The API is given file objects, but a caller that
+      // builds its own file manager may hand over strings, and a string is
+      // already a path.
+      return s.isBlank() ? null : s;
     }
     // A JavaFileObject.
     //

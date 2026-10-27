@@ -171,30 +171,56 @@ public final class CompilerHooks {
   }
 
   /**
-   * Hook for the task-driven entry points, {@code JavacTaskImpl#call()} and {@code
-   * JavacTaskImpl#generate()}.
+   * Hook for the IDE path.
    *
-   * <p>Both are instance methods with no arguments, so the task is the receiver. The compiler
-   * options were set on the task when it was created, so the hook looks them up from the ones
-   * remembered then.
+   * <p>{@code JavacTaskImpl#call()} and {@code JavacTaskImpl#generate()} take no options: they were
+   * set on the task when it was created, by {@code JavacTool#getTask}. The options are looked up
+   * from the ones remembered then.
    *
-   * <p><b>They cannot be read off the task directly.</b> {@code com.sun.tools.javac.api} is not
-   * exported by the {@code jdk.compiler} module, so a reflective read of the task's options field
-   * fails with {@code InaccessibleObjectException} unless the JVM runs with {@code --add-opens
-   * jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED}. Requiring that flag would make the agent
-   * unusable in an ordinary build.
-   *
-   * <p><b>This is the path an IDE takes.</b> A build tool calls {@code JavacTool#getTask} and then
-   * {@code call()}; an IDE calls {@code getTask} and then {@code generate()}. Without this hook
-   * the IDE path produced no capture at all.
+   * <p>This hook does not write the capture. It stages the compile's options, and the capture is
+   * written when the compile itself ends -- by {@link CompileFinished}. A capture written here would
+   * report the sources the compile was <em>given</em>, not the ones it really compiled.
    */
   public static final class TaskOptions {
 
     private TaskOptions() {}
 
-    @Advice.OnMethodEnter(suppress = Throwable.class)
-    public static void enter(@Advice.This Object task) {
+    @Advice.OnMethodExit(suppress = Throwable.class)
+    public static void exit(@Advice.This Object task) {
       CaptureRecorder.onTask(task);
+    }
+  }
+
+  /**
+   * Hook for the compiler's compile step.
+   *
+   * <p>{@code JavaCompiler#compile(Collection, Collection, Iterable, Collection)} is the one compile
+   * step both the command line and the {@code javax.tools} API go through. When it returns, the
+   * compile has run, so the sources it really compiled are known -- including the ones it found on
+   * the source path -- and the capture can be written.
+   *
+   * <p><b>Why the depth is counted.</b> The compiler's generate step is inside its compile step:
+   * {@code compile} desugars and then calls {@code generate}. Both are hooked -- the IDE's {@code
+   * JavacTaskImpl#generate()} path does not go through {@code compile} at all -- so without the
+   * depth a compile that goes through {@code compile} would write two captures for one compile.
+   * Only the outermost step writes.
+   */
+  public static final class CompileFinished {
+
+    private CompileFinished() {}
+
+    @Advice.OnMethodEnter(suppress = Throwable.class)
+    public static void enter() {
+      CaptureRecorder.enterCompileStep();
+    }
+
+    @Advice.OnMethodExit(suppress = Throwable.class)
+    public static void exit() {
+      if (!CaptureRecorder.exitCompileStep()) {
+        // An inner step: the outer one writes the capture.
+        return;
+      }
+      CaptureRecorder.onCompileFinished(CompilerOption.Compiler.JAVAC);
     }
   }
 
@@ -217,6 +243,13 @@ public final class CompilerHooks {
                   Throwable throwable) {
                 org.slf4j.LoggerFactory.getLogger(CompilerHooks.class)
                     .warn("Capture: could not instrument {}: {}", typeName, throwable.toString());
+                // The logger is not enough on its own. The agent is often
+                // attached to a build that has no SLF4J provider, and then
+                // the warning goes nowhere -- and an advice that failed to
+                // apply means the capture is silently incomplete. So the
+                // failure is also reported on the compiler's own stderr.
+                System.err.println(
+                    "[plumb-capture] could not instrument " + typeName + ": " + throwable);
               }
             })
         .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
@@ -284,7 +317,19 @@ public final class CompilerHooks {
           result = result.visit(Advice.to(ApiOptionsWithTask.class).on(matcher));
         }
         case NO_OPTIONS -> {
+          // The IDE path: the task carries no options of its own, so they
+          // are looked up from the ones remembered at getTask.
           result = result.visit(Advice.to(TaskOptions.class).on(matcher));
+        }
+        case PARSED_SOURCE -> {
+          // The compiler's parse step: the file being parsed is the source
+          // the compiler really compiled.
+          result = result.visit(Advice.to(CompiledSourcesAdvice.ParsedSource.class).on(matcher));
+        }
+        case COMPILE_END -> {
+          // The compiler's compile step: the compile has run, so this is
+          // where the capture is written with the sources it compiled.
+          result = result.visit(Advice.to(CompileFinished.class).on(matcher));
         }
         default -> {
           // no other kinds

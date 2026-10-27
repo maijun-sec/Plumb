@@ -35,6 +35,9 @@ class BootstrapInjectionTest {
     assertThat(CaptureAgent.bootstrapJarClasses())
         .containsExactly(
             "org/plumb/build/capture/CaptureRecorder.class",
+            // The recorder's nested record is a class of its own, and the
+            // bootstrap loader will not find it unless it is carried too.
+            "org/plumb/build/capture/CaptureRecorder$PendingCompile.class",
             "org/plumb/build/capture/CaptureEntry.class",
             "org/plumb/build/capture/JavacOptions.class",
             "org/plumb/build/capture/JavacOptions$Builder.class",
@@ -42,7 +45,10 @@ class BootstrapInjectionTest {
             "org/plumb/build/capture/CompilerOption$Compiler.class",
             "org/plumb/build/capture/CompilerOption$Value.class",
             "org/plumb/build/capture/CompilerOption$Repeat.class",
-            "org/plumb/build/capture/CompilerOption$Effect.class");
+            "org/plumb/build/capture/CompilerOption$Effect.class",
+            // The bridge the inlined advice calls: the advice runs inside
+            // jdk.compiler, which cannot see the agent's own classes.
+            "org/plumb/build/capture/CompiledSourcesBridge.class");
   }
 
   @Test
@@ -200,7 +206,22 @@ class BootstrapInjectionTest {
         name = name.substring(1, name.length() - 1);
       }
       int slash = name.lastIndexOf('/');
-      return (slash >= 0 ? name.substring(slash + 1) : name) + "[]";
+      String element = slash >= 0 ? name.substring(slash + 1) : name;
+      // A primitive element type is spelled with its descriptor letter, and
+      // the letter is not the type's name.
+      element =
+          switch (element) {
+            case "I" -> "int";
+            case "J" -> "long";
+            case "Z" -> "boolean";
+            case "B" -> "byte";
+            case "C" -> "char";
+            case "S" -> "short";
+            case "F" -> "float";
+            case "D" -> "double";
+            default -> element;
+          };
+      return element + "[]";
     }
     // A CONSTANT_Class for an array type carries the descriptor without the
     // leading '[' when the element is a primitive or when the pool entry is
@@ -226,6 +247,15 @@ class BootstrapInjectionTest {
           "StringConcatFactory", "MethodHandles", "Record", "ObjectMethods", "String[]",
           "StringBuilder[]", "Object[]", "Method", "ReflectiveOperationException",
           "MethodHandles$Lookup", "Locale", "Pattern", "NoSuchMethodException",
+          // The bridge looks the recorder up on the bootstrap loader, which
+          // is what makes the two copies of the recorder distinguishable.
+          "ClassLoader", "ClassNotFoundException",
+          // The pending compiles are held in a concurrent deque: a build that
+          // compiles modules in parallel stages more than one compile.
+          "Deque", "ConcurrentLinkedDeque",
+          // The compile depth is counted in an int array, so the recorder
+          // names the array type.
+          "[I", "int[]",
           // Every enum extends java.lang.Enum, so an enum in the bootstrap
           // classes names it. LambdaMetafactory is what the compiler generates
           // for a switch expression over an enum.

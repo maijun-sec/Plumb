@@ -72,6 +72,10 @@ public final class CaptureAgent {
    */
   private static final String[] BOOTSTRAP_CLASSES = {
     "org/plumb/build/capture/CaptureRecorder",
+    // The recorder's own nested types. A nested record is a class of its
+    // own, and the bootstrap loader will not find it unless it is listed
+    // here too.
+    "org/plumb/build/capture/CaptureRecorder$PendingCompile",
     "org/plumb/build/capture/CaptureEntry",
     "org/plumb/build/capture/JavacOptions",
     "org/plumb/build/capture/JavacOptions$Builder",
@@ -80,6 +84,11 @@ public final class CaptureAgent {
     "org/plumb/build/capture/CompilerOption$Value",
     "org/plumb/build/capture/CompilerOption$Repeat",
     "org/plumb/build/capture/CompilerOption$Effect",
+    // The bridge the advice calls to reach the recorder. It lives here, on
+    // the bootstrap loader, because the inlined advice runs inside the
+    // jdk.compiler module -- and a named module does not read the unnamed
+    // module, so it cannot call the agent's own classes.
+    "org/plumb/build/capture/CompiledSourcesBridge",
   };
 
   private CaptureAgent() {}
@@ -230,6 +239,16 @@ public final class CaptureAgent {
       LOG.debug("Capture: could not build the recorder jar: {}", e.getMessage());
       return null;
     }
+  }
+
+  /**
+   * The recorder jar, for the tests.
+   *
+   * <p>The tests need to see what goes into the bootstrap loader: a class that is missing from it
+   * fails silently at run time, and the only way to see that is to look at the jar.
+   */
+  static java.io.File buildRecorderJarForTest() {
+    return buildRecorderJar();
   }
 
   /**

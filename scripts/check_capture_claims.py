@@ -55,6 +55,32 @@ def strip_comments(text):
     return text
 
 
+def method_body(text, name):
+    """The body of a method, by brace matching.
+
+    A regular expression cannot do this: the body of the method being looked
+    for contains nested blocks, so a pattern like ``\\{[^}]*\\}`` stops at the
+    first closing brace and sees a fragment rather than the whole body.  That
+    produced two false failures when this check was first written -- the gate
+    reported a defect in a source that was perfectly fine.
+
+    The braces are counted instead, so the body is found whatever it holds.
+    """
+    m = re.search(r"\b%s\s*\([^)]*\)\s*\{" % re.escape(name), text)
+    if not m:
+        return None
+    depth = 0
+    for i in range(m.end() - 1, len(text)):
+        c = text[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[m.end() : i]
+    return None
+
+
 if not CAPTURE.is_dir():
     print("FAIL: the capture module source is missing at %s" % CAPTURE)
     sys.exit(1)
@@ -323,6 +349,144 @@ if "-javaagent:jar=key=value" not in doc and "key=value" not in doc:
     )
 else:
     note("the document explains the agent-argument channel")
+
+# ------------------------------------------------- 10. the sources the compiler really compiled
+# The document claims the capture names the sources the compiler parsed, not
+# only the ones it was given.  That claim is the whole point of the parse
+# hook, and it rots quietly: if the hook is removed, the capture still works,
+# and it is just quietly missing the code the compiler compiled.
+#
+# The claim is checked against the source in both directions:
+#
+#   * the parse hook must be wired, and it must be on the compiler's parse
+#     method -- not on the file manager's content cache, which was measured to
+#     stay empty;
+#   * the capture must be written when the compilation ends, because the
+#     sources are only known then.
+advice_src = sources.get("CompiledSourcesAdvice", "")
+recorder_src = sources.get("CaptureRecorder", "")
+hooks_src = sources.get("CompilerHooks", "")
+bridge_src = sources.get("CompiledSourcesBridge", "")
+
+if not advice_src:
+    failures.append("the capture module has no CompiledSourcesAdvice class")
+else:
+    # The hook must be on the parse method.  The file manager's content cache
+    # is the plausible alternative and it does not work: the compiler reads a
+    # source file's content through the file object, so the cache stays empty.
+    #
+    # The check is on the *shape* of the hook, not on a name: the advice must
+    # take the file being parsed, and it must ask that file for its name.  A
+    # hook on the cache would take a map instead.
+    if "@Advice.Argument(0) JavaFileObject" not in advice_src:
+        failures.append(
+            "CompiledSourcesAdvice does not hook the file being parsed: the "
+            "hook must be on the compiler's parse method, whose argument is "
+            "the JavaFileObject it is about to parse"
+        )
+    if "getName()" not in advice_src:
+        failures.append(
+            "CompiledSourcesAdvice does not read the name of the file it is "
+            "parsing: the capture would have no path to report"
+        )
+    if "Kind.SOURCE" not in advice_src:
+        failures.append(
+            "CompiledSourcesAdvice does not check the file's kind: the "
+            "compiler also reads class files, and a class file is not a "
+            "source"
+        )
+    if "contentCache" in advice_src or "getCachedContent" in advice_src:
+        failures.append(
+            "CompiledSourcesAdvice reads the file manager's content cache: it "
+            "was measured to stay empty after a normal compile, so it cannot "
+            "name the sources the compiler really compiled"
+        )
+    if "recordParsed" not in advice_src:
+        failures.append(
+            "CompiledSourcesAdvice does not record the parsed source: the "
+            "capture would keep only the command-line sources"
+        )
+
+# The advice is inlined into the compiler's own class, which cannot see the
+# agent's classes.  The bridge is what carries the value across.
+if not bridge_src:
+    failures.append("the capture module has no CompiledSourcesBridge class")
+else:
+    # The bridge must actually pass the path on to the recorder.  A bridge
+    # that takes the path and does nothing with it is dead code, and the
+    # name of the method alone would not show that.
+    if "recordParsed" not in bridge_src:
+        failures.append(
+            "CompiledSourcesBridge does not carry the parsed source: the "
+            "inlined advice cannot call the agent's own classes"
+        )
+    else:
+        body = method_body(bridge_src, "recordParsed")
+        if body is None or "invoke" not in body:
+            failures.append(
+                "CompiledSourcesBridge takes the parsed source and does not pass it "
+                "to the recorder: the capture would keep only the command-line "
+                "sources"
+            )
+
+# The advice must actually be wired to a parse entry point.
+if "CompiledSourcesAdvice" not in hooks_src:
+    failures.append(
+        "CompilerHooks does not use CompiledSourcesAdvice: the parse hook is "
+        "never applied, so the capture keeps only the command-line sources"
+    )
+else:
+    note("the parse hook is wired")
+
+# The capture must be written when the compilation ends.
+if "onCompileFinished" not in recorder_src:
+    failures.append(
+        "CaptureRecorder does not write the capture when the compilation ends: "
+        "the sources the compiler really compiled are only known then"
+    )
+else:
+    # The method must exist, and the compile-end hook must write the capture
+    # from it.  A declaration alone would leave the capture unwritten.
+    body = method_body(recorder_src, "onCompileFinished")
+    if body is None or "record(" not in body:
+        failures.append(
+            "CaptureRecorder declares onCompileFinished but does not write the "
+            "capture from it: the sources the compiler really compiled would "
+            "never be reported"
+        )
+    else:
+        note("the capture is written when the compilation ends")
+
+# The staged compile must be matched, not taken by position: a build can have
+# more than one compilation in flight.
+if "overlap" not in recorder_src:
+    failures.append(
+        "CaptureRecorder does not match the staged compile to the compilation "
+        "that finished: a build with more than one compilation in flight would "
+        "report the wrong options"
+    )
+else:
+    # The match must actually be used to choose.  A helper that is called but
+    # whose result is ignored would pass a name check.
+    if not re.search(r"if\s*\(\s*overlap\s*\(", recorder_src):
+        failures.append(
+            "CaptureRecorder computes the overlap but does not use it to "
+            "choose the staged compile: a build with more than one compilation "
+            "in flight would report the wrong options"
+        )
+    else:
+        note("the staged compile is matched to the compilation that finished")
+
+# The document must state the claim, because a reader who trusts the capture to
+# be complete is relying on it.
+if "parse" not in doc or "source path" not in doc:
+    failures.append(
+        "the document no longer explains that the capture names the sources "
+        "the compiler really compiled, including the ones found on the source "
+        "path"
+    )
+else:
+    note("the document explains the implicit sources")
 
 print()
 if failures:

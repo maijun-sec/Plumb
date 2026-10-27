@@ -26,18 +26,38 @@ CAPTURE = REPO / "plumb-build" / "plumb-build-capture" / "src" / "main" / "java"
 EP = CAPTURE / "CompilerEntryPoints.java"
 GRADLE_HOOKS = CAPTURE / "GradleHooks.java"
 CAPTURE_AGENT = CAPTURE / "CaptureAgent.java"
+ADVICE = CAPTURE / "CompiledSourcesAdvice.java"
+BRIDGE = CAPTURE / "CompiledSourcesBridge.java"
+HOOKS = CAPTURE / "CompilerHooks.java"
+RECORDER = CAPTURE / "CaptureRecorder.java"
 GATE = REPO / "scripts" / "check_capture_claims.py"
 
 original_doc = DOC.read_text(encoding="utf-8", errors="replace")
 original_ep = EP.read_text(encoding="utf-8", errors="replace")
 original_gradle_hooks = GRADLE_HOOKS.read_text(encoding="utf-8", errors="replace")
 original_capture_agent = CAPTURE_AGENT.read_text(encoding="utf-8", errors="replace")
+original_advice = ADVICE.read_text(encoding="utf-8", errors="replace")
+original_bridge = BRIDGE.read_text(encoding="utf-8", errors="replace")
+original_hooks = HOOKS.read_text(encoding="utf-8", errors="replace")
+original_recorder = RECORDER.read_text(encoding="utf-8", errors="replace")
+
+# Every file a mutant may touch.
+MUTABLE = {
+    "doc": (DOC, original_doc),
+    "ep": (EP, original_ep),
+    "gradle_hooks": (GRADLE_HOOKS, original_gradle_hooks),
+    "capture_agent": (CAPTURE_AGENT, original_capture_agent),
+    "advice": (ADVICE, original_advice),
+    "bridge": (BRIDGE, original_bridge),
+    "hooks": (HOOKS, original_hooks),
+    "recorder": (RECORDER, original_recorder),
+}
 
 
 def restore_sources():
-    EP.write_text(original_ep, encoding="utf-8")
-    GRADLE_HOOKS.write_text(original_gradle_hooks, encoding="utf-8")
-    CAPTURE_AGENT.write_text(original_capture_agent, encoding="utf-8")
+    """Put every mutable file back the way it was."""
+    for path, original in MUTABLE.values():
+        path.write_text(original, encoding="utf-8")
 
 
 def run_gate():
@@ -76,11 +96,13 @@ MUTANTS = [
         "the document's entry point count is wrong",
         "doc",
         # The document may be in Chinese or English; the count is what
-        # matters, so both spellings are tried.
+        # matters, so both spellings are tried.  The count itself changes
+        # as entry points are added, so the numeral is replaced by
+        # whatever the document currently says.
         lambda t: (
-            t.replace("而是**十二个**", "而是**八个**")
-            if "而是**十二个**" in t
-            else t.replace("but **twelve**", "but **eight**")
+            re.sub(r"而是\*\*[^*]+\*\*", "而是**三个**", t)
+            if "而是**" in t
+            else re.sub(r"but \*\*[^*]+\*\*", "but **three**", t)
         ),
     ),
     (
@@ -122,41 +144,83 @@ MUTANTS = [
         "doc",
         lambda t: t.replace("key=value", "the agent"),
     ),
+    (
+        "the parse hook reads the file manager's content cache again",
+        "advice",
+        # The content cache was measured to stay empty after a normal
+        # compile, so a hook on it names no sources at all.  The mutant
+        # keeps the method name and the call, and changes only where the
+        # path comes from -- so a gate that checks the name passes it.
+        lambda t: t.replace(
+            "CompiledSourcesBridge.recordParsed(file.getName());",
+            "java.util.Map<?, ?> cache = null;\n"
+            "      CompiledSourcesBridge.recordParsed(String.valueOf(cache));",
+        ),
+    ),
+    (
+        "the parse hook stops recording the parsed source",
+        "advice",
+        lambda t: t.replace(
+            "CompiledSourcesBridge.recordParsed(file.getName());", "/* removed */"
+        ),
+    ),
+    (
+        "the bridge takes the parsed source and drops it",
+        "bridge",
+        # The method still exists and still takes the path; it just does not
+        # pass it on.  A gate that checks the name alone passes this.
+        lambda t: t.replace(
+            "        remember.invoke(null, path);", "        /* dropped */"
+        ),
+    ),
+    (
+        "the parse hook is never applied",
+        "hooks",
+        lambda t: t.replace(
+            "result = result.visit(Advice.to(CompiledSourcesAdvice.ParsedSource.class).on(matcher));",
+            "/* the parse hook is not applied */",
+        ),
+    ),
+    (
+        "the capture is written when the compilation starts again",
+        "recorder",
+        # The sources the compiler really compiled are only known at the end,
+        # so a capture written at the start cannot report them.  The mutant
+        # keeps the method and its call, and drops the write.
+        lambda t: t.replace(
+            "      record(buildCapture(pending.argv(), merge(pending.sources(), parsed), "
+            "pending.api(), compiler));",
+            "      /* the capture is not written from here */",
+        ),
+    ),
+    (
+        "the staged compile is taken by position again",
+        "recorder",
+        # A build with more than one compilation in flight would report the
+        # wrong options.  The helper stays, but its result is ignored.
+        lambda t: t.replace(
+            "if (overlap(p.sources(), parsed) > 0) {", "if (true) {"
+        ),
+    ),
 ]
 
 survivors = []
 no_ops = []
 try:
     for name, target, mutate in MUTANTS:
-        if target == "doc":
-            DOC.write_text(mutate(original_doc), encoding="utf-8")
-            restore_sources()
-        elif target == "ep":
-            EP.write_text(mutate(original_ep), encoding="utf-8")
-            GRADLE_HOOKS.write_text(original_gradle_hooks, encoding="utf-8")
-            CAPTURE_AGENT.write_text(original_capture_agent, encoding="utf-8")
-            DOC.write_text(original_doc, encoding="utf-8")
-        elif target == "gradle_hooks":
-            GRADLE_HOOKS.write_text(mutate(original_gradle_hooks), encoding="utf-8")
-            EP.write_text(original_ep, encoding="utf-8")
-            CAPTURE_AGENT.write_text(original_capture_agent, encoding="utf-8")
-            DOC.write_text(original_doc, encoding="utf-8")
-        else:  # capture_agent
-            CAPTURE_AGENT.write_text(mutate(original_capture_agent), encoding="utf-8")
-            EP.write_text(original_ep, encoding="utf-8")
-            GRADLE_HOOKS.write_text(original_gradle_hooks, encoding="utf-8")
-            DOC.write_text(original_doc, encoding="utf-8")
+        # Everything is restored first, so a mutant never sees another
+        # mutant's damage.
+        restore_sources()
+        path, original = MUTABLE[target]
+        path.write_text(mutate(original), encoding="utf-8")
 
         # A mutant that did not change anything proves nothing: it would be
         # reported as "the gate let a drift through" when in fact the drift
         # was never introduced.  The first version of this script had exactly
         # that bug -- the formatter had reflowed the line the mutant looked
         # for, so the replacement was a no-op and the gate was blamed.
-        changed = (
-            DOC.read_text(encoding="utf-8") != original_doc
-            or EP.read_text(encoding="utf-8") != original_ep
-            or GRADLE_HOOKS.read_text(encoding="utf-8") != original_gradle_hooks
-            or CAPTURE_AGENT.read_text(encoding="utf-8") != original_capture_agent
+        changed = any(
+            p.read_text(encoding="utf-8") != o for p, o in MUTABLE.values()
         )
         if not changed:
             no_ops.append(name)
@@ -175,7 +239,6 @@ try:
                     break
             print("killed    %s  (%s)" % (name, first))
 finally:
-    DOC.write_text(original_doc, encoding="utf-8")
     restore_sources()
 
 print()

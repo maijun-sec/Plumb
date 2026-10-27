@@ -373,7 +373,7 @@ Plumb 严格区分「喂 TypeSolver 的路径」与「扫 findings 的路径」�
   `TransitiveResolver`、`MavenResolverAdapter`、`MavenPom`、`ModuleDescriptor`
 - `plumb-build/plumb-build-capture/src/main/java/org/plumb/build/capture/` —— `CaptureAgent`、
   `CompilerHooks`、`CompilerEntryPoints`、`GradleHooks`、`CaptureRecorder`、`CaptureEntry`、
-  `CaptureSink`、`CaptureReader`、`JavacOptions`
+  `CaptureSink`、`CaptureReader`、`JavacOptions`、`CompiledSourcesAdvice`、`CompiledSourcesBridge`
 
 每个 adapter 实现 `BuildAdapter.discover(Path)` 返回 `BuildProject`：
 
@@ -446,7 +446,7 @@ Maven Resolver 算依赖闭包，因为插件自己声明的 classpath 不是编
 
 ### 7.0.1 capture 挂哪些入口
 
-「javac 命令行」不是一个方法，而是**十二个**，取决于是怎么走到编译器的：
+「javac 命令行」不是一个方法，而是**十五个**，取决于是怎么走到编译器的：
 
 | 入口 | 谁会走这条路 |
 | --- | --- |
@@ -458,6 +458,9 @@ Maven Resolver 算依赖闭包，因为插件自己声明的 classpath 不是编
 | `com.sun.tools.javac.api.JavacTool#run(...)` | 老式 run API |
 | `com.sun.tools.javac.api.JavacTaskImpl#call()` | 任务驱动（build tool / IDE） |
 | `com.sun.tools.javac.api.JavacTaskImpl#generate()` | 任务驱动（IDE 路径） |
+| `com.sun.tools.javac.main.JavaCompiler#parse(...)` | **编译器解析的每一个源文件** |
+| `com.sun.tools.javac.main.JavaCompiler#compile(...)` | **每一次编译，在它结束的那一刻** |
+| `com.sun.tools.javac.main.JavaCompiler#generate(...)` | IDE 的 generate 路径（它不走 `compile`） |
 | `org.eclipse.jdt.internal.compiler.batch.Main#compile(String[])` | Eclipse 编译器（ECJ） |
 | `com.sun.tools.sjavac.client.ClientMain#run(String[])` | sjavac client |
 | `com.sun.tools.sjavac.server.ServerMain#run(String[])` | sjavac server |
@@ -476,6 +479,32 @@ Maven Resolver 算依赖闭包，因为插件自己声明的 classpath 不是编
 `Advice` 把 hook 的字节码**复制进**被测方法，所以不需要 super 方法、不需要 delegation target，
 `Main#compile(String[])` 这种静态方法照样能挂。手写 visitor 要自己算参数的 local slot
 （静态方法 0，实例方法 1），算错就破坏编译器的栈。
+
+### 7.0.1.1 编译器真正编译了哪些源文件
+
+命令行给出的是编译器**被交给**的源文件。编译器还会编译它**自己找到**的源文件：
+一个被引用但没被点名的类，会在 source path 上被找到、解析、编译。
+只列命令行源文件的 capture 因此漏掉了编译器真编译的代码 —— 而那正是静态分析要看的代码。
+
+**知道这件事的地方是 `JavaCompiler#parse(JavaFileObject, CharSequence)`。**
+编译器解析的每一个源文件都从这里过，不管它是怎么来的：命令行给的那些走 `parseFiles`，
+source path 上找到的那些走 `readSourceFile`。所以在这里挂一个 hook，
+看到的就是编译器解析过的源文件集合 —— 而 source path 上没人引用的文件从不被解析，所以不会出现。
+
+**file manager 的 content cache 先试过，不好使。** 它看起来是最对的地方：它就是编译器自己
+读过的文件记录。但正常编译之后它是**空的** —— 编译器读源文件内容走的是 file object，
+不是 manager 的 cache。这是实测出来的，不是猜的：显式源文件加 source path 源文件的一次
+真实编译之后，cache 里零个条目。一个从来不填的 cache 回答不了这个问题。
+
+**capture 在编译结束的时候写，不是在开始的时候写。** 编译器真正编译了哪些源文件，
+只有到结束才知道，所以开始时写的 capture 报不出来。选项在开始时就知道，
+所以先**暂存**着，等到编译结束再写。
+
+**暂存的编译是"匹配"出来的，不是按位置取的。** 一次编译会经过好几个入口
+—— 命令行能走到其中三个 —— 所以同一次编译会被暂存好几次。
+而且一个构建里可能同时有不止一次编译在进行：Gradle 就会在上一模块的编译**还没结束**时
+把下一个模块的任务建出来。所以暂存的编译是**匹配**出来的：源文件正好是编译器实际解析过的
+那一批。取"最近暂存的那个"会把这一个模块的编译报成下一个模块的选项。
 
 ### 7.0.2 IDE 路径的选项从哪来
 

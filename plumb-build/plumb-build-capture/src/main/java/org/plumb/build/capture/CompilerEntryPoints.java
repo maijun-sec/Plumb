@@ -95,7 +95,35 @@ public final class CompilerEntryPoints {
        * created, keyed by the task's identity. They cannot be read off the task later, because
        * {@code com.sun.tools.javac.api} is not exported by the {@code jdk.compiler} module.
        */
-      NO_OPTIONS
+      NO_OPTIONS,
+      /**
+       * The method is the compiler's parse step, and its argument is the file being parsed.
+       *
+       * <p><b>This is where the sources the compiler really compiled are found.</b> Every source
+       * the compiler parses passes through {@code JavaCompiler#parse(JavaFileObject,
+       * CharSequence)}: the ones it was given, through {@code parseFiles}, and the ones it found on
+       * the source path, through {@code readSourceFile}. So one hook here sees exactly the sources
+       * the compiler parsed -- and a source in the source path that nobody referenced is never
+       * parsed, so it never appears.
+       *
+       * <p>It is a separate category because the hook is different: it reads the file being parsed,
+       * not the options.
+       */
+      PARSED_SOURCE,
+      /**
+       * The method is the compiler's compile step, and it carries no options.
+       *
+       * <p><b>This is where the capture is written.</b> The compile has run by then, so the sources
+       * it really compiled are known -- and a capture written when the compile <em>starts</em>
+       * cannot report them. The options are known at the start, so they are staged until the compile
+       * ends.
+       *
+       * <p>{@code JavaCompiler#compile(Collection, Collection, Iterable, Collection)} is the one
+       * compile step both paths go through: the command-line driver reaches it through {@code
+       * com.sun.tools.javac.main.Main}, and the {@code javax.tools} API reaches it through {@code
+       * JavacTaskImpl}. One hook therefore covers every compile.
+       */
+      COMPILE_END
     }
   }
 
@@ -179,6 +207,53 @@ public final class CompilerEntryPoints {
               -1,
               -1,
               EntryPoint.Kind.NO_OPTIONS, CompilerOption.Compiler.JAVAC),
+
+          // --- the compiler's own parse step: the sources it really compiled ---
+          //
+          // Every source the compiler parses passes through this method: the
+          // ones it was given, through parseFiles, and the ones it found on the
+          // source path, through readSourceFile. A source in the source path
+          // that nobody referenced is never parsed, so it never appears here.
+          //
+          // The method is `protected`, which is fine: ByteBuddy instruments
+          // methods by name and argument count, not by visibility.
+          new EntryPoint(
+              "com.sun.tools.javac.main.JavaCompiler",
+              "parse",
+              2,
+              -1,
+              -1,
+              EntryPoint.Kind.PARSED_SOURCE,
+              CompilerOption.Compiler.JAVAC),
+
+          // --- the compiler's own compile step: where the capture is written ---
+          //
+          // The compile has run by then, so the sources it really compiled are
+          // known. Both paths reach this method: the command line through
+          // com.sun.tools.javac.main.Main, the javax.tools API through
+          // JavacTaskImpl. One hook therefore covers every compile.
+          new EntryPoint(
+              "com.sun.tools.javac.main.JavaCompiler",
+              "compile",
+              4,
+              -1,
+              -1,
+              EntryPoint.Kind.COMPILE_END,
+              CompilerOption.Compiler.JAVAC),
+
+          // The IDE's other path. `JavacTaskImpl#generate()` does NOT go
+          // through `compile`: it parses, attributes and then calls
+          // `JavaCompiler#generate(Queue)`. So the generate step is hooked as
+          // well -- otherwise an IDE that generates code would produce no
+          // capture at all.
+          new EntryPoint(
+              "com.sun.tools.javac.main.JavaCompiler",
+              "generate",
+              1,
+              -1,
+              -1,
+              EntryPoint.Kind.COMPILE_END,
+              CompilerOption.Compiler.JAVAC),
 
           // --- Eclipse's compiler ---
           new EntryPoint(
