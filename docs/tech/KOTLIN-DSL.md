@@ -215,6 +215,28 @@ against `NodeAccess`:
 | `s matches regex` | `StringOps.matches` |
 | `c contain e` / `c contains e` | `Ops.contains` |
 
+### 4.3.1 Boolean operators
+
+| Written as | Becomes |
+| --- | --- |
+| `a and b` | `a and b` -- Kotlin's own `Boolean.and` |
+| `a or b` | `a or b` -- Kotlin's own `Boolean.or` |
+| `a && b` / `a \|\| b` | unchanged |
+| `not a` | `!(a)` |
+
+`not` is the one that needs a rewrite. The upstream DSL spells its boolean operators in words,
+because it defines them as Kotlin extension infix functions. Kotlin has `Boolean.and` and
+`Boolean.or` as member functions, so those two work unchanged -- but it has no **prefix** `not`
+operator: `Boolean.not()` is a function call, so `not a` is a syntax error and the rule fails to
+compile.
+
+The operand is parenthesised as well, because `!` binds tighter than the comparison operators:
+`not a == b` has to become `!(a == b)`, not `!a == b`. The second one compares a Boolean with a
+String, which is a type error rather than the negation the rule asked for.
+
+`not` is only rewritten when it stands alone as a word. A name that merely starts with `not` --
+`nothing`, `annotate` -- is a different word and is left alone.
+
 ### 4.4 Accessing nodes and types
 
 The predicate of a rule can access the current node and its type:

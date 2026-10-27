@@ -316,10 +316,91 @@ object RuleMatcher {
         warnings: MutableList<String>
     ): String {
         var tokens = DslTokenizer.tokenize(predicate)
+        tokens = rewriteNegation(tokens)
         tokens = rewriteStructural(tokens, binding, warnings)
         tokens = rewriteChains(tokens, binding, warnings)
         tokens = rewriteInfix(tokens, warnings)
         return render(tokens)
+    }
+
+    /**
+     * Rewrites the prefix `not` into Kotlin's `!`.
+     *
+     * <p><b>Why this is needed.</b> `not` is a name in the upstream DSL's vocabulary -- the
+     * rewriter already lists it among the words a rule may use -- but Kotlin has no prefix
+     * `not` operator. `Boolean.not()` exists, but only as a function call, so `not empty` is a
+     * syntax error and the rule fails to compile. `!empty` is the same thing written the way
+     * Kotlin spells it.
+     *
+     * <p><b>Why the operand is parenthesised.</b> `!` binds tighter than the comparison
+     * operators, so `!a == b` parses as `(!a) == b` -- which compares a Boolean with a String,
+     * and does not mean what the rule said. The upstream's `not` is a prefix operator over the
+     * whole operand, so the operand is wrapped: `not a == b` becomes `!(a == b)`.
+     *
+     * <p><b>Why the pass runs first.</b> The operand is usually a chain (`not a.b`), and the
+     * chain pass rewrites chains. Running the negation first keeps each pass responsible for
+     * one thing: the negation decides the extent of its operand, and the chain pass then
+     * rewrites what is inside.
+     *
+     * <p>Only a `not` that stands alone as a word is rewritten. A `not` that is part of a longer
+     * name (`nothing`, `annotate`) is a different word, and the tokenizer keeps them apart.
+     */
+    internal fun rewriteNegation(tokens: List<DslToken>): List<DslToken> {
+        val out = ArrayList<DslToken>(tokens.size)
+        var i = 0
+        while (i < tokens.size) {
+            val token = tokens[i]
+            if (token is DslToken.Word && token.text == "not" && !isOperandOfInfix(tokens, i)) {
+                out.add(DslToken.Punct("!"))
+                out.add(DslToken.Punct("("))
+                // The operand runs to the end of the expression, or to the
+                // closing bracket that encloses this `not`.
+                val operandEnd = operandEnd(tokens, i + 1)
+                out.addAll(tokens.subList(i + 1, operandEnd))
+                out.add(DslToken.Punct(")"))
+                i = operandEnd
+                continue
+            }
+            out.add(token)
+            i++
+        }
+        return out
+    }
+
+    /**
+     * True when the `not` at {@code index} is an operand rather than a negation.
+     *
+     * <p>A `not` that follows a value is part of an infix expression -- `a not b` -- and
+     * rewriting it would produce nonsense.
+     */
+    private fun isOperandOfInfix(tokens: List<DslToken>, index: Int): Boolean {
+        val previous = if (index > 0) tokens[index - 1] else null
+        return previous is DslToken.Word &&
+            previous.text != "not" &&
+            previous.text !in LOCAL_NAMES
+    }
+
+    /**
+     * The end of the operand that starts at {@code from}.
+     *
+     * <p>The operand ends at the closing bracket that matches the bracket the `not` sits in, or
+     * at the end of the token list. A comparison inside the operand does NOT end it: `not a == b`
+     * negates the whole comparison, which is why the operand is parenthesised.
+     */
+    private fun operandEnd(tokens: List<DslToken>, from: Int): Int {
+        var depth = 0
+        var i = from
+        while (i < tokens.size) {
+            val token = tokens[i]
+            if (token is DslToken.Punct) {
+                when (token.text) {
+                    "(", "[", "{" -> depth++
+                    ")", "]", "}" -> if (depth == 0) return i else depth--
+                }
+            }
+            i++
+        }
+        return tokens.size
     }
 
     /** Renders a token list back into source text. */
@@ -336,6 +417,11 @@ object RuleMatcher {
                 val needSpace = when {
                     // A word followed by '(' is a call: no space.
                     prev is DslToken.Word && token is DslToken.Punct && token.text == "(" -> false
+                    // A prefix operator is tight on both sides: `!x`, not `! x`.
+                    // Kotlin parses `! x` as an unresolved reference to `!`,
+                    // because the space makes the `!` look like a name.
+                    token is DslToken.Punct && token.text in PREFIX_OPERATORS -> false
+                    prev is DslToken.Punct && prev.text in PREFIX_OPERATORS -> false
                     prev is DslToken.Punct && prev.text !in setOf("(", "[", ".") -> true
                     token is DslToken.Punct && token.text !in setOf(")", "]", ",", ".", ";") -> true
                     prev is DslToken.Word && token is DslToken.Word -> true
@@ -349,6 +435,14 @@ object RuleMatcher {
         }
         return sb.toString()
     }
+
+    /**
+     * The operators that bind to what follows them.
+     *
+     * <p>Kotlin writes a prefix operator tight against its operand: {@code !x}. A space makes
+     * the {@code !} look like a name, and the compiler reports "Unresolved reference: !".
+     */
+    private val PREFIX_OPERATORS: Set<String> = setOf("!")
 
     /**
      * Rewrites `receiver match { body }` into

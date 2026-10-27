@@ -214,6 +214,25 @@ facade 方法的调用（见 §5）。
 | `s matches regex` | `StringOps.matches` |
 | `c contain e` / `c contains e` | `Ops.contains` |
 
+### 4.3.1 布尔运算符
+
+| 写法 | 变成 |
+| --- | --- |
+| `a and b` | `a and b` —— Kotlin 自带的 `Boolean.and` |
+| `a or b` | `a or b` —— Kotlin 自带的 `Boolean.or` |
+| `a && b` / `a \|\| b` | 不变 |
+| `not a` | `!(a)` |
+
+只有 `not` 需要改写。上游 DSL 用单词拼布尔运算符，因为它把这些定义成 Kotlin 扩展中缀函数。
+Kotlin 的 `Boolean.and` 和 `Boolean.or` 是成员函数，所以这两个原样就能用 —— 但它**没有前缀**
+`not` 运算符：`Boolean.not()` 是函数调用，所以 `not a` 是语法错误，规则编译不过。
+
+操作数也要加括号，因为 `!` 的结合优先级比比较运算符高：`not a == b` 必须变成 `!(a == b)`，
+而不是 `!a == b`。后者是拿 Boolean 和 String 比较，是类型错误，不是规则想要的取反。
+
+只有独立成词的 `not` 才会被改写。只是以 `not` 开头的名字 —— `nothing`、`annotate` —— 是另一个
+词，保持原样。
+
 ### 4.4 节点与类型的访问
 
 规则的谓词里可以访问当前节点和它的类型：
