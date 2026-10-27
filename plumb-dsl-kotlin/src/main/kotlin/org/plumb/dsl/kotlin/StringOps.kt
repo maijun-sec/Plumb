@@ -60,6 +60,51 @@ object StringOps {
     }
 }
 
+/**
+ * The `contain` operator, for a receiver that may be a string OR a collection.
+ *
+ * <p>The upstream defines one generic infix function:
+ *
+ * <pre>
+ *   infix fun &lt;T&gt; Collection&lt;T&gt;.contain(that: T): Boolean
+ * </pre>
+ *
+ * so `supers contain "java.util.logging.Logger"` is a MEMBERSHIP test on a list, and a string
+ * receiver is not part of the upstream's vocabulary at all. But a rule author writes
+ * `parameterTypes[0].resolveType contains "java.util"` when they mean "the type name contains
+ * this substring", and routing that to the collection version fails to compile: the receiver is a
+ * String and the collection overload wants a Collection.
+ *
+ * <p>So the operator is resolved on the RECEIVER's type:
+ *
+ * <ul>
+ *   <li>a string receiver is a SUBSTRING test -- the string's own `contains`;
+ *   <li>a collection receiver is an EXACT membership test -- the upstream's semantics.
+ * </ul>
+ *
+ * <p><b>Why the collection case stays exact.</b> A substring test on a collection would make
+ * `supers contain "java.lang.String"` match a `java.lang.Comparable<java.lang.String>` in the
+ * ancestor list, and the rule would fire on a type it was not written for. The upstream's
+ * membership test is exact, and the difference between the two semantics is exactly what the
+ * `supers` / `strictSupers` pair exists to expose.
+ */
+object Contain {
+
+    /** `receiver contain operand` -- a substring test for a string, a membership test otherwise. */
+    @JvmStatic
+    fun contains(receiver: Any?, operand: Any?): Boolean {
+        if (receiver == null || operand == null) return false
+        if (receiver is String) {
+            return receiver.contains(operand.toString())
+        }
+        if (receiver is Collection<*>) {
+            // The upstream's membership test: an exact match on an element.
+            return receiver.contains(operand)
+        }
+        return false
+    }
+}
+
 /** Collection helpers. */
 object Ops {
 

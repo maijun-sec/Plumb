@@ -52,9 +52,53 @@ object NodeAccess {
     @JvmStatic
     fun simpleName(node: Node?): String? = node?.javaClass?.simpleName
 
-    /** The node's fully qualified class name. */
+    /**
+     * The node's qualified CLASS name.
+     *
+     * <p>This is the upstream's own definition:
+     *
+     * <pre>
+     *   val Node.qualifiedName: String
+     *       get() = this.javaClass.name
+     * </pre>
+     *
+     * so it is the fully qualified name of the node's JavaParser class --
+     * `com.github.javaparser.ast.stmt.MethodDeclaration`. That is the node's
+     * *shape*, and it is the same for every method in every file.
+     *
+     * <p><b>Why the node's own name is a different property.</b> The name a
+     * rule author means by "the node's qualified name" is the declaring type
+     * plus the member -- `com.example.Fixture.noParameters`. That is
+     * [ownQualifiedName], and it is a separate property so that a rule written
+     * against the upstream keeps the upstream's meaning.
+     */
     @JvmStatic
     fun qualifiedName(node: Node?): String? = node?.javaClass?.name
+
+    /**
+     * The node's OWN qualified name -- the declaring type plus the member.
+     *
+     * <p>For a method in `com.example.Fixture`, that is
+     * `com.example.Fixture.noParameters`. For a node that is not a member of
+     * a named type, the declaring type's qualified name is used on its own.
+     *
+     * <p>This is the Plumb extension: the upstream has no such property,
+     * because its `qualifiedName` is the class name.
+     */
+    @JvmStatic
+    fun ownQualifiedName(node: Node?): String? {
+        if (node == null) return null
+        val memberName = when (node) {
+            is MethodDeclaration -> node.nameAsString
+            is ConstructorDeclaration -> node.nameAsString
+            is FieldDeclaration -> node.variables.firstOrNull()?.nameAsString
+            is com.github.javaparser.ast.expr.VariableDeclarationExpr ->
+                node.variables.firstOrNull()?.nameAsString
+            else -> null
+        }
+        val type = enclosingClass(node) ?: return node.javaClass.name
+        return if (memberName == null) type else "$type.$memberName"
+    }
 
     /** The method's name; null when the node is not a method declaration. */
     @JvmStatic
@@ -76,6 +120,20 @@ object NodeAccess {
     fun parameters(node: Node?): List<Parameter> =
         (node as? MethodDeclaration)?.parameters ?: emptyList()
 
+    /**
+     * The parameter at the given index of a method's parameter list.
+     *
+     * <p>The upstream rules read `parameterTypes[0].resolveType`, which is the
+     * resolved name of the method's first parameter type. This is the same
+     * shape for the parameter itself rather than its type: `parameters[0].name`
+     * is the parameter's declared name.
+     */
+    @JvmStatic
+    fun parameterAt(parameters: List<Parameter>?, index: Int): ParameterRef? {
+        if (parameters == null || index < 0 || index >= parameters.size) return null
+        return ParameterRef(parameters[index])
+    }
+
     /** The caught exception's parameter; null when the node is not a catch clause. */
     @JvmStatic
     fun exception(node: Node?): ParameterRef? {
@@ -91,6 +149,26 @@ object NodeAccess {
     @JvmStatic
     fun exceptionName(parameterRef: ParameterRef?): String? = parameterRef?.name
 
+    /**
+     * The declared type of a parameter from the parameter list.
+     *
+     * <p>The counterpart of [exceptionType] for a parameter that came from a
+     * method's parameter list rather than from a catch clause. The two
+     * parameters are both `Parameter`s, so they carry the same properties --
+     * they just arrive through different accessors.
+     */
+    @JvmStatic
+    fun parameterType(parameterRef: ParameterRef?): TypeRef? = parameterRef?.type
+
+    /**
+     * The name of a parameter from the parameter list.
+     *
+     * <p>The counterpart of [exceptionName] for a parameter that came from a
+     * method's parameter list rather than from a catch clause.
+     */
+    @JvmStatic
+    fun parameterName(parameterRef: ParameterRef?): String? = parameterRef?.name
+
     /** The enclosing method declaration; null when the node is not inside one. */
     @JvmStatic
     fun enclosingFunction(node: Node?): MethodDeclaration? {
@@ -99,9 +177,40 @@ object NodeAccess {
         return if (found.isPresent) found.get() else null
     }
 
-    /** The enclosing class declaration; null when the node is not inside one. */
+    /**
+     * The qualified name of the class that encloses the node.
+     *
+     * <p><b>Why a name and not the declaration.</b> The upstream's `enclosingClass` is a
+     * string: the wrapper form is compared against one, as in
+     * `method.enclosingClass == "java.lang.Throwable"`. A node-level property that returned the
+     * declaration object instead would make `enclosingClass == "..."` a compile error --
+     * "Operator '==' cannot be applied to 'ClassOrInterfaceDeclaration?' and 'String'" -- so a
+     * rule that looked reasonable would fail to compile for a reason the rule author cannot see.
+     *
+     * <p>The name is the qualified one, so it is the same shape as the wrapper's.
+     *
+     * @return the enclosing class's qualified name, or null when the node is not inside one
+     */
     @JvmStatic
-    fun enclosingClass(node: Node?): ClassOrInterfaceDeclaration? {
+    fun enclosingClass(node: Node?): String? {
+        val declaration = enclosingClassDeclaration(node) ?: return null
+        return try {
+            declaration.resolve().qualifiedName
+        } catch (ex: RuntimeException) {
+            // The class cannot be resolved -- it may be in a source file the
+            // symbol solver does not know about.  The name is then unknown.
+            null
+        }
+    }
+
+    /**
+     * The class declaration that encloses the node.
+     *
+     * <p>For the rare rule that needs the declaration itself. Most rules want the NAME, which
+     * is what [enclosingClass] returns.
+     */
+    @JvmStatic
+    fun enclosingClassDeclaration(node: Node?): ClassOrInterfaceDeclaration? {
         if (node == null) return null
         val found = node.findAncestor(ClassOrInterfaceDeclaration::class.java)
         return if (found.isPresent) found.get() else null

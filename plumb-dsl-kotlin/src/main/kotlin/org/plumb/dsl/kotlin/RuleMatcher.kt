@@ -54,6 +54,7 @@ object RuleMatcher {
     private val NODE_PROPERTIES: Map<String, String> = mapOf(
         "simpleName" to "NodeAccess.simpleName",
         "qualifiedName" to "NodeAccess.qualifiedName",
+        "ownQualifiedName" to "NodeAccess.ownQualifiedName",
         "methodName" to "NodeAccess.methodName",
         "parameterTypes" to "NodeAccess.parameterTypes",
         "parameters" to "NodeAccess.parameters",
@@ -126,6 +127,36 @@ object RuleMatcher {
     )
 
     /**
+     * The element accessor for each list a rule can index.
+     *
+     * <p><b>Why the list decides the accessor.</b> The two lists hold different
+     * things: `parameterTypes` is a list of declared TYPES, and `parameters` is a
+     * list of PARAMETERS. Indexing them produces different values, so the
+     * accessor that picks the element has to know which list it is:
+     *
+     * <ul>
+     *   <li>`parameterTypes[0]` -> a resolved type, so `.resolveType` is readable;
+     *   <li>`parameters[0]` -> a parameter, so `.name` and `.type` are readable.
+     * </ul>
+     *
+     * <p>Without this, `parameters[0].name` would be rewritten as if the
+     * element were a type, and the rule would fail to compile with a message
+     * about an unresolved reference rather than about the real mistake.
+     */
+    private val LIST_ELEMENT_ACCESSORS: Map<String, ElementAccessor> = mapOf(
+        "parameterTypes" to ElementAccessor("TypeAccess.typeAt", "TypeRef"),
+        "parameters" to ElementAccessor("NodeAccess.parameterAt", "ParameterRef")
+    )
+
+    /**
+     * How to pick one element out of a list, and what that element is.
+     *
+     * @param facade the accessor that takes the list and an index
+     * @param elementType the kind of value the accessor returns
+     */
+    private data class ElementAccessor(val facade: String, val elementType: String)
+
+    /**
      * The methods called on a list.
      *
      * <p>`parameterTypes.size()` is the upstream's way of asking how many
@@ -153,6 +184,7 @@ object RuleMatcher {
     private val BARE_NODE_PROPERTIES: Map<String, String> = mapOf(
         "simpleName" to "NodeAccess.simpleName",
         "qualifiedName" to "NodeAccess.qualifiedName",
+        "ownQualifiedName" to "NodeAccess.ownQualifiedName",
         "methodName" to "NodeAccess.methodName",
         "parameterTypes" to "NodeAccess.parameterTypes",
         "parameters" to "NodeAccess.parameters",
@@ -175,17 +207,20 @@ object RuleMatcher {
      */
     private val REWRITER_NAMES: Set<String> = setOf(
         "Matchers.match", "Matchers.contain", "Matchers.ancestor",
-        "NodeAccess.simpleName", "NodeAccess.qualifiedName", "NodeAccess.methodName",
+        "NodeAccess.simpleName", "NodeAccess.qualifiedName", "NodeAccess.ownQualifiedName",
+        "NodeAccess.methodName",
         "NodeAccess.parameterTypes", "NodeAccess.parameters", "NodeAccess.exception",
         "NodeAccess.enclosingFunction", "NodeAccess.enclosingClass", "NodeAccess.isStatic",
         "NodeAccess.isFinal", "NodeAccess.type", "NodeAccess.content", "NodeAccess.method",
         "NodeAccess.isEmpty", "NodeAccess.resolvedMethodName",
         "NodeAccess.resolvedMethodEnclosingClass", "NodeAccess.exceptionType",
-        "NodeAccess.exceptionName", "TypeAccess.supers", "TypeAccess.strictSupers",
+        "NodeAccess.exceptionName", "NodeAccess.parameterAt", "NodeAccess.parameterType",
+        "NodeAccess.parameterName", "TypeAccess.supers", "TypeAccess.strictSupers",
         "TypeAccess.typeName", "TypeAccess.resolveTypeName", "TypeAccess.supersOf",
         "TypeAccess.strictSupersOf", "TypeAccess.typeNameOf", "TypeAccess.typeAt",
         "TypeAccess.resolveDeclaredTypeName", "StringOps.startsWith", "StringOps.endsWith",
-        "StringOps.matches", "StringOps.contains", "Ops.contains", "Ops.containsText", "Ops.size"
+        "StringOps.matches", "StringOps.contains", "Ops.contains", "Ops.containsText", "Ops.size",
+        "Contain.contains"
     )
 
     /**
@@ -201,8 +236,8 @@ object RuleMatcher {
         "startsWith" to "StringOps.startsWith",
         "endsWith" to "StringOps.endsWith",
         "matches" to "StringOps.matches",
-        "contain" to "Ops.contains",
-        "contains" to "Ops.contains"
+        "contain" to "Contain.contains",
+        "contains" to "Contain.contains"
     )
 
     /** The structural matchers and the facade that replaces them. */
@@ -288,6 +323,7 @@ object RuleMatcher {
         |import org.plumb.dsl.kotlin.TypeAccess
         |import org.plumb.dsl.kotlin.StringOps
         |import org.plumb.dsl.kotlin.Ops
+        |import org.plumb.dsl.kotlin.Contain
         |import org.plumb.dsl.kotlin.Matchers
         |
         |val $binding = CurrentNodeHolder.get() as $javaClassName
@@ -461,14 +497,30 @@ object RuleMatcher {
                 val facade = STRUCTURAL_MATCHERS.getValue(token.text)
                 val nextToken = if (i + 1 < tokens.size) tokens[i + 1] else null
                 val nextIsBrace = nextToken is DslToken.Punct && nextToken.text == "{"
-                val receiverStart = chainStart(out)
-                if (nextIsBrace && receiverStart < out.size) {
-                    val receiver = out.subList(receiverStart, out.size).toList()
-                    out.subList(receiverStart, out.size).clear()
-                    out.add(DslToken.Word(facade))
-                    out.add(DslToken.Punct("("))
-                    out.addAll(receiver)
-                    out.add(DslToken.Punct(")"))
+                if (nextIsBrace) {
+                    // A structural matcher with NO receiver of its own reads
+                    // the node the enclosing block is looking at. The word
+                    // before it decides: after a bracket or at the very start
+                    // there is no expression to take, so the subject is
+                    // implicit.
+                    val receiverStart = if (hasImplicitSubject(out)) {
+                        out.size
+                    } else {
+                        chainStart(out)
+                    }
+                    if (receiverStart < out.size) {
+                        val receiver = out.subList(receiverStart, out.size).toList()
+                        out.subList(receiverStart, out.size).clear()
+                        out.add(DslToken.Word(facade))
+                        out.add(DslToken.Punct("("))
+                        out.addAll(receiver)
+                        out.add(DslToken.Punct(")"))
+                    } else {
+                        out.add(DslToken.Word(facade))
+                        out.add(DslToken.Punct("("))
+                        out.add(DslToken.Word(implicitSubject(out, binding)))
+                        out.add(DslToken.Punct(")"))
+                    }
                     // Skip the keyword; the block that follows is copied as-is.
                     i++
                     continue
@@ -479,6 +531,30 @@ object RuleMatcher {
         }
         return out
     }
+
+    /**
+     * True when the structural matcher at this point has no receiver of its
+     * own.
+     *
+     * <p>The word before it decides: after an opening bracket, or at the very
+     * start of the predicate, there is no expression for the matcher to take.
+     */
+    private fun hasImplicitSubject(out: List<DslToken>): Boolean {
+        if (out.isEmpty()) return true
+        val previous = out[out.size - 1]
+        return previous is DslToken.Punct &&
+            (previous.text == "{" || previous.text == "(")
+    }
+
+    /**
+     * The node a structural matcher with no receiver of its own reads.
+     *
+     * <p>Inside a `contain` or an `ancestor` block that is the node the block
+     * is looking at -- the descendant or the ancestor. Outside any block it
+     * is the rule's own binding.
+     */
+    private fun implicitSubject(out: List<DslToken>, binding: String): String =
+        currentSubject(out, binding)
 
     /**
      * The index in {@code out} where the trailing expression starts.
@@ -872,8 +948,19 @@ object RuleMatcher {
 
         if (indexed) {
             // `parameterTypes[0]` -> the element's resolved type.
+            // `parameters[0]`   -> the parameter itself.
+            val accessor = LIST_ELEMENT_ACCESSORS[head.substringBefore('[')]
+            if (accessor == null) {
+                if (!warnings.any { it.contains("'$head'") }) {
+                    warnings.add(
+                        "'$head' cannot be indexed; the DSL knows these lists: " +
+                            LIST_ELEMENT_ACCESSORS.keys.joinToString(", ")
+                    )
+                }
+                return null
+            }
             current = listOf(
-                DslToken.Word("TypeAccess.typeAt"),
+                DslToken.Word(accessor.facade),
                 DslToken.Punct("("),
                 DslToken.Word(bareFacade),
                 DslToken.Punct("("),
@@ -887,13 +974,35 @@ object RuleMatcher {
 
         for (position in 1 until links.size) {
             val property = links[position]
-            // A property read off an INDEXED element is an element
-            // property; a property read off the list is a list method.
-            val facade = if (indexed) {
-                ELEMENT_PROPERTIES[property] ?: LIST_METHODS[property]
-            } else {
-                LIST_METHODS[property] ?: ELEMENT_PROPERTIES[property]
+            // A property read off an INDEXED element is read off the
+            // element's own kind -- a TYPE has `resolveType`, a PARAMETER
+            // has `name` and `type`. A property read off the list itself is
+            // a list method.
+            if (indexed) {
+                val element = elementAccessorOf(head.substringBefore('['))
+                if (element == null) return null
+                val facade = when (element.elementType) {
+                    "ParameterRef" -> when (property) {
+                        "type" -> "NodeAccess.parameterType"
+                        "name" -> "NodeAccess.parameterName"
+                        else -> null
+                    }
+                    else -> ELEMENT_PROPERTIES[property]
+                }
+                if (facade == null) {
+                    if (!warnings.any { it.contains("'.$property'") }) {
+                        warnings.add(
+                            "'.$property' was left unchanged; the DSL knows these " +
+                                "properties on a ${element.elementType}: " +
+                                elementPropertiesOf(element.elementType)
+                        )
+                    }
+                    return null
+                }
+                current = wrap(current, facade)
+                continue
             }
+            val facade = LIST_METHODS[property] ?: ELEMENT_PROPERTIES[property]
             if (facade == null) {
                 if (!warnings.any { it.contains("'.$property'") }) {
                     warnings.add(
@@ -906,6 +1015,23 @@ object RuleMatcher {
             current = wrap(current, facade)
         }
         return current
+    }
+
+    /**
+     * The element accessor for a list, or null when the list is not one the
+     * DSL knows.
+     */
+    private fun elementAccessorOf(listName: String): ElementAccessor? =
+        LIST_ELEMENT_ACCESSORS[listName]
+
+    /**
+     * The properties that may be read off a value of the given kind.
+     */
+    private fun elementPropertiesOf(elementType: String): String = when (elementType) {
+        "ParameterRef" -> "name, type"
+        "TypeRef" -> WRAPPER_PROPERTIES.filter { it.value.owner == "TypeRef" }
+            .keys.joinToString(", ")
+        else -> ELEMENT_PROPERTIES.keys.joinToString(", ")
     }
 
     /**
@@ -983,8 +1109,19 @@ object RuleMatcher {
                 }
                 if (indexed) {
                     // `parameterTypes[0]` -- the list, then one element.
+                    // `parameters[0]`   -- the parameter itself.
+                    val accessor = LIST_ELEMENT_ACCESSORS[bare]
+                    if (accessor == null) {
+                        if (!warnings.any { it.contains("'$bare'") }) {
+                            warnings.add(
+                                "'$bare' cannot be indexed; the DSL knows these lists: " +
+                                    LIST_ELEMENT_ACCESSORS.keys.joinToString(", ")
+                            )
+                        }
+                        return null
+                    }
                     current = listOf(
-                        DslToken.Word("TypeAccess.typeAt"),
+                        DslToken.Word(accessor.facade),
                         DslToken.Punct("("),
                         DslToken.Word(nodeFacade),
                         DslToken.Punct("("),
@@ -994,7 +1131,7 @@ object RuleMatcher {
                         DslToken.Punct(property.substring(property.indexOf('[') + 1, property.length - 1)),
                         DslToken.Punct(")")
                     )
-                    currentType = "TypeRef"
+                    currentType = accessor.elementType
                 } else {
                     current = wrap(current, nodeFacade)
                     // The facade's return type decides what the NEXT link
@@ -1006,21 +1143,28 @@ object RuleMatcher {
             }
 
             if (currentType == "ParameterRef") {
-                // A property read off a catch clause's exception parameter.
+                // A property read off a parameter -- a catch clause's
+                // exception parameter, or an element of the parameter list.
+                //
+                // <p>The two callers need different accessors for the same two
+                // properties: the exception parameter is reached through
+                // `NodeAccess.exception`, a list element through
+                // `NodeAccess.parameterAt`. The accessor is therefore chosen
+                // from the value the chain already holds.
                 if (bare == "type") {
-                    current = wrap(current, "NodeAccess.exceptionType")
+                    current = wrap(current, parameterAccessor(current, "NodeAccess.exceptionType", "NodeAccess.parameterType"))
                     currentType = "TypeRef"
                     continue
                 }
                 if (bare == "name") {
-                    current = wrap(current, "NodeAccess.exceptionName")
+                    current = wrap(current, parameterAccessor(current, "NodeAccess.exceptionName", "NodeAccess.parameterName"))
                     currentType = "String"
                     continue
                 }
                 if (!warnings.any { it.contains("'$bare'") }) {
                     warnings.add(
                         "'$bare' was left unchanged; the DSL knows these " +
-                            "properties on a caught exception: type, name"
+                            "properties on a parameter: type, name"
                     )
                 }
                 return null
@@ -1079,6 +1223,29 @@ object RuleMatcher {
             currentType = "Int"
         }
         return current
+    }
+
+    /**
+     * The accessor for a property read off a parameter.
+     *
+     * <p>A parameter reaches the chain in two ways: as a catch clause's
+     * exception parameter, and as an element of a method's parameter list.
+     * Both carry a type and a name, but the accessors differ, so the
+     * accessor is chosen from the call the chain already holds.
+     */
+    private fun parameterAccessor(
+        receiver: List<DslToken>,
+        exceptionFacade: String,
+        listFacade: String
+    ): String {
+        val call = receiver.joinToString("") { token ->
+            when (token) {
+                is DslToken.Word -> token.text
+                is DslToken.Str -> token.text
+                is DslToken.Punct -> token.text
+            }
+        }
+        return if (call.contains("NodeAccess.parameterAt")) listFacade else exceptionFacade
     }
 
     /** Wraps the given token sequence in a facade call. */
