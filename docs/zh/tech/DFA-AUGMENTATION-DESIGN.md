@@ -25,15 +25,29 @@ Coverity 商业引擎"真值"用 DFA 实现。本批次在 plumb-dfa 加 5 个 D
 
 ### 2.1 FunctionSummary（最常用）
 
-`plumb-dfa` 的框架已有 `FunctionSummary` 缓存机制：
+`plumb-dfa` 的框架有两种 summary 类型，回答的是不同的问题：
+
+| 类型 | 装什么 | 回答什么 |
+| --- | --- | --- |
+| `FunctionSummary` | `Operation` 变体，外加 `StringOp` / `FieldOp` 列表 | "callee 对我的数据做了什么？" |
+| `MethodSummary` | 一个 `ReturnShape` 和一个 `SideEffect` | "callee 返回什么，又失效了什么？" |
+
+`Operation` 框架产出的是 `FunctionSummary`：
 
 ```java
 // Operation.WriteToField 标记某方法会写某字段
-FunctionSummary summary = cache.get(calleeSig);
+FunctionSummary summary = functionSummaries.get(calleeSig);
 if (summary.returnOps().contains(new Operation.WriteToField("name"))) {
     // 调用方知道 callee 会写 this.name
 }
 ```
+
+`FunctionSummary.returnOps()` 返回记录在**返回值**上的操作，`paramOpsAt(i)` 返回记录在第 `i`
+个形参上的操作。调用方用 `project(predicate)` 只投影自己关心的那部分。
+
+`MethodSummaryCache` 装的是 `MethodSummary`，它有两种查法：`get(FunctionSignature)` 查已解析的
+签名，`getByCanonicalString(String)` 查规范拼写。缓存**不是**按裸签名字符串做 key 的——不存在
+`cache.get(calleeSig)`；字符串形式走 `getByCanonicalString`。
 
 `DfaEngine` 在 RPO 顺序遍历函数前会做**预热 pass**（`warmUpMethodSummaries`），把每个方法的 summary 先算好，调用方 checkInstruction 时直接查。
 
@@ -43,13 +57,21 @@ if (summary.returnOps().contains(new Operation.WriteToField("name"))) {
 
 ```java
 // MOVE dest = lhs1: 如果 lhs1 是 from-load 状态，dest 也标 from-load
-if (ins.kind == MOVE && ins.lhs1 instanceof TacVar
-        && ins.dest instanceof TacVar) {
-    if (fromLoadVars.containsKey(ins.lhs1.name())) {
-        fromLoadVars.put(ins.dest.name(), true);
+if (ins.kind == TacInstruction.Kind.MOVE
+    && ins.lhs1 != null && ins.lhs1 instanceof TacOperand.TacVar
+    && ins.dest != null && ins.dest instanceof TacOperand.TacVar) {
+    String from = ((TacOperand.TacVar) ins.lhs1).name();
+    String to = ((TacOperand.TacVar) ins.dest).name();
+    if (fromLoadVars.containsKey(from)) {
+        fromLoadVars.put(to, true);
+        loadCallSite.put(to, loadCallSite.get(from));
     }
 }
 ```
+
+`TacOperand` 是 sealed interface，`TacVar` 是它的一个嵌套实现，所以转换写的是
+`TacOperand.TacVar`，名字取自 `TacVar.name()`。`lhs1` 和 `dest` 上的 null 判断不是可选项：MOVE
+可能携带非变量操作数。
 
 TAC 的 MOVE 指令对应 Java 的 `y = x` / `return x` 等纯赋值场景。这是字段级精度（per-variable）的关键——`y = x; if (y == null)` 的 null check 才会传回 `x` 的 from-load 状态。
 
@@ -57,26 +79,34 @@ TAC 的 MOVE 指令对应 Java 的 `y = x` / `return x` 等纯赋值场景。这
 
 ```java
 // BRANCH 指令 lhs1 binop lhs2 是 if 条件
-if (ins.binop == BinaryOperator.EQ || ins.binop == BinaryOperator.NE) {
-    // lhs1 / lhs2 其中一边是 TacVar 名字，另一边是 Const.NULL
-    String l = ins.lhs1.toString();   // "x:UNKNOWN"
-    String r = ins.ins.lhs2.toString();   // "null"
-    String lBare = stripType(l);      // "x"
-    String rBare = stripType(r);      // "null"
-    if (fromLoadVars.containsKey(lBare) && "null".equals(rBare)) {
+if (ins.kind == TacInstruction.Kind.BRANCH && ins.binop != null
+        && (ins.binop == BinaryOperator.EQ || ins.binop == BinaryOperator.NE)) {
+    // lhs1 / lhs2 其中一边是变量名，另一边是 null 字面量
+    String lBare = bareName(ins.lhs1.toString());   // "x"
+    String rBare = bareName(ins.lhs2.toString());   // "null"
+    // 一边是被跟踪的变量，另一边必须是 null 字面量
+    String varSide = fromLoadVars.containsKey(lBare) ? lBare
+        : (fromLoadVars.containsKey(rBare) ? rBare : null);
+    String otherBare = varSide == lBare ? rBare : lBare;
+    if (varSide != null && "null".equals(otherBare)) {
         fire();  // load + null check on l (or its alias)
     }
 }
 ```
 
+裸名提取是每个 checker 自己的 helper：操作数的 `toString()` 里带着声明类型也带着名字
+（`"x:UNKNOWN"`），checker 必须把它剥掉。引擎里**没有**共享的 `stripType` helper，也**没有**
+`Const.NULL`——null 字面量是按文本 `"null"` 匹配的。参考实现是
+`OrmLoadNullCheckDfaChecker`。
+
 **常见 bug 源**：`BinaryOperator.EQ.toString()` 是字符串 `"EQ"`，**不是** `"=="`。写 BRANCH null checker 必须用 `==` 操作符对象的 `.equals()` 比对，不要字符串比较。
 
 ### 2.4 跨函数字段跟踪
 
-跨函数字段跟踪在 DFA 引擎里由 `FunctionSummary` + `Operation.WriteToField`
-承担（见 [`CROSS-FUNCTION-OPERATION.md`](./CROSS-FUNCTION-OPERATION.md) §5.7）：
-callee 在 summary 里写出它改了哪些字段，caller 的 `SummaryApplier` 把这些
-写进 caller 的 fact bag。
+跨函数字段跟踪在 DFA 引擎里由 `MethodSummary` + `Operation.WriteToField`
+承担（操作表在 [`CROSS-FUNCTION-ANALYSIS.md`](./CROSS-FUNCTION-ANALYSIS.md) §3，
+副作用那半在 [`CROSS-FUNCTION-OPERATION.md`](./CROSS-FUNCTION-OPERATION.md) §5.7）：
+callee 在 summary 里写出它改了哪些字段，caller 侧的机制把这些写进 caller 的 fact bag。
 
 `SingletonRace` 和 `ServletAtomicity` 这两条规则**没有**走这条路 —— 它们已
 迁移到 `plumb-style`，是纯 AST checker：
@@ -87,8 +117,10 @@ callee 在 summary 里写出它改了哪些字段，caller 的 `SummaryApplier` 
   `visit(MethodDeclaration, StyleContext)`
 
 对应的 DFA 版（`SingletonRaceDfaChecker` / `ServletAtomicityDfaChecker`）
-仍在源码里但**不注册**（`ScanRunner.buildDfaCheckers()` 里注册语句被注释掉），
-因为 AST 版的精度更好。
+仍在源码里但**不注册**：在 `ScanRunner.buildDfaCheckers()` 里，
+`config.runServletAtomicity` 和 `config.runSingletonRace` 两个分支是**故意留空的**，
+注释说明 `plumb-style` 的 AST 等价实现以更高的精度覆盖同样的 CWE。
+这两个 DFA checker 作为参考实现留在源码树里。
 
 ## 3. DFA 增强 checker 详解
 
@@ -99,6 +131,7 @@ callee 在 summary 里写出它改了哪些字段，caller 的 `SummaryApplier` 
 helper method 赋值：
 
 ```java
+// illustrative: 这是规则要找的用户代码，不是引擎代码
 @Entity
 class User {
     @NonNull private final String name;
@@ -125,81 +158,121 @@ DFA 侧还没有这条规则，所以下面 3.2 到 3.6 是已实现的。
 
 ### 3.2 -DA: OrmLoadNullCheckDfaChecker
 
-JPA `EntityManager.find()` 返回的 entity 可能是 null（找不到记录时）。AST 看到 `find()` 调用不知道"接着有没有 null check"。
+JPA `find()` 返回的 entity 可能是 null（找不到记录时）。AST 看到 `find()` 调用不知道"接着有没有 null check"。
 
-**DFA 修法**：
-1. CALL `EntityManager.find` 拉 callee summary，dest 加进 `findResults`
-2. BRANCH `if (x == null)` 时从 `findResults` 移除 x
-3. CALL `x.getXxx()` / `x.setXxx()` / `x.field` 命中**仍**在 `findResults` 的 x → fire
+**DFA 修法**（checker 维护两个 per-function map：`fromLoadVars` 和 `loadCallSite`，不是
+单一的 `findResults` 集合）：
+1. 对 load 方法的 CALL 把目标变量标成 from-load，并记下源头的 CALL 指令
+2. BRANCH `if (x == null)` 时，x **不会**被从 `fromLoadVars` 里移除——检查把
+   *null check* 标成发现位置，然后报出这次 load
+3. 对**仍**在 `fromLoadVars` 里的变量做 CALL，或对它做 FIELDLOAD → fire
 
 ### 3.3 -DA: OrmUnnecessaryGetDfaChecker
 
-JPA `entity.getXxx()` 每次都查 DB，**但赋值给 local var 后多次用**——典型的"先 get 后丢弃"模式。
+JPA `entity.getXxx()` 每次都查 DB。"先 get 后丢弃"模式——结果查出来了，实体内容却从来
+没被用过——就是一次没有意义的查询。
 
-**DFA 修法**：MOVE alias 传播跟踪 `local = entity.getXxx()`，第二次 `entity.getXxx()` 时 fire（除非中间修改了 entity）。
+**DFA 修法**（checker 维护 per-function 的 `fromGetVars` 和 `getCallSite`）：
+1. 对 `get` / `find` / `findById` / `getById` / `read` 的 CALL 把目标变量标成 from-get，
+   并记下源头的 CALL
+2. 这个标记通过 MOVE 传播，所以别名也会被跟踪
+3. 某个 from-get 变量在函数里从来没被读过 → 多余 → 在原始调用点 fire
+4. 某个 from-get 变量只被当作参数传给别的调用——对它没有 FIELDLOAD、它不作为接收者被调用、
+   它的内容也没被赋给字段——同样多余 → fire
 
 ### 3.4 -DA: OrmLostUpdateDfaChecker
 
 JPA `find → 修改 → save` 模式在并发下可能丢失 update（last writer wins）。
 
-**DFA 修法**：跨函数累积 `find` + `save` 调用对，每对之间检查是否有 @Version 字段读写。
+**DFA 修法**：summary 记录 callee 持久化了哪个参数（`Operation.PersistsParam`），
+所以调用方能看出自己加载的 entity 正是被写回的那一个——也看得出 load 和 persist 之间
+隔着那次修改。
 
 ### 3.5 -DA: SingletonRaceDfaChecker
 
-singleton 的 field 在多个 servlet 请求间共享，非同步读写 → race condition。
+singleton 的 field 在多个 servlet 请求间共享；一个方法读、另一个方法写 → race condition。
 
-**DFA 修法**：
-1. 第一次 checkInstruction 遇到 FIELDSTORE，把"哪些字段被写"加到 `state.writtenFields`
-2. 第二次遇到 FIELDLOAD，从 `state.writtenFields` 移除
-3. finishFunction：如果 `state.writtenFields != ∅` 且 class 是 singleton（私有 ctor + 静态 getInstance）→ fire
+**DFA 修法**（checker 维护两个 map——`fieldReaders` 和 `fieldWriters`——不是
+`state.writtenFields` 这样的单一集合）：
+1. `initFunction` 记录 class、它那些非 final / 非 volatile 的字段，以及 class 里的方法签名集合
+2. `checkInstruction` 对 `this` 上的每个 FIELDLOAD 记一个**读方**，对每个 FIELDSTORE 记一个
+   **写方**（复合赋值两者都算）
+3. `finish`：对每个既有读方又有写方、且读写方是**不同方法**的 `(class, field)`，fire 一次
+
+这个 checker 刻意**不**检查同步——方法内访问的同步分析由 AST 版负责。
+DFA 版纯粹给出"这个字段是否被一个以上方法碰过"这个信号，AST 看不到这一层。
 
 ### 3.6 -DA: ServletAtomicityDfaChecker
 
 `getAttribute` + `setAttribute` 跨方法调用，AST 看不见。
 
-**DFA 修法**（跟 SingletonRace 同模式）：
-1. 跨函数累积 `getAttribute` / `setAttribute` 键集
-2. finishFunction：如果某 key 多次 get/set 但没在 synchronized 块内 → fire
+**DFA 修法**（跟 SingletonRace 同形态）：维护 `getSites` 和 `setSites` 两个 map，
+键是 attribute 名，值是碰过它的方法签名集合；当同一个键被一个以上方法访问时，
+在 `finish` fire。键必须是**字符串字面量**——运行时的 key 无法静态分析，checker 会忽略它。
+跟 SingletonRace 一样，同步性分析归 AST 版。
 
 ## 4. 设计决策
 
 ### 4.1 AST/DFA 并存
 
-每个 checker 出**两个 rule id**：
-- AST 版：`ast-style-uninit-nonnull-style`（ 命名规范）
-- DFA 版：`plumb.dfa.uninit-nonnull`（ 命名规范）
+`@NonNull` 字段初始化这条规则目前只有 AST 版。它的规范 rule id 是
+**`ast-quality-uninit-nonnull`**，裸名 `uninit-nonnull` 作为别名也被接受。
+DFA 版还不存在（见 §3.1），所以这条规则是例外而不是常态：同时有两版的 checker
+会发出**两个不同的 rule id**，由用户来选。
 
-用户通过 yaml `rules.enabled` 二选一：
+对两版都有的 checker，开关是 YAML 的 `checks.<rule>: {enabled: true|false}` 段，
+或者 CLI 的 `--rule <id>`。`rules.enabled` 列表在出厂的 `default-config.yaml` 里
+存在，但它是**被注释掉的**——那是一个 force-enable 列表的示例，不是引擎读取的开关：
 
 ```yaml
-rules:
-  enabled:
-    - ast-style-uninit-nonnull-style   # 快，漏报多
-    - plumb.dfa.uninit-nonnull        # 慢，漏报少
+checks:
+  ormLoadNullCheck: {enabled: true, aiDedup: true}   # DFA 侧
 ```
 
 ### 4.2 命名约定
 
-| 模式 | 命名 | 例子 |
+| 侧 | 命名 | 例子 |
 | --- | --- | --- |
-| AST 版 | `ast-style-<bare>-style` | `ast-style-uninit-nonnull-style` |
-| DFA 版 | `plumb.dfa.<bare>` | `plumb.dfa.uninit-nonnull` |
-| Taint 版 | `plumb.taint.<bare>` | `plumb.taint.sql-injection` |
+| AST | `ast-<category>-<bare>` | `ast-quality-uninit-nonnull` |
+| DFA，结构性 | `dfa-<category>-<bare>` | `dfa-controlflow-deadlock-ab-ba` |
+| DFA，污点 | `dfa-taint-<bare>` | `dfa-taint-sql-injection` |
 
-3 种风格都支持任意一种写法的 yaml 匹配（`ScanRunner.isRuleIdAllowed` 双向 normalize，详见 `tech/ARCHITECTURE.md §8`）。
+AST rule id **没有**结尾的 `-style`。`style` 是九个 AST 类别之一
+（`ast-style-...`、`ast-quality-...`、`ast-security-...`、`ast-error-...`、`ast-bug-...`、
+`ast-design-...`、`ast-naming-...`、`ast-performance-...`、`ast-concurrency-...`），
+不是每个 id 的后缀。
+
+DFA 的 id 是每个 checker 各自的常量，所以不一定符合那个形状。四个 ORM checker 和两个
+race checker 发的是**裸 id**，没有 `dfa-` 前缀：`orm-load-null-check-dfa`、
+`orm-unnecessary-get-dfa`、`orm-lost-update-dfa`、
+`null-deref-from-return-dfa`（这个是 `dfa-taint-null-deref-from-return`）、
+`singleton-race-dfa` 和 `servlet-atomicity-dfa`。
+
+`plumb.<...>` 命名空间是**另一回事**：它命名的是 *fact kind*
+（`plumb.nullable.may-be-null`、`plumb.resource.free-sink`），不是 rule id。
+
+这些拼法都能被 YAML 匹配接受：`ScanRunner.isRuleIdAllowed` 双向 normalize
+（详见 `tech/ARCHITECTURE.md §8`）。
 
 ### 4.3 key 选择
 
-FunctionSummary 用什么作 key？
+summary 缓存用什么作 key？
 - ❌ 函数名（重载冲突）
-- ❌ 类名.函数名（inner class / lambda 命名差异）
-- ✅ **signature = "Class.method(param1,param2,...)"**（ 决定保留）
+- ❌ 类名 + 函数名（inner class / lambda 命名差异）
+- ✅ **一个 `FunctionSignature`**，它的规范字符串形式是
+  `"package.Class#method(paramType,...)"` —— 决定保留的就是它
 
-签名规范化的具体规则：
-- 内部类用 `$` qualifier（JVM 风格）
-- lambda 合成函数的 signature 是 `lambda$N(arity)`（见
-  `plumb-tac/.../translate/ExpressionTranslator.java` 的 `translateLambda`）
-- 重载消歧用 arity + 参数类型
+规范形式由 `FunctionSignature.canonical()` 构造，它把整个字符串转成小写，
+所以跨次运行是稳定的。`toString()` 是同样的形状，但保留原始大小写。
+签名的具体规则：
+- 类和方法之间用 **`#`** 分隔，不是 `.`
+- 参数类型用逗号分隔，不带空格
+- 返回类型已知时追加在 `:` 之后——`"pkg.C#m(int):void"`
+- lambda 的合成函数叫 `lambda$N`，签名是 `lambda$N(arity)`
+  （见 `plumb-tac/.../translate/ExpressionTranslator.java` 的 `translateLambda`）
+
+`MethodSummaryCache` 有两种查 key 的方式：`get(FunctionSignature)` 查已解析的签名，
+`getByCanonicalString(String)` 查规范拼写。
 
 ### 4.4 AST vs DFA 的判定准则
 
@@ -219,7 +292,7 @@ FunctionSummary 用什么作 key？
 
 ## 5. 测试策略
 
-每个 DFA 增强 checker 配 3 类测试：
+DFA 增强 checker 需要三类测试覆盖：
 
 | 测试类型 | 目的 |
 | --- | --- |
@@ -227,7 +300,10 @@ FunctionSummary 用什么作 key？
 | **负样本** | 给 AST 版本会漏、DFA 版本能命中的代码 |
 | **回归样本** | AST 版本已能命中、DFA 版本不破坏 |
 
-测试放在 `plumb-dfa/src/test/java/org/plumb/dfa/checkers/` 下的对应包里。
+测试放在 `plumb-dfa/src/test/java/org/plumb/dfa/` 下与 checker 匹配的包里：
+`checkers/taint/`、`checkers/boundary/`、`checkers/controlflow/` 和 `taint/`。
+并不是每个 checker 都有专门的测试类——其中若干的行为是通过共享的引擎测试
+（alias-guard 矩阵、null-fact 域、v2 trace 校验）覆盖的，而不是每个 checker 一个文件。
 
 ## 6. 规则的默认开关
 
@@ -271,13 +347,23 @@ DFA 增强的"单条 Z3 query"（Phase 2 per-finding 验证）见 `tech/CROSS-FU
 
 ### 8.2 FunctionSummary 的边界
 
-`Operation` 变体**不**是无穷扩展。每个新加的 Operation 都要：
-- 在 `Operation.java` 加 sealed variant
-- 在 `MethodSummaryBuilder` 加 builder
-- 在 `SummaryApplier` 加 applier
+`Operation` 是一个 **sealed** interface，有十个变体，而且变体**不**是无穷扩展。
+新增一个变体需要：
+
+- 在 `Operation.java` 加 sealed variant——而且必须加进 `permits` 子句，否则编译不过
+- 一个生产者：把该操作记进 summary 的地方
+- 一个消费者：看到 CALL 时去找它的 checker
 - 配套测试（callee summary + caller 应用两端）
 
-**3 个步骤缺一个就静默失败**——
+**缺了消费者就会静默失败**——操作被记录下来了，却永远没人读。
+`SummaryApplier` **不**按 `Operation` 变体分派：它把 summary 的*返回值形态*和
+*副作用记录*编码成 fact。变体是由各个 checker 消费的，每个 checker 只投影自己关心的那部分
+（污点 checker 找 `Operation.TaintPropagate`，SQL 注入 checker 找 familyKey 匹配的
+`Operation.Sink`）。
+
+其中两个变体目前只有声明、从未被构造：`Operation.UnmodelledCall` 和
+`Operation.PointsToPropagate`。它们是 sealed interface 的一部分，但没有任何代码路径
+创建它们，所以今天是惰性的。
 
 ### 8.3 不要为 style rule 写 DFA
 

@@ -145,6 +145,8 @@ python scripts/check_all.py
 | `check_dataflow_constraint` | 清单的 `dataflow_contains` 约束不是空断言 |
 | `check_dataflow_claims` | 数据流文档的行引用仍指向它声称的声明位置，它引用的计数和类名仍与源码一致 |
 | `mutate_dataflow_claims` | 数据流门禁不是空检查：每一种可能的漂移都能被抓到 |
+| `check_dfaaug_claims` | DFA 增强设计文档仍在描述代码真实拥有的机制：规则 id、校验器、代码片段用到的 API、那些从未被构造的 `Operation` 变体 |
+| `mutate_dfaaug_claims` | 设计文档门禁不是空检查：每一种可能的漂移都能被抓到 |
 | `check_support_matrix_coverage` | 支持矩阵覆盖了每个已测量的类别，且每行的数字和 `RESULT.json` 对得上 |
 | `check_javadoc_links` | javadoc 里 `{@link}` 指向的类型真的存在 |
 | `check_doc_index` | 文档索引列全了 `docs/` 下的每一份文档，索引里的链接也都能打开 |

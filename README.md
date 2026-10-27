@@ -154,6 +154,8 @@ It runs, in order:
 | `check_dataflow_constraint` | The catalogue's `dataflow_contains` constraint is not a no-op |
 | `check_dataflow_claims` | The data-flow specification's citations still point at the declarations they name, and the counts and class names it quotes still match the source |
 | `mutate_dataflow_claims` | The data-flow gate is not checking air: every plausible drift is caught |
+| `check_dfaaug_claims` | The DFA-augmentation design document still describes the mechanism the code has: the rule ids, the checkers, the API its snippets use, the inert `Operation` variants |
+| `mutate_dfaaug_claims` | The design-document gate is not checking air: every plausible drift is caught |
 | `check_support_matrix_coverage` | The support matrix covers every measured category, and every row matches its `RESULT.json` |
 | `check_javadoc_links` | Every `{@link}` target in a javadoc names a type that exists |
 | `check_doc_index` | The documentation index lists every document under `docs/`, and every link in it resolves |

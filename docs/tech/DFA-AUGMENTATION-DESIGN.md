@@ -25,15 +25,31 @@ The commercial Coverity engine implements its "ground truth" with DFA. This batc
 
 ### 2.1 FunctionSummary (the most commonly used)
 
-The framework of `plumb-dfa` already has a `FunctionSummary` cache mechanism:
+The framework of `plumb-dfa` has two summary types, and they answer different questions:
+
+| Type | Holds | Answers |
+| --- | --- | --- |
+| `FunctionSummary` | `Operation` variants, plus `StringOp` / `FieldOp` lists | "what does the callee do to my data?" |
+| `MethodSummary` | a `ReturnShape` and a `SideEffect` | "what does the callee return, and what does it invalidate?" |
+
+`FunctionSummary` is what the `Operation` framework produces:
 
 ```java
 // Operation.WriteToField marks that a method writes a certain field
-FunctionSummary summary = cache.get(calleeSig);
+FunctionSummary summary = functionSummaries.get(calleeSig);
 if (summary.returnOps().contains(new Operation.WriteToField("name"))) {
     // the caller now knows that the callee writes this.name
 }
 ```
+
+`FunctionSummary.returnOps()` returns the operations recorded on the **return** value, and
+`paramOpsAt(i)` the ones recorded on formal parameter `i`. A caller projects only what it
+cares about with `project(predicate)`.
+
+`MethodSummary` is what the `MethodSummaryCache` holds, and it is keyed two ways:
+`get(FunctionSignature)` for a resolved signature, and `getByCanonicalString(String)` for the
+canonical spelling. The cache is **not** keyed by a raw signature string -- there is no
+`cache.get(calleeSig)`; the string form goes through `getByCanonicalString`.
 
 Before traversing the functions in RPO order, `DfaEngine` runs a **warm-up pass** (`warmUpMethodSummaries`) that computes the summary of every method first, so that the caller can look it up directly when it calls checkInstruction.
 
@@ -43,13 +59,21 @@ See `tech/CROSS-FUNCTION-ANALYSIS.md §3` for the complete mechanism (Phase 1 bu
 
 ```java
 // MOVE dest = lhs1: if lhs1 has the from-load state, dest is marked from-load too
-if (ins.kind == MOVE && ins.lhs1 instanceof TacVar
-        && ins.dest instanceof TacVar) {
-    if (fromLoadVars.containsKey(ins.lhs1.name())) {
-        fromLoadVars.put(ins.dest.name(), true);
+if (ins.kind == TacInstruction.Kind.MOVE
+    && ins.lhs1 != null && ins.lhs1 instanceof TacOperand.TacVar
+    && ins.dest != null && ins.dest instanceof TacOperand.TacVar) {
+    String from = ((TacOperand.TacVar) ins.lhs1).name();
+    String to = ((TacOperand.TacVar) ins.dest).name();
+    if (fromLoadVars.containsKey(from)) {
+        fromLoadVars.put(to, true);
+        loadCallSite.put(to, loadCallSite.get(from));
     }
 }
 ```
+
+`TacOperand` is a sealed interface and `TacVar` is one of its nested implementations, so the
+cast is `TacOperand.TacVar` and the name comes from `TacVar.name()`. The null checks on
+`lhs1` and `dest` are not optional: a MOVE can carry a non-variable operand.
 
 The MOVE instruction of TAC corresponds to the pure assignment cases of Java such as `y = x` / `return x`. This is the key to field-level precision (per-variable) -- the null check of `y = x; if (y == null)` is then propagated back to the from-load state of `x`.
 
@@ -57,26 +81,38 @@ The MOVE instruction of TAC corresponds to the pure assignment cases of Java suc
 
 ```java
 // The lhs1 binop lhs2 of a BRANCH instruction is the if condition
-if (ins.binop == BinaryOperator.EQ || ins.binop == BinaryOperator.NE) {
-    // One side of lhs1 / lhs2 is a TacVar name, the other is Const.NULL
-    String l = ins.lhs1.toString();   // "x:UNKNOWN"
-    String r = ins.ins.lhs2.toString();   // "null"
-    String lBare = stripType(l);      // "x"
-    String rBare = stripType(r);      // "null"
-    if (fromLoadVars.containsKey(lBare) && "null".equals(rBare)) {
+if (ins.kind == TacInstruction.Kind.BRANCH && ins.binop != null
+        && (ins.binop == BinaryOperator.EQ || ins.binop == BinaryOperator.NE)) {
+    // One side of lhs1 / lhs2 is a variable name, the other is the
+    // null literal
+    String lBare = bareName(ins.lhs1.toString());   // "x"
+    String rBare = bareName(ins.lhs2.toString());   // "null"
+    // Pick the side that is a tracked variable; the other side must be
+    // the null literal.
+    String varSide = fromLoadVars.containsKey(lBare) ? lBare
+        : (fromLoadVars.containsKey(rBare) ? rBare : null);
+    String otherBare = varSide == lBare ? rBare : lBare;
+    if (varSide != null && "null".equals(otherBare)) {
         fire();  // load + null check on l (or its alias)
     }
 }
 ```
 
+The bare-name extraction is a per-checker helper: the operand's `toString()` carries the
+declared type as well as the name (`"x:UNKNOWN"`), and the checker has to strip it. There is
+no shared `stripType` helper in the engine, and there is no `Const.NULL` -- the null literal
+is matched as the text `"null"`. `OrmLoadNullCheckDfaChecker` is the reference implementation.
+
 **A common source of bugs**: `BinaryOperator.EQ.toString()` is the string `"EQ"`, **not** `"=="`. A BRANCH null checker must compare the `.equals()` of the `==` operator object, not compare strings.
 
 ### 2.4 Cross-function field tracking
 
-Cross-function field tracking is carried by `FunctionSummary` + `Operation.WriteToField` in the DFA engine
-(see [`CROSS-FUNCTION-OPERATION.md`](./CROSS-FUNCTION-OPERATION.md) §5.7):
-the callee writes in its summary which fields it modified, and the `SummaryApplier` of the caller writes
-these into the fact bag of the caller.
+Cross-function field tracking is carried by `MethodSummary` + `Operation.WriteToField` in the DFA
+engine (the operation table is in
+[`CROSS-FUNCTION-ANALYSIS.md`](./CROSS-FUNCTION-ANALYSIS.md) §3, the side-effect half is in
+[`CROSS-FUNCTION-OPERATION.md`](./CROSS-FUNCTION-OPERATION.md) §5.7):
+the callee writes in its summary which fields it modified, and the caller-side machinery writes
+these into the caller's fact bag.
 
 The rules `SingletonRace` and `ServletAtomicity` do **not** go down this road -- they have
 been migrated to `plumb-style` and are pure AST checkers:
@@ -87,8 +123,11 @@ been migrated to `plumb-style` and are pure AST checkers:
   `visit(MethodDeclaration, StyleContext)`
 
 The corresponding DFA versions (`SingletonRaceDfaChecker` / `ServletAtomicityDfaChecker`)
-are still in the source code but are **not registered** (the registration statement in
-`ScanRunner.buildDfaCheckers()` is commented out), because the precision of the AST version is better.
+are still in the source code but are **not registered**: in `ScanRunner.buildDfaCheckers()`
+the `config.runServletAtomicity` and `config.runSingletonRace` branches are deliberately
+**empty**, with a comment explaining that the `plumb-style` AST equivalents cover the same
+CWE with better precision. The DFA checkers remain in the source tree as a reference
+implementation.
 
 ## 3. The DFA-augmented checkers in detail
 
@@ -99,6 +138,7 @@ The initialisation check of `@NonNull` fields currently only exists as an AST ve
 assignment through a helper method:
 
 ```java
+// illustrative: this is the USER code the rule looks for, not engine code
 @Entity
 class User {
     @NonNull private final String name;
@@ -124,81 +164,132 @@ The DFA side does not have this rule yet, so 3.2 to 3.6 below are the implemente
 
 ### 3.2 -DA: OrmLoadNullCheckDfaChecker
 
-The entity returned by the JPA `EntityManager.find()` may be null (when no record is found). The AST sees the `find()` call and does not know "whether there is a null check afterwards".
+The entity returned by a JPA `find()` may be null (when no record is found). The AST sees the
+`find()` call and does not know "whether there is a null check afterwards".
 
-**The DFA fix**:
-1. A CALL to `EntityManager.find` pulls the summary of the callee and adds dest to `findResults`
-2. On a BRANCH `if (x == null)` x is removed from `findResults`
-3. A CALL to `x.getXxx()` / `x.setXxx()` / access of `x.field` hits an x that is **still** in `findResults` -> fire
+**The DFA fix** (the checker keeps `fromLoadVars` and `loadCallSite` per function -- not a
+single `findResults` set):
+1. A CALL to a load method marks the destination variable as "from-load" and records the
+   originating CALL instruction
+2. On a BRANCH `if (x == null)`, x is **not** removed from `fromLoadVars` -- the check marks
+   the *null check* as the finding site and then reports the load
+3. A CALL on a variable that is **still** in `fromLoadVars`, or a FIELDLOAD of it -> fire
 
 ### 3.3 -DA: OrmUnnecessaryGetDfaChecker
 
-The JPA `entity.getXxx()` queries the DB every time, **but if the result is assigned to a local variable and used several times** -- the typical "get it and then throw it away" pattern.
+The JPA `entity.getXxx()` queries the DB every time. The "get it and then throw it away"
+pattern -- the result is loaded and its contents are never used -- is a query with no purpose.
 
-**The DFA fix**: MOVE alias propagation tracks `local = entity.getXxx()` and fires on the second `entity.getXxx()` (unless the entity was modified in between).
+**The DFA fix** (the checker keeps `fromGetVars` and `getCallSite` per function):
+1. A CALL to `get` / `find` / `findById` / `getById` / `read` marks the destination variable
+   as "from-get" and records the originating CALL
+2. The mark is propagated through MOVE, so an alias is tracked too
+3. A "from-get" variable that is never read in the function is unnecessary -> fire on the
+   original call site
+4. A "from-get" variable that is only passed as an argument to other calls -- no FIELDLOAD on
+   it, no call on it as the receiver, no assignment of its contents to a field -- is also
+   unnecessary -> fire
 
 ### 3.4 -DA: OrmLostUpdateDfaChecker
 
 The JPA `find → modify → save` pattern can lose an update under concurrency (last writer wins).
 
-**The DFA fix**: accumulate the `find` + `save` call pairs across functions and check for each pair whether there is a read/write of an @Version field in between.
+**The DFA fix**: the summary records which parameter a callee persists
+(`Operation.PersistsParam`), so the caller can see that the entity it loaded is the one that
+gets written back -- and that the load and the persist are separated by the mutation.
 
 ### 3.5 -DA: SingletonRaceDfaChecker
 
-The field of a singleton is shared between several servlet requests; a non-synchronised read/write -> race condition.
+The field of a singleton is shared between several servlet requests; a read in one method and a
+write in another -> race condition.
 
-**The DFA fix**:
-1. The first time checkInstruction meets a FIELDSTORE, the "fields that were written" is added to `state.writtenFields`
-2. The second time it meets a FIELDLOAD, it is removed from `state.writtenFields`
-3. finishFunction: if `state.writtenFields != ∅` and the class is a singleton (private ctor + static getInstance) -> fire
+**The DFA fix** (the checker keeps two maps, `fieldReaders` and `fieldWriters` -- not a
+`state.writtenFields` set):
+1. `initFunction` records the class, its non-final / non-volatile fields, and the set of method
+   signatures in the class
+2. `checkInstruction` records a **reader** for every FIELDLOAD on `this` and a **writer** for
+   every FIELDSTORE on `this` (a compound assignment counts as both)
+3. `finish`: for each `(class, field)` that has at least one reader and at least one writer,
+   and where the reader and the writer are **different methods**, fire once on the field
+
+The checker deliberately does **not** verify synchronisation -- the AST version does that for
+in-method accesses. The DFA version is purely the "is this field touched from more than one
+method" signal, which the AST cannot see.
 
 ### 3.6 -DA: ServletAtomicityDfaChecker
 
 `getAttribute` + `setAttribute` across method calls are invisible to the AST.
 
-**The DFA fix** (same pattern as SingletonRace):
-1. Accumulate the `getAttribute` / `setAttribute` key sets across functions
-2. finishFunction: if a key is get/set several times but not inside a synchronized block -> fire
+**The DFA fix** (same shape as SingletonRace): keep a `getSites` map and a `setSites` map from
+the attribute key to the set of method signatures that touched it, and fire at `finish` when
+the same key is accessed from more than one method. The key has to be a **string literal** --
+a runtime key cannot be analysed statically, so the checker ignores it. As with SingletonRace,
+the synchronisation analysis belongs to the AST version.
 
 ## 4. Design decisions
 
 ### 4.1 AST and DFA side by side
 
-Every checker produces **two rule ids**:
-- AST version: `ast-style-uninit-nonnull-style` ( naming convention)
-- DFA version: `plumb.dfa.uninit-nonnull` ( naming convention)
+The `@NonNull` field-initialisation rule currently exists only on the AST side. Its canonical
+rule id is **`ast-quality-uninit-nonnull`**, and the bare name `uninit-nonnull` is accepted as
+an alias. There is no DFA version of it yet (§3.1), so this rule is the exception rather than
+the rule: a checker that has both sides emits **two distinct rule ids**, and the user picks
+between them.
 
-The user picks one of the two with the YAML `rules.enabled`:
+For a checker that has both sides, the switch is the `checks.<rule>: {enabled: true|false}`
+section of the YAML, or the `--rule <id>` CLI flag. The `rules.enabled` list exists in the
+shipped `default-config.yaml`, but it is **commented out** -- it is an example of a force-enable
+list, not the switch the engine reads:
 
 ```yaml
-rules:
-  enabled:
-    - ast-style-uninit-nonnull-style   # fast, more false negatives
-    - plumb.dfa.uninit-nonnull        # slower, fewer false negatives
+checks:
+  ormLoadNullCheck: {enabled: true, aiDedup: true}   # the DFA side
 ```
 
 ### 4.2 The naming conventions
 
-| Style | Naming | Example |
+| Side | Naming | Example |
 | --- | --- | --- |
-| AST version | `ast-style-<bare>-style` | `ast-style-uninit-nonnull-style` |
-| DFA version | `plumb.dfa.<bare>` | `plumb.dfa.uninit-nonnull` |
-| Taint version | `plumb.taint.<bare>` | `plumb.taint.sql-injection` |
+| AST | `ast-<category>-<bare>` | `ast-quality-uninit-nonnull` |
+| DFA, structural | `dfa-<category>-<bare>` | `dfa-controlflow-deadlock-ab-ba` |
+| DFA, taint | `dfa-taint-<bare>` | `dfa-taint-sql-injection` |
 
-All 3 styles support a YAML match in any of these spellings (`ScanRunner.isRuleIdAllowed` normalises in both directions, see `tech/ARCHITECTURE.md §8`).
+The AST rule id has **no** trailing `-style`. `style` is one of the nine AST categories
+(`ast-style-...`, `ast-quality-...`, `ast-security-...`, `ast-error-...`, `ast-bug-...`,
+`ast-design-...`, `ast-naming-...`, `ast-performance-...`, `ast-concurrency-...`), not a suffix
+on every id.
+
+The DFA ids are per-checker constants, so they do not always follow the shape. The four ORM
+checkers and the two race checkers emit a **bare** id of their own, without the `dfa-` prefix:
+`orm-load-null-check-dfa`, `orm-unnecessary-get-dfa`, `orm-lost-update-dfa`,
+`null-deref-from-return-dfa` (this one is `dfa-taint-null-deref-from-return`),
+`singleton-race-dfa` and `servlet-atomicity-dfa`.
+
+The `plumb.<...>` namespace is a **different** thing: it names *fact kinds*
+(`plumb.nullable.may-be-null`, `plumb.resource.free-sink`), not rule ids.
+
+All of these spellings are accepted by a YAML match: `ScanRunner.isRuleIdAllowed` normalises
+in both directions (see `tech/ARCHITECTURE.md §8`).
 
 ### 4.3 The choice of the key
 
-What does FunctionSummary use as its key?
+What does the summary cache use as its key?
 - ❌ The function name (overload conflicts)
 - ❌ Class name + function name (inner class / lambda naming differences)
-- ✅ **signature = "Class.method(param1,param2,...)"** ( the choice that was kept)
+- ✅ **a `FunctionSignature`**, whose canonical string form is
+  `"package.Class#method(paramType,...)"` -- the choice that was kept
 
-The concrete rules of signature normalisation:
-- Inner classes use the `$` qualifier (JVM style)
-- The signature of a lambda synthetic function is `lambda$N(arity)` (see
-  `plumb-tac/.../translate/ExpressionTranslator.java`, `translateLambda`)
-- Overload disambiguation uses the arity + the parameter types
+The canonical form is built by `FunctionSignature.canonical()`, which lowercases the whole
+string so it is stable across runs. `toString()` is the same shape with the original casing.
+The concrete rules of the signature:
+- the class and the method are separated by **`#`**, not `.`
+- the parameter types are comma-separated with no spaces
+- the return type, when known, is appended after a `:` -- `"pkg.C#m(int):void"`
+- a lambda's synthetic function is named `lambda$N` and its signature is `lambda$N(arity)`
+  (see `plumb-tac/.../translate/ExpressionTranslator.java`, `translateLambda`)
+
+`MethodSummaryCache` accepts the key two ways: `get(FunctionSignature)` for a resolved
+signature, and `getByCanonicalString(String)` for the canonical spelling.
 
 ### 4.4 The criterion for AST vs DFA
 
@@ -219,7 +310,7 @@ decides whether a checker belongs to the AST side or the DFA side.
 
 ## 5. Testing strategy
 
-Every DFA-augmented checker gets 3 kinds of tests:
+A DFA-augmented checker needs three kinds of test coverage:
 
 | Test type | Purpose |
 | --- | --- |
@@ -227,7 +318,11 @@ Every DFA-augmented checker gets 3 kinds of tests:
 | **Negative sample** | Give code that the AST version misses but the DFA version hits |
 | **Regression sample** | The AST version already hits it, the DFA version does not break it |
 
-The tests live in the corresponding packages under `plumb-dfa/src/test/java/org/plumb/dfa/checkers/`.
+The tests live under `plumb-dfa/src/test/java/org/plumb/dfa/`, in the package that matches the
+checker: `checkers/taint/`, `checkers/boundary/`, `checkers/controlflow/` and `taint/`. Not
+every checker has a dedicated test class -- the behaviour of several of them is covered
+through the shared engine tests (the alias-guard matrix, the null-fact domain, the v2 trace
+verification) rather than one file per checker.
 
 ## 6. The default switches of the rules
 
@@ -272,13 +367,25 @@ Do not try to rewrite an AST checker into a DFA checker all at once. The recomme
 
 ### 8.2 The boundary of FunctionSummary
 
-The variants of `Operation` are **not** infinitely extensible. Every newly added Operation requires:
-- a sealed variant in `Operation.java`
-- a builder in `MethodSummaryBuilder`
-- an applier in `SummaryApplier`
+`Operation` is a **sealed** interface with ten variants, and the variants are **not**
+infinitely extensible. A new variant needs:
+
+- a sealed variant in `Operation.java` -- and it has to be added to the `permits` clause, or
+  the interface does not compile
+- a producer: the place that records the operation into the summary
+- a consumer: the checker that looks for it when it sees a CALL
 - a matching test (both ends: the callee summary and its application in the caller)
 
-**Leaving out one of the 3 steps fails silently** ——
+**Leaving out the consumer fails silently** -- the operation is recorded, and nothing ever
+reads it. The `SummaryApplier` does **not** dispatch on `Operation` variants: it applies the
+summary's *return-value shape* and *side-effect record* as facts. The variants are consumed by
+the individual checkers, each of which projects only the operations it cares about (a taint
+checker looks for `Operation.TaintPropagate`, a SQL-injection checker for `Operation.Sink` with
+the matching `familyKey`).
+
+Two variants are currently only declared and never produced: `Operation.UnmodelledCall` and
+`Operation.PointsToPropagate`. They are part of the sealed interface but no code path creates
+them, so they are inert today.
 
 ### 8.3 Do not write a DFA for a style rule
 
