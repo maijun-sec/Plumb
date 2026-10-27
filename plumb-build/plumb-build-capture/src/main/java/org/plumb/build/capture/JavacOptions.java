@@ -1,7 +1,9 @@
 package org.plumb.build.capture;
 
+import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -218,6 +220,7 @@ public final class JavacOptions {
       return b.build();
     }
     b.rawArguments = arguments;
+    arguments = expandArgumentFiles(arguments);
 
     // The values seen per canonical option name, so that "only the last one counts" and "every
     // occurrence applies" can be applied without hard-coding either.
@@ -299,6 +302,104 @@ public final class JavacOptions {
     return b.build();
   }
 
+  /**
+   * Replace an argument file with the arguments it holds.
+   *
+   * <p><b>Why this matters.</b> javac reads its options from a file when an argument starts with
+   * {@code @}. A build that puts its classpath in such a file has told javac everything through
+   * the file, and the command line itself carries almost nothing. A capture that did not open the
+   * file recorded a compile with an empty classpath and an unknown language level -- confidently
+   * wrong, which is worse than nothing.
+   *
+   * <p><b>The format, measured against javac.</b> The file is split on WHITESPACE, and the quotes
+   * around a token are stripped -- but they do NOT group it. So {@code -d "C:\a"} is the option
+   * {@code -d} with the value {@code C:\a}, while {@code -d "C:\a b"} is the option {@code -d}
+   * with the value {@code C:\a} followed by a stray {@code b"} that javac treats as a source
+   * file.
+   *
+   * <p>A file that cannot be read is left as it was: the argument stays, and the compile is
+   * recorded with whatever else the command line said. A missing argument file is a broken build,
+   * and the capture reports what it can rather than nothing.
+   *
+   * <p>The expansion is bounded, so an argument file that refers to itself cannot loop.
+   *
+   * @param arguments the argv, possibly containing argument files
+   * @return the argv with the argument files expanded
+   */
+  static List<String> expandArgumentFiles(List<String> arguments) {
+    List<String> out = new ArrayList<>();
+    expandArgumentFiles(arguments, out, 0);
+    return out;
+  }
+
+  /** Bound on how deep an argument file may refer to another one. */
+  private static final int MAX_ARGUMENT_FILE_DEPTH = 8;
+
+  private static void expandArgumentFiles(
+      List<String> arguments, List<String> out, int depth) {
+    for (String argument : arguments) {
+      if (argument == null || argument.isEmpty() || argument.charAt(0) != '@' || depth >= MAX_ARGUMENT_FILE_DEPTH) {
+        out.add(argument);
+        continue;
+      }
+      String fileName = argument.substring(1);
+      if (fileName.isEmpty()) {
+        out.add(argument);
+        continue;
+      }
+      List<String> contents = readArgumentFile(Path.of(fileName));
+      if (contents == null) {
+        // The file cannot be read.  The argument stays, so the record shows
+        // that the compile was driven by an argument file.
+        out.add(argument);
+        continue;
+      }
+      expandArgumentFiles(contents, out, depth + 1);
+    }
+  }
+
+  /**
+   * The arguments in an argument file, or {@code null} when the file cannot be read.
+   *
+   * <p>The file is read as UTF-8, which is what javac does for an argument file on a modern JDK.
+   *
+   * <p><b>The format, measured against javac.</b> The file is split on WHITESPACE, and the quotes
+   * around a token are stripped -- but they do NOT group it. So {@code -d "C:\a"} is the option
+   * {@code -d} with the value {@code C:\a}, while {@code -d "C:\a b"} is the option {@code -d}
+   * with the value {@code C:\a} followed by a stray {@code b"} -- which javac then treats as a
+   * source file. A quoted value with a space in it is therefore two tokens, exactly as javac
+   * sees them.
+   */
+  private static List<String> readArgumentFile(Path file) {
+    try {
+      String text = Files.readString(file, StandardCharsets.UTF_8);
+      List<String> out = new ArrayList<>();
+      for (String token : text.split("\\s+")) {
+        String stripped = stripQuotes(token);
+        if (!stripped.isEmpty()) {
+          out.add(stripped);
+        }
+      }
+      return out;
+    } catch (IOException | RuntimeException e) {
+      return null;
+    }
+  }
+
+  /**
+   * The quotes around a token, removed.
+   *
+   * <p>Only a matching pair at the two ends is removed: a token that merely starts with a quote --
+   * which is what a split value with a space inside it looks like -- keeps it, because that is
+   * what javac sees.
+   */
+  private static String stripQuotes(String token) {
+    if (token.length() >= 2 && token.startsWith("\"") && token.endsWith("\"")) {
+      return token.substring(1, token.length() - 1);
+    }
+    return token;
+  }
+
   /** Fold one option's value into the builder. */
   private static void apply(Builder b, CompilerOption option, String value) {
     String canonical = option.canonicalName();
@@ -309,9 +410,6 @@ public final class JavacOptions {
         }
       }
       case "--classpath" -> b.classpath = CompilerOption.splitPath(value);
-      // ECJ's own spelling of the classpath.  It is a different option, so
-      // that javac does not learn to accept it, but it means the same thing.
-      case "--class-path" -> b.classpath = CompilerOption.splitPath(value);
       case "--sourcepath" -> b.sourcePath = CompilerOption.splitPath(value);
       case "--module-path" -> b.modulePath = CompilerOption.splitPath(value);
       case "--module-source-path" -> b.moduleSourcePath = CompilerOption.splitPath(value);

@@ -183,10 +183,12 @@ public final class CompilerOption {
   /**
    * The option with that name, for a given compiler.
    *
-   * <p><b>The compiler matters.</b> ECJ spells the classpath {@code --class-path}, and javac does
-   * not know that spelling; ECJ has options javac does not have ({@code -src}, {@code -profile},
-   * {@code -log}). A global lookup would give javac an option it does not have, and the value
-   * would be swallowed -- the classpath would vanish.
+   * <p><b>The compiler matters.</b> ECJ has options javac does not have ({@code -src},
+   * {@code -profile}, {@code -log}). A global lookup would give javac an option it does not have,
+   * and the value would be swallowed -- the option would vanish.
+   *
+   * <p>Where the two compilers agree -- on the classpath's three spellings, for instance -- the
+   * option belongs to neither one and both lookups find it.
    *
    * @param name the option as the compiler spells it
    * @param compiler which compiler is doing the parsing
@@ -234,11 +236,17 @@ public final class CompilerOption {
     out.add(opt("-classpath", "--classpath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("--classpath", "--classpath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-cp", "--classpath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    // ECJ spells it --class-path, and only ECJ accepts that spelling.  It
-    // gets its own canonical name rather than sharing --classpath's, because
-    // it belongs to a different compiler: javac does not know it, and the two
-    // must not be treated as one option.
-    out.add(opt("--class-path", "--class-path", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+    // javac's own help lists "--class-path <path>, -classpath <path>, -cp
+    // <path>" -- so the double-dash spelling belongs to javac too, and not
+    // only to ECJ.  It was missing, so `javac --class-path ...` lost the
+    // classpath: the option was unknown, and the value that followed it was
+    // not a source file either, so it vanished entirely.
+    //
+    // ECJ accepts the same spelling and it means the same thing, so it is
+    // ONE option shared by both compilers rather than one per compiler.  A
+    // per-compiler copy would need the index to hold two options under one
+    // name, and the index holds one.
+    out.add(opt("--class-path", "--classpath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
 
     // ---- the source path ----
     out.add(opt("-sourcepath", "--sourcepath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
@@ -293,7 +301,9 @@ public final class CompilerOption {
     // ---- the language level ----
     out.add(opt("--release", "--release", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-source", "--source", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(opt("--source", "--source", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-target", "--target", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(opt("--target", "--target", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
 
     // ---- the encoding ----
     out.add(opt("-encoding", "--encoding", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
@@ -307,6 +317,60 @@ public final class CompilerOption {
     // a compilation that never happened.
     out.add(opt("-Xprint", "-Xprint", Value.NONE, Repeat.LAST_WINS, Effect.NOT_COMPILATION, null));
     out.add(opt("-proc:only", "-proc:only", Value.NONE, Repeat.LAST_WINS, Effect.NOT_COMPILATION, null));
+
+    // ---- the annotation processing switch ----
+    // javac spells it -proc:{none,only,full}.  Only -proc:only was in the
+    // table, so -proc:none was an unknown option -- and an unknown option
+    // is one the parser cannot account for.
+    out.add(opt("-proc:none", "-proc:none", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(opt("-proc:full", "-proc:full", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+
+    // ---- the implicit compilation switch ----
+    // -implicit:{none,class} decides whether a class file is written for a
+    // source file that was found on the source path rather than named on the
+    // command line.  It changes what the compile PRODUCES, so it is a
+    // compilation option and not a diagnostic one.
+    out.add(opt("-implicit:none", "-implicit", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(opt("-implicit:class", "-implicit", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+
+    // ---- the module of the files that are created ----
+    // --default-module-for-created-files names the module a generated class
+    // file belongs to.  It is what a modular build sets, and it is how a
+    // class file ends up in a module it would not otherwise be in.
+    out.add(opt(
+        "--default-module-for-created-files",
+        "--default-module-for-created-files",
+        Value.SINGLE,
+        Repeat.LAST_WINS,
+        Effect.COMPILATION,
+        null));
+
+    // ---- the annotation processor options ----
+    // -Akey[=value] passes an option to the annotation processors.  The
+    // value is optional, and the key may stand alone.
+    out.add(opt("-A", "-A", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, null));
+
+    // ---- the line comments ----
+    // --disable-line-doc-comments turns off the doc comments on a line, and
+    // --help-lint lists the lint checks.  Neither changes the class files,
+    // but both are options javac accepts, and an option javac accepts that
+    // the table does not know is an option whose value is lost.
+    out.add(opt(
+        "--disable-line-doc-comments",
+        "--disable-line-doc-comments",
+        Value.NONE,
+        Repeat.LAST_WINS,
+        Effect.COMPILATION,
+        null));
+    out.add(opt("--help-lint", "--help-lint", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+
+    // ---- the debug-info switch ----
+    // javac spells it -g:{lines,vars,source} and -g:none.  Only the bare -g
+    // was in the table.
+    out.add(opt("-g:none", "-g", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(opt("-g:lines", "-g", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(opt("-g:vars", "-g", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(opt("-g:source", "-g", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
 
     // ---- the options that are not compilation options but still take a value ----
     // ECJ's own set: these are ECJ-specific and are recorded but not interpreted.
@@ -334,7 +398,10 @@ public final class CompilerOption {
     out.add(opt("-deprecation", "-deprecation", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-Xlint", "-Xlint", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-Werror", "-Werror", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("-g", "-g", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    // The value is IN the spelling -- `-g:lines` names what to include -- so
+    // the switch takes no separate argument.  `javac -g` needs nothing after
+    // it, which is what Value.NONE says.
+    out.add(opt("-g", "-g", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-parameters", "-parameters", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
 
     return List.copyOf(out);

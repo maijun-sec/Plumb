@@ -2,9 +2,13 @@ package org.plumb.build.capture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Tests for the data-driven option table.
@@ -73,11 +77,15 @@ class CompilerOptionTest {
    * accept it. Sharing the canonical name would make javac learn to accept it.
    */
   @Test
-  void ecjsClasspathSpellingIsItsOwnOption() {
+  void ecjsClasspathSpellingIsSharedWithJavac() {
+    // Both compilers accept the spelling and it means the same thing, so it
+    // is one option shared by both -- not one per compiler.
     CompilerOption option = CompilerOption.byName("--class-path");
     assertThat(option).isNotNull();
-    assertThat(option.canonicalName()).isEqualTo("--class-path");
-    assertThat(option.compiler()).isEqualTo(CompilerOption.Compiler.ECJ);
+    assertThat(option.canonicalName()).isEqualTo("--classpath");
+    assertThat(option.compiler()).isNull();
+    assertThat(CompilerOption.byName("--class-path", CompilerOption.Compiler.JAVAC)).isNotNull();
+    assertThat(CompilerOption.byName("--class-path", CompilerOption.Compiler.ECJ)).isNotNull();
   }
 
   // ---------------------------------------------------- the parsing
@@ -230,11 +238,14 @@ class CompilerOptionTest {
             List.of("--class-path", "a.jar", "Foo.java"), CompilerOption.Compiler.ECJ);
     assertThat(ecj.classpath()).containsExactly(Path.of("a.jar"));
 
-    // javac does not know --class-path, so the value is not a classpath there.
+    // javac knows the spelling too: its own help lists "--class-path <path>,
+    // -classpath <path>, -cp <path>".  So the classpath is read there as
+    // well -- and it USED to be lost, because the option was unknown to
+    // javac and the value that followed it was not a source file either.
     JavacOptions javac =
         JavacOptions.parse(
             List.of("--class-path", "a.jar", "Foo.java"), CompilerOption.Compiler.JAVAC);
-    assertThat(javac.classpath()).isEmpty();
+    assertThat(javac.classpath()).containsExactly(Path.of("a.jar"));
   }
 
   @Test
@@ -250,15 +261,30 @@ class CompilerOptionTest {
   /**
    * An option that belongs to another compiler is not that compiler's option.
    *
-   * <p>If the lookup were global, javac would "know" ECJ's {@code --class-path} and the
-   * classpath would be read from an option javac does not have.
+   * <p>If the lookup were global, javac would "know" ECJ's {@code -src} and the source directory
+   * would be read from an option javac does not have.
+   *
+   * <p><b>Note on {@code --class-path}.</b> This test used to assert that javac does not know
+   * {@code --class-path}, and the option table agreed. Both were wrong: javac's own help lists
+   * "--class-path &lt;path&gt;, -classpath &lt;path&gt;, -cp &lt;path&gt;", and a real javac run
+   * accepts the spelling. A capture that did not know the option lost the classpath entirely --
+   * the option was unknown, and the value that followed it was not a source file either, so both
+   * vanished. The compiler is the yardstick, and it accepts the spelling.
    */
   @Test
   void anOptionOfAnotherCompilerIsNotFound() {
-    assertThat(CompilerOption.byName("--class-path", CompilerOption.Compiler.ECJ)).isNotNull();
-    assertThat(CompilerOption.byName("--class-path", CompilerOption.Compiler.JAVAC)).isNull();
     assertThat(CompilerOption.byName("-src", CompilerOption.Compiler.ECJ)).isNotNull();
     assertThat(CompilerOption.byName("-src", CompilerOption.Compiler.JAVAC)).isNull();
+  }
+
+  /** javac does know {@code --class-path}: its own help lists it. */
+  @Test
+  void javacKnowsItsOwnDoubleDashClasspath() {
+    assertThat(CompilerOption.byName("--class-path", CompilerOption.Compiler.JAVAC)).isNotNull();
+    assertThat(CompilerOption.byName("--class-path", CompilerOption.Compiler.ECJ)).isNotNull();
+    // Both spellings mean the same thing, so they share a canonical name.
+    assertThat(CompilerOption.byName("--class-path").canonicalName())
+        .isEqualTo(CompilerOption.byName("-classpath").canonicalName());
   }
 
   @Test
@@ -268,6 +294,147 @@ class CompilerOptionTest {
           .as("compiler %s", compiler)
           .isNotEmpty();
     }
+  }
+
+  // ---------------------------------------------------- the options javac lists
+
+  /**
+   * The options javac accepts, checked against javac's own help.
+   *
+   * <p><b>Why the compiler is the yardstick.</b> The table is supposed to be the compiler's option
+   * set, so it is compared against the compiler. A table written from memory drifts, and a missing
+   * option does not fail -- it is silently unknown, and the value that follows it is lost too.
+   *
+   * <p>Every option below was checked against a real {@code javac} run.
+   */
+  @Test
+  void javacAcceptsTheDoubleDashSpellings() {
+    assertThat(CompilerOption.byName("--source")).isNotNull();
+    assertThat(CompilerOption.byName("--target")).isNotNull();
+    assertThat(CompilerOption.byName("--class-path")).isNotNull();
+    assertThat(CompilerOption.byName("--source").canonicalName())
+        .isEqualTo(CompilerOption.byName("-source").canonicalName());
+    assertThat(CompilerOption.byName("--target").canonicalName())
+        .isEqualTo(CompilerOption.byName("-target").canonicalName());
+  }
+
+  @Test
+  void javacAcceptsTheAnnotationProcessingSwitchValues() {
+    // javac spells it -proc:{none,only,full}
+    assertThat(CompilerOption.byName("-proc:none")).isNotNull();
+    assertThat(CompilerOption.byName("-proc:only")).isNotNull();
+    assertThat(CompilerOption.byName("-proc:full")).isNotNull();
+    // Only -proc:only does not produce a class file.
+    assertThat(CompilerOption.byName("-proc:only").effect())
+        .isEqualTo(CompilerOption.Effect.NOT_COMPILATION);
+    assertThat(CompilerOption.byName("-proc:none").effect())
+        .isEqualTo(CompilerOption.Effect.COMPILATION);
+  }
+
+  @Test
+  void javacAcceptsTheImplicitSwitchValues() {
+    // javac spells it -implicit:{none,class}
+    assertThat(CompilerOption.byName("-implicit:none")).isNotNull();
+    assertThat(CompilerOption.byName("-implicit:class")).isNotNull();
+  }
+
+  @Test
+  void javacAcceptsTheDebugSwitchColonForms() {
+    assertThat(CompilerOption.byName("-g:none")).isNotNull();
+    assertThat(CompilerOption.byName("-g:lines")).isNotNull();
+    assertThat(CompilerOption.byName("-g:vars")).isNotNull();
+    assertThat(CompilerOption.byName("-g:source")).isNotNull();
+  }
+
+  @Test
+  void javacAcceptsTheModuleOfTheCreatedFiles() {
+    assertThat(CompilerOption.byName("--default-module-for-created-files")).isNotNull();
+  }
+
+  @Test
+  void javacAcceptsTheAnnotationProcessorOptions() {
+    // -Akey[=value] -- the value is optional, and the key may stand alone.
+    CompilerOption option = CompilerOption.byName("-A");
+    assertThat(option).isNotNull();
+    assertThat(option.repeat()).isEqualTo(CompilerOption.Repeat.ALL_APPLY);
+  }
+
+  // ---------------------------------------------------- argument files
+
+  /**
+   * The argument file, and the compile parameters that live inside it.
+   *
+   * <p>This is the gap that made a capture confidently wrong: a build that puts its classpath in an
+   * argument file told javac everything through the file, and the command line carried almost
+   * nothing.
+   */
+  @Test
+  void anArgumentFileIsExpandedIntoTheArgumentsItHolds(@TempDir Path dir) throws IOException {
+    Path options = dir.resolve("options.txt");
+    Files.writeString(
+        options,
+        "-encoding UTF-8\n-source 21\n-classpath " + dir.resolve("lib.jar") + "\n",
+        StandardCharsets.UTF_8);
+
+    JavacOptions parsed =
+        JavacOptions.parse(List.of("@" + options, "-d", dir.resolve("out").toString()));
+
+    assertThat(parsed.encodingName()).isEqualTo("UTF-8");
+    assertThat(parsed.source()).isEqualTo("21");
+    assertThat(parsed.classpath()).containsExactly(dir.resolve("lib.jar"));
+  }
+
+  /**
+   * The argument file's format: whitespace splits, and the quotes around a token are stripped.
+   *
+   * <p>This was measured against javac: {@code -d "C:\a"} gives the value {@code C:\a}, while
+   * {@code -d "C:\a b"} gives the value {@code C:\a} and a stray {@code b"} -- the quotes do not
+   * group a value with a space in it.
+   */
+  @Test
+  void anArgumentFileSplitsAQuotedValueThatHasASpaceInIt(@TempDir Path dir) throws IOException {
+    Path options = dir.resolve("options.txt");
+    Files.writeString(options, "-classpath \"a b\"\n", StandardCharsets.UTF_8);
+
+    JavacOptions parsed = JavacOptions.parse(List.of("@" + options));
+
+    // The space inside the quotes split the token, so the classpath entry
+    // is the half-quoted "a -- which is not a usable path, and the capture
+    // drops it exactly as javac ignores a classpath entry that does not
+    // exist.  The stray b" is a positional argument, and a positional
+    // argument is not a source file unless it ends in .java.
+    assertThat(parsed.classpath()).isEmpty();
+  }
+
+  /** A quoted value with no space in it is one token, and the quotes are gone. */
+  @Test
+  void aQuotedValueWithNoSpaceIsOneToken(@TempDir Path dir) throws IOException {
+    Path options = dir.resolve("options.txt");
+    Files.writeString(options, "-classpath \"lib.jar\"\n", StandardCharsets.UTF_8);
+
+    JavacOptions parsed = JavacOptions.parse(List.of("@" + options));
+
+    assertThat(parsed.classpath()).containsExactly(Path.of("lib.jar"));
+  }
+
+  /** An argument file that cannot be read leaves the argument alone. */
+  @Test
+  void anArgumentFileThatCannotBeReadIsLeftAsItWas(@TempDir Path dir) {
+    JavacOptions parsed = JavacOptions.parse(List.of("@" + dir.resolve("nope.txt")));
+
+    assertThat(parsed.encodingName()).isNull();
+    assertThat(parsed.sourceFiles()).isEmpty();
+  }
+
+  /** An argument file that refers to itself does not loop. */
+  @Test
+  void anArgumentFileThatRefersToItselfDoesNotLoop(@TempDir Path dir) throws IOException {
+    Path options = dir.resolve("options.txt");
+    Files.writeString(options, "@" + options + "\n", StandardCharsets.UTF_8);
+
+    JavacOptions parsed = JavacOptions.parse(List.of("@" + options));
+
+    assertThat(parsed.encodingName()).isNull();
   }
 
   // ---------------------------------------------------- path splitting

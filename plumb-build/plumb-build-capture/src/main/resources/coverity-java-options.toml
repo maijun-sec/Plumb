@@ -246,12 +246,20 @@ effect = not-compilation
 
 # The options that only ECJ has.  They are recorded but not interpreted.
 
+# The classpath's three spellings.
+#
+# <p>Coverity lists `--class-path` as an ECJ-only option, but javac's own
+# help lists it too -- "--class-path <path>, -classpath <path>, -cp
+# <path>" -- and a real javac run accepts it.  Believing Coverity here cost
+# the WHOLE CLASSPATH: the option was unknown to javac, so the value that
+# followed it was not a classpath entry either, and both vanished.
+#
+# <p>So the option is shared, and the attribution is recorded here.
 [[option]]
-name = --class-path
-aliases = []
+name = --classpath
+aliases = [-classpath, --class-path, -cp]
 value = path-list
 repeat = last-wins
-compiler = ecj
 
 [[option]]
 name = source_files_or_dirs

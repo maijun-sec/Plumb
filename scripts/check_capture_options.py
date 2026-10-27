@@ -484,6 +484,24 @@ ADVISED = {
     "-Werror",
     "-g",
     "-parameters",
+    # The options the COMPILER has that Coverity's model does not.  They
+    # were found by running the compiler and reading its own help, and each
+    # one cost something when it was missing: an option the table does not
+    # know is silently unknown, and the value that follows it is consumed
+    # as a positional argument -- so both the option and its value are
+    # lost.
+    "-proc:none",
+    "-proc:full",
+    "-implicit:none",
+    "-implicit:class",
+    "-g:none",
+    "-g:lines",
+    "-g:vars",
+    "-g:source",
+    "-A",
+    "--default-module-for-created-files",
+    "--disable-line-doc-comments",
+    "--help-lint",
 }
 
 reference_names = {e["name"] for e in reference}
