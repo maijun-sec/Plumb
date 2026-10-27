@@ -30,6 +30,12 @@ The gates are:
                               still match the source
     mutate_dataflow_claims      the data-flow gate is not checking air:
                               every plausible drift is caught
+    check_dfaaug_claims         the DFA-augmentation design document still
+                              describes the mechanism the code has: the
+                              rule ids, the checkers, the API the
+                              snippets use, the inert variants
+    mutate_dfaaug_claims        the design-document gate is not checking
+                              air: every plausible drift is caught
     check_support_matrix_coverage
                               the support matrix covers every measured
                               category, and every row matches its
@@ -79,6 +85,18 @@ The gates are:
                               repetition rules, their spellings
     mutate_capture_options     the option gate is not checking air: every
                               deliberate drift must make it fail
+    check_compile_options      the option table knows every option the
+                              compiler itself has: the compiler is the
+                              yardstick, not a memory of it
+    mutate_compile_options     the compiler-option gate is not checking air:
+                              a missing option must make it fail
+    check_compile_parameters   the two sides of the compile parameters mean
+                              the same things: the capture observes the
+                              options the compiler received, the Maven side
+                              reads the options the build declared, and
+                              neither guesses what the build did not say
+    mutate_compile_parameters  the compile-parameter gate is not checking
+                              air: every deliberate drift must make it fail
     check_dsl_corpus           the DSL example corpus still covers the
                               engine's vocabulary: every node property, every
                               operator, the corpus's own size, and the counts
@@ -148,6 +166,10 @@ GATES = (
      ["python", "scripts/check_dataflow_claims.py"], "check"),
     ("mutate_dataflow_claims",
      ["python", "scripts/mutate_dataflow_claims.py"], "check"),
+    ("check_dfaaug_claims",
+     ["python", "scripts/check_dfaaug_claims.py"], "check"),
+    ("mutate_dfaaug_claims",
+     ["python", "scripts/mutate_dfaaug_claims.py"], "check"),
     ("check_support_matrix_coverage",
      ["python", "scripts/check_support_matrix_coverage.py"], "check"),
     ("check_javadoc_links",
@@ -178,6 +200,14 @@ GATES = (
      ["python", "scripts/check_capture_options.py"], "check"),
     ("mutate_capture_options",
      ["python", "scripts/mutate_capture_options.py"], "check"),
+    ("check_compile_options",
+     ["python", "scripts/check_compile_options.py"], "check"),
+    ("mutate_compile_options",
+     ["python", "scripts/mutate_compile_options.py"], "check"),
+    ("check_compile_parameters",
+     ["python", "scripts/check_compile_parameters.py"], "check"),
+    ("mutate_compile_parameters",
+     ["python", "scripts/mutate_compile_parameters.py"], "check"),
     ("check_dsl_corpus",
      ["python", "scripts/check_dsl_corpus.py"], "check"),
     ("mutate_dsl_corpus",

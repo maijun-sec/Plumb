@@ -410,6 +410,40 @@ PLUMB_CAPTURE_DIR=/tmp/captures \
 java -cp plumb-build-capture.jar ... # CaptureReader.readAll(Path.of("/tmp/captures"))
 ```
 
+### 7.0a 编译参数的两面，以及把它们合起来的门禁
+
+编译参数这件事的两面回答的是同一批问题，而且是配合着用的：一个构建既靠**读它的 pom**
+来描述，也靠**抓它真正编译了什么**来描述。
+
+| 问题 | `plumb-build-maven`——构建**声明**了什么 | `plumb-build-capture`——编译器**执行**了什么 |
+| --- | --- | --- |
+| 语言级别 | 编译插件的 `<release>`，然后 `<source>` | `--release`，然后 `-source` |
+| class 文件版本 | 插件的 `<target>` | `--target` |
+| 编码 | 插件的 `<encoding>`，然后 `project.build.sourceEncoding` | `-encoding` |
+| classpath | Maven Resolver 算出来的传递闭包 | 编译器收到的 `-classpath` |
+| 输出目录 | pom 的 `<outputDirectory>` | 编译器收到的 `-d` |
+| 源码根 | pom 的 `<sourceDirectory>` | 编译器拿到的那些文件 |
+
+**两面的意思必须一样。** 两边对某个参数的理解不一致时，必有一边是错的，而分析结果是错在
+没人看得见的地方。所以 `scripts/check_compile_parameters.py` 把两边**对着彼此**检查：
+
+- Maven 侧读的每个编译参数，在 capture 的选项表里都有对应——pom 的 `<release>` 和 capture
+  的 `--release` 是同一个参数；
+- 两边在**谁说了算的顺序**上一致：`<release>` 压过 `<source>`，`--release` 压过 `-source`。
+  声明了 `<source>8</source>` 又钉了 `<release>17</release>` 的构建是按 17 编译的，
+  报成 8 的那一面就是自信地答错；
+- 两边都认为**没声明的参数是未知**，不是默认值。上游项目把 `"1.8"` 和 `"UTF-8"` 写死了，
+  于是每个项目都被报成"以 1.8、UTF-8 编译"——自信地答错比没有答案更糟，因为分析器
+  分不出这个值是猜的。
+
+`scripts/mutate_compile_parameters.py` 是这个门禁自己的变异测试：六种故意的漂移，每一种都
+必须让门禁失败。
+
+**一处有意的差异，写出来而不是藏起来。** classpath 在两边都是参数，但取法不同：Maven 侧走
+Maven Resolver 算依赖闭包，因为插件自己声明的 classpath 不是编译器拿到的东西；capture 侧
+看的是编译器真正收到的 classpath。门禁检查的是**两种取法都还在**，这样任何一边都不能被
+悄悄删掉。
+
 ### 7.0.1 capture 挂哪些入口
 
 「javac 命令行」不是一个方法，而是**十二个**，取决于是怎么走到编译器的：
@@ -490,10 +524,16 @@ source path、encoding、`--release`、源文件清单、输出目录、编译�
 所以 Windows 的盘符不会被切坏。逗号列表——`--add-exports a/b=c/d`——按逗号切，
 在 Unix 上按路径分隔符切其实是错的，尽管在 Windows 上碰巧对。
 
-**编译器之间有差异，表里就写清楚了。** ECJ 把 classpath 拼成 `--class-path`，
-javac 不认这个写法；用 javac 的表去解析 ECJ 的参数会把 classpath 丢掉——
-而那恰恰是静态分析唯一不能丢的东西。所以每个选项知道自己属于哪个编译器，
-查表是分编译器做的。
+**编译器之间有差异，表里就写清楚了。** ECJ 有一些 javac 没有的选项——`-src`、`-profile`、
+`-log`——用 javac 的表去解析 ECJ 的参数，会把一个值当成 javac 根本没有的选项吞掉。
+所以每个选项知道自己属于哪个编译器，查表是分编译器做的。
+
+**哪些拼法存在，以编译器自己为准。** 这张表和它的测试都断言 javac 不认 `--class-path`。
+这个断言是错的：javac 自己的帮助里就写着
+`--class-path <path>, -classpath <path>, -cp <path>`，真的跑一次 javac 也接受这个写法。
+这个错误信念的代价是**整条 classpath 没了**——选项不认识，紧跟其后的值又不是源文件，
+两个一起消失。表里每个选项都对着真编译器验过，
+`scripts/check_compile_options.py` 是让它们保持同步的门禁。
 
 `--release` 与 `-source`、`-target` 分开记：`--release` 同时钉住语言级别
 **和**平台 API，而 `-source` 只钉语言级别。折成一起就丢掉这个区别了。
@@ -511,6 +551,40 @@ javac 不认这个写法；用 javac 的表去解析 ECJ 的参数会把 classpa
 `scripts/mutate_capture_options.py` 是这个门禁自己的变异测试：七处刻意的偏移，
 每一处都必须让门禁失败。它在第一版里找出了三个真实的漏洞——门禁只看选项的*第一种*写法、
 从不核对规范名本身对不对，也从不核对参照物自己跟自己一致。
+
+### 7.0.5a 编译器自己的选项清单才是尺子
+
+`javac --help` 和 `javac --help-extra` 才是"有哪些选项、怎么拼"的权威，而**真跑一次
+javac** 才是"这个选项收不收"的权威。这张表是凭记忆写的，而记忆会漏掉一个选项的双横线
+写法。
+
+漏掉的选项，以及漏掉之后各自丢了什么：
+
+| 漏掉的选项 | 漏掉之后的代价 |
+| --- | --- |
+| `--source`、`--target` | 用长写法写语言级别的构建，语言级别未知 |
+| `--class-path` | **整条 classpath**——选项不认识，紧跟的值也跟着消失 |
+| `-proc:none`、`-proc:full` | 注解处理开关只认了一半 |
+| `-implicit:none`、`-implicit:class` | 隐式编译开关只认了一半 |
+| `-g:none`、`-g:lines`、`-g:vars`、`-g:source` | 调试信息开关只认了一半 |
+| `-Akey[=value]` | 注解处理器自己的选项不认识 |
+| `--default-module-for-created-files` | 生成的 class 文件属于哪个模块，不知道 |
+
+漏一个选项不会报错：它只是静默地不被认识，紧跟其后的值被当成位置参数——而位置参数只有
+以 `.java` 结尾才是源文件。所以漏一个选项，**丢的是两样东西**：选项本身和它的值。
+
+### 7.0.5b 参数文件也是命令行的一部分
+
+javac 遇到以 `@` 开头的参数时，会从那个文件里读选项。把 classpath 放进这种文件的构建，
+所有信息都通过文件告诉了 javac，命令行本身几乎什么都不带——所以不打开那个文件的 capture
+记下来的是一条 classpath 为空、语言级别未知的编译。
+
+这个格式是对着 javac 量出来的，不是猜的：
+
+- 文件按**空白**切分；
+- token 两头的引号会被**剥掉**，但**不会**把它分组——所以 `-d "C:\a b"` 是选项 `-d`
+  加值 `C:\a`，外加一个被 javac 当成源文件的落单的 `b"`；
+- 读不了的文件就把原参数留着，所以记录里看得出这次编译是由参数文件驱动的。
 
 ### 7.0.6 一次编译只落一份
 

@@ -412,6 +412,44 @@ PLUMB_CAPTURE_DIR=/tmp/captures \
 java -cp plumb-build-capture.jar ... # CaptureReader.readAll(Path.of("/tmp/captures"))
 ```
 
+### 7.0a The two sides of the compile parameters, and the gate that joins them
+
+The two sides of the compile-parameter story answer the same questions, and they are used
+together: a build is described by **reading its pom** and by **capturing what it really compiled
+with**.
+
+| the question | `plumb-build-maven` — what the build DECLARED | `plumb-build-capture` — what the compiler PERFORMED |
+| --- | --- | --- |
+| the language level | the compiler plugin's `<release>`, then `<source>` | `--release`, then `-source` |
+| the class-file version | the plugin's `<target>` | `--target` |
+| the encoding | the plugin's `<encoding>`, then `project.build.sourceEncoding` | `-encoding` |
+| the classpath | the Maven Resolver's transitive closure | the `-classpath` the compiler received |
+| the output directory | the pom's `<outputDirectory>` | the `-d` the compiler received |
+| the source roots | the pom's `<sourceDirectory>` | the files the compiler was given |
+
+**They have to mean the same things.** When the two disagree about what a parameter means, one of
+them is wrong, and the analysis is wrong in a way nobody can see. So
+`scripts/check_compile_parameters.py` checks them **against each other**:
+
+- every compile parameter the Maven side reads has a counterpart in the capture's option table —
+  the pom's `<release>` is the same parameter as the capture's `--release`;
+- the two agree on the **order that decides**: `<release>` beats `<source>`, and `--release` beats
+  `-source`. A build that declares `<source>8</source>` and pins `<release>17</release>` compiles
+  at 17, and a side that reported 8 would be confidently wrong;
+- the two agree that an **undeclared parameter is unknown**, not a default. The upstream project
+  hard-coded `"1.8"` and `"UTF-8"`, so every project was reported as if it compiled at 1.8 in
+  UTF-8 — a confident wrong answer, which is worse than an absent one, because the analyser cannot
+  tell that the value is a guess.
+
+`scripts/mutate_compile_parameters.py` is the gate's own mutation test: six deliberate drifts, all
+of which must make the gate fail.
+
+**One deliberate difference, stated rather than hidden.** The classpath is a parameter on both
+sides, but it is obtained in two different ways: the Maven side resolves the dependency closure
+through the Maven Resolver, because a plugin's own declaration is not what the compiler is given;
+the capture side observes the classpath the compiler actually received. The gate checks that
+**both** ways exist, so neither can be dropped silently.
+
 ### 7.0.1 Which entry points the capture hooks
 
 The "javac command line" is not one method but **twelve**, depending on how the compiler is reached:
@@ -494,10 +532,18 @@ separator, so a Windows drive letter stays intact. A comma list — `--add-expor
 split on commas, which on Unix would be wrong to split on the path separator even though on
 Windows it would be right by accident.
 
-**The compilers differ, and the table says so.** ECJ spells the classpath `--class-path` and
-javac does not know that spelling; parsing ECJ's arguments with javac's table would drop the
-classpath — the one thing a static analyser cannot do without. So the option knows which
-compiler it belongs to, and the lookup is compiler-aware.
+**The compilers differ, and the table says so.** ECJ has options javac does not have — `-src`,
+`-profile`, `-log` — and parsing ECJ's arguments with javac's table would swallow a value as an
+option javac does not have. So the option knows which compiler it belongs to, and the lookup is
+compiler-aware.
+
+**The compiler is the yardstick for which spellings exist.** The table and its test both claim
+that javac does not know `--class-path`. The claim is wrong: javac's own help lists
+`--class-path <path>, -classpath <path>, -cp <path>`, and a real javac run accepts the
+spelling. The cost of the wrong belief is a **lost classpath** — the option is unknown, so the
+value that follows it is not a classpath entry either, and both vanish. Every option in the table
+is checked against a real compiler, and `scripts/check_compile_options.py` is the gate that
+keeps them in step.
 
 `--release` is kept apart from `-source` and `-target`: `--release` pins the language level
 **and** the platform API, while `-source` pins only the language level. Folding them together
@@ -518,6 +564,43 @@ fact rather than an accident.
 all of which must make the gate fail. It found three real holes in the first version — the
 gate only looked at the *first* spelling of an option, it never checked that the canonical
 name itself matched, and it never checked that the reference agreed with itself.
+
+### 7.0.5a The compiler's own option list is the yardstick
+
+`javac --help` and `javac --help-extra` are the authority on which options exist and how they
+are spelled, and a **real javac run** is the authority on whether they are accepted. The table
+was written from memory, and memory drops the double-dash spelling of an option.
+
+The options that were missing, and what each one cost:
+
+| the option | what it cost when it was missing |
+| --- | --- |
+| `--source`, `--target` | the language level was unknown for a build that spelled it the long way |
+| `--class-path` | **the whole classpath** — the option was unknown and the value vanished with it |
+| `-proc:none`, `-proc:full` | the annotation-processing switch was half-known |
+| `-implicit:none`, `-implicit:class` | the same, for the implicit-compilation switch |
+| `-g:none`, `-g:lines`, `-g:vars`, `-g:source` | the debug-info switch was half-known |
+| `-Akey[=value]` | the annotation processor's own options were unknown |
+| `--default-module-for-created-files` | the module a generated class file belongs to was unknown |
+
+A missing option does not fail: it is silently unknown, and the value that follows it is consumed
+as a positional argument — which is a source file only if it ends in `.java`. So a missing option
+loses **two** things, the option and its value.
+
+### 7.0.5b An argument file is part of the command line
+
+javac reads its options from a file when an argument starts with `@`. A build that puts its
+classpath in such a file has told javac everything through the file, and the command line carries
+almost nothing — so a capture that did not open the file recorded a compile with an empty
+classpath and an unknown language level.
+
+The format was measured against javac, not guessed:
+
+- the file is split on **whitespace**;
+- the quotes around a token are **stripped**, but they do **not** group it — so `-d "C:\a b"` is
+  the option `-d` with the value `C:\a` and a stray `b"` that javac treats as a source file;
+- an argument file that cannot be read leaves the argument alone, so the record shows that the
+  compile was driven by an argument file.
 
 ### 7.0.6 One compilation produces only one record
 

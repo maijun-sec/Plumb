@@ -204,10 +204,13 @@ public final class MavenResolverAdapter implements BuildAdapter {
    * <b>transitive</b> closure of its declared dependencies.
    */
   private ModuleDescriptor describeSingleModule(Path moduleRoot, MavenPom pom) {
-    Path sourceRoot = moduleRoot.resolve("src/main/java");
-    Path testSourceRoot = moduleRoot.resolve("src/test/java");
-    Path output = moduleRoot.resolve("target/classes");
-    Path testOutput = moduleRoot.resolve("target/test-classes");
+    // The directories come from the pom, so a project that declares its
+    // own source or output directory is described correctly.  They are
+    // relative to the module's directory, which is where the pom lives.
+    Path sourceRoot = moduleRoot.resolve(pom.sourceRoots(moduleRoot.toFile()).iterator().next());
+    Path testSourceRoot = moduleRoot.resolve(pom.testSourceRoot());
+    Path output = moduleRoot.resolve(pom.outputDirectory());
+    Path testOutput = moduleRoot.resolve(pom.testOutputDirectory());
 
     return ModuleDescriptor.builder(pom.artifactId())
         .sourceRoots(Set.of(sourceRoot))

@@ -262,6 +262,27 @@ final class MavenPom {
   }
 
   /**
+   * The declared class-file target level, or {@code null} when unspecified.
+   *
+   * <p>Read the same way as the language level: the compiler plugin's configuration first, then
+   * the {@code maven.compiler.target} property.
+   *
+   * <p><b>Why it is separate from the language level.</b> {@code <release>} pins the language level
+   * AND the platform API, and it is the level the class files were produced for. {@code <source>}
+   * is the language level alone, and {@code <target>} is the class-file version alone -- a build may
+   * compile Java 8 syntax into Java 8 class files, or into Java 11 class files, and the two
+   * answers are different questions.
+   */
+  String targetLevel() {
+    String plugin = pluginConfiguration("target");
+    if (plugin != null) {
+      return plugin;
+    }
+    String property = properties.getProperty("maven.compiler.target");
+    return property == null ? null : resolve(property);
+  }
+
+  /**
    * The declared source encoding, or {@code null} when unspecified.
    *
    * <p>Read the same way as the language level: the compiler plugin's configuration first, then
@@ -363,12 +384,61 @@ final class MavenPom {
     return result;
   }
 
-  /** The set of source roots declared for this module. */
+  /**
+   * The set of source roots declared for this module.
+   *
+   * <p>Read from the pom's {@code <build><sourceDirectory>}, so a project that puts its sources
+   * somewhere else is described correctly. The default is Maven's own {@code src/main/java}.
+   *
+   * <p>The roots are relative to the module's directory, and the caller resolves them.
+   */
   Set<String> sourceRoots(File moduleRoot) {
     Set<String> roots = new LinkedHashSet<>();
     var build = model.getBuild();
-    String dir = build == null ? null : build.getSourceDirectory();
-    roots.add(dir == null || dir.isBlank() ? "src/main/java" : dir);
+    roots.add(
+        buildDirectory(
+            build == null ? null : build.getSourceDirectory(), "src/main/java"));
     return roots;
+  }
+
+  /** The declared test source root, relative to the module's directory. */
+  String testSourceRoot() {
+    var build = model.getBuild();
+    return buildDirectory(
+        build == null ? null : build.getTestSourceDirectory(), "src/test/java");
+  }
+
+  /**
+   * The declared output directory, relative to the module's directory.
+   *
+   * <p>Maven's own default is {@code target/classes}. A pom that declares another one is honoured,
+   * because a hard-coded value is a confident wrong answer for a project that declared a
+   * different one.
+   */
+  String outputDirectory() {
+    var build = model.getBuild();
+    return buildDirectory(
+        build == null ? null : build.getOutputDirectory(), "target/classes");
+  }
+
+  /** The declared test output directory, relative to the module's directory. */
+  String testOutputDirectory() {
+    var build = model.getBuild();
+    return buildDirectory(
+        build == null ? null : build.getTestOutputDirectory(), "target/test-classes");
+  }
+
+  /**
+   * A directory from the pom's {@code <build>}, or the given default.
+   *
+   * <p>The Maven model exposes the four directories as typed getters, and it has already applied
+   * its own defaults, so an undeclared directory comes back as Maven's default rather than as
+   * null.
+   *
+   * @param value the value the model reports
+   * @param fallback the value to use when the pom declares nothing
+   */
+  private static String buildDirectory(String value, String fallback) {
+    return value == null || value.isBlank() ? fallback : value;
   }
 }

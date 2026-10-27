@@ -253,6 +253,116 @@ class MavenPomTest {
     assertThat(loaded.encoding()).isNull();
   }
 
+  /**
+   * The target level is read from the compiler plugin's configuration.
+   *
+   * <p>The target is a different question from the source: a build may compile Java 8 syntax into
+   * Java 11 class files. The capture side reads it as {@code --target}, so the two sides have to
+   * read the same thing.
+   */
+  @Test
+  void readsTheTargetLevelFromThePluginConfiguration(@TempDir Path dir) throws Exception {
+    Path pom = write(dir.resolve("pom.xml"), """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>demo</artifactId>
+          <version>1.0.0</version>
+          <build>
+            <plugins>
+              <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                  <source>8</source>
+                  <target>11</target>
+                </configuration>
+              </plugin>
+            </plugins>
+          </build>
+        </project>
+        """);
+
+    MavenPom loaded = MavenPom.read(pom.toFile());
+
+    assertThat(loaded.targetLevel()).isEqualTo("11");
+  }
+
+  /**
+   * The target level is read from a property too, when the plugin does not declare it.
+   */
+  @Test
+  void readsTheTargetLevelFromAProperty(@TempDir Path dir) throws Exception {
+    Path pom = write(dir.resolve("pom.xml"), """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>demo</artifactId>
+          <version>1.0.0</version>
+          <properties>
+            <maven.compiler.target>17</maven.compiler.target>
+          </properties>
+        </project>
+        """);
+
+    MavenPom loaded = MavenPom.read(pom.toFile());
+
+    assertThat(loaded.targetLevel()).isEqualTo("17");
+  }
+
+  /**
+   * The directories are read from the pom, not hard-coded.
+   *
+   * <p>A pom may put its sources and its class files anywhere, so a hard-coded path is a
+   * confident wrong answer for a project that declared a different one.
+   */
+  @Test
+  void readsTheDeclaredDirectories(@TempDir Path dir) throws Exception {
+    Path pom = write(dir.resolve("pom.xml"), """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>demo</artifactId>
+          <version>1.0.0</version>
+          <build>
+            <sourceDirectory>java/main</sourceDirectory>
+            <testSourceDirectory>java/test</testSourceDirectory>
+            <outputDirectory>build/classes</outputDirectory>
+            <testOutputDirectory>build/test-classes</testOutputDirectory>
+          </build>
+        </project>
+        """);
+
+    MavenPom loaded = MavenPom.read(pom.toFile());
+
+    assertThat(loaded.sourceRoots(dir.toFile())).containsExactly("java/main");
+    assertThat(loaded.testSourceRoot()).isEqualTo("java/test");
+    assertThat(loaded.outputDirectory()).isEqualTo("build/classes");
+    assertThat(loaded.testOutputDirectory()).isEqualTo("build/test-classes");
+  }
+
+  /**
+   * A pom that declares no directory gets Maven's own defaults.
+   */
+  @Test
+  void fallsBackToMavensOwnDirectoryDefaults(@TempDir Path dir) throws Exception {
+    Path pom = write(dir.resolve("pom.xml"), """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>demo</artifactId>
+          <version>1.0.0</version>
+        </project>
+        """);
+
+    MavenPom loaded = MavenPom.read(pom.toFile());
+
+    assertThat(loaded.sourceRoots(dir.toFile())).containsExactly("src/main/java");
+    assertThat(loaded.testSourceRoot()).isEqualTo("src/test/java");
+    assertThat(loaded.outputDirectory()).isEqualTo("target/classes");
+    assertThat(loaded.testOutputDirectory()).isEqualTo("target/test-classes");
+  }
+
   private static Path write(Path pom, String xml) throws Exception {
     Files.writeString(pom, xml, StandardCharsets.UTF_8);
     return pom;
