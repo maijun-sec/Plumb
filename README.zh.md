@@ -143,6 +143,8 @@ python scripts/check_all.py
 | `check_framework_annotations` | 污点引擎和 AST 校验检查器对"什么是用户输入"的理解一致 |
 | `check_catalogue_drift_numbers` | javadoc 里引用的历史漂移数字与 git 历史对得上 |
 | `check_dataflow_constraint` | 清单的 `dataflow_contains` 约束不是空断言 |
+| `check_dataflow_claims` | 数据流文档的行引用仍指向它声称的声明位置，它引用的计数和类名仍与源码一致 |
+| `mutate_dataflow_claims` | 数据流门禁不是空检查：每一种可能的漂移都能被抓到 |
 | `check_support_matrix_coverage` | 支持矩阵覆盖了每个已测量的类别，且每行的数字和 `RESULT.json` 对得上 |
 | `check_javadoc_links` | javadoc 里 `{@link}` 指向的类型真的存在 |
 | `check_doc_index` | 文档索引列全了 `docs/` 下的每一份文档，索引里的链接也都能打开 |

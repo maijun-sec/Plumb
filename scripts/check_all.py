@@ -24,6 +24,12 @@ The gates are:
     check_dataflow_constraint
                               the manifest's dataflow constraint is not a
                               no-op
+    check_dataflow_claims       the data-flow specification's citations
+                              still point at the declarations they name,
+                              and the counts and class names it quotes
+                              still match the source
+    mutate_dataflow_claims      the data-flow gate is not checking air:
+                              every plausible drift is caught
     check_support_matrix_coverage
                               the support matrix covers every measured
                               category, and every row matches its
@@ -72,6 +78,11 @@ The gates are:
                               categorised options, their value kinds, their
                               repetition rules, their spellings
     mutate_capture_options     the option gate is not checking air: every
+                              deliberate drift must make it fail
+    check_dsl_corpus           the DSL example corpus still covers the
+                              engine's vocabulary: every node property, every
+                              operator, and the corpus's own size
+    mutate_dsl_corpus          the corpus gate is not checking air: every
                               deliberate drift must make it fail
     check_i18n_docs            the English and Chinese documentation have
                               the same shape: the same documents, the same
@@ -130,6 +141,10 @@ GATES = (
      ["python", "scripts/check_catalogue_drift_numbers.py"], "check"),
     ("check_dataflow_constraint",
      ["python", "scripts/check_dataflow_constraint.py"], "check"),
+    ("check_dataflow_claims",
+     ["python", "scripts/check_dataflow_claims.py"], "check"),
+    ("mutate_dataflow_claims",
+     ["python", "scripts/mutate_dataflow_claims.py"], "check"),
     ("check_support_matrix_coverage",
      ["python", "scripts/check_support_matrix_coverage.py"], "check"),
     ("check_javadoc_links",
@@ -160,6 +175,10 @@ GATES = (
      ["python", "scripts/check_capture_options.py"], "check"),
     ("mutate_capture_options",
      ["python", "scripts/mutate_capture_options.py"], "check"),
+    ("check_dsl_corpus",
+     ["python", "scripts/check_dsl_corpus.py"], "check"),
+    ("mutate_dsl_corpus",
+     ["python", "scripts/mutate_dsl_corpus.py"], "check"),
     ("check_i18n_docs",
      ["python", "scripts/check_i18n_docs.py"], "check"),
     ("mutate_i18n_docs",
