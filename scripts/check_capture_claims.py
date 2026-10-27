@@ -69,11 +69,13 @@ if ep_src is None:
     entry_points = []
 else:
     # Each entry point is constructed as
-    #   new EntryPoint("type", "method", argc, options, sources, Kind)
+    #   new EntryPoint("type", "method", argc, options, sources, Kind, Compiler)
+    # The compiler argument is optional, and may be `null`.
     entry_points = []
     for m in re.finditer(
         r'new\s+EntryPoint\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*(-?\d+)'
-        r'\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*EntryPoint\.Kind\.([A-Z_]+)\s*\)',
+        r'\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*EntryPoint\.Kind\.([A-Z_]+)'
+        r'(?:\s*,\s*(?:CompilerOption\.Compiler\.([A-Z_]+)|null))?\s*\)',
         ep_src,
         flags=re.S,
     ):
@@ -85,6 +87,7 @@ else:
                 "options": int(m.group(4)),
                 "sources": int(m.group(5)),
                 "kind": m.group(6),
+                "compiler": m.group(7),
             }
         )
     note("the source declares %d entry point(s)" % len(entry_points))
@@ -163,15 +166,26 @@ else:
     note("every documented entry point is hooked by the source")
 
 # ------------------------------------------------- 4. the count the document states
-m = re.search(r"「javac 命令行」不是一个方法，而是\*\*([^*]+?)\*\*", doc)
+# The document says the count in prose, before the table.  The wording
+# differs between the Chinese and the English document, so both are matched.
+#
+# The number may be an Arabic digit or a Chinese numeral.
+m = re.search(
+    r"(?:「javac 命令行」不是一个方法，而是|"
+    r'The "javac command line" is not one method but)'
+    r"\s*\*\*([^*]+?)\*\*",
+    doc,
+)
 if m:
     claimed = m.group(1)
-    # The document says "十二个" -- the counter suffix is not part of the number.
-    claimed = claimed.rstrip("个")
-    # The document may say a Chinese numeral or an Arabic one.
+    # The document says "十二个" / "twelve" -- the counter suffix is not part
+    # of the number.
+    claimed = claimed.rstrip("个").strip()
     numerals = {
         "八": 8, "九": 9, "十": 10, "十一": 11, "十二": 12, "十三": 13,
         "十四": 14, "十五": 15, "十六": 16,
+        "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+        "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
     }
     actual = len(entry_points)
     if claimed.isdigit():

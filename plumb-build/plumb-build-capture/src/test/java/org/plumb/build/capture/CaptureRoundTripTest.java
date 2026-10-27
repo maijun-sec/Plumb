@@ -13,19 +13,14 @@ import org.junit.jupiter.api.io.TempDir;
 class CaptureRoundTripTest {
 
   private static CaptureEntry sample(List<String> argv) {
-    return new CaptureEntry(
+    return CaptureEntry.simple(
         "cli",
         argv,
         "UTF-8",
         "17",
         Path.of("out"),
         List.of(Path.of("a.jar"), Path.of("b.jar")),
-        List.of(Path.of("src")),
-        List.of(),
-        List.of(Path.of("src/Foo.java")),
-        "17.0.1",
-        "/opt/jdk",
-        "/work");
+        List.of(Path.of("src/Foo.java")));
   }
 
   @Test

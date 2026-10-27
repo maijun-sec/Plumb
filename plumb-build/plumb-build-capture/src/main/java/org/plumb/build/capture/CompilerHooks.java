@@ -54,6 +54,40 @@ public final class CompilerHooks {
   }
 
   /**
+   * Hook for Eclipse's compiler.
+   *
+   * <p>ECJ's options are not javac's options: it spells the classpath {@code --class-path}, and
+   * it has options javac does not have ({@code -src}, {@code -profile}, {@code -log}). Parsing
+   * them with javac's table would drop the classpath, which is the one thing a static analyser
+   * cannot do without.
+   */
+  public static final class EcjArgv {
+
+    private EcjArgv() {}
+
+    @Advice.OnMethodEnter(suppress = Throwable.class)
+    public static void enter(@Advice.Argument(0) String[] arguments) {
+      CaptureRecorder.onArgv(arguments, CompilerOption.Compiler.ECJ);
+    }
+  }
+
+  /**
+   * Hook for the sjavac server.
+   *
+   * <p>sjavac has its own option set, and it normalizes how the arguments are attached to the
+   * options ({@code SjavacOptions#normalizeArgumentAttachment}).
+   */
+  public static final class SjavacArgv {
+
+    private SjavacArgv() {}
+
+    @Advice.OnMethodEnter(suppress = Throwable.class)
+    public static void enter(@Advice.Argument(0) String[] arguments) {
+      CaptureRecorder.onArgv(arguments, CompilerOption.Compiler.SJAVAC);
+    }
+  }
+
+  /**
    * Hook for the entry points whose compiler options are argument 1.
    *
    * <p>Kept for completeness: the {@code javax.tools} API's {@code getTask} family is bound
@@ -191,6 +225,23 @@ public final class CompilerHooks {
         .installOn(inst);
   }
   /**
+   * The advice class for an entry point that carries its options in argument 0.
+   *
+   * <p>The compiler decides, because the option tables differ: ECJ spells the classpath {@code
+   * --class-path}, and parsing its arguments with javac's table would drop the classpath.
+   */
+  private static Class<?> argvAdvice(CompilerOption.Compiler compiler) {
+    if (compiler == null) {
+      return ArgvAtZero.class;
+    }
+    return switch (compiler) {
+      case ECJ -> EcjArgv.class;
+      case SJAVAC -> SjavacArgv.class;
+      case JAVAC -> ArgvAtZero.class;
+    };
+  }
+
+  /**
    * Weave the hooks into one type.
    *
    * <p>For each entry point declared on that type, the matching method gets the appropriate
@@ -214,7 +265,7 @@ public final class CompilerHooks {
         case ARGV -> {
           Class<?> advice =
               switch (entry.optionsIndex()) {
-                case 0 -> ArgvAtZero.class;
+                case 0 -> argvAdvice(entry.compiler());
                 case 1 -> ArgvAtOne.class;
                 case 3 -> ArgvAtThree.class;
                 default -> null;

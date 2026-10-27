@@ -56,13 +56,15 @@ public final class CaptureAgent {
    * NoClassDefFoundError} -- and because the advice that calls it suppresses {@code Throwable},
    * the failure is completely silent: the capture simply never appears.
    *
-   * <p>That is not hypothetical. It happened twice:
+   * <p>That is not hypothetical. It happened three times:
    *
    * <ul>
    *   <li>the recorder grew a dependency on {@link JavacOptions} while the jar carried only the
    *       recorder class;
    *   <li>the jar then carried {@code JavacOptions} but not {@code JavacOptions$Builder}, its
-   *       nested builder.
+   *       nested builder;
+   *   <li>the recorder grew a dependency on {@link CompilerOption} when the option table became
+   *       data-driven, and the jar did not follow.
    * </ul>
    *
    * <p>Every class listed here must be free of external dependencies (no SLF4J, no JSON library)
@@ -73,6 +75,11 @@ public final class CaptureAgent {
     "org/plumb/build/capture/CaptureEntry",
     "org/plumb/build/capture/JavacOptions",
     "org/plumb/build/capture/JavacOptions$Builder",
+    "org/plumb/build/capture/CompilerOption",
+    "org/plumb/build/capture/CompilerOption$Compiler",
+    "org/plumb/build/capture/CompilerOption$Value",
+    "org/plumb/build/capture/CompilerOption$Repeat",
+    "org/plumb/build/capture/CompilerOption$Effect",
   };
 
   private CaptureAgent() {}

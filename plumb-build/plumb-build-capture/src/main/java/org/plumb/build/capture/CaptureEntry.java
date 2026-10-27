@@ -11,6 +11,7 @@ import java.util.List;
  * language level and the output directory.
  *
  * @param api which entry point produced this capture: {@code cli} or {@code api}
+ * @param compiler which compiler performed it: {@code javac}, {@code ecj} or {@code sjavac}
  * @param argv the raw compiler arguments
  * @param encoding the source encoding, or {@code null} when the platform default applies
  * @param languageLevel the {@code --release} / {@code -source} level, or {@code null}
@@ -18,13 +19,21 @@ import java.util.List;
  * @param classpath the classpath the compiler used
  * @param sourcePath the source path, or empty
  * @param modulePath the module path, or empty
+ * @param processorPath the annotation processor path, or empty
+ * @param bootClassPath the boot class path, or empty
  * @param sourceFiles the compiled source files
+ * @param addModules the {@code --add-modules} entries, or empty
+ * @param addExports the {@code --add-exports} entries, or empty
+ * @param addReads the {@code --add-reads} entries, or empty
+ * @param preview whether {@code --enable-preview} was given
+ * @param compilation whether the command line actually produced class files
  * @param javaVersion the {@code java.version} of the compiling JVM
  * @param javaHome the {@code java.home} of the compiling JVM
  * @param workingDirectory the {@code user.dir} of the compiling JVM
  */
 public record CaptureEntry(
     String api,
+    String compiler,
     List<String> argv,
     String encoding,
     String languageLevel,
@@ -32,7 +41,14 @@ public record CaptureEntry(
     List<Path> classpath,
     List<Path> sourcePath,
     List<Path> modulePath,
+    List<Path> processorPath,
+    List<Path> bootClassPath,
     List<Path> sourceFiles,
+    List<String> addModules,
+    List<String> addExports,
+    List<String> addReads,
+    boolean preview,
+    boolean compilation,
     String javaVersion,
     String javaHome,
     String workingDirectory) {
@@ -58,11 +74,15 @@ public record CaptureEntry(
    */
   public String compileIdentity() {
     StringBuilder sb = new StringBuilder();
+    sb.append("compiler=").append(compiler).append('\u0000');
     sb.append("out=").append(outputDirectory).append('\u0000');
     sb.append("cp=").append(classpath).append('\u0000');
     sb.append("sp=").append(sourcePath).append('\u0000');
+    sb.append("mp=").append(modulePath).append('\u0000');
     sb.append("enc=").append(encoding).append('\u0000');
     sb.append("ll=").append(languageLevel).append('\u0000');
+    sb.append("preview=").append(preview).append('\u0000');
+    sb.append("compilation=").append(compilation).append('\u0000');
     // The source files are sorted, because the same set of files can arrive in a
     // different order from the API than from the command line.
     List<String> sources = new java.util.ArrayList<>();
@@ -85,6 +105,43 @@ public record CaptureEntry(
   }
 
   /**
+   * A capture with only the fields that matter for a simple test or a synthetic entry.
+   *
+   * <p>The full constructor has twenty arguments, and most callers do not care about most of them.
+   * This one takes the handful that any test wants to assert on.
+   */
+  public static CaptureEntry simple(
+      String api,
+      List<String> argv,
+      String encoding,
+      String languageLevel,
+      Path outputDirectory,
+      List<Path> classpath,
+      List<Path> sourceFiles) {
+    return new CaptureEntry(
+        api,
+        "javac",
+        argv,
+        encoding,
+        languageLevel,
+        outputDirectory,
+        classpath,
+        List.of(),
+        List.of(),
+        List.of(),
+        List.of(),
+        sourceFiles,
+        List.of(),
+        List.of(),
+        List.of(),
+        false,
+        true,
+        "17.0.1",
+        "/opt/jdk",
+        "/work");
+  }
+
+  /**
    * Render the capture as JSON.
    *
    * <p>Hand-rolled so the module has no JSON dependency: the recorder runs inside an arbitrary
@@ -94,6 +151,7 @@ public record CaptureEntry(
     StringBuilder sb = new StringBuilder();
     sb.append("{\n");
     sb.append("  \"api\": ").append(quote(api)).append(",\n");
+    sb.append("  \"compiler\": ").append(quote(compiler)).append(",\n");
     sb.append("  \"argv\": ").append(jsonArray(argv)).append(",\n");
     sb.append("  \"encoding\": ").append(quote(encoding)).append(",\n");
     sb.append("  \"languageLevel\": ").append(quote(languageLevel)).append(",\n");
@@ -101,7 +159,14 @@ public record CaptureEntry(
     sb.append("  \"classpath\": ").append(jsonArray(paths(classpath))).append(",\n");
     sb.append("  \"sourcePath\": ").append(jsonArray(paths(sourcePath))).append(",\n");
     sb.append("  \"modulePath\": ").append(jsonArray(paths(modulePath))).append(",\n");
+    sb.append("  \"processorPath\": ").append(jsonArray(paths(processorPath))).append(",\n");
+    sb.append("  \"bootClassPath\": ").append(jsonArray(paths(bootClassPath))).append(",\n");
     sb.append("  \"sourceFiles\": ").append(jsonArray(paths(sourceFiles))).append(",\n");
+    sb.append("  \"addModules\": ").append(jsonArray(addModules)).append(",\n");
+    sb.append("  \"addExports\": ").append(jsonArray(addExports)).append(",\n");
+    sb.append("  \"addReads\": ").append(jsonArray(addReads)).append(",\n");
+    sb.append("  \"preview\": ").append(preview).append(",\n");
+    sb.append("  \"compilation\": ").append(compilation).append(",\n");
     sb.append("  \"javaVersion\": ").append(quote(javaVersion)).append(",\n");
     sb.append("  \"javaHome\": ").append(quote(javaHome)).append(",\n");
     sb.append("  \"workingDirectory\": ").append(quote(workingDirectory)).append("\n");

@@ -98,6 +98,7 @@ public final class CaptureReader {
     }
     return new CaptureEntry(
         string(json, "api"),
+        string(json, "compiler"),
         stringArray(json, "argv"),
         string(json, "encoding"),
         string(json, "languageLevel"),
@@ -105,10 +106,35 @@ public final class CaptureReader {
         paths(stringArray(json, "classpath")),
         paths(stringArray(json, "sourcePath")),
         paths(stringArray(json, "modulePath")),
+        paths(stringArray(json, "processorPath")),
+        paths(stringArray(json, "bootClassPath")),
         paths(stringArray(json, "sourceFiles")),
+        stringArray(json, "addModules"),
+        stringArray(json, "addExports"),
+        stringArray(json, "addReads"),
+        bool(json, "preview"),
+        bool(json, "compilation"),
         string(json, "javaVersion"),
         string(json, "javaHome"),
         string(json, "workingDirectory"));
+  }
+
+  /**
+   * The value of a top-level boolean key.
+   *
+   * <p>Absent means false, so a capture written before a flag existed still parses.
+   */
+  static boolean bool(String json, String key) {
+    String marker = "\"" + key + "\":";
+    int at = json.indexOf(marker);
+    if (at < 0) {
+      return false;
+    }
+    int i = at + marker.length();
+    while (i < json.length() && Character.isWhitespace(json.charAt(i))) {
+      i++;
+    }
+    return i < json.length() && json.charAt(i) == 't';
   }
 
   private static Path path(String s) {

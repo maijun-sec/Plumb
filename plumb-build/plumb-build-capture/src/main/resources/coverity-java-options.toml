@@ -1,0 +1,345 @@
+# Coverity's Java option model, as a reference baseline.
+#
+# This file is the option knowledge that Coverity's `JavacOptionParser` holds,
+# extracted from cov-analysis 2023.6.0 (`jars/capture-compilers.jar`).  It is
+# the yardstick the capture module's own option table is measured against.
+#
+# The categories come from `JavacOptionParser`'s static tables:
+#
+#   last-instance-only   only the last occurrence counts
+#   repeat-allowable     every occurrence applies
+#   no-value             the option takes no value
+#   repeat-squash        repeatable, but the compiler keeps only one
+#   not-compilation      the option does not produce a class file
+#   ecj-path             ECJ's own path options
+#
+# `scripts/check_capture_options.py` checks our table against this one, in both
+# directions, and reports every option we know that Coverity does not -- so a
+# deliberate addition is visible rather than silent.
+#
+# The names are the CANONICAL names, the ones Coverity records the option
+# under.  A javac spelling that maps onto a canonical name (such as -cp onto
+# --classpath) belongs in the `aliases` list of that option.
+
+[last-instance-only]
+--limit-modules
+--module
+--module-source-path
+--upgrade-module-path
+--module-path
+--output-dir
+--annotation-processing-dir
+--release
+
+[repeat-allowable]
+--add-exports
+--add-reads
+--patch-module
+
+[no-value]
+--enable-preview
+
+[repeat-squash]
+--add-modules
+
+[not-compilation]
+-Xprint
+-proc:only
+
+[ecj-path]
+bootclasspath
+extdirs
+endorseddirs
+prebootclasspath
+postbootclasspath
+--classpath
+--sourcepath
+--module-path
+--module-source-path
+
+# The options with their aliases and how they are read.
+#
+# value:      none | single | path-list | comma-list
+# repeat:     last-wins | all-apply
+# effect:     compilation | not-compilation
+# compiler:   javac | ecj | sjavac   (omitted means every compiler)
+
+[[option]]
+name = --output-dir
+aliases = [-d]
+value = single
+repeat = last-wins
+
+[[option]]
+name = --classpath
+aliases = [-classpath, -cp]
+value = path-list
+repeat = last-wins
+
+[[option]]
+name = --sourcepath
+aliases = [-sourcepath]
+value = path-list
+repeat = last-wins
+
+[[option]]
+name = bootclasspath
+aliases = [-bootclasspath, --boot-class-path, -Xbootclasspath]
+value = path-list
+repeat = last-wins
+
+[[option]]
+name = extdirs
+aliases = [-extdirs, -Djava.ext.dirs]
+value = path-list
+repeat = last-wins
+
+[[option]]
+name = endorseddirs
+aliases = [-endorseddirs, -Djava.endorsed.dirs]
+value = path-list
+repeat = last-wins
+
+[[option]]
+name = prebootclasspath
+aliases = [-Xbootclasspath/p]
+value = path-list
+repeat = all-apply
+
+[[option]]
+name = postbootclasspath
+aliases = [-Xbootclasspath/a]
+value = path-list
+repeat = all-apply
+
+[[option]]
+name = --module-path
+aliases = [-p]
+value = path-list
+repeat = last-wins
+
+[[option]]
+name = --module-source-path
+aliases = []
+value = path-list
+repeat = last-wins
+
+[[option]]
+name = --upgrade-module-path
+aliases = []
+value = path-list
+repeat = last-wins
+
+[[option]]
+name = --module
+aliases = [-m]
+value = single
+repeat = last-wins
+
+[[option]]
+name = --limit-modules
+aliases = []
+value = comma-list
+repeat = last-wins
+
+[[option]]
+name = --add-modules
+aliases = []
+value = comma-list
+repeat = all-apply
+
+[[option]]
+name = --add-exports
+aliases = []
+value = comma-list
+repeat = all-apply
+
+[[option]]
+name = --add-reads
+aliases = []
+value = comma-list
+repeat = all-apply
+
+[[option]]
+name = --patch-module
+aliases = []
+value = single
+repeat = all-apply
+
+[[option]]
+name = --system
+aliases = []
+value = single
+repeat = last-wins
+
+[[option]]
+name = --processor-path
+aliases = [-processorpath]
+value = path-list
+repeat = last-wins
+
+[[option]]
+name = --processor-module-path
+aliases = []
+value = path-list
+repeat = last-wins
+
+[[option]]
+name = --processor
+aliases = [-processor]
+value = single
+repeat = last-wins
+
+[[option]]
+name = --annotation-processing-dir
+aliases = [-s]
+value = single
+repeat = last-wins
+
+[[option]]
+name = --release
+aliases = []
+value = single
+repeat = last-wins
+
+[[option]]
+name = --source
+aliases = [-source]
+value = single
+repeat = last-wins
+
+[[option]]
+name = --target
+aliases = [-target]
+value = single
+repeat = last-wins
+
+[[option]]
+name = --encoding
+aliases = [-encoding]
+value = single
+repeat = last-wins
+
+[[option]]
+name = --enable-preview
+aliases = []
+value = none
+repeat = last-wins
+
+[[option]]
+name = -Xprint
+aliases = []
+value = none
+repeat = last-wins
+effect = not-compilation
+# Coverity lists it only under [not-compilation], not under [no-value]:
+# NO_VALUE_OPTIONS holds just --enable-preview.  The value is recorded as
+# none here because the option takes no value, which is a fact about the
+# option rather than about the category it is in.
+
+[[option]]
+name = -proc:only
+aliases = []
+value = none
+repeat = last-wins
+effect = not-compilation
+
+# The options that only ECJ has.  They are recorded but not interpreted.
+
+[[option]]
+name = --class-path
+aliases = []
+value = path-list
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = source_files_or_dirs
+aliases = [-src]
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = -profile
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = -log
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = --module-version
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = -h
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = -i
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = -j
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = -tr
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = -x
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = -Xmaxerrs
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = -Xmaxwarns
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = -Xstdout
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = -copy
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj

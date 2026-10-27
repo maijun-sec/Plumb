@@ -47,6 +47,7 @@ public final class CompilerEntryPoints {
    *     point does not take them
    * @param sourcesIndex which argument carries the source files, or {@code -1}
    * @param kind how the arguments are delivered
+   * @param compiler which compiler's option table the arguments are parsed with
    */
   public record EntryPoint(
       String typeName,
@@ -54,7 +55,13 @@ public final class CompilerEntryPoints {
       int argumentCount,
       int optionsIndex,
       int sourcesIndex,
-      Kind kind) {
+      Kind kind,
+      CompilerOption.Compiler compiler) {
+
+    /** The entry point as it is written in the table, for the gate and the logs. */
+    public String describe() {
+      return typeName + "#" + methodName + "/" + argumentCount;
+    }
 
     /**
      * How the compiler arguments reach the hook.
@@ -90,11 +97,6 @@ public final class CompilerEntryPoints {
        */
       NO_OPTIONS
     }
-
-    /** A human-readable description, for logs and error messages. */
-    public String describe() {
-      return typeName + "#" + methodName + "/" + argumentCount;
-    }
   }
 
   /**
@@ -109,18 +111,18 @@ public final class CompilerEntryPoints {
           // --- the javac command-line driver ---
           // com.sun.tools.javac.Main#compile(String[]) -- static, the CLI's own entry point.
           new EntryPoint(
-              "com.sun.tools.javac.Main", "compile", 1, 0, -1, EntryPoint.Kind.ARGV),
+              "com.sun.tools.javac.Main", "compile", 1, 0, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC),
           // com.sun.tools.javac.Main#compile(String[], PrintWriter) -- the same, but the
           // diagnostics go to a writer the caller supplies.
           new EntryPoint(
-              "com.sun.tools.javac.Main", "compile", 2, 0, -1, EntryPoint.Kind.ARGV),
+              "com.sun.tools.javac.Main", "compile", 2, 0, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC),
           // com.sun.tools.javac.main.Main#compile(String[]) -- instance, the options are the
           // FIRST declared parameter (the instance `this` is not a parameter).
           new EntryPoint(
-              "com.sun.tools.javac.main.Main", "compile", 1, 0, -1, EntryPoint.Kind.ARGV),
+              "com.sun.tools.javac.main.Main", "compile", 1, 0, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC),
           // com.sun.tools.javac.main.Main#compile(String[], Context) -- same, plus the context.
           new EntryPoint(
-              "com.sun.tools.javac.main.Main", "compile", 2, 0, -1, EntryPoint.Kind.ARGV),
+              "com.sun.tools.javac.main.Main", "compile", 2, 0, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC),
 
           // --- the javax.tools API: what Gradle, Maven and the IDEs use ---
           // JavacTool#getTask(Writer, FileManager, DiagnosticListener,
@@ -134,7 +136,7 @@ public final class CompilerEntryPoints {
               6,
               3,
               5,
-              EntryPoint.Kind.FILE_OBJECTS_WITH_TASK),
+              EntryPoint.Kind.FILE_OBJECTS_WITH_TASK, CompilerOption.Compiler.JAVAC),
           // JavacTool#getTask(..., Context) -- the seven-argument overload, same positions.
           new EntryPoint(
               "com.sun.tools.javac.api.JavacTool",
@@ -142,7 +144,7 @@ public final class CompilerEntryPoints {
               7,
               3,
               5,
-              EntryPoint.Kind.FILE_OBJECTS_WITH_TASK),
+              EntryPoint.Kind.FILE_OBJECTS_WITH_TASK, CompilerOption.Compiler.JAVAC),
 
           // --- the old javax.tools.JavaCompiler#run API ---
           //
@@ -155,7 +157,7 @@ public final class CompilerEntryPoints {
           // The signature is `run(InputStream, OutputStream, OutputStream, String...)`, so the
           // options are the varargs array in argument 3.
           new EntryPoint(
-              "com.sun.tools.javac.api.JavacTool", "run", 4, 3, -1, EntryPoint.Kind.ARGV),
+              "com.sun.tools.javac.api.JavacTool", "run", 4, 3, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC),
 
           // --- the IDE path: JavacTaskImpl#call() and #generate() ---
           //
@@ -169,14 +171,14 @@ public final class CompilerEntryPoints {
               0,
               -1,
               -1,
-              EntryPoint.Kind.NO_OPTIONS),
+              EntryPoint.Kind.NO_OPTIONS, CompilerOption.Compiler.JAVAC),
           new EntryPoint(
               "com.sun.tools.javac.api.JavacTaskImpl",
               "generate",
               0,
               -1,
               -1,
-              EntryPoint.Kind.NO_OPTIONS),
+              EntryPoint.Kind.NO_OPTIONS, CompilerOption.Compiler.JAVAC),
 
           // --- Eclipse's compiler ---
           new EntryPoint(
@@ -185,13 +187,13 @@ public final class CompilerEntryPoints {
               1,
               0,
               -1,
-              EntryPoint.Kind.ARGV),
+              EntryPoint.Kind.ARGV, CompilerOption.Compiler.ECJ),
 
           // --- the sjavac server ---
           new EntryPoint(
-              "com.sun.tools.sjavac.client.ClientMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV),
+              "com.sun.tools.sjavac.client.ClientMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.SJAVAC),
           new EntryPoint(
-              "com.sun.tools.sjavac.server.ServerMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV));
+              "com.sun.tools.sjavac.server.ServerMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.SJAVAC));
 
   private CompilerEntryPoints() {}
 

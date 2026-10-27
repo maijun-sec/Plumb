@@ -67,6 +67,22 @@ The gates are:
                               list, and no raw ASM
     mutate_capture_claims      the capture gate is not checking air: every
                               deliberate drift must make it fail
+    check_capture_options      the capture module's option table still
+                              matches Coverity's reference model: the
+                              categorised options, their value kinds, their
+                              repetition rules, their spellings
+    mutate_capture_options     the option gate is not checking air: every
+                              deliberate drift must make it fail
+    check_i18n_docs            the English and Chinese documentation have
+                              the same shape: the same documents, the same
+                              headings, the same tables, the same code
+                              blocks, working links, and a working
+                              language switch on every page
+    mutate_i18n_docs           the i18n gate is not checking air: every
+                              deliberate drift must make it fail
+    check_readme_claims        the root README still matches the code: the
+                              counts it quotes, the sizes it quotes, and
+                              whether a size names the artifact it is about
     check_package_claims       the packaging scripts copy files that exist,
                               and the packaging documentation's sizes and
                               log level match the build
@@ -136,6 +152,16 @@ GATES = (
      ["python", "scripts/check_capture_claims.py"], "check"),
     ("mutate_capture_claims",
      ["python", "scripts/mutate_capture_claims.py"], "check"),
+    ("check_capture_options",
+     ["python", "scripts/check_capture_options.py"], "check"),
+    ("mutate_capture_options",
+     ["python", "scripts/mutate_capture_options.py"], "check"),
+    ("check_i18n_docs",
+     ["python", "scripts/check_i18n_docs.py"], "check"),
+    ("mutate_i18n_docs",
+     ["python", "scripts/mutate_i18n_docs.py"], "check"),
+    ("check_readme_claims",
+     ["python", "scripts/check_readme_claims.py"], "check"),
     ("check_package_claims",
      ["python", "scripts/check_package_claims.py"], "check"),
     ("capability_baseline",

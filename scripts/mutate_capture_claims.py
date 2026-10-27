@@ -53,14 +53,25 @@ MUTANTS = [
     (
         "the document drops an entry point the source hooks",
         "doc",
-        lambda t: t.replace(
-            "| `com.sun.tools.sjavac.server.ServerMain#run(String[])` | sjavac server |\n", ""
+        # The table row's wording differs between the Chinese and the
+        # English document, so the row is removed by its signature rather
+        # than by its text.
+        lambda t: "\n".join(
+            line
+            for line in t.split("\n")
+            if "com.sun.tools.sjavac.server.ServerMain#run(String[])" not in line
         ),
     ),
     (
         "the document's entry point count is wrong",
         "doc",
-        lambda t: t.replace("而是**十二个**", "而是**八个**"),
+        # The document may be in Chinese or English; the count is what
+        # matters, so both spellings are tried.
+        lambda t: (
+            t.replace("而是**十二个**", "而是**八个**")
+            if "而是**十二个**" in t
+            else t.replace("but **twelve**", "but **eight**")
+        ),
     ),
     (
         "the document stops mentioning a capture class",
@@ -71,9 +82,12 @@ MUTANTS = [
         "the source hooks an entry point the document does not mention",
         "ep",
         lambda t: t.replace(
-            '"com.sun.tools.sjavac.server.ServerMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV));',
-            '"com.sun.tools.sjavac.server.ServerMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV),\n'
-            '          new EntryPoint("com.sun.tools.javac.api.Foo", "bar", 1, 0, -1, EntryPoint.Kind.ARGV));',
+            '"com.sun.tools.sjavac.server.ServerMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV, '
+            "CompilerOption.Compiler.SJAVAC));",
+            '"com.sun.tools.sjavac.server.ServerMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV, '
+            "CompilerOption.Compiler.SJAVAC),\n"
+            '          new EntryPoint("com.sun.tools.javac.api.Foo", "bar", 1, 0, -1, '
+            "EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC));",
         ),
     ),
 ]

@@ -4,66 +4,48 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
  * The compile options recovered from a captured javac command line.
  *
- * <p>This carries the same information the original {@code java-capture} project
- * recorded in its {@code JavaOption} bean: the source encoding, the language
- * level, the classpath, the source path, the output directory and the source
- * files.
+ * <p>This carries the same information the original {@code java-capture} project recorded in its
+ * {@code JavaOption} bean: the source encoding, the language level, the classpath, the source
+ * path, the output directory and the source files.
+ *
+ * <p><b>The option knowledge lives in {@link CompilerOption}.</b> This class only walks the argv
+ * and applies the table. That matters because the previous implementation had a dozen hard-coded
+ * option names in a switch, and everything it did not know fell through to a default branch that
+ * treated any argument ending in {@code .java} as a source file. So {@code --processor-path
+ * some/dir.jar} was silently dropped, and an unknown option whose value ended in {@code .java}
+ * was mistaken for a source file.
  */
 public final class JavacOptions {
-
-  /** javac {@code -d}. */
-  private static final String OPT_D = "-d";
-
-  /** javac {@code -classpath}. */
-  private static final String OPT_CLASSPATH = "-classpath";
-
-  /** javac {@code -cp} -- a synonym for {@code -classpath}. */
-  private static final String OPT_CP = "-cp";
-
-  /** javac {@code -encoding}. */
-  private static final String OPT_ENCODING = "-encoding";
-
-  /** javac {@code -source}. */
-  private static final String OPT_SOURCE = "-source";
-
-  /** javac {@code -target}. */
-  private static final String OPT_TARGET = "-target";
-
-  /** javac {@code --release}. */
-  private static final String OPT_RELEASE = "--release";
-
-  /** javac {@code -sourcepath}. */
-  private static final String OPT_SOURCEPATH = "-sourcepath";
-
-  /** javac {@code -bootclasspath}. */
-  private static final String OPT_BOOTCLASSPATH = "-bootclasspath";
-
-  /** javac {@code -extdirs}. */
-  private static final String OPT_EXTDIRS = "-extdirs";
-
-  /** javac {@code --module-path}. */
-  private static final String OPT_MODULEPATH = "--module-path";
-
-  /** javac {@code -p}. */
-  private static final String OPT_MODULE_SOURCE_PATH = "-p";
 
   private final List<String> rawArguments;
   private final Charset encoding;
   private final String encodingName;
   private final String source;
   private final String target;
+  private final String release;
   private final List<Path> classpath;
   private final List<Path> sourcePath;
   private final List<Path> modulePath;
+  private final List<Path> moduleSourcePath;
+  private final List<Path> processorPath;
+  private final List<Path> bootClassPath;
   private final Path outputDirectory;
+  private final Path annotationProcessingDirectory;
   private final List<Path> sourceFiles;
+  private final List<String> addModules;
+  private final List<String> addExports;
+  private final List<String> addReads;
+  private final boolean preview;
+  private final boolean compilation;
 
   private JavacOptions(Builder b) {
     this.rawArguments = List.copyOf(b.rawArguments);
@@ -71,11 +53,21 @@ public final class JavacOptions {
     this.encodingName = b.encodingName;
     this.source = b.source;
     this.target = b.target;
+    this.release = b.release;
     this.classpath = List.copyOf(b.classpath);
     this.sourcePath = List.copyOf(b.sourcePath);
     this.modulePath = List.copyOf(b.modulePath);
+    this.moduleSourcePath = List.copyOf(b.moduleSourcePath);
+    this.processorPath = List.copyOf(b.processorPath);
+    this.bootClassPath = List.copyOf(b.bootClassPath);
     this.outputDirectory = b.outputDirectory;
+    this.annotationProcessingDirectory = b.annotationProcessingDirectory;
     this.sourceFiles = List.copyOf(b.sourceFiles);
+    this.addModules = List.copyOf(b.addModules);
+    this.addExports = List.copyOf(b.addExports);
+    this.addReads = List.copyOf(b.addReads);
+    this.preview = b.preview;
+    this.compilation = b.compilation;
   }
 
   /** The raw argv, exactly as javac received it. */
@@ -106,6 +98,11 @@ public final class JavacOptions {
     return target;
   }
 
+  /** The {@code --release} level, or {@code null} when javac was not told. */
+  public String release() {
+    return release;
+  }
+
   public List<Path> classpath() {
     return classpath;
   }
@@ -118,23 +115,76 @@ public final class JavacOptions {
     return modulePath;
   }
 
+  /** The {@code --module-source-path}, or empty. */
+  public List<Path> moduleSourcePath() {
+    return moduleSourcePath;
+  }
+
+  /** The {@code --processor-path}, or empty. */
+  public List<Path> processorPath() {
+    return processorPath;
+  }
+
+  /** The boot class path, or empty. */
+  public List<Path> bootClassPath() {
+    return bootClassPath;
+  }
+
   /** The {@code -d} output directory, or {@code null}. */
   public Path outputDirectory() {
     return outputDirectory;
+  }
+
+  /** The {@code -s} annotation processing directory, or {@code null}. */
+  public Path annotationProcessingDirectory() {
+    return annotationProcessingDirectory;
   }
 
   public List<Path> sourceFiles() {
     return sourceFiles;
   }
 
+  /** The {@code --add-modules} entries, in order. */
+  public List<String> addModules() {
+    return addModules;
+  }
+
+  /** The {@code --add-exports} entries, in order. */
+  public List<String> addExports() {
+    return addExports;
+  }
+
+  /** The {@code --add-reads} entries, in order. */
+  public List<String> addReads() {
+    return addReads;
+  }
+
+  /** Whether {@code --enable-preview} was given. */
+  public boolean preview() {
+    return preview;
+  }
+
+  /**
+   * Whether this command line actually produced class files.
+   *
+   * <p>False for {@code -Xprint} and {@code -proc:only}: the first prints the compiler's internal
+   * state, the second runs only the annotation processors. Neither writes a class file, so a
+   * capture that counted them as compiles would report a compilation that never happened.
+   */
+  public boolean isCompilation() {
+    return compilation;
+  }
+
   /**
    * The language level to analyse at.
    *
-   * <p>{@code --release} wins over {@code -source}, because it pins both the
-   * language level and the platform API. Falls back to {@code -source}, then
-   * to {@code -target}.
+   * <p>{@code --release} wins over {@code -source}, because it pins both the language level and the
+   * platform API. Falls back to {@code -source}, then to {@code -target}.
    */
   public String languageLevel() {
+    if (release != null) {
+      return release;
+    }
     if (source != null) {
       return source;
     }
@@ -148,117 +198,133 @@ public final class JavacOptions {
    * @return the parsed options
    */
   public static JavacOptions parse(List<String> arguments) {
+    return parse(arguments, CompilerOption.Compiler.JAVAC);
+  }
+
+  /**
+   * Parse a captured argv into structured options, for a given compiler.
+   *
+   * <p>The compiler matters because the options differ: ECJ spells the classpath {@code
+   * --class-path}, and sjavac has its own set. Parsing ECJ's arguments with javac's table would
+   * drop the classpath.
+   *
+   * @param arguments the argv the compiler received
+   * @param compiler which compiler received it
+   * @return the parsed options
+   */
+  public static JavacOptions parse(List<String> arguments, CompilerOption.Compiler compiler) {
     Builder b = new Builder();
     if (arguments == null || arguments.isEmpty()) {
       return b.build();
     }
     b.rawArguments = arguments;
 
+    // The values seen per canonical option name, so that "only the last one counts" and "every
+    // occurrence applies" can be applied without hard-coding either.
+    Map<String, List<String>> values = new LinkedHashMap<>();
+
     for (int i = 0; i < arguments.size(); i++) {
       String arg = arguments.get(i);
-      if (arg == null) {
+      if (arg == null || arg.isEmpty()) {
         continue;
       }
-      switch (arg) {
-        case OPT_D -> {
-          String v = valueAt(arguments, ++i);
-          if (v != null) {
-            b.outputDirectory = Path.of(v);
+
+      // An option and its value may be attached: "-encodingUTF-8" or "-dout".
+      CompilerOption option = CompilerOption.byName(arg, compiler);
+      String attached = null;
+      if (option == null) {
+        // Try the attached form: find the longest option name this argument starts with,
+        // where the option takes a value.
+        for (CompilerOption candidate : CompilerOption.forCompiler(compiler)) {
+          if (candidate.value() == CompilerOption.Value.NONE) {
+            continue;
           }
-        }
-        case OPT_ENCODING -> {
-          String v = valueAt(arguments, ++i);
-          if (v != null) {
-            b.encoding = charset(v);
-            b.encodingName = v;
-          }
-        }
-        case OPT_SOURCE -> {
-          b.source = valueAt(arguments, ++i);
-        }
-        case OPT_TARGET -> {
-          b.target = valueAt(arguments, ++i);
-        }
-        case OPT_RELEASE -> {
-          b.source = valueAt(arguments, ++i);
-          b.target = b.source;
-        }
-        case OPT_CLASSPATH, OPT_CP -> {
-          String v = valueAt(arguments, ++i);
-          if (v != null) {
-            b.classpath.addAll(splitPath(v));
-          }
-        }
-        case OPT_SOURCEPATH -> {
-          String v = valueAt(arguments, ++i);
-          if (v != null) {
-            b.sourcePath.addAll(splitPath(v));
-          }
-        }
-        case OPT_MODULEPATH -> {
-          String v = valueAt(arguments, ++i);
-          if (v != null) {
-            b.modulePath.addAll(splitPath(v));
-          }
-        }
-        case OPT_MODULE_SOURCE_PATH -> {
-          String v = valueAt(arguments, ++i);
-          if (v != null) {
-            b.sourcePath.addAll(splitPath(v));
-          }
-        }
-        case OPT_BOOTCLASSPATH, OPT_EXTDIRS -> {
-          // Recorded in the raw argv but not modelled separately.
-          i++;
-        }
-        default -> {
-          if (arg.endsWith(".java")) {
-            b.sourceFiles.add(Path.of(arg));
+          if (arg.length() > candidate.name().length()
+              && arg.startsWith(candidate.name())
+              && candidate.name().startsWith("-")) {
+            option = candidate;
+            attached = arg.substring(candidate.name().length());
+            break;
           }
         }
       }
+
+      if (option == null) {
+        // Not an option: it is a source file, or a file or directory to compile.
+        if (arg.endsWith(".java") || arg.endsWith(".jar")) {
+          b.sourceFiles.add(Path.of(arg));
+        }
+        continue;
+      }
+
+      String value = attached;
+      if (value == null && option.takesValue()) {
+        if (i + 1 < arguments.size()) {
+          value = arguments.get(++i);
+        } else {
+          value = "";
+        }
+      }
+
+      if (option.effect() == CompilerOption.Effect.NOT_COMPILATION) {
+        b.compilation = false;
+        continue;
+      }
+
+      List<String> seen = values.computeIfAbsent(option.canonicalName(), k -> new ArrayList<>());
+      if (option.repeat() == CompilerOption.Repeat.LAST_WINS) {
+        seen.clear();
+      }
+      if (value != null) {
+        seen.add(value);
+      }
+
+      apply(b, option, value);
     }
+
     return b.build();
   }
 
-  private static String valueAt(List<String> args, int index) {
-    return index < args.size() ? args.get(index) : null;
-  }
-
-  /**
-   * Split a classpath string into entries.
-   *
-   * <p><b>The separator is platform-dependent, and the drive letter is part of the path.</b> On
-   * Windows the separator is {@code ;} and a path looks like {@code D:\cache\repo.jar}; on Unix
-   * it is {@code :} and a path looks like {@code /home/u/repo.jar}. Splitting on both
-   * separators at once turns {@code D:\cache\repo.jar} into {@code D} and {@code
-   * \cache\repo.jar} -- two paths that are both wrong, and the first one happens to look like a
-   * valid relative path, so the breakage is easy to miss.
-   *
-   * <p>So the separator is chosen by platform, and only that one is used.
-   */
-  private static List<Path> splitPath(String value) {
-    List<Path> out = new ArrayList<>();
-    if (value == null || value.isBlank()) {
-      return out;
-    }
-    char separator = isWindows() ? ';' : ':';
-    for (String part : value.split(java.util.regex.Pattern.quote(String.valueOf(separator)))) {
-      String trimmed = part.trim();
-      if (!trimmed.isEmpty()) {
-        try {
-          out.add(Path.of(trimmed));
-        } catch (RuntimeException e) {
-          // Not a path -- skip it rather than failing the whole capture.
+  /** Fold one option's value into the builder. */
+  private static void apply(Builder b, CompilerOption option, String value) {
+    String canonical = option.canonicalName();
+    switch (canonical) {
+      case "--output-dir" -> {
+        if (value != null && !value.isBlank()) {
+          b.outputDirectory = Path.of(value);
         }
       }
+      case "--classpath" -> b.classpath = CompilerOption.splitPath(value);
+      // ECJ's own spelling of the classpath.  It is a different option, so
+      // that javac does not learn to accept it, but it means the same thing.
+      case "--class-path" -> b.classpath = CompilerOption.splitPath(value);
+      case "--sourcepath" -> b.sourcePath = CompilerOption.splitPath(value);
+      case "--module-path" -> b.modulePath = CompilerOption.splitPath(value);
+      case "--module-source-path" -> b.moduleSourcePath = CompilerOption.splitPath(value);
+      case "--processor-path" -> b.processorPath = CompilerOption.splitPath(value);
+      case "bootclasspath" -> b.bootClassPath = CompilerOption.splitPath(value);
+      case "--annotation-processing-dir" -> {
+        if (value != null && !value.isBlank()) {
+          b.annotationProcessingDirectory = Path.of(value);
+        }
+      }
+      case "--encoding" -> {
+        if (value != null && !value.isBlank()) {
+          b.encoding = charset(value);
+          b.encodingName = value;
+        }
+      }
+      case "--source" -> b.source = value;
+      case "--target" -> b.target = value;
+      case "--release" -> b.release = value;
+      case "--add-modules" -> b.addModules.addAll(CompilerOption.splitCommaList(value));
+      case "--add-exports" -> b.addExports.addAll(CompilerOption.splitCommaList(value));
+      case "--add-reads" -> b.addReads.addAll(CompilerOption.splitCommaList(value));
+      case "--enable-preview" -> b.preview = true;
+      default -> {
+        // An option we record but do not interpret, e.g. --system or --patch-module.
+      }
     }
-    return out;
-  }
-
-  /** True when the platform separates classpath entries with {@code ;}. */
-  private static boolean isWindows() {
-    return System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
   }
 
   private static Charset charset(String name) {
@@ -276,11 +342,21 @@ public final class JavacOptions {
     String encodingName;
     String source;
     String target;
+    String release;
     List<Path> classpath = new ArrayList<>();
     List<Path> sourcePath = new ArrayList<>();
     List<Path> modulePath = new ArrayList<>();
+    List<Path> moduleSourcePath = new ArrayList<>();
+    List<Path> processorPath = new ArrayList<>();
+    List<Path> bootClassPath = new ArrayList<>();
     Path outputDirectory;
+    Path annotationProcessingDirectory;
     Set<Path> sourceFiles = new LinkedHashSet<>();
+    List<String> addModules = new ArrayList<>();
+    List<String> addExports = new ArrayList<>();
+    List<String> addReads = new ArrayList<>();
+    boolean preview;
+    boolean compilation = true;
 
     JavacOptions build() {
       return new JavacOptions(this);

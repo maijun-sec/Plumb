@@ -37,7 +37,12 @@ class BootstrapInjectionTest {
             "org/plumb/build/capture/CaptureRecorder.class",
             "org/plumb/build/capture/CaptureEntry.class",
             "org/plumb/build/capture/JavacOptions.class",
-            "org/plumb/build/capture/JavacOptions$Builder.class");
+            "org/plumb/build/capture/JavacOptions$Builder.class",
+            "org/plumb/build/capture/CompilerOption.class",
+            "org/plumb/build/capture/CompilerOption$Compiler.class",
+            "org/plumb/build/capture/CompilerOption$Value.class",
+            "org/plumb/build/capture/CompilerOption$Repeat.class",
+            "org/plumb/build/capture/CompilerOption$Effect.class");
   }
 
   @Test
@@ -220,7 +225,11 @@ class BootstrapInjectionTest {
           "Deprecated", "StringBuilder", "Iterator", "FileAttribute", "OpenOption", "PrintStream",
           "StringConcatFactory", "MethodHandles", "Record", "ObjectMethods", "String[]",
           "StringBuilder[]", "Object[]", "Method", "ReflectiveOperationException",
-          "MethodHandles$Lookup", "Locale", "Pattern", "NoSuchMethodException");
+          "MethodHandles$Lookup", "Locale", "Pattern", "NoSuchMethodException",
+          // Every enum extends java.lang.Enum, so an enum in the bootstrap
+          // classes names it. LambdaMetafactory is what the compiler generates
+          // for a switch expression over an enum.
+          "Enum", "Enum[]", "LambdaMetafactory", "SwitchBootstraps");
 
   private static boolean isJdkType(String type) {
     return JDK_TYPES.contains(type);

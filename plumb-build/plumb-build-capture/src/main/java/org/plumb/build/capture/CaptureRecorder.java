@@ -113,6 +113,20 @@ public final class CaptureRecorder {
    * @param arguments the argv the compiler received
    */
   public static void onArgv(String[] arguments) {
+    onArgv(arguments, CompilerOption.Compiler.JAVAC);
+  }
+
+  /**
+   * Record a captured CLI invocation, for a known compiler.
+   *
+   * <p>The compiler matters because the option tables differ: ECJ spells the classpath {@code
+   * --class-path}, and sjavac has its own set. Parsing ECJ's arguments with javac's table would
+   * drop the classpath, which is the one thing a static analyser cannot do without.
+   *
+   * @param arguments the argv the compiler received
+   * @param compiler which compiler received it
+   */
+  public static void onArgv(String[] arguments, CompilerOption.Compiler compiler) {
     if (arguments == null || arguments.length == 0) {
       return;
     }
@@ -120,7 +134,7 @@ public final class CaptureRecorder {
     for (String a : arguments) {
       argv.add(a);
     }
-    record(buildCapture(argv, List.of(), "cli"));
+    record(buildCapture(argv, List.of(), "cli", compiler));
   }
 
   /**
@@ -309,7 +323,22 @@ public final class CaptureRecorder {
    */
   private static List<CaptureEntry> buildCapture(
       List<String> argv, List<String> extraSources, String api) {
-    JavacOptions options = JavacOptions.parse(argv);
+    return buildCapture(argv, extraSources, api, CompilerOption.Compiler.JAVAC);
+  }
+
+  /**
+   * Assemble the capture for a known compiler.
+   *
+   * <p>The compiler matters because the options differ: ECJ spells the classpath {@code
+   * --class-path}, and sjavac has its own set. Parsing ECJ's arguments with javac's table would
+   * drop the classpath entirely.
+   */
+  private static List<CaptureEntry> buildCapture(
+      List<String> argv,
+      List<String> extraSources,
+      String api,
+      CompilerOption.Compiler compiler) {
+    JavacOptions options = JavacOptions.parse(argv, compiler);
 
     // The classpath the compiler actually used. `-classpath` wins; when it
     // is absent the compiler falls back to the CLASSPATH environment
@@ -336,6 +365,7 @@ public final class CaptureRecorder {
     entries.add(
         new CaptureEntry(
             api,
+            compiler.name().toLowerCase(java.util.Locale.ROOT),
             argv,
             options.encodingName(),
             options.languageLevel(),
@@ -343,7 +373,14 @@ public final class CaptureRecorder {
             classpath,
             options.sourcePath(),
             options.modulePath(),
+            options.processorPath(),
+            options.bootClassPath(),
             new ArrayList<>(sources),
+            options.addModules(),
+            options.addExports(),
+            options.addReads(),
+            options.preview(),
+            options.isCompilation(),
             System.getProperty("java.version"),
             System.getProperty("java.home"),
             System.getProperty("user.dir")));

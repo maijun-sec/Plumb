@@ -23,19 +23,7 @@ class CompileIdentityTest {
 
   private static CaptureEntry entry(
       List<Path> sources, Path output, List<Path> classpath, List<String> argv) {
-    return new CaptureEntry(
-        "cli",
-        argv,
-        "UTF-8",
-        "17",
-        output,
-        classpath,
-        List.of(Path.of("src")),
-        List.of(),
-        sources,
-        "17.0.1",
-        "/opt/jdk",
-        "/work");
+    return CaptureEntry.simple("cli", argv, "UTF-8", "17", output, classpath, sources);
   }
 
   @Test
@@ -108,13 +96,13 @@ class CompileIdentityTest {
   @Test
   void differentLanguageLevelsAreDifferentCompiles() {
     CaptureEntry a =
-        new CaptureEntry(
-            "cli", List.of(), "UTF-8", "17", Path.of("out"), List.of(Path.of("a.jar")), List.of(),
-            List.of(), List.of(Path.of("A.java")), "17", "/opt/jdk", "/work");
+        CaptureEntry.simple(
+            "cli", List.of(), "UTF-8", "17", Path.of("out"), List.of(Path.of("a.jar")),
+            List.of(Path.of("A.java")));
     CaptureEntry b =
-        new CaptureEntry(
-            "cli", List.of(), "UTF-8", "11", Path.of("out"), List.of(Path.of("a.jar")), List.of(),
-            List.of(), List.of(Path.of("A.java")), "17", "/opt/jdk", "/work");
+        CaptureEntry.simple(
+            "cli", List.of(), "UTF-8", "11", Path.of("out"), List.of(Path.of("a.jar")),
+            List.of(Path.of("A.java")));
     assertThat(a.sameCompileAs(b)).isFalse();
   }
 

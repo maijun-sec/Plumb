@@ -60,12 +60,35 @@ class JavacOptionsTest {
     assertThat(options.languageLevel()).isEqualTo("11");
   }
 
+  /**
+   * {@code --release} is kept apart from {@code -source} and {@code -target}.
+   *
+   * <p>They are not the same thing: {@code --release} pins the language level <em>and</em> the
+   * platform API, while {@code -source} only pins the language level. Folding {@code --release}
+   * into the source and target fields would lose that distinction, and a capture that reported
+   * "source 17" for a {@code --release 11} compile would be wrong.
+   */
   @Test
-  void releaseSetsBothSourceAndTarget() {
+  void releaseIsItsOwnLevel() {
     JavacOptions options = JavacOptions.parse(List.of("--release", "17", "Foo.java"));
 
-    assertThat(options.source()).isEqualTo("17");
-    assertThat(options.target()).isEqualTo("17");
+    assertThat(options.release()).isEqualTo("17");
+    assertThat(options.source()).isNull();
+    assertThat(options.target()).isNull();
+    assertThat(options.languageLevel()).isEqualTo("17");
+  }
+
+  /**
+   * {@code --release} wins over {@code -source}.
+   *
+   * <p>When both are given, the release level is the one the compiler actually used, because it
+   * is the more specific of the two.
+   */
+  @Test
+  void releaseWinsOverSource() {
+    JavacOptions options =
+        JavacOptions.parse(List.of("--release", "17", "-source", "11", "Foo.java"));
+
     assertThat(options.languageLevel()).isEqualTo("17");
   }
 
