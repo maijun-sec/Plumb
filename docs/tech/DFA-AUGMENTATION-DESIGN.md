@@ -1,46 +1,48 @@
-# DFA 增强设计：为什么 AST 不够用，怎么补
+# DFA Augmentation Design: Why the AST Is Not Enough and How to Fill the Gap
 
-本文档解释 Plumb 在 5 个 Coverity Java checker 上**加 DFA 增强版**的工程取舍——为什么 AST 版本会漏报、DFA 版本如何消除 false negative、4 种通用 DFA 增强技术怎么用。
+[English](../README.md) | [中文](../zh/tech/DFA-AUGMENTATION-DESIGN.md)
 
-> 配套：`tech/CROSS-FUNCTION-ANALYSIS.md`（跨函数 summary 完整机制）、`tech/ARCHITECTURE.md §3.0`（DFA 引擎 SPI）、`rules/RULE-TOOL-COMPARISON.md §1.2`（DFA vs AST 取舍）
+This document explains the engineering trade-offs of adding **DFA-augmented versions** of 5 Coverity Java checkers to Plumb -- why the AST versions produce false negatives, how the DFA versions eliminate them, and how the 4 general-purpose DFA augmentation techniques are used.
 
-## 1. 背景：为什么 AST 不够用
+> Companions: `tech/CROSS-FUNCTION-ANALYSIS.md` (the full mechanism of the cross-function summary), `tech/ARCHITECTURE.md §3.0` (the DFA engine SPI), `rules/RULE-TOOL-COMPARISON.md §1.2` (DFA vs AST trade-offs)
 
-- 系列 checker 在 AST 层已经能捕获大部分情况。但 AST 的视野天然受限于**单方法**：
+## 1. Background: why the AST is not enough
 
-| 漏报场景 | AST 局限 | DFA 怎么修 |
+- The checkers of this series already catch most cases at the AST level. But the view of the AST is naturally limited to a **single method**:
+
+| False-negative scenario | Limitation of the AST | How the DFA fixes it |
 | --- | --- | --- |
-| **Helper method 调用链** | `this.foo()` 把字段 f 赋了值，AST 看不到 | 拉 `foo()` 的 FunctionSummary 读 `Operation.WriteToField("f")` |
-| **Ctor chaining** | `this(other)` 调用另一个 ctor，AST 难以跟踪另一个 ctor 的字段初始化 | 走 another ctor 的 summary，union 字段集合 |
-| **Aliasing** | `y = x` 之后 `if (y == null)`，AST 只看 `x` 处的 null check | MOVE 指令传播 from-load 状态 |
-| **跨方法字段访问** | servlet 的 `getAttribute("k")` 在方法 A，`setAttribute("k", v)` 在方法 B | 跨函数累积 getAttribute/setAttribute 调用 |
+| **Helper method call chain** | `this.foo()` assigns the field f, the AST does not see it | Pull the `FunctionSummary` of `foo()` and read `Operation.WriteToField("f")` |
+| **Ctor chaining** | `this(other)` calls another ctor, the AST has trouble tracking the field initialisation of the other ctor | Follow the summary of the other ctor and union the field sets |
+| **Aliasing** | After `y = x` comes `if (y == null)`, the AST only sees the null check at `x` | The MOVE instruction propagates the from-load state |
+| **Cross-method field access** | The servlet's `getAttribute("k")` is in method A, `setAttribute("k", v)` is in method B | Accumulate the getAttribute/setAttribute calls across functions |
 
-Coverity 商业引擎"真值"用 DFA 实现。本批次在 plumb-dfa 加 5 个 DFA 增强版，与 AST 版**并存**（不同 rule id）——给用户**两条选择**：
-- 想**召回优先**：用 DFA 版（牺牲一点性能换漏报少）
-- 想**性能优先**：用 AST 版（漏报多但跑得快）
+The commercial Coverity engine implements its "ground truth" with DFA. This batch adds 5 DFA-augmented versions in plumb-dfa, **alongside** the AST versions (under different rule ids) -- giving the user **two choices**:
+- Want **recall first**: use the DFA version (trading a little performance for fewer false negatives)
+- Want **performance first**: use the AST version (more false negatives but much faster)
 
-## 2. 4 种通用 DFA 增强技术
+## 2. The 4 general-purpose DFA augmentation techniques
 
-### 2.1 FunctionSummary（最常用）
+### 2.1 FunctionSummary (the most commonly used)
 
-`plumb-dfa` 的框架已有 `FunctionSummary` 缓存机制：
+The framework of `plumb-dfa` already has a `FunctionSummary` cache mechanism:
 
 ```java
-// Operation.WriteToField 标记某方法会写某字段
+// Operation.WriteToField marks that a method writes a certain field
 FunctionSummary summary = cache.get(calleeSig);
 if (summary.returnOps().contains(new Operation.WriteToField("name"))) {
-    // 调用方知道 callee 会写 this.name
+    // the caller now knows that the callee writes this.name
 }
 ```
 
-`DfaEngine` 在 RPO 顺序遍历函数前会做**预热 pass**（`warmUpMethodSummaries`），把每个方法的 summary 先算好，调用方 checkInstruction 时直接查。
+Before traversing the functions in RPO order, `DfaEngine` runs a **warm-up pass** (`warmUpMethodSummaries`) that computes the summary of every method first, so that the caller can look it up directly when it calls checkInstruction.
 
-完整机制见 `tech/CROSS-FUNCTION-ANALYSIS.md §3`（Phase 1 自底向上构建 summary）。
+See `tech/CROSS-FUNCTION-ANALYSIS.md §3` for the complete mechanism (Phase 1 builds the summaries bottom-up).
 
-### 2.2 MOVE alias 传播
+### 2.2 MOVE alias propagation
 
 ```java
-// MOVE dest = lhs1: 如果 lhs1 是 from-load 状态，dest 也标 from-load
+// MOVE dest = lhs1: if lhs1 has the from-load state, dest is marked from-load too
 if (ins.kind == MOVE && ins.lhs1 instanceof TacVar
         && ins.dest instanceof TacVar) {
     if (fromLoadVars.containsKey(ins.lhs1.name())) {
@@ -49,14 +51,14 @@ if (ins.kind == MOVE && ins.lhs1 instanceof TacVar
 }
 ```
 
-TAC 的 MOVE 指令对应 Java 的 `y = x` / `return x` 等纯赋值场景。这是字段级精度（per-variable）的关键——`y = x; if (y == null)` 的 null check 才会传回 `x` 的 from-load 状态。
+The MOVE instruction of TAC corresponds to the pure assignment cases of Java such as `y = x` / `return x`. This is the key to field-level precision (per-variable) -- the null check of `y = x; if (y == null)` is then propagated back to the from-load state of `x`.
 
-### 2.3 BRANCH null 比较
+### 2.3 BRANCH null comparison
 
 ```java
-// BRANCH 指令 lhs1 binop lhs2 是 if 条件
+// The lhs1 binop lhs2 of a BRANCH instruction is the if condition
 if (ins.binop == BinaryOperator.EQ || ins.binop == BinaryOperator.NE) {
-    // lhs1 / lhs2 其中一边是 TacVar 名字，另一边是 Const.NULL
+    // One side of lhs1 / lhs2 is a TacVar name, the other is Const.NULL
     String l = ins.lhs1.toString();   // "x:UNKNOWN"
     String r = ins.ins.lhs2.toString();   // "null"
     String lBare = stripType(l);      // "x"
@@ -67,34 +69,34 @@ if (ins.binop == BinaryOperator.EQ || ins.binop == BinaryOperator.NE) {
 }
 ```
 
-**常见 bug 源**：`BinaryOperator.EQ.toString()` 是字符串 `"EQ"`，**不是** `"=="`。写 BRANCH null checker 必须用 `==` 操作符对象的 `.equals()` 比对，不要字符串比较。
+**A common source of bugs**: `BinaryOperator.EQ.toString()` is the string `"EQ"`, **not** `"=="`. A BRANCH null checker must compare the `.equals()` of the `==` operator object, not compare strings.
 
-### 2.4 跨函数字段跟踪
+### 2.4 Cross-function field tracking
 
-跨函数字段跟踪在 DFA 引擎里由 `FunctionSummary` + `Operation.WriteToField`
-承担（见 [`CROSS-FUNCTION-OPERATION.md`](./CROSS-FUNCTION-OPERATION.md) §5.7）：
-callee 在 summary 里写出它改了哪些字段，caller 的 `SummaryApplier` 把这些
-写进 caller 的 fact bag。
+Cross-function field tracking is carried by `FunctionSummary` + `Operation.WriteToField` in the DFA engine
+(see [`CROSS-FUNCTION-OPERATION.md`](./CROSS-FUNCTION-OPERATION.md) §5.7):
+the callee writes in its summary which fields it modified, and the `SummaryApplier` of the caller writes
+these into the fact bag of the caller.
 
-`SingletonRace` 和 `ServletAtomicity` 这两条规则**没有**走这条路 —— 它们已
-迁移到 `plumb-style`，是纯 AST checker：
+The rules `SingletonRace` and `ServletAtomicity` do **not** go down this road -- they have
+been migrated to `plumb-style` and are pure AST checkers:
 
-- `plumb-style/.../concurrency/SingletonRaceCheck.java` — 覆写
+- `plumb-style/.../concurrency/SingletonRaceCheck.java` -- overrides
   `visit(ClassOrInterfaceDeclaration, StyleContext)`
-- `plumb-style/.../concurrency/ServletAtomicityCheck.java` — 覆写
+- `plumb-style/.../concurrency/ServletAtomicityCheck.java` -- overrides
   `visit(MethodDeclaration, StyleContext)`
 
-对应的 DFA 版（`SingletonRaceDfaChecker` / `ServletAtomicityDfaChecker`）
-仍在源码里但**不注册**（`ScanRunner.buildDfaCheckers()` 里注册语句被注释掉），
-因为 AST 版的精度更好。
+The corresponding DFA versions (`SingletonRaceDfaChecker` / `ServletAtomicityDfaChecker`)
+are still in the source code but are **not registered** (the registration statement in
+`ScanRunner.buildDfaCheckers()` is commented out), because the precision of the AST version is better.
 
-## 3. DFA 增强 checker 详解
+## 3. The DFA-augmented checkers in detail
 
-### 3.1 不可为 null 的字段：只有 AST 版
+### 3.1 Fields that must not be null: AST version only
 
-`@NonNull` 字段的初始化检查目前只有 AST 版
-（`plumb-style/.../quality/UninitNonnullCheck.java`）。它看不到的场景是
-helper method 赋值：
+The initialisation check of `@NonNull` fields currently only exists as an AST version
+(`plumb-style/.../quality/UninitNonnullCheck.java`). The scenario it cannot see is
+assignment through a helper method:
 
 ```java
 @Entity
@@ -104,7 +106,7 @@ class User {
 
     User(String name) {
         this.name = name;
-        this.email = setEmail();   // ← helper method 赋值
+        this.email = setEmail();   // ← helper method assignment
     }
 
     private String setEmail() {
@@ -113,175 +115,176 @@ class User {
 }
 ```
 
-AST 看到 `setEmail()` 不知道它会写字段 email。要覆盖这个场景，需要在 ctor 的
-`initFunction` 里收集 `@NonNull` 字段作为必填集合，遍历 ctor 的所有 instruction
-（`FIELDSTORE` 标字段已写；`CALL` 拉 callee 的 `FunctionSummary.returnOps()`，含
-`WriteToField(f)` 就标 f 已写；`this(other)` 走另一个 ctor 的 summary 取并集），最后
-`finishFunction` 时必填集合减去已写集合非空就报。
+The AST sees `setEmail()` and does not know that it writes the field email. To cover this scenario, the `initFunction` of the ctor has to collect the `@NonNull` fields as the required set and walk all the instructions of the ctor
+(`FIELDSTORE` marks a field as written; `CALL` pulls the `FunctionSummary.returnOps()` of the callee, and
+`WriteToField(f)` marks f as written; `this(other)` follows the summary of the other ctor and takes the union);
+finally, in `finishFunction` it fires when the required set minus the written set is not empty.
 
-DFA 侧还没有这条规则，所以下面 3.2 到 3.6 是已实现的。
+The DFA side does not have this rule yet, so 3.2 to 3.6 below are the implemented ones.
 
 ### 3.2 -DA: OrmLoadNullCheckDfaChecker
 
-JPA `EntityManager.find()` 返回的 entity 可能是 null（找不到记录时）。AST 看到 `find()` 调用不知道"接着有没有 null check"。
+The entity returned by the JPA `EntityManager.find()` may be null (when no record is found). The AST sees the `find()` call and does not know "whether there is a null check afterwards".
 
-**DFA 修法**：
-1. CALL `EntityManager.find` 拉 callee summary，dest 加进 `findResults`
-2. BRANCH `if (x == null)` 时从 `findResults` 移除 x
-3. CALL `x.getXxx()` / `x.setXxx()` / `x.field` 命中**仍**在 `findResults` 的 x → fire
+**The DFA fix**:
+1. A CALL to `EntityManager.find` pulls the summary of the callee and adds dest to `findResults`
+2. On a BRANCH `if (x == null)` x is removed from `findResults`
+3. A CALL to `x.getXxx()` / `x.setXxx()` / access of `x.field` hits an x that is **still** in `findResults` -> fire
 
 ### 3.3 -DA: OrmUnnecessaryGetDfaChecker
 
-JPA `entity.getXxx()` 每次都查 DB，**但赋值给 local var 后多次用**——典型的"先 get 后丢弃"模式。
+The JPA `entity.getXxx()` queries the DB every time, **but if the result is assigned to a local variable and used several times** -- the typical "get it and then throw it away" pattern.
 
-**DFA 修法**：MOVE alias 传播跟踪 `local = entity.getXxx()`，第二次 `entity.getXxx()` 时 fire（除非中间修改了 entity）。
+**The DFA fix**: MOVE alias propagation tracks `local = entity.getXxx()` and fires on the second `entity.getXxx()` (unless the entity was modified in between).
 
 ### 3.4 -DA: OrmLostUpdateDfaChecker
 
-JPA `find → 修改 → save` 模式在并发下可能丢失 update（last writer wins）。
+The JPA `find → modify → save` pattern can lose an update under concurrency (last writer wins).
 
-**DFA 修法**：跨函数累积 `find` + `save` 调用对，每对之间检查是否有 @Version 字段读写。
+**The DFA fix**: accumulate the `find` + `save` call pairs across functions and check for each pair whether there is a read/write of an @Version field in between.
 
 ### 3.5 -DA: SingletonRaceDfaChecker
 
-singleton 的 field 在多个 servlet 请求间共享，非同步读写 → race condition。
+The field of a singleton is shared between several servlet requests; a non-synchronised read/write -> race condition.
 
-**DFA 修法**：
-1. 第一次 checkInstruction 遇到 FIELDSTORE，把"哪些字段被写"加到 `state.writtenFields`
-2. 第二次遇到 FIELDLOAD，从 `state.writtenFields` 移除
-3. finishFunction：如果 `state.writtenFields != ∅` 且 class 是 singleton（私有 ctor + 静态 getInstance）→ fire
+**The DFA fix**:
+1. The first time checkInstruction meets a FIELDSTORE, the "fields that were written" is added to `state.writtenFields`
+2. The second time it meets a FIELDLOAD, it is removed from `state.writtenFields`
+3. finishFunction: if `state.writtenFields != ∅` and the class is a singleton (private ctor + static getInstance) -> fire
 
 ### 3.6 -DA: ServletAtomicityDfaChecker
 
-`getAttribute` + `setAttribute` 跨方法调用，AST 看不见。
+`getAttribute` + `setAttribute` across method calls are invisible to the AST.
 
-**DFA 修法**（跟 SingletonRace 同模式）：
-1. 跨函数累积 `getAttribute` / `setAttribute` 键集
-2. finishFunction：如果某 key 多次 get/set 但没在 synchronized 块内 → fire
+**The DFA fix** (same pattern as SingletonRace):
+1. Accumulate the `getAttribute` / `setAttribute` key sets across functions
+2. finishFunction: if a key is get/set several times but not inside a synchronized block -> fire
 
-## 4. 设计决策
+## 4. Design decisions
 
-### 4.1 AST/DFA 并存
+### 4.1 AST and DFA side by side
 
-每个 checker 出**两个 rule id**：
-- AST 版：`ast-style-uninit-nonnull-style`（ 命名规范）
-- DFA 版：`plumb.dfa.uninit-nonnull`（ 命名规范）
+Every checker produces **two rule ids**:
+- AST version: `ast-style-uninit-nonnull-style` ( naming convention)
+- DFA version: `plumb.dfa.uninit-nonnull` ( naming convention)
 
-用户通过 yaml `rules.enabled` 二选一：
+The user picks one of the two with the YAML `rules.enabled`:
 
 ```yaml
 rules:
   enabled:
-    - ast-style-uninit-nonnull-style   # 快，漏报多
-    - plumb.dfa.uninit-nonnull        # 慢，漏报少
+    - ast-style-uninit-nonnull-style   # fast, more false negatives
+    - plumb.dfa.uninit-nonnull        # slower, fewer false negatives
 ```
 
-### 4.2 命名约定
+### 4.2 The naming conventions
 
-| 模式 | 命名 | 例子 |
+| Style | Naming | Example |
 | --- | --- | --- |
-| AST 版 | `ast-style-<bare>-style` | `ast-style-uninit-nonnull-style` |
-| DFA 版 | `plumb.dfa.<bare>` | `plumb.dfa.uninit-nonnull` |
-| Taint 版 | `plumb.taint.<bare>` | `plumb.taint.sql-injection` |
+| AST version | `ast-style-<bare>-style` | `ast-style-uninit-nonnull-style` |
+| DFA version | `plumb.dfa.<bare>` | `plumb.dfa.uninit-nonnull` |
+| Taint version | `plumb.taint.<bare>` | `plumb.taint.sql-injection` |
 
-3 种风格都支持任意一种写法的 yaml 匹配（`ScanRunner.isRuleIdAllowed` 双向 normalize，详见 `tech/ARCHITECTURE.md §8`）。
+All 3 styles support a YAML match in any of these spellings (`ScanRunner.isRuleIdAllowed` normalises in both directions, see `tech/ARCHITECTURE.md §8`).
 
-### 4.3 key 选择
+### 4.3 The choice of the key
 
-FunctionSummary 用什么作 key？
-- ❌ 函数名（重载冲突）
-- ❌ 类名.函数名（inner class / lambda 命名差异）
-- ✅ **signature = "Class.method(param1,param2,...)"**（ 决定保留）
+What does FunctionSummary use as its key?
+- ❌ The function name (overload conflicts)
+- ❌ Class name + function name (inner class / lambda naming differences)
+- ✅ **signature = "Class.method(param1,param2,...)"** ( the choice that was kept)
 
-签名规范化的具体规则：
-- 内部类用 `$` qualifier（JVM 风格）
-- lambda 合成函数的 signature 是 `lambda$N(arity)`（见
-  `plumb-tac/.../translate/ExpressionTranslator.java` 的 `translateLambda`）
-- 重载消歧用 arity + 参数类型
+The concrete rules of signature normalisation:
+- Inner classes use the `$` qualifier (JVM style)
+- The signature of a lambda synthetic function is `lambda$N(arity)` (see
+  `plumb-tac/.../translate/ExpressionTranslator.java`, `translateLambda`)
+- Overload disambiguation uses the arity + the parameter types
 
-### 4.4 AST vs DFA 的判定准则
+### 4.4 The criterion for AST vs DFA
 
-**如果满足以下任一条件，用 DFA 实现**：
-1. 需要**跨方法数据流**（helper method chain / ctor chaining）
-2. 需要**字段级精度**（aliasing / MOVE 传播）
-3. 需要**类型化别名**（cookie / socket / connection 等"同类型多实例"场景）
-4. 需要**路径敏感**（if (x == null) 后再访问 x）
+**If any of the following conditions holds, implement it with DFA**:
+1. **Cross-method data flow** is needed (helper method chain / ctor chaining)
+2. **Field-level precision** is needed (aliasing / MOVE propagation)
+3. **Typed aliases** are needed (the "several instances of the same type" scenarios such as cookie / socket / connection)
+4. **Path sensitivity** is needed (accessing x after `if (x == null)`)
 
-**否则用 AST 实现**：
-1. 仅看方法体形态（`if (x = y)` assignment-in-operand）
-2. 纯命名 / 格式 / 注释（style rule）
-3. 简单类型检查（`catch (Exception)` 抓 generic）
-4. 调用方无关（regex 看 `System.out.println`）
+**Otherwise implement it with the AST**:
+1. Only the shape of the method body matters (`if (x = y)` assignment-in-operand)
+2. Pure naming / formatting / comments (style rule)
+3. Simple type checks (`catch (Exception)` catching a generic)
+4. The caller does not matter (a regex looking for `System.out.println`)
 
-这条准则的来源：`CROSS-FUNCTION-ANALYSIS.md §12.3`（不迁移规则清单）。
+This criterion is this document's own: the two lists above are what
+decides whether a checker belongs to the AST side or the DFA side.
 
-## 5. 测试策略
+## 5. Testing strategy
 
-每个 DFA 增强 checker 配 3 类测试：
+Every DFA-augmented checker gets 3 kinds of tests:
 
-| 测试类型 | 目的 |
+| Test type | Purpose |
 | --- | --- |
-| **正样本** | 给一段能命中的代码，验证 fire |
-| **负样本** | 给 AST 版本会漏、DFA 版本能命中的代码 |
-| **回归样本** | AST 版本已能命中、DFA 版本不破坏 |
+| **Positive sample** | Give a piece of code that can fire, verify that it fires |
+| **Negative sample** | Give code that the AST version misses but the DFA version hits |
+| **Regression sample** | The AST version already hits it, the DFA version does not break it |
 
-测试放在 `plumb-dfa/src/test/java/org/plumb/dfa/checkers/` 下的对应包里。
+The tests live in the corresponding packages under `plumb-dfa/src/test/java/org/plumb/dfa/checkers/`.
 
-## 6. 规则的默认开关
+## 6. The default switches of the rules
 
-AST 版和 DFA 版的默认开/关，由 YAML 的 `checks.<rule>: {enabled: true|false}` 段控制
-（DFA 侧还有 `plumb-dfa/src/main/resources/checkers.yaml` 里的同名条目）。
+Whether the AST version and the DFA version are on or off by default is controlled by the
+`checks.<rule>: {enabled: true|false}` section of the YAML
+(the DFA side also has the entries of the same name in `plumb-dfa/src/main/resources/checkers.yaml`).
 
-有一个 Coverity 风格的 `aggressiveness` 旋钮（`--aggressiveness=low|medium|high`）已经
-废弃：CLI 没有这个 flag，YAML 里写 `aggressiveness:` 会被 `ConfigLoader` 忽略并往
-stderr 打一条警告，扫描照常继续。改用 `checks.<rule>: {enabled: true|false,
-aiDedup: true|false}` 段。
+A Coverity-style `aggressiveness` knob (`--aggressiveness=low|medium|high`) has already been
+deprecated: the CLI has no such flag, and an `aggressiveness:` in the YAML is ignored by `ConfigLoader`, which prints a warning to
+stderr and lets the scan continue as usual. Use the `checks.<rule>: {enabled: true|false,
+aiDedup: true|false}` section instead.
 
-## 7. 尚未实现的 DFA 增强
+## 7. DFA augmentations that are not implemented yet
 
-已经落地的 DFA 增强：ORM 的四个（`OrmLoadNullCheckDfaChecker`、
-`OrmUnnecessaryGetDfaChecker`、`OrmLostUpdateDfaChecker`、`NullDerefFromReturnDfaChecker`），
-以及 `SingletonRaceDfaChecker` / `ServletAtomicityDfaChecker`（这两条有 AST 版且
-精度更好，DFA 版留在源码里但不注册）。
+The DFA augmentations that already exist: the four of the ORM (`OrmLoadNullCheckDfaChecker`,
+`OrmUnnecessaryGetDfaChecker`, `OrmLostUpdateDfaChecker`, `NullDerefFromReturnDfaChecker`),
+as well as `SingletonRaceDfaChecker` / `ServletAtomicityDfaChecker` (these two have an AST version with
+better precision, so the DFA version stays in the source code but is not registered).
 
-还没有对应实现的：
+Those without a corresponding implementation yet:
 
-| DFA 增强 | 场景 |
+| DFA augmentation | Scenario |
 | --- | --- |
-| `ORM_LAZY_INIT` | Hibernate lazy 加载 + 跨方法 |
-| `CONCURRENT_ITERATION` | 跨方法集合迭代 |
-| `THREAD_LOCAL_LEAK` | 跟 servlet 强相关 |
+| `ORM_LAZY_INIT` | Hibernate lazy loading + cross-method |
+| `CONCURRENT_ITERATION` | Cross-method collection iteration |
+| `THREAD_LOCAL_LEAK` | Strongly related to servlets |
 
-### 7.1 Z3 集成
+### 7.1 Z3 integration
 
-DFA 增强的"单条 Z3 query"（Phase 2 per-finding 验证）见 `tech/CROSS-FUNCTION-ANALYSIS.md §5.5`（Operation.SolverZ3Predicate）。
+The "single Z3 query" of a DFA augmentation (the per-finding verification of Phase 2) is described in `tech/CROSS-FUNCTION-OPERATION.md` §5.1 (Operation.SolverZ3Predicate).
 
-## 8. 经验总结
+## 8. Lessons learned
 
-### 8.1 AST → DFA 的迁移路径
+### 8.1 The migration path from AST to DFA
 
-不要试图一次把 AST checker 重写成 DFA。推荐路径：
+Do not try to rewrite an AST checker into a DFA checker all at once. The recommended path:
 
-1. **保留 AST 版**（不同 rule id），保证基本召回
-2. **加 DFA 版**作为补强，专注 AST 漏报的具体场景
-3. 用一套 per-CWE minimal yaml 让用户在两类间选择
-4. 长期看 DFA 召回追上 AST + 1 个数量级后，弃 AST 版
+1. **Keep the AST version** (under a different rule id) to guarantee the basic recall
+2. **Add the DFA version** as reinforcement, focused on the concrete scenarios the AST misses
+3. Use one minimal per-CWE YAML set to let the user choose between the two
+4. In the long run, once the DFA recall has caught up with the AST plus one order of magnitude, drop the AST version
 
-### 8.2 FunctionSummary 的边界
+### 8.2 The boundary of FunctionSummary
 
-`Operation` 变体**不**是无穷扩展。每个新加的 Operation 都要：
-- 在 `Operation.java` 加 sealed variant
-- 在 `MethodSummaryBuilder` 加 builder
-- 在 `SummaryApplier` 加 applier
-- 配套测试（callee summary + caller 应用两端）
+The variants of `Operation` are **not** infinitely extensible. Every newly added Operation requires:
+- a sealed variant in `Operation.java`
+- a builder in `MethodSummaryBuilder`
+- an applier in `SummaryApplier`
+- a matching test (both ends: the callee summary and its application in the caller)
 
-**3 个步骤缺一个就静默失败**——
+**Leaving out one of the 3 steps fails silently** ——
 
-### 8.3 不要为 style rule 写 DFA
+### 8.3 Do not write a DFA for a style rule
 
-Style rule 的特征：**只需要 AST 形态**。用 DFA 实现：
-- ❌ 不提升精度（AST 已经够）
-- ❌ 不提升召回（style rule 本来就不漏）
-- ❌ 增加维护成本（IR visitor 比 AST visitor 难调试）
+The characteristic of a style rule: **only the AST shape is needed**. Implementing it with DFA:
+- ❌ does not improve the precision (the AST is already enough)
+- ❌ does not improve the recall (a style rule does not miss anything in the first place)
+- ❌ increases the maintenance cost (an IR visitor is harder to debug than an AST visitor)
 
-如果不确定，问自己：*这条 rule 需不需要"数据从 A 流到 B"的判断？* 不需要 → AST。
+If you are not sure, ask yourself: *does this rule need the judgement "data flows from A to B"?* No -> AST.

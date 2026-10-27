@@ -234,9 +234,20 @@ def comment_lines(text):
 
 
 def scan_docs():
-    """Every hit in the markdown documentation."""
+    """Every hit in the markdown documentation.
+
+    The scope includes the repository's root README and its Chinese
+    counterpart. The root README is the first document a reader opens, so
+    a stale claim there is at least as damaging as one in `docs/` -- and
+    before this was added, nothing checked it at all. A round number in
+    the root README was therefore invisible to every gate.
+    """
     hits = []
-    for path in sorted(DOCS.rglob("*.md")):
+    paths = sorted(DOCS.rglob("*.md"))
+    for extra in (REPO / "README.md", REPO / "README.zh.md"):
+        if extra.is_file():
+            paths.append(extra)
+    for path in paths:
         text = path.read_text(encoding="utf-8", errors="replace")
         for name, pattern, why in RULES:
             for m in pattern.finditer(text):

@@ -1,29 +1,31 @@
-# 出包与发布
+# Packaging and Release
 
-本文档说明 Plumb 怎么打成可发布包、目录长什么样、目标机怎么拉起运行。
+[English](../README.md) | [中文](../zh/build/PACKAGE.md)
 
-> 本文档同时描述 **3 种发布形态**：
-> 1. **开发构建** — `scripts/build.sh` / `scripts/build.ps1` 出单文件 `plumb-main-<ver>-all.jar`
-> 2. **瘦发布包** — `scripts/package.sh` 出 bin/lib/conf 目录，需要目标机自带 JRE 17+
-> 3. **解压即用包** — `scripts/dist-jlink-windows.ps1` / `scripts/dist-jlink-linux.sh` 用 jlink 自带最小 JRE，**目标机无需任何 Java 环境**
+This document describes how Plumb is built into a releasable package, what the directory looks like, and how the target machine starts it.
+
+> This document describes **3 release forms** at the same time:
+> 1. **Development build** -- `scripts/build.sh` / `scripts/build.ps1` produce the single file `plumb-main-<ver>-all.jar`
+> 2. **Slim release package** -- `scripts/package.sh` produces the bin/lib/conf directories and requires a JRE 17+ on the target machine
+> 3. **Ready-to-unpack package** -- `scripts/dist-jlink-windows.ps1` / `scripts/dist-jlink-linux.sh` use jlink to bundle a minimal JRE, so **the target machine needs no Java environment at all**
 >
-> 此外 `scripts/package-slim.ps1` 在瘦发布包基础上重写 `default-config.yaml`，把 AI 开关关掉给内网/审计场景。
+> In addition, `scripts/package-slim.ps1` rewrites `default-config.yaml` on top of the slim release package to turn the AI switch off for intranet / audit scenarios.
 >
-> **没有 Windows 原生的 `package.ps1`** —— `package.sh` 是 bash 脚本，Windows 上
-> 通过 git-bash / WSL 运行；纯 PowerShell 的 Windows 出包路径是
-> `scripts/dist-jlink-windows.ps1` 和 `scripts/package-slim.ps1`。
+> **There is no native Windows `package.ps1`** -- `package.sh` is a bash script and runs on Windows through
+> git-bash / WSL; the pure PowerShell Windows packaging paths are
+> `scripts/dist-jlink-windows.ps1` and `scripts/package-slim.ps1`.
 
-## 1. 出包命令速查
+## 1. Packaging commands at a glance
 
-| 形态 | 命令 | 产物 |
+| Form | Command | Artifact |
 | --- | --- | --- |
-| 单文件 jar | `pwsh scripts/build.ps1 --skip-tests` | `plumb-main/target/plumb-main-<ver>-all.jar` |
-| 瘦发布包 | `bash scripts/package.sh` | `dist/plumb-<ver>/{bin,lib,conf}/` |
+| Single-file jar | `pwsh scripts/build.ps1 --skip-tests` | `plumb-main/target/plumb-main-<ver>-all.jar` |
+| Slim release package | `bash scripts/package.sh` | `dist/plumb-<ver>/{bin,lib,conf}/` |
 | AI-gate-closed slim | `pwsh scripts/package-slim.ps1` | `dist/plumb-<ver>-slim/{bin,lib,conf}/` |
-| 解压即用 (Linux x64 / arm64) | `bash scripts/dist-jlink-linux.sh --arch x64` | `dist-jlink/plumb-<ver>-jre-linux-x64.tar.gz` |
-| 解压即用 (Windows x64) | `pwsh scripts/dist-jlink-windows.ps1 -Arch x64` | `dist-jlink/plumb-<ver>-jre-windows-x64.zip` |
+| Ready-to-unpack (Linux x64 / arm64) | `bash scripts/dist-jlink-linux.sh --arch x64` | `dist-jlink/plumb-<ver>-jre-linux-x64.tar.gz` |
+| Ready-to-unpack (Windows x64) | `pwsh scripts/dist-jlink-windows.ps1 -Arch x64` | `dist-jlink/plumb-<ver>-jre-windows-x64.zip` |
 
-构建脚本都接受 `--skip-build` / `-SkipBuild` 跳过 Maven，仅基于已生成的 jar 重打发布包——CI 上常这么用：
+All the build scripts accept `--skip-build` / `-SkipBuild` to skip Maven and repackage the release based only on the already-built jar -- this is common on CI:
 
 ```bash
 ./scripts/build.sh --skip-tests
@@ -31,102 +33,102 @@
 ./scripts/dist-jlink-linux.sh
 ```
 
-## 2. 完整目录布局（瘦发布包）
+## 2. The complete directory layout (slim release package)
 
-`scripts/package.sh` 输出的标准布局：
+The standard layout produced by `scripts/package.sh`:
 
 ```
 plumb-<ver>/
-├── README.txt                  快速上手（cmd/bin + conf 段说明）
+├── README.txt                  quick start (cmd/bin + conf section description)
 ├── bin/
-│   ├── sast-scan               POSIX 启动器（bash）
-│   └── sast-scan.bat           Windows cmd 启动器
+│   ├── sast-scan               POSIX launcher (bash)
+│   └── sast-scan.bat           Windows cmd launcher
 ├── lib/
-│   └── plumb-main-<ver>-all.jar     单文件 uber-jar（≈ 142 MB）
+│   └── plumb-main-<ver>-all.jar     single-file uber-jar (≈ 142 MB)
 └── conf/
-    ├── default-config.yaml     baseline YAML（详 §6）
-    └── logback.xml             默认日志（root = ERROR，`org.plumb` = DEBUG）
+    ├── default-config.yaml     baseline YAML (details in §6)
+    └── logback.xml             default logging (root = ERROR, `org.plumb` = DEBUG)
 ```
 
-> **注意**：瘦发布包**不打包** `testcase/` 树（测试 fixture），避免 jar 与 fixtures 重复占空间。baseline `conf/default-config.yaml` 是足够拉起一个真实扫描所需的最小配置；用户用 `-i <path>` 把自己的源码喂进来即可。
+> **Note**: the slim release package does **not** package the `testcase/` tree (the test fixtures), to avoid the jar and the fixtures taking up the same space twice. The baseline `conf/default-config.yaml` is the minimum configuration needed to start a real scan; the user feeds their own source code in with `-i <path>`.
 
-### 2.1 瘦发布包内容
+### 2.1 The contents of the slim release package
 
-| 路径 | 大小（典型） | 说明 |
+| Path | Size (typical) | Description |
 | --- | ---: | --- |
-| `bin/sast-scan` | ~300 B | POSIX shell 启动器。`exec java -cp $DIR/lib/* -Dlogback.configurationFile=$DIR/conf/logback.xml org.plumb.main.SastMain "$@"` |
-| `bin/sast-scan.bat` | ~250 B | Windows cmd 启动器。逻辑同 POSIX 版，靠 `%~dp0` 解路径 |
-| `lib/plumb-main-<ver>-all.jar` | ~142 MB | shade 后 uber-jar：plumb-* 全模块、JavaParser、SootUp、Z3 turnkey、Logback、Kotlin 脚本引擎 |
-| `conf/default-config.yaml` | ~9 KB | 全字段 baseline：inputs/output/outputDir/cacheMode/cgStrategy/checks/ai（详 §6） |
-| `conf/logback.xml` | ~200 B | 默认 root = `ERROR`，`org.plumb` / `org.plumb.ai` = `DEBUG`；可用 `-Dlogback.configurationFile=...` 覆盖 |
-| `README.txt` | ~200 B | 启动命令 + 默认 conf 段说明 |
+| `bin/sast-scan` | ~300 B | POSIX shell launcher. `exec java -cp $DIR/lib/* -Dlogback.configurationFile=$DIR/conf/logback.xml org.plumb.main.SastMain "$@"` |
+| `bin/sast-scan.bat` | ~250 B | Windows cmd launcher. The logic is the same as the POSIX version; it resolves the path via `%~dp0` |
+| `lib/plumb-main-<ver>-all.jar` | ~142 MB | The uber-jar after shading: all plumb-* modules, JavaParser, SootUp, Z3 turnkey, Logback, the Kotlin scripting engine |
+| `conf/default-config.yaml` | ~9 KB | The baseline with all fields: inputs/output/outputDir/cacheMode/cgStrategy/checks/ai (details in §6) |
+| `conf/logback.xml` | ~200 B | Default root = `ERROR`, `org.plumb` / `org.plumb.ai` = `DEBUG`; can be overridden with `-Dlogback.configurationFile=...` |
+| `README.txt` | ~200 B | The startup command + the description of the default conf sections |
 
-## 3. 解压即用包（jlink + 启动器）
+## 3. The ready-to-unpack package (jlink + launcher)
 
-`scripts/dist-jlink-{windows,linux}.sh` 是给真实部署场景用的。脚本会：
+`scripts/dist-jlink-{windows,linux}.sh` is meant for real deployment scenarios. The script:
 
-1. 跑 `mvn -pl plumb-main -am package -DskipTests` 拿 uber-jar（可用 `--skip-build` / `-SkipBuild` 跳过）。
-2. 用 JDK 17+ 自带的 `jlink` 切一个**最小 JRE**，模块集是：
+1. Runs `mvn -pl plumb-main -am package -DskipTests` to get the uber-jar (can be skipped with `--skip-build` / `-SkipBuild`).
+2. Uses the `jlink` that comes with JDK 17+ to cut a **minimal JRE** whose module set is:
 
    ```
    java.base, java.logging, java.net.http, java.compiler,
    java.instrument, java.management, java.naming, java.security.jgss,
    java.sql, java.xml, jdk.crypto.ec, jdk.httpserver,
-   jdk.unsupported   # SootUp 反射依赖
+   jdk.unsupported   # SootUp reflection dependency
    jdk.zipfs         # z3 turnkey
    ```
 
-3. 拼装 dist 目录 + 写启动器 + 打 zip/tar.gz。
+3. Assembles the dist directory + writes the launcher + packs the zip/tar.gz.
 
-### 3.1 目录布局
+### 3.1 Directory layout
 
 ```
 plumb-<ver>-jre-{windows-x64|linux-x64}/
-├── README.md                  # 来自 templates/README-{win,linux}.md.template
-├── CHANGELOG.md               # 来自 templates/CHANGELOG.template
+├── README.md                  # from templates/README-{win,linux}.md.template
+├── CHANGELOG.md               # from templates/CHANGELOG.template
 ├── bin/
-│   ├── plumb                 # POSIX 启动器（bash）
-│   └── plumb.bat             # Windows cmd 启动器
-├── jre/                       # jlink 最小 JRE 17 (~95 MB)
+│   ├── plumb                 # POSIX launcher (bash)
+│   └── plumb.bat             # Windows cmd launcher
+├── jre/                       # jlink minimal JRE 17 (~95 MB)
 ├── lib/
 │   └── plumb-main-<ver>-all.jar
 ├── conf/
 │   ├── default-config.yaml
 │   └── logback.xml
 └── docs/
-    ├── README.md                （仓库根 README）
-    ├── plumb-style-rules.md     规则目录
-    ├── RULES.md                 规则总览
-    ├── ENVIRONMENT.md           环境变量与 AI 配置
-    ├── CLI.md                   CLI 手册
+    ├── README.md                (the repository root README)
+    ├── plumb-style-rules.md     the rule catalogue
+    ├── RULES.md                 the rule overview
+    ├── ENVIRONMENT.md           environment variables and AI configuration
+    ├── CLI.md                   the CLI manual
     ├── CLI-REFERENCE.md
     └── CLI-EXAMPLES.md
 ```
 
-> 出包脚本按"文件存在才复制"的方式收集 docs/：某个文档被改名或删除时，
-> 出包**不会**因此失败，只会少拷一个文件。
+> The packaging script collects docs/ with a "copy only if the file exists" approach: when a document is renamed or deleted,
+> the packaging **does not** fail because of it; it simply copies one file less.
 
-### 3.2 启动器逻辑（plumb / plumb.bat）
+### 3.2 The launcher logic (plumb / plumb.bat)
 
-启动器都遵循**三级 fallback** 找 Java：
+Both launchers follow a **three-level fallback** to find Java:
 
-| 顺序 | POSIX (`bin/plumb`) | Windows (`bin/plumb.bat`) |
+| Order | POSIX (`bin/plumb`) | Windows (`bin/plumb.bat`) |
 | --- | --- | --- |
-| 1 | `$DIR/jre/bin/java`（bundled JRE） | `%DIR%\jre\bin\java.exe` |
+| 1 | `$DIR/jre/bin/java` (bundled JRE) | `%DIR%\jre\bin\java.exe` |
 | 2 | `${JAVA_HOME}/bin/java` | `%JAVA_HOME%\bin\java.exe` |
 | 3 | `$(command -v java)` | `where java` → `java.exe` |
 
-三处都找不到 → 报 `ERROR: no java found` 退出码 1。
+If none of the three is found → report `ERROR: no java found` and exit with code 1.
 
-JVM 参数从环境变量 `PLUMB_JAVA_OPTS` 读，默认：
+The JVM arguments are read from the environment variable `PLUMB_JAVA_OPTS`, default:
 
 ```
 -Xmx4g -XX:+UseG1GC
 ```
 
-设 `PLUMB_DEBUG=true` 时再加 `-Droot.level=DEBUG`，把 Logback 根 logger 推到 DEBUG。
+When `PLUMB_DEBUG=true` is set, `-Droot.level=DEBUG` is added, which pushes the Logback root logger to DEBUG.
 
-启动器调：
+The launcher calls:
 
 ```bash
 exec "$JAVA" $JVM_OPTS \
@@ -136,31 +138,31 @@ exec "$JAVA" $JVM_OPTS \
   org.plumb.main.SastMain "$@"
 ```
 
-`-Dplumb.home` 让应用知道安装根，方便 `conf/`、`logback.xml` 的相对路径解析。
+`-Dplumb.home` tells the application where the installation root is, which makes the relative paths of `conf/` and `logback.xml` easy to resolve.
 
-### 3.3 安装与拉起示例（解压即用）
+### 3.3 Installation and startup example (ready-to-unpack)
 
-**Windows**：
+**Windows**:
 
 ```cmd
-:: 解压（右键 zip -> Extract All...）
+:: unpack (right-click the zip -> Extract All...)
 cd plumb-0.1.0-SNAPSHOT-jre-windows-x64
 
-:: 看帮助
+:: show the help
 bin\plumb.bat --help
 
-:: 扫你的代码
+:: scan your code
 bin\plumb.bat -i C:\path\to\your\src\
 
-:: NDJSON 输出到文件
+:: write the NDJSON output to a file
 bin\plumb.bat -i C:\path\to\your\src\ -o findings.ndjson
 
-:: 启用 AI FP 消减（可选，需 OPENAI_API_KEY 环境变量）
+:: enable AI false-positive reduction (optional, needs the OPENAI_API_KEY environment variable)
 set OPENAI_API_KEY=sk-...
 bin\plumb.bat -c conf\default-config.yaml -i C:\path\to\your\src\ --ai-dedup
 ```
 
-**Linux / macOS**：
+**Linux / macOS**:
 
 ```bash
 tar -xzf plumb-0.1.0-SNAPSHOT-jre-linux-x64.tar.gz
@@ -170,59 +172,59 @@ cd plumb-0.1.0-SNAPSHOT-jre-linux-x64
 ./bin/plumb -i /path/to/your/src/
 ./bin/plumb -i /path/to/your/src/ -o findings.ndjson
 
-# AI 降误报
+# AI false-positive reduction
 export OPENAI_API_KEY=sk-...
 ./bin/plumb -c conf/default-config.yaml -i /path/to/your/src/ --ai-dedup
 ```
 
-**PowerShell 调用 Windows 版**：
+**Calling the Windows version from PowerShell**:
 
 ```powershell
 $env:OPENAI_API_KEY = "sk-..."
 & ".\bin\plumb.bat" -i "C:\path\to\your\src\" --ai-dedup
 ```
 
-## 4. slim 发行（AI 关闭）
+## 4. The slim distribution (AI off)
 
-`pwsh scripts/package-slim.ps1` 在瘦发布包基础上**重写** `conf/default-config.yaml`，把 `ai.dedup` 翻成 `false`：
+`pwsh scripts/package-slim.ps1` **rewrites** `conf/default-config.yaml` on top of the slim release package and flips `ai.dedup` to `false`:
 
 ```
 dist/plumb-0.1.0-SNAPSHOT-slim/
-├── README-SLIM.txt        解释本包差异
+├── README-SLIM.txt        explains how this package differs
 ├── bin/sast-scan(.bat)
-├── lib/plumb-main-...-all.jar   # 仍含 plumb-ai 类，只是 gate 关着
+├── lib/plumb-main-...-all.jar   # still contains the plumb-ai classes, only the gate is off
 └── conf/default-config.yaml     # ai.dedup: false
 ```
 
-> **注意关的是 `ai.dedup`，不是 `ai.enabled`。** `ai.enabled` 这个 key 早已从
-> 配置 schema 里移除，`ConfigLoader` 遇到它只会打一条 warning 并忽略 ——
-> 写它等于没关 AI。真正的 AI 开关是 `ai.dedup`（CLI 的 `--ai-dedup` 也会
-> 设 `cfg.aiDedup = true`）。
+> **Note that what is turned off is `ai.dedup`, not `ai.enabled`.** The `ai.enabled` key was removed from
+> the configuration schema long ago; `ConfigLoader` only prints a warning for it and ignores it --
+> writing it is the same as not turning the AI off at all. The real AI switch is `ai.dedup` (the CLI's
+> `--ai-dedup` also sets `cfg.aiDedup = true`).
 
-适用场景：
+The applicable scenarios:
 
-- CI / 生产扫描，LLM round-trip 不划算
-- 离线 / 隔离网络环境
-- 想静态可复现的扫描结果（不依赖 LLM 判定）
+- CI / production scans, where an LLM round-trip is not worth it
+- Offline / air-gapped network environments
+- Wanting statically reproducible scan results (not depending on LLM verdicts)
 
-想彻底剥掉 plumb-ai classes：`plumb-ai` 是 `plumb-main` 的**硬依赖**
-（`plumb-main/pom.xml` 直接依赖它，`ScanConfig` 直接 new
-`org.plumb.ai.agent.LlmConnection`），所以**不能**只从 `lib/` 删文件 ——
-必须用 `mvn -pl plumb-main package -DskipTests=true` 重新打一个不 shade
-`plumb-ai` 的 uber-jar。代码里**没有** reflection guard；类找不到会直接
-`NoClassDefFoundError`。
+To strip the plumb-ai classes completely: `plumb-ai` is a **hard dependency** of `plumb-main`
+(`plumb-main/pom.xml` depends on it directly and `ScanConfig` directly news up
+`org.plumb.ai.agent.LlmConnection`), so you **cannot** simply delete files from `lib/` --
+you have to rebuild an uber-jar that does not shade
+`plumb-ai` with `mvn -pl plumb-main package -DskipTests=true`. There is **no** reflection guard in the code; a missing class
+results in a direct `NoClassDefFoundError`.
 
-## 5. 跨平台注意
+## 5. Cross-platform notes
 
-- POSIX 启动器有 `chmod +x` 步骤（`package.sh` / `dist-jlink-linux.sh` 自动加）。Windows 打包不需要。
-- Windows bat 文件在 `PATH` 含空格时仍能工作（`%DIR%` 已加引号）。
-- jlink 脚本需要 JDK **带 `jmods/` 目录**。Temurin 的 JRE 装包不带 jmods，要装 Temurin JDK 或者 OpenJDK reference builds。
-- PowerShell 5.1 默认按 ANSI（CP936）解码 UTF-8 → 直接 `Get-Content | Set-Content` 会破坏 CJK。`dist-jlink-windows.ps1` 用外置 UTF-8 模板（`scripts/templates/*.template`）规避这个问题。
-- 8 GB 内存是单进程扫描的舒适区。10k+ 文件的大项目建议 `PLUMB_JAVA_OPTS=-Xmx8g` 或更大。
+- The POSIX launcher has a `chmod +x` step (`package.sh` / `dist-jlink-linux.sh` add it automatically). The Windows packaging does not need it.
+- The Windows bat file still works when the `PATH` contains spaces (`%DIR%` is already quoted).
+- The jlink script needs a JDK **with the `jmods/` directory**. The Temurin JRE package does not ship jmods, so install a Temurin JDK or an OpenJDK reference build.
+- PowerShell 5.1 decodes UTF-8 as ANSI (CP936) by default → a direct `Get-Content | Set-Content` corrupts CJK. `dist-jlink-windows.ps1` avoids this problem by using external UTF-8 templates (`scripts/templates/*.template`).
+- 8 GB of memory is the comfortable zone for a single-process scan. For large projects with 10k+ files, `PLUMB_JAVA_OPTS=-Xmx8g` or more is recommended.
 
-## 6. `conf/default-config.yaml` 详解
+## 6. `conf/default-config.yaml` in detail
 
-随包附的 `default-config.yaml` 是**全部字段都注释掉**的 baseline（用户按需启用）：
+The `default-config.yaml` shipped with the package is a baseline with **every field commented out** (the user enables what it needs):
 
 ```yaml
 # ---- output ----
@@ -234,30 +236,30 @@ dist/plumb-0.1.0-SNAPSHOT-slim/
 # outputDir: build/plumb-out
 # cacheMode: readwrite           # off | read | write | readwrite
 
-maxParallelism: 4                # parse+translate 并发；0 = nCPU-1
+maxParallelism: 4                # parse+translate concurrency; 0 = nCPU-1
 
-# 默认值是 global（不是 vta）—— 跨 TU taint 分析必需
+# the default is global (not vta) -- required for cross-TU taint analysis
 cgStrategy: global               # global | vta | cha | rta | 1cfa | stub | cached:<...>
 
-# ---- 规则开关 ----
+# ---- rule switches ----
 # rules:
-#   enabled:                     # 强制 on（即便默认是 off）
+#   enabled:                     # force on (even when the default is off)
 #     - bu-0401-weak-crypto
-#   disabled:                    # 强制 off
+#   disabled:                    # force off
 #     - STYLE_SYSTEM_OUT
 
-# ---- 大类开关（每条默认 true） ----
+# ---- family switches (each one defaults to true) ----
 checks:
   taint: true
   style: true
   divByZero:           {enabled: true, aiDedup: true}
-  # ... 一共 47 项 ...
+  # ... 47 entries in total ...
 
 # ---- AI augmentation ----
 ai:
   dedup: false                    # FP reducer (CLI: --ai-dedup)
   dropOnAiFp: false
-  dedupRules: []                  # 空 = 每条规则都过
+  dedupRules: []                  # empty = every rule goes through
   provider: openai
   baseUrl: https://api.openai.com
   apiKey: ${OPENAI_API_KEY}
@@ -267,72 +269,72 @@ ai:
   temperature: 0.0
 ```
 
-> 完整的 keys 与每个字段语义见 `docs/usage/CLI.md` §3。
+> For the complete list of keys and the meaning of every field see `docs/usage/CLI.md` §3.
 
-## 7. 4 个 smoke test（每次出包必跑）
+## 7. The 4 smoke tests (run on every packaging)
 
 ```bash
-# (a) 启动器打印帮助（POSIX）
+# (a) the launcher prints the help (POSIX)
 ./dist/plumb-<ver>/bin/sast-scan --help
 
-# (b) 扫描随包配置
+# (b) scan with the configuration shipped in the package
 ./dist/plumb-<ver>/bin/sast-scan -c dist/plumb-<ver>/conf/default-config.yaml -i path/to/test/src
 
-# (c) NDJSON 输出
+# (c) NDJSON output
 ./dist/plumb-<ver>/bin/sast-scan -i path/to/test/src -o /tmp/findings.ndjson -f ndjson
 
-# (d) Windows 启动器
+# (d) the Windows launcher
 dist\plumb-<ver>\bin\sast-scan.bat --help
 ```
 
-期望：
+Expected:
 
-- (a)/(d) 退出码 0，打印 usage + 全部 flag。
-- (b)/(c) 退出码 0，stdout 输出 findings，NDJSON 解析合法。
-- 解压即用版再加 1 项：(e) 移除系统 JAVA：`unset JAVA_HOME`，再跑 `bin/plumb --help`，应当仍能用 `bundled jre/`。
+- (a)/(d) exit code 0, printing the usage + all the flags.
+- (b)/(c) exit code 0, the findings on stdout, the NDJSON parses correctly.
+- The ready-to-unpack version has one more item: (e) remove the system JAVA: `unset JAVA_HOME`, then run `bin/plumb --help`; it should still work with the `bundled jre/`.
 
-## 8. 与开发模式构建产物的区别
+## 8. The difference from the development-mode build artifacts
 
-| 来源 | 路径 | 内容 |
+| Source | Path | Content |
 | --- | --- | --- |
-| Maven `package` | `plumb-main/target/plumb-main-<ver>-all.jar` | 单文件 jar |
-| `scripts/package.sh` | `dist/plumb-<ver>/` | bin + lib + conf（需系统 JRE 17+） |
-| `scripts/package-slim.ps1` | `dist/plumb-<ver>-slim/` | 同上，但 `ai.dedup: false`（真正的 AI 闸门） |
-| `scripts/dist-jlink-linux.sh` | `dist-jlink/plumb-<ver>-jre-linux-x64.tar.gz` | 上者 + jre/ + docs/ + 自带 JRE |
-| `scripts/dist-jlink-windows.ps1` | `dist-jlink/plumb-<ver>-jre-windows-x64.zip` | 同上（zip） |
+| Maven `package` | `plumb-main/target/plumb-main-<ver>-all.jar` | Single-file jar |
+| `scripts/package.sh` | `dist/plumb-<ver>/` | bin + lib + conf (needs a system JRE 17+) |
+| `scripts/package-slim.ps1` | `dist/plumb-<ver>-slim/` | The same, but with `ai.dedup: false` (the real AI gate) |
+| `scripts/dist-jlink-linux.sh` | `dist-jlink/plumb-<ver>-jre-linux-x64.tar.gz` | The above + jre/ + docs/ + a bundled JRE |
+| `scripts/dist-jlink-windows.ps1` | `dist-jlink/plumb-<ver>-jre-windows-x64.zip` | The same (zip) |
 
-发布包在最终用户机器上**只需要 JRE**（或解压即用包完全不需要）。开发模式构建只在仓库内部使用。
+A release package needs **only a JRE** on the end user's machine (the ready-to-unpack package needs nothing at all). A development-mode build is used only inside the repository.
 
-## 9. 升级流程
+## 9. The upgrade procedure
 
 ```bash
-# 拉新代码 → 重新构建 → 重新打发布包
+# pull the new code -> rebuild -> repackage the release
 git pull
-./scripts/build.sh --skip-tests       # 或 pwsh scripts/build.ps1 --skip-tests
-./scripts/package.sh                  # 瘦发布包
-./scripts/dist-jlink-linux.sh         # 解压即用包
+./scripts/build.sh --skip-tests       # or pwsh scripts/build.ps1 --skip-tests
+./scripts/package.sh                  # slim release package
+./scripts/dist-jlink-linux.sh         # ready-to-unpack package
 
-# 旧版本保留在 dist/ / dist-jlink/，可保留一段时间以便回滚
+# the old versions stay in dist/ / dist-jlink/, so they can be kept for a while for rollback
 ```
 
-## 10. 校验与签名（可选）
+## 10. Verification and signing (optional)
 
-发布前可使用 `gpg` 对 jar 签名：
+Before the release you can use `gpg` to sign the jar:
 
 ```bash
 gpg --armor --detach-sign --output dist/plumb-<ver>/lib/plumb-main-<ver>-all.jar.asc \
     dist/plumb-<ver>/lib/plumb-main-<ver>-all.jar
 ```
 
-并把 `.asc` 校验文件一起打包。CI 端用 `gpg --verify` 校验。
+and package the `.asc` verification file together with it. On the CI side it is verified with `gpg --verify`.
 
-## 11. 体积 / 模块清单（参考值）
+## 11. Size / module manifest (reference values)
 
-| 组件 | 大小 |
+| Component | Size |
 | --- | ---: |
 | `plumb-main-<ver>-all.jar` (shaded uber-jar) | ~142 MB |
-| jlink 最小 JRE 17（含 14 个 module） | ~95 MB |
-| 解压即用 tar.gz (Linux x64) | ~80 MB（gzip 压缩后） |
-| 解压即用 zip (Windows x64) | ~180 MB |
+| jlink minimal JRE 17 (14 modules included) | ~95 MB |
+| Ready-to-unpack tar.gz (Linux x64) | ~80 MB (after gzip compression) |
+| Ready-to-unpack zip (Windows x64) | ~180 MB |
 
-zip 偏大是因为 PowerShell 的 `Compress-Archive` 压缩率不如 `tar -czf`；CI 上若对体积敏感，可以额外跑一遍 `7z a -t7z -mx=9` 重打包。
+The zip is larger because the compression ratio of the PowerShell `Compress-Archive` is worse than that of `tar -czf`; if the size matters on CI, you can run an extra `7z a -t7z -mx=9` repack.

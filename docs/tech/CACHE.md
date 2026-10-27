@@ -1,96 +1,101 @@
-# 磁盘 IR 缓存
+# On-Disk IR Cache
 
-本文档说明 Plumb 的 `--output-dir` 机制如何把 TAC 中间结果持久化到磁盘，让多次扫描增量复用。
+[English](../README.md) | [中文](../zh/tech/CACHE.md)
 
-## 1. 设计目标
+This document describes how Plumb's `--output-dir` mechanism persists the TAC intermediate results on disk so that several scans can reuse them incrementally.
 
-| 目标 | 方案 |
+## 1. Design goals
+
+| Goal | Approach |
 | --- | --- |
-| 减少重复 parse + translate | 把 TacProgram 按源文件粒度写盘 |
-| 控制内存峰值 | 阶段间通过磁盘交换数据 |
-| 不破坏现有 DFA 引擎 | 序列化是 IR 类"透明"的（`implements Serializable`） |
-| 可压缩 | 接受 `.gz` 后缀触发 GZIP 包装 |
-| 版本可识别 | 文件头 `MAGIC` + `VERSION` 两个 int |
+| Reduce repeated parse + translate | Write the TacProgram to disk at source-file granularity |
+| Keep the memory peak under control | Exchange the data between stages through the disk |
+| Do not break the existing DFA engine | The serialization is "transparent" to the IR classes (`implements Serializable`) |
+| Compressible | A `.gz` suffix triggers GZIP wrapping |
+| Identifiable version | Two ints in the file header, `MAGIC` + `VERSION` |
 
-## 2. 目录布局
+## 2. Directory layout
 
 ```
 <outputDir>/
 ├── cache/
 │   ├── programs/
-│   │   ├── <sha1>.tac              一文件一 TacProgram
-│   │   └── <sha1>.tac.gz           可选 gzip 压缩
-│   ├── merged.tac                  整个 MergedProgram（暂未自动写）
-│   └── callgraph.tac               全局 call graph（暂未自动写）
+│   │   ├── <sha1>.tac              one TacProgram per file
+│   │   └── <sha1>.tac.gz           optional gzip compression
+│   ├── merged.tac                  the whole MergedProgram (not written automatically yet)
+│   └── callgraph.tac               the global call graph (not written automatically yet)
 └── report/
-    ├── findings.ndjson             实际写入的发现（当 -f ndjson）
-    └── findings.console            实际写入的发现（当 -f console）
+    ├── findings.ndjson             the findings actually written (with -f ndjson)
+    └── findings.console            the findings actually written (with -f console)
 ```
 
-`OutputLayout`（`plumb-main/.../OutputLayout.java`）负责构造路径 + 创建目录。
+`OutputLayout` (`plumb-main/.../OutputLayout.java`) builds the paths and creates the directories.
 
-## 3. 文件格式
+## 3. File format
 
 ```
 ┌──────────────┬──────────────┬─────────────────┐
 │   MAGIC      │   VERSION    │   <Object>      │
-│ 0x504C554D   │ 0x00000001   │ Java 序列化     │
-│  (4 字节)    │  (4 字节)    │ (任意 IR 对象)  │
+│ 0x504C554D   │ 0x00000001   │ Java serialized  │
+│  (4 bytes)    │  (4 bytes)    │ (any IR object) │
 └──────────────┴──────────────┴─────────────────┘
 ```
 
-`MAGIC = 0x504C554D` 是 ASCII "PLUM"。`VERSION = 1`。
+`MAGIC = 0x504C554D` is the ASCII "PLUM". `VERSION = 1`.
 
-`writeObject(tag, value, file)` 额外写一个 `UTF string` tag（解析时只读出来丢弃，目前仅 informational）。
+`writeObject(tag, value, file)` additionally writes a `UTF string` tag (it is read out and discarded during parsing; it is informational for now).
 
-### 3.1 序列化方式：为什么用 Java 原生而不是 Kryo
+### 3.1 The serialization mechanism: why Java native instead of Kryo
 
-Plumb 用 **`ObjectOutputStream` / `ObjectInputStream`**（Java 内建序列化）做磁盘缓存，不用 Kryo / Protobuf / Avro 等第三方框架。理由：
+Plumb uses **`ObjectOutputStream` / `ObjectInputStream`** (Java's built-in serialization) for the disk cache, not a third-party framework such as Kryo / Protobuf / Avro. The reasons:
 
-| 维度 | Java 原生 | Kryo |
+| Dimension | Java native | Kryo |
 | --- | --- | --- |
-| 依赖 | 0（标准库） | 1（`com.esotericsoftware:kryo`），还要写每类的 `register` / 字段映射 |
-| 速度 | 慢 5-10x（小数据） | 快 5-10x |
-| 输出大小 | 偏大（每对象 ~50 bytes 元数据） | 偏小 |
-| Schema 演进 | 加字段不破坏旧 reader（保持 `serialVersionUID`） | 加字段要手动维护 `FieldSerializer` |
-| 不支持的类型 | JDK 17+ 对 `Path` / 复杂泛型要 custom `writeObject` | 支持更广，但每个不识别的类要 `addDefaultSerializer` |
+| Dependencies | 0 (standard library) | 1 (`com.esotericsoftware:kryo`), plus a `register` / field mapping for every class |
+| Speed | 5-10x slower (small data) | 5-10x faster |
+| Output size | Larger (~50 bytes of metadata per object) | Smaller |
+| Schema evolution | Adding a field does not break the old reader (keep `serialVersionUID`) | Adding a field requires maintaining a `FieldSerializer` by hand |
+| Unsupported types | On JDK 17+, `Path` / complex generics need a custom `writeObject` | Broader support, but every unrecognised class needs an `addDefaultSerializer` |
 
-Plumb 的 TAC IR 是**小数据量 + 异构字段 + 长生命周期**（cache 跨 run 复用）的场景：
+The TAC IR of Plumb is a **small data volume + heterogeneous fields + long lifetime** scenario
+(the cache is reused across runs):
 
-- **数据量小**：单个 TU 的 TAC IR 只有几十 KB 量级；万级文件的大型项目估算
-  150 MB，对磁盘 IO 不是瓶颈
-- **字段异构**：9 个 `Serializable` 的 IR 类各自有可变字段
-  （`TacInstruction.line` / `column`、`TacOperand` 的 sealed 形态、
-  `SourceMap.Loc` record、`TacProgram.sourcePath` 是 `java.nio.file.Path`）——
-  每加一个字段 Kryo 都要重新注册
-- **长生命周期**：cache 文件可能跨 JVM 启动被读回；标准库是"装载-实例化-读"的稳定接口
+- **Small data volume**: the TAC IR of a single TU is only on the order of tens of KB; for a large project with
+  ten thousand files the estimate is 150 MB, which is not a bottleneck for disk IO
+- **Heterogeneous fields**: the 9 `Serializable` IR classes each have mutable fields
+  (`TacInstruction.line` / `column`, the sealed shapes of `TacOperand`, the
+  `SourceMap.Loc` record, `TacProgram.sourcePath` is a `java.nio.file.Path`) --
+  every added field makes Kryo register again
+- **Long lifetime**: a cache file may be read back across JVM restarts; the standard library offers a stable
+  "load - instantiate - read" interface
 
-> **何时切到 Kryo**：等磁盘 IO 真成瓶颈（TB 级 cache 或万级文件仓库）再换。
-> §10 的历史数据（单文件 10 ms / 21 文件 150 ms）说明原生够用。
+> **When to switch to Kryo**: only once disk IO really becomes the bottleneck (a TB-scale cache or a repository with
+> ten thousand files). The historical numbers in §10 (10 ms per file / 150 ms for 21 files) show that the native
+> mechanism is good enough.
 
-### 3.2 源映射（line / column / SourceMap）保留契约
+### 3.2 The source mapping (line / column / SourceMap) preservation contract
 
-磁盘缓存要回答的核心问题：**从 cache 读回的 IR 还能不能告诉用户"finding 出在哪个文件的哪一行？"**——这是所有 reporter 的基础。保留链路有 3 处：
+The core question the disk cache has to answer: **can the IR that was read back from the cache still tell the user "which file and which line is the finding on?"** -- this is the foundation of every reporter. There are 3 links in the preservation chain:
 
-| 字段 | 类型 | 在哪个类 | 来源 |
+| Field | Type | In which class | Origin |
 | --- | --- | --- | --- |
-| `TacInstruction.line` | `int` | `TacInstruction` | JavaParser / Jimple 在 translate 时记录的源行号 |
-| `TacInstruction.column` | `int` | `TacInstruction` | JavaParser / Jimple 在 translate 时记录的源列号 |
-| `SourceMap.Loc` record | `record(line, column)` | `SourceMap.Loc` | 后置处理器（CFG builder 等）补充的位置 |
-| `TacProgram.sourcePath` | `java.nio.file.Path` | `TacProgram` | 原 .java 文件的绝对路径（cache 文件名由它的 SHA-1 派生） |
+| `TacInstruction.line` | `int` | `TacInstruction` | The source line number recorded by JavaParser / Jimple at translate time |
+| `TacInstruction.column` | `int` | `TacInstruction` | The source column number recorded by JavaParser / Jimple at translate time |
+| `SourceMap.Loc` record | `record(line, column)` | `SourceMap.Loc` | The position filled in by the post-processors (the CFG builder and so on) |
+| `TacProgram.sourcePath` | `java.nio.file.Path` | `TacProgram` | The absolute path of the original .java file (the cache file name is derived from its SHA-1) |
 
-每个字段都通过测试覆盖（`plumb-tac/src/test/.../IrSerializerTest.java`）：
+Every field is covered by a test (`plumb-tac/src/test/.../IrSerializerTest.java`):
 
-- `roundTripPreservesSourceLineAndColumn` —— 验证 `line` / `column` 三个不同值精确 round-trip
-- `roundTripPreservesSourceMap` —— 验证 `SourceMap.Loc` record 通过 `writeObject` / `readObject` 完整保留
-- `roundTripPreservesSourcePath` —— 验证 `TacProgram.sourcePath` 通过 `transient` + 自定义 `writeObject` / `readObject` 恢复为 `Path`
+- `roundTripPreservesSourceLineAndColumn` -- verifies that `line` / `column` round-trip exactly for three different values
+- `roundTripPreservesSourceMap` -- verifies that the `SourceMap.Loc` record survives `writeObject` / `readObject` completely
+- `roundTripPreservesSourcePath` -- verifies that `TacProgram.sourcePath` is restored as a `Path` through `transient` plus a custom `writeObject` / `readObject`
 
-#### 3.2.1 `TacProgram.sourcePath` 序列化的特殊性
+#### 3.2.1 The specifics of serializing `TacProgram.sourcePath`
 
-`java.nio.file.Path` 在任何目标 JDK 上**都不实现 `Serializable`**。`TacProgram` 的解法：
+`java.nio.file.Path` does **not** implement `Serializable` on any target JDK. The solution of `TacProgram`:
 
 ```java
-private transient Path sourcePath;          // 标记为不参与默认序列化
+private transient Path sourcePath;          // marked as not taking part in the default serialization
 ...
 private void writeObject(ObjectOutputStream out) throws IOException {
     out.defaultWriteObject();
@@ -103,14 +108,14 @@ private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundE
 }
 ```
 
-注意：
-- 字段是 `transient`，所以 Java 默认机制不参与；我们手动以 `String` 形式写入
-- **字段不是 `final`**（虽然在所有调用方都是构造时一次性设的）：`final` + `transient` + `readObject` 重新赋值在 JDK 17+ 会触发"反射 setAccessible + 反射 strip final 修饰符"的反射黑魔法，脆弱；用 `transient` + 可变字段最简单
-- `null` 是允许的：synthetic 程序的 `sourcePath` 可能为 `null`（cache 文件名才是不变量）
+Notes:
+- The field is `transient`, so the default Java mechanism does not take part; we write it manually as a `String`
+- **The field is not `final`** (although every caller sets it once at construction time): `final` + `transient` + reassignment in `readObject` triggers the "reflective setAccessible + reflective stripping of the final modifier" reflection black magic on JDK 17+, which is fragile; `transient` plus a mutable field is the simplest thing
+- `null` is allowed: the `sourcePath` of a synthetic program may be `null` (the cache file name is the invariant)
 
-#### 3.2.2 `SourceMap.Loc` record 序列化的特殊性
+#### 3.2.2 The specifics of serializing the `SourceMap.Loc` record
 
-`record` 默认**不**实现 `Serializable`，即使外层 `SourceMap` 是 `Serializable` 的。需要显式：
+A `record` does **not** implement `Serializable` by default, even when the enclosing `SourceMap` is `Serializable`. It has to be stated explicitly:
 
 ```java
 public record Loc(int line, int column) implements java.io.Serializable {
@@ -119,32 +124,32 @@ public record Loc(int line, int column) implements java.io.Serializable {
 }
 ```
 
-否则 `writeObject` 在外层 `SourceMap` 上会抛 `NotSerializableException: SourceMap$Loc`。
+Otherwise `writeObject` on the enclosing `SourceMap` throws `NotSerializableException: SourceMap$Loc`.
 
-## 4. 缓存 Key
+## 4. The cache key
 
-每源文件一个 cache file，文件名是：
+There is one cache file per source file, and the file name is:
 
 ```
 SHA-1(absolute(canonicalize(sourcePath)))
 ```
 
-`canonicalize` 在 Windows 上是规范化大小写、替换 `/` 为 `\`；在 POSIX 上是 symlink 解析 + 去尾部 `/`。两次扫同一仓库得到同一 key，缓存命中。
+On Windows `canonicalize` normalises the case and replaces `/` with `\`; on POSIX it resolves symlinks and strips the trailing `/`. Scanning the same repository twice yields the same key, so the cache hits.
 
-## 5. 模式
+## 5. The modes
 
-`ScanConfig.CacheMode` 四种：
+`ScanConfig.CacheMode` has four values:
 
-| 模式 | 行为 |
+| Mode | Behaviour |
 | --- | --- |
-| `OFF` | 不读不写（默认） |
-| `READ` | 命中缓存则跳过 parse + translate；不写 |
-| `WRITE` | 总是重新 parse + translate，**写**缓存到磁盘 |
-| `READWRITE` | 命中则用缓存；未命中则计算并**写**缓存 |
+| `OFF` | Neither reads nor writes (the default) |
+| `READ` | Skips parse + translate on a cache hit; does not write |
+| `WRITE` | Always re-parses and re-translates, and **writes** the cache to disk |
+| `READWRITE` | Uses the cache on a hit; computes and **writes** the cache on a miss |
 
-CLI： `--cache-mode readwrite` ；YAML： `cacheMode: readwrite`。
+CLI: `--cache-mode readwrite` ; YAML: `cacheMode: readwrite`.
 
-## 6. 调用链
+## 6. The call chain
 
 ```
 ScanRunner.run() [plumb-main]
@@ -160,7 +165,7 @@ ScanRunner.run() [plumb-main]
   └── emit findings
 ```
 
-关键代码：
+The key code:
 
 ```java
 private TranslatedFile translateAndStyleOne(
@@ -181,59 +186,60 @@ private TranslatedFile translateAndStyleOne(
 }
 ```
 
-（源码里两处 parse 各自包在 `catch (Throwable)` 里，解析失败记 WARN 并返回 `null`，
-跳过这个文件——单个坏文件不该让整次扫描崩掉。）
+(In the source code the two parse calls are each wrapped in a `catch (Throwable)`; a parse failure is recorded as a WARN and returns `null`,
+which skips that file -- a single bad file should not bring the whole scan down.)
 
-## 7. 兼容性
+## 7. Compatibility
 
-### 7.1 向前兼容
+### 7.1 Forward compatibility
 
-新加字段（用 `transient` 标记的除外）→ ObjectInputStream 仍能反序列化旧对象，**只要没改 `serialVersionUID`**。
+A newly added field (except one marked with `transient`) -> ObjectInputStream can still deserialize the old objects, **as long as `serialVersionUID` was not changed**.
 
-每个 IR 类的 `serialVersionUID = 1L`。新增字段时**保持** 1L。
+Every IR class has `serialVersionUID = 1L`. **Keep** it at 1L when adding a field.
 
-### 7.2 向后不兼容
+### 7.2 Backward incompatibility
 
-如果改了 `serialVersionUID` 或重命名字段，旧 cache 文件读会抛 `InvalidClassException`。`IrSerializer.readProgram` 捕获后用 `IOException("IR class missing on classpath: ...")` 包装，ScanRunner 日志 WARN 后回到正常 translate 流程。
+If `serialVersionUID` was changed or a field was renamed, reading the old cache file throws `InvalidClassException`. `IrSerializer.readProgram` catches it and wraps it in an `IOException("IR class missing on classpath: ...")`, and after logging a WARN the ScanRunner returns to the normal translate flow.
 
-### 7.3 整体不兼容
+### 7.3 Complete incompatibility
 
-`VERSION` 字段。ScanRunner 永远检查 `if (version != IrSerializer.VERSION)`，不匹配就拒绝。
+The `VERSION` field. ScanRunner always checks `if (version != IrSerializer.VERSION)` and refuses when it does not match.
 
-## 8. 何时失效
+## 8. When it is invalidated
 
-清空 `<outputDir>/cache/` 的条件：
+The conditions for clearing `<outputDir>/cache/`:
 
-- 升级 Plumb 大版本后（VERSION 改了）
-- 改了源文件路径（key 变了，旧 cache 自然失效）
-- 改 `RuleRegistry` 的某些硬编码源/汇签名（虽然 cache 内容没变，但 finding 结果会变）
-- 改 Z3 / SootUp 版本（影响污点 / 路径条件求解）
+- After a major version upgrade of Plumb (the VERSION changed)
+- When a source file path changed (the key changed, so the old cache is invalidated naturally)
+- When certain hard-coded source/sink signatures of the `RuleRegistry` are changed (the cache content did not change, but the findings will)
+- When the Z3 / SootUp version is changed (it affects taint / path condition solving)
 
-## 9. 序列化失败的处理
+## 9. The handling of serialization failures
 
-`storeCachedProgram` 是 best-effort：失败 WARN 日志，不影响扫描主流程。
+`storeCachedProgram` is best-effort: a failure is logged as a WARN and does not affect the main scan flow.
 
-`loadCachedProgram` 失败时返回 null，触发重新 translate。
+When `loadCachedProgram` fails it returns null, which triggers a re-translate.
 
-## 10. 性能
+## 10. Performance
 
-> **本节的数字不可复现。** 仓库里没有 benchmark harness，原始测量所用的
-> `examples/` 目录也已并入 `testcase/`。下面是历史测量记录，供选型时参考
-> 量级，**不是当前可验证的度量**。要重新测量，请自己写一个针对
-> `IrSerializer.writeProgram` / `readProgram` 的计时循环。
+> **The numbers in this section are not reproducible.** The repository has no benchmark harness, and the `examples/`
+> directory the original measurement used has since been merged into `testcase/`. What follows is a record of a
+> historical measurement, meant to give an order of magnitude when choosing an approach; it is **not a currently
+> verifiable measurement**. To measure again, write a timing loop around
+> `IrSerializer.writeProgram` / `readProgram` yourself.
 
-- 单文件 (Java 源码 ~5 KB)：序列化 ~10 ms，反序列化 ~5 ms
-- 21 文件：序列化 ~150 ms，磁盘 100 KB ~ 130 KB
-- ~5000 文件的大型项目：估算序列化 30-60 秒，磁盘 ~150 MB
+- A single file (Java source ~5 KB): serialization ~10 ms, deserialization ~5 ms
+- 21 files: serialization ~150 ms, 100 KB ~ 130 KB on disk
+- A large project with ~5000 files: estimated 30-60 seconds for the serialization, ~150 MB on disk
 
-**选型结论不受影响**：TAC IR 是小数据量 + 异构字段 + 长生命周期（cache 跨
-run 复用）的场景，Java 原生序列化的启动成本在这个量级上不是瓶颈。真正
-要换 Kryo 的信号是磁盘 IO 成为实测瓶颈（TB 级 cache 或万级文件仓库），
-而不是估算值。
+**The conclusion of the choice is unaffected**: the TAC IR is a small data volume + heterogeneous fields + long lifetime scenario (the cache is reused across
+runs), so the start-up cost of Java native serialization is not the bottleneck at this scale. The real signal to
+switch to Kryo is that disk IO has become a measured bottleneck (a TB-scale cache or a repository with ten thousand
+files), not an estimate.
 
-## 11. 未来扩展
+## 11. Future extensions
 
-- **merged.tac 写盘**：当前 scanMerged 在内存中合 MergedProgram，后续可写盘，让"先做 style、再做 dfa"能跨进程分两段跑
-- **callgraph.tac 写盘**：unified 引擎的 call graph 单独写盘，大项目能省下 5-10 分钟
-- **mtime-based invalidation**：现在只用 SHA-1(path) 作 key。改用 `SHA-1(path + mtime + size)` 可以更安全（路径不变但内容变了也能识别）
-- **多平台支持**：Windows 大小写不敏感会让同一个文件产生不同 key（canonicalize 已处理，但需要小心）
+- **Writing merged.tac to disk**: today scanMerged merges the MergedProgram in memory; later it could be written to disk, so that "style first, then dfa" can run as two stages across processes
+- **Writing callgraph.tac to disk**: writing the call graph of the unified engine to disk separately saves 5-10 minutes on large projects
+- **mtime-based invalidation**: today only SHA-1(path) is used as the key. Switching to `SHA-1(path + mtime + size)` would be safer (a change of content at an unchanged path is then recognised too)
+- **Multi-platform support**: the case-insensitivity of Windows makes the same file produce different keys (canonicalize already handles this, but care is needed)

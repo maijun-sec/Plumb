@@ -1,142 +1,160 @@
-# 规则对比：Plumb vs PMD / SonarQube / SpotBugs / Coverity / Checkstyle
+# Rule Comparison: Plumb vs PMD / SonarQube / SpotBugs / Coverity / Checkstyle
 
-本文档对比 Plumb 与主流 Java 静态分析工具的**实现机制**和**规则覆盖面**，帮助用户理解
-Plumb 的定位与边界。
+[English](../README.md) | [中文](../zh/rules/RULE-TOOL-COMPARISON.md)
 
-> **本文档里哪些数字是可复现的。**
+This document compares the **implementation mechanism** and the **rule coverage** of
+Plumb with the mainstream Java static-analysis tools, so that a reader can see where
+Plumb sits and where its boundaries are.
+
+> **Which numbers in this document are reproducible.**
 >
-> Plumb 一列的所有数字都由 `scripts/gen_tool_comparison.py` 从源码测量得出，重新生成即可
-> 复现。其他工具一列的数字**来自公开的第三方资料，本仓库没有任何数据支撑**，只作为量级参考。
-> 本文档不包含任何基准测试成绩 —— 仓库里没有 benchmark harness，任何"跑得比谁快"的数字
-> 都是无法复现的断言。
+> Every number in the Plumb column is MEASURED from the source by
+> `scripts/gen_tool_comparison.py`; regenerating the document reproduces them.
+> The numbers in the other tools' columns **come from public third-party material
+> that this repository cannot substantiate**; they are a magnitude reference only.
+> This document contains no benchmark scores -- the repository has no benchmark
+> harness, so any "faster than X" number would be an unreproducible assertion.
 
-## 1. 实现机制对比
+## 1. Implementation mechanism
 
-| 维度 | Plumb | PMD | SonarQube | SpotBugs | Coverity | Checkstyle |
+| Dimension | Plumb | PMD | SonarQube | SpotBugs | Coverity | Checkstyle |
 | --- | --- | --- | --- | --- | --- | --- |
-| **主实现** | TAC IR + 596 个 AST checker + 12 条 taint rule + 67 个已注册 DFA checker | AST | AST + symbol table | 字节码扫描 | 抽象语法树 + 路径敏感 | AST + 文本匹配 |
-| **Taint 引擎** | summary-based 跨函数数据流（两阶段） | 无完整 taint | SonarCFamily 引擎（商业） | 部分数据流 | 商业引擎 | 无 |
-| **跨函数分析** | 两阶段 summary：Phase 1 path-insensitive → Phase 2 flow-sensitive + Z3 路径条件 | 有限 | 部分（call graph 1-hop） | 部分（BugInstance 共享） | 全局 | 无 |
-| **AST 检查器** | 596 个（JavaParser） | 数百条 | 数百条 | — | — | 一百多条 |
-| **DFA checker** | 67 个已注册 | 部分 | 部分 | 字节码 bug pattern | 有 | 无 |
-| **Z3 路径条件** | 有（Phase 2 per-finding 查询，用于误报过滤） | 无 | 无 | 无 | 有（商业） | 无 |
-| **AI 集成** | 可选 Re-Act agent（12 个 tool） | 无 | SonarAI（实验） | 无 | Coverity Assist | 无 |
-| **rule → CWE 映射** | 规则自带，覆盖 59 个 CWE | rule 自带 | rule 自带 | BugPattern 自带 | checker 自带 | check 自带 |
+| **Main implementation** | TAC IR + 596 AST checkers + 12 taint rules + 67 registered DFA checkers | AST | AST + symbol table | Bytecode scanning | Abstract syntax tree + path sensitivity | AST + text matching |
+| **Taint engine** | Summary-based cross-function data flow (two phases) | No complete taint | SonarCFamily engine (commercial) | Partial data flow | Commercial engine | None |
+| **Cross-function analysis** | Two-phase summary: Phase 1 path-insensitive -> Phase 2 flow-sensitive + Z3 path conditions | Limited | Partial (call graph 1-hop) | Partial (shared BugInstance) | Global | None |
+| **AST checkers** | 596 (JavaParser) | Hundreds | Hundreds | -- | -- | Over a hundred |
+| **DFA checkers** | 67 registered | Partial | Partial | Bytecode bug patterns | Yes | None |
+| **Z3 path conditions** | Yes (a Phase 2 per-finding query, used for false-positive filtering) | None | None | None | Yes (commercial) | None |
+| **AI integration** | Optional Re-Act agent (12 tools) | None | SonarAI (experimental) | None | Coverity Assist | None |
+| **rule -> CWE mapping** | Carried by the rules, covering 59 CWEs | Carried by the rule | Carried by the rule | Carried by the BugPattern | Carried by the checker | Carried by the check |
 
-> "AST 检查器"和"DFA checker"是**两套不同粒度**的东西：前者数的是 checker 类，后者数的是
-> 引擎实际注册的 checker。两者相加得到的"总数"取决于你在数什么，本文档不给合计值。
+> "AST checkers" and "DFA checkers" are **two different granularities**: the first counts
+> checker classes, the second counts the checkers the engine actually registers. The
+> "total" you get by adding them depends on what you are counting, so this document
+> does not give a combined figure.
 
-### 1.1 Plumb 的两阶段跨函数模型
+### 1.1 Plumb's two-phase cross-function model
 
-PMD / SonarQube / Checkstyle 是 **AST-only** —— 单方法或单类视角，看不见跨函数数据流。
+PMD / SonarQube / Checkstyle are **AST-only** -- a single-method or single-class view,
+blind to cross-function data flow.
 
-Plumb 的做法分两阶段：
+Plumb does it in two phases:
 
-- **Phase 1**：callee 自底向上做 path-insensitive、context-insensitive 的 summary，按函数签名
-  缓存，caller 侧 O(1) 查表复用。
-- **Phase 2**：caller 自顶向下做 context-sensitive、path-sensitive 分析，Z3 按 finding 求值。
+- **Phase 1**: the callee computes a path-insensitive, context-insensitive summary
+  bottom-up, cached by function signature, and the caller reuses it with an O(1)
+  table lookup.
+- **Phase 2**: the caller analyses top-down with context-sensitivity and
+  path-sensitivity, and Z3 evaluates per finding.
 
-这样兼顾精度（漏报为 0，per-call-site 区分）和速度。详见
-[`../tech/CROSS-FUNCTION-ANALYSIS.md`](../tech/CROSS-FUNCTION-ANALYSIS.md)。
+That balances precision (0 false negatives, per-call-site discrimination) against
+speed. See
+[`../tech/CROSS-FUNCTION-ANALYSIS.md`](../tech/CROSS-FUNCTION-ANALYSIS.md) for details.
 
-### 1.2 DFA 引擎 vs AST 的分工
+### 1.2 How the DFA engine and the AST divide the work
 
-| 形态 | 数量 | 含义 |
+| Shape | Count | Meaning |
 | --- | ---: | --- |
-| **AST checker（`plumb-style`）** | 596 | 规则类，看 AST 形态 |
-| **`CheckerCategories` 登记** | 594 | 上面这些里被登记进规则表的 |
-| **DFA checker（已注册）** | 67 | 引擎实际装配的，涉及数据流 / 跨函数 |
-| **其中 `extends TaintedCheckerBase`** | 47 | 继承统一污点传播基类 |
-| **事实种类（fact kinds）** | 27 | 内置 15 个 + `fact-kinds.yaml` 12 个 |
+| **AST checker (`plumb-style`)** | 596 | Rule classes, looking at AST shapes |
+| **Registered in `CheckerCategories`** | 594 | The subset of those that is registered into the rule table |
+| **DFA checker (registered)** | 67 | The ones the engine actually assembles; they involve data flow / cross-function analysis |
+| **Of those, `extends TaintedCheckerBase`** | 47 | Inherit the common taint-propagation base class |
+| **Fact kinds** | 27 | 15 built-in + 12 from `fact-kinds.yaml` |
 
-**分工原则**：只依赖 AST 形态的规则放在 `plumb-style`。用 DFA 实现 style rule 既不提升精度
-也不提升召回，只是把"数 AST 节点"的逻辑硬塞进 IR visitor。
+**The division of labour**: a rule that depends only on the AST shape belongs in
+`plumb-style`. Implementing a style rule with the DFA raises neither precision nor
+recall -- it only forces "count the AST nodes" logic into an IR visitor.
 
-完整的 DFA checker 分类见 [`../tech/CROSS-FUNCTION-AI-TRACE.md`](../tech/CROSS-FUNCTION-AI-TRACE.md) §12。
+The complete classification of the DFA checkers is in
+[`../tech/CROSS-FUNCTION-AI-TRACE.md`](../tech/CROSS-FUNCTION-AI-TRACE.md) §12.
 
-## 2. 规则覆盖面
+## 2. Rule coverage
 
-### 2.1 Plumb 的规则构成
+### 2.1 How Plumb's rules are composed
 
-| 类别 | 数量 | 来源 |
+| Category | Count | Source |
 | --- | ---: | --- |
-| AST checker 类 | 596 | `plumb-style/**` |
-| 其中登记进规则表 | 594 | `CheckerCategories` |
-| 已注册规则总数 | 1148 | AST + DFA 的实际注册 |
-| DFA checker（已注册） | 67 | `ScanRunner.buildDfaCheckers()` |
+| AST checker classes | 596 | `plumb-style/**` |
+| Of those, registered into the rule table | 594 | `CheckerCategories` |
+| Total registered rules | 1148 | The actual registrations of AST + DFA |
+| DFA checker (registered) | 67 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | 12 | `TaintRuleRegistry` |
-| Taint source family / 模式 | 5 / 19 | `sink-families.yaml` 的 `taint.sources.*` |
-| Taint sink family / 模式 | 34 / 348 | `sink-families.yaml` 的 `*.sinks` |
-| 输入源模式（框架入口） | 65 | `InputSourcePatterns` |
-| 事实种类 | 27 | 内置 + YAML |
+| Taint source family / patterns | 5 / 19 | The `taint.sources.*` of `sink-families.yaml` |
+| Taint sink family / patterns | 34 / 348 | The `*.sinks` of `sink-families.yaml` |
+| Input source patterns (framework entry points) | 65 | `InputSourcePatterns` |
+| Fact kinds | 27 | Built-in + YAML |
 
-### 2.2 关键 CWE 覆盖
+### 2.2 Key CWE coverage
 
-以下只列 Plumb 侧的机制，**不与其他工具逐条对比** —— 那些数字来自外部资料，无法复现。
+Only the Plumb side is listed here, and it is **not compared item by item with the
+other tools** -- those numbers come from external material and cannot be reproduced.
 
-| CWE | Plumb 侧的实现 |
+| CWE | The Plumb-side implementation |
 | --- | --- |
-| CWE-22 路径穿越 | taint sink（`url.sinks` / `file.sinks`） |
-| CWE-78 命令注入 | taint sink |
-| CWE-89 SQL 注入 | taint sink（`sql.sinks`）+ MyBatis `${}` 原始插值检查（AST 层） |
-| CWE-94 代码注入 | taint sink（`ognl.sinks` / `el.sinks` / `jcr.sinks` / `jsp-include.sinks`） |
-| CWE-117 日志注入 | taint sink（`log.sinks`） |
-| CWE-190/191 整数溢出/下溢 | DFA + Z3 路径条件 |
-| CWE-252/253 未检查返回值 | DFA（`UncheckedReturnCheck`） |
-| CWE-470 不安全反射 | taint sink（`reflection.sinks`） |
-| CWE-502 反序列化 | taint sink |
-| CWE-532 日志中的敏感信息 | taint source + taint sink |
-| CWE-601 开放重定向 | taint sink（`open-redirect.sinks`） |
-| CWE-918 SSRF | taint sink（`url.sinks`） |
-| CWE-1333 ReDoS | taint sink（`regex.sinks`） |
+| CWE-22 Path traversal | taint sink (`url.sinks` / `file.sinks`) |
+| CWE-78 Command injection | taint sink |
+| CWE-89 SQL injection | taint sink (`sql.sinks`) + a MyBatis `${}` raw-interpolation check (AST layer) |
+| CWE-94 Code injection | taint sink (`ognl.sinks` / `el.sinks` / `jcr.sinks` / `jsp-include.sinks`) |
+| CWE-117 Log injection | taint sink (`log.sinks`) |
+| CWE-190/191 Integer overflow/underflow | DFA + Z3 path conditions |
+| CWE-252/253 Unchecked return value | DFA (`UncheckedReturnCheck`) |
+| CWE-470 Unsafe reflection | taint sink (`reflection.sinks`) |
+| CWE-502 Deserialization | taint sink |
+| CWE-532 Sensitive information in logs | taint source + taint sink |
+| CWE-601 Open redirect | taint sink (`open-redirect.sinks`) |
+| CWE-918 SSRF | taint sink (`url.sinks`) |
+| CWE-1333 ReDoS | taint sink (`regex.sinks`) |
 
-**框架入口**：Spring MVC / JAX-RS / Quarkus REST / Micronaut / Jakarta Servlet 的绑定注解
-（`@RequestParam`、`@QueryParam`、`@RestQuery`、`@QueryValue` 等）由同一份注解清单驱动，
-同时供污点引擎和输入校验 checker 使用。
+**Framework entry points**: the binding annotations of Spring MVC / JAX-RS / Quarkus
+REST / Micronaut / Jakarta Servlet (`@RequestParam`, `@QueryParam`, `@RestQuery`,
+`@QueryValue` and so on) are driven by one shared annotation list, which serves both
+the taint engine and the input-validation checkers.
 
-## 3. 误报控制
+## 3. False-positive control
 
-Plumb 的误报控制分三层：
+Plumb controls false positives in three layers:
 
-| 层 | 机制 |
+| Layer | Mechanism |
 | --- | --- |
-| **路径敏感** | `SolverZ3Bridge` / `BoundaryConstraintChecker` 按 finding 求值路径条件，用于否定数值类告警 |
-| **来源可信度** | 污点源带可信度权重，来源标签形如 `param:customer@spring-mvc:RequestParam` |
-| **AI 降噪（可选）** | `plumb-ai` 的 Re-Act agent，可按规则覆写 prompt |
+| **Path sensitivity** | `SolverZ3Bridge` / `BoundaryConstraintChecker` evaluate the path conditions per finding, used to negate numeric warnings |
+| **Source trustworthiness** | A taint source carries a trustworthiness weight; the source tag looks like `param:customer@spring-mvc:RequestParam` |
+| **AI noise reduction (optional)** | The Re-Act agent of `plumb-ai`, whose prompt can be overridden per rule |
 
-> **一句话原则**：缺少事实**不等于**安全。空的 points-to 集合、缺失的 null fact、未覆盖的
-> alias 都**不能**用来抑制一条告警 —— 它们只意味着"不知道"，而"不知道"要按"可能有问题"
-> 处理。抑制一条告警的前提是 guard 覆盖了全部相关可能性集合。
+> **The principle in one sentence**: a missing fact is **not** the same as safety. An
+> empty points-to set, an absent null fact and an uncovered alias **cannot** be used to
+> suppress a warning -- they only mean "unknown", and "unknown" has to be treated as
+> "possibly broken". The precondition for suppressing a warning is that the guard
+> covers the whole set of relevant possibilities.
 
-## 4. AI 集成
+## 4. AI integration
 
-| 能力 | 说明 |
+| Capability | Description |
 | --- | --- |
-| 形态 | Re-Act agent（`ReActAgent` + `LlmConnection` + `ToolRegistry`） |
-| 工具 | 12 个已注册（源码里有 14 个 tool 类，含 `Tool` 接口本身） |
-| Provider | `OpenAiCompatibleLlmProvider`（OpenAI 兼容接口） |
-| 定位 | **可选层**。纯静态分析本身已经够用；AI 用来进一步降 FP，不取代静态规则 |
-| 每条规则的 prompt | 写在各 checker 的 `getAiPrompt()` 里 |
+| Shape | Re-Act agent (`ReActAgent` + `LlmConnection` + `ToolRegistry`) |
+| Tools | 12 registered (the source has 14 tool classes, including the `Tool` interface itself) |
+| Provider | `OpenAiCompatibleLlmProvider` (the OpenAI-compatible interface) |
+| Position | **An optional layer**. The static analysis alone is already enough; AI reduces false positives further and does not replace the static rules |
+| Per-rule prompt | Written in the `getAiPrompt()` of each checker |
 
-## 5. 适合与不适合的场景
+## 5. Where it fits and where it does not
 
-**适合**：
-- 需要**跨函数 taint**（Spring / Jakarta / 大型企业项目）
-- 需要**路径敏感的数值分析**（CWE-190 / 191 / 252 / 253）
-- 希望**一个工具覆盖多套风格规则**，而不是同时装 PMD + Sonar + SpotBugs + Checkstyle
-- 需要**透明实现** —— 每条规则的 SPI 都有文档
-- 需要把结果接入 CI / IDE（NDJSON、SARIF 输出）
+**A good fit**:
+- You need **cross-function taint** (Spring / Jakarta / large enterprise projects)
+- You need **path-sensitive numeric analysis** (CWE-190 / 191 / 252 / 253)
+- You want **one tool to cover several families of style rules** instead of running
+  PMD + Sonar + SpotBugs + Checkstyle side by side
+- You need **transparent implementation** -- the SPI of every rule is documented
+- You need to feed the results into CI / an IDE (NDJSON, SARIF output)
 
-**不适合**：
-- 需要 C / C++ / JS / Go 多语言（Plumb 只做 Java）
-- 需要商业引擎级别的路径敏感覆盖
-- 需要 IDE 内的实时增量检查（Plumb 以 CLI 为主）
+**Not a good fit**:
+- You need C / C++ / JS / Go (Plumb does Java only)
+- You need the path-sensitive coverage of a commercial engine
+- You need real-time incremental checking inside an IDE (Plumb is CLI-first)
 
-## 6. 相关文档
+## 6. Related documents
 
-- [`RULES.md`](RULES.md) —— 规则总览与分类
-- [`RULE-AUTHORING.md`](RULE-AUTHORING.md) —— 怎么加一条规则
-- [`RULE-STYLE-OP.md`](RULE-STYLE-OP.md) —— 规则运维手册
-- [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) —— 引擎架构
-- [`../tech/CROSS-FUNCTION-ANALYSIS.md`](../tech/CROSS-FUNCTION-ANALYSIS.md) —— 跨函数分析
-- [`../../README.md`](../../README.md) —— 快速上手
+- [`RULES.md`](RULES.md) -- the rule catalogue and its categories
+- [`RULE-AUTHORING.md`](RULE-AUTHORING.md) -- how to add a rule
+- [`RULE-STYLE-OP.md`](RULE-STYLE-OP.md) -- the rule operations manual
+- [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) -- the engine architecture
+- [`../tech/CROSS-FUNCTION-ANALYSIS.md`](../tech/CROSS-FUNCTION-ANALYSIS.md) -- cross-function analysis
+- [`../../README.md`](../../README.md) -- getting started

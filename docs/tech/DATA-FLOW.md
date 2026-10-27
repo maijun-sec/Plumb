@@ -1,67 +1,69 @@
-﻿# 数据流分析（plumb-dfa）
+# Dataflow Analysis (plumb-dfa)
 
-本文档描述 `plumb-dfa` 的实际实现。全部内容对照源码核实；文中每个类名都可在
-`plumb-dfa/src/main/java/org/plumb/dfa/` 下找到，引用格式为 `文件:行号`。
+[English](../README.md) | [中文](../zh/tech/DATA-FLOW.md)
 
-引擎既不是 IFDS，也不是 tabulation solver；它是一个 per-checker 的正向数据流引擎，
-配一个独立的指向性求解器和一个只在特定检查里启用的 Z3 误报过滤器。
+This document describes the actual implementation of `plumb-dfa`. Everything here was checked against the source code; every class name mentioned in the text can be found under
+`plumb-dfa/src/main/java/org/plumb/dfa/`, and references use the format `file:line`.
+
+The engine is neither IFDS nor a tabulation solver; it is a per-checker forward dataflow engine,
+paired with an independent points-to solver and a Z3 false-positive filter that is only enabled in specific checks.
 
 ---
 
-## 1. 引擎骨架
+## 1. Engine skeleton
 
-### 1.1 入口与两个阶段
+### 1.1 Entry point and the two phases
 
-入口是 `DfaEngine`（`engine/DfaEngine.java`），对外三个运行模式：
+The entry point is `DfaEngine` (`engine/DfaEngine.java`), with three run modes exposed:
 
-| 方法 | 用途 |
+| Method | Purpose |
 | --- | --- |
-| `run(TacProgram)` (`:261`) | 单程序 |
-| `runSequential(TacProgram)` (`:1022`) | 单线程 |
-| `runParallel(TacProgram, int)` (`:1002`) | 顶层 worklist 并行 |
-| `runWithGlobalStore(List<TacProgram>, int)` (`:340`) | 跨文件全局 store（CLI 默认策略 `global`） |
+| `run(TacProgram)` (`:261`) | Single program |
+| `runSequential(TacProgram)` (`:1022`) | Single-threaded |
+| `runParallel(TacProgram, int)` (`:1002`) | Top-level worklist parallelism |
+| `runWithGlobalStore(List<TacProgram>, int)` (`:340`) | Cross-file global store (the CLI default strategy `global`) |
 
-所有模式最终都走同一个骨架。真正的调度在 `runWorklist`（`:1081`）：
+All modes eventually go through the same skeleton. The real scheduling happens in `runWorklist` (`:1081`):
 
 ```
-initEngine(ctx)              // 所有 checker 一次
-warmUpMethodSummaries(...)   // 路径无关的语法级摘要预热
-computeParamOrigins(...)     // 跨函数形参来源标签，传播到定点
-solvePointsTo(...)           // 全程序指向性，一次求解
+initEngine(ctx)              // once for all checkers
+warmUpMethodSummaries(...)   // path-insensitive, syntax-level summary warm-up
+computeParamOrigins(...)     // cross-function parameter origin labels, propagated to the fixpoint
+solvePointsTo(...)           // whole-program points-to, solved once
   ↓
-每个函数（依赖计数归零才入队）:
-  analyseOneFunction(ctx, fn)      // 正向指令遍历
-  summariseOneFunction(ctx, fn)    // 收集 summary 进共享 cache
+each function (queued only when its dependency count reaches zero):
+  analyseOneFunction(ctx, fn)      // forward instruction traversal
+  summariseOneFunction(ctx, fn)    // collect summaries into the shared cache
   ↓
 finish(ctx)
 ```
 
-### 1.2 「逆向非流敏感 + 正向流敏感」到底对应什么
+### 1.2 What "backward flow-insensitive + forward flow-sensitive" actually corresponds to
 
-这是本引擎最容易被文档写错的地方，所以按代码逐条对照：
+This is the place where documentation most easily goes wrong, so it is checked against the code item by item:
 
-| 说法 | 代码里的对应物 | 是否准确 |
+| Claim | Corresponding code | Accurate? |
 | --- | --- | --- |
-| 逆向、非流敏感的前置分析 | `warmUpMethodSummaries` (`:606`) → `MethodSummaryBuilder.build` | **部分准确**。它是一次线性 IR 扫描，分类 return 形态、收集副作用，**没有数据流求解**。它是路径无关的语法摘要，不是反向流分析。 |
-| 正向、流敏感的指令遍历 | `analyseOneFunction` (`:1214`)，按 `bbRpoOrder(fn)` 遍历 | **准确**。每个 checker 维护自己的正向格（taint / nullable / interval），在指令上传播。 |
-| 指向性是独立前置求解 | `solvePointsTo` (`:667`) | **准确**。全程序一次求解，结果挂在 `AnalysisContext` 上，所有 checker 共享同一个不动点。 |
+| Backward, flow-insensitive pre-analysis | `warmUpMethodSummaries` (`:606`) → `MethodSummaryBuilder.build` | **Partially accurate**. It is a single linear IR scan that classifies the return shape and collects side effects, with **no dataflow solving**. It is a path-insensitive syntactic summary, not a backward flow analysis. |
+| Forward, flow-sensitive instruction traversal | `analyseOneFunction` (`:1214`), traversing in `bbRpoOrder(fn)` order | **Accurate**. Every checker maintains its own forward lattice (taint / nullable / interval) and propagates it over the instructions. |
+| Points-to is an independent pre-solve | `solvePointsTo` (`:667`) | **Accurate**. One whole-program solve; the result hangs off `AnalysisContext`, and all checkers share the same fixpoint. |
 
-**关键事实：引擎没有「先跑一遍逆向、再跑一遍正向」的两个独立数据流 pass。** 只有一次
-正向遍历；summary 是这次遍历的产物，而不是另一遍分析的输入。
+**Key fact: the engine does not have "a backward pass followed by a separate forward pass".** There is only one
+forward traversal; the summaries are a product of that traversal, not the input of another analysis pass.
 
-### 1.3 指令顺序：BB-RPO，块内正向
+### 1.3 Instruction order: BB-RPO, forward within a block
 
-`bbRpoOrder(TacFunction)`（`:1317`）：
+`bbRpoOrder(TacFunction)` (`:1317`):
 
-- 基本块按 **reverse post-order** 排列（DFS 后序再反转，`:1347-1350`）
-- 块内指令保持**原始正向顺序**（`:1358-1363`）
+- Basic blocks are ordered in **reverse post-order** (reverse the DFS post-order, `:1347-1350`)
+- The instructions inside a block keep their **original forward order** (`:1358-1363`)
 
-块内为什么不反转：引擎里每个 checker 都是正向格，反转块会把 use 排在 def 之前，直接破坏
-传播。（`DfaEngine` 类注释早期声称「BB-RPO + intra-block reverse」，与实现不符，已更正。）
+Why the block is not reversed: every checker in the engine is a forward lattice, and reversing a block would put the use before the def, breaking propagation outright.
+(The `DfaEngine` class comment once claimed "BB-RPO + intra-block reverse", which does not match the implementation and has been corrected.)
 
 ### 1.4 Checker SPI
 
-`DfaChecker`（`engine/DfaChecker.java`）：
+`DfaChecker` (`engine/DfaChecker.java`):
 
 ```
 initEngine(ctx)
@@ -75,31 +77,30 @@ initEngine(ctx)
   finish(ctx)
 ```
 
-**summary 契约**：函数体内部的缺陷直接 `ctx.reporter().report(...)` 发出，**不进 summary**；
-只有「调用方需要知道的事」才进 `FunctionSummary`，由 `FunctionSummary.merge` 合并进
-`ctx.summaryCache()`，按函数签名索引。caller 侧遇到 CALL 时用 `SummaryApplier.apply`
-消费它。
+**The summary contract**: defects found inside a function body are reported directly through `ctx.reporter().report(...)` and **do not go into the summary**;
+only "what the caller needs to know" goes into `FunctionSummary`, merged by `FunctionSummary.merge` into
+`ctx.summaryCache()` and indexed by the function signature. On the caller side, when a CALL is encountered, `SummaryApplier.apply` consumes it.
 
 ---
 
-## 2. Fact 域
+## 2. The fact domain
 
-`fact/Fact.java` 的 `Fact` 是四元组 `(FactKind, operand, value, 来源指令)`。
+The `Fact` in `fact/Fact.java` is the quadruple `(FactKind, operand, value, defining instruction)`.
 
-`FactKind.Trait` **不是引擎执行的机制,而是意图声明**。没有任何生产代码读取 trait:
-`FactKind.has(Trait)` 存在,但只有测试调用它,引擎从不调用。事实的实际传播由**拥有它的
-checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagateMOVE(...)` 里直接
-完成,和 trait 无关。`plumb-dfa/src/test/java/org/plumb/dfa/fact/FactTraitSemanticsTest.java`
-把这个事实钉住:它断言生产代码里不存在任何 `.has(...Trait...)` 调用。
+`FactKind.Trait` is **not a mechanism the engine executes, but a declaration of intent**. No production code reads a trait:
+`FactKind.has(Trait)` exists, but only tests call it; the engine never does. The actual propagation of a fact is implemented
+by **the checker that owns it** — taint propagation happens directly in `taint/TaintedCheckerBase.propagateMOVE(...)`,
+independently of traits. `plumb-dfa/src/test/java/org/plumb/dfa/fact/FactTraitSemanticsTest.java`
+pins this fact down: it asserts that no `.has(...Trait...)` call exists in the production code.
 
-> 为什么值得写清楚:`PROPAGATED_BY_DECL` 读起来像一个开关 —— 加上它,引擎就应该把事实从
-> 定义复制到所有使用处。实际不是这样。保留 trait 是有理由的(它们让清单可读、也是未来
-> trait 驱动传播的输入),但它们**今天不是机制**。
+> Why this is worth spelling out: `PROPAGATED_BY_DECL` reads like a switch — with it, the engine should copy the fact from
+> the definition to all uses. That is not what happens. Keeping the traits is justified (they keep the catalogue readable,
+> and they are the input for future trait-driven propagation), but they **are not a mechanism today**.
 
-`BuiltinFactKinds.registryWithBuiltins()` 注册 **15 个**内置 kind
+`BuiltinFactKinds.registryWithBuiltins()` registers **15** built-in kinds
 (`BuiltinFactKinds.java:225-320`):
 
-| kind 名 | 常量 | 位置 | 声明的 trait |
+| kind name | Constant | Location | Declared traits |
 | --- | --- | --- | --- |
 | `dfa-taint-untrusted-source` | `UNTRUSTED_SOURCE` | `:56` | SOURCE, BY_DECL, THROUGH_CALL |
 | `dfa-taint-untrusted-sink` | `UNTRUSTED_SINK` | `:66` | SINK, IS_PATH_SINK |
@@ -117,48 +118,48 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 | `plumb.call.return-value-folded` | `RETURN_VALUE_FOLDED` | `:204` | BY_DECL |
 | `plumb.call.side-effect-recorded` | `SIDE_EFFECT_RECORDED` | `:216` | BY_DECL |
 
-**这是两个不同的清单,不是一个**:`org.plumb.dfa.config.ConfigLoader.parseFactKinds`
-(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:227-263`)先把这 15 个内置 kind 放进 registry,再用
-`fact-kinds.yaml` 的 **12 个** 条目覆盖或追加 —— YAML 的条目用另一套命名
-(`UntrustedSource`、`MayBeNull`、`Freed` 等)。两者名字空间不同但**落在同一个 registry 里**,
-所以有效的事务种类是 27 个。`capability_baseline` 把两个清单分开测量(`builtin:` /
-`yaml:` 前缀),少任何一个都会被拒。
+**These are two different catalogues, not one**: `org.plumb.dfa.config.ConfigLoader.parseFactKinds`
+(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:227-263`) first puts these 15 built-in kinds into the registry, then overwrites or
+appends them with the **12** entries of `fact-kinds.yaml` — the YAML entries use a different naming scheme
+(`UntrustedSource`, `MayBeNull`, `Freed`, etc.). The two naming spaces differ but they **land in the same registry**,
+so the effective number of fact kinds is 27. `capability_baseline` measures the two catalogues separately
+(`builtin:` / `yaml:` prefixes), and missing either one is rejected.
 
-> 注意 `ConfigLoader` 有两个:`plumb-main` 的那个读扫描配置(YAML `inputs:` / `checks:`),
-> `plumb-dfa` 的这个读引擎配置(`sink-families.yaml` / `fact-kinds.yaml` / `checkers.yaml`)。
-> fact kind 属于后者。
+> Note that there are two `ConfigLoader`s: the one in `plumb-main` reads the scan configuration (YAML `inputs:` / `checks:`),
+> while the one in `plumb-dfa` reads the engine configuration (`sink-families.yaml` / `fact-kinds.yaml` / `checkers.yaml`).
+> The fact kinds belong to the latter.
 
-**重要区分**:fact 域不等于「四类分析各有一个 fact kind」。实际只有 taint / sensitive
-有 source 类 kind;boundary、points-to、control-flow **都没有对应的 fact kind**,它们由各自
-独立的机制计算(见下)。
+**Important distinction**: the fact domain is not "one fact kind per analysis category". In fact only taint / sensitive
+have source-like kinds; boundary, points-to and control-flow **have no corresponding fact kind** — they are computed by
+their own independent mechanisms (see below).
 
 ---
 
-## 3. 四类分析
+## 3. The four analysis categories
 
-### 3.1 污点分析（taint）
+### 3.1 Taint analysis (taint)
 
-**驱动类**：`taint/TaintedCheckerBase.java`（注意它在 `dfa/taint/` 包下，不在
-`dfa/checkers/taint/`）。它**同时是抽象基类和传播引擎**——这与文档里
-「子类只需几行」的印象不同：`checkers/taint/` 下 45 个具体子类大量覆写
-`checkInstruction`（全仓库共 47 个 `extends TaintedCheckerBase`，
-另外两个是 `BoundaryConstraintChecker` 和基类自身）。
+**Driver class**: `taint/TaintedCheckerBase.java` (note that it lives in the `dfa/taint/` package, not in
+`dfa/checkers/taint/`). It **is both the abstract base class and the propagation engine** — which differs from the
+"a subclass needs only a few lines" impression the documentation gives: the 45 concrete subclasses under
+`checkers/taint/` override `checkInstruction` in bulk (there are 47 `extends TaintedCheckerBase` in the whole
+repository, the other two being `BoundaryConstraintChecker` and the base class itself).
 
-- 状态：`taintedVars: Map<TacVar, String>`（`:140`）与 `taintPaths`（`:149`）
-- 传播：`propagateMOVE`（`:1158`）等按指令种类分派
-- sink 判定：按 `sinkFamilyKey` 查 `SinkFamilyRegistry`（`config/SinkFamilyRegistry.java:22`，在
-  `org.plumb.dfa.config` 包），**不是** IFDS 框架
-- 跨函数：`FunctionSummary` + `Operation.TaintPropagate`
+- State: `taintedVars: Map<TacVar, String>` (`:140`) and `taintPaths` (`:149`)
+- Propagation: `propagateMOVE` (`:1158`) and friends, dispatched by instruction kind
+- Sink decision: looks up `SinkFamilyRegistry` by `sinkFamilyKey` (`config/SinkFamilyRegistry.java:22`, in the
+  `org.plumb.dfa.config` package), **not** an IFDS framework
+- Cross-function: `FunctionSummary` + `Operation.TaintPropagate`
 
-**source / sink / sanitizer 表在哪里**：没有 `TaintCatalog`。实际是两个 registry：
-`TaintRuleRegistry`（`taint/TaintRuleRegistry.java:27`，按 rule id 与 sink family 建索引）与
-`SinkFamilyRegistry`（`:22`，带 `lookupAll` 缓存）。
+**Where the source / sink / sanitizer tables live**: there is no `TaintCatalog`. There are in fact two registries:
+`TaintRuleRegistry` (`taint/TaintRuleRegistry.java:27`, indexed by rule id and sink family) and
+`SinkFamilyRegistry` (`:22`, with a `lookupAll` cache).
 
-**sink pattern 的名字形式**：TAC 的 callee signature 只有在符号解析器能解析接收者
-类型时才是全限定名（`java.sql.Statement.executeQuery/1`）；解析不了时保留 simple
-name（`JdbcTemplate.query/2`）——扫描一个不带依赖 jar 的项目时，第三方类型全部走这条
-路径。`SinkPattern` 因此除了严格形式，还机械派生一份**前缀可选**的变体
-（`SinkFamily.SinkPattern.relaxedForm`）：
+**The shape of a sink pattern name**: a TAC callee signature is only fully qualified when the symbol resolver can
+resolve the receiver type (`java.sql.Statement.executeQuery/1`); when it cannot, the simple
+name is kept (`JdbcTemplate.query/2`) — when scanning a project without the dependency jars, all third-party types
+take this path. `SinkPattern` therefore derives mechanically, in addition to the strict form, a **prefix-optional** variant
+(`SinkFamily.SinkPattern.relaxedForm`):
 
 ```
 ^org\.springframework\.jdbc\.core\.JdbcTemplate\.query(/\d+)?
@@ -166,30 +167,30 @@ name（`JdbcTemplate.query/2`）——扫描一个不带依赖 jar 的项目时�
 ^(?:[\w.]+\.)?JdbcTemplate\.query\b(/\d+)?
 ```
 
-变体只在接收者是 simple name 时启用，且只放宽包前缀：类名与方法名仍须精确匹配，
-方法名后还有词边界 `\b`，所以 `JdbcTemplate.query` 不会连 `queryForList` 一起匹配。
-没有这份变体，所有框架 sink 会静默失配。细节见
-[规则编写指南](../rules/RULE-AUTHORING.md#133-加新-taint-rule)。
+The variant is only enabled when the receiver is a simple name, and it only relaxes the package prefix: the class name
+and the method name must still match exactly, and the method name is followed by a word boundary `\b`, so `JdbcTemplate.query`
+does not also match `queryForList`. Without this variant, every framework sink would silently fail to match. See
+[the rule authoring guide](../rules/RULE-AUTHORING.md#133-adding-a-new-taint-rule) for the details.
 
-### 3.1.1 框架入口点：源不是一次调用，而是一个参数注解
+### 3.1.1 Framework entry points: the source is not a call, but a parameter annotation
 
-只认 `HttpServletRequest.getParameter(...)` 的扫描器在 Spring 代码里**看不到任何源** ——
-框架是**按注解**把请求值绑到方法参数上的，controller 体内根本没有 request 对象：
+A scanner that only knows `HttpServletRequest.getParameter(...)` sees **no source at all** in Spring code —
+the framework binds request values to method parameters **by annotation**, and there is no request object in the controller body:
 
 ```java
 @GetMapping("/orders")
 public void search(@RequestParam("customer") String customer) {
-  repository.findByCustomer(customer);   // 值来自 HTTP 请求
+  repository.findByCustomer(customer);   // the value comes from the HTTP request
 }
 ```
 
-所以源是一个**参数注解**，IR 已经记了这些
-（`TacFunction.paramAnnotations()`）。
+So the source is a **parameter annotation**, and the IR already records those
+(`TacFunction.paramAnnotations()`).
 
-注解清单只有一份：`plumb-rules` 的
-`org.plumb.rules.framework.FrameworkInputAnnotations`，共 **30** 个绑定注解，覆盖 5 个框架：
+There is only one annotation catalogue: `org.plumb.rules.framework.FrameworkInputAnnotations` in `plumb-rules`,
+with **30** binding annotations covering 5 frameworks:
 
-| 框架 | 注解 |
+| Framework | Annotations |
 | --- | --- |
 | Spring MVC / Spring Data | `RequestParam` `PathVariable` `RequestBody` `RequestHeader` `RequestAttribute` `CookieValue` `RequestPart` `ModelAttribute` `SessionAttribute` `MatrixVariable` |
 | JAX-RS / Jakarta REST | `QueryParam` `PathParam` `HeaderParam` `CookieParam` `FormParam` `BeanParam` `MatrixParam` |
@@ -197,102 +198,103 @@ public void search(@RequestParam("customer") String customer) {
 | Micronaut | `Body` `Header` `QueryValue` `Part` `RequestBean` |
 | Jakarta Servlet | `WebParam` |
 
-清单的源头是 `scripts/framework_input_annotations.py`（每个名字都记了它被核对过的框架文档），
-Java 侧由 `scripts/gen_framework_annotations.py` 生成。
+The source of the catalogue is `scripts/framework_input_annotations.py` (each name records the framework documentation it was
+checked against), and the Java side is generated by `scripts/gen_framework_annotations.py`.
 
-**为什么必须只有一份**：污点引擎（决定污点流从哪开始）和 AST 的输入校验检查器
-（决定这个值要不要被校验）必须对"什么是用户输入"有同一个理解。清单里有名字但两层
-只认一部分，或者两层各自写一份，信任边界就会不对称——一层当攻击者可控、另一层
-当默认可信。`scripts/check_framework_annotations.py` 守这个不变量：清单里的每个名字，
-两层都必须认。
+**Why there must be only one**: the taint engine (which decides where the taint flow starts) and the AST input-validation
+checkers (which decide whether the value has to be validated) must have the same understanding of "what is user input".
+If the catalogue has names that only one of the two layers recognises, or if the two layers each keep their own copy,
+the trust boundary becomes asymmetric — one layer treats the value as attacker-controlled, the other treats it as
+trusted by default. `scripts/check_framework_annotations.py` guards this invariant: every name in the catalogue
+must be recognised by both layers.
 
-**信任边界由绑定注解决定，不由端点注解决定**：JAX-RS 和 Quarkus REST 的端点注解
-**同名**（`@Path` `@GET` `@POST` …），光看端点注解分不出两者；但绑定注解不同
-（`@QueryParam` vs `@RestQuery`），而且这正是报告里该写清楚的东西。所以污点标签形如
-`param:customer@spring-mvc:RequestParam` —— 前缀 `param:` 保持不变（几十处
-`startsWith("param:")` 判断依赖它），框架限定词是**后缀**。
+**The trust boundary is determined by the binding annotation, not by the endpoint annotation**: the endpoint annotations
+of JAX-RS and Quarkus REST have the **same names** (`@Path` `@GET` `@POST` …), so the endpoint annotations alone cannot tell them
+apart; but the binding annotations differ (`@QueryParam` vs `@RestQuery`), and that is exactly what belongs in the report.
+So the taint label has the form `param:customer@spring-mvc:RequestParam` — the `param:` prefix stays unchanged (dozens of
+`startsWith("param:")` checks depend on it), and the framework qualifier is a **suffix**.
 
-### 3.1.2 请求 Bean：源不是一次调用，也不是参数注解，而是字段声明
+### 3.1.2 Request beans: the source is neither a call nor a parameter annotation, but a field declaration
 
-**容器注解**（`@RestBeanParam` `@BeanParam` `@RequestBean`）绑定的不是一个值，而是一
-**组**值：框架把请求值绑到 bean 的**字段**上，绑定注解在字段上，不在参数上。
+A **container annotation** (`@RestBeanParam` `@BeanParam` `@RequestBean`) binds not a single value but a
+**group** of values: the framework binds the request values to the **fields** of the bean, so the binding annotation is on
+the field, not on the parameter.
 
 ```java
 public class Parameters {
-  @RestQuery("customer")     // 绑定注解在这里
+  @RestQuery("customer")     // the binding annotation is here
   public String customer;
 }
 
 public void search(@RestBeanParam Parameters params) {
-  repository.findByCustomer(params.customer);   // 值在这里进入
+  repository.findByCustomer(params.customer);   // the value enters here
 }
 ```
 
-难点在于**怎么找到那个字段**。bean 类没有任何方法，也没有初始化器，所以它在 IR 里
-**根本不产生任何函数** —— `TacFunction.fieldAnnotations()` 只能描述"声明该函数的类"的字段，
-一个没有函数的类就没有字段注解，于是 `@RestQuery` 对整个引擎**完全不可见**：到达 SQL
-sink 的值没有框架来源可写。
+The difficulty is **how to find that field**. The bean class has no methods and no initializers, so it **produces no
+functions at all** in the IR — `TacFunction.fieldAnnotations()` can only describe the fields of "the class that declares
+that function", and a class without functions has no field annotations, so `@RestQuery` is **completely invisible** to the
+whole engine: a value reaching a SQL sink has no framework origin to record.
 
-修法分两层：
+The fix has two layers:
 
-- **TAC**：`TacProgram.classFieldAnnotations()` 记录**每一个**被声明的类的字段注解，不管
-  该类有没有函数；`MergedProgram` 把它跨编译单元聚合（和 `classToParent` 一样）。
-- **DFA**：`FrameworkFieldBindings` 在 `FIELDLOAD` 处解析：接收者的**类型**决定看哪个类
-  的字段，**字段名**决定看哪个字段，字段上的**绑定注解**决定来源和框架。
+- **TAC**: `TacProgram.classFieldAnnotations()` records the field annotations of **every** declared class, regardless of
+  whether that class has functions; `MergedProgram` aggregates them across compilation units (like `classToParent`).
+- **DFA**: `FrameworkFieldBindings` resolves at `FIELDLOAD`: the receiver's **type** decides which class's
+  fields to look at, the **field name** decides which field, and the **binding annotation** on the field decides the origin and the framework.
 
-所以标签是 `param:params.customer@quarkus-rest:RestQuery` —— 名字是**限定过的字段
-表达式**，因为读者需要知道是哪个 bean 的哪个字段。
+So the label is `param:params.customer@quarkus-rest:RestQuery` — the name is a **qualified field
+expression**, because the reader needs to know which field of which bean it is.
 
-**容器参数本身是"载体"（carrier），不是源**：它的标签是 `param:params@carrier`。框架
-**没有**绑定的字段不能报成框架入口点 —— 那是个假声明，因为没有任何注解绑过它。这个模型
-**不抑制任何 finding**：载体仍然是污点的，所以从请求 bean 派生出来的值照样到达 sink、照样
-被报出来。
+**The container parameter itself is a "carrier", not a source**: its label is `param:params@carrier`. A field that the
+framework **did not** bind must not be reported as a framework entry point — that would be a false declaration, because no
+annotation ever bound it. This model **suppresses no finding**: the carrier is still tainted, so values derived from a request
+bean still reach the sink and are still reported.
 
-### 3.2 边界分析（boundary）
+### 3.2 Boundary analysis (boundary)
 
-`checkers/boundary/`，全部继承 `BoundaryConstraintChecker`（`:64`）。每个子类把算术谓词
-写成字符串交给 Z3：
+`checkers/boundary/`, all extending `BoundaryConstraintChecker` (`:64`). Each subclass writes the arithmetic predicate
+as a string and hands it to Z3:
 
-| checker | 检测 | 谓词位置 |
+| checker | Detects | Predicate location |
 | --- | --- | --- |
-| `ArrayBoundsConstraintChecker` | 数组越界 | `idx < 0`（`:85`） |
-| `DivZeroConstraintChecker` | 除零 | `rhs == 0`（`:71`） |
-| `OverflowConstraintChecker` | 溢出 | `:46` |
-| `UnderflowConstraintChecker` | 下溢 | `result < typeR.lo`（`:103`） |
+| `ArrayBoundsConstraintChecker` | Array out of bounds | `idx < 0` (`:85`) |
+| `DivZeroConstraintChecker` | Division by zero | `rhs == 0` (`:71`) |
+| `OverflowConstraintChecker` | Overflow | `:46` |
+| `UnderflowConstraintChecker` | Underflow | `result < typeR.lo` (`:103`) |
 
-区间抽象的实现类是 `checkers/boundary/Range.java`（**不是** `Interval`——该类不存在），
-带方法长度阈值的 `Range` 定义在 `:56`。
+The implementation class of the interval abstraction is `checkers/boundary/Range.java` (**not** `Interval` — that class does not exist),
+and the `Range` with a method length threshold is defined at `:56`.
 
-### 3.3 指向分析（points-to）
+### 3.3 Points-to analysis (points-to)
 
-`points/PointsToSolver.java`。源码明确声明这是**约束传播求解器，不是 tabulation 求解器**
-（`:38-40`），结构参考 Qilin（`:36`）。
+`points/PointsToSolver.java`. The source explicitly declares this to be a **constraint propagation solver, not a tabulation solver**
+(`:38-40`), with the structure referencing Qilin (`:36`).
 
-- **堆抽象**：field-sensitive `(receiver, name)`（`:80`）、数组单元（`:83`）、以及独立的
-  Map/List `containerCells`（`:92`）
-- **上下文敏感**：`AbstractObject.Policy` 三档，默认 **`CALL_SITE`（1-CFA）**
-  （`points/AbstractObject.java:304-306`），可经 `TuningConfig.effectivePointsToPolicy()`
-  覆盖
-- **不使用 Z3**：`points/` 下没有任何 solver 引用；Z3 只出现在 `solver/` 的路径条件里
-- 求解一次（`DfaEngine.solvePointsTo`，`:667`），失败降级为「无 alias 信息」而非崩溃
+- **Heap abstraction**: field-sensitive `(receiver, name)` (`:80`), array cells (`:83`), and separate
+  Map/List `containerCells` (`:92`)
+- **Context-sensitive**: `AbstractObject.Policy` has three levels, the default being **`CALL_SITE` (1-CFA)**
+  (`points/AbstractObject.java:304-306`), overridable through `TuningConfig.effectivePointsToPolicy()`
+- **No use of Z3**: there is no solver reference anywhere under `points/`; Z3 only appears in the path conditions of `solver/`
+- Solved once (`DfaEngine.solvePointsTo`, `:667`); on failure it degrades to "no alias information" rather than crashing
 
-### 3.4 控制流检查（controlflow）
+### 3.4 Control-flow checks (controlflow)
 
-`checkers/controlflow/` 下 16 个类，**全部直接 `implements DfaChecker`，没有共同基类**：
-`DeadlockChecker`、`CollectionSelfReferenceChecker`、`IteratorConcurrentModificationChecker`、
-`ServletAtomicityDfaChecker`、`XxeChecker`、`EqualsCalledOnNullChecker`、`OffByOneChecker`、
-`MissingCryptoInitChecker`、`TryCatchFinallyChecker`、`UnlockNotLockedChecker`、
-`OrmUnnecessaryGetDfaChecker`、`SingletonRaceDfaChecker`、`OrmLostUpdateDfaChecker`、
-`CompareWithSelfChecker`、`OrmLoadNullCheckDfaChecker`、`UncaughtExceptionPropagator`。
+There are 16 classes under `checkers/controlflow/`, and they **all directly `implements DfaChecker`, with no common base class**:
+`DeadlockChecker`, `CollectionSelfReferenceChecker`, `IteratorConcurrentModificationChecker`,
+`ServletAtomicityDfaChecker`, `XxeChecker`, `EqualsCalledOnNullChecker`, `OffByOneChecker`,
+`MissingCryptoInitChecker`, `TryCatchFinallyChecker`, `UnlockNotLockedChecker`,
+`OrmUnnecessaryGetDfaChecker`, `SingletonRaceDfaChecker`, `OrmLostUpdateDfaChecker`,
+`CompareWithSelfChecker`, `OrmLoadNullCheckDfaChecker`, `UncaughtExceptionPropagator`.
 
-它们是 16 个独立的 TAC 模式检查器，只是共用一个包名，**不是**某种统一的数据流分析。
+They are 16 independent TAC pattern checkers that merely share a package name; they are **not** some unified dataflow analysis.
 
 ---
 
-## 4. 可空性：三值事实域
+## 4. Nullability: a three-valued fact domain
 
-`AnalysisContext.mayBeNull(...)`（`engine/AnalysisContext.java:391-395`）是**对指向性
-求解器的转发**，本身不存事实。五个通道是 `PointsToSolver` 的私有字段：
+`AnalysisContext.mayBeNull(...)` (`engine/AnalysisContext.java:391-395`) is a **forward to the points-to
+solver** and stores no facts itself. The five channels are private fields of `PointsToSolver`:
 
 - `nullFields` `:124`
 - `nullArrayCells` `:127`
@@ -300,62 +302,62 @@ sink 的值没有框架来源可写。
 - `nullReturns` `:133`
 - `nullVars` `:136`
 
-**三值语义**（`PointsToSolver.java:104-121` 解释了为什么 null 不能做成 `Obj` 哨兵：那样所有
-null 会互相 alias，污染 `mayAlias`）：
+**Three-valued semantics** (`PointsToSolver.java:104-121` explains why null cannot be modelled as an `Obj` sentinel: all
+nulls would alias each other and pollute `mayAlias`):
 
-| objects | null 事实 | 结论 |
+| objects | null fact | Conclusion |
 | --- | --- | --- |
-| 非空 | 无 | 确定是对象 |
-| 空 | 有 | 确定为 null |
-| 空 | 无 | **未知**（绝不等于 null） |
+| Non-empty | Absent | Definitely an object |
+| Empty | Present | Definitely null |
+| Empty | Absent | **Unknown** (never equal to null) |
 
-⚠️ `AnalysisContext.java:383-390` 明确警告：`mayBeNull == false` **不是**非 null 的证明
-（未被建模的写入不留痕迹）。这与「空集合不能证明安全」是同一条不变量。
+⚠️ `AnalysisContext.java:383-390` explicitly warns: `mayBeNull == false` is **not** a proof of non-null
+(unmodelled writes leave no trace). This is the same invariant as "an empty set does not prove safety".
 
 ---
 
-## 5. Z3：只做误报过滤
+## 5. Z3: false-positive filtering only
 
-Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:3139`，位于 sink 发出路径：
+Z3 has exactly **one** call site in the whole engine, `TaintedCheckerBase.java:3139`, on the sink reporting path:
 
 ```java
 String composed = composePathCondition(pathConditionForSink(...));
 if (!composed.isEmpty()) {
     SolverZ3Bridge.Result r = solverBridge.check(composed, Map.of());
-    if (r == SolverZ3Bridge.Result.UNSAT) return;   // 抑制
+    if (r == SolverZ3Bridge.Result.UNSAT) return;   // suppress
 }
 ```
 
-- `pathConditionForSink` **默认返回 null**（`:3239-3242`），所以未覆写它的 checker
-  组合出的条件为空，**根本不会调用 Z3**
-- 语义明确：Z3 **只用于抑制误报，绝不用于发现缺陷**（`:3237`）
-- 调用链：`CachedZ3Bridge`（LRU 4096 项，`solver/CachedZ3Bridge.java:41-66`）→
-  `Z3Bridge`（native Z3，失败回退 `LocalSolverBridge`）
-- `StructuralImply`（`solver/StructuralImply.java`）是先于 SMT 的廉价一级判定
-  （`x >= N` 蕴含 `x != 0` 之类，`PathCondition.java:136-144`）
+- `pathConditionForSink` **returns null by default** (`:3239-3242`), so a checker that does not override it
+  composes an empty condition and **never calls Z3 at all**
+- The semantics are unambiguous: Z3 is **only used to suppress false positives, never to discover defects** (`:3237`)
+- The call chain: `CachedZ3Bridge` (LRU of 4096 entries, `solver/CachedZ3Bridge.java:41-66`) →
+  `Z3Bridge` (native Z3, falling back to `LocalSolverBridge` on failure)
+- `StructuralImply` (`solver/StructuralImply.java`) is a cheap first-level decision that comes before SMT
+  (`x >= N` implies `x != 0` and the like, `PathCondition.java:136-144`)
 
-### 5.1 PathCondition 与 GuardTracker 是两套东西
+### 5.1 PathCondition and GuardTracker are two different things
 
 | | PathCondition | GuardTracker |
 | --- | --- | --- |
-| 位置 | `solver/PathCondition.java:35` | `taint/GuardTracker.java:51` |
-| 形态 | mini-DSL 的**谓词字符串列表** | 每函数一份的**结构化 guard 栈** |
-| 生命周期 | 累积于路径 | 按函数重置（`:48-49`） |
-| 用 Z3 | 经 `GuardStore` 两级判定 | **完全不引用** Z3 |
+| Location | `solver/PathCondition.java:35` | `taint/GuardTracker.java:51` |
+| Shape | A **list of predicate strings** in a mini-DSL | A **structured guard stack**, one per function |
+| Lifetime | Accumulated along the path | Reset per function (`:48-49`) |
+| Uses Z3 | Two-level decision through `GuardStore` | **Does not reference Z3 at all** |
 
-二者唯一的交汇是单向的：checker 从 `GuardTracker` 读结构化 guard，再**字符串化**写入
-`GuardStore`（例：`DivByZeroChecker.java:203-207`），并在 summary 里记
-`Operation.SolverZ3Predicate`。
+The only point where the two meet is one-directional: the checker reads the structured guards from `GuardTracker`, then
+**stringifies** them into the `GuardStore` (for example `DivByZeroChecker.java:203-207`), and records
+`Operation.SolverZ3Predicate` in the summary.
 
-Z3 由 `tools.aqua:z3-turnkey` 提供，自动下载对应平台 native lib。
+Z3 is provided by `tools.aqua:z3-turnkey`, which automatically downloads the native library for the platform.
 
 ---
 
 ## 6. Call graph
 
-`cg/CallGraphStrategyFactory.create`（`:36-70`）实际支持：
+`cg/CallGraphStrategyFactory.create` (`:36-70`) actually supports:
 
-| 名字 | 实现 |
+| Name | Implementation |
 | --- | --- |
 | `cha` | `ChaCallGraphStrategy` |
 | `rta` | `RtaCallGraphStrategy` |
@@ -365,65 +367,65 @@ Z3 由 `tools.aqua:z3-turnkey` 提供，自动下载对应平台 native lib。
 | `stub` | `StubCallGraphStrategy` |
 | `cached:<name>:<path>` | `CachedCallGraphStrategy` |
 
-跨 TU 的 `createCrossTu`（`:89-112`）只支持 `global` → `GlobalCallGraphStrategy`（**CLI
-默认**）与 cached 两种。
+The cross-TU `createCrossTu` (`:89-112`) only supports `global` → `GlobalCallGraphStrategy` (**the CLI
+default**) and the cached variant.
 
-⚠️ **文档早期声称存在 `0-CFA`，代码中不存在**，且未知名字会直接抛异常
-（`:64-68`）——不是「没写进文档」，是「选不了」。
+⚠️ **Earlier documentation claimed that `0-CFA` exists; it does not exist in the code**, and an unknown name throws immediately
+(`:64-68`) — it is not "missing from the documentation", it is "not selectable".
 
-另注：这里的 `1cfa` 是**调用图**策略，与 §3.3 指向分析的 `CALL_SITE` policy 是两套独立
-开关。
+Note also: the `1cfa` here is a **call graph** strategy, and it is a separate switch from the `CALL_SITE` policy of the
+points-to analysis in §3.3.
 
 ---
 
-## 7. 规则数量
+## 7. Number of rules
 
-「多少条规则」有两个不同的口径，文档早期混用了：
+There are two different measures of "how many rules", and the early documentation mixed them up:
 
-| 口径 | 数量 | 出处 |
+| Measure | Count | Source |
 | --- | --- | --- |
-| **引擎实际配置的 checker** | **16** | `plumb-dfa/src/main/resources/checkers.yaml:19-179` |
-| `plumb-rules` 的 `RuleRegistry` | 85 | `plumb-rules/.../RuleRegistry.java` |
+| **The checkers actually configured in the engine** | **16** | `plumb-dfa/src/main/resources/checkers.yaml:19-179` |
+| The `RuleRegistry` of `plumb-rules` | 85 | `plumb-rules/.../RuleRegistry.java` |
 
-`checkers.yaml` 的 16 项：`DivideByZero`、`IntegerOverflow`、`NullDereference`、
-`ResourceLeak`、`SensitiveDataLeak`、`UncheckedReturn`、`ConstantCondition`、
-`OrmLoadNullCheckDfa`、`OrmUnnecessaryGetDfa`、`OrmLostUpdateDfa`、`SingletonRaceDfa`、
-`ServletAtomicityDfa`、`BoundaryOverflow`、`BoundaryUnderflow`、`BoundaryDivZero`、
-`BoundaryArrayBounds`。
+The 16 entries of `checkers.yaml`: `DivideByZero`, `IntegerOverflow`, `NullDereference`,
+`ResourceLeak`, `SensitiveDataLeak`, `UncheckedReturn`, `ConstantCondition`,
+`OrmLoadNullCheckDfa`, `OrmUnnecessaryGetDfa`, `OrmLostUpdateDfa`, `SingletonRaceDfa`,
+`ServletAtomicityDfa`, `BoundaryOverflow`, `BoundaryUnderflow`, `BoundaryDivZero`,
+`BoundaryArrayBounds`.
 
-⚠️ `RuleRegistry.java` 里登记的许多 `org.plumb.dfa.checker.*` / `org.plumb.dfa.taint.*`
-类名在 `plumb-dfa` 下**不存在**（例如 `:1010` 指向 `org.plumb.dfa.taint.TaintAnalysis`），
-该 registry 明显陈旧，**不能**用它推断规则总数。
+⚠️ Many of the `org.plumb.dfa.checker.*` / `org.plumb.dfa.taint.*` class names registered in `RuleRegistry.java`
+**do not exist** under `plumb-dfa` (for example `:1010` points at `org.plumb.dfa.taint.TaintAnalysis`);
+that registry is clearly stale and **must not** be used to infer the total number of rules.
 
 ---
 
-## 8. 并发模型
+## 8. Concurrency model
 
-| 阶段 | 并行 | 说明 |
+| Stage | Parallel | Explanation |
 | --- | --- | --- |
-| 解析（JavaParser） | 是 | 文件级，门槛 800 文件 |
-| 翻译（AST → TAC） | 是 | 与解析同一轮 |
-| 风格检查 | 是 | AST visitor，无跨文件状态 |
-| **DFA（`runParallel`）** | **是** | 顶层 worklist：依赖计数归零的函数入 `readyQ`（`:1123-1130`） |
-| 报告输出 | 否 | 单文件写 |
+| Parsing (JavaParser) | Yes | At file level, threshold 800 files |
+| Translation (AST → TAC) | Yes | In the same round as parsing |
+| Style checks | Yes | AST visitor, no cross-file state |
+| **DFA (`runParallel`)** | **Yes** | Top-level worklist: functions whose dependency count reaches zero enter `readyQ` (`:1123-1130`) |
+| Report output | No | Single-file write |
 
-并发上限由 `--max-parallelism` 控制（默认 `nCPU - 1`，下限 1）。
+The concurrency ceiling is controlled by `--max-parallelism` (default `nCPU - 1`, lower bound 1).
 
-⚠️ 文档早期称「Taint 必须单线程，跨函数共享 summary cache」——**已过时**。引擎有并行
-worklist；单线程约束只存在于 `GuardStore`（`solver/GuardStore.java:20` 有明确说明）。
+⚠️ Early documentation claimed "taint must be single-threaded and shares the summary cache across functions" — **that is outdated**. The engine has a parallel
+worklist; the single-thread constraint only exists in `GuardStore` (which says so explicitly at `solver/GuardStore.java:20`).
 
 ---
 
-## 9. 与磁盘缓存的关系
+## 9. Relationship to the on-disk cache
 
 ```
-文件 ─parse+translate─▶ TacProgram ───[可序列化]───▶ cache/programs/<sha1>.tac
+file ─parse+translate─▶ TacProgram ───[serialisable]───▶ cache/programs/<sha1>.tac
                           │
                           ▼
-                     MergedProgram ──[可序列化]───▶ cache/merged.tac
+                     MergedProgram ──[serialisable]───▶ cache/merged.tac
                           │
                           ▼
-                       DFA ────  cache/callgraph.tac  ────  (可选)
+                       DFA ────  cache/callgraph.tac  ────  (optional)
 ```
 
-详见 [`CACHE.md`](./CACHE.md)。
+See [`CACHE.md`](./CACHE.md) for the details.

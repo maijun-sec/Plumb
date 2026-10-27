@@ -1,88 +1,96 @@
-# 环境变量与 AI 配置
+# Environment Variables and AI Configuration
 
-Plumb 读取的环境变量**很少**。整个代码库里只有两处真正读环境变量，都在
-`plumb-main/.../ConfigLoader.java`：
+[English](../README.md) | [中文](../zh/usage/ENVIRONMENT.md)
+
+Plumb reads **very few** environment variables. Across the whole codebase
+there are exactly two real reads, both in
+`plumb-main/.../ConfigLoader.java`:
 
 ```java
-String apiKey = System.getenv("OPENAI_API_KEY");        // :466  默认值
+String apiKey = System.getenv("OPENAI_API_KEY");        // :466  default value
 ...
 String envName = s.substring(2, s.length() - 1);
-apiKey = System.getenv(envName);                          // :504  "${VAR}" 展开
+apiKey = System.getenv(envName);                          // :504  "${VAR}" expansion
 ```
 
-本文档的每个结论都对照代码核实过。
+Every conclusion in this document was checked against the code.
 
 ---
 
-## 1. 环境变量总表
+## 1. The environment variables
 
-### 1.1 被读取的
+### 1.1 The ones that are read
 
-| 变量 | 读取位置 | 用途 |
+| Variable | Read at | Purpose |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | `ConfigLoader.java:466` | `ai.apiKey` 未在 YAML 里指定时的默认值 |
-| YAML 中 `${任意变量名}` | `ConfigLoader.java:504` | 显式引用，`ai.apiKey: ${MY_KEY}` |
+| `OPENAI_API_KEY` | `ConfigLoader.java:466` | Default for `ai.apiKey` when the YAML does not set it |
+| Any `${VARNAME}` in the YAML | `ConfigLoader.java:504` | Explicit reference, e.g. `ai.apiKey: ${MY_KEY}` |
 
-⚠️ 只有这两个。`ai.apiKey: ${MINIMAX_API_KEY}` 是**通过第二行**生效的——引擎并不知道
-MiniMax 这个名字，它只看到 `${...}` 就去读那个变量。
+Those two are the only ones. `ai.apiKey: ${MINIMAX_API_KEY}` works through
+the second line -- the engine does not know the name "MiniMax"; it sees
+`${...}` and reads that variable.
 
-### 1.2 不被读取的（常见误解）
+### 1.2 The ones that are not read (common misconceptions)
 
-以下变量在**Java 代码**里**零引用**：
+The following variables have **zero references** in the **Java code**:
 
-| 变量 | 状态 | 说明 |
+| Variable | Status | Explanation |
 | --- | --- | --- |
-| `PLUMB_HOME` | ❌ 未读取 | 没有 `bin/plumb` 启动器，仓库里不存在该脚本。启动器用 `-Dplumb.home=` 系统属性传路径，不是环境变量 |
-| `PLUMB_CACHE_DIR` | ❌ 未读取 | 缓存目录由 `--output-dir` 决定 |
-| `MINIMAX_API_KEY` | ⚠️ 仅测试用 | `LlmIntegrationTest.java:144` 读取；主代码不读 |
-| `ANTHROPIC_API_KEY` | ❌ 未读取 | 想用 Claude 需在 YAML 里写 `apiKey: ${ANTHROPIC_API_KEY}` |
-| `http_proxy` / `https_proxy` | ✅ 间接 | JDK `HttpClient` 默认读标准代理变量，非 Plumb 显式实现 |
+| `PLUMB_HOME` | ❌ 未读取 (not read) | There is no `bin/plumb` launcher in this repository. The launcher passes the path as the `-Dplumb.home=` system property, not as an environment variable |
+| `PLUMB_CACHE_DIR` | ❌ 未读取 (not read) | The cache directory is determined by `--output-dir` |
+| `MINIMAX_API_KEY` | Test only | Read by `LlmIntegrationTest.java:144`; the main code does not read it |
+| `ANTHROPIC_API_KEY` | ❌ 未读取 (not read) | To use Claude, set `apiKey: ${ANTHROPIC_API_KEY}` in the YAML |
+| `http_proxy` / `https_proxy` | Indirect | The JDK `HttpClient` reads the standard proxy variables by default; Plumb does not implement this itself |
 
-**但出包脚本会读两个**——它们不是 Java 代码，但随包发布，用户真的会设：
+**But the packaging scripts read two of them** -- they are not Java code,
+but they ship with the package and users really do set them:
 
-| 变量 | 读取位置 | 用途 |
+| Variable | Read at | Purpose |
 | --- | --- | --- |
-| `PLUMB_JAVA_OPTS` | `scripts/dist-jlink-linux.sh` / `scripts/dist-jlink-windows.ps1` | 透传 JVM 参数，默认 `-Xmx4g -XX:+UseG1GC` |
-| `PLUMB_DEBUG` | `scripts/dist-jlink-linux.sh` / `scripts/dist-jlink-windows.ps1` | 设为 `true` 时给启动器加 `-Droot.level=DEBUG` |
+| `PLUMB_JAVA_OPTS` | `scripts/dist-jlink-linux.sh` / `scripts/dist-jlink-windows.ps1` | Passed through to the JVM; defaults to `-Xmx4g -XX:+UseG1GC` |
+| `PLUMB_DEBUG` | `scripts/dist-jlink-linux.sh` / `scripts/dist-jlink-windows.ps1` | When set to `true`, adds `-Droot.level=DEBUG` to the launcher |
 
-用 `java -jar` 直接跑 uber-jar 时这两个变量不起作用——JVM 参数由启动 `java` 命令的人自己决定。
+Neither works when you run the uber-jar directly with `java -jar` -- the JVM
+arguments are then decided by whoever starts `java`.
 
-**AI 功能完全不用环境变量也可以跑**——不设任何变量、不传 `--ai-dedup` 即可，只做静态分析。
+**The AI feature runs without any environment variable at all** -- set
+nothing, pass no `--ai-dedup`, and you get static analysis only.
 
 ---
 
-## 2. AI 配置
+## 2. AI configuration
 
-### 2.1 默认配置
+### 2.1 The defaults
 
-`plumb-main/src/main/resources/default-config.yaml:182-193`：
+`plumb-main/src/main/resources/default-config.yaml:182-193`:
 
 ```yaml
 ai:
-  dedup: false                      # FP reducer（CLI: --ai-dedup）
-  dropOnAiFp: false                 # 丢弃被判 FP 的 finding，而不是标记 ai_verdict=FP
-  dedupRules: []                    # 空 = 所有规则都过一遍；填了则只过这些
+  dedup: false                      # FP reducer (CLI: --ai-dedup)
+  dropOnAiFp: false                 # Drop findings judged FP instead of marking ai_verdict=FP
+  dedupRules: []                    # Empty = every rule; non-empty = only these
   provider: openai                  # openai | openai_compatible | anthropic
   baseUrl: https://api.openai.com
-  apiKey: ${OPENAI_API_KEY}         # 启动时从环境读取
-  model: gpt-4o-mini                # 你的 endpoint 接受什么就填什么
-  header:                           # 可选的额外请求头
+  apiKey: ${OPENAI_API_KEY}         # Read from the environment at startup
+  model: gpt-4o-mini                # Whatever your endpoint accepts
+  header:                           # Optional extra request headers
   timeoutSeconds: 30
-  maxConcurrent: 4                  # 并发 dedup 请求数
-  temperature: 0.0                  # 确定性判决
+  maxConcurrent: 4                  # Concurrent dedup requests
+  temperature: 0.0                  # Deterministic verdicts
 ```
 
-### 2.2 provider 取值
+### 2.2 The provider values
 
-`LlmConnection.Provider`（`plumb-ai/.../LlmConnection.java:147`）只有三个值：
+`LlmConnection.Provider` (`plumb-ai/.../LlmConnection.java:147`) has
+exactly three values:
 
-| 取值 | 说明 |
+| Value | Explanation |
 | --- | --- |
-| `OPENAI` | OpenAI 自己的 `/v1/chat/completions` |
-| `OPENAI_COMPATIBLE` | **线协议完全相同**。写 Azure / Ollama / LocalAI / vLLM / MiniMax 时用它。`openai` 是它的别名，两者走同一段代码（`ConfigLoader.java:483-485`） |
-| `ANTHROPIC` | Anthropic 原生 `/v1/messages`，仅支持单 prompt；tool-calling 会抛 `UnsupportedOperationException` |
+| `OPENAI` | OpenAI's own `/v1/chat/completions` |
+| `OPENAI_COMPATIBLE` | **Identical wire protocol**. Use this for Azure / Ollama / LocalAI / vLLM / MiniMax. `openai` is an alias; both take the same code path (`ConfigLoader.java:483-485`) |
+| `ANTHROPIC` | Anthropic's native `/v1/messages`; single prompt only; tool-calling throws `UnsupportedOperationException` |
 
-### 2.3 指向 MiniMax
+### 2.3 Pointing at MiniMax
 
 ```yaml
 ai:
@@ -92,16 +100,16 @@ ai:
   model: MiniMax-M3
 ```
 
-### 2.4 API key 的来源（优先级从高到低）
+### 2.4 Where the API key comes from (highest priority first)
 
-1. YAML 里的字面量 `ai.apiKey: sk-...` —— **不推荐**，会进版本库
-2. `ai.apiKey: ${SOME_VAR}` 展开的环境变量（`ConfigLoader.java:502-504`）
-3. YAML 未写 `ai.apiKey` 时，`ConfigLoader.java:466` 兜底读 `OPENAI_API_KEY`
-4. 都没有 → AI 连接不可用；不开 `--ai-dedup` 就完全不影响静态分析
+1. A literal `ai.apiKey: sk-...` in the YAML -- **not recommended**, it ends up in version control
+2. An environment variable expanded from `ai.apiKey: ${SOME_VAR}` (`ConfigLoader.java:502-504`)
+3. When the YAML does not set `ai.apiKey` at all, `ConfigLoader.java:466` falls back to `OPENAI_API_KEY`
+4. Neither -> the AI connection is unavailable; without `--ai-dedup` this does not affect static analysis at all
 
 ---
 
-## 3. CI 示例
+## 3. CI examples
 
 ### 3.1 GitHub Actions
 
@@ -115,19 +123,20 @@ steps:
          -i src/ --ai-dedup -o build/findings.ndjson
 ```
 
-### 3.2 完全离线（无 AI）
+### 3.2 Fully offline (no AI)
 
-不设任何变量、不传 `--ai-dedup`：
+Set no variables, pass no `--ai-dedup`:
 
 ```bash
 java -jar plumb-main-...-all.jar -c conf/default-config.yaml -i src/ -o build/findings.ndjson
 ```
 
-输出 NDJSON 不含 `ai_verdict` / `ai_reason` 字段。
+The NDJSON output then contains no `ai_verdict` / `ai_reason` fields.
 
-### 3.3 大仓库内存
+### 3.3 Memory on a large repository
 
-Plumb 不读 JVM 参数变量。大仓库扫描请直接在 java 命令上给：
+Plumb reads no JVM-argument variable. On a large repository, pass the
+argument on the `java` command itself:
 
 ```bash
 java -Xmx8g -jar plumb-main-...-all.jar -i large-repo/ -o out/
@@ -135,25 +144,22 @@ java -Xmx8g -jar plumb-main-...-all.jar -i large-repo/ -o out/
 
 ---
 
-## 4. Plumb 不做的事
+## 4. What Plumb does not do
 
-1. **不写用户 home 目录**：没有 `~/.plumbrc` / `~/.config/plumb/`。配置只来自 `--config`
-   指定的文件与 classpath 内的 `default-config.yaml`。
-2. **不写注册表 / 系统配置目录**（Windows registry、macOS `~/Library/Application Support`、
-   Linux `~/.config`）。
-3. **API key 不进 NDJSON**：provider 不打印 key。
-4. **缓存目录可随时删**：`<outputDir>/cache/` 下都是可重建的产物。
+1. **It does not write to the user's home directory**: there is no `~/.plumbrc` / `~/.config/plumb/`. Configuration comes only from the file given by `--config` and the `default-config.yaml` on the classpath.
+2. **It does not write to the registry or system configuration directories** (Windows registry, macOS `~/Library/Application Support`, Linux `~/.config`).
+3. **The API key does not reach the NDJSON**: the provider does not print the key.
+4. **The cache directory can be deleted at any time**: everything under `<outputDir>/cache/` is a rebuildable artifact.
 
 ---
 
-## 5. 故障排查
+## 5. Troubleshooting
 
-### AI 没出 `ai_verdict`
+### No `ai_verdict` in the output
 
-1. `ai.dedup: false` 是默认值——必须显式开（YAML 或 `--ai-dedup`）。
-2. `ai.apiKey` 解析成了 `null`：检查 `${VAR}` 里的变量名是否真的存在。`${...}` 解析不到时
-   **静默得到 null**，不会报错。
-3. endpoint 不可达：先用 curl 打通 `/v1/chat/completions` 再排查代理。
+1. `ai.dedup: false` is the default -- you have to turn it on explicitly (in the YAML or with `--ai-dedup`).
+2. `ai.apiKey` resolved to `null`: check that the variable name inside `${VAR}` actually exists. When `${...}` cannot be resolved you get **`null` silently**, with no error.
+3. The endpoint is unreachable: use curl to reach `/v1/chat/completions` first, then debug the proxy.
 
 ```bash
 curl -X POST "$BASE_URL/v1/chat/completions" \
@@ -162,30 +168,35 @@ curl -X POST "$BASE_URL/v1/chat/completions" \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"ping"}]}'
 ```
 
-### 推理模型的 `<think>` 泄漏
+### `<think>` leaking from a reasoning model
 
-reasoning 模型（MiniMax-M3、带 thinking 的 Claude 等）可能在 `ai_reason` 里留下
-`<think>...</think>` 块。`OpenAiCompatibleLlmProvider.stripThinkBlocks(...)` 会剥离它；
-若仍出现，说明 NDJSON 是旧版本产出的，重跑即可。
+Reasoning models (MiniMax-M3, Claude with thinking, and so on) may leave a
+`<think>...</think>` block in `ai_reason`.
+`OpenAiCompatibleLlmProvider.stripThinkBlocks(...)` removes it; if you
+still see one, the NDJSON was produced by an older version -- rerun it.
 
 ---
 
-## 6. 维护
+## 6. Maintenance
 
-新增环境变量时必须同时更新：
+When you add an environment variable, update all of these:
 
-1. 本文档 §1
-2. `ConfigLoader.java` 里对应的 `System.getenv(...)`
-3. 若它是 AI 相关，`default-config.yaml` 的 `ai:` 注释
+1. Section 1 of this document
+2. The corresponding `System.getenv(...)` in `ConfigLoader.java`
+3. If it is AI-related, the `ai:` block in `default-config.yaml`
 
-反向检查：本仓库现存的环境变量**读取**只有 `ConfigLoader.java` 的两处。
+The reverse check: across the whole repository there are exactly two real reads of
+the environment, and both of them are the two in `ConfigLoader.java`.
 
 ```bash
 grep -rn 'System\.getenv(' --include=*.java plumb-*/src/main
 ```
 
-这条命令会返回十几行，但只有两行是**真正的读取**——`ConfigLoader.java` 的
-`OPENAI_API_KEY` 和 `${VAR}` 展开。其余命中都是**检查器在用户代码里查找的字符串**
-（`EnvVarCheck` / `EnvVarInfoExposureCheck` 之类的规则在找 `System.getenv` 这个调用形状，
-它们自己不读环境变量）。区分方法是看命中处是不是一个真正的调用：
-`System.getenv(` 后面跟着参数并被赋值/使用，是读取；出现在字符串字面量或 javadoc 里，是规则模式。
+That command returns a dozen lines, but only two are **real reads** -- the
+`OPENAI_API_KEY` read and the `${VAR}` expansion in `ConfigLoader.java`.
+Every other hit is a **checker searching user code for the string**
+(`EnvVarCheck` / `EnvVarInfoExposureCheck` and similar rules look for the
+*call shape* `System.getenv`; they do not read the environment themselves).
+The way to tell them apart is to look at whether the hit is an actual call:
+`System.getenv(` followed by an argument and used as a value is a read; a
+hit inside a string literal or a javadoc is a rule pattern.

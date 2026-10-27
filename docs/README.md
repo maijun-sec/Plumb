@@ -1,104 +1,155 @@
-# plumb 文档索引
+# Plumb Documentation Index
 
-`docs/` 只放**产品文档**：描述系统**是什么、怎么工作、怎么扩展**。全部以当前代码为准，
-改代码就要改对应文档。
+[English](../README.md) | [中文](zh/README.md)
 
-判断一份内容该不该进这里：**如果它在一次重构后仍然成立，它属于产品文档。**
-反之（记录某次改动、某轮审计、某次评测）就不要写进来——那类内容一旦沉淀进产品文档就会
-变成无法验证的断言。
+`docs/` holds **product documentation only**: what the system *is*, how it
+works, and how to extend it. Everything here describes the current code --
+change the code, change the corresponding document.
 
----
-
-## `tech/` — 技术架构
-
-| 文件 | 内容 |
-| --- | --- |
-| [`ARCHITECTURE.md`](tech/ARCHITECTURE.md) | 全局架构：7 阶段流水线、模块依赖图、checker 实现形态、关键设计决策、Build-system 自动发现、rule-id 一致性、扩展点、测试体系 |
-| [`TAC.md`](tech/TAC.md) | 三地址码格式：IR 类、指令集、CFG、序列化 |
-| [`DATA-FLOW.md`](tech/DATA-FLOW.md) | **数据流分析**：引擎骨架、fact 域、污点 / 边界 / 指向 / 控制流四类分析、可空性三值语义、Z3 的真实作用、call graph 策略 |
-| [`CROSS-FUNCTION-ANALYSIS.md`](tech/CROSS-FUNCTION-ANALYSIS.md) | 跨函数分析主干：summary 机制、调用图视角 |
-| [`CROSS-FUNCTION-OPERATION.md`](tech/CROSS-FUNCTION-OPERATION.md) | `Operation` 体系：常量传播 / 指向 / null / 数值范围 / 副作用的 summary 侧与消费侧 |
-| [`CROSS-FUNCTION-AI-TRACE.md`](tech/CROSS-FUNCTION-AI-TRACE.md) | 周边：并行 worklist、跨文件验证、已知限制、AI 增强层、Re-Act 框架 |
-| [`DFA-AUGMENTATION-DESIGN.md`](tech/DFA-AUGMENTATION-DESIGN.md) | 为什么 AST 不够用，以及 DFA 增强技术 |
-| [`STYLE-RULES.md`](tech/STYLE-RULES.md) | 风格类实现：`AstDispatcher`、`AstCheckerRegistry`、典型 checker 模式 |
-| [`KOTLIN-DSL.md`](tech/KOTLIN-DSL.md) | **Kotlin DSL AST 规则引擎**：规则文件格式、匹配器语言、编译/求值模型、`--dsl-rules` 用法 |
-| [`MODULE-MERGE.md`](tech/MODULE-MERGE.md) | 模块结构与依赖边界 |
-| [`CACHE.md`](tech/CACHE.md) | 磁盘 IR 缓存：`--output-dir` 机制、文件格式、key、兼容性 |
-
-## `rules/` — 规则
-
-| 文件 | 内容 |
-| --- | --- |
-| [`RULES.md`](rules/RULES.md) | 主清单：数量概览（数字均从配置文件实测）、严重度 / 类型 / emit-id、taint 与 DFA checker |
-| [`RULE-STYLE-OP.md`](rules/RULE-STYLE-OP.md) | Style 规则操作：分布、5 层启用/禁用机制、改规则参数 |
-| [`RULE-AUTHORING.md`](rules/RULE-AUTHORING.md) | 规则开发：加新规则的步骤、CWE 标签一致性、AST checker 选型 |
-| [`RULE-TOOL-COMPARISON.md`](rules/RULE-TOOL-COMPARISON.md) | Plumb vs PMD / SonarQube / SpotBugs / Coverity / Checkstyle |
-| [`plumb-style-rules.md`](plumb-style-rules.md) | 自动生成：每条 style rule 的 Javadoc + 外部工具等价映射 |
-| [`plumb-style-rules-index.md`](plumb-style-rules-index.md) | 自动生成：style rule 索引 |
-
-## `usage/` — 使用
-
-| 文件 | 内容 |
-| --- | --- |
-| [`CLI.md`](usage/CLI.md) | CLI 完整手册：flag 列表、YAML schema、AI augmentation、退出码、故障排查 |
-| [`CLI-EXAMPLES.md`](usage/CLI-EXAMPLES.md) | 典型场景示例 + 命令与默认配置对照 |
-| [`CLI-REFERENCE.md`](usage/CLI-REFERENCE.md) | 项目路径族 / build-system 自动发现 / YAML v2 速查 |
-| [`ENVIRONMENT.md`](usage/ENVIRONMENT.md) | 环境变量与 AI 配置：代码实际读取哪些变量、AI provider 配置、CI 示例 |
-
-## `build/` — 打包发布
-
-| 文件 | 内容 |
-| --- | --- |
-| [`PACKAGE.md`](build/PACKAGE.md) | 发布形态、启动器逻辑、smoke test、跨平台注意 |
-
-## 端到端测量
-
-| 文件 | 内容 |
-| --- | --- |
-| [`../testcase/SUPPORT-MATRIX.md`](../testcase/SUPPORT-MATRIX.md) | 每个 testcase category 的实测 TP / TN 数字与 known-limitation |
-| [`../testcase/README.md`](../testcase/README.md) | 怎么跑一个 category、harness 的语义、case 状态定义 |
-
-支持矩阵的数字由 `scripts/write_support_matrix.py` 从各 category 的 `RESULT.json` 生成，
-不要手改。
+The test for whether something belongs here: **if it still holds after a
+refactor, it belongs in the product documentation.** Otherwise -- if it
+records a particular change, audit round, or evaluation -- leave it out.
+Once such material settles into the product documentation it becomes an
+unverifiable assertion.
 
 ---
 
-## 快速链接
+## `tech/` -- Technical architecture
 
-| 问题 | 去哪 |
+| File | Contents | 中文 |
+| --- | --- | --- |
+| [`ARCHITECTURE.md`](tech/ARCHITECTURE.md) | Global architecture: the 7-stage pipeline, module dependency graph, checker implementation shape, key design decisions, build-system auto-discovery, rule-id consistency, extension points, the test system | [中文](zh/tech/ARCHITECTURE.md) |
+| [`TAC.md`](tech/TAC.md) | The three-address code format: IR classes, instruction set, CFG, serialization | [中文](zh/tech/TAC.md) |
+| [`DATA-FLOW.md`](tech/DATA-FLOW.md) | **Data-flow analysis**: engine skeleton, fact domains, the four analyses (taint / boundary / points-to / control flow), tri-valued nullability, what Z3 actually does, call-graph strategies | [中文](zh/tech/DATA-FLOW.md) |
+| [`CROSS-FUNCTION-ANALYSIS.md`](tech/CROSS-FUNCTION-ANALYSIS.md) | The cross-function analysis backbone: the summary mechanism, the call-graph view | [中文](zh/tech/CROSS-FUNCTION-ANALYSIS.md) |
+| [`CROSS-FUNCTION-OPERATION.md`](tech/CROSS-FUNCTION-OPERATION.md) | The `Operation` system: constant propagation / points-to / null / numeric range / side effects, on the summary side and the consumption side | [中文](zh/tech/CROSS-FUNCTION-OPERATION.md) |
+| [`CROSS-FUNCTION-AI-TRACE.md`](tech/CROSS-FUNCTION-AI-TRACE.md) | The periphery: the parallel worklist, cross-file validation, known limitations, the AI augmentation layer, the Re-Act framework | [中文](zh/tech/CROSS-FUNCTION-AI-TRACE.md) |
+| [`DFA-AUGMENTATION-DESIGN.md`](tech/DFA-AUGMENTATION-DESIGN.md) | Why the AST is not enough, and the DFA augmentation techniques | [中文](zh/tech/DFA-AUGMENTATION-DESIGN.md) |
+| [`STYLE-RULES.md`](tech/STYLE-RULES.md) | The style-rule implementation: `AstDispatcher`, `AstCheckerRegistry`, typical checker patterns | [中文](zh/tech/STYLE-RULES.md) |
+| [`KOTLIN-DSL.md`](tech/KOTLIN-DSL.md) | **The Kotlin DSL AST rule engine**: rule file format, the matcher language, the compile/evaluate model, `--dsl-rules` usage | [中文](zh/tech/KOTLIN-DSL.md) |
+| [`MODULE-MERGE.md`](tech/MODULE-MERGE.md) | Module structure and dependency boundaries | [中文](zh/tech/MODULE-MERGE.md) |
+| [`CACHE.md`](tech/CACHE.md) | The on-disk IR cache: the `--output-dir` mechanism, the file format, the key, compatibility | [中文](zh/tech/CACHE.md) |
+
+## `rules/` -- Rules
+
+| File | Contents | 中文 |
+| --- | --- | --- |
+| [`RULES.md`](rules/RULES.md) | The main catalogue: counts (every number measured from the configuration), severity / type / emit-id, taint and DFA checkers | [中文](zh/rules/RULES.md) |
+| [`RULE-STYLE-OP.md`](rules/RULE-STYLE-OP.md) | Style rule operations: the distribution, the 5-layer enable/disable mechanism, changing rule parameters | [中文](zh/rules/RULE-STYLE-OP.md) |
+| [`RULE-AUTHORING.md`](rules/RULE-AUTHORING.md) | Rule development: the steps to add a rule, CWE label consistency, choosing an AST checker | [中文](zh/rules/RULE-AUTHORING.md) |
+| [`RULE-TOOL-COMPARISON.md`](rules/RULE-TOOL-COMPARISON.md) | Plumb vs PMD / SonarQube / SpotBugs / Coverity / Checkstyle | [中文](zh/rules/RULE-TOOL-COMPARISON.md) |
+| [`plumb-style-rules.md`](plumb-style-rules.md) | Generated: the Javadoc of every style rule plus the equivalent-tool mapping | English only |
+| [`plumb-style-rules-index.md`](plumb-style-rules-index.md) | Generated: the style rule index | English only |
+
+## `usage/` -- Usage
+
+| File | Contents | 中文 |
+| --- | --- | --- |
+| [`CLI.md`](usage/CLI.md) | The complete CLI manual: the flag list, the YAML schema, AI augmentation, exit codes, troubleshooting | [中文](zh/usage/CLI.md) |
+| [`CLI-EXAMPLES.md`](usage/CLI-EXAMPLES.md) | Typical scenarios plus a command-to-default-config reference | [中文](zh/usage/CLI-EXAMPLES.md) |
+| [`CLI-REFERENCE.md`](usage/CLI-REFERENCE.md) | Project path families / build-system auto-discovery / a YAML v2 quick reference | [中文](zh/usage/CLI-REFERENCE.md) |
+| [`ENVIRONMENT.md`](usage/ENVIRONMENT.md) | Environment variables and AI configuration: which variables the code actually reads, the AI provider configuration, CI examples | [中文](zh/usage/ENVIRONMENT.md) |
+
+## `build/` -- Packaging and release
+
+| File | Contents | 中文 |
+| --- | --- | --- |
+| [`PACKAGE.md`](build/PACKAGE.md) | The release shapes, the launcher logic, the smoke test, cross-platform notes | [中文](zh/build/PACKAGE.md) |
+
+## End-to-end measurement
+
+| File | Contents | 中文 |
+| --- | --- | --- |
+| [`../testcase/SUPPORT-MATRIX.md`](../testcase/SUPPORT-MATRIX.md) | The measured TP / TN numbers for every testcase category, with the known limitations | English only |
+| [`../testcase/README.md`](../testcase/README.md) | How to run a category, what the harness means, the case status definitions | English only |
+
+The numbers in the support matrix are generated by
+`scripts/write_support_matrix.py` from each category's `RESULT.json`. Do not
+edit them by hand.
+
+---
+
+## Quick links
+
+| Question | Go to |
 | --- | --- |
-| 第一次用 | [`usage/CLI.md`](usage/CLI.md) |
-| 具体场景 | [`usage/CLI-EXAMPLES.md`](usage/CLI-EXAMPLES.md) |
-| flag / YAML 写法 | [`usage/CLI-REFERENCE.md`](usage/CLI-REFERENCE.md) |
-| 环境变量 / API key | [`usage/ENVIRONMENT.md`](usage/ENVIRONMENT.md) |
-| 有哪些规则 | [`rules/RULES.md`](rules/RULES.md) |
-| 加自定义规则 | [`rules/RULE-AUTHORING.md`](rules/RULE-AUTHORING.md)、[`tech/ARCHITECTURE.md`](tech/ARCHITECTURE.md) §10 |
-| 用 Kotlin DSL 写 AST 规则 | [`tech/KOTLIN-DSL.md`](tech/KOTLIN-DSL.md) |
-| 系统整体怎么跑 | [`tech/ARCHITECTURE.md`](tech/ARCHITECTURE.md) |
-| **数据流分析怎么工作** | **[`tech/DATA-FLOW.md`](tech/DATA-FLOW.md)** |
-| 指向分析 / 可空性 / 污点 | [`tech/DATA-FLOW.md`](tech/DATA-FLOW.md) §3–§5 |
-| 跨函数怎么总结 | [`tech/CROSS-FUNCTION-ANALYSIS.md`](tech/CROSS-FUNCTION-ANALYSIS.md) |
-| 磁盘缓存 | [`tech/CACHE.md`](tech/CACHE.md) |
-| 出包上线 | [`build/PACKAGE.md`](build/PACKAGE.md) |
-| 跟其他工具怎么比 | [`rules/RULE-TOOL-COMPARISON.md`](rules/RULE-TOOL-COMPARISON.md) |
-| 精确率 / 召回率现状 | [`../testcase/SUPPORT-MATRIX.md`](../testcase/SUPPORT-MATRIX.md) |
+| First time using it | [`usage/CLI.md`](usage/CLI.md) |
+| A concrete scenario | [`usage/CLI-EXAMPLES.md`](usage/CLI-EXAMPLES.md) |
+| A flag or YAML snippet | [`usage/CLI-REFERENCE.md`](usage/CLI-REFERENCE.md) |
+| Environment variables / API key | [`usage/ENVIRONMENT.md`](usage/ENVIRONMENT.md) |
+| Which rules exist | [`rules/RULES.md`](rules/RULES.md) |
+| Adding a custom rule | [`rules/RULE-AUTHORING.md`](rules/RULE-AUTHORING.md), [`tech/ARCHITECTURE.md`](tech/ARCHITECTURE.md) section 10 |
+| Writing an AST rule with the Kotlin DSL | [`tech/KOTLIN-DSL.md`](tech/KOTLIN-DSL.md) |
+| How the system runs as a whole | [`tech/ARCHITECTURE.md`](tech/ARCHITECTURE.md) |
+| **How the data-flow analysis works** | **[`tech/DATA-FLOW.md`](tech/DATA-FLOW.md)** |
+| Points-to / nullability / taint | [`tech/DATA-FLOW.md`](tech/DATA-FLOW.md) sections 3-5 |
+| How cross-function summaries work | [`tech/CROSS-FUNCTION-ANALYSIS.md`](tech/CROSS-FUNCTION-ANALYSIS.md) |
+| The on-disk cache | [`tech/CACHE.md`](tech/CACHE.md) |
+| Shipping a release | [`build/PACKAGE.md`](build/PACKAGE.md) |
+| How it compares to other tools | [`rules/RULE-TOOL-COMPARISON.md`](rules/RULE-TOOL-COMPARISON.md) |
+| Current precision / recall | [`../testcase/SUPPORT-MATRIX.md`](../testcase/SUPPORT-MATRIX.md) |
 
 ---
 
-## 维护约定
+## Maintenance conventions
 
-1. **引用类名必须能在源码里搜到。** 文档里出现的每个 Java 类都要真实存在——重构会静默地
-   让引用失效（包路径段被删是最常见的一种）。
-2. **数字不要手写。** 规则数、source/sink 模式数、testcase 得分都有生成或测量路径；
-   写不出测量命令的数字就不要写。
-3. **改动架构时同步改文档。** `DATA-FLOW.md` 描述引擎骨架，`ARCHITECTURE.md` 描述模块边界；
-   改动其中之一必须检查另一处是否还在说同一件事。
-4. **不要写轮次流水。** 变更记录属于 git log，不属于 `docs/`。文档只写「现在是什么样」。
-5. **过程文档不进 `docs/`。** 审计报告、覆盖率快照、优化路径这类内容要么不留，要么把**已经
-   验证过**的结论直接写进对应的产品文档，并去掉轮次编号。
+1. **Every class name you cite must be findable in the source.** Every Java class the documentation mentions has to really exist -- a refactor invalidates the reference silently (a deleted package path segment is the most common case).
+2. **Do not write numbers by hand.** Rule counts, source/sink pattern counts, and testcase scores all have a generation or measurement path; if you cannot state the measurement command, do not state the number.
+3. **Change the documentation when you change the architecture.** `DATA-FLOW.md` describes the engine skeleton, `ARCHITECTURE.md` describes the module boundaries; when you change one of them, check that the other still says the same thing.
+4. **Do not write round-by-round logs.** Change history belongs in git log, not in `docs/`. A document says only "what it is now".
+5. **Process documents do not enter `docs/`.** Audit reports, coverage snapshots, optimisation paths: either leave them out, or fold the **already verified** conclusion into the corresponding product document and drop the round number.
 
 ---
 
-## 其他位置
+## Elsewhere in the repository
 
-- `testcase/config/min.yaml` — 最小配置示例：`inputs` 指向仓库内的样例源码，可直接运行。
+- `testcase/config/min.yaml` -- A minimal configuration example: `inputs` points at sample source inside this repository, and it runs as is.
+
+---
+
+## Two languages
+
+English is the canonical source and lives in `docs/`. The Chinese
+counterpart lives in `docs/zh/`, with the same file names and the same
+structure. `scripts/check_i18n_docs.py` fails the build when the two trees
+drift apart: a missing counterpart, a different heading structure, a
+dropped table row, a removed code block, a broken link, or a missing
+language switch.
+
+The rule catalogue (`plumb-style-rules.md` and
+`plumb-style-rules-index.md`) is generated from the source tree and stays
+English-only; a translated copy would drift from the generator on every
+run.
+
+### Adding a document
+
+A new document is added twice, in both trees, under the same relative
+path. The gate fails until the counterpart exists.
+
+The two versions must have the same **shape**, because that is what the
+gate compares:
+
+| Property | Requirement |
+| --- | --- |
+| File name and path | Identical, relative to `docs/` and `docs/zh/` |
+| Headings | The same number, at the same levels, in the same order |
+| Tables | The same number of data rows in each table |
+| Code blocks | The same number |
+| Links | Every relative link resolves |
+
+Identifiers are never translated: class names, flag names, package names,
+file paths, commands, rule ids, and the contents of code blocks stay
+exactly as they are. What is translated is the prose around them.
+
+Each page carries a language line at the top, and the link has to point at
+the other language's page. For a document in `docs/usage/`, the English
+line links up one level to the English index and across into the Chinese
+tree; the Chinese line links up two levels to the English document and
+back to the Chinese index. The links are relative, so the switch works
+from a local filesystem, a `file://` URL, or a copy inside the packaged
+distribution. Nothing has to be served or built.
+The prose is not compared between the languages -- a sentence-by-sentence
+comparison would need a translation model in the build, and pretending
+otherwise would make the gate lie. What the gate compares is the
+structure, which is the thing a reader navigates by. A wording difference
+is not a failure; a dropped section is.

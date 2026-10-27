@@ -1,6 +1,6 @@
 # Architecture Overview
 
-[English](ARCHITECTURE.md) | [中文](../zh/tech/ARCHITECTURE.md)
+[English](../README.md) | [中文](../zh/tech/ARCHITECTURE.md)
 
 This document is the global architecture view of the Plumb project. In-depth descriptions of the individual modules are in:
 
@@ -350,7 +350,7 @@ with three submodules hanging below it:
 │  └──────────────────┘                                    │
 │                                                           │
 │  ┌──────────────────┐                                    │
-│  │plumb-build-      │   真实编译抓取（ByteBuddy agent）    │
+│  │plumb-build-      │   real compile capture (ByteBuddy agent)│
 │  │capture           │                                    │
 │  │ CaptureAgent     │                                    │
 │  │ CompilerHooks    │                                    │
@@ -363,7 +363,7 @@ with three submodules hanging below it:
        ScanConfig.inputs / sourceRoots / moduleRoots / classpathJars
               │
               ▼
-       ScanRunner 接受 BuildAdapter 喂的路径，继续走标准流水线
+       ScanRunner takes the paths fed by the BuildAdapter and continues down the standard pipeline
 ```
 
 The actual classes:
@@ -531,7 +531,7 @@ this compilation** (source files + output directory + classpath + source path + 
 see `CaptureEntry.compileIdentity()`. The source files are **sorted** before the comparison,
 because the same set of files arrives in a different order from the API and from the command line.
 
-### 7.0.7 Gradle: the daemon and the build cache
+### 7.0.7 Gradle: the daemon, the build cache, and which channel reaches the JVM
 
 Gradle is the most troublesome one: the compilation happens **inside the daemon process** (invisible to the JVM the agent is attached to),
 and when the build cache is enabled the compilation **never runs at all** (so there is nothing to capture).
@@ -540,8 +540,64 @@ and when the build cache is enabled the compilation **never runs at all** (so th
 changing two things: `StartParameter#setBuildCacheEnabled` is forced to false, and
 `DaemonParameters#isEnabled()` is forced to false.
 
-These two hooks are **optional** (they are only enabled with `plumb.capture.gradle.disable-daemon=true`) —
-turning off the daemon makes the build slower, and users who do not need the capture should not have to pay for it.
+These two hooks are **optional** — turning off the daemon makes the build slower, and users who do not
+need the capture should not have to pay for it. They are enabled by `plumb.capture.gradle.disable-daemon=true`.
+
+#### The classpath comes from the compiler hook, not from a Gradle hook
+
+The obvious thing to do is hook Gradle's own compile spec
+(`DefaultJvmLanguageCompileSpec#setCompileClasspath(List<File>)`), because that is where Gradle hands its
+resolved classpath to the compiler. **Measured, that hook never fires.**
+
+Gradle assembles the compile in the daemon but *performs* it in the same JVM through `javax.tools`. The
+compile spec lives in the `gradle-language-jvm` jar and is loaded lazily into a class loader of Gradle's
+own, so it is not even loaded in the JVM that holds the agent — `Instrumentation#getAllLoadedClasses()`
+does not contain it. Hooking it would therefore record nothing, and even if it did, it would record a
+second and worse copy of a compile the compiler hook already recorded exactly.
+
+So the classpath comes from the **`JavacTool#getTask` hook**, and it is complete: the capture names the
+**output directories** of the upstream modules, the dependency jars, the module path, the release level,
+the encoding, the source roots and the destination directory. The upstream output directories are the
+reason this matters: they are directories that only exist after those modules have been built, so
+reading `build.gradle` cannot tell you about them — but asking the compiler can.
+
+`GradleCaptureE2EIT` asserts exactly that, on a real two-module Gradle build: the downstream module's
+capture names the upstream module's output directory and the dependency's jar.
+
+#### Which channel reaches Gradle's JVM
+
+This is not obvious, and getting it wrong makes the configuration silently inert. Measured on Gradle
+9.2.0, by reading the command line of the JVM Gradle forked:
+
+| Channel | Reaches the Gradle JVM? |
+| --- | --- |
+| `org.gradle.jvmargs` with `-javaagent` | **yes** |
+| `org.gradle.jvmargs` with `-D` | no — every `-D` is dropped |
+| `GRADLE_OPTS` | no — it applies to the launcher, not the daemon |
+| `systemProp.name=value` in `gradle.properties` | no — it applies to the build JVM, and the compile runs in the forked daemon |
+| the agent's own arguments (`-javaagent:jar=key=value`) | **yes** |
+| the environment | **yes** — the JVM inherits it |
+
+So the way to configure the agent inside Gradle is to pass the settings as the **agent's arguments**:
+
+```properties
+org.gradle.jvmargs=-Xmx1g \
+  -javaagent:/path/plumb-build-capture.jar=plumb.capture.gradle.disable-daemon=true
+```
+
+The agent turns its own arguments into system properties (`CaptureAgent.applyAgentArguments`), so the
+property is then set inside the JVM that actually performs the compile. An explicit system property
+still wins over an agent argument, because it was set deliberately.
+
+The environment variable `PLUMB_CAPTURE_GRADLE_HOOKS` is the second channel, for the case where the agent
+is not attached through `-javaagent`.
+
+#### One record per compile
+
+Gradle's compile reaches the hook through `javax.tools`, and a Gradle build compiles several modules.
+Each module's compile is a different compile, so each produces its own record — and the dedup by
+compile identity (`CaptureEntry.compileIdentity()`) keeps them apart, because the source files and the
+output directory differ.
 
 ### 7.1 Key design decisions
 
@@ -648,10 +704,10 @@ emit rule_id="ast-style-foo"
 ScanRunner.isRuleIdAllowed(emit, registry)   ← canonical / bare / dashed multi-form matching
     │
     ▼
-emit 进入最终 finding 集合
+emit enters the final set of findings
     │
     ▼
-NDJSON 输出，cwe 字段来自该规则的 RuleDef.cwe()
+NDJSON output, the cwe field comes from the rule's RuleDef.cwe()
 ```
 
 The finding key → CWE mapping on the DFA side comes from `plumb-dfa/src/main/resources/cwe-mappings.yaml`,

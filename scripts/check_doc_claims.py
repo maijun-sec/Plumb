@@ -314,15 +314,25 @@ def count_pattern(doc, pattern):
 
 
 def check_counts(doc, failures):
-    """Counts that rot when the code moves."""
+    """Counts that rot when the code moves.
+
+    The patterns are LANGUAGE-INDEPENDENT. The product documentation
+    exists in English under `docs/` and in Chinese under `docs/zh/`, and
+    the same claim is worded differently in each. The anchors are the
+    identifiers that do not change with the language -- `taint`, the
+    tool class count, the tool registry -- and the connecting words are
+    accepted in either language.
+    """
     # taint rule count
     taint_n = taint_rule_count()
-    for i, claimed in count_pattern(doc, r"关闭所有\s*(\d+)\s*条\s*taint\s*规则"):
+    for i, claimed in count_pattern(
+            doc, r"(?:关闭所有|turn\s+off\s+all)\s*(\d+)\s*(?:条\s*taint|taint\s*rules?)"):
         if claimed != taint_n:
             failures.append(
                 "%s:%d says %d taint rules; the registry has %d"
                 % (doc.rel, i, claimed, taint_n))
-    for i, claimed in count_pattern(doc, r"taint:\s*true\s*#\s*(\d+)\s*条\s*taint"):
+    for i, claimed in count_pattern(
+            doc, r"taint:\s*true\s*#\s*(?:master switch for the\s*)?(\d+)\s*(?:条\s*taint|taint\s*rules?)"):
         if claimed != taint_n:
             failures.append(
                 "%s:%d says %d taint rules; the registry has %d"
@@ -333,12 +343,14 @@ def check_counts(doc, failures):
     concrete = concrete_tool_classes()
     n_registered = len(registered)
     n_concrete = len(concrete)
-    for i, claimed in count_pattern(doc, r"(\d+)\s*个工具(?!类)"):
+    for i, claimed in count_pattern(
+            doc, r"(\d+)\s*(?:个工具(?!类)|registered\s+AI\s+tools?)"):
         if claimed != n_registered:
             failures.append(
                 "%s:%d says %d registered AI tools; ScanRunner registers %d"
                 % (doc.rel, i, claimed, n_registered))
-    for i, claimed in count_pattern(doc, r"共(?:有)?\s*\**(\d+)\**\s*个具体工具类"):
+    for i, claimed in count_pattern(
+            doc, r"(?:共(?:有)?\s*)?\**(\d+)\**\s*(?:个具体工具类|concrete\s+tool\s+classes?)"):
         if claimed != n_concrete:
             failures.append(
                 "%s:%d says %d concrete tool classes; there are %d"
@@ -466,9 +478,16 @@ def check_module_claims(doc, failures):
     summary = set()
     for m in re.finditer(r"^\|\s*`(plumb-[a-z\-]+)`\s*\|\s*(.+?)\s*\|\s*$", doc.text, re.M):
         mod, cell = m.group(1), m.group(2)
-        if "（无）" in cell or cell.strip() in ("无", "-"):
+        # The cell that says "this module depends on no other plumb module".
+        # The wording differs between the two languages, and the English
+        # version has several spellings of its own ("(none)", "(no
+        # internal dependency)", "(parent pom, no internal dependency)").
+        if (re.search(r"（无）", cell)
+                or cell.strip() in ("无", "-", "(none)")
+                or re.search(r"\bno internal dependency\b", cell, re.I)
+                or re.search(r"parent pom, no internal dependency", cell, re.I)):
             rows[mod] = set()
-        elif "以上全部" in cell:
+        elif "以上全部" in cell or re.search(r"all of the above", cell, re.I):
             summary.add(mod)
             rows[mod] = None  # checked against "every other module"
         else:

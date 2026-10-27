@@ -139,7 +139,12 @@ if cfg.is_file():
                         failures.append(
                             "the document says %s does neither, but %s allows it"
                             % (mode, gname))
-                if "不读不写" not in row and "不读不写" not in row.replace(" ", ""):
+                # The wording is language-independent: "Neither reads nor
+                # writes" in English, "不读不写" in Chinese. The claim is
+                # that the row mentions BOTH reading and writing.
+                flat = row.replace(" ", "").lower()
+                if not (re.search(r"neither|not\b.*read|不读", flat, re.I)
+                        and re.search(r"nor|not\b.*writ|不写", flat, re.I)):
                     failures.append(
                         "the document's %s row does not say it neither reads "
                         "nor writes: %s" % (mode, row.strip()))
@@ -151,17 +156,20 @@ if cfg.is_file():
             if forbids in guards and mode in guards.get(forbids, set()):
                 # the guard allows it, so the document must not say the
                 # mode skips that side
-                if forbids == "storeCachedProgram" and "不写" in row:
+                if forbids == "storeCachedProgram" and re.search(
+                        r"does not write|不写", row, re.I):
                     failures.append(
                         "the document says %s does not write, but "
                         "storeCachedProgram allows it" % mode)
-                if forbids == "loadCachedProgram" and "不读" in row:
+                if forbids == "loadCachedProgram" and re.search(
+                        r"does not read|不读", row, re.I):
                     failures.append(
                         "the document says %s does not read, but "
                         "loadCachedProgram allows it" % mode)
 
     # The default mode: the document says OFF is the default.
-    m = re.search(r"\| `OFF`\s*\|[^|]*（默认）", doc)
+    m = re.search(r"\| `OFF`\s*\|[^|]*[（(]\s*(?:默认|default)\s*[)）]", doc,
+                  re.I)
     if m:
         if cfg.is_file():
             cbody = strip_comments(read(cfg))
@@ -177,7 +185,7 @@ if cfg.is_file():
 # (only a static serialVersionUID), so they are not in that count.
 # A field counts whether or not it is final -- the point is the class
 # has a field layout, which is what a schema would have to describe.
-m = re.search(r"(\d+) 个 `Serializable` 的 IR 类", doc)
+m = re.search(r"(\d+)\s*(?:个)?\s*`Serializable`", doc)
 if m:
     claimed = int(m.group(1))
     derived = set()
@@ -404,10 +412,13 @@ if "canonicalize" in doc:
 # ---------------------------------------------------------------- 7. process history
 for m in re.finditer(r"(?<![A-Za-z0-9_])R-\d{0,4}[a-z]?(?![A-Za-z0-9_])", doc):
     failures.append("the document carries a round marker: %s" % m.group(0))
-if "何时切到 Kryo" in doc and "§10 的历史数据" in doc:
-    # this is a forward-looking statement about a technology choice; the
-    # numbers it cites must be marked as not reproducible
-    if "不可复现" not in doc:
+# A forward-looking statement about a technology choice cites numbers that
+# cannot be reproduced from this repository, so it has to say so. The
+# wording differs between the two languages.
+kryo_section = ("何时切到 Kryo" in doc or "when to switch to Kryo" in doc)
+historical = ("§10 的历史数据" in doc or "historical data" in doc.lower())
+if kryo_section and historical:
+    if "不可复现" not in doc and "not reproducible" not in doc.lower():
         failures.append("the document cites performance numbers without "
                         "marking them as not reproducible")
 

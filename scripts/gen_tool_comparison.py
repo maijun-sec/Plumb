@@ -25,6 +25,7 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 DOC = REPO / "docs" / "rules" / "RULE-TOOL-COMPARISON.md"
+ZH_DOC = REPO / "docs" / "zh" / "rules" / "RULE-TOOL-COMPARISON.md"
 
 sys.path.insert(0, str(REPO / "scripts"))
 import capability_baseline as cb  # noqa: E402
@@ -139,7 +140,177 @@ def measure():
 
 
 def render(m):
-    return """# 规则对比：Plumb vs PMD / SonarQube / SpotBugs / Coverity / Checkstyle
+    return """# Rule Comparison: Plumb vs PMD / SonarQube / SpotBugs / Coverity / Checkstyle
+
+[English](../README.md) | [中文](../zh/rules/RULE-TOOL-COMPARISON.md)
+
+This document compares the **implementation mechanism** and the **rule coverage** of
+Plumb with the mainstream Java static-analysis tools, so that a reader can see where
+Plumb sits and where its boundaries are.
+
+> **Which numbers in this document are reproducible.**
+>
+> Every number in the Plumb column is MEASURED from the source by
+> `scripts/gen_tool_comparison.py`; regenerating the document reproduces them.
+> The numbers in the other tools' columns **come from public third-party material
+> that this repository cannot substantiate**; they are a magnitude reference only.
+> This document contains no benchmark scores -- the repository has no benchmark
+> harness, so any "faster than X" number would be an unreproducible assertion.
+
+## 1. Implementation mechanism
+
+| Dimension | Plumb | PMD | SonarQube | SpotBugs | Coverity | Checkstyle |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Main implementation** | TAC IR + {style_checker_classes} AST checkers + {taint_rules} taint rules + {registered_checkers} registered DFA checkers | AST | AST + symbol table | Bytecode scanning | Abstract syntax tree + path sensitivity | AST + text matching |
+| **Taint engine** | Summary-based cross-function data flow (two phases) | No complete taint | SonarCFamily engine (commercial) | Partial data flow | Commercial engine | None |
+| **Cross-function analysis** | Two-phase summary: Phase 1 path-insensitive -> Phase 2 flow-sensitive + Z3 path conditions | Limited | Partial (call graph 1-hop) | Partial (shared BugInstance) | Global | None |
+| **AST checkers** | {style_checker_classes} (JavaParser) | Hundreds | Hundreds | -- | -- | Over a hundred |
+| **DFA checkers** | {registered_checkers} registered | Partial | Partial | Bytecode bug patterns | Yes | None |
+| **Z3 path conditions** | Yes (a Phase 2 per-finding query, used for false-positive filtering) | None | None | None | Yes (commercial) | None |
+| **AI integration** | Optional Re-Act agent ({ai_tools} tools) | None | SonarAI (experimental) | None | Coverity Assist | None |
+| **rule -> CWE mapping** | Carried by the rules, covering {cwe_count} CWEs | Carried by the rule | Carried by the rule | Carried by the BugPattern | Carried by the checker | Carried by the check |
+
+> "AST checkers" and "DFA checkers" are **two different granularities**: the first counts
+> checker classes, the second counts the checkers the engine actually registers. The
+> "total" you get by adding them depends on what you are counting, so this document
+> does not give a combined figure.
+
+### 1.1 Plumb's two-phase cross-function model
+
+PMD / SonarQube / Checkstyle are **AST-only** -- a single-method or single-class view,
+blind to cross-function data flow.
+
+Plumb does it in two phases:
+
+- **Phase 1**: the callee computes a path-insensitive, context-insensitive summary
+  bottom-up, cached by function signature, and the caller reuses it with an O(1)
+  table lookup.
+- **Phase 2**: the caller analyses top-down with context-sensitivity and
+  path-sensitivity, and Z3 evaluates per finding.
+
+That balances precision (0 false negatives, per-call-site discrimination) against
+speed. See
+[`../tech/CROSS-FUNCTION-ANALYSIS.md`](../tech/CROSS-FUNCTION-ANALYSIS.md) for details.
+
+### 1.2 How the DFA engine and the AST divide the work
+
+| Shape | Count | Meaning |
+| --- | ---: | --- |
+| **AST checker (`plumb-style`)** | {style_checker_classes} | Rule classes, looking at AST shapes |
+| **Registered in `CheckerCategories`** | {checker_categories_registered} | The subset of those that is registered into the rule table |
+| **DFA checker (registered)** | {registered_checkers} | The ones the engine actually assembles; they involve data flow / cross-function analysis |
+| **Of those, `extends TaintedCheckerBase`** | {tainted_subclasses} | Inherit the common taint-propagation base class |
+| **Fact kinds** | {fact_kinds} | {built_in_kinds} built-in + {yaml_kinds} from `fact-kinds.yaml` |
+
+**The division of labour**: a rule that depends only on the AST shape belongs in
+`plumb-style`. Implementing a style rule with the DFA raises neither precision nor
+recall -- it only forces "count the AST nodes" logic into an IR visitor.
+
+The complete classification of the DFA checkers is in
+[`../tech/CROSS-FUNCTION-AI-TRACE.md`](../tech/CROSS-FUNCTION-AI-TRACE.md) §12.
+
+## 2. Rule coverage
+
+### 2.1 How Plumb's rules are composed
+
+| Category | Count | Source |
+| --- | ---: | --- |
+| AST checker classes | {style_checker_classes} | `plumb-style/**` |
+| Of those, registered into the rule table | {checker_categories_registered} | `CheckerCategories` |
+| Total registered rules | {registered_rules} | The actual registrations of AST + DFA |
+| DFA checker (registered) | {registered_checkers} | `ScanRunner.buildDfaCheckers()` |
+| Taint rule | {taint_rules} | `TaintRuleRegistry` |
+| Taint source family / patterns | {source_families} / {source_patterns} | The `taint.sources.*` of `sink-families.yaml` |
+| Taint sink family / patterns | {sink_family_count} / {sink_pattern_count} | The `*.sinks` of `sink-families.yaml` |
+| Input source patterns (framework entry points) | {input_source_patterns} | `InputSourcePatterns` |
+| Fact kinds | {fact_kinds} | Built-in + YAML |
+
+### 2.2 Key CWE coverage
+
+Only the Plumb side is listed here, and it is **not compared item by item with the
+other tools** -- those numbers come from external material and cannot be reproduced.
+
+| CWE | The Plumb-side implementation |
+| --- | --- |
+| CWE-22 Path traversal | taint sink (`url.sinks` / `file.sinks`) |
+| CWE-78 Command injection | taint sink |
+| CWE-89 SQL injection | taint sink (`sql.sinks`) + a MyBatis `${{}}` raw-interpolation check (AST layer) |
+| CWE-94 Code injection | taint sink (`ognl.sinks` / `el.sinks` / `jcr.sinks` / `jsp-include.sinks`) |
+| CWE-117 Log injection | taint sink (`log.sinks`) |
+| CWE-190/191 Integer overflow/underflow | DFA + Z3 path conditions |
+| CWE-252/253 Unchecked return value | DFA (`UncheckedReturnCheck`) |
+| CWE-470 Unsafe reflection | taint sink (`reflection.sinks`) |
+| CWE-502 Deserialization | taint sink |
+| CWE-532 Sensitive information in logs | taint source + taint sink |
+| CWE-601 Open redirect | taint sink (`open-redirect.sinks`) |
+| CWE-918 SSRF | taint sink (`url.sinks`) |
+| CWE-1333 ReDoS | taint sink (`regex.sinks`) |
+
+**Framework entry points**: the binding annotations of Spring MVC / JAX-RS / Quarkus
+REST / Micronaut / Jakarta Servlet (`@RequestParam`, `@QueryParam`, `@RestQuery`,
+`@QueryValue` and so on) are driven by one shared annotation list, which serves both
+the taint engine and the input-validation checkers.
+
+## 3. False-positive control
+
+Plumb controls false positives in three layers:
+
+| Layer | Mechanism |
+| --- | --- |
+| **Path sensitivity** | `SolverZ3Bridge` / `BoundaryConstraintChecker` evaluate the path conditions per finding, used to negate numeric warnings |
+| **Source trustworthiness** | A taint source carries a trustworthiness weight; the source tag looks like `param:customer@spring-mvc:RequestParam` |
+| **AI noise reduction (optional)** | The Re-Act agent of `plumb-ai`, whose prompt can be overridden per rule |
+
+> **The principle in one sentence**: a missing fact is **not** the same as safety. An
+> empty points-to set, an absent null fact and an uncovered alias **cannot** be used to
+> suppress a warning -- they only mean "unknown", and "unknown" has to be treated as
+> "possibly broken". The precondition for suppressing a warning is that the guard
+> covers the whole set of relevant possibilities.
+
+## 4. AI integration
+
+| Capability | Description |
+| --- | --- |
+| Shape | Re-Act agent (`ReActAgent` + `LlmConnection` + `ToolRegistry`) |
+| Tools | {ai_tools} registered (the source has {ai_tool_classes} tool classes, including the `Tool` interface itself) |
+| Provider | `OpenAiCompatibleLlmProvider` (the OpenAI-compatible interface) |
+| Position | **An optional layer**. The static analysis alone is already enough; AI reduces false positives further and does not replace the static rules |
+| Per-rule prompt | Written in the `getAiPrompt()` of each checker |
+
+## 5. Where it fits and where it does not
+
+**A good fit**:
+- You need **cross-function taint** (Spring / Jakarta / large enterprise projects)
+- You need **path-sensitive numeric analysis** (CWE-190 / 191 / 252 / 253)
+- You want **one tool to cover several families of style rules** instead of running
+  PMD + Sonar + SpotBugs + Checkstyle side by side
+- You need **transparent implementation** -- the SPI of every rule is documented
+- You need to feed the results into CI / an IDE (NDJSON, SARIF output)
+
+**Not a good fit**:
+- You need C / C++ / JS / Go (Plumb does Java only)
+- You need the path-sensitive coverage of a commercial engine
+- You need real-time incremental checking inside an IDE (Plumb is CLI-first)
+
+## 6. Related documents
+
+- [`RULES.md`](RULES.md) -- the rule catalogue and its categories
+- [`RULE-AUTHORING.md`](RULE-AUTHORING.md) -- how to add a rule
+- [`RULE-STYLE-OP.md`](RULE-STYLE-OP.md) -- the rule operations manual
+- [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) -- the engine architecture
+- [`../tech/CROSS-FUNCTION-ANALYSIS.md`](../tech/CROSS-FUNCTION-ANALYSIS.md) -- cross-function analysis
+- [`../../README.md`](../../README.md) -- getting started
+""".format(**m)
+
+
+# The Chinese counterpart. The numbers are the SAME measured values, so the two
+# versions cannot drift apart; the prose is the translation of the English
+# template above. It is generated rather than hand-written for exactly that
+# reason: a hand-written copy would carry a stale number the moment a count
+# changed.
+ZH_TEMPLATE = """# 规则对比：Plumb vs PMD / SonarQube / SpotBugs / Coverity / Checkstyle
+
+[English](../../rules/RULE-TOOL-COMPARISON.md) | [中文](../README.md)
 
 本文档对比 Plumb 与主流 Java 静态分析工具的**实现机制**和**规则覆盖面**，帮助用户理解
 Plumb 的定位与边界。
@@ -281,7 +452,11 @@ Plumb 的误报控制分三层：
 - [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) —— 引擎架构
 - [`../tech/CROSS-FUNCTION-ANALYSIS.md`](../tech/CROSS-FUNCTION-ANALYSIS.md) —— 跨函数分析
 - [`../../README.md`](../../README.md) —— 快速上手
-""".format(**m)
+"""
+
+
+def render_zh(m):
+    return ZH_TEMPLATE.format(**m)
 
 
 def main():
@@ -297,21 +472,31 @@ def main():
     m["sink_pattern_count"] = m["sink_patterns"] - m["source_patterns"]
 
     text = render(m)
+    zh_text = render_zh(m)
+
+    targets = [(DOC, text), (ZH_DOC, zh_text)]
+
     if args.check:
-        if not DOC.is_file():
-            print("FAIL: %s does not exist" % DOC.relative_to(REPO))
-            return 1
-        current = DOC.read_text(encoding="utf-8")
-        if current != text:
-            print("FAIL: %s is stale -- run: python scripts/gen_tool_comparison.py"
-                  % DOC.relative_to(REPO))
+        failed = False
+        for path, expected in targets:
+            if not path.is_file():
+                print("FAIL: %s does not exist" % path.relative_to(REPO))
+                failed = True
+                continue
+            current = path.read_text(encoding="utf-8")
+            if current != expected:
+                print("FAIL: %s is stale -- run: python scripts/gen_tool_comparison.py"
+                      % path.relative_to(REPO))
+                failed = True
+        if failed:
             return 1
         print("  ok: the comparison document matches the measured numbers")
         return 0
 
-    DOC.parent.mkdir(parents=True, exist_ok=True)
-    DOC.write_text(text, encoding="utf-8")
-    print("wrote %s" % DOC.relative_to(REPO))
+    for path, expected in targets:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(expected, encoding="utf-8")
+        print("wrote %s" % path.relative_to(REPO))
     return 0
 
 

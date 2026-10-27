@@ -282,7 +282,10 @@ else:
          "(%d checked)" % len(claimed_facts))
 
 # ---------------------------------------------------------------- 5. the "6 sub-analyses" count
-m = re.search(r"### 5\.1 (\d+) 套子分析", doc)
+# The heading reads "### 5.1 6 套子分析" in Chinese and "### 5.1 6
+# sub-analyses" in English. The count is what matters; the wording around
+# it is not.
+m = re.search(r"###\s*5\.1\s*(\d+)\s*(?:套子分析|sub-?analyses)", doc, re.I)
 if m:
     rows = re.findall(r"^\|\s*(\d+)\s*\|", doc, re.M)
     rows = [r for r in rows if r.isdigit() and int(r) <= 12]

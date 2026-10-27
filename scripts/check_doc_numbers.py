@@ -328,22 +328,54 @@ DIRECTORY_LABELS = {
 
 
 
+# Claims whose text carries a number.
+#
+# Each entry is (document, the pattern that finds the claim, the group that
+# holds the number, the measurement).
+#
+# The patterns are LANGUAGE-INDEPENDENT on purpose. The product
+# documentation exists in two languages -- English in `docs/`, Chinese in
+# `docs/zh/` -- and the same claim is written differently in each. A
+# pattern that matched one language's wording would stop checking the
+# other one the moment it was translated, and the number would rot
+# silently. So each pattern matches the SEMANTIC anchors of the claim
+# (the identifier, the table row label) and not the prose around them.
+#
+# The documents listed here are the ENGLISH ones. The Chinese tree is
+# checked by the same patterns against `docs/zh/`; see CHECKS_ZH.
 CHECKS = [
-    ("docs/rules/RULE-STYLE-OP.md", "596 个 checker 类", style_checker_classes),
-    ("docs/rules/RULE-STYLE-OP.md", "TaintRuleRegistry 里 12 条", taint_rules),
-    ("docs/rules/RULE-STYLE-OP.md", "579 个 `new RuleId", ast_rule_id_literals),
-    ("docs/rules/RULE-STYLE-OP.md", "22 条规则出厂即 false", disabled_style_rules),
-    ("docs/tech/ARCHITECTURE.md", "594 项 `m.put(...)`", category_registrations),
-    ("docs/tech/ARCHITECTURE.md", "**TaintedCheckerBase 子类** | 47", tainted_subclasses),
-    ("docs/tech/ARCHITECTURE.md", "共 150 个 `.java`", dfa_java_files),
-    ("docs/tech/ARCHITECTURE.md", "**直接 `implements DfaChecker`** | 19", direct_dfa_checkers),
-    ("docs/tech/ARCHITECTURE.md", "`checkers/controlflow/` 的 15 个", controlflow_checkers),
-    ("docs/tech/ARCHITECTURE.md", "579 个\n`new RuleId", ast_rule_id_literals),
-    ("docs/tech/CROSS-FUNCTION-AI-TRACE.md", "67 个** DFA checker", registered_dfa_checkers),
-    ("docs/tech/CROSS-FUNCTION-AI-TRACE.md", "13 个工具类，注册 12 个", lambda: 13),
-    ("docs/tech/CROSS-FUNCTION-ANALYSIS.md", "9 种 `ReturnShape.Kind`", return_shape_kinds),
-    ("docs/tech/CACHE.md", "9 个 `Serializable` 的 IR 类", serializable_ir_classes),
-    ("docs/build/PACKAGE.md", "一共 47 项", default_config_checks),
+    ("docs/rules/RULE-STYLE-OP.md",
+     r"(\d+)\s*(?:个|checker classes?)", style_checker_classes),
+    # The number may sit before or after the anchor: "TaintRuleRegistry 里
+    # 12 条" and "12 rules in the TaintRuleRegistry" are the same claim.
+    ("docs/rules/RULE-STYLE-OP.md",
+     r"`TaintRuleRegistry`[^|\n]{0,40}?(\d+)|(\d+)[^|\n]{0,40}?`TaintRuleRegistry`",
+     taint_rules),
+    ("docs/rules/RULE-STYLE-OP.md",
+     r"(\d+)\s*(?:个|of)?\s*`new RuleId", ast_rule_id_literals),
+    ("docs/rules/RULE-STYLE-OP.md",
+     r"(\d+)\s*(?:条|rules?).{0,40}?(?:出厂即 false|disabled)", disabled_style_rules),
+    ("docs/tech/ARCHITECTURE.md",
+     r"(\d+)\s*(?:项|entries?\s+of)?\s*`m\.put\(\.\.\.\)`", category_registrations),
+    ("docs/tech/ARCHITECTURE.md",
+     r"TaintedCheckerBase[^\n|]{0,40}\|\s*(\d+)", tainted_subclasses),
+    ("docs/tech/ARCHITECTURE.md",
+     r"(\d+)\s*(?:个|files?\s+in)?\s*`?\.java`?", dfa_java_files),
+    ("docs/tech/ARCHITECTURE.md",
+     r"`implements DfaChecker`[^\n|]{0,40}\|\s*(\d+)", direct_dfa_checkers),
+    ("docs/tech/ARCHITECTURE.md",
+     r"`checkers/controlflow/`[^|\n]{0,60}?(\d+)|(\d+)[^|\n]{0,60}?`checkers/controlflow/`",
+     controlflow_checkers),
+    ("docs/tech/CROSS-FUNCTION-AI-TRACE.md",
+     r"(\d+)[^|\n]{0,20}?DFA checkers?", registered_dfa_checkers),
+    ("docs/tech/CROSS-FUNCTION-AI-TRACE.md",
+     r"(\d+)\s*(?:个工具类|tool classes?)", lambda: 13),
+    ("docs/tech/CROSS-FUNCTION-ANALYSIS.md",
+     r"(\d+)\s*(?:种|kinds?\s+of)?\s*`ReturnShape\.Kind`", return_shape_kinds),
+    ("docs/tech/CACHE.md",
+     r"(\d+)\s*(?:个)?\s*`Serializable`", serializable_ir_classes),
+    ("docs/build/PACKAGE.md",
+     r"(\d+)\s*(?:项|entries?|keys?)", default_config_checks),
 ]
 
 # Claims whose content is a SET of module names rather than a count.
@@ -363,29 +395,60 @@ SET_CHECKS = [
     ("docs/tech/MODULE-MERGE.md", "tac"),
 ]
 
+def _check_number_claim(failures, rel, pattern, measure, tree_label):
+    """Check one number claim in one document.
+
+    The pattern is language-independent, so the same pattern checks the
+    English document and its Chinese counterpart. The number is read from
+    the GROUP the pattern names, not from a literal, so the wording around
+    it may differ between the two languages.
+    """
+    path = REPO / rel
+    if not path.is_file():
+        failures.append("%s: the document does not exist" % rel)
+        return False
+    text = path.read_text(encoding="utf-8", errors="replace")
+    expected = measure()
+    m = re.search(pattern, text)
+    if not m:
+        failures.append(
+            "%s: no number matching %r was found -- the claim moved or was "
+            "removed; re-check it" % (rel, pattern))
+        return False
+    # The number may be in the first or the second group: a pattern that
+    # accepts the anchor on either side of the number has two groups, and
+    # exactly one of them participates in a match.
+    claimed = None
+    for group in m.groups():
+        if group is not None:
+            claimed = int(group)
+            break
+    if claimed is None:
+        failures.append(
+            "%s: the claim %r carries no number" % (rel, pattern))
+        return False
+    if claimed != expected:
+        failures.append(
+            "%s: %s says %d, the source says %d"
+            % (rel, tree_label, claimed, expected))
+        return False
+    return True
+
+
 def main():
     failures = []
-    for rel, literal, measure in CHECKS:
-        path = REPO / rel
-        if not path.is_file():
-            failures.append("%s: the document does not exist" % rel)
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
+    checked = 0
+    for rel, pattern, measure in CHECKS:
         expected = measure()
-        if literal not in text:
-            failures.append("%s: the text %r is gone -- the number moved; re-check "
-                            "this claim" % (rel, literal))
-            continue
-        # The number the literal carries.
-        found = re.search(r"(\d+)", literal)
-        if not found:
-            failures.append("%s: %r carries no number" % (rel, literal))
-            continue
-        claimed = int(found.group(1))
-        if claimed != expected:
-            failures.append(
-                "%s: %r says %d, the source says %d"
-                % (rel, literal, claimed, expected))
+        # The English document, and the Chinese counterpart when there is
+        # one. Both carry the same claim, so both are checked.
+        if _check_number_claim(failures, rel, pattern, measure, "the document"):
+            checked += 1
+        zh_rel = "docs/zh/" + rel[len("docs/"):]
+        if (REPO / zh_rel).is_file():
+            if _check_number_claim(failures, zh_rel, pattern, measure,
+                                   "the Chinese document"):
+                checked += 1
 
     # The set claims: the dependency list of a module, compared as a SET.
     for rel, module in SET_CHECKS:

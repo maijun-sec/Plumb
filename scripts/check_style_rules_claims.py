@@ -121,14 +121,22 @@ if iface:
     n_visits = len(re.findall(r"default\s+void\s+visit\s*\(", body))
     note("AstChecker has %d visit overloads" % n_visits)
     # the document states the number
-    m = re.search(r"(\d+) 个 per-node visit 重载", doc)
+    m = re.search(r"(\d+)\s*(?:个)?\s*per-node visit", doc)
     if m and int(m.group(1)) != n_visits:
         failures.append("the document says %s visit overloads; the source has %d"
                         % (m.group(1), n_visits))
-    m = re.search(r"\*\*(\d+) 个\*\*", doc)
-    if m and int(m.group(1)) != n_visits:
-        failures.append("the document says %s per-node visit overloads; the "
-                        "source has %d" % (m.group(1), n_visits))
+    # The second claim is a bold count in the prose about the visit
+    # overloads. It has to be found in a line that ALSO talks about the
+    # visits: a bold number elsewhere in the document -- the checker class
+    # count, for instance -- says nothing about the overloads.
+    for line in doc.splitlines():
+        if "visit" not in line.lower():
+            continue
+        m = re.search(r"\*\*(\d+)\s*(?:个)?\*\*", line)
+        if m and int(m.group(1)) != n_visits:
+            failures.append("the document says %s per-node visit overloads; "
+                            "the source has %d" % (m.group(1), n_visits))
+        break
 
 # ---------------------------------------------------------------- 3b. StyleContext
 # The document's StyleContext table lists methods that must exist.
@@ -140,7 +148,11 @@ if ctx:
     lines = doc.splitlines()
     start = None
     for i, line in enumerate(lines):
-        if "主要公开 API" in line:
+        # The table's lead-in. It reads "主要公开 API" in Chinese and
+        # "The main public API" in English; the anchor is the class name
+        # `StyleContext`, which does not change with the language.
+        if "主要公开 API" in line or re.search(
+                r"public API of\s+`StyleContext`", line):
             start = i
             break
     if start is None:
@@ -223,7 +235,7 @@ checker_files = [p for p in STYLE.rglob("*.java")
                  if re.search(r"\bimplements\s+AstChecker\b", strip_comments(read(p)))]
 note("style classes implementing AstChecker: %d" % len(checker_files))
 
-m = re.search(r"(\d+)\+?\s*风格类规则", doc)
+m = re.search(r"(\d+)\+?\s*(?:风格类规则|style (?:class )?rules?)", doc, re.I)
 if m:
     claimed = m.group(1)
     if claimed.isdigit() and int(claimed) > len(checker_files):

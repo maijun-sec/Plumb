@@ -83,6 +83,10 @@ The gates are:
     check_readme_claims        the root README still matches the code: the
                               counts it quotes, the sizes it quotes, and
                               whether a size names the artifact it is about
+    check_section_refs         every cross-document section reference
+                              points at a section that exists
+    mutate_section_refs        the section-reference gate is not checking
+                              air: every deliberate drift must make it fail
     check_package_claims       the packaging scripts copy files that exist,
                               and the packaging documentation's sizes and
                               log level match the build
@@ -162,6 +166,10 @@ GATES = (
      ["python", "scripts/mutate_i18n_docs.py"], "check"),
     ("check_readme_claims",
      ["python", "scripts/check_readme_claims.py"], "check"),
+    ("check_section_refs",
+     ["python", "scripts/check_section_refs.py"], "check"),
+    ("mutate_section_refs",
+     ["python", "scripts/mutate_section_refs.py"], "check"),
     ("check_package_claims",
      ["python", "scripts/check_package_claims.py"], "check"),
     ("capability_baseline",

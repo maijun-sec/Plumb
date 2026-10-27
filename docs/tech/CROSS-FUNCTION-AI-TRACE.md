@@ -1,212 +1,222 @@
-# 跨函数分析周边：并行 worklist / tabulation 对比 / Trace 审计 / checker 迁移 / AI 增强
+# Around Cross-Function Analysis: Parallel Worklist / Comparison with Tabulation / Trace Auditing / Checker Migration / AI Enhancement
 
-本文档是 `CROSS-FUNCTION-ANALYSIS.md` 的 §6-§14 拆分版本。Phase 1+2 主干（动机、CallGraph、Phase 1 Summary、Phase 2 精确分析）见 `CROSS-FUNCTION-ANALYSIS.md`；Operation 体系与 6 套子分析见 `CROSS-FUNCTION-OPERATION.md`。
+[English](../README.md) | [中文](../zh/tech/CROSS-FUNCTION-AI-TRACE.md)
 
-## 6. 并行 worklist
+This document covers the periphery of the cross-function analysis: the
+parallel worklist, the comparison with tabulation, the trace auditing, the
+checker migration, and the AI enhancement layer. The Phase 1+2 backbone
+(motivation, CallGraph, Phase 1 Summary, Phase 2 precise analysis) is in
+`CROSS-FUNCTION-ANALYSIS.md`; the Operation system and the six
+sub-analyses are in `CROSS-FUNCTION-OPERATION.md`.
 
-Phase 1 的"callee 先于 caller"是 RPO 的硬约束，但不必等整层 RPO 跑完才开
-始下一层——只要一个函数所有**在程序里有 body 的 callee** 都总结完，caller 就可以
-开工。
+## 6. Parallel worklist
 
-dep-count 算法：
+The "callee before caller" of Phase 1 is a hard constraint of RPO, but there is no need to wait for a whole
+RPO level to finish before starting the next one — as soon as all of a function's **callees that have a body in
+the program** have been summarised, the caller can start.
+
+The dep-count algorithm:
 
 ```text
-deps[fn] = 体内 CALL 到的、在 program.function(sig) 里能找到的 callee 个数
+deps[fn] = the number of callees called in the body that can be found in program.function(sig)
 readyQ = { fn | deps[fn] == 0 }
 worker:
   sig = readyQ.poll()
-  analyseOneFunction(sig)            # Phase 2 (caller 视角) 跟 Phase 1 (callee 写 summary) 一起跑
-  summaryCache.put(sig, merged)       # Phase 1 写完
+  analyseOneFunction(sig)            # Phase 2 (caller's point of view) runs together with Phase 1 (the callee writes the summary)
+  summaryCache.put(sig, merged)       # Phase 1 is done
   for caller in callersOf[sig]:
     if deps[caller].decrementAndGet() == 0: readyQ.add(caller)
 ```
 
-自递归（直接 / 间接）被 dep 计算时主动跳过（`if (cs.callee().signature().equals(fn.signature())) continue;`），
-所以死锁天然破除——自递归的 callee 在 caller 分析时还没有 summary，`FunctionSummaryCache.get(sig)`
-返回 `FunctionSummary.empty()`，caller 看到"没有 taint 流出"是 conservative 上界。
+Self-recursion (direct / indirect) is actively skipped when the dep count is computed (`if (cs.callee().signature().equals(fn.signature())) continue;`),
+so the deadlock is broken by construction — the self-recursive callee has no summary yet when the caller is
+analysed, `FunctionSummaryCache.get(sig)` returns `FunctionSummary.empty()`, and the caller seeing "no taint
+flows out" is the conservative upper bound.
 
-并发安全靠两点：
-- `FunctionSummaryCache` 升级到 `ConcurrentHashMap` + `LongAdder`，
-  跨 worker 写 / 读都无锁。
-- `FactBag` 与 `taintedVars` 等 per-function 状态在 `analyseOneFunction` 入口
-  `clear()`、出口丢弃——同一时刻只被一个 worker 持有。
+Concurrency safety rests on two things:
 
-` worklist` 的设计取舍详见 `DfaEngine.runWorklist` 的注释。
+- `FunctionSummaryCache` was upgraded to `ConcurrentHashMap` + `LongAdder`,
+  so cross-worker writes / reads are lock-free.
+- Per-function state such as `FactBag` and `taintedVars` is `clear()`ed at the entry of
+  `analyseOneFunction` and discarded at the exit — at any moment it is held by only one worker.
 
-## 7. 与 tabulation（IFDS / IDE）方案的对比
+The design trade-offs of the ` worklist` are described in the comment of `DfaEngine.runWorklist`.
 
-> 本节是**设计取舍的论证**，不是对 Plumb 自身的描述。Plumb 本身既不是 IFDS 也不是 IDE，
-> 它的实际结构见 [`DATA-FLOW.md`](./DATA-FLOW.md)。
+## 7. Comparison with the tabulation (IFDS / IDE) approach
 
-| 维度 | IFDS / IDE 单 worklist | Plumb summary-based |
+> This section is an **argument about a design trade-off**, not a description of Plumb itself. Plumb is
+> neither IFDS nor IDE; its actual structure is described in [`DATA-FLOW.md`](./DATA-FLOW.md).
+
+| Dimension | IFDS / IDE with a single worklist | Plumb summary-based |
 | --- | --- | --- |
-| 状态 | 一个统一的 `(program-point × fact)` 图 + 全局 worklist | 每函数一份 `FunctionSummary` + `MethodSummary`；per-function checker 状态 |
-| 两阶段 | 不分两阶段，fact 在 call/return 边实时传播 | summary 预热（path-insensitive）+ 正向遍历（flow-sensitive） |
-| 调用代价 | 每次 CALL 边都展开一份 callee 的 facts | O(1) cache lookup，summary 一次构建多次复用 |
-| 并行化 | worklist 是共享的，分区策略复杂 | callee 之间独立，可按依赖计数并行 |
-| 域扩展 | 新加一类 fact（如 points-to）要重建 lattice | 新加一类 `Operation` 变体，旧 checker 不动 |
-| Call graph 策略 | 与求解器耦合（IFDS 自己维护 explode / context） | summary 与 call graph 解耦——`cha` / `rta` / `vta` / `1cfa` / `2cfa` / `stub` 都可插拔 |
-| 异构分析 | 同一 lattice 难装多套分析 | summary 是模板，多套子分析（常量 / points-to / null / 数值 / 副作用）共用框架 |
+| State | One unified `(program-point × fact)` graph + a global worklist | One `FunctionSummary` + `MethodSummary` per function; per-function checker state |
+| Two phases | Not split into two phases; facts propagate in real time along the call/return edges | Summary warm-up (path-insensitive) + forward traversal (flow-sensitive) |
+| Cost of a call | Every CALL edge expands one copy of the callee's facts | O(1) cache lookup; the summary is built once and reused many times |
+| Parallelisation | The worklist is shared, so the partitioning strategy is complex | The callees are independent of each other, so they can be parallelised by dependency count |
+| Extending the domain | Adding a new kind of fact (such as points-to) requires rebuilding the lattice | Adding a new `Operation` variant leaves the old checkers untouched |
+| Call graph strategy | Coupled to the solver (IFDS maintains the explode / context itself) | The summary is decoupled from the call graph — `cha` / `rta` / `vta` / `1cfa` / `2cfa` / `stub` are all pluggable |
+| Heterogeneous analysis | One lattice struggles to hold several analyses | The summary is a template; several sub-analyses (constant / points-to / null / numeric / side effect) share the framework |
 
-**为什么选 summary 而非 tabulation**：
+**Why a summary was chosen over tabulation**:
 
-1. **异构 fact 难统一 lattice**。Taint 分多类（String / Numeric / Pointer / Mixed），
-   nullability 是三值，points-to 是 set-of-alloc。tabulation 要把它们 flatten 成统一 ID，
-   checker 之间容易相互污染。
-2. **可扩展性**。新增 checker 只需加一个新 `Operation` 变体（或复用 `TaintPropagate` /
-   `Sink` / `WriteToField`），不用动 RPO 调度本身。
-3. **缓存天然命中率高**。同一个 callee 被 N 个 caller 调用 → summary 只算 N 次；tabulation
-   方案要为每个调用点各算一份。
-4. **并行不是事后补丁**。worklist 直接基于依赖计数，按调用图拓扑分批。
-5. **call graph 策略可插拔**。`FunctionSummaryCache` 是 signature→summary 映射，call graph
-   算法只决定「有哪些 callee 可达」，不参与求解。
+1. **Heterogeneous facts are hard to unify into one lattice**. Taint comes in several kinds (String / Numeric / Pointer / Mixed),
+   nullability is three-valued, and points-to is a set-of-alloc. Tabulation has to flatten them into unified IDs,
+   which makes it easy for the checkers to pollute each other.
+2. **Extensibility**. A new checker only needs a new `Operation` variant (or the reuse of `TaintPropagate` /
+   `Sink` / `WriteToField`); the RPO scheduling itself does not have to be touched.
+3. **A naturally high cache hit rate**. The same callee called by N callers → the summary is computed only
+   N times; a tabulation solution has to compute one copy per call site.
+4. **Parallelism is not an after-the-fact patch**. The worklist is built directly on the dependency count and
+   processes the call graph in topological batches.
+5. **The call graph strategy is pluggable**. `FunctionSummaryCache` is a signature→summary map; the call graph
+   algorithm only decides "which callees are reachable" and does not take part in the solving.
 
-代价是 **summary 边界处的 over-approximation**：多分支 return 被折叠成 `top`，caller 看到的是
-合并后的事实，可能丢精度。注意 Z3 在这里是**误报过滤器**而非精度恢复器——它只在
-`pathConditionForSink` 非空时被调用，不能恢复已被 summary 合并掉的 return 细节。
+The price is **over-approximation at the summary boundary**: a multi-branch return is folded into `top`, and the
+caller sees the merged facts, which may lose precision. Note that Z3 here is a **false-positive filter**, not a
+precision restorer — it is only called when `pathConditionForSink` is non-empty and cannot restore return details
+that the summary has already merged away.
 
-## 8. 跨文件验证
+## 8. Cross-file verification
 
-- `plumb-dfa/src/test/.../summary/FunctionSummaryTest` —— `FunctionSummary` 的契约：
-  合并、投影、非法构造的校验。
-- `plumb-dfa/src/test/.../summary/R32FunctionSummaryEnhancementTest` ——
-  `MethodSummaryBuilder` 造出来的 summary 的形状。
-- `plumb-dfa/src/test/.../taint/GuardTrackerTest` —— guard 事实在跨函数传播中的
-  保留与失效。
-- `plumb-dfa/src/test/.../points/R1106PointsToSolverTest` ——
-  `applyCalleeSummary` 把 callee 内的 `new` 接到 caller 的 dest 上。
+- `plumb-dfa/src/test/.../summary/FunctionSummaryTest` — the contract of `FunctionSummary`:
+  merging, projection, and the validation of illegal constructions.
+- `plumb-dfa/src/test/.../summary/R32FunctionSummaryEnhancementTest` —
+  the shape of the summaries produced by `MethodSummaryBuilder`.
+- `plumb-dfa/src/test/.../taint/GuardTrackerTest` — the retention and invalidation of
+  guard facts in cross-function propagation.
+- `plumb-dfa/src/test/.../points/R1106PointsToSolverTest` —
+  `applyCalleeSummary` connecting a `new` inside the callee to the caller's dest.
 
-## 9. 已知限制 / 未来工作
+## 9. Known limitations / future work
 
-1. **多分支 return 折叠成 `top`**。`MethodSummaryBuilder` 的 `buildReturnShape`
-   在 `allSame == false && !(boolean-conditional-pattern)` 时返回
-   `UNKNOWN("multiple returns with mismatched shapes")`。如果想保留多分支精
-   度，可以扩展 `ReturnShape` 加 `RETURN_MULTI` 形态（multi-value lattice），但
-   路径敏感的代价会落到所有 caller。
-2. **跨 TU 缺 caller-free 形参传播**。use-after-free 在跨 TU
-   时仍然需要 caller 在 callee 调用后做 free。summary 已经能看见
-   `WriteToField`，但 caller 看不到"callee 内部把传进去的指针 close 了"——这
-   条信息目前在 `HasUnmodelledBehavior` 里被合并，丢失了精度。计划在 
-   加 `Operation.CloseParam(int)` 变体。
-3. **`.tac` 缓存复用 summary**。当前 `IrSerializer` 只序列 IR，summary 是
-   per-run 重算。把 `FunctionSummaryCache` 跟着 `merged.tac` 一起序列化
-   （不变量 = source path 不变 + rule set 不变）可以省掉 Phase 1。详见
-   `docs/tech/CACHE.md` "Future extensions"。
-4. **Native / Reflection 不可见**。`HasUnmodelledBehavior("native")` 让 caller
-   直接退到最保守的"可能产生任何副作用"。如果想给 JNI 做白名单分析，需要
-   在 `MethodSummary` 加一个 `nativeSemantics` 子结构。
-5. **`GlobalCallGraphStrategy` 未接 CLI**。`DfaEngine` 的构造只接受 TU-local
-   strategy name（`"cha" / "rta" / "vta" / "1cfa" / "stub" / "cached:..."`），
-   不接受 `GlobalTACStore`。`GlobalCallGraphStrategy` 只能被集成测试用，要
-   在 CLI 里用 `--cg-strategy global`，需要给 `DfaEngine` 加
-   `createCrossTu(cfg, checkers, store, threads)` 工厂，跟 worklist
-   集成，并把 `CallGraphStrategyFactory.create(...)` 的"name in {global}"分支
-   删掉（避免 "Unknown strategy" 误报）。
+1. **Multi-branch returns are folded into `top`**. `MethodSummaryBuilder`'s `buildReturnShape`
+   returns `UNKNOWN("multiple returns with mismatched shapes")` when `allSame == false && !(boolean-conditional-pattern)`.
+   To keep the precision of multiple branches, `ReturnShape` could be extended with a `RETURN_MULTI` shape
+   (a multi-value lattice), but the cost of path sensitivity would then fall on all callers.
+2. **Cross-TU lacks caller-free parameter propagation**. A use-after-free still requires the caller to
+   do the free after the callee call when crossing a TU. The summary can already see
+   `WriteToField`, but the caller cannot see "the callee closed the pointer that was passed in" — this
+   information is currently merged into `HasUnmodelledBehavior`, losing precision. The plan is to
+   add an `Operation.CloseParam(int)` variant.
+3. **The `.tac` cache does not reuse summaries**. Currently `IrSerializer` only serialises the IR, and the
+   summary is recomputed per run. Serialising `FunctionSummaryCache` together with `merged.tac`
+   (the invariant = the source path is unchanged + the rule set is unchanged) would save Phase 1. See
+   "Future extensions" in `docs/tech/CACHE.md`.
+4. **Native / Reflection is invisible**. `HasUnmodelledBehavior("native")` makes the caller
+   fall back directly to the most conservative "may produce any side effect". To do whitelist analysis
+   for JNI, a `nativeSemantics` sub-structure would have to be added to `MethodSummary`.
+5. **`GlobalCallGraphStrategy` is not wired into the CLI**. The constructor of `DfaEngine` only accepts a
+   TU-local strategy name (`"cha" / "rta" / "vta" / "1cfa" / "stub" / "cached:..."`), not `GlobalTACStore`.
+   `GlobalCallGraphStrategy` can only be used by the integration tests; to use it
+   in the CLI with `--cg-strategy global`, `DfaEngine` needs a
+   `createCrossTu(cfg, checkers, store, threads)` factory, integrated with the worklist,
+   and the "name in {global}" branch of `CallGraphStrategyFactory.create(...)` has to be
+   deleted (to avoid the "Unknown strategy" false report).
 
-## 10. 进一步阅读
+## 10. Further reading
 
-- `docs/tech/DATA-FLOW.md` —— 区间抽象 + Z3 路径条件
-- `docs/tech/ARCHITECTURE.md` —— 模块边界（`plumb-dfa` 老引擎 vs `plumb-dfa`）
-- `docs/tech/TAC.md` —— TAC IR（summary 的输入）
-- `docs/tech/CACHE.md` —— 磁盘 IR 缓存与 `merged.tac`
+- `docs/tech/DATA-FLOW.md` — interval abstraction + Z3 path conditions
+- `docs/tech/ARCHITECTURE.md` — module boundaries (the old `plumb-dfa` engine vs `plumb-dfa`)
+- `docs/tech/TAC.md` — the TAC IR (the input of the summary)
+- `docs/tech/CACHE.md` — the on-disk IR cache and `merged.tac`
 
-## 11. Trace（`dataflow_steps`）的产出机制
+## 11. How Trace (`dataflow_steps`) is produced
 
-每个 finding 可以携带一条 `FlowStep` 列表，在 JSON 里以 `dataflow_steps` 输出。
-`FlowStep` 的 `role` 取值共 5 种：
+Every finding can carry a list of `FlowStep`s, which is output in JSON as `dataflow_steps`.
+There are 5 possible values of the `role` of a `FlowStep`:
 
-| role | 含义 | 产出位置 |
+| role | Meaning | Where it is produced |
 | --- | --- | --- |
-| `source` | taint 起点（用户输入、参数、资源分配点） | `TaintedCheckerBase.markSource(...)`；`PathSensitiveCheckerBase` 在资源分配点 |
-| `propagate` | 污点随赋值 / 二元运算传播 | `TaintedCheckerBase` 的 MOVE / BINOP / CALL 分支 |
-| `summary-fold` | 跨函数折叠：callee 的 summary 在 caller 侧合并进 fact bag | `FieldTaintTracker`、`TaintedCheckerBase` 的 summary applier |
-| `sink` | 命中 sink family | `TaintedCheckerBase.checkSinkAtCall(...)` |
-| `violation` | 违规点（无 taint 的 pattern-based checker） | `Finding.violation(...)` 静态工厂 |
+| `source` | The start of the taint (user input, parameter, resource allocation site) | `TaintedCheckerBase.markSource(...)`; `PathSensitiveCheckerBase` at resource allocation sites |
+| `propagate` | The taint propagates through an assignment / a binary operation | The MOVE / BINOP / CALL branches of `TaintedCheckerBase` |
+| `summary-fold` | Cross-function folding: the callee's summary is merged into the fact bag on the caller side | `FieldTaintTracker`, the summary applier of `TaintedCheckerBase` |
+| `sink` | A sink family is hit | `TaintedCheckerBase.checkSinkAtCall(...)` |
+| `violation` | The violation point (pattern-based checker without taint) | The `Finding.violation(...)` static factory |
 
-### 11.1 `source` role 的识别
+### 11.1 How the `source` role is recognised
 
-`InputSourcePatterns`（`plumb-dfa/.../taint/InputSourcePatterns.java`）维护一份
-callee signature 的 source 模式表。IR 里同一方法的 signature 可能有两种写法
-（`java.io.BufferedReader.readLine` 与 `BufferedReader#readLine`），所以
-`matches(...)` 与 `isInputSourceCall(...)` 在做 `endsWith` / `contains` 比较前
-先统一把 `#` 归一化成 `.`。
+`InputSourcePatterns` (`plumb-dfa/.../taint/InputSourcePatterns.java`) maintains a table of
+source patterns over callee signatures. The signature of the same method in the IR can have two
+forms (`java.io.BufferedReader.readLine` and `BufferedReader#readLine`), so
+`matches(...)` and `isInputSourceCall(...)` first normalise `#` into `.` before doing the
+`endsWith` / `contains` comparison.
 
-### 11.2 `summary-fold` role 的产出
+### 11.2 How the `summary-fold` role is produced
 
-跨函数场景下，callee 内部发生的字段写入对 caller 不可见。`FieldTaintTracker`
-在 callee 体内记录 `Operation.WriteToField(...)`，caller 侧应用 summary 时把
-这条信息折叠成一条 `summary-fold` step，让 trace 读起来是
-「source → propagate → summary-fold → sink」。
+In a cross-function scenario, the field writes that happen inside the callee are invisible to the caller.
+`FieldTaintTracker` records `Operation.WriteToField(...)` inside the callee body, and when the caller
+applies the summary this information is folded into a single `summary-fold` step, so that the trace reads
+as "source → propagate → summary-fold → sink".
 
-`TaintedCheckerBase` 的 `case RETURN` 维护 `passedOutTaint` 集合；
-`summarizeFunction` 在 `returnOps` 上 emit
-`Operation.TaintPropagate(sourceId, confidence)`，caller 侧的
-`propagateTaintFromCalleeSummary` 据此把对应实参标为 tainted。
+The `case RETURN` of `TaintedCheckerBase` maintains the `passedOutTaint` set;
+`summarizeFunction` emits `Operation.TaintPropagate(sourceId, confidence)` on the `returnOps`, and
+`propagateTaintFromCalleeSummary` on the caller side marks the corresponding actual argument as tainted.
 
-### 11.3 `violation` role 的产出
+### 11.3 How the `violation` role is produced
 
 `Finding.violation(checkerName, ruleId, msg, severity, cwe, line, col, fnSig, flow)`
-（`plumb-reporter/.../Finding.java`）是 pattern-based checker 的推荐入口：
-它产出一个带 1 个 `FlowStep(role="violation", ...)` 的 finding，
-并同步设置 `flow` 字段以兼容尚未迁移到结构化 step 的 reporter。
+(`plumb-reporter/.../Finding.java`) is the recommended entry point for pattern-based checkers:
+it produces a finding with 1 `FlowStep(role="violation", ...)`,
+and sets the `flow` field at the same time, for compatibility with the reporters that have not yet
+migrated to structured steps.
 
-### 11.4 `propagate` role 的产出
+### 11.4 How the `propagate` role is produced
 
-`TaintedCheckerBase` 在 MOVE（`MOVE src -> dst`）、BINOP（`BINOP lhs+rhs -> dst`，
-两个操作数都带 taint 时取更长的那条 path）等分支上追加 `propagate` step，
-记录该指令的行 / 列 / 目标变量。
+`TaintedCheckerBase` appends a `propagate` step on the MOVE (`MOVE src -> dst`) and BINOP
+(`BINOP lhs+rhs -> dst`, taking the longer of the two paths when both operands carry taint) branches,
+recording the line / column / target variable of that instruction.
 
-## 12. DFA checker 的分类与注册
+## 12. Classification and registration of the DFA checkers
 
-`plumb-dfa` 侧的 checker 分三类实现：
+The checkers on the `plumb-dfa` side come in three implementation shapes:
 
-| 类别 | 基类 | 数量 | 说明 |
+| Category | Base class | Count | Explanation |
 | --- | --- | ---: | --- |
-| **taint-style** | `TaintedCheckerBase` | 47（`checkers/taint/`） | 构造时传一个 `TaintRule(ruleId, factKind, sinkFamily, cwe, severity, taintDomain)`；命中 sink family 时发 finding |
-| **constraint-style** | `checkers/boundary/` | 1 | `BoundaryConstraintChecker`，用 Z3 求解路径条件 |
-| **pattern-based** | 直接 `implements DfaChecker` | 16（`checkers/controlflow/`）+ 2（`checkers/taint/`） | 无 taint 传播，靠 IR 局部模式匹配；用 `Finding.violation(...)` 发单步 trace |
+| **taint-style** | `TaintedCheckerBase` | 47 (`checkers/taint/`) | A `TaintRule(ruleId, factKind, sinkFamily, cwe, severity, taintDomain)` is passed in the constructor; a finding is emitted when a sink family is hit |
+| **constraint-style** | `checkers/boundary/` | 1 | `BoundaryConstraintChecker`, which uses Z3 to solve the path conditions |
+| **pattern-based** | directly `implements DfaChecker` | 16 (`checkers/controlflow/`) + 2 (`checkers/taint/`) | No taint propagation; it relies on local pattern matching over the IR; a single-step trace is emitted with `Finding.violation(...)` |
 
-`ScanRunner.buildDfaCheckers()`（`plumb-main/.../ScanRunner.java`）**实际注册
-67 个** DFA checker。注册受 YAML 的 per-rule flag 控制（例如
-`config.runIntOverflow`、`config.runNullDeref`），`config.runTaint` 是
-taint 全家桶的总开关。
+`ScanRunner.buildDfaCheckers()` (`plumb-main/.../ScanRunner.java`) **actually registers
+67** DFA checkers. The registration is controlled by the per-rule flags in the YAML (for example
+`config.runIntOverflow`, `config.runNullDeref`); `config.runTaint` is the master switch for the
+whole taint family.
 
-以下 CWE 由 `plumb-style` 的 AST checker 覆盖（`AstCheckerRegistry.builtins()` 自动注册）：
+The following CWEs are covered by the AST checkers of `plumb-style` (automatically registered by `AstCheckerRegistry.builtins()`):
 
 | CWE | plumb-style checker |
 | --- | --- |
-| CWE-319 明文传输 | `CleartextSocketUsageCheck` |
-| CWE-273 类比较 | `CompareClassesByNameCheck` |
-| CWE-114 调用外部进程 | `ProcessControlCheck` |
-| CWE-674 无出口循环 | `UncheckedLoopConditionCheck`（覆盖同一 CWE，但语义是无出口的循环而非自递归） |
-| CWE-457 未初始化字段 | `UninitNonnullCheck` |
+| CWE-319 cleartext transmission | `CleartextSocketUsageCheck` |
+| CWE-273 class comparison | `CompareClassesByNameCheck` |
+| CWE-114 invocation of an external process | `ProcessControlCheck` |
+| CWE-674 loop without an exit | `UncheckedLoopConditionCheck` (covers the same CWE, but the semantics are a loop without an exit rather than self-recursion) |
+| CWE-457 uninitialised field | `UninitNonnullCheck` |
 
-同理，`ServletAtomicityDfaChecker` 与 `SingletonRaceDfaChecker` **仍在源码里但
-不注册**：`plumb-style` 的 `ServletAtomicityCheck` / `SingletonRaceCheck`
-覆盖同样的 CWE-362 / CWE-366 且精度更好。需要启用时把对应 YAML flag 打开
-（`runServletAtomicity` / `runSingletonRace`）。
+Likewise, `ServletAtomicityDfaChecker` and `SingletonRaceDfaChecker` **are still in the source but
+not registered**: the `ServletAtomicityCheck` / `SingletonRaceCheck` of `plumb-style`
+cover the same CWE-362 / CWE-366 with better precision. To enable them, turn on the corresponding
+YAML flags (`runServletAtomicity` / `runSingletonRace`).
 
-**新增一条 DFA 规则的做法**：在 `plumb-dfa/src/main/java/org/plumb/dfa/checkers/<family>/`
-下写一个 `<Name>Checker.java`，继承 `TaintedCheckerBase`（taint 类）或直接
-`implements DfaChecker`（pattern 类），然后在 `ScanRunner.buildDfaCheckers()`
-里加一行 `checkers.add(new ...)` 并挂上对应的 YAML flag。
+**How to add a new DFA rule**: write a `<Name>Checker.java` under
+`plumb-dfa/src/main/java/org/plumb/dfa/checkers/<family>/`, extending `TaintedCheckerBase` (taint kind)
+or directly `implements DfaChecker` (pattern kind), then add a line
+`checkers.add(new ...)` in `ScanRunner.buildDfaCheckers()` and hook up the corresponding YAML flag.
 
-## 13. AI 增强层（plumb-ai）
+## 13. The AI enhancement layer (plumb-ai)
 
-`plumb-ai` 在静态分析之后加了一层 LLM 判定，用于**给 finding 标 TP/FP/UNKNOWN**。
-它只有一条流水线：FP reducer。
+`plumb-ai` adds a layer of LLM adjudication after the static analysis, used to **label findings
+TP/FP/UNKNOWN**. It has exactly one pipeline: the FP reducer.
 
-### 13.1 启用方式
+### 13.1 How to enable it
 
 ```bash
-sast-scan --ai-dedup ...        # CLI 开关
+sast-scan --ai-dedup ...        # the CLI switch
 ```
 
 ```yaml
 ai:
-  dedup: true                   # YAML 等价开关，默认 false
-  dropOnAiFp: false             # true = 丢弃被判 FP 的 finding；false = 保留并标 ai_verdict=FP
-  dedupRules: []                # 空 = 所有规则都过一遍；填了则只过这些 rule
+  dedup: true                   # the YAML equivalent switch, false by default
+  dropOnAiFp: false             # true = drop the findings judged FP; false = keep them and mark ai_verdict=FP
+  dedupRules: []                # empty = every rule goes through; if filled, only these rules do
   provider: openai_compatible
   baseUrl: https://api.openai.com
   apiKey: ${OPENAI_API_KEY}
@@ -215,40 +225,40 @@ ai:
   temperature: 0.0
 ```
 
-只有**自带 prompt 的规则**会进入 AI 判定：checker 通过 `getAiPrompt(Finding)` 提供 prompt，
-返回 `null` 表示该规则不走 AI。`--rule-prompts-dir <dir>` 可以用 `<rule-name>.md`
-覆盖 checker 的内联 prompt。
+Only the rules that **carry their own prompt** enter the AI adjudication: the checker provides the prompt
+through `getAiPrompt(Finding)`, and returning `null` means the rule does not go through AI. `--rule-prompts-dir <dir>`
+can override the checker's inline prompt with a `<rule-name>.md` file.
 
-### 13.2 模块结构
+### 13.2 Module structure
 
-`plumb-ai/src/main/java/org/plumb/ai/` 下共 29 个类，分三个包：
+There are 29 classes under `plumb-ai/src/main/java/org/plumb/ai/`, split into three packages:
 
 ```
-org.plumb.ai.agent/     —— LLM 连接与 Re-Act 循环
-  LlmConnection            连接参数（provider / baseUrl / apiKey / model / maxTokens / ...）
-  LlmProvider              provider 接口（便于测试替换）
-  OpenAiCompatibleLlmProvider  裸 java.net.http.HttpClient 实现
-  LlmMessage / LlmReply    请求与响应
-  ReActAgent               工具调用循环
-  AgentTask / AgentResult  任务与结果
+org.plumb.ai.agent/     —— the LLM connection and the Re-Act loop
+  LlmConnection            connection parameters (provider / baseUrl / apiKey / model / maxTokens / ...)
+  LlmProvider              the provider interface (easy to replace in tests)
+  OpenAiCompatibleLlmProvider  a raw java.net.http.HttpClient implementation
+  LlmMessage / LlmReply    request and response
+  ReActAgent               the tool-calling loop
+  AgentTask / AgentResult  task and result
   ToolCall / ToolDefinition / ToolResult
-  ToolRegistry             工具注册表
+  ToolRegistry             the tool registry
 
-org.plumb.ai.tools/     —— 13 个工具类 + 上下文
-  Tool                     工具接口
-  ToolContext              工具可访问的上下文
-  ToolRegistry             工具注册与调用
+org.plumb.ai.tools/     —— 13 tool classes + the context
+  Tool                     the tool interface
+  ToolContext              the context accessible to the tools
+  ToolRegistry             tool registration and invocation
   ReadSourceTool / ListDirTool / GlobTool / GrepTool / SearchPatternTool
   GetFullClassTool / GetClassHierarchyTool / GetCallHierarchyTool
   FindCallersTool / FindDefinitionsTool
   GetMethodAnnotationsTool / GetDataflowTraceWithFactsTool
   HasSanitizerOnPathTool
-  V2TraceSummarizer        trace 摘要
+  V2TraceSummarizer        the trace summary
 
-org.plumb.ai.prompts/    —— AgentPrompts（系统提示）
+org.plumb.ai.prompts/    —— AgentPrompts (the system prompt)
 ```
 
-### 13.3 在 ScanRunner 里的位置
+### 13.3 Where it sits in the ScanRunner
 
 ```text
 parse -> translate -> style + DFA
@@ -257,48 +267,49 @@ parse -> translate -> style + DFA
              [static findings]
                     |
                     v
-             AI dedup（仅 --ai-dedup 且 aiConn.isUsable()）
+             AI dedup (only with --ai-dedup and aiConn.isUsable())
                     |
                     v
                   emit
 ```
 
-`ScanRunner.runAiDedup(...)`（`plumb-main/.../ScanRunner.java:223`）按
-`ai.dedupRules` 过滤后，为每条 finding 找到拥有该 rule 的 checker，取它的 prompt，
-交给 `ReActAgent` 判定，结果写回 `ai_verdict` / `ai_reason`。
-`--ai-dedup-stats` 额外打印判定分布。
+`ScanRunner.runAiDedup(...)` (`plumb-main/.../ScanRunner.java:223`) filters by
+`ai.dedupRules`, finds the checker that owns the rule for each finding, takes its prompt,
+hands it to `ReActAgent` for adjudication, and writes the result back into `ai_verdict` / `ai_reason`.
+`--ai-dedup-stats` additionally prints the distribution of the verdicts.
 
-**规则怎么对上（两种拼法都认）**：finding 携带的是 canonical emit id
-（如 `ast-bug-bc-equals-no-null`），checker 的 `name()` 是 kebab-case slug
-（如 `bc-equals-no-null`）。这两个字符串**对 AST checker 而言没有一对是相等的**，
-所以 prompt 表同时用两种 key 登记：
+**How a rule is matched (both spellings are accepted)**: a finding carries the canonical emit id
+(such as `ast-bug-bc-equals-no-null`), while the `name()` of a checker is a kebab-case slug
+(such as `bc-equals-no-null`). **For AST checkers not one of these two strings is equal**,
+so the prompt table is registered under both kinds of key:
 
-- **slug**（`checker.name()`）——用户看到的规则名，也是 `--rule-prompts-dir`
-  里文件名对应的 key；
-- **emit id**（`checker.rule().ruleId().id()`）——finding 实际携带的 id。
+- **slug** (`checker.name()`) — the rule name the user sees, and also the key corresponding to the
+  file name in `--rule-prompts-dir`;
+- **emit id** (`checker.rule().ruleId().id()`) — the id the finding actually carries.
 
-`ai.dedupRules` 白名单同样两种写法都接受。DFA 侧不受影响：
-`TaintedCheckerBase.name()` 直接返回 `rule.ruleId()`，两种拼法本来就相等。
+The `ai.dedupRules` whitelist also accepts both spellings. The DFA side is unaffected:
+`TaintedCheckerBase.name()` returns `rule.ruleId()` directly, so the two spellings are equal there anyway.
 
-### 13.4 为什么不用 Spring-AI
+### 13.4 Why not Spring-AI
 
-`plumb-ai` 用裸的 `java.net.http.HttpClient` + Jackson，避免 Spring-AI 整个
-Spring Boot core 依赖。任何 OpenAI 兼容端点（OpenAI / Azure / Ollama / vLLM /
-LocalAI / MiniMax）都能接；Anthropic 走 `Provider.ANTHROPIC` 的原生
-`/v1/messages`，但只支持单 prompt，tool-calling 会抛
-`UnsupportedOperationException`。
+`plumb-ai` uses a raw `java.net.http.HttpClient` + Jackson, avoiding the whole
+Spring Boot core dependency of Spring-AI. Any OpenAI-compatible endpoint (OpenAI / Azure / Ollama / vLLM /
+LocalAI / MiniMax) can be connected; Anthropic goes through the native
+`/v1/messages` of `Provider.ANTHROPIC`, but only a single prompt is supported and tool-calling throws
+`UnsupportedOperationException`.
 
-**AI 层没有 bug scanner。** `--ai-scan`（LLM 主动找静态规则漏掉的 bug）和
-`--aggressiveness` 都不存在：规则级开关由 YAML 的 `checks.<rule>.enabled` 与
-`--rule <id>` 控制（YAML 里的 `aggressiveness` 键被 `ConfigLoader` 忽略，
-`SastMain` 也从不读 CLI 值）；per-rule prompt 由 checker 自己持有。
+**The AI layer has no bug scanner.** `--ai-scan` (the LLM actively looking for bugs that the static rules
+missed) and `--aggressiveness` do not exist: the rule-level switches are controlled by the YAML's
+`checks.<rule>.enabled` and by `--rule <id>` (the `aggressiveness` key in the YAML is ignored by
+`ConfigLoader`, and `SastMain` never reads the CLI value); the per-rule prompt is held by the checker itself.
 
-## 14. Re-Act 框架：让 LLM 能「看代码」
+## 14. The Re-Act framework: letting the LLM "see the code"
 
-静态规则只能按写死的模式匹配。Re-Act 循环让 LLM 在判定一个 finding 时**主动调用工具**去读
-代码、查调用者、追 dataflow trace，而不是只拿到一段截断的上下文就下结论。
+Static rules can only match hard-coded patterns. The Re-Act loop lets the LLM **actively call tools** while
+adjudicating a finding — to read the code, look up the callers, follow the dataflow trace — instead of
+concluding from a truncated piece of context.
 
-### 14.1 三个核心类型
+### 14.1 The three core types
 
 ```java
 // plumb-ai/.../agent/ReActAgent.java
@@ -306,40 +317,40 @@ public ReActAgent(LlmProvider provider, ToolRegistry tools) { ... }
 public AgentResult run(AgentTask task, ToolContext ctx) { ... }
 ```
 
-- **`LlmProvider`** —— provider 接口，生产实现是 `OpenAiCompatibleLlmProvider`
-  （裸 `java.net.http.HttpClient` + Jackson）。做成接口是为了让测试能注入假 provider。
-- **`AgentTask`** —— record，描述这次要 agent 做什么。`AgentTask.fpReduction(...)` 与
-  `AgentTask.bugScan(...)` 是两个工厂方法；`withMaxTurns(int)` 与
-  `withForceFirstTurnRequired(boolean)` 可调循环参数。
-- **`AgentResult`** —— record，带 `Kind` 枚举（final answer / max turns exceeded /
-  provider error / tool error）。`isFinalAnswer()` 区分「LLM 给了结论」与「循环没跑完」。
+- **`LlmProvider`** — the provider interface; the production implementation is `OpenAiCompatibleLlmProvider`
+  (a raw `java.net.http.HttpClient` + Jackson). It is an interface so that tests can inject a fake provider.
+- **`AgentTask`** — a record describing what the agent should do this time. `AgentTask.fpReduction(...)` and
+  `AgentTask.bugScan(...)` are the two factory methods; `withMaxTurns(int)` and
+  `withForceFirstTurnRequired(boolean)` tune the loop parameters.
+- **`AgentResult`** — a record with a `Kind` enum (final answer / max turns exceeded /
+  provider error / tool error). `isFinalAnswer()` distinguishes "the LLM reached a conclusion" from "the loop did not finish".
 
-### 14.2 工具集：13 个工具类，注册 12 个
+### 14.2 The tool set: 13 tool classes, 12 registered
 
-`plumb-ai/.../tools/` 下有 **13** 个具体工具类（外加 `Tool` 接口、`ToolContext`、
-`ToolRegistry`、`ToolCall`、`ToolDefinition`、`ToolResult` 这些基础类型）。
+There are **13** concrete tool classes under `plumb-ai/.../tools/` (plus the `Tool` interface, `ToolContext`,
+`ToolRegistry`, `ToolCall`, `ToolDefinition`, `ToolResult` base types).
 
-`ScanRunner.buildToolRegistry()`（`plumb-main/.../ScanRunner.java:450`）**注册 12 个**：
+`ScanRunner.buildToolRegistry()` (`plumb-main/.../ScanRunner.java:450`) **registers 12**:
 
-| 工具 | 用途 |
+| Tool | Purpose |
 | --- | --- |
-| `ReadSourceTool` | 读源文件内容 |
-| `GrepTool` | 正则搜索 |
-| `GlobTool` | 按 glob 找文件 |
-| `ListDirTool` | 列目录 |
-| `SearchPatternTool` | 结构化模式搜索 |
-| `FindDefinitionsTool` | 找定义 |
-| `FindCallersTool` | 找调用者 |
-| `HasSanitizerOnPathTool` | 问「这条路径上有没有 sanitizer」 |
-| `GetMethodAnnotationsTool` | 取方法注解 |
-| `GetClassHierarchyTool` | 取类继承链 |
-| `GetFullClassTool` | 取整个类的源码 |
-| `GetDataflowTraceWithFactsTool` | 取带事实的 dataflow trace |
+| `ReadSourceTool` | Read the content of a source file |
+| `GrepTool` | Regex search |
+| `GlobTool` | Find files by glob |
+| `ListDirTool` | List a directory |
+| `SearchPatternTool` | Structured pattern search |
+| `FindDefinitionsTool` | Find definitions |
+| `FindCallersTool` | Find callers |
+| `HasSanitizerOnPathTool` | Ask "is there a sanitizer on this path?" |
+| `GetMethodAnnotationsTool` | Get the method annotations |
+| `GetClassHierarchyTool` | Get the class inheritance chain |
+| `GetFullClassTool` | Get the source of a whole class |
+| `GetDataflowTraceWithFactsTool` | Get the dataflow trace with facts |
 
-`GetCallHierarchyTool` 存在但**未注册**到 `buildToolRegistry()` —— LLM 在
-`--ai-dedup` 判定时拿不到它。另有 `V2TraceSummarizer`（trace 摘要，不是 Tool）。
+`GetCallHierarchyTool` exists but is **not registered** in `buildToolRegistry()` — the LLM
+cannot get it when adjudicating with `--ai-dedup`. There is also `V2TraceSummarizer` (a trace summary, not a Tool).
 
-### 14.3 在 ScanRunner 里的调用链
+### 14.3 The call chain in the ScanRunner
 
 ```java
 org.plumb.ai.tools.ToolRegistry tools = buildToolRegistry();                       // :242
@@ -348,24 +359,23 @@ org.plumb.ai.agent.ReActAgent agent = new org.plumb.ai.agent.ReActAgent(provider
 org.plumb.ai.tools.ToolContext ctx = new org.plumb.ai.tools.ToolContext(...);      // :399
 ```
 
-每个 finding 走一次 `agent.run(task, ctx)`，结果里的判定写回 `ai_verdict` / `ai_reason`。
+Every finding goes through one `agent.run(task, ctx)`, and the verdict in the result is written back into `ai_verdict` / `ai_reason`.
 
-### 14.4 静态分析是 core，AI 的**运行**是可选的
+### 14.4 Static analysis is the core, the AI **run** is optional
 
-`plumb-ai` 是 `plumb-main` 的**编译期依赖**——`ConfigLoader`、`ScanConfig`、
-`ScanRunner` 都直接用 `org.plumb.ai.agent.*` 的类型，剥掉这个模块就编不过。
+`plumb-ai` is a **compile-time dependency** of `plumb-main` — `ConfigLoader`, `ScanConfig` and
+`ScanRunner` all directly use types from `org.plumb.ai.agent.*`, so removing the module breaks the build.
 
-可选的是**运行时行为**：不开 `--ai-dedup` 时静态分析照常跑完，
-LLM 不可用也只是把 verdict 标成 UNKNOWN。`plumb-main` 通过
-`org.plumb.ai.agent.LlmConnection`（一个纯数据 record）与 `plumb-ai` 交互。
-配置见 [`../usage/ENVIRONMENT.md`](../usage/ENVIRONMENT.md)。
+What is optional is the **runtime behaviour**: without `--ai-dedup` the static analysis runs to completion as
+usual, and an unavailable LLM only means the verdict is marked UNKNOWN. `plumb-main` interacts with `plumb-ai`
+through `org.plumb.ai.agent.LlmConnection` (a pure data record). See
+[`../usage/ENVIRONMENT.md`](../usage/ENVIRONMENT.md) for the configuration.
 
-### 14.5 AI 只做 FP 判定
+### 14.5 The AI only does FP adjudication
 
-AI 层没有 bug scanner。`AgentTask.bugScan(...)` 这个工厂方法存在，但
-**没有任何调用方**——扫描流水线里没有这条支路。AI 当前只做 FP 判定
-（`AgentTask.fpReduction(...)`）。
+The AI layer has no bug scanner. The factory method `AgentTask.bugScan(...)` exists, but
+**nothing calls it** — there is no such branch in the scan pipeline. The AI currently only does FP adjudication
+(`AgentTask.fpReduction(...)`).
 
-per-rule prompt 由 checker 自己持有（`AstChecker.getAiPrompt(Finding)`），
-不集中在一个 registry 里。
-
+The per-rule prompt is held by the checker itself (`AstChecker.getAiPrompt(Finding)`),
+not centralised in a registry.

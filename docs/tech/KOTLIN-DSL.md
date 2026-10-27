@@ -1,23 +1,25 @@
-# Kotlin AST 规则引擎（`plumb-dsl-kotlin`）
+# Kotlin AST Rule Engine (`plumb-dsl-kotlin`)
 
-`plumb-dsl-kotlin` 是一个**独立的 AST 规则引擎**。规则用一种小型 Kotlin 风格 DSL 编写，
-在 JavaParser 的 AST 节点上求值。项目可以自带 AST 规则，而不用写 Java。
+[English](../README.md) | [中文](../zh/tech/KOTLIN-DSL.md)
 
-**数据流 / 污点规则不在这个模块里。** 它们仍然由 `plumb-dfa` 的 YAML 配置驱动
-（`sink-families.yaml`、`checkers.yaml`、`tuning.yaml`）。两个引擎互不重叠：
+`plumb-dsl-kotlin` is a **standalone AST rule engine**. Rules are written in a small Kotlin-style DSL and
+evaluated on JavaParser AST nodes. A project can ship its own AST rules without writing any Java.
 
-| 规则类型 | 配置方式 | 所在模块 |
+**Data-flow / taint rules are not in this module.** They remain driven by the YAML configuration of
+`plumb-dfa` (`sink-families.yaml`, `checkers.yaml`, `tuning.yaml`). The two engines do not overlap:
+
+| Rule type | How it is configured | Module |
 | --- | --- | --- |
-| AST 规则（语法形态、局部模式） | Kotlin DSL 规则文件（XML / YAML） | `plumb-dsl-kotlin` |
-| 数据流 / 污点规则（source → sink） | YAML | `plumb-dfa` |
+| AST rules (syntactic shape, local patterns) | Kotlin DSL rule file (XML / YAML) | `plumb-dsl-kotlin` |
+| Data-flow / taint rules (source → sink) | YAML | `plumb-dfa` |
 
 ---
 
-## 1. 快速上手
+## 1. Getting started
 
-### 1.1 写一条规则
+### 1.1 Writing a rule
 
-规则文件的最小形态（YAML）：
+The minimal shape of a rule file (YAML):
 
 ```yaml
 rules:
@@ -32,27 +34,27 @@ rules:
       CatchClause catchClause: catchClause match { empty }
 ```
 
-`matcher` 的形状是：
+The shape of `matcher` is:
 
 ```
 <NodeType> <binding>: <predicate>
 ```
 
-- `NodeType` — JavaParser 的节点类型名（`CatchClause`、`MethodDeclaration`、
-  `Comment`……）。抽象类型也支持：`Comment` 会匹配 `LineComment` /
-  `BlockComment` / `JavadocComment`，`Statement` 会匹配所有语句子类。
-- `binding` — 节点在谓词里的名字。
-- `predicate` — 匹配条件。
+- `NodeType` -- the JavaParser node type name (`CatchClause`, `MethodDeclaration`,
+  `Comment`...). Abstract types are supported too: `Comment` matches `LineComment` /
+  `BlockComment` / `JavadocComment`, and `Statement` matches all statement subclasses.
+- `binding` -- the name of the node inside the predicate.
+- `predicate` -- the matching condition.
 
-### 1.2 跑起来
+### 1.2 Running it
 
 ```bash
 plumb -i src/main/java --dsl-rules rules/ast-rules.yaml
 ```
 
-`--dsl-rules` 可以重复；多个文件里的规则会合并。
+`--dsl-rules` may be repeated; the rules of several files are merged.
 
-也可以写进 YAML 配置：
+It can also be written into the YAML configuration:
 
 ```yaml
 dsl:
@@ -61,11 +63,11 @@ dsl:
   strict: false
 ```
 
-CLI 上的 `--dsl-rules` 是**追加**到 YAML 已列出的文件之后，不是覆盖。
+The CLI's `--dsl-rules` **appends** to the files already listed in the YAML, it does not override them.
 
-### 1.3 输出
+### 1.3 Output
 
-规则命中后产生的 finding 和内置规则完全一样，走同一条 reporter 管线：
+When a rule fires, the finding it produces is exactly the same as for a built-in rule and goes through the same reporter pipeline:
 
 ```json
 {
@@ -85,11 +87,11 @@ CLI 上的 `--dsl-rules` 是**追加**到 YAML 已列出的文件之后，不是
 
 ---
 
-## 2. 规则文件格式
+## 2. Rule file format
 
-### 2.1 XML（上游兼容）
+### 2.1 XML (upstream compatibility)
 
-上游 `java-sca-ast-dsl` 项目用 XML。Plumb 直接读同一种格式：
+The upstream `java-sca-ast-dsl` project uses XML. Plumb reads the very same format:
 
 ```xml
 <rules>
@@ -106,87 +108,88 @@ CLI 上的 `--dsl-rules` 是**追加**到 YAML 已列出的文件之后，不是
 </rules>
 ```
 
-规则元素的子元素：
+The child elements of a rule element:
 
-| 元素 | 必填 | 说明 |
+| Element | Required | Description |
 | --- | --- | --- |
-| `id` | 是 | 规则 id（上游是 UUID，见 §3.1） |
-| `name` | 是 | 短名 |
-| `description` | 否 | 描述，缺省用 `name` |
-| `matcher` | 是 | 匹配表达式，通常放在 CDATA 里 |
+| `id` | yes | The rule id (upstream uses a UUID, see §3.1) |
+| `name` | yes | The short name |
+| `description` | no | The description; `name` is used when it is absent |
+| `matcher` | yes | The matching expression, usually placed inside CDATA |
 
-XML 里**没有** `nodeType` 字段——节点类型从 `matcher` 的头部解析出来。
+The XML form has **no** `nodeType` field -- the node type is parsed from the head of the `matcher`.
 
-XML 也接受 `severity` / `type` / `enabled` / `cwe` 这四个可选元素（语义与 YAML
-里同名字段一致），只是上游文件不写它们。
+XML also accepts the four optional elements `severity` / `type` / `enabled` / `cwe`
+(semantically identical to the fields of the same name in YAML), but upstream files do not write them.
 
-`<rule>` 上的 `language` 属性会被忽略；未知的子元素也不会导致加载失败。
+The `language` attribute on `<rule>` is ignored; unknown child elements do not cause a load failure either.
 
-**格式按扩展名选择**：`.xml` 走 XML，其余一律走 YAML。
+**The format is chosen by file extension**: `.xml` goes through XML, everything else goes through YAML.
 
-### 2.2 YAML（Plumb 扩展）
+### 2.2 YAML (the Plumb extension)
 
-YAML 形态多出 Plumb 自己的元数据：严重度、类型、CWE、启用开关。
+The YAML form adds Plumb's own metadata: severity, type, CWE and the enable switch.
 
-| 字段 | 必填 | 默认值 | 说明 |
+| Field | Required | Default | Description |
 | --- | --- | --- | --- |
-| `id` | 是 | — | 规则 id。见 §3.1 |
-| `name` | 是 | — | 短名，会变成 finding 的 `rule_name` |
-| `description` | 否 | 用 `name` | finding 的 message |
-| `matcher` | 是 | — | 匹配表达式 |
-| `nodeType` | 否 | 匹配所有节点 | JavaParser 节点类型名 |
-| `severity` | 否 | `MEDIUM` | `INFO` / `LOW` / `MEDIUM` / `HIGH` / `CRITICAL` |
-| `type` | 否 | `OTHER` | Plumb 的规则类型，如 `BAD_PRACTICE` / `SECURITY` |
-| `cwe` | 否 | 空 | CWE 编号列表（字符串或列表） |
-| `enabled` | 否 | `true` | 关掉这条规则 |
+| `id` | yes | -- | The rule id. See §3.1 |
+| `name` | yes | -- | The short name; it becomes the `rule_name` of the finding |
+| `description` | no | `name` | The message of the finding |
+| `matcher` | yes | -- | The matching expression |
+| `nodeType` | no | matches every node | The JavaParser node type name |
+| `severity` | no | `MEDIUM` | `INFO` / `LOW` / `MEDIUM` / `HIGH` / `CRITICAL` |
+| `type` | no | `OTHER` | A Plumb rule type, e.g. `BAD_PRACTICE` / `SECURITY` |
+| `cwe` | no | empty | A list of CWE numbers (a string or a list) |
+| `enabled` | no | `true` | Turns this rule off |
 
-`nodeType` 留空时规则作用于**每一个** AST 节点——通常不是想要的，但引擎允许。
+When `nodeType` is left empty the rule applies to **every** AST node -- usually not what you want, but the engine allows it.
 
-写错 `nodeType`（拼了一个不存在的节点类）会被记 WARN 并**跳过这条规则**，而不是
-悄悄退化成"匹配所有节点"。
-
----
-
-## 3. 规则 id 与别名
-
-### 3.1 id 归一化
-
-上游用随机 UUID 当规则 id。Plumb 的 registry、SARIF 输出和文档门禁都要求
-`plumb.dsl.<slug>` 这个约定，所以引擎会做一次归一化：
-
-- id 已经以 `plumb.` 开头 → 原样保留。
-- 其它 id（上游的 UUID）→ 由 `name` 推导出 slug，变成 `plumb.dsl.<slug>`。
-
-归一化后的 id 是 finding 真正使用的 id；**原始 id 保留为 alias**，所以按上游 id
-过滤规则依然有效。
-
-### 3.2 规则的启停
-
-一条 DSL 规则的启用状态有三个来源，优先级从低到高：
-
-1. 规则文件里的 `enabled: false`。
-2. `RuleRegistry` 里的状态——runner 会把 DSL 规则注册进 live registry，
-   用户 YAML 的 `rules.enabled` / `rules.disabled` 按通常的规则作用于它们。
-3. 命令行的 `--rule <id>`。
+A wrong `nodeType` (a node class that does not exist) is recorded as a WARN and the rule is **skipped**, instead of
+silently degrading into "matches every node".
 
 ---
 
-## 4. 匹配器语言
+## 3. Rule ids and aliases
 
-### 4.1 基本形态
+### 3.1 Id normalisation
+
+Upstream uses a random UUID as the rule id. Plumb's registry, its SARIF output and the documentation gate all require
+the `plumb.dsl.<slug>` convention, so the engine performs one normalisation pass:
+
+- An id that already starts with `plumb.` is kept as it is.
+- Any other id (an upstream UUID) -> a slug is derived from `name` and it becomes `plumb.dsl.<slug>`.
+
+The normalised id is the id the finding really uses; **the original id is kept as an alias**, so filtering
+rules by the upstream id still works.
+
+### 3.2 Enabling and disabling a rule
+
+The enabled state of a DSL rule has three sources, from lowest to highest priority:
+
+1. `enabled: false` in the rule file.
+2. The state in the `RuleRegistry` -- the runner registers the DSL rules into the live registry,
+   and the user's YAML `rules.enabled` / `rules.disabled` apply to them in the usual way.
+3. `--rule <id>` on the command line.
+
+---
+
+## 4. The matcher language
+
+### 4.1 Basic shape
 
 ```
 <NodeType> <binding>: <predicate>
 ```
 
-谓词是 Kotlin 表达式，但**不是**任意 Kotlin：引擎会把它重写成对一组静态
-facade 方法的调用（见 §5）。
+The predicate is a Kotlin expression, but **not** arbitrary Kotlin: the engine rewrites it into calls
+against a set of static facade methods (see §5).
 
-### 4.2 节点属性（裸名字）
+### 4.2 Node properties (bare names)
 
-谓词里可以直接写节点属性，引擎会把它重写成对 `NodeAccess` 的调用：
+Inside a predicate you can write node properties directly; the engine rewrites them into calls
+against `NodeAccess`:
 
-| 写法 | 实际调用 |
+| Written as | Actual call |
 | --- | --- |
 | `simpleName` | `NodeAccess.simpleName` |
 | `qualifiedName` | `NodeAccess.qualifiedName` |
@@ -203,82 +206,82 @@ facade 方法的调用（见 §5）。
 | `method` | `NodeAccess.method` |
 | `empty` | `NodeAccess.isEmpty` |
 
-### 4.3 中缀运算符
+### 4.3 Infix operators
 
-| 写法 | 实际调用 |
+| Written as | Actual call |
 | --- | --- |
 | `s startsWith p` / `s startWith p` | `StringOps.startsWith` |
 | `s endsWith p` | `StringOps.endsWith` |
 | `s matches regex` | `StringOps.matches` |
 | `c contain e` / `c contains e` | `Ops.contains` |
 
-### 4.4 节点与类型的访问
+### 4.4 Accessing nodes and types
 
-规则的谓词里可以访问当前节点和它的类型：
+The predicate of a rule can access the current node and its type:
 
-| facade | 作用 |
+| Facade | Purpose |
 | --- | --- |
-| `NodeAccess.simpleName(n)` | 节点的简单名 |
-| `NodeAccess.qualifiedName(n)` | 节点的限定名 |
-| `NodeAccess.content(n)` | 节点的源码文本 |
-| `NodeAccess.isEmpty(n)` | 节点是否为空 |
-| `NodeAccess.method(n)` | 取方法声明 |
-| `NodeAccess.methodName(n)` | 方法名 |
-| `NodeAccess.methodNameOf(n)` | 方法名（另一种取法） |
-| `NodeAccess.resolvedMethodName(n)` | 解析后的方法名 |
-| `NodeAccess.parameters(n)` | 参数列表 |
-| `NodeAccess.parameterTypes(n)` | 参数类型列表 |
-| `NodeAccess.type(n)` | 节点声明的类型 |
-| `NodeAccess.exception(n)` | 节点携带的异常 |
-| `NodeAccess.exceptionName(n)` | 异常名 |
-| `NodeAccess.exceptionType(n)` | 异常类型 |
-| `NodeAccess.enclosingClass(n)` | 外层类名 |
-| `NodeAccess.enclosingFunction(n)` | 外层函数名 |
-| `NodeAccess.constructorName(n)` | 构造器名 |
-| `NodeAccess.isStatic(n)` | 是否 static |
-| `NodeAccess.isFinal(n)` | 是否 final |
-| `TypeAccess.typeName(n)` | 解析后的类型全名 |
-| `TypeAccess.resolve(n)` | 解析成 `ResolvedType` |
-| `TypeAccess.supers(n)` | "is-a" 闭包：类型自身 + 所有父类型 |
-| `TypeAccess.strictSupers(n)` | 严格父类型（不含自身），与上游语义一致 |
-| `TypeAccess.supersOf(typeRef)` | 同 `supers`，作用于一个类型引用 |
-| `TypeAccess.strictSupersOf(typeRef)` | 同 `strictSupers`，作用于一个类型引用 |
-| `TypeAccess.typeNameOf(typeRef)` | 类型引用的全名 |
-| `TypeAccess.resolveTypeName(typeRef)` | 类型引用的全名 |
-| `TypeAccess.resolveDeclaredTypeName(typeRef)` | 声明类型的全名 |
-| `TypeAccess.typeAt(types, index)` | 取列表里第 `index` 个类型 |
+| `NodeAccess.simpleName(n)` | The simple name of the node |
+| `NodeAccess.qualifiedName(n)` | The qualified name of the node |
+| `NodeAccess.content(n)` | The source text of the node |
+| `NodeAccess.isEmpty(n)` | Whether the node is empty |
+| `NodeAccess.method(n)` | Gets the method declaration |
+| `NodeAccess.methodName(n)` | The method name |
+| `NodeAccess.methodNameOf(n)` | The method name (another way to get it) |
+| `NodeAccess.resolvedMethodName(n)` | The resolved method name |
+| `NodeAccess.parameters(n)` | The parameter list |
+| `NodeAccess.parameterTypes(n)` | The list of parameter types |
+| `NodeAccess.type(n)` | The type declared by the node |
+| `NodeAccess.exception(n)` | The exception carried by the node |
+| `NodeAccess.exceptionName(n)` | The exception name |
+| `NodeAccess.exceptionType(n)` | The exception type |
+| `NodeAccess.enclosingClass(n)` | The enclosing class name |
+| `NodeAccess.enclosingFunction(n)` | The enclosing function name |
+| `NodeAccess.constructorName(n)` | The constructor name |
+| `NodeAccess.isStatic(n)` | Whether it is static |
+| `NodeAccess.isFinal(n)` | Whether it is final |
+| `TypeAccess.typeName(n)` | The fully qualified name of the resolved type |
+| `TypeAccess.resolve(n)` | Resolves it into a `ResolvedType` |
+| `TypeAccess.supers(n)` | The "is-a" closure: the type itself plus all its supertypes |
+| `TypeAccess.strictSupers(n)` | The strict supertypes (without the type itself), matching upstream semantics |
+| `TypeAccess.supersOf(typeRef)` | Same as `supers`, applied to a type reference |
+| `TypeAccess.strictSupersOf(typeRef)` | Same as `strictSupers`, applied to a type reference |
+| `TypeAccess.typeNameOf(typeRef)` | The fully qualified name of the type reference |
+| `TypeAccess.resolveTypeName(typeRef)` | The fully qualified name of the type reference |
+| `TypeAccess.resolveDeclaredTypeName(typeRef)` | The fully qualified name of the declared type |
+| `TypeAccess.typeAt(types, index)` | Gets the type at position `index` in the list |
 
-> **上游语义差异。** 上游的 `ResolvedType.supers` 不包含类型自身，所以上游
-> "poor logging practice" 那条规则对直接声明的 `Logger` 字段不会触发。
-> Plumb 的 `TypeAccess.supers` 用的是 "is-a" 闭包（**包含**自身），
-> `TypeAccess.strictSupers` 保留上游行为。
+> **Difference in upstream semantics.** Upstream's `ResolvedType.supers` does not include the type itself, so upstream's
+> "poor logging practice" rule does not fire for a directly declared `Logger` field.
+> Plumb's `TypeAccess.supers` uses the "is-a" closure (**including** the type itself),
+> while `TypeAccess.strictSupers` preserves the upstream behaviour.
 
-### 4.5 字符串与集合
+### 4.5 Strings and collections
 
-| facade | 作用 |
+| Facade | Purpose |
 | --- | --- |
-| `StringOps.startsWith(s, p)` | 前缀 |
-| `StringOps.endsWith(s, p)` | 后缀 |
-| `StringOps.matches(s, regex)` | 正则匹配（`(?!` 前缀表示忽略大小写） |
-| `StringOps.contains(s, sub)` | 子串包含 |
-| `Ops.contains(collection, element)` | 集合含某元素 |
-| `Ops.containsText(collection, text)` | 集合里有元素包含该文本 |
-| `Ops.size(collection)` | 集合大小 |
+| `StringOps.startsWith(s, p)` | Prefix |
+| `StringOps.endsWith(s, p)` | Suffix |
+| `StringOps.matches(s, regex)` | Regular expression match (a `(?!` prefix means case-insensitive) |
+| `StringOps.contains(s, sub)` | Substring containment |
+| `Ops.contains(collection, element)` | The collection contains an element |
+| `Ops.containsText(collection, text)` | An element of the collection contains the text |
+| `Ops.size(collection)` | The size of the collection |
 
-### 4.6 结构性匹配器
+### 4.6 Structural matchers
 
-| facade | 对应的 DSL 写法 | 作用 |
+| Facade | Corresponding DSL form | Purpose |
 | --- | --- | --- |
-| `Matchers.match(node) { ... }` | `node match { ... }` | 谓词作用于节点自身 |
-| `Matchers.contain(node) { ... }` | `node contain { ... }` | 任意深度后代中有一个满足谓词 |
-| `Matchers.ancestor(node) { ... }` | `node ancestor { ... }` | 任意祖先中有一个满足谓词 |
+| `Matchers.match(node) { ... }` | `node match { ... }` | The predicate applies to the node itself |
+| `Matchers.contain(node) { ... }` | `node contain { ... }` | A descendant at any depth satisfies the predicate |
+| `Matchers.ancestor(node) { ... }` | `node ancestor { ... }` | An ancestor satisfies the predicate |
 
-`contain` 和 `ancestor` 的谓词会拿到**被检查的那个节点**作为参数，所以
-`contain { simpleName == "ReturnStmt" }` 的意思是"下面 somewhere 有个 return 语句"。
+The predicates of `contain` and `ancestor` receive **the node being inspected** as their argument, so
+`contain { simpleName == "ReturnStmt" }` means "there is a return statement somewhere below".
 
-### 4.7 多级匹配
+### 4.7 Multi-level matching
 
-`contain` 可以嵌套，因此一条规则可以表达"某个方法里有一个参数类型是 X 的调用"：
+`contain` can be nested, so a single rule can express "a call whose parameter type is X inside some method":
 
 ```
 MethodDeclaration method: method contain {
@@ -288,86 +291,86 @@ MethodDeclaration method: method contain {
 
 ---
 
-## 5. 引擎怎么跑
+## 5. How the engine runs
 
-### 5.1 编译一次，重复求值
+### 5.1 Compile once, evaluate repeatedly
 
-每条规则**只编译一次**，编译产物（`javax.script.CompiledScript`）在整轮扫描里复用。
+Every rule is **compiled exactly once**; the compiled form (`javax.script.CompiledScript`) is reused for the whole scan.
 
-这一点是实测出来的，不是拍脑袋：
+This was measured, not assumed:
 
-| 方式 | 每次求值耗时 |
+| Approach | Time per evaluation |
 | --- | --- |
-| `engine.eval(text)`（每次重新编译） | 约 236,551 µs |
-| `CompiledScript.eval()`（复用编译产物） | 约 543 µs |
+| `engine.eval(text)` (recompiled every time) | about 236,551 µs |
+| `CompiledScript.eval()` (the compiled form is reused) | about 543 µs |
 
-差约 435 倍。热编译后单条规则的编译成本约 45 ms，扫描开始时付一次。
+A factor of about 435. After warm-up, compiling a single rule costs about 45 ms, which is paid once at the start of the scan.
 
-### 5.2 当前节点放在 ThreadLocal 里
+### 5.2 The current node lives in a ThreadLocal
 
-Kotlin script 在**编译期**解析自由变量，所以脚本没法把节点当参数传进去——编译一次
-之后就没有"每次求值传不同节点"的位置了。
+A Kotlin script resolves free variables at **compile time**, so the script cannot take the node as a parameter -- once it
+has been compiled there is no place left to pass a different node on every evaluation.
 
-上游的做法是每个节点重建一次脚本，也就是每节点一次完整重编译（236 ms）。
-Plumb 的做法不同：
+Upstream rebuilds the script for every node, that is a full recompilation per node (236 ms).
+Plumb works differently:
 
-- 节点在**运行期**从一个 `ThreadLocal` 读取；
-- 编译产物在**所有线程之间共享**。
+- The node is read at **run time** from a `ThreadLocal`;
+- The compiled form is **shared between all threads**.
 
-为什么节点必须是 per-thread：Plumb 用 worker pool 并行扫描。共享一个静态字段，
-两个 worker 会互相覆盖对方的节点——实测 8 线程、2400 次求值里出现 **635 次**错判。
-换成 `ThreadLocal` 后，同样条件下**零错判**。
+Why the node has to be per-thread: Plumb scans in parallel with a worker pool. Sharing a single static field
+means two workers overwrite each other's node -- in a measurement with 8 threads and 2400 evaluations there were **635**
+misdetections. With a `ThreadLocal` there are **zero** misdetections under the same conditions.
 
-### 5.3 为什么规则不挂在 AstDispatcher 的 per-node 派发上
+### 5.3 Why the rules do not hang off the per-node dispatch of `AstDispatcher`
 
-Plumb 的 `AstDispatcher` 按**精确的节点类**派发：它给每个 checker 声明的节点类型
-建一张表，一个节点只会送给注册在那个精确类下面的 checker。这带来两个后果：
+Plumb's `AstDispatcher` dispatches by **exact node class**: it builds a table for every node type declared by a checker,
+and a node is only handed to the checkers registered under that exact class. This has two consequences:
 
-1. **dispatcher 永远不会把 `CompilationUnit` 送给 checker。** `CompilationUnit` 是
-   树的**根**，不是树里的节点，`unit.walk(...)` 不会访问根。所以一个重写了
-   `visit(CompilationUnit, StyleContext)` 的 checker **永远不会执行**。
-2. **抽象节点类型无法表达。** 重写 `visit(CatchClause, ...)` 的 checker 只能看到
-   `CatchClause`；而 DSL 规则可以写 `Statement` / `Expression` / `Comment`。
+1. **The dispatcher never hands a `CompilationUnit` to a checker.** `CompilationUnit` is the
+   **root** of the tree, not a node in it, and `unit.walk(...)` does not visit the root. So a checker that overrides
+   `visit(CompilationUnit, StyleContext)` **never runs**.
+2. **Abstract node types cannot be expressed.** A checker that overrides `visit(CatchClause, ...)` only sees
+   `CatchClause`; DSL rules on the other hand can write `Statement` / `Expression` / `Comment`.
 
-所以 DSL 规则**不能**走 dispatcher 的 per-node 派发。它们在
-`AstChecker.finish(ctx)` 里运行——那是 dispatcher 每文件调用一次、保证能看到
-整个 unit 的唯一钩子。
+Therefore DSL rules **cannot** use the per-node dispatch of the dispatcher. They run in
+`AstChecker.finish(ctx)` -- the only hook the dispatcher calls once per file, which guarantees that the
+whole unit is visible.
 
-`DslAstChecker` 因此自己跑一遍遍历，按规则目标节点类型分组。
+`DslAstChecker` therefore runs its own traversal and groups the nodes by the target node type of each rule.
 
-### 5.4 注释需要单独处理
+### 5.4 Comments need separate handling
 
-JavaParser 把注释挂在它所注释的节点上，但**不把注释放进树里**：
-`findAll(Node.class)` 永远不会访问到注释。注释要从 `getAllContainedComments()`
-拿。所以一条目标是 `Comment` 的规则需要显式地把它们加进候选列表。
+JavaParser attaches comments to the node they annotate, but **does not put the comments into the tree**:
+`findAll(Node.class)` never reaches a comment. Comments have to be obtained from
+`getAllContainedComments()`. So a rule whose target is `Comment` has to add them to the candidate list explicitly.
 
-### 5.5 规则必须进 registry
+### 5.5 Rules must enter the registry
 
-`StyleContext.report(...)` 对"默认关闭且不在 registry 里"的规则会直接丢弃。
-runner 因此把 DSL 规则的元数据注册进 live `RuleRegistry`，让它们和内置规则
-一样参与 whitelist / blacklist 过滤。
+`StyleContext.report(...)` silently drops a rule that is "off by default and not in the registry".
+The runner therefore registers the metadata of the DSL rules into the live `RuleRegistry`, so that they take part in the
+whitelist / blacklist filtering just like the built-in rules.
 
 ---
 
-## 6. 错误处理
+## 6. Error handling
 
-| 情况 | 行为 |
+| Situation | Behaviour |
 | --- | --- |
-| 规则文件不存在 | 记 ERROR，跳过该文件 |
-| XML 格式错误 | 记 ERROR，跳过该文件 |
-| 规则没有可用的节点类型 | 记 ERROR，跳过该规则 |
-| matcher 重写失败 | 记 ERROR，跳过该规则 |
-| 脚本编译失败 | 记 ERROR，跳过该规则 |
-| 脚本求值抛异常 | 记 WARN，该节点不匹配，扫描继续 |
+| The rule file does not exist | Recorded as ERROR, the file is skipped |
+| The XML is malformed | Recorded as ERROR, the file is skipped |
+| The rule has no usable node type | Recorded as ERROR, the rule is skipped |
+| The matcher cannot be rewritten | Recorded as ERROR, the rule is skipped |
+| The script fails to compile | Recorded as ERROR, the rule is skipped |
+| The script throws during evaluation | Recorded as WARN, the node does not match, the scan continues |
 
-**一条坏规则不会让整轮扫描挂掉。**
+**One bad rule does not bring the whole scan down.**
 
-`--dsl-strict`（或 YAML 的 `dsl.strict: true`）改变这一点：编译失败直接中止扫描。
-严格模式适合 CI——一条写错的规则不应该被静默跳过。
+`--dsl-strict` (or `dsl.strict: true` in the YAML) changes this: a compilation failure aborts the scan
+immediately. Strict mode suits CI -- a rule with a mistake should not be skipped silently.
 
 ---
 
-## 7. 模块与依赖
+## 7. Modules and dependencies
 
 ```
 plumb-dsl-kotlin
@@ -381,21 +384,21 @@ plumb-dsl-kotlin
   └── kotlin-stdlib
 ```
 
-`plumb-style` 依赖这个模块，但这个模块**不**依赖 `plumb-style` 的任何子模块——
-SPI 在 `plumb-style` 里，实现在这里，没有环。
+`plumb-style` depends on this module, but this module does **not** depend on any submodule of `plumb-style` --
+the SPI lives in `plumb-style` and the implementation lives here, so there is no cycle.
 
-`plumb-main` 依赖 `plumb-dsl-kotlin`，把 `DslAstChecker` 接进 style 检查链。
+`plumb-main` depends on `plumb-dsl-kotlin` and plugs `DslAstChecker` into the style check chain.
 
-Kotlin 版本固定在 **2.2.0**：这是第一个在 JDK 25 上能跑、同时仍然产出 Java 17
-字节码的版本（1.9.22 不完整，2.1.0 在 JDK 25 上抛 `IllegalArgumentException: 25.0.1`）。
+The Kotlin version is pinned to **2.2.0**: it is the first version that runs on JDK 25 and still produces Java 17
+bytecode (1.9.22 is incomplete, 2.1.0 throws `IllegalArgumentException: 25.0.1` on JDK 25).
 
 ---
 
-## 8. 相关文档
+## 8. Related documentation
 
-| 文档 | 内容 |
+| Document | Content |
 | --- | --- |
-| [`../usage/CLI.md`](../usage/CLI.md) | `--dsl-rules` / `--dsl-strict` 的 CLI 手册 |
-| [`../usage/CLI-REFERENCE.md`](../usage/CLI-REFERENCE.md) | YAML v2 速查，含 `dsl:` 块 |
-| [`STYLE-RULES.md`](STYLE-RULES.md) | 内置 style 规则、`AstDispatcher`、`AstCheckerRegistry` |
-| [`../rules/RULE-AUTHORING.md`](../rules/RULE-AUTHORING.md) | 写规则的两种方式：Java checker 与 Kotlin DSL |
+| [`../usage/CLI.md`](../usage/CLI.md) | The CLI manual for `--dsl-rules` / `--dsl-strict` |
+| [`../usage/CLI-REFERENCE.md`](../usage/CLI-REFERENCE.md) | A quick reference for YAML v2, including the `dsl:` block |
+| [`STYLE-RULES.md`](STYLE-RULES.md) | The built-in style rules, `AstDispatcher`, `AstCheckerRegistry` |
+| [`../rules/RULE-AUTHORING.md`](../rules/RULE-AUTHORING.md) | The two ways of writing rules: Java checker and Kotlin DSL |

@@ -39,6 +39,32 @@ def strip_comments(text):
     return text
 
 
+def strip_code_blocks(text):
+    """Remove the fenced code blocks from a markdown document.
+
+    A code block contains the source the document talks ABOUT. Scanning it
+    for the document's own claims finds the source instead: a block
+    holding `public final class TacProgram implements Serializable {` is
+    not the claim that nine IR classes are serialisable.
+    """
+    out = []
+    in_fence = False
+    fence = ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            if not in_fence:
+                in_fence = True
+                fence = stripped[:3]
+            elif stripped.startswith(fence):
+                in_fence = False
+                fence = ""
+            out.append("")
+            continue
+        out.append("" if in_fence else line)
+    return "\n".join(out)
+
+
 def enum_body(text, enum_name):
     """The body of a (possibly nested) enum, comments removed.
 
@@ -115,16 +141,47 @@ def read(p):
 
 
 # ---------------------------------------------------------------- 1. IR classes
-# The document says the IR classes are 10, and names them.
-claimed_ir = re.search(r"等 (\d+) 个", doc)
+# The document says how many IR classes there are, and names them.
+#
+# The patterns are LANGUAGE-INDEPENDENT. The product documentation exists
+# in English under `docs/` and in Chinese under `docs/zh/`, and the same
+# claim is worded differently in each. The anchors are the IDENTIFIERS
+# (`Serializable`, `TacInstruction.Kind`), which do not change with the
+# language; only the connecting words do, so both are accepted.
+claimed_ir = re.search(
+    r"(?:等|total|in\s+total)[^|\n]{0,20}?(\d+)\s*(?:个|classes?)", doc)
+if claimed_ir is None:
+    claimed_ir = re.search(
+        r"(\d+)\s*(?:个|classes?)[^|\n]{0,30}?(?:等|total|in\s+total)", doc)
 ir_classes_claimed = int(claimed_ir.group(1)) if claimed_ir else None
 
 # The classes the document names as the serialisable IR.
-named = re.search(
-    r"IR 类（(.+?)）全部 `implements Serializable`", doc)
+#
+# The claim reads like: "All IR classes (`TacProgram` / `TacFunction` / ...
+# / `SourceMap`, 9 in total) implement `Serializable`" in English, and
+# "IR 类（...）全部 `implements Serializable`" in Chinese. In both, the
+# class list is a run of backticked names separated by slashes.
+#
+# The search is over the PROSE, not over the code blocks: a code block
+# contains `public final class TacProgram implements Serializable {`, and
+# matching that would pick up the class declaration instead of the list
+# the document claims.
 named_classes = []
-if named:
-    named_classes = re.findall(r"`([A-Za-z0-9_]+)`", named.group(1))
+for line in strip_code_blocks(doc).splitlines():
+    if "Serializable" not in line:
+        continue
+    # The mention that carries the claim is the LAST "Serializable" on
+    # the line: a table row starts with a `| Serializable |` column
+    # header, and the class list sits before the LATER mention, in the
+    # cell that states the property.
+    head = line.rsplit("Serializable", 1)[0]
+    # The list is the run of backticked names separated by slashes or
+    # commas.
+    slashed = re.findall(r"`([A-Za-z0-9_]+)`\s*(?:/|、|,)\s*", head)
+    candidates = re.findall(r"`([A-Za-z0-9_]+)`", head)
+    run = slashed if len(slashed) > 1 else candidates
+    if len(run) > len(named_classes):
+        named_classes = run
 note("document names %d IR classes: %s" % (len(named_classes), named_classes))
 
 # Derive the real set: classes under the tac package tree whose name starts
@@ -153,7 +210,11 @@ for c in named_classes:
                         % c)
 
 # ---------------------------------------------------------------- 2. instruction kinds
-m = re.search(r"`TacInstruction\.Kind` 共 (\d+) 种", doc)
+m = re.search(
+    r"`TacInstruction\.Kind`\s*(?:共|has|有)\s*(\d+)\s*(?:种|kinds?)", doc)
+if m is None:
+    m = re.search(
+        r"`TacInstruction\.Kind`[^\n]{0,40}?(\d+)\s*(?:种|kinds?)", doc)
 kinds_claimed = int(m.group(1)) if m else None
 note("document claims %s instruction kinds" % kinds_claimed)
 
@@ -180,7 +241,9 @@ if insn_file is not None:
         table = []
         in_table = False
         for line in doc.splitlines():
-            if re.search(r"`TacInstruction\.Kind`\s*共\s*\d+\s*种", line):
+            if re.search(
+                    r"`TacInstruction\.Kind`\s*(?:共|has)\s*\d+\s*(?:种|kinds?)",
+                    line):
                 in_table = True
                 continue
             if in_table:
@@ -387,9 +450,15 @@ if ser:
 # ---------------------------------------------------------------- 8. round markers
 for m in re.finditer(r"(?<![A-Za-z0-9_])R-\d{0,4}[a-z]?(?![A-Za-z0-9_])", doc):
     failures.append("TAC.md carries a round marker: %s" % m.group(0))
-if "详细背景与 CWE396 调优过程" in doc:
-    failures.append("TAC.md has a dangling section lead-in: "
-                    "'详细背景与 CWE396 调优过程' with no section after it")
+# The dangling lead-in this document used to carry, in either language. The
+# lead-in promised a section that a later edit removed, so the sentence
+# was left pointing at nothing.
+for lead_in in ("详细背景与 CWE396 调优过程",
+                 "Detailed background and the CWE396 tuning process"):
+    if lead_in in doc:
+        failures.append("TAC.md has a dangling section lead-in: "
+                        "%r has no section after it" % lead_in)
+        break
 
 print()
 if failures:

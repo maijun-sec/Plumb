@@ -159,7 +159,7 @@ def main():
                     failures.append(
                         "the documentation does not state the logback root level %s"
                         % root.group(1))
-            if "INFO 级别" in text:
+            if "INFO 级别" in text or "INFO level" in text:
                 failures.append(
                     "the documentation says the shipped logback config is INFO level, "
                     "but it is root=%s / org.plumb=%s"

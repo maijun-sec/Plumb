@@ -200,7 +200,16 @@ else:
 # The document STATES the count in prose.  That number has to agree with
 # the source too -- a document that says "three places" while the source
 # has two is exactly the kind of drift this gate exists to catch.
-COUNT_CLAIM = re.compile(r"环境变量\*\*读取\*\*只有\s*`?[^`]*`?\s*的\s*([一二三四五六七八九十两\d]+)\s*处")
+#
+# The pattern is LANGUAGE-INDEPENDENT: the Chinese document says
+# "环境变量**读取**只有 `ConfigLoader.java` 的 两 处", the English one
+# says "there are exactly two real reads". The count itself is what is
+# checked; the wording around it is not.
+COUNT_CLAIM = re.compile(
+    r"环境变量\*\*读取\*\*只有\s*`?[^`]*`?\s*的\s*([一二三四五六七八九十两\d]+)\s*处"
+    r"|exactly\s+([a-z]+|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+real\s+reads"
+    r"|(?:only|just)\s+([a-z]+|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+reads?",
+    re.I)
 stated = COUNT_CLAIM.search(doc)
 if not stated:
     failures.append("the document no longer states the number of environment "
@@ -208,8 +217,15 @@ if not stated:
 else:
     CN = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6,
           "七": 7, "八": 8, "九": 9, "十": 10}
-    raw = stated.group(1)
-    n = int(raw) if raw.isdigit() else CN.get(raw)
+    EN = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+          "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+    raw = next((g for g in stated.groups() if g is not None), None)
+    if raw.isdigit():
+        n = int(raw)
+    else:
+        n = CN.get(raw)
+        if n is None:
+            n = EN.get(raw.lower())
     note("the document states %s environment reads" % raw)
     if n is None:
         failures.append("cannot interpret the stated read count: %r" % raw)

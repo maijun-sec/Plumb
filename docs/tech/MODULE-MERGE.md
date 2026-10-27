@@ -1,37 +1,39 @@
-# 模块结构与依赖边界
+# Module Structure and Dependency Boundaries
 
-本文档说明 Plumb 项目的模块划分、依赖图，以及每个模块的边界。
+[English](../README.md) | [中文](../zh/tech/MODULE-MERGE.md)
 
-一句话结论：**`plumb-parser` 必须是独立模块**。它被 `plumb-tac`、`plumb-style` 和 `plumb-dfa` 同时消费，如果它被合并进任何一个下游模块，另外两个就会被迫拉进那个模块的全部传递依赖。
+This document describes the module decomposition of the Plumb project, the dependency graph, and the boundary of each module.
 
-## 1. 当前模块结构
+The one-sentence conclusion: **`plumb-parser` has to be a module of its own**. It is consumed by `plumb-tac`, `plumb-style` and `plumb-dfa` at the same time, so if it were merged into any one of those downstream modules, the other two would be forced to pull in the whole transitive dependency set of that module.
 
-根 `pom.xml` 的 `<modules>` 里一共 10 个模块：
+## 1. The current module structure
+
+The root `pom.xml` lists 10 modules in its `<modules>`:
 
 ```
 plumb  (root POM)
-├── plumb-parser      ── JavaParser 包装，ParsedSource + JavaSourceParser
-├── plumb-tac         ── TAC IR + AST→TAC 翻译器 + CFG builder + IrSerializer
-├── plumb-rules       ── RuleDef / RuleId / RuleParameter / RuleRegistry 元数据
-├── plumb-style       ── AST 风格 checker（JavaParser AST visitor）
-├── plumb-reporter    ── Finding 数据模型 + NDJSON / console / SARIF 输出
-├── plumb-dfa         ── DFA 引擎（CallGraph + Z3 + 跨函数 summary + checkers）
-├── plumb-dsl-kotlin  ── Kotlin DSL AST 规则引擎（独立 AST 规则引擎）
-├── plumb-build       ── parent pom，聚合 build 自省子模块
+├── plumb-parser      ── JavaParser wrapper, ParsedSource + JavaSourceParser
+├── plumb-tac         ── TAC IR + AST→TAC translator + CFG builder + IrSerializer
+├── plumb-rules       ── RuleDef / RuleId / RuleParameter / RuleRegistry metadata
+├── plumb-style       ── AST style checkers (JavaParser AST visitor)
+├── plumb-reporter    ── Finding data model + NDJSON / console / SARIF output
+├── plumb-dfa         ── DFA engine (CallGraph + Z3 + cross-function summary + checkers)
+├── plumb-dsl-kotlin  ── Kotlin DSL AST rule engine (standalone AST rule engine)
+├── plumb-build       ── parent pom, aggregates the build introspection submodules
 │   ├── plumb-build-core    ── BuildAdapter SPI + Maven / Gradle / Bazel / Ant adapter
-│   ├── plumb-build-maven   ── Maven Resolver（Aether）传递依赖解析
-│   └── plumb-build-capture ── ByteBuddy agent 抓真实 javac 命令行
-├── plumb-ai          ── LLM FP 消减（ReActAgent + ToolRegistry）
-└── plumb-main        ── CLI + YAML 配置 + 流水线编排
+│   ├── plumb-build-maven   ── Maven Resolver (Aether) transitive dependency resolution
+│   └── plumb-build-capture ── ByteBuddy agent capturing the real javac command line
+├── plumb-ai          ── LLM FP reduction (ReActAgent + ToolRegistry)
+└── plumb-main        ── CLI + YAML configuration + pipeline orchestration
 ```
 
-## 2. 模块依赖图
+## 2. The module dependency graph
 
-（从各模块 `pom.xml` 的 `<artifactId>plumb-*</artifactId>` 实测得出）
+(measured from the `<artifactId>plumb-*</artifactId>` entries of each module's `pom.xml`)
 
 ```
                         ┌──────────────────┐
-                        │   plumb-parser   │  (无 plumb 内部依赖，只用 javaparser)
+                        │   plumb-parser   │  (no internal plumb dependency, only javaparser)
                         └───┬──────────┬───┘
                             │          │
              ┌──────────────┘          └──────────────┐
@@ -62,70 +64,70 @@ plumb  (root POM)
                └──────────┘
 ```
 
-（`plumb-style` 出现两次是因为它确实不依赖 `plumb-tac` / `plumb-dfa`：
-左边那条边是 `plumb-parser → plumb-style`，右边那条是
-`plumb-rules` / `plumb-reporter → plumb-style`。）
+(`plumb-style` appears twice because it really does not depend on `plumb-tac` / `plumb-dfa`:
+the edge on the left is `plumb-parser → plumb-style`, the one on the right is
+`plumb-rules` / `plumb-reporter → plumb-style`.)
 
-（`plumb-dsl-kotlin` 依赖 `plumb-style` —— 它实现 `plumb-style` 的 `AstChecker` SPI。
-这条边是单向的：`plumb-style` 不依赖 `plumb-dsl-kotlin`。）
+(`plumb-dsl-kotlin` depends on `plumb-style` -- it implements the `AstChecker` SPI of
+`plumb-style`. This edge is one-way: `plumb-style` does not depend on `plumb-dsl-kotlin`.)
 
-实际的直接依赖（每个模块的 `pom.xml`）：
+The actual direct dependencies (from each module's `pom.xml`):
 
-| 模块 | 依赖的 plumb 模块 |
+| Module | Depends on these plumb modules |
 | --- | --- |
-| `plumb-parser` | （无） |
+| `plumb-parser` | (none) |
 | `plumb-tac` | `plumb-parser` |
 | `plumb-rules` | `plumb-tac` |
 | `plumb-reporter` | `plumb-rules` |
 | `plumb-style` | `plumb-parser`, `plumb-rules`, `plumb-reporter` |
 | `plumb-dfa` | `plumb-parser`, `plumb-tac`, `plumb-rules`, `plumb-reporter` |
 | `plumb-dsl-kotlin` | `plumb-parser`, `plumb-rules`, `plumb-reporter`, `plumb-style` |
-| `plumb-build` | （parent pom，无内部依赖） |
+| `plumb-build` | (parent pom, no internal dependency) |
 | `plumb-build-core` | `plumb-rules` |
 | `plumb-build-maven` | `plumb-build-core` |
-| `plumb-build-capture` | （无内部依赖） |
+| `plumb-build-capture` | (no internal dependency) |
 | `plumb-ai` | `plumb-rules`, `plumb-reporter` |
 | `plumb-main` | `plumb-parser`, `plumb-tac`, `plumb-dfa`, `plumb-dsl-kotlin`, `plumb-build-core`, `plumb-build-maven`, `plumb-ai`, `plumb-rules`, `plumb-style`, `plumb-reporter` |
 
-关键边：
+The key edges:
 
-- `plumb-parser` 是叶子节点，**不依赖**任何 plumb 内部模块（仅 JavaParser）
-- `plumb-tac` 只依赖 `plumb-parser`（因为 `TacTranslator` 接收 `ParsedSource`）
-- `plumb-style` 只依赖 `plumb-parser` + `plumb-rules` + `plumb-reporter` —— **不依赖 plumb-tac / plumb-dfa**（这是架构原则）
-- `plumb-dfa` 依赖 `plumb-parser` + `plumb-tac` + `plumb-rules` + `plumb-reporter`
-- `plumb-dsl-kotlin` 依赖 `plumb-parser` + `plumb-rules` + `plumb-reporter` + `plumb-style` ——
-  它实现 `plumb-style` 的 `AstChecker` SPI，所以要依赖 `plumb-style`；
-  而 `plumb-style` **不**依赖它，没有环
-- `plumb-build-maven` 依赖 `plumb-build-core`（要用 `BuildAdapter` / `BuildProject`）
-- `plumb-build-capture` **不依赖任何 plumb 内部模块** —— 它是个独立 agent，
-  被塞进任意编译器的 JVM 里跑，不该拖 plumb 的依赖进去
-- `plumb-main` 依赖全部下游模块，做编排
+- `plumb-parser` is a leaf node and **does not depend** on any internal plumb module (only JavaParser)
+- `plumb-tac` depends only on `plumb-parser` (because `TacTranslator` takes a `ParsedSource`)
+- `plumb-style` depends only on `plumb-parser` + `plumb-rules` + `plumb-reporter` -- **it does not depend on plumb-tac / plumb-dfa** (that is an architectural principle)
+- `plumb-dfa` depends on `plumb-parser` + `plumb-tac` + `plumb-rules` + `plumb-reporter`
+- `plumb-dsl-kotlin` depends on `plumb-parser` + `plumb-rules` + `plumb-reporter` + `plumb-style` --
+  it implements the `AstChecker` SPI of `plumb-style`, so it has to depend on `plumb-style`;
+  and `plumb-style` does **not** depend on it, so there is no cycle
+- `plumb-build-maven` depends on `plumb-build-core` (it needs `BuildAdapter` / `BuildProject`)
+- `plumb-build-capture` **does not depend on any internal plumb module** -- it is a standalone agent
+  that runs inside the JVM of any compiler, and it should not drag the plumb dependencies in
+- `plumb-main` depends on every downstream module and does the orchestration
 
 
-## 3. 模块边界
+## 3. Module boundaries
 
-### 3.1 plumb-parser（独立）
+### 3.1 plumb-parser (standalone)
 
 ```xml
 <dependencies>
     <dependency>javaparser-symbol-solver-core</dependency>
     <dependency>slf4j-api</dependency>
     <dependency>logback-classic</dependency>
-    <!-- 测试 -->
+    <!-- test -->
     <dependency>junit-jupiter (test)</dependency>
     <dependency>assertj-core (test)</dependency>
 </dependencies>
 ```
 
-没有 SootUp，没有 plumb-* 内部依赖。
+No SootUp, no internal plumb-* dependency.
 
 ### 3.2 plumb-tac
 
 ```xml
 <dependencies>
-    <dependency>plumb-parser</dependency>          <!-- 接收 ParsedSource -->
+    <dependency>plumb-parser</dependency>          <!-- receives ParsedSource -->
     <dependency>javaparser-symbol-solver-core</dependency>
-    <dependency>sootup.core</dependency>           <!-- .jar 分析 -->
+    <dependency>sootup.core</dependency>           <!-- .jar analysis -->
     <dependency>sootup.java.core</dependency>
     <dependency>sootup.java.bytecode.frontend</dependency>
     ...
@@ -136,7 +138,7 @@ plumb  (root POM)
 
 ```xml
 <dependencies>
-    <dependency>plumb-parser</dependency>          <!-- AST 入口 -->
+    <dependency>plumb-parser</dependency>          <!-- AST entry point -->
     <dependency>plumb-rules</dependency>          <!-- RuleDef -->
     <dependency>plumb-reporter</dependency>       <!-- Finding -->
     <dependency>javaparser-symbol-solver-core</dependency>
@@ -144,18 +146,18 @@ plumb  (root POM)
 </dependencies>
 ```
 
-**不**包含 `plumb-tac`、`plumb-dfa`、`plumb-dfa`。
+It does **not** contain `plumb-tac`, `plumb-dfa`, `plumb-dfa`.
 
 ### 3.4 plumb-reporter
 
 ```xml
 <dependencies>
-    <dependency>plumb-rules</dependency>          <!-- Finding.rule 字段 -->
+    <dependency>plumb-rules</dependency>          <!-- the Finding.rule field -->
     ...
 </dependencies>
 ```
 
-**不**依赖 `plumb-dfa`。
+It does **not** depend on `plumb-dfa`.
 
 ### 3.5 plumb-dfa
 
@@ -184,14 +186,14 @@ plumb  (root POM)
 </dependencies>
 ```
 
-**依赖方向是单向的**：`plumb-dsl-kotlin → plumb-style`，不是反过来。
-`plumb-style` 里只有 SPI 接口（`AstChecker` / `StyleContext`），实现放在
-`plumb-dsl-kotlin`，所以没有环。
+**The dependency direction is one-way**: `plumb-dsl-kotlin → plumb-style`, not the other way round.
+`plumb-style` holds only the SPI interfaces (`AstChecker` / `StyleContext`), the implementation lives in
+`plumb-dsl-kotlin`, so there is no cycle.
 
-它**不依赖** `plumb-tac` / `plumb-dfa` —— AST 规则和 TAC / 数据流是两回事。
-数据流 / 污点规则仍然由 `plumb-dfa` 的 YAML 配置驱动。
+It **does not depend** on `plumb-tac` / `plumb-dfa` -- AST rules and TAC / data flow are two different things.
+Data-flow / taint rules remain driven by the YAML configuration of `plumb-dfa`.
 
-详见 [`KOTLIN-DSL.md`](KOTLIN-DSL.md)。
+See [`KOTLIN-DSL.md`](KOTLIN-DSL.md) for the details.
 
 ### 3.7 plumb-main
 
@@ -200,17 +202,17 @@ plumb  (root POM)
     <dependency>plumb-parser</dependency>
     <dependency>plumb-tac</dependency>
     <dependency>plumb-dfa</dependency>
-    <dependency>plumb-dsl-kotlin</dependency>      <!-- 接入 DSL AST 规则 -->
+    <dependency>plumb-dsl-kotlin</dependency>      <!-- plugs in the DSL AST rules -->
     <dependency>plumb-rules</dependency>
     <dependency>plumb-style</dependency>
     <dependency>plumb-reporter</dependency>
-    <dependency>snakeyaml</dependency>            <!-- YAML 配置 -->
-    <dependency>commons-cli</dependency>          <!-- CLI 解析 -->
+    <dependency>snakeyaml</dependency>            <!-- YAML configuration -->
+    <dependency>commons-cli</dependency>          <!-- CLI parsing -->
     ...
 </dependencies>
 ```
 
-## 4. 流水线数据流
+## 4. Pipeline data flow
 
 ```
 .java
@@ -220,7 +222,7 @@ ParsedSource
   │
   ├──▶ plumb-style ──────▶ List<Finding> (style)
   │      ▲
-  │      └── plumb-dsl-kotlin（DSL AST 规则，实现 AstChecker SPI）
+  │      └── plumb-dsl-kotlin (DSL AST rules, implements the AstChecker SPI)
   │
   ▼  plumb-tac
 TacProgram
@@ -235,17 +237,15 @@ List<Finding> (dfa)
 NDJSON / console
 ```
 
-注意：plumb-style 和 plumb-tac **共享 ParsedSource** 作为输入，但**互相独立**：
+Note: plumb-style and plumb-tac **share the ParsedSource** as input, but they are **independent of each other**:
 
-- plumb-style 直接消费 ParsedSource
-- plumb-tac 用 TacTranslator 把 ParsedSource 翻译成 TacProgram
-- plumb-dfa 只看 TacProgram，不看 ParsedSource
+- plumb-style consumes the ParsedSource directly
+- plumb-tac translates the ParsedSource into a TacProgram with TacTranslator
+- plumb-dfa only looks at the TacProgram, not at the ParsedSource
 
-这意味着：
-- plumb-style 的检查**和 TAC 无关**，可以在没有 TAC 模块的情况下独立运行（用于纯风格检查工具）
-- plumb-dfa 的检查**和 AST 无关**，可以在没有 plumb-style 的情况下独立运行（用于纯数据流分析工具）
+This means:
+- the checks of plumb-style are **independent of TAC** and can run on their own without the TAC module (for a pure style checking tool)
+- the checks of plumb-dfa are **independent of the AST** and can run on their own without plumb-style (for a pure data flow analysis tool)
 
-`plumb-dsl-kotlin` 走的是 plumb-style 那条边：它的规则在 AST 上求值，
-**不进 TAC 流水线**，也**不参与数据流分析**。
-
-
+`plumb-dsl-kotlin` follows the plumb-style edge: its rules are evaluated on the AST,
+they **do not enter the TAC pipeline** and they **do not take part in the data flow analysis**.

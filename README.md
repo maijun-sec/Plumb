@@ -1,43 +1,48 @@
 # Plumb
 
-> **Java 静态分析工具链** — JavaParser → TAC IR → DFA (含 taint) + AST 风格规则 → NDJSON 报告,**可选** LLM FP 消减。
+**English** | [中文](README.zh.md)
+
+> **A Java static-analysis toolchain** — JavaParser → TAC IR → DFA (with taint) + AST style rules → NDJSON reports, with **optional** LLM false-positive reduction.
 
 [![Version](https://img.shields.io/badge/version-0.1.0--SNAPSHOT-blue)](docs/README.md)
 [![Tests](https://img.shields.io/badge/tests-262%20java%20test%20files-green)](pom.xml)
 [![Support](https://img.shields.io/badge/tests-passing-brightgreen)](testcase/SUPPORT-MATRIX.md)
 [![License](https://img.shields.io/badge/license-internal-lightgrey)](#9-license)
 
-独立 Java 项目 (NOT a port of Fathom),架构灵感来自 Fathom 但完全 Java-only。
+An independent Java project (NOT a port of Fathom). The architecture is
+inspired by Fathom, but the implementation is entirely Java.
 
 ---
 
-## 一句话
+## In one line
 
 ```bash
-# 解压后,在 dist 目录里:
-./bin/plumb -i path/to/your/src/   # 静态扫描
-./bin/plumb --ai-dedup -i src/     # 静态 + LLM FP 消减
+# After unpacking, in the dist directory:
+./bin/plumb -i path/to/your/src/   # static scan
+./bin/plumb --ai-dedup -i src/    # static scan + LLM false-positive reduction
 ```
 
 ---
 
-## 1. 它能做什么
+## 1. What it does
 
-| 维度 | 数据 | 来源 |
+| Dimension | Number | Source |
 | --- | --- | --- |
-| Style checker | **595** 个（`CheckerCategories` 登记 593） | `plumb-style/**` |
-| DFA checker | **71** 个实际注册 | `ScanRunner.buildDfaCheckers()` |
-| Taint rule | **12** 条 | `TaintRuleRegistry` |
-| Taint source / sink 模式 | **19** / **397** | `sink-families.yaml` |
-| 单元测试 | **262** 个 java test 文件（其中 219 个 `*Test.java`） | 各模块 `src/test/` |
+| Style checkers | **596** (`CheckerCategories` registers 593) | `plumb-style/**` |
+| DFA checkers | **67** actually registered | `ScanRunner.buildDfaCheckers()` |
+| Taint rules | **12** | `TaintRuleRegistry` |
+| Taint source / sink patterns | **19** / **397** | `sink-families.yaml` |
+| Unit tests | **262** Java test files (219 of them `*Test.java`) | each module's `src/test/` |
 
-> 下面的行需要外部语料 / 基准环境才能复现，本仓库里没有对应的数据或 harness：
-> Juliet corpus 的 CWE 覆盖率与召回、AI dedup 准确率、启动与单文件扫描耗时、
-> 含 JRE 的发布包体积。
+> The rows below need an external corpus or a benchmark environment to
+> reproduce, and this repository has neither the data nor the harness for
+> them: the CWE coverage and recall over the Juliet test suite, the AI
+> dedup accuracy, the startup and single-file scan latency, and the
+> release package size including a JRE.
 
 ---
 
-## 2. 模块架构
+## 2. Module architecture
 
 ```
                 ┌────────────────────────┐
@@ -69,143 +74,173 @@
        └─────────────────┘                        │
 ```
 
-详见 [`docs/README.md`](docs/README.md)。
+See [`docs/README.md`](docs/README.md) for the full index.
 
 ---
 
-## 3. 快速开始
+## 3. Getting started
 
-### 3.1 从源码构建 (开发者)
+### 3.1 Building from source (developers)
 
-需要 JDK 17+ 和 Maven 3.8+。
+Requires JDK 17+ and Maven 3.8+.
 
 ```bash
 git clone <plumb-repo>
 cd Plumb
 
-# 构建 + 测试
+# Build and test
 ./scripts/build.sh                       # Linux / macOS
 ./scripts/build.ps1                      # Windows PowerShell
 
-# 产物
+# Artifact
 ls -lh plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar
-# ~115 MB
 ```
 
-### 3.2 代码格式
+### 3.2 Code formatting
 
-源码用 Google Java Format 风格(2 空格缩进、100 列)。提交前必须格式化:
+The source follows Google Java Format (2-space indent, 100 columns). You
+must format before committing:
 
 ```bash
 ./scripts/format.sh                      # Linux / macOS
 ./scripts/format.ps1                     # Windows PowerShell
 
-./scripts/format.sh --check              # 只检查,不修改(有未格式化文件时退出码 1)
+./scripts/format.sh --check              # check only, do not modify (exit code 1 if unformatted)
 ```
 
-格式器版本是钉死的 **google-java-format 1.37.0**。不用 `fmt-maven-plugin`,
-因为它捆绑的是 1.7 —— 那个版本读不懂 text block,会报"需要';'"。
+The formatter version is pinned to **google-java-format 1.37.0**. The
+project does not use `fmt-maven-plugin`, because it bundles version 1.7,
+and that version cannot parse text blocks -- it reports "expected ';'".
 
-仓库自带一个 git pre-commit 钩子,**含有未格式化 Java 的提交会被直接拒绝**。
-新克隆的仓库需要装一次:
+The repository ships a git pre-commit hook, and **a commit that contains
+unformatted Java is rejected outright**. A fresh clone needs it installed
+once:
 
 ```bash
 sh scripts/install-hooks.sh
 ```
 
-钩子只拦截**本次提交暂存的文件**。已经存在于 HEAD 里的未格式化文件不会阻塞
-后续提交,除非你这次动了它。全量检查一次约 30 秒(1107 个源文件,单次 JVM 运行),
-所以"提交前先格式化"不会变成一个你等不起的步骤。
+The hook only inspects **the files staged for this commit**. Unformatted
+files that are already in HEAD do not block later commits unless you touch
+them. A full check takes about 30 seconds (1107 source files, one JVM
+run), so "format before you commit" does not become a step you cannot
+afford to wait for.
 
-被排除在格式化之外的有两类文件,原因都是它们不是产品源码:
+Two kinds of file are excluded from formatting, and in both cases the
+reason is that they are not product source:
 
-- `plumb-dfa/src/main/resources/scripts/` —— 614 个 Juliet 语料样本,故意包含
-  无法解析的文件;重新格式化会破坏用来度量引擎的语料。
-- `testcase/` —— 带手工行号锚点的度量样本;重新格式化会移动清单指向的行。
+- `plumb-dfa/src/main/resources/scripts/` -- 614 samples from the Juliet test suite, deliberately containing files that do not parse; reformatting them would corrupt the fixtures used to measure the engine.
+- `testcase/` -- measurement samples with hand-placed line anchors; reformatting them would move the lines the manifest points at.
 
-### 3.3 提交前的门禁
+### 3.3 The gates that run before a commit
 
-仓库里有一组门禁,每个都检查一件会静默腐化的事。**一个没人跑的门禁不是门禁**,
-所以它们都由一个命令统一驱动:
+The repository has a set of gates, each checking one thing that would
+silently rot. **A gate nobody runs is not a gate**, so they are all driven
+by a single command:
 
 ```bash
 python scripts/check_all.py
 ```
 
-它依次跑:
+It runs, in order:
 
-| 门禁 | 检查什么 |
+| Gate | What it checks |
 | --- | --- |
-| `format --check` | 每个源文件都符合 google-java-format |
-| `gen_categories --check` | 生成的 checker 注册表是最新的 |
-| `gen_framework_annotations --check` | 生成的注解清单是最新的 |
-| `check_framework_annotations` | 污点引擎和 AST 校验检查器对"什么是用户输入"的理解一致 |
-| `check_catalogue_drift_numbers` | javadoc 里引用的历史漂移数字与 git 历史对得上 |
-| `check_dataflow_constraint` | 清单的 `dataflow_contains` 约束不是空断言 |
-| `check_support_matrix_coverage` | 支持矩阵覆盖了每个已测量的类别,且每行的数字和 `RESULT.json` 对得上 |
-| `check_javadoc_links` | javadoc 里 `{@link}` 指向的类型真的存在 |
-| `check_doc_index` | 文档索引列全了 `docs/` 下的每一份文档,索引里的链接也都能打开 |
-| `check_doc_hygiene` | 产品文档描述的是**当前**状态:没有轮次号、没有过去式措辞、没有无法复现的测量当事实 —— markdown、源码注释、随包发布的配置文件都查 |
-| `check_doc_numbers` | 手写文档里引用的数字仍然和源码对得上 |
-| `check_doc_claims` | 文档的结构性断言仍然和源码对得上:YAML schema 里出现的每个 key 都是 loader 真读的,CLI flag 都存在,章节编号不重复、交叉引用不悬空 |
-| `check_tac_claims` | IR 规范里的结构性断言仍然和源码对得上:读者照着写的那些类名、字段名、枚举常量、计数都还在 |
-| `check_cross_fn_claims` | 跨函数 Operation 文档里点名的符号都还存在:类名、`Operation` 变体、return shape |
-| `check_environment_claims` | 环境变量文档跟代码对得上:哪些变量真的被读、哪些没被读(启动脚本读的也算)、行号引用指的是不是那一行 |
-| `check_cache_claims` | 缓存文档跟代码对得上:文件头常量、四种缓存模式及其行为、source map 保留契约里字段的类型 |
-| `check_style_rules_claims` | 风格规则文档跟代码对得上:接口方法、派发器 API、上下文 API、visit 重载数 |
-| `check_package_claims` | 出包脚本拷的每个文件都真的存在(少一个就中断整个出包),出包文档里的体积和日志级别跟构建产物对得上 |
-| `capability_baseline --check` | 没有丢掉任何规则、sink 模式、污点源模式、checker 或事实种类 |
-| `gen_tool_comparison --check` | 工具对比文档里的数字仍然和源码对得上 |
-| `gen_rules_overview --check` | 规则总览里的数字仍然和源码对得上 |
-| `linkcheck` | markdown 里的相对链接没有断链 |
+| `format --check` | Every source file matches google-java-format |
+| `gen_categories --check` | The generated checker registry is current |
+| `gen_framework_annotations --check` | The generated annotation catalogue is current |
+| `check_framework_annotations` | The taint engine and the AST checkers agree on "what counts as user input" |
+| `check_catalogue_drift_numbers` | The historical drift numbers quoted in javadoc match the git history they describe |
+| `check_dataflow_constraint` | The catalogue's `dataflow_contains` constraint is not a no-op |
+| `check_support_matrix_coverage` | The support matrix covers every measured category, and every row matches its `RESULT.json` |
+| `check_javadoc_links` | Every `{@link}` target in a javadoc names a type that exists |
+| `check_doc_index` | The documentation index lists every document under `docs/`, and every link in it resolves |
+| `check_doc_hygiene` | The product documentation describes the **current** state: no round numbers, no past-state wording, no unreproducible measurement presented as fact -- in the markdown, in the source comments, and in the shipped configuration files |
+| `check_doc_numbers` | The counts quoted in the hand-written documentation still match the source |
+| `check_doc_claims` | The documentation's structural claims still match the source: every key the YAML schema shows is one the loader reads, every CLI flag exists, section numbers are unique, cross-references resolve |
+| `check_tac_claims` | The IR specification's structural claims still match the source: the class names, fields, enum constants and counts a reader would code against |
+| `check_cross_fn_claims` | The cross-function operation document's named symbols still exist: the classes, the `Operation` variants, the return shapes |
+| `check_environment_claims` | The environment document still matches the code: the variables that are read, the ones that are not (the launchers count too), and whether the line citations point at those lines |
+| `check_cache_claims` | The cache document still matches the code: the file header constants, the four cache modes and their behaviour, the field types in the source-map contract |
+| `check_style_rules_claims` | The style-rules document still matches the code: the interface methods, the dispatcher API, the context API, the visit-overload count |
+| `check_i18n_docs` | The English and Chinese documentation trees have the same shape, and every page links to its counterpart |
+| `check_readme_claims` | The root README still matches the code: the counts it quotes, the sizes it quotes, and whether a size names the artifact it is about |
+| `check_section_refs` | Every cross-document section reference points at a section that exists |
+| `check_package_claims` | Every file the packaging scripts copy really exists (one missing file aborts the whole package), and the packaging documentation's sizes and log level match the build |
+| `capability_baseline --check` | No rule, sink pattern, source pattern, checker or fact kind was lost |
+| `gen_tool_comparison --check` | The tool comparison document's numbers still match the source |
+| `gen_rules_overview --check` | The rules overview's numbers still match the source |
+| `linkcheck` | No broken relative link in the markdown |
 
-跑完还会重新生成 `docs/plumb-style-rules*.md`,并报告生成结果和已提交版本是否一致。
+Afterwards it regenerates `docs/plumb-style-rules*.md` and reports whether
+the generated result matches the committed version.
 
-**关于"手写文档里的数字"**:生成的文档(`RULES.md`、`RULE-TOOL-COMPARISON.md`)的数字
-由生成器实测,`--check` 模式能证明它们没过期。但**手写**文档里的数字没人管 —— 仓库里
-曾经同时写着"595 个 checker 类"和"596 个",而实际是 596;`ARCHITECTURE.md` 写着
-"71 个 DFA checker",而引擎实际注册 67 个。`check_doc_numbers` 把这些数字对着源码
-重新测一遍,包括 `RULE-STYLE-OP.md` 里那张按子目录分类的表。数字要么改成实测值,
-要么搬进生成文档里让生成器负责 —— 不能靠记忆。
+**About "the numbers in the hand-written documentation":** the generated
+documents (`RULES.md`, `RULE-TOOL-COMPARISON.md`) have their numbers
+measured by the generator, and `--check` mode proves they have not gone
+stale. But the numbers in **hand-written** documents are nobody's
+responsibility -- the repository at one point carried both "595 checker
+classes" and "596" when the real number was 596; `ARCHITECTURE.md` claimed
+"71 DFA checkers" when the engine actually registers 67.
+`check_doc_numbers` measures these numbers against the source again,
+including the per-subdirectory table in `RULE-STYLE-OP.md`. A number
+either becomes the measured value, or it moves into a generated document
+where the generator owns it -- it cannot be written from memory.
 
-**关于"注释里的数字"**:注释里引用一个数字,这个数字就会腐烂 —— 仓库里曾经同时写着
-"thirteen" 和 "seventeen",描述的是同一个历史漂移。`check_catalogue_drift_numbers`
-从 git 历史里读出漂移前的两份清单,算出真实的数字,再和注释里写的对账;注释写错就报错。
-历史不可用(浅克隆)时它会说明原因并放行,而不是假装通过。
+**About "the numbers in comments":** a comment that quotes a number lets
+that number rot -- the repository at one point carried both "thirteen" and
+"seventeen" describing the same historical drift.
+`check_catalogue_drift_numbers` reads the two pre-drift lists out of the
+git history, computes the real number, and reconciles it against the
+comment; a wrong comment is an error. When the history is unavailable (a
+shallow clone), it says why and passes, rather than pretending to have
+passed.
 
-**关于"注释里的类名"**:同一件事也发生在类名上。仓库里曾经有一整套 javadoc 描述一个
-叫 `CallResolver` 的组件,说它"沿类层次解析虚调用" —— 而这个类在仓库里根本不存在,
-实际的虚调用解析是**按方法名 + 参数个数**匹配的(见 `ChaCallGraphStrategy`)。
-`check_javadoc_links` 用 Maven 给出的真实依赖 classpath 来解析每一个 `{@link}`:
-`org.plumb.*` 必须在源码里能找到,裸名字必须在源码、JDK 或依赖 jar 里能找到。
-找不到就报错 —— 注释里指向一个不存在的类,是对代码的假陈述。
+**About "the class names in comments":** the same thing happens to class
+names. The repository at one point had a whole set of javadoc describing a
+component called `CallResolver`, saying it "resolves virtual calls along the
+class hierarchy" -- and that class did not exist in the repository at all;
+the actual virtual-call resolution matches on **method name plus argument
+count** (see `ChaCallGraphStrategy`). `check_javadoc_links` resolves every
+`{@link}` against the real dependency classpath Maven provides:
+`org.plumb.*` has to be found in the source, and a bare name has to be
+found in the source, the JDK, or a dependency jar. Not finding it is an
+error -- a comment that points at a class that does not exist is a false
+statement about the code.
 
-**关于"能力没有变弱"**:类别矩阵只覆盖了少数规则,所以"少了一条规则"这件事
-矩阵未必看得出来。`capability_baseline` 直接测量能力面本身:已注册的规则、
-已注册的 checker、checker 类、污点源模式、事实种类、sink 家族及其模式。
-任何一项减少都会被拒绝;增加会被报告出来,并且需要**显式**更新基线才算接受。
-这样"顺手清理一下"就不可能悄悄变成"少支持一类问题"。
+**About "the capability did not get weaker":** the category matrix covers
+only a few rules, so "a rule was dropped" does not necessarily show up in
+the matrix. `capability_baseline` measures the capability surface itself:
+the registered rules, the registered checkers, the checker classes, the
+taint source patterns, the fact kinds, the sink families and their
+patterns. Any reduction is rejected; an addition is reported and requires
+an **explicit** baseline update to be accepted. That way "a little
+cleanup while we are here" cannot silently become "one class of problem is
+no longer supported".
 
-事实种类有两个来源,门禁**分开**测量(`builtin:` / `yaml:` 前缀):`BuiltinFactKinds`
-里注册的 15 个内置 kind,和 `fact-kinds.yaml` 里的 12 个条目。两者命名风格不同
-(`dfa-taint-untrusted-source` vs `UntrustedSource`),但 `ConfigLoader.parseFactKinds`
-会把它们合进同一个 registry —— 所以合起来是 27 个。分开测量是为了防止其中一个
-清单把另一个遮住:曾经有一版测量用一个永远匹配不到的 pattern 去数内置 kind,
-于是那 15 个**根本不在基线里**,删掉一个也不会被发现。
+Fact kinds have two sources, and the gate measures them **separately**
+(the `builtin:` / `yaml:` prefixes): the 15 built-in kinds registered in
+`BuiltinFactKinds`, and the 12 entries in `fact-kinds.yaml`. The two lists
+use different naming styles (`dfa-taint-untrusted-source` vs
+`UntrustedSource`), but `ConfigLoader.parseFactKinds` merges them into one
+registry -- so together they are 27. Measuring them separately prevents
+one list from hiding the other: one version of the measurement used a
+pattern that could never match, so the 15 built-in kinds were **not in the
+baseline at all** and deleting one of them would not have been noticed.
 
-### 3.4 最小扫描
+### 3.4 The smallest possible scan
 
 ```bash
 java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
   -i path/to/your/src/
 
-# 输出到 NDJSON 文件
+# Write the output to an NDJSON file
 java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
   -i path/to/your/src/ \
   -o findings.ndjson
 ```
 
-### 3.5 用 YAML 配置
+### 3.5 Configuring with YAML
 
 ```bash
 java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
@@ -213,26 +248,31 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
   -i path/to/your/src/
 ```
 
-`default-config.yaml` 含 47 个 `checks:` 键（45 个 checker family + `taint` / `style` 两个总开关）、AI 配置、调用图策略、缓存模式。
+`default-config.yaml` contains 50 `checks:` keys (48 checker families plus
+the two master switches `taint` and `style`), the AI configuration, the
+call-graph strategy, and the cache mode.
 
-### 3.6 启用 AI FP 消减
+### 3.6 Turning on AI false-positive reduction
 
 ```bash
-# 设置 API key (环境变量 + 配置文件双通道,详见 docs/usage/ENVIRONMENT.md)
+# Set the API key (environment variable and configuration file both work;
+# see docs/usage/ENVIRONMENT.md)
 export MINIMAX_API_KEY=sk-...
 
-# 跑扫描 + AI dedup
+# Run the scan plus the AI dedup
 java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
   -c conf/default-config.yaml \
   -i path/to/your/src/ \
   --ai-dedup
 ```
 
-NDJSON 输出每行多两个字段:`ai_verdict` (TP/FP/UNKNOWN) + `ai_reason`。
+Each NDJSON line gains two fields: `ai_verdict` (TP/FP/UNKNOWN) and
+`ai_reason`.
 
-### 3.7 解压即用 (生产)
+### 3.7 Unpack and run (production)
 
-下载 `plumb-0.1.0-SNAPSHOT-jre-linux-x64.tar.gz` (~180 MB) 或 `-windows-x64.zip`,解压后:
+Download `plumb-0.1.0-SNAPSHOT-jre-linux-x64.tar.gz` or
+`-windows-x64.zip`, unpack, and:
 
 ```bash
 cd plumb-0.1.0-SNAPSHOT-jre
@@ -240,11 +280,12 @@ cd plumb-0.1.0-SNAPSHOT-jre
 bin\plumb.bat -i C:\path\to\scan     # Windows
 ```
 
-**不需要安装 Java**。已捆绑最小 JRE (~95 MB,jlink 优化后)。
+**No Java installation is required.** A minimal JRE (jlink-optimised) is
+bundled.
 
 ---
 
-## 4. 完整命令
+## 4. The full command
 
 ```bash
 java -jar plumb-...-all.jar --help
@@ -256,29 +297,30 @@ usage: sast-scan [-c <yaml>] [--cache-mode <off|read|write|readwrite>] [-D <dir>
                  [-o <path>] [-v] [--ai-dedup] [--cg-strategy <name>] [--rule <id>] ...
 ```
 
-| Flag | 含义 |
+| Flag | Meaning |
 | --- | --- |
-| `-c, --config <yaml>` | 加载 YAML 配置 |
-| `-i, --input <path>` | 输入文件/目录 (可重复) |
-| `-o, --output <path>` | 输出文件 (默认 stdout) |
-| `-D, --output-dir <dir>` | 输出目录 (含 cache/, report/) |
-| `-f, --format <console\|ndjson>` | 输出格式 |
-| `--cache-mode <off\|read\|write\|readwrite>` | 磁盘 IR 缓存模式 |
-| `--max-parallelism <n>` | 并行度上限 (0 = auto) |
-| `--cg-strategy <cha\|rta\|vta\|1cfa\|stub\|global\|cached:...>` | 调用图策略 (默认 `global`) |
-| `--ai-dedup` | 启用 LLM FP 消减 |
-| `--ai-dedup-stats` | 打印 AI 统计 (TP/FP/UNKNOWN 分布) |
-| `--rule <id>` | 只跑特定规则 (可重复) |
-| `--rule-prompts-dir <path>` | 覆盖内置 rule prompts |
-| `--list-rules` | 列出所有规则 |
-| `-h, --help` | 帮助 |
-| `-v, --version` | 版本 |
+| `-c, --config <yaml>` | Load a YAML configuration |
+| `-i, --input <path>` | Input file or directory (repeatable) |
+| `-o, --output <path>` | Output file (stdout by default) |
+| `-D, --output-dir <dir>` | Output directory (holds cache/, report/) |
+| `-f, --format <console\|ndjson>` | Output format |
+| `--cache-mode <off\|read\|write\|readwrite>` | On-disk IR cache mode |
+| `--max-parallelism <n>` | Upper bound on parallelism (0 = auto) |
+| `--cg-strategy <cha\|rta\|vta\|1cfa\|stub\|global\|cached:...>` | Call-graph strategy (default `global`) |
+| `--ai-dedup` | Enable LLM false-positive reduction |
+| `--ai-dedup-stats` | Print the AI statistics (TP/FP/UNKNOWN distribution) |
+| `--rule <id>` | Run only the given rule (repeatable) |
+| `--rule-prompts-dir <path>` | Override the built-in rule prompts |
+| `--list-rules` | List every rule |
+| `-h, --help` | Help |
+| `-v, --version` | Version |
 
-完整文档见 [`docs/README.md`](docs/README.md) 与 [`docs/usage/CLI.md`](docs/usage/CLI.md)。
+The complete documentation is in [`docs/README.md`](docs/README.md) and
+[`docs/usage/CLI.md`](docs/usage/CLI.md).
 
 ---
 
-## 5. NDJSON 输出示例
+## 5. An NDJSON output sample
 
 ```json
 {"file":".../VulnerableServlet.java","line":"29","severity":"high",
@@ -293,36 +335,73 @@ usage: sast-scan [-c <yaml>] [--cache-mode <off|read|write|readwrite>] [-D <dir>
 
 ---
 
-## 6. 规则 / CWE / 文档索引
+## 6. Rules / CWE / documentation index
 
-| 想了解… | 看 |
+| Want to know | Read |
 | --- | --- |
-| 文档总索引 | [`docs/README.md`](docs/README.md) |
-| 规则清单 | [`docs/rules/RULES.md`](docs/rules/RULES.md) |
-| 精确率 / 召回率实测 | [`testcase/SUPPORT-MATRIX.md`](testcase/SUPPORT-MATRIX.md) |
-| 环境变量 + AI 配置 | [`docs/usage/ENVIRONMENT.md`](docs/usage/ENVIRONMENT.md) |
-| 完整 CLI + YAML | [`docs/usage/CLI.md`](docs/usage/CLI.md) |
-| 打包 / 启动 | [`docs/build/PACKAGE.md`](docs/build/PACKAGE.md) |
-| 项目架构 + 关键决策 | [`docs/tech/ARCHITECTURE.md`](docs/tech/ARCHITECTURE.md) |
-| TAC IR 格式 | [`docs/tech/TAC.md`](docs/tech/TAC.md) |
-| **数据流分析（污点 / 边界 / 指向 / 控制流）** | [`docs/tech/DATA-FLOW.md`](docs/tech/DATA-FLOW.md) |
-| 风格规则实现 | [`docs/tech/STYLE-RULES.md`](docs/tech/STYLE-RULES.md) |
-| 缓存机制 | [`docs/tech/CACHE.md`](docs/tech/CACHE.md) |
-| 跨函数分析 | [`docs/tech/CROSS-FUNCTION-ANALYSIS.md`](docs/tech/CROSS-FUNCTION-ANALYSIS.md) |
+| The documentation index | [`docs/README.md`](docs/README.md) |
+| The rule catalogue | [`docs/rules/RULES.md`](docs/rules/RULES.md) |
+| The measured precision / recall | [`testcase/SUPPORT-MATRIX.md`](testcase/SUPPORT-MATRIX.md) |
+| Environment variables and the AI configuration | [`docs/usage/ENVIRONMENT.md`](docs/usage/ENVIRONMENT.md) |
+| The complete CLI and the YAML schema | [`docs/usage/CLI.md`](docs/usage/CLI.md) |
+| Packaging and launching | [`docs/build/PACKAGE.md`](docs/build/PACKAGE.md) |
+| The project architecture and the key decisions | [`docs/tech/ARCHITECTURE.md`](docs/tech/ARCHITECTURE.md) |
+| The TAC IR format | [`docs/tech/TAC.md`](docs/tech/TAC.md) |
+| **The data-flow analysis (taint / boundary / points-to / control flow)** | [`docs/tech/DATA-FLOW.md`](docs/tech/DATA-FLOW.md) |
+| The style rule implementation | [`docs/tech/STYLE-RULES.md`](docs/tech/STYLE-RULES.md) |
+| The cache mechanism | [`docs/tech/CACHE.md`](docs/tech/CACHE.md) |
+| The cross-function analysis | [`docs/tech/CROSS-FUNCTION-ANALYSIS.md`](docs/tech/CROSS-FUNCTION-ANALYSIS.md) |
+
+Every document also exists in Chinese under [`docs/zh/`](docs/zh/README.md).
+
+### 6.1 The two languages
+
+The product documentation exists in two languages:
+
+| Tree | Language | Role |
+| --- | --- | --- |
+| [`docs/`](docs/README.md) | English | **Canonical.** Every number, class reference and behavioural claim originates here |
+| [`docs/zh/`](docs/zh/README.md) | Chinese | The synchronised counterpart, with the same file names |
+
+Every page carries a language line at the top: `[English](...) | [中文](...)`.
+The links are relative, so the switch keeps working from a local
+filesystem, a `file://` URL, or a copy inside the packaged distribution --
+no server, no build step, nothing to install.
+
+The two trees are kept aligned by `check_i18n_docs`, which requires the
+same documents, the same heading structure, the same table row counts and
+the same number of code blocks, resolves every relative link, and requires
+each page to link to its counterpart. `mutate_i18n_docs` proves that gate
+is not checking air: twelve deliberate kinds of drift, each of which must
+make it fail.
+
+The two exceptions are the generated rule catalogue
+(`plumb-style-rules.md` and `plumb-style-rules-index.md`). They are
+produced from the source tree by `scripts/gen_rules_doc.py` and
+`scripts/gen_rules_index.py`, and a translated copy would drift from the
+generator on every run, so they stay English-only.
+
+Adding a document means adding it twice, in both trees. The gate fails
+until the counterpart exists.
 
 ---
 
-## 7. 打包 (生产 / CI)
+## 7. Packaging (production / CI)
 
-### 7.1 uber-jar (无 JRE,需要用户装 Java 17+)
+### 7.1 The uber-jar (no JRE; the user installs Java 17+)
 
 ```bash
 ./scripts/build.sh
 # → plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar
-#   ~115 MB,含所有依赖
+#   the uber-jar: every dependency inlined, about 142 MB
 ```
 
-### 7.2 dist 目录 (含启动器,无 JRE)
+The uber-jar is large because it inlines the Z3 native libraries for every
+platform and the whole Kotlin script engine. The documentation directory
+is a separate thing entirely: the `docs/` tree is about 1.1 MB of documentation,
+English and Chinese together.
+
+### 7.2 The dist directory (with launchers, no JRE)
 
 ```bash
 ./scripts/package.sh
@@ -334,18 +413,19 @@ usage: sast-scan [-c <yaml>] [--cache-mode <off|read|write|readwrite>] [-D <dir>
 #     README.txt
 ```
 
-### 7.3 解压即用 (含 JRE,~180 MB)
+### 7.3 Unpack and run (with a JRE)
 
-需要本地 JDK 17+ + `jlink` (JDK 自带)。
+Requires a local JDK 17+ with `jlink` (which ships with the JDK).
 
 ```bash
-./scripts/dist-jlink-linux.sh             # 写好后
+./scripts/dist-jlink-linux.sh             # once it has been written
 # → dist-jlink/plumb-0.1.0-SNAPSHOT-jre-linux-x64.tar.gz
-#   ~180 MB,含 jlink 最小 JRE + shaded jar + 启动器
-# 用户机器无需任何 Java 环境,解压即跑
+#   a jlink minimal JRE + the shaded jar + the launchers
+# the user's machine needs no Java environment at all
 ```
 
 Windows:
+
 ```powershell
 .\scripts\dist-jlink-windows.ps1
 # → dist-jlink\plumb-0.1.0-SNAPSHOT-jre-windows-x64.zip
@@ -353,16 +433,16 @@ Windows:
 
 ---
 
-## 8. 测试
+## 8. Tests
 
 ```bash
-# 单元测试 (R 系列集成测试默认跳过,只需 5 min)
+# Unit tests (the R-series integration tests are skipped by default; about 5 min)
 mvn -pl plumb-dfa test -Dtest='!R*'
 
-# 全部测试 (含 R* 集成,需要 Juliet fixtures, ~10 min)
+# Everything (including the R* integrations, which need the Juliet fixtures; about 10 min)
 mvn test
 
-# 单个模块
+# A single module
 mvn -pl plumb-style test
 mvn -pl plumb-ai test
 ```
@@ -371,18 +451,17 @@ mvn -pl plumb-ai test
 
 ## 9. License
 
-Internal / 内部使用。具体 license 询问项目维护者。
+Internal use only. Ask the project maintainers about the specific license.
 
 ---
 
-## 10. 维护
+## 10. Maintenance
 
-| 维度 | 状态 |
+| Dimension | Status |
 | --- | --- |
-| 上游 | 独立项目 |
-| 维护者 | Plumb team |
-| 当前 round | **R684** (收尾 wrap-up) |
-| 上次 release | R683 (2026-08-23) |
-| 已知限制 | 见各 category 的 `testcase/*/EXPECTATIONS.json` 与 [`testcase/SUPPORT-MATRIX.md`](testcase/SUPPORT-MATRIX.md) |
+| Upstream | An independent project |
+| Maintainers | The Plumb team |
+| Known limitations | See each category's `testcase/*/EXPECTATIONS.json` and [`testcase/SUPPORT-MATRIX.md`](testcase/SUPPORT-MATRIX.md) |
 
-路线图与已知限制集中在 `docs/tech/ARCHITECTURE.md` §11 与 `testcase/SUPPORT-MATRIX.md`。
+The roadmap and the known limitations live in
+`docs/tech/ARCHITECTURE.md` and `testcase/SUPPORT-MATRIX.md`.

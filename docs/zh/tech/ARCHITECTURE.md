@@ -1,0 +1,813 @@
+# 架构总览
+
+[English](../../tech/ARCHITECTURE.md) | [中文](../README.md)
+
+本文档是 Plumb 项目的全局架构视角。各模块的深入说明见：
+
+- `TAC.md` — 中间表示格式
+- `DATA-FLOW.md` — 数据流分析算法
+- `STYLE-RULES.md` — 风格类规则实现
+- `CROSS-FUNCTION-ANALYSIS.md` — 跨函数分析与 Z3
+- `MODULE-MERGE.md` — 模块边界
+
+## 1. 总体目标
+
+Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fathom 的移植）。架构灵感来自 Fathom，但**实现完全独立**，语言限定 Java。
+
+| 目标 | 方案 |
+| --- | --- |
+| Taint 分析为主 | per-checker 正向数据流（`TaintedCheckerBase` 统一传播），source/sink 正则表驱动 |
+| 多源输入 | JavaParser（源码）+ SootUp（字节码）都进同一份 TAC IR |
+| 风格类检查独立 | AST checker 不依赖 TAC/DFA |
+| 大型仓库可扩展 | 磁盘 IR 缓存、阶段化流水线、可配置并发 |
+| 报告工业标准 | NDJSON（机器可读）+ console（人类可读）+ SARIF（IDE） |
+| AI 辅助 | plumb-ai Re-Act 多轮 LLM agent 给出 TP/FP verdict（可选） |
+
+## 2. 阶段化流水线
+
+```
+                          sast-scan CLI (plumb-main)
+                                       │
+        ┌──────────────────────────────┼──────────────────────────────┐
+        │                              │                              │
+        ▼                              ▼                              ▼
+   Phase 1: parse              Phase 1: parse (jar)         Phase 1: parallel
+   JavaParser → AST            SootUp → Jimple → TAC       (for > 800 files)
+        │                              │                              │
+        ▼                              │                              │
+   Phase 2: style (parallel)             │                              │
+   AstDispatcher → 595 checks           │                              │
+        │                              │                              │
+        └──────────────────────────────┴──────────────────────────────┘
+                                       │
+                                       ▼
+                              Phase 3: translate (parallel)
+                              AST → TacProgram
+                              (cached: cache/programs/<sha1>.tac)
+                              --source-root/--module-root/--classpath
+                              仅喂 TypeSolver，不进这一步
+                                       │
+                                       ▼
+                              Phase 4: merge
+                              Multi-file → MergedProgram
+                              (cached: cache/merged.tac)
+                                       │
+                                       ▼
+                              Phase 5: DFA
+                              ┌────────┬────────┬────────┐
+                              │ taint  │ dfa    │ path-  │
+                              │        │ (ir)   │ cond   │
+                              └────────┴────────┴────────┘
+                                       │
+                                       ▼
+                              Phase 6: emit
+                              NDJSON / console / SARIF
+                                       │
+                                       ▼
+                              Phase 7 (optional): AI dedup
+                              plumb-ai Re-Act agent
+                              → ai_verdict / ai_reason in NDJSON
+```
+
+每个阶段的并发模型和资源使用：
+
+| Phase | 并行度 | 内存峰值 | 磁盘产物 |
+| --- | --- | --- | --- |
+| 1. parse | `nCPU-1` | 1 个 CompilationUnit | 无 |
+| 2. style | `nCPU-1` | 1 个 CompilationUnit + StyleContext | 无 |
+| 3. translate | `nCPU-1` | 1 个 TacProgram | `cache/programs/<sha1>.tac` |
+| 4. merge | 否（顺序） | 1 个 MergedProgram | `cache/merged.tac` |
+| 5a. taint | 否 | 1 个 MergedProgram + summary cache | `cache/callgraph.tac` |
+| 5b. dfa | 否 | 1 个 MergedProgram | 无 |
+| 5c. unified | 部分 | call graph + Z3 ctx | 无 |
+| 6. emit | 否 | 0（流式） | `report/findings.{ndjson,console,sarif}` |
+| 7. ai-dedup | `ai.maxConcurrent` | LLM response 缓冲 | （写回 NDJSON 的字段） |
+
+## 3. 各模块一句话
+
+| 模块 | 一句话 | 依赖 |
+| --- | --- | --- |
+| `plumb-parser` | 把 .java 文本转成 JavaParser 的 CompilationUnit | javaparser-symbol-solver-core |
+| `plumb-tac` | CompilationUnit → TacProgram，含 CFG builder、IR 序列化 | plumb-parser, sootup |
+| `plumb-rules` | 规则元数据（ID/Name/Severity/Type/CWE） | 无 |
+| `plumb-reporter` | Finding 模型 + NDJSON/console/SARIF 输出 | plumb-rules |
+| `plumb-style` | AST visitor checker（JavaParser 单一来源）；数量见 `docs/rules/RULES.md` | plumb-parser, plumb-rules, plumb-reporter |
+| `plumb-dfa` | 污点 / 边界 / 指向 / 控制流四类分析的统一 DFA 引擎 | plumb-tac, plumb-rules, plumb-reporter |
+| `plumb-dsl-kotlin` | Kotlin DSL AST 规则引擎（用户自带 AST 规则，不写 Java） | plumb-parser, plumb-rules, plumb-reporter, plumb-style |
+| `plumb-main` | CLI + YAML 配置 + 流水线编排 + build-system adapter | 上述全部 + plumb-build-core + plumb-build-maven |
+| `plumb-build` | parent pom，聚合 build 自省子模块 | 无（pom） |
+| `plumb-build-core` | BuildAdapter SPI + Maven / Gradle / Bazel / Ant adapter → sourceFiles/classpathJars | plumb-rules, maven-model |
+| `plumb-build-maven` | Maven Resolver（Aether）算完整传递依赖树；读 settings.xml 的 mirror | plumb-build-core, maven-resolver |
+| `plumb-build-capture` | ByteBuddy agent 抓真实 javac 命令行 | byte-buddy, byte-buddy-agent |
+| `plumb-ai` | Re-Act 多轮 LLM agent（OpenAI / Anthropic / 兼容） | plumb-rules, plumb-reporter |
+
+### 3.0 DFA checker 的实现形态
+
+`plumb-dfa/src/main/java` 下共 150 个 `.java`，并非每个都是独立的分析器。按**实际实现
+机制**可分成几类（数量为实测）：
+
+| 形态 | 数量 | 含义 |
+| --- | ---: | --- |
+| **TaintedCheckerBase 子类** | 47 | 继承统一污点传播基类，`checkers/taint/` 下绝大多数（不含基类自身） |
+| **直接 `implements DfaChecker`** | 19 | 自带逻辑，不共享传播层；`checkers/controlflow/` 的 15 个全在此列 |
+| **PathSensitiveCheckerBase 子类** | 1 | 反向检测底座（alloc-without-close 类） |
+| **求解器 / 格 / 引擎 / SPI** | 其余 | `points/`、`solver/`、`summary/`、`taint/`、`engine/` |
+
+其中：
+
+- **注解通道**：数据流之外，靠 `TacFunction.classAnnotations()` / `methodAnnotations()` /
+  `paramAnnotations()` 做结构判定（Spring `@GetMapping`、`@RequestParam`、`@NonNull`）
+- **SRC-正则**：走 `SourceReader` 读源文件、纯正则匹配，TAC IR 完全不用（legacy）
+
+详细的污点/边界/指向/控制流四类分析见 [`DATA-FLOW.md`](../../tech/DATA-FLOW.md)。
+
+#### 3.0.1 三条核心 SPI
+
+```
+DfaChecker (plumb-dfa/engine/DfaChecker.java):
+  initEngine(ctx)                                  // 引擎启动一次
+  for each fn in reverse post-order:
+      initFunction(ctx, fn)
+      for each ins in fn:
+          checkInstruction(ins, fn, ctx)           // 主热路径
+      finishFunction(ctx, fn)
+      summary = summarizeFunction(ctx, fn)         // 给调用方的副作用清单
+      ctx.summaryCache().put(fn.signature, summary)
+  finish(ctx)                                      // 引擎关停一次
+
+TaintedCheckerBase (plumb-dfa/taint/TaintedCheckerBase.java):
+  - 派生自 TaintRule(ruleId, sourceKind, sinkFamilyKey, cwe, severity, TaintDomain)
+  - 子类只覆写 4 个 hook: isSourceFact / sinkArgumentIndex / findingMessage / 扩展 checkInstruction
+  - 整体传播规则 (MOVE / BINOP / CALL 内部跨函数) 由基类负责
+  - 加一条 sink 规则在 taint/ 下往往是几行代码
+
+PathSensitiveCheckerBase (plumb-dfa/taint/PathSensitiveCheckerBase.java):
+  - alloc-without-close 类的反向检测底座
+  - 跟踪 allocSites 与 closeSites、finishFunction 时让子类决定
+  - ResourceLeakChecker 的父类
+```
+
+直接 findings（bug 完全在函数体里）通过 `ctx.reporter().report(...)` 立刻发，**不进 summary**；只有"调用方需要知道的事"才进 `FunctionSummary`（R-7 约束）。
+
+### 3.1 模块依赖图
+
+```
+                    ┌──────────────┐
+                    │ plumb-parser │
+                    └──────┬───────┘
+                           │
+                ┌──────────┴──────────┐
+                ▼                     ▼
+          ┌──────────┐          ┌──────────┐
+          │ plumb-tac │          │ plumb-   │
+          │           │          │ rules    │
+          └─────┬─────┘          └────┬─────┘
+                │                     │
+                │              ┌──────┴──────┐
+                ▼              ▼             │
+        ┌──────────┐   ┌──────────┐         │
+        │ plumb-dfa│   │ plumb-   │         │
+        │          │   │ style    │         │
+        └────┬─────┘   └────┬─────┘         │
+             │              │              │
+             │       ┌──────┴──────┐       │
+             ▼       ▼             ▼       ▼
+        ┌──────────┐ ┌──────────┐ ┌──────────┐
+        │ plumb-   │ │ plumb-   │ │ plumb-   │
+        │ reporter │ │ style    │ │ dfa      │
+        └────┬─────┘ └──────────┘ └────┬─────┘
+             │                         │
+             └────────────┬────────────┘
+                          ▼
+                  ┌──────────────┐
+                  │ plumb-main   │
+                  └──────┬───────┘
+                         │
+              ┌──────────┼──────────┐
+              ▼          ▼          ▼
+        ┌──────────┐ ┌──────────┐ ┌──────────┐
+        │ plumb-   │ │ plumb-   │ │ plumb-   │
+        │ ai       │ │ build    │ │ reporter │
+        └──────────┘ └──────────┘ └──────────┘
+```
+
+`plumb-ai` 和 `plumb-build-core` 都是 `plumb-main` 的**编译期依赖**（`pom.xml` 里是普通
+`<dependency>`，没有 `<optional>`）——`plumb-main` 直接 import 它们的类型，所以
+剥掉这两个模块就编不过。`plumb-build-maven` 同样如此：`plumb-main` 依赖它，
+`MavenResolverAdapter` 才会被 ServiceLoader 发现。
+
+可选的是**运行时行为**，不是依赖本身：
+
+- `plumb-ai`：`--ai-dedup` 不开的时候，静态分析照常跑；LLM 端点配不通也只是
+  把 verdict 标成 UNKNOWN。
+- `plumb-build-*`：不给 `--build-system` / `--project-root` 时，build-system
+  adapter 不会被调用，扫描目标由 `--input` 决定。
+
+### 3.2 关键设计决策
+
+以下 8 条解释 Plumb 在架构层面的取舍。
+
+#### 1. Fact 的 identity 来自 `TacOperand`
+
+IR 变量是 `TacOperand.TacVar`（含 `name` / `type` / `isTemp` 三个字段），
+`equals` / `hashCode` 覆盖**全部三个字段**（`Objects.hash(name, type, isTemp)`）。
+`Fact` 持有 `TacOperand` 本身，所以 fact bag 的 key 就是这个对象 —— 同名但类型
+不同、或一个是 temp 一个不是的变量，**不会**被当成同一个 fact 的主体。
+代价是 translator 必须保证同一函数内的 SSA 版本名唯一，否则两个语义不同的
+变量会共享 identity。
+
+#### 2. Call graph 边用 call-site-style key
+
+边用 `wrapper/1` 这样的 call-site-style key，函数用 qualified signature。避免完整限定名解析；
+同名不同 arity 容易区分。代价是 overload 无法仅凭名字消歧，需要 type-aware matching 补充。
+
+#### 3. 独立的 rule registry，避免重复上报
+
+敏感数据类规则与普通污点规则各用自己的 registry 与 sink family，互不干扰：user input → log
+走 log-injection，sensitive data → log 走 sensitive-data-leak，两套规则独立触发。
+
+#### 4. 字符串前缀区分用户类与 JDK 类
+
+用 string-prefix 与 simple-name 集合区分用户类 / JDK 类。Bounded cost（O(1) 查表 + 固定
+集合），无 classloader 依赖。保守回退：未知类型仍触发 → 零覆盖率损失。这是「精度提升但不牺牲
+覆盖」的控制范式。
+
+#### 5. Dedup key 含 sink identity
+
+`ruleId + line + sinkSig + fn.signature()`，而非仅 `ruleId + line + fn.signature()`。同一行
+有多个 sink（println + throw）时每条都应上报。
+
+#### 6. 1-hop def chase 替代跨函数 const-folding
+
+在 check 内部用 defs map 追一跳，不在 registry 层级加跨 call 的常量折叠。Bounded cost
+（每参数 O(1) 查表），覆盖常见情形。代价：helper 链仍会漏，这被接受为 bounded analysis 的
+合理代价。
+
+#### 7. Synthetic `<init>` 恢复 instance field 初始化
+
+Translator 自动生成 synthetic `<init>`，否则 instance field 的 FIELDSTORE 会在 IR 里静默
+丢失——这是一个整维度的丢失。
+
+#### 8. Annotation IR + 分层 DI 抑制
+
+`TacFunction` 携带 class-level + method-level + field-level 三维 annotation 列表，消费方据此
+抑制 Spring / Jakarta DI placeholder 造成的误报。class-level 与 method-level 一起判定，避免
+两遍 visitor。
+
+→ **整体原则**：单遍 dispatch + name-keyed IR + summary 复用 + 独立 registry + bounded
+analysis。
+
+## 4. 数据契约
+
+### 4.1 Finding
+
+```java
+public final class Finding {
+    Path file;
+    int line, column;
+    RuleDef rule;     // 来自 plumb-rules
+    String message;
+    Severity severity;  // INFO/LOW/MEDIUM/HIGH/CRITICAL
+    String dataflowHead; // 可选，taint 类的数据流链
+    String aiVerdict;    // 可选，"TP"|"FP"|"UNKNOWN"
+    String aiReason;     // 可选，LLM 给的简短理由
+    String sinkFunction; // 可选，DFA 类规则专用的 sink 名
+}
+```
+
+`Finding` 在 `plumb-reporter` 模块。`plumb-dfa` / `plumb-style` / `plumb-ai` 都 import 这个。
+
+### 4.2 RuleDef
+
+```java
+public final class RuleDef {
+    RuleId id;             // UUID + name
+    String description;
+    Severity severity;     // INFO/LOW/MEDIUM/HIGH/CRITICAL
+    Type type;             // TAINT/STYLE/NAMING/...
+    List<String> cwe;
+    String checkerClass;   // "org.plumb.style.EmptyCatchCheck"
+    boolean enabled;
+    List<String> aliases;  // 外部工具的对应 ID（PMD/SpotBugs/...）
+    List<RuleParameter> parameters;
+}
+```
+
+### 4.3 TacProgram
+
+详见 `TAC.md`。所有 IR 类实现 `Serializable` 以支持磁盘缓存。
+
+## 5. 缓存与持久化
+
+详见 `CACHE.md`。当前实现：
+
+- `plumb-tac/.../io/IrSerializer.java` 提供 `writeProgram` / `readProgram` / `writeMerged` / `readMerged` / `writeObject` / `readObject`
+- `plumb-main/.../OutputLayout.java` 管理 `<outputDir>/cache/` 和 `<outputDir>/report/` 目录结构
+- 缓存 key = `SHA-1(canonicalize(source-path))`，保证不同进程对同一文件得到同一 key
+- `cache-mode`：`off` / `read` / `write` / `readwrite`
+
+## 6. 项目路径族（TypeSolver 解耦）
+
+Plumb 严格区分「喂 TypeSolver 的路径」与「扫 findings 的路径」，在 CLI / Config / Scanner
+三层解耦：
+
+| 路径族 | flag | 进入 TAC | 产生 finding | 喂 TypeSolver |
+| --- | --- | --- | --- | --- |
+| `--input` | `-i` | ✅ | ✅ | ✅ |
+| `--source-root` | `--source-root` | ❌ | ❌ | ✅ |
+| `--module-root` | `--module-root` | ❌ | ❌ | ✅ |
+| `--classpath` | `--classpath` | ❌ | ❌ | ✅ |
+
+**核心规则**：`--classpath` 路径**永不**翻译成 TAC IR。它存在的唯一目的是让 `--input` 的用户
+源码能解析外部类型引用。
+
+实现：
+
+- `ScanConfig.sourceRoots` / `moduleRoots` / `classpathJars` 三个 `List<Path>` 字段
+- `SastMain.main` 解析这 3 个 flag
+- `JavaSourceParser` 拿这三个 list 喂 `JavaParserTypeSolver`，但**绝不**把它们当输入文件遍历
+- TAC translate 阶段只看 `cfg.inputs`
+
+## 7. Build-system 自动发现（plumb-build）
+
+`plumb-build` 把「手动喂 `--source-root` / `--classpath`」自动化。它是一个 **parent pom**，
+底下挂三个子模块：
+
+```
+┌───────────────────────────────────────────────────────────┐
+│ plumb-build (parent pom)                                  │
+│                                                           │
+│  ┌──────────────────┐   ┌──────────────────┐             │
+│  │ plumb-build-core │   │ plumb-build-maven│             │
+│  │                  │   │                  │             │
+│  │ BuildSystemReg.  │   │ TransitiveResolv.│             │
+│  │    ├── Maven     │   │ MavenSettings    │             │
+│  │    ├── Gradle    │   │ MavenResolverAd. │             │
+│  │    ├── Bazel     │   │                  │             │
+│  │    └── Ant       │   └──────────────────┘             │
+│  └──────────────────┘                                    │
+│                                                           │
+│  ┌──────────────────┐                                    │
+│  │plumb-build-      │   真实编译抓取（ByteBuddy agent）    │
+│  │capture           │                                    │
+│  │ CaptureAgent     │                                    │
+│  │ CompilerHooks    │                                    │
+│  │ CompilerEntryPt. │                                    │
+│  │ JavacOptions     │                                    │
+│  └──────────────────┘                                    │
+└───────────────────────────────────────────────────────────┘
+              │
+              ▼
+       ScanConfig.inputs / sourceRoots / moduleRoots / classpathJars
+              │
+              ▼
+       ScanRunner 接受 BuildAdapter 喂的路径，继续走标准流水线
+```
+
+实际类：
+
+- `plumb-build/plumb-build-core/src/main/java/org/plumb/build/` —— `BuildAdapter`、`BuildProject`、
+  `BuildSystemRegistry`、`MavenAdapter`、`GradleAdapter`、`BazelAdapter`、`AntAdapter`、
+  `SourceFiles`、`BuildAdapterException`
+- `plumb-build/plumb-build-maven/src/main/java/org/plumb/build/maven/` —— `MavenSettings`、
+  `TransitiveResolver`、`MavenResolverAdapter`、`MavenPom`、`ModuleDescriptor`
+- `plumb-build/plumb-build-capture/src/main/java/org/plumb/build/capture/` —— `CaptureAgent`、
+  `CompilerHooks`、`CompilerEntryPoints`、`GradleHooks`、`CaptureRecorder`、`CaptureEntry`、
+  `CaptureSink`、`CaptureReader`、`JavacOptions`
+
+每个 adapter 实现 `BuildAdapter.discover(Path)` 返回 `BuildProject`：
+
+- `MavenAdapter` 解析 `pom.xml`，把 `<sourceDirectory>` / `<testSourceDirectory>` 当 sourceFiles，
+  遍历 m2 仓库下依赖当 classpathJars
+- `MavenResolverAdapter`（`maven-resolver`）走 Maven Resolver（Aether）算**完整传递依赖树**，
+  顺带读 `settings.xml` 的 mirror / localRepository
+- `GradleAdapter` 同 Maven，但解析 `build.gradle(.kts)`
+- `BazelAdapter` 解析 `BUILD` 文件里的 `java_library` / `java_binary` 规则
+- `AntAdapter` 解析 `build.xml` 的 `<javac>` task
+
+`BuildSystemRegistry.detect(projectRoot)` 按 `maven-resolver` → `maven` → `gradle` → `bazel` →
+`ant` 顺序探测。`maven-resolver` 排在 `maven` 前面，因为它算出的传递依赖树更准；
+`maven` 作为兜底，因为它无外部依赖、不会因为本地仓库坏了就失败。
+
+### 7.0 两条取 classpath 的路子
+
+| | `maven`（core） | `maven-resolver`（maven 模块） | `plumb-build-capture` |
+| --- | --- | --- | --- |
+| 手段 | 静态解析 `pom.xml` | Aether 解析传递依赖 | 抓真实 javac 命令行 |
+| 传递依赖 | ❌ 只取直接声明的 | ✅ 完整闭包 + 版本冲突消解 | ✅ 编译器实际看到的 |
+| 依赖 | 只 `maven-model` | Aether 全家桶 | ByteBuddy |
+| 适合 | 快速、离线、够用 | 依赖复杂的 Maven 工程 | 构建脚本拼出来的 classpath |
+
+`plumb-build-capture` 是前两者的补充，不是替代：它解决「classpath 是脚本 / 插件 / IDE 拼出来的」
+这类静态分析搞不定的工程。用法：
+
+```bash
+# 编译时挂 agent，把真实 javac 命令行落盘
+PLUMB_CAPTURE_DIR=/tmp/captures \
+  javac -javaagent:plumb-build-capture.jar -d out Foo.java
+
+# 之后再读回来
+java -cp plumb-build-capture.jar ... # CaptureReader.readAll(Path.of("/tmp/captures"))
+```
+
+### 7.0.1 capture 挂哪些入口
+
+「javac 命令行」不是一个方法，而是**十二个**，取决于是怎么走到编译器的：
+
+| 入口 | 谁会走这条路 |
+| --- | --- |
+| `com.sun.tools.javac.Main#compile(String[])` | `javac` 命令行（静态那一层） |
+| `com.sun.tools.javac.Main#compile(String[], PrintWriter)` | 同上，诊断走调用方给的 writer |
+| `com.sun.tools.javac.main.Main#compile(String[])` | `javac` 命令行（实例那一层） |
+| `com.sun.tools.javac.main.Main#compile(String[], Context)` | 带 context 的调用路径 |
+| `com.sun.tools.javac.api.JavacTool#getTask(...)` | **Gradle / Maven / IDE**（`javax.tools` API） |
+| `com.sun.tools.javac.api.JavacTool#run(...)` | 老式 run API |
+| `com.sun.tools.javac.api.JavacTaskImpl#call()` | 任务驱动（build tool / IDE） |
+| `com.sun.tools.javac.api.JavacTaskImpl#generate()` | 任务驱动（IDE 路径） |
+| `org.eclipse.jdt.internal.compiler.batch.Main#compile(String[])` | Eclipse 编译器（ECJ） |
+| `com.sun.tools.sjavac.client.ClientMain#run(String[])` | sjavac client |
+| `com.sun.tools.sjavac.server.ServerMain#run(String[])` | sjavac server |
+
+只挂一个的后果是**静默失配**：扫描照跑，但那个路径上的编译根本没有 capture。
+所以入口清单是**声明式**的（`CompilerEntryPoints`），加一个入口是改数据不是改代码。
+
+**入口的类名是实测出来的，不是照文档抄的。** 这一条踩过坑：
+`javax.tools.JavaCompiler` 在现代 JDK 上是个**接口**，只有 `getTask` 和
+`getStandardFileManager`，**根本没有 `run` 方法** —— 挂在它上面的 hook 永远不会触发，
+所有用 run 式 API 的调用方拿到的 capture 是空的。`run` 实际住在
+`com.sun.tools.javac.api.JavacTool` 上。`CompilerEntryPointsTest` 现在会对每个入口
+**用真实的类反射核对方法名和参数个数**，所以再写错类名会直接让构建失败。
+
+挂法用 ByteBuddy 的 **`Advice`**（inline 织入），不用手写 ASM visitor：
+`Advice` 把 hook 的字节码**复制进**被测方法，所以不需要 super 方法、不需要 delegation target，
+`Main#compile(String[])` 这种静态方法照样能挂。手写 visitor 要自己算参数的 local slot
+（静态方法 0，实例方法 1），算错就破坏编译器的栈。
+
+### 7.0.2 IDE 路径的选项从哪来
+
+`JavacTaskImpl#call()` 和 `#generate()` **不带编译选项** —— 选项在 `getTask` 创建任务时就定好了。
+
+而且**取不回来**：`com.sun.tools.javac.api` 这个包没有被 `jdk.compiler` 模块导出，
+反射读任务上的 `options` 字段会抛 `InaccessibleObjectException`，
+除非给 JVM 加 `--add-opens jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED` ——
+让 agent 依赖这个 flag 就等于在普通构建里用不了。
+
+所以选项在**还能看见它的地方**记住：`getTask` 同时拿到选项和它返回的任务，
+把两者按**对象身份**关联起来；任务被驱动时再按身份取回来。
+`IdentityHashMap` 是这里的关键 —— 用 `equals` 会把两个内容相同的任务混成一对。
+
+### 7.0.3 capture 记的是什么
+
+不是 argv，是**这次编译实际用的东西**：classpath 的**实际内容**（不是 `-classpath` 参数本身）、
+source path、encoding、`--release`、源文件清单、输出目录、编译用的 JDK 版本。
+理由和 Coverity 一样：`javac` 没给 `-classpath` 和 `javac -classpath ""` 意思不一样，
+只有把环境一起看才能还原。
+
+### 7.0.4 选项表是数据，不是开关
+
+编译器的选项在 **`CompilerOption`** 里描述，是一张表。每一条说明：
+
+| 字段 | 决定什么 |
+| --- | --- |
+| 名字 | 编译器怎么拼这个选项（`-cp`、`--classpath`……） |
+| 规范名 | 这个选项记在哪个名字下——同义写法共用一个 |
+| 取值形态 | `none` / `single` / `path-list` / `comma-list` |
+| 重复规则 | `last-wins`（classpath）还是 `all-apply`（`--add-modules`） |
+| 作用 | `compilation` 还是 `not-compilation`（`-Xprint`、`-proc:only`） |
+| 归属编译器 | 属于哪个编译器，或者全都适用 |
+
+**为什么用表而不是 `switch`。** 第一版实现把十来个选项名硬编码在一个 `switch` 里，
+凡是不认识的就落到默认分支，把**任何以 `.java` 结尾的参数**当成源文件。
+于是 `--processor-path some/dir.jar` 被整个丢掉，
+而取值恰好以 `.java` 结尾的选项被误认成源文件。现在加一个选项是**一行数据**。
+
+**重复规则才是决定这次编译到底做了什么的那部分。** `-classpath` 给两次意味着
+**最后那个**生效，不是两个都生效——javac 不会把它们拼起来。
+`--add-modules` 给两次意味着**两个都**生效。这条读错任何一个，
+得到的 classpath 或模块集合就是从来没存在过的东西。
+
+**取值形态决定值怎么切。** 路径列表按**平台**的分隔符切，
+所以 Windows 的盘符不会被切坏。逗号列表——`--add-exports a/b=c/d`——按逗号切，
+在 Unix 上按路径分隔符切其实是错的，尽管在 Windows 上碰巧对。
+
+**编译器之间有差异，表里就写清楚了。** ECJ 把 classpath 拼成 `--class-path`，
+javac 不认这个写法；用 javac 的表去解析 ECJ 的参数会把 classpath 丢掉——
+而那恰恰是静态分析唯一不能丢的东西。所以每个选项知道自己属于哪个编译器，
+查表是分编译器做的。
+
+`--release` 与 `-source`、`-target` 分开记：`--release` 同时钉住语言级别
+**和**平台 API，而 `-source` 只钉语言级别。折成一起就丢掉这个区别了。
+
+### 7.0.5 这张表是对着 Coverity 量的
+
+`plumb-build-capture/src/main/resources/coverity-java-options.toml` 存的是 Coverity 的选项模型，
+从 cov-analysis 2023.6.0 的 `JavacOptionParser` 里抽出来的。它就是标尺。
+
+`scripts/check_capture_options.py` 把两边**双向**对比：Coverity 各分类里的每个选项
+在我们的表里都得存在，取值形态、重复规则、归属编译器都要一样；每个别名都得是我们认识的写法；
+而我们有、Coverity 没有的每个选项都必须**列为新增**，
+所以「我们支持得更多」是一件看得见的事，而不是一个意外。
+
+`scripts/mutate_capture_options.py` 是这个门禁自己的变异测试：七处刻意的偏移，
+每一处都必须让门禁失败。它在第一版里找出了三个真实的漏洞——门禁只看选项的*第一种*写法、
+从不核对规范名本身对不对，也从不核对参照物自己跟自己一致。
+
+### 7.0.6 一次编译只落一份
+
+**一次编译会经过好几个入口**：命令行那条路先过 `com.sun.tools.javac.Main#compile`，
+再过 `com.sun.tools.javac.main.Main#compile`；API 那条路先过 `JavacTool#getTask`，
+再过 `JavacTaskImpl#call`。不去重的话，一次编译会落好几份几乎一样的记录。
+
+去重的键**不是 argv**：CLI 和 API 走到同一次编译时 argv 是不同的，
+而两次真正不同的编译 argv 反而可能一模一样。键是**这次编译的身份**
+（源文件 + 输出目录 + classpath + source path + encoding + 语言级别），
+见 `CaptureEntry.compileIdentity()`。源文件在比较前**先排序**，
+因为同一组文件从 API 和命令行过来的顺序不一样。
+
+### 7.0.7 Gradle：daemon、build cache，以及哪条通道能到达 JVM
+
+Gradle 是最麻烦的一个：编译发生在 **daemon 进程**里（agent 挂的那个 JVM 看不到），
+而且开了 build cache 时编译**根本没跑**（也就没什么可 capture）。
+
+`GradleHooks` 照 Coverity `common-capture.properties` 的做法 hook Gradle 自己的配置 API，
+把两件事改掉：`StartParameter#setBuildCacheEnabled` 强制 false、
+`DaemonParameters#isEnabled()` 强制 false。
+
+这两个 hook 是**可选的** —— 关掉 daemon 会让构建变慢，没要 capture 的用户不该为此买单。
+它们由 `plumb.capture.gradle.disable-daemon=true` 打开。
+
+#### classpath 来自编译器 hook，不是 Gradle hook
+
+显而易见的做法是 hook Gradle 自己的 compile spec
+（`DefaultJvmLanguageCompileSpec#setCompileClasspath(List<File>)`），因为那正是 Gradle
+把自己解析出来的 classpath 交给编译器的地方。**实测，这个 hook 从不触发。**
+
+Gradle 在 daemon 里组装编译，但通过 `javax.tools` 在**同一个 JVM** 里*执行*它。
+compile spec 住在 `gradle-language-jvm` jar 里，是被懒加载进 Gradle 自己的 class loader 的，
+所以它压根没被加载进挂着 agent 的那个 JVM —— `Instrumentation#getAllLoadedClasses()`
+里没有它。hook 它因此什么也记录不到；就算记录到了，也只是把编译器 hook 已经
+准确记录过的那次编译又记了一份，而且那份更差。
+
+所以 classpath 来自 **`JavacTool#getTask` hook**，而且它是完整的：capture 记下了上游模块的
+**输出目录**、依赖 jar、module path、release 级别、encoding、source roots 和目标目录。
+上游那些输出目录正是这件事之所以重要的原因：它们是只有那些模块构建完之后才存在的目录，
+所以读 `build.gradle` 根本看不出它们 —— 但问编译器可以。
+
+`GradleCaptureE2EIT` 断言的正是这一点，跑在真实的双模块 Gradle 构建上：
+下游模块的 capture 记下了上游模块的输出目录和依赖的 jar。
+
+#### 哪条通道能到达 Gradle 的 JVM
+
+这一点不明显，弄错了会让配置**静默失效**。在 Gradle 9.2.0 上实测，
+办法是读 Gradle fork 出来的 JVM 的命令行：
+
+| 通道 | 能到达 Gradle 的 JVM 吗？ |
+| --- | --- |
+| `org.gradle.jvmargs` 里带 `-javaagent` | **能** |
+| `org.gradle.jvmargs` 里带 `-D` | 不能 —— 每个 `-D` 都被丢掉 |
+| `GRADLE_OPTS` | 不能 —— 它作用于 launcher，不是 daemon |
+| `gradle.properties` 里的 `systemProp.name=value` | 不能 —— 它作用于 build JVM，而编译跑在 fork 出来的 daemon 里 |
+| agent 自己的参数（`-javaagent:jar=key=value`） | **能** |
+| 环境变量 | **能** —— JVM 会继承它 |
+
+所以在 Gradle 里配置 agent 的办法，是把设置作为 **agent 自己的参数**传进去：
+
+```properties
+org.gradle.jvmargs=-Xmx1g \
+  -javaagent:/path/plumb-build-capture.jar=plumb.capture.gradle.disable-daemon=true
+```
+
+agent 会把自己的参数转成 system property（`CaptureAgent.applyAgentArguments`），
+于是这个 property 就在真正执行编译的那个 JVM 里被设好了。
+显式设置的 system property 仍然优先于 agent 参数，因为它是被刻意设的。
+
+环境变量 `PLUMB_CAPTURE_GRADLE_HOOKS` 是第二条通道，用于 agent 不是通过
+`-javaagent` 挂上去的情况。
+
+#### 一次编译一份记录
+
+Gradle 的编译是通过 `javax.tools` 走到 hook 的，而一次 Gradle 构建会编译好几个模块。
+每个模块的编译都是不同的编译，所以每个各自产出一份记录 —— 按编译身份
+（`CaptureEntry.compileIdentity()`）的去重把它们区分开，因为源文件和输出目录都不一样。
+
+### 7.1 关键设计决策
+
+1. **零侵入集成** —— adapter 只通过 `BuildProject` 数据类跟 main pipeline 交互，
+   `ScanRunner` / `ScanConfig` / `JavaSourceParser` 无需改动。
+2. **ServiceLoader SPI** —— 不用 Spring / OSGi / DI 容器，走 JDK 标准 SPI
+   （`META-INF/services/org.plumb.build.BuildAdapter`）。新增 adapter = 加一个 services 文件 +
+   一个 class，不需要改 `plumb-main` 或 registry 代码。
+3. **Parser-light（core）** —— 不依赖 Maven Embedder / Gradle Tooling API / Bazel Build API（避免
+   巨大依赖 + running daemon + JDK 版本兼容麻烦），用文件解析覆盖常见用例。
+   `plumb-build-maven` 是 core 之外的**增强路径**：它要 Aether，代价是依赖体积和一次真实的解析。
+   注意它仍是 `plumb-main` 的编译期依赖（pom 里没有 `<optional>`）——「增强路径」说的是
+   运行时要不要走它，不是构建期能不能缺它。
+4. **默认保守** —— adapter 找不到依赖 / 解析错误 → warning，不 fail。用户永远可以用
+   `--classpath` 兜底。
+5. **Classpath 委派 m2 repo** —— 跟 Gradle / Bazel 的默认行为一致。
+6. **Multi-module source dedup** —— Bazel / Gradle 可能有多个 target 引用同一 `.java`；adapter
+   在 project 级别 dedupe。
+7. **Aether 的 repo id 必须和 settings.xml 一致** —— 本地仓库每个 artifact 旁边的
+   `_remote.repositories` 记着它是从哪个 repo id 下载的。硬编码 `central` 而本地仓库其实是
+   走 `alimaven` mirror 填的，离线解析会报 `(present, but unavailable)`。
+   所以 `MavenSettings` 读 `settings.xml` 的 `<mirrors>` 取真实 id + url。
+
+### 7.2 实现约束（踩坑点）
+
+以下是实现 `plumb-build` 时必须遵守的约束，记录在此以免重复踩坑：
+
+- **Maven pom 解析**：`maven-model` + `plexus-utils`（MavenXpp3Reader）是读 `pom.xml` 的最低
+  依赖组合；不需要 `maven-core` / `maven-resolver`（带 daemon + embedder 副作用）。
+  → 这条约束针对 `plumb-build-core`。`plumb-build-maven` **就是要** `maven-resolver`，
+  因为它算的是传递依赖树，那是静态读 pom 拿不到的。
+- **测试隔离**：测试必须用 hermetic empty local repo，不能用开发者真实的 `~/.m2/repository`
+  ——环境不确定会让测试 flaky。
+  → `plumb-build-core` 遵守这条。`plumb-build-maven` 的 `TransitiveResolverTest` 是**例外**：
+  它故意用真实本地仓库，因为要验证的正是「传递依赖真的解出来了」，用空仓库这个测试
+  就没有意义了。它的断言不依赖具体机器上有哪个版本（找不到就跳过）。
+- **Bazel glob 字面量**：Bazel `glob(["**/*.java"])` 里的 `*/` 不能直接写进 Java 源码字符串
+  （javac 会误解析为 block comment 结束符），必须拆分拼接。
+- **Ant 相对路径**：`<pathelement path="lib/jar"/>` 是 relative to projectRoot（跟 javac 自身
+  行为一致），必须以 projectRoot 为 base 解析，不能直接 `Path.of("lib/jar")`。
+- **ByteBuddy 版本必须支持目标 JDK**：1.15.11 不支持 Java 25（class file 69），
+  报 `IllegalArgumentException: Java 25 (69) is not supported`。
+  而且这个异常**只在 `AgentBuilder.Listener.onError` 里出现**，默认 listener 是 `NoOp` →
+  完全静默。诊断手段：一定要挂 `Listener.Adapter` 打印 root cause。
+- **`Advice` 能挂不 override 任何东西的方法**：早期结论是
+  `com.sun.tools.javac.main.Main#compile(String[])` 没有父方法、`Advice` 会报
+  `Cannot call super (or default) method`，因此要退回手写 ASM。**这个结论是错的** ——
+  `Advice` 是**inline 织入**：把 hook 的字节码复制进被测方法，所以它既不需要 super 方法，
+  也不需要 delegation target。实测 `Main#compile(String[])`、`JavacTool#getTask`、
+  `JavacTaskImpl#call` 都能用 `Advice` 挂上。
+  → 所以**不要手写 ASM**：`Advice` 免掉局部变量槽的手工计算（静态方法槽 0 是参数，
+  实例方法槽 0 是 `this`、参数在槽 1 —— 算错就破坏编译器的栈），而且 JDK 内部类的
+  字节码形态会变，手写 visitor 跟着一起烂。
+- **agent 挂的类在 `jdk.compiler` 命名模块里**：被插桩的 `com.sun.tools.javac.Main`
+  由 application class loader 加载，而 agent jar 只有 agent 自己的 loader 看得见 →
+  `NoClassDefFoundError`。解法：把 hook 类**注入 bootstrap class loader**
+  （`appendToBootstrapClassLoaderSearch`），它是所有 loader 的祖先，谁都看得见。
+  代价：hook 类**不能引用 bootstrap 之外的东西**（不能用 SLF4J，也不能直接引用
+  `javax.tools.FileObject`）。bootstrap jar 必须**依赖闭包完整**——包括嵌套类
+  （`JavacOptions$Builder`）。`Advice` 会**吞掉 `Throwable`**，所以缺一个类不会报错，
+  只会**静默不记录**。→ 用 `BootstrapInjectionTest` 读编译后 class 的常量池做结构门禁。
+- **bootstrap 侧要通过导出的接口反射调用**：`com.sun.tools.javac` 的实现类不是导出 API，
+  直接引用在 bootstrap 场景下不可达。源码路径等信息的读取一律走**导出的接口**
+  （`javax.tools.JavaFileObject` 等）反射取。
+- **classpath 要按平台分隔符切**：同时按 `:` 和 `;` 切会把 Windows 的盘符切碎
+  （`C:\foo` → `C` + `\foo`）。→ Windows 只切 `;`，其它平台只切 `:`。
+- **两个 javac 入口互不重叠**：命令行走 `com.sun.tools.javac.Main#compile`（静态），
+  `javax.tools` API 走 `com.sun.tools.javac.main.Main#compile`（实例）。
+  一次命令行编译会**先后经过这两个**，所以 capture 要去重。
+
+## 8. rule-id 一致性
+
+style 规则的 emit-id 采用 `ast-<category>-<bare>` 命名（category 取 checker 所在子包名：
+`style` / `naming` / `security` / `error` / `bug` / `design` / `performance` /
+`quality` / `concurrency`）。实测 `plumb-style/src/main/java` 下 579 个
+`new RuleId("...")` 字面量里，**没有一个以 `-style` 结尾**：
+
+| 前缀 | 数量 | | 前缀 | 数量 |
+| --- | ---: | --- | --- | ---: |
+| `ast-style` | 347 | | `ast-security` | 37 |
+| `ast-performance` | 62 | | `ast-error` | 34 |
+| `ast-naming` | 50 | | `ast-bug` | 19 |
+| `ast-design` | 18 | | `ast-quality` | 10 |
+| `ast-concurrency` | 2 | | `dfa-style` / `dfa-security` | 3 / 1 |
+
+这个命名被**三处**引用，任一处失同步都会静默丢 finding：
+
+| 引用方 | 作用 |
+| --- | --- |
+| `*Check.java` 的 `new RuleId("ast-style-foo", ...)` | 产生 emit id |
+| `plumb-style/.../CheckerCategories.java` | classpath-scan 注册表（594 项 `m.put(...)`） |
+| `plumb-main/.../ScanRunner.java::isRuleIdAllowed`（`:1823`、`:1834`） | 规则过滤；需要同时接受 canonical id、bare slug 与短横线形式 |
+
+**数据流**：
+
+```
+*Check.java                 new RuleId("ast-style-foo", ...)
+    │                              │
+    ▼                              ▼
+emit rule_id="ast-style-foo"
+    │
+    ▼
+ScanRunner.isRuleIdAllowed(emit, registry)   ← canonical / bare / 短横线多形态匹配
+    │
+    ▼
+emit 进入最终 finding 集合
+    │
+    ▼
+NDJSON 输出，cwe 字段来自该规则的 RuleDef.cwe()
+```
+
+DFA 侧的 finding key → CWE 映射来自 `plumb-dfa/src/main/resources/cwe-mappings.yaml`，
+与 AST 侧的 `RuleDef.cwe()` 是两份独立来源。
+
+**别名**：带 `-style` 后缀的字符串（`ast-style-random-iv-cbc-style`）只作为
+`RuleDef` 的 **alias** 保留（用于兼容老的 YAML 白名单），不是任何规则的
+emit-id。`ScanRunner.isRuleIdAllowed` 里的
+`ast-style-` 前缀 / `-style` 后缀剥离逻辑就是为匹配这些 alias 服务的。
+
+**架构要点**：
+
+1. 命名规范一改，**所有引用方**都得改：emit-id ↔ mapping ↔ yaml whitelist ↔ Scanner 匹配。
+   漏一个就静默丢 finding，不报错。
+2. 映射应**自动重建**而非人工维护：`scripts/gen_rules_index.py` 从 source 生成索引，让 mapping
+   与 source 保持一致。
+3. classpath-scan 注册机制要**双校验**：checker 必须同时 (a) 在 `CHECKER_CATEGORIES` 注册 +
+   (b) 提供 `rule()` 方法。少一个就 silently drop。
+
+## 9. 测试体系
+
+每个模块独立 mvn 测试。各模块的测试数量由 `scripts/gen_rules_overview.py` 从 surefire 报告
+实测生成，见 [`RULES.md`](../rules/RULES.md) 的测试统计一节。
+
+端到端测量由 `testcase/` 下的 category 完成：每个 category 有独立的 fixture、manifest 与
+`RESULT.json`，逐 case 记录 TP / TN / FN / FP。支持的 category 与当前实测结果见
+[`testcase/SUPPORT-MATRIX.md`](../../../testcase/SUPPORT-MATRIX.md)。
+
+`plumb-ai` 的真实 LLM 端到端测试需要 `PLUMB_AI_E2E=1` 才会运行。
+
+## 10. 扩展点
+
+| 想要 | 在哪里加 |
+| --- | --- |
+| 新加 taint source / sink 模式 | `plumb-dfa/src/main/resources/sink-families.yaml`（新增 `families.<name>.patterns`） |
+| 新加 fact kind | `plumb-dfa/src/main/resources/fact-kinds.yaml`（配置清单）或 `plumb-dfa/.../fact/BuiltinFactKinds.java` 的 `registryWithBuiltins()`（内置清单） |
+| 新加 taint 规则 | `plumb-dfa/.../checkers/taint/<Name>Checker.java`，继承 `TaintedCheckerBase` |
+| 新加边界规则 | `plumb-dfa/.../checkers/boundary/`，继承 `BoundaryConstraintChecker` |
+| 新加控制流检查 | `plumb-dfa/.../checkers/controlflow/`，实现 `DfaChecker` |
+| 启用 / 关闭某 checker | `plumb-dfa/src/main/resources/checkers.yaml` |
+| 新加 style 规则 | `plumb-style/<category>/<Name>Check.java` + 在 `CheckerCategories.java` 加 `m.put(...)` |
+| 新加 **Kotlin DSL** AST 规则（不写 Java） | 写一个规则文件（XML / YAML），用 `--dsl-rules <file>` 传进去。见 [`KOTLIN-DSL.md`](../../tech/KOTLIN-DSL.md) |
+| 新加 CLI flag | `plumb-main/.../SastMain.java` 的 `buildOptions()` |
+| 新加 YAML 段 | `plumb-main/.../ConfigLoader.java` 的 `fromMapImpl()` |
+| 新加输出格式 | `plumb-reporter/.../FindingFormatter.java` + `NdjsonEmitter` / `SarifEmitter` 同级 |
+| 新加 call graph 策略 | `plumb-dfa/.../cg/CallGraphStrategy.java` + `CallGraphStrategyFactory.java` |
+| 新加 build-system adapter | `plumb-build/plumb-build-core/.../<Name>Adapter.java` 实现 `BuildAdapter` + `META-INF/services` 注册 |
+| 新加 AI rule prompt | checker 的 `getAiPrompt(Finding)` 方法（内联）或 `--rule-prompts-dir/<id>.md` 覆盖 |
+
+### 10.1 加新 style 规则的具体步骤
+
+1. 在 `plumb-style/src/main/java/org/plumb/style/<category>/FooCheck.java` 写规则，实现 `AstChecker`
+   接口（覆写自己关心的那个 per-node `visit(X, ctx)` 重载）
+2. **在 `CheckerCategories.java` 加 `m.put("FooCheck", "<category>");`**（按字母序；
+   该文件由 `scripts/gen_categories.py` 生成）
+3. rebuild：`mvn -o -pl plumb-style install`
+4. 验证：`sast-scan --list-rules | grep FooCheck`
+
+⚠️ 第 2 步漏掉的后果是**静默丢失**：`AstCheckerRegistry.byCategory(...)` 找不到这条规则，
+不 emit 也不报错。（`AstCheckerRegistry.builtins()` 走 classpath 扫描，不依赖
+`CheckerCategories`；漏登记影响的是按分类加载的路径。）
+classpath-scan 注册机制要求同时满足 (a) 在 `CHECKER_CATEGORIES` 注册 +
+(b) 提供 `rule()` 方法，少一个就 silently drop。
+
+### 10.2 用 Kotlin DSL 加 AST 规则（不写 Java）
+
+不想写 Java checker 时，可以用 `plumb-dsl-kotlin` 的规则引擎：
+
+1. 写一个规则文件（XML 或 YAML 格式）——见 [`KOTLIN-DSL.md`](../../tech/KOTLIN-DSL.md) §2
+2. `sast-scan -i src/main/java --dsl-rules rules/ast-rules.yaml`
+
+DSL 规则和内置 style 规则走**同一条**产出路径：命中后产生同样的 `Finding`，
+进同样的 registry、同样的 whitelist / blacklist 过滤、同样的 reporter。
+
+唯一的结构性差别是**触发方式**：内置 checker 靠 `AstDispatcher` 的 per-node
+派发，而 DSL 规则在 `AstChecker.finish(ctx)` 里运行——因为 dispatcher 按精确
+节点类派发，既不会把 `CompilationUnit` 送给 checker，也无法表达
+`Statement` / `Comment` 这类抽象节点类型。细节见
+[`KOTLIN-DSL.md`](../../tech/KOTLIN-DSL.md) §5.3。
+
+数据流 / 污点规则**不在**这个引擎里，仍由 `plumb-dfa` 的 YAML 配置驱动。
+
+## 11. 已知边界
+
+以下行为是当前实现的已知边界，不是缺陷承诺：
+
+- **规则 id 匹配**：`<category>-<bare>` 是 canonical emit id；`-style` 后缀是兼容 alias，
+  不是独立规则。
+- **虚调用解析**：按方法名 + 参数个数匹配（`ChaCallGraphStrategy`），不做传递式的类层次
+  闭包；`classToParent()` / `classToChildren()` 表会被填充并跨编译单元聚合，但目前没有分析
+  消费它们。
+- **数组污点**：不跨函数边界传播。
+- **路径敏感性**：由 `SolverZ3Bridge` / `BoundaryConstraintChecker` 实现，但不是每条 sink 都
+  走这条路。
+- **缺失的事实不等于安全**：空的 points-to 集合、缺失的 null 事实、may-alias 重叠，都不能
+  用来证明一段代码是安全的。
+
+## 12. 产物体积
+
+发布产物是 `plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar`。产品资源只有引擎运行
+需要的配置：
+
+| 资源 | 作用 |
+| --- | --- |
+| `sink-families.yaml` | sink family 与 pattern 清单 |
+| `fact-kinds.yaml` | fact kind 清单（与内置 kind 合并） |
+| `checkers.yaml` | DFA checker 开关与参数 |
+| `cwe-mappings.yaml` | DFA finding key → CWE 映射 |
+| `receiver-passthrough.yaml` | receiver 透传 pattern |
+| `tuning.yaml` | 引擎调参 |
+
+测试语料在 `plumb-dfa/src/test/resources/juliet-corpus/`，属于测试资源，
+不随产品 jar 发布。
