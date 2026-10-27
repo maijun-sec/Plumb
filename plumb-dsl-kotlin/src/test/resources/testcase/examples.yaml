@@ -1,0 +1,467 @@
+﻿# The DSL example corpus.
+#
+# Every entry is one example of the matcher language, and every entry is
+# EXECUTED by DslExampleCorpusTest.  An example that stops working fails the
+# build, so this file cannot drift away from the engine.
+#
+# The fields:
+#
+#   name         the example's name; it is the key a reader looks up
+#   nodeType     the JavaParser node type the matcher names
+#   matcher      the matcher text, in the upstream's own spelling
+#   expect       how many nodes in Fixture.java the matcher must match
+#   shows        what the example demonstrates -- this is the prose
+#
+# `expect` counts the nodes the rule matches in Fixture.java.  A count of
+# zero is a legitimate expectation: a rule that must NOT fire is as much a
+# part of the language's contract as one that must.
+#
+# The `shows` values are quoted, because a plain YAML scalar cannot start
+# with a backtick and cannot contain ": " -- and the prose does both.
+examples:
+  # ---- the shape of a matcher -------------------------------------------
+  - name: empty-catch-block
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause match { empty }
+    expect: 2
+    shows: "The minimal matcher. The header names the node type and the binding; the body is the predicate."
+
+  - name: catch-with-a-statement
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause match { !empty }
+    expect: 2
+    shows: "A negation. The `!` is the upstream's `not`, and the operand is parenthesised. Two of the four catches have a body."
+
+  - name: catch-with-a-statement-by-not
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause match { not empty }
+    expect: 2
+    shows: "The same negation, written the upstream's way. The rewriter turns the prefix `not` into `!` and parenthesises the operand."
+
+  - name: catch-that-is-not-empty-by-not
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause match { not (empty) }
+    expect: 2
+    shows: "A `not` whose operand is already parenthesised. The rewriter keeps the author's parentheses, so the operand is still the whole expression."
+
+  # ---- the structural matchers -------------------------------------------
+  - name: catch-containing-a-return
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause contain { simpleName == "ReturnStmt" }
+    expect: 1
+    shows: "`contain` looks at the node's DIRECT children. The catch's return statement is one of them."
+
+  - name: catch-containing-a-throw
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause contain { simpleName == "ThrowStmt" }
+    expect: 1
+    shows: "The same matcher, a different child. `contain` is a search over the direct children."
+
+  - name: method-containing-a-statement
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md contain { simpleName == "ExpressionStmt" }
+    expect: 5
+    shows: "`contain` on a method declaration finds its direct children -- and a method's direct children are its STATEMENTS. Five of the fixture's methods have a statement."
+
+  - name: method-containing-a-call
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md contain { simpleName == "MethodCallExpr" }
+    expect: 0
+    shows: "A `contain` that does not reach a grandchild. The method's statements are its children; the call inside a statement is a grandchild. A method contains its STATEMENTS, not the calls inside them."
+
+  - name: catch-with-an-ancestor-method
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause ancestor { simpleName == "MethodDeclaration" }
+    expect: 4
+    shows: "`ancestor` walks upwards instead of downwards."
+
+  - name: catch-with-an-ancestor-class
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause ancestor { simpleName == "ClassOrInterfaceDeclaration" }
+    expect: 4
+    shows: "The same matcher, one level further up. Every catch in the fixture is inside the class."
+
+  - name: catch-containing-a-catch
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause contain { simpleName == "CatchClause" }
+    expect: 0
+    shows: "A `contain` that finds nothing. `contain` looks at the node's DIRECT children, and a catch clause's children are its statements -- not other catch clauses."
+
+  - name: catch-containing-a-grandchild
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause contain { simpleName == "StringLiteralExpr" }
+    expect: 0
+    shows: "A `contain` that does not reach a grandchild. The catch's statements are its children; the literal inside a statement is a grandchild, and a direct-children search must not reach it."
+
+  # ---- the node properties -----------------------------------------------
+  - name: method-named-debug
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { methodName startWith "debug" }
+    expect: 1
+    shows: "A bare node property, and the upstream's `startWith` infix operator."
+
+  - name: method-named-debug-the-other-spelling
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { methodName startsWith "debug" }
+    expect: 1
+    shows: "The same operator under its other spelling. The rewriter accepts both `startWith` and `startsWith`, because the upstream's own spelling is the first one and the Kotlin one is the second."
+
+  - name: method-named-helper
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { methodName endsWith "Helper" }
+    expect: 1
+    shows: "`endsWith` -- the other string operator."
+
+  - name: method-in-a-class-named-fixture
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { enclosingClass == "com.example.dsl.Fixture" }
+    expect: 9
+    shows: "The class a method is declared in. Every method in the fixture is in it."
+
+  - name: method-in-a-class-that-does-not-exist
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { enclosingClass == "com.example.dsl.Other" }
+    expect: 0
+    shows: "The same property, a class that does not exist. `enclosingClass` returns a NAME, so comparing it against a string compiles."
+
+  - name: method-whose-qualified-name-is-known
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { qualifiedName == "com.github.javaparser.ast.body.MethodDeclaration" }
+    expect: 9
+    shows: "The upstream's `qualifiedName`, which is the node's CLASS name -- the fully qualified name of the JavaParser class. It is the node's shape, so every method in every file shares it."
+
+  - name: method-whose-own-qualified-name-is-known
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { ownQualifiedName == "com.example.dsl.Fixture.noParameters" }
+    expect: 1
+    shows: "The node's OWN qualified name -- the declaring type plus the member. This is the Plumb extension, because the upstream has no such property: its `qualifiedName` is the class name."
+
+  - name: method-whose-own-qualified-name-is-not-known
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { ownQualifiedName == "com.example.dsl.Fixture.nope" }
+    expect: 0
+    shows: "The same property, a method that does not exist."
+
+  - name: method-with-a-collection-parameter
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { parameterTypes[0].resolveType contains "java.util" }
+    expect: 1
+    shows: "`contains` on a string, which is a substring test rather than an equality test."
+
+  - name: method-with-one-parameter
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { parameterTypes.size == 1 }
+    expect: 2
+    shows: "A list's size, written the upstream's way, as `parameterTypes.size`. The fixture has two one-parameter methods: `oneParameter` and `main`."
+
+  - name: method-with-a-list-parameter
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { parameterTypes[0].resolveType matches "java.util.List<.*?>" }
+    expect: 1
+    shows: "An indexed element, and a resolved type name."
+
+  - name: method-with-no-parameters
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { parameterTypes.size == 0 }
+    expect: 7
+    shows: "The same list, a different count. The list is a real list, so its size can be compared."
+
+  - name: method-with-a-parameter-list
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { parameters.size == 1 }
+    expect: 2
+    shows: "The parameter LIST rather than the parameter types. The two agree in count here, but they are different lists."
+
+  - name: method-whose-parameter-is-named
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { parameters[0].name == "args" }
+    expect: 2
+    shows: "An element of the parameter list, and its name. `parameters` holds the parameters themselves, so the element is a parameter -- not a type, which is what `parameterTypes` holds. Two of the fixture's methods name their parameter `args`."
+
+  - name: method-whose-enclosing-function-is-named
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause match { enclosingFunction.methodName == "catches" }
+    expect: 3
+    shows: "A chain off the enclosing function. Three of the four catches are inside `catches`."
+
+  - name: method-with-a-simple-name
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match { simpleName == "MethodDeclaration" }
+    expect: 9
+    shows: "The node's SHAPE -- the JavaParser class's simple name. Every method in the fixture has this shape."
+
+  # ---- the call sites ----------------------------------------------------
+  - name: call-to-print-stack-trace
+    nodeType: MethodCallExpr
+    matcher: |
+      MethodCallExpr mce: mce match { method.name == "printStackTrace" }
+    expect: 1
+    shows: "A property chain: `method.name` is a method reference's name."
+
+  - name: call-to-a-name-that-does-not-occur
+    nodeType: MethodCallExpr
+    matcher: |
+      MethodCallExpr mce: mce match { method.name == "notARealMethod" }
+    expect: 0
+    shows: "The same matcher, a name that does not occur. A rule that matches nothing is a legitimate rule."
+
+  - name: call-declared-by-a-named-class
+    nodeType: MethodCallExpr
+    matcher: |
+      MethodCallExpr mce: mce match { method.enclosingClass == "java.lang.Throwable" }
+    expect: 1
+    shows: "The other half of a method reference: the class that declares it. `printStackTrace` is declared by `java.lang.Throwable`."
+
+  - name: call-declared-by-a-class-that-does-not-declare-it
+    nodeType: MethodCallExpr
+    matcher: |
+      MethodCallExpr mce: mce match { method.enclosingClass == "java.lang.String" }
+    expect: 0
+    shows: "The same property, a class that does not declare the called method."
+
+  # ---- the comments ------------------------------------------------------
+  - name: comment-with-a-password
+    nodeType: Comment
+    matcher: |
+      Comment comment: comment match { content matches "(?!).*password.*" }
+    expect: 1
+    shows: "A comment's text. The `(?!` prefix is the upstream's way of asking for a case-insensitive match."
+
+  - name: comment-without-a-password
+    nodeType: Comment
+    matcher: |
+      Comment comment: comment match { content matches "(?!).*secret.*" }
+    expect: 0
+    shows: "The same matcher, a word that does not occur."
+
+  - name: comment-with-a-case-sensitive-password
+    nodeType: Comment
+    matcher: |
+      Comment comment: comment match { content matches ".*password.*" }
+    expect: 1
+    shows: "The same regex WITHOUT the `(?!` prefix, so the match is case-sensitive. The javadoc's `password` is lowercase, so it still matches."
+
+  # ---- the exceptions ----------------------------------------------------
+  - name: catch-of-exception
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause match { exception.type.resolveType == "java.lang.Exception" }
+    expect: 4
+    shows: "The caught exception's resolved type."
+
+  - name: catch-of-runtime-exception
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause match { exception.type.resolveType == "java.lang.RuntimeException" }
+    expect: 0
+    shows: "A type that is not caught anywhere in the fixture."
+
+  - name: catch-with-a-named-exception-parameter
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause match { exception.name == "e" }
+    expect: 4
+    shows: "The caught exception's PARAMETER NAME. All four catches in the fixture name it `e`."
+
+  - name: catch-with-a-different-exception-parameter-name
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause match { exception.name == "err" }
+    expect: 0
+    shows: "The same property, a name the fixture does not use."
+
+  # ---- the fields and the types -----------------------------------------
+  - name: static-final-field
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { static and final }
+    expect: 1
+    shows: "Two boolean node properties combined with the upstream's `and`."
+
+  - name: non-static-field
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { !static }
+    expect: 2
+    shows: "A negated node property."
+
+  - name: field-of-a-named-type
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { type.typeName == "java.lang.String" }
+    expect: 2
+    shows: "A field's type name. The fixture's two String fields match it."
+
+  - name: field-of-a-type-named-by-resolve-type
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { type.resolveType == "java.lang.String" }
+    expect: 2
+    shows: "The same name under the upstream's `resolveType` spelling. Both read the resolved type's qualified name."
+
+  - name: field-whose-type-is-an-object
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { type.supers contain "java.lang.Object" }
+    expect: 3
+    shows: "`supers` is the 'is-a' closure: the type itself plus its ancestors. Every reference type's closure contains java.lang.Object, and the fixture declares three fields."
+
+  - name: field-whose-strict-supers-are-empty
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { type.strictSupers contains "java.lang.String" }
+    expect: 0
+    shows: "`strictSupers` is the upstream's own semantics: the ancestors WITHOUT the type itself. A String's strict ancestors are [java.lang.Object], so the list does not contain java.lang.String -- and that is exactly the difference the two semantics make."
+
+  - name: field-of-a-logging-type
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { type.supers contain "java.util.logging.Logger" }
+    expect: 1
+    shows: "The rule the upstream could not fire. `supers` INCLUDES the type itself, so a directly declared Logger matches -- which is what the rule's author meant."
+
+  - name: field-of-a-logging-type-by-strict-supers
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { type.strictSupers contain "java.util.logging.Logger" }
+    expect: 0
+    shows: "The same field under the upstream's `strictSupers`, which excludes the type itself. This is the upstream behaviour the `supers` fix restores."
+
+  # ---- the collections ---------------------------------------------------
+  - name: field-whose-supers-contain-a-name
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { type.supers contains "java.lang.Object" }
+    expect: 3
+    shows: "`contains` on a COLLECTION is an exact membership test, not a substring test. `java.lang.Object` is an element of every reference type's closure."
+
+  - name: field-whose-supers-do-not-contain-a-name
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { type.supers contains "java.lang.Strin" }
+    expect: 0
+    shows: "A collection membership test with a name that is not an element. It must not match, even though `java.lang.Strin` is a near miss."
+
+  - name: field-whose-supers-contain-a-substring
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { type.supers contain "java.lang" }
+    expect: 0
+    shows: "The upstream's `contain` spelling on a collection. It is an EXACT membership test, so a prefix of an element does not match -- which is what keeps `java.lang.String` from matching `java.lang.Comparable<java.lang.String>`."
+
+  # ---- the combinations --------------------------------------------------
+  - name: broad-catch-outside-main
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: (catchClause match {
+          (exception.type.resolveType == "java.lang.Exception") and (enclosingFunction.methodName != "main")
+      }) and
+      (!(catchClause contain { simpleName == "ThrowStmt" }))
+    expect: 2
+    shows: "The upstream's own 'overly broad catch' rule, in its full shape: a parenthesised group, `and`, a negated group, and a `contain` inside a negation."
+
+  - name: static-or-final-field
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { static or final }
+    expect: 1
+    shows: "The upstream's `or`. Only the constant qualifies: it is both static and final, and no other field is either."
+
+  - name: static-and-not-final-field
+    nodeType: FieldDeclaration
+    matcher: |
+      FieldDeclaration fd: fd match { static and (not final) }
+    expect: 0
+    shows: "`and` and `not` together. The fixture's only static field is also final, so nothing matches."
+
+  - name: debug-method-with-a-list-parameter
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match {
+          (methodName startWith "debug") and
+          (parameterTypes.size == 1) and
+          (parameterTypes[0].resolveType matches "java.util.List<.*?>")
+      }
+    expect: 0
+    shows: "The upstream's 'leftover debug code' rule in full. The fixture's `debugSomething` takes no parameters, so the rule does not fire -- the count is the point."
+
+  - name: debug-method-or-any-method-with-a-list-parameter
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md match {
+          (methodName startWith "debug") or
+          (parameterTypes[0].resolveType matches "java.util.List<.*?>")
+      }
+    expect: 2
+    shows: "The same two conditions joined with `or` instead of `and`. The debug method matches through the first branch, the List method through the second."
+
+  - name: dangerous-method-call
+    nodeType: MethodCallExpr
+    matcher: |
+      MethodCallExpr mce: mce match {
+          (method.name == "printStackTrace") && (method.enclosingClass == "java.lang.Throwable")
+      }
+    expect: 1
+    shows: "The upstream's 'dangerous method call' rule, using Kotlin's own `&&`."
+
+  - name: dangerous-method-call-with-or
+    nodeType: MethodCallExpr
+    matcher: |
+      MethodCallExpr mce: mce match {
+          (method.name == "printStackTrace") || (method.enclosingClass == "java.lang.String")
+      }
+    expect: 1
+    shows: "Kotlin's `||`. The first branch already matches the only printStackTrace call, so the second branch adds nothing."
+
+  - name: nested-contain
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md contain {
+          contain { simpleName == "MethodCallExpr" }
+      }
+    expect: 5
+    shows: "Multi-level matching. A `contain` inside a `contain`: a method whose direct child is a statement, and that statement's direct child is a call. The inner block has no receiver of its own -- it reads the node the outer `contain` is looking at."
+
+  - name: nested-contain-three-levels
+    nodeType: MethodDeclaration
+    matcher: |
+      MethodDeclaration md: md contain {
+          contain { contain { simpleName == "StringLiteralExpr" } }
+      }
+    expect: 3
+    shows: "Three levels of `contain`: a method, then its statement, then the call, then the literal. Each level is one direct child, so the depth of the nesting is the depth of the question."
+
+  - name: nested-ancestor
+    nodeType: MethodCallExpr
+    matcher: |
+      MethodCallExpr mce: mce ancestor { simpleName == "CatchClause" }
+    expect: 0
+    shows: "An `ancestor` inside an `ancestor`. The fixture's calls are not inside a catch, so nothing matches."

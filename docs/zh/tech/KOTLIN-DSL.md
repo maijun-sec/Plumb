@@ -192,6 +192,7 @@ facade 方法的调用（见 §5）。
 | --- | --- |
 | `simpleName` | `NodeAccess.simpleName` |
 | `qualifiedName` | `NodeAccess.qualifiedName` |
+| `ownQualifiedName` | `NodeAccess.ownQualifiedName` |
 | `methodName` | `NodeAccess.methodName` |
 | `parameterTypes` | `NodeAccess.parameterTypes` |
 | `parameters` | `NodeAccess.parameters` |
@@ -239,8 +240,9 @@ Kotlin 的 `Boolean.and` 和 `Boolean.or` 是成员函数，所以这两个原�
 
 | facade | 作用 |
 | --- | --- |
-| `NodeAccess.simpleName(n)` | 节点的简单名 |
-| `NodeAccess.qualifiedName(n)` | 节点的限定名 |
+| `NodeAccess.simpleName(n)` | 节点所在类的简单名 |
+| `NodeAccess.qualifiedName(n)` | 节点所在类的限定名 |
+| `NodeAccess.ownQualifiedName(n)` | 节点自己的名字：外层类型 + 成员 |
 | `NodeAccess.content(n)` | 节点的源码文本 |
 | `NodeAccess.isEmpty(n)` | 节点是否为空 |
 | `NodeAccess.method(n)` | 取方法声明 |
@@ -249,6 +251,7 @@ Kotlin 的 `Boolean.and` 和 `Boolean.or` 是成员函数，所以这两个原�
 | `NodeAccess.resolvedMethodName(n)` | 解析后的方法名 |
 | `NodeAccess.parameters(n)` | 参数列表 |
 | `NodeAccess.parameterTypes(n)` | 参数类型列表 |
+| `NodeAccess.parameterAt(n, i)` | 取参数列表里第 `i` 个参数 |
 | `NodeAccess.type(n)` | 节点声明的类型 |
 | `NodeAccess.exception(n)` | 节点携带的异常 |
 | `NodeAccess.exceptionName(n)` | 异常名 |
@@ -291,19 +294,52 @@ Kotlin 的 `Boolean.and` 和 `Boolean.or` 是成员函数，所以这两个原�
 | facade | 对应的 DSL 写法 | 作用 |
 | --- | --- | --- |
 | `Matchers.match(node) { ... }` | `node match { ... }` | 谓词作用于节点自身 |
-| `Matchers.contain(node) { ... }` | `node contain { ... }` | 任意深度后代中有一个满足谓词 |
+| `Matchers.contain(node) { ... }` | `node contain { ... }` | **直接子节点**中有一个满足谓词 |
 | `Matchers.ancestor(node) { ... }` | `node ancestor { ... }` | 任意祖先中有一个满足谓词 |
 
 `contain` 和 `ancestor` 的谓词会拿到**被检查的那个节点**作为参数，所以
-`contain { simpleName == "ReturnStmt" }` 的意思是"下面 somewhere 有个 return 语句"。
+`contain { simpleName == "ReturnStmt" }` 的意思是"我的直接语句里有一个 return"。
+
+#### `contain` 到底是什么意思
+
+`contain` 看的是节点的**直接子节点**，仅此而已。由此推出三条，每一条都承载着语义：
+
+- **节点不包含自己。** catch 子句不包含 catch 子句。
+- **节点不包含孙节点。** catch 子句包含它的语句，不包含语句里的表达式；方法包含它的语句，
+  不包含语句里的调用。
+- **每一层嵌套就是往下一层。** `contain { contain { ... } }` 到达孙节点，
+  `contain { contain { contain { ... } } }` 到达曾孙节点。
+
+这就是上游的语义。上游的 `contain` 是：
+
+```kotlin
+infix fun Node.contain(block: Node.() -> Boolean): Boolean {
+    if (this is NodeWithBlockStmt<*>) {
+        this.body.statements.forEach {
+            if (block(it)) { return true }
+        }
+    }
+    return false
+}
+```
+
+它遍历节点自己 body 里的语句，绝不往更深处看。子树搜索会在上游从不触发的规则上触发，
+那已经是另一门语言了，不是规则文件当初针对的那一门。
+
+> **一处有意的差异。** 上游的 `contain` 只作用于 `NodeWithBlockStmt`，而在 JavaParser 里
+> 那只有 catch 子句和构造器 —— 所以上游的 `contain` 在方法体和代码块里什么也找不到。
+> Plumb 引擎保留了"只看直接子节点"这条规则，同时把"有 body 的节点"这个集合放宽了，
+> 因为"这个方法里有没有调用"是这门语言应该能回答的问题，而上游自己的规则文件并不依赖那个
+> 窄口径。
 
 ### 4.7 多级匹配
 
-`contain` 可以嵌套，因此一条规则可以表达"某个方法里有一个参数类型是 X 的调用"：
+`contain` 可以嵌套，因此一条规则可以表达"某个方法里有一个调用"。每一层嵌套就是往下一层，
+内层块不需要自己的接收者 —— 它读的是外层 `contain` 正在看的那个节点：
 
 ```
 MethodDeclaration method: method contain {
-  MethodCallExpr call: call.name == "getPassword"
+  contain { simpleName == "MethodCallExpr" }
 }
 ```
 
@@ -388,7 +424,79 @@ runner 因此把 DSL 规则的元数据注册进 live `RuleRegistry`，让它们
 
 ---
 
-## 7. 模块与依赖
+## 7. 示例语料库
+
+匹配器语言的示例就放在仓库里，而且是一份**会被执行**的语料库：
+
+```
+plumb-dsl-kotlin/src/test/resources/testcase/
+  ├── examples.yaml    示例
+  └── Fixture.java     示例运行的代码
+```
+
+`examples.yaml` 每条示例一个条目：
+
+```yaml
+  - name: empty-catch-block
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause match { empty }
+    expect: 2
+    shows: "最小的 matcher。头部给出节点类型和绑定名，主体是谓词。"
+```
+
+`expect` 是这条 matcher 在 `Fixture.java` 里必须匹配到的 `nodeType` 节点数。**零**也是合法的
+期望值：一条**不应该**触发的规则，和一条应该触发的规则一样，是这门语言契约的一部分。
+
+`DslExampleCorpusTest` 会跑每一条示例并核对数量。所以这份语料库是双向自证的：一条示例编译
+不过，构建就失败；一条示例的数量漂了，构建也失败。
+
+**而且语料库不能缩水。** 删掉一条示例，和"引擎不再支持某个构造"是同一件事，看不出来。所以
+`scripts/check_dsl_corpus.py` 把语料库的大小钉住，并检查重写器的每一张词汇表 —— 节点属性、
+包装器属性、列表方法、中缀运算符、结构性匹配器 —— 至少被一条示例用到。一个没人用的新属性
+就是语料库的缺口，门禁会指出来。
+
+这个门禁是变异测试过的：`scripts/mutate_dsl_corpus.py` 会删掉一条示例、删掉一条说明、给源码
+加一个没人用的属性，这些漂移每一条都必须让门禁失败。
+
+**语义本身也是变异测试过的。** 引擎*行为*的改变 —— `contain` 又变回子树搜索 —— 不会动语料库
+文件，所以 Python 门禁看不见。变异脚本知道这一点，所以它有两类变异：上面那三个由门禁抓住，
+还有一个改引擎的由 **Kotlin 测试**抓住。那个变异替换的是 `directChildren` 的**整个**函数体，
+因为只替换它的兜底分支只会影响没有 block body 的节点 —— 那样变异会活下来，而且是因为错误的
+原因活下来。
+
+### 7.1 改掉的那些行为
+
+写这份语料库找出七处引擎行为和规则作者预期不一致的地方：
+
+- **`enclosingClass` 返回的是声明，不是名字。** 所以 `enclosingClass == "com.example.Foo"` 是
+  编译错误 —— "Operator '==' cannot be applied to 'ClassOrInterfaceDeclaration?' and 'String'"。
+  现在它返回限定名，和包装器的 `enclosingClass` 形状一致；声明本身另有
+  `enclosingClassDeclaration`。
+- **字符串上的 `contains` 编译不过。** 运算符解析到了集合版本，所以字符串接收者直接类型错误。
+  现在运算符按接收者的类型解析：字符串是子串测试，集合是**精确**的成员测试 —— 上游的语义。
+  集合保持精确是故意的：子串测试会让 `supers contain "java.lang.String"` 匹配到祖先列表里的
+  `java.lang.Comparable<java.lang.String>`。
+- **`contain` 搜的是整棵子树。** 它应该是上游的*直接子节点* —— 而子树搜索能找到直接子节点
+  搜索能找到的一切，外加更多，所以它会在上游从不触发的规则上触发。它还把节点自身算进去了，
+  因为 JavaParser 的 `findAll` 包含接收者：每个节点都"包含"自己。见 [§4.6](#46-结构性匹配器)。
+- **`qualifiedName` 偏离了上游。** 上游的 `qualifiedName` 是 `javaClass.name` —— 节点所在
+  **类**的名字，每个文件里每个方法都是同一个字符串。如果把它改成返回节点自己的名字，
+  就会破坏任何按上游写的规则。现在 `qualifiedName` 就是上游的含义，节点自己的名字是新增的
+  `ownQualifiedName`。
+- **`parameters[0].name` 编译不过。** 重写器假定所有被索引的列表装的都是类型，于是
+  `parameters[0]` 被重写成解析后的类型，从它上面读的属性就成了类型的属性。两个列表装的东西
+  不一样 —— `parameterTypes` 装类型，`parameters` 装参数 —— 所以重写器现在会先问自己索引的
+  是哪个列表。
+- **带自己头部的嵌套 matcher 编译不过。** `contain { MethodCallExpr call: ... }` 有第二个绑定，
+  而重写器一条规则只有一个绑定。嵌套块读的是外层 `contain` 正在看的那个节点，所以它不需要
+  自己的绑定。
+- **没有接收者的结构性匹配器被改写错了。** 那一趟会把**外层**表达式当成接收者吃掉，于是
+  `contain { contain { ... } }` 变成了胡话。
+
+---
+
+## 8. 模块与依赖
 
 ```
 plumb-dsl-kotlin
@@ -412,7 +520,7 @@ Kotlin 版本固定在 **2.2.0**：这是第一个在 JDK 25 上能跑、同时�
 
 ---
 
-## 8. 相关文档
+## 9. 相关文档
 
 | 文档 | 内容 |
 | --- | --- |

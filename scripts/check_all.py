@@ -81,9 +81,12 @@ The gates are:
                               deliberate drift must make it fail
     check_dsl_corpus           the DSL example corpus still covers the
                               engine's vocabulary: every node property, every
-                              operator, and the corpus's own size
-    mutate_dsl_corpus          the corpus gate is not checking air: every
-                              deliberate drift must make it fail
+                              operator, the corpus's own size, and the counts
+                              that tell one reading of the language from
+                              another
+    mutate_dsl_corpus          the corpus gate is not checking air: a deleted
+                              example must fail the gate, and a subtree
+                              `contain` must fail the tests
     check_i18n_docs            the English and Chinese documentation have
                               the same shape: the same documents, the same
                               headings, the same tables, the same code

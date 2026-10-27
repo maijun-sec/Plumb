@@ -193,6 +193,7 @@ against `NodeAccess`:
 | --- | --- |
 | `simpleName` | `NodeAccess.simpleName` |
 | `qualifiedName` | `NodeAccess.qualifiedName` |
+| `ownQualifiedName` | `NodeAccess.ownQualifiedName` |
 | `methodName` | `NodeAccess.methodName` |
 | `parameterTypes` | `NodeAccess.parameterTypes` |
 | `parameters` | `NodeAccess.parameters` |
@@ -243,8 +244,9 @@ The predicate of a rule can access the current node and its type:
 
 | Facade | Purpose |
 | --- | --- |
-| `NodeAccess.simpleName(n)` | The simple name of the node |
-| `NodeAccess.qualifiedName(n)` | The qualified name of the node |
+| `NodeAccess.simpleName(n)` | The simple name of the node's class |
+| `NodeAccess.qualifiedName(n)` | The qualified name of the node's class |
+| `NodeAccess.ownQualifiedName(n)` | The node's own name: the declaring type plus the member |
 | `NodeAccess.content(n)` | The source text of the node |
 | `NodeAccess.isEmpty(n)` | Whether the node is empty |
 | `NodeAccess.method(n)` | Gets the method declaration |
@@ -253,6 +255,7 @@ The predicate of a rule can access the current node and its type:
 | `NodeAccess.resolvedMethodName(n)` | The resolved method name |
 | `NodeAccess.parameters(n)` | The parameter list |
 | `NodeAccess.parameterTypes(n)` | The list of parameter types |
+| `NodeAccess.parameterAt(n, i)` | One parameter from the parameter list |
 | `NodeAccess.type(n)` | The type declared by the node |
 | `NodeAccess.exception(n)` | The exception carried by the node |
 | `NodeAccess.exceptionName(n)` | The exception name |
@@ -295,19 +298,55 @@ The predicate of a rule can access the current node and its type:
 | Facade | Corresponding DSL form | Purpose |
 | --- | --- | --- |
 | `Matchers.match(node) { ... }` | `node match { ... }` | The predicate applies to the node itself |
-| `Matchers.contain(node) { ... }` | `node contain { ... }` | A descendant at any depth satisfies the predicate |
+| `Matchers.contain(node) { ... }` | `node contain { ... }` | A **direct child** satisfies the predicate |
 | `Matchers.ancestor(node) { ... }` | `node ancestor { ... }` | An ancestor satisfies the predicate |
 
 The predicates of `contain` and `ancestor` receive **the node being inspected** as their argument, so
-`contain { simpleName == "ReturnStmt" }` means "there is a return statement somewhere below".
+`contain { simpleName == "ReturnStmt" }` means "one of my immediate statements is a return".
+
+#### What `contain` means
+
+`contain` looks at the node's **direct children**, and at nothing else. Three things follow, and
+each of them is load-bearing:
+
+- **A node does not contain itself.** A catch clause does not contain a catch clause.
+- **A node does not contain a grandchild.** A catch clause contains its statements, not the
+  expressions inside them. A method contains its statements, not the calls inside them.
+- **Each level of nesting is one level down.** `contain { contain { ... } }` reaches a grandchild,
+  and `contain { contain { contain { ... } } }` reaches a great-grandchild.
+
+This is the upstream's semantics. The upstream's `contain` is:
+
+```kotlin
+infix fun Node.contain(block: Node.() -> Boolean): Boolean {
+    if (this is NodeWithBlockStmt<*>) {
+        this.body.statements.forEach {
+            if (block(it)) { return true }
+        }
+    }
+    return false
+}
+```
+
+It iterates the statements of the node's own body, and it never looks further down. A subtree
+search would fire on rules the upstream never fires, which is a different language from the one the
+rule files were written against.
+
+> **One deliberate difference.** The upstream's `contain` applies only to a `NodeWithBlockStmt`,
+> which in JavaParser is a catch clause and a constructor -- so upstream's `contain` finds nothing in
+> a method body or in a block. The Plumb engine keeps the direct-children rule and widens the set of
+> nodes that *have* a body, because "does this method contain a call?" is a question the language
+> ought to answer, and nothing in the upstream's own rule files depends on the narrow reading.
 
 ### 4.7 Multi-level matching
 
-`contain` can be nested, so a single rule can express "a call whose parameter type is X inside some method":
+`contain` can be nested, so a single rule can express "a call whose parameter type is X inside some
+method". Each level of nesting is one level down, and the inner block needs no receiver of its own
+-- it reads the node the enclosing `contain` is looking at:
 
 ```
 MethodDeclaration method: method contain {
-  MethodCallExpr call: call.name == "getPassword"
+  contain { simpleName == "MethodCallExpr" }
 }
 ```
 
@@ -392,7 +431,88 @@ immediately. Strict mode suits CI -- a rule with a mistake should not be skipped
 
 ---
 
-## 7. Modules and dependencies
+## 7. The example corpus
+
+The matcher language's examples live in the repository, as a **corpus that is executed**:
+
+```
+plumb-dsl-kotlin/src/test/resources/testcase/
+  ├── examples.yaml    the examples
+  └── Fixture.java     the code they run against
+```
+
+`examples.yaml` holds one entry per example:
+
+```yaml
+  - name: empty-catch-block
+    nodeType: CatchClause
+    matcher: |
+      CatchClause catchClause: catchClause match { empty }
+    expect: 2
+    shows: "The minimal matcher. The header names the node type and the binding; the body is the predicate."
+```
+
+`expect` is how many nodes of `nodeType` the matcher must match in `Fixture.java`. A count of **zero**
+is a legitimate expectation: a rule that must *not* fire is as much a part of the language's contract
+as one that must.
+
+`DslExampleCorpusTest` runs every example and checks the count. So the corpus is self-verifying in
+both directions: an example that stops compiling fails the build, and an example whose count drifts
+fails the build.
+
+**And the corpus cannot shrink.** A deleted example is indistinguishable from a construct the engine
+no longer supports, so `scripts/check_dsl_corpus.py` pins the corpus's size and checks that every
+entry of the rewriter's vocabulary tables -- the node properties, the wrapper properties, the list
+methods, the infix operators, the structural matchers -- is exercised by at least one example. A new
+property that no example uses is a gap in the corpus, and the gate says so.
+
+The gate is mutation-tested: `scripts/mutate_dsl_corpus.py` removes an example, removes a
+description and adds an unused property to the source, and every one of those drifts must make the
+gate fail.
+
+**And the semantics are mutation-tested too.** A change to the engine's *behaviour* -- `contain`
+becoming a subtree search again -- leaves the corpus file untouched, so the Python gate cannot see
+it. The mutation script knows this, so it has two kinds of mutant: the three above, which the gate
+must catch, and one that changes the engine, which the **Kotlin tests** must catch. That mutant
+replaces the whole `directChildren` body, because replacing only its fallback would affect only the
+nodes that have no block body -- and the mutant would survive for the wrong reason.
+
+### 7.1 The properties that changed
+
+Writing the corpus found seven places where the engine's behaviour did not match what a rule author
+would expect:
+
+- **`enclosingClass` returned a declaration, not a name.** So `enclosingClass == "com.example.Foo"`
+  was a compile error -- "Operator '==' cannot be applied to 'ClassOrInterfaceDeclaration?' and
+  'String'". It returns the qualified name now, which is the same shape as the wrapper's
+  `enclosingClass`, and the declaration is available separately as `enclosingClassDeclaration`.
+- **`contains` on a string did not compile.** The operator resolved to the collection version, so a
+  string receiver was a type error. The operator is now resolved on the receiver's type: a string is
+  a substring test, and a collection is an **exact** membership test -- the upstream's semantics.
+  The collection case stays exact on purpose: a substring test would make `supers contain
+  "java.lang.String"` match a `java.lang.Comparable<java.lang.String>` in the ancestor list.
+- **`contain` searched the whole subtree.** It is the upstream's *direct children* -- and a subtree
+  search finds everything a direct-children search finds, and more, so it fired on rules the
+  upstream never fires. It also included the node itself, because JavaParser's `findAll` includes
+  the receiver: every node "contained" itself. See [§4.6](#46-structural-matchers).
+- **`qualifiedName` had drifted from the upstream.** The upstream's `qualifiedName` is
+  `javaClass.name` -- the node's *class* name, the same string for every method in every file. The
+  engine had been changed to return the node's own name instead, which broke any rule written
+  against the upstream. `qualifiedName` is the upstream's meaning again, and the node's own name is
+  the new property `ownQualifiedName`.
+- **`parameters[0].name` did not compile.** The rewriter assumed every indexed list held types, so
+  `parameters[0]` was rewritten as a resolved type and the property read off it was a type's. The
+  two lists hold different things -- `parameterTypes` holds types, `parameters` holds parameters --
+  so the rewriter now asks which list it is indexing.
+- **A nested matcher with its own header did not compile.** `contain { MethodCallExpr call: ... }`
+  has a second binding, and the rewriter had one binding per rule. The nested block reads the node
+  the enclosing `contain` is looking at, so it needs no binding of its own.
+- **A structural matcher with no receiver of its own was rewritten wrongly.** The pass consumed the
+  *enclosing* expression as the receiver, so `contain { contain { ... } }` produced nonsense.
+
+---
+
+## 8. Modules and dependencies
 
 ```
 plumb-dsl-kotlin
@@ -416,7 +536,7 @@ bytecode (1.9.22 is incomplete, 2.1.0 throws `IllegalArgumentException: 25.0.1` 
 
 ---
 
-## 8. Related documentation
+## 9. Related documentation
 
 | Document | Content |
 | --- | --- |
