@@ -8,6 +8,7 @@ import java.util.List;
 import javax.tools.JavaCompiler;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -41,11 +42,10 @@ class CaptureAgentE2EIT {
     Files.createDirectories(captures);
 
     Path javac = findJavac();
-    if (javac == null) {
-      // No javac executable on this host -- the API path below still
-      // exercises the agent, so this is a partial skip, not a full one.
-      return;
-    }
+    // A missing javac is a skip, not a pass.  Returning quietly would leave a
+    // test that asserts nothing -- and a test that asserts nothing is
+    // indistinguishable from a test that passes.
+    Assumptions.assumeTrue(javac != null, "no javac executable on this host");
 
     ProcessBuilder pb =
         new ProcessBuilder(
@@ -150,9 +150,7 @@ class CaptureAgentE2EIT {
     Files.createDirectories(captures);
 
     Path javac = findJavac();
-    if (javac == null) {
-      return;
-    }
+    Assumptions.assumeTrue(javac != null, "no javac executable on this host");
 
     ProcessBuilder pb =
         new ProcessBuilder(
@@ -198,7 +196,9 @@ class CaptureAgentE2EIT {
     assertThat(classes.resolve("Ok.class")).exists();
   }
 
-  /** Locate the JDK's {@code javac} executable, or {@code null}. */
+  /**
+   * Locate the JDK's {@code javac} executable, or {@code null}.
+   */
   private static Path findJavac() {
     String javaHome = System.getProperty("java.home");
     if (javaHome == null) {

@@ -261,6 +261,69 @@ for p in sorted(CAPTURE.glob("*.java")):
             )
 note("no capture source imports raw ASM")
 
+# ------------------------------------------------- 8. the Gradle classpath source
+# The document claims the Gradle classpath comes from the compiler hook and
+# NOT from a Gradle-specific compile-spec hook.  That claim is a measurement
+# (the compile spec never loads in the JVM that holds the agent), so it has
+# to be checked against the source: a Gradle-specific hook would be dead code
+# that the document says does not exist.
+gradle_hook_src = sources.get("GradleHooks", "")
+if not gradle_hook_src:
+    failures.append("the capture module has no GradleHooks class")
+else:
+    # The compile spec class name, or the constant that holds it, must not
+    # appear.  Both spellings are checked, because the hook could be written
+    # against either.
+    for forbidden in ("DefaultJvmLanguageCompileSpec", "setCompileClasspath"):
+        if forbidden in gradle_hook_src:
+            failures.append(
+                "GradleHooks mentions %s: that hook never fires (the compile "
+                "spec does not load in the JVM that holds the agent), and a "
+                "second copy of a compile would break one-record-per-compile"
+                % forbidden
+            )
+    if not any(
+        forbidden in gradle_hook_src
+        for forbidden in ("DefaultJvmLanguageCompileSpec", "setCompileClasspath")
+    ):
+        note("GradleHooks does not hook a Gradle compile spec")
+
+# The classes that the removed design needed must be gone.  Their presence
+# would mean a second, worse copy of a compile the compiler hook already
+# recorded exactly.
+for gone in ("GradleClasspathCapture", "GradleCompile"):
+    if gone in sources:
+        failures.append(
+            "the capture module still has %s: the Gradle classpath comes from "
+            "the compiler hook, not from a Gradle-specific capture" % gone
+        )
+note("no Gradle-specific capture class remains")
+
+# ------------------------------------------------- 9. the agent's own arguments
+# The document claims the agent's arguments are the channel that reaches
+# Gradle's JVM.  That claim only holds if the agent really applies them.
+agent_src = sources.get("CaptureAgent", "")
+# The call site, not the declaration: removing the declaration would leave
+# the name behind, and the gate would pass on dead code.
+if "applyAgentArguments(agentArgs);" not in agent_src:
+    failures.append(
+        "CaptureAgent does not apply its own arguments: they are the only "
+        "configuration channel that reaches Gradle's JVM"
+    )
+else:
+    note("CaptureAgent applies its own arguments")
+
+# The document must state the channel, because a reader who sets the property
+# the obvious way -- inside org.gradle.jvmargs -- gets a silently inert
+# capture.
+if "-javaagent:jar=key=value" not in doc and "key=value" not in doc:
+    failures.append(
+        "the document no longer explains that the agent's own arguments are the "
+        "channel that reaches Gradle's JVM"
+    )
+else:
+    note("the document explains the agent-argument channel")
+
 print()
 if failures:
     print("FAIL: %d defect(s) in the capture section of docs/tech/ARCHITECTURE.md"

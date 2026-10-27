@@ -91,7 +91,7 @@ public final class CaptureAgent {
    * @param inst the instrumentation interface
    */
   public static void premain(String agentArgs, Instrumentation inst) {
-    install(inst);
+    install(inst, agentArgs);
   }
 
   /**
@@ -101,11 +101,27 @@ public final class CaptureAgent {
    * @param inst the instrumentation interface
    */
   public static void agentmain(String agentArgs, Instrumentation inst) {
-    install(inst);
+    install(inst, agentArgs);
   }
 
-  /** Install the instrumentation. */
+  /**
+   * Install the instrumentation.
+   *
+   * @param inst the instrumentation interface
+   * @param agentArgs the agent's own arguments, or {@code null}
+   */
   public static void install(Instrumentation inst) {
+    install(inst, null);
+  }
+
+  /**
+   * Install the instrumentation.
+   *
+   * @param inst the instrumentation interface
+   * @param agentArgs the agent's own arguments, or {@code null}
+   */
+  public static void install(Instrumentation inst, String agentArgs) {
+    applyAgentArguments(agentArgs);
     CaptureSink.get().configureFromEnvironment();
     injectRecorder(inst);
     LOG.info("Capture: installing agent");
@@ -116,6 +132,43 @@ public final class CaptureAgent {
       LOG.info(
           "Capture: Gradle hooks installed (build cache and daemon disabled), so the "
               + "compile happens in this JVM");
+    }
+  }
+
+  /**
+   * Apply the agent's own arguments as system properties.
+   *
+   * <p><b>Why the agent needs its own arguments.</b> Gradle does not forward system properties to
+   * the JVM it builds in. Measured on Gradle 9.2.0: {@code org.gradle.jvmargs} keeps the {@code
+   * -javaagent} and drops every {@code -D}; {@code systemProp.} in {@code gradle.properties} does
+   * not reach the forked daemon either. So a system property is not a way to configure the agent
+   * inside Gradle.
+   *
+   * <p>The agent's own arguments are. {@code -javaagent:jar=key=value,key2=value2} hands them to
+   * {@code premain}, and {@code -javaagent} is the one JVM argument Gradle does forward. So the
+   * agent's arguments become system properties, which makes the agent configurable inside Gradle
+   * without a system property ever being set.
+   *
+   * @param agentArgs the agent's arguments, or {@code null}
+   */
+  static void applyAgentArguments(String agentArgs) {
+    if (agentArgs == null || agentArgs.isBlank()) {
+      return;
+    }
+    for (String pair : agentArgs.split(",")) {
+      int equals = pair.indexOf('=');
+      if (equals <= 0) {
+        continue;
+      }
+      String key = pair.substring(0, equals).trim();
+      String value = pair.substring(equals + 1).trim();
+      if (key.isEmpty()) {
+        continue;
+      }
+      if (System.getProperty(key) == null) {
+        // An explicit system property still wins: it was set deliberately.
+        System.setProperty(key, value);
+      }
     }
   }
 

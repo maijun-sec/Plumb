@@ -24,10 +24,20 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 DOC = REPO / "docs" / "tech" / "ARCHITECTURE.md"
 CAPTURE = REPO / "plumb-build" / "plumb-build-capture" / "src" / "main" / "java" / "org" / "plumb" / "build" / "capture"
 EP = CAPTURE / "CompilerEntryPoints.java"
+GRADLE_HOOKS = CAPTURE / "GradleHooks.java"
+CAPTURE_AGENT = CAPTURE / "CaptureAgent.java"
 GATE = REPO / "scripts" / "check_capture_claims.py"
 
 original_doc = DOC.read_text(encoding="utf-8", errors="replace")
 original_ep = EP.read_text(encoding="utf-8", errors="replace")
+original_gradle_hooks = GRADLE_HOOKS.read_text(encoding="utf-8", errors="replace")
+original_capture_agent = CAPTURE_AGENT.read_text(encoding="utf-8", errors="replace")
+
+
+def restore_sources():
+    EP.write_text(original_ep, encoding="utf-8")
+    GRADLE_HOOKS.write_text(original_gradle_hooks, encoding="utf-8")
+    CAPTURE_AGENT.write_text(original_capture_agent, encoding="utf-8")
 
 
 def run_gate():
@@ -90,6 +100,28 @@ MUTANTS = [
             "EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC));",
         ),
     ),
+    (
+        "the Gradle hooks hook the compile spec again",
+        "gradle_hooks",
+        # The compile spec never loads in the JVM that holds the agent, so a
+        # hook on it is dead code that the document says does not exist.
+        lambda t: t.replace(
+            'private static final String DAEMON_PARAMETERS =',
+            'private static final String COMPILE_SPEC =\n'
+            '      "org.gradle.api.internal.tasks.compile.DefaultJvmLanguageCompileSpec";\n'
+            '  private static final String DAEMON_PARAMETERS =',
+        ),
+    ),
+    (
+        "the agent stops applying its own arguments",
+        "capture_agent",
+        lambda t: t.replace("applyAgentArguments(agentArgs);", "/* removed */"),
+    ),
+    (
+        "the document stops explaining the agent-argument channel",
+        "doc",
+        lambda t: t.replace("key=value", "the agent"),
+    ),
 ]
 
 survivors = []
@@ -98,9 +130,21 @@ try:
     for name, target, mutate in MUTANTS:
         if target == "doc":
             DOC.write_text(mutate(original_doc), encoding="utf-8")
-            EP.write_text(original_ep, encoding="utf-8")
-        else:
+            restore_sources()
+        elif target == "ep":
             EP.write_text(mutate(original_ep), encoding="utf-8")
+            GRADLE_HOOKS.write_text(original_gradle_hooks, encoding="utf-8")
+            CAPTURE_AGENT.write_text(original_capture_agent, encoding="utf-8")
+            DOC.write_text(original_doc, encoding="utf-8")
+        elif target == "gradle_hooks":
+            GRADLE_HOOKS.write_text(mutate(original_gradle_hooks), encoding="utf-8")
+            EP.write_text(original_ep, encoding="utf-8")
+            CAPTURE_AGENT.write_text(original_capture_agent, encoding="utf-8")
+            DOC.write_text(original_doc, encoding="utf-8")
+        else:  # capture_agent
+            CAPTURE_AGENT.write_text(mutate(original_capture_agent), encoding="utf-8")
+            EP.write_text(original_ep, encoding="utf-8")
+            GRADLE_HOOKS.write_text(original_gradle_hooks, encoding="utf-8")
             DOC.write_text(original_doc, encoding="utf-8")
 
         # A mutant that did not change anything proves nothing: it would be
@@ -108,8 +152,11 @@ try:
         # was never introduced.  The first version of this script had exactly
         # that bug -- the formatter had reflowed the line the mutant looked
         # for, so the replacement was a no-op and the gate was blamed.
-        changed = DOC.read_text(encoding="utf-8") != original_doc or (
-            EP.read_text(encoding="utf-8") != original_ep
+        changed = (
+            DOC.read_text(encoding="utf-8") != original_doc
+            or EP.read_text(encoding="utf-8") != original_ep
+            or GRADLE_HOOKS.read_text(encoding="utf-8") != original_gradle_hooks
+            or CAPTURE_AGENT.read_text(encoding="utf-8") != original_capture_agent
         )
         if not changed:
             no_ops.append(name)
@@ -129,7 +176,7 @@ try:
             print("killed    %s  (%s)" % (name, first))
 finally:
     DOC.write_text(original_doc, encoding="utf-8")
-    EP.write_text(original_ep, encoding="utf-8")
+    restore_sources()
 
 print()
 if no_ops:

@@ -49,6 +49,17 @@ LINT_PREFIXES = ("ast-style", "ast-naming", "ast-formatting", "ast-design",
                  "ast-bug", "ast-security", "ast-error")
 
 
+class ScanFailed(Exception):
+    """The scanner itself failed, so nothing was measured.
+
+    This is deliberately distinct from "the scan found nothing".  A failed
+    scan and a clean scan both produce an empty stdout, and only the exit
+    code tells them apart.  Reporting a failed scan as "zero findings" would
+    write a RESULT.json that says every rule stopped working -- a measurement
+    that is not a measurement at all.
+    """
+
+
 def _is_lint(finding: dict) -> bool:
     """Lint / style findings also carry the enclosing method in `sink_function`.
 
@@ -100,6 +111,32 @@ def run_scan(jar: Path, target: Path, per_file: bool, cg: str) -> list[dict]:
                 cmd, capture_output=True, text=True,
                 encoding="utf-8", errors="replace", cwd=REPO,
             )
+            # A failed scan must NOT look like a clean measurement.
+            #
+            # The failure mode is real and it is silent: the scanner is run as
+            # `java -jar <jar>`, and the jar is rebuilt in place by the shade
+            # plugin. A scan that starts while the jar is being replaced fails
+            # to start, prints nothing on stdout, and exits non-zero -- and
+            # without this check the harness would record ZERO findings and
+            # write "false-negative" for every case. The RESULT.json would then
+            # say the rules stopped working, when in fact nothing was measured.
+            #
+            # So: a non-zero exit is an error, and the harness refuses to
+            # write a RESULT.json at all.
+            if proc.returncode != 0:
+                raise ScanFailed(
+                    "the scanner failed on %s (exit %d)\n"
+                    "  command: %s\n"
+                    "  stdout: %s\n"
+                    "  stderr: %s"
+                    % (
+                        unit,
+                        proc.returncode,
+                        " ".join(cmd),
+                        proc.stdout.strip()[:2000],
+                        proc.stderr.strip()[:2000],
+                    )
+                )
             # The scanner reports the path it was given, not the original source
             # location. Rewrite it back so downstream matching against the
             # EXPECTATIONS manifest (which names real files) still works.
@@ -285,7 +322,19 @@ def main() -> int:
         )
         return 2
 
-    findings = run_scan(jar, src, args.per_file, args.cg)
+    try:
+        findings = run_scan(jar, src, args.per_file, args.cg)
+    except ScanFailed as e:
+        # A failed scan measures nothing, so nothing is written.  Writing a
+        # RESULT.json here would overwrite a good measurement with a claim
+        # that every rule stopped working.
+        print(f"ERROR: the scan did not run: {e}", file=sys.stderr)
+        print(
+            "       No RESULT.json was written.  If the jar was being "
+            "rebuilt, wait for the build to finish and run again.",
+            file=sys.stderr,
+        )
+        return 3
 
     if args.keep_raw or args.out:
         raw = Path(args.out) if args.out else cat / "_raw.ndjson"

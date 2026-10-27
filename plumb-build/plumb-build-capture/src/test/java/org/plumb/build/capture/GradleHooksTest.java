@@ -33,6 +33,36 @@ class GradleHooksTest {
     }
   }
 
+  /**
+   * The environment variable is the channel that reaches Gradle's JVM.
+   *
+   * <p>Measured on Gradle 9.2.0: {@code org.gradle.jvmargs} forwards the {@code -javaagent} and
+   * drops every {@code -D}, so a property set that way never arrives. The environment, on the other
+   * hand, is inherited by the JVM Gradle builds in.
+   *
+   * <p>The test cannot set an environment variable for the current process, so it checks the
+   * constant and the fallback logic instead: the property wins when it is set, and the environment
+   * is consulted when it is not.
+   */
+  @Test
+  void theEnvironmentVariableIsASecondChannel() {
+    assertThat(GradleHooks.ENV_DISABLE_DAEMON).isEqualTo("PLUMB_CAPTURE_GRADLE_HOOKS");
+
+    // The environment variable is not set in this JVM, so with no property
+    // the hooks stay off -- the property is what the test above turns on.
+    String previous = System.getProperty(GradleHooks.PROP_DISABLE_DAEMON);
+    System.clearProperty(GradleHooks.PROP_DISABLE_DAEMON);
+    try {
+      assertThat(GradleHooks.enabled())
+          .as("with neither channel set, the hooks stay off")
+          .isEqualTo(Boolean.parseBoolean(System.getenv(GradleHooks.ENV_DISABLE_DAEMON)));
+    } finally {
+      if (previous != null) {
+        System.setProperty(GradleHooks.PROP_DISABLE_DAEMON, previous);
+      }
+    }
+  }
+
   @Test
   void theHooksTargetTheGradleConfigurationApi() {
     // The classes Coverity hooks in its common-capture.properties.
