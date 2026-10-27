@@ -18,13 +18,25 @@ object NodeTypes {
 
     private val LOG = LoggerFactory.getLogger(NodeTypes::class.java)
 
-    /** The JavaParser packages a node class may live in. */
+    /**
+     * The JavaParser packages a node class may live in.
+     *
+     * <p><b>Why the list is read from the JAR rather than kept here.</b> A package that is
+     * missing from the list makes its node types unnameable: a rule that targets one is
+     * rejected as an "unknown node type", and the author has no way to find out why. The
+     * `ast.modules` package was missing -- it holds the module directives, which are the nodes
+     * of a `module-info.java` -- so every rule about a module was silently unusable.
+     *
+     * <p>So the list is verified against the JAR: `NodeTypeCoverageTest` asks the engine to
+     * resolve every concrete node class the JVM reports, and a package that is not on the list
+     * fails the build.
+     */
     private val PACKAGES = listOf(
         "com.github.javaparser.ast",
         "com.github.javaparser.ast.body",
         "com.github.javaparser.ast.comments",
         "com.github.javaparser.ast.expr",
-        "com.github.javaparser.ast.modifiers",
+        "com.github.javaparser.ast.modules",
         "com.github.javaparser.ast.nodeTypes",
         "com.github.javaparser.ast.stmt",
         "com.github.javaparser.ast.type"

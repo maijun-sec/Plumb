@@ -438,7 +438,9 @@ The matcher language's examples live in the repository, as a **corpus that is ex
 ```
 plumb-dsl-kotlin/src/test/resources/testcase/
   ├── examples.yaml    the examples
-  └── Fixture.java     the code they run against
+  ├── Fixture.java     the code they run against
+  ├── module-info.java the module directives
+  └── Unparsable.java  the code that does not parse
 ```
 
 `examples.yaml` holds one entry per example:
@@ -452,7 +454,7 @@ plumb-dsl-kotlin/src/test/resources/testcase/
     shows: "The minimal matcher. The header names the node type and the binding; the body is the predicate."
 ```
 
-`expect` is how many nodes of `nodeType` the matcher must match in `Fixture.java`. A count of **zero**
+`expect` is how many nodes of `nodeType` the matcher must match in the fixtures. A count of **zero**
 is a legitimate expectation: a rule that must *not* fire is as much a part of the language's contract
 as one that must.
 
@@ -460,19 +462,70 @@ as one that must.
 both directions: an example that stops compiling fails the build, and an example whose count drifts
 fails the build.
 
-**And the corpus cannot shrink.** A deleted example is indistinguishable from a construct the engine
-no longer supports, so `scripts/check_dsl_corpus.py` pins the corpus's size and checks that every
-entry of the rewriter's vocabulary tables -- the node properties, the wrapper properties, the list
-methods, the infix operators, the structural matchers -- is exercised by at least one example. A new
-property that no example uses is a gap in the corpus, and the gate says so.
+### 7.1 The corpus shows the whole vocabulary
+
+The corpus holds **155 examples** covering **100 node types** -- every concrete node type a rule
+can name.
+
+That is not decoration. A rule names a node type, and the corpus is where a reader learns what the
+language can name. A node type with no example is a node type the corpus does not show, and the
+gap is invisible: the corpus stays green, the engine keeps working, and nobody notices that part of
+the vocabulary has no example.
+
+So `scripts/check_dsl_corpus.py` pins **two** things: the number of examples, and the number of
+*distinct node types* the corpus demonstrates. Deleting every example of one node type -- and adding
+another example back, so the count stays right -- is caught by the node-type check alone.
+
+**The one node type with no example.** `RecordPatternExpr` needs a record deconstruction pattern,
+which is Java 21. The fixtures are read at **JAVA 17**, the level the engine parses at, so no
+fixture produces the node. It is named in the gate rather than quietly left out, because a gap with
+a reason is a decision and a gap without one is a bug.
+
+### 7.2 The language level is stated once
+
+The fixtures are read at `ParserConfiguration.LanguageLevel.JAVA_17` -- the level `JavaSourceParser`
+parses with everywhere else. This is stated in one place, `TestParsers`, and every test uses it.
+
+The reason it matters: **JavaParser does not fail loudly on a construct it cannot parse at the
+configured level.** It parses the file *partially*, and the parts that failed are simply missing
+from the tree. The symptom is a set of rules that quietly stop matching -- a comment rule that
+matches nothing, a type rule that matches nothing -- with no error anywhere.
+
+That is exactly what happened here. The fixture grew constructs from Java 12 through Java 17 --
+records, text blocks, switch expressions, `yield`, `instanceof` patterns -- and the corpus's comment
+and type examples all went to zero, because the fixture was parsed at JavaParser's *default* level
+and the tree was incomplete. One test file that read the fixture at the right level while the rest
+did not would have produced a corpus that disagreed with itself.
+
+### 7.3 The comments are collected separately
+
+JavaParser keeps most comments **out of the tree**: a node's comment is an attribute, not a child.
+On the corpus fixture, `findAll(Node.class)` visits 17 of the 59 comments; the rest are reachable
+only through `getAllContainedComments()`.
+
+So a rule that targets a comment has to be given the comments explicitly -- and the ones the tree
+walk already found have to be removed, or the rule would count them twice.
+
+**And the check reads the other way round.** "Does this rule want comments?" is asked as
+`Comment::class.java.isAssignableFrom(target)` -- is the target a comment type, or a supertype of
+one. The other way round, `target.isAssignableFrom(Comment)`, is true only for `Comment` itself, so
+a rule that named `LineComment` would silently lose the comments that are not in the tree.
+
+### 7.4 The corpus cannot shrink
+
+A deleted example is indistinguishable from a construct the engine no longer supports, so
+`scripts/check_dsl_corpus.py` pins the corpus's size and checks that every entry of the rewriter's
+vocabulary tables -- the node properties, the wrapper properties, the list methods, the infix
+operators, the structural matchers -- is exercised by at least one example. A new property that no
+example uses is a gap in the corpus, and the gate says so.
 
 The gate is mutation-tested: `scripts/mutate_dsl_corpus.py` removes an example, removes a
-description and adds an unused property to the source, and every one of those drifts must make the
-gate fail.
+description, adds an unused property to the source, and removes every example of one node type
+while adding another back. Every one of those drifts must make the gate fail.
 
 **And the semantics are mutation-tested too.** A change to the engine's *behaviour* -- `contain`
 becoming a subtree search again -- leaves the corpus file untouched, so the Python gate cannot see
-it. The mutation script knows this, so it has two kinds of mutant: the three above, which the gate
+it. The mutation script knows this, so it has two kinds of mutant: the four above, which the gate
 must catch, and one that changes the engine, which the **Kotlin tests** must catch. That mutant
 replaces the whole `directChildren` body, because replacing only its fallback would affect only the
 nodes that have no block body -- and the mutant would survive for the wrong reason.
@@ -509,6 +562,15 @@ would expect:
   the enclosing `contain` is looking at, so it needs no binding of its own.
 - **A structural matcher with no receiver of its own was rewritten wrongly.** The pass consumed the
   *enclosing* expression as the receiver, so `contain { contain { ... } }` produced nonsense.
+- **The "does this rule want comments?" check read the wrong way round.** It asked
+  `target.isAssignableFrom(Comment)`, which is true only for `Comment` itself -- so a rule that
+  named `LineComment` or `JavadocComment` silently lost the comments that JavaParser keeps out of
+  the tree, and fired on only the handful the tree walk happened to reach. The check asks
+  `Comment::class.java.isAssignableFrom(target)` now, which is the question it meant to ask. See
+  [§7.3](#73-the-comments-are-collected-separately).
+- **A comment could be counted twice.** The tree walk reaches some comments and
+  `getAllContainedComments()` reaches all of them, so adding the second list to the first counted
+  the overlap twice. The overlap is now removed.
 
 ---
 

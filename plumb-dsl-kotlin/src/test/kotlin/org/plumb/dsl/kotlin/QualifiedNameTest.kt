@@ -1,11 +1,8 @@
 ﻿package org.plumb.dsl.kotlin
 
 import com.github.javaparser.JavaParser
-import com.github.javaparser.ParserConfiguration
 import com.github.javaparser.ast.CompilationUnit
 import com.github.javaparser.ast.body.MethodDeclaration
-import com.github.javaparser.symbolsolver.JavaSymbolSolver
-import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.TestInstance
@@ -38,12 +35,7 @@ class QualifiedNameTest {
 
     @BeforeAll
     fun parse() {
-        val config = ParserConfiguration()
-            .setSymbolResolver(JavaSymbolSolver(ReflectionTypeSolver()))
-            .setAttributeComments(true)
-        unit = JavaParser(config)
-            .parse(Paths.get("src/test/resources/testcase/Fixture.java").toFile())
-            .result.get()
+        unit = TestParsers.parse(Paths.get("src/test/resources/testcase/Fixture.java").toFile())
     }
 
     private fun aMethod(): MethodDeclaration =

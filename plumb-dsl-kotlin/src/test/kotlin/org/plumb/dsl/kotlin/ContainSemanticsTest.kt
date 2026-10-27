@@ -1,14 +1,11 @@
 ﻿package org.plumb.dsl.kotlin
 
 import com.github.javaparser.JavaParser
-import com.github.javaparser.ParserConfiguration
 import com.github.javaparser.ast.CompilationUnit
 import com.github.javaparser.ast.Node
 import com.github.javaparser.ast.body.MethodDeclaration
 import com.github.javaparser.ast.comments.Comment
 import com.github.javaparser.ast.stmt.CatchClause
-import com.github.javaparser.symbolsolver.JavaSymbolSolver
-import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.TestInstance
@@ -56,10 +53,7 @@ class ContainSemanticsTest {
 
     @BeforeAll
     fun parse() {
-        val config = ParserConfiguration()
-            .setSymbolResolver(JavaSymbolSolver(ReflectionTypeSolver()))
-            .setAttributeComments(true)
-        unit = JavaParser(config).parse(fixture.toFile()).result.get()
+        unit = TestParsers.parse(fixture.toFile())
     }
 
     /** The nodes of the given type the matcher matches. */

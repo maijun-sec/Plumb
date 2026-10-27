@@ -182,6 +182,54 @@ def turn_contain_into_a_subtree_search(text):
     return text.replace(old, new, 1)
 
 
+def drop_every_example_of_one_node_type(text):
+    """Remove every example of one node type, and add one example back.
+
+    <p>The corpus is where a reader learns what the language can name. An
+    example deleted here is a node type the corpus no longer shows -- and
+    nothing else notices: the matcher language is untouched, so the vocabulary
+    check stays green.
+
+    <p><b>Why an example is added back.</b> The gate also pins the NUMBER of
+    examples, so deleting one example alone would be caught by the count and
+    the mutant would not show that the node-type check works. Adding one back
+    keeps the count right, so the ONLY thing wrong with the corpus is the
+    missing node type -- and that is what the gate has to notice.
+    """
+    lines = text.split("\n")
+    starts = [i for i, line in enumerate(lines) if re.match(r"^  - name:", line)]
+    if len(starts) < 2:
+        return text
+    # The LAST example is one of the node-type examples.
+    last = starts[-1]
+    end = len(lines)
+    for index in range(last + 1, len(lines)):
+        if re.match(r"^  - name:", lines[index]):
+            end = index
+            break
+    removed = lines[last:end]
+    # The node type the removed example demonstrated.
+    type_match = None
+    for line in removed:
+        found = re.match(r"^    nodeType: (\S+)", line)
+        if found:
+            type_match = found.group(1)
+            break
+    if type_match is None:
+        return text
+    replacement = [
+        "  - name: a-replacement-example",
+        "    nodeType: CatchClause",
+        "    matcher: |",
+        "      CatchClause catchClause: catchClause match { simpleName == \"CatchClause\" }",
+        "    expect: 0",
+        '    shows: "A replacement, so the number of examples stays the same."',
+        "",
+    ]
+    out = lines[:last] + replacement + lines[end:]
+    return "\n".join(out)
+
+
 # The mutants the PYTHON GATE must catch.
 GATE_MUTANTS = [
     (
@@ -198,6 +246,11 @@ GATE_MUTANTS = [
         "the source gains a property no example uses",
         "source",
         add_a_property_to_the_source,
+    ),
+    (
+        "every example of one node type is removed",
+        "corpus",
+        drop_every_example_of_one_node_type,
     ),
 ]
 

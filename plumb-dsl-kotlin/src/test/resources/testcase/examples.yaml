@@ -31,21 +31,21 @@ examples:
     nodeType: CatchClause
     matcher: |
       CatchClause catchClause: catchClause match { !empty }
-    expect: 2
-    shows: "A negation. The `!` is the upstream's `not`, and the operand is parenthesised. Two of the four catches have a body."
+    expect: 3
+    shows: "A negation. The `!` is the upstream's `not`, and the operand is parenthesised. Three of the fixture's five catches have a body."
 
   - name: catch-with-a-statement-by-not
     nodeType: CatchClause
     matcher: |
       CatchClause catchClause: catchClause match { not empty }
-    expect: 2
+    expect: 3
     shows: "The same negation, written the upstream's way. The rewriter turns the prefix `not` into `!` and parenthesises the operand."
 
   - name: catch-that-is-not-empty-by-not
     nodeType: CatchClause
     matcher: |
       CatchClause catchClause: catchClause match { not (empty) }
-    expect: 2
+    expect: 3
     shows: "A `not` whose operand is already parenthesised. The rewriter keeps the author's parentheses, so the operand is still the whole expression."
 
   # ---- the structural matchers -------------------------------------------
@@ -67,8 +67,8 @@ examples:
     nodeType: MethodDeclaration
     matcher: |
       MethodDeclaration md: md contain { simpleName == "ExpressionStmt" }
-    expect: 5
-    shows: "`contain` on a method declaration finds its direct children -- and a method's direct children are its STATEMENTS. Five of the fixture's methods have a statement."
+    expect: 15
+    shows: "`contain` on a method declaration finds its direct children -- and a method's direct children are its STATEMENTS. Fifteen of the fixture's methods have a statement."
 
   - name: method-containing-a-call
     nodeType: MethodDeclaration
@@ -81,14 +81,14 @@ examples:
     nodeType: CatchClause
     matcher: |
       CatchClause catchClause: catchClause ancestor { simpleName == "MethodDeclaration" }
-    expect: 4
+    expect: 5
     shows: "`ancestor` walks upwards instead of downwards."
 
   - name: catch-with-an-ancestor-class
     nodeType: CatchClause
     matcher: |
       CatchClause catchClause: catchClause ancestor { simpleName == "ClassOrInterfaceDeclaration" }
-    expect: 4
+    expect: 5
     shows: "The same matcher, one level further up. Every catch in the fixture is inside the class."
 
   - name: catch-containing-a-catch
@@ -131,8 +131,8 @@ examples:
     nodeType: MethodDeclaration
     matcher: |
       MethodDeclaration md: md match { enclosingClass == "com.example.dsl.Fixture" }
-    expect: 9
-    shows: "The class a method is declared in. Every method in the fixture is in it."
+    expect: 32
+    shows: "The class a method is declared in. Every method in the fixtures is in it."
 
   - name: method-in-a-class-that-does-not-exist
     nodeType: MethodDeclaration
@@ -145,7 +145,7 @@ examples:
     nodeType: MethodDeclaration
     matcher: |
       MethodDeclaration md: md match { qualifiedName == "com.github.javaparser.ast.body.MethodDeclaration" }
-    expect: 9
+    expect: 33
     shows: "The upstream's `qualifiedName`, which is the node's CLASS name -- the fully qualified name of the JavaParser class. It is the node's shape, so every method in every file shares it."
 
   - name: method-whose-own-qualified-name-is-known
@@ -173,8 +173,8 @@ examples:
     nodeType: MethodDeclaration
     matcher: |
       MethodDeclaration md: md match { parameterTypes.size == 1 }
-    expect: 2
-    shows: "A list's size, written the upstream's way, as `parameterTypes.size`. The fixture has two one-parameter methods: `oneParameter` and `main`."
+    expect: 11
+    shows: "A list's size, written the upstream's way, as `parameterTypes.size`. The fixture has eleven one-parameter methods."
 
   - name: method-with-a-list-parameter
     nodeType: MethodDeclaration
@@ -187,14 +187,14 @@ examples:
     nodeType: MethodDeclaration
     matcher: |
       MethodDeclaration md: md match { parameterTypes.size == 0 }
-    expect: 7
+    expect: 21
     shows: "The same list, a different count. The list is a real list, so its size can be compared."
 
   - name: method-with-a-parameter-list
     nodeType: MethodDeclaration
     matcher: |
       MethodDeclaration md: md match { parameters.size == 1 }
-    expect: 2
+    expect: 11
     shows: "The parameter LIST rather than the parameter types. The two agree in count here, but they are different lists."
 
   - name: method-whose-parameter-is-named
@@ -209,14 +209,14 @@ examples:
     matcher: |
       CatchClause catchClause: catchClause match { enclosingFunction.methodName == "catches" }
     expect: 3
-    shows: "A chain off the enclosing function. Three of the four catches are inside `catches`."
+    shows: "A chain off the enclosing function. Three of the fixture's five catches are inside `catches`."
 
   - name: method-with-a-simple-name
     nodeType: MethodDeclaration
     matcher: |
       MethodDeclaration md: md match { simpleName == "MethodDeclaration" }
-    expect: 9
-    shows: "The node's SHAPE -- the JavaParser class's simple name. Every method in the fixture has this shape."
+    expect: 33
+    shows: "The node's SHAPE -- the JavaParser class's simple name. Every method in the fixtures has this shape."
 
   # ---- the call sites ----------------------------------------------------
   - name: call-to-print-stack-trace
@@ -243,7 +243,7 @@ examples:
   - name: call-declared-by-a-class-that-does-not-declare-it
     nodeType: MethodCallExpr
     matcher: |
-      MethodCallExpr mce: mce match { method.enclosingClass == "java.lang.String" }
+      MethodCallExpr mce: mce match { method.enclosingClass == "java.util.UUID" }
     expect: 0
     shows: "The same property, a class that does not declare the called method."
 
@@ -288,8 +288,8 @@ examples:
     nodeType: CatchClause
     matcher: |
       CatchClause catchClause: catchClause match { exception.name == "e" }
-    expect: 4
-    shows: "The caught exception's PARAMETER NAME. All four catches in the fixture name it `e`."
+    expect: 5
+    shows: "The caught exception's PARAMETER NAME. All five catches in the fixture name it `e`."
 
   - name: catch-with-a-different-exception-parameter-name
     nodeType: CatchClause
@@ -310,7 +310,7 @@ examples:
     nodeType: FieldDeclaration
     matcher: |
       FieldDeclaration fd: fd match { !static }
-    expect: 2
+    expect: 5
     shows: "A negated node property."
 
   - name: field-of-a-named-type
@@ -436,7 +436,7 @@ examples:
     nodeType: MethodCallExpr
     matcher: |
       MethodCallExpr mce: mce match {
-          (method.name == "printStackTrace") || (method.enclosingClass == "java.lang.String")
+          (method.name == "printStackTrace") || (method.enclosingClass == "java.util.UUID")
       }
     expect: 1
     shows: "Kotlin's `||`. The first branch already matches the only printStackTrace call, so the second branch adds nothing."
@@ -447,7 +447,7 @@ examples:
       MethodDeclaration md: md contain {
           contain { simpleName == "MethodCallExpr" }
       }
-    expect: 5
+    expect: 10
     shows: "Multi-level matching. A `contain` inside a `contain`: a method whose direct child is a statement, and that statement's direct child is a call. The inner block has no receiver of its own -- it reads the node the outer `contain` is looking at."
 
   - name: nested-contain-three-levels
@@ -456,12 +456,686 @@ examples:
       MethodDeclaration md: md contain {
           contain { contain { simpleName == "StringLiteralExpr" } }
       }
-    expect: 3
+    expect: 6
     shows: "Three levels of `contain`: a method, then its statement, then the call, then the literal. Each level is one direct child, so the depth of the nesting is the depth of the question."
 
   - name: nested-ancestor
     nodeType: MethodCallExpr
     matcher: |
       MethodCallExpr mce: mce ancestor { simpleName == "CatchClause" }
-    expect: 0
-    shows: "An `ancestor` inside an `ancestor`. The fixture's calls are not inside a catch, so nothing matches."
+    expect: 1
+    shows: "An `ancestor` inside an `ancestor`. The fixture's calls inside a catch match, because the catch IS an ancestor of the call it holds."
+
+  # ---- the node types ---------------------------------------------
+  #
+  # One example per node type JavaParser has.  A rule can name any of
+  # them, so the corpus shows the reader the whole vocabulary: the
+  # matcher names the type, and asks for the node's own SHAPE.
+  #
+  # `RecordPatternExpr` is not here: it needs a record deconstruction
+  # pattern, which is Java 21, and the fixtures are read at the level the
+  # engine uses.
+  - name: node-type-annotation-declaration
+    nodeType: AnnotationDeclaration
+    matcher: |
+      AnnotationDeclaration node: node match { simpleName == "AnnotationDeclaration" }
+    expect: 1
+    shows: "The node type `AnnotationDeclaration`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-annotation-member-declaration
+    nodeType: AnnotationMemberDeclaration
+    matcher: |
+      AnnotationMemberDeclaration node: node match { simpleName == "AnnotationMemberDeclaration" }
+    expect: 2
+    shows: "The node type `AnnotationMemberDeclaration`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-array-access-expr
+    nodeType: ArrayAccessExpr
+    matcher: |
+      ArrayAccessExpr node: node match { simpleName == "ArrayAccessExpr" }
+    expect: 3
+    shows: "The node type `ArrayAccessExpr`. The matcher names the type and asks for its own shape; the fixture holds 3 node(s) of it."
+
+  - name: node-type-array-creation-expr
+    nodeType: ArrayCreationExpr
+    matcher: |
+      ArrayCreationExpr node: node match { simpleName == "ArrayCreationExpr" }
+    expect: 4
+    shows: "The node type `ArrayCreationExpr`. The matcher names the type and asks for its own shape; the fixture holds 4 node(s) of it."
+
+  - name: node-type-array-creation-level
+    nodeType: ArrayCreationLevel
+    matcher: |
+      ArrayCreationLevel node: node match { simpleName == "ArrayCreationLevel" }
+    expect: 5
+    shows: "The node type `ArrayCreationLevel`. The matcher names the type and asks for its own shape; the fixture holds 5 node(s) of it."
+
+  - name: node-type-array-initializer-expr
+    nodeType: ArrayInitializerExpr
+    matcher: |
+      ArrayInitializerExpr node: node match { simpleName == "ArrayInitializerExpr" }
+    expect: 3
+    shows: "The node type `ArrayInitializerExpr`. The matcher names the type and asks for its own shape; the fixture holds 3 node(s) of it."
+
+  - name: node-type-array-type
+    nodeType: ArrayType
+    matcher: |
+      ArrayType node: node match { simpleName == "ArrayType" }
+    expect: 7
+    shows: "The node type `ArrayType`. The matcher names the type and asks for its own shape; the fixture holds 7 node(s) of it."
+
+  - name: node-type-assert-stmt
+    nodeType: AssertStmt
+    matcher: |
+      AssertStmt node: node match { simpleName == "AssertStmt" }
+    expect: 1
+    shows: "The node type `AssertStmt`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-assign-expr
+    nodeType: AssignExpr
+    matcher: |
+      AssignExpr node: node match { simpleName == "AssignExpr" }
+    expect: 14
+    shows: "The node type `AssignExpr`. The matcher names the type and asks for its own shape; the fixture holds 14 node(s) of it."
+
+  - name: node-type-binary-expr
+    nodeType: BinaryExpr
+    matcher: |
+      BinaryExpr node: node match { simpleName == "BinaryExpr" }
+    expect: 32
+    shows: "The node type `BinaryExpr`. The matcher names the type and asks for its own shape; the fixture holds 32 node(s) of it."
+
+  - name: node-type-block-comment
+    nodeType: BlockComment
+    matcher: |
+      BlockComment node: node match { simpleName == "BlockComment" }
+    expect: 1
+    shows: "The node type `BlockComment`. The matcher names the type and asks for its own shape; the fixtures hold 1 node(s) of it."
+
+  - name: node-type-block-stmt
+    nodeType: BlockStmt
+    matcher: |
+      BlockStmt node: node match { simpleName == "BlockStmt" }
+    expect: 66
+    shows: "The node type `BlockStmt`. The matcher names the type and asks for its own shape; the fixture holds 66 node(s) of it."
+
+  - name: node-type-boolean-literal-expr
+    nodeType: BooleanLiteralExpr
+    matcher: |
+      BooleanLiteralExpr node: node match { simpleName == "BooleanLiteralExpr" }
+    expect: 1
+    shows: "The node type `BooleanLiteralExpr`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-break-stmt
+    nodeType: BreakStmt
+    matcher: |
+      BreakStmt node: node match { simpleName == "BreakStmt" }
+    expect: 4
+    shows: "The node type `BreakStmt`. The matcher names the type and asks for its own shape; the fixture holds 4 node(s) of it."
+
+  - name: node-type-cast-expr
+    nodeType: CastExpr
+    matcher: |
+      CastExpr node: node match { simpleName == "CastExpr" }
+    expect: 2
+    shows: "The node type `CastExpr`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-char-literal-expr
+    nodeType: CharLiteralExpr
+    matcher: |
+      CharLiteralExpr node: node match { simpleName == "CharLiteralExpr" }
+    expect: 1
+    shows: "The node type `CharLiteralExpr`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-class-expr
+    nodeType: ClassExpr
+    matcher: |
+      ClassExpr node: node match { simpleName == "ClassExpr" }
+    expect: 1
+    shows: "The node type `ClassExpr`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-class-or-interface-declaration
+    nodeType: ClassOrInterfaceDeclaration
+    matcher: |
+      ClassOrInterfaceDeclaration node: node match { simpleName == "ClassOrInterfaceDeclaration" }
+    expect: 3
+    shows: "The node type `ClassOrInterfaceDeclaration`. The matcher names the type and asks for its own shape; the fixture holds 3 node(s) of it."
+
+  - name: node-type-class-or-interface-type
+    nodeType: ClassOrInterfaceType
+    matcher: |
+      ClassOrInterfaceType node: node match { simpleName == "ClassOrInterfaceType" }
+    expect: 71
+    shows: "The node type `ClassOrInterfaceType`. The matcher names the type and asks for its own shape; the fixture holds 71 node(s) of it."
+
+  - name: node-type-compact-constructor-declaration
+    nodeType: CompactConstructorDeclaration
+    matcher: |
+      CompactConstructorDeclaration node: node match { simpleName == "CompactConstructorDeclaration" }
+    expect: 1
+    shows: "The node type `CompactConstructorDeclaration`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-compilation-unit
+    nodeType: CompilationUnit
+    matcher: |
+      CompilationUnit node: node match { simpleName == "CompilationUnit" }
+    expect: 3
+    shows: "The node type `CompilationUnit`. The matcher names the type and asks for its own shape; the fixture holds 3 node(s) of it."
+
+  - name: node-type-conditional-expr
+    nodeType: ConditionalExpr
+    matcher: |
+      ConditionalExpr node: node match { simpleName == "ConditionalExpr" }
+    expect: 2
+    shows: "The node type `ConditionalExpr`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-constructor-declaration
+    nodeType: ConstructorDeclaration
+    matcher: |
+      ConstructorDeclaration node: node match { simpleName == "ConstructorDeclaration" }
+    expect: 2
+    shows: "The node type `ConstructorDeclaration`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-continue-stmt
+    nodeType: ContinueStmt
+    matcher: |
+      ContinueStmt node: node match { simpleName == "ContinueStmt" }
+    expect: 1
+    shows: "The node type `ContinueStmt`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-do-stmt
+    nodeType: DoStmt
+    matcher: |
+      DoStmt node: node match { simpleName == "DoStmt" }
+    expect: 1
+    shows: "The node type `DoStmt`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-double-literal-expr
+    nodeType: DoubleLiteralExpr
+    matcher: |
+      DoubleLiteralExpr node: node match { simpleName == "DoubleLiteralExpr" }
+    expect: 1
+    shows: "The node type `DoubleLiteralExpr`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-empty-stmt
+    nodeType: EmptyStmt
+    matcher: |
+      EmptyStmt node: node match { simpleName == "EmptyStmt" }
+    expect: 1
+    shows: "The node type `EmptyStmt`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-enclosed-expr
+    nodeType: EnclosedExpr
+    matcher: |
+      EnclosedExpr node: node match { simpleName == "EnclosedExpr" }
+    expect: 2
+    shows: "The node type `EnclosedExpr`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-enum-constant-declaration
+    nodeType: EnumConstantDeclaration
+    matcher: |
+      EnumConstantDeclaration node: node match { simpleName == "EnumConstantDeclaration" }
+    expect: 2
+    shows: "The node type `EnumConstantDeclaration`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-enum-declaration
+    nodeType: EnumDeclaration
+    matcher: |
+      EnumDeclaration node: node match { simpleName == "EnumDeclaration" }
+    expect: 1
+    shows: "The node type `EnumDeclaration`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-explicit-constructor-invocation-stmt
+    nodeType: ExplicitConstructorInvocationStmt
+    matcher: |
+      ExplicitConstructorInvocationStmt node: node match { simpleName == "ExplicitConstructorInvocationStmt" }
+    expect: 2
+    shows: "The node type `ExplicitConstructorInvocationStmt`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-expression-stmt
+    nodeType: ExpressionStmt
+    matcher: |
+      ExpressionStmt node: node match { simpleName == "ExpressionStmt" }
+    expect: 66
+    shows: "The node type `ExpressionStmt`. The matcher names the type and asks for its own shape; the fixture holds 66 node(s) of it."
+
+  - name: node-type-field-access-expr
+    nodeType: FieldAccessExpr
+    matcher: |
+      FieldAccessExpr node: node match { simpleName == "FieldAccessExpr" }
+    expect: 25
+    shows: "The node type `FieldAccessExpr`. The matcher names the type and asks for its own shape; the fixture holds 25 node(s) of it."
+
+  - name: node-type-for-each-stmt
+    nodeType: ForEachStmt
+    matcher: |
+      ForEachStmt node: node match { simpleName == "ForEachStmt" }
+    expect: 1
+    shows: "The node type `ForEachStmt`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-for-stmt
+    nodeType: ForStmt
+    matcher: |
+      ForStmt node: node match { simpleName == "ForStmt" }
+    expect: 3
+    shows: "The node type `ForStmt`. The matcher names the type and asks for its own shape; the fixture holds 3 node(s) of it."
+
+  - name: node-type-if-stmt
+    nodeType: IfStmt
+    matcher: |
+      IfStmt node: node match { simpleName == "IfStmt" }
+    expect: 8
+    shows: "The node type `IfStmt`. The matcher names the type and asks for its own shape; the fixture holds 8 node(s) of it."
+
+  - name: node-type-import-declaration
+    nodeType: ImportDeclaration
+    matcher: |
+      ImportDeclaration node: node match { simpleName == "ImportDeclaration" }
+    expect: 2
+    shows: "The node type `ImportDeclaration`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-initializer-declaration
+    nodeType: InitializerDeclaration
+    matcher: |
+      InitializerDeclaration node: node match { simpleName == "InitializerDeclaration" }
+    expect: 2
+    shows: "The node type `InitializerDeclaration`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-instance-of-expr
+    nodeType: InstanceOfExpr
+    matcher: |
+      InstanceOfExpr node: node match { simpleName == "InstanceOfExpr" }
+    expect: 3
+    shows: "The node type `InstanceOfExpr`. The matcher names the type and asks for its own shape; the fixture holds 3 node(s) of it."
+
+  - name: node-type-integer-literal-expr
+    nodeType: IntegerLiteralExpr
+    matcher: |
+      IntegerLiteralExpr node: node match { simpleName == "IntegerLiteralExpr" }
+    expect: 50
+    shows: "The node type `IntegerLiteralExpr`. The matcher names the type and asks for its own shape; the fixture holds 50 node(s) of it."
+
+  - name: node-type-intersection-type
+    nodeType: IntersectionType
+    matcher: |
+      IntersectionType node: node match { simpleName == "IntersectionType" }
+    expect: 1
+    shows: "The node type `IntersectionType`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-javadoc-comment
+    nodeType: JavadocComment
+    matcher: |
+      JavadocComment node: node match { simpleName == "JavadocComment" }
+    expect: 3
+    shows: "The node type `JavadocComment`. The matcher names the type and asks for its own shape; the fixture holds 3 node(s) of it."
+
+  - name: node-type-labeled-stmt
+    nodeType: LabeledStmt
+    matcher: |
+      LabeledStmt node: node match { simpleName == "LabeledStmt" }
+    expect: 1
+    shows: "The node type `LabeledStmt`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-lambda-expr
+    nodeType: LambdaExpr
+    matcher: |
+      LambdaExpr node: node match { simpleName == "LambdaExpr" }
+    expect: 2
+    shows: "The node type `LambdaExpr`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-line-comment
+    nodeType: LineComment
+    matcher: |
+      LineComment node: node match { simpleName == "LineComment" }
+    expect: 56
+    shows: "The node type `LineComment`. The matcher names the type and asks for its own shape; the fixtures hold 56 node(s) of it."
+
+  - name: node-type-local-class-declaration-stmt
+    nodeType: LocalClassDeclarationStmt
+    matcher: |
+      LocalClassDeclarationStmt node: node match { simpleName == "LocalClassDeclarationStmt" }
+    expect: 1
+    shows: "The node type `LocalClassDeclarationStmt`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-local-record-declaration-stmt
+    nodeType: LocalRecordDeclarationStmt
+    matcher: |
+      LocalRecordDeclarationStmt node: node match { simpleName == "LocalRecordDeclarationStmt" }
+    expect: 1
+    shows: "The node type `LocalRecordDeclarationStmt`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-long-literal-expr
+    nodeType: LongLiteralExpr
+    matcher: |
+      LongLiteralExpr node: node match { simpleName == "LongLiteralExpr" }
+    expect: 1
+    shows: "The node type `LongLiteralExpr`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-marker-annotation-expr
+    nodeType: MarkerAnnotationExpr
+    matcher: |
+      MarkerAnnotationExpr node: node match { simpleName == "MarkerAnnotationExpr" }
+    expect: 2
+    shows: "The node type `MarkerAnnotationExpr`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-member-value-pair
+    nodeType: MemberValuePair
+    matcher: |
+      MemberValuePair node: node match { simpleName == "MemberValuePair" }
+    expect: 2
+    shows: "The node type `MemberValuePair`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-method-reference-expr
+    nodeType: MethodReferenceExpr
+    matcher: |
+      MethodReferenceExpr node: node match { simpleName == "MethodReferenceExpr" }
+    expect: 1
+    shows: "The node type `MethodReferenceExpr`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-modifier
+    nodeType: Modifier
+    matcher: |
+      Modifier node: node match { simpleName == "Modifier" }
+    expect: 14
+    shows: "The node type `Modifier`. The matcher names the type and asks for its own shape; the fixture holds 14 node(s) of it."
+
+  - name: node-type-module-declaration
+    nodeType: ModuleDeclaration
+    matcher: |
+      ModuleDeclaration node: node match { simpleName == "ModuleDeclaration" }
+    expect: 1
+    shows: "The node type `ModuleDeclaration`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-module-exports-directive
+    nodeType: ModuleExportsDirective
+    matcher: |
+      ModuleExportsDirective node: node match { simpleName == "ModuleExportsDirective" }
+    expect: 1
+    shows: "The node type `ModuleExportsDirective`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-module-opens-directive
+    nodeType: ModuleOpensDirective
+    matcher: |
+      ModuleOpensDirective node: node match { simpleName == "ModuleOpensDirective" }
+    expect: 1
+    shows: "The node type `ModuleOpensDirective`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-module-provides-directive
+    nodeType: ModuleProvidesDirective
+    matcher: |
+      ModuleProvidesDirective node: node match { simpleName == "ModuleProvidesDirective" }
+    expect: 1
+    shows: "The node type `ModuleProvidesDirective`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-module-requires-directive
+    nodeType: ModuleRequiresDirective
+    matcher: |
+      ModuleRequiresDirective node: node match { simpleName == "ModuleRequiresDirective" }
+    expect: 2
+    shows: "The node type `ModuleRequiresDirective`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-module-uses-directive
+    nodeType: ModuleUsesDirective
+    matcher: |
+      ModuleUsesDirective node: node match { simpleName == "ModuleUsesDirective" }
+    expect: 1
+    shows: "The node type `ModuleUsesDirective`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-name
+    nodeType: Name
+    matcher: |
+      Name node: node match { simpleName == "Name" }
+    expect: 47
+    shows: "The node type `Name`. The matcher names the type and asks for its own shape; the fixture holds 47 node(s) of it."
+
+  - name: node-type-name-expr
+    nodeType: NameExpr
+    matcher: |
+      NameExpr node: node match { simpleName == "NameExpr" }
+    expect: 107
+    shows: "The node type `NameExpr`. The matcher names the type and asks for its own shape; the fixture holds 107 node(s) of it."
+
+  - name: node-type-normal-annotation-expr
+    nodeType: NormalAnnotationExpr
+    matcher: |
+      NormalAnnotationExpr node: node match { simpleName == "NormalAnnotationExpr" }
+    expect: 1
+    shows: "The node type `NormalAnnotationExpr`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-null-literal-expr
+    nodeType: NullLiteralExpr
+    matcher: |
+      NullLiteralExpr node: node match { simpleName == "NullLiteralExpr" }
+    expect: 5
+    shows: "The node type `NullLiteralExpr`. The matcher names the type and asks for its own shape; the fixture holds 5 node(s) of it."
+
+  - name: node-type-object-creation-expr
+    nodeType: ObjectCreationExpr
+    matcher: |
+      ObjectCreationExpr node: node match { simpleName == "ObjectCreationExpr" }
+    expect: 6
+    shows: "The node type `ObjectCreationExpr`. The matcher names the type and asks for its own shape; the fixture holds 6 node(s) of it."
+
+  - name: node-type-package-declaration
+    nodeType: PackageDeclaration
+    matcher: |
+      PackageDeclaration node: node match { simpleName == "PackageDeclaration" }
+    expect: 2
+    shows: "The node type `PackageDeclaration`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-parameter
+    nodeType: Parameter
+    matcher: |
+      Parameter node: node match { simpleName == "Parameter" }
+    expect: 23
+    shows: "The node type `Parameter`. The matcher names the type and asks for its own shape; the fixture holds 23 node(s) of it."
+
+  - name: node-type-primitive-type
+    nodeType: PrimitiveType
+    matcher: |
+      PrimitiveType node: node match { simpleName == "PrimitiveType" }
+    expect: 36
+    shows: "The node type `PrimitiveType`. The matcher names the type and asks for its own shape; the fixture holds 36 node(s) of it."
+
+  - name: node-type-receiver-parameter
+    nodeType: ReceiverParameter
+    matcher: |
+      ReceiverParameter node: node match { simpleName == "ReceiverParameter" }
+    expect: 1
+    shows: "The node type `ReceiverParameter`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-record-declaration
+    nodeType: RecordDeclaration
+    matcher: |
+      RecordDeclaration node: node match { simpleName == "RecordDeclaration" }
+    expect: 2
+    shows: "The node type `RecordDeclaration`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-return-stmt
+    nodeType: ReturnStmt
+    matcher: |
+      ReturnStmt node: node match { simpleName == "ReturnStmt" }
+    expect: 13
+    shows: "The node type `ReturnStmt`. The matcher names the type and asks for its own shape; the fixture holds 13 node(s) of it."
+
+  - name: node-type-simple-name
+    nodeType: SimpleName
+    matcher: |
+      SimpleName node: node match { simpleName == "SimpleName" }
+    expect: 348
+    shows: "The node type `SimpleName`. The matcher names the type and asks for its own shape; the fixture holds 348 node(s) of it."
+
+  - name: node-type-single-member-annotation-expr
+    nodeType: SingleMemberAnnotationExpr
+    matcher: |
+      SingleMemberAnnotationExpr node: node match { simpleName == "SingleMemberAnnotationExpr" }
+    expect: 1
+    shows: "The node type `SingleMemberAnnotationExpr`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-string-literal-expr
+    nodeType: StringLiteralExpr
+    matcher: |
+      StringLiteralExpr node: node match { simpleName == "StringLiteralExpr" }
+    expect: 24
+    shows: "The node type `StringLiteralExpr`. The matcher names the type and asks for its own shape; the fixture holds 24 node(s) of it."
+
+  - name: node-type-super-expr
+    nodeType: SuperExpr
+    matcher: |
+      SuperExpr node: node match { simpleName == "SuperExpr" }
+    expect: 1
+    shows: "The node type `SuperExpr`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-switch-entry
+    nodeType: SwitchEntry
+    matcher: |
+      SwitchEntry node: node match { simpleName == "SwitchEntry" }
+    expect: 6
+    shows: "The node type `SwitchEntry`. The matcher names the type and asks for its own shape; the fixture holds 6 node(s) of it."
+
+  - name: node-type-switch-expr
+    nodeType: SwitchExpr
+    matcher: |
+      SwitchExpr node: node match { simpleName == "SwitchExpr" }
+    expect: 1
+    shows: "The node type `SwitchExpr`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-switch-stmt
+    nodeType: SwitchStmt
+    matcher: |
+      SwitchStmt node: node match { simpleName == "SwitchStmt" }
+    expect: 1
+    shows: "The node type `SwitchStmt`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-synchronized-stmt
+    nodeType: SynchronizedStmt
+    matcher: |
+      SynchronizedStmt node: node match { simpleName == "SynchronizedStmt" }
+    expect: 2
+    shows: "The node type `SynchronizedStmt`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-text-block-literal-expr
+    nodeType: TextBlockLiteralExpr
+    matcher: |
+      TextBlockLiteralExpr node: node match { simpleName == "TextBlockLiteralExpr" }
+    expect: 1
+    shows: "The node type `TextBlockLiteralExpr`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-this-expr
+    nodeType: ThisExpr
+    matcher: |
+      ThisExpr node: node match { simpleName == "ThisExpr" }
+    expect: 6
+    shows: "The node type `ThisExpr`. The matcher names the type and asks for its own shape; the fixture holds 6 node(s) of it."
+
+  - name: node-type-throw-stmt
+    nodeType: ThrowStmt
+    matcher: |
+      ThrowStmt node: node match { simpleName == "ThrowStmt" }
+    expect: 3
+    shows: "The node type `ThrowStmt`. The matcher names the type and asks for its own shape; the fixture holds 3 node(s) of it."
+
+  - name: node-type-try-stmt
+    nodeType: TryStmt
+    matcher: |
+      TryStmt node: node match { simpleName == "TryStmt" }
+    expect: 5
+    shows: "The node type `TryStmt`. The matcher names the type and asks for its own shape; the fixture holds 5 node(s) of it."
+
+  - name: node-type-type-expr
+    nodeType: TypeExpr
+    matcher: |
+      TypeExpr node: node match { simpleName == "TypeExpr" }
+    expect: 1
+    shows: "The node type `TypeExpr`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-type-parameter
+    nodeType: TypeParameter
+    matcher: |
+      TypeParameter node: node match { simpleName == "TypeParameter" }
+    expect: 1
+    shows: "The node type `TypeParameter`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-type-pattern-expr
+    nodeType: TypePatternExpr
+    matcher: |
+      TypePatternExpr node: node match { simpleName == "TypePatternExpr" }
+    expect: 2
+    shows: "The node type `TypePatternExpr`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-unary-expr
+    nodeType: UnaryExpr
+    matcher: |
+      UnaryExpr node: node match { simpleName == "UnaryExpr" }
+    expect: 7
+    shows: "The node type `UnaryExpr`. The matcher names the type and asks for its own shape; the fixture holds 7 node(s) of it."
+
+  - name: node-type-union-type
+    nodeType: UnionType
+    matcher: |
+      UnionType node: node match { simpleName == "UnionType" }
+    expect: 1
+    shows: "The node type `UnionType`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-unknown-type
+    nodeType: UnknownType
+    matcher: |
+      UnknownType node: node match { simpleName == "UnknownType" }
+    expect: 1
+    shows: "The node type `UnknownType`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-unparsable-stmt
+    nodeType: UnparsableStmt
+    matcher: |
+      UnparsableStmt node: node match { simpleName == "UnparsableStmt" }
+    expect: 1
+    shows: "The node type `UnparsableStmt`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-var-type
+    nodeType: VarType
+    matcher: |
+      VarType node: node match { simpleName == "VarType" }
+    expect: 2
+    shows: "The node type `VarType`. The matcher names the type and asks for its own shape; the fixture holds 2 node(s) of it."
+
+  - name: node-type-variable-declaration-expr
+    nodeType: VariableDeclarationExpr
+    matcher: |
+      VariableDeclarationExpr node: node match { simpleName == "VariableDeclarationExpr" }
+    expect: 28
+    shows: "The node type `VariableDeclarationExpr`. The matcher names the type and asks for its own shape; the fixture holds 28 node(s) of it."
+
+  - name: node-type-variable-declarator
+    nodeType: VariableDeclarator
+    matcher: |
+      VariableDeclarator node: node match { simpleName == "VariableDeclarator" }
+    expect: 34
+    shows: "The node type `VariableDeclarator`. The matcher names the type and asks for its own shape; the fixture holds 34 node(s) of it."
+
+  - name: node-type-void-type
+    nodeType: VoidType
+    matcher: |
+      VoidType node: node match { simpleName == "VoidType" }
+    expect: 24
+    shows: "The node type `VoidType`. The matcher names the type and asks for its own shape; the fixture holds 24 node(s) of it."
+
+  - name: node-type-while-stmt
+    nodeType: WhileStmt
+    matcher: |
+      WhileStmt node: node match { simpleName == "WhileStmt" }
+    expect: 1
+    shows: "The node type `WhileStmt`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."
+
+  - name: node-type-wildcard-type
+    nodeType: WildcardType
+    matcher: |
+      WildcardType node: node match { simpleName == "WildcardType" }
+    expect: 5
+    shows: "The node type `WildcardType`. The matcher names the type and asks for its own shape; the fixture holds 5 node(s) of it."
+
+  - name: node-type-yield-stmt
+    nodeType: YieldStmt
+    matcher: |
+      YieldStmt node: node match { simpleName == "YieldStmt" }
+    expect: 1
+    shows: "The node type `YieldStmt`. The matcher names the type and asks for its own shape; the fixture holds 1 node(s) of it."

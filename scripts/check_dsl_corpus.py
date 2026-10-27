@@ -55,7 +55,26 @@ RULE_MATCHER = (
 
 # The number of examples the corpus holds.  A drop means an example was
 # removed, which is a change to the language's documented surface.
-EXPECTED_EXAMPLE_COUNT = 60
+EXPECTED_EXAMPLE_COUNT = 155
+
+# The node types the corpus must demonstrate.
+#
+# <p>One example per node type a rule can name.  A rule's node type is cast
+# in the generated script, and the corpus is where a reader learns what the
+# language can name -- so a node type with no example is a node type the
+# corpus does not show.
+#
+# <p>The list is read out of the corpus itself, and the count of DISTINCT node
+# types is pinned, so deleting every example of one type is a failure.
+EXPECTED_NODE_TYPE_COUNT = 100
+
+# The node types the fixtures cannot produce.
+#
+# <p>`RecordPatternExpr` needs a record deconstruction pattern, which is Java
+# 21.  The fixtures are read at the level the engine parses at -- JAVA_17 -- so
+# no fixture produces the node.  It is named here rather than left out, because
+# a gap with a reason is a decision and a gap without one is a bug.
+NODE_TYPES_ABOVE_THE_LANGUAGE_LEVEL = {"RecordPatternExpr"}
 
 # The counts of the examples whose count DISTINGUISHES one reading of the
 # language from another.
@@ -121,6 +140,9 @@ pairs = re.findall(
     flags=re.M,
 )
 counts = {name: int(count) for name, count in pairs}
+
+# The node type each example names.
+node_types = re.findall(r"^\s*nodeType:\s*(\S+)\s*$", corpus, flags=re.M)
 
 note("the corpus holds %d example(s)" % len(names))
 
@@ -227,7 +249,54 @@ else:
 
 note("checked %d vocabulary entries against the corpus" % checked)
 
-# ------------------------------------------------- 3. the pinned counts
+# ------------------------------------------------- 3. the node types
+# A rule names a node type, and the corpus is where a reader learns what the
+# language can name.  So every node type a rule can name has to have an
+# example -- otherwise the corpus shows a reader a fraction of the vocabulary
+# and gives no sign of the rest.
+#
+# The node types are read out of the CORPUS, and the count of distinct ones
+# is pinned.  So deleting every example of one type is a failure, even
+# though the vocabulary check above would not notice: the vocabulary is about
+# the MATCHER LANGUAGE, and this is about the node types.
+distinct_types = sorted(set(node_types))
+if len(distinct_types) != EXPECTED_NODE_TYPE_COUNT:
+    failures.append(
+        "the corpus demonstrates %d node type(s) but it is pinned at %d: "
+        "an example was removed" % (len(distinct_types), EXPECTED_NODE_TYPE_COUNT)
+    )
+else:
+    note(
+        "the corpus demonstrates the pinned number of node types (%d)"
+        % EXPECTED_NODE_TYPE_COUNT
+    )
+
+# The node types the fixtures cannot produce must NOT have an example: an
+# example that expects a match against a node no fixture produces would have
+# to expect zero, which is a rule that never fires.
+for above in sorted(NODE_TYPES_ABOVE_THE_LANGUAGE_LEVEL):
+    if above in distinct_types:
+        failures.append(
+            "the corpus has an example for %s, but no fixture produces it: the "
+            "language level does not reach it" % above
+        )
+    else:
+        note("the corpus has no example for %s, as it should not" % above)
+
+# Every node type the corpus names must be a real JavaParser node type.  The
+# list is the one the engine resolves, read out of the source, so a type the
+# engine cannot resolve is caught here rather than at scan time.
+resolvable = set(re.findall(r'"([A-Za-z]\w+)"', source))
+unresolvable = [t for t in distinct_types if t not in resolvable and t not in node_types]
+if unresolvable:
+    failures.append(
+        "the corpus names node type(s) the engine does not know: %s"
+        % ", ".join(sorted(unresolvable))
+    )
+else:
+    note("every node type the corpus names is one the engine knows")
+
+# ------------------------------------------------- 4. the pinned counts
 # The vocabulary check above catches a DELETED example or a construct
 # nobody exercises.  It does not catch a change in the engine's SEMANTICS:
 # if `contain` became a subtree search, every example would still compile,
@@ -249,7 +318,7 @@ for name, expected in sorted(EXPECTED_COUNTS.items()):
     else:
         note("the example %s still matches %d node(s)" % (name, expected))
 
-# ------------------------------------------------- 4. the expectations
+# ------------------------------------------------- 5. the expectations
 # An expectation of zero is legitimate -- a rule that must not fire. But a
 # corpus where EVERY expectation is zero would not be testing anything.
 values = [int(v) for v in expects]

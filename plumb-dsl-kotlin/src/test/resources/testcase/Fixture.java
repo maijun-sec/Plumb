@@ -92,4 +92,285 @@ public class Fixture {
      */
     void documented() {
     }
+    // ==================================================================
+    // The section below produces the node types the corpus demonstrates.
+    //
+    // Every shape is here for ONE reason: it makes JavaParser produce a
+    // node type that no other shape produces.  The comment above each
+    // shape names the node type.
+    // ==================================================================
+
+    // ---- `ArrayCreationLevel`, `ArrayCreationExpr`, `ArrayInitializerExpr` -
+    private int[] arrayField = new int[] {1, 2, 3};
+
+    private int[][] gridField = new int[2][3];
+
+    // ---- `BooleanLiteralExpr`, `CharLiteralExpr`, `DoubleLiteralExpr`,
+    //      `LongLiteralExpr`, `NullLiteralExpr`, `TextBlockLiteralExpr` -----
+    Object literals() {
+        boolean flag = true;
+        char letter = 'x';
+        long big = 42L;
+        double fraction = 4.2d;
+        String nothing = null;
+        String block = """
+                a text block""";
+        return flag + "" + letter + big + fraction + nothing + block;
+    }
+
+    // ---- `AssignExpr` ---------------------------------------------------
+    void assigns(int value) {
+        int total = 0;
+        total += value;
+        total -= value;
+        total *= value;
+        total /= value;
+        total %= value;
+        total <<= 1;
+        total >>= 1;
+        total >>>= 1;
+        total &= value;
+        total |= value;
+        total ^= value;
+    }
+
+    // ---- `ArrayAccessExpr`, `EmptyStmt`, `ContinueStmt`, `UnaryExpr` ------
+    void readsArrays(int[] values) {
+        int first = values[0];
+        values[0] = first;
+        ;
+        for (int i = 0; i < values.length; i++) {
+            if (i == 0) {
+                continue;
+            }
+            System.out.println(-values[i]);
+        }
+    }
+
+    // ---- `CastExpr`, `EnclosedExpr`, `ConditionalExpr` --------------------
+    Object castsAndTests(Object value) {
+        if (value instanceof String) {
+            return ((String) value).trim();
+        }
+        return (value != null) ? value.toString() : "";
+    }
+
+    // ---- `ClassExpr`, `TypeExpr`, `ThisExpr`, `SuperExpr` ----------------
+    Object createsObjects() {
+        Class<?> type = String.class;
+        int[] copy = new int[] {1, 2, 3};
+        synchronized (this) {
+            System.out.println(copy.length + type.getName());
+        }
+        return this;
+    }
+
+    // ---- `AssertStmt`, `LabeledStmt`, `BreakStmt` -------------------------
+    void assertsAndLabels(int[] values) {
+        assert values != null : "values must not be null";
+        outer:
+        for (int i = 0; i < values.length; i++) {
+            if (i == 5) {
+                break outer;
+            }
+        }
+    }
+
+    // ---- `ForStmt`, `ForEachStmt`, `WhileStmt`, `DoStmt`, `IfStmt` -------
+    void controlFlow(int input) {
+        if (input > 0) {
+            System.out.println("positive");
+        } else if (input < 0) {
+            System.out.println("negative");
+        } else {
+            System.out.println("zero");
+        }
+
+        for (int i = 0; i < 10; i++) {
+            System.out.println(i);
+        }
+
+        for (int each : new int[] {1, 2}) {
+            System.out.println(each);
+        }
+
+        while (input > 0) {
+            input--;
+        }
+
+        do {
+            input++;
+        } while (input < 0);
+    }
+
+    // ---- `SwitchStmt`, `SwitchEntry` -------------------------------------
+    void switches(int input) {
+        switch (input) {
+            case 0:
+                break;
+            case 1:
+                System.out.println("one");
+                break;
+            default:
+                break;
+        }
+    }
+
+    // ---- `SynchronizedStmt` ----------------------------------------------
+    void synchronizes() {
+        synchronized (this) {
+            System.out.println("locked");
+        }
+    }
+
+    // ---- `LambdaExpr`, `MethodReferenceExpr` -----------------------------
+    void usesLambdas() {
+        java.util.function.Function<String, Integer> length = value -> value.length();
+        java.util.function.Function<String, Integer> compare = String::length;
+        Runnable runnable = () -> System.out.println("run");
+        System.out.println(length.apply("a") + compare.apply("b"));
+        runnable.run();
+    }
+
+    // ---- `ConstructorDeclaration`, `ExplicitConstructorInvocationStmt`,
+    //      `InitializerDeclaration` ---------------------------------------
+    Fixture() {
+        this(1);
+    }
+
+    Fixture(int seed) {
+        super();
+        this.mutableField = String.valueOf(seed);
+    }
+
+    {
+        // An instance initializer.
+        mutableField = "initialized";
+    }
+
+    static {
+        // A static initializer.
+    }
+
+    // ---- `ReceiverParameter` ---------------------------------------------
+    void withReceiver(Fixture this) {
+        System.out.println(this);
+    }
+
+    // ---- `EnumDeclaration`, `EnumConstantDeclaration` --------------------
+    enum Color {
+        RED,
+        GREEN;
+
+        boolean isWarm() {
+            return this == RED;
+        }
+    }
+
+    // ---- `RecordDeclaration`, `CompactConstructorDeclaration` ------------
+    record Point(int x, int y) {
+        Point {
+            if (x < 0) {
+                throw new IllegalArgumentException("negative");
+            }
+        }
+
+        int sum() {
+            return x + y;
+        }
+    }
+
+    // ---- `LocalClassDeclarationStmt`, `LocalRecordDeclarationStmt` -------
+    void declaresLocalTypes() {
+        class Local {
+            int value;
+        }
+
+        record LocalRecord(int value) {
+        }
+
+        Local local = new Local();
+        LocalRecord record = new LocalRecord(1);
+        System.out.println(local.value + record.value());
+    }
+
+    // ---- `AnnotationDeclaration`, `AnnotationMemberDeclaration` ----------
+    @interface Marker {
+        String name() default "";
+
+        int value() default 0;
+    }
+
+    // ---- `MarkerAnnotationExpr`, `NormalAnnotationExpr`,
+    //      `SingleMemberAnnotationExpr`, `MemberValuePair` ---------------
+    @Marker
+    @Marker(name = "marked", value = 1)
+    @Marker("positional")
+    void annotated() {
+    }
+
+    // ---- `TypeParameter`, `IntersectionType`, `WildcardType`, `UnknownType`
+    <T extends Number & Comparable<T>> T pick(T first, T second) {
+        java.util.Map<String, ? extends Number> map = null;
+        java.util.List<?> anything = null;
+        return first.compareTo(second) >= 0 ? first : second;
+    }
+
+    // ---- `VarType` -------------------------------------------------------
+    void infersTypes() {
+        var text = "inferred";
+        var number = 1;
+        System.out.println(text + number);
+    }
+
+    // ---- `SwitchExpr`, `YieldStmt` ---------------------------------------
+    int modernSwitch(int value) {
+        return switch (value) {
+            case 1, 2 -> 10;
+            case 3 -> {
+                yield 30;
+            }
+            default -> 0;
+        };
+    }
+
+    // ---- `TypePatternExpr`, `RecordPatternExpr` --------------------------
+    Object patterns(Object value) {
+        if (value instanceof String text && !text.isEmpty()) {
+            return text;
+        }
+        if (value instanceof Integer number) {
+            return number + 1;
+        }
+        return value;
+    }
+
+    // ---- `UnionType`: a multi-catch parameter ----------------------------
+    void catchesSeveralTypes() {
+        try {
+            throwsTwo();
+        } catch (RuntimeException | Error e) {
+            System.out.println(e);
+        }
+    }
+
+    private void throwsTwo() {
+        throw new IllegalStateException("two");
+    }
+
+    // ---- `SuperExpr`: an explicit super call -----------------------------
+    @Override
+    public String toString() {
+        return super.toString() + "!";
+    }
+
+    // ---- `BlockComment`: a comment between the asterisks -----------------
+    /* A block comment.  `block-comment` matches it. */
+
+    // ---- `IntersectionType`: an intersection cast ------------------------
+    void intersects(Object value) {
+        Comparable<?> comparable = (Comparable<?> & java.io.Serializable) value;
+        System.out.println(comparable);
+    }
+
 }

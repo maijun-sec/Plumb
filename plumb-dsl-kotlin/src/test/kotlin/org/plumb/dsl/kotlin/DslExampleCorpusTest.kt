@@ -1,12 +1,8 @@
 package org.plumb.dsl.kotlin
 
 import com.github.javaparser.JavaParser
-import com.github.javaparser.ParserConfiguration
 import com.github.javaparser.ast.CompilationUnit
 import com.github.javaparser.ast.Node
-import com.github.javaparser.resolution.TypeSolver
-import com.github.javaparser.symbolsolver.JavaSymbolSolver
-import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -47,16 +43,27 @@ class DslExampleCorpusTest {
 
     companion object {
         private val CORPUS: Path = Paths.get("src/test/resources/testcase/examples.yaml")
-        private val FIXTURE: Path = Paths.get("src/test/resources/testcase/Fixture.java")
+
+        /**
+         * The fixtures the corpus runs against.
+         *
+         * <p>They are three files, because some node types cannot share a file with a class:
+         * a `module-info.java` is a compilation unit of its own, and the unparsable statement
+         * needs a file that does not parse. A rule that targets a module directive has to be
+         * demonstrated against the module file, or the corpus would claim a vocabulary it does
+         * not have.
+         */
+        private val FIXTURES: List<String> =
+            listOf("Fixture.java", "module-info.java", "Unparsable.java")
 
         private var examples: List<Example> = emptyList()
-        private var unit: CompilationUnit? = null
+        private var units: List<CompilationUnit> = emptyList()
 
         @JvmStatic
         @BeforeAll
         fun load() {
             examples = readExamples()
-            unit = parseFixture()
+            units = parseFixtures()
         }
 
         /** The examples, read from the corpus file. */
@@ -77,14 +84,19 @@ class DslExampleCorpusTest {
             }
         }
 
-        /** The fixture, parsed with a symbol solver so the type rules can resolve. */
-        private fun parseFixture(): CompilationUnit {
-            val solver: TypeSolver = ReflectionTypeSolver()
-            val config = ParserConfiguration()
-                .setSymbolResolver(JavaSymbolSolver(solver))
-                .setAttributeComments(true)
-            return JavaParser(config).parse(FIXTURE.toFile()).result.get()
-        }
+        /**
+         * The fixtures, parsed.
+         *
+         * <p>The unparsable fixture is parsed too -- it is the one that produces
+         * `UnparsableStmt`, so it has to be in the corpus's world for a rule about unparsable
+         * code to have something to match.
+         */
+        private fun parseFixtures(): List<CompilationUnit> =
+            FIXTURES.map { name ->
+                val path = Paths.get("src/test/resources/testcase/$name")
+                val result = com.github.javaparser.JavaParser(TestParsers.config()).parse(path.toFile())
+                result.result.get()
+            }
     }
 
     /**
@@ -121,19 +133,41 @@ class DslExampleCorpusTest {
         assertThat(failures).describedAs("the DSL example corpus").isEmpty()
     }
 
-    /** How many nodes of the example's node type the compiled rule matches. */
+    /**
+     * How many nodes of the example's node type the compiled rule matches.
+     *
+     * <p>The rule is evaluated against EVERY fixture, because the node types live in different
+     * files: a module directive is in the module file, and the unparsable statement is in the
+     * file that does not parse.
+     *
+     * <p><b>Why the comments are collected separately.</b> JavaParser keeps most comments OUT of
+     * the tree -- a node's comment is an attribute, not a child -- so on the corpus fixture the
+     * tree walk visits 17 of the 59 comments. A rule that targets a comment has to be given the
+     * comments explicitly, and the ones the tree walk found have to be removed, or the rule
+     * would count them twice.
+     *
+     * <p><b>Why the check reads the other way round.</b> "Does this rule want comments?" is
+     * asked as {@code Comment::class.java.isAssignableFrom(target)} -- is the target a comment
+     * type, or a supertype of one. The other way round is true only for {@code Comment} itself,
+     * so a rule that named {@code LineComment} would silently lose the comments that are not in
+     * the tree.
+     */
     private fun countMatches(compiled: javax.script.CompiledScript, example: Example): Int {
-        val source = unit ?: return 0
         val target = targetClassOf(example.nodeType)
-        val nodes = source.findAll(Node::class.java).filter { target.isInstance(it) }
-        // JavaParser does not put comments in the tree, so a rule that
-        // targets them needs them added explicitly.
-        val withComments =
-            if (target.isAssignableFrom(com.github.javaparser.ast.comments.Comment::class.java)) {
-                nodes + source.getAllContainedComments()
-            } else {
-                nodes
+        val wantsComments =
+            com.github.javaparser.ast.comments.Comment::class.java.isAssignableFrom(target)
+        val nodes = ArrayList<Node>()
+        for (unit in units) {
+            val inTree = unit.findAll(Node::class.java).filter { target.isInstance(it) }
+            if (wantsComments) {
+                // The comments the tree walk does not reach.
+                val reached = HashSet<Node>(inTree)
+                nodes.addAll(
+                    unit.getAllContainedComments().filter { target.isInstance(it) && !reached.contains(it) }
+                )
             }
+            nodes.addAll(inTree)
+        }
         val rule =
             DslRule(
                 id = example.name,
@@ -143,7 +177,7 @@ class DslExampleCorpusTest {
                 matcher = example.matcher
             )
         val compiledRule = CompiledRule(rule, compiled)
-        return withComments.count { compiledRule.matches(it) }
+        return nodes.count { compiledRule.matches(it) }
     }
 
     /** The JavaParser class the node type names. */

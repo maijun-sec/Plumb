@@ -113,19 +113,27 @@ class DslAstChecker private constructor(
      * `Comment`, and the comments in a file are `JavadocComment`,
      * `LineComment` and `BlockComment`.
      *
-     * <p><b>Comments need special handling.</b> JavaParser attaches a
-     * comment to the node it documents, but it does NOT put it in the
-     * tree: {@code findAll(Node.class)} never visits a comment. The
-     * comments are reachable through {@code getAllContainedComments()},
-     * so a rule that targets them needs that explicitly. (The upstream
-     * project walks comments through a dedicated visitor; the same effect
-     * is achieved here by adding them to the candidate list.)
+     * <p><b>Why the comments are collected separately.</b> JavaParser attaches a comment to
+     * the node it documents, and most comments are NOT in the tree: on the corpus fixture,
+     * {@code findAll(Node.class)} visits 17 of the 59 comments, and the rest are reachable only
+     * through {@code getAllContainedComments()}. So a rule that targets a comment has to be
+     * given the comments explicitly. (The upstream project walks comments through a dedicated
+     * visitor; the same effect is achieved here by adding them to the candidate list.)
+     *
+     * <p><b>Why the check reads the other way round.</b> "Does this rule want comments?" is
+     * asked as {@code Comment::class.java.isAssignableFrom(target)} -- is the target a comment
+     * type, or a supertype of one. The other way round -- {@code target.isAssignableFrom(Comment)}
+     * -- is true only for {@code Comment} itself, so a rule that named {@code LineComment} would
+     * silently lose the comments that are not in the tree.
      */
     private fun nodesOfType(unit: CompilationUnit, types: List<Class<out Node>>): List<Node> {
-        val wantsComments = types.any { it.isAssignableFrom(Comment::class.java) }
+        val wantsComments = types.any { Comment::class.java.isAssignableFrom(it) }
         if (types.size == 1 && types[0] == Node::class.java) {
             val all = ArrayList<Node>(unit.findAll(Node::class.java))
-            if (wantsComments) all.addAll(unit.getAllContainedComments())
+            if (wantsComments) {
+                val reached = HashSet<Node>(all)
+                all.addAll(unit.getAllContainedComments().filter { !reached.contains(it) })
+            }
             return all
         }
         val out = ArrayList<Node>()
@@ -138,7 +146,9 @@ class DslAstChecker private constructor(
             }
         }
         if (wantsComments) {
+            val reached = HashSet<Node>(out)
             for (comment in unit.getAllContainedComments()) {
+                if (reached.contains(comment)) continue
                 for (type in types) {
                     if (type.isInstance(comment)) {
                         out.add(comment)

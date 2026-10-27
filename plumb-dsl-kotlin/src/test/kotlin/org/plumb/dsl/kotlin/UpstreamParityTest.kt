@@ -1,11 +1,7 @@
 package org.plumb.dsl.kotlin
 
 import com.github.javaparser.JavaParser
-import com.github.javaparser.ParserConfiguration
 import com.github.javaparser.ast.CompilationUnit
-import com.github.javaparser.symbolsolver.JavaSymbolSolver
-import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver
-import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
@@ -31,11 +27,7 @@ class UpstreamParityTest {
         Paths.get("src/test/resources/upstream/Test.java")
 
     private fun parse(): CompilationUnit {
-        val solver = CombinedTypeSolver(ReflectionTypeSolver())
-        val config = ParserConfiguration()
-            .setSymbolResolver(JavaSymbolSolver(solver))
-            .setAttributeComments(true)
-        return JavaParser(config).parse(testCase.toFile()).result.get()
+        return TestParsers.parse(testCase.toFile())
     }
 
     private fun compiledRules(): List<CompiledRule> {
