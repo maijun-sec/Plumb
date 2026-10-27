@@ -106,6 +106,51 @@ def drop_the_target_level(text):
     return text.replace('pluginConfiguration("target")', 'pluginConfiguration("nope")', 1)
 
 
+def drop_the_processor_path_option(text):
+    """Remove every declaration of the capture's --processor-path option.
+
+    The option is declared twice -- once under each of its two spellings --
+    so the mutation has to remove both, or the canonical name survives.
+    """
+    return re.sub(
+        r'\n *out\.add\(opt\("[^"]+", "--processor-path".*?\);', "", text, flags=re.S
+    )
+
+
+def drop_the_compiler_args(text):
+    """Stop the Maven side from reading the <compilerArgs> element."""
+    return text.replace('dom.getChild("compilerArgs")', 'dom.getChild("nope")', 1)
+
+
+def drop_the_annotation_processor_paths(text):
+    """Stop the Maven side from reading the <annotationProcessorPaths> element."""
+    return text.replace(
+        'dom.getChild("annotationProcessorPaths")', 'dom.getChild("nope")', 1
+    )
+
+
+def drop_the_parent_chain(text):
+    """Stop the Maven side from collecting the parent's configuration."""
+    return text.replace(
+        "addCompilerConfiguration(compilerConfigurations, parentModel);",
+        "/* the parent is not consulted */",
+        1,
+    )
+
+
+def prefer_the_parent_over_the_module(text):
+    """Make the parent's configuration win over the module's own."""
+    return text.replace(
+        "addCompilerConfiguration(compilerConfigurations, raw);",
+        "addCompilerConfiguration(compilerConfigurations, parentModel);",
+        1,
+    ).replace(
+        "addCompilerConfiguration(compilerConfigurations, parentModel);\n      current = parentModel;",
+        "current = parentModel;",
+        1,
+    )
+
+
 MUTANTS = [
     ("the capture loses its --release option", "capture_option", drop_an_option),
     ("the capture prefers -source over --release", "capture_options", swap_the_release_precedence),
@@ -113,6 +158,19 @@ MUTANTS = [
     ("the Maven side defaults the language level", "maven_pom", default_the_language_level),
     ("the Maven side defaults the encoding", "maven_pom", default_the_encoding),
     ("the Maven side stops reading <target>", "maven_pom", drop_the_target_level),
+    ("the capture loses its --processor-path option", "capture_option", drop_the_processor_path_option),
+    ("the Maven side stops reading <compilerArgs>", "maven_pom", drop_the_compiler_args),
+    (
+        "the Maven side stops reading <annotationProcessorPaths>",
+        "maven_pom",
+        drop_the_annotation_processor_paths,
+    ),
+    ("the Maven side stops consulting the parent pom", "maven_pom", drop_the_parent_chain),
+    (
+        "the parent's configuration wins over the module's own",
+        "maven_pom",
+        prefer_the_parent_over_the_module,
+    ),
 ]
 
 survivors = []

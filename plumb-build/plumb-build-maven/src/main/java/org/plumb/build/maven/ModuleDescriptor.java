@@ -26,6 +26,8 @@ public final class ModuleDescriptor {
   private final List<String> dependencyCoordinates;
   private final String languageLevel;
   private final Charset encoding;
+  private final List<String> compilerArgs;
+  private final List<String> annotationProcessorPaths;
 
   private ModuleDescriptor(Builder b) {
     this.id = b.id;
@@ -37,6 +39,8 @@ public final class ModuleDescriptor {
     this.dependencyCoordinates = List.copyOf(b.dependencyCoordinates);
     this.languageLevel = b.languageLevel;
     this.encoding = b.encoding;
+    this.compilerArgs = List.copyOf(b.compilerArgs);
+    this.annotationProcessorPaths = List.copyOf(b.annotationProcessorPaths);
   }
 
   public String id() {
@@ -76,6 +80,26 @@ public final class ModuleDescriptor {
     return encoding;
   }
 
+  /**
+   * The extra arguments the compiler plugin passes to the compiler.
+   *
+   * <p>Empty when the pom declares none. The arguments are the plugin's {@code <compilerArgs>},
+   * passed to the compiler verbatim.
+   */
+  public List<String> compilerArgs() {
+    return compilerArgs;
+  }
+
+  /**
+   * The annotation processor paths the compiler plugin declares.
+   *
+   * <p>Empty when the pom declares none. Each entry is a {@code groupId:artifactId:version}
+   * coordinate: the pom declares a dependency, and turning it into a jar is the resolver's job.
+   */
+  public List<String> annotationProcessorPaths() {
+    return annotationProcessorPaths;
+  }
+
   public static Builder builder(String id) {
     return new Builder(id);
   }
@@ -91,6 +115,8 @@ public final class ModuleDescriptor {
     private List<String> dependencyCoordinates = List.of();
     private String languageLevel;
     private Charset encoding;
+    private List<String> compilerArgs = List.of();
+    private List<String> annotationProcessorPaths = List.of();
 
     private Builder(String id) {
       this.id = id;
@@ -133,6 +159,16 @@ public final class ModuleDescriptor {
 
     public Builder encoding(Charset v) {
       this.encoding = v;
+      return this;
+    }
+
+    public Builder compilerArgs(List<String> v) {
+      this.compilerArgs = v == null ? List.of() : new java.util.ArrayList<>(v);
+      return this;
+    }
+
+    public Builder annotationProcessorPaths(List<String> v) {
+      this.annotationProcessorPaths = v == null ? List.of() : new java.util.ArrayList<>(v);
       return this;
     }
 

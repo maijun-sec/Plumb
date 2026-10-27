@@ -29,7 +29,7 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
 ```
 usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
        <maven-resolver|maven|gradle|bazel|ant>] [-c <yaml>] [--cache-mode
-       <off|read|write|readwrite>] [--cg-strategy
+       <off|read|write|readwrite>] [--capture-dir <dir>] [--cg-strategy
        <cha|rta|vta|1cfa|stub|global|cached:<name>:<path>>] [--classpath <jar|dir>] [-D <dir>]
        [--dsl-rules <file>] [--dsl-strict] [-f <console|ndjson|sarif>] [-h] [-i <path>]
        [--list-rules] [--max-parallelism <n>] [--module-root <dir>] [-o <path>] [--project-root
@@ -65,6 +65,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
 | — | `--classpath` | `<jar\|dir>` | — | 第三方依赖 jar 或 class 目录（**可重复**）。只喂 TypeSolver，**绝不被翻译成 TAC IR**。第三方程 jar 存在的唯一目的是让用户源码能解析外部类型引用 |
 | — | `--project-root` | `<dir>` | — | 传给 build-system adapter 的项目根 |
 | — | `--build-system` | `maven-resolver\|maven\|gradle\|bazel\|ant` | — | 显式挑 build-system adapter。缺省时按 `pom.xml` / `build.gradle` / `BUILD` / `build.xml` 自动探测。`maven-resolver` 通过 Maven Resolver 算出**完整传递依赖树**，自动探测时优先于 `maven`；`maven` 只取 pom 里直接声明的依赖，依赖轻、启动快 |
+| — | `--capture-dir` | `<dir>` | — | javac capture 目录（`plumb-build-capture` agent 的输出），用来跟构建**声明**的编译参数对账。两边回答的是同一批问题 —— 语言级别、编码、classpath —— 两边不一致就说明有一边是错的。差异会**报出来**（两个值都带），不做静默取舍。需要 `--project-root`，且需要 `maven-resolver` adapter |
 | — | `--format` | `console\|ndjson\|sarif` | `console` | 输出格式（`sarif` 输出 SARIF 2.1.0，供 IDE / GitHub Code Scanning 集成） |
 
 `--output-dir` 和 `--cache-mode` **不强制成对使用**，但要有意义就得配齐：

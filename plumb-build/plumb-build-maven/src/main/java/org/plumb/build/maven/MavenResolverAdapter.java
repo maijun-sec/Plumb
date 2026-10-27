@@ -16,6 +16,7 @@ import org.eclipse.aether.resolution.DependencyResult;
 import org.plumb.build.BuildAdapter;
 import org.plumb.build.BuildAdapterException;
 import org.plumb.build.BuildProject;
+import org.plumb.build.CompileDiscrepancy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -133,6 +134,77 @@ public final class MavenResolverAdapter implements BuildAdapter {
         .build();
   }
 
+  /**
+   * Compares the captures in a directory against what this project declared.
+   *
+   * <p><b>Why the two are compared.</b> The pom says what the build <em>declared</em>, and the
+   * capture says what the compiler <em>actually did</em>. They answer the same questions, and
+   * they are used together -- so a disagreement means one of them is wrong, and the analysis is
+   * wrong in a way nobody can see.
+   *
+   * <p>Nothing is resolved here. The differences are reported, with both values, because there is
+   * no right answer to pick in general: the pom may be stale, the capture may be from a
+   * different build, and the two may describe different modules.
+   *
+   * <p><b>Why each capture is compared against every module.</b> A capture does not say which
+   * module it belongs to, so the module is not assumed. A capture that disagrees with every
+   * module is still reported -- that is the interesting case.
+   *
+   * @param projectRoot the project root
+   * @param captureDir the directory the capture agent wrote to
+   * @return the differences, sorted; empty when the two sides agree
+   */
+  public List<CompileDiscrepancy> crossCheck(Path projectRoot, Path captureDir) {
+    List<CompileDiscrepancy> out = new ArrayList<>();
+    if (projectRoot == null || captureDir == null || !Files.isDirectory(captureDir)) {
+      return out;
+    }
+    Path rootPom = projectRoot.resolve("pom.xml");
+    if (!Files.isRegularFile(rootPom)) {
+      return out;
+    }
+    List<ModuleDescriptor> modules = describeModules(projectRoot, rootPom);
+
+    List<Path> captures;
+    try (var stream = Files.list(captureDir)) {
+      captures = stream.filter(p -> p.getFileName().toString().endsWith(".json")).sorted().toList();
+    } catch (java.io.IOException e) {
+      return out;
+    }
+
+    for (Path capture : captures) {
+      String json;
+      try {
+        json = Files.readString(capture, java.nio.charset.StandardCharsets.UTF_8);
+      } catch (java.io.IOException e) {
+        continue;
+      }
+      for (ModuleDescriptor module : modules) {
+        for (CompileDiscrepancy difference : CompileCrossCheck.compare(json, module)) {
+          out.add(
+              new CompileDiscrepancy(
+                  difference.parameter(),
+                  difference.declared(),
+                  difference.observed(),
+                  "module "
+                      + module.id()
+                      + ", capture "
+                      + capture.getFileName()
+                      + ": "
+                      + difference.detail()));
+        }
+      }
+    }
+    // A fixed order, so two runs over the same inputs report the same
+    // differences in the same order.
+    out.sort(
+        java.util.Comparator.comparing(CompileDiscrepancy::parameter)
+            .thenComparing(CompileDiscrepancy::detail)
+            .thenComparing(d -> String.valueOf(d.declared()))
+            .thenComparing(d -> String.valueOf(d.observed())));
+    return out;
+  }
+
   // ------------------------------------------------------------------
   // module discovery
   // ------------------------------------------------------------------
@@ -220,6 +292,8 @@ public final class MavenResolverAdapter implements BuildAdapter {
         .languageLevel(pom.languageLevel())
         .encoding(pom.encoding())
         .dependencyCoordinates(pom.dependencyCoordinates())
+        .compilerArgs(pom.compilerArgs())
+        .annotationProcessorPaths(pom.annotationProcessorPaths())
         .build();
   }
 

@@ -313,6 +313,90 @@ if "--classpath" not in canonical_names:
 else:
     note("the capture records the classpath the compiler actually received")
 
+# ------------------------------------------------------------------
+# 6. the plugin's own extras have to be readable on both sides
+# ------------------------------------------------------------------
+# The compiler plugin's configuration holds more than the four well-known
+# elements.  Two of them change the compile in a way nothing else records:
+#
+#   * `<compilerArgs>` -- arguments passed to the compiler verbatim.  A
+#     `-proc:none` turns annotation processing off; a `-parameters` changes
+#     the class files.  Neither can be reconstructed from the pom's other
+#     settings, so the Maven side has to read them.
+#   * `<annotationProcessorPaths>` -- the jars that hold the annotation
+#     processors.  They are the jars that decide which annotations are
+#     processed at all, and they are a path of their own rather than part of
+#     the compile classpath.
+#
+# The capture side records the processor path, and it records the arguments
+# that reached the compiler.  So both sides have to have a way to say it.
+PROCESSOR_PATH_OPTION = "--processor-path"
+
+if PROCESSOR_PATH_OPTION not in canonical_names:
+    failures.append(
+        "the capture does not record a processor path: the compiler plugin's "
+        "<annotationProcessorPaths> is a parameter the capture could never see"
+    )
+else:
+    note("the capture records the processor path the compiler received")
+
+# The Maven side must read the two elements.
+for element, accessor in (
+    ("compilerArgs", "compilerArgs()"),
+    ("annotationProcessorPaths", "annotationProcessorPaths()"),
+):
+    if accessor not in maven_pom:
+        failures.append(
+            "the Maven side does not read the compiler plugin's <%s> element "
+            "(expected %s)" % (element, accessor)
+        )
+    else:
+        note("the Maven side reads the compiler plugin's <%s>" % element)
+
+# The elements must be looked up by their real names, not by a prefix that
+# would also match something else.
+for element in ("compilerArgs", "annotationProcessorPaths"):
+    if '"%s"' % element not in maven_pom:
+        failures.append(
+            "the Maven side does not look up the <%s> element by its name" % element
+        )
+
+# ------------------------------------------------------------------
+# 7. a child module inherits the compiler plugin's configuration
+# ------------------------------------------------------------------
+# This is the normal shape of a multi-module project: the parent configures
+# the compiler once, and every child inherits it.  A lookup that only reads
+# the module's own pom reports "no language level" for every child of a
+# well-configured parent -- and the analyser then falls back to a guess.
+#
+# So the Maven side has to collect the plugin's configuration along the
+# parent chain, and the module's own has to win.
+if "addCompilerConfiguration" not in maven_pom:
+    failures.append(
+        "the Maven side does not collect the compiler plugin's configuration along "
+        "the parent chain: a child module would report no language level at all"
+    )
+else:
+    note("the Maven side collects the compiler configuration along the parent chain")
+
+# The module's own configuration must be searched FIRST, because that is what
+# Maven does: the effective pom merges the parent into the child, with the
+# child on top.
+own_before_parent = False
+if "addCompilerConfiguration(compilerConfigurations, raw);" in maven_pom:
+    parent_at = maven_pom.find("addCompilerConfiguration(compilerConfigurations, parentModel);")
+    own_at = maven_pom.find("addCompilerConfiguration(compilerConfigurations, raw);")
+    if parent_at >= 0 and own_at >= 0:
+        own_before_parent = own_at < parent_at
+if not own_before_parent:
+    failures.append(
+        "the Maven side does not prefer the module's own compiler configuration over "
+        "its parent's: a child that pins a different release is compiled at that "
+        "release"
+    )
+else:
+    note("the module's own compiler configuration wins over its parent's")
+
 print()
 if failures:
     print("FAIL: %d defect(s) in the compile parameters" % len(failures))

@@ -363,6 +363,273 @@ class MavenPomTest {
     assertThat(loaded.testOutputDirectory()).isEqualTo("target/test-classes");
   }
 
+  /**
+   * The extra arguments the compiler plugin passes to the compiler.
+   *
+   * <p>These are arguments the compiler plugin hands over verbatim, and they cannot be
+   * reconstructed from the pom's other settings. {@code -proc:none} turns annotation processing
+   * off; {@code -parameters} changes the class files. Either one makes the described compile
+   * different from the performed one.
+   */
+  @Test
+  void readsTheCompilerArguments(@TempDir Path dir) throws Exception {
+    Path pom = write(dir.resolve("pom.xml"), """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>demo</artifactId>
+          <version>1.0.0</version>
+          <build>
+            <plugins>
+              <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                  <compilerArgs>
+                    <arg>-parameters</arg>
+                    <arg>-Xlint:all</arg>
+                    <arg>-Werror</arg>
+                  </compilerArgs>
+                </configuration>
+              </plugin>
+            </plugins>
+          </build>
+        </project>
+        """);
+
+    MavenPom loaded = MavenPom.read(pom.toFile());
+
+    assertThat(loaded.compilerArgs()).containsExactly("-parameters", "-Xlint:all", "-Werror");
+  }
+
+  /** A pom that declares no compiler arguments has none. */
+  @Test
+  void reportsNoCompilerArgumentsWhenNoneAreDeclared(@TempDir Path dir) throws Exception {
+    Path pom = write(dir.resolve("pom.xml"), """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>demo</artifactId>
+          <version>1.0.0</version>
+        </project>
+        """);
+
+    MavenPom loaded = MavenPom.read(pom.toFile());
+
+    assertThat(loaded.compilerArgs()).isEmpty();
+  }
+
+  /**
+   * The annotation processor paths.
+   *
+   * <p>They are the jars that decide which annotations are processed at all, and they are a path
+   * of their own -- not part of the compile classpath.
+   */
+  @Test
+  void readsTheAnnotationProcessorPaths(@TempDir Path dir) throws Exception {
+    Path pom = write(dir.resolve("pom.xml"), """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>demo</artifactId>
+          <version>1.0.0</version>
+          <build>
+            <plugins>
+              <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                  <annotationProcessorPaths>
+                    <path>
+                      <groupId>org.projectlombok</groupId>
+                      <artifactId>lombok</artifactId>
+                      <version>1.18.30</version>
+                    </path>
+                    <path>
+                      <groupId>com.google.auto.value</groupId>
+                      <artifactId>auto-value-processor</artifactId>
+                      <version>1.10.4</version>
+                    </path>
+                  </annotationProcessorPaths>
+                </configuration>
+              </plugin>
+            </plugins>
+          </build>
+        </project>
+        """);
+
+    MavenPom loaded = MavenPom.read(pom.toFile());
+
+    assertThat(loaded.annotationProcessorPaths())
+        .containsExactly(
+            "org.projectlombok:lombok:1.18.30",
+            "com.google.auto.value:auto-value-processor:1.10.4");
+  }
+
+  /**
+   * A child module inherits the compiler plugin's configuration from its parent.
+   *
+   * <p>This is the normal shape of a multi-module project: the parent configures the compiler
+   * once, and every child inherits it. A lookup that only reads the module's own pom reports
+   * "no language level" for every child of a well-configured parent -- and the analyser then
+   * falls back to a guess.
+   */
+  @Test
+  void aChildInheritsTheCompilerConfigurationFromItsParent(@TempDir Path dir) throws Exception {
+    Path parent = write(dir.resolve("pom.xml"), """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>parent</artifactId>
+          <version>1.0.0</version>
+          <packaging>pom</packaging>
+          <properties>
+            <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+          </properties>
+          <build>
+            <plugins>
+              <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                  <release>17</release>
+                  <compilerArgs>
+                    <arg>-parameters</arg>
+                  </compilerArgs>
+                  <annotationProcessorPaths>
+                    <path>
+                      <groupId>org.projectlombok</groupId>
+                      <artifactId>lombok</artifactId>
+                      <version>1.18.30</version>
+                    </path>
+                  </annotationProcessorPaths>
+                </configuration>
+              </plugin>
+            </plugins>
+          </build>
+        </project>
+        """);
+
+    Path childDir = Files.createDirectories(dir.resolve("child"));
+    Path child =
+        write(
+            childDir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <parent>
+                <groupId>com.example</groupId>
+                <artifactId>parent</artifactId>
+                <version>1.0.0</version>
+                <relativePath>../pom.xml</relativePath>
+              </parent>
+              <artifactId>child</artifactId>
+            </project>
+            """);
+
+    MavenPom loaded = MavenPom.read(child.toFile());
+
+    assertThat(loaded.languageLevel()).isEqualTo("17");
+    assertThat(loaded.encoding()).isEqualTo(StandardCharsets.UTF_8);
+    assertThat(loaded.compilerArgs()).containsExactly("-parameters");
+    assertThat(loaded.annotationProcessorPaths())
+        .containsExactly("org.projectlombok:lombok:1.18.30");
+    // The parent's own pom is still readable, and still says the same thing.
+    assertThat(MavenPom.read(parent.toFile()).languageLevel()).isEqualTo("17");
+  }
+
+  /**
+   * The module's own configuration wins over the parent's.
+   *
+   * <p>This is what Maven itself does: the effective pom merges the parent into the child, with
+   * the child on top. A child that pins a different release is compiled at that release.
+   */
+  @Test
+  void theModulesOwnConfigurationWinsOverItsParents(@TempDir Path dir) throws Exception {
+    write(dir.resolve("pom.xml"), """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>parent</artifactId>
+          <version>1.0.0</version>
+          <packaging>pom</packaging>
+          <build>
+            <plugins>
+              <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                  <release>17</release>
+                </configuration>
+              </plugin>
+            </plugins>
+          </build>
+        </project>
+        """);
+
+    Path childDir = Files.createDirectories(dir.resolve("child"));
+    Path child =
+        write(
+            childDir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <parent>
+                <groupId>com.example</groupId>
+                <artifactId>parent</artifactId>
+                <version>1.0.0</version>
+                <relativePath>../pom.xml</relativePath>
+              </parent>
+              <artifactId>child</artifactId>
+              <build>
+                <plugins>
+                  <plugin>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                      <release>21</release>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
+
+    MavenPom loaded = MavenPom.read(child.toFile());
+
+    assertThat(loaded.languageLevel()).isEqualTo("21");
+  }
+
+  /**
+   * Another plugin's configuration is not the compiler's.
+   *
+   * <p>The compiler plugin is looked up by its artifact id. A {@code <configuration>} under some
+   * other plugin must not be read as the compiler's -- {@code <release>} under a different plugin
+   * means something else entirely.
+   */
+  @Test
+  void anotherPluginsConfigurationIsNotTheCompilers(@TempDir Path dir) throws Exception {
+    Path pom = write(dir.resolve("pom.xml"), """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>demo</artifactId>
+          <version>1.0.0</version>
+          <build>
+            <plugins>
+              <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                  <release>99</release>
+                  <encoding>NOPE</encoding>
+                </configuration>
+              </plugin>
+            </plugins>
+          </build>
+        </project>
+        """);
+
+    MavenPom loaded = MavenPom.read(pom.toFile());
+
+    assertThat(loaded.languageLevel()).isNull();
+    assertThat(loaded.encoding()).isNull();
+  }
+
   private static Path write(Path pom, String xml) throws Exception {
     Files.writeString(pom, xml, StandardCharsets.UTF_8);
     return pom;

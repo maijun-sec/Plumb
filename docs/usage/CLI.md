@@ -30,7 +30,7 @@ The output of `sast-scan --help` is:
 ```
 usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
        <maven-resolver|maven|gradle|bazel|ant>] [-c <yaml>] [--cache-mode
-       <off|read|write|readwrite>] [--cg-strategy
+       <off|read|write|readwrite>] [--capture-dir <dir>] [--cg-strategy
        <cha|rta|vta|1cfa|stub|global|cached:<name>:<path>>] [--classpath <jar|dir>] [-D <dir>]
        [--dsl-rules <file>] [--dsl-strict] [-f <console|ndjson|sarif>] [-h] [-i <path>]
        [--list-rules] [--max-parallelism <n>] [--module-root <dir>] [-o <path>] [--project-root
@@ -66,6 +66,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
 | — | `--classpath` | `<jar\|dir>` | — | Third-party dependency jars or class directories (**repeatable**). They only feed the TypeSolver and are **never translated into TAC IR**. The only purpose of the third-party jars is to let the user sources resolve references to external types |
 | — | `--project-root` | `<dir>` | — | The project root passed to the build-system adapter |
 | — | `--build-system` | `maven-resolver\|maven\|gradle\|bazel\|ant` | — | Explicitly pick the build-system adapter. When absent it is auto-detected from `pom.xml` / `build.gradle` / `BUILD` / `build.xml`. `maven-resolver` computes the **complete transitive dependency tree** via Maven Resolver and takes priority over `maven` during auto-detection; `maven` only takes the dependencies declared directly in the pom, which is lighter and starts faster |
+| — | `--capture-dir` | `<dir>` | — | Directory of javac captures (the `plumb-build-capture` agent's output) to cross-check against what the build declared. The two answer the same questions from two sides — language level, encoding, classpath — and a disagreement means one of them is wrong. The differences are **reported** on stderr, with both values; nothing is silently resolved. Needs `--project-root` and the `maven-resolver` adapter |
 | — | `--format` | `console\|ndjson\|sarif` | `console` | Output format (`sarif` emits SARIF 2.1.0, for IDE / GitHub Code Scanning integration) |
 
 `--output-dir` and `--cache-mode` are **not required to be used together**, but

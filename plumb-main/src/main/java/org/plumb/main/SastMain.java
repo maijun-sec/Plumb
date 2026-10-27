@@ -1,6 +1,7 @@
 package org.plumb.main;
 
 import java.nio.file.Path;
+import java.util.List;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
@@ -367,6 +368,21 @@ public final class SastMain {
             .build());
     opts.addOption(
         Option.builder()
+            .longOpt("capture-dir")
+            .hasArg()
+            .argName("dir")
+            .desc(
+                "Directory of javac captures (the plumb-build-capture "
+                    + "agent's output) to cross-check against what the "
+                    + "build declared. The two answer the same questions "
+                    + "from two sides -- language level, encoding, "
+                    + "classpath -- and a disagreement means one of them "
+                    + "is wrong. The differences are reported on stderr; "
+                    + "nothing is silently resolved. Needs "
+                    + "--project-root.")
+            .build());
+    opts.addOption(
+        Option.builder()
             .longOpt("dsl-rules")
             .hasArg()
             .argName("file")
@@ -435,6 +451,54 @@ public final class SastMain {
     cfg.moduleRoots.addAll(bp.moduleRoots());
     cfg.classpathJars.addAll(bp.classpathJars());
     cfg.buildProject = bp;
+
+    crossCheckCaptures(cfg, cli, adapter, projectRoot);
+  }
+
+  /**
+   * Compares the captured compiles against what the build declared.
+   *
+   * <p><b>Why the differences are reported rather than resolved.</b> The two sides answer the same
+   * questions from two directions, and they are used together: the analysis reads the pom, and the
+   * capture says what the compiler really did. When they disagree, one of them is wrong, and the
+   * analysis is wrong in a way nobody can see. There is no right answer to pick in general -- the
+   * pom may be stale, and the capture may be from a different build -- so both values are reported
+   * and the reader decides.
+   *
+   * <p>The cross-check needs the module descriptors, which only the Maven adapter produces. For
+   * another build system there is nothing to compare against, and that is said rather than silently
+   * skipped.
+   */
+  private static void crossCheckCaptures(
+      ScanConfig cfg, CommandLine cli, BuildAdapter adapter, Path projectRoot) {
+    if (!cli.hasOption("capture-dir")) {
+      return;
+    }
+    Path captureDir = Path.of(cli.getOptionValue("capture-dir"));
+    if (!(adapter instanceof org.plumb.build.maven.MavenResolverAdapter resolver)) {
+      System.err.println(
+          "--capture-dir needs the maven-resolver adapter: the cross-check compares the "
+              + "captures against what a pom declares, and the '"
+              + adapter.systemName()
+              + "' adapter does not read one.");
+      return;
+    }
+    List<org.plumb.build.CompileDiscrepancy> differences =
+        resolver.crossCheck(projectRoot, captureDir);
+    if (differences.isEmpty()) {
+      System.err.println(
+          "Cross-check: the captures in " + captureDir + " agree with what the build declared.");
+      return;
+    }
+    System.err.println(
+        "Cross-check: "
+            + differences.size()
+            + " difference(s) between the captures in "
+            + captureDir
+            + " and what the build declared:");
+    for (org.plumb.build.CompileDiscrepancy difference : differences) {
+      System.err.println("  " + difference.describe());
+    }
   }
 
   /**

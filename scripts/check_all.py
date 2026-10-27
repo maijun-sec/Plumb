@@ -105,6 +105,13 @@ The gates are:
                               neither guesses what the build did not say
     mutate_compile_parameters  the compile-parameter gate is not checking
                               air: every deliberate drift must make it fail
+    check_compile_crosscheck   the two sides of the compile parameters are
+                              compared against each other, and the comparison
+                              REPORTS the differences instead of resolving
+                              them: a silently resolved disagreement is a
+                              confidently wrong analysis
+    mutate_compile_crosscheck  the cross-check gate is not checking air: every
+                              deliberate drift must make it fail
     check_dsl_corpus           the DSL example corpus still covers the
                               engine's vocabulary: every node property, every
                               operator, the corpus's own size, and the counts
@@ -220,6 +227,10 @@ GATES = (
      ["python", "scripts/check_compile_parameters.py"], "check"),
     ("mutate_compile_parameters",
      ["python", "scripts/mutate_compile_parameters.py"], "check"),
+    ("check_compile_crosscheck",
+     ["python", "scripts/check_compile_crosscheck.py"], "check"),
+    ("mutate_compile_crosscheck",
+     ["python", "scripts/mutate_compile_crosscheck.py"], "check"),
     ("check_dsl_corpus",
      ["python", "scripts/check_dsl_corpus.py"], "check"),
     ("mutate_dsl_corpus",

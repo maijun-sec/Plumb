@@ -56,19 +56,38 @@ final class MavenPom {
   private final List<String> moduleNames;
   private final Map<String, Dependency> managed;
 
+  /**
+   * The compiler plugin's configuration, from the module and its parents.
+   *
+   * <p><b>Why the parents are included.</b> A multi-module project almost never configures the
+   * compiler plugin in every module: the parent declares it once, and the children inherit it. A
+   * lookup that only reads the module's own {@code <build>} therefore reports "no language level,
+   * no encoding" for every child of a well-configured parent -- and the analyser then falls back
+   * to a guess.
+   *
+   * <p>The module's own configuration wins, because that is what Maven itself does: the effective
+   * POM merges the parent into the child, with the child on top.
+   */
+  private final List<Xpp3Dom> compilerConfigurations;
+
   private MavenPom(
-      Model model, Properties properties, List<String> moduleNames, Map<String, Dependency> managed) {
+      Model model,
+      Properties properties,
+      List<String> moduleNames,
+      Map<String, Dependency> managed,
+      List<Xpp3Dom> compilerConfigurations) {
     this.model = model;
     this.properties = properties;
     this.moduleNames = List.copyOf(moduleNames);
     this.managed = managed;
+    this.compilerConfigurations = List.copyOf(compilerConfigurations);
   }
 
   /** Read {@code pomFile} and follow its parent chain. */
   static MavenPom read(File pomFile) {
     Model raw = readModel(pomFile);
     if (raw == null) {
-      return new MavenPom(new Model(), new Properties(), List.of(), Map.of());
+      return new MavenPom(new Model(), new Properties(), List.of(), Map.of(), List.of());
     }
     Properties props = new Properties();
     List<String> modules = raw.getModules() == null ? List.of() : new ArrayList<>(raw.getModules());
@@ -76,6 +95,13 @@ final class MavenPom {
     // The managed versions are collected along the parent chain, nearest
     // parent first, so a child may override what its parent manages.
     Map<String, Dependency> managed = new LinkedHashMap<>();
+
+    // The compiler plugin's configuration is collected the same way: the
+    // module's own first, then each parent.  The module's own wins, so the
+    // list is searched in that order.
+    List<Xpp3Dom> compilerConfigurations = new ArrayList<>();
+    addCompilerConfiguration(compilerConfigurations, raw);
+
     Model current = raw;
     int depth = 0;
     while (current.getParent() != null && depth++ < MAX_PARENT_DEPTH) {
@@ -91,6 +117,7 @@ final class MavenPom {
       }
       mergeInto(props, parentModel.getProperties());
       collectManaged(managed, parentModel.getDependencyManagement());
+      addCompilerConfiguration(compilerConfigurations, parentModel);
       current = parentModel;
     }
     mergeInto(props, raw.getProperties());
@@ -98,7 +125,31 @@ final class MavenPom {
 
     // The module's OWN model is what describes it. The parent supplies
     // properties and managed versions, not the module's dependencies.
-    return new MavenPom(raw, props, modules, managed);
+    return new MavenPom(raw, props, modules, managed, compilerConfigurations);
+  }
+
+  /**
+   * The compiler plugin's configuration in one pom, if it declares one.
+   *
+   * <p>The plugin is looked up by its artifact id, so another plugin's {@code <configuration>} is
+   * never mistaken for the compiler's.
+   *
+   * @param target the list to add to
+   * @param model the pom to read
+   */
+  private static void addCompilerConfiguration(List<Xpp3Dom> target, Model model) {
+    var build = model.getBuild();
+    if (build == null || build.getPlugins() == null) {
+      return;
+    }
+    for (Plugin plugin : build.getPlugins()) {
+      if (!COMPILER_PLUGIN_ARTIFACT_ID.equals(plugin.getArtifactId())) {
+        continue;
+      }
+      if (plugin.getConfiguration() instanceof Xpp3Dom dom) {
+        target.add(dom);
+      }
+    }
   }
 
   /** Add the managed dependencies of one pom, keeping the first definition. */
@@ -317,24 +368,14 @@ final class MavenPom {
    * mistaken for the compiler's. The value is resolved against the effective properties, because
    * the usual way to write it is a placeholder: {@code <release>${java.version}</release>}.
    *
+   * <p>The module's own configuration is searched first, then each parent's, so a child inherits
+   * what the parent declared and can still override it.
+   *
    * @param name the configuration element name, e.g. {@code release}
    * @return the resolved value, or {@code null} when the plugin does not declare it
    */
   private String pluginConfiguration(String name) {
-    var build = model.getBuild();
-    if (build == null || build.getPlugins() == null) {
-      return null;
-    }
-    for (Plugin plugin : build.getPlugins()) {
-      if (!COMPILER_PLUGIN_ARTIFACT_ID.equals(plugin.getArtifactId())) {
-        continue;
-      }
-      Object configuration = plugin.getConfiguration();
-      if (!(configuration instanceof Xpp3Dom dom)) {
-        // The configuration is not DOM-shaped (an unusual pom); there is
-        // nothing to read.
-        continue;
-      }
+    for (Xpp3Dom dom : compilerConfigurations) {
       Xpp3Dom child = dom.getChild(name);
       if (child == null) {
         continue;
@@ -346,6 +387,103 @@ final class MavenPom {
       return resolve(value);
     }
     return null;
+  }
+
+  /**
+   * The extra arguments the compiler plugin passes to the compiler.
+   *
+   * <p><b>What this is.</b> The {@code <compilerArgs>} element of the compiler plugin's
+   * configuration holds arguments that are passed to the compiler verbatim, and they are not
+   * options this code knows about: {@code -Xlint:all}, {@code -parameters}, {@code -Werror}. The
+   * plugin's own {@code <compilerArgs>} element takes one argument per {@code <arg>} child.
+   *
+   * <p><b>Why they matter.</b> An argument like {@code -proc:none} turns annotation processing
+   * off, and {@code -parameters} changes the class files. Neither can be reconstructed from the
+   * pom's other settings, so without them the described compile is not the performed one.
+   *
+   * @return the arguments, in the order the pom declares them
+   */
+  List<String> compilerArgs() {
+    List<String> out = new ArrayList<>();
+    for (Xpp3Dom dom : compilerConfigurations) {
+      Xpp3Dom args = dom.getChild("compilerArgs");
+      if (args == null) {
+        continue;
+      }
+      for (Xpp3Dom arg : args.getChildren()) {
+        String value = arg.getValue();
+        if (value == null || value.isBlank()) {
+          continue;
+        }
+        String resolved = resolve(value);
+        if (resolved != null && !resolved.isBlank() && !out.contains(resolved)) {
+          out.add(resolved);
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The annotation processor paths the compiler plugin declares.
+   *
+   * <p><b>What this is.</b> The {@code <annotationProcessorPaths>} element of the compiler
+   * plugin's configuration names the jars that hold the annotation processors. They are not part
+   * of the compile classpath -- the processor path is a path of its own -- and they are the
+   * jars that decide which annotations are processed at all.
+   *
+   * <p><b>Why the coordinates are reported and not the jars.</b> A path element declares a
+   * dependency: a group id, an artifact id and a version. Turning that into a jar means resolving
+   * it, and the resolution is the resolver's job, not this class's. What this class reports is
+   * what the pom declared, so the two sides can be compared.
+   *
+   * @return the processor path's coordinates, in the order the pom declares them
+   */
+  List<String> annotationProcessorPaths() {
+    List<String> out = new ArrayList<>();
+    for (Xpp3Dom dom : compilerConfigurations) {
+      Xpp3Dom paths = dom.getChild("annotationProcessorPaths");
+      if (paths == null) {
+        continue;
+      }
+      for (Xpp3Dom path : paths.getChildren()) {
+        if (!"path".equals(path.getName())) {
+          continue;
+        }
+        String groupId = childValue(path, "groupId");
+        String artifactId = childValue(path, "artifactId");
+        String version = childValue(path, "version");
+        if (groupId == null || artifactId == null) {
+          // A path without coordinates cannot be resolved; skip it rather
+          // than report half a dependency.
+          continue;
+        }
+        String coordinate = groupId + ":" + artifactId + ":" + (version == null ? "" : version);
+        if (!out.contains(coordinate)) {
+          out.add(coordinate);
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The value of a child element, resolved against the effective properties.
+   *
+   * @param parent the element to look in
+   * @param name the child element's name
+   * @return the resolved value, or {@code null} when the child is absent or empty
+   */
+  private String childValue(Xpp3Dom parent, String name) {
+    Xpp3Dom child = parent.getChild(name);
+    if (child == null) {
+      return null;
+    }
+    String value = child.getValue();
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    return resolve(value);
   }
 
   /** Substitute {@code ${...}} placeholders from the effective properties. */
