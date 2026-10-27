@@ -6,8 +6,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -52,14 +54,56 @@ public final class CaptureRecorder {
   public static final String PROP_OUTPUT_DIR = "plumb.capture.dir";
 
   /**
-   * The argv of the most recent capture, used to suppress duplicates.
+   * The identity of the compile most recently recorded, used to suppress duplicates.
    *
-   * <p>A single command-line compile reaches <em>both</em> hooked CLI entry points:
-   * {@code com.sun.tools.javac.Main#compile} delegates to {@code
-   * com.sun.tools.javac.main.Main#compile}. Both calls carry the same argv, so without this the
-   * capture would be written twice.
+   * <p>A single compile reaches several hooked entry points: the command-line driver goes through
+   * {@code com.sun.tools.javac.Main#compile} and then {@code com.sun.tools.javac.main.Main
+   * #compile}; the API path goes through {@code JavacTool#getTask} and then {@code
+   * JavacTaskImpl#call}. Each of them would otherwise write its own file, and the analyser would
+   * see one compile several times over.
+   *
+   * <p><b>The key is the compile's identity, not its argv.</b> The argv differs between the CLI
+   * and the API path even for the same compile, and it is identical for two genuinely different
+   * compiles that happen to be invoked with the same options. The identity -- sources, output
+   * directory, classpath, encoding, language level -- is what actually says "same compile".
    */
-  private static volatile String lastCaptured;
+  private static volatile String lastIdentity;
+
+  /**
+   * How many distinct compiles are remembered for duplicate detection.
+   *
+   * <p>More than one, because a build compiles many modules in a row and the identity of the
+   * previous compile is not enough to tell a repeat from a new one.
+   */
+  private static final int IDENTITY_HISTORY = 8;
+
+  /** The identities of the compiles seen so far, most recent first. */
+  private static final java.util.Set<String> SEEN_IDENTITIES =
+      java.util.Collections.synchronizedSet(new java.util.LinkedHashSet<String>());
+
+  /**
+   * The compiler options of the tasks that have been created but not yet compiled.
+   *
+   * <p><b>This is how the IDE path gets its options.</b> {@code JavacTaskImpl#call()} and {@code
+   * JavacTaskImpl#generate()} carry no options -- they were set on the task when it was created.
+   * And they cannot be read back off the task: {@code com.sun.tools.javac.api} is not exported by
+   * the {@code jdk.compiler} module, so every reflective access to the task's {@code options} field
+   * fails with {@code InaccessibleObjectException} unless the JVM is started with {@code
+   * --add-opens jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED}. Requiring that flag would make
+   * the agent unusable in a normal build.
+   *
+   * <p>So the options are remembered at the point where they are still visible -- {@code
+   * JavacTool#getTask}, which receives them as an argument -- and are looked up again when the
+   * task is driven. The lookup is by identity, so two tasks never share options.
+   */
+  private static final Map<Object, List<String>> TASK_OPTIONS = new IdentityHashMap<>();
+
+  /**
+   * The source files of the tasks that have been created but not yet compiled.
+   *
+   * <p>Remembered for the same reason as the options.
+   */
+  private static final Map<Object, List<String>> TASK_SOURCES = new IdentityHashMap<>();
 
   private CaptureRecorder() {}
 
@@ -72,18 +116,146 @@ public final class CaptureRecorder {
     if (arguments == null || arguments.length == 0) {
       return;
     }
-    String signature = String.join("\u0000", arguments);
-    if (signature.equals(lastCaptured)) {
-      // The same argv seen again -- the other hooked entry point.
-      return;
-    }
-    lastCaptured = signature;
-
     List<String> argv = new ArrayList<>(arguments.length);
     for (String a : arguments) {
       argv.add(a);
     }
-    write(buildCapture(argv, List.of(), "cli"));
+    record(buildCapture(argv, List.of(), "cli"));
+  }
+
+  /**
+   * Remember a task's options and sources.
+   *
+   * <p>Called from the {@code getTask} hook, which has both.
+   *
+   * @param task the task that was created
+   * @param options the compiler options
+   * @param sources the source files
+   */
+  public static void rememberTask(Object task, List<String> options, List<String> sources) {
+    if (task == null || options == null || options.isEmpty()) {
+      return;
+    }
+    synchronized (TASK_OPTIONS) {
+      TASK_OPTIONS.put(task, options);
+      TASK_SOURCES.put(task, sources == null ? List.of() : sources);
+    }
+  }
+
+  /**
+   * The compiler options of a {@code getTask} call, as strings.
+   *
+   * @param options the options iterable, may be null
+   * @return the options, empty when there are none
+   */
+  public static List<String> toStrings(Iterable<?> options) {
+    List<String> out = new ArrayList<>();
+    if (options == null) {
+      return out;
+    }
+    for (Object o : options) {
+      if (o != null) {
+        out.add(String.valueOf(o));
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The source files of a {@code getTask} call, as paths.
+   *
+   * @param sources the sources iterable, may be null
+   * @return the source paths, empty when there are none
+   */
+  public static List<String> toPaths(Iterable<?> sources) {
+    List<String> out = new ArrayList<>();
+    if (sources == null) {
+      return out;
+    }
+    for (Object o : sources) {
+      String path = toPath(o);
+      if (path != null) {
+        out.add(path);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Record a compile driven through a task object, as an IDE does.
+   *
+   * <p>{@code JavacTaskImpl#call()} and {@code JavacTaskImpl#generate()} carry no compiler
+   * options: they were set on the task when it was created, by {@code JavacTool#getTask}. So the
+   * options are looked up from the ones remembered then.
+   *
+   * @param task the task object, or {@code null}
+   */
+  public static void onTask(Object task) {
+    if (task == null) {
+      return;
+    }
+    try {
+      doRecordTask(task);
+    } catch (Throwable t) {
+      // A capture must never break the compile.
+      System.err.println("[plumb-capture] could not record the compile: " + t);
+    }
+  }
+
+  private static void doRecordTask(Object task) {
+    List<String> options;
+    List<String> sourcePaths;
+    synchronized (TASK_OPTIONS) {
+      options = TASK_OPTIONS.get(task);
+      sourcePaths = TASK_SOURCES.get(task);
+      // The task is consumed: it will not be driven again, and holding on
+      // to it would keep the compiler's file manager alive.
+      TASK_OPTIONS.remove(task);
+      TASK_SOURCES.remove(task);
+    }
+    if (options == null || options.isEmpty()) {
+      return;
+    }
+    if (sourcePaths == null) {
+      sourcePaths = List.of();
+    }
+    record(buildCapture(options, sourcePaths, "api"));
+  }
+
+  /**
+   * Record a compile, unless this compile has already been recorded.
+   *
+   * <p>The duplicate check is on the compile's identity, not on its argv. One compile reaches
+   * several entry points -- the CLI driver through two of them, the API path through two others
+   * -- and each would otherwise write a file. The identity says whether two captures describe the
+   * same compile.
+   *
+   * <p><b>The history is bounded.</b> A build compiles module after module; keeping every
+   * identity forever would grow without limit, and a build that compiles the same sources twice
+   * with different options is two different compiles.
+   *
+   * @param entries the capture to record
+   */
+  private static void record(List<CaptureEntry> entries) {
+    if (entries == null || entries.isEmpty()) {
+      return;
+    }
+    CaptureEntry entry = entries.get(0);
+    String identity = entry.compileIdentity();
+    synchronized (SEEN_IDENTITIES) {
+      if (SEEN_IDENTITIES.contains(identity)) {
+        // The same compile, seen through another entry point.
+        return;
+      }
+      SEEN_IDENTITIES.add(identity);
+      while (SEEN_IDENTITIES.size() > IDENTITY_HISTORY) {
+        java.util.Iterator<String> it = SEEN_IDENTITIES.iterator();
+        it.next();
+        it.remove();
+      }
+    }
+    lastIdentity = identity;
+    write(entries);
   }
 
   /**
@@ -115,12 +287,6 @@ public final class CaptureRecorder {
     if (argv.isEmpty()) {
       return;
     }
-    String signature = String.join("\u0000", argv);
-    if (signature.equals(lastCaptured)) {
-      return;
-    }
-    lastCaptured = signature;
-
     List<String> sourcePaths = new ArrayList<>();
     if (sources != null) {
       for (Object o : sources) {
@@ -130,7 +296,7 @@ public final class CaptureRecorder {
         }
       }
     }
-    write(buildCapture(argv, sourcePaths, "api"));
+    record(buildCapture(argv, sourcePaths, "api"));
   }
 
   /**

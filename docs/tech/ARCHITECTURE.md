@@ -402,15 +402,18 @@ java -cp plumb-build-capture.jar ... # CaptureReader.readAll(Path.of("/tmp/captu
 
 ### 7.0.1 capture 挂哪些入口
 
-「javac 命令行」不是一个方法，而是**至少八个**，取决于是怎么走到编译器的：
+「javac 命令行」不是一个方法，而是**十二个**，取决于是怎么走到编译器的：
 
 | 入口 | 谁会走这条路 |
 | --- | --- |
 | `com.sun.tools.javac.Main#compile(String[])` | `javac` 命令行（静态那一层） |
+| `com.sun.tools.javac.Main#compile(String[], PrintWriter)` | 同上，诊断走调用方给的 writer |
 | `com.sun.tools.javac.main.Main#compile(String[])` | `javac` 命令行（实例那一层） |
 | `com.sun.tools.javac.main.Main#compile(String[], Context)` | 带 context 的调用路径 |
 | `com.sun.tools.javac.api.JavacTool#getTask(...)` | **Gradle / Maven / IDE**（`javax.tools` API） |
-| `javax.tools.JavaCompiler#run(...)` | 老 API |
+| `com.sun.tools.javac.api.JavacTool#run(...)` | 老式 run API |
+| `com.sun.tools.javac.api.JavacTaskImpl#call()` | 任务驱动（build tool / IDE） |
+| `com.sun.tools.javac.api.JavacTaskImpl#generate()` | 任务驱动（IDE 路径） |
 | `org.eclipse.jdt.internal.compiler.batch.Main#compile(String[])` | Eclipse 编译器（ECJ） |
 | `com.sun.tools.sjavac.client.ClientMain#run(String[])` | sjavac client |
 | `com.sun.tools.sjavac.server.ServerMain#run(String[])` | sjavac server |
@@ -418,19 +421,51 @@ java -cp plumb-build-capture.jar ... # CaptureReader.readAll(Path.of("/tmp/captu
 只挂一个的后果是**静默失配**：扫描照跑，但那个路径上的编译根本没有 capture。
 所以入口清单是**声明式**的（`CompilerEntryPoints`），加一个入口是改数据不是改代码。
 
+**入口的类名是实测出来的，不是照文档抄的。** 这一条踩过坑：
+`javax.tools.JavaCompiler` 在现代 JDK 上是个**接口**，只有 `getTask` 和
+`getStandardFileManager`，**根本没有 `run` 方法** —— 挂在它上面的 hook 永远不会触发，
+所有用 run 式 API 的调用方拿到的 capture 是空的。`run` 实际住在
+`com.sun.tools.javac.api.JavacTool` 上。`CompilerEntryPointsTest` 现在会对每个入口
+**用真实的类反射核对方法名和参数个数**，所以再写错类名会直接让构建失败。
+
 挂法用 ByteBuddy 的 **`Advice`**（inline 织入），不用手写 ASM visitor：
 `Advice` 把 hook 的字节码**复制进**被测方法，所以不需要 super 方法、不需要 delegation target，
 `Main#compile(String[])` 这种静态方法照样能挂。手写 visitor 要自己算参数的 local slot
 （静态方法 0，实例方法 1），算错就破坏编译器的栈。
 
-### 7.0.2 capture 记的是什么
+### 7.0.2 IDE 路径的选项从哪来
+
+`JavacTaskImpl#call()` 和 `#generate()` **不带编译选项** —— 选项在 `getTask` 创建任务时就定好了。
+
+而且**取不回来**：`com.sun.tools.javac.api` 这个包没有被 `jdk.compiler` 模块导出，
+反射读任务上的 `options` 字段会抛 `InaccessibleObjectException`，
+除非给 JVM 加 `--add-opens jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED` ——
+让 agent 依赖这个 flag 就等于在普通构建里用不了。
+
+所以选项在**还能看见它的地方**记住：`getTask` 同时拿到选项和它返回的任务，
+把两者按**对象身份**关联起来；任务被驱动时再按身份取回来。
+`IdentityHashMap` 是这里的关键 —— 用 `equals` 会把两个内容相同的任务混成一对。
+
+### 7.0.3 capture 记的是什么
 
 不是 argv，是**这次编译实际用的东西**：classpath 的**实际内容**（不是 `-classpath` 参数本身）、
 source path、encoding、`--release`、源文件清单、输出目录、编译用的 JDK 版本。
 理由和 Coverity 一样：`javac` 没给 `-classpath` 和 `javac -classpath ""` 意思不一样，
 只有把环境一起看才能还原。
 
-### 7.0.3 Gradle：daemon 和 build cache
+### 7.0.4 一次编译只落一份
+
+**一次编译会经过好几个入口**：命令行那条路先过 `com.sun.tools.javac.Main#compile`，
+再过 `com.sun.tools.javac.main.Main#compile`；API 那条路先过 `JavacTool#getTask`，
+再过 `JavacTaskImpl#call`。不去重的话，一次编译会落好几份几乎一样的记录。
+
+去重的键**不是 argv**：CLI 和 API 走到同一次编译时 argv 是不同的，
+而两次真正不同的编译 argv 反而可能一模一样。键是**这次编译的身份**
+（源文件 + 输出目录 + classpath + source path + encoding + 语言级别），
+见 `CaptureEntry.compileIdentity()`。源文件在比较前**先排序**，
+因为同一组文件从 API 和命令行过来的顺序不一样。
+
+### 7.0.5 Gradle：daemon 和 build cache
 
 Gradle 是最麻烦的一个：编译发生在**daemon 进程**里（agent 挂的那个 JVM 看不到），
 而且开了 build cache 时编译**根本没跑**（也就没什么可 capture）。

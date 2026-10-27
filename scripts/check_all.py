@@ -61,6 +61,12 @@ The gates are:
     check_style_rules_claims   the style-rules document still matches the
                               code: the interface methods, the dispatcher
                               API, the context API, the visit count
+    check_capture_claims       the capture section of the architecture
+                              document still matches the code: the hooked
+                              compiler entry points, both ways, the class
+                              list, and no raw ASM
+    mutate_capture_claims      the capture gate is not checking air: every
+                              deliberate drift must make it fail
     check_package_claims       the packaging scripts copy files that exist,
                               and the packaging documentation's sizes and
                               log level match the build
@@ -126,6 +132,10 @@ GATES = (
      ["python", "scripts/check_cache_claims.py"], "check"),
     ("check_style_rules_claims",
      ["python", "scripts/check_style_rules_claims.py"], "check"),
+    ("check_capture_claims",
+     ["python", "scripts/check_capture_claims.py"], "check"),
+    ("mutate_capture_claims",
+     ["python", "scripts/mutate_capture_claims.py"], "check"),
     ("check_package_claims",
      ["python", "scripts/check_package_claims.py"], "check"),
     ("capability_baseline",

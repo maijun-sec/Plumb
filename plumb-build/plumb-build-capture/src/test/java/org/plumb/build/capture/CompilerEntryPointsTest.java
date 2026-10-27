@@ -41,7 +41,24 @@ class CompilerEntryPointsTest {
 
   @Test
   void coversTheLegacyJavaCompilerRunApi() {
-    assertThat(CompilerEntryPoints.forType("javax.tools.JavaCompiler")).isNotEmpty();
+    // The `run` method lives on JavacTool, not on javax.tools.JavaCompiler:
+    // on a modern JDK the latter is an interface with only getTask and
+    // getStandardFileManager. A hook on javax.tools.JavaCompiler#run would
+    // never fire.
+    assertThat(CompilerEntryPoints.forType("com.sun.tools.javac.api.JavacTool"))
+        .anyMatch(e -> e.methodName().equals("run"));
+    assertThat(CompilerEntryPoints.forType("javax.tools.JavaCompiler"))
+        .as("javax.tools.JavaCompiler has no run method on a modern JDK")
+        .isEmpty();
+  }
+
+  @Test
+  void coversTheIdeTaskPath() {
+    // An IDE creates a task and then drives it. Without these hooks the IDE
+    // path produces no capture at all.
+    assertThat(CompilerEntryPoints.forType("com.sun.tools.javac.api.JavacTaskImpl"))
+        .extracting(CompilerEntryPoints.EntryPoint::methodName)
+        .contains("call", "generate");
   }
 
   @Test
@@ -63,7 +80,7 @@ class CompilerEntryPointsTest {
     for (CompilerEntryPoints.EntryPoint entry : CompilerEntryPoints.all()) {
       assertThat(entry.typeName()).as("entry point %s", entry.describe()).isNotBlank();
       assertThat(entry.methodName()).as("entry point %s", entry.describe()).isNotBlank();
-      assertThat(entry.argumentCount()).as("entry point %s", entry.describe()).isPositive();
+      assertThat(entry.argumentCount()).as("entry point %s", entry.describe()).isNotNegative();
     }
   }
 
@@ -82,17 +99,102 @@ class CompilerEntryPointsTest {
   @Test
   void theApiEntryPointHasBothTheOptionsAndTheSources() {
     CompilerEntryPoints.EntryPoint api =
-        CompilerEntryPoints.forType("com.sun.tools.javac.api.JavacTool").get(0);
-    assertThat(api.kind()).isEqualTo(CompilerEntryPoints.EntryPoint.Kind.FILE_OBJECTS);
+        CompilerEntryPoints.forType("com.sun.tools.javac.api.JavacTool").stream()
+            .filter(e -> e.methodName().equals("getTask"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(api.kind()).isEqualTo(CompilerEntryPoints.EntryPoint.Kind.FILE_OBJECTS_WITH_TASK);
     assertThat(api.optionsIndex()).isBetween(0, api.argumentCount() - 1);
     assertThat(api.sourcesIndex()).isBetween(0, api.argumentCount() - 1);
     assertThat(api.optionsIndex()).isNotEqualTo(api.sourcesIndex());
+  }
+
+  /**
+   * The entry points that carry no options must not claim an options index.
+   *
+   * <p>{@code JavacTaskImpl#call()} and {@code #generate()} take no options -- they were set on
+   * the task when it was created. An entry point that said it had an options index would send the
+   * advice looking for an argument that is not there.
+   */
+  @Test
+  void theTaskEntryPointsCarryNoOptions() {
+    for (CompilerEntryPoints.EntryPoint entry :
+        CompilerEntryPoints.forType("com.sun.tools.javac.api.JavacTaskImpl")) {
+      assertThat(entry.kind()).isEqualTo(CompilerEntryPoints.EntryPoint.Kind.NO_OPTIONS);
+      assertThat(entry.optionsIndex()).as("entry point %s", entry.describe()).isEqualTo(-1);
+      assertThat(entry.sourcesIndex()).as("entry point %s", entry.describe()).isEqualTo(-1);
+    }
   }
 
   @Test
   void typesAreDistinct() {
     List<String> types = CompilerEntryPoints.types();
     assertThat(types).doesNotHaveDuplicates();
+  }
+
+  /**
+   * The hooked methods must exist on the hooked classes, with the arity the entry point claims.
+   *
+   * <p>This is the test that would have caught the {@code javax.tools.JavaCompiler#run} mistake.
+   * That entry point looked plausible -- Coverity's own hook list names it -- but on a modern JDK
+   * {@code javax.tools.JavaCompiler} is an <em>interface</em> with only {@code getTask} and {@code
+   * getStandardFileManager}, and no {@code run} at all. The hook never fired, so the capture was
+   * silently empty for every caller that used the run-style API.
+   *
+   * <p>Checking against the real classes is the only way to catch that: reading the list and
+   * checking it is internally consistent would have passed.
+   *
+   * <p>The JDK classes are skipped when they are absent -- ECJ and sjavac are not part of a JDK.
+   */
+  @Test
+  void everyHookedMethodExistsWithTheClaimedArity() {
+    for (CompilerEntryPoints.EntryPoint entry : CompilerEntryPoints.all()) {
+      Class<?> type;
+      try {
+        type = Class.forName(entry.typeName());
+      } catch (ClassNotFoundException e) {
+        // Not part of this JDK: ECJ, sjavac. Nothing to check.
+        continue;
+      }
+      assertThat(hasMethodWithArity(type, entry.methodName(), entry.argumentCount()))
+          .as(
+              "the entry point claims %s#%s takes %d argument(s), but that is not the signature "
+                  + "on this JDK",
+              entry.typeName(),
+              entry.methodName(),
+              entry.argumentCount())
+          .isTrue();
+    }
+  }
+
+  /**
+   * The {@code run} method must be on a class that actually has one.
+   *
+   * <p>{@code javax.tools.JavaCompiler} does not, so an entry point naming it would be a hook that
+   * never fires.
+   */
+  @Test
+  void theRunHookIsOnAClassThatHasARunMethod() throws ClassNotFoundException {
+    CompilerEntryPoints.EntryPoint run =
+        CompilerEntryPoints.all().stream()
+            .filter(e -> e.methodName().equals("run"))
+            .filter(e -> e.typeName().contains("javac") || e.typeName().contains("sjavac"))
+            .findFirst()
+            .orElseThrow();
+    Class<?> type = Class.forName(run.typeName());
+    assertThat(hasMethodWithArity(type, "run", run.argumentCount()))
+        .as("%s must really have a run method", run.typeName())
+        .isTrue();
+  }
+
+  /** Whether the class declares a method with that name and that number of parameters. */
+  private static boolean hasMethodWithArity(Class<?> type, String name, int arity) {
+    for (var m : type.getMethods()) {
+      if (m.getName().equals(name) && m.getParameterCount() == arity) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

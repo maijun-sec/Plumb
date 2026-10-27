@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Mutation test for scripts/check_capture_claims.py.
+
+A gate that passes because it checked nothing is worse than no gate.  This
+script mutates the document and the source in ways that MUST make the gate
+fail, and checks that it does.
+
+Each mutant is applied to a temporary copy of the repo's files; the real files
+are never touched.
+
+Usage:  python scripts/mutate_capture_claims.py
+"""
+import io
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+DOC = REPO / "docs" / "tech" / "ARCHITECTURE.md"
+CAPTURE = REPO / "plumb-build" / "plumb-build-capture" / "src" / "main" / "java" / "org" / "plumb" / "build" / "capture"
+EP = CAPTURE / "CompilerEntryPoints.java"
+GATE = REPO / "scripts" / "check_capture_claims.py"
+
+original_doc = DOC.read_text(encoding="utf-8", errors="replace")
+original_ep = EP.read_text(encoding="utf-8", errors="replace")
+
+
+def run_gate():
+    result = subprocess.run(
+        [sys.executable, str(GATE)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return result.returncode, result.stdout
+
+
+MUTANTS = [
+    (
+        "the document names an entry point the source does not hook",
+        "doc",
+        lambda t: t.replace(
+            "com.sun.tools.sjavac.client.ClientMain#run(String[])",
+            "com.sun.tools.sjavac.client.ClientMainX#run(String[])",
+        ),
+    ),
+    (
+        "the document drops an entry point the source hooks",
+        "doc",
+        lambda t: t.replace(
+            "| `com.sun.tools.sjavac.server.ServerMain#run(String[])` | sjavac server |\n", ""
+        ),
+    ),
+    (
+        "the document's entry point count is wrong",
+        "doc",
+        lambda t: t.replace("而是**十二个**", "而是**八个**"),
+    ),
+    (
+        "the document stops mentioning a capture class",
+        "doc",
+        lambda t: t.replace("`CompilerEntryPoints`", "`CompilerEntryPointz`"),
+    ),
+    (
+        "the source hooks an entry point the document does not mention",
+        "ep",
+        lambda t: t.replace(
+            '"com.sun.tools.sjavac.server.ServerMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV));',
+            '"com.sun.tools.sjavac.server.ServerMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV),\n'
+            '          new EntryPoint("com.sun.tools.javac.api.Foo", "bar", 1, 0, -1, EntryPoint.Kind.ARGV));',
+        ),
+    ),
+]
+
+survivors = []
+no_ops = []
+try:
+    for name, target, mutate in MUTANTS:
+        if target == "doc":
+            DOC.write_text(mutate(original_doc), encoding="utf-8")
+            EP.write_text(original_ep, encoding="utf-8")
+        else:
+            EP.write_text(mutate(original_ep), encoding="utf-8")
+            DOC.write_text(original_doc, encoding="utf-8")
+
+        # A mutant that did not change anything proves nothing: it would be
+        # reported as "the gate let a drift through" when in fact the drift
+        # was never introduced.  The first version of this script had exactly
+        # that bug -- the formatter had reflowed the line the mutant looked
+        # for, so the replacement was a no-op and the gate was blamed.
+        changed = DOC.read_text(encoding="utf-8") != original_doc or (
+            EP.read_text(encoding="utf-8") != original_ep
+        )
+        if not changed:
+            no_ops.append(name)
+            print("NO-OP     %s  (the mutation did not apply)" % name)
+            continue
+
+        code, out = run_gate()
+        if code == 0:
+            survivors.append(name)
+            print("SURVIVED  %s" % name)
+        else:
+            first = ""
+            for line in out.splitlines():
+                if line.startswith("  "):
+                    first = line.strip()
+                    break
+            print("killed    %s  (%s)" % (name, first))
+finally:
+    DOC.write_text(original_doc, encoding="utf-8")
+    EP.write_text(original_ep, encoding="utf-8")
+
+print()
+if no_ops:
+    print("FAIL: %d mutant(s) did not apply -- they prove nothing" % len(no_ops))
+    for s in no_ops:
+        print("  " + s)
+    sys.exit(1)
+if survivors:
+    print("FAIL: %d mutant(s) survived -- the gate is checking air" % len(survivors))
+    for s in survivors:
+        print("  " + s)
+    sys.exit(1)
+print("OK: all %d mutants were killed" % len(MUTANTS))

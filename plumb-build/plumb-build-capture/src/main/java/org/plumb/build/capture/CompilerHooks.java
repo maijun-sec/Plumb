@@ -92,6 +92,12 @@ public final class CompilerHooks {
    * <p>{@code JavacTool#getTask(Writer, FileManager, DiagnosticListener, Iterable options,
    * Iterable classes, Iterable files)} receives the compiler options in argument 3 and the source
    * files in argument 5.
+   *
+   * <p><b>The returned task is remembered too.</b> The task is what an IDE later drives with
+   * {@code call()} or {@code generate()}, and those methods carry no options. Remembering the task
+   * here is what lets the IDE path be captured at all -- the options cannot be read back off the
+   * task later, because the {@code jdk.compiler} module does not export the package the task lives
+   * in.
    */
   public static final class ApiOptions {
 
@@ -102,6 +108,59 @@ public final class CompilerHooks {
         @Advice.Argument(3) Iterable<?> options,
         @Advice.Argument(5) Iterable<?> sources) {
       CaptureRecorder.onApiOptions(options, sources);
+    }
+  }
+
+  /**
+   * Hook for the task-creating {@code javax.tools} API entry point.
+   *
+   * <p>Same method as {@link ApiOptions}, but this one also remembers the task that was created,
+   * so that the options can be attached to the compile the task eventually performs.
+   *
+   * <p><b>Why the return value is needed.</b> {@code JavacTaskImpl#call()} and {@code
+   * JavacTaskImpl#generate()} take no options: they were set on the task when it was created. The
+   * only place both the options and the task are visible at the same time is inside {@code
+   * getTask}.
+   */
+  public static final class ApiOptionsWithTask {
+
+    private ApiOptionsWithTask() {}
+
+    @Advice.OnMethodExit(suppress = Throwable.class)
+    public static void exit(
+        @Advice.Argument(3) Iterable<?> options,
+        @Advice.Argument(5) Iterable<?> sources,
+        @Advice.Return Object task) {
+      CaptureRecorder.rememberTask(
+          task, CaptureRecorder.toStrings(options), CaptureRecorder.toPaths(sources));
+    }
+  }
+
+  /**
+   * Hook for the task-driven entry points, {@code JavacTaskImpl#call()} and {@code
+   * JavacTaskImpl#generate()}.
+   *
+   * <p>Both are instance methods with no arguments, so the task is the receiver. The compiler
+   * options were set on the task when it was created, so the hook looks them up from the ones
+   * remembered then.
+   *
+   * <p><b>They cannot be read off the task directly.</b> {@code com.sun.tools.javac.api} is not
+   * exported by the {@code jdk.compiler} module, so a reflective read of the task's options field
+   * fails with {@code InaccessibleObjectException} unless the JVM runs with {@code --add-opens
+   * jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED}. Requiring that flag would make the agent
+   * unusable in an ordinary build.
+   *
+   * <p><b>This is the path an IDE takes.</b> A build tool calls {@code JavacTool#getTask} and then
+   * {@code call()}; an IDE calls {@code getTask} and then {@code generate()}. Without this hook
+   * the IDE path produced no capture at all.
+   */
+  public static final class TaskOptions {
+
+    private TaskOptions() {}
+
+    @Advice.OnMethodEnter(suppress = Throwable.class)
+    public static void enter(@Advice.This Object task) {
+      CaptureRecorder.onTask(task);
     }
   }
 
@@ -166,6 +225,15 @@ public final class CompilerHooks {
         }
         case FILE_OBJECTS -> {
           result = result.visit(Advice.to(ApiOptions.class).on(matcher));
+        }
+        case FILE_OBJECTS_WITH_TASK -> {
+          // Two hooks on the same method: the options are captured on the way in,
+          // and the task is remembered with them on the way out.
+          result = result.visit(Advice.to(ApiOptions.class).on(matcher));
+          result = result.visit(Advice.to(ApiOptionsWithTask.class).on(matcher));
+        }
+        case NO_OPTIONS -> {
+          result = result.visit(Advice.to(TaskOptions.class).on(matcher));
         }
         default -> {
           // no other kinds

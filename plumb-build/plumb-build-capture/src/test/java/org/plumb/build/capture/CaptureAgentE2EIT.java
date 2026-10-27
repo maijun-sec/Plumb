@@ -130,6 +130,49 @@ class CaptureAgentE2EIT {
   }
 
   /**
+   * One compile must produce one capture.
+   *
+   * <p>A command-line compile reaches <em>two</em> hooked entry points: {@code
+   * com.sun.tools.javac.Main#compile} and then {@code com.sun.tools.javac.main.Main#compile}. Both
+   * carry the same argv, so without duplicate suppression the capture would be written twice and
+   * the analyser would see one compile twice over.
+   *
+   * <p>This is the test that would catch the suppression breaking: the count is checked, not the
+   * content.
+   */
+  @Test
+  void oneCompileProducesOneCapture(@TempDir Path dir) throws Exception {
+    Path source = dir.resolve("Once.java");
+    Files.writeString(source, "public class Once { }");
+    Path classes = dir.resolve("classes");
+    Files.createDirectories(classes);
+    Path captures = dir.resolve("captures");
+    Files.createDirectories(captures);
+
+    Path javac = findJavac();
+    if (javac == null) {
+      return;
+    }
+
+    ProcessBuilder pb =
+        new ProcessBuilder(
+            javac.toString(),
+            "-J-javaagent:" + agentJar(),
+            "-d",
+            classes.toString(),
+            source.toString());
+    pb.environment().put(CaptureRecorder.ENV_OUTPUT_DIR, captures.toString());
+    pb.redirectErrorStream(true);
+    Process process = pb.start();
+    String output = new String(process.getInputStream().readAllBytes());
+    assertThat(process.waitFor()).as("javac output: %s", output).isZero();
+
+    List<CaptureEntry> captured = CaptureReader.readAll(captures);
+    assertThat(captured).as("the agent should have recorded the compile").hasSize(1);
+    assertThat(captured.get(0).sourceFiles()).contains(source);
+  }
+
+  /**
    * The agent must not break the compile it observes.
    *
    * <p>A capture that makes the build fail is worse than no capture at all: the user's build

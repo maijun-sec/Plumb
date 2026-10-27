@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+"""Check the capture section of docs/tech/ARCHITECTURE.md against the source.
+
+The document names the compiler entry points the agent hooks, and the class
+that carries the capture logic.  Both are claims that rot quietly: a new entry
+point that nobody documented is invisible, and a documented entry point that
+was renamed is a lie the reader will try to reproduce.
+
+The check is bidirectional:
+
+  * every entry point in the source appears in the document's table;
+  * every entry point in the document's table exists in the source.
+
+The second direction is the one that earns its keep.  The source once claimed
+that it hooked ``javax.tools.JavaCompiler#run`` -- a method that does not exist
+on a modern JDK, because ``javax.tools.JavaCompiler`` is an interface there.
+The hook never fired, so the capture was silently empty for every caller that
+used the run-style API.  A gate that only checked "is the source consistent
+with itself" would have passed that happily.
+
+The script prints what it derives before it compares, and reports how many
+things it checked -- a check that skipped everything looks exactly like a check
+that found nothing.
+
+Exit code 0 when the document matches the source, 1 otherwise.
+"""
+import io
+import pathlib
+import re
+import sys
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+DOC = REPO / "docs" / "tech" / "ARCHITECTURE.md"
+CAPTURE = REPO / "plumb-build" / "plumb-build-capture" / "src" / "main" / "java" / "org" / "plumb" / "build" / "capture"
+
+doc = DOC.read_text(encoding="utf-8", errors="replace")
+failures = []
+info = []
+
+
+def note(msg):
+    info.append(msg)
+    print(msg)
+
+
+def read(p):
+    return p.read_text(encoding="utf-8", errors="replace")
+
+
+def strip_comments(text):
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    text = re.sub(r"//[^\n]*", " ", text)
+    return text
+
+
+if not CAPTURE.is_dir():
+    print("FAIL: the capture module source is missing at %s" % CAPTURE)
+    sys.exit(1)
+
+sources = {p.stem: strip_comments(read(p)) for p in CAPTURE.glob("*.java")}
+note("indexed %d capture source files: %s" % (len(sources), sorted(sources)))
+
+# ------------------------------------------------- 1. the source's entry points
+ep_src = sources.get("CompilerEntryPoints")
+if ep_src is None:
+    failures.append("the capture module has no CompilerEntryPoints class")
+    entry_points = []
+else:
+    # Each entry point is constructed as
+    #   new EntryPoint("type", "method", argc, options, sources, Kind)
+    entry_points = []
+    for m in re.finditer(
+        r'new\s+EntryPoint\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*(-?\d+)'
+        r'\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*EntryPoint\.Kind\.([A-Z_]+)\s*\)',
+        ep_src,
+        flags=re.S,
+    ):
+        entry_points.append(
+            {
+                "type": m.group(1),
+                "method": m.group(2),
+                "argc": int(m.group(3)),
+                "options": int(m.group(4)),
+                "sources": int(m.group(5)),
+                "kind": m.group(6),
+            }
+        )
+    note("the source declares %d entry point(s)" % len(entry_points))
+    if not entry_points:
+        failures.append(
+            "no entry points could be derived from CompilerEntryPoints -- "
+            "the check cannot verify anything"
+        )
+
+# ------------------------------------------------- 2. the document's table
+# The table is the one under the "capture 挂哪些入口" heading.  Its rows look
+# like:  | `com.sun.tools.javac.Main#compile(String[])` | who goes this way |
+m = re.search(r"###\s*7\.0\.1.*?\n(.*?)(?=\n###\s|\Z)", doc, flags=re.S)
+if m is None:
+    failures.append("the document no longer has a §7.0.1 section")
+    doc_rows = []
+else:
+    section = m.group(1)
+    doc_rows = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        # Skip the header row and the separator row.
+        if set(stripped) <= set("| -:"):
+            continue
+        cell = stripped.split("|")[1].strip()
+        # The cell holds a backticked signature: `Type#method(args)`
+        for sig in re.findall(r"`([^`]+#[^`]+)`", cell):
+            doc_rows.append(sig)
+    note("the document's table lists %d entry point signature(s)" % len(doc_rows))
+    if not doc_rows:
+        failures.append(
+            "the document's entry point table lists nothing -- the check "
+            "cannot verify it"
+        )
+
+# ------------------------------------------------- 3. compare, both ways
+def doc_signature(type_name, method_name):
+    """The document's form of a signature: `Type#method(args...)`."""
+    for row in doc_rows:
+        if "#" not in row:
+            continue
+        type_part, method_part = row.split("#", 1)
+        method_only = method_part.split("(", 1)[0].strip()
+        if type_part.strip() == type_name and method_only == method_name:
+            return row
+    return None
+
+
+source_sigs = set()
+for e in entry_points:
+    source_sigs.add("%s#%s" % (e["type"], e["method"]))
+
+documented = set()
+for row in doc_rows:
+    type_part, method_part = row.split("#", 1)
+    documented.add("%s#%s" % (type_part.strip(), method_part.split("(", 1)[0].strip()))
+
+missing_from_doc = sorted(source_sigs - documented)
+if missing_from_doc:
+    failures.append(
+        "the source hooks entry point(s) the document does not mention: %s"
+        % missing_from_doc
+    )
+else:
+    note("every source entry point is documented")
+
+missing_from_source = sorted(documented - source_sigs)
+if missing_from_source:
+    failures.append(
+        "the document claims entry point(s) the source does not hook: %s"
+        % missing_from_source
+    )
+else:
+    note("every documented entry point is hooked by the source")
+
+# ------------------------------------------------- 4. the count the document states
+m = re.search(r"「javac 命令行」不是一个方法，而是\*\*([^*]+?)\*\*", doc)
+if m:
+    claimed = m.group(1)
+    # The document says "十二个" -- the counter suffix is not part of the number.
+    claimed = claimed.rstrip("个")
+    # The document may say a Chinese numeral or an Arabic one.
+    numerals = {
+        "八": 8, "九": 9, "十": 10, "十一": 11, "十二": 12, "十三": 13,
+        "十四": 14, "十五": 15, "十六": 16,
+    }
+    actual = len(entry_points)
+    if claimed.isdigit():
+        stated = int(claimed)
+    elif claimed in numerals:
+        stated = numerals[claimed]
+    else:
+        stated = None
+        failures.append(
+            "the document says the entry point count is %r, which this check "
+            "cannot read" % claimed
+        )
+    if stated is not None and stated != actual:
+        failures.append(
+            "the document says %s entry points; the source declares %d"
+            % (claimed, actual)
+        )
+    elif stated is not None:
+        note("the document's count (%s) matches the source (%d)" % (claimed, actual))
+else:
+    failures.append("the document no longer states the entry point count")
+
+# ------------------------------------------------- 5. the classes the document names
+# The document lists the capture module's classes.  Each must exist.
+capture_classes = {
+    "CaptureAgent",
+    "CaptureRecorder",
+    "CaptureEntry",
+    "CaptureSink",
+    "CaptureReader",
+    "JavacOptions",
+    "CompilerHooks",
+    "CompilerEntryPoints",
+    "GradleHooks",
+}
+named = set()
+for m in re.finditer(r"`([A-Z][A-Za-z0-9_]*)`", doc):
+    named.add(m.group(1))
+missing = sorted(c for c in named if c in capture_classes and c not in sources)
+if missing:
+    failures.append(
+        "the document names capture class(es) that do not exist: %s" % missing
+    )
+else:
+    note("all %d capture classes named in the document exist" % len(capture_classes))
+
+# ------------------------------------------------- 6. the classes the source has
+# Every class in the capture package should be mentioned somewhere in the
+# document, so a new class is documented the day it is written.
+undocumented = sorted(
+    stem for stem in sources
+    if stem not in named and not stem.endswith("Test")
+)
+if undocumented:
+    failures.append(
+        "the capture module has class(es) the document never mentions: %s"
+        % undocumented
+    )
+else:
+    note("every capture class is mentioned in the document")
+
+# ------------------------------------------------- 7. no raw ASM
+# The module must instrument with Advice.  A hand-written MethodVisitor is
+# what this module was rewritten to remove, and it is easy to reintroduce.
+for p in sorted(CAPTURE.glob("*.java")):
+    for line in read(p).splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("import "):
+            continue
+        if "net.bytebuddy.jar.asm" in stripped or "org.objectweb.asm" in stripped:
+            failures.append(
+                "%s imports raw ASM: %s" % (p.name, stripped)
+            )
+note("no capture source imports raw ASM")
+
+print()
+if failures:
+    print("FAIL: %d defect(s) in the capture section of docs/tech/ARCHITECTURE.md"
+          % len(failures))
+    for f in failures:
+        print("  " + f)
+    sys.exit(1)
+print("OK: the capture section of docs/tech/ARCHITECTURE.md matches the source")

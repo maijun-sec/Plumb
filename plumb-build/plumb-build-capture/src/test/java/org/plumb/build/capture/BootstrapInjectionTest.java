@@ -215,6 +215,7 @@ class BootstrapInjectionTest {
           "IOException", "Throwable", "Error", "System", "Thread", "ThreadLocal", "Path",
           "Paths", "Files", "Optional", "Objects", "Arrays", "Collections", "List", "Map", "Set",
           "ArrayList", "LinkedHashSet", "LinkedHashMap", "HashMap", "HashSet", "Iterable", "URI",
+          "IdentityHashMap", "WeakHashMap", "TreeMap", "TreeSet", "EnumMap", "EnumSet",
           "FileObject", "StandardCharsets", "Charset", "Void", "Override", "SuppressWarnings",
           "Deprecated", "StringBuilder", "Iterator", "FileAttribute", "OpenOption", "PrintStream",
           "StringConcatFactory", "MethodHandles", "Record", "ObjectMethods", "String[]",

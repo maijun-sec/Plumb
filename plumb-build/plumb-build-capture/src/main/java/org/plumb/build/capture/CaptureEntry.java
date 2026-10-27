@@ -38,6 +38,53 @@ public record CaptureEntry(
     String workingDirectory) {
 
   /**
+   * The identity of the compile this capture describes.
+   *
+   * <p><b>Why this is not the argv.</b> One compile reaches several hooked entry points: the
+   * command-line driver goes through {@code com.sun.tools.javac.Main#compile} and then {@code
+   * com.sun.tools.javac.main.Main#compile}, and the API path goes through {@code
+   * JavacTool#getTask} and then {@code JavacTaskImpl#call}. Each of them would otherwise write
+   * its own file, and the analyser would see the same compile several times over.
+   *
+   * <p><b>Why this is not the classpath either.</b> The classpath is the biggest and most
+   * expensive part of the capture, and it does not distinguish two compiles of the same sources
+   * into different directories.
+   *
+   * <p>So the identity is what actually distinguishes one compile from another: the source files
+   * it compiles, the directory it compiles them into, and the options that change the result. Two
+   * captures with the same identity are the same compile seen through two entry points.
+   *
+   * @return a stable string that is equal for two views of the same compile
+   */
+  public String compileIdentity() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("out=").append(outputDirectory).append('\u0000');
+    sb.append("cp=").append(classpath).append('\u0000');
+    sb.append("sp=").append(sourcePath).append('\u0000');
+    sb.append("enc=").append(encoding).append('\u0000');
+    sb.append("ll=").append(languageLevel).append('\u0000');
+    // The source files are sorted, because the same set of files can arrive in a
+    // different order from the API than from the command line.
+    List<String> sources = new java.util.ArrayList<>();
+    for (Path p : sourceFiles) {
+      sources.add(String.valueOf(p));
+    }
+    java.util.Collections.sort(sources);
+    sb.append("src=").append(sources).append('\u0000');
+    return sb.toString();
+  }
+
+  /**
+   * Whether this capture describes the same compile as another.
+   *
+   * @param other the other capture
+   * @return true when the two are two views of one compile
+   */
+  public boolean sameCompileAs(CaptureEntry other) {
+    return other != null && compileIdentity().equals(other.compileIdentity());
+  }
+
+  /**
    * Render the capture as JSON.
    *
    * <p>Hand-rolled so the module has no JSON dependency: the recorder runs inside an arbitrary
