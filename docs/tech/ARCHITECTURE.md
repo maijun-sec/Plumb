@@ -451,6 +451,68 @@ through the Maven Resolver, because a plugin's own declaration is not what the c
 the capture side observes the classpath the compiler actually received. The gate checks that
 **both** ways exist, so neither can be dropped silently.
 
+### 7.0aa The Maven side reads what the build declared, along the parent chain
+
+A multi-module build inherits its compile parameters from its **parent pom**, and the parameters
+are not in one place: they are in the `maven-compiler-plugin`'s configuration, and they are
+overridden by properties, and a property's value is itself a property.
+
+So `MavenPom` reads the compiler plugin's configuration **along the parent chain**, with the
+module's own configuration first. The rules it follows, each of them measured:
+
+- the plugin's configuration **beats** the property, because the plugin's configuration is what
+  the compiler plugin actually used;
+- `<release>` **beats** `<source>`, because `--release` pins the language level *and* the
+  platform API, and a build that sets both compiles at the release;
+- a `${...}` placeholder is **resolved**, and an unresolvable one leaves the value unknown
+  rather than passing the placeholder through as if it were a version;
+- an **undeclared** parameter stays unknown. The upstream project hard-coded `"1.8"` and
+  `"UTF-8"`, so every project was reported as if it compiled at 1.8 in UTF-8.
+
+The plugin's configuration also carries two things that are not parameters but change the
+compile, and they are read too:
+
+- `<compilerArgs>` — the extra arguments the plugin passes to the compiler;
+- `<annotationProcessorPaths>` — where the annotation processors are found, which is a different
+  path from the classpath.
+
+Both reach `ModuleDescriptor` and both are read by the resolver adapter, so a build that puts a
+processor on a separate path is described correctly.
+
+The module's own **directories** are read from the pom as well — `<sourceDirectory>`,
+`<testSourceDirectory>`, `<build><outputDirectory>` and `<build><testOutputDirectory>` — rather
+than assumed to be `src/main/java`, `src/test/java`, `target/classes` and `target/test-classes`.
+A build that puts its sources somewhere else is now described correctly.
+
+### 7.0ab The two sides are compared against each other, and the differences are reported
+
+The two sides of §7.0a answer the same questions, so a build can be checked for **internal
+consistency**: what the pom declares against what the compiler was actually given.
+
+`plumb-build-core` holds `CompileDiscrepancy` — one difference, with the declared value, the
+observed value and the parameter they disagree about. `plumb-build-maven` holds
+`CompileCrossCheck`, which reads the capture directory and the pom and produces the
+discrepancies.
+
+Three rules make the comparison trustworthy:
+
+- **A value missing on either side is unknown, not a discrepancy.** The capture does not know
+  the encoding when the build did not pass `-encoding`, and the pom does not know the classpath
+  when it was inherited. Reporting those as differences would be noise, and noise is how a gate
+  stops being read.
+- **The differences keep both values.** A discrepancy that only says "they differ" cannot be
+  acted on; one that says "the pom declares 1.8 and the compiler was given 17" can.
+- **The differences are sorted deterministically**, so the same build always produces the same
+  report and a diff between two runs means something changed.
+
+The comparison is a **report, not a resolution**. A silently resolved disagreement is a
+confidently wrong analysis: the point is to show that the build says one thing and the compiler
+did another.
+
+`plumb-main` exposes it as `--capture-dir <dir>`, and
+`scripts/check_compile_crosscheck.py` is the gate that keeps the comparison honest;
+`scripts/mutate_compile_crosscheck.py` is its mutation test.
+
 ### 7.0.1 Which entry points the capture hooks
 
 The "javac command line" is not one method but **fifteen**, depending on how the compiler is reached:
@@ -573,6 +635,12 @@ Windows it would be right by accident.
 option javac does not have. So the option knows which compiler it belongs to, and the lookup is
 compiler-aware.
 
+**Two compilers may spell an option the same way and still mean different things by it.** ECJ
+and sjavac both have `-src`, `-copy`, `-x`, `-i`, `-tr` and `-j`, and sjavac's `-copy` is
+repeatable while ECJ's is not. The index is therefore keyed by the name **and** the compiler, and
+the compiler's own entry wins over a shared one. See
+[§7.0.5aa](#705aa-the-other-two-compilers-are-measured-too).
+
 **The compiler is the yardstick for which spellings exist.** The table and its test both claim
 that javac does not know `--class-path`. The claim is wrong: javac's own help lists
 `--class-path <path>, -classpath <path>, -cp <path>`, and a real javac run accepts the
@@ -596,10 +664,18 @@ rule and the same compiler; every alias has to be a spelling we know; and every 
 that Coverity does not has to be **listed as an addition**, so "we support more" is a visible
 fact rather than an accident.
 
-`scripts/mutate_capture_options.py` is the gate's own mutation test: seven deliberate drifts,
+`scripts/mutate_capture_options.py` is the gate's own mutation test: ten deliberate drifts,
 all of which must make the gate fail. It found three real holes in the first version — the
 gate only looked at the *first* spelling of an option, it never checked that the canonical
 name itself matched, and it never checked that the reference agreed with itself.
+
+The comparison is **per compiler**. The reference names an option by its canonical name and
+lists the spellings as aliases, and two compilers may spell an option the same way, so the
+reference's entry says which compiler it is and the comparison is made against **that**
+compiler's entry. Falling back to whichever entry happened to come last would compare the wrong
+thing and hide exactly the mistake that matters: an option that belongs to one compiler and is
+attributed to another is the mistake the capture's compiler-aware lookup turns into a lost
+option.
 
 ### 7.0.5a The compiler's own option list is the yardstick
 
@@ -622,6 +698,62 @@ The options that were missing, and what each one cost:
 A missing option does not fail: it is silently unknown, and the value that follows it is consumed
 as a positional argument — which is a source file only if it ends in `.java`. So a missing option
 loses **two** things, the option and its value.
+
+### 7.0.5aa The other two compilers are measured too
+
+`javac` is not the only compiler a build runs, and the other two have their own option sets. They
+are measured against the **real** compiler, the same way.
+
+**ECJ** is measured by running its own `-help` (ECJ 3.33.0). Four options were missing from the
+table, and the first one is the interesting one:
+
+| the option | what it cost when it was missing |
+| --- | --- |
+| `-annotationpath` | **the whole annotation path** — the option was unknown and the path vanished with it |
+| `-warn:none` | ECJ's spelling of the warning switch was unknown |
+| `-?:warn`, `-help:warn` | the advanced warning options were unknown |
+
+`scripts/check_compile_options_ecj.py` is the gate, and
+`scripts/mutate_compile_options_ecj.py` is its mutation test. The gate checks two things: that
+every option ECJ lists is in the table, and that every option ECJ lists is **reachable by ECJ's
+lookup** — an option attributed to another compiler is rejected by the lookup, so the option would
+be dropped and its value read as a source file.
+
+**sjavac** is the interesting one, because sjavac was **removed from the JDK after Java 11**. A
+modern JDK has no `com.sun.tools.sjavac` at all, so the reference is a JDK 11's own
+`com.sun.tools.sjavac.options.Option` enum — which *is* sjavac's option table, and which carries
+the spelling every constant accepts. The enum is read reflectively, because `jdk.compiler` does
+not export the package.
+
+The measurement produced three facts that shape the table:
+
+1. **sjavac has its own option table, and it consumes those options itself.** Everything sjavac
+   does not recognise is **forwarded to javac**. Measured on the real compiler, sjavac forwards
+   `-encoding`, `-source`, `-target`, `--release`, `-g`, `-nowarn`, `-proc:none`, `-processor`,
+   `-processorpath`, `-bootclasspath`, `--add-modules`, `-Xlint`, `-parameters` and `-A`. Those
+   are **javac's** options, so the table must not claim them for sjavac — otherwise javac's own
+   lookup would reject them.
+2. **sjavac's own options are 26**: `-src`, `--source-path`, `-sourcepath`, `--module-path`, `-p`,
+   `--class-path`, `-classpath`, `-cp`, `-x`, `-i`, `-tr`, `-copy`, `-j`, `--server:`,
+   `--startserver:`, `-implicit:`, `--log=`, `-verbose`, `--permit-artifact=`,
+   `--permit-unidentified-artifacts`, `--permit-sources-without-package`,
+   `--compare-found-sources`, `-d`, `-s`, `-h`, `--state-dir=`.
+3. **sjavac takes the value of an option from the next token.** `-j 2` works and `-j=2` is
+   **rejected**; the same holds for `--server:`, `--startserver:` and `--state-dir=`. The spelling
+   says where the value *may* go, not that it must be joined.
+
+`scripts/check_compile_options_sjavac.py` is the gate. It reads the compiler's own enum, checks
+that every option sjavac has is in the table, checks that every option sjavac has is reachable by
+**sjavac's** lookup, and checks that no option sjavac **forwards** to javac is claimed as
+sjavac's. `scripts/mutate_compile_options_sjavac.py` is its mutation test.
+
+**The index is keyed by the name AND the compiler.** That is not tidiness: ECJ and sjavac both
+have `-src`, `-copy`, `-x`, `-i`, `-tr` and `-j`, and they mean different things by some of them
+— sjavac's `-copy` may repeat and ECJ's may not. An index keyed by the name alone holds **one**
+option per name, so the second entry silently overwrote the first and **ECJ's lookup rejected all
+six**: the option was dropped, and the value that followed it was read as a source file. So the
+index holds one option per `(name, compiler)` pair, and the compiler's own entry wins over a
+shared one.
 
 ### 7.0.5b An argument file is part of the command line
 

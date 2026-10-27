@@ -183,6 +183,58 @@ by_canonical = {}
 for o in ours:
     by_canonical.setdefault(o["canonical"], []).append(o)
 
+# The same spelling, per compiler.
+#
+# Two compilers can spell an option the same way and mean different things by
+# it: ECJ and sjavac both have `-src`, `-copy`, `-x`, `-i`, `-tr` and `-j`,
+# and sjavac's `-j` is repeatable while ECJ's is not.  So the lookup has to
+# know the compiler, exactly as the capture's own index does.
+#
+# The key is the compiler, or "" for the options that belong to no compiler
+# in particular -- the shared ones.
+by_name_and_compiler = {}
+for o in ours:
+    by_name_and_compiler.setdefault((o["name"], (o["compiler"] or "").lower()), []).append(o)
+
+# The canonical name of each spelling.  The reference names an option by its
+# canonical name and lists the spellings as aliases, so a lookup has to be
+# able to go from either to the same entry.
+canonical_of_spelling = {}
+for o in ours:
+    canonical_of_spelling[o["name"]] = o["canonical"]
+
+
+def lookup(name, compiler):
+    """Our table's entry for a spelling, for one compiler.
+
+    The compiler's own entry wins over a shared one, and a shared entry is
+    the fallback for a compiler that has no entry of its own.  That is the
+    capture's own lookup rule.
+
+    The name may be the option's own spelling or its canonical name: the
+    reference names an option by its canonical name and lists the spellings
+    as aliases, and both have to find the same entry.
+    """
+    candidates = [name]
+    canonical = canonical_of_spelling.get(name)
+    if canonical is not None and canonical not in candidates:
+        candidates.append(canonical)
+    # The canonical name is not itself a spelling in our table -- the
+    # reference's "source_files_or_dirs" is our "-src" -- so the entries that
+    # canonicalise TO the name are considered too.
+    for o in ours:
+        if o["canonical"] == name and o["name"] not in candidates:
+            candidates.append(o["name"])
+
+    for candidate in candidates:
+        key = (candidate, (compiler or "").lower())
+        if key in by_name_and_compiler:
+            return by_name_and_compiler[key]
+        shared = by_name_and_compiler.get((candidate, ""), [])
+        if shared:
+            return shared
+    return []
+
 # The value kind the reference uses, mapped onto our enum.
 VALUE_MAP = {
     "none": "NONE",
@@ -280,13 +332,28 @@ if skipped:
 
 for entry in reference:
     canonical = entry["name"]
-    spellings = by_canonical.get(canonical)
+    expected_compiler = entry.get("compiler")
+
+    # The reference's entry names a compiler, so the comparison has to be made
+    # against THAT compiler's entry.  Two compilers may spell an option the
+    # same way -- ECJ and sjavac both have `-src`, `-copy`, `-x`, `-i`, `-tr`
+    # and `-j` -- and mean different things by it, so comparing against
+    # whichever entry happened to come last would compare the wrong thing.
+    spellings = lookup(canonical, expected_compiler)
+    if not spellings and expected_compiler:
+        # The reference says this option is THAT compiler's, and our table has
+        # no entry for it.  Falling back to another compiler's entry would
+        # compare the wrong thing and hide the defect: an option that belongs
+        # to one compiler and is attributed to another is exactly the mistake
+        # the capture's compiler-aware lookup would turn into a lost option.
+        failures.append(
+            "the reference says %r is a %s option, but our table has no %s entry "
+            "for it" % (canonical, expected_compiler, expected_compiler)
+        )
+        continue
+    if not spellings:
+        spellings = by_canonical.get(canonical) or ([by_name[canonical]] if canonical in by_name else [])
     o = spellings[0] if spellings else None
-    if o is None:
-        # The reference may name an option that is, in our table, a spelling
-        # of another one.  ECJ's --class-path is --classpath with a different
-        # spelling, not a different option.
-        o = by_name.get(canonical)
     if o is None:
         failures.append("our table has no option named %r" % canonical)
         continue
@@ -307,7 +374,7 @@ for entry in reference:
 
     # Every spelling of the option has to agree with the reference, not just
     # the first one.
-    for o in (by_canonical.get(canonical) or [o]):
+    for o in spellings:
         expected_value = VALUE_MAP.get(entry.get("value", ""))
         if expected_value and o["value"] != expected_value:
             failures.append(
@@ -322,7 +389,6 @@ for entry in reference:
                 % (o["name"], entry["repeat"], o["repeat"])
             )
 
-        expected_compiler = entry.get("compiler")
         if expected_compiler and (o["compiler"] or "").lower() != expected_compiler.lower():
             failures.append(
                 "%r belongs to %s in the reference, but our table says %s"
@@ -502,6 +568,37 @@ ADVISED = {
     "--default-module-for-created-files",
     "--disable-line-doc-comments",
     "--help-lint",
+    # The options the REAL ECJ has that Coverity's model does not.  They were
+    # found by running ECJ's own `-help` against the table.  `-annotationpath`
+    # is the one that mattered: it names the external annotations that
+    # support annotation-based null analysis, and when it was unknown the
+    # path that followed it was consumed as a positional argument too, so
+    # both the option and the path were lost -- the same failure the missing
+    # `--class-path` caused on the javac side.
+    "-annotationpath",
+    "-warn:none",
+    "-?:warn",
+    "-help:warn",
+    # The options the REAL sjavac has that Coverity's model does not.  They
+    # were measured against the JDK 11 `com.sun.tools.sjavac.options.Option`
+    # enum, which is sjavac's own option table.
+    "-x",
+    "-i",
+    "-tr",
+    "-copy",
+    "-j",
+    "--server:",
+    "--startserver:",
+    "--log=",
+    "--permit-artifact=",
+    "--permit-unidentified-artifacts",
+    "--permit-sources-without-package",
+    "--compare-found-sources",
+    "--state-dir=",
+    # sjavac's own spelling of the implicit-compilation switch.  javac spells
+    # it `-implicit:none` and `-implicit:class`; sjavac spells it `-implicit:`
+    # with the value in the next token.
+    "-implicit:",
 }
 
 reference_names = {e["name"] for e in reference}
@@ -551,34 +648,48 @@ note("every option canonicalises to a declared option")
 # -classpath as a last-wins one, and the two spellings of the same option
 # would behave differently.  The reference lists the spellings of an option
 # together for exactly this reason.
+#
+# The agreement is PER COMPILER.  Two compilers may spell an option the same
+# way and mean different things by it -- ECJ's `-j` is last-wins and sjavac's
+# is all-apply -- so the spellings of one option have to agree WITHIN a
+# compiler, not across all of them.
 for canonical, spellings in sorted(by_canonical.items()):
-    first = spellings[0]
-    for o in spellings[1:]:
-        for field in ("value", "repeat", "effect", "compiler"):
-            if o[field] != first[field]:
-                failures.append(
-                    "the spellings of %r disagree: %s has %s=%s but %s has %s=%s"
-                    % (
-                        canonical,
-                        first["name"],
-                        field,
-                        first[field],
-                        o["name"],
-                        field,
-                        o[field],
+    # Group the spellings by the compiler they belong to.
+    per_compiler = {}
+    for o in spellings:
+        per_compiler.setdefault((o["compiler"] or "").lower(), []).append(o)
+    for compiler, group in sorted(per_compiler.items()):
+        first = group[0]
+        for o in group[1:]:
+            for field in ("value", "repeat", "effect"):
+                if o[field] != first[field]:
+                    failures.append(
+                        "the spellings of %r disagree for %s: %s has %s=%s but %s has %s=%s"
+                        % (
+                            canonical,
+                            compiler or "every compiler",
+                            first["name"],
+                            field,
+                            first[field],
+                            o["name"],
+                            field,
+                            o[field],
+                        )
                     )
-                )
 
-# A spelling must not be claimed by two different options.
+# A spelling must not be claimed by two different options -- unless the two
+# claims are for different compilers, which is how two compilers can spell an
+# option the same way.
 canonical_of_name = {}
 for o in ours:
-    previous = canonical_of_name.get(o["name"])
+    key = (o["name"], (o["compiler"] or "").lower())
+    previous = canonical_of_name.get(key)
     if previous is not None and previous != o["canonical"]:
         failures.append(
             "the option %r is claimed by both %r and %r"
             % (o["name"], previous, o["canonical"])
         )
-    canonical_of_name[o["name"]] = o["canonical"]
+    canonical_of_name[key] = o["canonical"]
 
 note("checked %d option(s) and their spellings for agreement" % len(ours))
 

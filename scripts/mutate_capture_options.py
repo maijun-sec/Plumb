@@ -108,6 +108,40 @@ MUTANTS = [
         "baseline",
         lambda t: t.replace("[no-value]\n--enable-preview\n", "[no-value]\n"),
     ),
+    # The per-compiler cases.  ECJ and sjavac spell an option the same way
+    # and mean different things by it -- ECJ's `-copy` is last-wins and
+    # sjavac's is all-apply -- so a gate that compared the spelling alone
+    # would see only one of them.
+    (
+        "an option's repetition rule is moved to the other compiler",
+        "source",
+        lambda t: t.replace(
+            'out.add(opt("-copy", "-copy", Value.SINGLE, Repeat.ALL_APPLY, '
+            "Effect.COMPILATION, Compiler.SJAVAC));",
+            'out.add(opt("-copy", "-copy", Value.SINGLE, Repeat.LAST_WINS, '
+            "Effect.COMPILATION, Compiler.SJAVAC));",
+        ),
+    ),
+    (
+        "an option is moved from one compiler to another",
+        "source",
+        lambda t: t.replace(
+            'out.add(opt("-annotationpath", "annotationpath", Value.PATH_LIST, '
+            "Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));",
+            'out.add(opt("-annotationpath", "annotationpath", Value.PATH_LIST, '
+            "Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));",
+        ),
+    ),
+    (
+        "the reference gives an option to a compiler we do not",
+        "baseline",
+        lambda t: t.replace(
+            "[[option]]\nname = --state-dir\naliases = [--state-dir=]\n"
+            "value = single\nrepeat = last-wins\ncompiler = sjavac\n",
+            "[[option]]\nname = --state-dir\naliases = [--state-dir=]\n"
+            "value = single\nrepeat = last-wins\ncompiler = ecj\n",
+        ),
+    ),
 ]
 
 survivors = []

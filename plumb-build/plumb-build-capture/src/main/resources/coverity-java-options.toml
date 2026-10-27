@@ -38,6 +38,15 @@
 
 [no-value]
 --enable-preview
+# The two sjavac options that take no value.  They are sjavac's, and
+# Coverity does not model sjavac at all, but the category says what the
+# option DOES -- it takes no value -- and that is a fact about the option
+# rather than about who modelled it.
+--permit-unidentified-artifacts
+--permit-sources-without-package
+# ECJ's spelling of the warning switch.  It takes no value, and the
+# category says so.
+-warn:none
 
 [repeat-squash]
 --add-modules
@@ -246,6 +255,52 @@ effect = not-compilation
 
 # The options that only ECJ has.  They are recorded but not interpreted.
 
+# The options the REAL ECJ has that Coverity's model does not.
+#
+# These were found by running ECJ's own `-help` and comparing it with the
+# table.  ECJ 3.33.0 lists them and the table did not know them.
+#
+# `-annotationpath` is the one that matters: it names the external
+# annotations that support annotation-based null analysis, so it changes what
+# the compiler checks.  Without it in the table the option was unknown AND
+# the path that followed it was not a source file either -- so both the
+# option and its value vanished, exactly like the missing `--class-path` cost
+# javac its whole classpath.
+[[option]]
+name = annotationpath
+aliases = [-annotationpath]
+value = path-list
+repeat = last-wins
+compiler = ecj
+
+# ECJ's spellings of the warning switches.  javac spells them `-nowarn` and
+# `-Xlint`; ECJ spells them `-nowarn`, `-warn:none` and the `-warn:<list>`
+# family.  The option is the same one -- the warnings the compiler reports --
+# so it is recorded under ECJ's own spelling and canonicalises to the shared
+# `-nowarn`.
+[[option]]
+name = -warn:none
+aliases = []
+value = none
+repeat = last-wins
+compiler = ecj
+
+# The advanced warning options.  They only change what the compiler prints,
+# and they take a value that is a warning list rather than a path.
+[[option]]
+name = -?:warn
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
+[[option]]
+name = -help:warn
+aliases = []
+value = single
+repeat = last-wins
+compiler = ecj
+
 # The classpath's three spellings.
 #
 # <p>Coverity lists `--class-path` as an ECJ-only option, but javac's own
@@ -289,12 +344,15 @@ value = single
 repeat = last-wins
 compiler = ecj
 
+# -h is the header directory.  Coverity attributes it to ECJ alone, but the
+# real sjavac has it too -- the measured sjavac's option enum lists "-h
+# Directory for header files" -- so the option belongs to both compilers and
+# is shared.
 [[option]]
 name = -h
 aliases = []
 value = single
 repeat = last-wins
-compiler = ecj
 
 [[option]]
 name = -i
@@ -351,3 +409,130 @@ aliases = []
 value = single
 repeat = last-wins
 compiler = ecj
+
+# The options that only sjavac has.
+# `com.sun.tools.sjavac.options.Option` enum, which is sjavac's own option
+# table.  Every constant in it carries the spelling the compiler accepts.
+#
+# <p>THE FACT THAT MATTERS: sjavac CONSUMES these options itself and hands
+# everything it does not recognise to javac.  Measured on the real compiler,
+# sjavac forwards -encoding, -source, -target, --release, -g, -nowarn,
+# -proc:none, -processor, -processorpath, -bootclasspath, --add-modules,
+# -Xlint, -parameters and -A to javac.  Those are javac's options, and the
+# capture has to treat them as javac's.
+#
+# <p>Several of them are spelled the same way ECJ spells them -- -src,
+# -copy, -x, -i, -tr and -j -- but they mean different things, and sjavac's
+# -j is repeatable while ECJ's is not.  So the two compilers have their own
+# entries for the same spelling, and the capture's index is keyed by the name
+# AND the compiler.
+# sjavac's own `-src`.  The canonical name is the same as ECJ's -- the
+# source location -- because both compilers mean the same thing by it, and
+# the capture records the option under one name so the two are comparable.
+[[option]]
+name = source_files_or_dirs
+aliases = [-src]
+value = single
+repeat = last-wins
+compiler = sjavac
+
+[[option]]
+name = -x
+aliases = []
+value = single
+repeat = all-apply
+compiler = sjavac
+
+[[option]]
+name = -i
+aliases = []
+value = single
+repeat = all-apply
+compiler = sjavac
+
+[[option]]
+name = -tr
+aliases = []
+value = single
+repeat = all-apply
+compiler = sjavac
+
+[[option]]
+name = -copy
+aliases = []
+value = single
+repeat = all-apply
+compiler = sjavac
+
+[[option]]
+name = -j
+aliases = []
+value = single
+repeat = last-wins
+compiler = sjavac
+
+[[option]]
+name = --server
+aliases = [--server:]
+value = single
+repeat = last-wins
+compiler = sjavac
+
+[[option]]
+name = --startserver
+aliases = [--startserver:]
+value = single
+repeat = last-wins
+compiler = sjavac
+
+[[option]]
+name = --log
+aliases = [--log=]
+value = single
+repeat = last-wins
+compiler = sjavac
+
+[[option]]
+name = --permit-artifact
+aliases = [--permit-artifact=]
+value = single
+repeat = all-apply
+compiler = sjavac
+
+[[option]]
+name = --permit-unidentified-artifacts
+aliases = []
+value = none
+repeat = last-wins
+compiler = sjavac
+
+[[option]]
+name = --permit-sources-without-package
+aliases = []
+value = none
+repeat = last-wins
+compiler = sjavac
+
+[[option]]
+name = --compare-found-sources
+aliases = []
+value = single
+repeat = last-wins
+compiler = sjavac
+
+[[option]]
+name = --state-dir
+aliases = [--state-dir=]
+value = single
+repeat = last-wins
+compiler = sjavac
+
+# sjavac's own spelling of the implicit-compilation switch.  javac spells it
+# `-implicit:none` and `-implicit:class`; sjavac spells it `-implicit:` with
+# the value in the NEXT token.
+[[option]]
+name = --implicit
+aliases = [-implicit:]
+value = single
+repeat = last-wins
+compiler = sjavac

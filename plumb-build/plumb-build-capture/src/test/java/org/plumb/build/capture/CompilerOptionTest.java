@@ -33,18 +33,47 @@ class CompilerOptionTest {
     }
   }
 
+  /**
+   * A spelling may be declared more than once, but only for DIFFERENT compilers.
+   *
+   * <p>ECJ and sjavac both have {@code -src}, {@code -copy}, {@code -x}, {@code -i}, {@code -tr}
+   * and {@code -j}, and they mean different things by some of them. The index holds one option
+   * per (name, compiler) pair, so a name may appear twice -- once per compiler -- but never
+   * twice for the same compiler.
+   *
+   * <p><b>Why this matters.</b> The index used to hold one option per NAME, so the second entry
+   * silently overwrote the first and ECJ's lookup rejected all six. The option was dropped and the
+   * value that followed it was read as a source file.
+   */
   @Test
-  void theTableHasNoDuplicateOptionNames() {
-    long distinct =
-        CompilerOption.ALL.stream().map(CompilerOption::name).distinct().count();
-    assertThat(distinct).isEqualTo(CompilerOption.ALL.size());
+  void theTableHasNoDuplicateOptionNamesForOneCompiler() {
+    for (CompilerOption.Compiler compiler : CompilerOption.Compiler.values()) {
+      long distinct =
+          CompilerOption.forCompiler(compiler).stream()
+              .map(CompilerOption::name)
+              .distinct()
+              .count();
+      long size = CompilerOption.forCompiler(compiler).size();
+      assertThat(distinct).as("compiler %s", compiler).isEqualTo(size);
+    }
   }
 
   @Test
   void everyOptionIsReachableByName() {
     for (CompilerOption option : CompilerOption.ALL) {
-      assertThat(CompilerOption.byName(option.name())).as("option %s", option.name())
-          .isSameAs(option);
+      // The compiler-aware lookup has to find every option for the compiler
+      // it belongs to, and for every compiler it is shared with.
+      if (option.compiler() == null) {
+        for (CompilerOption.Compiler compiler : CompilerOption.Compiler.values()) {
+          assertThat(CompilerOption.byName(option.name(), compiler))
+              .as("option %s for %s", option.name(), compiler)
+              .isNotNull();
+        }
+      } else {
+        assertThat(CompilerOption.byName(option.name(), option.compiler()))
+            .as("option %s for %s", option.name(), option.compiler())
+            .isNotNull();
+      }
     }
   }
 

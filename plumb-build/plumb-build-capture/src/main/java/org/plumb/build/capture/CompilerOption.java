@@ -164,20 +164,50 @@ public final class CompilerOption {
    */
   public static final List<CompilerOption> ALL = buildTable();
 
-  /** The options by the name the compiler spells them with. */
-  private static final Map<String, CompilerOption> BY_NAME = index();
+  /**
+   * The options by the name the compiler spells them with, and the compiler they belong to.
+   *
+   * <p><b>Why the index is keyed by the name AND the compiler.</b> Two compilers can spell an
+   * option the same way and still mean different things by it. ECJ and sjavac both have {@code
+   * -src}, {@code -copy}, {@code -x}, {@code -i}, {@code -tr} and {@code -j} -- and sjavac's
+   * {@code -j} is repeatable while ECJ's is not. An index keyed by the name alone holds ONE option
+   * per name, so the second entry silently overwrote the first and the ECJ lookup rejected all
+   * six: the option was dropped, and the value that followed it was read as a source file.
+   *
+   * <p>So the index holds one option per (name, compiler) pair. The name alone is still
+   * ambiguous, and {@link #byName(String, Compiler)} is the lookup that resolves it.
+   */
+  private static final Map<String, Map<Compiler, CompilerOption>> BY_NAME = index();
 
-  private static Map<String, CompilerOption> index() {
-    Map<String, CompilerOption> out = new LinkedHashMap<>();
+  private static Map<String, Map<Compiler, CompilerOption>> index() {
+    Map<String, Map<Compiler, CompilerOption>> out = new LinkedHashMap<>();
     for (CompilerOption option : ALL) {
-      out.put(option.name(), option);
+      Map<Compiler, CompilerOption> perCompiler =
+          out.computeIfAbsent(option.name(), k -> new LinkedHashMap<>());
+      // An option that belongs to no compiler in particular is shared, and it
+      // is the fallback for a compiler that has an option of its own.
+      perCompiler.put(option.compiler(), option);
     }
     return out;
   }
 
-  /** The option with that name, or {@code null} when the compiler does not know it. */
+  /**
+   * The option with that name, or {@code null} when the compiler does not know it.
+   *
+   * <p>Without a compiler this is ambiguous for a name two compilers share, so the option that
+   * belongs to no particular compiler is preferred and otherwise the first entry wins. The
+   * compiler-aware lookup is the one to use when the compiler is known.
+   */
   public static CompilerOption byName(String name) {
-    return BY_NAME.get(name);
+    Map<Compiler, CompilerOption> perCompiler = BY_NAME.get(name);
+    if (perCompiler == null) {
+      return null;
+    }
+    CompilerOption shared = perCompiler.get(null);
+    if (shared != null) {
+      return shared;
+    }
+    return perCompiler.values().iterator().next();
   }
 
   /**
@@ -190,20 +220,25 @@ public final class CompilerOption {
    * <p>Where the two compilers agree -- on the classpath's three spellings, for instance -- the
    * option belongs to neither one and both lookups find it.
    *
+   * <p>And where they spell an option the same way but mean different things by it, each
+   * compiler gets its own entry: {@code -src} and {@code -j} are ECJ's and sjavac's separately.
+   *
    * @param name the option as the compiler spells it
    * @param compiler which compiler is doing the parsing
    * @return the option, or {@code null} when that compiler does not know it
    */
   public static CompilerOption byName(String name, Compiler compiler) {
-    CompilerOption option = BY_NAME.get(name);
-    if (option == null) {
+    Map<Compiler, CompilerOption> perCompiler = BY_NAME.get(name);
+    if (perCompiler == null) {
       return null;
     }
-    // An option that belongs to another compiler is not this compiler's option.
-    if (option.compiler() != null && option.compiler() != compiler) {
-      return null;
+    // The compiler's own option wins over a shared one.
+    CompilerOption own = perCompiler.get(compiler);
+    if (own != null) {
+      return own;
     }
-    return option;
+    // An option that belongs to no compiler in particular applies to all of them.
+    return perCompiler.get(null);
   }
 
   /**
@@ -333,6 +368,14 @@ public final class CompilerOption {
     out.add(opt("-implicit:none", "-implicit", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-implicit:class", "-implicit", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
 
+    // sjavac spells the same switch differently: `-implicit:` with the value
+    // in the NEXT token, so `-implicit: none` and not `-implicit:none`.  The
+    // measured sjavac accepts both the joined and the separated form, and it
+    // is the separated form that is its own spelling.  The option is the same
+    // one -- the policy for implicitly referenced sources -- so it is recorded
+    // under the same canonical name.
+    out.add(opt("-implicit:", "--implicit", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+
     // ---- the module of the files that are created ----
     // --default-module-for-created-files names the module a generated class
     // file belongs to.  It is what a modular build sets, and it is how a
@@ -374,7 +417,10 @@ public final class CompilerOption {
 
     // ---- the options that are not compilation options but still take a value ----
     // ECJ's own set: these are ECJ-specific and are recorded but not interpreted.
-    out.add(opt("-h", "-h", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+    // -h is the header directory.  It was ECJ's alone, but the real sjavac
+    // has it too -- the measured sjavac's option enum lists "-h  Directory for
+    // header files" -- so the option belongs to both compilers.
+    out.add(opt("-h", "-h", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-i", "-i", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
     out.add(opt("-j", "-j", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
     out.add(opt("-log", "-log", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
@@ -390,6 +436,90 @@ public final class CompilerOption {
     // ---- the source directories ----
     // ECJ's -src names a directory of sources rather than a file.
     out.add(opt("-src", "source_files_or_dirs", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+
+    // ---- the options measured against the real ECJ ----
+    //
+    // These were found by running ECJ's own `-help` and comparing it with
+    // this table.  ECJ 3.33.0 lists them and the table did not know them.
+    //
+    // `-annotationpath` is the one that matters: it names the external
+    // annotations that support annotation-based null analysis, so it changes
+    // what the compiler checks.  Without it in the table the option was
+    // unknown AND the path that followed it was not a source file either --
+    // so both the option and its value vanished, exactly like the missing
+    // `--class-path` cost javac its whole classpath.
+    out.add(opt("-annotationpath", "annotationpath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+
+    // ECJ's spelling of the warning switch.  javac spells it `-nowarn`; ECJ
+    // spells it `-warn:none`.  The option is the same one -- the warnings the
+    // compiler reports -- but the CANONICAL name has to be ECJ's own, because
+    // the shared `-nowarn` is a different entry and the index holds one
+    // option per (name, compiler).
+    out.add(opt("-warn:none", "-warn:none", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+
+    // The advanced warning options.  They only change what the compiler
+    // prints, and they take a value that is a warning list rather than a
+    // path.
+    out.add(opt("-?:warn", "-?:warn", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+    out.add(opt("-help:warn", "-help:warn", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+
+    // ---- the options measured against the real sjavac ----
+    //
+    // sjavac was removed from the JDK after Java 11, so these were measured
+    // against the real `com.sun.tools.sjavac.options.Option` enum of a JDK 11
+    // (Temurin 11.0.32.1+1).  The enum IS the compiler's option table: every
+    // constant carries the spelling the compiler accepts.
+    //
+    // THE KEY FACT, and it is not a detail: sjavac has its OWN option table and
+    // it CONSUMES those options itself.  Everything sjavac does not recognise
+    // is forwarded to javac.  Measured on the real compiler:
+    //
+    //   sjavac consumes: -src --source-path -sourcepath --module-path -p
+    //                    --class-path -classpath -cp -x -i -tr -copy -j
+    //                    --server: --startserver: -implicit: --log= -verbose
+    //                    --permit-artifact= --permit-unidentified-artifacts
+    //                    --permit-sources-without-package
+    //                    --compare-found-sources -d -s -h --state-dir=
+    //
+    //   sjavac forwards to javac: -encoding -source -target --release -g
+    //                    -nowarn -proc:none -processor -processorpath
+    //                    -bootclasspath --add-modules -Xlint -parameters -A
+    //
+    // That is why the sjavac options below are attributed to SJAVAC and the
+    // javac ones are not: an option sjavac forwards is a javac option, and
+    // attributing it to sjavac would make javac's own lookup reject it.
+    //
+    // A THIRD fact, also measured: the value of an sjavac option is taken from
+    // the NEXT argument, not from the same token.  `-j 2` works and `-j=2` is
+    // REJECTED; the same holds for `--server:`, `--startserver:` and
+    // `--state-dir=`.  The options spelled with a trailing `=` or `:` still
+    // take the value in the next token -- sjavac's spelling says where the
+    // value MAY go, not that it must be joined.
+    //
+    // sjavac's own source and class paths are PATH_LISTs separated by the
+    // platform separator, the same as javac's.
+    out.add(opt("-src", "source_files_or_dirs", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(opt("-x", "-x", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(opt("-i", "-i", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(opt("-tr", "-tr", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(opt("-copy", "-copy", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, Compiler.SJAVAC));
+    // The number of cores.  It does not change the class files, but it IS a
+    // value-taking option, so it has to be recognised -- otherwise the number
+    // after it is read as a source file.
+    out.add(opt("-j", "-j", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(opt("--server:", "--server", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(opt("--startserver:", "--startserver", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(opt("--permit-artifact=", "--permit-artifact", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(opt("--permit-unidentified-artifacts", "--permit-unidentified-artifacts", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(opt("--permit-sources-without-package", "--permit-sources-without-package", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(opt("--compare-found-sources", "--compare-found-sources", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(opt("--state-dir=", "--state-dir", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+
+    // The logging level.  sjavac spells it with a trailing "=", but it takes
+    // the value from the NEXT token -- the measured compiler accepts
+    // `--log= info` and rejects nothing here -- so it is a single-valued
+    // option like the others.
+    out.add(opt("--log=", "--log", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
 
     // ---- the options that only affect diagnostics ----
     // These do not change the class files, so they are recorded but not interpreted.

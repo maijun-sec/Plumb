@@ -240,6 +240,9 @@ class BootstrapInjectionTest {
           "IllegalArgumentException", "IllegalStateException", "NullPointerException",
           "IOException", "Throwable", "Error", "System", "Thread", "ThreadLocal", "Path",
           "Paths", "Files", "Optional", "Objects", "Arrays", "Collections", "List", "Map", "Set",
+          // Map.values() returns a Collection, so a class that reads a map's
+          // values names it.
+          "Collection",
           "ArrayList", "LinkedHashSet", "LinkedHashMap", "HashMap", "HashSet", "Iterable", "URI",
           "IdentityHashMap", "WeakHashMap", "TreeMap", "TreeSet", "EnumMap", "EnumSet",
           "FileObject", "StandardCharsets", "Charset", "Void", "Override", "SuppressWarnings",

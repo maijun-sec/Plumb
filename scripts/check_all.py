@@ -98,6 +98,24 @@ The gates are:
                               yardstick, not a memory of it
     mutate_compile_options     the compiler-option gate is not checking air:
                               a missing option must make it fail
+    check_compile_options_ecj  the option table knows every option the real
+                              ECJ has: ECJ's own `-help` is the yardstick,
+                              and the options it accepts but does not
+                              advertise are not excused by that
+    mutate_compile_options_ecj the ECJ option gate is not checking air: a
+                              missing option, and an option claimed for the
+                              wrong compiler, must both make it fail
+    check_compile_options_sjavac
+                              the option table knows every option the real
+                              sjavac has: sjavac was removed from the JDK
+                              after Java 11, so the reference is a JDK 11's
+                              own option enum -- and an option sjavac
+                              forwards to javac must not be claimed as
+                              sjavac's
+    mutate_compile_options_sjavac
+                              the sjavac option gate is not checking air: a
+                              missing option, and an option claimed for the
+                              wrong compiler, must both make it fail
     check_compile_parameters   the two sides of the compile parameters mean
                               the same things: the capture observes the
                               options the compiler received, the Maven side
@@ -223,6 +241,14 @@ GATES = (
      ["python", "scripts/check_compile_options.py"], "check"),
     ("mutate_compile_options",
      ["python", "scripts/mutate_compile_options.py"], "check"),
+    ("check_compile_options_ecj",
+     ["python", "scripts/check_compile_options_ecj.py"], "check"),
+    ("mutate_compile_options_ecj",
+     ["python", "scripts/mutate_compile_options_ecj.py"], "check"),
+    ("check_compile_options_sjavac",
+     ["python", "scripts/check_compile_options_sjavac.py"], "check"),
+    ("mutate_compile_options_sjavac",
+     ["python", "scripts/mutate_compile_options_sjavac.py"], "check"),
     ("check_compile_parameters",
      ["python", "scripts/check_compile_parameters.py"], "check"),
     ("mutate_compile_parameters",

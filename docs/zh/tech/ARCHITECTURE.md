@@ -444,6 +444,60 @@ Maven Resolver 算依赖闭包，因为插件自己声明的 classpath 不是编
 看的是编译器真正收到的 classpath。门禁检查的是**两种取法都还在**，这样任何一边都不能被
 悄悄删掉。
 
+### 7.0aa Maven 侧读的是构建声明了什么，而且要顺着父链读
+
+多模块构建的编译参数是从**父 pom** 继承来的，而且这些参数不在一个地方：它们在
+`maven-compiler-plugin` 的配置里，会被属性覆盖，而属性的值本身又可能是一个属性。
+
+所以 `MavenPom` 是**顺着父链**读编译插件的配置的，模块自己的配置排在最前面。它遵守的规则
+每一条都是量出来的：
+
+- 插件的**配置压过**属性，因为插件的配置才是编译插件真正用的；
+- `<release>` **压过** `<source>`，因为 `--release` 同时钉住语言级别**和**平台 API，
+  两个都声明的构建是按 release 编译的；
+- `${...}` 占位符**会被解析**，解析不出来就留作未知，而不是把占位符本身当版本传下去；
+- **没声明的参数保持未知**。上游项目把 `"1.8"` 和 `"UTF-8"` 写死了，于是每个项目都被报成
+  "以 1.8、UTF-8 编译"。
+
+插件的配置里还有两样不是参数、但会改变编译的东西，也一并读：
+
+- `<compilerArgs>`——插件传给编译器的额外参数；
+- `<annotationProcessorPaths>`——注解处理器在哪找，这和 classpath 是两条不同的路径。
+
+两者都会进到 `ModuleDescriptor`，解析适配器也会读它们，所以把处理器放在单独路径上的构建，
+描述出来是对的。
+
+模块自己的**目录**也是从 pom 读的——`<sourceDirectory>`、`<testSourceDirectory>`、
+`<build><outputDirectory>`、`<build><testOutputDirectory>`——而不是假定就是
+`src/main/java`、`src/test/java`、`target/classes`、`target/test-classes`。
+把源码放在别处的构建，现在描述出来是对的。
+
+### 7.0ab 两面互相对照，差异被报出来
+
+§7.0a 的两面回答同一批问题，所以一个构建可以查它自己的**内部一致性**：pom 声明的，
+对照编译器真正拿到的。
+
+`plumb-build-core` 放 `CompileDiscrepancy`——一处差异，带着声明值、观测值，以及它们不一致
+的那个参数。`plumb-build-maven` 放 `CompileCrossCheck`，它读 capture 目录和 pom，产出这些
+差异。
+
+三条规则让这个对照可信：
+
+- **任何一边缺的值是未知，不是差异。** 构建没传 `-encoding` 时 capture 不知道编码，
+  classpath 是继承来的时候 pom 也不知道 classpath。把这些报成差异就是噪声，而噪声是门禁
+  慢慢没人看的开始。
+- **差异保留两边的值。** 只说"它们不一样"的差异没法处理；说"pom 声明 1.8、编译器拿到的是
+  17"才能处理。
+- **差异的排序是确定的**，所以同一个构建每次产出同样的报告，两次报告之间的 diff 才说明
+  真有东西变了。
+
+这个对照是**一份报告，不是把差异抹平**。悄悄抹平的差异就是自信地答错：它的意义就是让
+"构建说一套、编译器做另一套"这件事显出来。
+
+`plumb-main` 把它暴露成 `--capture-dir <dir>`，
+`scripts/check_compile_crosscheck.py` 是让这个对照保持诚实的门禁，
+`scripts/mutate_compile_crosscheck.py` 是它的变异测试。
+
 ### 7.0.1 capture 挂哪些入口
 
 「javac 命令行」不是一个方法，而是**十五个**，取决于是怎么走到编译器的：
@@ -557,6 +611,11 @@ source path、encoding、`--release`、源文件清单、输出目录、编译�
 `-log`——用 javac 的表去解析 ECJ 的参数，会把一个值当成 javac 根本没有的选项吞掉。
 所以每个选项知道自己属于哪个编译器，查表是分编译器做的。
 
+**两个编译器可能把同一个选项拼成同一个样子，意思却不同。** ECJ 和 sjavac 都有 `-src`、
+`-copy`、`-x`、`-i`、`-tr`、`-j`，其中几个的意思并不相同——sjavac 的 `-copy` 可以重复，
+ECJ 的不行。所以索引的键是名字**加上**编译器，编译器自己那条优先于共享那条。见
+[§7.0.5aa](#705aa-另外两个编译器也是量出来的)。
+
 **哪些拼法存在，以编译器自己为准。** 这张表和它的测试都断言 javac 不认 `--class-path`。
 这个断言是错的：javac 自己的帮助里就写着
 `--class-path <path>, -classpath <path>, -cp <path>`，真的跑一次 javac 也接受这个写法。
@@ -577,9 +636,15 @@ source path、encoding、`--release`、源文件清单、输出目录、编译�
 而我们有、Coverity 没有的每个选项都必须**列为新增**，
 所以「我们支持得更多」是一件看得见的事，而不是一个意外。
 
-`scripts/mutate_capture_options.py` 是这个门禁自己的变异测试：七处刻意的偏移，
+`scripts/mutate_capture_options.py` 是这个门禁自己的变异测试：十处刻意的偏移，
 每一处都必须让门禁失败。它在第一版里找出了三个真实的漏洞——门禁只看选项的*第一种*写法、
 从不核对规范名本身对不对，也从不核对参照物自己跟自己一致。
+
+对比是**分编译器**做的。参照物用规范名指代一个选项、把各种写法列为别名，而两个编译器可能
+把同一个选项拼成同一个样子，所以参照物的那一条会写明它属于哪个编译器，对比就对着**那个**
+编译器的条目做。要是退而求其次拿"碰巧最后一条"来比，比的就是错的东西，恰好把最要命的那个
+错误藏起来：属于一个编译器、却挂到另一个编译器名下的选项，正是 capture 那套分编译器的查找
+会变成"选项丢失"的那类错误。
 
 ### 7.0.5a 编译器自己的选项清单才是尺子
 
@@ -601,6 +666,54 @@ javac** 才是"这个选项收不收"的权威。这张表是凭记忆写的，�
 
 漏一个选项不会报错：它只是静默地不被认识，紧跟其后的值被当成位置参数——而位置参数只有
 以 `.java` 结尾才是源文件。所以漏一个选项，**丢的是两样东西**：选项本身和它的值。
+
+### 7.0.5aa 另外两个编译器也是量出来的
+
+`javac` 不是一个构建唯一会跑的编译器，另外两个编译器各自有自己的一套选项，同样是**对着真
+编译器**量出来的。
+
+**ECJ** 是跑它自己的 `-help` 量出来的（ECJ 3.33.0）。表里原本缺四个选项，第一个最要命：
+
+| 漏掉的选项 | 漏掉之后的代价 |
+| --- | --- |
+| `-annotationpath` | **整条注解路径**——选项不认识，紧跟的路径也跟着消失 |
+| `-warn:none` | ECJ 自己拼的警告开关不认识 |
+| `-?:warn`、`-help:warn` | 高级警告选项不认识 |
+
+`scripts/check_compile_options_ecj.py` 是门禁，`scripts/mutate_compile_options_ecj.py` 是它
+自己的变异测试。门禁查两件事：ECJ 列出的每个选项都在表里；而且每个选项都能被 **ECJ 的
+查找**找到——挂到别的编译器名下的选项，查找会拒绝它，于是选项被丢掉、它的值被当成源文件。
+
+**sjavac** 是更有意思的一个，因为 **Java 11 之后 sjavac 从 JDK 里被删掉了**。现代 JDK 根本
+没有 `com.sun.tools.sjavac`，所以尺子得是 JDK 11 自己的
+`com.sun.tools.sjavac.options.Option` 枚举——那个枚举**就是** sjavac 的选项表，每个常量都带
+着编译器接受的那种写法。枚举是反射读的，因为 `jdk.compiler` 不导出这个包。
+
+这次量出三条决定表形状的事实：
+
+1. **sjavac 有自己的选项表，而且它自己消费这些选项。** sjavac 不认识的，统统**转交给
+   javac**。对着真编译器量出来，sjavac 转交的是 `-encoding`、`-source`、`-target`、
+   `--release`、`-g`、`-nowarn`、`-proc:none`、`-processor`、`-processorpath`、
+   `-bootclasspath`、`--add-modules`、`-Xlint`、`-parameters` 和 `-A`。这些是 **javac 的**
+   选项，所以表里不能把它们算成 sjavac 的——否则 javac 自己的查找会拒绝它们。
+2. **sjavac 自己的选项有 26 个**：`-src`、`--source-path`、`-sourcepath`、`--module-path`、
+   `-p`、`--class-path`、`-classpath`、`-cp`、`-x`、`-i`、`-tr`、`-copy`、`-j`、`--server:`、
+   `--startserver:`、`-implicit:`、`--log=`、`-verbose`、`--permit-artifact=`、
+   `--permit-unidentified-artifacts`、`--permit-sources-without-package`、
+   `--compare-found-sources`、`-d`、`-s`、`-h`、`--state-dir=`。
+3. **sjavac 的选项值取自下一个 token。** `-j 2` 行，`-j=2` **被拒绝**；`--server:`、
+   `--startserver:`、`--state-dir=` 同理。这个写法说的是值**可以**放在哪，不是说必须拼在
+   一起。
+
+`scripts/check_compile_options_sjavac.py` 是门禁。它读编译器自己的枚举，查 sjavac 的每个
+选项都在表里，查 sjavac 的每个选项都能被 **sjavac 的**查找找到，并且查 sjavac **转交**给
+javac 的选项没有被算成 sjavac 的。`scripts/mutate_compile_options_sjavac.py` 是它的变异测试。
+
+**索引的键是"名字 + 编译器"。** 这不是洁癖：ECJ 和 sjavac 都有 `-src`、`-copy`、`-x`、
+`-i`、`-tr`、`-j`，而且其中几个在两个编译器下意思并不相同——sjavac 的 `-copy` 可以重复，
+ECJ 的不行。只按名字做键的索引**每个名字只放一个**选项，于是后一条悄悄把前一条盖掉，
+**ECJ 的查找把这六个全拒绝了**：选项被丢掉，紧跟其后的值被当成源文件。所以索引放的是
+`(名字, 编译器)` 一对的选项，编译器自己的那条优先于共享的那条。
 
 ### 7.0.5b 参数文件也是命令行的一部分
 
