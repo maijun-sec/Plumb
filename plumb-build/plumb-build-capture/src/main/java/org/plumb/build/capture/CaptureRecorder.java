@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import java.io.IOException;
@@ -15,9 +36,9 @@ import java.util.Set;
 /**
  * The class the instrumented compiler calls into.
  *
- * <p><b>Why this class cannot be a normal part of the agent.</b> The instrumented bytecode lives
- * in the compiler's own classes ({@code com.sun.tools.javac.Main} and friends), which are loaded
- * by the application class loader. The agent jar, meanwhile, is only visible to the agent's class
+ * <p><b>Why this class cannot be a normal part of the agent.</b> The instrumented bytecode lives in
+ * the compiler's own classes ({@code com.sun.tools.javac.Main} and friends), which are loaded by
+ * the application class loader. The agent jar, meanwhile, is only visible to the agent's class
  * loader. A direct call from the compiler's code to an agent class would fail with {@code
  * NoClassDefFoundError}.
  *
@@ -25,15 +46,15 @@ import java.util.Set;
  * the ancestor of every other loader, so a class placed there is reachable from the compiler, from
  * the application and from the agent alike.
  *
- * <p>That visibility comes with a constraint: <b>this class must not reference anything that is
- * not on the bootstrap loader</b>. It cannot use SLF4J, and it cannot call {@link CaptureSink}. It
+ * <p>That visibility comes with a constraint: <b>this class must not reference anything that is not
+ * on the bootstrap loader</b>. It cannot use SLF4J, and it cannot call {@link CaptureSink}. It
  * writes the capture file itself. Keep this class dependency-free.
  *
  * <p><b>What is recorded.</b> Not just the argv. Coverity's {@code JavacOptionParser} goes further:
- * it reconstructs the <em>effective</em> compile — the classpath that was actually used, the
- * source path, the encoding, the release level — because the argv alone does not say what the
- * compiler saw. {@code -classpath ""} and no {@code -classpath} at all mean different things, and
- * only the second is knowable from the environment.
+ * it reconstructs the <em>effective</em> compile — the classpath that was actually used, the source
+ * path, the encoding, the release level — because the argv alone does not say what the compiler
+ * saw. {@code -classpath ""} and no {@code -classpath} at all mean different things, and only the
+ * second is knowable from the environment.
  */
 public final class CaptureRecorder {
 
@@ -43,11 +64,11 @@ public final class CaptureRecorder {
   /**
    * System property naming the directory captures are written to.
    *
-   * <p>The environment variable is the right way to configure the agent for a real build: the
-   * agent is started by the build tool, and the build tool can set an environment variable but
-   * not a system property. The system property exists for the case where the agent is installed
-   * <em>into a running JVM</em> (the dynamic-attach path, and the tests): the environment of a
-   * running process cannot be changed, but a system property can.
+   * <p>The environment variable is the right way to configure the agent for a real build: the agent
+   * is started by the build tool, and the build tool can set an environment variable but not a
+   * system property. The system property exists for the case where the agent is installed <em>into
+   * a running JVM</em> (the dynamic-attach path, and the tests): the environment of a running
+   * process cannot be changed, but a system property can.
    *
    * <p>The system property wins when both are set.
    */
@@ -62,8 +83,8 @@ public final class CaptureRecorder {
    * JavacTaskImpl#call}. Each of them would otherwise write its own file, and the analyser would
    * see one compile several times over.
    *
-   * <p><b>The key is the compile's identity, not its argv.</b> The argv differs between the CLI
-   * and the API path even for the same compile, and it is identical for two genuinely different
+   * <p><b>The key is the compile's identity, not its argv.</b> The argv differs between the CLI and
+   * the API path even for the same compile, and it is identical for two genuinely different
    * compiles that happen to be invoked with the same options. The identity -- sources, output
    * directory, classpath, encoding, language level -- is what actually says "same compile".
    */
@@ -93,8 +114,8 @@ public final class CaptureRecorder {
    * the agent unusable in a normal build.
    *
    * <p>So the options are remembered at the point where they are still visible -- {@code
-   * JavacTool#getTask}, which receives them as an argument -- and are looked up again when the
-   * task is driven. The lookup is by identity, so two tasks never share options.
+   * JavacTool#getTask}, which receives them as an argument -- and are looked up again when the task
+   * is driven. The lookup is by identity, so two tasks never share options.
    */
   private static final Map<Object, List<String>> TASK_OPTIONS = new IdentityHashMap<>();
 
@@ -110,8 +131,8 @@ public final class CaptureRecorder {
    *
    * <p><b>Why the depth is counted.</b> The compiler's generate step is <em>inside</em> its compile
    * step: {@code JavaCompiler#compile} desugars and then calls {@code JavaCompiler#generate}. Both
-   * are hooked, because the IDE's {@code JavacTaskImpl#generate()} path does not go through
-   * {@code compile} at all -- but a compile that goes through {@code compile} would then write two
+   * are hooked, because the IDE's {@code JavacTaskImpl#generate()} path does not go through {@code
+   * compile} at all -- but a compile that goes through {@code compile} would then write two
    * captures for one compile.
    *
    * <p>So the capture is written by the <em>outermost</em> step. The inner one sees a depth above
@@ -257,8 +278,8 @@ public final class CaptureRecorder {
   /**
    * The source files a command line names.
    *
-   * <p>Only the positional {@code .java} arguments are sources. The other values belong to
-   * options, and a jar on the classpath is not a source.
+   * <p>Only the positional {@code .java} arguments are sources. The other values belong to options,
+   * and a jar on the classpath is not a source.
    *
    * @param argv the compiler's arguments
    * @param compiler which compiler received them
@@ -279,11 +300,11 @@ public final class CaptureRecorder {
    * known -- including the ones it found on the source path -- and the capture can report the
    * effective compile rather than the request for one.
    *
-   * <p><b>Why the staged compile is matched, not just taken.</b> One compile is seen through several
-   * entry points -- the command line through three of them, the API through two others -- so the
-   * same compile is staged more than once. And a build may have more than one compile in flight:
-   * Gradle, for one, creates the task for the next module before the previous module's compile
-   * has finished.
+   * <p><b>Why the staged compile is matched, not just taken.</b> One compile is seen through
+   * several entry points -- the command line through three of them, the API through two others --
+   * so the same compile is staged more than once. And a build may have more than one compile in
+   * flight: Gradle, for one, creates the task for the next module before the previous module's
+   * compile has finished.
    *
    * <p>So the staged compile is chosen by <em>matching</em>: the staged compile whose sources are
    * the ones this compile actually parsed. The sources the compiler parsed are known at the end and
@@ -305,7 +326,8 @@ public final class CaptureRecorder {
         // options are unknown, and a capture without options is useless.
         return;
       }
-      record(buildCapture(pending.argv(), merge(pending.sources(), parsed), pending.api(), compiler));
+      record(
+          buildCapture(pending.argv(), merge(pending.sources(), parsed), pending.api(), compiler));
     } catch (Throwable t) {
       // A capture must never break the compile.
       System.err.println("[plumb-capture] could not record the compile: " + t);
@@ -391,8 +413,8 @@ public final class CaptureRecorder {
    * A path in a form that can be compared.
    *
    * <p>The path is made absolute against the working directory, and its separators are made the
-   * same on every platform, so that a path written one way and reported another is still
-   * recognized as the same file.
+   * same on every platform, so that a path written one way and reported another is still recognized
+   * as the same file.
    *
    * @param path the path to normalize
    * @return the comparable form
@@ -519,9 +541,9 @@ public final class CaptureRecorder {
   /**
    * Record a compile driven through a task object, as an IDE does.
    *
-   * <p>{@code JavacTaskImpl#call()} and {@code JavacTaskImpl#generate()} carry no compiler
-   * options: they were set on the task when it was created, by {@code JavacTool#getTask}. So the
-   * options are looked up from the ones remembered then.
+   * <p>{@code JavacTaskImpl#call()} and {@code JavacTaskImpl#generate()} carry no compiler options:
+   * they were set on the task when it was created, by {@code JavacTool#getTask}. So the options are
+   * looked up from the ones remembered then.
    *
    * <p><b>Why this does not stage a compile.</b> The {@code getTask} hook already staged it, and
    * the compile-end hook takes that one. Staging a second copy here would leave a stale entry
@@ -561,13 +583,13 @@ public final class CaptureRecorder {
    * Record a compile, unless this compile has already been recorded.
    *
    * <p>The duplicate check is on the compile's identity, not on its argv. One compile reaches
-   * several entry points -- the CLI driver through two of them, the API path through two others
-   * -- and each would otherwise write a file. The identity says whether two captures describe the
-   * same compile.
+   * several entry points -- the CLI driver through two of them, the API path through two others --
+   * and each would otherwise write a file. The identity says whether two captures describe the same
+   * compile.
    *
-   * <p><b>The history is bounded.</b> A build compiles module after module; keeping every
-   * identity forever would grow without limit, and a build that compiles the same sources twice
-   * with different options is two different compiles.
+   * <p><b>The history is bounded.</b> A build compiles module after module; keeping every identity
+   * forever would grow without limit, and a build that compiles the same sources twice with
+   * different options is two different compiles.
    *
    * @param entries the capture to record
    */
@@ -658,10 +680,7 @@ public final class CaptureRecorder {
    * drop the classpath entirely.
    */
   private static List<CaptureEntry> buildCapture(
-      List<String> argv,
-      List<String> extraSources,
-      String api,
-      CompilerOption.Compiler compiler) {
+      List<String> argv, List<String> extraSources, String api, CompilerOption.Compiler compiler) {
     JavacOptions options = JavacOptions.parse(argv, compiler);
 
     // The classpath the compiler actually used. `-classpath` wins; when it
@@ -714,8 +733,8 @@ public final class CaptureRecorder {
   /**
    * The classpath the compiler would use when the command line does not say.
    *
-   * <p>{@code CLASSPATH} is the documented source; {@code java.class.path} is what the JVM
-   * actually started with, and it is what a build tool's forked compiler inherits.
+   * <p>{@code CLASSPATH} is the documented source; {@code java.class.path} is what the JVM actually
+   * started with, and it is what a build tool's forked compiler inherits.
    */
   private static List<Path> environmentClasspath() {
     List<Path> out = new ArrayList<>();
@@ -752,11 +771,11 @@ public final class CaptureRecorder {
    * plain strings, so all three are handled.
    *
    * <p><b>The object is handled reflectively, on purpose.</b> The recorder runs on the bootstrap
-   * class loader, which sees only the JDK's bootstrap classes. {@code javax.tools.FileObject}
-   * lives in the {@code java.compiler} module, which the <em>platform</em> loader owns -- so a
-   * direct reference to it would fail with {@code NoClassDefFoundError} on the bootstrap copy of
-   * this class. A reflective call is resolved against the <em>calling</em> object's class loader,
-   * which is the one that can see {@code javax.tools}.
+   * class loader, which sees only the JDK's bootstrap classes. {@code javax.tools.FileObject} lives
+   * in the {@code java.compiler} module, which the <em>platform</em> loader owns -- so a direct
+   * reference to it would fail with {@code NoClassDefFoundError} on the bootstrap copy of this
+   * class. A reflective call is resolved against the <em>calling</em> object's class loader, which
+   * is the one that can see {@code javax.tools}.
    */
   private static String toPath(Object source) {
     if (source == null) {
@@ -809,8 +828,8 @@ public final class CaptureRecorder {
   /**
    * Call a no-argument method that returns a String, reflectively.
    *
-   * <p>Reflective because the bootstrap class loader cannot see {@code javax.tools}, and
-   * because the method may not exist on a given implementation.
+   * <p>Reflective because the bootstrap class loader cannot see {@code javax.tools}, and because
+   * the method may not exist on a given implementation.
    *
    * <p><b>The method is looked up on the interface, not on the implementation class.</b> The
    * implementation is {@code com.sun.tools.javac.file.PathFileObject$SimpleFileObject}, and the
@@ -838,9 +857,9 @@ public final class CaptureRecorder {
    * Find a method that this class is allowed to call.
    *
    * <p>The implementation class is not accessible from the bootstrap loader, so the method is
-   * looked up on every interface the object implements, and on {@code Object}. An interface
-   * method is found by name, which is enough here because {@code getName} and {@code toUri} are
-   * not overloaded on {@code JavaFileObject}.
+   * looked up on every interface the object implements, and on {@code Object}. An interface method
+   * is found by name, which is enough here because {@code getName} and {@code toUri} are not
+   * overloaded on {@code JavaFileObject}.
    */
   private static java.lang.reflect.Method findPublicMethod(Object target, String methodName) {
     for (Class<?> iface : target.getClass().getInterfaces()) {
@@ -894,8 +913,8 @@ public final class CaptureRecorder {
   /**
    * Where the captures go.
    *
-   * <p>The system property wins over the environment variable, because it can be set from inside
-   * a running JVM and the environment cannot.
+   * <p>The system property wins over the environment variable, because it can be set from inside a
+   * running JVM and the environment cannot.
    */
   static String outputDirectory() {
     String prop = System.getProperty(PROP_OUTPUT_DIR);

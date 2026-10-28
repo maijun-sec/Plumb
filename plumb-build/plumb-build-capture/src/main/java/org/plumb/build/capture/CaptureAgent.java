@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import java.lang.instrument.Instrumentation;
@@ -8,15 +29,15 @@ import org.slf4j.LoggerFactory;
 /**
  * A ByteBuddy agent that captures the real javac compile.
  *
- * <p>Some projects cannot be introspected statically: the classpath may be assembled by a script,
- * a plugin, or an IDE. For those, the ground truth is the compile the compiler actually performed.
+ * <p>Some projects cannot be introspected statically: the classpath may be assembled by a script, a
+ * plugin, or an IDE. For those, the ground truth is the compile the compiler actually performed.
  * This agent hooks the compiler's entry points and records it.
  *
  * <h2>Which entry points</h2>
  *
  * <p>See {@link CompilerEntryPoints} for the list. The short version: a "javac command line" is
- * eight different methods depending on how the compiler was reached, and hooking only one
- * of them means the capture silently misses every build that takes a different path.
+ * eight different methods depending on how the compiler was reached, and hooking only one of them
+ * means the capture silently misses every build that takes a different path.
  *
  * <h2>How</h2>
  *
@@ -53,8 +74,8 @@ public final class CaptureAgent {
    * <p><b>This list has to be the recorder's whole dependency closure, including nested
    * classes.</b> The recorder runs on the bootstrap class loader, which sees nothing but the JDK.
    * If it references a class that is not in the jar, the call fails with {@code
-   * NoClassDefFoundError} -- and because the advice that calls it suppresses {@code Throwable},
-   * the failure is completely silent: the capture simply never appears.
+   * NoClassDefFoundError} -- and because the advice that calls it suppresses {@code Throwable}, the
+   * failure is completely silent: the capture simply never appears.
    *
    * <p>That is not hypothetical. It happened three times:
    *
@@ -185,13 +206,13 @@ public final class CaptureAgent {
    * Make the recorder visible to the compiler's own classes.
    *
    * <p>The instrumented bytecode lives in {@code com.sun.tools.javac.Main}, which belongs to the
-   * {@code jdk.compiler} module and is loaded by the application class loader. The agent jar, meanwhile,
-   * is only visible to the agent's own class loader -- so a direct call from the compiler's code to
-   * the recorder would fail with {@code NoClassDefFoundError}.
+   * {@code jdk.compiler} module and is loaded by the application class loader. The agent jar,
+   * meanwhile, is only visible to the agent's own class loader -- so a direct call from the
+   * compiler's code to the recorder would fail with {@code NoClassDefFoundError}.
    *
-   * <p>Appending a small jar to the <b>bootstrap</b> class loader solves it: the bootstrap loader is
-   * the ancestor of every other loader, so the recorder is reachable from the compiler's code, from
-   * the application, and from the agent alike.
+   * <p>Appending a small jar to the <b>bootstrap</b> class loader solves it: the bootstrap loader
+   * is the ancestor of every other loader, so the recorder is reachable from the compiler's code,
+   * from the application, and from the agent alike.
    */
   private static void injectRecorder(Instrumentation inst) {
     try {

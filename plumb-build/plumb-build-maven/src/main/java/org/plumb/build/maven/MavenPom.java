@@ -1,8 +1,28 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.maven;
 
 import java.io.File;
 import java.io.FileReader;
-import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -26,15 +46,14 @@ import org.slf4j.LoggerFactory;
 /**
  * A statically read {@code pom.xml}.
  *
- * <p>Only the facts needed to reconstruct a compile are extracted: the module
- * list, the dependency coordinates, the language level and the encoding. The
- * {@code <parent>} chain is followed so that a {@code ${...}} property or a
- * managed dependency version declared in the parent resolves correctly.
+ * <p>Only the facts needed to reconstruct a compile are extracted: the module list, the dependency
+ * coordinates, the language level and the encoding. The {@code <parent>} chain is followed so that
+ * a {@code ${...}} property or a managed dependency version declared in the parent resolves
+ * correctly.
  *
- * <p>The pom's OWN {@code <dependencies>} are what a module compiles against;
- * the parent's {@code <dependencyManagement>} only supplies versions for
- * dependencies that are declared. Both are needed, and confusing the two is
- * how a module ends up with an empty classpath.
+ * <p>The pom's OWN {@code <dependencies>} are what a module compiles against; the parent's {@code
+ * <dependencyManagement>} only supplies versions for dependencies that are declared. Both are
+ * needed, and confusing the two is how a module ends up with an empty classpath.
  */
 final class MavenPom {
 
@@ -46,9 +65,9 @@ final class MavenPom {
   /**
    * The artifact id of the plugin that compiles the sources.
    *
-   * <p>The language level and the encoding are read from this plugin's configuration, so the
-   * lookup is by artifact id: another plugin's {@code <configuration>} must not be mistaken for
-   * the compiler's.
+   * <p>The language level and the encoding are read from this plugin's configuration, so the lookup
+   * is by artifact id: another plugin's {@code <configuration>} must not be mistaken for the
+   * compiler's.
    */
   private static final String COMPILER_PLUGIN_ARTIFACT_ID = "maven-compiler-plugin";
 
@@ -56,9 +75,9 @@ final class MavenPom {
    * The artifact id of the plugin that ADDS source roots.
    *
    * <p>{@code build-helper-maven-plugin} with the {@code add-source} goal puts extra source
-   * directories into the compile, and they are part of the module's source roots. A build that
-   * uses it and is described without those roots is described wrong: the analyser sees fewer
-   * sources than the compiler compiles.
+   * directories into the compile, and they are part of the module's source roots. A build that uses
+   * it and is described without those roots is described wrong: the analyser sees fewer sources
+   * than the compiler compiles.
    */
   private static final String BUILD_HELPER_PLUGIN_ARTIFACT_ID = "build-helper-maven-plugin";
 
@@ -76,8 +95,8 @@ final class MavenPom {
    * <p><b>Why the parents are included.</b> A multi-module project almost never configures the
    * compiler plugin in every module: the parent declares it once, and the children inherit it. A
    * lookup that only reads the module's own {@code <build>} therefore reports "no language level,
-   * no encoding" for every child of a well-configured parent -- and the analyser then falls back
-   * to a guess.
+   * no encoding" for every child of a well-configured parent -- and the analyser then falls back to
+   * a guess.
    *
    * <p>The module's own configuration wins, because that is what Maven itself does: the effective
    * POM merges the parent into the child, with the child on top.
@@ -110,8 +129,7 @@ final class MavenPom {
   static MavenPom read(File pomFile) {
     Model raw = readModel(pomFile);
     if (raw == null) {
-      return new MavenPom(
-          new Model(), new Properties(), List.of(), Map.of(), List.of(), List.of());
+      return new MavenPom(new Model(), new Properties(), List.of(), Map.of(), List.of(), List.of());
     }
     Properties props = new Properties();
     List<String> modules = raw.getModules() == null ? List.of() : new ArrayList<>(raw.getModules());
@@ -183,14 +201,14 @@ final class MavenPom {
   /**
    * The {@code add-source} executions of the build-helper plugin in one pom.
    *
-   * <p><b>Why the EXECUTIONS and not the plugin's own configuration.</b> The build-helper plugin
-   * is configured per execution: each {@code <execution>} with the {@code add-source} goal
-   * carries its own {@code <sources>} list. A lookup that only read the plugin's top-level
-   * {@code <configuration>} would find nothing, because that is where a plugin that is
-   * configured globally puts its settings -- and the build-helper plugin is not.
+   * <p><b>Why the EXECUTIONS and not the plugin's own configuration.</b> The build-helper plugin is
+   * configured per execution: each {@code <execution>} with the {@code add-source} goal carries its
+   * own {@code <sources>} list. A lookup that only read the plugin's top-level {@code
+   * <configuration>} would find nothing, because that is where a plugin that is configured globally
+   * puts its settings -- and the build-helper plugin is not.
    *
-   * <p>The goal is checked too, because the same plugin has other goals -- {@code
-   * attach-artifact}, {@code reserve-network-port} -- whose configuration is not a source root.
+   * <p>The goal is checked too, because the same plugin has other goals -- {@code attach-artifact},
+   * {@code reserve-network-port} -- whose configuration is not a source root.
    */
   private static void addAdditionalSourceConfigurations(List<Xpp3Dom> target, Model model) {
     var build = model.getBuild();
@@ -205,8 +223,7 @@ final class MavenPom {
         continue;
       }
       for (PluginExecution execution : plugin.getExecutions()) {
-        if (execution.getGoals() == null
-            || !execution.getGoals().contains(ADD_SOURCE_GOAL)) {
+        if (execution.getGoals() == null || !execution.getGoals().contains(ADD_SOURCE_GOAL)) {
           continue;
         }
         if (execution.getConfiguration() instanceof Xpp3Dom dom) {
@@ -252,7 +269,8 @@ final class MavenPom {
       }
     }
     // Fall back to the standard local-repository layout.
-    String groupPath = parent.getGroupId() == null ? "" : parent.getGroupId().replace('.', File.separatorChar);
+    String groupPath =
+        parent.getGroupId() == null ? "" : parent.getGroupId().replace('.', File.separatorChar);
     File repo =
         new File(
             MavenSettings.defaultLocalRepository().toFile(),
@@ -298,12 +316,11 @@ final class MavenPom {
   }
 
   /**
-   * The declared dependency coordinates, with {@code ${...}} placeholders
-   * resolved against the effective properties.
+   * The declared dependency coordinates, with {@code ${...}} placeholders resolved against the
+   * effective properties.
    *
-   * <p>A dependency without a version inherits one from the merged
-   * {@code <dependencyManagement>}; without that, it cannot be resolved and
-   * is skipped.
+   * <p>A dependency without a version inherits one from the merged {@code <dependencyManagement>};
+   * without that, it cannot be resolved and is skipped.
    */
   List<String> dependencyCoordinates() {
     List<String> out = new ArrayList<>();
@@ -323,8 +340,11 @@ final class MavenPom {
         }
       }
       if (groupId == null || artifactId == null || version == null) {
-        LOG.debug("Maven: skipping dependency with unresolved coordinates: {}:{}:{}",
-            groupId, artifactId, version);
+        LOG.debug(
+            "Maven: skipping dependency with unresolved coordinates: {}:{}:{}",
+            groupId,
+            artifactId,
+            version);
         continue;
       }
       String scope = dep.getScope();
@@ -354,12 +374,12 @@ final class MavenPom {
    * compiled at 17, and reporting 8 would be wrong.
    *
    * <p>Within the plugin's configuration, {@code <release>} beats {@code <source>}: the release
-   * pins the language level <em>and</em> the platform API, so it is the level the class files
-   * were actually produced for.
+   * pins the language level <em>and</em> the platform API, so it is the level the class files were
+   * actually produced for.
    *
-   * <p>Nothing is guessed. The upstream project hard-coded {@code "1.8"} with a TODO next to
-   * it, so every project was reported as if it compiled at 1.8 -- a confident wrong answer, which
-   * is worse than an absent one because the analyser cannot tell it is a guess.
+   * <p>Nothing is guessed. The upstream project hard-coded {@code "1.8"} with a TODO next to it, so
+   * every project was reported as if it compiled at 1.8 -- a confident wrong answer, which is worse
+   * than an absent one because the analyser cannot tell it is a guess.
    */
   String languageLevel() {
     String plugin = pluginConfiguration("release");
@@ -379,13 +399,13 @@ final class MavenPom {
   /**
    * The declared class-file target level, or {@code null} when unspecified.
    *
-   * <p>Read the same way as the language level: the compiler plugin's configuration first, then
-   * the {@code maven.compiler.target} property.
+   * <p>Read the same way as the language level: the compiler plugin's configuration first, then the
+   * {@code maven.compiler.target} property.
    *
    * <p><b>Why it is separate from the language level.</b> {@code <release>} pins the language level
    * AND the platform API, and it is the level the class files were produced for. {@code <source>}
-   * is the language level alone, and {@code <target>} is the class-file version alone -- a build may
-   * compile Java 8 syntax into Java 8 class files, or into Java 11 class files, and the two
+   * is the language level alone, and {@code <target>} is the class-file version alone -- a build
+   * may compile Java 8 syntax into Java 8 class files, or into Java 11 class files, and the two
    * answers are different questions.
    */
   String targetLevel() {
@@ -400,10 +420,10 @@ final class MavenPom {
   /**
    * The declared source encoding, or {@code null} when unspecified.
    *
-   * <p>Read the same way as the language level: the compiler plugin's configuration first, then
-   * the {@code project.build.sourceEncoding} property. The upstream hard-coded {@code "UTF-8"},
-   * so a project compiled in another encoding was reported as UTF-8 -- and a source file read
-   * with the wrong encoding is a different program.
+   * <p>Read the same way as the language level: the compiler plugin's configuration first, then the
+   * {@code project.build.sourceEncoding} property. The upstream hard-coded {@code "UTF-8"}, so a
+   * project compiled in another encoding was reported as UTF-8 -- and a source file read with the
+   * wrong encoding is a different program.
    */
   Charset encoding() {
     String plugin = pluginConfiguration("encoding");
@@ -461,9 +481,9 @@ final class MavenPom {
    * options this code knows about: {@code -Xlint:all}, {@code -parameters}, {@code -Werror}. The
    * plugin's own {@code <compilerArgs>} element takes one argument per {@code <arg>} child.
    *
-   * <p><b>Why they matter.</b> An argument like {@code -proc:none} turns annotation processing
-   * off, and {@code -parameters} changes the class files. Neither can be reconstructed from the
-   * pom's other settings, so without them the described compile is not the performed one.
+   * <p><b>Why they matter.</b> An argument like {@code -proc:none} turns annotation processing off,
+   * and {@code -parameters} changes the class files. Neither can be reconstructed from the pom's
+   * other settings, so without them the described compile is not the performed one.
    *
    * @return the arguments, in the order the pom declares them
    */
@@ -491,15 +511,15 @@ final class MavenPom {
   /**
    * The annotation processor paths the compiler plugin declares.
    *
-   * <p><b>What this is.</b> The {@code <annotationProcessorPaths>} element of the compiler
-   * plugin's configuration names the jars that hold the annotation processors. They are not part
-   * of the compile classpath -- the processor path is a path of its own -- and they are the
-   * jars that decide which annotations are processed at all.
+   * <p><b>What this is.</b> The {@code <annotationProcessorPaths>} element of the compiler plugin's
+   * configuration names the jars that hold the annotation processors. They are not part of the
+   * compile classpath -- the processor path is a path of its own -- and they are the jars that
+   * decide which annotations are processed at all.
    *
    * <p><b>Why the coordinates are reported and not the jars.</b> A path element declares a
    * dependency: a group id, an artifact id and a version. Turning that into a jar means resolving
-   * it, and the resolution is the resolver's job, not this class's. What this class reports is
-   * what the pom declared, so the two sides can be compared.
+   * it, and the resolution is the resolver's job, not this class's. What this class reports is what
+   * the pom declared, so the two sides can be compared.
    *
    * @return the processor path's coordinates, in the order the pom declares them
    */
@@ -597,9 +617,7 @@ final class MavenPom {
   Set<String> sourceRoots(File moduleRoot) {
     Set<String> roots = new LinkedHashSet<>();
     var build = model.getBuild();
-    roots.add(
-        buildDirectory(
-            build == null ? null : build.getSourceDirectory(), "src/main/java"));
+    roots.add(buildDirectory(build == null ? null : build.getSourceDirectory(), "src/main/java"));
     for (String extra : additionalSourceRoots()) {
       if (extra == null || extra.isBlank()) {
         continue;
@@ -612,10 +630,10 @@ final class MavenPom {
   /**
    * The source directories the build-helper plugin adds, relative to the module's directory.
    *
-   * <p>Read from each {@code add-source} execution's {@code <sources><source>} list. A value
-   * that is a {@code ${...}} placeholder is resolved against the properties, because that is
-   * what Maven does; an unresolvable one is left alone rather than becoming a directory named
-   * after the placeholder.
+   * <p>Read from each {@code add-source} execution's {@code <sources><source>} list. A value that
+   * is a {@code ${...}} placeholder is resolved against the properties, because that is what Maven
+   * does; an unresolvable one is left alone rather than becoming a directory named after the
+   * placeholder.
    */
   private List<String> additionalSourceRoots() {
     List<String> out = new ArrayList<>();
@@ -638,21 +656,19 @@ final class MavenPom {
   /** The declared test source root, relative to the module's directory. */
   String testSourceRoot() {
     var build = model.getBuild();
-    return buildDirectory(
-        build == null ? null : build.getTestSourceDirectory(), "src/test/java");
+    return buildDirectory(build == null ? null : build.getTestSourceDirectory(), "src/test/java");
   }
 
   /**
    * The declared output directory, relative to the module's directory.
    *
    * <p>Maven's own default is {@code target/classes}. A pom that declares another one is honoured,
-   * because a hard-coded value is a confident wrong answer for a project that declared a
-   * different one.
+   * because a hard-coded value is a confident wrong answer for a project that declared a different
+   * one.
    */
   String outputDirectory() {
     var build = model.getBuild();
-    return buildDirectory(
-        build == null ? null : build.getOutputDirectory(), "target/classes");
+    return buildDirectory(build == null ? null : build.getOutputDirectory(), "target/classes");
   }
 
   /** The declared test output directory, relative to the module's directory. */
@@ -666,8 +682,7 @@ final class MavenPom {
    * A directory from the pom's {@code <build>}, or the given default.
    *
    * <p>The Maven model exposes the four directories as typed getters, and it has already applied
-   * its own defaults, so an undeclared directory comes back as Maven's default rather than as
-   * null.
+   * its own defaults, so an undeclared directory comes back as Maven's default rather than as null.
    *
    * @param value the value the model reports
    * @param fallback the value to use when the pom declares nothing

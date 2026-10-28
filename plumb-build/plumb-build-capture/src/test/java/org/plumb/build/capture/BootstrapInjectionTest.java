@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,9 +75,7 @@ class BootstrapInjectionTest {
   @Test
   void theBootstrapClassesExistInTheAgentJar() {
     for (String resource : CaptureAgent.bootstrapJarClasses()) {
-      assertThat(readResource(resource))
-          .as("the agent jar must contain %s", resource)
-          .isNotNull();
+      assertThat(readResource(resource)).as("the agent jar must contain %s", resource).isNotNull();
     }
   }
 
@@ -82,8 +101,9 @@ class BootstrapInjectionTest {
       }
     }
     assertThat(problems)
-        .as("a class the bootstrap loader cannot see fails with NoClassDefFoundError, "
-            + "and the advice suppresses the error, so the capture silently never appears")
+        .as(
+            "a class the bootstrap loader cannot see fails with NoClassDefFoundError, "
+                + "and the advice suppresses the error, so the capture silently never appears")
         .isEmpty();
   }
 
@@ -94,7 +114,8 @@ class BootstrapInjectionTest {
           resource.substring(resource.lastIndexOf('/') + 1, resource.length() - ".class".length());
       // A nested class has no source file of its own; it lives in its
       // outer class's file.
-      String sourceName = simpleName.contains("$") ? simpleName.substring(0, simpleName.indexOf('$')) : simpleName;
+      String sourceName =
+          simpleName.contains("$") ? simpleName.substring(0, simpleName.indexOf('$')) : simpleName;
       String source = readSource(sourceName);
       assertThat(source).as("%s must not use SLF4J", simpleName).doesNotContain("slf4j");
       assertThat(source).as("%s must not use a Logger", simpleName).doesNotContain("LoggerFactory");
@@ -188,10 +209,10 @@ class BootstrapInjectionTest {
    *
    * <ul>
    *   <li>an array descriptor — {@code [Ljava/lang/String;} becomes {@code String[]};
-   *   <li>a nested class — {@code JavacOptions$Builder} keeps the {@code $}, because a nested
-   *       class is a <em>separate class file</em> that has to be in the jar too. Stripping the
-   *       {@code $} here is exactly the mistake that let {@code JavacOptions$Builder} go missing
-   *       from the jar while {@code JavacOptions} was in it.
+   *   <li>a nested class — {@code JavacOptions$Builder} keeps the {@code $}, because a nested class
+   *       is a <em>separate class file</em> that has to be in the jar too. Stripping the {@code $}
+   *       here is exactly the mistake that let {@code JavacOptions$Builder} go missing from the jar
+   *       while {@code JavacOptions} was in it.
    *   <li>a plain class — {@code java/lang/String} becomes {@code String}.
    * </ul>
    */
@@ -235,34 +256,99 @@ class BootstrapInjectionTest {
   /** The JDK types the bootstrap classes are allowed to use. */
   private static final List<String> JDK_TYPES =
       List.of(
-          "String", "Integer", "Long", "Double", "Float", "Short", "Byte", "Character",
-          "Boolean", "Number", "Object", "Class", "Exception", "RuntimeException",
-          "IllegalArgumentException", "IllegalStateException", "NullPointerException",
-          "IOException", "Throwable", "Error", "System", "Thread", "ThreadLocal", "Path",
-          "Paths", "Files", "Optional", "Objects", "Arrays", "Collections", "List", "Map", "Set",
+          "String",
+          "Integer",
+          "Long",
+          "Double",
+          "Float",
+          "Short",
+          "Byte",
+          "Character",
+          "Boolean",
+          "Number",
+          "Object",
+          "Class",
+          "Exception",
+          "RuntimeException",
+          "IllegalArgumentException",
+          "IllegalStateException",
+          "NullPointerException",
+          "IOException",
+          "Throwable",
+          "Error",
+          "System",
+          "Thread",
+          "ThreadLocal",
+          "Path",
+          "Paths",
+          "Files",
+          "Optional",
+          "Objects",
+          "Arrays",
+          "Collections",
+          "List",
+          "Map",
+          "Set",
           // Map.values() returns a Collection, so a class that reads a map's
           // values names it.
           "Collection",
-          "ArrayList", "LinkedHashSet", "LinkedHashMap", "HashMap", "HashSet", "Iterable", "URI",
-          "IdentityHashMap", "WeakHashMap", "TreeMap", "TreeSet", "EnumMap", "EnumSet",
-          "FileObject", "StandardCharsets", "Charset", "Void", "Override", "SuppressWarnings",
-          "Deprecated", "StringBuilder", "Iterator", "FileAttribute", "OpenOption", "PrintStream",
-          "StringConcatFactory", "MethodHandles", "Record", "ObjectMethods", "String[]",
-          "StringBuilder[]", "Object[]", "Method", "ReflectiveOperationException",
-          "MethodHandles$Lookup", "Locale", "Pattern", "NoSuchMethodException",
+          "ArrayList",
+          "LinkedHashSet",
+          "LinkedHashMap",
+          "HashMap",
+          "HashSet",
+          "Iterable",
+          "URI",
+          "IdentityHashMap",
+          "WeakHashMap",
+          "TreeMap",
+          "TreeSet",
+          "EnumMap",
+          "EnumSet",
+          "FileObject",
+          "StandardCharsets",
+          "Charset",
+          "Void",
+          "Override",
+          "SuppressWarnings",
+          "Deprecated",
+          "StringBuilder",
+          "Iterator",
+          "FileAttribute",
+          "OpenOption",
+          "PrintStream",
+          "StringConcatFactory",
+          "MethodHandles",
+          "Record",
+          "ObjectMethods",
+          "String[]",
+          "StringBuilder[]",
+          "Object[]",
+          "Method",
+          "ReflectiveOperationException",
+          "MethodHandles$Lookup",
+          "Locale",
+          "Pattern",
+          "NoSuchMethodException",
           // The bridge looks the recorder up on the bootstrap loader, which
           // is what makes the two copies of the recorder distinguishable.
-          "ClassLoader", "ClassNotFoundException",
+          "ClassLoader",
+          "ClassNotFoundException",
           // The pending compiles are held in a concurrent deque: a build that
           // compiles modules in parallel stages more than one compile.
-          "Deque", "ConcurrentLinkedDeque",
+          "Deque",
+          "ConcurrentLinkedDeque",
           // The compile depth is counted in an int array, so the recorder
           // names the array type.
-          "[I", "int[]",
+          "[I",
+          "int[]",
           // Every enum extends java.lang.Enum, so an enum in the bootstrap
           // classes names it. LambdaMetafactory is what the compiler generates
           // for a switch expression over an enum.
-          "Enum", "Enum[]", "LambdaMetafactory", "SwitchBootstraps");
+          "Enum",
+          "Enum[]",
+          "LambdaMetafactory",
+          "SwitchBootstraps");
 
   private static boolean isJdkType(String type) {
     return JDK_TYPES.contains(type);
@@ -271,10 +357,10 @@ class BootstrapInjectionTest {
   /**
    * A type in this module's own package that is not in the jar would also be a problem.
    *
-   * <p>Note that this is deliberately narrow: a NEW class in this package still has to be
-   * listed in the bootstrap jar, because the bootstrap loader cannot see the package's other
-   * classes. The earlier version of this test waved through anything starting with "Capture",
-   * which would have let exactly the bug it was written to catch slip through.
+   * <p>Note that this is deliberately narrow: a NEW class in this package still has to be listed in
+   * the bootstrap jar, because the bootstrap loader cannot see the package's other classes. The
+   * earlier version of this test waved through anything starting with "Capture", which would have
+   * let exactly the bug it was written to catch slip through.
    */
   private static boolean isOwnPackageType(String type) {
     return false;

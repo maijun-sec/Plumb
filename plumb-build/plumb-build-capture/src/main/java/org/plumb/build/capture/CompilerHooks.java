@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import java.lang.instrument.Instrumentation;
@@ -13,21 +34,20 @@ import net.bytebuddy.utility.JavaModule;
 /**
  * The {@link Advice} hooks the agent weaves into the compiler.
  *
- * <p><b>This class must be public.</b> ByteBuddy's {@code Advice} inlines the hook's bytecode
- * into the target method, and the inlined code calls the advice class's method. A package-private
- * advice class cannot be called from the instrumented class, and ByteBuddy fails to apply the
- * advice -- <b>silently</b>, because the failure surfaces as a transform error that a default
- * agent swallows.
+ * <p><b>This class must be public.</b> ByteBuddy's {@code Advice} inlines the hook's bytecode into
+ * the target method, and the inlined code calls the advice class's method. A package-private advice
+ * class cannot be called from the instrumented class, and ByteBuddy fails to apply the advice --
+ * <b>silently</b>, because the failure surfaces as a transform error that a default agent swallows.
  *
  * <p><b>Why Advice and not a hand-written ASM visitor.</b> {@code Advice} is ByteBuddy's
  * <em>inlining</em> instrumentation: the hook's body is copied into the target method, so it needs
- * neither a super method nor a delegation target. It works on a plain static method such as
- * {@code Main#compile(String[])} exactly as well as on an instance method.
+ * neither a super method nor a delegation target. It works on a plain static method such as {@code
+ * Main#compile(String[])} exactly as well as on an instance method.
  *
  * <p>The alternative -- a raw {@code MethodVisitor} that emits {@code ALOAD} + {@code INVOKESTATIC}
- * by hand -- is more code and more fragile (the argument's local slot depends on whether the
- * method is static, and a mistake there corrupts the compiler's stack). {@code Advice} handles
- * both. This module contains no {@code net.bytebuddy.jar.asm} import at all.
+ * by hand -- is more code and more fragile (the argument's local slot depends on whether the method
+ * is static, and a mistake there corrupts the compiler's stack). {@code Advice} handles both. This
+ * module contains no {@code net.bytebuddy.jar.asm} import at all.
  *
  * <p><b>One advice class per argument position.</b> {@code @Advice.Argument(N)} takes a constant
  * ordinal, so a hook that reads the compiler options from a different argument needs a different
@@ -56,10 +76,10 @@ public final class CompilerHooks {
   /**
    * Hook for Eclipse's compiler.
    *
-   * <p>ECJ's options are not javac's options: it spells the classpath {@code --class-path}, and
-   * it has options javac does not have ({@code -src}, {@code -profile}, {@code -log}). Parsing
-   * them with javac's table would drop the classpath, which is the one thing a static analyser
-   * cannot do without.
+   * <p>ECJ's options are not javac's options: it spells the classpath {@code --class-path}, and it
+   * has options javac does not have ({@code -src}, {@code -profile}, {@code -log}). Parsing them
+   * with javac's table would drop the classpath, which is the one thing a static analyser cannot do
+   * without.
    */
   public static final class EcjArgv {
 
@@ -91,8 +111,8 @@ public final class CompilerHooks {
    * Hook for the entry points whose compiler options are argument 1.
    *
    * <p>Kept for completeness: the {@code javax.tools} API's {@code getTask} family is bound
-   * separately (see {@link ApiOptions}), but an entry point that carries the options in the
-   * second position would use this.
+   * separately (see {@link ApiOptions}), but an entry point that carries the options in the second
+   * position would use this.
    */
   public static final class ArgvAtOne {
 
@@ -123,15 +143,14 @@ public final class CompilerHooks {
   /**
    * Hook for the {@code javax.tools} API entry point.
    *
-   * <p>{@code JavacTool#getTask(Writer, FileManager, DiagnosticListener, Iterable options,
-   * Iterable classes, Iterable files)} receives the compiler options in argument 3 and the source
-   * files in argument 5.
+   * <p>{@code JavacTool#getTask(Writer, FileManager, DiagnosticListener, Iterable options, Iterable
+   * classes, Iterable files)} receives the compiler options in argument 3 and the source files in
+   * argument 5.
    *
-   * <p><b>The returned task is remembered too.</b> The task is what an IDE later drives with
-   * {@code call()} or {@code generate()}, and those methods carry no options. Remembering the task
-   * here is what lets the IDE path be captured at all -- the options cannot be read back off the
-   * task later, because the {@code jdk.compiler} module does not export the package the task lives
-   * in.
+   * <p><b>The returned task is remembered too.</b> The task is what an IDE later drives with {@code
+   * call()} or {@code generate()}, and those methods carry no options. Remembering the task here is
+   * what lets the IDE path be captured at all -- the options cannot be read back off the task
+   * later, because the {@code jdk.compiler} module does not export the package the task lives in.
    */
   public static final class ApiOptions {
 
@@ -139,8 +158,7 @@ public final class CompilerHooks {
 
     @Advice.OnMethodEnter(suppress = Throwable.class)
     public static void enter(
-        @Advice.Argument(3) Iterable<?> options,
-        @Advice.Argument(5) Iterable<?> sources) {
+        @Advice.Argument(3) Iterable<?> options, @Advice.Argument(5) Iterable<?> sources) {
       CaptureRecorder.onApiOptions(options, sources);
     }
   }
@@ -148,8 +166,8 @@ public final class CompilerHooks {
   /**
    * Hook for the task-creating {@code javax.tools} API entry point.
    *
-   * <p>Same method as {@link ApiOptions}, but this one also remembers the task that was created,
-   * so that the options can be attached to the compile the task eventually performs.
+   * <p>Same method as {@link ApiOptions}, but this one also remembers the task that was created, so
+   * that the options can be attached to the compile the task eventually performs.
    *
    * <p><b>Why the return value is needed.</b> {@code JavacTaskImpl#call()} and {@code
    * JavacTaskImpl#generate()} take no options: they were set on the task when it was created. The
@@ -178,8 +196,8 @@ public final class CompilerHooks {
    * from the ones remembered then.
    *
    * <p>This hook does not write the capture. It stages the compile's options, and the capture is
-   * written when the compile itself ends -- by {@link CompileFinished}. A capture written here would
-   * report the sources the compile was <em>given</em>, not the ones it really compiled.
+   * written when the compile itself ends -- by {@link CompileFinished}. A capture written here
+   * would report the sources the compile was <em>given</em>, not the ones it really compiled.
    */
   public static final class TaskOptions {
 
@@ -194,10 +212,10 @@ public final class CompilerHooks {
   /**
    * Hook for the compiler's compile step.
    *
-   * <p>{@code JavaCompiler#compile(Collection, Collection, Iterable, Collection)} is the one compile
-   * step both the command line and the {@code javax.tools} API go through. When it returns, the
-   * compile has run, so the sources it really compiled are known -- including the ones it found on
-   * the source path -- and the capture can be written.
+   * <p>{@code JavaCompiler#compile(Collection, Collection, Iterable, Collection)} is the one
+   * compile step both the command line and the {@code javax.tools} API go through. When it returns,
+   * the compile has run, so the sources it really compiled are known -- including the ones it found
+   * on the source path -- and the capture can be written.
    *
    * <p><b>Why the depth is counted.</b> The compiler's generate step is inside its compile step:
    * {@code compile} desugars and then calls {@code generate}. Both are hooked -- the IDE's {@code
@@ -257,6 +275,7 @@ public final class CompilerHooks {
         .transform(CompilerHooks::instrument)
         .installOn(inst);
   }
+
   /**
    * The advice class for an entry point that carries its options in argument 0.
    *
@@ -277,8 +296,7 @@ public final class CompilerHooks {
   /**
    * Weave the hooks into one type.
    *
-   * <p>For each entry point declared on that type, the matching method gets the appropriate
-   * advice.
+   * <p>For each entry point declared on that type, the matching method gets the appropriate advice.
    */
   private static DynamicType.Builder<?> instrument(
       DynamicType.Builder<?> builder,
@@ -288,7 +306,8 @@ public final class CompilerHooks {
       java.security.ProtectionDomain pd) {
 
     DynamicType.Builder<?> result = builder;
-    for (CompilerEntryPoints.EntryPoint entry : CompilerEntryPoints.forType(typeDescription.getName())) {
+    for (CompilerEntryPoints.EntryPoint entry :
+        CompilerEntryPoints.forType(typeDescription.getName())) {
       ElementMatcher.Junction<MethodDescription> matcher =
           ElementMatchers.named(entry.methodName());
       if (entry.argumentCount() >= 0) {

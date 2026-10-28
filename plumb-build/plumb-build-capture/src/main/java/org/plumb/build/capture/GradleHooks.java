@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import java.lang.instrument.Instrumentation;
@@ -16,17 +37,16 @@ import net.bytebuddy.utility.JavaModule;
  *
  * <ol>
  *   <li><b>The daemon.</b> Gradle runs the build in a long-lived daemon process. The agent is
- *       attached to whatever JVM the user launched, and the compile happens somewhere else --
- *       in a daemon that may have been started hours earlier, with none of the agent's
- *       configuration. The compile is therefore invisible.
+ *       attached to whatever JVM the user launched, and the compile happens somewhere else -- in a
+ *       daemon that may have been started hours earlier, with none of the agent's configuration.
+ *       The compile is therefore invisible.
  *   <li><b>The build cache.</b> A cached compilation is not performed at all, so there is nothing
  *       to capture -- and the analyser then has no classpath for those sources.
  * </ol>
  *
- * <p>Coverity solves both by hooking Gradle's own configuration API and <em>changing</em> it:
- * the build cache is switched off, and the daemon is switched off so the build runs in the
- * foreground process the agent is attached to. The hooks are in Coverity's
- * {@code common-capture.properties}.
+ * <p>Coverity solves both by hooking Gradle's own configuration API and <em>changing</em> it: the
+ * build cache is switched off, and the daemon is switched off so the build runs in the foreground
+ * process the agent is attached to. The hooks are in Coverity's {@code common-capture.properties}.
  *
  * <p>This class does the same thing. The two hooks are:
  *
@@ -36,13 +56,13 @@ import net.bytebuddy.utility.JavaModule;
  *       {@code false}.
  * </ul>
  *
- * <p><b>The hooks are opt-in.</b> Turning the daemon off makes the build slower, and a user who
- * did not ask for a capture should not pay for it. The system property
- * {@code plumb.capture.gradle.disable-daemon} turns them on, and so does the environment variable
- * {@code PLUMB_CAPTURE_GRADLE_HOOKS}.
+ * <p><b>The hooks are opt-in.</b> Turning the daemon off makes the build slower, and a user who did
+ * not ask for a capture should not pay for it. The system property {@code
+ * plumb.capture.gradle.disable-daemon} turns them on, and so does the environment variable {@code
+ * PLUMB_CAPTURE_GRADLE_HOOKS}.
  *
- * <p><b>Which channel reaches Gradle's JVM.</b> This is not obvious, and getting it wrong makes
- * the hooks silently inert. Measured on Gradle 9.2.0, by reading the command line of the JVM Gradle
+ * <p><b>Which channel reaches Gradle's JVM.</b> This is not obvious, and getting it wrong makes the
+ * hooks silently inert. Measured on Gradle 9.2.0, by reading the command line of the JVM Gradle
  * forked:
  *
  * <table>
@@ -69,20 +89,20 @@ import net.bytebuddy.utility.JavaModule;
  * JVM that actually performs the compile. The environment variable is the second channel, for the
  * case where the agent is not attached through {@code -javaagent}.
  *
- * <p><b>Why there is no Gradle-specific classpath hook.</b> It is tempting to hook
- * {@code DefaultJvmLanguageCompileSpec#setCompileClasspath(List<File>)}, because that is where
- * Gradle hands its resolved classpath to the compiler. The measurement says otherwise.
+ * <p><b>Why there is no Gradle-specific classpath hook.</b> It is tempting to hook {@code
+ * DefaultJvmLanguageCompileSpec#setCompileClasspath(List<File>)}, because that is where Gradle
+ * hands its resolved classpath to the compiler. The measurement says otherwise.
  *
  * <p>Gradle assembles the compile in the daemon, but <em>performs</em> it in the same JVM through
- * {@code javax.tools}. So once the agent is in that JVM -- which the daemon hook above guarantees --
- * the existing {@code JavacTool#getTask} hook already captures the effective compile, including the
- * fully resolved classpath with the upstream modules' output directories.
+ * {@code javax.tools}. So once the agent is in that JVM -- which the daemon hook above guarantees
+ * -- the existing {@code JavacTool#getTask} hook already captures the effective compile, including
+ * the fully resolved classpath with the upstream modules' output directories.
  *
  * <p>A Gradle-specific hook would be strictly worse: the compile spec class never loads in the
- * daemon JVM that holds the agent (it lives in the {@code gradle-language-jvm} jar, which is
- * loaded lazily into a separate class loader), so the hook would never fire; and even if it did,
- * it would record a second, worse copy of a compile the compiler hook already recorded exactly.
- * One record per compile is the invariant the capture reader relies on.
+ * daemon JVM that holds the agent (it lives in the {@code gradle-language-jvm} jar, which is loaded
+ * lazily into a separate class loader), so the hook would never fire; and even if it did, it would
+ * record a second, worse copy of a compile the compiler hook already recorded exactly. One record
+ * per compile is the invariant the capture reader relies on.
  *
  * @see CompilerHooks for the hook that actually records the compile
  */
@@ -94,9 +114,9 @@ final class GradleHooks {
   /**
    * Environment variable that enables the Gradle hooks.
    *
-   * <p>The environment is the one channel that reaches Gradle's own JVM: {@code
-   * org.gradle.jvmargs} drops every {@code -D} option, but the JVM inherits the environment of the
-   * process that started it.
+   * <p>The environment is the one channel that reaches Gradle's own JVM: {@code org.gradle.jvmargs}
+   * drops every {@code -D} option, but the JVM inherits the environment of the process that started
+   * it.
    */
   static final String ENV_DISABLE_DAEMON = "PLUMB_CAPTURE_GRADLE_HOOKS";
 
@@ -165,8 +185,8 @@ final class GradleHooks {
    *
    * <p><b>Two channels, because one is not enough.</b> The system property is the natural one, but
    * Gradle does not forward arbitrary {@code -D} options to the JVM it builds in: {@code
-   * org.gradle.jvmargs} is filtered, and only options Gradle recognises survive. Measured on
-   * Gradle 9.2.0: {@code -javaagent} survives, every {@code -D} is dropped.
+   * org.gradle.jvmargs} is filtered, and only options Gradle recognises survive. Measured on Gradle
+   * 9.2.0: {@code -javaagent} survives, every {@code -D} is dropped.
    *
    * <p>The environment variable survives, because the Gradle JVM inherits the environment of the
    * process that started it. So the property is the way to enable the hooks when the agent runs
@@ -199,13 +219,14 @@ final class GradleHooks {
     if (START_PARAMETER.equals(typeDescription.getName())) {
       result =
           result.visit(
-              Advice.to(DisableBuildCache.class)
-                  .on(ElementMatchers.named("setBuildCacheEnabled")));
+              Advice.to(DisableBuildCache.class).on(ElementMatchers.named("setBuildCacheEnabled")));
     } else if (DAEMON_PARAMETERS.equals(typeDescription.getName())) {
       result =
           result.visit(
               Advice.to(DisableDaemon.class)
-                  .on(ElementMatchers.named("isEnabled").and(ElementMatchers.returns(boolean.class))));
+                  .on(
+                      ElementMatchers.named("isEnabled")
+                          .and(ElementMatchers.returns(boolean.class))));
     }
     return result;
   }

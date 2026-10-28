@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -17,9 +38,9 @@ import org.junit.jupiter.api.io.TempDir;
  * the previous hard-coded switch got wrong.
  *
  * <p><b>The bug this replaces.</b> The old implementation had a dozen option names in a switch and
- * a default branch that treated any argument ending in {@code .java} as a source file. So
- * {@code --processor-path some/where.jar} was silently dropped, and an option whose value
- * happened to end in {@code .java} was mistaken for a source.
+ * a default branch that treated any argument ending in {@code .java} as a source file. So {@code
+ * --processor-path some/where.jar} was silently dropped, and an option whose value happened to end
+ * in {@code .java} was mistaken for a source.
  */
 class CompilerOptionTest {
 
@@ -37,9 +58,9 @@ class CompilerOptionTest {
    * A spelling may be declared more than once, but only for DIFFERENT compilers.
    *
    * <p>ECJ and sjavac both have {@code -src}, {@code -copy}, {@code -x}, {@code -i}, {@code -tr}
-   * and {@code -j}, and they mean different things by some of them. The index holds one option
-   * per (name, compiler) pair, so a name may appear twice -- once per compiler -- but never
-   * twice for the same compiler.
+   * and {@code -j}, and they mean different things by some of them. The index holds one option per
+   * (name, compiler) pair, so a name may appear twice -- once per compiler -- but never twice for
+   * the same compiler.
    *
    * <p><b>Why this matters.</b> The index used to hold one option per NAME, so the second entry
    * silently overwrote the first and ECJ's lookup rejected all six. The option was dropped and the
@@ -85,8 +106,8 @@ class CompilerOptionTest {
   /**
    * The classpath must have all its spellings.
    *
-   * <p>javac accepts {@code -classpath}, {@code --classpath} and {@code -cp}. All of them mean
-   * the same thing, so all of them canonicalise to {@code --classpath}.
+   * <p>javac accepts {@code -classpath}, {@code --classpath} and {@code -cp}. All of them mean the
+   * same thing, so all of them canonicalise to {@code --classpath}.
    */
   @Test
   void theClasspathHasEverySpelling() {
@@ -94,7 +115,8 @@ class CompilerOptionTest {
       CompilerOption option = CompilerOption.byName(spelling);
       assertThat(option).as("spelling %s", spelling).isNotNull();
       assertThat(option.canonicalName()).as("spelling %s", spelling).isEqualTo("--classpath");
-      assertThat(option.value()).as("spelling %s", spelling)
+      assertThat(option.value())
+          .as("spelling %s", spelling)
           .isEqualTo(CompilerOption.Value.PATH_LIST);
     }
   }
@@ -144,12 +166,18 @@ class CompilerOptionTest {
     JavacOptions options =
         JavacOptions.parse(
             List.of(
-                "--module-path", "mods",
-                "--module-source-path", "srcmods",
-                "--add-modules", "java.se,java.compiler",
-                "--add-exports", "a/b=c/d",
-                "--add-reads", "a/b=c",
-                "--patch-module", "a=dir",
+                "--module-path",
+                "mods",
+                "--module-source-path",
+                "srcmods",
+                "--add-modules",
+                "java.se,java.compiler",
+                "--add-exports",
+                "a/b=c/d",
+                "--add-reads",
+                "a/b=c",
+                "--patch-module",
+                "a=dir",
                 "Foo.java"));
 
     assertThat(options.modulePath()).containsExactly(Path.of("mods"));
@@ -296,8 +324,8 @@ class CompilerOptionTest {
    * <p><b>Note on {@code --class-path}.</b> This test used to assert that javac does not know
    * {@code --class-path}, and the option table agreed. Both were wrong: javac's own help lists
    * "--class-path &lt;path&gt;, -classpath &lt;path&gt;, -cp &lt;path&gt;", and a real javac run
-   * accepts the spelling. A capture that did not know the option lost the classpath entirely --
-   * the option was unknown, and the value that followed it was not a source file either, so both
+   * accepts the spelling. A capture that did not know the option lost the classpath entirely -- the
+   * option was unknown, and the value that followed it was not a source file either, so both
    * vanished. The compiler is the yardstick, and it accepts the spelling.
    */
   @Test
@@ -319,9 +347,7 @@ class CompilerOptionTest {
   @Test
   void everyCompilerHasItsOwnOptionList() {
     for (CompilerOption.Compiler compiler : CompilerOption.Compiler.values()) {
-      assertThat(CompilerOption.forCompiler(compiler))
-          .as("compiler %s", compiler)
-          .isNotEmpty();
+      assertThat(CompilerOption.forCompiler(compiler)).as("compiler %s", compiler).isNotEmpty();
     }
   }
 

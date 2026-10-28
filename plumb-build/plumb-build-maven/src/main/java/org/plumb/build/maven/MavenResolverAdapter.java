@@ -1,6 +1,26 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.maven;
 
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -23,14 +43,14 @@ import org.slf4j.LoggerFactory;
 /**
  * A Maven adapter that resolves the <b>full transitive</b> dependency graph.
  *
- * <p>This complements {@code plumb-build-core}'s {@code MavenAdapter}: the core
- * adapter reads {@code pom.xml} statically and stops at the directly declared
- * dependencies, while this one walks the whole tree through the Maven Resolver
- * so the classpath matches what the compiler actually sees.
+ * <p>This complements {@code plumb-build-core}'s {@code MavenAdapter}: the core adapter reads
+ * {@code pom.xml} statically and stops at the directly declared dependencies, while this one walks
+ * the whole tree through the Maven Resolver so the classpath matches what the compiler actually
+ * sees.
  *
- * <p>It is registered under the build-system name {@code maven-resolver} so the
- * two adapters can coexist and be selected independently -- the core adapter is
- * dependency-light and fast, this one is accurate and slower.
+ * <p>It is registered under the build-system name {@code maven-resolver} so the two adapters can
+ * coexist and be selected independently -- the core adapter is dependency-light and fast, this one
+ * is accurate and slower.
  */
 public final class MavenResolverAdapter implements BuildAdapter {
 
@@ -144,17 +164,17 @@ public final class MavenResolverAdapter implements BuildAdapter {
    * Compares the captures in a directory against what this project declared.
    *
    * <p><b>Why the two are compared.</b> The pom says what the build <em>declared</em>, and the
-   * capture says what the compiler <em>actually did</em>. They answer the same questions, and
-   * they are used together -- so a disagreement means one of them is wrong, and the analysis is
-   * wrong in a way nobody can see.
+   * capture says what the compiler <em>actually did</em>. They answer the same questions, and they
+   * are used together -- so a disagreement means one of them is wrong, and the analysis is wrong in
+   * a way nobody can see.
    *
    * <p>Nothing is resolved here. The differences are reported, with both values, because there is
-   * no right answer to pick in general: the pom may be stale, the capture may be from a
-   * different build, and the two may describe different modules.
+   * no right answer to pick in general: the pom may be stale, the capture may be from a different
+   * build, and the two may describe different modules.
    *
    * <p><b>Why each capture is compared against every module.</b> A capture does not say which
-   * module it belongs to, so the module is not assumed. A capture that disagrees with every
-   * module is still reported -- that is the interesting case.
+   * module it belongs to, so the module is not assumed. A capture that disagrees with every module
+   * is still reported -- that is the interesting case.
    *
    * @param projectRoot the project root
    * @param captureDir the directory the capture agent wrote to
@@ -218,13 +238,12 @@ public final class MavenResolverAdapter implements BuildAdapter {
   /**
    * Describe every module of the reactor.
    *
-   * <p>The module list is read from the root pom's {@code <modules>} section
-   * when present; a single-module project is described by the root pom itself.
+   * <p>The module list is read from the root pom's {@code <modules>} section when present; a
+   * single-module project is described by the root pom itself.
    *
-   * <p>The walk is <b>recursive</b>: a module may itself be an aggregator
-   * whose sub-modules live one level down. An aggregator has no sources of
-   * its own, so it contributes only its dependency declarations, while its
-   * sub-modules contribute the sources.
+   * <p>The walk is <b>recursive</b>: a module may itself be an aggregator whose sub-modules live
+   * one level down. An aggregator has no sources of its own, so it contributes only its dependency
+   * declarations, while its sub-modules contribute the sources.
    */
   private List<ModuleDescriptor> describeModules(Path projectRoot, Path rootPom) {
     List<ModuleDescriptor> modules = new ArrayList<>();
@@ -278,8 +297,8 @@ public final class MavenResolverAdapter implements BuildAdapter {
   }
 
   /**
-   * Describe one module: its source roots, output directories and the
-   * <b>transitive</b> closure of its declared dependencies.
+   * Describe one module: its source roots, output directories and the <b>transitive</b> closure of
+   * its declared dependencies.
    */
   private ModuleDescriptor describeSingleModule(Path moduleRoot, MavenPom pom) {
     // The directories come from the pom, so a project that declares its
@@ -315,11 +334,10 @@ public final class MavenResolverAdapter implements BuildAdapter {
   /**
    * Resolve the transitive closure of a set of root dependencies in one pass.
    *
-   * <p>Doing it as a single {@link CollectRequest} rather than one request per
-   * dependency lets Aether apply Maven's "nearest wins" conflict resolution
-   * across the whole graph -- resolving each dependency separately would
-   * happily produce a classpath containing two different versions of the same
-   * artifact.
+   * <p>Doing it as a single {@link CollectRequest} rather than one request per dependency lets
+   * Aether apply Maven's "nearest wins" conflict resolution across the whole graph -- resolving
+   * each dependency separately would happily produce a classpath containing two different versions
+   * of the same artifact.
    *
    * @param coordinates the root dependency coordinates
    * @return the resolved jar files
@@ -354,11 +372,10 @@ public final class MavenResolverAdapter implements BuildAdapter {
   /**
    * Resolve the transitive closure of a set of root dependencies in one pass.
    *
-   * <p>Doing it as a single {@link CollectRequest} rather than one request per
-   * dependency lets Aether apply Maven's "nearest wins" conflict resolution
-   * across the whole graph -- resolving each dependency separately would
-   * happily produce a classpath containing two different versions of the same
-   * artifact.
+   * <p>Doing it as a single {@link CollectRequest} rather than one request per dependency lets
+   * Aether apply Maven's "nearest wins" conflict resolution across the whole graph -- resolving
+   * each dependency separately would happily produce a classpath containing two different versions
+   * of the same artifact.
    *
    * @param coordinates the root dependency coordinates
    * @return the resolved jar files
@@ -368,7 +385,8 @@ public final class MavenResolverAdapter implements BuildAdapter {
       return List.of();
     }
     try (var stream = Files.walk(root)) {
-      return stream.filter(Files::isRegularFile)
+      return stream
+          .filter(Files::isRegularFile)
           .filter(p -> p.getFileName().toString().endsWith(".java"))
           .toList();
     } catch (Exception e) {

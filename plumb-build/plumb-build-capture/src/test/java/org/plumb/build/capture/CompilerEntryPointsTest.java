@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -15,28 +36,25 @@ import org.junit.jupiter.api.Test;
  * <ol>
  *   <li>The list has to cover the entry points a real build actually goes through. A build tool
  *       that uses the {@code javax.tools} API and a build that shells out to {@code javac} take
- *       completely different paths, and hooking only one of them makes the capture silently
- *       useless for the other.
+ *       completely different paths, and hooking only one of them makes the capture silently useless
+ *       for the other.
  *   <li>The module must not reach for raw ASM. ByteBuddy's {@code Advice} inlines the hook and
- *       needs no super method, so a hand-written {@code MethodVisitor} is not just unnecessary
- *       -- it is a chance to corrupt the compiler's stack.
+ *       needs no super method, so a hand-written {@code MethodVisitor} is not just unnecessary --
+ *       it is a chance to corrupt the compiler's stack.
  * </ol>
  */
 class CompilerEntryPointsTest {
 
   @Test
   void coversTheCommandLineDriver() {
-    assertThat(CompilerEntryPoints.forType("com.sun.tools.javac.Main"))
-        .isNotEmpty();
-    assertThat(CompilerEntryPoints.forType("com.sun.tools.javac.main.Main"))
-        .isNotEmpty();
+    assertThat(CompilerEntryPoints.forType("com.sun.tools.javac.Main")).isNotEmpty();
+    assertThat(CompilerEntryPoints.forType("com.sun.tools.javac.main.Main")).isNotEmpty();
   }
 
   @Test
   void coversTheJavaxToolsApi() {
     // The path Gradle, Maven and the IDEs take.
-    assertThat(CompilerEntryPoints.forType("com.sun.tools.javac.api.JavacTool"))
-        .isNotEmpty();
+    assertThat(CompilerEntryPoints.forType("com.sun.tools.javac.api.JavacTool")).isNotEmpty();
   }
 
   @Test
@@ -69,10 +87,8 @@ class CompilerEntryPointsTest {
 
   @Test
   void coversTheSjavacServer() {
-    assertThat(CompilerEntryPoints.forType("com.sun.tools.sjavac.client.ClientMain"))
-        .isNotEmpty();
-    assertThat(CompilerEntryPoints.forType("com.sun.tools.sjavac.server.ServerMain"))
-        .isNotEmpty();
+    assertThat(CompilerEntryPoints.forType("com.sun.tools.sjavac.client.ClientMain")).isNotEmpty();
+    assertThat(CompilerEntryPoints.forType("com.sun.tools.sjavac.server.ServerMain")).isNotEmpty();
   }
 
   @Test
@@ -112,8 +128,8 @@ class CompilerEntryPointsTest {
   /**
    * The entry points that carry no options must not claim an options index.
    *
-   * <p>{@code JavacTaskImpl#call()} and {@code #generate()} take no options -- they were set on
-   * the task when it was created. An entry point that said it had an options index would send the
+   * <p>{@code JavacTaskImpl#call()} and {@code #generate()} take no options -- they were set on the
+   * task when it was created. An entry point that said it had an options index would send the
    * advice looking for an argument that is not there.
    */
   @Test
@@ -160,9 +176,7 @@ class CompilerEntryPointsTest {
           .as(
               "the entry point claims %s#%s takes %d argument(s), but that is not the signature "
                   + "on this JDK",
-              entry.typeName(),
-              entry.methodName(),
-              entry.argumentCount())
+              entry.typeName(), entry.methodName(), entry.argumentCount())
           .isTrue();
     }
   }

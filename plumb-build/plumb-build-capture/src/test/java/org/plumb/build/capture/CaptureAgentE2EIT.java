@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -15,8 +36,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * End-to-end test: run a real compile with the agent attached and read the capture back.
  *
- * <p>This is the scenario the original btrace-based tool served. The test runs a real compile
- * with the agent installed and checks that the compile was recorded.
+ * <p>This is the scenario the original btrace-based tool served. The test runs a real compile with
+ * the agent installed and checks that the compile was recorded.
  *
  * <p><b>Two paths are exercised, on purpose.</b> A "javac command line" is not one method: the
  * command-line driver and the {@code javax.tools} API are different entry points, and a capture
@@ -35,7 +56,8 @@ class CaptureAgentE2EIT {
     Path source = dir.resolve("Hello.java");
     Files.writeString(
         source,
-        "public class Hello { public static void main(String[] a) { System.out.println(\"hi\"); } }");
+        "public class Hello { public static void main(String[] a) { System.out.println(\"hi\"); }"
+            + " }");
     Path classes = dir.resolve("classes");
     Files.createDirectories(classes);
     Path captures = dir.resolve("captures");
@@ -86,15 +108,16 @@ class CaptureAgentE2EIT {
   void capturesTheApiCompile(@TempDir Path dir) throws Exception {
     Path source = dir.resolve("ApiHello.java");
     Files.writeString(
-        source, "public class ApiHello { public static void main(String[] a) { System.out.println(\"hi\"); } }");
+        source,
+        "public class ApiHello { public static void main(String[] a) { System.out.println(\"hi\");"
+            + " } }");
     Path classes = dir.resolve("classes");
     Files.createDirectories(classes);
     Path captures = dir.resolve("captures");
     Files.createDirectories(captures);
 
     // Install the agent into this JVM.
-    java.lang.instrument.Instrumentation inst =
-        net.bytebuddy.agent.ByteBuddyAgent.install();
+    java.lang.instrument.Instrumentation inst = net.bytebuddy.agent.ByteBuddyAgent.install();
     // The environment of a running JVM cannot be changed, so the capture
     // directory goes in through the system property.
     System.setProperty(CaptureRecorder.PROP_OUTPUT_DIR, captures.toString());
@@ -105,14 +128,7 @@ class CaptureAgentE2EIT {
       JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
       try (StandardJavaFileManager fm = compiler.getStandardFileManager(null, null, null)) {
         var units = fm.getJavaFileObjectsFromFiles(List.of(source.toFile()));
-        var task =
-            compiler.getTask(
-                null,
-                fm,
-                null,
-                List.of("-d", classes.toString()),
-                null,
-                units);
+        var task = compiler.getTask(null, fm, null, List.of("-d", classes.toString()), null, units);
         task.call();
       }
     } finally {
@@ -173,8 +189,8 @@ class CaptureAgentE2EIT {
   /**
    * The agent must not break the compile it observes.
    *
-   * <p>A capture that makes the build fail is worse than no capture at all: the user's build
-   * breaks and they cannot tell why.
+   * <p>A capture that makes the build fail is worse than no capture at all: the user's build breaks
+   * and they cannot tell why.
    */
   @Test
   void theAgentDoesNotBreakTheCompile(@TempDir Path dir) throws Exception {
@@ -196,9 +212,7 @@ class CaptureAgentE2EIT {
     assertThat(classes.resolve("Ok.class")).exists();
   }
 
-  /**
-   * Locate the JDK's {@code javac} executable, or {@code null}.
-   */
+  /** Locate the JDK's {@code javac} executable, or {@code null}. */
   private static Path findJavac() {
     String javaHome = System.getProperty("java.home");
     if (javaHome == null) {

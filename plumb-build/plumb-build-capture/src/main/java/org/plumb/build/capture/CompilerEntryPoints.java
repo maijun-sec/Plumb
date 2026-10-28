@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import java.util.ArrayList;
@@ -6,13 +27,13 @@ import java.util.List;
 /**
  * The set of compiler entry points the agent hooks.
  *
- * <p>This is a <b>declarative</b> description, in the same shape Coverity uses in its
- * {@code java-capture.properties}: a list of (class, method, argument) triples. The agent reads
- * it and asks ByteBuddy to match it, so adding a compiler or a new entry point is a data change,
- * not a code change.
+ * <p>This is a <b>declarative</b> description, in the same shape Coverity uses in its {@code
+ * java-capture.properties}: a list of (class, method, argument) triples. The agent reads it and
+ * asks ByteBuddy to match it, so adding a compiler or a new entry point is a data change, not a
+ * code change.
  *
- * <p><b>Why the list is this long.</b> A "javac command line" is not one method. It is a dozen,
- * and which one fires depends on how the compiler was reached:
+ * <p><b>Why the list is this long.</b> A "javac command line" is not one method. It is a dozen, and
+ * which one fires depends on how the compiler was reached:
  *
  * <ul>
  *   <li>The {@code javac} command-line driver reaches {@code com.sun.tools.javac.Main#compile} and
@@ -27,8 +48,8 @@ import java.util.List;
  *       {@code com.sun.tools.sjavac.server.ServerMain#run}.
  * </ul>
  *
- * <p>Hooking only one of them means the capture silently misses every build that takes a
- * different path. That failure is invisible: the scan runs, and there is simply no capture.
+ * <p>Hooking only one of them means the capture silently misses every build that takes a different
+ * path. That failure is invisible: the scan runs, and there is simply no capture.
  *
  * <p><b>The class names are the compiler's, verified against the JDK.</b> They are not guessed from
  * the documentation: {@code javax.tools.JavaCompiler} is an <em>interface</em> on a modern JDK and
@@ -78,18 +99,18 @@ public final class CompilerEntryPoints {
       /**
        * The options and sources are given, and the method also <em>returns</em> a task.
        *
-       * <p>This is {@code JavacTool#getTask}. It behaves like {@link #FILE_OBJECTS} and additionally
-       * hands back the task, which is what makes the IDE path capturable: the task is remembered
-       * with its options here, and looked up again when the task is driven.
+       * <p>This is {@code JavacTool#getTask}. It behaves like {@link #FILE_OBJECTS} and
+       * additionally hands back the task, which is what makes the IDE path capturable: the task is
+       * remembered with its options here, and looked up again when the task is driven.
        */
       FILE_OBJECTS_WITH_TASK,
       /**
        * The method takes no compiler options at all.
        *
-       * <p>{@code JavacTaskImpl#call()} and {@code JavacTaskImpl#generate()} are in this
-       * category: by the time they run, the options were already handed to {@code JavacTool
-       * #getTask}. The IDE path goes through them, so hooking them is what makes the capture work
-       * in an IDE -- but the options have to come from somewhere else.
+       * <p>{@code JavacTaskImpl#call()} and {@code JavacTaskImpl#generate()} are in this category:
+       * by the time they run, the options were already handed to {@code JavacTool #getTask}. The
+       * IDE path goes through them, so hooking them is what makes the capture work in an IDE -- but
+       * the options have to come from somewhere else.
        *
        * <p>That somewhere else is the task itself: the options were remembered when the task was
        * created, keyed by the task's identity. They cannot be read off the task later, because
@@ -115,8 +136,8 @@ public final class CompilerEntryPoints {
        *
        * <p><b>This is where the capture is written.</b> The compile has run by then, so the sources
        * it really compiled are known -- and a capture written when the compile <em>starts</em>
-       * cannot report them. The options are known at the start, so they are staged until the compile
-       * ends.
+       * cannot report them. The options are known at the start, so they are staged until the
+       * compile ends.
        *
        * <p>{@code JavaCompiler#compile(Collection, Collection, Iterable, Collection)} is the one
        * compile step both paths go through: the command-line driver reaches it through {@code
@@ -130,31 +151,56 @@ public final class CompilerEntryPoints {
   /**
    * The entry points, in the order they are probed.
    *
-   * <p>Order matters only for diagnostics: the first entry point whose class is present is the
-   * one that will fire for a given build. Classes that are absent (ECJ in a javac build, sjavac
-   * in a plain build) are simply skipped.
+   * <p>Order matters only for diagnostics: the first entry point whose class is present is the one
+   * that will fire for a given build. Classes that are absent (ECJ in a javac build, sjavac in a
+   * plain build) are simply skipped.
    */
   private static final List<EntryPoint> ENTRY_POINTS =
       List.of(
           // --- the javac command-line driver ---
           // com.sun.tools.javac.Main#compile(String[]) -- static, the CLI's own entry point.
           new EntryPoint(
-              "com.sun.tools.javac.Main", "compile", 1, 0, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC),
+              "com.sun.tools.javac.Main",
+              "compile",
+              1,
+              0,
+              -1,
+              EntryPoint.Kind.ARGV,
+              CompilerOption.Compiler.JAVAC),
           // com.sun.tools.javac.Main#compile(String[], PrintWriter) -- the same, but the
           // diagnostics go to a writer the caller supplies.
           new EntryPoint(
-              "com.sun.tools.javac.Main", "compile", 2, 0, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC),
+              "com.sun.tools.javac.Main",
+              "compile",
+              2,
+              0,
+              -1,
+              EntryPoint.Kind.ARGV,
+              CompilerOption.Compiler.JAVAC),
           // com.sun.tools.javac.main.Main#compile(String[]) -- instance, the options are the
           // FIRST declared parameter (the instance `this` is not a parameter).
           new EntryPoint(
-              "com.sun.tools.javac.main.Main", "compile", 1, 0, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC),
+              "com.sun.tools.javac.main.Main",
+              "compile",
+              1,
+              0,
+              -1,
+              EntryPoint.Kind.ARGV,
+              CompilerOption.Compiler.JAVAC),
           // com.sun.tools.javac.main.Main#compile(String[], Context) -- same, plus the context.
           new EntryPoint(
-              "com.sun.tools.javac.main.Main", "compile", 2, 0, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC),
+              "com.sun.tools.javac.main.Main",
+              "compile",
+              2,
+              0,
+              -1,
+              EntryPoint.Kind.ARGV,
+              CompilerOption.Compiler.JAVAC),
 
           // --- the javax.tools API: what Gradle, Maven and the IDEs use ---
           // JavacTool#getTask(Writer, FileManager, DiagnosticListener,
-          //                  Iterable<String> options, Iterable<String> classes, Iterable<FileObject>)
+          //                  Iterable<String> options, Iterable<String> classes,
+          // Iterable<FileObject>)
           //
           // This one also returns the task, so it is remembered with its options: the task is
           // what an IDE later drives with call() or generate(), and those carry no options.
@@ -164,7 +210,8 @@ public final class CompilerEntryPoints {
               6,
               3,
               5,
-              EntryPoint.Kind.FILE_OBJECTS_WITH_TASK, CompilerOption.Compiler.JAVAC),
+              EntryPoint.Kind.FILE_OBJECTS_WITH_TASK,
+              CompilerOption.Compiler.JAVAC),
           // JavacTool#getTask(..., Context) -- the seven-argument overload, same positions.
           new EntryPoint(
               "com.sun.tools.javac.api.JavacTool",
@@ -172,7 +219,8 @@ public final class CompilerEntryPoints {
               7,
               3,
               5,
-              EntryPoint.Kind.FILE_OBJECTS_WITH_TASK, CompilerOption.Compiler.JAVAC),
+              EntryPoint.Kind.FILE_OBJECTS_WITH_TASK,
+              CompilerOption.Compiler.JAVAC),
 
           // --- the old javax.tools.JavaCompiler#run API ---
           //
@@ -185,7 +233,13 @@ public final class CompilerEntryPoints {
           // The signature is `run(InputStream, OutputStream, OutputStream, String...)`, so the
           // options are the varargs array in argument 3.
           new EntryPoint(
-              "com.sun.tools.javac.api.JavacTool", "run", 4, 3, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC),
+              "com.sun.tools.javac.api.JavacTool",
+              "run",
+              4,
+              3,
+              -1,
+              EntryPoint.Kind.ARGV,
+              CompilerOption.Compiler.JAVAC),
 
           // --- the IDE path: JavacTaskImpl#call() and #generate() ---
           //
@@ -199,14 +253,16 @@ public final class CompilerEntryPoints {
               0,
               -1,
               -1,
-              EntryPoint.Kind.NO_OPTIONS, CompilerOption.Compiler.JAVAC),
+              EntryPoint.Kind.NO_OPTIONS,
+              CompilerOption.Compiler.JAVAC),
           new EntryPoint(
               "com.sun.tools.javac.api.JavacTaskImpl",
               "generate",
               0,
               -1,
               -1,
-              EntryPoint.Kind.NO_OPTIONS, CompilerOption.Compiler.JAVAC),
+              EntryPoint.Kind.NO_OPTIONS,
+              CompilerOption.Compiler.JAVAC),
 
           // --- the compiler's own parse step: the sources it really compiled ---
           //
@@ -262,13 +318,26 @@ public final class CompilerEntryPoints {
               1,
               0,
               -1,
-              EntryPoint.Kind.ARGV, CompilerOption.Compiler.ECJ),
+              EntryPoint.Kind.ARGV,
+              CompilerOption.Compiler.ECJ),
 
           // --- the sjavac server ---
           new EntryPoint(
-              "com.sun.tools.sjavac.client.ClientMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.SJAVAC),
+              "com.sun.tools.sjavac.client.ClientMain",
+              "run",
+              1,
+              0,
+              -1,
+              EntryPoint.Kind.ARGV,
+              CompilerOption.Compiler.SJAVAC),
           new EntryPoint(
-              "com.sun.tools.sjavac.server.ServerMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV, CompilerOption.Compiler.SJAVAC));
+              "com.sun.tools.sjavac.server.ServerMain",
+              "run",
+              1,
+              0,
+              -1,
+              EntryPoint.Kind.ARGV,
+              CompilerOption.Compiler.SJAVAC));
 
   private CompilerEntryPoints() {}
 

@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.maven;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -13,13 +34,13 @@ import org.plumb.build.CompileDiscrepancy;
 /**
  * Tests for {@link CompileCrossCheck}.
  *
- * <p><b>Why this is worth having.</b> The two sides of the compile-parameter story answer the
- * same questions from two directions, and they are used together. When they disagree, one of
- * them is wrong -- and the analysis is wrong in a way nobody can see, because the two answers
- * are used in different places.
+ * <p><b>Why this is worth having.</b> The two sides of the compile-parameter story answer the same
+ * questions from two directions, and they are used together. When they disagree, one of them is
+ * wrong -- and the analysis is wrong in a way nobody can see, because the two answers are used in
+ * different places.
  *
- * <p>So the difference is reported. The test is about <em>which</em> differences are reported:
- * a difference in what is <em>known</em> is not a difference, and reporting it would be noise.
+ * <p>So the difference is reported. The test is about <em>which</em> differences are reported: a
+ * difference in what is <em>known</em> is not a difference, and reporting it would be noise.
  */
 class CompileCrossCheckTest {
 
@@ -48,7 +69,8 @@ class CompileCrossCheckTest {
   void reportsALanguageLevelThatDiffers() {
     ModuleDescriptor declared = descriptor().languageLevel("11").build();
 
-    List<CompileDiscrepancy> differences = CompileCrossCheck.compare(CAPTURE_WITH_LEVEL_17, declared);
+    List<CompileDiscrepancy> differences =
+        CompileCrossCheck.compare(CAPTURE_WITH_LEVEL_17, declared);
 
     assertThat(differences).hasSize(1);
     CompileDiscrepancy difference = differences.get(0);
@@ -68,7 +90,8 @@ class CompileCrossCheckTest {
             .classpath(List.of(Path.of("D:/repo/a.jar"), Path.of("D:/repo/b.jar")))
             .build();
 
-    List<CompileDiscrepancy> differences = CompileCrossCheck.compare(CAPTURE_WITH_LEVEL_17, declared);
+    List<CompileDiscrepancy> differences =
+        CompileCrossCheck.compare(CAPTURE_WITH_LEVEL_17, declared);
 
     assertThat(differences).isEmpty();
   }
@@ -77,8 +100,8 @@ class CompileCrossCheckTest {
    * A side that says nothing is not a contradiction.
    *
    * <p>An undeclared parameter is unknown, not a default. So a capture that does not report a
-   * language level, against a pom that declares one, is not a difference -- it is a gap, and
-   * the gap is already visible.
+   * language level, against a pom that declares one, is not a difference -- it is a gap, and the
+   * gap is already visible.
    */
   @Test
   void anUnknownValueIsNotADifference() {
@@ -110,7 +133,8 @@ class CompileCrossCheckTest {
     ModuleDescriptor declared =
         descriptor().classpath(List.of(Path.of("D:/repo/a.jar"), Path.of("D:/repo/c.jar"))).build();
 
-    List<CompileDiscrepancy> differences = CompileCrossCheck.compare(CAPTURE_WITH_LEVEL_17, declared);
+    List<CompileDiscrepancy> differences =
+        CompileCrossCheck.compare(CAPTURE_WITH_LEVEL_17, declared);
 
     assertThat(differences).hasSize(1);
     CompileDiscrepancy difference = differences.get(0);
@@ -121,8 +145,8 @@ class CompileCrossCheckTest {
   /**
    * The differences come out in a fixed order.
    *
-   * <p>Two runs over the same inputs must produce the same report. A report whose order
-   * depends on a hash map's iteration order is a report nobody can diff.
+   * <p>Two runs over the same inputs must produce the same report. A report whose order depends on
+   * a hash map's iteration order is a report nobody can diff.
    */
   @Test
   void theDifferencesAreSortedByParameter() {
@@ -134,7 +158,8 @@ class CompileCrossCheckTest {
             .classpath(List.of(Path.of("D:/repo/c.jar")))
             .build();
 
-    List<CompileDiscrepancy> differences = CompileCrossCheck.compare(CAPTURE_WITH_LEVEL_17, declared);
+    List<CompileDiscrepancy> differences =
+        CompileCrossCheck.compare(CAPTURE_WITH_LEVEL_17, declared);
 
     assertThat(differences).isNotEmpty();
     List<String> parameters = differences.stream().map(CompileDiscrepancy::parameter).toList();

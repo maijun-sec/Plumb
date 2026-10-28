@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.maven;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,24 +37,27 @@ import org.junit.jupiter.api.io.TempDir;
  * analyser cannot guess: a source file compiled at a different language level is a different
  * program, and a source file read with the wrong encoding is a different program. The upstream
  * {@code maven-project-inspect} hard-coded both -- {@code setSource("1.8")} and {@code
- * setEncoding("UTF-8")} -- with TODOs next to them, so every project was reported as if it
- * compiled at 1.8 in UTF-8.
+ * setEncoding("UTF-8")} -- with TODOs next to them, so every project was reported as if it compiled
+ * at 1.8 in UTF-8.
  */
 class MavenPomTest {
 
   @Test
   void readsTheLanguageLevelFromAProperty(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <properties>
-            <maven.compiler.source>11</maven.compiler.source>
-          </properties>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <properties>
+                <maven.compiler.source>11</maven.compiler.source>
+              </properties>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -42,17 +66,20 @@ class MavenPomTest {
 
   @Test
   void readsTheEncodingFromAProperty(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <properties>
-            <project.build.sourceEncoding>ISO-8859-1</project.build.sourceEncoding>
-          </properties>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <properties>
+                <project.build.sourceEncoding>ISO-8859-1</project.build.sourceEncoding>
+              </properties>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -64,30 +91,33 @@ class MavenPomTest {
    *
    * <p>This is the other way to say it, and it is at least as common as the property: a project
    * that pins its Java version usually does it in {@code maven-compiler-plugin}'s {@code
-   * <configuration>}. Reading only the property reported {@code null} for those projects, which
-   * is the same as saying "1.8" -- the upstream's hard-coded answer.
+   * <configuration>}. Reading only the property reported {@code null} for those projects, which is
+   * the same as saying "1.8" -- the upstream's hard-coded answer.
    */
   @Test
   void readsTheLanguageLevelFromTheCompilerPluginConfiguration(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <build>
-            <plugins>
-              <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                  <release>17</release>
-                </configuration>
-              </plugin>
-            </plugins>
-          </build>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <build>
+                <plugins>
+                  <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                      <release>17</release>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -102,26 +132,29 @@ class MavenPomTest {
    */
   @Test
   void readsTheSourceLevelFromTheCompilerPluginConfiguration(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <build>
-            <plugins>
-              <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                  <source>11</source>
-                  <target>11</target>
-                </configuration>
-              </plugin>
-            </plugins>
-          </build>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <build>
+                <plugins>
+                  <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                      <source>11</source>
+                      <target>11</target>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -130,25 +163,28 @@ class MavenPomTest {
 
   @Test
   void readsTheEncodingFromTheCompilerPluginConfiguration(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <build>
-            <plugins>
-              <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                  <encoding>ISO-8859-1</encoding>
-                </configuration>
-              </plugin>
-            </plugins>
-          </build>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <build>
+                <plugins>
+                  <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                      <encoding>ISO-8859-1</encoding>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -158,33 +194,36 @@ class MavenPomTest {
   /**
    * The plugin's own {@code <release>} beats the property.
    *
-   * <p>Both are ways to say the same thing, and the plugin's configuration is the more specific
-   * one -- it is the value the compiler plugin actually used. So it wins.
+   * <p>Both are ways to say the same thing, and the plugin's configuration is the more specific one
+   * -- it is the value the compiler plugin actually used. So it wins.
    */
   @Test
   void thePluginConfigurationBeatsTheProperty(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <properties>
-            <maven.compiler.source>8</maven.compiler.source>
-          </properties>
-          <build>
-            <plugins>
-              <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                  <release>17</release>
-                </configuration>
-              </plugin>
-            </plugins>
-          </build>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <properties>
+                <maven.compiler.source>8</maven.compiler.source>
+              </properties>
+              <build>
+                <plugins>
+                  <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                      <release>17</release>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -195,34 +234,37 @@ class MavenPomTest {
    * A {@code ${...}} placeholder in the plugin configuration is resolved.
    *
    * <p>The placeholder is the normal way to write it -- a project defines {@code
-   * maven.compiler.release} and then uses it in the plugin -- so reading the configuration
-   * without resolving it would produce the literal text {@code ${maven.compiler.release}}.
+   * maven.compiler.release} and then uses it in the plugin -- so reading the configuration without
+   * resolving it would produce the literal text {@code ${maven.compiler.release}}.
    */
   @Test
   void resolvesPlaceholdersInThePluginConfiguration(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <properties>
-            <java.version>21</java.version>
-          </properties>
-          <build>
-            <plugins>
-              <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                  <release>${java.version}</release>
-                  <encoding>${project.build.sourceEncoding}</encoding>
-                </configuration>
-              </plugin>
-            </plugins>
-          </build>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <properties>
+                <java.version>21</java.version>
+              </properties>
+              <build>
+                <plugins>
+                  <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                      <release>${java.version}</release>
+                      <encoding>${project.build.sourceEncoding}</encoding>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -238,14 +280,17 @@ class MavenPomTest {
    */
   @Test
   void anUndeclaredLevelIsUnknownRatherThanGuessed(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -262,48 +307,52 @@ class MavenPomTest {
    */
   @Test
   void readsTheTargetLevelFromThePluginConfiguration(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <build>
-            <plugins>
-              <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                  <source>8</source>
-                  <target>11</target>
-                </configuration>
-              </plugin>
-            </plugins>
-          </build>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <build>
+                <plugins>
+                  <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                      <source>8</source>
+                      <target>11</target>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
     assertThat(loaded.targetLevel()).isEqualTo("11");
   }
 
-  /**
-   * The target level is read from a property too, when the plugin does not declare it.
-   */
+  /** The target level is read from a property too, when the plugin does not declare it. */
   @Test
   void readsTheTargetLevelFromAProperty(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <properties>
-            <maven.compiler.target>17</maven.compiler.target>
-          </properties>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <properties>
+                <maven.compiler.target>17</maven.compiler.target>
+              </properties>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -313,25 +362,28 @@ class MavenPomTest {
   /**
    * The directories are read from the pom, not hard-coded.
    *
-   * <p>A pom may put its sources and its class files anywhere, so a hard-coded path is a
-   * confident wrong answer for a project that declared a different one.
+   * <p>A pom may put its sources and its class files anywhere, so a hard-coded path is a confident
+   * wrong answer for a project that declared a different one.
    */
   @Test
   void readsTheDeclaredDirectories(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <build>
-            <sourceDirectory>java/main</sourceDirectory>
-            <testSourceDirectory>java/test</testSourceDirectory>
-            <outputDirectory>build/classes</outputDirectory>
-            <testOutputDirectory>build/test-classes</testOutputDirectory>
-          </build>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <build>
+                <sourceDirectory>java/main</sourceDirectory>
+                <testSourceDirectory>java/test</testSourceDirectory>
+                <outputDirectory>build/classes</outputDirectory>
+                <testOutputDirectory>build/test-classes</testOutputDirectory>
+              </build>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -344,42 +396,45 @@ class MavenPomTest {
   /**
    * The source directories the build-helper plugin adds are source roots too.
    *
-   * <p>A build that adds a source directory with {@code build-helper-maven-plugin} compiles
-   * those sources, so a module that declares them has more source roots than its {@code
-   * <sourceDirectory>} alone. Leaving them out describes a module that is smaller than it is,
-   * and the analyser then misses every file in the added directory.
+   * <p>A build that adds a source directory with {@code build-helper-maven-plugin} compiles those
+   * sources, so a module that declares them has more source roots than its {@code
+   * <sourceDirectory>} alone. Leaving them out describes a module that is smaller than it is, and
+   * the analyser then misses every file in the added directory.
    */
   @Test
   void readsTheSourceRootsTheBuildHelperPluginAdds(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <build>
-            <plugins>
-              <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>build-helper-maven-plugin</artifactId>
-                <executions>
-                  <execution>
-                    <id>add-generated</id>
-                    <phase>generate-sources</phase>
-                    <goals><goal>add-source</goal></goals>
-                    <configuration>
-                      <sources>
-                        <source>generated/sources</source>
-                        <source>generated/extra</source>
-                      </sources>
-                    </configuration>
-                  </execution>
-                </executions>
-              </plugin>
-            </plugins>
-          </build>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <build>
+                <plugins>
+                  <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>build-helper-maven-plugin</artifactId>
+                    <executions>
+                      <execution>
+                        <id>add-generated</id>
+                        <phase>generate-sources</phase>
+                        <goals><goal>add-source</goal></goals>
+                        <configuration>
+                          <sources>
+                            <source>generated/sources</source>
+                            <source>generated/extra</source>
+                          </sources>
+                        </configuration>
+                      </execution>
+                    </executions>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -390,56 +445,60 @@ class MavenPomTest {
   /**
    * The build-helper plugin's OTHER goals are not source roots.
    *
-   * <p>The plugin has goals such as {@code attach-artifact} and {@code reserve-network-port},
-   * and their configuration is not a source directory. Reading them as one would add a
-   * directory that is never compiled.
+   * <p>The plugin has goals such as {@code attach-artifact} and {@code reserve-network-port}, and
+   * their configuration is not a source directory. Reading them as one would add a directory that
+   * is never compiled.
    */
   @Test
   void ignoresTheBuildHelperPluginsOtherGoals(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <build>
-            <plugins>
-              <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>build-helper-maven-plugin</artifactId>
-                <executions>
-                  <execution>
-                    <id>reserve</id>
-                    <goals><goal>reserve-network-port</goal></goals>
-                    <configuration>
-                      <sources><source>not/a/source</source></sources>
-                    </configuration>
-                  </execution>
-                </executions>
-              </plugin>
-            </plugins>
-          </build>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <build>
+                <plugins>
+                  <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>build-helper-maven-plugin</artifactId>
+                    <executions>
+                      <execution>
+                        <id>reserve</id>
+                        <goals><goal>reserve-network-port</goal></goals>
+                        <configuration>
+                          <sources><source>not/a/source</source></sources>
+                        </configuration>
+                      </execution>
+                    </executions>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
     assertThat(loaded.sourceRoots(dir.toFile())).containsExactly("src/main/java");
   }
 
-  /**
-   * A pom that declares no directory gets Maven's own defaults.
-   */
+  /** A pom that declares no directory gets Maven's own defaults. */
   @Test
   void fallsBackToMavensOwnDirectoryDefaults(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -459,28 +518,31 @@ class MavenPomTest {
    */
   @Test
   void readsTheCompilerArguments(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <build>
-            <plugins>
-              <plugin>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                  <compilerArgs>
-                    <arg>-parameters</arg>
-                    <arg>-Xlint:all</arg>
-                    <arg>-Werror</arg>
-                  </compilerArgs>
-                </configuration>
-              </plugin>
-            </plugins>
-          </build>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <build>
+                <plugins>
+                  <plugin>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                      <compilerArgs>
+                        <arg>-parameters</arg>
+                        <arg>-Xlint:all</arg>
+                        <arg>-Werror</arg>
+                      </compilerArgs>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -490,14 +552,17 @@ class MavenPomTest {
   /** A pom that declares no compiler arguments has none. */
   @Test
   void reportsNoCompilerArgumentsWhenNoneAreDeclared(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -507,40 +572,43 @@ class MavenPomTest {
   /**
    * The annotation processor paths.
    *
-   * <p>They are the jars that decide which annotations are processed at all, and they are a path
-   * of their own -- not part of the compile classpath.
+   * <p>They are the jars that decide which annotations are processed at all, and they are a path of
+   * their own -- not part of the compile classpath.
    */
   @Test
   void readsTheAnnotationProcessorPaths(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <build>
-            <plugins>
-              <plugin>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                  <annotationProcessorPaths>
-                    <path>
-                      <groupId>org.projectlombok</groupId>
-                      <artifactId>lombok</artifactId>
-                      <version>1.18.30</version>
-                    </path>
-                    <path>
-                      <groupId>com.google.auto.value</groupId>
-                      <artifactId>auto-value-processor</artifactId>
-                      <version>1.10.4</version>
-                    </path>
-                  </annotationProcessorPaths>
-                </configuration>
-              </plugin>
-            </plugins>
-          </build>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <build>
+                <plugins>
+                  <plugin>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                      <annotationProcessorPaths>
+                        <path>
+                          <groupId>org.projectlombok</groupId>
+                          <artifactId>lombok</artifactId>
+                          <version>1.18.30</version>
+                        </path>
+                        <path>
+                          <groupId>com.google.auto.value</groupId>
+                          <artifactId>auto-value-processor</artifactId>
+                          <version>1.10.4</version>
+                        </path>
+                      </annotationProcessorPaths>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 
@@ -553,45 +621,48 @@ class MavenPomTest {
   /**
    * A child module inherits the compiler plugin's configuration from its parent.
    *
-   * <p>This is the normal shape of a multi-module project: the parent configures the compiler
-   * once, and every child inherits it. A lookup that only reads the module's own pom reports
-   * "no language level" for every child of a well-configured parent -- and the analyser then
-   * falls back to a guess.
+   * <p>This is the normal shape of a multi-module project: the parent configures the compiler once,
+   * and every child inherits it. A lookup that only reads the module's own pom reports "no language
+   * level" for every child of a well-configured parent -- and the analyser then falls back to a
+   * guess.
    */
   @Test
   void aChildInheritsTheCompilerConfigurationFromItsParent(@TempDir Path dir) throws Exception {
-    Path parent = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>parent</artifactId>
-          <version>1.0.0</version>
-          <packaging>pom</packaging>
-          <properties>
-            <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-          </properties>
-          <build>
-            <plugins>
-              <plugin>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                  <release>17</release>
-                  <compilerArgs>
-                    <arg>-parameters</arg>
-                  </compilerArgs>
-                  <annotationProcessorPaths>
-                    <path>
-                      <groupId>org.projectlombok</groupId>
-                      <artifactId>lombok</artifactId>
-                      <version>1.18.30</version>
-                    </path>
-                  </annotationProcessorPaths>
-                </configuration>
-              </plugin>
-            </plugins>
-          </build>
-        </project>
-        """);
+    Path parent =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>parent</artifactId>
+              <version>1.0.0</version>
+              <packaging>pom</packaging>
+              <properties>
+                <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+              </properties>
+              <build>
+                <plugins>
+                  <plugin>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                      <release>17</release>
+                      <compilerArgs>
+                        <arg>-parameters</arg>
+                      </compilerArgs>
+                      <annotationProcessorPaths>
+                        <path>
+                          <groupId>org.projectlombok</groupId>
+                          <artifactId>lombok</artifactId>
+                          <version>1.18.30</version>
+                        </path>
+                      </annotationProcessorPaths>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
 
     Path childDir = Files.createDirectories(dir.resolve("child"));
     Path child =
@@ -624,12 +695,14 @@ class MavenPomTest {
   /**
    * The module's own configuration wins over the parent's.
    *
-   * <p>This is what Maven itself does: the effective pom merges the parent into the child, with
-   * the child on top. A child that pins a different release is compiled at that release.
+   * <p>This is what Maven itself does: the effective pom merges the parent into the child, with the
+   * child on top. A child that pins a different release is compiled at that release.
    */
   @Test
   void theModulesOwnConfigurationWinsOverItsParents(@TempDir Path dir) throws Exception {
-    write(dir.resolve("pom.xml"), """
+    write(
+        dir.resolve("pom.xml"),
+        """
         <project>
           <modelVersion>4.0.0</modelVersion>
           <groupId>com.example</groupId>
@@ -690,25 +763,28 @@ class MavenPomTest {
    */
   @Test
   void anotherPluginsConfigurationIsNotTheCompilers(@TempDir Path dir) throws Exception {
-    Path pom = write(dir.resolve("pom.xml"), """
-        <project>
-          <modelVersion>4.0.0</modelVersion>
-          <groupId>com.example</groupId>
-          <artifactId>demo</artifactId>
-          <version>1.0.0</version>
-          <build>
-            <plugins>
-              <plugin>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                  <release>99</release>
-                  <encoding>NOPE</encoding>
-                </configuration>
-              </plugin>
-            </plugins>
-          </build>
-        </project>
-        """);
+    Path pom =
+        write(
+            dir.resolve("pom.xml"),
+            """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>demo</artifactId>
+              <version>1.0.0</version>
+              <build>
+                <plugins>
+                  <plugin>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration>
+                      <release>99</release>
+                      <encoding>NOPE</encoding>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """);
 
     MavenPom loaded = MavenPom.read(pom.toFile());
 

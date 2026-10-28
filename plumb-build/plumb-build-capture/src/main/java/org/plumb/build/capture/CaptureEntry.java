@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import java.nio.file.Path;
@@ -58,16 +79,16 @@ public record CaptureEntry(
    *
    * <p><b>Why this is not the argv.</b> One compile reaches several hooked entry points: the
    * command-line driver goes through {@code com.sun.tools.javac.Main#compile} and then {@code
-   * com.sun.tools.javac.main.Main#compile}, and the API path goes through {@code
-   * JavacTool#getTask} and then {@code JavacTaskImpl#call}. Each of them would otherwise write
-   * its own file, and the analyser would see the same compile several times over.
+   * com.sun.tools.javac.main.Main#compile}, and the API path goes through {@code JavacTool#getTask}
+   * and then {@code JavacTaskImpl#call}. Each of them would otherwise write its own file, and the
+   * analyser would see the same compile several times over.
    *
-   * <p><b>Why this is not the classpath either.</b> The classpath is the biggest and most
-   * expensive part of the capture, and it does not distinguish two compiles of the same sources
-   * into different directories.
+   * <p><b>Why this is not the classpath either.</b> The classpath is the biggest and most expensive
+   * part of the capture, and it does not distinguish two compiles of the same sources into
+   * different directories.
    *
-   * <p>So the identity is what actually distinguishes one compile from another: the source files
-   * it compiles, the directory it compiles them into, and the options that change the result. Two
+   * <p>So the identity is what actually distinguishes one compile from another: the source files it
+   * compiles, the directory it compiles them into, and the options that change the result. Two
    * captures with the same identity are the same compile seen through two entry points.
    *
    * @return a stable string that is equal for two views of the same compile

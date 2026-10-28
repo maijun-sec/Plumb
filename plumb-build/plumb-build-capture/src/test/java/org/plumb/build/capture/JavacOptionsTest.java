@@ -1,29 +1,46 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 /** Tests for {@link JavacOptions}. */
 class JavacOptionsTest {
 
   @Test
   void parsesOutputDirectory() {
-    JavacOptions options =
-        JavacOptions.parse(List.of("-d", "out", "Foo.java"));
+    JavacOptions options = JavacOptions.parse(List.of("-d", "out", "Foo.java"));
 
     assertThat(options.outputDirectory()).isEqualTo(Path.of("out"));
   }
 
   @Test
   void parsesClasspath() {
-    JavacOptions options =
-        JavacOptions.parse(List.of("-classpath", "a.jar;b.jar", "Foo.java"));
+    JavacOptions options = JavacOptions.parse(List.of("-classpath", "a.jar;b.jar", "Foo.java"));
 
     assertThat(options.classpath()).containsExactly(Path.of("a.jar"), Path.of("b.jar"));
   }
@@ -37,8 +54,7 @@ class JavacOptionsTest {
 
   @Test
   void parsesSourceFiles() {
-    JavacOptions options =
-        JavacOptions.parse(List.of("-d", "out", "src/Foo.java", "src/Bar.java"));
+    JavacOptions options = JavacOptions.parse(List.of("-d", "out", "src/Foo.java", "src/Bar.java"));
 
     assertThat(options.sourceFiles())
         .containsExactly(Path.of("src/Foo.java"), Path.of("src/Bar.java"));
@@ -49,8 +65,8 @@ class JavacOptionsTest {
    *
    * <p>javac accepts a jar on the source path, so one can appear as a positional argument. It is
    * not Java source, and recording it as one put an archive into the source list -- which is part
-   * of the compile identity, so two different compiles could collide, and the analyser would try
-   * to parse a jar as Java.
+   * of the compile identity, so two different compiles could collide, and the analyser would try to
+   * parse a jar as Java.
    */
   @Test
   void aJarIsNotASourceFile() {
@@ -62,9 +78,9 @@ class JavacOptionsTest {
   /**
    * The value of a known option is never mistaken for a source.
    *
-   * <p>The upstream project treated ANY argument ending in ".java" as a source, so the value of
-   * an option it did not know became a source file. Here the option table consumes the values, so
-   * only a positional argument can be one.
+   * <p>The upstream project treated ANY argument ending in ".java" as a source, so the value of an
+   * option it did not know became a source file. Here the option table consumes the values, so only
+   * a positional argument can be one.
    */
   @Test
   void anOptionValueIsNeverASourceFile() {
@@ -84,7 +100,8 @@ class JavacOptionsTest {
 
   @Test
   void parsesSourceAndTarget() {
-    JavacOptions options = JavacOptions.parse(List.of("-source", "11", "-target", "17", "Foo.java"));
+    JavacOptions options =
+        JavacOptions.parse(List.of("-source", "11", "-target", "17", "Foo.java"));
 
     assertThat(options.source()).isEqualTo("11");
     assertThat(options.target()).isEqualTo("17");
@@ -112,8 +129,8 @@ class JavacOptionsTest {
   /**
    * {@code --release} wins over {@code -source}.
    *
-   * <p>When both are given, the release level is the one the compiler actually used, because it
-   * is the more specific of the two.
+   * <p>When both are given, the release level is the one the compiler actually used, because it is
+   * the more specific of the two.
    */
   @Test
   void releaseWinsOverSource() {
@@ -126,8 +143,7 @@ class JavacOptionsTest {
   @Test
   void parsesSourcePathAndModulePath() {
     JavacOptions options =
-        JavacOptions.parse(
-            List.of("-sourcepath", "src", "--module-path", "mods", "Foo.java"));
+        JavacOptions.parse(List.of("-sourcepath", "src", "--module-path", "mods", "Foo.java"));
 
     assertThat(options.sourcePath()).containsExactly(Path.of("src"));
     assertThat(options.modulePath()).containsExactly(Path.of("mods"));

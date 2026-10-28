@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import java.nio.file.Path;
@@ -9,17 +30,16 @@ import java.util.Map;
 /**
  * One compiler option, described as data.
  *
- * <p><b>Why the options are data and not a chain of {@code if}s.</b> The original
- * implementation hard-coded a dozen option names in a switch. Every option it did not know
- * fell through to the default branch, and the default branch treated anything ending in
- * {@code .java} as a source file. So {@code --processor-path some/where.jar} was silently
- * dropped, and an option whose value happened to end in {@code .java} would be mistaken for a
- * source.
+ * <p><b>Why the options are data and not a chain of {@code if}s.</b> The original implementation
+ * hard-coded a dozen option names in a switch. Every option it did not know fell through to the
+ * default branch, and the default branch treated anything ending in {@code .java} as a source file.
+ * So {@code --processor-path some/where.jar} was silently dropped, and an option whose value
+ * happened to end in {@code .java} would be mistaken for a source.
  *
  * <p>Coverity solves this the same way: {@code JavacOptionParser} keeps its option knowledge in
- * tables -- a translation table, a "only the last one counts" list, a "may repeat" list, a
- * "takes no value" list, a "not a compilation option" list, and a per-compiler list of path
- * options. This class is that idea, in a form a static analyser can use.
+ * tables -- a translation table, a "only the last one counts" list, a "may repeat" list, a "takes
+ * no value" list, a "not a compilation option" list, and a per-compiler list of path options. This
+ * class is that idea, in a form a static analyser can use.
  *
  * <p>Adding an option is therefore <b>a data change</b>: one line in {@link #ALL}.
  */
@@ -37,8 +57,8 @@ public final class CompilerOption {
      */
     PATH_LIST,
     /**
-     * The option takes one value that is a list of paths, separated by commas: {@code
-     * --add-exports module/package=other/package}.
+     * The option takes one value that is a list of paths, separated by commas: {@code --add-exports
+     * module/package=other/package}.
      */
     COMMA_LIST
   }
@@ -151,8 +171,8 @@ public final class CompilerOption {
   /**
    * Every option, in one table.
    *
-   * <p>The categories match Coverity's {@code JavacOptionParser}, so the two can be compared
-   * entry by entry:
+   * <p>The categories match Coverity's {@code JavacOptionParser}, so the two can be compared entry
+   * by entry:
    *
    * <ul>
    *   <li>options that only the last occurrence of which counts;
@@ -169,13 +189,13 @@ public final class CompilerOption {
    *
    * <p><b>Why the index is keyed by the name AND the compiler.</b> Two compilers can spell an
    * option the same way and still mean different things by it. ECJ and sjavac both have {@code
-   * -src}, {@code -copy}, {@code -x}, {@code -i}, {@code -tr} and {@code -j} -- and sjavac's
-   * {@code -j} is repeatable while ECJ's is not. An index keyed by the name alone holds ONE option
-   * per name, so the second entry silently overwrote the first and the ECJ lookup rejected all
-   * six: the option was dropped, and the value that followed it was read as a source file.
+   * -src}, {@code -copy}, {@code -x}, {@code -i}, {@code -tr} and {@code -j} -- and sjavac's {@code
+   * -j} is repeatable while ECJ's is not. An index keyed by the name alone holds ONE option per
+   * name, so the second entry silently overwrote the first and the ECJ lookup rejected all six: the
+   * option was dropped, and the value that followed it was read as a source file.
    *
-   * <p>So the index holds one option per (name, compiler) pair. The name alone is still
-   * ambiguous, and {@link #byName(String, Compiler)} is the lookup that resolves it.
+   * <p>So the index holds one option per (name, compiler) pair. The name alone is still ambiguous,
+   * and {@link #byName(String, Compiler)} is the lookup that resolves it.
    */
   private static final Map<String, Map<Compiler, CompilerOption>> BY_NAME = index();
 
@@ -213,15 +233,15 @@ public final class CompilerOption {
   /**
    * The option with that name, for a given compiler.
    *
-   * <p><b>The compiler matters.</b> ECJ has options javac does not have ({@code -src},
-   * {@code -profile}, {@code -log}). A global lookup would give javac an option it does not have,
-   * and the value would be swallowed -- the option would vanish.
+   * <p><b>The compiler matters.</b> ECJ has options javac does not have ({@code -src}, {@code
+   * -profile}, {@code -log}). A global lookup would give javac an option it does not have, and the
+   * value would be swallowed -- the option would vanish.
    *
    * <p>Where the two compilers agree -- on the classpath's three spellings, for instance -- the
    * option belongs to neither one and both lookups find it.
    *
-   * <p>And where they spell an option the same way but mean different things by it, each
-   * compiler gets its own entry: {@code -src} and {@code -j} are ECJ's and sjavac's separately.
+   * <p>And where they spell an option the same way but mean different things by it, each compiler
+   * gets its own entry: {@code -src} and {@code -j} are ECJ's and sjavac's separately.
    *
    * @param name the option as the compiler spells it
    * @param compiler which compiler is doing the parsing
@@ -264,12 +284,33 @@ public final class CompilerOption {
     // ---- the output directory ----
     // javac: -d.  ECJ: -d.  sjavac: -d.
     out.add(opt("-d", "--output-dir", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("--output-dir", "--output-dir", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "--output-dir",
+            "--output-dir",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
 
     // ---- the classpath ----
     // These are the three spellings javac accepts, and ECJ accepts the first two.
-    out.add(opt("-classpath", "--classpath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("--classpath", "--classpath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "-classpath",
+            "--classpath",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "--classpath",
+            "--classpath",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
     out.add(opt("-cp", "--classpath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
     // javac's own help lists "--class-path <path>, -classpath <path>, -cp
     // <path>" -- so the double-dash spelling belongs to javac too, and not
@@ -281,92 +322,289 @@ public final class CompilerOption {
     // ONE option shared by both compilers rather than one per compiler.  A
     // per-compiler copy would need the index to hold two options under one
     // name, and the index holds one.
-    out.add(opt("--class-path", "--classpath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "--class-path",
+            "--classpath",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
 
     // ---- the source path ----
-    out.add(opt("-sourcepath", "--sourcepath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("--sourcepath", "--sourcepath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("--source-path", "--sourcepath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "-sourcepath",
+            "--sourcepath",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "--sourcepath",
+            "--sourcepath",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "--source-path",
+            "--sourcepath",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
 
     // ---- the boot class path ----
     // javac spells it -bootclasspath and --boot-class-path; ECJ spells it -bootclasspath.
-    out.add(opt("-bootclasspath", "bootclasspath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("--boot-class-path", "bootclasspath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("-Xbootclasspath", "bootclasspath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "-bootclasspath",
+            "bootclasspath",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "--boot-class-path",
+            "bootclasspath",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "-Xbootclasspath",
+            "bootclasspath",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
 
     // ---- the extension and endorsed directories ----
-    out.add(opt("-extdirs", "extdirs", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("-Djava.ext.dirs", "extdirs", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("-endorseddirs", "endorseddirs", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("-Djava.endorsed.dirs", "endorseddirs", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt("-extdirs", "extdirs", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "-Djava.ext.dirs",
+            "extdirs",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "-endorseddirs",
+            "endorseddirs",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "-Djava.endorsed.dirs",
+            "endorseddirs",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
     // The -Xbootclasspath/p: and /a: forms prepend and append.
-    out.add(opt("-Xbootclasspath/p", "prebootclasspath", Value.PATH_LIST, Repeat.ALL_APPLY, Effect.COMPILATION, null));
-    out.add(opt("-Xbootclasspath/a", "postbootclasspath", Value.PATH_LIST, Repeat.ALL_APPLY, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "-Xbootclasspath/p",
+            "prebootclasspath",
+            Value.PATH_LIST,
+            Repeat.ALL_APPLY,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "-Xbootclasspath/a",
+            "postbootclasspath",
+            Value.PATH_LIST,
+            Repeat.ALL_APPLY,
+            Effect.COMPILATION,
+            null));
 
     // ---- the module paths ----
     // These are the "only the last one counts" options in Coverity's table.
-    out.add(opt("--module-path", "--module-path", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("-p", "--module-path", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("--module-source-path", "--module-source-path", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("--upgrade-module-path", "--upgrade-module-path", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "--module-path",
+            "--module-path",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt("-p", "--module-path", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "--module-source-path",
+            "--module-source-path",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "--upgrade-module-path",
+            "--upgrade-module-path",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
 
     // ---- the modules themselves ----
     out.add(opt("--module", "--module", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-m", "--module", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("--limit-modules", "--limit-modules", Value.COMMA_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "--limit-modules",
+            "--limit-modules",
+            Value.COMMA_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
     // --add-modules may be repeated and every occurrence applies, but only the last one of a
     // repeated name is kept when the compiler squashes them.
-    out.add(opt("--add-modules", "--add-modules", Value.COMMA_LIST, Repeat.ALL_APPLY, Effect.COMPILATION, null));
-    out.add(opt("--add-exports", "--add-exports", Value.COMMA_LIST, Repeat.ALL_APPLY, Effect.COMPILATION, null));
-    out.add(opt("--add-reads", "--add-reads", Value.COMMA_LIST, Repeat.ALL_APPLY, Effect.COMPILATION, null));
-    out.add(opt("--patch-module", "--patch-module", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "--add-modules",
+            "--add-modules",
+            Value.COMMA_LIST,
+            Repeat.ALL_APPLY,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "--add-exports",
+            "--add-exports",
+            Value.COMMA_LIST,
+            Repeat.ALL_APPLY,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "--add-reads",
+            "--add-reads",
+            Value.COMMA_LIST,
+            Repeat.ALL_APPLY,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "--patch-module",
+            "--patch-module",
+            Value.SINGLE,
+            Repeat.ALL_APPLY,
+            Effect.COMPILATION,
+            null));
 
     // ---- the system image ----
     out.add(opt("--system", "--system", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
 
     // ---- the processor paths ----
-    out.add(opt("-processorpath", "--processor-path", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("--processor-path", "--processor-path", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("--processor-module-path", "--processor-module-path", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("-processor", "--processor", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "-processorpath",
+            "--processor-path",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "--processor-path",
+            "--processor-path",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt(
+            "--processor-module-path",
+            "--processor-module-path",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt("-processor", "--processor", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
 
     // ---- the annotation processing directory ----
-    out.add(opt("-s", "--annotation-processing-dir", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "-s",
+            "--annotation-processing-dir",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
 
     // ---- the language level ----
-    out.add(opt("--release", "--release", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt("--release", "--release", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-source", "--source", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("--source", "--source", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-target", "--target", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("--target", "--target", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
 
     // ---- the encoding ----
-    out.add(opt("-encoding", "--encoding", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt("-encoding", "--encoding", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
 
     // ---- the options that take no value ----
-    out.add(opt("--enable-preview", "--enable-preview", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "--enable-preview",
+            "--enable-preview",
+            Value.NONE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
 
     // ---- the options that do not compile anything ----
     // -Xprint prints the compiler's internal state; -proc:only runs only the processors.
     // Neither produces a class file, so a capture that counted them as compiles would report
     // a compilation that never happened.
     out.add(opt("-Xprint", "-Xprint", Value.NONE, Repeat.LAST_WINS, Effect.NOT_COMPILATION, null));
-    out.add(opt("-proc:only", "-proc:only", Value.NONE, Repeat.LAST_WINS, Effect.NOT_COMPILATION, null));
+    out.add(
+        opt(
+            "-proc:only",
+            "-proc:only",
+            Value.NONE,
+            Repeat.LAST_WINS,
+            Effect.NOT_COMPILATION,
+            null));
 
     // ---- the annotation processing switch ----
     // javac spells it -proc:{none,only,full}.  Only -proc:only was in the
     // table, so -proc:none was an unknown option -- and an unknown option
     // is one the parser cannot account for.
-    out.add(opt("-proc:none", "-proc:none", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("-proc:full", "-proc:full", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt("-proc:none", "-proc:none", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt("-proc:full", "-proc:full", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
 
     // ---- the implicit compilation switch ----
     // -implicit:{none,class} decides whether a class file is written for a
     // source file that was found on the source path rather than named on the
     // command line.  It changes what the compile PRODUCES, so it is a
     // compilation option and not a diagnostic one.
-    out.add(opt("-implicit:none", "-implicit", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("-implicit:class", "-implicit", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt("-implicit:none", "-implicit", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "-implicit:class",
+            "-implicit",
+            Value.NONE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
 
     // sjavac spells the same switch differently: `-implicit:` with the value
     // in the NEXT token, so `-implicit: none` and not `-implicit:none`.  The
@@ -374,19 +612,27 @@ public final class CompilerOption {
     // is the separated form that is its own spelling.  The option is the same
     // one -- the policy for implicitly referenced sources -- so it is recorded
     // under the same canonical name.
-    out.add(opt("-implicit:", "--implicit", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(
+        opt(
+            "-implicit:",
+            "--implicit",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.SJAVAC));
 
     // ---- the module of the files that are created ----
     // --default-module-for-created-files names the module a generated class
     // file belongs to.  It is what a modular build sets, and it is how a
     // class file ends up in a module it would not otherwise be in.
-    out.add(opt(
-        "--default-module-for-created-files",
-        "--default-module-for-created-files",
-        Value.SINGLE,
-        Repeat.LAST_WINS,
-        Effect.COMPILATION,
-        null));
+    out.add(
+        opt(
+            "--default-module-for-created-files",
+            "--default-module-for-created-files",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
 
     // ---- the annotation processor options ----
     // -Akey[=value] passes an option to the annotation processors.  The
@@ -398,14 +644,16 @@ public final class CompilerOption {
     // --help-lint lists the lint checks.  Neither changes the class files,
     // but both are options javac accepts, and an option javac accepts that
     // the table does not know is an option whose value is lost.
-    out.add(opt(
-        "--disable-line-doc-comments",
-        "--disable-line-doc-comments",
-        Value.NONE,
-        Repeat.LAST_WINS,
-        Effect.COMPILATION,
-        null));
-    out.add(opt("--help-lint", "--help-lint", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "--disable-line-doc-comments",
+            "--disable-line-doc-comments",
+            Value.NONE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
+    out.add(
+        opt("--help-lint", "--help-lint", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
 
     // ---- the debug-info switch ----
     // javac spells it -g:{lines,vars,source} and -g:none.  Only the bare -g
@@ -424,18 +672,61 @@ public final class CompilerOption {
     out.add(opt("-i", "-i", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
     out.add(opt("-j", "-j", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
     out.add(opt("-log", "-log", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
-    out.add(opt("--module-version", "--module-version", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
-    out.add(opt("-profile", "-profile", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+    out.add(
+        opt(
+            "--module-version",
+            "--module-version",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.ECJ));
+    out.add(
+        opt(
+            "-profile",
+            "-profile",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.ECJ));
     out.add(opt("-tr", "-tr", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
     out.add(opt("-x", "-x", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
-    out.add(opt("-Xmaxerrs", "-Xmaxerrs", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
-    out.add(opt("-Xmaxwarns", "-Xmaxwarns", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
-    out.add(opt("-Xstdout", "-Xstdout", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
-    out.add(opt("-copy", "-copy", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+    out.add(
+        opt(
+            "-Xmaxerrs",
+            "-Xmaxerrs",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.ECJ));
+    out.add(
+        opt(
+            "-Xmaxwarns",
+            "-Xmaxwarns",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.ECJ));
+    out.add(
+        opt(
+            "-Xstdout",
+            "-Xstdout",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.ECJ));
+    out.add(
+        opt("-copy", "-copy", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
 
     // ---- the source directories ----
     // ECJ's -src names a directory of sources rather than a file.
-    out.add(opt("-src", "source_files_or_dirs", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+    out.add(
+        opt(
+            "-src",
+            "source_files_or_dirs",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.ECJ));
 
     // ---- the options measured against the real ECJ ----
     //
@@ -448,20 +739,48 @@ public final class CompilerOption {
     // unknown AND the path that followed it was not a source file either --
     // so both the option and its value vanished, exactly like the missing
     // `--class-path` cost javac its whole classpath.
-    out.add(opt("-annotationpath", "annotationpath", Value.PATH_LIST, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+    out.add(
+        opt(
+            "-annotationpath",
+            "annotationpath",
+            Value.PATH_LIST,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.ECJ));
 
     // ECJ's spelling of the warning switch.  javac spells it `-nowarn`; ECJ
     // spells it `-warn:none`.  The option is the same one -- the warnings the
     // compiler reports -- but the CANONICAL name has to be ECJ's own, because
     // the shared `-nowarn` is a different entry and the index holds one
     // option per (name, compiler).
-    out.add(opt("-warn:none", "-warn:none", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+    out.add(
+        opt(
+            "-warn:none",
+            "-warn:none",
+            Value.NONE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.ECJ));
 
     // The advanced warning options.  They only change what the compiler
     // prints, and they take a value that is a warning list rather than a
     // path.
-    out.add(opt("-?:warn", "-?:warn", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
-    out.add(opt("-help:warn", "-help:warn", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));
+    out.add(
+        opt(
+            "-?:warn",
+            "-?:warn",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.ECJ));
+    out.add(
+        opt(
+            "-help:warn",
+            "-help:warn",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.ECJ));
 
     // ---- the options measured against the real sjavac ----
     //
@@ -498,41 +817,113 @@ public final class CompilerOption {
     //
     // sjavac's own source and class paths are PATH_LISTs separated by the
     // platform separator, the same as javac's.
-    out.add(opt("-src", "source_files_or_dirs", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(
+        opt(
+            "-src",
+            "source_files_or_dirs",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.SJAVAC));
     out.add(opt("-x", "-x", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, Compiler.SJAVAC));
     out.add(opt("-i", "-i", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, Compiler.SJAVAC));
     out.add(opt("-tr", "-tr", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, Compiler.SJAVAC));
-    out.add(opt("-copy", "-copy", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(
+        opt("-copy", "-copy", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, Compiler.SJAVAC));
     // The number of cores.  It does not change the class files, but it IS a
     // value-taking option, so it has to be recognised -- otherwise the number
     // after it is read as a source file.
     out.add(opt("-j", "-j", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
-    out.add(opt("--server:", "--server", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
-    out.add(opt("--startserver:", "--startserver", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
-    out.add(opt("--permit-artifact=", "--permit-artifact", Value.SINGLE, Repeat.ALL_APPLY, Effect.COMPILATION, Compiler.SJAVAC));
-    out.add(opt("--permit-unidentified-artifacts", "--permit-unidentified-artifacts", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
-    out.add(opt("--permit-sources-without-package", "--permit-sources-without-package", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
-    out.add(opt("--compare-found-sources", "--compare-found-sources", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
-    out.add(opt("--state-dir=", "--state-dir", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(
+        opt(
+            "--server:",
+            "--server",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.SJAVAC));
+    out.add(
+        opt(
+            "--startserver:",
+            "--startserver",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.SJAVAC));
+    out.add(
+        opt(
+            "--permit-artifact=",
+            "--permit-artifact",
+            Value.SINGLE,
+            Repeat.ALL_APPLY,
+            Effect.COMPILATION,
+            Compiler.SJAVAC));
+    out.add(
+        opt(
+            "--permit-unidentified-artifacts",
+            "--permit-unidentified-artifacts",
+            Value.NONE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.SJAVAC));
+    out.add(
+        opt(
+            "--permit-sources-without-package",
+            "--permit-sources-without-package",
+            Value.NONE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.SJAVAC));
+    out.add(
+        opt(
+            "--compare-found-sources",
+            "--compare-found-sources",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.SJAVAC));
+    out.add(
+        opt(
+            "--state-dir=",
+            "--state-dir",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.SJAVAC));
 
     // The logging level.  sjavac spells it with a trailing "=", but it takes
     // the value from the NEXT token -- the measured compiler accepts
     // `--log= info` and rejects nothing here -- so it is a single-valued
     // option like the others.
-    out.add(opt("--log=", "--log", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));
+    out.add(
+        opt(
+            "--log=",
+            "--log",
+            Value.SINGLE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            Compiler.SJAVAC));
 
     // ---- the options that only affect diagnostics ----
     // These do not change the class files, so they are recorded but not interpreted.
     out.add(opt("-nowarn", "-nowarn", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-verbose", "-verbose", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("-deprecation", "-deprecation", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt(
+            "-deprecation",
+            "-deprecation",
+            Value.NONE,
+            Repeat.LAST_WINS,
+            Effect.COMPILATION,
+            null));
     out.add(opt("-Xlint", "-Xlint", Value.SINGLE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     out.add(opt("-Werror", "-Werror", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
     // The value is IN the spelling -- `-g:lines` names what to include -- so
     // the switch takes no separate argument.  `javac -g` needs nothing after
     // it, which is what Value.NONE says.
     out.add(opt("-g", "-g", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
-    out.add(opt("-parameters", "-parameters", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
+    out.add(
+        opt("-parameters", "-parameters", Value.NONE, Repeat.LAST_WINS, Effect.COMPILATION, null));
 
     return List.copyOf(out);
   }
@@ -583,9 +974,9 @@ public final class CompilerOption {
    * The comma-separated entries of a value like {@code module/package=other/package}.
    *
    * <p>These are not paths: {@code --add-exports} takes a list of module/package pairs, separated
-   * by commas. Splitting them on the path separator would be wrong on Unix, where the separator
-   * is a colon and the value contains no colon at all -- but it would be right by accident on
-   * Windows, which is exactly the kind of accident that hides a bug until it runs on Linux.
+   * by commas. Splitting them on the path separator would be wrong on Unix, where the separator is
+   * a colon and the value contains no colon at all -- but it would be right by accident on Windows,
+   * which is exactly the kind of accident that hides a bug until it runs on Linux.
    */
   public static List<String> splitCommaList(String value) {
     List<String> out = new ArrayList<>();

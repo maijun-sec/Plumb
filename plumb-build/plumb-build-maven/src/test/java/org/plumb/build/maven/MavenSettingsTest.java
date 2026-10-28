@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.maven;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,7 +52,9 @@ class MavenSettingsTest {
     Path settings = dir.resolve("settings.xml");
     Files.writeString(
         settings,
-        "<settings><localRepository>" + dir.resolve("fromSettings") + "</localRepository></settings>",
+        "<settings><localRepository>"
+            + dir.resolve("fromSettings")
+            + "</localRepository></settings>",
         StandardCharsets.UTF_8);
 
     MavenSettings loaded = MavenSettings.load(settings, dir.resolve("explicit"));
@@ -62,11 +85,10 @@ class MavenSettingsTest {
   }
 
   /**
-   * The mirror id has to match the one recorded in the local repository's
-   * {@code _remote.repositories} markers, otherwise Aether refuses to serve
-   * an artifact that is present on disk.  Keeping central in the list is what
-   * makes an artifact cached under {@code central} servable on a machine
-   * whose settings.xml declares a differently-named mirror.
+   * The mirror id has to match the one recorded in the local repository's {@code
+   * _remote.repositories} markers, otherwise Aether refuses to serve an artifact that is present on
+   * disk. Keeping central in the list is what makes an artifact cached under {@code central}
+   * servable on a machine whose settings.xml declares a differently-named mirror.
    */
   @Test
   void preservesMultipleMirrorsInDeclarationOrder(@TempDir Path dir) throws Exception {
@@ -122,18 +144,17 @@ class MavenSettingsTest {
   }
 
   /**
-   * An artifact cached under {@code central} must still resolve on a machine
-   * whose settings.xml declares a differently-named mirror.
+   * An artifact cached under {@code central} must still resolve on a machine whose settings.xml
+   * declares a differently-named mirror.
    *
-   * <p>This is the failure the "mirror id must match the marker" note warns
-   * about. Aether records the repository id in {@code _remote.repositories}
-   * and refuses to serve an artifact that was not obtained from one of the
-   * configured remotes. If the configured remotes are only the mirror, every
-   * artifact cached under {@code central} is reported as "present, but
-   * unavailable" -- so an offline resolution returns nothing at all.
+   * <p>This is the failure the "mirror id must match the marker" note warns about. Aether records
+   * the repository id in {@code _remote.repositories} and refuses to serve an artifact that was not
+   * obtained from one of the configured remotes. If the configured remotes are only the mirror,
+   * every artifact cached under {@code central} is reported as "present, but unavailable" -- so an
+   * offline resolution returns nothing at all.
    *
-   * <p>The repository is built here rather than taken from the developer's
-   * machine, so the test is hermetic.
+   * <p>The repository is built here rather than taken from the developer's machine, so the test is
+   * hermetic.
    */
   @Test
   void resolvesAnArtifactCachedUnderCentralDespiteADifferentlyNamedMirror(@TempDir Path dir)
@@ -188,8 +209,8 @@ class MavenSettingsTest {
   /**
    * Write a minimal but <b>valid</b> jar.
    *
-   * <p>Aether validates the artifact it finds in the local repository, so a
-   * stub file makes the resolver treat the cached artifact as unusable.
+   * <p>Aether validates the artifact it finds in the local repository, so a stub file makes the
+   * resolver treat the cached artifact as unusable.
    */
   private static void writeJar(Path jar) throws Exception {
     try (var out = new java.util.zip.ZipOutputStream(Files.newOutputStream(jar))) {

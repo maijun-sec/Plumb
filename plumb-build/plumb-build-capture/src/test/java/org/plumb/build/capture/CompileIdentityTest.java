@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,8 +49,18 @@ class CompileIdentityTest {
 
   @Test
   void theSameCompileHasTheSameIdentity() {
-    CaptureEntry a = entry(List.of(Path.of("Foo.java")), Path.of("out"), List.of(Path.of("a.jar")), List.of("-d", "out", "Foo.java"));
-    CaptureEntry b = entry(List.of(Path.of("Foo.java")), Path.of("out"), List.of(Path.of("a.jar")), List.of("-d", "out", "Foo.java"));
+    CaptureEntry a =
+        entry(
+            List.of(Path.of("Foo.java")),
+            Path.of("out"),
+            List.of(Path.of("a.jar")),
+            List.of("-d", "out", "Foo.java"));
+    CaptureEntry b =
+        entry(
+            List.of(Path.of("Foo.java")),
+            Path.of("out"),
+            List.of(Path.of("a.jar")),
+            List.of("-d", "out", "Foo.java"));
     assertThat(a.sameCompileAs(b)).isTrue();
   }
 
@@ -42,7 +73,11 @@ class CompileIdentityTest {
   @Test
   void theIdentityDoesNotDependOnTheArgv() {
     CaptureEntry cli =
-        entry(List.of(Path.of("Foo.java")), Path.of("out"), List.of(Path.of("a.jar")), List.of("-d", "out", "Foo.java"));
+        entry(
+            List.of(Path.of("Foo.java")),
+            Path.of("out"),
+            List.of(Path.of("a.jar")),
+            List.of("-d", "out", "Foo.java"));
     CaptureEntry api =
         entry(
             List.of(Path.of("Foo.java")),
@@ -72,23 +107,29 @@ class CompileIdentityTest {
 
   @Test
   void differentSourcesAreDifferentCompiles() {
-    CaptureEntry a = entry(List.of(Path.of("A.java")), Path.of("out"), List.of(Path.of("a.jar")), List.of());
-    CaptureEntry b = entry(List.of(Path.of("B.java")), Path.of("out"), List.of(Path.of("a.jar")), List.of());
+    CaptureEntry a =
+        entry(List.of(Path.of("A.java")), Path.of("out"), List.of(Path.of("a.jar")), List.of());
+    CaptureEntry b =
+        entry(List.of(Path.of("B.java")), Path.of("out"), List.of(Path.of("a.jar")), List.of());
     assertThat(a.sameCompileAs(b)).isFalse();
   }
 
   @Test
   void differentOutputDirectoriesAreDifferentCompiles() {
-    CaptureEntry a = entry(List.of(Path.of("A.java")), Path.of("out1"), List.of(Path.of("a.jar")), List.of());
-    CaptureEntry b = entry(List.of(Path.of("A.java")), Path.of("out2"), List.of(Path.of("a.jar")), List.of());
+    CaptureEntry a =
+        entry(List.of(Path.of("A.java")), Path.of("out1"), List.of(Path.of("a.jar")), List.of());
+    CaptureEntry b =
+        entry(List.of(Path.of("A.java")), Path.of("out2"), List.of(Path.of("a.jar")), List.of());
     assertThat(a.sameCompileAs(b)).isFalse();
   }
 
   /** The classpath is part of the identity: a different classpath is a different compile. */
   @Test
   void differentClasspathsAreDifferentCompiles() {
-    CaptureEntry a = entry(List.of(Path.of("A.java")), Path.of("out"), List.of(Path.of("a.jar")), List.of());
-    CaptureEntry b = entry(List.of(Path.of("A.java")), Path.of("out"), List.of(Path.of("b.jar")), List.of());
+    CaptureEntry a =
+        entry(List.of(Path.of("A.java")), Path.of("out"), List.of(Path.of("a.jar")), List.of());
+    CaptureEntry b =
+        entry(List.of(Path.of("A.java")), Path.of("out"), List.of(Path.of("b.jar")), List.of());
     assertThat(a.sameCompileAs(b)).isFalse();
   }
 
@@ -97,11 +138,21 @@ class CompileIdentityTest {
   void differentLanguageLevelsAreDifferentCompiles() {
     CaptureEntry a =
         CaptureEntry.simple(
-            "cli", List.of(), "UTF-8", "17", Path.of("out"), List.of(Path.of("a.jar")),
+            "cli",
+            List.of(),
+            "UTF-8",
+            "17",
+            Path.of("out"),
+            List.of(Path.of("a.jar")),
             List.of(Path.of("A.java")));
     CaptureEntry b =
         CaptureEntry.simple(
-            "cli", List.of(), "UTF-8", "11", Path.of("out"), List.of(Path.of("a.jar")),
+            "cli",
+            List.of(),
+            "UTF-8",
+            "11",
+            Path.of("out"),
+            List.of(Path.of("a.jar")),
             List.of(Path.of("A.java")));
     assertThat(a.sameCompileAs(b)).isFalse();
   }

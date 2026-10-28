@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.maven;
 
 import java.io.IOException;
@@ -15,22 +36,22 @@ import org.plumb.build.CompileDiscrepancy;
  * Compares what a build <em>declared</em> against what the compiler <em>actually did</em>.
  *
  * <p><b>Why the two are compared at all.</b> The two sides answer the same questions -- what
- * language level, what encoding, what classpath -- and they are used together: a build is
- * analysed by reading its pom AND by capturing the compile it really performed. When they
- * disagree, one of them is wrong, and the analysis is wrong in a way nobody can see.
+ * language level, what encoding, what classpath -- and they are used together: a build is analysed
+ * by reading its pom AND by capturing the compile it really performed. When they disagree, one of
+ * them is wrong, and the analysis is wrong in a way nobody can see.
  *
- * <p><b>Why the difference is reported rather than resolved.</b> There is no right answer to
- * pick in general: the pom may be stale, the capture may be from a different build, and the two
- * may describe different modules. A cross-check that silently chose one side would hide exactly
- * the thing it was built to find.
+ * <p><b>Why the difference is reported rather than resolved.</b> There is no right answer to pick
+ * in general: the pom may be stale, the capture may be from a different build, and the two may
+ * describe different modules. A cross-check that silently chose one side would hide exactly the
+ * thing it was built to find.
  *
  * <p><b>Why the capture is read as JSON.</b> The capture module is deliberately standalone: the
- * command parsing and the capture are not part of the analysis, so the analysis does not depend
- * on them. The capture's output is a file, and a file is what the analyser reads.
+ * command parsing and the capture are not part of the analysis, so the analysis does not depend on
+ * them. The capture's output is a file, and a file is what the analyser reads.
  *
- * <p><b>Why the result is sorted.</b> Two runs over the same inputs must produce the same
- * report, in the same order. The differences are sorted by parameter name, and the values
- * within a parameter are sorted too.
+ * <p><b>Why the result is sorted.</b> Two runs over the same inputs must produce the same report,
+ * in the same order. The differences are sorted by parameter name, and the values within a
+ * parameter are sorted too.
  */
 public final class CompileCrossCheck {
 
@@ -78,9 +99,7 @@ public final class CompileCrossCheck {
     comparePaths(
         byParameter,
         OUTPUT_DIRECTORY,
-        declared.outputDirectory() == null
-            ? null
-            : List.of(declared.outputDirectory()),
+        declared.outputDirectory() == null ? null : List.of(declared.outputDirectory()),
         observed.outputDirectory() == null ? List.of() : List.of(observed.outputDirectory()),
         "the output directory the build declared and the one the compiler wrote to");
 
@@ -112,8 +131,8 @@ public final class CompileCrossCheck {
    * Compares one value.
    *
    * <p>An absent value on either side is <em>not</em> a difference: an undeclared parameter is
-   * unknown, not a default, so there is nothing to disagree about. A difference needs both
-   * sides to have an answer.
+   * unknown, not a default, so there is nothing to disagree about. A difference needs both sides to
+   * have an answer.
    */
   private static void compareValue(
       TreeMap<String, CompileDiscrepancy> byParameter,
@@ -167,7 +186,10 @@ public final class CompileCrossCheck {
             parameter,
             String.join(",", declaredNames),
             String.join(",", observedNames),
-            detail + "; only in the declaration: " + onlyDeclared + ", only in the capture: "
+            detail
+                + "; only in the declaration: "
+                + onlyDeclared
+                + ", only in the capture: "
                 + onlyObserved));
   }
 
@@ -189,8 +211,8 @@ public final class CompileCrossCheck {
   /**
    * The captured compile, as the cross-check needs it.
    *
-   * <p>Read from the capture's JSON, because the capture module is deliberately not a dependency
-   * of the analysis.
+   * <p>Read from the capture's JSON, because the capture module is deliberately not a dependency of
+   * the analysis.
    */
   static final class CapturedCompile {
 
@@ -263,10 +285,10 @@ public final class CompileCrossCheck {
     /**
      * The captured compile in a JSON document.
      *
-     * <p>The capture's JSON is written by hand, so it is a flat object of string and array
-     * values. It is read here by hand too, rather than with a JSON library: the module has no
-     * JSON dependency, and the format is small enough that a library would be more machinery
-     * than the job needs.
+     * <p>The capture's JSON is written by hand, so it is a flat object of string and array values.
+     * It is read here by hand too, rather than with a JSON library: the module has no JSON
+     * dependency, and the format is small enough that a library would be more machinery than the
+     * job needs.
      *
      * @param json the capture's JSON
      * @return the compile, or {@code null} when the document is not a capture
@@ -405,8 +427,12 @@ public final class CompileCrossCheck {
 
     /** The escape sequences the capture writes. */
     private static String unescape(String value) {
-      return value.replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n")
-          .replace("\\r", "\r").replace("\\t", "\t");
+      return value
+          .replace("\\\"", "\"")
+          .replace("\\\\", "\\")
+          .replace("\\n", "\n")
+          .replace("\\r", "\r")
+          .replace("\\t", "\t");
     }
   }
 }

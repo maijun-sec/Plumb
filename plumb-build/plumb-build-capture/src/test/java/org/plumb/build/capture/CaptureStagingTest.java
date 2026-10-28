@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,14 +51,13 @@ import org.junit.jupiter.api.io.TempDir;
  * the compiler parsed.
  *
  * <p><b>Why the captures are read from the directory.</b> The recorder runs on the bootstrap class
- * loader and cannot reach the in-memory sink, so it writes the files itself. Reading the files
- * back is what an analyser does, and it is what makes this test an end-to-end check of the
- * staging rather than a check of the recorder's internals.
+ * loader and cannot reach the in-memory sink, so it writes the files itself. Reading the files back
+ * is what an analyser does, and it is what makes this test an end-to-end check of the staging
+ * rather than a check of the recorder's internals.
  *
  * <p><b>Why every test uses its own source names.</b> The recorder's duplicate check is on the
- * compile's identity, and the identity includes the sources. Two tests that compiled the same
- * files would be the same compile, and the second one's capture would be discarded as a
- * duplicate.
+ * compile's identity, and the identity includes the sources. Two tests that compiled the same files
+ * would be the same compile, and the second one's capture would be discarded as a duplicate.
  */
 class CaptureStagingTest {
 
@@ -93,13 +113,13 @@ class CaptureStagingTest {
    * Two compiles staged before either of them finishes, and the first one finishes first.
    *
    * <p>This is the shape that caught the real defect. Gradle creates the task for the next module
-   * before the previous module's compile has finished, so when the previous module's compile
-   * ends there are two staged compiles -- and the one that belongs to it is <em>not</em> the most
-   * recent one.
+   * before the previous module's compile has finished, so when the previous module's compile ends
+   * there are two staged compiles -- and the one that belongs to it is <em>not</em> the most recent
+   * one.
    *
-   * <p>So the staged compile is chosen by matching: the one whose sources are the ones the
-   * compiler actually parsed. Taking the most recent one instead would report the next module's
-   * options for this module's compile.
+   * <p>So the staged compile is chosen by matching: the one whose sources are the ones the compiler
+   * actually parsed. Taking the most recent one instead would report the next module's options for
+   * this module's compile.
    */
   @Test
   void aFinishedCompileTakesTheStagedCompileThatMatchesItsSources() {

@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import java.io.IOException;
@@ -16,15 +37,15 @@ import java.util.Set;
  * The compile options recovered from a captured javac command line.
  *
  * <p>This carries the same information the original {@code java-capture} project recorded in its
- * {@code JavaOption} bean: the source encoding, the language level, the classpath, the source
- * path, the output directory and the source files.
+ * {@code JavaOption} bean: the source encoding, the language level, the classpath, the source path,
+ * the output directory and the source files.
  *
  * <p><b>The option knowledge lives in {@link CompilerOption}.</b> This class only walks the argv
  * and applies the table. That matters because the previous implementation had a dozen hard-coded
  * option names in a switch, and everything it did not know fell through to a default branch that
  * treated any argument ending in {@code .java} as a source file. So {@code --processor-path
- * some/dir.jar} was silently dropped, and an unknown option whose value ended in {@code .java}
- * was mistaken for a source file.
+ * some/dir.jar} was silently dropped, and an unknown option whose value ended in {@code .java} was
+ * mistaken for a source file.
  */
 public final class JavacOptions {
 
@@ -306,16 +327,15 @@ public final class JavacOptions {
    * Replace an argument file with the arguments it holds.
    *
    * <p><b>Why this matters.</b> javac reads its options from a file when an argument starts with
-   * {@code @}. A build that puts its classpath in such a file has told javac everything through
-   * the file, and the command line itself carries almost nothing. A capture that did not open the
-   * file recorded a compile with an empty classpath and an unknown language level -- confidently
-   * wrong, which is worse than nothing.
+   * {@code @}. A build that puts its classpath in such a file has told javac everything through the
+   * file, and the command line itself carries almost nothing. A capture that did not open the file
+   * recorded a compile with an empty classpath and an unknown language level -- confidently wrong,
+   * which is worse than nothing.
    *
    * <p><b>The format, measured against javac.</b> The file is split on WHITESPACE, and the quotes
    * around a token are stripped -- but they do NOT group it. So {@code -d "C:\a"} is the option
-   * {@code -d} with the value {@code C:\a}, while {@code -d "C:\a b"} is the option {@code -d}
-   * with the value {@code C:\a} followed by a stray {@code b"} that javac treats as a source
-   * file.
+   * {@code -d} with the value {@code C:\a}, while {@code -d "C:\a b"} is the option {@code -d} with
+   * the value {@code C:\a} followed by a stray {@code b"} that javac treats as a source file.
    *
    * <p>A file that cannot be read is left as it was: the argument stays, and the compile is
    * recorded with whatever else the command line said. A missing argument file is a broken build,
@@ -335,10 +355,12 @@ public final class JavacOptions {
   /** Bound on how deep an argument file may refer to another one. */
   private static final int MAX_ARGUMENT_FILE_DEPTH = 8;
 
-  private static void expandArgumentFiles(
-      List<String> arguments, List<String> out, int depth) {
+  private static void expandArgumentFiles(List<String> arguments, List<String> out, int depth) {
     for (String argument : arguments) {
-      if (argument == null || argument.isEmpty() || argument.charAt(0) != '@' || depth >= MAX_ARGUMENT_FILE_DEPTH) {
+      if (argument == null
+          || argument.isEmpty()
+          || argument.charAt(0) != '@'
+          || depth >= MAX_ARGUMENT_FILE_DEPTH) {
         out.add(argument);
         continue;
       }
@@ -365,10 +387,9 @@ public final class JavacOptions {
    *
    * <p><b>The format, measured against javac.</b> The file is split on WHITESPACE, and the quotes
    * around a token are stripped -- but they do NOT group it. So {@code -d "C:\a"} is the option
-   * {@code -d} with the value {@code C:\a}, while {@code -d "C:\a b"} is the option {@code -d}
-   * with the value {@code C:\a} followed by a stray {@code b"} -- which javac then treats as a
-   * source file. A quoted value with a space in it is therefore two tokens, exactly as javac
-   * sees them.
+   * {@code -d} with the value {@code C:\a}, while {@code -d "C:\a b"} is the option {@code -d} with
+   * the value {@code C:\a} followed by a stray {@code b"} -- which javac then treats as a source
+   * file. A quoted value with a space in it is therefore two tokens, exactly as javac sees them.
    */
   private static List<String> readArgumentFile(Path file) {
     try {
@@ -390,8 +411,8 @@ public final class JavacOptions {
    * The quotes around a token, removed.
    *
    * <p>Only a matching pair at the two ends is removed: a token that merely starts with a quote --
-   * which is what a split value with a space inside it looks like -- keeps it, because that is
-   * what javac sees.
+   * which is what a split value with a space inside it looks like -- keeps it, because that is what
+   * javac sees.
    */
   private static String stripQuotes(String token) {
     if (token.length() >= 2 && token.startsWith("\"") && token.endsWith("\"")) {

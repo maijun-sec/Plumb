@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.build.capture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,9 +41,9 @@ import org.junit.jupiter.api.io.TempDir;
  * whose contents are the upstream module's classes. No static reading of {@code build.gradle} can
  * produce that; only asking Gradle can.
  *
- * <p>So the assertion is not "something was captured". It is: the downstream module's capture
- * names the upstream module's output directory and the external dependency's jar. That is the
- * ground truth a static analyser needs, and it is the thing a build-script reader cannot get.
+ * <p>So the assertion is not "something was captured". It is: the downstream module's capture names
+ * the upstream module's output directory and the external dependency's jar. That is the ground
+ * truth a static analyser needs, and it is the thing a build-script reader cannot get.
  *
  * <p><b>Why the agent is enough.</b> Gradle assembles the compile in the daemon and performs it
  * through {@code javax.tools}. The daemon hook forces the build into the foreground process that
@@ -30,8 +51,8 @@ import org.junit.jupiter.api.io.TempDir;
  * There is deliberately no Gradle-specific classpath hook -- see {@link GradleHooks}.
  *
  * <p><b>When Gradle is not available</b> the test returns without asserting. That is a partial
- * skip, and it is reported as such: the test still runs the {@code javax.tools} path in
- * {@code CaptureAgentE2EIT}, so the capture machinery itself is always covered.
+ * skip, and it is reported as such: the test still runs the {@code javax.tools} path in {@code
+ * CaptureAgentE2EIT}, so the capture machinery itself is always covered.
  */
 class GradleCaptureE2EIT {
 
@@ -56,8 +77,7 @@ class GradleCaptureE2EIT {
     Files.createDirectories(captures);
 
     Path agent = agentJar();
-    Assumptions.assumeTrue(
-        Files.exists(agent), "the agent jar is not packaged yet: " + agent);
+    Assumptions.assumeTrue(Files.exists(agent), "the agent jar is not packaged yet: " + agent);
 
     // The agent must reach the JVM that performs the compile.  Gradle runs
     // the build in a daemon, so the daemon is forced off and the build runs in
@@ -141,9 +161,7 @@ class GradleCaptureE2EIT {
         }
         """);
 
-    Files.writeString(
-        upstream.resolve("build.gradle"),
-        "plugins { id 'java-library' }\n");
+    Files.writeString(upstream.resolve("build.gradle"), "plugins { id 'java-library' }\n");
 
     Files.writeString(
         downstream.resolve("build.gradle"),
@@ -160,12 +178,14 @@ class GradleCaptureE2EIT {
 
     Files.writeString(
         upstream.resolve("src/main/java/com/example/upstream/Upstream.java"),
-        "package com.example.upstream;\npublic class Upstream { public int value() { return 1; } }\n");
+        "package com.example.upstream;\n"
+            + "public class Upstream { public int value() { return 1; } }\n");
     Files.writeString(
         downstream.resolve("src/main/java/com/example/downstream/Downstream.java"),
         "package com.example.downstream;\n"
             + "import com.example.upstream.Upstream;\n"
-            + "public class Downstream { public int value() { return new Upstream().value(); } }\n");
+            + "public class Downstream { public int value() { return new Upstream().value(); }"
+            + " }\n");
   }
 
   /**
@@ -175,8 +195,8 @@ class GradleCaptureE2EIT {
    *
    * <ul>
    *   <li>{@code org.gradle.jvmargs} carries the {@code -javaagent} option. This is the only
-   *       argument list Gradle forwards to the JVM it builds in, so it is how the agent reaches
-   *       the process that performs the compile.
+   *       argument list Gradle forwards to the JVM it builds in, so it is how the agent reaches the
+   *       process that performs the compile.
    *   <li>{@code plumb.capture.gradle.disable-daemon} turns on the Gradle hooks, which force the
    *       daemon and the build cache off so the compile actually happens.
    *   <li>{@code org.gradle.daemon=false} stops Gradle from forking a daemon at all.
@@ -196,7 +216,11 @@ class GradleCaptureE2EIT {
       arguments = arguments + "," + extra;
     }
     String properties =
-        "org.gradle.jvmargs=-Xmx1g -javaagent:" + path + "=" + arguments + "\n"
+        "org.gradle.jvmargs=-Xmx1g -javaagent:"
+            + path
+            + "="
+            + arguments
+            + "\n"
             + "org.gradle.daemon=false\n";
     Files.writeString(project.resolve("gradle.properties"), properties);
   }
@@ -214,10 +238,10 @@ class GradleCaptureE2EIT {
    *   <li>the Gradle distributions this repository's own probes downloaded.
    * </ol>
    *
-   * <p><b>Why the version matters.</b> A Gradle that cannot run on the JDK under test is worse
-   * than no Gradle: the build fails for a reason that has nothing to do with the capture. Gradle
-   * 8.x cannot read a Java 25 class file ("Unsupported class file major version 69"), so the
-   * candidate is checked by running it before it is trusted.
+   * <p><b>Why the version matters.</b> A Gradle that cannot run on the JDK under test is worse than
+   * no Gradle: the build fails for a reason that has nothing to do with the capture. Gradle 8.x
+   * cannot read a Java 25 class file ("Unsupported class file major version 69"), so the candidate
+   * is checked by running it before it is trusted.
    *
    * @return the launcher, or {@code null} when there is none that works here
    */
@@ -286,8 +310,8 @@ class GradleCaptureE2EIT {
   /**
    * The Gradle version of a distribution, as a comparable number.
    *
-   * <p>The path holds the version twice -- in the directory name and in the
-   * distribution's own name -- so the first {@code gradle-<version>} wins.
+   * <p>The path holds the version twice -- in the directory name and in the distribution's own name
+   * -- so the first {@code gradle-<version>} wins.
    *
    * @return the version as {@code major * 1000 + minor}, or {@code -1} when it cannot be read
    */
