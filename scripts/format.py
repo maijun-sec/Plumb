@@ -57,6 +57,12 @@ EXCLUDED_PREFIXES = (
 )
 
 # The module source roots that hold Plumb's own code.
+#
+# `plumb-build` is a parent pom with three focused modules, so its
+# sources live under `plumb-build/plumb-build-*/src`. Listing the old
+# `plumb-build/src` path would match nothing -- and a source root that
+# matches nothing is a silent hole: those files would be neither
+# formatted nor gated, and nobody would notice.
 SOURCE_ROOTS = (
     "plumb-parser/src",
     "plumb-tac/src",
@@ -64,7 +70,9 @@ SOURCE_ROOTS = (
     "plumb-style/src",
     "plumb-reporter/src",
     "plumb-dfa/src",
-    "plumb-build/src",
+    "plumb-build/plumb-build-core/src",
+    "plumb-build/plumb-build-maven/src",
+    "plumb-build/plumb-build-capture/src",
     "plumb-ai/src",
     "plumb-main/src",
 )
