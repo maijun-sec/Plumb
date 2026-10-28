@@ -173,6 +173,25 @@ name（`JdbcTemplate.query/2`）——扫描一个不带依赖 jar 的项目时�
 没有这份变体，所有框架 sink 会静默失配。细节见
 [规则编写指南](../rules/RULE-AUTHORING.md#133-加新-taint-rule)。
 
+### 3.1.0b 缓解措施可以是关于 sink 接收者的事实
+
+不是所有缓解措施都是对被污染值做的收窄操作。有些是关于 **sink 被调用在哪个对象上** 的事实，sink 检查必须去查这些事实。
+
+JEP-290 的 `ObjectInputFilter` 就是这种情况。`UnsafeDeserializationChecker` 的规格里点名 `ObjectInputFilter` 和
+`resolveClass` 是它必须认的 sanitizer，而很长时间里没有任何东西实现它。这个 filter 不是对被污染字节的收窄 —— 它是
+**stream** 的属性：同一批字节走有 filter 的 stream 是安全的，走没有 filter 的 stream 就不安全。所以：
+
+- tracker（`taint/DeserializationFilterTracker.java`）按 stream 变量记录：这个 stream 上是否挂了一个**能 REJECT** 的
+  filter。
+- sink 检查问的是它即将上报的那个**接收者**。
+- 只有能 reject 才算限制。PATTERN filter 的 pattern 以 `!*` 结尾才算限制；不带 `!*` 的 pattern 会放行它没提到的每一个
+  类，所以它什么也没限制。LAMBDA filter 的函数体里能返回 `REJECTED` 才算限制；只返回 `ALLOWED` 或 `UNDECIDED` 的函数体
+  是"部分缓解"，finding 必须还在。
+- 它**只对 deserialization 这个 family 生效**。一个 filter 说的是"这些类可以被重建"；它对日志、命令行、SQL 语句什么都没说。
+
+tracker 的按函数状态在每个函数边界清空，但 lambda 的函数体是在 `initEngine()` 里按程序索引一次的 —— 在任何函数被访问
+之前，因为 sink 检查是在指令遍历**还在进行**的时候问这个问题的。
+
 ### 3.1.1 框架入口点：源不是一次调用，而是一个参数注解
 
 只认 `HttpServletRequest.getParameter(...)` 的扫描器在 Spring 代码里**看不到任何源** ——
@@ -318,7 +337,7 @@ null 会互相 alias，污染 `mayAlias`）：
 
 ## 5. Z3：只做误报过滤
 
-Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:3284`，位于 sink 发出路径：
+Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:3343`，位于 sink 发出路径：
 
 ```java
 String composed = composePathCondition(pathConditionForSink(...));
@@ -328,7 +347,7 @@ if (!composed.isEmpty()) {
 }
 ```
 
-- `pathConditionForSink` **默认返回 null**（`:3384-3387`），所以未覆写它的 checker
+- `pathConditionForSink` **默认返回 null**（`:3443-3446`），所以未覆写它的 checker
   组合出的条件为空，**根本不会调用 Z3**
 - 语义明确：Z3 **只用于抑制误报，绝不用于发现缺陷**（`:3237`）
 - 调用链：`CachedZ3Bridge`（LRU 4096 项，`solver/CachedZ3Bridge.java:41-66`）→

@@ -81,7 +81,11 @@ public final class ResourceLeakChecker extends PathSensitiveCheckerBase {
     for (Map.Entry e : this.allocSites.entrySet()) {
       TacOperand.TacVar allocVar = (TacOperand.TacVar) e.getKey();
       TacInstruction allocSite = (TacInstruction) e.getValue();
+      // An UNCONDITIONAL close discharges the obligation.
       if (this.closeSites.containsKey(allocVar) || this.passedOut.contains(allocVar)) continue;
+      // A close that only happens on SOME path does not: the rule fires when the resource is
+      // "not closed on every path", and a conditional close leaves the other path leaking. The
+      // allocation is therefore still reported.
       this.emitLeakFinding(allocVar, allocSite, fn, ctx);
     }
     return super.summarizeFunction(ctx, fn);

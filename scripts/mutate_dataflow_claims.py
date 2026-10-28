@@ -52,10 +52,6 @@ MUTANTS = [
      DOC,
      "| `plumb.call.unmodeled-callee-ret` | `UNMODELED_CALLEE_RET` | `:179` |",
      "| `plumb.call.unmodeled-callee-ret` | `UNMODELED_CALLEE_RET` | `:170` |"),
-    ("stale-citation-z3-call-site",
-     DOC,
-     "TaintedCheckerBase.java:3284",
-     "TaintedCheckerBase.java:3000"),
     ("stale-citation-range",
      DOC,
      "(`points/AbstractObject.java:288-290`)",
@@ -113,6 +109,30 @@ MUTANTS = [
 ]
 
 
+def derive_z3_citation_mutant():
+    """Build the Z3 call-site mutant FROM the document, not from a copied number.
+
+    A hard-coded anchor is a second source of truth: when the source file
+    grows and the citation moves, the anchor stops matching and the battery
+    reports "could not build" -- which says nothing about the gate.  So the
+    anchor is read out of the document at run time, and only the REPLACEMENT
+    is hard-coded.
+
+    Returns None when the document does not carry the citation at all, which
+    is itself a defect the gate should catch -- so the caller reports it.
+    """
+    text = DOC.read_text(encoding="utf-8")
+    match = re.search(r"TaintedCheckerBase\.java:(\d+)", text)
+    if not match:
+        return None
+    return (
+        "stale-citation-z3-call-site",
+        DOC,
+        "TaintedCheckerBase.java:%s" % match.group(1),
+        "TaintedCheckerBase.java:3000",
+    )
+
+
 def main():
     if not DOC.is_file():
         print("FAIL: %s does not exist" % DOC)
@@ -129,7 +149,17 @@ def main():
     survived = []
     broken = []
 
-    for name, target, old, new in MUTANTS:
+    # The Z3 call-site citation is DERIVED from the document, so it cannot
+    # drift away from the document it is supposed to be checking.
+    mutants = list(MUTANTS)
+    derived = derive_z3_citation_mutant()
+    if derived is None:
+        print("FAIL: the document does not cite a TaintedCheckerBase.java line, "
+              "so the Z3 call-site citation cannot be mutated")
+        return 1
+    mutants.append(derived)
+
+    for name, target, old, new in mutants:
         if not target.is_file():
             print("FAIL: %s -- %s does not exist" % (name, target))
             return 1
@@ -158,7 +188,7 @@ def main():
             print("killed    %s" % name)
 
     print()
-    print("%d/%d mutant(s) killed" % (killed, len(MUTANTS)))
+    print("%d/%d mutant(s) killed" % (killed, len(mutants)))
     if broken:
         print("could not build: %s" % ", ".join(broken))
         return 1

@@ -809,7 +809,12 @@ public final class ExpressionTranslator {
    * binding.
    */
   private ExpressionResult translateLambda(LambdaExpr le, TacBuilder b) {
-    String lambdaName = "lambda$" + (b.lambdaCounter++);
+    // The name is allocated from the TRANSLATOR's program-wide counter, not
+    // from the builder's. A per-builder counter restarted at zero for every
+    // method, so every method's first lambda was named `lambda$0` and the
+    // program's function table held several functions with the same name.
+    // Anything that resolves a lambda BY NAME then got an arbitrary answer.
+    String lambdaName = owner.nextLambdaName();
     String signature = lambdaName + "(" + le.getParameters().size() + ")";
     TacBuilder.FunctionSpec spec =
         new TacBuilder.FunctionSpec(lambdaName, signature, TacType.UNKNOWN);

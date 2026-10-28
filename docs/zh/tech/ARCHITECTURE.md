@@ -103,7 +103,7 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
 
 ### 3.0 DFA checker 的实现形态
 
-`plumb-dfa/src/main/java` 下共 150 个 `.java`，并非每个都是独立的分析器。按**实际实现
+`plumb-dfa/src/main/java` 下共 151 个 `.java`，并非每个都是独立的分析器。按**实际实现
 机制**可分成几类（数量为实测）：
 
 | 形态 | 数量 | 含义 |
@@ -148,6 +148,50 @@ PathSensitiveCheckerBase (plumb-dfa/taint/PathSensitiveCheckerBase.java):
 ```
 
 直接 findings（bug 完全在函数体里）通过 `ctx.reporter().report(...)` 立刻发，**不进 summary**；只有"调用方需要知道的事"才进 `FunctionSummary`（R-7 约束）。
+
+#### 3.0.2 缓解措施是一个事实，而且有些事实是关于 sink 的接收者的
+
+`UnsafeDeserializationChecker` 的规格里点名了 `ObjectInputFilter` 和 `resolveClass` 是它必须认的 sanitizer。很长时间里
+没有任何东西实现它：这些名字只出现在文档里，代码里没有 —— 于是已经修掉反序列化 CVE 的构建照样被报出来。一条注册成
+CRITICAL 严重级别却永远不可能触发的规则，比没有这条规则更糟，因为覆盖率报告会声称这个 CWE 已经处理了。
+
+JEP-290 filter 现在是一个一等事实，由 `DeserializationFilterTracker`（`plumb-dfa/taint/`）持有。三条性质定义了它，每一条
+都是 tracker 必须做对的判断：
+
+| 性质 | 为什么是这样 |
+| --- | --- |
+| **它属于 stream，不属于 value。** | 同一批不可信字节，走有 filter 的 stream 是安全的，走没有 filter 的 stream 就不安全。filter 装在 STREAM 上，所以 sink 检查问的是它即将上报的那个**接收者**。 |
+| **只有能 REJECT 才算限制。** | 只返回 `ALLOWED` 和 `UNDECIDED` 的 filter 拒绝不了任何东西，所以它什么也没限制 —— 那就是"部分缓解"，finding 必须还在。PATTERN filter 的 pattern 以 `!*` 结尾才算限制；不带 `!*` 的 pattern 会放行它没提到的每一个类。LAMBDA filter 的函数体里能返回 `REJECTED` 才算限制。 |
+| **它只对自己的 family 生效。** | 一个 filter 说的是"这些类可以被重建"，它对日志、命令行、SQL 语句什么都没说。 |
+
+tracker 的状态是**按函数**的（filter 的安装和读取在同一个函数里），但 lambda 的**函数体**是按程序索引一次的，位置在
+`initEngine()` —— 在任何函数被访问之前，因为 sink 检查是在指令遍历**还在进行**的时候问"这个 stream 有 filter 吗"，而
+lambda filter 只有在函数体已经被读过之后才能回答。
+
+在这个事实能被表达之前，有三条 TAC 层面的不变量必须成立，而每一条都藏着一个真实的 finding：
+
+- **try-with-resources 的资源是一个声明。** 资源声明在函数体之前翻译，资源变量是一个 local。否则函数体里对它的引用会
+  落到名字解析器的 `this.<name>` 兜底分支，变成一个挂在 `this` 上、类型为 `UNKNOWN` 的 FIELDLOAD —— 而初始化表达式根本
+  没被翻译，于是 taint 根本到不了它。这样一来，`try (ObjectInputStream ois = new
+  ObjectInputStream(untrusted)) { ois.readObject(); }` 就**结构上不可能**产生 finding，而同样代码写在 try 外面却能。
+- **lambda 的名字在整个程序里唯一。** 计数器放在 translator 上，不是每个方法自己的 builder 上。用 per-builder 计数器时，
+  每个方法的第一个 lambda 都叫 `lambda$0`，任何**按名字**解析 lambda 的地方都会拿到任意一个答案 —— tracker 会因此
+  认定一个宽松的 filter 也能 REJECT。
+- **资源的 `close()` 是建模的，就当成一次普通 CALL。** Java 的 try-with-resources 在块结束时关闭资源，所以 TAC 把这次
+  close 发射成对资源变量的一次调用。发射它正是让资源泄漏 checker 保持诚实的原因：checker 会在看不到 close 时报一个
+  分配，所以一个**没有**关闭的 try-with-resources 会被报成泄漏 —— 那是对正确关闭了资源的代码的误报。
+
+在资源泄漏 checker 能正确判断"关没关"之前，还有两条事实必须成立，而这两条都是被 try-with-resources 的工作暴露出来的
+既有缺口：
+
+- **对 local 的 close 会关闭它被赋值的那个分配。** TAC 把 `X x = new X(...); x.close();` 降成先 `NEW` 到一个**临时变量**、
+  再 `MOVE` 到 local，所以分配在临时变量上，close 在 local 上。两者之间没有别名的话，checker 会对正确关闭了资源的代码
+  报泄漏。
+- **只在某条路径上的 close，不等于每条路径都 close 了。** 这条规则是在资源"不是每条路径都关闭"时触发的，所以分支臂里的
+  close 不能解除这个义务。分支臂的结构是从 TAC 的 `BRANCH` 和 label 结构里读出来的。
+
+`scripts/mutate_deserialization_filter.py` 会变异 tracker 里五个承重的判断，并断言测试能抓住每一个：宽松的 pattern、
+从不 REJECT 的 lambda、装到错误 stream 上的 filter、不限 family 的抑制、以及根本不抑制。
 
 ### 3.1 模块依赖图
 

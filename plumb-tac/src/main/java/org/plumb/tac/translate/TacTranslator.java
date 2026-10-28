@@ -600,6 +600,35 @@ public final class TacTranslator {
     return out;
   }
 
+  /**
+   * The program-wide lambda counter.
+   *
+   * <p><b>Why it is program-wide and not per-builder.</b> A lambda body is lowered to a synthetic
+   * function named {@code lambda$N}. When the counter lived on the {@link TacBuilder}, each method
+   * restarted at zero, so every method's first lambda was named {@code lambda$0} -- and the
+   * program's function table then held SEVERAL functions with the same name.
+   *
+   * <p>That is not cosmetic. Anything that looks a lambda up BY NAME then gets an arbitrary answer:
+   * the deserialization-filter tracker asks "does this lambda's body ever return REJECTED?" and,
+   * finding two {@code lambda$0}s -- one rejecting and one not -- concludes that both reject. A
+   * permissive JEP-290 filter that allows {@code java.lang.*} and leaves the rest UNDECIDED was
+   * then treated as a shipped mitigation, and the CWE-502 finding it should have produced was
+   * silently dropped.
+   *
+   * <p>So the counter is a translator field: every lambda in the program gets a distinct name, and
+   * a name lookup resolves to exactly one body.
+   */
+  private int lambdaCounter = 0;
+
+  /**
+   * Allocate the next program-unique lambda name.
+   *
+   * @return a name of the form {@code lambda$N}
+   */
+  String nextLambdaName() {
+    return "lambda$" + (lambdaCounter++);
+  }
+
   private TacBuilder newBuilder(TacBuilder.FunctionSpec spec, List<TacOperand.TacVar> params) {
     return new TacBuilder(spec, params);
   }

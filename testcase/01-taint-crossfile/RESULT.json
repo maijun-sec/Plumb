@@ -2,7 +2,7 @@
   "category": "01-taint-crossfile",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 900,
+  "total_findings": 903,
   "cases": [
     {
       "id": "TP-1-full-chain",
@@ -292,7 +292,7 @@
     "tn_false_positive": 0
   },
   "cwe_histogram": {
-    "CWE-404": 34,
+    "CWE-404": 35,
     "CWE-476": 30,
     "CWE-668": 21,
     "CWE-697": 17,
@@ -305,10 +305,10 @@
     "CWE-798": 8,
     "CWE-331": 8,
     "CWE-190": 6,
+    "CWE-22": 5,
     "CWE-1060": 5,
     "CWE-398": 4,
     "CWE-400": 3,
-    "CWE-22": 3,
     "CWE-606": 2,
     "CWE-129": 2,
     "CWE-78": 2,

@@ -103,7 +103,7 @@ The concurrency model and resource usage of each stage:
 
 ### 3.0 The implementation shapes of the DFA checkers
 
-There are 150 `.java` files under `plumb-dfa/src/main/java`, and not every one of them is an independent analyser. By
+There are 151 `.java` files under `plumb-dfa/src/main/java`, and not every one of them is an independent analyser. By
 **actual implementation mechanism** they fall into a few categories (the counts are measured):
 
 | Shape | Count | Meaning |
@@ -150,6 +150,57 @@ PathSensitiveCheckerBase (plumb-dfa/taint/PathSensitiveCheckerBase.java):
 Direct findings (a bug that lies entirely inside the function body) are emitted immediately through
 `ctx.reporter().report(...)` and **do not go into the summary**; only "what the caller needs to know" goes into
 `FunctionSummary` (the R-7 constraint).
+
+#### 3.0.2 A mitigation is a fact, and some facts are about the SINK's receiver
+
+`UnsafeDeserializationChecker` names `ObjectInputFilter` and `resolveClass` as sanitizers it must honour. For a long
+time nothing implemented that: the names appeared in prose and nowhere else, so a build that shipped the fix for a
+deserialization CVE was still reported. A rule that is registered at CRITICAL severity and can never fire is worse than an
+absent rule, because the coverage report claims the CWE is handled.
+
+The JEP-290 filter is now a first-class fact, held by `DeserializationFilterTracker` (`plumb-dfa/taint/`). Three
+properties define it, and each one is a decision the tracker has to get right:
+
+| Property | Why it is the way it is |
+| --- | --- |
+| **It is about the stream, not the value.** | The same untrusted bytes are safe through a filtered stream and unsafe through an unfiltered one. The filter is installed on the STREAM, so the sink check asks about the RECEIVER it is about to report on. |
+| **It restricts only when it can REJECT.** | A filter whose only outcomes are `ALLOWED` and `UNDECIDED` cannot reject anything, so it restricts nothing -- that is the partial mitigation, and the finding must stand. A PATTERN filter restricts when its pattern ends in `!*`; a pattern without it allows every class it does not mention. A LAMBDA filter restricts when its body can return `REJECTED`. |
+| **It is scoped to its family.** | A filter says "these classes may be reconstructed". It says nothing about a log entry, a command line, or a SQL statement. |
+
+The tracker's state is per-function (the filter is installed and read in the same function), but the lambda BODIES are
+indexed once per program, in `initEngine()` -- before any function is visited, because the sink check asks "is this
+stream filtered?" *while* the instruction walk is still running, and a lambda filter can only be answered if its body has
+already been read.
+
+Three TAC-level invariants had to hold before the fact could be represented at all, and each one had been hiding a real
+finding:
+
+- **A try-with-resources' resource is a declaration.** The resource declarations are translated before the body, and the
+  resource variable is a local. Otherwise the body's reference to it falls through the name resolver's `this.<name>`
+  fallback and becomes a FIELDLOAD off `this` with an `UNKNOWN` type -- and the initializer is never translated, so no
+  taint can reach it. A `try (ObjectInputStream ois = new ObjectInputStream(untrusted)) { ois.readObject(); }` would then be
+  structurally incapable of producing a finding, while the same code outside a try-with-resources did produce one.
+- **A lambda's name is unique across the program.** The counter lives on the translator, not on the per-method builder.
+  With a per-builder counter, every method's first lambda was called `lambda$0`, and anything that resolves a lambda BY
+  NAME got an arbitrary answer -- the tracker would conclude that a permissive filter could reject.
+- **The resource's `close()` is modelled, as an ordinary CALL.** Java's try-with-resources closes the resource when the block
+  ends, so the TAC emits the close as a call on the resource variable. Emitting it is what keeps the resource-leak checker
+  honest: the checker reports an allocation unless it sees a close on that value, so a try-with-resources that was NOT
+  closed would be reported as a leak -- a false positive on code that closes the resource correctly.
+
+Two more facts had to hold before the resource-leak checker could be right about closings, and both were pre-existing gaps
+that the try-with-resources work brought to the surface:
+
+- **A close on a local closes the allocation it was assigned from.** The TAC lowers `X x = new X(...); x.close();` to a
+  `NEW` into a TEMPORARY followed by a `MOVE` into the local, so the allocation lives on the temporary and the close on the
+  local. Without an alias between them, the checker reported a leak on code that closes the resource correctly.
+- **A close on SOME path is not a close on EVERY path.** The rule fires when the resource is "not closed on every path", so
+  a close inside a branch arm does not discharge the obligation. The branch-arm structure is read from the TAC's `BRANCH`
+  and label structure.
+
+`scripts/mutate_deserialization_filter.py` mutates the tracker's five load-bearing decisions and asserts that the tests
+catch each one: a permissive pattern, a lambda that never rejects, a filter attached to the wrong stream, an unscoped
+suppression, and an absent suppression.
 
 ### 3.1 Module dependency graph
 

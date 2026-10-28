@@ -211,6 +211,27 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private final EqualityAllowlistTracker equalityAllowlists = new EqualityAllowlistTracker();
 
   /**
+   * Whether this sink family is the deserialization family.
+   *
+   * <p>The deserialization filter is only meaningful for it: a JEP-290 {@code ObjectInputFilter} on
+   * an {@code ObjectInputStream} says nothing about a SQL statement or a command line, and applying
+   * it there would suppress findings that have nothing to do with it.
+   */
+  private static boolean isDeserializationFamily(SinkFamily family) {
+    return family != null && "deserialization.sinks".equals(family.name());
+  }
+
+  /**
+   * The deserialization filter tracker: which streams have a JEP-290 filter that can reject.
+   *
+   * <p>Kept as its own tracker for the same reason as the allowlist: it answers a different
+   * question, and only it can license suppressing a finding. A filter is a property of the STREAM,
+   * not of the bytes, so the answer is "is this stream filtered" rather than "is this value clean".
+   */
+  private final DeserializationFilterTracker deserializationFilters =
+      new DeserializationFilterTracker();
+
+  /**
    * eager dual-write: v2 trace accumulator. Parallel to {@link #taintPaths} (the v1 {@code
    * List<FlowStep>} list): each entry maps a tainted {@link TacOperand.TacVar} to the v2 {@link
    * TraceNode} id that represents the "latest" node on its path. The full DAG is held in {@link
@@ -443,6 +464,21 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   @Override
+  public void initEngine(AnalysisContext ctx) {
+    // The deserialization filter's lambda bodies are indexed ONCE, before any
+    // function is visited, because a filter's lambda may be defined in a
+    // different function than the one that installs it.  The bodies are a
+    // property of the program, not of the function being analysed.
+    //
+    // It has to be here and not in finish(): the sink check asks "is this
+    // stream filtered?" while the instruction walk is still running, and a
+    // filter installed by a LAMBDA can only be answered if the lambda's body
+    // has already been read.  Indexing at the end would leave every lambda
+    // filter looking like no filter at all, and the finding would stand.
+    deserializationFilters.indexLambdaBodies(ctx.program().functions());
+  }
+
+  @Override
   public void finish(AnalysisContext ctx) {
     // Per-function trackers (fieldTaintTracker / classRefVars) are
     // already cleared in initFunction; here we just reset the
@@ -660,6 +696,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // per-function allowlist proof. Carried per checker like the other trackers, because the
     // proof is about names in one method's scope.
     equalityAllowlists.reset(fn.signature());
+    // The deserialization filter is installed and read in the same
+    // function, so its state is per-function too.  The lambda BODIES are
+    // not: they are indexed once per program in finish().
+    deserializationFilters.clear();
     // clear the v2 trace accumulator. The
     // builder is reset so node ids restart from 0
     // for the new function (avoids cross-function
@@ -737,6 +777,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // work at all. Clearing at the MOVE lets ordinary propagation carry the cleanliness through the
     // concatenation and leaves every rule's sink code untouched.
     equalityAllowlists.observe(ins, fn);
+    // The deserialization filter is observed for the same reason and at the
+    // same place: the filter is installed by a CALL, and the read that
+    // follows it has to be able to ask about it.
+    deserializationFilters.observeLambdaBindings(ins);
+    deserializationFilters.observe(ins);
     switch (ins.kind) {
       case MOVE -> propagateMOVE(ins);
       // FIELDLOAD: dest = this.f
@@ -3211,6 +3256,19 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     }
     if (!(arg instanceof TacOperand.TacVar av)) return;
     if (!taintedVars.containsKey(av)) return;
+    // A deserialization stream that carries a JEP-290 filter which can
+    // reject is not a finding: the filter is the shipped mitigation, and
+    // the bytes are the same either way -- it is the STREAM that decides.
+    //
+    // The check is on the RECEIVER, because the filter is installed on the
+    // stream.  And it is only applied to the deserialization family: a
+    // filter on an ObjectInputStream says nothing about any other sink.
+    if (isDeserializationFamily(family) && deserializationFilters.restricts(av)) {
+      LOG.debug(
+          "suppressing deserialization finding -- the stream {} has a filter that can reject",
+          av.name());
+      return;
+    }
     // this parameter is tainted here only because of the entry-boundary seed, and only
     // because of it when its own name is the recorded source. If every resolved call site
     // proved the value clean, that taint is not real and the finding is a false positive.

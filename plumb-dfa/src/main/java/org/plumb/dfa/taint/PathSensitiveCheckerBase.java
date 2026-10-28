@@ -79,6 +79,59 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
    */
   protected final List<TacOperand.TacVar> passedOut = new ArrayList<>();
 
+  /**
+   * The variables that are aliases of an allocated value, mapped to the variable they alias.
+   *
+   * <p><b>Why this exists.</b> The TAC lowers {@code FileInputStream in = new FileInputStream(f);}
+   * to a {@code NEW} into a TEMPORARY followed by a {@code MOVE} into the local:
+   *
+   * <pre>
+   *   NEW    dest=t_t0   (the allocation)
+   *   MOVE   dest=in     lhs1=t_t0
+   *   CALL   in.close/0  (the close)
+   * </pre>
+   *
+   * <p>So the allocation is recorded on {@code t_t0} and the close on {@code in}, and the two never
+   * meet. Without this map, {@code in.close()} did not count as closing {@code t_t0}, and the
+   * checker reported a resource leak on code that closes the resource correctly.
+   *
+   * <p>The same shape appears in a try-with-resources, where the resource is a local and the
+   * implicit close is on that local.
+   *
+   * <p>The map is deliberately shallow: one level of MOVE. A deeper chain would need the alias to
+   * be resolved transitively, and the value here is bounded -- an allocation is either closed
+   * through the local it was assigned to, or it is not closed at all.
+   */
+  protected final Map<TacOperand.TacVar, TacOperand.TacVar> aliases = new LinkedHashMap<>();
+
+  /**
+   * The closes that happened inside a branch arm, so on SOME path only.
+   *
+   * <p>They are kept apart from {@link #closeSites} because a conditional close does not discharge
+   * the close obligation. The rule fires when the resource is "not closed on every path", so a
+   * close on one path is not a close at all.
+   */
+  protected final Map<TacOperand.TacVar, List<TacInstruction>> conditionalCloseSites =
+      new LinkedHashMap<>();
+
+  /**
+   * The labels a BRANCH points at, and the merge label that ends the arm.
+   *
+   * <p>The TAC lowers an {@code if} to a {@code BRANCH} plus labelled regions. The arm a close sits
+   * in is identified by the label that starts it; the arm ends at the merge label, which the arm's
+   * trailing {@code JUMP} names.
+   */
+  private final Map<String, Integer> armDepthByLabel = new LinkedHashMap<>();
+
+  /** The branch-arm depth of the instruction currently being examined. */
+  private int currentArmDepth = 0;
+
+  /** The labels a BRANCH has opened arms at, waiting to be entered. */
+  private final java.util.Set<String> pendingArmTargets = new java.util.LinkedHashSet<>();
+
+  /** How many arms the BRANCH instructions so far have opened. */
+  private int pendingArmDepth = 0;
+
   /** Human-readable rule id (overridden by the subclass). */
   public abstract String ruleId();
 
@@ -100,6 +153,11 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
     allocSites.clear();
     closeSites.clear();
     passedOut.clear();
+    aliases.clear();
+    conditionalCloseSites.clear();
+    pendingArmTargets.clear();
+    pendingArmDepth = 0;
+    currentArmDepth = 0;
     // Parameters are provisionally
     // "potentially-allocated" — the caller's
     // summary may refine this via
@@ -112,9 +170,20 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
 
   @Override
   public void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
+    // Forward: track the branch-arm structure, so a close can be told apart from a close that
+    // only happens on some paths.
+    trackBranchArm(ins);
     // Forward: detect an alloc site.
     if (isAllocSite(ins) && ins.dest instanceof TacOperand.TacVar destVar) {
       allocSites.put(destVar, ins);
+    }
+    // Forward: remember the MOVE that binds an allocation to a local, so a close on the local
+    // counts as closing the allocation. Without this, `X x = new X(...); x.close();` reported a
+    // leak, because the allocation is on the temporary and the close is on the local.
+    if (ins.kind == TacInstruction.Kind.MOVE
+        && ins.dest instanceof TacOperand.TacVar moveDest
+        && ins.lhs1 instanceof TacOperand.TacVar moveSrc) {
+      aliases.put(moveDest, moveSrc);
     }
     // Forward: detect a close call.
     if (ins.kind == TacInstruction.Kind.CALL && isCloseCall(ins)) {
@@ -188,16 +257,140 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
   }
 
   /**
+   * Track the branch-arm structure of the instruction stream.
+   *
+   * <p>The TAC lowers an {@code if} to a {@code BRANCH} with two targets, and each arm is a
+   * labelled region:
+   *
+   * <pre>
+   *   if flag goto L_THEN_0 else goto L_ELSE_1
+   *  L_THEN_0:
+   *   in.close()          &lt;-- inside an arm
+   *   goto L_END_IF_2
+   *  L_ELSE_1:
+   *  L_END_IF_2:
+   *   in.read()
+   * </pre>
+   *
+   * <p>So an arm is: a label a BRANCH points at, up to the {@code JUMP} that leaves it. The
+   * tracking is deliberately coarse -- it does not model the CFG, and it does not try to prove
+   * dominance. It identifies the shape the rule cares about: a close that only happens on some
+   * paths.
+   *
+   * <p>A close that is NOT inside an arm is unconditional, and it discharges the obligation. A
+   * close inside an arm is conditional, and it does not.
+   *
+   * @param ins the instruction
+   */
+  private void trackBranchArm(TacInstruction ins) {
+    switch (ins.kind) {
+      case BRANCH -> {
+        // A branch opens an arm at each of its two targets. The merge label -- the one the arm's
+        // trailing JUMP names -- is not known yet, so the arm is closed when that JUMP is seen.
+        pendingArmTargets.add(ins.trueLabel);
+        pendingArmTargets.add(ins.falseLabel);
+        pendingArmDepth++;
+      }
+      case LABEL -> {
+        if (pendingArmTargets.contains(ins.label)) {
+          currentArmDepth = pendingArmDepth;
+          pendingArmTargets.remove(ins.label);
+        } else if (mergeLabelOf(ins.label) != null) {
+          // The merge point: the arm is over.
+          currentArmDepth = 0;
+          pendingArmDepth = Math.max(0, pendingArmDepth - 1);
+        }
+      }
+      case JUMP -> {
+        // The arm's trailing jump names the merge label. A jump that LEAVES the current arm ends
+        // it.
+        if (currentArmDepth > 0 && ins.label != null && ins.label.startsWith("L_END")) {
+          currentArmDepth = 0;
+          pendingArmDepth = Math.max(0, pendingArmDepth - 1);
+        }
+      }
+      default -> {
+        // not a control-flow instruction
+      }
+    }
+  }
+
+  /**
+   * The merge label a region label ends at, or {@code null}.
+   *
+   * <p>The TAC names an {@code if}'s merge label {@code L_END_IF_<n>}, and the arm's trailing
+   * {@code JUMP} names it. So the merge label of an arm is the one a JUMP out of the arm targets,
+   * and the label itself carries the {@code L_END} prefix.
+   */
+  private static String mergeLabelOf(String label) {
+    if (label == null) {
+      return null;
+    }
+    return label.startsWith("L_END") ? label : null;
+  }
+
+  /**
    * Record a close observation for the appropriate argument. By default the close is on argument 0
    * (the first user-visible arg after the receiver for instance methods, or the only arg for static
    * close). Subclasses that use different arg positions override {@link #closeArgumentIndex}.
+   *
+   * <p>The close is recorded on the variable the call names AND on the allocation it aliases. The
+   * TAC lowers {@code X x = new X(...); x.close();} to a {@code NEW} into a temporary followed by a
+   * {@code MOVE} into the local, so the allocation lives on the temporary and the close on the
+   * local. Recording only the local left the two apart, and the checker reported a leak on code
+   * that closes the resource correctly.
+   *
+   * <p>A close that sits inside a BRANCH ARM is recorded as CONDITIONAL, and a conditional close
+   * does not discharge the obligation. The rule is "not closed on EVERY path", so a close on one
+   * path is not a close at all: {@code if (flag) { in.close(); } in.read();} still leaks on the
+   * other path, and reporting that is the whole point of the rule.
    */
   private void recordCloseIfMatches(TacInstruction ins) {
     int argIdx = closeArgumentIndex(ins);
     if (argIdx < 0 || argIdx >= ins.args.size()) return;
     TacOperand arg = ins.args.get(argIdx);
     if (!(arg instanceof TacOperand.TacVar cv)) return;
+    if (isInsideBranchArm()) {
+      // A conditional close. Remember it, but not as a discharge of the obligation.
+      conditionalCloseSites.computeIfAbsent(cv, k -> new ArrayList<>()).add(ins);
+      TacOperand.TacVar conditionalAliased = aliases.get(cv);
+      if (conditionalAliased != null) {
+        conditionalCloseSites.computeIfAbsent(conditionalAliased, k -> new ArrayList<>()).add(ins);
+      }
+      return;
+    }
     closeSites.computeIfAbsent(cv, k -> new ArrayList<>()).add(ins);
+    // The alias direction is local -> allocation, so the allocation is the value of the map.
+    TacOperand.TacVar aliased = aliases.get(cv);
+    if (aliased != null) {
+      closeSites.computeIfAbsent(aliased, k -> new ArrayList<>()).add(ins);
+    }
+  }
+
+  /**
+   * Whether the instruction being examined sits inside a branch arm.
+   *
+   * <p>The TAC lowers an {@code if} to a {@code BRANCH} with two targets, and each arm is a
+   * labelled region:
+   *
+   * <pre>
+   *   if flag goto L_THEN_0 else goto L_ELSE_1
+   *  L_THEN_0:
+   *   in.close()          &lt;-- inside an arm
+   *   goto L_END_IF_2
+   *  L_ELSE_1:
+   *  L_END_IF_2:
+   * </pre>
+   *
+   * <p>A close is inside an arm when the region it sits in was entered through a branch target that
+   * is not the merge point. The tracking is deliberately coarse -- it identifies the arm by the
+   * labels a BRANCH points at, and leaves the arm at the merge label -- but it is exactly right for
+   * the shape the rule cares about: a close that only happens on some paths.
+   *
+   * @return true when the current instruction is inside a conditional arm
+   */
+  private boolean isInsideBranchArm() {
+    return currentArmDepth > 0;
   }
 
   /**

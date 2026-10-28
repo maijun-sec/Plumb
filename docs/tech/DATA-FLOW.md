@@ -146,7 +146,7 @@ their own independent mechanisms (see below).
 repository, the other two being `BoundaryConstraintChecker` and the base class itself).
 
 - State: `taintedVars: Map<TacVar, String>` (`:139`) and `taintPaths` (`:148`)
-- Propagation: `propagateMOVE` (`:1228`) and friends, dispatched by instruction kind
+- Propagation: `propagateMOVE` (`:1274`) and friends, dispatched by instruction kind
 - Sink decision: looks up `SinkFamilyRegistry` by `sinkFamilyKey` (`config/SinkFamilyRegistry.java:22`, in the
   `org.plumb.dfa.config` package), **not** an IFDS framework
 - Cross-function: `FunctionSummary` + `Operation.TaintPropagate`
@@ -172,8 +172,30 @@ and the method name must still match exactly, and the method name is followed by
 does not also match `queryForList`. Without this variant, every framework sink would silently fail to match. See
 [the rule authoring guide](../rules/RULE-AUTHORING.md#133-adding-a-new-taint-rule) for the details.
 
-### 3.1.1 Framework entry points: the source is not a call, but a parameter annotation
+### 3.1.0b A mitigation can be a fact about the SINK's receiver
 
+Not every mitigation is a value-narrowing operation on the tainted value. Some are facts about the **object the sink is
+called on**, and the sink check has to consult them.
+
+The JEP-290 `ObjectInputFilter` is the case in point. `UnsafeDeserializationChecker` names `ObjectInputFilter` and
+`resolveClass` as sanitizers it must honour, and for a long time nothing implemented that. The filter is not a
+narrowing of the tainted bytes -- it is a property of the **stream**, and the same bytes are safe through a filtered
+stream and unsafe through an unfiltered one. So:
+
+- The tracker (`taint/DeserializationFilterTracker.java`) records, per stream variable, whether that stream carries a
+  filter which can **reject**.
+- The sink check asks about the **receiver** it is about to report on.
+- It restricts only when it can reject. A PATTERN filter restricts when its pattern ends in `!*`; a pattern without it
+  allows every class it does not mention, so it restricts nothing. A LAMBDA filter restricts when its body can return
+  `REJECTED`; a body that only ever returns `ALLOWED` or `UNDECIDED` is the partial mitigation and the finding stands.
+- It is **scoped to the deserialization family**. A filter says "these classes may be reconstructed"; it says nothing
+  about a log entry, a command line, or a SQL statement.
+
+The tracker's per-function state is cleared at each function boundary, but the lambda bodies are indexed once per program
+in `initEngine()` — before any function is visited, because the sink check asks the question *while* the instruction walk
+is still running.
+
+### 3.1.1 Framework entry points: the source is not a call, but a parameter annotation
 A scanner that only knows `HttpServletRequest.getParameter(...)` sees **no source at all** in Spring code —
 the framework binds request values to method parameters **by annotation**, and there is no request object in the controller body:
 
@@ -318,7 +340,7 @@ nulls would alias each other and pollute `mayAlias`):
 
 ## 5. Z3: false-positive filtering only
 
-Z3 has exactly **one** call site in the whole engine, `TaintedCheckerBase.java:3284`, on the sink reporting path:
+Z3 has exactly **one** call site in the whole engine, `TaintedCheckerBase.java:3343`, on the sink reporting path:
 
 ```java
 String composed = composePathCondition(pathConditionForSink(...));
@@ -328,7 +350,7 @@ if (!composed.isEmpty()) {
 }
 ```
 
-- `pathConditionForSink` **returns null by default** (`:3384-3387`), so a checker that does not override it
+- `pathConditionForSink` **returns null by default** (`:3443-3446`), so a checker that does not override it
   composes an empty condition and **never calls Z3 at all**
 - The semantics are unambiguous: Z3 is **only used to suppress false positives, never to discover defects** (`:3237`)
 - The call chain: `CachedZ3Bridge` (LRU of 4096 entries, `solver/CachedZ3Bridge.java:41-66`) →

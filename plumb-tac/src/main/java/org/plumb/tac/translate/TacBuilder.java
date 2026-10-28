@@ -62,7 +62,12 @@ public final class TacBuilder {
   private final List<TacFunction.TryRegion> tryRegions = new ArrayList<>();
   private int tempCounter = 0;
   private int labelCounter = 0;
-  public int lambdaCounter = 0;
+
+  // The lambda counter is NOT here. It lives on the TacTranslator, because a
+  // lambda's name must be unique across the whole program: a per-builder
+  // counter restarted at zero for every method, so several methods' lambdas
+  // were all named `lambda$0`, and a lookup by name resolved to an arbitrary
+  // body. See TacTranslator.nextLambdaName().
 
   public TacBuilder(FunctionSpec spec, List<TacOperand.TacVar> params) {
     this.spec = spec;

@@ -138,6 +138,12 @@ The gates are:
     mutate_dsl_corpus          the corpus gate is not checking air: a deleted
                               example must fail the gate, and a subtree
                               `contain` must fail the tests
+    mutate_deserialization_filter
+                              the JEP-290 mitigation is not checking air: a
+                              permissive filter, a filter that never rejects, a
+                              filter attached to the wrong stream, an unscoped
+                              suppression and an absent suppression must each
+                              fail the tests
     check_i18n_docs            the English and Chinese documentation have
                               the same shape: the same documents, the same
                               headings, the same tables, the same code
@@ -261,6 +267,8 @@ GATES = (
      ["python", "scripts/check_dsl_corpus.py"], "check"),
     ("mutate_dsl_corpus",
      ["python", "scripts/mutate_dsl_corpus.py"], "check"),
+    ("mutate_deserialization_filter",
+     ["python", "scripts/mutate_deserialization_filter.py"], "check"),
     ("check_i18n_docs",
      ["python", "scripts/check_i18n_docs.py"], "check"),
     ("mutate_i18n_docs",

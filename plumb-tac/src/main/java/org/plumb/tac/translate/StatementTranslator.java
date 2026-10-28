@@ -462,6 +462,80 @@ public final class StatementTranslator {
             .build());
   }
 
+  /**
+   * Translate a try-with-resources' resource declarations.
+   *
+   * <p>Each resource is a variable declaration whose initializer runs before the body. The variable
+   * is added to {@link TacBuilder#locals()} so the body's references resolve to it, and the
+   * initializer is translated so the value -- and any taint on it -- reaches the variable.
+   *
+   * <p>A resource may also be an already-declared name ({@code try (existing)}), which has no
+   * initializer. That form declares nothing; the name is already a local or a parameter, and
+   * referencing it resolves on its own.
+   *
+   * @param ts the try statement
+   * @param b the builder
+   * @return the resource variables, in declaration order, so the implicit close can be emitted
+   */
+  private List<TacOperand.TacVar> translateResources(TryStmt ts, TacBuilder b) {
+    List<TacOperand.TacVar> resources = new ArrayList<>();
+    for (Expression resource : ts.getResources()) {
+      if (!(resource instanceof VariableDeclarationExpr vde)) {
+        // `try (existing)` -- a bare name. Nothing to declare.
+        continue;
+      }
+      for (var declarator : vde.getVariables()) {
+        TacType t = TypeMapper.map(vde.getElementType());
+        TacOperand.TacVar v = new TacOperand.TacVar(declarator.getNameAsString(), t, false);
+        b.locals().add(v);
+        resources.add(v);
+        if (!declarator.getInitializer().isPresent()) {
+          continue;
+        }
+        ExpressionResult init = owner.exprs().translate(declarator.getInitializer().get(), b);
+        b.emit(
+            TacInstruction.builder(TacInstruction.Kind.MOVE)
+                .dest(v)
+                .lhs1(init.operand())
+                .line(TacTranslator.nodeLine(declarator))
+                .build());
+      }
+    }
+    return resources;
+  }
+
+  /**
+   * Emit the implicit {@code close()} of a try-with-resources' resource.
+   *
+   * <p>Java's try-with-resources CLOSES the resource when the block ends -- on the normal path and
+   * on the exceptional path alike. The TAC has no destructor concept, so the close is modelled as
+   * the call it is: a {@code CALL} to {@code close} on the resource.
+   *
+   * <p>Emitting it is what keeps the resource-leak checker honest. The checker reports an
+   * allocation unless it sees a close on that value, so a try-with-resources that was NOT closed
+   * would be reported as a leak -- a false positive on code that closes the resource correctly. The
+   * earlier fear was that a close call would "double-report" the genuinely leaked ones; the
+   * opposite is true. The close call is what MARKS the resource closed, and only an allocation with
+   * no close at all is a leak.
+   *
+   * <p>The close is emitted at the end of the try body, before the catch clauses, so it is
+   * reachable on the normal path. The CFG's exception edges carry the exceptional path.
+   *
+   * @param resource the resource variable
+   * @param b the builder
+   * @param line the source line to attribute the close to
+   */
+  private void emitResourceClose(TacOperand.TacVar resource, TacBuilder b, int line) {
+    TacOperand.TacVar dest = b.newTemp(TacType.VOID);
+    b.emit(
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .dest(dest)
+            .calleeSig(resource.name() + ".close/0")
+            .args(new ArrayList<>(List.of((TacOperand) resource)))
+            .line(line)
+            .build());
+  }
+
   private void translateTry(TryStmt ts, TacBuilder b) {
     // Emit explicit exception-flow IR.
     //
@@ -502,6 +576,25 @@ public final class StatementTranslator {
     // CATCH_HANDLER is added on top of LABEL for the
     // explicit exception flow.
 
+    // Translate the try RESOURCES first. They are declarations, and their
+    // initializers run BEFORE the try body -- that is the semantics of
+    // try-with-resources: `try (R r = init)` evaluates `init`, binds `r`,
+    // and only then enters the body.
+    //
+    // This was missing entirely. Without it the resource variable was never
+    // added to b.locals(), so every reference to it inside the body fell
+    // through translateName's `this.<name>` fallback and became a FIELDLOAD
+    // off `this` with an UNKNOWN type. The initializer was never translated
+    // either, so no taint could reach the resource at all: a
+    // `try (ObjectInputStream ois = new ObjectInputStream(untrusted))` was
+    // structurally incapable of producing a CWE-502 finding, even though the
+    // same code outside a try-with-resources did produce one.
+    //
+    // The resource's `close()` IS modelled, as an ordinary CALL: see
+    // emitResourceClose. It is what marks the resource closed for the
+    // resource-leak checker.
+    List<TacOperand.TacVar> resources = translateResources(ts, b);
+
     // Translate the try body first. THROW and CALL inside
     // the body can now reach the catch handler blocks that
     // we are about to emit.
@@ -512,6 +605,13 @@ public final class StatementTranslator {
     int tryStartIdx = b.instructions().size();
     translate(ts.getTryBlock(), b);
     int tryEndIdx = b.instructions().size() - 1;
+
+    // The implicit close of each resource, on the normal path. It is emitted
+    // AFTER the try range is recorded, so it is not part of the try region:
+    // the close happens when the block is LEFT, not while it is running.
+    for (TacOperand.TacVar resource : resources) {
+      emitResourceClose(resource, b, TacTranslator.nodeLine(ts));
+    }
 
     // Collect catch metadata as we lower each catch
     // clause so we can build the TryRegion at the end of
