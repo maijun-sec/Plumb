@@ -109,7 +109,23 @@ MAVEN_ELEMENTS = [
 ]
 
 # The capture's canonical option names, read out of its table.
-canonical_names = set(re.findall(r'opt\("[^"]+",\s*"([^"]+)"', capture_option))
+#
+# The pattern spans NEWLINES on purpose. The table's entries are
+# formatted across several lines when they are long:
+#
+#     opt(
+#         "-processorpath",
+#         "--processor-path",
+#         Value.SINGLE,
+#         ...)
+#
+# A pattern that requires the two names on the same line finds
+# nothing there, and "found nothing" reads as "the capture does not
+# declare this option" -- a false defect that points at the wrong
+# thing. The layout of the source is not what is being checked; the
+# option table is.
+canonical_names = set(
+    re.findall(r'opt\(\s*"[^"]+",\s*"([^"]+)"', capture_option, re.S))
 note("the capture declares %d canonical option name(s)" % len(canonical_names))
 
 for parameter, capture_name, maven_element in PARAMETERS:

@@ -47,13 +47,13 @@ def remove_the_entry(text, spelling):
     holds one option per name, so removing only one of them leaves the other
     in place and the mutation never happens.
     """
-    pattern = r'\n *out\.add\(opt\(\s*"%s".*?\);' % re.escape(spelling)
+    pattern = r'\n *out\.add\(\s*opt\(\s*"%s".*?\);' % re.escape(spelling)
     return re.sub(pattern, "", text, flags=re.S)
 
 
 def attribute_to(text, spelling, compiler):
     """Change the compiler an option is attributed to."""
-    pattern = r'(out\.add\(opt\(\s*"%s".*?Effect\.\w+,\s*)(null|Compiler\.\w+)(\))' % re.escape(
+    pattern = r'(out\.add\(\s*opt\(\s*"%s".*?Effect\.\w+,\s*)(null|Compiler\.\w+)(\))' % re.escape(
         spelling
     )
     return re.sub(pattern, r"\1Compiler." + compiler + r"\3", text, count=1, flags=re.S)

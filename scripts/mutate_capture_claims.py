@@ -71,6 +71,49 @@ def run_gate():
     return result.returncode, result.stdout
 
 
+def add_entry_point(text):
+    """Add an entry point the document does not mention.
+
+    The entry-point list is formatted across several lines, so the
+    mutation works on the LAST entry rather than on an exact string.
+    Matching the whole call as one string would depend on the source's
+    line layout, and a mutation that does not apply proves NOTHING.
+
+    The new entry goes BEFORE the last one, with a comma after it --
+    the last entry is the end of the array and has no comma of its
+    own, so appending after it would produce a syntax error rather
+    than a mutation.
+    """
+    entries = list(re.finditer(r'new EntryPoint\(', text))
+    if not entries:
+        return text
+    last = entries[-1]
+    new = (
+        'new EntryPoint("com.sun.tools.javac.api.Foo", "bar", 1, 0, -1, '
+        "EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC),\n"
+        "              ")
+    return text[:last.start()] + new + text[last.start():]
+
+
+def drop_the_capture_write(text):
+    """Drop the write of the capture, keeping the method and its call.
+
+    The sources the compiler really compiled are only known at the
+    end, so a capture written at the start cannot report them.
+
+    The call is found by its shape -- the `record(...)` call that
+    builds the capture -- rather than by an exact string, because the
+    source's line layout is not what is being tested.
+    """
+    pattern = re.compile(r'record\(\s*buildCapture\(.*?\)\s*\)\s*;', re.S)
+    match = pattern.search(text)
+    if not match:
+        return text
+    return (text[:match.start()]
+            + "/* the capture is not written from here */"
+            + text[match.end():])
+
+
 MUTANTS = [
     (
         "the document names an entry point the source does not hook",
@@ -113,14 +156,12 @@ MUTANTS = [
     (
         "the source hooks an entry point the document does not mention",
         "ep",
-        lambda t: t.replace(
-            '"com.sun.tools.sjavac.server.ServerMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV, '
-            "CompilerOption.Compiler.SJAVAC));",
-            '"com.sun.tools.sjavac.server.ServerMain", "run", 1, 0, -1, EntryPoint.Kind.ARGV, '
-            "CompilerOption.Compiler.SJAVAC),\n"
-            '          new EntryPoint("com.sun.tools.javac.api.Foo", "bar", 1, 0, -1, '
-            "EntryPoint.Kind.ARGV, CompilerOption.Compiler.JAVAC));",
-        ),
+        # The entry-point list is formatted across several lines, so
+        # the mutation finds the LAST entry point's closing call and
+        # appends a new one after it.  Matching the whole call as one
+        # string would depend on the source's line layout, and a
+        # mutation that does not apply proves NOTHING.
+        lambda t: add_entry_point(t),
     ),
     (
         "the Gradle hooks hook the compile spec again",
@@ -187,11 +228,7 @@ MUTANTS = [
         # The sources the compiler really compiled are only known at the end,
         # so a capture written at the start cannot report them.  The mutant
         # keeps the method and its call, and drops the write.
-        lambda t: t.replace(
-            "      record(buildCapture(pending.argv(), merge(pending.sources(), parsed), "
-            "pending.api(), compiler));",
-            "      /* the capture is not written from here */",
-        ),
+        lambda t: drop_the_capture_write(t),
     ),
     (
         "the staged compile is taken by position again",

@@ -44,55 +44,87 @@ def run_gate():
     return result.returncode, result.stdout
 
 
+def swap_in_entry(text, first_arg, old_token, new_token, occurrence=1):
+    """Swap one token inside the option entry that starts with `first_arg`.
+
+    The entries in the table are formatted across several lines when
+    they are long:
+
+        out.add(
+            opt(
+                "-cp",
+                "--classpath",
+                Value.PATH_LIST,
+                ...),
+
+    So a mutation that replaces the whole call as one string matches
+    nothing -- and "matched nothing" is reported as a NO-OP, which
+    says the mutation proves NOTHING.  The option table is what is
+    being checked, not its layout.
+
+    So the entry is located by its FIRST argument and the token is
+    swapped inside that entry only.
+
+    `occurrence` picks WHICH copy of the token is swapped.  An option
+    whose spelling and canonical name are the same string has the
+    token twice, and the canonical name is the second one.
+    """
+    pattern = re.compile(
+        r'opt\(\s*"' + re.escape(first_arg) + r'".*?\)', re.S)
+    match = pattern.search(text)
+    if not match:
+        return text
+    entry = match.group(0)
+    if entry.count(old_token) < occurrence:
+        return text
+    idx = -1
+    for _ in range(occurrence):
+        idx = entry.index(old_token, idx + 1)
+    new_entry = (entry[:idx] + new_token
+                 + entry[idx + len(old_token):])
+    return text[:match.start()] + new_entry + text[match.end():]
+
+
+def remove_entry(text, first_arg):
+    """Remove the whole option entry that starts with `first_arg`."""
+    pattern = re.compile(
+        r'\n *out\.add\(\s*opt\(\s*"' + re.escape(first_arg)
+        + r'".*?\)\s*,?\s*\)', re.S)
+    match = pattern.search(text)
+    if not match:
+        return text
+    return text[:match.start()] + text[match.end():]
+
+
 MUTANTS = [
     (
         "an option is moved to the wrong repetition rule",
         "source",
-        lambda t: t.replace(
-            'out.add(opt("-cp", "--classpath", Value.PATH_LIST, Repeat.LAST_WINS, '
-            "Effect.COMPILATION, null));",
-            'out.add(opt("-cp", "--classpath", Value.PATH_LIST, Repeat.ALL_APPLY, '
-            "Effect.COMPILATION, null));",
-        ),
+        lambda t: swap_in_entry(
+            t, "-cp", "Repeat.LAST_WINS", "Repeat.ALL_APPLY"),
     ),
     (
         "an option loses its value kind",
         "source",
-        lambda t: t.replace(
-            'out.add(opt("-encoding", "--encoding", Value.SINGLE, Repeat.LAST_WINS, '
-            "Effect.COMPILATION, null));",
-            'out.add(opt("-encoding", "--encoding", Value.NONE, Repeat.LAST_WINS, '
-            "Effect.COMPILATION, null));",
-        ),
+        lambda t: swap_in_entry(
+            t, "-encoding", "Value.SINGLE", "Value.NONE"),
     ),
     (
         "an option that does not compile is marked as compiling",
         "source",
-        lambda t: t.replace(
-            'out.add(opt("-proc:only", "-proc:only", Value.NONE, Repeat.LAST_WINS, '
-            "Effect.NOT_COMPILATION, null));",
-            'out.add(opt("-proc:only", "-proc:only", Value.NONE, Repeat.LAST_WINS, '
-            "Effect.COMPILATION, null));",
-        ),
+        lambda t: swap_in_entry(
+            t, "-proc:only", "Effect.NOT_COMPILATION", "Effect.COMPILATION"),
     ),
     (
         "an option is removed from the table",
         "source",
-        lambda t: t.replace(
-            'out.add(opt("--add-modules", "--add-modules", Value.COMMA_LIST, '
-            "Repeat.ALL_APPLY, Effect.COMPILATION, null));",
-            "",
-        ),
+        lambda t: remove_entry(t, "--add-modules"),
     ),
     (
         "an option's canonical name is changed",
         "source",
-        lambda t: t.replace(
-            'out.add(opt("--release", "--release", Value.SINGLE, Repeat.LAST_WINS, '
-            "Effect.COMPILATION, null));",
-            'out.add(opt("--release", "--release-level", Value.SINGLE, Repeat.LAST_WINS, '
-            "Effect.COMPILATION, null));",
-        ),
+        lambda t: swap_in_entry(
+            t, "--release", '"--release"', '"--release-level"', occurrence=2),
     ),
     (
         "the reference gains an option we do not have",
@@ -115,22 +147,14 @@ MUTANTS = [
     (
         "an option's repetition rule is moved to the other compiler",
         "source",
-        lambda t: t.replace(
-            'out.add(opt("-copy", "-copy", Value.SINGLE, Repeat.ALL_APPLY, '
-            "Effect.COMPILATION, Compiler.SJAVAC));",
-            'out.add(opt("-copy", "-copy", Value.SINGLE, Repeat.LAST_WINS, '
-            "Effect.COMPILATION, Compiler.SJAVAC));",
-        ),
+        lambda t: swap_in_entry(
+            t, "-copy", "Repeat.LAST_WINS", "Repeat.ALL_APPLY"),
     ),
     (
         "an option is moved from one compiler to another",
         "source",
-        lambda t: t.replace(
-            'out.add(opt("-annotationpath", "annotationpath", Value.PATH_LIST, '
-            "Repeat.LAST_WINS, Effect.COMPILATION, Compiler.ECJ));",
-            'out.add(opt("-annotationpath", "annotationpath", Value.PATH_LIST, '
-            "Repeat.LAST_WINS, Effect.COMPILATION, Compiler.SJAVAC));",
-        ),
+        lambda t: swap_in_entry(
+            t, "-annotationpath", "Compiler.ECJ", "Compiler.SJAVAC"),
     ),
     (
         "the reference gives an option to a compiler we do not",

@@ -51,7 +51,7 @@ def run_gate():
 def drop_an_option(text):
     """Remove the capture's --release option."""
     return re.sub(
-        r'\n *out\.add\(opt\("--release".*?\);', "", text, count=1, flags=re.S
+        r'\n *out\.add\(\s*opt\(\s*"--release".*?\);', "", text, count=1, flags=re.S
     )
 
 
@@ -113,7 +113,7 @@ def drop_the_processor_path_option(text):
     so the mutation has to remove both, or the canonical name survives.
     """
     return re.sub(
-        r'\n *out\.add\(opt\("[^"]+", "--processor-path".*?\);', "", text, flags=re.S
+        r'\n *out\.add\(\s*opt\(\s*"[^"]+",\s*"--processor-path".*?\);', "", text, flags=re.S
     )
 
 

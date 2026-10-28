@@ -42,21 +42,21 @@ def run_gate():
 def remove_an_option(text):
     """Remove the table's entry for one option."""
     return re.sub(
-        r'\n *out\.add\(opt\(\s*"-source".*?\);', "", text, count=1, flags=re.S
+        r'\n *out\.add\(\s*opt\(\s*"-source".*?\);', "", text, count=1, flags=re.S
     )
 
 
 def remove_the_classpath_option(text):
     """Remove the table's entry for javac's own --class-path spelling."""
     return re.sub(
-        r'\n *out\.add\(opt\("--class-path".*?\);', "", text, count=1, flags=re.S
+        r'\n *out\.add\(\s*opt\(\s*"--class-path".*?\);', "", text, count=1, flags=re.S
     )
 
 
 def remove_the_proc_family(text):
     """Remove the table's entries for the annotation-processing switch."""
     return re.sub(
-        r'\n *out\.add\(opt\("-proc:none".*?\);', "", text, count=1, flags=re.S
+        r'\n *out\.add\(\s*opt\(\s*"-proc:none".*?\);', "", text, count=1, flags=re.S
     )
 
 
