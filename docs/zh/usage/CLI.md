@@ -50,7 +50,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
 | — | `--max-parallelism` | `<n>` | `nCPU-1`（最小 1） | parse + translate 阶段并发上限 |
 | — | `--ai-dedup` | — | off | FP reducer 开关。把每条 finding 发给 LLM 判 TP/FP/UNKNOWN。verdict 写到 NDJSON 的 `ai_verdict` + `ai_reason` 字段。LLM 端点 + key 走 YAML（`ai.apiKey` / `ai.baseUrl` / `ai.model`） |
 | — | `--ai-dedup-stats` | — | off | AI dedup 跑完后，往 **stderr** 打 verdict 分布 + 每条规则的 FP 占比 Top 10。stdout 的 NDJSON 不变。配合 `--ai-dedup` 一起用，单独开 no-op。 |
-| — | `--rule` | `<id>` | — | 只跑指定 rule（**可重复**）。覆盖 YAML 的 `checks.*` 标志。**精确匹配** —— 要用真实的 rule id，例如 `--rule TAINT_SINK_SQL_INJECTION`；写不存在的 id 会静默产出 0 条 finding。用 `--list-rules` 查全部 id |
+| — | `--rule` | `<id>` | — | 只跑指定 rule（**可重复**）。覆盖 YAML 的 `checks.*` 标志。接受报告里的 id、去掉 engine/domain 段的 id、规则名、checker 类名、声明的 alias、已退役的旧 id —— 见 [§4.2.1](#421-规则怎么被点名)。匹配不到任何规则的名字会静默产出 0 条 finding |
 | — | `--rule-prompts-dir` | `<path>` | — | 用户自带的 rule prompt `.md` 目录。覆盖打包在 classpath 里的默认 prompt |
 | — | `--dsl-rules` | `<file>` | — | Kotlin DSL 引擎的 AST 规则文件（**可重复**）。XML 或 YAML 格式，见 [`../tech/KOTLIN-DSL.md`](../tech/KOTLIN-DSL.md) |
 | — | `--dsl-strict` | — | off | DSL 规则编译失败时**中止扫描**，而不是跳过该条规则 |
@@ -159,7 +159,8 @@ bin/sast-scan -c conf/default-config.yaml -i src \
     --ai-dedup
 
 # 3. 只看 SQL 注入
-#    --rule 是精确匹配：必须用真实的 rule id（TAINT_SINK_SQL_INJECTION），
+#    --rule 接受报告里的 id、去掉 engine/domain 段的 id、规则名、checker 类名、
+#    声明的 alias 和已退役的旧 id。见 4.2.1 节。
 #    写 SQL_INJECTION 匹配不到任何规则，扫描会静默产出 0 条 finding。
 bin/sast-scan -c conf/default-config.yaml -i src --rule TAINT_SINK_SQL_INJECTION
 
@@ -520,12 +521,45 @@ rules:
     - bu-0401-weak-crypto       # 即便大类 off 也强制开
 ```
 
+### 4.2.1 规则怎么被"点名"
+
+过滤器条目会拿规则"能应答的所有名字"去比对。引擎里只有**一处**比较逻辑
+（`ScanRunner.filterMatches`），所以 `--rule` 和 `rules.enabled` 的语义永远一致。
+
+| 你可以写 | 例子 | 它是什么 |
+| --- | --- | --- |
+| 报告里打印的 id | `ast-bug-incorrect-return-comparison` | 报告 `rule_id` 字段里的原样 |
+| 去掉 engine / domain 段的 id | `incorrect-return-comparison` | 对应 `ast-bug-incorrect-return-comparison` |
+| 规则名 | `INCORRECT_RETURN_COMPARISON` | 规则的 `RuleId.name()` |
+| checker 的类名 | `IncorrectReturnComparisonCheck` | 带不带 `Check` 后缀都行 |
+| 声明的 alias | `dfa-security-unchecked-return` | 规则为其它规则体系声明的等价 id |
+| 已退役的旧 id | `plumb.resource.leak` | 引擎已停用但仍在别名表里保留的 id |
+
+由此得到两条性质，都值得写出来，因为它们缺失时是**静默**的：
+
+- **报告里的 id 能回环。** 把 finding 的 `rule_id` 抄出来传给 `--rule`，就能选回这条
+  规则。匹配不到任何规则的过滤器会返回一次空扫描——空扫描读起来像"这条规则没发现
+  东西"，而不是"过滤器没匹配上"。
+- **退役的 id 仍然选得到它的规则。** 引擎改过 id 方案，退役的 id 记录在
+  `plumb-main/src/main/resources/legacy-rule-aliases.json` 里，过滤器会解析它们。
+  这张表由 `scripts/generate_legacy_rule_aliases.py` 依据迁移记录和**运行中的**规则
+  注册表生成；`scripts/check_rule_filter.py` 会在它漂移时报错。
+
+剥离只剥到规则的**名字**为止。`ast-error-catch-generic-exception` 剥成
+`catch-generic-exception`，而不是 `generic-exception`——后者同时是另外两条规则的
+尾巴，否则点其中一条会同时选中三条。
+
+声明的 **alias** 是**精确匹配**，不参与剥离：alias 是一个名字，不是一种形状。
+
 实际行为：规则注册阶段（`RuleRegistry.withBuiltinDefaults()` 之后）会重新设置 `enabled` 标志。代码路径在 `ScanRunner.buildRegistry()`：
 
 ```java
-if (config.disabledRuleNames.contains(def.ruleId().name())
-        || config.disabledRuleNames.contains(def.ruleId().id())) {
-    enabled = false;
+boolean disabled =
+    filterMatches(name, config.disabledRuleNames)
+        || filterMatches(id, config.disabledRuleNames)
+        || (clsSimple != null && filterMatches(clsSimple, config.disabledRuleNames));
+if (disabled) {
+  enabled = false;
 }
 ```
 

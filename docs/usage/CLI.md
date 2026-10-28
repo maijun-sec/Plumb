@@ -51,7 +51,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
 | — | `--max-parallelism` | `<n>` | `nCPU-1` (minimum 1) | Upper bound of concurrency in the parse + translate phase |
 | — | `--ai-dedup` | — | off | FP reducer switch. Sends every finding to the LLM to judge TP/FP/UNKNOWN. The verdict is written to the `ai_verdict` + `ai_reason` fields of the NDJSON. The LLM endpoint + key are configured in YAML (`ai.apiKey` / `ai.baseUrl` / `ai.model`) |
 | — | `--ai-dedup-stats` | — | off | After the AI dedup run, prints the verdict distribution + the top 10 rules by FP ratio to **stderr**. The NDJSON on stdout is unchanged. Use it together with `--ai-dedup`; on its own it is a no-op. |
-| — | `--rule` | `<id>` | — | Run only the given rule (**repeatable**). Overrides the `checks.*` flags from YAML. **Exact match** -- you have to use a real rule id, for example `--rule TAINT_SINK_SQL_INJECTION`; a non-existent id silently produces 0 findings. Use `--list-rules` to look up all ids |
+| — | `--rule` | `<id>` | — | Run only the given rule (**repeatable**). Overrides the `checks.*` flags from YAML. Accepts the emitted id, the id without its engine and domain tokens, the rule name, the checker's class name, a declared alias, and a retired id -- see [§4.2.1](#421-how-a-rule-is-named). A name that matches no rule silently produces 0 findings |
 | — | `--rule-prompts-dir` | `<path>` | — | Directory of user-supplied rule prompt `.md` files. Overrides the default prompts packaged on the classpath |
 | — | `--dsl-rules` | `<file>` | — | AST rule file of the Kotlin DSL engine (**repeatable**). In XML or YAML format, see [`../tech/KOTLIN-DSL.md`](../tech/KOTLIN-DSL.md) |
 | — | `--dsl-strict` | — | off | **Abort the scan** when a DSL rule fails to compile, instead of skipping that rule |
@@ -173,8 +173,9 @@ bin/sast-scan -c conf/default-config.yaml -i src \
     --ai-dedup
 
 # 3. SQL injection only
-#    --rule is an exact match: you have to use a real rule id (TAINT_SINK_SQL_INJECTION);
-#    SQL_INJECTION matches no rule at all and the scan silently produces 0 findings.
+#    --rule accepts the emitted id, the id without its engine and domain
+#    tokens, the rule name, the checker's class name, a declared alias, and a
+#    retired id. See section 4.2.1.
 bin/sast-scan -c conf/default-config.yaml -i src --rule TAINT_SINK_SQL_INJECTION
 
 # 4. Bring your own rule prompt override
@@ -571,14 +572,54 @@ rules:
     - bu-0401-weak-crypto       # force on even if the family is off
 ```
 
+### 4.2.1 How a rule is named
+
+A filter entry is matched against a rule by any of the names that rule
+answers to. There is exactly one comparison in the engine
+(`ScanRunner.filterMatches`), so `--rule` and `rules.enabled` always agree.
+
+| You can write | Example | What it is |
+| --- | --- | --- |
+| the emitted id | `ast-bug-incorrect-return-comparison` | exactly what the report prints in `rule_id` |
+| the id without its engine and domain tokens | `incorrect-return-comparison` | for `ast-bug-incorrect-return-comparison` |
+| the rule name | `INCORRECT_RETURN_COMPARISON` | the rule's `RuleId.name()` |
+| the checker's class name | `IncorrectReturnComparisonCheck` | with or without the `Check` suffix |
+| a declared alias | `dfa-security-unchecked-return` | the equivalent ids the rule declares for other rule sources |
+| a retired id | `plumb.resource.leak` | an id the engine used to have; see the alias map below |
+
+Two properties follow, and both are worth stating because their absence is
+silent:
+
+- **The id in the report round-trips.** Copying `rule_id` out of a finding and
+  passing it to `--rule` selects that rule. A filter that matched nothing
+  would return an empty scan, which reads as "the rule found nothing" rather
+  than "the filter matched nothing".
+- **A retired id still selects its rule.** The engine renamed its rules when
+  the id scheme changed. The retired ids are recorded in
+  `plumb-main/src/main/resources/legacy-rule-aliases.json`, and the filter
+  resolves them. The map is generated from the recorded migration and the live
+  rule registry by `scripts/generate_legacy_rule_aliases.py`, and
+  `scripts/check_rule_filter.py` fails when it drifts.
+
+The peeling stops at the rule's *name*. `ast-error-catch-generic-exception`
+peels to `catch-generic-exception`, not to `generic-exception` — the latter is
+also the tail of two other rules, and a filter naming one of them would
+otherwise select all three.
+
+A declared **alias** is matched exactly, not peeled: an alias is a name, not a
+shape.
+
 Actual behaviour: at the rule registration stage (after
 `RuleRegistry.withBuiltinDefaults()`) the `enabled` flag is set again. The
 code path is in `ScanRunner.buildRegistry()`:
 
 ```java
-if (config.disabledRuleNames.contains(def.ruleId().name())
-        || config.disabledRuleNames.contains(def.ruleId().id())) {
-    enabled = false;
+boolean disabled =
+    filterMatches(name, config.disabledRuleNames)
+        || filterMatches(id, config.disabledRuleNames)
+        || (clsSimple != null && filterMatches(clsSimple, config.disabledRuleNames));
+if (disabled) {
+  enabled = false;
 }
 ```
 

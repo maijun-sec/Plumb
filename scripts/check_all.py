@@ -144,6 +144,17 @@ The gates are:
                               filter attached to the wrong stream, an unscoped
                               suppression and an absent suppression must each
                               fail the tests
+    check_rule_filter           a rule filter entry that names nothing is a
+                              SILENT failure -- the rule never fires, the
+                              recall reads zero, and nothing says so. The
+                              gate checks that the legacy alias map is
+                              consistent with the live registry, that it
+                              does not shadow a live rule, and that it has
+                              not drifted from what the generator derives
+    mutate_rule_filter          the rule-filter gate is not checking air: a
+                              dangling alias, an alias that points at the
+                              wrong rule, a self-loop, a removed entry and an
+                              emptied map must each fail it
     check_i18n_docs            the English and Chinese documentation have
                               the same shape: the same documents, the same
                               headings, the same tables, the same code
@@ -269,6 +280,10 @@ GATES = (
      ["python", "scripts/mutate_dsl_corpus.py"], "check"),
     ("mutate_deserialization_filter",
      ["python", "scripts/mutate_deserialization_filter.py"], "check"),
+    ("check_rule_filter",
+     ["python", "scripts/check_rule_filter.py"], "check"),
+    ("mutate_rule_filter",
+     ["python", "scripts/mutate_rule_filter.py"], "check"),
     ("check_i18n_docs",
      ["python", "scripts/check_i18n_docs.py"], "check"),
     ("mutate_i18n_docs",

@@ -1772,11 +1772,68 @@ public final class ScanRunner {
   }
 
   /**
-   * R-PATCH v2 — decide whether a finding whose rule id is {@code ruleId} should be emitted under
-   * the current {@code rules.disabled} / {@code rules.enabled} / {@code rules.mode} configuration.
-   * Mirrors the registry-side check in {@link #buildRegistry()} so DFA + style findings stay in
-   * sync with the user's per-CWE whitelist.
+   * Whether an AST checker is allowed to run under the current filter.
+   *
+   * <p>A checker has several identities, and the filter has to accept any of them, because each one
+   * is a name a user can reasonably type:
+   *
+   * <ul>
+   *   <li>the checker's {@code name()} -- a kebab-case slug ({@code unchecked-return});
+   *   <li>the checker's class simple name -- {@code UncheckedReturnCheck};
+   *   <li>the RULE ID the findings carry -- {@code ast-security-unchecked-return};
+   *   <li>the rule's name -- {@code UNCHECKED_RETURN}.
+   * </ul>
+   *
+   * <p><b>Why the rule id matters most.</b> It is the identity the report prints. A user who reads
+   * {@code ast-bug-incorrect-return-comparison} off a finding and passes it back to {@code --rule}
+   * must get that rule back. When the AST registration gate only consulted the checker's name and
+   * class name, that round trip selected nothing, and the scan came back empty -- which reads as
+   * "the rule found nothing" rather than "the filter matched nothing".
+   *
+   * <p>The class name is matched with and without its {@code Check} suffix, because the per-CWE
+   * configs were written against the shorter form ({@code UncheckedReturn}) and those entries are
+   * what the CWE coverage numbers are measured against.
    */
+  private boolean isCheckerAllowed(org.plumb.style.AstChecker c) {
+    if (isRuleIdAllowed(c.name())) {
+      return true;
+    }
+    String className = c.getClass().getSimpleName();
+    if (isRuleIdAllowed(className)) {
+      return true;
+    }
+    if (className.endsWith("Check")
+        && isRuleIdAllowed(className.substring(0, className.length() - "Check".length()))) {
+      return true;
+    }
+    RuleDef def = c.rule();
+    if (def != null && def.ruleId() != null) {
+      if (isRuleIdAllowed(def.ruleId().id())) {
+        return true;
+      }
+      if (isRuleIdAllowed(def.ruleId().name())) {
+        return true;
+      }
+      // The rule's DECLARED aliases. A rule declares the equivalent ids it
+      // has in other rule sources (`dfa-security-unchecked-return`,
+      // `unchecked-return`), and a per-CWE config may well name the rule by
+      // one of those instead of by the canonical id. Without this the
+      // config's entry selects nothing.
+      //
+      // An alias is matched EXACTLY. Peeling an alias turns it into a shape,
+      // and `dfa-style-catch-generic-exception` peels to
+      // `catch-generic-exception` -- which is another rule's name, so the
+      // alias would select that other rule.
+      for (String alias : def.aliases()) {
+        if (filterMatches(alias, config.enabledRuleNames, true)
+            || filterMatches(alias, config.disabledRuleNames, true)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   private boolean isRuleIdAllowed(String ruleId) {
     return isRuleIdAllowed(ruleId, currentRuleRegistry.get());
   }
@@ -1817,13 +1874,14 @@ public final class ScanRunner {
     // `pl-0763-incorrect-return-comparison` matches the
     // user-yaml short form `incorrect-return-comparison`).
     if (!config.cliRuleFilter.isEmpty()) {
-      if (config.cliRuleFilter.contains(ruleId)) return true;
-      String bare = stripPlumbAndPlPrefix(ruleId);
-      if (config.cliRuleFilter.contains(bare)) return true;
-      return false;
+      // The SAME predicate the whitelist uses, so an id printed in the
+      // report round-trips: `--rule <printed-id>` selects the rule that
+      // produced it. The comparison is symmetric — both the argument and
+      // the rule id are expanded into every form they can be written in.
+      return filterMatches(ruleId, config.cliRuleFilter);
     }
     // Blacklist always wins (when explicitly listed as disabled)
-    if (config.disabledRuleNames.contains(ruleId)) return false;
+    if (filterMatches(ruleId, config.disabledRuleNames)) return false;
     // Whitelist mode: only emit rule ids that are explicitly enabled.
     // accept both the bare rule id (e.g.
     // "dfa.reachable-assertion") and the legacy
@@ -1837,75 +1895,282 @@ public final class ScanRunner {
     // match every DFA-only rule would be silently
     // dropped by the whitelist filter.
     if (config.whitelistMode && !config.enabledRuleNames.isEmpty()) {
-      if (config.enabledRuleNames.contains(ruleId)) return true;
-      String bare = stripPlumbAndPlPrefix(ruleId);
-      if (config.enabledRuleNames.contains(bare)) return true;
-      // a yaml whitelist entry written in
-      // canonical form (e.g. `plumb.style.random-iv-cbc`)
-      // must also accept an AST checker whose
-      // `name()` returns the bare slug
-      // (e.g. `random-iv-cbc`). Walk the canonical
-      // whitelist entries and check whether the
-      // bare slug appears as the trailing
-      // segment of any `plumb.<domain>.<bare>`
-      // key. The loop is bounded by the
-      // whitelist size; in practice that's
-      // a few dozen entries per CWE scan.
-      //
-      // also accept the -style emit id
-      // `ast-style-<bare>-style` (e.g.
-      // `ast-style-random-iv-cbc-style`).
-      // changed the emit id pattern to use the
-      // `ast-style-` prefix + `-style` suffix, but
-      // `c.name()` still returns the bare slug. The
-      // older endsWith match only fires when the
-      // yaml entry is `plumb.<domain>.<bare>`, not
-      // `ast-style-<bare>-style`, so the
-      // era whitelist silently drops the
-      // checker. Strip the `ast-style-` prefix and
-      // `-style` suffix from each enabled entry and
-      // compare the resulting bare slug against the
-      // checker's name.
-      for (String enabled : config.enabledRuleNames) {
-        if (enabled.endsWith("." + bare)) return true;
-        String astStyleBare = enabled;
-        if (astStyleBare.startsWith("ast-style-")) {
-          astStyleBare = astStyleBare.substring("ast-style-".length());
-        }
-        if (astStyleBare.endsWith("-style")) {
-          astStyleBare = astStyleBare.substring(0, astStyleBare.length() - "-style".length());
-        }
-        if (astStyleBare.equals(bare)) return true;
-      }
-      return false;
+      return filterMatches(ruleId, config.enabledRuleNames);
     }
     return !defaultDisabled;
   }
 
   /**
-   * helper to strip both the {@code plumb.} prefix and the legacy {@code pl-<NNNN>-} numeric prefix
-   * when matching a yaml whitelist entry against an emitted rule id.
+   * Whether a style finding survives the filter.
+   *
+   * <p>A finding carries the rule's id, the rule's name, the checker's class name, and the rule's
+   * declared aliases. A filter entry may name any of them, and the class name is accepted with and
+   * without its {@code Check} suffix because the per-CWE configs were written against the shorter
+   * form.
+   *
+   * <p>Both post-style filters call this, so the merged path and the single-file path can never
+   * disagree about which findings a whitelist admits.
+   *
+   * @param f the finding
+   * @param entries the filter entries
+   * @return true when an entry names the finding's rule
    */
-  private static String stripPlumbAndPlPrefix(String id) {
-    String s = id;
-    if (s.startsWith("plumb.")) {
-      s = s.substring("plumb.".length());
+  private boolean findingIsAllowed(Finding f, java.util.Collection<String> entries) {
+    if (f == null || f.rule() == null) {
+      return true;
     }
-    // also strip the domain prefix (`style.` / `dfa.` /
-    // `numeric.` / `boundary.`) so legacy yaml keys like
-    // `cwe600-uncaught-exception` ( form) match the
-    // canonical `plumb.style.cwe600-uncaught-exception` emit.
-    int dot = s.indexOf('.');
-    if (dot > 0) {
-      s = s.substring(dot + 1);
+    String id = f.rule().ruleId().id();
+    String name = f.rule().ruleId().name();
+    String checkerClass = f.rule().checkerClass();
+    String clsSimple =
+        checkerClass == null ? null : checkerClass.substring(checkerClass.lastIndexOf('.') + 1);
+    if (filterMatches(id, entries)
+        || filterMatches(name, entries)
+        || (clsSimple != null && filterMatches(clsSimple, entries))
+        || (clsSimple != null
+            && clsSimple.endsWith("Check")
+            && filterMatches(
+                clsSimple.substring(0, clsSimple.length() - "Check".length()), entries))) {
+      return true;
     }
+    // An alias is matched EXACTLY -- see the note in isCheckerAllowed.
+    for (String alias : f.rule().aliases()) {
+      if (filterMatches(alias, entries, true)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Whether {@code ruleId} is named by any entry in {@code entries}.
+   *
+   * <p><b>This is the ONE place where a filter entry is compared with a rule id.</b> It exists
+   * because the comparison used to be re-implemented in four places (the AST registration gate, the
+   * post-style finding filter, the registry builder, and the CLI {@code --rule} filter), each with
+   * its own idea of what a "bare id" is. They disagreed:
+   *
+   * <ul>
+   *   <li>the registry builder stripped at the FIRST dot, so {@code
+   *       ast-bug-incorrect-return-comparison} became {@code bug-incorrect-return-comparison};
+   *   <li>the post-style filter stripped at the first dot as well, so the same id became {@code
+   *       bug-incorrect-return-comparison};
+   *   <li>the CLI filter stripped only the FIRST domain token, so {@code
+   *       ast-bug-incorrect-return-comparison} became {@code bug-incorrect-return-comparison} —
+   *       matching nothing.
+   * </ul>
+   *
+   * <p>The consequence was that a rule id printed in the report could not be passed back to {@code
+   * --rule} to select the rule that produced it, and a per-CWE YAML whitelist written against the
+   * printed id selected nothing. The scan came back empty, which reads as "the rule found nothing"
+   * rather than "the filter matched nothing".
+   *
+   * <p>Now every comparison goes through {@link #ruleIdForms(String)}, which drops leading domain
+   * tokens while keeping EVERY suffix. Both sides of the comparison are expanded, so the match is
+   * symmetric: an entry may be written in the canonical form or in any shorter form, and the rule
+   * id may be either.
+   *
+   * @param ruleId the rule id the finding or checker carries
+   * @param entries the filter entries (yaml whitelist, {@code --rule} args, …)
+   * @return true when an entry names this rule
+   */
+  private boolean filterMatches(String ruleId, java.util.Collection<String> entries) {
+    return filterMatches(ruleId, entries, false);
+  }
+
+  /**
+   * Whether {@code ruleId} is named by any entry in {@code entries}.
+   *
+   * @param ruleId the rule id the finding or checker carries
+   * @param entries the filter entries (yaml whitelist, {@code --rule} args, ...)
+   * @param exact when true, only the literal id and its legacy-map resolution are compared. A
+   *     DECLARED ALIAS is matched this way, because an alias is a name, not a shape: peeling it
+   *     would make {@code dfa-style-catch-generic-exception} reduce to {@code
+   *     catch-generic-exception}, which is another rule's name, and the alias would then select
+   *     that other rule.
+   * @return true when an entry names this rule
+   */
+  private boolean filterMatches(
+      String ruleId, java.util.Collection<String> entries, boolean exact) {
+    if (ruleId == null || entries == null || entries.isEmpty()) {
+      return false;
+    }
+    // A retired rule id and the id it was renamed to are the SAME rule, so
+    // both sides of the comparison are resolved through the legacy map
+    // first.  Without this, a config written against the old id selects
+    // nothing and the CWE's recall silently reads zero.
+    String canonicalRuleId = LegacyRuleAliases.canonical(ruleId);
+    java.util.List<String> ruleForms;
+    if (exact) {
+      ruleForms = java.util.List.of(canonicalRuleId, ruleId);
+    } else {
+      ruleForms = ruleIdForms(canonicalRuleId);
+    }
+    for (String entry : entries) {
+      if (entry == null) continue;
+      if (ruleForms.contains(entry)) return true;
+      // The entry is normalised too, so an entry written in the canonical
+      // form (`plumb.style.random-iv-cbc`) still names a rule whose own id
+      // is the bare slug (`random-iv-cbc`).
+      String canonicalEntry = LegacyRuleAliases.canonical(entry);
+      if (exact) {
+        if (ruleForms.contains(canonicalEntry)) return true;
+        continue;
+      }
+      for (String entryForm : ruleIdForms(canonicalEntry)) {
+        if (ruleForms.contains(entryForm)) return true;
+      }
+      // The `ast-style-<bare>-style` emit shape: the era whitelist carries
+      // the bare slug with that prefix and suffix, while the checker's
+      // name() returns the bare slug.
+      String astStyleBare = canonicalEntry;
+      if (astStyleBare.startsWith("ast-style-")) {
+        astStyleBare = astStyleBare.substring("ast-style-".length());
+      }
+      if (astStyleBare.endsWith("-style")) {
+        astStyleBare = astStyleBare.substring(0, astStyleBare.length() - "-style".length());
+      }
+      if (ruleForms.contains(astStyleBare)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Every form a rule id can reasonably be written in.
+   *
+   * <p>A rule id is built from an ENGINE token, a DOMAIN token and a NAME: {@code
+   * ast-error-catch-generic-exception}, {@code dfa-taint-leak}, {@code
+   * plumb.style.cwe600-uncaught-exception}. Different callers spell the same rule differently, and
+   * each spelling is something a user can reasonably type:
+   *
+   * <ul>
+   *   <li>the full id, exactly as the report prints it;
+   *   <li>without the {@code plumb.} prefix;
+   *   <li>without the ENGINE and DOMAIN tokens -- {@code catch-generic-exception} for {@code
+   *       ast-error-catch-generic-exception};
+   *   <li>without the {@code pl-<NNNN>-} numeric prefix the newer style rules use.
+   * </ul>
+   *
+   * <p><b>Why the domain token needs care.</b> {@code ast-error-catch-generic-exception} has TWO
+   * domain-ish tokens ({@code ast} and {@code error}) before the name, while {@code
+   * plumb.style.cwe600-uncaught-exception} has one ({@code style}) after a dotted prefix. Stripping
+   * only the first token left {@code error-catch-generic-exception}, which matches nothing -- so
+   * the id printed in the report could not be passed back to {@code --rule} to select the rule that
+   * produced it.
+   *
+   * <p><b>Why the peeling has to stop at the NAME.</b> Peeling every token is too much. {@code
+   * ast-error-catch-generic-exception} peels down to {@code generic-exception}, which is ALSO the
+   * tail of {@code ast-error-generic-exception} and {@code ast-error-throw-generic-exception} --
+   * three unrelated rules. A filter that named one of them would select all three.
+   *
+   * <p>So the peeling is driven by a VOCABULARY of the tokens that are actually engines or domains,
+   * and it stops as soon as the remainder is not one of them. The vocabulary is data, not a guess:
+   * it is the set of engine and domain tokens the rule ids are built from.
+   *
+   * @param ruleId the rule id
+   * @return the forms to match a filter entry against
+   */
+  private static java.util.List<String> ruleIdForms(String ruleId) {
+    java.util.List<String> forms = new java.util.ArrayList<>(6);
+    if (ruleId == null || ruleId.isEmpty()) {
+      return forms;
+    }
+    forms.add(ruleId);
+    // Drop a dotted `plumb.` prefix.
+    String s = ruleId.startsWith("plumb.") ? ruleId.substring("plumb.".length()) : ruleId;
+    if (!s.equals(ruleId)) {
+      forms.add(s);
+    }
+    // Drop a leading `pl-<NNNN>-` numeric prefix.
     if (s.startsWith("pl-") && s.length() > 4 && Character.isDigit(s.charAt(3))) {
       int dash = s.indexOf('-', 3);
       if (dash > 3) {
-        s = s.substring(dash + 1);
+        String stripped = s.substring(dash + 1);
+        forms.add(stripped);
+        s = stripped;
       }
     }
-    return s;
+    // Drop leading ENGINE / DOMAIN tokens, keeping every suffix. `ast-error-x` yields
+    // `ast-error-x`, `error-x` and `x`; `style.cwe600-x` yields `style.cwe600-x`
+    // and `cwe600-x`.
+    //
+    // The peeling stops at the NAME: only a token that is a known engine or
+    // domain is dropped, so `ast-error-catch-generic-exception` peels to
+    // `catch-generic-exception` and NOT to `generic-exception`. Peeling
+    // further would make three unrelated rules share a form, and a filter
+    // naming one of them would select all three.
+    String rest = s;
+    for (int i = 0; i < 4; i++) {
+      int dot = rest.indexOf('.');
+      int dash = rest.indexOf('-');
+      int cut = -1;
+      if (dot >= 0 && (dash < 0 || dot < dash)) {
+        cut = dot;
+      } else if (dash >= 0) {
+        cut = dash;
+      }
+      if (cut <= 0) {
+        break;
+      }
+      String head = rest.substring(0, cut);
+      if (!isEngineOrDomainToken(head)) {
+        // The head is the rule's NAME, not a domain. Stop here: everything
+        // from here on is the name, and a suffix of the name belongs to a
+        // different rule.
+        break;
+      }
+      rest = rest.substring(cut + 1);
+      if (!forms.contains(rest)) {
+        forms.add(rest);
+      }
+    }
+    return forms;
+  }
+
+  /**
+   * The tokens that make up a rule id's ENGINE and DOMAIN part.
+   *
+   * <p>These are the tokens the engine actually uses to build ids: the engine that produced the
+   * rule ({@code ast}, {@code dfa}, {@code bu}, {@code plumb}, {@code orm}) and the topic of the
+   * rule ({@code style}, {@code error}, {@code bug}, {@code taint}, {@code security}, {@code
+   * naming}, ...).
+   *
+   * <p>The list is deliberately a fixed vocabulary rather than "drop any leading token". Dropping
+   * any leading token makes a rule's NAME reachable as a form, and a name like {@code
+   * generic-exception} is shared by three unrelated rules -- so a filter naming one of them would
+   * select all three.
+   */
+  private static final java.util.Set<String> ENGINE_AND_DOMAIN_TOKENS =
+      java.util.Set.of(
+          // engines
+          "ast",
+          "dfa",
+          "bu",
+          "plumb",
+          "orm",
+          "servlet",
+          "singleton",
+          // domains
+          "style",
+          "error",
+          "bug",
+          "taint",
+          "security",
+          "naming",
+          "performance",
+          "quality",
+          "design",
+          "concurrency",
+          "numeric",
+          "boundary",
+          "pointer",
+          "resource",
+          "info",
+          "ai",
+          "general");
+
+  private static boolean isEngineOrDomainToken(String token) {
+    return ENGINE_AND_DOMAIN_TOKENS.contains(token);
   }
 
   /**
@@ -2032,7 +2297,7 @@ public final class ScanRunner {
       // via name() — the AST interface only requires a
       // "human-readable name" — so the whitelist entry
       // for them is the class name. Accept either form.
-      if (!isRuleIdAllowed(c.name()) && !isRuleIdAllowed(c.getClass().getSimpleName())) {
+      if (!isCheckerAllowed(c)) {
         // The DSL checker serves MANY rules, each with its own id.
         // Gating it on the checker's own name ("dsl-kotlin") would
         // drop every DSL rule in whitelist mode, because no
@@ -2078,50 +2343,19 @@ public final class ScanRunner {
         String checkerClass = f.rule().checkerClass();
         String clsSimple =
             checkerClass == null ? null : checkerClass.substring(checkerClass.lastIndexOf('.') + 1);
-        // B: dual-form match. The yaml
-        // whitelist uses the bare form
-        // (e.g. "dfa.cwe510-trapdoor") but the
-        // emitted Finding's rule_id carries the
-        // full "plumb." prefix. Without the bare
-        // form fallback, loose-class / composite
-        // checkers fire correctly but their
-        // findings get dropped here —  the
-        // pre-emit isEnabled() check (line 1486)
-        // does the dual-form match, this post-
-        // emit filter didn't.
+        // The SAME predicate the registration gate uses, so the two can
+        // never disagree. The previous code compared the whitelist entries
+        // by hand and had its own idea of what a "bare id" is (it stripped
+        // at the FIRST dot, so `ast-bug-incorrect-return-comparison` became
+        // `bug-incorrect-return-comparison`), which is a different
+        // normalisation from the one the CLI's `--rule` filter uses. A
+        // finding could therefore pass the registration gate and be dropped
+        // here, or the other way round.
         //
-        // also strip the
-        // `pl-<NNNN>-` prefix that the new style
-        // rules use (e.g. `pl-0763-incorrect-
-        // return-comparison`), so the user can
-        // write the short form
-        // `incorrect-return-comparison` in the
-        // yaml whitelist.
-        String bareId = id;
-        if (bareId.startsWith("plumb.")) {
-          bareId = bareId.substring("plumb.".length());
-        }
-        // also strip the domain prefix
-        // (`style.` / `dfa.` / `numeric.` / `boundary.`)
-        // so a canonical `plumb.style.cwe600-uncaught-exception`
-        // emit matches the legacy yaml form
-        // `cwe600-uncaught-exception`.
-        int bareDot = bareId.indexOf('.');
-        if (bareDot > 0) {
-          bareId = bareId.substring(bareDot + 1);
-        }
-        if (bareId.startsWith("pl-")
-            && bareId.length() > 4
-            && Character.isDigit(bareId.charAt(3))) {
-          int dash = bareId.indexOf('-', 3);
-          if (dash > 3) {
-            bareId = bareId.substring(dash + 1);
-          }
-        }
-        if (config.enabledRuleNames.contains(id)
-            || config.enabledRuleNames.contains(bareId)
-            || config.enabledRuleNames.contains(name)
-            || (clsSimple != null && config.enabledRuleNames.contains(clsSimple))) {
+        // The class simple name is accepted with and without its `Check`
+        // suffix, because the per-CWE configs were written against the
+        // shorter form.
+        if (findingIsAllowed(f, config.enabledRuleNames)) {
           kept.add(f);
         }
       }
@@ -2252,26 +2486,47 @@ public final class ScanRunner {
       boolean enabled = def.enabled();
       String id = def.ruleId().id();
       String name = def.ruleId().name();
-      // yaml's legacy short forms like
-      // `cwe600-uncaught-exception` should also match
-      // a canonical `plumb.style.cwe600-uncaught-exception`
-      // emit. Use the same bare-form helper that the
-      // per-finding whitelist filter uses.
-      String bareId = stripPlumbAndPlPrefix(id);
-      if (config.disabledRuleNames.contains(name)
-          || config.disabledRuleNames.contains(id)
-          || config.disabledRuleNames.contains(bareId)) {
+      // The rule has several identities and a filter entry may name any of
+      // them, so the SAME predicate the per-finding filter uses decides
+      // here. The previous code compared the entries by hand against three
+      // hand-computed spellings of the id, and its idea of a "bare id" was
+      // different from the per-finding filter's — so a rule could be
+      // enabled here and dropped there, or the other way round.
+      //
+      // The checker class name is included because the per-CWE configs were
+      // written against the class name (e.g. `UncheckedReturn`).
+      String clsSimple = def.checkerClass();
+      if (clsSimple != null) {
+        int dot = clsSimple.lastIndexOf('.');
+        clsSimple = dot >= 0 ? clsSimple.substring(dot + 1) : clsSimple;
+      }
+      boolean disabled =
+          filterMatches(name, config.disabledRuleNames)
+              || filterMatches(id, config.disabledRuleNames)
+              || (clsSimple != null && filterMatches(clsSimple, config.disabledRuleNames));
+      for (String alias : def.aliases()) {
+        if (filterMatches(alias, config.disabledRuleNames, true)) {
+          disabled = true;
+        }
+      }
+      if (disabled) {
         enabled = false;
       }
-      if (config.enabledRuleNames.contains(name)
-          || config.enabledRuleNames.contains(id)
-          || config.enabledRuleNames.contains(bareId)) {
+      boolean explicitlyEnabled =
+          filterMatches(name, config.enabledRuleNames)
+              || filterMatches(id, config.enabledRuleNames)
+              || (clsSimple != null && filterMatches(clsSimple, config.enabledRuleNames));
+      for (String alias : def.aliases()) {
+        if (filterMatches(alias, config.enabledRuleNames, true)) {
+          explicitlyEnabled = true;
+        }
+      }
+      if (explicitlyEnabled) {
         enabled = true;
       }
-      if (whitelistActive
-          && !config.enabledRuleNames.contains(name)
-          && !config.enabledRuleNames.contains(id)
-          && !config.enabledRuleNames.contains(bareId)) {
+      // In whitelist mode a rule that no entry names stays off, unless the
+      // user named it explicitly above.
+      if (whitelistActive && !explicitlyEnabled) {
         enabled = false;
       }
       if (enabled != def.enabled()) {
@@ -2515,7 +2770,15 @@ public final class ScanRunner {
         // checkers don't expose their RuleId via
         // name(); the whitelist entry for them is
         // the class name.
-        if (!isRuleIdAllowed(c.name()) && !isRuleIdAllowed(c.getClass().getSimpleName())) {
+        //
+        // The checker's RULE ID is accepted too, and it has to be: the
+        // rule id is what a finding carries and what the NDJSON output
+        // prints, so a user who copies an id out of the report and
+        // passes it back to `--rule` has to get that rule back. Before
+        // this, the AST registration gate only looked at the checker's
+        // NAME and its CLASS NAME, so `--rule ast-bug-incorrect-return-comparison`
+        // -- the exact id in the report -- selected nothing at all.
+        if (!isCheckerAllowed(c)) {
           // The DSL checker serves MANY rules, so it cannot be
           // gated on its own name. Admit it when at least one
           // of its rules is allowed; the per-rule decision is
@@ -2559,22 +2822,20 @@ public final class ScanRunner {
               checkerClass == null
                   ? null
                   : checkerClass.substring(checkerClass.lastIndexOf('.') + 1);
-          // B: dual-form match (see
-          // line-1625 comment).
-          String bareId = id.startsWith("plumb.") ? id.substring("plumb.".length()) : id;
-          // also strip the domain prefix
-          // (`style.` / `dfa.` / `numeric.` / `boundary.`)
-          // so a canonical `plumb.style.cwe600-uncaught-exception`
-          // emit matches the legacy yaml form
-          // `cwe600-uncaught-exception`.
-          int bareIdDot = bareId.indexOf('.');
-          if (bareIdDot > 0) {
-            bareId = bareId.substring(bareIdDot + 1);
-          }
-          if (config.enabledRuleNames.contains(id)
-              || config.enabledRuleNames.contains(bareId)
-              || config.enabledRuleNames.contains(name)
-              || (clsSimple != null && config.enabledRuleNames.contains(clsSimple))) {
+          // The SAME predicate the registration gate uses, so the two can
+          // never disagree. The previous code compared the whitelist
+          // entries by hand and had its own idea of what a "bare id" is
+          // (it stripped at the FIRST dot, so
+          // `ast-bug-incorrect-return-comparison` became
+          // `bug-incorrect-return-comparison`), which is a different
+          // normalisation from the one the CLI's `--rule` filter uses.
+          // A finding could therefore pass the registration gate and be
+          // dropped here, or the other way round.
+          //
+          // The class simple name is accepted with and without its
+          // `Check` suffix, because the per-CWE configs were written
+          // against the shorter form.
+          if (findingIsAllowed(f, config.enabledRuleNames)) {
             kept.add(f);
           }
         }
