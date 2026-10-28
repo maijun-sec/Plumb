@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 package org.plumb.dfa.checkers.taint;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -123,6 +144,82 @@ class ResourceLeakAliasTest {
     assertThat(runOn(dir.resolve("ClosedOnOnePath.java"), source))
         .as("the close is conditional, so the other path leaks")
         .isNotEmpty();
+  }
+
+  @Test
+  void aStreamClosedInAFinallyBlockIsNotALeak(@TempDir Path dir) throws Exception {
+    // The canonical shape for closing a resource, and the shape the Juliet
+    // corpus uses. A finally block runs on EVERY exit path, so a close inside
+    // it is unconditional -- even when a guard puts it inside a branch arm.
+    String source =
+        """
+        import java.io.FileInputStream;
+
+        public class LeakFixture {
+          public void closedInFinally(java.io.File f) throws Exception {
+            FileInputStream in = null;
+            try {
+              in = new FileInputStream(f);
+              in.read();
+            } finally {
+              if (in != null) {
+                in.close();
+              }
+            }
+          }
+        }
+        """;
+
+    assertThat(runOn(dir.resolve("ClosedInFinally.java"), source))
+        .as("a finally block runs on every path, so the close is unconditional")
+        .isEmpty();
+  }
+
+  @Test
+  void aStreamThatIsNeverClosedInAFinallyBlockIsStillALeak(@TempDir Path dir) throws Exception {
+    // The control for the finally case: the finally block exists but does not
+    // close the resource.
+    String source =
+        """
+        import java.io.FileInputStream;
+
+        public class LeakFixture {
+          public void notClosedInFinally(java.io.File f) throws Exception {
+            FileInputStream in = null;
+            try {
+              in = new FileInputStream(f);
+              in.read();
+            } finally {
+              in = null;
+            }
+          }
+        }
+        """;
+
+    assertThat(runOn(dir.resolve("NotClosedInFinally.java"), source))
+        .as("the finally block does not close the stream, so it IS a leak")
+        .isNotEmpty();
+  }
+
+  @Test
+  void anAllocationThatIsNotCloseableIsNotALeak(@TempDir Path dir) throws Exception {
+    // Only a CLOSEABLE allocation can leak. `new byte[1024]` and
+    // `new String(bytes)` are allocations, but nothing can be "not closed"
+    // about them: they have no close(). Reporting them was the difference
+    // between a rule that finds a real defect and a rule that cries wolf.
+    String source =
+        """
+        public class LeakFixture {
+          public void notCloseable(int n) {
+            byte[] buffer = new byte[n];
+            String text = new String(buffer);
+          }
+        }
+        """;
+
+    assertThat(runOn(dir.resolve("NotCloseable.java"), source))
+        .as("an array and a String cannot leak; they have no close()")
+        .isEmpty();
   }
 
   /** Analyse one file with the resource-leak checker and return its findings. */

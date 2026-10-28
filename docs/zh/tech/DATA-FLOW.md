@@ -18,12 +18,12 @@
 
 | 方法 | 用途 |
 | --- | --- |
-| `run(TacProgram)` (`:257`) | 单程序 |
-| `runSequential(TacProgram)` (`:1031`) | 单线程 |
-| `runParallel(TacProgram, int)` (`:1002`) | 顶层 worklist 并行 |
-| `runWithGlobalStore(List<TacProgram>, int)` (`:336`) | 跨文件全局 store（CLI 默认策略 `global`） |
+| `run(TacProgram)` (`:278`) | 单程序 |
+| `runSequential(TacProgram)` (`:1052`) | 单线程 |
+| `runParallel(TacProgram, int)` (`:1023`) | 顶层 worklist 并行 |
+| `runWithGlobalStore(List<TacProgram>, int)` (`:357`) | 跨文件全局 store（CLI 默认策略 `global`） |
 
-所有模式最终都走同一个骨架。真正的调度在 `runWorklist`（`:1095`）：
+所有模式最终都走同一个骨架。真正的调度在 `runWorklist`（`:1116`）：
 
 ```
 initEngine(ctx)              // 所有 checker 一次
@@ -44,16 +44,16 @@ finish(ctx)
 
 | 说法 | 代码里的对应物 | 是否准确 |
 | --- | --- | --- |
-| 逆向、非流敏感的前置分析 | `warmUpMethodSummaries` (`:602`) → `MethodSummaryBuilder.build` | **部分准确**。它是一次线性 IR 扫描，分类 return 形态、收集副作用，**没有数据流求解**。它是路径无关的语法摘要，不是反向流分析。 |
-| 正向、流敏感的指令遍历 | `analyseOneFunction` (`:1228`)，按 `bbRpoOrder(fn)` 遍历 | **准确**。每个 checker 维护自己的正向格（taint / nullable / interval），在指令上传播。 |
-| 指向性是独立前置求解 | `solvePointsTo` (`:663`) | **准确**。全程序一次求解，结果挂在 `AnalysisContext` 上，所有 checker 共享同一个不动点。 |
+| 逆向、非流敏感的前置分析 | `warmUpMethodSummaries` (`:623`) → `MethodSummaryBuilder.build` | **部分准确**。它是一次线性 IR 扫描，分类 return 形态、收集副作用，**没有数据流求解**。它是路径无关的语法摘要，不是反向流分析。 |
+| 正向、流敏感的指令遍历 | `analyseOneFunction` (`:1249`)，按 `bbRpoOrder(fn)` 遍历 | **准确**。每个 checker 维护自己的正向格（taint / nullable / interval），在指令上传播。 |
+| 指向性是独立前置求解 | `solvePointsTo` (`:684`) | **准确**。全程序一次求解，结果挂在 `AnalysisContext` 上，所有 checker 共享同一个不动点。 |
 
 **关键事实：引擎没有「先跑一遍逆向、再跑一遍正向」的两个独立数据流 pass。** 只有一次
 正向遍历；summary 是这次遍历的产物，而不是另一遍分析的输入。
 
 ### 1.3 指令顺序：BB-RPO，块内正向
 
-`bbRpoOrder(TacFunction)`（`:1338`）：
+`bbRpoOrder(TacFunction)`（`:1359`）：
 
 - 基本块按 **reverse post-order** 排列（DFS 后序再反转，`:1347-1350`）
 - 块内指令保持**原始正向顺序**（`:1358-1363`）
@@ -103,21 +103,21 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 
 | kind 名 | 常量 | 位置 | 声明的 trait |
 | --- | --- | --- | --- |
-| `dfa-taint-untrusted-source` | `UNTRUSTED_SOURCE` | `:56` | SOURCE, BY_DECL, THROUGH_CALL |
-| `dfa-taint-untrusted-sink` | `UNTRUSTED_SINK` | `:66` | SINK, IS_PATH_SINK |
-| `plumb.nullable.may-be-null` | `MAY_BE_NULL` | `:77` | BY_DECL |
-| `plumb.numeric.may-be-zero` | `MAY_BE_ZERO` | `:85` | BY_DECL |
-| `plumb.resource.alloc-source` | `ALLOC_SOURCE` | `:96` | BY_DECL, THROUGH_CALL |
-| `plumb.resource.free-sink` | `FREE_SINK` | `:106` | IS_PATH_SINK |
-| `plumb.pointer.deref-sink` | `DEREF_SINK` | `:117` | IS_PATH_SINK |
-| `plumb.array.index-sink` | `INDEX_SINK` | `:125` | IS_PATH_SINK |
-| `plumb.numeric.overflow-hazard` | `NUMERIC_OVERFLOW_HAZARD` | `:135` | NOT_PROPAGATED_THROUGH_LOOP, IS_PATH_SINK |
-| `plumb.sensitive.data` | `SENSITIVE_DATA` | `:146` | SOURCE, BY_DECL, THROUGH_CALL |
-| `plumb.sensitive.pii` | `SENSITIVE_PII` | `:156` | SOURCE, BY_DECL, THROUGH_CALL |
-| `plumb.loop.induction` | `LOOP_INDUCTION` | `:167` | NOT_PROPAGATED_THROUGH_LOOP |
-| `plumb.call.unmodeled-callee-ret` | `UNMODELED_CALLEE_RET` | `:179` | BY_DECL, THROUGH_CALL |
-| `plumb.call.return-value-folded` | `RETURN_VALUE_FOLDED` | `:205` | BY_DECL |
-| `plumb.call.side-effect-recorded` | `SIDE_EFFECT_RECORDED` | `:217` | BY_DECL |
+| `dfa-taint-untrusted-source` | `UNTRUSTED_SOURCE` | `:77` | SOURCE, BY_DECL, THROUGH_CALL |
+| `dfa-taint-untrusted-sink` | `UNTRUSTED_SINK` | `:87` | SINK, IS_PATH_SINK |
+| `plumb.nullable.may-be-null` | `MAY_BE_NULL` | `:98` | BY_DECL |
+| `plumb.numeric.may-be-zero` | `MAY_BE_ZERO` | `:106` | BY_DECL |
+| `plumb.resource.alloc-source` | `ALLOC_SOURCE` | `:117` | BY_DECL, THROUGH_CALL |
+| `plumb.resource.free-sink` | `FREE_SINK` | `:127` | IS_PATH_SINK |
+| `plumb.pointer.deref-sink` | `DEREF_SINK` | `:138` | IS_PATH_SINK |
+| `plumb.array.index-sink` | `INDEX_SINK` | `:146` | IS_PATH_SINK |
+| `plumb.numeric.overflow-hazard` | `NUMERIC_OVERFLOW_HAZARD` | `:156` | NOT_PROPAGATED_THROUGH_LOOP, IS_PATH_SINK |
+| `plumb.sensitive.data` | `SENSITIVE_DATA` | `:167` | SOURCE, BY_DECL, THROUGH_CALL |
+| `plumb.sensitive.pii` | `SENSITIVE_PII` | `:177` | SOURCE, BY_DECL, THROUGH_CALL |
+| `plumb.loop.induction` | `LOOP_INDUCTION` | `:188` | NOT_PROPAGATED_THROUGH_LOOP |
+| `plumb.call.unmodeled-callee-ret` | `UNMODELED_CALLEE_RET` | `:200` | BY_DECL, THROUGH_CALL |
+| `plumb.call.return-value-folded` | `RETURN_VALUE_FOLDED` | `:226` | BY_DECL |
+| `plumb.call.side-effect-recorded` | `SIDE_EFFECT_RECORDED` | `:238` | BY_DECL |
 
 **这是两个不同的清单,不是一个**:`org.plumb.dfa.config.ConfigLoader.parseFactKinds`
 (`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:227-263`)先把这 15 个内置 kind 放进 registry,再用
@@ -146,7 +146,7 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 `checkInstruction`（全仓库共 47 个 `extends TaintedCheckerBase`，
 另外两个是 `BoundaryConstraintChecker` 和基类自身）。
 
-- 状态：`taintedVars: Map<TacVar, String>`（`:139`）与 `taintPaths`（`:148`）
+- 状态：`taintedVars: Map<TacVar, String>`（`:160`）与 `taintPaths`（`:169`）
 - 传播：`propagateMOVE`（`:1228`）等按指令种类分派
 - sink 判定：按 `sinkFamilyKey` 查 `SinkFamilyRegistry`（`config/SinkFamilyRegistry.java:22`，在
   `org.plumb.dfa.config` 包），**不是** IFDS 框架
@@ -290,9 +290,9 @@ sink 的值没有框架来源可写。
 （`:38-40`），结构参考 Qilin（`:36`）。
 
 - **堆抽象**：field-sensitive `(receiver, name)`（`:80`）、数组单元（`:83`）、以及独立的
-  Map/List `containerCells`（`:94`）
+  Map/List `containerCells`（`:115`）
 - **上下文敏感**：`AbstractObject.Policy` 三档，默认 **`CALL_SITE`（1-CFA）**
-  （`points/AbstractObject.java:288-290`），可经 `TuningConfig.effectivePointsToPolicy()`
+  （`points/AbstractObject.java:309-290`），可经 `TuningConfig.effectivePointsToPolicy()`
   覆盖
 - **不使用 Z3**：`points/` 下没有任何 solver 引用；Z3 只出现在 `solver/` 的路径条件里
 - 求解一次（`DfaEngine.solvePointsTo`，`:667`），失败降级为「无 alias 信息」而非崩溃
@@ -312,14 +312,14 @@ sink 的值没有框架来源可写。
 
 ## 4. 可空性：三值事实域
 
-`AnalysisContext.mayBeNull(...)`（`engine/AnalysisContext.java:391-395`）是**对指向性
+`AnalysisContext.mayBeNull(...)`（`engine/AnalysisContext.java:412-395`）是**对指向性
 求解器的转发**，本身不存事实。五个通道是 `PointsToSolver` 的私有字段：
 
-- `nullFields` `:126`
-- `nullArrayCells` `:129`
-- `nullContainerCells` `:132`
-- `nullReturns` `:135`
-- `nullVars` `:138`
+- `nullFields` `:147`
+- `nullArrayCells` `:150`
+- `nullContainerCells` `:153`
+- `nullReturns` `:156`
+- `nullVars` `:159`
 
 **三值语义**（`PointsToSolver.java:104-121` 解释了为什么 null 不能做成 `Obj` 哨兵：那样所有
 null 会互相 alias，污染 `mayAlias`）：
@@ -337,7 +337,7 @@ null 会互相 alias，污染 `mayAlias`）：
 
 ## 5. Z3：只做误报过滤
 
-Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:3343`，位于 sink 发出路径：
+Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:3364`，位于 sink 发出路径：
 
 ```java
 String composed = composePathCondition(pathConditionForSink(...));
@@ -347,13 +347,13 @@ if (!composed.isEmpty()) {
 }
 ```
 
-- `pathConditionForSink` **默认返回 null**（`:3443-3446`），所以未覆写它的 checker
+- `pathConditionForSink` **默认返回 null**（`:3464-3446`），所以未覆写它的 checker
   组合出的条件为空，**根本不会调用 Z3**
 - 语义明确：Z3 **只用于抑制误报，绝不用于发现缺陷**（`:3237`）
 - 调用链：`CachedZ3Bridge`（LRU 4096 项，`solver/CachedZ3Bridge.java:41-66`）→
   `Z3Bridge`（native Z3，失败回退 `LocalSolverBridge`）
 - `StructuralImply`（`solver/StructuralImply.java`）是先于 SMT 的廉价一级判定
-  （`x >= N` 蕴含 `x != 0` 之类，`PathCondition.java:136-144`）
+  （`x >= N` 蕴含 `x != 0` 之类，`PathCondition.java:157-144`）
 
 ### 5.1 PathCondition 与 GuardTracker 是两套东西
 
@@ -386,7 +386,7 @@ Z3 由 `tools.aqua:z3-turnkey` 提供，自动下载对应平台 native lib。
 | `stub` | `StubCallGraphStrategy` |
 | `cached:<name>:<path>` | `CachedCallGraphStrategy` |
 
-跨 TU 的 `createCrossTu`（`:89-112`）只支持 `global` → `GlobalCallGraphStrategy`（**CLI
+跨 TU 的 `createCrossTu`（`:110-112`）只支持 `global` → `GlobalCallGraphStrategy`（**CLI
 默认**）与 cached 两种。
 
 ⚠️ **文档早期声称存在 `0-CFA`，代码中不存在**，且未知名字会直接抛异常

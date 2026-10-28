@@ -40,22 +40,14 @@ def run_gate():
 # loudly rather than mutating the wrong line.
 MUTANTS = [
     # --- a stale line citation -------------------------------------
-    ("stale-citation-method",
-     DOC,
-     "The real scheduling happens in `runWorklist` (`:1095`)",
-     "The real scheduling happens in `runWorklist` (`:9999`)"),
-    ("stale-citation-field",
-     DOC,
-     "- `nullFields` `:126`",
-     "- `nullFields` `:99`"),
-    ("stale-citation-fact-kind",
-     DOC,
-     "| `plumb.call.unmodeled-callee-ret` | `UNMODELED_CALLEE_RET` | `:179` |",
-     "| `plumb.call.unmodeled-callee-ret` | `UNMODELED_CALLEE_RET` | `:170` |"),
-    ("stale-citation-range",
-     DOC,
-     "(`points/AbstractObject.java:288-290`)",
-     "(`points/AbstractObject.java:200-202`)"),
+    # --- a stale line citation ---------------------------------------
+    #
+    # The anchors for these are DERIVED from the document at run
+    # time, not hard-coded. A hard-coded line number is a second
+    # source of truth: when the source file grows -- or when the
+    # licence header moves every line -- the anchor stops matching,
+    # the battery reports "could not build", and that says NOTHING
+    # about the gate. See derive_citation_mutants() below.
 
     # --- a class that does not exist --------------------------------
     ("missing-class",
@@ -133,6 +125,59 @@ def derive_z3_citation_mutant():
     )
 
 
+def derive_citation_mutants():
+    """Build the stale-citation mutants FROM the document.
+
+    A hard-coded anchor is a second source of truth: when the source
+    file grows -- or when the licence header moves every line down --
+    the anchor stops matching, the battery reports "could not build",
+    and that says nothing about the gate. So each anchor is read out
+    of the document at run time, and only the REPLACEMENT is
+    hard-coded.
+
+    Each mutant moves ONE citation to a line that is definitely
+    wrong, so the gate has to notice that the citation no longer
+    lands on the declaration.
+    """
+    text = DOC.read_text(encoding="utf-8")
+    out = []
+
+    # (name, a regular expression that finds the citation)
+    shapes = [
+        ("stale-citation-method",
+         r"(The real scheduling happens in `runWorklist` \(`:(\d+)`\))"),
+        ("stale-citation-field",
+         r"(- `nullFields` `:(\d+)`)"),
+        ("stale-citation-fact-kind",
+         r"(\| `plumb\.call\.unmodeled-callee-ret` \| `UNMODELED_CALLEE_RET`"
+         r" \| `:(\d+)` \|)"),
+        ("stale-citation-range",
+         r"(\(`points/AbstractObject\.java:(\d+)-(\d+)`\))"),
+    ]
+
+    for name, pattern in shapes:
+        m = re.search(pattern, text)
+        if not m:
+            # The document does not carry the citation in that shape
+            # any more. That is itself a defect the gate should
+            # catch, so the caller reports it.
+            out.append((name, None, None, None))
+            continue
+        whole = m.group(1)
+        if name == "stale-citation-range":
+            # A range: move the WHOLE range to a wrong place.
+            start = int(m.group(2))
+            end = int(m.group(3))
+            new = whole.replace("%d-%d" % (start, end),
+                                "%d-%d" % (start + 900, end + 900))
+        else:
+            num = int(m.group(2))
+            new = whole.replace(":%d" % num, ":%d" % (num + 900))
+        out.append((name, whole, new, None))
+
+    return out
+
+
 def main():
     if not DOC.is_file():
         print("FAIL: %s does not exist" % DOC)
@@ -158,6 +203,17 @@ def main():
               "so the Z3 call-site citation cannot be mutated")
         return 1
     mutants.append(derived)
+
+    # The stale-citation mutants are derived the same way: their
+    # anchors are read out of the document, so a line number that
+    # moves does not turn into a "could not build" that says nothing
+    # about the gate.
+    for name, old, new, _ in derive_citation_mutants():
+        if old is None:
+            print("FAIL: %s -- the document does not carry the citation in "
+                  "the shape the mutant needs" % name)
+            return 1
+        mutants.append((name, DOC, old, new))
 
     for name, target, old, new in mutants:
         if not target.is_file():

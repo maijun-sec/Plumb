@@ -26,6 +26,7 @@ from framework_input_annotations import (  # noqa: E402
     FRAMEWORKS,
 )
 from _formatter import format_source  # noqa: E402
+from license_header import header_text  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TARGET = os.path.join(
@@ -52,6 +53,13 @@ GROUP_TITLES = {
 def render():
     lines = []
     add = lines.append
+    # The licence header comes from scripts/license_header.py, which is
+    # the single source of truth for the text. The generated file is
+    # still a source file that ships, so it carries the header like
+    # every other one -- and because the header is emitted HERE
+    # rather than pasted in by hand, regenerating the file cannot
+    # drop it and the licence gate cannot drift away from it.
+    add(header_text().rstrip("\n"))
     add("package org.plumb.rules.framework;")
     add("")
     add("import java.util.Collections;")

@@ -86,6 +86,7 @@ plumb-<ver>/
 plumb-<ver>-jre-{windows-x64|linux-x64}/
 ├── README.md                  # from templates/README-{win,linux}.md.template
 ├── CHANGELOG.md               # from templates/CHANGELOG.template
+├── LICENSE                    # the MIT terms the code is shipped under
 ├── bin/
 │   ├── plumb                 # POSIX launcher (bash)
 │   └── plumb.bat             # Windows cmd launcher

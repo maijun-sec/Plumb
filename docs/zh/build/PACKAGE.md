@@ -86,6 +86,7 @@ plumb-<ver>/
 plumb-<ver>-jre-{windows-x64|linux-x64}/
 ├── README.md                  # 来自 templates/README-{win,linux}.md.template
 ├── CHANGELOG.md               # 来自 templates/CHANGELOG.template
+├── LICENSE                    # 这份代码发布时所依据的 MIT 条款
 ├── bin/
 │   ├── plumb                 # POSIX 启动器（bash）
 │   └── plumb.bat             # Windows cmd 启动器

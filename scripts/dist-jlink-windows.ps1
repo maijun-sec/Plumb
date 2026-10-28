@@ -262,6 +262,16 @@ foreach ($Doc in $DocsToCopy) {
     }
 }
 
+# The licence travels with the distribution, at the ROOT next to the
+# README -- not under docs\. A package that ships the code without the
+# terms is a package the terms do not cover.
+$LicensePath = Join-Path $ProjectRoot 'LICENSE'
+if (Test-Path $LicensePath -PathType Leaf) {
+    Copy-Item -Force $LicensePath $Dist
+} else {
+    Write-Host "  (skip, not found: LICENSE)"
+}
+
 # 4f. dist README (use external UTF-8 template to avoid
 #     PowerShell 5.1 ANSI parser mangling CJK in here-strings)
 $ReadmePath = Join-Path $Dist 'README.md'

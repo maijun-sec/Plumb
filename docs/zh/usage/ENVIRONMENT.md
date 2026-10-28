@@ -6,10 +6,10 @@ Plumb 读取的环境变量**很少**。整个代码库里只有两处真正读�
 `plumb-main/.../ConfigLoader.java`：
 
 ```java
-String apiKey = System.getenv("OPENAI_API_KEY");        // :466  默认值
+String apiKey = System.getenv("OPENAI_API_KEY");        // :487  默认值
 ...
 String envName = s.substring(2, s.length() - 1);
-apiKey = System.getenv(envName);                          // :504  "${VAR}" 展开
+apiKey = System.getenv(envName);                          // :525  "${VAR}" 展开
 ```
 
 本文档的每个结论都对照代码核实过。
@@ -22,8 +22,8 @@ apiKey = System.getenv(envName);                          // :504  "${VAR}" 展�
 
 | 变量 | 读取位置 | 用途 |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | `ConfigLoader.java:466` | `ai.apiKey` 未在 YAML 里指定时的默认值 |
-| YAML 中 `${任意变量名}` | `ConfigLoader.java:504` | 显式引用，`ai.apiKey: ${MY_KEY}` |
+| `OPENAI_API_KEY` | `ConfigLoader.java:487` | `ai.apiKey` 未在 YAML 里指定时的默认值 |
+| YAML 中 `${任意变量名}` | `ConfigLoader.java:525` | 显式引用，`ai.apiKey: ${MY_KEY}` |
 
 只有这两个。`ai.apiKey: ${MINIMAX_API_KEY}` 是**通过第二行**生效的——引擎并不知道
 MiniMax 这个名字，它只看到 `${...}` 就去读那个变量。
@@ -97,8 +97,8 @@ ai:
 ### 2.4 API key 的来源（优先级从高到低）
 
 1. YAML 里的字面量 `ai.apiKey: sk-...` —— **不推荐**，会进版本库
-2. `ai.apiKey: ${SOME_VAR}` 展开的环境变量（`ConfigLoader.java:502-504`）
-3. YAML 未写 `ai.apiKey` 时，`ConfigLoader.java:466` 兜底读 `OPENAI_API_KEY`
+2. `ai.apiKey: ${SOME_VAR}` 展开的环境变量（`ConfigLoader.java:523-504`）
+3. YAML 未写 `ai.apiKey` 时，`ConfigLoader.java:487` 兜底读 `OPENAI_API_KEY`
 4. 都没有 → AI 连接不可用；不开 `--ai-dedup` 就完全不影响静态分析
 
 ---

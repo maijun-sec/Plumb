@@ -18,12 +18,12 @@ The entry point is `DfaEngine` (`engine/DfaEngine.java`), with three run modes e
 
 | Method | Purpose |
 | --- | --- |
-| `run(TacProgram)` (`:257`) | Single program |
-| `runSequential(TacProgram)` (`:1031`) | Single-threaded |
-| `runParallel(TacProgram, int)` (`:1002`) | Top-level worklist parallelism |
-| `runWithGlobalStore(List<TacProgram>, int)` (`:336`) | Cross-file global store (the CLI default strategy `global`) |
+| `run(TacProgram)` (`:278`) | Single program |
+| `runSequential(TacProgram)` (`:1052`) | Single-threaded |
+| `runParallel(TacProgram, int)` (`:1023`) | Top-level worklist parallelism |
+| `runWithGlobalStore(List<TacProgram>, int)` (`:357`) | Cross-file global store (the CLI default strategy `global`) |
 
-All modes eventually go through the same skeleton. The real scheduling happens in `runWorklist` (`:1095`):
+All modes eventually go through the same skeleton. The real scheduling happens in `runWorklist` (`:1116`):
 
 ```
 initEngine(ctx)              // once for all checkers
@@ -44,16 +44,16 @@ This is the place where documentation most easily goes wrong, so it is checked a
 
 | Claim | Corresponding code | Accurate? |
 | --- | --- | --- |
-| Backward, flow-insensitive pre-analysis | `warmUpMethodSummaries` (`:602`) → `MethodSummaryBuilder.build` | **Partially accurate**. It is a single linear IR scan that classifies the return shape and collects side effects, with **no dataflow solving**. It is a path-insensitive syntactic summary, not a backward flow analysis. |
-| Forward, flow-sensitive instruction traversal | `analyseOneFunction` (`:1228`), traversing in `bbRpoOrder(fn)` order | **Accurate**. Every checker maintains its own forward lattice (taint / nullable / interval) and propagates it over the instructions. |
-| Points-to is an independent pre-solve | `solvePointsTo` (`:663`) | **Accurate**. One whole-program solve; the result hangs off `AnalysisContext`, and all checkers share the same fixpoint. |
+| Backward, flow-insensitive pre-analysis | `warmUpMethodSummaries` (`:623`) → `MethodSummaryBuilder.build` | **Partially accurate**. It is a single linear IR scan that classifies the return shape and collects side effects, with **no dataflow solving**. It is a path-insensitive syntactic summary, not a backward flow analysis. |
+| Forward, flow-sensitive instruction traversal | `analyseOneFunction` (`:1249`), traversing in `bbRpoOrder(fn)` order | **Accurate**. Every checker maintains its own forward lattice (taint / nullable / interval) and propagates it over the instructions. |
+| Points-to is an independent pre-solve | `solvePointsTo` (`:684`) | **Accurate**. One whole-program solve; the result hangs off `AnalysisContext`, and all checkers share the same fixpoint. |
 
 **Key fact: the engine does not have "a backward pass followed by a separate forward pass".** There is only one
 forward traversal; the summaries are a product of that traversal, not the input of another analysis pass.
 
 ### 1.3 Instruction order: BB-RPO, forward within a block
 
-`bbRpoOrder(TacFunction)` (`:1338`):
+`bbRpoOrder(TacFunction)` (`:1359`):
 
 - Basic blocks are ordered in **reverse post-order** (reverse the DFS post-order, `:1347-1350`)
 - The instructions inside a block keep their **original forward order** (`:1358-1363`)
@@ -102,21 +102,21 @@ pins this fact down: it asserts that no `.has(...Trait...)` call exists in the p
 
 | kind name | Constant | Location | Declared traits |
 | --- | --- | --- | --- |
-| `dfa-taint-untrusted-source` | `UNTRUSTED_SOURCE` | `:56` | SOURCE, BY_DECL, THROUGH_CALL |
-| `dfa-taint-untrusted-sink` | `UNTRUSTED_SINK` | `:66` | SINK, IS_PATH_SINK |
-| `plumb.nullable.may-be-null` | `MAY_BE_NULL` | `:77` | BY_DECL |
-| `plumb.numeric.may-be-zero` | `MAY_BE_ZERO` | `:85` | BY_DECL |
-| `plumb.resource.alloc-source` | `ALLOC_SOURCE` | `:96` | BY_DECL, THROUGH_CALL |
-| `plumb.resource.free-sink` | `FREE_SINK` | `:106` | IS_PATH_SINK |
-| `plumb.pointer.deref-sink` | `DEREF_SINK` | `:117` | IS_PATH_SINK |
-| `plumb.array.index-sink` | `INDEX_SINK` | `:125` | IS_PATH_SINK |
-| `plumb.numeric.overflow-hazard` | `NUMERIC_OVERFLOW_HAZARD` | `:135` | NOT_PROPAGATED_THROUGH_LOOP, IS_PATH_SINK |
-| `plumb.sensitive.data` | `SENSITIVE_DATA` | `:146` | SOURCE, BY_DECL, THROUGH_CALL |
-| `plumb.sensitive.pii` | `SENSITIVE_PII` | `:156` | SOURCE, BY_DECL, THROUGH_CALL |
-| `plumb.loop.induction` | `LOOP_INDUCTION` | `:167` | NOT_PROPAGATED_THROUGH_LOOP |
-| `plumb.call.unmodeled-callee-ret` | `UNMODELED_CALLEE_RET` | `:179` | BY_DECL, THROUGH_CALL |
-| `plumb.call.return-value-folded` | `RETURN_VALUE_FOLDED` | `:205` | BY_DECL |
-| `plumb.call.side-effect-recorded` | `SIDE_EFFECT_RECORDED` | `:217` | BY_DECL |
+| `dfa-taint-untrusted-source` | `UNTRUSTED_SOURCE` | `:77` | SOURCE, BY_DECL, THROUGH_CALL |
+| `dfa-taint-untrusted-sink` | `UNTRUSTED_SINK` | `:87` | SINK, IS_PATH_SINK |
+| `plumb.nullable.may-be-null` | `MAY_BE_NULL` | `:98` | BY_DECL |
+| `plumb.numeric.may-be-zero` | `MAY_BE_ZERO` | `:106` | BY_DECL |
+| `plumb.resource.alloc-source` | `ALLOC_SOURCE` | `:117` | BY_DECL, THROUGH_CALL |
+| `plumb.resource.free-sink` | `FREE_SINK` | `:127` | IS_PATH_SINK |
+| `plumb.pointer.deref-sink` | `DEREF_SINK` | `:138` | IS_PATH_SINK |
+| `plumb.array.index-sink` | `INDEX_SINK` | `:146` | IS_PATH_SINK |
+| `plumb.numeric.overflow-hazard` | `NUMERIC_OVERFLOW_HAZARD` | `:156` | NOT_PROPAGATED_THROUGH_LOOP, IS_PATH_SINK |
+| `plumb.sensitive.data` | `SENSITIVE_DATA` | `:167` | SOURCE, BY_DECL, THROUGH_CALL |
+| `plumb.sensitive.pii` | `SENSITIVE_PII` | `:177` | SOURCE, BY_DECL, THROUGH_CALL |
+| `plumb.loop.induction` | `LOOP_INDUCTION` | `:188` | NOT_PROPAGATED_THROUGH_LOOP |
+| `plumb.call.unmodeled-callee-ret` | `UNMODELED_CALLEE_RET` | `:200` | BY_DECL, THROUGH_CALL |
+| `plumb.call.return-value-folded` | `RETURN_VALUE_FOLDED` | `:226` | BY_DECL |
+| `plumb.call.side-effect-recorded` | `SIDE_EFFECT_RECORDED` | `:238` | BY_DECL |
 
 **These are two different catalogues, not one**: `org.plumb.dfa.config.ConfigLoader.parseFactKinds`
 (`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:227-263`) first puts these 15 built-in kinds into the registry, then overwrites or
@@ -145,8 +145,8 @@ their own independent mechanisms (see below).
 `checkers/taint/` override `checkInstruction` in bulk (there are 47 `extends TaintedCheckerBase` in the whole
 repository, the other two being `BoundaryConstraintChecker` and the base class itself).
 
-- State: `taintedVars: Map<TacVar, String>` (`:139`) and `taintPaths` (`:148`)
-- Propagation: `propagateMOVE` (`:1274`) and friends, dispatched by instruction kind
+- State: `taintedVars: Map<TacVar, String>` (`:160`) and `taintPaths` (`:169`)
+- Propagation: `propagateMOVE` (`:1295`) and friends, dispatched by instruction kind
 - Sink decision: looks up `SinkFamilyRegistry` by `sinkFamilyKey` (`config/SinkFamilyRegistry.java:22`, in the
   `org.plumb.dfa.config` package), **not** an IFDS framework
 - Cross-function: `FunctionSummary` + `Operation.TaintPropagate`
@@ -294,9 +294,9 @@ and the `Range` with a method length threshold is defined at `:56`.
 (`:38-40`), with the structure referencing Qilin (`:36`).
 
 - **Heap abstraction**: field-sensitive `(receiver, name)` (`:80`), array cells (`:83`), and separate
-  Map/List `containerCells` (`:94`)
+  Map/List `containerCells` (`:115`)
 - **Context-sensitive**: `AbstractObject.Policy` has three levels, the default being **`CALL_SITE` (1-CFA)**
-  (`points/AbstractObject.java:288-290`), overridable through `TuningConfig.effectivePointsToPolicy()`
+  (`points/AbstractObject.java:309-290`), overridable through `TuningConfig.effectivePointsToPolicy()`
 - **No use of Z3**: there is no solver reference anywhere under `points/`; Z3 only appears in the path conditions of `solver/`
 - Solved once (`DfaEngine.solvePointsTo`, `:667`); on failure it degrades to "no alias information" rather than crashing
 
@@ -315,14 +315,14 @@ They are 16 independent TAC pattern checkers that merely share a package name; t
 
 ## 4. Nullability: a three-valued fact domain
 
-`AnalysisContext.mayBeNull(...)` (`engine/AnalysisContext.java:391-395`) is a **forward to the points-to
+`AnalysisContext.mayBeNull(...)` (`engine/AnalysisContext.java:412-395`) is a **forward to the points-to
 solver** and stores no facts itself. The five channels are private fields of `PointsToSolver`:
 
-- `nullFields` `:126`
-- `nullArrayCells` `:129`
-- `nullContainerCells` `:132`
-- `nullReturns` `:135`
-- `nullVars` `:138`
+- `nullFields` `:147`
+- `nullArrayCells` `:150`
+- `nullContainerCells` `:153`
+- `nullReturns` `:156`
+- `nullVars` `:159`
 
 **Three-valued semantics** (`PointsToSolver.java:104-121` explains why null cannot be modelled as an `Obj` sentinel: all
 nulls would alias each other and pollute `mayAlias`):
@@ -340,7 +340,7 @@ nulls would alias each other and pollute `mayAlias`):
 
 ## 5. Z3: false-positive filtering only
 
-Z3 has exactly **one** call site in the whole engine, `TaintedCheckerBase.java:3343`, on the sink reporting path:
+Z3 has exactly **one** call site in the whole engine, `TaintedCheckerBase.java:3364`, on the sink reporting path:
 
 ```java
 String composed = composePathCondition(pathConditionForSink(...));
@@ -350,13 +350,13 @@ if (!composed.isEmpty()) {
 }
 ```
 
-- `pathConditionForSink` **returns null by default** (`:3443-3446`), so a checker that does not override it
+- `pathConditionForSink` **returns null by default** (`:3464-3446`), so a checker that does not override it
   composes an empty condition and **never calls Z3 at all**
 - The semantics are unambiguous: Z3 is **only used to suppress false positives, never to discover defects** (`:3237`)
 - The call chain: `CachedZ3Bridge` (LRU of 4096 entries, `solver/CachedZ3Bridge.java:41-66`) →
   `Z3Bridge` (native Z3, falling back to `LocalSolverBridge` on failure)
 - `StructuralImply` (`solver/StructuralImply.java`) is a cheap first-level decision that comes before SMT
-  (`x >= N` implies `x != 0` and the like, `PathCondition.java:136-144`)
+  (`x >= N` implies `x != 0` and the like, `PathCondition.java:157-144`)
 
 ### 5.1 PathCondition and GuardTracker are two different things
 
@@ -389,7 +389,7 @@ Z3 is provided by `tools.aqua:z3-turnkey`, which automatically downloads the nat
 | `stub` | `StubCallGraphStrategy` |
 | `cached:<name>:<path>` | `CachedCallGraphStrategy` |
 
-The cross-TU `createCrossTu` (`:89-112`) only supports `global` → `GlobalCallGraphStrategy` (**the CLI
+The cross-TU `createCrossTu` (`:110-112`) only supports `global` → `GlobalCallGraphStrategy` (**the CLI
 default**) and the cached variant.
 
 ⚠️ **Earlier documentation claimed that `0-CFA` exists; it does not exist in the code**, and an unknown name throws immediately

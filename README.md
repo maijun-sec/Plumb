@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/badge/version-0.1.0--SNAPSHOT-blue)](docs/README.md)
 [![Tests](https://img.shields.io/badge/tests-262%20java%20test%20files-green)](pom.xml)
 [![Support](https://img.shields.io/badge/tests-passing-brightgreen)](testcase/SUPPORT-MATRIX.md)
-[![License](https://img.shields.io/badge/license-internal-lightgrey)](#9-license)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 An independent Java project (NOT a port of Fathom). The architecture is
 inspired by Fathom, but the implementation is entirely Java.
@@ -158,6 +158,8 @@ It runs, in order:
 | `mutate_dfaaug_claims` | The design-document gate is not checking air: every plausible drift is caught |
 | `check_ruleauthoring_claims` | The rule-authoring document still tells a reader how to add a rule that works: the files it names exist, the commands it gives run, the counts it states match the source, and the aliases it quotes are the ones the source declares |
 | `mutate_ruleauthoring_claims` | The rule-authoring gate is not checking air: every plausible drift is caught |
+| `check_license` | Every Java source carries the licence header, the `LICENSE` file says the same thing the headers say, and the generator still emits the header |
+| `mutate_license` | The licence gate is not checking air: every plausible drift is caught |
 | `check_support_matrix_coverage` | The support matrix covers every measured category, and every row matches its `RESULT.json` |
 | `check_javadoc_links` | Every `{@link}` target in a javadoc names a type that exists |
 | `check_doc_index` | The documentation index lists every document under `docs/`, and every link in it resolves |
@@ -457,7 +459,22 @@ mvn -pl plumb-ai test
 
 ## 9. License
 
-Internal use only. Ask the project maintainers about the specific license.
+MIT -- see [`LICENSE`](LICENSE).
+
+Every Java source carries the header, and the gate `check_license`
+enforces it: the header has to be the first thing in the file, it has
+to name the same copyright holder and year the `LICENSE` file does,
+and the generator has to emit it too -- otherwise the next
+regeneration would silently drop it.
+
+```bash
+python scripts/add_license_headers.py            # put the header on sources that lack it
+python scripts/add_license_headers.py --check    # report the sources that lack it
+```
+
+The header text lives in exactly one place, `scripts/license_header.py`.
+The applier, the gate and the generator all read it from there, so the
+three cannot disagree about what the header says.
 
 ---
 

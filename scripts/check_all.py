@@ -44,6 +44,12 @@ The gates are:
                               source declares
     mutate_ruleauthoring_claims the rule-authoring gate is not checking air:
                               every plausible drift is caught
+    check_license              every Java source carries the licence
+                              header, the LICENSE file says the same
+                              thing the headers say, and the generator
+                              still emits the header
+    mutate_license             the licence gate is not checking air:
+                              every plausible drift is caught
     check_support_matrix_coverage
                               the support matrix covers every measured
                               category, and every row matches its
@@ -224,6 +230,10 @@ GATES = (
      ["python", "scripts/check_ruleauthoring_claims.py"], "check"),
     ("mutate_ruleauthoring_claims",
      ["python", "scripts/mutate_ruleauthoring_claims.py"], "check"),
+    ("check_license",
+     ["python", "scripts/check_license.py"], "check"),
+    ("mutate_license",
+     ["python", "scripts/mutate_license.py"], "check"),
     ("check_support_matrix_coverage",
      ["python", "scripts/check_support_matrix_coverage.py"], "check"),
     ("check_javadoc_links",

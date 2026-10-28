@@ -263,6 +263,11 @@ copy_if_present docs/usage/CLI-REFERENCE.md "$DIST/docs/"
 copy_if_present docs/usage/CLI-EXAMPLES.md "$DIST/docs/"
 copy_if_present docs/rules/RULES.md    "$DIST/docs/"
 
+# The licence travels with the distribution, at the ROOT next to the
+# README -- not under docs/. A package that ships the code without the
+# terms is a package the terms do not cover.
+copy_if_present LICENSE               "$DIST/"
+
 # 4f. dist README (template + sed for cross-platform consistency)
 DATE="$(date -u +'%Y-%m-%d')"
 TEMPLATES_DIR="$(cd "$(dirname "$0")" && pwd)/templates"
