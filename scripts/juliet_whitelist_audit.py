@@ -38,10 +38,19 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 CONFIG_DIR = REPO / "juliet-coverage" / "configs"
 DEFAULT_JAR = REPO / "plumb-main" / "target" / "plumb-main-0.1.0-SNAPSHOT-all.jar"
+ALIAS_FILE = REPO / "plumb-main" / "src" / "main" / "resources" / "legacy-rule-aliases.json"
 
 # The Java program that dumps the live registry.  It is written to a temp
 # directory at run time so the script has no build-order dependency.
+#
+# The dump covers the AST registry AND the DFA checkers.  The DFA checkers are
+# a separate universe: they are not AstCheckers, so registerFromCheckers never
+# sees them, and they take a TaintRule in their constructor rather than
+# declaring a RuleDef.  A dump that only looked at the AST registry would
+# report every DFA rule as unmatched -- and the per-CWE configs name plenty of
+# DFA rules.
 DUMP_SOURCE = """
+import java.io.File;
 import java.util.*;
 
 public class DumpAllRuleIds {
@@ -67,6 +76,39 @@ public class DumpAllRuleIds {
     lines.sort(null);
     for (String s : lines) {
       System.out.println(s);
+    }
+    String classesDir = System.getProperty("dfa.classes.dir");
+    if (classesDir != null) {
+      String[] pkgs = {
+        "org.plumb.dfa.checkers.taint",
+        "org.plumb.dfa.checkers.controlflow",
+        "org.plumb.dfa.checkers.boundary",
+        "org.plumb.dfa.checkers",
+        "org.plumb.dfa.taint",
+      };
+      for (String pkg : pkgs) {
+        File dir = new File(classesDir, pkg.replace('.', File.separatorChar));
+        if (!dir.isDirectory()) {
+          continue;
+        }
+        File[] files = dir.listFiles((d, n) -> n.endsWith(".class") && !n.contains("$"));
+        if (files == null) {
+          continue;
+        }
+        for (File f : files) {
+          String cn = pkg + "." + f.getName().substring(0, f.getName().length() - 6);
+          try {
+            Class<?> c = Class.forName(cn);
+            if (!org.plumb.dfa.engine.DfaChecker.class.isAssignableFrom(c)) {
+              continue;
+            }
+            org.plumb.dfa.engine.DfaChecker ck =
+                (org.plumb.dfa.engine.DfaChecker) c.getDeclaredConstructor().newInstance();
+            System.out.println(ck.name() + "\\t" + ck.getClass().getSimpleName() + "\\t\\t");
+          } catch (Throwable ignored) {
+          }
+        }
+      }
     }
   }
 }
@@ -109,7 +151,13 @@ def live_rules(jar: Path) -> list[tuple[str, str, str, list[str]]]:
         if cp.returncode != 0:
             raise SystemExit(f"could not build the registry dumper:\n{cp.stderr}")
         run = subprocess.run(
-            [_java_tool("java"), "-cp", str(jar) + os.pathsep + str(tmpdir), "DumpAllRuleIds"],
+            [
+                _java_tool("java"),
+                "-cp",
+                str(jar) + os.pathsep + str(tmpdir),
+                "-Ddfa.classes.dir=" + str(REPO / "plumb-dfa" / "target" / "classes"),
+                "DumpAllRuleIds",
+            ],
             capture_output=True,
             text=True,
         )
@@ -222,6 +270,15 @@ def main() -> int:
     rules = live_rules(jar)
     by_key = keys_of(rules)
 
+    # A RETIRED rule id resolves through the legacy alias map, exactly as the
+    # filter does.  Without this the audit would report every entry that
+    # names a retired id as unmatched -- and it would be wrong: the filter
+    # DOES select the rule.  An audit that cries wolf is an audit nobody
+    # reads.
+    legacy: dict[str, str] = {}
+    if ALIAS_FILE.is_file():
+        legacy = json.loads(ALIAS_FILE.read_text(encoding="utf-8"))
+
     configs = sorted(CONFIG_DIR.glob("*.yaml"))
     matched: dict[str, list[str]] = {}
     unmatched: dict[str, list[str]] = {}
@@ -235,6 +292,9 @@ def main() -> int:
                 continue
             hits = by_key.get(entry)
             if hits:
+                matched[entry] = [config.name]
+            elif entry in legacy:
+                # A retired id: it selects the rule it was renamed to.
                 matched[entry] = [config.name]
             else:
                 unmatched[entry] = [config.name]

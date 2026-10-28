@@ -595,11 +595,14 @@ silent:
   would return an empty scan, which reads as "the rule found nothing" rather
   than "the filter matched nothing".
 - **A retired id still selects its rule.** The engine renamed its rules when
-  the id scheme changed. The retired ids are recorded in
-  `plumb-main/src/main/resources/legacy-rule-aliases.json`, and the filter
-  resolves them. The map is generated from the recorded migration and the live
-  rule registry by `scripts/generate_legacy_rule_aliases.py`, and
-  `scripts/check_rule_filter.py` fails when it drifts.
+  the id scheme changed, and some rules were renamed twice. The retired ids
+  are recorded in `plumb-main/src/main/resources/legacy-rule-aliases.json`, and
+  the filter resolves them. The map is generated from the recorded migration
+  and the live rule registry by
+  `scripts/generate_legacy_rule_aliases.py`, and
+  `scripts/check_rule_filter.py` fails when it drifts. The generator also
+  resolves the entries that name a *sink family* (`SensitiveDataLeak_log`) by
+  asking the live checkers which family each one consumes.
 
 The peeling stops at the rule's *name*. `ast-error-catch-generic-exception`
 peels to `catch-generic-exception`, not to `generic-exception` — the latter is

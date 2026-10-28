@@ -540,10 +540,12 @@ rules:
 - **报告里的 id 能回环。** 把 finding 的 `rule_id` 抄出来传给 `--rule`，就能选回这条
   规则。匹配不到任何规则的过滤器会返回一次空扫描——空扫描读起来像"这条规则没发现
   东西"，而不是"过滤器没匹配上"。
-- **退役的 id 仍然选得到它的规则。** 引擎改过 id 方案，退役的 id 记录在
-  `plumb-main/src/main/resources/legacy-rule-aliases.json` 里，过滤器会解析它们。
+- **退役的 id 仍然选得到它的规则。** 引擎改过 id 方案，有些规则甚至改过两次。退役的
+  id 记录在 `plumb-main/src/main/resources/legacy-rule-aliases.json` 里，过滤器会解析它们。
   这张表由 `scripts/generate_legacy_rule_aliases.py` 依据迁移记录和**运行中的**规则
-  注册表生成；`scripts/check_rule_filter.py` 会在它漂移时报错。
+  注册表生成；`scripts/check_rule_filter.py` 会在它漂移时报错。生成器还会把那些点名
+  **sink family** 的条目（`SensitiveDataLeak_log`）通过"运行中的 checker 各消费哪个
+  family"来解析。
 
 剥离只剥到规则的**名字**为止。`ast-error-catch-generic-exception` 剥成
 `catch-generic-exception`，而不是 `generic-exception`——后者同时是另外两条规则的
