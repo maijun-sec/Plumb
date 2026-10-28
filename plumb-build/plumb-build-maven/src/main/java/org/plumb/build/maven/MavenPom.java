@@ -17,6 +17,7 @@ import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Parent;
 import org.apache.maven.model.Plugin;
+import org.apache.maven.model.PluginExecution;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.slf4j.Logger;
@@ -51,6 +52,19 @@ final class MavenPom {
    */
   private static final String COMPILER_PLUGIN_ARTIFACT_ID = "maven-compiler-plugin";
 
+  /**
+   * The artifact id of the plugin that ADDS source roots.
+   *
+   * <p>{@code build-helper-maven-plugin} with the {@code add-source} goal puts extra source
+   * directories into the compile, and they are part of the module's source roots. A build that
+   * uses it and is described without those roots is described wrong: the analyser sees fewer
+   * sources than the compiler compiles.
+   */
+  private static final String BUILD_HELPER_PLUGIN_ARTIFACT_ID = "build-helper-maven-plugin";
+
+  /** The goal of the build-helper plugin that adds a source root. */
+  private static final String ADD_SOURCE_GOAL = "add-source";
+
   private final Model model;
   private final Properties properties;
   private final List<String> moduleNames;
@@ -70,24 +84,34 @@ final class MavenPom {
    */
   private final List<Xpp3Dom> compilerConfigurations;
 
+  /**
+   * The build-helper plugin's {@code add-source} executions, from the module and its parents.
+   *
+   * <p>Same ordering rule as the compiler configuration: the module's own first.
+   */
+  private final List<Xpp3Dom> additionalSourceConfigurations;
+
   private MavenPom(
       Model model,
       Properties properties,
       List<String> moduleNames,
       Map<String, Dependency> managed,
-      List<Xpp3Dom> compilerConfigurations) {
+      List<Xpp3Dom> compilerConfigurations,
+      List<Xpp3Dom> additionalSourceConfigurations) {
     this.model = model;
     this.properties = properties;
     this.moduleNames = List.copyOf(moduleNames);
     this.managed = managed;
     this.compilerConfigurations = List.copyOf(compilerConfigurations);
+    this.additionalSourceConfigurations = List.copyOf(additionalSourceConfigurations);
   }
 
   /** Read {@code pomFile} and follow its parent chain. */
   static MavenPom read(File pomFile) {
     Model raw = readModel(pomFile);
     if (raw == null) {
-      return new MavenPom(new Model(), new Properties(), List.of(), Map.of(), List.of());
+      return new MavenPom(
+          new Model(), new Properties(), List.of(), Map.of(), List.of(), List.of());
     }
     Properties props = new Properties();
     List<String> modules = raw.getModules() == null ? List.of() : new ArrayList<>(raw.getModules());
@@ -100,7 +124,9 @@ final class MavenPom {
     // module's own first, then each parent.  The module's own wins, so the
     // list is searched in that order.
     List<Xpp3Dom> compilerConfigurations = new ArrayList<>();
+    List<Xpp3Dom> additionalSourceConfigurations = new ArrayList<>();
     addCompilerConfiguration(compilerConfigurations, raw);
+    addAdditionalSourceConfigurations(additionalSourceConfigurations, raw);
 
     Model current = raw;
     int depth = 0;
@@ -118,6 +144,7 @@ final class MavenPom {
       mergeInto(props, parentModel.getProperties());
       collectManaged(managed, parentModel.getDependencyManagement());
       addCompilerConfiguration(compilerConfigurations, parentModel);
+      addAdditionalSourceConfigurations(additionalSourceConfigurations, parentModel);
       current = parentModel;
     }
     mergeInto(props, raw.getProperties());
@@ -125,7 +152,8 @@ final class MavenPom {
 
     // The module's OWN model is what describes it. The parent supplies
     // properties and managed versions, not the module's dependencies.
-    return new MavenPom(raw, props, modules, managed, compilerConfigurations);
+    return new MavenPom(
+        raw, props, modules, managed, compilerConfigurations, additionalSourceConfigurations);
   }
 
   /**
@@ -148,6 +176,42 @@ final class MavenPom {
       }
       if (plugin.getConfiguration() instanceof Xpp3Dom dom) {
         target.add(dom);
+      }
+    }
+  }
+
+  /**
+   * The {@code add-source} executions of the build-helper plugin in one pom.
+   *
+   * <p><b>Why the EXECUTIONS and not the plugin's own configuration.</b> The build-helper plugin
+   * is configured per execution: each {@code <execution>} with the {@code add-source} goal
+   * carries its own {@code <sources>} list. A lookup that only read the plugin's top-level
+   * {@code <configuration>} would find nothing, because that is where a plugin that is
+   * configured globally puts its settings -- and the build-helper plugin is not.
+   *
+   * <p>The goal is checked too, because the same plugin has other goals -- {@code
+   * attach-artifact}, {@code reserve-network-port} -- whose configuration is not a source root.
+   */
+  private static void addAdditionalSourceConfigurations(List<Xpp3Dom> target, Model model) {
+    var build = model.getBuild();
+    if (build == null || build.getPlugins() == null) {
+      return;
+    }
+    for (Plugin plugin : build.getPlugins()) {
+      if (!BUILD_HELPER_PLUGIN_ARTIFACT_ID.equals(plugin.getArtifactId())) {
+        continue;
+      }
+      if (plugin.getExecutions() == null) {
+        continue;
+      }
+      for (PluginExecution execution : plugin.getExecutions()) {
+        if (execution.getGoals() == null
+            || !execution.getGoals().contains(ADD_SOURCE_GOAL)) {
+          continue;
+        }
+        if (execution.getConfiguration() instanceof Xpp3Dom dom) {
+          target.add(dom);
+        }
       }
     }
   }
@@ -536,7 +600,39 @@ final class MavenPom {
     roots.add(
         buildDirectory(
             build == null ? null : build.getSourceDirectory(), "src/main/java"));
+    for (String extra : additionalSourceRoots()) {
+      if (extra == null || extra.isBlank()) {
+        continue;
+      }
+      roots.add(extra);
+    }
     return roots;
+  }
+
+  /**
+   * The source directories the build-helper plugin adds, relative to the module's directory.
+   *
+   * <p>Read from each {@code add-source} execution's {@code <sources><source>} list. A value
+   * that is a {@code ${...}} placeholder is resolved against the properties, because that is
+   * what Maven does; an unresolvable one is left alone rather than becoming a directory named
+   * after the placeholder.
+   */
+  private List<String> additionalSourceRoots() {
+    List<String> out = new ArrayList<>();
+    for (Xpp3Dom dom : additionalSourceConfigurations) {
+      Xpp3Dom sources = dom.getChild("sources");
+      if (sources == null) {
+        continue;
+      }
+      for (Xpp3Dom source : sources.getChildren("source")) {
+        String value = source.getValue();
+        if (value == null || value.isBlank()) {
+          continue;
+        }
+        out.add(resolve(value));
+      }
+    }
+    return out;
   }
 
   /** The declared test source root, relative to the module's directory. */

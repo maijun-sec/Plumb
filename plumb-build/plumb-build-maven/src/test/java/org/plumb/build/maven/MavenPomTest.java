@@ -342,6 +342,92 @@ class MavenPomTest {
   }
 
   /**
+   * The source directories the build-helper plugin adds are source roots too.
+   *
+   * <p>A build that adds a source directory with {@code build-helper-maven-plugin} compiles
+   * those sources, so a module that declares them has more source roots than its {@code
+   * <sourceDirectory>} alone. Leaving them out describes a module that is smaller than it is,
+   * and the analyser then misses every file in the added directory.
+   */
+  @Test
+  void readsTheSourceRootsTheBuildHelperPluginAdds(@TempDir Path dir) throws Exception {
+    Path pom = write(dir.resolve("pom.xml"), """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>demo</artifactId>
+          <version>1.0.0</version>
+          <build>
+            <plugins>
+              <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                  <execution>
+                    <id>add-generated</id>
+                    <phase>generate-sources</phase>
+                    <goals><goal>add-source</goal></goals>
+                    <configuration>
+                      <sources>
+                        <source>generated/sources</source>
+                        <source>generated/extra</source>
+                      </sources>
+                    </configuration>
+                  </execution>
+                </executions>
+              </plugin>
+            </plugins>
+          </build>
+        </project>
+        """);
+
+    MavenPom loaded = MavenPom.read(pom.toFile());
+
+    assertThat(loaded.sourceRoots(dir.toFile()))
+        .containsExactly("src/main/java", "generated/sources", "generated/extra");
+  }
+
+  /**
+   * The build-helper plugin's OTHER goals are not source roots.
+   *
+   * <p>The plugin has goals such as {@code attach-artifact} and {@code reserve-network-port},
+   * and their configuration is not a source directory. Reading them as one would add a
+   * directory that is never compiled.
+   */
+  @Test
+  void ignoresTheBuildHelperPluginsOtherGoals(@TempDir Path dir) throws Exception {
+    Path pom = write(dir.resolve("pom.xml"), """
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>com.example</groupId>
+          <artifactId>demo</artifactId>
+          <version>1.0.0</version>
+          <build>
+            <plugins>
+              <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                  <execution>
+                    <id>reserve</id>
+                    <goals><goal>reserve-network-port</goal></goals>
+                    <configuration>
+                      <sources><source>not/a/source</source></sources>
+                    </configuration>
+                  </execution>
+                </executions>
+              </plugin>
+            </plugins>
+          </build>
+        </project>
+        """);
+
+    MavenPom loaded = MavenPom.read(pom.toFile());
+
+    assertThat(loaded.sourceRoots(dir.toFile())).containsExactly("src/main/java");
+  }
+
+  /**
    * A pom that declares no directory gets Maven's own defaults.
    */
   @Test

@@ -104,9 +104,15 @@ public final class MavenResolverAdapter implements BuildAdapter {
         }
       }
       moduleRoots.add(projectRoot);
+      // The module's OWN file list is every file under EVERY source root it
+      // declares.  Taking only the first root would drop the files in the
+      // directories a build added with build-helper-maven-plugin, and the
+      // per-module view would be smaller than the module.
+      List<Path> moduleSources = new ArrayList<>();
       for (Path root : module.sourceRoots()) {
-        allSources.addAll(listJavaFiles(root));
+        moduleSources.addAll(listJavaFiles(root));
       }
+      allSources.addAll(moduleSources);
       if (module.testSourceRoot() != null) {
         allTests.addAll(listJavaFiles(module.testSourceRoot()));
       }
@@ -115,7 +121,7 @@ public final class MavenResolverAdapter implements BuildAdapter {
           new BuildProject.Module(
               module.id(),
               module.sourceRoots().stream().findFirst().orElse(null),
-              listJavaFiles(module.sourceRoots().stream().findFirst().orElse(null)),
+              moduleSources,
               listJavaFiles(module.testSourceRoot()),
               module.classpath(),
               BuildProject.Scope.COMPILE,
@@ -279,13 +285,22 @@ public final class MavenResolverAdapter implements BuildAdapter {
     // The directories come from the pom, so a project that declares its
     // own source or output directory is described correctly.  They are
     // relative to the module's directory, which is where the pom lives.
-    Path sourceRoot = moduleRoot.resolve(pom.sourceRoots(moduleRoot.toFile()).iterator().next());
+    //
+    // EVERY declared source root is kept, not just the first one: a build
+    // that adds source directories with build-helper-maven-plugin compiles
+    // them, so a module that declares them has more than one.  Taking only
+    // the first would describe a module that is smaller than it is, and the
+    // analyser would miss every file in the added directories.
+    Set<Path> sourceRoots = new LinkedHashSet<>();
+    for (String root : pom.sourceRoots(moduleRoot.toFile())) {
+      sourceRoots.add(moduleRoot.resolve(root));
+    }
     Path testSourceRoot = moduleRoot.resolve(pom.testSourceRoot());
     Path output = moduleRoot.resolve(pom.outputDirectory());
     Path testOutput = moduleRoot.resolve(pom.testOutputDirectory());
 
     return ModuleDescriptor.builder(pom.artifactId())
-        .sourceRoots(Set.of(sourceRoot))
+        .sourceRoots(sourceRoots)
         .testSourceRoot(testSourceRoot)
         .outputDirectory(output)
         .testOutputDirectory(testOutput)
