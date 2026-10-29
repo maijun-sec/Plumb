@@ -55,8 +55,17 @@ public final class ResourceLeakChecker extends PathSensitiveCheckerBase {
   }
 
   protected boolean isAllocSite(TacInstruction ins) {
-    if (ins.kind == TacInstruction.Kind.NEW || ins.kind == TacInstruction.Kind.NEWARRAY) {
-      return true;
+    if (ins.kind == TacInstruction.Kind.NEWARRAY) {
+      // An ARRAY is an allocation, but it is not a RESOURCE: nothing can be "not closed" about
+      // it, because it has no close(). `new byte[1024]` was reported as a leak, and that is
+      // the difference between a rule that finds a real defect and a rule that cries wolf.
+      return false;
+    }
+    if (ins.kind == TacInstruction.Kind.NEW) {
+      // A `new X(...)` is a resource only when X can be closed. The class name decides, and
+      // the SAME list that names the closeable resources names the allocatable ones -- so a
+      // `new String(...)` or a `new Object()` is not reported.
+      return isCloseableType(ins.dest instanceof TacOperand.TacVar v ? v.type().className() : null);
     }
     if (ins.kind == TacInstruction.Kind.CALL) {
       String callee = ins.calleeSig;
@@ -81,6 +90,50 @@ public final class ResourceLeakChecker extends PathSensitiveCheckerBase {
     }
     return false;
   }
+
+  /**
+   * Whether a type is one of the closeable resources this rule tracks.
+   *
+   * <p>The check is by SIMPLE NAME, because the type the TAC records is the declared type and the
+   * declaration is usually the simple name. A type that is not one of the tracked names is not a
+   * resource.
+   */
+  private static boolean isCloseableType(String type) {
+    if (type == null) {
+      return false;
+    }
+    String simple = type;
+    int dot = simple.lastIndexOf('.');
+    if (dot >= 0) {
+      simple = simple.substring(dot + 1);
+    }
+    return CLOSEABLE_SIMPLE_NAMES.contains(simple);
+  }
+
+  /**
+   * The simple names of the resources this rule tracks.
+   *
+   * <p>One list, used for BOTH the {@code new X(...)} form and the {@code X.factory(...)} form. Two
+   * lists would drift, and the drift would show up as a leak reported on a type that is not tracked
+   * -- or a leak missed on a type that is.
+   */
+  private static final java.util.Set<String> CLOSEABLE_SIMPLE_NAMES =
+      java.util.Set.of(
+          "FileInputStream",
+          "FileOutputStream",
+          "FileReader",
+          "FileWriter",
+          "BufferedReader",
+          "BufferedWriter",
+          "Scanner",
+          "Socket",
+          "ServerSocket",
+          "Connection",
+          "Statement",
+          "PreparedStatement",
+          "ResultSet",
+          "InputStream",
+          "OutputStream");
 
   private static boolean containsCtor(String callee, String className) {
     int idx = callee.indexOf(className);

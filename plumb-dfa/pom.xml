@@ -100,13 +100,19 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <includes>
+                        <!-- The list below is the set of test classes the normal build runs.
+                             It is an ALLOW list, so a test file that is not named here does
+                             not run, silently. That is a hole shaped like "the test we
+                             forgot to add", so the list is checked by
+                             scripts/check_test_coverage.py: every non-disabled test file
+                             must be named here. -->
                         <include>org/plumb/dfa/engine/FindingReporterAliasTest.java</include>
                         <include>org/plumb/dfa/engine/R803V2TraceChannelTest.java</include>
                         <include>org/plumb/dfa/engine/R803V2TraceIntegrationTest.java</include>
                         <include>org/plumb/dfa/engine/R253BuildOutputFilterTest.java</include>
                         <include>org/plumb/dfa/engine/R804FollowupFidelityGateTest.java</include>
-                        <include>org/plumb/dfa/checkers/taint/R500CoverityJavaTaintCheckersTest.java</include>
-                        <include>org/plumb/dfa/checkers/taint/R580CoverityP1TaintCheckersTest.java</include>
+                        <include>org/plumb/dfa/checkers/taint/R500JavaTaintCheckersTest.java</include>
+                        <include>org/plumb/dfa/checkers/taint/R580P1TaintCheckersTest.java</include>
                         <include>org/plumb/dfa/config/ConfigLoaderTest.java</include>
                         <include>org/plumb/dfa/taint/InputSourcePatternsTest.java</include>
                         <include>org/plumb/dfa/taint/TaintDomainTest.java</include>
@@ -269,6 +275,35 @@
                              indistinguishable from an internal one. -->
                         <include>org/plumb/dfa/taint/FrameworkEntryPointSourceTest.java</include>
         <include>org/plumb/dfa/taint/FrameworkAnnotationAgreementTest.java</include>
+
+                        <!-- The classes below were written and passed in isolation,
+                             but the allow list above did not name them, so the
+                             normal build never ran them. A test that exists, passes
+                             in isolation, and is never executed by the build is
+                             indistinguishable from a test that does not exist,
+                             and the resource-leak test among these caught two
+                             real defects the moment it was allowed to run.
+
+                             The Juliet-rooted sweep is deliberately NOT here: it
+                             reads an external corpus that is not in version
+                             control, so it costs minutes locally and skips in
+                             CI. It is an evaluation run, not a unit test. -->
+                        <include>org/plumb/dfa/cg/FunctionSignatureTest.java</include>
+                        <include>org/plumb/dfa/checkers/taint/DeserializationFilterTest.java</include>
+                        <include>org/plumb/dfa/checkers/taint/ResourceLeakAliasTest.java</include>
+                        <include>org/plumb/dfa/config/MigratedModelFamilyTest.java</include>
+                        <include>org/plumb/dfa/config/R7SinkFamilyLookupTest.java</include>
+                        <include>org/plumb/dfa/fact/FactTraitSemanticsTest.java</include>
+                        <include>org/plumb/dfa/resolve/R253ProjectCompilationContextTest.java</include>
+                        <include>org/plumb/dfa/solver/R218LocalSolverBridgeTest.java</include>
+                        <include>org/plumb/dfa/solver/R218bZ3BridgeTest.java</include>
+                        <include>org/plumb/dfa/solver/R235Z3BridgeAutoWireTest.java</include>
+                        <include>org/plumb/dfa/solver/R240CachedZ3BridgeTest.java</include>
+                        <include>org/plumb/dfa/solver/R242PathConditionTest.java</include>
+                        <include>org/plumb/dfa/summary/FunctionSummaryTest.java</include>
+                        <include>org/plumb/dfa/summary/R32FunctionSummaryEnhancementTest.java</include>
+                        <include>org/plumb/dfa/taint/FrameworkFieldBindingSourceTest.java</include>
+                        <include>org/plumb/dfa/translate/R259JavaIntLiteralTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

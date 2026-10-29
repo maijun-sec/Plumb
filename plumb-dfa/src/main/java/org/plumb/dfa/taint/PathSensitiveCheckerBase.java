@@ -153,6 +153,41 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
   /** How many arms the BRANCH instructions so far have opened. */
   private int pendingArmDepth = 0;
 
+  /**
+   * The index of the instruction that ends the finally region, or {@code -1}.
+   *
+   * <p>A {@code finally} block runs on EVERY exit path -- normal completion, an exception, a {@code
+   * return}. So a close inside one is unconditional with respect to the resource's lifetime: by the
+   * time the method returns, the resource has been closed.
+   *
+   * <p>This matters because the canonical shape for closing a resource puts a null guard around the
+   * close:
+   *
+   * <pre>
+   *   try { ... } finally { if (in != null) { in.close(); } }
+   * </pre>
+   *
+   * The guard lowers to a BRANCH, so the close sits inside a branch arm. Without knowing about the
+   * finally, the checker would call that close CONDITIONAL and report a leak on code that closes
+   * the resource correctly. The guard's condition does not make the close conditional -- the close
+   * happens exactly when there is something to close, and the finally runs either way.
+   *
+   * <p>The TAC marks the region with a {@code FINALLY_ENTER} instruction and records the region's
+   * extent in the function's try regions, so the extent is read from there.
+   */
+  private int finallyEndIndex = -1;
+
+  /** The index of the instruction that begins the finally region, or {@code -1}. */
+  private int finallyStartIndex = -1;
+
+  /**
+   * The index of the instruction currently being examined, within the function's instruction list.
+   *
+   * <p>The try region's bounds are indices into that list, so a close can be located relative to
+   * the finally region.
+   */
+  private int currentInstructionIndex = -1;
+
   /** Human-readable rule id (overridden by the subclass). */
   public abstract String ruleId();
 
@@ -179,6 +214,9 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
     pendingArmTargets.clear();
     pendingArmDepth = 0;
     currentArmDepth = 0;
+    finallyStartIndex = -1;
+    finallyEndIndex = -1;
+    currentInstructionIndex = -1;
     // Parameters are provisionally
     // "potentially-allocated" — the caller's
     // summary may refine this via
@@ -191,6 +229,12 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
 
   @Override
   public void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
+    // Forward: locate the instruction within the function's list, so the finally region's
+    // bounds (which are indices into that list) can be compared against it.
+    this.currentInstructionIndex = indexOf(fn, ins);
+    // Forward: track the finally region, so a close inside it is told apart from a close that
+    // only happens on some paths.
+    trackFinallyRegion(ins, fn);
     // Forward: track the branch-arm structure, so a close can be told apart from a close that
     // only happens on some paths.
     trackBranchArm(ins);
@@ -275,6 +319,61 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
   protected boolean isAllocReturnOp(org.plumb.dfa.summary.Operation op) {
     if (op == null) return false;
     return op instanceof org.plumb.dfa.summary.Operation.TaintPropagate;
+  }
+
+  /**
+   * The index of an instruction within the function's instruction list, or {@code -1}.
+   *
+   * <p>The instruction objects are the ones in the list, so identity is enough -- but the lookup is
+   * by identity rather than by {@code equals}, because two instructions can be equal and be at
+   * different places in the stream.
+   */
+  private static int indexOf(TacFunction fn, TacInstruction ins) {
+    List<TacInstruction> instructions = fn.instructions();
+    for (int i = 0; i < instructions.size(); i++) {
+      if (instructions.get(i) == ins) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * Track the finally region of the current function.
+   *
+   * <p>The TAC records the finally block's extent on the function's try regions. A close inside
+   * that extent is unconditional with respect to the resource's lifetime, because the finally block
+   * runs on every exit path.
+   *
+   * <p>The extent is read once, when the finally region's marker instruction is seen, rather than
+   * being recomputed for every instruction: the region's bounds do not change, and the instruction
+   * stream is walked in order.
+   */
+  private void trackFinallyRegion(TacInstruction ins, TacFunction fn) {
+    if (ins.kind != TacInstruction.Kind.FINALLY_ENTER) {
+      return;
+    }
+    // The marker names the region's label. The extent comes from the try region that
+    // references it.
+    for (TacFunction.TryRegion region : fn.tryRegions()) {
+      if (region.hasFinally() && ins.label != null && ins.label.equals(region.finallyLabel)) {
+        this.finallyStartIndex = region.finallyStart;
+        this.finallyEndIndex = region.finallyEnd;
+        return;
+      }
+    }
+  }
+
+  /**
+   * Whether the instruction being examined sits inside a finally region.
+   *
+   * <p>A close inside a finally block is unconditional, so it discharges the obligation even when
+   * the finally body contains a branch. See {@link #finallyEndIndex}.
+   */
+  protected boolean isInsideFinallyRegion() {
+    return this.finallyEndIndex >= 0
+        && this.currentInstructionIndex >= this.finallyStartIndex
+        && this.currentInstructionIndex <= this.finallyEndIndex;
   }
 
   /**
@@ -371,8 +470,14 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
     if (argIdx < 0 || argIdx >= ins.args.size()) return;
     TacOperand arg = ins.args.get(argIdx);
     if (!(arg instanceof TacOperand.TacVar cv)) return;
-    if (isInsideBranchArm()) {
+    if (isInsideBranchArm() && !isInsideFinallyRegion()) {
       // A conditional close. Remember it, but not as a discharge of the obligation.
+      //
+      // A close inside a finally block is the exception: the finally runs on every exit path,
+      // so the close is unconditional with respect to the resource's lifetime. The guard that
+      // usually wraps it (`if (in != null) in.close();`) is a null check, not a path choice --
+      // it says "close it if there is something to close", and the finally guarantees the
+      // close happens before the method leaves.
       conditionalCloseSites.computeIfAbsent(cv, k -> new ArrayList<>()).add(ins);
       TacOperand.TacVar conditionalAliased = aliases.get(cv);
       if (conditionalAliased != null) {

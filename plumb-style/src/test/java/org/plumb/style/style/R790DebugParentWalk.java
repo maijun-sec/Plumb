@@ -29,8 +29,13 @@ import com.github.javaparser.ParseResult;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import java.util.Optional;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+@Disabled(
+    "a debug print program, not a test: it asserts only that the source parses, and it"
+        + " was never run because its class name is not *Test -- which is exactly the"
+        + " hole scripts/check_test_coverage.py closes")
 class R790DebugParentWalk {
 
   @Test
