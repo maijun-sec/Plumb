@@ -44,18 +44,18 @@ public final class CheckerConfig {
   private final String description;
 
   /**
-   * Coverity-style aggressiveness knob. One of {@code "low"} / {@code "medium"} / {@code "high"}.
+   * analysis-style aggressiveness knob. One of {@code "low"} / {@code "medium"} / {@code "high"}.
    *
    * <ul>
    *   <li><b>low</b> — most precise, fewer false positives, but more false negatives (skips
    *       ambiguous patterns, requires stronger evidence before firing).
-   *   <li><b>medium</b> — default balance; same defaults Coverity uses for its baseline checker
+   *   <li><b>medium</b> — default balance; same defaults the baseline uses for its baseline checker
    *       set.
    *   <li><b>high</b> — more aggressive, more false positives, fewer false negatives (broader
    *       patterns, more cross-function assumptions, longer lookback windows).
    * </ul>
    *
-   * <p>Inspired by Coverity's {@code --aggressiveness-level} / {@code
+   * <p>Inspired by the reference's {@code --aggressiveness-level} / {@code
    * --webapp-security-aggressiveness-level} command-line option, but expressed as a per-checker
    * field so different checkers can have different defaults.
    */
@@ -144,7 +144,7 @@ public final class CheckerConfig {
   }
 
   /**
-   * Coverity-style aggressiveness knob: {@code "low"} / {@code "medium"} / {@code "high"}. Defaults
+   * analysis-style aggressiveness knob: {@code "low"} / {@code "medium"} / {@code "high"}. Defaults
    * to {@code "medium"}.
    */
   public String aggressiveness() {

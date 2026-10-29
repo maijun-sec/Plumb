@@ -36,11 +36,11 @@ import org.plumb.rules.RuleRegistry;
 import org.plumb.style.quality.RegexConfusionCheck;
 
 /**
- * Coverity <code>REGEX_CONFUSION</code> : covers replaceAll, replaceFirst and split with a string
+ * the REGEX_CONFUSION defect class : covers replaceAll, replaceFirst and split with a string
  * literal that contains a regex metacharacter, plus the negative cases (literal-only,
  * already-escaped).
  */
-class R525CoverityRegexConfusionTest {
+class R525RegexConfusionTest {
 
   @BeforeAll
   static void setupParser() {
@@ -57,7 +57,7 @@ class R525CoverityRegexConfusionTest {
 
   @Test
   void firesOnReplaceFirstWithDot() {
-    // Coverity's canonical example: the period is a metachar.
+    // the canonical example: the period is a metachar.
     String src =
         "class N { String m(String s) {" + " return s.replaceFirst(\".xml\", \"\");" + "} }";
     assertThat(run(src)).as("REGEX_CONFUSION: \".xml\" treated as regex fires").isNotEmpty();

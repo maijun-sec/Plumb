@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 /*
- * Coverity <code>DC.DANGEROUS</code> — detects calls to dangerous Java APIs:
+ * the DC.DANGEROUS defect class — detects calls to dangerous Java APIs:
  *
  * <ul>
  *   <li>{@link Thread#stop()} and {@link ThreadGroup#stop()} -- deprecated and inherently unsafe:

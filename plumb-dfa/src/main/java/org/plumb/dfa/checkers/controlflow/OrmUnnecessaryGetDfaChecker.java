@@ -40,19 +40,19 @@ import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 
 /**
- * DFA-based version of Coverity <code>ORM_UNNECESSARY_GET</code> (CWE-252). Where the AST checker
- * {@code org.plumb.style.quality.OrmUnnecessaryGetCheck} only looks at variable uses within a
- * single method, the DFA version tracks the result of a {@code get} / {@code find} / {@code
- * getById} call through the function's data flow.
+ * DFA-based version of the ORM_UNNECESSARY_GET defect class (CWE-252). Where the AST checker {@code
+ * org.plumb.style.quality.OrmUnnecessaryGetCheck} only looks at variable uses within a single
+ * method, the DFA version tracks the result of a {@code get} / {@code find} / {@code getById} call
+ * through the function's data flow.
  *
  * <p><b>What the DFA version catches that AST misses.</b>
  *
  * <ul>
  *   <li>Result of a {@code get}/{@code find} call is <em>never used at all</em> in the function (a
  *       dead store from the JPA point of view). The AST version explicitly suppresses this case
- *       (it's a different finding -- unused variable); the DFA version fires too, because
- *       Coverity's <code>ORM_UNNECESSARY_GET</code> covers the "the result is loaded but the entity
- *       contents are never used" pattern, of which "never used at all" is a special case.
+ *       (it's a different finding -- unused variable); the DFA version fires too, because the
+ *       ORM_UNNECESSARY_GET defect class covers the "the result is loaded but the entity contents
+ *       are never used" pattern, of which "never used at all" is a special case.
  *   <li>Result is propagated through a {@code MOVE} (aliasing) to a different variable, then used
  *       as an argument. The AST version tracks the original variable; the DFA version follows the
  *       alias.

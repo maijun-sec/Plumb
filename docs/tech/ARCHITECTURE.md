@@ -649,7 +649,7 @@ An `IdentityHashMap` is the key here — using `equals` would mix up two tasks w
 
 Not the argv, but **what this compilation actually used**: the **actual content** of the classpath (not the `-classpath` argument itself),
 the source path, the encoding, `--release`, the list of source files, the output directory, and the JDK version used for the compilation.
-The reason is the same as for Coverity: `javac` without `-classpath` and `javac -classpath ""` mean different things, and
+The reason is the same as for every compiler: `javac` without `-classpath` and `javac -classpath ""` mean different things, and
 only by looking at the environment together can it be reconstructed.
 
 ### 7.0.4 The option table is data, not a switch
@@ -704,16 +704,23 @@ keeps them in step.
 **and** the platform API, while `-source` pins only the language level. Folding them together
 would lose that.
 
-### 7.0.5 The table is measured against Coverity
+### 7.0.5 The table is measured against a reference model
 
-`plumb-build-capture/src/main/resources/coverity-java-options.toml` holds Coverity's option
-model, extracted from `JavacOptionParser` in cov-analysis 2023.6.0. It is the yardstick.
+`plumb-build/plumb-build-capture/src/main/resources/java-compiler-options.yaml` holds the option
+reference model: for every option the capture understands, **how the option behaves** --
+whether it takes a value, whether a repeated occurrence overrides an earlier one, whether it
+produces a class file, and which compiler it belongs to. It is the yardstick.
+
+It is a **reference, not a configuration file**. Nothing reads it at run time; the gate reads
+it and compares it with the module's own table. The categories say what the option DOES,
+never who modelled it, so the file stays useful when the model it was derived from is no
+longer around.
 
 `scripts/check_capture_options.py` compares the two, **in both directions**: every option in
-Coverity's categories has to exist in our table with the same value kind, the same repetition
-rule and the same compiler; every alias has to be a spelling we know; and every option we have
-that Coverity does not has to be **listed as an addition**, so "we support more" is a visible
-fact rather than an accident.
+the reference's categories has to exist in our table with the same value kind, the same
+repetition rule and the same compiler; every alias has to be a spelling we know; and every
+option we have that the reference does not has to be **listed as an addition**, so "we
+support more" is a visible fact rather than an accident.
 
 `scripts/mutate_capture_options.py` is the gate's own mutation test: ten deliberate drifts,
 all of which must make the gate fail. It found three real holes in the first version — the
@@ -838,8 +845,8 @@ because the same set of files arrives in a different order from the API and from
 Gradle is the most troublesome one: the compilation happens **inside the daemon process** (invisible to the JVM the agent is attached to),
 and when the build cache is enabled the compilation **never runs at all** (so there is nothing to capture).
 
-`GradleHooks` hooks Gradle's own configuration API the way Coverity's `common-capture.properties` does,
-changing two things: `StartParameter#setBuildCacheEnabled` is forced to false, and
+`GradleHooks` hooks Gradle's own configuration API, which is the only place the two switches below live.
+It changes two things: `StartParameter#setBuildCacheEnabled` is forced to false, and
 `DaemonParameters#isEnabled()` is forced to false.
 
 These two hooks are **optional** — turning off the daemon makes the build slower, and users who do not

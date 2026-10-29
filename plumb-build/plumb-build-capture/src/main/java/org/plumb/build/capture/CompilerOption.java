@@ -36,10 +36,10 @@ import java.util.Map;
  * So {@code --processor-path some/where.jar} was silently dropped, and an option whose value
  * happened to end in {@code .java} would be mistaken for a source.
  *
- * <p>Coverity solves this the same way: {@code JavacOptionParser} keeps its option knowledge in
- * tables -- a translation table, a "only the last one counts" list, a "may repeat" list, a "takes
- * no value" list, a "not a compilation option" list, and a per-compiler list of path options. This
- * class is that idea, in a form a static analyser can use.
+ * <p>The reference implementation solves this the same way: {@code JavacOptionParser} keeps its
+ * option knowledge in tables -- a translation table, a "only the last one counts" list, a "may
+ * repeat" list, a "takes no value" list, a "not a compilation option" list, and a per-compiler list
+ * of path options. This class is that idea, in a form a static analyser can use.
  *
  * <p>Adding an option is therefore <b>a data change</b>: one line in {@link #ALL}.
  */
@@ -171,8 +171,8 @@ public final class CompilerOption {
   /**
    * Every option, in one table.
    *
-   * <p>The categories match Coverity's {@code JavacOptionParser}, so the two can be compared entry
-   * by entry:
+   * <p>The categories match the reference's {@code JavacOptionParser}, so the two can be compared
+   * entry by entry:
    *
    * <ul>
    *   <li>options that only the last occurrence of which counts;
@@ -430,7 +430,7 @@ public final class CompilerOption {
             null));
 
     // ---- the module paths ----
-    // These are the "only the last one counts" options in Coverity's table.
+    // These are the "only the last one counts" options in the reference table.
     out.add(
         opt(
             "--module-path",

@@ -42,7 +42,7 @@ import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 
 /**
- * DFA-based version of Coverity <code>SINGLETON_RACE</code> (CWE-366). Where the AST checker {@code
+ * DFA-based version of the SINGLETON_RACE defect class (CWE-366). Where the AST checker {@code
  * org.plumb.style.concurrency.SingletonRaceCheck} only looks at field accesses within a single
  * method, the DFA version tracks which methods in a class read / write the same field.
  *

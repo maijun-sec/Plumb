@@ -44,9 +44,10 @@ import net.bytebuddy.utility.JavaModule;
  *       to capture -- and the analyser then has no classpath for those sources.
  * </ol>
  *
- * <p>Coverity solves both by hooking Gradle's own configuration API and <em>changing</em> it: the
- * build cache is switched off, and the daemon is switched off so the build runs in the foreground
- * process the agent is attached to. The hooks are in Coverity's {@code common-capture.properties}.
+ * <p>The reference implementation solves both by hooking Gradle's own configuration API and
+ * <em>changing</em> it: the build cache is switched off, and the daemon is switched off so the
+ * build runs in the foreground process the agent is attached to. The hooks are in the reference's
+ * {@code common-capture.properties}.
  *
  * <p>This class does the same thing. The two hooks are:
  *

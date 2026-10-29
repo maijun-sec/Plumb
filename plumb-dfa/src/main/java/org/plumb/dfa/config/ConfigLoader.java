@@ -304,8 +304,8 @@ public final class ConfigLoader {
       String cls = asString(spec.get("class"));
       String desc = asString(spec.get("description"));
       // Aggressiveness knob (low/medium/high).
-      // Default "medium" if absent (matches Coverity's
-      // baseline). Engine level default can be
+      // Default "medium" if absent (the engine's
+      // baseline). The engine level default can be
       // overridden per-checker here.
       String aggressiveness = asString(spec.get("aggressiveness"));
       if (aggressiveness == null) aggressiveness = "medium";

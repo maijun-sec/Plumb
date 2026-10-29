@@ -152,10 +152,10 @@ class CompilerEntryPointsTest {
    * The hooked methods must exist on the hooked classes, with the arity the entry point claims.
    *
    * <p>This is the test that would have caught the {@code javax.tools.JavaCompiler#run} mistake.
-   * That entry point looked plausible -- Coverity's own hook list names it -- but on a modern JDK
-   * {@code javax.tools.JavaCompiler} is an <em>interface</em> with only {@code getTask} and {@code
-   * getStandardFileManager}, and no {@code run} at all. The hook never fired, so the capture was
-   * silently empty for every caller that used the run-style API.
+   * That entry point looked plausible -- the reference's own hook list names it -- but on a modern
+   * JDK {@code javax.tools.JavaCompiler} is an <em>interface</em> with only {@code getTask} and
+   * {@code getStandardFileManager}, and no {@code run} at all. The hook never fired, so the capture
+   * was silently empty for every caller that used the run-style API.
    *
    * <p>Checking against the real classes is the only way to catch that: reading the list and
    * checking it is internally consistent would have passed.

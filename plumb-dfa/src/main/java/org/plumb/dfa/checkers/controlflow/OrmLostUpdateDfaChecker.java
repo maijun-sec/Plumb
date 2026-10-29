@@ -38,7 +38,7 @@ import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 
 /**
- * DFA-based version of Coverity <code>ORM_LOST_UPDATE</code> / <code>ORM_ABANDONED_TRANSIENT</code>
+ * DFA-based version of the ORM_LOST_UPDATE defect class / <code>ORM_ABANDONED_TRANSIENT</code>
  * (CWE-459). Where the AST checker {@code org.plumb.style.quality.OrmLostUpdateCheck} inspects only
  * the immediate function body, this DFA version uses the TAC IR plus the {@link FunctionSummary}
  * cache to detect when a transient entity's persistence happens <em>through</em> a helper-method

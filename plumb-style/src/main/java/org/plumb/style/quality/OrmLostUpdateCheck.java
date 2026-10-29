@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 /*
- * Coverity <code>ORM_LOST_UPDATE</code> / <code>ORM_ABANDONED_TRANSIENT</code> (CWE-459) -- fires when
+ * the ORM_LOST_UPDATE defect class / <code>ORM_ABANDONED_TRANSIENT</code> (CWE-459) -- fires when
  * a transient JPA entity is created and mutated but never passed to {@code persist}/{@code save}
  * (or {@code merge}/{@code update} for a detached entity).
  *

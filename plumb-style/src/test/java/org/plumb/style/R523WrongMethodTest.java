@@ -36,13 +36,13 @@ import org.plumb.rules.RuleRegistry;
 import org.plumb.style.quality.WrongMethodCheck;
 
 /**
- * Coverity <code>WRONG_METHOD</code> : covers misuse of {@code Boolean.getBoolean} and {@code
+ * the WRONG_METHOD defect class : covers misuse of {@code Boolean.getBoolean} and {@code
  * Integer.getInteger}.
  *
  * <p>These methods look up a system property by name; the developer usually wanted {@code
  * Boolean.valueOf} or {@code Integer.valueOf} to parse a literal string.
  */
-class R523CoverityWrongMethodTest {
+class R523WrongMethodTest {
 
   @BeforeAll
   static void setupParser() {
@@ -59,7 +59,7 @@ class R523CoverityWrongMethodTest {
 
   @Test
   void firesOnIntegerGetIntegerFromUserInput() {
-    // Coverity's canonical example: parsing a command-line arg
+    // the canonical example: parsing a command-line arg
     // that the developer thought was a number string.
     String src =
         "class N { int m(String[] args, int i) {" + " return Integer.getInteger(args[i]);" + "} }";

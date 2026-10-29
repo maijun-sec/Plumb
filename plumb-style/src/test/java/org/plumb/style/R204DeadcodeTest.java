@@ -35,7 +35,7 @@ import org.plumb.rules.RuleRegistry;
 import org.plumb.style.style.DeadcodeCheck;
 
 /** Unreachable */
-class R204CoverityDeadcodeTest {
+class R204DeadcodeTest {
 
   @BeforeAll
   static void setupParser() {

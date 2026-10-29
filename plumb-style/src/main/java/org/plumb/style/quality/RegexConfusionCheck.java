@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 /*
- * Coverity <code>REGEX_CONFUSION</code> — flags calls to {@link String#replaceAll(String,
+ * the REGEX_CONFUSION defect class — flags calls to {@link String#replaceAll(String,
  * String)}, {@link String#replaceFirst(String, String)} and {@link String#split(String)} where
  * the first argument is a string literal that contains a regex metacharacter. The developer most
  * likely intended a literal replacement, not a regex match.

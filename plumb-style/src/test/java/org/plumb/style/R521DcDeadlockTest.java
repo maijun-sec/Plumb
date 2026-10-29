@@ -36,14 +36,14 @@ import org.plumb.rules.RuleRegistry;
 import org.plumb.style.security.DcDeadlockCheck;
 
 /**
- * Coverity <code>DC.DEADLOCK</code> : covers Thread.suspend / resume, ThreadGroup.suspend / resume,
+ * the DC.DEADLOCK defect class : covers Thread.suspend / resume, ThreadGroup.suspend / resume,
  * Thread.countStackFrames, and ThreadGroup.allowThreadSuspension, plus the negative cases.
  *
- * <p>Like {@link R520CoverityDcDangerousTest}, the checker matches on the receiver's static type so
- * it still flags the methods that have been removed from the JDK (Thread.suspend,
- * ThreadGroup.suspend, etc. were dropped in Java 11/17).
+ * <p>Like {@link R520DcDangerousTest}, the checker matches on the receiver's static type so it
+ * still flags the methods that have been removed from the JDK (Thread.suspend, ThreadGroup.suspend,
+ * etc. were dropped in Java 11/17).
  */
-class R521CoverityDcDeadlockTest {
+class R521DcDeadlockTest {
 
   @BeforeAll
   static void setupParser() {

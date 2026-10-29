@@ -35,8 +35,8 @@ import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleRegistry;
 import org.plumb.style.quality.OrmLostUpdateCheck;
 
-/** Coverity <code>ORM_LOST_UPDATE</code> tests. */
-class R543CoverityOrmLostUpdateTest {
+/** the ORM_LOST_UPDATE defect class tests. */
+class R543OrmLostUpdateTest {
 
   @BeforeAll
   static void setupParser() {
@@ -87,7 +87,7 @@ class R543CoverityOrmLostUpdateTest {
   @Test
   void noFireOnReadOnlyUse() {
     // Entity is created and read but never mutated : the
-    // Coverity heuristic says "any reading of the contents
+    // the rule's heuristic says "any reading of the contents
     // is enough to consider it a temporary variable".
     String src =
         "import javax.persistence.Entity;\n"

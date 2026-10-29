@@ -47,9 +47,9 @@ import org.slf4j.LoggerFactory;
  * RuleDef.Severity, String)}.
  *
  * <p><b>Aggressiveness knob.</b> The {@link #withAggressiveness(String)} setter + {@link
- * #isAtLeast(String)} gate mirror Coverity's {@code --aggressiveness-level} command-line option.
- * AST checkers call {@code ctx.isAtLeast("high")} to enable "high only" branches (broader patterns,
- * more cross-function assumptions).
+ * #isAtLeast(String)} gate mirror the reference's {@code --aggressiveness-level} command-line
+ * option. AST checkers call {@code ctx.isAtLeast("high")} to enable "high only" branches (broader
+ * patterns, more cross-function assumptions).
  */
 public final class StyleContext {
 
@@ -89,8 +89,8 @@ public final class StyleContext {
   private String currentRule = "";
 
   /**
-   * Coverity-style aggressiveness knob: "low" / "medium" / "high". Defaults to "medium" (the
-   * Coverity baseline).
+   * analysis-style aggressiveness knob: "low" / "medium" / "high". Defaults to "medium" (the the
+   * baseline).
    */
   private String aggressiveness = "medium";
 

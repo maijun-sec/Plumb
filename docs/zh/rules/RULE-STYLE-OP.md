@@ -26,7 +26,7 @@ Style 规则**不写进 `plumb-rules/RuleRegistry`**，而是通过 `AstCheckerR
 `CheckerCategories.CHECKER_CATEGORIES` 登记了 **593** 条（差的 2 条见
 [`../tech/STYLE-RULES.md`](../tech/STYLE-RULES.md) §6）。
 
-> 完整列表 + 每条规则的 Javadoc + PMD/SpotBugs/SonarQube/Coverity 等价映射见 `docs/plumb-style-rules.md`（自动生成，由 `scripts/gen_rules_doc.py`）。索引见 `docs/plumb-style-rules-index.md`（由 `scripts/gen_rules_index.py`）。
+> 完整列表 + 每条规则的 Javadoc + PMD/SpotBugs/SonarQube/Checkstyle 等价映射见 `docs/plumb-style-rules.md`（自动生成，由 `scripts/gen_rules_doc.py`）。索引见 `docs/plumb-style-rules-index.md`（由 `scripts/gen_rules_index.py`）。
 
 ### 7.1 style 规则的 emit-id
 

@@ -36,11 +36,11 @@ import org.plumb.rules.RuleRegistry;
 import org.plumb.style.security.WeakUrlSanitizationCheck;
 
 /**
- * Coverity <code>WEAK_URL_SANITIZATION</code> : covers the three documented patterns: substring
- * check on URL, missing {@code ^} anchor in {@code matches}, and Matcher.find on a URL. Plus the
- * negative cases: properly anchored regex, assertion calls (suppressed).
+ * the WEAK_URL_SANITIZATION defect class : covers the three documented patterns: substring check on
+ * URL, missing {@code ^} anchor in {@code matches}, and Matcher.find on a URL. Plus the negative
+ * cases: properly anchored regex, assertion calls (suppressed).
  */
-class R526CoverityWeakUrlSanitizationTest {
+class R526WeakUrlSanitizationTest {
 
   @BeforeAll
   static void setupParser() {
@@ -57,7 +57,7 @@ class R526CoverityWeakUrlSanitizationTest {
 
   @Test
   void firesOnContainsWithUrlLiteral() {
-    // Coverity's example: substring check on a URL is a weak filter.
+    // The canonical example: a substring check on a URL is a weak filter.
     String src =
         "class N { boolean m(String s) {"
             + " return s.contains(\"https://www.example.com/\");"

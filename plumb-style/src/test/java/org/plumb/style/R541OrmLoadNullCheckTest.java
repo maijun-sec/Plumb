@@ -33,10 +33,10 @@ import org.plumb.parser.JavaSourceParser;
 import org.plumb.parser.ParsedSource;
 import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleRegistry;
-import org.plumb.style.quality.OrmUnnecessaryGetCheck;
+import org.plumb.style.quality.OrmLoadNullCheckCheck;
 
-/** Coverity <code>ORM_UNNECESSARY_GET</code> tests. */
-class R542CoverityOrmUnnecessaryGetTest {
+/** the ORM_LOAD_NULL_CHECK defect class tests. */
+class R541OrmLoadNullCheckTest {
 
   @BeforeAll
   static void setupParser() {
@@ -47,80 +47,76 @@ class R542CoverityOrmUnnecessaryGetTest {
   private List<Finding> run(String src) {
     ParsedSource ps = new JavaSourceParser().parseFromString(Path.of("N.java"), src);
     StyleContext ctx = new StyleContext(ps, new RuleRegistry().withBuiltinDefaults(true));
-    new AstDispatcher().register(new OrmUnnecessaryGetCheck()).run(ctx);
+    new AstDispatcher().register(new OrmLoadNullCheckCheck()).run(ctx);
     return ctx.findings();
   }
 
   @Test
-  void firesOnGetUsedOnlyAsArgument() {
-    // Canonical Coverity example: result is passed to a
-    // setter; the setter's body is opaque to us, but the
-    // conservative AST pattern fires anyway.
+  void firesOnLoadThenNullCheck() {
     String src =
         "class N {\n"
-            + "  void m(org.hibernate.Session s, java.io.Serializable id) {\n"
-            + "    Object x = s.get(Object.class, id);\n"
-            + "    setScore(x);\n"
+            + "  void m(org.hibernate.Session s, Long id) {\n"
+            + "    Object o = s.load(id);\n"
+            + "    if (o == null) { System.out.println(\"x\"); }\n"
             + "  }\n"
-            + "  void setScore(Object s) {}\n"
             + "}";
-    assertThat(run(src)).as("ORM_UNNECESSARY_GET: get() + pass-as-arg fires").isNotEmpty();
+    assertThat(run(src)).as("ORM_LOAD_NULL_CHECK: Session.load + null check fires").isNotEmpty();
   }
 
   @Test
-  void firesOnGetUsedOnlyForId() {
+  void firesOnGetReferenceThenNullCheck() {
     String src =
         "class N {\n"
             + "  void m(javax.persistence.EntityManager em, Long id) {\n"
-            + "    Object x = em.find(Object.class, id);\n"
-            + "    Long xid = x.getId();\n"
-            + "    setScore(xid);\n"
+            + "    Object o = em.getReference(Object.class, id);\n"
+            + "    if (o != null) { System.out.println(\"x\"); }\n"
             + "  }\n"
-            + "  void setScore(Long id) {}\n"
             + "}";
-    assertThat(run(src)).as("ORM_UNNECESSARY_GET: getId() use fires").isNotEmpty();
+    assertThat(run(src)).as("ORM_LOAD_NULL_CHECK: getReference + null check fires").isNotEmpty();
   }
 
   @Test
-  void noFireWhenGetUsedForContents() {
-    // x.getName() accesses the entity's contents : the
-    // get() is required.
+  void noFireOnGetThenNullCheck() {
+    // Session.get (or EntityManager.find) CAN return null,
+    // so a null check is legitimate.
     String src =
         "class N {\n"
-            + "  void m(org.hibernate.Session s, java.io.Serializable id) {\n"
-            + "    Object x = s.get(Object.class, id);\n"
-            + "    String n = x.getName();\n"
+            + "  void m(org.hibernate.Session s, Long id) {\n"
+            + "    Object o = s.get(id);\n"
+            + "    if (o == null) { System.out.println(\"x\"); }\n"
             + "  }\n"
             + "}";
-    assertThat(run(src)).as("ORM_UNNECESSARY_GET: get() + content access does not fire").isEmpty();
+    assertThat(run(src)).as("ORM_LOAD_NULL_CHECK: get() + null check does not fire").isEmpty();
   }
 
   @Test
-  void noFireWhenGetAssignedToField() {
-    // x.f = ... assigns to x's field, which is a contents
-    // access.
+  void noFireWhenNoNullCheckFollows() {
     String src =
         "class N {\n"
-            + "  Object other;\n"
-            + "  void m(org.hibernate.Session s, java.io.Serializable id) {\n"
-            + "    Object x = s.get(Object.class, id);\n"
-            + "    other.id = x.id;\n"
-            + "  }\n"
-            + "}";
-    assertThat(run(src)).as("ORM_UNNECESSARY_GET: get() + field read does not fire").isEmpty();
-  }
-
-  @Test
-  void noFireWhenVariableNeverUsed() {
-    // Variable unused : that's a different finding.
-    String src =
-        "class N {\n"
-            + "  void m(org.hibernate.Session s, java.io.Serializable id) {\n"
-            + "    Object x = s.get(Object.class, id);\n"
+            + "  void m(org.hibernate.Session s, Long id) {\n"
+            + "    Object o = s.load(id);\n"
+            + "    o.toString();\n"
             + "  }\n"
             + "}";
     assertThat(run(src))
-        .as("ORM_UNNECESSARY_GET: unused variable does not fire (different finding)")
+        .as("ORM_LOAD_NULL_CHECK: load() with no null check does not fire")
         .isEmpty();
+  }
+
+  @Test
+  void noFireWhenVariableIsReassignedBeforeCheck() {
+    // the rule's "only result of a load operation" clause:
+    // if the variable is re-assigned between the load and
+    // the check, the value being tested might not be the
+    // load result.
+    String src =
+        "class N {\n"
+            + "  void m(org.hibernate.Session s, Long id) {\n"
+            + "    Object o = s.load(id);\n"
+            + "    o = null;\n"
+            + "    if (o == null) { System.out.println(\"x\"); }\n"
+            + "  }\n"
+            + "}";
+    assertThat(run(src)).as("ORM_LOAD_NULL_CHECK: reassigned variable does not fire").isEmpty();
   }
 }

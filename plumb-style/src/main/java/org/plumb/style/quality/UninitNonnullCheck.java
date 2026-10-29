@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 /*
- * Coverity <code>UNINIT_NONNULL</code> (CWE-457) -- reports fields that are annotated as non-null but
+ * the UNINIT_NONNULL defect class (CWE-457) -- reports fields that are annotated as non-null but
  * are not assigned a non-null value by <em>every</em> constructor.
  *
  */

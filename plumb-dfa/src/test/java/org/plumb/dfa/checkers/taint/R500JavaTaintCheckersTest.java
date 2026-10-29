@@ -28,13 +28,13 @@ import org.plumb.dfa.taint.TaintRule;
 import org.plumb.dfa.taint.TaintedCheckerBase;
 
 /**
- * Unit tests for the eight Coverity Java taint checkers (BAD_CERT, UNSAFE_REFLECTION, UNSAFE_JNI,
+ * Unit tests for the eight Java taint checkers (BAD_CERT, UNSAFE_REFLECTION, UNSAFE_JNI,
  * EL_INJECTION, OGNL_INJECTION, JCR_INJECTION, JSP_DYNAMIC_INCLUDE, TRUST_BOUNDARY_VIOLATION). Each
  * test verifies the checker's rule wiring (id, source fact, sink family, cwe, severity, taint
  * domain) so that a future change to the {@link TaintRule} constructor can't accidentally break the
  * "sink family / source fact / cwe" mapping without a test noticing.
  */
-class R500CoverityJavaTaintCheckersTest {
+class R500JavaTaintCheckersTest {
 
   private static void assertRule(
       TaintedCheckerBase checker,

@@ -42,10 +42,9 @@ import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 
 /**
- * DFA-based version of Coverity <code>SERVLET_ATOMICITY</code> (CWE-362). Where the AST checker
- * {@code org.plumb.style.concurrency.ServletAtomicityCheck} only looks at {@code getAttribute} /
- * {@code setAttribute} pairs within a single method, the DFA version tracks those calls across
- * methods.
+ * DFA-based version of the SERVLET_ATOMICITY defect class (CWE-362). Where the AST checker {@code
+ * org.plumb.style.concurrency.ServletAtomicityCheck} only looks at {@code getAttribute} / {@code
+ * setAttribute} pairs within a single method, the DFA version tracks those calls across methods.
  *
  * <p><b>What the DFA version catches that AST misses.</b>
  *

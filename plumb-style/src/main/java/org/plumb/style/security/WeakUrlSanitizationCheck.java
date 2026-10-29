@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 /*
- * Coverity <code>WEAK_URL_SANITIZATION</code> — flags weak URL/host sanitization that is likely
+ * the WEAK_URL_SANITIZATION defect class — flags weak URL/host sanitization that is likely
  * bypassable by an attacker.
  *
  * {@link #isUnderAssertion(MethodCallExpr)} helper uses parent pointers, which JavaParser maintains
@@ -218,7 +218,7 @@ public final class WeakUrlSanitizationCheck implements AstChecker {
       if (i > 0 && pat.charAt(i - 1) == '\\') continue;
       // Skip the dot followed by a quantifier — `.+`, `.*`, `.?`,
       // `.{n,m}` are intentionally permissive dots, not the
-      // hostname-allowlist shape Coverity is flagging.
+      // hostname-allowlist shape the reference flags.
       if (i + 1 < pat.length()) {
         char next = pat.charAt(i + 1);
         if (next == '*' || next == '+' || next == '?') continue;

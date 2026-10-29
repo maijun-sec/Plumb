@@ -35,8 +35,8 @@ import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleRegistry;
 import org.plumb.style.concurrency.SingletonRaceCheck;
 
-/** Coverity <code>SINGLETON_RACE</code> tests. */
-class R560CoveritySingletonRaceTest {
+/** the SINGLETON_RACE defect class tests. */
+class R560SingletonRaceTest {
 
   @BeforeAll
   static void setupParser() {

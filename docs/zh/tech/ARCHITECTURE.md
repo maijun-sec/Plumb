@@ -621,7 +621,7 @@ source path 上找到的那些走 `readSourceFile`。所以在这里挂一个 ho
 
 不是 argv，是**这次编译实际用的东西**：classpath 的**实际内容**（不是 `-classpath` 参数本身）、
 source path、encoding、`--release`、源文件清单、输出目录、编译用的 JDK 版本。
-理由和 Coverity 一样：`javac` 没给 `-classpath` 和 `javac -classpath ""` 意思不一样，
+理由对任何编译器都成立：`javac` 没给 `-classpath` 和 `javac -classpath ""` 意思不一样，
 只有把环境一起看才能还原。
 
 ### 7.0.4 选项表是数据，不是开关
@@ -670,14 +670,19 @@ ECJ 的不行。所以索引的键是名字**加上**编译器，编译器自己
 `--release` 与 `-source`、`-target` 分开记：`--release` 同时钉住语言级别
 **和**平台 API，而 `-source` 只钉语言级别。折成一起就丢掉这个区别了。
 
-### 7.0.5 这张表是对着 Coverity 量的
+### 7.0.5 这张表是对着一份参考模型量的
 
-`plumb-build-capture/src/main/resources/coverity-java-options.toml` 存的是 Coverity 的选项模型，
-从 cov-analysis 2023.6.0 的 `JavacOptionParser` 里抽出来的。它就是标尺。
+`plumb-build/plumb-build-capture/src/main/resources/java-compiler-options.yaml` 存的是选项的参考模型：
+对每个 capture 认识的选项，记的是**这个选项的行为**——它带不带值、重复出现时后面的
+是不是覆盖前面的、它会不会产出 class file、它属于哪个编译器。它就是标尺。
 
-`scripts/check_capture_options.py` 把两边**双向**对比：Coverity 各分类里的每个选项
+它是**参考，不是配置文件**：运行期没有任何东西读它，只有门禁读它，然后拿它和模块自己的
+表对比。分类描述的是选项**做了什么**，不是谁标的，所以就算当初标它的那个模型不在了，
+这份文件依然有用。
+
+`scripts/check_capture_options.py` 把两边**双向**对比：参考模型各分类里的每个选项
 在我们的表里都得存在，取值形态、重复规则、归属编译器都要一样；每个别名都得是我们认识的写法；
-而我们有、Coverity 没有的每个选项都必须**列为新增**，
+而我们有、参考模型没有的每个选项都必须**列为新增**，
 所以「我们支持得更多」是一件看得见的事，而不是一个意外。
 
 `scripts/mutate_capture_options.py` 是这个门禁自己的变异测试：十处刻意的偏移，
@@ -789,7 +794,7 @@ javac 遇到以 `@` 开头的参数时，会从那个文件里读选项。把 cl
 Gradle 是最麻烦的一个：编译发生在 **daemon 进程**里（agent 挂的那个 JVM 看不到），
 而且开了 build cache 时编译**根本没跑**（也就没什么可 capture）。
 
-`GradleHooks` 照 Coverity `common-capture.properties` 的做法 hook Gradle 自己的配置 API，
+`GradleHooks` hook 的是 Gradle 自己的配置 API —— 下面那两个开关只存在于那里，
 把两件事改掉：`StartParameter#setBuildCacheEnabled` 强制 false、
 `DaemonParameters#isEnabled()` 强制 false。
 

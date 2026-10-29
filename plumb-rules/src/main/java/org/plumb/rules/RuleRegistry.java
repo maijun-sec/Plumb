@@ -38,7 +38,7 @@ import java.util.Optional;
  *   <li>{@link #withBuiltinDefaults()} -- register the 115 hard-coded entries for DFA checkers and
  *       the early-round taint / style / spotbugs-style rules. This is the only canonical list of
  *       pre- rules and the only code that mutates the {@link #byAlias} reverse index for cross-tool
- *       equivalence (PMD / SpotBugs / SonarQube Java / Checkstyle / Coverity).
+ *       equivalence (PMD / SpotBugs / SonarQube Java / Checkstyle).
  *   <li>{@link #registerFromChecker(Object)} -- read the {@code DEFAULT_RULE} static field (or its
  *       synthetic {@code rule()} derivation) from an {@link org.plumb.style.AstChecker} and add it
  *       to the registry. The {@code AstChecker} is the single source of truth for its own metadata;
@@ -50,11 +50,11 @@ import java.util.Optional;
  * <h2>Alias resolution</h2>
  *
  * <p>Rules carry a list of aliases -- canonical rule ids and names of equivalent rules in other
- * rule sources (PMD, SpotBugs, SonarQube Java, Checkstyle, Coverity). When {@link #byAlias(String)}
- * is called with a legacy id or a foreign id, the registry returns the canonical Plumb {@code
- * RuleDef}. The {@link org.plumb.style.StyleContext#report} pipeline uses this to keep emitted
- * findings tagged with the canonical rule id even when the checker still carries a hardcoded legacy
- * {@code DEFAULT_RULE}.
+ * rule sources (PMD, SpotBugs, SonarQube Java, Checkstyle). When {@link #byAlias(String)} is called
+ * with a legacy id or a foreign id, the registry returns the canonical Plumb {@code RuleDef}. The
+ * {@link org.plumb.style.StyleContext#report} pipeline uses this to keep emitted findings tagged
+ * with the canonical rule id even when the checker still carries a hardcoded legacy {@code
+ * DEFAULT_RULE}.
  *
  * <h2>Parameter lookup</h2>
  *
@@ -1366,7 +1366,7 @@ public final class RuleRegistry {
     addAlias(UNUSED_LOCAL_VARIABLE, "PMD:UnusedLocalVariable");
     addAlias(UNUSED_FORMAL_PARAMETER, "PMD:UnusedFormalParameter");
     addAlias(AVOID_PRINT_STACK_TRACE, "PMD:AvoidPrintStackTrace");
-    addAlias(DEAD_STORE, "Coverity:DEAD_STORE", "SpotBugs:DLS_DEAD_LOCAL_STORE");
+    addAlias(DEAD_STORE, "SpotBugs:DLS_DEAD_LOCAL_STORE");
     addAlias(STYLE_METHOD_NAMING, "PMD:MethodNamingConventions", "SonarQube:java:S00100");
     addAlias(STYLE_CONSTANT_NAMING, "PMD:ConstantNamingConventions");
     addAlias(STYLE_METHOD_TOO_LONG, "PMD:ExcessiveMethodLength", "SonarQube:java:S00108");

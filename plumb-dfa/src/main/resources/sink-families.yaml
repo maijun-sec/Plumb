@@ -645,7 +645,7 @@ families:
   # Sink methods that produce a non-cryptographic random value
   # (java.util.Random / Math.random). Tainted "seed" arguments
   # are not in scope here — the issue is the choice of PRNG in
-  # a security-sensitive context. The Coverity brief is
+  # a security-sensitive context. The rule's brief is
   # precise: "cryptographically weak PRNGs used in security-
   # sensitive contexts". We attach this sink to taint as a
   # standalone family: any value read from these methods is

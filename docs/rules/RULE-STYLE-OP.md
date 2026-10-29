@@ -33,7 +33,7 @@ across the 9 sub-directories is in the category-statistics section of
 `CheckerCategories.CHECKER_CATEGORIES` registers **593** of them (for the
 difference of 2, see [`../tech/STYLE-RULES.md`](../tech/STYLE-RULES.md) §6).
 
-> The full list plus the Javadoc of every rule plus the PMD/SpotBugs/SonarQube/Coverity
+> The full list plus the Javadoc of every rule plus the PMD/SpotBugs/SonarQube/Checkstyle
 > equivalent mapping is in `docs/plumb-style-rules.md` (generated, by
 > `scripts/gen_rules_doc.py`). The index is in
 > `docs/plumb-style-rules-index.md` (by `scripts/gen_rules_index.py`).

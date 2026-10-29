@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 /*
- * Coverity <code>HIBERNATE_BAD_HASHCODE</code> (CWE-579) -- fires
+ * the HIBERNATE_BAD_HASHCODE defect class (CWE-579) -- fires
  * when a JPA entity's {@code hashCode()} or {@code equals()}
  * method depends on a field annotated {@code @Id} (or
  * {@code @GeneratedValue}). The key is not assigned until
@@ -28,7 +28,7 @@
  * {@code hashCode()} / {@code equals()} makes the entity behave
  * inconsistently in Java collections before it is saved.
  *
- * <p>Reference: Coverity 2023.6.0 Checker Reference, section
+ * <p>Reference: the defect-class reference, section
  * <em>HIBERNATE_BAD_HASHCODE</em>.</p>
  *
  * <p><b>Detection strategy.</b> For each class annotated

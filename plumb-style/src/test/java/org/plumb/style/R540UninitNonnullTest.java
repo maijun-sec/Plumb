@@ -38,7 +38,7 @@ import org.plumb.rules.RuleRegistry;
 import org.plumb.style.quality.UninitNonnullCheck;
 
 /**
- * Coverity <code>UNINIT_NONNULL</code> tests.
+ * the UNINIT_NONNULL defect class tests.
  *
  * <p>Cases covered:
  *
@@ -52,7 +52,7 @@ import org.plumb.style.quality.UninitNonnullCheck;
  *       case).
  * </ul>
  */
-class R540CoverityUninitNonnullTest {
+class R540UninitNonnullTest {
 
   @BeforeAll
   static void setupParser() {

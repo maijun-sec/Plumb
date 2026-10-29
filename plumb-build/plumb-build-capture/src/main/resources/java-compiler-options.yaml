@@ -1,0 +1,406 @@
+# java-compiler-options.yaml
+#
+# The option model for the compilers the capture module understands:
+# javac, ECJ and sjavac. It records, for every option, HOW the option
+# BEHAVES -- whether it takes a value, whether a repeated occurrence
+# overrides an earlier one, and whether it produces a class file.
+#
+# This is a REFERENCE model, not a configuration file. Nothing reads it
+# at run time; scripts/check_capture_options.py reads it and compares it
+# with the module's own table (CompilerOption.java), in both
+# directions. An option the capture knows and the reference does not has
+# to be written down as an addition, so a deliberate extension is
+# visible rather than silent.
+#
+# The categories say what the option DOES, never who modelled it:
+#
+#   last-instance-only   only the last occurrence counts
+#   repeat-allowable     every occurrence applies
+#   no-value             the option takes no value
+#   repeat-squash        repeatable, but the compiler keeps only one
+#   not-compilation      the option does not produce a class file
+#   ecj-path             ECJ's own path options
+#
+# The names are the CANONICAL names -- the name an option is recorded
+# under. A compiler spelling that maps onto a canonical name (such as
+# -cp onto --classpath) belongs in that option's `aliases` list.
+
+categories:
+  last-instance-only:
+    - --limit-modules
+    - --module
+    - --module-source-path
+    - --upgrade-module-path
+    - --module-path
+    - --output-dir
+    - --annotation-processing-dir
+    - --release
+  repeat-allowable:
+    - --add-exports
+    - --add-reads
+    - --patch-module
+  no-value:
+    - --enable-preview
+    - --permit-unidentified-artifacts
+    - --permit-sources-without-package
+    - -warn:none
+  repeat-squash:
+    - --add-modules
+  not-compilation:
+    - -Xprint
+    - -proc:only
+  ecj-path:
+    - bootclasspath
+    - extdirs
+    - endorseddirs
+    - prebootclasspath
+    - postbootclasspath
+    - --classpath
+    - --sourcepath
+    - --module-path
+    - --module-source-path
+
+options:
+  - name: --output-dir
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+  - name: --classpath
+    aliases:
+      []
+    value: path-list
+    repeat: last-wins
+  - name: --sourcepath
+    aliases:
+      []
+    value: path-list
+    repeat: last-wins
+  - name: bootclasspath
+    aliases:
+      []
+    value: path-list
+    repeat: last-wins
+  - name: extdirs
+    aliases:
+      []
+    value: path-list
+    repeat: last-wins
+  - name: endorseddirs
+    aliases:
+      []
+    value: path-list
+    repeat: last-wins
+  - name: prebootclasspath
+    aliases:
+      []
+    value: path-list
+    repeat: all-apply
+  - name: postbootclasspath
+    aliases:
+      []
+    value: path-list
+    repeat: all-apply
+  - name: --module-path
+    aliases:
+      []
+    value: path-list
+    repeat: last-wins
+  - name: --module-source-path
+    aliases:
+      []
+    value: path-list
+    repeat: last-wins
+  - name: --upgrade-module-path
+    aliases:
+      []
+    value: path-list
+    repeat: last-wins
+  - name: --module
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+  - name: --limit-modules
+    aliases:
+      []
+    value: comma-list
+    repeat: last-wins
+  - name: --add-modules
+    aliases:
+      []
+    value: comma-list
+    repeat: all-apply
+  - name: --add-exports
+    aliases:
+      []
+    value: comma-list
+    repeat: all-apply
+  - name: --add-reads
+    aliases:
+      []
+    value: comma-list
+    repeat: all-apply
+  - name: --patch-module
+    aliases:
+      []
+    value: single
+    repeat: all-apply
+  - name: --system
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+  - name: --processor-path
+    aliases:
+      []
+    value: path-list
+    repeat: last-wins
+  - name: --processor-module-path
+    aliases:
+      []
+    value: path-list
+    repeat: last-wins
+  - name: --processor
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+  - name: --annotation-processing-dir
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+  - name: --release
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+  - name: --source
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+  - name: --target
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+  - name: --encoding
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+  - name: --enable-preview
+    aliases:
+      []
+    value: none
+    repeat: last-wins
+  - name: -Xprint
+    aliases:
+      []
+    value: none
+    repeat: last-wins
+    effect: not-compilation
+  - name: -proc:only
+    aliases:
+      []
+    value: none
+    repeat: last-wins
+    effect: not-compilation
+  - name: annotationpath
+    aliases:
+      []
+    value: path-list
+    repeat: last-wins
+    compiler: ecj
+  - name: -warn:none
+    aliases:
+      []
+    value: none
+    repeat: last-wins
+    compiler: ecj
+  - name: -?:warn
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: -help:warn
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: --classpath
+    aliases:
+      []
+    value: path-list
+    repeat: last-wins
+  - name: source_files_or_dirs
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: -profile
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: -log
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: --module-version
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: -h
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+  - name: -i
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: -j
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: -tr
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: -x
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: -Xmaxerrs
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: -Xmaxwarns
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: -Xstdout
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: -copy
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: ecj
+  - name: source_files_or_dirs
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: sjavac
+  - name: -x
+    aliases:
+      []
+    value: single
+    repeat: all-apply
+    compiler: sjavac
+  - name: -i
+    aliases:
+      []
+    value: single
+    repeat: all-apply
+    compiler: sjavac
+  - name: -tr
+    aliases:
+      []
+    value: single
+    repeat: all-apply
+    compiler: sjavac
+  - name: -copy
+    aliases:
+      []
+    value: single
+    repeat: all-apply
+    compiler: sjavac
+  - name: -j
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: sjavac
+  - name: --server
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: sjavac
+  - name: --startserver
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: sjavac
+  - name: --log
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: sjavac
+  - name: --permit-artifact
+    aliases:
+      []
+    value: single
+    repeat: all-apply
+    compiler: sjavac
+  - name: --permit-unidentified-artifacts
+    aliases:
+      []
+    value: none
+    repeat: last-wins
+    compiler: sjavac
+  - name: --permit-sources-without-package
+    aliases:
+      []
+    value: none
+    repeat: last-wins
+    compiler: sjavac
+  - name: --compare-found-sources
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: sjavac
+  - name: --state-dir
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: sjavac
+  - name: --implicit
+    aliases:
+      []
+    value: single
+    repeat: last-wins
+    compiler: sjavac

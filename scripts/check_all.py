@@ -102,7 +102,7 @@ The gates are:
     mutate_capture_claims      the capture gate is not checking air: every
                               deliberate drift must make it fail
     check_capture_options      the capture module's option table still
-                              matches Coverity's reference model: the
+                              matches the reference model: the
                               categorised options, their value kinds, their
                               repetition rules, their spellings
     mutate_capture_options     the option gate is not checking air: every

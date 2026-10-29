@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 /*
- * Coverity <code>SINGLETON_RACE</code> (CWE-366) -- fires on
+ * the SINGLETON_RACE defect class (CWE-366) -- fires on
  * non-synchronized read-modify-write of an instance / static
  * field in a singleton class (servlet, Spring controller).
  *

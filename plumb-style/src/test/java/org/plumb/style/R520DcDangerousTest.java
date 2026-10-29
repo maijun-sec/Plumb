@@ -36,7 +36,7 @@ import org.plumb.rules.RuleRegistry;
 import org.plumb.style.security.DcDangerousCheck;
 
 /**
- * Coverity <code>DC.DANGEROUS</code> : covers the four documented dangerous calls (Thread.stop,
+ * the DC.DANGEROUS defect class : covers the four documented dangerous calls (Thread.stop,
  * ThreadGroup.stop, Thread.destroy, ObjectOutputStream$PutField.write) plus the negative cases
  * (safe API calls, no finding).
  *
@@ -44,7 +44,7 @@ import org.plumb.style.security.DcDangerousCheck;
  * for methods that have been removed from the JDK (ThreadGroup.stop / suspend etc. were dropped in
  * Java 11/17).
  */
-class R520CoverityDcDangerousTest {
+class R520DcDangerousTest {
 
   @BeforeAll
   static void setupParser() {

@@ -321,7 +321,7 @@ public final class UnusedImportCheck implements AstChecker {
 `ast-error-catch-block-strict`、`empty-catch-block`），供 `rules.enabled` /
 `rules.disabled` 用多种写法匹配。
 
-外部工具（PMD / SpotBugs / SonarQube / Checkstyle / Coverity）的等价 ID **不是**
+外部工具（PMD / SpotBugs / SonarQube / Checkstyle）的等价 ID **不是**
 从 alias 读的，而是由 `scripts/gen_rules_doc.py` 从 checker 的 Javadoc 里
 启发式解析，生成到 [`../../plumb-style-rules.md`](../../plumb-style-rules.md) 的
 「外部等价规则」小节。下游消费方（IDE 插件、SARIF 转换器）要展示

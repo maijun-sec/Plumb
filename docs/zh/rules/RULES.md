@@ -5,7 +5,7 @@
 本文档列出 Plumb 自带的所有规则、其参数、严重度、类型、CWE 标签、emit-id 命名风格，以及如何启用 / 禁用 / 修改参数。
 
 > **自动生成文档**：
-> - `docs/plumb-style-rules.md` — 每条 style rule 的 Javadoc + 等价工具（PMD/SpotBugs/SonarQube/Coverity）映射，由 `scripts/gen_rules_doc.py` 生成
+> - `docs/plumb-style-rules.md` — 每条 style rule 的 Javadoc + 等价工具（PMD/SpotBugs/SonarQube/Checkstyle）映射，由 `scripts/gen_rules_doc.py` 生成
 > - `docs/plumb-style-rules-index.md` — style rule 索引，由 `scripts/gen_rules_index.py` 生成
 > - `plumb-dfa/src/main/resources/cwe-mappings.yaml` — DFA finding key → CWE 映射
 >
@@ -58,7 +58,7 @@
 
 ### 1.2 外部工具等价覆盖
 
-每条 Plumb 规则通过 `RuleDef.aliases` 字段携带 PMD / SpotBugs / SonarQube / Coverity
+每条 Plumb 规则通过 `RuleDef.aliases` 字段携带 PMD / SpotBugs / SonarQube / Checkstyle
 的对应 ID。**每条规则实际映射到哪些外部工具 ID，见
 [`../../plumb-style-rules.md`](../../plumb-style-rules.md) 的「外部等价规则」小节** ——
 那是由 `scripts/gen_rules_doc.py` 从源码里的 aliases / Javadoc 解析出来的，

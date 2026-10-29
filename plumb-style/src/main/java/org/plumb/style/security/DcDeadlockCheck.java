@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 /*
- * Coverity <code>DC.DEADLOCK</code> — detects calls to deadlock-prone Java APIs:
+ * the DC.DEADLOCK defect class — detects calls to deadlock-prone Java APIs:
  *
  * <ul>
  *   <li>{@link Thread#suspend()} and {@link ThreadGroup#suspend()} -- the target thread holds all

@@ -30,8 +30,8 @@ import java.util.Objects;
  * visitor, ...).
  *
  * <p>A3: rules also carry an optional {@code aliases} list -- the canonical rule IDs and names of
- * equivalent rules in other rule sources (PMD, SpotBugs, SonarQube Java, Coverity). When two
- * sources ship overlapping rules (e.g. PMD {@code EmptyBlock} and SpotBugs {@code
+ * equivalent rules in other rule sources (PMD, SpotBugs, SonarQube Java). When two sources ship
+ * overlapping rules (e.g. PMD {@code EmptyBlock} and SpotBugs {@code
  * SIO_SUPERFLUOUS_INSTANCEOF}-style checks), one is picked as the canonical Plumb rule and the
  * others are recorded as aliases. Reporting code consults {@link #aliases()} to deduplicate and to
  * add a "see also" hint to findings.

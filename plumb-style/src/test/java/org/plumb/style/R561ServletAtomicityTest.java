@@ -33,10 +33,10 @@ import org.plumb.parser.JavaSourceParser;
 import org.plumb.parser.ParsedSource;
 import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleRegistry;
-import org.plumb.style.quality.OrmLoadNullCheckCheck;
+import org.plumb.style.concurrency.ServletAtomicityCheck;
 
-/** Coverity <code>ORM_LOAD_NULL_CHECK</code> tests. */
-class R541CoverityOrmLoadNullCheckTest {
+/** the SERVLET_ATOMICITY defect class tests. */
+class R561ServletAtomicityTest {
 
   @BeforeAll
   static void setupParser() {
@@ -47,76 +47,75 @@ class R541CoverityOrmLoadNullCheckTest {
   private List<Finding> run(String src) {
     ParsedSource ps = new JavaSourceParser().parseFromString(Path.of("N.java"), src);
     StyleContext ctx = new StyleContext(ps, new RuleRegistry().withBuiltinDefaults(true));
-    new AstDispatcher().register(new OrmLoadNullCheckCheck()).run(ctx);
+    new AstDispatcher().register(new ServletAtomicityCheck()).run(ctx);
     return ctx.findings();
   }
 
   @Test
-  void firesOnLoadThenNullCheck() {
+  void firesOnGetSetOutsideSync() {
+    // the canonical example.
     String src =
         "class N {\n"
-            + "  void m(org.hibernate.Session s, Long id) {\n"
-            + "    Object o = s.load(id);\n"
-            + "    if (o == null) { System.out.println(\"x\"); }\n"
+            + "  void recordTemperatureStats(Integer newTemp,\n"
+            + "      javax.servlet.http.HttpSession session) {\n"
+            + "    Integer curTemp = (Integer) session.getAttribute(\"highestRecordedTemp\");\n"
+            + "    if (newTemp > curTemp)\n"
+            + "      session.setAttribute(\"highestRecordedTemp\", newTemp);\n"
             + "  }\n"
             + "}";
-    assertThat(run(src)).as("ORM_LOAD_NULL_CHECK: Session.load + null check fires").isNotEmpty();
+    assertThat(run(src)).as("SERVLET_ATOMICITY: get+set outside sync fires").isNotEmpty();
   }
 
   @Test
-  void firesOnGetReferenceThenNullCheck() {
+  void noFireWhenBothInSameSyncBlock() {
     String src =
         "class N {\n"
-            + "  void m(javax.persistence.EntityManager em, Long id) {\n"
-            + "    Object o = em.getReference(Object.class, id);\n"
-            + "    if (o != null) { System.out.println(\"x\"); }\n"
-            + "  }\n"
-            + "}";
-    assertThat(run(src)).as("ORM_LOAD_NULL_CHECK: getReference + null check fires").isNotEmpty();
-  }
-
-  @Test
-  void noFireOnGetThenNullCheck() {
-    // Session.get (or EntityManager.find) CAN return null,
-    // so a null check is legitimate.
-    String src =
-        "class N {\n"
-            + "  void m(org.hibernate.Session s, Long id) {\n"
-            + "    Object o = s.get(id);\n"
-            + "    if (o == null) { System.out.println(\"x\"); }\n"
-            + "  }\n"
-            + "}";
-    assertThat(run(src)).as("ORM_LOAD_NULL_CHECK: get() + null check does not fire").isEmpty();
-  }
-
-  @Test
-  void noFireWhenNoNullCheckFollows() {
-    String src =
-        "class N {\n"
-            + "  void m(org.hibernate.Session s, Long id) {\n"
-            + "    Object o = s.load(id);\n"
-            + "    o.toString();\n"
+            + "  void recordTemperatureStats(Integer newTemp,\n"
+            + "      javax.servlet.http.HttpSession session) {\n"
+            + "    synchronized (session) {\n"
+            + "      Integer curTemp = (Integer) session.getAttribute(\"highestRecordedTemp\");\n"
+            + "      if (newTemp > curTemp)\n"
+            + "        session.setAttribute(\"highestRecordedTemp\", newTemp);\n"
+            + "    }\n"
             + "  }\n"
             + "}";
     assertThat(run(src))
-        .as("ORM_LOAD_NULL_CHECK: load() with no null check does not fire")
+        .as("SERVLET_ATOMICITY: get+set inside same sync block does not fire")
         .isEmpty();
   }
 
   @Test
-  void noFireWhenVariableIsReassignedBeforeCheck() {
-    // Coverity's "only result of a load operation" clause:
-    // if the variable is re-assigned between the load and
-    // the check, the value being tested might not be the
-    // load result.
+  void noFireWhenDifferentKeys() {
+    // Different attribute names : no race.
     String src =
         "class N {\n"
-            + "  void m(org.hibernate.Session s, Long id) {\n"
-            + "    Object o = s.load(id);\n"
-            + "    o = null;\n"
-            + "    if (o == null) { System.out.println(\"x\"); }\n"
+            + "  void m(javax.servlet.http.HttpSession session) {\n"
+            + "    Integer a = (Integer) session.getAttribute(\"a\");\n"
+            + "    session.setAttribute(\"b\", a);\n"
             + "  }\n"
             + "}";
-    assertThat(run(src)).as("ORM_LOAD_NULL_CHECK: reassigned variable does not fire").isEmpty();
+    assertThat(run(src)).as("SERVLET_ATOMICITY: different keys does not fire").isEmpty();
+  }
+
+  @Test
+  void noFireWhenOnlyGet() {
+    String src =
+        "class N {\n"
+            + "  void m(javax.servlet.http.HttpSession session) {\n"
+            + "    Object v = session.getAttribute(\"k\");\n"
+            + "  }\n"
+            + "}";
+    assertThat(run(src)).as("SERVLET_ATOMICITY: get without set does not fire").isEmpty();
+  }
+
+  @Test
+  void noFireWhenOnlySet() {
+    String src =
+        "class N {\n"
+            + "  void m(javax.servlet.http.HttpSession session) {\n"
+            + "    session.setAttribute(\"k\", 1);\n"
+            + "  }\n"
+            + "}";
+    assertThat(run(src)).as("SERVLET_ATOMICITY: set without get does not fire").isEmpty();
   }
 }

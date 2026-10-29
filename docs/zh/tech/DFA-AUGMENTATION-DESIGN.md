@@ -2,7 +2,7 @@
 
 [English](../../tech/DFA-AUGMENTATION-DESIGN.md) | [中文](../README.md)
 
-本文档解释 Plumb 在 5 个 Coverity Java checker 上**加 DFA 增强版**的工程取舍——为什么 AST 版本会漏报、DFA 版本如何消除 false negative、4 种通用 DFA 增强技术怎么用。
+本文档解释 Plumb 在 5 个 Java 缺陷类 checker 上**加 DFA 增强版**的工程取舍——为什么 AST 版本会漏报、DFA 版本如何消除 false negative、4 种通用 DFA 增强技术怎么用。
 
 > 配套：`tech/CROSS-FUNCTION-ANALYSIS.md`（跨函数 summary 完整机制）、`tech/ARCHITECTURE.md §3.0`（DFA 引擎 SPI）、`rules/RULE-TOOL-COMPARISON.md §1.2`（DFA vs AST 取舍）
 
@@ -17,7 +17,7 @@
 | **Aliasing** | `y = x` 之后 `if (y == null)`，AST 只看 `x` 处的 null check | MOVE 指令传播 from-load 状态 |
 | **跨方法字段访问** | servlet 的 `getAttribute("k")` 在方法 A，`setAttribute("k", v)` 在方法 B | 跨函数累积 getAttribute/setAttribute 调用 |
 
-Coverity 商业引擎"真值"用 DFA 实现。本批次在 plumb-dfa 加 5 个 DFA 增强版，与 AST 版**并存**（不同 rule id）——给用户**两条选择**：
+成熟的商业引擎"真值"用 DFA 实现。本批次在 plumb-dfa 加 5 个 DFA 增强版，与 AST 版**并存**（不同 rule id）——给用户**两条选择**：
 - 想**召回优先**：用 DFA 版（牺牲一点性能换漏报少）
 - 想**性能优先**：用 AST 版（漏报多但跑得快）
 
@@ -310,7 +310,7 @@ DFA 增强 checker 需要三类测试覆盖：
 AST 版和 DFA 版的默认开/关，由 YAML 的 `checks.<rule>: {enabled: true|false}` 段控制
 （DFA 侧还有 `plumb-dfa/src/main/resources/checkers.yaml` 里的同名条目）。
 
-有一个 Coverity 风格的 `aggressiveness` 旋钮（`--aggressiveness=low|medium|high`）已经
+有一个分析风格的 `aggressiveness` 旋钮（`--aggressiveness=low|medium|high`）已经
 废弃：CLI 没有这个 flag，YAML 里写 `aggressiveness:` 会被 `ConfigLoader` 忽略并往
 stderr 打一条警告，扫描照常继续。改用 `checks.<rule>: {enabled: true|false,
 aiDedup: true|false}` 段。

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Check the capture module's option table against Coverity's reference model.
+"""Check the capture module's option table against the reference model.
 
-Coverity's `JavacOptionParser` holds its option knowledge in tables: the
-options where only the last occurrence counts, the options that may be
-repeated, the options that take no value, the options that do not produce a
-class file, and the per-compiler path options.
+The reference model is `java-compiler-options.yaml`: it records, for every
+option the capture understands, HOW the option BEHAVES -- whether it takes
+a value, whether a repeated occurrence overrides an earlier one, whether it
+produces a class file, and which compiler it belongs to.
 
-This module's option table is the same idea, and this gate keeps the two from
-drifting apart.  It checks:
+This module's option table is the same idea, and this gate keeps the two
+from drifting apart.  It checks:
 
-  * every option in Coverity's categories exists in our table;
+  * every option in the reference's categories exists in our table;
   * the category each option belongs to agrees with ours;
   * every canonical name in the reference exists in our table, with the same
     value kind and the same repetition rule;
@@ -18,8 +18,8 @@ drifting apart.  It checks:
     an addition.
 
 That last check is the one that keeps the gate honest in both directions: a
-deliberate addition has to be written down, so "we support more than Coverity"
-is a visible fact rather than an accident.
+deliberate addition has to be written down, so "we support more than the
+reference" is a visible fact rather than an accident.
 
 The script prints what it derives before it compares, and reports how many
 things it checked -- a check that skipped everything looks exactly like a check
@@ -32,12 +32,14 @@ import pathlib
 import re
 import sys
 
+import yaml
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 BASELINE = (
     REPO
-    / "plumb-build/plumb-build-capture/src/main/resources/coverity-java-options.toml"
+    / "plumb-build/plumb-build-capture/src/main/resources/java-compiler-options.yaml"
 )
 SOURCE = (
     REPO
@@ -63,54 +65,28 @@ if not BASELINE.is_file():
     print("FAIL: the reference baseline is missing at %s" % BASELINE)
     sys.exit(1)
 
-text = read(BASELINE)
+try:
+    baseline = yaml.safe_load(read(BASELINE))
+except yaml.YAMLError as ex:
+    print("FAIL: the reference baseline is not valid YAML: %s" % ex)
+    sys.exit(1)
 
+if not isinstance(baseline, dict) or "options" not in baseline:
+    print("FAIL: the reference baseline has no 'options' -- the check cannot "
+          "verify anything")
+    sys.exit(1)
 
-def toml_array(name):
-    """The items of a [name] section that holds one item per line."""
-    m = re.search(
-        r"^\[%s\]\s*$(.*?)(?=^\[|\Z)" % re.escape(name), text, flags=re.M | re.S
-    )
-    if not m:
-        return []
-    out = []
-    for line in m.group(1).splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        out.append(line)
-    return out
-
-
-def toml_options():
-    """The [[option]] blocks, as dicts."""
-    out = []
-    for block in re.findall(r"^\[\[option\]\]\s*$(.*?)(?=^\[\[option\]\]|\Z)", text, flags=re.M | re.S):
-        entry = {"aliases": []}
-        for key, value in re.findall(r"^(\w+)\s*=\s*(.+?)\s*$", block, flags=re.M):
-            if key == "aliases":
-                entry["aliases"] = re.findall(r'"([^"]*)"', value)
-            else:
-                entry[key] = value.strip('"')
-        out.append(entry)
-    return out
-
-
-categories = {
-    "last-instance-only": toml_array("last-instance-only"),
-    "repeat-allowable": toml_array("repeat-allowable"),
-    "no-value": toml_array("no-value"),
-    "repeat-squash": toml_array("repeat-squash"),
-    "not-compilation": toml_array("not-compilation"),
-    "ecj-path": toml_array("ecj-path"),
-}
+categories = baseline.get("categories") or {}
+if not isinstance(categories, dict):
+    print("FAIL: the reference baseline's 'categories' is not a mapping")
+    sys.exit(1)
 note(
     "the reference has %d categorised option(s): %s"
     % (sum(len(v) for v in categories.values()),
        {k: len(v) for k, v in categories.items()})
 )
 
-reference = toml_options()
+reference = baseline.get("options") or []
 note("the reference describes %d option(s) with their aliases" % len(reference))
 if not reference:
     print("FAIL: the reference describes no options -- the check cannot verify anything")
@@ -420,7 +396,7 @@ for category, names in categories.items():
                 % (name, category)
             )
 
-# And the other way round is NOT required: Coverity's categories are only the
+# And the other way round is NOT required: the reference's categories are only the
 # six special behaviours (last-wins, repeatable, no-value, squash, not-a-
 # compilation, ECJ path).  Most options are in none of them, and that is
 # correct -- they are ordinary options.
@@ -441,7 +417,7 @@ for entry in reference:
     # can have more than one.
     #
     # The check is against the CATEGORY lists, not against the value kind in
-    # the [[option]] block: Coverity's NO_VALUE_OPTIONS holds just
+    # the reference's no-value category holds just
     # --enable-preview, so -Xprint is "takes no value" without being in the
     # no-value category.  The value kind is checked separately, against the
     # block.
@@ -459,7 +435,7 @@ for entry in reference:
     # no value, and an option the reference declares as taking no value must
     # be in the no-value category.
     #
-    # Both directions matter.  Coverity's NO_VALUE_OPTIONS holds just
+    # Both directions matter.  The reference's no-value category holds just
     # --enable-preview, so -Xprint -- which also takes no value -- is in the
     # not-compilation category instead.  The two are distinguished by the
     # category, so an option whose value kind says "none" has to be in a
@@ -542,7 +518,7 @@ ADVISED = {
     "-target",
     "-encoding",
     "-src",
-    # Options we support that Coverity does not model at all.
+    # Options we support that the reference does not model at all.
     "-nowarn",
     "-verbose",
     "-deprecation",
@@ -550,7 +526,7 @@ ADVISED = {
     "-Werror",
     "-g",
     "-parameters",
-    # The options the COMPILER has that Coverity's model does not.  They
+    # The options the COMPILER has that the reference does not.  They
     # were found by running the compiler and reading its own help, and each
     # one cost something when it was missing: an option the table does not
     # know is silently unknown, and the value that follows it is consumed
@@ -568,7 +544,7 @@ ADVISED = {
     "--default-module-for-created-files",
     "--disable-line-doc-comments",
     "--help-lint",
-    # The options the REAL ECJ has that Coverity's model does not.  They were
+    # The options the REAL ECJ has that the reference does not.  They were
     # found by running ECJ's own `-help` against the table.  `-annotationpath`
     # is the one that mattered: it names the external annotations that
     # support annotation-based null analysis, and when it was unknown the
@@ -579,7 +555,7 @@ ADVISED = {
     "-warn:none",
     "-?:warn",
     "-help:warn",
-    # The options the REAL sjavac has that Coverity's model does not.  They
+    # The options the REAL sjavac has that the reference does not.  They
     # were measured against the JDK 11 `com.sun.tools.sjavac.options.Option`
     # enum, which is sjavac's own option table.
     "-x",
@@ -695,8 +671,8 @@ note("checked %d option(s) and their spellings for agreement" % len(ours))
 
 print()
 if failures:
-    print("FAIL: %d defect(s) between our option table and Coverity's" % len(failures))
+    print("FAIL: %d defect(s) between our option table and the reference" % len(failures))
     for f in failures:
         print("  " + f)
     sys.exit(1)
-print("OK: the capture option table matches Coverity's reference model")
+print("OK: the capture option table matches the reference model")

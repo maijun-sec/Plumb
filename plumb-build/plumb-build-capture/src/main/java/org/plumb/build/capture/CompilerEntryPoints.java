@@ -27,10 +27,9 @@ import java.util.List;
 /**
  * The set of compiler entry points the agent hooks.
  *
- * <p>This is a <b>declarative</b> description, in the same shape Coverity uses in its {@code
- * java-capture.properties}: a list of (class, method, argument) triples. The agent reads it and
- * asks ByteBuddy to match it, so adding a compiler or a new entry point is a data change, not a
- * code change.
+ * <p>This is a <b>declarative</b> description: a list of (class, method, argument) triples. The
+ * agent reads it and asks ByteBuddy to match it, so adding a compiler or a new entry point is a
+ * data change, not a code change.
  *
  * <p><b>Why the list is this long.</b> A "javac command line" is not one method. It is a dozen, and
  * which one fires depends on how the compiler was reached:

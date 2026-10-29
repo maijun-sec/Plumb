@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 /*
- * Coverity <code>WRONG_METHOD</code> — flags calls to {@link Boolean#getBoolean(String)} and
+ * the WRONG_METHOD defect class — flags calls to {@link Boolean#getBoolean(String)} and
  * {@link Integer#getInteger(String)} that pass an arbitrary string. The intended conversion of
  * strings like {@code "true"} / {@code "42"} is done by {@link Boolean#valueOf(String)} and {@link
  * Integer#valueOf(String)}; {@code getBoolean} / {@code getInteger} actually look up a system
@@ -53,7 +53,7 @@ public final class WrongMethodCheck implements AstChecker {
           true,
           List.of("ast-quality-wrong-method", "wrong-method"));
 
-  /** Mirrors the Coverity default option {@code ignore_pattern}. */
+  /** Mirrors the the default option {@code ignore_pattern}. */
   private static final Pattern IGNORE_PATTERN = Pattern.compile("(?i).*prop.*|.*name");
 
   private static final Set<String> TRIGGER_METHODS = Set.of("getBoolean", "getInteger");
@@ -91,7 +91,7 @@ public final class WrongMethodCheck implements AstChecker {
 
     String firstArg = m.getArgument(0).toString();
     // Strip surrounding quotes if the arg is a string literal — the
-    // Coverity ignore_pattern is meant to match identifier names
+    // the ignore_pattern option is meant to match identifier names
     // like "configName" / "myProperty", not literal text with quotes attached.
     if (firstArg.length() >= 2
         && firstArg.charAt(0) == '"'

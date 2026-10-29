@@ -34,7 +34,7 @@
 | [`RULES.md`](../rules/RULES.md) | 主清单：数量概览（数字均从配置文件实测）、严重度 / 类型 / emit-id、taint 与 DFA checker | [中文](rules/RULES.md) |
 | [`RULE-STYLE-OP.md`](../rules/RULE-STYLE-OP.md) | Style 规则操作：分布、5 层启用/禁用机制、改规则参数 | [中文](rules/RULE-STYLE-OP.md) |
 | [`RULE-AUTHORING.md`](../rules/RULE-AUTHORING.md) | 规则开发：加新规则的步骤、CWE 标签一致性、AST checker 选型 | [中文](rules/RULE-AUTHORING.md) |
-| [`RULE-TOOL-COMPARISON.md`](../rules/RULE-TOOL-COMPARISON.md) | Plumb vs PMD / SonarQube / SpotBugs / Coverity / Checkstyle | [中文](rules/RULE-TOOL-COMPARISON.md) |
+| [`RULE-TOOL-COMPARISON.md`](../rules/RULE-TOOL-COMPARISON.md) | Plumb vs PMD / SonarQube / SpotBugs / Checkstyle / Checkstyle | [中文](rules/RULE-TOOL-COMPARISON.md) |
 | [`plumb-style-rules.md`](../plumb-style-rules.md) | 自动生成：每条 style rule 的 Javadoc + 外部工具等价映射 | 仅英文 |
 | [`plumb-style-rules-index.md`](../plumb-style-rules-index.md) | 自动生成：style rule 索引 | 仅英文 |
 

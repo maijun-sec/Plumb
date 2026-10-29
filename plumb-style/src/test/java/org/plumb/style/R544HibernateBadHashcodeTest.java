@@ -35,8 +35,8 @@ import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleRegistry;
 import org.plumb.style.quality.HibernateBadHashcodeCheck;
 
-/** Coverity <code>HIBERNATE_BAD_HASHCODE</code> tests. */
-class R544CoverityHibernateBadHashcodeTest {
+/** the HIBERNATE_BAD_HASHCODE defect class tests. */
+class R544HibernateBadHashcodeTest {
 
   @BeforeAll
   static void setupParser() {

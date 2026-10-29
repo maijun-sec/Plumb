@@ -27,8 +27,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * Curated, well-known annotation FQNs / short names that drive the Coverity Java DFA / annotation
- * checkers.
+ * Curated, well-known annotation FQNs / short names that drive the Java DFA / annotation checkers.
  *
  * <p>Java's annotation ecosystem is fragmented: a {@code @NonNull} may come from {@code
  * javax.annotation.Nonnull}, {@code jakarta.annotation.Nonnull}, {@code

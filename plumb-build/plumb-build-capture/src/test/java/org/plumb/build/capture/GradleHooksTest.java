@@ -86,7 +86,7 @@ class GradleHooksTest {
 
   @Test
   void theHooksTargetTheGradleConfigurationApi() {
-    // The classes Coverity hooks in its common-capture.properties.
+    // The classes the reference hooks in its common-capture.properties.
     assertThat(GradleHooks.targetClasses())
         .containsExactly(
             "org.gradle.StartParameter",

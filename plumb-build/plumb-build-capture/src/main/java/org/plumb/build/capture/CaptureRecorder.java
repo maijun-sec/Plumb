@@ -50,11 +50,11 @@ import java.util.Set;
  * on the bootstrap loader</b>. It cannot use SLF4J, and it cannot call {@link CaptureSink}. It
  * writes the capture file itself. Keep this class dependency-free.
  *
- * <p><b>What is recorded.</b> Not just the argv. Coverity's {@code JavacOptionParser} goes further:
- * it reconstructs the <em>effective</em> compile — the classpath that was actually used, the source
- * path, the encoding, the release level — because the argv alone does not say what the compiler
- * saw. {@code -classpath ""} and no {@code -classpath} at all mean different things, and only the
- * second is knowable from the environment.
+ * <p><b>What is recorded.</b> Not just the argv. the reference's {@code JavacOptionParser} goes
+ * further: it reconstructs the <em>effective</em> compile — the classpath that was actually used,
+ * the source path, the encoding, the release level — because the argv alone does not say what the
+ * compiler saw. {@code -classpath ""} and no {@code -classpath} at all mean different things, and
+ * only the second is knowable from the environment.
  */
 public final class CaptureRecorder {
 
@@ -685,7 +685,7 @@ public final class CaptureRecorder {
 
     // The classpath the compiler actually used. `-classpath` wins; when it
     // is absent the compiler falls back to the CLASSPATH environment
-    // variable, and then to the current directory. Coverity reads the
+    // variable, and then to the current directory. the reference reads the
     // same three sources (JavacOptionParser consults `java.class.path`
     // and `CLASSPATH`).
     List<Path> classpath = new ArrayList<>(options.classpath());

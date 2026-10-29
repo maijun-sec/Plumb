@@ -35,13 +35,13 @@ import org.plumb.rules.RuleRegistry;
 import org.plumb.style.style.MissingBreakCheck;
 
 /**
- * Coverity (plumb-style).
+ * The missing-break defect class (plumb-style).
  *
  * <p>Tests cover the canonical fall-through patterns: the Apple "goto fail" (single missing break),
  * the Duff's device empty-case (intentional fall-through, no fire), cases that end with
  * return/throw (no fire), and the last case (no fire, no fall-through target).
  */
-class R192CoverityMissingBreakTest {
+class R192MissingBreakTest {
 
   @BeforeAll
   static void setupParser() {

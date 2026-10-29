@@ -326,7 +326,7 @@ that lists the IDs of equivalent external rules. **These aliases are mainly this
 (such as `ast-error-catch-block-strict`, `empty-catch-block`), so that `rules.enabled` /
 `rules.disabled` can match them in several spellings.
 
-The equivalent IDs of external tools (PMD / SpotBugs / SonarQube / Checkstyle / Coverity) are **not**
+The equivalent IDs of external tools (PMD / SpotBugs / SonarQube / Checkstyle) are **not**
 read from the aliases. They are parsed heuristically from the checkers' Javadoc by
 `scripts/gen_rules_doc.py`, which generates the "externally equivalent rules" section of
 [`../plumb-style-rules.md`](../plumb-style-rules.md). Downstream consumers (IDE plugins, SARIF converters) that want

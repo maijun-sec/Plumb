@@ -36,11 +36,11 @@ import org.plumb.rules.RuleRegistry;
 import org.plumb.style.security.UnloggedSecurityExceptionCheck;
 
 /**
- * Coverity <code>UNLOGGED_SECURITY_EXCEPTION</code> : covers unlogged catches of SecurityException,
+ * the UNLOGGED_SECURITY_EXCEPTION defect class : covers unlogged catches of SecurityException,
  * AccessDeniedException (java.nio and Spring), and SQL exceptions, plus the negative cases (logging
  * is present, exception is non-security).
  */
-class R524CoverityUnloggedSecurityExceptionTest {
+class R524UnloggedSecurityExceptionTest {
 
   @BeforeAll
   static void setupParser() {
@@ -57,7 +57,7 @@ class R524CoverityUnloggedSecurityExceptionTest {
 
   @Test
   void firesOnUnloggedSecurityException() {
-    // Coverity's canonical example: catch SecurityException with
+    // the canonical example: catch SecurityException with
     // no logging call inside.
     String src =
         "class N { void m() {"

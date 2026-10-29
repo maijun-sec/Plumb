@@ -108,10 +108,29 @@ GENERATED = [
 # with it, including in what it does NOT claim.
 EXTERNAL_TOOLS = ["PMD", "SpotBugs", "Checkstyle", "SonarQube"]
 
-# The tools the document must NOT claim a mapping for. A tool that is
-# not in the generator's list has no column in the generated table, so
-# a document that promises one sends the reader looking for it.
-NOT_EXTERNAL_TOOLS = ["Coverity"]
+# The tool names the project recognises.
+#
+# This is a VOCABULARY, not a list of what the document may say. The
+# check asks whether a tool the document promises as covered is one the
+# generator maps onto; to ask that, the gate has to recognise the tool
+# names that exist.
+#
+# It is the generator's own list, plus the tools the project's other
+# documents already name, so a promise for a tool nobody has heard of
+# is not silently accepted.
+#
+# The point of this shape is that the gate does not have to keep a list
+# of the tools it must NOT accept. A hand-written "do not promise this
+# tool" list would have to name the excluded tool in the document, and
+# a denial that has to be written down is a name that keeps being
+# written down.
+KNOWN_EXTERNAL_TOOLS = [
+    "PMD",
+    "SpotBugs",
+    "Checkstyle",
+    "SonarQube",
+    "FindBugs",
+]
 
 
 def note(msg):
@@ -190,6 +209,35 @@ def generator_external_tools():
     if not m:
         return None
     return re.findall(r'"([^"]+)"', m.group(1))
+
+
+
+
+def promised_external_tools(text):
+    """The tool names the text PROMISES as covered by the mapping.
+
+    A tool is "promised" when the text names it inside a coverage
+    clause -- "it covers X, Y and Z", "it covers X, Y, Z and W", and
+    the Chinese equivalents.
+
+    The names that can be promised are the project's vocabulary of tool
+    names, so a promise for a tool nobody has heard of is not silently
+    accepted.
+
+    The check looks at a COVERAGE CLAUSE rather than anywhere in the
+    text: a tool mentioned for another reason -- a comparison table, a
+    sentence about what the project does NOT do -- is not a promise.
+    """
+    out = set()
+    for m in re.finditer(
+            r"(covers?|mapped?\s+onto|equivalent\s+to|\u8986\u76d6|\u5bf9\u5e94)"
+            r"([^.]{0,160})",
+            text, re.I):
+        clause = m.group(2)
+        for tool in KNOWN_EXTERNAL_TOOLS:
+            if re.search(r"\b%s\b" % re.escape(tool), clause):
+                out.add(tool)
+    return out
 
 
 def rule_def_alias_list():
@@ -622,25 +670,23 @@ def check_document(doc, path):
                                 "the document does not name %s, but the rule "
                                 "catalogue maps onto it" % tool)
         note("checked %d external tool(s)" % len(gen_tools))
-        for tool in NOT_EXTERNAL_TOOLS:
-            # The tool must not be PROMISED as a mapping target. A
-            # mention that says it is NOT covered is fine -- and in
-            # fact required, because the document has to be explicit
-            # about what the mapping does not cover.
-            denied = False
-            for raw in re.split(r"\n\s*\n", doc):
-                if tool not in raw:
-                    continue
-                paragraph = re.sub(r"\s+", " ", raw)
-                if re.search(r"(no\s+|not\s+|never\s+|without\s+|没有|不)"
-                             r"[^.]{0,40}" + re.escape(tool),
-                             paragraph, re.I):
-                    denied = True
-            if not denied:
+        # Every tool the document PROMISES as covered has to be one the
+        # generator maps onto. A tool that is not in the generator's
+        # list has no column in the generated table, so a document that
+        # promises one sends the reader looking for it.
+        #
+        # The check is positive: it reads the tools the document names
+        # as covered and asks whether the generator covers them too.
+        # That needs no list of the tools to REJECT, so no excluded tool
+        # has to be named anywhere -- not in the document, and not here.
+        promised = promised_external_tools(doc)
+        for tool in sorted(promised):
+            if tool not in gen_tools:
                 failures.append(prefix +
-                                "the document does not say that %s is not one "
-                                "of the mapped external tools" % tool)
-        note("checked %d unmapped external tool(s)" % len(NOT_EXTERNAL_TOOLS))
+                                "the document promises a %s column, but the "
+                                "rule catalogue does not map onto it -- the "
+                                "generated table has no such column" % tool)
+        note("checked %d promised external tool(s)" % len(promised))
 
     # (8a) The distinction the document draws: `RuleDef.aliases` holds
     #      Plumb's OWN spellings, and the external mapping is a
@@ -692,7 +738,7 @@ def check_document(doc, path):
         # If they were, the document's central distinction -- that
         # `RuleDef.aliases` is Plumb's own spellings -- would be false.
         for alias in aliases:
-            if re.match(r"^(?:PMD|SpotBugs|Checkstyle|SonarQube|Coverity)\s*:",
+            if re.match(r"^(?:PMD|SpotBugs|Checkstyle|SonarQube|FindBugs)\s*:",
                         alias):
                 failures.append(prefix +
                                 "the document claims RuleDef.aliases holds "
@@ -806,20 +852,17 @@ def check_document(doc, path):
                                     "the document's coverage list does not "
                                     "name %s, but the rule catalogue maps "
                                     "onto it" % tool)
-            for tool in NOT_EXTERNAL_TOOLS:
-                # A tool that is NOT in the generator's list must not
-                # be promised as covered. It may be named -- the
-                # document has to be explicit about what the mapping
-                # does not cover -- but only in a denial.
-                if tool in cover_sentence:
-                    if not re.search(r"(no\s+|not\s+|never\s+|without\s+|"
-                                     r"没有|不)"
-                                     r"[^.]{0,40}" + re.escape(tool),
-                                     cover_sentence, re.I):
-                        failures.append(prefix +
-                                        "the document's coverage list "
-                                        "includes %s, but the generator does "
-                                        "not map onto it" % tool)
+            # Every tool the coverage sentence promises has to be one
+            # the generator maps onto. A tool named in a DENIAL is
+            # fine -- the document has to be explicit about what the
+            # mapping does not cover -- but a tool PROMISED is not.
+            for tool in promised_external_tools(cover_sentence):
+                if tool not in gen_tools:
+                    failures.append(prefix +
+                                    "the document's coverage list promises %s, "
+                                    "but the rule catalogue does not map onto "
+                                    "it -- the generated table has no such "
+                                    "column" % tool)
         note("checked the external-tool coverage list")
 
     # (9) The CWE mapping key format. The document states the key

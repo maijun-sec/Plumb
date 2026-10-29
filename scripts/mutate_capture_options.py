@@ -25,7 +25,7 @@ SOURCE = (
 )
 BASELINE = (
     REPO
-    / "plumb-build/plumb-build-capture/src/main/resources/coverity-java-options.toml"
+    / "plumb-build/plumb-build-capture/src/main/resources/java-compiler-options.yaml"
 )
 GATE = REPO / "scripts" / "check_capture_options.py"
 
@@ -42,6 +42,24 @@ def run_gate():
         errors="replace",
     )
     return result.returncode, result.stdout
+
+
+def replace_block(text, old, new):
+    """Replace a block of text, whatever the line endings are.
+
+    The checked-out tree uses CRLF on Windows and LF elsewhere, so an
+    anchor written with a bare `\\n` silently matches nothing. And "the
+    mutation did not apply" is reported as a NO-OP, which looks like a
+    pass -- a mutant that never fired proves NOTHING.
+
+    So the anchor is matched against the NORMALISED text and the
+    replacement is written back with the file's own line endings.
+    """
+    newline = "\r\n" if "\r\n" in text else "\n"
+    flat = text.replace("\r\n", "\n")
+    if flat.count(old) != 1:
+        return text
+    return flat.replace(old, new).replace("\n", newline)
 
 
 def swap_in_entry(text, first_arg, old_token, new_token, occurrence=1):
@@ -129,16 +147,25 @@ MUTANTS = [
     (
         "the reference gains an option we do not have",
         "baseline",
-        lambda t: t.replace(
-            "[[option]]\nname = --release\n",
-            "[[option]]\nname = --release\n\n[[option]]\nname = --not-implemented\n"
-            'aliases = []\nvalue = single\nrepeat = last-wins\n',
+        lambda t: replace_block(
+            t,
+            "options:\n",
+            "options:\n"
+            "  - name: --not-implemented\n"
+            "    aliases:\n"
+            "      []\n"
+            "    value: single\n"
+            "    repeat: last-wins\n",
         ),
     ),
     (
         "the reference loses an option we do have",
         "baseline",
-        lambda t: t.replace("[no-value]\n--enable-preview\n", "[no-value]\n"),
+        lambda t: replace_block(
+            t,
+            "  no-value:\n    - --enable-preview\n",
+            "  no-value:\n",
+        ),
     ),
     # The per-compiler cases.  ECJ and sjavac spell an option the same way
     # and mean different things by it -- ECJ's `-copy` is last-wins and
@@ -159,11 +186,20 @@ MUTANTS = [
     (
         "the reference gives an option to a compiler we do not",
         "baseline",
-        lambda t: t.replace(
-            "[[option]]\nname = --state-dir\naliases = [--state-dir=]\n"
-            "value = single\nrepeat = last-wins\ncompiler = sjavac\n",
-            "[[option]]\nname = --state-dir\naliases = [--state-dir=]\n"
-            "value = single\nrepeat = last-wins\ncompiler = ecj\n",
+        lambda t: replace_block(
+            t,
+            "  - name: --state-dir\n"
+            "    aliases:\n"
+            "      []\n"
+            "    value: single\n"
+            "    repeat: last-wins\n"
+            "    compiler: sjavac\n",
+            "  - name: --state-dir\n"
+            "    aliases:\n"
+            "      []\n"
+            "    value: single\n"
+            "    repeat: last-wins\n"
+            "    compiler: ecj\n",
         ),
     ),
 ]

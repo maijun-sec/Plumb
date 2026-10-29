@@ -67,7 +67,7 @@ PMD / SpotBugs / Checkstyle / SonarQube 的 id。
 **与外部工具的等价关系是另一份独立的映射**，写在 `docs/plumb-style-rules.md` 每条规则的
 「外部等价规则」/ "external equivalents" 条目下。这份映射由`scripts/gen_rules_doc.py` **推导**出来，而不是在源码里声明的：生成器读 checker 的
 javadoc，找显式提及（"Checkstyle's `Foo`"、"SonarQube S1234"），再回退到一张命名模式
-对照表。它覆盖 **PMD、SpotBugs、Checkstyle、SonarQube**——**没有** Coverity 这一列。
+对照表。它覆盖 **PMD、SpotBugs、Checkstyle、SonarQube**，仅此四个。
 一条规则如果没有检测到等价规则，就会明说没有——这是常态，不是缺口。
 
 完整表由 `scripts/gen_rules_doc.py` 生成在 `docs/plumb-style-rules.md`。

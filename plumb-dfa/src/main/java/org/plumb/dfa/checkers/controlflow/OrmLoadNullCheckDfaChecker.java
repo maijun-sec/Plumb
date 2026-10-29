@@ -40,10 +40,10 @@ import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 
 /**
- * DFA-based version of Coverity <code>ORM_LOAD_NULL_CHECK</code> (CWE-252). Where the AST checker
- * {@code org.plumb.style.quality.OrmLoadNullCheckCheck} only looks at the statement immediately
- * after the load call, the DFA version tracks the result of a load call and checks every later
- * reference in the same function.
+ * DFA-based version of the ORM_LOAD_NULL_CHECK defect class (CWE-252). Where the AST checker {@code
+ * org.plumb.style.quality.OrmLoadNullCheckCheck} only looks at the statement immediately after the
+ * load call, the DFA version tracks the result of a load call and checks every later reference in
+ * the same function.
  *
  * <p><b>What the DFA version catches that AST misses.</b>
  *

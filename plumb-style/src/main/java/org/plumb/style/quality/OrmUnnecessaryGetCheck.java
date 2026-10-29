@@ -43,16 +43,16 @@ import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
 /**
- * Coverity <code>ORM_UNNECESSARY_GET</code> (CWE-252).
+ * the ORM_UNNECESSARY_GET defect class (CWE-252).
  *
  * <p>When the result of a JPA {@code get} / {@code find} call is used only as a reference (passed
  * as an argument, stored in a field, or has only {@code getId()} called on it), the database hit is
  * unnecessary -- a {@code load} (which returns a proxy without going to the database) would
  * suffice.
  *
- * <p>Reference: Coverity 2023.6.0 Checker Reference, section <em>ORM_UNNECESSARY_GET</em>.
+ * <p>Reference: the ORM_UNNECESSARY_GET defect class.
  *
- * <p><b>AST-level approximation.</b> The Coverity check uses data flow to track every use of the
+ * <p><b>AST-level approximation.</b> A data-flow implementation would track every use of the
  * variable. Here we do a conservative per-method scan: for each variable whose initializer is a
  * {@code get} / {@code find} call, we collect every later reference inside the same method. If
  * <em>all</em> references are either "argument to another call" or "receiver of {@code getId()}" or

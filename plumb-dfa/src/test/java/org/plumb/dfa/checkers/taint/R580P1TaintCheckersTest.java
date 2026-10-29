@@ -28,10 +28,10 @@ import org.plumb.dfa.taint.TaintRule;
 import org.plumb.dfa.taint.TaintedCheckerBase;
 
 /**
- * Unit tests for the three P1 Coverity Java taint checkers (SESSION_FIXATION, INSECURE_RANDOM,
+ * Unit tests for the three P1 Java taint checkers (SESSION_FIXATION, INSECURE_RANDOM,
  * JAVA_CODE_INJECTION). Mirrors the previous test pattern.
  */
-class R580CoverityP1TaintCheckersTest {
+class R580P1TaintCheckersTest {
 
   private static void assertRule(
       TaintedCheckerBase checker,

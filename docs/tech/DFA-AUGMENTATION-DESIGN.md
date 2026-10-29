@@ -2,7 +2,7 @@
 
 [English](../README.md) | [中文](../zh/tech/DFA-AUGMENTATION-DESIGN.md)
 
-This document explains the engineering trade-offs of adding **DFA-augmented versions** of 5 Coverity Java checkers to Plumb -- why the AST versions produce false negatives, how the DFA versions eliminate them, and how the 4 general-purpose DFA augmentation techniques are used.
+This document explains the engineering trade-offs of adding **DFA-augmented versions** of 5 Java defect-class checkers to Plumb -- why the AST versions produce false negatives, how the DFA versions eliminate them, and how the 4 general-purpose DFA augmentation techniques are used.
 
 > Companions: `tech/CROSS-FUNCTION-ANALYSIS.md` (the full mechanism of the cross-function summary), `tech/ARCHITECTURE.md §3.0` (the DFA engine SPI), `rules/RULE-TOOL-COMPARISON.md §1.2` (DFA vs AST trade-offs)
 
@@ -17,7 +17,7 @@ This document explains the engineering trade-offs of adding **DFA-augmented vers
 | **Aliasing** | After `y = x` comes `if (y == null)`, the AST only sees the null check at `x` | The MOVE instruction propagates the from-load state |
 | **Cross-method field access** | The servlet's `getAttribute("k")` is in method A, `setAttribute("k", v)` is in method B | Accumulate the getAttribute/setAttribute calls across functions |
 
-The commercial Coverity engine implements its "ground truth" with DFA. This batch adds 5 DFA-augmented versions in plumb-dfa, **alongside** the AST versions (under different rule ids) -- giving the user **two choices**:
+A mature commercial engine implements its "ground truth" with DFA. This batch adds 5 DFA-augmented versions in plumb-dfa, **alongside** the AST versions (under different rule ids) -- giving the user **two choices**:
 - Want **recall first**: use the DFA version (trading a little performance for fewer false negatives)
 - Want **performance first**: use the AST version (more false negatives but much faster)
 
@@ -330,7 +330,7 @@ Whether the AST version and the DFA version are on or off by default is controll
 `checks.<rule>: {enabled: true|false}` section of the YAML
 (the DFA side also has the entries of the same name in `plumb-dfa/src/main/resources/checkers.yaml`).
 
-A Coverity-style `aggressiveness` knob (`--aggressiveness=low|medium|high`) has already been
+An analysis-style `aggressiveness` knob (`--aggressiveness=low|medium|high`) has already been
 deprecated: the CLI has no such flag, and an `aggressiveness:` in the YAML is ignored by `ConfigLoader`, which prints a warning to
 stderr and lets the scan continue as usual. Use the `checks.<rule>: {enabled: true|false,
 aiDedup: true|false}` section instead.

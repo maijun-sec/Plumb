@@ -37,7 +37,7 @@ unverifiable assertion.
 | [`RULES.md`](rules/RULES.md) | The main catalogue: counts (every number measured from the configuration), severity / type / emit-id, taint and DFA checkers | [中文](zh/rules/RULES.md) |
 | [`RULE-STYLE-OP.md`](rules/RULE-STYLE-OP.md) | Style rule operations: the distribution, the 5-layer enable/disable mechanism, changing rule parameters | [中文](zh/rules/RULE-STYLE-OP.md) |
 | [`RULE-AUTHORING.md`](rules/RULE-AUTHORING.md) | Rule development: the steps to add a rule, CWE label consistency, choosing an AST checker | [中文](zh/rules/RULE-AUTHORING.md) |
-| [`RULE-TOOL-COMPARISON.md`](rules/RULE-TOOL-COMPARISON.md) | Plumb vs PMD / SonarQube / SpotBugs / Coverity / Checkstyle | [中文](zh/rules/RULE-TOOL-COMPARISON.md) |
+| [`RULE-TOOL-COMPARISON.md`](rules/RULE-TOOL-COMPARISON.md) | Plumb vs PMD / SonarQube / SpotBugs / Checkstyle / Checkstyle | [中文](zh/rules/RULE-TOOL-COMPARISON.md) |
 | [`plumb-style-rules.md`](plumb-style-rules.md) | Generated: the Javadoc of every style rule plus the equivalent-tool mapping | English only |
 | [`plumb-style-rules-index.md`](plumb-style-rules-index.md) | Generated: the style rule index | English only |
 

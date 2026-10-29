@@ -20,11 +20,11 @@
  * SOFTWARE.
  */
 /*
- * Coverity <code>UNLOGGED_SECURITY_EXCEPTION</code> — reports a defect on a
+ * the UNLOGGED_SECURITY_EXCEPTION defect class — reports a defect on a
  * {@code catch} block that handles a security-relevant exception but does
  * not log the event.
  *
- * <p>Reference: Coverity 2023.6.0 Checker Reference, section
+ * <p>Reference: the defect-class reference, section
  * <em>UNLOGGED_SECURITY_EXCEPTION</em> (Security Checker,
  * <em>disabled by default</em> for Java).
  *
