@@ -1,6 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+    The console appender is attached to the root logger because the AI
+    pass needs to be OBSERVABLE.
+
+    A run that reviews 86 findings took 11 minutes with no output at all:
+    the loggers were configured at DEBUG, but no appender was attached to
+    the root logger, so every log statement went nowhere. The turn count
+    (the thing that decides whether a run is affordable) was invisible,
+    and the only observable was "it is taking a long time".
+
+    So the AI's turn accounting is logged to stderr, where the operator
+    can see it. The finding count and the verdict distribution are
+    already reported by the ai-dedup-stats CLI flag.
+-->
 <configuration>
+    <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.err</target>
+        <encoder>
+            <pattern>%d{HH:mm:ss} %-5level %logger{20} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
     <root level="ERROR">
+        <appender-ref ref="STDERR"/>
     </root>
     <logger name="org.plumb" level="DEBUG"/>
     <logger name="org.plumb.ai" level="DEBUG"/>

@@ -51,6 +51,8 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
 | — | `--max-parallelism` | `<n>` | `nCPU-1` (minimum 1) | Upper bound of concurrency in the parse + translate phase |
 | — | `--ai-dedup` | — | off | False-positive reducer switch. Sends every finding to the LLM to judge TP/FP/UNKNOWN. The verdict is written to the `ai_verdict` + `ai_reason` fields of the NDJSON. The LLM endpoint + key are configured in YAML (`ai.apiKey` / `ai.baseUrl` / `ai.model`) |
 | — | `--ai-dedup-stats` | — | off | After the AI dedup run, prints the verdict distribution + the top 10 rules by FP ratio to **stderr**. The NDJSON on stdout is unchanged. Use it together with `--ai-dedup`; on its own it is a no-op. |
+| — | `--ai-max-turns` | `<n>` | 5 | The Re-Act loop cap: how many tool-calling turns one finding may take in the AI pass. A finding that hits the cap is recorded as `UNKNOWN|max-turns-exceeded`. YAML: `ai.maxTurns` |
+| — | `--ai-context-lines` | `<n>` | 3 | How many source lines to send either side of a finding in the AI pass. This is the model's first look; it can widen the view with `read_source`. YAML: `ai.contextLines` |
 | — | `--rule` | `<id>` | — | Run only the given rule (**repeatable**). Overrides the `checks.*` flags from YAML. Accepts the emitted id, the id without its engine and domain tokens, the rule name, the checker's class name, a declared alias, and a retired id -- see [§4.2.1](#421-how-a-rule-is-named). A name that matches no rule silently produces 0 findings |
 | — | `--rule-prompts-dir` | `<path>` | — | Directory of user-supplied rule prompt `.md` files. Overrides the default prompts packaged on the classpath |
 | — | `--dsl-rules` | `<file>` | — | AST rule file of the Kotlin DSL engine (**repeatable**). In XML or YAML format, see [`../tech/KOTLIN-DSL.md`](../tech/KOTLIN-DSL.md) |
@@ -120,8 +122,25 @@ ai:
   header:                       # optional extra request headers
   timeoutSeconds: 30
   maxConcurrent: 4              # number of concurrent dedup requests
+  maxTurns: 5                   # the Re-Act loop cap, per finding
+  contextLines: 3               # source lines either side of a finding
   temperature: 0.0              # 0 = deterministic FP judging
 ```
+
+`ai.maxTurns` is the **loop cap**: how many tool-calling turns one finding may
+take. The default of 5 is enough to read the source and answer, but not enough
+to follow a taint trace across several methods — and a finding that hits the
+cap is recorded as `UNKNOWN|max-turns-exceeded`, which the pass cannot improve.
+Raise it to 30 when the model needs to follow the trace.
+
+`ai.contextLines` is the **source window**: how many lines either side of the
+finding are sent in the first user turn. The default of 3 shows the model a
+fragment rather than a method; a taint source 40 lines above the sink is
+invisible in a 3-line window. This is the model's *first* look — it can widen
+the view itself with `read_source`.
+
+Both have CLI equivalents: `--ai-max-turns <n>` and `--ai-context-lines <n>`.
+The CLI value wins over the YAML.
 
 `ai.dedupRules` accepts **two spellings** of a rule, both are recognized:
 
@@ -139,7 +158,7 @@ after the slug is enough.
 | --- | --- |
 | `ai.enabled` | CLI `--ai-dedup` |
 | `ai.scan` | None (AI only does FP judging) |
-| `ai.contextLines` | None (the source window is hardcoded to 3 lines in the runner) |
+| `ai.contextLines` | CLI `--ai-context-lines <n>` (the source window is configurable) |
 | `ai.rulePromptsDir` | CLI `--rule-prompts-dir` |
 | `ai.sendAstContext` | None |
 

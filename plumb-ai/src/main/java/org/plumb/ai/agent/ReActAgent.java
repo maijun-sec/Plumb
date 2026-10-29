@@ -142,6 +142,11 @@ public class ReActAgent {
       // Termination check 1: model gave a final answer.
       if (reply.isFinalAnswer()) {
         LOG.debug("ReAct done after {} turns, FINAL: {}", turn + 1, reply.finalBody());
+        LOG.info(
+            "ReAct finished after {} turn(s) (cap {}), {} tool call(s)",
+            turn + 1,
+            max,
+            toolCallLog.size());
         return AgentResult.finalAnswer(reply, reply.finalBody(), task.taskKind(), toolCallLog);
       }
 
@@ -213,6 +218,11 @@ public class ReActAgent {
     }
     // Termination check 3: max turns reached.
     LOG.warn("ReAct hit maxTurns={} without FINAL: from model", max);
+    LOG.info(
+        "ReAct exhausted the turn cap: {} turn(s), {} tool call(s) -- the finding is"
+            + " recorded as UNKNOWN|max-turns-exceeded",
+        max,
+        toolCallLog.size());
     return AgentResult.maxTurnsExceeded(max, lastReply, toolCallLog);
   }
 }

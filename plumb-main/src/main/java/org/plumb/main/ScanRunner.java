@@ -311,9 +311,26 @@ public final class ScanRunner {
         }
         String finalPrompt = (overridePrompt != null) ? overridePrompt : inlinePrompt;
         if (finalPrompt == null) {
-          // No prompt — skip AI dedup for this rule.
-          verdictByKey.put(keyOf(f), "(no-rule-prompt)");
-          continue;
+          // No rule-specific prompt. Fall back to the GENERIC prompt rather
+          // than skipping the finding.
+          //
+          // Skipping was the old behaviour, and it made the AI pass report
+          // almost nothing: only a couple of dozen rules ship a prompt of
+          // their own, so on a real scan the overwhelming majority of
+          // findings came back as UNKNOWN with the reason
+          // "(no-rule-prompt)" -- which is indistinguishable from "the model
+          // was unsure", and is not a verdict at all.
+          //
+          // The five analysis questions are rule-agnostic. "Is there really a
+          // source?", "is this really a sink?", "is the trace real?", "can
+          // the path conditions hold?", "is there really a sanitiser?" are
+          // the same questions for a SQL sink and for a null dereference, so
+          // a rule without its own prompt can still be reviewed.
+          //
+          // The rule-specific prompt still wins where one exists: it knows
+          // things the generic prompt cannot, such as which over-fire
+          // pattern is characteristic for that rule.
+          finalPrompt = org.plumb.ai.prompts.FalsePositivePrompts.genericFor(ruleName);
         }
         if (!config.aiDedupRules.isEmpty() && !matchesAiDedupRules(ruleName, slug)) {
           verdictByKey.put(keyOf(f), "(not-in-aiDedupRules)");
@@ -399,7 +416,7 @@ public final class ScanRunner {
    * modes (provider null, agent max-turns) are mapped to UNKNOWN.
    */
   private String judgeOne(Finding f, String rulePrompt, org.plumb.ai.agent.ReActAgent agent) {
-    String context = extractSourceContext(f, 3);
+    String context = extractSourceContext(f, config.aiContextLines);
     // when the finding carries a v2 structured
     // Trace ( P3.1 / dual-write), inject a
     // compact one-line shape summary so the LLM sees
@@ -439,10 +456,11 @@ public final class ScanRunner {
 
     org.plumb.ai.agent.AgentTask task =
         org.plumb.ai.agent.AgentTask.fpReduction(
-            org.plumb.ai.prompts.FalsePositivePrompts.FALSE_POSITIVE_REDUCTION,
-            userTurn,
-            config.aiConn.model(),
-            config.aiTemperature);
+                org.plumb.ai.prompts.FalsePositivePrompts.FALSE_POSITIVE_REDUCTION,
+                userTurn,
+                config.aiConn.model(),
+                config.aiTemperature)
+            .withMaxTurns(config.aiMaxTurns);
     org.plumb.ai.tools.ToolContext toolCtx =
         new org.plumb.ai.tools.ToolContext(
             f, "fp-reduction", sourceRoot().toString(), null, null, null, null, null);

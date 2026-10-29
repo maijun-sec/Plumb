@@ -50,6 +50,8 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
 | — | `--max-parallelism` | `<n>` | `nCPU-1`（最小 1） | parse + translate 阶段并发上限 |
 | — | `--ai-dedup` | — | off | 降误报开关。把每条 finding 发给 LLM 判 TP/FP/UNKNOWN。verdict 写到 NDJSON 的 `ai_verdict` + `ai_reason` 字段。LLM 端点 + key 走 YAML（`ai.apiKey` / `ai.baseUrl` / `ai.model`） |
 | — | `--ai-dedup-stats` | — | off | AI dedup 跑完后，往 **stderr** 打 verdict 分布 + 每条规则的 FP 占比 Top 10。stdout 的 NDJSON 不变。配合 `--ai-dedup` 一起用，单独开 no-op。 |
+| — | `--ai-max-turns` | `<n>` | 5 | AI 降误报的 ReAct 循环上限：一条 finding 最多能跑多少个带工具调用的轮次。撞到上限记成 `UNKNOWN|max-turns-exceeded`。YAML：`ai.maxTurns` |
+| — | `--ai-context-lines` | `<n>` | 3 | AI 降误报时，把 finding 上下各多少行源码发给模型。这是模型的第一眼；它自己还能用 `read_source` 把范围拉大。YAML：`ai.contextLines` |
 | — | `--rule` | `<id>` | — | 只跑指定 rule（**可重复**）。覆盖 YAML 的 `checks.*` 标志。接受报告里的 id、去掉 engine/domain 段的 id、规则名、checker 类名、声明的 alias、已退役的旧 id —— 见 [§4.2.1](#421-规则怎么被点名)。匹配不到任何规则的名字会静默产出 0 条 finding |
 | — | `--rule-prompts-dir` | `<path>` | — | 用户自带的 rule prompt `.md` 目录。覆盖打包在 classpath 里的默认 prompt |
 | — | `--dsl-rules` | `<file>` | — | Kotlin DSL 引擎的 AST 规则文件（**可重复**）。XML 或 YAML 格式，见 [`../tech/KOTLIN-DSL.md`](../tech/KOTLIN-DSL.md) |
@@ -109,8 +111,23 @@ ai:
   header:                       # 可选的额外请求头
   timeoutSeconds: 30
   maxConcurrent: 4              # 并发 dedup 请求数
+  maxTurns: 5                   # ReAct 循环上限，每条 finding 各算
+  contextLines: 3               # finding 上下各取多少行源码
   temperature: 0.0              # 0 = 确定性判 FP
 ```
+
+`ai.maxTurns` 是**循环上限**：一条 finding 最多能跑多少个带工具调用的轮次。
+默认的 5 够读一遍源码然后作答，但不够顺着污点链跨几个方法追下去 —— 而且撞到
+上限的 finding 会被记成 `UNKNOWN|max-turns-exceeded`，AI 这一遍就白跑了。
+需要在模型跟着 trace 追的时候，把它调到 30。
+
+`ai.contextLines` 是**源码窗口**：第一轮把 finding 上下各多少行发给模型。
+默认的 3 只给模型看一个片段，而不是一个方法 —— 污点源在 sink 上方 40 行时，
+3 行的窗口里根本看不见。这是模型的**第一眼** —— 它自己还能用 `read_source`
+把范围拉大。
+
+两者都有对应的 CLI 参数：`--ai-max-turns <n>` 和 `--ai-context-lines <n>`。
+CLI 的值优先于 YAML。
 
 `ai.dedupRules` 里可以写规则的**两种拼法**，两种都认：
 
@@ -125,7 +142,7 @@ ai:
 | --- | --- |
 | `ai.enabled` | CLI `--ai-dedup` |
 | `ai.scan` | 无（AI 只做 FP 判定） |
-| `ai.contextLines` | 无（源码窗口在 runner 里硬编码为 3 行） |
+| `ai.contextLines` | CLI `--ai-context-lines <n>`（源码窗口可配置） |
 | `ai.rulePromptsDir` | CLI `--rule-prompts-dir` |
 | `ai.sendAstContext` | 无 |
 

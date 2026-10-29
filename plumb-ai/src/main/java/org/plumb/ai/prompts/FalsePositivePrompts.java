@@ -466,4 +466,50 @@ public final class FalsePositivePrompts {
           + "Do not produce any text before FINAL: and no markdown fence. If you call tools, "
           + "the system will give you the results, and then you can call more tools or emit "
           + "FINAL:.";
+
+  /**
+   * The generic rule description for a rule that has no prompt of its own.
+   *
+   * <p><b>Why this exists.</b> Only a couple of dozen rules ship a rule-specific prompt. A rule
+   * without one used to be skipped outright, and the finding was recorded as {@code
+   * ai_verdict=UNKNOWN} with the reason {@code (no-rule-prompt)}. On a real scan that is the
+   * overwhelming majority of findings, so the AI pass reported almost nothing -- not because the
+   * model was unsure, but because the model was never asked.
+   *
+   * <p>The five analysis questions live in the SYSTEM prompt and are rule-agnostic: "Is there
+   * really a source?", "is this really a sink?", "is the trace real?", "can the path conditions
+   * hold?", "is there really a sanitiser?" are the same questions for a SQL sink and for a null
+   * dereference. So a rule with no prompt of its own can still be reviewed -- the only thing
+   * missing is the rule's own description of what it looks for.
+   *
+   * <p>That description is short on purpose. The system prompt already states the method and the
+   * over-fire patterns, so repeating them here would double the user turn for no gain. What the
+   * model needs from the rule is its IDENTITY: what the rule claims to detect, and what "the harm"
+   * is in Question 2.
+   *
+   * <p>The rule-specific prompt, when a rule has one, still wins: it knows things the generic
+   * description cannot, such as which over-fire pattern is characteristic for that rule. The
+   * generic description is the floor, not the replacement.
+   *
+   * @param ruleName the rule's id, so the model knows what kind of defect it is judging
+   * @return the rule description to use for that rule
+   */
+  public static String genericFor(String ruleName) {
+    String name = ruleName == null ? "(unnamed rule)" : ruleName;
+    return "=== WHAT THIS RULE DETECTS ===\n"
+        + "The rule is `"
+        + name
+        + "`. It has no rule-specific brief, so use the finding itself: its message states "
+        + "what the analyser believes is wrong, and its CWE states the defect class. Read the "
+        + "message and the source before deciding whether the defect is really there.\n\n"
+        + "Question 2 (is this really a sink?) is answered against the RULE'S OWN claim, not "
+        + "against a generic notion of danger. If the message says the value reaches a sink, "
+        + "check that the call it names is the one that does the harm. If the message says the "
+        + "value is never closed, check that nothing closes it -- including a close in a "
+        + "finally block or a try-with-resources, and including a close on a path the finding "
+        + "did not consider.\n\n"
+        + "Everything else -- the five questions, the positive-evidence requirement, the "
+        + "over-fire patterns, the tool workflow -- is in the system prompt and applies here "
+        + "unchanged.";
+  }
 }

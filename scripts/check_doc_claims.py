@@ -172,7 +172,12 @@ def loader_top_keys():
 def loader_ai_keys():
     """Every `ai.*` key the loader reads."""
     keys = set(re.findall(r'case "([a-zA-Z0-9]+)" ->', CONFIG_LOADER))
-    keys -= {"enabled", "scan", "contextLines", "rulePromptsDir", "sendAstContext"}
+    # `contextLines` is NOT in this list: the loader reads it. It used to be
+    # excluded, because the runner hard-coded a 3-line source window and the
+    # key was deprecated. The window is configurable now, so the key is
+    # supported -- and a supported key that the gate excluded would make the
+    # documentation look wrong for documenting it.
+    keys -= {"enabled", "scan", "rulePromptsDir", "sendAstContext"}
     return keys
 
 

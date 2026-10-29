@@ -453,14 +453,14 @@ public final class ConfigLoader {
       // keys (third-party scripts copy them from older
       // examples), but the user gets a precise error.
       for (String deprecated :
-          new String[] {"enabled", "scan", "contextLines", "rulePromptsDir", "sendAstContext"}) {
+          new String[] {"enabled", "scan", "rulePromptsDir", "sendAstContext"}) {
         if (am.containsKey(deprecated)) {
           String replacement =
               switch (deprecated) {
                 case "enabled" -> "use --ai-dedup on the CLI";
                 case "scan" -> "the bug scanner is not implemented yet (no replacement)";
                 case "contextLines" ->
-                    "the runner hard-codes a window of 3 lines around the finding";
+                    "use 'ai.contextLines' to set the source window around a finding";
                 case "rulePromptsDir" -> "use --rule-prompts-dir on the CLI";
                 case "sendAstContext" ->
                     "the field is unused; the runner always sends the AST when available";
@@ -531,6 +531,8 @@ public final class ConfigLoader {
           case "header" -> extraHeader = String.valueOf(v);
           case "timeoutSeconds" -> timeoutSeconds = Integer.parseInt(String.valueOf(v));
           case "maxConcurrent" -> cfg.aiMaxConcurrent = Integer.parseInt(String.valueOf(v));
+          case "maxTurns" -> cfg.aiMaxTurns = Integer.parseInt(String.valueOf(v));
+          case "contextLines" -> cfg.aiContextLines = Integer.parseInt(String.valueOf(v));
           case "dedup" -> cfg.aiDedup = Boolean.parseBoolean(String.valueOf(v));
           case "dropOnAiFp" -> cfg.dropOnAiFp = Boolean.parseBoolean(String.valueOf(v));
           case "dedupRules" -> {

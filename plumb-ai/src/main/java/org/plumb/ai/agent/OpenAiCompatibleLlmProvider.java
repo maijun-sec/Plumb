@@ -113,7 +113,7 @@ public final class OpenAiCompatibleLlmProvider implements LlmProvider {
     Objects.requireNonNull(user, "user");
     try {
       String requestBody = buildSinglePromptRequest(system, user);
-      HttpResponse<String> resp = send(buildHttpRequest(requestBody));
+      HttpResponse<String> resp = sendWithRetry(() -> buildHttpRequest(requestBody));
       if (resp == null) return null;
       if (resp.statusCode() / 100 != 2) {
         LOG.warn(
@@ -155,7 +155,21 @@ public final class OpenAiCompatibleLlmProvider implements LlmProvider {
               toolChoice == null ? LlmProvider.TOOL_CHOICE_AUTO : toolChoice,
               model == null ? conn.model() : model,
               temperature);
-      HttpResponse<String> resp = send(buildHttpRequest(requestBody));
+      HttpResponse<String> resp =
+          sendWithRetry(
+              () -> {
+                try {
+                  return buildHttpRequest(
+                      buildToolRequest(
+                          messages,
+                          tools,
+                          toolChoice == null ? LlmProvider.TOOL_CHOICE_AUTO : toolChoice,
+                          model == null ? conn.model() : model,
+                          temperature));
+                } catch (Exception e) {
+                  throw new IllegalStateException("could not build the tool request", e);
+                }
+              });
       if (resp == null) return null;
       if (resp.statusCode() / 100 != 2) {
         LOG.warn(
@@ -203,6 +217,88 @@ public final class OpenAiCompatibleLlmProvider implements LlmProvider {
     } catch (Exception e) {
       LOG.warn("AI send failed: {}", e.toString());
       return null;
+    }
+  }
+
+  /**
+   * How many times a retryable response is retried, and how long to wait between attempts.
+   *
+   * <p><b>Why a 429 has to be retried rather than reported.</b> A rate limit is not a verdict. It
+   * says "ask again in a moment", and a provider that returns one turns a working analysis into a
+   * report full of UNKNOWNs -- findings the AI pass never actually looked at. That is the worst
+   * possible outcome: the report says "the model was unsure" when the truth is "the request was
+   * refused", and the operator cannot tell the two apart.
+   *
+   * <p>So a retryable response (429, 502, 503, 504) is retried with a growing wait. A response that
+   * is not retryable (401, 400, 404) is returned immediately, because retrying a bad request just
+   * burns the budget.
+   */
+  private static final int MAX_RETRIES = 5;
+
+  /** The first wait between retries. It doubles each attempt. */
+  private static final long INITIAL_BACKOFF_MILLIS = 1_000L;
+
+  /**
+   * Whether a status code means "try again later".
+   *
+   * <p>429 is the rate limit. 502 / 503 / 504 are the gateway failures that a burst of parallel
+   * requests produces.
+   */
+  private static boolean isRetryable(int statusCode) {
+    return statusCode == 429 || statusCode == 502 || statusCode == 503 || statusCode == 504;
+  }
+
+  /**
+   * Send a request, retrying a retryable response with a growing wait.
+   *
+   * <p>The request body is rebuilt for each attempt, because an {@link HttpRequest.Builder} is
+   * single-use.
+   */
+  private HttpResponse<String> sendWithRetry(
+      java.util.function.Supplier<HttpRequest.Builder> requestFactory) {
+    HttpResponse<String> resp = null;
+    long backoff = INITIAL_BACKOFF_MILLIS;
+    for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      resp = send(requestFactory.get());
+      if (resp == null) {
+        // A transport failure. The next attempt may well succeed, so it is retried too -- but
+        // the caller still gets a null when the retries run out.
+        if (attempt < MAX_RETRIES) {
+          sleep(backoff);
+          backoff *= 2;
+          continue;
+        }
+        return null;
+      }
+      if (!isRetryable(resp.statusCode())) {
+        return resp;
+      }
+      if (attempt == MAX_RETRIES) {
+        LOG.warn(
+            "AI HTTP {} after {} retries: {}",
+            resp.statusCode(),
+            MAX_RETRIES,
+            truncate(resp.body(), 200));
+        return resp;
+      }
+      LOG.warn(
+          "AI HTTP {} ({}), retrying in {} ms (attempt {}/{})",
+          resp.statusCode(),
+          conn.model(),
+          backoff,
+          attempt + 1,
+          MAX_RETRIES);
+      sleep(backoff);
+      backoff *= 2;
+    }
+    return resp;
+  }
+
+  private static void sleep(long millis) {
+    try {
+      Thread.sleep(millis);
+    } catch (InterruptedException ie) {
+      Thread.currentThread().interrupt();
     }
   }
 

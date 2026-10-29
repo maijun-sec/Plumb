@@ -145,6 +145,12 @@ public final class SastMain {
       if (cli.hasOption("rule-prompts-dir")) {
         cfg.cliRulePromptsDir = Path.of(cli.getOptionValue("rule-prompts-dir"));
       }
+      if (cli.hasOption("ai-max-turns")) {
+        cfg.aiMaxTurns = Integer.parseInt(cli.getOptionValue("ai-max-turns").trim());
+      }
+      if (cli.hasOption("ai-context-lines")) {
+        cfg.aiContextLines = Integer.parseInt(cli.getOptionValue("ai-context-lines").trim());
+      }
       // AST rules for the Kotlin DSL engine. The CLI value is ADDED to
       // whatever the YAML's `dsl.rules` block already listed, so a
       // project can keep its rules in the config and add one file on
@@ -309,6 +315,30 @@ public final class SastMain {
                     + "NDJSON output as ai_verdict / ai_reason. Off by default; "
                     + "the LLM endpoint and key are configured in the YAML "
                     + "so the package can stay small (no Spring-AI / Spring Boot).")
+            .build());
+    opts.addOption(
+        Option.builder()
+            .longOpt("ai-max-turns")
+            .hasArg()
+            .argName("n")
+            .desc(
+                "How many tool-calling turns one finding may take in the AI "
+                    + "false-positive pass (YAML: ai.maxTurns, default 5). A "
+                    + "finding that hits the cap is recorded as "
+                    + "UNKNOWN|max-turns-exceeded, which the pass cannot improve. "
+                    + "Raise it when the model needs to follow a taint trace "
+                    + "across several methods.")
+            .build());
+    opts.addOption(
+        Option.builder()
+            .longOpt("ai-context-lines")
+            .hasArg()
+            .argName("n")
+            .desc(
+                "How many source lines to send either side of a finding in the "
+                    + "AI false-positive pass (YAML: ai.contextLines, default 3). "
+                    + "This is the model's first look at the code; it can widen "
+                    + "the view itself with read_source.")
             .build());
     // M-5 (audit 2026-10-08): the `--aggressiveness` flag
     // was a no-op (ConfigLoader ignored the YAML `aggressiveness:`

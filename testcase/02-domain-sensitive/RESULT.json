@@ -2,7 +2,7 @@
   "category": "02-domain-sensitive",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 513,
+  "total_findings": 500,
   "cases": [
     {
       "id": "L1-safe-guard",
@@ -282,7 +282,6 @@
   },
   "cwe_histogram": {
     "CWE-563": 17,
-    "CWE-404": 13,
     "CWE-129": 12,
     "CWE-190": 12,
     "CWE-191": 10,

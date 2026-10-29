@@ -2,7 +2,7 @@
   "category": "04-polymorphic-callgraph",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 1005,
+  "total_findings": 937,
   "cases": [
     {
       "id": "L3a_has_sql_findings",
@@ -180,7 +180,6 @@
     "tn_false_positive": 0
   },
   "cwe_histogram": {
-    "CWE-404": 68,
     "CWE-563": 35,
     "CWE-476": 34,
     "CWE-252": 28,

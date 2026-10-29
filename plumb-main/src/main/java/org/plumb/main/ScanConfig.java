@@ -334,6 +334,32 @@ public final class ScanConfig {
   /** Max LLM round-trips in parallel. CLI / YAML: {@code ai.maxConcurrent}. */
   public int aiMaxConcurrent = 4;
 
+  /**
+   * The ReAct loop cap: how many tool-calling turns one finding may take.
+   *
+   * <p>CLI / YAML: {@code ai.maxTurns}. The agent's own default is 5, which is enough to read the
+   * source and answer -- but not enough to follow a taint trace across several methods. A finding
+   * that hits the cap is recorded as {@code UNKNOWN|max-turns-exceeded}, and an UNKNOWN is a miss
+   * the AI pass cannot improve.
+   *
+   * <p>So the cap is a configuration knob rather than a constant: the loop is bounded by
+   * construction (an unbounded agent is a bill), and the bound is the operator's to choose.
+   */
+  public int aiMaxTurns = 5;
+
+  /**
+   * The number of source lines sent either side of a finding.
+   *
+   * <p>CLI / YAML: {@code ai.contextLines}. The window is the AI's first look at the code, and 3
+   * lines is not enough to see a method's shape -- a taint source 40 lines above the sink is
+   * invisible in a 3-line window, and the model is then judging a fragment.
+   *
+   * <p>The agent can widen its own view with {@code read_source} (the false-positive prompt tells
+   * it to), so this is the CONTEXT, not the limit: the window is what the model sees before it
+   * decides to look further.
+   */
+  public int aiContextLines = 3;
+
   /** Temperature for the LLM. 0.0 = deterministic. */
   public double aiTemperature = 0.0;
 
