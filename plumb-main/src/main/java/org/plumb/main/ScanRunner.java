@@ -439,7 +439,7 @@ public final class ScanRunner {
 
     org.plumb.ai.agent.AgentTask task =
         org.plumb.ai.agent.AgentTask.fpReduction(
-            org.plumb.ai.prompts.AgentPrompts.FP_REDUCER,
+            org.plumb.ai.prompts.FalsePositivePrompts.FALSE_POSITIVE_REDUCTION,
             userTurn,
             config.aiConn.model(),
             config.aiTemperature);

@@ -34,9 +34,13 @@ package org.plumb.ai.prompts;
  * <h2>FP reducer prompt ({@link #FP_REDUCER})</h2>
  *
  * <p>Receives: rule metadata (id, cwe, severity, description) + a single finding's source context +
- * dataflow trace. Returns: one JSON line {@code {"verdict":"TP|FP|UNKNOWN","reason":"..."}}. The
- * prompt is conservative by design -- the LLM is told to default to TP unless a clear
- * neutralisation (sanitizer, guard, dead code) is visible in the source window.
+ * dataflow trace. Returns: one JSON line {@code {"verdict":"TP|FP|UNKNOWN","reason":"..."}}.
+ *
+ * <p><b>The prompt that judges a finding lives in {@link FalsePositivePrompts}.</b> It is a
+ * separate class because there are THREE of them, and they differ in one decision policy each;
+ * keeping them together in one file made the differences invisible. The names there state the
+ * policy ({@link FalsePositivePrompts#FALSE_POSITIVE_REDUCTION} and friends) instead of counting
+ * edits, so a reader can predict the behaviour from the name alone.
  *
  * <h2>Bug scanner prompt ({@link #BUG_SCANNER})</h2>
  *
@@ -49,290 +53,32 @@ public final class AgentPrompts {
 
   private AgentPrompts() {}
 
-  /** FP reducer ? judges a single finding. v9. */
-  public static final String FP_REDUCER =
-      "You are a senior application-security reviewer. "
-          + "You are given ONE static-analysis finding plus the source code "
-          + "around its location and (when available) a dataflow trace "
-          + "showing how the tainted value reached the sink. Decide whether "
-          + "the finding is a true positive (the code is actually vulnerable) "
-          + "or a false positive (a sanitizer, a guard, an enclosing "
-          + "try-with-resources, dead code, a constant value, or some other "
-          + "reason neutralises the issue). Be strict but fair: default to "
-          + "TP if you cannot identify a CLEAR neutralisation.\n\n"
-          + "=== TOOL-DRIVEN WORKFLOW ===\n"
-          + "You MUST use tools to inspect the code before deciding. The "
-          + "model is forced to call at least one tool on the first turn "
-          + "(tool_choice=required) — answering directly without inspecting "
-          + "the source is guessing, not reviewing.\n\n"
-          + "Recommended workflow (in order):\n"
-          + "  1. read_source(path=<file>, start=<line>-30, end=<line>+30) "
-          + "to see the firing method's full body. The user prompt only "
-          + "shows a 5-line window; the actual guard / sanitiser / helper "
-          + "call may be outside that window.\n"
-          + "  2. If the method calls a helper, list_dir or glob to find "
-          + "the helper file, then read_source to verify the helper's "
-          + "behaviour. Do NOT trust the comment that says 'this returns a "
-          + "safe value' — read the source.\n"
-          + "  3. grep or search_pattern for sanitiser patterns: "
-          + "PreparedStatement.setString, setObject, Math.abs, Math.sqrt, "
-          + "Integer.MAX_VALUE clamps, whitelist checks, isUserInRole. "
-          + "If the sanitiser is in a different file, follow it.\n"
-          + "  4. has_sanitizer_on_path(var=<taint-var>, from=<source-line>, "
-          + "to=<sink-line>) — precise check for any guard between the "
-          + "source and the sink.\n"
-          + "  5. If everything is verified, reply with FINAL:.\n\n"
-          + "=== RECOGNISING SAFE SOURCES ===\n"
-          + "The source IS the data. If the data comes from a hardcoded "
-          + "literal (`data = \"foo\";`, `data = 2;`, `data = MAX_VALUE;`, "
-          + "`data = Boolean.TRUE;`) OR from a method call whose name "
-          + "strongly suggests a fixture / test-helper return value (names "
-          + "containing 'source', 'fixture', 'mock', 'stub', 'good', "
-          + "'helper', or returning a hardcoded constant), the data is "
-          + "NOT tainted and the finding is FP. Read the helper's source "
-          + "to confirm before finalising.\n\n"
-          + "When the data is hardcoded, prefer answering FP directly with "
-          + "reason: 'Source is hardcoded literal / fixture helper at line N'.\n\n"
-          + "You have access to: read_source, grep, glob, list_dir, "
-          + "search_pattern, has_sanitizer_on_path, find_definitions, "
-          + "find_callers, get_method_annotations, get_class_hierarchy, "
-          + "get_full_class, get_dataflow_trace_with_facts. (Some tools "
-          + "may not be registered for this run — if a tool call returns "
-          + "an 'unknown tool' error, fall back to a different tool.)\n\n"
-          + "When you have enough information, reply with EXACTLY this "
-          + "prefix on the first line:\n"
-          + "FINAL: {\"verdict\":\"TP|FP|UNKNOWN\",\"reason\":\"<one short sentence>\"}\n"
-          + "Do not produce any text before FINAL: and no markdown fence. "
-          + "If you call tools, the system will give you the results, and "
-          + "then you can call more tools or emit FINAL:.";
+  /**
+   * FP reducer — judges a single finding.
+   *
+   * <p>Kept as the name the runner and the documentation use. The text lives in {@link
+   * FalsePositivePrompts#FALSE_POSITIVE_REDUCTION}, whose name states the decision policy.
+   */
+  public static final String FP_REDUCER = FalsePositivePrompts.FALSE_POSITIVE_REDUCTION;
 
   /**
-   * FP reducer v10 -- default-to-FP variant. v9's "default to TP if no clear neutralization"
-   * over-fires 12/15 times on real code: when the AI can't find a guard it says TP, but the code is
-   * actually safe (constants, validated params, fixture helpers, unchecked exceptions, etc.). v10
-   * flips the default to FP and requires POSITIVE evidence for TP.
+   * The default-to-FP policy: a finding is a true positive only on positive evidence.
+   *
+   * @deprecated use {@link FalsePositivePrompts#FALSE_POSITIVE_REDUCTION}; the name {@code V10}
+   *     said only that the prompt had been edited, not what it decided.
    */
-  public static final String FP_REDUCER_V10 =
-      "You are a senior application-security reviewer. "
-          + "You are given ONE static-analysis finding plus the source code "
-          + "around its location. Decide whether the finding is a true "
-          + "positive (the code is actually vulnerable) or a false positive "
-          + "(a sanitizer, a guard, an enclosing try-with-resources, dead "
-          + "code, a constant value, a parameter validated by the caller, "
-          + "or some other reason neutralises the issue).\n\n"
-          + "Be CONSERVATIVE about TP. Default to FP unless you can identify "
-          + "a CLEAR unsanitized flow from a user-controlled source to a "
-          + "dangerous sink. Static analyzers over-fire — a missing guard in "
-          + "the local window does NOT mean the code is exploitable. The "
-          + "guard may be at the function entry, in the caller, in a helper, "
-          + "or implied by the data type (constant, validated param, "
-          + "checked exception, hardcoded literal).\n\n"
-          + "=== POSITIVE EVIDENCE REQUIRED FOR TP ===\n"
-          + "A finding is TP only when you can identify ALL THREE:\n"
-          + "  1. USER INPUT: the value originates from a user-controlled "
-          + "source (request.getParameter, request.getHeader, getCookies, "
-          + "getQueryString, readLine, network read, file read with "
-          + "attacker-controlled path, System.console, env var, etc.).\n"
-          + "  2. NO SANITIZATION: the value flows through no guards on the "
-          + "path from source to sink (no parameterised query, no whitelist, "
-          + "no length cap, no type check, no try-with-resources, no null "
-          + "check on the dereference path, no bounds check, no "
-          + "Integer.MAX_VALUE clamp, no isUserInRole).\n"
-          + "  3. EXPLOITABLE SINK: the value reaches a dangerous sink (SQL "
-          + "exec, Runtime.exec, JNDI lookup, file path, array index, "
-          + "division, etc.) where the unsanitized value can cause a real "
-          + "security or correctness impact.\n"
-          + "If ANY of (1), (2), (3) is missing, the default is FP.\n\n"
-          + "=== COMMON OVER-FIRE PATTERNS — DEFAULT TO FP ===\n"
-          + "The data is a hardcoded literal (data = \"foo\";, data = 2;, "
-          + "data = MAX_VALUE;, data = Boolean.TRUE;).\n"
-          + "The data comes from a method whose name suggests a fixture or "
-          + "test-helper (containing 'source', 'fixture', 'mock', 'stub', "
-          + "'good', 'helper', or returning a hardcoded constant).\n"
-          + "The variable is a method parameter that has been validated "
-          + "earlier (null check, length check, range check, "
-          + "Objects.requireNonNull, Objects.isNull, or parameter docstring "
-          + "stating 'must not be null').\n"
-          + "The operation is on constant values (24 * LONG_CONSTANT) that "
-          + "cannot overflow at runtime.\n"
-          + "The resource is closed in a finally block or try-with-resources.\n"
-          + "The check happens at the function entry before the fire line "
-          + "(if (x == null) return; at line N, fire at line N+5).\n"
-          + "The exception is unchecked (RuntimeException, IllegalArgument, "
-          + "NullPointer, etc.) and does not need a try-catch declaration.\n"
-          + "The overflow is guarded by Math.addExact, Math.multiplyExact, "
-          + "Math.multiplyFull, a long cast, or BigInteger.\n"
-          + "The \"untrusted\" variable is actually the loop index or "
-          + "array.length (always in range).\n"
-          + "The hash mixing uses small constants (iConstant = 37, 31, etc.) "
-          + "with int multiplication — overflow is intentional and safe.\n"
-          + "The resource is an exception object (new IllegalArgumentException(...)) "
-          + "not an I/O resource that needs closing.\n\n"
-          + "=== TOOL-DRIVEN WORKFLOW ===\n"
-          + "You MUST use tools to inspect the code before deciding. The "
-          + "model is forced to call at least one tool on the first turn — "
-          + "answering directly without inspecting the source is guessing, "
-          + "not reviewing.\n\n"
-          + "Recommended workflow (in order):\n"
-          + "  1. read_source(path=<file>, start=<line>-30, end=<line>+30) "
-          + "to see the firing method's full body. The user prompt only "
-          + "shows a 5-line window; the actual guard / sanitiser / helper "
-          + "call may be outside that window.\n"
-          + "  2. If the method calls a helper, list_dir or glob to find "
-          + "the helper file, then read_source to verify the helper's "
-          + "behaviour. Do NOT trust the comment that says 'this returns a "
-          + "safe value' — read the source.\n"
-          + "  3. grep or search_pattern for sanitiser patterns: "
-          + "PreparedStatement.setString, setObject, Math.abs, Math.sqrt, "
-          + "Integer.MAX_VALUE clamps, whitelist checks, isUserInRole, "
-          + "Objects.requireNonNull, null checks, bounds checks, "
-          + "try-with-resources, finally blocks. If the sanitiser is in a "
-          + "different file, follow it.\n"
-          + "  4. has_sanitizer_on_path(var=<taint-var>, from=<source-line>, "
-          + "to=<sink-line>) — precise check for any guard between the "
-          + "source and the sink.\n"
-          + "  5. If you still cannot determine, reply with FINAL:UNKNOWN.\n\n"
-          + "You have access to: read_source, grep, glob, list_dir, "
-          + "search_pattern, has_sanitizer_on_path. (Some tools may not be "
-          + "registered for this run — if a tool call returns an 'unknown "
-          + "tool' error, fall back to a different tool.)\n\n"
-          + "When you have enough information, reply with EXACTLY this "
-          + "prefix on the first line:\n"
-          + "FINAL: {\"verdict\":\"TP|FP|UNKNOWN\",\"reason\":\"<one short sentence>\"}\n"
-          + "Do not produce any text before FINAL: and no markdown fence. "
-          + "If you call tools, the system will give you the results, and "
-          + "then you can call more tools or emit FINAL:.";
+  @Deprecated
+  public static final String FP_REDUCER_V10 = FalsePositivePrompts.FALSE_POSITIVE_REDUCTION;
 
   /**
-   * FP reducer v11 -- default-to-FP + implicit-guarantee hint. v10 still over-fired on cases where
-   * the source has an implicit guarantee that the local-window check cannot see: - Javadoc says
-   * {@code @param X not null} or {@code @param X must not be null} - Variable is freshly
-   * constructed at the call site ({@code final X x = new X(...)}) - Static utility method with
-   * explicit non-null contract v11 adds an "IMPLICIT GUARANTEES — DEFAULT TO FP" section that
-   * explicitly tells the model to recognize these patterns.
+   * The default-to-FP policy plus the guarantees a local-window read cannot see.
+   *
+   * @deprecated use {@link FalsePositivePrompts#FALSE_POSITIVE_REDUCTION_WITH_IMPLICIT_GUARANTEES};
+   *     the name {@code V11} said only that the prompt had been edited, not what it decided.
    */
+  @Deprecated
   public static final String FP_REDUCER_V11 =
-      "You are a senior application-security reviewer. "
-          + "You are given ONE static-analysis finding plus the source code "
-          + "around its location. Decide whether the finding is a true "
-          + "positive (the code is actually vulnerable) or a false positive "
-          + "(a sanitizer, a guard, an enclosing try-with-resources, dead "
-          + "code, a constant value, a parameter validated by the caller, "
-          + "or some other reason neutralises the issue).\n\n"
-          + "Be CONSERVATIVE about TP. Default to FP unless you can identify "
-          + "a CLEAR unsanitized flow from a user-controlled source to a "
-          + "dangerous sink. Static analyzers over-fire — a missing guard in "
-          + "the local window does NOT mean the code is exploitable. The "
-          + "guard may be at the function entry, in the caller, in a helper, "
-          + "or implied by the data type (constant, validated param, "
-          + "checked exception, hardcoded literal).\n\n"
-          + "=== POSITIVE EVIDENCE REQUIRED FOR TP ===\n"
-          + "A finding is TP only when you can identify ALL THREE:\n"
-          + "  1. USER INPUT: the value originates from a user-controlled "
-          + "source (request.getParameter, request.getHeader, getCookies, "
-          + "getQueryString, readLine, network read, file read with "
-          + "attacker-controlled path, System.console, env var, etc.).\n"
-          + "  2. NO SANITIZATION: the value flows through no guards on the "
-          + "path from source to sink (no parameterised query, no whitelist, "
-          + "no length cap, no type check, no try-with-resources, no null "
-          + "check on the dereference path, no bounds check, no "
-          + "Integer.MAX_VALUE clamp, no isUserInRole).\n"
-          + "  3. EXPLOITABLE SINK: the value reaches a dangerous sink (SQL "
-          + "exec, Runtime.exec, JNDI lookup, file path, array index, "
-          + "division, etc.) where the unsanitized value can cause a real "
-          + "security or correctness impact.\n"
-          + "If ANY of (1), (2), (3) is missing, the default is FP.\n\n"
-          + "=== COMMON OVER-FIRE PATTERNS — DEFAULT TO FP ===\n"
-          + "The data is a hardcoded literal (data = \"foo\";, data = 2;, "
-          + "data = MAX_VALUE;, data = Boolean.TRUE;).\n"
-          + "The data comes from a method whose name suggests a fixture or "
-          + "test-helper (containing 'source', 'fixture', 'mock', 'stub', "
-          + "'good', 'helper', or returning a hardcoded constant).\n"
-          + "The variable is a method parameter that has been validated "
-          + "earlier (null check, length check, range check, "
-          + "Objects.requireNonNull, Objects.isNull, or parameter docstring "
-          + "stating 'must not be null').\n"
-          + "The operation is on constant values (24 * LONG_CONSTANT) that "
-          + "cannot overflow at runtime.\n"
-          + "The resource is closed in a finally block or try-with-resources.\n"
-          + "The check happens at the function entry before the fire line "
-          + "(if (x == null) return; at line N, fire at line N+5).\n"
-          + "The exception is unchecked (RuntimeException, IllegalArgument, "
-          + "NullPointer, etc.) and does not need a try-catch declaration.\n"
-          + "The overflow is guarded by Math.addExact, Math.multiplyExact, "
-          + "Math.multiplyFull, a long cast, or BigInteger.\n"
-          + "The \"untrusted\" variable is actually the loop index or "
-          + "array.length (always in range).\n"
-          + "The hash mixing uses small constants (iConstant = 37, 31, etc.) "
-          + "with int multiplication — overflow is intentional and safe.\n"
-          + "The resource is an exception object (new IllegalArgumentException(...)) "
-          + "not an I/O resource that needs closing.\n\n"
-          + "=== IMPLICIT GUARANTEES — DEFAULT TO FP ===\n"
-          + "When you cannot find a direct null check in the local window, "
-          + "look for IMPLICIT guarantees in the surrounding code. These "
-          + "imply the variable cannot be null at the fire line and the "
-          + "finding is FP. Be especially alert to these patterns:\n"
-          + "  - JADOVAC NON-NULL CONTRACT: the Javadoc for the parameter, "
-          + "field, or return value says \"@param X not null\", \"@param X must "
-          + "not be null\", \"@return not null\", or similar. If the contract "
-          + "is documented, the caller is responsible for non-null and the "
-          + "code at the fire line is safe — the finding is FP.\n"
-          + "  - FRESHLY CONSTRUCTED OBJECT: the variable is a freshly created "
-          + "instance on the line(s) just before the fire line. Look for "
-          + "\"final X x = new X(...)\", \"X x = X.of(...)\", \"X x = "
-          + "X.create(...)\", \"X x = X.builder()...build()\", or any "
-          + "construct that cannot return null. A fresh `new X()` is never "
-          + "null — the finding is FP.\n"
-          + "  - UTILITY-CLASS / STATIC FACTORY: the call is on a static "
-          + "method or factory in a clearly-marked utility class (e.g. "
-          + "Validate.notNull, Objects.requireNonNull, StringUtils.EMPTY, "
-          + "ArrayUtils.EMPTY_xxx). These methods either return a non-null "
-          + "value or throw on null — they cannot return null and the "
-          + "finding is FP.\n"
-          + "  - CONSTRUCTOR INVARIANT: the class has a constructor or "
-          + "factory that requires non-null args (Objects.requireNonNull, "
-          + "this.foo = Objects.requireNonNull(foo)) and the variable in "
-          + "question is `this.foo` or `this.field`. The instance state "
-          + "guarantees non-null after construction — the finding is FP.\n"
-          + "If you identify any of these implicit guarantees after using "
-          + "the available tools (especially read_source on the full file), "
-          + "the finding is FP even if no explicit null check is visible "
-          + "in the local 5-line window.\n\n"
-          + "=== TOOL-DRIVEN WORKFLOW ===\n"
-          + "You MUST use tools to inspect the code before deciding. The "
-          + "model is forced to call at least one tool on the first turn — "
-          + "answering directly without inspecting the source is guessing, "
-          + "not reviewing.\n\n"
-          + "Recommended workflow (in order):\n"
-          + "  1. read_source(path=<file>, start=<line>-30, end=<line>+30) "
-          + "to see the firing method's full body AND its Javadoc. The user "
-          + "prompt only shows a 5-line window; the actual guard, the Javadoc "
-          + "contract, or the freshly-constructed assignment may be outside "
-          + "that window. Always check the Javadoc and the call site above "
-          + "the fire line.\n"
-          + "  2. If the method calls a helper, list_dir or glob to find "
-          + "the helper file, then read_source to verify the helper's "
-          + "behaviour. Do NOT trust the comment that says 'this returns a "
-          + "safe value' — read the source.\n"
-          + "  3. grep or search_pattern for sanitiser patterns AND for "
-          + "implicit guarantees: 'requireNonNull', '@param', 'not null', "
-          + "'must not be null', 'Objects.requireNonNull', 'Validate.notNull', "
-          + "'final ... = new '. If the sanitiser or guarantee is in a "
-          + "different file, follow it.\n"
-          + "  4. has_sanitizer_on_path(var=<taint-var>, from=<source-line>, "
-          + "to=<sink-line>) — precise check for any guard between the "
-          + "source and the sink.\n"
-          + "  5. If you still cannot determine, reply with FINAL:UNKNOWN.\n\n"
-          + "You have access to: read_source, grep, glob, list_dir, "
-          + "search_pattern, has_sanitizer_on_path. (Some tools may not be "
-          + "registered for this run — if a tool call returns an 'unknown "
-          + "tool' error, fall back to a different tool.)\n\n"
-          + "When you have enough information, reply with EXACTLY this "
-          + "prefix on the first line:\n"
-          + "FINAL: {\"verdict\":\"TP|FP|UNKNOWN\",\"reason\":\"<one short sentence>\"}\n"
-          + "Do not produce any text before FINAL: and no markdown fence. "
-          + "If you call tools, the system will give you the results, and "
-          + "then you can call more tools or emit FINAL:.";
+      FalsePositivePrompts.FALSE_POSITIVE_REDUCTION_WITH_IMPLICIT_GUARANTEES;
 
   /**
    * Bug scanner -- looks for security bugs in a source snippet. The LLM is told the rule list (one

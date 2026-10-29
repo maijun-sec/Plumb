@@ -50,6 +50,14 @@ The gates are:
                               still emits the header
     mutate_license             the licence gate is not checking air:
                               every plausible drift is caught
+    check_ai_prompts           the false-positive prompts still carry
+                              their analysis method: the five questions
+                              (source, sink, reachability, conditions,
+                              sanitiser) are present, the two policies
+                              disagree as their names say, and the runner
+                              uses the active prompt
+    mutate_ai_prompts          the prompt gate is not checking air:
+                              every plausible drift is caught
     check_support_matrix_coverage
                               the support matrix covers every measured
                               category, and every row matches its
@@ -234,6 +242,10 @@ GATES = (
      ["python", "scripts/check_license.py"], "check"),
     ("mutate_license",
      ["python", "scripts/mutate_license.py"], "check"),
+    ("check_ai_prompts",
+     ["python", "scripts/check_ai_prompts.py"], "check"),
+    ("mutate_ai_prompts",
+     ["python", "scripts/mutate_ai_prompts.py"], "check"),
     ("check_support_matrix_coverage",
      ["python", "scripts/check_support_matrix_coverage.py"], "check"),
     ("check_javadoc_links",

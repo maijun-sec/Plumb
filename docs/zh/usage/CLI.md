@@ -48,7 +48,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
 | — | `--cache-mode` | `off` \| `read` \| `write` \| `readwrite` | `off` | 磁盘 IR 缓存使用模式 |
 | — | `--cg-strategy` | 见下表 | `global` | Call-graph 构造策略，传给 `plumb-dfa` 引擎 |
 | — | `--max-parallelism` | `<n>` | `nCPU-1`（最小 1） | parse + translate 阶段并发上限 |
-| — | `--ai-dedup` | — | off | FP reducer 开关。把每条 finding 发给 LLM 判 TP/FP/UNKNOWN。verdict 写到 NDJSON 的 `ai_verdict` + `ai_reason` 字段。LLM 端点 + key 走 YAML（`ai.apiKey` / `ai.baseUrl` / `ai.model`） |
+| — | `--ai-dedup` | — | off | 降误报开关。把每条 finding 发给 LLM 判 TP/FP/UNKNOWN。verdict 写到 NDJSON 的 `ai_verdict` + `ai_reason` 字段。LLM 端点 + key 走 YAML（`ai.apiKey` / `ai.baseUrl` / `ai.model`） |
 | — | `--ai-dedup-stats` | — | off | AI dedup 跑完后，往 **stderr** 打 verdict 分布 + 每条规则的 FP 占比 Top 10。stdout 的 NDJSON 不变。配合 `--ai-dedup` 一起用，单独开 no-op。 |
 | — | `--rule` | `<id>` | — | 只跑指定 rule（**可重复**）。覆盖 YAML 的 `checks.*` 标志。接受报告里的 id、去掉 engine/domain 段的 id、规则名、checker 类名、声明的 alias、已退役的旧 id —— 见 [§4.2.1](#421-规则怎么被点名)。匹配不到任何规则的名字会静默产出 0 条 finding |
 | — | `--rule-prompts-dir` | `<path>` | — | 用户自带的 rule prompt `.md` 目录。覆盖打包在 classpath 里的默认 prompt |
@@ -98,7 +98,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
 
 ```yaml
 ai:
-  dedup: false                  # FP reducer（CLI: --ai-dedup）
+  dedup: false                  # 降误报（CLI: --ai-dedup）
   dropOnAiFp: false             # false=保留 FP 标记，true=丢掉
   dedupRules: []                # 空=每条规则都过；填了只审这些
 
@@ -134,11 +134,38 @@ CLI 简写：
 - `--ai-dedup` = `ai.dedup: true`（`SastMain` 只设 `cfg.aiDedup = true`，
   **不存在** `ai.enabled` 这个隐含开关）
 
-**Agent — FP reducer** (`AgentPrompts.FP_REDUCER`)
+**Agent — 降误报** (`FalsePositivePrompts.FALSE_POSITIVE_REDUCTION`)
 
 输入：rule prompt (来自 `DfaChecker.getAiPrompt` / `StyleCheck.getAiPrompt` / `AstChecker.getAiPrompt`) + finding 详情 + 源码窗口 + dataflow trace
 输出：`{"verdict":"TP|FP|UNKNOWN","reason":"..."}`
 用途：给静态 finding 标 TP/FP，把 FP 丢掉或标记
+
+**三个 prompt，靠什么区分。** 它们各自只差一件事：举证责任放在哪一边。名字直接
+写明了策略，所以光看名字就能预判行为。
+
+| Prompt | 什么情况下才算 true positive |
+| --- | --- |
+| `FALSE_POSITIVE_REDUCTION` | 评审对五个分析问题**都给出了正面证据**。默认判 FP。 |
+| `FALSE_POSITIVE_REDUCTION_STRICT` | 看不到明确的消除依据。默认判 TP。 |
+| `FALSE_POSITIVE_REDUCTION_WITH_IMPLICIT_GUARANTEES` | 同第一个，再加上局部窗口看不到的保证（文档化的非空契约、刚构造出来的对象、静态工厂方法、构造器不变式）。 |
+
+**五个分析问题。** prompt 不要一个印象，而是按顺序问这五个；判 true positive
+要求每一个都有肯定答案：
+
+1. **source 真的引入了攻击者可控的数据吗？** 不是每个叫 `getSource` 的方法都是
+   source —— 要读源码。返回常量、写死的默认值、调用方传进来的字面量的方法，
+   都不是 source。读文件的 source，只有在文件路径本身也可控时才算 source。
+2. **sink 真的会导致这类问题吗？** SQL 注入的 sink 是 `execute`，不是喂给它的
+   `PreparedStatement.setString`；命令注入的 sink 是进程启动，不是写环境变量。
+3. **trace 真的可达吗？每一跳都成立吗？** Java 是值传递，交给方法的其实是**副本**：
+   如果被调用方返回常量、改的是调用方的对象、或者直接丢弃，trace 就断在这里，
+   finding 是误报。这是静态 trace 最常见的错法，所以要逐跳核对。
+4. **路径上的条件能被满足吗？** 攻击者满足不了的前置条件会挡住路径；两个互相
+   矛盾的条件让路径不可能成立；而作用在**另一个**变量上的条件，约束不了被污染
+   的那个变量。
+5. **路径上有没有真正有效的清污？** 清污是抹掉攻击者影响力的那一步：换成安全
+   常量、针对**这个 sink 的语境**做编码、白名单检查、边界约束、参数化查询、
+   鉴权检查。不在路径上的、作用在别的变量上的、或者结果被丢弃的，都不算。
 
 **Rule prompt 三级覆盖链**：
 1. `TaintedCheckerBase` 自动从 `TaintRule` 元数据生成（ruleId / cwe / severity / source / sink / domain）
@@ -200,7 +227,7 @@ bin/sast-scan -c conf/default-config.yaml -i src \
 call graph，没有 IR 时自动降级到 raw-text regex，**保证工具链不破**。
 `read_source` 一直只读磁盘。
 
-Re-Act 一次 finding 大致 1-3 轮 LLM 调用（FP reducer max 5 turn / bug
+Re-Act 一次 finding 大致 1-3 轮 LLM 调用（降误报 max 5 turn / bug
 scanner max 8 turn），框架在 4 个条件之一停：
 
 1. LLM 输出 `FINAL: {...}` — happy path
@@ -234,7 +261,7 @@ agent 框架壳的干净定位。
 **真实 LLM E2E**: 设 `PLUMB_AI_E2E=1` env var 跑 `mvn -pl plumb-ai
 test` —— `LlmIntegrationTest` 的 5 个测试会真打 LLM 端点（默认
 `https://api.minimax.chat` / `MiniMax-Text-01`）。这验证 Re-Act 多轮
-tool calling 协议在真实 LLM 上跑通（FP reducer 1-shot + read_source
+tool calling 协议在真实 LLM 上跑通（降误报 1-shot + read_source
 tool call）。Dev inner loop 不需要这个 — 5 个 LLM test 默认
 `@EnabledIfEnvironmentVariable` skip.
 

@@ -160,6 +160,8 @@ It runs, in order:
 | `mutate_ruleauthoring_claims` | The rule-authoring gate is not checking air: every plausible drift is caught |
 | `check_license` | Every Java source carries the licence header, the `LICENSE` file says the same thing the headers say, and the generator still emits the header |
 | `mutate_license` | The licence gate is not checking air: every plausible drift is caught |
+| `check_ai_prompts` | The false-positive prompts still carry their analysis method: the five questions (source, sink, reachability, conditions, sanitiser) are present, the two policies disagree as their names say, and the runner uses the active prompt |
+| `mutate_ai_prompts` | The prompt gate is not checking air: every plausible drift is caught |
 | `check_support_matrix_coverage` | The support matrix covers every measured category, and every row matches its `RESULT.json` |
 | `check_javadoc_links` | Every `{@link}` target in a javadoc names a type that exists |
 | `check_doc_index` | The documentation index lists every document under `docs/`, and every link in it resolves |

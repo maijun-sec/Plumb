@@ -151,6 +151,8 @@ python scripts/check_all.py
 | `mutate_ruleauthoring_claims` | 规则开发门禁不是空检查：每一种可能的漂移都能被抓到 |
 | `check_license` | 每个 Java 源文件都带 license 头，`LICENSE` 文件和头里写的是同一件事，而且生成器仍然会产出这个头 |
 | `mutate_license` | license 门禁不是空检查：每一种可能的漂移都能被抓到 |
+| `check_ai_prompts` | 降误报 prompt 仍然带着它的分析方法：五个问题（source、sink、可达性、条件、清污）都在，两种策略的默认判断和名字承诺的一致，runner 用的确实是生效的那一份 |
+| `mutate_ai_prompts` | prompt 门禁不是空检查：每一种可能的漂移都能被抓到 |
 | `check_support_matrix_coverage` | 支持矩阵覆盖了每个已测量的类别，且每行的数字和 `RESULT.json` 对得上 |
 | `check_javadoc_links` | javadoc 里 `{@link}` 指向的类型真的存在 |
 | `check_doc_index` | 文档索引列全了 `docs/` 下的每一份文档，索引里的链接也都能打开 |

@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 import org.plumb.ai.agent.LlmConnection;
 import org.plumb.ai.prompts.AgentPrompts;
+import org.plumb.ai.prompts.FalsePositivePrompts;
 
 /**
  * Smoke tests for the plumb-ai agent framework (Step 7). The system prompts for the FP reducer and
@@ -45,7 +46,8 @@ class AgentPromptsTest {
 
   @Test
   void fpReducerV10PromptAsksForJsonLine() {
-    // default-to-FP variant
+    // The deprecated name, still resolving. It keeps its ORIGINAL meaning:
+    // the default-to-FP policy that requires positive evidence.
     String s = AgentPrompts.FP_REDUCER_V10;
     assertThat(s).contains("verdict");
     assertThat(s).contains("TP");
@@ -55,15 +57,16 @@ class AgentPromptsTest {
     assertThat(s).contains("POSITIVE EVIDENCE");
     assertThat(s).contains("Default to FP");
     assertThat(s).contains("USER INPUT");
-    assertThat(s).contains("NO SANITIZATION");
+    assertThat(s).contains("NO SANITISATION");
     assertThat(s).contains("EXPLOITABLE SINK");
-    // Should NOT contain v9's "default to TP" instruction
+    // Should NOT contain the opposite default.
     org.assertj.core.api.Assertions.assertThat(s.toLowerCase()).doesNotContain("default to tp");
   }
 
   @Test
   void fpReducerV11PromptAsksForJsonLine() {
-    // default-to-FP + implicit-guarantee hint
+    // The deprecated name, still resolving. It now points at the prompt
+    // with the implicit-guarantee hints.
     String s = AgentPrompts.FP_REDUCER_V11;
     assertThat(s).contains("verdict");
     assertThat(s).contains("TP");
@@ -74,10 +77,128 @@ class AgentPromptsTest {
     assertThat(s).contains("Default to FP");
     // new section
     assertThat(s).contains("IMPLICIT GUARANTEES");
-    assertThat(s).contains("JADOVAC NON-NULL CONTRACT");
+    assertThat(s).contains("DOCUMENTED NON-NULL CONTRACT");
     assertThat(s).contains("FRESHLY CONSTRUCTED OBJECT");
     assertThat(s).contains("UTILITY-CLASS");
     assertThat(s).contains("CONSTRUCTOR INVARIANT");
+  }
+
+  // ─── the named prompts carry the analysis method ──────────────────
+  //
+  // The names describe a DECISION POLICY. A prompt that implements the
+  // policy has to carry the method that produces it, so these tests
+  // assert the method's five questions are present -- not just that the
+  // string exists.
+  //
+  // A test that only asserted "the prompt mentions TP and FP" would pass
+  // for a prompt that says nothing about how to decide, which is the
+  // failure this whole change exists to prevent.
+
+  @Test
+  void theNamedPromptsCarryTheFiveAnalysisQuestions() {
+    for (String s :
+        new String[] {
+          FalsePositivePrompts.FALSE_POSITIVE_REDUCTION,
+          FalsePositivePrompts.FALSE_POSITIVE_REDUCTION_STRICT,
+          FalsePositivePrompts.FALSE_POSITIVE_REDUCTION_WITH_IMPLICIT_GUARANTEES
+        }) {
+      assertThat(s).contains("QUESTION 1");
+      assertThat(s).contains("QUESTION 2");
+      assertThat(s).contains("QUESTION 3");
+      assertThat(s).contains("QUESTION 4");
+      assertThat(s).contains("QUESTION 5");
+    }
+  }
+
+  @Test
+  void theAnalysisMethodCoversSourceSinkReachabilityConditionsAndSanitiser() {
+    String s = FalsePositivePrompts.FALSE_POSITIVE_REDUCTION;
+    // Q1: does the source really introduce tainted data?
+    assertThat(s).contains("DOES THE SOURCE REALLY INTRODUCE");
+    // Q2: does the sink really cause this kind of problem?
+    assertThat(s).contains("DOES THE SINK REALLY CAUSE");
+    // Q3: is the trace reachable -- and is every hop real?
+    assertThat(s).contains("IS THE TRACE ACTUALLY REACHABLE");
+    // Q4: can the conditions on the path be satisfied?
+    assertThat(s).contains("CAN THE CONDITIONS ON THE PATH BE SATISFIED");
+    // Q5: is there an effective sanitiser on the path?
+    assertThat(s).contains("IS THERE AN EFFECTIVE SANITISER ON THE PATH");
+  }
+
+  @Test
+  void theAnalysisMethodExplainsCallByValueSemantics() {
+    // The hop that is most often wrong: a value passed to a function is a
+    // COPY, and the callee may discard it. A trace that assumes otherwise
+    // is the most common false positive.
+    String s = FalsePositivePrompts.FALSE_POSITIVE_REDUCTION;
+    assertThat(s).contains("CALL-BY-VALUE SEMANTICS");
+    assertThat(s).contains("discards it");
+  }
+
+  @Test
+  void theActivePromptRequiresPositiveEvidenceOnAllFiveQuestions() {
+    String s = FalsePositivePrompts.FALSE_POSITIVE_REDUCTION;
+    assertThat(s).contains("POSITIVE EVIDENCE REQUIRED FOR TP");
+    // The five evidence requirements, one per analysis question.
+    assertThat(s).contains("USER INPUT");
+    assertThat(s).contains("NO SANITISATION");
+    assertThat(s).contains("REACHABLE TRACE");
+    assertThat(s).contains("SATISFIABLE CONDITIONS");
+    assertThat(s).contains("EXPLOITABLE SINK");
+    // The default is FP, and the prompt must not tell the model the
+    // opposite.
+    assertThat(s).contains("Default to FP");
+    assertThat(s.toLowerCase()).doesNotContain("default to tp");
+  }
+
+  @Test
+  void theStrictPromptDefaultsTheOtherWay() {
+    // The strict policy is the mirror image: the finding stands unless a
+    // neutralisation is visible. The two differ in ONE thing each, and
+    // that difference has to be visible in the text.
+    String s = FalsePositivePrompts.FALSE_POSITIVE_REDUCTION_STRICT;
+    assertThat(s).contains("default to TP");
+    assertThat(s.toLowerCase()).doesNotContain("default to fp");
+  }
+
+  @Test
+  void theImplicitGuaranteePromptAddsTheFourGuarantees() {
+    String s = FalsePositivePrompts.FALSE_POSITIVE_REDUCTION_WITH_IMPLICIT_GUARANTEES;
+    assertThat(s).contains("IMPLICIT GUARANTEES");
+    assertThat(s).contains("DOCUMENTED NON-NULL CONTRACT");
+    assertThat(s).contains("FRESHLY CONSTRUCTED OBJECT");
+    assertThat(s).contains("UTILITY-CLASS / STATIC FACTORY");
+    assertThat(s).contains("CONSTRUCTOR INVARIANT");
+    // It keeps the active policy too.
+    assertThat(s).contains("POSITIVE EVIDENCE REQUIRED FOR TP");
+  }
+
+  @Test
+  void theDeprecatedNamesStillResolveToTheNamedPrompts() {
+    // The old names are kept so nothing outside the module breaks, but
+    // they must point at the NEW text -- a deprecated alias that pointed
+    // at a stale copy of the prompt would be a second source of truth.
+    //
+    // The mapping preserves each alias's ORIGINAL meaning: V10 was the
+    // default-to-FP policy, and V11 was that policy plus the implicit
+    // guarantees. Renaming must not silently change what they mean.
+    assertThat(AgentPrompts.FP_REDUCER).isEqualTo(FalsePositivePrompts.FALSE_POSITIVE_REDUCTION);
+    assertThat(AgentPrompts.FP_REDUCER_V10)
+        .isEqualTo(FalsePositivePrompts.FALSE_POSITIVE_REDUCTION);
+    assertThat(AgentPrompts.FP_REDUCER_V11)
+        .isEqualTo(FalsePositivePrompts.FALSE_POSITIVE_REDUCTION_WITH_IMPLICIT_GUARANTEES);
+  }
+
+  @Test
+  void theThreePromptsAreDistinct() {
+    // Three names, three behaviours. If two of them were the same text
+    // under two names, the naming would be decoration.
+    assertThat(FalsePositivePrompts.FALSE_POSITIVE_REDUCTION)
+        .isNotEqualTo(FalsePositivePrompts.FALSE_POSITIVE_REDUCTION_STRICT);
+    assertThat(FalsePositivePrompts.FALSE_POSITIVE_REDUCTION)
+        .isNotEqualTo(FalsePositivePrompts.FALSE_POSITIVE_REDUCTION_WITH_IMPLICIT_GUARANTEES);
+    assertThat(FalsePositivePrompts.FALSE_POSITIVE_REDUCTION_STRICT)
+        .isNotEqualTo(FalsePositivePrompts.FALSE_POSITIVE_REDUCTION_WITH_IMPLICIT_GUARANTEES);
   }
 
   @Test

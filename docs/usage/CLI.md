@@ -49,7 +49,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
 | — | `--cache-mode` | `off` \| `read` \| `write` \| `readwrite` | `off` | Usage mode of the on-disk IR cache |
 | — | `--cg-strategy` | See the table below | `global` | Call-graph construction strategy, passed to the `plumb-dfa` engine |
 | — | `--max-parallelism` | `<n>` | `nCPU-1` (minimum 1) | Upper bound of concurrency in the parse + translate phase |
-| — | `--ai-dedup` | — | off | FP reducer switch. Sends every finding to the LLM to judge TP/FP/UNKNOWN. The verdict is written to the `ai_verdict` + `ai_reason` fields of the NDJSON. The LLM endpoint + key are configured in YAML (`ai.apiKey` / `ai.baseUrl` / `ai.model`) |
+| — | `--ai-dedup` | — | off | False-positive reducer switch. Sends every finding to the LLM to judge TP/FP/UNKNOWN. The verdict is written to the `ai_verdict` + `ai_reason` fields of the NDJSON. The LLM endpoint + key are configured in YAML (`ai.apiKey` / `ai.baseUrl` / `ai.model`) |
 | — | `--ai-dedup-stats` | — | off | After the AI dedup run, prints the verdict distribution + the top 10 rules by FP ratio to **stderr**. The NDJSON on stdout is unchanged. Use it together with `--ai-dedup`; on its own it is a no-op. |
 | — | `--rule` | `<id>` | — | Run only the given rule (**repeatable**). Overrides the `checks.*` flags from YAML. Accepts the emitted id, the id without its engine and domain tokens, the rule name, the checker's class name, a declared alias, and a retired id -- see [§4.2.1](#421-how-a-rule-is-named). A name that matches no rule silently produces 0 findings |
 | — | `--rule-prompts-dir` | `<path>` | — | Directory of user-supplied rule prompt `.md` files. Overrides the default prompts packaged on the classpath |
@@ -109,7 +109,7 @@ YAML:
 
 ```yaml
 ai:
-  dedup: false                  # FP reducer (CLI: --ai-dedup)
+  dedup: false                  # false-positive reducer (CLI: --ai-dedup)
   dropOnAiFp: false             # false=keep the FP mark, true=drop it
   dedupRules: []                # empty=every rule is reviewed; filled=only these
 
@@ -148,11 +148,46 @@ CLI shorthand:
 - `--ai-dedup` = `ai.dedup: true` (`SastMain` only sets `cfg.aiDedup = true`;
   there is **no** implicit `ai.enabled` switch)
 
-**Agent -- FP reducer** (`AgentPrompts.FP_REDUCER`)
+**Agent -- false-positive reducer** (`FalsePositivePrompts.FALSE_POSITIVE_REDUCTION`)
 
 Input: rule prompt (from `DfaChecker.getAiPrompt` / `StyleCheck.getAiPrompt` / `AstChecker.getAiPrompt`) + finding details + source window + dataflow trace
 Output: `{"verdict":"TP|FP|UNKNOWN","reason":"..."}`
 Purpose: label static findings as TP/FP, and drop or mark the FPs
+
+**The three prompts, and what decides between them.** They differ in ONE thing each:
+where the burden of proof sits. The names state the policy, so the behaviour is
+predictable from the name alone.
+
+| Prompt | A finding is a true positive only when... |
+| --- | --- |
+| `FALSE_POSITIVE_REDUCTION` | the reviewer produced **positive evidence** for all five analysis questions. The default is FP. |
+| `FALSE_POSITIVE_REDUCTION_STRICT` | no clear neutralisation is visible. The default is TP. |
+| `FALSE_POSITIVE_REDUCTION_WITH_IMPLICIT_GUARANTEES` | the same as the first, plus the guarantees a local-window read cannot see (a documented non-null contract, a freshly constructed object, a static factory, a constructor invariant). |
+
+**The five analysis questions.** The prompt does not ask for an impression; it asks
+for these, in order, and a true-positive verdict needs a positive answer to each:
+
+1. **Does the source really introduce attacker-controlled data?** Not every method
+   named `getSource` is a source -- read it. A method that returns a constant, a
+   hardcoded default, or a value the caller set from a literal is not a source. A
+   source that reads a file is a source only if the path to that file is
+   attacker-controlled.
+2. **Does the sink really cause this kind of problem?** For SQL injection the sink
+   is the `execute`, not the `PreparedStatement.setString` that fed it. For command
+   injection the sink is the process launch, not the environment-variable write.
+3. **Is the trace actually reachable, and is every hop real?** Java passes by
+   value, so a value handed to a method is a **copy**: if the callee returns a
+   constant, mutates the caller's object, or discards it, the trace dead-ends and
+   the finding is a false positive. This is the most common way a static trace is
+   wrong, so it is checked hop by hop.
+4. **Can the conditions on the path be satisfied?** A guard the attacker cannot
+   satisfy blocks the path. Two contradictory conditions make it impossible. A
+   condition on a *different* variable does not constrain the tainted one.
+5. **Is there an effective sanitiser on the path?** A sanitiser is a step that
+   removes the attacker's influence: a replacement by a safe constant, an encoding
+   *for the sink's own context*, a whitelist check, a bound, a parameterised
+   query, an authorisation check. One that is not on the path, or that is applied
+   to a different variable, or whose result is discarded, does not count.
 
 **Three-level rule prompt override chain**:
 1. `TaintedCheckerBase` generates it automatically from the `TaintRule` metadata (ruleId / cwe / severity / source / sink / domain)
@@ -219,7 +254,7 @@ tools use the precise TAC call graph when IR is available and automatically
 fall back to raw-text regex when there is no IR, so **the tool chain never
 breaks**. `read_source` always reads from disk only.
 
-A Re-Act run over one finding is roughly 1-3 LLM calls (FP reducer max 5
+A Re-Act run over one finding is roughly 1-3 LLM calls (false-positive reducer max 5
 turns / bug scanner max 8 turns), and the framework stops on one of 4
 conditions:
 
