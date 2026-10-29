@@ -58,6 +58,17 @@ The gates are:
                               uses the active prompt
     mutate_ai_prompts          the prompt gate is not checking air:
                               every plausible drift is caught
+    check_vendor_attribution   the vendor's name stays in the tool
+                              comparison table and out of the live
+                              source, the configuration, and the prose
+    mutate_vendor_attribution  the attribution gate is not checking air:
+                              it finds a planted violation, and every
+                              plausible weakening is caught
+    check_test_coverage         every test file the build is supposed to
+                              run is named by a surefire allow list, so
+                              a test cannot exist without running
+    mutate_test_coverage        the coverage gate is not checking air:
+                              every plausible drift is caught
     check_support_matrix_coverage
                               the support matrix covers every measured
                               category, and every row matches its
@@ -246,6 +257,14 @@ GATES = (
      ["python", "scripts/check_ai_prompts.py"], "check"),
     ("mutate_ai_prompts",
      ["python", "scripts/mutate_ai_prompts.py"], "check"),
+    ("check_vendor_attribution",
+     ["python", "scripts/check_vendor_attribution.py"], "check"),
+    ("mutate_vendor_attribution",
+     ["python", "scripts/mutate_vendor_attribution.py"], "check"),
+    ("check_test_coverage",
+     ["python", "scripts/check_test_coverage.py"], "check"),
+    ("mutate_test_coverage",
+     ["python", "scripts/mutate_test_coverage.py"], "check"),
     ("check_support_matrix_coverage",
      ["python", "scripts/check_support_matrix_coverage.py"], "check"),
     ("check_javadoc_links",
