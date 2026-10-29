@@ -79,7 +79,7 @@ The complete classification of the DFA checkers is in
 | DFA checker (registered) | 67 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | 12 | `TaintRuleRegistry` |
 | Taint source family / patterns | 5 / 19 | The `taint.sources.*` of `sink-families.yaml` |
-| Taint sink family / patterns | 34 / 348 | The `*.sinks` of `sink-families.yaml` |
+| Taint sink family / patterns | 48 / 358 | The `*.sinks` of `sink-families.yaml` |
 | Input source patterns (framework entry points) | 65 | `InputSourcePatterns` |
 | Fact kinds | 27 | Built-in + YAML |
 

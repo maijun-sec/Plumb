@@ -843,3 +843,211 @@ families:
       - '^java\.nio\.channels\.SocketChannel\.write(/\d+)?'
       - '^java\.nio\.channels\.WritableByteChannel\.write(/\d+)?'
 
+# ===== The library model families =====
+#
+# The families below were migrated from the reference library models.
+# A reference model is a stub source that declares how a library method
+# propagates taint: which argument carries the untrusted data, whether
+# a getter returns tainted data, and which defect class the call belongs
+# to.
+#
+# What was taken is the MEASUREMENT -- the argument index, the
+# propagation direction, the defect class. What was left behind is the
+# modelling apparatus, which was specific to the tool the models were
+# written for: its own primitive names, its own stub classes, its own
+# annotations. The families below are expressed in Plumb's own shape,
+# and they are ordinary sink families -- they load, they match, and the
+# existing gates see them.
+
+  # ----- a predictable seed makes a secure PRNG insecure (CWE-338) -----
+  #
+  # `new SecureRandom(seed)` with an ATTACKER-CONTROLLED seed produces a
+  # generator whose output the attacker can compute. The seed is the
+  # first argument, so the untrusted data is argument 0.
+  #
+  # This is a different defect class from `random.sinks` (CWE-330),
+  # which is about the CHOICE of a weak PRNG. Here the PRNG is strong
+  # and the SEED is the problem, so a family that only covers
+  # `Math.random` and `Random.next*` cannot see it.
+  predictable-seed.sinks:
+    cwe: CWE-338
+    severity: HIGH
+    patterns:
+      - pattern: '^java\.security\.SecureRandom\.<init>(/\d+)?'
+        arg_index: 0
+      - pattern: '^java\.security\.SecureRandom\.setSeed(/\d+)?'
+        arg_index: 0
+
+  # ----- a hardcoded credential in an OAuth registration (CWE-798) -----
+  #
+  # The OAuth1 provider registers a consumer with a SECRET and issues
+  # access TOKENS. A secret or a token that comes from an untrusted
+  # source -- or that is hardcoded -- is a credential defect.
+  #
+  # The argument indexes come from the model:
+  #   registerConsumer(owner, key, secret, attributes)  -> secret is 2
+  #   revokeAccessToken(token, principalName)           -> token is 0
+  #   addAccessToken(token, secret, ...)                -> token is 0,
+  #                                                          secret is 1
+  oauth-credential.sinks:
+    cwe: CWE-798
+    severity: CRITICAL
+    patterns:
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.registerConsumer(/\d+)?'
+        arg_index: 2
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.revokeAccessToken(/\d+)?'
+        arg_index: 0
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.addAccessToken(/\d+)?'
+        arg_index: 0
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.registerConsumer(/\d+)?'
+        arg_index: 2
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.revokeAccessToken(/\d+)?'
+        arg_index: 0
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.addAccessToken(/\d+)?'
+        arg_index: 0
+
+  # ----- a credential handed to a crypto API in the clear (CWE-311) -----
+  #
+  # A secret that reaches a crypto API unencrypted is a credential
+  # defect: the key material leaves the process in a recoverable form.
+  unencrypted-credential.sinks:
+    cwe: CWE-311
+    severity: CRITICAL
+    patterns:
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.registerConsumer(/\d+)?'
+        arg_index: 2
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.addAccessToken(/\d+)?'
+        arg_index: 1
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.registerConsumer(/\d+)?'
+        arg_index: 2
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.addAccessToken(/\d+)?'
+        arg_index: 1
+
+  # ----- a secret given to a KMS request (CWE-311) -----
+  #
+  # The KMS encrypt request carries the plaintext to encrypt. A secret
+  # that reaches it is a credential defect: the plaintext is the thing
+  # the caller believed was being protected.
+  kms-plaintext.sinks:
+    cwe: CWE-311
+    severity: HIGH
+    patterns:
+      - pattern: '^software\.amazon\.awssdk\.services\.kms\.model\.EncryptRequest\.setPlaintext(/\d+)?'
+        arg_index: 0
+      - pattern: '^software\.amazon\.awssdk\.services\.kms\.model\.EncryptRequest\.setPlaintextAsBytes(/\d+)?'
+        arg_index: 0
+
+  # ----- a database credential in a connection string (CWE-798) -----
+  #
+  # `DriverManager.getConnection(url, user, password)` takes the
+  # password as its THIRD argument. The user is the second.
+  db-credential.sinks:
+    cwe: CWE-798
+    severity: CRITICAL
+    patterns:
+      - pattern: '^java\.sql\.DriverManager\.getConnection(/\d+)?'
+        arg_index: 2
+      - pattern: '^java\.sql\.Driver\.connect(/\d+)?'
+        arg_index: 2
+
+  # ----- an IP address from an untrusted source (CWE-350) -----
+  #
+  # An IP address that comes from the network is used for access
+  # control, so an attacker who controls it controls the decision.
+  ip-address.sources:
+    cwe: null
+    severity: null
+    patterns:
+      - '^java\.net\.URL\.getHost(/\d+)?'
+      - '^java\.net\.URL\.getAuthority(/\d+)?'
+      - '^java\.net\.InetAddress\.getHostAddress(/\d+)?'
+      - '^java\.net\.InetSocketAddress\.getAddress(/\d+)?'
+
+  # ----- a DNS answer from an untrusted source (CWE-350) -----
+  dns.sources:
+    cwe: null
+    severity: null
+    patterns:
+      - '^java\.net\.InetAddress\.getByName(/\d+)?'
+      - '^java\.net\.InetAddress\.getAllByName(/\d+)?'
+
+  # ----- a principal name from an untrusted source (CWE-807) -----
+  principal.sources:
+    cwe: null
+    severity: null
+    patterns:
+      - '^java\.security\.Principal\.getName(/\d+)?'
+      - '^javax\.servlet\.request\.getUserPrincipal(/\d+)?'
+
+  # ----- an RPC context attribute from an untrusted source (CWE-807) -----
+  #
+  # The RPC context carries the caller's attributes. An attribute that
+  # arrives over the wire is untrusted, and the framework's own
+  # invoker methods return them.
+  rpc.sources:
+    cwe: null
+    severity: null
+    patterns:
+      - '^org\.apache\.dubbo\.rpc\.RpcContext\.getAttachment(/\d+)?'
+      - '^org\.apache\.dubbo\.rpc\.RpcContext\.getAttachments(/\d+)?'
+
+  # ----- an OS login name from an untrusted source (CWE-807) -----
+  login.sources:
+    cwe: null
+    severity: null
+    patterns:
+      - pattern: '^java\.lang\.System\.getProperty(/\d+)?'
+        arg_index: 0
+
+  # ----- a cookie written to a response (CWE-113) -----
+  #
+  # A cookie whose value comes from the request is a cookie-fixation
+  # and a response-splitting vector. The value is the second argument
+  # of `addCookie`; `setHeader` takes it as the second.
+  cookie-write.sinks:
+    cwe: CWE-113
+    severity: MEDIUM
+    patterns:
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.addCookie(/\d+)?'
+        arg_index: 1
+      - pattern: '^play\.mvc\.Http\.response\.setCookie(/\d+)?'
+        arg_index: 0
+      - pattern: '^play\.mvc\.Http\.response\.cookie(/\d+)?'
+        arg_index: 0
+
+  # ----- an HTTP response header set from an untrusted value (CWE-113) -----
+  http-header-write.sinks:
+    cwe: CWE-113
+    severity: MEDIUM
+    patterns:
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.setHeader(/\d+)?'
+        arg_index: 1
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.addHeader(/\d+)?'
+        arg_index: 1
+      - pattern: '^play\.mvc\.Http\.response\.setHeader(/\d+)?'
+        arg_index: 1
+
+  # ----- a redirect to an untrusted URL (CWE-601) -----
+  #
+  # The OAuth1 provider redirects to a callback URL. A callback that
+  # comes from the request sends the user off to a site the attacker
+  # chose.
+  redirect.sinks:
+    cwe: CWE-601
+    severity: MEDIUM
+    patterns:
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.handleCallback(/\d+)?'
+        arg_index: 0
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.handleCallback(/\d+)?'
+        arg_index: 0
+
+  # ----- a sensitive value into a log (CWE-532) -----
+  #
+  # The connection URL carries the password, and it is logged. The URL
+  # is the first argument.
+  sensitive-log.sinks:
+    cwe: CWE-532
+    severity: MEDIUM
+    patterns:
+      - pattern: '^java\.sql\.DriverManager\.getConnection(/\d+)?'
+        arg_index: 0

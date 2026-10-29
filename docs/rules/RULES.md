@@ -23,7 +23,7 @@ them.
 | Category | Module | Count | How it is implemented | Stage |
 | --- | --- | ---: | --- | --- |
 | Taint source patterns | plumb-dfa | **19** | The 5 `taint.sources.*` families of `sink-families.yaml` | taint |
-| Taint sink patterns | plumb-dfa | **348** | The 34 `*.sinks` families of `sink-families.yaml` | taint |
+| Taint sink patterns | plumb-dfa | **358** | The 48 `*.sinks` families of `sink-families.yaml` | taint |
 | DFA checker (declared in YAML) | plumb-dfa | **16** (14 enabled / 2 disabled) | `checkers.yaml` | dfa |
 | DFA checker (actually registered) | plumb-main | **67** | `ScanRunner.buildDfaCheckers()` | dfa |
 | Style / naming / design | plumb-style | **597** | JavaParser AST visitor | style |

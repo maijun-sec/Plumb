@@ -20,7 +20,7 @@
 | 类别 | 模块 | 数量 | 实现方式 | 阶段 |
 | --- | --- | ---: | --- | --- |
 | Taint source 模式 | plumb-dfa | **19** | `sink-families.yaml` 的 5 个 `taint.sources.*` family | taint |
-| Taint sink 模式 | plumb-dfa | **348** | `sink-families.yaml` 的 34 个 `*.sinks` family | taint |
+| Taint sink 模式 | plumb-dfa | **358** | `sink-families.yaml` 的 48 个 `*.sinks` family | taint |
 | DFA checker（YAML 声明） | plumb-dfa | **16**（14 启用 / 2 禁用） | `checkers.yaml` | dfa |
 | DFA checker（实际注册） | plumb-main | **67** | `ScanRunner.buildDfaCheckers()` | dfa |
 | Style / 命名 / 设计 | plumb-style | **597** | JavaParser AST visitor | style |

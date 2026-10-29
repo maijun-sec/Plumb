@@ -231,3 +231,51 @@ families:
       - '^((?:[\w.]+\.)*)String\.concat(/\d+)?'
       - '^((?:[\w.]+\.)*)String\.valueOf(/\d+)?'
       - '^((?:[\w.]+\.)*)String\.intern(/\d+)?'
+  # ----- the map's own getters carry the map's taint -----
+  #
+  # A map whose contents are tainted returns tainted data. Which
+  # method carries WHICH part of the map is the knowledge the reference
+  # model records:
+  #
+  #   get(key)          -> the value for that key
+  #   getOrDefault(...) -> the value, or the default
+  #   values()          -> every VALUE
+  #   keySet()          -> every KEY
+  #   entrySet()        -> every KEY-VALUE PAIR
+  #   forEach(...)      -> iterates the entries
+  #
+  # The distinction between values() and keySet() is the point: a rule
+  # that asks "does the taint reach the sink" cares whether the tainted
+  # thing is the key or the value, because a key and a value are used
+  # in different places.
+  map-getters:
+    enabled: true
+    patterns:
+      - '^((?:[\w.]+\.)*)Map\.get(/\d+)?'
+      - '^((?:[\w.]+\.)*)Map\.getOrDefault(/\d+)?'
+      - '^((?:[\w.]+\.)*)Map\.values(/\d+)?'
+      - '^((?:[\w.]+\.)*)Map\.keySet(/\d+)?'
+      - '^((?:[\w.]+\.)*)Map\.entrySet(/\d+)?'
+      - '^((?:[\w.]+\.)*)Map\.compute(/\d+)?'
+      - '^((?:[\w.]+\.)*)Map\.computeIfAbsent(/\d+)?'
+      - '^((?:[\w.]+\.)*)Map\.computeIfPresent(/\d+)?'
+      - '^((?:[\w.]+\.)*)Map\.merge(/\d+)?'
+      - '^((?:[\w.]+\.)*)Map\.putIfAbsent(/\d+)?'
+      - '^((?:[\w.]+\.)*)Map\.replace(/\d+)?'
+      - '^((?:[\w.]+\.)*)Map\.remove(/\d+)?'
+
+  # ----- the collection's own getters carry the collection's taint -----
+  #
+  # The same shape as the map: a collection whose contents are tainted
+  # returns tainted elements. The reference model records that
+  # `ListIterator.next` returns the element, and that the iterator
+  # itself is what carries the taint.
+  collection-element-getters:
+    enabled: true
+    patterns:
+      - '^((?:[\w.]+\.)*)ListIterator\.next(/\d+)?'
+      - '^((?:[\w.]+\.)*)Iterator\.next(/\d+)?'
+      - '^((?:[\w.]+\.)*)Collection\.iterator(/\d+)?'
+      - '^((?:[\w.]+\.)*)List\.get(/\d+)?'
+      - '^((?:[\w.]+\.)*)List\.remove(/\d+)?'
+      - '^((?:[\w.]+\.)*)Set\.iterator(/\d+)?'
