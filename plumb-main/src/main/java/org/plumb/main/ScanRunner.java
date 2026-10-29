@@ -440,6 +440,15 @@ public final class ScanRunner {
             .append(" at line ")
             .append(f.line())
             .append('\n')
+            .append("File: ")
+            // The model has to be told WHICH FILE. Without it the model
+            // guesses a path, the read_source call fails, and the finding
+            // is judged from the source window alone -- which is how a
+            // guess about reachability turns into a false verdict. The
+            // path is relative to the analysis root, which is the same
+            // root the tools are given.
+            .append(f.file() == null ? "(unknown)" : f.file())
+            .append('\n')
             .append("Message: ")
             .append(f.message())
             .append('\n')

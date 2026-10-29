@@ -106,6 +106,7 @@ ai:
 
   provider: openai              # openai | anthropic | openai_compatible
   baseUrl: https://api.openai.com
+  chatPath: /v1/chat/completions # 拼在 baseUrl 后面的路径
   apiKey: ${OPENAI_API_KEY}     # ${ENV_VAR} 语法
   model: gpt-4o-mini
   header:                       # 可选的额外请求头
@@ -128,6 +129,12 @@ ai:
 
 两者都有对应的 CLI 参数：`--ai-max-turns <n>` 和 `--ai-context-lines <n>`。
 CLI 的值优先于 YAML。
+
+`ai.chatPath` 是拼在 `ai.baseUrl` 后面的路径，用来发 chat-completion 请求。
+默认是 `/v1/chat/completions`，绝大多数 OpenAI 兼容的 provider 都是这个 ——
+但"OpenAI 兼容"说的是请求的**schema**，不是 URL。路径里没有 `v1` 这一段的
+provider 会返回 404，而 provider 把 404 报成传输失败，于是这条 finding 被记成
+UNKNOWN，整场分析看起来就像"跑过了，什么都没发现"。
 
 `ai.dedupRules` 里可以写规则的**两种拼法**，两种都认：
 

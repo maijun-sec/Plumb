@@ -35,17 +35,38 @@ from pathlib import Path
 
 
 def load(path):
-    """The findings in an NDJSON file."""
+    """The findings in an NDJSON file.
+
+    The encoding is detected, not assumed. A file written by a PowerShell
+    redirect is UTF-16, and reading it as UTF-8 raises -- but a reader that
+    swallowed the error would report ZERO findings and score every case as a
+    miss, which reads as "the rules stopped working" rather than "the file
+    was not read".
+    """
     out = []
-    with open(path, encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
+    raw = Path(path).read_bytes()
+    text = None
+    for encoding in ("utf-8-sig", "utf-16", "utf-8"):
+        try:
+            text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        raise SystemExit("could not decode %s" % path)
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    if not out:
+        raise SystemExit(
+            "no findings read from %s -- a zero-finding measurement scores every case as a "
+            "miss, so this must not be silent" % path
+        )
     return out
 
 

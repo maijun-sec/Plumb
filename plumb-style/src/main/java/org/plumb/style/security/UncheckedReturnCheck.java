@@ -390,7 +390,20 @@ public final class UncheckedReturnCheck implements AstChecker {
     return read;
   }
 
-  /** Report the discarded return value. */
+  /**
+   * Report the discarded return value.
+   *
+   * <p>The message names the CALLEE'S RETURN TYPE and its DECLARING TYPE, because those are the
+   * facts the rule already resolved and the reader cannot see. The rule fires because the resolved
+   * return type is not {@code void}, so "the value is discarded" means nothing without knowing what
+   * the value is: {@code deleteIfExists()} returns a boolean and {@code commit()} returns void, and
+   * only one of them can be "discarded".
+   *
+   * <p>The AI false-positive reducer reads the message. Without the return type it has to guess
+   * what {@code add()} or {@code deleteIfExists()} returns -- and it guesses wrong often enough to
+   * dismiss real findings as "the method is void" and to call a finding about a different method
+   * "insufficient information about add()". The fact was already known; it was simply not reported.
+   */
   private void report(MethodCallExpr call, StyleContext ctx) {
     int line = call.getBegin().map(p -> p.line).orElse(-1);
     int col = call.getBegin().map(p -> p.column).orElse(-1);
@@ -401,8 +414,31 @@ public final class UncheckedReturnCheck implements AstChecker {
         "Return value of "
             + call.getNameAsString()
             + "() is discarded; the value indicates "
-            + "success/failure and must be checked (CWE-252)",
+            + "success/failure and must be checked (CWE-252)"
+            + returnTypeSuffix(call),
         RuleDef.Severity.MEDIUM,
         "unchecked-return: " + call.getNameAsString() + "()");
+  }
+
+  /**
+   * The suffix that names the resolved return type and the declaring type.
+   *
+   * <p>Empty when the call cannot be resolved -- an unresolved call is reported without the suffix
+   * rather than with a wrong one.
+   */
+  private String returnTypeSuffix(MethodCallExpr call) {
+    try {
+      ResolvedMethodDeclaration decl = call.resolve();
+      ResolvedType returnType = decl.getReturnType();
+      if (returnType == null) {
+        return "";
+      }
+      String declaring = decl.declaringType().getQualifiedName();
+      return " [returns " + returnType.describe() + " from " + declaring + "]";
+    } catch (RuntimeException ex) {
+      // Unresolvable: the suffix is omitted. A wrong suffix would be worse
+      // than no suffix, because the reader would believe it.
+      return "";
+    }
   }
 }

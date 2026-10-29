@@ -193,7 +193,9 @@ public final class OpenAiCompatibleLlmProvider implements LlmProvider {
                     conn.baseUrl()
                         + (conn.provider() == LlmConnection.Provider.ANTHROPIC
                             ? "/v1/messages"
-                            : "/v1/chat/completions")))
+                            : (conn.chatPath() == null || conn.chatPath().isBlank()
+                                ? LlmConnection.DEFAULT_CHAT_PATH
+                                : conn.chatPath()))))
             .timeout(Duration.ofSeconds(conn.timeoutSeconds()))
             .header("Content-Type", "application/json");
     if (!conn.apiKey().isEmpty()) {

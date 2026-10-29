@@ -117,6 +117,7 @@ ai:
 
   provider: openai              # openai | anthropic | openai_compatible
   baseUrl: https://api.openai.com
+  chatPath: /v1/chat/completions # the path appended to baseUrl
   apiKey: ${OPENAI_API_KEY}     # ${ENV_VAR} syntax
   model: gpt-4o-mini
   header:                       # optional extra request headers
@@ -141,6 +142,14 @@ the view itself with `read_source`.
 
 Both have CLI equivalents: `--ai-max-turns <n>` and `--ai-context-lines <n>`.
 The CLI value wins over the YAML.
+
+`ai.chatPath` is the path appended to `ai.baseUrl` for the chat-completion
+call. It defaults to `/v1/chat/completions`, which is what most
+OpenAI-compatible providers use — but "OpenAI-compatible" describes the
+request SCHEMA, not the URL. A provider whose endpoint has no `v1` segment
+returns a 404, and the provider reports that as a transport failure, so
+the finding is recorded as UNKNOWN and the analysis looks like it ran and
+found nothing.
 
 `ai.dedupRules` accepts **two spellings** of a rule, both are recognized:
 

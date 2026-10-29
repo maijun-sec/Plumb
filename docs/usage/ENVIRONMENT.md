@@ -7,10 +7,10 @@ there are exactly two real reads, both in
 `plumb-main/.../ConfigLoader.java`:
 
 ```java
-String apiKey = System.getenv("OPENAI_API_KEY");        // :487  default value
+String apiKey = System.getenv("OPENAI_API_KEY");        // :488  default value
 ...
 String envName = s.substring(2, s.length() - 1);
-apiKey = System.getenv(envName);                          // :525  "${VAR}" expansion
+apiKey = System.getenv(envName);                          // :527  "${VAR}" expansion
 ```
 
 Every conclusion in this document was checked against the code.
@@ -23,8 +23,8 @@ Every conclusion in this document was checked against the code.
 
 | Variable | Read at | Purpose |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | `ConfigLoader.java:487` | Default for `ai.apiKey` when the YAML does not set it |
-| Any `${VARNAME}` in the YAML | `ConfigLoader.java:525` | Explicit reference, e.g. `ai.apiKey: ${MY_KEY}` |
+| `OPENAI_API_KEY` | `ConfigLoader.java:488` | Default for `ai.apiKey` when the YAML does not set it |
+| Any `${VARNAME}` in the YAML | `ConfigLoader.java:527` | Explicit reference, e.g. `ai.apiKey: ${MY_KEY}` |
 
 Those two are the only ones. `ai.apiKey: ${MINIMAX_API_KEY}` works through
 the second line -- the engine does not know the name "MiniMax"; it sees
@@ -87,7 +87,7 @@ exactly three values:
 | Value | Explanation |
 | --- | --- |
 | `OPENAI` | OpenAI's own `/v1/chat/completions` |
-| `OPENAI_COMPATIBLE` | **Identical wire protocol**. Use this for Azure / Ollama / LocalAI / vLLM / MiniMax. `openai` is an alias; both take the same code path (`ConfigLoader.java:483-485`) |
+| `OPENAI_COMPATIBLE` | **Identical wire protocol**. Use this for Azure / Ollama / LocalAI / vLLM / MiniMax. `openai` is an alias; both take the same code path (`ConfigLoader.java:484-486`) |
 | `ANTHROPIC` | Anthropic's native `/v1/messages`; single prompt only; tool-calling throws `UnsupportedOperationException` |
 
 ### 2.3 Pointing at MiniMax
@@ -103,8 +103,8 @@ ai:
 ### 2.4 Where the API key comes from (highest priority first)
 
 1. A literal `ai.apiKey: sk-...` in the YAML -- **not recommended**, it ends up in version control
-2. An environment variable expanded from `ai.apiKey: ${SOME_VAR}` (`ConfigLoader.java:523-504`)
-3. When the YAML does not set `ai.apiKey` at all, `ConfigLoader.java:487` falls back to `OPENAI_API_KEY`
+2. An environment variable expanded from `ai.apiKey: ${SOME_VAR}` (`ConfigLoader.java:527-504`)
+3. When the YAML does not set `ai.apiKey` at all, `ConfigLoader.java:488` falls back to `OPENAI_API_KEY`
 4. Neither -> the AI connection is unavailable; without `--ai-dedup` this does not affect static analysis at all
 
 ---

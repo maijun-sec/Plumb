@@ -484,6 +484,7 @@ public final class ConfigLoader {
       org.plumb.ai.agent.LlmConnection.Provider provider =
           org.plumb.ai.agent.LlmConnection.Provider.OPENAI_COMPATIBLE;
       String baseUrl = "https://api.openai.com";
+      String chatPath = org.plumb.ai.agent.LlmConnection.DEFAULT_CHAT_PATH;
       String apiKey = System.getenv("OPENAI_API_KEY"); // default from env
       String model = "gpt-4o-mini";
       String extraHeader = "";
@@ -517,6 +518,7 @@ public final class ConfigLoader {
             }
           }
           case "baseUrl" -> baseUrl = String.valueOf(v);
+          case "chatPath" -> chatPath = String.valueOf(v);
           case "apiKey" -> {
             // Allow "${ENV_VAR}" syntax to read from environment.
             String s = String.valueOf(v);
@@ -548,7 +550,7 @@ public final class ConfigLoader {
       }
       cfg.aiConn =
           new org.plumb.ai.agent.LlmConnection(
-              provider, baseUrl, apiKey, model, timeoutSeconds, extraHeader, null);
+              provider, baseUrl, apiKey, model, timeoutSeconds, extraHeader, null, chatPath);
     }
 
     // Step 7 — the `aggressiveness` YAML key is

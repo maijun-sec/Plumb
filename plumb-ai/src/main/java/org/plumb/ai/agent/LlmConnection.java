@@ -66,7 +66,46 @@ public record LlmConnection(
     String model,
     int timeoutSeconds,
     String extraHeader,
-    Integer maxTokens) {
+    Integer maxTokens,
+    String chatPath) {
+
+  /**
+   * The path appended to the base URL for an OpenAI-compatible chat completion.
+   *
+   * <p><b>Why it is configurable.</b> "OpenAI-compatible" describes the request and response
+   * SCHEMA, not the URL. Most providers use {@code /v1/chat/completions}, but not all: Zhipu's
+   * native endpoint is {@code /api/paas/v4/chat/completions}, with no {@code v1} segment, and a
+   * base URL that does not match its path returns a 404 -- which the provider reports as a
+   * transport failure, so the finding is recorded as UNKNOWN and the analysis looks like it ran and
+   * found nothing.
+   *
+   * <p>So the path is a field, and the default is the path most providers use.
+   */
+  public static final String DEFAULT_CHAT_PATH = "/v1/chat/completions";
+
+  /**
+   * The 7-argument constructor, kept so existing callers keep compiling.
+   *
+   * <p>It is the same record with the default chat path.
+   */
+  public LlmConnection(
+      Provider provider,
+      String baseUrl,
+      String apiKey,
+      String model,
+      int timeoutSeconds,
+      String extraHeader,
+      Integer maxTokens) {
+    this(
+        provider,
+        baseUrl,
+        apiKey,
+        model,
+        timeoutSeconds,
+        extraHeader,
+        maxTokens,
+        DEFAULT_CHAT_PATH);
+  }
 
   /**
    * The output-token cap we apply when the model isn't in the per-model lookup table. 200K matches
