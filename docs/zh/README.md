@@ -24,6 +24,7 @@
 | [`DFA-AUGMENTATION-DESIGN.md`](../tech/DFA-AUGMENTATION-DESIGN.md) | 为什么 AST 不够用，以及 DFA 增强技术 | [中文](tech/DFA-AUGMENTATION-DESIGN.md) |
 | [`STYLE-RULES.md`](../tech/STYLE-RULES.md) | 风格类实现：`AstDispatcher`、`AstCheckerRegistry`、典型 checker 模式 | [中文](tech/STYLE-RULES.md) |
 | [`KOTLIN-DSL.md`](../tech/KOTLIN-DSL.md) | **Kotlin DSL AST 规则引擎**：规则文件格式、匹配器语言、编译/求值模型、`--dsl-rules` 用法 | [中文](tech/KOTLIN-DSL.md) |
+| [`LANGUAGE-RULES.md`](../tech/LANGUAGE-RULES.md) | 语言从哪里进入污点引擎：规则配置的实测调查，以及按语言布局需要改动什么 | [中文](tech/LANGUAGE-RULES.md) |
 | [`MODULE-MERGE.md`](../tech/MODULE-MERGE.md) | 模块结构与依赖边界 | [中文](tech/MODULE-MERGE.md) |
 | [`CACHE.md`](../tech/CACHE.md) | 磁盘 IR 缓存：`--output-dir` 机制、文件格式、key、兼容性 | [中文](tech/CACHE.md) |
 
