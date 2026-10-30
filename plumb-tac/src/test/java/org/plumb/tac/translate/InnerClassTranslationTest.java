@@ -61,4 +61,83 @@ class InnerClassTranslationTest {
     var program = new TacTranslator(ps).translate();
     assertThat(program).isNotNull();
   }
+
+  // ─── the enclosing class of a nested type ──────────────────
+
+  /**
+   * A nested type's functions must name their enclosing class, or the DFA engine cannot resolve the
+   * file they live in.
+   *
+   * <p>THE DEFECT THIS PINS. The translator passed {@code null} as the enclosing class of every
+   * nested type's callables, on the reasoning that the nested method's NAME already encodes the
+   * outer scope. That reasoning was right that the lookup would miss, and wrong that missing it was
+   * harmless: with no enclosing class the engine's per-class source-path map had no entry for the
+   * nested type, so the reporter could not fill in the finding's file and the finding was emitted
+   * with {@code filePath="unknown"}.
+   *
+   * <p>A finding that does not know its file is a finding nobody can act on: the Juliet harness
+   * matches a case to a finding BY FILE, so such a finding stopped matching its case and the case
+   * was scored as a miss.
+   */
+  @Test
+  void aNestedTypeNamesItsEnclosingClass() {
+    String src =
+        "class Outer { "
+            + "static class Inner { "
+            + "  int compute(int x) { return x + 1; } "
+            + "} "
+            + "}";
+    ParsedSource ps = new JavaSourceParser().parseFromString(Path.of("I.java"), src);
+    var program = new TacTranslator(ps).translate();
+
+    var inner =
+        program.functions().stream()
+            .filter(f -> f.name() != null && f.name().contains("Inner"))
+            .findFirst();
+
+    assertThat(inner)
+        .as("the nested class's method must be translated\n" + TacPrinter.dump(program))
+        .isPresent();
+    assertThat(inner.get().enclosingClass())
+        .as("the nested class's method must name the class that declares it")
+        .isEqualTo("Outer$Inner");
+  }
+
+  /** A top-level type's enclosing class is unchanged: its own short name. */
+  @Test
+  void aTopLevelTypeNamesItsEnclosingClass() {
+    String src = "class Top { int compute(int x) { return x + 1; } }";
+    ParsedSource ps = new JavaSourceParser().parseFromString(Path.of("I.java"), src);
+    var program = new TacTranslator(ps).translate();
+
+    var top = program.functions().stream().filter(f -> "compute".equals(f.name())).findFirst();
+
+    assertThat(top)
+        .as("the top-level method must be translated\n" + TacPrinter.dump(program))
+        .isPresent();
+    assertThat(top.get().enclosingClass()).isEqualTo("Top");
+  }
+
+  /** A doubly-nested type names the full chain, so two same-named inner classes stay distinct. */
+  @Test
+  void aDoublyNestedTypeNamesTheWholeChain() {
+    String src =
+        "class Outer { "
+            + "static class Middle { "
+            + "  static class Inner { int compute(int x) { return x + 1; } } "
+            + "} "
+            + "}";
+    ParsedSource ps = new JavaSourceParser().parseFromString(Path.of("I.java"), src);
+    var program = new TacTranslator(ps).translate();
+
+    var inner =
+        program.functions().stream()
+            .filter(f -> f.name() != null && f.name().endsWith("compute"))
+            .findFirst();
+
+    assertThat(inner)
+        .as("the innermost method must be translated\n" + TacPrinter.dump(program))
+        .isPresent();
+    assertThat(inner.get().enclosingClass()).isEqualTo("Outer$Middle$Inner");
+  }
 }

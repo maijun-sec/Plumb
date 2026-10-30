@@ -134,13 +134,19 @@ public final class TacTranslator {
   }
 
   private void translateType(TypeDeclaration<?> td) {
-    translateTypeWithPrefix(td, "");
+    translateTypeWithPrefix(td, "", "");
   }
 
   /**
    * Translate a (possibly nested) type declaration. The {@code prefix} qualifies inner-class method
    * names with the enclosing-class hierarchy (using {@code $} as the separator, matching the
    * JVM-style inner-class naming). For top-level types the prefix is empty.
+   *
+   * <p>The {@code outerChain} is the JVM-style qualified name of the type that CONTAINS this one:
+   * {@code ""} for a top-level type, {@code "Outer"} for a type nested in {@code Outer}, {@code
+   * "Outer$Middle"} for a type nested in {@code Outer.Middle}. It is what the nested type's
+   * callables record as their enclosing class, so the DFA engine can resolve the file the nested
+   * type lives in.
    */
   /**
    * The qualified name of the type that declares a callable.
@@ -156,7 +162,7 @@ public final class TacTranslator {
     return prefix;
   }
 
-  private void translateTypeWithPrefix(TypeDeclaration<?> td, String prefix) {
+  private void translateTypeWithPrefix(TypeDeclaration<?> td, String prefix, String outerChain) {
     // Capture class-level annotations (e.g.
     // {@code @RestController}, {@code @Configuration}). These
     // are propagated to every function emitted from this class
@@ -178,6 +184,36 @@ public final class TacTranslator {
     // simple name and arity), so it is recorded for a future
     // hierarchy-aware resolver rather than used today.
     String classShortName = td.getNameAsString();
+    // The ENCLOSING CLASS of every callable this type declares.
+    //
+    // For a top-level type this is the class's own short name. For a
+    // NESTED type it is the qualified {@code Outer$Inner} name --
+    // the same JVM-style naming the translator already uses to
+    // qualify the nested type's method names.
+    //
+    // WHY THE NESTED CASE MATTERS. The DFA engine resolves a
+    // finding's source file by looking the enclosing class up in
+    // the per-class source-path map, and that map is built from
+    // the SAME `enclosingClass()` value (see ScanRunner's
+    // mergedSourcePathMap and DfaEngine's registerSourcePaths).
+    //
+    // The nested case used to pass `null` here, on the reasoning
+    // that "inner classes' method names already encode the outer
+    // scope, so the enclosingClass short name would not match the
+    // outer-class's lookup anyway". That reasoning was right about
+    // the lookup MISSING and wrong about it being HARMLESS: with a
+    // null enclosing class the map had no entry for the nested
+    // type, so the reporter could not resolve the file and the
+    // finding was emitted with filePath="unknown".
+    //
+    // The consequence was a whole finding losing its location: the
+    // Juliet harness matches a case to a finding by FILE, so a
+    // finding in a nested class stopped matching its case and was
+    // scored as a miss. The nested class's file path is knowable --
+    // the nested class lives in the file of the type that declares
+    // it -- so the qualified name is the key that finds it.
+    String enclosingClassName =
+        outerChain.isEmpty() ? classShortName : outerChain + "$" + classShortName;
     if (prefix.isEmpty()
         && td instanceof com.github.javaparser.ast.body.ClassOrInterfaceDeclaration cid) {
       // Only register the parent at the top-level class
@@ -322,11 +358,11 @@ public final class TacTranslator {
                   new TacBuilder.FunctionSpec(qualifiedCtor, qualifiedCtor + "()", TacType.VOID),
                   List.of());
           // Synthetic instance <init> belongs to
-          // this class. Inner-class inits use the
-          // qualified name (which already encodes the
-          // outer-class scope), so we only set the
-          // short class for top-level types.
-          if (prefix.isEmpty()) syntheticInit.setEnclosingClass(classShortName);
+          // this class. The enclosing class is the
+          // qualified name for a nested type, so the
+          // source-path lookup can find the file the
+          // nested class lives in.
+          syntheticInit.setEnclosingClass(enclosingClassName);
         }
         syntheticInit.addClassAnnotations(classAnns);
         // Field-level annotations on instance fields
@@ -357,7 +393,7 @@ public final class TacTranslator {
             md.getBody().orElse(null),
             classAnns,
             extractAnnotationNames(md.getAnnotations()),
-            prefix.isEmpty() ? classShortName : null,
+            enclosingClassName,
             qualifiedDeclaringType(prefix, classShortName));
       } else if (bd instanceof ConstructorDeclaration cd) {
         String qualifiedCtor = prefix.isEmpty() ? "<init>" : prefix + ".<init>";
@@ -369,7 +405,7 @@ public final class TacTranslator {
             cd.getBody(),
             classAnns,
             List.of(),
-            prefix.isEmpty() ? classShortName : null,
+            enclosingClassName,
             qualifiedDeclaringType(prefix, classShortName));
       } else if (bd instanceof InitializerDeclaration id) {
         String fnName = id.isStatic() ? "<clinit>" : "<init>";
@@ -377,18 +413,23 @@ public final class TacTranslator {
             new TacBuilder.FunctionSpec(fnName, fnName + "()", TacType.VOID);
         TacBuilder b = newBuilder(spec, List.of());
         b.addClassAnnotations(classAnns);
-        if (prefix.isEmpty()) b.setEnclosingClass(classShortName);
+        b.setEnclosingClass(enclosingClassName);
         BlockStmt body = id.getBody();
         if (body != null) stmtTranslator.translateBlock(body, b);
         finishFunction(b, nodeLine(id));
       } else if (bd instanceof com.github.javaparser.ast.body.ClassOrInterfaceDeclaration inner) {
         String newPrefix =
             prefix.isEmpty() ? inner.getNameAsString() : prefix + "$" + inner.getNameAsString();
-        translateTypeWithPrefix(inner, newPrefix);
+        // The chain of the type that CONTAINS the nested one: this type's own qualified name.
+        String newOuterChain =
+            outerChain.isEmpty() ? classShortName : outerChain + "$" + classShortName;
+        translateTypeWithPrefix(inner, newPrefix, newOuterChain);
       } else if (bd instanceof com.github.javaparser.ast.body.EnumDeclaration en) {
         String newPrefix =
             prefix.isEmpty() ? en.getNameAsString() : prefix + "$" + en.getNameAsString();
-        translateTypeWithPrefix(en, newPrefix);
+        String newOuterChain =
+            outerChain.isEmpty() ? classShortName : outerChain + "$" + classShortName;
+        translateTypeWithPrefix(en, newPrefix, newOuterChain);
       }
     }
     if (clinit != null) finishFunction(clinit, -1);
@@ -547,12 +588,11 @@ public final class TacTranslator {
     }
     TacBuilder b = newBuilder(spec, params);
     // Tag every emitted function with its declaring
-    // class. The translator always passes either the
-    // current top-level class's short name or null; inner
-    // classes' method names already encode the outer
-    // scope (e.g. {@code Outer$Inner.action}) so the
-    // enclosingClass short name would not match the
-    // outer-class's lookup anyway.
+    // class. For a top-level class that is the class's
+    // short name; for a NESTED class it is the qualified
+    // {@code Outer$Inner} name, so the DFA engine's
+    // per-class source-path lookup can resolve the file
+    // the nested class lives in.
     if (enclosingClass != null) b.setEnclosingClass(enclosingClass);
     // Class-level annotations always propagate into the
     // function (so a {@code @RestController} on the class makes

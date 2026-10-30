@@ -979,7 +979,20 @@ public final class ScanRunner {
         f.dataflowHead(),
         f.dataflowSteps(),
         verdict,
-        reason);
+        reason,
+        f.sinkFunction(),
+        f.trace());
+  }
+
+  /**
+   * Test seam for {@link #withAiVerdict(Finding, String, String)}.
+   *
+   * <p>The method is package-private rather than public so the test can pin the behaviour without
+   * widening the runner's API: the point of the test is that attaching a verdict changes NOTHING
+   * but the verdict, and {@code sink_function} in particular has to survive it.
+   */
+  static Finding withAiVerdictForTest(Finding f, String verdict, String reason) {
+    return withAiVerdict(f, verdict, reason);
   }
 
   /**

@@ -55,6 +55,12 @@ The gates are:
                               not select two rules whose names collide
     check_juliet_report         the per-CWE report scores every case
                               exactly as the measurement harness does
+    check_finding_identity      every finding names the file it is in,
+                              and the AI pass changes a finding's verdict
+                              and nothing else -- it does not take its
+                              file or its sink away
+    mutate_finding_identity     the identity gate is not checking air:
+                              every plausible drift is caught
     check_ai_prompts           the false-positive prompts still carry
                               their analysis method: the five questions
                               (source, sink, reachability, conditions,
@@ -262,6 +268,10 @@ GATES = (
      ["python", "scripts/mutate_rule_filter_ambiguity.py"], "check"),
     ("check_juliet_report",
      ["python", "scripts/check_juliet_report.py"], "check"),
+    ("check_finding_identity",
+     ["python", "scripts/check_finding_identity.py"], "check"),
+    ("mutate_finding_identity",
+     ["python", "scripts/mutate_finding_identity.py"], "check"),
     ("check_ai_prompts",
      ["python", "scripts/check_ai_prompts.py"], "check"),
     ("mutate_ai_prompts",
