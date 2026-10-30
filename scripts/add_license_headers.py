@@ -67,6 +67,22 @@ GENERATED_JAVA = {
 
 def java_sources():
     """Every Plumb Java source, with the same exclusions the formatter uses."""
+    return _sources_with_suffix(".java")
+
+
+def kotlin_sources():
+    """Every Plumb Kotlin source, with the same exclusions the formatter uses.
+
+    <p>The Kotlin DSL module was added to the source roots but the licence gate
+    only looked for `.java`, so its 27 files shipped with no header at all --
+    and the gate was green, because a gate that never looks at a file cannot
+    report it as missing one.
+    """
+    return _sources_with_suffix(".kt")
+
+
+def _sources_with_suffix(suffix):
+    """Every Plumb source with this suffix, with the formatter's exclusions."""
     out = []
     for root in source_roots():
         base = REPO / root
@@ -75,7 +91,7 @@ def java_sources():
         for dirpath, dirnames, filenames in os.walk(base):
             dirnames[:] = [d for d in dirnames if d != "target"]
             for name in filenames:
-                if not name.endswith(".java"):
+                if not name.endswith(suffix):
                     continue
                 full = Path(dirpath) / name
                 rel = full.relative_to(REPO)
@@ -85,6 +101,9 @@ def java_sources():
                     continue
                 out.append(full)
     return sorted(out)
+
+
+UTF8_BOM = b"\xef\xbb\xbf"
 
 
 def has_header(raw):
@@ -100,9 +119,22 @@ def has_header(raw):
     decoded strings would fail on every file on Windows, and the
     failure would look like "no file has a header" rather than "the
     comparison forgot about the line endings".
+
+    A UTF-8 BOM is skipped before the comparison. The BOM is
+    ENCODING METADATA, not content: it says "the bytes after me are
+    UTF-8", and it is not part of the file's text. A file whose bytes
+    are `BOM + header + body` HAS the header, and a check that says
+    it does not is reporting on the BOM instead of on the licence.
+    The BOM's existence is a question about BYTES -- asking it of a
+    decoded string is asking the wrong thing, because every decoder
+    that is worth using has an opinion about the BOM (Python's
+    `utf-8` keeps it, `utf-8-sig` strips it, Node's TextDecoder
+    strips it silently).
     """
     expected = header_text().encode("utf-8").replace(b"\r\n", b"\n")
     actual = raw.replace(b"\r\n", b"\n")
+    if actual.startswith(UTF8_BOM):
+        actual = actual[len(UTF8_BOM):]
     return actual.startswith(expected)
 
 
@@ -132,24 +164,37 @@ def apply(path):
         header = header.replace(b"\n", newline)
     # The body is written back unchanged, so every byte below the
     # header is preserved exactly.
-    path.write_bytes(header + raw)
+    #
+    # A UTF-8 BOM, if the file has one, stays FIRST -- before the
+    # header. The BOM is encoding metadata; the header is content.
+    # Putting the header in front of the BOM would produce bytes that
+    # are no longer valid UTF-8-with-BOM at all, and every decoder
+    # would then have to guess the encoding instead of being told.
+    bom = b""
+    body = raw
+    if body.startswith(UTF8_BOM):
+        bom = UTF8_BOM
+        body = body[len(UTF8_BOM):]
+    path.write_bytes(bom + header + body)
     return True
 
 
 def main():
     check = "--check" in sys.argv
 
-    files = java_sources()
-    if not files:
-        print("ERROR: no Java sources found", file=sys.stderr)
+    java = java_sources()
+    kotlin = kotlin_sources()
+    if not java and not kotlin:
+        print("ERROR: no sources found", file=sys.stderr)
         return 2
 
     if check:
         missing = []
-        for path in files:
+        for path in java + kotlin:
             if not has_header(path.read_bytes()):
                 missing.append(path.relative_to(REPO).as_posix())
-        print("checked %d Java source file(s)" % len(files))
+        print("checked %d Java source file(s)" % len(java))
+        print("checked %d Kotlin source file(s)" % len(kotlin))
         if missing:
             print("MISSING the licence header in %d file(s):" % len(missing))
             for rel in missing[:20]:
@@ -161,11 +206,12 @@ def main():
         return 0
 
     changed = []
-    for path in files:
+    for path in java + kotlin:
         if apply(path):
             changed.append(path.relative_to(REPO).as_posix())
 
-    print("checked %d Java source file(s)" % len(files))
+    print("checked %d Java source file(s)" % len(java))
+    print("checked %d Kotlin source file(s)" % len(kotlin))
     print("added the header to %d file(s)" % len(changed))
 
     # The header is a comment, but the formatter still has to be happy
@@ -173,10 +219,18 @@ def main():
     # declaration onto a new line, or that the formatter reflows, would
     # fail the formatting gate on the next commit. Formatting here
     # keeps the two gates consistent.
+    #
+    # google-java-format reads .java only, so only the Java files go
+    # through it. Running it over the Kotlin files would either fail
+    # or -- worse -- a formatter that does not understand the language
+    # reflows it into something that still compiles and means something
+    # else.
     if changed:
-        jar = formatter_jar()
-        format_paths(jar, [str(p) for p in files], replace=True)
-        print("reformatted the tree")
+        changed_java = [p for p in changed if p.endswith(".java")]
+        if changed_java:
+            jar = formatter_jar()
+            format_paths(jar, [str(p) for p in java], replace=True)
+            print("reformatted the tree")
     return 0
 
 

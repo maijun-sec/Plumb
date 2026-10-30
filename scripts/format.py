@@ -49,9 +49,25 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Directory prefixes (relative to the repo root) that are NOT Plumb source.
+#
+# Each exclusion has a REASON, and the reason is not "it was easier".
+# A file that is excluded is a file that no gate looks at, so the
+# reason has to say who is responsible for it instead -- otherwise the
+# exclusion is a silent hole that looks like coverage.
 EXCLUDED_PREFIXES = (
+    # The Juliet corpus: measurement data, not Plumb sources. A licence
+    # header on a fixture would move the line numbers the manifests pin.
     "plumb-dfa/src/test/resources/juliet-corpus/",
+    # The same, at the top level.
     "testcase/",
+    # Third-party sources carried VERBATIM as parity fixtures. These
+    # are not Plumb's code and not under Plumb's licence: the upstream
+    # java-sca-ast-dsl project is Apache-2.0, and its test case is
+    # copied byte for byte so the parity test runs against the real
+    # file. Putting Plumb's MIT header on an Apache-2.0 file would
+    # (a) misattribute it and (b) break the "copied verbatim" claim
+    # that makes the parity test worth running.
+    "plumb-dsl-kotlin/src/test/resources/upstream/",
     ".aethercode/",
     "target/",
 )
@@ -75,6 +91,12 @@ SOURCE_ROOTS = (
     "plumb-build/plumb-build-capture/src",
     "plumb-ai/src",
     "plumb-main/src",
+    # The Kotlin DSL module. The FORMATTER has nothing to say about it --
+    # google-java-format reads .java only -- but the root is listed
+    # because these roots are the project's list of where source lives,
+    # and the licence gate reads the same list. A module that is not on
+    # the list is a module nothing checks.
+    "plumb-dsl-kotlin/src",
 )
 
 

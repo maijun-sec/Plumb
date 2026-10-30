@@ -16,7 +16,7 @@ GENERATED file too.
 
 The checks:
 
-  1. Every Java source starts with the exact header.
+  1. Every Java and Kotlin source starts with the exact header.
   2. The header is the FIRST thing in the file -- a header after the
      package declaration is not a header.
   3. The LICENSE file at the root says the same thing the headers
@@ -34,7 +34,7 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from add_license_headers import java_sources  # noqa: E402
+from add_license_headers import java_sources, kotlin_sources  # noqa: E402
 from license_header import (  # noqa: E402
     LICENSE_REL_PATH,
     header_text,
@@ -67,18 +67,37 @@ def has_header(raw):
 
     Bytes, not text: the header text is LF and the checked-out tree
     is CRLF, so a decoded comparison would fail on every file.
+
+    A UTF-8 BOM is skipped before the comparison. The BOM is ENCODING
+    METADATA, not content, and it is not part of the file's text. A
+    file whose bytes are `BOM + header + body` HAS the header -- a
+    check that says it does not is reporting on the BOM instead of on
+    the licence. And the BOM's existence is a question about BYTES:
+    asking it of a decoded string is asking the wrong thing, because
+    the decoders disagree (Python's `utf-8` keeps the BOM, `utf-8-sig`
+    strips it, Node's TextDecoder strips it silently).
     """
     expected = header_text().encode("utf-8").replace(b"\r\n", b"\n")
-    return raw.replace(b"\r\n", b"\n").startswith(expected)
+    actual = raw.replace(b"\r\n", b"\n")
+    if actual.startswith(b"\xef\xbb\xbf"):
+        actual = actual[3:]
+    return actual.startswith(expected)
 
 
 def main():
     failures = []
 
-    # (1) Every Java source starts with the header.
-    files = java_sources()
+    # (1) Every Java and Kotlin source starts with the header.
+    #
+    # The Kotlin sources are in scope for the same reason the Java ones
+    # are: they are shipped. A gate that only looks at `.java` is not a
+    # weaker licence check, it is a licence check for a subset of the
+    # project -- and it reports that subset as if it were the whole.
+    java = java_sources()
+    kotlin = kotlin_sources()
+    files = java + kotlin
     if not files:
-        print("FAIL: no Java sources found -- the check cannot verify anything")
+        print("FAIL: no sources found -- the check cannot verify anything")
         return 1
 
     missing = []
@@ -108,7 +127,45 @@ def main():
             misplaced.append(rel)
         else:
             missing.append(rel)
-    note("checked %d Java source file(s)" % len(files))
+    note("checked %d Java source file(s)" % len(java))
+    note("checked %d Kotlin source file(s)" % len(kotlin))
+
+    # The COUNTS have to be evidence, not decoration.
+    #
+    # A gate that reports "checked 26 Kotlin source file(s)" is making a
+    # claim about coverage. If the number is hardcoded, or the list is
+    # empty, the claim is a lie and the gate looks exactly as healthy
+    # as it would if it were true. So the count is re-derived from the
+    # filesystem and compared against the number the gate is about to
+    # print, and an empty Kotlin list is a failure rather than a
+    # zero-file success.
+    #
+    # The Kotlin list being empty is the specific defect this project
+    # actually had: the DSL module shipped with 26 unlicensed files and
+    # the gate was green, because the gate never looked.
+    #
+    # The expected count is derived from the filesystem, with the SAME
+    # exclusions the source list uses -- `target/` holds build output
+    # and the upstream fixture directory carries a verbatim third-party
+    # copy. A count taken from a different rule set would disagree with
+    # the list for reasons that have nothing to do with the licence.
+    kotlin_on_disk = 0
+    module_root = REPO / "plumb-dsl-kotlin" / "src"
+    if module_root.is_dir():
+        for path in module_root.rglob("*.kt"):
+            rel = path.relative_to(REPO).as_posix()
+            if "target/" in rel or "/upstream/" in rel:
+                continue
+            kotlin_on_disk += 1
+    if len(kotlin) != kotlin_on_disk:
+        failures.append(
+            "the gate checked %d Kotlin source file(s) but the module has %d "
+            "-- the Kotlin sources are being filtered out of the check"
+            % (len(kotlin), kotlin_on_disk))
+    if not kotlin:
+        failures.append(
+            "no Kotlin sources were checked -- the Kotlin DSL module is "
+            "unlicensed and the gate is not looking")
 
     for rel in missing:
         failures.append("%s does not carry the licence header" % rel)
@@ -118,7 +175,6 @@ def main():
     for rel in duplicated:
         failures.append("%s carries the licence header more than once" % rel)
     note("checked the header on %d file(s)" % len(files))
-
     # (2) The LICENSE file says the same thing the headers say.
     lic = REPO / LICENSE_REL_PATH
     if not lic.is_file():
@@ -231,7 +287,7 @@ def main():
         return 1
 
     print()
-    print("OK: every Java source carries the licence header")
+    print("OK: every Java and Kotlin source carries the licence header")
     return 0
 
 
