@@ -44,12 +44,17 @@ The gates are:
                               source declares
     mutate_ruleauthoring_claims the rule-authoring gate is not checking air:
                               every plausible drift is caught
-    check_license              every Java source carries the licence
-                              header, the LICENSE file says the same
-                              thing the headers say, and the generator
-                              still emits the header
+    check_license              every Java and Kotlin source carries the
+                              licence header, the LICENSE file says the
+                              same thing the headers say, and the
+                              generator still emits the header
     mutate_license             the licence gate is not checking air:
                               every plausible drift is caught
+    mutate_rule_filter_ambiguity
+                              a rule filter that names one rule does
+                              not select two rules whose names collide
+    check_juliet_report         the per-CWE report scores every case
+                              exactly as the measurement harness does
     check_ai_prompts           the false-positive prompts still carry
                               their analysis method: the five questions
                               (source, sink, reachability, conditions,
@@ -253,6 +258,10 @@ GATES = (
      ["python", "scripts/check_license.py"], "check"),
     ("mutate_license",
      ["python", "scripts/mutate_license.py"], "check"),
+    ("mutate_rule_filter_ambiguity",
+     ["python", "scripts/mutate_rule_filter_ambiguity.py"], "check"),
+    ("check_juliet_report",
+     ["python", "scripts/check_juliet_report.py"], "check"),
     ("check_ai_prompts",
      ["python", "scripts/check_ai_prompts.py"], "check"),
     ("mutate_ai_prompts",

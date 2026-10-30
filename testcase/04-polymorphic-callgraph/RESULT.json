@@ -2,7 +2,10 @@
   "category": "04-polymorphic-callgraph",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 937,
+  "rules_enabled": [
+    "dfa-taint-sql-injection"
+  ],
+  "total_findings": 13,
   "cases": [
     {
       "id": "L3a_has_sql_findings",
@@ -180,27 +183,6 @@
     "tn_false_positive": 0
   },
   "cwe_histogram": {
-    "CWE-563": 35,
-    "CWE-476": 34,
-    "CWE-252": 28,
-    "CWE-89": 26,
-    "CWE-690": 20,
-    "CWE-798": 17,
-    "CWE-331": 17,
-    "CWE-209": 13,
-    "CWE-778": 13,
-    "CWE-223": 13,
-    "CWE-703": 13,
-    "CWE-668": 11,
-    "CWE-248": 10,
-    "CWE-704": 6,
-    "CWE-398": 6,
-    "CWE-190": 5,
-    "CWE-674": 1,
-    "CWE-1006": 1,
-    "CWE-397": 1,
-    "CWE-482": 1,
-    "CWE-697": 1,
-    "CWE-597": 1
+    "CWE-89": 13
   }
 }

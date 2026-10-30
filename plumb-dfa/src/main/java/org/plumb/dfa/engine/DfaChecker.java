@@ -142,4 +142,29 @@ public interface DfaChecker {
   default String getAiPrompt(Finding finding) {
     return null;
   }
+
+  /**
+   * The rule this checker emits, with its CWE.
+   *
+   * <p>This is the checker's own declaration of the rule id and the CWE it reports. It exists so
+   * that the rule id -> CWE map can be read from the ENGINE rather than from a table maintained
+   * beside it: a map kept in a file drifts, and a measurement that attributes a case to a CWE the
+   * engine does not emit is measuring a different tool than the one that ships.
+   *
+   * <p>The name is NOT {@code rule()}: {@link org.plumb.dfa.taint.TaintedCheckerBase} already has a
+   * {@code rule()} that returns a {@link org.plumb.dfa.taint.TaintRule}, and a same-named method
+   * with a different return type would be a clash rather than an override.
+   *
+   * <p>The default is {@code null} -- "this checker declares no rule metadata". A checker that
+   * reports through {@link org.plumb.dfa.taint.TaintedCheckerBase} already has a {@link
+   * org.plumb.dfa.taint.TaintRule} and therefore already answers this; a checker that builds its
+   * finding inline overrides this with the same id and CWE it passes to the reporting helper.
+   *
+   * <p>A checker that returns {@code null} is not an error: it simply does not contribute to the
+   * map. It does mean the map does not describe that rule, which is why the map's consumers must
+   * treat a missing rule id as "unknown", not as "no CWE".
+   */
+  default org.plumb.rules.RuleDef ruleDef() {
+    return null;
+  }
 }

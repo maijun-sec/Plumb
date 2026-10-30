@@ -93,6 +93,27 @@ public final class OffByOneChecker implements DfaChecker {
     return "OffByOne";
   }
 
+  /**
+   * The rule this checker emits, with its CWE.
+   *
+   * <p>Declared here so that the rule id -> CWE map can be read from the engine rather than from a
+   * table maintained beside it. The id and the CWE are the same ones the reporting call passes to
+   * {@code PatternTrace.reportFree} -- a rule map that disagreed with the reporting call would
+   * describe a tool that does not ship.
+   */
+  @Override
+  public org.plumb.rules.RuleDef ruleDef() {
+    return new org.plumb.rules.RuleDef(
+        new org.plumb.rules.RuleId("dfa-controlflow-off-by-one", "OFF_BY_ONE"),
+        "Off-by-one: a loop variable bounded by the length is used to index one past the end",
+        RuleDef.Severity.MEDIUM,
+        RuleDef.Type.CORRECTNESS,
+        java.util.List.of("CWE-193"),
+        getClass().getName(),
+        true,
+        java.util.List.of());
+  }
+
   @Override
   public void initFunction(AnalysisContext ctx, TacFunction fn) {
     lengthOfVar.clear();

@@ -94,6 +94,15 @@ public final class ScanRunner {
    * (style, DFA, unified). Production always sets it; smoke tests leave it {@code null} so the
    * legacy `def.enabled()` lookup becomes a no-op.
    */
+  /**
+   * The ids of every rule the engine can emit, cached.
+   *
+   * <p>The rule filter asks "is this bare form ambiguous?" once per rule per filter entry, and the
+   * answer does not change during a scan. Without the cache the filter would rebuild the live rule
+   * set thousands of times per scan.
+   */
+  private volatile java.util.Collection<String> liveRuleIdsCache;
+
   private final java.util.concurrent.atomic.AtomicReference<RuleRegistry> currentRuleRegistry =
       new java.util.concurrent.atomic.AtomicReference<>();
 
@@ -1466,7 +1475,7 @@ public final class ScanRunner {
    * (which calls each checker's {@code getAiPrompt(Finding)} to look up the rule prompt for the AI
    * dedup pass).
    */
-  private List<org.plumb.dfa.engine.DfaChecker> buildDfaCheckers() {
+  List<org.plumb.dfa.engine.DfaChecker> buildDfaCheckers() {
     List<org.plumb.dfa.engine.DfaChecker> checkers = new ArrayList<>();
     // ---- baseline ----
     if (config.runTryCatchFinally)
@@ -2066,7 +2075,21 @@ public final class ScanRunner {
         continue;
       }
       for (String entryForm : ruleIdForms(canonicalEntry)) {
-        if (ruleForms.contains(entryForm)) return true;
+        if (!ruleForms.contains(entryForm)) continue;
+        // The entry form may be a PEELED form -- the id with its engine
+        // and domain tokens removed. A peeled form is only used when it
+        // is UNAMBIGUOUS: when exactly one live rule has it.
+        //
+        // Twelve pairs of live rules share a peeled form, and eight of
+        // those pairs carry DIFFERENT CWEs. `null-deref-from-return` is
+        // both the AST rule's form (CWE-690) and the DFA rule's form
+        // (CWE-476), so `--rule dfa-taint-null-deref-from-return`
+        // selected both -- and a TN case for CWE-476 was scored as a
+        // false positive because the CWE-690 rule fired on the same
+        // line. An ambiguous bare slug now selects nothing, and the
+        // user names the rule they mean.
+        if (isAmbiguousForm(entryForm, ruleId)) continue;
+        return true;
       }
       // The `ast-style-<bare>-style` emit shape: the era whitelist carries
       // the bare slug with that prefix and suffix, while the checker's
@@ -2078,9 +2101,147 @@ public final class ScanRunner {
       if (astStyleBare.endsWith("-style")) {
         astStyleBare = astStyleBare.substring(0, astStyleBare.length() - "-style".length());
       }
-      if (ruleForms.contains(astStyleBare)) return true;
+      if (ruleForms.contains(astStyleBare) && !isAmbiguousForm(astStyleBare, ruleId)) {
+        return true;
+      }
     }
     return false;
+  }
+
+  /**
+   * Is this bare form shared by more than one live rule?
+   *
+   * <p>A "form" is the rule id with its leading engine and domain tokens peeled off -- the short
+   * spelling a user may reasonably type. Twelve pairs of live rules share one, and eight of those
+   * pairs carry DIFFERENT CWEs, so a filter that used an ambiguous form would select a rule the
+   * user did not name.
+   *
+   * <p>The live rule set is read from the ENGINE, so the answer cannot drift from the rules that
+   * actually ship. A rule id that is not live is not ambiguous: only one live rule can have its
+   * form.
+   *
+   * @param form the peeled form
+   * @param theRuleId the rule the form is being tested against
+   * @return true when more than one live rule has this form
+   */
+  private boolean isAmbiguousForm(String form, String theRuleId) {
+    if (form == null || form.isEmpty()) return false;
+    java.util.Collection<String> live = liveRuleIds();
+    if (live == null || live.isEmpty()) {
+      // No live set: the answer would be a guess, and a guess that
+      // silently disables a filter is worse than the collision it
+      // prevents. Assume the form is unique.
+      return false;
+    }
+    // A form is owned by a rule when it is one of that rule's identities
+    // -- its emitted id, its legacy registry name, or its checker class
+    // name -- or when it is a PEELED form of one of them.
+    //
+    // The comparison is case-insensitive, because the peeled form of a
+    // legacy name (`NULL_DEREF_FROM_RETURN` -> `null-deref-from-return`)
+    // is lower-case while the name itself is upper-case.
+    //
+    // The rule's own id is NOT exempt. A rule whose identity happens to
+    // BE the bare slug -- and several do: an AST checker's `name()` is
+    // its bare slug -- is exactly the case the guard exists for. The
+    // concrete defect was: the AST checker's name is
+    // `null-deref-from-return`, so `--rule dfa-taint-null-deref-from-return`
+    // matched it through the ENTRY's peeled form, and the CWE-690 rule
+    // came through a filter that named the CWE-476 rule.
+    String wanted = form.toLowerCase(java.util.Locale.ROOT);
+    int owners = 0;
+    for (String identity : live) {
+      if (identity == null || identity.isEmpty()) continue;
+      if (identity.toLowerCase(java.util.Locale.ROOT).equals(wanted)) {
+        owners++;
+      } else {
+        for (String f : ruleIdForms(identity)) {
+          if (f.toLowerCase(java.util.Locale.ROOT).equals(wanted)) {
+            owners++;
+            break;
+          }
+        }
+      }
+      if (owners > 1) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The ids of every rule the engine can emit.
+   *
+   * <p>Read from the live registries, so the answer is the engine's own. Cached, because the filter
+   * asks the question once per rule per filter entry and the answer does not change during a scan.
+   */
+  private java.util.Collection<String> liveRuleIds() {
+    java.util.Collection<String> cached = liveRuleIdsCache;
+    if (cached != null) return cached;
+    java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+    try {
+      for (org.plumb.style.AstChecker checker : buildStyleChecks()) {
+        for (org.plumb.rules.RuleDef def : checker.allRules()) {
+          if (def == null || def.ruleId() == null) continue;
+          addRuleIdentities(ids, def.ruleId().id(), def.ruleId().name(), def.checkerClass());
+        }
+      }
+      for (org.plumb.dfa.engine.DfaChecker checker : buildDfaCheckers()) {
+        try {
+          if (checker instanceof org.plumb.dfa.taint.TaintedCheckerBase) {
+            org.plumb.dfa.taint.TaintRule rule =
+                ((org.plumb.dfa.taint.TaintedCheckerBase) checker).rule();
+            if (rule == null) continue;
+            // The taint rule's id IS the emitted id; the checker name is
+            // the class name the filter also accepts.
+            addRuleIdentities(ids, rule.ruleId(), checker.name(), checker.getClass().getName());
+            continue;
+          }
+          org.plumb.rules.RuleDef def = checker.ruleDef();
+          if (def == null || def.ruleId() == null) continue;
+          addRuleIdentities(ids, def.ruleId().id(), def.ruleId().name(), def.checkerClass());
+        } catch (RuntimeException ignored) {
+          // A checker that cannot be read simply does not contribute.
+        }
+      }
+    } catch (RuntimeException ignored) {
+      // If the live set cannot be built, the ambiguity check degrades to
+      // "assume unique" rather than to "disable every filter".
+    }
+    liveRuleIdsCache = ids;
+    return ids;
+  }
+
+  /**
+   * Add every identity a rule answers to.
+   *
+   * <p>The filter compares an entry against a rule's ID, against the rule's LEGACY NAME, and
+   * against the checker class simple name (with and without the "Check" suffix). Each of those has
+   * its own peeled forms, and a collision between any two of them lets one filter entry select two
+   * rules.
+   *
+   * <p>That is not hypothetical: the collision that let the AST CWE-690 rule through {@code --rule
+   * dfa-taint-null-deref-from-return} was between the ENTRY's peeled form and the AST rule's legacy
+   * name's peeled form -- not between the two rules' ids. So the live set has to carry the legacy
+   * names too.
+   *
+   * @param ids the set to add to
+   * @param id the rule's emitted id
+   * @param name the rule's legacy registry name
+   * @param checkerClass the rule's checker class
+   */
+  private static void addRuleIdentities(
+      java.util.Set<String> ids, String id, String name, String checkerClass) {
+    if (id != null && !id.isBlank()) ids.add(id);
+    if (name != null && !name.isBlank()) ids.add(name);
+    if (checkerClass != null && !checkerClass.isBlank()) {
+      String simple = checkerClass.substring(checkerClass.lastIndexOf('.') + 1);
+      ids.add(simple);
+      if (simple.endsWith("Check")) {
+        ids.add(simple.substring(0, simple.length() - "Check".length()));
+      }
+      if (simple.endsWith("Checker")) {
+        ids.add(simple.substring(0, simple.length() - "Checker".length()));
+      }
+    }
   }
 
   /**
@@ -2219,6 +2380,17 @@ public final class ScanRunner {
 
   private static boolean isEngineOrDomainToken(String token) {
     return ENGINE_AND_DOMAIN_TOKENS.contains(token);
+  }
+
+  /**
+   * The engine and domain tokens the rule id peeling knows about.
+   *
+   * <p>Exposed to the tests, because the test that measures the collisions has to compute the
+   * spellings the SAME way the filter computes them. A test that reimplemented the vocabulary would
+   * measure a different set of spellings than the filter uses, and the two would agree on nothing.
+   */
+  static java.util.Set<String> engineAndDomainTokens() {
+    return ENGINE_AND_DOMAIN_TOKENS;
   }
 
   /**
@@ -2434,6 +2606,94 @@ public final class ScanRunner {
     // registered in the live registry.
     if (dslChecker != null) {
       out.add(dslChecker);
+    }
+    return out;
+  }
+
+  /**
+   * The rule id -> CWE map, read from the rules THIS scan can actually emit.
+   *
+   * <p>The map is built from the same two lists the scan itself uses: the AST checkers ({@link
+   * #buildStyleChecks()}) and the DFA checkers ({@link #buildDfaCheckers()}). Reading it from the
+   * engine -- rather than from a table maintained beside the engine -- is the whole point. A table
+   * maintained beside the engine drifts, and a Juliet measurement that attributes a case to a CWE
+   * the engine does not emit is measuring a different tool than the one that ships.
+   *
+   * <p>The AST side contributes the rule id and the CWE list its own {@code RuleDef} declares. The
+   * DFA side contributes the rule id and the single CWE its own {@code TaintRule} declares.
+   *
+   * <p>A rule id that appears on both sides is reported with BOTH sets of CWEs, because the engine
+   * really does emit that id from two different checkers with two different CWEs. Merging them
+   * would hide a real fact: a finding with that id does not have one CWE, it has two, and which one
+   * it is depends on which checker produced it.
+   *
+   * @return rule id -> the CWEs the engine emits under that id, sorted
+   */
+  java.util.Map<String, java.util.List<String>> liveRuleCweMap() {
+    java.util.Map<String, java.util.Set<String>> map = new java.util.TreeMap<>();
+
+    // The AST side. Each checker declares its own RuleDef, which carries
+    // the rule id and the CWE list.
+    //
+    // The id is `RuleDef.ruleId().id()` -- the EMITTED id -- and not
+    // `name()`. A RuleId has two names: `id()` is what the finding
+    // carries (e.g. "ast-security-unchecked-return") and `name()` is the
+    // legacy registry name (e.g. "UNCHECKED_RETURN"). The finding's
+    // rule_id is the `id()`, so the map has to use the `id()`: a map
+    // keyed by the legacy name would not contain a single id the report
+    // actually prints.
+    for (org.plumb.style.AstChecker checker : buildStyleChecks()) {
+      try {
+        // allRules(), not rule(): a few checkers emit SEVERAL rules
+        // under different ids and different CWEs, and listing only the
+        // first would leave the rest of that checker's rules out of the
+        // map -- which is exactly how a rule ends up with a guessed CWE.
+        for (org.plumb.rules.RuleDef def : checker.allRules()) {
+          if (def == null) continue;
+          String id = def.ruleId().id();
+          if (id == null || id.isBlank()) continue;
+          map.computeIfAbsent(id, k -> new java.util.TreeSet<>()).addAll(def.cwe());
+        }
+      } catch (RuntimeException ex) {
+        // A checker whose rule metadata cannot be read is skipped rather
+        // than aborting the map: the map is a report, and one broken
+        // checker must not take the whole report down.
+      }
+    }
+
+    // The DFA side. The taint-based checkers expose their rule; the
+    // control-flow ones declare one themselves.
+    for (org.plumb.dfa.engine.DfaChecker checker : buildDfaCheckers()) {
+      try {
+        org.plumb.dfa.taint.TaintRule rule =
+            (checker instanceof org.plumb.dfa.taint.TaintedCheckerBase)
+                ? ((org.plumb.dfa.taint.TaintedCheckerBase) checker).rule()
+                : null;
+        if (rule != null) {
+          String id = rule.ruleId();
+          if (id == null || id.isBlank()) continue;
+          if (rule.cwe() != null && !rule.cwe().isBlank()) {
+            map.computeIfAbsent(id, k -> new java.util.TreeSet<>()).add(rule.cwe());
+          } else {
+            map.computeIfAbsent(id, k -> new java.util.TreeSet<>());
+          }
+          continue;
+        }
+        // The checkers that build their finding inline declare their own
+        // rule metadata.
+        org.plumb.rules.RuleDef def = checker.ruleDef();
+        if (def == null) continue;
+        String id = def.ruleId().id();
+        if (id == null || id.isBlank()) continue;
+        map.computeIfAbsent(id, k -> new java.util.TreeSet<>()).addAll(def.cwe());
+      } catch (RuntimeException ex) {
+        // As above: one unreadable checker does not abort the map.
+      }
+    }
+
+    java.util.Map<String, java.util.List<String>> out = new java.util.TreeMap<>();
+    for (java.util.Map.Entry<String, java.util.Set<String>> e : map.entrySet()) {
+      out.put(e.getKey(), new java.util.ArrayList<>(e.getValue()));
     }
     return out;
   }

@@ -2,7 +2,10 @@
   "category": "07-unchecked-return",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 86,
+  "rules_enabled": [
+    "ast-security-unchecked-return"
+  ],
+  "total_findings": 5,
   "cases": [
     {
       "id": "TP-bare-statement",
@@ -206,12 +209,6 @@
     "tn_false_positive": 0
   },
   "cwe_histogram": {
-    "CWE-397": 6,
-    "CWE-252": 5,
-    "CWE-668": 3,
-    "CWE-398": 3,
-    "CWE-481": 1,
-    "CWE-476": 1,
-    "CWE-563": 1
+    "CWE-252": 5
   }
 }

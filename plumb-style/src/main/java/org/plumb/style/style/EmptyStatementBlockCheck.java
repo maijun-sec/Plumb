@@ -91,6 +91,18 @@ public final class EmptyStatementBlockCheck implements AstChecker {
           true,
           List.of("dfa-style-empty-block-cwe398", "empty-statement-block"));
 
+  /**
+   * Every rule this checker can emit.
+   *
+   * <p>This checker emits more than one rule, so {@link #rule()} alone does not describe it. The
+   * rule id -> CWE map is read from the engine, and a rule the map does not know about would have
+   * its CWE guessed.
+   */
+  @Override
+  public java.util.List<org.plumb.rules.RuleDef> allRules() {
+    return java.util.List.of(DEFAULT_RULE, EMPTY_CATCH_RULE, EMPTY_IF_RULE);
+  }
+
   @Override
   public String name() {
     return "empty-statement-block";

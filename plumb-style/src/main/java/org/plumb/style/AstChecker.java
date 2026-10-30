@@ -136,6 +136,24 @@ public interface AstChecker {
   }
 
   /**
+   * Every rule this checker can emit.
+   *
+   * <p>Most checkers emit one rule, and {@link #rule()} is that rule. A few emit SEVERAL -- {@code
+   * EmptyStatementBlockCheck} alone emits three, under three different rule ids and three different
+   * CWEs -- and for those, {@link #rule()} alone does not describe the checker.
+   *
+   * <p>This exists so that the rule id -> CWE map can be read from the ENGINE. A checker that emits
+   * a rule the map does not know about is a rule whose CWE the map would have to guess, and a
+   * guessed CWE is what makes a per-CWE measurement attribute a case to the wrong defect class.
+   *
+   * <p>The default returns the single rule; a multi-rule checker overrides it.
+   */
+  default java.util.List<org.plumb.rules.RuleDef> allRules() {
+    org.plumb.rules.RuleDef one = rule();
+    return one == null ? java.util.List.of() : java.util.List.of(one);
+  }
+
+  /**
    * The rule-specific knowledge the LLM is told about this check before it judges a finding.
    *
    * <p>Default {@code null} (no AI dedup). Override on the checks that benefit from LLM judgement.

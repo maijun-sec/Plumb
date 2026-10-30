@@ -27,13 +27,13 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
 执行 `sast-scan --help` 输出：
 
 ```
-usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
-       <maven-resolver|maven|gradle|bazel|ant>] [-c <yaml>] [--cache-mode
+usage: sast-scan [--ai-context-lines <n>] [--ai-dedup] [--ai-dedup-stats] [--ai-max-turns <n>]
+       [--build-system <maven-resolver|maven|gradle|bazel|ant>] [-c <yaml>] [--cache-mode
        <off|read|write|readwrite>] [--capture-dir <dir>] [--cg-strategy
        <cha|rta|vta|1cfa|stub|global|cached:<name>:<path>>] [--classpath <jar|dir>] [-D <dir>]
        [--dsl-rules <file>] [--dsl-strict] [-f <console|ndjson|sarif>] [-h] [-i <path>]
-       [--list-rules] [--max-parallelism <n>] [--module-root <dir>] [-o <path>] [--project-root
-       <dir>] [--rule <id>] [--rule-prompts-dir <path>] [--source-root <dir>] [-v]
+       [--list-rule-cwes] [--list-rules] [--max-parallelism <n>] [--module-root <dir>] [-o <path>]
+       [--project-root <dir>] [--rule <id>] [--rule-prompts-dir <path>] [--source-root <dir>] [-v]
 ```
 
 | 短选项 | 长选项 | 参数 | 默认值 | 说明 |
@@ -57,6 +57,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
 | — | `--dsl-rules` | `<file>` | — | Kotlin DSL 引擎的 AST 规则文件（**可重复**）。XML 或 YAML 格式，见 [`../tech/KOTLIN-DSL.md`](../tech/KOTLIN-DSL.md) |
 | — | `--dsl-strict` | — | off | DSL 规则编译失败时**中止扫描**，而不是跳过该条规则 |
 | — | `--list-rules` | — | — | 列出所有已知 rule id 并退出 |
+| — | `--list-rule-cwes` | — | — | 打印 rule id → CWE 映射，每行一条规则，然后退出。映射取自**活**注册表——AST 规则注册表与 DFA 污点规则——所以它是引擎自己的答案，而不是维护在旁边的表。格式：`<rule-id>\t<CWE>\t<CWE>…`；没有 CWE 的规则只打印 id |
 
 ** / 项目路径族**（详见 §3 的「项目路径」段）：
 

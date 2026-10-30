@@ -2,7 +2,13 @@
   "category": "02-domain-sensitive",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 500,
+  "rules_enabled": [
+    "dfa-boundary-array-out-of-bounds",
+    "dfa-taint-unchecked-array-index",
+    "dfa-boundary-divide-by-zero",
+    "dfa-taint-divide-by-zero"
+  ],
+  "total_findings": 16,
   "cases": [
     {
       "id": "L1-safe-guard",
@@ -281,19 +287,7 @@
     "tn_false_positive": 0
   },
   "cwe_histogram": {
-    "CWE-563": 17,
     "CWE-129": 12,
-    "CWE-190": 12,
-    "CWE-191": 10,
-    "CWE-369": 4,
-    "CWE-697": 4,
-    "CWE-476": 4,
-    "CWE-484": 4,
-    "CWE-597": 2,
-    "CWE-252": 2,
-    "CWE-690": 2,
-    "CWE-668": 2,
-    "CWE-400": 1,
-    "CWE-1006": 1
+    "CWE-369": 4
   }
 }

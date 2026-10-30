@@ -28,13 +28,13 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
 The output of `sast-scan --help` is:
 
 ```
-usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
-       <maven-resolver|maven|gradle|bazel|ant>] [-c <yaml>] [--cache-mode
+usage: sast-scan [--ai-context-lines <n>] [--ai-dedup] [--ai-dedup-stats] [--ai-max-turns <n>]
+       [--build-system <maven-resolver|maven|gradle|bazel|ant>] [-c <yaml>] [--cache-mode
        <off|read|write|readwrite>] [--capture-dir <dir>] [--cg-strategy
        <cha|rta|vta|1cfa|stub|global|cached:<name>:<path>>] [--classpath <jar|dir>] [-D <dir>]
        [--dsl-rules <file>] [--dsl-strict] [-f <console|ndjson|sarif>] [-h] [-i <path>]
-       [--list-rules] [--max-parallelism <n>] [--module-root <dir>] [-o <path>] [--project-root
-       <dir>] [--rule <id>] [--rule-prompts-dir <path>] [--source-root <dir>] [-v]
+       [--list-rule-cwes] [--list-rules] [--max-parallelism <n>] [--module-root <dir>] [-o <path>]
+       [--project-root <dir>] [--rule <id>] [--rule-prompts-dir <path>] [--source-root <dir>] [-v]
 ```
 
 | Short option | Long option | Argument | Default | Description |
@@ -58,6 +58,7 @@ usage: sast-scan [--ai-dedup] [--ai-dedup-stats] [--build-system
 | — | `--dsl-rules` | `<file>` | — | AST rule file of the Kotlin DSL engine (**repeatable**). In XML or YAML format, see [`../tech/KOTLIN-DSL.md`](../tech/KOTLIN-DSL.md) |
 | — | `--dsl-strict` | — | off | **Abort the scan** when a DSL rule fails to compile, instead of skipping that rule |
 | — | `--list-rules` | — | — | List all known rule ids and exit |
+| — | `--list-rule-cwes` | — | — | Print the rule id → CWE map, one rule per line, and exit. The map is read from the **live** registries (the AST rule registry and the DFA taint rules), so it is the engine's own answer rather than a table maintained beside it. Format: `<rule-id>\t<CWE>\t<CWE>…`; a rule with no CWE prints the id alone |
 
 ** / project path family** (see the "Project path family" table in §2):
 

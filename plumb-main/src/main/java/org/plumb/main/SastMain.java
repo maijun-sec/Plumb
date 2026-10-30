@@ -168,6 +168,11 @@ public final class SastMain {
         System.exit(0);
         return;
       }
+      if (cli.hasOption("list-rule-cwes")) {
+        printRuleCweMap();
+        System.exit(0);
+        return;
+      }
       if (cli.hasOption("ai-dedup-stats")) {
         cfg.cliAiDedupStats = true;
       }
@@ -372,6 +377,18 @@ public final class SastMain {
             .build());
     opts.addOption(
         Option.builder()
+            .longOpt("list-rule-cwes")
+            .desc(
+                "Print the rule id -> CWE map, one rule per line, and exit. "
+                    + "The map is read from the LIVE registries (the AST rule "
+                    + "registry and the DFA taint rule registry), so it is the "
+                    + "engine's own answer rather than a table maintained "
+                    + "beside it. Format: <rule-id>\\t<CWE>\\t<CWE>... -- a rule "
+                    + "with no CWE prints the id and nothing else. Used by the "
+                    + "Juliet measurement to attribute each case to a CWE.")
+            .build());
+    opts.addOption(
+        Option.builder()
             .longOpt("ai-dedup-stats")
             .desc(
                 "After --ai-dedup completes, print a verdict "
@@ -571,5 +588,42 @@ public final class SastMain {
     }
     System.out.println();
     System.out.println("Run a specific rule with: --rule <id>");
+  }
+
+  /**
+   * Print the rule id -> CWE map, read from the LIVE registries.
+   *
+   * <p>The map is built the way the scanner builds its own rule catalog: the legacy defaults, then
+   * every AST checker's own {@code RuleDef}, then the DFA taint rules. Reading it from the engine
+   * -- rather than from a table maintained beside the engine -- is the whole point. A table
+   * maintained beside the engine drifts, and a Juliet measurement that attributes a case to a CWE
+   * the engine does not emit is measuring a different tool than the one that ships.
+   *
+   * <p>Format: one rule per line, tab separated: {@code <rule-id>\t<CWE>\t<CWE>...}. A rule with no
+   * CWE prints the id and nothing else -- it is still listed, because "this rule has no CWE" is
+   * information the reader needs.
+   *
+   * <p>The output is sorted by rule id so that two runs produce the same bytes and a diff between
+   * them means something changed.
+   */
+  private static void printRuleCweMap() {
+    // The map comes from the SCAN RUNNER, because the runner is what
+    // decides which checkers run. A map read from a registry alone
+    // would name rules the runner never constructs -- and would miss
+    // the rule ids the DFA checkers emit, which are not in that
+    // registry under those names at all.
+    //
+    // The runner is built with the same configuration the scan would
+    // use, so the map describes the rules a default scan emits.
+    java.util.Map<String, java.util.List<String>> map =
+        new ScanRunner(new ScanConfig()).liveRuleCweMap();
+
+    for (java.util.Map.Entry<String, java.util.List<String>> entry : map.entrySet()) {
+      StringBuilder line = new StringBuilder(entry.getKey());
+      for (String cwe : entry.getValue()) {
+        line.append('\t').append(cwe);
+      }
+      System.out.println(line);
+    }
   }
 }

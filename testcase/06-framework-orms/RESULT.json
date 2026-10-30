@@ -2,7 +2,12 @@
   "category": "06-framework-orms",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 345,
+  "rules_enabled": [
+    "dfa-taint-sql-injection",
+    "ast-security-missing-input-validation",
+    "ast-security-orm-sql-interpolation"
+  ],
+  "total_findings": 34,
   "cases": [
     {
       "id": "TP-jdbc-query-for-list",
@@ -396,14 +401,7 @@
     "tn_false_positive": 0
   },
   "cwe_histogram": {
-    "CWE-89": 38,
-    "CWE-563": 27,
-    "CWE-798": 22,
-    "CWE-331": 22,
-    "CWE-862": 20,
     "CWE-20": 17,
-    "CWE-190": 2,
-    "CWE-668": 2,
-    "CWE-754": 1
+    "CWE-89": 17
   }
 }

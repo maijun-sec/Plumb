@@ -2,7 +2,14 @@
   "category": "01-taint-crossfile",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 869,
+  "rules_enabled": [
+    "dfa-taint-sql-injection",
+    "ast-style-info-exposure-querystring",
+    "dfa-taint-command-injection",
+    "dfa-taint-format-string",
+    "dfa-taint-path-traversal"
+  ],
+  "total_findings": 19,
   "cases": [
     {
       "id": "TP-1-full-chain",
@@ -292,42 +299,9 @@
     "tn_false_positive": 0
   },
   "cwe_histogram": {
-    "CWE-476": 30,
-    "CWE-668": 21,
-    "CWE-697": 17,
-    "CWE-690": 17,
-    "CWE-563": 11,
-    "CWE-390": 11,
-    "CWE-252": 11,
-    "CWE-597": 11,
     "CWE-89": 11,
-    "CWE-798": 8,
-    "CWE-331": 8,
-    "CWE-190": 6,
     "CWE-22": 5,
-    "CWE-1060": 5,
-    "CWE-398": 4,
-    "CWE-400": 3,
-    "CWE-606": 2,
-    "CWE-129": 2,
     "CWE-78": 2,
-    "CWE-1006": 2,
-    "CWE-482": 2,
-    "CWE-778": 2,
-    "CWE-223": 2,
-    "CWE-501": 1,
-    "CWE-193": 1,
-    "CWE-783": 1,
-    "CWE-404": 1,
-    "CWE-200": 1,
-    "CWE-117": 1,
-    "CWE-359": 1,
-    "CWE-511": 1,
-    "CWE-134": 1,
-    "CWE-191": 1,
-    "CWE-625": 1,
-    "CWE-184": 1,
-    "CWE-758": 1,
-    "CWE-681": 1
+    "CWE-134": 1
   }
 }

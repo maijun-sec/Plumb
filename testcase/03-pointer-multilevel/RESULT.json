@@ -2,7 +2,11 @@
   "category": "03-pointer-multilevel",
   "scan_mode": "per-file",
   "cg_strategy": "global",
-  "total_findings": 600,
+  "rules_enabled": [
+    "dfa-taint-null-deref-from-return",
+    "ast-security-null-deref-from-return-ast"
+  ],
+  "total_findings": 18,
   "cases": [
     {
       "id": "L1-independent-objects",
@@ -275,17 +279,7 @@
     "tn_false_positive": 0
   },
   "cwe_histogram": {
-    "CWE-563": 28,
-    "CWE-668": 23,
-    "CWE-476": 20,
-    "CWE-697": 18,
-    "CWE-690": 17,
-    "CWE-252": 17,
-    "CWE-789": 12,
-    "CWE-597": 12,
-    "CWE-482": 10,
-    "CWE-1060": 3,
-    "CWE-501": 2,
-    "CWE-190": 2
+    "CWE-690": 12,
+    "CWE-476": 6
   }
 }

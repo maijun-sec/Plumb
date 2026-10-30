@@ -204,6 +204,27 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
     return ruleId();
   }
 
+  /**
+   * The rule this checker emits, with its CWE.
+   *
+   * <p>The rule id and the CWE are already declared by the subclass -- as {@link #ruleId()} and
+   * {@link #cwe()} -- so this only has to wrap them in the shape the rule map reads. The map is
+   * built from the engine so that it cannot drift from the rules the engine actually emits.
+   */
+  @Override
+  public org.plumb.rules.RuleDef ruleDef() {
+    String cwe = cwe();
+    return new org.plumb.rules.RuleDef(
+        new org.plumb.rules.RuleId(ruleId(), ruleId()),
+        ruleId(),
+        org.plumb.rules.RuleDef.Severity.valueOf(severityLabel()),
+        org.plumb.rules.RuleDef.Type.CORRECTNESS,
+        cwe == null || cwe.isBlank() ? java.util.List.of() : java.util.List.of(cwe),
+        getClass().getName(),
+        true,
+        java.util.List.of());
+  }
+
   @Override
   public void initFunction(AnalysisContext ctx, TacFunction fn) {
     allocSites.clear();

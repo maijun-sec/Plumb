@@ -81,6 +81,18 @@ public final class NoEffectStatementCheck implements AstChecker {
 
   private final Set<String> reported = new HashSet<>();
 
+  /**
+   * Every rule this checker can emit.
+   *
+   * <p>This checker emits more than one rule, so {@link #rule()} alone does not describe it. The
+   * rule id -> CWE map is read from the engine, and a rule the map does not know about would have
+   * its CWE guessed.
+   */
+  @Override
+  public java.util.List<org.plumb.rules.RuleDef> allRules() {
+    return java.util.List.of(EMPTY_STMT_RULE, SELF_ASSIGN_RULE);
+  }
+
   @Override
   public String name() {
     return "no-effect-statement";

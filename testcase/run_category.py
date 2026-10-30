@@ -71,7 +71,37 @@ def _is_lint(finding: dict) -> bool:
     return (finding.get("rule_id") or "").startswith(LINT_PREFIXES)
 
 
-def run_scan(jar: Path, target: Path, per_file: bool, cg: str) -> list[dict]:
+def manifest_rule_ids(manifest: dict) -> list[str]:
+    """Every rule id the manifest's cases name.
+
+    The measurement runs exactly these rules and nothing else. See the
+    module note: a scan that runs every rule reports every finding the
+    engine can produce, and the measurement then has to decide which of
+    them count -- and that decision is made by the matcher, where
+    mistakes hide.
+
+    The ids are the EMITTED ids -- the same strings the report prints.
+    A manifest written against a legacy name would select nothing, and
+    an empty scan reads as "the rule found nothing" rather than "the
+    filter matched nothing".
+    """
+    out = []
+    seen = set()
+    for case in manifest.get("cases", []):
+        for rid in case.get("rule_ids") or []:
+            if rid not in seen:
+                seen.add(rid)
+                out.append(rid)
+    return out
+
+
+def run_scan(
+    jar: Path,
+    target: Path,
+    per_file: bool,
+    cg: str,
+    rule_ids: list[str] | None = None,
+) -> list[dict]:
     """Run the plumb scanner over `target`, returning parsed findings.
 
     Per-file mode isolates each unit in its own temp directory before scanning.
@@ -107,6 +137,12 @@ def run_scan(jar: Path, target: Path, per_file: bool, cg: str) -> list[dict]:
                 "-f", "ndjson",
                 "--cg-strategy", cg,
             ]
+            # ONLY the rules the cases are about. Every other rule the
+            # engine can run is switched off, so the report cannot carry
+            # a finding that has nothing to do with the case being
+            # measured.
+            for rid in (rule_ids or []):
+                cmd += ["--rule", rid]
             proc = subprocess.run(
                 cmd, capture_output=True, text=True,
                 encoding="utf-8", errors="replace", cwd=REPO,
@@ -179,15 +215,30 @@ def match(finding: dict, case: dict) -> bool:
     line_required = case.get("line") is not None
     sink_fn = case.get("sink_function")
 
-    rule_ok = True
+    # THE MATCH IS EXACT.
+    #
+    # A case names a rule id and/or a CWE, and a finding has to satisfy
+    # BOTH. The old matcher treated them as alternatives: a case that
+    # named `rule_ids` ignored the CWE entirely, and a case that named
+    # only `cwes` ignored the rule.
+    #
+    # So a CWE-89 case could be satisfied by an LDAP injection finding --
+    # a different defect class, a different rule -- and it counted as a
+    # detection. That inflates recall and hides the false positives, and
+    # it is exactly the mistake this measurement must not make.
+    #
+    # When a case names BOTH, the finding must match both. When it names
+    # one, the finding must match that one. When it names neither, the
+    # case is file-scoped and any finding in the file counts.
     if rule_ids:
-        rule_ok = finding.get("rule_id") in rule_ids
-    cwe_ok = True
+        if finding.get("rule_id") not in rule_ids:
+            return False
     if cwes:
         fc = finding.get("cwe") or []
         if isinstance(fc, str):
             fc = [fc]
-        cwe_ok = any(c in fc for c in cwes)
+        if not any(c in fc for c in cwes):
+            return False
 
     if rule_ids or cwes:
         # A case must not be satisfied by an unrelated finding that merely happens
@@ -322,8 +373,11 @@ def main() -> int:
         )
         return 2
 
+    # The rules this measurement is about. The scan runs exactly these.
+    relevant_rules = manifest_rule_ids(manifest)
+
     try:
-        findings = run_scan(jar, src, args.per_file, args.cg)
+        findings = run_scan(jar, src, args.per_file, args.cg, relevant_rules)
     except ScanFailed as e:
         # A failed scan measures nothing, so nothing is written.  Writing a
         # RESULT.json here would overwrite a good measurement with a claim
@@ -489,6 +543,10 @@ def main() -> int:
         "category": cat.name,
         "scan_mode": "per-file" if args.per_file else "directory",
         "cg_strategy": args.cg,
+        # The rules the scan ran, and the call-graph strategy. Both are
+        # part of the measurement: a number without the rule set that
+        # produced it cannot be compared with another number.
+        "rules_enabled": relevant_rules,
         "total_findings": len(findings),
         "cases": results,
         "summary": {

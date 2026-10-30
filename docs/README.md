@@ -28,6 +28,7 @@ unverifiable assertion.
 | [`STYLE-RULES.md`](tech/STYLE-RULES.md) | The style-rule implementation: `AstDispatcher`, `AstCheckerRegistry`, typical checker patterns | [中文](zh/tech/STYLE-RULES.md) |
 | [`KOTLIN-DSL.md`](tech/KOTLIN-DSL.md) | **The Kotlin DSL AST rule engine**: rule file format, the matcher language, the compile/evaluate model, `--dsl-rules` usage | [中文](zh/tech/KOTLIN-DSL.md) |
 | [`LANGUAGE-RULES.md`](tech/LANGUAGE-RULES.md) | Where the language enters the taint engine: the measured survey of the rule configuration, and what a per-language layout would have to change | [中文](zh/tech/LANGUAGE-RULES.md) |
+| [`JULIET-MEASUREMENT.md`](tech/JULIET-MEASUREMENT.md) | **What the Juliet measurement measures**: the scoped rule set, the exact match, the rule -> CWE map read from the live engine, and the capabilities the corpus does not yet exercise | [中文](zh/tech/JULIET-MEASUREMENT.md) |
 | [`MODULE-MERGE.md`](tech/MODULE-MERGE.md) | Module structure and dependency boundaries | [中文](zh/tech/MODULE-MERGE.md) |
 | [`CACHE.md`](tech/CACHE.md) | The on-disk IR cache: the `--output-dir` mechanism, the file format, the key, compatibility | [中文](zh/tech/CACHE.md) |
 

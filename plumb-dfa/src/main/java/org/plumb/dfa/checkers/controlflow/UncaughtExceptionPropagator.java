@@ -110,6 +110,26 @@ public final class UncaughtExceptionPropagator implements DfaChecker {
     return "UncaughtExceptionPropagator";
   }
 
+  /**
+   * The rule this checker emits, with its CWE.
+   *
+   * <p>Declared here so that the rule id -> CWE map can be read from the engine rather than from a
+   * table maintained beside it. The id and the CWE are the same ones the finding is built with, so
+   * the map cannot describe a rule the checker does not report.
+   */
+  @Override
+  public org.plumb.rules.RuleDef ruleDef() {
+    return new org.plumb.rules.RuleDef(
+        new org.plumb.rules.RuleId("dfa-controlflow-uncaught-throw", "UNCAUGHT_THROW"),
+        "A call that may throw is not protected by a try-catch in the enclosing function",
+        RuleDef.Severity.MEDIUM,
+        RuleDef.Type.CORRECTNESS,
+        java.util.List.of("CWE-248"),
+        getClass().getName(),
+        true,
+        java.util.List.of());
+  }
+
   @Override
   public void initEngine(AnalysisContext ctx) {
     hasThrow.clear();
