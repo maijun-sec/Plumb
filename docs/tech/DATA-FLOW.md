@@ -19,11 +19,11 @@ The entry point is `DfaEngine` (`engine/DfaEngine.java`), with three run modes e
 | Method | Purpose |
 | --- | --- |
 | `run(TacProgram)` (`:278`) | Single program |
-| `runSequential(TacProgram)` (`:1052`) | Single-threaded |
+| `runSequential(TacProgram)` (`:1128`) | Single-threaded |
 | `runParallel(TacProgram, int)` (`:1023`) | Top-level worklist parallelism |
 | `runWithGlobalStore(List<TacProgram>, int)` (`:357`) | Cross-file global store (the CLI default strategy `global`) |
 
-All modes eventually go through the same skeleton. The real scheduling happens in `runWorklist` (`:1116`):
+All modes eventually go through the same skeleton. The real scheduling happens in `runWorklist` (`:1192`):
 
 ```
 initEngine(ctx)              // once for all checkers
@@ -45,7 +45,7 @@ This is the place where documentation most easily goes wrong, so it is checked a
 | Claim | Corresponding code | Accurate? |
 | --- | --- | --- |
 | Backward, flow-insensitive pre-analysis | `warmUpMethodSummaries` (`:623`) → `MethodSummaryBuilder.build` | **Partially accurate**. It is a single linear IR scan that classifies the return shape and collects side effects, with **no dataflow solving**. It is a path-insensitive syntactic summary, not a backward flow analysis. |
-| Forward, flow-sensitive instruction traversal | `analyseOneFunction` (`:1249`), traversing in `bbRpoOrder(fn)` order | **Accurate**. Every checker maintains its own forward lattice (taint / nullable / interval) and propagates it over the instructions. |
+| Forward, flow-sensitive instruction traversal | `analyseOneFunction` (`:1325`), traversing in `bbRpoOrder(fn)` order | **Accurate**. Every checker maintains its own forward lattice (taint / nullable / interval) and propagates it over the instructions. |
 | Points-to is an independent pre-solve | `solvePointsTo` (`:684`) | **Accurate**. One whole-program solve; the result hangs off `AnalysisContext`, and all checkers share the same fixpoint. |
 
 **Key fact: the engine does not have "a backward pass followed by a separate forward pass".** There is only one
@@ -53,7 +53,7 @@ forward traversal; the summaries are a product of that traversal, not the input 
 
 ### 1.3 Instruction order: BB-RPO, forward within a block
 
-`bbRpoOrder(TacFunction)` (`:1359`):
+`bbRpoOrder(TacFunction)` (`:1435`):
 
 - Basic blocks are ordered in **reverse post-order** (reverse the DFS post-order, `:1347-1350`)
 - The instructions inside a block keep their **original forward order** (`:1358-1363`)
@@ -428,7 +428,7 @@ that registry is clearly stale and **must not** be used to infer the total numbe
 | Parsing (JavaParser) | Yes | At file level, threshold 800 files |
 | Translation (AST → TAC) | Yes | In the same round as parsing |
 | Style checks | Yes | AST visitor, no cross-file state |
-| **DFA (`runParallel`)** | **Yes** | Top-level worklist: functions whose dependency count reaches zero enter `readyQ` (`:1123-1130`) |
+| **DFA (`runParallel`)** | **Yes** | Top-level worklist: functions whose dependency count reaches zero enter `readyQ` (`:1097-1104`) |
 | Report output | No | Single-file write |
 
 The concurrency ceiling is controlled by `--max-parallelism` (default `nCPU - 1`, lower bound 1).

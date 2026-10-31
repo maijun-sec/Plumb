@@ -107,6 +107,7 @@
                              scripts/check_test_coverage.py: every non-disabled test file
                              must be named here. -->
                         <include>org/plumb/dfa/engine/FindingReporterAliasTest.java</include>
+                        <include>org/plumb/dfa/engine/MergedProgramKeyUniquenessTest.java</include>
                         <include>org/plumb/dfa/engine/R803V2TraceChannelTest.java</include>
                         <include>org/plumb/dfa/engine/R803V2TraceIntegrationTest.java</include>
                         <include>org/plumb/dfa/engine/R253BuildOutputFilterTest.java</include>

@@ -285,7 +285,14 @@ public final class GlobalCallGraphBuilder {
     }
     // Compare each candidate's bare-name form (signature may be
     // "name():int" while bare is "name/0"; startsWith would never match).
-    for (TacFunction candidate : store.allFunctions()) {
+    //
+    // ONLY THE CALLER'S OWN CLASS IS SEARCHED. The call site names a
+    // method, and the method it can reach is the one the caller's class
+    // declares. Walking every function in the store for every call site
+    // is O(calls x functions) -- and a corpus of many files that each
+    // declare the same method name makes the store large enough that the
+    // scan stops finishing at all.
+    for (TacFunction candidate : store.functionsOfClass(callerEnc)) {
       if (!candidate.enclosingClass().equals(callerEnc)) continue;
       String candBare = CallGraphBuilder.bareNameAndArity(candidate.signature());
       if (!bare.equals(candBare)) continue;

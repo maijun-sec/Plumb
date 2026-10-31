@@ -714,11 +714,36 @@ public final class DfaEngine {
     HashSet<String> cleanArgs = new HashSet<>();
     HashSet<String> dirtyArgs = new HashSet<>();
 
+    // The function list, taken ONCE.
+    //
+    // `program.functions()` copies the whole function map into a fresh list on
+    // every call, and this method's round bound is derived from the function
+    // count. On a program with tens of thousands of functions that is tens of
+    // thousands of rounds each copying tens of thousands of entries. The scan
+    // did not get slow; it stopped finishing.
+    //
+    // The view is stable for the whole method: the program is not mutated
+    // while the origins are computed.
+    java.util.Collection<org.plumb.tac.ir.TacFunction> fns = program.functionView();
+
     // --- pass 1: intra-procedural label flow, per function -------------------
     // localLabel[fn][varName] is the origin that var currently carries inside fn.
+    //
+    // THE KEY IS THE MERGED KEY (enclosing class + signature), NOT THE
+    // SIGNATURE ALONE.
+    //
+    // A corpus of many files that each declare the same method name makes
+    // the SIGNATURE ambiguous: thousands of functions share one signature,
+    // and keyed by the signature alone they all shared ONE label map, so
+    // each function overwrote the others' labels.
+    //
+    // That is not only wrong, it never terminates: the fixpoint's "did
+    // anything change?" flag was set on every round forever, so the loop
+    // ran every round it was allowed -- each one redoing the same work. The
+    // scan did not get slow; it stopped finishing.
     HashMap<String, HashMap<String, String>> localLabel = new HashMap<>();
 
-    for (TacFunction fn : program.functions()) {
+    for (TacFunction fn : fns) {
       HashMap<String, String> lab = new HashMap<>();
       // Entry boundary: every parameter is a trust boundary in its own right.
       //
@@ -734,27 +759,46 @@ public final class DfaEngine {
         lab.put(name, label);
         origin.put(key(fn, i), label);
       }
-      localLabel.put(fn.signature(), lab);
+      localLabel.put(mergedKeyOf(fn), lab);
     }
 
     // Iterate: local flow within a function, plus transfer across call edges, to a
     // fixpoint. Bounded so it provably terminates.
     // Index program functions by bare "method/arity" so a CALL's calleeSig can be
     // resolved without depending on the call graph's namespace.
+    //
+    // The index is ALSO keyed by the enclosing class, so the disambiguation
+    // scan is O(1) instead of O(candidates).
+    //
+    // WHY THAT MATTERS. A corpus of many files that each declare a method
+    // with the same name and arity puts THOUSANDS of functions in one bare
+    // `name/arity` bucket. Each call site then scanned that whole bucket,
+    // and the scan never reached the analysis.
+    //
+    // The semantics are unchanged. The old code picked the single candidate
+    // whose enclosing class equals the call's qualifier, and returned null
+    // when two candidates matched (ambiguous). The class-keyed index answers
+    // the same question by looking up only that class's candidates.
     java.util.Map<String, List<TacFunction>> byBare = new java.util.HashMap<>();
-    for (TacFunction fn : program.functions()) {
-      byBare.computeIfAbsent(nameArity(fn.signature()), k -> new ArrayList<>()).add(fn);
+    java.util.Map<String, List<TacFunction>> byBareAndClass = new java.util.HashMap<>();
+    for (TacFunction fn : fns) {
+      String bare = nameArity(fn.signature());
+      byBare.computeIfAbsent(bare, k -> new ArrayList<>()).add(fn);
+      String enc = fn.enclosingClass();
+      if (enc != null && !enc.isEmpty()) {
+        byBareAndClass.computeIfAbsent(bare + " :: " + enc, k -> new ArrayList<>()).add(fn);
+      }
     }
 
-    int maxRounds = Math.max(4, program.functions().size() + 2);
+    int maxRounds = Math.max(4, fns.size() + 2);
     HashMap<String, String> retLabel = new HashMap<>();
 
     for (int round = 0; round < maxRounds; round++) {
       boolean changed = false;
 
       // (a) intra-procedural propagation over each function's instructions
-      for (TacFunction fn : program.functions()) {
-        HashMap<String, String> lab = localLabel.get(fn.signature());
+      for (TacFunction fn : fns) {
+        HashMap<String, String> lab = localLabel.get(mergedKeyOf(fn));
         if (lab == null) continue;
         for (TacInstruction ins : fn.instructions()) {
           String destName = destVarName(ins);
@@ -803,12 +847,12 @@ public final class DfaEngine {
       // The global call graph namespaces a node as "Class :: signature" while the
       // merged TacProgram uses the bare signature, so matching them by equality
       // silently yields zero edges -- which is exactly the bug this replaced.
-      for (TacFunction caller : program.functions()) {
-        HashMap<String, String> lab = localLabel.get(caller.signature());
+      for (TacFunction caller : fns) {
+        HashMap<String, String> lab = localLabel.get(mergedKeyOf(caller));
         if (lab == null) continue;
         for (TacInstruction call : caller.instructions()) {
           if (call.kind != TacInstruction.Kind.CALL) continue;
-          TacFunction callee = resolveCallee(program, byBare, call.calleeSig);
+          TacFunction callee = resolveCallee(program, byBare, byBareAndClass, call.calleeSig);
           if (callee == null) continue;
           List<org.plumb.tac.ir.TacOperand> args = call.args;
           for (int j = 0; j < callee.params().size(); j++) {
@@ -909,26 +953,58 @@ public final class DfaEngine {
    * param:} label.
    */
   private static TacFunction resolveCallee(
-      TacProgram program, java.util.Map<String, List<TacFunction>> byBare, String calleeSig) {
+      TacProgram program,
+      java.util.Map<String, List<TacFunction>> byBare,
+      java.util.Map<String, List<TacFunction>> byBareAndClass,
+      String calleeSig) {
     if (calleeSig == null || byBare == null) return null;
     TacFunction exact = program.function(calleeSig);
     if (exact != null) return exact;
-    List<TacFunction> cands = byBare.get(nameArityOfCall(calleeSig));
+    String bare = nameArityOfCall(calleeSig);
+    List<TacFunction> cands = byBare.get(bare);
     if (cands == null || cands.isEmpty()) return null;
     if (cands.size() == 1) return cands.get(0);
     String qualifier = qualifierOf(calleeSig);
     if (qualifier != null && !qualifier.isEmpty()) {
-      TacFunction hit = null;
-      for (TacFunction c : cands) {
-        String enc = c.enclosingClass();
-        if (enc != null && enc.equals(qualifier)) {
-          if (hit != null) return null; // ambiguous within the same class
-          hit = c;
-        }
-      }
-      if (hit != null) return hit;
+      // The candidates of THIS class, looked up directly. The old code
+      // scanned every candidate in the bare bucket for one whose enclosing
+      // class matched -- and the bucket holds thousands of same-named
+      // methods in a corpus like Juliet's.
+      List<TacFunction> inClass =
+          byBareAndClass == null ? null : byBareAndClass.get(bare + " :: " + qualifier);
+      if (inClass == null || inClass.isEmpty()) return null;
+      if (inClass.size() > 1) return null; // ambiguous within the same class
+      return inClass.get(0);
     }
     return null;
+  }
+
+  /**
+   * A key that identifies a function UNIQUELY within a merged program.
+   *
+   * <p>The merged program itself uses {@code enclosingClass + " :: " + signature} for exactly this
+   * reason (see {@code MergedProgram.mergedKey}): a corpus like Juliet's declares the same method
+   * name in thousands of files, and the signature alone does not distinguish them.
+   *
+   * <p>Anything that maps per-function state has to use this key. Keying it by the signature alone
+   * makes every same-named method share one entry, which is both wrong and non-terminating.
+   */
+  private static String mergedKeyOf(TacFunction fn) {
+    if (fn == null) return "";
+    String enc = fn.enclosingClass();
+    if (enc == null || enc.isEmpty()) return fn.signature();
+    return enc + " :: " + fn.signature();
+  }
+
+  /**
+   * Test seam for {@link #mergedKeyOf(TacFunction)}.
+   *
+   * <p>The uniqueness of this key is what makes the parameter-origin fixpoint converge, so the test
+   * has to be able to compute it the same way the engine does. A test that reimplemented the key
+   * would measure a different set of keys than the engine uses.
+   */
+  static String mergedKeyForTest(TacFunction fn) {
+    return mergedKeyOf(fn);
   }
 
   /** {@code "SourceLayer.readRequestParam/1"} -> {@code "readRequestParam/1"}. */

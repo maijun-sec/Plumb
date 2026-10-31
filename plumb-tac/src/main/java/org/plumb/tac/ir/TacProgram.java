@@ -186,6 +186,27 @@ public final class TacProgram implements java.io.Serializable {
   }
 
   /**
+   * The functions, WITHOUT copying them into a new list.
+   *
+   * <p>{@link #functions()} is deliberately defensive: it hands back a fresh unmodifiable list so a
+   * caller cannot mutate the program. That copy costs O(n) in the number of functions, which is
+   * fine once and ruinous in a loop.
+   *
+   * <p>The DFA engine's parameter-origin fixpoint iterates the functions once per round, and the
+   * round bound is itself derived from the function count. On a large corpus -- Juliet's CWE-190 is
+   * 7,047 files, so roughly 50,000 functions -- that is 50,000 rounds each copying 50,000 entries:
+   * about 2.5 billion list copies before any analysis happens. The scan does not get slow, it stops
+   * finishing.
+   *
+   * <p>So the hot paths use this view. It is unmodifiable, so the same guarantee holds; the only
+   * difference is that it is a VIEW, so a caller must not hold it across a mutation of the program.
+   * The engine's loops do not.
+   */
+  public java.util.Collection<TacFunction> functionView() {
+    return Collections.unmodifiableCollection(functions.values());
+  }
+
+  /**
    * Register a binding: the user var {@code varName} holds the function value of the synthetic
    * {@code lambdaSignature}.
    */

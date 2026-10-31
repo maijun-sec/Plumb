@@ -84,6 +84,28 @@ public final class GlobalTACStore {
    */
   private final Map<String, TacFunction> byMergedKey = new LinkedHashMap<>();
 
+  /**
+   * The functions of each enclosing class, in registration order.
+   *
+   * <p>Resolving a call to a method of the caller's own class only has to look at THAT class's
+   * methods. Scanning every function in the store for each call site is O(calls x functions), which
+   * on a large corpus is the difference between finishing and not finishing.
+   */
+  private final Map<String, List<TacFunction>> byEnclosingClass = new LinkedHashMap<>();
+
+  /**
+   * The functions declared by one enclosing class, WITHOUT copying them.
+   *
+   * <p>Returns an empty list for an unknown class, so a caller can iterate it without a null check.
+   */
+  public java.util.List<TacFunction> functionsOfClass(String enclosingClass) {
+    if (enclosingClass == null || enclosingClass.isEmpty()) {
+      return java.util.Collections.emptyList();
+    }
+    java.util.List<TacFunction> out = byEnclosingClass.get(enclosingClass);
+    return out == null ? java.util.Collections.emptyList() : out;
+  }
+
   /** TU path -> list of signatures declared in that TU. */
   private final Map<Path, List<String>> signaturesBySource = new LinkedHashMap<>();
 
@@ -119,6 +141,7 @@ public final class GlobalTACStore {
     if (mk != null && !mk.isEmpty()) {
       byMergedKey.put(mk, fn);
     }
+    indexByEnclosingClass(fn);
     return this;
   }
 
@@ -145,9 +168,20 @@ public final class GlobalTACStore {
       }
       sourceBySignature.put(sig, sourceFile);
       sigs.add(sig);
+      indexByEnclosingClass(fn);
     }
     signaturesBySource.put(sourceFile, sigs);
     return this;
+  }
+
+  /**
+   * Record a function under its enclosing class, so a call to a method of the caller's own class
+   * can be resolved by looking at that class alone.
+   */
+  private void indexByEnclosingClass(TacFunction fn) {
+    String enc = fn.enclosingClass();
+    if (enc == null || enc.isEmpty()) return;
+    byEnclosingClass.computeIfAbsent(enc, k -> new ArrayList<>()).add(fn);
   }
 
   /**
@@ -193,6 +227,25 @@ public final class GlobalTACStore {
    */
   public List<TacFunction> allFunctions() {
     return List.copyOf(byMergedKey.values());
+  }
+
+  /**
+   * The registered functions, WITHOUT copying them.
+   *
+   * <p>{@link #allFunctions()} is deliberately defensive -- it hands back an immutable copy so a
+   * caller cannot mutate the store. That copy is O(n) in the number of functions, and this store
+   * holds one function per method of every file in the scan.
+   *
+   * <p>The call-graph builder calls this once per call site while resolving a callee. On Juliet's
+   * CWE-190 (7,047 files, ~50,000 functions) that is ~50,000 copies of a 50,000-element list: the
+   * resolution stops being a lookup and becomes the dominant cost of the whole scan.
+   *
+   * <p>So the hot path uses this view. It is unmodifiable, so the same guarantee holds; the only
+   * difference is that it is a VIEW, so a caller must not hold it across a mutation of the store.
+   * The store is frozen before the call graph is built.
+   */
+  public java.util.Collection<TacFunction> allFunctionsView() {
+    return java.util.Collections.unmodifiableCollection(byMergedKey.values());
   }
 
   /**
