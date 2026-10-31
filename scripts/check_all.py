@@ -55,6 +55,11 @@ The gates are:
                               not select two rules whose names collide
     check_juliet_report         the per-CWE report scores every case
                               exactly as the measurement harness does
+    check_juliet_configs       a per-CWE config enables every rule the
+                              engine has for that CWE, so a CWE with a
+                              rule is never measured without it
+    mutate_juliet_configs      the config gate catches a config that
+                              drops a rule of its own
     check_finding_identity      every finding names the file it is in,
                               and the AI pass changes a finding's verdict
                               and nothing else -- it does not take its
@@ -268,6 +273,10 @@ GATES = (
      ["python", "scripts/mutate_rule_filter_ambiguity.py"], "check"),
     ("check_juliet_report",
      ["python", "scripts/check_juliet_report.py"], "check"),
+    ("check_juliet_configs",
+     ["python", "scripts/check_juliet_configs.py"], "check"),
+    ("mutate_juliet_configs",
+     ["python", "scripts/mutate_juliet_configs.py"], "check"),
     ("check_finding_identity",
      ["python", "scripts/check_finding_identity.py"], "check"),
     ("mutate_finding_identity",
