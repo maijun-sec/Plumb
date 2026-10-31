@@ -22,118 +22,118 @@ The corpus is the real Juliet_Java testcase tree: 112 CWE directories, 46793 tes
 
 | CWE | outcome | mode | own rules on | bad | good | TP | FN | FP | TN | TP cov | TN cov | prec |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| CWE-15 | MEASURED | missing | 1/1 | 732 | 1380 | 366 | 366 | 138 | 1242 | 0.500 | 0.900 | 0.726 |
-| CWE-23 | COVERAGE GAP | missing | 0/0 | 732 | 1380 | 0 | 732 | 0 | 1380 | 0.000 | 1.000 | n/a |
-| CWE-36 | COVERAGE GAP | missing | 0/0 | 732 | 1380 | 0 | 732 | 0 | 1380 | 0.000 | 1.000 | n/a |
-| CWE-78 | MEASURED | missing | 1/1 | 732 | 1380 | 366 | 366 | 138 | 1242 | 0.500 | 0.900 | 0.726 |
-| CWE-80 | COVERAGE GAP | missing | 0/0 | 1098 | 2070 | 0 | 1098 | 0 | 2070 | 0.000 | 1.000 | n/a |
-| CWE-81 | COVERAGE GAP | missing | 0/0 | 549 | 1035 | 0 | 549 | 0 | 1035 | 0.000 | 1.000 | n/a |
-| CWE-83 | COVERAGE GAP | missing | 0/0 | 549 | 1035 | 0 | 549 | 0 | 1035 | 0.000 | 1.000 | n/a |
-| CWE-89 | MEASURED | missing | 3/3 | 3660 | 11340 | 2255 | 1405 | 6105 | 5235 | 0.616 | 0.462 | 0.375 |
-| CWE-90 | MEASURED | missing | 1/1 | 732 | 1380 | 366 | 366 | 138 | 1242 | 0.500 | 0.900 | 0.726 |
-| CWE-111 | COVERAGE GAP | missing | 0/0 | 1 | 0 | 0 | 1 | 0 | 0 | 0.000 | n/a | n/a |
-| CWE-113 | MEASURED | missing | 1/1 | 2196 | 6804 | 1123 | 1073 | 1477 | 5327 | 0.511 | 0.783 | 0.478 |
-| CWE-114 | MEASURED | missing | 2/2 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-129 | MEASURED | missing | 6/6 | 4392 | 13608 | 1558 | 2834 | 3280 | 10328 | 0.355 | 0.759 | 0.421 |
-| CWE-134 | MEASURED | missing | 1/1 | 1098 | 3402 | 558 | 540 | 216 | 3186 | 0.508 | 0.937 | 0.721 |
-| CWE-190 | MEASURED | missing | 5/5 | 7015 | 21735 | 4159 | 2856 | 6512 | 15223 | 0.593 | 0.700 | 0.425 |
-| CWE-191 | MEASURED | missing | 2/2 | 5612 | 17388 | 3383 | 2229 | 3827 | 13561 | 0.603 | 0.780 | 0.517 |
-| CWE-193 | MEASURED | missing | 2/2 | 51 | 141 | 51 | 0 | 0 | 141 | 1.000 | 1.000 | 1.000 |
-| CWE-197 | VALID ZERO | missing | 1/1 | 2013 | 3795 | 0 | 2013 | 0 | 3795 | 0.000 | 1.000 | n/a |
-| CWE-209 | MEASURED | missing | 5/5 | 34 | 94 | 34 | 0 | 0 | 94 | 1.000 | 1.000 | 1.000 |
-| CWE-226 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 30 | 17 | 1.000 | 0.362 | 0.367 |
-| CWE-248 | VALID ZERO | missing | 1/1 | 1 | 2 | 0 | 1 | 1 | 1 | 0.000 | 0.500 | 0.000 |
-| CWE-252 | MEASURED | missing | 5/5 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-253 | MEASURED | missing | 3/3 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-256 | MEASURED | missing | 1/1 | 61 | 189 | 31 | 30 | 88 | 101 | 0.508 | 0.534 | 0.262 |
-| CWE-259 | MEASURED | missing | 4/4 | 183 | 345 | 108 | 75 | 153 | 192 | 0.590 | 0.557 | 0.414 |
-| CWE-315 | COVERAGE GAP | missing | 0/0 | 61 | 189 | 0 | 61 | 0 | 189 | 0.000 | 1.000 | n/a |
-| CWE-319 | MEASURED | missing | 4/4 | 610 | 1890 | 424 | 186 | 688 | 1202 | 0.695 | 0.636 | 0.380 |
-| CWE-321 | COVERAGE GAP | missing | 0/0 | 61 | 115 | 0 | 61 | 0 | 115 | 0.000 | 1.000 | n/a |
-| CWE-325 | MEASURED | missing | 1/1 | 34 | 94 | 17 | 17 | 0 | 94 | 0.500 | 1.000 | 1.000 |
-| CWE-327 | MEASURED | missing | 2/2 | 34 | 94 | 34 | 0 | 0 | 94 | 1.000 | 1.000 | 1.000 |
-| CWE-328 | MEASURED | missing | 1/1 | 51 | 141 | 51 | 0 | 0 | 141 | 1.000 | 1.000 | 1.000 |
-| CWE-329 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-336 | MEASURED | missing | 2/2 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-338 | MEASURED | missing | 1/1 | 34 | 94 | 34 | 0 | 0 | 94 | 1.000 | 1.000 | 1.000 |
-| CWE-369 | MEASURED | missing | 2/2 | 3050 | 9450 | 1800 | 1250 | 3068 | 6382 | 0.590 | 0.675 | 0.369 |
-| CWE-378 | VALID ZERO | missing | 1/1 | 17 | 47 | 0 | 17 | 0 | 47 | 0.000 | 1.000 | n/a |
-| CWE-379 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 30 | 17 | 1.000 | 0.362 | 0.367 |
-| CWE-382 | MEASURED | missing | 1/1 | 34 | 94 | 34 | 0 | 0 | 94 | 1.000 | 1.000 | 1.000 |
-| CWE-383 | MEASURED | missing | 1/1 | 16 | 0 | 16 | 0 | 0 | 0 | 1.000 | n/a | 1.000 |
-| CWE-390 | MEASURED | missing | 5/5 | 34 | 94 | 17 | 17 | 0 | 94 | 0.500 | 1.000 | 1.000 |
-| CWE-395 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-396 | MEASURED | missing | 5/5 | 34 | 94 | 34 | 0 | 0 | 94 | 1.000 | 1.000 | 1.000 |
-| CWE-397 | MEASURED | missing | 1/1 | 2 | 6 | 2 | 0 | 0 | 6 | 1.000 | 1.000 | 1.000 |
-| CWE-398 | MEASURED | missing | 5/5 | 137 | 378 | 136 | 1 | 0 | 378 | 0.993 | 1.000 | 1.000 |
-| CWE-400 | MEASURED | missing | 3/3 | 2396 | 7418 | 1215 | 1181 | 2281 | 5137 | 0.507 | 0.693 | 0.351 |
-| CWE-404 | MEASURED | missing | 1/1 | 5 | 10 | 2 | 3 | 0 | 10 | 0.400 | 1.000 | 1.000 |
-| CWE-459 | MEASURED | missing | 2/2 | 34 | 94 | 18 | 16 | 30 | 64 | 0.529 | 0.681 | 0.367 |
-| CWE-470 | MEASURED | missing | 1/1 | 732 | 1380 | 366 | 366 | 138 | 1242 | 0.500 | 0.900 | 0.726 |
-| CWE-476 | MEASURED | missing | 9/9 | 293 | 892 | 163 | 130 | 452 | 440 | 0.556 | 0.493 | 0.336 |
-| CWE-477 | MEASURED | missing | 3/3 | 68 | 188 | 68 | 0 | 0 | 188 | 1.000 | 1.000 | 1.000 |
-| CWE-478 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-481 | MEASURED | missing | 2/2 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-482 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 30 | 17 | 1.000 | 0.362 | 0.530 |
-| CWE-483 | MEASURED | missing | 1/1 | 19 | 51 | 18 | 1 | 0 | 51 | 0.947 | 1.000 | 1.000 |
-| CWE-484 | MEASURED | missing | 2/2 | 17 | 47 | 17 | 0 | 30 | 17 | 1.000 | 0.362 | 0.366 |
-| CWE-486 | COVERAGE GAP | missing | 0/0 | 17 | 47 | 0 | 17 | 0 | 47 | 0.000 | 1.000 | n/a |
-| CWE-491 | VALID ZERO | missing | 2/2 | 1 | 2 | 0 | 1 | 0 | 2 | 0.000 | 1.000 | n/a |
-| CWE-499 | COVERAGE GAP | missing | 0/0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | n/a |
-| CWE-500 | VALID ZERO | missing | 1/1 | 1 | 2 | 0 | 1 | 0 | 2 | 0.000 | 1.000 | n/a |
-| CWE-506 | COVERAGE GAP | missing | 0/0 | 116 | 143 | 0 | 116 | 0 | 143 | 0.000 | 1.000 | n/a |
-| CWE-510 | COVERAGE GAP | missing | 0/0 | 66 | 94 | 0 | 66 | 0 | 94 | 0.000 | 1.000 | n/a |
-| CWE-511 | MEASURED | missing | 1/1 | 51 | 141 | 51 | 0 | 0 | 141 | 1.000 | 1.000 | 1.000 |
-| CWE-523 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-526 | MEASURED | missing | 3/3 | 34 | 94 | 34 | 0 | 0 | 94 | 1.000 | 1.000 | 1.000 |
-| CWE-533 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-534 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-535 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-539 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-546 | MEASURED | missing | 1/1 | 85 | 235 | 85 | 0 | 0 | 235 | 1.000 | 1.000 | 1.000 |
-| CWE-549 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-561 | VALID ZERO | missing | 1/1 | 1 | 2 | 0 | 1 | 0 | 2 | 0.000 | 1.000 | n/a |
-| CWE-563 | MEASURED | missing | 7/7 | 218 | 716 | 214 | 4 | 492 | 224 | 0.982 | 0.313 | 0.332 |
-| CWE-566 | COVERAGE GAP | missing | 0/0 | 61 | 115 | 0 | 61 | 0 | 115 | 0.000 | 1.000 | n/a |
-| CWE-568 | VALID ZERO | missing | 1/1 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
-| CWE-570 | MEASURED | missing | 3/3 | 16 | 32 | 16 | 0 | 1 | 31 | 1.000 | 0.969 | 0.950 |
-| CWE-571 | MEASURED | missing | 2/2 | 16 | 32 | 1 | 15 | 0 | 32 | 0.062 | 1.000 | 1.000 |
-| CWE-572 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-579 | MEASURED | missing | 2/2 | 1 | 2 | 1 | 0 | 0 | 2 | 1.000 | 1.000 | 1.000 |
-| CWE-580 | VALID ZERO | missing | 1/1 | 1 | 2 | 0 | 1 | 0 | 2 | 0.000 | 1.000 | n/a |
-| CWE-581 | COVERAGE GAP | missing | 0/0 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
-| CWE-582 | COVERAGE GAP | missing | 0/0 | 1 | 2 | 0 | 1 | 0 | 2 | 0.000 | 1.000 | n/a |
-| CWE-584 | MEASURED | missing | 3/3 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-585 | VALID ZERO | missing | 1/1 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
-| CWE-586 | MEASURED | missing | 4/4 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-597 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 30 | 17 | 1.000 | 0.362 | 0.416 |
-| CWE-598 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-600 | MEASURED | missing | 1/1 | 1 | 2 | 1 | 0 | 0 | 2 | 1.000 | 1.000 | 1.000 |
-| CWE-601 | MEASURED | missing | 2/2 | 549 | 1035 | 276 | 273 | 126 | 909 | 0.503 | 0.878 | 0.687 |
-| CWE-605 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 1 | 46 | 1.000 | 0.979 | 0.900 |
-| CWE-606 | MEASURED | missing | 1/1 | 732 | 2268 | 420 | 312 | 588 | 1680 | 0.574 | 0.741 | 0.412 |
-| CWE-607 | COVERAGE GAP | missing | 0/0 | 1 | 1 | 0 | 1 | 0 | 1 | 0.000 | 1.000 | n/a |
-| CWE-609 | VALID ZERO | missing | 2/2 | 2 | 12 | 0 | 2 | 0 | 12 | 0.000 | 1.000 | n/a |
-| CWE-613 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-614 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-615 | MEASURED | missing | 2/2 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-617 | COVERAGE GAP | missing | 0/0 | 34 | 94 | 0 | 34 | 0 | 94 | 0.000 | 1.000 | n/a |
-| CWE-643 | MEASURED | missing | 1/1 | 732 | 2268 | 375 | 357 | 150 | 2118 | 0.512 | 0.934 | 0.714 |
-| CWE-667 | COVERAGE GAP | missing | 0/0 | 1 | 2 | 0 | 1 | 0 | 2 | 0.000 | 1.000 | n/a |
-| CWE-674 | VALID ZERO | missing | 2/2 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
-| CWE-681 | MEASURED | missing | 1/1 | 51 | 141 | 51 | 0 | 90 | 51 | 1.000 | 0.362 | 0.367 |
-| CWE-690 | MEASURED | missing | 2/2 | 488 | 1512 | 241 | 247 | 342 | 1170 | 0.494 | 0.774 | 0.488 |
-| CWE-698 | MEASURED | missing | 1/1 | 17 | 47 | 16 | 1 | 1 | 46 | 0.941 | 0.979 | 0.941 |
-| CWE-759 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-760 | MEASURED | missing | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
-| CWE-764 | VALID ZERO | missing | 1/1 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
-| CWE-765 | COVERAGE GAP | missing | 0/0 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
-| CWE-772 | COVERAGE GAP | missing | 0/0 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
-| CWE-775 | COVERAGE GAP | missing | 0/0 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
-| CWE-789 | MEASURED | missing | 2/2 | 2579 | 4877 | 1271 | 1308 | 597 | 4280 | 0.493 | 0.878 | 0.667 |
-| CWE-832 | COVERAGE GAP | missing | 0/0 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
-| CWE-833 | VALID ZERO | missing | 1/1 | 6 | 12 | 0 | 6 | 0 | 12 | 0.000 | 1.000 | n/a |
-| CWE-835 | MEASURED | missing | 1/1 | 6 | 13 | 6 | 0 | 0 | 13 | 1.000 | 1.000 | 1.000 |
+| CWE-15 | MEASURED | whitelist | 1/1 | 732 | 1380 | 366 | 366 | 138 | 1242 | 0.500 | 0.900 | 0.726 |
+| CWE-23 | COVERAGE GAP | whitelist | 0/0 | 732 | 1380 | 0 | 732 | 0 | 1380 | 0.000 | 1.000 | n/a |
+| CWE-36 | COVERAGE GAP | whitelist | 0/0 | 732 | 1380 | 0 | 732 | 0 | 1380 | 0.000 | 1.000 | n/a |
+| CWE-78 | MEASURED | all | 1/1 | 732 | 1380 | 366 | 366 | 138 | 1242 | 0.500 | 0.900 | 0.726 |
+| CWE-80 | COVERAGE GAP | all | 0/0 | 1098 | 2070 | 0 | 1098 | 0 | 2070 | 0.000 | 1.000 | n/a |
+| CWE-81 | COVERAGE GAP | all | 0/0 | 549 | 1035 | 0 | 549 | 0 | 1035 | 0.000 | 1.000 | n/a |
+| CWE-83 | COVERAGE GAP | all | 0/0 | 549 | 1035 | 0 | 549 | 0 | 1035 | 0.000 | 1.000 | n/a |
+| CWE-89 | MEASURED | whitelist | 3/3 | 3660 | 11340 | 2255 | 1405 | 6105 | 5235 | 0.616 | 0.462 | 0.375 |
+| CWE-90 | MEASURED | whitelist | 1/1 | 732 | 1380 | 366 | 366 | 138 | 1242 | 0.500 | 0.900 | 0.726 |
+| CWE-111 | COVERAGE GAP | whitelist | 0/0 | 1 | 0 | 0 | 1 | 0 | 0 | 0.000 | n/a | n/a |
+| CWE-113 | MEASURED | all | 1/1 | 2196 | 6804 | 1123 | 1073 | 1477 | 5327 | 0.511 | 0.783 | 0.478 |
+| CWE-114 | MEASURED | whitelist | 2/2 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-129 | MEASURED | whitelist | 6/6 | 4392 | 13608 | 1558 | 2834 | 3280 | 10328 | 0.355 | 0.759 | 0.421 |
+| CWE-134 | MEASURED | whitelist | 1/1 | 1098 | 3402 | 558 | 540 | 216 | 3186 | 0.508 | 0.937 | 0.721 |
+| CWE-190 | MEASURED | whitelist | 5/5 | 7015 | 21735 | 4159 | 2856 | 6512 | 15223 | 0.593 | 0.700 | 0.425 |
+| CWE-191 | MEASURED | whitelist | 2/2 | 5612 | 17388 | 3383 | 2229 | 3827 | 13561 | 0.603 | 0.780 | 0.517 |
+| CWE-193 | MEASURED | whitelist | 2/2 | 51 | 141 | 51 | 0 | 0 | 141 | 1.000 | 1.000 | 1.000 |
+| CWE-197 | VALID ZERO | whitelist | 1/1 | 2013 | 3795 | 0 | 2013 | 0 | 3795 | 0.000 | 1.000 | n/a |
+| CWE-209 | MEASURED | all | 5/5 | 34 | 94 | 34 | 0 | 0 | 94 | 1.000 | 1.000 | 1.000 |
+| CWE-226 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 30 | 17 | 1.000 | 0.362 | 0.367 |
+| CWE-248 | VALID ZERO | whitelist | 1/1 | 1 | 2 | 0 | 1 | 1 | 1 | 0.000 | 0.500 | 0.000 |
+| CWE-252 | MEASURED | whitelist | 5/5 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-253 | MEASURED | whitelist | 3/3 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-256 | MEASURED | whitelist | 1/1 | 61 | 189 | 31 | 30 | 88 | 101 | 0.508 | 0.534 | 0.262 |
+| CWE-259 | MEASURED | whitelist | 4/4 | 183 | 345 | 108 | 75 | 153 | 192 | 0.590 | 0.557 | 0.414 |
+| CWE-315 | COVERAGE GAP | whitelist | 0/0 | 61 | 189 | 0 | 61 | 0 | 189 | 0.000 | 1.000 | n/a |
+| CWE-319 | MEASURED | all | 4/4 | 610 | 1890 | 424 | 186 | 688 | 1202 | 0.695 | 0.636 | 0.380 |
+| CWE-321 | COVERAGE GAP | whitelist | 0/0 | 61 | 115 | 0 | 61 | 0 | 115 | 0.000 | 1.000 | n/a |
+| CWE-325 | MEASURED | whitelist | 1/1 | 34 | 94 | 17 | 17 | 0 | 94 | 0.500 | 1.000 | 1.000 |
+| CWE-327 | MEASURED | whitelist | 2/2 | 34 | 94 | 34 | 0 | 0 | 94 | 1.000 | 1.000 | 1.000 |
+| CWE-328 | MEASURED | whitelist | 1/1 | 51 | 141 | 51 | 0 | 0 | 141 | 1.000 | 1.000 | 1.000 |
+| CWE-329 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-336 | MEASURED | whitelist | 2/2 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-338 | MEASURED | whitelist | 1/1 | 34 | 94 | 34 | 0 | 0 | 94 | 1.000 | 1.000 | 1.000 |
+| CWE-369 | MEASURED | whitelist | 2/2 | 3050 | 9450 | 1800 | 1250 | 3068 | 6382 | 0.590 | 0.675 | 0.369 |
+| CWE-378 | VALID ZERO | whitelist | 1/1 | 17 | 47 | 0 | 17 | 0 | 47 | 0.000 | 1.000 | n/a |
+| CWE-379 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 30 | 17 | 1.000 | 0.362 | 0.367 |
+| CWE-382 | MEASURED | whitelist | 1/1 | 34 | 94 | 34 | 0 | 0 | 94 | 1.000 | 1.000 | 1.000 |
+| CWE-383 | MEASURED | whitelist | 1/1 | 16 | 0 | 16 | 0 | 0 | 0 | 1.000 | n/a | 1.000 |
+| CWE-390 | MEASURED | whitelist | 5/5 | 34 | 94 | 17 | 17 | 0 | 94 | 0.500 | 1.000 | 1.000 |
+| CWE-395 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-396 | MEASURED | whitelist | 5/5 | 34 | 94 | 34 | 0 | 0 | 94 | 1.000 | 1.000 | 1.000 |
+| CWE-397 | MEASURED | whitelist | 1/1 | 2 | 6 | 2 | 0 | 0 | 6 | 1.000 | 1.000 | 1.000 |
+| CWE-398 | MEASURED | whitelist | 5/5 | 137 | 378 | 136 | 1 | 0 | 378 | 0.993 | 1.000 | 1.000 |
+| CWE-400 | MEASURED | whitelist | 3/3 | 2396 | 7418 | 1215 | 1181 | 2281 | 5137 | 0.507 | 0.693 | 0.351 |
+| CWE-404 | MEASURED | whitelist | 1/1 | 5 | 10 | 2 | 3 | 0 | 10 | 0.400 | 1.000 | 1.000 |
+| CWE-459 | MEASURED | whitelist | 2/2 | 34 | 94 | 18 | 16 | 30 | 64 | 0.529 | 0.681 | 0.367 |
+| CWE-470 | MEASURED | whitelist | 1/1 | 732 | 1380 | 366 | 366 | 138 | 1242 | 0.500 | 0.900 | 0.726 |
+| CWE-476 | MEASURED | whitelist | 9/9 | 293 | 892 | 163 | 130 | 452 | 440 | 0.556 | 0.493 | 0.336 |
+| CWE-477 | MEASURED | whitelist | 3/3 | 68 | 188 | 68 | 0 | 0 | 188 | 1.000 | 1.000 | 1.000 |
+| CWE-478 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-481 | MEASURED | whitelist | 2/2 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-482 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 30 | 17 | 1.000 | 0.362 | 0.530 |
+| CWE-483 | MEASURED | whitelist | 1/1 | 19 | 51 | 18 | 1 | 0 | 51 | 0.947 | 1.000 | 1.000 |
+| CWE-484 | MEASURED | whitelist | 2/2 | 17 | 47 | 17 | 0 | 30 | 17 | 1.000 | 0.362 | 0.366 |
+| CWE-486 | COVERAGE GAP | whitelist | 0/0 | 17 | 47 | 0 | 17 | 0 | 47 | 0.000 | 1.000 | n/a |
+| CWE-491 | VALID ZERO | whitelist | 2/2 | 1 | 2 | 0 | 1 | 0 | 2 | 0.000 | 1.000 | n/a |
+| CWE-499 | COVERAGE GAP | whitelist | 0/0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | n/a |
+| CWE-500 | VALID ZERO | whitelist | 1/1 | 1 | 2 | 0 | 1 | 0 | 2 | 0.000 | 1.000 | n/a |
+| CWE-506 | COVERAGE GAP | whitelist | 0/0 | 116 | 143 | 0 | 116 | 0 | 143 | 0.000 | 1.000 | n/a |
+| CWE-510 | COVERAGE GAP | whitelist | 0/0 | 66 | 94 | 0 | 66 | 0 | 94 | 0.000 | 1.000 | n/a |
+| CWE-511 | MEASURED | whitelist | 1/1 | 51 | 141 | 51 | 0 | 0 | 141 | 1.000 | 1.000 | 1.000 |
+| CWE-523 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-526 | MEASURED | whitelist | 3/3 | 34 | 94 | 34 | 0 | 0 | 94 | 1.000 | 1.000 | 1.000 |
+| CWE-533 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-534 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-535 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-539 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-546 | MEASURED | whitelist | 1/1 | 85 | 235 | 85 | 0 | 0 | 235 | 1.000 | 1.000 | 1.000 |
+| CWE-549 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-561 | VALID ZERO | whitelist | 1/1 | 1 | 2 | 0 | 1 | 0 | 2 | 0.000 | 1.000 | n/a |
+| CWE-563 | MEASURED | whitelist | 7/7 | 218 | 716 | 214 | 4 | 492 | 224 | 0.982 | 0.313 | 0.332 |
+| CWE-566 | COVERAGE GAP | whitelist | 0/0 | 61 | 115 | 0 | 61 | 0 | 115 | 0.000 | 1.000 | n/a |
+| CWE-568 | VALID ZERO | whitelist | 1/1 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
+| CWE-570 | MEASURED | whitelist | 3/3 | 16 | 32 | 16 | 0 | 1 | 31 | 1.000 | 0.969 | 0.950 |
+| CWE-571 | MEASURED | whitelist | 2/2 | 16 | 32 | 1 | 15 | 0 | 32 | 0.062 | 1.000 | 1.000 |
+| CWE-572 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-579 | MEASURED | whitelist | 2/2 | 1 | 2 | 1 | 0 | 0 | 2 | 1.000 | 1.000 | 1.000 |
+| CWE-580 | VALID ZERO | whitelist | 1/1 | 1 | 2 | 0 | 1 | 0 | 2 | 0.000 | 1.000 | n/a |
+| CWE-581 | COVERAGE GAP | whitelist | 0/0 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
+| CWE-582 | COVERAGE GAP | whitelist | 0/0 | 1 | 2 | 0 | 1 | 0 | 2 | 0.000 | 1.000 | n/a |
+| CWE-584 | MEASURED | whitelist | 3/3 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-585 | VALID ZERO | whitelist | 1/1 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
+| CWE-586 | MEASURED | whitelist | 4/4 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-597 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 30 | 17 | 1.000 | 0.362 | 0.416 |
+| CWE-598 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-600 | MEASURED | whitelist | 1/1 | 1 | 2 | 1 | 0 | 0 | 2 | 1.000 | 1.000 | 1.000 |
+| CWE-601 | MEASURED | whitelist | 2/2 | 549 | 1035 | 276 | 273 | 126 | 909 | 0.503 | 0.878 | 0.687 |
+| CWE-605 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 1 | 46 | 1.000 | 0.979 | 0.900 |
+| CWE-606 | MEASURED | whitelist | 1/1 | 732 | 2268 | 420 | 312 | 588 | 1680 | 0.574 | 0.741 | 0.412 |
+| CWE-607 | COVERAGE GAP | whitelist | 0/0 | 1 | 1 | 0 | 1 | 0 | 1 | 0.000 | 1.000 | n/a |
+| CWE-609 | VALID ZERO | whitelist | 2/2 | 2 | 12 | 0 | 2 | 0 | 12 | 0.000 | 1.000 | n/a |
+| CWE-613 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-614 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-615 | MEASURED | whitelist | 2/2 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-617 | COVERAGE GAP | whitelist | 0/0 | 34 | 94 | 0 | 34 | 0 | 94 | 0.000 | 1.000 | n/a |
+| CWE-643 | MEASURED | whitelist | 1/1 | 732 | 2268 | 375 | 357 | 150 | 2118 | 0.512 | 0.934 | 0.714 |
+| CWE-667 | COVERAGE GAP | whitelist | 0/0 | 1 | 2 | 0 | 1 | 0 | 2 | 0.000 | 1.000 | n/a |
+| CWE-674 | VALID ZERO | whitelist | 2/2 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
+| CWE-681 | MEASURED | whitelist | 1/1 | 51 | 141 | 51 | 0 | 90 | 51 | 1.000 | 0.362 | 0.367 |
+| CWE-690 | MEASURED | whitelist | 2/2 | 488 | 1512 | 241 | 247 | 342 | 1170 | 0.494 | 0.774 | 0.488 |
+| CWE-698 | MEASURED | whitelist | 1/1 | 17 | 47 | 16 | 1 | 1 | 46 | 0.941 | 0.979 | 0.941 |
+| CWE-759 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-760 | MEASURED | whitelist | 1/1 | 17 | 47 | 17 | 0 | 0 | 47 | 1.000 | 1.000 | 1.000 |
+| CWE-764 | VALID ZERO | whitelist | 1/1 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
+| CWE-765 | COVERAGE GAP | whitelist | 0/0 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
+| CWE-772 | COVERAGE GAP | whitelist | 0/0 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
+| CWE-775 | COVERAGE GAP | whitelist | 0/0 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
+| CWE-789 | MEASURED | all | 2/2 | 2579 | 4877 | 1271 | 1308 | 597 | 4280 | 0.493 | 0.878 | 0.667 |
+| CWE-832 | COVERAGE GAP | whitelist | 0/0 | 2 | 4 | 0 | 2 | 0 | 4 | 0.000 | 1.000 | n/a |
+| CWE-833 | VALID ZERO | whitelist | 1/1 | 6 | 12 | 0 | 6 | 0 | 12 | 0.000 | 1.000 | n/a |
+| CWE-835 | MEASURED | whitelist | 1/1 | 6 | 13 | 6 | 0 | 0 | 13 | 1.000 | 1.000 | 1.000 |
 
 ## Totals over the measured CWEs
 
@@ -206,25 +206,25 @@ These fired in the corpus but are not about the CWE under test, so they are neit
 
 | source | findings |
 | --- | ---: |
-| a whitelist config that enables a rule about another CWE | 680873 |
-| a `mode: all` config, which enables every rule by design | 0 |
+| a whitelist config that enables a rule about another CWE | 57135 |
+| a `mode: all` config, which enables every rule by design | 623738 |
 
 The second row is not a defect: a `mode: all` config is a deliberate measurement of the whole catalogue, and every rule that fires is expected. The first row is a measurement of how broad the per-CWE whitelists are.
 
 | rule | findings in a whitelist config |
 | --- | ---: |
-| `ast-style-commentsindentation` | 90715 |
-| `ast-naming-unnecessary-fqn-enum` | 51671 |
-| `ast-style-unused-assignment` | 49883 |
-| `ast-style-final-parameters` | 46199 |
-| `ast-style-method-arg-could-be-final` | 45569 |
-| `ast-error-unused-throws` | 43235 |
-| `ast-style-fi-useless-block` | 39506 |
-| `ast-style-left-curly` | 30291 |
 | `dfa-taint-null-dereference` | 29624 |
-| `ast-error-throw-generic-exception` | 25574 |
-| `ast-error-generic-exception` | 25446 |
-| `ast-style-avoid-nested-blocks` | 23239 |
+| `dfa-boundary-integer-overflow` | 12934 |
+| `ast-security-unchecked-return` | 6216 |
+| `dfa-taint-leak` | 4227 |
+| `ast-security-insecure-communication` | 2239 |
+| `dfa-taint-resource-exhaustion` | 1706 |
+| `ast-error-throw-generic-exception` | 128 |
+| `ast-security-insecure-crypto` | 51 |
+| `ast-style-compare-instead-of-assigning` | 3 |
+| `dfa-taint-assignment-in-conditional` | 3 |
+| `dfa-taint-unchecked-array-index` | 2 |
+| `ast-style-clone-without-super` | 1 |
 
 ## The CWEs with no measurement to report
 
@@ -296,6 +296,126 @@ none
 
 none
 
+## The engine change and the configuration change, told apart
+
+Two things changed between the previous measurement and this one: the engine's parameter-origin fixpoint, and the per-CWE configs. A per-rule finding count tells them apart, because a rule that was already enabled keeps its count if the engine change was semantically neutral.
+
+| CWE | config | rule | before | after |
+| --- | --- | --- | ---: | ---: |
+| CWE-15 | changed | `dfa-taint-external-config-setting` | 0 | 528 |
+| CWE-80 | unchanged | `ast-naming-final-local-variable` | 974 | 989 |
+| CWE-80 | unchanged | `ast-performance-dup-string` | 582 | 590 |
+| CWE-80 | unchanged | `ast-security-null-deref-from-return-ast` | 522 | 511 |
+| CWE-80 | unchanged | `ast-security-unused-variable-assignment` | 2619 | 2648 |
+| CWE-80 | unchanged | `ast-style-avoid-print-stack-trace` | 2 | 1 |
+| CWE-80 | unchanged | `ast-style-emptylineseparatorcheck-cs` | 4 | 2 |
+| CWE-80 | unchanged | `ast-style-expression-always-true` | 286 | 274 |
+| CWE-80 | unchanged | `ast-style-string-eq-operator` | 3079 | 3084 |
+| CWE-90 | changed | `dfa-taint-ldap-injection` | 0 | 528 |
+| CWE-113 | unchanged | `ast-naming-final-local-variable` | 4507 | 4729 |
+| CWE-113 | unchanged | `ast-performance-dup-string` | 4396 | 4528 |
+| CWE-113 | unchanged | `ast-quality-always-false` | 71 | 72 |
+| CWE-113 | unchanged | `ast-quality-always-true` | 502 | 504 |
+| CWE-113 | unchanged | `ast-quality-env-var` | 268 | 269 |
+| CWE-113 | unchanged | `ast-security-null-deref-from-return-ast` | 1861 | 1844 |
+| CWE-113 | unchanged | `ast-security-unused-variable-assignment` | 7224 | 7197 |
+| CWE-113 | unchanged | `ast-style-avoid-print-stack-trace` | 0 | 2 |
+| CWE-113 | unchanged | `ast-style-emptylineseparatorcheck-cs` | 4 | 6 |
+| CWE-113 | unchanged | `ast-style-expression-always-true` | 2341 | 2289 |
+| CWE-113 | unchanged | `ast-style-literal-boolean-condition` | 612 | 593 |
+| CWE-113 | unchanged | `ast-style-string-eq-operator` | 11317 | 11310 |
+| CWE-114 | changed | `ast-security-process-control` | 0 | 17 |
+| CWE-190 | changed | `ast-style-icast-int-mult-long` | 0 | 852 |
+| CWE-190 | changed | `dfa-taint-integer-overflow` | 0 | 6842 |
+| CWE-191 | changed | `dfa-taint-integer-underflow` | 0 | 3273 |
+| CWE-193 | changed | `dfa-controlflow-off-by-one` | 0 | 54 |
+| CWE-193 | changed | `dfa-style-off-by-one-loop` | 0 | 51 |
+| CWE-226 | changed | `ast-style-uncleared-sensitive-info` | 0 | 49 |
+| CWE-248 | changed | `dfa-controlflow-uncaught-throw` | 0 | 2 |
+| CWE-256 | changed | `dfa-taint-plaintext-password-sink` | 0 | 125 |
+| CWE-259 | changed | `ast-security-hardcoded-password-sink-ast` | 0 | 267 |
+| CWE-325 | changed | `ast-style-missing-crypto-step` | 0 | 17 |
+| CWE-327 | changed | `ast-style-weak-crypto` | 0 | 102 |
+| CWE-328 | changed | `ast-security-weak-hash` | 0 | 51 |
+| CWE-329 | changed | `ast-style-random-iv-cbc` | 0 | 18 |
+| CWE-336 | changed | `ast-style-seeded-random` | 0 | 17 |
+| CWE-338 | changed | `ast-security-weak-prng` | 0 | 34 |
+| CWE-379 | changed | `dfa-security-insecure-temp-file` | 0 | 49 |
+| CWE-382 | changed | `ast-style-system-exit-usage` | 0 | 35 |
+| CWE-383 | changed | `ast-style-thread-in-servlet` | 0 | 64 |
+| CWE-390 | changed | `ast-error-catch-log` | 0 | 17 |
+| CWE-390 | changed | `ast-error-throwable-not-thrown` | 0 | 10 |
+| CWE-395 | changed | `ast-style-catch-nullpointer-exception` | 0 | 17 |
+| CWE-396 | changed | `ast-error-catch-of-throwable` | 0 | 26 |
+| CWE-396 | changed | `ast-error-catch-throwable` | 0 | 26 |
+| CWE-396 | changed | `ast-style-overly-broad-catch` | 0 | 44 |
+| CWE-398 | changed | `ast-style-empty-statement-block` | 0 | 103 |
+| CWE-398 | changed | `ast-style-no-effect-statement` | 0 | 17 |
+| CWE-398 | changed | `ast-style-poor-code-quality` | 0 | 112 |
+| CWE-398 | changed | `dfa-style-empty-error-block` | 0 | 17 |
+| CWE-398 | changed | `dfa-style-self-assign` | 0 | 17 |
+| CWE-459 | changed | `ast-style-incomplete-cleanup` | 0 | 49 |
+| CWE-470 | changed | `dfa-taint-unsafe-reflection` | 0 | 528 |
+| CWE-476 | changed | `ast-bug-equals-avoid-null` | 0 | 378 |
+| CWE-476 | changed | `ast-style-literals-first` | 0 | 2 |
+| CWE-476 | changed | `dfa-taint-null-deref-from-return` | 0 | 393 |
+| CWE-478 | changed | `dfa-style-missing-default-case` | 0 | 17 |
+| CWE-481 | changed | `ast-style-assignment-in-condition` | 0 | 17 |
+| CWE-482 | changed | `ast-style-compare-instead-of-assigning` | 0 | 66 |
+| CWE-483 | changed | `dfa-style-incorrect-block-delimitation` | 0 | 18 |
+| CWE-484 | changed | `ast-style-absent-codeblock-in-case` | 0 | 136 |
+| CWE-484 | changed | `ast-style-missing-break` | 0 | 17 |
+| CWE-491 | changed | `ast-style-class-based-issue-491` | 0 | 1 |
+| CWE-500 | changed | `ast-style-mutable-static-should-be-final` | 0 | 1 |
+| CWE-511 | changed | `dfa-security-runtime-exec` | 0 | 51 |
+| CWE-523 | changed | `ast-style-unprotected-cred-transport` | 0 | 17 |
+| CWE-526 | changed | `ast-quality-env-var` | 0 | 34 |
+| CWE-526 | changed | `ast-security-env-var-info-exposure-ast` | 0 | 12 |
+| CWE-526 | changed | `ast-style-env-var-info-exposure` | 0 | 34 |
+| CWE-533 | changed | `ast-style-log-info-leak` | 0 | 17 |
+| CWE-534 | changed | `ast-style-log-info-leak` | 0 | 17 |
+| CWE-535 | changed | `dfa-security-shell-error-exposure` | 0 | 17 |
+| CWE-539 | changed | `dfa-security-persistent-cookie` | 0 | 17 |
+| CWE-546 | changed | `ast-style-suspicious-comment` | 0 | 85 |
+| CWE-549 | changed | `ast-style-missing-password-masking` | 0 | 17 |
+| CWE-563 | changed | `ast-security-unused-variable-assignment` | 0 | 476 |
+| CWE-563 | changed | `ast-style-unused-assignment` | 0 | 1119 |
+| CWE-568 | changed | `ast-error-super-finalize` | 0 | 2 |
+| CWE-570 | changed | `ast-quality-always-false` | 0 | 2 |
+| CWE-570 | changed | `ast-style-conditional-constant` | 0 | 1 |
+| CWE-570 | changed | `ast-style-literal-boolean-condition` | 0 | 17 |
+| CWE-571 | changed | `ast-quality-always-true` | 0 | 1 |
+| CWE-572 | changed | `ast-style-call-to-thread-run` | 0 | 17 |
+| CWE-579 | changed | `ast-style-non-serializable-in-session` | 0 | 1 |
+| CWE-580 | changed | `ast-style-cwe580-clone-without-super` | 0 | 1 |
+| CWE-584 | changed | `ast-style-return-from-finally` | 0 | 17 |
+| CWE-584 | changed | `ast-style-return-in-finally` | 0 | 17 |
+| CWE-586 | changed | `ast-error-explicit-finalize` | 0 | 18 |
+| CWE-586 | changed | `ast-error-finalize-only-overridden` | 0 | 1 |
+| CWE-586 | changed | `ast-style-explicit-finalize` | 0 | 18 |
+| CWE-597 | changed | `ast-style-string-eq-operator` | 0 | 219 |
+| CWE-598 | changed | `ast-style-form-get-password` | 0 | 17 |
+| CWE-600 | changed | `ast-style-cwe600-uncaught-exception` | 0 | 1 |
+| CWE-601 | changed | `dfa-taint-open-redirect` | 0 | 420 |
+| CWE-605 | changed | `ast-style-multiple-binds-same-port` | 0 | 20 |
+| CWE-606 | changed | `dfa-taint-unchecked-loop-condition` | 0 | 1044 |
+| CWE-609 | changed | `ast-style-double-checked-locking` | 0 | 2 |
+| CWE-613 | changed | `ast-style-insufficient-session-expiration` | 0 | 17 |
+| CWE-615 | changed | `ast-style-comment-info-leak` | 0 | 17 |
+| CWE-615 | changed | `ast-style-info-exposure-in-comment` | 0 | 17 |
+| CWE-643 | changed | `dfa-taint-xpath-injection` | 0 | 549 |
+| CWE-681 | changed | `dfa-style-numeric-conversion` | 0 | 147 |
+| CWE-690 | changed | `ast-security-null-deref-from-return-ast` | 0 | 338 |
+| CWE-690 | changed | `ast-style-null-deref-from-return` | 0 | 165 |
+| CWE-698 | changed | `ast-style-redirect-without-exit` | 0 | 17 |
+| CWE-759 | changed | `ast-style-unsalted-one-way-hash` | 0 | 17 |
+| CWE-760 | changed | `ast-style-predictable-salt` | 0 | 17 |
+| CWE-835 | changed | `ast-style-infinite-loop` | 0 | 6 |
+
+**The rows whose config did not change are the engine's doing.** A `mode: all` config enables every rule, so it is the same in both runs, and every difference in such a CWE comes from the fixpoint fix.
+
+Those differences are small but they are not zero, so the fixpoint fix is NOT purely a performance fix: keying the parameter origins by the merged key stopped one method's labels from leaking into another, and a few verdicts changed because of it.
+
 ## The AI false-positive pass
 
 The AI pass judges every finding the engine reports and drops the ones it calls false positives. For each CWE the SAME sample of Juliet files is scanned twice -- once with the AI off and once with it on -- so the only difference between the two numbers is the AI pass.
@@ -319,7 +439,7 @@ The last column is the pass's real effect on the report: a finding that is not a
 Two things changed between this measurement and the previous one, and this table shows the COMBINED effect. It is not a measure of either change on its own:
 
 1. The engine's parameter-origin fixpoint is keyed by the merged key (enclosing class + signature) instead of the signature alone. Before the fix, every same-named method in the corpus shared one label map, so the fixpoint never converged and the taint labels of one method leaked into another.
-2. The per-CWE configs are derived from the engine's own rule table instead of from one past scan. Before the fix, 67 of the 112 CWEs had a rule the engine ships and a config that did not enable it, so their coverage number said nothing about the rule.
+2. The per-CWE configs are derived from the engine's own rule table instead of from one past scan. Before the fix, most of the CWEs had a rule the engine ships and a config that did not enable it, so their coverage number said nothing about the rule.
 
 A CWE whose true-positive count went from 0 to a positive number was almost certainly unmeasured before, not undetected.
 
