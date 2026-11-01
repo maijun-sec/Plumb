@@ -1245,6 +1245,7 @@ public final class ScanRunner {
     JavaSourceParser parser = buildParser();
     java.util.Map<String, com.github.javaparser.ast.body.MethodDeclaration> out =
         new java.util.HashMap<>();
+    java.util.Map<String, Object> fields = new java.util.HashMap<>();
     for (JavaModule m : modules) {
       String pkgPrefix = packageNameOf(m.sourceRoot());
       for (Path src : m.sourceFiles()) {
@@ -1261,10 +1262,18 @@ public final class ScanRunner {
         if (ps.unit() == null) continue;
         String filePkg = ps.packageName();
         String effectivePkg = filePkg != null && !filePkg.isEmpty() ? filePkg : pkgPrefix;
+        // The type name comes from the unit's FIRST type declaration, not from
+        // CompilationUnit.getPrimaryTypeName(). The latter matches the type against the FILE
+        // NAME, and the parser reads the source from a String, so there is no file name and the
+        // answer is empty. That put every entry under "<package>." -- e.g.
+        // "testcasesupport.#writeLine"
+        // instead of "testcasesupport.IO#writeLine" -- which no lookup could ever find.
+        String typeName = firstTypeName(ps.unit());
+        if (typeName == null || typeName.isEmpty()) continue;
         String fqcnPrefix =
             effectivePkg == null || effectivePkg.isEmpty()
-                ? ps.unit().getPrimaryTypeName().orElse("")
-                : effectivePkg + "." + ps.unit().getPrimaryTypeName().orElse("");
+                ? typeName
+                : effectivePkg + "." + typeName;
         ps.unit()
             .walk(
                 com.github.javaparser.ast.body.MethodDeclaration.class,
@@ -1277,12 +1286,61 @@ public final class ScanRunner {
                   // clean module.
                   out.putIfAbsent(fqcnKey, md);
                 });
+        // The static fields of the same class, with their constant values. A field that holds a
+        // literal and is never assigned elsewhere is a fact about the whole program, so it is
+        // worth carrying across files.
+        ps.unit()
+            .walk(
+                com.github.javaparser.ast.body.FieldDeclaration.class,
+                fd -> {
+                  if (!fd.isStatic()) return;
+                  for (com.github.javaparser.ast.body.VariableDeclarator vd : fd.getVariables()) {
+                    if (!vd.getInitializer().isPresent()) continue;
+                    org.plumb.style.quality.ConstantResolver.Value v =
+                        org.plumb.style.quality.ConstantResolver.literalValue(
+                            vd.getInitializer().get());
+                    if (v == null) continue;
+                    fields.putIfAbsent(fqcnPrefix + "#" + vd.getNameAsString(), v.value());
+                  }
+                });
       }
     }
+    this.staticFieldValues = fields;
     LOG.info(
-        "static-method cache built -> {} entries across {} module(s)", out.size(), modules.size());
+        "static-method cache built -> {} entries across {} module(s); static field constants -> {}",
+        out.size(),
+        modules.size(),
+        fields.size());
     return out;
   }
+
+  /**
+   * The name of the compilation unit's first type declaration.
+   *
+   * <p>{@link com.github.javaparser.ast.CompilationUnit#getPrimaryTypeName()} cannot be used here:
+   * it matches the type against the FILE NAME, and the parser reads the source from a String, so
+   * there is no file name and the answer is always empty. The first type declaration is the type
+   * the file declares, which is what a lookup by fully-qualified name means.
+   *
+   * @return the type's simple name, or {@code null} when the unit declares no type.
+   */
+  private static String firstTypeName(com.github.javaparser.ast.CompilationUnit unit) {
+    if (unit == null) return null;
+    return unit.getTypes().stream()
+        .findFirst()
+        .map(com.github.javaparser.ast.body.TypeDeclaration::getNameAsString)
+        .orElse(null);
+  }
+
+  /**
+   * The constant values of the static fields of other classes, keyed by {@code <FQCN>#<fieldName>}.
+   *
+   * <p>Populated by {@link #buildStaticMethodCache} in the same pass that builds the method cache,
+   * because both read the same parsed sources. The values are the same {@link Object}s the {@link
+   * org.plumb.style.quality.ConstantResolver} produces: a {@link Boolean}, a {@link Long}, or a
+   * {@link String}.
+   */
+  private java.util.Map<String, Object> staticFieldValues = java.util.Map.of();
 
   /**
    * Best-effort package name inferred from a source root's directory layout. Looks for a {@code
@@ -2533,7 +2591,8 @@ public final class ScanRunner {
     // will then set itself as the current rule on the
     // context (see `sctx.setCurrentRule(c.name())` below)
     // so per-checker lookups scope by rule id.
-    StyleContext sctx = new StyleContext(ps, rules, config.ruleParams, staticMethodCache);
+    StyleContext sctx =
+        new StyleContext(ps, rules, config.ruleParams, staticMethodCache, staticFieldValues);
     org.plumb.style.AstDispatcher d = new org.plumb.style.AstDispatcher();
     for (org.plumb.style.AstChecker c : styleChecks) {
       if (c.name().equals("method-length")) continue;
@@ -3092,7 +3151,8 @@ public final class ScanRunner {
       // A1: single-pass group via AstDispatcher.
       // pass per-rule param overrides
       // (see the parallel runStyleChecks() above).
-      StyleContext sctx = new StyleContext(ps, rules, config.ruleParams, staticMethodCache);
+      StyleContext sctx =
+          new StyleContext(ps, rules, config.ruleParams, staticMethodCache, staticFieldValues);
       org.plumb.style.AstDispatcher d = new org.plumb.style.AstDispatcher();
       // Use the SHARED check list, not a freshly built one.
       //

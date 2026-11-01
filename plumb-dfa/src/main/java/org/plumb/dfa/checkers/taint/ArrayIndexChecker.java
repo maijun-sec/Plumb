@@ -169,8 +169,11 @@ public final class ArrayIndexChecker extends TaintedCheckerBase {
     if (!this.taintedVars.containsKey(index)) {
       return;
     }
-    if (this.guards.isGuardedByIncludingDerived(index, BinaryOperator.GE)
-        || this.guards.isGuardedByIncludingDerived(index, BinaryOperator.GT)) {
+    // The array being indexed. A bound against another array's length says nothing about this
+    // one, so the identity matters.
+    TacOperand.TacVar array =
+        (ins.lhs1 instanceof TacOperand.TacVar) ? (TacOperand.TacVar) ins.lhs1 : null;
+    if (this.guards.isIndexProvenInRange(index, array)) {
       return;
     }
     String src = (String) this.taintedVars.get(index);

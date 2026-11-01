@@ -31,6 +31,7 @@ import org.plumb.parser.ParsedSource;
 import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleRegistry;
 import org.plumb.style.concurrency.LockPairingCheck;
+import org.plumb.style.quality.AlwaysTrueCheck;
 import org.plumb.style.security.HardCodedCryptoKeyCheck;
 import org.plumb.style.security.MutableStaticFieldCheck;
 import org.plumb.style.security.PlaintextCookieCheck;
@@ -356,6 +357,55 @@ class R1200CorpusGapRulesTest {
             + "}";
     assertThat(run(new PlaintextCookieCheck(), src))
         .as("CWE-315: a cookie that stores a hash does not fire")
+        .isEmpty();
+  }
+
+  // ---- CWE-571: a comparison between two different types is always false ----
+
+  @Test
+  void alwaysTrueFiresOnAClassComparisonBetweenDifferentTypes() {
+    String src =
+        "import java.util.Random;\n"
+            + "import java.security.SecureRandom;\n"
+            + "class Foo {\n"
+            + "  void bad() {\n"
+            + "    Random random = new Random();\n"
+            + "    SecureRandom secureRandom = new SecureRandom();\n"
+            + "    if (!random.getClass().equals(secureRandom.getClass())) { work(); }\n"
+            + "  }\n"
+            + "  void work() {}\n"
+            + "}";
+    assertThat(run(new AlwaysTrueCheck(), src))
+        .as("CWE-571: comparing the classes of two different types is always false")
+        .isNotEmpty();
+  }
+
+  @Test
+  void alwaysTrueIsSilentWhenTheTwoTypesAreTheSame() {
+    String src =
+        "import java.util.Random;\n"
+            + "class Foo {\n"
+            + "  void good(Random a, Random b) {\n"
+            + "    if (!a.getClass().equals(b.getClass())) { work(); }\n"
+            + "  }\n"
+            + "  void work() {}\n"
+            + "}";
+    assertThat(run(new AlwaysTrueCheck(), src))
+        .as("CWE-571: two variables of the same type may have the same class")
+        .isEmpty();
+  }
+
+  @Test
+  void alwaysTrueIsSilentWhenTheTypeIsNotKnown() {
+    String src =
+        "class Foo {\n"
+            + "  void good(Object a, Object b) {\n"
+            + "    if (!a.getClass().equals(b.getClass())) { work(); }\n"
+            + "  }\n"
+            + "  void work() {}\n"
+            + "}";
+    assertThat(run(new AlwaysTrueCheck(), src))
+        .as("CWE-571: an unknown type is not evidence of a different class")
         .isEmpty();
   }
 }

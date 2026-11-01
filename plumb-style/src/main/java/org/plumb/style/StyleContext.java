@@ -111,6 +111,37 @@ public final class StyleContext {
       new HashMap<>();
 
   /**
+   * cross-file static-field constants, keyed by {@code <FQCN>#<fieldName>}.
+   *
+   * <p>A static field initialised with a literal and never assigned elsewhere is a fact about the
+   * whole program, so it can be carried across files the same way a static method's body can. The
+   * values are a {@link Boolean}, a {@link Long}, or a {@link String}.
+   *
+   * <p>Populated by {@code plumb-main}'s {@code ScanRunner} from every source-root / module-root
+   * supplied via {@code --source-root} / {@code --module-root}, in the same pass that builds the
+   * static-method cache.
+   */
+  private final Map<String, Object> staticFieldByFqcn = new HashMap<>();
+
+  /**
+   * full constructor with the cross-file caches. {@code staticMethods} keys are {@code
+   * <FQCN>#<methodName>}, values are the parsed {@link
+   * com.github.javaparser.ast.body.MethodDeclaration}. {@code staticFields} keys are {@code
+   * <FQCN>#<fieldName>}, values are the constant itself. A null map is treated as empty.
+   */
+  public StyleContext(
+      ParsedSource source,
+      RuleRegistry rules,
+      Map<String, Map<String, Object>> ruleParams,
+      Map<String, com.github.javaparser.ast.body.MethodDeclaration> staticMethods,
+      Map<String, Object> staticFields) {
+    this(source, rules, ruleParams, staticMethods);
+    if (staticFields != null) {
+      staticFieldByFqcn.putAll(staticFields);
+    }
+  }
+
+  /**
    * M2: per-file cache of top-level method ranges, sorted by start line. Built lazily on the first
    * {@link #findEnclosingMethod} call and reused for every subsequent call. Before this cache,
    * every finding triggered a full {@code unit.walk(MethodDeclaration)} -- for a file that produces
@@ -212,6 +243,49 @@ public final class StyleContext {
     if (fqcn == null || methodName == null) return null;
     return staticMethodByFqcn.get(fqcn + "#" + methodName);
   }
+
+  /**
+   * Look up the constant value of another class's static field.
+   *
+   * <p>The key is {@code <FQCN>#<fieldName>}, e.g. {@code "testcasesupport.IO#STATIC_FINAL_TRUE"}.
+   * Returns null when the cache has no entry for that key, which means the field's value is not
+   * known -- not that the field is absent.
+   */
+  public Object lookupStaticField(String fqcn, String fieldName) {
+    if (fqcn == null || fieldName == null) return null;
+    return staticFieldByFqcn.get(fqcn + "#" + fieldName);
+  }
+
+  /**
+   * Does the scan know a class with this fully-qualified name?
+   *
+   * <p>The answer comes from the same caches that hold the class's static methods and fields: a
+   * class the scan has parsed is a class it can answer questions about. A class with neither a
+   * static method nor a constant static field is not in the caches, so this answers false for it
+   * even when the scan has the file -- which is the conservative direction, because a name that
+   * cannot be confirmed is not used.
+   */
+  public boolean knowsClass(String fqcn) {
+    if (fqcn == null || fqcn.isEmpty()) return false;
+    if (knownClasses.contains(fqcn)) return true;
+    String prefix = fqcn + "#";
+    for (String key : staticMethodByFqcn.keySet()) {
+      if (key.startsWith(prefix)) {
+        knownClasses.add(fqcn);
+        return true;
+      }
+    }
+    for (String key : staticFieldByFqcn.keySet()) {
+      if (key.startsWith(prefix)) {
+        knownClasses.add(fqcn);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** The classes the scan has confirmed, so the lookup is not repeated. */
+  private final java.util.Set<String> knownClasses = new java.util.HashSet<>();
 
   /** Set the per-run aggressiveness. */
   public StyleContext withAggressiveness(String level) {

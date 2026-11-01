@@ -197,7 +197,10 @@ public final class StatementTranslator {
 
   private void translateVarDecl(VariableDeclarationExpr vde, TacBuilder b) {
     for (var declarator : vde.getVariables()) {
-      TacType t = TypeMapper.map(vde.getElementType());
+      // The declared type is the whole type, not its element type. `getElementType()` returns
+      // `int` for `int[] array`, which made every array local look like a scalar and hid the
+      // fact that the local holds an array -- so `array.length` was not recognisable as a bound.
+      TacType t = TypeMapper.map(declarator.getType());
       TacOperand.TacVar v = new TacOperand.TacVar(declarator.getNameAsString(), t, false);
       b.locals().add(v);
       if (declarator.getInitializer().isPresent()) {
@@ -406,7 +409,8 @@ public final class StatementTranslator {
       LOG.warn("for-each with multi-variable decl skipped");
     } else {
       var decl = vde.getVariables().get(0);
-      TacType vt = TypeMapper.map(vde.getElementType());
+      // The whole declared type, not its element type -- see translateVarDecl.
+      TacType vt = TypeMapper.map(decl.getType());
       TacOperand.TacVar loopVar = new TacOperand.TacVar(decl.getNameAsString(), vt, false);
       b.locals().add(loopVar);
       b.emit(
@@ -506,7 +510,8 @@ public final class StatementTranslator {
         continue;
       }
       for (var declarator : vde.getVariables()) {
-        TacType t = TypeMapper.map(vde.getElementType());
+        // The whole declared type, not its element type -- see translateVarDecl.
+        TacType t = TypeMapper.map(declarator.getType());
         TacOperand.TacVar v = new TacOperand.TacVar(declarator.getNameAsString(), t, false);
         b.locals().add(v);
         resources.add(v);

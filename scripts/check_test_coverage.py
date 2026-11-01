@@ -177,6 +177,26 @@ def main():
     problems = []
     checked_files = 0
 
+    # Every module that HAS tests must be in MODULES.
+    #
+    # Without this, deleting a module from MODULES silences the gate for
+    # that module: the gate stops looking, so it stops complaining, and the
+    # file-count floor is the only thing left -- and the floor is a guess
+    # that a module large enough to stay under it defeats. The floor is a
+    # backstop; this is the real check.
+    for module_dir in sorted(REPO.iterdir()):
+        if not (module_dir / "pom.xml").is_file():
+            continue
+        test_root = module_dir / "src" / "test" / "java"
+        if not test_root.is_dir():
+            continue
+        rel = module_dir.relative_to(REPO).as_posix()
+        if rel not in MODULES:
+            problems.append(
+                "%s has tests but is not in the gate's MODULES list, so the "
+                "gate never checks them" % rel
+            )
+
     for module in MODULES:
         module_dir = REPO / module
         pom = module_dir / "pom.xml"
@@ -266,14 +286,15 @@ def main():
 
     if problems:
         print("")
-        print("FAIL: %d test file(s) never run" % len(problems))
+        print("FAIL: %d problem(s)" % len(problems))
         for p in problems:
             print("  %s" % p)
         print("")
         print("A test that exists, passes in isolation, and is never executed")
         print("by the build is indistinguishable from a test that does not exist.")
         print("Add it to the module's surefire allow list, or mark it @Disabled")
-        print("with a reason.")
+        print("with a reason. A module with tests that the gate does not look")
+        print("at is the same hole with one more step.")
         return 1
 
     print("OK: every test file the build should run is named")

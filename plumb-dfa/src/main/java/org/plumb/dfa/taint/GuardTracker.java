@@ -72,16 +72,70 @@ import org.plumb.tac.ir.TacOperand;
 public final class GuardTracker {
 
   /**
+   * What kind of bound a {@link Guard} carries.
+   *
+   * <p>The distinction matters because the two kinds answer different questions. A {@link #NUMERIC}
+   * bound says "this variable is below some number", and a number can be compared against the
+   * type's range -- {@code data < 100} justifies suppressing an overflow of {@code data + 1}. An
+   * {@link #ARRAY_LENGTH} bound says "this variable is below the length of this array", which is
+   * not a number at all: {@code data < array.length} says nothing about {@code Integer.MAX_VALUE},
+   * so it must never justify suppressing an overflow.
+   *
+   * <p>Conflating the two is not hypothetical. An earlier attempt modelled the array length as a
+   * constant named {@code "<array-length>"}, which made it answer numeric queries, and it cost 555
+   * true positives in the merged-program analysis because every array-length comparison started
+   * looking like an overflow guard.
+   */
+  public enum GuardKind {
+    /** The bound is a number: a literal or a constant-like field such as {@code Byte.MAX_VALUE}. */
+    NUMERIC,
+    /** The bound is the {@code length} of the array named by {@link Guard#boundArray()}. */
+    ARRAY_LENGTH
+  }
+
+  /**
    * A single guard expression. The {@code literalDescription} is a human-readable form of the RHS
    * of the comparison (e.g. "5" for a literal int, "Byte.MAX_VALUE" for a static-final field load).
    * It's stored as a string rather than a {@link TacOperand} because the literal may be a
    * FIELDLOAD-loaded constant that doesn't fit the {@code TacOperand} sealed hierarchy.
+   *
+   * <p>{@code boundArray} names the array whose {@code length} bounds {@code boundedVar}, and is
+   * {@code null} for every guard that compares against a literal or a constant-like field. It
+   * exists because an array's length is a <i>dynamic</i> bound: {@code data < array.length} proves
+   * an upper bound, but only for the array it was measured against. Treating the length as a
+   * constant would either lose the bound or apply it to the wrong array, so the array identity
+   * travels with the guard.
    */
-  public record Guard(TacOperand.TacVar boundedVar, BinaryOperator op, String literalDescription) {
+  public record Guard(
+      TacOperand.TacVar boundedVar,
+      BinaryOperator op,
+      String literalDescription,
+      TacOperand.TacVar boundArray,
+      GuardKind kind) {
+
     public Guard {
       Objects.requireNonNull(boundedVar, "boundedVar");
       Objects.requireNonNull(op, "op");
       Objects.requireNonNull(literalDescription, "literalDescription");
+      Objects.requireNonNull(kind, "kind");
+    }
+
+    /** A numeric guard: the bound is a literal or a constant-like field. */
+    public Guard(TacOperand.TacVar boundedVar, BinaryOperator op, String literalDescription) {
+      this(boundedVar, op, literalDescription, null, GuardKind.NUMERIC);
+    }
+
+    /** Is this guard a numeric bound, the kind that answers "is the variable below a number"? */
+    public boolean isNumeric() {
+      return kind == GuardKind.NUMERIC;
+    }
+
+    /**
+     * Is this guard an upper bound against an array's length? True when the guard names the array
+     * it bounds and the operator is one of the "less than the length" forms.
+     */
+    public boolean isArrayLengthBound() {
+      return kind == GuardKind.ARRAY_LENGTH && boundArray != null;
     }
 
     /** Human description: "data < Byte.MAX_VALUE". */
@@ -196,6 +250,16 @@ public final class GuardTracker {
   private final Map<TacOperand.TacVar, String> knownConstants = new HashMap<>();
 
   /**
+   * Vars that hold an array's {@code length}, mapped to the array they were read from.
+   *
+   * <p>Populated by {@link #recordConstantLoadIfApplicable} when a {@code FIELDLOAD} reads the
+   * {@code length} field of an array-typed receiver. An array's length is a genuine bound, but it
+   * is a <i>dynamic</i> one -- it holds only for the array it was read from, so the array's
+   * identity has to travel with the fact.
+   */
+  private final Map<TacOperand.TacVar, TacOperand.TacVar> arrayLengthVars = new HashMap<>();
+
+  /**
    * Guards propagated through arithmetic and MOVE. When we see {@code BINOP dest = var ± literal}
    * and {@code var} is currently active-guarded, or {@code MOVE dest = var} and {@code var} is
    * active-guarded, we add {@code dest} to {@link #derivedGuards} with the same operator and an
@@ -241,22 +305,31 @@ public final class GuardTracker {
    * field (e.g. {@code Byte.MAX_VALUE}, {@code Long.MIN_VALUE}). The dest is recorded in {@link
    * #knownConstants}.
    *
-   * <p>Array length tracking is disabled by default. Re-enable it to restore the array-length bound
-   * that suppresses the CWE-129 false positives.
+   * <p>A {@code FIELDLOAD} of an array's {@code length} is recorded separately, in {@link
+   * #arrayLengthVars}. An array's length is a real bound, but a dynamic one: it holds only for the
+   * array it was read from, so the array's identity is kept alongside the fact.
    */
   private void recordConstantLoadIfApplicable(TacInstruction ins) {
     if (ins.dest == null || !(ins.dest instanceof TacOperand.TacVar dest)) {
       return;
     }
     if (ins.fieldName == null) return;
-    // (The array.length special case is
-    // currently disabled. Re-enable here
-    // if the regression is re-introduced.)
-    // if ("length".equals(ins.fieldName)
-    //         && ins.lhs1 instanceof TacOperand.TacVar) {
-    //     knownConstants.put(dest, "<array-length>");
-    //     return;
-    // }
+    // The `length` field of an array is a bound, not a constant. It is tracked by array identity
+    // because `data < array.length` says nothing about `other.length`.
+    //
+    // `String.length()` is a CALL, not a FIELDLOAD, so a FIELDLOAD named `length` is an array
+    // length. The receiver's declared type is checked when it is known: a class field that
+    // happens to be named `length` is not an array length. An UNKNOWN receiver is accepted,
+    // because the translator projects some array-typed expressions onto an unresolved type and
+    // rejecting them would lose the bound for no gain.
+    if ("length".equals(ins.fieldName) && ins.lhs1 instanceof TacOperand.TacVar receiver) {
+      org.plumb.tac.ir.TacType.Kind receiverKind = receiver.type().kind();
+      if (receiverKind == org.plumb.tac.ir.TacType.Kind.ARRAY
+          || receiverKind == org.plumb.tac.ir.TacType.Kind.UNKNOWN) {
+        arrayLengthVars.put(dest, receiver);
+        return;
+      }
+    }
     // Standard "constant-like" field names
     // for integral types.
     if (!isConstantFieldName(ins.fieldName)) return;
@@ -304,6 +377,7 @@ public final class GuardTracker {
     guardedVars.clear();
     allGuardsSeen.clear();
     knownConstants.clear();
+    arrayLengthVars.clear();
     derivedGuards.clear();
     derivedGuardedVars.clear();
     propagatableSources.clear();
@@ -382,10 +456,14 @@ public final class GuardTracker {
    * Returns true if {@code var} is guarded by an active guard whose operator is {@code op}. Used by
    * checkers that need a specific guard direction (e.g. IntOverflowChecker wants {@code v < MAX}
    * for an ADD op).
+   *
+   * <p>Only <i>numeric</i> guards answer this query. An array-length bound is not a number, so
+   * {@code data < array.length} cannot stand in for {@code data < Integer.MAX_VALUE} -- treating it
+   * as if it could is what cost 555 true positives when array-length tracking was first tried.
    */
   public boolean isGuardedBy(TacOperand.TacVar var, BinaryOperator op) {
     for (Guard g : activeGuards) {
-      if (g.boundedVar().equals(var) && g.op() == op) return true;
+      if (g.isNumeric() && g.boundedVar().equals(var) && g.op() == op) return true;
     }
     return false;
   }
@@ -441,6 +519,7 @@ public final class GuardTracker {
     TacOperand.TacVar var = null;
     String literalDesc = null;
     boolean flipped = false;
+    TacOperand.TacVar boundArray = null;
     if (ins.lhs1 instanceof TacOperand.TacVar v && ins.lhs2 instanceof TacOperand.Const c) {
       var = v;
       literalDesc = c.toString();
@@ -471,10 +550,32 @@ public final class GuardTracker {
       var = v;
       literalDesc = knownConstants.get(v2);
       flipped = true;
+    } else if (ins.lhs1 instanceof TacOperand.TacVar v
+        && ins.lhs2 instanceof TacOperand.TacVar v2
+        && arrayLengthVars.containsKey(v2)) {
+      // Compare against an array's length (e.g. `data < array.length`). The bound is dynamic,
+      // so the array's identity travels with the guard.
+      var = v;
+      boundArray = arrayLengthVars.get(v2);
+      literalDesc = boundArray.name() + ".length";
+    } else if (ins.lhs2 instanceof TacOperand.TacVar v
+        && ins.lhs1 instanceof TacOperand.TacVar v2
+        && arrayLengthVars.containsKey(v2)) {
+      // Same flip, with the array's length on the LHS (e.g. `array.length > data`).
+      var = v;
+      boundArray = arrayLengthVars.get(v2);
+      literalDesc = boundArray.name() + ".length";
+      flipped = true;
     }
     if (var == null || literalDesc == null) return;
     BinaryOperator recordedOp = flipped ? flipOperator(op) : op;
-    Guard g = new Guard(var, recordedOp, literalDesc);
+    Guard g =
+        new Guard(
+            var,
+            recordedOp,
+            literalDesc,
+            boundArray,
+            boundArray == null ? GuardKind.NUMERIC : GuardKind.ARRAY_LENGTH);
     lastCompare.put(dest, java.util.List.of(g));
   }
 
@@ -511,13 +612,24 @@ public final class GuardTracker {
    * treated as unguarded. CWE-129 fires a false positive on the goodB2G case.
    *
    * <p>The fix: when seeing a {@code LAND} or {@code LOR} BINOP, look up the operand guards in
-   * {@code lastCompare} and store the union under the result's destination. The {@code LAND} case
-   * requires BOTH operands' guards to be active when the combined boolean is true; {@code LOR} is
-   * more permissive (any operand's guard suffices) but we conservatively treat it as {@code LAND}
-   * to avoid losing suppression on the {@code if (data < 0 || data > MAX)} pattern (where either
-   * branch's guard applies). For the checkers that use {@code isGuardedBy} (the more common case),
-   * {@code LAND} union and intersection are equivalent in the sense that both operands' guards end
-   * up active.
+   * {@code lastCompare} and combine them under the result's destination. The two operators have
+   * <i>different</i> semantics, and conflating them was the defect:
+   *
+   * <ul>
+   *   <li>{@code A && B} being true implies A is true <i>and</i> B is true, so the union of the
+   *       operands' guards holds. One operand may carry no guard at all -- {@code data >= 0 &&
+   *       somethingElse} still proves {@code data >= 0} -- so the union must not require both
+   *       operands to be recognised.
+   *   <li>{@code A || B} being true implies only that <i>one</i> of them is true, so a guard
+   *       established by a single arm does <i>not</i> hold. Only a guard that both arms establish
+   *       holds, which is the intersection.
+   * </ul>
+   *
+   * <p>Reading {@code ||} as {@code &&} pushed guards that did not hold, which could hide a real
+   * finding. Reading {@code &&} as requiring both arms to be recognised dropped the guards that did
+   * hold, which produced a false positive on the corpus's fixed shape {@code data >= 0 && data <
+   * array.length}: the second arm bounds the index from above and the first from below, and losing
+   * either one makes the index look unchecked.
    */
   private void recordLogicalOpIfApplicable(TacInstruction ins) {
     if (ins.binop != BinaryOperator.LAND && ins.binop != BinaryOperator.LOR) return;
@@ -526,15 +638,44 @@ public final class GuardTracker {
     if (!(ins.lhs2 instanceof TacOperand.TacVar lhs2)) return;
     final java.util.List<Guard> g1 = lastCompare.get(lhs1);
     final java.util.List<Guard> g2 = lastCompare.get(lhs2);
-    // Need BOTH operands' guards --otherwise
-    // the compound guard has unknown guard
-    // semantics (e.g. `data >= 0 && arr.length > 0`
-    // --the second arm is not a guard on data).
-    if (g1 == null || g2 == null) return;
-    final java.util.List<Guard> combined = new java.util.ArrayList<>(g1.size() + g2.size());
-    combined.addAll(g1);
-    combined.addAll(g2);
+    final java.util.List<Guard> combined;
+    if (ins.binop == BinaryOperator.LAND) {
+      // Union: if the conjunction is true, every arm's guard holds.
+      if (g1 == null && g2 == null) return;
+      combined = new java.util.ArrayList<>();
+      if (g1 != null) combined.addAll(g1);
+      if (g2 != null) combined.addAll(g2);
+    } else {
+      // Intersection: if the disjunction is true, only a guard that BOTH arms establish holds.
+      if (g1 == null || g2 == null) return;
+      combined = intersectGuards(g1, g2);
+      if (combined.isEmpty()) return;
+    }
     lastCompare.put(dest, combined);
+  }
+
+  /**
+   * The guards that hold under <i>both</i> operand lists.
+   *
+   * <p>Two guards are the same when they constrain the same variable with the same operator and the
+   * same bound -- the array identity counts, because a length bound against one array says nothing
+   * about another.
+   */
+  private static java.util.List<Guard> intersectGuards(
+      java.util.List<Guard> a, java.util.List<Guard> b) {
+    final java.util.List<Guard> out = new java.util.ArrayList<>();
+    for (Guard g1 : a) {
+      for (Guard g2 : b) {
+        if (g1.boundedVar().equals(g2.boundedVar())
+            && g1.op() == g2.op()
+            && g1.literalDescription().equals(g2.literalDescription())
+            && java.util.Objects.equals(g1.boundArray(), g2.boundArray())) {
+          out.add(g1);
+          break;
+        }
+      }
+    }
+    return out;
   }
 
   private void onBranch(TacInstruction ins) {
@@ -986,7 +1127,7 @@ public final class GuardTracker {
     java.util.List<Guard> dgs = derivedGuards.get(var);
     if (dgs == null) return false;
     for (Guard g : dgs) {
-      if (g.op() == op) return true;
+      if (g.isNumeric() && g.op() == op) return true;
     }
     return false;
   }
@@ -994,6 +1135,106 @@ public final class GuardTracker {
   /** Visible for testing. Snapshot of derived-guards map. */
   public java.util.Map<TacOperand.TacVar, java.util.List<Guard>> derivedGuards() {
     return new java.util.HashMap<>(derivedGuards);
+  }
+
+  /**
+   * Is {@code index} proven to be a valid position in {@code array} on this path?
+   *
+   * <p>A valid position needs <i>both</i> bounds:
+   *
+   * <pre>
+   *   0 &lt;= index &lt; array.length
+   * </pre>
+   *
+   * <p>Requiring only the lower bound would suppress real findings -- {@code if (data >= 0) {
+   * use(array[data]); }} leaves a genuine out-of-bounds access open whenever {@code data} is larger
+   * than the array. Requiring only the upper bound would suppress the negative-index case. So the
+   * checker asks for both, and the upper bound must be against <i>this</i> array: a bound measured
+   * against {@code other.length} says nothing about {@code array}.
+   *
+   * <p>The lower bound may be a literal bound ({@code data >= 0}) or a derived one ({@code idx =
+   * pos - 3} when {@code pos >= 3}), because both prove the index is not negative. The upper bound
+   * must be an array-length bound, because no literal upper bound proves the index is inside the
+   * array.
+   */
+  public boolean isIndexProvenInRange(TacOperand.TacVar index, TacOperand.TacVar array) {
+    if (index == null) return false;
+    if (!hasLowerBound(index)) return false;
+    return hasUpperBoundAgainst(index, array);
+  }
+
+  /**
+   * Is {@code var} proven to be non-negative on this path?
+   *
+   * <p>Both {@code var >= 0} and {@code var > -1} prove it; the strict form is the same fact
+   * expressed with a different operator.
+   */
+  public boolean hasLowerBound(TacOperand.TacVar var) {
+    if (var == null) return false;
+    for (Guard g : activeGuards) {
+      if (!g.boundedVar().equals(var)) continue;
+      if (!g.isNumeric()) continue;
+      if (g.op() == BinaryOperator.GE && isNonNegativeLiteral(g.literalDescription())) return true;
+      if (g.op() == BinaryOperator.GT && isAtLeastMinusOneLiteral(g.literalDescription()))
+        return true;
+    }
+    // A derived guard carries the bound through arithmetic (e.g. `idx = pos - 3` under `pos >= 3`).
+    java.util.List<Guard> dgs = derivedGuards.get(var);
+    if (dgs == null) return false;
+    for (Guard g : dgs) {
+      if (!g.isNumeric()) continue;
+      if (g.op() == BinaryOperator.GE && isNonNegativeLiteral(g.literalDescription())) return true;
+      if (g.op() == BinaryOperator.GT && isAtLeastMinusOneLiteral(g.literalDescription()))
+        return true;
+    }
+    return false;
+  }
+
+  /**
+   * Is {@code var} proven to be smaller than {@code array}'s length on this path?
+   *
+   * <p>When {@code array} is {@code null} there is no array to compare against, so only a bound
+   * against a <i>known</i> array length can hold -- and it must not be silently applied to an
+   * unknown array.
+   */
+  public boolean hasUpperBoundAgainst(TacOperand.TacVar var, TacOperand.TacVar array) {
+    if (var == null) return false;
+    // The array must be known, and it must be the array the bound was measured against. A bound
+    // against an unidentified array cannot be transferred to the array being indexed.
+    if (array == null) return false;
+    for (Guard g : activeGuards) {
+      if (!g.boundedVar().equals(var)) continue;
+      if (!g.isArrayLengthBound()) continue;
+      if (!array.equals(g.boundArray())) continue;
+      // `var < arr.length` and `var <= arr.length` both hold. The second form is a weaker bound
+      // that the source spelled out; the boundary checker resolves the strictness.
+      if (g.op() == BinaryOperator.LT || g.op() == BinaryOperator.LE) return true;
+    }
+    return false;
+  }
+
+  /** Does this literal description denote a non-negative integer? */
+  private static boolean isNonNegativeLiteral(String literalDescription) {
+    if (literalDescription == null) return false;
+    Long v = parseLiteral(literalDescription);
+    return v != null && v >= 0;
+  }
+
+  /** Does this literal description denote -1 (the strict form of "at least zero")? */
+  private static boolean isAtLeastMinusOneLiteral(String literalDescription) {
+    if (literalDescription == null) return false;
+    Long v = parseLiteral(literalDescription);
+    return v != null && v == -1L;
+  }
+
+  /** Parse a literal description as a long, or {@code null} if it is not numeric. */
+  private static Long parseLiteral(String literalDescription) {
+    if (literalDescription == null) return null;
+    try {
+      return Long.parseLong(literalDescription.trim());
+    } catch (NumberFormatException nfe) {
+      return null;
+    }
   }
 
   /**

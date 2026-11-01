@@ -244,6 +244,19 @@
                              that must stay silent. -->
                         <include>org/plumb/dfa/checkers/taint/R1122StaleFactSuppressionTest.java</include>
 
+                        <!-- R1200: an array's length is a bound, but not a
+                             NUMERIC one. `data < array.length` says nothing
+                             about Integer.MAX_VALUE, so it must not answer a
+                             numeric guard query; conflating the two made
+                             every array-length comparison look like an
+                             overflow guard and cost 555 true positives. -->
+                        <include>org/plumb/dfa/checkers/boundary/R1200ArrayBoundsLowerBoundTest.java</include>
+                        <!-- R1200: the taint heuristic must recognise a
+                             lower-bound guard that is one arm of a
+                             conjunction, and must require BOTH bounds
+                             before it calls an index safe. -->
+                        <include>org/plumb/dfa/checkers/taint/R1200ArrayIndexLowerBoundGuardTest.java</include>
+
                         <!-- Sink matching has to tolerate the SIMPLE-NAME callee
                              form. The TAC writes a fully qualified receiver type
                              only when the symbol solver can resolve it; for a

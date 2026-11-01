@@ -48,6 +48,21 @@ JULIET_CSV = Path(r"D:\work\tmp\Juliet_Java\testcases_detail.csv")
 CONFIG_DIR = REPO / "juliet-coverage" / "configs"
 JAR = REPO / "plumb-main" / "target" / "plumb-main-0.1.0-SNAPSHOT-all.jar"
 
+# The corpus's support library.
+#
+# A Juliet testcase is not a self-contained program: `CWE571_...__static_01.java`
+# reads `IO.staticTrue`, and `IO` lives in `src/testcasesupport`, a sibling of
+# `src/testcases`. Without that directory the scan sees a program that cannot
+# compile, and the testcase's constant references cannot be resolved -- so the
+# findings the engine misses are an artifact of the measurement setup rather
+# than a defect of the engine.
+#
+# The directory is passed as a SOURCE ROOT, not as an input: the support
+# library is not part of the corpus under test, it is the program the corpus
+# is written against. Adding it as an input would score its own findings
+# against the CWE under test.
+JULIET_SUPPORT = Path(r"D:\work\tmp\Juliet_Java\src\testcasesupport")
+
 # The rule -> CWE table.
 #
 # It is read from the LIVE engine (`--list-rule-cwes`), because the DFA
@@ -451,6 +466,8 @@ def scan_to_file(cwe: str, cwe_dir: str, rules: list[str], dest: Path) -> dict:
         ndjson = Path(tmp) / "f.ndjson"
         cmd = ["java", "-jar", str(JAR), "scan", "-i", str(directory),
                "-f", "ndjson", "-o", str(ndjson)]
+        if JULIET_SUPPORT.is_dir():
+            cmd += ["--source-root", str(JULIET_SUPPORT)]
         if config.is_file():
             cmd += ["-c", str(config)]
         else:
@@ -543,6 +560,8 @@ def scan(cwe: str, cwe_dir: str, rules: list[str]) -> tuple[list[dict], str]:
         ndjson = Path(tmp) / "f.ndjson"
         cmd = ["java", "-jar", str(JAR), "scan", "-i", str(directory),
                "-f", "ndjson", "-o", str(ndjson)]
+        if JULIET_SUPPORT.is_dir():
+            cmd += ["--source-root", str(JULIET_SUPPORT)]
         if config.is_file():
             cmd += ["-c", str(config)]
         else:

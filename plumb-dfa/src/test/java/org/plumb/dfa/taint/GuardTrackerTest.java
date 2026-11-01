@@ -23,7 +23,6 @@ package org.plumb.dfa.taint;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.plumb.tac.ir.BinaryOperator;
 import org.plumb.tac.ir.TacInstruction;
@@ -31,11 +30,6 @@ import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacType;
 
 /** Tests for the path-sensitive guard tracker. */
-@Disabled(
-    "R787f+: pre-existing TacProgram import drift in plumb-dfa test code; references"
-        + " org.plumb.tac.ir.TacProgram but plumb-style uses different unqualified paths. Out of"
-        + " R787f scope. The checkers themselves (still in plumb-dfa module) and their scan logic"
-        + " are unchanged.")
 class GuardTrackerTest {
 
   private static TacOperand.TacVar v(String name) {
@@ -200,36 +194,48 @@ class GuardTrackerTest {
     t.track(binop("t4", v("t1"), v("t3"), BinaryOperator.LOR));
     // BRANCH t4
     t.track(branch(v("t4")));
-    // Both underlying guards must be active.
-    assertThat(t.isGuardedBy(v("data"), BinaryOperator.LT)).isTrue();
-    assertThat(t.isGuardedBy(v("data"), BinaryOperator.GT)).isTrue();
+    // A disjunction proves only what BOTH arms prove. `data < 0 || data > 255` says data is
+    // outside [0, 255]; it does not say `data < 0`, and it does not say `data > 255`. Pushing
+    // either guard would suppress a real finding.
+    assertThat(t.isGuardedBy(v("data"), BinaryOperator.LT)).isFalse();
+    assertThat(t.isGuardedBy(v("data"), BinaryOperator.GT)).isFalse();
+  }
+
+  @Test
+  void lor_keepsAGuardBothArmsEstablish() {
+    GuardTracker t = new GuardTracker();
+    // t1 = data >= 0
+    t.track(binop("t1", v("data"), TacOperand.Const.ofInt(0), BinaryOperator.GE));
+    // t3 = data >= 0   (the same bound, from the other arm)
+    t.track(binop("t3", v("data"), TacOperand.Const.ofInt(0), BinaryOperator.GE));
+    // t4 = t1 LOR t3
+    t.track(binop("t4", v("t1"), v("t3"), BinaryOperator.LOR));
+    t.track(branch(v("t4")));
+    // Both arms prove `data >= 0`, so the disjunction proves it too.
+    assertThat(t.isGuardedBy(v("data"), BinaryOperator.GE)).isTrue();
   }
 
   /**
-   * partial-info DISABLED: with both operands' guards required, when one arm has no entry (e.g.
-   * `data < length` where `length` is not in knownConstants), the LAND yields no compound guard.
-   * This is more conservative (fewer false suppressions) at the cost of losing partial info.
+   * A conjunction proves every guard that either arm proves. `data >= 0 && somethingElse` still
+   * proves `data >= 0`, so the other arm not carrying a guard must not lose it.
    */
   @Test
-  void land_withNonTrackedOperand_noCompoundGuard() {
+  void land_withNonTrackedOperand_keepsTheTrackedArmsGuard() {
     GuardTracker t = new GuardTracker();
     // t1 = data >= 0
     t.track(binop("t1", v("data"), TacOperand.Const.ofInt(0), BinaryOperator.GE));
     // t3 = someOtherCondition (no BINOP recorded)
-    // t4 = t1 LAND t3 — t3 has no entry, so no compound
+    // t4 = t1 LAND t3 — t3 has no entry, but t1's guard still holds
     t.track(binop("t4", v("t1"), v("t3"), BinaryOperator.LAND));
     t.track(branch(v("t4")));
-    // With both-operands-required semantics,
-    // no guards are active.
-    assertThat(t.isGuardedBy(v("data"), BinaryOperator.GE)).isFalse();
+    assertThat(t.isGuardedBy(v("data"), BinaryOperator.GE)).isTrue();
     assertThat(t.isGuardedBy(v("data"), BinaryOperator.LT)).isFalse();
   }
 
   /**
-   * Array length tracking. DISABLED: the fix causes a -555 TP regression in the plumb-main merged
-   * program analysis (single-file harness is unaffected). The CWE-129 81_goodB2G family 13 FP
-   * remains; left as future work to re-enable without the merged-program regression. See
-   * GuardTracker.recordConstantLoadIfApplicable.
+   * An array's length is a bound, but not a <i>numeric</i> one. `data < array.length` says nothing
+   * about `Integer.MAX_VALUE`, so it must not answer a numeric query -- an earlier attempt that
+   * modelled the length as a constant cost 555 true positives in the merged-program analysis.
    */
   @Test
   void arrayLength_trackedAsBound() {
@@ -249,9 +255,13 @@ class GuardTrackerTest {
     // t4 = t1 LAND t3
     t.track(binop("t4", v("t1"), v("t3"), BinaryOperator.LAND));
     t.track(branch(v("t4")));
-    // Both GE and LT guards active.
+    // The lower bound is numeric, so it answers the numeric query.
     assertThat(t.isGuardedBy(v("data"), BinaryOperator.GE)).isTrue();
-    assertThat(t.isGuardedBy(v("data"), BinaryOperator.LT)).isTrue();
+    // The upper bound is against an array's length, so it does NOT answer a numeric query.
+    assertThat(t.isGuardedBy(v("data"), BinaryOperator.LT)).isFalse();
+    // It does answer the index question, for the array it was measured against.
+    assertThat(t.isIndexProvenInRange(v("data"), v("array"))).isTrue();
+    assertThat(t.isIndexProvenInRange(v("data"), v("other"))).isFalse();
   }
 
   @Test
@@ -268,12 +278,9 @@ class GuardTrackerTest {
     // t1 = data < t_t2  (no GE guard, the bad() pattern)
     t.track(binop("t1", v("data"), v("t_t2"), BinaryOperator.LT));
     t.track(branch(v("t1")));
-    // Only LT guard active — no GE/GT suppression.
-    // ArrayIndexChecker will still fire on
-    // the inner `array[data]` because data
-    // could be negative.
-    assertThat(t.isGuardedBy(v("data"), BinaryOperator.LT)).isTrue();
-    assertThat(t.isGuardedBy(v("data"), BinaryOperator.GE)).isFalse();
+    // The upper bound alone does not prove the index is in range: data could be negative.
+    assertThat(t.hasLowerBound(v("data"))).isFalse();
+    assertThat(t.isIndexProvenInRange(v("data"), v("array"))).isFalse();
   }
 
   /**
