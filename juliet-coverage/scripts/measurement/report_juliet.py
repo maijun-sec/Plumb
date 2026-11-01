@@ -99,6 +99,10 @@ def main() -> int:
     ap.add_argument("--findings", default="",
                     help="this measurement's findings directory; needed by "
                          "--rule-diff")
+    ap.add_argument("--change-note", default="",
+                    help="what changed between the previous measurement and "
+                         "this one; the report states it verbatim, so a "
+                         "comparison never credits the wrong cause")
     args = ap.parse_args()
 
     out_dir = Path(args.out)
@@ -397,12 +401,16 @@ def main() -> int:
     if args.rule_diff:
         w("## The engine change and the configuration change, told apart")
         w("")
-        w("Two things changed between the previous measurement and this one: "
-          "the engine's parameter-origin fixpoint, and the per-CWE configs. "
-          "A per-rule finding count tells them apart, because a rule that "
-          "was already enabled keeps its count if the engine change was "
-          "semantically neutral.")
+        w("A per-rule finding count tells the engine change apart from the "
+          "configuration change, because a rule that was already enabled "
+          "keeps its count when the configuration did not change.")
         w("")
+        if args.change_note:
+            w("What changed between the previous measurement and this one:")
+            w("")
+            for line in args.change_note.splitlines():
+                w(line if line.strip() else "")
+            w("")
         old_dir = Path(args.rule_diff)
         rows = []
         engine_only = []
@@ -434,13 +442,11 @@ def main() -> int:
             w("**The rows whose config did not change are the engine's "
               "doing.** A `mode: all` config enables every rule, so it is "
               "the same in both runs, and every difference in such a CWE "
-              "comes from the fixpoint fix.")
+              "comes from the engine.")
             w("")
-            w("Those differences are small but they are not zero, so the "
-              "fixpoint fix is NOT purely a performance fix: keying the "
-              "parameter origins by the merged key stopped one method's "
-              "labels from leaking into another, and a few verdicts changed "
-              "because of it.")
+            w("Those differences are not zero, so the engine change was not "
+              "semantically neutral: it changed a number of verdicts, in "
+              "both directions.")
             w("")
         if not rows:
             w("No rule changed its finding count.")
@@ -526,20 +532,23 @@ def main() -> int:
     if compare:
         w("## Against the previous measurement")
         w("")
-        w("Two things changed between this measurement and the previous one, "
-          "and this table shows the COMBINED effect. It is not a measure of "
-          "either change on its own:")
-        w("")
-        w("1. The engine's parameter-origin fixpoint is keyed by the merged "
-          "key (enclosing class + signature) instead of the signature alone. "
-          "Before the fix, every same-named method in the corpus shared one "
-          "label map, so the fixpoint never converged and the taint labels "
-          "of one method leaked into another.")
-        w("2. The per-CWE configs are derived from the engine's own rule "
-          "table instead of from one past scan. Before the fix, most of the "
-          "CWEs had a rule the engine ships and a config that did not "
-          "enable it, so their coverage number said nothing about the rule.")
-        w("")
+        if args.change_note:
+            # The report states what changed, verbatim. A hard-coded
+            # description of some earlier change would credit this run
+            # with a cause it did not have.
+            w("What changed between this measurement and the previous one:")
+            w("")
+            for line in args.change_note.splitlines():
+                w(line if line.strip() else "")
+            w("")
+            w("The table below shows the COMBINED effect of those changes. It "
+              "is not a measure of any one of them on its own.")
+            w("")
+        else:
+            w("The table below shows the combined effect of the changes "
+              "between this measurement and the previous one. It is not a "
+              "measure of any one of them on its own.")
+            w("")
         w("A CWE whose true-positive count went from 0 to a positive number "
           "was almost certainly unmeasured before, not undetected.")
         w("")
