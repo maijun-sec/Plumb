@@ -156,3 +156,8 @@ doc/
 # Committing them would put ~450 MB of duplicated binary-ish payload into permanent
 # history, where it cannot be removed by a later .gitignore edit.
 *.ndjson
+# The CWE split the measurement workers read. `split_run.py` regenerates it on
+# every run, and it is derived from the corpus's own file counts, so a committed
+# copy would be a second thing to keep in step -- and would go stale the moment
+# the corpus changes.
+juliet-coverage/scripts/measurement/run_*_cwes.txt
