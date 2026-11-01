@@ -60,6 +60,13 @@ The gates are:
                               rule is never measured without it
     mutate_juliet_configs      the config gate catches a config that
                               drops a rule of its own
+    check_juliet_measurement   a finding inside a helper is attributed to
+                              the bad*/good* method that reaches it, so the
+                              measurement reports the engine's precision
+                              and not the corpus's shape
+    mutate_juliet_measurement  the measurement gate is not checking air: it
+                              catches a helper that loses its span or its
+                              caller
     check_finding_identity      every finding names the file it is in,
                               and the AI pass changes a finding's verdict
                               and nothing else -- it does not take its
@@ -277,6 +284,10 @@ GATES = (
      ["python", "scripts/check_juliet_configs.py"], "check"),
     ("mutate_juliet_configs",
      ["python", "scripts/mutate_juliet_configs.py"], "check"),
+    ("check_juliet_measurement",
+     ["python", "scripts/check_juliet_measurement.py"], "check"),
+    ("mutate_juliet_measurement",
+     ["python", "scripts/mutate_juliet_measurement.py"], "check"),
     ("check_finding_identity",
      ["python", "scripts/check_finding_identity.py"], "check"),
     ("mutate_finding_identity",

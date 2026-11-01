@@ -152,8 +152,8 @@ def crosses_files(finding: dict, own_file: str) -> bool:
 # ---------------------------------------------------------------------------
 # Method spans
 # ---------------------------------------------------------------------------
-def _spans_for(job: tuple[str, str]) -> tuple[str, dict]:
-    """(filename, {method -> (start, end)}) for one Juliet file.
+def _spans_for(job: tuple[str, str]) -> tuple[str, dict, dict]:
+    """(filename, {method -> (start, end)}, {helper -> caller}) for one Juliet file.
 
     Runs in a worker process: the corpus is 46,793 files and reading
     them all on one thread is the slowest part of the scoring.
@@ -161,31 +161,39 @@ def _spans_for(job: tuple[str, str]) -> tuple[str, dict]:
     cwe, name = job
     path = juliet_file(cwe, name)
     if path is None:
-        return name, {}
-    return name, measure.all_method_spans(path)
+        return name, {}, {}
+    spans = measure.all_method_spans(path)
+    return name, spans, measure.helper_callers(path, spans)
 
 
-def build_span_cache(cwe: str, files: dict, jobs: int) -> dict:
-    """Every tracked file's method spans, computed in parallel.
+def build_span_cache(cwe: str, files: dict, jobs: int) -> tuple[dict, dict]:
+    """Every tracked file's method spans and helper callers, in parallel.
 
     The span table is what turns a line number into a method, so it is
     what makes the METHOD the unit of the measurement. It is computed
     once per file and shared by every CWE that names the file.
+
+    The helper map says which `bad*`/`good*` method calls each helper, so a
+    finding inside a helper is attributed to the method that reaches the
+    defect rather than to "a method that is neither".
     """
     todo = []
     for name in files:
         path = juliet_file(cwe, name)
         todo.append((cwe, name))
     out: dict[str, dict] = {}
+    helpers: dict[str, dict] = {}
     if jobs <= 1 or len(todo) < 200:
         for job in todo:
-            name, spans = _spans_for(job)
+            name, spans, helper_map = _spans_for(job)
             out[name] = spans
-        return out
+            helpers[name] = helper_map
+        return out, helpers
     with ProcessPoolExecutor(max_workers=jobs) as pool:
-        for name, spans in pool.map(_spans_for, todo, chunksize=64):
+        for name, spans, helper_map in pool.map(_spans_for, todo, chunksize=64):
             out[name] = spans
-    return out
+            helpers[name] = helper_map
+    return out, helpers
 
 
 def juliet_file(cwe: str, name: str) -> Path | None:
@@ -233,6 +241,7 @@ def roles_of(spans: dict) -> tuple[list[str], list[str]]:
 def score_cwe(cwe: str, findings_path: Path, truth: dict,
               rule_cwes: dict[str, list[str]],
               span_cache: dict[str, dict],
+              helper_cache: dict[str, dict] | None = None,
               only_files: set[str] | None = None) -> dict:
     """Score one CWE's findings against its method-level ground truth.
 
@@ -244,6 +253,8 @@ def score_cwe(cwe: str, findings_path: Path, truth: dict,
     files = truth.get(cwe, {})
     if only_files is not None:
         files = {k: v for k, v in files.items() if k in only_files}
+    if helper_cache is None:
+        helper_cache = {}
 
     # The method identity is (file, method), NOT the method name.
     #
@@ -275,19 +286,36 @@ def score_cwe(cwe: str, findings_path: Path, truth: dict,
     unattributed_samples: list[dict] = []
     fp_samples: list[dict] = []
 
-    def attribute(line: int, spans: dict) -> tuple[str, str]:
-        """(role, method) for a line, or ('none', '') when outside a method."""
+    def attribute(line: int, spans: dict, helper_map: dict) -> tuple[str, str]:
+        """(role, method) for a line, or ('none', '') when outside a method.
+
+        A finding inside a HELPER belongs to the `bad*`/`good*` method that
+        calls it. The corpus puts the defect in the helper and calls it from
+        the canonical method, so attributing by line alone would call every
+        such finding "in a method that is neither" -- which measures the
+        corpus's shape, not the engine's precision.
+        """
         for method, (start, end) in spans.items():
             if start <= line <= end:
                 if method.startswith("bad"):
                     return "bad", method
                 if method.startswith("good"):
                     return "good", method
+                # A helper: it belongs to its caller.
+                caller = helper_map.get(method)
+                if caller is not None:
+                    if caller.startswith("bad"):
+                        return "bad", caller
+                    if caller.startswith("good"):
+                        return "good", caller
                 return "other", method
         return "none", ""
 
     def spans_of(name: str) -> dict:
         return span_cache.get(name, {})
+
+    def helpers_of(name: str) -> dict:
+        return helper_cache.get(name, {})
 
     with findings_path.open("r", encoding="utf-8", errors="replace") as fh:
         for raw in fh:
@@ -321,7 +349,7 @@ def score_cwe(cwe: str, findings_path: Path, truth: dict,
                 off_cwe_by_rule[rule] += 1
                 for c in cwes:
                     off_cwe_cwes[c] += 1
-                role, method = attribute(line, spans_of(name))
+                role, method = attribute(line, spans_of(name), helpers_of(name))
                 if role == "bad":
                     wrong_cwe_in_bad[rule] += 1
                 continue
@@ -332,7 +360,7 @@ def score_cwe(cwe: str, findings_path: Path, truth: dict,
                 off_cwe_by_rule[rule] += 1
                 continue
 
-            role, method = attribute(line, spans_of(name))
+            role, method = attribute(line, spans_of(name), helpers_of(name))
             if role == "bad":
                 counts["tp"] += 1
                 tp_methods.add((name, method))
@@ -445,6 +473,7 @@ def main() -> int:
 
     # every CWE the corpus has, and its method spans
     span_cache: dict[str, dict] = {}
+    helper_cache: dict[str, dict] = {}
     results = []
     for cwe in sorted(dirs, key=int):
         st = status.get(cwe)
@@ -479,8 +508,12 @@ def main() -> int:
         # The method spans are computed in parallel: the corpus is 46,793
         # files and reading them all on one thread is the slowest part of
         # the scoring.
-        span_cache.update(build_span_cache(cwe, truth.get(cwe, {}), args.jobs))
-        entry.update(score_cwe(cwe, nd, truth, rule_cwes, span_cache))
+        spans, helpers = build_span_cache(cwe, truth.get(cwe, {}), args.jobs)
+        span_cache.update(spans)
+        helper_cache.update(helpers)
+        entry.update(
+            score_cwe(cwe, nd, truth, rule_cwes, span_cache, helper_cache)
+        )
         results.append(entry)
 
         r = entry

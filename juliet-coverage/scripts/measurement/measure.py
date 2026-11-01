@@ -248,6 +248,57 @@ def method_spans(path: Path, wanted: list[str]) -> dict:
     return spans
 
 
+def helper_callers(path: Path, spans: dict) -> dict:
+    """helper method name -> the bad*/good* method that calls it.
+
+    A Juliet testcase often puts the DEFECT in a helper and calls it from the
+    canonical method::
+
+        static private void helperBad() { LOCK.lock(); ... LOCK.unlock(); }
+        public void bad() { helperBad(); }
+
+    The finding is in `helperBad`, and `helperBad` is neither a `bad*` nor a
+    `good*` method, so attributing the finding by line alone calls it "in a
+    method that is neither" -- which measures the corpus's SHAPE rather than
+    the engine's precision.
+
+    The helper belongs to its caller. This map says which caller, so the
+    scorer can attribute the finding to the `bad*` or `good*` method that
+    reaches the defect.
+
+    Only a DIRECT call counts, and only from a `bad*`/`good*` method: the
+    corpus's helpers are called from exactly one place.
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    lines = text.splitlines()
+
+    out: dict[str, str] = {}
+    for method, (start, end) in spans.items():
+        if not (method.startswith("bad") or method.startswith("good")):
+            continue
+        body = lines[start - 1 : end]
+        for helper in spans:
+            if helper == method:
+                continue
+            if helper.startswith("bad") or helper.startswith("good"):
+                continue
+            needle = helper + "("
+            for line in body:
+                stripped = line.strip()
+                if not stripped.startswith(needle):
+                    continue
+                # The call must be the helper's NAME and nothing else --
+                # `helperBad()` or `this.helperBad()`, not `helperBadCount`.
+                after = stripped[len(needle) :]
+                if after.startswith(")"):
+                    out.setdefault(helper, method)
+                    break
+    return out
+
+
 # A method DECLARATION in a Juliet testcase: a visibility modifier or a
 # type, then a name, then a parameter list.  Juliet's ground truth only
 # names the `bad` method for many files, so locating ONLY the ground-truth
@@ -258,6 +309,22 @@ DECL = re.compile(
     r"^\s*(?:(?:public|private|protected|static|final|abstract|synchronized|native)\s+)*"
     r"(?:[A-Za-z_$][\w$.<>\[\], ]*?\s+)?"
     r"(?P<name>[A-Za-z_$][\w$]*)\s*\([^;{]*\)\s*(?:throws\s[\w., ]+)?\s*$"
+)
+
+# The same, but a trailing COMMENT is allowed after the parameter list.
+#
+# The corpus writes the flaw description into the declaration line:
+#
+#     static public void helperBad() /* FLAW: No synchronization in this fn */
+#
+# The strict pattern does not match that line, so the method has NO SPAN at
+# all -- and a finding inside it is then "outside any method", which is a
+# statement about the parser, not about the engine.
+DECL_WITH_COMMENT = re.compile(
+    r"^\s*(?:(?:public|private|protected|static|final|abstract|synchronized|native)\s+)*"
+    r"(?:[A-Za-z_$][\w$.<>\[\], ]*?\s+)?"
+    r"(?P<name>[A-Za-z_$][\w$]*)\s*\([^;{]*\)\s*(?:throws\s[\w., ]+)?"
+    r"\s*(?:/\*.*\*/|//.*)?\s*$"
 )
 
 
@@ -281,7 +348,7 @@ def all_method_spans(path: Path) -> dict:
         if stripped.startswith(("if", "for", "while", "switch", "catch", "return",
                                 "else", "do", "try", "new", "}", ";")):
             continue
-        m = DECL.match(stripped)
+        m = DECL.match(stripped) or DECL_WITH_COMMENT.match(stripped)
         if not m:
             continue
         name = m.group("name")

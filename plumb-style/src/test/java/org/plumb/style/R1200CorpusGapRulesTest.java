@@ -165,6 +165,36 @@ class R1200CorpusGapRulesTest {
         .isEmpty();
   }
 
+  @Test
+  void mutableStaticFieldIsReportedWhereTheValueIsChanged() {
+    // The declaration alone is not where the reader can act: the change is.
+    String src =
+        "class Foo {\n"
+            + "  public static final int[] A = new int[10];\n"
+            + "  void bad() { A[0] = 2; }\n"
+            + "}";
+    List<Finding> f = run(new MutableStaticFieldCheck(), src);
+    assertThat(f).as("CWE-582: a changed public static final array fires").isNotEmpty();
+    assertThat(f.get(0).line())
+        .as("the finding is at the change, not the declaration")
+        .isEqualTo(3);
+  }
+
+  @Test
+  void mutableStaticFieldFollowsTheGetterToTheChange() {
+    // `this.getDate().setTime(t)` changes the field through a getter that
+    // returns it, so the finding belongs there.
+    String src =
+        "class Foo {\n"
+            + "  public static final java.util.Date date = new java.util.Date();\n"
+            + "  public java.util.Date getDate() { return date; }\n"
+            + "  void bad() { this.getDate().setTime(0L); }\n"
+            + "}";
+    List<Finding> f = run(new MutableStaticFieldCheck(), src);
+    assertThat(f).as("CWE-607: a change through the getter fires").isNotEmpty();
+    assertThat(f.get(0).line()).as("the finding is at the change through the getter").isEqualTo(4);
+  }
+
   // ---- CWE-765 / CWE-832 / CWE-667: lock pairing ----
 
   @Test
