@@ -74,6 +74,21 @@ the C: volume is nearly full.
 The statistics are a separate step, so a change to the statistics never
 costs a re-scan, and the findings are never held in memory.
 
+**The corpus's support library is in scope.** `src/testcasesupport` is
+passed as a `--source-root`, not as an input. A Juliet testcase is not a
+self-contained program -- `CWE571_...__static_01.java` reads
+`IO.staticTrue`, and `IO` lives outside `src/testcases` -- so without it
+the scan sees a program that cannot compile, and the findings the engine
+misses are an artifact of the measurement setup rather than a defect of
+the engine.
+
+**The heap is a measurement parameter.** The JVM's default is a quarter
+of the physical memory, which on a 16 GB machine is 4 GB, and the three
+largest categories die with `OutOfMemoryError: Java heap space`. A scan
+that dies is not a measurement. `PLUMB_JULIET_HEAP` sets it (default
+`6g`); the largest categories need `10g` and must be run ALONE, because
+two scans at 10 GB each do not fit on a 16 GB machine.
+
 ### 2. Score
 
 ```bash
@@ -110,6 +125,28 @@ python juliet-coverage/scripts/measurement/report_juliet.py \
   --rule-cwes live-rule-cwes.tsv \
   --out juliet-coverage/reports/corpus
 ```
+
+The report names the change it is measuring. `--change-note` states what
+differs from the previous run, verbatim, and `--rule-diff` compares the
+per-rule finding counts with a previous findings directory -- which is how
+the engine's effect is told apart from the configuration's, because a
+`mode: all` config enables every rule and is therefore the same in both
+runs.
+
+### 5. The support table
+
+```bash
+python juliet-coverage/scripts/measurement/gen_support_table.py \
+  --score <out>/score/score.json \
+  --audit <out>/audit/whitelist-audit.json \
+  --out juliet-coverage/reports/corpus
+```
+
+The table is DERIVED from the measurement, not maintained by hand. A
+hand-written table drifts from the measurement it claims to describe, and
+the drift is invisible: the numbers look plausible, they are just about
+a different run. Its classification is the corpus report's, so the two
+documents cannot disagree about what a CWE's zero means.
 
 ### The AI false-positive pass
 

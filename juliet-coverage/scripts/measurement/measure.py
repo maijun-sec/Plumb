@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -62,6 +63,15 @@ JAR = REPO / "plumb-main" / "target" / "plumb-main-0.1.0-SNAPSHOT-all.jar"
 # is written against. Adding it as an input would score its own findings
 # against the CWE under test.
 JULIET_SUPPORT = Path(r"D:\work\tmp\Juliet_Java\src\testcasesupport")
+
+# The heap the scan runs with.
+#
+# The JVM's default is a quarter of the physical memory, which on a 16 GB
+# machine is 4 GB. The largest Juliet categories -- the merged DFA analysis
+# over a few thousand files -- need more than that, and they die with
+# "OutOfMemoryError: Java heap space". A scan that dies is not a measurement:
+# the harness has to be able to give a scan the room it needs.
+JAVA_HEAP = os.environ.get("PLUMB_JULIET_HEAP", "6g")
 
 # The rule -> CWE table.
 #
@@ -464,8 +474,8 @@ def scan_to_file(cwe: str, cwe_dir: str, rules: list[str], dest: Path) -> dict:
     started = time.time()
     with tempfile.TemporaryDirectory(prefix="juliet-m-", dir=str(SCRATCH_DIR)) as tmp:
         ndjson = Path(tmp) / "f.ndjson"
-        cmd = ["java", "-jar", str(JAR), "scan", "-i", str(directory),
-               "-f", "ndjson", "-o", str(ndjson)]
+        cmd = ["java", "-Xmx" + JAVA_HEAP, "-jar", str(JAR), "scan",
+               "-i", str(directory), "-f", "ndjson", "-o", str(ndjson)]
         if JULIET_SUPPORT.is_dir():
             cmd += ["--source-root", str(JULIET_SUPPORT)]
         if config.is_file():
@@ -558,8 +568,8 @@ def scan(cwe: str, cwe_dir: str, rules: list[str]) -> tuple[list[dict], str]:
     SCRATCH_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="juliet-m-", dir=str(SCRATCH_DIR)) as tmp:
         ndjson = Path(tmp) / "f.ndjson"
-        cmd = ["java", "-jar", str(JAR), "scan", "-i", str(directory),
-               "-f", "ndjson", "-o", str(ndjson)]
+        cmd = ["java", "-Xmx" + JAVA_HEAP, "-jar", str(JAR), "scan",
+               "-i", str(directory), "-f", "ndjson", "-o", str(ndjson)]
         if JULIET_SUPPORT.is_dir():
             cmd += ["--source-root", str(JULIET_SUPPORT)]
         if config.is_file():
