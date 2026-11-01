@@ -16,10 +16,10 @@ Plumb 的定位与边界。
 
 | 维度 | Plumb | PMD | SonarQube | SpotBugs | Coverity | Checkstyle |
 | --- | --- | --- | --- | --- | --- | --- |
-| **主实现** | TAC IR + 596 个 AST checker + 12 条 taint rule + 67 个已注册 DFA checker | AST | AST + symbol table | 字节码扫描 | 抽象语法树 + 路径敏感 | AST + 文本匹配 |
+| **主实现** | TAC IR + 601 个 AST checker + 12 条 taint rule + 67 个已注册 DFA checker | AST | AST + symbol table | 字节码扫描 | 抽象语法树 + 路径敏感 | AST + 文本匹配 |
 | **Taint 引擎** | summary-based 跨函数数据流（两阶段） | 无完整 taint | SonarCFamily 引擎（商业） | 部分数据流 | 商业引擎 | 无 |
 | **跨函数分析** | 两阶段 summary：Phase 1 path-insensitive → Phase 2 flow-sensitive + Z3 路径条件 | 有限 | 部分（call graph 1-hop） | 部分（BugInstance 共享） | 全局 | 无 |
-| **AST 检查器** | 596 个（JavaParser） | 数百条 | 数百条 | — | — | 一百多条 |
+| **AST 检查器** | 601 个（JavaParser） | 数百条 | 数百条 | — | — | 一百多条 |
 | **DFA checker** | 67 个已注册 | 部分 | 部分 | 字节码 bug pattern | 有 | 无 |
 | **Z3 路径条件** | 有（Phase 2 per-finding 查询，用于误报过滤） | 无 | 无 | 无 | 有（商业） | 无 |
 | **AI 集成** | 可选 Re-Act agent（12 个 tool） | 无 | SonarAI（实验） | 无 | Coverity Assist | 无 |
@@ -45,8 +45,8 @@ Plumb 的做法分两阶段：
 
 | 形态 | 数量 | 含义 |
 | --- | ---: | --- |
-| **AST checker（`plumb-style`）** | 596 | 规则类，看 AST 形态 |
-| **`CheckerCategories` 登记** | 594 | 上面这些里被登记进规则表的 |
+| **AST checker（`plumb-style`）** | 601 | 规则类，看 AST 形态 |
+| **`CheckerCategories` 登记** | 599 | 上面这些里被登记进规则表的 |
 | **DFA checker（已注册）** | 67 | 引擎实际装配的，涉及数据流 / 跨函数 |
 | **其中 `extends TaintedCheckerBase`** | 47 | 继承统一污点传播基类 |
 | **事实种类（fact kinds）** | 27 | 内置 15 个 + `fact-kinds.yaml` 12 个 |
@@ -62,9 +62,9 @@ Plumb 的做法分两阶段：
 
 | 类别 | 数量 | 来源 |
 | --- | ---: | --- |
-| AST checker 类 | 596 | `plumb-style/**` |
-| 其中登记进规则表 | 594 | `CheckerCategories` |
-| 已注册规则总数 | 1148 | AST + DFA 的实际注册 |
+| AST checker 类 | 601 | `plumb-style/**` |
+| 其中登记进规则表 | 599 | `CheckerCategories` |
+| 已注册规则总数 | 1158 | AST + DFA 的实际注册 |
 | DFA checker（已注册） | 67 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | 12 | `TaintRuleRegistry` |
 | Taint source family / 模式 | 5 / 19 | `sink-families.yaml` 的 `taint.sources.*` |

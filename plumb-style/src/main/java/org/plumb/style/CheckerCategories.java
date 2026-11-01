@@ -256,6 +256,7 @@ final class CheckerCategories {
     m.put("FormGetPasswordCheck", "style");
     m.put("GenericExceptionCheck", "error");
     m.put("GenericNamingCheck", "naming");
+    m.put("HardCodedCryptoKeyCheck", "security");
     m.put("HardcodedCredentialsCheck", "security");
     m.put("HardcodedIpCheck", "security");
     m.put("HardcodedPasswordSinkAstCheck", "security");
@@ -330,6 +331,7 @@ final class CheckerCategories {
     m.put("LocalVariableThenReturnCheck", "naming");
     m.put("LocaleDependentCaseConversionCheck", "style");
     m.put("LocaleRootCheck", "style");
+    m.put("LockPairingCheck", "concurrency");
     m.put("LogInfoLeakCheck", "style");
     m.put("LoggerShouldBeFinalCheck", "style");
     m.put("LoggersDeclarationCheck", "style");
@@ -375,6 +377,7 @@ final class CheckerCategories {
     m.put("MultipleBindsSamePortCheck", "style");
     m.put("MultipleVariableDeclarationsCheck", "style");
     m.put("MutableEnumFieldCheck", "style");
+    m.put("MutableStaticFieldCheck", "security");
     m.put("MutableStaticShouldBeFinalCheck", "style");
     m.put("NamingConventionCheck", "naming");
     m.put("NestedBlockCheck", "style");
@@ -439,6 +442,7 @@ final class CheckerCategories {
     m.put("ParseErrorLoggingCheck", "error");
     m.put("PathCheck", "security");
     m.put("PersistentCookieCheck", "security");
+    m.put("PlaintextCookieCheck", "security");
     m.put("PoorCodeQualityCheck", "style");
     m.put("PredictableKeyPasswordCheck", "security");
     m.put("PredictableRandomSeedCheck", "security");
@@ -570,6 +574,7 @@ final class CheckerCategories {
     m.put("UncheckedLoopConditionCheck", "style");
     m.put("UncheckedReturnCheck", "security");
     m.put("UnclearedSensitiveInfoCheck", "style");
+    m.put("UnclosedResourceCheck", "security");
     m.put("UnconfirmedCastCheck", "style");
     m.put("UninitNonnullCheck", "quality");
     m.put("UnloggedSecurityExceptionCheck", "security");

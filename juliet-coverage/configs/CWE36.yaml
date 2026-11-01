@@ -22,6 +22,7 @@ rules:
     - ast-security-insecure-communication
     - ast-security-unchecked-return
     - dfa-taint-leak
+    - dfa-taint-path-traversal
 
 ai:
   enabled: false

@@ -987,18 +987,18 @@ The emit-id of the style rules follows the `ast-<category>-<bare>` naming scheme
 
 | Prefix | Count | | Prefix | Count |
 | --- | ---: | --- | --- | ---: |
-| `ast-style` | 347 | | `ast-security` | 37 |
+| `ast-style` | 347 | | `ast-security` | 41 |
 | `ast-performance` | 62 | | `ast-error` | 34 |
 | `ast-naming` | 50 | | `ast-bug` | 19 |
 | `ast-design` | 18 | | `ast-quality` | 10 |
-| `ast-concurrency` | 2 | | `dfa-style` / `dfa-security` | 3 / 1 |
+| `ast-concurrency` | 3 | | `dfa-style` / `dfa-security` | 3 / 1 |
 
 This naming is referenced in **three** places, and any one of them getting out of sync silently drops findings:
 
 | Referrer | Role |
 | --- | --- |
 | `new RuleId("ast-style-foo", ...)` in `*Check.java` | produces the emit id |
-| `plumb-style/.../CheckerCategories.java` | the classpath-scan registry (594 `m.put(...)` entries) |
+| `plumb-style/.../CheckerCategories.java` | the classpath-scan registry (599 `m.put(...)` entries) |
 | `plumb-main/.../ScanRunner.java::isRuleIdAllowed` (`:1823`, `:1834`) | rule filtering; it has to accept the canonical id, the bare slug and the dashed form |
 
 **The data flow**:

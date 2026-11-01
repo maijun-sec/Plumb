@@ -72,7 +72,12 @@ class CompareClassesByNameCheckTest {
                 + "System.out.println(\"same\"); "
                 + "} } }");
     assertThat(f).hasSize(1);
-    assertThat(f.get(0).cwe()).isEqualTo("CWE-273");
+    // The rule carries BOTH ids for this defect class. The finding carries the
+    // first one, CWE-486 ("Compare Classes by Name"), which is the canonical
+    // name for the defect; CWE-273 is the id the original rule source used
+    // and stays as the second label so a report can be filtered by either.
+    assertThat(f.get(0).cwe()).isEqualTo("CWE-486");
+    assertThat(f.get(0).rule().cwe()).containsExactly("CWE-486", "CWE-273");
   }
 
   @Test

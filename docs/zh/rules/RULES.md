@@ -23,12 +23,12 @@
 | Taint sink 模式 | plumb-dfa | **358** | `sink-families.yaml` 的 48 个 `*.sinks` family | taint |
 | DFA checker（YAML 声明） | plumb-dfa | **16**（14 启用 / 2 禁用） | `checkers.yaml` | dfa |
 | DFA checker（实际注册） | plumb-main | **67** | `ScanRunner.buildDfaCheckers()` | dfa |
-| Style / 命名 / 设计 | plumb-style | **597** | JavaParser AST visitor | style |
-| 已注册规则总数 | 全部 | **1148** | AST + DFA 的实际注册 | — |
+| Style / 命名 / 设计 | plumb-style | **602** | JavaParser AST visitor | style |
+| 已注册规则总数 | 全部 | **1158** | AST + DFA 的实际注册 | — |
 
 > **数字口径不同，不能相加**：
-> - **style checker 类**（597）是源码里的类数；
-> - **已注册规则**（1148）是引擎实际能 emit 的 rule id 数 —— 一条规则可以由
+> - **style checker 类**（602）是源码里的类数；
+> - **已注册规则**（1158）是引擎实际能 emit 的 rule id 数 —— 一条规则可以由
 >   多个 checker 声明，所以两个数不相等。
 >
 > `checkers.yaml` 声明的 16 条 DFA checker 也不是全部：`ScanRunner` 实际注册了
@@ -45,16 +45,16 @@
 | `plumb-style/style/` | **354** | 编码风格（注释、Javadoc、缩进、imports、控制流、声明） |
 | `plumb-style/performance/` | **63** | 性能（字符串、boxed、BigDecimal、Random） |
 | `plumb-style/naming/` | **51** | 命名约定（类型、方法、字段、参数、局部变量、包） |
-| `plumb-style/security/` | **42** | 安全相关（deserialization、URL sanitization） |
+| `plumb-style/security/` | **46** | 安全相关（deserialization、URL sanitization） |
 | `plumb-style/error/` | **35** | 错误处理（catch、finally、throw、synchronized） |
 | `plumb-style/bug/` | **20** | 明确 bug 模式（compareTo、equals、null 检查） |
 | `plumb-style/design/` | **18** | 设计度量（圈复杂度、耦合、深度） |
 | `plumb-style/quality/` | **10** | 质量（regex confusion、ORM 模式） |
-| `plumb-style/concurrency/` | **2** | 并发（servlet 原子性、singleton race） |
+| `plumb-style/concurrency/` | **3** | 并发（servlet 原子性、singleton race） |
 | `plumb-style/`（根目录） | **2** | 不属于任何子目录分类 |
-| **合计** | **597** | — |
+| **合计** | **602** | — |
 
-`CheckerCategories.CHECKER_CATEGORIES` 里登记了 **594** 条。
+`CheckerCategories.CHECKER_CATEGORIES` 里登记了 **599** 条。
 
 ### 1.2 外部工具等价覆盖
 
@@ -75,7 +75,7 @@ checker 按"跑在哪一层"分成两大类，AI 不构成第三类——它是 
 
 | 类别 | 位置 | 数量（实测） | 触发器 | 适用场景 |
 | --- | --- | ---: | --- | --- |
-| **Style**（AST-only） | `plumb-style/` | **597** 个 checker 类 | 仅 JavaParser | 编码风格、命名、纯结构 bug |
+| **Style**（AST-only） | `plumb-style/` | **602** 个 checker 类 | 仅 JavaParser | 编码风格、命名、纯结构 bug |
 | **DFA** | `plumb-dfa/` | **47** 个继承 `TaintedCheckerBase` + **20** 个直接 `implements DfaChecker` | TAC + CFG（污点 / 数值 / 资源 / 控制流） | 需跨语句 def-use、type-tracking、source-to-sink 数据流 |
 
 DFA 内部的实现形态细分见 [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) §3.0，
@@ -139,7 +139,7 @@ emit-id 有四种风格。`ScanRunner.isRuleIdAllowed` 对它们做多形态匹�
 | Taint rule（registry） | `dfa-taint-sql-injection` | `dfa-taint-<bare>` | `TaintRuleRegistry` 的 13 条 |
 | RuleRegistry UUID | `bu-0401-weak-crypto` | `bu-<NNNN>-<bare>` | `plumb-rules/.../RuleRegistry.java` |
 
-实测 `plumb-style/src/main/java` 下 579 个 `new RuleId("ast-...")` 字面量里，
+实测 `plumb-style/src/main/java` 下 584 个 `new RuleId("ast-...")` 字面量里，
 **没有一个以 `-style` 结尾**。`ast-style-random-iv-cbc-style` 这类带 `-style`
 后缀的字符串只作为 `RuleDef` 的 **alias** 保留（兼容老 YAML 白名单），
 不再是任何规则的 emit-id。

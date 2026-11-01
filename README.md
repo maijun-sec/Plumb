@@ -28,7 +28,7 @@ inspired by Fathom, but the implementation is entirely Java.
 
 | Dimension | Number | Source |
 | --- | --- | --- |
-| Style checkers | **596** (`CheckerCategories` registers 593) | `plumb-style/**` |
+| Style checkers | **601** (`CheckerCategories` registers 593) | `plumb-style/**` |
 | DFA checkers | **67** actually registered | `ScanRunner.buildDfaCheckers()` |
 | Taint rules | **12** | `TaintRuleRegistry` |
 | Taint source / sink patterns | **19** / **397** | `sink-families.yaml` |
@@ -190,7 +190,7 @@ documents (`RULES.md`, `RULE-TOOL-COMPARISON.md`) have their numbers
 measured by the generator, and `--check` mode proves they have not gone
 stale. But the numbers in **hand-written** documents are nobody's
 responsibility -- the repository at one point carried both "595 checker
-classes" and "596" when the real number was 596; `ARCHITECTURE.md` claimed
+classes" and "601" when the real number was 601; `ARCHITECTURE.md` claimed
 "71 DFA checkers" when the engine actually registers 67.
 `check_doc_numbers` measures these numbers against the source again,
 including the per-subdirectory table in `RULE-STYLE-OP.md`. A number

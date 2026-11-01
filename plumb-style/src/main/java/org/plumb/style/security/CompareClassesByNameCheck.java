@@ -37,10 +37,13 @@
  * {@code getClass()} call (with empty arg list), fire.
  * If either side is a {@code .class} literal, fire.</p>
  *
- * <p>Note: the user-supplied CWE label is CWE-273
- * (insufficient privileges / compare-by-name family);
- * the legacy DFA source used CWE-486 (compare-objects-
- * by-name). We honour the user's CWE label here.</p>
+ * <p>Note on the CWE labels: this defect class carries two
+ * ids. CWE-486 ("Compare Classes by Name") is the
+ * canonical name for comparing classes by their name or
+ * by reference equality. CWE-273 is the id the original
+ * rule source used. Both are carried, so a report can be
+ * filtered by either and a corpus that numbers this
+ * defect class differently still recognises it.</p>
  */
 package org.plumb.style.security;
 
@@ -55,17 +58,17 @@ import org.plumb.rules.RuleId;
 import org.plumb.style.AstChecker;
 import org.plumb.style.StyleContext;
 
-/** CWE-273: compare classes by name / reference equality on {@code getClass()}. */
+/** CWE-486 / CWE-273: compare classes by name / reference equality on {@code getClass()}. */
 public final class CompareClassesByNameCheck implements AstChecker {
 
   private static final RuleDef DEFAULT_RULE =
       new RuleDef(
           new RuleId("ast-security-compare-classes-by-name", "COMPARE_CLASSES_BY_NAME"),
           "Comparing classes via getClass() == b.getClass() / .class "
-              + "is unreliable across classloaders (CWE-273)",
+              + "is unreliable across classloaders (CWE-486)",
           RuleDef.Severity.LOW,
           RuleDef.Type.SECURITY,
-          List.of("CWE-273"),
+          List.of("CWE-486", "CWE-273"),
           "org.plumb.style.security.CompareClassesByNameCheck",
           true,
           List.of("dfa-security-compare-classes-by-name", "compare-classes-by-name"));
@@ -96,10 +99,41 @@ public final class CompareClassesByNameCheck implements AstChecker {
     // other is either getClass() or .class. Two
     // bare .class literals is a constant compare, not
     // a getClass() pattern — skip.
-    if (!((leftIsGetClass && (rightIsGetClass || rightIsClassLiteral))
-        || (rightIsGetClass && (leftIsGetClass || leftIsClassLiteral)))) {
+    if ((leftIsGetClass && (rightIsGetClass || rightIsClassLiteral))
+        || (rightIsGetClass && (leftIsGetClass || leftIsClassLiteral))) {
+      report(
+          n,
+          ctx,
+          op,
+          "Comparing classes by reference equality (a.getClass() "
+              + "== b.getClass() or == X.class) is unreliable: use instanceof "
+              + "instead (CWE-486)");
       return;
     }
+
+    // Comparing by NAME is the same defect in a different shape:
+    // `a.getClass().getSimpleName().equals(b.getClass().getSimpleName())`
+    // says "these two objects have the same simple name", which is true
+    // for two different classes in different packages.
+    if (isGetSimpleNameCall(n.getLeft()) && isGetSimpleNameCall(n.getRight())) {
+      report(
+          n,
+          ctx,
+          op,
+          "Comparing classes by their simple name "
+              + "(getClass().getSimpleName()) says two different classes with "
+              + "the same name are the same; compare the types instead (CWE-486)");
+    }
+  }
+
+  @Override
+  public void visit(MethodCallExpr n, StyleContext ctx) {
+    // The `.equals(...)` form of the same comparison:
+    // `a.getClass().getSimpleName().equals(b.getClass().getSimpleName())`.
+    if (!n.getNameAsString().equals("equals")) return;
+    if (n.getArguments().size() != 1) return;
+    if (!isGetSimpleNameCall(n.getScope().orElse(null))) return;
+    if (!isGetSimpleNameCall(n.getArgument(0))) return;
 
     int line = n.getBegin().map(p -> p.line).orElse(-1);
     int col = n.getBegin().map(p -> p.column).orElse(-1);
@@ -107,11 +141,35 @@ public final class CompareClassesByNameCheck implements AstChecker {
         line,
         col,
         DEFAULT_RULE,
-        "Comparing classes by reference equality (a.getClass() "
-            + "== b.getClass() or == X.class) is unreliable: "
-            + "use instanceof instead (CWE-273)",
+        "Comparing classes by their simple name (getClass().getSimpleName()) "
+            + "says two different classes with the same name are the same; "
+            + "compare the types instead (CWE-486)",
+        RuleDef.Severity.LOW,
+        "compare-classes-by-name: equals");
+  }
+
+  private void report(BinaryExpr n, StyleContext ctx, BinaryExpr.Operator op, String message) {
+    int line = n.getBegin().map(p -> p.line).orElse(-1);
+    int col = n.getBegin().map(p -> p.column).orElse(-1);
+    ctx.report(
+        line,
+        col,
+        DEFAULT_RULE,
+        message,
         RuleDef.Severity.LOW,
         "compare-classes-by-name: " + op.asString());
+  }
+
+  /**
+   * True if {@code e} is {@code getClass().getSimpleName()} -- the call that yields a class's NAME
+   * rather than its type.
+   */
+  private static boolean isGetSimpleNameCall(Expression e) {
+    if (e == null) return false;
+    if (!(e instanceof MethodCallExpr m)) return false;
+    if (!m.getNameAsString().equals("getSimpleName")) return false;
+    if (m.getScope().isEmpty()) return false;
+    return isGetClassCall(m.getScope().get());
   }
 
   /**

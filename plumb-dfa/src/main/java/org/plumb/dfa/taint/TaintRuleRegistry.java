@@ -154,14 +154,17 @@ public final class TaintRuleRegistry {
             "log.sinks",
             "CWE-117",
             TaintDomain.StringTaint.INSTANCE));
-    // CWE-22: Path Traversal
+    // Path Traversal. The same defect class is numbered differently by
+    // different corpora: CWE-22 is the general "Path Traversal", CWE-23 is
+    // "Relative Path Traversal" and CWE-36 is "Absolute Path Traversal".
+    // One rule, every id that names the defect.
     m.put(
         "dfa-taint-path-traversal",
         TaintRule.of(
             "dfa-taint-path-traversal",
             "dfa-taint-untrusted-source",
             "path.sinks",
-            "CWE-22",
+            "CWE-22,CWE-23,CWE-36",
             TaintDomain.StringTaint.INSTANCE));
     // CWE-918: SSRF
     m.put(

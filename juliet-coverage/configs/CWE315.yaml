@@ -20,6 +20,7 @@ rules:
   enabled:
     - ast-error-catch-generic
     - dfa-taint-leak
+    - ast-security-plaintext-cookie
     - ast-security-insecure-cookie
     - dfa-boundary-integer-overflow
     - dfa-boundary-integer-underflow

@@ -20,6 +20,7 @@ rules:
   enabled:
     - ast-error-catch-generic
     - dfa-taint-leak
+    - ast-security-compare-classes-by-name
 
 ai:
   enabled: false

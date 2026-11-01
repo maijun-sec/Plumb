@@ -2411,6 +2411,26 @@ public final class ScanRunner {
    * path) into a legacy {@link Finding} (RuleDef-backed). The {@code name} field, which is what the
    * reporter uses to identify the rule.
    */
+  /**
+   * The CWE ids of a finding, as a list.
+   *
+   * <p>A defect class can carry more than one CWE id -- the same path-traversal defect is CWE-22,
+   * CWE-23 and CWE-36, and a corpus may number it differently from the engine. The DFA finding
+   * holds the ids as one comma-separated string, because that is what the taint rule declares; the
+   * rule definition holds them as a list, because that is what the rule table and the report read.
+   */
+  private static List<String> cweList(String cwe) {
+    if (cwe == null || cwe.isBlank()) return List.of();
+    List<String> out = new ArrayList<>();
+    for (String part : cwe.split(",")) {
+      String trimmed = part.trim();
+      if (!trimmed.isEmpty() && !out.contains(trimmed)) {
+        out.add(trimmed);
+      }
+    }
+    return out;
+  }
+
   private Finding convertUnifiedFinding(org.plumb.reporter.Finding uf) {
     org.plumb.rules.RuleId rid = new org.plumb.rules.RuleId(uf.ruleId(), uf.checkerName());
     RuleDef def =
@@ -2419,7 +2439,7 @@ public final class ScanRunner {
             uf.message(),
             convertRuleDefSeverity(uf.severity()),
             RuleDef.Type.CORRECTNESS,
-            uf.cwe() == null ? List.of() : List.of(uf.cwe()),
+            cweList(uf.cwe()),
             "org.plumb.dfa.checkers." + uf.checkerName(),
             true);
     java.nio.file.Path file =
@@ -2686,7 +2706,10 @@ public final class ScanRunner {
           String id = rule.ruleId();
           if (id == null || id.isBlank()) continue;
           if (rule.cwe() != null && !rule.cwe().isBlank()) {
-            map.computeIfAbsent(id, k -> new java.util.TreeSet<>()).add(rule.cwe());
+            // A rule may declare more than one CWE for the same defect
+            // class. The map lists every one of them, so a corpus that
+            // numbers the defect differently still finds the rule.
+            map.computeIfAbsent(id, k -> new java.util.TreeSet<>()).addAll(cweList(rule.cwe()));
           } else {
             map.computeIfAbsent(id, k -> new java.util.TreeSet<>());
           }

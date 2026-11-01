@@ -35,7 +35,7 @@
 - 这意味着 *N* 个 checker 遍历一份 *M* 节点的 AST，只需 *O(M·N)* 次方法分派，而不是每个 checker 独立遍历一次 (那样是 *O(M·N²)* 节点访问)。
 - 每个 checker 通过 `ctx.report(line, col, rule, message, severity, dataflowHead)` 上报违规。`RuleDef` 提供规则 ID、严重度、类型 (BUG / STYLE / BAD_PRACTICE) 等元数据。
 - 注册方式有三种：
-  - `AstCheckerRegistry.builtins()` — 全部 583 条
+  - `AstCheckerRegistry.builtins()` — 全部 587 条
   - `AstCheckerRegistry.load("Foo.*")` — 按简单名 glob 过滤
   - `AstCheckerRegistry.byCategory("security")` — 按子包分类过滤
 
@@ -45,7 +45,7 @@
 
 ## 统计概览
 
-- 总规则数: **583**
+- 总规则数: **587**
 
 | 分类 | 数量 | 说明 |
 | ---- | ---- | ---- |
@@ -54,7 +54,7 @@
 | `error` | 35 | 错误处理 (异常、try/catch、finalize) |
 | `naming` | 51 | 命名 (标识符、命名风格) |
 | `performance` | 63 | 性能 (低效实现、可优化写法) |
-| `security` | 42 | 安全 (注入、硬编码、加密) |
+| `security` | 46 | 安全 (注入、硬编码、加密) |
 | `style` | 354 | 风格 (代码风格、格式) |
 
 ## 按分类索引
@@ -271,7 +271,7 @@
 | `ast-performance-useless-string-valueof` | `USELESS_STRING_VALUEOF` | LOW | PERFORMANCE | `UselessStringValueOfCheck` |
 | `bu-0607-big-decimal-equals` | `BIG_DECIMAL_EQUALS` | MEDIUM | CORRECTNESS | `BigDecimalEqualsCheck` |
 
-### security  (42 条)
+### security  (46 条)
 
 | 规则 ID | 短名 | 严重度 | 类型 | 规则类 |
 | ------- | ---- | ------ | ---- | ------ |
@@ -285,6 +285,7 @@
 | `ast-security-env-var-info-exposure-ast` | `ENV_VAR_INFO_EXPOSURE_AST` | MEDIUM | SECURITY | `EnvVarInfoExposureAstCheck` |
 | `ast-security-hardcoded-absolute-path` | `HARDCODED_ABSOLUTE_PATH` | MEDIUM | BUG | `DmiHardcodedAbsolutePathCheck` |
 | `ast-security-hardcoded-credentials` | `HARDCODED_CREDENTIALS` | CRITICAL | SECURITY | `HardcodedCredentialsCheck` |
+| `ast-security-hardcoded-crypto-key` | `HARDCODED_CRYPTO_KEY` | HIGH | SECURITY | `HardCodedCryptoKeyCheck` |
 | `ast-security-hardcoded-ip` | `HARDCODED_IP` | MEDIUM | SECURITY | `HardcodedIpCheck` |
 | `ast-security-hardcoded-password-sink-ast` | `HARDCODED_PASSWORD_SINK_AST` | HIGH | SECURITY | `HardcodedPasswordSinkAstCheck` |
 | `ast-security-hardcoded-uri` | `HARDCODED_URI` | MEDIUM | STYLE | `HardcodedURICheck` |
@@ -298,16 +299,19 @@
 | `ast-security-loop-once` | `LOOP_ONCE` | LOW | STYLE | `LoopExecutingAtMostOnceCheck` |
 | `ast-security-missing-authorization` | `MISSING_AUTHORIZATION` | HIGH | SECURITY | `MissingAuthorizationCheck` |
 | `ast-security-missing-input-validation` | `MISSING_INPUT_VALIDATION` | MEDIUM | SECURITY | `MissingInputValidationCheck` |
+| `ast-security-mutable-static-field` | `MUTABLE_STATIC_FIELD` | MEDIUM | SECURITY | `MutableStaticFieldCheck` |
 | `ast-security-null-deref-from-return-ast` | `NULL_DEREF_FROM_RETURN_AST` | MEDIUM | SECURITY | `NullDerefFromReturnAstCheck` |
 | `ast-security-obsolete-api` | `OBSOLETE_API` | LOW | BAD_PRACTICE | `ObsoleteApiCheck` |
 | `ast-security-orm-sql-interpolation` | `ORM_SQL_INTERPOLATION` | HIGH | SECURITY | `OrmSqlInterpolationCheck` |
 | `ast-security-path` | `PATH` | LOW | STYLE | `PathCheck` |
+| `ast-security-plaintext-cookie` | `PLAINTEXT_COOKIE` | MEDIUM | SECURITY | `PlaintextCookieCheck` |
 | `ast-security-predictable-key-password` | `PREDICTABLE_KEY_PASSWORD` | HIGH | SECURITY | `PredictableKeyPasswordCheck` |
 | `ast-security-predictable-random-seed` | `PREDICTABLE_RANDOM_SEED` | MEDIUM | SECURITY | `PredictableRandomSeedCheck` |
 | `ast-security-process-control` | `PROCESS_CONTROL` | HIGH | SECURITY | `ProcessControlCheck` |
 | `ast-security-static-api-key` | `STATIC_API_KEY` | HIGH | SECURITY | `StaticApiKeyCheck` |
 | `ast-security-unbounded-mem-alloc` | `UNBOUNDED_MEM_ALLOC` | HIGH | SECURITY | `UnboundedMemAllocCheck` |
 | `ast-security-unchecked-return` | `UNCHECKED_RETURN` | MEDIUM | SECURITY | `UncheckedReturnCheck` |
+| `ast-security-unclosed-resource` | `UNCLOSED_RESOURCE` | MEDIUM | SECURITY | `UnclosedResourceCheck` |
 | `ast-security-unlogged-security-exception` | `UNLOGGED_SECURITY_EXCEPTION` | MEDIUM | SECURITY | `UnloggedSecurityExceptionCheck` |
 | `ast-security-unused-variable-assignment` | `UNUSED_VARIABLE_ASSIGNMENT` | LOW | STYLE | `UnusedVariableAstCheck` |
 | `ast-security-weak-hash` | `WEAK_HASH` | MEDIUM | SECURITY | `WeakHashChecker` |
@@ -3719,12 +3723,12 @@
 - **分类**: `security`
 - **严重度**: LOW
 - **类型**: SECURITY
-- **CWE**: CWE-273
+- **CWE**: CWE-486
 - **外部等价规则**: (无明显等价规则或为本仓库自研启发式)
 
 **规则说明**
 
-> CWE-273: compare classes by name / reference equality on `getClass()`.
+> CWE-486 / CWE-273: compare classes by name / reference equality on `getClass()`.
 
 **规则约束 / 可调参数**: (无)
 
@@ -3821,6 +3825,40 @@
 > was dead code (the `char` case had already been let through by the first check). The new
 > filter is a clean predicate: accept `String` and `char[]` (the two practical
 > representations of credential material) and reject everything else.
+
+**规则约束 / 可调参数**: (无)
+
+### ast-security-hardcoded-crypto-key  —  `HARDCODED_CRYPTO_KEY`
+
+- **规则类**: `org.plumb.style.security.HardCodedCryptoKeyCheck`
+- **分类**: `security`
+- **严重度**: HIGH
+- **类型**: SECURITY
+- **CWE**: CWE-321
+- **外部等价规则**: (无明显等价规则或为本仓库自研启发式)
+
+**规则说明**
+
+> A cryptographic key is hard-coded in the source (CWE-321).
+>
+> The difference from the other "hard-coded secret" rules is the ROLE of the value. CWE-798 and
+> CWE-259 are about a credential -- a password, a token, an API key. CWE-321 is about the KEY
+> MATERIAL of a cipher: the bytes handed to `SecretKeySpec`, `IvParameterSpec`, or the
+> seed of a key generator.
+>
+> <b>What is reported.</b> A literal that reaches a key-material constructor:
+>
+> <li>`new SecretKeySpec("Super secret Squirrel".getBytes(), "AES")` -- a literal passed
+> directly;
+> <li>`new SecretKeySpec(keyBytes, "AES")` where `keyBytes` was assigned a literal
+> earlier in the same method;
+> <li>`new IvParameterSpec("0123456789abcdef".getBytes())` -- an IV written in the source;
+> <li>`KeyGenerator.getInstance("AES").init(128, new SecureRandom(seed))` -- a seeded
+> random, which is not random at all.
+>
+> The value is traced one step: a literal assigned to a local variable, and that variable used
+> as the key. A literal that reaches the key through a method call or a field is not this rule's
+> business.
 
 **规则约束 / 可调参数**: (无)
 
@@ -4044,6 +4082,39 @@
 
 **规则约束 / 可调参数**: (无)
 
+### ast-security-mutable-static-field  —  `MUTABLE_STATIC_FIELD`
+
+- **规则类**: `org.plumb.style.security.MutableStaticFieldCheck`
+- **分类**: `security`
+- **严重度**: MEDIUM
+- **类型**: SECURITY
+- **CWE**: CWE-582
+- **外部等价规则**: (无明显等价规则或为本仓库自研启发式)
+
+**规则说明**
+
+> A `public static final` field holds a mutable value (CWE-582 / CWE-607).
+>
+> `final` fixes the REFERENCE, not the object. An array, a collection or a `Date`
+> behind a `public static final` field is reachable and writable by every caller, so any of
+> them can change what every other caller sees.
+>
+> The two CWE ids name the same defect class: CWE-582 is "Array Public Final Static" and CWE-607
+> is "Public Static Final Mutable". A rule keeps ONE id per defect class, so both numbers are
+> carried on the same rule.
+>
+> <b>What counts as mutable here.</b>
+>
+> <li>an ARRAY -- the elements are writable through the reference;
+> <li>a value of a known MUTABLE type -- a collection, a date, a calendar, a buffer, a map, a
+> set, a list.
+>
+> A known immutable type (a String, a boxed primitive, a UUID) is not reported: `final`
+> really does make it fixed. An unknown type is not reported either: a type the analyser cannot
+> classify is not evidence of mutability, and reporting it would be a guess.
+
+**规则约束 / 可调参数**: (无)
+
 ### ast-security-null-deref-from-return-ast  —  `NULL_DEREF_FROM_RETURN_AST`
 
 - **规则类**: `org.plumb.style.security.NullDerefFromReturnAstCheck`
@@ -4164,6 +4235,33 @@
 >
 > Detects a `Cookie.setMaxAge(N)` call where `N` is a compile-time constant >
 > 3600 (one hour). The check statically folds `*`, `/`, `+`, `-`, `-N` expressions with integer literals.
+
+**规则约束 / 可调参数**: (无)
+
+### ast-security-plaintext-cookie  —  `PLAINTEXT_COOKIE`
+
+- **规则类**: `org.plumb.style.security.PlaintextCookieCheck`
+- **分类**: `security`
+- **严重度**: MEDIUM
+- **类型**: SECURITY
+- **CWE**: CWE-315
+- **外部等价规则**: (无明显等价规则或为本仓库自研启发式)
+
+**规则说明**
+
+> A cookie stores a value that was never hashed or encrypted (CWE-315).
+>
+> A cookie is readable by the browser and by anything that can read the browser's cookie store,
+> and it travels over the wire. A credential stored in one in plaintext is therefore exposed. The
+> fix is to hash or encrypt the value first.
+>
+> <b>What the rule checks.</b> A `new Cookie(name, value)` whose value is not the result
+> of a hash. The value counts as hashed when the method has already run it through a digest --
+> `MessageDigest.digest`, `SHA-256` of a password, a BCrypt/Argon2/PBKDF2 call, or a
+> `Base64` of an encrypted value.
+>
+> The check is on the VALUE, not on the name: a cookie called `"theme"` holding a colour
+> is not a defect, and a cookie called `"auth"` holding a hash is fine.
 
 **规则约束 / 可调参数**: (无)
 
@@ -4290,6 +4388,41 @@
 **规则说明**
 
 > CWE-252: unchecked return value.
+
+**规则约束 / 可调参数**: (无)
+
+### ast-security-unclosed-resource  —  `UNCLOSED_RESOURCE`
+
+- **规则类**: `org.plumb.style.security.UnclosedResourceCheck`
+- **分类**: `security`
+- **严重度**: MEDIUM
+- **类型**: SECURITY
+- **CWE**: CWE-772
+- **外部等价规则**: (无明显等价规则或为本仓库自研启发式)
+
+**规则说明**
+
+> A resource is acquired and never released (CWE-772 / CWE-775).
+>
+> The defect is a stream, socket, reader or file handle that is opened and then goes out of
+> scope without a `close()`. The two CWE ids name the same defect class: CWE-772 is "Missing
+> Release of Resource" and CWE-775 is "Missing Release of File Descriptor or Handle". A rule keeps
+> ONE id per defect class, so both numbers are carried on the same rule.
+>
+> <b>What counts as a resource.</b> An allocation whose type is a `Closeable`. The type is
+> read from the declared type when there is one, and from the constructor's type otherwise; the
+> simple name is matched against a set of known closeable shapes so that an unresolvable type does
+> not produce a guess.
+>
+> <b>What counts as released.</b> One of:
+>
+> <li>a `close()` call on the variable, anywhere in the enclosing method -- including
+> inside a `finally` block, which is the idiomatic way to release it;
+> <li>the variable being the resource of a try-with-resources statement, which releases it
+> automatically;
+> <li>the variable being passed to a method whose name starts with `close`, `release`, `dispose` or `shutdown`, which is how a caller hands ownership away.
+>
+> The rule reports at the allocation site: that is where the reader has to look.
 
 **规则约束 / 可调参数**: (无)
 

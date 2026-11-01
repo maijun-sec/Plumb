@@ -453,7 +453,7 @@
   "plumb.boundary.integer-overflow": "dfa-boundary-integer-overflow",
   "plumb.boundary.integer-underflow": "dfa-boundary-integer-underflow",
   "plumb.dfa.compare-classes-by-name": "ast-security-compare-classes-by-name",
-  "plumb.dfa.hard-coded-crypto-key": "HardCodedCryptoKey",
+  "plumb.dfa.hard-coded-crypto-key": "ast-security-hardcoded-crypto-key",
   "plumb.dfa.insecure-cookie": "ast-security-insecure-cookie",
   "plumb.dfa.insecure-temp-file-perms": "ast-style-insecure-temp-file-perms-DEDUPED",
   "plumb.dfa.missing-crypto-init": "MissingCryptoInit",

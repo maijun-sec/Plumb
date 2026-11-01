@@ -1,6 +1,6 @@
 # plumb-style — 规则快查表
 
-本表是 `583` 条规则的扁平索引，每行一条。详细说明请看 `plumb-style-rules.md`。
+本表是 `587` 条规则的扁平索引，每行一条。详细说明请看 `plumb-style-rules.md`。
 
 | 规则 ID | 短名 | 分类 | 严重度 | 类型 | 规则类 | 外部等价 (PMD / SpotBugs / Checkstyle / SonarQube) |
 | ------- | ---- | ---- | ------ | ---- | ------ | --------------------------------------------- |
@@ -200,6 +200,7 @@
 | `ast-security-env-var-info-exposure-ast` | `ENV_VAR_INFO_EXPOSURE_AST` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.EnvVarInfoExposureAstCheck` | — |
 | `ast-security-hardcoded-absolute-path` | `HARDCODED_ABSOLUTE_PATH` | `security` | MEDIUM | BUG | `org.plumb.style.security.DmiHardcodedAbsolutePathCheck` | — |
 | `ast-security-hardcoded-credentials` | `HARDCODED_CREDENTIALS` | `security` | CRITICAL | SECURITY | `org.plumb.style.security.HardcodedCredentialsCheck` | — |
+| `ast-security-hardcoded-crypto-key` | `HARDCODED_CRYPTO_KEY` | `security` | HIGH | SECURITY | `org.plumb.style.security.HardCodedCryptoKeyCheck` | — |
 | `ast-security-hardcoded-ip` | `HARDCODED_IP` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.HardcodedIpCheck` | — |
 | `ast-security-hardcoded-password-sink-ast` | `HARDCODED_PASSWORD_SINK_AST` | `security` | HIGH | SECURITY | `org.plumb.style.security.HardcodedPasswordSinkAstCheck` | — |
 | `ast-security-hardcoded-uri` | `HARDCODED_URI` | `security` | MEDIUM | STYLE | `org.plumb.style.security.HardcodedURICheck` | — |
@@ -213,16 +214,19 @@
 | `ast-security-loop-once` | `LOOP_ONCE` | `security` | LOW | STYLE | `org.plumb.style.security.LoopExecutingAtMostOnceCheck` | — |
 | `ast-security-missing-authorization` | `MISSING_AUTHORIZATION` | `security` | HIGH | SECURITY | `org.plumb.style.security.MissingAuthorizationCheck` | — |
 | `ast-security-missing-input-validation` | `MISSING_INPUT_VALIDATION` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.MissingInputValidationCheck` | — |
+| `ast-security-mutable-static-field` | `MUTABLE_STATIC_FIELD` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.MutableStaticFieldCheck` | — |
 | `ast-security-null-deref-from-return-ast` | `NULL_DEREF_FROM_RETURN_AST` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.NullDerefFromReturnAstCheck` | — |
 | `ast-security-obsolete-api` | `OBSOLETE_API` | `security` | LOW | BAD_PRACTICE | `org.plumb.style.security.ObsoleteApiCheck` | — |
 | `ast-security-orm-sql-interpolation` | `ORM_SQL_INTERPOLATION` | `security` | HIGH | SECURITY | `org.plumb.style.security.OrmSqlInterpolationCheck` | — |
 | `ast-security-path` | `PATH` | `security` | LOW | STYLE | `org.plumb.style.security.PathCheck` | — |
+| `ast-security-plaintext-cookie` | `PLAINTEXT_COOKIE` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.PlaintextCookieCheck` | — |
 | `ast-security-predictable-key-password` | `PREDICTABLE_KEY_PASSWORD` | `security` | HIGH | SECURITY | `org.plumb.style.security.PredictableKeyPasswordCheck` | — |
 | `ast-security-predictable-random-seed` | `PREDICTABLE_RANDOM_SEED` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.PredictableRandomSeedCheck` | — |
 | `ast-security-process-control` | `PROCESS_CONTROL` | `security` | HIGH | SECURITY | `org.plumb.style.security.ProcessControlCheck` | — |
 | `ast-security-static-api-key` | `STATIC_API_KEY` | `security` | HIGH | SECURITY | `org.plumb.style.security.StaticApiKeyCheck` | — |
 | `ast-security-unbounded-mem-alloc` | `UNBOUNDED_MEM_ALLOC` | `security` | HIGH | SECURITY | `org.plumb.style.security.UnboundedMemAllocCheck` | — |
 | `ast-security-unchecked-return` | `UNCHECKED_RETURN` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.UncheckedReturnCheck` | — |
+| `ast-security-unclosed-resource` | `UNCLOSED_RESOURCE` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.UnclosedResourceCheck` | — |
 | `ast-security-unlogged-security-exception` | `UNLOGGED_SECURITY_EXCEPTION` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.UnloggedSecurityExceptionCheck` | — |
 | `ast-security-unused-variable-assignment` | `UNUSED_VARIABLE_ASSIGNMENT` | `security` | LOW | STYLE | `org.plumb.style.security.UnusedVariableAstCheck` | — |
 | `ast-security-weak-hash` | `WEAK_HASH` | `security` | MEDIUM | SECURITY | `org.plumb.style.security.WeakHashChecker` | — |

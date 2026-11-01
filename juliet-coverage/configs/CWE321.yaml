@@ -21,6 +21,7 @@ rules:
     - ast-error-catch-generic
     - ast-security-unchecked-return
     - dfa-taint-leak
+    - ast-security-hardcoded-crypto-key
     - dfa-taint-null-dereference
 
 ai:

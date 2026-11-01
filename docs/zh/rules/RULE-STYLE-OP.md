@@ -4,7 +4,7 @@
 
 本文档讲 Style 规则的操作：有多少条、5 层启用/禁用机制、以及怎么改规则参数。规则主清单（数量 / 严重度 / 类型 / emit-id / taint / DFA）见 `RULES.md`；规则开发（AI prompt / CWE 标签 / 外部工具 ID / 加新规则）见 `RULE-AUTHORING.md`。
 
-## 1. Style 规则（596 个 checker 类）
+## 1. Style 规则（601 个 checker 类）
 
 Style 规则**不写进 `plumb-rules/RuleRegistry`**，而是通过 `AstCheckerRegistry` 在启动时 classpath 扫描。9 大子目录的实际分布见 `docs/rules/RULES.md` 的分类统计一节。
 
@@ -13,17 +13,17 @@ Style 规则**不写进 `plumb-rules/RuleRegistry`**，而是通过 `AstCheckerR
 | `plumb-style/style/` | **353** | 编码风格（注释、Javadoc、缩进、imports、控制流、声明） |
 | `plumb-style/performance/` | **63** | 性能（字符串、boxed、BigDecimal、Random） |
 | `plumb-style/naming/` | **51** | 命名约定（类型、方法、字段、参数、局部变量、包） |
-| `plumb-style/security/` | **42** | 安全相关（deserialization、URL sanitization） |
+| `plumb-style/security/` | **46** | 安全相关（deserialization、URL sanitization） |
 | `plumb-style/error/` | **35** | 错误处理（catch、finally、throw、synchronized） |
 | `plumb-style/bug/` | **20** | 明确 bug 模式（compareTo、equals、null 检查） |
 | `plumb-style/design/` | **18** | 设计度量（圈复杂度、耦合、深度） |
 | `plumb-style/quality/` | **10** | 质量（regex confusion、ORM 模式） |
-| `plumb-style/`（根目录） | **2** | `AstChecker`（接口）、`ObjectHijackCheck` |
-| `plumb-style/concurrency/` | **2** | 并发（servlet 原子性、singleton race） |
+| `plumb-style/`（根目录） | **3** | `AstChecker`（接口）、`ObjectHijackCheck` |
+| `plumb-style/concurrency/` | **3** | 并发（servlet 原子性、singleton race） |
 | `plumb-style/annotations/` | 0 | 注解 IR 工具（不是 checker） |
-| **合计** | **596** | — |
+| **合计** | **601** | — |
 
-`CheckerCategories.CHECKER_CATEGORIES` 登记了 **593** 条（差的 2 条见
+`CheckerCategories.CHECKER_CATEGORIES` 登记了 **598** 条（差的 2 条见
 [`../tech/STYLE-RULES.md`](../tech/STYLE-RULES.md) §6）。
 
 > 完整列表 + 每条规则的 Javadoc + PMD/SpotBugs/SonarQube/Checkstyle 等价映射见 `docs/plumb-style-rules.md`（自动生成，由 `scripts/gen_rules_doc.py`）。索引见 `docs/plumb-style-rules-index.md`（由 `scripts/gen_rules_index.py`）。
@@ -49,7 +49,7 @@ public final class RandomIvCheck implements AstChecker {
 
 emit-id 的格式是 `ast-<category>-<bare>`（category = checker 所在子包名）。
 带 `-style` 后缀的 `ast-style-random-iv-cbc-style` **只是 alias**，不再是任何规则的
-emit-id —— 实测 `plumb-style/src/main/java` 下 579 个 `new RuleId("...")` 字面量里
+emit-id —— 实测 `plumb-style/src/main/java` 下 584 个 `new RuleId("...")` 字面量里
 没有一个以 `-style` 结尾。
 
 yaml 里写下面几种风格都能匹配：

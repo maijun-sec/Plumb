@@ -58,7 +58,11 @@ public final class PathTraversalChecker extends TaintedCheckerBase {
             "dfa-taint-path-traversal",
             "dfa-taint-untrusted-source",
             "file-path.sinks",
-            "CWE-22",
+            // The same defect class is numbered differently by different
+            // corpora: CWE-22 is the general "Path Traversal", CWE-23 is
+            // "Relative Path Traversal" and CWE-36 is "Absolute Path
+            // Traversal". One rule, every id that names the defect.
+            "CWE-22,CWE-23,CWE-36",
             "HIGH",
             (TaintDomain) TaintDomain.StringTaint.INSTANCE));
   }

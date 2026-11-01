@@ -121,6 +121,28 @@ public record TaintRule(
   }
 
   /**
+   * The CWE ids this rule carries, in order.
+   *
+   * <p>A defect class can be numbered by more than one CWE id -- the same path-traversal defect is
+   * CWE-22 ("Path Traversal"), CWE-23 ("Relative Path Traversal") and CWE-36 ("Absolute Path
+   * Traversal"), and the numbering differs between corpora. A rule keeps ONE id per defect class
+   * and carries every number that names it, separated by a comma in the {@code cwe} field.
+   *
+   * <p>A single id yields a one-element list, so a rule with one label behaves exactly as before.
+   */
+  public java.util.List<String> cwes() {
+    if (cwe == null || cwe.isBlank()) return java.util.List.of();
+    java.util.List<String> out = new java.util.ArrayList<>();
+    for (String part : cwe.split(",")) {
+      String trimmed = part.trim();
+      if (!trimmed.isEmpty() && !out.contains(trimmed)) {
+        out.add(trimmed);
+      }
+    }
+    return java.util.List.copyOf(out);
+  }
+
+  /**
    * Whether this rule is a match for the given sink family. A rule with sink family {@code
    * "sql.sinks"} only matches calls whose family resolves to {@code "sql.sinks"}; a rule with
    * family {@code "*"} (synthetic) matches anything.

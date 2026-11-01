@@ -26,12 +26,12 @@ them.
 | Taint sink patterns | plumb-dfa | **358** | The 48 `*.sinks` families of `sink-families.yaml` | taint |
 | DFA checker (declared in YAML) | plumb-dfa | **16** (14 enabled / 2 disabled) | `checkers.yaml` | dfa |
 | DFA checker (actually registered) | plumb-main | **67** | `ScanRunner.buildDfaCheckers()` | dfa |
-| Style / naming / design | plumb-style | **597** | JavaParser AST visitor | style |
-| Total registered rules | all | **1148** | The actual registrations of AST + DFA | -- |
+| Style / naming / design | plumb-style | **602** | JavaParser AST visitor | style |
+| Total registered rules | all | **1158** | The actual registrations of AST + DFA | -- |
 
 > **The counts measure different things and must not be added up**:
-> - the **style checker classes** (597) is the number of classes in the source;
-> - the **registered rules** (1148) is the number of rule ids the engine can
+> - the **style checker classes** (602) is the number of classes in the source;
+> - the **registered rules** (1158) is the number of rule ids the engine can
 >   actually emit -- one rule can be declared by several checkers, so the two numbers
 >   are not equal.
 >
@@ -50,16 +50,16 @@ declare `implements AstChecker` / `extends AstChecker`:
 | `plumb-style/style/` | **354** | Coding style (comments, Javadoc, indentation, imports, control flow, declarations) |
 | `plumb-style/performance/` | **63** | Performance (strings, boxed types, BigDecimal, Random) |
 | `plumb-style/naming/` | **51** | Naming conventions (types, methods, fields, parameters, local variables, packages) |
-| `plumb-style/security/` | **42** | Security-related (deserialization, URL sanitization) |
+| `plumb-style/security/` | **46** | Security-related (deserialization, URL sanitization) |
 | `plumb-style/error/` | **35** | Error handling (catch, finally, throw, synchronized) |
 | `plumb-style/bug/` | **20** | Clear bug patterns (compareTo, equals, null checks) |
 | `plumb-style/design/` | **18** | Design metrics (cyclomatic complexity, coupling, depth) |
 | `plumb-style/quality/` | **10** | Quality (regex confusion, ORM patterns) |
-| `plumb-style/concurrency/` | **2** | Concurrency (servlet atomicity, singleton race) |
+| `plumb-style/concurrency/` | **3** | Concurrency (servlet atomicity, singleton race) |
 | `plumb-style/` (the root directory) | **2** | Does not belong to any sub-directory category |
-| **Total** | **597** | -- |
+| **Total** | **602** | -- |
 
-`CheckerCategories.CHECKER_CATEGORIES` registers **594** of them.
+`CheckerCategories.CHECKER_CATEGORIES` registers **599** of them.
 
 ### 1.2 Equivalent coverage in external tools
 
@@ -84,7 +84,7 @@ add new checkers:
 
 | Category | Location | Count (measured) | Trigger | Where it applies |
 | --- | --- | ---: | --- | --- |
-| **Style** (AST-only) | `plumb-style/` | **597** checker classes | JavaParser only | Coding style, naming, purely structural bugs |
+| **Style** (AST-only) | `plumb-style/` | **602** checker classes | JavaParser only | Coding style, naming, purely structural bugs |
 | **DFA** | `plumb-dfa/` | **47** extending `TaintedCheckerBase` + **20** directly `implements DfaChecker` | TAC + CFG (taint / numeric / resource / control flow) | When you need cross-statement def-use, type tracking, source-to-sink data flow |
 
 The breakdown of the implementation shapes inside the DFA is in
@@ -151,7 +151,7 @@ than one form.
 | Taint rule (registry) | `dfa-taint-sql-injection` | `dfa-taint-<bare>` | the 13 entries of `TaintRuleRegistry` |
 | RuleRegistry UUID | `bu-0401-weak-crypto` | `bu-<NNNN>-<bare>` | `plumb-rules/.../RuleRegistry.java` |
 
-Measured over the 579 `new RuleId("ast-...")` literals under
+Measured over the 584 `new RuleId("ast-...")` literals under
 `plumb-style/src/main/java`, **not one of them ends in `-style`**. A string with an
 `-style` suffix such as `ast-style-random-iv-cbc-style` is kept only as an **alias**
 of a `RuleDef` (for compatibility with the old YAML whitelist); it is no longer the

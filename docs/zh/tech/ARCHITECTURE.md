@@ -944,7 +944,7 @@ style 规则的 emit-id 采用 `ast-<category>-<bare>` 命名（category 取 che
 | 引用方 | 作用 |
 | --- | --- |
 | `*Check.java` 的 `new RuleId("ast-style-foo", ...)` | 产生 emit id |
-| `plumb-style/.../CheckerCategories.java` | classpath-scan 注册表（594 项 `m.put(...)`） |
+| `plumb-style/.../CheckerCategories.java` | classpath-scan 注册表（599 项 `m.put(...)`） |
 | `plumb-main/.../ScanRunner.java::isRuleIdAllowed`（`:1823`、`:1834`） | 规则过滤；需要同时接受 canonical id、bare slug 与短横线形式 |
 
 **数据流**：

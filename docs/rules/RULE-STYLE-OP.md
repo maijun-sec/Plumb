@@ -8,7 +8,7 @@ parameters. The main rule catalogue (counts / severity / type / emit-id /
 taint / DFA) is in `RULES.md`; rule development (AI prompt / CWE labels /
 external tool IDs / adding a rule) is in `RULE-AUTHORING.md`.
 
-## 1. Style rules (596 checker classes)
+## 1. Style rules (601 checker classes)
 
 Style rules are **not written into `plumb-rules/RuleRegistry`**; they are
 classpath-scanned at startup by `AstCheckerRegistry`. The actual distribution
@@ -20,17 +20,17 @@ across the 9 sub-directories is in the category-statistics section of
 | `plumb-style/style/` | **353** | Coding style (comments, Javadoc, indentation, imports, control flow, declarations) |
 | `plumb-style/performance/` | **63** | Performance (strings, boxed types, BigDecimal, Random) |
 | `plumb-style/naming/` | **51** | Naming conventions (types, methods, fields, parameters, local variables, packages) |
-| `plumb-style/security/` | **42** | Security-related (deserialization, URL sanitization) |
+| `plumb-style/security/` | **46** | Security-related (deserialization, URL sanitization) |
 | `plumb-style/error/` | **35** | Error handling (catch, finally, throw, synchronized) |
 | `plumb-style/bug/` | **20** | Clear bug patterns (compareTo, equals, null checks) |
 | `plumb-style/design/` | **18** | Design metrics (cyclomatic complexity, coupling, depth) |
 | `plumb-style/quality/` | **10** | Quality (regex confusion, ORM patterns) |
 | `plumb-style/`（根目录） | **2** | `AstChecker` (the interface), `ObjectHijackCheck` |
-| `plumb-style/concurrency/` | **2** | Concurrency (servlet atomicity, singleton race) |
+| `plumb-style/concurrency/` | **3** | Concurrency (servlet atomicity, singleton race) |
 | `plumb-style/annotations/` | 0 | Annotation IR utilities (not checkers) |
-| **合计** | **596** | — |
+| **合计** | **601** | — |
 
-`CheckerCategories.CHECKER_CATEGORIES` registers **593** of them (for the
+`CheckerCategories.CHECKER_CATEGORIES` registers **598** of them (for the
 difference of 2, see [`../tech/STYLE-RULES.md`](../tech/STYLE-RULES.md) §6).
 
 > The full list plus the Javadoc of every rule plus the PMD/SpotBugs/SonarQube/Checkstyle
@@ -60,7 +60,7 @@ public final class RandomIvCheck implements AstChecker {
 The format of an emit-id is `ast-<category>-<bare>` (category = the name of the
 sub-package the checker lives in). The `-style`-suffixed
 `ast-style-random-iv-cbc-style` is **only an alias** and is no longer the
-emit-id of any rule -- measured over the 579 `new RuleId` literals under
+emit-id of any rule -- measured over the 584 `new RuleId` literals under
 `plumb-style/src/main/java`, not one of them ends in `-style`.
 
 Any of these spellings in the YAML will match:
