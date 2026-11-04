@@ -80,21 +80,49 @@ The actual direct dependencies (from each module's `pom.xml`):
 | `plumb-rules` | `plumb-tac` |
 | `plumb-reporter` | `plumb-rules` |
 | `plumb-style` | `plumb-parser`, `plumb-rules`, `plumb-reporter` |
-| `plumb-dfa` | `plumb-parser`, `plumb-tac`, `plumb-rules`, `plumb-reporter` |
+| `plumb-dfa` | `plumb-parser`, `plumb-tac`, `plumb-rules`, `plumb-reporter`, `plumb-frontend` |
 | `plumb-dsl-kotlin` | `plumb-parser`, `plumb-rules`, `plumb-reporter`, `plumb-style` |
 | `plumb-build` | (parent pom, no internal dependency) |
 | `plumb-build-core` | `plumb-rules` |
 | `plumb-build-maven` | `plumb-build-core` |
 | `plumb-build-capture` | (no internal dependency) |
 | `plumb-ai` | `plumb-rules`, `plumb-reporter` |
-| `plumb-main` | `plumb-parser`, `plumb-tac`, `plumb-dfa`, `plumb-dsl-kotlin`, `plumb-build-core`, `plumb-build-maven`, `plumb-ai`, `plumb-rules`, `plumb-style`, `plumb-reporter` |
+| `plumb-frontend` | `plumb-tac` |
+| `plumb-core` | (parent pom, no internal dependency) |
+| `plumb-engine` | (parent pom, no internal dependency) |
+| `plumb-app` | (parent pom, no internal dependency) |
+| `plumb-frontend` | `plumb-tac` |
+| `plumb-main` | `plumb-parser`, `plumb-tac`, `plumb-dfa`, `plumb-dsl-kotlin`, `plumb-build-core`, `plumb-build-maven`, `plumb-ai`, `plumb-rules`, `plumb-style`, `plumb-reporter`, `plumb-frontend` |
+
+
+### The three build layers
+
+The build is grouped into three layers by **aggregator POMs**. The layers do not
+move the source directories: the module directories stay flat at the repository
+root, because 43 gate scripts hard-code `REPO / "plumb-<name>"` and
+`scripts/check_test_coverage.py` discovers the modules by walking the root. Moving
+a directory would silently stop those gates from checking anything.
+
+| Layer | Aggregator | Aggregates |
+| --- | --- | --- |
+| core | `plumb-core` | `plumb-parser`, `plumb-rules`, `plumb-reporter` |
+| engine | `plumb-engine` | `plumb-tac`, `plumb-frontend`, `plumb-dfa`, `plumb-style`, `plumb-dsl-kotlin`, `plumb-ai` |
+| app | `plumb-app` | `plumb-main`, `plumb-build` |
+
+An aggregator POM declares `<modules>`, not `<dependencies>`, so it has no
+dependency edges of its own -- it only fixes the build order. The dependency
+edges stay where they always were, in the leaf modules' POMs.
+
+`plumb-frontend` holds the Kotlin and Scala source frontends. It is a single
+module rather than two, because the blast radius is the same either way: a
+mistake there affects the *multi-language frontends*, not the Java path.
 
 The key edges:
 
 - `plumb-parser` is a leaf node and **does not depend** on any internal plumb module (only JavaParser)
 - `plumb-tac` depends only on `plumb-parser` (because `TacTranslator` takes a `ParsedSource`)
 - `plumb-style` depends only on `plumb-parser` + `plumb-rules` + `plumb-reporter` -- **it does not depend on plumb-tac / plumb-dfa** (that is an architectural principle)
-- `plumb-dfa` depends on `plumb-parser` + `plumb-tac` + `plumb-rules` + `plumb-reporter`
+- `plumb-dfa` depends on `plumb-parser` + `plumb-tac` + `plumb-rules` + `plumb-reporter` + `plumb-frontend` (the Kotlin / Scala frontends)
 - `plumb-dsl-kotlin` depends on `plumb-parser` + `plumb-rules` + `plumb-reporter` + `plumb-style` --
   it implements the `AstChecker` SPI of `plumb-style`, so it has to depend on `plumb-style`;
   and `plumb-style` does **not** depend on it, so there is no cycle

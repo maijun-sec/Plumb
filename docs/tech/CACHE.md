@@ -62,7 +62,7 @@ The TAC IR of Plumb is a **small data volume + heterogeneous fields + long lifet
 
 - **Small data volume**: the TAC IR of a single TU is only on the order of tens of KB; for a large project with
   ten thousand files the estimate is 150 MB, which is not a bottleneck for disk IO
-- **Heterogeneous fields**: the 9 `Serializable` IR classes each have mutable fields
+- **Heterogeneous fields**: the 10 `Serializable` IR classes each have mutable fields
   (`TacInstruction.line` / `column`, the sealed shapes of `TacOperand`, the
   `SourceMap.Loc` record, `TacProgram.sourcePath` is a `java.nio.file.Path`) --
   every added field makes Kryo register again
@@ -170,6 +170,12 @@ The key code:
 ```java
 private TranslatedFile translateAndStyleOne(
     Path file, RuleRegistry rules, List<AstChecker> styleChecks) {
+    // A non-Java file has no JavaParser AST, so there is nothing for the
+    // style checkers to walk. It goes through the frontend path, which
+    // produces the TAC and no style findings.
+    if (FrontendRegistry.languageOf(file) != SourceLanguage.JAVA) {
+        return translateNonJava(file);
+    }
     TacProgram program = loadCachedProgram(file);
     ParsedSource ps = null;
     if (program != null) {
@@ -177,7 +183,7 @@ private TranslatedFile translateAndStyleOne(
         ps = buildParser().parse(file);
     } else {
         ps = buildParser().parse(file);
-        program = new TacTranslator(ps).translate();
+        program = translateJava(ps, file);
         storeCachedProgram(file, program);
     }
     // style always runs fresh (rule set may have changed)
@@ -188,6 +194,11 @@ private TranslatedFile translateAndStyleOne(
 
 (In the source code the two parse calls are each wrapped in a `catch (Throwable)`; a parse failure is recorded as a WARN and returns `null`,
 which skips that file -- a single bad file should not bring the whole scan down.)
+
+**`translateJava` is where the TAC translation happens**, not the constructor of `TacTranslator`.
+It is a private method on `ScanRunner` because the translation needs the scan-wide context --
+the module the file belongs to, the compile context and the language filter -- and a bare
+`new TacTranslator(ps)` has none of that.
 
 ## 7. Compatibility
 

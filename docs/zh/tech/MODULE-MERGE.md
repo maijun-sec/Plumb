@@ -80,21 +80,46 @@ plumb  (root POM)
 | `plumb-rules` | `plumb-tac` |
 | `plumb-reporter` | `plumb-rules` |
 | `plumb-style` | `plumb-parser`, `plumb-rules`, `plumb-reporter` |
-| `plumb-dfa` | `plumb-parser`, `plumb-tac`, `plumb-rules`, `plumb-reporter` |
+| `plumb-dfa` | `plumb-parser`, `plumb-tac`, `plumb-rules`, `plumb-reporter`, `plumb-frontend` |
 | `plumb-dsl-kotlin` | `plumb-parser`, `plumb-rules`, `plumb-reporter`, `plumb-style` |
 | `plumb-build` | （parent pom，无内部依赖） |
 | `plumb-build-core` | `plumb-rules` |
 | `plumb-build-maven` | `plumb-build-core` |
 | `plumb-build-capture` | （无内部依赖） |
 | `plumb-ai` | `plumb-rules`, `plumb-reporter` |
-| `plumb-main` | `plumb-parser`, `plumb-tac`, `plumb-dfa`, `plumb-dsl-kotlin`, `plumb-build-core`, `plumb-build-maven`, `plumb-ai`, `plumb-rules`, `plumb-style`, `plumb-reporter` |
+| `plumb-frontend` | `plumb-tac` |
+| `plumb-core` | （父 pom，无内部依赖） |
+| `plumb-engine` | （父 pom，无内部依赖） |
+| `plumb-app` | （父 pom，无内部依赖） |
+| `plumb-frontend` | `plumb-tac` |
+| `plumb-main` | `plumb-parser`, `plumb-tac`, `plumb-dfa`, `plumb-dsl-kotlin`, `plumb-build-core`, `plumb-build-maven`, `plumb-ai`, `plumb-rules`, `plumb-style`, `plumb-reporter`, `plumb-frontend` |
+
+
+### 三个构建层
+
+构建按**聚合 POM** 分为三层。分层**不移动源码目录**：模块目录仍然平铺在仓库根下，
+因为有 43 个门禁脚本硬编码了 `REPO / "plumb-<name>"`，而
+`scripts/check_test_coverage.py` 靠遍历根目录来发现模块。移动目录会让这些门禁
+**静默地不再检查任何东西**。
+
+| 层 | 聚合 POM | 聚合的模块 |
+| --- | --- | --- |
+| core | `plumb-core` | `plumb-parser`, `plumb-rules`, `plumb-reporter` |
+| engine | `plumb-engine` | `plumb-tac`, `plumb-frontend`, `plumb-dfa`, `plumb-style`, `plumb-dsl-kotlin`, `plumb-ai` |
+| app | `plumb-app` | `plumb-main`, `plumb-build` |
+
+聚合 POM 声明的是 `<modules>` 而不是 `<dependencies>`，所以它自己没有依赖边——
+它只固定构建顺序。依赖边仍然在叶子模块的 POM 里，和以前一样。
+
+`plumb-frontend` 装着 Kotlin 和 Scala 的源码前端。它是**一个**模块而不是两个，
+因为两种划分的破坏半径是同一个：那里的失误影响的是**多语言前端**，而不是 Java 路径。
 
 关键边：
 
 - `plumb-parser` 是叶子节点，**不依赖**任何 plumb 内部模块（仅 JavaParser）
 - `plumb-tac` 只依赖 `plumb-parser`（因为 `TacTranslator` 接收 `ParsedSource`）
 - `plumb-style` 只依赖 `plumb-parser` + `plumb-rules` + `plumb-reporter` —— **不依赖 plumb-tac / plumb-dfa**（这是架构原则）
-- `plumb-dfa` 依赖 `plumb-parser` + `plumb-tac` + `plumb-rules` + `plumb-reporter`
+- `plumb-dfa` 依赖 `plumb-parser` + `plumb-tac` + `plumb-rules` + `plumb-reporter` + `plumb-frontend`（Kotlin / Scala 前端）
 - `plumb-dsl-kotlin` 依赖 `plumb-parser` + `plumb-rules` + `plumb-reporter` + `plumb-style` ——
   它实现 `plumb-style` 的 `AstChecker` SPI，所以要依赖 `plumb-style`；
   而 `plumb-style` **不**依赖它，没有环

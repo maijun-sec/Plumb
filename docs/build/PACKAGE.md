@@ -44,7 +44,7 @@ plumb-<ver>/
 │   ├── sast-scan               POSIX launcher (bash)
 │   └── sast-scan.bat           Windows cmd launcher
 ├── lib/
-│   └── plumb-main-<ver>-all.jar     single-file uber-jar (≈ 142 MB)
+│   └── plumb-main-<ver>-all.jar     single-file uber-jar (≈ 218 MB)
 └── conf/
     ├── default-config.yaml     baseline YAML (details in §6)
     └── logback.xml             default logging (root = ERROR, `org.plumb` = DEBUG)
@@ -58,7 +58,7 @@ plumb-<ver>/
 | --- | ---: | --- |
 | `bin/sast-scan` | ~300 B | POSIX shell launcher. `exec java -cp $DIR/lib/* -Dlogback.configurationFile=$DIR/conf/logback.xml org.plumb.main.SastMain "$@"` |
 | `bin/sast-scan.bat` | ~250 B | Windows cmd launcher. The logic is the same as the POSIX version; it resolves the path via `%~dp0` |
-| `lib/plumb-main-<ver>-all.jar` | ~142 MB | The uber-jar after shading: all plumb-* modules, JavaParser, SootUp, Z3 turnkey, Logback, the Kotlin scripting engine |
+| `lib/plumb-main-<ver>-all.jar` | ~218 MB | The uber-jar after shading: all plumb-* modules, JavaParser, SootUp, Z3 turnkey, Logback, the Kotlin scripting engine |
 | `conf/default-config.yaml` | ~9 KB | The baseline with all fields: inputs/output/outputDir/cacheMode/cgStrategy/checks/ai (details in §6) |
 | `conf/logback.xml` | ~200 B | Default root = `ERROR`, `org.plumb` / `org.plumb.ai` = `DEBUG`; can be overridden with `-Dlogback.configurationFile=...` |
 | `README.txt` | ~200 B | The startup command + the description of the default conf sections |
@@ -333,7 +333,7 @@ and package the `.asc` verification file together with it. On the CI side it is 
 
 | Component | Size |
 | --- | ---: |
-| `plumb-main-<ver>-all.jar` (shaded uber-jar) | ~142 MB |
+| `plumb-main-<ver>-all.jar` (shaded uber-jar) | ~218 MB |
 | jlink minimal JRE 17 (14 modules included) | ~95 MB |
 | Ready-to-unpack tar.gz (Linux x64) | ~80 MB (after gzip compression) |
 | Ready-to-unpack zip (Windows x64) | ~180 MB |

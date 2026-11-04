@@ -172,12 +172,12 @@ The checkers on the `plumb-dfa` side come in three implementation shapes:
 
 | Category | Base class | Count | Explanation |
 | --- | --- | ---: | --- |
-| **taint-style** | `TaintedCheckerBase` | 47 (`checkers/taint/`) | A `TaintRule(ruleId, factKind, sinkFamily, cwe, severity, taintDomain)` is passed in the constructor; a finding is emitted when a sink family is hit |
+| **taint-style** | `TaintedCheckerBase` | 48 (`checkers/taint/`) | A `TaintRule(ruleId, factKind, sinkFamily, cwe, severity, taintDomain)` is passed in the constructor; a finding is emitted when a sink family is hit |
 | **constraint-style** | `checkers/boundary/` | 1 | `BoundaryConstraintChecker`, which uses Z3 to solve the path conditions |
 | **pattern-based** | directly `implements DfaChecker` | 16 (`checkers/controlflow/`) + 2 (`checkers/taint/`) | No taint propagation; it relies on local pattern matching over the IR; a single-step trace is emitted with `Finding.violation(...)` |
 
 `ScanRunner.buildDfaCheckers()` (`plumb-main/.../ScanRunner.java`) **actually registers
-67** DFA checkers. The registration is controlled by the per-rule flags in the YAML (for example
+78** DFA checkers. The registration is controlled by the per-rule flags in the YAML (for example
 `config.runIntOverflow`, `config.runNullDeref`); `config.runTaint` is the master switch for the
 whole taint family.
 

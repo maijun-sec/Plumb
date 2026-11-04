@@ -106,7 +106,7 @@ returns the element type when `kind == ARRAY`.
 
 ## 4. Instruction set
 
-`TacInstruction.Kind` has 19 kinds in total:
+`TacInstruction.Kind` has 22 kinds in total:
 
 | Kind | Fields | Meaning |
 | --- | --- | --- |
@@ -129,12 +129,43 @@ returns the element type when `kind == ARRAY`.
 | `CATCH_HANDLER` | `catch (<type>) -> dest` | Entry of a catch block (dest is the catch parameter) |
 | `FINALLY_ENTER` | `finally:` | Entry of a finally block |
 | `NOP` | — | no-op |
+| `NULL_CHECK` | `dest` | Compiler-inserted null check: if `dest` is null, throw NPE; otherwise `dest` is proven non-null |
+| `HAVOC` | `dest` | This VALUE is unknown: the frontend met a construct it could not lower and emitted this for the affected value, together with a `FunctionProblem` saying what it could not lower. It is neither tainted nor proven clean -- it means the analysis does not know |
+| `UNINTERPRETED` | `dest = <uninterpreted>(callee)` | This CALL's effect is unknown: it may return anything, and it may have side effects. Unlike `HAVOC`, the unknown is in the CALL rather than in a value. Assumed taint-preserving on its arguments, and possibly producing a tainted result -- the conservative choice for a low-false-negative bar |
 
 `CATCH_HANDLER` and `FINALLY_ENTER` make try/catch/finally explicit in the IR (and add `exceptionSuccessors` edges to the CFG). The exact semantics:
 
 - **`CATCH_HANDLER` (`catch (<type>) -> dest`)** — the entry of a catch block. `dest` is the catch parameter binding (always non-null at runtime, with the type derived from the throws clause). When `TaintedCheckerBase` sees a `CATCH_HANDLER` it marks `dest` as NNE (Non-Null Evidence) and propagates the taint label of the associated `THROW` instruction to `dest`. This is why `NullDerefChecker` does not report "catch (NullPointerException e) { e.x ... }" — `e` is bound to be non-null.
 - **`FINALLY_ENTER` (`finally:`)** — the entry of a finally block. The CFG builder adds an exception edge to the FINALLY block from every basic block inside the try and every catch block (the ones ending in `THROW`), modelling the semantics of "the finally block always runs, no matter how try/catch goes".
 - The old `L_CATCH_<Type>` / `L_FINALLY` label name patterns are kept — label-based tooling (UnusedLabelChecker / SARIF / cache-key normaliser) is not broken.
+
+
+### 4.0 `NULL_CHECK` — removes false positives, never proves safety
+
+`NULL_CHECK` is a **compiler-inserted null check**: if `dest` is null, throw NPE; otherwise
+`dest` is proven non-null.
+
+**Its use is strictly limited to removing false positives.** The null-dereference checker uses it
+to know that a value has already been proven non-null, and therefore does not need to report it. It
+must **never** be used to **prove runtime safety**:
+
+- Kotlin's compiler-inserted checks can be removed by `-Xno-param-assertions` /
+  `-Xno-call-assertions`;
+- ProGuard/R8's `-assamenosideeffects` strips the checks out of the bytecode.
+- **"There is no check in the bytecode" does not imply "the runtime is safe".**
+
+**Do not map these to `NULL_CHECK`:**
+
+- `kotlin.jvm.internal.Intrinsics.areEqual` -- the null-safe comparison helper used by a data
+  class's generated `equals()`. It is not a null check; treating it as one would pollute the
+  non-null fact set with "these two values are equal".
+- `kotlin.jvm.internal.Intrinsics.throwUninitializedPropertyAccessException` -- the `lateinit`
+  access check. It is not a null check.
+
+**A source frontend that read the type system does not need this opcode** (the nullability is
+already in `TacType.isNullable()`). It is used for **control-flow narrowing that the type system
+cannot express**: smart casts, an explicit `requireNotNull`, and platform types coming from Java
+interop.
 
 ### 4.1 Binary / unary operators
 

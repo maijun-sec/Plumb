@@ -48,6 +48,8 @@ usage: sast-scan [--ai-context-lines <n>] [--ai-dedup] [--ai-dedup-stats] [--ai-
 | — | `--cache-mode` | `off` \| `read` \| `write` \| `readwrite` | `off` | 磁盘 IR 缓存使用模式 |
 | — | `--cg-strategy` | 见下表 | `global` | Call-graph 构造策略，传给 `plumb-dfa` 引擎 |
 | — | `--max-parallelism` | `<n>` | `nCPU-1`（最小 1） | parse + translate 阶段并发上限 |
+| — | `--language` | `java` \| `kotlin` \| `scala` | 全部语言 | 只分析这些语言（**可重复**，也可用逗号分隔）。过滤发生在**加载期**：其它语言的 sink family、sink pattern、checker 和前端根本不会被构造，它们的文件也不会被打开——所以一次纯 Java 扫描不需要为 Kotlin 或 Scala 编译器买单。语言名写错是用法错误，而不是一次扫不出东西的扫描 |
+| — | `--module` | `<id>` | 全部模块 | 只分析多模块工程中的这一个模块。其它模块仍然被读取、解析和汇总，所以调用图照样跨模块边界；只有 **finding** 被限制在本模块内。sink 落在模块外的 finding 会被计数并报告为已丢弃，绝不静默丢掉 |
 | — | `--ai-dedup` | — | off | 降误报开关。把每条 finding 发给 LLM 判 TP/FP/UNKNOWN。verdict 写到 NDJSON 的 `ai_verdict` + `ai_reason` 字段。LLM 端点 + key 走 YAML（`ai.apiKey` / `ai.baseUrl` / `ai.model`） |
 | — | `--ai-dedup-stats` | — | off | AI dedup 跑完后，往 **stderr** 打 verdict 分布 + 每条规则的 FP 占比 Top 10。stdout 的 NDJSON 不变。配合 `--ai-dedup` 一起用，单独开 no-op。 |
 | — | `--ai-max-turns` | `<n>` | 5 | AI 降误报的 ReAct 循环上限：一条 finding 最多能跑多少个带工具调用的轮次。撞到上限记成 `UNKNOWN|max-turns-exceeded`。YAML：`ai.maxTurns` |

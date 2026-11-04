@@ -1,0 +1,209 @@
+# TAC 前端覆盖范围 —— 降解了什么，没有降解什么
+
+[English](../../tech/TAC-COVERAGE.md) | [中文](../README.md)
+
+**本文档是覆盖范围的契约。** 它说明三个 TAC 翻译器降解了哪些源码构造、没有降解哪些构造，以及——
+最重要的一点——一个缺口是**被报告的**（问题随 IR 一起传递，函数精度被降级）还是**静默的**
+（构造被丢弃，却什么都不说）。
+
+静默缺口是最糟糕的一种，因为它与"代码是干净的"无法区分。被报告的缺口是一个可见的限制：
+消费者知道该函数的 finding 集合只是下界。
+
+整个设计遵守的规则：
+
+> **一个没有被降解的构造，必须产生一个问题并降级精度。绝不允许静默丢弃。**
+
+---
+
+## 1. 三种机制
+
+三种语言使用三种不同的机制，而且它们并不等价。
+
+| 语言 | 机制 | 位置 |
+|---|---|---|
+| Java | `TacBuilder.reportUnhandled` → IR 上的结构化 `UNHANDLED_NODE` 问题；回退值是一个 `HAVOC` 临时变量，绝不是 `null` 常量 | `plumb-tac/.../translate/TacBuilder.java`、`ExpressionTranslator.java` |
+| Kotlin | `KotlinTacTranslator.report(...)` → 同时写出纯字符串和结构化 `FunctionProblem`；置 `degraded = true` | `plumb-frontend/.../kotlin/KotlinTacTranslator.java` |
+| Scala | 一个 `ProblemCollector`，一次性写出两种形式 | `plumb-frontend/.../scala/ScalaTacTranslator.java` |
+
+Scala 的收集器是新增的。它过去是一个普通的 `List<String>`，而前端把 PHASE 的结构化问题交给
+IR——可 PHASE 里从来只有外层的 `TRANSLATION_ERROR`。于是一个只被部分降解的 Scala 函数，
+产出的 finding 看起来和被完整降解的函数一模一样，而这正是整个 `SOURCE_LOWERED` 机制要防止的
+失效模式。
+
+**现在的变量：** 每种语言只有**一个**地方记录缺口，并且它同时写出两种形式。两者无法漂移，
+因为根本没有第二个地方可供漂移。
+
+---
+
+## 2. Java
+
+Java 是三者中唯一拥有**强制穷尽性不变式**的：`AstNodeInventoryTest` 会从 jar 中枚举每一个
+JavaParser 节点类，只要有个未被匹配就失败。这正是 Java 的静默缺口数量最低的原因。
+
+### 2.1 已降解
+
+字面量（全部原始类型形式、`String`、`null`）· 文本块（Java 15+）· 类字面量 ·
+全部 20 个二元运算符 · 全部一元运算符 · 赋值与复合赋值 · 名称、字段和静态字段访问 ·
+`this` / 限定 `this` / `super` · 强制类型转换 · `instanceof` 普通形式和
+**带模式形式**（Java 16+）· 方法调用 · 对象创建 · 数组创建、初始化与访问 ·
+条件表达式 / 三元运算符 · 方法引用（`String::length`、`Type::new`、`expr::method`）
+· lambda（→ 合成函数 + CALL）· `switch` 语句（经典形式和模式标签）·
+`switch` 表达式（Java 14+，箭头式 + `yield` + 块式分支）· `case null` 与多标签分支 ·
+record 模式，含嵌套形式 · `if`/`else` · `while` · `do-while` · C 风格 `for` ·
+for-each · `try`/`catch`/`finally` · `throw` · `return` · `break`/`continue` ·
+带 `yield` 的增强 `switch` · sealed 类型的 `permits` · `module-info`（仅声明）。
+
+### 2.2 已知缺口
+
+| 构造 | 是否报告 | 说明 |
+|---|---|---|
+| `case X when <guard>`（Java 21） | **静默** | guard 测试完全没有进入 IR：分支仅凭类型测试就成立。其严重性是误报，而不是漏报。 |
+| 带重写方法的枚举常量体 | **静默** | 重写不在程序里，于是对它的调用解析到基类方法。 |
+| `module-info` 的服务声明 | 已报告 | 仅声明级降解。 |
+| `permits` / sealed 继承体系 | 已报告 | 该继承体系没有被建模。 |
+| record 模式中的 `var` | 已报告 | 没有为绑定推断类型。 |
+
+**严重性说明。** 前两项才是要紧的：两者都可能产出**错误**的 finding，而不是**缺失**的
+finding。它们被列为 Java 待办清单的最前面。
+
+---
+
+## 3. Kotlin
+
+### 3.1 已降解
+
+字符串模板 · 名称引用 · 调用（包括 receiver，空指针解引用检查器从 `args[0]` 读取它）·
+点限定调用 · 二元与比较运算符 · `if`/`else` 作为表达式和作为语句 · `when` 作为分支链 ·
+`val`/`var` 属性 · `return` · `throw` · 代码块 · 对象创建 · 安全调用（`?.`）·
+Elvis（`?:`）· lambda · `object` 声明 · data class（编译器生成的 `copy`、`apply`、
+`unapply` 和 `_N` 访问器，标记为合成）· **可空性**（前端的主要贡献：平台类型被记录为可空，
+而 `!!` 被记录为一次断言）。
+
+### 3.2 已知缺口
+
+| 构造 | 是否报告 | 说明 |
+|---|---|---|
+| `when` 的 `is`-模式分支 | **已报告** | 过去用一个裸 `continue` 跳过，于是函数仍然宣称完整精度。现在会被报告，函数被降级。 |
+| `when` 的**值** | **已支持** | 各分支体被当作**语句**翻译，于是值算出来又被丢掉：`val x = when (y) { ... }` 产生一个未定义的 `x`，并且流经 `when` 的每一条污点都丢失了——静默地丢失，而函数仍然宣称完整精度。`when` 现在产生一个结果临时变量，每个分支都对它赋值。 |
+| companion object 的成员 | 已报告 | 这些成员不在程序里。 |
+| 默认参数 | 已报告 | 只建模了声明的参数列表。 |
+| 可变参数 | 已报告 | 只建模了第一个实参。 |
+| `inline` / `reified` | 已报告 | inline 函数体没有内联进调用方。 |
+| `suspend` 函数 | 已报告 | 续体（continuation）没有被建模。 |
+| 扩展函数的 receiver | 已报告 | receiver 变成 `null`，于是对它的调用是误报。 |
+
+### 3.3 `when` 的值——修复的形状
+
+修复用的就是 TAC 在其它所有地方已经在用的那套：一个结果临时变量，每个分支都对它赋值，
+整个表达式最终产出它。
+
+```
+val v = when (x) {
+    1 -> "one"
+    else -> "other"
+}
+```
+
+```
+t_result = <temp>
+  t_eq = x == 1
+  BRANCH t_eq -> whenmatch -> whennext
+whenmatch:
+  t_result = "one"
+  JUMP whenend
+whennext:
+  t_result = "other"
+whenend:
+  MOVE v = t_result
+```
+
+一个把分支体当作副作用来用的分支（`1 -> doSomething()`）仍然按语句降解：源码没有给它值，
+凭空造一个会把源码从来没有过的值放到栈上。
+
+---
+
+## 4. Scala
+
+### 4.1 已降解
+
+字面量 · 名称引用 · 调用 · 二元与比较运算符 · `if`/`else` · `while` ·
+`match`（降解为一条分支链：每个有类型的分支对应一个 `INSTANCEOF` 加一个 `BRANCH`，
+并带一个 `JUMP` 跳到合并标签——正是 Java `instanceof` 链的形状）· 代码块 · `val` 定义 ·
+`return` · `throw` · 对象创建 · case class（编译器生成的成员，标记为合成）· trait ·
+Scala 自己的名字改写局部变量（`x$1`）。
+
+### 4.2 已知缺口
+
+**Scala 的缺口清单最长，而且它是最容易让一条污点流被摧毁的语言。** 构造级缺口现在
+全部**已报告**，函数的精度被降级——但被降级的函数仍然产出 finding，所以这个缺口是一项
+限制，而不是一句谎话。
+
+| 构造 | 是否报告 | 说明 |
+|---|---|---|
+| `for` 推导式 | 已报告 | **最严重。** `for (x <- xs) { total += x }` 降解成对一个从未被调用的匿名函数的调用：累加器停在初值，循环体从未执行。流经这个循环的每一条污点都被摧毁。 |
+| 闭包 / lambda | 已报告 | 闭包体没有被建模。 |
+| 可变参数 | 已报告 | 只建模了第一个实参。 |
+| `try`/`catch` | 已报告 | catch 子句没有被建模。 |
+| by-name 参数 | 已报告 | 参数被建模为按值传递。 |
+| 隐式参数列表 | 已报告 | 隐式实参没有被建模。 |
+| 隐式转换 | 已报告 | 转换没有被应用。 |
+| `match` guard | 已报告 | guard 测试缺失：分支仅凭模式就成立。 |
+| 元组解构 | 已报告 | 元组的各分量没有被建模。 |
+| 顶层定义 | 已报告 | 该定义变成 package object 的一个成员。 |
+| 结构类型 | 已报告 | 精化（refinement）没有被建模。 |
+| Scala 3 的 `enum`、`given`/`using`、扩展方法、opaque 类型、上下文函数 | 已报告 | 未降解。 |
+
+### 4.3 `for` 推导式——为什么它是最糟的一个
+
+一个含 `for` 推导式的 Scala 函数，其 finding 集合不只是不完整：它可能是**错的**，
+因为累加器可证明仍然是零。一条说"这个值有污点"的规则不会触发，而一条说"这个值是常量"
+的规则会触发。
+
+它是 Scala 待办清单的最前面。
+
+---
+
+## 5. 如今被报告的缺口
+
+| 修复内容 | 修复前 | 修复后 |
+|---|---|---|
+| Scala 的结构化问题通道 | 构造级缺口从不写入，所以任何缺口都无法随 IR 传递 | 一个收集器写出两种形式；`ScalaTacFrontendTest.aLoweringGapTravelsWithTheIrAsAStructuredProblem` |
+| Scala 的 `match` 降级 | `degraded = true` 却**没有**记录问题，于是降级不可见 | 缺口被记录；函数精度被降级，原因随 IR 传递 |
+| Kotlin 的 `is`-模式分支 | 用裸 `continue` 跳过；函数保持 `SOURCE_FULL` | 报告并降级；`KotlinTacFrontendTest.anIsBranchThatCannotBeLoweredIsReported` |
+| Kotlin 的 `when` 值 | 算出来又丢掉；`val x = when (...)` 产生未定义的 `x`，并丢掉流经它的每一条污点 | `when` 产生结果临时变量；`KotlinTacFrontendTest.aWhenProducesItsValue` |
+
+两个 Kotlin 修复是同一个缺陷的不同外衣：**一个只被部分降解的函数，却宣称自己被完整降解。**
+精度标志是那个机制，它说的是"不要信任关于这个函数的、依赖精度的事实"，而它只有在造成这个
+部分降解的东西**确实被记录**时才有效。
+
+---
+
+## 6. 缺口是怎么被报告的
+
+结构化问题携带：
+
+- 缺口所在的**函数**，
+- **种类**（`UNHANDLED_NODE`、`UNSUPPORTED_CONSTRUCT`、`TRANSLATION_ERROR`），
+- 那个**无法被降解的构造**，
+- 用**用户能懂的话**写的**消息**，
+- **行号**和**列号**。
+
+因此一个无源码的消费者可以回答"这个文件不完整，是因为前端缺少一个特性，还是因为源码编译
+不过？"——而这两者需要不同的应对：一个是前端待办事项，另一个是代码修复。
+
+---
+
+## 7. 增加一个构造时的规则
+
+当一个构造被加进某个翻译器时，它必须同时带来：
+
+1. 一个降解实现，以及
+2. 一个**断言语义结果**的**测试**——不是断言产生了某条指令，而是断言值能穿过这个构造存活。
+   一个降解出正确指令种类却丢掉了值的构造，正是本文档要防止的失效模式。
+
+而当一个构造**没有**被降解时，它必须同时带来：
+
+3. 一个被报告的问题，以及
+4. 一次精度降级。
+
+一个既没有降解、也没有被报告的构造是**静默缺口**，它是前端的一个 bug，而不是工具的一项限制。

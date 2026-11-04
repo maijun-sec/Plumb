@@ -28,7 +28,7 @@
 | 维度 | 数据 | 来源 |
 | --- | --- | --- |
 | Style checker | **601** 个（`CheckerCategories` 登记 593） | `plumb-style/**` |
-| DFA checker | **67** 个实际注册 | `ScanRunner.buildDfaCheckers()` |
+| DFA checker | **78** 个实际注册 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | **12** 条 | `TaintRuleRegistry` |
 | Taint source / sink 模式 | **19** / **397** | `sink-families.yaml` |
 | 单元测试 | **262** 个 java test 文件（其中 219 个 `*Test.java`） | 各模块 `src/test/` |
@@ -178,7 +178,7 @@ python scripts/check_all.py
 **关于"手写文档里的数字"**：生成的文档（`RULES.md`、`RULE-TOOL-COMPARISON.md`）的数字
 由生成器实测，`--check` 模式能证明它们没过期。但**手写**文档里的数字没人管 —— 仓库里
 同时写着"595 个 checker 类"和"601 个"就会和实际值对不上，而实际是 601；`ARCHITECTURE.md` 写着
-"71 个 DFA checker"，而引擎实际注册 67 个。`check_doc_numbers` 把这些数字对着源码
+"71 个 DFA checker"，而引擎实际注册 78 个。`check_doc_numbers` 把这些数字对着源码
 重新测一遍，包括 `RULE-STYLE-OP.md` 里那张按子目录分类的表。数字要么改成实测值，
 要么搬进生成文档里让生成器负责 —— 不能靠记忆。
 
@@ -359,11 +359,11 @@ usage: sast-scan [-c <yaml>] [--cache-mode <off|read|write|readwrite>] [-D <dir>
 ```bash
 ./scripts/build.sh
 # → plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar
-#   uber-jar：内联所有依赖，约 142 MB
+#   uber-jar：内联所有依赖，约 218 MB
 ```
 
 uber-jar 之所以大，是因为它内联了 Z3 的各平台 native library 和整个 Kotlin 脚本引擎。
-文档目录完全是另一回事：整个 `docs/` 目录树（中英文加起来）约 1.1 MB。
+文档目录完全是另一回事：整个 `docs/` 目录树（中英文加起来）约 1.5 MB。
 
 ### 7.2 dist 目录（含启动器，无 JRE）
 

@@ -164,12 +164,12 @@ callee signature 的 source 模式表。IR 里同一方法的 signature 可能�
 
 | 类别 | 基类 | 数量 | 说明 |
 | --- | --- | ---: | --- |
-| **taint-style** | `TaintedCheckerBase` | 47（`checkers/taint/`） | 构造时传一个 `TaintRule(ruleId, factKind, sinkFamily, cwe, severity, taintDomain)`；命中 sink family 时发 finding |
+| **taint-style** | `TaintedCheckerBase` | 48（`checkers/taint/`） | 构造时传一个 `TaintRule(ruleId, factKind, sinkFamily, cwe, severity, taintDomain)`；命中 sink family 时发 finding |
 | **constraint-style** | `checkers/boundary/` | 1 | `BoundaryConstraintChecker`，用 Z3 求解路径条件 |
 | **pattern-based** | 直接 `implements DfaChecker` | 16（`checkers/controlflow/`）+ 2（`checkers/taint/`） | 无 taint 传播，靠 IR 局部模式匹配；用 `Finding.violation(...)` 发单步 trace |
 
 `ScanRunner.buildDfaCheckers()`（`plumb-main/.../ScanRunner.java`）**实际注册
-67 个** DFA checker。注册受 YAML 的 per-rule flag 控制（例如
+78 个** DFA checker。注册受 YAML 的 per-rule flag 控制（例如
 `config.runIntOverflow`、`config.runNullDeref`），`config.runTaint` 是
 taint 全家桶的总开关。
 

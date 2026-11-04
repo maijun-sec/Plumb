@@ -16,9 +16,11 @@
 | 文件 | 内容 | 中文 |
 | --- | --- | --- |
 | [`ARCHITECTURE.md`](../tech/ARCHITECTURE.md) | 全局架构：7 阶段流水线、模块依赖图、checker 实现形态、关键设计决策、Build-system 自动发现、rule-id 一致性、扩展点、测试体系 | [中文](tech/ARCHITECTURE.md) |
+| [`MULTI-LANGUAGE-IR-DESIGN.md`](../MULTI-LANGUAGE-IR-DESIGN.md) | **多语言设计**：源码 AST -> IR -> TAC -> DFA 流水线、Kotlin 与 Scala 前端、规则层里的语言维度、前后端分离与无源码消费者、构建路线图 | [中文](../MULTI-LANGUAGE-IR-DESIGN.md) |
 | [`TAC.md`](../tech/TAC.md) | 三地址码格式：IR 类、指令集、CFG、序列化 | [中文](tech/TAC.md) |
+| [`TAC-COVERAGE.md`](../tech/TAC-COVERAGE.md) | **TAC 前端覆盖契约**：每个翻译器降解了哪些源码构造、没有降解哪些，以及一个缺口是被报告还是静默 | [中文](tech/TAC-COVERAGE.md) |
 | [`DATA-FLOW.md`](../tech/DATA-FLOW.md) | **数据流分析**：引擎骨架、fact 域、污点 / 边界 / 指向 / 控制流四类分析、可空性三值语义、Z3 的真实作用、call graph 策略 | [中文](tech/DATA-FLOW.md) |
-| [`CROSS-FUNCTION-ANALYSIS.md`](../tech/CROSS-FUNCTION-ANALYSIS.md) | 跨函数分析主干：summary 机制、调用图视角 | [中文](tech/CROSS-FUNCTION-ANALYSIS.md) |
+| [`ENGINE-GAP-ANALYSIS.md`](../tech/ENGINE-GAP-ANALYSIS.md) | **实测差距清单**：配置里声明、但没有任何分析代码消费的引擎特性，以及按优先级排列的补齐工作清单 | [中文](tech/ENGINE-GAP-ANALYSIS.md) || [`CROSS-FUNCTION-ANALYSIS.md`](../tech/CROSS-FUNCTION-ANALYSIS.md) | 跨函数分析主干：summary 机制、调用图视角 | [中文](tech/CROSS-FUNCTION-ANALYSIS.md) |
 | [`CROSS-FUNCTION-OPERATION.md`](../tech/CROSS-FUNCTION-OPERATION.md) | `Operation` 体系：常量传播 / 指向 / null / 数值范围 / 副作用的 summary 侧与消费侧 | [中文](tech/CROSS-FUNCTION-OPERATION.md) |
 | [`CROSS-FUNCTION-AI-TRACE.md`](../tech/CROSS-FUNCTION-AI-TRACE.md) | 周边：并行 worklist、跨文件验证、已知限制、AI 增强层、Re-Act 框架 | [中文](tech/CROSS-FUNCTION-AI-TRACE.md) |
 | [`DFA-AUGMENTATION-DESIGN.md`](../tech/DFA-AUGMENTATION-DESIGN.md) | 为什么 AST 不够用，以及 DFA 增强技术 | [中文](tech/DFA-AUGMENTATION-DESIGN.md) |

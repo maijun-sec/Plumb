@@ -18,12 +18,12 @@ The entry point is `DfaEngine` (`engine/DfaEngine.java`), with three run modes e
 
 | Method | Purpose |
 | --- | --- |
-| `run(TacProgram)` (`:278`) | Single program |
-| `runSequential(TacProgram)` (`:1128`) | Single-threaded |
-| `runParallel(TacProgram, int)` (`:1023`) | Top-level worklist parallelism |
-| `runWithGlobalStore(List<TacProgram>, int)` (`:357`) | Cross-file global store (the CLI default strategy `global`) |
+| `run(TacProgram)` (`:481`) | Single program |
+| `runSequential(TacProgram)` (`:1514`) | Single-threaded |
+| `runParallel(TacProgram, int)` (`:1478`) | Top-level worklist parallelism |
+| `runWithGlobalStore(List<TacProgram>, int)` (`:509`) | Cross-file global store (the CLI default strategy `global`) |
 
-All modes eventually go through the same skeleton. The real scheduling happens in `runWorklist` (`:1192`):
+All modes eventually go through the same skeleton. The real scheduling happens in `runWorklist` (`:1577`):
 
 ```
 initEngine(ctx)              // once for all checkers
@@ -44,16 +44,16 @@ This is the place where documentation most easily goes wrong, so it is checked a
 
 | Claim | Corresponding code | Accurate? |
 | --- | --- | --- |
-| Backward, flow-insensitive pre-analysis | `warmUpMethodSummaries` (`:623`) → `MethodSummaryBuilder.build` | **Partially accurate**. It is a single linear IR scan that classifies the return shape and collects side effects, with **no dataflow solving**. It is a path-insensitive syntactic summary, not a backward flow analysis. |
-| Forward, flow-sensitive instruction traversal | `analyseOneFunction` (`:1325`), traversing in `bbRpoOrder(fn)` order | **Accurate**. Every checker maintains its own forward lattice (taint / nullable / interval) and propagates it over the instructions. |
-| Points-to is an independent pre-solve | `solvePointsTo` (`:684`) | **Accurate**. One whole-program solve; the result hangs off `AnalysisContext`, and all checkers share the same fixpoint. |
+| Backward, flow-insensitive pre-analysis | `warmUpMethodSummaries` (`:915`) → `MethodSummaryBuilder.build` | **Partially accurate**. It is a single linear IR scan that classifies the return shape and collects side effects, with **no dataflow solving**. It is a path-insensitive syntactic summary, not a backward flow analysis. |
+| Forward, flow-sensitive instruction traversal | `analyseOneFunction` (`:1726`), traversing in `bbRpoOrder(fn)` order | **Accurate**. Every checker maintains its own forward lattice (taint / nullable / interval) and propagates it over the instructions. |
+| Points-to is an independent pre-solve | `solvePointsTo` (`:976`) | **Accurate**. One whole-program solve; the result hangs off `AnalysisContext`, and all checkers share the same fixpoint. |
 
 **Key fact: the engine does not have "a backward pass followed by a separate forward pass".** There is only one
 forward traversal; the summaries are a product of that traversal, not the input of another analysis pass.
 
 ### 1.3 Instruction order: BB-RPO, forward within a block
 
-`bbRpoOrder(TacFunction)` (`:1435`):
+`bbRpoOrder(TacFunction)` (`:2013`):
 
 - Basic blocks are ordered in **reverse post-order** (reverse the DFS post-order, `:1347-1350`)
 - The instructions inside a block keep their **original forward order** (`:1358-1363`)
@@ -98,7 +98,7 @@ pins this fact down: it asserts that no `.has(...Trait...)` call exists in the p
 > and they are the input for future trait-driven propagation), but they **are not a mechanism today**.
 
 `BuiltinFactKinds.registryWithBuiltins()` registers **15** built-in kinds
-(`BuiltinFactKinds.java:225-320`):
+(`BuiltinFactKinds.java:226-321`):
 
 | kind name | Constant | Location | Declared traits |
 | --- | --- | --- | --- |
@@ -119,7 +119,7 @@ pins this fact down: it asserts that no `.has(...Trait...)` call exists in the p
 | `plumb.call.side-effect-recorded` | `SIDE_EFFECT_RECORDED` | `:238` | BY_DECL |
 
 **These are two different catalogues, not one**: `org.plumb.dfa.config.ConfigLoader.parseFactKinds`
-(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:227-263`) first puts these 15 built-in kinds into the registry, then overwrites or
+(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:394-431`) first puts these 15 built-in kinds into the registry, then overwrites or
 appends them with the **12** entries of `fact-kinds.yaml` — the YAML entries use a different naming scheme
 (`UntrustedSource`, `MayBeNull`, `Freed`, etc.). The two naming spaces differ but they **land in the same registry**,
 so the effective number of fact kinds is 27. `capability_baseline` measures the two catalogues separately
@@ -141,12 +141,12 @@ their own independent mechanisms (see below).
 
 **Driver class**: `taint/TaintedCheckerBase.java` (note that it lives in the `dfa/taint/` package, not in
 `dfa/checkers/taint/`). It **is both the abstract base class and the propagation engine** — which differs from the
-"a subclass needs only a few lines" impression the documentation gives: the 45 concrete subclasses under
-`checkers/taint/` override `checkInstruction` in bulk (there are 47 `extends TaintedCheckerBase` in the whole
+"a subclass needs only a few lines" impression the documentation gives: the concrete subclasses under
+`checkers/taint/` override `checkInstruction` in bulk (there are 57 `extends TaintedCheckerBase` in the whole
 repository, the other two being `BoundaryConstraintChecker` and the base class itself).
 
-- State: `taintedVars: Map<TacVar, String>` (`:160`) and `taintPaths` (`:169`)
-- Propagation: `propagateMOVE` (`:1295`) and friends, dispatched by instruction kind
+- State: `taintedVars: Map<TacVar, String>` (`:216`) and `taintPaths` (`:225`)
+- Propagation: `propagateMOVE` (`:1608`) and friends, dispatched by instruction kind
 - Sink decision: looks up `SinkFamilyRegistry` by `sinkFamilyKey` (`config/SinkFamilyRegistry.java:22`, in the
   `org.plumb.dfa.config` package), **not** an IFDS framework
 - Cross-function: `FunctionSummary` + `Operation.TaintPropagate`
@@ -296,9 +296,9 @@ and the `Range` with a method length threshold is defined at `:56`.
 - **Heap abstraction**: field-sensitive `(receiver, name)` (`:80`), array cells (`:83`), and separate
   Map/List `containerCells` (`:115`)
 - **Context-sensitive**: `AbstractObject.Policy` has three levels, the default being **`CALL_SITE` (1-CFA)**
-  (`points/AbstractObject.java:309-290`), overridable through `TuningConfig.effectivePointsToPolicy()`
+  (`points/AbstractObject.java:309`), overridable through `TuningConfig.effectivePointsToPolicy()`
 - **No use of Z3**: there is no solver reference anywhere under `points/`; Z3 only appears in the path conditions of `solver/`
-- Solved once (`DfaEngine.solvePointsTo`, `:667`); on failure it degrades to "no alias information" rather than crashing
+- Solved once (`DfaEngine.solvePointsTo`, `:796`); on failure it degrades to "no alias information" rather than crashing
 
 ### 3.4 Control-flow checks (controlflow)
 
@@ -315,7 +315,7 @@ They are 16 independent TAC pattern checkers that merely share a package name; t
 
 ## 4. Nullability: a three-valued fact domain
 
-`AnalysisContext.mayBeNull(...)` (`engine/AnalysisContext.java:412-395`) is a **forward to the points-to
+`AnalysisContext.mayBeNull(...)` (`engine/AnalysisContext.java:549`) is a **forward to the points-to
 solver** and stores no facts itself. The five channels are private fields of `PointsToSolver`:
 
 - `nullFields` `:147`
@@ -324,7 +324,7 @@ solver** and stores no facts itself. The five channels are private fields of `Po
 - `nullReturns` `:156`
 - `nullVars` `:159`
 
-**Three-valued semantics** (`PointsToSolver.java:104-121` explains why null cannot be modelled as an `Obj` sentinel: all
+**Three-valued semantics** (`PointsToSolver.java:115-132` explains why null cannot be modelled as an `Obj` sentinel: all
 nulls would alias each other and pollute `mayAlias`):
 
 | objects | null fact | Conclusion |
@@ -333,36 +333,66 @@ nulls would alias each other and pollute `mayAlias`):
 | Empty | Present | Definitely null |
 | Empty | Absent | **Unknown** (never equal to null) |
 
-⚠️ `AnalysisContext.java:383-390` explicitly warns: `mayBeNull == false` is **not** a proof of non-null
+⚠️ `AnalysisContext.java:549-553` explicitly warns: `mayBeNull == false` is **not** a proof of non-null
 (unmodelled writes leave no trace). This is the same invariant as "an empty set does not prove safety".
 
 ---
 
 ## 5. Z3: false-positive filtering only
 
-Z3 has exactly **one** call site in the whole engine, `TaintedCheckerBase.java:3364`, on the sink reporting path:
+Z3 has exactly **one** call site in the whole engine, `TaintedCheckerBase.java:4236`, on the sink
+reporting path.
+
+The reachability check happens in **one** place, `TaintedCheckerBase.isPathSuppressed`, on the sink
+reporting path. Both sink paths go through it: the CALL path and the constructor path
+(`checkSinkAtNew`), because a constructor is a sink like any other call.
+
+It answers the question in two steps, and the order matters:
 
 ```java
-String composed = composePathCondition(pathConditionForSink(...));
+// 1. The arithmetic contradiction. Decided here, where the answer is exact.
+if (sourceHasContradictoryGuards(av, ctx)) return true;
+
+// 2. The solver, for a predicate a subclass supplied.
+String composed = composePathCondition(pathConditionForSink(av, family, ins, ctx));
 if (!composed.isEmpty()) {
     SolverZ3Bridge.Result r = solverBridge.check(composed, Map.of());
-    if (r == SolverZ3Bridge.Result.UNSAT) return;   // suppress
+    if (r == SolverZ3Bridge.Result.UNSAT) return true;   // suppress
 }
 ```
 
-- `pathConditionForSink` **returns null by default** (`:3464-3446`), so a checker that does not override it
-  composes an empty condition and **never calls Z3 at all**
-- The semantics are unambiguous: Z3 is **only used to suppress false positives, never to discover defects** (`:3237`)
-- The call chain: `CachedZ3Bridge` (LRU of 4096 entries, `solver/CachedZ3Bridge.java:41-66`) →
+**The contradiction is decided arithmetically, not by the solver.** Both bridges treat a variable
+they cannot bind as free and answer SAT, which is the conservative answer they are designed to
+give: "the path might be reachable". A contradiction between two bounds is a statement about
+arithmetic, and arithmetic decides it exactly -- no quantifier over the variable's possible values
+is needed. Two bounds on the same variable that no value satisfies both (`n > 5` and `n < 3`)
+mean the source cannot hold such a value, so it cannot reach the sink.
+
+Only the **source variable's** guards are consulted. A guard on another variable says nothing
+about whether this source reaches the sink, and two guards recorded at different points in the
+function are not both in force at the sink. Both restrictions exist so that the check cannot
+suppress a finding that is real.
+
+- `pathConditionForSink` (`:4196`) has a base-class implementation: the conflicting pair as a
+  predicate, so the reader of a finding can see why it was suppressed. A subclass may override it
+  with a predicate the solver can evaluate.
+- The semantics are unambiguous: the check is **only used to suppress false positives, never to
+  discover defects** (`:3955`)
+- The call chain: `CachedZ3Bridge` (LRU of 4096 entries, `solver/CachedZ3Bridge.java:51`) →
   `Z3Bridge` (native Z3, falling back to `LocalSolverBridge` on failure)
-- `StructuralImply` (`solver/StructuralImply.java`) is a cheap first-level decision that comes before SMT
-  (`x >= N` implies `x != 0` and the like, `PathCondition.java:157-144`)
+- `StructuralImply` (`solver/StructuralImply.java:54`) is a cheap first-level decision that comes before SMT
+  (`x >= N` implies `x != 0` and the like, `PathCondition.java:157`)
+
+**`path_sensitivity` is a real switch.** `none` turns the whole check off and every finding
+fires; the other modes turn it on. The engine also skips collecting the guards when the check is
+off, because the collection is real work per instruction. An unrecognised value is treated as
+`full`, so a typo in a configuration file keeps the filter rather than silently dropping it.
 
 ### 5.1 PathCondition and GuardTracker are two different things
 
 | | PathCondition | GuardTracker |
 | --- | --- | --- |
-| Location | `solver/PathCondition.java:35` | `taint/GuardTracker.java:51` |
+| Location | `solver/PathCondition.java:157` | `taint/GuardTracker.java:51` |
 | Shape | A **list of predicate strings** in a mini-DSL | A **structured guard stack**, one per function |
 | Lifetime | Accumulated along the path | Reset per function (`:48-49`) |
 | Uses Z3 | Two-level decision through `GuardStore` | **Does not reference Z3 at all** |
@@ -428,7 +458,7 @@ that registry is clearly stale and **must not** be used to infer the total numbe
 | Parsing (JavaParser) | Yes | At file level, threshold 800 files |
 | Translation (AST → TAC) | Yes | In the same round as parsing |
 | Style checks | Yes | AST visitor, no cross-file state |
-| **DFA (`runParallel`)** | **Yes** | Top-level worklist: functions whose dependency count reaches zero enter `readyQ` (`:1097-1104`) |
+| **DFA (`runParallel`)** | **Yes** | Top-level worklist: functions whose dependency count reaches zero enter `readyQ` (`:1298-1305`) |
 | Report output | No | Single-file write |
 
 The concurrency ceiling is controlled by `--max-parallelism` (default `nCPU - 1`, lower bound 1).

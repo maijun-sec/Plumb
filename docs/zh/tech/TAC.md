@@ -106,7 +106,7 @@ public final class TacType implements Serializable {
 
 ## 4. 指令集
 
-`TacInstruction.Kind` 共 19 种：
+`TacInstruction.Kind` 共 22 种：
 
 | Kind | 字段 | 含义 |
 | --- | --- | --- |
@@ -129,12 +129,38 @@ public final class TacType implements Serializable {
 | `CATCH_HANDLER` | `catch (<type>) -> dest` | 入口 catch 块（dest 是 catch 参数） |
 | `FINALLY_ENTER` | `finally:` | 入口 finally 块 |
 | `NOP` | — | no-op |
+| `NULL_CHECK` | `dest` | 编译器插入的空检查：`dest` 为 null 则抛 NPE；否则 `dest` 被证明非空 |
+| `HAVOC` | `dest` | 这个**值**是未知的：前端遇到了无法降解的构造，为受影响的值发射本指令，同时通过 `FunctionProblem` 说明无法降解的是什么。它既不是污点，也没有被证明为干净——它表示分析不知道 |
+| `UNINTERPRETED` | `dest = <uninterpreted>(callee)` | 这个**调用**的效果是未知的：它可能返回任意值，也可能带有副作用。与 `HAVOC` 的区别在于未知的位置——`HAVOC` 说“值未知”，`UNINTERPRETED` 说“调用的效果未知”。按保守处理：其参数上的污点会传播，结果也可能带污点 |
 
 `CATCH_HANDLER` 和 `FINALLY_ENTER` 让 try/catch/finally 显式进入 IR（同时给 CFG 加 `exceptionSuccessors` 边）。具体语义：
 
 - **`CATCH_HANDLER` (`catch (<type>) -> dest`)** —— catch 块入口。`dest` 是 catch 参数绑定（运行时一定非 null，类型由 throws 推导）。`TaintedCheckerBase` 看到 `CATCH_HANDLER` 时把 `dest` 标记为 NNE（Non-Null Evidence），并把关联 `THROW` 指令的 taint label 透传到 `dest`。这是为什么 `NullDerefChecker` 不报"catch (NullPointerException e) { e.x ... }"——`e` 被绑死为非 null。
 - **`FINALLY_ENTER` (`finally:`)** —— finally 块入口。CFG builder 给所有 try 内基本块 + 所有 catch 块（以 `THROW` 结尾的）都加一条到 FINALLY 块的 exception edge，模拟"无论 try/catch 怎么走，finally 一定跑"的语义。
 - 旧的 `L_CATCH_<Type>` / `L_FINALLY` 标签名 pattern 保留——Label-based tooling（UnusedLabelChecker / SARIF / cache-key normaliser）不破。
+
+
+### 4.0 `NULL_CHECK` — 只能用来消除误报，不能用来证明安全
+
+`NULL_CHECK` 是**编译器插入的空检查**：若 `dest` 为 null 则抛 NPE，否则 `dest` 被证明非空。
+
+**它的用途严格限于消除误报。** 空指针检查器用它知道某个值**已经被证明非空**，
+因此不必再报。它**绝不能**被用来**证明运行时安全**：
+
+- Kotlin 的编译器插入检查可以被 `-Xno-param-assertions` / `-Xno-call-assertions` 去掉；
+- ProGuard/R8 的 `-assamenosideeffects` 会把字节码里的检查剥掉。
+- **"字节码里没有检查" 不等于 "运行时是安全的"。**
+
+**不要把下面这些映射成 `NULL_CHECK`**：
+
+- `kotlin.jvm.internal.Intrinsics.areEqual` —— data class 生成的 `equals()` 用的空安全比较
+  辅助函数。它不是空检查；当成空检查会把"这两个值相等"污染进非空事实集。
+- `kotlin.jvm.internal.Intrinsics.throwUninitializedPropertyAccessException` —— `lateinit`
+  的访问检查。它不是空检查。
+
+**读过类型系统的源码前端不需要这个 opcode**（可空性已经在 `TacType.isNullable()` 里）。
+它用于**类型系统表达不了的控制流收窄**：smart cast、显式的 `requireNotNull`，
+以及来自 Java 互操作的平台类型。
 
 ### 4.1 二元 / 一元运算符
 

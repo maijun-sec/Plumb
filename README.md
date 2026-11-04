@@ -29,7 +29,7 @@ inspired by Fathom, but the implementation is entirely Java.
 | Dimension | Number | Source |
 | --- | --- | --- |
 | Style checkers | **601** (`CheckerCategories` registers 593) | `plumb-style/**` |
-| DFA checkers | **67** actually registered | `ScanRunner.buildDfaCheckers()` |
+| DFA checkers | **78** actually registered | `ScanRunner.buildDfaCheckers()` |
 | Taint rules | **12** | `TaintRuleRegistry` |
 | Taint source / sink patterns | **19** / **397** | `sink-families.yaml` |
 | Unit tests | **262** Java test files (219 of them `*Test.java`) | each module's `src/test/` |
@@ -191,7 +191,7 @@ measured by the generator, and `--check` mode proves they have not gone
 stale. But the numbers in **hand-written** documents are nobody's
 responsibility -- the repository at one point carried both "595 checker
 classes" and "601" when the real number was 601; `ARCHITECTURE.md` claimed
-"71 DFA checkers" when the engine actually registers 67.
+"71 DFA checkers" when the engine actually registers 78.
 `check_doc_numbers` measures these numbers against the source again,
 including the per-subdirectory table in `RULE-STYLE-OP.md`. A number
 either becomes the measured value, or it moves into a generated document
@@ -403,12 +403,12 @@ until the counterpart exists.
 ```bash
 ./scripts/build.sh
 # → plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar
-#   the uber-jar: every dependency inlined, about 142 MB
+#   the uber-jar: every dependency inlined, about 218 MB
 ```
 
 The uber-jar is large because it inlines the Z3 native libraries for every
 platform and the whole Kotlin script engine. The documentation directory
-is a separate thing entirely: the `docs/` tree is about 1.1 MB of documentation,
+is a separate thing entirely: the `docs/` tree is about 1.5 MB of documentation,
 English and Chinese together.
 
 ### 7.2 The dist directory (with launchers, no JRE)

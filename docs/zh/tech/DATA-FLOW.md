@@ -18,12 +18,12 @@
 
 | 方法 | 用途 |
 | --- | --- |
-| `run(TacProgram)` (`:278`) | 单程序 |
-| `runSequential(TacProgram)` (`:1052`) | 单线程 |
-| `runParallel(TacProgram, int)` (`:1023`) | 顶层 worklist 并行 |
-| `runWithGlobalStore(List<TacProgram>, int)` (`:357`) | 跨文件全局 store（CLI 默认策略 `global`） |
+| `run(TacProgram)` (`:481`) | 单程序 |
+| `runSequential(TacProgram)` (`:1514`) | 单线程 |
+| `runParallel(TacProgram, int)` (`:1478`) | 顶层 worklist 并行 |
+| `runWithGlobalStore(List<TacProgram>, int)` (`:509`) | 跨文件全局 store（CLI 默认策略 `global`） |
 
-所有模式最终都走同一个骨架。真正的调度在 `runWorklist`（`:1116`）：
+所有模式最终都走同一个骨架。真正的调度在 `runWorklist`（`:1577`）：
 
 ```
 initEngine(ctx)              // 所有 checker 一次
@@ -44,16 +44,16 @@ finish(ctx)
 
 | 说法 | 代码里的对应物 | 是否准确 |
 | --- | --- | --- |
-| 逆向、非流敏感的前置分析 | `warmUpMethodSummaries` (`:623`) → `MethodSummaryBuilder.build` | **部分准确**。它是一次线性 IR 扫描，分类 return 形态、收集副作用，**没有数据流求解**。它是路径无关的语法摘要，不是反向流分析。 |
-| 正向、流敏感的指令遍历 | `analyseOneFunction` (`:1249`)，按 `bbRpoOrder(fn)` 遍历 | **准确**。每个 checker 维护自己的正向格（taint / nullable / interval），在指令上传播。 |
-| 指向性是独立前置求解 | `solvePointsTo` (`:684`) | **准确**。全程序一次求解，结果挂在 `AnalysisContext` 上，所有 checker 共享同一个不动点。 |
+| 逆向、非流敏感的前置分析 | `warmUpMethodSummaries` (`:915`) → `MethodSummaryBuilder.build` | **部分准确**。它是一次线性 IR 扫描，分类 return 形态、收集副作用，**没有数据流求解**。它是路径无关的语法摘要，不是反向流分析。 |
+| 正向、流敏感的指令遍历 | `analyseOneFunction` (`:1726`)，按 `bbRpoOrder(fn)` 遍历 | **准确**。每个 checker 维护自己的正向格（taint / nullable / interval），在指令上传播。 |
+| 指向性是独立前置求解 | `solvePointsTo` (`:976`) | **准确**。全程序一次求解，结果挂在 `AnalysisContext` 上，所有 checker 共享同一个不动点。 |
 
 **关键事实：引擎没有「先跑一遍逆向、再跑一遍正向」的两个独立数据流 pass。** 只有一次
 正向遍历；summary 是这次遍历的产物，而不是另一遍分析的输入。
 
 ### 1.3 指令顺序：BB-RPO，块内正向
 
-`bbRpoOrder(TacFunction)`（`:1359`）：
+`bbRpoOrder(TacFunction)`（`:2013`）：
 
 - 基本块按 **reverse post-order** 排列（DFS 后序再反转，`:1347-1350`）
 - 块内指令保持**原始正向顺序**（`:1358-1363`）
@@ -99,7 +99,7 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 > trait 驱动传播的输入),但它们**今天不是机制**。
 
 `BuiltinFactKinds.registryWithBuiltins()` 注册 **15 个**内置 kind
-(`BuiltinFactKinds.java:225-320`):
+(`BuiltinFactKinds.java:226-321`):
 
 | kind 名 | 常量 | 位置 | 声明的 trait |
 | --- | --- | --- | --- |
@@ -120,7 +120,7 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 | `plumb.call.side-effect-recorded` | `SIDE_EFFECT_RECORDED` | `:238` | BY_DECL |
 
 **这是两个不同的清单,不是一个**:`org.plumb.dfa.config.ConfigLoader.parseFactKinds`
-(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:227-263`)先把这 15 个内置 kind 放进 registry,再用
+(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:394-431`)先把这 15 个内置 kind 放进 registry,再用
 `fact-kinds.yaml` 的 **12 个** 条目覆盖或追加 —— YAML 的条目用另一套命名
 (`UntrustedSource`、`MayBeNull`、`Freed` 等)。两者名字空间不同但**落在同一个 registry 里**,
 所以有效的事务种类是 27 个。`capability_baseline` 把两个清单分开测量(`builtin:` /
@@ -143,11 +143,11 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 **驱动类**：`taint/TaintedCheckerBase.java`（注意它在 `dfa/taint/` 包下，不在
 `dfa/checkers/taint/`）。它**同时是抽象基类和传播引擎**——这与文档里
 「子类只需几行」的印象不同：`checkers/taint/` 下 45 个具体子类大量覆写
-`checkInstruction`（全仓库共 47 个 `extends TaintedCheckerBase`，
+`checkInstruction`（全仓库共 48 个 `extends TaintedCheckerBase`，
 另外两个是 `BoundaryConstraintChecker` 和基类自身）。
 
-- 状态：`taintedVars: Map<TacVar, String>`（`:160`）与 `taintPaths`（`:169`）
-- 传播：`propagateMOVE`（`:1228`）等按指令种类分派
+- 状态：`taintedVars: Map<TacVar, String>`（`:216`）与 `taintPaths`（`:225`）
+- 传播：`propagateMOVE`（`:1608`）等按指令种类分派
 - sink 判定：按 `sinkFamilyKey` 查 `SinkFamilyRegistry`（`config/SinkFamilyRegistry.java:22`，在
   `org.plumb.dfa.config` 包），**不是** IFDS 框架
 - 跨函数：`FunctionSummary` + `Operation.TaintPropagate`
@@ -292,10 +292,10 @@ sink 的值没有框架来源可写。
 - **堆抽象**：field-sensitive `(receiver, name)`（`:80`）、数组单元（`:83`）、以及独立的
   Map/List `containerCells`（`:115`）
 - **上下文敏感**：`AbstractObject.Policy` 三档，默认 **`CALL_SITE`（1-CFA）**
-  （`points/AbstractObject.java:309-290`），可经 `TuningConfig.effectivePointsToPolicy()`
+  （`points/AbstractObject.java:309`），可经 `TuningConfig.effectivePointsToPolicy()`
   覆盖
 - **不使用 Z3**：`points/` 下没有任何 solver 引用；Z3 只出现在 `solver/` 的路径条件里
-- 求解一次（`DfaEngine.solvePointsTo`，`:667`），失败降级为「无 alias 信息」而非崩溃
+- 求解一次（`DfaEngine.solvePointsTo`，`:796`），失败降级为「无 alias 信息」而非崩溃
 
 ### 3.4 控制流检查（controlflow）
 
@@ -312,7 +312,7 @@ sink 的值没有框架来源可写。
 
 ## 4. 可空性：三值事实域
 
-`AnalysisContext.mayBeNull(...)`（`engine/AnalysisContext.java:412-395`）是**对指向性
+`AnalysisContext.mayBeNull(...)`（`engine/AnalysisContext.java:549`）是**对指向性
 求解器的转发**，本身不存事实。五个通道是 `PointsToSolver` 的私有字段：
 
 - `nullFields` `:147`
@@ -321,7 +321,7 @@ sink 的值没有框架来源可写。
 - `nullReturns` `:156`
 - `nullVars` `:159`
 
-**三值语义**（`PointsToSolver.java:104-121` 解释了为什么 null 不能做成 `Obj` 哨兵：那样所有
+**三值语义**（`PointsToSolver.java:115-132` 解释了为什么 null 不能做成 `Obj` 哨兵：那样所有
 null 会互相 alias，污染 `mayAlias`）：
 
 | objects | null 事实 | 结论 |
@@ -330,36 +330,59 @@ null 会互相 alias，污染 `mayAlias`）：
 | 空 | 有 | 确定为 null |
 | 空 | 无 | **未知**（绝不等于 null） |
 
-⚠️ `AnalysisContext.java:383-390` 明确警告：`mayBeNull == false` **不是**非 null 的证明
+⚠️ `AnalysisContext.java:549-553` 明确警告：`mayBeNull == false` **不是**非 null 的证明
 （未被建模的写入不留痕迹）。这与「空集合不能证明安全」是同一条不变量。
 
 ---
 
 ## 5. Z3：只做误报过滤
 
-Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:3364`，位于 sink 发出路径：
+Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:4236`，位于 sink 上报路径上。
+
+可达性判定在**一个**地方完成，`TaintedCheckerBase.isPathSuppressed`，位于 sink 上报路径上。
+两条 sink 路径都经过它：CALL 路径和构造器路径（`checkSinkAtNew`）——
+因为构造器和普通调用一样，也是 sink。
+
+判定分两步，顺序有意义：
 
 ```java
-String composed = composePathCondition(pathConditionForSink(...));
+// 1. 算术矛盾。在这里判定，答案是精确的。
+if (sourceHasContradictoryGuards(av, ctx)) return true;
+
+// 2. 求解器，处理子类提供的谓词。
+String composed = composePathCondition(pathConditionForSink(av, family, ins, ctx));
 if (!composed.isEmpty()) {
     SolverZ3Bridge.Result r = solverBridge.check(composed, Map.of());
-    if (r == SolverZ3Bridge.Result.UNSAT) return;   // 抑制
+    if (r == SolverZ3Bridge.Result.UNSAT) return true;   // 抑制
 }
 ```
 
-- `pathConditionForSink` **默认返回 null**（`:3464-3446`），所以未覆写它的 checker
-  组合出的条件为空，**根本不会调用 Z3**
-- 语义明确：Z3 **只用于抑制误报，绝不用于发现缺陷**（`:3237`）
+**矛盾由算术判定，而不是由求解器判定。** 两个 bridge 对无法绑定的变量都当作自由变量并回答 SAT，
+这正是它们被设计成的那种保守答案：「路径可能是可达的」。而两个界之间的矛盾是一个关于算术的陈述，
+算术能精确判定它 —— 不需要对变量的可能取值做量化。同一变量上的两个界如果没有任何取值能同时满足
+（`n > 5` 和 `n < 3`），意味着 source 不可能持有这样的值，因此它到不了 sink。
+
+只检查 **source 变量自己**的守卫。另一个变量上的守卫说明不了这个 source 能否到达 sink；
+而函数中不同位置记录的两个守卫，在 sink 处也不同时成立。这两条限制都是为了保证
+这个判定不会抑制一个真实存在的 finding。
+
+- `pathConditionForSink`（`:4196`）在基类里就有实现：把那对冲突的守卫作为谓词返回，
+  这样读 finding 的人能看出它为什么被抑制。子类可以覆写它，提供求解器能求值的谓词。
+- 语义明确：这个判定**只用于抑制误报，绝不用于发现缺陷**（`:3237`）
 - 调用链：`CachedZ3Bridge`（LRU 4096 项，`solver/CachedZ3Bridge.java:41-66`）→
   `Z3Bridge`（native Z3，失败回退 `LocalSolverBridge`）
 - `StructuralImply`（`solver/StructuralImply.java`）是先于 SMT 的廉价一级判定
-  （`x >= N` 蕴含 `x != 0` 之类，`PathCondition.java:157-144`）
+  （`x >= N` 蕴含 `x != 0` 之类，`PathCondition.java:157`）
+
+**`path_sensitivity` 是一个真实的开关。** `none` 关闭整个判定，所有 finding 都会报出；
+其余档位开启它。判定关闭时，引擎也会跳过收集守卫 —— 因为收集本身是每条指令的真实开销。
+无法识别的档位按 `full` 处理，所以配置文件里的拼写错误会保留过滤器，而不是悄悄丢掉它。
 
 ### 5.1 PathCondition 与 GuardTracker 是两套东西
 
 | | PathCondition | GuardTracker |
 | --- | --- | --- |
-| 位置 | `solver/PathCondition.java:35` | `taint/GuardTracker.java:51` |
+| 位置 | `solver/PathCondition.java:157` | `taint/GuardTracker.java:51` |
 | 形态 | mini-DSL 的**谓词字符串列表** | 每函数一份的**结构化 guard 栈** |
 | 生命周期 | 累积于路径 | 按函数重置（`:48-49`） |
 | 用 Z3 | 经 `GuardStore` 两级判定 | **完全不引用** Z3 |
@@ -425,7 +448,7 @@ Z3 由 `tools.aqua:z3-turnkey` 提供，自动下载对应平台 native lib。
 | 解析（JavaParser） | 是 | 文件级，门槛 800 文件 |
 | 翻译（AST → TAC） | 是 | 与解析同一轮 |
 | 风格检查 | 是 | AST visitor，无跨文件状态 |
-| **DFA（`runParallel`）** | **是** | 顶层 worklist：依赖计数归零的函数入 `readyQ`（`:1123-1130`） |
+| **DFA（`runParallel`）** | **是** | 顶层 worklist：依赖计数归零的函数入 `readyQ`（`:1298-1305`） |
 | 报告输出 | 否 | 单文件写 |
 
 并发上限由 `--max-parallelism` 控制（默认 `nCPU - 1`，下限 1）。

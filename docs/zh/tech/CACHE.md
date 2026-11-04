@@ -61,7 +61,7 @@ Plumb 的 TAC IR 是**小数据量 + 异构字段 + 长生命周期**（cache �
 
 - **数据量小**：单个 TU 的 TAC IR 只有几十 KB 量级；万级文件的大型项目估算
   150 MB，对磁盘 IO 不是瓶颈
-- **字段异构**：9 个 `Serializable` 的 IR 类各自有可变字段
+- **字段异构**：10 个 `Serializable` 的 IR 类各自有可变字段
   （`TacInstruction.line` / `column`、`TacOperand` 的 sealed 形态、
   `SourceMap.Loc` record、`TacProgram.sourcePath` 是 `java.nio.file.Path`）——
   每加一个字段 Kryo 都要重新注册
