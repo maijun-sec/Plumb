@@ -16,14 +16,14 @@ Plumb 的定位与边界。
 
 | 维度 | Plumb | PMD | SonarQube | SpotBugs | Coverity | Checkstyle |
 | --- | --- | --- | --- | --- | --- | --- |
-| **主实现** | TAC IR + 601 个 AST checker + 12 条 taint rule + 67 个已注册 DFA checker | AST | AST + symbol table | 字节码扫描 | 抽象语法树 + 路径敏感 | AST + 文本匹配 |
+| **主实现** | TAC IR + 601 个 AST checker + 12 条 taint rule + 78 个已注册 DFA checker | AST | AST + symbol table | 字节码扫描 | 抽象语法树 + 路径敏感 | AST + 文本匹配 |
 | **Taint 引擎** | summary-based 跨函数数据流（两阶段） | 无完整 taint | SonarCFamily 引擎（商业） | 部分数据流 | 商业引擎 | 无 |
 | **跨函数分析** | 两阶段 summary：Phase 1 path-insensitive → Phase 2 flow-sensitive + Z3 路径条件 | 有限 | 部分（call graph 1-hop） | 部分（BugInstance 共享） | 全局 | 无 |
 | **AST 检查器** | 601 个（JavaParser） | 数百条 | 数百条 | — | — | 一百多条 |
-| **DFA checker** | 67 个已注册 | 部分 | 部分 | 字节码 bug pattern | 有 | 无 |
+| **DFA checker** | 78 个已注册 | 部分 | 部分 | 字节码 bug pattern | 有 | 无 |
 | **Z3 路径条件** | 有（Phase 2 per-finding 查询，用于误报过滤） | 无 | 无 | 无 | 有（商业） | 无 |
 | **AI 集成** | 可选 Re-Act agent（12 个 tool） | 无 | SonarAI（实验） | 无 | Coverity Assist | 无 |
-| **rule → CWE 映射** | 规则自带，覆盖 59 个 CWE | rule 自带 | rule 自带 | BugPattern 自带 | checker 自带 | check 自带 |
+| **rule → CWE 映射** | 规则自带，覆盖 64 个 CWE | rule 自带 | rule 自带 | BugPattern 自带 | checker 自带 | check 自带 |
 
 > "AST 检查器"和"DFA checker"是**两套不同粒度**的东西：前者数的是 checker 类，后者数的是
 > 引擎实际注册的 checker。两者相加得到的"总数"取决于你在数什么，本文档不给合计值。
@@ -47,8 +47,8 @@ Plumb 的做法分两阶段：
 | --- | ---: | --- |
 | **AST checker（`plumb-style`）** | 601 | 规则类，看 AST 形态 |
 | **`CheckerCategories` 登记** | 599 | 上面这些里被登记进规则表的 |
-| **DFA checker（已注册）** | 67 | 引擎实际装配的，涉及数据流 / 跨函数 |
-| **其中 `extends TaintedCheckerBase`** | 47 | 继承统一污点传播基类 |
+| **DFA checker（已注册）** | 78 | 引擎实际装配的，涉及数据流 / 跨函数 |
+| **其中 `extends TaintedCheckerBase`** | 57 | 继承统一污点传播基类 |
 | **事实种类（fact kinds）** | 27 | 内置 15 个 + `fact-kinds.yaml` 12 个 |
 
 **分工原则**：只依赖 AST 形态的规则放在 `plumb-style`。用 DFA 实现 style rule 既不提升精度
@@ -65,10 +65,10 @@ Plumb 的做法分两阶段：
 | AST checker 类 | 601 | `plumb-style/**` |
 | 其中登记进规则表 | 599 | `CheckerCategories` |
 | 已注册规则总数 | 1158 | AST + DFA 的实际注册 |
-| DFA checker（已注册） | 67 | `ScanRunner.buildDfaCheckers()` |
+| DFA checker（已注册） | 78 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | 12 | `TaintRuleRegistry` |
-| Taint source family / 模式 | 5 / 19 | `sink-families.yaml` 的 `taint.sources.*` |
-| Taint sink family / 模式 | 48 / 358 | `sink-families.yaml` 的 `*.sinks` |
+| Taint source family / 模式 | 6 / 26 | `sink-families.yaml` 的 `taint.sources.*` |
+| Taint sink family / 模式 | 75 / 2440 | `sink-families.yaml` 的 `*.sinks` |
 | 输入源模式（框架入口） | 65 | `InputSourcePatterns` |
 | 事实种类 | 27 | 内置 + YAML |
 

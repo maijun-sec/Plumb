@@ -19,10 +19,10 @@
 
 | 类别 | 模块 | 数量 | 实现方式 | 阶段 |
 | --- | --- | ---: | --- | --- |
-| Taint source 模式 | plumb-dfa | **19** | `sink-families.yaml` 的 5 个 `taint.sources.*` family | taint |
-| Taint sink 模式 | plumb-dfa | **358** | `sink-families.yaml` 的 48 个 `*.sinks` family | taint |
-| DFA checker（YAML 声明） | plumb-dfa | **16**（14 启用 / 2 禁用） | `checkers.yaml` | dfa |
-| DFA checker（实际注册） | plumb-main | **67** | `ScanRunner.buildDfaCheckers()` | dfa |
+| Taint source 模式 | plumb-dfa | **26** | `sink-families.yaml` 的 6 个 `taint.sources.*` family | taint |
+| Taint sink 模式 | plumb-dfa | **2440** | `sink-families.yaml` 的 75 个 `*.sinks` family | taint |
+| DFA checker（YAML 声明） | plumb-dfa | **26**（24 启用 / 2 禁用） | `checkers.yaml` | dfa |
+| DFA checker（实际注册） | plumb-main | **78** | `ScanRunner.buildDfaCheckers()` | dfa |
 | Style / 命名 / 设计 | plumb-style | **602** | JavaParser AST visitor | style |
 | 已注册规则总数 | 全部 | **1158** | AST + DFA 的实际注册 | — |
 
@@ -31,8 +31,8 @@
 > - **已注册规则**（1158）是引擎实际能 emit 的 rule id 数 —— 一条规则可以由
 >   多个 checker 声明，所以两个数不相等。
 >
-> `checkers.yaml` 声明的 16 条 DFA checker 也不是全部：`ScanRunner` 实际注册了
-> 67 个 DFA checker，差的那部分（污点、边界、控制流）是**按层实现**的，
+> `checkers.yaml` 声明的 26 条 DFA checker 也不是全部：`ScanRunner` 实际注册了
+> 78 个 DFA checker，差的那部分（污点、边界、控制流）是**按层实现**的，
 > 它们不通过 YAML 开关。
 
 ### 1.1 Style 规则子目录分布（实测）
@@ -76,7 +76,7 @@ checker 按"跑在哪一层"分成两大类，AI 不构成第三类——它是 
 | 类别 | 位置 | 数量（实测） | 触发器 | 适用场景 |
 | --- | --- | ---: | --- | --- |
 | **Style**（AST-only） | `plumb-style/` | **602** 个 checker 类 | 仅 JavaParser | 编码风格、命名、纯结构 bug |
-| **DFA** | `plumb-dfa/` | **47** 个继承 `TaintedCheckerBase` + **20** 个直接 `implements DfaChecker` | TAC + CFG（污点 / 数值 / 资源 / 控制流） | 需跨语句 def-use、type-tracking、source-to-sink 数据流 |
+| **DFA** | `plumb-dfa/` | **57** 个继承 `TaintedCheckerBase` + **21** 个直接 `implements DfaChecker` | TAC + CFG（污点 / 数值 / 资源 / 控制流） | 需跨语句 def-use、type-tracking、source-to-sink 数据流 |
 
 DFA 内部的实现形态细分见 [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) §3.0，
 四类分析（污点 / 边界 / 指向 / 控制流）见 [`../tech/DATA-FLOW.md`](../tech/DATA-FLOW.md)。
@@ -197,7 +197,7 @@ sink family 决定"哪些调用是 sink"，taint rule 决定"从哪个 source �
 DFA checker 的开关在 `plumb-dfa/src/main/resources/checkers.yaml`；style 规则的开关通过
 `RuleDef.enabled()`，由 `CheckerCategories` 登记时确定。
 
-**不要用 `plumb-rules` 的 `RuleRegistry.java` 推断规则总数**：它有 89 处
+**不要用 `plumb-rules` 的 `RuleRegistry.java` 推断规则总数**：它有 90 处
 `register(...)`，其中大量 `org.plumb.dfa.checker.*` / `org.plumb.dfa.taint.*` 类名在
 `plumb-dfa` 下并不存在（例如指向 `org.plumb.dfa.taint.TaintAnalysis`），该 registry 已陈旧。
 

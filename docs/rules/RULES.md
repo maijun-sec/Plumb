@@ -22,10 +22,10 @@ them.
 
 | Category | Module | Count | How it is implemented | Stage |
 | --- | --- | ---: | --- | --- |
-| Taint source patterns | plumb-dfa | **19** | The 5 `taint.sources.*` families of `sink-families.yaml` | taint |
-| Taint sink patterns | plumb-dfa | **358** | The 48 `*.sinks` families of `sink-families.yaml` | taint |
-| DFA checker (declared in YAML) | plumb-dfa | **16** (14 enabled / 2 disabled) | `checkers.yaml` | dfa |
-| DFA checker (actually registered) | plumb-main | **67** | `ScanRunner.buildDfaCheckers()` | dfa |
+| Taint source patterns | plumb-dfa | **26** | The 6 `taint.sources.*` families of `sink-families.yaml` | taint |
+| Taint sink patterns | plumb-dfa | **2440** | The 75 `*.sinks` families of `sink-families.yaml` | taint |
+| DFA checker (declared in YAML) | plumb-dfa | **26** (24 enabled / 2 disabled) | `checkers.yaml` | dfa |
+| DFA checker (actually registered) | plumb-main | **78** | `ScanRunner.buildDfaCheckers()` | dfa |
 | Style / naming / design | plumb-style | **602** | JavaParser AST visitor | style |
 | Total registered rules | all | **1158** | The actual registrations of AST + DFA | -- |
 
@@ -35,8 +35,8 @@ them.
 >   actually emit -- one rule can be declared by several checkers, so the two numbers
 >   are not equal.
 >
-> The 16 DFA checkers declared in `checkers.yaml` are not the whole story
-> either: `ScanRunner` actually registers 67 DFA checkers, and the
+> The 26 DFA checkers declared in `checkers.yaml` are not the whole story
+> either: `ScanRunner` actually registers 78 DFA checkers, and the
 > difference (taint, boundary, control flow) is **implemented per layer** and is not
 > switched through the YAML.
 
@@ -85,7 +85,7 @@ add new checkers:
 | Category | Location | Count (measured) | Trigger | Where it applies |
 | --- | --- | ---: | --- | --- |
 | **Style** (AST-only) | `plumb-style/` | **602** checker classes | JavaParser only | Coding style, naming, purely structural bugs |
-| **DFA** | `plumb-dfa/` | **47** extending `TaintedCheckerBase` + **20** directly `implements DfaChecker` | TAC + CFG (taint / numeric / resource / control flow) | When you need cross-statement def-use, type tracking, source-to-sink data flow |
+| **DFA** | `plumb-dfa/` | **57** extending `TaintedCheckerBase` + **21** directly `implements DfaChecker` | TAC + CFG (taint / numeric / resource / control flow) | When you need cross-statement def-use, type tracking, source-to-sink data flow |
 
 The breakdown of the implementation shapes inside the DFA is in
 [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) §3.0, and the four kinds of
@@ -214,7 +214,7 @@ The switches of the DFA checkers are in
 through `RuleDef.enabled()`, which is decided when `CheckerCategories` registers it.
 
 **Do not use the `RuleRegistry.java` of `plumb-rules` to infer the total number of
-rules**: it has 89 `register(...)` calls, and a great many of
+rules**: it has 90 `register(...)` calls, and a great many of
 the `org.plumb.dfa.checker.*` / `org.plumb.dfa.taint.*` class names in it do not
 exist under `plumb-dfa` (for example the ones pointing at
 `org.plumb.dfa.taint.TaintAnalysis`); that registry is stale.
