@@ -74,8 +74,8 @@ MUTANTS = [
      "with **31** binding annotations"),
     ("wrong-tainted-subclass-count",
      DOC,
-     "there are 47 `extends TaintedCheckerBase`",
-     "there are 48 `extends TaintedCheckerBase`"),
+     "there are 57 `extends TaintedCheckerBase`",
+     "there are 56 `extends TaintedCheckerBase`"),
 
     # --- a fact-kind row that names a kind that does not exist ------
     ("phantom-fact-kind",
@@ -151,8 +151,6 @@ def derive_citation_mutants():
         ("stale-citation-fact-kind",
          r"(\| `plumb\.call\.unmodeled-callee-ret` \| `UNMODELED_CALLEE_RET`"
          r" \| `:(\d+)` \|)"),
-        ("stale-citation-range",
-         r"(\(`points/AbstractObject\.java:(\d+)-(\d+)`\))"),
     ]
 
     for name, pattern in shapes:
@@ -164,18 +162,46 @@ def derive_citation_mutants():
             out.append((name, None, None, None))
             continue
         whole = m.group(1)
-        if name == "stale-citation-range":
-            # A range: move the WHOLE range to a wrong place.
-            start = int(m.group(2))
-            end = int(m.group(3))
-            new = whole.replace("%d-%d" % (start, end),
-                                "%d-%d" % (start + 900, end + 900))
-        else:
-            num = int(m.group(2))
-            new = whole.replace(":%d" % num, ":%d" % (num + 900))
+        num = int(m.group(2))
+        new = whole.replace(":%d" % num, ":%d" % (num + 900))
         out.append((name, whole, new, None))
 
     return out
+
+
+def derive_range_mutant():
+    """Build the stale-range mutant from ANY range citation in the document.
+
+    A range citation -- `file.java:120-135` -- is a shape the gate has to
+    survive: the reader follows the START, and the range's length is the
+    context. The mutant moves the whole range to a place that is
+    definitely wrong.
+
+    The anchor is DERIVED, not hard-coded to one file. A hard-coded
+    anchor is a second source of truth: when the document stops citing
+    that particular range -- because the citation collapsed to a single
+    line, or the file was renamed -- the battery reports "could not
+    build", which says nothing about the gate. Any real range in the
+    document exercises the same code path.
+
+    Returns None when the document carries no range citation at all,
+    which is itself a defect the gate should catch -- so the caller
+    reports it.
+    """
+    text = DOC.read_text(encoding="utf-8")
+    # A range that SPANS more than one line. A degenerate `309-309` is a
+    # single-line citation wearing a range's clothes: mutating it proves
+    # nothing about ranges, so it is skipped.
+    for m in re.finditer(r"`[A-Za-z0-9_./-]*\.java:(\d+)-(\d+)`", text):
+        start = int(m.group(1))
+        end = int(m.group(2))
+        if end <= start:
+            continue
+        whole = m.group(0)
+        new = whole.replace("%d-%d" % (start, end),
+                            "%d-%d" % (start + 900, end + 900))
+        return ("stale-citation-range", whole, new)
+    return None
 
 
 def main():
@@ -214,6 +240,15 @@ def main():
                   "the shape the mutant needs" % name)
             return 1
         mutants.append((name, DOC, old, new))
+
+    # The range mutant is derived the same way, from whatever range the
+    # document actually carries.
+    ranged = derive_range_mutant()
+    if ranged is None:
+        print("FAIL: the document carries no range citation, so the "
+              "range-citation mutant cannot be built")
+        return 1
+    mutants.append((ranged[0], DOC, ranged[1], ranged[2]))
 
     for name, target, old, new in mutants:
         if not target.is_file():

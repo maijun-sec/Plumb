@@ -113,7 +113,6 @@ package org.plumb.dfa.checkers.controlflow;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -130,7 +129,6 @@ import org.plumb.rules.RuleDef;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
-import org.plumb.tac.ir.TacProgram;
 
 public final class DeadlockChecker implements DfaChecker {
   private static final String RULE_ID = "dfa-controlflow-deadlock-ab-ba";
@@ -254,12 +252,21 @@ public final class DeadlockChecker implements DfaChecker {
     }
   }
 
-  /** Per-program map of function signature → lock sequence + TacFunction. */
-  private final Map<TacProgram, Map<String, LockSequence>> byProgram = new java.util.HashMap<>();
-
+  /**
+   * The map of merged key → lock sequence + TacFunction, SHARED by every worker.
+   *
+   * <p>It used to be an instance field keyed by program. A parallel run gives every worker its own
+   * checker instance, so each instance held only the lock sequences of the functions ITS worker
+   * analysed -- and the deadlock is between TWO functions, so the pair was never both present and
+   * the finding was silently never emitted.
+   *
+   * <p>The facts are about the PROGRAM, so they live on the context, where every worker sees them.
+   */
   private Map<String, LockSequence> collected(AnalysisContext ctx) {
-    TacProgram prog = ctx.program();
-    return byProgram.computeIfAbsent(prog, k -> new LinkedHashMap<>());
+    // A CONCURRENT map: every worker writes the lock sequence of the function it analysed, and
+    // they write at the same time. A plain LinkedHashMap would lose writes.
+    return ctx.programFacts()
+        .sharedValue("deadlock-checker.collected", new java.util.concurrent.ConcurrentHashMap<>());
   }
 
   /**
@@ -290,10 +297,8 @@ public final class DeadlockChecker implements DfaChecker {
 
   @Override
   public void finish(AnalysisContext ctx) {
-    TacProgram prog = ctx.program();
-    if (prog == null) return;
-    Map<String, LockSequence> collected = byProgram.get(prog);
-    if (collected == null) return;
+    Map<String, LockSequence> collected = collected(ctx);
+    if (collected.isEmpty()) return;
     // Compare each pair of functions.
     List<String> sigs = new ArrayList<>(collected.keySet());
     for (int i = 0; i < sigs.size(); i++) {

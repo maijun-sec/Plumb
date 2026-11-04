@@ -47,15 +47,20 @@ class CompiledRule(
     fun matches(node: Node): Boolean {
         CurrentNodeHolder.set(node)
         return try {
-            val result = compiled.eval()
+            val result = ScriptEngineHolder.eval(compiled)
             result is Boolean && result
         } catch (ex: Exception) {
+            // A rule that fails to evaluate does NOT match. That is silent in the
+            // sense that the scan still succeeds, so the failure is reported: at
+            // WARN with the message, and with the full stack at DEBUG, because a
+            // swallowed rule failure is indistinguishable from "no bug here".
             LOG.warn(
                 "Rule '{}' failed while evaluating against {}: {}",
                 rule.id,
                 node.javaClass.simpleName,
                 ex.message
             )
+            LOG.debug("Rule '{}' evaluation failure", rule.id, ex)
             false
         } finally {
             CurrentNodeHolder.clear()

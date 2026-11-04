@@ -32,8 +32,14 @@ import org.plumb.tac.ir.TacType;
  * <p>{@link #lambdaSignature} is set when the expression's value is a synthetic {@code lambda$N}
  * function reference. The translator uses it to record the user-var → lambda binding so the
  * inter-procedural taint engine can follow {@code f.apply(...)} into the lambda body.
+ *
+ * <p>{@link #deferredTarget} is set when the expression's value is a <em>method reference</em>
+ * (e.g. {@code String::trim}). The value is the callee signature of the referenced method. The
+ * translator uses it to record the user-var → method binding so that the application site can be
+ * rewritten into the call it actually is.
  */
-public record ExpressionResult(TacOperand operand, TacType type, String lambdaSignature) {
+public record ExpressionResult(
+    TacOperand operand, TacType type, String lambdaSignature, String deferredTarget) {
 
   public ExpressionResult {
     if (operand == null) throw new IllegalArgumentException("operand");
@@ -41,19 +47,28 @@ public record ExpressionResult(TacOperand operand, TacType type, String lambdaSi
   }
 
   public ExpressionResult(TacOperand operand, TacType type) {
-    this(operand, type, null);
+    this(operand, type, null, null);
+  }
+
+  public ExpressionResult(TacOperand operand, TacType type, String lambdaSignature) {
+    this(operand, type, lambdaSignature, null);
   }
 
   public static ExpressionResult of(TacOperand operand, TacType type) {
-    return new ExpressionResult(operand, type, null);
+    return new ExpressionResult(operand, type, null, null);
   }
 
   public static ExpressionResult ofConst(TacOperand.Const c) {
-    return new ExpressionResult(c, c.type(), null);
+    return new ExpressionResult(c, c.type(), null, null);
   }
 
   /** Build a result that carries a lambda binding. */
   public static ExpressionResult ofLambda(TacOperand operand, String lambdaSignature) {
-    return new ExpressionResult(operand, TacType.UNKNOWN, lambdaSignature);
+    return new ExpressionResult(operand, TacType.UNKNOWN, lambdaSignature, null);
+  }
+
+  /** Build a result that carries a method-reference binding. */
+  public static ExpressionResult ofDeferred(TacOperand operand, String deferredTarget) {
+    return new ExpressionResult(operand, TacType.UNKNOWN, null, deferredTarget);
   }
 }

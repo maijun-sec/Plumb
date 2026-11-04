@@ -46,6 +46,7 @@ import com.github.javaparser.ast.expr.NullLiteralExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.github.javaparser.ast.expr.SuperExpr;
+import com.github.javaparser.ast.expr.SwitchExpr;
 import com.github.javaparser.ast.expr.ThisExpr;
 import com.github.javaparser.ast.expr.TypeExpr;
 import com.github.javaparser.ast.expr.UnaryExpr;
@@ -71,8 +72,48 @@ public final class ExpressionTranslator {
 
   private final TacTranslator owner;
 
+  /**
+   * The variable a {@code yield} statement assigns to, when one is being translated.
+   *
+   * <p>Java's switch <i>expression</i> produces a value, and its arms hand that value over with
+   * {@code yield v;}. The lowering gives the switch expression a temp, and a {@code yield} inside
+   * it becomes a MOVE of the yielded value into that temp.
+   *
+   * <p>This is a ThreadLocal for the same reason {@link StatementTranslator}'s loop and switch
+   * label stacks are: the translator is re-entrant (an expression's translation can reach into
+   * another expression), and a plain field would be clobbered by the inner call.
+   *
+   * <p>It is {@code null} outside a switch expression, which is the case for a {@code yield}
+   * statement in a switch <i>statement</i> -- that is a compile error in Java, so the lowering
+   * simply has nothing to assign to.
+   */
+  private final ThreadLocal<TacOperand.TacVar> yieldTarget = new ThreadLocal<>();
+
   ExpressionTranslator(TacTranslator owner) {
     this.owner = owner;
+  }
+
+  /**
+   * Sets the current {@code yield} target and returns the previous one, so the caller can restore
+   * it.
+   *
+   * @param target the variable a {@code yield} assigns to, or {@code null} for "no switch
+   *     expression in scope"
+   * @return the previous target
+   */
+  TacOperand.TacVar setYieldTarget(TacOperand.TacVar target) {
+    TacOperand.TacVar prev = yieldTarget.get();
+    if (target == null) {
+      yieldTarget.remove();
+    } else {
+      yieldTarget.set(target);
+    }
+    return prev;
+  }
+
+  /** The current {@code yield} target, or {@code null}. */
+  TacOperand.TacVar yieldTarget() {
+    return yieldTarget.get();
   }
 
   public ExpressionResult translate(Expression expr, TacBuilder b) {
@@ -82,8 +123,29 @@ public final class ExpressionTranslator {
     if (expr instanceof AssignExpr ae) return translateAssign(ae, b);
     if (expr instanceof NameExpr ne) return translateName(ne, b);
     if (expr instanceof ThisExpr) return translateThis(b);
-    if (expr instanceof SuperExpr)
-      return new ExpressionResult(TacOperand.Const.ofNull(), TacType.UNKNOWN);
+    if (expr instanceof SuperExpr se) {
+      // `super` is the enclosing instance, which in the TAC is the SAME object as
+      // `this` -- only the dispatch target differs, and the TAC's callee signature
+      // already carries the method name for the call-graph resolver to work on.
+      //
+      // WHY THIS MATTERS. The previous lowering returned a NULL constant. In
+      // `super.foo(x)`, the scope is the SuperExpr, so the CALL's receiver
+      // (args[0], per the TAC convention) was the null constant -- and the
+      // null-dereference checker saw a call on a null receiver and reported a
+      // FALSE POSITIVE on every `super.method()` call. It also destroyed the
+      // taint: the receiver carried no facts.
+      //
+      // Falling back to the `this` local keeps the receiver non-null and keeps
+      // the receiver's identity, which is what the points-to solver needs.
+      ExpressionResult thisResult = translateThis(b);
+      if (thisResult.operand() instanceof TacOperand.Const) {
+        // No `this` in scope (a static method cannot use `super`, so this is only
+        // reachable from a recovered tree). Report it rather than silently
+        // substituting a null receiver.
+        b.reportUnhandled("SuperExpr", TacTranslator.nodeLine(se), TacTranslator.nodeColumn(se));
+      }
+      return thisResult;
+    }
     if (expr instanceof BooleanLiteralExpr ble)
       return new ExpressionResult(TacOperand.Const.ofBool(ble.getValue()), TacType.BOOLEAN);
     if (expr instanceof IntegerLiteralExpr ile) {
@@ -120,11 +182,52 @@ public final class ExpressionTranslator {
     if (expr instanceof StringLiteralExpr sle) {
       return new ExpressionResult(TacOperand.Const.ofString(sle.getValue()), TacType.STRING);
     }
+    if (expr instanceof com.github.javaparser.ast.expr.TextBlockLiteralExpr tble) {
+      // A text block is a string literal spelled with triple quotes (Java 15+).
+      // It is a distinct AST node, not a StringLiteralExpr, so it needs its own arm --
+      // without one it falls through to the unhandled path and the string's VALUE is
+      // lost, which silently drops any taint that flowed into it.
+      //
+      // The value is the text with the incidental whitespace removed, exactly as
+      // javac computes it; JavaParser already gives us that via getValue().
+      return new ExpressionResult(TacOperand.Const.ofString(tble.getValue()), TacType.STRING);
+    }
+    if (expr instanceof com.github.javaparser.ast.expr.ClassExpr ce) {
+      // A class literal: `Foo.class`, `int.class`, `String[].class`.
+      //
+      // It denotes a Class object, not an instance. The TAC has no "class object"
+      // value, so it is modelled as a reference to the java.lang.Class type with the
+      // literal's type name as the payload. What matters for the dataflow is that the
+      // value is NOT null: a null here would look like a null dereference candidate.
+      String typeName = ce.getTypeAsString();
+      TacType t =
+          typeName == null || typeName.isEmpty()
+              ? TacType.ofClass("java.lang.Class")
+              : TacType.ofClass("java.lang.Class");
+      return new ExpressionResult(TacOperand.Const.ofString(typeName), t);
+    }
+    if (expr instanceof com.github.javaparser.ast.expr.MethodReferenceExpr mre) {
+      return translateMethodReference(mre, b);
+    }
     if (expr instanceof NullLiteralExpr) {
       return new ExpressionResult(TacOperand.Const.ofNull(), TacType.NULL);
     }
     if (expr instanceof CastExpr ce) return translateCast(ce, b);
-    if (expr instanceof InstanceOfExpr ioe) return translateInstanceOf(ioe, b);
+    if (expr instanceof InstanceOfExpr ioe) {
+      // Java 16 added pattern matching to `instanceof`: `x instanceof String s`. The
+      // pattern form binds a variable, so it is lowered by the modern-features
+      // translator; the plain form is the original type test.
+      if (ioe.getPattern().isPresent()) {
+        return owner.modern().translateInstanceOfWithPattern(ioe, b);
+      }
+      return translateInstanceOf(ioe, b);
+    }
+    if (expr instanceof SwitchExpr se) {
+      // Java 14 added switch expressions. The lowering needs the expected type to
+      // type the result temp; without a type context it is UNKNOWN, which is
+      // enough for the dataflow (the value's taint, not its type, is what matters).
+      return owner.modern().translateSwitchExpr(se, b, TacType.UNKNOWN);
+    }
     if (expr instanceof MethodCallExpr mce) return translateCall(mce, b);
     if (expr instanceof ObjectCreationExpr oce) return translateNew(oce, b);
     if (expr instanceof ArrayCreationExpr ace) return translateNewArray(ace, b);
@@ -143,13 +246,44 @@ public final class ExpressionTranslator {
     if (expr instanceof EnclosedExpr ee) return translate(ee.getInner(), b);
     if (expr instanceof ConditionalExpr ce) return translateConditional(ce, b);
     if (expr instanceof VariableDeclarationExpr vde) {
-      // Variable declarations may appear as expression statements;
-      // the StatementTranslator handles the common case. We still
-      // emit a no-op so the resulting ExpressionResult is well-typed.
+      // A declaration in expression position. Java allows this in a few places
+      // (a `for` init, a try-with-resources resource). The declaration's real
+      // effect -- declaring locals and initialising them -- is the same wherever
+      // it appears, so it is routed to the STATEMENT translator's declaration
+      // lowering. That keeps one implementation of "declare and initialise"
+      // instead of two that can drift apart.
+      //
+      // WHY THIS MATTERS. The previous lowering returned a null constant and
+      // emitted NOTHING. So a declaration reached through an expression path
+      // declared no local at all: every read of that variable resolved to a
+      // synthetic UNKNOWN var, and the initialiser's taint was dropped on the
+      // floor. The gap was SILENT -- no problem was recorded, so the IR claimed
+      // to be a complete translation of a function whose local was missing.
+      owner.stmts().translateVarDecl(vde, b);
+      // The declaration itself has no value. VOID says "no value", which is
+      // distinct from NULL ("the value null") -- a distinction that matters
+      // because a null constant is a dereference candidate.
       return new ExpressionResult(TacOperand.Const.ofNull(), TacType.VOID);
     }
-    if (expr instanceof TypeExpr) {
-      return new ExpressionResult(TacOperand.Const.ofNull(), TacType.UNKNOWN);
+    if (expr instanceof TypeExpr te) {
+      // A type used as a VALUE. In Java this is only legal in a class literal
+      // (`Foo.class`), and JavaParser represents `Foo.class` as a ClassExpr, not
+      // a TypeExpr -- so a bare TypeExpr here comes from a method-reference scope
+      // (`String::length`) or from a recovered tree.
+      //
+      // The value is a TYPE, not an instance. Modelling it as a null constant
+      // would make a null-dereference checker report a dereference of a type
+      // reference, which is not a thing. Modelling it as a non-null reference
+      // to the type name keeps it visible and harmless.
+      //
+      // A method reference's scope is handled separately in
+      // translateMethodReference, which does NOT add the scope to the argument
+      // list when it is a type -- so this path only fires for a genuine type
+      // used as a value.
+      String typeName = te.getTypeAsString();
+      return new ExpressionResult(
+          TacOperand.Const.ofString(typeName == null ? "" : typeName),
+          TacType.ofClass("java.lang.Class"));
     }
     if (expr instanceof LambdaExpr le) {
       // Lower the lambda body to a synthetic function. We then
@@ -157,12 +291,30 @@ public final class ExpressionTranslator {
       // taint analysis can still see the body.
       return translateLambda(le, b);
     }
-    // Unhandled : log and return null sentinel.
-    LOG.debug(
-        "Unhandled expression: {} at line {}",
-        expr.getClass().getSimpleName(),
-        TacTranslator.nodeLine(expr));
-    return new ExpressionResult(TacOperand.Const.ofNull(), TacType.UNKNOWN);
+    // Unhandled: report the gap AND emit an explicit unknown.
+    //
+    // The gap must NOT be silent. A null here silently drops every taint fact about the value, so
+    // the construct is recorded on the IR as an UNHANDLED_NODE problem. A caller can then see
+    // that the analysis of this function is incomplete, rather than mistaking a missing
+    // finding for a safe program.
+    //
+    // And the value itself must be marked unknown in the IR, not handed back as a null constant.
+    // A null constant is a *claim* -- "this value is null" -- and the engine would act on it: the
+    // null-dereference checker would have to reason about it, and a downstream use of it would
+    // look like a known value. A HAVOC says "the analysis does not know", which is what is true.
+    // The difference matters: with a null constant the taint fact about the expression is lost
+    // silently, and the IR looks complete.
+    String nodeClass = expr.getClass().getSimpleName();
+    b.reportUnhandled(nodeClass, TacTranslator.nodeLine(expr), TacTranslator.nodeColumn(expr));
+    LOG.debug("Unhandled expression: {} at line {}", nodeClass, TacTranslator.nodeLine(expr));
+    TacOperand.TacVar unknownDest = b.newTemp(TacType.UNKNOWN);
+    b.emit(
+        TacInstruction.builder(TacInstruction.Kind.HAVOC)
+            .dest(unknownDest)
+            .line(TacTranslator.nodeLine(expr))
+            .column(TacTranslator.nodeColumn(expr))
+            .build());
+    return new ExpressionResult(unknownDest, TacType.UNKNOWN);
   }
 
   // ------------------------------------------------------------------
@@ -253,11 +405,17 @@ public final class ExpressionTranslator {
     // unqualified write handled in writeLhs.
     for (TacOperand.TacVar v : b.locals()) {
       if ("this".equals(v.name())) {
+        // A STATIC field belongs to the class, not to the instance. Bind the
+        // class identity as the receiver so the dataflow engine keys the
+        // field's state on the class: a static field written through one
+        // instance has to be visible when read through another.
+        TacOperand staticRecv = fieldReceiver(null, name, b);
+        TacOperand recv = staticRecv != null ? staticRecv : v;
         TacOperand.TacVar tmp = b.newTemp(TacType.UNKNOWN);
         b.emit(
             TacInstruction.builder(TacInstruction.Kind.FIELDLOAD)
                 .dest(tmp)
-                .lhs1(v)
+                .lhs1(recv)
                 .fieldName(name)
                 .line(TacTranslator.nodeLine(ne))
                 .build());
@@ -268,6 +426,117 @@ public final class ExpressionTranslator {
     // fallback (synthetic UNKNOWN var).
     TacOperand.TacVar v = new TacOperand.TacVar(name, TacType.UNKNOWN, false);
     return new ExpressionResult(v, TacType.UNKNOWN);
+  }
+
+  /**
+   * The declaring class's simple name when {@code ne} names a STATIC field, or {@code null}
+   * otherwise.
+   *
+   * <p>A static field belongs to the CLASS, not to an instance. The TAC has to represent that
+   * difference, because the dataflow engine keys its field state on the receiver: a static field
+   * written through one instance has to be visible when read through another, and an instance field
+   * must not be.
+   *
+   * <p>Java's own convention -- a static field's name starts with an upper-case letter -- is not a
+   * reliable signal: instance fields are named that way too, and plenty of static fields are not.
+   * The symbol resolution is the reliable one, so it is what this uses.
+   *
+   * @param ne the name expression
+   * @return the declaring class's simple name, or {@code null} when the name is not a static field
+   */
+  private String staticFieldDeclaringClass(com.github.javaparser.ast.expr.NameExpr ne) {
+    String name = ne.getNameAsString();
+    // The translator's own table first. A class declared in the scanned
+    // source is not on the reflection type solver's classpath, so
+    // `ne.resolve()` throws for a field of a user-defined class -- and the
+    // declaration is right there in the AST.
+    String current = owner.currentClassName();
+    if (!current.isEmpty() && owner.isStaticFieldOf(current, name)) {
+      return current;
+    }
+    try {
+      var resolved = ne.resolve();
+      if (!resolved.isField()) return null;
+      var field = resolved.asField();
+      if (!field.isStatic()) return null;
+      String typeName = field.declaringType().getQualifiedName();
+      if (typeName == null || typeName.isEmpty()) return null;
+      int dot = typeName.lastIndexOf('.');
+      return dot < 0 ? typeName : typeName.substring(dot + 1);
+    } catch (Throwable ignore) {
+      // Unresolvable (no symbol solver, recovered tree, ...): treat it as an
+      // ordinary field. The engine's field tracker then keeps the per-instance
+      // semantics, which is the conservative choice.
+      return null;
+    }
+  }
+
+  /**
+   * The receiver operand for a field access, emitting the class-identity load when the field is
+   * static.
+   *
+   * <p>For a STATIC field the receiver is the CLASS. The class identity is bound with a {@code
+   * FIELDLOAD} of the class's own name off {@code this} -- the shape the dataflow engine already
+   * recognises as a class reference -- so the field state is keyed on the class rather than on an
+   * instance.
+   *
+   * @param scopeExpr the scope expression, or {@code null} for an unqualified access
+   * @param name the field name
+   * @param b the builder to emit into
+   * @return the receiver operand for the field access
+   */
+  private TacOperand fieldReceiver(
+      com.github.javaparser.ast.expr.Expression scopeExpr, String name, TacBuilder b) {
+    if (scopeExpr instanceof com.github.javaparser.ast.expr.NameExpr ne) {
+      String staticOwner = staticFieldDeclaringClass(ne);
+      if (staticOwner != null) {
+        return classIdentityReceiver(staticOwner, b);
+      }
+    } else if (scopeExpr == null) {
+      // An unqualified access (`FIELD`). It is static when the enclosing
+      // class declares it static.
+      String current = owner.currentClassName();
+      if (!current.isEmpty() && owner.isStaticFieldOf(current, name)) {
+        return classIdentityReceiver(current, b);
+      }
+    }
+    // Qualified access: `Other.FIELD` where Other is a class.
+    if (scopeExpr instanceof com.github.javaparser.ast.expr.TypeExpr) {
+      String owner2 = scopeExpr.toString();
+      int dot = owner2.lastIndexOf('.');
+      String simple = dot < 0 ? owner2 : owner2.substring(dot + 1);
+      return classIdentityReceiver(simple, b);
+    }
+    return null;
+  }
+
+  /**
+   * Bind a class's identity into a fresh temp: {@code t = this.<ClassName>}.
+   *
+   * <p>This is the shape the dataflow engine reads as "the receiver is a class, not an object". The
+   * class name is upper-case by construction (a Java class name starts with an upper-case letter),
+   * which is what the engine's class-reference recognition looks for.
+   */
+  private TacOperand classIdentityReceiver(String className, TacBuilder b) {
+    TacOperand.TacVar thisVar = null;
+    for (TacOperand.TacVar v : b.locals()) {
+      if ("this".equals(v.name())) {
+        thisVar = v;
+        break;
+      }
+    }
+    if (thisVar == null) {
+      return null;
+    }
+    TacOperand.TacVar classRef = b.newTemp(TacType.ofClass(className));
+    b.emit(
+        TacInstruction.builder(TacInstruction.Kind.FIELDLOAD)
+            .dest(classRef)
+            .lhs1(thisVar)
+            .fieldName(className)
+            .line(-1)
+            .build());
+    return classRef;
   }
 
   private ExpressionResult translateThis(TacBuilder b) {
@@ -317,15 +586,71 @@ public final class ExpressionTranslator {
     String receiverTypeName = null;
     if (mce.getScope().isPresent()) {
       Expression scopeExpr = mce.getScope().get();
-      ExpressionResult scope = translate(scopeExpr, b);
-      argOps.add(0, scope.operand());
-      // Derive the receiver's textual name for the callee signature.
-      // Prefer the FQN type of the receiver
-      // operand (e.g. "java.sql.Statement") so the
-      // sink-families.yaml FQN patterns match. Fall
-      // back to the textual scope when the type is
-      // unknown (field access, call result, etc.).
-      receiverTypeName = receiverTypeName(scopeExpr, scope);
+      // A scope that names a CLASS is a static call: `String.valueOf(x)`,
+      // `Integer.parseInt(s)`. JavaParser parses the scope as a NameExpr
+      // (`String`), not a TypeExpr, so translating it as a VALUE read two
+      // wrong things:
+      //
+      //   1. it emitted a bogus `FIELDLOAD this.C.String` -- the class name
+      //      read as an instance field, which corresponds to nothing in the
+      //      source; and
+      //   2. the callee signature came out as `String.valueOf/1` while the
+      //      taint-passthrough catalogue is written in fully-qualified form
+      //      (`java.lang.String.valueOf/`), so the passthrough never fired
+      //      and the taint was dropped at the call.
+      //
+      // A class scope is a TYPE reference, not a value, so it is modelled as
+      // one: a constant naming the type, and an FQN callee signature.
+      String classScopeFqn = classScopeFqn(scopeExpr, b);
+      if (classScopeFqn != null) {
+        argOps.add(0, TacOperand.Const.ofString(classScopeFqn));
+        receiverTypeName = classScopeFqn;
+      } else {
+        ExpressionResult scope = translate(scopeExpr, b);
+        argOps.add(0, scope.operand());
+        // Derive the receiver's textual name for the callee signature.
+        // Prefer the FQN type of the receiver
+        // operand (e.g. "java.sql.Statement") so the
+        // sink-families.yaml FQN patterns match. Fall
+        // back to the textual scope when the type is
+        // unknown (field access, call result, etc.).
+        receiverTypeName = receiverTypeName(scopeExpr, scope);
+      }
+    }
+    // A functional-interface application whose receiver holds a method reference is
+    // really a call to the referenced method:
+    //
+    //     Function<String, String> f = String::trim;
+    //     f.apply(userInput);        // ==  String.trim(userInput)
+    //
+    // Rewriting the application into the call it is keeps the argument's taint
+    // flowing to the result. Without the rewrite the call is opaque -- the
+    // argument's taint stops at the application, and a program that hands
+    // attacker-controlled input to a sink through a method reference is
+    // reported as clean.
+    String deferredTarget = deferredTargetFor(mce, argOps);
+    if (deferredTarget != null) {
+      // The referenced method's own receiver (for a bound reference such as
+      // `obj::method`) is the functional interface's first argument, so the
+      // deferred call takes the receiver first and then the application's own
+      // arguments.
+      List<TacOperand> deferredArgs = new ArrayList<>();
+      if (!argOps.isEmpty()) {
+        deferredArgs.add(argOps.get(0));
+      }
+      deferredArgs.addAll(argOps.subList(Math.min(1, argOps.size()), argOps.size()));
+      argOps = deferredArgs;
+      TacType deferredReturn = TacType.UNKNOWN;
+      TacOperand.TacVar dest = b.newTemp(deferredReturn);
+      b.emit(
+          TacInstruction.builder(TacInstruction.Kind.CALL)
+              .dest(dest)
+              .calleeSig(deferredTarget)
+              .args(argOps)
+              .line(TacTranslator.nodeLine(mce))
+              .column(TacTranslator.nodeColumn(mce))
+              .build());
+      return new ExpressionResult(dest, deferredReturn);
     }
     // Propagate the method's declared return
     // type to the dest TacVar. JavaParser exposes
@@ -375,12 +700,179 @@ public final class ExpressionTranslator {
   }
 
   /**
+   * Translate a method reference: {@code String::length}, {@code obj::method}, {@code Type::new}.
+   *
+   * <p><b>What a method reference is.</b> It is a <i>callable value</i> -- a reference to a method,
+   * not an invocation of it. {@code f = String::length} captures the method; the call happens
+   * later, when {@code f} is invoked.
+   *
+   * <p><b>How the TAC models it.</b> The TAC has no "callable value" operand. The nearest sound
+   * representation is a {@code CALL} whose callee signature is the referenced method: the dataflow
+   * engine's sink matching keys on the callee signature, so a reference to a sink method is visible
+   * as reaching that sink. The argument list is the reference's own receiver, if any.
+   *
+   * <p><b>Why not just a constant.</b> A constant would make the reference invisible to the sink
+   * matching -- a {@code java.sql.Statement::execute} reference would never be seen to reach the
+   * sink, and the finding would be missed. A CALL keeps it visible.
+   *
+   * <p><b>Directional rule.</b> This is a LOWERING, not an invocation: the referenced method's body
+   * is not executed at this point. It is modelled as a reference so that the sink family matching
+   * sees the method being named. The precision of the enclosing function is not downgraded, because
+   * nothing about the method's semantics was lost -- only its deferred invocation.
+   *
+   * <p><b>The deferred target is also recorded.</b> The result carries the referenced method's
+   * callee signature so the translator can bind the user variable to it. The application site can
+   * then be rewritten into the call it actually is -- {@code f.apply(x)} where {@code f} holds
+   * {@code String::trim} becomes {@code String.trim(x)}. Without that rewrite the application is an
+   * opaque call to the functional interface, the argument's taint stops there, and the analysis
+   * reports a clean program for code that hands attacker-controlled input to a sink.
+   */
+  private ExpressionResult translateMethodReference(
+      com.github.javaparser.ast.expr.MethodReferenceExpr mre, TacBuilder b) {
+    String scopeText = mre.getScope().toString();
+    String referenceName = mre.getIdentifier();
+    List<TacOperand> argOps = new ArrayList<>();
+
+    // The scope of a method reference is the receiver, when it is an expression
+    // (`obj::method`). For a type name (`String::length`) it is a type, not a value.
+    boolean scopeIsType = mre.getScope() instanceof com.github.javaparser.ast.expr.TypeExpr;
+    ExpressionResult scopeValue = null;
+    if (!scopeIsType) {
+      scopeValue = translate((com.github.javaparser.ast.expr.Expression) mre.getScope(), b);
+      argOps.add(scopeValue.operand());
+    }
+
+    // `Type::new` is a constructor reference, not a method reference.
+    String methodName = "new".equals(referenceName) ? "<init>" : referenceName;
+
+    // The receiver's type name, when the scope is a type: that is the class the method
+    // belongs to, and it is what the sink patterns match on.
+    String receiverTypeName = null;
+    if (scopeIsType) {
+      receiverTypeName = scopeText;
+      // A type scope is a TYPE reference, not a value. Resolve it to its
+      // fully-qualified name so the callee signature matches the same
+      // catalogue the sink patterns and the passthrough rules are written
+      // against (`java.lang.String.trim/1`, not `String.trim/0`).
+      String fqn = TypeMapper.resolveWellKnownFqnStatic(scopeText);
+      if (fqn != null && !fqn.isEmpty()) {
+        receiverTypeName = fqn;
+      }
+    } else {
+      receiverTypeName = receiverTypeName(mre.getScope(), scopeValue);
+    }
+
+    // The arity of the DEFERRED call. For a static reference the functional interface
+    // supplies every argument, so the arity is the number of parameters the referenced
+    // method takes -- one for `String::trim`, zero for `String::length`.
+    int deferredArity = referencedArity(mre, receiverTypeName, methodName);
+
+    String sig = TacTranslator.methodSig(receiverTypeName, methodName, argOps.size());
+    TacOperand.TacVar dest = b.newTemp(TacType.UNKNOWN);
+    b.emit(
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .dest(dest)
+            .calleeSig(sig)
+            .args(argOps)
+            .line(TacTranslator.nodeLine(mre))
+            .column(TacTranslator.nodeColumn(mre))
+            .build());
+    String deferredTarget = TacTranslator.methodSig(receiverTypeName, methodName, deferredArity);
+    return ExpressionResult.ofDeferred(dest, deferredTarget);
+  }
+
+  /**
+   * The number of arguments the deferred invocation of a referenced method takes.
+   *
+   * <p>For an unbound reference to an instance method ({@code String::trim}) the functional
+   * interface supplies the receiver as its first argument, so the deferred call takes the
+   * referenced method's own parameter count plus one.
+   *
+   * <p>JavaParser exposes the referenced method's parameter count through the resolved symbol when
+   * the symbol solver can see it. When it cannot, the count is unknown, and {@code -1} is returned:
+   * the caller then leaves the arity alone rather than inventing one.
+   *
+   * @param mre the method reference
+   * @param receiverTypeName the referenced method's declaring type
+   * @param methodName the referenced method's name
+   * @return the deferred call's arity, or {@code -1} when it cannot be determined
+   */
+  private int referencedArity(
+      com.github.javaparser.ast.expr.MethodReferenceExpr mre,
+      String receiverTypeName,
+      String methodName) {
+    try {
+      var resolved = mre.resolve();
+      var method = resolved.asMethod();
+      int params = method.getNumberOfParams();
+      // An unbound instance-method reference receives the receiver as the
+      // functional interface's first argument.
+      boolean staticRef = method.isStatic();
+      return staticRef ? params : params + 1;
+    } catch (Throwable ignore) {
+      // Unresolvable: leave the arity alone rather than guess.
+      return -1;
+    }
+  }
+
+  /**
+   * The deferred target of a functional-interface application, when the receiver holds a method
+   * reference.
+   *
+   * <p>Returns {@code null} when the call is not an application of a functional interface, or when
+   * the receiver is not bound to a known method reference. In both cases the call is lowered
+   * normally.
+   *
+   * @param mce the call expression
+   * @param argOps the argument operands, receiver first
+   * @return the referenced method's callee signature, or {@code null}
+   */
+  private String deferredTargetFor(
+      com.github.javaparser.ast.expr.MethodCallExpr mce, List<TacOperand> argOps) {
+    if (!mce.getScope().isPresent()) return null;
+    if (argOps.isEmpty()) return null;
+    if (!(argOps.get(0) instanceof TacOperand.TacVar recv)) return null;
+    String methodName = mce.getNameAsString();
+    if (!isFunctionalInterfaceApplication(methodName)) return null;
+    return owner.program().deferredTargetFor(recv.name());
+  }
+
+  /**
+   * Is this method name one of the functional-interface methods whose application forwards its
+   * argument to the referenced target?
+   *
+   * <p>The names are the single-abstract-method names of the standard functional interfaces. The
+   * list is deliberately restricted to those: a name like {@code get} or {@code test} would also
+   * match ordinary methods ({@code Map.get}) that have nothing to do with a functional interface.
+   */
+  private static boolean isFunctionalInterfaceApplication(String methodName) {
+    if (methodName == null) return false;
+    return switch (methodName) {
+      case "apply",
+          "applyAsInt",
+          "applyAsLong",
+          "applyAsDouble",
+          "accept",
+          "call",
+          "run",
+          "test",
+          "get",
+          "compare",
+          "compute",
+          "compose",
+          "andThen" ->
+          true;
+      default -> false;
+    };
+  }
+
+  /**
    * Hardcoded getter → FQN map for the most common chain-call receivers. JavaParser's symbol solver
    * is not wired up with a JDK type solver, so {@code response.getWriter().println(...)} ends up
-   * with the dest TacVar of `getWriter()` carrying type UNKNOWN and the chained `println` call
-   * emitting a "scope" receiver (e.g. {@code scope.println/1}) that no sink-family pattern matches.
-   * By hardcoding the most common getter returns, the chained call gets a proper FQN receiver (e.g.
-   * {@code java.io.PrintWriter.println/1}) and the sink patterns fire.
+   * with the dest TacVar of {@code getWriter()} carrying type UNKNOWN and the chained {@code
+   * println} call emitting a "scope" receiver (e.g. {@code scope.println/1}) that no sink-family
+   * pattern matches. By hardcoding the most common getter returns, the chained call gets a proper
+   * FQN receiver (e.g. {@code java.io.PrintWriter.println/1}) and the sink patterns fire.
    *
    * <p>Add new entries whenever a Juliet / real codebase shows a chain call whose receiver type the
    * symbol solver can't resolve.
@@ -404,6 +896,60 @@ public final class ExpressionTranslator {
           java.util.Map.entry("getPathInfo", "java.lang.String"),
           java.util.Map.entry("getRequestURI", "java.lang.String"),
           java.util.Map.entry("getRequestURL", "java.lang.StringBuffer"));
+
+  /**
+   * The FQN of a static call's scope, when the scope names a CLASS rather than a value.
+   *
+   * <p>{@code String.valueOf(x)} has the scope {@code String} -- a class name -- and {@code
+   * sb.append(x)} has the scope {@code sb} -- a value. JavaParser gives both the same node type (a
+   * NameExpr), so the two are told apart by asking what the name resolves to.
+   *
+   * <p>The test is deliberately conservative, and it has to be: the cost of a false positive here
+   * is turning a real receiver into a type constant, which would break every instance call whose
+   * receiver happens to share a name with a JDK type. So the scope must satisfy ALL of:
+   *
+   * <ul>
+   *   <li>it is a bare name (a NameExpr);
+   *   <li>that name is not a local, not a parameter, and not a field of the enclosing class -- so a
+   *       receiver that happens to be called {@code String} is left alone;
+   *   <li>the name resolves through the well-known FQN table, so this only ever applies to JDK
+   *       types the table knows.
+   * </ul>
+   *
+   * @return the FQN, or {@code null} when the scope is a value
+   */
+  private static String classScopeFqn(Expression scopeExpr, TacBuilder b) {
+    if (!(scopeExpr instanceof NameExpr ne)) {
+      // A dotted scope (`java.lang.String`) already produced an FQN through the
+      // FieldAccessExpr path; only the bare form needs this.
+      return null;
+    }
+    String text = ne.getNameAsString();
+    if (text == null || text.isEmpty()) return null;
+    // A local or a parameter with this name is a VALUE receiver.
+    for (TacOperand.TacVar v : b.params()) {
+      if (v.name().equals(text)) return null;
+    }
+    for (TacOperand.TacVar v : b.locals()) {
+      if (v.name().equals(text)) return null;
+    }
+    // A field of the enclosing class with this name is a VALUE receiver too
+    // (`LOG.info(msg)` where LOG is a static field).
+    try {
+      TypeDeclaration<?> enclosing = scopeExpr.findAncestor(TypeDeclaration.class).orElse(null);
+      if (enclosing != null && fieldTypeIn(enclosing, text) != null) {
+        return null;
+      }
+    } catch (RuntimeException ignored) {
+      // best effort -- fall through to the FQN table
+    }
+    String fqn = TypeMapper.resolveWellKnownFqnStatic(text);
+    if (fqn == null || fqn.equals(text)) {
+      // Not a known type: it is a value receiver.
+      return null;
+    }
+    return fqn;
+  }
 
   private static String receiverTypeName(Expression scopeExpr, ExpressionResult scope) {
     // Prefer the FQN type of the receiver operand (e.g.
@@ -437,6 +983,25 @@ public final class ExpressionTranslator {
       if ("System.out".equals(f) || "System.err".equals(f)) {
         return "java.lang.System";
       }
+      // A scope that names a CLASS is a static call on a type name:
+      // `String.valueOf(x)`, `Integer.parseInt(s)`.
+      //
+      // JavaParser parses the scope of such a call as a FieldAccessExpr
+      // (`String`), not a TypeExpr, so returning the raw text produced the
+      // callee signature `String.valueOf/1`. The taint-passthrough catalogue
+      // is written in fully-qualified form (`java.lang.String.valueOf/`), so
+      // the passthrough never fired and the taint was dropped at the call --
+      // the analysis reported a clean program for code that flows user input
+      // into a command.
+      //
+      // Resolving the simple name through the well-known FQN table fixes that.
+      // A field access that is NOT a class name (a real instance field,
+      // `obj.field`) keeps the old behaviour: there the text is a field path,
+      // not a type name, and the table would not match it anyway.
+      String resolved = TypeMapper.resolveWellKnownFqnStatic(f);
+      if (resolved != null && !resolved.equals(f)) {
+        return resolved;
+      }
       return f;
     }
     // resolve the DECLARED type of a field reference used as a call
@@ -459,11 +1024,25 @@ public final class ExpressionTranslator {
       return declared;
     }
     if (scopeExpr instanceof NameExpr ne) {
-      // Fall back to the simple name so the legacy
-      // catalog patterns (InputSourcePatterns) still
-      // match on substring. Sink families won't match
-      // but they were already FQN-only.
-      return ne.getNameAsString();
+      // A bare name as the scope of a call: either a static call on a TYPE
+      // (`String.valueOf(x)` -- the scope is the class name `String`) or a
+      // call on a VARIABLE (`sb.append(x)`).
+      //
+      // The type-name case used to fall through to the bare simple name, so
+      // the callee signature came out as `String.valueOf/1` while the
+      // taint-passthrough catalogue is written in fully-qualified form
+      // (`java.lang.String.valueOf/`). The passthrough therefore never fired
+      // and the taint was dropped at the call.
+      //
+      // The well-known FQN table resolves the type-name case. A variable
+      // scope is not in that table, so it keeps the bare name -- which is
+      // what the legacy catalogue patterns (InputSourcePatterns) match on.
+      String simple = ne.getNameAsString();
+      String resolved = TypeMapper.resolveWellKnownFqnStatic(simple);
+      if (resolved != null && !resolved.equals(simple)) {
+        return resolved;
+      }
+      return simple;
     }
     return "scope";
   }
@@ -553,6 +1132,15 @@ public final class ExpressionTranslator {
     for (Expression arg : oce.getArguments()) {
       argOps.add(translate(arg, b).operand());
     }
+    // An ANONYMOUS class: `new Runnable() { public void run() {...} }`.
+    //
+    // The class body declares real methods, and those methods can hold a
+    // vulnerability. Without lowering them, the body is invisible -- and it is
+    // invisible SILENTLY, because the `new` itself is perfectly well modelled.
+    // So the body is translated into its own functions.
+    if (oce.getAnonymousClassBody().isPresent()) {
+      owner.translateAnonymousType(oce.getAnonymousClassBody().get(), b);
+    }
     // Preserve the textual type-parameters by
     // calling asString() on the AST type rather than
     // running it through TypeMapper. TypeMapper
@@ -599,7 +1187,8 @@ public final class ExpressionTranslator {
     // PREDICTABLE_KEY_PASSWORD detects a literal-initialized
     // char[]/byte[] as a likely key/password).
     if (ace.getInitializer().isPresent()) {
-      int n = ace.getInitializer().get().getValues().size();
+      com.github.javaparser.ast.expr.ArrayInitializerExpr init = ace.getInitializer().get();
+      int n = init.getValues().size();
       b.emit(
           TacInstruction.builder(TacInstruction.Kind.NEWARRAY)
               .dest(dest)
@@ -607,6 +1196,10 @@ public final class ExpressionTranslator {
               .lhs1(TacOperand.Const.ofInt(n))
               .line(TacTranslator.nodeLine(ace))
               .build());
+      // The elements have to actually reach the array. Without the stores the
+      // initializer's values were dropped and a later arr[0] read produced a
+      // clean value even when the initializer carried attacker-controlled data.
+      storeArrayInitializerElements(init, dest, component, b);
     } else if (ace.getLevels().size() == 1) {
       ExpressionResult size = translate(ace.getLevels().get(0).getDimension().orElseThrow(), b);
       b.emit(
@@ -644,8 +1237,11 @@ public final class ExpressionTranslator {
    * resulting array is at least shaped for downstream checkers (e.g. {@link
    * org.plumb.dfa.checker.PredictableKeyPasswordCheck}).
    *
-   * <p>The individual element values are not lowered; the dataflow engine reasons about array
-   * elements through {@code ARRAYLOAD}/{@code ARRAYSTORE} when the user code reads or writes them.
+   * <p>Each element is then stored into the fresh array with an {@code ARRAYSTORE}, so the values
+   * actually reach the array. Dropping them (the earlier behaviour) silently deleted every element
+   * of the initializer: a tainted element became unreachable, and a later {@code arr[0]} read
+   * produced a clean value. The array would then look empty to the dataflow engine even though the
+   * program had put attacker-controlled data in it.
    */
   private ExpressionResult translateArrayInitializer(
       com.github.javaparser.ast.expr.ArrayInitializerExpr aie, TacBuilder b, TacType component) {
@@ -659,7 +1255,64 @@ public final class ExpressionTranslator {
             .lhs1(TacOperand.Const.ofInt(n))
             .line(TacTranslator.nodeLine(aie))
             .build());
+    storeArrayInitializerElements(aie, dest, component, b);
     return new ExpressionResult(dest, arrayType);
+  }
+
+  /**
+   * The component type of a nested array initializer.
+   *
+   * <p>Derived from the OUTER array's component type: in {@code String[][] x = {{"a"}}} the outer
+   * component type is {@code String[]}, so the nested array's component type is {@code String}.
+   * When the outer component type is unknown there is nothing to derive from, so the type stays
+   * unknown.
+   *
+   * @param outerComponent the outer array's component type
+   * @return the component type of the nested array
+   */
+  private TacType nestedComponentType(TacType outerComponent) {
+    if (outerComponent == null) return TacType.UNKNOWN;
+    if (outerComponent.kind() == TacType.Kind.ARRAY) {
+      return outerComponent.arrayComponent();
+    }
+    return TacType.UNKNOWN;
+  }
+
+  /**
+   * Store each value of an array initializer into the freshly allocated array.
+   *
+   * <p>Emits one {@code ARRAYSTORE} per element, in source order, using the element's own index as
+   * the constant index. A nested initializer ({@code {a, {b, c}}}) recurses, so a nested array
+   * keeps its own elements rather than becoming an opaque value.
+   *
+   * @param aie the initializer expression
+   * @param array the destination array operand
+   * @param b the builder to emit into
+   */
+  private void storeArrayInitializerElements(
+      com.github.javaparser.ast.expr.ArrayInitializerExpr aie,
+      TacOperand.TacVar array,
+      TacType outerComponent,
+      TacBuilder b) {
+    List<com.github.javaparser.ast.expr.Expression> values = aie.getValues();
+    for (int i = 0; i < values.size(); i++) {
+      com.github.javaparser.ast.expr.Expression value = values.get(i);
+      ExpressionResult stored;
+      if (value instanceof com.github.javaparser.ast.expr.ArrayInitializerExpr nested) {
+        // A nested initializer is itself an array: allocate it, then store its
+        // own elements, and store the resulting array into the outer one.
+        stored = translateArrayInitializer(nested, b, nestedComponentType(outerComponent));
+      } else {
+        stored = translate(value, b);
+      }
+      b.emit(
+          TacInstruction.builder(TacInstruction.Kind.ARRAYSTORE)
+              .lhs1(array)
+              .lhs2(TacOperand.Const.ofInt(i))
+              .dest(stored.operand())
+              .line(TacTranslator.nodeLine(value))
+              .build());
+    }
   }
 
   private ExpressionResult translateArrayAccess(ArrayAccessExpr aae, TacBuilder b) {
@@ -836,7 +1489,13 @@ public final class ExpressionTranslator {
     // program's function table held several functions with the same name.
     // Anything that resolves a lambda BY NAME then got an arbitrary answer.
     String lambdaName = owner.nextLambdaName();
-    String signature = lambdaName + "(" + le.getParameters().size() + ")";
+    // The variables the lambda body captures from the enclosing scope. A
+    // capture is a real parameter of the lowered function -- that is how a
+    // compiler lowers it, and it is what keeps the captured value's taint
+    // alive across the function boundary.
+    List<TacOperand.TacVar> captures = capturedVariables(le, b);
+    int lambdaArity = le.getParameters().size() + captures.size();
+    String signature = lambdaName + "(" + lambdaArity + ")";
     TacBuilder.FunctionSpec spec =
         new TacBuilder.FunctionSpec(lambdaName, signature, TacType.UNKNOWN);
     TacBuilder lambdaB = new TacBuilder(spec, List.of());
@@ -846,6 +1505,11 @@ public final class ExpressionTranslator {
     for (var p : le.getParameters()) {
       TacType pt = TypeMapper.map(p.getType());
       lambdaB.params().add(new TacOperand.TacVar(p.getNameAsString(), pt, false));
+    }
+    // The captured variables become the lambda function's remaining
+    // parameters, in the order they were captured.
+    for (TacOperand.TacVar capture : captures) {
+      lambdaB.params().add(capture);
     }
     // Body: either a BlockStmt or a single expression
     var body = le.getBody();
@@ -885,10 +1549,19 @@ public final class ExpressionTranslator {
     // function engine can read it but for the first pass we don't
     // model capture.
     argOps.add(TacOperand.Const.ofNull());
+    // The captured variables follow, in the order the lambda function
+    // declares them. Passing them is what carries their taint into the
+    // lambda body: without it the captured value was a synthetic UNKNOWN
+    // local inside the lambda, the taint stopped at the lambda boundary,
+    // and a program that ran attacker-controlled input through a lambda
+    // into a command was reported as clean.
+    for (TacOperand.TacVar capture : captures) {
+      argOps.add(capture);
+    }
     b.emit(
         TacInstruction.builder(TacInstruction.Kind.CALL)
             .dest(dest)
-            .calleeSig("scope." + lambdaName + "/" + le.getParameters().size())
+            .calleeSig("scope." + lambdaName + "/" + lambdaArity)
             .args(argOps)
             .line(TacTranslator.nodeLine(le))
             .build());
@@ -896,6 +1569,65 @@ public final class ExpressionTranslator {
     // a "binding" so the lambda can be looked up by the
     // program-wide binding table once a user var aliases it.
     return ExpressionResult.ofLambda(dest, lambdaName);
+  }
+
+  /**
+   * The enclosing-scope variables a lambda body captures.
+   *
+   * <p>A lambda that reads a local of the enclosing method captures it. A compiler lowers that
+   * capture into a parameter of the lowered function, and the lowered call passes the value. This
+   * method finds the captured variables so the TAC can do the same.
+   *
+   * <p>Without the capture the captured name resolved to a synthetic UNKNOWN local inside the
+   * lambda body: the value's taint stopped at the lambda boundary, and a program that ran
+   * attacker-controlled input through a lambda into a command was reported as clean.
+   *
+   * <p>The scan covers the names the body reads. A name that is a lambda's OWN parameter, or a
+   * local declared inside the body, is not a capture.
+   *
+   * @param le the lambda expression
+   * @param enclosing the builder of the enclosing scope
+   * @return the captured variables, in the order they were first seen
+   */
+  private List<TacOperand.TacVar> capturedVariables(LambdaExpr le, TacBuilder enclosing) {
+    List<TacOperand.TacVar> captures = new java.util.ArrayList<>();
+    java.util.Set<String> ownNames = new java.util.LinkedHashSet<>();
+    for (var p : le.getParameters()) {
+      ownNames.add(p.getNameAsString());
+    }
+    // A local declared inside the body shadows the enclosing one.
+    le.findAll(com.github.javaparser.ast.body.VariableDeclarator.class)
+        .forEach(v -> ownNames.add(v.getNameAsString()));
+    for (com.github.javaparser.ast.expr.NameExpr ne :
+        le.findAll(com.github.javaparser.ast.expr.NameExpr.class)) {
+      String name = ne.getNameAsString();
+      if (ownNames.contains(name)) continue;
+      TacOperand.TacVar found = null;
+      for (TacOperand.TacVar v : enclosing.params()) {
+        if (v.name().equals(name)) {
+          found = v;
+          break;
+        }
+      }
+      if (found == null) {
+        for (TacOperand.TacVar v : enclosing.locals()) {
+          if (v.name().equals(name)) {
+            found = v;
+            break;
+          }
+        }
+      }
+      if (found == null) continue;
+      boolean already = false;
+      for (TacOperand.TacVar c : captures) {
+        if (c.name().equals(found.name())) {
+          already = true;
+          break;
+        }
+      }
+      if (!already) captures.add(found);
+    }
+    return captures;
   }
 
   private void writeLhs(Expression target, TacOperand value, TacBuilder b, AssignExpr src) {
@@ -964,6 +1696,13 @@ public final class ExpressionTranslator {
       }
       TacOperand lhs1This =
           thisRecv != null ? thisRecv : new TacOperand.TacVar("this", TacType.UNKNOWN, false);
+      // A STATIC field belongs to the class. Bind the class identity as
+      // the receiver so the dataflow engine keys the field's state on the
+      // class -- the same key the read path uses.
+      TacOperand staticRecv = fieldReceiver(null, name, b);
+      if (staticRecv != null) {
+        lhs1This = staticRecv;
+      }
       b.emit(
           TacInstruction.builder(TacInstruction.Kind.FIELDSTORE)
               .dest(value)

@@ -49,8 +49,12 @@ import org.slf4j.LoggerFactory;
  * ParsedSource} per source file.
  *
  * <p>The parser is configured with UTF-8 source encoding by default and a language level pinned to
- * Java 17. Records / sealed types / pattern matching are all enabled. Callers that need a different
- * level / encoding should use the appropriate constructor.
+ * {@link JavaLanguageLevel#DEFAULT} (Java 21, the newest level JavaParser names explicitly).
+ * Records / sealed types / pattern matching are all enabled. Callers that need a different level /
+ * encoding should use the appropriate constructor.
+ *
+ * <p><b>Java 8 through Java 25 are all supported.</b> See {@link JavaLanguageLevel#resolve(String)}
+ * for the mapping from a build description's level string to a parser level.
  *
  * <p><b>Type and symbol resolution.</b> Pass a {@link TypeSolver} to the constructor (or call
  * {@link #withTypeSolver(TypeSolver)}) and the parser attaches a {@link JavaSymbolSolver} to the
@@ -76,9 +80,16 @@ public final class JavaSourceParser {
   private final TypeSolver typeSolver;
   private final Charset sourceEncoding;
 
+  /**
+   * The default parser: the default language level, UTF-8, and a JDK-only type solver.
+   *
+   * <p>The level is {@link JavaLanguageLevel#DEFAULT} (Java 21) rather than a hard-coded older
+   * level, so that a caller who does not care about the level still gets one that parses everything
+   * a modern JDK accepts.
+   */
   public JavaSourceParser() {
     this(
-        ParserConfiguration.LanguageLevel.JAVA_17,
+        JavaLanguageLevel.DEFAULT,
         StandardCharsets.UTF_8,
         new CombinedTypeSolver(new ReflectionTypeSolver()));
   }
@@ -131,7 +142,10 @@ public final class JavaSourceParser {
    *
    * <p>The parser's language level is determined by the first non-null {@link
    * JavaModule#languageLevel} value; if all modules report null, falls back to {@link
-   * ParserConfiguration.LanguageLevel#JAVA_17}. The source encoding follows the same rule.
+   * JavaLanguageLevel#DEFAULT} (Java 21). The source encoding follows the same rule.
+   *
+   * <p>Java 8 through Java 25 are all accepted; see {@link JavaLanguageLevel#resolve(String)} for
+   * the mapping.
    *
    * <p>An empty or null {@code modules} list is allowed; the resulting parser behaves identically
    * to the JDK-only default constructor.
@@ -140,12 +154,42 @@ public final class JavaSourceParser {
     this(level, deriveEncoding(modules), buildTypeSolverFor(modules));
   }
 
-  /** Convenience overload that picks a default language level. */
+  /**
+   * Convenience overload that derives the language level from the modules.
+   *
+   * <p>This is the constructor that makes the build description's language level actually take
+   * effect: the first module that declares one wins. Before this was wired up, the level was
+   * carried all the way from the build description into {@link JavaModule#languageLevel()} and then
+   * ignored -- the parser always ran at {@code JAVA_17}, so a project targeting Java 21 failed to
+   * parse with "switch patterns not supported".
+   */
   public JavaSourceParser(List<JavaModule> modules) {
-    this(
-        ParserConfiguration.LanguageLevel.JAVA_17,
-        deriveEncoding(modules),
-        buildTypeSolverFor(modules));
+    this(resolveLanguageLevel(modules), deriveEncoding(modules), buildTypeSolverFor(modules));
+  }
+
+  /**
+   * The language level implied by the given modules.
+   *
+   * <p>The first module that declares a level wins. An unrecognised level falls back to the default
+   * and is logged, rather than failing the whole scan -- a typo in the build description should not
+   * stop an analysis, but it should be visible.
+   */
+  static ParserConfiguration.LanguageLevel resolveLanguageLevel(List<JavaModule> modules) {
+    if (modules == null) return JavaLanguageLevel.DEFAULT;
+    for (JavaModule m : modules) {
+      if (m == null) continue;
+      String declared = m.languageLevel();
+      if (declared == null || declared.isBlank()) continue;
+      if (!JavaLanguageLevel.isKnown(declared)) {
+        LOG.warn(
+            "Unrecognised Java language level '{}' on module '{}'; falling back to {}",
+            declared,
+            m.name(),
+            JavaLanguageLevel.DEFAULT);
+      }
+      return JavaLanguageLevel.resolve(declared);
+    }
+    return JavaLanguageLevel.DEFAULT;
   }
 
   /**

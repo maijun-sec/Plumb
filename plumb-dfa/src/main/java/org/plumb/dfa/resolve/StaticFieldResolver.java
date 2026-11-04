@@ -26,7 +26,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -89,15 +88,19 @@ public final class StaticFieldResolver {
     }
   }
 
+  /**
+   * Every class the {@link SourcePathResolver} indexed, with the file it came from.
+   *
+   * <p><b>Why this reuses the index instead of walking the tree.</b> The resolver used to do its
+   * own {@code Files.walk} over the project root, which meant every {@code .java} file was read and
+   * regex-scanned TWICE -- once by {@link SourcePathResolver#index()} and once here. The second
+   * walk was also not covered by the resolver's file budget, so pointing the resolver at a large
+   * tree still produced an unbounded read. The index already knows the files; use it.
+   */
   private Iterable<Map.Entry<String, Path>> allClasses() {
     java.util.List<Map.Entry<String, Path>> out = new java.util.ArrayList<>();
-    try (var stream = Files.walk(sources.projectRoot())) {
-      stream
-          .filter(Files::isRegularFile)
-          .filter(p -> p.toString().toLowerCase(Locale.ROOT).endsWith(".java"))
-          .forEach(p -> collectInto(out, p));
-    } catch (IOException ignore) {
-      // best effort — partial index is fine
+    for (Path p : sources.indexedFiles()) {
+      collectInto(out, p);
     }
     return out;
   }

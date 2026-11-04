@@ -73,8 +73,29 @@ public final class SarifEmitter {
 
   private final Writer out;
 
+  /**
+   * The completeness of the analysis that produced the findings, or {@code null} when nothing is
+   * known about it.
+   *
+   * <p>A report that says "no findings" and a report that says "the analysis was cut short" are
+   * different statements, and only the first one is safe to act on. SARIF has a standard place for
+   * the second: {@code invocations[].executionSuccessful} plus {@code toolExecutionNotifications}.
+   */
+  private final AnalysisCompleteness completeness;
+
   public SarifEmitter(Writer out) {
+    this(out, null);
+  }
+
+  /**
+   * An emitter that records how complete the analysis was.
+   *
+   * @param out where to write
+   * @param completeness the completeness record, or {@code null} for "not known"
+   */
+  public SarifEmitter(Writer out, AnalysisCompleteness completeness) {
     this.out = out;
+    this.completeness = completeness;
   }
 
   public void emit(List<Finding> findings) throws IOException {
@@ -94,6 +115,7 @@ public final class SarifEmitter {
     sb.append(',');
     kv(sb, "informationUri", TOOL_INFO_URI);
     sb.append("}},");
+    emitInvocations(sb);
     sb.append("\"results\":[");
     boolean first = true;
     for (Finding f : findings) {
@@ -106,6 +128,31 @@ public final class SarifEmitter {
     sb.append("]}");
     out.write(sb.toString());
     out.flush();
+  }
+
+  /**
+   * The {@code invocations} array: whether the analysis completed, and what was skipped.
+   *
+   * <p>It is emitted only when something is known, so a report from a caller that has no
+   * completeness record is byte-identical to what it was before.
+   */
+  private void emitInvocations(StringBuilder sb) {
+    if (completeness == null) return;
+    sb.append("\"invocations\":[{");
+    kv(sb, "executionSuccessful", completeness.complete() ? "true" : "false");
+    if (!completeness.notes().isEmpty()) {
+      sb.append(",\"toolExecutionNotifications\":[");
+      boolean first = true;
+      for (String note : completeness.notes()) {
+        if (!first) sb.append(',');
+        first = false;
+        sb.append("{\"level\":\"warning\",\"message\":{\"text\":");
+        jsonString(sb, note);
+        sb.append("}}");
+      }
+      sb.append(']');
+    }
+    sb.append("}],");
   }
 
   private static void emitResult(StringBuilder sb, Finding f) {
@@ -222,6 +269,17 @@ public final class SarifEmitter {
 
   private static void kv(StringBuilder sb, String k, String v) {
     sb.append('"').append(esc(k)).append("\":\"").append(esc(v)).append('"');
+  }
+
+  /**
+   * A JSON string literal.
+   *
+   * <p>Separate from {@link #kv} because a value is not always a plain string: the invocation
+   * notifications carry a nested object, and the boolean {@code executionSuccessful} is not a
+   * string at all.
+   */
+  private static void jsonString(StringBuilder sb, String v) {
+    sb.append('"').append(esc(v)).append('"');
   }
 
   private static String esc(String s) {

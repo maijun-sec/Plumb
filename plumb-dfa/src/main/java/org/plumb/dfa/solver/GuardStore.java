@@ -22,7 +22,6 @@
 package org.plumb.dfa.solver;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,19 +36,29 @@ import java.util.Set;
  * same flat string form the bridge speaks, so a single var name is enough). Values are the union of
  * predicates the various checkers have recorded for that variable.
  *
- * <p>The store is single-threaded: the engine calls checkers in a serial RPO order so the store
- * only needs the per-function lifecycle hooks. The engine clears the store between runs.
+ * <p>The store is shared by the whole run, so it must survive the parallel worklist: the engine
+ * analyses several functions at once and any checker may record or query a guard. The map is a
+ * {@link java.util.concurrent.ConcurrentHashMap} and the predicate lists are copy-on-write, so a
+ * reader never sees a half-updated list. The engine clears the store between runs.
  */
 public final class GuardStore {
 
-  /** Variable name → predicates known to hold. */
-  private final Map<String, List<String>> byVar = new LinkedHashMap<>();
+  /**
+   * Variable name → predicates known to hold.
+   *
+   * <p>Concurrent, because the parallel worklist has several workers recording guards at the same
+   * time. The value is a copy-on-write list: a worker builds a new list and publishes it, so a
+   * reader that already holds the old list keeps a consistent snapshot instead of seeing an {@link
+   * ArrayList} mutate under it.
+   */
+  private final Map<String, List<String>> byVar = new java.util.concurrent.ConcurrentHashMap<>();
 
   /** Total predicate count, for the {@link #size()} probe. */
-  private int totalPredicates = 0;
+  private final java.util.concurrent.atomic.AtomicInteger totalPredicates =
+      new java.util.concurrent.atomic.AtomicInteger();
 
   /** Optional bridge, set lazily. Used by {@link #impliedGuard}. */
-  private SolverZ3Bridge bridge;
+  private volatile SolverZ3Bridge bridge;
 
   public GuardStore() {}
 
@@ -61,8 +70,14 @@ public final class GuardStore {
     if (var == null || var.isBlank() || predicate == null || predicate.isBlank()) {
       return;
     }
-    byVar.computeIfAbsent(var, k -> new ArrayList<>()).add(predicate);
-    totalPredicates++;
+    byVar.compute(
+        var,
+        (k, existing) -> {
+          List<String> next = new ArrayList<>(existing == null ? List.of() : existing);
+          next.add(predicate);
+          return List.copyOf(next);
+        });
+    totalPredicates.incrementAndGet();
   }
 
   public List<String> guardsFor(String var) {
@@ -74,12 +89,12 @@ public final class GuardStore {
   }
 
   public int size() {
-    return totalPredicates;
+    return totalPredicates.get();
   }
 
   public void clear() {
     byVar.clear();
-    totalPredicates = 0;
+    totalPredicates.set(0);
   }
 
   /**

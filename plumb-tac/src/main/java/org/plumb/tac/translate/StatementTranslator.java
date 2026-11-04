@@ -43,6 +43,7 @@ import com.github.javaparser.ast.stmt.SwitchStmt;
 import com.github.javaparser.ast.stmt.SynchronizedStmt;
 import com.github.javaparser.ast.stmt.ThrowStmt;
 import com.github.javaparser.ast.stmt.TryStmt;
+import com.github.javaparser.ast.stmt.UnparsableStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import com.github.javaparser.ast.stmt.YieldStmt;
 import java.util.ArrayList;
@@ -96,6 +97,21 @@ public final class StatementTranslator {
     }
     if (s instanceof ExpressionStmt es) {
       translateExprStmt(es, b);
+      return;
+    }
+    if (s instanceof com.github.javaparser.ast.stmt.LocalClassDeclarationStmt lcds) {
+      // A LOCAL class: a class declared inside a method body.
+      //
+      // Its methods are real code and can hold a vulnerability, so they are lowered
+      // into their own functions. The class is named after the enclosing method, which
+      // is how the JVM names a local class (Outer$1Local) and how the translator names
+      // nested types, so the two do not collide.
+      owner.translateLocalType(lcds.getClassDeclaration(), b);
+      return;
+    }
+    if (s instanceof com.github.javaparser.ast.stmt.LocalRecordDeclarationStmt lrds) {
+      // A LOCAL record: the record analogue of a local class.
+      owner.translateLocalType(lrds.getRecordDeclaration(), b);
       return;
     }
     if (s instanceof IfStmt is) {
@@ -159,9 +175,33 @@ public final class StatementTranslator {
       return;
     }
     if (s instanceof YieldStmt ys) {
-      owner.exprs().translate(ys.getExpression(), b);
-      // We don't model yield's `result` return; just a debug breadcrumb.
-      LOG.debug("yield expression emitted (result not threaded back)");
+      // A `yield v;` hands a value to the enclosing switch EXPRESSION.
+      //
+      // The switch expression's lowering allocates a temp and publishes it as the yield
+      // target for the duration of its arms. So the yield is a MOVE of the yielded value
+      // into that temp -- which means the value's taint reaches the switch expression's
+      // result, and every taint checker downstream sees it.
+      //
+      // Before this was wired, the yield's value was evaluated and discarded, so a switch
+      // expression like `int n = switch (x) { case 1 -> tainted(); default -> 0; };` lost
+      // the taint entirely: the finding was simply missing. That is the worst kind of bug
+      // for a taint engine -- a silent false negative.
+      ExpressionResult yielded = owner.exprs().translate(ys.getExpression(), b);
+      TacOperand.TacVar target = owner.exprs().yieldTarget();
+      if (target != null) {
+        b.emit(
+            TacInstruction.builder(TacInstruction.Kind.MOVE)
+                .dest(target)
+                .lhs1(yielded.operand())
+                .line(TacTranslator.nodeLine(ys))
+                .build());
+      } else {
+        // No switch expression in scope. Java rejects this, so the only way to reach it is
+        // a `yield` inside a switch STATEMENT -- where it is also a compile error. The
+        // value is still evaluated (so its side effects are preserved), but there is
+        // nowhere to put it.
+        LOG.debug("yield outside a switch expression: value evaluated but not assigned");
+      }
       return;
     }
     if (s instanceof ExplicitConstructorInvocationStmt ecis) {
@@ -178,10 +218,34 @@ public final class StatementTranslator {
               .build());
       return;
     }
-    LOG.debug(
-        "Unhandled statement: {} at line {}",
-        s.getClass().getSimpleName(),
-        TacTranslator.nodeLine(s));
+    if (s instanceof UnparsableStmt us) {
+      // A statement JavaParser could not parse.
+      //
+      // WHY THIS IS ITS OWN CASE. An unparsable statement means the SOURCE is
+      // broken -- the parser recovered and produced a placeholder for code it
+      // could not read. That is a different fact from "the frontend does not
+      // support this construct": the first is a defect in the input, the second
+      // is a limitation of the tool. Conflating them would let a consumer tell
+      // "this file has broken code" from "this file uses a construct I do not
+      // handle" -- and those need different responses.
+      //
+      // It is reported as a PARSE_PROBLEM rather than an UNHANDLED_NODE, and it
+      // is reported on the FUNCTION, so the problem channel says "this function's
+      // source is incomplete" instead of implying the translator tried and gave up.
+      b.reportParseProblem(
+          "UnparsableStmt: the parser could not read this statement",
+          TacTranslator.nodeLine(us),
+          TacTranslator.nodeColumn(us));
+      return;
+    }
+    // Unhandled: report the gap.
+    //
+    // A statement we cannot model is worse than an expression we cannot model: the statement's
+    // effect on the data flow is simply absent, so a tainted value assigned inside it is lost
+    // with no trace. Recording it on the IR lets the caller see the analysis is incomplete.
+    String nodeClass = s.getClass().getSimpleName();
+    b.reportUnhandled(nodeClass, TacTranslator.nodeLine(s), TacTranslator.nodeColumn(s));
+    LOG.debug("Unhandled statement: {} at line {}", nodeClass, TacTranslator.nodeLine(s));
   }
 
   // ------------------------------------------------------------------
@@ -195,7 +259,15 @@ public final class StatementTranslator {
     owner.exprs().translate(e, b);
   }
 
-  private void translateVarDecl(VariableDeclarationExpr vde, TacBuilder b) {
+  /**
+   * Lower a variable declaration into locals plus the assignments that initialise them.
+   *
+   * <p>Package-visible because a {@code VariableDeclarationExpr} is an EXPRESSION in the AST, and
+   * it can appear where an expression is expected -- not only as a statement. The expression path
+   * in {@link ExpressionTranslator} routes here so that a declaration reached through an expression
+   * is lowered exactly like one reached through a statement, instead of silently becoming null.
+   */
+  void translateVarDecl(VariableDeclarationExpr vde, TacBuilder b) {
     for (var declarator : vde.getVariables()) {
       // The declared type is the whole type, not its element type. `getElementType()` returns
       // `int` for `int[] array`, which made every array local look like a scalar and hid the
@@ -247,6 +319,14 @@ public final class StatementTranslator {
           // later invokes {@code v.apply(...)}.
           if (init.lambdaSignature() != null) {
             owner.bindLambda(v.name(), init.lambdaSignature());
+          }
+          // A method reference is the same kind of deferred
+          // target, except that the target is an existing method
+          // rather than a synthetic lambda body. The binding lets
+          // the application site be rewritten into the call it
+          // actually is.
+          if (init.deferredTarget() != null) {
+            owner.bindDeferredTarget(v.name(), init.deferredTarget());
           }
         }
       }
@@ -782,6 +862,22 @@ public final class StatementTranslator {
           continue;
         }
         for (var labelExpr : entry.getLabels()) {
+          // Java 21 added pattern labels (`case String s ->`). A pattern label is a
+          // TYPE TEST, not a value to compare against: the condition is an INSTANCEOF
+          // and the pattern's variables are bound inside the arm's body.
+          if (labelExpr instanceof com.github.javaparser.ast.expr.PatternExpr pattern) {
+            TacOperand.TacVar test =
+                owner.modern().emitPatternTestForSwitch(pattern, disc, b, entry);
+            String next = (i + 1 < ss.getEntries().size()) ? caseLabels.get(i + 1) : lEnd;
+            b.emit(
+                TacInstruction.builder(TacInstruction.Kind.BRANCH)
+                    .lhs1(test)
+                    .trueLabel(caseLabels.get(i))
+                    .falseLabel(next)
+                    .line(TacTranslator.nodeLine(entry))
+                    .build());
+            continue;
+          }
           ExpressionResult label = owner.exprs().translate(labelExpr, b);
           TacOperand.TacVar cmp = b.newTemp(TacType.BOOLEAN);
           b.emit(
@@ -805,14 +901,37 @@ public final class StatementTranslator {
       // No label matched: jump to end.
       b.emit(TacInstruction.builder(TacInstruction.Kind.JUMP).label(lEnd).build());
       for (int i = 0; i < ss.getEntries().size(); i++) {
+        SwitchEntry entry = ss.getEntries().get(i);
         b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(caseLabels.get(i)).build());
-        for (Statement s : ss.getEntries().get(i).getStatements()) {
+        // A pattern label's variables are bound HERE, inside the arm's body, so that
+        // they are in scope only for this arm -- which is exactly Java's scoping rule.
+        bindSwitchPatternVariables(entry, disc, b);
+        for (Statement s : entry.getStatements()) {
           translate(s, b);
         }
       }
       b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(lEnd).build());
     } finally {
       switchEndLabel.set(prevSwitchEnd);
+    }
+  }
+
+  /**
+   * Binds the variables a switch arm's pattern declares.
+   *
+   * <p>Called at the start of the arm's body, so the binding is reachable only from that arm --
+   * which is Java's scoping rule for a pattern variable.
+   *
+   * <p>Only the arm's FIRST pattern label is bound. Java allows multiple labels on one arm ({@code
+   * case String s, Integer i ->}), and a variable declared in any of them is in scope for the arm;
+   * binding all of them is what makes the arm's body able to use them.
+   */
+  private void bindSwitchPatternVariables(
+      SwitchEntry entry, ExpressionResult selector, TacBuilder b) {
+    for (var labelExpr : entry.getLabels()) {
+      if (labelExpr instanceof com.github.javaparser.ast.expr.PatternExpr pattern) {
+        owner.modern().bindPatternVariablesForSwitch(pattern, selector, b, entry);
+      }
     }
   }
 

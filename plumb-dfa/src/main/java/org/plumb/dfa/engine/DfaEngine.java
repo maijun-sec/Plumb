@@ -140,6 +140,26 @@ public final class DfaEngine {
   private final int parallelism;
 
   /**
+   * The factory that produces a FRESH set of checkers for one worker thread.
+   *
+   * <p><b>Why the parallel path cannot share the checkers.</b> A checker is not stateless between
+   * functions: {@link DfaChecker#initFunction(AnalysisContext, org.plumb.tac.ir.TacFunction)}
+   * clears the per-function accumulators (the tainted variables, the taint paths, the field
+   * tracker, the trace builder) and the instruction walk fills them back in. Two workers sharing
+   * one checker instance would have one worker's {@code clear()} erase the other worker's facts in
+   * the middle of its walk, so the findings would depend on the thread interleaving -- and the run
+   * would lose findings, not gain them.
+   *
+   * <p>So each worker gets its OWN checker instances, built by this factory. The instances are
+   * equivalent (same rules, same config); they are simply not shared.
+   *
+   * <p>{@code null} means "no factory": the parallel path then runs with the shared list, which is
+   * only safe when the caller knows the checkers are thread-safe. {@link #DfaEngine(EngineConfig,
+   * List, String, Path, int, java.util.function.Supplier)} is the constructor that takes one.
+   */
+  private final java.util.function.Supplier<List<DfaChecker>> checkerFactory;
+
+  /**
    * Per-function source path map, keyed by enclosing class. Set by the caller (e.g. ScanRunner)
    * before {@link #run} to enable filePath-filling for merged programs where the synthetic {@code
    * MergedProgram.asProgram()} has no single source path. When null, the engine falls back to
@@ -159,11 +179,114 @@ public final class DfaEngine {
   private org.plumb.dfa.resolve.StaticFieldResolver staticFieldResolver;
 
   /**
+   * The budget for the current run, created fresh per {@code run} invocation.
+   *
+   * <p>It is created here rather than held for the engine's lifetime because a budget is a property
+   * of <em>a run</em>: the counters say how much work <em>this</em> analysis did, and the
+   * exhaustion record says where <em>this</em> analysis stopped. Reusing a budget across runs would
+   * make the second run's counters meaningless.
+   *
+   * <p>Volatile so the parallel workers see the published instance.
+   */
+  private volatile AnalysisBudget budget;
+
+  /**
+   * The time-bounded solver bridge for the current run, if one was created.
+   *
+   * <p>Kept so the run can report how many solver queries hit the timeout.
+   */
+  private volatile org.plumb.dfa.solver.TimeBoundedSolverBridge boundedSolver;
+
+  /**
+   * The module boundary of this run, when the analysis is limited to one module.
+   *
+   * <p>{@code null} means "the whole project is in scope". See {@link ModuleScope} for why a
+   * single-module analysis still reads the other modules.
+   */
+  private volatile ModuleScope moduleScope;
+
+  /**
+   * Limit the analysis to one module.
+   *
+   * <p>The other modules are still read: their functions are summarised so the call graph keeps
+   * crossing the boundary, and the taint keeps flowing into the module. What changes is that a
+   * finding is only reported when its SINK is inside the module.
+   *
+   * @param module the module id; {@code null} or blank means "the whole project"
+   * @return this engine
+   */
+  public DfaEngine withModuleScope(String module) {
+    this.moduleScope = ModuleScope.of(module);
+    return this;
+  }
+
+  /** The module scope of this run. Never null. */
+  public ModuleScope moduleScope() {
+    ModuleScope s = this.moduleScope;
+    return s == null ? ModuleScope.all() : s;
+  }
+
+  /**
+   * The per-run cache of control-flow graphs and analysis orders.
+   *
+   * <p>The analysis order is a whole-function walk, and it used to be recomputed for every checker.
+   * With the registered checker count in the dozens, a function was walked that many times to
+   * produce that many identical lists.
+   */
+  private volatile FunctionOrderCache orderCache;
+
+  /**
+   * The order cache for the current run.
+   *
+   * <p>Created per run, because a cache that outlived the run would keep the analysed functions'
+   * control-flow graphs alive.
+   */
+  public FunctionOrderCache orderCache() {
+    return orderCache;
+  }
+
+  /**
+   * The budget for the current run, or {@code null} before the run starts.
+   *
+   * <p>Exposed so a caller can read the exhaustion report after a run.
+   */
+  public AnalysisBudget budget() {
+    return budget;
+  }
+
+  /**
+   * The exhaustion record for the current run.
+   *
+   * <p>Returns {@code null} before a run has started. A non-null report with {@link
+   * AnalysisBudget.BudgetReport#complete()} false means the analysis was incomplete -- and it says
+   * which dimension ran out and on what.
+   */
+  public AnalysisBudget.BudgetReport budgetReport() {
+    AnalysisBudget b = budget;
+    return b == null ? null : b.report();
+  }
+
+  /**
    * Install the {@link org.plumb.dfa.resolve.StaticFieldResolver} used by the engine. Volatile so
    * parallel workers see the published value. Idempotent.
    */
   public void setStaticFieldResolver(org.plumb.dfa.resolve.StaticFieldResolver r) {
     this.staticFieldResolver = r;
+  }
+
+  /**
+   * The installed {@link org.plumb.dfa.resolve.StaticFieldResolver}, or {@code null}.
+   *
+   * <p><b>Why a test needs to see this.</b> Whether the engine reads source is not observable in
+   * its results: a resolver that is installed and one that is not both produce a working analysis,
+   * and the difference only shows up as slightly different FIELDLOAD shapes. That makes the
+   * boundary untestable, and an untestable boundary is a boundary that erodes. This accessor makes
+   * it visible: {@code null} means "this analysis reads no source", non-{@code null} means it does.
+   *
+   * @return the installed resolver, or {@code null} if none is installed
+   */
+  public org.plumb.dfa.resolve.StaticFieldResolver staticFieldResolverForTest() {
+    return staticFieldResolver;
   }
 
   public DfaEngine(
@@ -175,7 +298,7 @@ public final class DfaEngine {
   }
 
   /**
-   * Full constructor. {@code parallelism} controls the worklist scheduler:
+   * Full constructor.
    *
    * <ul>
    *   <li>{@code 0} : sequential. Same as the 4-arg constructor.
@@ -184,7 +307,15 @@ public final class DfaEngine {
    *       are all summarised, it joins the ready queue.
    * </ul>
    *
-   * Negative values are clamped to 0 (sequential).
+   * <p>Negative values are clamped to 0 (sequential).
+   *
+   * <p><b>A parallel run needs its own checkers.</b> A checker carries per-function state, and
+   * {@link DfaChecker#initFunction(AnalysisContext, org.plumb.tac.ir.TacFunction)} clears it at
+   * every function boundary. Two workers sharing one checker instance would have one worker's clear
+   * erase the other's facts mid-walk, so the findings would depend on the thread interleaving --
+   * and the run would LOSE findings. This constructor therefore REFUSES a parallel run: use {@link
+   * #DfaEngine(EngineConfig, List, String, Path, int, java.util.function.Supplier)} and pass a
+   * factory that builds a fresh set per worker.
    */
   public DfaEngine(
       EngineConfig config,
@@ -192,11 +323,78 @@ public final class DfaEngine {
       String callGraphStrategyName,
       Path callGraphCachePath,
       int parallelism) {
+    this(config, checkers, callGraphStrategyName, callGraphCachePath, parallelism, null, false);
+  }
+
+  /**
+   * Full constructor with a per-worker checker factory.
+   *
+   * <p>The factory is what makes the parallel path CORRECT rather than merely fast: a checker
+   * carries per-function state, so two workers cannot share one instance. The factory produces a
+   * fresh, equivalent set for each worker thread.
+   *
+   * <p>When the factory is {@code null} the engine keeps the single shared list. That is correct
+   * for the sequential path, and for a parallel run whose checkers are known to be thread-safe.
+   *
+   * @param checkerFactory produces a fresh checker list for one worker; {@code null} to share
+   */
+  public DfaEngine(
+      EngineConfig config,
+      List<DfaChecker> checkers,
+      String callGraphStrategyName,
+      Path callGraphCachePath,
+      int parallelism,
+      java.util.function.Supplier<List<DfaChecker>> checkerFactory) {
+    this(
+        config,
+        checkers,
+        callGraphStrategyName,
+        callGraphCachePath,
+        parallelism,
+        checkerFactory,
+        true);
+  }
+
+  /**
+   * The single constructor every public constructor funnels into.
+   *
+   * @param factoryProvided whether the caller used the factory-taking constructor. It decides
+   *     whether a parallel run without a factory is a hard error.
+   */
+  private DfaEngine(
+      EngineConfig config,
+      List<DfaChecker> checkers,
+      String callGraphStrategyName,
+      Path callGraphCachePath,
+      int parallelism,
+      java.util.function.Supplier<List<DfaChecker>> checkerFactory,
+      boolean factoryProvided) {
     this.config = Objects.requireNonNull(config, "config");
     this.checkers = List.copyOf(Objects.requireNonNull(checkers, "checkers"));
     this.callGraphStrategyName = callGraphStrategyName == null ? "global" : callGraphStrategyName;
     this.callGraphCachePath = callGraphCachePath;
     this.parallelism = Math.max(0, parallelism);
+    if (this.parallelism > 0 && checkerFactory == null && !factoryProvided) {
+      throw new IllegalArgumentException(
+          "a parallel analysis needs a checker factory: a checker carries per-function state, and"
+              + " two workers sharing one instance would erase each other's facts mid-walk, so"
+              + " the findings would depend on the thread interleaving. Use the constructor that"
+              + " takes a Supplier<List<DfaChecker>> and return a fresh set per worker, or run"
+              + " sequentially.");
+    }
+    this.checkerFactory = checkerFactory;
+  }
+
+  /**
+   * The checkers one worker thread should use.
+   *
+   * <p>With a factory, every worker gets its own instances, because the checkers carry per-function
+   * state and cannot be shared. Without one, the shared list is used as-is.
+   */
+  private List<DfaChecker> checkersForWorker() {
+    if (checkerFactory == null) return checkers;
+    List<DfaChecker> fresh = checkerFactory.get();
+    return fresh == null ? checkers : fresh;
   }
 
   /** The configured parallelism (0 = sequential). */
@@ -218,55 +416,60 @@ public final class DfaEngine {
    * {@code MergedProgram.asProgram()} has no single source path, so the ScanRunner walks the
    * underlying sources and passes the per-file path map here. The engine applies the map during
    * {@code registerSourcePaths} (called from {@code run}).
+   *
+   * <p><b>This does NOT read any source.</b> The map is metadata: it says which file a function
+   * came from, so a finding can name it. Reading the file back would break the source-less contract
+   * this class exists to support; see {@link #withStaticFieldResolverRoot(Path)} for the one path
+   * that deliberately does look at source, and why it is opt-in.
    */
   public DfaEngine withFunctionSourcePaths(java.util.Map<String, java.nio.file.Path> paths) {
     this.functionSourcePaths = paths;
-    // lazily build a
-    // {@link StaticFieldResolver} keyed off the
-    // first source path. The resolver walks the
-    // project root and indexes every
-    // {@code public static final Foo = <literal>}
-    // field so FIELDLOAD on a class reference
-    // (Juliet's {@code Level.WARNING},
-    // {@code IO.STATIC_FIVE}) can attach a real
-    // parent instead of falling through to the
-    // orphan-SOURCE shape.
-    // Best-effort: if the static-field walk
-    // throws (rare — only on filesystem
-    // permission failures), the resolver stays
-    // null and FIELDLOADs fall back to the
-    // pre- orphan behaviour.
-    if (this.staticFieldResolver == null && paths != null && !paths.isEmpty()) {
-      java.nio.file.Path sample = null;
-      for (java.nio.file.Path p : paths.values()) {
-        if (p != null) {
-          sample = p;
-          break;
-        }
-      }
-      if (sample != null) {
-        java.nio.file.Path abs = sample.toAbsolutePath();
-        java.nio.file.Path root = chooseResolverRoot(abs);
-        if (root != null) {
-          try {
-            SourcePathResolver spr = new SourcePathResolver(root);
-            spr.index();
-            StaticFieldResolver sfr = new StaticFieldResolver(spr);
-            sfr.index();
-            this.staticFieldResolver = sfr;
-          } catch (Exception ignore) {
-            // Leave staticFieldResolver null;
-            // FIELDLOADs fall through to the
-            // orphan-SOURCE shape (pre-
-            // behaviour). The exception is
-            // swallowed because resolver
-            // failure is non-fatal — every
-            // FIELDLOAD just gets a
-            // parent-less SOURCE node and the
-            // analysis continues.
-          }
-        }
-      }
+    return this;
+  }
+
+  /**
+   * Opt in to cross-file {@code public static final} resolution against a source tree.
+   *
+   * <p><b>Why this is explicit rather than a side effect of {@link #withFunctionSourcePaths}.</b>
+   * The resolver reads {@code .java} files from disk. A consumer that loads IR from a file on a
+   * machine with no source must not have the analyser quietly walk whatever tree the IR's nominal
+   * path happens to sit in. Two things went wrong when this was implicit:
+   *
+   * <ul>
+   *   <li><b>It broke the contract.</b> The source-less consumer was reading source files off the
+   *       filesystem, which is precisely what "the analysis depends only on the IR" forbids. A
+   *       consumer on a different machine, or with the source deleted, silently lost the
+   *       resolution.
+   *   <li><b>It was unbounded.</b> The root was picked by walking up from the sample file, so a
+   *       file in a temporary directory resolved to the whole temporary tree. Tens of thousands of
+   *       files were read and regex-scanned, once per analysis.
+   * </ul>
+   *
+   * <p>The resolution itself is still useful -- it is what lets a {@code Level.WARNING} or {@code
+   * IO.STATIC_FIVE} FIELDLOAD attach a real parent instead of the orphan-SOURCE shape. So it stays,
+   * but the caller now says where the source is, and the walk is capped by {@link
+   * org.plumb.dfa.resolve.SourcePathResolver#MAX_INDEXED_FILES}.
+   *
+   * @param root the directory to index; {@code null} disables cross-file resolution
+   * @return this engine
+   */
+  public DfaEngine withStaticFieldResolverRoot(java.nio.file.Path root) {
+    if (root == null) {
+      this.staticFieldResolver = null;
+      return this;
+    }
+    try {
+      SourcePathResolver spr = new SourcePathResolver(root);
+      spr.index();
+      StaticFieldResolver sfr = new StaticFieldResolver(spr);
+      sfr.index();
+      this.staticFieldResolver = sfr;
+    } catch (Exception ignore) {
+      // Leave staticFieldResolver null; FIELDLOADs fall through to the
+      // orphan-SOURCE shape (pre- behaviour). The exception is
+      // swallowed because resolver failure is non-fatal: every
+      // FIELDLOAD just gets a parent-less SOURCE node and the
+      // analysis continues.
     }
     return this;
   }
@@ -280,57 +483,6 @@ public final class DfaEngine {
       return runParallel(program, parallelism);
     }
     return runSequential(program);
-  }
-
-  /**
-   * Pick the narrowest root the StaticFieldResolver can walk without timing out. Walks up from the
-   * input file's directory and prefers {@code <ancestor>/src/testcasesupport} (Juliet's IO helper
-   * root), then {@code <ancestor>/src} (Juliet's full tree, capped), then the file's own parent
-   * (single-file unit-test case). Returns {@code null} if no usable root can be found below the
-   * safety budget.
-   */
-  private static java.nio.file.Path chooseResolverRoot(java.nio.file.Path absSample) {
-    if (absSample == null) return null;
-    // 1. Walk up to the closest
-    // ancestor that has both a
-    // `testcases/` AND a
-    // `testcasesupport/` child —
-    // the Juliet layout. The
-    // resolver wants
-    // testcasesupport/ (small,
-    // contains IO.java + Helper.java,
-    // <100 files). For
-    // CWE89_*/s01/CWE89_*.java the
-    // walk reaches
-    // D:/work/tmp/Juliet_Java/src.
-    // Limit the walk to 8 levels to
-    // stay cheap on accidentally
-    // nested paths.
-    java.nio.file.Path cur = absSample.getParent();
-    for (int i = 0; i < 8 && cur != null; i++) {
-      boolean hasTestcases = java.nio.file.Files.isDirectory(cur.resolve("testcases"));
-      boolean hasSupport = java.nio.file.Files.isDirectory(cur.resolve("testcasesupport"));
-      if (hasTestcases && hasSupport) {
-        return cur.resolve("testcasesupport");
-      }
-      cur = cur.getParent();
-    }
-    // 2. Fallback — walk up 2
-    // levels and use the package
-    // root. For unit-test
-    // single-file cases (no
-    // siblings), this gives the
-    // resolver just the package
-    // contents (a handful of
-    // files), keeping the walk
-    // bounded.
-    if (absSample.getParent() != null && absSample.getParent().getParent() != null) {
-      return absSample.getParent().getParent();
-    }
-    if (absSample.getParent() != null) {
-      return absSample.getParent();
-    }
-    return null;
   }
 
   /**
@@ -378,9 +530,13 @@ public final class DfaEngine {
     //    the worklist here. The duplication is intentional and
     //    documented; refactor when a 3rd entry point appears.
     FindingReporter reporter = new FindingReporter();
-    AnalysisContext ctx = new AnalysisContext(programView, cg, config, reporter);
+    this.budget = new AnalysisBudget(config.tuning());
+    this.orderCache = new FunctionOrderCache();
+    AnalysisContext ctx =
+        new AnalysisContext(programView, cg, config, reporter, null, null, this.budget);
     ctx.setStaticFieldResolver(staticFieldResolver);
     reporter.setContext(ctx);
+    reporter.setModuleScope(moduleScope());
     // Build a per-enclosing-class source-path map from the merged
     // programs so findings can locate the original .java file. The
     // synthetic MergedProgram.asProgram() has a null sourcePath, so
@@ -398,6 +554,15 @@ public final class DfaEngine {
         if (enc != null && !enc.isEmpty()) {
           crossTuSourcePaths.putIfAbsent(enc, sp);
         }
+        // The SIGNATURE is registered as well, because a TOP-LEVEL function has no
+        // enclosing class: a Kotlin or Scala file-level function, or a Java file's
+        // package-private helper declared outside any class. Registering only by
+        // enclosing class leaves those functions unresolved, and a finding in one is
+        // reported as file="unknown".
+        String sig = fn.signature();
+        if (sig != null && !sig.isEmpty()) {
+          crossTuSourcePaths.putIfAbsent(sig, sp);
+        }
       }
     }
     registerSourcePaths(ctx, programView, crossTuSourcePaths);
@@ -411,12 +576,7 @@ public final class DfaEngine {
     }
     // Wire the solver bridge (from any TaintedCheckerBase) into the
     // cross-checker guard store so the guard tracking sees Z3 results.
-    for (DfaChecker c : checkers) {
-      if (c instanceof org.plumb.dfa.taint.TaintedCheckerBase tcb && tcb.solverBridge() != null) {
-        ctx.guardStore().setBridge(tcb.solverBridge());
-        break;
-      }
-    }
+    ctx.guardStore().setBridge(boundedSolverBridge(ctx));
     // Pre-pass: warm up the MethodSummary cache so every checker's
     // first checkInstruction sees a pre-populated summary for any
     // function it may call.
@@ -479,7 +639,96 @@ public final class DfaEngine {
         summaryCount,
         reporter.size(),
         ms);
+    logBudgetReport(ctx);
     return reporter;
+  }
+
+  /**
+   * The order cache for the current run.
+   *
+   * <p>Falls back to creating one when the engine was used without one -- a context built by hand,
+   * or a run that has not started yet. The fallback keeps the code path working rather than
+   * failing, and it is correct (just slower) because the cache is a pure optimisation.
+   */
+  private FunctionOrderCache orderCacheFor(AnalysisContext ctx) {
+    FunctionOrderCache c = this.orderCache;
+    if (c == null) {
+      c = new FunctionOrderCache();
+      this.orderCache = c;
+    }
+    return c;
+  }
+
+  /**
+   * Logs the budget's exhaustion record at the end of a run.
+   *
+   * <p>The record is logged at WARN when the analysis was incomplete, so it is visible in the build
+   * output without being a finding. An incomplete analysis and a complete one produce the same
+   * findings so far as the user can tell, so this line is the only signal that something was
+   * skipped.
+   */
+  private void logBudgetReport(AnalysisContext ctx) {
+    AnalysisBudget b = budget;
+    if (b == null) return;
+    // Fold the solver's own timeout counter into the budget record. The solver bridge is
+    // bounded by z3_timeout_ms, so a query that timed out is a budget exhaustion that
+    // happened inside the bridge rather than in the engine -- but it is the same kind of
+    // event and must be visible in the same report.
+    org.plumb.dfa.solver.TimeBoundedSolverBridge solver = this.boundedSolver;
+    if (solver != null && solver.timeouts() > 0) {
+      b.record(
+          AnalysisBudget.Dimension.SOLVER_TIME,
+          solver.timeoutMs(),
+          solver.timeouts() + " solver quer" + (solver.timeouts() == 1 ? "y" : "ies"));
+    }
+    // The same for the summary cache: a refused summary means a function's cross-function
+    // facts did not reach its callers, so the analysis was incomplete. The cache's own
+    // capacity is the limit that was reached.
+    if (ctx != null && ctx.summaryCache() != null) {
+      long overflow = ctx.summaryCache().overflowCount();
+      if (overflow > 0) {
+        b.record(
+            AnalysisBudget.Dimension.SUMMARY_CACHE_SIZE,
+            ctx.summaryCache().capacity(),
+            overflow + " summar" + (overflow == 1 ? "y" : "ies") + " refused (cache full)");
+      }
+    }
+    AnalysisBudget.BudgetReport r = b.report();
+    if (r.complete()) {
+      LOG.info("Analysis budget: complete within all limits");
+    } else {
+      LOG.warn("Analysis budget: {}", r.summary());
+    }
+  }
+
+  /**
+   * The solver bridge for this run, wrapped so each query is time-bounded.
+   *
+   * <p>Finds the first checker that offers a solver bridge and wraps it in a {@link
+   * TimeBoundedSolverBridge} carrying the configured {@code z3_timeout_ms}. The wrapper is created
+   * once per run and reused, so its timeout counter is per-run and can be reported.
+   *
+   * @return the bounded bridge, or {@code null} if no checker offers a solver
+   */
+  private org.plumb.dfa.solver.SolverZ3Bridge boundedSolverBridge(AnalysisContext ctx) {
+    for (DfaChecker c : this.checkers) {
+      if (!(c instanceof org.plumb.dfa.taint.TaintedCheckerBase tcb)) continue;
+      if (tcb.solverBridge() == null) continue;
+      long timeoutMs = this.config.tuning().z3TimeoutMs();
+      if (timeoutMs <= 0) {
+        return tcb.solverBridge();
+      }
+      org.plumb.dfa.solver.TimeBoundedSolverBridge bounded =
+          new org.plumb.dfa.solver.TimeBoundedSolverBridge(tcb.solverBridge(), timeoutMs);
+      this.boundedSolver = bounded;
+      return bounded;
+    }
+    return null;
+  }
+
+  /** The time-bounded solver bridge for the current run, or {@code null} if none was created. */
+  public org.plumb.dfa.solver.TimeBoundedSolverBridge boundedSolverBridgeForTest() {
+    return this.boundedSolver;
   }
 
   /**
@@ -495,12 +744,26 @@ public final class DfaEngine {
       int threads,
       org.plumb.dfa.cg.GlobalTACStore store,
       Set<SourceOrigin> analysedOrigins) {
+    // The unit of work is the MERGED KEY, not the bare signature.
+    //
+    // The merged view is keyed by "<enclosingClass> :: <signature>" (see
+    // MergedProgram.mergedKey), and two functions can share a signature: two subclasses of an
+    // abstract base both implementing action(String). Keying the worklist by the bare signature
+    // collapsed those two into one work item -- one of them was never analysed -- and looking a
+    // function up by the bare signature did not find it at all, because the merged stub is keyed
+    // by the merged key. That is why the parallel path used to report "6 of 6 functions
+    // processed" and "0 functions analysed": every lookup returned null.
+    java.util.Map<String, TacFunction> byMergedKey = new java.util.LinkedHashMap<>();
+    for (TacFunction fn : programView.functions()) {
+      byMergedKey.put(org.plumb.tac.ir.MergedProgram.mergedKey(fn), fn);
+    }
     // Build the dep map from the cross-TU call graph. The
     // standard CallGraph already has forward+reverse maps;
     // we just need to count "in-TU callees" per function.
     java.util.concurrent.ConcurrentMap<String, AtomicInteger> deps =
         new java.util.concurrent.ConcurrentHashMap<>();
-    for (TacFunction fn : programView.functions()) {
+    for (var entry : byMergedKey.entrySet()) {
+      TacFunction fn = entry.getValue();
       if (!analysedOrigins.contains(fn.origin())) continue;
       org.plumb.dfa.cg.FunctionNode node = new org.plumb.dfa.cg.FunctionNode(fn.signature());
       int calleeCount = 0;
@@ -514,17 +777,28 @@ public final class DfaEngine {
           calleeCount++;
         }
       }
-      deps.put(fn.signature(), new AtomicInteger(calleeCount));
+      deps.put(entry.getKey(), new AtomicInteger(calleeCount));
     }
-    // Reverse caller map
+    // Reverse caller map. Keyed by the CALLEE SIGNATURE, because that is what the call graph
+    // resolves to; the values are the callers' merged keys.
     java.util.Map<String, java.util.List<String>> callersOf = new java.util.HashMap<>();
-    for (TacFunction fn : programView.functions()) {
+    // How many merged keys share each signature. A caller must wait for ALL of them: the
+    // summary of a signature is what the caller reads, and the last writer wins, so letting a
+    // caller proceed while a sibling variant is still unanalysed would make the result depend on
+    // the scheduling.
+    java.util.Map<String, AtomicInteger> variantsOfSignature = new java.util.HashMap<>();
+    for (var entry : byMergedKey.entrySet()) {
+      TacFunction fn = entry.getValue();
+      if (!analysedOrigins.contains(fn.origin())) continue;
+      variantsOfSignature
+          .computeIfAbsent(fn.signature(), k -> new AtomicInteger())
+          .incrementAndGet();
       org.plumb.dfa.cg.FunctionNode node = new org.plumb.dfa.cg.FunctionNode(fn.signature());
       for (var cs : cg.callsFrom(node)) {
         String calleeSig = cs.callee().signature();
         if (calleeSig.equals(fn.signature())) continue;
         if (store.functionBySignature(calleeSig).isEmpty()) continue;
-        callersOf.computeIfAbsent(calleeSig, k -> new java.util.ArrayList<>()).add(fn.signature());
+        callersOf.computeIfAbsent(calleeSig, k -> new java.util.ArrayList<>()).add(entry.getKey());
       }
     }
     // Initial ready queue: leaves (deps == 0)
@@ -541,6 +815,23 @@ public final class DfaEngine {
         java.util.concurrent.Executors.newFixedThreadPool(
             threads, namedThreadFactory("plumb-dfa-global"));
     java.util.concurrent.Phaser phaser = new java.util.concurrent.Phaser(1);
+    // Per-worker checkers. A checker holds per-function state, so a shared instance would
+    // have one worker's initFunction clear another worker's facts mid-walk -- the run would
+    // LOSE findings, not gain them. Each worker THREAD therefore builds its own set, once,
+    // and reuses it for every function that thread analyses.
+    ThreadLocal<List<DfaChecker>> workerCheckers =
+        ThreadLocal.withInitial(
+            () -> {
+              List<DfaChecker> cs = checkersForWorker();
+              for (DfaChecker c : cs) {
+                try {
+                  c.initEngine(ctx);
+                } catch (RuntimeException ex) {
+                  LOG.warn("Checker {} initEngine failed: {}", c.name(), ex.toString());
+                }
+              }
+              return cs;
+            });
     try {
       while (true) {
         String polled;
@@ -550,14 +841,20 @@ public final class DfaEngine {
           exec.submit(
               () -> {
                 try {
-                  TacFunction fn = programView.function(sig);
+                  TacFunction fn = byMergedKey.get(sig);
                   if (fn != null && analysedOrigins.contains(fn.origin())) {
+                    List<DfaChecker> mine = workerCheckers.get();
                     ctx.factBag().clear();
                     ctx.sideEffectConsumer().clear();
-                    analyseOneFunction(ctx, fn);
-                    FunctionSummary m = summariseOneFunction(ctx, fn);
+                    analyseOneFunction(ctx, fn, mine);
+                    FunctionSummary m = summariseOneFunction(ctx, fn, mine);
                     if (!m.isTrivial() || m.hasBody()) {
-                      ctx.summaryCache().put(sig, m);
+                      // The summary is stored under the SIGNATURE, because that is what a call
+                      // site resolves to. When two functions share a signature, the summary is
+                      // merged with the one already there rather than overwriting it: an
+                      // overwrite would make the result depend on which variant the scheduler
+                      // happened to finish last.
+                      ctx.summaryCache().merge(fn.signature(), m);
                     }
                     // qualified-alias put
                     // for the parallel global worklist.
@@ -569,7 +866,14 @@ public final class DfaEngine {
                     // qualified keys : no race.
                     r716putQualifiedAliasSummary(ctx, fn, m);
                   }
-                  java.util.List<String> cs = callersOf.get(sig);
+                  // The callers wait for EVERY variant that shares this signature.
+                  AtomicInteger variantsLeft =
+                      variantsOfSignature.get(fn == null ? sig : fn.signature());
+                  boolean lastVariant = variantsLeft == null || variantsLeft.decrementAndGet() == 0;
+                  if (!lastVariant) {
+                    return;
+                  }
+                  java.util.List<String> cs = callersOf.get(fn == null ? sig : fn.signature());
                   if (cs != null) {
                     for (String callerSig : cs) {
                       AtomicInteger c = deps.get(callerSig);
@@ -926,8 +1230,23 @@ public final class DfaEngine {
   }
 
   /**
-   * the first non-null label among the instruction's operands, or {@code null} when none of them
+   * The first non-null label among the instruction's OPERANDS, or {@code null} when none of them
    * carries taint. Used for both dest-inherits-operand and RETURN.
+   *
+   * <p><b>Why the operand slots, and not only {@code args}.</b> The TAC keeps a call's arguments in
+   * {@link TacInstruction#args}, but every OTHER opcode names its operands in the fixed slots
+   * {@link TacInstruction#lhs1} and {@link TacInstruction#lhs2}. A {@code MOVE} -- which is how an
+   * assignment is expressed -- has its source in {@code lhs1} and an EMPTY argument list. A {@code
+   * BINOP}, a {@code FIELDLOAD} and an {@code ARRAYLOAD} are the same.
+   *
+   * <p>So scanning only {@code args} sees the operands of a CALL and of nothing else. The
+   * consequence is silent and severe: a local assignment never inherits a label, so a value that
+   * arrives at a sink through a local variable is invisible to the origin pre-pass, and the finding
+   * falls back to the honest-but-useless {@code param:<name>} label of the parameter it was passed
+   * as. The taint had crossed the call boundary; the report just could not say so.
+   *
+   * <p>The order matters and follows the TAC's own reading order: the arguments first (a call's
+   * arguments are its inputs), then the left-hand operand, then the right-hand one.
    */
   private static String labelOfAnyArg(TacInstruction ins, HashMap<String, String> lab) {
     if (ins == null || lab == null) return null;
@@ -936,6 +1255,14 @@ public final class DfaEngine {
         String l = lab.get(v.name());
         if (l != null) return l;
       }
+    }
+    if (ins.lhs1 instanceof org.plumb.tac.ir.TacOperand.TacVar v1) {
+      String l = lab.get(v1.name());
+      if (l != null) return l;
+    }
+    if (ins.lhs2 instanceof org.plumb.tac.ir.TacOperand.TacVar v2) {
+      String l = lab.get(v2.name());
+      if (l != null) return l;
     }
     return null;
   }
@@ -970,13 +1297,69 @@ public final class DfaEngine {
       // scanned every candidate in the bare bucket for one whose enclosing
       // class matched -- and the bucket holds thousands of same-named
       // methods in a corpus like Juliet's.
+      //
+      // The owner is matched by SIMPLE NAME as well as by the spelling the
+      // call site used. The two spellings differ across languages: a Java
+      // declaration's enclosing class is the short name ("JavaSink"), while a
+      // Kotlin call site names it fully qualified ("demo.JavaSink") -- the
+      // same class, two spellings. Without the simple-name fallback the lookup
+      // missed, the parameter origin was never transferred, and the caller's
+      // taint stopped at the language boundary.
       List<TacFunction> inClass =
           byBareAndClass == null ? null : byBareAndClass.get(bare + " :: " + qualifier);
-      if (inClass == null || inClass.isEmpty()) return null;
-      if (inClass.size() > 1) return null; // ambiguous within the same class
-      return inClass.get(0);
+      if (inClass != null && !inClass.isEmpty()) {
+        if (inClass.size() > 1) return null; // ambiguous within the same class
+        return inClass.get(0);
+      }
+      int lastDot = qualifier.lastIndexOf('.');
+      if (lastDot >= 0) {
+        String simpleOwner = qualifier.substring(lastDot + 1);
+        List<TacFunction> bySimple =
+            byBareAndClass == null ? null : byBareAndClass.get(bare + " :: " + simpleOwner);
+        if (bySimple != null && !bySimple.isEmpty()) {
+          if (bySimple.size() > 1) return null; // ambiguous
+          return bySimple.get(0);
+        }
+        // The MODULE-CLASS spelling. A Scala call to a Java STATIC method names the
+        // callee through the Java class's synthetic module class, whose name is the
+        // class's name with a '$' appended: "demo.JavaSink$.run/1" for a method
+        // declared in "JavaSink".
+        //
+        // Without this the lookup misses, the call resolves to no candidate, the
+        // parameter origin is never transferred, and the caller's taint stops at the
+        // language boundary -- while the scan still reports success.
+        String withoutModuleSuffix = stripModuleClassSuffix(simpleOwner);
+        if (!withoutModuleSuffix.equals(simpleOwner)) {
+          List<TacFunction> byModule =
+              byBareAndClass == null
+                  ? null
+                  : byBareAndClass.get(bare + " :: " + withoutModuleSuffix);
+          if (byModule != null && !byModule.isEmpty()) {
+            if (byModule.size() > 1) return null; // ambiguous
+            return byModule.get(0);
+          }
+        }
+      }
+      return null;
     }
     return null;
+  }
+
+  /**
+   * A name with the Scala module-class suffix removed.
+   *
+   * <p>A Java class's static members live in a synthetic MODULE CLASS whose name is the class's
+   * name with a {@code $} appended, and that is the name a Scala call site uses. The suffix is
+   * removed only when MATCHING: {@code Service$} and {@code Service} are two different classes, and
+   * merging them would merge two real, distinct methods.
+   *
+   * @param name the name
+   * @return the name without a trailing {@code $}
+   */
+  private static String stripModuleClassSuffix(String name) {
+    if (name == null || name.length() < 2) return name;
+    if (!name.endsWith("$")) return name;
+    return name.substring(0, name.length() - 1);
   }
 
   /**
@@ -1021,7 +1404,16 @@ public final class DfaEngine {
     return head + s.substring(slash);
   }
 
-  /** {@code "SourceLayer.readRequestParam/1"} -> {@code "SourceLayer"}. */
+  /**
+   * The OWNER of a callee signature: {@code "SourceLayer.readRequestParam/1"} -> {@code
+   * "SourceLayer"}.
+   *
+   * <p><b>This returns the owner, not the method name.</b> The two differ by one segment: for
+   * {@code "demo.JavaSink.run/1"} the owner is {@code "demo.JavaSink"} and the method name is
+   * {@code "run"}. Returning the method name made every owner-keyed lookup miss -- the key built
+   * was {@code "run/1 :: run"} instead of {@code "run/1 :: demo.JavaSink"} -- so a cross-language
+   * call never resolved to its callee, and the caller's taint stopped at the language boundary.
+   */
   private static String qualifierOf(String calleeSig) {
     if (calleeSig == null) return null;
     String s = calleeSig;
@@ -1030,7 +1422,8 @@ public final class DfaEngine {
     int slash = s.indexOf('/');
     String head = slash < 0 ? s : s.substring(0, slash);
     int dot = head.lastIndexOf('.');
-    return dot > 0 ? head.substring(dot + 1) : null;
+    // Everything BEFORE the last dot is the owner; the last segment is the method.
+    return dot > 0 ? head.substring(0, dot) : null;
   }
 
   /**
@@ -1111,9 +1504,13 @@ public final class DfaEngine {
         (Object) strategy.name(),
         (Object) threads);
     CallGraph cg = strategy.build();
-    AnalysisContext ctx = new AnalysisContext(program, cg, this.config, reporter);
+    this.budget = new AnalysisBudget(this.config.tuning());
+    this.orderCache = new FunctionOrderCache();
+    AnalysisContext ctx =
+        new AnalysisContext(program, cg, this.config, reporter, null, null, this.budget);
     ctx.setStaticFieldResolver(this.staticFieldResolver);
     reporter.setContext(ctx);
+    reporter.setModuleScope(moduleScope());
     DfaEngine.registerSourcePaths(ctx, program, this.functionSourcePaths);
     this.runWorklist(ctx, program, cg, threads);
     long ms = System.currentTimeMillis() - t0;
@@ -1122,6 +1519,7 @@ public final class DfaEngine {
         new Object[] {
           threads, ctx.factBag().operands().size(), ctx.summaryCache().size(), reporter.size(), ms
         });
+    logBudgetReport(ctx);
     return reporter;
   }
 
@@ -1135,9 +1533,13 @@ public final class DfaEngine {
             (Path) this.callGraphCachePath);
     LOG.info("Building call graph via {}...", (Object) strategy.name());
     CallGraph cg = strategy.build();
-    AnalysisContext ctx = new AnalysisContext(program, cg, this.config, reporter);
+    this.budget = new AnalysisBudget(this.config.tuning());
+    this.orderCache = new FunctionOrderCache();
+    AnalysisContext ctx =
+        new AnalysisContext(program, cg, this.config, reporter, null, null, this.budget);
     ctx.setStaticFieldResolver(this.staticFieldResolver);
     reporter.setContext(ctx);
+    reporter.setModuleScope(moduleScope());
     DfaEngine.registerSourcePaths(ctx, program, this.functionSourcePaths);
     for (DfaChecker c : this.checkers) {
       try {
@@ -1146,13 +1548,7 @@ public final class DfaEngine {
         LOG.warn("Checker {} initEngine failed: {}", (Object) c.name(), (Object) ex.toString());
       }
     }
-    for (DfaChecker c : this.checkers) {
-      TaintedCheckerBase tcb;
-      if (!(c instanceof TaintedCheckerBase)
-          || (tcb = (TaintedCheckerBase) c).solverBridge() == null) continue;
-      ctx.guardStore().setBridge(tcb.solverBridge());
-      break;
-    }
+    ctx.guardStore().setBridge(boundedSolverBridge(ctx));
     this.warmUpMethodSummaries(ctx, program);
     this.computeParamOrigins(ctx, program, cg);
     this.solvePointsTo(ctx, program);
@@ -1183,6 +1579,7 @@ public final class DfaEngine {
     LOG.info(
         "DfaEngine run: {} functions analysed (of {}), {} summarised, {} findings, {} ms",
         new Object[] {fnCount, program.functions().size(), summaryCount, reporter.size(), ms});
+    logBudgetReport(ctx);
     return reporter;
   }
 
@@ -1202,7 +1599,7 @@ public final class DfaEngine {
       if (!(c instanceof TaintedCheckerBase)) continue;
       TaintedCheckerBase tcb = (TaintedCheckerBase) c;
       if (tcb.solverBridge() == null) continue;
-      ctx.guardStore().setBridge(tcb.solverBridge());
+      ctx.guardStore().setBridge(boundedSolverBridge(ctx));
       break;
     }
     this.warmUpMethodSummaries(ctx, program);
@@ -1240,6 +1637,21 @@ public final class DfaEngine {
     ExecutorService exec =
         Executors.newFixedThreadPool(threads, DfaEngine.namedThreadFactory("plumb-dfa-worker"));
     Phaser phaser = new Phaser(1);
+    // Per-worker checkers: a checker carries per-function state, so each worker thread
+    // needs its own instances. See DfaEngine#checkersForWorker.
+    ThreadLocal<List<DfaChecker>> workerCheckers =
+        ThreadLocal.withInitial(
+            () -> {
+              List<DfaChecker> cs = checkersForWorker();
+              for (DfaChecker c : cs) {
+                try {
+                  c.initEngine(ctx);
+                } catch (RuntimeException ex) {
+                  LOG.warn("Checker {} initEngine failed: {}", c.name(), ex.toString());
+                }
+              }
+              return cs;
+            });
     try {
       while (true) {
         String polled;
@@ -1252,10 +1664,11 @@ public final class DfaEngine {
                   List cs;
                   TacFunction fn = program.function(sig);
                   if (fn != null && analysedOrigins.contains(fn.origin())) {
+                    List<DfaChecker> mine = workerCheckers.get();
                     ctx.factBag().clear();
                     ctx.sideEffectConsumer().clear();
-                    this.analyseOneFunction(ctx, fn);
-                    FunctionSummary merged = this.summariseOneFunction(ctx, fn);
+                    this.analyseOneFunction(ctx, fn, mine);
+                    FunctionSummary merged = this.summariseOneFunction(ctx, fn, mine);
                     if (!merged.isTrivial() || merged.hasBody()) {
                       ctx.summaryCache().put(sig, merged);
                     }
@@ -1323,17 +1736,103 @@ public final class DfaEngine {
    * WARNING - Removed try catching itself - possible behaviour change.
    */
   private void analyseOneFunction(AnalysisContext ctx, TacFunction fn) {
-    ctx.setCurrentFunction(fn);
+    analyseOneFunction(ctx, fn, this.checkers);
+  }
+
+  /**
+   * Analyse one function with an explicit checker list.
+   *
+   * <p>The list is a parameter because the parallel worklist gives every worker its OWN checkers: a
+   * checker holds per-function state, and sharing one instance between workers would have one
+   * worker's {@code initFunction} clear another worker's facts mid-walk.
+   */
+  /**
+   * Whether any checker in this run will consult the solver for a path condition.
+   *
+   * <p>The engine's own {@code path_sensitivity} setting decides it. {@code "none"} switches the
+   * verification off, and the engine then skips collecting the guards it would feed -- the
+   * collection is real work per instruction, and a run that will not use the facts should not pay
+   * for them.
+   */
+  private boolean pathVerificationEnabled(AnalysisContext ctx) {
     try {
-      for (DfaChecker c : this.checkers) {
+      if (this.config == null || this.config.tuning() == null) return false;
+      String mode =
+          org.plumb.dfa.taint.TaintedCheckerBase.normalisePathSensitivity(
+              this.config.tuning().pathSensitivity());
+      return !"none".equals(mode);
+    } catch (RuntimeException e) {
+      // A configuration problem must not take the analysis down. The conservative answer is
+      // to collect the guards: collecting them costs time, and not collecting them would
+      // silently disable a filter.
+      return true;
+    }
+  }
+
+  /**
+   * Walk the function's instructions once and collect the guard facts they prove.
+   *
+   * <p>The tracker is fed the same order the checkers see, so the facts it holds are the ones that
+   * hold at the point each checker asks.
+   */
+  private org.plumb.dfa.taint.GuardTracker collectFunctionGuards(
+      TacFunction fn, List<Integer> order) {
+    org.plumb.dfa.taint.GuardTracker tracker = new org.plumb.dfa.taint.GuardTracker();
+    try {
+      for (int idx : order) {
+        TacInstruction ins = fn.instructionAt(idx);
+        if (ins == null) continue;
+        tracker.track(ins);
+      }
+    } catch (RuntimeException e) {
+      // A tracker failure costs the path condition, not the analysis: the checkers still run
+      // and simply find no guards to consult.
+      LOG.warn("Guard collection failed on {}: {}", fn.signature(), e.toString());
+    }
+    return tracker;
+  }
+
+  private void analyseOneFunction(AnalysisContext ctx, TacFunction fn, List<DfaChecker> checkers) {
+    ctx.setCurrentFunction(fn);
+    // Start the per-function clock. The budget's time checks compare against this, so a
+    // per-function timeout means "this function took too long" rather than "the whole run
+    // took too long".
+    ctx.startFunctionTimer();
+    // The analysis order is computed once per function and shared by every checker.
+    // analysisOrder() walks the CFG, detects back edges, computes natural loops and
+    // reorders successors -- it is not cheap, and it used to be recomputed for every
+    // checker on every function. With 78 registered checkers that was 78 identical
+    // CFG walks per function. It is cached per function below and reused.
+    List<Integer> order = orderCacheFor(ctx).analysisOrder(fn);
+    // The guard facts are a property of the FUNCTION, so they are collected once here and
+    // shared by every checker, rather than each checker deriving its own. Two checkers
+    // deriving their own is how they end up disagreeing about whether a value was guarded.
+    //
+    // The walk is skipped when no checker will consult the solver: the tracker does real work
+    // per instruction, and a run with path verification off should not pay for it.
+    ctx.setFunctionGuards(pathVerificationEnabled(ctx) ? collectFunctionGuards(fn, order) : null);
+    try {
+      for (DfaChecker c : checkers) {
         if (!DfaEngine.isEnabled(c.config(ctx))) continue;
+        // Language gate. A checker that declares it does not handle this function's language is
+        // skipped entirely -- this is a skip, not a finding.
+        if (!supportsChecker(c, fn)) continue;
         try {
           c.initFunction(ctx, fn);
-          List<Integer> order = DfaEngine.bbRpoOrder(fn);
           for (int idx : order) {
+            // Budget check. Once the per-function time budget is spent, stop walking this
+            // function's instructions. The exhaustion is recorded by the budget, so the
+            // user can see that the function was only partly analysed.
+            if (!ctx.withinTimeBudget()) {
+              LOG.warn(
+                  "Per-function time budget spent; stopped analysing {} at instruction {}",
+                  new Object[] {fn.signature(), Integer.valueOf(idx)});
+              break;
+            }
             TacInstruction ins = fn.instructionAt(idx);
             if (ins.kind == TacInstruction.Kind.CALL) {
               try {
+                recordModuleCrossing(ctx, fn, ins);
                 SummaryApplier.apply(ins, ctx, ins.args);
                 ctx.sideEffectConsumer().recordCall(ins, ctx);
               } catch (RuntimeException re) {
@@ -1346,6 +1845,22 @@ public final class DfaEngine {
             c.checkInstruction(ins, fn, ctx);
           }
           c.finishFunction(ctx, fn);
+        } catch (OutOfMemoryError oom) {
+          // An out-of-memory in ONE function must not take the whole scan down. The function
+          // is reported as unanalysed and the scan continues with the rest: a scan that dies
+          // produces no report at all, which is worse than a report that says "this function
+          // was not analysed".
+          //
+          // The stack trace is NOT logged: printing it allocates, and the allocation is
+          // what failed. The message is enough to say which function ran out.
+          LOG.warn(
+              "out of memory while analysing {}; the function was not analysed", fn.signature());
+          if (budget != null) {
+            budget.record(
+                AnalysisBudget.Dimension.WORKLIST_SIZE,
+                Integer.MAX_VALUE,
+                fn.signature() + " (out of memory)");
+          }
         } catch (RuntimeException ex) {
           LOG.warn(
               "Checker {} failed on {}: {}",
@@ -1354,6 +1869,55 @@ public final class DfaEngine {
       }
     } finally {
       ctx.setCurrentFunction(null);
+    }
+  }
+
+  /**
+   * Record a call that leaves the selected module.
+   *
+   * <p>The point of a single-module analysis is that the call graph stays WHOLE across the module
+   * boundary, so the taint still reaches the sinks inside the module. The cost of that is that some
+   * of the flow comes from outside, and a reader of the report has to be able to see that.
+   *
+   * <p>So the crossing is recorded, not prevented. It is the diagnostic that says "this module was
+   * reached from outside", which is exactly the case the user called a normal leak.
+   */
+  private void recordModuleCrossing(AnalysisContext ctx, TacFunction fn, TacInstruction ins) {
+    ModuleScope scope = moduleScope();
+    if (!scope.isLimited()) return;
+    String callerModule = fn.module();
+    if (callerModule == null || !scope.contains(callerModule)) return;
+    scope.observeModule(callerModule);
+    String calleeSig = ins.calleeSig;
+    if (calleeSig == null || calleeSig.isEmpty()) return;
+    // The callee's module is resolved from the call graph's view: the function it points at,
+    // when there is one. A callee that resolves to nothing is recorded as unresolved, which
+    // is a different kind of gap.
+    TacFunction callee = ctx.program() == null ? null : ctx.program().function(calleeSig);
+    String calleeModule = callee == null ? null : callee.module();
+    if (calleeModule == null) {
+      scope.recordCrossing(fn.signature(), calleeSig, false);
+    } else if (!scope.contains(calleeModule)) {
+      scope.observeModule(calleeModule);
+      scope.recordCrossing(fn.signature(), calleeSig, true);
+    }
+  }
+
+  /**
+   * Whether a checker applies to a function.
+   *
+   * <p>Consults {@link DfaChecker#supports(TacFunction)}. A checker that throws while answering is
+   * treated as "not supported" -- a broken gate must not take down the whole analysis, and the safe
+   * answer is to skip that one checker for that one function.
+   */
+  private static boolean supportsChecker(DfaChecker c, TacFunction fn) {
+    try {
+      return c.supports(fn);
+    } catch (RuntimeException ex) {
+      LOG.warn(
+          "Checker {} failed its supports() check for {}: {}",
+          new Object[] {c.name(), fn.signature(), ex.toString()});
+      return false;
     }
   }
 
@@ -1368,8 +1932,19 @@ public final class DfaEngine {
     if ((singlePath = program.sourcePath()) != null) {
       for (TacFunction fn : program.functions()) {
         String enc = fn.enclosingClass();
-        if (enc == null || enc.isEmpty()) continue;
-        ctx.registerSourcePath(enc, singlePath);
+        if (enc != null && !enc.isEmpty()) {
+          ctx.registerSourcePath(enc, singlePath);
+        }
+        // A TOP-LEVEL function has no enclosing class -- a Kotlin or Scala
+        // file-level function, or a Java file's package-private helper
+        // declared outside any class. Registering only by enclosing class
+        // leaves those functions with no path, and a finding in one is
+        // reported as file="unknown". The signature is the identity that is
+        // ALWAYS present, so it is registered as well.
+        String sig = fn.signature();
+        if (sig != null && !sig.isEmpty()) {
+          ctx.registerSourcePath(sig, singlePath);
+        }
       }
       return;
     }
@@ -1381,11 +1956,26 @@ public final class DfaEngine {
   }
 
   private FunctionSummary summariseOneFunction(AnalysisContext ctx, TacFunction fn) {
+    return summariseOneFunction(ctx, fn, this.checkers);
+  }
+
+  /**
+   * Summarise one function with an explicit checker list. The parallel worklist passes the worker's
+   * own checkers, for the same reason {@link #analyseOneFunction(AnalysisContext,
+   * org.plumb.tac.ir.TacFunction, List)} takes them: the summary is built from the checker's
+   * per-function state, which belongs to one worker.
+   */
+  private FunctionSummary summariseOneFunction(
+      AnalysisContext ctx, TacFunction fn, List<DfaChecker> checkers) {
     ctx.setCurrentFunction(fn);
     FunctionSummary merged = FunctionSummary.empty();
-    for (DfaChecker c : this.checkers) {
+    for (DfaChecker c : checkers) {
       FunctionSummary s;
       if (!DfaEngine.isEnabled(c.config(ctx))) continue;
+      // Same language gate as the analysis pass: a checker that does not handle this function's
+      // language must not contribute a summary for it either, or the summary would carry
+      // observations the checker never actually made.
+      if (!supportsChecker(c, fn)) continue;
       try {
         s = c.summarizeFunction(ctx, fn);
       } catch (RuntimeException ex) {
@@ -1488,6 +2078,192 @@ public final class DfaEngine {
     return out;
   }
 
+  /**
+   * The instruction order used by the forward dataflow analysis.
+   *
+   * <p>For a function with no loops this is exactly {@link #bbRpoOrder(TacFunction)}: the blocks in
+   * reverse post-order, each block's instructions in source order.
+   *
+   * <p><b>Why a loop needs a different order.</b> The plain RPO is a valid topological order of the
+   * CFG, but a loop makes it useless for a forward-flow analysis. In
+   *
+   * <pre>
+   *   String x = "safe";
+   *   while (i &lt; 3) { if (i == 1) x = userInput; i++; }
+   *   exec(x);
+   * </pre>
+   *
+   * the depth-first search that produces the RPO finishes the loop's <em>exit</em> block before the
+   * loop's <em>body</em>: the exit is a short path, the body loops back to the condition, so the
+   * body is popped from the stack first and therefore lands LAST in the post-order. The result is
+   * that the assignment {@code x = userInput} is analysed <em>after</em> the sink that reads {@code
+   * x}, and the analysis reports a clean program for code that hands attacker input to the
+   * operating system.
+   *
+   * <p><b>The fix.</b> The order is computed so that every loop's body is visited before the loop's
+   * exit. Concretely: the back edges are identified first, the natural loop of each back edge is
+   * computed, and the depth-first search is then run with the successor order chosen so that a
+   * successor which continues a loop is explored before a successor which leaves it.
+   *
+   * <p>This is a heuristic, not a fixpoint: a single pass still cannot see a taint that is produced
+   * in the body and consumed at the exit on the FIRST pass through the exit block. The engine
+   * compensates by re-walking the function until the tainted state stops growing -- see {@link
+   * #analyseOneFunction(AnalysisContext, TacFunction)}. The ordering change is what makes that
+   * re-walk converge in a couple of passes instead of one per loop level.
+   *
+   * @param fn the function to order
+   * @return the instruction indices in analysis order
+   */
+  public static List<Integer> analysisOrder(TacFunction fn) {
+    Objects.requireNonNull(fn, "fn");
+    TacCfg cfg = TacCfgBuilder.build(fn);
+    if (cfg.blocks().isEmpty()) {
+      return List.of();
+    }
+    // Identify the back edges: an edge u -> v where v is an ancestor of u in the depth-first
+    // search tree. Those are the edges that close a loop.
+    java.util.Map<Integer, Integer> dfsParent = new HashMap<>();
+    ArrayList<Integer> postOrder = new ArrayList<>();
+    HashSet<Integer> visited = new HashSet<>();
+    ArrayDeque<int[]> stack = new ArrayDeque<>();
+    stack.push(new int[] {cfg.entryId(), 0});
+    while (!stack.isEmpty()) {
+      int[] top = stack.peek();
+      int blockId = top[0];
+      int childIdx = top[1];
+      if (childIdx == 0 && !visited.add(blockId)) {
+        stack.pop();
+        continue;
+      }
+      java.util.List<Integer> blockSuccs = cfg.succs(blockId);
+      if (childIdx < blockSuccs.size()) {
+        top[1] = childIdx + 1;
+        int nextSucc = blockSuccs.get(childIdx);
+        if (visited.contains(nextSucc)) continue;
+        dfsParent.put(nextSucc, blockId);
+        stack.push(new int[] {nextSucc, 0});
+        continue;
+      }
+      stack.pop();
+      postOrder.add(blockId);
+    }
+    // The blocks that are loop headers: the targets of the back edges.
+    HashSet<Integer> loopHeaders = new HashSet<>();
+    // The blocks that are inside some loop: every block on a path from a loop header to the
+    // back-edge source, plus the header itself.
+    HashSet<Integer> inLoop = new HashSet<>();
+    //
+    // A back edge is an edge u -> v where v is an ANCESTOR of u in the depth-first search tree.
+    // The DFS tree edges are recorded in `dfsParent` (child -> parent), so the ancestors of a
+    // node are the chain obtained by following `dfsParent` upwards. For every block u and every
+    // successor v of u, v is a back-edge target when the upward chain from u reaches v.
+    for (Map.Entry<Integer, java.util.List<Integer>> e : cfg.successors().entrySet()) {
+      int u = e.getKey();
+      for (int v : e.getValue()) {
+        int walker = u;
+        int guard = 0;
+        boolean isBackEdge = false;
+        while (guard++ < dfsParent.size() + 1) {
+          if (walker == v) {
+            isBackEdge = true;
+            break;
+          }
+          Integer next = dfsParent.get(walker);
+          if (next == null) break;
+          walker = next;
+        }
+        if (!isBackEdge) continue;
+        loopHeaders.add(v);
+        // The natural loop of the back edge v -> u: the header v, every block on the DFS parent
+        // chain from u back to v, and v itself.
+        inLoop.add(v);
+        int p = u;
+        int g2 = 0;
+        while (g2++ < dfsParent.size() + 1) {
+          inLoop.add(p);
+          if (p == v) break;
+          Integer next = dfsParent.get(p);
+          if (next == null) break;
+          p = next;
+        }
+      }
+    }
+    if (loopHeaders.isEmpty()) {
+      // No loop: the plain RPO is already a correct forward order.
+      return bbRpoOrder(fn);
+    }
+    // Re-run the depth-first search with a successor order that leaves the loop as early as
+    // possible: a successor that exits every loop is explored BEFORE one that stays inside a loop.
+    //
+    // The post-order is built by popping, and the RPO is its reverse, so the block that finishes
+    // FIRST ends up LAST in the analysis order. Exploring the exit first therefore puts the loop
+    // EXIT late in the order -- after the body -- which is exactly what a forward-flow analysis
+    // needs: the body has already been analysed when the exit is reached.
+    java.util.Map<Integer, java.util.List<Integer>> reordered = new HashMap<>();
+    for (Map.Entry<Integer, java.util.List<Integer>> e : cfg.successors().entrySet()) {
+      java.util.List<Integer> blockSuccs = e.getValue();
+      java.util.List<Integer> sorted = new ArrayList<>(blockSuccs);
+      // Stable partition: the successors that are NOT inside a loop come first.
+      sorted.sort(
+          new java.util.Comparator<Integer>() {
+            @Override
+            public int compare(Integer a, Integer b) {
+              boolean aIn = inLoop.contains(a);
+              boolean bIn = inLoop.contains(b);
+              if (aIn == bIn) return 0;
+              return aIn ? 1 : -1;
+            }
+          });
+      reordered.put(e.getKey(), sorted);
+    }
+    postOrder = new ArrayList<>();
+    visited = new HashSet<>();
+    stack = new ArrayDeque<>();
+    stack.push(new int[] {cfg.entryId(), 0});
+    while (!stack.isEmpty()) {
+      int[] top = stack.peek();
+      int blockId = top[0];
+      int childIdx = top[1];
+      if (childIdx == 0 && !visited.add(blockId)) {
+        stack.pop();
+        continue;
+      }
+      java.util.List<Integer> blockSuccs = reordered.get(blockId);
+      if (blockSuccs == null) {
+        blockSuccs = cfg.succs(blockId);
+      }
+      if (childIdx < blockSuccs.size()) {
+        top[1] = childIdx + 1;
+        int nextSucc = blockSuccs.get(childIdx);
+        if (visited.contains(nextSucc)) continue;
+        stack.push(new int[] {nextSucc, 0});
+        continue;
+      }
+      stack.pop();
+      postOrder.add(blockId);
+    }
+    ArrayList<Integer> rpoBlocks = new ArrayList<>(postOrder.size());
+    for (int i = postOrder.size() - 1; i >= 0; --i) {
+      rpoBlocks.add(postOrder.get(i));
+    }
+    ArrayList<Integer> out = new ArrayList<>();
+    HashSet<Integer> seen = new HashSet<>();
+    for (Integer blockId : rpoBlocks) {
+      TacBasicBlock block = cfg.block(blockId);
+      if (block == null) continue;
+      for (Integer idx : block.indices()) {
+        out.add(idx);
+        seen.add(idx);
+      }
+    }
+    int n = fn.instructions().size();
+    for (int i = 0; i < n; ++i) {
+      if (seen.contains(i)) continue;
+      out.add(i);
+    }
+    return out;
+  }
+
   private static List<TacFunction> orderedFunctions(TacProgram program, CallGraph cg) {
     ArrayList<TacFunction> out = new ArrayList<TacFunction>();
     HashSet<TacFunction> seen = new HashSet<TacFunction>();
@@ -1553,6 +2329,9 @@ public final class DfaEngine {
       AnalysisContext ctx, TacFunction fn, FunctionSummary merged) {
     Object alias = DfaEngine.r40AliasForFunction(fn);
     if (alias == null || ((String) alias).equals(fn.signature())) {
+      // The alias IS the signature -- nothing extra to store. But the CANONICAL key may
+      // still differ from the signature, so that is stored below.
+      putCanonicalSummary(ctx, fn, merged);
       return;
     }
     String enclosing = fn.enclosingClass();
@@ -1561,26 +2340,82 @@ public final class DfaEngine {
     }
     if (merged.hasBody()) {
       ctx.summaryCache().put((String) alias, merged);
-      return;
+    } else {
+      FunctionSummary.Builder aliasBuilder = new FunctionSummary.Builder((String) alias);
+      for (Map.Entry entry : merged.paramOps().entrySet()) {
+        for (org.plumb.dfa.summary.Operation op :
+            (Set<org.plumb.dfa.summary.Operation>) entry.getValue()) {
+          aliasBuilder.recordParamOp(((Integer) entry.getKey()).intValue(), op);
+        }
+      }
+      for (org.plumb.dfa.summary.Operation op : merged.returnOps()) {
+        aliasBuilder.recordReturnOp(op);
+      }
+      for (org.plumb.dfa.summary.StringOp sop : merged.stringOps()) {
+        aliasBuilder.recordStringOp(sop);
+      }
+      for (org.plumb.dfa.summary.FieldOp fop : merged.fieldOps()) {
+        aliasBuilder.recordFieldOp(fop);
+      }
+      aliasBuilder.markHasBody();
+      ctx.summaryCache().put((String) alias, aliasBuilder.build());
     }
-    FunctionSummary.Builder aliasBuilder = new FunctionSummary.Builder((String) alias);
-    for (Map.Entry entry : merged.paramOps().entrySet()) {
-      for (org.plumb.dfa.summary.Operation op :
-          (Set<org.plumb.dfa.summary.Operation>) entry.getValue()) {
-        aliasBuilder.recordParamOp(((Integer) entry.getKey()).intValue(), op);
+    putCanonicalSummary(ctx, fn, merged);
+  }
+
+  /**
+   * Stores a function's summary under its canonical callee key.
+   *
+   * <p><b>Why this is needed.</b> A function's own signature is whatever its frontend produced: a
+   * Java method is {@code "run(java.lang.String):void"}, a Kotlin one is {@code
+   * "callJava(java.lang.String):void"}, and a call site may name either target as {@code
+   * "JavaSink.run/1"}. Those are three strings for one method.
+   *
+   * <p>The canonical key ({@code owner.method/arity}) is the one form every participant agrees on,
+   * so a summary stored under it is findable from any call site's spelling. Without this, a
+   * cross-language call finds no summary: the taint stops at the boundary, and the sink inside the
+   * callee never sees the caller's data.
+   *
+   * <p>Both the qualified canonical form and the bare one are stored, because a function whose own
+   * signature carries no owner (a top-level function) can only be reached by the bare key.
+   */
+  private void putCanonicalSummary(AnalysisContext ctx, TacFunction fn, FunctionSummary merged) {
+    String canonical = org.plumb.tac.ir.CalleeKeyNormalizer.canonicalCalleeKey(fn.signature());
+    if (canonical == null) return;
+    // The canonical key of the SIGNATURE may carry no owner: a Java method's signature is
+    // "run(java.lang.String):void", and the canonical form of that is "run/1" -- no owner.
+    // But the CALL SITE names the owner ("JavaSink.run/1"), because the call site knows which
+    // class it is calling into.
+    //
+    // So the owner is taken from the function's ENCLOSING CLASS, the same source the call
+    // graph's owner-aware index uses. Without this the summary is stored under a key the call
+    // site never asks for, and the taint stops at the language boundary.
+    String ownerQualified = canonical;
+    String enclosing = fn.enclosingClass();
+    if (enclosing != null && !enclosing.isEmpty() && !canonical.contains(".")) {
+      ownerQualified = enclosing + "." + canonical;
+      // The owner may be spelled fully qualified here and simply at the call site (or the
+      // other way round): a Java declaration's enclosing class is "JavaSink", while a Kotlin
+      // call may name it "demo.JavaSink". Both spellings are stored, so the call site finds
+      // the summary whichever it uses.
+      int lastDot = enclosing.lastIndexOf('.');
+      if (lastDot >= 0) {
+        String simple = enclosing.substring(lastDot + 1);
+        if (!simple.isEmpty() && !simple.equals(enclosing)) {
+          ctx.summaryCache().put(simple + "." + canonical, merged);
+        }
       }
     }
-    for (org.plumb.dfa.summary.Operation op : merged.returnOps()) {
-      aliasBuilder.recordReturnOp(op);
+    String bare = org.plumb.tac.ir.CalleeKeyNormalizer.bareCalleeKey(canonical);
+    for (String key : new String[] {ownerQualified, canonical, bare}) {
+      if (key == null) continue;
+      if (key.equals(fn.signature())) continue;
+      FunctionSummary existing = ctx.summaryCache().get(key);
+      // Do not overwrite a summary that is already there: another function may share the
+      // bare key, and last-write-wins would pick an arbitrary one.
+      if (existing != null && (!existing.isTrivial() || existing.hasBody())) continue;
+      ctx.summaryCache().put(key, merged);
     }
-    for (org.plumb.dfa.summary.StringOp sop : merged.stringOps()) {
-      aliasBuilder.recordStringOp(sop);
-    }
-    for (org.plumb.dfa.summary.FieldOp fop : merged.fieldOps()) {
-      aliasBuilder.recordFieldOp(fop);
-    }
-    aliasBuilder.markHasBody();
-    ctx.summaryCache().put((String) alias, aliasBuilder.build());
   }
 
   private static boolean isEnabled(CheckerConfig cfg) {

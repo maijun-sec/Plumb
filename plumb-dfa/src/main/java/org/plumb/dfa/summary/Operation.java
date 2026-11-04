@@ -52,6 +52,7 @@ public sealed interface Operation
         Operation.Sink,
         Operation.WriteToField,
         Operation.TaintPropagate,
+        Operation.ReturnsResource,
         Operation.HasUnmodelledBehavior,
         Operation.UnmodelledCall,
         Operation.SolverZ3Predicate,
@@ -134,6 +135,52 @@ public sealed interface Operation
       if (confidence < 0.0 || confidence > 1.0) {
         throw new IllegalArgumentException("confidence must be in [0, 1], got " + confidence);
       }
+    }
+  }
+
+  /**
+   * The function returns a FRESH RESOURCE that the caller is responsible for closing.
+   *
+   * <h2>Why this is not a {@link TaintPropagate}</h2>
+   *
+   * <p>The two operations look alike from the outside -- both are recorded on the return side and
+   * both make the caller treat the call's destination as derived from the callee -- but they mean
+   * opposite things:
+   *
+   * <ul>
+   *   <li>{@code TaintPropagate} says "this value carries untrusted data". The taint checkers
+   *       record it for every tainted return.
+   *   <li>{@code ReturnsResource} says "this value is a freshly allocated resource and the caller
+   *       owes it a close".
+   * </ul>
+   *
+   * <p>Conflating them is not a naming problem, it is a false-positive generator. The engine keeps
+   * ONE summary per function, merged across every checker, so the resource-leak checker reads the
+   * taint checker's {@code TaintPropagate} ops as well as its own. A helper that returned a {@code
+   * String} built from a request parameter therefore looked like a helper that returned an unclosed
+   * stream, and the caller was reported as leaking it:
+   *
+   * <pre>{@code
+   * private String enrich(String userAgent, String path) {
+   *   return "ua=" + userAgent + " path=" + path;   // a String, not a resource
+   * }
+   *
+   * void handleRequest(Request req) {
+   *   String enriched = enrich(req.getHeader("User-Agent"), req.getRequestURI());
+   *   // -> "Resource leak: t_t2 ... java.lang.String ... is not closed on every path"
+   * }
+   * }</pre>
+   *
+   * <p>{@code java.lang.String} has no {@code close()} and is not a resource at all, so the finding
+   * was pure noise. A distinct operation type makes the two claims separable: the resource checker
+   * reads only the operations that mean "resource", and the taint checkers read only the operations
+   * that mean "taint".
+   *
+   * @param type the declared type of the returned resource, e.g. {@code "java.io.InputStream"}
+   */
+  record ReturnsResource(String type) implements Operation {
+    public ReturnsResource {
+      Objects.requireNonNull(type, "type");
     }
   }
 

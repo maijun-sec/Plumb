@@ -23,11 +23,17 @@ package org.plumb.tac.translate;
 
 import com.github.javaparser.ast.type.ArrayType;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
+import com.github.javaparser.ast.type.IntersectionType;
 import com.github.javaparser.ast.type.PrimitiveType;
 import com.github.javaparser.ast.type.ReferenceType;
 import com.github.javaparser.ast.type.Type;
+import com.github.javaparser.ast.type.TypeParameter;
+import com.github.javaparser.ast.type.UnionType;
+import com.github.javaparser.ast.type.UnknownType;
 import com.github.javaparser.ast.type.VarType;
+import com.github.javaparser.ast.type.VoidType;
 import com.github.javaparser.ast.type.WildcardType;
+import java.util.List;
 import org.plumb.tac.ir.TacType;
 
 /**
@@ -128,6 +134,20 @@ public final class TypeMapper {
     if (t instanceof PrimitiveType pt) {
       return mapPrimitive(pt);
     }
+    if (t instanceof VoidType) {
+      // `void` is a PRIMITIVE in the language, but JavaParser does NOT model it
+      // as a PrimitiveType -- VoidType extends Type directly, alongside
+      // PrimitiveType, not below it. So the PrimitiveType arm does not catch it.
+      //
+      // WHY IT MATTERS. Without this arm, `void` fell through to the final
+      // `return TacType.UNKNOWN`, so a void method's return type was UNKNOWN.
+      // That is not a cosmetic difference: the TAC's return type decides
+      // whether a trailing RETURN carries a value, and UNKNOWN reads as "a
+      // value of unknown type" -- so a void method looked like one that
+      // returns something. It also made `void` the ONE type in the language
+      // the mapper could not name.
+      return TacType.VOID;
+    }
     if (t instanceof ArrayType at) {
       return TacType.arrayOf(map(at.getComponentType()));
     }
@@ -138,7 +158,69 @@ public final class TypeMapper {
     if (t instanceof ReferenceType rt) {
       return map(rt.getElementType());
     }
+    if (t instanceof UnionType ut) {
+      // A UNION type: `int | long`. It is a compile-time-only construct used in
+      // pattern matching (`case Integer i ->`) and in `instanceof` with a type
+      // pattern. The runtime value has ONE of the alternatives' runtime type.
+      //
+      // The TAC has no union type, so the alternatives are joined into a single
+      // class name. That keeps the type non-null and non-UNKNOWN, which matters:
+      // the alternative set is what a checker would need to know, and an UNKNOWN
+      // would silently lose the fact that the value is one of a known set.
+      //
+      // The first alternative is the one that carries the most information about
+      // the runtime type (Java picks the LUB at the narrowing point), so it leads.
+      StringBuilder joined = new StringBuilder();
+      for (Type alt : ut.getElements()) {
+        TacType mapped = map(alt);
+        if (mapped == null || mapped == TacType.UNKNOWN) continue;
+        if (joined.length() > 0) joined.append('|');
+        joined.append(mapped.displayName());
+      }
+      if (joined.length() == 0) return TacType.UNKNOWN;
+      return TacType.ofClass(joined.toString());
+    }
+    if (t instanceof IntersectionType it) {
+      // An INTERSECTION type: `T extends A & B`. It is a compile-time-only
+      // construct too. The runtime value is an instance of ALL the bounds.
+      //
+      // As with the union, the alternatives are joined. For an intersection the
+      // FIRST bound is the most specific one (the type variable's own bound),
+      // so it leads -- the same choice javac makes when it picks the erasure.
+      StringBuilder joined = new StringBuilder();
+      for (Type bound : it.getElements()) {
+        TacType mapped = map(bound);
+        if (mapped == null || mapped == TacType.UNKNOWN) continue;
+        if (joined.length() > 0) joined.append('&');
+        joined.append(mapped.displayName());
+      }
+      if (joined.length() == 0) return TacType.UNKNOWN;
+      return TacType.ofClass(joined.toString());
+    }
+    if (t instanceof TypeParameter tp) {
+      // A type parameter: `T`. Its bound is what the type parameter means, so
+      // the bound is what the type is mapped to. A bounded parameter (`T extends
+      // Number`) becomes Number; an unbounded one becomes Object, which is the
+      // same default the compiler uses.
+      //
+      // JavaParser's getTypeBound() returns the NodeList of bounds DIRECTLY (it
+      // is not wrapped in a ReferenceType the way a method's return type is).
+      List<ClassOrInterfaceType> bounds = tp.getTypeBound();
+      if (bounds.isEmpty()) {
+        // An unbounded type parameter erases to Object. That is not UNKNOWN: the
+        // compiler KNOWS the erasure, and saying UNKNOWN would lose the fact.
+        return TacType.ofClass("java.lang.Object");
+      }
+      return map(bounds.get(0));
+    }
     if (t instanceof VarType || t instanceof WildcardType) {
+      return TacType.UNKNOWN;
+    }
+    if (t instanceof UnknownType) {
+      // An UNKNOWN type: JavaParser's placeholder for a type it could not parse.
+      // It is not "any type" -- it is "no type information". Mapping it to
+      // Object would be a LIE (it would claim the type is known); UNKNOWN says
+      // exactly what it is. The caller decides what to do with the absence.
       return TacType.UNKNOWN;
     }
     return TacType.UNKNOWN;

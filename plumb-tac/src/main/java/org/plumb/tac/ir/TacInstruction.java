@@ -75,7 +75,82 @@ public final class TacInstruction implements java.io.Serializable {
      * the run-time semantics are encoded by the CFG builder, which adds edges from every exit of
      * the try / catch region to this instruction.
      */
-    FINALLY_ENTER
+    FINALLY_ENTER,
+    /**
+     * A compiler-inserted null check.
+     *
+     * <p>Semantics: if {@code dest} is null, throw NPE; otherwise {@code dest} is proven non-null.
+     *
+     * <p><b>Purpose is strictly limited to removing false positives.</b> A null-dereference checker
+     * uses this to know that a value has already been proven non-null, and therefore does not need
+     * to report it. It must <b>never</b> be used to <b>prove safety</b>: Kotlin's compiler-inserted
+     * checks can be removed by {@code -Xno-param-assertions} / {@code -Xno-call-assertions}, and
+     * ProGuard/R8's {@code -assumenosideeffects} strips them from bytecode. "There is no check in
+     * the bytecode" does not imply "the runtime is safe".
+     *
+     * <p><b>Do not map these to NULL_CHECK:</b>
+     *
+     * <ul>
+     *   <li>{@code kotlin.jvm.internal.Intrinsics.areEqual} -- the null-safe comparison helper used
+     *       by a data class's generated {@code equals()}. It is not a null check; treating it as
+     *       one would pollute the non-null fact set with "these two values are equal".
+     *   <li>{@code kotlin.jvm.internal.Intrinsics.throwUninitializedPropertyAccessException} -- the
+     *       {@code lateinit} access check. It is not a null check.
+     * </ul>
+     *
+     * <p>A source frontend that read the type system does not need this opcode for ordinary
+     * declarations (the nullability is already in {@link TacType#isNullable()}); it is used for
+     * control-flow narrowing that the type system cannot express -- smart casts, explicit {@code
+     * requireNotNull}, and platform types coming from Java interop.
+     */
+    NULL_CHECK,
+    /**
+     * The destination becomes an <b>unknown value</b>: any value at all.
+     *
+     * <p>This is the explicit form of "the frontend could not model this". It exists because the
+     * alternative was to degrade the whole function to {@link IrPrecision#SOURCE_LOWERED}, which
+     * throws away the parts of the function that <em>were</em> understood -- including the taint
+     * that had already reached the function's parameters. One unreadable expression should cost one
+     * instruction's precision, not the whole function's.
+     *
+     * <p><b>What the engine does with it.</b> The destination is not tainted (nothing is known
+     * about it), and it is not proven safe either. A checker that needs to know a value's origin
+     * must treat it as unknown rather than as clean.
+     *
+     * <p><b>What it does not mean.</b> It does not mean "the value is attacker-controlled", and it
+     * does not mean "the value is benign". It means the analysis does not know. A checker that
+     * treats a HAVOC destination as tainted will report findings the code may not deserve; one that
+     * treats it as clean will miss findings it might deserve. Neither is right, and both are wrong
+     * in a way the user cannot see -- which is why the frontend must report the problem separately,
+     * through the {@code FunctionProblem} channel, so the incompleteness is visible.
+     *
+     * <p><b>Where it comes from.</b> A frontend that meets a construct it cannot lower into the
+     * existing opcodes. The frontend's job is to emit a HAVOC for the affected value <em>and</em>
+     * to record a problem saying what it could not lower.
+     */
+    HAVOC,
+    /**
+     * A call whose internal behaviour is <b>not modelled</b>: a black box.
+     *
+     * <p>The difference from {@link #HAVOC} is where the unknown lies. {@code HAVOC} says "this
+     * value is unknown"; {@code UNINTERPRETED} says "this call's effect is unknown -- it may return
+     * anything, and it may have side effects".
+     *
+     * <p><b>Why the distinction matters.</b> A black-box call is a <em>taint barrier</em> in one
+     * direction and a <em>taint source</em> in another, and which one it is depends on the call,
+     * not on the value. {@code String.getBytes()} passes its argument's taint through; {@code
+     * Object.hashCode()} may return a value derived from anything the object holds.
+     *
+     * <p><b>The default treatment.</b> An {@code UNINTERPRETED} call is assumed to be
+     * taint-preserving on its arguments and to possibly produce a tainted result. That is the
+     * conservative choice for a tool whose users hold it to a low false-negative bar: the risk is a
+     * false positive on an unknown API, not a missed vulnerability.
+     *
+     * <p>When the engine does know a call's semantics -- because a summary exists, or because the
+     * call's target was resolved and analysed -- the call is a plain {@link #CALL} and this opcode
+     * is not used. {@code UNINTERPRETED} is for calls the engine genuinely cannot see inside.
+     */
+    UNINTERPRETED
   }
 
   public final Kind kind;
@@ -289,6 +364,14 @@ public final class TacInstruction implements java.io.Serializable {
       case CATCH_HANDLER -> sb.append("catch(").append(ctorType).append(") -> ").append(dest);
       case FINALLY_ENTER -> sb.append("finally: ");
       case NOP -> sb.append("nop");
+      case HAVOC -> sb.append(dest).append(" = <unknown>");
+      case UNINTERPRETED -> {
+        if (dest != null) sb.append(dest).append(" = ");
+        sb.append("<uninterpreted>(")
+            .append(calleeSig == null ? "<call>" : calleeSig)
+            .append(')')
+            .append(args);
+      }
     }
     return sb.toString();
   }

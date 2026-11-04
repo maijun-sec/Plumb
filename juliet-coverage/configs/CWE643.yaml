@@ -23,6 +23,7 @@ rules:
     - ast-security-unchecked-return
     - dfa-taint-leak
     - dfa-taint-xpath-injection
+    - dfa-taint-xslt-injection
     - dfa-boundary-integer-overflow
     - dfa-boundary-integer-underflow
     - dfa-taint-null-dereference

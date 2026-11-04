@@ -70,13 +70,56 @@ public enum SourceOrigin {
    * JDK / JRE runtime code. Analysed only when both {@code TuningConfig.libraryAnalysisEnabled} AND
    * {@code TuningConfig.analyseSystemLibraries} are true. Default: skipped.
    */
-  SYSTEM_LIBRARY;
+  SYSTEM_LIBRARY,
 
   /**
-   * Whether this origin is on by default. Only {@link #SOURCE} returns true; the other two require
-   * explicit opt-in from the user via the engine config.
+   * Code this project generated -- a Kotlin {@code data class}'s accessors, a Java {@code record}'s
+   * accessors, a Lombok-generated method.
+   *
+   * <p><b>Why generated code needs its own origin.</b> Generated code is neither the user's
+   * hand-written code nor a third-party library, and it deserves a different summary policy from
+   * both:
+   *
+   * <ul>
+   *   <li>A generated accessor that returns a field carries the field's taint, and the engine
+   *       should know that without re-analysing it.
+   *   <li>But the generated code is not in the source the user wrote, so a finding reported
+   *       <em>inside</em> it points at a line the user cannot see.
+   * </ul>
+   *
+   * <p>With this origin the engine can summarise a generated accessor once and apply it at every
+   * call site, instead of analysing it as if it were ordinary source.
+   *
+   * <p><b>It is still analysed by default.</b> A generated accessor that carries taint is exactly
+   * the kind of thing that must not be skipped -- skipping it would drop the taint at every
+   * property access.
+   */
+  GENERATED,
+
+  /**
+   * Code generated <em>outside</em> this project -- a DTO from another team's build, a deserialised
+   * class from a dependency.
+   *
+   * <p>Distinct from {@link #GENERATED} because it is less trustworthy: the engine did not see it
+   * being generated, and its shape may not match what the generator produces. A summary derived
+   * from it is a guess.
+   */
+  EXTERNAL_GENERATED;
+
+  /**
+   * Whether this origin is on by default. Only {@link #SOURCE} returns true; the other origins
+   * require explicit opt-in from the user via the engine config.
+   *
+   * <p><b>Except the generated ones.</b> {@link #GENERATED} and {@link #EXTERNAL_GENERATED} are
+   * analysed by default: a generated accessor that carries taint is precisely what must not be
+   * skipped, because skipping it drops the taint at every property access.
    */
   public boolean analysedByDefault() {
-    return this == SOURCE;
+    return this == SOURCE || this == GENERATED || this == EXTERNAL_GENERATED;
+  }
+
+  /** Whether this origin describes code that a generator produced. */
+  public boolean isGenerated() {
+    return this == GENERATED || this == EXTERNAL_GENERATED;
   }
 }

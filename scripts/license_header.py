@@ -86,6 +86,44 @@ def license_file_text() -> str:
     )
 
 
+def normalise_newlines(raw: bytes) -> bytes:
+    """Collapse every line ending in a file's bytes to a bare LF.
+
+    The comparison between a file and the header has to ignore HOW the file
+    ends its lines, because the tree is checked out with CRLF on Windows and
+    with LF elsewhere, and the header text is LF. A simple
+    ``raw.replace(b"\\r\\n", b"\\n")`` handles that -- but it leaves a stray
+    ``\\r`` behind for a file whose endings are MALFORMED (``\\r\\r\\n``), so
+    the file stops matching the header and the applier adds a SECOND one.
+    The symptom is a file with the licence twice, and it is silent: the
+    applier reports "added the header to 1 file(s)" as success.
+
+    So the CR is removed first and the LF is then left alone. That handles
+    CRLF, LF, CR-only and the doubled-CR case with one rule, and it cannot
+    leave a half-converted separator behind.
+
+    The bytes are handled as BYTES on purpose. Python's text mode normalises
+    CRLF to LF on the way in, so a decoded string cannot tell the endings
+    apart -- and the question "what ending does this file use?" is a
+    question about bytes.
+    """
+    return raw.replace(b"\r", b"").replace(b"\n", b"\n")
+
+
+def normalise_text(raw: bytes) -> str:
+    """The file's text, with the line endings collapsed and the BOM dropped.
+
+    The BOM is ENCODING METADATA, not content: it says "the bytes after me
+    are UTF-8", and it is not part of the file's text. A file whose bytes are
+    ``BOM + header + body`` HAS the header, and a check that says it does not
+    is reporting on the BOM instead of on the licence.
+    """
+    text = normalise_newlines(raw).decode("utf-8", errors="replace")
+    if text.startswith("﻿"):
+        text = text[1:]
+    return text
+
+
 if __name__ == "__main__":
     import sys
 

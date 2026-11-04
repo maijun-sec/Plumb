@@ -44,13 +44,38 @@ import java.util.Objects;
 public final class TacProgram implements java.io.Serializable {
   private static final long serialVersionUID = 1L;
 
+  /**
+   * A problem the translator could not get past.
+   *
+   * <p><b>Why this is serialisable.</b> The IR can be written to disk and analysed later, on
+   * another machine, with no source available. That only works if the gaps travel with it: a
+   * consumer that loads the IR must be able to see that the analysis was incomplete. A record that
+   * did not implement {@code Serializable} would be dropped on the round-trip, and the consumer
+   * would silently believe a partial IR is a complete one -- the exact failure this type exists to
+   * prevent.
+   *
+   * <p><b>Directional rule.</b> A problem is a statement about the <i>analysis</i>, not about the
+   * <i>program</i>: "the analyser could not fully model this" says nothing about whether the code
+   * is vulnerable. It must never be reported as a finding, and it must never be used to suppress
+   * one either -- it means the analysis is <i>less</i> complete, not more.
+   *
+   * @param functionName the function the problem occurred in
+   * @param kind one of {@code PARSE_PROBLEM}, {@code TRANSLATION_ERROR}, {@code UNHANDLED_NODE}
+   * @param message a human-readable description
+   * @param nodeClass the simple class name of the AST node that caused it
+   * @param line the source line, or -1 if unknown
+   * @param column the source column, or -1 if unknown
+   */
   public record FunctionProblem(
       String functionName,
       String kind, // PARSE_PROBLEM | TRANSLATION_ERROR | UNHANDLED_NODE
       String message,
       String nodeClass,
       int line,
-      int column) {
+      int column)
+      implements java.io.Serializable {
+    private static final long serialVersionUID = 1L;
+
     public FunctionProblem {
       Objects.requireNonNull(kind, "kind");
     }
@@ -227,6 +252,53 @@ public final class TacProgram implements java.io.Serializable {
   /** All lambda bindings (for debugging / testing). */
   public Map<String, String> lambdaBindings() {
     return Collections.unmodifiableMap(lambdaBindings);
+  }
+
+  /**
+   * Deferred-target table: maps a user-visible var name to the callee signature of the method it
+   * holds as a <em>method reference</em> (e.g. {@code String::trim} held by {@code f} maps to
+   * {@code java.lang.String.trim/1}).
+   *
+   * <p>A method reference is a deferred invocation: the referenced method is not called where the
+   * reference is written, it is called when the functional interface is applied. The table lets the
+   * translator rewrite the application site into the call it actually is:
+   *
+   * <pre>
+   *   Function&lt;String, String&gt; f = String::trim;
+   *   f.apply(userInput);          //==  String.trim(userInput)
+   * </pre>
+   *
+   * <p>That rewrite is what makes the taint survive: without it the application is modelled as a
+   * call to an opaque {@code Function.apply/1}, the argument's taint stops at the call, and the
+   * analysis reports a clean program for code that hands attacker-controlled input to the operating
+   * system.
+   *
+   * <p>The arity recorded here is the referenced method's arity, which is what the application site
+   * must supply.
+   */
+  private final Map<String, String> deferredTargets = new java.util.HashMap<>();
+
+  /**
+   * Register a deferred target: the user var {@code varName} holds a method reference to the method
+   * named {@code calleeSig}.
+   */
+  public void bindDeferredTarget(String varName, String calleeSig) {
+    if (varName != null && calleeSig != null) {
+      deferredTargets.put(varName, calleeSig);
+    }
+  }
+
+  /**
+   * Look up the deferred target bound to {@code varName}, or {@code null} when the var does not
+   * hold a known method reference.
+   */
+  public String deferredTargetFor(String varName) {
+    return deferredTargets.get(varName);
+  }
+
+  /** All deferred-target bindings (for debugging / testing). */
+  public Map<String, String> deferredTargets() {
+    return Collections.unmodifiableMap(deferredTargets);
   }
 
   public SourceMap sourceMap() {

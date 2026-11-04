@@ -69,15 +69,37 @@ public sealed interface TacOperand extends java.io.Serializable
       return name + ":" + type;
     }
 
+    /**
+     * Identity is the NAME and the temp flag -- not the type.
+     *
+     * <p>A {@code TacVar} is a storage location. The dataflow engine keys every per-variable map on
+     * it ({@code taintedVars}, {@code taintPaths}, the field and array trackers), so two {@code
+     * TacVar}s that name the same location must be the same key, or taint is silently dropped on a
+     * lookup that "almost" matches.
+     *
+     * <p>The type is deliberately excluded because it is <i>refinable</i>. A frontend may learn a
+     * variable's type after it was first seen: an unresolved {@code UNKNOWN} becomes a resolved
+     * class, a Java reference becomes a Kotlin non-null type once the type system is consulted, a
+     * platform type becomes nullable. Each refinement produces a {@code TacVar} that is the same
+     * storage location with a better description.
+     *
+     * <p>Including the type would mean the refined variable is a DIFFERENT key: the taint recorded
+     * under the old key would not be found under the new one. That failure is invisible -- no
+     * exception, just a missing finding.
+     *
+     * <p>Note that this also makes the type's nullability dimension harmless for identity: a
+     * nullable and a non-nullable {@code String} are the same storage location, and the
+     * null-dereference checker reads the type directly off the variable rather than off the key.
+     */
     @Override
     public boolean equals(Object o) {
       if (!(o instanceof TacVar v)) return false;
-      return name.equals(v.name) && type.equals(v.type) && isTemp == v.isTemp;
+      return name.equals(v.name) && isTemp == v.isTemp;
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(name, type, isTemp);
+      return Objects.hash(name, isTemp);
     }
   }
 

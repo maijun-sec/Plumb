@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.plumb</groupId>
+        <artifactId>plumb</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>plumb-frontend</artifactId>
+    <name>plumb-frontend</name>
+    <description>
+        The non-Java source frontends: Kotlin (Analysis API Standalone) and Scala 3
+        (dotc PluginPhase), each lowering a source AST to the unified TAC.
+
+        WHY ONE MODULE FOR BOTH LANGUAGES. Both frontends have the SAME isolation
+        requirement, and it is the same requirement: each depends on a compiler's API
+        rather than on a stable published interface -- the Kotlin Analysis API
+        (experimental, "subject to incompatible changes") and dotc's PluginPhase
+        (compiler-internal, only guaranteed for CrossVersion.full). A breaking
+        upstream change in either must not be able to break the Java analysis path, so
+        neither may live in plumb-tac.
+
+        Because the requirement is identical, isolating them SEPARATELY buys nothing:
+        the blast radius of a Kotlin upgrade and of a Scala upgrade is the same either
+        way -- "the multi-language frontends", not "Java". One module expresses that
+        honestly and costs one artifact instead of two.
+
+        WHAT THIS MODULE DOES NOT DO. It is still not plumb-tac. Moving the frontends
+        into plumb-tac would put four compilers' APIs on one module's compile
+        classpath (javaparser, sootup, kotlin-compiler, scala3-compiler) and make a
+        Kotlin upgrade break the Java path's build. That is the one thing the
+        isolation is for.
+
+        Scala 2 is NOT supported: its compiler-internal API differs completely from
+        Scala 3's.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-tac</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!--
+          Kotlin Analysis API. This is an EXPERIMENTAL API: JetBrains states it
+          is "subject to incompatible changes" and only officially supports IDEA
+          plugin development. The version is pinned in the parent POM and must be
+          upgraded deliberately (re-run the frontend's own tests), never by a
+          transitive bump.
+
+          The artifact is an aggregator POM; the real code is in the
+          -standalone-surface / -standalone-implementation artifacts, and the
+          -implementation artifact below carries the Kotlin compiler classes
+          (org.jetbrains.kotlin.cli / .fir / .resolve) the standalone session
+          needs.
+
+          WHY IT IS NOT STRIPPED. That implementation jar also bundles a whole
+          Kotlin script API (kotlin/script/**) and scripting compiler
+          (org.jetbrains.kotlin.scripting/**). Those look like they collide with
+          the DSL script engine's 2.2.0 copies, and they do, but only on ONE
+          classpath. The DSL engine runs in its own classloader that owns those
+          packages (see ScriptEngineClassLoader in plumb-dsl-kotlin), so the two
+          never meet. A previous attempt to strip the duplicates by repackaging
+          the jar only moved the problem: maven-shade-plugin skips provided-scope
+          dependencies, so the "sanitised" artifact came out as a 3.5 KB shell and
+          the Analysis API lost org.jetbrains.kotlin.cli.jvm.compiler.CompatKt
+          entirely. The boundary belongs in the classloader, not in the jar.
+        -->
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-analysis-api-standalone-implementation</artifactId>
+        </dependency>
+
+        <!--
+          The IntelliJ platform classes the Analysis API's compile-scope surface
+          refers to in its own signatures.
+
+          kotlin-analysis-api-intellij-api-surface-components (compile scope, pulled
+          in transitively) declares methods whose signatures mention
+          com.intellij.openapi.util.Pair and
+          com.intellij.openapi.util.ThrowableComputable. Those two classes live in
+          kotlin-analysis-api-intellij-implementation-components, which the
+          aggregator declares as `runtime` scope. So javac sees a method it cannot
+          type-check, and the build fails with "cannot find the class file for
+          Pair".
+
+          The dependency is therefore declared explicitly at compile scope. It is
+          the same artifact and the same version the aggregator already resolves,
+          only the scope changes, so nothing new is downloaded and the runtime
+          classpath is unchanged.
+        -->
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-analysis-api-intellij-implementation-components</artifactId>
+            <version>${kotlin.analysis.api.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!--
+          kotlinx-collections-immutable, at COMPILE scope.
+
+          THE SAME DEFECT AS THE Pair ONE ABOVE, IN A DIFFERENT ARTIFACT. The
+          compile-scope kotlin-analysis-api-intellij-api-surface-components has a
+          field of type kotlinx.collections.immutable.PersistentSet
+          (com.intellij.lang.Language.transitiveDialects). Its own POM declares
+          only kotlin-stdlib at compile scope; kotlinx-collections-immutable-jvm
+          is declared at RUNTIME scope by the parent aggregator. javac reads
+          the classfile's field type regardless of the scope that fetched the
+          classfile, so it cannot type-check the field and the build fails with
+
+            "cannot find the class file for kotlinx.collections.immutable.PersistentSet"
+
+          The scope is widened to compile for the same reason as Pair: the
+          artifact is already resolved, only the scope changes, and the runtime
+          classpath is unchanged. The version is left unpinned so it stays the
+          one the aggregator resolves; pinning it here would create a second
+          place to forget to update.
+        -->
+        <dependency>
+            <groupId>org.jetbrains.kotlinx</groupId>
+            <artifactId>kotlinx-collections-immutable-jvm</artifactId>
+            <scope>compile</scope>
+        </dependency>
+
+        <!--
+          The Scala 3 compiler. The frontend uses dotty.tools.dotc.plugins.PluginPhase,
+          which is compiler-internal API: dotc only guarantees compatibility for
+          CrossVersion.full. The version is pinned in the parent POM.
+        -->
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala3-compiler_3</artifactId>
+        </dependency>
+
+        <!--
+          The Scala 3 standard library, declared explicitly rather than relied on
+          transitively. The frontend puts these jars on the compiler's classpath so
+          that dotc can resolve scala.Predef, scala.Option, scala.collection.* and
+          friends; a source file that mentions any of them will not type without
+          them.
+        -->
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala3-library_3</artifactId>
+            <version>${scala3.version}</version>
+        </dependency>
+
+        <!--
+          The Scala 2 standard library. Scala 3's library depends on it for the
+          collection API's shared base types, and dotc's classpath needs it to
+          resolve them.
+        -->
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>${scala3.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

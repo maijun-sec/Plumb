@@ -30,6 +30,7 @@ destroy the work.
 
     python scripts/mutate_finding_identity.py
 """
+import os
 import pathlib
 import shutil
 import subprocess
@@ -47,20 +48,41 @@ TRANSLATOR = REPO / "plumb-tac/src/main/java/org/plumb/tac/translate/TacTranslat
 # (because the text has moved) is reported as NOT-APPLIED rather than
 # silently counted as killed.
 MUTANTS = [
+    # The AI pass delegates to the record's own copy method, which carries
+    # EVERY field. These mutants break that delegation in the two ways that
+    # actually lose a field:
+    #
+    #   1. the method rebuilds the finding through the SHORT constructor, which
+    #      hardcodes sink_function to null -- this is the exact defect the gate
+    #      exists for, and it is silent: the finding still fires;
+    #   2. the method builds a fresh finding instead of copying the original,
+    #      so the file is lost.
+    #
+    # Both mutants are the SAME defect the old field-by-field mutants were
+    # measuring. They are restated against the current form, because a mutant
+    # that cannot be applied measures nothing.
     (
         "the-ai-pass-drops-the-sink-again",
         SCAN_RUNNER,
-        """        verdict,
-        reason,
-        f.sinkFunction(),
-        f.trace());""",
-        """        verdict,
+        "    return f.withAiVerdict(verdict, reason);",
+        """    return new Finding(
+        f.file(),
+        f.line(),
+        f.column(),
+        f.rule(),
+        f.message(),
+        f.severity(),
+        f.dataflowHead(),
+        f.dataflowSteps(),
+        verdict,
         reason);""",
     ),
     (
         "the-ai-pass-drops-the-file-again",
         SCAN_RUNNER,
-        """        f.file(),
+        "    return f.withAiVerdict(verdict, reason);",
+        """    return new Finding(
+        Path.of("unknown"),
         f.line(),
         f.column(),
         f.rule(),
@@ -70,18 +92,7 @@ MUTANTS = [
         f.dataflowSteps(),
         verdict,
         reason,
-        f.sinkFunction(),
-        f.trace());""",
-        """        f.file(),
-        f.line(),
-        f.column(),
-        f.rule(),
-        f.message(),
-        f.severity(),
-        f.dataflowHead(),
-        f.dataflowSteps(),
-        verdict,
-        reason);""",
+        f.sinkFunction());""",
     ),
     (
         "a-nested-type-has-no-enclosing-class-again",
@@ -113,10 +124,28 @@ def mvn_command():
     )
 
 
+def maven_flags():
+    """The settings and local-repository flags this machine needs.
+
+    Without these the build resolves against the default mirror and the default
+    local repository. On a machine whose artifacts were fetched through a
+    different mirror into a different repository, that fails with "present, but
+    unavailable" -- and the battery reports "the project did not build", which
+    reads like a product defect and is not one.
+    """
+    flags = []
+    settings = os.environ.get("PLUMB_MAVEN_SETTINGS", r"D:\cache\m2-central-settings.xml")
+    if settings and pathlib.Path(settings).is_file():
+        flags += ["-s", settings]
+    flags += ["-Dmaven.repo.local=" + os.environ.get("PLUMB_MAVEN_REPO", r"D:\cache\mvn_repo")]
+    return flags
+
+
 def build():
     """Build the jar the gate runs against."""
     proc = subprocess.run(
-        [mvn_command(), "-o", "-pl", "plumb-main", "-am", "-DskipTests", "-B", "install"],
+        [mvn_command()] + maven_flags()
+        + ["-o", "-pl", "plumb-main", "-am", "-DskipTests", "-B", "install"],
         cwd=str(REPO), capture_output=True, text=True, encoding="utf-8",
         errors="replace", timeout=1800,
     )

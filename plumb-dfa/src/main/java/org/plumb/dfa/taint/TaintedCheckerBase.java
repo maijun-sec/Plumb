@@ -47,6 +47,7 @@ import org.plumb.reporter.trace.OperandRef;
 import org.plumb.reporter.trace.Trace;
 import org.plumb.reporter.trace.TraceBuilder;
 import org.plumb.reporter.trace.TraceNode;
+import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacBasicBlock;
 import org.plumb.tac.ir.TacCfg;
 import org.plumb.tac.ir.TacCfgBuilder;
@@ -152,6 +153,81 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   protected SolverZ3Bridge solverBridge;
 
   /**
+   * The path-sensitivity mode this checker runs under, normalised to one of {@code "none"}, {@code
+   * "windowed"} or {@code "full"}.
+   *
+   * <p>This is read from {@code tuning.path_sensitivity}. Until the mode is wired to the solver,
+   * the only mode with an observable effect is {@code "none"}, which switches the path-condition
+   * verification off entirely: every finding fires, and the solver is never consulted. The other
+   * two modes behave identically for now, because the predicate source they would select over is
+   * not populated yet -- see {@code docs/tech/ENGINE-GAP-ANALYSIS.md} (item G1).
+   *
+   * <p>The default is {@code "full"}: an unknown or absent configuration must not silently disable
+   * a false-positive filter.
+   */
+  private String pathSensitivityMode = "full";
+
+  /** The normalised path-sensitivity mode. Never {@code null}. */
+  protected String pathSensitivityMode() {
+    return pathSensitivityMode;
+  }
+
+  /**
+   * Set the path-sensitivity mode explicitly. A {@code null} or blank value restores the default
+   * ({@code "full"}); an unrecognised value is also treated as {@code "full"} for the same reason.
+   */
+  public void setPathSensitivityMode(String mode) {
+    this.pathSensitivityMode = normalisePathSensitivity(mode);
+  }
+
+  /**
+   * Normalise a configured path-sensitivity value to the three known modes.
+   *
+   * <p>Anything unrecognised becomes {@code "full"}, which is the conservative choice: the engine
+   * keeps whatever filtering it has rather than losing it because of a typo in a configuration
+   * file.
+   */
+  public static String normalisePathSensitivity(String mode) {
+    if (mode == null) return "full";
+    String m = mode.trim().toLowerCase(java.util.Locale.ROOT);
+    switch (m) {
+      case "none":
+        return "none";
+      case "windowed":
+        return "windowed";
+      case "full":
+        return "full";
+      default:
+        return "full";
+    }
+  }
+
+  /** Is the path-condition verification switched on for this checker? */
+  protected boolean pathVerificationEnabled() {
+    return !"none".equals(pathSensitivityMode);
+  }
+
+  /**
+   * How many levels of cross-function summary folding this checker performs.
+   *
+   * <p>ZERO means no cross-function folding at all: a callee's facts never reach its callers, so
+   * every finding is about a flow inside one function. That is a real, useful setting -- it is the
+   * fast mode, and it is what a reader of a report can check the findings against.
+   *
+   * <p>A positive value folds the callee's summary into the caller. The engine's summary is itself
+   * a fold -- a function's summary holds the facts its own callees contributed -- so a chain of
+   * calls accumulates into one summary and the depth of the chain is not separately bounded. The
+   * setting therefore distinguishes "no cross-function analysis" from "there is cross-function
+   * analysis"; it does not yet distinguish a k-CFA depth.
+   */
+  private int contextDepth = 1;
+
+  /** The cross-function folding depth, or {@code 0} for no cross-function folding. */
+  protected int contextDepth() {
+    return contextDepth;
+  }
+
+  /**
    * The set of variables known to carry taint in the current function, keyed by the variable
    * itself. The value is a human-readable label for the source (e.g. {@code "param:id"} or the
    * concrete {@code Fact.value} from the caller's fact bag). Cleared at every function boundary by
@@ -220,6 +296,19 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * the {@link org.plumb.dfa.summary.FunctionSummary} cache.
    */
   private final ArrayTaintTracker arrayTaintTracker = new ArrayTaintTracker();
+
+  /**
+   * Per-function iterator taint: the iterator variable → the taint of the elements it yields.
+   *
+   * <p>An enhanced-for loop is lowered to {@code it = arr.iterator(); ... s = it.next(); ...}. The
+   * taint of an array element has to cross that indirection: the iterator hands out the array's
+   * elements, so a tainted element makes every value the iterator returns tainted.
+   *
+   * <p>Without this the loop variable came out clean and a program that iterated an array of
+   * attacker-controlled values into a command was reported as clean.
+   */
+  private final Map<TacOperand.TacVar, ArrayTaintTracker.TaintedEntry> iteratorTaint =
+      new HashMap<>();
 
   /**
    * the equality-allowlist proof.
@@ -467,7 +556,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   static void recordFieldReader(String classFieldKey, TacFunction fn) {
     if (classFieldKey == null || classFieldKey.isEmpty() || fn == null) return;
     java.util.Set<TacFunction> set =
-        crossFnClassFieldReaders.computeIfAbsent(classFieldKey, k -> new java.util.HashSet<>());
+        crossFnClassFieldReaders.computeIfAbsent(
+            classFieldKey, k -> java.util.concurrent.ConcurrentHashMap.newKeySet());
     set.add(fn);
   }
 
@@ -497,6 +587,30 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // has already been read.  Indexing at the end would leave every lambda
     // filter looking like no filter at all, and the finding would stand.
     deserializationFilters.indexLambdaBodies(ctx.program().functions());
+    // Pick up the engine's path-sensitivity setting. This is where a knob that used to be
+    // declared in tuning.yaml and read by nobody becomes a knob the analysis obeys: with
+    // "none" the solver is not consulted for a sink, so every finding fires.
+    applyConfiguredPathSensitivity(ctx);
+  }
+
+  /**
+   * Read the engine's path-sensitivity and context-depth configuration and apply them to this
+   * checker.
+   *
+   * <p>Kept separate from {@link #initEngine} so a test can drive it with a context that has no
+   * configuration attached, in which case the defaults are kept.
+   */
+  private void applyConfiguredPathSensitivity(AnalysisContext ctx) {
+    if (ctx == null) return;
+    try {
+      org.plumb.dfa.config.EngineConfig cfg = ctx.config();
+      if (cfg == null || cfg.tuning() == null) return;
+      setPathSensitivityMode(cfg.tuning().pathSensitivity());
+      this.contextDepth = Math.max(0, cfg.tuning().contextDepth());
+    } catch (RuntimeException e) {
+      // A configuration problem must not take the analysis down: the default mode keeps the
+      // existing filtering behaviour, which is the conservative outcome.
+    }
   }
 
   @Override
@@ -550,13 +664,15 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * <p>Static (shared across all checker instances in the same JVM). Cleared at the end of each
    * {@code DfaEngine} run via {@link #clearCrossFunctionState()}.
    */
-  private static final Map<String, String> crossFnClassFieldTaint = new java.util.HashMap<>();
+  private static final Map<String, String> crossFnClassFieldTaint =
+      new java.util.concurrent.ConcurrentHashMap<>();
 
   /**
    * Companion to {@link #crossFnClassFieldTaint}, records {@code (functionSig, kind)} for each key.
    * The {@code kind} is {@link FieldSource#KIND_STATIC} or {@link FieldSource#KIND_ALIASED}.
    */
-  private static final Map<String, FieldSource> crossFnClassFieldSource = new java.util.HashMap<>();
+  private static final Map<String, FieldSource> crossFnClassFieldSource =
+      new java.util.concurrent.ConcurrentHashMap<>();
 
   /**
    * per {@code "ClassName.fieldName"} key, the set of functions whose standalone analysis ran a
@@ -570,7 +686,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * #clearCrossFunctionState()}.
    */
   private static final Map<String, java.util.Set<TacFunction>> crossFnClassFieldReaders =
-      new java.util.HashMap<>();
+      new java.util.concurrent.ConcurrentHashMap<>();
 
   /**
    * queue of {@link TacFunction}s that must be re-analysed after the main worklist finishes. A
@@ -579,7 +695,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * empty when the function ran the first time). The {@code DfaEngine} drains this queue after the
    * main worklist completes. See {@link #requestRerunForFieldReaders} for the enqueue path.
    */
-  private static final java.util.Set<TacFunction> pendingRerunFns = new java.util.LinkedHashSet<>();
+  private static final java.util.Set<TacFunction> pendingRerunFns =
+      java.util.concurrent.ConcurrentHashMap.newKeySet();
 
   /**
    * Compose the local path condition (from {@link #pathConditionForSink}) with the accumulated
@@ -637,6 +754,22 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   @Override
   public final String name() {
     return rule.ruleId();
+  }
+
+  /**
+   * Language gate, driven by the rule's language restriction.
+   *
+   * <p>A rule with no language restriction applies everywhere. A rule that names languages (say a
+   * Kotlin-specific {@code Result<T>} check) only runs against code written in those languages.
+   *
+   * <p>This is a skip, not an error: the checker simply does not run, and produces no finding for
+   * the other languages. A rule that does not apply to a language says nothing about that
+   * language's safety.
+   */
+  @Override
+  public boolean supports(org.plumb.tac.ir.TacFunction fn) {
+    if (fn == null) return true;
+    return rule.appliesTo(fn.sourceLanguage());
   }
 
   /**
@@ -713,6 +846,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     fieldOps.clear();
     fieldTaintTracker.clear();
     arrayTaintTracker.clear(); // R694 T1
+    iteratorTaint.clear();
     classRefVars.clear();
     // per-function allowlist proof. Carried per checker like the other trackers, because the
     // proof is about names in one method's scope.
@@ -920,7 +1054,17 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // before propagateStringPassthroughs marks it
         // tainted, returns silently, and the finding never
         // fires. (Lesson 1049.)
-        propagateStringPassthroughs(ins);
+        propagateStringPassthroughs(ins, ctx);
+        // Accumulator objects (StringBuilder, collections, writers) carry
+        // taint in their STATE, not along an expression edge. The mutator
+        // taints the receiver, the accumulator read hands the state back
+        // out. Without this the classic
+        //     sb.append(userInput); exec(sb.toString());
+        // reports a clean program.
+        propagateAccumulatorTaint(ins);
+        // An iterator hands out an array's elements one at a time, so the
+        // taint of a tainted element crosses the iterator indirection.
+        propagateIteratorTaint(ins);
         // If the callee was a known
         // passthrough, also record a StringOp
         // on the per-function
@@ -943,6 +1087,57 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // The cross-function fold re-applies
         // these at the call site.
         recordStringPassthroughsForSummary(ins, fn);
+      }
+      // HAVOC: the frontend could not model this value, so it is unknown.
+      //
+      // The destination is NOT marked tainted. "Unknown" is not "attacker-controlled", and
+      // treating it as tainted would report findings the code may not deserve. But it is also
+      // not marked clean: a checker that asks whether a value is provably untainted must not be
+      // told "yes" about a value the engine knows nothing about. So the dest is simply left
+      // untracked, which is what "unknown" means everywhere else in this engine.
+      //
+      // The incompleteness itself is reported by the frontend through the FunctionProblem
+      // channel, so the user learns that the function was only partly modelled rather than
+      // silently getting a clean result.
+      case HAVOC -> {
+        if (ins.dest instanceof TacOperand.TacVar havocDv) {
+          // Drop any taint the dest may have carried from an earlier assignment: the
+          // frontend is saying this value is unknown, so a stale label would be a lie.
+          taintedVars.remove(havocDv);
+          taintPaths.remove(havocDv);
+        }
+      }
+      // UNINTERPRETED: a call whose internals the engine cannot see.
+      //
+      // The conservative treatment, and the one that suits a low-false-negative bar: the call
+      // is assumed to preserve its arguments' taint, and its result is assumed to be tainted
+      // when any argument was tainted. A call the engine cannot see inside is a hole in the
+      // analysis, and assuming the hole is clean is how a real vulnerability gets missed.
+      //
+      // The difference from HAVOC is that here the unknown is about a CALL, so the
+      // taint-preserving treatment applies to the arguments rather than to a value.
+      case UNINTERPRETED -> {
+        if (ins.dest instanceof TacOperand.TacVar unDv) {
+          org.plumb.dfa.semantics.LanguageSemantics semantics = semanticsFor(ctx);
+          if (semantics.preservesTaint(ins.calleeSig)) {
+            for (int argIdx : passthroughArgIndices(ins)) {
+              if (argIdx >= ins.args.size()) continue;
+              if (ins.args.get(argIdx) instanceof TacOperand.TacVar av
+                  && taintedVars.containsKey(av)) {
+                markSource(
+                    unDv,
+                    "uninterpreted:" + ins.calleeSig,
+                    ins,
+                    fn.signature(),
+                    "uninterpreted call " + ins.calleeSig);
+                break;
+              }
+            }
+          }
+        }
+        // The call may also be a sink. A black-box call that receives tainted data is exactly
+        // the case a taint engine must not skip.
+        checkSinkAtCall(ins, fn, ctx);
       }
       // NEW instructions (constructors)
       // must also flow through the sink /
@@ -1215,6 +1410,147 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private final Map<Integer, String> thrownTaintByInsnIdentity = new HashMap<>();
 
   /**
+   * Is this call one that returns a value derived from a {@link Throwable}'s own state -- its
+   * message, its cause, or its string form?
+   *
+   * <p>The recognition is by METHOD NAME rather than by an exhaustive list of declaring types. The
+   * owner in a callee signature is the static type the IR could prove, and for an exception that is
+   * very often a concrete subclass: {@code IOException}, {@code SQLException}, {@code
+   * IllegalArgumentException}, or a user-defined exception. A list of owners would have to name
+   * every subclass in existence, and every one it missed silently dropped the taint -- so a program
+   * that logged an attacker-controlled exception message into a command was reported as clean.
+   *
+   * <p>Matching the name is sound for the throwable family: {@code getMessage}, {@code
+   * getLocalizedMessage}, {@code toString} and {@code getCause} all return a value derived from the
+   * receiver, and the receiver is what carries the taint.
+   *
+   * @param calleeSig the callee signature in {@code owner.method/arity} form
+   * @return true when the call returns the receiver's throwable state
+   */
+  static boolean isThrowableMessageMethod(String calleeSig) {
+    if (calleeSig == null || calleeSig.isEmpty()) return false;
+    int slash = calleeSig.indexOf('/');
+    if (slash < 0) return false;
+    String qualified = calleeSig.substring(0, slash);
+    int dot = qualified.lastIndexOf('.');
+    String method = dot < 0 ? qualified : qualified.substring(dot + 1);
+    return switch (method) {
+      case "getMessage", "getLocalizedMessage", "toString", "getCause" -> true;
+      default -> false;
+    };
+  }
+
+  /**
+   * The semantics table for the language of the function being analysed.
+   *
+   * <p>The table is per language family: Java's library and Kotlin's library have different
+   * spellings for the same behaviour, and only the language's own table knows both. A function
+   * whose language has no table gets the empty one, which makes every callee unknown, which the
+   * engine treats as taint-preserving.
+   */
+  private static org.plumb.dfa.semantics.LanguageSemantics semanticsFor(AnalysisContext ctx) {
+    if (ctx == null) {
+      return org.plumb.dfa.semantics.LanguageSemantics.empty(
+          org.plumb.tac.ir.SourceLanguage.UNKNOWN);
+    }
+    org.plumb.tac.ir.TacFunction fn = ctx.currentFunction();
+    org.plumb.tac.ir.SourceLanguage lang =
+        fn == null ? org.plumb.tac.ir.SourceLanguage.UNKNOWN : fn.sourceLanguage();
+    return ctx.config().languageSemantics().forLanguage(lang);
+  }
+
+  /**
+   * The method name of a callee, without its owner.
+   *
+   * <p>Used by the classification helpers below, which recognise a call by what it does rather than
+   * by which owner declared it.
+   */
+
+  /** {@code String.split} and its equivalents: the result is a piece of the input. */
+  private static boolean isSplitLike(String calleeSig) {
+    String m = methodNameOf(calleeSig);
+    return "split".equals(m) || "splitToSequence".equals(m);
+  }
+
+  /** {@code String.substring} and its equivalents. */
+  private static boolean isSubstringLike(String calleeSig) {
+    String m = methodNameOf(calleeSig);
+    return "substring".equals(m) || "substringAfter".equals(m) || "substringBefore".equals(m);
+  }
+
+  /** {@code String.trim} and its equivalents: whitespace removal keeps the content's taint. */
+  private static boolean isTrimLike(String calleeSig) {
+    String m = methodNameOf(calleeSig);
+    return "trim".equals(m)
+        || "strip".equals(m)
+        || "stripLeading".equals(m)
+        || "stripTrailing".equals(m)
+        || "trimIndent".equals(m)
+        || "trimStart".equals(m)
+        || "trimEnd".equals(m);
+  }
+
+  /** Case conversion and replacement: the result is derived from the input. */
+  private static boolean isCaseLike(String calleeSig) {
+    String m = methodNameOf(calleeSig);
+    return "toLowerCase".equals(m)
+        || "toUpperCase".equals(m)
+        || "lowercase".equals(m)
+        || "uppercase".equals(m)
+        || "replace".equals(m)
+        || "replaceAll".equals(m)
+        || "replaceFirst".equals(m);
+  }
+
+  /**
+   * Rendering a value as text, and concatenation.
+   *
+   * <p>{@code String.valueOf} and the wrapper {@code toString} render the value; {@code concat}
+   * joins two strings. Both carry the taint of what they render.
+   */
+  private static boolean isValueOfLike(String calleeSig) {
+    String m = methodNameOf(calleeSig);
+    return "valueOf".equals(m)
+        || "concat".equals(m)
+        || "concatToString".equals(m)
+        || ("toString".equals(m) && !isThrowableMessageMethod(calleeSig));
+  }
+
+  /** The mutating string builders: {@code append} adds to the receiver. */
+  private static boolean isAppendLike(String calleeSig) {
+    String m = methodNameOf(calleeSig);
+    if (!"append".equals(m)) return false;
+    return calleeSig.contains(".StringBuilder.") || calleeSig.contains(".StringBuffer.");
+  }
+
+  /** Tokenizers and scanners: the result is a piece of the input. */
+  private static boolean isTokenizerLike(String calleeSig) {
+    String m = methodNameOf(calleeSig);
+    return "nextToken".equals(m) || "next".equals(m) || "nextLine".equals(m) || "group".equals(m);
+  }
+
+  /** Formatting and joining: the result is assembled from the arguments. */
+  private static boolean isFormatterLike(String calleeSig) {
+    String m = methodNameOf(calleeSig);
+    return "format".equals(m) || "join".equals(m) || "formatted".equals(m);
+  }
+
+  /**
+   * Conversion to bytes or characters, and the extraction of a secret's bytes.
+   *
+   * <p>These carry the taint of what they render: {@code password.toCharArray()} is still the
+   * password, and a rule that reports a hardcoded credential must see it.
+   */
+  private static boolean isCharByteLike(String calleeSig) {
+    String m = methodNameOf(calleeSig);
+    return "toCharArray".equals(m)
+        || "getBytes".equals(m)
+        || "getEncoded".equals(m)
+        || "getPassword".equals(m)
+        || "clone".equals(m);
+  }
+
+  /**
    * Sanitizer check. A "sanitizer" is a function whose return value is provably CLEAN regardless of
    * input taint. The classic example is {@code Integer.parseInt(String)}: the input is a tainted
    * String but the return is a bounded int. Adding sanitizers to this list eliminates false
@@ -1294,6 +1630,16 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private void propagateMOVE(TacInstruction ins) {
     if (ins.dest == null || !(ins.dest instanceof TacOperand.TacVar dv)) {
       return;
+    }
+    // A MOVE that copies an array reference makes the destination name the SAME
+    // array. The per-element taint recorded against the source therefore
+    // applies to the destination too. This is what makes an array initializer
+    // work: the TAC allocates the array into a fresh temp, stores the
+    // initializer's elements against that temp, and then MOVEs the reference
+    // into the user's variable -- so the user reads the elements through a
+    // different name than they were written under.
+    if (ins.lhs1 instanceof TacOperand.TacVar arraySrc) {
+      arrayTaintTracker.alias(arraySrc, dv);
     }
     if (ins.lhs1 instanceof TacOperand.TacVar sv && taintedVars.containsKey(sv)) {
       taintedVars.put(dv, taintedVars.get(sv));
@@ -1656,7 +2002,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // and pii.exfil.sinks). Iterate all
     // matches; emit a finding for each
     // family the current rule watches.
-    List<SinkFamily> families = ctx.config().sinkFamilies().lookupAll(calleeSig);
+    List<SinkFamily> families =
+        ctx.config().sinkFamilies().lookupAll(calleeSig, fn.sourceLanguage());
     if (families.isEmpty()) return;
     for (SinkFamily family : families) {
       if (!rule.matchesSinkFamily(family.name())) continue;
@@ -1677,7 +2024,66 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * silently drops the taint at the .split call site. Every entry below is a pure passthrough: it
    * returns a String derived from its argument; no new trust boundary.
    */
-  private void propagateStringPassthroughs(TacInstruction ins) {
+  /**
+   * Whether a CALL's first argument is a TYPE constant rather than a receiver.
+   *
+   * <p>The TAC's CALL convention prepends the receiver to the argument list. For an instance call
+   * that is the object; for a STATIC call there is no receiver, and the translator emits a string
+   * constant naming the type instead (so the callee signature can be fully qualified).
+   *
+   * <p>The recognition is exact rather than heuristic: the receiver is a string CONSTANT whose text
+   * is a dotted type name. A tainted value is never a constant, so a constant receiver can only be
+   * the type placeholder.
+   *
+   * @param ins the CALL instruction
+   * @return true when args[0] is the type placeholder, so the first real argument is at args[1]
+   */
+  private static boolean isStaticCallee(TacInstruction ins) {
+    if (ins == null || ins.args == null || ins.args.isEmpty()) return false;
+    if (!(ins.args.get(0) instanceof TacOperand.Const c)) return false;
+    if (c.kind() != TacOperand.Const.Kind.STRING) return false;
+    Object raw = c.value();
+    if (!(raw instanceof String)) return false;
+    String text = (String) raw;
+    if (text.isEmpty()) return false;
+    // A type name: a dotted name whose last segment starts with an uppercase letter.
+    // `java.lang.String` qualifies; `safe` does not.
+    int dot = text.lastIndexOf('.');
+    String last = dot < 0 ? text : text.substring(dot + 1);
+    if (last.isEmpty() || !Character.isUpperCase(last.charAt(0))) return false;
+    return true;
+  }
+
+  /**
+   * The argument indices a string-passthrough call may take its taint from.
+   *
+   * <p>The TAC's CALL convention prepends the receiver to the argument list. For an instance call
+   * that is the object (args[0]); for a STATIC call there is no receiver, and the translator
+   * prepends a constant naming the TYPE instead -- so the first real argument is at args[1].
+   *
+   * <p>Both the local propagation and the summary recording used to look only at args[0]. For a
+   * static callee that inspected the TYPE CONSTANT, found it clean, and dropped the taint at the
+   * call: `String.valueOf(tainted)`, `String.format("%s", tainted)` and `String.join(",", tainted)`
+   * all lost the taint, and the analysis reported a clean program for code that flows user input
+   * into a command.
+   *
+   * <p>The indices are computed ONCE here so the two callers cannot drift apart -- which is exactly
+   * how the summary path came to miss what the local path caught.
+   *
+   * @param ins the CALL instruction
+   * @return the argument indices to inspect, in order
+   */
+  private static java.util.List<Integer> passthroughArgIndices(TacInstruction ins) {
+    java.util.List<Integer> out = new java.util.ArrayList<>();
+    if (ins == null || ins.args == null) return out;
+    int first = isStaticCallee(ins) ? 1 : 0;
+    for (int i = first; i < ins.args.size(); i++) {
+      out.add(i);
+    }
+    return out;
+  }
+
+  private void propagateStringPassthroughs(TacInstruction ins, AnalysisContext ctx) {
     String calleeSig = ins.calleeSig;
     if (calleeSig == null) return;
     if (ins.dest == null || !(ins.dest instanceof TacOperand.TacVar dv)) return;
@@ -1716,28 +2122,35 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // match the slash-arity form, with the
     // arity kept loose so we cover
     // split/1, split/2, substring/1, substring/2, etc.
-    boolean isSplit = calleeSig.startsWith("java.lang.String.split/");
-    boolean isSub = calleeSig.startsWith("java.lang.String.substring/");
+    //
+    // The catalogue of which library calls carry taint through is NOT here. It
+    // lives in the per-language semantics table
+    // (LanguageSemanticsRegistry), which the engine reaches through the
+    // configuration. That table is the single source of truth for "does this
+    // call preserve its argument's taint", and it is per language: Kotlin's
+    // stdlib has its own names for the same behaviour, and the table knows
+    // both.
+    org.plumb.dfa.semantics.LanguageSemantics semantics = semanticsFor(ctx);
+    org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour behaviour =
+        semantics.behaviourOf(calleeSig);
+    boolean isSplit =
+        behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
+            && isSplitLike(calleeSig);
+    boolean isSub =
+        behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
+            && isSubstringLike(calleeSig);
     boolean isTrim =
-        calleeSig.startsWith("java.lang.String.trim/")
-            || calleeSig.startsWith("java.lang.String.strip/") // 0
-            || calleeSig.startsWith("java.lang.String.stripLeading/")
-            || calleeSig.startsWith("java.lang.String.stripTrailing/");
+        behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
+            && isTrimLike(calleeSig);
     boolean isCase =
-        calleeSig.startsWith("java.lang.String.toLowerCase/")
-            || calleeSig.startsWith("java.lang.String.toUpperCase/")
-            || calleeSig.startsWith("java.lang.String.replace/")
-            || calleeSig.startsWith("java.lang.String.replaceAll/")
-            || calleeSig.startsWith("java.lang.String.replaceFirst/");
+        behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
+            && isCaseLike(calleeSig);
     boolean isValueOf =
-        calleeSig.startsWith("java.lang.String.valueOf/")
-            || calleeSig.startsWith("java.lang.Integer.toString/")
-            || calleeSig.startsWith("java.lang.Long.toString/")
-            || calleeSig.startsWith("java.lang.Boolean.toString/")
-            || calleeSig.startsWith("java.lang.Object.toString/")
-            || calleeSig.startsWith("java.lang.String.concat/");
+        behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
+            && isValueOfLike(calleeSig);
     boolean isAppend =
-        calleeSig.contains(".StringBuilder.append/") || calleeSig.contains(".StringBuffer.append/");
+        behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
+            && isAppendLike(calleeSig);
     // 2026-10-08 (audit): the -C debug block that
     // spammed `[R759C-DEBUG] propagateStringPassthroughs ...`
     // to stderr on every concat / StringBuilder call is
@@ -1755,11 +2168,21 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // Statement.execute() never sees the
     // upstream taint.
     boolean isTokenizer =
-        calleeSig.startsWith("java.util.StringTokenizer.nextToken/")
-            || calleeSig.startsWith("java.util.Scanner.next/")
-            || calleeSig.startsWith("java.util.Scanner.nextLine/")
-            || calleeSig.startsWith("java.util.regex.Pattern.split/")
-            || calleeSig.startsWith("java.util.regex.Matcher.group/");
+        behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
+            && isTokenizerLike(calleeSig);
+    // String formatting and joining.
+    //
+    // `String.format("%s", tainted)` and `String.join(",", taintedParts)` both
+    // return a String derived from their arguments. They were missing from the
+    // catalogue, so the taint was dropped at the call: the analysis reported a
+    // clean program for code that formats user input into a command.
+    //
+    // `String.format` takes the format string FIRST, so the tainted argument is
+    // not necessarily the first one -- the argument selection below looks at
+    // every value argument for a tainted one.
+    boolean isFormatter =
+        behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
+            && isFormatterLike(calleeSig);
     // Throwable message passthrough.
     // Juliet CWE209 / CWE81 (XSS in Error Message)
     // and many try-with-resources / catch chains
@@ -1779,25 +2202,21 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // included because the IR builder resolves
     // `e.getMessage()` to whichever static type
     // it can prove (Throwable if it lost track).
-    boolean isThrowableMsg =
-        calleeSig.startsWith("java.lang.Throwable.getMessage/")
-            || calleeSig.startsWith("java.lang.Throwable.getLocalizedMessage/")
-            || calleeSig.startsWith("java.lang.Throwable.toString/")
-            || calleeSig.startsWith("java.lang.Throwable.getCause/")
-            || calleeSig.startsWith("java.lang.Exception.getMessage/")
-            || calleeSig.startsWith("java.lang.Exception.getLocalizedMessage/")
-            || calleeSig.startsWith("java.lang.Exception.toString/")
-            || calleeSig.startsWith("java.lang.Exception.getCause/")
-            || calleeSig.startsWith("java.lang.RuntimeException.getMessage/")
-            || calleeSig.startsWith("java.lang.RuntimeException.getLocalizedMessage/")
-            || calleeSig.startsWith("java.lang.RuntimeException.toString/")
-            || calleeSig.startsWith("java.lang.RuntimeException.getCause/")
-            || calleeSig.startsWith("java.lang.Error.getMessage/")
-            || calleeSig.startsWith("java.lang.Error.toString/")
-            || calleeSig.startsWith("java.io.IOException.getMessage/")
-            || calleeSig.startsWith("java.io.IOException.toString/")
-            || calleeSig.startsWith("java.sql.SQLException.getMessage/")
-            || calleeSig.startsWith("java.sql.SQLException.toString/");
+    //
+    // The recognition is by METHOD NAME, not by an exhaustive list of owner
+    // types. The owner in the callee signature is the STATIC type the IR
+    // could prove, and that type is often a concrete subclass the list did
+    // not anticipate (`IOException`, `SQLException`, `IllegalArgumentException`,
+    // a user-defined exception). Listing owners meant every unlisted subclass
+    // silently lost the taint: `catch (IOException e) { exec(e.getMessage()); }`
+    // reported a clean program because the catalogue knew
+    // `java.lang.Throwable.getMessage/` but not `IOException.getMessage/`.
+    //
+    // Matching the name is sound here: `getMessage`, `getLocalizedMessage`,
+    // `toString` and `getCause` return a value derived from the receiver for
+    // every Throwable and every subclass of it, and the receiver is what
+    // carries the taint.
+    boolean isThrowableMsg = isThrowableMessageMethod(calleeSig);
     // String.toCharArray / String.getBytes /
     // SecretKey.getEncoded / PasswordAuthentication.getPassword /
     // Object.clone. The classic Juliet CWE-319 pattern
@@ -1809,11 +2228,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // propagation, args[1] of the ctor is CLEAN and
     // the db.credential.sinks rule never fires.
     boolean isCharBytePassthrough =
-        calleeSig.startsWith("java.lang.String.toCharArray/")
-            || calleeSig.startsWith("java.lang.String.getBytes/")
-            || calleeSig.startsWith("javax.crypto.SecretKey.getEncoded/")
-            || calleeSig.startsWith("java.net.PasswordAuthentication.getPassword/")
-            || calleeSig.startsWith("java.lang.Object.clone/");
+        behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
+            && isCharByteLike(calleeSig);
     if (!(isSplit
         || isSub
         || isTrim
@@ -1821,6 +2237,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         || isValueOf
         || isAppend
         || isTokenizer
+        || isFormatter
         || isThrowableMsg
         || isCharBytePassthrough)) {
       return;
@@ -1856,14 +2273,18 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         sources.add(t1);
       }
     } else {
-      // All other passthroughs: args[0] is
-      // either the receiver (instance
-      // method) or the first arg (static
-      // method) : both are the source.
-      if (!ins.args.isEmpty()
-          && ins.args.get(0) instanceof TacOperand.TacVar pv
-          && taintedVars.containsKey(pv)) {
-        sources.add(pv);
+      // All other passthroughs: args[0] is either the receiver (instance
+      // method) or the first argument (static method) : both are the source.
+      //
+      // For a STATIC callee the translator prepends a constant naming the
+      // TYPE rather than a receiver object, so the first real argument is at
+      // args[1]. Looking only at args[0] meant every static passthrough --
+      // String.valueOf, String.format, Integer.toString -- inspected the TYPE
+      // CONSTANT, found it clean, and dropped the taint at the call.
+      for (int argIdx : passthroughArgIndices(ins)) {
+        if (ins.args.get(argIdx) instanceof TacOperand.TacVar pv && taintedVars.containsKey(pv)) {
+          sources.add(pv);
+        }
       }
     }
     if (sources.isEmpty()) return;
@@ -1943,6 +2364,221 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
+   * Propagate taint through an <em>accumulator</em>: an object whose state collects values, and
+   * whose later reads hand that collected state back out.
+   *
+   * <p>The classic shape is {@code StringBuilder}:
+   *
+   * <pre>
+   *   StringBuilder sb = new StringBuilder();
+   *   sb.append(userInput);
+   *   Runtime.getRuntime().exec(sb.toString());
+   * </pre>
+   *
+   * <p>The taint travels through the <em>state</em> of {@code sb}, not along an expression edge.
+   * {@code append} returns the builder itself, so the call result carries the taint, but the
+   * builder object stays clean -- and the later {@code toString()} reads a clean receiver and
+   * produces a clean result. A taint model that only follows "argument flows into result" therefore
+   * reports this program as clean.
+   *
+   * <p>Two directions are handled here:
+   *
+   * <ul>
+   *   <li>a <b>mutator</b> (e.g. {@code append}, {@code add}, {@code put}, {@code write}) taints
+   *       its <em>receiver</em> when one of its arguments is tainted -- the value has entered the
+   *       receiver's state;
+   *   <li>an <b>accumulator read</b> (e.g. {@code toString}) propagates the receiver's taint to the
+   *       call result -- the result is derived from what the receiver holds.
+   * </ul>
+   *
+   * <p>Both directions only ever ADD taint. A mutator never clears the receiver's taint, and a read
+   * never removes it, so a clean write cannot launder a tainted object and a tainted object cannot
+   * be laundered clean by reading it.
+   */
+  private void propagateAccumulatorTaint(TacInstruction ins) {
+    String calleeSig = ins.calleeSig;
+    if (calleeSig == null || calleeSig.isEmpty()) return;
+    if (ins.args == null || ins.args.isEmpty()) return;
+
+    // ---- direction 1: the receiver accumulates the taint of an argument ----
+    if (AccumulatorCatalog.isMutator(calleeSig)) {
+      TacOperand receiver = ins.args.get(0);
+      if (receiver instanceof TacOperand.TacVar recv) {
+        for (int argIdx : AccumulatorCatalog.mutatorArgIndices(ins)) {
+          if (argIdx >= ins.args.size()) break;
+          if (!(ins.args.get(argIdx) instanceof TacOperand.TacVar arg)) continue;
+          String label = taintedVars.get(arg);
+          if (label == null) continue;
+          // The receiver accumulates. It may already be tainted (from an
+          // earlier append); in that case the existing label stays and the
+          // new source is recorded as an additional path step, so the
+          // reported origin keeps both contributions.
+          String existing = taintedVars.get(recv);
+          if (existing == null) {
+            taintedVars.put(recv, label);
+            List<FlowStep> path = new ArrayList<>();
+            List<FlowStep> srcPath = taintPaths.get(arg);
+            if (srcPath != null) path.addAll(srcPath);
+            path.add(
+                new FlowStep(
+                    "propagate",
+                    "",
+                    ins.line,
+                    ins.column,
+                    calleeSig,
+                    calleeSig + " accumulates into " + recv.name()));
+            taintPaths.put(recv, java.util.Collections.unmodifiableList(path));
+          } else if (!existing.equals(label)) {
+            taintedVars.put(recv, existing + "+" + label);
+          }
+          break;
+        }
+      }
+    }
+
+    // ---- direction 2: the result carries the receiver's accumulated taint ----
+    if (AccumulatorCatalog.isAccumulatorRead(calleeSig)) {
+      if (!(ins.dest instanceof TacOperand.TacVar dv)) return;
+      if (taintedVars.containsKey(dv)) return;
+      TacOperand receiver = ins.args.get(0);
+      if (!(receiver instanceof TacOperand.TacVar recv)) return;
+      String label = taintedVars.get(recv);
+      if (label == null) return;
+      taintedVars.put(dv, label);
+      List<FlowStep> path = new ArrayList<>();
+      List<FlowStep> recvPath = taintPaths.get(recv);
+      if (recvPath != null) path.addAll(recvPath);
+      path.add(
+          new FlowStep(
+              "propagate",
+              "",
+              ins.line,
+              ins.column,
+              calleeSig,
+              calleeSig + " reads accumulated state of " + recv.name() + " -> " + dv.name()));
+      taintPaths.put(dv, java.util.Collections.unmodifiableList(path));
+      int recvHandle = v2TraceHandle.getOrDefault(recv, -1);
+      if (recvHandle >= 0) {
+        int handle =
+            v2Builder.addPropagate(
+                TraceNode.Op.SUMMARY_PASS_THROUGH,
+                List.of(
+                    new OperandRef.CallRef(calleeSig),
+                    new OperandRef.Var(recv.name(), 0),
+                    new OperandRef.Var(dv.name(), 0)),
+                recvHandle,
+                calleeSig + " accumulated-state read -> " + dv.name(),
+                "",
+                ins.line,
+                ins.column,
+                calleeSig);
+        v2TraceHandle.put(dv, handle);
+      }
+    }
+  }
+
+  /**
+   * Propagate taint through an ITERATOR: the object that hands out an array's elements one at a
+   * time.
+   *
+   * <p>The enhanced-for loop is lowered to
+   *
+   * <pre>
+   *   it = arr.iterator();
+   *   while (it.hasNext()) { s = it.next(); ... }
+   * </pre>
+   *
+   * and the taint of a tainted array element has to cross that indirection. Two directions are
+   * modelled:
+   *
+   * <ul>
+   *   <li>{@code iterator()} over an array whose elements are tainted produces an iterator that
+   *       yields tainted values;
+   *   <li>{@code next()} on such an iterator produces a tainted result.
+   * </ul>
+   *
+   * <p>Both are conservative in the same direction: an iterator over an array with ANY tainted
+   * element yields tainted values, because the analysis cannot know which element the iterator
+   * reaches first.
+   */
+  private void propagateIteratorTaint(TacInstruction ins) {
+    String calleeSig = ins.calleeSig;
+    if (calleeSig == null || calleeSig.isEmpty()) return;
+    if (ins.args == null || ins.args.isEmpty()) return;
+    if (!(ins.dest instanceof TacOperand.TacVar dv)) return;
+
+    // `iterator()` over the array: the new iterator yields the array's element taint.
+    if (isIteratorFactory(calleeSig)) {
+      if (!(ins.args.get(0) instanceof TacOperand.TacVar source)) return;
+      ArrayTaintTracker.TaintedEntry entry = arrayTaintTracker.elementTaintOf(source);
+      if (entry == null) return;
+      iteratorTaint.put(dv, entry);
+      return;
+    }
+
+    // `next()` on such an iterator: the result carries the iterator's element taint.
+    if (isIteratorNext(calleeSig)) {
+      if (!(ins.args.get(0) instanceof TacOperand.TacVar recv)) return;
+      ArrayTaintTracker.TaintedEntry entry = iteratorTaint.get(recv);
+      if (entry == null) return;
+      taintedVars.put(dv, entry.label());
+      List<FlowStep> path = new ArrayList<>();
+      if (entry.path() != null) path.addAll(entry.path());
+      path.add(
+          new FlowStep(
+              "propagate",
+              "",
+              ins.line,
+              ins.column,
+              calleeSig,
+              calleeSig + " yields tainted element -> " + dv.name()));
+      taintPaths.put(dv, java.util.Collections.unmodifiableList(path));
+      int parentHandle = entry.v2Handle();
+      if (parentHandle >= 0) {
+        int handle =
+            v2Builder.addPropagate(
+                TraceNode.Op.SUMMARY_PASS_THROUGH,
+                List.of(
+                    new OperandRef.CallRef(calleeSig),
+                    new OperandRef.Var(recv.name(), 0),
+                    new OperandRef.Var(dv.name(), 0)),
+                parentHandle,
+                calleeSig + " yields tainted element -> " + dv.name(),
+                "",
+                ins.line,
+                ins.column,
+                calleeSig);
+        v2TraceHandle.put(dv, handle);
+      }
+    }
+  }
+
+  /**
+   * Is this call the creation of an iterator over a collection?
+   *
+   * <p>Recognised by the method name {@code iterator}. The owner is not checked: the enhanced-for
+   * loop is the shape that matters, and the IR may or may not have resolved the collection's
+   * declaring type.
+   */
+  private static boolean isIteratorFactory(String calleeSig) {
+    return methodNameOf(calleeSig).equals("iterator");
+  }
+
+  /** Is this call the {@code next()} that advances an iterator? */
+  private static boolean isIteratorNext(String calleeSig) {
+    return methodNameOf(calleeSig).equals("next");
+  }
+
+  /** The method name of a callee signature in {@code owner.method/arity} form. */
+  private static String methodNameOf(String calleeSig) {
+    if (calleeSig == null || calleeSig.isEmpty()) return "";
+    int slash = calleeSig.indexOf('/');
+    String qualified = slash < 0 ? calleeSig : calleeSig.substring(0, slash);
+    int dot = qualified.lastIndexOf('.');
+    return dot < 0 ? qualified : qualified.substring(dot + 1);
+  }
+
+  /**
    * Companion to {@link #propagateStringPassthroughs(TacInstruction)}: when the callee was a known
    * taint-passthrough string method, record a {@link StringOp} on the per-function accumulator so
    * the function's {@link FunctionSummary} exposes the passthrough to the caller.
@@ -2008,6 +2644,20 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             || calleeSig.startsWith("java.util.Scanner.nextLine/")
             || calleeSig.startsWith("java.util.regex.Pattern.split/")
             || calleeSig.startsWith("java.util.regex.Matcher.group/");
+    // String formatting and joining.
+    //
+    // `String.format("%s", tainted)` and `String.join(",", taintedParts)` both
+    // return a String derived from their arguments. They were missing from the
+    // catalogue, so the taint was dropped at the call: the analysis reported a
+    // clean program for code that formats user input into a command.
+    //
+    // `String.format` takes the format string FIRST, so the tainted argument is
+    // not necessarily the first one -- the argument selection below looks at
+    // every value argument for a tainted one.
+    boolean isFormatter =
+        calleeSig.startsWith("java.lang.String.format/")
+            || calleeSig.startsWith("java.lang.String.join/")
+            || calleeSig.startsWith("java.lang.String.formatted/");
     // Throwable message passthrough : mirror
     // propagateStringPassthroughs so cross-function
     // summaries record the e.getMessage() flow.
@@ -2050,6 +2700,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         || isValueOf
         || isAppend
         || isTokenizer
+        || isFormatter
         || isThrowableMsg
         || isCharBytePassthrough)) {
       return;
@@ -2070,7 +2721,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       recordStringOpForArg(ins, fn, 0, methodName);
       recordStringOpForArg(ins, fn, 1, methodName);
     } else {
-      recordStringOpForArg(ins, fn, 0, methodName);
+      for (int argIdx : passthroughArgIndices(ins)) {
+        recordStringOpForArg(ins, fn, argIdx, methodName);
+      }
     }
   }
 
@@ -2355,48 +3008,33 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // falls back to the orphan-SOURCE shape.
       int srcV2Handle = v2TraceHandle.getOrDefault(valueVar, -1);
       fieldTaintTracker.recordWrite(recvName, ins.fieldName, fldLabel, fldPath, srcV2Handle);
-    } else {
-      boolean isParamSeeded = fldLabel != null && fldLabel.startsWith("param:");
-      // also write when the
-      // receiver is literally "this"
-      // (i.e. an instance field write
-      // on the enclosing class). The
-      // recvTypeName form is the
-      // enclosing class name, so the
-      // key matches the per-function
-      // FieldTaintTracker record for
-      // a same-class helper that
-      // reads back via `int data =
-      // this.field;`. This restores
-      // the cross-fn field taint flow
-      // for the same-instance helper
-      // pattern (variant 45: bad()
-      // writes this.dataBad, badSink()
-      // reads it).
+      // The class-level key. A field write on {@code this} (or on a class
+      // reference) is visible to every read of that field on the same class,
+      // including reads in OTHER functions -- a record's accessor, for
+      // instance, reads the backing field that the canonical constructor
+      // wrote.
       //
-      // It is safe to write the
-      // class-level key here because
-      // "this" can only refer to one
-      // instance per enclosing class :
-      // cross-fn calls inside the
-      // same class share `this`. The
-      // POJO getter concern (h1.data
-      // polluting h2.data) is
-      // preserved by NOT writing for
-      // other TacVar receivers such
-      // as "h" / "h1" / "h2".
+      // This has to happen here, in the TAINTED branch. The alternative --
+      // writing it from the clean branch -- records a null label, because the
+      // clean branch has no label to record, so the class-level map stayed
+      // empty and the cross-function field read found nothing. A record whose
+      // component holds attacker-controlled data therefore reported a clean
+      // program when the component was read back through the accessor.
       //
-      // We also keep the original
-      // "isLikelyClassName(recvName)"
-      // branch which catches the
-      // synthetic `t = this.ClassName;
-      // t.f = x` static-field IR
-      // pattern via classRefVars
-      // resolution.
+      // The over-approximation is deliberate and bounded: only {@code this}
+      // (one instance per enclosing class) and class references write the
+      // class-level key, so an ordinary local's field write still cannot
+      // pollute a sibling instance's field.
       String thisRecvTypeName = "this".equals(recvName) ? classNameOfType(recv.type()) : null;
-      if (!isParamSeeded && (isLikelyClassName(recvName) || thisRecvTypeName != null)) {
+      if (isLikelyClassName(recvName) || thisRecvTypeName != null) {
         String key = (thisRecvTypeName != null ? thisRecvTypeName : recvName) + "." + ins.fieldName;
         crossFnClassFieldTaint.put(key, fldLabel);
+        crossFnClassFieldSource.put(
+            key,
+            new FieldSource(
+                fn.signature(),
+                "this".equals(recvName) ? FieldSource.KIND_ALIASED : FieldSource.KIND_STATIC,
+                srcV2Handle));
         // enqueue every previously-observed
         // reader of this (class, field) for
         // re-analysis. Their first walk ran when
@@ -2411,17 +3049,24 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           // to date
           requestRerun(reader);
         }
-        crossFnClassFieldSource.put(
-            key,
-            new FieldSource(
-                fn.signature(),
-                "this".equals(recvName) ? FieldSource.KIND_ALIASED : FieldSource.KIND_STATIC,
-                // follow-up: thread
-                // the v2 handle of the
-                // source so a subsequent
-                // FIELDLOAD can attach a
-                // real parent.
-                v2TraceHandle.getOrDefault(valueVar, -1)));
+      }
+    } else {
+      boolean isParamSeeded = fldLabel != null && fldLabel.startsWith("param:");
+      // A CLEAN write. There is no label to record at the class level, so
+      // nothing is written there: the class-level write happens in the
+      // TAINTED branch above, where a real label exists. (The clean branch
+      // used to write a null label here, which left the class-level map
+      // holding nulls and never contributed anything.)
+      //
+      // The class-reference branch is kept for the synthetic
+      // `t = this.ClassName; t.f = x` static-field IR pattern, which
+      // resolves through classRefVars to a class name rather than to
+      // "this".
+      String thisRecvTypeName = "this".equals(recvName) ? classNameOfType(recv.type()) : null;
+      if (!isParamSeeded && isLikelyClassName(recvName) && thisRecvTypeName == null) {
+        String key = recvName + "." + ins.fieldName;
+        crossFnClassFieldTaint.remove(key);
+        crossFnClassFieldSource.remove(key);
       }
       // T2: per-class aliasing
       // write (recvTypeName + field)
@@ -2466,22 +3111,31 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // if (paramIndex < 0) check; we keep the
     // same semantics here without the orphan
     // else syntax.
-    fieldTaintTracker.clearField(recvName, ins.fieldName);
-    // Same cleanup for the unified
-    // class-field tracker.
-    // also clears the "this"-keyed
-    // entry (matching the write
-    // path's new branch).
-    if (isLikelyClassName(recvName)) {
-      String key = recvName + "." + ins.fieldName;
-      crossFnClassFieldTaint.remove(key);
-      crossFnClassFieldSource.remove(key);
-    }
-    String recvTypeName = classNameOfType(recv.type());
-    if (recvTypeName != null) {
-      String key = recvTypeName + "." + ins.fieldName;
-      crossFnClassFieldTaint.remove(key);
-      crossFnClassFieldSource.remove(key);
+    //
+    // The cleanup is scoped to the CLEAN-write case only. When the stored value
+    // IS tainted, the branch above already recorded that taint in the tracker
+    // via {@code recordWrite}; clearing the (recv, field) pair here would erase
+    // the write that was just recorded and silently drop the taint for every
+    // later FIELDLOAD of the same field. A clean write must clear the prior
+    // state (last-write-wins); a tainted write must keep it.
+    if (!taintedVars.containsKey(valueVar)) {
+      fieldTaintTracker.clearField(recvName, ins.fieldName);
+      // Same cleanup for the unified
+      // class-field tracker.
+      // also clears the "this"-keyed
+      // entry (matching the write
+      // path's new branch).
+      if (isLikelyClassName(recvName)) {
+        String key = recvName + "." + ins.fieldName;
+        crossFnClassFieldTaint.remove(key);
+        crossFnClassFieldSource.remove(key);
+      }
+      String recvTypeName = classNameOfType(recv.type());
+      if (recvTypeName != null) {
+        String key = recvTypeName + "." + ins.fieldName;
+        crossFnClassFieldTaint.remove(key);
+        crossFnClassFieldSource.remove(key);
+      }
     }
   }
 
@@ -3114,7 +3768,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private void checkSinkAtNew(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
     String calleeSig = ins.calleeSig;
     if (calleeSig == null) return;
-    List<SinkFamily> families = ctx.config().sinkFamilies().lookupAll(calleeSig);
+    List<SinkFamily> families =
+        ctx.config().sinkFamilies().lookupAll(calleeSig, fn.sourceLanguage());
     if (families.isEmpty()) return;
     for (SinkFamily family : families) {
       if (!rule.matchesSinkFamily(family.name())) continue;
@@ -3133,16 +3788,43 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // sinkArgumentIndex() override on the
     // checker is honoured as a fallback for
     // checkers that haven't migrated yet.
-    int javaArgIdx = patternArgIndex(family, calleeSig, ins);
+    //
+    // Every candidate position is checked -- a constructor can be a sink because
+    // more than one of its arguments carries the taint.
+    int[] javaArgIndexes = patternArgIndexes(family, calleeSig, ins, fn.sourceLanguage());
     // NEW args are the raw ctor arg list
     // (no receiver), so the Java arg index
     // maps 1:1 to the TAC arg index. No
     // +1 receiver offset.
+    for (int javaArgIdx : javaArgIndexes) {
+      if (javaArgIdx == SinkFamily.RECEIVER_ARG_INDEX) continue;
+      checkSinkForCtorAtArg(ins, fn, ctx, family, calleeSig, javaArgIdx);
+    }
+  }
+
+  /**
+   * The per-argument work of a constructor sink check.
+   *
+   * <p>Split out of {@link #checkSinkForCtor} so it can run once per candidate argument position.
+   */
+  private void checkSinkForCtorAtArg(
+      TacInstruction ins,
+      TacFunction fn,
+      AnalysisContext ctx,
+      SinkFamily family,
+      String calleeSig,
+      int javaArgIdx) {
     int argIdx = javaArgIdx;
     if (argIdx < 0 || argIdx >= ins.args.size()) return;
     TacOperand arg = ins.args.get(argIdx);
     if (!(arg instanceof TacOperand.TacVar av)) return;
     if (!taintedVars.containsKey(av)) return;
+    // The same reachability question the CALL path asks, asked here too: a constructor is a
+    // sink like any other call, and a source whose guards contradict each other does not
+    // reach it either.
+    if (isPathSuppressed(av, family, ins, ctx)) {
+      return;
+    }
     // Build a simple source-to-sink path for
     // the finding's flow-step list. The
     // taint path may be empty (e.g. input
@@ -3225,7 +3907,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // (yaml-configurable). Falls back to the
     // legacy sinkArgumentIndex() override for
     // checkers that haven't migrated.
-    int javaArgIdx = patternArgIndex(family, calleeSig, ins);
+    //
+    // A sink symbol can carry the taint at MORE THAN ONE argument position, so every
+    // candidate position is checked -- not just the first match. Spring's
+    // JdbcTemplate.queryForList is the motivating case: the SQL is at index 0 in one
+    // overload and the varargs at index 1 in another, and a single index forces a
+    // choice that is decided by list order rather than by the semantics.
+    int[] javaArgIndexes = patternArgIndexes(family, calleeSig, ins, fn.sourceLanguage());
+    if (javaArgIndexes.length == 0) return;
     // The TAC CALL builder prepends the receiver to ins.args, so for instance
     // methods the Java arg index N maps to TAC
     // arg index N+1. All sink families
@@ -3242,14 +3931,30 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // stream. Before this, such a pattern fell back to defaultArgIndex (0)
     // and indexed past the end of the argument list, so the CWE-502 rule
     // was registered but structurally unreachable.
-    int argIdx;
-    boolean receiverTainted = javaArgIdx == SinkFamily.RECEIVER_ARG_INDEX;
-    if (receiverTainted) {
-      argIdx = 0;
-    } else {
-      argIdx = javaArgIdx + 1;
+    for (int javaArgIdx : javaArgIndexes) {
+      boolean receiverTainted = javaArgIdx == SinkFamily.RECEIVER_ARG_INDEX;
+      int argIdx = receiverTainted ? 0 : javaArgIdx + 1;
+      if (argIdx < 0 || argIdx >= ins.args.size()) continue;
+      checkSinkAtArg(ins, fn, ctx, family, calleeSig, javaArgIdx, argIdx, receiverTainted);
     }
-    if (argIdx < 0 || argIdx >= ins.args.size()) return;
+  }
+
+  /**
+   * The per-argument work of a sink check: is THIS argument tainted, and does that make a finding?
+   *
+   * <p>Split out of {@link #checkSinkForFamily} so the caller can run it once per candidate
+   * argument position. Every early {@code return} in the body means "this argument is not a
+   * finding" -- it must not stop the other positions from being checked.
+   */
+  private void checkSinkAtArg(
+      TacInstruction ins,
+      TacFunction fn,
+      AnalysisContext ctx,
+      SinkFamily family,
+      String calleeSig,
+      int javaArgIdx,
+      int argIdx,
+      boolean receiverTainted) {
     TacOperand arg = ins.args.get(argIdx);
     // Record the observation with the
     // user-arg index (javaArgIdx), NOT the
@@ -3276,7 +3981,20 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       sinkObservations.add(new SinkObservation(family, javaArgIdx));
     }
     if (!(arg instanceof TacOperand.TacVar av)) return;
-    if (!taintedVars.containsKey(av)) return;
+    if (!taintedVars.containsKey(av)) {
+      // An ARRAY whose ELEMENTS are tainted carries the same untrusted data as a tainted
+      // scalar: the sink receives attacker-controlled content either way.
+      //
+      //     exec(new String[] {userInput});
+      //
+      // The array itself is not tainted -- no taint ever reached the array reference -- but its
+      // element is, and the element is what the sink consumes. Without this the analysis reported
+      // a clean program for a call that hands user input to a sink inside an array literal.
+      ArrayTaintTracker.TaintedEntry elementTaint = arrayTaintTracker.elementTaintOf(av);
+      if (elementTaint == null) return;
+      reportSinkWithTaint(ins, fn, ctx, family, calleeSig, av, elementTaint.label());
+      return;
+    }
     // A deserialization stream that carries a JEP-290 filter which can
     // reject is not a finding: the filter is the shipped mitigation, and
     // the bytes are the same either way -- it is the STREAM that decides.
@@ -3347,27 +4065,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // positive. SAT / UNKNOWN are treated
     // as "could be reachable" : emit
     // normally.
-    if (solverBridge != null) {
-      // Compose the local path
-      // condition with the accumulated
-      // callee-supplied fragments. The
-      // bridge sees the conjunction of
-      // "local guard holds" AND
-      // "each callee's path-condition
-      // is satisfiable". UNSAT in any
-      // branch means the overall path
-      // is unreachable.
-      String pc = pathConditionForSink(av, family, ins, ctx);
-      String composed = composePathCondition(pc);
-      if (!composed.isEmpty()) {
-        SolverZ3Bridge.Result r = solverBridge.check(composed, java.util.Map.of());
-        if (r == SolverZ3Bridge.Result.UNSAT) {
-          // The path is provably
-          // unreachable : suppress
-          // the finding.
-          return;
-        }
-      }
+    if (isPathSuppressed(av, family, ins, ctx)) {
+      // The path is provably
+      // unreachable : suppress
+      // the finding.
+      return;
     }
     // Build the structured source-to-sink trace.
     // The path of the sink arg is the source-to-here
@@ -3393,7 +4095,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // the subclass didn't override. The role "z3-fact"
     // is recognised by GetDataflowTraceWithFactsTool
     // and rendered as "Z3 path condition: ...".
-    if (solverBridge != null) {
+    if (solverBridge != null && pathVerificationEnabled()) {
       String local = pathConditionForSink(av, family, ins, ctx);
       String composed = composePathCondition(local);
       if (!composed.isEmpty()) {
@@ -3449,6 +4151,53 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
+   * Report a sink finding for an argument whose taint comes from a source OTHER than the argument
+   * variable itself -- currently: an array whose ELEMENTS are tainted.
+   *
+   * <p>The argument variable is not in {@link #taintedVars}, so the ordinary path cannot be used.
+   * The taint label is supplied instead.
+   *
+   * @param ins the sink call
+   * @param fn the enclosing function
+   * @param ctx the analysis context
+   * @param family the sink family
+   * @param calleeSig the callee signature
+   * @param av the argument variable
+   * @param label the taint label to report
+   */
+  private void reportSinkWithTaint(
+      TacInstruction ins,
+      TacFunction fn,
+      AnalysisContext ctx,
+      SinkFamily family,
+      String calleeSig,
+      TacOperand.TacVar av,
+      String label) {
+    List<FlowStep> fullPath = new ArrayList<>();
+    fullPath.add(
+        new FlowStep(
+            "sink", "", ins.line, ins.column, calleeSig, calleeSig + " (" + family.name() + ")"));
+    String msg = findingMessage(ins, family, av);
+    String origin = resolveUpstreamOrigin(label, fn, ctx);
+    String sourceLabel = origin != null ? origin : label;
+    Finding finding =
+        Finding.dfa(
+            rule.ruleId(),
+            rule.ruleId(),
+            msg,
+            rule.severity(),
+            rule.cwe(),
+            "", // filePath filled in by reporter / post-processor
+            ins.line,
+            ins.column,
+            "taint: " + sourceLabel + " -> " + family.cweOrNull(),
+            java.util.Collections.unmodifiableList(fullPath));
+    // No v2 handle for the array itself, so the v1 path is the trace.
+    Trace v2Trace = Trace.fromFlowSteps(fullPath);
+    ctx.reporter().reportWithTrace(finding, v2Trace);
+  }
+
+  /**
    * Subclass hook: build a path-condition string for the given source operand flowing into the
    * given sink family. Return {@code null} (the default) to skip the bridge verification : every
    * finding fires. Return a non-empty predicate string to ask the configured {@link SolverZ3Bridge}
@@ -3459,10 +4208,126 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * check can return {@code "input != null && !input.isEmpty()"} so the bridge can decide whether
    * the null/empty path is actually taken. When in doubt, return {@code null} (emit normally) : the
    * bridge is strictly a false-positive filter, never a false-negative one.
+   *
+   * <p>THE BASE IMPLEMENTATION DOES NOT RETURN NULL. It builds a condition from the guards the
+   * function proved, which is what makes the solver reachable for every rule instead of only for
+   * the ones that override this hook. The condition it builds is deliberately narrow -- see {@link
+   * #guardPathCondition(AnalysisContext)} -- because a condition that is too strong suppresses real
+   * findings.
    */
   protected String pathConditionForSink(
       TacOperand.TacVar arg, SinkFamily family, TacInstruction call, AnalysisContext ctx) {
-    return null;
+    return guardPathCondition(arg, ctx);
+  }
+
+  /**
+   * Is the source-to-sink path for this argument provably unreachable?
+   *
+   * <p>The single place the path-condition verification happens. Both sink paths go through it: the
+   * CALL path ({@link #checkSinkAtCall}) and the constructor path ({@link #checkSinkAtNew}). They
+   * are separate code paths because a constructor's arguments are the raw argument list without a
+   * receiver, but the question they ask about reachability is the same one.
+   *
+   * <p>The answer is {@code true} only when the solver proves the condition UNSATISFIABLE. SAT and
+   * UNKNOWN both mean "the path could be real", and the finding stands.
+   *
+   * @param av the tainted argument flowing into the sink
+   * @param family the sink family
+   * @param ins the sink instruction
+   * @param ctx the analysis context
+   * @return true when the finding must be suppressed
+   */
+  private boolean isPathSuppressed(
+      TacOperand.TacVar av, SinkFamily family, TacInstruction ins, AnalysisContext ctx) {
+    if (!pathVerificationEnabled()) return false;
+    // The arithmetic contradiction first, and it does not go through the solver.
+    //
+    // The solver CANNOT answer this question. Both bridges treat a variable that is not bound
+    // as free and answer SAT, which is the conservative answer they are designed to give:
+    // "the path might be reachable". A contradiction between two bounds is a statement about
+    // arithmetic, and arithmetic decides it exactly -- no quantifier over the variable's
+    // possible values is needed. So the contradiction is decided here, where the answer is
+    // exact, and the solver is left for the predicates it can actually evaluate.
+    if (sourceHasContradictoryGuards(av, ctx)) {
+      return true;
+    }
+    if (solverBridge == null) return false;
+    String pc = pathConditionForSink(av, family, ins, ctx);
+    String composed = composePathCondition(pc);
+    if (composed.isEmpty()) return false;
+    SolverZ3Bridge.Result r = solverBridge.check(composed, java.util.Map.of());
+    return r == SolverZ3Bridge.Result.UNSAT;
+  }
+
+  /**
+   * Do the guards proved about this source contradict each other?
+   *
+   * <p>Two bounds on the same variable that no value can satisfy both: {@code n > 5} and {@code n <
+   * 3}. The source cannot hold such a value, so it cannot reach the sink.
+   *
+   * <p>Only the SOURCE variable's guards are consulted. A guard on another variable says nothing
+   * about whether this source reaches the sink, and including it would make the claim stronger than
+   * the question being asked.
+   */
+  private boolean sourceHasContradictoryGuards(TacOperand.TacVar av, AnalysisContext ctx) {
+    return org.plumb.dfa.solver.GuardPredicateTranslator.findContradiction(
+            sourceGuardFacts(av, ctx))
+        != null;
+  }
+
+  /**
+   * The guards proved about this source variable, in the form the translator needs.
+   *
+   * <p>ONLY THE SOURCE VARIABLE'S GUARDS ARE COLLECTED, and that restriction is what makes this
+   * sound in a flow-insensitive analysis:
+   *
+   * <ul>
+   *   <li>A guard on some other variable says nothing about whether this source can reach the sink,
+   *       so including it would make the claim stronger than the question being asked.
+   *   <li>Two guards recorded at different points in the function are not both in force at the
+   *       sink. Treating them as if they were would produce a condition that is UNSAT for a path
+   *       that exists, and suppress a real finding.
+   * </ul>
+   */
+  private java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> sourceGuardFacts(
+      TacOperand.TacVar av, AnalysisContext ctx) {
+    java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> out =
+        new java.util.ArrayList<>(2);
+    if (ctx == null || av == null) return out;
+    org.plumb.dfa.taint.GuardTracker tracker = ctx.functionGuards();
+    if (tracker == null) return out;
+    java.util.List<org.plumb.dfa.taint.GuardTracker.Guard> guards = tracker.allGuardsSeen();
+    if (guards == null) return out;
+    for (org.plumb.dfa.taint.GuardTracker.Guard g : guards) {
+      if (g == null) continue;
+      if (!g.boundedVar().name().equals(av.name())) continue;
+      out.add(
+          new org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact(
+              g.boundedVar().name(), g.op(), g.literalDescription(), g.isArrayLengthBound()));
+    }
+    return out;
+  }
+
+  /**
+   * The path condition built from the guards proved about the SOURCE variable, or {@code null} when
+   * there is nothing to say.
+   *
+   * <p>The condition is a contradiction between two guards on the source variable: {@code n > 5}
+   * and {@code n < 3} cannot both hold, so a flow that needs both describes a path that does not
+   * exist.
+   *
+   * <p>It is reported as a predicate so the reader of a finding can see WHY the finding was
+   * suppressed. The decision itself is made arithmetically, in {@link #isPathSuppressed}, because
+   * the solver deliberately answers SAT for a variable it cannot bind.
+   */
+  private String guardPathCondition(TacOperand.TacVar arg, AnalysisContext ctx) {
+    org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact[] conflict =
+        org.plumb.dfa.solver.GuardPredicateTranslator.findContradiction(sourceGuardFacts(arg, ctx));
+    if (conflict == null) return null;
+    String condition =
+        org.plumb.dfa.solver.GuardPredicateTranslator.conjunction(
+            java.util.List.of(conflict[0], conflict[1]));
+    return condition.isEmpty() ? null : condition;
   }
 
   /**
@@ -3512,7 +4377,55 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private void propagateTaintFromCalleeSummary(TacInstruction ins, AnalysisContext ctx) {
     String calleeSig = ins.calleeSig;
     if (calleeSig == null) return;
+    // The cross-function folding depth. At zero the analysis stays inside one function: a
+    // callee's facts never reach its callers, and every finding is about an intra-procedural
+    // flow. That is the setting the report's claims can be checked against.
+    if (contextDepth <= 0) return;
     FunctionSummary calleeSummary = ctx.summaryCache().get(calleeSig);
+    // Cross-language lookup. A Kotlin call site emits "JavaSink.run/1" (owner-qualified,
+    // slash-arity) while the Java function's own signature is "run(java.lang.String):void"
+    // (paren form, no owner). The two describe the SAME method, but they are different
+    // strings, so the direct lookup misses and the taint never crosses the language
+    // boundary.
+    //
+    // The fix is to compare the two sides by their CANONICAL callee key
+    // (CalleeKeyNormalizer.canonicalCalleeKey), which both sides reduce to. The bare
+    // canonical form ("run/1") is what actually joins them: the owner on the call site
+    // is the caller's view of the target, and the target's own signature may not carry
+    // one.
+    //
+    // This is the cross-language counterpart of the call-graph's owner-aware index. The
+    // call graph finds the EDGE; this finds the SUMMARY the edge leads to.
+    if (calleeSummary == null || (calleeSummary.isTrivial() && !calleeSummary.hasBody())) {
+      String canonical = org.plumb.tac.ir.CalleeKeyNormalizer.canonicalCalleeKey(calleeSig);
+      if (canonical != null) {
+        // The candidate spellings, most precise first:
+        //   "demo.JavaSink.run/1" -- the call site's own spelling
+        //   "JavaSink.run/1"       -- the same owner, simple name
+        //   "run/1"                -- no owner at all
+        //
+        // The owner on the call site is the caller's VIEW of the target, and the target's
+        // own signature may carry no owner; and the two may spell the owner differently (a
+        // Java declaration's enclosing class is "JavaSink", a Kotlin call may name it
+        // "demo.JavaSink"). So all three spellings are tried.
+        String bare = org.plumb.tac.ir.CalleeKeyNormalizer.bareCalleeKey(canonical);
+        String simpleOwner = org.plumb.tac.ir.CalleeKeyNormalizer.ownerSimpleName(canonical);
+        java.util.LinkedHashSet<String> candidates = new java.util.LinkedHashSet<>();
+        candidates.add(canonical);
+        if (simpleOwner != null && !simpleOwner.isEmpty() && bare != null) {
+          candidates.add(simpleOwner + "." + bare);
+        }
+        candidates.add(bare);
+        for (String candidate : candidates) {
+          if (candidate == null) continue;
+          FunctionSummary viaCanonical = ctx.summaryCache().get(candidate);
+          if (viaCanonical != null && (!viaCanonical.isTrivial() || viaCanonical.hasBody())) {
+            calleeSummary = viaCanonical;
+            break;
+          }
+        }
+      }
+    }
     // Cross-class call lookup fallback. The
     // summary cache is populated under
     // the bare-name-with-arity form
@@ -3571,7 +4484,29 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             calleeSummary = qAliased;
           }
         }
-        if (calleeSummary == null) {
+        // The CALLEE's own class. The engine stores a summary under
+        // "<callee's enclosing class> :: <bare name>", so a call that
+        // crosses a class boundary has to be looked up under the callee's
+        // class -- not the caller's. The caller's class was the only key
+        // tried, so a cross-class call never found its summary: a record's
+        // accessor (`R.name()` called from `C`) looked under `C :: name/0`
+        // while the summary was stored under `R :: name/0`, and the
+        // accessor's tainted return value never reached the caller.
+        String calleeEnc = calleeClassOf(calleeSig);
+        // The cache's get() returns an EMPTY summary for a missing key, never
+        // null -- so "not found yet" means "still trivial", not "null".
+        if (calleeEnc != null
+            && !calleeEnc.isEmpty()
+            && calleeSummary != null
+            && calleeSummary.isTrivial()
+            && !calleeSummary.hasBody()) {
+          String qualified = calleeEnc + " :: " + bareName;
+          FunctionSummary qAliased = ctx.summaryCache().get(qualified);
+          if (qAliased != null && (!qAliased.isTrivial() || qAliased.hasBody())) {
+            calleeSummary = qAliased;
+          }
+        }
+        if (calleeSummary == null || (calleeSummary.isTrivial() && !calleeSummary.hasBody())) {
           // Bare alias fallback (single-file mode uses this).
           FunctionSummary aliased = ctx.summaryCache().get(bareName);
           if (aliased != null && (!aliased.isTrivial() || aliased.hasBody())) {
@@ -4270,6 +5205,52 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
+   * The language-aware counterpart of {@link #patternArgIndex(SinkFamily, String, TacInstruction)}.
+   *
+   * <p>A family may declare a per-language pattern, and that pattern may carry its own arg index.
+   * Resolving the index against the language-neutral pattern list would pick the wrong one.
+   *
+   * @param family the matched family
+   * @param calleeSig the callee signature
+   * @param call the call instruction
+   * @param language the analysed language
+   * @return the effective user-arg index
+   */
+  private int patternArgIndex(
+      SinkFamily family, String calleeSig, TacInstruction call, SourceLanguage language) {
+    int fromFamily = family.argIndexFor(calleeSig, language);
+    if (fromFamily >= 0 || fromFamily == SinkFamily.RECEIVER_ARG_INDEX) return fromFamily;
+    return sinkArgumentIndex(family, call);
+  }
+
+  /**
+   * EVERY argument position that can carry the taint for this call site.
+   *
+   * <p>This is the multi-position counterpart of {@link #patternArgIndex}. A sink symbol can have
+   * the taint at more than one argument position -- Spring's {@code JdbcTemplate.queryForList} has
+   * the SQL at index 0 in one overload and the varargs at index 1 in another -- so the family
+   * reports every position its patterns name, and each one is checked.
+   *
+   * <p>The fallback to the checker's legacy {@link #sinkArgumentIndex} override applies only when
+   * the family names NO position at all. The receiver sentinel ({@code -2}) is a position in its
+   * own right and is returned as-is.
+   *
+   * @param family the matched sink family
+   * @param calleeSig the callee signature
+   * @param call the call instruction
+   * @param language the analysed language
+   * @return the candidate positions; never empty
+   */
+  private int[] patternArgIndexes(
+      SinkFamily family, String calleeSig, TacInstruction call, SourceLanguage language) {
+    int[] fromFamily = family.argIndexesFor(calleeSig, language);
+    if (fromFamily.length > 0) return fromFamily;
+    // The family does not name a position for this callee: fall back to the
+    // checker's legacy override, exactly as the single-index path did.
+    return new int[] {sinkArgumentIndex(family, call)};
+  }
+
+  /**
    * Build an enriched taint label that includes the callee's structural passthrough chain. The base
    * label is the conventional {@code "callee-ret:<sig>"} form. When the callee's {@link
    * FunctionSummary} has a non-empty {@code stringOps} list, the chain is appended as {@code
@@ -4703,5 +5684,35 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     int dot = sig.lastIndexOf('.', slash - 1);
     if (dot < 0) return null;
     return sig.substring(dot + 1);
+  }
+
+  /**
+   * The class a callee signature names, or {@code null} when the signature does not name one.
+   *
+   * <p>The TAC's callee signature is {@code owner.method/arity}. The owner is the DECLARING type
+   * for a resolved call, so it is the class whose summary the engine stored -- and therefore the
+   * class the summary has to be looked up under.
+   *
+   * <p>Only the LAST segment of a dotted owner is returned, because the engine qualifies its
+   * summary aliases with the enclosing class's SHORT name ({@code "R :: name/0"}), not with a
+   * fully-qualified one.
+   *
+   * @param sig the callee signature
+   * @return the owner's short name, or {@code null}
+   */
+  static String calleeClassOf(String sig) {
+    if (sig == null || sig.isEmpty()) return null;
+    int slash = sig.indexOf('/');
+    if (slash <= 0) return null;
+    String owner = sig.substring(0, slash);
+    int dot = owner.lastIndexOf('.');
+    if (dot <= 0) return null;
+    // The owner's LAST segment is the method name; the class is everything
+    // before it. For "R.name/0" the class is "R"; for "java.lang.String.trim/1"
+    // it is "java.lang.String".
+    String className = owner.substring(0, dot);
+    int lastDot = className.lastIndexOf('.');
+    String simple = lastDot < 0 ? className : className.substring(lastDot + 1);
+    return simple.isEmpty() ? null : simple;
   }
 }

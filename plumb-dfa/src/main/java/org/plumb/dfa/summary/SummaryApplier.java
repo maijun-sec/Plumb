@@ -95,6 +95,12 @@ public final class SummaryApplier {
     }
     String calleeSig = call.calleeSig;
     if (calleeSig == null) return null;
+    // The cross-function folding depth. At zero the analysis stays inside one function, so a
+    // callee's summary is never folded into its caller. The setting is read from the same
+    // place as the taint checkers read it, so the whole engine agrees on what it means.
+    if (ctx.config() != null && ctx.config().tuning() != null) {
+      if (ctx.config().tuning().contextDepth() <= 0) return null;
+    }
     FunctionSignature sig = null;
     try {
       sig = FunctionSignature.parse(calleeSig);
@@ -237,6 +243,15 @@ public final class SummaryApplier {
             ? call.dest
             : new TacOperand.TacVar(
                 "@call@" + Integer.toHexString(System.identityHashCode(call)), null, true);
+    // Account for the fact against the analysis budget. The worklist cap bounds how many
+    // facts the engine tracks; once it is passed, the fact is not recorded and the
+    // exhaustion is reported. Recording it anyway would defeat the cap -- the whole point
+    // of the cap is to stop the tracking from growing without bound.
+    org.plumb.tac.ir.TacFunction fn = ctx.currentFunction();
+    String subject = fn == null ? call.calleeSig : fn.signature();
+    if (!ctx.budget().accountFact(subject)) {
+      return;
+    }
     ctx.factBag().add(new Fact(kind, site, value, call));
   }
 

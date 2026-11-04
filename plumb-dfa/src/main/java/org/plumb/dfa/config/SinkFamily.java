@@ -23,7 +23,9 @@ package org.plumb.dfa.config;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
+import org.plumb.tac.ir.SourceLanguage;
 
 /**
  * Sink/source family definition.
@@ -67,10 +69,42 @@ public final class SinkFamily {
    * java.util.regex.Matcher#find()}) of the callee signature. {@code argIndex} names the
    * user-visible Java argument index that carries the tainted value: {@code -1} means "use the
    * family default", and {@link #RECEIVER_ARG_INDEX} ({@code -2}) means "the receiver".
+   *
+   * <h2>several tainted argument positions</h2>
+   *
+   * <p>A sink symbol can carry the taint at MORE THAN ONE argument position, and a single {@code
+   * argIndex} cannot express that.
+   *
+   * <p>The concrete case is Spring's {@code JdbcTemplate}. It has two overload families for the
+   * same method name:
+   *
+   * <pre>
+   *   queryForList(String sql, RowMapper mapper)   -- the tainted value is the SQL, index 0
+   *   queryForList(String sql, Object... args)     -- the tainted values are the varargs, index 1+
+   * </pre>
+   *
+   * <p>Both are real sinks, and they are real vulnerabilities. A single index forces a choice
+   * between them, and the choice is made by LIST ORDER -- so the answer changes when the catalog is
+   * regenerated. That is not a precision trade-off, it is a coin flip: the wrong index reports the
+   * {@code RowMapper} as tainted, or misses the tainted SQL entirely.
+   *
+   * <p>So a pattern carries a SET of candidate positions, and the checker reports a finding when
+   * ANY of them is tainted. The single-index form is the one-element case, so nothing that worked
+   * before changes.
    */
   public static final class SinkPattern {
     private final String pattern;
     private final int argIndex; // -1 = use family default, -2 = receiver
+
+    /**
+     * Every argument position this pattern names as carrying the taint.
+     *
+     * <p>Always contains {@link #argIndex} when that index is explicit. The receiver sentinel
+     * ({@code -2}) may appear alongside real indices: a call can be a sink because the receiver is
+     * tainted, and because an argument is tainted.
+     */
+    private final int[] argIndexes;
+
     private final Pattern compiled;
 
     /**
@@ -97,11 +131,194 @@ public final class SinkFamily {
      */
     private final Pattern relaxed;
 
+    /**
+     * The receiver class name, when the pattern names a BARE class (no package).
+     *
+     * <p><b>Why this exists.</b> A bare-class pattern ({@code ^Statement\.execute}) is the
+     * hand-written shorthand for "this sink, whatever package the receiver came from". The matcher
+     * compares with {@link java.util.regex.Matcher#find()}, so the pattern matches wherever the
+     * text occurs -- and {@code java.sql.Statement.execute/1} CONTAINS the text {@code
+     * Statement.execute}. The bare pattern therefore claims a call it was never meant to name:
+     * {@code java.sql.Statement#execute} is a SQL sink, while {@code java.beans.Statement#execute}
+     * is a code-execution sink, and the bare form cannot tell them apart.
+     *
+     * <p>So a bare-class pattern is only allowed to match a callee whose receiver is EXACTLY that
+     * simple name. {@code Statement.execute/1} matches; {@code java.sql.Statement.execute/1} does
+     * not -- the fully qualified form has its own pattern, and that one is the one that decides.
+     *
+     * <p>A pattern that names a package (the normal case) has no bare class and is unaffected.
+     */
+    private final String bareClassName;
+
     public SinkPattern(String pattern, int argIndex) {
+      this(pattern, argIndex, new int[] {argIndex});
+    }
+
+    /**
+     * A pattern that names SEVERAL argument positions as carrying the taint.
+     *
+     * <p>See the class javadoc for why a symbol can have more than one. The array is deduplicated
+     * and kept in the order given; {@code -1} (the family default) is dropped, because "the family
+     * default" is not a position -- it is an instruction to look one up.
+     *
+     * @param pattern the callee-signature regex
+     * @param argIndex the primary index, kept for the single-index accessors
+     * @param argIndexes every candidate position; the primary is added if missing
+     */
+    public SinkPattern(String pattern, int argIndex, int[] argIndexes) {
       this.pattern = Objects.requireNonNull(pattern, "pattern");
       this.argIndex = argIndex;
       this.compiled = Pattern.compile(pattern);
       this.relaxed = Pattern.compile(relaxedForm(pattern));
+      this.bareClassName = bareClassName(pattern);
+      this.argIndexes = normaliseIndexes(argIndex, argIndexes);
+    }
+
+    /**
+     * The candidate positions, deduplicated, with {@code -1} dropped.
+     *
+     * <p>The primary index is always present, so a pattern built with the single-index constructor
+     * has exactly one candidate.
+     */
+    private static int[] normaliseIndexes(int argIndex, int[] argIndexes) {
+      java.util.ArrayList<Integer> out = new java.util.ArrayList<>();
+      if (argIndex != -1) out.add(argIndex);
+      if (argIndexes != null) {
+        for (int i : argIndexes) {
+          if (i == -1) continue;
+          if (!out.contains(i)) out.add(i);
+        }
+      }
+      if (out.isEmpty()) out.add(-1);
+      int[] arr = new int[out.size()];
+      for (int i = 0; i < out.size(); i++) arr[i] = out.get(i);
+      return arr;
+    }
+
+    /**
+     * Every argument position this pattern names as carrying the taint.
+     *
+     * <p>Never empty. A pattern whose index is unset carries {@code -1} ("use the family default").
+     */
+    public int[] argIndexes() {
+      return argIndexes.clone();
+    }
+
+    /**
+     * Whether this pattern names MORE THAN ONE candidate position.
+     *
+     * <p>A single-position pattern resolves exactly as it always did.
+     */
+    public boolean hasMultipleArgIndexes() {
+      return argIndexes.length > 1;
+    }
+
+    /**
+     * The bare receiver class name this pattern names, or {@code null} when the pattern names a
+     * qualified receiver.
+     *
+     * <p>A pattern is "bare" when it looks like {@code ^Class.method} -- a single identifier
+     * followed by a separator and the method name -- with no package qualifier and no alternation
+     * group around the owner.
+     *
+     * <p>The parse walks the pattern's owner segments: each is an identifier followed by a
+     * separator. The LAST owner segment is the class; the ones before it are the package. A pattern
+     * is bare exactly when there is only ONE owner segment.
+     */
+    private static String bareClassName(String pattern) {
+      if (pattern == null || !pattern.startsWith("^")) return null;
+      int i = 1;
+      java.util.ArrayList<String> owners = new java.util.ArrayList<>();
+      while (true) {
+        int start = i;
+        while (i < pattern.length() && isIdentifierPart(pattern.charAt(i))) i++;
+        if (i == start) return null; // no identifier -- not the shape we understand
+        owners.add(pattern.substring(start, i));
+        // The separator: a literal dot or an escaped dot.
+        if (i < pattern.length() && pattern.charAt(i) == '\\') i++;
+        if (i >= pattern.length() || pattern.charAt(i) != '.') return null;
+        i++;
+        // An alternation group right after the separator means the owner is a
+        // regex with alternatives -- not a bare class.
+        if (i < pattern.length() && pattern.charAt(i) == '(') return null;
+        // If another identifier follows, that identifier is the next owner
+        // segment -- unless it is the method name. The method name is the one
+        // followed by the arity group or the end of the pattern.
+        int nextStart = i;
+        while (i < pattern.length() && isIdentifierPart(pattern.charAt(i))) i++;
+        if (i == nextStart) return null;
+        String next = pattern.substring(nextStart, i);
+        // The method name is followed by `(`, `)`, `?`, `*`, `+`, `$`, or the end.
+        if (i >= pattern.length()) {
+          // `^Class.method` -- the method is the last thing.
+          owners.add(next);
+          break;
+        }
+        char after = pattern.charAt(i);
+        if (after == '(' || after == ')' || after == '?' || after == '*' || after == '+') {
+          // `^Class.method(arity)?` -- the method name is the last owner segment.
+          owners.add(next);
+          break;
+        }
+        // Otherwise this identifier is another owner segment (a package part).
+        owners.add(next);
+        if (i < pattern.length() && pattern.charAt(i) == '\\') i++;
+        if (i >= pattern.length() || pattern.charAt(i) != '.') return null;
+        i++;
+      }
+      // owners = [pkg..., class, method]
+      if (owners.size() != 2) return null; // a package qualifier -> not bare
+      return owners.get(0);
+    }
+
+    /** True when the character can appear in a Java identifier. */
+    private static boolean isIdentifierPart(char c) {
+      return Character.isLetterOrDigit(c) || c == '_' || c == '$';
+    }
+
+    /**
+     * The bare receiver class name this pattern names, or {@code null}.
+     *
+     * @see #bareClassName(String)
+     */
+    public String bareClassName() {
+      return bareClassName;
+    }
+
+    /**
+     * Whether this pattern names a bare receiver class (no package qualifier).
+     *
+     * @see #bareClassName(String)
+     */
+    public boolean isBareClass() {
+      return bareClassName != null;
+    }
+
+    /**
+     * Whether this pattern matches the given callee signature.
+     *
+     * <p>A bare-class pattern only matches a callee whose receiver type is exactly the simple name
+     * it names; see {@link #bareClassName} for why.
+     */
+    public boolean matches(String calleeSignature) {
+      if (calleeSignature == null) return false;
+      if (!compiled.matcher(calleeSignature).find()) return false;
+      if (bareClassName == null) return true;
+      return bareClassName.equals(receiverTypeOf(calleeSignature));
+    }
+
+    /**
+     * The receiver type of a callee signature, or {@code null} when it has none.
+     *
+     * <p>The signature shape is {@code Type.method/arity}: the type is what remains after dropping
+     * the trailing method name and the arity.
+     */
+    private static String receiverTypeOf(String calleeSignature) {
+      int slash = calleeSignature.lastIndexOf('/');
+      String typeAndMethod = slash < 0 ? calleeSignature : calleeSignature.substring(0, slash);
+      int dot = typeAndMethod.lastIndexOf('.');
+      if (dot < 0) return null;
+      return typeAndMethod.substring(0, dot);
     }
 
     public String pattern() {
@@ -236,6 +453,28 @@ public final class SinkFamily {
   private final int defaultArgIndex; // family-wide arg index
   private final List<SinkPattern> patterns;
 
+  /**
+   * The languages this family applies to.
+   *
+   * <p>Empty means "every language". A non-empty set restricts the family to those languages.
+   *
+   * <p>Why this matters. Most sinks are language-neutral: {@code java.sql.Statement#execute} is the
+   * same symbol whether the call site was written in Java, Kotlin or Scala, so a shared family with
+   * no language restriction is correct and cheapest. But some sinks are language-specific ({@code
+   * kotlin.text.Regex}, {@code scala.sys.process.ProcessBuilder}), and some are <i>semantically</i>
+   * language-specific even when the symbol name looks shared.
+   *
+   * <p>See {@link #appliesTo(SourceLanguage)}.
+   */
+  private final Set<SourceLanguage> languages;
+
+  /**
+   * The per-language pattern table.
+   *
+   * <p>See {@link LanguageRuleSet} for why this is separate from the {@code languages} filter.
+   */
+  private final LanguageRuleSet languageRules;
+
   public SinkFamily(
       String name, String cwe, String severityLabel, boolean enabled, List<String> patterns) {
     // legacy string-list constructor.
@@ -262,12 +501,64 @@ public final class SinkFamily {
       boolean enabled,
       int defaultArgIndex,
       List<SinkPattern> patterns) {
+    this(name, cwe, severityLabel, enabled, defaultArgIndex, patterns, Set.of());
+  }
+
+  /**
+   * Full constructor including the language restriction.
+   *
+   * @param languages the languages this family applies to; empty means every language
+   */
+  public SinkFamily(
+      String name,
+      String cwe,
+      String severityLabel,
+      boolean enabled,
+      int defaultArgIndex,
+      List<SinkPattern> patterns,
+      Set<SourceLanguage> languages) {
     this.name = Objects.requireNonNull(name, "name");
     this.cwe = cwe;
     this.severityLabel = severityLabel;
     this.enabled = enabled;
     this.defaultArgIndex = defaultArgIndex;
     this.patterns = List.copyOf(Objects.requireNonNull(patterns, "patterns"));
+    this.languages = languages == null ? Set.of() : Set.copyOf(languages);
+    // The legacy constructor's patterns are the SHARED ones: they name symbols that exist once and
+    // are callable from every language. A family built the old way therefore has no
+    // language-specific patterns, and resolves identically in every language.
+    this.languageRules = new LanguageRuleSet(this.patterns, java.util.Map.of());
+  }
+
+  /**
+   * Full constructor including the per-language pattern table.
+   *
+   * <p>This is the constructor the YAML loader uses when a family declares per-language symbols.
+   * The family's {@code patterns} become the SHARED patterns, and the rule set's per-language
+   * entries are the symbols only that language can mention.
+   *
+   * @param languageRules the per-language pattern table
+   */
+  public SinkFamily(
+      String name,
+      String cwe,
+      String severityLabel,
+      boolean enabled,
+      int defaultArgIndex,
+      List<SinkPattern> patterns,
+      Set<SourceLanguage> languages,
+      LanguageRuleSet languageRules) {
+    this.name = Objects.requireNonNull(name, "name");
+    this.cwe = cwe;
+    this.severityLabel = severityLabel;
+    this.enabled = enabled;
+    this.defaultArgIndex = defaultArgIndex;
+    this.patterns = List.copyOf(Objects.requireNonNull(patterns, "patterns"));
+    this.languages = languages == null ? Set.of() : Set.copyOf(languages);
+    this.languageRules =
+        languageRules == null
+            ? new LanguageRuleSet(this.patterns, java.util.Map.of())
+            : languageRules;
   }
 
   private static List<SinkPattern> toPatternList(List<String> strs) {
@@ -304,6 +595,90 @@ public final class SinkFamily {
   }
 
   /**
+   * The languages this family applies to. Empty means "every language".
+   *
+   * @see #appliesTo(SourceLanguage)
+   */
+  public Set<SourceLanguage> languages() {
+    return languages;
+  }
+
+  /**
+   * Whether this family applies to code written in the given language.
+   *
+   * <p>An empty language set means "every language" -- that is the default for a family whose
+   * patterns are all language-neutral, which is the common case.
+   *
+   * <p><b>How to read this.</b> The language set answers "could a call site in this language
+   * possibly reach this sink?". It does not answer "is this sink dangerous here?". A shared sink
+   * family (say {@code sql.sinks}) has no language restriction precisely because the same
+   * Java-library symbol is reachable from every language.
+   *
+   * <p>A language-restricted family is for sinks that only exist in one language, or whose
+   * <i>meaning</i> differs by language. The classic case of the second kind is a language's own
+   * "read a line of user input" API: {@code kotlin.io.readLine()} and Scala's {@code
+   * scala.io.StdIn.readLine()} are different symbols with different threat models, and a Java-only
+   * source must not be blamed for a Kotlin call.
+   */
+  public boolean appliesTo(SourceLanguage language) {
+    if (languages.isEmpty()) return true;
+    return language != null && languages.contains(language);
+  }
+
+  /**
+   * The per-language pattern table.
+   *
+   * @return the rule set; never null
+   */
+  public LanguageRuleSet languageRules() {
+    return languageRules;
+  }
+
+  /**
+   * The patterns that apply when analysing code in the given language.
+   *
+   * <p>This is the shared patterns plus the analysed language's own. A family built without a
+   * language table returns exactly its shared patterns for every language, so the behaviour of
+   * every existing family is unchanged.
+   *
+   * @param language the analysed language
+   * @return the patterns to match a call site against; never null
+   */
+  public List<SinkPattern> patternsFor(SourceLanguage language) {
+    return languageRules.patternsFor(language);
+  }
+
+  /**
+   * Whether this family's callee signature matches, in the given language.
+   *
+   * <p>This is the language-aware counterpart of {@link #matches(String)}: it consults the
+   * per-language pattern table, so a Kotlin-only symbol does not match in Java code.
+   *
+   * @param calleeSignature the callee signature at the call site
+   * @param language the analysed language
+   * @return true when the call site reaches this family
+   */
+  public boolean matches(String calleeSignature, SourceLanguage language) {
+    if (calleeSignature == null) return false;
+    if (!appliesTo(language)) return false;
+    // The relaxed (prefix-optional) form is a FALLBACK for a callee whose
+    // receiver type the symbol solver could not resolve -- the TAC then keeps
+    // the simple name (`JdbcTemplate.query/2`). It must NOT be consulted for a
+    // fully qualified receiver: `java.sql.Statement.execute/1` would then match
+    // the relaxed form of `java.beans.Statement.execute`, and the JDBC sink
+    // would be reported as a code-execution sink.
+    boolean simpleName = hasSimpleNameReceiver(calleeSignature);
+    for (SinkPattern p : patternsFor(language)) {
+      if (p.matches(calleeSignature)) return true;
+    }
+    if (!simpleName) return false;
+    for (SinkPattern p : patternsFor(language)) {
+      if (p.relaxed().matcher(calleeSignature).find()) return true;
+    }
+    return false;
+  }
+
+  /**
    * Returns the first {@link SinkPattern} whose regex matches as a substring of the given callee
    * signature, or {@code null} if no pattern matches.
    *
@@ -318,13 +693,37 @@ public final class SinkFamily {
    * fully qualified name always wins over the relaxed fallback.
    */
   public SinkPattern matchPattern(String calleeSignature) {
+    return matchPattern(calleeSignature, null);
+  }
+
+  /**
+   * The language-aware counterpart of {@link #matchPattern(String)}.
+   *
+   * <p>The matching logic is identical -- strict form first, relaxed form only when the receiver
+   * type is a bare simple name -- but the pattern SET is the one that applies to the analysed
+   * language. A family with no per-language table resolves exactly as it did before.
+   *
+   * @param calleeSignature the callee signature at the call site
+   * @param language the analysed language; {@code null} means "unknown", which gets the shared
+   *     patterns
+   * @return the matching pattern, or {@code null}
+   */
+  public SinkPattern matchPattern(String calleeSignature, SourceLanguage language) {
     if (!enabled) return null;
+    if (calleeSignature == null) return null;
+    // A NULL language means "unknown". The family must still be considered:
+    // an unknown language is not a reason to drop every family, because that
+    // would turn "we could not tell what this code is" into "there is nothing
+    // here". The language restriction is a filter for a KNOWN language; for an
+    // unknown one the family is simply matched on its shared patterns.
+    if (language != null && !appliesTo(language)) return null;
+    List<SinkPattern> applicable = patternsFor(language);
     boolean simpleName = hasSimpleNameReceiver(calleeSignature);
-    for (SinkPattern p : patterns) {
-      if (p.compiled.matcher(calleeSignature).find()) return p;
+    for (SinkPattern p : applicable) {
+      if (p.matches(calleeSignature)) return p;
     }
     if (!simpleName) return null;
-    for (SinkPattern p : patterns) {
+    for (SinkPattern p : applicable) {
       if (p.relaxed.matcher(calleeSignature).find()) return p;
     }
     return null;
@@ -363,6 +762,20 @@ public final class SinkFamily {
   }
 
   /**
+   * Resolve the effective user-arg index for the given callee signature, in the given language.
+   *
+   * @param calleeSignature the callee signature at the call site
+   * @param language the analysed language
+   * @return the matching pattern's explicit argIndex, the family default if no pattern has one, or
+   *     {@code -1} if no pattern matches
+   */
+  public int argIndexFor(String calleeSignature, SourceLanguage language) {
+    SinkPattern p = matchPattern(calleeSignature, language);
+    if (p == null) return -1;
+    return p.hasExplicitArgIndex() ? p.argIndex() : defaultArgIndex;
+  }
+
+  /**
    * Resolve the effective user-arg index for the given callee signature. Returns the matching
    * pattern's explicit argIndex, or the family default if no pattern has one. Returns {@code -1} if
    * no pattern matches.
@@ -371,6 +784,55 @@ public final class SinkFamily {
     SinkPattern p = matchPattern(calleeSignature);
     if (p == null) return -1;
     return p.hasExplicitArgIndex() ? p.argIndex() : defaultArgIndex;
+  }
+
+  /**
+   * EVERY argument position that can carry the taint for the given callee signature.
+   *
+   * <p>This is the multi-position counterpart of {@link #argIndexFor(String, SourceLanguage)}. A
+   * sink symbol can have the taint at more than one argument position -- Spring's {@code
+   * JdbcTemplate.queryForList} has the SQL at index 0 in one overload and the varargs at index 1 in
+   * another -- and a single index would silently drop one of them.
+   *
+   * <p>The positions come from EVERY pattern of this family that matches the callee, not just the
+   * first one. That is the point: the two patterns for {@code JdbcTemplate.queryForList} carry
+   * different indices, and taking only the first one is what broke the framework sinks.
+   *
+   * <p>A position of {@code -1} means "the family default" and is resolved to {@link
+   * #defaultArgIndex()} here, so the returned array never contains {@code -1}. The receiver
+   * sentinel ({@code -2}) is returned as-is: the caller has to check the receiver separately,
+   * because the receiver is not in the argument list.
+   *
+   * @param calleeSignature the callee signature at the call site
+   * @param language the analysed language
+   * @return the candidate positions, in the order they were found; empty when nothing matches
+   */
+  public int[] argIndexesFor(String calleeSignature, SourceLanguage language) {
+    if (calleeSignature == null) return new int[0];
+    java.util.ArrayList<Integer> out = new java.util.ArrayList<>();
+    boolean simpleName = hasSimpleNameReceiver(calleeSignature);
+    for (SinkPattern p : patternsFor(language)) {
+      boolean matched = p.matches(calleeSignature);
+      if (!matched && simpleName) matched = p.relaxed().matcher(calleeSignature).find();
+      if (!matched) continue;
+      for (int idx : p.argIndexes()) {
+        int resolved = idx == -1 ? defaultArgIndex : idx;
+        if (!out.contains(resolved)) out.add(resolved);
+      }
+    }
+    int[] arr = new int[out.size()];
+    for (int i = 0; i < out.size(); i++) arr[i] = out.get(i);
+    return arr;
+  }
+
+  /**
+   * The language-neutral counterpart of {@link #argIndexesFor(String, SourceLanguage)}.
+   *
+   * @param calleeSignature the callee signature at the call site
+   * @return the candidate positions; empty when nothing matches
+   */
+  public int[] argIndexesFor(String calleeSignature) {
+    return argIndexesFor(calleeSignature, null);
   }
 
   /**

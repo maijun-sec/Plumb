@@ -33,7 +33,7 @@
         <assertj.version>3.26.3</assertj.version>
         <z3.turnkey.version>4.14.0</z3.turnkey.version>
 
-        <!--
+        <!--,
           Kotlin, for plumb-dsl-kotlin's script engine. 2.2.0 is the first
           release whose script engine understands JDK 25; 2.1.0 fails with
           "IllegalArgumentException: 25.0.1" and 1.9.22 does not know
@@ -41,6 +41,105 @@
           engine's self-test.
         -->
         <kotlin.version>2.2.0</kotlin.version>
+
+        <!--,
+          Kotlin Analysis API version for plumb-frontend (the Kotlin source frontend).
+
+          LOCKED, and deliberately separate from the kotlin.version above:
+          that one serves the DSL script engine (2.2.0 is the first release whose
+          script engine understands JDK 25), while this one serves the ANALYSIS
+          frontend, where the requirement is API maturity, not script-engine
+          compatibility. Mixing them would bind two unrelated features together.
+
+          The Analysis API is experimental: JetBrains marks it "in development
+          and subject to incompatible changes" and only officially supports IDEA
+          plugin development. So the version is pinned and upgraded deliberately,
+          with the frontend's own tests re-run each time.
+        -->
+        <kotlin.analysis.api.version>2.5.0-Beta2</kotlin.analysis.api.version>
+
+        <!--,
+          The Kotlin STANDARD LIBRARY version, which is a THIRD thing: neither
+          the DSL script engine's version nor the Analysis API's version.
+
+          WHY IT NEEDS ITS OWN PIN. The two Kotlin features in this repository
+          need different things, and the difference is not academic:
+
+          - The DSL script engine (kotlin.version) needs a compiler whose
+            script engine understands JDK 25. 2.2.0 is the first such release.
+          - The Analysis API (kotlin.analysis.api.version) is built against a
+            newer stdlib and USES kotlin/jvm/internal/KotlinGenericDeclaration,
+            which does not exist before 2.3.x. Without it the frontend dies with
+            NoClassDefFoundError at SESSION BUILD TIME, and because the
+            frontend reports that as a "problem" rather than crashing, the scan
+            silently produces ZERO findings for every Kotlin file. A Kotlin
+            codebase would look clean.
+
+          Maven's "nearest wins" would otherwise let the script engine's
+          transitive stdlib 2.2.0 shadow the Analysis API's 2.3.21, because
+          plumb-main depends on both. The result is exactly the failure above.
+
+          So the stdlib version is pinned ONCE, here, in dependencyManagement,
+          which makes it apply to EVERY module regardless of which path it
+          arrives by. 2.3.21 is the version the Analysis API resolves to, and
+          it is backward compatible with the 2.2.0 script engine: the
+          standard library is additive within a major line.
+
+          RAISE THIS ONLY TOGETHER WITH kotlin.analysis.api.version, and
+          re-run the DSL engine's self-test AND the frontend's tests.
+        -->
+        <kotlin.stdlib.version>2.3.21</kotlin.stdlib.version>
+
+        <!--,
+          The kotlin-reflect version the Kotlin SCRIPT ENGINE was built against.
+
+          A fourth version, and the least obvious of them. kotlin-compiler-embeddable
+          2.2.0 declares kotlin-reflect 1.6.10, and the DSL script engine links
+          against it. The Analysis API wants 2.3.x. Maven gives every module that
+          depends on both the NEWEST version, so the script engine ends up with a
+          reflect it was not built against and dies at construction with
+          "Unable to load base class".
+
+          Declaring this version does not make it win the resolution. It puts it on
+          the CLASSPATH, so the script engine's isolated classloader can select the
+          version its own compiler was built against, while the rest of the process
+          keeps the 2.3.21 the Analysis API needs.
+
+          Raise it ONLY together with kotlin.version, and re-run the DSL engine's
+          self-test.
+        -->
+        <kotlin.script.reflect.version>1.6.10</kotlin.script.reflect.version>
+
+        <!--,
+          kotlinx-collections-immutable, the version the Kotlin Analysis API's
+          IntelliJ surface classes need at COMPILE scope.
+
+          A fifth Kotlin-adjacent version, and the least obvious of them,
+          because it is not a Kotlin version at all: it is the Analysis API's
+          own dependency on the IntelliJ platform's persistent collections.
+
+          WHY IT IS PINNED. The Analysis API's compile-scope surface classes
+          have a field of type kotlinx.collections.immutable.PersistentSet, and
+          the aggregator declares that artifact at RUNTIME scope. javac reads
+          a field's type out of the classfile regardless of which scope
+          fetched the classfile, so the type has to be resolvable at compile
+          scope or the build fails with "cannot find the class file for
+          kotlinx.collections.immutable.PersistentSet".
+
+          The pin exists so the SCOPE fix and the VERSION live in one place.
+          Raise it together with kotlin.analysis.api.version.
+        -->
+        <kotlin.collections.immutable.version>0.5.1</kotlin.collections.immutable.version>
+
+        <!--,
+          Scala 3 compiler version for plumb-frontend (the Scala source frontend).
+
+          LOCKED: the frontend uses dotc's PluginPhase, which is compiler-internal
+          API. dotc only guarantees cross-version compatibility for
+          CrossVersion.full, so a minor upgrade must re-run the frontend's tests.
+          3.10.0 is the newest stable 3.10 release.
+        -->
+        <scala3.version>3.10.0</scala3.version>
 
         <!-- R140: SootUp for bytecode (.jar/.class) analysis. -->
         <sootup.version>3.0.0</sootup.version>
@@ -53,17 +152,32 @@
         <maven.install.plugin.version>3.1.2</maven.install.plugin.version>
     </properties>
 
+    <!--,
+      THE BUILD IS GROUPED INTO LAYERS. Each layer is an aggregator POM that
+      groups the modules of one layer; the modules themselves keep their
+      top-level directories.
+
+      WHY AGGREGATORS AND NOT SUBDIRECTORIES. The repository's gate scripts
+      resolve module paths from the repository root: 43 of them, as
+      REPO / "plumb-<name>". scripts/check_test_coverage.py goes further: it
+      DISCOVERS the modules by iterating the root directory, and it complains
+      about any module with tests that it does not know about. Move a module
+      into a subdirectory and that gate stops seeing it. It does not fail; it
+      silently stops checking, which is worse than not having the gate.
+
+      Moving a module is also a path change, not a design change: Maven orders
+      the reactor by the dependency graph, so the layer boundaries are already
+      enforced at build time. Declaring them here makes the layering
+      explicit and readable without putting 43 scripts at risk.
+
+        plumb-core    the foundation: parser, rules, reporter
+        plumb-engine  the analysis engine: tac, frontend, dfa, style, dsl, ai
+        plumb-app     the entry points: main, build
+    -->
     <modules>
-        <module>plumb-parser</module>
-        <module>plumb-tac</module>
-        <module>plumb-rules</module>
-        <module>plumb-style</module>
-        <module>plumb-reporter</module>
-        <module>plumb-dfa</module>
-        <module>plumb-build</module>
-        <module>plumb-ai</module>
-        <module>plumb-dsl-kotlin</module>
-        <module>plumb-main</module>
+        <module>plumb-core</module>
+        <module>plumb-engine</module>
+        <module>plumb-app</module>
     </modules>
 
     <dependencyManagement>
@@ -76,6 +190,11 @@
             <dependency>
                 <groupId>org.plumb</groupId>
                 <artifactId>plumb-tac</artifactId>
+                <version>0.1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.plumb</groupId>
+                <artifactId>plumb-frontend</artifactId>
                 <version>0.1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
@@ -186,7 +305,7 @@
                 <version>${z3.turnkey.version}</version>
             </dependency>
 
-            <!-- R140: SootUp for bytecode analysis. 3.0.0 is the
+            <!--, R140: SootUp for bytecode analysis. 3.0.0 is the
                  latest release (2026-07-16). We need the bytecode
                  frontend to convert .jar/.class → Jimple, the core
                  for the Project / SootClass / Body APIs, the java
@@ -213,7 +332,56 @@
                 <version>${sootup.version}</version>
             </dependency>
 
-            <!-- R-833 P0: Maven model reader for the MavenAdapter.
+            <!-- Kotlin Analysis API: plumb-frontend's Kotlin source frontend. -->
+            <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-analysis-api-standalone-implementation</artifactId>
+                <version>${kotlin.analysis.api.version}</version>
+            </dependency>
+            <!--,
+              The stdlib pin. See the kotlin.stdlib.version property for why this
+              is separate from both Kotlin versions and why it has to be in
+              dependencyManagement rather than left to the nearest-wins rule.
+            -->
+            <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-stdlib</artifactId>
+                <version>${kotlin.stdlib.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-analysis-api-standalone-surface</artifactId>
+                <version>${kotlin.analysis.api.version}</version>
+            </dependency>
+            <!--,
+              kotlinx-collections-immutable, at compile scope.
+
+              The Analysis API's compile-scope IntelliJ surface classes have a
+              field of type kotlinx.collections.immutable.PersistentSet, and
+              the artifact that declares it declares it at RUNTIME scope. javac
+              reads a field's type out of the classfile regardless of the scope
+              that fetched the classfile, so the type must be resolvable at
+              compile scope or the build fails.
+
+              The version is pinned here so the scope fix and the version live
+              in ONE place. It is the version the Analysis API aggregator
+              resolves today; raise it together with
+              kotlin.analysis.api.version.
+            -->
+            <dependency>
+                <groupId>org.jetbrains.kotlinx</groupId>
+                <artifactId>kotlinx-collections-immutable-jvm</artifactId>
+                <version>${kotlin.collections.immutable.version}</version>
+            </dependency>
+
+            <!-- Scala 3 compiler: plumb-frontend's Scala source frontend. -->
+            <dependency>
+                <groupId>org.scala-lang</groupId>
+                <artifactId>scala3-compiler_3</artifactId>
+                <version>${scala3.version}</version>
+            </dependency>
+
+            <!--, R-833 P0: Maven model reader for the MavenAdapter.
                  The other adapters (Gradle / Bazel / Ant) live in
                  plumb-build and pull their own deps if needed. -->
             <dependency>

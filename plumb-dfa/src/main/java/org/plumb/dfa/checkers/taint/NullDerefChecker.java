@@ -81,6 +81,20 @@ public final class NullDerefChecker extends TaintedCheckerBase {
       new org.plumb.dfa.taint.GuardTracker();
 
   /**
+   * Path-independent nullability facts: statically non-nullable declared types, and explicit null
+   * checks.
+   *
+   * <p>Separate from {@link #nullGuards} because the two answer different questions. The guard
+   * tracker asks "proven non-null on <i>this path</i>?"; this one asks "is this variable's
+   * <i>type</i> incapable of holding null, or has a check already run?".
+   *
+   * <p>Both may suppress a finding. Neither may establish that a call site is safe -- see {@link
+   * org.plumb.dfa.taint.NullabilityFacts} for why that distinction matters for Kotlin.
+   */
+  private final org.plumb.dfa.taint.NullabilityFacts nullability =
+      new org.plumb.dfa.taint.NullabilityFacts();
+
+  /**
    * Clear per-function state on function boundary. The earlier code cleared on the first
    * instruction of each function but that was ordered AFTER the null-MOVE handler, so the first
    * null assignment was added then immediately removed. Using {@link #initFunction} clears the map
@@ -91,6 +105,38 @@ public final class NullDerefChecker extends TaintedCheckerBase {
     super.initFunction(ctx, fn);
     this.nullTaintedVars.clear();
     this.nullGuards.clear();
+    this.nullability.clear();
+    // Seed the type-system facts for this function's parameters and locals.
+    //
+    // A frontend that read a language's type system marks non-nullable types as such
+    // (TacType.isNullable() == false). For Java every reference type is nullable, so this
+    // seeds nothing and Java behaviour is unchanged. For Kotlin it seeds every
+    // non-nullable declaration -- which is exactly the false positive we want to remove.
+    seedTypeSystemFacts(fn);
+  }
+
+  /**
+   * Records the statically non-nullable declarations of a function.
+   *
+   * <p>Parameters and locals are seeded from their declared {@link TacOperand.TacVar#type()}. A
+   * temporary produced by a call is deliberately NOT seeded: its type comes from the callee's
+   * signature, and a Java method seen from Kotlin has a platform type that may still be null.
+   */
+  private void seedTypeSystemFacts(TacFunction fn) {
+    if (fn == null) return;
+    seedAll(fn.params());
+    seedAll(fn.locals());
+  }
+
+  private void seedAll(java.util.List<TacOperand.TacVar> vars) {
+    if (vars == null) return;
+    for (TacOperand.TacVar v : vars) {
+      if (v == null) continue;
+      if (v.type() != null && v.type().isReference() && !v.type().isNullable()) {
+        this.nullability.recordNonNullType(
+            v, "declared type " + v.type().displayName() + " is non-nullable");
+      }
+    }
   }
 
   public void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
@@ -101,6 +147,15 @@ public final class NullDerefChecker extends TaintedCheckerBase {
     // track guards AFTER super, so the base class's MOVE/BINOP handling has run and this
     // instruction's context is complete before the guard set is consulted below.
     this.nullGuards.track(ins);
+    // An explicit null check proves the value non-null from here on. This is the
+    // control-flow half of the nullability story: the type system says what the
+    // DECLARATION allows, and this says what this PATH has established.
+    if (ins.kind == TacInstruction.Kind.NULL_CHECK && ins.dest instanceof TacOperand.TacVar nv) {
+      this.nullability.recordProvenByCheck(nv, "null check on this path");
+      // A proven value is not a may-be-null value. If the null map had it (e.g. it was
+      // assigned null earlier and then checked), the check retires that fact.
+      this.nullTaintedVars.remove(nv);
+    }
     if (ins.kind == TacInstruction.Kind.MOVE
         && ins.lhs1 instanceof TacOperand.Const
         && ((TacOperand.Const) ins.lhs1).kind() == TacOperand.Const.Kind.NULL
@@ -250,6 +305,34 @@ public final class NullDerefChecker extends TaintedCheckerBase {
       TacOperand.TacVar receiver, TacFunction fn, AnalysisContext ctx) {
     if (this.nullGuards.isProvenNonNull(receiver)) {
       return "proven non-null on this path";
+    }
+    // The path-independent facts come next: an explicit null check on this path, or a
+    // declaration whose type cannot hold null.
+    //
+    // The order matters: the guard tracker is path-sensitive, so its answer is the
+    // strongest one available; the check fact is also path-sensitive but established at a
+    // specific point; the type fact holds on every path but is the weakest, because it
+    // describes the declaration rather than the runtime.
+    String byFact = this.nullability.reasonIfNonNull(receiver);
+    if (byFact != null) {
+      // A declared non-null type does NOT override an explicit null assignment.
+      //
+      // The type says what the DECLARATION permits; the assignment says what this
+      // PATH actually put in the variable. When they disagree, the assignment wins,
+      // because the dereference is about the runtime value:
+      //
+      //     var s: String = "x"   // Kotlin: declared non-null
+      //     s = null              // (only reachable via a platform type or unsafe cast)
+      //     s.length()            // REAL NPE -- the declaration does not save it
+      //
+      // The null-literal fact is a direct observation of a value, so it outranks an
+      // inferred property of the type. Without this ordering a Kotlin non-null
+      // declaration would silence a genuine null dereference.
+      String nullSource = this.nullTaintedVars.get(receiver);
+      if (nullSource != null && nullSource.startsWith("null-literal")) {
+        return null;
+      }
+      return byFact;
     }
     if (ctx == null || fn == null || receiver == null) {
       return null;

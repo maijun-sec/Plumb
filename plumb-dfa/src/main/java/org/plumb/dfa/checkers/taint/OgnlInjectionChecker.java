@@ -40,7 +40,7 @@ public final class OgnlInjectionChecker extends TaintedCheckerBase {
         new TaintRule(
             "dfa-taint-ognl-injection",
             "dfa-taint-untrusted-source",
-            "ognl.sinks",
+            "expression-injection.sinks",
             "CWE-94",
             "CRITICAL",
             (TaintDomain) TaintDomain.StringTaint.INSTANCE));

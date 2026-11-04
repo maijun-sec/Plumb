@@ -28,10 +28,13 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
+import org.plumb.tac.ir.SourceLanguage;
 import org.yaml.snakeyaml.Yaml;
 
 /**
@@ -59,6 +62,8 @@ import org.yaml.snakeyaml.Yaml;
  * <p>Adding a new YAML file: extend the {@code FILES} list and add a {@code parse*} method.
  */
 public final class ConfigLoader {
+
+  private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(ConfigLoader.class);
 
   private static final String[] FILES = {
     "sink-families.yaml", "fact-kinds.yaml", "checkers.yaml", "cwe-mappings.yaml", "tuning.yaml",
@@ -192,6 +197,21 @@ public final class ConfigLoader {
 
   // ===== Parsers =====
 
+  /**
+   * Parse a sink-family YAML mapping. Exposed for tests.
+   *
+   * <p>The production path is {@link #loadFromClasspath()}. This accessor exists so a test can feed
+   * the parser a mapping it could not write to disk -- which is how the "an unknown language name
+   * is rejected" behaviour is pinned: the rejection happens in the parser, and the only way to
+   * observe it is to call the parser.
+   *
+   * @param yaml the parsed YAML mapping
+   * @return the parsed families
+   */
+  public static SinkFamilyRegistry parseSinkFamiliesForTest(Map<String, Object> yaml) {
+    return parseSinkFamilies(yaml);
+  }
+
   @SuppressWarnings("unchecked")
   private static SinkFamilyRegistry parseSinkFamilies(Map<String, Object> yaml) {
     Object fams = yaml.get("families");
@@ -216,14 +236,54 @@ public final class ConfigLoader {
       // each pattern may be a bare
       // string or {pattern: "...", arg_index: N}.
       List<SinkFamily.SinkPattern> parsedPatterns = parsePatterns(spec.get("patterns"));
-      out.put(name, new SinkFamily(name, cwe, sev, enabled, defaultArgIdx, parsedPatterns));
+      // Optional language restriction. Absent = every language, which is the common case: a
+      // shared sink family (java.sql.Statement#execute) is reachable from every language.
+      // Present = this family only applies to the listed languages.
+      Set<SourceLanguage> languages = parseLanguages(spec.get("languages"));
+      // The per-language pattern table: the symbols only one language can mention, kept on the
+      // SAME family so the defect class stays one name with one CWE.
+      LanguageRuleSet languageRules = parseLanguageRules(spec.get("by_language"), parsedPatterns);
+      out.put(
+          name,
+          new SinkFamily(
+              name, cwe, sev, enabled, defaultArgIdx, parsedPatterns, languages, languageRules));
     }
     return new SinkFamilyRegistry(out);
   }
 
   /**
+   * Parse a {@code languages} list into a set of {@link SourceLanguage}.
+   *
+   * <p>Accepts the enum names in any case ({@code java}, {@code KOTLIN}, {@code Scala}). An
+   * unrecognised name is skipped with a warning rather than aborting the load: a typo in one family
+   * must not take the whole rule set down.
+   *
+   * <p>An absent or empty list yields an empty set, which means "every language".
+   */
+  @SuppressWarnings("unchecked")
+  private static Set<SourceLanguage> parseLanguages(Object raw) {
+    if (!(raw instanceof List)) return Set.of();
+    Set<SourceLanguage> out = new LinkedHashSet<>();
+    for (Object item : (List<Object>) raw) {
+      if (!(item instanceof String s)) continue;
+      String key = s.trim();
+      SourceLanguage lang = SourceLanguage.parse(key);
+      if (lang == SourceLanguage.UNKNOWN) {
+        LOG.warn("Unknown language '{}' in sink family language restriction; ignored", key);
+        continue;
+      }
+      out.add(lang);
+    }
+    return out;
+  }
+
+  /**
    * parse a patterns list whose entries are either bare strings or maps with {@code pattern} and
    * optional {@code arg_index}.
+   *
+   * <p>{@code arg_index} may be a SCALAR ({@code arg_index: 0}) or a LIST ({@code arg_index: [0,
+   * 1]}). The list form names SEVERAL argument positions that can carry the taint for this pattern
+   * -- see {@link SinkFamily.SinkPattern} for why a symbol can have more than one.
    */
   @SuppressWarnings("unchecked")
   private static List<SinkFamily.SinkPattern> parsePatterns(Object raw) {
@@ -237,11 +297,97 @@ public final class ConfigLoader {
         Map<String, Object> m = (Map<String, Object>) item;
         String p = asString(m.get("pattern"));
         if (p == null) continue;
-        int ai = asInt(m.get("arg_index"), -1);
-        out.add(new SinkFamily.SinkPattern(p, ai));
+        int[] indexes = parseArgIndexes(m.get("arg_index"));
+        int primary = indexes.length > 0 ? indexes[0] : -1;
+        out.add(new SinkFamily.SinkPattern(p, primary, indexes));
       }
     }
     return out;
+  }
+
+  /**
+   * Parse an {@code arg_index} value into the list of candidate positions.
+   *
+   * <p>Accepts a scalar (the common case) and a list. An absent or unparseable value yields an
+   * empty array, which means "unset" -- the pattern then falls back to the family default.
+   */
+  private static int[] parseArgIndexes(Object raw) {
+    if (raw == null) return new int[0];
+    if (raw instanceof Number n) return new int[] {n.intValue()};
+    if (raw instanceof String s) {
+      try {
+        return new int[] {Integer.parseInt(s.trim())};
+      } catch (NumberFormatException e) {
+        return new int[0];
+      }
+    }
+    if (raw instanceof List<?> list) {
+      java.util.ArrayList<Integer> out = new java.util.ArrayList<>();
+      for (Object item : list) {
+        if (item instanceof Number n) {
+          if (!out.contains(n.intValue())) out.add(n.intValue());
+        } else if (item instanceof String s) {
+          try {
+            int v = Integer.parseInt(s.trim());
+            if (!out.contains(v)) out.add(v);
+          } catch (NumberFormatException e) {
+            // skip an unparseable entry rather than failing the whole catalog
+          }
+        }
+      }
+      int[] arr = new int[out.size()];
+      for (int i = 0; i < out.size(); i++) arr[i] = out.get(i);
+      return arr;
+    }
+    return new int[0];
+  }
+
+  /**
+   * Parses the per-language pattern table of a sink family.
+   *
+   * <p>The YAML shape is:
+   *
+   * <pre>
+   *   families:
+   *     regex.sinks:
+   *       cwe: CWE-1333
+   *       patterns:                     # shared: reachable from every language
+   *         - '^java\.util\.regex\.Pattern\.compile(/\d+)?'
+   *       by_language:                  # per language: only that language can mention it
+   *         kotlin:
+   *           - pattern: '^kotlin\.text\.Regex\.&lt;init&gt;'
+   *             arg_index: 0
+   *         scala:
+   *           - '^scala\.util\.matching\.Regex\.&lt;init&gt;'
+   * </pre>
+   *
+   * <p>See {@link LanguageRuleSet} for why the per-language symbols belong to the SAME family
+   * rather than to separate families.
+   *
+   * @param raw the raw YAML value
+   * @return the per-language pattern table; empty when the family declares none
+   */
+  private static LanguageRuleSet parseLanguageRules(
+      Object raw, List<SinkFamily.SinkPattern> shared) {
+    if (!(raw instanceof Map)) {
+      return new LanguageRuleSet(shared, java.util.Map.of());
+    }
+    Map<String, Object> byLang = (Map<String, Object>) raw;
+    Map<org.plumb.tac.ir.SourceLanguage, List<SinkFamily.SinkPattern>> out = new LinkedHashMap<>();
+    for (Map.Entry<String, Object> e : byLang.entrySet()) {
+      org.plumb.tac.ir.SourceLanguage lang = org.plumb.tac.ir.SourceLanguage.parse(e.getKey());
+      if (lang == org.plumb.tac.ir.SourceLanguage.UNKNOWN) {
+        // An unknown language name is a TYPO, not a language to ignore. Dropping it silently
+        // would make the rule look like it was configured, while never being able to fire.
+        throw new IllegalArgumentException(
+            "unknown language '" + e.getKey() + "' in by_language of a sink family");
+      }
+      List<SinkFamily.SinkPattern> pats = parsePatterns(e.getValue());
+      if (!pats.isEmpty()) {
+        out.put(lang, pats);
+      }
+    }
+    return new LanguageRuleSet(shared, out);
   }
 
   @SuppressWarnings("unchecked")

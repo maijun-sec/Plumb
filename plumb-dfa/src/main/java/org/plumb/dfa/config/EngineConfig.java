@@ -50,6 +50,16 @@ public final class EngineConfig {
    */
   private final List<Pattern> receiverPassthroughPatterns;
 
+  /**
+   * The per-language library semantics tables.
+   *
+   * <p>This is what tells the engine how a standard-library call affects taint, per language
+   * family. It was previously a set of inline {@code "java.lang.String.trim/"} string comparisons
+   * scattered through the taint engine -- knowledge about Java's library embedded in
+   * language-agnostic code.
+   */
+  private final org.plumb.dfa.semantics.LanguageSemanticsRegistry languageSemantics;
+
   public EngineConfig(
       SinkFamilyRegistry sinkFamilies,
       FactKindRegistry factKinds,
@@ -57,6 +67,24 @@ public final class EngineConfig {
       Map<String, String> cweMappings,
       TuningConfig tuning,
       List<Pattern> receiverPassthroughPatterns) {
+    this(
+        sinkFamilies,
+        factKinds,
+        checkers,
+        cweMappings,
+        tuning,
+        receiverPassthroughPatterns,
+        org.plumb.dfa.semantics.LanguageSemanticsRegistry.withDefaults());
+  }
+
+  public EngineConfig(
+      SinkFamilyRegistry sinkFamilies,
+      FactKindRegistry factKinds,
+      CheckerRegistry checkers,
+      Map<String, String> cweMappings,
+      TuningConfig tuning,
+      List<Pattern> receiverPassthroughPatterns,
+      org.plumb.dfa.semantics.LanguageSemanticsRegistry languageSemantics) {
     this.sinkFamilies = Objects.requireNonNull(sinkFamilies, "sinkFamilies");
     this.factKinds = Objects.requireNonNull(factKinds, "factKinds");
     this.checkers = Objects.requireNonNull(checkers, "checkers");
@@ -64,6 +92,20 @@ public final class EngineConfig {
     this.tuning = Objects.requireNonNull(tuning, "tuning");
     this.receiverPassthroughPatterns =
         receiverPassthroughPatterns == null ? List.of() : List.copyOf(receiverPassthroughPatterns);
+    this.languageSemantics =
+        languageSemantics == null
+            ? org.plumb.dfa.semantics.LanguageSemanticsRegistry.withDefaults()
+            : languageSemantics;
+  }
+
+  /**
+   * The per-language library semantics tables.
+   *
+   * <p>Never {@code null}. A language with no registered table gets an empty one, so a checker can
+   * always ask and get an answer.
+   */
+  public org.plumb.dfa.semantics.LanguageSemanticsRegistry languageSemantics() {
+    return languageSemantics;
   }
 
   /** Legacy 5-arg constructor for backward compat. */

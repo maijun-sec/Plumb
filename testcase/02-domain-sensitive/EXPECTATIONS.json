@@ -10,12 +10,12 @@
       "id": "L1-safe-guard",
       "kind": "tn",
       "file": "L1RangeNarrowing.java",
-      "line": 22,
+      "line": 23,
       "rule_ids": [
         "dfa-boundary-array-out-of-bounds",
         "dfa-taint-unchecked-array-index"
       ],
-      "note": "safeAfterGuard: index guarded to [0,2] against a length-3 array. Must stay silent."
+      "note": "safeAfterGuard: index guarded to [0,2] against a length-3 array. Must stay silent. R1201: the pin was line 22 -- the `return null` inside the guard -- while the engine reports the ARRAY LOAD at line 23, and the harness matches file+line EXACTLY. The case therefore could not see a finding at line 23 and was measuring nothing; that is how the false positive stayed invisible. Re-pinned to the array load, like every other case in this category."
     },
     {
       "id": "L1-unsafe-noguard",

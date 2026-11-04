@@ -332,14 +332,50 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
 
   /**
    * Subclass hook: does this {@link org.plumb.dfa.summary.Operation} mean "the callee returns an
-   * allocated resource, so the caller's dest inherits the close obligation"? Default: any {@code
-   * TaintPropagate} on the return side is treated as a potential alloc indicator
-   * (TaintPropagate-style propagation). A subclass that wants a stricter "the callee definitely
-   * returns a fresh resource" check can override.
+   * allocated resource, so the caller's dest inherits the close obligation"? Default: only an
+   * explicit {@link org.plumb.dfa.summary.Operation.ReturnsResource} counts.
+   *
+   * <p><b>Why the default is not "any TaintPropagate".</b> The engine keeps ONE summary per
+   * function, merged across every checker. The taint checkers record a {@code TaintPropagate} on
+   * the return side for every tainted return -- that is what makes taint cross a call boundary --
+   * and this checker used to read those ops as "the callee hands back a fresh resource". The two
+   * are unrelated claims, and reading one as the other produced a false positive on every helper
+   * that returned a tainted value:
+   *
+   * <pre>{@code
+   * private String enrich(String userAgent, String path) {
+   *   return "ua=" + userAgent + " path=" + path;   // tainted, but not a resource
+   * }
+   * }</pre>
+   *
+   * <p>The caller of that helper was reported as leaking a {@code java.lang.String}, which has no
+   * {@code close()} and is not a resource at all. A dedicated operation type keeps the two claims
+   * separable: this checker reads only the operations that mean "resource".
    */
   protected boolean isAllocReturnOp(org.plumb.dfa.summary.Operation op) {
     if (op == null) return false;
-    return op instanceof org.plumb.dfa.summary.Operation.TaintPropagate;
+    return op instanceof org.plumb.dfa.summary.Operation.ReturnsResource;
+  }
+
+  /**
+   * The declared type of a variable, as a class name, or {@code null} when it is unknown.
+   *
+   * <p>Used to label the {@link org.plumb.dfa.summary.Operation.ReturnsResource} operation, so a
+   * caller can see WHAT it was handed and not merely that it was handed something.
+   *
+   * @param v the variable
+   * @return the type's class name, or {@code null}
+   */
+  private static String returnedTypeOf(TacOperand.TacVar v) {
+    if (v == null) {
+      return null;
+    }
+    try {
+      return v.type() == null ? null : v.type().className();
+    } catch (RuntimeException e) {
+      // A type the TAC could not work out is not a reason to fail the analysis.
+      return null;
+    }
   }
 
   /**
@@ -570,13 +606,20 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
     }
     // For each alloc that we know is also
     // passed out (returned), record
-    // TaintPropagate on the return so
+    // ReturnsResource on the return so
     // callers inherit the "needs close"
     // obligation.
+    //
+    // The operation type is the point. The engine keeps ONE summary per
+    // function, merged across every checker, so a TaintPropagate written here
+    // is indistinguishable from the one the taint checkers write for a
+    // tainted return -- and the caller, which asks "does the callee hand me a
+    // resource I must close?", would read the taint checker's op and answer
+    // yes. A helper returning a String built from a request parameter then
+    // looked like a helper returning an unclosed stream.
     for (TacOperand.TacVar ret : passedOut) {
       if (allocSites.containsKey(ret)) {
-        b.recordReturnOp(
-            new org.plumb.dfa.summary.Operation.TaintPropagate("alloc-return: " + ret.name(), 1.0));
+        b.recordReturnOp(new org.plumb.dfa.summary.Operation.ReturnsResource(returnedTypeOf(ret)));
       }
     }
     return b.build();

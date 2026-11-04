@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _formatter import format_paths, formatter_jar  # noqa: E402
 from format import is_excluded  # noqa: E402
-from license_header import header_text  # noqa: E402
+from license_header import header_text, normalise_newlines  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -131,8 +131,8 @@ def has_header(raw):
     `utf-8` keeps it, `utf-8-sig` strips it, Node's TextDecoder
     strips it silently).
     """
-    expected = header_text().encode("utf-8").replace(b"\r\n", b"\n")
-    actual = raw.replace(b"\r\n", b"\n")
+    expected = normalise_newlines(header_text().encode("utf-8"))
+    actual = normalise_newlines(raw)
     if actual.startswith(UTF8_BOM):
         actual = actual[len(UTF8_BOM):]
     return actual.startswith(expected)

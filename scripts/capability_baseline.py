@@ -81,14 +81,78 @@ def yaml_families(path):
             families.setdefault(current, [])
             continue
         # A pattern is a list item.
+        #
+        # It comes in TWO forms, and the measurement has to read BOTH:
+        #
+        #   - '^foo\.bar(/\d+)?'                      the bare form: no argument index
+        #   - pattern: '^foo\.bar(/\d+)?'              the map form: an explicit argument
+        #     arg_index: 0
+        #
+        # The map form is what the CONVERTED rules use, because a symbol can have SEVERAL
+        # argument positions that carry the taint and the bare form cannot say so. A
+        # measurement that only reads the bare form reports every converted pattern as
+        # GONE -- a capability regression that is not one. The pattern TEXT is what the
+        # capability is, so the measurement compares the text and not the form.
         m = re.match(r"^-\s*[\"'](.+?)[\"']\s*$", stripped)
         if m and current is not None:
             families[current].append(m.group(1))
+            continue
+        m = re.match(r"^-\s*pattern:\s*[\"'](.+?)[\"']\s*$", stripped)
+        if m and current is not None:
+            families[current].append(m.group(1))
+            continue
     # The container key is not a family. It is reported separately, as the list of names.
     names = sorted(k for k in families if k != "families")
     result = {k: sorted(v) for k, v in families.items() if k != "families"}
     result["families"] = names
     return result
+
+
+def flatten(surface):
+    """The surface as a flat set of strings, so a removal is a set difference.
+
+    <p>For the YAML-backed surfaces, a pattern is recorded by its TEXT and not by the family it
+    currently sits in, because the family a pattern lives in is an ORGANISATION choice and the
+    pattern is the capability. The two were conflated, and the consequence was that renaming a
+    family looked exactly like deleting it: {@code el.sinks} and {@code ognl.sinks} were folded
+    into {@code expression-injection.sinks}, and the gate reported all sixteen of their patterns
+    as LOST -- even though every one of them was still in the shipped config, character for
+    character, and still owned by a checker that fires on it.
+
+    <p>So there are two kinds of entry:
+
+    <ul>
+      <li>{@code <key>:pattern:<text>} -- the pattern exists, wherever it now lives. This is the
+          capability. Its absence is a real regression.
+      <li>{@code <key>-family:<family>} -- the family still exists as a named bucket. This is
+          weaker: a family can be renamed and merged without losing anything.
+    </ul>
+
+    <p>Both are still tracked, so a family that disappears is still visible -- but as an
+    ORGANISATIONAL change in the report, not as a silent capability loss that has to be
+    overridden.
+    """
+    out = set()
+    for key, value in surface.items():
+        if isinstance(value, list):
+            for item in value:
+                out.add("%s:%s" % (key, item))
+        else:
+            for family, patterns in value.items():
+                if family == "families":
+                    # The container holds the FAMILY NAMES, as a list. The names are already
+                    # tracked as "<key>-family:<name>" below, so listing them again as patterns
+                    # would report a family name as a missing pattern -- which is exactly the
+                    # confusion that made a renamed family look like two deleted patterns.
+                    for name in patterns:
+                        out.add("%s-family:%s" % (key, name))
+                    continue
+                for pattern in patterns:
+                    # The pattern text is the capability; the family it sits in is not.
+                    out.add("%s:pattern:%s" % (key, pattern))
+                # A family with no patterns still exists; its presence matters.
+                out.add("%s-family:%s" % (key, family))
+    return out
 
 
 def registered_rules():
@@ -311,22 +375,6 @@ def measure():
     }
 
 
-def flatten(surface):
-    """The surface as a flat set of strings, so a removal is a set difference."""
-    out = set()
-    for key, value in surface.items():
-        if isinstance(value, list):
-            for item in value:
-                out.add("%s:%s" % (key, item))
-        else:
-            for family, patterns in value.items():
-                for pattern in patterns:
-                    out.add("%s:%s:%s" % (key, family, pattern))
-                # A family with no patterns still exists; its presence matters.
-                out.add("%s-family:%s" % (key, family))
-    return out
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", action="store_true", help="print the current surface")
@@ -364,6 +412,12 @@ def main():
     lost = sorted(before - after)
     gained = sorted(after - before)
 
+    # A lost PATTERN is a capability regression. A lost FAMILY is not: the family is a bucket,
+    # and the patterns it held can have moved to another bucket. The two are separated so that a
+    # rename is reported as a rename, instead of being indistinguishable from a deletion.
+    lost_patterns = [i for i in lost if ":pattern:" in i]
+    lost_families = [i for i in lost if ":pattern:" not in i]
+
     for name, value in sorted(surface.items()):
         old = baseline.get(name)
         if isinstance(value, list):
@@ -379,10 +433,18 @@ def main():
         for item in gained:
             print("  + %s" % item)
 
-    if lost:
+    if lost_families:
         print()
-        print("LOST since the baseline (%d):" % len(lost))
-        for item in lost:
+        print("FAMILIES RENAMED OR MERGED since the baseline (%d):" % len(lost_families))
+        print("  A family is a bucket, not a capability -- the patterns it held are checked")
+        print("  separately below. This is an ORGANISATIONAL change.")
+        for item in lost_families:
+            print("  - %s" % item)
+
+    if lost_patterns:
+        print()
+        print("LOST PATTERNS since the baseline (%d):" % len(lost_patterns))
+        for item in lost_patterns:
             print("  - %s" % item)
         print()
         print("Removing a rule, a sink pattern, a source pattern, a checker or a fact kind is a "

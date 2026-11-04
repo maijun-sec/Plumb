@@ -55,6 +55,24 @@ public final class SourcePathResolver {
   private final Path projectRoot;
   private final BuildOutputFilter buildFilter;
 
+  /**
+   * The most {@code .java} files {@link #index()} will index.
+   *
+   * <p>This is a safety budget, not a policy. The resolver reads every file it indexes, so a root
+   * that happens to contain a large tree -- a temporary directory, a home directory, a filesystem
+   * root -- turns indexing into an unbounded walk that reads and regex-scans tens of thousands of
+   * files. The budget makes that impossible: the walk stops, and the resolver reports that it
+   * stopped.
+   *
+   * <p>Over the budget is not an error. The resolver indexes what it reached and sets {@link
+   * #indexTruncated()}; a caller that needs completeness can react to that, and a caller that does
+   * not gets a partial index rather than a hang.
+   */
+  public static final int MAX_INDEXED_FILES = 5_000;
+
+  /** Whether {@link #index()} stopped early because the root held more files than the budget. */
+  private boolean indexTruncated;
+
   private static final Pattern PACKAGE_PATTERN = Pattern.compile("\\bpackage\\s+([\\w.$]+)\\s*;");
   private static final Pattern CLASS_PATTERN =
       Pattern.compile(
@@ -84,6 +102,8 @@ public final class SourcePathResolver {
     if (projectRoot == null || !Files.isDirectory(projectRoot)) {
       return;
     }
+    indexTruncated = false;
+    int indexed = 0;
     try (var stream = Files.walk(projectRoot)) {
       var it = stream.iterator();
       while (it.hasNext()) {
@@ -91,9 +111,28 @@ public final class SourcePathResolver {
         if (!Files.isRegularFile(p)) continue;
         if (!p.toString().toLowerCase(Locale.ROOT).endsWith(".java")) continue;
         if (buildFilter.isBuildOutput(p)) continue;
+        if (indexed >= MAX_INDEXED_FILES) {
+          // The budget is exhausted. Stop walking -- the remaining tree is
+          // unbounded as far as the caller is concerned -- and say so.
+          indexTruncated = true;
+          break;
+        }
         indexOne(p);
+        indexed++;
       }
     }
+  }
+
+  /**
+   * Whether {@link #index()} stopped early because the root held more files than {@link
+   * #MAX_INDEXED_FILES}.
+   *
+   * <p>{@code true} means the index is PARTIAL: some classes in the tree are not resolvable because
+   * they were never indexed. A caller that treats the index as complete when this is {@code true}
+   * will silently lose cross-file resolutions.
+   */
+  public boolean indexTruncated() {
+    return indexTruncated;
   }
 
   private void indexOne(Path p) {
@@ -160,5 +199,24 @@ public final class SourcePathResolver {
 
   public int indexedFileCount() {
     return packageToFiles.values().stream().mapToInt(Set::size).sum();
+  }
+
+  /**
+   * Every {@code .java} file this resolver indexed.
+   *
+   * <p>The index already knows these paths, so a consumer that needs to read them -- {@link
+   * StaticFieldResolver} parses the {@code public static final} initialisers out of them -- should
+   * use this list rather than walking the tree again. A second walk reads every file twice and,
+   * worse, is not covered by {@link #MAX_INDEXED_FILES}: the budget would apply to the first walk
+   * while the second one ran unbounded.
+   *
+   * @return the indexed files, in index order
+   */
+  public java.util.List<Path> indexedFiles() {
+    java.util.List<Path> out = new java.util.ArrayList<>();
+    for (java.util.Set<Path> files : packageToFiles.values()) {
+      out.addAll(files);
+    }
+    return out;
   }
 }

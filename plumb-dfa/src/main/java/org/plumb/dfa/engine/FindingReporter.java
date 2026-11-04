@@ -66,6 +66,33 @@ public final class FindingReporter {
   private volatile RuleRegistry ruleRegistry;
 
   /**
+   * The module scope, when the analysis is limited to one module.
+   *
+   * <p>A finding is attributed to its SINK (Plumb's convention), so the sink's module decides
+   * whether the finding is in scope. A finding whose sink lives outside the selected module is
+   * dropped -- and COUNTED, because "the module has no findings" and "the findings were outside the
+   * module" are different statements, and the report has to make the difference.
+   *
+   * <p>{@code null} means "no module boundary": every finding is reported.
+   */
+  private volatile ModuleScope moduleScope;
+
+  /**
+   * Limit the reported findings to the sinks inside one module.
+   *
+   * @param scope the scope; {@code null} means "the whole project"
+   */
+  public void setModuleScope(ModuleScope scope) {
+    this.moduleScope = scope;
+  }
+
+  /** The module scope of this reporter. Never null. */
+  public ModuleScope moduleScope() {
+    ModuleScope s = this.moduleScope;
+    return s == null ? ModuleScope.all() : s;
+  }
+
+  /**
    * Back-reference to the analysis context. Used to resolve {@code filePath} for findings whose
    * checker left it empty (the new DFA checkers in plumb-dfa don't carry the path; the IR doesn't
    * either). When a finding is reported and its filePath is "", we ask the context for the function
@@ -129,6 +156,14 @@ public final class FindingReporter {
       TacFunction fn = ctx.currentFunction();
       if (fn != null) {
         String resolved = ctx.sourcePathForEnclosingClass(fn.enclosingClass());
+        if (resolved == null || resolved.isEmpty()) {
+          // The SIGNATURE fallback. A top-level function -- a Kotlin or Scala file-level
+          // function, or a Java file's package-private helper declared outside any class --
+          // has no enclosing class, so the lookup above cannot resolve it and the finding
+          // would be reported as file="unknown". The signature is always present, so it
+          // is registered alongside the enclosing class and consulted here.
+          resolved = ctx.sourcePathForSignature(fn.signature());
+        }
         if (resolved != null && !resolved.isEmpty()) {
           ff = ff.withFilePath(resolved);
         } else {
@@ -181,6 +216,19 @@ public final class FindingReporter {
       }
     }
     String key = ff.filePath() + ":" + ff.line() + ":" + ff.ruleId() + ":" + ff.cwe();
+    // The module gate. A finding belongs to the module its SINK is in, so that is the module
+    // the scope is consulted with. A finding outside the module is dropped and counted: the
+    // count is what turns "no findings" into "no findings INSIDE this module".
+    ModuleScope scope = moduleScope();
+    if (scope.isLimited()) {
+      TacFunction fn = ctx == null ? null : ctx.currentFunction();
+      String sinkModule = fn == null ? null : fn.module();
+      if (!scope.contains(sinkModule)) {
+        scope.recordOutOfScopeFinding();
+        return;
+      }
+      scope.recordInScopeFinding();
+    }
     if (!seen.add(key)) {
       // Dedup hit — the v1 path has already
       // accepted an identical finding. If a v2

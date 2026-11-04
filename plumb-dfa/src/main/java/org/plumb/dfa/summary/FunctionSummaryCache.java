@@ -84,8 +84,49 @@ public final class FunctionSummaryCache {
 
   private final LongAdder misses = new LongAdder();
 
+  /**
+   * How many summaries were refused because the cache was full.
+   *
+   * <p>The engine reports this, because a refused summary means a function's cross-function facts
+   * did not reach its callers, and that is an incomplete analysis rather than a clean one.
+   */
+  private final LongAdder overflows = new LongAdder();
+
+  /** The configured capacity, or {@code 0} for "unbounded". */
+  private final int capacity;
+
   public FunctionSummaryCache(TuningConfig tuning) {
     this.tuning = Objects.requireNonNull(tuning, "tuning");
+    int configured = tuning.summaryCacheSize();
+    // A non-positive capacity means "no limit". Treating a misconfigured zero as "cache
+    // nothing" would silently disable the whole cross-function analysis, which is a much
+    // bigger change than the user asked for.
+    this.capacity = configured > 0 ? configured : 0;
+  }
+
+  /**
+   * Is there room for one more entry?
+   *
+   * <p>Checked INSIDE the atomic map operation by the callers, so two workers cannot both see room
+   * and both take it.
+   */
+  private boolean hasRoom() {
+    if (capacity <= 0) return true;
+    return map.size() < capacity;
+  }
+
+  /**
+   * How many summaries were refused because the cache was full.
+   *
+   * <p>Non-zero means the analysis was incomplete: a function's facts did not reach its callers.
+   */
+  public long overflowCount() {
+    return overflows.sum();
+  }
+
+  /** The configured capacity, or {@code 0} when the cache is unbounded. */
+  public int capacity() {
+    return capacity;
   }
 
   /**
@@ -126,7 +167,50 @@ public final class FunctionSummaryCache {
     if (signature == null || signature.isEmpty() || summary == null) {
       return;
     }
+    // Replacing an existing entry never grows the cache, so it is always allowed.
+    if (map.containsKey(signature)) {
+      map.put(signature, summary);
+      return;
+    }
+    if (!hasRoom()) {
+      overflows.increment();
+      return;
+    }
     map.put(signature, summary);
+  }
+
+  /**
+   * Merge {@code summary} into the entry for {@code signature}, instead of replacing it.
+   *
+   * <p><b>Why a merge and not a put.</b> The cache is keyed by SIGNATURE, because that is what a
+   * call site resolves to. Two functions can share a signature -- two subclasses of an abstract
+   * base both implementing {@code action(String)} -- and both are analysed. A plain {@code put}
+   * keeps whichever variant was stored last, so the summary a caller reads would depend on the
+   * order the scheduler happened to finish the two variants in. Merging makes the stored summary
+   * independent of the order: the caller sees the union of what both variants do.
+   *
+   * <p>Atomic: delegated to {@code ConcurrentMap.compute}, so two workers storing the two variants
+   * at the same time cannot lose one of them.
+   */
+  public void merge(String signature, FunctionSummary summary) {
+    if (signature == null || signature.isEmpty() || summary == null) {
+      return;
+    }
+    map.compute(
+        signature,
+        (sig, existing) -> {
+          if (existing == null) {
+            // A new entry. The capacity check is INSIDE the atomic operation, so two workers
+            // cannot both see room and both take it.
+            if (!hasRoom()) {
+              overflows.increment();
+              return null;
+            }
+            return summary;
+          }
+          FunctionSummary combined = existing.merge(summary);
+          return combined == null ? existing : combined;
+        });
   }
 
   /**

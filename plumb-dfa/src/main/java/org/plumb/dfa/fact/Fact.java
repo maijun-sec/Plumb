@@ -100,9 +100,28 @@ public final class Fact {
     return origin;
   }
 
-  /** Whether this fact is of the given kind. */
+  /**
+   * Whether this fact is of the given kind.
+   *
+   * <p><b>Why this is not just {@code kind.equals(k)}.</b> This is called for every fact at every
+   * call site, and a {@code FactKind} does not override {@code equals} -- so the comparison falls
+   * back to identity. That is fast, but it breaks the moment two {@code FactKind} instances with
+   * the same name exist: one loaded from YAML, one built in code. They are different objects, so
+   * the comparison fails, and the fact is not recognised.
+   *
+   * <p>So the comparison is by <em>name</em>, and the name is a string comparison. To keep that
+   * affordable, the kind also carries an interned index, and the index is compared first when both
+   * kinds have one.
+   */
   public boolean hasKind(FactKind k) {
-    return kind.equals(k);
+    if (kind == k) return true;
+    if (kind == null || k == null) return false;
+    // The fast path: both kinds are registered, so their indices decide.
+    if (kind.isRegistered() && k.isRegistered()) {
+      return kind.index() == k.index();
+    }
+    // The slow path: at least one kind is unregistered, so fall back to the name.
+    return kind.name().equals(k.name());
   }
 
   /** Whether this fact's operand matches by name. */

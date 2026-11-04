@@ -126,8 +126,18 @@ public final class SastMain {
       if (cli.hasOption("max-parallelism")) {
         cfg.maxParallelism = Integer.parseInt(cli.getOptionValue("max-parallelism"));
       }
+      if (cli.hasOption("language")) {
+        // A typo must not produce a scan that analyses nothing and reports nothing: the parse
+        // throws on an unknown name, and the CLI turns that into a usage error.
+        for (String s : cli.getOptionValues("language")) {
+          cfg.languages.addAll(org.plumb.dfa.config.LanguageFilter.parse(s).languages());
+        }
+      }
       if (cli.hasOption("cg-strategy")) {
         cfg.cgStrategy = cli.getOptionValue("cg-strategy");
+      }
+      if (cli.hasOption("module")) {
+        cfg.module = cli.getOptionValue("module");
       }
       if (cli.hasOption("ai-dedup")) {
         // Step 7 — flip the master switch. The
@@ -293,6 +303,16 @@ public final class SastMain {
             .build());
     opts.addOption(
         Option.builder()
+            .longOpt("language")
+            .hasArg()
+            .argName("java|kotlin|scala")
+            .desc(
+                "Analyse only these languages (repeatable, or comma-separated). The rules, sink"
+                    + " patterns and frontends of the other languages are not loaded at all, so"
+                    + " a Java-only scan does not pay for the Kotlin or the Scala compiler.")
+            .build());
+    opts.addOption(
+        Option.builder()
             .longOpt("cg-strategy")
             .hasArg()
             .argName("cha|rta|vta|1cfa|stub|global|cached:<name>:<path>")
@@ -303,6 +323,16 @@ public final class SastMain {
                     + "cha=Class Hierarchy (TU-local, fast/over-approx), "
                     + "rta=Rapid Type, 1cfa=1-CFA, stub=direct-only, "
                     + "cached:<name>:<path>=wrap with disk cache")
+            .build());
+    opts.addOption(
+        Option.builder()
+            .longOpt("module")
+            .hasArg()
+            .argName("id")
+            .desc(
+                "Analyse only this module of a multi-module project. The other modules are still"
+                    + " read for symbol resolution, so the call graph keeps crossing the module"
+                    + " boundary; only the findings are limited to this module.")
             .build());
     // Step 7 — AI options. (The --ai-scan and
     // --aggressiveness flags from earlier rounds are

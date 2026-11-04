@@ -153,6 +153,17 @@ public final class GlobalCallGraphBuilder {
         bareNameToCanonical.computeIfAbsent(bare, k -> new ArrayList<>()).add(fn.signature());
       }
     }
+    // The OWNER-AWARE index, the same one the per-TU builder uses. A cross-language call names
+    // its callee as "owner.method/arity" while the callee is registered under its own
+    // signature, so the bare-name map cannot connect them. The owner is matched by SIMPLE NAME,
+    // because a Java declaration's owner is the short class name ("JavaSink") while a Kotlin
+    // call's owner is fully qualified ("demo.JavaSink") -- the same class, two spellings.
+    java.util.Map<String, java.util.List<String>> ownerKeyToCanonical = new HashMap<>();
+    for (TacFunction fn : store.allFunctions()) {
+      for (String key : CallGraphBuilder.ownerKeysOf(fn)) {
+        ownerKeyToCanonical.computeIfAbsent(key, k -> new ArrayList<>()).add(fn.signature());
+      }
+    }
 
     for (TacFunction fn : store.allFunctions()) {
       // use the MergedProgram's merged key
@@ -191,7 +202,8 @@ public final class GlobalCallGraphBuilder {
         // silently collapsing 15 of 16 callers onto the same
         // callee node and breaking the cross-fn summary fold.
         String nodeSig =
-            r723ResolveCalleeSigGlobal(calleeSig, callerMk, bareNameToCanonical, ins.args);
+            r723ResolveCalleeSigGlobal(
+                calleeSig, callerMk, bareNameToCanonical, ownerKeyToCanonical, ins.args);
 
         // normalize to MergedProgram merged key so
         // {@link org.plumb.dfa.engine.DfaEngine#orderedFunctions}
@@ -257,6 +269,7 @@ public final class GlobalCallGraphBuilder {
       String calleeSig,
       String callerMergedKey,
       java.util.Map<String, java.util.List<String>> bareNameToCanonical,
+      java.util.Map<String, java.util.List<String>> ownerKeyToCanonical,
       List<TacOperand> args) {
     // Delegate to existing core for the basic resolution.
     String resolved =
@@ -264,6 +277,7 @@ public final class GlobalCallGraphBuilder {
             sig -> store.functionBySignature(sig).isPresent(),
             calleeSig,
             bareNameToCanonical,
+            ownerKeyToCanonical,
             args);
     if (resolved == null
         || resolved.contains("::")

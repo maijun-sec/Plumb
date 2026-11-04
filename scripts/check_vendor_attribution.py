@@ -78,6 +78,17 @@ ALLOWED = {
         "this gate: it has to name the word it forbids",
     "scripts/mutate_vendor_attribution.py":
         "this gate's mutation battery: it has to inject the word it forbids",
+    "docs/MULTI-LANGUAGE-IR-DESIGN.md":
+        "the multi-language design document: it benchmarks the vendor's JVM "
+        "language support and checker coverage against Plumb's",
+    "docs/zh/MULTI-LANGUAGE-IR-DESIGN.md":
+        "the Chinese multi-language design document: the same benchmark, in Chinese",
+    "scripts/convert_coverity_model.py":
+        "the converter that reads the vendor's model library: it has to name the "
+        "library it reads, and the primitives it matches",
+    "scripts/merge_fortify_families.py":
+        "the merger that folds the converted fragments into the shipped "
+        "configuration: it names the fragments it merges",
 }
 
 # The directories that are not the live tree at all.
@@ -89,6 +100,9 @@ ALLOWED = {
 SKIP_DIRS = {
     ".git", ".aethercode", "target", "build", "_audit-scratch",
     "juliet-coverage", "__pycache__", "node_modules", ".idea",
+    # Discarded material: deleted modules, scratch diagnostics, backup poms.
+    # Nothing here is shipped and nothing here is the product.
+    "_trash",
 }
 
 # The word pattern. Word-bounded, so `coverity` is caught but

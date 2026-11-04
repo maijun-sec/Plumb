@@ -47,6 +47,31 @@ public final class ScanConfig {
    */
   public int maxParallelism = 0;
 
+  /**
+   * The languages to analyse. Empty means "every language", which is the default.
+   *
+   * <p>This is a LOAD-TIME filter, not a runtime skip: the sink families, the patterns, the
+   * checkers and the frontends that belong to the languages that were not selected are never built.
+   * A Java-only scan therefore does not pay for the Kotlin compiler or the Scala compiler context,
+   * and it does not compile thousands of patterns it will never match.
+   */
+  public java.util.Set<org.plumb.tac.ir.SourceLanguage> languages = new java.util.LinkedHashSet<>();
+
+  /**
+   * The module to analyse. Empty means "every module".
+   *
+   * <p>A module is a named source root: the id of a {@code --module-root}, or the id of a module a
+   * build-system adapter reported. When one is selected, the scan analyses that module's files and
+   * nothing else, but it still READS the other modules -- they are on the classpath, and a callee
+   * that lives in a dependency module has to resolve, or the call graph breaks at the module
+   * boundary and the taint never crosses it.
+   *
+   * <p>So the module selection changes what is ANALYSED, not what is VISIBLE. A source or a sink
+   * that lives outside the selected module is out of scope for findings, and the scan says so
+   * rather than pretending the module is self-contained.
+   */
+  public String module;
+
   // external source / classpath inputs for
   // symbol resolution. All three are consumed by
   // JavaSourceParser's TypeSolver only — they NEVER enter the

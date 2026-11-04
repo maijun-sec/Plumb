@@ -21,7 +21,10 @@
  */
 package org.plumb.dfa.taint;
 
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
+import org.plumb.tac.ir.SourceLanguage;
 
 /**
  * A single taint-style rule.
@@ -58,7 +61,8 @@ public record TaintRule(
     String cwe,
     String severityLabel,
     TaintDomain domain,
-    boolean enabled) {
+    boolean enabled,
+    Set<String> languages) {
 
   public TaintRule {
     Objects.requireNonNull(ruleId, "ruleId");
@@ -66,9 +70,10 @@ public record TaintRule(
     Objects.requireNonNull(sinkFamilyKey, "sinkFamilyKey");
     Objects.requireNonNull(domain, "domain");
     // cwe may be null; severityLabel defaults to "HIGH"
+    languages = languages == null ? Set.of() : Set.copyOf(languages);
   }
 
-  /** Back-compat 5-arg constructor that defaults {@code enabled=true}. */
+  /** Back-compat 6-arg constructor that defaults {@code enabled=true}. */
   public TaintRule(
       String ruleId,
       String sourceKindName,
@@ -77,6 +82,23 @@ public record TaintRule(
       String severityLabel,
       TaintDomain domain) {
     this(ruleId, sourceKindName, sinkFamilyKey, cwe, severityLabel, domain, true);
+  }
+
+  /**
+   * Back-compat 7-arg constructor: the shape before the language dimension existed.
+   *
+   * <p>An absent language set means "every language", which is exactly the behaviour before the
+   * dimension was added.
+   */
+  public TaintRule(
+      String ruleId,
+      String sourceKindName,
+      String sinkFamilyKey,
+      String cwe,
+      String severityLabel,
+      TaintDomain domain,
+      boolean enabled) {
+    this(ruleId, sourceKindName, sinkFamilyKey, cwe, severityLabel, domain, enabled, Set.of());
   }
 
   /**
@@ -102,9 +124,44 @@ public record TaintRule(
     return new TaintRule(ruleId, sourceKindName, sinkFamilyKey, cwe, "HIGH", domain, enabled);
   }
 
+  /**
+   * Build a rule that only applies to the given languages.
+   *
+   * <p>Use this for a rule whose <i>mechanism</i> is language-specific, not just whose sinks are. A
+   * rule that watches a shared sink family but only makes sense in one language -- for example one
+   * that inspects Kotlin's {@code Result<T>} unwrapping -- is expressed this way.
+   */
+  public static TaintRule of(
+      String ruleId,
+      String sourceKindName,
+      String sinkFamilyKey,
+      String cwe,
+      TaintDomain domain,
+      Set<String> languages) {
+    return new TaintRule(
+        ruleId, sourceKindName, sinkFamilyKey, cwe, "HIGH", domain, true, languages);
+  }
+
   /** copy with {@code enabled} flipped. */
   public TaintRule withEnabled(boolean e) {
-    return new TaintRule(ruleId, sourceKindName, sinkFamilyKey, cwe, severityLabel, domain, e);
+    return new TaintRule(
+        ruleId, sourceKindName, sinkFamilyKey, cwe, severityLabel, domain, e, languages);
+  }
+
+  /**
+   * Whether this rule applies to code written in the given language.
+   *
+   * <p>An empty language set means "every language".
+   *
+   * <p><b>Directional rule.</b> This selects which rules run against which code. It never
+   * establishes that code is safe -- a rule that does not apply simply produces no findings for
+   * that language, which is different from "the language is clean".
+   */
+  public boolean appliesTo(SourceLanguage language) {
+    if (languages.isEmpty()) return true;
+    if (language == null) return false;
+    return languages.contains(language.name())
+        || languages.contains(language.name().toLowerCase(Locale.ROOT));
   }
 
   /** The {@code RuleDef.Severity} value matching {@link #severityLabel}. */
@@ -143,12 +200,48 @@ public record TaintRule(
   }
 
   /**
-   * Whether this rule is a match for the given sink family. A rule with sink family {@code
-   * "sql.sinks"} only matches calls whose family resolves to {@code "sql.sinks"}; a rule with
-   * family {@code "*"} (synthetic) matches anything.
+   * Whether this rule is a match for the given sink family.
+   *
+   * <p>A rule with sink family {@code "sql.sinks"} only matches calls whose family resolves to
+   * {@code "sql.sinks"}; a rule with family {@code "*"} (synthetic) matches anything.
+   *
+   * <p>A rule may name SEVERAL families, separated by a comma. That is what lets one rule cover a
+   * defect class that has a different sink symbol per language: CWE-1333 (a user-controlled regular
+   * expression) is {@code java.util.regex.Pattern#compile} in Java and Kotlin, and {@code
+   * kotlin.text.Regex} in Kotlin and {@code scala.util.matching.Regex} in Scala. One rule with
+   * three family keys covers all three, and the language restriction on each FAMILY still decides
+   * which one can actually match.
+   *
+   * <p>The comma-separated form is used rather than a separate set field so that the existing
+   * single-family construction sites keep working unchanged -- the rule's key is a string, and a
+   * string that happens to contain a comma is a list.
    */
   public boolean matchesSinkFamily(String familyKey) {
     if (sinkFamilyKey.equals("*")) return true;
-    return sinkFamilyKey.equals(familyKey);
+    if (sinkFamilyKey.indexOf(',') < 0) {
+      return sinkFamilyKey.equals(familyKey);
+    }
+    for (String candidate : sinkFamilyKey.split(",")) {
+      if (candidate.trim().equals(familyKey)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The individual family keys this rule watches.
+   *
+   * <p>A single-family rule yields one element; a comma-separated rule yields one per key. The
+   * wildcard {@code "*"} yields the single element {@code "*"}.
+   */
+  public java.util.List<String> sinkFamilyKeys() {
+    if (sinkFamilyKey.indexOf(',') < 0) {
+      return java.util.List.of(sinkFamilyKey);
+    }
+    java.util.List<String> out = new java.util.ArrayList<>();
+    for (String candidate : sinkFamilyKey.split(",")) {
+      String trimmed = candidate.trim();
+      if (!trimmed.isEmpty()) out.add(trimmed);
+    }
+    return java.util.List.copyOf(out);
   }
 }

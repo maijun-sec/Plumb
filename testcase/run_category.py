@@ -101,6 +101,7 @@ def run_scan(
     per_file: bool,
     cg: str,
     rule_ids: list[str] | None = None,
+    max_parallelism: int | None = None,
 ) -> list[dict]:
     """Run the plumb scanner over `target`, returning parsed findings.
 
@@ -112,6 +113,11 @@ def run_scan(
     directory was analysed each time -- which made per-file isolation look broken
     when it never happened. Copying into a fresh one-file temp dir gives the
     isolation the flag promises.
+
+    `max_parallelism` is passed through to the scanner so the worker count can be
+    MEASURED rather than assumed: the same category run with one worker and with
+    several has to produce the same findings, or the parallel path is not
+    equivalent to the sequential one.
     """
     findings: list[dict] = []
     if per_file:
@@ -143,6 +149,8 @@ def run_scan(
             # measured.
             for rid in (rule_ids or []):
                 cmd += ["--rule", rid]
+            if max_parallelism is not None:
+                cmd += ["--max-parallelism", str(max_parallelism)]
             proc = subprocess.run(
                 cmd, capture_output=True, text=True,
                 encoding="utf-8", errors="replace", cwd=REPO,
@@ -322,6 +330,9 @@ def main() -> int:
                     help="scan each .java file separately instead of the whole directory")
     ap.add_argument("--keep-raw", action="store_true")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--max-parallelism", type=int, default=None,
+                    help="worker count to pass to the scanner; omitted means the "
+                         "scanner decides for itself")
     args = ap.parse_args()
 
     cat = Path(args.category)
@@ -377,7 +388,8 @@ def main() -> int:
     relevant_rules = manifest_rule_ids(manifest)
 
     try:
-        findings = run_scan(jar, src, args.per_file, args.cg, relevant_rules)
+        findings = run_scan(jar, src, args.per_file, args.cg, relevant_rules,
+                        args.max_parallelism)
     except ScanFailed as e:
         # A failed scan measures nothing, so nothing is written.  Writing a
         # RESULT.json here would overwrite a good measurement with a claim

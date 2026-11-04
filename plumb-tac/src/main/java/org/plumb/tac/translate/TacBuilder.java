@@ -29,6 +29,7 @@ import org.plumb.tac.ir.SourceOrigin;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
+import org.plumb.tac.ir.TacProgram;
 import org.plumb.tac.ir.TacType;
 
 /**
@@ -62,6 +63,14 @@ public final class TacBuilder {
   // MISSING_INPUT_VALIDATION to detect @RequestParam
   // parameters that lack @Valid / @Validated.
   private final Map<String, List<String>> paramAnnotations = new HashMap<>();
+  // The VALUES the annotations carry, keyed by the annotation's simple name.
+  //
+  // WHY THIS IS SEPARATE FROM THE NAME LISTS. `@Value("${app.password}")` and
+  // `@Value("${app.username}")` are the same annotation by name and completely
+  // different facts. A checker that can only see names cannot answer "which
+  // property does this field bind to?" -- and that is a question worth answering,
+  // because a config-bound value is a value that came from outside the program.
+  private final Map<String, List<String>> annotationValues = new HashMap<>();
 
   /**
    * Per-function field-expression cache. Keyed by the textual form of a {@code FieldAccessExpr}
@@ -84,6 +93,167 @@ public final class TacBuilder {
   private int tempCounter = 0;
   private int labelCounter = 0;
 
+  /**
+   * Whether the function being built is compiler-generated.
+   *
+   * <p>Set by the frontends that know the difference: the Java translator sets it for a record's
+   * implicit accessors and canonical constructor, the Kotlin frontend for a data class's {@code
+   * componentN} / {@code copy}, the Scala frontend for a case class's {@code copy} / {@code apply}.
+   *
+   * @see TacFunction#isSynthetic()
+   */
+  private boolean synthetic = false;
+
+  /** Marks the function being built as compiler-generated. */
+  public void markSynthetic() {
+    this.synthetic = true;
+  }
+
+  /** Whether the function being built is compiler-generated. */
+  public boolean isSynthetic() {
+    return synthetic;
+  }
+
+  /**
+   * The language of the function being built.
+   *
+   * <p>Defaults to {@link org.plumb.tac.ir.SourceLanguage#JAVA}, because every pre-existing caller
+   * is the Java translator. The Kotlin and Scala frontends set it to their own language so that a
+   * checker can tell which language's semantics it is looking at.
+   *
+   * @see org.plumb.tac.ir.TacFunction#sourceLanguage()
+   */
+  private org.plumb.tac.ir.SourceLanguage sourceLanguage = org.plumb.tac.ir.SourceLanguage.JAVA;
+
+  /** Sets the language of the function being built. */
+  public void setSourceLanguage(org.plumb.tac.ir.SourceLanguage language) {
+    this.sourceLanguage = language == null ? org.plumb.tac.ir.SourceLanguage.JAVA : language;
+  }
+
+  /** The language of the function being built. */
+  public org.plumb.tac.ir.SourceLanguage sourceLanguage() {
+    return sourceLanguage;
+  }
+
+  /**
+   * The module the function being built belongs to, or {@code null} when there is no module
+   * boundary.
+   *
+   * <p>A frontend sets it from the compilation context's {@link
+   * org.plumb.tac.frontend.CompileContext#moduleOf(java.nio.file.Path)}. It is what lets a
+   * single-module analysis report the findings of one module and only those, while the other
+   * modules are still read to keep the call graph whole.
+   *
+   * @see org.plumb.tac.ir.TacFunction#module()
+   */
+  private String module;
+
+  /** Sets the module of the function being built. */
+  public void setModule(String module) {
+    this.module = module == null || module.isBlank() ? null : module;
+  }
+
+  /** The module of the function being built. */
+  public String module() {
+    return module;
+  }
+
+  /**
+   * The short name of the class that declares the function being built, or {@code null}.
+   *
+   * <p>Used by the frontends that have to name a nested type after the function that declares it: a
+   * local class is named after its enclosing method, and an anonymous class after the method that
+   * creates it. Both need the enclosing class's name to build a unique qualified name.
+   *
+   * @see #enclosingClass()
+   */
+  public String enclosingClass() {
+    return enclosingClass;
+  }
+
+  /**
+   * The precision of the function being built.
+   *
+   * <p>Defaults to {@link org.plumb.tac.ir.IrPrecision#SOURCE_FULL}. A frontend that lowered a
+   * language construct away (a Kotlin {@code when}, a Scala {@code match}) sets {@link
+   * org.plumb.tac.ir.IrPrecision#SOURCE_LOWERED} for the functions it degraded.
+   *
+   * @see org.plumb.tac.ir.TacFunction#irPrecision()
+   */
+  private org.plumb.tac.ir.IrPrecision irPrecision = org.plumb.tac.ir.IrPrecision.SOURCE_FULL;
+
+  /** Sets the precision of the function being built. */
+  public void setIrPrecision(org.plumb.tac.ir.IrPrecision precision) {
+    this.irPrecision = precision == null ? org.plumb.tac.ir.IrPrecision.SOURCE_FULL : precision;
+  }
+
+  /** The precision of the function being built. */
+  public org.plumb.tac.ir.IrPrecision irPrecision() {
+    return irPrecision;
+  }
+
+  /**
+   * The syntax constructs in this function that the translator could not lower.
+   *
+   * <p><b>Why this channel exists.</b> The translator's fallback for an unrecognised construct is
+   * to produce a {@code null} value. That is a <b>silent</b> data-flow corruption: a tainted value
+   * flowing through an unsupported construct becomes {@code null}, and every downstream taint fact
+   * about it disappears. No exception is thrown and nothing is logged at the default level -- the
+   * only symptom is a missing finding, which is indistinguishable from "the code is safe".
+   *
+   * <p>So an unlowered construct is <b>recorded</b>, not swallowed. The translator promotes these
+   * into {@link org.plumb.tac.ir.TacProgram.FunctionProblem}s with the kind {@code UNHANDLED_NODE},
+   * and the driver can surface them.
+   *
+   * <p><b>Directional rule.</b> A problem is a statement about the <i>analysis</i>, not about the
+   * <i>program</i>: "the analyser could not fully model this" says nothing about whether the code
+   * is vulnerable. It must never be reported as a finding, and it must never be used to suppress
+   * one either -- it means the analysis is <i>less</i> complete, not more.
+   *
+   * @see #reportUnhandled(String, int, int)
+   */
+  private final List<TacProgram.FunctionProblem> problems = new ArrayList<>();
+
+  /**
+   * Records a construct the translator could not lower.
+   *
+   * @param nodeClass the simple class name of the AST node, e.g. {@code "TextBlockLiteralExpr"}
+   * @param line the source line, or -1 if unknown
+   * @param column the source column, or -1 if unknown
+   */
+  public void reportUnhandled(String nodeClass, int line, int column) {
+    if (nodeClass == null || nodeClass.isEmpty()) return;
+    problems.add(
+        new TacProgram.FunctionProblem(
+            spec.name(), "UNHANDLED_NODE", "not lowered: " + nodeClass, nodeClass, line, column));
+  }
+
+  /** The unhandled constructs recorded for this function. */
+  public List<TacProgram.FunctionProblem> problems() {
+    return List.copyOf(problems);
+  }
+
+  /**
+   * Records a construct the SOURCE could not provide -- a parse error the parser recovered from,
+   * rather than a construct the translator does not support.
+   *
+   * <p><b>Why the kind matters.</b> {@code UNHANDLED_NODE} says "the frontend does not model this".
+   * {@code PARSE_PROBLEM} says "the input is broken". A consumer that wants to distinguish "this
+   * file uses a language feature I should add" from "this file does not compile" cannot do it if
+   * both are reported as the same kind. The kinds are separate in {@link
+   * TacProgram.FunctionProblem} precisely so they can be told apart.
+   *
+   * @param message what went wrong
+   * @param line the source line, or -1 if unknown
+   * @param column the source column, or -1 if unknown
+   */
+  public void reportParseProblem(String message, int line, int column) {
+    if (message == null || message.isEmpty()) return;
+    problems.add(
+        new TacProgram.FunctionProblem(
+            spec.name(), "PARSE_PROBLEM", message, "UnparsableStmt", line, column));
+  }
+
   // The lambda counter is NOT here. It lives on the TacTranslator, because a
   // lambda's name must be unique across the whole program: a per-builder
   // counter restarted at zero for every method, so several methods' lambdas
@@ -105,6 +275,25 @@ public final class TacBuilder {
 
   public List<TacOperand.TacVar> locals() {
     return locals;
+  }
+
+  /**
+   * Declares a named local.
+   *
+   * <p>Used by features that introduce a variable the source did not spell as a declaration -- a
+   * pattern variable ({@code x instanceof String s}) and a record's component binding. The variable
+   * must appear in {@code locals()} so that the DFA's per-variable maps, the alias tracker and the
+   * field tracker all recognise it as a local rather than an unknown name.
+   *
+   * <p>Re-declaring the same name is a no-op: the second declaration refers to the same storage
+   * location, and the TAC's variable identity is name-based.
+   */
+  public void addLocal(TacOperand.TacVar v) {
+    if (v == null) return;
+    for (TacOperand.TacVar existing : locals) {
+      if (existing.name().equals(v.name()) && existing.isTemp() == v.isTemp()) return;
+    }
+    locals.add(v);
   }
 
   /** Merge class-level annotation names captured by the translator. */
@@ -239,7 +428,32 @@ public final class TacBuilder {
         paramAnnotations,
         enclosingClass,
         origin,
-        new ArrayList<>(tryRegions));
+        new ArrayList<>(tryRegions),
+        sourceLanguage,
+        irPrecision,
+        synthetic,
+        new java.util.LinkedHashMap<>(annotationValues),
+        module);
+  }
+
+  /**
+   * Record the VALUE an annotation carries.
+   *
+   * @param annotationName the annotation's simple name, e.g. {@code "Value"}
+   * @param value the value's textual form, e.g. {@code "${app.password}"}
+   */
+  public void addAnnotationValue(String annotationName, String value) {
+    if (annotationName == null || annotationName.isEmpty()) return;
+    if (value == null) return;
+    annotationValues.computeIfAbsent(annotationName, k -> new ArrayList<>());
+    if (!annotationValues.get(annotationName).contains(value)) {
+      annotationValues.get(annotationName).add(value);
+    }
+  }
+
+  /** The annotation values collected so far, keyed by the annotation's simple name. */
+  public Map<String, List<String>> annotationValues() {
+    return annotationValues;
   }
 
   /**
@@ -248,7 +462,23 @@ public final class TacBuilder {
    */
   private String enclosingClass;
 
-  void setEnclosingClass(String name) {
+  /**
+   * Sets the name of the class that declares the function.
+   *
+   * <p><b>Public because the Kotlin and Scala front-ends need it.</b> They live in a different
+   * package, so a package-private setter was unreachable -- and the Kotlin front-end worked around
+   * it by encoding the declaring class in the function's <em>name</em> and leaving {@code
+   * enclosingClass} null.
+   *
+   * <p>That workaround had a real cost. The enclosing class is not decoration: the call graph
+   * indexes functions by it, the merged program uses it to keep same-named methods on different
+   * classes apart, and the finding reporter resolves a finding's file path through it. With it
+   * null, a Kotlin function was dropped from the call graph's merged-key index entirely -- so a
+   * Kotlin caller had <b>zero</b> call sites, and no taint could cross the language boundary.
+   *
+   * @param name the declaring class's name, or {@code null} for a top-level function
+   */
+  public void setEnclosingClass(String name) {
     this.enclosingClass = name;
   }
 
@@ -262,5 +492,23 @@ public final class TacBuilder {
 
   void setOrigin(SourceOrigin o) {
     this.origin = (o == null) ? SourceOrigin.SOURCE : o;
+  }
+
+  /**
+   * Marks the function as compiler-generated code.
+   *
+   * <p>Used by the front-ends that can tell generated code from hand-written code: a Kotlin {@code
+   * data class}'s accessors, a Java {@code record}'s accessors.
+   *
+   * <p>The origin becomes {@link SourceOrigin#GENERATED}, which is still analysed by default -- a
+   * generated accessor carries taint, and skipping it would drop the taint at every property
+   * access.
+   *
+   * @param generated whether the function is compiler-generated
+   */
+  public void markGenerated(boolean generated) {
+    if (generated) {
+      this.origin = SourceOrigin.GENERATED;
+    }
   }
 }

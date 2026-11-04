@@ -100,6 +100,25 @@ public interface DfaChecker {
    */
   default void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {}
 
+  /**
+   * Whether this checker applies to the given function.
+   *
+   * <p>The engine calls this once per function and skips the checker entirely when it returns
+   * {@code false}. It is the mechanism behind language-specific rules: a checker that only makes
+   * sense for Kotlin (say, one that inspects {@code Result<T>} unwrapping) returns {@code false}
+   * for a Java function, and the engine never runs it there.
+   *
+   * <p><b>This is a skip, not an error.</b> Returning {@code false} means "this checker has nothing
+   * to say about this code", not "this code is wrong". A checker must not report a finding merely
+   * because the language is one it does not handle.
+   *
+   * <p>The default is {@code true}: a checker that says nothing about languages applies to all of
+   * them.
+   */
+  default boolean supports(TacFunction fn) {
+    return true;
+  }
+
   /** Called once per function after all instructions are visited. The default is a no-op. */
   default void finishFunction(AnalysisContext ctx, TacFunction fn) {}
 

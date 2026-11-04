@@ -35,8 +35,25 @@ public final class FactKindRegistry {
 
   private final Map<String, FactKind> byName;
 
+  /**
+   * The interned index assigned to each kind.
+   *
+   * <p>The index is what makes a fact copy cheap: the fact's kind is compared as an integer rather
+   * than as a string. See {@link FactKind#index()} for why.
+   */
+  private final Map<String, Integer> indexByName = new LinkedHashMap<>();
+
+  /** The next index to hand out. */
+  private int nextIndex = 0;
+
   public FactKindRegistry(Map<String, FactKind> byName) {
     this.byName = new LinkedHashMap<>(byName);
+    // Assign indices to the kinds that were present at construction. The order is the map's
+    // order, so the indices are deterministic for a given configuration -- which matters
+    // because the IR is cached to disk and a later run must agree with an earlier one.
+    for (FactKind k : this.byName.values()) {
+      assignIndex(k);
+    }
   }
 
   public static FactKindRegistry empty() {
@@ -47,16 +64,85 @@ public final class FactKindRegistry {
     return Optional.ofNullable(byName.get(name));
   }
 
+  /**
+   * Registers a kind, assigning it an interned index.
+   *
+   * <p>Re-registering a name keeps the existing index. A kind that replaces another with the same
+   * name must not get a new index: the index is the kind's identity for every integer-keyed
+   * structure in the engine, and changing it would silently break every one of them.
+   *
+   * @param k the kind to register
+   * @return the registered kind -- the one now in the registry under this name
+   */
   public synchronized FactKind register(FactKind k) {
     Objects.requireNonNull(k, "k");
-    return byName.put(k.name(), k);
+    Integer existing = indexByName.get(k.name());
+    if (existing != null) {
+      k.assignIndex(existing);
+    } else {
+      assignIndex(k);
+    }
+    byName.put(k.name(), k);
+    // Return the kind that is NOW registered, not the one that was there before.
+    // Returning the previous value would make the first registration return null,
+    // and a caller that uses the return value would get a null kind.
+    return k;
+  }
+
+  private void assignIndex(FactKind k) {
+    Integer existing = indexByName.get(k.name());
+    if (existing != null) {
+      k.assignIndex(existing);
+      return;
+    }
+    int idx = nextIndex++;
+    k.assignIndex(idx);
+    indexByName.put(k.name(), idx);
+  }
+
+  /** The interned index of a kind name, or {@link FactKind#UNASSIGNED} if the name is unknown. */
+  public synchronized int indexOf(String name) {
+    Integer idx = indexByName.get(name);
+    return idx == null ? FactKind.UNASSIGNED : idx;
+  }
+
+  /**
+   * The interned index of a kind.
+   *
+   * <p>A kind that was never registered has no index, and gets {@link FactKind#UNASSIGNED}.
+   */
+  public synchronized int indexOf(FactKind kind) {
+    if (kind == null) return FactKind.UNASSIGNED;
+    if (kind.isRegistered()) return kind.index();
+    return indexOf(kind.name());
+  }
+
+  /**
+   * The kind with a given interned index.
+   *
+   * @param index the index
+   * @return the kind, or {@code null} if no kind has that index
+   */
+  public synchronized FactKind byIndex(int index) {
+    if (index < 0) return null;
+    for (FactKind k : byName.values()) {
+      if (k.index() == index) return k;
+    }
+    return null;
   }
 
   public synchronized FactKind deregister(String name) {
+    // The index is not reused: a stale index must not silently resolve to a different kind.
+    indexByName.remove(name);
     return byName.remove(name);
   }
 
   public java.util.Collection<FactKind> all() {
     return Collections.unmodifiableCollection(byName.values());
+  }
+
+  /** How many kinds have been registered. */
+  public int size() {
+    return byName.size();
   }
 }

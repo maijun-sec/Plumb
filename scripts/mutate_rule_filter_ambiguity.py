@@ -44,12 +44,17 @@ MUTANTS = [
     # The guard asks about the wrong thing: it only counts a rule when the
     # form IS the rule's identity, and not when the form is a PEELED form
     # of it. That is the bug the first version had.
+    #
+    # The anchor is the PEELED-FORM COUNTING LOOP, not the whole `else`
+    # block: the block carries a comment that explains WHY the loop is
+    # there, and an anchor that included the comment would break every
+    # time the comment was reworded. The mutation drops the loop and
+    # leaves the `else` block empty, which is exactly the defect.
     ("guard-only-counts-exact-identities",
-     "      } else {\n        for (String f : ruleIdForms(identity)) {\n"
+     "        for (String f : ruleIdForms(identity)) {\n"
      "          if (f.toLowerCase(java.util.Locale.ROOT).equals(wanted)) {\n"
-     "            owners++;\n            break;\n          }\n        }\n      }",
-     "      }"),
-
+     "            owners++;\n            break;\n          }\n        }\n",
+     ""),
     # The live rule set becomes empty, so every form looks unique.
     ("live-rule-set-becomes-empty",
      "    liveRuleIdsCache = ids;\n    return ids;",
@@ -140,10 +145,27 @@ def mvn_command():
     raise SystemExit("ERROR: the Maven launcher was not found")
 
 
+def maven_flags():
+    """The settings and local-repository flags this machine needs.
+
+    <p>Without these the build resolves against the default mirror and the default
+    local repository. On a machine whose artifacts were fetched through a
+    different mirror into a different repository, that fails with "present, but
+    unavailable" -- and the battery reports a build failure, which reads like a
+    product defect and is not one.
+    """
+    flags = []
+    settings = os.environ.get("PLUMB_MAVEN_SETTINGS", r"D:\cache\m2-central-settings.xml")
+    if settings and pathlib.Path(settings).is_file():
+        flags += ["-s", settings]
+    flags += ["-Dmaven.repo.local=" + os.environ.get("PLUMB_MAVEN_REPO", r"D:\cache\mvn_repo")]
+    return flags
+
+
 def build():
     """Rebuild the jar. Returns (ok, output)."""
     proc = subprocess.run(
-        mvn_command() + ["-o", "-q", "-pl", "plumb-main", "-am",
+        mvn_command() + maven_flags() + ["-o", "-q", "-pl", "plumb-main", "-am",
                          "-DskipTests", "-B", "install"],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         cwd=str(REPO),
@@ -187,6 +209,15 @@ def main():
 
         for name, old, new in MUTANTS:
             text = original.decode("utf-8")
+            # The anchors are written with LF, but the source uses CRLF -- the
+            # repository's convention. Matching the file's own line endings is
+            # what makes the anchor portable: an anchor that only matches one
+            # line ending style reports "the anchor occurs 0 times" and the
+            # mutant is never applied, which reads as a broken harness rather
+            # than as a broken mutant.
+            if "\r\n" in text:
+                old = old.replace("\n", "\r\n")
+                new = new.replace("\n", "\r\n")
             count = text.count(old)
             if count != 1:
                 print("FAIL: %s -- the anchor occurs %d times, expected exactly 1"

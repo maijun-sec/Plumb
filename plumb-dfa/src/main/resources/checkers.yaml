@@ -172,3 +172,79 @@ checkers:
     cwe: CWE-129
     description: "CWE-129 array out-of-bounds via range + Z3 constraint"
     class: org.plumb.dfa.checkers.boundary.ArrayBoundsConstraintChecker
+  # CWE-1333: a regular expression compiled from tainted data.
+  #
+  # The rule watches ONE sink family -- `regex.sinks`. Its shared
+  # patterns are the Java-library symbols (java.util.regex.Pattern,
+  # reachable from every JVM language); its per-language table holds
+  # kotlin.text.Regex and scala.util.matching.Regex. One defect
+  # class, one CWE, and no language sees another's sink.
+  RegexInjection:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-1333
+    description: "CWE-1333: regular expression compiled from tainted data (ReDoS / bypass)"
+    class: org.plumb.dfa.checkers.taint.RegexInjectionChecker
+  # The defect classes the rule-pack conversion added. Each family is filled
+  # from a converted rule pack, and each needs its own rule -- a family with
+  # no rule is a family that can never fire.
+  ServerSideTemplateInjection:
+    enabled: true
+    severity: CRITICAL
+    cwe: CWE-1336
+    description: "CWE-1336: tainted data compiled as a server-side template"
+    class: org.plumb.dfa.checkers.taint.ServerSideTemplateInjectionChecker
+  HttpParameterPollution:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-235
+    description: "CWE-235: tainted data in an outbound HTTP request's URI or parameters"
+    class: org.plumb.dfa.checkers.taint.HttpParameterPollutionChecker
+  DangerousFileInclusion:
+    enabled: true
+    severity: CRITICAL
+    cwe: CWE-98
+    description: "CWE-98: tainted data choosing which file is included"
+    class: org.plumb.dfa.checkers.taint.DangerousFileInclusionChecker
+  NoSqlInjection:
+    enabled: true
+    severity: HIGH
+    cwe: CWE-943
+    description: "CWE-943: tainted data in a NoSQL query filter or document"
+    class: org.plumb.dfa.checkers.taint.NoSqlInjectionChecker
+  JsonInjection:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-91
+    description: "CWE-91: tainted data in a JSON serializer's structural position"
+    class: org.plumb.dfa.checkers.taint.JsonInjectionChecker
+  XQueryInjection:
+    enabled: true
+    severity: HIGH
+    cwe: CWE-943
+    description: "CWE-943: tainted data in an XQuery expression"
+    class: org.plumb.dfa.checkers.taint.XQueryInjectionChecker
+  XsltInjection:
+    enabled: true
+    severity: HIGH
+    cwe: CWE-643
+    description: "CWE-643: tainted data in an XSLT stylesheet or transform"
+    class: org.plumb.dfa.checkers.taint.XsltInjectionChecker
+  XmlInjection:
+    enabled: true
+    severity: HIGH
+    cwe: CWE-91
+    description: "CWE-91: tainted data in an XML serializer's element name or attribute"
+    class: org.plumb.dfa.checkers.taint.XmlInjectionChecker
+  # CWE-732: a file permission granted to everyone.
+  #
+  # Not a taint rule -- the dangerous call is the call itself.
+  # The checker reads the `ownerOnly` flag out of the argument
+  # list, so `setReadable(true, true)` is not a finding while
+  # `setReadable(true)` is.
+  FilePermission:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-732
+    description: "CWE-732: file permissions granted to everyone instead of the owner"
+    class: org.plumb.dfa.checkers.taint.FilePermissionChecker

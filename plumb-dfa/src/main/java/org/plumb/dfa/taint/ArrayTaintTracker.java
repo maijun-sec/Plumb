@@ -224,6 +224,64 @@ public final class ArrayTaintTracker {
     return arrays.containsKey(arr);
   }
 
+  /**
+   * Make {@code dest} name the same array as {@code source}: copy the source's per-element taint
+   * entries onto the destination.
+   *
+   * <p>A MOVE that copies an array reference does not copy the array -- both names denote the SAME
+   * array. The TAC models an array initializer as {@code NEWARRAY} into a fresh temp followed by
+   * {@code MOVE} into the user's variable, so the elements are stored against the temp while the
+   * user later reads through the variable. Without this alias the elements looked empty and the
+   * read produced a clean value.
+   *
+   * <p>The copy is one-way (source to dest) and does not remove the source's own entries: both
+   * names stay valid handles on the same array, and a later write through either name must still be
+   * visible through the other.
+   *
+   * @param source the array whose entries are copied
+   * @param dest the array name that starts denoting the same array
+   */
+  public void alias(TacOperand.TacVar source, TacOperand.TacVar dest) {
+    if (source == null || dest == null) return;
+    Map<IndexKey, TaintedEntry> src = arrays.get(source);
+    if (src == null || src.isEmpty()) return;
+    Map<IndexKey, TaintedEntry> dst = arrays.computeIfAbsent(dest, k -> new HashMap<>());
+    dst.putAll(src);
+  }
+
+  /**
+   * The element taint an iterator over {@code source} would yield, or {@code null} when the array
+   * has no tainted element.
+   *
+   * <p>An iterator hands out the array's elements one at a time, so the taint of a tainted element
+   * is the taint of every value the iterator returns. The enhanced-for loop
+   *
+   * <pre>
+   *   for (String s : arr) { exec(s); }
+   * </pre>
+   *
+   * is modelled as {@code it = arr.iterator(); ... s = it.next(); ...}, and the taint has to cross
+   * that indirection. Without it the loop variable came out clean and the sink never fired.
+   *
+   * <p>The lookup is conservative: if the array carries ANY tainted element, the iterator is
+   * treated as yielding tainted values, because the analysis does not know which element the
+   * iterator will reach first.
+   *
+   * @param source the array the iterator walks
+   * @return the tainted entry the iterator yields, or {@code null}
+   */
+  public TaintedEntry elementTaintOf(TacOperand.TacVar source) {
+    if (source == null) return null;
+    Map<IndexKey, TaintedEntry> idx = arrays.get(source);
+    if (idx == null || idx.isEmpty()) return null;
+    TaintedEntry any = idx.get(ANY);
+    if (any != null) return any;
+    for (TaintedEntry entry : idx.values()) {
+      if (entry != null) return entry;
+    }
+    return null;
+  }
+
   /** Clear all state. Called at every function boundary. */
   public void clear() {
     arrays.clear();

@@ -41,6 +41,42 @@ def strip_comments(text):
     return text
 
 
+def translation_is_reached(source_text, body_text):
+    """Does this method body reach the TAC translation?
+
+    The gate used to require the literal token `TacTranslator` inside
+    `translateAndStyleOne`.  That was a SECOND copy of the source's
+    shape: when the translation moved into `translateJava` -- so that
+    the module could be stamped onto the translator -- the constructor
+    call left the method, and the gate reported a defect that did not
+    exist.
+
+    The invariant that actually matters is that the TAC translation is
+    REACHED.  So the gate accepts either
+
+      1. the translator being constructed in this method, or
+      2. a call to a method that constructs it -- and for (2) it reads
+         THAT method's body, so the name alone does not satisfy it.
+
+    A name that no method implements therefore does not pass.
+    """
+    if "TacTranslator" in body_text:
+        return True
+
+    # Find the calls this body makes, and look for a translator
+    # construction in the method each call names.
+    for name in set(re.findall(r"\b([a-z][A-Za-z0-9]*)\s*\(", body_text)):
+        m = re.search(
+            r"(?:private|public|protected|static|final|\s)*\b" +
+            re.escape(name) + r"\s*\([^)]*\)\s*\{(.*?)\n  \}",
+            source_text, re.S)
+        if not m:
+            continue
+        if "TacTranslator" in strip_comments(m.group(1)):
+            return True
+    return False
+
+
 # ---------------------------------------------------------------- 1. the format
 ser = TAC / "io" / "IrSerializer.java"
 if not ser.is_file():
@@ -364,11 +400,26 @@ if runner.is_file():
                     "the document's translateAndStyleOne has parameters %s; "
                     "the source has %s" % (sorted(doc_params), sorted(src_params)))
         quoted_body = strip_comments(bodytxt)
-        for token in ("loadCachedProgram", "buildParser", "TacTranslator",
+        # The TRANSLATION step must still be reached.  The gate used to
+        # require the literal token `TacTranslator` in this method, but
+        # that was a second copy of the source's shape: the translation
+        # moved into `translateJava`, so the constructor call left this
+        # method while the translation did not.
+        #
+        # The invariant is that the TAC translation is REACHED, not that
+        # it is spelled one particular way.  So the gate accepts either
+        # the direct construction or a call to a method that does it --
+        # and it verifies the second by looking at what that method
+        # actually contains, rather than trusting the name.
+        for token in ("loadCachedProgram", "buildParser",
                       "storeCachedProgram", "runStyleChecks"):
             if token not in quoted_body:
                 failures.append("the source's translateAndStyleOne does not "
                                 "call %s" % token)
+        if not translation_is_reached(rbody, quoted_body):
+            failures.append(
+                "the source's translateAndStyleOne does not reach the TAC "
+                "translation")
 
         # The document's quoted body must call the same things.  A
         # document that quotes `new JavaSourceParser()` where the source
@@ -383,12 +434,16 @@ if runner.is_file():
             failures.append("the document no longer quotes translateAndStyleOne "
                             "-- the body check cannot verify it")
         else:
-            for token in ("loadCachedProgram", "buildParser", "TacTranslator",
+            for token in ("loadCachedProgram", "buildParser",
                           "storeCachedProgram", "runStyleChecks"):
                 if token not in doc_body:
                     failures.append(
                         "the document's translateAndStyleOne does not call "
                         "%s, which the source calls" % token)
+            if not translation_is_reached(rbody, doc_body):
+                failures.append(
+                    "the document's translateAndStyleOne does not reach the "
+                    "TAC translation, which the source reaches")
             for token in ("JavaSourceParser",):
                 if token in doc_body and token not in quoted_body:
                     failures.append(

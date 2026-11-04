@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
@@ -23,7 +23,7 @@
     </description>
 
     <properties>
-        <!--
+        <!--,
           Inherited from the root pom. The comment there explains why the
           version is pinned: the Kotlin script engine must understand the
           JDK the scanner runs on.
@@ -44,7 +44,7 @@
             <groupId>org.plumb</groupId>
             <artifactId>plumb-reporter</artifactId>
         </dependency>
-        <!--
+        <!--,
           The AstChecker SPI lives in plumb-style. This module implements
           one, so it depends on plumb-style, but plumb-style does NOT
           depend on this module, so there is no cycle.
@@ -61,7 +61,7 @@
             <groupId>com.github.javaparser</groupId>
             <artifactId>javaparser-symbol-solver-core</artifactId>
         </dependency>
-        <!--
+        <!--,
           The Kotlin JSR-223 scripting engine. This artifact pulls the
           whole tree it needs (kotlin-reflect, kotlin-scripting-compiler-impl-embeddable, kotlinx-coroutines, trove4j, ...). Do NOT try
           to hand-pick the jars: every one of them is required at runtime
@@ -72,10 +72,38 @@
             <artifactId>kotlin-scripting-jsr223</artifactId>
             <version>${kotlin.version}</version>
         </dependency>
+        <!--,
+          The stdlib is NOT pinned here. It is managed by the root POM at
+          kotlin.stdlib.version, because the Analysis API needs a NEWER stdlib
+          than the script engine does, and this module's transitive stdlib
+          would otherwise shadow it for every module that depends on both
+          (plumb-main does). See the root POM for the full reasoning.
+        -->
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-stdlib</artifactId>
-            <version>${kotlin.version}</version>
+        </dependency>
+        <!--,
+          The reflection library the SCRIPT ENGINE was built against.
+
+          kotlin-compiler-embeddable 2.2.0 declares kotlin-reflect 1.6.10, and the
+          script engine links against it. The Analysis API, by contrast, wants a
+          2.3.x reflect, and Maven's conflict resolution gives the NEWEST one to
+          every module that depends on both, so plumb-main ends up with 2.3.21 and
+          the script engine fails at construction with "Unable to load base class".
+
+          Declaring 1.6.10 here does not "win" the resolution. It cannot, and it
+          should not: the Analysis API's 2.3.21 is what the rest of the process
+          needs. What it does is put 1.6.10 ON THE CLASSPATH, so the script
+          engine's isolated classloader can pick the version its own compiler was
+          built against. See ScriptEngineClassLoader.
+
+          Do NOT change this without re-running the DSL engine's self-test.
+        -->
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-reflect</artifactId>
+            <version>${kotlin.script.reflect.version}</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -128,7 +156,7 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <!--
+                    <!--,
                       Plumb targets Java 17. The Kotlin compiler must emit
                       17 bytecode too, otherwise the module cannot be used
                       from a Java 17 runtime.

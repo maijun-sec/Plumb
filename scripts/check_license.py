@@ -39,6 +39,8 @@ from license_header import (  # noqa: E402
     LICENSE_REL_PATH,
     header_text,
     license_file_text,
+    normalise_newlines,
+    normalise_text,
 )
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
@@ -68,6 +70,13 @@ def has_header(raw):
     Bytes, not text: the header text is LF and the checked-out tree
     is CRLF, so a decoded comparison would fail on every file.
 
+    The line endings are collapsed by the SHARED normaliser, so a file
+    whose endings are malformed is still recognised as carrying the
+    header. A plain ``replace(b"\\r\\n", b"\\n")`` leaves a stray ``\\r``
+    behind for such a file, the header stops matching, and the applier
+    then adds a SECOND one -- silently, because the applier reports
+    "added the header to 1 file(s)" as success.
+
     A UTF-8 BOM is skipped before the comparison. The BOM is ENCODING
     METADATA, not content, and it is not part of the file's text. A
     file whose bytes are `BOM + header + body` HAS the header -- a
@@ -77,8 +86,8 @@ def has_header(raw):
     the decoders disagree (Python's `utf-8` keeps the BOM, `utf-8-sig`
     strips it, Node's TextDecoder strips it silently).
     """
-    expected = header_text().encode("utf-8").replace(b"\r\n", b"\n")
-    actual = raw.replace(b"\r\n", b"\n")
+    expected = normalise_newlines(header_text().encode("utf-8"))
+    actual = normalise_newlines(raw)
     if actual.startswith(b"\xef\xbb\xbf"):
         actual = actual[3:]
     return actual.startswith(expected)
@@ -106,7 +115,7 @@ def main():
     for path in files:
         raw = path.read_bytes()
         rel = path.relative_to(REPO).as_posix()
-        text = raw.replace(b"\r\n", b"\n").decode("utf-8", errors="replace")
+        text = normalise_text(raw)
         before_package = text.split("package ", 1)[0]
 
         if has_header(raw):

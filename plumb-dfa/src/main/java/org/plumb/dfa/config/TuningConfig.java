@@ -103,6 +103,12 @@ public final class TuningConfig {
    * analysis of JDK runtime bodies (only when such bodies are available, which is rare). The {@code
    * analyseSystemLibraries} flag is a convenience: when true, SYSTEM_LIBRARY is implicitly added to
    * {@code analysedOrigins}.
+   *
+   * <p><b>The generated origins are always on.</b> {@link SourceOrigin#GENERATED} and {@link
+   * SourceOrigin#EXTERNAL_GENERATED} are added to the set whatever the caller passes. A generated
+   * accessor -- a record's component reader, a Kotlin data class's getter -- carries the field's
+   * taint, and excluding it would drop that taint at every property access. The origins exist so
+   * that generated code can be given its own summary policy, not so that it can be skipped.
    */
   public TuningConfig(
       int contextDepth,
@@ -145,6 +151,12 @@ public final class TuningConfig {
       // default.
       origins = EnumSet.of(SourceOrigin.SOURCE);
     }
+    // Generated code is analysed by default. A generated accessor -- a record's component
+    // reader, a Kotlin data class's getter -- carries the field's taint, and skipping it
+    // would drop that taint at every property access. The origin exists so that generated
+    // code can be given its own summary policy, NOT so that it can be excluded.
+    origins.add(SourceOrigin.GENERATED);
+    origins.add(SourceOrigin.EXTERNAL_GENERATED);
     if (analyseSystemLibraries) {
       origins.add(SourceOrigin.SYSTEM_LIBRARY);
     }
@@ -206,6 +218,84 @@ public final class TuningConfig {
             analyseSystemLibraries);
     copy.pointsToPolicy = policy;
     return copy;
+  }
+
+  /**
+   * A copy with an explicit path-sensitivity mode.
+   *
+   * <p>The mode decides whether the engine consults the solver for a source-to-sink path: {@code
+   * "none"} switches the verification off entirely, and the other modes switch it on. An
+   * unrecognised value is normalised to {@code "full"} by the engine, so a typo in a configuration
+   * file keeps the filter rather than silently dropping it.
+   */
+  public TuningConfig withPathSensitivity(String mode) {
+    return new TuningConfig(
+        contextDepth,
+        worklistMaxSize,
+        z3TimeoutMs,
+        summaryCacheSize,
+        reverseWalkMaxDepth,
+        preScanEnabled,
+        libraryCallClassification,
+        taintCallerStringConcat,
+        mode,
+        reportingGroupBy,
+        outputFormat,
+        parallel,
+        perFunctionTimeoutMs,
+        analysedOrigins,
+        analyseSystemLibraries);
+  }
+
+  /**
+   * A copy with an explicit cross-function folding depth.
+   *
+   * <p>Zero switches the cross-function summary folding off, so the analysis stays inside one
+   * function. A positive value folds a callee's summary into its caller.
+   */
+  public TuningConfig withContextDepth(int depth) {
+    return new TuningConfig(
+        depth,
+        worklistMaxSize,
+        z3TimeoutMs,
+        summaryCacheSize,
+        reverseWalkMaxDepth,
+        preScanEnabled,
+        libraryCallClassification,
+        taintCallerStringConcat,
+        pathSensitivity,
+        reportingGroupBy,
+        outputFormat,
+        parallel,
+        perFunctionTimeoutMs,
+        analysedOrigins,
+        analyseSystemLibraries);
+  }
+
+  /**
+   * A copy with an explicit summary-cache capacity.
+   *
+   * <p>A non-positive capacity means "unbounded". Treating a misconfigured zero as "cache nothing"
+   * would silently disable the whole cross-function analysis, which is a much larger change than
+   * the user asked for.
+   */
+  public TuningConfig withSummaryCacheSize(int size) {
+    return new TuningConfig(
+        contextDepth,
+        worklistMaxSize,
+        z3TimeoutMs,
+        size,
+        reverseWalkMaxDepth,
+        preScanEnabled,
+        libraryCallClassification,
+        taintCallerStringConcat,
+        pathSensitivity,
+        reportingGroupBy,
+        outputFormat,
+        parallel,
+        perFunctionTimeoutMs,
+        analysedOrigins,
+        analyseSystemLibraries);
   }
 
   public int contextDepth() {

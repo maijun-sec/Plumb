@@ -37,9 +37,27 @@ mappings:
   SensitiveDataLeak_header: CWE-93
   SensitiveDataLeak_nosql: CWE-943
   SensitiveDataLeak_ognl: CWE-94
+  # The defect classes the rule-pack conversion added. Each has its own
+  # checker, and each checker has its own CWE -- the mapping is what the
+  # coverage report reads, so a checker without an entry here is a rule
+  # whose CWE is not accounted for.
+  ServerSideTemplateInjection: CWE-1336
+  HttpParameterPollution: CWE-235
+  DangerousFileInclusion: CWE-98
+  NoSqlInjection: CWE-943
+  JsonInjection: CWE-91
+  XQueryInjection: CWE-943
+  XsltInjection: CWE-643
+  XmlInjection: CWE-91
   SensitiveDataLeak_openRedirect: CWE-601
   SensitiveDataLeak_xml: CWE-91
   UncheckedReturn: CWE-252
   InfiniteLoop: CWE-835
   ConstantCondition: CWE-570
   BadShift: CWE-758
+  RegexInjection: CWE-1333
+  FilePermission: CWE-732
+  # CWE-566: tainted data reaches a DATABASE, including as a BOUND PARAMETER.
+  # It is NOT CWE-89 -- see the DatabaseAccessChecker's javadoc for why the
+  # two are separate defect classes.
+  DatabaseAccess: CWE-566

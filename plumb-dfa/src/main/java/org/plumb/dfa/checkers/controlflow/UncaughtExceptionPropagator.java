@@ -21,10 +21,8 @@
  */
 package org.plumb.dfa.checkers.controlflow;
 
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.engine.DfaChecker;
@@ -93,12 +91,6 @@ import org.plumb.tac.ir.TacInstruction;
  */
 public final class UncaughtExceptionPropagator implements DfaChecker {
 
-  /** Per-engine: function-key (name/arity) -> true if the function has any THROW. */
-  private final Map<String, Boolean> hasThrow = new HashMap<>();
-
-  /** Per-engine: function-key (name/arity) -> true if the function has any CATCH_HANDLER. */
-  private final Map<String, Boolean> hasCatch = new HashMap<>();
-
   /**
    * Per-function: signatures of already-fired call sites, to dedup when the same (caller, callee)
    * pair is reached from multiple call instructions. Key is {@code callerKey + "|" + calleeKey}.
@@ -132,8 +124,6 @@ public final class UncaughtExceptionPropagator implements DfaChecker {
 
   @Override
   public void initEngine(AnalysisContext ctx) {
-    hasThrow.clear();
-    hasCatch.clear();
     fired.clear();
   }
 
@@ -148,9 +138,14 @@ public final class UncaughtExceptionPropagator implements DfaChecker {
 
   @Override
   public void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
+    // The facts are about the PROGRAM, not about this function, so they go into the SHARED store
+    // on the context. An instance field would only ever hold the facts this worker's own slice
+    // produced, and the lookup for a callee in another worker's slice would miss -- so the
+    // cross-function finding would silently never be emitted.
+    String key = mergedKey(fn);
     switch (ins.kind) {
-      case THROW -> hasThrow.put(functionKey(fn), Boolean.TRUE);
-      case CATCH_HANDLER -> hasCatch.put(functionKey(fn), Boolean.TRUE);
+      case THROW -> ctx.programFacts().markThrows(key);
+      case CATCH_HANDLER -> ctx.programFacts().markCatches(key);
       default -> {
         /* ignore */
       }
@@ -160,8 +155,8 @@ public final class UncaughtExceptionPropagator implements DfaChecker {
   @Override
   public void finishFunction(AnalysisContext ctx, TacFunction fn) {
     // No per-function emission: the cross-function
-    // check needs the global hasThrow / hasCatch
-    // maps, which are only complete after every
+    // check needs the global throw / catch
+    // facts, which are only complete after every
     // function has been visited. The actual
     // emission happens in finish().
   }
@@ -179,9 +174,8 @@ public final class UncaughtExceptionPropagator implements DfaChecker {
     // RPO the callee summary may still be
     // empty).
     for (TacFunction fn : ctx.program().functions()) {
-      String callerKey = functionKey(fn);
-      boolean callerHasCatch = hasCatch.containsKey(callerKey);
-      if (callerHasCatch) {
+      String callerKey = mergedKey(fn);
+      if (ctx.programFacts().hasCatch(callerKey)) {
         // The caller has at least one
         // catch. We don't know if it
         // covers the specific exception
@@ -208,8 +202,15 @@ public final class UncaughtExceptionPropagator implements DfaChecker {
       for (TacInstruction ins : fn.instructions()) {
         if (ins.kind != TacInstruction.Kind.CALL) continue;
         if (ins.calleeSig == null) continue;
-        if (!hasThrow.containsKey(ins.calleeSig)) continue;
-        String key = callerKey + "|" + ins.calleeSig;
+        // The callee is resolved through the CALL GRAPH, not by matching the signature
+        // ourselves. The graph already resolved this call site to the callee it really means --
+        // including the overload and the cross-TU case -- and it did it with the MERGED key, which
+        // is the identity the facts are recorded under. Matching signatures here would be a second,
+        // weaker resolution, and it would miss the caller whose callee lives in another class.
+        String calleeKey = resolveCalleeKey(ctx, fn, ins);
+        if (calleeKey == null) continue;
+        if (!ctx.programFacts().functionThrows(calleeKey)) continue;
+        String key = callerKey + "|" + calleeKey;
         if (!fired.add(key)) continue;
         emit(ctx, ins, fn, ins.calleeSig);
       }
@@ -217,21 +218,66 @@ public final class UncaughtExceptionPropagator implements DfaChecker {
   }
 
   /**
-   * Build the lookup key for a function. The IR uses two different signatures:
+   * The identity a function's whole-program facts are recorded under.
    *
-   * <ul>
-   *   <li>{@link TacFunction#signature()} returns the full declaration form {@code "foo(int,
-   *       String):void"} — used by the engine internally.
-   *   <li>{@link TacInstruction#calleeSig} on a CALL instruction returns the short form {@code
-   *       "foo/2"} (method name + arity) -- used by the translator when emitting call sites.
-   * </ul>
+   * <p>It is the MERGED key ({@code "<enclosingClass> :: <signature>"}), the same identity the
+   * engine's parallel worklist and the call graph use. A name/arity key would merge two methods
+   * that merely share a name -- two subclasses of the same abstract base, each implementing {@code
+   * action(String)} -- and a caller would then be told "the callee throws" because a DIFFERENT
+   * method with the same name throws.
    *
-   * <p>The hasThrow / hasCatch maps are keyed by the short form so we can do a direct {@code
-   * containsKey} on {@code ins.calleeSig} in {@link #finish}. If the translator ever changes either
-   * format, this helper is the single point of update.
+   * @param fn the function
+   * @return the merged key
    */
-  private static String functionKey(TacFunction fn) {
-    return fn.name() + "/" + fn.params().size();
+  private static String mergedKey(TacFunction fn) {
+    return org.plumb.tac.ir.MergedProgram.mergedKey(fn);
+  }
+
+  /**
+   * The merged key of the callee this call site resolves to.
+   *
+   * <p>The CALL GRAPH is the authority. It already resolved this call site -- including the
+   * overload, the owner, and the cross-TU case -- and it did it with the merged key, which is the
+   * identity the facts are recorded under. Resolving the signature here a second time would be a
+   * weaker resolution: it would miss the callee that lives in another class, and it would match a
+   * name/arity that belongs to a different method.
+   *
+   * @param ctx the analysis context
+   * @param caller the calling function
+   * @param ins the CALL instruction
+   * @return the callee's merged key, or {@code null} when the call site does not resolve
+   */
+  private static String resolveCalleeKey(
+      AnalysisContext ctx, TacFunction caller, TacInstruction ins) {
+    org.plumb.dfa.cg.CallGraph cg = ctx.callGraph();
+    if (cg == null) return null;
+    org.plumb.dfa.cg.FunctionNode callerNode = new org.plumb.dfa.cg.FunctionNode(mergedKey(caller));
+    // The call graph indexes by the merged key of the CALLER, so the node is built the same way.
+    // When the caller's node is not in the graph (a function the graph did not visit), fall back
+    // to the callee signature itself.
+    for (org.plumb.dfa.cg.CallSite cs : cg.callsFrom(callerNode)) {
+      if (cs.callerInstructionIndex() != instructionIndex(caller, ins)) continue;
+      return cs.callee().signature();
+    }
+    return null;
+  }
+
+  /**
+   * The index of an instruction within its function.
+   *
+   * <p>The call graph records the call site by INDEX, and the index is what identifies a call site
+   * when the same callee is called twice from the same function.
+   *
+   * @param fn the function
+   * @param ins the instruction
+   * @return the index, or -1 when the instruction is not in the function
+   */
+  private static int instructionIndex(TacFunction fn, TacInstruction ins) {
+    java.util.List<TacInstruction> all = fn.instructions();
+    for (int i = 0; i < all.size(); i++) {
+      if (all.get(i) == ins) return i;
+    }
+    return -1;
   }
 
   @Override

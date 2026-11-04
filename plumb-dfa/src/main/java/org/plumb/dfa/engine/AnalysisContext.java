@@ -47,6 +47,10 @@ import org.plumb.tac.ir.TacProgram;
  *       by the engine at the start of every function): the bag itself lives for the whole run, but
  *       its content scope is the current function. This avoids the cost of allocating a fresh bag
  *       for every function while keeping the per-function fact isolation invariant.
+ *   <li><b>Per-thread state</b> (the same bag, one per thread): the parallel worklist analyses
+ *       several functions at once, so "per function" has to mean "per function ON THIS THREAD". A
+ *       shared bag would have the workers erasing each other's facts mid-analysis. See the
+ *       constructor for the detail.
  * </ul>
  *
  * <h2>Cross-function fact propagation</h2>
@@ -65,10 +69,74 @@ public final class AnalysisContext {
   private final FindingReporter reporter;
   private final FunctionSummaryCache summaryCache;
   private final MethodSummaryCache methodSummaryCache;
-  private final FactBag factBag;
+
+  /**
+   * The per-function fact bag, PER THREAD.
+   *
+   * <p>See the constructor for why the per-function state is thread-local rather than shared.
+   */
+  private final ThreadLocal<FactBag> factBag;
+
   private final org.plumb.dfa.solver.GuardStore guardStore;
-  private final SideEffectConsumer sideEffectConsumer;
+
+  /** The per-function side-effect consumer, PER THREAD. Same reasoning as {@link #factBag}. */
+  private final ThreadLocal<SideEffectConsumer> sideEffectConsumer;
+
   private final FieldDefUseTracker fieldDefUseTracker;
+
+  /**
+   * The WHOLE-PROGRAM facts, shared by every worker of the run.
+   *
+   * <p>A cross-function checker has to hold a fact about every function in the program -- "does
+   * this callee throw?", "does this caller have a catch?". It used to hold those facts in an
+   * INSTANCE field, which works sequentially (one instance, every function) but not in a parallel
+   * run: each worker owns its own checker instances, so each instance saw only the functions its
+   * worker analysed, and a lookup for a callee in another worker's slice missed.
+   *
+   * <p>The consequence was a capability that silently disappeared: the cross-function finding was
+   * never emitted and the scan reported success.
+   *
+   * <p>So the facts that are about the PROGRAM live here, where every worker can see them, and the
+   * facts that are about the FUNCTION being analysed stay in the checker instance.
+   */
+  private final ProgramFacts programFacts = new ProgramFacts();
+
+  /**
+   * The analysis budget, shared by every checker for the duration of the run.
+   *
+   * <p>The budget is the engine's contract with the user about how much work may be done. It is
+   * consulted at the points where work can run away (per-function time, solver time, tracked-fact
+   * count) and it records every cap that fires, so an incomplete analysis is visible rather than
+   * silent.
+   *
+   * <p>Never {@code null}: a context built outside the engine gets {@link
+   * AnalysisBudget#unlimited}.
+   */
+  private final AnalysisBudget budget;
+
+  /**
+   * The {@code System.nanoTime()} reading taken when the current function's analysis started.
+   *
+   * <p>Reset by the engine at each function boundary. The budget's time checks compare against
+   * this, so a checker that asks "do I still have time?" gets an answer relative to the function it
+   * is analysing, not to the whole run.
+   */
+  private volatile long currentFunctionStartNanos;
+
+  /**
+   * The guard facts proved in the function being analysed, PER THREAD.
+   *
+   * <p>A guard is a fact about the FUNCTION, not about a checker: "this variable is bounded here"
+   * is true whoever asks. The tracker that produces them is fed the instruction sequence once per
+   * function by the engine, and the snapshot it leaves behind is read by every checker.
+   *
+   * <p>Per THREAD for the same reason the fact bag is: the parallel worklist analyses several
+   * functions at once, and one worker's function must not see another worker's guards.
+   *
+   * <p>{@code null} when no snapshot was taken -- either the engine did not take one (path
+   * verification is off) or the checker is used standalone in a test.
+   */
+  private final ThreadLocal<org.plumb.dfa.taint.GuardTracker> functionGuards = new ThreadLocal<>();
 
   /**
    * the program's alias map, solved once per run and shared by every checker.
@@ -128,9 +196,14 @@ public final class AnalysisContext {
     return out;
   }
 
-  /** Current call-site context (set by DfaEngine before each callee initFunction). */
-  private org.plumb.dfa.context.CallSiteContext currentCallSiteContext =
-      org.plumb.dfa.context.CallSiteContext.EMPTY;
+  /**
+   * Current call-site context (set by DfaEngine before each callee initFunction).
+   *
+   * <p>Per THREAD, like the fact bag: the parallel worklist analyses several functions at once, and
+   * the call site a checker sees belongs to the function ITS worker is analysing.
+   */
+  private final ThreadLocal<org.plumb.dfa.context.CallSiteContext> currentCallSiteContext =
+      ThreadLocal.withInitial(() -> org.plumb.dfa.context.CallSiteContext.EMPTY);
 
   /**
    * The function the engine is currently analysing. Set by DfaEngine before each {@code
@@ -187,6 +260,31 @@ public final class AnalysisContext {
       FindingReporter reporter,
       FunctionSummaryCache summaryCache,
       MethodSummaryCache methodSummaryCache) {
+    this(
+        program,
+        callGraph,
+        config,
+        reporter,
+        summaryCache,
+        methodSummaryCache,
+        new AnalysisBudget(config.tuning()));
+  }
+
+  /**
+   * Full constructor including the analysis budget.
+   *
+   * <p>The engine passes its own budget here so that every checker in a run shares one set of
+   * counters and one exhaustion record. A caller that builds a context by hand gets a fresh budget
+   * derived from the tuning configuration.
+   */
+  public AnalysisContext(
+      TacProgram program,
+      CallGraph callGraph,
+      EngineConfig config,
+      FindingReporter reporter,
+      FunctionSummaryCache summaryCache,
+      MethodSummaryCache methodSummaryCache,
+      AnalysisBudget budget) {
     this.program = program;
     this.callGraph = callGraph;
     this.config = config;
@@ -195,22 +293,32 @@ public final class AnalysisContext {
         summaryCache == null ? new FunctionSummaryCache(config.tuning()) : summaryCache;
     this.methodSummaryCache =
         methodSummaryCache == null ? new MethodSummaryCache() : methodSummaryCache;
-    // One bag, cleared at every function
-    // boundary by the engine. Re-using the
-    // allocation across functions is a
-    // deliberate trade-off: we save the
-    // cost of re-allocating a fresh bag for
-    // every function, and checkers never need
-    // to keep a reference past finishFunction.
-    this.factBag = new FactBag();
+    this.budget = budget == null ? new AnalysisBudget(config.tuning()) : budget;
+    this.currentFunctionStartNanos = System.nanoTime();
+    // Per-function state is PER THREAD, not per context.
+    //
+    // WHY
+    // ---
+    // The bag and the side-effect consumer are cleared at every function
+    // boundary by the engine, and a checker never keeps a reference past
+    // the end of its function. That makes them per-FUNCTION state.
+    //
+    // It also makes them per-THREAD state, because the parallel worklist
+    // analyses several functions at once, each on its own worker thread.
+    // A single shared bag would have every worker clearing it and writing
+    // to it at the same time: one worker's `clear()` would erase another
+    // worker's facts mid-analysis, and the result would be findings that
+    // depend on the thread interleaving.
+    //
+    // A ThreadLocal keeps the SEQUENTIAL semantics exactly -- within one
+    // thread the sequence is still clear(), analyse, summarise -- while
+    // giving each worker its own bag. The bag is re-used across
+    // functions on the same thread, which is the deliberate allocation
+    // trade-off the single shared bag was making.
+    this.factBag = ThreadLocal.withInitial(FactBag::new);
     this.guardStore = new org.plumb.dfa.solver.GuardStore();
     this.fieldDefUseTracker = new FieldDefUseTracker();
-    // Per-function side-effect
-    // consumer. The engine clears it (along
-    // with the bag) at the start of every
-    // function, so its lifetime matches
-    // the bag's.
-    this.sideEffectConsumer = new SideEffectConsumer();
+    this.sideEffectConsumer = ThreadLocal.withInitial(SideEffectConsumer::new);
   }
 
   public TacProgram program() {
@@ -243,8 +351,14 @@ public final class AnalysisContext {
     this.paramOrigins = origins == null ? java.util.Map.of() : origins;
   }
 
-  /** Convenience lookup; returns {@code null} when no origin was recovered for that param. */
+  /**
+   * Convenience lookup; returns {@code null} when no origin was recovered for that param.
+   *
+   * <p>Keyed by the bare signature: {@code "signature#paramIndex"}. The engine's origin map stores
+   * the same spelling, so this is a constant-time lookup.
+   */
   public String paramOrigin(String signature, int paramIndex) {
+    if (signature == null) return null;
     return paramOrigins.get(signature + "#" + paramIndex);
   }
 
@@ -316,13 +430,17 @@ public final class AnalysisContext {
   }
 
   /**
-   * The per-function fact bag. The engine clears it at the start of every function; checkers read
-   * facts from it (e.g. "is operand {@code x} null?") and write to it (e.g. "I just observed that
-   * {@code x} comes from user input"). Cross-function propagation is via {@link #summaryCache()},
-   * not via the bag.
+   * The per-function fact bag, for the CALLING THREAD.
+   *
+   * <p>The engine clears it at the start of every function; checkers read facts from it (e.g. "is
+   * operand {@code x} null?") and write to it (e.g. "I just observed that {@code x} comes from user
+   * input"). Cross-function propagation is via {@link #summaryCache()}, not via the bag.
+   *
+   * <p>Each thread has its own bag, so the parallel worklist's workers cannot erase each other's
+   * facts. Within one thread the sequence is exactly what it always was.
    */
   public FactBag factBag() {
-    return factBag;
+    return factBag.get();
   }
 
   /**
@@ -340,6 +458,21 @@ public final class AnalysisContext {
    */
   public FieldDefUseTracker fieldDefUseTracker() {
     return fieldDefUseTracker;
+  }
+
+  /**
+   * The WHOLE-PROGRAM facts, shared by every worker of the run.
+   *
+   * <p>A cross-function checker records here the facts that are about the PROGRAM -- "this function
+   * throws", "this function has a catch" -- and reads them back at the end of the run. Keeping them
+   * here rather than in an instance field is what makes them survive the parallel worklist: each
+   * worker owns its own checker instances, so an instance field would only ever hold the facts that
+   * worker's own slice produced.
+   *
+   * <p>See {@link ProgramFacts} for the details.
+   */
+  public ProgramFacts programFacts() {
+    return programFacts;
   }
 
   /**
@@ -418,12 +551,14 @@ public final class AnalysisContext {
   }
 
   /**
-   * Per-function {@link SideEffectConsumer}. The engine creates one fresh consumer at the start of
-   * every function and discards it at the end. Checkers consult it to learn which operands have
-   * been invalidated by a side-effect CALL during the current function's analysis.
+   * Per-function {@link SideEffectConsumer}, for the CALLING THREAD. The engine clears it at the
+   * start of every function. Checkers consult it to learn which operands have been invalidated by a
+   * side-effect CALL during the current function's analysis.
+   *
+   * <p>Each thread has its own consumer, for the same reason the fact bag does.
    */
   public SideEffectConsumer sideEffectConsumer() {
-    return sideEffectConsumer;
+    return sideEffectConsumer.get();
   }
 
   /**
@@ -431,14 +566,15 @@ public final class AnalysisContext {
    * initFunction} is called; checkers can read it to discover what the caller already knew.
    */
   public org.plumb.dfa.context.CallSiteContext currentCallSiteContext() {
-    return currentCallSiteContext;
+    return currentCallSiteContext.get();
   }
 
   /**
    * Set the current call-site context. Engine- internal; checkers should not call this directly.
    */
   public void setCurrentCallSiteContext(org.plumb.dfa.context.CallSiteContext ctx) {
-    this.currentCallSiteContext = ctx == null ? org.plumb.dfa.context.CallSiteContext.EMPTY : ctx;
+    this.currentCallSiteContext.set(
+        ctx == null ? org.plumb.dfa.context.CallSiteContext.EMPTY : ctx);
   }
 
   /**
@@ -460,6 +596,72 @@ public final class AnalysisContext {
     // from racing with Worker A's reading of
     // currentFunction.
     this.currentFunction.set(fn);
+  }
+
+  /**
+   * Marks the start of the current function's analysis, for the budget's time checks.
+   *
+   * <p>Called by the engine at each function boundary. The budget compares elapsed time against
+   * this reading, so a per-function timeout means "this function took too long", not "the whole run
+   * took too long".
+   */
+  public void startFunctionTimer() {
+    this.currentFunctionStartNanos = System.nanoTime();
+  }
+
+  /**
+   * The guard tracker holding the facts proved in the current function, or {@code null} when no
+   * snapshot was taken.
+   *
+   * <p>The engine installs one before the checkers run, so every checker reads the same facts
+   * instead of each deriving its own -- which is what made two checkers disagree about whether a
+   * value was guarded.
+   */
+  public org.plumb.dfa.taint.GuardTracker functionGuards() {
+    return this.functionGuards.get();
+  }
+
+  /** Install the guard snapshot for the current function, replacing any previous one. */
+  public void setFunctionGuards(org.plumb.dfa.taint.GuardTracker guards) {
+    if (guards == null) {
+      this.functionGuards.remove();
+    } else {
+      this.functionGuards.set(guards);
+    }
+  }
+
+  /**
+   * The {@code System.nanoTime()} reading taken when the current function's analysis started.
+   *
+   * <p>Exposed so that a checker can compute its own remaining time against the same origin the
+   * budget uses, rather than starting its own clock and measuring a different interval.
+   */
+  public long currentFunctionStartNanos() {
+    return currentFunctionStartNanos;
+  }
+
+  /**
+   * The analysis budget for this run.
+   *
+   * <p>Never {@code null}. A checker that wants to know whether it may keep working asks this
+   * object; the engine reads the same object to decide when to stop.
+   */
+  public AnalysisBudget budget() {
+    return budget;
+  }
+
+  /**
+   * Whether the current function still has time to run, according to the budget.
+   *
+   * <p>Convenience for checkers that do expensive work and want to bail out rather than overrun the
+   * per-function timeout.
+   *
+   * @return true if the analysis may continue
+   */
+  public boolean withinTimeBudget() {
+    org.plumb.tac.ir.TacFunction fn = currentFunction();
+    String subject = fn == null ? "" : fn.signature();
+    return budget.checkPerFunctionTime(currentFunctionStartNanos, subject);
   }
 
   /**
@@ -493,6 +695,25 @@ public final class AnalysisContext {
   public String sourcePathForEnclosingClass(String enclosingClass) {
     if (enclosingClass == null) return null;
     java.nio.file.Path p = sourcePathByEnclosingClass.get(enclosingClass);
+    return p == null ? null : p.toString();
+  }
+
+  /**
+   * Look up the source file path for a function SIGNATURE.
+   *
+   * <p>The signature is the identity that is ALWAYS present. A TOP-LEVEL function -- a Kotlin or
+   * Scala file-level function, or a Java file's package-private helper declared outside any class
+   * -- has NO enclosing class, so the enclosing-class lookup cannot resolve it and the finding is
+   * reported with {@code file="unknown"}.
+   *
+   * <p>The signature is registered alongside the enclosing class for exactly that reason.
+   *
+   * @param signature the function's signature
+   * @return the source path, or {@code null} when none is registered
+   */
+  public String sourcePathForSignature(String signature) {
+    if (signature == null) return null;
+    java.nio.file.Path p = sourcePathByEnclosingClass.get(signature);
     return p == null ? null : p.toString();
   }
 

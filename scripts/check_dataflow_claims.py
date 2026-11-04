@@ -901,6 +901,72 @@ def main():
                 % (symbol, nearest[0], want, abs(nearest[0] - want)))
     note("checked %d fact-kind/field citation(s)" % extra_checked)
 
+    # (12) Every file-anchored RANGE citation must point at a real
+    #      declaration in the file it names.
+    #
+    #      A range citation -- `BuiltinFactKinds.java:226-321` -- is
+    #      followed by the reader just as much as a bare `:N` is. It
+    #      names a file and a span, and the span has to start at
+    #      something that is actually declared there.
+    #
+    #      The per-symbol checks above cannot cover it: a range
+    #      citation usually sits on a line that names NO symbol (it is
+    #      a sentence introducing a block), so `cited_lines()` does not
+    #      attribute it to anything and the range went unchecked while
+    #      the fact-kind rows carried their own `:N`.
+    #
+    #      The check is anchored on the DECLARATIONS of the cited file,
+    #      so a range that starts on a declaration passes and a range
+    #      that starts in the middle of a method body does not.
+    range_checked = 0
+    range_re = re.compile(r"`([A-Za-z0-9_./-]*\.java):(\d+)-(\d+)`")
+    for m in range_re.finditer(doc):
+        rel_file = m.group(1)
+        start = int(m.group(2))
+        end = int(m.group(3))
+        if end < start:
+            failures.append(
+                "the document cites %s:%d-%d, which is an inverted range -- "
+                "a reader following it cannot know which end is the start"
+                % (rel_file, start, end))
+            continue
+        # Resolve the cited file. It may be given with a path prefix
+        # relative to the dfa tree, or as a bare file name.
+        base = rel_file.rsplit("/", 1)[-1]
+        prefix = rel_file.rsplit("/", 1)[0] if "/" in rel_file else ""
+        target = None
+        for rel in {r for r, _ in CITATIONS} | {r for r, _ in EXTRA_CITATIONS}:
+            if rel.rsplit("/", 1)[-1] != base:
+                continue
+            if prefix and rel.rsplit("/", 1)[0] != prefix:
+                continue
+            target = DFA / rel
+            break
+        if target is None:
+            # A file outside the dfa tree (a pom, a module file) is
+            # covered by the "cited file exists" check above.
+            continue
+        # The declarations of the symbols this gate knows in that file.
+        decl_lines = set()
+        for rel, symbol in list(CITATIONS) + list(EXTRA_CITATIONS):
+            if rel.rsplit("/", 1)[-1] != base:
+                continue
+            if prefix and rel.rsplit("/", 1)[0] != prefix:
+                continue
+            for d in declarations(target, symbol):
+                decl_lines.add(d)
+        if not decl_lines:
+            continue
+        if start in decl_lines:
+            range_checked += 1
+            continue
+        failures.append(
+            "the document cites %s:%d-%d, but line %d is not a declaration "
+            "in that file -- a reader following the citation lands in the "
+            "middle of the code"
+            % (rel_file, start, end, start))
+    note("checked %d file-anchored range citation(s)" % range_checked)
+
     # (11) The Z3 call site: the document says Z3 has exactly one call
     #      site in the engine, and cites it.
     #

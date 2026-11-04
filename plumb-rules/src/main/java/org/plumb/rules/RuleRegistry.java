@@ -91,6 +91,15 @@ public final class RuleRegistry {
   public static final String TAINT_SINK_OGNL_INJECTION = "bu-0115-taint-sink-ognl";
   public static final String TAINT_SINK_REGEX_INJECTION = "bu-0116-taint-sink-regex";
   public static final String TAINT_SINK_OPEN_REDIRECT = "bu-0117-taint-sink-open-redirect";
+
+  /**
+   * CWE-732: a file permission granted to everyone rather than to the owner.
+   *
+   * <p>Not a taint rule. The dangerous call is the call itself, so the checker reads the {@code
+   * ownerOnly} flag rather than tracking a data flow.
+   */
+  public static final String FILE_PERMISSION = "bu-0118-file-permission";
+
   public static final String STYLE_EMPTY_CATCH = "bu-0201-style-empty-catch";
   public static final String STYLE_SYSTEM_OUT = "ast-style-system-out-println";
   public static final String STYLE_UNUSED_IMPORT = "bu-0203-style-unused-import";
@@ -793,7 +802,7 @@ public final class RuleRegistry {
             RuleDef.Severity.MEDIUM,
             RuleDef.Type.TAINT,
             List.of("CWE-1333"),
-            "org.plumb.dfa.taint.RegexSink"));
+            "org.plumb.dfa.checkers.taint.RegexInjectionChecker"));
     register(
         def(
             TAINT_SINK_OPEN_REDIRECT,
@@ -803,6 +812,21 @@ public final class RuleRegistry {
             RuleDef.Type.TAINT,
             List.of("CWE-601"),
             "org.plumb.dfa.taint.OpenRedirectSink"));
+
+    // CWE-732: unrestricted access to a file.
+    //
+    // Not a taint rule -- the dangerous call is the call itself. The checker reads the
+    // `ownerOnly` flag out of the argument list, so `setReadable(true, true)` is safe and
+    // `setReadable(true)` is not.
+    register(
+        def(
+            FILE_PERMISSION,
+            "FILE_PERMISSION",
+            "Unrestricted access to a file (permissions granted to everyone)",
+            RuleDef.Severity.MEDIUM,
+            RuleDef.Type.SECURITY,
+            List.of("CWE-732"),
+            "org.plumb.dfa.checkers.taint.FilePermissionChecker"));
 
     // ─── Style (early round) ────────────────────────────
     register(

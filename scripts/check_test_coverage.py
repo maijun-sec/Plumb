@@ -48,6 +48,7 @@ MODULES = [
     "plumb-build/plumb-build-capture",
     "plumb-build/plumb-build-core",
     "plumb-build/plumb-build-maven",
+    "plumb-frontend",
     "plumb-main",
     "plumb-parser",
     "plumb-reporter",

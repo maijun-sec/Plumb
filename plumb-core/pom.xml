@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.plumb</groupId>
+        <artifactId>plumb</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>plumb-core</artifactId>
+    <packaging>pom</packaging>
+
+    <name>plumb-core</name>
+    <description>
+        LAYER 1 -- the foundation. These modules know nothing about dataflow
+        analysis and nothing about each other beyond what is listed here:
+
+        - plumb-parser   the Java source parser and the Java language-level
+                         resolution (Java 8..25).
+        - plumb-rules    the rule identifiers, parameters and registry -- the
+                         vocabulary every checker speaks.
+        - plumb-reporter the finding model and the report writers.
+
+        WHY THE LAYERS ARE AGGREGATORS AND NOT DIRECTORIES. The modules keep
+        their top-level directories, and this POM groups them for the BUILD.
+        Two reasons, both learned the hard way:
+
+        1. The repository's gate scripts resolve module paths from the
+           repository root. scripts/check_test_coverage.py DISCOVERS modules by
+           iterating the root directory (REPO.iterdir()) and complains about
+           any module with tests that it does not know about. Move a module
+           into a subdirectory and that gate stops SEEING it -- it does not
+           fail, it silently stops checking, which is worse than no gate.
+           43 gate scripts resolve module paths as REPO / "plumb-NAME".
+
+        2. Moving a module is a path change, not a design change, and it buys
+           nothing that the reactor order does not already give: Maven orders
+           the reactor by the dependency graph, so the layer boundaries are
+           already enforced at build time whether or not they are declared
+           here.
+
+        So the layering is expressed in the BUILD (this POM and the two
+        beside it), and the source tree stays flat and greppable. A reader
+        asks "what depends on what?" and gets one answer from the POMs, not a
+        second one from directory nesting.
+    </description>
+
+    <modules>
+        <module>../plumb-parser</module>
+        <module>../plumb-rules</module>
+        <module>../plumb-reporter</module>
+    </modules>
+</project>

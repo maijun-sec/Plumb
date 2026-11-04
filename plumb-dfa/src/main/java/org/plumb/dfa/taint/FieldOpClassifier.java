@@ -68,15 +68,20 @@ public final class FieldOpClassifier {
   }
 
   /**
-   * Extract a class name from a {@link TacType}. Returns the FQN-ish {@link TacType#toString()}
-   * (which is what JavaParser returns for user classes) for {@link TacType.Kind#CLASS} types, and
-   * {@code null} for non-class types (primitives, arrays, UNKNOWN). The result keys the per-class
-   * instance-field tracker and the cross-fn {@code "ClassName.field"} map.
+   * Extract a class name from a {@link TacType}. Returns the FQN-ish class name for {@link
+   * TacType.Kind#CLASS} types, and {@code null} for non-class types (primitives, arrays, UNKNOWN).
+   * The result keys the per-class instance-field tracker and the cross-fn {@code "ClassName.field"}
+   * map.
+   *
+   * <p>Uses {@link TacType#displayName()}, not {@link TacType#toString()}. The display form
+   * decorates a non-nullable reference with {@code " (non-null)"}, which is right for a dump and
+   * wrong for a key: the decorated key would not match the undecorated one that the same class
+   * arrives with on another path, and field taint would be lost without a word.
    */
   public static String classNameOfType(TacType t) {
     if (t == null) return null;
     if (t.kind() != TacType.Kind.CLASS) return null;
-    return t.toString();
+    return t.displayName();
   }
 
   /**

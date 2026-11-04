@@ -11,19 +11,22 @@
 # passing a custom YAML to ConfigLoader.
 
 engine:
-  context_depth: 2                    # k-CFA depth (0/1/2/3)
+  context_depth: 2                    # how deep the engine follows a callee (0/1/2/3)
   worklist_max_size: 10000            # max in-flight worklist entries
   z3_timeout_ms: 5000                 # per-query Z3 timeout
-  summary_cache_size: 1000            # per-program summary cache
-  reverse_walk_max_depth: 8           # max depth for ReverseTaintWalker
+  summary_cache_size: 1000            # per-program summary cache; a refused summary is
+                                      # reported as an incomplete analysis, not silently dropped
+  reverse_walk_max_depth: 8           # ACCEPTED FOR COMPATIBILITY, NOT USED: the reverse
+                                      # taint walk it names does not exist. Kept so an
+                                      # existing configuration file still loads.
   pre_scan_enabled: true              # run CrossFunctionConstantPropagation pre-scan
   library_call_classification: true   # treat jdk methods as opaque
   taint_caller_string_concat: true    # include StringBuilder.append in taint propagation
 
 # Path sensitivity:
-#   full     — full CFG path condition
-#   windowed — bounded backward scan (default 8 inst)
-#   none     — no path condition
+#   full     — the source-to-sink path is checked for unreachability
+#   windowed — same as full today; the windowed scan is not implemented
+#   none     — the check is switched off and every finding fires
 path_sensitivity: full
 
 # Reporting:

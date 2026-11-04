@@ -130,6 +130,37 @@ public final class SinkFamilyRegistry {
   }
 
   /**
+   * Return every family that matches the callee signature <b>and</b> applies to the given language.
+   *
+   * <p>This is the language-aware counterpart of {@link #lookupAll(String)}. A family with a
+   * language restriction (say a Kotlin-only {@code kotlin.io.readLine} source) is excluded when the
+   * analysed code is not in that language.
+   *
+   * <p><b>Why this is not simply a filter inside the checker.</b> A checker that watches a family
+   * key would still receive the family and have to decide what to do with it. Deciding at lookup
+   * time means the "does this apply here" question has exactly one answer, in one place.
+   *
+   * <p>The cache is keyed by signature and language together, because the answer differs per
+   * language.
+   */
+  public List<SinkFamily> lookupAll(
+      String calleeSignature, org.plumb.tac.ir.SourceLanguage language) {
+    if (calleeSignature == null) return List.of();
+    if (language == null) return lookupAll(calleeSignature);
+    String key = calleeSignature + "\0" + language.name();
+    List<SinkFamily> cached = lookupAllCache.get(key);
+    if (cached != null) return cached;
+    java.util.ArrayList<SinkFamily> out = new java.util.ArrayList<>();
+    for (SinkFamily f : byName.values()) {
+      if (!f.appliesTo(language)) continue;
+      if (f.matches(calleeSignature, language)) out.add(f);
+    }
+    List<SinkFamily> result = out.isEmpty() ? List.of() : List.copyOf(out);
+    lookupAllCache.put(key, result);
+    return result;
+  }
+
+  /**
    * Look up a family by its short name suffix in a finding key. E.g. "SensitiveDataLeak_sql" →
    * lookup family whose name ends with "sql".
    */

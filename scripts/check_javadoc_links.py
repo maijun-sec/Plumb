@@ -49,6 +49,10 @@ MODULES = [
     "plumb-tac", "plumb-parser", "plumb-reporter",
     # The Kotlin AST rule engine. Its sources are under src/main/kotlin.
     "plumb-dsl-kotlin",
+    # The non-Java source frontends (Kotlin + Scala). Their tests are part of
+    # the product's claims: a documented test class that does not exist is
+    # still a false statement about the code.
+    "plumb-frontend",
     # plumb-build is an aggregator; its sub-modules carry the sources.
     "plumb-build/plumb-build-core",
     "plumb-build/plumb-build-maven",
@@ -77,11 +81,12 @@ JDK_NAMES = {
     "HashMap", "LinkedHashMap", "TreeMap", "HashSet", "LinkedHashSet", "TreeSet",
     "ArrayList", "LinkedList", "ConcurrentHashMap", "ExecutorService", "BiConsumer",
     "Matcher", "Pattern", "LongAdder", "ReentrantLock", "Semaphore", "AtomicInteger",
+    "AtomicLong", "AtomicBoolean",
     "URL", "URI", "Socket", "InputStream", "OutputStream", "Reader", "Writer",
     "Method", "Constructor", "Field", "Annotation", "Enum", "Record",
     "SuppressWarnings", "Deprecated", "Override", "FunctionalInterface", "SafeVarargs",
     "AssertionError", "IllegalMonitorStateException", "ObjectOutputStream",
-    "BufferedOutputStream", "ServiceLoader",
+    "BufferedOutputStream", "ServiceLoader", "OutOfMemoryError",
     "StringBuilder", "StringBuffer", "FileWriter", "FileReader", "OutputStreamWriter",
     "InputStreamReader", "File", "FileInputStream", "FileOutputStream",
     "PrintStream", "PrintWriter", "BufferedReader", "BufferedWriter",

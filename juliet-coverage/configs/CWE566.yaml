@@ -21,6 +21,7 @@ rules:
     - ast-error-catch-generic
     - ast-security-unchecked-return
     - dfa-taint-leak
+    - dfa-taint-database-access
 
 ai:
   enabled: false

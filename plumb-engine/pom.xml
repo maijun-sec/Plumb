@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.plumb</groupId>
+        <artifactId>plumb</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>plumb-engine</artifactId>
+    <packaging>pom</packaging>
+
+    <name>plumb-engine</name>
+    <description>
+        LAYER 2 -- the analysis engine. Everything that turns source into
+        findings lives here:
+
+        - plumb-tac        the language-neutral TAC IR, its builder, the Java
+                          AST translator and the Jimple (bytecode) translator.
+        - plumb-frontend   the non-Java source frontends: Kotlin (Analysis API
+                          Standalone) and Scala 3 (dotc PluginPhase).
+        - plumb-dfa        the dataflow engine: call graph, taint, the checkers
+                          and the YAML rule/sink-family configuration.
+        - plumb-style      the structural and style checkers.
+        - plumb-dsl-kotlin the Kotlin rule DSL.
+        - plumb-ai         the LLM agent layer over the analysis results.
+
+        THE IR IS THE SEAM BETWEEN THE FRONTENDS AND THE ANALYSIS. Every
+        frontend lowers to the same TAC, so the DFA never learns about Kotlin
+        or Scala; and every language-specific behaviour is expressed by the
+        frontend's degradation (a construct becomes BRANCH/CALL/MOVE) and by a
+        rule's language binding, never by a new opcode.
+
+        plumb-frontend is SEPARATE from plumb-tac on purpose. It depends on a
+        compiler's API rather than on a stable published interface -- the Kotlin
+        Analysis API (experimental) and dotc's PluginPhase (compiler-internal).
+        A breaking upstream change in either must not be able to break the
+        Java analysis path, so neither may live in plumb-tac.
+    </description>
+
+    <modules>
+        <module>../plumb-tac</module>
+        <module>../plumb-frontend</module>
+        <module>../plumb-dfa</module>
+        <module>../plumb-style</module>
+        <module>../plumb-dsl-kotlin</module>
+        <module>../plumb-ai</module>
+    </modules>
+</project>

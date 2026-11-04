@@ -92,11 +92,14 @@ class R500JavaTaintCheckersTest {
 
   @Test
   void r503_elInjection() {
+    // Expression injection is ONE defect class: the EL engines and the OGNL
+    // engines are entries in the SAME family's symbol table, so both rules
+    // watch `expression-injection.sinks`.
     assertRule(
         new ElInjectionChecker(),
         "dfa-taint-el-injection",
         "dfa-taint-untrusted-source",
-        "el.sinks",
+        "expression-injection.sinks",
         "CWE-94",
         "CRITICAL");
   }
@@ -107,7 +110,7 @@ class R500JavaTaintCheckersTest {
         new OgnlInjectionChecker(),
         "dfa-taint-ognl-injection",
         "dfa-taint-untrusted-source",
-        "ognl.sinks",
+        "expression-injection.sinks",
         "CWE-94",
         "CRITICAL");
   }

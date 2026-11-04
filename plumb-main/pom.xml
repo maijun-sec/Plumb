@@ -21,11 +21,27 @@
             <groupId>org.plumb</groupId>
             <artifactId>plumb-tac</artifactId>
         </dependency>
+        <!--,
+            The non-Java source frontends (Kotlin, Scala 3).
+
+            This is what makes .kt and .scala files SCANNABLE rather than merely
+            implemented: ScanRunner dispatches each source file to the frontend
+            that claims its extension, and every frontend lowers to the same TAC,
+            so the DFA engine sees one uniform program.
+
+            It is a compile dependency, not an optional one. The frontends are
+            the only way Kotlin and Scala code enters the analysis, so making it
+            optional would mean "the flag exists but does nothing".
+        -->
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-frontend</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.plumb</groupId>
             <artifactId>plumb-dfa</artifactId>
         </dependency>
-        <!--
+        <!--,
             The AST rule engine. Optional at runtime: without it the
             dsl-rules flag is simply unavailable, and the scan is
             unaffected. It is a compile dependency so the CLI can offer
@@ -39,7 +55,7 @@
             <groupId>org.plumb</groupId>
             <artifactId>plumb-build-core</artifactId>
         </dependency>
-        <!-- The transitive-resolution Maven adapter. It registers itself
+        <!--, The transitive-resolution Maven adapter. It registers itself
              through the ServiceLoader, so the CLI can auto-detect it. -->
         <dependency>
             <groupId>org.plumb</groupId>
@@ -77,7 +93,7 @@
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
         </dependency>
-        <!-- R-? — AI dedup client. Uses the JDK
+        <!--, R-? — AI dedup client. Uses the JDK
              java.net.http.HttpClient for the POST and
              Jackson for the request/response JSON. Jackson
              databind is pulled transitively by plumb-rules
@@ -124,6 +140,72 @@
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <shadedArtifactAttached>true</shadedArtifactAttached>
                             <shadedClassifierName>all</shadedClassifierName>
+                            <!--,
+                              THE KOTLIN SCRIPTING CLASS COLLISION.
+
+                              The Analysis API's implementation jar bundles a whole
+                              Kotlin scripting stack (302 classes under
+                              org/jetbrains/kotlin/scripting) that the ANALYSIS
+                              path never uses: none of the eight analysis-api
+                              jars references any of those classes.
+
+                              But the DSL rule engine (plumb-dsl-kotlin) runs on
+                              the Kotlin 2.2.0 script engine, and 127 of those
+                              classes collide by name. One of them,
+                              CompilationContextKt.createIsolatedCompilationContext$default,
+                              differs ONLY in one parameter type:
+
+                                2.2.0   org.jetbrains.kotlin.com.intellij...Disposable
+                                2.5.0   com.intellij...Disposable
+
+                              Same name, same arity, different type, so the
+                              caller's descriptor does not match the callee's and
+                              the DSL engine dies with NoSuchMethodError. Because
+                              the failure is a "rule failed to compile" WARNING
+                              and not a crash, the DSL rules silently stop
+                              matching while every other rule keeps working.
+
+                              THE SHADED JAR IS NOT WHERE THIS IS SOLVED. It is
+                              solved in the CLASSLOADER: the script engine runs
+                              in its own loader that owns the Kotlin compiler
+                              packages and serves their RESOURCES from its own
+                              jars too. See ScriptEngineClassLoader in
+                              plumb-dsl-kotlin.
+
+                              What this shade configuration must therefore do is
+                              keep the two stacks' RESOURCES apart, because the
+                              compiler's IntelliJ platform finds its extension
+                              points by reading META-INF/extensions/compiler.xml
+                              out of whichever jar the resource resolves to. The
+                              Analysis API's copy of that file has no <id>, and
+                              reading it makes the script engine fail to start
+                              with "Neither id nor name are specified".
+
+                              So: the Analysis API's copy of the compiler's
+                              extension-point descriptors is removed here, and
+                              the script engine's own copy survives. The
+                              analysis path does not use them.
+                            -->
+                            <filters>
+                                <filter>
+                                    <artifact>org.jetbrains.kotlin:kotlin-analysis-api-implementation</artifact>
+                                    <excludes>
+                                        <exclude>org/jetbrains/kotlin/scripting/**</exclude>
+                                        <exclude>kotlin/script/**</exclude>
+                                        <!--,
+                                          The IntelliJ plugin descriptor the Kotlin
+                                          compiler reads at start-up. The Analysis
+                                          API's copy has no <id> and no <name>, so
+                                          the plugin loader throws "Neither id nor
+                                          name are specified" and the script engine
+                                          cannot initialise its REPL. The script
+                                          engine's own copy has an <id> and lives in
+                                          kotlin-compiler-embeddable.
+                                        -->
+                                        <exclude>META-INF/extensions/**</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>org.plumb.main.SastMain</mainClass>

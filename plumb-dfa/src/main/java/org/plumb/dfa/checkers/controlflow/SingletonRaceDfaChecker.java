@@ -21,7 +21,6 @@
  */
 package org.plumb.dfa.checkers.controlflow;
 
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -84,17 +83,29 @@ public final class SingletonRaceDfaChecker implements DfaChecker {
           "org.springframework.stereotype.Controller",
           "org.springframework.web.bind.annotation.RestController");
 
-  /** class → set of non-final, non-volatile field names. */
-  private final Map<String, Set<String>> classFields = new HashMap<>();
+  /**
+   * The shared maps for this checker's whole-program facts.
+   *
+   * <p>They are in the context, not in this instance, because a parallel run gives every worker its
+   * own checker instance -- and the race this checker reports is between TWO methods. An instance
+   * field would only ever hold the facts this worker's own slice produced, so the pair would never
+   * both be present and the finding would silently never be emitted.
+   */
+  private Map<String, Set<String>> classFields(AnalysisContext ctx) {
+    return ctx.programFacts().sharedMap("singleton-race-dfa.classFields");
+  }
 
-  /** class → set of methods (signatures) in the class. */
-  private final Map<String, Set<String>> classMethods = new HashMap<>();
+  private Map<String, Set<String>> classMethods(AnalysisContext ctx) {
+    return ctx.programFacts().sharedMap("singleton-race-dfa.classMethods");
+  }
 
-  /** (class, field) → set of method signatures that read it. */
-  private final Map<String, Set<String>> fieldReaders = new HashMap<>();
+  private Map<String, Set<String>> fieldReaders(AnalysisContext ctx) {
+    return ctx.programFacts().sharedMap("singleton-race-dfa.fieldReaders");
+  }
 
-  /** (class, field) → set of method signatures that write it. */
-  private final Map<String, Set<String>> fieldWriters = new HashMap<>();
+  private Map<String, Set<String>> fieldWriters(AnalysisContext ctx) {
+    return ctx.programFacts().sharedMap("singleton-race-dfa.fieldWriters");
+  }
 
   @Override
   public String name() {
@@ -166,8 +177,12 @@ public final class SingletonRaceDfaChecker implements DfaChecker {
         fields.add(name);
       }
     }
-    classFields.computeIfAbsent(cls, k -> new LinkedHashSet<>()).addAll(fields);
-    classMethods.computeIfAbsent(cls, k -> new LinkedHashSet<>()).add(fn.signature());
+    classFields(ctx)
+        .computeIfAbsent(cls, k -> java.util.concurrent.ConcurrentHashMap.newKeySet())
+        .addAll(fields);
+    classMethods(ctx)
+        .computeIfAbsent(cls, k -> java.util.concurrent.ConcurrentHashMap.newKeySet())
+        .add(fn.signature());
     // Cache the aggressiveness from the
     // YAML config so the hot path doesn't
     // re-query the config map. Test-only
@@ -183,17 +198,19 @@ public final class SingletonRaceDfaChecker implements DfaChecker {
     if (ins.kind == TacInstruction.Kind.FIELDLOAD
         && ins.fieldName != null
         && isThisReceiver(ins.lhs1)
-        && classFields.getOrDefault(cls, Set.of()).contains(ins.fieldName)) {
-      fieldReaders
-          .computeIfAbsent(cls + "::" + ins.fieldName, k -> new LinkedHashSet<>())
+        && classFields(ctx).getOrDefault(cls, Set.of()).contains(ins.fieldName)) {
+      fieldReaders(ctx)
+          .computeIfAbsent(
+              cls + "::" + ins.fieldName, k -> java.util.concurrent.ConcurrentHashMap.newKeySet())
           .add(fn.signature());
     }
     if (ins.kind == TacInstruction.Kind.FIELDSTORE
         && ins.fieldName != null
         && isThisReceiver(ins.lhs1)
-        && classFields.getOrDefault(cls, Set.of()).contains(ins.fieldName)) {
-      fieldWriters
-          .computeIfAbsent(cls + "::" + ins.fieldName, k -> new LinkedHashSet<>())
+        && classFields(ctx).getOrDefault(cls, Set.of()).contains(ins.fieldName)) {
+      fieldWriters(ctx)
+          .computeIfAbsent(
+              cls + "::" + ins.fieldName, k -> java.util.concurrent.ConcurrentHashMap.newKeySet())
           .add(fn.signature());
     }
     // Compound assignment: x += ... also counts as
@@ -222,6 +239,8 @@ public final class SingletonRaceDfaChecker implements DfaChecker {
     if ("low".equals(aggressiveness)) return;
     // For each (class, field), fire if read AND
     // written by different methods.
+    Map<String, Set<String>> fieldReaders = fieldReaders(ctx);
+    Map<String, Set<String>> fieldWriters = fieldWriters(ctx);
     for (String key : fieldReaders.keySet()) {
       Set<String> reads = fieldReaders.get(key);
       Set<String> writes = fieldWriters.getOrDefault(key, Set.of());

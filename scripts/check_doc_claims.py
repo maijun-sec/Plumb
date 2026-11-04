@@ -580,7 +580,10 @@ def check_maven_profiles(doc, failures):
         text = pom.read_text(encoding="utf-8", errors="replace")
         for m in re.finditer(r"<profile>\s*(?:<!--.*?-->\s*)*<id>([^<]+)</id>", text, re.S):
             profiles.add(m.group(1).strip())
-    for m in re.finditer(r"-P([A-Za-z0-9_\-]+)", doc.text):
+    # A Maven profile flag is a command-line token: it starts a word.
+    # The looser pattern also matched the "-P" in "False-Positive" and
+    # "Dual-Path", which are ordinary hyphenated words.
+    for m in re.finditer(r"(?<![A-Za-z0-9])-P([A-Za-z0-9_\-]+)", doc.text):
         name = m.group(1)
         if name in profiles:
             continue

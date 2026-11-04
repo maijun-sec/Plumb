@@ -53,7 +53,21 @@ public final class MergedProgram implements java.io.Serializable {
   private final List<TacProgram> sources;
   private final Map<String, TacFunction> functions = new LinkedHashMap<>();
   private final Map<String, String> lambdaBindings = new java.util.HashMap<>();
-  private final Map<String, Path> functionSourcePath = new java.util.HashMap<>();
+
+  /**
+   * The source path of each function, keyed by its merged key.
+   *
+   * <p><b>Why the paths are stored as strings.</b> {@link Path} does not implement {@link
+   * java.io.Serializable} on any JDK we target -- {@code sun.nio.fs.WindowsPath} throws {@code
+   * NotSerializableException}. So the map is written out as a {@code Map<String, String>} and the
+   * paths are restored via {@link Path#of(String, String...)}.
+   *
+   * <p>Without this, the merged program -- the thing that holds a whole project's IR -- could not
+   * be written to disk at all. That breaks the front/back split: the merged IR is exactly the
+   * artefact a producer hands to a consumer.
+   */
+  private final Map<String, String> functionSourcePath = new java.util.HashMap<>();
+
   // Reverse index from a function's bare signature
   // (e.g. "action(String):void") to its merged key (e.g.
   // "CWE78_81_bad :: action(String):void"). The engine
@@ -104,7 +118,7 @@ public final class MergedProgram implements java.io.Serializable {
       for (TacFunction fn : src.functions()) {
         String key = mergedKey(fn);
         functions.put(key, fn);
-        functionSourcePath.put(key, src.sourcePath());
+        functionSourcePath.put(key, src.sourcePath() == null ? null : src.sourcePath().toString());
         // First-write-wins for the signature → merged
         // key reverse index. Insertion order is
         // deterministic (rebuild iterates sources in
@@ -151,11 +165,12 @@ public final class MergedProgram implements java.io.Serializable {
     // merged key (enclosingClass + signature). Look up the
     // signature first, then fall back to the reverse
     // signature → merged key index that rebuild() built.
-    Path p = functionSourcePath.get(functionSig);
-    if (p != null) return p;
+    String p = functionSourcePath.get(functionSig);
+    if (p != null) return Path.of(p);
     String mergedKey = signatureToMergedKey.get(functionSig);
     if (mergedKey != null) {
-      return functionSourcePath.get(mergedKey);
+      String m = functionSourcePath.get(mergedKey);
+      return m == null ? null : Path.of(m);
     }
     return null;
   }
@@ -238,8 +253,13 @@ public final class MergedProgram implements java.io.Serializable {
    * function (e.g. {@code bad()} in 81a) the key is just the signature. Two functions with the same
    * signature but different enclosing classes (e.g. {@code CWE78_81_bad.action(String):void} and
    * {@code CWE78_81_goodG2B.action(String):void}) therefore keep separate entries.
+   *
+   * <p>Public because the engine's parallel worklist has to address a function the same way the
+   * merged view does. Keying the worklist by the bare signature instead would collapse the two
+   * variants into one work item, and looking a function up by the bare signature would not find it
+   * at all -- the merged stub is keyed by THIS key.
    */
-  private static String mergedKey(final TacFunction fn) {
+  public static String mergedKey(final TacFunction fn) {
     if (fn.enclosingClass() == null || fn.enclosingClass().isEmpty()) {
       return fn.signature();
     }

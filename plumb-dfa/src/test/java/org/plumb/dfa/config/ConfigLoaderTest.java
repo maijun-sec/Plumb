@@ -47,21 +47,58 @@ class ConfigLoaderTest {
   @Test
   void sinkFamilies_loadSqlLdapCommandEtc() {
     EngineConfig cfg = ConfigLoader.loadFromClasspath();
-    // SQL: java.sql.Statement.execute/1
-    var sql = cfg.sinkFamilies().lookup("java.sql.Statement.execute/1");
+    // SQL: java.sql.Statement.execute/1.
+    //
+    // The family is looked up BY NAME, not by the first matching family: the
+    // same call site now reaches TWO families -- sql.sinks (CWE-89) and
+    // database-access.sinks (CWE-566) -- and which one `lookup` returns depends
+    // on the registration order.
+    var sql = cfg.sinkFamilies().byName("sql.sinks");
     assertThat(sql).isPresent();
-    assertThat(sql.get().cwe()).isEqualTo("CWE-89");
+    // The SQL family is CWE-89 -- SQL injection proper, where the value CHANGES
+    // the statement.
+    //
+    // It used to also carry CWE-566, because the rule-pack conversion mapped the
+    // "Access Control / Database" rules onto this family and the merge took the
+    // CWE union. That was a category error: CWE-566 is a DIFFERENT defect class
+    // (tainted data reaching the database at all, including as a BOUND PARAMETER,
+    // where it cannot change the statement), and it has its own family now --
+    // `database-access.sinks`. See DatabaseAccessChecker for the full argument.
+    assertThat(sql.get().cwe()).contains("CWE-89");
+    assertThat(sql.get().cwe())
+        .as("CWE-566 belongs to its own family -- see database-access.sinks")
+        .doesNotContain("CWE-566");
     assertThat(sql.get().severityLabel()).isEqualTo("CRITICAL");
+
+    // The database-access family is the CWE-566 half of the same API surface.
+    var db = cfg.sinkFamilies().byName("database-access.sinks");
+    assertThat(db).isPresent();
+    assertThat(db.get().cwe()).contains("CWE-566");
+    // And the call site really does reach both families.
+    assertThat(cfg.sinkFamilies().lookupAll("java.sql.Statement.execute/1"))
+        .as("the same call is both SQL injection and database access")
+        .extracting(SinkFamily::name)
+        .contains("sql.sinks", "database-access.sinks");
 
     // LDAP
     var ldap = cfg.sinkFamilies().lookup("javax.naming.ldap.LdapContext.search/1");
     assertThat(ldap).isPresent();
-    assertThat(ldap.get().cwe()).isEqualTo("CWE-90");
+    // The family carries EVERY CWE the defect class is named by. CWE-90 is
+    // the hand-written id (LDAP injection); the converted rules also
+    // mark the family CWE-20 (improper input validation) and CWE-639
+    // (authorization bypass through an LDAP key), and the merge keeps the
+    // union so no number is lost.
+    assertThat(ldap.get().cwe()).contains("CWE-90");
+    assertThat(ldap.get().cwe()).contains("CWE-20");
+    assertThat(ldap.get().cwe()).contains("CWE-639");
 
     // Command
     var cmd = cfg.sinkFamilies().lookup("java.lang.Runtime.exec/1");
     assertThat(cmd).isPresent();
-    assertThat(cmd.get().cwe()).isEqualTo("CWE-78");
+    // CWE-78 is the hand-written id; the converted rules also name the family
+    // CWE-77 (command injection through a shell). The merge keeps the union.
+    assertThat(cmd.get().cwe()).contains("CWE-78");
+    assertThat(cmd.get().cwe()).contains("CWE-77");
   }
 
   @Test

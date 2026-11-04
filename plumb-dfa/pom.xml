@@ -70,6 +70,20 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+          The Kotlin and Scala frontends, for the end-to-end tests that prove the DFA
+          consumes a Kotlin / Scala function's TAC, in particular that a Kotlin non-null
+          declared type suppresses a null-dereference finding.
+
+          Test scope only. The production dependency direction is unchanged: the
+          DFA does not depend on any frontend, and the frontend does not depend
+          on the DFA. This is the consumer's test, so it lives with the consumer.
+        -->
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-frontend</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
@@ -114,7 +128,25 @@
                         <include>org/plumb/dfa/engine/R804FollowupFidelityGateTest.java</include>
                         <include>org/plumb/dfa/checkers/taint/R500JavaTaintCheckersTest.java</include>
                         <include>org/plumb/dfa/checkers/taint/R580P1TaintCheckersTest.java</include>
+                        <!-- R1201: the three false positives the corpus
+                             grew (the tainted STREAM, the tainted
+                             FORMAT ARGUMENT, the tainted String
+                             RETURN), plus the disjunction's false
+                             edge. Each one is paired with the shape
+                             that must still be reported. -->
+                        <include>org/plumb/dfa/checkers/taint/PrecisionRegressionTest.java</include>
+                        <!-- The parallel worklist must find exactly what
+                             the sequential one finds. Without this the
+                             per-thread fact bag is an untested claim. -->
+                        <include>org/plumb/dfa/engine/ParallelAnalysisConsistencyTest.java</include>
+                        <!-- The module boundary: what is read, what is reported, and
+                             what the report says about what it did not look at. -->
+                        <include>org/plumb/dfa/engine/ModuleScopeTest.java</include>
                         <include>org/plumb/dfa/config/ConfigLoaderTest.java</include>
+                        <!-- The language filter is a LOAD-TIME filter: the families,
+                             patterns and checkers of the languages that were not
+                             selected must never be registered. -->
+                        <include>org/plumb/dfa/config/LanguageFilterTest.java</include>
                         <include>org/plumb/dfa/taint/InputSourcePatternsTest.java</include>
                         <include>org/plumb/dfa/taint/TaintDomainTest.java</include>
                         <include>org/plumb/dfa/taint/GuardTrackerTest.java</include>
@@ -145,6 +177,10 @@
                         <!-- R1099: virtual dispatch must respect
                              parameter types, not just name+arity. -->
                         <include>org/plumb/dfa/cg/R1099DispatchParamTypeTest.java</include>
+                        <!-- The callee key is a shared convention: one
+                             canonical form for every frontend, so a
+                             cross-language call can find its callee. -->
+                        <include>org/plumb/dfa/cg/CalleeKeyNormalizerTest.java</include>
                         <!-- R1099: Math.min / Math.max must narrow the
                              range domain like the equivalent guard. -->
                         <include>org/plumb/dfa/checkers/boundary/R1099MathClampRangeTest.java</include>
@@ -318,6 +354,75 @@
                         <include>org/plumb/dfa/summary/R32FunctionSummaryEnhancementTest.java</include>
                         <include>org/plumb/dfa/taint/FrameworkFieldBindingSourceTest.java</include>
                         <include>org/plumb/dfa/translate/R259JavaIntLiteralTest.java</include>
+
+                        <!-- The DFA consumes a Kotlin function's TAC. The
+                             frontend's own tests prove it produces the right
+                             TAC; this one proves the engine reads it, and that
+                             the nullability the Kotlin frontend uniquely
+                             contributes reaches the checker that consumes it. -->
+                        <include>org/plumb/dfa/integration/KotlinDfaIntegrationTest.java</include>
+                        <!-- The Scala frontend's counterpart. The frontend's own
+                             tests prove it produces the right TAC; this one proves
+                             the engine reads it, and that the language and
+                             precision markers the Scala frontend sets reach the
+                             checkers that consume them. -->
+                        <include>org/plumb/dfa/integration/ScalaDfaIntegrationTest.java</include>
+
+                        <!-- The multi-language IR contract and the language gate.
+                             These pin the rules the Kotlin and Scala frontends
+                             depend on: that a language-restricted sink family
+                             is honoured at lookup time, that a rule can be
+                             restricted to a language, and that the engine's
+                             language gate skips a checker in BOTH the analysis
+                             loop and the summary loop. -->
+                        <include>org/plumb/dfa/checkers/taint/GapRuleCheckersTest.java</include>
+                        <!-- The CWE-89 / CWE-566 split: SQL injection and database access
+                             are DIFFERENT defect classes, and a bound parameter is not a
+                             SQL injection. -->
+                        <include>org/plumb/dfa/checkers/taint/DatabaseAccessSplitTest.java</include>
+                        <include>org/plumb/dfa/config/SinkFamilyLanguageTest.java</include>
+                        <include>org/plumb/dfa/config/SinkMatchPrecisionTest.java</include>
+                        <!-- A sink pattern can name SEVERAL argument positions as
+                             carrying the taint; the old one-index model dropped
+                             one of them silently. -->
+                        <include>org/plumb/dfa/config/MultiArgIndexTest.java</include>
+                        <include>org/plumb/dfa/config/LanguageFamilyConsolidationTest.java</include>
+                        <include>org/plumb/dfa/config/LanguageRuleSetTest.java</include>
+                        <include>org/plumb/dfa/engine/DfaLanguageGateTest.java</include>
+                        <include>org/plumb/dfa/engine/AnalysisBudgetTest.java</include>
+                        <include>org/plumb/dfa/solver/TimeBoundedSolverBridgeTest.java</include>
+                        <include>org/plumb/dfa/semantics/LanguageSemanticsTest.java</include>
+                        <include>org/plumb/dfa/config/FactKindInterningTest.java</include>
+
+                        <!-- The front/back split: source in, IR out, IR in, findings
+                             out. This proves the IR is a real contract: everything
+                             the analysis needs travels with it, so a consumer can
+                             scan an IR with no source and no classpath. It also
+                             pins that the problems (the recorded gaps) survive the
+                             round-trip, so a consumer can see the analysis was
+                             incomplete. -->
+                        <include>org/plumb/dfa/integration/IrRoundTripAnalysisTest.java</include>
+                        <!-- The source-reading boundary: registering source paths
+                             is metadata only, and the resolver root is capped.
+                             Without this the consumer path silently walks a whole
+                             filesystem tree. -->
+                        <include>org/plumb/dfa/engine/StaticFieldResolverBoundaryTest.java</include>
+                        <!-- The path-condition verification and the
+                             path_sensitivity switch that governs it. The
+                             mechanism was inert: the hook had no override, so
+                             the solver was never consulted for a taint path
+                             and the setting decided nothing. The negative
+                             cases matter as much as the positive one: a
+                             filter that suppressed everything would look like
+                             a clean scan. -->
+                        <include>org/plumb/dfa/engine/PathConditionVerificationTest.java</include>
+                        <!-- The two engine settings that used to be read by
+                             nobody: context_depth and summary_cache_size.
+                             Both were declared in the configuration and
+                             consulted by no analysis code, so setting them
+                             and measuring the result measured the
+                             default. -->
+                        <include>org/plumb/dfa/engine/EngineSettingHonestyTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

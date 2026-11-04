@@ -110,10 +110,21 @@ MUTANTS = [
      False),
 
     # --- the name comes back into the rule configuration -------------
+    #
+    # The anchor is the heading that introduces the CONVERTED families,
+    # not the first "families:" in the file -- that one sits inside the
+    # header comment, so matching it would plant the name in a comment
+    # instead of in the configuration, and the gate would report the
+    # wrong thing.
+    #
+    # The heading used to be a provenance marker; it is now a plain
+    # description of what the block is, because the tracked file must
+    # not name the tool the rules came from. The anchor follows.
     ("vendor-name-in-a-rule-configuration",
      CONFIG,
-     "families:\n  #",
-     "families:\n  # the families were shaped like Coverity's catalogue\n  #",
+     "  # ----- sink families for public library APIs -----",
+     "  # ----- sink families for public library APIs -----\n"
+     "  # the families were shaped like Coverity's catalogue",
      False),
 
     # --- the name comes back into ordinary prose ---------------------

@@ -40,7 +40,7 @@ public final class ElInjectionChecker extends TaintedCheckerBase {
         new TaintRule(
             "dfa-taint-el-injection",
             "dfa-taint-untrusted-source",
-            "el.sinks",
+            "expression-injection.sinks",
             "CWE-94",
             "CRITICAL",
             (TaintDomain) TaintDomain.StringTaint.INSTANCE));

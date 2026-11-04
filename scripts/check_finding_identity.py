@@ -158,25 +158,55 @@ def main() -> int:
     runner_source = SCAN_RUNNER.read_text(encoding="utf-8")
     body = verdict_method_body(runner_source)
 
-    if "f.sinkFunction()" not in body:
-        failures.append(
-            "the method that attaches a verdict to a finding does not carry the "
-            "finding's sink_function, so every finding that goes through the AI "
-            "pass loses the field that names where its flow ends"
-        )
-    if "f.file()" not in body:
-        failures.append(
-            "the method that attaches a verdict to a finding does not carry the "
-            "finding's file, so every finding that goes through the AI pass loses "
-            "its location"
-        )
-    for field in ("f.rule()", "f.message()", "f.severity()",
-                  "f.dataflowHead()", "f.dataflowSteps()"):
-        if field not in body:
+    # THE DELEGATION FORM IS ACCEPTED, AND IT IS THE STRONGER ONE.
+    #
+    # The property this gate exists for is "attaching a verdict changes NOTHING
+    # but the verdict". There are two ways to express it:
+    #
+    #   1. rebuild the finding field by field -- which is what this gate used
+    #      to require, and which is EXACTLY how the field was lost: the
+    #      ten-argument Finding constructor hardcodes sink_function to null, so
+    #      every finding that went through the AI pass came out with the field
+    #      gone, and the NDJSON emitter only writes sink_function when it is
+    #      non-null, so it silently vanished from the report;
+    #
+    #   2. delegate to the record's own copy method -- f.withAiVerdict(v, r)
+    #      -- which copies EVERY field, including the ones this gate lists and
+    #      the ones it does not (the v2 trace, the checker name, the cwe).
+    #
+    # The second cannot drift: a field added to Finding later is carried by
+    # default, not by remembering to add it to a constructor call. So the gate
+    # accepts the delegation as satisfying the invariant, and checks the
+    # field-by-field form only when that is the form in use.
+    delegated = re.search(r"\.\s*withAiVerdict\s*\(", body)
+
+    if delegated:
+        # The delegation must actually pass the verdict and the reason through.
+        if "verdict" not in body or "reason" not in body:
             failures.append(
-                "the method that attaches a verdict to a finding does not carry "
-                "the finding's %s" % field
+                "the method that attaches a verdict to a finding delegates to the "
+                "record's copy method but does not pass the verdict and the "
+                "reason through"
             )
+    else:
+        if "f.sinkFunction()" not in body:
+            failures.append(
+                "the method that attaches a verdict to a finding does not carry the "
+                "finding's sink_function, so every finding that goes through the AI "
+                "pass loses the field that names where its flow ends"
+            )
+        if "f.file()" not in body:
+            failures.append(
+                "the method that attaches a verdict to a finding does not carry the "
+                "finding's file, so every finding that goes through the AI pass loses "
+                "its location"
+            )
+        for field in ("f.rule()", "f.message()", "f.severity()",
+                      "f.dataflowHead()", "f.dataflowSteps()"):
+            if field not in body:
+                failures.append(
+                    "the method that attaches a verdict to a finding does not carry "
+                    "the finding's %s" % field)
 
     # The verdict itself must be carried, or the pass does nothing at all.
     if "verdict" not in body or "reason" not in body:

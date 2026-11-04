@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import shutil
 import subprocess
@@ -58,19 +59,39 @@ MUTANTS = [
 ]
 
 
+
+
+def maven_command(*extra_args):
+    """The Maven command line this machine can actually resolve against.
+
+    The default Maven settings point at a mirror this machine's artifacts were
+    not fetched from, and the default local repository is not the one holding
+    them. Without these overrides the harness fails to resolve its OWN
+    dependencies and reports "the tests do not pass before any mutation" --
+    which reads like a product defect and is not one.
+    """
+    cmd = [os.environ.get("PLUMB_MAVEN", "mvn.cmd")]
+    settings = os.environ.get("PLUMB_MAVEN_SETTINGS", r"D:\cache\m2-central-settings.xml")
+    if settings and pathlib.Path(settings).is_file():
+        cmd += ["-s", settings]
+    cmd += ["-Dmaven.repo.local=" + os.environ.get("PLUMB_MAVEN_REPO", r"D:\cache\mvn_repo")]
+    cmd += list(extra_args)
+    return cmd
+
+
+
 def run_tests() -> bool:
     """Run the deserialization filter tests. True when they pass."""
     result = subprocess.run(
-        [
-            "mvn.cmd",
+        maven_command(
             "-o",
             "-q",
             "-pl",
             "plumb-dfa",
             "test",
             "-Dtest=DeserializationFilterTest",
-            "-DfailIfNoTests=false",
-        ],
+            "-Dsurefire.failIfNoSpecifiedTests=false",
+        ),
         cwd=REPO,
         capture_output=True,
         text=True,

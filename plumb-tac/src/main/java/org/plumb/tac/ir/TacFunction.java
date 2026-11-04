@@ -89,6 +89,30 @@ public final class TacFunction implements java.io.Serializable {
   // {@code TuningConfig.analysedOrigins} to decide whether
   // to run a checker on this function.
   private final SourceOrigin origin;
+  // The language this function was written in. Default JAVA, because every
+  // pre-existing frontend produces Java. A checker consults this to decide
+  // whether a language-specific rule applies (e.g. a Kotlin-only sink) and
+  // whether a language-specific false positive can be suppressed.
+  //
+  // Directional rule: this may SELECT a rule or SUPPRESS a finding. It must
+  // never be used to PROVE that code is safe.
+  private final SourceLanguage sourceLanguage;
+  // The module this function belongs to: the id of the source root it was read from.
+  //
+  // It is what makes a single-module analysis expressible. The engine reports findings for the
+  // functions of the SELECTED module, and reads the other modules' functions to keep the call
+  // graph whole -- a callee in a dependency module still has to resolve, or the edge across the
+  // module boundary disappears and the taint never crosses it.
+  //
+  // Null means "no module boundary": a single-file scan, or the bytecode path.
+  private final String module;
+  // How much of the original source semantics survived the lowering. Default
+  // SOURCE_FULL. A checker consults this before trusting a precision-dependent
+  // fact (e.g. "this value is non-null because the type system says so").
+  //
+  // Directional rule: precision may SUPPRESS a false positive. It must never be
+  // used to PROVE safety -- see IrPrecision's javadoc for why.
+  private final IrPrecision irPrecision;
   // Annotation metadata. Class / method annotations are
   // captured as a flat list of simple names; field annotations
   // are a name-keyed map; parameter annotations use the same
@@ -100,6 +124,35 @@ public final class TacFunction implements java.io.Serializable {
   private final List<String> methodAnnotations;
   private final Map<String, List<String>> fieldAnnotations;
   private final Map<String, List<String>> paramAnnotations;
+
+  /**
+   * The VALUES carried by this function's annotations, keyed by the annotation's simple name.
+   *
+   * <p><b>Why the names alone are not enough.</b> The annotation <i>name</i> says WHAT is declared;
+   * the annotation <i>value</i> says what it says. {@code @Value("${app.password}")} and
+   * {@code @Value("${app.username}")} are the same annotation by name and completely different
+   * facts. {@code @PreAuthorize("hasRole('ADMIN')")} names a role. A checker that can only see the
+   * name cannot answer "does this endpoint require the ADMIN role?" -- it can only answer "is this
+   * endpoint annotated with PreAuthorize?", which is a much weaker question, and the weaker
+   * question is easy to get wrong in both directions.
+   *
+   * <p><b>What a value looks like.</b> A string literal is the value itself. An array literal
+   * ({@code @SuppressWarnings({"a", "b"})}) contributes each element. A nested annotation
+   * ({@code @Foo(@Bar("x"))}) contributes the inner annotation's own values, flattened with a
+   * dotted prefix. A value that is not a compile-time constant (an array of enum constants, a class
+   * literal) contributes its textual form, so the key exists and the consumer can tell that a value
+   * was present but not statically resolved.
+   *
+   * <p><b>Directional rule.</b> Like the annotation names, this is METADATA. It can enable a
+   * checker to suppress a false positive, or let a checker recognise a role. It must never be used
+   * to prove that the program is safe: the value came from the source text, not from a runtime
+   * observation.
+   *
+   * <p>Empty map when the function carries no annotation with a value. The key is the annotation's
+   * simple name, matching {@link #classAnnotations()} and {@link #methodAnnotations()}.
+   */
+  private final Map<String, List<String>> annotationValues;
+
   // Try / catch / finally regions. Each region carries the
   // range of instruction indices that the try block covers, the
   // range covered by the catch handlers (catches; their rethrow
@@ -116,6 +169,25 @@ public final class TacFunction implements java.io.Serializable {
   // paths so taint / null facts propagate through catch handlers
   // instead of being silently dropped when a throw fires.
   private final List<TryRegion> tryRegions;
+  // Whether the COMPILER generated this function rather than the programmer
+  // writing it.
+  //
+  // This is the IR-level statement of "synthetic". It exists because a
+  // compiler-synthesized method has no source location and no author intent:
+  //
+  //   - Java record accessors (the `x()` of `record Point(int x)`)
+  //   - Kotlin data class `componentN` / `copy` / `copy$default`
+  //   - Scala case class `copy` / `apply` / `unapply`
+  //
+  // A checker that reports "this method is never called" must not report it for a
+  // synthetic method: nobody wrote it, and nobody is expected to call it. The
+  // bytecode path can only guess this from naming conventions (`componentN`,
+  // `$default`, `access$`), which is fragile; the SOURCE path knows it exactly.
+  //
+  // Directional rule: this may SUPPRESS a finding about a synthetic method. It
+  // must never be used to PROVE that a call is safe -- a synthetic method is
+  // still a real method that a real call can reach.
+  private final boolean synthetic;
 
   public TacFunction(
       String name,
@@ -291,9 +363,238 @@ public final class TacFunction implements java.io.Serializable {
         fieldAnnotations == null ? Map.of() : Collections.unmodifiableMap(fieldAnnotations);
     this.paramAnnotations =
         paramAnnotations == null ? Map.of() : Collections.unmodifiableMap(paramAnnotations);
+    this.annotationValues = Map.of();
     this.enclosingClass = enclosingClass;
     this.origin = origin == null ? SourceOrigin.SOURCE : origin;
     this.tryRegions = tryRegions == null ? List.of() : List.copyOf(tryRegions);
+    this.sourceLanguage = SourceLanguage.JAVA;
+    this.irPrecision = IrPrecision.SOURCE_FULL;
+    this.synthetic = false;
+    this.module = null;
+  }
+
+  /**
+   * Full constructor including the language and precision dimensions.
+   *
+   * <p>The two new fields default to {@link SourceLanguage#JAVA} and {@link
+   * IrPrecision#SOURCE_FULL} in the older constructor, so existing callers keep their exact
+   * behaviour and the default Java analysis is unchanged.
+   */
+  public TacFunction(
+      String name,
+      String signature,
+      TacType returnType,
+      List<TacOperand.TacVar> params,
+      List<TacOperand.TacVar> locals,
+      List<TacInstruction> instructions,
+      List<String> classAnnotations,
+      List<String> methodAnnotations,
+      Map<String, List<String>> fieldAnnotations,
+      Map<String, List<String>> paramAnnotations,
+      String enclosingClass,
+      SourceOrigin origin,
+      List<TryRegion> tryRegions,
+      SourceLanguage sourceLanguage,
+      IrPrecision irPrecision) {
+    this(
+        name,
+        signature,
+        returnType,
+        params,
+        locals,
+        instructions,
+        classAnnotations,
+        methodAnnotations,
+        fieldAnnotations,
+        paramAnnotations,
+        enclosingClass,
+        origin,
+        tryRegions,
+        sourceLanguage,
+        irPrecision,
+        false,
+        Map.of());
+  }
+
+  /**
+   * The full constructor, including the synthetic flag.
+   *
+   * <p>Every other constructor delegates here with {@code synthetic = false}, so a hand-written
+   * method is never mistaken for a compiler-generated one. The source frontends that CAN know the
+   * difference (Java records, Kotlin data classes, Scala case classes) pass {@code true}.
+   *
+   * <p>The annotation VALUES are empty here. Use {@link #TacFunction(String, String, TacType, List,
+   * List, List, List, List, Map, Map, String, SourceOrigin, List, SourceLanguage, IrPrecision,
+   * boolean, Map)} to supply them.
+   */
+  public TacFunction(
+      String name,
+      String signature,
+      TacType returnType,
+      List<TacOperand.TacVar> params,
+      List<TacOperand.TacVar> locals,
+      List<TacInstruction> instructions,
+      List<String> classAnnotations,
+      List<String> methodAnnotations,
+      Map<String, List<String>> fieldAnnotations,
+      Map<String, List<String>> paramAnnotations,
+      String enclosingClass,
+      SourceOrigin origin,
+      List<TryRegion> tryRegions,
+      SourceLanguage sourceLanguage,
+      IrPrecision irPrecision,
+      boolean synthetic) {
+    this(
+        name,
+        signature,
+        returnType,
+        params,
+        locals,
+        instructions,
+        classAnnotations,
+        methodAnnotations,
+        fieldAnnotations,
+        paramAnnotations,
+        enclosingClass,
+        origin,
+        tryRegions,
+        sourceLanguage,
+        irPrecision,
+        synthetic,
+        Map.of());
+  }
+
+  /**
+   * The full constructor, including the annotation VALUES.
+   *
+   * <p>This is the one a source frontend uses: it is the only way to record what an annotation
+   * SAYS, not just which annotation it is. The shorter overloads above all end with an empty value
+   * map, so a caller that has no annotation values is unaffected.
+   *
+   * <p>The values map comes LAST on purpose. Every other constructor in this class was published
+   * before the values channel existed, and their parameter lists are load-bearing for existing call
+   * sites. Putting the new parameter at the end keeps every existing signature byte-for-byte intact
+   * -- inserting it in the middle would have silently changed which overload a call site binds to.
+   */
+  public TacFunction(
+      String name,
+      String signature,
+      TacType returnType,
+      List<TacOperand.TacVar> params,
+      List<TacOperand.TacVar> locals,
+      List<TacInstruction> instructions,
+      List<String> classAnnotations,
+      List<String> methodAnnotations,
+      Map<String, List<String>> fieldAnnotations,
+      Map<String, List<String>> paramAnnotations,
+      String enclosingClass,
+      SourceOrigin origin,
+      List<TryRegion> tryRegions,
+      SourceLanguage sourceLanguage,
+      IrPrecision irPrecision,
+      boolean synthetic,
+      Map<String, List<String>> annotationValues) {
+    this(
+        name,
+        signature,
+        returnType,
+        params,
+        locals,
+        instructions,
+        classAnnotations,
+        methodAnnotations,
+        fieldAnnotations,
+        paramAnnotations,
+        enclosingClass,
+        origin,
+        tryRegions,
+        sourceLanguage,
+        irPrecision,
+        synthetic,
+        annotationValues,
+        null);
+  }
+
+  /**
+   * The full constructor, including the MODULE the function belongs to.
+   *
+   * <p>The module is the id of the source root the function was read from. It is what makes a
+   * single-module analysis possible: the engine needs to know which functions are IN the module
+   * (those it reports findings for) and which are merely VISIBLE (those it reads to keep the call
+   * graph whole).
+   *
+   * <p>The module is {@code null} when the function did not come from a named module, which is the
+   * case for a single-file scan and for the bytecode path. A {@code null} module means "no module
+   * boundary", not "outside every module".
+   */
+  public TacFunction(
+      String name,
+      String signature,
+      TacType returnType,
+      List<TacOperand.TacVar> params,
+      List<TacOperand.TacVar> locals,
+      List<TacInstruction> instructions,
+      List<String> classAnnotations,
+      List<String> methodAnnotations,
+      Map<String, List<String>> fieldAnnotations,
+      Map<String, List<String>> paramAnnotations,
+      String enclosingClass,
+      SourceOrigin origin,
+      List<TryRegion> tryRegions,
+      SourceLanguage sourceLanguage,
+      IrPrecision irPrecision,
+      boolean synthetic,
+      Map<String, List<String>> annotationValues,
+      String module) {
+    this.name = Objects.requireNonNull(name);
+    this.signature = signature == null ? name : signature;
+    this.returnType = returnType == null ? TacType.VOID : returnType;
+    this.params = List.copyOf(params);
+    this.locals = List.copyOf(locals);
+    this.instructions = List.copyOf(instructions);
+    this.classAnnotations = List.copyOf(classAnnotations);
+    this.methodAnnotations = List.copyOf(methodAnnotations);
+    this.fieldAnnotations =
+        fieldAnnotations == null ? Map.of() : Collections.unmodifiableMap(fieldAnnotations);
+    this.paramAnnotations =
+        paramAnnotations == null ? Map.of() : Collections.unmodifiableMap(paramAnnotations);
+    this.annotationValues =
+        annotationValues == null ? Map.of() : Collections.unmodifiableMap(annotationValues);
+    this.enclosingClass = enclosingClass;
+    this.origin = origin == null ? SourceOrigin.SOURCE : origin;
+    this.tryRegions = tryRegions == null ? List.of() : List.copyOf(tryRegions);
+    this.sourceLanguage = sourceLanguage == null ? SourceLanguage.JAVA : sourceLanguage;
+    this.irPrecision = irPrecision == null ? IrPrecision.SOURCE_FULL : irPrecision;
+    this.synthetic = synthetic;
+    this.module = module;
+  }
+
+  /**
+   * Whether the compiler generated this function.
+   *
+   * <p>See the field's javadoc for what this is for and the directional rule it obeys.
+   */
+  public boolean isSynthetic() {
+    return synthetic;
+  }
+
+  /** The language this function was written in. Never null. */
+  public SourceLanguage sourceLanguage() {
+    return sourceLanguage;
+  }
+
+  /**
+   * The module this function belongs to, or {@code null} when there is no module boundary.
+   *
+   * @see #module
+   */
+  public String module() {
+    return module;
+  }
+
+  /** How much of the original source semantics survived the lowering. Never null. */
+  public IrPrecision irPrecision() {
+    return irPrecision;
   }
 
   public String name() {
@@ -346,6 +647,30 @@ public final class TacFunction implements java.io.Serializable {
    */
   public Map<String, List<String>> paramAnnotations() {
     return paramAnnotations;
+  }
+
+  /**
+   * The VALUES this function's annotations carry, keyed by the annotation's simple name.
+   *
+   * <p>See the field's javadoc for what this channel is for and the directional rule it obeys.
+   *
+   * <p>Example: a method annotated {@code @PreAuthorize("hasRole('ADMIN')")} has {@code
+   * annotationValues().get("PreAuthorize")} equal to {@code ["hasRole('ADMIN')"]}.
+   */
+  public Map<String, List<String>> annotationValues() {
+    return annotationValues;
+  }
+
+  /**
+   * The values of one annotation, or an empty list when the annotation is absent or carries no
+   * value.
+   *
+   * <p>Convenience for the common checker question: "what does this one annotation say?".
+   */
+  public List<String> annotationValue(String annotationName) {
+    if (annotationName == null) return List.of();
+    List<String> values = annotationValues.get(annotationName);
+    return values == null ? List.of() : values;
   }
 
   /**

@@ -193,6 +193,22 @@ public final class CallGraphBuilder {
         bareNameToCanonical.computeIfAbsent(bare, k -> new ArrayList<>()).add(fn.signature());
       }
     }
+    // The OWNER-AWARE index. A call names its callee as "owner.method/arity" (e.g.
+    // "demo.JavaSink.run/1"), while a function is registered under its own signature
+    // (e.g. "run(String):void") and knows its owner only through {@code enclosingClass()}.
+    // The bare-name index therefore cannot connect a Kotlin call to a Java method: the
+    // caller's key carries the owner and the callee's does not.
+    //
+    // This index is keyed by the canonical "owner.method/arity" key, with the owner matched
+    // by SIMPLE NAME -- so "demo.JavaSink.run/1" and the Java method declared in "JavaSink"
+    // land on the SAME key, while two same-named methods in DIFFERENT classes stay apart.
+    // See CalleeKeyNormalizer for why the simple name is the right comparison.
+    final java.util.Map<String, java.util.List<String>> ownerKeyToCanonical = new HashMap<>();
+    for (TacFunction fn : program.functions()) {
+      for (String key : ownerKeysOf(fn)) {
+        ownerKeyToCanonical.computeIfAbsent(key, k -> new ArrayList<>()).add(fn.signature());
+      }
+    }
 
     for (TacFunction fn : program.functions()) {
       FunctionNode caller = new FunctionNode(fn.signature());
@@ -238,7 +254,8 @@ public final class CallGraphBuilder {
         // behavior is unchanged.
         List<TacOperand> argList = ins.args;
         String nodeSig =
-            r48ResolveCalleeSigWithArgs(program, calleeSig, bareNameToCanonical, argList);
+            r48ResolveCalleeSigWithArgs(
+                program, calleeSig, bareNameToCanonical, ownerKeyToCanonical, argList);
         FunctionNode callee = new FunctionNode(nodeSig);
         nodes.add(callee);
         forward.putIfAbsent(callee, new ArrayList<>());
@@ -337,6 +354,46 @@ public final class CallGraphBuilder {
   }
 
   /**
+   * The owner-aware lookup keys for a function.
+   *
+   * <p>A function is registered under its own signature ({@code "run(String):void"}) and knows its
+   * owner through {@link TacFunction#enclosingClass()}. A CALL names its callee as {@code
+   * "owner.method/arity"}. So the keys a function must be findable by are:
+   *
+   * <ul>
+   *   <li>{@code "JavaSink.run/1"} -- the owner-qualified key, using the SIMPLE owner name;
+   *   <li>{@code "run/1"} -- the bare key, for a call that does not name an owner.
+   * </ul>
+   *
+   * <p>The simple owner name is used because a Java function's owner is the short class name
+   * ({@code JavaSink}) while a Kotlin or Scala call's owner is fully qualified ({@code
+   * demo.JavaSink}). They name the same class, and the call graph has to connect them.
+   *
+   * @param fn the function
+   * @return the keys to index it under
+   */
+  public static java.util.List<String> ownerKeysOf(TacFunction fn) {
+    java.util.List<String> keys = new java.util.ArrayList<>(2);
+    if (fn == null) return keys;
+    String owner = fn.enclosingClass();
+    if (owner == null || owner.isEmpty()) return keys;
+    // The canonical key of the signature carries the method name and the arity; the owner
+    // comes from the function, not from the signature.
+    String canonical = org.plumb.tac.ir.CalleeKeyNormalizer.canonicalCalleeKey(fn.signature());
+    if (canonical == null) return keys;
+    int slash = canonical.lastIndexOf('/');
+    String methodAndArity = slash < 0 ? canonical : canonical.substring(slash);
+    String method = slash < 0 ? canonical : canonical.substring(0, slash);
+    int dot = method.lastIndexOf('.');
+    if (dot >= 0) method = method.substring(dot + 1);
+    if (method.isEmpty()) return keys;
+    // The simple owner name, so a fully qualified call finds a short-named declaration.
+    String simpleOwner = owner.substring(owner.lastIndexOf('.') + 1);
+    keys.add(simpleOwner + "." + method + methodAndArity);
+    return keys;
+  }
+
+  /**
    * Resolve a CALL's {@code calleeSig} to a {@code FunctionNode} key with overload disambiguation
    * based on the actual call arg types.
    *
@@ -387,6 +444,26 @@ public final class CallGraphBuilder {
   }
 
   /**
+   * Overload of {@link #r48ResolveCalleeSigWithArgs} that ALSO takes the owner-aware index.
+   *
+   * <p>The owner-aware index is what lets a cross-language call find its callee: the call names
+   * {@code "owner.method/arity"} while the callee is registered under its own signature.
+   */
+  public static String r48ResolveCalleeSigWithArgs(
+      TacProgram program,
+      String calleeSig,
+      java.util.Map<String, java.util.List<String>> bareNameToCanonical,
+      java.util.Map<String, java.util.List<String>> ownerKeyToCanonical,
+      List<TacOperand> args) {
+    return r48ResolveCalleeSigCore(
+        sig -> program.function(sig) != null,
+        calleeSig,
+        bareNameToCanonical,
+        ownerKeyToCanonical,
+        args);
+  }
+
+  /**
    * Core overload of {@link #r48ResolveCalleeSigWithArgs} that takes a function-existence predicate
    * instead of a {@link TacProgram}. This lets {@link GlobalCallGraphBuilder} (which has no single
    * {@code TacProgram} -- it has a {@link GlobalTACStore}) share the exact same arg-type-aware
@@ -401,8 +478,44 @@ public final class CallGraphBuilder {
       String calleeSig,
       java.util.Map<String, java.util.List<String>> bareNameToCanonical,
       List<TacOperand> args) {
+    return r48ResolveCalleeSigCore(existsFn, calleeSig, bareNameToCanonical, null, args);
+  }
+
+  /**
+   * Core overload that ALSO takes the owner-aware index.
+   *
+   * <p>The owner-aware lookup is tried BEFORE the bare-name lookup, because it is the more precise
+   * one: a call that names an owner should be resolved to the method of THAT owner, not to
+   * whichever same-named method happens to be first in the bare-name map.
+   *
+   * @param ownerKeyToCanonical the owner-qualified index, or {@code null} when the caller has none
+   */
+  public static String r48ResolveCalleeSigCore(
+      java.util.function.Predicate<String> existsFn,
+      String calleeSig,
+      java.util.Map<String, java.util.List<String>> bareNameToCanonical,
+      java.util.Map<String, java.util.List<String>> ownerKeyToCanonical,
+      List<TacOperand> args) {
     if (existsFn.test(calleeSig)) {
       return calleeSig;
+    }
+    // The OWNER-AWARE match. A cross-language call names its callee as
+    // "owner.method/arity" while the callee is registered under its own signature, so the
+    // bare-name map cannot connect them. The owner index is keyed by the canonical
+    // "owner.method/arity" key with the owner matched by SIMPLE NAME.
+    if (ownerKeyToCanonical != null && !ownerKeyToCanonical.isEmpty()) {
+      java.util.List<String> ownerCandidates = ownerCandidatesFor(calleeSig, ownerKeyToCanonical);
+      if (ownerCandidates != null && !ownerCandidates.isEmpty()) {
+        if (ownerCandidates.size() == 1) {
+          return ownerCandidates.get(0);
+        }
+        // Several overloads in the SAME owner: disambiguate on the argument types.
+        String disambiguated = disambiguateByArgTypes(ownerCandidates, args);
+        if (disambiguated != null) {
+          return disambiguated;
+        }
+        return ownerCandidates.get(0);
+      }
     }
     String bare = bareNameAndArity(calleeSig);
     // Strip the class prefix (if
@@ -440,6 +553,27 @@ public final class CallGraphBuilder {
     // args[0] (the receiver). For
     // a static call, all args are
     // user args.
+    return disambiguateByArgTypes(candidates, args);
+  }
+
+  /**
+   * Pick the candidate whose parameter types match the call's argument types.
+   *
+   * <p>The comparison is exact-by-FQN: every actual argument type must equal the corresponding
+   * parameter type. A candidate whose arity does not match is skipped -- it is a different
+   * overload. When no candidate matches, the first one wins, which preserves the historical
+   * behaviour.
+   *
+   * @param candidates the candidate signatures
+   * @param args the call's actual arguments
+   * @return the chosen signature
+   */
+  private static String disambiguateByArgTypes(
+      java.util.List<String> candidates, List<TacOperand> args) {
+    if (candidates == null || candidates.isEmpty()) return null;
+    if (candidates.size() == 1) {
+      return candidates.get(0);
+    }
     if (args == null || args.isEmpty()) {
       // No arg type info; fall
       // back to first candidate.
@@ -529,6 +663,91 @@ public final class CallGraphBuilder {
     // No type match. Fall back to
     // the first candidate.
     return candidates.get(0);
+  }
+
+  /**
+   * The owner-aware candidates for a call's callee signature.
+   *
+   * <p>The call's callee is named {@code "owner.method/arity"}. The index is keyed by the canonical
+   * key with the owner matched by SIMPLE NAME, so a fully qualified call ({@code
+   * demo.JavaSink.run/1}) finds a declaration whose owner is the short name ({@code JavaSink}).
+   *
+   * <p>When the call names NO owner, there is nothing owner-aware to match on, and {@code null} is
+   * returned: the bare-name index is the right tool for that case.
+   *
+   * @param calleeSig the call's callee signature
+   * @param ownerKeyToCanonical the owner-qualified index
+   * @return the candidates, or {@code null} when the call names no owner
+   */
+  private static java.util.List<String> ownerCandidatesFor(
+      String calleeSig, java.util.Map<String, java.util.List<String>> ownerKeyToCanonical) {
+    if (calleeSig == null) return null;
+    String canonical = org.plumb.tac.ir.CalleeKeyNormalizer.canonicalCalleeKey(calleeSig);
+    if (canonical == null) return null;
+    int slash = canonical.lastIndexOf('/');
+    String qualified = slash < 0 ? canonical : canonical.substring(0, slash);
+    int dot = qualified.lastIndexOf('.');
+    if (dot < 0) {
+      // No owner named.
+      return null;
+    }
+    String owner = qualified.substring(0, dot);
+    String method = qualified.substring(dot + 1);
+    String arity = slash < 0 ? "" : canonical.substring(slash);
+    // The simple owner name, because a declaration's owner is the short class name.
+    String simpleOwner = owner.substring(owner.lastIndexOf('.') + 1);
+    java.util.List<String> candidates = ownerKeyToCanonical.get(simpleOwner + "." + method + arity);
+    if (candidates != null && !candidates.isEmpty()) {
+      return candidates;
+    }
+    // Also try the owner as written: a declaration whose owner is already fully qualified.
+    java.util.List<String> qualifiedCandidates =
+        ownerKeyToCanonical.get(owner + "." + method + arity);
+    if (qualifiedCandidates != null && !qualifiedCandidates.isEmpty()) {
+      return qualifiedCandidates;
+    }
+    // The MODULE-CLASS spelling. A Scala call to a Java STATIC method names the callee through
+    // the Java class's synthetic module class, whose name is the class's name with a '$'
+    // appended: "demo.JavaSink$.readAll/1" for a method declared in "demo.JavaSink".
+    //
+    // The suffix is stripped here, and only here. It is not stripped from the key that is
+    // emitted, because "Service$" and "Service" are two DIFFERENT classes in Scala, and
+    // merging them would merge two real, distinct methods. Here the comparison is already
+    // about "is this the same class, spelled differently".
+    String withoutModuleSuffix = stripModuleClassSuffix(simpleOwner);
+    if (!withoutModuleSuffix.equals(simpleOwner)) {
+      java.util.List<String> moduleCandidates =
+          ownerKeyToCanonical.get(withoutModuleSuffix + "." + method + arity);
+      if (moduleCandidates != null && !moduleCandidates.isEmpty()) {
+        return moduleCandidates;
+      }
+    }
+    String ownerWithoutModuleSuffix = stripModuleClassSuffix(owner);
+    if (!ownerWithoutModuleSuffix.equals(owner)) {
+      java.util.List<String> moduleCandidates =
+          ownerKeyToCanonical.get(ownerWithoutModuleSuffix + "." + method + arity);
+      if (moduleCandidates != null && !moduleCandidates.isEmpty()) {
+        return moduleCandidates;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * A name with the Scala module-class suffix removed.
+   *
+   * <p>A Java class's static members live in a synthetic MODULE CLASS whose name is the class's
+   * name with a {@code $} appended, and that is the name a Scala call site uses. See {@link
+   * org.plumb.tac.ir.CalleeKeyNormalizer} for why the suffix is normalised at MATCH time rather
+   * than stripped from the emitted key.
+   *
+   * @param name the name
+   * @return the name without a trailing {@code $}
+   */
+  private static String stripModuleClassSuffix(String name) {
+    if (name == null || name.length() < 2) return name;
+    if (!name.endsWith("$")) return name;
+    return name.substring(0, name.length() - 1);
   }
 
   /**

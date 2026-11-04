@@ -82,6 +82,31 @@ public final class FactKind {
   private final String owner; // owning checker, may be null
   private final Set<Trait> traits;
 
+  /**
+   * The interned index of this kind.
+   *
+   * <p><b>Why a kind needs a number.</b> A fact is copied constantly: on every assignment, on every
+   * function-summary merge, on every guard update. Each copy involves a map operation keyed by the
+   * fact's kind, and that key is a {@link String}. String hashing and comparison are real work, and
+   * they are repeated millions of times on a large scan.
+   *
+   * <p>Assigning each kind an integer once, at registration, turns those map operations into
+   * integer-keyed ones. The kinds are few (tens), so the indices are dense and the maps become
+   * array-like.
+   *
+   * <p><b>Where the index comes from.</b> It is assigned by {@link FactKindRegistry} when the kind
+   * is registered, not by the kind itself. Two {@code FactKind} instances with the same name but
+   * different indices would be a bug; the registry guarantees one index per name by reusing the
+   * existing kind's index when a name is re-registered.
+   *
+   * <p>Before registration the index is {@link #UNASSIGNED}, which no real kind has. A kind in that
+   * state is one the engine has not registered, and the engine treats it as an unknown kind rather
+   * than as kind zero.
+   */
+  public static final int UNASSIGNED = -1;
+
+  private volatile int index = UNASSIGNED;
+
   public FactKind(String name, String description, String owner, Set<Trait> traits) {
     this.name = Objects.requireNonNull(name, "name");
     this.description = description == null ? "" : description;
@@ -121,5 +146,35 @@ public final class FactKind {
 
   public boolean has(Trait t) {
     return traits.contains(t);
+  }
+
+  /**
+   * The interned index of this kind, or {@link #UNASSIGNED} if the kind is not registered.
+   *
+   * <p>See the field's javadoc for why this exists.
+   */
+  public int index() {
+    return index;
+  }
+
+  /**
+   * Assigns the interned index.
+   *
+   * <p>Called by {@link FactKindRegistry} at registration. Package-private because the registry
+   * owns the assignment: a kind's index must be unique across the registry, and letting the kind
+   * assign its own would make that uniqueness the caller's problem.
+   */
+  void assignIndex(int index) {
+    this.index = index;
+  }
+
+  /**
+   * Whether this kind has been registered.
+   *
+   * <p>A kind without an index is one the engine does not know about, so it cannot be compared by
+   * index against another kind.
+   */
+  public boolean isRegistered() {
+    return index != UNASSIGNED;
   }
 }

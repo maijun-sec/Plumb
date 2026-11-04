@@ -187,6 +187,26 @@ public final class GuardTracker {
   // at a time, so JUMP pop logic is
   // unaffected.
   private final Map<TacOperand.TacVar, java.util.List<Guard>> lastCompare = new HashMap<>();
+
+  /**
+   * The arms of a DISJUNCTION, keyed by the temporary that holds its result.
+   *
+   * <p>A disjunction's TRUE edge proves almost nothing (only a guard both arms establish), but its
+   * FALSE edge proves the negation of every arm -- which is the useful half, and the half the
+   * early-return idiom is built from:
+   *
+   * <pre>
+   *   if (index < 0 || index > 2) { return null; }
+   *   return arr[index];              // reached only when NEITHER arm holds
+   * </pre>
+   *
+   * <p>So the arm lists are kept here, and the false edge negates them. Without this the branch
+   * activated nothing at all -- the intersection of two unrelated bounds is empty -- and the
+   * guarded access was reported as unchecked.
+   */
+  private final Map<TacOperand.TacVar, java.util.List<java.util.List<Guard>>> disjunctionArms =
+      new HashMap<>();
+
   private final Deque<Guard> activeGuards = new ArrayDeque<>();
 
   /**
@@ -258,6 +278,30 @@ public final class GuardTracker {
    * identity has to travel with the fact.
    */
   private final Map<TacOperand.TacVar, TacOperand.TacVar> arrayLengthVars = new HashMap<>();
+
+  /**
+   * Arrays whose length is a compile-time constant, mapped to that length.
+   *
+   * <p>Populated from a {@code NEWARRAY} with a literal size: {@code new String[3]} has length 3,
+   * and that is a fact about the array itself, not about a variable.
+   *
+   * <p>It exists because a bound against a LITERAL can be transferred to an array of KNOWN length,
+   * which is what makes
+   *
+   * <pre>
+   *   String[] arr = new String[3];
+   *   if (index &lt; 0 || index &gt; 2) { return null; }
+   *   return arr[index];              // index is in [0,2], and 2 &lt; 3 = arr.length
+   * </pre>
+   *
+   * <p>recognisable. Without it the upper bound had to be spelled {@code index < arr.length}, and a
+   * literal bound proved nothing about the array -- so the guarded access was reported as
+   * unchecked.
+   *
+   * <p>The array's identity travels with the fact: a bound of {@code index <= 2} against an array
+   * of length 3 says nothing about a DIFFERENT array of length 2.
+   */
+  private final Map<TacOperand.TacVar, Long> knownArrayLengths = new HashMap<>();
 
   /**
    * Guards propagated through arithmetic and MOVE. When we see {@code BINOP dest = var ± literal}
@@ -369,6 +413,24 @@ public final class GuardTracker {
     return true;
   }
 
+  /**
+   * Record the length of an array allocated with a LITERAL size.
+   *
+   * <p>{@code new String[3]} has length 3. The size arrives in {@code lhs1} per the TAC's NEWARRAY
+   * shape, and it is only a fact about the array when it is a constant -- a computed size ({@code
+   * new String[n]}) is not.
+   *
+   * <p>The array may be bound to a name afterwards ({@code String[] arr = new String[3];}), so the
+   * length follows the MOVE as well.
+   */
+  private void recordArrayLengthIfApplicable(TacInstruction ins) {
+    if (!(ins.dest instanceof TacOperand.TacVar dest)) return;
+    if (!(ins.lhs1 instanceof TacOperand.Const c)) return;
+    Long len = parseLongConst(c);
+    if (len == null || len < 0) return;
+    knownArrayLengths.put(dest, len);
+  }
+
   /** Per-function reset. Called from the checker's {@code initFunction}. */
   public void clear() {
     lastCompare.clear();
@@ -378,6 +440,7 @@ public final class GuardTracker {
     allGuardsSeen.clear();
     knownConstants.clear();
     arrayLengthVars.clear();
+    knownArrayLengths.clear();
     derivedGuards.clear();
     derivedGuardedVars.clear();
     propagatableSources.clear();
@@ -397,6 +460,7 @@ public final class GuardTracker {
   public void track(TacInstruction ins) {
     switch (ins.kind) {
       case FIELDLOAD -> recordConstantLoadIfApplicable(ins);
+      case NEWARRAY -> recordArrayLengthIfApplicable(ins);
       case BINOP -> {
         recordCompareIfApplicable(ins);
         recordLogicalOpIfApplicable(ins);
@@ -413,6 +477,13 @@ public final class GuardTracker {
       case JUMP -> onJump(ins.label);
       case LABEL -> onLabel(ins);
       case MOVE -> {
+        // An array's known length follows the binding: `String[] arr = new String[3];` binds the
+        // length-3 array to `arr`, and the fact has to travel with it.
+        if (ins.dest instanceof TacOperand.TacVar moveDest
+            && ins.lhs1 instanceof TacOperand.TacVar moveSrc) {
+          Long len = knownArrayLengths.get(moveSrc);
+          if (len != null) knownArrayLengths.put(moveDest, len);
+        }
         // rebinding a variable retires every guard proved for its previous value.
         //
         // A guard constrains a binding, not a name. `if (x == null) { break; }` establishes
@@ -647,7 +718,14 @@ public final class GuardTracker {
       if (g2 != null) combined.addAll(g2);
     } else {
       // Intersection: if the disjunction is true, only a guard that BOTH arms establish holds.
+      //
+      // The intersection is often EMPTY -- `index < 0 || index > 2` shares no guard between its
+      // arms -- and an empty intersection means the TRUE edge activates nothing, which is correct.
+      // The FALSE edge is where the arms pay off, so they are kept for it BEFORE the early return:
+      // the empty intersection is the COMMON case, and returning before the arms were kept left
+      // the false edge with nothing to negate.
       if (g1 == null || g2 == null) return;
+      disjunctionArms.put(dest, java.util.List.of(g1, g2));
       combined = intersectGuards(g1, g2);
       if (combined.isEmpty()) return;
     }
@@ -681,7 +759,26 @@ public final class GuardTracker {
   private void onBranch(TacInstruction ins) {
     if (!(ins.lhs1 instanceof TacOperand.TacVar branchCond)) return;
     final java.util.List<Guard> guards = lastCompare.get(branchCond);
-    if (guards == null || guards.isEmpty()) return;
+    if (guards == null || guards.isEmpty()) {
+      // The condition may be a disjunction whose arms share no guard, so its TRUE edge proves
+      // nothing -- but its FALSE edge proves the negation of every arm, and that is the half the
+      // early-return idiom relies on:
+      //
+      //     if (index < 0 || index > 2) { return null; }
+      //     return arr[index];          // index is in [0,2] here
+      //
+      // So the arms are negated and recorded against the false target.
+      java.util.List<java.util.List<Guard>> arms = disjunctionArms.get(branchCond);
+      if (arms != null) {
+        java.util.List<Guard> negated = negatedArmBounds(arms);
+        if (!negated.isEmpty() && ins.falseLabel != null && !ins.falseLabel.isEmpty()) {
+          guardsPendingFalseEdge
+              .computeIfAbsent(ins.falseLabel, k -> new java.util.ArrayList<>())
+              .addAll(negated);
+        }
+      }
+      return;
+    }
     // A single BRANCH may activate multiple
     // guards (when the branch cond is a LAND/LOR
     // combination). Push all of them onto the
@@ -726,6 +823,64 @@ public final class GuardTracker {
     if (falseLabel == null || falseLabel.isEmpty()) return;
     if (g.op() != BinaryOperator.EQ) return;
     guardsPendingFalseEdge.computeIfAbsent(falseLabel, k -> new java.util.ArrayList<>()).add(g);
+  }
+
+  /**
+   * The bounds that hold on a branch's FALSE edge when its condition is a DISJUNCTION.
+   *
+   * <p>Reaching the false edge of {@code if (A || B)} means neither arm holds, and De Morgan turns
+   * that into the conjunction of the negations:
+   *
+   * <pre>
+   *   !(index &lt; 0 || index &gt; 2)  ==  index &gt;= 0 &amp;&amp; index &lt;= 2
+   * </pre>
+   *
+   * <p>Each negation is expressed in the tracker's own vocabulary: {@code v < L} becomes {@code v
+   * >= L} and {@code v <= L} becomes {@code v > L}, and so on. A negation that is not a BOUND is
+   * skipped -- the negation of {@code ==} excludes a value rather than bounding it, and the
+   * negation of an array-length bound is only meaningful against the same array, so the array
+   * identity travels with it.
+   *
+   * @param arms the two arm guard lists
+   * @return the bounds that hold when NEITHER arm holds
+   */
+  private static java.util.List<Guard> negatedArmBounds(
+      java.util.List<java.util.List<Guard>> arms) {
+    final java.util.List<Guard> out = new java.util.ArrayList<>();
+    for (java.util.List<Guard> arm : arms) {
+      if (arm == null) continue;
+      for (Guard g : arm) {
+        Guard negated = negate(g);
+        if (negated != null) out.add(negated);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The bound that contradicts {@code g}, or {@code null} when there is none to express.
+   *
+   * <p>The strictness flips with the operator: {@code v < L} excludes {@code L} and everything
+   * above it, so what remains is {@code v >= L}; {@code v <= L} leaves {@code v < L}; {@code v > L}
+   * leaves {@code v <= L}; {@code v >= L} leaves {@code v < L}.
+   *
+   * <p>A bound against an array's length negates to a bound against the SAME array -- the identity
+   * has to travel, because a length bound against one array says nothing about another.
+   */
+  private static Guard negate(Guard g) {
+    if (g == null) return null;
+    final BinaryOperator op;
+    switch (g.op()) {
+      case LT -> op = BinaryOperator.GE;
+      case LE -> op = BinaryOperator.LT;
+      case GT -> op = BinaryOperator.LE;
+      case GE -> op = BinaryOperator.GT;
+      default -> {
+        // `==` excludes a value rather than bounding it, and `!=` has no range meaning.
+        return null;
+      }
+    }
+    return new Guard(g.boundedVar(), op, g.literalDescription(), g.boundArray(), g.kind());
   }
 
   /**
@@ -1178,6 +1333,23 @@ public final class GuardTracker {
       if (g.op() == BinaryOperator.GT && isAtLeastMinusOneLiteral(g.literalDescription()))
         return true;
     }
+    // A bound proved on a branch's FALSE edge counts too.
+    //
+    // The false-edge table is not only about excluded values. The early-return idiom proves a
+    // RANGE on the path the code actually takes:
+    //
+    //     if (index < 0 || index > 2) { return null; }
+    //     return arr[index];              // index is in [0,2] here
+    //
+    // That fact lives on the false edge -- the branch's true edge proves nothing, because a
+    // disjunction being true implies only that one arm is true -- and it is the range queries
+    // that need it.
+    for (Guard g : falseEdgeBoundsFor(var)) {
+      if (!g.isNumeric()) continue;
+      if (g.op() == BinaryOperator.GE && isNonNegativeLiteral(g.literalDescription())) return true;
+      if (g.op() == BinaryOperator.GT && isAtLeastMinusOneLiteral(g.literalDescription()))
+        return true;
+    }
     // A derived guard carries the bound through arithmetic (e.g. `idx = pos - 3` under `pos >= 3`).
     java.util.List<Guard> dgs = derivedGuards.get(var);
     if (dgs == null) return false;
@@ -1202,6 +1374,12 @@ public final class GuardTracker {
     // The array must be known, and it must be the array the bound was measured against. A bound
     // against an unidentified array cannot be transferred to the array being indexed.
     if (array == null) return false;
+    // A bound proved on a branch's FALSE edge counts here as well -- see hasLowerBound.
+    for (Guard g : falseEdgeBoundsFor(var)) {
+      if (!g.isArrayLengthBound()) continue;
+      if (!array.equals(g.boundArray())) continue;
+      if (g.op() == BinaryOperator.LT || g.op() == BinaryOperator.LE) return true;
+    }
     for (Guard g : activeGuards) {
       if (!g.boundedVar().equals(var)) continue;
       if (!g.isArrayLengthBound()) continue;
@@ -1210,7 +1388,87 @@ public final class GuardTracker {
       // that the source spelled out; the boundary checker resolves the strictness.
       if (g.op() == BinaryOperator.LT || g.op() == BinaryOperator.LE) return true;
     }
+    // A NUMERIC upper bound can be transferred to an array of KNOWN length.
+    //
+    // `index <= 2` against an array of length 3 means `index < arr.length`, because 2 < 3. The
+    // transfer needs a constant length -- an array of unknown length keeps the old behaviour,
+    // where a literal bound proves nothing about it -- and it keeps the array's identity, because
+    // `index <= 2` against a length-3 array says nothing about a length-2 one.
+    Long length = knownArrayLengths.get(array);
+    if (length == null) return false;
+    for (Guard g : falseEdgeBoundsFor(var)) {
+      if (!g.isNumeric()) continue;
+      if (!g.boundedVar().equals(var)) continue;
+      Long bound = parseLiteral(g.literalDescription());
+      if (bound == null) continue;
+      // `var < L` means `var <= L - 1`, and `var <= L` means `var <= L`. Both hold below the
+      // array's length when the bound itself is below it.
+      long effective;
+      if (g.op() == BinaryOperator.LT) {
+        effective = bound - 1;
+      } else if (g.op() == BinaryOperator.LE) {
+        effective = bound;
+      } else {
+        continue;
+      }
+      if (effective < length) return true;
+    }
+    for (Guard g : activeGuards) {
+      if (!g.boundedVar().equals(var)) continue;
+      if (!g.isNumeric()) continue;
+      Long bound = parseLiteral(g.literalDescription());
+      if (bound == null) continue;
+      long effective;
+      if (g.op() == BinaryOperator.LT) {
+        effective = bound - 1;
+      } else if (g.op() == BinaryOperator.LE) {
+        effective = bound;
+      } else {
+        continue;
+      }
+      if (effective < length) return true;
+    }
     return false;
+  }
+
+  /**
+   * The bounds proved for {@code var} on a branch's FALSE edge, for callers outside this class.
+   *
+   * <p>The range queries inside this class read the table directly. A checker that keeps its OWN
+   * range lattice -- the boundary family does -- has to ask for them, because its lattice is not
+   * the tracker's.
+   *
+   * @param var the variable
+   * @return the false-edge bounds on it; empty when there are none
+   */
+  public java.util.List<Guard> falseEdgeBounds(TacOperand.TacVar var) {
+    return falseEdgeBoundsFor(var);
+  }
+
+  /**
+   * The bounds proved for {@code var} on a branch's FALSE edge.
+   *
+   * <p>These are the facts that hold on the path the code actually takes past a branch, as opposed
+   * to the facts on the active stack, which are the branch's TRUE condition. A disjunct's false
+   * edge is where a range is proved:
+   *
+   * <pre>
+   *   if (index &lt; 0 || index > 2) { return null; }
+   *   return arr[index];              // index is in [0,2] here
+   * </pre>
+   *
+   * @param var the variable
+   * @return the false-edge bounds on it; empty when there are none
+   */
+  private java.util.List<Guard> falseEdgeBoundsFor(TacOperand.TacVar var) {
+    java.util.List<Guard> out = new java.util.ArrayList<>();
+    if (var == null) return out;
+    for (java.util.List<Guard> gs : activeFalseEdgeGuards.values()) {
+      for (Guard g : gs) {
+        if (g.boundedVar().equals(var)) out.add(g);
+      }
+    }
+    return out;
   }
 
   /** Does this literal description denote a non-negative integer? */

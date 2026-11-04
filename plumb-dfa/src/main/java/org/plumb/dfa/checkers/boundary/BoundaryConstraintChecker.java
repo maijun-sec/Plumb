@@ -1009,6 +1009,68 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   }
 
   /**
+   * returns a copy of {@code base} with each var's range intersected with the range implied by the
+   * bounds proved on a branch's FALSE edge.
+   *
+   * <p>The early-return idiom proves its range on the fall-through path, not on the branch's true
+   * edge:
+   *
+   * <pre>
+   *   if (index &lt; 0 || index &gt; 2) { return null; }
+   *   return arr[index];              // index is in [0,2] here
+   * </pre>
+   *
+   * <p>The true edge of that branch proves nothing -- a disjunction being true implies only that
+   * one arm is true -- so the fact lives on the false edge. Without meeting it in, {@code index}'s
+   * range stayed wide, the sink predicate {@code (index < 0)} stayed satisfiable, and the guarded
+   * access was reported as unchecked.
+   *
+   * @param base the ranges to start from; treated as read-only
+   * @return the ranges with the false-edge bounds met in
+   */
+  private Map<TacOperand.TacVar, Range> withFalseEdgeBoundsMet(Map<TacOperand.TacVar, Range> base) {
+    if (base.isEmpty()) return base;
+    Map<TacOperand.TacVar, Range> effective = new LinkedHashMap<>(base);
+    for (var entry : new java.util.ArrayList<>(base.entrySet())) {
+      TacOperand.TacVar v = entry.getKey();
+      Range r = entry.getValue();
+      if (r == null || r.isBottom) continue;
+      Range narrowed = r;
+      for (GuardTracker.Guard g : guardTracker.falseEdgeBounds(v)) {
+        if (!g.isNumeric()) continue;
+        Long lit = parseGuardLiteral(g.literalDescription());
+        if (lit == null) continue;
+        Range bound =
+            switch (g.op()) {
+              case GE -> Range.of(lit, Long.MAX_VALUE / 2);
+              case GT -> Range.of(lit + 1, Long.MAX_VALUE / 2);
+              case LE -> Range.of(Long.MIN_VALUE / 2, lit);
+              case LT -> Range.of(Long.MIN_VALUE / 2, lit - 1);
+              default -> null;
+            };
+        if (bound == null) continue;
+        Range met = narrowed.meet(bound);
+        // An empty intersection means the bound contradicts what was known. That cannot happen on
+        // a sound path, and keeping the wider range is the conservative direction: it can only
+        // regain a false positive, never hide a finding.
+        narrowed = met.isBottom ? narrowed : met;
+      }
+      effective.put(v, narrowed);
+    }
+    return effective;
+  }
+
+  /** Parses a guard's literal description as a long, or returns {@code null}. */
+  private static Long parseGuardLiteral(String literalDescription) {
+    if (literalDescription == null) return null;
+    try {
+      return Long.parseLong(literalDescription.trim());
+    } catch (NumberFormatException nfe) {
+      return null;
+    }
+  }
+
+  /**
    * returns a copy of {@code ranges} with each var's range intersected with the range derived from
    * every active guard on that var. Returns the original map unchanged when no guards are present
    * (so existing case is a no-op).
@@ -1027,12 +1089,13 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
    * read-only; we copy.
    */
   private Map<TacOperand.TacVar, Range> withGuardsMetRanges(Map<TacOperand.TacVar, Range> base) {
-    if (guards.isEmpty()) return base;
+    Map<TacOperand.TacVar, Range> withFalseEdges = withFalseEdgeBoundsMet(base);
+    if (guards.isEmpty()) return withFalseEdges;
     java.util.regex.Matcher symMatcher =
         java.util.regex.Pattern.compile("([A-Za-z_][A-Za-z_0-9]*)\\s*(<=|>=|<|>)\\s*(-?\\d+)")
             .matcher("");
-    Map<TacOperand.TacVar, Range> effective = new LinkedHashMap<>(base);
-    for (var entry : base.entrySet()) {
+    Map<TacOperand.TacVar, Range> effective = new LinkedHashMap<>(withFalseEdges);
+    for (var entry : withFalseEdges.entrySet()) {
       TacOperand.TacVar v = entry.getKey();
       Range r = entry.getValue();
       java.util.List<String> guardList = guards.get(v);

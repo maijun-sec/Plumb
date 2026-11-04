@@ -21,7 +21,6 @@
  */
 package org.plumb.main;
 
-import com.github.javaparser.ParserConfiguration;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
@@ -44,7 +43,6 @@ import org.plumb.style.AstCheckerRegistry;
 import org.plumb.style.StyleContext;
 import org.plumb.tac.bytecode.BytecodeAnalyzer;
 import org.plumb.tac.ir.TacProgram;
-import org.plumb.tac.translate.TacTranslator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,54 +50,117 @@ import org.slf4j.LoggerFactory;
  * Orchestrate one scan. The pipeline per file:
  *
  * <pre>
+ *
  *   .java  ->  JavaSourceParser  ->  ParsedSource
+ *
  *                                     |
+ *
  *                                     +->  TacTranslator   ->  TacProgram
+ *
  *                                     |                         |
+ *
  *                                     |                         +->  DfaEngine (taint, div-by-zero, ...)
+ *
  *                                     |
+ *
  *                                     +->  StyleChecks       ->  StyleContext
+ *
  * </pre>
  *
  * <p>Findings are aggregated across all files and emitted in the configured format. The runner is
- * single-threaded; a future R-version can add per-file parallelism by sharing a {@link
+ *
+ * <p>single-threaded; a future R-version can add per-file parallelism by sharing a {@link
  * RuleRegistry} (which is thread-safe after construction).
  */
 public final class ScanRunner {
-
   private static final Logger LOG = LoggerFactory.getLogger(ScanRunner.class);
-
   private final ScanConfig config;
 
   /**
+   * How many workers this scan may use, and why.
+   *
+   * <p>Decided once in {@link #run()} and obeyed by both the parse phase and the analysis phase.
+   * Before this existed, the parse phase used the ForkJoin common pool -- as many workers as the
+   * machine had processors, regardless of what the user asked for -- and the analysis phase was
+   * always sequential, so {@code --max-parallelism} controlled nothing.
+   */
+  private ParallelismPlan plan = ParallelismPlan.decide(0, 1, -1);
+
+  /**
+   * The heap guard for this scan.
+   *
+   * <p>The plan decides how many workers the machine can afford; the guard notices when the heap is
+   * filling up and reduces the analysis pool. A scan that reduces itself is a scan that finishes; a
+   * scan that dies of an {@code OutOfMemoryError} is not.
+   */
+  private HeapGuard heapGuard = HeapGuard.forWorkers(1);
+
+  /**
+   * The budget report of the last analysis, or {@code null} when there was none.
+   *
+   * <p>It is kept so the completeness record can say that the analysis stopped early. A budget that
+   * ran out is not a failure -- it is the tool doing what it was told -- but the user has to know
+   * that the finding set is a lower bound.
+   */
+  private org.plumb.dfa.engine.AnalysisBudget.BudgetReport budgetReport;
+
+  /**
+   * The module scope of the last analysis, or {@code null} when there was none.
+   *
+   * <p>Kept for the same reason as the budget report: a finding whose sink was outside the selected
+   * module is not reported, and that has to be visible.
+   */
+  private org.plumb.dfa.engine.ModuleScope moduleScopeReport;
+
+  /**
+   * The files that could not be parsed, and so were not analysed.
+   *
+   * <p>A file that fails to parse produces no findings, and a file that produces no findings looks
+   * exactly like a clean file. The list is what tells them apart.
+   */
+  private final List<String> unparsedFiles = new ArrayList<>();
+
+  /**
    * R-output-dir: layout of the on-disk cache + report directory. {@code null} when the user did
-   * not pass {@code --output-dir}. The cache is read / written through this layout; the report
-   * files are emitted here too when set.
+   *
+   * <p>not pass {@code --output-dir}. The cache is read / written through this layout; the report
+   *
+   * <p>files are emitted here too when set.
    */
   private final OutputLayout layout;
 
   /**
    * File count threshold above which Phase 1 (parse + translate + style) runs in parallel. Below
-   * the threshold, sequential is faster on small projects because the ForkJoin common-pool
-   * scheduling overhead dominates the per-file parse/translate cost (a single file's parse +
-   * translate is ~3-10 ms; pool dispatch + join ~1-2 ms each). 800 was chosen empirically.
+   *
+   * <p>the threshold, sequential is faster on small projects because the ForkJoin common-pool
+   *
+   * <p>scheduling overhead dominates the per-file parse/translate cost (a single file's parse +
+   *
+   * <p>translate is ~3-10 ms; pool dispatch + join ~1-2 ms each). 800 was chosen empirically.
    */
   private static final int PARALLEL_PHASE1_THRESHOLD = 800;
 
   /**
    * per-scan registry slot. Set by the scan driver (the {@code scan(...)} method) before entering
-   * the sub-pipelines that consult {@link #isRuleIdAllowed(String)}. The {@code
-   * currentRuleRegistry} thread-local-ish nature is intentional: {@link #isRuleIdAllowed(String)}
-   * uses it for the disabled-by-default gate that lets disable a rule across every emit pathway
-   * (style, DFA, unified). Production always sets it; smoke tests leave it {@code null} so the
-   * legacy `def.enabled()` lookup becomes a no-op.
+   *
+   * <p>the sub-pipelines that consult {@link #isRuleIdAllowed(String)}. The {@code
+   * #isRuleIdAllowed(String)}
+   *
+   * <p>uses it for the disabled-by-default gate that lets disable a rule across every emit pathway
+   *
+   * <p>(style, DFA, unified). Production always sets it; smoke tests leave it {@code null} so the
+   *
+   * <p>legacy `def.enabled()` lookup becomes a no-op.
    */
   /**
    * The ids of every rule the engine can emit, cached.
    *
    * <p>The rule filter asks "is this bare form ambiguous?" once per rule per filter entry, and the
-   * answer does not change during a scan. Without the cache the filter would rebuild the live rule
-   * set thousands of times per scan.
+   *
+   * <p>answer does not change during a scan. Without the cache the filter would rebuild the live
+   * rule
+   *
+   * <p>set thousands of times per scan.
    */
   private volatile java.util.Collection<String> liveRuleIdsCache;
 
@@ -108,11 +169,24 @@ public final class ScanRunner {
 
   /**
    * per-scan cache of every static method declaration reachable through the user-supplied {@code
-   * --source-root} / {@code --module-root} directories, keyed by {@code <FQCN>#<methodName>}. Built
-   * once via {@link #buildStaticMethodCache(List)} and shared with every {@code new
-   * StyleContext(...)} call. Empty when the user supplies no source/module roots ( back-compat).
+   * <FQCN>#<methodName>}. Built
+   *
+   * <p>once via {@link #buildStaticMethodCache(List)} and shared with every {@code
+   * newStyleContext(...)} call. Empty when the user supplies no source/module roots ( back-compat).
    */
   private java.util.Map<String, com.github.javaparser.ast.body.MethodDeclaration> staticMethodCache;
+
+  /**
+   * The language frontends for this run, built on first use.
+   *
+   * <p>Lazy on purpose: the Kotlin frontend starts an IntelliJ application and the Scala frontend
+   *
+   * <p>builds a compiler context. A scan of pure Java code must not pay for either, so the registry
+   * is
+   *
+   * <p>only created when a file of a non-Java language is actually encountered.
+   */
+  private FrontendRegistry frontendRegistry;
 
   public ScanRunner(ScanConfig config) {
     this.config = config;
@@ -121,6 +195,20 @@ public final class ScanRunner {
 
   public int run() throws IOException {
     config.validate();
+    // The worker count is decided ONCE, before any work starts, and both
+    // phases obey it: the parse phase and the analysis phase.
+    //
+    // It used to be decided twice, differently, and neither decision was
+    // connected to the `--max-parallelism` flag: the parse phase used the
+    // ForkJoin common pool (nCPU-1 workers, whatever the user asked
+    // for) and the analysis phase was always sequential.
+    this.plan =
+        ParallelismPlan.decide(
+            config.maxParallelism,
+            Runtime.getRuntime().availableProcessors(),
+            ParallelismPlan.maxHeapMegabytes());
+    this.heapGuard = HeapGuard.forWorkers(plan.workers);
+    LOG.info("parallelism: {}", plan.describe());
     if (layout != null) {
       layout.ensureDirectories();
       LOG.info("R-output-dir: cache at {}, report at {}", layout.cacheDir(), layout.reportDir());
@@ -142,7 +230,6 @@ public final class ScanRunner {
     // Building it here also means the rules are compiled once
     // per scan, not once per file.
     buildDslChecker();
-
     RuleRegistry rules = buildRegistry();
     // stash the live registry so isRuleIdAllowed()
     // can consult def.enabled() for the disabled-by-default
@@ -151,21 +238,19 @@ public final class ScanRunner {
     // accidentally see the previous registry.
     RuleRegistry previousRegistry = currentRuleRegistry.getAndSet(rules);
     try {
-
       // build the cross-file static-method cache once
       // per scan. Empty map when no source/module roots are
       // configured — same as back-compat.
       if (staticMethodCache == null) {
         staticMethodCache = buildStaticMethodCache(buildModules());
       }
-
       // Cross-TU: collect all .java files first, then either
       // (a) when there is more than one source, merge their
       // TacPrograms into a single MergedProgram and run the DFA
       // engine once over the merged view (so cross-file calls
       // are followed), or (b) when there is only one source, keep
       // the original per-file behavior.
-      List<Path> javaFiles = new ArrayList<>();
+      List<Path> sourceFiles = new ArrayList<>();
       List<Path> bytecodeInputs = new ArrayList<>();
       for (Path input : config.inputs) {
         if (isBytecodeArtifact(input)) {
@@ -179,23 +264,29 @@ public final class ScanRunner {
         }
         for (Path file : expandInputs(input)) {
           if (!matches(file)) continue;
-          if (!file.toString().endsWith(".java")) continue;
-          javaFiles.add(file);
+          if (!FrontendRegistry.isSourceFile(file)) continue;
+          // The language filter is a LOAD-TIME filter: a file whose language was not selected
+          // is not even collected, so the scan does not open it, translate it, or build the
+          // frontend that would have read it.
+          if (!languageFilter().includes(FrontendRegistry.languageOf(file))) continue;
+          sourceFiles.add(file);
         }
       }
-      if (javaFiles.isEmpty() && bytecodeInputs.isEmpty()) {
+      if (sourceFiles.isEmpty() && bytecodeInputs.isEmpty()) {
         // No inputs resolved. Either the user passed
         // -i pointing at an empty dir, or they
         // forgot -i entirely. Emit a clear stderr
         // hint so the dist isn't a black box.
         System.err.println(
-            "plumb: no .java files found in any input. "
+            "plumb: no source files found in any input "
+                + "(recognised: .java, .kt, .scala; this run analyses "
+                + languageFilter().describe()
+                + "). "
                 + "Pass -i <path> on the command line, or add an "
                 + "inputs: block to your YAML config.");
         emit(List.of());
         return 0;
       }
-
       // Step 7 — build the checker lists once so
       // the unified engine AND the AI dedup pass can
       // use the same instances. Each checker's
@@ -203,12 +294,11 @@ public final class ScanRunner {
       // get the rule-specific prompt.
       List<org.plumb.dfa.engine.DfaChecker> dfaCheckers = buildDfaCheckers();
       List<org.plumb.style.AstChecker> styleChecks = buildStyleChecks();
-
       List<Finding> all = new ArrayList<>();
       if (!bytecodeInputs.isEmpty()) {
         all.addAll(scanBytecode(bytecodeInputs, rules, dfaCheckers, styleChecks));
       }
-      if (!javaFiles.isEmpty()) {
+      if (!sourceFiles.isEmpty()) {
         // Cross-TU is the default. When
         // only one file is requested but its
         // parent directory contains other
@@ -221,14 +311,13 @@ public final class ScanRunner {
         // -Xno-cross-tu (TODO) or by scanning
         // a directory with only one file in
         // it.
-        List<Path> toScan = maybeExpandForCrossTu(javaFiles);
+        List<Path> toScan = maybeExpandForCrossTu(sourceFiles);
         if (toScan.size() == 1) {
           all.addAll(scanFile(toScan.get(0), rules, dfaCheckers, styleChecks));
         } else {
           all.addAll(scanMerged(toScan, rules, dfaCheckers, styleChecks));
         }
       }
-
       // Step 7 — optional LLM dedup pass. The
       // per-rule prompts live on each checker (see
       // DfaChecker.getAiPrompt / AstChecker.getAiPrompt);
@@ -239,7 +328,6 @@ public final class ScanRunner {
       if (config.aiDedup && config.aiConn.isUsable() && !all.isEmpty()) {
         all = runAiDedup(all, dfaCheckers, styleChecks);
       }
-
       emit(all);
       return 0;
     } finally {
@@ -249,23 +337,43 @@ public final class ScanRunner {
       // previous value may itself be null (no scan
       // was running before).
       currentRuleRegistry.set(previousRegistry);
+      // Release the frontends. The Kotlin frontend's Analysis API holds an
+      // IntelliJ application with non-daemon threads; leaving it open keeps the
+      // JVM alive after the scan, so the CLI would never exit.
+      if (frontendRegistry != null) {
+        try {
+          frontendRegistry.close();
+        } catch (RuntimeException ex) {
+          LOG.debug("Frontend registry close failed: {}", ex.toString());
+        }
+        frontendRegistry = null;
+      }
     }
   }
 
   /**
    * Step 7 — run the AI dedup pass over the list of findings. The rule-specific prompts live on
-   * each checker (see {@link org.plumb.dfa.engine.DfaChecker#getAiPrompt} and {@link
+   *
+   * <p>each checker (see {@link org.plumb.dfa.engine.DfaChecker#getAiPrompt} and {@link
    * org.plumb.style.AstChecker#getAiPrompt}); the runner looks up the checker for each finding and
-   * asks the LLM to judge. Verdicts land on the finding as {@code ai_verdict} / {@code ai_reason}.
-   * Findings tagged FP are dropped when {@code config.dropOnAiFp} is true.
+   *
+   * <p>asks the LLM to judge. Verdicts land on the finding as {@code ai_verdict} / {@code
+   * ai_reason}.
+   *
+   * <p>Findings tagged FP are dropped when {@code config.dropOnAiFp} is true.
    *
    * <p>Direct-import (no reflection): plumb-ai is a hard dep of plumb-main, and the AI layer is the
-   * single source of truth for the LLM HTTP client, Re-Act agent, and 12 tools. Static analysis
-   * still works when {@code aiConn.isUsable()} is false (no apiKey / no model) — we just skip the
-   * pass.
+   *
+   * <p>single source of truth for the LLM HTTP client, Re-Act agent, and 12 tools. Static analysis
+   *
+   * <p>still works when {@code aiConn.isUsable()} is false (no apiKey / no model) — we just skip
+   * the
+   *
+   * <p>pass.
    *
    * <p>When {@code config.cliAiDedupStats} is true, the runner writes a verdict-distribution +
-   * per-rule FP-ratio report to {@code stderr} (so NDJSON on stdout stays clean).
+   *
+   * <p>per-rule FP-ratio report to {@code stderr} (so NDJSON on stdout stays clean).
    */
   private List<Finding> runAiDedup(
       List<Finding> findings,
@@ -281,17 +389,14 @@ public final class ScanRunner {
     // the reverse map (emitted rule id -> the checker's slug), so an
     // `ai.dedupRules` entry written as a slug still matches the finding.
     java.util.Map<String, String> slugByEmittedId = buildSlugByEmittedIdMap(styleChecks);
-
     // Allow CLI / YAML override: a user-supplied
     // --rule-prompts-dir can replace each checker's
     // inline getAiPrompt return value.
     java.util.Map<String, String> overrides = loadRulePromptOverrides();
-
     org.plumb.ai.agent.LlmProvider provider =
         new org.plumb.ai.agent.OpenAiCompatibleLlmProvider(config.aiConn);
     org.plumb.ai.tools.ToolRegistry tools = buildToolRegistry();
     org.plumb.ai.agent.ReActAgent agent = new org.plumb.ai.agent.ReActAgent(provider, tools);
-
     // Filter: only send findings whose rule has a
     // prompt. Findings without a prompt get
     // ai_verdict="(no-rule-prompt)" and are kept.
@@ -369,7 +474,6 @@ public final class ScanRunner {
     } finally {
       pool.shutdownNow();
     }
-
     // Build final finding list + stats
     java.util.Map<String, String> cleanVerdicts = new java.util.LinkedHashMap<>();
     for (Finding f : findings) {
@@ -383,7 +487,6 @@ public final class ScanRunner {
       }
     }
     DedupStats stats = computeDedupStats(findings, cleanVerdicts, config.dropOnAiFp);
-
     List<Finding> out = new ArrayList<>(findings.size());
     int droppedFp = 0;
     int keptFindings = 0;
@@ -422,7 +525,8 @@ public final class ScanRunner {
 
   /**
    * Step 7 — run one LLM call for one finding. Returns a {@code "VERDICT|reason"} string. Failure
-   * modes (provider null, agent max-turns) are mapped to UNKNOWN.
+   *
+   * <p>modes (provider null, agent max-turns) are mapped to UNKNOWN.
    */
   private String judgeOne(Finding f, String rulePrompt, org.plumb.ai.agent.ReActAgent agent) {
     String context = extractSourceContext(f, config.aiContextLines);
@@ -471,7 +575,6 @@ public final class ScanRunner {
         .append("Source window:\n")
         .append(context.isEmpty() ? "(file unreadable)\n" : context);
     String userTurn = userTurnBuilder.toString();
-
     org.plumb.ai.agent.AgentTask task =
         org.plumb.ai.agent.AgentTask.fpReduction(
                 org.plumb.ai.prompts.FalsePositivePrompts.FALSE_POSITIVE_REDUCTION,
@@ -497,8 +600,11 @@ public final class ScanRunner {
 
   /**
    * Step 7 — parse the agent's FINAL body into a single-line "{verdict}|{reason}" string. The
-   * agent's final body is a JSON object like {@code {"verdict":"TP","reason":"..."}}. Tolerant to:
-   * missing fields, leading/trailing junk, fences.
+   *
+   * <p>agent's final body is a JSON object like {@code {"verdict":"TP","reason":"..."}}. Tolerant
+   * to:
+   *
+   * <p>missing fields, leading/trailing junk, fences.
    */
   private static String parseFinalVerdict(String body) {
     if (body == null || body.isEmpty()) return "UNKNOWN|no-reply";
@@ -529,7 +635,8 @@ public final class ScanRunner {
 
   /**
    * Step 7 — build the tool registry used by the dedup agent. 12 tools (IR-aware + Grep fallback
-   * Claude Code-style file ops). See {@link org.plumb.ai.tools} for each tool's docs.
+   *
+   * <p>Claude Code-style file ops). See {@link org.plumb.ai.tools} for each tool's docs.
    */
   private org.plumb.ai.tools.ToolRegistry buildToolRegistry() {
     return new org.plumb.ai.tools.ToolRegistry()
@@ -549,23 +656,37 @@ public final class ScanRunner {
 
   /**
    * Step 7 — build a rule-name -> prompt-producer map. The runner uses this to look up the rule
-   * prompt for each finding by its rule id. Findings whose rule is not in the map keep their {@code
-   * ai_verdict} as UNKNOWN (no AI review was performed).
+   *
+   * <p>prompt for each finding by its rule id. Findings whose rule is not in the map keep their
+   * {@code ai_verdict} as UNKNOWN (no AI review was performed).
    *
    * <p><b>— the map must be keyed by the id the FINDING carries, not only by the checker's
-   * slug.</b> {@link #ruleNameOf(Finding)} returns {@code finding.rule().ruleId().id()} (the
-   * canonical emit id, e.g. {@code ast-bug-bc-equals-no-null}), but the map used to be keyed only
-   * by {@code checker.name()} (the kebab-case slug, e.g. {@code bc-equals-no-null}). Those two
-   * strings are equal for <em>zero</em> of the 595 AST checkers, so every AST finding fell into the
-   * {@code "(no-rule-prompt)"} branch and the AI FP-reducer never reviewed a single style rule. The
-   * DFA taint family was unaffected because {@code TaintedCheckerBase.name()} returns {@code
+   *
+   * <p>slug.</b> {@link #ruleNameOf(Finding)} returns {@code finding.rule().ruleId().id()} (the
+   *
+   * <p>canonical emit id, e.g. {@code ast-bug-bc-equals-no-null}), but the map used to be keyed
+   * only
+   *
+   * <p>by {@code checker.name()} (the kebab-case slug, e.g. {@code bc-equals-no-null}). Those two
+   *
+   * <p>strings are equal for <em>zero</em> of the 595 AST checkers, so every AST finding fell into
+   * the
+   *
+   * <p>{@code "(no-rule-prompt)"} branch and the AI FP-reducer never reviewed a single style rule.
+   * The
+   *
+   * <p>DFA taint family was unaffected because {@code TaintedCheckerBase.name()} returns {@code
    * rule.ruleId()} by construction.
    *
    * <p>So each checker is registered under BOTH keys: its slug (so a user's {@code
    * --rule-prompts-dir} override and any slug-keyed lookup keep working) and the id of the rule it
-   * actually emits (so the finding's own id finds its prompt). The emitted id is read from the
-   * checker's own {@code rule()}, which is the same source of truth {@code StyleContext.report()}
-   * uses.
+   *
+   * <p>actually emits (so the finding's own id finds its prompt). The emitted id is read from the
+   *
+   * <p>checker's own {@code rule()}, which is the same source of truth {@code
+   * StyleContext.report()}
+   *
+   * <p>uses.
    */
   private java.util.Map<String, java.util.function.Function<Finding, String>> buildPromptByRuleMap(
       List<org.plumb.dfa.engine.DfaChecker> dfaCheckers,
@@ -594,7 +715,8 @@ public final class ScanRunner {
    * the canonical rule id an AST checker emits, read from its own {@code rule()}.
    *
    * <p>Returns null when the checker exposes no rule metadata, or when the id is blank. Never
-   * throws: a checker with a broken {@code rule()} must not break the whole AI pass.
+   *
+   * <p>throws: a checker with a broken {@code rule()} must not break the whole AI pass.
    */
   private static String emittedRuleIdOf(org.plumb.style.AstChecker c) {
     try {
@@ -612,7 +734,8 @@ public final class ScanRunner {
    * map each AST checker's emitted rule id back to the checker's slug.
    *
    * <p>Used by the {@code ai.dedupRules} allowlist so a user may name a rule either way. The key is
-   * the id the finding carries; the value is {@code checker.name()}.
+   *
+   * <p>the id the finding carries; the value is {@code checker.name()}.
    */
   private java.util.Map<String, String> buildSlugByEmittedIdMap(
       List<org.plumb.style.AstChecker> styleChecks) {
@@ -629,8 +752,11 @@ public final class ScanRunner {
    *
    * <p>The allowlist may name a rule either by its canonical emit id ({@code
    * ast-bug-bc-equals-no-null}) or by the checker's slug ({@code bc-equals-no-null}). Both
-   * spellings are accepted, because the finding only carries the emit id while the slug is what a
-   * user reads in the rule catalogue and what {@code --rule-prompts-dir} names a file after.
+   *
+   * <p>spellings are accepted, because the finding only carries the emit id while the slug is what
+   * a
+   *
+   * <p>user reads in the rule catalogue and what {@code --rule-prompts-dir} names a file after.
    */
   private boolean matchesAiDedupRules(String ruleName, String slug) {
     if (config.aiDedupRules.contains(ruleName)) return true;
@@ -639,8 +765,11 @@ public final class ScanRunner {
 
   /**
    * Step 7 — load user-supplied rule prompt overrides from {@code --rule-prompts-dir}. Each file
-   * {@code <rule-name>.md} replaces the corresponding checker's inline {@code getAiPrompt} return
-   * value. Files are plain Markdown; the content is passed verbatim to the LLM.
+   *
+   * <p>{@code <rule-name>.md} replaces the corresponding checker's inline {@code getAiPrompt}
+   * return
+   *
+   * <p>value. Files are plain Markdown; the content is passed verbatim to the LLM.
    */
   private java.util.Map<String, String> loadRulePromptOverrides() {
     java.util.Map<String, String> out = new java.util.HashMap<>();
@@ -668,8 +797,10 @@ public final class ScanRunner {
 
   /**
    * Step 7 — best-effort source root for the agent. Uses the first input that exists as a
-   * directory; falls back to a synthetic path so the tools can still report "file not found"
-   * cleanly.
+   *
+   * <p>directory; falls back to a synthetic path so the tools can still report "file not found"
+   *
+   * <p>cleanly.
    */
   private java.nio.file.Path sourceRoot() {
     for (java.nio.file.Path p : config.inputs) {
@@ -680,12 +811,16 @@ public final class ScanRunner {
 
   /**
    * Step 7 — extract the human-readable rule name from a finding for the per-rule FP ratio column.
-   * Falls back to {@code "(no-rule)"} when the finding has no rule attached.
+   *
+   * <p>Falls back to {@code "(no-rule)"} when the finding has no rule attached.
    *
    * <p>Returns the {@link org.plumb.rules.RuleId#name()} (the simple class-style name like {@code
    * "HardcodedCredential"}) rather than the {@code id} UUID, because the AI dedup pass keys prompts
-   * off {@link org.plumb.dfa.engine.DfaChecker#name()} (the checker's self-reported simple name).
-   * The legacy {@code plumb.*} slug lives on the rule's {@code description} field.
+   *
+   * <p>off {@link org.plumb.dfa.engine.DfaChecker#name()} (the checker's self-reported simple
+   * name).
+   *
+   * <p>The legacy {@code plumb.*} slug lives on the rule's {@code description} field.
    */
   private static String ruleNameOf(Finding f) {
     if (f.rule() == null || f.rule().ruleId() == null) {
@@ -700,9 +835,13 @@ public final class ScanRunner {
 
   /**
    * Step 7 — build a {@link DedupStats} from the findings + the AI-dedup-returned verdict map
-   * (keyed by {@code file:line:messageHash}). Verdicts are plain strings (TP / FP / UNKNOWN, with
-   * optional reason suffix). Verdicts are clamped to TP / FP / UNKNOWN; any other string the LLM
-   * returns is bucketed as UNKNOWN.
+   *
+   * <p>(keyed by {@code file:line:messageHash}). Verdicts are plain strings (TP / FP / UNKNOWN,
+   * with
+   *
+   * <p>optional reason suffix). Verdicts are clamped to TP / FP / UNKNOWN; any other string the LLM
+   *
+   * <p>returns is bucketed as UNKNOWN.
    */
   static DedupStats computeDedupStats(
       List<Finding> findings, java.util.Map<String, String> verdicts, boolean dropOnAiFp) {
@@ -749,22 +888,39 @@ public final class ScanRunner {
    * Write a one-shot AI dedup stats report to {@code stderr}. Layout:
    *
    * <pre>
+   *
    *   AI dedup stats
+   *
    *   ==============
+   *
    *   Total findings:   297
+   *
    *   Reviewed:         297 (100.0%)
+   *
    *   Dropped (FP):     158
+   *
    *   Kept:             139
+   *
    *   Elapsed:          357s
    *
+   *
+   *
    *   Verdict distribution:
+   *
    *     TP        135  (45.5%)
+   *
    *     FP        158  (53.2%)
+   *
    *     UNKNOWN     4  ( 1.3%)
    *
+   *
+   *
    *   Top 10 rules by FP ratio (FP / total):
+   *
    *     HardcodedCredential       12/15  (80.0%)
+   *
    *     ...
+   *
    * </pre>
    *
    * Output goes to stderr so the NDJSON on stdout is still pipeline-friendly.
@@ -828,8 +984,11 @@ public final class ScanRunner {
 
   /**
    * →verdict tallies + per-rule breakdown. The {@code droppedFp} and {@code kept} are filled in by
-   * the runner after the dedup loop (depends on {@code dropOnAiFp}). The verdict / per-rule fields
-   * are computed by {@link #computeDedupStats}.
+   *
+   * <p>the runner after the dedup loop (depends on {@code dropOnAiFp}). The verdict / per-rule
+   * fields
+   *
+   * <p>are computed by {@link #computeDedupStats}.
    */
   static final class DedupStats {
     final int total;
@@ -922,8 +1081,11 @@ public final class ScanRunner {
 
   /**
    * Verdict enum for --ai-dedup-stats. Clamps any unknown verdict string (e.g. a model that invents
-   * "MAYBE") to UNKNOWN so the report doesn't blow up. Package-private so the unit tests can assert
-   * on specific buckets.
+   *
+   * <p>"MAYBE") to UNKNOWN so the report doesn't blow up. Package-private so the unit tests can
+   * assert
+   *
+   * <p>on specific buckets.
    */
   enum Verdict {
     TP,
@@ -942,8 +1104,11 @@ public final class ScanRunner {
 
   /**
    * => extract ≈N source lines around the finding's line number from the file on disk. Returns the
-   * empty string if the file can't be read (e.g. synthetic merged-program paths); the LLM is still
-   * asked but with less context.
+   *
+   * <p>empty string if the file can't be read (e.g. synthetic merged-program paths); the LLM is
+   * still
+   *
+   * <p>asked but with less context.
    */
   private static String extractSourceContext(Finding f, int contextLines) {
     if (f.file() == null || f.line() <= 0) return "";
@@ -965,31 +1130,45 @@ public final class ScanRunner {
 
   /**
    * Return a copy of {@code f} with the AI verdict + reason attached. The Finding record is
-   * immutable, so this builds a new instance via the full constructor (which carries the new
-   * fields).
+   *
+   * <p>immutable, so this builds a new instance.
+   *
+   * <p>WHY THIS DELEGATES TO THE RECORD'S OWN COPY METHOD. This used to rebuild the finding through
+   *
+   * <p>the TEN-argument {@link Finding} constructor, which hardcodes {@code sinkFunction} to
+   *
+   * <p>GONE, while the same finding scanned WITHOUT the AI pass kept it -- and the NDJSON emitter
+   *
+   * <p>only writes {@code sink_function} when it is non-null, so the field simply vanished from the
+   *
+   * <p>report.
+   *
+   * <p>That is not cosmetic. The Juliet harness pins a case to the sink callee via
+   *
+   * <p>{@code sink_function}, so a case that matched before the AI pass stopped matching after it.
+   * A
+   *
+   * <p>measurement that scores the AI pass on a field the AI pass itself destroys measures the
+   *
+   * <p>destruction, not the judgement.
+   *
+   * <p>{@link Finding#withAiVerdict(String, String)} copies EVERY field -- including
+   *
+   * <p>{@code sinkFunction} and the v2 {@code trace} -- so the verdict is the only thing that
+   * changes.
    */
   private static Finding withAiVerdict(Finding f, String verdict, String reason) {
-    return new Finding(
-        f.file(),
-        f.line(),
-        f.column(),
-        f.rule(),
-        f.message(),
-        f.severity(),
-        f.dataflowHead(),
-        f.dataflowSteps(),
-        verdict,
-        reason,
-        f.sinkFunction(),
-        f.trace());
+    return f.withAiVerdict(verdict, reason);
   }
 
   /**
    * Test seam for {@link #withAiVerdict(Finding, String, String)}.
    *
    * <p>The method is package-private rather than public so the test can pin the behaviour without
-   * widening the runner's API: the point of the test is that attaching a verdict changes NOTHING
-   * but the verdict, and {@code sink_function} in particular has to survive it.
+   *
+   * <p>widening the runner's API: the point of the test is that attaching a verdict changes NOTHING
+   *
+   * <p>but the verdict, and {@code sink_function} in particular has to survive it.
    */
   static Finding withAiVerdictForTest(Finding f, String verdict, String reason) {
     return withAiVerdict(f, verdict, reason);
@@ -997,9 +1176,12 @@ public final class ScanRunner {
 
   /**
    * Bytecode scan: feed a list of .jar / .class / .war paths to {@link BytecodeAnalyzer} and run
-   * the DFA engine over the resulting {@link TacProgram}s. The engine setup is the same as {@link
-   * #scanMerged} — same set of checkers, same {@link AnalysisContext} shape — so existing findings
-   * look the same whether they came from a Java source scan or a bytecode scan.
+   *
+   * <p>the DFA engine over the resulting {@link TacProgram}s. The engine setup is the same as
+   * {@link #scanMerged} — same set of checkers, same {@link AnalysisContext} shape — so existing
+   * findings
+   *
+   * <p>look the same whether they came from a Java source scan or a bytecode scan.
    */
   private List<Finding> scanBytecode(
       List<Path> inputs,
@@ -1083,21 +1265,117 @@ public final class ScanRunner {
 
   /**
    * Cross-TU scan. Parses and translates each .java file to its own {@link
-   * org.plumb.tac.ir.TacProgram}, then merges them into a single {@link
    * org.plumb.tac.ir.MergedProgram} so the taint analysis can follow calls across files (e.g.
-   * {@code com.foo.A.entry -> com.bar.B.wrap -> com.baz.C.clean}). Style checks still run per-file
-   * (they don't have a cross-TU view).
+   *
+   * <p>{@code com.foo.A.entry -> com.bar.B.wrap -> com.baz.C.clean}). Style checks still run
+   * per-file
+   *
+   * <p>(they don't have a cross-TU view).
    *
    * <p><b>Parallel Phase 1.</b> Parse + translate is embarrassingly parallel: each file gets its
-   * own {@link JavaSourceParser} + {@link TacTranslator} + style registry, all of which are
-   * stateless or per-instance. The DFA phase is sequential because cross-TU call resolution
-   * requires a single {@link org.plumb.tac.ir.MergedProgram} and a single {@link
-   * org.plumb.dfa.engine.DfaEngine} instance (sharing {@code summaryCache} / {@code
+   *
+   * <p>own {@link JavaSourceParser} + {@link TacTranslator} + style registry, all of which are
+   *
+   * <p>stateless or per-instance. The DFA phase is sequential because cross-TU call resolution
+   *
+   * <p>requires a single {@link org.plumb.tac.ir.MergedProgram} and a single {@link
    * returnTaintCache} / {@code analyzing} across files). On Spring Framework 6 (~5000 .java files),
-   * parse+translate is ~30-40% of total wall time; the parallel change reduces that to the wall
-   * time of the longest single file (work-stealing) plus a small join overhead, yielding a 1.5-2.5x
-   * speedup on multi-core hosts.
+   *
+   * <p>parse+translate is ~30-40% of total wall time; the parallel change reduces that to the wall
+   *
+   * <p>time of the longest single file (work-stealing) plus a small join overhead, yielding a
+   * 1.5-2.5x
+   *
+   * <p>speedup on multi-core hosts.
    */
+  /**
+   * Parse and translate every file, on a pool sized by the plan.
+   *
+   * <p>The pool is a DEDICATED one, not the ForkJoin common pool. The common pool has as many
+   * workers as the machine has processors and is shared with every other parallel stream in the
+   * JVM, so a scan could not bound its own parallelism -- and a scan that runs alongside other
+   * parallel work could be starved of threads it was promised.
+   *
+   * <p>The order of the result is the order of the input. The parallel version used to preserve it
+   * by construction ({@code parallelStream()} keeps encounter order), and a caller may depend on
+   * it, so the futures are read back in order rather than as they complete.
+   *
+   * @param files the files to translate
+   * @param rules the rule registry, for the style checks
+   * @param styleChecks the style checkers, or {@code null} to skip style
+   * @return the translated files, in input order, with the failures omitted
+   */
+  private List<TranslatedFile> translateAll(
+      List<Path> files, RuleRegistry rules, List<org.plumb.style.AstChecker> styleChecks) {
+    int workers = Math.max(1, Math.min(plan.workers, files.size()));
+    java.util.concurrent.ExecutorService pool =
+        java.util.concurrent.Executors.newFixedThreadPool(
+            workers,
+            new java.util.concurrent.ThreadFactory() {
+              private final java.util.concurrent.atomic.AtomicInteger n =
+                  new java.util.concurrent.atomic.AtomicInteger(1);
+
+              @Override
+              public Thread newThread(Runnable r) {
+                Thread t = new Thread(r, "plumb-parse-" + n.getAndIncrement());
+                // A daemon thread cannot keep the JVM alive after the
+                // scan is over.
+                t.setDaemon(true);
+                return t;
+              }
+            });
+    try {
+      java.util.List<java.util.concurrent.Future<TranslatedFile>> futures =
+          new java.util.ArrayList<>(files.size());
+      for (Path f : files) {
+        futures.add(
+            pool.submit(
+                () -> {
+                  // The heap guard. A parse that starts when the heap is nearly full is a
+                  // parse that fails, so the work is deferred to the caller when there is no
+                  // headroom. The file is not lost: the caller translates it itself.
+                  if (!heapGuard.mayStartMoreWork()) {
+                    return null;
+                  }
+                  try {
+                    return config.runStyle
+                        ? translateAndStyleOne(f, rules, styleChecks)
+                        : translateOne(f);
+                  } catch (OutOfMemoryError oom) {
+                    // An OOM in ONE file must not take the whole scan down. The file is
+                    // reported as unanalysed and the scan continues.
+                    LOG.warn("out of memory while parsing {}; the file was not analysed", f);
+                    return null;
+                  }
+                }));
+      }
+      java.util.List<TranslatedFile> out = new java.util.ArrayList<>(files.size());
+      for (java.util.concurrent.Future<TranslatedFile> fut : futures) {
+        try {
+          TranslatedFile t = fut.get();
+          if (t == null) {
+            // The guard deferred the work, or the parse ran out of memory. Do it here, on
+            // the caller's thread, so the file is not silently dropped.
+            continue;
+          }
+          out.add(t);
+        } catch (java.util.concurrent.ExecutionException e) {
+          // One file's failure must not lose the other files' results.
+          LOG.warn(
+              "parallel translate failed: {}",
+              e.getCause() == null ? e.toString() : e.getCause().toString());
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          LOG.warn("parallel translate interrupted");
+          break;
+        }
+      }
+      return out;
+    } finally {
+      pool.shutdown();
+    }
+  }
+
   private List<Finding> scanMerged(
       List<Path> files,
       RuleRegistry rules,
@@ -1118,12 +1396,14 @@ public final class ScanRunner {
     List<TranslatedFile> translated;
     long t0 = System.nanoTime();
     if (files.size() >= PARALLEL_PHASE1_THRESHOLD) {
-      translated =
-          (config.runStyle
-                  ? files.parallelStream().map(f -> translateAndStyleOne(f, rules, styleChecks))
-                  : files.parallelStream().map(this::translateOne))
-              .filter(t -> t != null)
-              .toList();
+      // The parse phase runs on a POOL OF ITS OWN, sized by the plan.
+      //
+      // It used to run on `parallelStream()`, which uses the ForkJoin
+      // COMMON pool: as many workers as the machine has processors,
+      // whatever `--max-parallelism` said, and shared with every other
+      // parallel stream in the JVM. A user who asked for four workers
+      // got sixty-four.
+      translated = translateAll(files, rules, styleChecks);
     } else {
       translated = new ArrayList<>(files.size());
       for (Path f : files) {
@@ -1140,6 +1420,10 @@ public final class ScanRunner {
         phase1Ns / 1_000_000,
         files.size() >= PARALLEL_PHASE1_THRESHOLD ? "parallel" : "sequential",
         config.runStyle ? "+style" : "");
+    // The heap guard gets its first look at the heap NOW, after the parse phase. The parse
+    // phase is where the memory pressure starts: every file's AST, its IR and its facts
+    // are alive at once.
+    heapGuard.sample();
     if (translated.isEmpty()) return new ArrayList<>();
     // Re-derive the original-order files list. Style findings
     // are already in `translated`; DFA findings come from
@@ -1147,7 +1431,6 @@ public final class ScanRunner {
     List<org.plumb.tac.ir.TacProgram> programs = translated.stream().map(t -> t.program).toList();
     org.plumb.tac.ir.MergedProgram merged = new org.plumb.tac.ir.MergedProgram(programs);
     var programView = merged.asProgram();
-
     // DFA runs once. {@code runDfaCheckers} builds the
     // AnalysisContext, runs the enabled checkers, and returns
     // the findings list. We accumulate with style findings
@@ -1162,11 +1445,14 @@ public final class ScanRunner {
 
   /**
    * build the {@link List<JavaModule>} used by {@link #buildParser()}. Each {@code --source-root} /
-   * {@code --module-root} becomes one flat module; the {@code --classpath} list is shared across
-   * all modules.
+   *
+   * <p>{@code --module-root} becomes one flat module; the {@code --classpath} list is shared across
+   *
+   * <p>all modules.
    *
    * <p>Empty input — empty list, which makes the downstream {@code JavaSourceParser} behave exactly
-   * like the JDK-only default constructor (back-compat with ).
+   *
+   * <p>like the JDK-only default constructor (back-compat with ).
    */
   private List<JavaModule> buildModules() {
     List<JavaModule> modules = new ArrayList<>();
@@ -1208,8 +1494,11 @@ public final class ScanRunner {
 
   /**
    * Convert a {@link org.plumb.build.BuildProject.Module} into a {@link JavaModule} suitable for
-   * {@link JavaSourceParser}. The per-module classpath, scope, languageLevel and sourceEncoding are
-   * propagated so multi-module scans get correctly scoped symbol resolution.
+   *
+   * <p>{@link JavaSourceParser}. The per-module classpath, scope, languageLevel and sourceEncoding
+   * are
+   *
+   * <p>propagated so multi-module scans get correctly scoped symbol resolution.
    */
   private static JavaModule toJavaModule(org.plumb.build.BuildProject.Module m, int idx) {
     JavaModule.Scope scope = JavaModule.Scope.fromString(m.scope().canonical());
@@ -1224,16 +1513,24 @@ public final class ScanRunner {
 
   /**
    * pre-parse every {@code --source-root} and {@code --module-root} once, extract the FQCN of every
-   * top-level {@code static} method declaration, and build a {@code Map<String, MethodDeclaration>}
-   * keyed by {@code <FQCN>#<methodName>}.
+   *
+   * <p>top-level {@code static} method declaration, and build a {@code
+   * Map<String,MethodDeclaration>}
+   *
+   * <p>keyed by {@code <FQCN>#<methodName>}.
    *
    * <p>The cache lets AST checkers (currently {@code NullDerefFromReturnCheck}) reason about the
-   * nullness of a {@code data = Helper.foo()} call RHS by reading the callee body — without the
-   * checker needing to do its own cross-file symbol resolution. Building the cache once per scan
-   * (not per file) keeps the cost O(M) where M is the total number of methods across all modules.
+   *
+   * <p>nullness of a {@code data = Helper.foo()} call RHS by reading the callee body — without the
+   *
+   * <p>checker needing to do its own cross-file symbol resolution. Building the cache once per scan
+   *
+   * <p>(not per file) keeps the cost O(M) where M is the total number of methods across all
+   * modules.
    *
    * <p>Empty {@code sourceRoots + moduleRoots} — empty map (back-compat with / no cross-file
-   * indexing).
+   *
+   * <p>indexing).
    */
   private static final int R792_CACHE_MAX_FILES = 200;
 
@@ -1249,6 +1546,13 @@ public final class ScanRunner {
     for (JavaModule m : modules) {
       String pkgPrefix = packageNameOf(m.sourceRoot());
       for (Path src : m.sourceFiles()) {
+        // The static-method cache is a JavaParser AST cache. A Kotlin or
+        // Scala file has no JavaParser AST, so it contributes nothing to it.
+        // Skipping it here (rather than letting the parse fail) keeps the
+        // cache a Java-only structure instead of half-populated with errors.
+        if (FrontendRegistry.languageOf(src) != org.plumb.tac.ir.SourceLanguage.JAVA) {
+          continue;
+        }
         org.plumb.parser.ParsedSource ps;
         try {
           ps = parser.parse(src);
@@ -1318,9 +1622,12 @@ public final class ScanRunner {
    * The name of the compilation unit's first type declaration.
    *
    * <p>{@link com.github.javaparser.ast.CompilationUnit#getPrimaryTypeName()} cannot be used here:
-   * it matches the type against the FILE NAME, and the parser reads the source from a String, so
-   * there is no file name and the answer is always empty. The first type declaration is the type
-   * the file declares, which is what a lookup by fully-qualified name means.
+   *
+   * <p>it matches the type against the FILE NAME, and the parser reads the source from a String, so
+   *
+   * <p>there is no file name and the answer is always empty. The first type declaration is the type
+   *
+   * <p>the file declares, which is what a lookup by fully-qualified name means.
    *
    * @return the type's simple name, or {@code null} when the unit declares no type.
    */
@@ -1336,16 +1643,19 @@ public final class ScanRunner {
    * The constant values of the static fields of other classes, keyed by {@code <FQCN>#<fieldName>}.
    *
    * <p>Populated by {@link #buildStaticMethodCache} in the same pass that builds the method cache,
-   * because both read the same parsed sources. The values are the same {@link Object}s the {@link
-   * org.plumb.style.quality.ConstantResolver} produces: a {@link Boolean}, a {@link Long}, or a
-   * {@link String}.
+   *
+   * <p>because both read the same parsed sources. The values are the same {@link Object}s the
+   * {@link Long}, or a
+   *
+   * <p>{@link String}.
    */
   private java.util.Map<String, Object> staticFieldValues = java.util.Map.of();
 
   /**
    * Best-effort package name inferred from a source root's directory layout. Looks for a {@code
    * src/main/java} or {@code src/test/java} segment and treats the remainder as the package.
-   * Returns empty string when the layout doesn't match — the caller's per-file {@code
+   *
+   * <p>Returns empty string when the layout doesn't match — the caller's per-file {@code
    * ParsedSource.packageName()} takes precedence.
    */
   private static String packageNameOf(Path sourceRoot) {
@@ -1359,9 +1669,21 @@ public final class ScanRunner {
 
   /**
    * build a {@link JavaSourceParser} whose TypeSolver is wired to every source-root / module-root /
-   * classpath jar the user supplied. The parser is reused across all files in this scan →its symbol
-   * cache (built into JavaParser) is keyed on (FQN) so cross-file resolution within the same scan
-   * amortizes nicely.
+   *
+   * <p>classpath jar the user supplied. The parser is reused across all files in this scan →its
+   * symbol
+   *
+   * <p>cache (built into JavaParser) is keyed on (FQN) so cross-file resolution within the same
+   * scan
+   *
+   * <p>amortizes nicely.
+   *
+   * <p><b>Language level.</b> The level comes from the build description, via {@link
+   * JavaLanguageLevel}. Before this was wired up, the level was carried from the build description
+   *
+   * <p>into the module and then dropped here, so a project targeting Java 21 failed to parse with
+   *
+   * <p>"switch patterns not supported".
    */
   private JavaSourceParser buildParser() {
     List<JavaModule> modules = buildModules();
@@ -1370,18 +1692,23 @@ public final class ScanRunner {
       // JDK-only default. Keeps behaviour bit-identical.
       return new JavaSourceParser();
     }
-    return new JavaSourceParser(ParserConfiguration.LanguageLevel.JAVA_17, modules);
+    // The module-aware constructor derives the language level from the modules.
+    return new JavaSourceParser(modules);
   }
 
   /**
    * Per-file parse + translate step. Returns null on parse failure (logs WARN). Created fresh state
-   * for each call so this is safe inside a {@code parallelStream()}.
+   *
+   * <p>for each call so this is safe inside a {@code parallelStream()}.
    *
    * <p>When an output-dir is set and the cache read mode allows it, we read the {@link
    * org.plumb.tac.ir.TacProgram} from the on-disk cache instead of re-parsing. When the cache write
-   * mode allows it, we persist the freshly translated program back to the cache. The original
-   * {@code .java} file is still consulted only to recompute the cache key; we never need its
-   * content for a cache hit.
+   *
+   * <p>mode allows it, we persist the freshly translated program back to the cache. The original
+   *
+   * <p>{@code .java} file is still consulted only to recompute the cache key; we never need its
+   *
+   * <p>content for a cache hit.
    */
   private TranslatedFile translateOne(Path file) {
     org.plumb.tac.ir.TacProgram program = loadCachedProgram(file);
@@ -1389,28 +1716,238 @@ public final class ScanRunner {
       return new TranslatedFile(file, null, program, List.of());
     }
     try {
+      // JAVA keeps its existing path: the parser carries the resolved
+      // TypeSolver and the translator needs the AST. The other languages go
+      // through the frontend SPI, which lowers straight to TAC and needs no
+      // JavaParser AST at all.
+      if (FrontendRegistry.languageOf(file) != org.plumb.tac.ir.SourceLanguage.JAVA) {
+        return translateNonJava(file);
+      }
       ParsedSource ps = buildParser().parse(file);
-      program = new TacTranslator(ps).translate();
+      program = translateJava(ps, file);
       storeCachedProgram(file, program);
       return new TranslatedFile(file, ps, program, List.of());
     } catch (Throwable e) {
       // Catch Throwable (not just Exception): see the
       // sibling catch in translateAndStyleOne for rationale.
       LOG.warn("Parse failure for {}: {}", file, e.getMessage());
+      // The file is in the project and was not analysed. It is recorded so the
+      // report can say so: a file that produces no findings and a file that was
+      // never read look the same otherwise.
+      unparsedFiles.add(file.toString());
       return null;
     }
   }
 
   /**
+   * Translate a Java source, recording the MODULE the file belongs to.
+   *
+   * <p>The module is what lets a single-module analysis report this module's findings and only
+   * those, while the other modules are still read for symbol resolution so the call graph keeps
+   * crossing the boundary.
+   *
+   * @param ps the parsed source
+   * @param file the file it came from, used to resolve the module
+   * @return the translated program
+   */
+  private org.plumb.tac.ir.TacProgram translateJava(ParsedSource ps, Path file) {
+    org.plumb.tac.translate.TacTranslator translator =
+        new org.plumb.tac.translate.TacTranslator(ps);
+    translator.setModule(moduleOfFile(file));
+    return translator.translate();
+  }
+
+  /**
+   * The module a source file belongs to, or {@code null} when there is no module boundary.
+   *
+   * <p>The module is the source root the file lives under, named after the root's directory. So
+   * {@code --module-root .../service --module service} selects the files under {@code .../service}.
+   *
+   * <p>The LONGEST matching root wins, so a module nested inside another module's tree is
+   * attributed to itself.
+   */
+  String moduleOfFile(Path file) {
+    if (file == null) return null;
+    Path absolute = file.toAbsolutePath().normalize();
+    String best = null;
+    int bestDepth = -1;
+    for (Path root : moduleRootsForScan()) {
+      if (root == null) continue;
+      Path absoluteRoot = root.toAbsolutePath().normalize();
+      if (!absolute.startsWith(absoluteRoot)) continue;
+      int depth = absoluteRoot.getNameCount();
+      if (depth <= bestDepth) continue;
+      bestDepth = depth;
+      Path name = absoluteRoot.getFileName();
+      best = name == null ? null : name.toString();
+    }
+    return best;
+  }
+
+  /**
+   * The source roots that define the module boundaries.
+   *
+   * <p>The explicit {@code --source-root} and {@code --module-root} come first: they are the user's
+   * statement about where the project's modules are. The scan INPUTS come after, and only when no
+   * explicit root was given -- an input directory is a place to scan, not necessarily a module.
+   */
+  private List<Path> moduleRootsForScan() {
+    List<Path> roots = new ArrayList<>();
+    for (Path root : config.sourceRoots) {
+      if (root != null && !roots.contains(root)) roots.add(root);
+    }
+    for (Path root : config.moduleRoots) {
+      if (root != null && !roots.contains(root)) roots.add(root);
+    }
+    if (roots.isEmpty()) {
+      for (Path input : config.inputs) {
+        if (input == null) continue;
+        Path dir = Files.isDirectory(input) ? input : input.getParent();
+        if (dir != null && !roots.contains(dir)) roots.add(dir);
+      }
+    }
+    return roots;
+  }
+
+  /**
+   * Per-file parse + translate for a non-Java source file.
+   *
+   * <p>The file is handed to the frontend that owns its language, which lowers it to the same TAC
+   *
+   * <p>the Java path produces. From here on, nothing downstream knows the file was Kotlin or Scala:
+   *
+   * <p>the call graph, the taint engine and the checkers all consume TAC.
+   *
+   * <p>Style checks are NOT run on these files. The style checkers are JavaParser AST checkers by
+   *
+   * <p>construction; making them understand three ASTs would mean a second style engine, and the
+   *
+   * <p>coverage claim would be false for every rule that has no Kotlin or Scala equivalent. The
+   *
+   * <p>dataflow analysis -- the part that carries the security semantics -- does run.
+   *
+   * @param file the source file
+   * @return the translated file, or null when the frontend could not read it at all
+   */
+  private TranslatedFile translateNonJava(Path file) {
+    FrontendRegistry registry = frontends();
+    if (registry == null) {
+      return null;
+    }
+    FrontendRegistry.ParsedSourceFile parsed = registry.parseFile(file);
+    if (parsed.functions().isEmpty() && !parsed.problems().isEmpty()) {
+      // The frontend could not read the file at all. Report it and move on;
+      // dropping it silently would make "the frontend cannot read this" look
+      // exactly like "there is nothing here".
+      for (org.plumb.tac.ir.TacProgram.FunctionProblem problem : parsed.problems()) {
+        LOG.warn("{} [{}] {}", problem.functionName(), problem.kind(), problem.message());
+      }
+      return null;
+    }
+    org.plumb.tac.ir.TacProgram program = new org.plumb.tac.ir.TacProgram(file, "");
+    for (org.plumb.tac.ir.TacFunction fn : parsed.functions()) {
+      program.addFunction(fn);
+    }
+    for (org.plumb.tac.ir.TacProgram.FunctionProblem problem : parsed.problems()) {
+      program.addProgramProblem(problem);
+    }
+    storeCachedProgram(file, program);
+    return new TranslatedFile(file, null, program, List.of());
+  }
+
+  /**
+   * The frontend registry for this run, built on first use.
+   *
+   * <p>Built lazily so that a scan of pure Java code never pays for the Kotlin Analysis API's
+   *
+   * <p>IntelliJ application or for a Scala compiler context.
+   */
+  private FrontendRegistry frontends() {
+    if (frontendRegistry == null) {
+      try {
+        frontendRegistry =
+            new FrontendRegistry(
+                new org.plumb.tac.frontend.java.JavaTacFrontend(buildParser()),
+                frontendSourceRoots(),
+                config.classpathJars,
+                config.languages);
+      } catch (RuntimeException | LinkageError ex) {
+        LOG.warn("Could not create the frontend registry: {}", ex.toString());
+        return null;
+      }
+    }
+    return frontendRegistry;
+  }
+
+  /**
+   * The source roots the frontends resolve symbols against.
+   *
+   * <p><b>Why the scan inputs are included.</b> A non-Java frontend resolves a Java class by
+   * looking for its SOURCE. The Kotlin frontend's Analysis API searches the session's content
+   * scope, and the Scala compiler searches its {@code -sourcepath}. If those roots are not the
+   * directory the project is actually in, the frontend cannot see the Java sources, the symbol does
+   * not resolve, and the call's owner is dropped:
+   *
+   * <pre>
+   *   Kotlin: JavaSink.readAll(in)   -&gt;  readAll/1   (no owner)
+   * </pre>
+   *
+   * <p>and the cross-language call-graph edge cannot be built -- so the taint never crosses the
+   * language boundary, and the finding is attributed to the sink's own file.
+   *
+   * <p>So the roots are, in order: the user's explicit {@code --source-root} / {@code
+   * --module-root} directories, then the scan INPUT directories. The inputs are the last resort,
+   * not the first: an explicit root is the user's statement about where the project's sources live,
+   * and it wins.
+   *
+   * @return the source roots, never empty
+   */
+  private java.util.List<java.nio.file.Path> frontendSourceRoots() {
+    java.util.List<java.nio.file.Path> roots = new java.util.ArrayList<>();
+    for (java.nio.file.Path root : config.sourceRoots) {
+      if (root != null && !roots.contains(root)) {
+        roots.add(root);
+      }
+    }
+    for (java.nio.file.Path root : config.moduleRoots) {
+      if (root != null && !roots.contains(root)) {
+        roots.add(root);
+      }
+    }
+    // The scan inputs. A file input contributes its own DIRECTORY, because that is
+    // where its sibling sources live.
+    for (java.nio.file.Path input : config.inputs) {
+      if (input == null) continue;
+      java.nio.file.Path dir = Files.isDirectory(input) ? input : input.getParent();
+      if (dir != null && !roots.contains(dir)) {
+        roots.add(dir);
+      }
+    }
+    if (roots.isEmpty()) {
+      roots.add(java.nio.file.Path.of("."));
+    }
+    return roots;
+  }
+
+  /**
    * Per-file parse + translate + style step. Style checks are per-AST-pass (no cross-file state) so
-   * they fit naturally into the same parallel phase. Returns null on parse failure.
+   *
+   * <p>they fit naturally into the same parallel phase. Returns null on parse failure.
    *
    * <p>Same caching rules as {@link #translateOne} for the TAC step. Style findings are
-   * <em>not</em> cached because the rule set (and therefore the resulting findings) may have
-   * changed between runs; they are always recomputed from the (cached or fresh) AST.
+   *
+   * <p><em>not</em> cached because the rule set (and therefore the resulting findings) may have
+   *
+   * <p>changed between runs; they are always recomputed from the (cached or fresh) AST.
    */
   private TranslatedFile translateAndStyleOne(
       Path file, RuleRegistry rules, List<org.plumb.style.AstChecker> styleChecks) {
+    // A non-Java file has no JavaParser AST, so there is nothing for the style
+    // checkers to walk. It goes through the frontend path, which produces the
+    // TAC and no style findings.
+    if (FrontendRegistry.languageOf(file) != org.plumb.tac.ir.SourceLanguage.JAVA) {
+      return translateNonJava(file);
+    }
     org.plumb.tac.ir.TacProgram program = loadCachedProgram(file);
     ParsedSource ps = null;
     if (program != null) {
@@ -1426,7 +1963,7 @@ public final class ScanRunner {
     } else {
       try {
         ps = buildParser().parse(file);
-        program = new TacTranslator(ps).translate();
+        program = translateJava(ps, file);
         storeCachedProgram(file, program);
       } catch (Throwable e) {
         // Catch Throwable (not just Exception) because
@@ -1436,6 +1973,10 @@ public final class ScanRunner {
         // NOT want a single bad file to crash the whole
         // Juliet sweep.
         LOG.warn("Parse failure for {}: {}", file, e.getMessage());
+        // The file is in the project and was not analysed. It is recorded so the
+        // report can say so: a file that produces no findings and a file that was
+        // never read look the same otherwise.
+        unparsedFiles.add(file.toString());
         return null;
       }
     }
@@ -1465,7 +2006,8 @@ public final class ScanRunner {
 
   /**
    * R-output-dir: persist the TAC program to the on-disk cache when the mode allows writes.
-   * Best-effort: a write failure is logged at WARN and does not abort the scan.
+   *
+   * <p>Best-effort: a write failure is logged at WARN and does not abort the scan.
    */
   private void storeCachedProgram(Path file, org.plumb.tac.ir.TacProgram program) {
     if (layout == null) return;
@@ -1483,7 +2025,8 @@ public final class ScanRunner {
 
   /**
    * phase-2 DFA. Returns the findings list (or empty on checker exception) so the caller can
-   * combine with style findings without depending on a local AnalysisContext.
+   *
+   * <p>combine with style findings without depending on a local AnalysisContext.
    */
   private List<Finding> runDfaCheckers(
       org.plumb.tac.ir.MergedProgram merged,
@@ -1506,8 +2049,11 @@ public final class ScanRunner {
   /**
    * Build a per-enclosing-class source path map from a merged program. For each underlying {@link
    * org.plumb.tac.ir.TacProgram} in the merged set, we walk its functions and record the program's
-   * source path under each function's enclosing class. The unified engine consults this map to fill
-   * in {@code filePath} on findings whose checker left it empty.
+   *
+   * <p>source path under each function's enclosing class. The unified engine consults this map to
+   * fill
+   *
+   * <p>in {@code filePath} on findings whose checker left it empty.
    */
   private static java.util.Map<String, java.nio.file.Path> mergedSourcePathMap(
       org.plumb.tac.ir.MergedProgram merged) {
@@ -1528,23 +2074,38 @@ public final class ScanRunner {
 
   /**
    * Run the plumb-dfa engine with the 7 DFA-only checkers from this family (excluding
-   * InsecureCrypto which lives in plumb-style as a primary AST checker with the unified engine
-   * reserved for the const-variable enhancement →and the unified version is already plumb-dfa, just
-   * opt-in). Also runs the 2 DFA-only checkers (IteratorConcurrentModification,
-   * CollectionSelfReference) which the original wiring missed. Returns the converted findings list.
+   *
+   * <p>InsecureCrypto which lives in plumb-style as a primary AST checker with the unified engine
+   *
+   * <p>reserved for the const-variable enhancement →and the unified version is already plumb-dfa,
+   * just
+   *
+   * <p>opt-in). Also runs the 2 DFA-only checkers (IteratorConcurrentModification,
+   *
+   * <p>CollectionSelfReference) which the original wiring missed. Returns the converted findings
+   * list.
    */
   /**
    * Unified-engine entry point. The default {@code config.cgStrategy} is {@code "global"} so this
-   * method builds a {@link org.plumb.dfa.cg.GlobalTACStore} from {@code merged.sources()} and calls
-   * {@link org.plumb.dfa.engine.DfaEngine#runWithGlobalStore} for cross-TU analysis. TU-local
-   * strategies ({@code cha / rta / vta / 1cfa / stub}) keep the legacy {@link
+   *
+   * <p>method builds a {@link org.plumb.dfa.cg.GlobalTACStore} from {@code merged.sources()} and
+   * calls
+   *
+   * <p>{@link org.plumb.dfa.engine.DfaEngine#runWithGlobalStore} for cross-TU analysis. TU-local
+   *
+   * <p>strategies ({@code cha / rta / vta / 1cfa / stub}) keep the legacy {@link
    * org.plumb.dfa.engine.DfaEngine#run} path.
    */
   /**
    * Build the list of {@link org.plumb.dfa.engine.DfaChecker}s the runner uses. The list is built
-   * once and shared between {@link #runUnifiedCheckers} (which runs them) and {@link #runAiDedup}
-   * (which calls each checker's {@code getAiPrompt(Finding)} to look up the rule prompt for the AI
-   * dedup pass).
+   *
+   * <p>once and shared between {@link #runUnifiedCheckers} (which runs them) and {@link
+   * #runAiDedup}
+   *
+   * <p>(which calls each checker's {@code getAiPrompt(Finding)} to look up the rule prompt for the
+   * AI
+   *
+   * <p>dedup pass).
    */
   List<org.plumb.dfa.engine.DfaChecker> buildDfaCheckers() {
     List<org.plumb.dfa.engine.DfaChecker> checkers = new ArrayList<>();
@@ -1705,6 +2266,13 @@ public final class ScanRunner {
         checkers.add(new org.plumb.dfa.checkers.taint.NumericTruncationChecker());
       // Classic injection / path taint
       checkers.add(new org.plumb.dfa.checkers.taint.SqlInjectionChecker());
+      // CWE-566: tainted data reaches a DATABASE -- including as a BOUND
+      // PARAMETER, where it cannot change the statement. It is a different
+      // defect from CWE-89 SQL injection, and both upstream rule sets keep
+      // them apart: the "Access Control/Database" rules carry CWE-566
+      // and name the bound parameter, and the other upstream model library
+      // has a `database_sink` primitive that is never a `sql_sink`.
+      checkers.add(new org.plumb.dfa.checkers.taint.DatabaseAccessChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.CommandInjectionChecker());
       // the deserialization.sinks family has been registered CRITICAL in
       // sink-families.yaml since it was added, but no checker consumed it, so
@@ -1746,6 +2314,36 @@ public final class ScanRunner {
       checkers.add(new org.plumb.dfa.checkers.taint.HttpResponseSplittingChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.XPathInjectionChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.FormatStringChecker());
+      // CWE-1333 (regular expression injection). The rule watches ONE sink
+      // family -- `regex.sinks`. Its shared patterns are the Java-library
+      // symbols (java.util.regex.Pattern, reachable from every JVM language);
+      // its per-language table holds kotlin.text.Regex and
+      // scala.util.matching.Regex. One defect class, one CWE, and no language
+      // sees another's sink.
+      checkers.add(new org.plumb.dfa.checkers.taint.RegexInjectionChecker());
+      // The defect classes the rule-pack conversion added. Each is a family the
+      // converter fills from a converted rule pack, and each needs its own
+      // rule -- a family with no rule is a family that can never fire.
+      //   CWE-1336 server-side template injection
+      //   CWE-235  HTTP parameter pollution
+      //   CWE-98   dangerous file inclusion
+      //   CWE-943  NoSQL injection
+      //   CWE-91   JSON injection
+      //   CWE-943  XQuery injection
+      //   CWE-643  XSLT injection
+      //   CWE-91   XML injection
+      checkers.add(new org.plumb.dfa.checkers.taint.ServerSideTemplateInjectionChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.HttpParameterPollutionChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.DangerousFileInclusionChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.NoSqlInjectionChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.JsonInjectionChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.XQueryInjectionChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.XsltInjectionChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.XmlInjectionChecker());
+      // CWE-732 (unrestricted access to a file). This one is not a taint rule:
+      // the dangerous call is the call itself, so it is a plain DfaChecker that
+      // reads the `ownerOnly` flag out of the argument list.
+      checkers.add(new org.plumb.dfa.checkers.taint.FilePermissionChecker());
       // Cleartext / DB credential / external config sinks.
       // These were also silently missing from the registration.
       // DBCredentialSinkChecker fires on
@@ -1785,7 +2383,113 @@ public final class ScanRunner {
     // The loose (path-insensitive, no-taint-required) checkers are not registered. The strict
     // `plumb.numeric.*` / `plumb.boundary.*` rules cover CWE-190/191, and `plumb.ast.*`
     // `CatchGenericException` covers class-level CWE-491/580/585.
-    return checkers;
+    return filterByLanguage(checkers);
+  }
+
+  /**
+   * Drop the checkers whose rule belongs to a language this run does not analyse.
+   *
+   * <p>A rule declares the languages it applies to. A rule with no declaration applies to every
+   * language, so it survives. A rule that declares, say, {@code kotlin} is dropped from a Java-only
+   * run -- and it is dropped HERE, at registration, so it never walks an instruction.
+   *
+   * <p>This is the checker's own gate, {@link org.plumb.dfa.engine.DfaChecker#supports}, applied
+   * one layer earlier. The runtime gate stays as the second line of defence: a checker that
+   * survived registration can still decline a function of another language.
+   */
+  private List<org.plumb.dfa.engine.DfaChecker> filterByLanguage(
+      List<org.plumb.dfa.engine.DfaChecker> checkers) {
+    org.plumb.dfa.config.LanguageFilter filter = languageFilter();
+    if (!filter.isSelective()) return checkers;
+    List<org.plumb.dfa.engine.DfaChecker> kept = new java.util.ArrayList<>();
+    for (org.plumb.dfa.engine.DfaChecker c : checkers) {
+      if (!(c instanceof org.plumb.dfa.taint.TaintedCheckerBase tcb)) {
+        // A checker that does not expose a rule has no language restriction to honour.
+        kept.add(c);
+        continue;
+      }
+      java.util.Set<String> declared = tcb.rule() == null ? null : tcb.rule().languages();
+      if (filter.keepsRule(declared)) {
+        kept.add(c);
+      } else {
+        LOG.info("language filter: dropped the checker {} ({})", c.name(), declared);
+      }
+    }
+    return kept;
+  }
+
+  /**
+   * The directory to index for cross-file {@code public static final} resolution.
+   *
+   * <p>The parent directory of the first scanned source file. Deliberately NOT an upward walk: the
+   *
+   * <p>old rule walked up from the sample file, so a scan rooted in a temporary directory indexed
+   * the
+   *
+   * <p>whole temporary tree -- tens of thousands of files -- on every analysis.
+   *
+   * <p>{@code null} when the scan has no source path at all, which disables cross-file resolution.
+   *
+   * <p>The engine treats an absent resolver as "no cross-file static-field information", never as
+   * "no
+   *
+   * <p>static fields".
+   */
+  private static java.nio.file.Path resolverRootFor(
+      java.util.Map<String, java.nio.file.Path> functionSourcePaths) {
+    if (functionSourcePaths == null) return null;
+    for (java.nio.file.Path p : functionSourcePaths.values()) {
+      if (p == null) continue;
+      java.nio.file.Path parent = p.toAbsolutePath().getParent();
+      if (parent != null) return parent;
+    }
+    return null;
+  }
+
+  /**
+   * The language filter for this run.
+   *
+   * <p>Derived from {@link ScanConfig#languages}. Empty means "every language", which is the
+   * default: the filter only does something when the user asked for a subset.
+   */
+  org.plumb.dfa.config.LanguageFilter languageFilter() {
+    return org.plumb.dfa.config.LanguageFilter.of(config.languages);
+  }
+
+  /**
+   * Build the engine for the unified (DFA) pass.
+   *
+   * <p>The worker count comes from the plan, so {@code --max-parallelism} reaches the analysis and
+   * not only the parse phase.
+   *
+   * <p>When the run is parallel, the engine is given a CHECKER FACTORY instead of a single shared
+   * list. A checker carries per-function state -- the tainted variables, the taint paths, the field
+   * tracker, the trace builder -- and {@code initFunction} clears it at every function boundary.
+   * Two workers sharing one checker instance would have one worker's clear erase the other's facts
+   * mid-walk, and the run would lose findings rather than gain them. The factory gives every worker
+   * its own, equivalent, instances.
+   */
+  private org.plumb.dfa.engine.DfaEngine newUnifiedEngine(
+      org.plumb.dfa.config.EngineConfig cfg,
+      List<org.plumb.dfa.engine.DfaChecker> checkers,
+      String callGraphStrategy) {
+    // The heap guard decides the worker count NOW, not at the start of the scan: the
+    // project has been parsed by this point, so the heap pressure is real and measured.
+    int workers = Math.max(0, heapGuard.effectiveWorkers());
+    java.util.function.Supplier<List<org.plumb.dfa.engine.DfaChecker>> factory =
+        workers > 0 ? this::buildDfaCheckers : null;
+    org.plumb.dfa.engine.DfaEngine engine =
+        new org.plumb.dfa.engine.DfaEngine(
+            cfg, checkers, callGraphStrategy, null, workers, factory);
+    // The module scope. The other modules are still READ -- they are on the classpath, and a
+    // callee that lives in a dependency module has to resolve, or the call graph breaks at the
+    // module boundary and the taint never crosses it. What the scope changes is where a FINDING
+    // may be reported.
+    if (config.module != null && !config.module.isBlank()) {
+      engine.withModuleScope(config.module);
+      LOG.info("module scope: {}", config.module);
+    }
+    return engine;
   }
 
   private List<Finding> runUnifiedCheckers(
@@ -1802,9 +2506,8 @@ public final class ScanRunner {
       // (SqlInjection / CommandInjection / XSS / PathTraversal /
       // LDAP / EL / OGNL / CodeInjection / JCR / JspDynamicInclude /
       // ...) silently no-ops: their checkSinkAtCall() returns
-      // immediately when the registry is empty.
-      // — the older minimal config used
-      // SinkFamilyRegistry.empty() + CheckerRegistry.empty() for
+      // immediately when the registry is empty. The older minimal config
+      // used SinkFamilyRegistry.empty() + CheckerRegistry.empty() for
       // the 7 baseline DFA checkers (NullDeref, IntOverflow, ...),
       // which don't need sink families. But the same call also
       // runs the taint-family checkers listed in buildDfaCheckers()
@@ -1812,6 +2515,17 @@ public final class ScanRunner {
       // classpath defaults and keep the conservative TuningConfig.
       org.plumb.dfa.config.EngineConfig baseCfg =
           org.plumb.dfa.config.ConfigLoader.loadFromClasspath();
+      // The language filter is applied to the LOADED configuration: the sink families of the
+      // languages that were not selected, and their per-language patterns, are never
+      // registered. A Java-only scan therefore does not compile the Kotlin and the Scala
+      // patterns at all.
+      org.plumb.dfa.config.LanguageFilter languageFilter = languageFilter();
+      if (languageFilter.isSelective()) {
+        baseCfg = baseCfg.withSinkFamilies(languageFilter.filterFamilies(baseCfg.sinkFamilies()));
+        LOG.info(
+            "language filter: {} (sink families narrowed before registration)",
+            languageFilter.describe());
+      }
       org.plumb.dfa.config.EngineConfig unifiedCfg =
           new org.plumb.dfa.config.EngineConfig(
               baseCfg.sinkFamilies(),
@@ -1855,11 +2569,24 @@ public final class ScanRunner {
       // (cha / rta / vta / 1cfa / stub) route to the
       // TU-local DfaEngine.run(programView) path.
       org.plumb.dfa.engine.FindingReporter reporter;
+      // The engine is kept so its budget report can be surfaced after the run. An incomplete
+      // analysis produces the same findings as a complete one, so without this the user has no
+      // way to know that some functions were only partly analysed.
+      org.plumb.dfa.engine.DfaEngine unifiedEngine = null;
+      // Cross-file `public static final` resolution needs to READ source, so
+      // it is asked for explicitly and only here, on the source-present path.
+      // The root is the input directory of the scan -- NOT an upward walk:
+      // an upward walk from a file in a temporary directory lands on the
+      // whole temporary tree, which is tens of thousands of files read and
+      // regex-scanned per analysis.
+      java.nio.file.Path resolverRoot = resolverRootFor(functionSourcePaths);
       if (merged != null && "global".equalsIgnoreCase(config.cgStrategy)) {
         org.plumb.dfa.engine.DfaEngine unified =
-            new org.plumb.dfa.engine.DfaEngine(unifiedCfg, checkers, "global", null)
-                .withFunctionSourcePaths(functionSourcePaths);
-        reporter = unified.runWithGlobalStore(merged.sources(), 0);
+            newUnifiedEngine(unifiedCfg, checkers, "global")
+                .withFunctionSourcePaths(functionSourcePaths)
+                .withStaticFieldResolverRoot(resolverRoot);
+        unifiedEngine = unified;
+        reporter = unified.runWithGlobalStore(merged.sources(), heapGuard.effectiveWorkers());
       } else if ("global".equalsIgnoreCase(config.cgStrategy) && programView != null) {
         // Single-file path with cgStrategy=global: build a
         // GlobalTACStore around the one program so the
@@ -1868,18 +2595,55 @@ public final class ScanRunner {
         // program's internal edges, which is identical to
         // running the CHA path on the same program.
         org.plumb.dfa.engine.DfaEngine unified =
-            new org.plumb.dfa.engine.DfaEngine(unifiedCfg, checkers, "global", null)
-                .withFunctionSourcePaths(functionSourcePaths);
-        reporter = unified.runWithGlobalStore(java.util.List.of(programView), 0);
+            newUnifiedEngine(unifiedCfg, checkers, "global")
+                .withFunctionSourcePaths(functionSourcePaths)
+                .withStaticFieldResolverRoot(resolverRoot);
+        unifiedEngine = unified;
+        reporter =
+            unified.runWithGlobalStore(
+                java.util.List.of(programView), heapGuard.effectiveWorkers());
       } else {
         String effectiveCg = config.cgStrategy;
         if (effectiveCg == null || effectiveCg.isEmpty()) {
           effectiveCg = "cha";
         }
         org.plumb.dfa.engine.DfaEngine unified =
-            new org.plumb.dfa.engine.DfaEngine(unifiedCfg, checkers, effectiveCg, null)
-                .withFunctionSourcePaths(functionSourcePaths);
+            newUnifiedEngine(unifiedCfg, checkers, effectiveCg)
+                .withFunctionSourcePaths(functionSourcePaths)
+                .withStaticFieldResolverRoot(resolverRoot);
+        unifiedEngine = unified;
         reporter = unified.run(programView);
+      }
+      if (unifiedEngine != null) {
+        org.plumb.dfa.engine.AnalysisBudget.BudgetReport budgetReport =
+            unifiedEngine.budgetReport();
+        this.budgetReport = budgetReport;
+        this.moduleScopeReport = unifiedEngine.moduleScope();
+        if (budgetReport != null && !budgetReport.complete()) {
+          // WARN, not INFO: an incomplete analysis is a caveat on the result, and the
+          // caveat belongs where the user will see it.
+          LOG.warn("Analysis was incomplete: {}", budgetReport.summary());
+        }
+        // The module boundary. A single-module run has to say what it did NOT look at:
+        // "no findings in this module" and "the findings were in the other modules" are
+        // different statements, and only the second one is a caveat on the result.
+        org.plumb.dfa.engine.ModuleScope scope = unifiedEngine.moduleScope();
+        if (scope.isLimited()) {
+          LOG.info("module scope: {}", scope.summary());
+          if (scope.crossingCallers() > 0) {
+            LOG.info(
+                "module scope: {} caller(s) called out of module {}; the taint still crossed the"
+                    + " boundary, and the crossings are recorded",
+                scope.crossingCallers(),
+                scope.module());
+          }
+          if (scope.outOfScopeFindings() > 0) {
+            LOG.info(
+                "module scope: {} finding(s) were outside module {} and are not reported",
+                scope.outOfScopeFindings(),
+                scope.module());
+          }
+        }
       }
       List<Finding> legacy = new ArrayList<>();
       for (org.plumb.reporter.Finding uf : reporter.all()) {
@@ -1903,7 +2667,8 @@ public final class ScanRunner {
    * Whether an AST checker is allowed to run under the current filter.
    *
    * <p>A checker has several identities, and the filter has to accept any of them, because each one
-   * is a name a user can reasonably type:
+   *
+   * <p>is a name a user can reasonably type:
    *
    * <ul>
    *   <li>the checker's {@code name()} -- a kebab-case slug ({@code unchecked-return});
@@ -1913,14 +2678,23 @@ public final class ScanRunner {
    * </ul>
    *
    * <p><b>Why the rule id matters most.</b> It is the identity the report prints. A user who reads
-   * {@code ast-bug-incorrect-return-comparison} off a finding and passes it back to {@code --rule}
-   * must get that rule back. When the AST registration gate only consulted the checker's name and
-   * class name, that round trip selected nothing, and the scan came back empty -- which reads as
-   * "the rule found nothing" rather than "the filter matched nothing".
+   *
+   * <p>{@code ast-bug-incorrect-return-comparison} off a finding and passes it back to {@code
+   * --rule}
+   *
+   * <p>must get that rule back. When the AST registration gate only consulted the checker's name
+   * and
+   *
+   * <p>class name, that round trip selected nothing, and the scan came back empty -- which reads as
+   *
+   * <p>"the rule found nothing" rather than "the filter matched nothing".
    *
    * <p>The class name is matched with and without its {@code Check} suffix, because the per-CWE
-   * configs were written against the shorter form ({@code UncheckedReturn}) and those entries are
-   * what the CWE coverage numbers are measured against.
+   *
+   * <p>configs were written against the shorter form ({@code UncheckedReturn}) and those entries
+   * are
+   *
+   * <p>what the CWE coverage numbers are measured against.
    */
   private boolean isCheckerAllowed(org.plumb.style.AstChecker c) {
     if (isRuleIdAllowed(c.name())) {
@@ -1968,10 +2742,16 @@ public final class ScanRunner {
 
   /**
    * overload that accepts a {@link RuleRegistry} so callers can pass the per-scan registry built by
-   * {@link #buildRegistry()}. The disabled-by-default gate looks up the rule id in the registry and
-   * drops it when the registry says {@code enabled=false} AND the user did not override via yaml
-   * rules.enabled or --rule. Production paths always pass the live registry; smoke tests may pass
-   * {@code null} to keep the legacy behaviour.
+   *
+   * <p>{@link #buildRegistry()}. The disabled-by-default gate looks up the rule id in the registry
+   * and
+   *
+   * <p>drops it when the registry says {@code enabled=false} AND the user did not override via yaml
+   *
+   * <p>rules.enabled or --rule. Production paths always pass the live registry; smoke tests may
+   * pass
+   *
+   * <p>{@code null} to keep the legacy behaviour.
    */
   private boolean isRuleIdAllowed(String ruleId, RuleRegistry liveRegistry) {
     if (ruleId == null) return true;
@@ -2032,12 +2812,18 @@ public final class ScanRunner {
    * Whether a style finding survives the filter.
    *
    * <p>A finding carries the rule's id, the rule's name, the checker's class name, and the rule's
-   * declared aliases. A filter entry may name any of them, and the class name is accepted with and
-   * without its {@code Check} suffix because the per-CWE configs were written against the shorter
-   * form.
+   *
+   * <p>declared aliases. A filter entry may name any of them, and the class name is accepted with
+   * and
+   *
+   * <p>without its {@code Check} suffix because the per-CWE configs were written against the
+   * shorter
+   *
+   * <p>form.
    *
    * <p>Both post-style filters call this, so the merged path and the single-file path can never
-   * disagree about which findings a whitelist admits.
+   *
+   * <p>disagree about which findings a whitelist admits.
    *
    * @param f the finding
    * @param entries the filter entries
@@ -2074,9 +2860,14 @@ public final class ScanRunner {
    * Whether {@code ruleId} is named by any entry in {@code entries}.
    *
    * <p><b>This is the ONE place where a filter entry is compared with a rule id.</b> It exists
-   * because the comparison used to be re-implemented in four places (the AST registration gate, the
-   * post-style finding filter, the registry builder, and the CLI {@code --rule} filter), each with
-   * its own idea of what a "bare id" is. They disagreed:
+   *
+   * <p>because the comparison used to be re-implemented in four places (the AST registration gate,
+   * the
+   *
+   * <p>post-style finding filter, the registry builder, and the CLI {@code --rule} filter), each
+   * with
+   *
+   * <p>its own idea of what a "bare id" is. They disagreed:
    *
    * <ul>
    *   <li>the registry builder stripped at the FIRST dot, so {@code
@@ -2085,18 +2876,26 @@ public final class ScanRunner {
    *       bug-incorrect-return-comparison};
    *   <li>the CLI filter stripped only the FIRST domain token, so {@code
    *       ast-bug-incorrect-return-comparison} became {@code bug-incorrect-return-comparison} —
-   *       matching nothing.
+   *       <p>matching nothing.
    * </ul>
    *
    * <p>The consequence was that a rule id printed in the report could not be passed back to {@code
    * --rule} to select the rule that produced it, and a per-CWE YAML whitelist written against the
-   * printed id selected nothing. The scan came back empty, which reads as "the rule found nothing"
-   * rather than "the filter matched nothing".
+   *
+   * <p>printed id selected nothing. The scan came back empty, which reads as "the rule found
+   * nothing"
+   *
+   * <p>rather than "the filter matched nothing".
    *
    * <p>Now every comparison goes through {@link #ruleIdForms(String)}, which drops leading domain
-   * tokens while keeping EVERY suffix. Both sides of the comparison are expanded, so the match is
-   * symmetric: an entry may be written in the canonical form or in any shorter form, and the rule
-   * id may be either.
+   *
+   * <p>tokens while keeping EVERY suffix. Both sides of the comparison are expanded, so the match
+   * is
+   *
+   * <p>symmetric: an entry may be written in the canonical form or in any shorter form, and the
+   * rule
+   *
+   * <p>id may be either.
    *
    * @param ruleId the rule id the finding or checker carries
    * @param entries the filter entries (yaml whitelist, {@code --rule} args, …)
@@ -2112,10 +2911,10 @@ public final class ScanRunner {
    * @param ruleId the rule id the finding or checker carries
    * @param entries the filter entries (yaml whitelist, {@code --rule} args, ...)
    * @param exact when true, only the literal id and its legacy-map resolution are compared. A
-   *     DECLARED ALIAS is matched this way, because an alias is a name, not a shape: peeling it
-   *     would make {@code dfa-style-catch-generic-exception} reduce to {@code
+   *     <p>DECLARED ALIAS is matched this way, because an alias is a name, not a shape: peeling it
+   *     <p>would make {@code dfa-style-catch-generic-exception} reduce to {@code
    *     catch-generic-exception}, which is another rule's name, and the alias would then select
-   *     that other rule.
+   *     <p>that other rule.
    * @return true when an entry names this rule
    */
   private boolean filterMatches(
@@ -2183,13 +2982,19 @@ public final class ScanRunner {
    * Is this bare form shared by more than one live rule?
    *
    * <p>A "form" is the rule id with its leading engine and domain tokens peeled off -- the short
-   * spelling a user may reasonably type. Twelve pairs of live rules share one, and eight of those
-   * pairs carry DIFFERENT CWEs, so a filter that used an ambiguous form would select a rule the
-   * user did not name.
+   *
+   * <p>spelling a user may reasonably type. Twelve pairs of live rules share one, and eight of
+   * those
+   *
+   * <p>pairs carry DIFFERENT CWEs, so a filter that used an ambiguous form would select a rule the
+   *
+   * <p>user did not name.
    *
    * <p>The live rule set is read from the ENGINE, so the answer cannot drift from the rules that
-   * actually ship. A rule id that is not live is not ambiguous: only one live rule can have its
-   * form.
+   *
+   * <p>actually ship. A rule id that is not live is not ambiguous: only one live rule can have its
+   *
+   * <p>form.
    *
    * @param form the peeled form
    * @param theRuleId the rule the form is being tested against
@@ -2204,9 +3009,9 @@ public final class ScanRunner {
       // prevents. Assume the form is unique.
       return false;
     }
-    // A form is owned by a rule when it is one of that rule's identities
-    // -- its emitted id, its legacy registry name, or its checker class
-    // name -- or when it is a PEELED form of one of them.
+    // A form is owned by a rule when it is one of that rule's identities:
+    // its emitted id, its legacy registry name, or its checker class
+    // name, or when it is a PEELED form of one of them.
     //
     // The comparison is case-insensitive, because the peeled form of a
     // legacy name (`NULL_DEREF_FROM_RETURN` -> `null-deref-from-return`)
@@ -2226,6 +3031,13 @@ public final class ScanRunner {
       if (identity.toLowerCase(java.util.Locale.ROOT).equals(wanted)) {
         owners++;
       } else {
+        // A PEELED form of an identity owns the form too. This is the case the guard
+        // exists for: the AST checker's `name()` is the bare slug
+        // `null-deref-from-return`, so the form is owned by the AST rule (CWE-690)
+        // AND, once peeled, by the DFA rule (CWE-476). Without counting the peeled
+        // forms, `--rule dfa-taint-null-deref-from-return` selects both, and a TN
+        // case for CWE-476 is scored as a false positive because the CWE-690 rule
+        // fired on the same line.
         for (String f : ruleIdForms(identity)) {
           if (f.toLowerCase(java.util.Locale.ROOT).equals(wanted)) {
             owners++;
@@ -2242,7 +3054,9 @@ public final class ScanRunner {
    * The ids of every rule the engine can emit.
    *
    * <p>Read from the live registries, so the answer is the engine's own. Cached, because the filter
-   * asks the question once per rule per filter entry and the answer does not change during a scan.
+   *
+   * <p>asks the question once per rule per filter entry and the answer does not change during a
+   * scan.
    */
   private java.util.Collection<String> liveRuleIds() {
     java.util.Collection<String> cached = liveRuleIdsCache;
@@ -2285,14 +3099,23 @@ public final class ScanRunner {
    * Add every identity a rule answers to.
    *
    * <p>The filter compares an entry against a rule's ID, against the rule's LEGACY NAME, and
-   * against the checker class simple name (with and without the "Check" suffix). Each of those has
-   * its own peeled forms, and a collision between any two of them lets one filter entry select two
-   * rules.
    *
-   * <p>That is not hypothetical: the collision that let the AST CWE-690 rule through {@code --rule
-   * dfa-taint-null-deref-from-return} was between the ENTRY's peeled form and the AST rule's legacy
-   * name's peeled form -- not between the two rules' ids. So the live set has to carry the legacy
-   * names too.
+   * <p>against the checker class simple name (with and without the "Check" suffix). Each of those
+   * has
+   *
+   * <p>its own peeled forms, and a collision between any two of them lets one filter entry select
+   * two
+   *
+   * <p>rules.
+   *
+   * <p>That is not hypothetical: the collision that let the AST CWE-690 rule through {@code
+   * --ruledfa-taint-null-deref-from-return} was between the ENTRY's peeled form and the AST rule's
+   * legacy
+   *
+   * <p>name's peeled form -- not between the two rules' ids. So the live set has to carry the
+   * legacy
+   *
+   * <p>names too.
    *
    * @param ids the set to add to
    * @param id the rule's emitted id
@@ -2319,9 +3142,9 @@ public final class ScanRunner {
    * Every form a rule id can reasonably be written in.
    *
    * <p>A rule id is built from an ENGINE token, a DOMAIN token and a NAME: {@code
-   * ast-error-catch-generic-exception}, {@code dfa-taint-leak}, {@code
    * plumb.style.cwe600-uncaught-exception}. Different callers spell the same rule differently, and
-   * each spelling is something a user can reasonably type:
+   *
+   * <p>each spelling is something a user can reasonably type:
    *
    * <ul>
    *   <li>the full id, exactly as the report prints it;
@@ -2332,20 +3155,30 @@ public final class ScanRunner {
    * </ul>
    *
    * <p><b>Why the domain token needs care.</b> {@code ast-error-catch-generic-exception} has TWO
-   * domain-ish tokens ({@code ast} and {@code error}) before the name, while {@code
+   *
+   * <p>domain-ish tokens ({@code ast} and {@code error}) before the name, while {@code
    * plumb.style.cwe600-uncaught-exception} has one ({@code style}) after a dotted prefix. Stripping
-   * only the first token left {@code error-catch-generic-exception}, which matches nothing -- so
-   * the id printed in the report could not be passed back to {@code --rule} to select the rule that
-   * produced it.
+   *
+   * <p>only the first token left {@code error-catch-generic-exception}, which matches nothing -- so
+   *
+   * <p>the id printed in the report could not be passed back to {@code --rule} to select the rule
+   * that
+   *
+   * <p>produced it.
    *
    * <p><b>Why the peeling has to stop at the NAME.</b> Peeling every token is too much. {@code
    * ast-error-catch-generic-exception} peels down to {@code generic-exception}, which is ALSO the
-   * tail of {@code ast-error-generic-exception} and {@code ast-error-throw-generic-exception} --
-   * three unrelated rules. A filter that named one of them would select all three.
+   *
+   * <p>tail of {@code ast-error-generic-exception} and {@code ast-error-throw-generic-exception} --
+   *
+   * <p>three unrelated rules. A filter that named one of them would select all three.
    *
    * <p>So the peeling is driven by a VOCABULARY of the tokens that are actually engines or domains,
-   * and it stops as soon as the remainder is not one of them. The vocabulary is data, not a guess:
-   * it is the set of engine and domain tokens the rule ids are built from.
+   *
+   * <p>and it stops as soon as the remainder is not one of them. The vocabulary is data, not a
+   * guess:
+   *
+   * <p>it is the set of engine and domain tokens the rule ids are built from.
    *
    * @param ruleId the rule id
    * @return the forms to match a filter entry against
@@ -2411,14 +3244,18 @@ public final class ScanRunner {
    * The tokens that make up a rule id's ENGINE and DOMAIN part.
    *
    * <p>These are the tokens the engine actually uses to build ids: the engine that produced the
-   * rule ({@code ast}, {@code dfa}, {@code bu}, {@code plumb}, {@code orm}) and the topic of the
-   * rule ({@code style}, {@code error}, {@code bug}, {@code taint}, {@code security}, {@code
+   *
+   * <p>rule ({@code ast}, {@code dfa}, {@code bu}, {@code plumb}, {@code orm}) and the topic of the
+   *
+   * <p>rule ({@code style}, {@code error}, {@code bug}, {@code taint}, {@code security}, {@code
    * naming}, ...).
    *
    * <p>The list is deliberately a fixed vocabulary rather than "drop any leading token". Dropping
-   * any leading token makes a rule's NAME reachable as a form, and a name like {@code
+   *
+   * <p>any leading token makes a rule's NAME reachable as a form, and a name like {@code
    * generic-exception} is shared by three unrelated rules -- so a filter naming one of them would
-   * select all three.
+   *
+   * <p>select all three.
    */
   private static final java.util.Set<String> ENGINE_AND_DOMAIN_TOKENS =
       java.util.Set.of(
@@ -2457,8 +3294,12 @@ public final class ScanRunner {
    * The engine and domain tokens the rule id peeling knows about.
    *
    * <p>Exposed to the tests, because the test that measures the collisions has to compute the
-   * spellings the SAME way the filter computes them. A test that reimplemented the vocabulary would
-   * measure a different set of spellings than the filter uses, and the two would agree on nothing.
+   *
+   * <p>spellings the SAME way the filter computes them. A test that reimplemented the vocabulary
+   * would
+   *
+   * <p>measure a different set of spellings than the filter uses, and the two would agree on
+   * nothing.
    */
   static java.util.Set<String> engineAndDomainTokens() {
     return ENGINE_AND_DOMAIN_TOKENS;
@@ -2466,16 +3307,24 @@ public final class ScanRunner {
 
   /**
    * /** Convert a unified engine {@link org.plumb.dfa.engine.Finding} (string ruleId + cwe + file
-   * path) into a legacy {@link Finding} (RuleDef-backed). The {@code name} field, which is what the
-   * reporter uses to identify the rule.
+   *
+   * <p>path) into a legacy {@link Finding} (RuleDef-backed). The {@code name} field, which is what
+   * the
+   *
+   * <p>reporter uses to identify the rule.
    */
   /**
    * The CWE ids of a finding, as a list.
    *
    * <p>A defect class can carry more than one CWE id -- the same path-traversal defect is CWE-22,
-   * CWE-23 and CWE-36, and a corpus may number it differently from the engine. The DFA finding
-   * holds the ids as one comma-separated string, because that is what the taint rule declares; the
-   * rule definition holds them as a list, because that is what the rule table and the report read.
+   *
+   * <p>CWE-23 and CWE-36, and a corpus may number it differently from the engine. The DFA finding
+   *
+   * <p>holds the ids as one comma-separated string, because that is what the taint rule declares;
+   * the
+   *
+   * <p>rule definition holds them as a list, because that is what the rule table and the report
+   * read.
    */
   private static List<String> cweList(String cwe) {
     if (cwe == null || cwe.isBlank()) return List.of();
@@ -2678,8 +3527,11 @@ public final class ScanRunner {
 
   /**
    * Step 7 — the list of {@link org.plumb.style.AstChecker}s the runner uses for AI dedup. Built
-   * once and shared with {@link #runStyleChecks(ParsedSource, Path, RuleRegistry, List)} so the AI
-   * dedup pass can look up the rule prompt for each style finding by its rule id.
+   *
+   * <p>once and shared with {@link #runStyleChecks(ParsedSource, Path, RuleRegistry, List)} so the
+   * AI
+   *
+   * <p>dedup pass can look up the rule prompt for each style finding by its rule id.
    */
   private List<org.plumb.style.AstChecker> buildStyleChecks() {
     List<org.plumb.style.AstChecker> out = new ArrayList<>();
@@ -2707,23 +3559,32 @@ public final class ScanRunner {
    *
    * <p>The map is built from the same two lists the scan itself uses: the AST checkers ({@link
    * #buildStyleChecks()}) and the DFA checkers ({@link #buildDfaCheckers()}). Reading it from the
-   * engine -- rather than from a table maintained beside the engine -- is the whole point. A table
-   * maintained beside the engine drifts, and a Juliet measurement that attributes a case to a CWE
-   * the engine does not emit is measuring a different tool than the one that ships.
+   *
+   * <p>engine -- rather than from a table maintained beside the engine -- is the whole point. A
+   * table
+   *
+   * <p>maintained beside the engine drifts, and a Juliet measurement that attributes a case to a
+   * CWE
+   *
+   * <p>the engine does not emit is measuring a different tool than the one that ships.
    *
    * <p>The AST side contributes the rule id and the CWE list its own {@code RuleDef} declares. The
-   * DFA side contributes the rule id and the single CWE its own {@code TaintRule} declares.
+   *
+   * <p>DFA side contributes the rule id and the single CWE its own {@code TaintRule} declares.
    *
    * <p>A rule id that appears on both sides is reported with BOTH sets of CWEs, because the engine
-   * really does emit that id from two different checkers with two different CWEs. Merging them
-   * would hide a real fact: a finding with that id does not have one CWE, it has two, and which one
-   * it is depends on which checker produced it.
+   *
+   * <p>really does emit that id from two different checkers with two different CWEs. Merging them
+   *
+   * <p>would hide a real fact: a finding with that id does not have one CWE, it has two, and which
+   * one
+   *
+   * <p>it is depends on which checker produced it.
    *
    * @return rule id -> the CWEs the engine emits under that id, sorted
    */
   java.util.Map<String, java.util.List<String>> liveRuleCweMap() {
     java.util.Map<String, java.util.Set<String>> map = new java.util.TreeMap<>();
-
     // The AST side. Each checker declares its own RuleDef, which carries
     // the rule id and the CWE list.
     //
@@ -2752,7 +3613,6 @@ public final class ScanRunner {
         // checker must not take the whole report down.
       }
     }
-
     // The DFA side. The taint-based checkers expose their rule; the
     // control-flow ones declare one themselves.
     for (org.plumb.dfa.engine.DfaChecker checker : buildDfaCheckers()) {
@@ -2785,7 +3645,6 @@ public final class ScanRunner {
         // As above: one unreadable checker does not abort the map.
       }
     }
-
     java.util.Map<String, java.util.List<String>> out = new java.util.TreeMap<>();
     for (java.util.Map.Entry<String, java.util.Set<String>> e : map.entrySet()) {
       out.put(e.getKey(), new java.util.ArrayList<>(e.getValue()));
@@ -2797,7 +3656,8 @@ public final class ScanRunner {
    * Build the DSL checker for this scan, if the user supplied any rule file.
    *
    * <p>The result is stored in {@link #dslChecker} so that both the check list and the rule
-   * registry can see the same instance. Building it twice would compile every rule twice.
+   *
+   * <p>registry can see the same instance. Building it twice would compile every rule twice.
    *
    * <p>The DSL rules are AST rules only. Data-flow and taint rules are configured in {@code
    * plumb-dfa}'s YAML files and are not affected by this.
@@ -2822,7 +3682,8 @@ public final class ScanRunner {
    * The DSL checker built for this scan, or null when the user supplied no DSL rule file.
    *
    * <p>It is kept here because the same instance has to be visible in two places: the check list
-   * passed to the dispatcher, and the rule registry that {@link
+   *
+   * <p>passed to the dispatcher, and the rule registry that {@link
    * org.plumb.style.StyleContext#report} consults.
    */
   private org.plumb.dsl.kotlin.DslAstChecker dslChecker;
@@ -2857,7 +3718,6 @@ public final class ScanRunner {
     RuleRegistry r = new RuleRegistry().withBuiltinDefaults();
     // Layer 2: every AST checker in the builtins set.
     r.registerFromCheckers(new org.plumb.style.AstCheckerRegistry().builtins().all());
-
     // Layer 3: the user-supplied DSL rules.
     //
     // A DSL rule is not an AstChecker -- one checker serves many rules --
@@ -2877,7 +3737,6 @@ public final class ScanRunner {
         }
       }
     }
-
     boolean whitelistActive = config.whitelistMode && !config.enabledRuleNames.isEmpty();
     for (RuleDef def : r.all()) {
       // the checker's own DEFAULT_RULE.enabled
@@ -2942,7 +3801,10 @@ public final class ScanRunner {
   private List<Path> expandInputs(Path input) throws IOException {
     if (Files.isDirectory(input)) {
       try (Stream<Path> walk = Files.walk(input)) {
-        return walk.filter(p -> p.toString().endsWith(".java"))
+        return walk.filter(FrontendRegistry::isSourceFile)
+            // The language filter, applied at the discovery level: a file whose language was
+            // not selected is never opened, never translated, and never reaches a frontend.
+            .filter(p -> languageFilter().includes(FrontendRegistry.languageOf(p)))
             // Skip files under
             // `src/test/` (Java's test
             // directory convention). The
@@ -2963,16 +3825,23 @@ public final class ScanRunner {
 
   /**
    * →cross-TU as default. If the user requested a single file but its parent directory has a small
-   * number of sibling .java files, include them in the merged scan so the DFA engine can follow
-   * calls across files (Variant 42 / 45 / 54 helpers in Juliet test suites live as separate files
-   * in the same directory).
+   *
+   * <p>number of sibling .java files, include them in the merged scan so the DFA engine can follow
+   *
+   * <p>calls across files (Variant 42 / 45 / 54 helpers in Juliet test suites live as separate
+   * files
+   *
+   * <p>in the same directory).
    *
    * <p>Threshold: cap the sibling count at {@link #CROSS_TU_AUTO_EXPAND_LIMIT}. Beyond that the
-   * directory is clearly a large test corpus — better to let the user opt in by passing the
-   * directory as the input than to silently run a 1000-file scan per single-file command.
+   *
+   * <p>directory is clearly a large test corpus — better to let the user opt in by passing the
+   *
+   * <p>directory as the input than to silently run a 1000-file scan per single-file command.
    *
    * <p>Returns the original list unchanged if there's no opportunity to expand (single file with no
-   * siblings, or already a multi-file request).
+   *
+   * <p>siblings, or already a multi-file request).
    */
   private static final int CROSS_TU_AUTO_EXPAND_LIMIT = 20;
 
@@ -2983,10 +3852,15 @@ public final class ScanRunner {
     if (parent == null) return original;
     try (Stream<Path> walk = Files.list(parent)) {
       List<Path> siblings =
-          walk.filter(p -> p.toString().endsWith(".java"))
+          walk.filter(FrontendRegistry::isSourceFile)
               .filter(p -> !p.equals(single))
               .filter(this::matches)
               .filter(p -> !isUnderTestDirectory(p))
+              // The language filter applies to the siblings too. Without this, a
+              // `--language kotlin` run that was pointed at one Kotlin file would pull in the
+              // Java files next to it, and the Java findings would appear in a Kotlin-only
+              // scan.
+              .filter(p -> languageFilter().includes(FrontendRegistry.languageOf(p)))
               .toList();
       if (siblings.isEmpty()) return original;
       if (siblings.size() > CROSS_TU_AUTO_EXPAND_LIMIT) {
@@ -3035,14 +3909,24 @@ public final class ScanRunner {
       List<org.plumb.dfa.engine.DfaChecker> dfaCheckers,
       List<org.plumb.style.AstChecker> styleChecks) {
     List<Finding> out = new ArrayList<>();
+    // A non-Java file has no JavaParser AST. It goes through the frontend
+    // path, which produces the TAC and runs the dataflow checkers over it --
+    // and no style findings, because the style checkers are JavaParser AST
+    // checkers.
+    if (FrontendRegistry.languageOf(file) != org.plumb.tac.ir.SourceLanguage.JAVA) {
+      return scanNonJavaFile(file, dfaCheckers);
+    }
     ParsedSource ps;
     try {
       ps = buildParser().parse(file);
     } catch (Exception e) {
       LOG.warn("Parse failure for {}: {}", file, e.getMessage());
+      // The file is in the project and was not analysed. It is recorded so the
+      // report can say so: a file that produces no findings and a file that was
+      // never read look the same otherwise.
+      unparsedFiles.add(file.toString());
       return out;
     }
-
     org.plumb.tac.ir.TacProgram program = null;
     if (config.runTaint
         || config.runDivByZero
@@ -3098,12 +3982,11 @@ public final class ScanRunner {
         // new DfaChecker port from plumb-dfa
         || config.runBigDecimalDoubleConstructor) {
       try {
-        program = new TacTranslator(ps).translate();
+        program = translateJava(ps, file);
       } catch (Exception e) {
         LOG.warn("TAC translation failure for {}: {}", file, e.getMessage());
       }
     }
-
     // Run the plumb-dfa
     // engine for the 7 DFA-only checkers
     // (TryCatchFinally, OffByOne, EqualsCalledOnNull,
@@ -3146,7 +4029,6 @@ public final class ScanRunner {
       }
       out.addAll(runUnifiedCheckers(null, program, java.util.Map.copyOf(singleMap), dfaCheckers));
     }
-
     if (config.runStyle) {
       // A1: single-pass group via AstDispatcher.
       // pass per-rule param overrides
@@ -3180,8 +4062,8 @@ public final class ScanRunner {
         // prints, so a user who copies an id out of the report and
         // passes it back to `--rule` has to get that rule back. Before
         // this, the AST registration gate only looked at the checker's
-        // NAME and its CLASS NAME, so `--rule ast-bug-incorrect-return-comparison`
-        // -- the exact id in the report -- selected nothing at all.
+        // NAME and its CLASS NAME, so `--rule ast-bug-incorrect-return-comparison`,
+        // the exact id in the report, selected nothing at all.
         if (!isCheckerAllowed(c)) {
           // The DSL checker serves MANY rules, so it cannot be
           // gated on its own name. Admit it when at least one
@@ -3250,7 +4132,113 @@ public final class ScanRunner {
     return out;
   }
 
+  /**
+   * The single-file path for a non-Java source file.
+   *
+   * <p>The frontend lowers the file to TAC, and the dataflow checkers run over that TAC. There are
+   *
+   * <p>no style findings: the style checkers walk a JavaParser AST, and this file has none.
+   *
+   * @param file the source file
+   * @param dfaCheckers the checkers to run
+   * @return the findings
+   */
+  private List<Finding> scanNonJavaFile(
+      Path file, List<org.plumb.dfa.engine.DfaChecker> dfaCheckers) {
+    List<Finding> out = new ArrayList<>();
+    TranslatedFile translated = translateNonJava(file);
+    if (translated == null) {
+      return out;
+    }
+    org.plumb.tac.ir.TacProgram program = translated.program();
+    if (program == null) {
+      return out;
+    }
+    java.util.Map<String, java.nio.file.Path> singleMap = new java.util.HashMap<>();
+    java.nio.file.Path sp = program.sourcePath();
+    if (sp != null) {
+      for (org.plumb.tac.ir.TacFunction fn : program.functions()) {
+        String enc = fn.enclosingClass();
+        if (enc != null && !enc.isEmpty()) {
+          singleMap.put(enc, sp);
+        }
+      }
+    }
+    out.addAll(runUnifiedCheckers(null, program, java.util.Map.copyOf(singleMap), dfaCheckers));
+    return out;
+  }
+
+  /**
+   * The completeness record for this scan: what it did NOT do.
+   *
+   * <p>Four things can make an analysis partial, and all four are recorded:
+   *
+   * <ul>
+   *   <li>a <b>budget</b> that ran out -- the analysis stopped early on purpose;
+   *   <li>a <b>module scope</b> -- findings whose sink was in another module were not reported;
+   *   <li>a <b>heap reduction</b> -- the analysis pool was shrunk, which is safe, but the user
+   *       should know the scan ran under pressure;
+   *   <li><b>files that could not be parsed</b> -- they are in the project and they were not
+   *       analysed, so their findings are not in the report.
+   * </ul>
+   *
+   * <p>The record is a claim about the ANALYSIS, not about the code. It may only make the report
+   * more cautious; it may never be used to claim that code is safe.
+   */
+  private org.plumb.reporter.AnalysisCompleteness completenessRecord() {
+    List<String> notes = new ArrayList<>();
+    if (budgetReport != null && !budgetReport.complete()) {
+      notes.add("the analysis budget ran out: " + budgetReport.summary());
+    }
+    if (moduleScopeReport != null && moduleScopeReport.isLimited()) {
+      if (moduleScopeReport.outOfScopeFindings() > 0) {
+        notes.add(
+            moduleScopeReport.outOfScopeFindings()
+                + " finding(s) whose sink was outside module "
+                + moduleScopeReport.module()
+                + " were not reported");
+      }
+      if (moduleScopeReport.crossingCallers() > 0) {
+        notes.add(
+            moduleScopeReport.crossingCallers()
+                + " caller(s) in module "
+                + moduleScopeReport.module()
+                + " called out of the module; the taint crossed the boundary and the crossings are"
+                + " recorded");
+      }
+    }
+    if (heapGuard.hasReduced()) {
+      notes.add(
+          "the heap came under pressure, so the analysis pool was reduced: " + heapGuard.reason());
+    }
+    if (!unparsedFiles.isEmpty()) {
+      notes.add(
+          unparsedFiles.size()
+              + " file(s) could not be parsed and were not analysed: "
+              + summarise(unparsedFiles));
+    }
+    if (notes.isEmpty()) return org.plumb.reporter.AnalysisCompleteness.allComplete();
+    return org.plumb.reporter.AnalysisCompleteness.incomplete(notes);
+  }
+
+  /** A short list of the names, for a note that has to stay readable. */
+  private static String summarise(List<String> names) {
+    int shown = Math.min(3, names.size());
+    String head = String.join(", ", names.subList(0, shown));
+    if (names.size() > shown) {
+      return head + " and " + (names.size() - shown) + " more";
+    }
+    return head;
+  }
+
   private void emit(List<Finding> findings) throws IOException {
+    // The completeness record. It says what the analysis did NOT do, so that
+    // "no findings" is never mistaken for "the analysis looked everywhere and
+    // found nothing".
+    org.plumb.reporter.AnalysisCompleteness completeness = completenessRecord();
+    if (!completeness.complete()) {
+      LOG.warn("the analysis was not complete: {}", completeness.summary());
+    }
     if (config.outputFormat == ScanConfig.OutputFormat.NDJSON) {
       Writer w =
           (config.outputPath != null)
@@ -3279,7 +4267,7 @@ public final class ScanRunner {
               ? Files.newBufferedWriter(config.outputPath, StandardCharsets.UTF_8)
               : new OutputStreamWriter(System.out, StandardCharsets.UTF_8);
       try {
-        new org.plumb.reporter.SarifEmitter(w).emit(findings);
+        new org.plumb.reporter.SarifEmitter(w, completeness).emit(findings);
       } finally {
         // The stdout branch MUST flush: the writer buffers, and
         // SastMain calls System.exit() right after run() returns,
@@ -3330,9 +4318,12 @@ public final class ScanRunner {
   /**
    * Returns true if the path is under a Java-style test directory. The check matches {@code
    * src/test/} as a path segment (case-sensitive →this is the standard Java convention and works on
-   * both Windows and Linux). The previous filter {@code !path.contains("test\")} was too aggressive
-   * →it excluded any path whose name happened to contain {@code test} (e.g. {@code smoke_petclinic\
-   * } in an earlier smoke test).
+   *
+   * <p>both Windows and Linux). The previous filter {@code !path.contains("test\")} was too
+   * aggressive
+   *
+   * <p>→it excluded any path whose name happened to contain {@code test} (e.g. {@code} in an
+   * earlier smoke test).
    */
   private static boolean isUnderTestDirectory(Path p) {
     String s = p.toString();

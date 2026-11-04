@@ -22,8 +22,6 @@
 package org.plumb.dfa.checkers.controlflow;
 
 import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -71,11 +69,22 @@ import org.plumb.tac.ir.TacOperand;
  */
 public final class ServletAtomicityDfaChecker implements DfaChecker {
 
-  /** key → set of method signatures that did a getAttribute(key). */
-  private final Map<String, Set<String>> getSites = new LinkedHashMap<>();
+  /**
+   * The shared maps for this checker's whole-program facts.
+   *
+   * <p>They are in the context, not in this instance, because a parallel run gives every worker its
+   * own checker instance -- and this checker needs to know about the {@code getAttribute} in one
+   * function and the {@code setAttribute} in ANOTHER. An instance field would only ever hold the
+   * facts this worker's own slice produced, so the cross-method finding would silently never be
+   * emitted.
+   */
+  private Map<String, Set<String>> getSites(AnalysisContext ctx) {
+    return ctx.programFacts().sharedMap("servlet-atomicity-dfa.getSites");
+  }
 
-  /** key → set of method signatures that did a setAttribute(key, ...). */
-  private final Map<String, Set<String>> setSites = new LinkedHashMap<>();
+  private Map<String, Set<String>> setSites(AnalysisContext ctx) {
+    return ctx.programFacts().sharedMap("servlet-atomicity-dfa.setSites");
+  }
 
   @Override
   public String name() {
@@ -110,14 +119,20 @@ public final class ServletAtomicityDfaChecker implements DfaChecker {
     if (!"STRING".equals(first.kind().name())) return;
     String attrName = String.valueOf(first.value());
     if ("getAttribute".equals(method)) {
-      getSites.computeIfAbsent(attrName, k -> new LinkedHashSet<>()).add(fn.signature());
+      getSites(ctx)
+          .computeIfAbsent(attrName, k -> java.util.concurrent.ConcurrentHashMap.newKeySet())
+          .add(fn.signature());
     } else {
-      setSites.computeIfAbsent(attrName, k -> new LinkedHashSet<>()).add(fn.signature());
+      setSites(ctx)
+          .computeIfAbsent(attrName, k -> java.util.concurrent.ConcurrentHashMap.newKeySet())
+          .add(fn.signature());
     }
   }
 
   @Override
   public void finish(AnalysisContext ctx) {
+    Map<String, Set<String>> getSites = getSites(ctx);
+    Map<String, Set<String>> setSites = setSites(ctx);
     for (String key : getSites.keySet()) {
       Set<String> gets = getSites.get(key);
       Set<String> sets = setSites.getOrDefault(key, Set.of());
