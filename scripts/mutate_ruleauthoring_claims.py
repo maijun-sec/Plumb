@@ -44,7 +44,7 @@ MUTANTS = [
     # --- a count goes stale ------------------------------------------
     ("stale-dfa-override-count",
      DOC,
-     "- 30 `DfaChecker`s plus `TaintedCheckerBase`",
+     "- 42 `DfaChecker`s plus `TaintedCheckerBase`",
      "- 18 `DfaChecker`s plus `TaintedCheckerBase`"),
     ("stale-visit-overload-count",
      DOC,

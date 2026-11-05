@@ -19,14 +19,14 @@ Plumb sits and where its boundaries are.
 
 | Dimension | Plumb | PMD | SonarQube | SpotBugs | Coverity | Checkstyle |
 | --- | --- | --- | --- | --- | --- | --- |
-| **Main implementation** | TAC IR + 601 AST checkers + 12 taint rules + 78 registered DFA checkers | AST | AST + symbol table | Bytecode scanning | Abstract syntax tree + path sensitivity | AST + text matching |
+| **Main implementation** | TAC IR + 601 AST checkers + 12 taint rules + 90 registered DFA checkers | AST | AST + symbol table | Bytecode scanning | Abstract syntax tree + path sensitivity | AST + text matching |
 | **Taint engine** | Summary-based cross-function data flow (two phases) | No complete taint | SonarCFamily engine (commercial) | Partial data flow | Commercial engine | None |
 | **Cross-function analysis** | Two-phase summary: Phase 1 path-insensitive -> Phase 2 flow-sensitive + Z3 path conditions | Limited | Partial (call graph 1-hop) | Partial (shared BugInstance) | Global | None |
 | **AST checkers** | 601 (JavaParser) | Hundreds | Hundreds | -- | -- | Over a hundred |
-| **DFA checkers** | 78 registered | Partial | Partial | Bytecode bug patterns | Yes | None |
+| **DFA checkers** | 90 registered | Partial | Partial | Bytecode bug patterns | Yes | None |
 | **Z3 path conditions** | Yes (a Phase 2 per-finding query, used for false-positive filtering) | None | None | None | Yes (commercial) | None |
 | **AI integration** | Optional Re-Act agent (12 tools) | None | SonarAI (experimental) | None | Coverity Assist | None |
-| **rule -> CWE mapping** | Carried by the rules, covering 64 CWEs | Carried by the rule | Carried by the rule | Carried by the BugPattern | Carried by the checker | Carried by the check |
+| **rule -> CWE mapping** | Carried by the rules, covering 70 CWEs | Carried by the rule | Carried by the rule | Carried by the BugPattern | Carried by the checker | Carried by the check |
 
 > "AST checkers" and "DFA checkers" are **two different granularities**: the first counts
 > checker classes, the second counts the checkers the engine actually registers. The
@@ -56,8 +56,8 @@ speed. See
 | --- | ---: | --- |
 | **AST checker (`plumb-style`)** | 601 | Rule classes, looking at AST shapes |
 | **Registered in `CheckerCategories`** | 599 | The subset of those that is registered into the rule table |
-| **DFA checker (registered)** | 78 | The ones the engine actually assembles; they involve data flow / cross-function analysis |
-| **Of those, `extends TaintedCheckerBase`** | 57 | Inherit the common taint-propagation base class |
+| **DFA checker (registered)** | 90 | The ones the engine actually assembles; they involve data flow / cross-function analysis |
+| **Of those, `extends TaintedCheckerBase`** | 69 | Inherit the common taint-propagation base class |
 | **Fact kinds** | 27 | 15 built-in + 12 from `fact-kinds.yaml` |
 
 **The division of labour**: a rule that depends only on the AST shape belongs in
@@ -76,7 +76,7 @@ The complete classification of the DFA checkers is in
 | AST checker classes | 601 | `plumb-style/**` |
 | Of those, registered into the rule table | 599 | `CheckerCategories` |
 | Total registered rules | 1158 | The actual registrations of AST + DFA |
-| DFA checker (registered) | 78 | `ScanRunner.buildDfaCheckers()` |
+| DFA checker (registered) | 90 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | 12 | `TaintRuleRegistry` |
 | Taint source family / patterns | 6 / 26 | The `taint.sources.*` of `sink-families.yaml` |
 | Taint sink family / patterns | 75 / 2440 | The `*.sinks` of `sink-families.yaml` |

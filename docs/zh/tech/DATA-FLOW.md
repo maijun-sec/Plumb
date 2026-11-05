@@ -19,11 +19,11 @@
 | 方法 | 用途 |
 | --- | --- |
 | `run(TacProgram)` (`:481`) | 单程序 |
-| `runSequential(TacProgram)` (`:1514`) | 单线程 |
-| `runParallel(TacProgram, int)` (`:1478`) | 顶层 worklist 并行 |
+| `runSequential(TacProgram)` (`:1669`) | 单线程 |
+| `runParallel(TacProgram, int)` (`:1633`) | 顶层 worklist 并行 |
 | `runWithGlobalStore(List<TacProgram>, int)` (`:509`) | 跨文件全局 store（CLI 默认策略 `global`） |
 
-所有模式最终都走同一个骨架。真正的调度在 `runWorklist`（`:1577`）：
+所有模式最终都走同一个骨架。真正的调度在 `runWorklist`（`:1732`）：
 
 ```
 initEngine(ctx)              // 所有 checker 一次
@@ -44,16 +44,16 @@ finish(ctx)
 
 | 说法 | 代码里的对应物 | 是否准确 |
 | --- | --- | --- |
-| 逆向、非流敏感的前置分析 | `warmUpMethodSummaries` (`:915`) → `MethodSummaryBuilder.build` | **部分准确**。它是一次线性 IR 扫描，分类 return 形态、收集副作用，**没有数据流求解**。它是路径无关的语法摘要，不是反向流分析。 |
-| 正向、流敏感的指令遍历 | `analyseOneFunction` (`:1726`)，按 `bbRpoOrder(fn)` 遍历 | **准确**。每个 checker 维护自己的正向格（taint / nullable / interval），在指令上传播。 |
-| 指向性是独立前置求解 | `solvePointsTo` (`:976`) | **准确**。全程序一次求解，结果挂在 `AnalysisContext` 上，所有 checker 共享同一个不动点。 |
+| 逆向、非流敏感的前置分析 | `warmUpMethodSummaries` (`:927`) → `MethodSummaryBuilder.build` | **部分准确**。它是一次线性 IR 扫描，分类 return 形态、收集副作用，**没有数据流求解**。它是路径无关的语法摘要，不是反向流分析。 |
+| 正向、流敏感的指令遍历 | `analyseOneFunction` (`:1881`)，按 `bbRpoOrder(fn)` 遍历 | **准确**。每个 checker 维护自己的正向格（taint / nullable / interval），在指令上传播。 |
+| 指向性是独立前置求解 | `solvePointsTo` (`:988`) | **准确**。全程序一次求解，结果挂在 `AnalysisContext` 上，所有 checker 共享同一个不动点。 |
 
 **关键事实：引擎没有「先跑一遍逆向、再跑一遍正向」的两个独立数据流 pass。** 只有一次
 正向遍历；summary 是这次遍历的产物，而不是另一遍分析的输入。
 
 ### 1.3 指令顺序：BB-RPO，块内正向
 
-`bbRpoOrder(TacFunction)`（`:2013`）：
+`bbRpoOrder(TacFunction)`（`:2168`）：
 
 - 基本块按 **reverse post-order** 排列（DFS 后序再反转，`:1347-1350`）
 - 块内指令保持**原始正向顺序**（`:1358-1363`）
@@ -146,8 +146,8 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 `checkInstruction`（全仓库共 48 个 `extends TaintedCheckerBase`，
 另外两个是 `BoundaryConstraintChecker` 和基类自身）。
 
-- 状态：`taintedVars: Map<TacVar, String>`（`:216`）与 `taintPaths`（`:225`）
-- 传播：`propagateMOVE`（`:1608`）等按指令种类分派
+- 状态：`taintedVars: Map<TacVar, String>`（`:236`）与 `taintPaths`（`:245`）
+- 传播：`propagateMOVE`（`:1630`）等按指令种类分派
 - sink 判定：按 `sinkFamilyKey` 查 `SinkFamilyRegistry`（`config/SinkFamilyRegistry.java:22`，在
   `org.plumb.dfa.config` 包），**不是** IFDS 框架
 - 跨函数：`FunctionSummary` + `Operation.TaintPropagate`
@@ -330,14 +330,14 @@ null 会互相 alias，污染 `mayAlias`）：
 | 空 | 有 | 确定为 null |
 | 空 | 无 | **未知**（绝不等于 null） |
 
-⚠️ `AnalysisContext.java:549-553` 明确警告：`mayBeNull == false` **不是**非 null 的证明
+⚠️ `AnalysisContext.java:547-553` 明确警告：`mayBeNull == false` **不是**非 null 的证明
 （未被建模的写入不留痕迹）。这与「空集合不能证明安全」是同一条不变量。
 
 ---
 
 ## 5. Z3：只做误报过滤
 
-Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:4236`，位于 sink 上报路径上。
+Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:4258`，位于 sink 上报路径上。
 
 可达性判定在**一个**地方完成，`TaintedCheckerBase.isPathSuppressed`，位于 sink 上报路径上。
 两条 sink 路径都经过它：CALL 路径和构造器路径（`checkSinkAtNew`）——
@@ -366,7 +366,7 @@ if (!composed.isEmpty()) {
 而函数中不同位置记录的两个守卫，在 sink 处也不同时成立。这两条限制都是为了保证
 这个判定不会抑制一个真实存在的 finding。
 
-- `pathConditionForSink`（`:4196`）在基类里就有实现：把那对冲突的守卫作为谓词返回，
+- `pathConditionForSink`（`:4218`）在基类里就有实现：把那对冲突的守卫作为谓词返回，
   这样读 finding 的人能看出它为什么被抑制。子类可以覆写它，提供求解器能求值的谓词。
 - 语义明确：这个判定**只用于抑制误报，绝不用于发现缺陷**（`:3237`）
 - 调用链：`CachedZ3Bridge`（LRU 4096 项，`solver/CachedZ3Bridge.java:41-66`）→

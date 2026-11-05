@@ -137,7 +137,8 @@ Literals · name references · calls · binary and comparison operators · `if`/
 `match` (as a branch chain: one `INSTANCEOF` plus one `BRANCH` per typed case, with a `JUMP` to
 a merge label — exactly the shape a Java `instanceof` chain has) · blocks · `val` definitions ·
 `return` · `throw` · object creation · case classes (their compiler-generated members, marked
-synthetic) · traits · Scala's own name-mangled locals (`x$1`).
+synthetic) · traits · Scala's own name-mangled locals (`x$1`) · **closures and their captures**
+(see §4.3).
 
 ### 4.2 Known gaps
 
@@ -148,8 +149,8 @@ than a lie.
 
 | Construct | Reported? | Note |
 |---|---|---|
-| `for` comprehensions | reported | **The most severe.** `for (x <- xs) { total += x }` lowers to a call to an uncalled anonymous function: the accumulator stays at its initial value and the loop body never runs. Every taint that flowed through the loop is destroyed. |
-| Closures / lambdas | reported | The closure body is not modelled. |
+| `for` comprehensions | reported | The loop body lowers into a function of its own and the use site calls it, so the body runs. What is still missing is the loop's own control flow: see §4.4. |
+| Closures / lambdas | **supported** | The closure's body lowers into the synthetic function the compiler generated, and the use site calls that function. A **captured** variable is carried across the boundary; see §4.3. |
 | Varargs | reported | Only the first argument is modelled. |
 | `try`/`catch` | reported | The catch clauses are not modelled. |
 | By-name parameters | reported | The parameter is modelled as by-value. |
@@ -161,13 +162,59 @@ than a lie.
 | Structural types | reported | The refinement is not modelled. |
 | Scala 3 `enum`, `given`/`using`, extension methods, opaque types, context functions | reported | Not lowered. |
 
-### 4.3 The `for` comprehension — why it is the worst one
+### 4.3 Captures — how a closure's free variable reaches the caller's value
 
-The finding set for a Scala function with a `for` comprehension is not merely incomplete: it can
-be **wrong**, because the accumulator is provably still zero. A rule that says "this value is
-tainted" would not fire, and a rule that says "this value is a constant" would.
+**The shape the compiler leaves behind.** A Scala closure does not receive its captured variables
+as parameters. The typer leaves them as FREE IDENTIFIERS in the closure's body, and the enclosing
+method's `val`/`var` definitions stay where they are. Measured on
+`var captured = cmd; val f = () => captured`:
 
-It is the top of the Scala backlog.
+```
+ValDef captured  symId=740735495
+Ident  captured  symId=740735495     <- the same symbol
+```
+
+The two are the same variable, and the proof is the compiler's own symbol. So the **symbol** is
+what carries the capture across the function boundary — a name is not enough, because two closures
+in the same method can each have their own `captured`.
+
+**How it is lowered.** A captured variable becomes a field of a synthetic **holder**: the holder is
+a named receiver, the variable is a field on it, and the holder's name is the same in the caller
+and in the closure. The IR gets a `FIELDSTORE` into the cell on the caller's side and a
+`FIELDLOAD` out of it on the closure's side — both existing opcodes, so no language-specific
+concept enters the language-neutral IR.
+
+**What counts as a capture.** The compiler's own answer, not a frontend guess. A symbol the
+closure *declares* has the closure as its enclosing method; a symbol it merely *refers to* has the
+enclosing method as its enclosing method. A symbol whose enclosing method is neither — a field of
+the class, a top-level value — is not a capture at all: the field-read lowering is the right one
+for it. Deciding this by walking the tree would mean re-implementing the compiler's notion of
+scope, and a flat subtree walk cannot: a nested definition's children sit in the same list as the
+enclosing body's, with nothing to say which belongs to which.
+
+**Why a cell and not a plain variable.** The TAC has no "captured local", and adding one would be
+a language-specific concept in a language-neutral IR. But the IR already has a mechanism for
+exactly this shape: a field read and a field write on a shared receiver are visible across
+function boundaries, because the dataflow engine keys its cross-function field tracker on
+`(receiver, field)`.
+
+**The receiver is a named local, not a temp.** The engine's field tracker keys on the receiver's
+*name*, and a temp's name is unique per function — a unique name would make the capture
+function-local, which is exactly what a capture is not.
+
+**What it costs when it is wrong.** Before this, a captured identifier was not a local of the
+closure, so it fell through to the field-read path and became a `FIELDLOAD` off `this` — a field
+the enclosing class does not have. The closure therefore read a value that was never written, and
+a write inside the closure went to a field nobody reads. The taint stopped at the capture, and
+the finding reported the sink's own parameter.
+
+### 4.4 The `for` comprehension — what is still missing
+
+The loop body lowers into a function of its own and the use site calls it, so the body runs and
+the taint through it survives. What the lowering does **not** model is the loop's own control
+flow: the iteration count, the `break`, and the accumulator's value across iterations. A rule that
+says "this value is tainted" would fire; a rule that says "this value is a constant" would not be
+provable either way.
 
 ---
 
@@ -177,6 +224,8 @@ It is the top of the Scala backlog.
 |---|---|---|
 | Scala's structured-problem channel | never written for construct gaps, so no gap could travel with the IR | one collector writes both forms; `ScalaTacFrontendTest.aLoweringGapTravelsWithTheIrAsAStructuredProblem` |
 | Scala's `match` degradation | `degraded = true` with **no** problem recorded, so the degradation was invisible | the gap is recorded; the function's precision is downgraded and the reason travels with the IR |
+| Scala's closure body | the body lived in a function nobody called, so the loop body never ran and every taint through it was destroyed | the use site calls the function that carries the body; `ScalaTacFrontendTest.aForComprehensionCallsTheLoopBody` |
+| Scala's captures | a captured variable was read as a field of the enclosing class — a field the class does not have — so the closure read a value nobody wrote and a write went nowhere | the capture is a shared cell, keyed by the compiler's symbol; `ScalaTacFrontendTest.aCapturedVariableIsReadThroughASharedCell`, `CrossLanguageInteropTest.scalaClosureCaptureCarriesTheTaint` |
 | Kotlin's `is`-pattern branches | skipped with a bare `continue`; the function kept `SOURCE_FULL` | reported and downgraded; `KotlinTacFrontendTest.anIsBranchThatCannotBeLoweredIsReported` |
 | Kotlin's `when` value | computed and dropped; `val x = when (...)` produced an undefined `x` and lost every taint through it | the `when` produces a result temp; `KotlinTacFrontendTest.aWhenProducesItsValue` |
 
@@ -184,6 +233,12 @@ The two Kotlin fixes are the same defect in different clothes: **a function that
 lowered claimed to be fully lowered.** The precision flag is the mechanism that says "do not
 trust the precision-dependent facts about this function", and it only works if the thing that
 made the function partial is actually recorded.
+
+The two Scala fixes are the same defect in a third pair of clothes: **a construct lowered to
+instructions that were never connected to the value they carry.** The instruction was there; the
+call graph edge or the shared cell that would make the value reach the sink was not. That is why
+the rule in §7 asks for a test of the SEMANTIC result: "an instruction was produced" was true in
+every one of these cases.
 
 ---
 

@@ -83,6 +83,12 @@ ALLOWED = {
         "language support and checker coverage against Plumb's",
     "docs/zh/MULTI-LANGUAGE-IR-DESIGN.md":
         "the Chinese multi-language design document: the same benchmark, in Chinese",
+    "docs/tech/CSHARP-FRONTEND-ANALYSIS.md":
+        "the C# frontend analysis: it compares how two COMMERCIAL TOOLS produce "
+        "C# intermediate representations, because that comparison is the whole "
+        "basis for the route decision -- the design cannot be argued without it",
+    "docs/zh/tech/CSHARP-FRONTEND-ANALYSIS.md":
+        "the Chinese C# frontend analysis: the same comparison, in Chinese",
     "scripts/convert_coverity_model.py":
         "the converter that reads the vendor's model library: it has to name the "
         "library it reads, and the primitives it matches",

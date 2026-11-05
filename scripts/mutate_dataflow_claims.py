@@ -74,8 +74,8 @@ MUTANTS = [
      "with **31** binding annotations"),
     ("wrong-tainted-subclass-count",
      DOC,
-     "there are 57 `extends TaintedCheckerBase`",
-     "there are 56 `extends TaintedCheckerBase`"),
+     "there are 69 `extends TaintedCheckerBase`",
+     "there are 68 `extends TaintedCheckerBase`"),
 
     # --- a fact-kind row that names a kind that does not exist ------
     ("phantom-fact-kind",

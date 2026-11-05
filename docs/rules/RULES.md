@@ -24,8 +24,8 @@ them.
 | --- | --- | ---: | --- | --- |
 | Taint source patterns | plumb-dfa | **26** | The 6 `taint.sources.*` families of `sink-families.yaml` | taint |
 | Taint sink patterns | plumb-dfa | **2440** | The 75 `*.sinks` families of `sink-families.yaml` | taint |
-| DFA checker (declared in YAML) | plumb-dfa | **26** (24 enabled / 2 disabled) | `checkers.yaml` | dfa |
-| DFA checker (actually registered) | plumb-main | **78** | `ScanRunner.buildDfaCheckers()` | dfa |
+| DFA checker (declared in YAML) | plumb-dfa | **38** (36 enabled / 2 disabled) | `checkers.yaml` | dfa |
+| DFA checker (actually registered) | plumb-main | **90** | `ScanRunner.buildDfaCheckers()` | dfa |
 | Style / naming / design | plumb-style | **602** | JavaParser AST visitor | style |
 | Total registered rules | all | **1158** | The actual registrations of AST + DFA | -- |
 
@@ -35,8 +35,8 @@ them.
 >   actually emit -- one rule can be declared by several checkers, so the two numbers
 >   are not equal.
 >
-> The 26 DFA checkers declared in `checkers.yaml` are not the whole story
-> either: `ScanRunner` actually registers 78 DFA checkers, and the
+> The 38 DFA checkers declared in `checkers.yaml` are not the whole story
+> either: `ScanRunner` actually registers 90 DFA checkers, and the
 > difference (taint, boundary, control flow) is **implemented per layer** and is not
 > switched through the YAML.
 
@@ -85,7 +85,7 @@ add new checkers:
 | Category | Location | Count (measured) | Trigger | Where it applies |
 | --- | --- | ---: | --- | --- |
 | **Style** (AST-only) | `plumb-style/` | **602** checker classes | JavaParser only | Coding style, naming, purely structural bugs |
-| **DFA** | `plumb-dfa/` | **57** extending `TaintedCheckerBase` + **21** directly `implements DfaChecker` | TAC + CFG (taint / numeric / resource / control flow) | When you need cross-statement def-use, type tracking, source-to-sink data flow |
+| **DFA** | `plumb-dfa/` | **69** extending `TaintedCheckerBase` + **21** directly `implements DfaChecker` | TAC + CFG (taint / numeric / resource / control flow) | When you need cross-statement def-use, type tracking, source-to-sink data flow |
 
 The breakdown of the implementation shapes inside the DFA is in
 [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) §3.0, and the four kinds of

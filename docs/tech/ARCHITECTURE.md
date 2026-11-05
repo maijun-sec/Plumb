@@ -103,12 +103,12 @@ The concurrency model and resource usage of each stage:
 
 ### 3.0 The implementation shapes of the DFA checkers
 
-There are 176 `.java` files under `plumb-dfa/src/main/java`, and not every one of them is an independent analyser. By
+There are 188 `.java` files under `plumb-dfa/src/main/java`, and not every one of them is an independent analyser. By
 **actual implementation mechanism** they fall into a few categories (the counts are measured):
 
 | Shape | Count | Meaning |
 | --- | ---: | --- |
-| **`TaintedCheckerBase` subclasses** | 57 | Inherit the unified taint propagation base class; the vast majority under `checkers/taint/` (excluding the base class itself) |
+| **`TaintedCheckerBase` subclasses** | 69 | Inherit the unified taint propagation base class; the vast majority under `checkers/taint/` (excluding the base class itself) |
 | **Directly `implements DfaChecker`** | 20 | Bring their own logic and do not share the propagation layer; all 15 of `checkers/controlflow/` are in this group |
 | **`PathSensitiveCheckerBase` subclasses** | 1 | The base for reverse detection (the alloc-without-close kind) |
 | **Solvers / lattices / engine / SPI** | The rest | `points/`, `solver/`, `summary/`, `taint/`, `engine/` |
