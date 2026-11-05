@@ -179,6 +179,32 @@ class CrossLanguageInteropTest {
       """;
 
   /**
+   * A Scala closure that CAPTURES the tainted value and uses it at the sink.
+   *
+   * <p><b>Why this fixture is separate.</b> The other Scala fixture passes the value to the sink as
+   * an ARGUMENT, so the chain crosses a call boundary that the call graph follows. This one hands
+   * the value to a CLOSURE, and the closure is a different function: the value has to survive the
+   * capture, not a call.
+   *
+   * <p>Before the capture was modelled, the closure read the captured identifier as a field of the
+   * enclosing class -- a field the class does not have -- so the value the closure used was never
+   * the caller's value. The taint stopped at the capture and the sink was reported as receiving its
+   * own parameter instead.
+   */
+  private static final String SCALA_CAPTURE =
+      """
+      package demo
+
+      import java.io.InputStream
+
+      object ScalaCapture:
+        def run(in: InputStream): Unit =
+          val cmd = JavaSink.readAll(in)
+          val use = () => JavaSink.run(cmd)
+          use()
+      """;
+
+  /**
    * Runs one scan over a set of files, with everything but the taint checker disabled.
    *
    * @param files the file name / source pairs
@@ -402,5 +428,19 @@ class CrossLanguageInteropTest {
     assertThat(ndjson)
         .as("and no finding is attributed to an unknown file")
         .doesNotContain("\"file\":\"unknown\"");
+  }
+
+  @Test
+  @DisplayName("a Scala closure CAPTURING the tainted value: the taint SOURCE is the CALLER's")
+  void scalaClosureCaptureCarriesTheTaint() throws Exception {
+    String ndjson = scanFiles("JavaSink.java", JAVA_SINK, "ScalaCapture.scala", SCALA_CAPTURE);
+
+    assertThat(ndjson).as("a finding is produced").contains("CWE-78");
+    // The value does not cross a CALL boundary here -- it crosses a CAPTURE. The
+    // closure is a different function, and the captured value has to reach the sink
+    // through the shared cell. If the capture is not modelled, the closure reads a
+    // field the class does not have, the taint stops at the capture, and the sink
+    // reports its OWN parameter -- which is exactly what this assertion rejects.
+    assertChainCrossedTheBoundary(commandInjectionFlow(ndjson), "cmd");
   }
 }

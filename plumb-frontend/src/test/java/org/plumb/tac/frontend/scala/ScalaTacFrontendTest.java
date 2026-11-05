@@ -714,9 +714,239 @@ class ScalaTacFrontendTest {
         .contains(TacInstruction.Kind.CALL);
   }
 
+  @Test
+  @DisplayName("a captured variable is read through a shared cell, not as a field of the class")
+  void aCapturedVariableIsReadThroughASharedCell() {
+    TacFrontend.ParseResult result =
+        support.parse(
+            String.join(
+                "\n",
+                "package demo",
+                "",
+                "class Demo {",
+                "  def apply(s: String): String = {",
+                "    val captured = s",
+                "    val f = () => captured",
+                "    f()",
+                "  }",
+                "}"));
+
+    TacFunction lambda = findContaining(result.functions(), "anonfun");
+    assertThat(lambda)
+        .as("the lambda must be lowered into a function of its own")
+        .isNotNull();
+
+    // The captured variable is NOT a field of the enclosing class, and it is not a
+    // local of the lambda. It is read through a SHARED CELL: a field read on a
+    // holder whose name is the same in the caller and in the closure. That is what
+    // makes the value the closure reads the value the caller wrote.
+    //
+    // Before this, the captured identifier fell through to the field-read path and
+    // became a FIELDLOAD off "this" -- a field the class does not have. The closure
+    // therefore read a value that was never written, and every taint that flowed
+    // through the capture was destroyed SILENTLY.
+    TacInstruction read = findFieldAccess(lambda, TacInstruction.Kind.FIELDLOAD);
+    assertThat(read)
+        .as("the closure must read the captured variable through the shared cell")
+        .isNotNull();
+    assertThat(read.lhs1)
+        .as("the receiver of the capture read is the shared holder, not the class")
+        .isNotNull();
+    assertThat(((org.plumb.tac.ir.TacOperand.TacVar) read.lhs1).name())
+        .as("the holder is a named receiver, so the engine's cross-function field tracker"
+            + " can key on it; a temp's name is unique per function and would make the"
+            + " capture function-local")
+        .startsWith("CaptureHolder_");
+  }
+
+  @Test
+  @DisplayName("a write to a captured variable reaches the caller")
+  void aWriteToACapturedVariableReachesTheCaller() {
+    TacFrontend.ParseResult result =
+        support.parse(
+            String.join(
+                "\n",
+                "package demo",
+                "",
+                "class Demo {",
+                "  def apply(s: String): String = {",
+                "    var captured = s",
+                "    val f = () => { captured = captured + \"x\" }",
+                "    f()",
+                "    captured",
+                "  }",
+                "}"));
+
+    TacFunction lambda = findContaining(result.functions(), "anonfun");
+    assertThat(lambda)
+        .as("the lambda must be lowered into a function of its own")
+        .isNotNull();
+
+    // The write inside the closure must go into the shared cell. Before this, it
+    // became a field store on the enclosing class -- a field nobody reads -- and the
+    // caller's variable kept its old value. The analysis then reported the caller as
+    // unaffected by the closure, which is the opposite of what the source says.
+    TacInstruction write = findFieldAccess(lambda, TacInstruction.Kind.FIELDSTORE);
+    assertThat(write)
+        .as("the closure must write the captured variable into the shared cell")
+        .isNotNull();
+    assertThat(((org.plumb.tac.ir.TacOperand.TacVar) write.lhs1).name())
+        .as("the write must go to the same holder the read comes from")
+        .startsWith("CaptureHolder_");
+  }
+
+  @Test
+  @DisplayName("the caller and the closure share one holder for one captured variable")
+  void theCallerAndTheClosureShareOneHolder() {    TacFrontend.ParseResult result =
+        support.parse(
+            String.join(
+                "\n",
+                "package demo",
+                "",
+                "class Demo {",
+                "  def apply(s: String): String = {",
+                "    var captured = s",
+                "    val f = () => { captured = captured + \"x\" }",
+                "    f()",
+                "    captured",
+                "  }",
+                "}"));
+
+    TacFunction caller = find(result.functions(), "demo.Demo.apply");
+    TacFunction lambda = findContaining(result.functions(), "anonfun");
+    assertThat(caller).as("the caller must be lowered").isNotNull();
+    assertThat(lambda).as("the closure must be lowered").isNotNull();
+
+    // The holder's NAME is the contract between the two functions: the engine's
+    // cross-function field tracker keys on the receiver's name, so the same name on
+    // both sides is what makes the cell shared. Two different names would be two
+    // different cells, and the closure's write would stop at the function boundary.
+    String callerHolder = holderNameOf(caller);
+    String closureHolder = holderNameOf(lambda);
+    assertThat(callerHolder)
+        .as("the caller must write the captured variable into the shared cell")
+        .isNotNull();
+    assertThat(closureHolder)
+        .as("the closure must read and write the captured variable through the shared cell")
+        .isNotNull();
+    assertThat(closureHolder)
+        .as("the two sides of a capture must name the SAME holder, or the cell is not shared")
+        .isEqualTo(callerHolder);
+  }
+
+  @Test
+  @DisplayName("a closure's OWN local stays a local: it is not a capture")
+  void aClosuresOwnLocalStaysALocal() {
+    TacFrontend.ParseResult result =
+        support.parse(
+            String.join(
+                "\n",
+                "package demo",
+                "",
+                "class Demo {",
+                "  def apply(s: String): String = {",
+                "    val f = () => { val mine = s; mine }",
+                "    f()",
+                "  }",
+                "}"));
+
+    TacFunction lambda = findContaining(result.functions(), "anonfun");
+    assertThat(lambda)
+        .as("the lambda must be lowered into a function of its own")
+        .isNotNull();
+
+    // `s` IS a capture -- the closure reads the caller's parameter -- so there
+    // IS a holder, named after it. `mine` is declared INSIDE the closure, so it
+    // is the closure's own local and NOT a capture.
+    //
+    // If `mine` were mistaken for a capture, the closure would read and write a
+    // shared cell instead of its own local -- and the caller would see a
+    // variable the source never declared.
+    //
+    // The distinction is the compiler's: a symbol the closure declares has the
+    // CLOSURE as its enclosing method, and a symbol it merely refers to has the
+    // ENCLOSING METHOD as its enclosing method.
+    assertThat(lambda.locals())
+        .as("the closure's own local must be a local of the closure")
+        .anyMatch(l -> l.name().equals("mine"));
+    assertThat(holderNamesOf(lambda))
+        .as("the closure's own local must not be lowered through a shared cell; only the"
+            + " captured 's' may have one")
+        .doesNotContain("CaptureHolder_mine");
+  }
+
+  @Test
+  @DisplayName("a closure reading a FIELD of its class reads the field, not a capture cell")
+  void aClosureReadingAFieldReadsTheField() {
+    TacFrontend.ParseResult result =
+        support.parse(
+            String.join(
+                "\n",
+                "package demo",
+                "",
+                "class Demo {",
+                "  val shared: String = \"p\"",
+                "  def apply(s: String): String = {",
+                "    val f = () => shared + s",
+                "    f()",
+                "  }",
+                "}"));
+
+    TacFunction lambda = findContaining(result.functions(), "anonfun");
+    assertThat(lambda)
+        .as("the lambda must be lowered into a function of its own")
+        .isNotNull();
+
+    // `shared` is a FIELD of the class, so the closure reads the class's
+    // field. It is not a captured local, and lowering it through a shared cell
+    // would invent a storage location the source does not have.
+    //
+    // `s` IS a capture, so a holder named after it is expected -- and exactly
+    // one.
+    assertThat(holderNamesOf(lambda))
+        .as("only the captured parameter may have a shared cell; the class's field must"
+            + " be read as a field")
+        .containsExactly("CaptureHolder_s");
+  }
+
   // ------------------------------------------------------------------
   // Helpers
   // ------------------------------------------------------------------
+
+  /** Finds the first field access of the given kind in a function. */
+  private static TacInstruction findFieldAccess(TacFunction fn, TacInstruction.Kind kind) {
+    return fn.instructions().stream().filter(i -> i.kind == kind).findFirst().orElse(null);
+  }
+
+  /** The name of the shared holder a function uses, or {@code null} when it uses none. */
+  private static String holderNameOf(TacFunction fn) {
+    for (TacInstruction i : fn.instructions()) {
+      if (i.kind != TacInstruction.Kind.FIELDLOAD && i.kind != TacInstruction.Kind.FIELDSTORE) {
+        continue;
+      }
+      if (i.lhs1 instanceof org.plumb.tac.ir.TacOperand.TacVar v
+          && v.name().startsWith("CaptureHolder_")) {
+        return v.name();
+      }
+    }
+    return null;
+  }
+
+  /** The names of every shared holder a function uses. */
+  private static List<String> holderNamesOf(TacFunction fn) {
+    List<String> out = new java.util.ArrayList<>();
+    for (TacInstruction i : fn.instructions()) {
+      if (i.kind != TacInstruction.Kind.FIELDLOAD && i.kind != TacInstruction.Kind.FIELDSTORE) {
+        continue;
+      }
+      if (i.lhs1 instanceof org.plumb.tac.ir.TacOperand.TacVar v
+          && v.name().startsWith("CaptureHolder_")
+          && !out.contains(v.name())) {
+        out.add(v.name());
+      }
+    }
+    return out;
+  }
 
   /** Finds a function by its fully-qualified name. */
   private static TacFunction find(List<TacFunction> functions, String name) {

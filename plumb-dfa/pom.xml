@@ -382,6 +382,12 @@
                         <include>org/plumb/dfa/checkers/taint/DatabaseAccessSplitTest.java</include>
                         <include>org/plumb/dfa/config/SinkFamilyLanguageTest.java</include>
                         <include>org/plumb/dfa/config/SinkMatchPrecisionTest.java</include>
+                        <!-- A sink family with a pattern set but NO watcher is
+                             dead configuration: the pattern matches a call and
+                             the match leads nowhere. Twenty-nine families were
+                             in that state; twelve of them came from the
+                             rule-pack migration. -->
+                        <include>org/plumb/dfa/config/SinkFamilyReachabilityTest.java</include>
                         <!-- A sink pattern can name SEVERAL argument positions as
                              carrying the taint; the old one-index model dropped
                              one of them silently. -->

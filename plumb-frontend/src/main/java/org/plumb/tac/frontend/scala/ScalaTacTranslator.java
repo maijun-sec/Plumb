@@ -30,6 +30,7 @@ import dotty.tools.dotc.core.Types.Type;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -103,6 +104,88 @@ final class ScalaTacTranslator {
    * name.
    */
   private final Map<String, TacOperand.TacVar> locals = new HashMap<>();
+
+  /**
+   * The variables a closure CAPTURES, by the compiler's own symbol.
+   *
+   * <p><b>Why the symbol is the key.</b> A Scala closure does not receive its captured
+   * variables as parameters. The typer leaves them as FREE IDENTIFIERS in the closure's
+   * body, and the caller's {@code val}/{@code var} definitions stay where they are, in the
+   * caller's block. The two are nevertheless THE SAME VARIABLE -- and the proof is the
+   * compiler's own symbol: the caller's {@code ValDef} and the closure's {@code Ident}
+   * resolve to one and the same {@code Symbol} object. Measured on
+   * {@code var captured = cmd; val f = () => captured}:
+   *
+   * <pre>
+   *   ValDef captured  symId=740735495
+   *   Ident  captured  symId=740735495     &lt;- the same symbol
+   * </pre>
+   *
+   * <p>So the symbol is what carries the capture across the function boundary. A NAME is
+   * not enough: two different closures in the same method can each have their own {@code
+   * captured}, and the caller's scope can shadow one of them.
+   *
+   * <p>The map spans the whole compilation unit, because the capture crosses a function
+   * boundary: the caller's definition and the closure's body are lowered into two
+   * different {@link TacFunction}s, and the closure's body is lowered AFTER the caller
+   * (the typer's tree walks the definition before the use site).
+   */
+  private final Map<Symbol, CaptureCell> captures = new HashMap<>();
+
+  /**
+   * The shared holders already declared in the function being lowered, by name.
+   *
+   * <p>A holder is declared once per function: the same capture read twice does not
+   * declare the receiver twice.
+   */
+  private final Map<String, TacOperand.TacVar> holders = new HashMap<>();
+
+  /**
+   * A captured variable, modelled as a shared CELL.
+   *
+   * <p><b>Why a cell and not a plain variable.</b> The TAC has no "captured local"
+   * concept, and adding one would be a language-specific concept in a language-neutral
+   * IR. But the IR already has a mechanism for exactly this shape: a field read and a
+   * field write on a shared receiver are visible across function boundaries, because the
+   * dataflow engine keys its cross-function field tracker on {@code (receiver, field)}.
+   *
+   * <p>So a captured variable is lowered as a field of a synthetic HOLDER: the holder is
+   * a named receiver, the variable is a field on it, and the holder's name is the same in
+   * the caller and in the closure. The engine then sees one storage location on both
+   * sides, and a write inside the closure is visible to the caller -- which is the
+   * behaviour the source has.
+   *
+   * <p>The holder's name starts with an uppercase letter because the engine's
+   * "is this a class name" heuristic -- the one that decides whether a field write is
+   * class-shared or instance-local -- is exactly that. A lowercase name would make the
+   * capture instance-local, and the write would stop at the function boundary.
+   */
+  private static final class CaptureCell {
+
+    /** The receiver the captured variable is read from and written to. */
+    private final TacOperand.TacVar holder;
+
+    /** The field name the captured variable occupies on the holder. */
+    private final String field;
+
+    /** The type of the captured variable. */
+    private final TacType type;
+
+    CaptureCell(TacOperand.TacVar holder, String field, TacType type) {
+      this.holder = holder;
+      this.field = field;
+      this.type = type;
+    }
+  }
+
+  /**
+   * The prefix of a synthetic capture holder's name.
+   *
+   * <p>Uppercase, so the engine's class-name heuristic treats the holder as a shared
+   * class rather than as one instance. The name is prefixed so it cannot collide with a
+   * source name.
+   */
+  private static final String CAPTURE_HOLDER_PREFIX = "CaptureHolder_";
 
 
   /**
@@ -180,6 +263,13 @@ final class ScalaTacTranslator {
     if (tree == null) {
       return;
     }
+    // The capture pre-pass runs FIRST, before anything is lowered. It has
+    // to: a captured variable is lowered as a field of a shared holder, and
+    // the CALLER has to write it there. If the caller were lowered
+    // before the capture was known, the caller's write would already be
+    // in its instruction list as a plain local assignment, and the
+    // closure would read a different storage location.
+    detectCaptures(tree);
     for (Trees.DefDef<Type> def : collectDefs(tree)) {
       try {
         TacFunction fn = translateDef(def);
@@ -269,6 +359,7 @@ final class ScalaTacTranslator {
     this.currentFunction = qualified;
     this.currentEnclosingClass = enclosingClassName(symbol);
     this.locals.clear();
+    this.holders.clear();
     this.degraded = false;
 
     TacBuilder b =
@@ -553,7 +644,191 @@ final class ScalaTacTranslator {
 
   // ---------------------------------------------------------------- lowering
 
-  /** Lowers a definition's body, as a statement. */
+  /**
+   * Finds the variables the unit's closures CAPTURE.
+   *
+   * <p><b>What a capture is.</b> A closure that refers to a variable defined in the
+   * ENCLOSING method -- a {@code var} the closure writes to, or a {@code val} it reads --
+   * captures it. The typer leaves the reference as a free identifier in the closure's
+   * body; the compiler puts the captured value into a field of a synthetic holder object
+   * at runtime, but that object does not exist in the tree the typer hands over.
+   *
+   * <p><b>How a capture is detected.</b> By the compiler's own SYMBOL and its own
+   * ENCLOSING METHOD. The closure's free identifier and the enclosing method's
+   * definition resolve to the same {@code Symbol} object; and the compiler knows which
+   * method a symbol belongs to. A symbol the closure itself declares has the CLOSURE
+   * as its enclosing method; a symbol it merely refers to has the ENCLOSING METHOD as
+   * its enclosing method. So the test is: the symbol's enclosing method is not the
+   * closure, but it IS a method in this unit.
+   *
+   * <p><b>Why the compiler's answer and not a tree walk.</b> Deciding "is this variable
+   * the closure's own or the caller's?" by walking the tree means reproducing the
+   * compiler's notion of scope -- and a flat subtree walk cannot: the nested
+   * definition's children are in the same list as the enclosing body's, with nothing
+   * to say which belongs to which. The compiler already answers it exactly, so the
+   * frontend asks it.
+   *
+   * <p><b>Why this is a pre-pass.</b> The caller has to WRITE the captured variable into
+   * the shared holder, and the closure has to READ it from there. If the caller were
+   * lowered first -- which it is, because the typer's tree lists the definition before
+   * the use site -- then the caller's write would already be a plain local assignment by
+   * the time the capture was discovered, and the closure would read a different storage
+   * location. Detecting the captures first means both sides are lowered against the same
+   * decision.
+   *
+   * @param tree the typed compilation unit
+   */
+  private void detectCaptures(Trees.Tree<Type> tree) {
+    for (Trees.DefDef<Type> def : collectDefs(tree)) {
+      // Only a closure captures. A plain method does not: its free
+      // identifiers are fields or top-level values, not captures.
+      if (!isClosure(def)) {
+        continue;
+      }
+      Symbol closureSymbol = def.symbol(ctx);
+      for (Symbol symbol : freeSymbolsOf(def)) {
+        Symbol enclosing = enclosingMethodOf(symbol);
+        if (enclosing == null || enclosing == closureSymbol) {
+          // The closure's OWN variable, or something the compiler does
+          // not place in a method at all (a field, a top-level value).
+          continue;
+        }
+        if (!isMethodSymbol(enclosing)) {
+          // A FIELD of the enclosing class. The closure reads the
+          // class's field, not a captured local, so the field-read
+          // lowering is the right one.
+          continue;
+        }
+        captures.computeIfAbsent(symbol, s -> newCellFor(s));
+      }
+    }
+  }
+
+  /**
+   * The method a symbol belongs to, or {@code null} when it belongs to none.
+   *
+   * <p>The compiler's own answer: a local's enclosing method is the method that
+   * declares it, a field's is the class that declares it, and a top-level value's is
+   * the package object.
+   *
+   * @param symbol the symbol
+   * @return the enclosing method's symbol, or {@code null}
+   */
+  private Symbol enclosingMethodOf(Symbol symbol) {
+    if (symbol == null) {
+      return null;
+    }
+    try {
+      return symbol.denot(ctx).enclosingMethod(ctx);
+    } catch (RuntimeException | LinkageError ex) {
+      return null;
+    }
+  }
+
+  /**
+   * Creates the shared cell a captured variable lives in.
+   *
+   * <p>The holder's name is derived from the symbol, so the SAME variable always gets the
+   * SAME holder -- in the caller and in every closure that captures it. Two closures
+   * capturing the same variable share one cell, which is what the source says.
+   *
+   * @param symbol the captured variable's symbol
+   * @return the cell
+   */
+  private CaptureCell newCellFor(Symbol symbol) {
+    String field = symbol.name(ctx).toString();
+    // The holder is named after the field, so two different variables
+    // never share a cell, and the same variable always does.
+    String holderName = CAPTURE_HOLDER_PREFIX + field;
+    TacType type = typeOfSymbol(symbol);
+    TacOperand.TacVar holder = new TacOperand.TacVar(holderName, TacType.UNKNOWN, false);
+    return new CaptureCell(holder, field, type);
+  }
+
+  /** The type of a symbol, or UNKNOWN when it cannot be resolved. */
+  private TacType typeOfSymbol(Symbol symbol) {
+    try {
+      return types.map(symbol.denot(ctx).info(ctx));
+    } catch (RuntimeException | LinkageError ex) {
+      return TacType.UNKNOWN;
+    }
+  }
+
+  /**
+   * Whether a definition is a CLOSURE.
+   *
+   * <p>The compiler generates a synthetic method for a lambda -- {@code _$_$$anonfun} --
+   * and that method carries the lambda's body. A closure is exactly such a definition:
+   * a synthetic one whose name contains {@code anonfun}.
+   *
+   * <p>The name is checked with {@code contains}, not for equality: the compiler mangles
+   * the name differently depending on the form ({@code _$_$$anonfun} for a {@code val f =
+   * (x) => ...}, {@code _$$anonfun} for a lambda inside {@code items.map(x => ...)}), and
+   * the mangling is the compiler's business, not the frontend's.
+   *
+   * @param def the definition
+   * @return whether it is a closure
+   */
+  private boolean isClosure(Trees.DefDef<Type> def) {
+    String name = defName(def);
+    return name.contains("anonfun");
+  }
+
+  /**
+   * Every subtree of a tree, in the compiler's own order.
+   *
+   * <p>The compiler's walker is used rather than a hand-rolled one, so the set of
+   * trees is the compiler's set -- a tree the compiler does not walk is a tree the
+   * frontend does not see.
+   *
+   * @param tree the tree
+   * @return its subtrees
+   */
+  private List<Trees.Tree<Type>> subTreesOf(Trees.Tree<Type> tree) {
+    List<Trees.Tree<Type>> out = new ArrayList<>();
+    if (tree == null) {
+      return out;
+    }
+    try {
+      dotty.tools.dotc.ast.tpd.TreeOps$.MODULE$
+          .foreachSubTree$extension(
+              tree,
+              new scala.Function1<Trees.Tree<Type>, scala.runtime.BoxedUnit>() {
+                @Override
+                public scala.runtime.BoxedUnit apply(Trees.Tree<Type> t) {
+                  out.add(t);
+                  return scala.runtime.BoxedUnit.UNIT;
+                }
+              },
+              ctx);
+    } catch (RuntimeException | LinkageError ex) {
+      // A tree that cannot be walked contributes no subtrees.
+    }
+    return out;
+  }
+
+  /**
+   * The symbols a definition's body refers to that are NOT defined inside it.
+   *
+   * @param def the definition
+   * @return the free symbols
+   */
+  private Set<Symbol> freeSymbolsOf(Trees.DefDef<Type> def) {
+    Set<Symbol> out = new LinkedHashSet<>();
+    for (Trees.Tree<Type> t : subTreesOf(def.rhs(ctx))) {
+      if (t instanceof Trees.Ident) {
+        Symbol symbol = t.symbol(ctx);
+        if (symbol != null) {
+          out.add(symbol);
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Lowers a definition's body, as a statement.
+   */
   private void translateBody(Trees.Tree<Type> body) {
     if (body instanceof Trees.Block) {
       translateBlock((Trees.Block<Type>) body);
@@ -604,6 +879,15 @@ final class ScalaTacTranslator {
     TacOperand.TacVar target = new TacOperand.TacVar(name, type, false);
     locals.put(name, target);
     builder.addLocal(target);
+
+    // A variable a closure captures lives in a SHARED cell, not only in
+    // this function's frame. The value is written to the cell as well as
+    // to the local, so the closure reads what the caller wrote.
+    CaptureCell cell = captureCellOf(val.symbol(ctx));
+    if (cell != null) {
+      declareHolder(cell);
+    }
+
     if (rhs == null || rhs instanceof Trees.EmptyTree) {
       // A parameter-like definition with no initialiser. Nothing to lower.
       return;
@@ -611,7 +895,79 @@ final class ScalaTacTranslator {
     TacOperand value = translateExpr(rhs);
     if (value != null) {
       emitMove(target, value, rhs);
+      if (cell != null) {
+        writeCapture(cell, value, rhs);
+      }
     }
+  }
+
+  /**
+   * The shared cell a symbol's value lives in, or {@code null} when the symbol is not
+   * captured.
+   *
+   * @param symbol the symbol
+   * @return the cell, or {@code null}
+   */
+  private CaptureCell captureCellOf(Symbol symbol) {
+    if (symbol == null) {
+      return null;
+    }
+    return captures.get(symbol);
+  }
+
+  /**
+   * Declares the shared holder in the function being lowered.
+   *
+   * <p>The holder is a local of the function: it is the receiver of the field reads and
+   * writes that carry the captured variable's value. It is named, not a temp, because
+   * the engine's cross-function field tracker keys on the receiver's NAME -- a temp's
+   * name is unique per function, and a unique name would make the capture
+   * function-local, which is exactly what the capture is not.
+   */
+  private void declareHolder(CaptureCell cell) {
+    if (holders.containsKey(cell.holder.name())) {
+      return;
+    }
+    holders.put(cell.holder.name(), cell.holder);
+    builder.addLocal(cell.holder);
+  }
+
+  /**
+   * Reads a captured variable from its shared cell.
+   *
+   * @param cell the cell
+   * @param tree the tree being lowered, for the source position
+   * @return the value
+   */
+  private TacOperand readCapture(CaptureCell cell, Trees.Tree<Type> tree) {
+    declareHolder(cell);
+    TacOperand.TacVar dest = builder.newTemp(cell.type);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.FIELDLOAD)
+            .dest(dest)
+            .lhs1(cell.holder)
+            .fieldName(cell.field)
+            .line(lineOf(tree))
+            .build());
+    return dest;
+  }
+
+  /**
+   * Writes a captured variable into its shared cell.
+   *
+   * @param cell the cell
+   * @param value the value to store
+   * @param tree the tree being lowered, for the source position
+   */
+  private void writeCapture(CaptureCell cell, TacOperand value, Trees.Tree<Type> tree) {
+    declareHolder(cell);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.FIELDSTORE)
+            .dest(value)
+            .lhs1(cell.holder)
+            .fieldName(cell.field)
+            .line(lineOf(tree))
+            .build());
   }
 
   /**
@@ -705,6 +1061,31 @@ final class ScalaTacTranslator {
     return null;
   }
 
+  /**
+   * The character value of a boxed Scala constant.
+   *
+   * <p>dotc boxes a {@code Char} as {@link java.lang.Character}. A {@link Character} is not a
+   * {@link Number}, so the obvious {@code ((Number) value).intValue()} throws a {@link
+   * ClassCastException} on every character literal. The throw propagated out of the literal
+   * lowering and aborted the whole function, so a file containing a single {@code 'x'} lost every
+   * instruction after it -- and the function was reported as degraded.
+   *
+   * @param value the boxed constant value
+   * @return the character it denotes
+   */
+  private static char charValueOf(Object value) {
+    if (value instanceof Character c) {
+      return c;
+    }
+    if (value instanceof Number n) {
+      return (char) n.intValue();
+    }
+    if (value instanceof String s && !s.isEmpty()) {
+      return s.charAt(0);
+    }
+    return '\0';
+  }
+
   /** Lowers a block used as an expression: its value is the last expression's value. */
   private TacOperand translateBlockValue(Trees.Block<Type> block) {
     for (Trees.Tree<Type> stat : toJavaList(block.stats())) {
@@ -731,7 +1112,11 @@ final class ScalaTacTranslator {
       case TAG_SHORT:
         return TacOperand.Const.ofInt(((Number) value).intValue());
       case TAG_CHAR:
-        return TacOperand.Const.ofChar((char) ((Number) value).intValue());
+        // A Scala Char is boxed as java.lang.Character, which is NOT a java.lang.Number.
+        // Casting it to Number would throw, and the throw aborted the whole function's
+        // lowering -- so a file with a single character literal ('x') lost every
+        // instruction after it.
+        return TacOperand.Const.ofChar(charValueOf(value));
       case TAG_INT:
         return TacOperand.Const.ofInt(((Number) value).intValue());
       case TAG_LONG:
@@ -771,16 +1156,28 @@ final class ScalaTacTranslator {
   private static final int TAG_STRING = 10;
   private static final int TAG_NULL = 11;
 
-  /** Lowers an identifier: a local read, or a reference to something global. */
+  /** Lowers an identifier: a local read, a capture read, or a reference to something global. */
   private TacOperand translateIdent(Trees.Ident<Type> ident) {
     String name = ident.name().toString();
     TacOperand.TacVar local = locals.get(name);
     if (local != null) {
       return local;
     }
+    Symbol symbol = ident.symbol(ctx);
+    // A variable a closure CAPTURES: it is not a local of this function, but it is
+    // not a field of the enclosing class either. It lives in the shared cell, so
+    // the read goes through the holder.
+    //
+    // Before this, such an identifier fell through to the field-read path and
+    // became a FIELDLOAD off "this" -- a field the class does not have. The
+    // value the closure read was therefore never the caller's value, and a
+    // write inside the closure went to a field nobody reads.
+    CaptureCell cell = captureCellOf(symbol);
+    if (cell != null) {
+      return readCapture(cell, ident);
+    }
     // Not a local: a reference to a field of the enclosing class, to a top-level
     // value, or to a companion object. A field read is a FIELDLOAD off the receiver.
-    Symbol symbol = ident.symbol(ctx);
     if (symbol != null && symbol.isTerm(ctx)) {
       return translateMemberAccess(null, name, symbol, ident);
     }
@@ -835,6 +1232,24 @@ final class ScalaTacTranslator {
       // field read -- not a method call. Only a real method, read as a value, is
       // something the lowering cannot express.
       if (isMethodSymbol(symbol) && !isAccessorSymbol(symbol)) {
+        // A method on a VALUE receiver, selected without an argument list, is a
+        // PARAMETERLESS CALL -- "s.trim" calls String.trim. dotc represents it as a
+        // Select (not an Apply), because there are no arguments to apply.
+        //
+        // Lowering it as a field read was wrong twice over: the read produced a
+        // FIELDLOAD of a field no class has, and the operation's taint behaviour was
+        // never classified, so a rule about the operation could not fire. It was
+        // also reported as an unsupported construct, so a file full of ordinary
+        // String operations was flagged as degraded.
+        //
+        // The distinction is the receiver: a method selected on "this" is a
+        // parameterless call on the enclosing object, and a method selected on a
+        // local or a field is a parameterless call on that value. A method used as
+        // a VALUE (passed as a function, not called) has no receiver at all -- it is
+        // a bare Ident, and it reaches this path with a null receiver.
+        if (receiver != null) {
+          return translateCall(tree, List.of(), tree);
+        }
         // A method reference used as a value ("f" where f is a method) is not a
         // call; lowering it as one would invent behaviour.
         degraded = true;
@@ -1058,12 +1473,45 @@ final class ScalaTacTranslator {
    */
   private String calleeSignature(Trees.Tree<Type> fun, int argCount) {
     String name = "<unknown>";
-    if (fun instanceof Trees.Select) {
-      name = ((Trees.Select<Type>) fun).name().toString();
-    } else if (fun instanceof Trees.Ident) {
-      name = ((Trees.Ident<Type>) fun).name().toString();
+    // The tree that names the method is not always the tree the call is written
+    // as. Three wrappers appear around it, and each one hides the method's name:
+    //
+    // <ul>
+    //   <li>a call with explicit type arguments ("sortBy[String](...)") is a
+    //       TypeApply whose function is the real call;
+    //   <li>a call with a DEFAULT argument ("sortBy(f)", where sortBy also takes an
+    //       implicit Ordering) is an Apply whose function is ANOTHER Apply, and it
+    //       is the INNER one that names the method;
+    //   <li>a plain call is a Select or an Ident.
+    // </ul>
+    //
+    // Without unwrapping them the name stayed "<unknown>", so the emitted key was
+    // "scala.collection.StringOps.<unknown>/1" -- a key that matches no sink
+    // pattern and no semantics table, and the call was effectively invisible.
+    Trees.Tree<Type> callee = fun;
+    for (int depth = 0; depth < 4; depth++) {
+      if (callee instanceof Trees.TypeApply) {
+        callee = ((Trees.TypeApply<Type>) callee).fun();
+      } else if (callee instanceof Trees.Apply) {
+        Trees.Tree<Type> inner = ((Trees.Apply<Type>) callee).fun();
+        // An Apply whose function is a Select is a binary operator or a call; the
+        // Select names the method. An Apply whose function is ANOTHER Apply is the
+        // default-argument wrapper, and the inner Apply names the method.
+        if (inner instanceof Trees.Apply || inner instanceof Trees.TypeApply) {
+          callee = inner;
+        } else {
+          break;
+        }
+      } else {
+        break;
+      }
     }
-    String owner = ownerOf(fun);
+    if (callee instanceof Trees.Select) {
+      name = ((Trees.Select<Type>) callee).name().toString();
+    } else if (callee instanceof Trees.Ident) {
+      name = ((Trees.Ident<Type>) callee).name().toString();
+    }
+    String owner = ownerOf(callee);
     if (owner == null || owner.isEmpty()) {
       return name + "/" + argCount;
     }
@@ -1241,12 +1689,29 @@ final class ScalaTacTranslator {
       String name = ((Trees.Ident<Type>) lhsTree).name().toString();
       TacOperand.TacVar target = locals.get(name);
       if (target == null) {
-        // An assignment to an undeclared name: a field of the enclosing class.
         Symbol symbol = lhsTree.symbol(ctx);
+        // A write to a CAPTURED variable: the write goes into the shared
+        // cell, so the caller sees it. Before this, such a write became a
+        // field store on the enclosing class -- a field nobody reads -- and
+        // the caller's variable kept its old value.
+        CaptureCell cell = captureCellOf(symbol);
+        if (cell != null) {
+          if (value != null) {
+            writeCapture(cell, value, assign);
+          }
+          return null;
+        }
+        // An assignment to an undeclared name: a field of the enclosing class.
         return translateFieldStore(null, name, value, symbol, assign);
       }
       if (value != null) {
         emitMove(target, value, assign);
+        // The variable is captured: the shared cell has to be updated too,
+        // or a closure that reads it sees the value from before the write.
+        CaptureCell cell = captureCellOf(lhsTree.symbol(ctx));
+        if (cell != null) {
+          writeCapture(cell, value, assign);
+        }
       }
       return target;
     }

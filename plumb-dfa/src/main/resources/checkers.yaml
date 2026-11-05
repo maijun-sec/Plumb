@@ -114,7 +114,7 @@ checkers:
   # version can't see (it only inspects one method
   # at a time).
   SingletonRaceDfa:
-    # disabled by default — plumb-style
+    # disabled by default 鈥?plumb-style
     # SingletonRaceCheck (org.plumb.style.concurrency) covers
     # the same CWE-366 with better precision. Set to true
     # to enable the DFA implementation (which inspects more
@@ -130,7 +130,7 @@ checkers:
   # getAttribute/setAttribute on the same key across
   # different methods.
   ServletAtomicityDfa:
-    # disabled by default — plumb-style
+    # disabled by default 鈥?plumb-style
     # ServletAtomicityCheck (org.plumb.style.concurrency) covers
     # the same CWE-362 with better precision. Set to true
     # to enable the DFA implementation.
@@ -145,7 +145,7 @@ checkers:
   # concrete subclass of BoundaryConstraintChecker
   # (Range lattice + GuardStore + Z3 implication)
   # so the rules fire separately for CWE-190 / -191
-  # / -369 / -129. Always enabled (cheap — only
+  # / -369 / -129. Always enabled (cheap 鈥?only
   # fires on arithmetic / array ops); per-CWE YAML
   # whitelist decides which actually reports.
   BoundaryOverflow:
@@ -248,3 +248,84 @@ checkers:
     cwe: CWE-732
     description: "CWE-732: file permissions granted to everyone instead of the owner"
     class: org.plumb.dfa.checkers.taint.FilePermissionChecker
+
+  # The families that carried a pattern set with NO watcher.
+  #
+  # A sink family is a pattern set; a checker is what looks at it. A family
+  # with patterns and no checker matches a call and the match leads nowhere:
+  # the defect class could not produce a finding at all. These twelve were in
+  # that state -- measured by asking which families are named by no checker and
+  # no rule, then confirming the answer by searching the whole tree for each
+  # family key.
+  CodeInjection:
+    enabled: true
+    severity: CRITICAL
+    cwe: CWE-94,CWE-95,CWE-494
+    description: "CWE-94/95/494: tainted data evaluated as code"
+    class: org.plumb.dfa.checkers.taint.CodeInjectionChecker
+  CookieInjection:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-113
+    description: "CWE-113: tainted data written into a response cookie"
+    class: org.plumb.dfa.checkers.taint.CookieInjectionChecker
+  CredentialExposure:
+    enabled: true
+    severity: HIGH
+    cwe: CWE-256,CWE-798
+    description: "CWE-256/798: credential stored or transmitted in the clear"
+    class: org.plumb.dfa.checkers.taint.CredentialExposureChecker
+  DenialOfService:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-730,CWE-776
+    description: "CWE-730/776: tainted data controls a resource quantity"
+    class: org.plumb.dfa.checkers.taint.DenialOfServiceChecker
+  FormulaInjection:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-1236
+    description: "CWE-1236: tainted data written into a spreadsheet cell"
+    class: org.plumb.dfa.checkers.taint.FormulaInjectionChecker
+  HeaderInjection:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-93,CWE-113
+    description: "CWE-93/113: CRLF injection into an HTTP header"
+    class: org.plumb.dfa.checkers.taint.HeaderInjectionChecker
+  InsecureCommunication:
+    enabled: true
+    severity: HIGH
+    cwe: CWE-297,CWE-319,CWE-326,CWE-327
+    description: "CWE-297/319/326/327: sensitive data sent over an unprotected channel"
+    class: org.plumb.dfa.checkers.taint.InsecureCommunicationChecker
+  InsecureRandomFamily:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-335,CWE-330
+    description: "CWE-335/330: predictable value used where unpredictability matters"
+    class: org.plumb.dfa.checkers.taint.InsecureRandomFamilyChecker
+  LogInjectionFamily:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-117
+    description: "CWE-117: tainted data written into a log record"
+    class: org.plumb.dfa.checkers.taint.LogInjectionFamilyChecker
+  PrivacyViolation:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-215,CWE-359,CWE-489,CWE-497
+    description: "CWE-215/359/489/497: personal data leaves the boundary it belongs inside"
+    class: org.plumb.dfa.checkers.taint.PrivacyViolationChecker
+  ResourceInjection:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-94,CWE-95,CWE-99,CWE-502
+    description: "CWE-94/95/99/502: tainted data selects the resource that is used"
+    class: org.plumb.dfa.checkers.taint.ResourceInjectionChecker
+  SettingManipulation:
+    enabled: true
+    severity: MEDIUM
+    cwe: CWE-15
+    description: "CWE-15: tainted data controls a system or configuration setting"
+    class: org.plumb.dfa.checkers.taint.SettingManipulationChecker

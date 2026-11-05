@@ -23,6 +23,7 @@ rules:
     - ast-security-unchecked-return
     - dfa-taint-leak
     - dfa-taint-external-config-setting
+    - dfa-taint-setting-manipulation
 
 ai:
   enabled: false

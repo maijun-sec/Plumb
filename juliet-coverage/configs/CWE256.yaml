@@ -21,6 +21,7 @@ rules:
     - ast-error-catch-generic
     - ast-security-unchecked-return
     - dfa-taint-leak
+    - dfa-taint-credential-exposure
     - dfa-taint-plaintext-password-sink
     - dfa-taint-null-dereference
 

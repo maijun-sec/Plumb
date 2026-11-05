@@ -1047,6 +1047,27 @@ public final class DfaEngine {
     // scan did not get slow; it stopped finishing.
     HashMap<String, HashMap<String, String>> localLabel = new HashMap<>();
 
+    // The labels of the SHARED CELLS -- a storage location that more than one
+    // function reads and writes. Keyed by "<receiver>.<field>", the same shape the
+    // main analysis uses for its cross-function field tracker.
+    //
+    // <p><b>Why the origin pre-pass needs them.</b> The pre-pass computes, for
+    // every parameter, the origin its CALLERS pass in. It does that with a purely
+    // local label flow over each function's instructions, seeded from that
+    // function's own parameters.
+    //
+    // <p>A value that reaches a sink through a shared cell does not fit that shape:
+    // the closure's own parameter list is EMPTY (the captured variable is not a
+    // parameter -- it is a free identifier in the closure's body), so the pre-pass
+    // had no label for it, and the sink's parameter kept the entry-boundary
+    // {@code param:<name>} label. The taint had crossed the boundary; the report
+    // could not say so.
+    //
+    // <p>So the cell's label is a whole-program fact, computed in the same
+    // fixpoint: a write to the cell publishes a label, and a read of the cell picks
+    // it up.
+    HashMap<String, String> cellLabel = new HashMap<>();
+
     for (TacFunction fn : fns) {
       HashMap<String, String> lab = new HashMap<>();
       // Entry boundary: every parameter is a trust boundary in its own right.
@@ -1128,6 +1149,42 @@ public final class DfaEngine {
               if (from != null && !from.equals(retLabel.get(fn.signature()))) {
                 retLabel.put(fn.signature(), from);
                 changed = true;
+              }
+              break;
+            }
+            case FIELDSTORE -> {
+              // A write to a SHARED CELL publishes the written value's label to
+              // the cell, so a function that reads the cell sees it. The cell is
+              // keyed by "<receiver>.<field>", the same shape the main analysis
+              // uses for its cross-function field tracker.
+              String cellKey = sharedCellKey(ins, fn);
+              if (cellKey != null) {
+                // The STORED value of a FIELDSTORE is its DEST, not one of the
+                // operand slots: the TAC says "lhs1.fieldName = dest". So the
+                // value's label is read from dest, and labelOfAnyArg -- which
+                // looks at args/lhs1/lhs2 -- would find nothing.
+                String from = labelOf(ins.dest, lab);
+                if (from == null) {
+                  from = labelOfAnyArg(ins, lab);
+                }
+                if (from != null && !from.equals(cellLabel.get(cellKey))) {
+                  cellLabel.put(cellKey, from);
+                  changed = true;
+                }
+              }
+              break;
+            }
+            case FIELDLOAD -> {
+              // A read of a SHARED CELL takes the cell's label. Without this the
+              // closure's read of the captured variable had no label, and the
+              // value it passed to the sink had no origin either.
+              String cellKey = sharedCellKey(ins, fn);
+              if (cellKey != null) {
+                String from = cellLabel.get(cellKey);
+                if (from != null && !from.equals(lab.get(destName))) {
+                  lab.put(destName, from);
+                  changed = true;
+                }
               }
               break;
             }
@@ -1227,6 +1284,92 @@ public final class DfaEngine {
   private static String destVarName(TacInstruction ins) {
     if (ins == null) return null;
     return (ins.dest instanceof org.plumb.tac.ir.TacOperand.TacVar d) ? d.name() : null;
+  }
+
+  /**
+   * The key of the SHARED CELL a field access names, or {@code null} when the access is not a
+   * shared cell.
+   *
+   * <p><b>What makes a field access a shared cell.</b> The receiver is a named local of the
+   * function that is <i>never written</i> in it. A receiver the function writes is an object the
+   * function owns, and its fields are that object's own business: two calls on two different
+   * instances of the same class would otherwise be treated as one cell, and a value would leak
+   * between them.
+   *
+   * <p>A receiver the function only READS is a cell some OTHER function also writes -- the cell
+   * exists outside this function, so a write there and a read here are the same storage.
+   *
+   * <p>This is the shape a closure's captured variable has. The frontend lowers a capture into a
+   * field of a synthetic holder whose name is the same in the caller and in the closure: the holder
+   * is declared as a local and never assigned, and the captured variable is its field. So the
+   * capture is a shared cell by this test -- and so is any other language's equivalent, which is
+   * why the test is stated in terms of the receiver's origin rather than in terms of any one
+   * language's convention.
+   *
+   * @param ins the field access
+   * @param fn the function the access is in
+   * @return the cell key, or {@code null}
+   */
+  private static String sharedCellKey(TacInstruction ins, TacFunction fn) {
+    if (ins == null || ins.fieldName == null || ins.fieldName.isEmpty()) {
+      return null;
+    }
+    if (!(ins.lhs1 instanceof org.plumb.tac.ir.TacOperand.TacVar recv)) {
+      return null;
+    }
+    String name = recv.name();
+    if (name == null || name.isEmpty() || "this".equals(name)) {
+      return null;
+    }
+    // A temp is created by the function that uses it, so it is never a cell
+    // another function writes.
+    if (recv.isTemp()) {
+      return null;
+    }
+    // A receiver the function WRITES is its own object, not a shared cell.
+    if (writesLocal(fn, name)) {
+      return null;
+    }
+    return name + "." + ins.fieldName;
+  }
+
+  /**
+   * Whether a function writes to a named variable.
+   *
+   * <p>A write is an instruction whose DEST is the variable: a MOVE into it, a FIELDSTORE onto it,
+   * or a call whose result lands in it.
+   *
+   * @param fn the function
+   * @param name the variable's name
+   * @return whether the function writes it
+   */
+  private static boolean writesLocal(TacFunction fn, String name) {
+    if (fn == null || name == null) {
+      return false;
+    }
+    for (TacInstruction ins : fn.instructions()) {
+      if (ins.dest instanceof org.plumb.tac.ir.TacOperand.TacVar d && name.equals(d.name())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * The label an operand carries in a function's label map, or {@code null}.
+   *
+   * @param op the operand
+   * @param lab the function's label map
+   * @return the label, or {@code null}
+   */
+  private static String labelOf(org.plumb.tac.ir.TacOperand op, HashMap<String, String> lab) {
+    if (op == null || lab == null) {
+      return null;
+    }
+    if (op instanceof org.plumb.tac.ir.TacOperand.TacVar v) {
+      return lab.get(v.name());
+    }
+    return null;
   }
 
   /**

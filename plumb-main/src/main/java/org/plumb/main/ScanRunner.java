@@ -2340,6 +2340,39 @@ public final class ScanRunner {
       checkers.add(new org.plumb.dfa.checkers.taint.XQueryInjectionChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.XsltInjectionChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.XmlInjectionChecker());
+      // The families that carried a pattern set with NO watcher.
+      //
+      // A sink family is a pattern set; a checker is what looks at it. A family
+      // with patterns and no checker matches a call and the match leads nowhere:
+      // the defect class could not produce a finding at all. These twelve were
+      // in that state -- measured by asking which families are named by no
+      // checker and no rule, then confirming the answer by searching the whole
+      // tree for each family key.
+      //
+      //   CWE-94/95/494  code injection
+      //   CWE-113        cookie injection
+      //   CWE-256/798    plaintext credential storage
+      //   CWE-730/776    denial of service
+      //   CWE-1236       formula injection
+      //   CWE-93/113     CRLF header injection
+      //   CWE-297/319/326/327  insecure communication
+      //   CWE-335/330    weak randomness
+      //   CWE-117        log injection (the wider family)
+      //   CWE-215/359/489/497  privacy violation
+      //   CWE-94/95/99/502  resource injection
+      //   CWE-15         setting manipulation
+      checkers.add(new org.plumb.dfa.checkers.taint.CodeInjectionChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.CookieInjectionChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.CredentialExposureChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.DenialOfServiceChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.FormulaInjectionChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.HeaderInjectionChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.InsecureCommunicationChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.InsecureRandomFamilyChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.LogInjectionFamilyChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.PrivacyViolationChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.ResourceInjectionChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.SettingManipulationChecker());
       // CWE-732 (unrestricted access to a file). This one is not a taint rule:
       // the dangerous call is the call itself, so it is a plain DfaChecker that
       // reads the `ownerOnly` flag out of the argument list.

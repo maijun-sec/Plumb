@@ -61,3 +61,18 @@ mappings:
   # It is NOT CWE-89 -- see the DatabaseAccessChecker's javadoc for why the
   # two are separate defect classes.
   DatabaseAccess: CWE-566
+  # The families that carried a pattern set with NO watcher. The mapping is
+  # what the coverage report reads, so a checker without an entry here is a
+  # rule whose CWE is not accounted for.
+  CodeInjection: CWE-94
+  CookieInjection: CWE-113
+  CredentialExposure: CWE-256
+  DenialOfService: CWE-776
+  FormulaInjection: CWE-1236
+  HeaderInjection: CWE-93
+  InsecureCommunication: CWE-319
+  InsecureRandomFamily: CWE-330
+  LogInjectionFamily: CWE-117
+  PrivacyViolation: CWE-359
+  ResourceInjection: CWE-99
+  SettingManipulation: CWE-15

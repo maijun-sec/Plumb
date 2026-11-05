@@ -22,6 +22,7 @@ rules:
     - dfa-taint-leak
     - ast-security-insecure-crypto
     - ast-style-weak-crypto
+    - dfa-taint-insecure-communication
 
 ai:
   enabled: false

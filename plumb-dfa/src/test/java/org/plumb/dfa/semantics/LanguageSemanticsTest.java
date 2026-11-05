@@ -120,21 +120,120 @@ class LanguageSemanticsTest {
   /**
    * A language with no table must still answer.
    *
-   * <p>Scala has no table yet. That is an absence of claims, not a claim that every Scala call
-   * preserves taint. The empty table makes every callee unknown, and the conservative default
-   * applies.
+   * <p>Every language Plumb can analyse has a table now, but the mechanism for a language that has
+   * none must keep working: the empty table makes every callee unknown, and the conservative
+   * default applies. This is what a newly added language gets before its semantics are written
+   * down.
    */
   @Test
   @DisplayName("a language with no table gets the conservative default")
   void aLanguageWithNoTableGetsTheDefault() {
-    LanguageSemanticsRegistry registry = LanguageSemanticsRegistry.withDefaults();
+    LanguageSemanticsRegistry registry = new LanguageSemanticsRegistry();
 
-    LanguageSemantics scala = registry.forLanguage(SourceLanguage.SCALA);
-    assertThat(scala.entries()).isEmpty();
-    assertThat(scala.behaviourOf("scala.Predef.println/1")).isEqualTo(TaintBehaviour.UNKNOWN);
-    assertThat(scala.preservesTaint("scala.Predef.println/1"))
+    LanguageSemantics unknown = registry.forLanguage(SourceLanguage.SCALA);
+    assertThat(unknown.entries()).isEmpty();
+    assertThat(unknown.behaviourOf("scala.Predef.println/1")).isEqualTo(TaintBehaviour.UNKNOWN);
+    assertThat(unknown.preservesTaint("scala.Predef.println/1"))
         .as("an unwritten table must not drop taint")
         .isTrue();
+  }
+
+  /**
+   * Scala's table must classify the calls the taint engine depends on.
+   *
+   * <p><b>Every owner here was MEASURED</b> by running the Scala frontend over a probe of the
+   * standard library's String operations, not inferred from the source text. The measurement
+   * matters because a Scala {@code String} is a {@code java.lang.String}: {@code s.trim} resolves
+   * to {@code java.lang.String.trim}, while {@code s.take} resolves to {@code
+   * scala.collection.StringOps.take}. A table written from the source text alone would have named
+   * owners that never appear in the IR, and every entry would have been dead.
+   */
+  @Test
+  @DisplayName("Scala's table classifies the measured Scala owners")
+  void scalaTableClassifiesTheMeasuredOwners() {
+    LanguageSemantics scala = LanguageSemanticsRegistry.scalaSemantics();
+
+    // A Scala String IS a java.lang.String: these resolve to java.lang.String.
+    assertThat(scala.behaviourOf("java.lang.String.trim/0")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(scala.behaviourOf("java.lang.String.substring/1"))
+        .isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(scala.behaviourOf("java.lang.String.concat/1")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(scala.behaviourOf("java.lang.String.split/1")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(scala.behaviourOf("java.lang.String.toLowerCase/0"))
+        .isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(scala.behaviourOf("java.lang.String.replace/2")).isEqualTo(TaintBehaviour.PRESERVES);
+
+    // These resolve to java.lang.String too, and they REMOVE the taint.
+    assertThat(scala.behaviourOf("java.lang.String.length/0"))
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(scala.behaviourOf("java.lang.String.hashCode/0"))
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(scala.behaviourOf("java.lang.String.isEmpty/0"))
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(scala.behaviourOf("java.lang.String.getBytes/0"))
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+
+    // The StringOps-only operations resolve to scala.collection.StringOps.
+    assertThat(scala.behaviourOf("scala.collection.StringOps.take/1"))
+        .isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(scala.behaviourOf("scala.collection.StringOps.drop/1"))
+        .isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(scala.behaviourOf("scala.collection.StringOps.stripPrefix/1"))
+        .isEqualTo(TaintBehaviour.PRESERVES);
+
+    // The implicit conversion that wraps a String into a StringOps.
+    assertThat(scala.behaviourOf("scala.Predef$.augmentString/1"))
+        .isEqualTo(TaintBehaviour.PRESERVES);
+
+    // An interpolated string carries the interpolated parts.
+    assertThat(scala.behaviourOf("scala.StringContext.s/1")).isEqualTo(TaintBehaviour.PRESERVES);
+  }
+
+  /**
+   * The Scala table must not name owners the frontend never emits.
+   *
+   * <p>Scala 3 emits these operations as static extension methods ({@code toInt$extension}), but
+   * the frontend resolves them to the instance method the compiler ultimately calls, so the emitted
+   * key carries no {@code $extension} suffix. A table written against the library's own method
+   * names would match nothing: every entry would be dead, and the table would look populated while
+   * changing no behaviour.
+   *
+   * <p>This test is the guard against that: it asserts the table does NOT contain the extension
+   * spelling, and that the operation it DOES contain is reachable.
+   */
+  @Test
+  @DisplayName("the Scala table names the resolved owner, not the library's extension spelling")
+  void scalaTableNamesTheResolvedOwner() {
+    LanguageSemantics scala = LanguageSemanticsRegistry.scalaSemantics();
+
+    assertThat(scala.behaviourOf("scala.collection.StringOps.toInt$extension/0"))
+        .as("the frontend never emits the $extension spelling")
+        .isEqualTo(TaintBehaviour.UNKNOWN);
+    assertThat(scala.behaviourOf("scala.collection.StringOps.take$extension/1"))
+        .as("the frontend never emits the $extension spelling")
+        .isEqualTo(TaintBehaviour.UNKNOWN);
+    assertThat(scala.behaviourOf("scala.collection.StringOps.take/1"))
+        .as("the operation the frontend CAN lower is classified")
+        .isEqualTo(TaintBehaviour.PRESERVES);
+  }
+
+  /**
+   * The registry must carry a Scala table.
+   *
+   * <p>Before the Scala table existed, every Scala callee was {@link TaintBehaviour#UNKNOWN}, and
+   * the engine's conservative default made every Scala call taint-preserving -- including {@code
+   * s.length} and {@code s.hashCode}, whose whole purpose is to remove taint.
+   */
+  @Test
+  @DisplayName("the registry carries a Scala table")
+  void theRegistryCarriesAScalaTable() {
+    LanguageSemanticsRegistry registry = LanguageSemanticsRegistry.withDefaults();
+
+    assertThat(registry.languages()).contains(SourceLanguage.SCALA);
+    assertThat(registry.forLanguage(SourceLanguage.SCALA).entries()).isNotEmpty();
+    assertThat(registry.forLanguage(SourceLanguage.SCALA).behaviourOf("java.lang.String.length/0"))
+        .as("a Scala call to length must not be treated as taint-preserving")
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
   }
 
   /**
