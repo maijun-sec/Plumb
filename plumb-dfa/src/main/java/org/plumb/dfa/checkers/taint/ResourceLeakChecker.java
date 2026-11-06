@@ -54,6 +54,57 @@ public final class ResourceLeakChecker extends PathSensitiveCheckerBase {
     return "HIGH";
   }
 
+  /**
+   * The .NET resources this rule tracks, by SIMPLE NAME.
+   *
+   * <p><b>Why this list exists at all.</b> The rule was written for Java, and every name in it is a
+   * Java type. A comparative review against a second tool's C# checker taxonomy showed that the C#
+   * resource types were missing: {@code new FileStream(...)} in C# was not an allocation site, so
+   * the rule never fired on C# -- a capability the rule already had the machinery for (it inspects
+   * {@code NEW} instructions and their constructed type) but never applied to.
+   *
+   * <p>The names are the .NET equivalents of the Java ones, and they are the same discipline the
+   * Java list follows: a type is a resource when it has a {@code Dispose} (or a {@code Close}).
+   * {@code FileStream}, {@code StreamReader}, {@code SqlConnection} and {@code NetworkStream} all
+   * do; {@code String} and {@code Object} do not, so they are absent -- the same reason {@code
+   * StringBuilder} is absent from the Java list.
+   *
+   * <p>The list is by SIMPLE NAME, so it works for a receiver the symbol solver resolved to {@code
+   * System.IO.FileStream} and for one it could not resolve, which is recorded as the bare {@code
+   * FileStream}.
+   */
+  private static final java.util.Set<String> DOTNET_CLOSEABLE_SIMPLE_NAMES =
+      java.util.Set.of(
+          // Files and streams
+          "FileStream",
+          "StreamReader",
+          "StreamWriter",
+          "BinaryReader",
+          "BinaryWriter",
+          "FileInfo",
+          "DirectoryInfo",
+          // Network
+          "NetworkStream",
+          "TcpClient",
+          "TcpListener",
+          "UdpClient",
+          "SslStream",
+          "WebClient",
+          "HttpClient",
+          // Database
+          "SqlConnection",
+          "SqlCommand",
+          "SqlDataReader",
+          "DbConnection",
+          "DbCommand",
+          "DbDataReader",
+          "DbTransaction",
+          // XML
+          "XmlReader",
+          "XmlTextReader",
+          "XmlValidatingReader",
+          "XmlDocument");
+
   protected boolean isAllocSite(TacInstruction ins) {
     if (ins.kind == TacInstruction.Kind.NEWARRAY) {
       // An ARRAY is an allocation, but it is not a RESOURCE: nothing can be "not closed" about
@@ -92,11 +143,48 @@ public final class ResourceLeakChecker extends PathSensitiveCheckerBase {
   }
 
   /**
+   * Whether this CALL releases the resource.
+   *
+   * <p>The base class recognises {@code close}, which is Java's name. .NET spells the same
+   * operation {@code Dispose} -- {@code IDisposable.Dispose} -- and a C# resource that is disposed
+   * is a resource that is closed. Without this, a C# program that correctly disposes its resources
+   * was reported as leaking every one of them: the rule would see the allocation, find no {@code
+   * close}, and report the leak.
+   *
+   * <p>That is the false positive that matters most here: it fires on CORRECT code, and it fires on
+   * every resource, so a scan of a well-written C# program would be nothing but leaks.
+   */
+  @Override
+  protected boolean isCloseCall(TacInstruction ins) {
+    if (super.isCloseCall(ins)) {
+      return true;
+    }
+    if (ins.kind != TacInstruction.Kind.CALL) {
+      return false;
+    }
+    String callee = ins.calleeSig;
+    if (callee == null) {
+      return false;
+    }
+    // The same shape as the base class's `close` match: the method name is
+    // the LAST segment, so `Dispose` is required to be followed by the arity
+    // separator or the end of the signature. That keeps a type named
+    // `Disposable` from matching.
+    return callee.contains(".Dispose/")
+        || callee.contains("#Dispose/")
+        || callee.endsWith(".Dispose")
+        || callee.endsWith("#Dispose");
+  }
+
+  /**
    * Whether a type is one of the closeable resources this rule tracks.
    *
    * <p>The check is by SIMPLE NAME, because the type the TAC records is the declared type and the
    * declaration is usually the simple name. A type that is not one of the tracked names is not a
    * resource.
+   *
+   * <p>The .NET names are consulted too, because the rule applies to every language the TAC covers,
+   * and a C# {@code FileStream} has the same resource obligation as a Java {@code FileInputStream}.
    */
   private static boolean isCloseableType(String type) {
     if (type == null) {
@@ -107,7 +195,8 @@ public final class ResourceLeakChecker extends PathSensitiveCheckerBase {
     if (dot >= 0) {
       simple = simple.substring(dot + 1);
     }
-    return CLOSEABLE_SIMPLE_NAMES.contains(simple);
+    return CLOSEABLE_SIMPLE_NAMES.contains(simple)
+        || DOTNET_CLOSEABLE_SIMPLE_NAMES.contains(simple);
   }
 
   /**

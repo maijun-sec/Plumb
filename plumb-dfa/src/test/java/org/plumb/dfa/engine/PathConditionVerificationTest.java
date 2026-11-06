@@ -72,8 +72,47 @@ class PathConditionVerificationTest {
    * <p>{@code n > 5} and {@code n < 3} cannot both hold, so there is no assignment of {@code n}
    * that reaches the allocation. The allocation is still reached by the flow-insensitive analysis,
    * which is exactly the false positive the path condition exists to remove.
+   *
+   * <p><b>The two guards are NESTED, and that is load-bearing.</b> The path to the allocation must
+   * require <em>both</em> of them, otherwise the allocation is reachable and the finding is real.
+   * Two SEQUENTIAL guards would not express that: with
+   *
+   * <pre>
+   *   if (n &gt; 5) { ... }
+   *   if (n &lt; 3) { ... }
+   *   new ByteArrayOutputStream(n);
+   * </pre>
+   *
+   * <p>the allocation is reached with {@code n = 1}, so suppressing the finding there would be a
+   * false NEGATIVE. The path condition is built from the guards in force <em>at the sink</em>, and
+   * at the sink in the sequential shape neither guard is in force — the two if-blocks have ended.
+   * The nested shape is the one where the guards are simultaneously required, and so the one where
+   * the path is genuinely unsatisfiable.
    */
   private static final String CONTRADICTORY_GUARDS =
+      """
+      import java.io.ByteArrayOutputStream;
+      class T {
+        void alloc(String s) throws Exception {
+          int n = Integer.parseInt(s);
+          if (n > 5) {
+            if (n < 3) {
+              new ByteArrayOutputStream(n);
+            }
+          }
+        }
+      }
+      """;
+
+  /**
+   * The same two guards, but SEQUENTIAL rather than nested.
+   *
+   * <p>This is the shape the path condition must NOT suppress: the allocation is reached with
+   * {@code n = 1}, so the finding is real. It is the negative case for the whole mechanism — a
+   * filter that suppresses everything would pass a test that only checked that a finding
+   * disappeared.
+   */
+  private static final String SEQUENTIAL_GUARDS =
       """
       import java.io.ByteArrayOutputStream;
       class T {
@@ -215,6 +254,29 @@ class PathConditionVerificationTest {
 
     assertThat(findings)
         .as("the guard n > 5 is satisfiable, so the flow is real and the finding stands")
+        .isNotEmpty();
+  }
+
+  /**
+   * Two contradictory guards that are NOT both required must NOT suppress the finding.
+   *
+   * <p><b>This is the negative case for the whole mechanism.</b> The two guards contradict each
+   * other ({@code n > 5} and {@code n < 3}), so a check that read the function's WHOLE guard set
+   * would call the path unsatisfiable and suppress the finding. But the guards are SEQUENTIAL: the
+   * allocation is reached with {@code n = 1}, so the finding is real and must stand.
+   *
+   * <p>Suppressing it would be a false NEGATIVE — the expensive kind, because the vulnerability
+   * silently disappears from the report.
+   */
+  @Test
+  @DisplayName("two contradictory guards that are not both required still reach the sink")
+  void sequentialContradictoryGuardsStillReachTheSink() throws Exception {
+    List<Finding> findings = scan(SEQUENTIAL_GUARDS, "full");
+
+    assertThat(findings)
+        .as(
+            "the allocation is reached with n = 1: the path requires only the second guard, so"
+                + " the finding is real and must not be suppressed")
         .isNotEmpty();
   }
 

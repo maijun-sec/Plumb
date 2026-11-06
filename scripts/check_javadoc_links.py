@@ -92,6 +92,26 @@ JDK_NAMES = {
     "PrintStream", "PrintWriter", "BufferedReader", "BufferedWriter",
 }
 
+# A .NET framework type is just as real as a JDK class -- it is resolved by the
+# C# compiler, not by this project's javac, so the project never "declares" it.
+# The C# analysis document quotes these API names, and a quoted .NET type is
+# NOT a phantom reference to a class that was deleted from this codebase.
+# Only the names the documentation actually quotes are listed, and each one was
+# confirmed to exist by the Roslyn API probe.
+DOTNET_NAMES = {
+    "XmlReaderSettings", "XmlReader", "XmlDocument", "XmlTextReader",
+    "HttpWebRequest", "HttpWebResponse", "WebClient", "HttpClient",
+    "DataContractSerializer", "BinaryFormatter", "LosFormatter",
+    "SqlCommand", "SqlConnection", "SqlDataAdapter",
+    "FileStream", "MemoryStream", "NetworkStream", "StreamReader",
+    "StreamWriter", "FileInfo", "DirectoryInfo",
+    "TcpClient", "TcpListener", "UdpClient", "Socket",
+    "WebRequest", "WebResponse", "ServicePointManager",
+    "Random", "RNGCryptoServiceProvider", "Aes", "SHA256",
+    "NetworkCredential", "CredentialCache", "CookieContainer",
+    "ClaimsIdentity", "PrincipalContext", "DirectorySearcher",
+}
+
 
 def source_roots():
     """Every source root: main and test, for every module.
@@ -315,7 +335,10 @@ def main():
     fqcn, simple, packages = collect_declared()
     entries = classpath_entries()
     third_party = classpath_simple_names(entries)
-    known = simple | JDK_NAMES | third_party | fact_kind_names() | configured_checker_names()
+    known = (
+        simple | JDK_NAMES | DOTNET_NAMES | third_party
+        | fact_kind_names() | configured_checker_names()
+    )
 
     if not entries:
         print("NOTE: no dependency classpath found -- third-party names cannot be resolved.")

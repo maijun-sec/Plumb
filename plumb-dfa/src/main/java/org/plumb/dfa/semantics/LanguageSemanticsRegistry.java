@@ -70,8 +70,8 @@ public final class LanguageSemanticsRegistry {
   /**
    * The registry with the built-in tables.
    *
-   * <p>Java, Kotlin and Scala are populated; the rest get the empty table until their semantics are
-   * written down. That is the honest state: an unwritten table is not a claim that every call
+   * <p>Java, Kotlin, Scala and C# are populated; the rest get the empty table until their semantics
+   * are written down. That is the honest state: an unwritten table is not a claim that every call
    * preserves taint, it is an absence of claims.
    */
   public static LanguageSemanticsRegistry withDefaults() {
@@ -79,6 +79,7 @@ public final class LanguageSemanticsRegistry {
     reg.register(javaSemantics());
     reg.register(kotlinSemantics());
     reg.register(scalaSemantics());
+    reg.register(csharpSemantics());
     return reg;
   }
 
@@ -547,6 +548,201 @@ public final class LanguageSemanticsRegistry {
         "javax.crypto.SecretKey.getEncoded/",
         TaintBehaviour.PRESERVES,
         "java.net.PasswordAuthentication.getPassword/",
+        TaintBehaviour.PRESERVES);
+  }
+
+  /**
+   * C#'s standard library semantics.
+   *
+   * <p><b>Why this table exists.</b> C# had no table at all, so every C# callee was {@link
+   * TaintBehaviour#UNKNOWN} and the engine's conservative default (taint-preserving) applied to all
+   * of them. That default is safe for <em>unknown</em> APIs, but it is wrong for the APIs whose
+   * whole purpose is to <em>remove</em> taint: {@code s.Length}, {@code s.GetHashCode()}. An
+   * unknown callee that dissociates taint is reported as a false positive at every call site, and a
+   * rule set that fires on {@code Length} stops being usable.
+   *
+   * <p><b>Every prefix here was MEASURED, not assumed.</b> The C# frontend resolves a call to the
+   * type the method is <em>declared</em> in, and .NET spells several operations differently from
+   * the source text suggests. The measured keys, from running the frontend over a probe of the .NET
+   * string and IO operations:
+   *
+   * <ul>
+   *   <li>A <b>property</b> is a method call: {@code s.Length} resolves to <b>{@code
+   *       System.String.get_Length/0}</b>, not to a {@code Length} member. A table written against
+   *       the property name would match nothing at all.
+   *   <li>The <b>{@code +} operator</b> on strings lowers to a call to <b>{@code
+   *       System.String.Concat/2}</b>. Without that entry, every string concatenation would lose
+   *       its taint at the {@code +}.
+   *   <li>{@code string.Format} is <b>{@code System.String.Format/2}</b> -- the arity counts the
+   *       format string as well as the arguments.
+   *   <li>A <b>type in a namespace that is not imported</b> resolves to its <em>unqualified</em>
+   *       name: a {@code StringWriter} without {@code using System.IO;} resolves to {@code
+   *       StringWriter}, and with the import to {@code System.IO.StringWriter}. The table lists the
+   *       qualified form, because that is the form a real project produces.
+   * </ul>
+   *
+   * <p><b>What is deliberately NOT here.</b> The table records behaviour the engine can rely on. It
+   * does not try to mirror every method: an absent entry means {@link TaintBehaviour#UNKNOWN},
+   * which is the conservative choice, and a table that guessed would be worse than one that
+   * abstains.
+   */
+  public static LanguageSemantics csharpSemantics() {
+    return LanguageSemantics.of(
+        SourceLanguage.CSHARP,
+        // --- System.String: the result carries the input's taint ---
+        "System.String.Trim/",
+        TaintBehaviour.PRESERVES,
+        "System.String.TrimStart/",
+        TaintBehaviour.PRESERVES,
+        "System.String.TrimEnd/",
+        TaintBehaviour.PRESERVES,
+        "System.String.Substring/",
+        TaintBehaviour.PRESERVES,
+        "System.String.Replace/",
+        TaintBehaviour.PRESERVES,
+        "System.String.Split/",
+        TaintBehaviour.PRESERVES,
+        "System.String.ToUpper/",
+        TaintBehaviour.PRESERVES,
+        "System.String.ToUpperInvariant/",
+        TaintBehaviour.PRESERVES,
+        "System.String.ToLower/",
+        TaintBehaviour.PRESERVES,
+        "System.String.ToLowerInvariant/",
+        TaintBehaviour.PRESERVES,
+        "System.String.PadLeft/",
+        TaintBehaviour.PRESERVES,
+        "System.String.PadRight/",
+        TaintBehaviour.PRESERVES,
+        "System.String.Insert/",
+        TaintBehaviour.PRESERVES,
+        "System.String.Remove/",
+        TaintBehaviour.PRESERVES,
+        "System.String.Concat/",
+        TaintBehaviour.PRESERVES,
+        "System.String.Join/",
+        TaintBehaviour.PRESERVES,
+        "System.String.Format/",
+        TaintBehaviour.PRESERVES,
+        "System.String.Copy/",
+        TaintBehaviour.PRESERVES,
+        "System.String.Normalize/",
+        TaintBehaviour.PRESERVES,
+        "System.String.Intern/",
+        TaintBehaviour.PRESERVES,
+        "System.String.ToString/",
+        TaintBehaviour.PRESERVES,
+        "System.String.AsSpan/",
+        TaintBehaviour.PRESERVES,
+        // --- System.String: the result does NOT carry the input's taint ---
+        // A property is a method: s.Length is System.String.get_Length/0.
+        "System.String.get_Length/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.GetHashCode/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.CompareTo/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.CompareToIgnoreCase/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.Equals/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.Contains/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.StartsWith/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.EndsWith/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.IndexOf/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.LastIndexOf/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.GetBytes/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.ToCharArray/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.GetEnumerator/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.Compare/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.IsNullOrEmpty/",
+        TaintBehaviour.DISSOCIATES,
+        "System.String.IsNullOrWhiteSpace/",
+        TaintBehaviour.DISSOCIATES,
+        // --- System.Text.StringBuilder: the builder carries what was appended ---
+        "System.Text.StringBuilder.Append/",
+        TaintBehaviour.PRESERVES,
+        "System.Text.StringBuilder.AppendLine/",
+        TaintBehaviour.PRESERVES,
+        "System.Text.StringBuilder.Insert/",
+        TaintBehaviour.PRESERVES,
+        "System.Text.StringBuilder.Replace/",
+        TaintBehaviour.PRESERVES,
+        "System.Text.StringBuilder.ToString/",
+        TaintBehaviour.PRESERVES,
+        // --- System.IO: the writer carries what was written ---
+        "System.IO.StringWriter.Write/",
+        TaintBehaviour.PRESERVES,
+        "System.IO.StringWriter.WriteLine/",
+        TaintBehaviour.PRESERVES,
+        "System.IO.StringWriter.ToString/",
+        TaintBehaviour.PRESERVES,
+        "System.IO.TextWriter.Write/",
+        TaintBehaviour.PRESERVES,
+        "System.IO.TextWriter.WriteLine/",
+        TaintBehaviour.PRESERVES,
+        // --- numeric parsing: the result is a number, not the input text ---
+        "System.Int32.Parse/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Int64.Parse/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Double.Parse/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Decimal.Parse/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Boolean.Parse/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Int32.TryParse/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Int64.TryParse/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Double.TryParse/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Decimal.TryParse/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Boolean.TryParse/",
+        TaintBehaviour.DISSOCIATES,
+        // --- boxing: a numeric wrapper's text is not the number's taint ---
+        "System.Int32.ToString/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Int64.ToString/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Double.ToString/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Decimal.ToString/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Boolean.ToString/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Convert.ToString/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Convert.ToBase64String/",
+        TaintBehaviour.DISSOCIATES,
+        // --- encoding: the bytes are not the text ---
+        "System.Text.Encoding.GetBytes/",
+        TaintBehaviour.DISSOCIATES,
+        // --- exception messages: the message is derived from the exception ---
+        "System.Exception.get_Message/",
+        TaintBehaviour.PRESERVES,
+        "System.Exception.ToString/",
+        TaintBehaviour.PRESERVES,
+        "System.Exception.get_StackTrace/",
+        TaintBehaviour.PRESERVES,
+        // --- encryption: the ciphertext does not carry the plaintext's taint ---
+        "System.Security.Cryptography.SymmetricAlgorithm.Encrypt/",
+        TaintBehaviour.DISSOCIATES,
+        "System.Security.Cryptography.SymmetricAlgorithm.Decrypt/",
+        TaintBehaviour.DISSOCIATES,
+        // --- secrets: the value itself, so its taint ---
+        "System.Security.Cryptography.PasswordDeriveBytes.GetBytes/",
         TaintBehaviour.PRESERVES);
   }
 }

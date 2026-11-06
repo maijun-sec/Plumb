@@ -631,6 +631,38 @@ public final class AnalysisContext {
   }
 
   /**
+   * The index of the instruction being analysed, within the current function.
+   *
+   * <p>PER THREAD, for the same reason the guard snapshot is: the parallel worklist analyses
+   * several functions at once, and one worker's position must not be visible to another worker.
+   *
+   * <p>This is what makes a PATH-scoped path condition possible. The guards in force at a sink are
+   * the ones established by the branches that lead to it, and that is a question about the
+   * instruction's POSITION in the function — not about the function as a whole. The engine sets
+   * this before each instruction so a checker can ask "which guards hold here?".
+   */
+  private final ThreadLocal<Integer> currentInstructionIndex = new ThreadLocal<>();
+
+  /** The index of the instruction being analysed, or {@code -1} when it is not known. */
+  public int currentInstructionIndex() {
+    Integer idx = currentInstructionIndex.get();
+    return idx == null ? -1 : idx;
+  }
+
+  /**
+   * Record the index of the instruction being analysed.
+   *
+   * @param index the instruction's index within the current function, or {@code -1} to clear it
+   */
+  public void setCurrentInstructionIndex(int index) {
+    if (index < 0) {
+      currentInstructionIndex.remove();
+    } else {
+      currentInstructionIndex.set(index);
+    }
+  }
+
+  /**
    * The {@code System.nanoTime()} reading taken when the current function's analysis started.
    *
    * <p>Exposed so that a checker can compute its own remaining time against the same origin the

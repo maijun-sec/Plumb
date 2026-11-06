@@ -138,7 +138,9 @@ public final class CaptureSink {
    */
   private void writeJson(Path dir, CaptureEntry entry) {
     try {
-      Path file = dir.resolve("javac-" + System.nanoTime() + ".json");
+      // The file is named after the COMPILER that produced it, so a reader can
+      // pick the files of one compiler without parsing them.
+      Path file = dir.resolve(entry.compiler() + "-" + System.nanoTime() + ".json");
       Files.writeString(file, entry.toJson(), StandardCharsets.UTF_8);
       LOG.debug("Capture: wrote {}", file);
     } catch (IOException e) {

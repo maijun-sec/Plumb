@@ -30,11 +30,20 @@ is cited.
 | What does that mean for Plumb? | The two commercial tools sit at opposite ends of the axis: **Coverity = source-level + tool-hosted .NET runtime**; **Fortify = binary-level + external JVM + IL as the pivot**. Plumb already owns the source-level end and already owns a JVM. Neither vendor's exact route is reusable; the *hybrid* is. |
 | The route for Plumb | **A .NET sidecar process** that runs Roslyn, emits TAC over a length-prefixed stdio protocol, and the JVM reads it. |
 | Does the TAC need new opcodes? | **No new opcode. But three IR contract changes**, and one is load-bearing: **a C# property assignment must lower to a `CALL`, not a `FIELDSTORE`.** |
+| Where does the .NET sink catalogue come from? | **Converted, not hand-written.** 2519 .NET sink rules in the packs, 2491 converted (98.9 %), 66 of 72 defect classes mapped, **1284 C# patterns across 36 families**. See [§5.5](#55-the-catalogue-is-converted-not-hand-written--and-what-that-cost). |
+| How does the other tool's checker list compare? | **37 of its 49 C# security checkers are covered.** The 7 that were not are closed — five by reading the vendor's non-dataflow rules, one (`RESOURCE_LEAK`) by extending a *checker* that had never been applied to C#, and one (`TAINT_ASSERT`) is a rule about the analyser and has no counterpart in the program. See [§5.6](#56-the-comparative-review-what-the-other-tools-checker-list-exposes). |
 
 The last row is the one that decides whether C# can produce findings at all, and
 it is the item the multi-language design doc left open as "a one-day question
 with a one-day answer" ([MULTI-LANGUAGE-IR-DESIGN.md §15.7](../MULTI-LANGUAGE-IR-DESIGN.md)).
 Section 4 answers it against the code.
+
+**That question has now been MEASURED, and the answer is yes.** A C# property
+assignment lowers to a `CALL` whose callee signature the existing sink
+catalogue matches, and the finding is reported end to end. The measurement
+also corrected one thing this document got wrong: the TAC's call convention
+puts the **receiver** at `args[0]`, so the assigned value is the first *user*
+argument. See [§6, Phase 0](#phase-0--the-measurement-taken).
 
 ---
 
@@ -607,46 +616,70 @@ value is argument 0 of `set_CommandText/1` — so `arg_index: 0`.
 
 ### 5.2 The families that need .NET content
 
-The families that already exist for Java and have a .NET counterpart:
+**MEASURED.** The families that carry C# patterns, with the number of patterns
+each holds:
 
 ```
-taint.sources.console    System.Console.ReadLine
-                         System.Console.In.ReadLine
-taint.sources.env        System.Environment.GetEnvironmentVariable
-taint.sources.network    System.Net.WebClient.DownloadString
-                         System.Net.Http.HttpClient (response)
-taint.sources.request    HttpRequest.QueryString        (ASP.NET)
-                         HttpRequest.Form
-                         HttpRequest.Params
-                         HttpRequest.Cookies
-sql.sinks                System.Data.SqlClient.SqlCommand.set_CommandText
-                         System.Data.SqlClient.SqlCommand.ExecuteNonQuery
-                         System.Data.SqlClient.SqlCommand.ExecuteReader
-                         System.Data.SqlClient.SqlCommand.ExecuteScalar
-cmd.sinks                System.Diagnostics.Process.Start
+privacy.sinks              261    CWE-215,CWE-226,CWE-359,CWE-489,CWE-497
+database-access.sinks      144    CWE-566
+xss.sinks                  133    CWE-79,CWE-80,CWE-82,CWE-83,CWE-87,CWE-692
+sql.sinks                   87    CWE-89,CWE-564
+file-path.sinks             77    CWE-22,CWE-73
+weak-crypto.sinks           72    CWE-261,CWE-326
+credential.sinks            66    CWE-256,CWE-522,CWE-798
+setting-manipulation.sinks  58    CWE-15
+resource-injection.sinks    53    CWE-94,CWE-95,CWE-99,CWE-502
+header-injection.sinks      45    CWE-93,CWE-113
+trust-boundary.sinks        31    CWE-501,CWE-264,CWE-287,CWE-359,CWE-732
+deserialization.sinks       27    CWE-502
+formula-injection.sinks     19    CWE-1236
+log-injection.sinks         16    CWE-117
+open-redirect.sinks         16    CWE-601
+ssrf.sinks                  16    CWE-918
+ldap.sinks                  14    CWE-90,CWE-20,CWE-639
+cookie.sinks                13    CWE-113
+dos.sinks                   13    CWE-730,CWE-776
+xml-injection.sinks         13    CWE-91
+code-injection.sinks         9    CWE-94,CWE-95,CWE-494
+nosql.sinks                  8    CWE-943,CWE-89
+regex.sinks                  8    CWE-1333,CWE-185,CWE-730
+command.sinks                7    CWE-78,CWE-77,CWE-88,CWE-93,CWE-114,CWE-147,CWE-494
+reflection.sinks             6    CWE-470,CWE-494
+xpath.sinks                  5    CWE-643
+xxe.sinks                    5    CWE-611
+xslt-injection.sinks         3    CWE-494
+json-injection.sinks         2    CWE-91
+file-inclusion.sinks         1    CWE-94,CWE-98,CWE-494
+http-parameter-pollution.sinks 1   CWE-235
+xquery.sinks                 1    CWE-643,CWE-652
+```
+
+A sample of the symbols each family picks up:
+
+```
+sql.sinks                System.Data.Common.DbCommand.set_CommandText
+                         System.Data.IDbCommand.set_CommandText
+                         System.Data.SqlClient.SqlCommand.set_CommandText
+                         System.Data.Entity.DbSet.SqlQuery
+                         System.Data.Linq.DataContext.ExecuteQuery
+command.sinks            System.Diagnostics.Process.Start
                          System.Diagnostics.ProcessStartInfo.set_FileName
                          System.Diagnostics.ProcessStartInfo.set_Arguments
-path.sinks               System.IO.File.*
-                         System.IO.Directory.*
-                         System.IO.Path.*
-xss.sinks                System.Web.UI.HtmlTextWriter
-                         Response.Write                (ASP.NET)
-                         System.Web.UI.Literal.Text
+                         System.Reflection.Assembly.Load
 deserialization.sinks    System.Text.Json.JsonSerializer.Deserialize
-                         BinaryFormatter.Deserialize
-ldap.sinks               System.DirectoryServices.*
-crypto.sinks             System.Security.Cryptography.*
+                         System.Runtime.Serialization.Formatters.BinaryFormatter
+ldap.sinks               System.DirectoryServices.AccountManagement.PrincipalContext
+credential.sinks         System.Net.NetworkCredential.<init>
+                         System.Security.Cryptography.X509Certificates.X509Certificate
 weak-crypto.sinks        System.Security.Cryptography.*
-xxe.sinks                System.Xml.XmlDocument.Load
-                         System.Xml.XmlReaderSettings
-log.sinks                System.Diagnostics.Trace.WriteLine
-                         ILogger.Log
+xss.sinks                System.Web.HttpUtility.HtmlEncode
+                         System.Web.UI.WebControls.TextBox.set_Text
+ssrf.sinks               System.Net.HttpWebRequest
+                         System.Net.WebClient
 ```
 
-The **complete** list is larger than this; the point is that it is a
-**mechanical enumeration of the .NET standard library**, not a research
-project. The .NET API surface is documented, and the families are already
-defined.
+The .NET API surface is documented, so the enumeration is mechanical — which is
+exactly why it was worth **converting** rather than typing (§5.5).
 
 ### 5.3 The property-setter consequence, spelled out
 
@@ -655,9 +688,17 @@ This roughly **doubles** the .NET sink table relative to a naive
 method-only count, and it is the single most important structural fact about
 the C# catalogue.
 
+**MEASURED.** The property accessors are not a small minority of the converted
+patterns — they are the majority. In the shipped catalogue the property setters
+alone account for several hundred of the 1284 C# patterns, and the two largest
+single-symbol entries are `set_CommandText` (three owner types: the abstract
+`System.Data.Common.DbCommand`, the interface `System.Data.IDbCommand`, and the
+concrete `System.Data.SqlClient.SqlCommand`) and the ASP.NET
+`set_(SelectCommand|DeleteCommand|InsertCommand|UpdateCommand)` family.
+
 The families most affected: `sql.sinks` (CommandText, CommandType,
-ConnectionString), `cmd.sinks` (FileName, Arguments), `path.sinks` (some
-overloads are properties), `xss.sinks` (Text, Value).
+ConnectionString), `command.sinks` (FileName, Arguments), `file-path.sinks`
+(some overloads are properties), `xss.sinks` (Text, Value).
 
 ### 5.4 The measurement that must come first
 
@@ -681,6 +722,464 @@ different plans:
 **The measurement should be the first thing built**, because the answer changes
 the size of the second thing.
 
+### 5.5 The catalogue is converted, not hand-written — and what that cost
+
+**MEASURED.** The .NET sink catalogue is **not** hand-written. It is converted
+from an external rule pack by a conversion script, which reads the pack's
+decoded rule files and emits a fragment that a merger script folds into
+`sink-families.yaml`. The
+hand-written base file keeps only the patterns a person wrote; the converted
+ones land in each family's `by_language: csharp:` table.
+
+The numbers, measured against the two .NET packs:
+
+| Quantity | Value |
+| --- | --- |
+| .NET sink rules in the packs | 2519 |
+| .NET sink rules converted | 2491 (**98.9 %**) |
+| .NET sink defect classes | 72 |
+| .NET defect classes mapped to a Plumb family | 66 |
+| Plumb families carrying C# patterns | 36 |
+| C# sink patterns in the shipped catalogue | **1284** |
+
+The 6 unmapped defect classes are 28 rules, and none of them has a Plumb family
+to map to: three are Java-only concepts, two are code-quality findings rather
+than security defects, and one would need a new family.
+
+**The mapping is by DEFECT CLASS, not by vendor rule.** An ORM variant is still
+`sql.sinks`: NHibernate, LINQ, Castle ActiveRecord, PartiQL, SubSonic, Hibernate
+and JDO all land in the same family, because they all express the same defect.
+A family is a thing a rule author types, so the family name must be searchable;
+`sql.nhibernate.sinks` is not.
+
+#### 5.5.1 The four conversions that are not textual
+
+The conversion is mostly mechanical, but four things in the .NET packs do not
+survive a literal translation. Each of them produced a rule that either
+**matched nothing** or **matched the wrong thing**, and each is now a named
+case in the converter with a stated rule.
+
+**Generic arity.** The packs spell a generic type with its arity — `DbSet@1`,
+`ObjectQuery@1` — and Plumb's TAC erases generics: a callee signature is
+`owner.method/arity`, where the owner carries no type arguments. A pattern that
+kept `@1` would match nothing at all. The marker is stripped before anything
+else, because it can sit inside a group that is itself inside an alternation
+(`(DropDownList|ListBox)(For(@1)?)?`), and stripping it afterwards would leave
+an empty group behind — a regex that matches the empty string, which silently
+*widens* the rule.
+
+**A wildcard around a real name.** The packs write `.*Operation` and
+`(HqlBased|Simple|Scalar)Query.*` for "every class whose name ends in
+`Operation`" and "every class whose name starts with `Query`". The `.*` is a
+regex wildcard, but the dot inside it is a *bare* dot, and the owner's normaliser
+turns a bare dot into an escaped one. The literal translation was
+`Model\..*Operation` — a literal dot followed by a star — which demands an empty
+namespace segment between `Model` and the wildcard, and matches nothing. The
+wildcard is now peeled off before the owner is normalised, so it stays a
+wildcard.
+
+**A repeated group.** `set_(Legend)*Url` and `lookup(Link)?` are the two shapes,
+and they want **opposite** answers for the "group absent" variant:
+
+- `lookup(Link)?` — `?` means zero-or-one, so the name is either `lookup` *or*
+  `lookupLink`. **Both are real methods.** The absent variant must be kept;
+  dropping it lost the JNDI lookup sink entirely, and the resource-injection
+  family stopped claiming `javax.naming.Context.lookup`.
+- `set_(Legend)*Url` — the group is in the **middle**. The absent variant is
+  `set_Url`, which is not a property of any charting class. Keeping it would
+  add a name that no symbol has: a rule that looks like coverage and matches
+  nothing.
+
+So the rule is **positional**: a suffix group keeps its absent variant (the
+name is a prefix of its own variant, and both are real), a middle group drops
+it (its absence changes what the name *is*).
+
+**An escaped pipe.** Scala's operator methods are spelled with pipes, and the
+packs write them as `#(##|&&|\||\|\|)`. The converter's "drop the empty
+alternatives" pass was not escape-aware, so it read the `|` of the literal
+`||` as an alternation and deleted it. The result — `(\#\#|&&|\||\|\)` — is not
+a valid regex at all, and **the whole catalogue failed to load**: "Unclosed
+group near index 63". Every sink family stopped working, for every language.
+That is not a precision trade-off; it is a total outage caused by one rule, and
+it is invisible unless something compiles every pattern.
+
+#### 5.5.2 The configuration gate, and why it is not a value claim
+
+A converted sink may be gated on a *taint flag*. There are two kinds, and they
+are not equivalent:
+
+- A **mitigation** gate (`VALIDATED_*`) says "this value was *not* validated".
+  Plumb models sanitizers, so ignoring the gate makes Plumb narrower — safe.
+- A **value or configuration** gate says something about the *value* or about
+  *how the object is set up*: `SHELL_PROCESS` ("the tainted value IS the
+  command"), `INSECURE_TYPENAMEHANDLING_SETTING` ("the mapper resolves type
+  names unsafely").
+
+Plumb's receiver position means "the object carries taint", which is a
+*different proposition* from either of those. The Jackson rule is the sharp
+case: its gate is `INSECURE_TYPENAMEHANDLING_SETTING`, and its claim is about
+the mapper's **configuration**. Translating the receiver made Plumb report
+deserialization on every Jackson call that received untrusted data — whether or
+not `TypeNameHandling` was ever enabled. Worse, the pattern
+`read(Tree|Value|Values)` also matches `readValue`, so the rule *shadowed* the
+narrow one and moved the reported argument from the data (0) to the receiver.
+
+So a receiver position under a value or configuration gate is dropped, and the
+argument position under the same gate is kept: the position claim ("the tainted
+value lands in argument N") survives the flattening.
+
+#### 5.5.3 What proves the conversion
+
+Three things, and each one catches a different failure:
+
+1. **Every pattern in the catalogue compiles.** A pattern that does not compile
+   takes the whole catalogue down with it. This is the test that would have
+   caught the Scala pipe.
+2. **No C# pattern carries a generic-arity marker, and no C# pattern contains an
+   escaped wildcard.** Both are rules that can never fire, and both look like
+   coverage in the family list.
+3. **A converted pattern is reached end to end.** `ProcessStartInfo.set_Arguments`
+   is a *converted* sink (not a hand-written one), and the test drives
+   `startInfo.Arguments = tainted` through the frontend, the catalogue and the
+   engine, and requires the finding. A conversion bug is otherwise invisible:
+   the rule is in the family list, the scan reports success, and nothing is
+   found.
+
+The tests are `SinkCatalogueCsharpTest` and `CSharpDfaIntegrationTest` in
+`plumb-dfa`.
+
+#### 5.5.4 What the other tool contributes: nothing, and that is a measured fact
+
+The other external source has a **model library** that Plumb converts
+(a conversion script reads it and emits a fragment that the
+same merger folds in). **MEASURED: that library has no .NET model library at
+all.** Its `library/` tree carries `generic/` (C and C++), `go/`, `java/` and
+`security/` — and nothing for C#. The converter's default path is
+`library/java/`, and the shipped fragment for that source has **zero** C# patterns.
+
+So the C# catalogue comes entirely from the rule packs, and the second source
+contributes no C# content. That is worth stating plainly rather than leaving
+it as an apparent gap: the two sources are not interchangeable suppliers of .NET
+sink knowledge, and a plan that assumed both would contribute would be wrong
+about one of them.
+
+### 5.6 The comparative review: what the other tool's checker list exposes
+
+The other tool ships a **checker reference** — a per-checker HTML document
+([EXTERNAL]) describing every weakness it detects, per language. That document
+is not a rule pack and it carries no API list, but it **is** a taxonomy of
+weaknesses, and a taxonomy is exactly what a coverage review needs: it says
+which defect classes exist for C#, so a family that has no C# patterns is
+visible as a hole rather than as an absence nobody noticed.
+
+#### 5.6.1 The measurement
+
+The reference carries **299 checker sections**; **80** apply to C#, of which
+**49** are Security Checkers. Mapping each of the 49 onto the Plumb family
+that carries the same defect class gave the first review result:
+
+| | count |
+| --- | --- |
+| Security Checkers that apply to C# | 49 |
+| Covered by a Plumb family that has C# patterns | 31 |
+| The family existed but had **no** C# patterns | 5 |
+| The family did not exist at all | 3 |
+| Not a taint rule (configuration / value / control-flow) | 11 |
+
+The last row matters as much as the first. A checker like
+`CONFIG.ENABLED_DEBUG_MODE` is a *configuration* rule — "the debug mode must
+be off" — and `DIVIDE_BY_ZERO` is a value rule. Neither is a taint sink, and
+neither can be expressed as one. Mapping them onto sink families would produce
+rules that report taint findings for code that has no taint in it.
+
+#### 5.6.2 What the review actually changed
+
+The review was not a report; it changed the catalogue. Each of the seven
+uncovered checkers was re-examined against the vendor's own data, and the
+result was three different answers.
+
+**Five were real gaps, and they are now closed.** The family existed but had
+no C# pattern, because the external .NET packs express those defect classes
+**without a dataflow rule at all** — as a *semantic* rule, a *structural* rule or
+a *control-flow* rule. The dataflow parser skipped them, so they never reached
+the catalogue. The API list is recoverable from those rules' own
+`<FunctionIdentifier>`, and the converter now reads it.
+
+That reading has to be filtered by what KIND of assertion the rule makes:
+
+| The rule's claim | Is it a taint sink? | Example |
+| --- | --- | --- |
+| The tainted value is an argument | **Yes** | "the method invokes a SQL query built with input from an untrusted source" |
+| The object's CONFIGURATION is wrong | No | "the application is configured to communicate with its database in plain text" |
+| The ALGORITHM is weak | No | "the random number generator cannot withstand a cryptographic attack" |
+
+The second and third rows are the trap. *Insecure Transport* and *Insecure
+Randomness* look like taint weaknesses — they have a "Security Checker"
+label and a CWE — but the vendor's own description says the defect is a
+property of the setup, not of a value flowing into it. Converting them into
+taint sinks would report a cleartext-transport finding on a connection string
+that is a literal, and a weak-PRNG finding on code with no taint at all.
+
+**MEASURED: of the 571 .NET rules that have no dataflow rule, 104 are value
+claims and are converted; 467 are configuration or control-flow claims and are
+counted but not converted.** The 104 add the EF Core `FromSqlRaw` /
+`ExecuteSqlRaw` family, `DbBatchCommand.set_CommandText`, the
+`XmlReaderSettings.<init>` constructors and the Dapper query methods — APIs the
+dataflow rules missed.
+
+**Two remain open, and they are open for a stated reason.** `RESOURCE_LEAK` and
+`TAINT_ASSERT` are not taint rules at all. `TAINT_ASSERT` compares a
+user-asserted non-taintedness against the computed taint — it is a rule about
+the *analyser*, not about the program, and Plumb has no family for it.
+
+`RESOURCE_LEAK` turned out to be a different story, and the review found it.
+See [§5.6.3](#563-the-checker-the-comparison-found--and-the-sink-families-could-not).
+
+#### 5.6.3 The checker the comparison found — and the sink families could not
+
+`RESOURCE_LEAK` is **not a taint rule**. It fires when an allocation is *not*
+closed (CWE-404), so it belongs to no sink family — it is a **checker**, and its
+tracked-type list is the mechanism.
+
+And that list was **Java-only**. Every name in it was a Java type, so:
+
+- a C# `new FileStream(...)` was **not an allocation site** at all, and the
+  rule never fired on C#;
+- even had it fired, .NET spells the close **`Dispose`**, not `close` — so a
+  correctly-disposed .NET resource would have been reported as a leak. That is
+  the worst shape of false positive: it fires on *correct* code, and on
+  *every* resource in the program.
+
+**This is what a comparative review is for.** A review that compares sink
+*families* would never have found it: the rule has no sink family, so it does
+not appear in a family-by-family comparison at all. It appears only because
+the other tool's checker list names a `RESOURCE_LEAK` checker for C#, and
+"Plumb has a rule with this rule id, but does it work for C#?" is a question
+worth asking.
+
+Two changes close it:
+
+1. the tracked-type list gained the .NET resources (`FileStream`,
+   `StreamReader`, `SqlConnection`, `NetworkStream`, `XmlReader`, …) — the
+   same discipline as the Java list: a type is a resource when it has a
+   `Dispose`;
+2. `Dispose` is recognised as a close, alongside `close`.
+
+MEASURED: a C# `FileStream` that is never disposed is reported; the same
+resource with a `Dispose()` is not.
+
+#### 5.6.4 The hand-written patterns are measured, not remembered
+
+The five gaps that needed a *hand-written* pattern (rather than a converted
+one) raised the question of where the API names come from. A sink pattern
+naming an API that does not exist is a **dead rule**: it looks like coverage
+in the catalogue and it can never fire.
+
+So the .NET API surface is **measured** rather than recalled, with the same
+Roslyn the C# frontend uses: a probe compiles a C# file that references each
+API, and an API the compiler rejects is an API the frontend cannot resolve
+either. The harness is
+`.aethercode/rule-config/apiprobe/` (Roslyn 4.12, the pinned version).
+
+MEASURED, and every one of these is a correction the measurement forced:
+
+| The pattern said | The framework says | The correction |
+| --- | --- | --- |
+| `DataContractSerializer.Deserialize` | the method is `ReadObject` | renamed |
+| `Random.NextInt32` / `NextInt64` | neither exists on `System.Random` | removed |
+| `HttpWebRequest.<init>` | the constructor is not public | removed — a protected constructor is a rule that can never fire |
+| `XmlReaderSettings.set_XmlResolver` | the property has no getter | the setter is kept, the read is not |
+| `System.Net.Http.HttpResponseHeaders` | the type is `System.Net.Http.Headers.HttpResponseHeaders` | renamed — the owner must be the type that **declares** the member |
+
+**MEASURED: 37 hand-written C# patterns, 37 confirmed.** The remaining 6 name
+an API outside the shared framework (`System.Data.SqlClient`,
+`Microsoft.Data.SqlClient`, `System.DirectoryServices` — a NuGet package or a
+Windows-only assembly). Those are not dead patterns — the vendor's rules name
+the same APIs — but the probe cannot see them, and the check says so rather
+than claiming a measurement it did not make.
+
+#### 5.6.5 The constructor gap, and why it was not a TAC problem
+
+The comparison surfaced one genuine TAC-level defect, and it is worth stating
+because it was invisible in every other way.
+
+A C# `new` expression lowers to a `NEW` instruction. The DFA engine queries
+the sink catalogue for a `NEW` **only when the instruction carries a callee
+signature** (`TaintedCheckerBase.checkSinkAtNew` returns immediately when it
+is null). The C# frontend emitted `NEW` with the constructed *type* only — so
+**every constructor sink was structurally unreachable**: the catalogue carried
+the pattern, the code was right, and the finding was simply absent while the
+scan reported success.
+
+That is the same failure mode the property-setter rule was chosen to avoid,
+in a place nobody was looking. The fix follows the contract the Kotlin frontend
+already uses: a C# `NEW` now carries **both** `ctorType` and the
+`owner.<init>/arity` callee signature.
+
+MEASURED: of the .NET packs' 321 constructor rules, **314 name a concrete
+type** — and the frontend resolves those exactly, so they now fire. **7 name
+an interface** (`System.Data.IDbCommand.<init>` and friends), and an interface
+has no constructor: Roslyn resolves `new SqlCommand(sql)` to
+`System.Data.SqlClient.SqlCommand.<init>/1`, so the interface-named pattern is
+a dead rule. The converter expands those 7 into their concrete
+implementations, alongside the interface form.
+
+#### 5.6.6 The result
+
+| | before | after |
+| --- | --- | --- |
+| C# security checkers covered by a sink family | 31 | **36** |
+| C# security checkers covered by a checker | 0 | **37** (the resource-leak rule) |
+| Families with C# patterns | 32 | **36** |
+| C# sink patterns | 1230 | **1284** |
+| Checkers still uncovered | 7 | **1** (`TAINT_ASSERT`, a rule about the analyser) |
+
+**MEASURED: 37 of the 49 C# security checkers are covered.** The one that is
+not is `TAINT_ASSERT`, which compares a user-asserted non-taintedness against
+the computed taint — it is a rule about the *analyser*, not about the
+program, and there is nothing in the program for it to find.
+
+---
+
+### 5.7 Four TAC defects the comparative review exposed
+
+The checker list says *which defect classes* exist. It does not say whether
+the frontend's TAC can express them. A frontend can cover every checker and
+still produce TAC that mis-states the program — and that failure is invisible
+in a scan that reports success.
+
+So the review did not stop at the catalogue. It compared the C# lowering
+against the Java and Kotlin lowerings, construct by construct, and four
+differences turned out to be **defects** rather than simplifications.
+
+The common shape of all four is the same, and it is worth stating once:
+
+> **A C# construct that lowers into a shape the engine reads literally is
+> wrong in a way no catalogue can correct.** The catalogue says *where* to look
+> for a sink; it says nothing about whether the control flow around the sink
+> is the program's control flow.
+
+| # | Construct | What the lowering produced | What the program does |
+| --- | --- | --- | --- |
+| 1 | `switch` | the case label was emitted **before** the comparison that selects it | the branch enters the case **body** |
+| 2 | a literal | every literal was a `STRING` | an `int` is an `int` |
+| 3 | `break` / `continue` | **silently dropped** | a jump |
+| 4 | `for` | the condition's true edge went to the **increment** | to the **body** |
+
+#### 5.7.1 The switch: a label defined before the branch that targets it
+
+The Java reference lowers a switch in two phases: the whole comparison chain
+first, then the case bodies under their labels. The C# lowering interleaved
+them — label, comparison, body, label, comparison, body.
+
+The consequence is a **backward edge**. The branch that selects the first case
+targets a label that was emitted *above* it, so the "true" edge lands on the
+comparison again rather than on the body:
+
+```
+LABEL  case_1        <- the branch below targets THIS
+BINOP  t = (mode == 1)
+BRANCH t ? case_1 : case_2
+```
+
+The result is still a **well-formed** CFG: every label resolves and the CFG
+builder accepts it. It is just semantically wrong, and wrong in the way a scan
+cannot see — the scan reports success.
+
+The fix is the Java reference's two-phase shape. The `default:` section needed
+its own treatment: it has no comparison, so it is reached by the chain's last
+false edge and by the jump that follows the chain. Without both, the default
+body is unreachable.
+
+**MEASURED:** the comparison branch targets a label defined **after** it, and
+the default body is reachable.
+
+#### 5.7.2 The literal: a switch on the wrong kind
+
+Every literal in a C# file came out as a `STRING` — every number, every
+boolean, every character. The cause was one word:
+
+```csharp
+return token.Kind() switch        // NumericLiteralToken, TrueKeyword, ...
+{
+    SyntaxKind.NumericLiteralExpression => ...,   // never matches
+```
+
+The switch was written against the **syntax node** kinds but asked the
+**token** for its kind. The two are different vocabularies: the token kind is
+`NumericLiteralToken`, the node kind is `NumericLiteralExpression`. No case
+matched, so every literal took the `_ =>` default, which is `STRING`.
+
+This is the worst shape of bug in the set, because the constant still carried
+the right **value**. The TAC looked plausible, every test that checked values
+passed, and the thing that was lost was the constant's **kind** — which is
+exactly what a range check on an integer, or a boolean test, reads.
+
+**MEASURED:** an `int` is `INT`, a `long` is `LONG`, a `double` is `DOUBLE`, a
+`float` is `FLOAT`, a `decimal` is `DECIMAL`, a `bool` is `BOOL`, a `char` is
+`CHAR`, a `string` is `STRING`, `null` is `NULL`, and no literal is a `STRING`
+unless it is one.
+
+#### 5.7.3 `break` and `continue`: dropped, not lowered
+
+A `break` and a `continue` are jumps, and a jump needs a target. The C# lowering
+dropped both.
+
+Dropping them does not make the TAC smaller; it makes the TAC describe a
+control flow the program does not have:
+
+- a dropped `break` inside a switch lets the case body **fall through** into
+  the next case, so the dataflow engine follows a path the program never takes;
+- a dropped `continue` inside a loop runs the **rest of the body** instead of
+  restarting the iteration, so the taint state at the top of the next iteration
+  is wrong.
+
+The fix needs a context, because the target depends on where the statement
+sits:
+
+| Statement | Target |
+| --- | --- |
+| `break` in a `switch` | the switch's end label |
+| `break` in a `loop` | the loop's end label |
+| `continue` in a `while` | the condition label |
+| `continue` in a `for` | the increment label |
+| `continue` in a `foreach` | the increment label |
+| `continue` in a `switch` | the enclosing **loop's** increment — C#'s switch has no continue target of its own |
+
+The innermost context wins, and the context is saved and restored around every
+loop and switch so a nested one does not leak its labels outward.
+
+#### 5.7.4 The `for` loop: the condition's edge went to the increment
+
+The `for` lowering routed the condition's true edge to the **increment**
+label. With a `continue` also targeting the increment, the incrementor ran
+twice on that path — and on the *first* iteration too, because the condition's
+true edge skipped the body entirely.
+
+The Java reference has four labels for this (`cond`, `body`, `update`, `end`)
+and the C# lowering now does the same: the condition's true edge goes to the
+**body**, and only a `continue` goes to the increment.
+
+#### 5.7.5 What the four defects had in common
+
+Every one of them was a case of the same mistake: **assuming the TAC's shape
+is the program's shape**.
+
+- The switch assumed a label's position in the instruction stream is a detail.
+- The literal assumed a token kind and a node kind are the same thing.
+- `break` assumed a statement with no body is a statement with no effect.
+- The `for` assumed "the next thing after the condition" is the increment.
+
+The countermeasure is not a review checklist; it is a comparison. The Java and
+Kotlin lowerings already encode the answers, so the question is not "is this
+right?" but "does the C# lowering do what the Java one does?" — and that
+question is answerable by reading two files side by side.
+
+**MEASURED:** the C# lowering tests went from 11 to **32** — the property
+lowering's 11, plus 6 for the switch, 10 for the literal kinds and 5 for
+`break`/`continue` — and each of the four defects has a test that fails against
+the old lowering.
+
 ---
 
 ## 6. The plan
@@ -700,6 +1199,70 @@ TAC, and a test that asserts:
 
 **Gate:** if (1) or (2) fails, stop and fix the property rule before writing
 any catalogue content.
+
+#### Phase 0 — the measurement, taken
+
+**The measurement was taken, and the answer is YES.** The property rule works:
+a C# property assignment becomes a `CALL` whose callee signature the existing
+catalogue matches, so **one matching mechanism is enough** and the expensive
+second mechanism is not needed.
+
+The measured facts:
+
+| Question | Answer |
+|---|---|
+| `cmd.CommandText = tainted` → `CALL`? | **Yes.** `calleeSig` is `System.Data.Common.DbCommand.set_CommandText/1`. |
+| Does the catalogue match it? | **Yes.** `sql.sinks`' `by_language: csharp:` pattern matches, `arg_index: 0`. |
+| Is the finding reported end to end? | **Yes.** `taint: param:input -> CWE-89,CWE-564`. |
+| A genuine field assignment | Still a `FIELDSTORE`. The property/field split comes from the resolved symbol, never the spelling. |
+| `await` | `SOURCE_LOWERED`, and the awaited value keeps its taint. |
+| `x!` | **Not** a `NULL_CHECK` — see below. |
+| `catch (IOException)` | `CATCH_HANDLER` with `ctorType = System.IO.IOException`. |
+
+The implementation is in `plumb-frontend/csharp-sidecar/` (the .NET side) and
+`plumb-frontend/src/main/java/org/plumb/tac/frontend/csharp/` (the Java side).
+The protocol is `plumb-frontend/csharp-sidecar/PROTOCOL.md`.
+
+**The measurement changed one thing the plan had wrong.** The plan's
+assumption — and the first implementation — put the assigned value at
+`args[0]`. That is wrong, and the TAC's own call convention says so:
+
+```
+args[0] = the receiver, when the call has one
+args[1..] = the actual arguments
+```
+
+The engine reads the catalogue's `arg_index` against that convention: a
+catalogue entry saying `arg_index: 0` names the **first user argument**, and
+the engine adds the receiver offset itself.
+
+So the first implementation produced TAC that looked right and matched the
+catalogue — and then the engine read `args[0]`, found the *receiver*, found
+nothing tainted there, and reported **nothing**. The scan still reported
+success. This is precisely the failure mode the whole design was chosen to
+avoid, and it is invisible without an end-to-end test: the frontend's own
+tests all passed, because the TAC really did contain the right `CALL`.
+
+**That is the finding worth keeping.** A "property → `CALL`" measurement is
+not enough on its own. The measurement that matters is **property → `CALL` →
+catalogue match → finding reported**, and the last link is where the argument
+convention lives.
+
+Two more corrections the measurement forced:
+
+- **`x!` is not a `NULL_CHECK`.** The null-forgiving operator tells the
+  *compiler* that a value is not null; it inserts **no runtime check**. There
+  is no `NullReferenceException` to catch, because the check does not exist at
+  run time. Emitting a `NULL_CHECK` would claim a check that does not exist,
+  and the null-dereference checker would then suppress a finding that is
+  entirely real.
+- **The sink's receiver type is `System.Data.Common.DbCommand`,** the
+  abstract base class in the shared framework. The concrete providers
+  (`System.Data.SqlClient`) ship as NuGet packages, so a machine that has not
+  restored them cannot resolve the concrete type — and a test that needs one
+  would fail for a reason that has nothing to do with the lowering. The base
+  class declares the same `CommandText` property, so the setter's signature —
+  the thing the catalogue matches — is identical.
 
 ### Phase 1 — the IR contract changes
 
@@ -733,10 +1296,19 @@ nullability default stays `true` for every existing factory).
 The .NET `by_language` tables for every family that has a .NET counterpart
 (§5.2), with the `set_X` setter patterns (§5.3).
 
+**MEASURED — this phase is done, by conversion rather than by hand.** The
+catalogue is generated from the .NET rule packs and merged into
+`sink-families.yaml`: **1284 C# patterns across 36 families**, covering **66 of
+the 72** .NET defect classes (§5.5). The four conversions that are not textual
+— arity, wildcards, repeated groups, and the configuration gate — are §5.5.1
+and §5.5.2.
+
 **Gate:** a .NET sink table exists for every family that has a .NET symbol, and
 a test asserts each entry is reachable in C# and in no other language — the
 same gate the multi-language design doc
-[§15.6](../MULTI-LANGUAGE-IR-DESIGN.md) specifies.
+[§15.6](../MULTI-LANGUAGE-IR-DESIGN.md) specifies. **MET:** the language
+filter is asserted in `SinkCatalogueCsharpTest` (I3), and the whole-catalogue
+compile check (I1) is the assertion that a conversion bug cannot pass.
 
 ### Phase 4 — the rules and the acceptance criteria
 
@@ -757,6 +1329,111 @@ the analogue of the Juliet sweep used for Java:
 | `new SqlCommand(sql)` with a concatenated string | SQL injection |
 
 The first row is the one that proves the property rule.
+
+---
+
+## 6.5 The C# dataflow gap: every .NET spelling of a passthrough was missed
+
+§5.7 was about the **TAC**. This section is about what happens **after** the TAC: the engine's
+dataflow. And the finding is the same shape as the §5.7 ones — the frontend produced a correct
+TAC, and the engine still got the wrong answer.
+
+### 6.5.1 What was measured
+
+`SourceLanguage.CSHARP` appeared **nowhere** in `plumb-dfa/src/main/java`. Every C# callee
+reached the engine as `TaintBehaviour.UNKNOWN`, and the engine's conservative default treats an
+unknown callee as **taint-preserving**.
+
+That default is right for an API nobody has modelled. It is wrong in two directions at once:
+
+| The .NET call | What it does | What the engine did |
+|---|---|---|
+| `s.Trim()`, `s.Substring()`, `s.Split()`, `s.Replace()` | Returns a piece of the input | **DROPPED the taint** — a false negative |
+| `int.Parse(s)`, `double.Parse(s)` | Returns a number, not the text | **KEPT the taint** — a false positive |
+
+Both directions were measured, not assumed.
+
+### 6.5.2 The false negative: a case-sensitive method-name comparison
+
+The engine recognises a taint-passthrough call by **method name**, through a family of helpers
+(`isTrimLike`, `isSubstringLike`, `isCaseLike`, `isSplitLike`, `isValueOfLike`, `isAppendLike`,
+`isFormatterLike`, `isCharByteLike`). Every one of them compared the name **case-sensitively**
+against Java's spelling:
+
+```java
+private static boolean isTrimLike(String calleeSig) {
+  String m = methodNameOf(calleeSig);
+  return "trim".equals(m) || "strip".equals(m) || ... ;
+}
+```
+
+Java writes `s.trim()`; .NET writes `s.Trim()`. `methodNameOf` returns the name **verbatim**, so
+`"trim".equals("Trim")` is `false` and **every** .NET string operation fell through the
+recognition entirely.
+
+The affected calls, and what each one cost:
+
+| Helper | Java spelling | .NET spelling missed | Cost |
+|---|---|---|---|
+| `isTrimLike` | `trim` | `Trim` | false negative |
+| `isSubstringLike` | `substring` | `Substring` | false negative |
+| `isSplitLike` | `split` | `Split` | false negative |
+| `isCaseLike` | `replace` | `Replace` | false negative |
+| `isCaseLike` | `toUpperCase` | `ToUpper` | false negative |
+| `isValueOfLike` | `toString` | `ToString` | false negative |
+| `isAppendLike` | `append` | `Append` | false negative |
+| `isFormatterLike` | `format`, `join` | `Format`, `Join` | false negative |
+| `isCharByteLike` | `toCharArray`, `getBytes` | `ToCharArray`, `GetBytes` | false negative |
+
+A **false negative** is the expensive kind: the finding that should have been reported never was,
+and the scan reported a clean program for code that flows user input into a command.
+
+The fix is one comparison: `equalsIgnoreCase`. The helpers recognise a call by **what it does**,
+and `TRIM`, `Trim` and `trim` are the same operation in every language that has it — so a
+case-insensitive comparison cannot make an unrelated method match.
+
+### 6.5.3 The false positive: .NET's parsers were not sanitizers
+
+The mirror image. `isSanitizer` lists the Java numeric parsers by their Java **owner prefix**
+(`java.lang.Integer.parseInt/1`), so a .NET `System.Int32.Parse/1` never matched. A C# program
+that parses untrusted input into an `int` therefore reported the parsed value as still tainted.
+
+The owner prefix cannot be made case-insensitive away — `java.lang.Integer` and `System.Int32` are
+different spellings of the same operation. So the .NET parsers are listed **by their own owner**,
+which is also what the semantics table does.
+
+### 6.5.4 The semantics table
+
+Both fixes need the same thing the Java and Scala tables already had: **a per-language statement
+of what the standard library does**. C# had none.
+
+`LanguageSemanticsRegistry.csharpSemantics()` now holds **~80 measured entries**, and every prefix
+in it was **measured** by running the C# frontend over a probe of the .NET string and IO
+operations. The measurement matters because .NET spells several operations differently from the
+source text suggests:
+
+| Source | Measured callee key |
+|---|---|
+| `s.Length` | `System.String.get_Length/0` — a **property is a method call** |
+| `s + "x"` | `System.String.Concat/2` — the `+` operator is a call |
+| `string.Format("{0}", x)` | `System.String.Format/2` — the arity counts the format string |
+| `s.Trim()` | `System.String.Trim/0` |
+
+A table written from the source text alone would have named `System.String.Length` — a key the
+frontend never emits — and every entry would have been dead.
+
+### 6.5.5 The rule this section earns
+
+> **A naming convention is not a behaviour.** When an engine recognises a call by its name, the
+> comparison must survive the conventions of every language it analyses — or the recognition
+> silently fails, and the failure is a false negative in the direction that costs the most.
+
+And the shape of the measurement generalises:
+
+> **The frontend's own tests are not enough.** The C# frontend emitted a perfect `CALL` for
+> `s.Trim()`, and the frontend's tests passed. The defect was in the *consumer* of that TAC, two
+> modules away. A test that asserts the IR contains the right instruction says nothing about
+> whether the finding is reported.
 
 ---
 

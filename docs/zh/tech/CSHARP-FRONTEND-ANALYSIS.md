@@ -28,9 +28,16 @@
 | 对 Plumb 意味着什么？ | 两个商业工具处在这条轴的两端：**Coverity = 源码级 + 工具自带 .NET 运行时**；**Fortify = 二进制级 + 外部 JVM + 以 IL 为枢轴**。Plumb 已经拥有源码级这一端，也已经拥有一个 JVM。没有任何一家的路线可直接复用；可复用的是**混合体**。 |
 | Plumb 的路线 | 一个 **.NET sidecar 进程**，跑 Roslyn，通过带长度前缀的 stdio 协议吐出 TAC，由 JVM 读取。 |
 | TAC 需要新的 opcode 吗？ | **不需要新 opcode。但需要三处 IR 契约改动**，其中一处是承重的：**C# 的属性赋值必须降级为 `CALL`，而不是 `FIELDSTORE`。** |
+| .NET sink 目录从哪来？ | **转换来的，不是手写的。**包里有 2519 条 .NET sink 规则，转换了 2491 条（98.9 %），72 个缺陷类映射了 66 个，**36 个 family 共 1284 条 C# 模式**。见 [§5.5](#55-目录是转换来的不是手写的代价是什么)。 |
+| 另一个工具的 checker 清单对下来如何？ | 它 49 个 C# 安全 checker 里，**37 个**被覆盖。没覆盖的 7 个已补齐——5 个靠读厂商的非数据流规则，1 个（`RESOURCE_LEAK`）靠把一条**从未在 C# 上生效过**的 checker 扩展过去，剩 1 个（`TAINT_ASSERT`）是关于分析器的规则，在程序里没有对应物。见 [§5.6](#56-对照评测另一个工具的-checker-清单暴露了什么)。 |
 
 最后一行决定了 C# 能否产出 finding，而它正是多语言设计文档留作"一个有答案的
 一天问题"的那一项（[MULTI-LANGUAGE-IR-DESIGN.md §15.7](../../MULTI-LANGUAGE-IR-DESIGN.md)）。§4 对着代码给出了答案。
+
+**这个问题现在已经实测过了，答案是"能"。** C# 的属性赋值会降级成一条 `CALL`，
+其 callee 签名能被现有的 sink 目录匹配到，finding 也能端到端报出。这次测量还
+纠正了本文档里的一处错误：TAC 的调用约定把**接收者**放在 `args[0]`，所以被赋的
+值是第一个*用户*实参。见 [§6, Phase 0](#phase-0--测量结果)。
 
 ---
 
@@ -529,52 +536,83 @@ sink 是那次 *setter 调用*，被污染的值是 `set_CommandText/1` 的第 0
 
 ### 5.2 需要 .NET 内容的 family
 
-Java 已有、且有 .NET 对应物的 family：
+**已测量。** 带 C# 模式的 family 及各自模式条数：
 
 ```
-taint.sources.console    System.Console.ReadLine
-                         System.Console.In.ReadLine
-taint.sources.env        System.Environment.GetEnvironmentVariable
-taint.sources.network    System.Net.WebClient.DownloadString
-                         System.Net.Http.HttpClient (response)
-taint.sources.request    HttpRequest.QueryString        (ASP.NET)
-                         HttpRequest.Form
-                         HttpRequest.Params
-                         HttpRequest.Cookies
-sql.sinks                System.Data.SqlClient.SqlCommand.set_CommandText
-                         System.Data.SqlClient.SqlCommand.ExecuteNonQuery
-                         System.Data.SqlClient.SqlCommand.ExecuteReader
-                         System.Data.SqlClient.SqlCommand.ExecuteScalar
-cmd.sinks                System.Diagnostics.Process.Start
+privacy.sinks              261    CWE-215,CWE-226,CWE-359,CWE-489,CWE-497
+database-access.sinks      144    CWE-566
+xss.sinks                  133    CWE-79,CWE-80,CWE-82,CWE-83,CWE-87,CWE-692
+sql.sinks                   87    CWE-89,CWE-564
+file-path.sinks             77    CWE-22,CWE-73
+weak-crypto.sinks           72    CWE-261,CWE-326
+credential.sinks            66    CWE-256,CWE-522,CWE-798
+setting-manipulation.sinks  58    CWE-15
+resource-injection.sinks    53    CWE-94,CWE-95,CWE-99,CWE-502
+header-injection.sinks      45    CWE-93,CWE-113
+trust-boundary.sinks        31    CWE-501,CWE-264,CWE-287,CWE-359,CWE-732
+deserialization.sinks       27    CWE-502
+formula-injection.sinks     19    CWE-1236
+log-injection.sinks         16    CWE-117
+open-redirect.sinks         16    CWE-601
+ssrf.sinks                  16    CWE-918
+ldap.sinks                  14    CWE-90,CWE-20,CWE-639
+cookie.sinks                13    CWE-113
+dos.sinks                   13    CWE-730,CWE-776
+xml-injection.sinks         13    CWE-91
+code-injection.sinks         9    CWE-94,CWE-95,CWE-494
+nosql.sinks                  8    CWE-943,CWE-89
+regex.sinks                  8    CWE-1333,CWE-185,CWE-730
+command.sinks                7    CWE-78,CWE-77,CWE-88,CWE-93,CWE-114,CWE-147,CWE-494
+reflection.sinks             6    CWE-470,CWE-494
+xpath.sinks                  5    CWE-643
+xxe.sinks                    5    CWE-611
+xslt-injection.sinks         3    CWE-494
+json-injection.sinks         2    CWE-91
+file-inclusion.sinks         1    CWE-94,CWE-98,CWE-494
+http-parameter-pollution.sinks 1   CWE-235
+xquery.sinks                 1    CWE-643,CWE-652
+```
+
+各 family 命中的符号举例：
+
+```
+sql.sinks                System.Data.Common.DbCommand.set_CommandText
+                         System.Data.IDbCommand.set_CommandText
+                         System.Data.SqlClient.SqlCommand.set_CommandText
+                         System.Data.Entity.DbSet.SqlQuery
+                         System.Data.Linq.DataContext.ExecuteQuery
+command.sinks            System.Diagnostics.Process.Start
                          System.Diagnostics.ProcessStartInfo.set_FileName
                          System.Diagnostics.ProcessStartInfo.set_Arguments
-path.sinks               System.IO.File.*
-                         System.IO.Directory.*
-                         System.IO.Path.*
-xss.sinks                System.Web.UI.HtmlTextWriter
-                         Response.Write                (ASP.NET)
-                         System.Web.UI.Literal.Text
+                         System.Reflection.Assembly.Load
 deserialization.sinks    System.Text.Json.JsonSerializer.Deserialize
-                         BinaryFormatter.Deserialize
-ldap.sinks               System.DirectoryServices.*
-crypto.sinks             System.Security.Cryptography.*
+                         System.Runtime.Serialization.Formatters.BinaryFormatter
+ldap.sinks               System.DirectoryServices.AccountManagement.PrincipalContext
+credential.sinks         System.Net.NetworkCredential.<init>
+                         System.Security.Cryptography.X509Certificates.X509Certificate
 weak-crypto.sinks        System.Security.Cryptography.*
-xxe.sinks                System.Xml.XmlDocument.Load
-                         System.Xml.XmlReaderSettings
-log.sinks                System.Diagnostics.Trace.WriteLine
-                         ILogger.Log
+xss.sinks                System.Web.HttpUtility.HtmlEncode
+                         System.Web.UI.WebControls.TextBox.set_Text
+ssrf.sinks               System.Net.HttpWebRequest
+                         System.Net.WebClient
 ```
 
-**完整**清单比这更长；要点是它是 .NET 标准库的**机械枚举**，不是一个研究项目。
-.NET 的 API 面是有文档的，而 family 已经定义好了。
+.NET 的 API 面是有文档的，所以这个枚举是机械的——这正是它值得**转换**而不是手写的
+原因（§5.5）。
 
 ### 5.3 属性 setter 带来的后果，展开说
 
 每一个通过属性抵达的 .NET sink 都需要一条 `set_X` 模式。这让 .NET sink 表相对
 一个只算方法的朴素计数**大约翻倍**，而它是关于 C# 目录最重要的结构性事实。
 
+**已测量。** 属性访问器不是转换结果里的小众形态，而是**多数**。在已发布的目录里，
+仅属性 setter 就占了几百条（总共 1284 条 C# 模式）。单符号条目最大的两类是
+`set_CommandText`（三个 owner 类型：抽象的 `System.Data.Common.DbCommand`、
+接口 `System.Data.IDbCommand`、具体的 `System.Data.SqlClient.SqlCommand`），
+以及 ASP.NET 的 `set_(SelectCommand|DeleteCommand|InsertCommand|UpdateCommand)`。
+
 受影响最大的 family：`sql.sinks`（CommandText、CommandType、ConnectionString）、
-`cmd.sinks`（FileName、Arguments）、`path.sinks`（部分重载是属性）、
+`command.sinks`（FileName、Arguments）、`file-path.sinks`（部分重载是属性）、
 `xss.sinks`（Text、Value）。
 
 ### 5.4 必须先做的那个测量
@@ -595,6 +633,385 @@ log.sinks                System.Diagnostics.Trace.WriteLine
 
 **这个测量应当最先做**，因为答案会改变第二件事的大小。
 
+### 5.5 目录是转换来的，不是手写的——代价是什么
+
+**已测量。** .NET sink 目录**不是**手写的。它由一个转换脚本
+从外部规则包转换而来：脚本读取该包解码后的规则文件，产出一个片段，再由
+另一个合并脚本折进 `sink-families.yaml`。手写的基线文件只保留
+人写的模式；转换来的模式落在每个 family 的 `by_language: csharp:` 表里。
+
+对着两个 .NET 包量出来的数字：
+
+| 量 | 值 |
+| --- | --- |
+| 包里的 .NET sink 规则 | 2519 |
+| 成功转换的 .NET sink 规则 | 2491（**98.9 %**）|
+| .NET sink 缺陷类 | 72 |
+| 映射到 Plumb family 的 .NET 缺陷类 | 66 |
+| 带 C# 模式的 Plumb family | 36 |
+| 已发布目录里的 C# sink 模式 | **1284** |
+
+未映射的 6 个缺陷类共 28 条规则，而且它们在 Plumb 里都没有对应的 family 可落：
+三个是 Java 专属概念，两个是代码质量而非安全缺陷，还有一个需要新建 family。
+
+**映射按缺陷类走，不按厂商规则走。** ORM 变体仍然是 `sql.sinks`：NHibernate、
+LINQ、Castle ActiveRecord、PartiQL、SubSonic、Hibernate 和 JDO 都落在同一个 family，
+因为它们表达的是同一个缺陷。family 是规则作者要输入的东西，所以 family 名必须可
+检索；`sql.nhibernate.sinks` 不是。
+
+#### 5.5.1 四种不是"照抄"的转换
+
+转换大体上是机械的，但 .NET 包里有四样东西照抄会出事。每一样都曾产出一条
+**匹配不到任何东西**或**匹配到错东西**的规则，现在每一样在转换器里都是一个
+写明了规则的具名用例。
+
+**泛型 arity。** 包把泛型类型连同 arity 一起写出来——`DbSet@1`、`ObjectQuery@1`——
+而 Plumb 的 TAC 抹掉泛型：被调用者签名是 `owner.method/arity`，owner 不带类型实参。
+留着 `@1` 的模式**什么也匹配不到**。这个标记在其他一切之前被剥掉，因为它可以
+待在一个本身又位于交替组里的组中（`(DropDownList|ListBox)(For(@1)?)?`），事后再剥
+会留下一个空组——一个匹配空串的正则，会悄悄**放宽**规则。
+
+**真名两边的通配。** 包用 `.*Operation` 和 `(HqlBased|Simple|Scalar)Query.*` 表示
+"名字以 `Operation` 结尾的每个类"和"名字以 `Query` 开头的每个类"。`.*` 是正则通配，
+但它里面的点是**裸**点，而 owner 的规范化会把裸点转义。照抄得到的是
+`Model\..*Operation`——一个字面点后跟一个星号——它要求 `Model` 和通配之间有一个
+空命名空间段，于是匹配不到任何东西。现在通配先被剥下来再做 owner 规范化，所以它
+仍然是通配。
+
+**重复的组。** `set_(Legend)*Url` 和 `lookup(Link)?` 是两种形状，而它们对"组缺失"
+那个变体要的答案**正好相反**：
+
+- `lookup(Link)?`——`?` 是零或一，所以名字要么是 `lookup`，要么是 `lookupLink`。
+  **两个都是真方法。** 缺失变体必须保留；丢掉它就丢了整个 JNDI lookup sink，
+  resource-injection family 不再认 `javax.naming.Context.lookup`。
+- `set_(Legend)*Url`——组在**中间**。缺失变体是 `set_Url`，它不是任何 charting
+  类的属性。保留它就多出一个没有任何符号拥有的名字：一条看起来像覆盖、实际
+  匹配不到东西的规则。
+
+所以规则是**位置相关**的：后缀组保留缺失变体（此时名字是它自己变体的前缀，两个
+都是真的），中间组丢弃它（此时缺失改变的是这个名字**是什么**）。
+
+**转义的竖线。** Scala 的运算符方法是用竖线拼的，包里写作 `#(##|&&|\||\|\|)`。
+转换器的"丢掉空交替项"那一遍不认识转义，于是把字面 `||` 里的 `|` 当成了交替符
+并删掉。结果 `(\#\#|&&|\||\|\)` 根本不是合法正则，于是**整个目录加载失败**：
+"Unclosed group near index 63"。每一个 sink family 都停了，对**所有**语言都停。
+这不是精度取舍；这是一条规则造成的全面停摆，而且除非有人把每条模式都编译一遍，
+否则看不见。
+
+#### 5.5.2 配置门控，以及它为什么不是取值声明
+
+一个转换来的 sink 可能被一个 *taint flag* 门控。这有两种，彼此不等价：
+
+- **缓解**门控（`VALIDATED_*`）说的是"这个值**没有**被校验过"。Plumb 建模了
+  sanitizer，所以忽略它会让 Plumb 更窄——安全。
+- **取值或配置**门控说的是关于**值**或关于**对象怎么配的**：`SHELL_PROCESS`
+  （"这个被污染的值**就是**命令"）、`INSECURE_TYPENAMEHANDLING_SETTING`
+  （"这个 mapper 不安全地解析类型名"）。
+
+Plumb 的接收者位置意思是"这个对象带着污点"，这跟上面两种都**不是同一个命题**。
+Jackson 那条规则是最锋利的例子：它的门控是 `INSECURE_TYPENAMEHANDLING_SETTING`，
+它断言的是关于 mapper **配置**的事。翻译成接收者位置后，Plumb 会对每一个收到
+不可信数据的 Jackson 调用报反序列化——不管 `TypeNameHandling` 有没有被打开。
+更糟的是，模式 `read(Tree|Value|Values)` 也匹配 `readValue`，于是这条规则**遮蔽**
+了那条更窄的规则，并把报告的参数从数据（0）挪到了接收者。
+
+所以在取值或配置门控下的接收者位置被丢弃，而同一门控下的参数位置被保留：位置
+声明（"被污染的值落在参数 N 上"）在这次扁平化里存活下来了。
+
+#### 5.5.3 靠什么证明这次转换是对的
+
+三件事，每一件抓一类不同的失败：
+
+1. **目录里每一条模式都能编译。** 编不过的模式会把整个目录一起带下去。这正是
+   本该抓住 Scala 那根竖线的测试。
+2. **没有 C# 模式带泛型 arity 标记，也没有 C# 模式含转义通配。** 两者都是永不
+   触发的规则，而两者在 family 列表里都**看起来像覆盖**。
+3. **一条转换来的模式被端到端抵达。** `ProcessStartInfo.set_Arguments` 是一条
+   **转换来的** sink（不是手写的），测试把 `startInfo.Arguments = tainted` 推过
+   前端、目录和引擎，并要求报出 finding。否则转换 bug 是看不见的：规则在 family
+   列表里，扫描报告成功，而什么都没找到。
+
+测试是 `plumb-dfa` 里的 `SinkCatalogueCsharpTest` 与 `CSharpDfaIntegrationTest`。
+
+#### 5.5.4 另一个来源贡献了什么：没有——而这是一个被测量过的事实
+
+另一个外部来源有一份 Plumb 已经在转换的**模型库**
+（一个转换脚本读它并产出片段，由同一个合并脚本折进目录）。
+**已测量：那份库根本没有 .NET 模型库。**它的 `library/` 树里有 `generic/`（C 与
+C++）、`go/`、`java/` 和 `security/`——没有 C#。转换器的默认路径是 `library/java/`，
+而已发布的那份片段里 C# 模式**为零**。
+
+所以 C# 目录完全来自规则包，第二个来源不贡献任何 C# 内容。这一点值得明说，而不是
+留作一个看起来像缺口的东西：这两个来源不是可以互换的 .NET sink 知识来源，一个
+假定"两边都会贡献"的计划，对其中一边就是错的。
+
+### 5.6 对照评测：另一个工具的 checker 清单暴露了什么
+
+另一个工具附带一份 **checker 参考文档**（按 checker 组织的 HTML，[EXTERNAL]），
+描述它检测的每一个弱点、针对每种语言。那份文档不是规则包，也不带 API 清单，但它
+**是一份弱点分类表**——而分类表正是覆盖评测需要的：它告诉你 C# 上存在哪些缺陷类，
+于是"某个 family 没有 C# 模式"就成了一眼看得见的洞，而不是没人注意到的缺失。
+
+#### 5.6.1 测量
+
+参考文档里有 **299 个 checker 段落**；**80** 个适用于 C#，其中 **49** 个是安全
+checker。把 49 个逐一映射到承载同一缺陷类的 Plumb family，得到第一轮评测结果：
+
+| | 数量 |
+| --- | --- |
+| 适用于 C# 的安全 checker | 49 |
+| 已被"有 C# 模式的 family"覆盖 | 31 |
+| family 存在但**没有** C# 模式 | 5 |
+| family 根本不存在 | 3 |
+| 不是 taint 规则（配置 / 取值 / 控制流） | 11 |
+
+最后一行和第一行一样重要。像 `CONFIG.ENABLED_DEBUG_MODE` 这样的 checker 是
+**配置**规则——"调试模式必须关掉"；`DIVIDE_BY_ZERO` 是取值规则。两者都不是 taint
+sink，也无法表达成 taint sink。把它们映射到 sink family 上，会对一段根本没有污点
+的代码报出污点发现。
+
+#### 5.6.2 这次评测改动了什么
+
+评测不是一份报告，它改动了目录。那 7 个未覆盖的 checker 逐条对着厂商自己的数据
+重新审视，得到的是**三种不同的答案**。
+
+**其中 5 个是真实缺口，现在补上了。**family 存在却没有 C# 模式，是因为外部的
+.NET 规则包**根本没有用数据流规则表达这些缺陷类**——它们是*语义*规则、
+*结构*规则或*控制流*规则。数据流解析器跳过它们，于是它们从未进入
+目录。API 清单可以从这些规则自己的 `<FunctionIdentifier>` 里取回，转换器现在读它了。
+
+读出来之后必须按"这条规则断言的是什么"过滤：
+
+| 规则的断言 | 是 taint sink 吗 | 例子 |
+| --- | --- | --- |
+| 污点值落在一个参数上 | **是** | "该方法用来自不可信源的输入拼接并执行 SQL 查询" |
+| 对象的**配置**不对 | 不是 | "应用被配置为以明文与数据库通信" |
+| **算法**本身弱 | 不是 | "该随机数生成器无法抵御密码学攻击" |
+
+第二、三行就是陷阱。*Insecure Transport* 与 *Insecure Randomness* 看上去像污点
+弱点——它们有"安全 checker"标签、有 CWE——但厂商自己的描述说，缺陷在于配置，
+而不在于流入其中的某个值。把它们转成 taint sink，会对一个字面量连接串报出明文
+传输发现，对一段没有污点的代码报出弱随机数发现。
+
+**已测量：571 条没有数据流规则的 .NET 规则里，104 条是取值声明并被转换；467 条
+是配置或控制流声明，只计数不转换。**那 104 条补上了 EF Core 的
+`FromSqlRaw` / `ExecuteSqlRaw` 一族、`DbBatchCommand.set_CommandText`、
+`XmlReaderSettings.<init>` 的构造函数和 Dapper 的查询方法——都是数据流规则漏掉的 API。
+
+**剩下 2 个仍然没覆盖，而且原因是写明的。**`TAINT_ASSERT` 根本不是 taint 规则：它
+拿用户断言的"非污点"和算出来的污点做比对——它是一条关于**分析器**的规则，不是
+关于程序的，程序里没有东西可找。
+
+`RESOURCE_LEAK` 则是另一回事，而且是被这次评测翻出来的。见
+[§5.6.3](#563-评测翻出来的那条-checker--以及-sink-family-看不到的东西)。
+
+#### 5.6.3 评测翻出来的那条 checker —— 以及 sink family 看不到的东西
+
+`RESOURCE_LEAK` **不是 taint 规则**。它在"分配了却没关闭"时触发（CWE-404），
+所以它不属于任何 sink family——它是一条 **checker**，而它的"被跟踪类型列表"才是
+机制。
+
+而那个列表是**只有 Java 的**。里面每个名字都是 Java 类型，于是：
+
+- C# 的 `new FileStream(...)` **根本不算分配点**，这条规则在 C# 上从不触发；
+- 就算触发了，.NET 把关闭叫作 **`Dispose`** 而不是 `close`——一个正确 dispose
+  掉的 .NET 资源会被报成泄漏。这是最糟的那种误报：它发生在**正确**的代码上，
+  而且发生在程序里的**每一个**资源上。
+
+**这正是一次对照评测的意义所在。**只比 sink **family** 的评测永远找不到它：
+这条规则没有 sink family，所以它根本不出现在逐 family 的对比里。它能被找到，
+只因为另一个工具的 checker 清单里为 C# 列了一条 `RESOURCE_LEAK` checker，
+于是"Plumb 有这条 rule id 的规则，但它对 C# 有效吗？"就成了一个值得问的问题。
+
+两处改动补上了它：
+
+1. 被跟踪类型列表加进了 .NET 资源（`FileStream`、`StreamReader`、
+   `SqlConnection`、`NetworkStream`、`XmlReader` 等）——和 Java 列表同一个纪律：
+   类型有 `Dispose` 才算资源；
+2. `Dispose` 被认作关闭，与 `close` 并列。
+
+已测量：从不 dispose 的 C# `FileStream` 会被报出；同一个资源加上
+`Dispose()` 则不会。
+
+#### 5.6.4 手写模式是测出来的，不是凭记忆写的
+
+那 5 个需要**手写**模式（而非转换得来）的缺口，带出了一个问题：API 名字从哪来？
+一个指向不存在的 API 的 sink 模式是**死规则**：它在目录里看起来像覆盖，却永远
+不会触发。
+
+于是 .NET API 面是**测**出来的，而不是回忆出来的，用的就是 C# 前端自己那份
+Roslyn：探针编译一个引用了各 API 的 C# 文件，编译器拒绝的 API，就是前端也解析
+不到的 API。测量工具在 `.aethercode/rule-config/apiprobe/`（Roslyn 4.12，即锁定
+的版本）。
+
+已测量，而下面每一条都是测量逼出来的修正：
+
+| 模式写的是 | 框架实际是 | 修正 |
+| --- | --- | --- |
+| `DataContractSerializer.Deserialize` | 方法叫 `ReadObject` | 改名 |
+| `Random.NextInt32` / `NextInt64` | `System.Random` 上没有这两个 | 删除 |
+| `HttpWebRequest.<init>` | 构造函数不是 public | 删除——protected 构造函数是永远触发不了的规则 |
+| `XmlReaderSettings.set_XmlResolver` | 该属性没有 getter | 保留 setter，不保留读取 |
+| `System.Net.Http.HttpResponseHeaders` | 类型是 `System.Net.Http.Headers.HttpResponseHeaders` | 改名——owner 必须是**声明**该成员的类型 |
+
+**已测量：37 条手写 C# 模式，37 条被确认。**剩下 6 条指向的 API 不在共享框架里
+（`System.Data.SqlClient`、`Microsoft.Data.SqlClient`、`System.DirectoryServices`
+——NuGet 包或仅 Windows 的程序集）。它们不是死规则——厂商规则命名的是同一批
+API——但探针看不见它们，所以检查会**如实说出来**，而不是声称一个它没有做过的测量。
+
+#### 5.6.5 构造函数这个缺口，以及为什么它不是一个 TAC 层面的问题
+
+对照评测暴露了一个真实的 TAC 缺陷，值得单独说，因为它在其他任何方式下都是
+不可见的。
+
+C# 的 `new` 表达式降级成 `NEW` 指令。而 DFA 引擎只有在指令**带 callee 签名**
+时才会去查 sink 目录（`TaintedCheckerBase.checkSinkAtNew` 在签名为 null 时直接
+返回）。C# 前端原本只发出构造出来的**类型**——于是**每一个构造函数 sink 都是
+结构性不可达的**：目录里带着模式，代码是对的，而发现就是缺席，扫描却报告成功。
+
+这和当初为了避开而选择属性 setter 规则的那个失败模式一模一样，只不过发生在一个没人
+会看的地方。修法沿用 Kotlin 前端已经在用的契约：C# 的 `NEW` 现在**同时**带
+`ctorType` 和 `owner.<init>/arity` callee 签名。
+
+已测量：.NET 规则包里的 321 条构造函数规则中，**314 条命名的是具体类型**——
+前端恰好能解析出这些，于是它们现在会触发。**7 条命名的是接口**
+（`System.Data.IDbCommand.<init>` 之类），而接口没有构造函数：Roslyn 把
+`new SqlCommand(sql)` 解析成 `System.Data.SqlClient.SqlCommand.<init>/1`，所以
+接口形式是死规则。转换器把这 7 条展开成它们的具体实现，接口形式同时保留。
+
+#### 5.6.6 结果
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| 被 sink family 覆盖的 C# 安全 checker | 31 | **36** |
+| 被 checker 覆盖的 C# 安全 checker | 0 | **37**（资源泄漏那条规则） |
+| 带 C# 模式的 family | 32 | **36** |
+| C# sink 模式 | 1230 | **1284** |
+| 仍未覆盖的 checker | 7 | **1**（`TAINT_ASSERT`，一条关于分析器的规则） |
+
+**已测量：49 个 C# 安全 checker 里覆盖了 37 个。**唯一没覆盖的是 `TAINT_ASSERT`，
+它拿用户断言的"非污点"和算出来的污点做比对——它是一条关于**分析器**的规则，
+不是关于程序的，程序里没有东西可让它找。
+
+---
+
+### 5.7 对照评测翻出来的四个 TAC 缺陷
+
+checker 清单说的是**哪些缺陷类存在**。它没说前端产出的 TAC 能不能表达它们。
+一个前端可以覆盖全部 checker，同时产出**陈述错了程序**的 TAC——而这种失败在
+"扫描报告成功"的界面下是看不见的。
+
+所以评测没有停在目录这一层。它把 C# 的降低过程与 Java、Kotlin 的降低过程
+**逐个构造**对照了一遍，发现四处差异是**缺陷**，而不是简化。
+
+四者的形状是同一个，值得先说一遍：
+
+> **一个降低成"引擎会照字面读"的形状的 C# 构造，就是错的——而目录纠正不了它。**
+> 目录说的是**去哪里**找 sink；它对 sink 周围的控制流是不是程序的控制流，一言不发。
+
+| # | 构造 | 降低出来的形状 | 程序实际的样子 |
+| --- | --- | --- | --- |
+| 1 | `switch` | case 标签被放在**选中它的那次比较之前** | 分支进入 case **体** |
+| 2 | 字面量 | 每个字面量都是 `STRING` | `int` 就是 `int` |
+| 3 | `break` / `continue` | **被静默丢弃** | 一次跳转 |
+| 4 | `for` | 条件的真边指向**增量段** | 指向**循环体** |
+
+#### 5.7.1 switch：标签定义在指向它的分支之前
+
+Java 参考实现把 switch 降成两个阶段：先是整条比较链，然后是各个标签下的 case 体。
+C# 的实现把两者**交错**了——标签、比较、体、标签、比较、体。
+
+后果是一条**反向边**。选中第一个 case 的分支指向一个在它**上方**的标签，
+于是"真"这条边落回比较本身，而不是落到 case 体：
+
+```
+LABEL  case_1        <- 下面的分支指向的是这个
+BINOP  t = (mode == 1)
+BRANCH t ? case_1 : case_2
+```
+
+结果仍然是一个**良构**的 CFG：每个标签都能解析，CFG 构造器照收不误。
+它只是语义上错了，而且错在扫描看不见的地方——扫描报告成功。
+
+修法就是 Java 参考实现的两阶段形状。`default:` 分支需要单独处理：它没有比较，
+所以它由比较链最后一条假边到达，也由比较链之后的那个跳转到达。少任何一条，
+default 体就是不可达的。
+
+**已测量：**比较分支指向一个定义在它**之后**的标签，且 default 体可达。
+
+#### 5.7.2 字面量：switch 在了错误的 kind 上
+
+C# 文件里的每个字面量都变成了 `STRING`——每个数字、每个布尔、每个字符。
+原因只有一个词：
+
+```csharp
+return token.Kind() switch        // NumericLiteralToken、TrueKeyword……
+{
+    SyntaxKind.NumericLiteralExpression => ...,   // 永远匹配不上
+```
+
+这个 switch 写的是**语法节点**的 kind，却问 **token** 要 kind。两者是不同的词汇：
+token 的 kind 是 `NumericLiteralToken`，节点的 kind 是 `NumericLiteralExpression`。
+一个 case 都匹配不上，于是每个字面量都走了 `_ =>` 分支，也就是 `STRING`。
+
+这是这组缺陷里最坏的形态，因为常量仍然带着正确的**值**。TAC 看着完全合理，
+所有检查值的测试都通过，而丢掉的是常量的 **kind**——而整数范围检查、布尔测试
+读的就是它。
+
+**已测量：**`int` 是 `INT`，`long` 是 `LONG`，`double` 是 `DOUBLE`，`float` 是
+`FLOAT`，`decimal` 是 `DECIMAL`，`bool` 是 `BOOL`，`char` 是 `CHAR`，`string` 是
+`STRING`，`null` 是 `NULL`，而且除非本来就是字符串，没有任何字面量是 `STRING`。
+
+#### 5.7.3 `break` 与 `continue`：被丢弃，不是被降低
+
+`break` 和 `continue` 是跳转，而跳转需要目标。C# 的实现把两者都丢了。
+
+丢弃它们不会让 TAC 变小；它让 TAC 陈述了一段程序**没有**的控制流：
+
+- switch 里被丢掉的 `break` 让 case 体**落穿**进下一个 case，于是数据流引擎
+  走了一条程序从不走的路径；
+- 循环里被丢掉的 `continue` 跑完循环体**剩下的部分**而不是重启这次迭代，
+  于是下一次迭代开头的污点状态是错的。
+
+修法需要一个上下文，因为目标取决于语句所在的位置：
+
+| 语句 | 目标 |
+| --- | --- |
+| `switch` 里的 `break` | switch 的结束标签 |
+| 循环里的 `break` | 循环的结束标签 |
+| `while` 里的 `continue` | 条件标签 |
+| `for` 里的 `continue` | 增量标签 |
+| `foreach` 里的 `continue` | 增量标签 |
+| `switch` 里的 `continue` | 外层**循环**的增量——C# 的 switch 自己没有 continue 目标 |
+
+最内层的上下文优先，而且每个循环和 switch 都要保存并恢复上下文，
+免得嵌套的那个把标签泄漏到外面。
+
+#### 5.7.4 `for` 循环：条件的边指向了增量段
+
+`for` 的降低把条件的真边接到了**增量**标签上。有了 `continue` 也指向增量，
+增量器在那条路径上会跑两次——而且第一次迭代也跑，因为条件的真边把循环体整个跳过了。
+
+Java 参考实现为此准备了四个标签（`cond`、`body`、`update`、`end`），
+C# 的实现现在也一样：条件的真边指向**循环体**，只有 `continue` 指向增量段。
+
+#### 5.7.5 这四个缺陷的共同点
+
+每一个都是同一个错误的实例：**假定 TAC 的形状就是程序的形状**。
+
+- switch 假定标签在指令流里的位置是个细节；
+- 字面量假定 token kind 和节点 kind 是同一个东西；
+- `break` 假定没有体的语句就是没有效果的语句；
+- `for` 假定"条件之后的下一件事"就是增量段。
+
+对策不是一张检查清单，而是**对照**。Java 和 Kotlin 的降低里已经写着答案，
+所以问题不是"这个对不对？"，而是"C# 的做法和 Java 的做法一样吗？"——
+这个问题把两个文件并排读一遍就能回答。
+
+**已测量：**C# 的降低测试从 11 条变成 **32** 条——属性降低的 11 条，加上 switch 的
+6 条、字面量 kind 的 10 条、`break`/`continue` 的 5 条——四个缺陷各有一个对着旧实现
+会失败的测试。
+
 ---
 
 ## 6. 计划
@@ -613,6 +1030,59 @@ log.sinks                System.Diagnostics.Trace.WriteLine
    `CATCH_HANDLER`。
 
 **门禁：** 若 (1) 或 (2) 失败，停下，先修属性规则，再写任何目录内容。
+
+#### Phase 0 —— 测量结果
+
+**测量已经做了，答案是"是"。** 属性规则成立：C# 的属性赋值会变成一条
+`CALL`，其 callee 签名能被现有目录匹配到，因此**一套匹配机制就够了**，
+那条昂贵的第二套机制不需要。
+
+实测事实：
+
+| 问题 | 答案 |
+|---|---|
+| `cmd.CommandText = tainted` → `CALL`？ | **是。** `calleeSig` 为 `System.Data.Common.DbCommand.set_CommandText/1`。 |
+| 目录能匹配到它吗？ | **能。** `sql.sinks` 的 `by_language: csharp:` 模式匹配，`arg_index: 0`。 |
+| 端到端会报出 finding 吗？ | **会。** `taint: param:input -> CWE-89,CWE-564`。 |
+| 真正的字段赋值 | 仍然是 `FIELDSTORE`。属性/字段的区分来自解析出的符号，绝不来自拼写。 |
+| `await` | `SOURCE_LOWERED`，且被 await 的值保留污点。 |
+| `x!` | **不是** `NULL_CHECK` —— 见下。 |
+| `catch (IOException)` | `ctorType = System.IO.IOException` 的 `CATCH_HANDLER`。 |
+
+实现在 `plumb-frontend/csharp-sidecar/`（.NET 侧）与
+`plumb-frontend/src/main/java/org/plumb/tac/frontend/csharp/`（Java 侧）。
+协议见 `plumb-frontend/csharp-sidecar/PROTOCOL.md`。
+
+**这次测量改了计划里的一件事。** 计划里的假设——以及第一版实现——把被赋的值
+放在了 `args[0]`。这是错的，TAC 自己的调用约定说的正是相反的话：
+
+```
+args[0] = 接收者（当调用有接收者时）
+args[1..] = 真正的实参
+```
+
+引擎是按这个约定读目录里的 `arg_index` 的：写着 `arg_index: 0` 的目录项指的是
+**第一个用户实参**，接收者的偏移由引擎自己加。
+
+于是第一版实现产出的 TAC 看起来完全正确、也能被目录匹配上 —— 然后引擎读
+`args[0]`，拿到的是*接收者*，那里没有污点，于是**什么都不报**。而扫描照样报告
+成功。这恰恰是整套设计要避免的失败模式，而且**没有端到端测试就看不见**：前端
+自己的测试全都通过了，因为 TAC 里确实有那条正确的 `CALL`。
+
+**这才是值得留下的结论。** 单做一次"属性 → `CALL`"的测量是不够的。真正有意义的
+测量是**属性 → `CALL` → 目录匹配 → finding 报出**，而最后一环正是参数约定的
+所在。
+
+测量还逼出了另外两处修正：
+
+- **`x!` 不是 `NULL_CHECK`。** 空值宽恕运算符（null-forgiving operator）告诉的是
+  *编译器*"这个值不为空"，它**不插入任何运行时检查**。既然检查在运行时并不存在，
+  就没有 `NullReferenceException` 可捕获。发出 `NULL_CHECK` 等于声称一个不存在的
+  检查，空指针检查器随后就会抑制掉一个完全真实的 finding。
+- **sink 的接收者类型是 `System.Data.Common.DbCommand`**，也就是共享框架里的抽象
+  基类。具体 provider（`System.Data.SqlClient`）是 NuGet 包，没还原过这些包的机器
+  解析不了具体类型 —— 而需要具体类型的测试会因为与降级无关的原因失败。基类声明了
+  同一个 `CommandText` 属性，所以 setter 的签名（也就是目录要匹配的东西）完全相同。
 
 ### Phase 1 —— IR 契约改动
 
@@ -642,9 +1112,15 @@ Java/Kotlin/Scala finding **保持不变**（每个既有工厂的可空性默�
 为每个有 .NET 对应物的 family 补上 .NET 的 `by_language` 表（§5.2），带上
 `set_X` setter 模式（§5.3）。
 
+**已测量——这一阶段做完了，做法是转换而不是手写。**目录由 .NET 规则包生成并合进
+`sink-families.yaml`：**36 个 family 共 1284 条 C# 模式**，覆盖 72 个 .NET 缺陷类
+中的 66 个（§5.5）。四种不是照抄的转换——arity、通配、重复组、配置门控——见
+§5.5.1 与 §5.5.2。对照评测补上的那 7 个缺口见 §5.6。
+
 **门禁：** 每一个有 .NET 符号的 family 都有一份 .NET sink 表，且有一个测试断言
 每个条目在 C# 中可达、在其他语言中不可达——与多语言设计文档 [§15.6](../../MULTI-LANGUAGE-IR-DESIGN.md) 规定的门禁
-相同。
+相同。**已满足：**语言过滤在 `SinkCatalogueCsharpTest`（I3）里断言，而全目录
+编译检查（I1）是"转换 bug 不可能通过"的那条断言。
 
 ### Phase 4 —— 规则与验收标准
 
@@ -662,6 +1138,103 @@ Java/Kotlin/Scala finding **保持不变**（每个既有工厂的可空性默�
 | `new SqlCommand(sql)` 里是拼接的字符串 | SQL 注入 |
 
 第一行就是证明属性规则的那一行。
+
+---
+
+## 6.5 C# 的数据流缺口：.NET 的每一种拼写都被漏掉了
+
+§5.7 讲的是 **TAC**。这一节讲的是 TAC **之后**的事：引擎的数据流。而这里的发现和 §5.7 那些是同
+一个形状——前端产出了正确的 TAC，引擎仍然给出了错误的答案。
+
+### 6.5.1 测量结果
+
+`SourceLanguage.CSHARP` 在 `plumb-dfa/src/main/java` 里**一处都没出现过**。每一个 C# callee 到
+达引擎时都是 `TaintBehaviour.UNKNOWN`，而引擎对未知 callee 的保守默认是**保留污点**。
+
+对没人建模过的 API，这个默认是对的。但它同时在两个方向上都是错的：
+
+| .NET 调用 | 它实际做什么 | 引擎实际做的 |
+|---|---|---|
+| `s.Trim()`、`s.Substring()`、`s.Split()`、`s.Replace()` | 返回输入的一部分 | **把污点丢了**——一个漏报 |
+| `int.Parse(s)`、`double.Parse(s)` | 返回一个数字，不是那段文本 | **把污点留着**——一个误报 |
+
+两个方向都是测出来的，不是推出来的。
+
+### 6.5.2 漏报：方法名的比较是大小写敏感的
+
+引擎靠**方法名**识别污点透传调用，用的是一族帮助函数（`isTrimLike`、`isSubstringLike`、
+`isCaseLike`、`isSplitLike`、`isValueOfLike`、`isAppendLike`、`isFormatterLike`、
+`isCharByteLike`）。它们每一个都拿 Java 的拼法做**大小写敏感**的比较：
+
+```java
+private static boolean isTrimLike(String calleeSig) {
+  String m = methodNameOf(calleeSig);
+  return "trim".equals(m) || "strip".equals(m) || ... ;
+}
+```
+
+Java 写 `s.trim()`；.NET 写 `s.Trim()`。`methodNameOf` 原样返回方法名，所以 `"trim".equals("Trim")`
+是 `false`，于是**每一个** .NET 字符串操作都没有被识别。
+
+受影响的调用，以及各自付出的代价：
+
+| 帮助函数 | Java 拼法 | 漏掉的 .NET 拼法 | 代价 |
+|---|---|---|---|
+| `isTrimLike` | `trim` | `Trim` | 漏报 |
+| `isSubstringLike` | `substring` | `Substring` | 漏报 |
+| `isSplitLike` | `split` | `Split` | 漏报 |
+| `isCaseLike` | `replace` | `Replace` | 漏报 |
+| `isCaseLike` | `toUpperCase` | `ToUpper` | 漏报 |
+| `isValueOfLike` | `toString` | `ToString` | 漏报 |
+| `isAppendLike` | `append` | `Append` | 漏报 |
+| `isFormatterLike` | `format`、`join` | `Format`、`Join` | 漏报 |
+| `isCharByteLike` | `toCharArray`、`getBytes` | `ToCharArray`、`GetBytes` | 漏报 |
+
+**漏报**是代价更高的那一种：本来该报的 finding 从来没被报出来，而扫描对一个把用户输入流进命令
+的程序报告了「干净」。
+
+修法是一次比较：`equalsIgnoreCase`。这些帮助函数是按**这个调用做了什么**来识别的，而 `TRIM`、
+`Trim`、`trim` 在任何拥有这个操作的语言里都是同一个操作——所以大小写不敏感的比较不可能让一个
+无关的方法误匹配。
+
+### 6.5.3 误报：.NET 的解析器没有被当成 sanitizer
+
+镜像的一面。`isSanitizer` 按 Java 的 **owner 前缀**列出数值解析器（`java.lang.Integer.parseInt/1`），
+所以 .NET 的 `System.Int32.Parse/1` 从来没匹配上。于是，一段把不可信输入解析成 `int` 的 C# 代码，
+会把解析出来的值报成仍然带污点。
+
+owner 前缀没法靠「大小写不敏感」解决——`java.lang.Integer` 和 `System.Int32` 是同一个操作的两种
+拼法。所以 .NET 的解析器按**它们自己的 owner** 列出，这也正是语义表的做法。
+
+### 6.5.4 语义表
+
+两处修法需要的是 Java 表和 Scala 表早就有的同一件东西：**一份关于标准库做了什么的、按语言分开
+的陈述**。C# 一份都没有。
+
+`LanguageSemanticsRegistry.csharpSemantics()` 现在有 **约 80 条实测条目**，其中每一个前缀都是
+**测出来的**：把 C# 前端跑在一份 .NET 字符串与 IO 操作的探针上。测量很重要，因为 .NET 有几个
+操作的拼法和源码字面给出的不一样：
+
+| 源码 | 实测的 callee key |
+|---|---|
+| `s.Length` | `System.String.get_Length/0`——**属性是一次方法调用** |
+| `s + "x"` | `System.String.Concat/2`——`+` 运算符是一次调用 |
+| `string.Format("{0}", x)` | `System.String.Format/2`——元数要算上格式串 |
+| `s.Trim()` | `System.String.Trim/0` |
+
+一张只按源码字面写的表会写上 `System.String.Length`——一个前端永远不产出的 key——每一条都会是死
+的。
+
+### 6.5.5 这一节换来的规则
+
+> **命名约定不是行为。** 当引擎靠名字识别一个调用时，这个比较必须能活过它所分析的每一种语言的
+> 命名约定——否则识别会静默失败，而这种失败的方向恰好是代价最高的那个。
+
+测量的形状也可以推广：
+
+> **前端自己的测试不够。** C# 前端为 `s.Trim()` 产出了完美的 `CALL`，前端自己的测试也全过了。缺陷
+> 在那份 TAC 的**消费方**，在两个模块之外。一个断言「IR 里含有正确指令」的测试，对「finding 有没有
+> 被报出来」什么也没说。
 
 ---
 

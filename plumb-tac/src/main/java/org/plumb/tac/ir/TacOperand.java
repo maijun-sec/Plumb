@@ -110,6 +110,13 @@ public sealed interface TacOperand extends java.io.Serializable
       LONG,
       FLOAT,
       DOUBLE,
+      /**
+       * A fixed-point decimal.
+       *
+       * <p>C#'s {@code decimal} is a 128-bit fixed-point value, not a floating-point number, so it
+       * does not fit into {@link #DOUBLE} without changing the value.
+       */
+      DECIMAL,
       BOOL,
       CHAR,
       STRING,
@@ -140,6 +147,19 @@ public sealed interface TacOperand extends java.io.Serializable
 
     public static Const ofDouble(double v) {
       return new Const(Kind.DOUBLE, v, TacType.DOUBLE);
+    }
+
+    /**
+     * A fixed-point decimal constant.
+     *
+     * <p>The value is kept as its text form: a {@code decimal} has a scale, and parsing it into a
+     * {@code double} would lose it.
+     *
+     * @param v the decimal's text form
+     * @return the constant
+     */
+    public static Const ofDecimal(String v) {
+      return new Const(Kind.DECIMAL, v, TacType.DECIMAL);
     }
 
     public static Const ofBool(boolean v) {

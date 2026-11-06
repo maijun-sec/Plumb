@@ -76,7 +76,7 @@ public static final class TacVar implements TacOperand {
 }
 
 public static final class Const implements TacOperand {
-    public enum Kind { INT, LONG, FLOAT, DOUBLE, BOOL, CHAR, STRING, NULL }
+    public enum Kind { INT, LONG, FLOAT, DOUBLE, DECIMAL, BOOL, CHAR, STRING, NULL }
     private final Kind kind;
     private final Object value;
     private final TacType type;
@@ -90,7 +90,7 @@ TAC 是 3 地址：每个 `TacInstruction` 最多 1 个 `dest`（目标）+ 2 �
 ```java
 public final class TacType implements Serializable {
     public enum Kind {
-        BOOLEAN, BYTE, SHORT, CHAR, INT, LONG, FLOAT, DOUBLE, STRING,
+        BOOLEAN, BYTE, SHORT, CHAR, INT, LONG, FLOAT, DOUBLE, DECIMAL, STRING,
         CLASS, ARRAY, NULL, VOID, UNKNOWN
     }
     private final Kind kind;

@@ -692,6 +692,18 @@ public final class DfaEngine {
             ctx.summaryCache().capacity(),
             overflow + " summar" + (overflow == 1 ? "y" : "ies") + " refused (cache full)");
       }
+      // The cache's hit/miss ratio is NOT a budget exhaustion -- it is the cost of the
+      // cross-function analysis, and it is the number that says whether the cache is
+      // earning its keep. A cache that never hits means every callee is being
+      // re-analysed, which is slow; a cache that always hits means the program has
+      // few distinct callees. Neither is an error, so this is LOGGED rather than
+      // RECORDED as a budget event.
+      //
+      // The counters have existed since the cache was written, and the cache's own
+      // javadoc claimed "the post-run log reads these via hits() / misses()". No
+      // call site existed. A counter nobody reads is a claim nobody can check, so
+      // the log now carries the number.
+      logSummaryCacheStats(ctx.summaryCache());
     }
     AnalysisBudget.BudgetReport r = b.report();
     if (r.complete()) {
@@ -699,6 +711,31 @@ public final class DfaEngine {
     } else {
       LOG.warn("Analysis budget: {}", r.summary());
     }
+  }
+
+  /**
+   * Log the summary cache's hit/miss ratio for this run.
+   *
+   * <p>The ratio is the cheapest measure of whether the cross-function analysis is paying for
+   * itself, and it is the number an operator asks for first when a scan is slower than expected.
+   *
+   * @param cache the cache this run used
+   */
+  private static void logSummaryCacheStats(org.plumb.dfa.summary.FunctionSummaryCache cache) {
+    if (cache == null) return;
+    long hits = cache.hits();
+    long misses = cache.misses();
+    long total = hits + misses;
+    if (total == 0) {
+      // Nothing was looked up, so a ratio would be "0/0" -- a division by zero in
+      // the log line. Say what is true instead: the cache was not used.
+      LOG.info("Summary cache: not used (0 lookups)");
+      return;
+    }
+    int percent = (int) Math.round(100.0 * hits / total);
+    LOG.info(
+        "Summary cache: {} hits, {} misses ({}% hit rate), {} entries, capacity {}",
+        hits, misses, percent, cache.size(), cache.capacity() > 0 ? cache.capacity() : "unbounded");
   }
 
   /**
@@ -1925,6 +1962,10 @@ public final class DfaEngine {
       for (int idx : order) {
         TacInstruction ins = fn.instructionAt(idx);
         if (ins == null) continue;
+        // Record the guards IN FORCE at this instruction BEFORE tracking it. The snapshot
+        // describes the state the instruction is reached in, so a sink at this position can
+        // ask "what was true here?" rather than "what was true somewhere in this function".
+        tracker.recordPosition(idx);
         tracker.track(ins);
       }
     } catch (RuntimeException e) {
@@ -1973,6 +2014,11 @@ public final class DfaEngine {
               break;
             }
             TacInstruction ins = fn.instructionAt(idx);
+            // The instruction's position is what makes a PATH-scoped path condition
+            // possible: the guards in force at a sink are the ones established by the
+            // branches that lead to it. The checkers read this to ask "what was true
+            // here?" rather than "what was true somewhere in this function".
+            ctx.setCurrentInstructionIndex(idx);
             if (ins.kind == TacInstruction.Kind.CALL) {
               try {
                 recordModuleCrossing(ctx, fn, ins);
@@ -2132,7 +2178,68 @@ public final class DfaEngine {
       }
       merged = merged.merge(s);
     }
+    // The points-to fact about the return value, attached to the summary.
+    //
+    // The points-to solver knows which objects a method may return, but that
+    // knowledge stayed in the solver: nothing carried it into the summary, and
+    // nothing read it back. The operation existed as a RECORD with no producer
+    // and no consumer -- a declared capability that changed nothing.
+    //
+    // Attaching it here makes the return value's object identity travel with the
+    // summary, so a caller can refine its own points-to set for the value it
+    // received. That is what makes two instances of one class separable: the
+    // caller's dest inherits the CALLEE's alloc sites rather than merging with
+    // every other allocation of that type.
+    merged = attachReturnPointsTo(ctx, fn, merged);
     return merged;
+  }
+
+  /**
+   * Attach the function's return-value points-to set to its summary.
+   *
+   * <p>The set is the union over the method's contexts, which is a sound over-approximation: a
+   * caller does not know which context it will run in, so it must be able to receive any of the
+   * objects the method may return.
+   *
+   * <p>No operation is attached when the set is empty, so a method that returns nothing tracked
+   * leaves its summary exactly as it was.
+   *
+   * @param ctx the analysis context
+   * @param fn the function being summarised
+   * @param summary the summary so far
+   * @return the summary with the points-to operation attached
+   */
+  private static FunctionSummary attachReturnPointsTo(
+      AnalysisContext ctx, TacFunction fn, FunctionSummary summary) {
+    if (ctx == null || fn == null) return summary;
+    org.plumb.dfa.points.PointsToSolver solver = ctx.pointsToSolver();
+    if (solver == null) return summary;
+    java.util.Set<org.plumb.dfa.points.AbstractObject.Obj> objects;
+    try {
+      objects = solver.returnObjectsOf(fn.signature());
+    } catch (RuntimeException e) {
+      // A points-to query that fails costs the refinement, not the analysis.
+      return summary;
+    }
+    if (objects == null || objects.isEmpty()) return summary;
+    java.util.Set<String> labels = new java.util.LinkedHashSet<>();
+    for (org.plumb.dfa.points.AbstractObject.Obj o : objects) {
+      if (o != null) {
+        try {
+          labels.add(o.label());
+        } catch (RuntimeException e) {
+          // A malformed object label is skipped; the rest of the set still applies.
+        }
+      }
+    }
+    if (labels.isEmpty()) return summary;
+    FunctionSummary.Builder b = new FunctionSummary.Builder(summary.signature());
+    b.recordReturnOp(new org.plumb.dfa.summary.Operation.PointsToPropagate(labels));
+    // The builder starts empty, so the ORIGINAL summary's observations have to be
+    // carried over explicitly. Returning a summary that dropped them would erase
+    // every taint fact the function published.
+    FunctionSummary carried = summary.merge(b.build());
+    return carried;
   }
 
   private void buildAndStoreMethodSummary(AnalysisContext ctx, TacFunction fn) {

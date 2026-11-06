@@ -79,6 +79,18 @@ public final class CompileCrossCheck {
       return List.of();
     }
 
+    // A capture of a DIFFERENT language is not a discrepancy against this
+    // module: a Maven module is a Java module, and a Kotlin compile in the
+    // same directory is a different compile that the module never described.
+    // Comparing them would report differences that are not disagreements.
+    //
+    // A capture with no language at all is still compared: it predates the
+    // field, and refusing to compare it would silently drop every capture
+    // written by an older agent.
+    if (observed.language() != null && !"java".equals(observed.language())) {
+      return List.of();
+    }
+
     // A map, so the differences come out in a fixed order.
     TreeMap<String, CompileDiscrepancy> byParameter = new TreeMap<>();
 
@@ -216,6 +228,8 @@ public final class CompileCrossCheck {
    */
   static final class CapturedCompile {
 
+    final String language;
+    final String compiler;
     final String languageLevel;
     final String encoding;
     final Path outputDirectory;
@@ -224,18 +238,32 @@ public final class CompileCrossCheck {
     final List<Path> sourceFiles;
 
     private CapturedCompile(
+        String language,
+        String compiler,
         String languageLevel,
         String encoding,
         Path outputDirectory,
         List<Path> classpath,
         List<Path> sourcePath,
         List<Path> sourceFiles) {
+      this.language = language;
+      this.compiler = compiler;
       this.languageLevel = languageLevel;
       this.encoding = encoding;
       this.outputDirectory = outputDirectory;
       this.classpath = classpath;
       this.sourcePath = sourcePath;
       this.sourceFiles = sourceFiles;
+    }
+
+    /** The language the compiler compiled. */
+    String language() {
+      return language;
+    }
+
+    /** The compiler that performed the compile. */
+    String compiler() {
+      return compiler;
     }
 
     /** The language level the compiler used. */
@@ -297,6 +325,8 @@ public final class CompileCrossCheck {
       if (json == null || json.isBlank()) {
         return null;
       }
+      String language = stringField(json, "language");
+      String compiler = stringField(json, "compiler");
       String languageLevel = stringField(json, "languageLevel");
       String encoding = stringField(json, "encoding");
       Path outputDirectory = pathField(json, "outputDirectory");
@@ -313,7 +343,14 @@ public final class CompileCrossCheck {
         return null;
       }
       return new CapturedCompile(
-          languageLevel, encoding, outputDirectory, classpath, sourcePath, sourceFiles);
+          language,
+          compiler,
+          languageLevel,
+          encoding,
+          outputDirectory,
+          classpath,
+          sourcePath,
+          sourceFiles);
     }
 
     /** The value of a string field, or {@code null}. */

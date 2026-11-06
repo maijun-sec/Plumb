@@ -1047,6 +1047,66 @@ public final class PointsToSolver {
   }
 
   /**
+   * The objects a method may return, across ALL of its contexts.
+   *
+   * <p>The return store is keyed by {@code (signature, context)}, because under a context-sensitive
+   * policy one method can return a different object per caller. This accessor deliberately UNIONS
+   * the contexts: the question it answers is "which objects can this method return?", and the
+   * answer is the union because a caller does not know which context it will run in.
+   *
+   * <p>That union is a sound over-approximation: it can name an object the caller's particular
+   * context would not receive, but it never omits one it would. A consumer that needs the precise
+   * per-context answer uses the {@link #returnObjectsOf(String, Context)} overload.
+   *
+   * @param signature the method's signature
+   * @return the objects the method may return, or an empty set when it returns nothing tracked
+   */
+  public Set<Obj> returnObjectsOf(String signature) {
+    if (signature == null) return Set.of();
+    Set<Obj> out = new LinkedHashSet<>();
+    for (Map.Entry<ContextKey, Set<Obj>> e : returns.entrySet()) {
+      if (e.getKey().signature.equals(signature) && e.getValue() != null) {
+        out.addAll(e.getValue());
+      }
+    }
+    return Set.copyOf(out);
+  }
+
+  /**
+   * The objects a method may return in one specific context.
+   *
+   * @param signature the method's signature
+   * @param ctx the context
+   * @return the objects the method may return there, or an empty set
+   */
+  public Set<Obj> returnObjectsOf(String signature, Context ctx) {
+    if (signature == null) return Set.of();
+    Set<Obj> s = returns.get(new ContextKey(signature, qual(ctx)));
+    return s == null ? Set.of() : Set.copyOf(s);
+  }
+
+  /**
+   * Record that a variable may point at a set of objects.
+   *
+   * <p>This is how a fact learnt OUTSIDE the solver enters its model: a callee's summary says "I
+   * return objects A and B", and the caller's destination inherits that set. Without this the
+   * solver's answer is only ever what the solver itself derived, and a summary's points-to
+   * information cannot refine the caller's view of the heap.
+   *
+   * <p>The set is a UNION, never a replacement: adding an object to a points-to set can only make
+   * the answer larger, and a larger points-to set is the conservative direction. A consumer that
+   * has less precise information must not shrink the solver's answer.
+   *
+   * @param signature the function the variable belongs to
+   * @param v the variable
+   * @param objects the objects it may point at
+   */
+  public void addPointsTo(String signature, TacOperand.TacVar v, Collection<Obj> objects) {
+    if (signature == null || v == null || objects == null || objects.isEmpty()) return;
+    add(key(signature, v, Context.empty()), objects);
+  }
+
+  /**
    * every local of {@code signature} that may hold an object also reachable from {@code receiver}.
    *
    * <p>This is the "alias class" of a reference, and it is what makes a null-ness guard

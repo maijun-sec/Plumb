@@ -367,6 +367,52 @@
                              precision markers the Scala frontend sets reach the
                              checkers that consume them. -->
                         <include>org/plumb/dfa/integration/ScalaDfaIntegrationTest.java</include>
+                        <!-- The C# frontend's counterpart. The frontend's own
+                             tests prove it produces the right TAC; this one proves
+                             the engine reads it, and that a C# PROPERTY
+                             assignment reaches a sink, because the property
+                             setter is lowered to a CALL whose callee signature
+                             the catalogue matches. That is the whole point of
+                             the C# lowering, and it is only observable here.
+
+                             It needs the .NET toolchain. Without it the test
+                             SKIPS rather than passing silently, so a green
+                             build on a machine with no .NET never claims to
+                             have exercised the C# path. -->
+                        <include>org/plumb/dfa/integration/CSharpDfaIntegrationTest.java</include>
+
+                        <!-- The C# call graph ACROSS compilation units.
+
+                             A resolved symbol is not a resolved CALL EDGE. The
+                             dataflow engine follows the call graph, and the
+                             call graph is built from the TAC's callee
+                             signatures. A tainted value that crosses a FILE
+                             boundary into a sink is reported only when the
+                             edge exists: when it does not, the finding
+                             is simply absent while the scan reports success.
+
+                             It needs the .NET toolchain, and SKIPS without
+                             it. -->
+                        <include>org/plumb/dfa/integration/CSharpCrossFileCallGraphTest.java</include>
+
+                        <!-- The sink catalogue's own soundness gate for C#.
+
+                             The C# sink patterns are CONVERTED from a rule pack,
+                             not hand-written, and a conversion bug does not
+                             throw: it emits a pattern that matches nothing
+                             (a rule that looks like coverage and reports
+                             nothing) or a pattern that does not compile at
+                             all, which takes the WHOLE catalogue down with it
+                             and stops every sink family, for every language.
+
+                             So this test compiles every pattern in the
+                             catalogue, and pins the invariants a converted
+                             C# pattern has to satisfy: no generic-arity
+                             marker (the TAC erases generics), no escaped
+                             wildcard (a literal dot, so the rule is dead),
+                             and the C# patterns are reachable in C# and in
+                             no other language. -->
+                        <include>org/plumb/dfa/config/SinkCatalogueCsharpTest.java</include>
 
                         <!-- The multi-language IR contract and the language gate.
                              These pin the rules the Kotlin and Scala frontends
@@ -429,6 +475,38 @@
                              and measuring the result measured the
                              default. -->
                         <include>org/plumb/dfa/engine/EngineSettingHonestyTest.java</include>
+                        <!-- The summary cache counted its hits and misses
+                             from the day it was written, and the cache's own
+                             javadoc said the post-run log read them. No call
+                             site existed: the counters were correct and
+                             invisible. A counter nobody reads is a claim
+                             nobody can check, so the run log now carries the
+                             hit rate. -->
+                        <include>org/plumb/dfa/engine/SummaryCacheReportingTest.java</include>
+                        <!-- The guards in force at a sink are the ones
+                             its PATH establishes, not every guard the
+                             function contains. Two contradictory guards in
+                             different branches do not make the sink
+                             unreachable, and treating them as if they did
+                             suppressed a finding that was real. -->
+                        <include>org/plumb/dfa/taint/PathScopedGuardTest.java</include>
+                        <!-- The points-to solver's answer must reach the
+                             taint lattice, not just sit in the solver.
+                             The PointsToPropagate operation was a
+                             declared record with no producer and no
+                             consumer, so a caller's destination never
+                             inherited the callee's object identity. -->
+                        <include>org/plumb/dfa/summary/PointsToPropagationTest.java</include>
+                        <!-- The other points-to tests call the solver
+                             by hand, which proves the pieces work.
+                             This one proves they are WIRED: that the
+                             engine's own summary builder reaches the
+                             solver, and that the operation lands in the
+                             summary the engine publishes to its
+                             callers. A working part that is never
+                             connected to anything looks exactly like
+                             a working part. -->
+                        <include>org/plumb/dfa/summary/PointsToSummaryWiringTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

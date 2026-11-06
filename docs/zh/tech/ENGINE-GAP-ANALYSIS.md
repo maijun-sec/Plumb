@@ -63,6 +63,9 @@
   按路径索引的污点存储。**在它自己的文件之外零消费方。**
   这套访问路径词汇已经设计好、可序列化、有测试，但分析仍然用更粗的
   `receiver.fieldName` 字符串来跟踪字段污点。
+  而且这条链是**两头**都断的，不只断一头：全树统计 `TacAccessPath`（除了它自己的定义），
+  只剩这个存储和 IR 自己的测试——**没有任何引擎代码构造过路径**。
+  所以这不是一个「在等读者」的存储，而是一个存储加一套词汇在**等一个生产者**。
 - `plumb-dfa/src/main/java/org/plumb/dfa/summary/Operation.java:259` ——
   `PointsToPropagate(allocSites)`。**零生产者，零消费者。** 指向分析算出了堆对象，
   而堆模型从未抵达污点格。
@@ -95,11 +98,26 @@
 | **G2** | 强制 `summary_cache_size`：缓存超出上限时拒绝新的 summary 并计数，而不是无限增长。 | 一个填满缓存并越过上限的测试能观察到拒绝及其计数。 | **已完成** |
 | **G3** | 强制 `context_depth`：设为 0 时关闭跨函数 summary 折叠，分析留在单个函数内。 | 一个测试观察到跨函数流在深度 1 时报出、在深度 0 时消失。 | **已完成** |
 | **G4** | 不再声称一个没人读的 `reverse_walk_max_depth`。 | 配置文件不再提及一个不存在的类。 | **已完成** |
-| **G5** | 在分析摘要里报告 summary 缓存的命中率与拒绝次数。 | 报告里包含这个数字。 | **未开始** |
+| **G5** | 在分析摘要里报告 summary 缓存的命中率与拒绝次数。 | 报告里包含这个数字。 | **已完成** |
 
 G1–G4 不是功能。它们是**把一句谎话收回来**。
 **它们排在最前，是因为一个声称"path sensitivity: full"却表现得像 "none" 的工具，
 会连带让它打印的每一个别的数字都失去可信度。**
+
+### G5 那个计数器没人读
+
+缓存的 `hits()` / `misses()` 计数器从缓存写出来那天就存在，而缓存自己的 javadoc 写着
+"the post-run log reads these via `hits()` / `misses()`"。**调用点不存在。** 计数器被正确维护、
+正确计数、却完全不可见——于是读日志的人无法判断跨函数分析是否划算。
+
+现在运行日志带上这个比例：
+
+```
+Summary cache: 3 hits, 18 misses (14% hit rate), 8 entries, capacity 1000
+```
+
+这个比例是**记录（LOG）** 而不是**记入预算耗尽**，因为命中率低不是错误——它是分析的成本。
+一次从未查过缓存的运行会打印 `Summary cache: not used (0 lookups)`，而不是打印一个 `0/0` 比例。
 
 G3 刻意比名字暗示的更窄，配置文件里也是这么写的。引擎的 summary 本身就是一次折叠
 —— 一个函数的 summary 装着它自己的被调用方贡献的事实 —— 所以一条调用链会累积进同一份
@@ -111,9 +129,9 @@ summary，链的深度并没有被单独设限。因此这个设置区分的是�
 | ID | 工作 | 验收 | 状态 |
 |---|---|---|---|
 | **G6** | 让可达性判定对每条规则都可达：每个函数只收集一次守卫事实，并据此判定不可达。 | 守卫自相矛盾的 source 到不了 sink；同样的代码没有矛盾时仍然报出。 | **已完成，形式不同** |
-| **G7** | 喂给求解器的应是**沿实际路径组合出的路径条件**，而不是逐 sink 的谓词。 | 只有当路径上各守卫的合取为 `UNSAT` 时才抑制 finding。 | **未开始** |
+| **G7** | 喂给求解器的应是**沿实际路径组合出的路径条件**，而不是逐 sink 的谓词。 | 只有当路径上各守卫的合取为 `UNSAT` 时才抑制 finding。 | **已完成** |
 | **G8** | 当调用图策略为 `1cfa` 或 `2cfa` 时，让 summary 缓存**感知调用字符串**，使 k-CFA 深度旋钮成为真实能力。 | 同一被调方的两个调用点，参数不同时产出不同的 summary。 | **未开始** |
-| **G9** | 把指向分析接进污点格，让 `Operation.PointsToPropagate` 有生产者和消费者。 | 同一类的两个不同实例上的污点不再合并。 | **未开始** |
+| **G9** | 把指向分析接进污点格，让 `Operation.PointsToPropagate` 有生产者和消费者。 | 同一类的两个不同实例上的污点不再合并。 | **已完成** |
 
 ### 2.1 G6 的实现形式不同，而这个理由值得记下来
 
@@ -139,6 +157,84 @@ bridge 是误报过滤器，「路径可能是可达的」是保守答案。
 剩下的求解器形态的工作是 G7：跨多个变量的路径条件，那需要求解器对一个合取式推理，
 而不是对单个变量的界推理。
 
+### 2.2 G7 修掉的是一个**漏报**，不是一个缺失的功能
+
+G7 要求的是"沿实际路径组合出的路径条件"。读**整个函数的守卫集合**会得到一个错误的结果——
+函数里推过的所有守卫的并集——并把其中的矛盾对当成路径上的矛盾。
+
+这不成立，而这份不成立**代价是一个 finding**。
+
+```java
+int n = Integer.parseInt(s);
+if (n > 5) { System.out.println("big"); }   // 守卫：n > 5
+if (n < 3) { System.out.println("small"); } // 守卫：n < 3
+new ByteArrayOutputStream(n);               // sink
+```
+
+两个守卫自相矛盾，但**通往 sink 的路径并不要求它们同时成立**。这次分配在 `n = 1` 时就会到达。
+读并集会产生条件 `n > 5 && n < 3`，它不可满足，于是 finding 被抑制——扫描对一个按攻击者
+指定大小分配缓冲区的程序报告了「干净」。
+
+`GuardTracker` 的活跃栈**本来就是路径作用域的**：守卫在它的 `BRANCH` 处压栈、在它的块结束时
+弹栈。所以某条指令处真正生效的守卫，恰好就是它的路径所确立的那些。修法是把栈的内容在每个
+指令位置记录下来，于是 sink 可以问"**这里**生效的是什么"：
+
+| | sink 处生效的守卫 |
+|---|---|
+| 顺序 if（上面的形状） | **没有**——两个 if 块都已结束，于是 finding 成立 |
+| 嵌套 if | **两个**——到达 sink 要求两者，于是不可满足，finding 被抑制 |
+
+引擎现在按线程记录指令下标（`AnalysisContext.currentInstructionIndex`），
+守卫预遍在每个位置快照活跃栈（`GuardTracker.recordPosition`）。
+
+**这对测试套件意味着什么。** 旧的 `PathConditionVerificationTest` 用的是**顺序**形状，
+并断言 finding 被抑制。那个断言是错的：顺序形状是可达的，所以 finding 是真实的。
+现在这个 fixture 换成**嵌套**形状——那才是真正表达"两个守卫都要求"的那一种——而顺序形状
+被保留为**反向**用例，断言 finding **不**被抑制。
+
+> **一个把什么都抑制掉的过滤器，能通过一个只检查「finding 消失了」的测试。**
+> 反向用例才是让正向用例有意义的那一个；而在这里，错的恰恰是反向用例。
+
+### 2.3 G9 是一个没有生产者、也没有消费者的 record
+
+`Operation.PointsToPropagate(Set<String> allocSites)` 被声明、被写进文档，然后**没有任何东西引用
+它**。指向分析知道一个方法返回哪些对象——但那份知识留在求解器里：summary 里没有它的影子，
+也没有消费者去读它。
+
+现在这条链上的三个环节都在：
+
+| 环节 | 在哪 |
+|---|---|
+| 求解器知道一个方法返回什么 | `PointsToSolver.returnObjectsOf(signature)` |
+| summary 带着它 | `DfaEngine.attachReturnPointsTo` → `returnOps` 里的 `Operation.PointsToPropagate` |
+| 调用方的目的地继承它 | `TaintedCheckerBase.applyReturnPointsTo` → `PointsToSolver.addPointsTo` |
+
+这个操作以 **label**（`site.type@context`）承载分配点，因为 `Operation` 是值类型，不该嵌进求解器
+的内部结构。消费者用这些 label 重建求解器自己的 `Obj` 身份，而不是另造一套看起来相似的集合——
+而一个不指向任何已知对象的 label 被当作**过期**处理、什么都不记录，因为把一个过期身份当成一次
+新分配来记录，比不记录更糟。
+
+跨方法上下文的并集是可靠的过近似：调用方不知道自己会在哪个上下文里执行，所以它必须能够收到这个
+方法可能返回的任何对象。这个并集可能列出一个调用方特定上下文其实拿不到的对象，但它**绝不会**
+漏掉一个它会拿到的。
+
+**这买到了什么。** 同一类的两个实例变得可区分：调用方的目的地继承的是**被调方**的那次分配，
+而不是与该类型的每一次分配合并。
+
+**我们怎么知道这条链真的接上了。** 三个环节可以各自都在，却仍然没接上：一个生产者算出了正确答案、
+一个载体压根没收到它、一个消费者压根不看它。这三个环节的单元测试都是直接调求解器的，
+这证明了每一块能工作，但**对"接线"一个字都没证明**。
+
+因此 `PointsToSummaryWiringTest` 在一次真实扫描之后，直接从**引擎自己发布的缓存**里读 summary
+（`FindingReporter.context()` → `AnalysisContext.summaryCache()`），断言其中某个 summary 带着
+`PointsToPropagate` 操作。它读的是引擎那一份而不是自己重建一份 —— 重建等于在测测试自己那份逻辑。
+
+这个测试是对着**故意改坏的引擎**跑过的：把生产者那一行注释掉，测试恰好在那个断言上失败。
+一个对着"没接线的实现"也能通过的接线测试，比没有接线测试更糟，因为它给断线背了书。
+
+> **一个能工作、但没接到任何东西上的零件，看起来和一个能工作的零件一模一样。**
+> 能把两者区分开的，只有一个从另一端读这条连接的测试。
+
 ### 第三梯队 —— 表达力天花板
 
 IR 有 22 个操作码（`plumb-tac/src/main/java/org/plumb/tac/ir/TacInstruction.java:44`）。
@@ -156,7 +252,7 @@ IR 有 22 个操作码（`plumb-tac/src/main/java/org/plumb/tac/ir/TacInstructio
 
 | ID | 工作 | 理由 |
 |---|---|---|
-| **G10** | 通过 `TacAccessPath` 做字段敏感 | 词汇已存在但存储没有消费方。等对象敏感（G9）落地后再议；没有堆模型，访问路径无处可指。 |
+| **G10** | 通过 `TacAccessPath` 做字段敏感 | 词汇已存在，但这条链**断了两处**：没有任何引擎代码构造过 `TacAccessPath`（全树计数里，除了它自己的定义，只剩那个存储和 IR 的测试），而存储也没有消费方。G9 已经落地了访问路径可以指向的对象身份，剩下的活是**把路径造出来**。 |
 | **G11** | 每语言的 `TaintBehaviour.PRODUCES_TAINT` 与 `BLACK_BOX` | 两个枚举常量都存在，**没有任何表填它们**。语言语义注册表只覆盖 Java 和 Kotlin（`plumb-dfa/src/main/java/org/plumb/dfa/semantics/LanguageSemanticsRegistry.java:77`）；Scala 和 Groovy 拿到的是空表。 |
 | **G12** | 一个 `ReverseTaintWalker` | 配置里点名了，它不存在。G4 会把名字删掉；如果这项技术以后需要，它会作为一个真类回来。 |
 
@@ -232,5 +328,5 @@ python scripts/check_all.py
 | `TaintBehaviour.PRODUCES_TAINT` 条目 | 0 | 语言语义注册表 |
 | `TaintBehaviour.BLACK_BOX` 条目 | 0 | 语言语义注册表 |
 | `AccessPathTaintStore` 消费方 | 0 | 全树 grep |
-| `PointsToPropagate` 生产者 / 消费者 | 0 / 0 | 全树 grep |
+| `PointsToPropagate` 生产者 / 消费者 | 1 / 2 | 全树 grep |
 | `pathConditionForSink` 覆写 | 0 | 全树 grep |

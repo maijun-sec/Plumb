@@ -81,15 +81,22 @@ class MultiLanguageIrContractTest {
       assertThat(SourceLanguage.JAVA.hasNonNullTypeSystem()).isFalse();
       assertThat(SourceLanguage.SCALA.hasNonNullTypeSystem()).isFalse();
       assertThat(SourceLanguage.GROOVY.hasNonNullTypeSystem()).isFalse();
+      // C#'s nullable reference annotations are a WARNING, not an error: a program
+      // that violates one still compiles and still runs. So C# must NOT answer
+      // true here -- the answer would let the null-dereference checker suppress
+      // findings that are entirely real.
+      assertThat(SourceLanguage.CSHARP.hasNonNullTypeSystem()).isFalse();
       assertThat(SourceLanguage.UNKNOWN.hasNonNullTypeSystem()).isFalse();
     }
 
     @Test
-    @DisplayName("only the statically typed JVM languages support full dataflow")
+    @DisplayName("only the statically typed languages support full dataflow")
     void onlyStaticLanguagesSupportFullDataflow() {
       assertThat(SourceLanguage.JAVA.supportsFullDataflow()).isTrue();
       assertThat(SourceLanguage.KOTLIN.supportsFullDataflow()).isTrue();
       assertThat(SourceLanguage.SCALA.supportsFullDataflow()).isTrue();
+      // C# is statically typed, so it supports the full dataflow analysis.
+      assertThat(SourceLanguage.CSHARP.supportsFullDataflow()).isTrue();
       assertThat(SourceLanguage.GROOVY.supportsFullDataflow()).isFalse();
       assertThat(SourceLanguage.UNKNOWN.supportsFullDataflow()).isFalse();
     }
@@ -100,13 +107,30 @@ class MultiLanguageIrContractTest {
       // The IR disk cache serialises enums by NAME, so a rename or a reorder would
       // invalidate every cached program. Adding at the end is fine; changing these
       // is not.
+      //
+      // CSHARP sits BEFORE UNKNOWN, and that is deliberate: UNKNOWN is the
+      // fallback and must stay LAST, because a new language is appended in front
+      // of it. The name-based serialisation is what makes the position safe --
+      // only the ORDER is load-bearing here.
       assertThat(SourceLanguage.values())
           .containsExactly(
               SourceLanguage.JAVA,
               SourceLanguage.KOTLIN,
               SourceLanguage.SCALA,
               SourceLanguage.GROOVY,
+              SourceLanguage.CSHARP,
               SourceLanguage.UNKNOWN);
+    }
+
+    @Test
+    @DisplayName("UNKNOWN is the last constant -- a new language is appended in front of it")
+    void unknownIsLast() {
+      // The disk cache serialises by name, so the ORDER is not what breaks the
+      // cache -- the NAME is. But UNKNOWN is the fallback, and every lookup that
+      // fails to identify a language lands on it, so it must stay last: a new
+      // language is added in front of it, never after it.
+      assertThat(SourceLanguage.values()[SourceLanguage.values().length - 1])
+          .isEqualTo(SourceLanguage.UNKNOWN);
     }
   }
 
@@ -245,6 +269,18 @@ class MultiLanguageIrContractTest {
       assertThat(TacType.NULL.isNullable()).isTrue();
       assertThat(TacType.Kind.NULL).isNotEqualTo(TacType.Kind.CLASS);
       assertThat(TacType.ofClass("java.lang.String").kind()).isEqualTo(TacType.Kind.CLASS);
+    }
+
+    @Test
+    @DisplayName("a decimal is a primitive, and is not a double")
+    void decimalIsItsOwnPrimitive() {
+      // C#'s `decimal` is a 128-bit FIXED-POINT value, not a floating-point one.
+      // Folding it into DOUBLE would silently change the value, so it gets its own
+      // kind.
+      assertThat(TacType.DECIMAL.kind()).isEqualTo(TacType.Kind.DECIMAL);
+      assertThat(TacType.DECIMAL.isPrimitive()).isTrue();
+      assertThat(TacType.DECIMAL.displayName()).isEqualTo("decimal");
+      assertThat(TacType.DECIMAL).isNotEqualTo(TacType.DOUBLE);
     }
   }
 

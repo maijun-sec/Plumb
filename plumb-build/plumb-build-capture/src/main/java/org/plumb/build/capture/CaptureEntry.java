@@ -32,7 +32,9 @@ import java.util.List;
  * language level and the output directory.
  *
  * @param api which entry point produced this capture: {@code cli} or {@code api}
- * @param compiler which compiler performed it: {@code javac}, {@code ecj} or {@code sjavac}
+ * @param compiler which compiler performed it: {@code javac}, {@code ecj}, {@code sjavac}, {@code
+ *     kotlin}, {@code scala3} or {@code scala2}
+ * @param language the LANGUAGE the compiler compiles: {@code java}, {@code kotlin} or {@code scala}
  * @param argv the raw compiler arguments
  * @param encoding the source encoding, or {@code null} when the platform default applies
  * @param languageLevel the {@code --release} / {@code -source} level, or {@code null}
@@ -55,6 +57,7 @@ import java.util.List;
 public record CaptureEntry(
     String api,
     String compiler,
+    String language,
     List<String> argv,
     String encoding,
     String languageLevel,
@@ -96,6 +99,7 @@ public record CaptureEntry(
   public String compileIdentity() {
     StringBuilder sb = new StringBuilder();
     sb.append("compiler=").append(compiler).append('\u0000');
+    sb.append("lang=").append(language).append('\u0000');
     sb.append("out=").append(outputDirectory).append('\u0000');
     sb.append("cp=").append(classpath).append('\u0000');
     sb.append("sp=").append(sourcePath).append('\u0000');
@@ -142,6 +146,7 @@ public record CaptureEntry(
     return new CaptureEntry(
         api,
         "javac",
+        "java",
         argv,
         encoding,
         languageLevel,
@@ -173,6 +178,7 @@ public record CaptureEntry(
     sb.append("{\n");
     sb.append("  \"api\": ").append(quote(api)).append(",\n");
     sb.append("  \"compiler\": ").append(quote(compiler)).append(",\n");
+    sb.append("  \"language\": ").append(quote(language)).append(",\n");
     sb.append("  \"argv\": ").append(jsonArray(argv)).append(",\n");
     sb.append("  \"encoding\": ").append(quote(encoding)).append(",\n");
     sb.append("  \"languageLevel\": ").append(quote(languageLevel)).append(",\n");

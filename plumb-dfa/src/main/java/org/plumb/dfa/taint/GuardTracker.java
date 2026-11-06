@@ -446,6 +446,7 @@ public final class GuardTracker {
     propagatableSources.clear();
     guardsPendingFalseEdge.clear();
     activeFalseEdgeGuards.clear();
+    guardsByPosition.clear();
   }
 
   /**
@@ -566,6 +567,55 @@ public final class GuardTracker {
    */
   public java.util.List<Guard> allGuardsSeen() {
     return new java.util.ArrayList<>(allGuardsSeen);
+  }
+
+  /**
+   * The guards that were ACTIVE at each instruction position, keyed by the instruction's index in
+   * the function.
+   *
+   * <p><b>Why this exists.</b> {@link #allGuardsSeen()} is the union over the whole function, and
+   * two guards recorded at different points are <em>not both in force</em> at a given sink. A
+   * disjunction of them would be a statement about no path at all: {@code n &gt; 5} from one branch
+   * and {@code n &lt; 3} from another can both hold, just not at the same time. Treating them as
+   * simultaneous produces a condition that is UNSAT for a path that exists, and suppresses a real
+   * finding.
+   *
+   * <p>The active stack IS path-scoped — a guard is pushed on its BRANCH and popped at the end of
+   * its block — so recording the stack's contents at each instruction gives the guards that are
+   * genuinely in force there.
+   *
+   * <p>Recording happens per instruction index, and the snapshot is taken BEFORE the instruction is
+   * tracked: the guards in force AT an instruction are the ones established by the branches that
+   * lead to it, not the ones the instruction itself establishes.
+   */
+  private final Map<Integer, java.util.List<Guard>> guardsByPosition = new HashMap<>();
+
+  /**
+   * Record the guards in force at the instruction at {@code index}.
+   *
+   * <p>Called by the engine's guard pre-pass, once per instruction, BEFORE the instruction is
+   * tracked — so the snapshot describes the state the instruction is reached in.
+   *
+   * @param index the instruction's index in the function
+   */
+  public void recordPosition(int index) {
+    guardsByPosition.put(index, new java.util.ArrayList<>(activeGuards));
+  }
+
+  /**
+   * The guards in force at the instruction at {@code index}.
+   *
+   * @param index the instruction's index in the function
+   * @return the active guards there, or an empty list when the position was not recorded
+   */
+  public java.util.List<Guard> guardsAt(int index) {
+    java.util.List<Guard> guards = guardsByPosition.get(index);
+    return guards == null ? java.util.List.of() : guards;
+  }
+
+  /** Whether any position was recorded at all. */
+  public boolean hasRecordedPositions() {
+    return !guardsByPosition.isEmpty();
   }
 
   // ─── internal ─────────────────────────────────

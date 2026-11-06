@@ -62,6 +62,20 @@ public enum SourceLanguage {
   GROOVY,
 
   /**
+   * C# source.
+   *
+   * <p>C# is statically typed, but its nullable reference annotations are a WARNING, not a compile
+   * error: a program that violates one still compiles and still runs. So a nullable annotation
+   * cannot be used to prove that a value is non-null at run time, and {@link
+   * #hasNonNullTypeSystem()} answers {@code false} for C#. See that method for why the answer
+   * matters.
+   *
+   * <p>The C# frontend reads the source through Roslyn, so the types, overloads and property
+   * accessors it reports are the ones the C# compiler itself sees.
+   */
+  CSHARP,
+
+  /**
    * The language could not be determined -- typically code loaded from a third-party {@code .jar}
    * through the bytecode frontend.
    */
@@ -72,6 +86,13 @@ public enum SourceLanguage {
    *
    * <p>Kotlin's {@code String} (as opposed to {@code String?}) guarantees non-nullness at the
    * declaration site. Scala and Java have no such system.
+   *
+   * <p><b>C# does NOT, despite having nullable annotations.</b> C#'s nullable reference types are a
+   * compile-time WARNING: {@code string?} produces a diagnostic, not an error, and the program
+   * still compiles and still runs. A C# program can therefore pass null to a {@code string}
+   * parameter and nothing stops it. Treating C# as having a non-null type system would let the
+   * null-dereference checker suppress findings that are entirely real -- which is the one thing the
+   * {@code nullable} flag must never be used for. See {@link TacType#isNullable()}.
    *
    * <p><b>Directional rule.</b> A {@code true} answer means "the compiler rejects a null literal
    * for this type", which is a fact about the <i>declaration</i>. It says nothing about whether a
@@ -84,7 +105,7 @@ public enum SourceLanguage {
 
   /** Whether this language is statically typed enough for reliable dataflow analysis. */
   public boolean supportsFullDataflow() {
-    return this == JAVA || this == KOTLIN || this == SCALA;
+    return this == JAVA || this == KOTLIN || this == SCALA || this == CSHARP;
   }
 
   /**
@@ -112,6 +133,10 @@ public enum SourceLanguage {
       case "GROOVY":
       case "JVM-GROOVY":
         return GROOVY;
+      case "CSHARP":
+      case "C#":
+      case "DOTNET-CSHARP":
+        return CSHARP;
       default:
         return UNKNOWN;
     }

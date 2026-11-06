@@ -709,6 +709,7 @@ public final class CaptureRecorder {
         new CaptureEntry(
             api,
             compiler.name().toLowerCase(java.util.Locale.ROOT),
+            languageOf(compiler),
             argv,
             options.encodingName(),
             options.languageLevel(),
@@ -728,6 +729,26 @@ public final class CaptureRecorder {
             System.getProperty("java.home"),
             System.getProperty("user.dir")));
     return entries;
+  }
+
+  /**
+   * The LANGUAGE a compiler compiles.
+   *
+   * <p><b>Why this is separate from the compiler's name.</b> Two compilers compile the same
+   * language -- javac and ECJ both compile Java -- and a consumer usually cares about the language,
+   * not about which front end happened to do it. The capture carries both, so a consumer can ask
+   * either question.
+   *
+   * <p><b>Why this is not a switch.</b> Every compiler this agent hooks compiles Java, so a switch
+   * over the enum would be a switch with one arm. A switch over an enum is also compiled into a
+   * synthetic {@code CaptureRecorder$1} class that holds the switch map -- and the recorder's
+   * classes live in the BOOTSTRAP class loader, where every class it references has to be carried
+   * in the bootstrap jar too. A hand-written class list that forgets the compiler-generated one
+   * fails with a {@code NoClassDefFoundError} that the advice swallows, so the capture silently
+   * never appears.
+   */
+  static String languageOf(CompilerOption.Compiler compiler) {
+    return "java";
   }
 
   /**
@@ -902,7 +923,12 @@ public final class CaptureRecorder {
       Path out = Path.of(dir);
       Files.createDirectories(out);
       for (CaptureEntry entry : entries) {
-        Path file = out.resolve("javac-" + System.nanoTime() + ".json");
+        // The file is named after the COMPILER that produced it, so a reader
+        // can pick the files of one compiler without parsing them. Naming
+        // every file `javac-` would make an ECJ capture indistinguishable from
+        // a javac one -- and would name it with a prefix that does not match
+        // the compiler that wrote it.
+        Path file = out.resolve(entry.compiler() + "-" + System.nanoTime() + ".json");
         Files.writeString(file, entry.toJson(), StandardCharsets.UTF_8);
       }
     } catch (IOException | RuntimeException e) {

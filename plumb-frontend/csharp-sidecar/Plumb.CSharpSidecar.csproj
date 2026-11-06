@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Roslyn-based C# sidecar.
+
+    WHY A SEPARATE .NET PROJECT. Plumb is a JVM product; Roslyn is a .NET library.
+    There is no way to host Roslyn's compiler inside the JVM, so the C# frontend
+    drives this process over stdio instead of calling a compiler API directly.
+
+    WHY THIS IS NOT PART OF THE MAVEN BUILD. The Maven build produces the JARs.
+    This project produces the sidecar binary that the JAR launches. It is built
+    separately (and deliberately) so that a missing .NET SDK cannot break the
+    Java build: the Java side reports a missing toolchain as an explicit error
+    at RUN time, not as a compile-time failure for everyone who does not have
+    .NET installed.
+
+    The Roslyn version is pinned. Roslyn's public API is stable across patch
+    releases but the semantic model is where the C# frontend's correctness
+    lives, so the version is upgraded deliberately.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Plumb.CSharpSidecar</AssemblyName>
+    <RootNamespace>Plumb.CSharpSidecar</RootNamespace>
+    <!--
+      The sidecar is launched by the Java frontend, not by a user. A deterministic
+      build keeps the binary comparable across machines.
+    -->
+    <Deterministic>true</Deterministic>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.12.0" />
+  </ItemGroup>
+
+</Project>

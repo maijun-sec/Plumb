@@ -93,6 +93,22 @@ public final class FindingReporter {
   }
 
   /**
+   * The analysis context this reporter was wired to, or {@code null} when it was constructed
+   * without one.
+   *
+   * <p>The context is the engine's PUBLISHED state for the run: it carries the function-summary
+   * cache, the alias map and the budget. A consumer that wants to inspect what the analysis
+   * concluded — rather than only what it reported — reads it here.
+   *
+   * <p>The back-reference is set by the engine right after the context is built (the context takes
+   * the reporter in its constructor, and the reporter needs the context the other way round), so it
+   * is {@code null} only for a reporter a test constructed by hand.
+   */
+  public AnalysisContext context() {
+    return this.ctx;
+  }
+
+  /**
    * Back-reference to the analysis context. Used to resolve {@code filePath} for findings whose
    * checker left it empty (the new DFA checkers in plumb-dfa don't carry the path; the IR doesn't
    * either). When a finding is reported and its filePath is "", we ask the context for the function

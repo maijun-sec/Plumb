@@ -237,6 +237,109 @@ class LanguageSemanticsTest {
   }
 
   /**
+   * C#'s table must classify the calls the taint engine depends on.
+   *
+   * <p><b>Every key here was MEASURED</b> by running the C# frontend over a probe of the .NET
+   * string and IO operations, not inferred from the source text. The measurement matters because
+   * .NET spells several operations differently from the source text suggests:
+   *
+   * <ul>
+   *   <li>A <b>property</b> is a method call: {@code s.Length} resolves to {@code
+   *       System.String.get_Length/0}, not to a {@code Length} member.
+   *   <li>The <b>{@code +} operator</b> lowers to {@code System.String.Concat/2}.
+   * </ul>
+   *
+   * <p>A table written from the source text alone would have named keys that never appear in the
+   * IR, and every entry would have been dead.
+   */
+  @Test
+  @DisplayName("C#'s table classifies the measured .NET callee keys")
+  void csharpTableClassifiesTheMeasuredKeys() {
+    LanguageSemantics csharp = LanguageSemanticsRegistry.csharpSemantics();
+
+    // Preserves: the result is derived from the input.
+    assertThat(csharp.behaviourOf("System.String.Trim/0")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(csharp.behaviourOf("System.String.Substring/1")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(csharp.behaviourOf("System.String.Replace/2")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(csharp.behaviourOf("System.String.Split/2")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(csharp.behaviourOf("System.String.ToUpper/0")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(csharp.behaviourOf("System.String.ToLowerInvariant/0"))
+        .isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(csharp.behaviourOf("System.String.Format/2")).isEqualTo(TaintBehaviour.PRESERVES);
+
+    // The + operator on strings is a call to String.Concat.
+    assertThat(csharp.behaviourOf("System.String.Concat/2")).isEqualTo(TaintBehaviour.PRESERVES);
+
+    // A builder carries what was appended to it.
+    assertThat(csharp.behaviourOf("System.Text.StringBuilder.Append/1"))
+        .isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(csharp.behaviourOf("System.Text.StringBuilder.ToString/0"))
+        .isEqualTo(TaintBehaviour.PRESERVES);
+
+    // Dissociates: the result is not the input.
+    // A property is a method: s.Length is System.String.get_Length/0.
+    assertThat(csharp.behaviourOf("System.String.get_Length/0"))
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(csharp.behaviourOf("System.String.GetHashCode/0"))
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(csharp.behaviourOf("System.String.CompareTo/1"))
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(csharp.behaviourOf("System.String.Equals/1")).isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(csharp.behaviourOf("System.String.Contains/1"))
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(csharp.behaviourOf("System.String.GetBytes/0"))
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(csharp.behaviourOf("System.String.ToCharArray/0"))
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+
+    // Numeric parsing: the result is a number, not the input text.
+    assertThat(csharp.behaviourOf("System.Int32.Parse/1")).isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(csharp.behaviourOf("System.Double.Parse/1")).isEqualTo(TaintBehaviour.DISSOCIATES);
+  }
+
+  /**
+   * The C# table must not name the property spelling.
+   *
+   * <p>This is the guard against a table that <em>looks</em> populated while changing no behaviour:
+   * {@code System.String.Length} is not a callee key the frontend ever emits, because a C# property
+   * is lowered to a {@code get_} accessor call. An entry written against the property name would
+   * match nothing.
+   */
+  @Test
+  @DisplayName("the C# table names the accessor, not the property")
+  void csharpTableNamesTheAccessorNotTheProperty() {
+    LanguageSemantics csharp = LanguageSemanticsRegistry.csharpSemantics();
+
+    assertThat(csharp.behaviourOf("System.String.Length/0"))
+        .as("the frontend never emits the property spelling")
+        .isEqualTo(TaintBehaviour.UNKNOWN);
+    assertThat(csharp.behaviourOf("System.String.get_Length/0"))
+        .as("the accessor the frontend CAN lower is classified")
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+  }
+
+  /**
+   * The registry must carry a C# table.
+   *
+   * <p>Before the C# table existed, {@code SourceLanguage.CSHARP} appeared nowhere in the engine's
+   * production code: every C# callee was {@link TaintBehaviour#UNKNOWN}, and the engine's
+   * conservative default made every C# call taint-preserving -- including {@code s.Length} and
+   * {@code s.GetHashCode()}, whose whole purpose is to remove taint.
+   */
+  @Test
+  @DisplayName("the registry carries a C# table")
+  void theRegistryCarriesACsharpTable() {
+    LanguageSemanticsRegistry registry = LanguageSemanticsRegistry.withDefaults();
+
+    assertThat(registry.languages()).contains(SourceLanguage.CSHARP);
+    assertThat(registry.forLanguage(SourceLanguage.CSHARP).entries()).isNotEmpty();
+    assertThat(
+            registry.forLanguage(SourceLanguage.CSHARP).behaviourOf("System.String.get_Length/0"))
+        .as("a C# call to Length must not be treated as taint-preserving")
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+  }
+
+  /**
    * A black-box call must be distinguishable.
    *
    * <p>The engine uses this to decide whether to emit an {@code UNINTERPRETED} instruction: "I

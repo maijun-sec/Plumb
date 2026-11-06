@@ -1466,40 +1466,79 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * by which owner declared it.
    */
 
+  /**
+   * Whether a callee's method name is one of the given names, IGNORING CASE.
+   *
+   * <p><b>Why case-insensitive.</b> The same operation has different spellings in different
+   * languages, and the difference is a naming CONVENTION, not a different behaviour: Java writes
+   * {@code s.trim()}, Kotlin writes {@code s.trim()}, and .NET writes {@code s.Trim()}. The
+   * classification helpers below recognise a call by what it DOES, so a case-sensitive comparison
+   * silently failed to recognise every .NET spelling of a passthrough.
+   *
+   * <p>The consequence of that was a <em>false negative</em>, which is the expensive kind: {@code
+   * input.Trim()} dropped the taint at the call, the sink downstream was never reached, and the
+   * scan reported a clean program for code that flows user input into a command. The same held for
+   * {@code Substring}, {@code Split}, {@code Replace}, {@code ToUpper}, {@code ToString}, {@code
+   * Append}, {@code Format}, {@code Join}, {@code ToCharArray} and {@code GetBytes}.
+   *
+   * <p>Case-insensitive matching is safe here because these helpers only ever compare a method name
+   * against a fixed vocabulary of well-known operations. It cannot make an unrelated method match:
+   * {@code TRIM} and {@code Trim} and {@code trim} are the same operation in every language that
+   * has it.
+   *
+   * @param calleeSig the callee signature
+   * @param names the method names to accept
+   * @return true when the callee's method name matches one of them, ignoring case
+   */
+  private static boolean isMethodNamed(String calleeSig, String... names) {
+    String m = methodNameOf(calleeSig);
+    if (m == null || m.isEmpty()) return false;
+    for (String name : names) {
+      if (m.equalsIgnoreCase(name)) return true;
+    }
+    return false;
+  }
+
   /** {@code String.split} and its equivalents: the result is a piece of the input. */
   private static boolean isSplitLike(String calleeSig) {
-    String m = methodNameOf(calleeSig);
-    return "split".equals(m) || "splitToSequence".equals(m);
+    return isMethodNamed(calleeSig, "split", "splitToSequence");
   }
 
   /** {@code String.substring} and its equivalents. */
   private static boolean isSubstringLike(String calleeSig) {
-    String m = methodNameOf(calleeSig);
-    return "substring".equals(m) || "substringAfter".equals(m) || "substringBefore".equals(m);
+    return isMethodNamed(calleeSig, "substring", "substringAfter", "substringBefore");
   }
 
   /** {@code String.trim} and its equivalents: whitespace removal keeps the content's taint. */
   private static boolean isTrimLike(String calleeSig) {
-    String m = methodNameOf(calleeSig);
-    return "trim".equals(m)
-        || "strip".equals(m)
-        || "stripLeading".equals(m)
-        || "stripTrailing".equals(m)
-        || "trimIndent".equals(m)
-        || "trimStart".equals(m)
-        || "trimEnd".equals(m);
+    return isMethodNamed(
+        calleeSig,
+        "trim",
+        "strip",
+        "stripLeading",
+        "stripTrailing",
+        "trimIndent",
+        "trimStart",
+        "trimEnd");
   }
 
   /** Case conversion and replacement: the result is derived from the input. */
   private static boolean isCaseLike(String calleeSig) {
-    String m = methodNameOf(calleeSig);
-    return "toLowerCase".equals(m)
-        || "toUpperCase".equals(m)
-        || "lowercase".equals(m)
-        || "uppercase".equals(m)
-        || "replace".equals(m)
-        || "replaceAll".equals(m)
-        || "replaceFirst".equals(m);
+    return isMethodNamed(
+        calleeSig,
+        "toLowerCase",
+        "toUpperCase",
+        "lowercase",
+        "uppercase",
+        // .NET spells the case conversions WITHOUT the "Case" suffix: s.ToUpper(),
+        // s.ToLower(), s.ToUpperInvariant(), s.ToLowerInvariant().
+        "toLower",
+        "toUpper",
+        "toLowerInvariant",
+        "toUpperInvariant",
+        "replace",
+        "replaceAll",
+        "replaceFirst");
   }
 
   /**
@@ -1509,30 +1548,25 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * joins two strings. Both carry the taint of what they render.
    */
   private static boolean isValueOfLike(String calleeSig) {
-    String m = methodNameOf(calleeSig);
-    return "valueOf".equals(m)
-        || "concat".equals(m)
-        || "concatToString".equals(m)
-        || ("toString".equals(m) && !isThrowableMessageMethod(calleeSig));
+    if (isMethodNamed(calleeSig, "valueOf", "concat", "concatToString")) return true;
+    // The Throwable case is excluded: e.getMessage() is handled by its own category.
+    return isMethodNamed(calleeSig, "toString") && !isThrowableMessageMethod(calleeSig);
   }
 
   /** The mutating string builders: {@code append} adds to the receiver. */
   private static boolean isAppendLike(String calleeSig) {
-    String m = methodNameOf(calleeSig);
-    if (!"append".equals(m)) return false;
+    if (!isMethodNamed(calleeSig, "append")) return false;
     return calleeSig.contains(".StringBuilder.") || calleeSig.contains(".StringBuffer.");
   }
 
   /** Tokenizers and scanners: the result is a piece of the input. */
   private static boolean isTokenizerLike(String calleeSig) {
-    String m = methodNameOf(calleeSig);
-    return "nextToken".equals(m) || "next".equals(m) || "nextLine".equals(m) || "group".equals(m);
+    return isMethodNamed(calleeSig, "nextToken", "next", "nextLine", "group");
   }
 
   /** Formatting and joining: the result is assembled from the arguments. */
   private static boolean isFormatterLike(String calleeSig) {
-    String m = methodNameOf(calleeSig);
-    return "format".equals(m) || "join".equals(m) || "formatted".equals(m);
+    return isMethodNamed(calleeSig, "format", "join", "formatted");
   }
 
   /**
@@ -1542,12 +1576,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * password, and a rule that reports a hardcoded credential must see it.
    */
   private static boolean isCharByteLike(String calleeSig) {
-    String m = methodNameOf(calleeSig);
-    return "toCharArray".equals(m)
-        || "getBytes".equals(m)
-        || "getEncoded".equals(m)
-        || "getPassword".equals(m)
-        || "clone".equals(m);
+    return isMethodNamed(
+        calleeSig, "toCharArray", "getBytes", "getEncoded", "getPassword", "clone");
   }
 
   /**
@@ -1615,6 +1645,23 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // for upstream analysis).
     if (calleeSig.startsWith("javax.crypto.Cipher.doFinal/")
         || calleeSig.startsWith("Cipher.doFinal/")) {
+      return true;
+    }
+    // .NET's numeric parsers. The owner spelling differs from Java's
+    // (`java.lang.Integer.parseInt` vs `System.Int32.Parse`), so the Java
+    // prefixes above never matched them. Without these, a C# program that
+    // parses untrusted input into an int reported the parsed value as still
+    // tainted -- a false POSITIVE on correct, defensive code.
+    if (calleeSig.startsWith("System.Int32.Parse/")
+        || calleeSig.startsWith("System.Int32.TryParse/")
+        || calleeSig.startsWith("System.Int64.Parse/")
+        || calleeSig.startsWith("System.Int64.TryParse/")
+        || calleeSig.startsWith("System.Double.Parse/")
+        || calleeSig.startsWith("System.Double.TryParse/")
+        || calleeSig.startsWith("System.Decimal.Parse/")
+        || calleeSig.startsWith("System.Decimal.TryParse/")
+        || calleeSig.startsWith("System.Boolean.Parse/")
+        || calleeSig.startsWith("System.Boolean.TryParse/")) {
       return true;
     }
     return false;
@@ -1790,6 +1837,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       case NULL -> new OperandRef.ConstNull();
       case BOOL -> new OperandRef.ConstStr(((Boolean) c.value()).toString());
       case CHAR -> new OperandRef.ConstStr("'" + c.value() + "'");
+      // A decimal is kept in its text form, because its scale is part of its
+      // value and parsing it into a double would lose it.
+      case DECIMAL -> new OperandRef.ConstStr(String.valueOf(c.value()));
     };
   }
 
@@ -4288,6 +4338,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    *       sink. Treating them as if they were would produce a condition that is UNSAT for a path
    *       that exists, and suppress a real finding.
    * </ul>
+   *
+   * <p>The second bullet is why the guards are read AT THE SINK'S POSITION rather than from the
+   * function's whole guard set. The tracker keeps an active stack — a guard is pushed on its BRANCH
+   * and popped at the end of its block — so the guards in force at an instruction are exactly the
+   * ones its path establishes. Reading the function-wide union instead would produce a conjunction
+   * over guards that cannot all hold at once.
    */
   private java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> sourceGuardFacts(
       TacOperand.TacVar av, AnalysisContext ctx) {
@@ -4296,8 +4352,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (ctx == null || av == null) return out;
     org.plumb.dfa.taint.GuardTracker tracker = ctx.functionGuards();
     if (tracker == null) return out;
-    java.util.List<org.plumb.dfa.taint.GuardTracker.Guard> guards = tracker.allGuardsSeen();
-    if (guards == null) return out;
+    // The guards in force AT THE SINK. When the position is unknown (a checker used
+    // standalone, or a pre-pass that did not record positions) fall back to the
+    // function-wide union, which is what the engine always did before.
+    java.util.List<org.plumb.dfa.taint.GuardTracker.Guard> guards = pathScopedGuards(tracker, ctx);
+    if (guards == null || guards.isEmpty()) return out;
     for (org.plumb.dfa.taint.GuardTracker.Guard g : guards) {
       if (g == null) continue;
       if (!g.boundedVar().name().equals(av.name())) continue;
@@ -4306,6 +4365,21 @@ public abstract class TaintedCheckerBase implements DfaChecker {
               g.boundedVar().name(), g.op(), g.literalDescription(), g.isArrayLengthBound()));
     }
     return out;
+  }
+
+  /**
+   * The guards in force at the sink, or {@code null} when the position is not known.
+   *
+   * <p>{@code null} means "fall back to the function-wide union" — which is the old behaviour, and
+   * is the safe one, because it is a SUPERSET of the path-scoped guards and therefore never
+   * suppresses a finding the path-scoped set would have reported.
+   */
+  private java.util.List<org.plumb.dfa.taint.GuardTracker.Guard> pathScopedGuards(
+      org.plumb.dfa.taint.GuardTracker tracker, AnalysisContext ctx) {
+    int idx = ctx.currentInstructionIndex();
+    if (idx < 0) return null;
+    if (!tracker.hasRecordedPositions()) return null;
+    return tracker.guardsAt(idx);
   }
 
   /**
@@ -4346,6 +4420,47 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    */
   public SolverZ3Bridge solverBridge() {
     return solverBridge;
+  }
+
+  /**
+   * Record the callee's return-value objects on the caller's destination.
+   *
+   * <p>The operation carries the alloc sites as LABELS ({@code site.type@context}), because an
+   * {@code Operation} is a value type and must not embed the solver's internals. The solver's
+   * {@code Obj} is reconstructed from the label so the caller records the SAME identities the
+   * solver holds -- not a parallel set that happens to look similar.
+   *
+   * <p>No-op when there is no destination (a void call), no solver (the engine did not solve
+   * points-to), or no known object matching the label. The last case is the important one: an
+   * unknown label means "the solver may have changed since the summary was built", and the
+   * conservative response is to record nothing rather than to guess.
+   */
+  private void applyReturnPointsTo(
+      TacInstruction ins, AnalysisContext ctx, Operation.PointsToPropagate pts) {
+    if (ins == null || ctx == null || pts == null) return;
+    if (!(ins.dest instanceof TacOperand.TacVar dest)) return;
+    org.plumb.dfa.points.PointsToSolver solver = ctx.pointsToSolver();
+    if (solver == null) return;
+    org.plumb.tac.ir.TacFunction fn = ctx.currentFunction();
+    if (fn == null) return;
+    java.util.Set<String> labels = pts.allocSites();
+    if (labels == null || labels.isEmpty()) return;
+    // The solver holds the authoritative object identities. A label that names
+    // no known object is stale, and a stale label must not be recorded as a
+    // fresh allocation.
+    java.util.Set<org.plumb.dfa.points.AbstractObject.Obj> objects =
+        new java.util.LinkedHashSet<>();
+    for (org.plumb.dfa.points.AbstractObject.Obj o : solver.allObjects()) {
+      if (o != null && labels.contains(o.label())) {
+        objects.add(o);
+      }
+    }
+    if (objects.isEmpty()) return;
+    try {
+      solver.addPointsTo(fn.signature(), dest, objects);
+    } catch (RuntimeException e) {
+      // A points-to update that fails costs the refinement, not the analysis.
+    }
   }
 
   /**
@@ -4982,6 +5097,20 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     for (Operation op : calleeSummary.returnOps()) {
       if (op instanceof Operation.SolverZ3Predicate pred) {
         addPathConditionFragment(pred.predicate());
+      }
+      if (op instanceof Operation.PointsToPropagate pts) {
+        // The callee's return value carries an OBJECT IDENTITY, and the caller's
+        // destination inherits it.
+        //
+        // This is what makes two instances of one class separable. The caller's
+        // dest inherits the CALLEE's alloc sites rather than merging with every
+        // other allocation of that type -- so a field written on one instance is
+        // not read back on another.
+        //
+        // Without it, the points-to solver's answer never reached the caller's
+        // view of the heap, and the Operation existed as a record with a
+        // producer that nobody called and a consumer that nobody read.
+        applyReturnPointsTo(ins, ctx, pts);
       }
     }
     for (var entry : calleeSummary.paramOps().entrySet()) {

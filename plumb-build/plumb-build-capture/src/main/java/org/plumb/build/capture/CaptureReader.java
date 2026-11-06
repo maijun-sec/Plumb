@@ -50,6 +50,20 @@ public final class CaptureReader {
   private CaptureReader() {}
 
   /**
+   * The file-name prefixes that mark a capture file.
+   *
+   * <p>The capture agent names a file after the compiler that produced it: {@code
+   * <compiler>-<nanos>.json}. The list covers every compiler the agent can hook -- the three Java
+   * front ends and the two JVM languages -- because a directory that holds a Kotlin or a Scala
+   * capture is a directory whose captures were being <em>dropped</em>: the old filter accepted
+   * {@code javac-} only, so every Kotlin and Scala compile was silently invisible to the analyser.
+   *
+   * <p>These are the same names the writer uses, so the two halves agree without a mapping table.
+   */
+  static final List<String> FILE_PREFIXES =
+      List.of("javac-", "ecj-", "sjavac-", "kotlin-", "scala3-", "scala2-");
+
+  /**
    * Read every capture in {@code directory}, oldest first.
    *
    * @param directory the capture directory
@@ -64,8 +78,7 @@ public final class CaptureReader {
     try (Stream<Path> stream = Files.list(directory)) {
       List<Path> files =
           stream
-              .filter(p -> p.getFileName().toString().startsWith("javac-"))
-              .filter(p -> p.getFileName().toString().endsWith(".json"))
+              .filter(p -> isCaptureFile(p.getFileName().toString()))
               .sorted(Comparator.comparingLong(CaptureReader::lastModified))
               .toList();
       for (Path file : files) {
@@ -76,6 +89,47 @@ public final class CaptureReader {
       }
     } catch (IOException e) {
       LOG.warn("Capture: could not list {}: {}", directory, e.getMessage());
+    }
+    return out;
+  }
+
+  /**
+   * Whether a file name is a capture file.
+   *
+   * <p>Both conditions matter: the name must carry a compiler prefix, and it must be JSON. A file
+   * that satisfies neither is not a capture and is not parsed.
+   *
+   * @param fileName the file's name
+   * @return true when the file is a capture
+   */
+  static boolean isCaptureFile(String fileName) {
+    if (fileName == null || !fileName.endsWith(".json")) {
+      return false;
+    }
+    for (String prefix : FILE_PREFIXES) {
+      if (fileName.startsWith(prefix)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Read every capture of one language in {@code directory}, oldest first.
+   *
+   * <p>The language is the one the capture records, not the one its file name suggests: two
+   * compilers compile the same language, and a consumer usually cares about the language.
+   *
+   * @param directory the capture directory
+   * @param language the language to keep: {@code java}, {@code kotlin} or {@code scala}
+   * @return the parsed captures
+   */
+  public static List<CaptureEntry> readAll(Path directory, String language) {
+    List<CaptureEntry> out = new ArrayList<>();
+    for (CaptureEntry entry : readAll(directory)) {
+      if (language == null || language.equals(entry.language())) {
+        out.add(entry);
+      }
     }
     return out;
   }
@@ -121,6 +175,7 @@ public final class CaptureReader {
     return new CaptureEntry(
         string(json, "api"),
         string(json, "compiler"),
+        string(json, "language"),
         stringArray(json, "argv"),
         string(json, "encoding"),
         string(json, "languageLevel"),

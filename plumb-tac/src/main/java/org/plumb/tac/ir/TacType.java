@@ -46,6 +46,15 @@ public final class TacType implements java.io.Serializable {
     LONG,
     FLOAT,
     DOUBLE,
+    /**
+     * A fixed-point decimal.
+     *
+     * <p>C# has a distinct {@code decimal} type, and it is not a floating-point number: it is a
+     * 128-bit fixed-point value with a scale, and arithmetic on it is exact where {@code double} is
+     * not. Folding it into {@link #DOUBLE} would be a silent change of value, so it gets its own
+     * kind.
+     */
+    DECIMAL,
     STRING, // treated as reference, but we keep a fast path
     CLASS, // reference: non-array, non-String
     ARRAY,
@@ -62,6 +71,7 @@ public final class TacType implements java.io.Serializable {
   public static final TacType LONG = new TacType(Kind.LONG, null);
   public static final TacType FLOAT = new TacType(Kind.FLOAT, null);
   public static final TacType DOUBLE = new TacType(Kind.DOUBLE, null);
+  public static final TacType DECIMAL = new TacType(Kind.DECIMAL, null);
   public static final TacType STRING = new TacType(Kind.STRING, null);
   public static final TacType NULL = new TacType(Kind.NULL, null);
   public static final TacType VOID = new TacType(Kind.VOID, null);
@@ -180,6 +190,7 @@ public final class TacType implements java.io.Serializable {
       case LONG -> "long";
       case FLOAT -> "float";
       case DOUBLE -> "double";
+      case DECIMAL -> "decimal";
       case STRING -> "java.lang.String";
       case CLASS -> className();
       case ARRAY -> arrayComponent() + "[]";
@@ -196,7 +207,7 @@ public final class TacType implements java.io.Serializable {
 
   public boolean isPrimitive() {
     return switch (kind) {
-      case BOOLEAN, BYTE, SHORT, CHAR, INT, LONG, FLOAT, DOUBLE -> true;
+      case BOOLEAN, BYTE, SHORT, CHAR, INT, LONG, FLOAT, DOUBLE, DECIMAL -> true;
       default -> false;
     };
   }
