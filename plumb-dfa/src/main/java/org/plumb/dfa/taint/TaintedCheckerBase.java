@@ -4714,6 +4714,110 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     return FieldOpClassifier.isLikelyUserArgType(t);
   }
 
+  /**
+   * The call string identifying the call site this instruction represents.
+   *
+   * <p><b>What it is.</b> The caller's signature and the instruction's index inside the caller,
+   * joined by {@code #}. Two calls to the same function from the same caller therefore have two
+   * different call strings, and two calls from different callers have two different ones too.
+   *
+   * <p><b>Why that format.</b> It is the format {@link org.plumb.dfa.points.PointsToSolver} already
+   * builds for its own contexts. The engine has two context-sensitive mechanisms, and they are
+   * easier to reason about when they speak the same vocabulary than when each has its own.
+   *
+   * <p><b>Why the index comes from the context and not from the call graph.</b> The call graph's
+   * {@code CallSite.callerInstructionIndex} is {@code -1} in six of the nine places a call site is
+   * constructed -- including every strategy named {@code 1cfa} and {@code 2cfa}, which are the ones
+   * a reader would most expect to carry a call site. The instruction index, by contrast, is
+   * recorded by the engine before each instruction is analysed, so it is available wherever the
+   * analysis actually is.
+   *
+   * <p><b>Why it can be empty.</b> The index is not known when the instruction is not being walked
+   * (a summary-building pass, for instance). An empty call string means "no context", and the
+   * lookup then falls back to the context-free summary.
+   *
+   * @param ctx the analysis context
+   * @return the call string, or the empty string when it cannot be determined
+   */
+  private static String callStringOf(AnalysisContext ctx) {
+    if (ctx == null) return org.plumb.dfa.summary.SummaryKey.NO_CALL_STRING;
+    int index = ctx.currentInstructionIndex();
+    if (index < 0) return org.plumb.dfa.summary.SummaryKey.NO_CALL_STRING;
+    TacFunction caller = ctx.currentFunction();
+    if (caller == null) return org.plumb.dfa.summary.SummaryKey.NO_CALL_STRING;
+    String sig = caller.signature();
+    if (sig == null || sig.isEmpty()) return org.plumb.dfa.summary.SummaryKey.NO_CALL_STRING;
+    return sig + "#" + index;
+  }
+
+  /**
+   * Project a callee's summary through this call site's binding.
+   *
+   * <p>The binding is computed from the call site's own tainted arguments: each tainted user
+   * argument is bound to the formal parameter it lands on, following the same two-tier offset
+   * convention the rest of this method uses (an instance call keeps the receiver at {@code
+   * args[0]}, so user argument 0 is at {@code args[1]}; a static call has no receiver, so user
+   * argument 0 is at {@code args[0]}).
+   *
+   * <p>When there is no binding to apply -- no tainted argument at this call site, or no call
+   * string -- the context-free summary is returned unchanged. That is the sound answer: it is the
+   * union over every call site, so nothing can be lost by keeping it.
+   *
+   * @param ins the CALL instruction
+   * @param ctx the analysis context
+   * @param calleeSig the callee's signature, for the lookup key
+   * @param calleeSummary the context-free summary, as resolved by the caller
+   * @return the projected summary
+   */
+  private FunctionSummary projectForCallSite(
+      TacInstruction ins, AnalysisContext ctx, String calleeSig, FunctionSummary calleeSummary) {
+    if (ins == null || ctx == null || calleeSummary == null) return calleeSummary;
+    if (calleeSummary.isTrivial() && !calleeSummary.hasBody()) return calleeSummary;
+    String callString = callStringOf(ctx);
+    if (callString.isEmpty()) return calleeSummary;
+    // The call site's own tainted arguments, and the formal each binds to.
+    //
+    // The offset convention is the same one the parameter-binding loop below
+    // uses: an INSTANCE call keeps the receiver at args[0], so user argument i
+    // is at args[i+1]; a STATIC call has no receiver, so user argument i is at
+    // args[i]. The two-tier fallback tries the instance position first and
+    // falls back to the static one.
+    //
+    // The formal index is the USER-argument index, which is the index space
+    // the summary's paramOps and returnTaintCauses use: the summary is built
+    // from fn.params(), and fn.params() holds the USER parameters.
+    java.util.Map<Integer, Integer> binding = new java.util.LinkedHashMap<>();
+    int maxParams = Math.max(0, ins.args.size() - 1);
+    for (int i = 0; i < maxParams; i++) {
+      int callArgIdx = i + 1;
+      if (callArgIdx >= ins.args.size()) {
+        callArgIdx = i;
+      }
+      if (callArgIdx >= ins.args.size()) break;
+      if (!(ins.args.get(callArgIdx) instanceof TacOperand.TacVar av)) continue;
+      if (!taintedVars.containsKey(av)) continue;
+      binding.put(i, i);
+    }
+    org.plumb.dfa.summary.CallSiteBinding site =
+        binding.isEmpty()
+            ? org.plumb.dfa.summary.CallSiteBinding.NONE
+            : org.plumb.dfa.summary.CallSiteBinding.of(binding);
+    // The projection for THIS call site, if it was already computed.
+    //
+    // The call string identifies the call site, and the projection is a pure
+    // function of (the callee's summary, the call site's binding), so the
+    // second visit to the same call site gets the same answer. The cache
+    // exists so that a callee reached from MANY call sites does not have its
+    // summary re-projected once per site.
+    FunctionSummary cached = ctx.summaryCache().getInContext(calleeSig, callString);
+    if (cached != null && (!cached.isTrivial() || cached.hasBody())) {
+      return cached;
+    }
+    FunctionSummary projected = calleeSummary.projectThrough(site);
+    ctx.summaryCache().putInContext(calleeSig, callString, projected);
+    return projected;
+  }
+
   private void propagateTaintFromCalleeSummary(TacInstruction ins, AnalysisContext ctx) {
     String calleeSig = ins.calleeSig;
     if (calleeSig == null) return;
@@ -4855,8 +4959,23 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         }
       }
     }
+    // The context-sensitive projection.
+    //
+    // The summary above is the CALLEE's context-free statement about itself: "this function
+    // propagates its parameters' taint to its return value". Whether that fires at THIS call
+    // site depends on what the caller passed here. A helper called with a tainted argument into
+    // formal 0 propagates; the same helper called with a clean argument into formal 0 does not.
+    //
+    // With one shared summary, both call sites see the union, so the clean call inherits the
+    // tainted one's taint. The projection separates them by keeping only the formal parameters
+    // that THIS call site feeds with taint.
+    //
+    // The lookup is deliberately ordered so it can only ever REMOVE taint that provably could
+    // not reach the sink:
+    //   1. the call site's own projection, if one was recorded;
+    //   2. otherwise the context-free summary (the union over all call sites).
+    calleeSummary = projectForCallSite(ins, ctx, calleeSig, calleeSummary);
     if (calleeSummary == null || (calleeSummary.isTrivial() && !calleeSummary.hasBody())) {
-      // receiver : dest taint passthrough
       // for JDK getter-style methods with no
       // plumb-side summary. The classic
       // Juliet CWE89 pattern
@@ -5792,6 +5911,24 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       if (taintedVars.containsKey(ret)) {
         b.recordReturnOp(
             new Operation.TaintPropagate("return:" + ret.name() + " in " + fn.signature(), 1.0));
+        // Which formal does this return taint flow THROUGH? The return value
+        // is usually the parameter itself, or something derived from it, and
+        // the parameter's taint label is the same label the returned value
+        // carries. Recording the cause lets a caller narrow the return taint
+        // to the call sites that actually feed that parameter with taint --
+        // without it, a helper called once with a tainted argument and once
+        // with a clean one would taint BOTH call results.
+        String retLabel = taintedVars.get(ret);
+        if (retLabel != null) {
+          for (int i = 0; i < params.size(); i++) {
+            TacOperand.TacVar p = params.get(i);
+            String paramLabel = taintedVars.get(p);
+            if (paramLabel != null && paramLabel.equals(retLabel)) {
+              b.recordReturnTaintCause(i);
+              break;
+            }
+          }
+        }
       } else {
       }
     }

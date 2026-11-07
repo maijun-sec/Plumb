@@ -9,12 +9,14 @@ This document explains the two-phase cross-function analysis design of the `plum
 
 | Phase | Sensitivity | Explanation |
 | --- | --- | --- |
-| **Phase 1 (bottom-up summary construction)** | **path-insensitive** + **context-insensitive** | The summary is the merged result of "all paths + all callers" inside the callee; the same callee is computed once and reused everywhere |
+| **Phase 1 (bottom-up summary construction)** | **path-insensitive** | The summary is the merged result of "all paths" inside the callee; the same callee is computed once and reused everywhere |
 | **Phase 2 (top-down precise analysis)** | **fully context-sensitive** (each call site is independent) + **path-sensitive (Z3 verification)** | The caller folds the summary into its own fact bag / path conditions / points-to map; all results are concrete values from the caller's point of view |
 
 > Companion source code:
 > - `plumb-dfa/src/main/java/org/plumb/dfa/summary/Operation.java` ——
 > - `plumb-dfa/src/main/java/org/plumb/dfa/summary/FunctionSummary.java` ——
+> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/SummaryKey.java` — the (signature, call string) identity
+> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/CallSiteBinding.java` — the caller's parameter binding
 > - `plumb-dfa/src/main/java/org/plumb/dfa/summary/MethodSummary.java` + `MethodSummaryBuilder.java` ——
 > - `plumb-dfa/src/main/java/org/plumb/dfa/summary/SummaryApplier.java` ——
 > - `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintedCheckerBase.java` ——
@@ -52,6 +54,10 @@ Phase 2 (the caller applies the template)  ──►  Precise analysis  =  concr
 **Key property**: the callee's summary is computed only once (cached by signature); callers no longer wait
 for each other — as soon as all of a caller's callees are done, it can start. The dependency between the two
 phases is **one-directional**, so worklist parallelism is possible.
+
+The caller's side of the fold is context-sensitive (§3.1a): the summary is looked up and then projected
+through the call site's own parameter binding, so a helper called with attacker input and called with a
+constant do not share an answer. The callee's own facts stay context-free and are still computed once.
 
 ## 2. The CallGraph point of view: how does cross-TU work?
 
@@ -375,6 +381,46 @@ void bad() {
 This is what "the summary is imprecise, but the analysis is fully context-sensitive" means: the summary describes
 "what the callee generally returns", but when the caller uses it, **the value is bound to the caller's own
 variable, has passed through the caller's own BRANCHes, and is verified with the caller's own Z3 bindings**.
+
+### 3.1a The caller's parameter binding: a summary is only true relative to the call site
+
+The context-sensitivity above binds the RESULT to the caller's variable. It does not answer a second
+question: **which of the callee's parameters was actually tainted at this call site?**
+
+A summary says "this function propagates its parameters' taint to its return value". That is a statement
+about the function GIVEN which of its parameters were tainted. A helper called once with attacker input
+and once with a constant does not return tainted data at both call sites -- it returns tainted data at one
+of them. With one shared summary per function, the two call sites share the union, so the constant call
+inherits the tainted call's taint and the sink fires on a value that never was tainted.
+
+The engine answers this with a **caller-side parameter-sensitive projection**:
+
+| Piece | What it is |
+| --- | --- |
+| `SummaryKey` | The identity of a summary entry: the callee's signature **and** the call context it was reached through |
+| `CallSiteBinding` | The caller's statement about one call: which of its arguments were tainted, and which formal parameter each binds to |
+| `FunctionSummary.returnTaintCauses()` | The formal parameters the return value's taint flows through |
+| `FunctionSummary.projectThrough(binding)` | The projection: keep only the facts reachable through that binding |
+
+**The call string** is the caller's signature and the instruction's index inside the caller, joined by
+`#`: `go(String,java.sql.Statement):void#2`. Two calls to the same function from the same caller have
+two different call strings, and two calls from different callers have two different ones too. It is the
+format `PointsToSolver` already builds for its own contexts, so the engine's two context-sensitive
+mechanisms speak the same vocabulary.
+
+The instruction index comes from the analysis context, not from the call graph. The call graph's
+`CallSite.callerInstructionIndex` is `-1` in six of the nine places a call site is constructed --
+including every strategy named `1cfa` and `2cfa`, which are the ones a reader would most expect to
+carry a call site. The instruction index, by contrast, is recorded by the engine before each
+instruction is analysed, so it is available wherever the analysis actually is.
+
+**The projection can only remove taint.** It is a subset operation, and a lookup that finds no
+projection falls back to the context-free summary. So a context-sensitive lookup finds strictly LESS
+than a context-insensitive one, never more, and never nothing when the context-free one had something.
+That is what makes it safe to enable: it cannot introduce a false negative.
+
+**The summary is still built once.** The summary-building method is not re-run per call site. The
+callee's own facts stay context-free; what is context-sensitive is the caller's projection of them.
 
 ### 3.2 SummaryApplier.apply(call, ctx, args)
 

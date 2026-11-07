@@ -110,6 +110,19 @@ public final class FunctionSummary {
   // the order they were observed.
   private final List<StringOp> stringOps;
   private final List<FieldOp> fieldOps;
+  // The formal parameters whose taint REACHES the return value.
+  //
+  // The return side needs this because "this function returns tainted data" is not a statement
+  // about the function alone -- it is a statement about the function GIVEN which of its
+  // parameters were tainted. A helper that returns its parameter is harmless when the caller
+  // passes a clean value and a finding when the caller passes a tainted one, and the summary
+  // cannot express that difference without recording WHICH parameter the return taint came
+  // through.
+  //
+  // The set is empty when the return taint did not come from a parameter (the function reads
+  // a global, for instance), which is the "fires at every call site" case: nothing can narrow
+  // it, so the projection must keep it.
+  private final Set<Integer> returnTaintCauses;
 
   private FunctionSummary(
       String signature,
@@ -120,6 +133,28 @@ public final class FunctionSummary {
       boolean hasBody,
       List<StringOp> stringOps,
       List<FieldOp> fieldOps) {
+    this(
+        signature,
+        paramOps,
+        returnOps,
+        calleesReached,
+        hasUnmodelledBehavior,
+        hasBody,
+        stringOps,
+        fieldOps,
+        Set.of());
+  }
+
+  private FunctionSummary(
+      String signature,
+      Map<Integer, Set<Operation>> paramOps,
+      Set<Operation> returnOps,
+      Set<String> calleesReached,
+      boolean hasUnmodelledBehavior,
+      boolean hasBody,
+      List<StringOp> stringOps,
+      List<FieldOp> fieldOps,
+      Set<Integer> returnTaintCauses) {
     this.signature = signature;
     // Defensive: wrap in unmodifiable views so
     // the builder can hand out the underlying
@@ -143,6 +178,10 @@ public final class FunctionSummary {
     // instances; we copy to break aliasing.
     this.stringOps = Collections.unmodifiableList(new ArrayList<>(stringOps));
     this.fieldOps = Collections.unmodifiableList(new ArrayList<>(fieldOps));
+    this.returnTaintCauses =
+        returnTaintCauses == null || returnTaintCauses.isEmpty()
+            ? Set.of()
+            : Collections.unmodifiableSet(new LinkedHashSet<>(returnTaintCauses));
   }
 
   /**
@@ -175,6 +214,10 @@ public final class FunctionSummary {
     // for the two-pass re-application.
     private final List<StringOp> stringOps = new ArrayList<>();
     private final List<FieldOp> fieldOps = new ArrayList<>();
+    // The formal parameters whose taint reaches the return value. See the
+    // field's comment on the summary for why this cannot be inferred
+    // from the returnOps alone.
+    private final Set<Integer> returnTaintCauses = new LinkedHashSet<>();
 
     public Builder(String signature) {
       this.signature = Objects.requireNonNull(signature, "signature");
@@ -264,6 +307,21 @@ public final class FunctionSummary {
       return this;
     }
 
+    /**
+     * Record that the return value's taint flows through the given formal parameter.
+     *
+     * <p>See {@link FunctionSummary#returnTaintCauses()} for why this is needed.
+     *
+     * @param paramIndex the formal parameter the return taint flows through
+     * @return this builder
+     */
+    public Builder recordReturnTaintCause(int paramIndex) {
+      if (paramIndex >= 0) {
+        returnTaintCauses.add(paramIndex);
+      }
+      return this;
+    }
+
     public FunctionSummary build() {
       return new FunctionSummary(
           signature,
@@ -273,7 +331,8 @@ public final class FunctionSummary {
           hasUnmodelledBehavior,
           hasBody,
           stringOps,
-          fieldOps);
+          fieldOps,
+          returnTaintCauses);
     }
   }
 
@@ -351,6 +410,25 @@ public final class FunctionSummary {
   }
 
   /**
+   * The formal parameters whose taint reaches the return value.
+   *
+   * <p><b>Why this is separate from {@link #returnOps()}.</b> A {@link Operation.TaintPropagate} on
+   * the return side says "this function returns tainted data". That statement is true only RELATIVE
+   * to the parameters: the function returns whatever it was given. So the summary has to say WHICH
+   * parameter the return taint flows through, or a caller cannot tell whether the fact applies to
+   * its call.
+   *
+   * <p>An EMPTY set means the return taint did not come from a parameter -- the function read a
+   * global, say. That is the "fires at every call site" case, and the projection must keep it:
+   * there is nothing to narrow it by.
+   *
+   * @return the formal parameter indices the return taint flows through
+   */
+  public Set<Integer> returnTaintCauses() {
+    return returnTaintCauses;
+  }
+
+  /**
    * Project the summary to the operations a specific consumer cares about. The filter receives each
    * {@link Operation} and returns true if it should be kept. The result is a new immutable summary
    * with the same signature but the filtered operation sets. Use this to scope a SQL checker to
@@ -388,6 +466,83 @@ public final class FunctionSummary {
     // unwanted entries themselves; a future
     // Predicate<Object> overload may be
     // added if demand materialises.
+    for (StringOp sop : stringOps) b.recordStringOp(sop);
+    for (FieldOp fop : fieldOps) b.recordFieldOp(fop);
+    // The return taint's causes are preserved through project(): the
+    // Operation filter says which operations a consumer cares about, not
+    // which parameters the return taint flows through. Narrowing that
+    // would change the summary's meaning.
+    for (Integer cause : returnTaintCauses) b.recordReturnTaintCause(cause);
+    return b.build();
+  }
+
+  /**
+   * Project the summary through ONE call site's binding: keep only the operations on the formal
+   * parameters that the call site actually feeds with taint.
+   *
+   * <p><b>What this is.</b> The summary says "this function propagates a parameter's taint to its
+   * return value". That is a fact about the function. Whether the fact FIRES depends on the call
+   * site: if the caller passes a tainted argument into formal 0, the fact fires; if the caller
+   * passes a tainted argument into formal 1 and a clean one into formal 0, the formal-0 fact does
+   * not fire at THIS call site.
+   *
+   * <p>With one shared summary, both call sites see the union, and the clean call inherits the
+   * tainted one's taint. Projecting through the binding separates them.
+   *
+   * <p><b>Why the result is a SUBSET.</b> The projection drops operations; it never adds any. So a
+   * context-sensitive lookup can find strictly LESS than the context-free one -- which is why the
+   * lookup falls back to the context-free summary when no projection exists, and why the
+   * context-free summary remains the sound answer.
+   *
+   * <p><b>Why {@code hasBody} survives.</b> The body flag drives the conservative "the callee has a
+   * body, so a tainted argument may reach the return value" rule. That rule is about the ARGUMENT,
+   * not about a formal parameter, so the binding does not narrow it. Dropping it would turn the
+   * getter/setter shape into a silent miss.
+   *
+   * <p><b>Why the return operations follow the binding.</b> "This function returns tainted data" is
+   * not a fact about the function alone -- it is a fact about the function GIVEN which of its
+   * parameters were tainted. The summary records that in {@link #returnTaintCauses()}: the formal
+   * parameters the return taint flows through. The return taint therefore survives the projection
+   * only when one of those formals is tainted at THIS call site.
+   *
+   * <p>When {@link #returnTaintCauses()} is EMPTY, the return taint did not come from a parameter
+   * (the function read a global, say), so there is nothing to narrow it by and it is kept. That is
+   * the "fires at every call site" case.
+   *
+   * @param binding the call site's binding
+   * @return the projected summary
+   */
+  public FunctionSummary projectThrough(CallSiteBinding binding) {
+    if (binding == null) {
+      // No binding means no call site to project through. Returning the
+      // summary unchanged is the context-free answer, which is the sound
+      // one: it is the union over all call sites.
+      return this;
+    }
+    Set<Integer> liveFormals = binding.taintedFormals();
+    Builder b = new Builder(signature);
+    for (Map.Entry<Integer, Set<Operation>> e : paramOps.entrySet()) {
+      if (!liveFormals.contains(e.getKey())) {
+        // This formal parameter is not fed with taint at this call site, so
+        // nothing can reach the operations recorded against it.
+        continue;
+      }
+      for (Operation op : e.getValue()) {
+        b.recordParamOp(e.getKey(), op);
+      }
+    }
+    // The return taint survives only if one of the formals it flows through is
+    // tainted here. An empty cause set means the return taint did not come
+    // from a parameter, so it fires at every call site and is kept.
+    boolean returnTaintSurvives =
+        returnTaintCauses.isEmpty()
+            || !java.util.Collections.disjoint(returnTaintCauses, liveFormals);
+    if (returnTaintSurvives) {
+      for (Operation op : returnOps) b.recordReturnOp(op);
+      for (Integer cause : returnTaintCauses) b.recordReturnTaintCause(cause);
+    }
+    if (hasUnmodelledBehavior) b.markUnmodelled();
+    if (hasBody) b.markHasBody();
     for (StringOp sop : stringOps) b.recordStringOp(sop);
     for (FieldOp fop : fieldOps) b.recordFieldOp(fop);
     return b.build();
@@ -446,6 +601,9 @@ public final class FunctionSummary {
     for (StringOp sop : other.stringOps) b.recordStringOp(sop);
     for (FieldOp fop : fieldOps) b.recordFieldOp(fop);
     for (FieldOp fop : other.fieldOps) b.recordFieldOp(fop);
+    // The return taint's causes are unioned, like every other fact here.
+    for (Integer cause : returnTaintCauses) b.recordReturnTaintCause(cause);
+    for (Integer cause : other.returnTaintCauses) b.recordReturnTaintCause(cause);
     if (hasUnmodelledBehavior || other.hasUnmodelledBehavior) {
       b.markUnmodelled();
     }

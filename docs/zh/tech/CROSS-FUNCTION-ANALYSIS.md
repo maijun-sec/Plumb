@@ -9,12 +9,14 @@
 
 | 阶段 | 敏感性 | 解释 |
 | --- | --- | --- |
-| **Phase 1（自底向上 Summary 构建）** | **path-insensitive** + **context-insensitive** | summary 是 callee 内"所有路径 + 所有 caller 共享"的合并结果；同一个 callee 算一次，到处复用 |
+| **Phase 1（自底向上 Summary 构建）** | **path-insensitive** | summary 是 callee 内"所有路径"的合并结果；同一个 callee 算一次，到处复用 |
 | **Phase 2（自顶向下精确分析）** | **fully context-sensitive**（每个 call site 独立） + **path-sensitive（Z3 验证）** | caller 把 summary 折叠到自己的 fact bag / 路径条件 / points-to map，所有结果都是 caller 视角的具体值 |
 
 > 配套源码：
 > - `plumb-dfa/src/main/java/org/plumb/dfa/summary/Operation.java` ——
 > - `plumb-dfa/src/main/java/org/plumb/dfa/summary/FunctionSummary.java` ——
+> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/SummaryKey.java` —— (签名, 调用串) 身份
+> - `plumb-dfa/src/main/java/org/plumb/dfa/summary/CallSiteBinding.java` —— caller 侧参数绑定
 > - `plumb-dfa/src/main/java/org/plumb/dfa/summary/MethodSummary.java` + `MethodSummaryBuilder.java` ——
 > - `plumb-dfa/src/main/java/org/plumb/dfa/summary/SummaryApplier.java` ——
 > - `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintedCheckerBase.java` ——
@@ -374,6 +376,41 @@ void bad() {
 这就是"摘要不精准，但分析是 fully context-sensitive"的含义：summary 描述
 的是"callee 一般会返回什么"，但 caller 用的时候，**值是绑死在 caller 自己的
 变量上、走过 caller 自己的 BRANCH、用 caller 自己的 Z3 bindings 验证**。
+
+### 3.1a caller 侧参数绑定：摘要只相对于它被到达的那个调用点成立
+
+上面的上下文敏感把**结果**绑到 caller 的变量上，但它没有回答第二个问题：
+**在这个调用点，callee 的哪个形参实际上被污染了？**
+
+摘要说"这个函数把形参的污点传播到返回值"。这是关于函数的陈述，**以哪些形参被污染为前提**。
+一个 helper 一次被传入攻击者输入、一次被传入常量，它并不是在两个调用点都返回带污点的值 ——
+它只在其中一个返回。函数只有一份摘要时，两个调用点共享并集，于是常量那次调用继承了带污点那次
+的污点，sink 在一个从未被污染的值上触发。
+
+引擎用**调用方侧参数敏感投影**回答这个问题：
+
+| 构件 | 是什么 |
+| --- | --- |
+| `SummaryKey` | 摘要条目的身份：callee 的签名**以及**它被到达时所处的调用上下文 |
+| `CallSiteBinding` | caller 对某一次调用的陈述：它的哪些实参被污染，各自绑定到哪个形参 |
+| `FunctionSummary.returnTaintCauses()` | 返回值的污点流经哪些形参 |
+| `FunctionSummary.projectThrough(binding)` | 投影：只保留经该绑定可达的事实 |
+
+**调用串**是 caller 的签名加上该指令在 caller 内的序号，用 `#` 连接：
+`go(String,java.sql.Statement):void#2`。同一个 caller 里对同一函数的两次调用有两个不同的调用串，
+不同 caller 的两次调用也有两个不同的调用串。它采用 `PointsToSolver` 已经为自己的上下文构建的
+格式，因此引擎里两套上下文敏感机制说的是同一套词汇。
+
+指令序号取自分析上下文，而不是调用图。调用图的 `CallSite.callerInstructionIndex` 在九个构造
+调用点里的六处是 `-1` —— 包括每一个叫 `1cfa` / `2cfa` 的策略，而那正是读者最期待会带上调用点的
+那些。而指令序号由引擎在分析每条指令之前记录，因此在分析真正所在的地方总是拿得到。
+
+**投影只会移除污点。** 它是子集操作，且查不到投影时会回退到无上下文摘要。因此上下文敏感的查找
+找到的一定**严格少于**无上下文的查找，绝不会更多；而无上下文的有东西时它绝不会没有。这正是
+它可以安全启用的原因：它不可能引入漏报。
+
+**摘要仍然只构建一次。** 摘要构建方法不会按调用点重跑。callee 自己的事实保持无上下文；上下文
+敏感的是 caller 对它们的投影。
 
 ### 3.2 SummaryApplier.apply(call, ctx, args)
 

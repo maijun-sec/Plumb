@@ -544,6 +544,11 @@
                              nobody reads is worse than no setting. -->
                         <include>org/plumb/dfa/taint/StringBuilderSwitchTest.java</include>
                         <include>org/plumb/dfa/taint/StringBuilderLanguageTest.java</include>
+                        <!-- A summary is only true relative to the call site it
+                             was reached through. The helper called once with
+                             attacker input and once with a constant must not
+                             taint both call results. -->
+                        <include>org/plumb/dfa/summary/G8CallStringSummaryTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

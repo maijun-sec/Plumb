@@ -110,18 +110,32 @@ public final class AccumulatorCatalog {
    * Is the owner one of the given types, compared by its trailing package segments?
    *
    * <p>Comparing the trailing segments is what lets one rule cover a family: {@code
-   * java.util.List}, {@code java.util.ArrayList} and {@code kotlin.collections.List} all end in
-   * {@code list}. Comparing the whole owner would need one entry per spelling.
+   * java.util.List}, {@code kotlin.collections.MutableList} and {@code
+   * System.Collections.Generic.List} all end in {@code list}. Comparing the whole owner would need
+   * one entry per spelling.
+   *
+   * <p><b>Why the match is a SUFFIX and not an equality.</b> A type's implementation is in the same
+   * family as the interface it implements: {@code ArrayList} is a list, {@code HashSet} is a set,
+   * {@code LinkedHashMap} is a map. An equality test would match {@code java.util.List} and miss
+   * {@code java.util.ArrayList} -- and the IMPLEMENTATION is what a call site's receiver usually
+   * is, because the receiver's declared type is the implementation when the value was created by a
+   * constructor.
+   *
+   * <p>A suffix test is the right shape here because the family names are distinctive enough that a
+   * false positive would need a type whose name ends in {@code list} and is not a list -- a
+   * hypothetical called {@code MyPlaylist} would match, and that is the price of covering the
+   * implementations. The alternative -- an equality test -- misses every implementation, which is
+   * the more common case.
    *
    * @param owner the lower-cased owner
    * @param typeNames the lower-cased type names to accept
-   * @return true when the owner's last segment is one of the given names
+   * @return true when the owner's last segment ends in one of the given names
    */
   private static boolean ownerIs(String owner, String... typeNames) {
     int dot = owner.lastIndexOf('.');
     String simple = dot < 0 ? owner : owner.substring(dot + 1);
     for (String t : typeNames) {
-      if (simple.equals(t)) return true;
+      if (simple.equals(t) || simple.endsWith(t)) return true;
     }
     return false;
   }

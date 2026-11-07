@@ -77,6 +77,19 @@ public final class FunctionSummaryCache {
   private final ConcurrentMap<String, FunctionSummary> map = new ConcurrentHashMap<>();
 
   /**
+   * The CONTEXT-SENSITIVE entries, keyed by {@link SummaryKey} -- the callee's signature AND the
+   * call context it was reached through.
+   *
+   * <p>Kept in a SEPARATE map from {@link #map} rather than merged into it, because the two answer
+   * different questions. The plain map holds the callee's own, context-free facts. The contextual
+   * map holds the CALLER's projection of those facts through one call site's binding. Merging them
+   * would make a context-free lookup able to return a projection -- and a projection is missing the
+   * operations that call site could not reach, so returning one as if it were the whole summary
+   * would under-report.
+   */
+  private final ConcurrentMap<SummaryKey, FunctionSummary> contextual = new ConcurrentHashMap<>();
+
+  /**
    * Replaced {@code int hits} / {@code int misses} with {@link LongAdder} for low-contention
    * concurrent increment. The post-run log reads these via {@link #hits()} / {@link #misses()}.
    */
@@ -170,6 +183,7 @@ public final class FunctionSummaryCache {
     // Replacing an existing entry never grows the cache, so it is always allowed.
     if (map.containsKey(signature)) {
       map.put(signature, summary);
+      invalidateProjectionsOf(signature);
       return;
     }
     if (!hasRoom()) {
@@ -177,6 +191,24 @@ public final class FunctionSummaryCache {
       return;
     }
     map.put(signature, summary);
+    invalidateProjectionsOf(signature);
+  }
+
+  /**
+   * Drop the context-sensitive projections of a signature.
+   *
+   * <p>A projection is derived from the context-free summary. When that summary is replaced, the
+   * projections derived from the OLD one no longer describe the current facts -- they are missing
+   * whatever the new summary added. A stale projection is a silent under-report, which is the one
+   * failure mode a context-sensitive layer must not have.
+   *
+   * <p>So the projections go when the summary they were derived from changes.
+   *
+   * @param signature the signature whose projections are now stale
+   */
+  private void invalidateProjectionsOf(String signature) {
+    if (signature == null || signature.isEmpty()) return;
+    contextual.keySet().removeIf(key -> key.signature().equals(signature));
   }
 
   /**
@@ -211,6 +243,9 @@ public final class FunctionSummaryCache {
           FunctionSummary combined = existing.merge(summary);
           return combined == null ? existing : combined;
         });
+    // The merged summary is a different summary, so the projections derived
+    // from the old one are stale.
+    invalidateProjectionsOf(signature);
   }
 
   /**
@@ -269,6 +304,7 @@ public final class FunctionSummaryCache {
    */
   public void clear() {
     map.clear();
+    contextual.clear();
     hits.reset();
     misses.reset();
   }
@@ -299,5 +335,101 @@ public final class FunctionSummaryCache {
    */
   public Map<String, FunctionSummary> snapshot() {
     return new LinkedHashMap<>(map);
+  }
+
+  // ── call-string-aware entries ──────────────────────────────────────────
+  //
+  // The entries above are the CALLEE's own facts: "this function does these things to its
+  // parameters", computed once from the function's body. Those are context-free by construction,
+  // and they stay that way -- the summary BUILDING method is not re-run per call site.
+  //
+  // What is context-sensitive is the CALLER's side: at a given call site, only some of the
+  // callee's formal parameters are reachable (the ones a tainted argument actually binds to),
+  // and the argument that binds to them differs from call site to call site.
+  //
+  // So the context-sensitive entry is not a second analysis of the callee. It is the callee's
+  // context-free summary, PROJECTED through one call site's binding: the operations on a formal
+  // parameter that the call site does not feed with taint are dropped, because at THIS call site
+  // nothing can reach them.
+  //
+  // The projection is monotone in the safe direction: a context-sensitive entry is always a
+  // SUBSET of the context-free one. A lookup that finds no context-sensitive entry falls back to
+  // the context-free one, so enabling this can only ever remove taint that provably could not
+  // reach the sink -- never add it, and never lose it.
+
+  /**
+   * The context-sensitive entry for a (signature, call string) pair.
+   *
+   * @param signature the callee's signature
+   * @param callString the call context
+   * @return the projected summary, or the empty summary when there is no such entry
+   */
+  public FunctionSummary getInContext(String signature, String callString) {
+    if (signature == null || signature.isEmpty()) {
+      return FunctionSummary.empty();
+    }
+    if (callString == null || callString.isEmpty()) {
+      return get(signature);
+    }
+    FunctionSummary s = contextual.get(new SummaryKey(signature, callString));
+    if (s != null) {
+      hits.increment();
+      return s;
+    }
+    misses.increment();
+    return FunctionSummary.empty();
+  }
+
+  /**
+   * Record the context-sensitive projection for a (signature, call string) pair.
+   *
+   * <p>Replaces any prior entry for the pair: a projection is derived, so a later, more precise
+   * projection of the same call site is the better answer.
+   *
+   * @param signature the callee's signature
+   * @param callString the call context
+   * @param summary the projected summary
+   */
+  public void putInContext(String signature, String callString, FunctionSummary summary) {
+    if (signature == null || signature.isEmpty() || summary == null) {
+      return;
+    }
+    if (callString == null || callString.isEmpty()) {
+      put(signature, summary);
+      return;
+    }
+    contextual.put(new SummaryKey(signature, callString), summary);
+  }
+
+  /**
+   * Whether a context-sensitive entry exists for a (signature, call string) pair.
+   *
+   * @param signature the callee's signature
+   * @param callString the call context
+   * @return true when there is one
+   */
+  public boolean hasInContext(String signature, String callString) {
+    if (signature == null || signature.isEmpty() || callString == null || callString.isEmpty()) {
+      return false;
+    }
+    return contextual.containsKey(new SummaryKey(signature, callString));
+  }
+
+  /**
+   * How many context-sensitive entries the cache holds.
+   *
+   * @return the count
+   */
+  public int contextualSize() {
+    return contextual.size();
+  }
+
+  /**
+   * A snapshot of the context-sensitive entries.
+   *
+   * @return a copy of the entries
+   */
+  public Map<SummaryKey, FunctionSummary> contextualSnapshot() {
+    return new LinkedHashMap<>(contextual);
   }
 }
