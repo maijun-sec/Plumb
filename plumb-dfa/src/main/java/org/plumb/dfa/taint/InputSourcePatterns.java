@@ -50,6 +50,18 @@ import java.util.List;
  * <p>This file centralises the list of such call patterns so the checkers don't drift out of sync.
  * Adding a new input source: add a new entry to {@link #DEFAULT_PATTERNS}; every checker that calls
  * {@link #isInputSourceCall} will pick it up automatically.
+ *
+ * <p><b>There is a second list, and this one does not own the whole answer.</b> The catalogue
+ * declares eleven taint SOURCE families with anchored patterns naming the API that carries
+ * untrusted data in ({@link SourceFamilyMatcher} reads them). The substring list below covers
+ * sources the catalogue does not declare -- the numeric parsers above all -- so neither list
+ * subsumes the other. {@link #matches(String, org.plumb.dfa.config.SinkFamilyRegistry,
+ * org.plumb.tac.ir.SourceLanguage)} asks BOTH, and the answer is their union.
+ *
+ * <p>The union is deliberate. The catalogue's patterns are anchored, so they do not match {@code
+ * Integer.parseInt}; the substring list has no owner, so it matches {@code
+ * com.example.MyReader.read}. Neither replaces the other, and the false negatives a one-sided
+ * answer produces are worse than the false positives a two-sided answer produces.
  */
 public final class InputSourcePatterns {
 
@@ -178,6 +190,43 @@ public final class InputSourcePatterns {
       if (normalized.contains(p)) return true;
     }
     return false;
+  }
+
+  /**
+   * Whether the callee is an input source, asking BOTH the substring list and the catalogue.
+   *
+   * <p><b>Why the union and not a choice.</b> The two lists cover different APIs:
+   *
+   * <ul>
+   *   <li>The substring list matches a method NAME anywhere, so it catches {@code Integer.parseInt}
+   *       -- which the catalogue does not declare, and which matters, because a parsed number is
+   *       still attacker-influenced.
+   *   <li>The catalogue's patterns are ANCHORED, so they catch {@code java.net.URL.getHost} and
+   *       {@code io.undertow.server.HttpServerExchange.getQueryParameters} -- which the substring
+   *       list does not match at all.
+   * </ul>
+   *
+   * <p>Neither list subsumes the other. Replacing the substring list with the catalogue would trade
+   * eight false negatives for a set of false negatives of its own, and replacing the catalogue with
+   * the substring list is what left the declared sources invisible in the first place.
+   *
+   * <p><b>Why the union is the safe direction.</b> A source the engine misses is a false NEGATIVE
+   * -- a value read from an untrusted place that the engine calls clean, blinding every sink
+   * downstream of it. A source the engine over-matches is a false POSITIVE. For a scanner, the
+   * asymmetry favours the union: it costs precision and buys soundness.
+   *
+   * @param callee the callee signature
+   * @param registry the catalogue, or {@code null} when there is none
+   * @param language the language of the code being analysed
+   * @return true when either list says this is an input source
+   */
+  public boolean matches(
+      String callee,
+      org.plumb.dfa.config.SinkFamilyRegistry registry,
+      org.plumb.tac.ir.SourceLanguage language) {
+    if (matches(callee)) return true;
+    if (registry == null) return false;
+    return registry.sourceFamilyMatcher().matches(callee, language);
   }
 
   /**

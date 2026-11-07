@@ -103,7 +103,7 @@ The concurrency model and resource usage of each stage:
 
 ### 3.0 The implementation shapes of the DFA checkers
 
-There are 191 `.java` files under `plumb-dfa/src/main/java`, and not every one of them is an independent analyser. By
+There are 192 `.java` files under `plumb-dfa/src/main/java`, and not every one of them is an independent analyser. By
 **actual implementation mechanism** they fall into a few categories (the counts are measured):
 
 | Shape | Count | Meaning |

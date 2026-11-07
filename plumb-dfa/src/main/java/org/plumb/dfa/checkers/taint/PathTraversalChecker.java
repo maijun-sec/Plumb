@@ -42,7 +42,6 @@ package org.plumb.dfa.checkers.taint;
 import java.util.Optional;
 import org.plumb.dfa.config.SinkFamily;
 import org.plumb.dfa.engine.AnalysisContext;
-import org.plumb.dfa.taint.InputSourcePatterns;
 import org.plumb.dfa.taint.TaintDomain;
 import org.plumb.dfa.taint.TaintRule;
 import org.plumb.dfa.taint.TaintedCheckerBase;
@@ -73,7 +72,7 @@ public final class PathTraversalChecker extends TaintedCheckerBase {
     String callee;
     super.checkInstruction(ins, fn, ctx);
     if (ins.kind == TacInstruction.Kind.CALL
-        && InputSourcePatterns.isInputSourceCall((String) (callee = ins.calleeSig))
+        && isInputSourceCall((String) (callee = ins.calleeSig), ctx)
         && (object = ins.dest) instanceof TacOperand.TacVar) {
       d = (TacOperand.TacVar) object;
       this.taintedVars.put(d, "input:" + callee);

@@ -163,11 +163,16 @@ Plumb 按 `owner.method/arity` 索引 —— 同样的信息，但不依赖编�
 | **共享的、语言无关的原语词汇** | 已实现 | `Operation`（summary 侧代数）+ `LanguageSemantics`（callee 行为） |
 | **显式的"未知"／黑盒语义** | 已实现 | `TaintBehaviour.UNKNOWN` 与 `BLACK_BOX`；`Operation.HasUnmodelledBehavior`；`Operation.UnmodelledCall` |
 | **每个 checker 都能看见分析预算** | 已实现 | `AnalysisBudget`；`AnalysisCompleteness`；SARIF 的 `executionSuccessful` 标志 |
-| **调用字符串上下文敏感（k-CFA）** | **未实现** | `context_depth: 0` 关闭跨函数折叠；正值保持当前的递归折叠。这就是诚实状态，设置本身也是这么说的。 |
+| **调用字符串上下文敏感（k-CFA）** | **部分实现** | 调用方把被调方的摘要按调用点的参数绑定投影一遍，键是一个 1-CFA 调用串。`context_depth: 0` 仍然关闭跨函数折叠；正值不是有界的 k-调用串前缀。见 [`ENGINE-GAP-ANALYSIS.md` §2.2a](ENGINE-GAP-ANALYSIS.md)。 |
 
 第六条要特别小心。配置里的 `context_depth: 2` **不等于** 2-CFA；它的意思是"保持跨函数边界
 折叠"。把它写成 k-CFA 就是一次虚假承诺，而这正是
 [`ENGINE-GAP-ANALYSIS.md`](ENGINE-GAP-ANALYSIS.md) 要终结的那种失败模式。
+
+**此后发生的变化。** summary 缓存现在有了第二层、按调用串做键的条目，而调用方一侧是上下文
+敏感的：被调方自己的事实仍然上下文无关、只算一次，而摘要按它被到达的那个调用点的绑定投影。
+于是同一被调方的两个调用点不再共用一份答案。那是 1-CFA，而且它不等于 `context_depth` 这个
+设置变成了 k-CFA —— 该设置仍然区分「不做跨函数分析」和「有跨函数分析」，它自己也是这么说的。
 
 ### 2.3 值得点名的一个结构差异
 
@@ -240,11 +245,76 @@ finding？
 
 | 项目 | 状态 | 说明 |
 |---|---|---|
-| 17 个没有 watcher 的 family | **开着** | 早于迁移。其中几个命名了已不存在的 API；几个和已有 family 重叠。每个都需要一个决定：写 watcher、合并进已有 watcher 的 family，或者删掉。 |
-| `context_depth` 作为真正的 k-CFA | **开着** | 设置已被消费（0 关闭折叠），但它不是 k-CFA。 |
+| 17 个没有 watcher 的 family | **开着** | 早于迁移。其中九个和已有 watcher 的 family 重叠；其余命名的是这里分析的项目并不依赖的库。每个都需要一个决定：写 watcher、合并进已有 watcher 的 family，或者删掉。 |
+| `context_depth` 作为真正的 k-CFA | **开着** | 设置已被消费（0 关闭折叠），但它不是 k-CFA。调用串投影是 1-CFA，是另一套机制；见 §2.2。 |
 | 路径敏感可达性 | **部分** | 算术矛盾判定已有；通用的路径条件还没有。 |
-| 对象敏感分析 | **开着** | points-to 传播已经存在，但没有消费方。 |
+| 对象敏感分析 | **已完成** | points-to 传播现在既有生产者也有消费者：引擎把被调方的分配点挂到摘要上，调用方的接收者继承它们。同一类的两个实例可以区分开了。 |
+| `TaintBehaviour.PRODUCES_TAINT` / `BLACK_BOX` | **开着** | 两个常量都存在，但没有任何表填它们。目前这两种行为的调用与没有条目的调用无法区分。 |
 | Scala：可变参数、try/catch、by-name 参数、隐式、tuple 解构、match guard | **开着** | 全部有报告。见 [`TAC-COVERAGE.md`](TAC-COVERAGE.md)。 |
+
+**语言语义表现在覆盖四种语言，不是两种。** 注册表注册了 Java、Kotlin、Scala 和 C#
+（`LanguageSemanticsRegistry.java:79-82`），而且没有注册表的语言拿到的是一张空表而不是 null ——
+所以这四种语言之间的差别是表的大小不同，而不是「这个语言到底被理解没有」不同。
+
+### 3.5 那 17 个没有 watcher 的 family，分类之后
+
+这个数字可以精确复现：目录里有 82 个 family key，被 checker 或规则点名 53 个，没 watcher 的
+29 个，其中迁移来的 12 个现在都有了 watcher —— 于是剩下 **17**。
+
+要紧的是它们**不是同一种东西**，而之前把它们描述成「几个命名了已不存在的 API」在要紧的
+地方是错的：它提到的那些 API 名（`atg.*`、`flex.*`、`oracle.jbo.*`）在本仓库里**哪里都不存在**
+——目录里没有，源码里也没有。它们只存在于提到它们的那份文档里。
+
+| 类别 | 数量 | 是什么 |
+|---|---:|---|
+| 和已有 watcher 的 family 重叠 | 9 | `format.sinks` 与 `format-string.sinks` 重复；`cookie-write.sinks` 与 `cookie.sinks` 重复；`http-header-write.sinks` 与 `header.sinks` 重复；`redirect.sinks` 与 `open-redirect.sinks` 重复；`sensitive-log.sinks` 和 `db-credential.sinks` 与 `credential.sinks` 重复；`predictable-seed.sinks` 与 `insecure-random.sinks` 重复；`url.sinks` 和 `sensitive-url.sinks` 与 `ssrf.sinks` 重复。 |
+| 真实且独立的缺陷类别 | 5 | `cors.sinks`（CWE-942）、`unencrypted-credential.sinks`（CWE-311）与 `oauth-credential.sinks`（CWE-798）—— 同样的 API，但 **CWE 不同**，所以彼此不是重复；`registry.sinks`（CWE-15）；`android-clipboard.sinks`（CWE-200）。 |
+| 污点**源** family | 8 | `taint.sources.*` 之类。它们的消费者是 `InputSourcePatterns`，而它的 `DEFAULT_PATTERNS` 是一份**硬编码清单**（`InputSourcePatterns.java:62`），从不读目录 —— 所以目录里的源条目在结构上是死的。 |
+| 命名了这里没有依赖的库 | 其余 | `org.glassfish.jersey.*`、`software.amazon.awssdk.*`、`android.*`、`org.apache.dubbo.*`、`org.jclouds.*`、`play.mvc.*` —— 在任何被跟踪的 `pom.xml` 里都不出现。 |
+
+**为什么「源 family」这一类才是要紧的。** 一个因为与已有 family 重叠而没有 watcher 的 family
+并不损失什么：那个 watcher 会开火。一个因为库不存在而没有 watcher 的 family 也不损失什么：
+没有分析到的项目会有那个库。但一个**源**family 没有 watcher 是损失了能力的，因为目录说
+「这个 API 是污点源」，而引擎不相信。目录和引擎互相矛盾，而跑起来的是引擎。§3.6 就是把这个
+矛盾修掉。
+
+### 3.6 目录里的污点源 family 现在被相信了
+
+**矛盾的形状。** `sink-families.yaml` 声明了 11 个污点源 family，每个都用锚定的 pattern 点名
+那个把不可信数据带进来的 API。而引擎判断「什么算输入源」用的是**另一份硬编码子串清单**
+（`InputSourcePatterns`），目录从未被问到。于是目录声明的源，引擎看不见。
+
+**代价是什么。** 一个引擎不认识的已声明源是**漏报**：值从一个不可信的地方读出来，引擎却把它
+当干净，下游每一个 sink 都瞎了。对着目录实测，有 8 个源是不可见的：
+
+| Callee | Family |
+|---|---|
+| `java.lang.System.console` | `taint.sources.console` |
+| `java.util.Scanner.next` | `taint.sources.io` |
+| `java.net.URL.getHost` | `ip-address.sources` |
+| `java.net.InetAddress.getByName` | `dns.sources` |
+| `java.security.Principal.getName` | `principal.sources` |
+| `javax.servlet.request.getUserPrincipal` | `principal.sources` |
+| `org.springframework.http.HttpHeaders.getFirst` | `taint.sources.web` |
+| `io.undertow.server.HttpServerExchange.getQueryParameters` | `taint.sources.web` |
+
+**为什么答案是并集而不是替换。** 目录的 pattern 是**锚定**的，所以它不匹配
+`Integer.parseInt` —— 而一个解析出来的数字仍然受攻击者影响，数值类 sink（CWE-789 / CWE-190 /
+CWE-191）就靠它。子串清单**没有 owner**，所以它会匹配 `com.example.MyReader.read`。两份清单
+互不包含：用目录替换子串清单，会把 8 个漏报换成另一组漏报；用子串清单替换目录，正是最初让
+已声明的源不可见的原因。
+
+**决定方向的不对称。** 引擎**漏掉**的源是漏报；引擎**多认**的源是误报。对一个扫描器来说，
+这个不对称偏向并集：它花掉精度，换来可靠性。所以引擎两份清单都问，答案是它们的并集。
+
+**什么才算一个源 family。** 没有 CWE 的 family。目录靠 `cwe:` 键的**缺失**来区分源和 sink，
+而这也是唯一可用的区分方式——YAML 里没有角色标记。`SourceFamilyMatcher` 读的就是这个区分，
+所以往目录里加一个源 family 就足以让引擎相信它，不需要改代码。
+
+**为什么匹配是语言感知的。** 一个有语言限制的 family 不该为别的语言的调用背锅：
+`kotlin.io.readLine` 是 Kotlin 的 API，而一个含有那个字符串的 Java 文件并没有在读 Kotlin 的
+标准输入。注册表本来就能回答「这个 family 适不适用于这个语言」，所以这个问题在那里问，
+而不是在这里重问一遍。
 
 ---
 

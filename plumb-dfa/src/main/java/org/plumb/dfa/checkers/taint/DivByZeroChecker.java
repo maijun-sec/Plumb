@@ -54,7 +54,6 @@ import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.summary.Operation;
 import org.plumb.dfa.taint.GuardTracker;
-import org.plumb.dfa.taint.InputSourcePatterns;
 import org.plumb.dfa.taint.TaintDomain;
 import org.plumb.dfa.taint.TaintRule;
 import org.plumb.dfa.taint.TaintedCheckerBase;
@@ -117,8 +116,7 @@ public final class DivByZeroChecker extends TaintedCheckerBase {
     // "may-be-zero".
     if (ins.kind == TacInstruction.Kind.CALL) {
       String callee = ins.calleeSig;
-      if (InputSourcePatterns.isInputSourceCall(callee)
-          && ins.dest instanceof TacOperand.TacVar d) {
+      if (isInputSourceCall(callee, ctx) && ins.dest instanceof TacOperand.TacVar d) {
         markSource(d, "input:" + callee, ins, fn.signature(), "input " + callee);
       }
     }

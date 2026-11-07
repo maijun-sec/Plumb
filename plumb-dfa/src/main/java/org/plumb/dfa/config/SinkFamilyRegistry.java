@@ -68,6 +68,7 @@ public final class SinkFamilyRegistry {
     // cache because new family might
     // match previously-uncached sigs.
     lookupAllCache.clear();
+    sourceMatcherCache.set(null);
     return prev;
   }
 
@@ -77,6 +78,7 @@ public final class SinkFamilyRegistry {
     // Same as register: cache
     // invalidation.
     lookupAllCache.clear();
+    sourceMatcherCache.set(null);
     return prev;
   }
 
@@ -110,6 +112,39 @@ public final class SinkFamilyRegistry {
    */
   private final java.util.concurrent.ConcurrentHashMap<String, List<SinkFamily>> lookupAllCache =
       new java.util.concurrent.ConcurrentHashMap<>();
+
+  /**
+   * The matcher for this catalogue's taint SOURCE families.
+   *
+   * <p>A source family is one with no CWE, and the matcher groups them by language so a
+   * language-restricted family is not blamed for another language's call. The matcher caches its
+   * own answers, so it is built once per registry rather than once per lookup.
+   *
+   * <p>It lives HERE rather than in a static map for two reasons. A static map keyed by the
+   * registry's identity would keep every registry the process ever loaded alive, and a long-running
+   * server loads a new one per configuration. And a registry can change at runtime -- {@link
+   * #register} and {@link #deregister} mutate it -- so a matcher derived from it has to be
+   * invalidated exactly where the other cache is.
+   *
+   * <p>Invalidated by {@link #register} and {@link #deregister}, alongside {@link #lookupAllCache}.
+   */
+  private final java.util.concurrent.atomic.AtomicReference<org.plumb.dfa.taint.SourceFamilyMatcher>
+      sourceMatcherCache = new java.util.concurrent.atomic.AtomicReference<>();
+
+  /**
+   * The matcher for this catalogue's taint source families.
+   *
+   * <p>Built on first use and rebuilt whenever the catalogue changes.
+   *
+   * @return the matcher
+   */
+  public org.plumb.dfa.taint.SourceFamilyMatcher sourceFamilyMatcher() {
+    org.plumb.dfa.taint.SourceFamilyMatcher cached = sourceMatcherCache.get();
+    if (cached != null) return cached;
+    org.plumb.dfa.taint.SourceFamilyMatcher created =
+        new org.plumb.dfa.taint.SourceFamilyMatcher(this);
+    return sourceMatcherCache.compareAndSet(null, created) ? created : sourceMatcherCache.get();
+  }
 
   public List<SinkFamily> lookupAll(String calleeSignature) {
     if (calleeSignature == null) return List.of();

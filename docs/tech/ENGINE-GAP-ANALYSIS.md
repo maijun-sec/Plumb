@@ -83,12 +83,20 @@ Stated plainly, so nothing downstream has to guess:
 - The analysis is **flow-sensitive** — instructions are visited in BB-RPO order, forward inside a
   block (`plumb-dfa/src/main/java/org/plumb/dfa/engine/DfaEngine.java:94`).
 - The analysis is **not path-sensitive** — there is no CFG join and no lattice meet. One forward
-  pass per function (`DfaEngine.java:1737`), a flat fact map, no re-iteration.
-- The analysis is **not call-string context-sensitive** — the summary cache is keyed by plain
-  function signature (`plumb-dfa/src/main/java/org/plumb/dfa/summary/FunctionSummaryCache.java:77`),
-  so two call sites of one callee share one summary regardless of the call-graph strategy.
-- The analysis is **not object-sensitive** — taint is attached to a `TacVar`, never to an
-  allocation site. The points-to solver exists and runs, but its results do not sharpen taint.
+  pass per function (`DfaEngine.java:1738-1743`), a flat fact map, no re-iteration.
+- The analysis is **call-string context-sensitive at the call site, and context-free inside the
+  callee** — the callee's own facts are computed once and keyed by plain signature
+  (`plumb-dfa/src/main/java/org/plumb/dfa/summary/FunctionSummaryCache.java:77`); the caller's side
+  projects those facts through the call site's parameter binding, keyed by
+  `SummaryKey(signature, callString)` (`FunctionSummaryCache.java:90`). The call string is the
+  caller's signature and the instruction's index inside the caller, so two call sites of one callee
+  no longer share one answer — see [§2.2a](#22a-g8-the-summary-is-only-true-relative-to-the-call-site).
+- The analysis is **object-sensitive for FIELD taint, and not for scalar taint** — a field's taint is
+  recorded under the receiving object's allocation identity (`AccessPathTaintStore`,
+  `TaintedCheckerBase.java:3166`), so a field written on one instance is not read back on another.
+  Scalar taint is still attached to a `TacVar`, never to an allocation site, and the points-to
+  solver's results reach the taint lattice only through the two chains in §2.3 and §2.4 — never as
+  a direct sharpening of a scalar.
 
 ---
 
@@ -140,7 +148,7 @@ not an error -- it is the cost of the analysis. A run that never consulted the c
 |---|---|---|---|
 | **G6** | Make the reachability check reachable for every rule: collect the function's guard facts once, and decide unreachability from them. | A source whose guards contradict each other does not reach the sink; the same code without the contradiction still reports. | **done, differently** |
 | **G7** | Feed the solver a **path condition composed of the guards along the actual path**, not a per-sink predicate. | A finding is suppressed only when the conjunction of the path's guards is `UNSAT`. | **done** |
-| **G8** | Make the summary cache **call-string aware** when the call-graph strategy is `1cfa` or `2cfa`, so the k-CFA depth knob becomes real. | Two call sites of one callee with different arguments produce different summaries. | **open** |
+| **G8** | Make the summary cache **call-string aware** when the call-graph strategy is `1cfa` or `2cfa`, so the k-CFA depth knob becomes real. | Two call sites of one callee with different arguments produce different summaries. | **done, differently** |
 | **G9** | Wire the points-to solver into the taint lattice, so `Operation.PointsToPropagate` has a producer and a consumer. | Taint on two distinct instances of one class no longer merges. | **done** |
 | **G10** | Give the access-path store a producer and a consumer, so a field's taint belongs to an OBJECT rather than to a variable name. | A field written on one object is not read back on another. | **done** |
 
@@ -214,6 +222,59 @@ there would be a false NEGATIVE.
 > **A filter that suppresses everything passes a test that only checks that a finding disappeared.**
 > The negative case is the one that makes the positive case mean something, and here the negative
 > case was the one that was wrong.
+
+### 2.2a G8: the summary is only true relative to the call site
+
+The plan was: key the summary cache by `(signature, call string)` when the call-graph strategy is
+`1cfa` or `2cfa`. The mechanism is in place and it works -- but **the context sensitivity is on the
+caller's side, not the callee's**, and the call string does not come from the call graph.
+
+**The shape of the problem.** A summary says "this function propagates its parameters' taint to its
+return value". That is a statement about the function GIVEN which of its parameters were tainted. A
+helper called once with attacker input and once with a constant does not return tainted data at both
+call sites -- it returns tainted data at one of them. With one shared summary per function, the two
+call sites share the union, so the constant call inherits the tainted call's taint and the sink fires
+on a value that never was tainted.
+
+**What was built.** The summary is still built ONCE from the callee's body -- the
+summary-building method is not re-run per call site, and the callee's own facts stay
+context-free. What is context-sensitive is the CALLER's side: the summary is **projected through
+the call site's parameter binding** -- "which argument was tainted, and which formal parameter does
+it bind to" -- and the projection keeps only the formal parameters this call site actually feeds
+with taint.
+
+| Piece | What it is |
+|---|---|
+| `SummaryKey` | The identity of a summary entry: the callee's signature **and** the call context |
+| `CallSiteBinding` | The caller's statement about one call: which arguments were tainted, and which formal each binds to |
+| `FunctionSummary.returnTaintCauses()` | The formal parameters the return value's taint flows through |
+| `FunctionSummary.projectThrough(binding)` | The projection: keep only the facts reachable through that binding |
+
+**Why the call string does not come from the call graph.** The call graph's
+`CallSite.callerInstructionIndex` is `-1` in six of the nine places a call site is constructed --
+including every strategy named `1cfa` and `2cfa`, which are the ones a reader would most expect to
+carry a call site. The instruction index, by contrast, is recorded by the engine before each
+instruction is analysed (`AnalysisContext.currentInstructionIndex`), so it is available wherever the
+analysis actually is. The call string is the caller's signature and that index, joined by `#` --
+the format `PointsToSolver` already builds for its own contexts, so the engine's two
+context-sensitive mechanisms speak the same vocabulary.
+
+**Why the projection can only remove taint.** It is a subset operation, and a lookup that finds no
+projection falls back to the context-free summary. So a context-sensitive lookup finds strictly LESS
+than a context-insensitive one, never more, and never nothing when the context-free one had
+something. That is what makes it safe to enable: it cannot introduce a false negative.
+
+**Why the contextual entries live in their own map.** Merging them into the context-free map would
+let a context-free lookup return a projection -- and a projection is missing the operations that
+call site could not reach, so returning one as if it were the whole summary would under-report. For
+the same reason, a projection is dropped when the summary it was derived from is replaced or merged:
+a stale projection is a silent under-report, which is the one failure mode a context-sensitive layer
+must not have.
+
+**What it does NOT do.** The `context_depth` setting is still not k-CFA depth -- it distinguishes "no
+cross-function analysis" from "there is cross-function analysis", as G3 says. The call string is
+one call site deep (1-CFA), not a bounded k-call-string prefix, and the projection applies to the
+taint-propagation path only.
 
 ### 2.3 G9 was a record with no producer and no consumer
 
@@ -320,8 +381,43 @@ records which rule produced a helper's finding so that the next reader of it is 
 
 | ID | Work | Rationale |
 |---|---|---|
-| **G11** | Per-language `TaintBehaviour.PRODUCES_TAINT` and `BLACK_BOX` | Both enum constants exist and **no table populates them**. The language-semantics registry covers Java and Kotlin only (`plumb-dfa/src/main/java/org/plumb/dfa/semantics/LanguageSemanticsRegistry.java:77`); Scala and Groovy get the empty table. |
+| **G11** | Per-language `TaintBehaviour.PRODUCES_TAINT` and `BLACK_BOX` | Both enum constants exist and **no table populates them**. The registry now covers Java, Kotlin, Scala and C# (`plumb-dfa/src/main/java/org/plumb/dfa/semantics/LanguageSemanticsRegistry.java:79-82`); only Groovy and `UNKNOWN` get the empty table. |
 | **G12** | A `ReverseTaintWalker` | Named in configuration, does not exist. G4 removes the name; if the technique is wanted later, it comes back as a real class. |
+
+### 2.5 G11 is inert at BOTH ends, and populating the tables alone would change nothing
+
+The gap is usually described as "no table populates `PRODUCES_TAINT` or `BLACK_BOX`". That is true,
+and it is the smaller half of it.
+
+**The accessors have no consumer either.** `LanguageSemantics.producesTaint` and
+`LanguageSemantics.isBlackBox` are called from nowhere outside their own file — the only caller is
+the registry's own self-test (`LanguageSemanticsTest.java:354`). So even a fully populated table
+would change no analysis result: the engine would look up the behaviour and nothing would read the
+answer.
+
+**What the engine does instead.** The only behaviour the engine actually consults is
+`preservesTaint` (`TaintedCheckerBase.java:1176`), and it consults it on the `UNINTERPRETED`
+branch. `UNKNOWN` and `PRESERVES` both return `true` there, so a call with no table entry and a
+call that is known to preserve its arguments' taint are treated identically. That is the safe
+default, and it is why the missing tables have not produced visible noise.
+
+**So the work is two halves, and the second half is the one that matters.** Populating the tables
+is the cheap half. The other half is deciding what each behaviour means for the engine:
+
+- `PRODUCES_TAINT` says the result may be tainted **regardless of the arguments** — a clock read, a
+  random generator. The engine's notion of tainted is "attacker-controlled", and this behaviour
+  means "not attacker-controlled, but not clean either". Marking such a result tainted would make
+  every rule fire on it, which is a different rule (a "weak random" rule, say) and not a taint
+  rule.
+- `BLACK_BOX` says the engine does not model the call. The javadoc already names the intended
+  representation -- an `UNINTERPRETED` instruction rather than a plain `CALL`, so the "I do not know
+  this" is recorded in the IR instead of being implied by the absence of a summary. That is a
+  **frontend** decision, and it is the one place the behaviour would actually bite.
+
+**Why this is not a quick win.** Both behaviours need a semantic decision about what they mean for
+the engine, and a table without a consumer is exactly the shape this document was written to
+identify. Adding the entries and leaving the accessors unread would turn one inert mechanism into
+two.
 
 ---
 
@@ -396,6 +492,10 @@ searchable — so each inert row names the file whose field or hook was checked.
 | Taint rules bound by shipped checkers | 55 | 55 `TaintedCheckerBase` subclasses |
 | `TaintBehaviour.PRODUCES_TAINT` entries | 0 | language-semantics registry |
 | `TaintBehaviour.BLACK_BOX` entries | 0 | language-semantics registry |
-| `AccessPathTaintStore` consumers | 1 | whole-tree grep |
+| `producesTaint` / `isBlackBox` production consumers | 0 / 0 | whole-tree grep outside their own file |
+| Languages with a populated semantics table | 4 | Java, Kotlin, Scala, C# (`LanguageSemanticsRegistry.java:79-82`) |
+| Context-free summary cache read sites | 9 | whole-tree grep, 6 of them in the taint path |
+| Context-sensitive projection read sites | 1 | `TaintedCheckerBase.java:4812` |
+| `AccessPathTaintStore` consumer files / call sites | 1 / 3 | whole-tree grep; the file is `TaintedCheckerBase` |
 | `PointsToPropagate` producers / consumers | 1 / 2 | whole-tree grep |
 | `pathConditionForSink` overrides | 0 | whole-tree grep |

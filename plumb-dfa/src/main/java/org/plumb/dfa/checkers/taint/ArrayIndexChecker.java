@@ -50,7 +50,6 @@ import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.summary.Operation;
 import org.plumb.dfa.taint.GuardTracker;
-import org.plumb.dfa.taint.InputSourcePatterns;
 import org.plumb.dfa.taint.TaintDomain;
 import org.plumb.dfa.taint.TaintRule;
 import org.plumb.dfa.taint.TaintedCheckerBase;
@@ -111,7 +110,7 @@ public final class ArrayIndexChecker extends TaintedCheckerBase {
     String callee;
     super.checkInstruction(ins, fn, ctx);
     if (ins.kind == TacInstruction.Kind.CALL
-        && InputSourcePatterns.isInputSourceCall((String) (callee = ins.calleeSig))
+        && isInputSourceCall((String) (callee = ins.calleeSig), ctx)
         && (tacOperand = ins.dest) instanceof TacOperand.TacVar) {
       d = (TacOperand.TacVar) tacOperand;
       this.taintedVars.put(d, "input:" + callee);

@@ -1065,7 +1065,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // don't override a summary-fold
         // result.
         if (ins.dest instanceof TacOperand.TacVar d
-            && InputSourcePatterns.isInputSourceCall(ins.calleeSig)
+            && isInputSourceCall(ins.calleeSig, ctx)
             && !taintedVars.containsKey(d)) {
           markSource(d, "input:" + ins.calleeSig, ins, fn.signature(), "input " + ins.calleeSig);
         }
@@ -1094,7 +1094,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // downstream numeric-taint sinks fire.
         if (isSanitizer(ins.calleeSig)
             && ins.dest instanceof TacOperand.TacVar sanDv
-            && !InputSourcePatterns.isInputSourceCall(ins.calleeSig)) {
+            && !isInputSourceCall(ins.calleeSig, ctx)) {
           taintedVars.remove(sanDv);
           taintPaths.remove(sanDv);
         }
@@ -1511,6 +1511,42 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     org.plumb.tac.ir.SourceLanguage lang =
         fn == null ? org.plumb.tac.ir.SourceLanguage.UNKNOWN : fn.sourceLanguage();
     return ctx.config().languageSemantics().forLanguage(lang);
+  }
+
+  /**
+   * The language of the function being analysed.
+   *
+   * @param ctx the analysis context
+   * @return the language, or {@code UNKNOWN} when it cannot be determined
+   */
+  protected static org.plumb.tac.ir.SourceLanguage languageFor(AnalysisContext ctx) {
+    if (ctx == null) return org.plumb.tac.ir.SourceLanguage.UNKNOWN;
+    org.plumb.tac.ir.TacFunction fn = ctx.currentFunction();
+    return fn == null ? org.plumb.tac.ir.SourceLanguage.UNKNOWN : fn.sourceLanguage();
+  }
+
+  /**
+   * Whether the callee is a taint source, asking BOTH the substring list and the catalogue.
+   *
+   * <p><b>Why both.</b> The catalogue declares eleven source families with anchored patterns naming
+   * the API that carries untrusted data in; the substring list covers sources the catalogue does
+   * not declare, such as the numeric parsers. Neither subsumes the other, so the answer is their
+   * union. See {@link SourceFamilyMatcher} for the measurement.
+   *
+   * <p><b>Why it matters.</b> A declared source the engine does not recognise is a false NEGATIVE:
+   * the value is read from an untrusted place, the engine calls it clean, and every sink downstream
+   * of it is blind.
+   *
+   * @param callee the callee signature
+   * @param ctx the analysis context
+   * @return true when either list says this is an input source
+   */
+  protected static boolean isInputSourceCall(String callee, AnalysisContext ctx) {
+    if (callee == null) return false;
+    if (InputSourcePatterns.isInputSourceCall(callee)) return true;
+    if (ctx == null) return false;
+    return InputSourcePatterns.defaults()
+        .matches(callee, ctx.config().sinkFamilies(), languageFor(ctx));
   }
 
   /**
@@ -2229,7 +2265,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // / CWE-191) blind. Mirrors the fix in
       // the early sanitizer short-circuit
       // earlier in the CALL handler.
-      if (InputSourcePatterns.isInputSourceCall(calleeSig)) {
+      if (isInputSourceCall(calleeSig, ctx)) {
         // Skip : keep the seed.
       } else {
         taintedVars.remove(dv);

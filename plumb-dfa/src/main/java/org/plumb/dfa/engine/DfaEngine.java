@@ -1172,7 +1172,8 @@ public final class DfaEngine {
               // passthrough) or from a taint source callee.
               String from = labelOfAnyArg(ins, lab);
               if (from == null
-                  && org.plumb.dfa.taint.InputSourcePatterns.isInputSourceCall(ins.calleeSig)) {
+                  && org.plumb.dfa.taint.InputSourcePatterns.defaults()
+                      .matches(ins.calleeSig, ctx.config().sinkFamilies(), fn.sourceLanguage())) {
                 from = "input:" + ins.calleeSig;
               }
               if (from != null && !from.equals(lab.get(destName))) {

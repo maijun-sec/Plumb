@@ -189,12 +189,19 @@ already implemented; two are not.
 | **Shared, language-agnostic primitive vocabulary** | Implemented | `Operation` (the summary algebra) + `LanguageSemantics` (the callee behaviour) |
 | **Explicit "unknown" / black-box semantics** | Implemented | `TaintBehaviour.UNKNOWN` and `BLACK_BOX`; `Operation.HasUnmodelledBehavior`; `Operation.UnmodelledCall` |
 | **Per-checker visibility of the analysis budget** | Implemented | `AnalysisBudget`; `AnalysisCompleteness`; the SARIF `executionSuccessful` flag |
-| **Call-string context sensitivity (k-CFA)** | **Not implemented** | `context_depth: 0` disables cross-function folding; a positive value keeps the current recursive folding. This is the honest state, and the setting says so. |
+| **Call-string context sensitivity (k-CFA)** | **Partially implemented** | The caller projects the callee's summary through the call site's parameter binding, keyed by a 1-CFA call string. `context_depth: 0` still disables cross-function folding; a positive value is not a bounded k-call-string prefix. See [`ENGINE-GAP-ANALYSIS.md` §2.2a](ENGINE-GAP-ANALYSIS.md). |
 
 The sixth is the one to be careful about. A `context_depth: 2` in the configuration does **not**
 mean 2-CFA; it means "keep folding across function boundaries". Documenting it as k-CFA would be
 a false promise, which is the specific failure mode
 [`ENGINE-GAP-ANALYSIS.md`](ENGINE-GAP-ANALYSIS.md) was written to end.
+
+**What has since changed.** The summary cache now has a second, call-string-keyed layer, and the
+caller's side is context-sensitive: the callee's own facts stay context-free and are computed once,
+and the summary is projected through the binding of the call site it was reached through. So two
+call sites of one callee no longer share one answer. That is 1-CFA, and it is not the `context_depth`
+setting becoming k-CFA -- the setting still distinguishes "no cross-function analysis" from "there
+is cross-function analysis", and it says so.
 
 ### 2.3 The one structural difference worth naming
 
@@ -271,11 +278,86 @@ Reachability is now a **test**, not a claim:
 
 | Item | Status | Note |
 |---|---|---|
-| 17 families with no watcher | **open** | Predate the migration. Several name APIs that no longer exist; several overlap an existing family. Each needs a decision: write a watcher, merge it into a family that has one, or delete it. |
-| `context_depth` as real k-CFA | **open** | The setting is consumed (0 disables folding) but is not k-CFA. |
+| 17 families with no watcher | **open** | Predate the migration. Nine overlap a family that already has a watcher; the rest name APIs from libraries no analysed project here depends on. Each needs a decision: write a watcher, merge it into a family that has one, or delete it. |
+| `context_depth` as real k-CFA | **open** | The setting is consumed (0 disables folding) but is not k-CFA. The call-string projection is 1-CFA and is a separate mechanism; see §2.2. |
 | Path-sensitive reachability | **partial** | The arithmetic contradiction check is in; the general path condition is not. |
-| Object-sensitive analysis | **open** | The points-to propagation exists but has no consumer. |
+| Object-sensitive analysis | **done** | The points-to propagation has both a producer and a consumer now: the engine attaches the callee's alloc sites to the summary, and the caller's destination inherits them. Two instances of one class are separable. |
+| `TaintBehaviour.PRODUCES_TAINT` / `BLACK_BOX` | **open** | Both constants exist and no table populates either. A call with either behaviour is currently indistinguishable from one with no entry. |
 | Scala: varargs, try/catch, by-name parameters, implicits, tuple destructuring, match guards | **open** | All reported. See [`TAC-COVERAGE.md`](TAC-COVERAGE.md). |
+
+**The language-semantics tables now cover four languages, not two.** The registry registers Java,
+Kotlin, Scala and C# (`LanguageSemanticsRegistry.java:79-82`), and a language with no registered
+table gets an empty one rather than a null — so the coverage difference between the four is a
+difference in table size, not in whether the language is understood at all.
+
+### 3.5 The 17 unwatched families, classified
+
+The count reproduces exactly: 82 family keys in the catalogue, 53 named by a checker or a rule, 29
+unwatched, of which the 12 migration families now all have watchers — leaving **17**.
+
+What matters is that they are **not one kind of thing**, and the previous description of them as
+"several name APIs that no longer exist" was wrong in a way that mattered: the API names it
+invoked (`atg.*`, `flex.*`, `oracle.jbo.*`) appear **nowhere in this repository** — not in the
+catalogue, not in any source file. They survive only in the document that mentions them.
+
+| Class | Count | What they are |
+|---|---:|---|
+| Overlaps a watched family | 9 | `format.sinks` duplicates `format-string.sinks`; `cookie-write.sinks` duplicates `cookie.sinks`; `http-header-write.sinks` duplicates `header.sinks`; `redirect.sinks` duplicates `open-redirect.sinks`; `sensitive-log.sinks` and `db-credential.sinks` duplicate `credential.sinks`; `predictable-seed.sinks` duplicates `insecure-random.sinks`; `url.sinks` and `sensitive-url.sinks` duplicate `ssrf.sinks`. |
+| A real, distinct defect class | 5 | `cors.sinks` (CWE-942), `unencrypted-credential.sinks` (CWE-311) and `oauth-credential.sinks` (CWE-798) — the same APIs but **different CWEs**, so neither is a duplicate of the other; `registry.sinks` (CWE-15); `android-clipboard.sinks` (CWE-200). |
+| A taint SOURCE family | 8 | `taint.sources.*` and friends. **Now watched.** Their consumer is `SourceFamilyMatcher`, which reads the catalogue's source families and applies the catalogue's own anchored patterns. See §3.6. |
+| Names a library nothing here depends on | the remainder | `org.glassfish.jersey.*`, `software.amazon.awssdk.*`, `android.*`, `org.apache.dubbo.*`, `org.jclouds.*`, `play.mvc.*` — none appear as a dependency in any tracked `pom.xml`. |
+
+**Why the source-family class is the one that matters.** A family that is unwatched because it
+overlaps a watched one loses nothing: the watcher fires. A family that is unwatched because its
+library is absent loses nothing either — no analysed project has that library. But a **source**
+family that is unwatched loses a capability, because the catalogue says "this API is a taint
+source" and the engine does not believe it. The catalogue and the engine disagree, and the engine
+is what runs. §3.6 is that disagreement, fixed.
+
+### 3.6 The catalogue's source families are now believed
+
+**The shape of the disagreement.** `sink-families.yaml` declares eleven source families, each with
+anchored patterns naming the API that carries untrusted data in. The engine decided what an input
+source is from a **separate hardcoded substring list** (`InputSourcePatterns`) that the catalogue
+never reached. So the catalogue declared sources the engine did not see.
+
+**What that cost.** A declared source the engine does not recognise is a false **negative**: the
+value is read from an untrusted place, the engine calls it clean, and every sink downstream of it
+is blind. Measured against the catalogue, eight sources were invisible:
+
+| Callee | Family |
+|---|---|
+| `java.lang.System.console` | `taint.sources.console` |
+| `java.util.Scanner.next` | `taint.sources.io` |
+| `java.net.URL.getHost` | `ip-address.sources` |
+| `java.net.InetAddress.getByName` | `dns.sources` |
+| `java.security.Principal.getName` | `principal.sources` |
+| `javax.servlet.request.getUserPrincipal` | `principal.sources` |
+| `org.springframework.http.HttpHeaders.getFirst` | `taint.sources.web` |
+| `io.undertow.server.HttpServerExchange.getQueryParameters` | `taint.sources.web` |
+
+**Why the answer is a union and not a replacement.** The catalogue's patterns are **anchored**, so
+they do not match `Integer.parseInt` — and a parsed number is still attacker-influenced, and the
+numeric-taint sinks (CWE-789 / CWE-190 / CWE-191) depend on it. The substring list has **no
+owner**, so it matches `com.example.MyReader.read`. Neither list subsumes the other: replacing the
+substring list with the catalogue would trade eight false negatives for a set of false negatives of
+its own, and replacing the catalogue with the substring list is what left the declared sources
+invisible in the first place.
+
+**The asymmetry that decides the direction.** A source the engine *misses* is a false negative; a
+source the engine *over-matches* is a false positive. For a scanner the asymmetry favours the
+union: it costs precision and buys soundness. So the engine asks both lists, and the answer is
+their union.
+
+**What a source family IS.** A family with no CWE. The catalogue distinguishes a source from a sink
+by the **absence** of a `cwe:` key, and that is the only distinction available — the YAML has no
+role marker. `SourceFamilyMatcher` reads that distinction, so adding a source family to the
+catalogue is enough to make the engine believe it; no code change is needed.
+
+**Why the match is language-aware.** A language-restricted family must not be blamed for another
+language's call: `kotlin.io.readLine` is a Kotlin API, and a Java file containing that string is
+not reading Kotlin's stdin. The registry already answers "does this family apply to this
+language", so the question is asked there rather than restated.
 
 ---
 

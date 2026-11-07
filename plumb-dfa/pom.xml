@@ -549,6 +549,13 @@
                              attacker input and once with a constant must not
                              taint both call results. -->
                         <include>org/plumb/dfa/summary/G8CallStringSummaryTest.java</include>
+                        <!-- The catalogue declares taint source families; the
+                             engine has to believe it. A declared source the
+                             engine does not recognise is a false negative:
+                             the value is read from an untrusted place, the
+                             engine calls it clean, and every sink
+                             downstream of it is blind. -->
+                        <include>org/plumb/dfa/taint/SourceFamilyMatcherTest.java</include>
                     </includes>
                 </configuration>
             </plugin>
