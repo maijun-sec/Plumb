@@ -58,17 +58,19 @@
 
 ### 1.1 同样形态的另外两处死结构
 
+这两处在写下本节时都还是死结构，如今都已接上（`PointsToPropagate` 见 §2.3，访问路径存储见
+§2.4）。把它们留在这里，是因为**它们当时的形态才是重点：一个只有声明、没有生产者的能力，
+读起来和一个能工作的能力一模一样。**
+
 - `plumb-dfa/src/main/java/org/plumb/dfa/taint/AccessPathTaintStore.java` —— 为
   `TacAccessPath`（`plumb-tac/src/main/java/org/plumb/tac/ir/TacAccessPath.java`）准备的
-  按路径索引的污点存储。**在它自己的文件之外零消费方。**
-  这套访问路径词汇已经设计好、可序列化、有测试，但分析仍然用更粗的
-  `receiver.fieldName` 字符串来跟踪字段污点。
+  按路径索引的污点存储。它**在它自己的文件之外零消费方**，
   而且这条链是**两头**都断的，不只断一头：全树统计 `TacAccessPath`（除了它自己的定义），
   只剩这个存储和 IR 自己的测试——**没有任何引擎代码构造过路径**。
-  所以这不是一个「在等读者」的存储，而是一个存储加一套词汇在**等一个生产者**。
+  所以它不是一个「在等读者」的存储，而是一个存储加一套词汇在**等一个生产者**。§2.4 两头都补上了。
 - `plumb-dfa/src/main/java/org/plumb/dfa/summary/Operation.java:259` ——
   `PointsToPropagate(allocSites)`。**零生产者，零消费者。** 指向分析算出了堆对象，
-  而堆模型从未抵达污点格。
+  而堆模型从未抵达污点格。§2.3 把它接上了。
 
 ### 1.2 当前分析的真实边界
 
@@ -132,6 +134,7 @@ summary，链的深度并没有被单独设限。因此这个设置区分的是�
 | **G7** | 喂给求解器的应是**沿实际路径组合出的路径条件**，而不是逐 sink 的谓词。 | 只有当路径上各守卫的合取为 `UNSAT` 时才抑制 finding。 | **已完成** |
 | **G8** | 当调用图策略为 `1cfa` 或 `2cfa` 时，让 summary 缓存**感知调用字符串**，使 k-CFA 深度旋钮成为真实能力。 | 同一被调方的两个调用点，参数不同时产出不同的 summary。 | **未开始** |
 | **G9** | 把指向分析接进污点格，让 `Operation.PointsToPropagate` 有生产者和消费者。 | 同一类的两个不同实例上的污点不再合并。 | **已完成** |
+| **G10** | 给访问路径存储补上生产者和消费者，让字段的污点属于一个**对象**而不是一个变量名。 | 写在一个对象上的字段，不会被另一个对象读回。 | **已完成** |
 
 ### 2.1 G6 的实现形式不同，而这个理由值得记下来
 
@@ -235,6 +238,44 @@ new ByteArrayOutputStream(n);               // sink
 > **一个能工作、但没接到任何东西上的零件，看起来和一个能工作的零件一模一样。**
 > 能把两者区分开的，只有一个从另一端读这条连接的测试。
 
+### 2.4 G10 两头都断，修它需要的是一个生产者
+
+`AccessPathTaintStore` 是一个设计完整、实现良好的类，却**零消费方**；而访问路径这套词汇
+更是从来没人构造过：全树统计 `TacAccessPath`（除了它自己的定义），只剩这个存储和 IR 自己的测试。
+
+G9 落地了访问路径可以指向的对象身份，于是剩下的活是**把路径造出来**。`AccessPathBuilder`
+做的就是这件事：它问指向求解器一个接收者可能持有哪些对象，然后以对象的**分配身份**为根
+来构造路径，而不是以接收者的名字为根。引擎现在把字段写入记在那个身份下，读回时也按同一个
+身份去找。
+
+| 环节 | 在哪 |
+|---|---|
+| 接收者解析为对象 | `AccessPathBuilder.fieldPaths` → `PointsToSolver.pointsToAcrossContexts` |
+| 写入被记在该位置上 | `TaintedCheckerBase.recordAccessPathFieldWrite` |
+| 读取能找到它 | `TaintedCheckerBase.readAccessPathField` |
+
+**路径的根是分配身份，而这正是全部要害。** 变量名分不清两个对象：同一个名字在一个函数里
+被复用于不同对象，而不同的名字也可能持有同一个对象。分配点可以。
+
+**这买到了什么。** 同一类的两个对象变成两个位置：写在一个对象上的字段，不会被另一个对象读回。
+钉住这一点的是 `AccessPathLocalObjectsTest`，而其中**反向用例才是关键**——把位置敏感的读取
+断开之后，"同一个对象"那个用例就丢掉了它的 finding，所以路径是在实实在在地干活，
+而不是给干活这件事做装饰。
+
+**一个改变了计划的测量。** **跨调用者**的情形**并没有**被区分开，而原因不在字段跟踪器。
+引擎把**每个方法参数都标成污点源**（`TaintedCheckerBase.initFunction`），而通过一个带污点的
+接收者读字段，会把那份污点传给字段。所以一个接收对象的 helper，不管那个字段里写过什么、
+不管它收到的是哪个对象，都会报出 finding。
+
+这条规则对一个扫描器来说是**朝正确方向的保守**：参数是��可信数据进入程序最常见的方式，
+把它当污点正是扫描器能发现问题的原因。而它跟字段敏感是**两个不同的问题** —— 两者很容易
+混淆，因为它们都在问"这份污点是谁的"。`AccessPathParameterIsASourceTest` 记录了 helper 的
+finding 到底是哪条规则产生的，好让下一个读到它的人不被误导。
+
+> **一个精度特性，没法用一个前提其实是另一条规则的行为的测试来测量。**
+> 第一个跨调用者测试断言两个调用者的对象会被区分开，它失败了——不是因为字段跟踪器把它们合并了，
+> 而是因为那个参数本来就是一个源。要修的是测试的前提，不是参数规则。
+
 ### 第三梯队 —— 表达力天花板
 
 IR 有 22 个操作码（`plumb-tac/src/main/java/org/plumb/tac/ir/TacInstruction.java:44`）。
@@ -252,7 +293,6 @@ IR 有 22 个操作码（`plumb-tac/src/main/java/org/plumb/tac/ir/TacInstructio
 
 | ID | 工作 | 理由 |
 |---|---|---|
-| **G10** | 通过 `TacAccessPath` 做字段敏感 | 词汇已存在，但这条链**断了两处**：没有任何引擎代码构造过 `TacAccessPath`（全树计数里，除了它自己的定义，只剩那个存储和 IR 的测试），而存储也没有消费方。G9 已经落地了访问路径可以指向的对象身份，剩下的活是**把路径造出来**。 |
 | **G11** | 每语言的 `TaintBehaviour.PRODUCES_TAINT` 与 `BLACK_BOX` | 两个枚举常量都存在，**没有任何表填它们**。语言语义注册表只覆盖 Java 和 Kotlin（`plumb-dfa/src/main/java/org/plumb/dfa/semantics/LanguageSemanticsRegistry.java:77`）；Scala 和 Groovy 拿到的是空表。 |
 | **G12** | 一个 `ReverseTaintWalker` | 配置里点名了，它不存在。G4 会把名字删掉；如果这项技术以后需要，它会作为一个真类回来。 |
 
@@ -327,6 +367,6 @@ python scripts/check_all.py
 | 已发布 checker 绑定的 taint 规则 | 55 | 55 个 `TaintedCheckerBase` 子类 |
 | `TaintBehaviour.PRODUCES_TAINT` 条目 | 0 | 语言语义注册表 |
 | `TaintBehaviour.BLACK_BOX` 条目 | 0 | 语言语义注册表 |
-| `AccessPathTaintStore` 消费方 | 0 | 全树 grep |
+| `AccessPathTaintStore` 消费方 | 1 | 全树 grep |
 | `PointsToPropagate` 生产者 / 消费者 | 1 / 2 | 全树 grep |
 | `pathConditionForSink` 覆写 | 0 | 全树 grep |

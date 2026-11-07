@@ -289,6 +289,29 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private final FieldTaintTracker fieldTaintTracker = new FieldTaintTracker();
 
   /**
+   * Field taint keyed by LOCATION rather than by receiver name.
+   *
+   * <p>The {@link FieldTaintTracker} keys a field by {@code "receiver.fieldName"}, and the receiver
+   * is a variable NAME, so two different objects reached through the same name share one slot. This
+   * store keys the same taint by an access path whose root is the object's identity, so two
+   * allocations of one class are two locations.
+   *
+   * <p>The store is a REFINEMENT, not a replacement: the coarse tracker still answers every query
+   * it answered before, and the store answers additionally. When the points-to solver cannot say
+   * which object a receiver holds, there is no path, and the coarse answer is the only one there
+   * is. That direction is deliberate -- a coarse key can over-report, while a missing path would
+   * under-report, and over-reporting is the safer of the two.
+   *
+   * <p><b>Why it is static.</b> The location has to survive the call boundary. The caller writes
+   * the field on an object and the callee reads it back: the write is recorded under the caller's
+   * object identity, and the read resolves the callee's parameter to that same object. A
+   * per-function store would put the write and the read in different places, and the whole point is
+   * to join them. It is cleared at the end of each engine run, alongside the other cross-function
+   * state.
+   */
+  private static final AccessPathTaintStore accessPathTaintStore = new AccessPathTaintStore();
+
+  /**
    * Per-function per-element array taint tracker ( T1). Tracks {@code a[i] = tainted} writes and
    * propagates the taint to {@code x = a[i]} reads. Promotes the array to {@link
    * ArrayTaintTracker#ANY} when the index itself is tainted (one tainted write touches all
@@ -507,6 +530,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     crossFnClassFieldSource.clear();
     crossFnClassFieldReaders.clear();
     pendingRerunFns.clear();
+    // The location-keyed field taint is cross-function state too: the caller's write and the
+    // callee's read have to meet in the same place.
+    accessPathTaintStore.clear();
   }
 
   /**
@@ -997,7 +1023,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // case) when the receiver is the
       // function's enclosing class. Cross-class
       // field writes are deferred.
-      case FIELDSTORE -> recordFieldOpForStore(ins, fn);
+      case FIELDSTORE -> recordFieldOpForStore(ins, fn, ctx);
       case CALL -> {
         // Input-source seeding so ALL 29 taint
         // checkers (SQL, Command, XSS, ...)
@@ -2857,7 +2883,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * (the straightforward "this.f" case) or any other TacVar name (the cross-instance case, e.g.
    * {@code h.data = d}).
    */
-  private void recordFieldOpForStore(TacInstruction ins, TacFunction fn) {
+  private void recordFieldOpForStore(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
     if (ins.fieldName == null || ins.fieldName.isEmpty()) return;
     if (!(ins.lhs1 instanceof TacOperand.TacVar recv)) return;
     // Resolve the receiver through the
@@ -3058,6 +3084,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // falls back to the orphan-SOURCE shape.
       int srcV2Handle = v2TraceHandle.getOrDefault(valueVar, -1);
       fieldTaintTracker.recordWrite(recvName, ins.fieldName, fldLabel, fldPath, srcV2Handle);
+      // The same write, recorded by LOCATION. The coarse tracker above keys the field by the
+      // receiver's NAME, so two objects reached through the same name share one slot; the
+      // access-path store keys it by the object's identity, so they do not.
+      recordAccessPathFieldWrite(ins, fn, recv, fldLabel, fldPath, ctx);
       // The class-level key. A field write on {@code this} (or on a class
       // reference) is visible to every read of that field on the same class,
       // including reads in OTHER functions -- a record's accessor, for
@@ -3085,6 +3115,13 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                 fn.signature(),
                 "this".equals(recvName) ? FieldSource.KIND_ALIASED : FieldSource.KIND_STATIC,
                 srcV2Handle));
+        // The same write, recorded by LOCATION.
+        //
+        // The class-level key above is "ClassName.fieldName" -- it names the CLASS, not the
+        // object. Two instances of one class therefore share it, and a helper that reads the
+        // field of the instance it was given sees the taint of every instance. Recording the
+        // write under the receiver's OBJECT identity is what separates them.
+        recordAccessPathFieldWrite(ins, fn, recv, fldLabel, fldPath, ctx);
         // enqueue every previously-observed
         // reader of this (class, field) for
         // re-analysis. Their first walk ran when
@@ -3327,6 +3364,97 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
+   * Record a field write in the access-path store, keyed by the receiver's OBJECT identity.
+   *
+   * <p>The coarse {@link FieldTaintTracker} keys a field by the receiver's variable NAME, so two
+   * objects reached through the same name share one slot. This records the same taint under the
+   * location the receiver actually reaches.
+   *
+   * <p>When the points-to solver cannot say which object the receiver holds, there is no path and
+   * nothing is recorded here. The coarse tracker still holds the write, so the query still has an
+   * answer -- just the coarse one. That direction is deliberate: a coarse key can over-report,
+   * while a missing path would under-report.
+   */
+  private void recordAccessPathFieldWrite(
+      TacInstruction ins,
+      TacFunction fn,
+      TacOperand.TacVar recv,
+      String label,
+      List<FlowStep> flowPath,
+      AnalysisContext ctx) {
+    if (ins == null || fn == null || recv == null || label == null) return;
+    org.plumb.dfa.points.PointsToSolver solver = ctx == null ? null : ctx.pointsToSolver();
+    if (solver == null) return;
+    List<org.plumb.tac.ir.TacAccessPath> paths;
+    try {
+      paths = AccessPathBuilder.fieldPaths(solver, fn.signature(), recv, ins.fieldName);
+    } catch (RuntimeException e) {
+      // A points-to query that fails costs the refinement, not the analysis.
+      return;
+    }
+    for (org.plumb.tac.ir.TacAccessPath path : paths) {
+      accessPathTaintStore.record(path, label, flowPath);
+    }
+  }
+
+  /**
+   * Whether the engine knows WHICH OBJECT a receiver holds.
+   *
+   * <p>This is the question that decides between two different answers to a field read:
+   *
+   * <ul>
+   *   <li>The object is unknown -> the read has no location, so the coarse, class-level answer is
+   *       the best one available. It may name another instance's taint, but it is the only answer
+   *       there is.
+   *   <li>The object is known -> the read has a location, and that location's answer is the right
+   *       one. A class-level answer would name a DIFFERENT object's taint.
+   * </ul>
+   *
+   * <p>The distinction is the difference between over-reporting and under-reporting, and it is why
+   * the location-sensitive store is consulted first.
+   */
+  private boolean receiverObjectIsKnown(
+      TacInstruction ins, TacFunction fn, TacOperand.TacVar recv, AnalysisContext ctx) {
+    if (ins == null || fn == null || recv == null || ctx == null) return false;
+    org.plumb.dfa.points.PointsToSolver solver = ctx.pointsToSolver();
+    if (solver == null) return false;
+    try {
+      return !solver.pointsToAcrossContexts(fn.signature(), recv).isEmpty();
+    } catch (RuntimeException e) {
+      // A points-to query that fails costs the refinement, not the analysis.
+      return false;
+    }
+  }
+
+  /**
+   * Read a field's taint from the access-path store, keyed by the receiver's OBJECT identity.
+   *
+   * <p>This is the LOCATION-SENSITIVE answer. It is consulted before the coarse tracker, because
+   * when the engine knows which object the receiver holds, the location is the more precise answer
+   * -- and the coarse one may name a different object entirely.
+   *
+   * @return the taint found at the receiver's location, or {@code null} when the store does not
+   *     know it (which includes the case where the receiver's object is not known at all)
+   */
+  private AccessPathTaintStore.Entry readAccessPathField(
+      TacInstruction ins, TacFunction fn, TacOperand.TacVar recv, AnalysisContext ctx) {
+    if (ins == null || fn == null || recv == null) return null;
+    org.plumb.dfa.points.PointsToSolver solver = ctx == null ? null : ctx.pointsToSolver();
+    if (solver == null) return null;
+    List<org.plumb.tac.ir.TacAccessPath> paths;
+    try {
+      paths = AccessPathBuilder.fieldPaths(solver, fn.signature(), recv, ins.fieldName);
+    } catch (RuntimeException e) {
+      return null;
+    }
+    for (org.plumb.tac.ir.TacAccessPath path : paths) {
+      AccessPathTaintStore.Entry entry = accessPathTaintStore.read(path);
+      if (entry != null) return entry;
+    }
+    return null;
+  }
+
+  /**
    * Companion to {@link #recordFieldOpForStore}: for a {@code FIELDLOAD} ({@code dest = x.f}),
    * restore the field's taint state from the per-function {@link FieldTaintTracker}. Called AFTER
    * the standard {@link #propagateMOVE} for the same insn, so the MOVE has already done its
@@ -3431,6 +3559,27 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // upgrade to a real parent
       // once init-path resolution
       // is in place).
+    }
+    // The location-sensitive answer FIRST. When the engine knows which object the receiver
+    // holds, the field lives at a known location, and the coarse tracker's answer may name a
+    // different object entirely -- the coarse key is the receiver's variable NAME, so two objects
+    // reached through the same name share one slot.
+    AccessPathTaintStore.Entry located = readAccessPathField(ins, fn, recv, ctx);
+    if (located != null) {
+      taintedVars.put(dv, located.label());
+      if (!located.path().isEmpty()) {
+        taintPaths.put(dv, located.path());
+      }
+      return;
+    }
+    // The receiver's object is KNOWN and the location is clean. The class-level answer must not
+    // be used here: it names the CLASS, not the object, so it carries the taint of every instance
+    // of that class. Reading it would report a finding on an object that was never written.
+    //
+    // This is the whole point of the location-sensitive answer, and it is also why the answer
+    // below is a fallback rather than a refinement.
+    if (receiverObjectIsKnown(ins, fn, recv, ctx)) {
+      return;
     }
     FieldTaintTracker.TrackedTaint tracked = fieldTaintTracker.readField(recvName, ins.fieldName);
     if (tracked == null) {
@@ -5279,7 +5428,56 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             ins.column,
             recvName,
             recvTacType);
+        // The same fold, recorded by LOCATION.
+        //
+        // The coarse fold above writes the field's taint under the CALLER's receiver name. Inside
+        // the callee, the receiver of a field read is the PARAMETER -- the same name for every
+        // call -- so two callers passing two different objects land in one slot, and the tainted
+        // one taints the clean one.
+        //
+        // Recording the same taint under the caller's OBJECT identity fixes that: the callee
+        // resolves its parameter to an object and reads the path, so it sees only the taint that
+        // was written on the object it actually received.
+        recordAccessPathFoldWrite(fop, ins, ctx.currentFunction(), calleeSig, callArgIndex, ctx);
       }
+    }
+  }
+
+  /**
+   * Record a cross-function field write under the caller's OBJECT identity.
+   *
+   * <p>The fold's receiver is the argument the caller passed. When the points-to solver knows which
+   * object that argument holds, the field's location is known, and the taint belongs to that
+   * location rather than to the receiver's name.
+   *
+   * <p>When the solver does not know the object, nothing is recorded here and the coarse fold's
+   * answer stands.
+   */
+  private void recordAccessPathFoldWrite(
+      org.plumb.dfa.summary.FieldOp fop,
+      TacInstruction ins,
+      TacFunction fn,
+      String calleeSig,
+      int callArgIndex,
+      AnalysisContext ctx) {
+    if (fop == null || ins == null || fn == null || ctx == null) return;
+    if (fop.fieldName() == null || fop.fieldName().isEmpty()) return;
+    if (callArgIndex < 0 || callArgIndex >= ins.args.size()) return;
+    if (!(ins.args.get(callArgIndex) instanceof TacOperand.TacVar arg)) return;
+    String label = taintedVars.get(arg);
+    if (label == null) return;
+    org.plumb.dfa.points.PointsToSolver solver = ctx.pointsToSolver();
+    if (solver == null) return;
+    List<org.plumb.tac.ir.TacAccessPath> paths;
+    try {
+      paths = AccessPathBuilder.fieldPaths(solver, fn.signature(), arg, fop.fieldName());
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (paths.isEmpty()) return;
+    List<FlowStep> flowPath = taintPaths.get(arg);
+    for (org.plumb.tac.ir.TacAccessPath path : paths) {
+      accessPathTaintStore.record(path, label, flowPath);
     }
   }
 

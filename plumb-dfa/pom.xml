@@ -507,6 +507,30 @@
                              connected to anything looks exactly like
                              a working part. -->
                         <include>org/plumb/dfa/summary/PointsToSummaryWiringTest.java</include>
+                        <!-- The access-path store was a complete, well-designed class with
+                             ZERO consumers, and the access-path vocabulary was never
+                             constructed by anything. The builder resolves a receiver
+                             to the OBJECTS it may hold, so the path's root is an
+                             allocation identity rather than a variable name. -->
+                        <include>org/plumb/dfa/taint/AccessPathTaintStoreTest.java</include>
+                        <include>org/plumb/dfa/taint/AccessPathBuilderTest.java</include>
+                        <!-- The coarse tracker keys a field by the receiver's NAME, so
+                             two objects reached through the same name share one slot.
+                             This test records that behaviour explicitly, so that
+                             replacing the tracker has a place to say what changed. -->
+                        <include>org/plumb/dfa/taint/FieldTaintTrackerNameKeyingTest.java</include>
+                        <!-- Two objects of one class are two locations for the engine's
+                             field taint. The negative case is the one that matters:
+                             disconnecting the location-sensitive read makes the
+                             SAME-object case lose its finding, which is what proves
+                             the path is doing the work. -->
+                        <include>org/plumb/dfa/taint/AccessPathLocalObjectsTest.java</include>
+                        <!-- The engine treats every method PARAMETER as a tainted
+                             source. That is a different question from field
+                             sensitivity, and this file records which rule produced
+                             a helper's finding so the two are not confused. -->
+                        <include>org/plumb/dfa/taint/AccessPathParameterIsASourceTest.java</include>
+                        <include>org/plumb/dfa/taint/AccessPathFieldSensitivityTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

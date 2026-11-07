@@ -977,6 +977,43 @@ public final class PointsToSolver {
   }
 
   /**
+   * The objects a variable may point at, across ALL of the contexts the variable is analysed under.
+   *
+   * <p>This is the query a caller wants when it does not know which context it is running in -- and
+   * that is the normal case for a checker, because a checker walks a function's instructions
+   * without knowing which call site led there.
+   *
+   * <p><b>Why the context-free overload is not enough.</b> Under a context-sensitive policy the
+   * empty context is NOT one of the contexts a method is analysed under: the solver binds a
+   * callee's parameters in the CALL SITE's context, so {@code pointsTo(sig, v)} with the empty
+   * context finds nothing at all. A query that answers "no objects" when the solver knows exactly
+   * which objects the variable holds is worse than no query: it makes the engine believe a
+   * parameter is untracked.
+   *
+   * <p>The union is the sound over-approximation: it can name an object that one particular context
+   * would not hold, but it never omits one it would.
+   *
+   * @param signature the method's signature
+   * @param v the variable
+   * @return the objects the variable may point at in any context, or an empty set when the variable
+   *     is unknown
+   */
+  public Set<Obj> pointsToAcrossContexts(String signature, TacOperand.TacVar v) {
+    if (signature == null || v == null) return Set.of();
+    Set<Obj> out = new LinkedHashSet<>();
+    for (Context ctx : methodContexts.getOrDefault(signature, Set.of())) {
+      out.addAll(points(signature, v, ctx));
+    }
+    if (out.isEmpty()) {
+      // A method that was never entered under a discovered context still has its trivial
+      // context, but a solver that never seeded it would answer nothing. Fall back to the
+      // empty context so the answer is "the objects the solver knows", not "none".
+      out.addAll(points(signature, v, Context.empty()));
+    }
+    return Set.copyOf(out);
+  }
+
+  /**
    * May these two references be the same object? Unknown references answer {@code false}.
    *
    * <p>Both variables must belong to {@code signature}: the key is {@code (function, name)}, so

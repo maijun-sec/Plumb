@@ -61,17 +61,20 @@ solver at all**.
 
 ### 1.1 Two more dead structures in the same shape
 
+Both of these were dead structures at the time this section was written, and both are now wired
+(§2.3 for the points-to operation, §2.4 for the access-path store). They are kept here because the
+shape they had is the point: **a declared capability with no producer reads exactly like a working
+one.**
+
 - `plumb-dfa/src/main/java/org/plumb/dfa/taint/AccessPathTaintStore.java` — a path-keyed taint
   store for `TacAccessPath` (`plumb-tac/src/main/java/org/plumb/tac/ir/TacAccessPath.java`).
-  **Zero consumers outside its own file.** The access-path vocabulary is designed, serializable and
-  tested, but the analysis still tracks field taint by the coarser `receiver.fieldName` string.
-  The chain is broken at **both** ends, not one: a whole-tree count of `TacAccessPath` outside its
-  own definition finds only this store and the IR's own test — **no engine code constructs a
-  path at all**. So this is not a store waiting for a reader; it is a store and a vocabulary
-  waiting for a **producer**.
+  It had **zero consumers outside its own file**, and the chain was broken at **both** ends: a
+  whole-tree count of `TacAccessPath` outside its own definition found only this store and the
+  IR's own test — **no engine code constructed a path at all**. So it was not a store waiting for
+  a reader; it was a store and a vocabulary waiting for a **producer**. §2.4 adds both.
 - `plumb-dfa/src/main/java/org/plumb/dfa/summary/Operation.java:259` —
   `PointsToPropagate(allocSites)`. **Zero producers, zero consumers.** The points-to solver
-  computes heap objects, and the heap model never reaches the taint lattice.
+  computes heap objects, and the heap model never reaches the taint lattice. §2.3 connects it.
 
 ### 1.2 The honest boundary of the current analysis
 
@@ -139,6 +142,7 @@ not an error -- it is the cost of the analysis. A run that never consulted the c
 | **G7** | Feed the solver a **path condition composed of the guards along the actual path**, not a per-sink predicate. | A finding is suppressed only when the conjunction of the path's guards is `UNSAT`. | **done** |
 | **G8** | Make the summary cache **call-string aware** when the call-graph strategy is `1cfa` or `2cfa`, so the k-CFA depth knob becomes real. | Two call sites of one callee with different arguments produce different summaries. | **open** |
 | **G9** | Wire the points-to solver into the taint lattice, so `Operation.PointsToPropagate` has a producer and a consumer. | Taint on two distinct instances of one class no longer merges. | **done** |
+| **G10** | Give the access-path store a producer and a consumer, so a field's taint belongs to an OBJECT rather than to a variable name. | A field written on one object is not read back on another. | **done** |
 
 ### 2.1 G6 was implemented differently, and the reason is worth keeping
 
@@ -269,11 +273,53 @@ design. It matters because **the three precision tiers of Tier 2 are all bounded
 | dynamic dispatch marker | receiver-type-sensitive sink matching |
 | explicit capture / write-back | closure state propagation |
 
+### 2.4 G10 was broken at both ends, and the fix needed a producer
+
+`AccessPathTaintStore` was a complete, well-designed class with **zero consumers**, and the
+access-path vocabulary was never constructed by anything: the whole-tree count of `TacAccessPath`
+outside its own definition was the store and the IR's own test.
+
+G9 landed the object identity a path could point at, so the remaining work was to build the paths.
+`AccessPathBuilder` does that: it asks the points-to solver which objects a receiver may hold, and
+roots each path at the object's **allocation identity** rather than at the receiver's name. The
+engine now records a field write under that identity and reads it back by the same identity.
+
+| Link | Where |
+|---|---|
+| The receiver resolves to objects | `AccessPathBuilder.fieldPaths` → `PointsToSolver.pointsToAcrossContexts` |
+| The write is recorded at the location | `TaintedCheckerBase.recordAccessPathFieldWrite` |
+| The read finds it | `TaintedCheckerBase.readAccessPathField` |
+
+**The path's root is the allocation identity, and that is the whole point.** A variable name
+cannot distinguish two objects: the same name is reused for different objects across a function,
+and a different name may hold the same object. The allocation site can.
+
+**What it buys.** Two objects of one class become two locations: a field written on one is not
+read back on the other. The test that pins this is
+`AccessPathLocalObjectsTest`, and its negative case is the one that matters — with the
+location-sensitive read disconnected, the SAME-object case loses its finding, so the path is
+demonstrably doing the work rather than decorating it.
+
+**A measurement that changed the plan.** The cross-CALLER case does **not** get separated, and the
+reason is not the field tracker. The engine marks **every method parameter as a tainted source**
+(`TaintedCheckerBase.initFunction`), and a field read through a tainted receiver propagates that
+taint to the field. So a helper that receives an object reports a finding on that object's fields
+whatever was written to them.
+
+That rule is conservative in the right direction for a scanner — a parameter is the most common way
+untrusted data enters a program — and it is a **different question** from field sensitivity. The
+two are easy to confuse, because both are about "whose taint is this". `AccessPathParameterIsASourceTest`
+records which rule produced a helper's finding so that the next reader of it is not misled.
+
+> **A precision feature cannot be measured by a test whose premise is another rule's behaviour.**
+> The first cross-caller test asserted that two callers' objects are separated, and it failed — not
+> because the field tracker merges them, but because the parameter was already a source. The fix
+> was to correct the test's premise, not to change the parameter rule.
+
 ### Tier 4 — declared as absent, and that is the right call for now
 
 | ID | Work | Rationale |
 |---|---|---|
-| **G10** | Field sensitivity via `TacAccessPath` | The vocabulary exists but the chain is broken **twice**: no engine code constructs a `TacAccessPath` (the whole-tree count of `TacAccessPath` outside its own definition is the store and the IR test), and the store has no consumer. G9 landed the object identity that a path could point at, so the remaining work is to build the paths. |
 | **G11** | Per-language `TaintBehaviour.PRODUCES_TAINT` and `BLACK_BOX` | Both enum constants exist and **no table populates them**. The language-semantics registry covers Java and Kotlin only (`plumb-dfa/src/main/java/org/plumb/dfa/semantics/LanguageSemanticsRegistry.java:77`); Scala and Groovy get the empty table. |
 | **G12** | A `ReverseTaintWalker` | Named in configuration, does not exist. G4 removes the name; if the technique is wanted later, it comes back as a real class. |
 
@@ -350,6 +396,6 @@ searchable — so each inert row names the file whose field or hook was checked.
 | Taint rules bound by shipped checkers | 55 | 55 `TaintedCheckerBase` subclasses |
 | `TaintBehaviour.PRODUCES_TAINT` entries | 0 | language-semantics registry |
 | `TaintBehaviour.BLACK_BOX` entries | 0 | language-semantics registry |
-| `AccessPathTaintStore` consumers | 0 | whole-tree grep |
+| `AccessPathTaintStore` consumers | 1 | whole-tree grep |
 | `PointsToPropagate` producers / consumers | 1 / 2 | whole-tree grep |
 | `pathConditionForSink` overrides | 0 | whole-tree grep |
