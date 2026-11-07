@@ -23,6 +23,8 @@ package org.plumb.tac.io;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -206,6 +208,77 @@ public final class IrSerializer {
         } catch (ClassNotFoundException e) {
           throw new IOException("IR class missing on classpath: " + e.getMessage(), e);
         }
+      }
+    }
+  }
+
+  // -------- byte-level form (for stores that keep the IR in a database) --------
+
+  /**
+   * The byte form of an IR object, with the same header and version check the file form has.
+   *
+   * <p><b>Why this exists.</b> A store that keeps the IR in a database has to put the IR somewhere,
+   * and putting it in a BLOB column is the cheapest thing that can work. But a BLOB that is just
+   * the serialized object would carry no version, so a reader could not tell a current IR from an
+   * old one -- and the failure would be a confusing {@code ClassNotFoundException} instead of a
+   * clear "this was written by a different version".
+   *
+   * <p>So the byte form is <b>exactly</b> the file form minus the file: the same magic, the same
+   * version, the same payload. A blob written here can be dumped to a file and read by {@link
+   * #readObject}, and a file written there can be stored here and read by {@link #fromBytes}. The
+   * two forms are interchangeable, which is what makes the migration mechanical.
+   *
+   * @param tag a label for the payload; informational only
+   * @param value the object to serialize
+   * @return the bytes
+   * @throws IOException if the object cannot be serialized
+   */
+  public static byte[] toBytes(String tag, Object value) throws IOException {
+    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+    try (ObjectOutputStream oos = new ObjectOutputStream(bytes)) {
+      oos.writeInt(MAGIC);
+      oos.writeInt(VERSION);
+      oos.writeUTF(tag == null ? "" : tag);
+      oos.writeObject(value);
+    }
+    return bytes.toByteArray();
+  }
+
+  /**
+   * Read an object from the byte form.
+   *
+   * @param bytes the bytes
+   * @param expected the class the payload is expected to have
+   * @param <T> the payload's type
+   * @return the object
+   * @throws IOException if the bytes are not a current IR, or do not hold the expected class
+   */
+  public static <T> T fromBytes(byte[] bytes, Class<T> expected) throws IOException {
+    if (bytes == null || bytes.length == 0) {
+      throw new IOException("the IR payload is empty");
+    }
+    try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
+      int magic = ois.readInt();
+      if (magic != MAGIC) {
+        throw new IOException("Bad IR magic: 0x" + Integer.toHexString(magic));
+      }
+      int version = ois.readInt();
+      if (version != VERSION) {
+        throw new IOException("Unsupported IR version " + version + " (expected " + VERSION + ")");
+      }
+      ois.readUTF(); // tag, currently informational only
+      try {
+        Object value = ois.readObject();
+        if (!expected.isInstance(value)) {
+          throw new IOException(
+              "the IR payload holds a "
+                  + value.getClass().getName()
+                  + ", not a "
+                  + expected.getName());
+        }
+        return expected.cast(value);
+      } catch (ClassNotFoundException e) {
+        throw new IOException("IR class missing on classpath: " + e.getMessage(), e);
       }
     }
   }

@@ -59,6 +59,7 @@ public final class OutputLayout {
   private final Path callgraphCache;
   private final Path reportFindings;
   private final Path reportConsole;
+  private final Path tacDb;
 
   public OutputLayout(Path outputDir) {
     this.root = Objects.requireNonNull(outputDir, "outputDir");
@@ -69,6 +70,9 @@ public final class OutputLayout {
     this.callgraphCache = cacheDir.resolve("callgraph.tac");
     this.reportFindings = reportDir.resolve("findings.ndjson");
     this.reportConsole = reportDir.resolve("findings.console");
+    // The database store. One file holds every program, so copying the store
+    // to another machine is one file copy and cannot be half-copied.
+    this.tacDb = cacheDir.resolve("tac.db");
   }
 
   public Path root() {
@@ -101,6 +105,16 @@ public final class OutputLayout {
 
   public Path reportConsole() {
     return reportConsole;
+  }
+
+  /**
+   * The TAC store: the database that holds every program.
+   *
+   * <p>This is the artefact the third stage reads. It is a single file, so moving the analysis to
+   * another machine is a file copy.
+   */
+  public Path tacDb() {
+    return tacDb;
   }
 
   /**

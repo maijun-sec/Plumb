@@ -59,6 +59,19 @@ public final class SastMain {
   }
 
   public static void main(String[] args) {
+    // The three-stage pipeline has its own commands, and they are COMMANDS
+    // rather than flags because each one is a whole job with its own inputs
+    // and its own outputs: the capture stage runs on the build machine, the
+    // build stage runs where the sources are, and the analysis stage can run
+    // somewhere else entirely.
+    //
+    // The check is on the FIRST argument only, so the flat option set below is
+    // untouched and every existing invocation behaves exactly as before.
+    if (args.length > 0 && TacCommands.isCommand(args[0])) {
+      System.exit(TacCommands.run(args[0], List.of(args).subList(1, args.length)));
+      return;
+    }
+
     Options opts = buildOptions();
     CommandLine cli;
     try {

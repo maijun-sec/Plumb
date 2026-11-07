@@ -92,7 +92,7 @@ The actual direct dependencies (from each module's `pom.xml`):
 | `plumb-engine` | (parent pom, no internal dependency) |
 | `plumb-app` | (parent pom, no internal dependency) |
 | `plumb-frontend` | `plumb-tac` |
-| `plumb-main` | `plumb-parser`, `plumb-tac`, `plumb-dfa`, `plumb-dsl-kotlin`, `plumb-build-core`, `plumb-build-maven`, `plumb-ai`, `plumb-rules`, `plumb-style`, `plumb-reporter`, `plumb-frontend` |
+| `plumb-main` | `plumb-parser`, `plumb-tac`, `plumb-dfa`, `plumb-dsl-kotlin`, `plumb-build-core`, `plumb-build-maven`, `plumb-build-capture`, `plumb-ai`, `plumb-rules`, `plumb-style`, `plumb-reporter`, `plumb-frontend` |
 
 
 ### The three build layers
@@ -234,6 +234,7 @@ See [`KOTLIN-DSL.md`](KOTLIN-DSL.md) for the details.
     <dependency>plumb-rules</dependency>
     <dependency>plumb-style</dependency>
     <dependency>plumb-reporter</dependency>
+    <dependency>plumb-build-capture</dependency>     <!-- the capture entries the three stages consume -->
     <dependency>snakeyaml</dependency>            <!-- YAML configuration -->
     <dependency>commons-cli</dependency>          <!-- CLI parsing -->
     ...

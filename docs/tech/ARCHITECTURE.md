@@ -427,7 +427,7 @@ The actual classes:
 - `plumb-build/plumb-build-capture/src/main/java/org/plumb/build/capture/` — `CaptureAgent`,
   `CompilerHooks`, `CompilerEntryPoints`, `CompilerOption`, `GradleHooks`, `CaptureRecorder`,
   `CaptureEntry`, `CaptureSink`, `CaptureReader`, `JavacOptions`, `CompiledSourcesAdvice`,
-  `CompiledSourcesBridge`
+  `CompiledSourcesBridge`, `CompdbWriter`, `CompdbConformanceProbe`
 
 Each adapter implements `BuildAdapter.discover(Path)` and returns a `BuildProject`:
 

@@ -61,6 +61,15 @@
             <groupId>org.plumb</groupId>
             <artifactId>plumb-build-maven</artifactId>
         </dependency>
+        <!--, The compile-capture agent's capture format. The CLI reads the
+             captures a build wrote and turns them into a compilation
+             database, and then into the TAC the analysis runs on. The agent
+             module itself has no internal dependency, so depending on it here
+             does not couple it to anything. -->
+        <dependency>
+            <groupId>org.plumb</groupId>
+            <artifactId>plumb-build-capture</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.plumb</groupId>
             <artifactId>plumb-ai</artifactId>

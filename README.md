@@ -403,7 +403,7 @@ until the counterpart exists.
 ```bash
 ./scripts/build.sh
 # → plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar
-#   the uber-jar: every dependency inlined, about 218 MB
+#   the uber-jar: every dependency inlined, about 237 MB
 ```
 
 The uber-jar is large because it inlines the Z3 native libraries for every

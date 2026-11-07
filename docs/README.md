@@ -35,6 +35,7 @@ unverifiable assertion.
 | [`JULIET-MEASUREMENT.md`](tech/JULIET-MEASUREMENT.md) | **What the Juliet measurement measures**: the scoped rule set, the exact match, the rule -> CWE map read from the live engine, and the capabilities the corpus does not yet exercise | [中文](zh/tech/JULIET-MEASUREMENT.md) |
 | [`MODULE-MERGE.md`](tech/MODULE-MERGE.md) | Module structure and dependency boundaries | [中文](zh/tech/MODULE-MERGE.md) |
 | [`CACHE.md`](tech/CACHE.md) | The on-disk IR cache: the `--output-dir` mechanism, the file format, the key, compatibility | [中文](zh/tech/CACHE.md) |
+| [`TAC-STORE.md`](tech/TAC-STORE.md) | **The TAC store**: the three stages that run apart -- capture, build, analyse -- the compilation database format, the SQLite store, and the load-time path remapping that lets a store be analysed on another machine | [中文](zh/tech/TAC-STORE.md) |
 
 ## `rules/` -- Rules
 
@@ -91,6 +92,7 @@ edit them by hand.
 | Points-to / nullability / taint | [`tech/DATA-FLOW.md`](tech/DATA-FLOW.md) sections 3-5 |
 | How cross-function summaries work | [`tech/CROSS-FUNCTION-ANALYSIS.md`](tech/CROSS-FUNCTION-ANALYSIS.md) |
 | The on-disk cache | [`tech/CACHE.md`](tech/CACHE.md) |
+| The three-stage scan (capture, build, analyse) | [`tech/TAC-STORE.md`](tech/TAC-STORE.md) |
 | Shipping a release | [`build/PACKAGE.md`](build/PACKAGE.md) |
 | How it compares to other tools | [`rules/RULE-TOOL-COMPARISON.md`](rules/RULE-TOOL-COMPARISON.md) |
 | Current precision / recall | [`../testcase/SUPPORT-MATRIX.md`](../testcase/SUPPORT-MATRIX.md) |

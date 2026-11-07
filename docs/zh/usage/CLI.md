@@ -22,6 +22,22 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
      -c testcase/config/min.yaml -i src/main/java
 ```
 
+### 1.1 三阶段流水线
+
+命令行还有第二种形态：**子命令**作为第一个参数。第一个参数不是子命令时，走本文其余部分描述的
+扁平路径。
+
+| 子命令 | 做什么 |
+| --- | --- |
+| `capture` | 把构建写下的捕获记录转成编译数据库 |
+| `build` | 把捕获记录转成存储起来的 TAC |
+| `analyze` | 加载存储的 TAC 并报出结论 |
+
+三个阶段可以在不同的时间、不同的地点、不同的机器上运行。分析阶段不读源码树，因此 TAC 存储可以
+拷到另一台机器上在那里分析。
+
+格式与选项见 [`tech/TAC-STORE.md`](../tech/TAC-STORE.md)。
+
 ## 2. 全部命令行参数
 
 执行 `sast-scan --help` 输出：

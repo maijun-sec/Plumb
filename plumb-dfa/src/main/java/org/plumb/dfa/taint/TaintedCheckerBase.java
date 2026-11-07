@@ -228,6 +228,33 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
+   * Whether a string builder's {@code append} propagates taint.
+   *
+   * <p><b>What the switch is for.</b> The builder's {@code append} is a shape that can produce a
+   * lot of findings: every report built with a builder is a candidate. Turning the propagation off
+   * is a way to see the difference the builder shape makes, and to trade that precision for a
+   * smaller finding set on a codebase where the builders are not attacker-controlled.
+   *
+   * <p><b>Why the default is on.</b> A builder that carries attacker input into a sink is a real
+   * defect, and a scanner that cannot see it reports a clean program for vulnerable code. The
+   * conservative direction is to propagate, so the default propagates.
+   *
+   * <p><b>Why the default cannot be the other way round.</b> An absent or unreadable configuration
+   * must not silently disable a false-negative filter -- the same rule the path-sensitivity mode
+   * follows.
+   */
+  private boolean taintCallerStringConcat = true;
+
+  /**
+   * Whether a string builder's {@code append} propagates taint.
+   *
+   * @return true when the propagation is on
+   */
+  protected boolean taintCallerStringConcat() {
+    return taintCallerStringConcat;
+  }
+
+  /**
    * The set of variables known to carry taint in the current function, keyed by the variable
    * itself. The value is a human-readable label for the source (e.g. {@code "param:id"} or the
    * concrete {@code Fact.value} from the caller's fact bag). Cleared at every function boundary by
@@ -633,6 +660,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       if (cfg == null || cfg.tuning() == null) return;
       setPathSensitivityMode(cfg.tuning().pathSensitivity());
       this.contextDepth = Math.max(0, cfg.tuning().contextDepth());
+      this.taintCallerStringConcat = cfg.tuning().taintCallerStringConcat();
     } catch (RuntimeException e) {
       // A configuration problem must not take the analysis down: the default mode keeps the
       // existing filtering behaviour, which is the conservative outcome.
@@ -1579,10 +1607,27 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     return isMethodNamed(calleeSig, "toString") && !isThrowableMessageMethod(calleeSig);
   }
 
-  /** The mutating string builders: {@code append} adds to the receiver. */
+  /**
+   * The mutating string builders: {@code append} adds to the receiver.
+   *
+   * <p><b>Why the rule is asked of the catalogue rather than written here.</b> The engine asks two
+   * questions about a builder's {@code append}: does it MUTATE the receiver (the accumulator's
+   * question), and does the call's RESULT carry the builder's content (this question). Both need
+   * the same answer to "is this a builder", and the answer was written down twice -- once with the
+   * match on the type's name and once with a slightly different spelling of it.
+   *
+   * <p>Two copies of one rule is a rule with two futures. The moment they disagree, one path taints
+   * and the other does not, and the difference shows up as a chain that loses its taint half-way
+   * rather than as an error. So the rule lives in {@link AccumulatorCatalog}, next to the
+   * accumulator's own matcher, and both callers ask it.
+   *
+   * <p><b>Why the owner is matched on the NAME.</b> The package is exactly what differs between the
+   * languages -- {@code java.lang.StringBuilder}, {@code kotlin.text.StringBuilder} (an alias of
+   * the Java class, so its signature is the Java one), {@code System.Text.StringBuilder} -- while
+   * the type's name is what they agree on.
+   */
   private static boolean isAppendLike(String calleeSig) {
-    if (!isMethodNamed(calleeSig, "append")) return false;
-    return calleeSig.contains(".StringBuilder.") || calleeSig.contains(".StringBuffer.");
+    return AccumulatorCatalog.isStringBuilderAppend(calleeSig);
   }
 
   /** Tokenizers and scanners: the result is a piece of the input. */
@@ -2224,8 +2269,19 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     boolean isValueOf =
         behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
             && isValueOfLike(calleeSig);
+    // The builder's append. This is the ONLY passthrough the configuration can
+    // switch off, because it is the one that produces the most findings: every
+    // report built with a builder is a candidate. The switch exists so the
+    // difference the builder shape makes is visible, and so a codebase whose
+    // builders are not attacker-controlled can trade that precision for a
+    // smaller finding set.
+    //
+    // The other passthroughs are not switchable: they are the shape of a
+    // defect (a tainted value rendered into a command), not a stylistic
+    // choice.
     boolean isAppend =
         behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
+            && taintCallerStringConcat
             && isAppendLike(calleeSig);
     // 2026-10-08 (audit): the -C debug block that
     // spammed `[R759C-DEBUG] propagateStringPassthroughs ...`
@@ -2477,7 +2533,15 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (ins.args == null || ins.args.isEmpty()) return;
 
     // ---- direction 1: the receiver accumulates the taint of an argument ----
-    if (AccumulatorCatalog.isMutator(calleeSig)) {
+    //
+    // The configuration can switch off the STRING BUILDER's accumulation, and
+    // only that. The other accumulators -- a list, a map, a writer -- are
+    // switched on by the same rule but are not what the switch is about: the
+    // builder is the one whose shape produces the bulk of the findings, and
+    // the switch exists so the difference it makes is visible.
+    boolean builderAccumulation =
+        taintCallerStringConcat || !AccumulatorCatalog.isStringBuilderAppend(calleeSig);
+    if (builderAccumulation && AccumulatorCatalog.isMutator(calleeSig)) {
       TacOperand receiver = ins.args.get(0);
       if (receiver instanceof TacOperand.TacVar recv) {
         for (int argIdx : AccumulatorCatalog.mutatorArgIndices(ins)) {
@@ -2513,7 +2577,15 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     }
 
     // ---- direction 2: the result carries the receiver's accumulated taint ----
+    //
+    // The builder's read is switched off with the builder's accumulation: a
+    // builder that does not accumulate has nothing to read back out, so
+    // honouring only one half would leave the taint on the result while
+    // taking it off the receiver.
     if (AccumulatorCatalog.isAccumulatorRead(calleeSig)) {
+      if (!builderAccumulation && AccumulatorCatalog.isStringBuilderAppend(calleeSig)) {
+        return;
+      }
       if (!(ins.dest instanceof TacOperand.TacVar dv)) return;
       if (taintedVars.containsKey(dv)) return;
       TacOperand receiver = ins.args.get(0);
@@ -2703,8 +2775,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             || calleeSig.startsWith("java.lang.Boolean.toString/")
             || calleeSig.startsWith("java.lang.Object.toString/")
             || calleeSig.startsWith("java.lang.String.concat/");
-    boolean isAppend =
-        calleeSig.contains(".StringBuilder.append/") || calleeSig.contains(".StringBuffer.append/");
+    // The builder's append. This is the SAME rule as the one that decides
+    // whether a call mutates a builder's state, and it has to be: a rule that
+    // recognises the builder in one place and not the other would taint the
+    // receiver's state but not the call's result, which is exactly the
+    // half-way chain that loses the taint.
+    boolean isAppend = AccumulatorCatalog.isStringBuilderAppend(calleeSig);
     // StringTokenizer / Scanner / regex
     // matchers all surface tainted substrings
     // out of a tainted haystack. Juliet CWE89

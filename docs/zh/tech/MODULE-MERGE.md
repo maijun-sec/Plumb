@@ -92,7 +92,7 @@ plumb  (root POM)
 | `plumb-engine` | （父 pom，无内部依赖） |
 | `plumb-app` | （父 pom，无内部依赖） |
 | `plumb-frontend` | `plumb-tac` |
-| `plumb-main` | `plumb-parser`, `plumb-tac`, `plumb-dfa`, `plumb-dsl-kotlin`, `plumb-build-core`, `plumb-build-maven`, `plumb-ai`, `plumb-rules`, `plumb-style`, `plumb-reporter`, `plumb-frontend` |
+| `plumb-main` | `plumb-parser`, `plumb-tac`, `plumb-dfa`, `plumb-dsl-kotlin`, `plumb-build-core`, `plumb-build-maven`, `plumb-build-capture`, `plumb-ai`, `plumb-rules`, `plumb-style`, `plumb-reporter`, `plumb-frontend` |
 
 
 ### 三个构建层
@@ -231,6 +231,7 @@ plumb  (root POM)
     <dependency>plumb-rules</dependency>
     <dependency>plumb-style</dependency>
     <dependency>plumb-reporter</dependency>
+    <dependency>plumb-build-capture</dependency>     <!-- 三个阶段消费的捕获记录 -->
     <dependency>snakeyaml</dependency>            <!-- YAML 配置 -->
     <dependency>commons-cli</dependency>          <!-- CLI 解析 -->
     ...

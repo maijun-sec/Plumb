@@ -32,6 +32,7 @@
 | [`JULIET-MEASUREMENT.md`](../tech/JULIET-MEASUREMENT.md) | **Juliet 测量到底测了什么**：收窄后的规则集、精确匹配、从活引擎读来的规则 → CWE 映射，以及语料尚未检验到的能力 | [中文](tech/JULIET-MEASUREMENT.md) |
 | [`MODULE-MERGE.md`](../tech/MODULE-MERGE.md) | 模块结构与依赖边界 | [中文](tech/MODULE-MERGE.md) |
 | [`CACHE.md`](../tech/CACHE.md) | 磁盘 IR 缓存：`--output-dir` 机制、文件格式、key、兼容性 | [中文](tech/CACHE.md) |
+| [`TAC-STORE.md`](../tech/TAC-STORE.md) | **TAC 存储**：三个可以分开运行的阶段 —— 捕获、生成、分析 —— 编译数据库格式、SQLite 存储，以及让存储能在另一台机器上被分析的加载期路径重映射 | [中文](tech/TAC-STORE.md) |
 
 ## `rules/` — 规则
 
@@ -87,6 +88,7 @@
 | 指向分析 / 可空性 / 污点 | [`tech/DATA-FLOW.md`](../tech/DATA-FLOW.md) §3–§5 |
 | 跨函数怎么总结 | [`tech/CROSS-FUNCTION-ANALYSIS.md`](../tech/CROSS-FUNCTION-ANALYSIS.md) |
 | 磁盘缓存 | [`tech/CACHE.md`](../tech/CACHE.md) |
+| 三阶段扫描（捕获、生成、分析） | [`tech/TAC-STORE.md`](../tech/TAC-STORE.md) |
 | 出包上线 | [`build/PACKAGE.md`](../build/PACKAGE.md) |
 | 跟其他工具怎么比 | [`rules/RULE-TOOL-COMPARISON.md`](../rules/RULE-TOOL-COMPARISON.md) |
 | 精确率 / 召回率现状 | [`../testcase/SUPPORT-MATRIX.md`](../../testcase/SUPPORT-MATRIX.md) |

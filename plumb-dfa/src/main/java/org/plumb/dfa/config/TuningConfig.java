@@ -248,6 +248,38 @@ public final class TuningConfig {
   }
 
   /**
+   * A copy with the string builder's {@code append} propagation switched on or off.
+   *
+   * <p>The switch governs whether a builder's {@code append} carries taint: both the call's result
+   * and the builder's own accumulated state. It exists so the difference the builder shape makes is
+   * visible -- it is the shape that produces the most findings, because every report built with a
+   * builder is a candidate.
+   *
+   * <p>Turning it off is a trade: a codebase whose builders never carry attacker input gets a
+   * smaller finding set, and a codebase whose builders do gets a missed finding. The default is on,
+   * because a scanner that cannot see a tainted builder reports a clean program for vulnerable
+   * code.
+   */
+  public TuningConfig withTaintCallerStringConcat(boolean enabled) {
+    return new TuningConfig(
+        contextDepth,
+        worklistMaxSize,
+        z3TimeoutMs,
+        summaryCacheSize,
+        reverseWalkMaxDepth,
+        preScanEnabled,
+        libraryCallClassification,
+        enabled,
+        pathSensitivity,
+        reportingGroupBy,
+        outputFormat,
+        parallel,
+        perFunctionTimeoutMs,
+        analysedOrigins,
+        analyseSystemLibraries);
+  }
+
+  /**
    * A copy with an explicit cross-function folding depth.
    *
    * <p>Zero switches the cross-function summary folding off, so the analysis stays inside one

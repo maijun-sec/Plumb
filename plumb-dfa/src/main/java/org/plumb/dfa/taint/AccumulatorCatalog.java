@@ -69,6 +69,64 @@ public final class AccumulatorCatalog {
   private AccumulatorCatalog() {}
 
   /**
+   * The declaring type of a callee, lower-cased.
+   *
+   * <p><b>Why the owner is extracted rather than matched as a substring.</b> The catalogue used to
+   * ask whether the whole signature "contains" a dot-prefixed package fragment, such as {@code
+   * ".java.util.list."}. That test is wrong for every type that sits directly under a root package:
+   * the signature of {@code java.util.List.add/1} has no dot before {@code java}, so the fragment
+   * {@code ".java.util.list."} is not in it and the check fails. The bug was invisible for {@code
+   * java.lang.StringBuilder} -- there the fragment {@code ".stringbuilder."} does occur, because a
+   * dot precedes {@code java} in {@code ".lang."} -- so the builder worked and the containers never
+   * did. A rule whose right answer depends on how deep the type's package happens to be is not a
+   * rule; extracting the owner and matching it as a whole is.
+   *
+   * @param calleeSig the callee signature in {@code owner.method/arity} form
+   * @return the lower-cased owner, or an empty string when the signature has no owner
+   */
+  private static String ownerOf(String calleeSig) {
+    int slash = calleeSig.indexOf('/');
+    if (slash >= 0) calleeSig = calleeSig.substring(0, slash);
+    int dot = calleeSig.lastIndexOf('.');
+    if (dot < 0) return calleeSig.toLowerCase(Locale.ROOT);
+    return calleeSig.substring(0, dot).toLowerCase(Locale.ROOT);
+  }
+
+  /**
+   * The method name of a callee, lower-cased.
+   *
+   * @param calleeSig the callee signature in {@code owner.method/arity} form
+   * @return the lower-cased method name, or an empty string when the signature has no method
+   */
+  private static String methodOf(String calleeSig) {
+    int slash = calleeSig.indexOf('/');
+    if (slash >= 0) calleeSig = calleeSig.substring(0, slash);
+    int dot = calleeSig.lastIndexOf('.');
+    if (dot < 0) return "";
+    return calleeSig.substring(dot + 1).toLowerCase(Locale.ROOT);
+  }
+
+  /**
+   * Is the owner one of the given types, compared by its trailing package segments?
+   *
+   * <p>Comparing the trailing segments is what lets one rule cover a family: {@code
+   * java.util.List}, {@code java.util.ArrayList} and {@code kotlin.collections.List} all end in
+   * {@code list}. Comparing the whole owner would need one entry per spelling.
+   *
+   * @param owner the lower-cased owner
+   * @param typeNames the lower-cased type names to accept
+   * @return true when the owner's last segment is one of the given names
+   */
+  private static boolean ownerIs(String owner, String... typeNames) {
+    int dot = owner.lastIndexOf('.');
+    String simple = dot < 0 ? owner : owner.substring(dot + 1);
+    for (String t : typeNames) {
+      if (simple.equals(t)) return true;
+    }
+    return false;
+  }
+
+  /**
    * Is this call one that writes its arguments into the receiver's own state?
    *
    * <p>The match is on the receiver's declaring type plus the method name, because {@code append}
@@ -80,37 +138,47 @@ public final class AccumulatorCatalog {
    */
   public static boolean isMutator(String calleeSig) {
     if (calleeSig == null || calleeSig.isEmpty()) return false;
-    String sig = calleeSig.toLowerCase(Locale.ROOT);
+    String owner = ownerOf(calleeSig);
+    String method = methodOf(calleeSig);
+    if (method.isEmpty()) return false;
     // StringBuilder / StringBuffer: the canonical accumulator.
-    if (sig.contains(".stringbuilder.") || sig.contains(".stringbuffer.")) {
-      return sig.contains(".append/")
-          || sig.contains(".insert/")
-          || sig.contains(".appendcodePoint/".toLowerCase(Locale.ROOT))
-          || sig.contains(".replace/")
-          || sig.contains(".reverse/")
-          || sig.contains(".setCharAt/");
+    if (ownerIs(owner, "stringbuilder", "stringbuffer")) {
+      return method.equals("append")
+          || method.equals("insert")
+          || method.equals("appendcodepoint")
+          || method.equals("replace")
+          || method.equals("reverse")
+          || method.equals("setcharat");
     }
     // Collections and maps: an element added to a container is part of the container's state.
-    if (sig.contains(".java.util.list.") || sig.contains(".java.util.set.")) {
-      return sig.contains(".add/") || sig.contains(".addAll/") || sig.contains(".set/");
+    if (ownerIs(owner, "list", "set", "collection", "queue", "deque")) {
+      return method.equals("add")
+          || method.equals("addall")
+          || method.equals("set")
+          || method.equals("offer")
+          || method.equals("push");
     }
-    if (sig.contains(".java.util.map.")) {
-      return sig.contains(".put/") || sig.contains(".putAll/");
+    if (ownerIs(owner, "map")) {
+      return method.equals("put") || method.equals("putall");
     }
     // Character / byte streams and writers: written bytes are part of the stream's state.
-    if (sig.contains(".java.io.outputstream.")
-        || sig.contains(".java.io.writer.")
-        || sig.contains(".java.io.printwriter.")
-        || sig.contains(".java.io.stringwriter.")
-        || sig.contains(".java.io.bufferedwriter.")
-        || sig.contains(".java.io.filteroutputstream.")
-        || sig.contains(".java.io.objectoutputstream.")) {
-      return sig.contains(".write/")
-          || sig.contains(".writebytes/")
-          || sig.contains(".print/")
-          || sig.contains(".println/")
-          || sig.contains(".append/")
-          || sig.contains(".writeint/");
+    if (ownerIs(
+        owner,
+        "outputstream",
+        "writer",
+        "printwriter",
+        "stringwriter",
+        "bufferedwriter",
+        "filteroutputstream",
+        "objectoutputstream",
+        "bytearrayoutputstream",
+        "chararraywriter")) {
+      return method.equals("write")
+          || method.equals("writebytes")
+          || method.equals("print")
+          || method.equals("println")
+          || method.equals("append")
+          || method.equals("writeint");
     }
     return false;
   }
@@ -126,17 +194,33 @@ public final class AccumulatorCatalog {
    */
   public static boolean isAccumulatorRead(String calleeSig) {
     if (calleeSig == null || calleeSig.isEmpty()) return false;
-    String sig = calleeSig.toLowerCase(Locale.ROOT);
-    if (sig.contains(".stringbuilder.") || sig.contains(".stringbuffer.")) {
-      return sig.contains(".tostring/");
+    String owner = ownerOf(calleeSig);
+    String method = methodOf(calleeSig);
+    if (method.isEmpty()) return false;
+    if (ownerIs(owner, "stringbuilder", "stringbuffer")) {
+      return method.equals("tostring");
     }
-    if (sig.contains(".java.io.stringwriter.")) {
-      return sig.contains(".tostring/") || sig.contains(".getbuffer/");
+    if (ownerIs(owner, "stringwriter")) {
+      return method.equals("tostring") || method.equals("getbuffer");
     }
-    if (sig.contains(".java.io.bytearrayoutputstream.")
-        || sig.contains(".java.io.chararraywriter.")
-        || sig.contains(".java.io.stringwriter.")) {
-      return sig.contains(".tostring/");
+    if (ownerIs(owner, "bytearrayoutputstream", "chararraywriter", "stringwriter")) {
+      return method.equals("tostring");
+    }
+    // Containers: an element read back out of a collection is part of the
+    // collection's state, exactly as an element written into it is. The
+    // counterpart of the `add` / `put` branch in isMutator: without it the
+    // mutator direction taints the container and the read direction drops
+    // the taint on the floor, so a list that collects attacker input and
+    // reads it back reads clean.
+    //
+    // The whole container's taint flows to the read result, not just the
+    // requested element's: the analysis tracks a per-variable taint label,
+    // not a per-element one, so it cannot tell element 0 from element 1.
+    // That makes the read conservative -- it can report a taint that was in
+    // a different element -- which is the safe direction: a missed finding
+    // is worse than an extra one.
+    if (ownerIs(owner, "list", "set", "collection", "queue", "deque", "map")) {
+      return method.equals("get") || method.equals("remove") || method.equals("poll");
     }
     return false;
   }
@@ -159,5 +243,33 @@ public final class AccumulatorCatalog {
       out.add(i);
     }
     return out;
+  }
+
+  /**
+   * Is this call a string builder's {@code append}?
+   *
+   * <p><b>Why this is a separate question from {@link #isMutator(String)}.</b> A builder's {@code
+   * append} does two things: it writes into the receiver's state (the mutator direction), and it
+   * RETURNS the receiver, so the call's result carries whatever the builder already held. The
+   * second half is what makes {@code sb.append(x).toString()} work, and it is a property of the
+   * RESULT rather than of the receiver.
+   *
+   * <p><b>Why the match is on the NAME and not on the package.</b> The builder is spelled
+   * differently in every language: {@code java.lang.StringBuilder}, {@code
+   * kotlin.text.StringBuilder} (an alias of the Java one), {@code System.Text.StringBuilder}. The
+   * package is exactly what differs; the type's name is what they agree on. Matching on a
+   * capitalised {@code .StringBuilder.} finds the Java spelling and misses the other two, and the
+   * symptom is a chain that loses its taint half-way -- tainted in Java, clean in C#.
+   *
+   * <p>So the owner is matched case-insensitively on the type name, the same way {@link
+   * #isMutator(String)} matches it. Two rules that disagree would taint one path and not the other.
+   *
+   * @param calleeSig the callee signature in {@code owner.method/arity} form
+   * @return true when the call appends to a string builder
+   */
+  public static boolean isStringBuilderAppend(String calleeSig) {
+    if (calleeSig == null || calleeSig.isEmpty()) return false;
+    if (!"append".equals(methodOf(calleeSig))) return false;
+    return ownerIs(ownerOf(calleeSig), "stringbuilder", "stringbuffer");
   }
 }

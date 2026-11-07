@@ -32,6 +32,9 @@
         <junit.version>5.10.3</junit.version>
         <assertj.version>3.26.3</assertj.version>
         <z3.turnkey.version>4.14.0</z3.turnkey.version>
+        <!--, The embedded database driver for the TAC store. The version is
+             pinned because the driver bundles its own native library. -->
+        <sqlite.version>3.46.0.0</sqlite.version>
 
         <!--,
           Kotlin, for plumb-dsl-kotlin's script engine. 2.2.0 is the first
@@ -303,6 +306,19 @@
                 <groupId>tools.aqua</groupId>
                 <artifactId>z3-turnkey</artifactId>
                 <version>${z3.turnkey.version}</version>
+            </dependency>
+
+            <!--, The embedded database that holds the TAC store.
+
+                 The store keeps the IR in a BLOB column, so the driver only has
+                 to move bytes; nothing here depends on the database being
+                 able to query the IR's fields. The version is pinned because
+                 the native library is bundled with the driver, and a
+                 different version means a different native library. -->
+            <dependency>
+                <groupId>org.xerial</groupId>
+                <artifactId>sqlite-jdbc</artifactId>
+                <version>${sqlite.version}</version>
             </dependency>
 
             <!--, R140: SootUp for bytecode analysis. 3.0.0 is the

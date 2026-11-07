@@ -35,6 +35,8 @@ import org.plumb.dfa.engine.DfaEngine;
 import org.plumb.dfa.engine.FindingReporter;
 import org.plumb.reporter.Finding;
 import org.plumb.tac.io.IrSerializer;
+import org.plumb.tac.io.SourcePathMapper;
+import org.plumb.tac.io.SqliteTacStore;
 import org.plumb.tac.ir.MergedProgram;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacProgram;
@@ -208,7 +210,25 @@ public final class IrAnalysisRunner {
    * @return the findings and the IR's problems
    */
   public IrAnalysisResult analyze(MergedProgram merged) {
+    return analyze(merged, SourcePathMapper.identity());
+  }
+
+  /**
+   * Analyse an in-memory merged program, rewriting the source paths on the way in.
+   *
+   * <p><b>Why the rewrite happens here.</b> The IR carries the producer's absolute source paths,
+   * because the path is the store's identity and rewriting it in the IR would make two different
+   * stores indistinguishable. But a finding has to point at a file that exists, and on the
+   * consumer's machine the producer's path names nothing. So the rewrite happens at the boundary:
+   * the IR is read as it was written, and the paths are translated on the way into the analysis.
+   *
+   * @param merged the merged IR
+   * @param mapper the source path substitutions
+   * @return the findings and the IR's problems
+   */
+  public IrAnalysisResult analyze(MergedProgram merged, SourcePathMapper mapper) {
     Objects.requireNonNull(merged, "merged");
+    SourcePathMapper paths = mapper == null ? SourcePathMapper.identity() : mapper;
     List<TacProgram> sources = merged.sources();
 
     // The per-class source path map, built from the IR's OWN source paths.
@@ -222,10 +242,14 @@ public final class IrAnalysisRunner {
     for (TacProgram src : sources) {
       Path path = src.sourcePath();
       if (path == null) continue;
+      // The rewrite happens HERE, before the map is built: the map is what
+      // labels a finding, so this is the last point at which a producer's
+      // path can become the consumer's.
+      Path mapped = paths.map(path);
       for (TacFunction fn : src.functions()) {
         String enc = fn.enclosingClass();
         if (enc != null && !enc.isEmpty()) {
-          sourcePaths.putIfAbsent(enc, path);
+          sourcePaths.putIfAbsent(enc, mapped);
         }
       }
     }
@@ -260,14 +284,27 @@ public final class IrAnalysisRunner {
    * @return the findings and the IR's problems
    */
   public IrAnalysisResult analyze(TacProgram program) {
+    return analyze(program, SourcePathMapper.identity());
+  }
+
+  /**
+   * Analyse a single in-memory program, rewriting the source paths on the way in.
+   *
+   * @param program the IR
+   * @param mapper the source path substitutions
+   * @return the findings and the IR's problems
+   */
+  public IrAnalysisResult analyze(TacProgram program, SourcePathMapper mapper) {
     Objects.requireNonNull(program, "program");
+    SourcePathMapper paths = mapper == null ? SourcePathMapper.identity() : mapper;
     Map<String, Path> sourcePaths = new HashMap<>();
     Path path = program.sourcePath();
     if (path != null) {
+      Path mapped = paths.map(path);
       for (TacFunction fn : program.functions()) {
         String enc = fn.enclosingClass();
         if (enc != null && !enc.isEmpty()) {
-          sourcePaths.putIfAbsent(enc, path);
+          sourcePaths.putIfAbsent(enc, mapped);
         }
       }
     }
@@ -278,5 +315,45 @@ public final class IrAnalysisRunner {
     List<TacProgram.FunctionProblem> problems = new ArrayList<>(program.programProblems());
     return new IrAnalysisResult(
         new ArrayList<>(reporter.all()), problems, program.functions().size());
+  }
+
+  /**
+   * Analyse a TAC store.
+   *
+   * <p>This is the entry point for the third stage: the store is opened, its programs are read, and
+   * the analysis runs on them. <b>Nothing here touches the source tree</b> -- the store is the
+   * input, and the analysis runs the same way it would on a machine that never saw the project.
+   *
+   * <p><b>Why the programs are merged.</b> The analysis needs the whole project at once: a finding
+   * depends on a call that crosses a file boundary, and a cross-file resolution needs every file's
+   * types. So the store's programs become one merged program, which is what the engine consumes.
+   *
+   * @param store the store
+   * @return the findings and the IR's problems
+   * @throws java.io.IOException if the store cannot be read
+   */
+  public IrAnalysisResult analyzeStore(SqliteTacStore store) throws java.io.IOException {
+    return analyzeStore(store, SourcePathMapper.identity());
+  }
+
+  /**
+   * Analyse a TAC store, rewriting the source paths on the way in.
+   *
+   * @param store the store
+   * @param mapper the source path substitutions
+   * @return the findings and the IR's problems
+   * @throws java.io.IOException if the store cannot be read
+   */
+  public IrAnalysisResult analyzeStore(SqliteTacStore store, SourcePathMapper mapper)
+      throws java.io.IOException {
+    Objects.requireNonNull(store, "store");
+    List<TacProgram> sources = store.programs();
+    if (sources.isEmpty()) {
+      // An empty store is not an error: it is a project with nothing in it.
+      // Returning an empty result says so, and the caller can tell it apart
+      // from a failure by the absence of an exception.
+      return new IrAnalysisResult(List.of(), List.of(), 0);
+    }
+    return analyze(new MergedProgram(sources), mapper);
   }
 }

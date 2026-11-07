@@ -359,7 +359,7 @@ usage: sast-scan [-c <yaml>] [--cache-mode <off|read|write|readwrite>] [-D <dir>
 ```bash
 ./scripts/build.sh
 # → plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar
-#   uber-jar：内联所有依赖，约 218 MB
+#   uber-jar：内联所有依赖，约 237 MB
 ```
 
 uber-jar 之所以大，是因为它内联了 Z3 的各平台 native library 和整个 Kotlin 脚本引擎。

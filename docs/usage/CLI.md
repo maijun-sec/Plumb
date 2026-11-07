@@ -23,6 +23,23 @@ java -jar plumb-main/target/plumb-main-0.1.0-SNAPSHOT-all.jar \
      -c testcase/config/min.yaml -i src/main/java
 ```
 
+### 1.1 The three-stage pipeline
+
+The command line has a second form: a **subcommand** as the first argument. A first argument that
+is not one of the subcommands goes down the flat path described in the rest of this document.
+
+| Subcommand | What it does |
+| --- | --- |
+| `capture` | Turn the captures a build wrote into a compilation database |
+| `build` | Turn the captures into a stored TAC |
+| `analyze` | Load the stored TAC and report findings |
+
+The three stages can run at different times, in different places, on different machines. The
+analysis stage does not read the source tree, so the TAC store can be copied to another machine
+and analysed there.
+
+See [`tech/TAC-STORE.md`](../tech/TAC-STORE.md) for the format and the options.
+
 ## 2. All command line arguments
 
 The output of `sast-scan --help` is:

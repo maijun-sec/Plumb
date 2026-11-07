@@ -531,6 +531,19 @@
                              a helper's finding so the two are not confused. -->
                         <include>org/plumb/dfa/taint/AccessPathParameterIsASourceTest.java</include>
                         <include>org/plumb/dfa/taint/AccessPathFieldSensitivityTest.java</include>
+                        <!-- A container carries its elements' taint in its own
+                             state: the mutator direction writes it in, the read
+                             direction hands it back out. The catalogue used to
+                             match a container's package as a dot-prefixed
+                             fragment, which never occurs for a type directly
+                             under a root package, so the whole container
+                             family was unmatched. -->
+                        <include>org/plumb/dfa/taint/ContainerAccumulatorTest.java</include>
+                        <!-- The string builder's propagation switch exists in
+                             the configuration, so it has to be wired: a setting
+                             nobody reads is worse than no setting. -->
+                        <include>org/plumb/dfa/taint/StringBuilderSwitchTest.java</include>
+                        <include>org/plumb/dfa/taint/StringBuilderLanguageTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

@@ -417,7 +417,8 @@ Plumb 严格区分「喂 TypeSolver 的路径」与「扫 findings 的路径」�
   `TransitiveResolver`、`MavenResolverAdapter`、`MavenPom`、`ModuleDescriptor`
 - `plumb-build/plumb-build-capture/src/main/java/org/plumb/build/capture/` —— `CaptureAgent`、
   `CompilerHooks`、`CompilerEntryPoints`、`GradleHooks`、`CaptureRecorder`、`CaptureEntry`、
-  `CaptureSink`、`CaptureReader`、`JavacOptions`、`CompiledSourcesAdvice`、`CompiledSourcesBridge`
+  `CaptureSink`、`CaptureReader`、`JavacOptions`、`CompiledSourcesAdvice`、`CompiledSourcesBridge`、
+  `CompdbWriter`、`CompdbConformanceProbe`
 
 每个 adapter 实现 `BuildAdapter.discover(Path)` 返回 `BuildProject`：
 
