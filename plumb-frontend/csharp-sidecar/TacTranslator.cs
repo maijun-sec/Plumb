@@ -31,7 +31,7 @@ namespace Plumb.CSharpSidecar;
 /// the spelling.
 /// </para>
 /// </remarks>
-internal sealed class TacTranslator
+internal sealed partial class TacTranslator
 {
     private readonly SemanticModel _model;
     private readonly List<Instruction> _instructions = new();
@@ -71,10 +71,43 @@ internal sealed class TacTranslator
     private int _counter;
     private bool _degraded;
 
-    public TacTranslator(SemanticModel model)
+    /// <summary>
+    /// The type that encloses the member being translated.
+    /// </summary>
+    /// <remarks>
+    /// It is the owner of the closures the member declares, and the owner the
+    /// callee keys are built from.
+    /// </remarks>
+    private INamedTypeSymbol? _ownerType;
+
+    /// <summary>
+    /// The name of the member being translated.
+    /// </summary>
+    /// <remarks>
+    /// A closure's name carries it, so a report says which member the closure
+    /// came from without having to look at the signature.
+    /// </remarks>
+    private string _memberName = "";
+
+    /// <summary>
+    /// Build a translator.
+    /// </summary>
+    /// <param name="model">the semantic model of the file</param>
+    /// <param name="closureCounter">
+    /// the counter that names the closures of the project, or null for a
+    /// counter of its own
+    /// </param>
+    public TacTranslator(SemanticModel model, ClosureCounter? closureCounter = null)
     {
         _model = model;
+        _closureCounter = closureCounter ?? new ClosureCounter();
     }
+
+    /// <summary>
+    /// The type that encloses the member being translated.
+    /// </summary>
+    /// <returns>the type, or null when it cannot be resolved</returns>
+    private INamedTypeSymbol? OwnerType() => _ownerType;
 
     /// <summary>Whether any construct could not be lowered faithfully.</summary>
     public bool Degraded => _degraded;
@@ -96,6 +129,9 @@ internal sealed class TacTranslator
     /// <param name="method">the method's symbol</param>
     public void Translate(SyntaxNode? body, IMethodSymbol? method)
     {
+        _ownerType = method?.ContainingType;
+        _memberName = method?.Name ?? "";
+
         if (method is not null)
         {
             foreach (var parameter in method.Parameters)
@@ -133,10 +169,57 @@ internal sealed class TacTranslator
         }
     }
 
+    /// <summary>
+    /// Lower the TOP-LEVEL STATEMENTS of a file.
+    /// </summary>
+    /// <param name="statements">the statements</param>
+    /// <param name="method">the synthesized entry point's symbol, or null</param>
+    /// <remarks>
+    /// <para>
+    /// A file with top-level statements has no method of its own: the
+    /// compiler wraps the statements in a synthesized entry point. Without
+    /// this the whole file would be invisible to the analysis -- and a
+    /// modern console application is exactly a file of top-level
+    /// statements.
+    /// </para>
+    /// <para>
+    /// The statements are lowered in source order, which is the order they
+    /// run in.
+    /// </para>
+    /// </remarks>
+    public void TranslateTopLevel(IEnumerable<GlobalStatementSyntax> statements, IMethodSymbol? method)
+    {
+        _ownerType = method?.ContainingType;
+        _memberName = method?.Name ?? "";
+
+        if (method is not null)
+        {
+            // The entry point's parameters -- `args` -- are the function's
+            // parameters, exactly as a written method's are.
+            foreach (var parameter in method.Parameters)
+            {
+                _params.Add(VariableOperand(parameter, isTemp: false));
+            }
+        }
+        foreach (var statement in statements)
+        {
+            TranslateStatement(statement.Statement);
+        }
+    }
+
     /// <summary>Lower an expression-bodied member's arrow clause.</summary>
     /// <param name="clause">the arrow clause</param>
-    public void TranslateArrow(ArrowExpressionClauseSyntax clause)
+    /// <param name="owner">
+    /// the member the arrow belongs to, when the translator has not already
+    /// been told about it
+    /// </param>
+    public void TranslateArrow(ArrowExpressionClauseSyntax clause, IMethodSymbol? owner = null)
     {
+        if (_ownerType is null && owner is not null)
+        {
+            _ownerType = owner.ContainingType;
+            _memberName = owner.Name;
+        }
         var value = TranslateExpression(clause.Expression, store: false);
         Emit(InstructionKind.RETURN, lhs1: value, node: clause);
     }
@@ -268,6 +351,10 @@ internal sealed class TacTranslator
                 {
                     Emit(InstructionKind.MOVE, dest: operand, lhs1: value, node: declarator);
                 }
+                // A variable that HOLDS a lambda: `Action handler = x => ...`.
+                // The registration is what makes `handler(y)` reach the
+                // lambda's body.
+                RegisterClosureHolder(symbol, declarator.Initializer.Value);
             }
         }
         _ = typeSymbol;
@@ -311,6 +398,7 @@ internal sealed class TacTranslator
                     {
                         Emit(InstructionKind.MOVE, dest: operand, lhs1: value, node: assignment);
                     }
+                    RegisterClosureHolder(localSymbol, right);
                     return;
                 }
                 if (symbol is IParameterSymbol parameterSymbol)
@@ -320,6 +408,7 @@ internal sealed class TacTranslator
                     {
                         Emit(InstructionKind.MOVE, dest: operand, lhs1: value, node: assignment);
                     }
+                    RegisterClosureHolder(parameterSymbol, right);
                     return;
                 }
                 Report(assignment, "UNHANDLED_NODE",
@@ -369,20 +458,30 @@ internal sealed class TacTranslator
             }
 
             // The receiver is evaluated and becomes args[0], following the TAC's
-            // call convention: "args[0] is the receiver when present, args[1..]
-            // are the actual args".
+            // call convention: "args[0] is the receiver, args[1..] are the
+            // actual args".
             //
             // This is NOT optional. The engine reads the sink's argument index
             // against that convention, so a setter call whose argument list
             // starts with the assigned value would put the value at index 0
             // where the catalogue expects the receiver -- and the finding would
             // never be raised.
-            var receiver = TranslateExpression(memberAccess.Expression, store: false);
-
+            //
+            // A STATIC property has no receiver object, so the slot carries
+            // the declaring type instead. The slot is still there: the engine
+            // adds one to the catalogue's argument index unconditionally.
             var arguments = new List<Operand>();
-            if (receiver is not null)
+            if (setter.IsStatic)
             {
-                arguments.Add(receiver);
+                arguments.Add(TypePlaceholder(setter.ContainingType));
+            }
+            else
+            {
+                var receiver = TranslateExpression(memberAccess.Expression, store: false);
+                if (receiver is not null)
+                {
+                    arguments.Add(receiver);
+                }
             }
             if (value is not null)
             {
@@ -1124,9 +1223,17 @@ internal sealed class TacTranslator
                 return TranslateIndexerRead(elementAccess);
             }
 
-            case ThisExpressionSyntax:
+            case ThisExpressionSyntax thisExpression:
             {
-                var method = _model.GetEnclosingSymbol(0) as IMethodSymbol;
+                // The enclosing symbol is read at the `this` TOKEN's position,
+                // not at position 0. Position 0 is the start of the FILE, so
+                // the enclosing symbol there is the compilation unit's, never
+                // the member's -- and the receiver of every instance call on
+                // `this` came back empty. Inside a lambda it is worse: the
+                // lambda's OWN method symbol is the one that encloses the
+                // token, and its containing type is the type the closure
+                // belongs to.
+                var method = _model.GetEnclosingSymbol(thisExpression.SpanStart) as IMethodSymbol;
                 return method is null ? null : OperandFor(method.ContainingType);
             }
 
@@ -1173,15 +1280,14 @@ internal sealed class TacTranslator
                 return result;
             }
 
-            case AnonymousObjectCreationExpressionSyntax:
-                Report(expression, "UNHANDLED_NODE",
-                    "an anonymous object was not lowered", expression.GetType().Name);
-                return null;
+            case AnonymousFunctionExpressionSyntax lambda:
+                return TranslateLambda(lambda);
 
-            case LambdaExpressionSyntax:
-                Report(expression, "UNHANDLED_NODE",
-                    "a lambda was not lowered", expression.GetType().Name);
-                return null;
+            case AnonymousObjectCreationExpressionSyntax anonymous:
+                return TranslateAnonymousObject(anonymous);
+
+            case ConditionalAccessExpressionSyntax conditionalAccess:
+                return TranslateConditionalAccess(conditionalAccess);
 
             default:
                 Report(expression, "UNHANDLED_NODE",
@@ -1334,12 +1440,44 @@ internal sealed class TacTranslator
             Emit(InstructionKind.HAVOC, dest: unknown, node: identifier);
             return unknown;
         }
+        // A `const` field and an enum member are compile-time constants. Their
+        // value is known, so the TAC holds the value -- not a variable that
+        // nothing ever assigns, which would carry no value at all.
+        if (symbol is IFieldSymbol constant
+            && (constant.IsConst || constant.ContainingType.TypeKind == TypeKind.Enum))
+        {
+            return ConstantFieldValue(constant);
+        }
         return OperandFor(symbol);
     }
 
     private Operand? TranslateMemberAccess(MemberAccessExpressionSyntax memberAccess, bool store)
     {
         var symbol = _model.GetSymbolInfo(memberAccess).Symbol;
+
+        // A member access that names a TYPE is a QUALIFIER, not a value.
+        // `Environment.SpecialFolder.UserProfile` is the shape that matters:
+        // the qualifier of the enum member is the nested enum TYPE, and
+        // reading a type as a value failed -- the translator reported the
+        // node as unhandled and emitted HAVOC, so the expression became
+        // unknown and stopped carrying a value at all.
+        //
+        // The thing it names is known exactly, so it is a constant naming
+        // the type -- the same shape the receiver slot of a static call uses.
+        if (symbol is INamedTypeSymbol namedType)
+        {
+            return TypePlaceholder(namedType);
+        }
+
+        // An ENUM MEMBER is a compile-time constant, not a field read. Its
+        // value is known, so it is a constant -- and a constant is exactly
+        // what cannot carry taint, which is the right answer for a value
+        // that came from the program itself.
+        if (symbol is IFieldSymbol enumMember
+            && enumMember.ContainingType.TypeKind == TypeKind.Enum)
+        {
+            return ConstantFieldValue(enumMember);
+        }
 
         // A PROPERTY GETTER is a call, for the same reason the setter is: a
         // property accessor is a method. Reading `cmd.CommandText` is calling
@@ -1410,8 +1548,11 @@ internal sealed class TacTranslator
         if (symbol is IMethodSymbol method)
         {
             var staticTemp = NewTemp();
+            // The receiver slot is filled with the declaring type, for the same
+            // reason a static CALL's slot is: the engine reads every argument
+            // index against the convention "args[0] is the receiver".
             Emit(InstructionKind.CALL, dest: staticTemp, calleeSig: Signature.For(method),
-                args: new List<Operand>(), node: memberAccess);
+                args: new List<Operand> { TypePlaceholder(method.ContainingType) }, node: memberAccess);
             return staticTemp;
         }
         if (symbol is IFieldSymbol field)
@@ -1428,6 +1569,13 @@ internal sealed class TacTranslator
 
     private Operand? TranslateInvocation(InvocationExpressionSyntax invocation, bool store)
     {
+        // A call of a LAMBDA, or of a variable that holds one. The closure's
+        // body is a function of its own, and this is the call that reaches it.
+        if (TryTranslateClosureCall(invocation, out var closureResult))
+        {
+            return closureResult;
+        }
+
         var method = _model.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
         if (method is null)
         {
@@ -1442,13 +1590,31 @@ internal sealed class TacTranslator
 
         var arguments = new List<Operand>();
 
-        // THE RECEIVER IS args[0]. The TAC's call convention is "args[0] is the
-        // receiver when present, args[1..] are the actual args", and the engine
-        // reads the sink's argument index against that convention.
+        // THE RECEIVER SLOT IS ALWAYS args[0]. The TAC's call convention is
+        // "args[0] is the receiver, args[1..] are the actual args", and the
+        // engine reads BOTH the sink's argument index and the callee
+        // summary's formal binding against that convention.
         //
-        // A STATIC call has no receiver, so its first real argument stays at
-        // args[0] -- which is what the convention says too.
+        // A STATIC call has no receiver OBJECT, but the SLOT is still there:
+        // it carries a constant naming the type that declares the method.
+        // That is what the Java frontend does for a static call
+        // (`String.valueOf(x)` -> args = [const("java.lang.String"), x]),
+        // and the engine relies on it:
+        //
+        //   - the sink check adds ONE to the catalogue's argument index
+        //     unconditionally, so a static call whose first argument sat at
+        //     args[0] would be read at args[1] -- one argument too far;
+        //   - the callee summary binds formal i to args[i+1], and falls back
+        //     to args[i] only when args[i+1] is out of range. A static call
+        //     with ONE argument has args.size() == 1, so the fallback never
+        //     applies and the summary binds NOTHING: the taint a callee
+        //     returns from its parameter never reaches the caller.
+        //
+        // So the slot is filled with the declaring type's name. The loss is
+        // that the slot is not a VALUE -- a static call has no receiver
+        // value to carry taint -- and that is exactly what a constant says.
         Operand? receiver = null;
+        bool reducedExtension = method.IsExtensionMethod && method.ReducedFrom is not null;
         if (invocation.Expression is MemberAccessExpressionSyntax memberAccess
             && !method.IsStatic)
         {
@@ -1457,6 +1623,10 @@ internal sealed class TacTranslator
             {
                 arguments.Add(receiver);
             }
+        }
+        else if (method.IsStatic && !reducedExtension)
+        {
+            arguments.Add(TypePlaceholder(method.ContainingType));
         }
 
         foreach (var argument in invocation.ArgumentList.Arguments)
@@ -1530,6 +1700,198 @@ internal sealed class TacTranslator
                 }
             }
         }
+        return newTemp;
+    }
+
+    /// <summary>
+    /// Lower a NULL-CONDITIONAL access: <c>a?.B()</c> or <c>a?.Prop</c>.
+    /// </summary>
+    /// <param name="conditionalAccess">the conditional access</param>
+    /// <returns>the operand holding the value</returns>
+    /// <remarks>
+    /// <para>
+    /// The access happens ONLY when the receiver is not null, so it is a
+    /// branch: the receiver is tested, and the access is on one side of it.
+    /// Dropping the test would claim a path the program does not have -- the
+    /// program says "and then only if it is there" -- and the dataflow
+    /// engine walks the paths it is given.
+    /// </para>
+    /// <para>
+    /// The value of the whole expression is null on the other side, so the
+    /// two sides MERGE: the result carries the taint of the access when it
+    /// happened, and nothing when it did not. That is the conservative
+    /// direction -- the analysis cannot claim the value is clean when it
+    /// might not be.
+    /// </para>
+    /// </remarks>
+    private Operand? TranslateConditionalAccess(ConditionalAccessExpressionSyntax conditionalAccess)
+    {
+        var receiver = TranslateExpression(conditionalAccess.Expression, store: false);
+
+        // The null test: the receiver is null or not.
+        var isNull = NewTemp();
+        if (receiver is not null)
+        {
+            Emit(InstructionKind.BINOP, dest: isNull, lhs1: receiver,
+                lhs2: new Operand { Kind = "CONST", ConstKind = "NULL" }, binOp: "EQ",
+                node: conditionalAccess);
+        }
+
+        var thenLabel = NewLabel("condaccess_then");
+        var elseLabel = NewLabel("condaccess_else");
+        var endLabel = NewLabel("condaccess_end");
+        var result = NewTemp();
+
+        if (receiver is not null)
+        {
+            Emit(InstructionKind.BRANCH, lhs1: isNull, trueLabel: elseLabel,
+                falseLabel: thenLabel, node: conditionalAccess);
+        }
+        Emit(InstructionKind.LABEL, label: thenLabel, node: conditionalAccess);
+
+        var value = TranslateConditionalTarget(conditionalAccess, receiver);
+        if (value is not null)
+        {
+            Emit(InstructionKind.MOVE, dest: result, lhs1: value, node: conditionalAccess);
+        }
+        Emit(InstructionKind.JUMP, label: endLabel, node: conditionalAccess);
+
+        // The other side: the access did not happen, so the value is null.
+        // The result is NOT overwritten there: the merge is a union, and a
+        // value that was tainted on one side stays tainted.
+        Emit(InstructionKind.LABEL, label: elseLabel, node: conditionalAccess);
+        Emit(InstructionKind.LABEL, label: endLabel, node: conditionalAccess);
+        return result;
+    }
+
+    /// <summary>
+    /// Lower what a null-conditional access reaches.
+    /// </summary>
+    /// <param name="conditionalAccess">the conditional access</param>
+    /// <param name="receiver">the operand holding the receiver</param>
+    /// <returns>the operand holding the value</returns>
+    private Operand? TranslateConditionalTarget(
+        ConditionalAccessExpressionSyntax conditionalAccess,
+        Operand? receiver)
+    {
+        switch (conditionalAccess.WhenNotNull)
+        {
+            case InvocationExpressionSyntax invocation
+                when invocation.Expression is MemberBindingExpressionSyntax binding:
+            {
+                // A delegate reached through `?.`: the call reaches the
+                // closure's body, not the framework's `Invoke`.
+                if (TryTranslateConditionalClosureCall(conditionalAccess, out var closureValue))
+                {
+                    return closureValue;
+                }
+
+                var method = _model.GetSymbolInfo(binding).Symbol as IMethodSymbol;
+                if (method is null)
+                {
+                    return null;
+                }
+                var arguments = new List<Operand>();
+                if (receiver is not null)
+                {
+                    arguments.Add(receiver);
+                }
+                foreach (var argument in invocation.ArgumentList.Arguments)
+                {
+                    var operand = TranslateExpression(argument.Expression, store: false);
+                    if (operand is null)
+                    {
+                        var unknown = NewTemp();
+                        Emit(InstructionKind.HAVOC, dest: unknown, node: argument);
+                        operand = unknown;
+                    }
+                    arguments.Add(operand);
+                }
+                var callResult = NewTemp();
+                Emit(InstructionKind.CALL, dest: callResult, calleeSig: Signature.For(method),
+                    args: arguments, node: conditionalAccess);
+                return callResult;
+            }
+
+            case MemberBindingExpressionSyntax binding:
+            {
+                var symbol = _model.GetSymbolInfo(binding).Symbol;
+                if (symbol is IPropertySymbol property)
+                {
+                    var getter = property.GetMethod;
+                    if (getter is null)
+                    {
+                        return null;
+                    }
+                    var arguments = new List<Operand>();
+                    if (receiver is not null)
+                    {
+                        arguments.Add(receiver);
+                    }
+                    var propertyResult = NewTemp();
+                    Emit(InstructionKind.CALL, dest: propertyResult, calleeSig: Signature.For(getter),
+                        args: arguments, node: conditionalAccess);
+                    return propertyResult;
+                }
+                if (symbol is IFieldSymbol field && receiver is not null)
+                {
+                    var fieldResult = NewTemp();
+                    Emit(InstructionKind.FIELDLOAD, dest: fieldResult, lhs1: receiver,
+                        fieldName: field.Name, node: conditionalAccess);
+                    return fieldResult;
+                }
+                return null;
+            }
+
+            default:
+                return TranslateExpression(conditionalAccess.WhenNotNull, store: false);
+        }
+    }
+
+    /// <summary>
+    /// Lower an ANONYMOUS OBJECT: <c>new { Name = "x", Age = 3 }</c>.
+    /// </summary>
+    /// <param name="creation">the anonymous object creation</param>
+    /// <returns>the operand holding the object</returns>
+    /// <remarks>
+    /// <para>
+    /// An anonymous object's members are its CONSTRUCTOR ARGUMENTS. Its
+    /// properties are GET-ONLY -- the compiler writes them once, in the
+    /// constructor -- so there is no setter to call. Lowering the member
+    /// assignment as a property assignment would name a method that does not
+    /// exist, and the value written would reach nothing.
+    /// </para>
+    /// <para>
+    /// Passing the values as the constructor's arguments is also what makes
+    /// the taint survive: the engine treats a constructed object as tainted
+    /// when any of its constructor arguments is, so a tainted member taints
+    /// the object, and the object's getter hands that taint back.
+    /// </para>
+    /// </remarks>
+    private Operand? TranslateAnonymousObject(AnonymousObjectCreationExpressionSyntax creation)
+    {
+        var type = _model.GetTypeInfo(creation).Type;
+        var ctorType = TypeMapper.Map(type);
+
+        var arguments = new List<Operand>();
+        foreach (var member in creation.Initializers)
+        {
+            // The member's syntax is a NAME and a VALUE: `Name = value` is
+            // spelled `NameEquals` (the `Name =` part) and `Expression` (the
+            // value). It is NOT an assignment expression -- so reading the
+            // value out of an assignment would find nothing, and the object
+            // would be built with no members at all.
+            var value = TranslateExpression(member.Expression, store: false);
+            if (value is null)
+            {
+                continue;
+            }
+            arguments.Add(value);
+        }
+
+        var newTemp = NewTemp(ctorType);
+        Emit(InstructionKind.NEW, dest: newTemp, ctorType: ctorType, args: arguments,
+            node: creation);
         return newTemp;
     }
 
@@ -1742,6 +2104,82 @@ internal sealed class TacTranslator
         };
         _operands[symbol] = operand;
         return operand;
+    }
+
+    /// <summary>
+    /// The constant that fills the receiver slot of a STATIC call.
+    /// </summary>
+    /// <param name="type">the type that declares the member</param>
+    /// <returns>
+    /// a string constant naming the type, fully qualified
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// A static member has no receiver object, but the TAC's call convention
+    /// still reserves args[0] for the receiver slot, and the engine reads
+    /// every argument index against that convention. The slot therefore
+    /// carries the DECLARING TYPE, which is the closest thing to a receiver a
+    /// static call has -- and it is a constant, because a constant is exactly
+    /// what cannot carry taint.
+    /// </para>
+    /// <para>
+    /// The text is the fully qualified type name, so the engine's
+    /// "is this a static callee?" test recognises it: that test accepts a
+    /// string constant whose last dot-separated segment starts with an
+    /// uppercase letter, which a type name does and a package path does not.
+    /// </para>
+    /// </remarks>
+    private static Operand TypePlaceholder(INamedTypeSymbol type)
+    {
+        return new Operand
+        {
+            Kind = "CONST",
+            ConstKind = "STRING",
+            Value = TypeMapper.FullName(type),
+        };
+    }
+
+    /// <summary>The constant value of a field whose value the compiler knows.</summary>
+    /// <param name="member">the enum member or the const field</param>
+    /// <returns>
+    /// a constant holding the member's value, in the enum's own underlying type
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// An enum member is a compile-time constant: the C# compiler folds it to
+    /// a literal. So the TAC can hold it as a literal too, and the value that
+    /// reaches the sink is exactly the value the program would use.
+    /// </para>
+    /// <para>
+    /// The alternative -- reading it as a field off its declaring type -- is
+    /// what produced a HAVOC for every enum member in a nested enum, because
+    /// the qualifier of such a member is a TYPE and not an object.
+    /// </para>
+    /// </remarks>
+    private static Operand ConstantFieldValue(IFieldSymbol member)
+    {
+        var underlying = member.ContainingType.TypeKind == TypeKind.Enum
+            ? member.ContainingType.EnumUnderlyingType?.SpecialType
+            : member.Type?.SpecialType;
+        var value = member.ConstantValue;
+        var text = value switch
+        {
+            bool flag => flag ? "1" : "0",
+            sbyte number => number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            byte number => number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            short number => number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ushort number => number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            int number => number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            uint number => number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            long number => number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ulong number => number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            _ => "0",
+        };
+        var kind = underlying == SpecialType.System_Int64
+            || underlying == SpecialType.System_UInt64
+            ? "LONG"
+            : "INT";
+        return new Operand { Kind = "CONST", ConstKind = kind, Value = text };
     }
 
     /// <summary>The operand for a local or a parameter, registering it as a local.</summary>

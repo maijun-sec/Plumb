@@ -229,6 +229,7 @@ public final class GoProjectDiscovery {
               files,
               null,
               List.of(),
+              java.util.Map.of(),
               java.util.Map.of()));
     }
     return packages;

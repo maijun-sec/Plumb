@@ -340,6 +340,66 @@ class LanguageSemanticsTest {
   }
 
   /**
+   * Go's table classifies the measured Go callee keys.
+   *
+   * <p>The keys below were MEASURED: the Go front end was run over a probe program that calls each
+   * of them, and the callee signature it produced was read back out of the TAC. A table entry
+   * written from the Go documentation alone would name {@code fmt.Sprintf} where the front end
+   * emits {@code fmt.Sprintf/2}, and the entry would match nothing.
+   */
+  @Test
+  @DisplayName("Go's table classifies the measured Go callee keys")
+  void goTableClassifiesTheMeasuredKeys() {
+    LanguageSemantics go = LanguageSemanticsRegistry.goSemantics();
+
+    // Preserves: the result is built from the input.
+    assertThat(go.behaviourOf("strings.TrimSpace/1")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(go.behaviourOf("strings.Replace/3")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(go.behaviourOf("strings.Join/2")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(go.behaviourOf("path/filepath.Join/2")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(go.behaviourOf("net/url.QueryEscape/1")).isEqualTo(TaintBehaviour.PRESERVES);
+
+    // The format functions. Without these the taint stops AT the call: the
+    // formatted result would look clean, and every sink downstream of it
+    // would be blind.
+    assertThat(go.behaviourOf("fmt.Sprintf/2")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(go.behaviourOf("fmt.Sprint/1")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(go.behaviourOf("fmt.Errorf/2")).isEqualTo(TaintBehaviour.PRESERVES);
+
+    // A reader or a buffer built over tainted bytes carries that taint.
+    assertThat(go.behaviourOf("io.ReadAll/1")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(go.behaviourOf("strings.NewReader/1")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(go.behaviourOf("bytes.NewBufferString/1")).isEqualTo(TaintBehaviour.PRESERVES);
+
+    // Dissociates: the result is not the input.
+    // `fmt.Fprintf` returns the number of bytes written, which carries
+    // nothing -- the WRITE is the sink, and the sink table names it.
+    assertThat(go.behaviourOf("fmt.Fprintf/2")).isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(go.behaviourOf("crypto/sha256.Sum256/1")).isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(go.behaviourOf("strconv.Atoi/1")).isEqualTo(TaintBehaviour.DISSOCIATES);
+    assertThat(go.behaviourOf("strconv.FormatInt/2")).isEqualTo(TaintBehaviour.DISSOCIATES);
+  }
+
+  /**
+   * The registry must carry a Go table.
+   *
+   * <p>Without one, every Go callee was {@link TaintBehaviour#UNKNOWN}, and the engine's
+   * conservative default made every Go call taint-preserving -- including {@code strconv.Atoi},
+   * whose whole purpose is to turn text into a number.
+   */
+  @Test
+  @DisplayName("the registry carries a Go table")
+  void theRegistryCarriesAGoTable() {
+    LanguageSemanticsRegistry registry = LanguageSemanticsRegistry.withDefaults();
+
+    assertThat(registry.languages()).contains(SourceLanguage.GO);
+    assertThat(registry.forLanguage(SourceLanguage.GO).entries()).isNotEmpty();
+    assertThat(registry.forLanguage(SourceLanguage.GO).behaviourOf("strconv.Atoi/1"))
+        .as("a Go call to Atoi must not be treated as taint-preserving")
+        .isEqualTo(TaintBehaviour.DISSOCIATES);
+  }
+
+  /**
    * A black-box call must be distinguishable.
    *
    * <p>The engine uses this to decide whether to emit an {@code UNINTERPRETED} instruction: "I

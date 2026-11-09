@@ -21,6 +21,7 @@
  */
 package org.plumb.main;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -73,7 +74,19 @@ public final class JavacCompilePlan {
         return true;
       }
     }
-    return false;
+    // The compilation unit decides, too.
+    //
+    // A database entry names the file it compiled, and a file's extension is
+    // what says which language it is in. So an entry whose unit is a Java,
+    // Kotlin or Scala file IS a JVM compilation, even when its arguments do
+    // not lead with the compiler's name.
+    //
+    // That is not a corner case: a build that compiles inside the JVM -- a
+    // Maven build, for one -- hands the compiler's options over as a list
+    // rather than as a command line, and a database written from that list
+    // has no compiler to name. Without this the entry is read as "not a
+    // compile at all" and the whole module silently disappears.
+    return isJvmSource(entry.file());
   }
 
   /**
@@ -151,6 +164,13 @@ public final class JavacCompilePlan {
     }
 
     String compiler = CsharpCompilePlan.toolName(arguments.get(0));
+    if (sourceFiles.isEmpty() && isJvmSource(entry.file())) {
+      // The arguments named no source file, but the entry names the unit it
+      // compiled. That is the case a build that compiles inside the JVM
+      // produces: the sources were handed to the compiler as a list, not as
+      // command line arguments. Without this the capture compiles nothing.
+      sourceFiles.add(resolve(directory, entry.file()));
+    }
     String language = languageOf(compiler, sourceFiles);
     if (sourcePath.isEmpty()) {
       sourcePath.addAll(derivedSourceRoots(sourceFiles, directory));
@@ -225,9 +245,14 @@ public final class JavacCompilePlan {
    * the Scala frontend copies every Java file it finds there into the compile. A scan that writes
    * into the directory it was started from is a scan nobody can run twice.
    *
-   * <p>The root is the deepest directory that contains every compiled source file. That is the
-   * directory tree the compiler actually saw, and it is the root the conventions agree on: {@code
-   * src/main/java} for a JVM project, {@code src/main/kotlin} for a Kotlin one.
+   * <p><b>Why the package path has to be peeled off.</b> A file's own directory is its *package*
+   * directory, not the source root: for {@code src/main/java/demo/core/Core.java} it is {@code
+   * src/main/java/demo/core}. A type solver looks a type up at {@code root/<the type's package
+   * path>}, so a root that already contains the package path makes every lookup miss by one segment
+   * -- and the miss is silent, because an unresolved type is simply an unknown type.
+   *
+   * <p>So each file's package is peeled off its own directory, and the roots that are left share a
+   * common ancestor: {@code src/main/java} for a JVM project.
    *
    * @param sourceFiles the compiled source files
    * @param compileDirectory the compile's own directory, used when the files share no root
@@ -239,11 +264,11 @@ public final class JavacCompilePlan {
     }
     Path ancestor = null;
     for (Path file : sourceFiles) {
-      Path directory = file == null ? null : file.getParent();
-      if (directory == null) {
+      Path root = sourceRootOf(file);
+      if (root == null) {
         continue;
       }
-      ancestor = ancestor == null ? directory : commonAncestor(ancestor, directory);
+      ancestor = ancestor == null ? root : commonAncestor(ancestor, root);
       if (ancestor == null) {
         break;
       }
@@ -253,7 +278,80 @@ public final class JavacCompilePlan {
       // has no parent. The compile's own directory is the next best answer.
       ancestor = compileDirectory;
     }
-    return ancestor == null ? List.of() : List.of(ancestor);
+    if (ancestor == null) {
+      return List.of();
+    }
+    return List.of(ancestor);
+  }
+
+  /**
+   * The source root a compiled file belongs to.
+   *
+   * <p>The file's own directory is the package directory, and the package says how many segments
+   * sit between the root and the file. So the root is the file's directory with the package's own
+   * segments peeled off.
+   *
+   * <p>The peel is checked against the directory as it is: a segment has to be there to be peeled.
+   * So a directory that is already the root is left alone, and a file whose package cannot be read
+   * keeps its own directory -- a root that is too shallow still finds the file's own type, while a
+   * root that is too deep finds nothing at all.
+   *
+   * @param file the compiled source file
+   * @return the source root, or {@code null} when the file has no parent
+   */
+  private static Path sourceRootOf(Path file) {
+    if (file == null) {
+      return null;
+    }
+    Path directory = file.getParent();
+    if (directory == null) {
+      return null;
+    }
+    String packageName = packageOf(file);
+    if (packageName == null || packageName.isEmpty()) {
+      return directory;
+    }
+    String[] segments = packageName.split("\\.");
+    Path root = directory;
+    for (int i = segments.length - 1; i >= 0; i--) {
+      Path parent = root.getParent();
+      if (parent == null || root.getFileName() == null) {
+        return directory;
+      }
+      if (!root.getFileName().toString().equals(segments[i])) {
+        return directory;
+      }
+      root = parent;
+    }
+    return root;
+  }
+
+  /**
+   * The package a source file declares.
+   *
+   * <p>The declaration is on its own line and always comes before the first type, so the search is
+   * for a line that starts with the keyword. A line inside a block comment cannot start with the
+   * keyword -- a comment line starts with the comment's own mark -- so a commented-out declaration
+   * is not mistaken for a real one.
+   *
+   * @param file the source file
+   * @return the package name, or {@code null} when it declares none
+   */
+  private static String packageOf(Path file) {
+    try {
+      String text = java.nio.file.Files.readString(file, java.nio.charset.StandardCharsets.UTF_8);
+      java.util.regex.Matcher matcher =
+          java.util.regex.Pattern.compile(
+                  "(?m)^\\s*package\\s+([A-Za-z_$][\\w$]*(\\.[A-Za-z_$][\\w$]*)*)\\s*;")
+              .matcher(text);
+      if (matcher.find()) {
+        return matcher.group(1);
+      }
+    } catch (IOException | RuntimeException e) {
+      // A file that cannot be read says nothing about its package.
+      return null;
+    }
+    return null;
   }
 
   /**

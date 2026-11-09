@@ -17,8 +17,10 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
+	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 )
 
 // syntheticOwner is the owner of the synthetic callee signatures.
@@ -45,6 +47,8 @@ const (
 	syntheticMapStore  = "mapStore"
 	syntheticMapIter   = "mapIter"
 	syntheticMapNext   = "mapNext"
+	syntheticMapKey    = "mapKey"
+	syntheticMapValue  = "mapValue"
 	syntheticChanSend  = "chanSend"
 	syntheticChanRecv  = "chanRecv"
 	syntheticSelect    = "selectReady"
@@ -55,12 +59,38 @@ const (
 	syntheticMin       = "min"
 	syntheticMax       = "max"
 	syntheticClear     = "clear"
+	syntheticClose     = "close"
 	syntheticNewObject = "<init>"
 )
 
 // syntheticSignature builds a synthetic callee key.
 func syntheticSignature(name string, arity int) string {
 	return calleeSignature(syntheticOwner, name, arity)
+}
+
+// packageSlot is the receiver slot of a call to a PACKAGE-LEVEL function.
+//
+// A Go package-level function has no receiver object: `fmt.Println` is a
+// function of the PACKAGE, and there is no instance to call it on. But the
+// TAC's call convention reserves args[0] for the receiver, and the engine
+// reads every argument index against that convention:
+//
+//   - the sink check adds ONE to the catalogue's argument index, so a
+//     package-level call whose first argument sat at args[0] would be read
+//     one argument too far;
+//   - the callee summary binds formal i to args[i+1] and falls back to
+//     args[i] only when args[i+1] is out of range -- so a one-argument
+//     package-level call binds NOTHING, and the taint a callee returns from
+//     its parameter never reaches the caller.
+//
+// So the slot carries the PACKAGE, as a constant. A constant is exactly what
+// cannot carry taint, and a package-level call has no receiver value that
+// could.
+func packageSlot(pkg *types.Package) *Operand {
+	if pkg == nil {
+		return nil
+	}
+	return Const("STRING", pkg.Path())
 }
 
 // A break/continue target.
@@ -126,6 +156,37 @@ type translator struct {
 	// error result, the named results).
 	signature *types.Signature
 
+	// The function's owner, and the scope it belongs to.
+	//
+	// A closure inherits both: it is written inside the function, and the
+	// TAC's owner convention needs the scope for the same reason the
+	// enclosing function needs one.
+	owner    string
+	enclosing string
+
+	// The wire models of those closures.
+	//
+	// They are kept apart from the records because a record is the
+	// analysis' view of a closure, and a wire model is what reaches the
+	// store. The two are in the same order.
+	closureFunctions []Function
+
+	// The closure a variable holds, by the variable's object.
+	//
+	// It is what makes a call through a closure variable reach the
+	// closure's body: without it, the call would be unresolvable and the
+	// closure's whole body would be invisible to the analysis.
+	closureByVar map[types.Object]*closure
+
+	// The closure a literal became, by the literal's AST.
+	//
+	// It is what connects an assignment (`handler := func(...) {...}`) to
+	// the closure the assignment stores.
+	closureByLiteral map[*ast.FuncLit]*closure
+
+	// The counter that names the closures of one function.
+	closureCounter int
+
 	instructions []Instruction
 	problems     []Problem
 	params       []Operand
@@ -167,12 +228,43 @@ type translator struct {
 	pendingLabel string
 }
 
+// A closure: a function literal, and the variables it captures.
+//
+// WHY A CLOSURE IS A SEPARATE FUNCTION. The TAC has no nested function and no
+// function value, so a literal cannot be a value in an instruction stream.
+// The literal's BODY therefore becomes a function of its own, and the call
+// sites call it by name.
+//
+// WHY THE CAPTURED VARIABLES ARE PARAMETERS. Go captures a variable by
+// REFERENCE: a closure sees the variable as it is when the closure RUNS, not
+// as it was when the closure was created. The TAC has no reference, so the
+// value is passed at the call site instead -- which is the standard
+// desugaring, and the one that makes the taint of an outer variable reach
+// the closure's body.
+type closure struct {
+	// The literal's AST.
+	literal *ast.FuncLit
+
+	// The variables the literal captures, in the order they are passed.
+	captured []*types.Var
+
+	// The callee key the call sites use.
+	calleeSig string
+
+	// The operand that holds the closure's value.
+	value *Operand
+}
+
 // translateFunction lowers one function declaration into the wire model.
-func translateFunction(fset *token.FileSet, pkg *loadedPackage, declaration *ast.FuncDecl) Function {
+//
+// It returns the function AND the closures it created: a closure is a
+// function of its own, and it must reach the store like any other, or the
+// body it holds would be invisible to the analysis.
+func translateFunction(fset *token.FileSet, pkg *loadedPackage, declaration *ast.FuncDecl) []Function {
 	t := &translator{
-		fset:       fset,
-		info:       pkg.info,
-		pkg:        pkg.pkg,
+		fset:         fset,
+		info:         pkg.info,
+		pkg:          pkg.pkg,
 		instructions: []Instruction{},
 		problems:     []Problem{},
 		params:       []Operand{},
@@ -181,12 +273,14 @@ func translateFunction(fset *token.FileSet, pkg *loadedPackage, declaration *ast
 		bindings:     map[types.Object]*Operand{},
 		usedNames:    map[string]int{},
 		labelled:     map[string]*breakContext{},
+		closureByVar: map[types.Object]*closure{},
+		closureByLiteral: map[*ast.FuncLit]*closure{},
 	}
 
 	object, _ := pkg.info.Defs[declaration.Name].(*types.Func)
 	if object == nil {
 		t.report(declaration, ProblemTranslation, "the function's declaration could not be resolved")
-		return t.buildFunction(declaration, "", "")
+		return []Function{t.buildFunction(declaration, "", "")}
 	}
 	t.signature = object.Type().(*types.Signature)
 
@@ -204,6 +298,8 @@ func translateFunction(fset *token.FileSet, pkg *loadedPackage, declaration *ast
 	// owners by their LAST DOT-SEPARATED SEGMENT: the call site sees the
 	// qualified owner, so the declaration has to carry the same shape.
 	enclosing := owner
+	t.owner = owner
+	t.enclosing = enclosing
 
 	// The receiver is a parameter. It is not one of the function's
 	// DECLARED parameters -- the arity in the callee key counts those --
@@ -228,7 +324,7 @@ func translateFunction(fset *token.FileSet, pkg *loadedPackage, declaration *ast
 
 	t.translateBlock(declaration.Body)
 
-	return t.buildFunction(declaration, owner, enclosing)
+	return append([]Function{t.buildFunction(declaration, owner, enclosing)}, t.closureFunctions...)
 }
 
 // buildFunction assembles the wire model of the translated function.
@@ -257,6 +353,220 @@ func (t *translator) buildFunction(declaration *ast.FuncDecl, owner string, encl
 	name := "<unknown>"
 	if declaration != nil && declaration.Name != nil {
 		name = declaration.Name.Name
+	}
+
+	return Function{
+		Name:          name,
+		Signature:     declarationSignature(owner, name, parameters, result),
+		EnclosingClass: enclosing,
+		ReturnType:    returnType,
+		Precision:     precision,
+		Synthetic:     false,
+		Params:        t.params,
+		Locals:        t.locals,
+		Instructions:  t.instructions,
+		Problems:      t.problems,
+		DeferredCalls: t.deferred,
+		StartsGoroutine: t.startsGoroutine,
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Closures
+// ---------------------------------------------------------------------------
+
+// translateFuncLit lowers a function literal.
+//
+// The literal's BODY becomes a function of its own: the TAC has no nested
+// function and no function value, so a closure cannot live inside the
+// enclosing function's instruction stream.
+//
+// The captured variables become the closure's LEADING parameters, and the
+// call sites pass them. That is what makes the taint of an outer variable
+// reach the closure's body -- which is the whole point of a closure to a
+// taint analysis: `go func() { sink(secret) }()` reads a variable the
+// enclosing function holds.
+func (t *translator) translateFuncLit(literal *ast.FuncLit) *Operand {
+	// A literal is translated ONCE. The call that names it resolves the
+	// literal BEFORE the literal is evaluated, so the translation has to be
+	// idempotent: otherwise the call would create one closure and the
+	// expression another, and the call would reach a body the store never
+	// saw.
+	if record, ok := t.closureByLiteral[literal]; ok {
+		return record.value
+	}
+
+	signature, _ := t.info.TypeOf(literal).(*types.Signature)
+	if signature == nil {
+		t.report(literal, ProblemUnhandledNode, "the function literal's signature could not be resolved")
+		return nil
+	}
+
+	captured := t.capturedVariables(literal)
+
+	sub := &translator{
+		fset:         t.fset,
+		info:         t.info,
+		pkg:          t.pkg,
+		signature:    signature,
+		owner:        t.owner,
+		enclosing:    t.enclosing,
+		instructions: []Instruction{},
+		problems:     []Problem{},
+		params:       []Operand{},
+		locals:       []Operand{},
+		deferred:     []DeferredCall{},
+		bindings:     map[types.Object]*Operand{},
+		usedNames:    map[string]int{},
+		labelled:     map[string]*breakContext{},
+		closureByVar: map[types.Object]*closure{},
+		closureByLiteral: map[*ast.FuncLit]*closure{},
+	}
+
+	// The captured variables come first: they are the closure's leading
+	// parameters, and the call sites pass them in the same order.
+	for _, variable := range captured {
+		sub.params = append(sub.params, sub.declareVar(variable, false))
+	}
+	for index := 0; index < signature.Params().Len(); index++ {
+		sub.params = append(sub.params, sub.declareVar(signature.Params().At(index), false))
+	}
+	for index := 0; index < signature.Results().Len(); index++ {
+		result := signature.Results().At(index)
+		if result.Name() == "" {
+			continue
+		}
+		sub.declareVar(result, true)
+	}
+	sub.translateBlock(literal.Body)
+
+	t.closureCounter++
+	name := t.closureName(literal, t.closureCounter)
+	arity := len(captured) + signature.Params().Len()
+
+	record := &closure{
+		literal:  literal,
+		captured: captured,
+		calleeSig: calleeSignature(t.owner, name, arity),
+		value:    t.newTemp(signature),
+	}
+	t.closureByLiteral[literal] = record
+
+	t.closureFunctions = append(t.closureFunctions, sub.buildClosure(name, t.owner, t.enclosing, signature, captured))
+	t.closureFunctions = append(t.closureFunctions, sub.closureFunctions...)
+
+	return record.value
+}
+
+// capturedVariables returns the variables a function literal captures.
+//
+// A Go closure captures the variables of the function it is written in. The
+// TAC has no reference, so the captured value is passed to the closure as a
+// PARAMETER at the call site.
+//
+// A package-level variable is NOT a capture: it is shared by every function
+// of the package, and passing it as an argument would say something the
+// program does not say.
+func (t *translator) capturedVariables(literal *ast.FuncLit) []*types.Var {
+	captured := []*types.Var{}
+	seen := map[*types.Var]bool{}
+
+	ast.Inspect(literal.Body, func(node ast.Node) bool {
+		ident, ok := node.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		object := t.info.ObjectOf(ident)
+		variable, ok := object.(*types.Var)
+		if !ok || seen[variable] {
+			return true
+		}
+		// A variable declared INSIDE the literal is not a capture.
+		if variable.Pos() >= literal.Pos() && variable.Pos() < literal.End() {
+			return true
+		}
+		// A variable of the PACKAGE -- of this one or of another -- is not a
+		// capture either: its scope is the package scope, whose parent is
+		// nothing.
+		parent := variable.Parent()
+		if parent == nil || parent.Parent() == nil {
+			return true
+		}
+		seen[variable] = true
+		captured = append(captured, variable)
+		return true
+	})
+
+	return captured
+}
+
+// capturedOperands returns the operands of a closure's captured variables,
+// in the order the closure expects them.
+//
+// A captured variable is always declared BEFORE the closure that captures
+// it -- Go's scope rules make a later declaration invisible to the closure --
+// so the enclosing function has already bound it.
+func (t *translator) capturedOperands(record *closure) []Operand {
+	operands := []Operand{}
+	for _, variable := range record.captured {
+		if operand, ok := t.bindings[variable]; ok {
+			operands = append(operands, *operand)
+			continue
+		}
+		operands = append(operands, *t.unknownValue(variable.Type()))
+	}
+	return operands
+}
+
+// unknownValue emits a value the analysis knows nothing about.
+func (t *translator) unknownValue(goType types.Type) *Operand {
+	operand := t.newTemp(goType)
+	t.emit(Instruction{Kind: KindHavoc, Dest: operand}, token.NoPos)
+	return operand
+}
+
+// closureName names a closure.
+//
+// The name carries the FILE's name and a counter. Two closures of the same
+// package must not share a name: the TAC's store indexes a function under
+// "enclosing scope :: signature", and two functions with the same key are
+// ONE function as far as the call graph is concerned -- so the second
+// closure's body would be merged into the first one's, and its call sites
+// would reach the wrong body.
+func (t *translator) closureName(literal *ast.FuncLit, index int) string {
+	file := t.fset.Position(literal.Pos()).Filename
+	base := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+	if base == "" {
+		base = "closure"
+	}
+	return base + ".closure@" + strconv.Itoa(index)
+}
+
+// buildClosure assembles the wire model of a closure.
+//
+// The parameters are the CAPTURED variables followed by the literal's own:
+// that is the order the call sites pass them in, and the arity in the
+// callee key counts them all.
+func (t *translator) buildClosure(name string, owner string, enclosing string,
+	signature *types.Signature, captured []*types.Var) Function {
+	precision := PrecisionFull
+	if t.degraded {
+		precision = PrecisionLowered
+	}
+
+	parameters := []string{}
+	for _, variable := range captured {
+		parameters = append(parameters, variable.Type().String())
+	}
+	for index := 0; index < signature.Params().Len(); index++ {
+		parameters = append(parameters, signature.Params().At(index).Type().String())
+	}
+
+	result := ""
+	returnType := Simple(TypeVoid)
+	if signature.Results().Len() > 0 {
+		result = signature.Results().At(0).Type().String()
+		returnType = mapGoType(signature.Results().At(0).Type())
 	}
 
 	return Function{
@@ -319,6 +629,17 @@ func (t *translator) report(node ast.Node, kind string, message string) {
 	if kind == ProblemSourceLowered || kind == ProblemUnhandledNode {
 		t.degraded = true
 	}
+}
+
+// lowerPrecision records that the function is not fully understood.
+//
+// It is SEPARATE from report() because some constructs carry their own
+// STRUCTURED FACT -- a deferred call, a goroutine -- and the Java side
+// reports those from the wire. Saying the same thing twice would be noise,
+// and the structured fact says it better: it names the call, and it says
+// where the defer was written.
+func (t *translator) lowerPrecision() {
+	t.degraded = true
 }
 
 // nodeClass returns the simple name of an AST node's type.
@@ -489,6 +810,16 @@ func (t *translator) translateAssign(statement *ast.AssignStmt) {
 		case *ast.Ident:
 			destination := t.assignIdent(target, statement.Tok == token.DEFINE)
 			if destination == nil {
+				// The BLANK identifier: the value is discarded on purpose.
+				// But the expression that produced it still RUNS, so a
+				// call that is only there for its effect is still a call --
+				// and dropping it would drop the call's edges and its
+				// taint.
+				if call, ok := right.(*ast.CallExpr); ok {
+					t.translateCall(call, nil)
+				} else {
+					t.valueOf(right)
+				}
 				continue
 			}
 			if call, ok := right.(*ast.CallExpr); ok {
@@ -501,6 +832,15 @@ func (t *translator) translateAssign(statement *ast.AssignStmt) {
 			}
 			value := t.valueOf(right)
 			t.emit(Instruction{Kind: KindMove, Dest: destination, Lhs1: value}, statement.Pos())
+			// A closure stored in a variable: the variable now HOLDS the
+			// closure, and a call through it must reach the closure's body.
+			if literal, ok := right.(*ast.FuncLit); ok {
+				if record := t.closureByLiteral[literal]; record != nil {
+					if variable, ok := t.info.ObjectOf(target).(*types.Var); ok {
+						t.closureByVar[variable] = record
+					}
+				}
+			}
 		case *ast.SelectorExpr:
 			t.translateFieldAssign(target, t.valueOf(right), statement)
 		case *ast.IndexExpr:
@@ -859,9 +1199,69 @@ func (t *translator) translateRange(statement *ast.RangeStmt) {
 		t.rangeOverMap(statement, collection, key, value)
 	case isChanType(underlying):
 		t.rangeOverChannel(statement, collection, value)
+	case isIntegerType(underlying):
+		t.rangeOverInteger(statement, collection, key)
 	default:
 		t.rangeOverIndexed(statement, collection, key, value)
 	}
+}
+
+// rangeOverInteger lowers a range over an integer.
+//
+// Go 1.22 added `for i := range n`, which iterates n times with i counting
+// from 0. There is no collection to index into: the COUNT is the value.
+//
+// The count is read ONCE, before the loop, because Go evaluates the range
+// expression once. A count that changes inside the loop does not change the
+// number of iterations.
+func (t *translator) rangeOverInteger(statement *ast.RangeStmt, count *Operand, key *Operand) {
+	index := t.newTemp(nil)
+	t.emit(Instruction{Kind: KindMove, Dest: index, Lhs1: Const("INT", "0")}, statement.Pos())
+
+	conditionLabel := t.newLabel("range_cond")
+	bodyLabel := t.newLabel("range_body")
+	postLabel := t.newLabel("range_post")
+	endLabel := t.newLabel("range_end")
+
+	t.emit(Instruction{Kind: KindJump, Label: conditionLabel}, statement.Pos())
+	t.emit(Instruction{Kind: KindLabel, Label: conditionLabel}, statement.Pos())
+	comparison := t.newTemp(nil)
+	t.emit(Instruction{
+		Kind: KindBinOp,
+		Dest: comparison,
+		Lhs1: index,
+		Lhs2: count,
+		BinOp: "LT",
+	}, statement.Pos())
+	t.emit(Instruction{
+		Kind:      KindBranch,
+		Lhs1:      comparison,
+		TrueLabel: bodyLabel,
+		FalseLabel: endLabel,
+	}, statement.Pos())
+	t.emit(Instruction{Kind: KindLabel, Label: bodyLabel}, statement.Pos())
+
+	if key != nil {
+		t.emit(Instruction{Kind: KindMove, Dest: key, Lhs1: index}, statement.Pos())
+	}
+
+	t.pushBreak(&breakContext{breakLabel: endLabel, continueLabel: postLabel})
+	t.registerPendingLabel(endLabel, postLabel)
+	t.translateStatement(statement.Body)
+	t.popBreak()
+
+	t.emit(Instruction{Kind: KindLabel, Label: postLabel}, statement.Pos())
+	incremented := t.newTemp(nil)
+	t.emit(Instruction{
+		Kind: KindBinOp,
+		Dest: incremented,
+		Lhs1: index,
+		Lhs2: Const("INT", "1"),
+		BinOp: "ADD",
+	}, statement.Pos())
+	t.emit(Instruction{Kind: KindMove, Dest: index, Lhs1: incremented}, statement.Pos())
+	t.emit(Instruction{Kind: KindJump, Label: conditionLabel}, statement.Pos())
+	t.emit(Instruction{Kind: KindLabel, Label: endLabel}, statement.Pos())
 }
 
 // rangeTarget binds a range loop's key or value variable.
@@ -995,13 +1395,27 @@ func (t *translator) rangeOverMap(statement *ast.RangeStmt, collection *Operand,
 	t.emit(Instruction{Kind: KindLabel, Label: bodyLabel}, statement.Pos())
 
 	if key != nil {
-		t.emit(Instruction{Kind: KindHavoc, Dest: key}, statement.Pos())
+		keyValue := t.newTemp(nil)
+		t.emit(Instruction{
+			Kind:     KindCall,
+			Dest:     keyValue,
+			CalleeSig: syntheticSignature(syntheticMapKey, 1),
+			Args:     []Operand{*entry},
+		}, statement.Pos())
+		t.emit(Instruction{Kind: KindMove, Dest: key, Lhs1: keyValue}, statement.Pos())
 	}
 	if value != nil {
-		t.emit(Instruction{Kind: KindHavoc, Dest: value}, statement.Pos())
+		entryValue := t.newTemp(nil)
+		t.emit(Instruction{
+			Kind:     KindCall,
+			Dest:     entryValue,
+			CalleeSig: syntheticSignature(syntheticMapValue, 1),
+			Args:     []Operand{*entry},
+		}, statement.Pos())
+		t.emit(Instruction{Kind: KindMove, Dest: value, Lhs1: entryValue}, statement.Pos())
 	}
 	t.report(statement, ProblemSourceLowered,
-		"a map range was lowered to a call on the map iterator: the key and the value are not modelled")
+		"a map range was lowered to a call on the map iterator: the key and the value are read out of the iterator's entry, and the map's contents are not modelled")
 
 	t.pushBreak(&breakContext{breakLabel: endLabel, continueLabel: conditionLabel})
 	t.registerPendingLabel(endLabel, conditionLabel)
@@ -1355,6 +1769,9 @@ func (t *translator) translateDefer(statement *ast.DeferStmt) {
 	if target.receiver != nil {
 		args = append(args, *target.receiver)
 	}
+	for _, operand := range target.leading {
+		args = append(args, operand)
+	}
 	for _, argument := range statement.Call.Args {
 		args = append(args, *t.valueOf(argument))
 	}
@@ -1383,10 +1800,11 @@ func (t *translator) translateDefer(statement *ast.DeferStmt) {
 		Column:    position.Column,
 	})
 
-	t.report(statement, ProblemSourceLowered,
-		"a deferred call runs when the function exits, and the TAC represents it at the defer statement")
+	// The structured fact -- that this call runs at the exit -- travels in
+	// the side table, and the Java side reports it from there. Here the
+	// function is only marked as not fully understood.
+	t.lowerPrecision()
 }
-
 // translateGo lowers a go statement.
 //
 // A `go` statement starts a goroutine. The TAC has no concurrency model, so
@@ -1410,8 +1828,9 @@ func (t *translator) translateDefer(statement *ast.DeferStmt) {
 func (t *translator) translateGo(statement *ast.GoStmt) {
 	t.startsGoroutine = true
 	t.translateCall(statement.Call, nil)
-	t.report(statement, ProblemSourceLowered,
-		"a goroutine was lowered to an ordinary call: the analysis models no happens-before between goroutines")
+	// The structured fact -- that this function starts a goroutine -- travels
+	// in the wire's own field, and the Java side reports it from there.
+	t.lowerPrecision()
 }
 
 // translateBranch lowers a break, a continue, a goto or a fallthrough.
@@ -1601,10 +2020,10 @@ func (t *translator) translateExpr(expression ast.Expr) *Operand {
 		return t.translateTypeAssert(typed, nil)
 	case *ast.FuncLit:
 		// A function literal is a closure: a code block with its own
-		// captured environment. The TAC has no closure form, so a literal
-		// is a function value the analysis cannot see into.
-		t.report(expression, ProblemUnhandledNode, "a function literal was not lowered")
-		return nil
+		// captured environment. The TAC has no closure form, so the
+		// literal's body becomes a function of its own and the call sites
+		// call it by name.
+		return t.translateFuncLit(typed)
 	case *ast.ArrayType, *ast.MapType, *ast.StructType, *ast.InterfaceType,
 		*ast.ChanType, *ast.FuncType:
 		return t.translateTypeExpression(expression)
@@ -2068,6 +2487,13 @@ type calleeTarget struct {
 	// The receiver, when the call has one. It is the TAC's args[0].
 	receiver *Operand
 
+	// The arguments that come BEFORE the call's own arguments.
+	//
+	// A closure's captured variables are such arguments: they are the
+	// closure's leading parameters, and the call site passes them between
+	// the receiver and the arguments the source wrote.
+	leading []Operand
+
 	// The callee key, in the owner.method/arity form. It is empty for a
 	// conversion, a panic and a `new`, because none of those is a call to
 	// something the user wrote.
@@ -2161,6 +2587,9 @@ func (t *translator) translateCall(call *ast.CallExpr, destination *Operand) *Op
 	if target.receiver != nil {
 		args = append(args, *target.receiver)
 	}
+	for _, operand := range target.leading {
+		args = append(args, operand)
+	}
 	for _, argument := range call.Args {
 		args = append(args, *t.valueOf(argument))
 	}
@@ -2209,6 +2638,14 @@ func (t *translator) translateMake(call *ast.CallExpr, target calleeTarget, dest
 		if len(call.Args) > 1 {
 			length = t.valueOf(call.Args[1])
 		}
+		if len(call.Args) > 2 {
+			// The capacity is a real argument of `make`, and the TAC's
+			// ARRAY carries a component type and a length only. The
+			// capacity is dropped, and the loss is reported: a checker
+			// that reasons about a slice's capacity cannot see it.
+			t.report(call, ProblemSourceLowered,
+				"the capacity of a slice made by 'make' is not modelled: the TAC's array carries a length only")
+		}
 		t.emit(Instruction{
 			Kind:     KindNewArray,
 			Dest:     destination,
@@ -2218,14 +2655,21 @@ func (t *translator) translateMake(call *ast.CallExpr, target calleeTarget, dest
 		return destination
 	}
 
+	// `make(map[K]V)` and `make(chan T)` have no TAC shape of their own, so
+	// they become a synthetic call. The TYPE argument is not an argument --
+	// it is a type -- so it is not evaluated; the SIZE argument is, because
+	// it is a value the program computed.
 	args := []Operand{}
+	for _, argument := range call.Args[1:] {
+		args = append(args, *t.valueOf(argument))
+	}
 	if destination == nil {
 		destination = t.newTemp(madeType)
 	}
 	t.emit(Instruction{
 		Kind:     KindCall,
 		Dest:     destination,
-		CalleeSig: syntheticSignature(syntheticMake, len(call.Args)),
+		CalleeSig: syntheticSignature(syntheticMake, len(args)),
 		Args:     args,
 	}, call.Pos())
 	return destination
@@ -2260,11 +2704,23 @@ func (t *translator) resolveCallee(expression ast.Expr) (calleeTarget, bool) {
 			}
 			return calleeTarget{
 				kind:      callRegular,
+				receiver:  packageSlot(resolved.Pkg()),
 				signature: calleeSignature(resolved.Pkg().Path(), resolved.Name(), signatureArity(signature)),
 			}, true
 		case *types.TypeName:
 			return t.resolveConversion(expression, resolved.Type())
 		case *types.Var:
+			// A variable that HOLDS a closure: the call reaches the
+			// closure's body. Without this the closure would be a function
+			// nobody calls, and its whole body would be invisible.
+			if record, ok := t.closureByVar[resolved]; ok {
+				return calleeTarget{
+					kind:      callRegular,
+					receiver:  t.binding(resolved),
+					leading:   t.capturedOperands(record),
+					signature: record.calleeSig,
+				}, true
+			}
 			t.report(expression, ProblemUnhandledNode, "a call of a function value was not lowered")
 			return calleeTarget{}, false
 		}
@@ -2309,6 +2765,7 @@ func (t *translator) resolveCallee(expression ast.Expr) (calleeTarget, bool) {
 		}
 		return calleeTarget{
 			kind:      callRegular,
+			receiver:  packageSlot(function.Pkg()),
 			signature: calleeSignature(function.Pkg().Path(), function.Name(), signatureArity(signature)),
 		}, true
 
@@ -2327,6 +2784,18 @@ func (t *translator) resolveCallee(expression ast.Expr) (calleeTarget, bool) {
 		return t.resolveCallee(typed.X)
 
 	case *ast.FuncLit:
+		// A literal called directly: `func() { ... }()`. The body is a
+		// function of its own, and the call reaches it -- so the literal
+		// is translated HERE, before the call names it.
+		t.translateFuncLit(typed)
+		if record, ok := t.closureByLiteral[typed]; ok {
+			return calleeTarget{
+				kind:      callRegular,
+				receiver:  record.value,
+				leading:   t.capturedOperands(record),
+				signature: record.calleeSig,
+			}, true
+		}
 		t.report(expression, ProblemUnhandledNode, "a call of a function literal was not lowered")
 		return calleeTarget{}, false
 	}
@@ -2367,7 +2836,7 @@ func (t *translator) resolveBuiltin(expression ast.Expr, function *types.Builtin
 	case "make":
 		return calleeTarget{kind: callMake}, true
 	case "len", "cap", "append", "copy", "delete", "print", "println", "recover",
-		"complex", "real", "imag", "min", "max", "clear":
+		"complex", "real", "imag", "min", "max", "clear", "close":
 		return calleeTarget{kind: callBuiltin, builtinName: name}, true
 	}
 	t.report(expression, ProblemUnhandledNode,
@@ -2416,6 +2885,19 @@ func isArrayType(goType types.Type) bool {
 func isChanType(goType types.Type) bool {
 	_, ok := goType.(*types.Chan)
 	return ok
+}
+
+// isIntegerType reports whether a type is an integer.
+//
+// The check is on the type, not on the spelling: `for i := range 10` and
+// `for i := range limit` are the same construct, and only the type tells
+// them apart from `for i := range items`.
+func isIntegerType(goType types.Type) bool {
+	basic, ok := goType.(*types.Basic)
+	if !ok {
+		return false
+	}
+	return basic.Info()&types.IsInteger != 0
 }
 
 // elementType returns a slice's or an array's element type.

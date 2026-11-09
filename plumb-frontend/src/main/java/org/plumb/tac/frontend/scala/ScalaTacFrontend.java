@@ -200,7 +200,7 @@ public final class ScalaTacFrontend implements TacFrontend {
       // the compiler reports "Not found: JavaSink" for a Java class that exists only
       // as source, the Scala file does not compile, and the frontend contributes
       // NOTHING to the program.
-      stageJavaSources(ctx, workDir);
+      stageJavaSources(ctx, path, workDir);
     } catch (IOException ex) {
       problems.add("could not stage " + path + " for compilation: " + ex.getMessage());
       return new ParseResult(List.of(), problems, defaultPrecision());
@@ -340,12 +340,25 @@ public final class ScalaTacFrontend implements TacFrontend {
    * <p>Only the Java sources are copied. The Scala sources are not: each is compiled in its own
    * parse, and copying them would make the compiler see the same declaration twice.
    *
+   * <p><b>Why only the OWNING module's sources are staged.</b> The staging directory is ONE tree,
+   * and a class of package {@code demo} is looked up as {@code <workDir>/demo/Class.java}. Two
+   * modules that declare the same class would therefore write to the same place, and the second
+   * one would overwrite the first -- so the compiler would read the OTHER module's source for a
+   * class it is compiling against. Staging one module's sources at a time keeps the tree to the
+   * module being compiled.
+   *
    * @param ctx the compile context
+   * @param path the file being compiled
    * @param workDir the staging directory
    */
-  private static void stageJavaSources(CompileContext ctx, Path workDir) {
+  private static void stageJavaSources(CompileContext ctx, Path path, Path workDir) {
     if (ctx == null || ctx.modules() == null) return;
+    // The module the file belongs to. When the file belongs to no module --
+    // the single-file scan -- every module's sources are staged, because there
+    // is no boundary to narrow them by.
+    String owner = ctx.moduleOf(path);
     for (CompileContext.Module module : ctx.modules()) {
+      if (owner != null && !owner.equals(module.name())) continue;
       Path root = module.sourceRoot();
       if (root == null || !Files.isDirectory(root)) continue;
       try (java.util.stream.Stream<Path> walk = Files.walk(root)) {

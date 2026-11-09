@@ -252,6 +252,17 @@ func (session *ProjectSession) Translate(path string) []Function {
 	}
 
 	functions := []Function{}
+
+	// The file's PACKAGE-LEVEL declarations. A Go package's variables are
+	// initialised before the program starts, and its `init` functions run
+	// before `main`. Neither has a place in the TAC's function model, so
+	// without this they would be DROPPED: a package-level
+	// `var secret = readSecret()` would leave no trace in the TAC, and the
+	// taint that flows into it would be invisible.
+	if initializer := translatePackageInit(session.loader.fset, entry.pkg, entry.file); initializer != nil {
+		functions = append(functions, *initializer)
+	}
+
 	for _, decl := range entry.file.Decls {
 		declaration, ok := decl.(*ast.FuncDecl)
 		if !ok {
@@ -264,9 +275,172 @@ func (session *ProjectSession) Translate(path string) []Function {
 			// already has.
 			continue
 		}
-		functions = append(functions, translateFunction(session.loader.fset, entry.pkg, declaration))
+		if declaration.Name.Name == "init" {
+			// An `init` function is the PACKAGE's initialiser, not a
+			// function of its own: Go runs it before `main`, and nobody
+			// can call it. Its body is in the package initialiser above,
+			// and emitting it here as well would put the same
+			// instructions into the store twice.
+			continue
+		}
+		functions = append(functions, translateFunction(session.loader.fset, entry.pkg, declaration)...)
 	}
 	return functions
+}
+
+// translatePackageInit lowers a file's PACKAGE-LEVEL declarations.
+//
+// WHAT THIS IS. The package's variables are initialised before the program
+// starts, and the `init` functions run before `main`. The TAC has no
+// "<clinit>" to hang them on -- it has functions, and a package-level
+// variable is not one of them -- so they are collected into a function of
+// their own, named after the file that declares them.
+//
+// WHY THE FILE. Go initialises EVERY package-level variable of a package
+// before ANY `init` function runs, and the order between the files is the
+// order the compiler saw them. Here each file's declarations are
+// initialised in the file that declares them, so the order BETWEEN files is
+// not modelled -- and the loss is reported, because an initialisation order
+// that is wrong can change what a program does.
+//
+// A CONSTANT needs no initialisation: it is a compile-time value, and it is
+// bound to the constant itself wherever it is used. A TYPE has no run-time
+// effect at all.
+func translatePackageInit(fset *token.FileSet, pkg *loadedPackage, file *ast.File) *Function {
+	t := &translator{
+		fset:             fset,
+		info:             pkg.info,
+		pkg:              pkg.pkg,
+		instructions:     []Instruction{},
+		problems:         []Problem{},
+		params:           []Operand{},
+		locals:           []Operand{},
+		deferred:         []DeferredCall{},
+		bindings:         map[types.Object]*Operand{},
+		usedNames:        map[string]int{},
+		labelled:         map[string]*breakContext{},
+		closureByVar:     map[types.Object]*closure{},
+		closureByLiteral: map[*ast.FuncLit]*closure{},
+	}
+
+	owner := pkg.pkg.Path()
+	t.owner = owner
+	t.enclosing = owner
+
+	hasVariables := false
+	for _, decl := range file.Decls {
+		general, ok := decl.(*ast.GenDecl)
+		if !ok || general.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range general.Specs {
+			value, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for index, name := range value.Names {
+				if name.Name == "_" {
+					continue
+				}
+				variable, ok := t.info.Defs[name].(*types.Var)
+				if !ok {
+					continue
+				}
+				hasVariables = true
+				// The package-level variable is bound to its QUALIFIED name,
+				// so that the functions of every file of the package read
+				// and write the SAME TAC variable.
+				operand := t.binding(variable)
+				t.emitPackageVariable(value, index, operand)
+			}
+		}
+	}
+
+	hasInit := false
+	for _, decl := range file.Decls {
+		declaration, ok := decl.(*ast.FuncDecl)
+		if !ok || declaration.Body == nil {
+			continue
+		}
+		if declaration.Name.Name != "init" {
+			continue
+		}
+		hasInit = true
+		t.translateBlock(declaration.Body)
+	}
+
+	if !hasVariables && !hasInit {
+		return nil
+	}
+
+	precision := PrecisionFull
+	if t.degraded {
+		precision = PrecisionLowered
+	}
+	if hasVariables {
+		t.report(file, ProblemSourceLowered,
+			"a package's variables are initialised before its 'init' functions run, and the order "+
+				"between the files of a package is not modelled: each file's declarations are "+
+				"initialised in the file that declares them")
+	}
+
+	name := packageInitName(fset, file)
+	return &Function{
+		Name:          name,
+		Signature:     declarationSignature(owner, name, nil, ""),
+		EnclosingClass: owner,
+		ReturnType:    Simple(TypeVoid),
+		Precision:     precision,
+		Synthetic:     false,
+		Params:        []Operand{},
+		Locals:        t.locals,
+		Instructions:  t.instructions,
+		Problems:      t.problems,
+		DeferredCalls: t.deferred,
+		StartsGoroutine: t.startsGoroutine,
+	}
+}
+
+// emitPackageVariable initialises one package-level variable.
+//
+// The value of a multi-name declaration (`var a, b = f()`) is a
+// multi-valued expression: the first name takes the call's first result and
+// the rest are unknown, because the TAC's CALL has one destination.
+func (t *translator) emitPackageVariable(spec *ast.ValueSpec, index int, operand *Operand) {
+	if len(spec.Values) == 0 {
+		return
+	}
+	if index < len(spec.Values) {
+		value := t.valueOf(spec.Values[index])
+		t.emit(Instruction{Kind: KindMove, Dest: operand, Lhs1: value}, spec.Pos())
+		return
+	}
+	if len(spec.Values) == 1 && index == 1 {
+		if call, ok := spec.Values[0].(*ast.CallExpr); ok {
+			t.translateCall(call, operand)
+			t.report(spec, ProblemSourceLowered,
+				"a result beyond the first could not be bound: the TAC's CALL has one destination")
+			return
+		}
+	}
+	t.emit(Instruction{Kind: KindHavoc, Dest: operand}, spec.Pos())
+	t.report(spec, ProblemSourceLowered,
+		"a result beyond the first could not be bound: the TAC's CALL has one destination")
+}
+
+// packageInitName names a file's package initialiser.
+//
+// The name carries the FILE's name, because a package's initialisation is
+// spread over its files and the TAC's store indexes a function under
+// "enclosing scope :: signature": two files' initialisers with the same name
+// would be one function as far as the call graph is concerned.
+func packageInitName(fset *token.FileSet, file *ast.File) string {
+	path := fset.Position(file.Pos()).Filename
+	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	if base == "" {
+		base = "package"
+	}
+	return base + ".init"
 }
 
 // lookup finds a file by path.
@@ -305,6 +479,13 @@ type packageLoader struct {
 
 	// The source directories, by import path.
 	sourceDirs map[string]string
+
+	// The modules that live on disk, by module path.
+	//
+	// A module the Java side named: a REPLACED dependency, or one that
+	// belongs to another module of a workspace. The module cache holds
+	// neither, so this is the only way to find their source.
+	modules map[string]string
 
 	// The type-checked packages, by import path.
 	packages map[string]*types.Package
@@ -370,10 +551,21 @@ func newPackageLoader(request *Request) *packageLoader {
 		specs:      map[string]*PackageSpec{},
 		exportData: map[string]string{},
 		sourceDirs: map[string]string{},
+		modules:    map[string]string{},
 		packages:   map[string]*types.Package{},
 		infos:      map[string]*types.Info{},
 		parsed:     map[string][]parsedSource{},
 		loading:    map[string]bool{},
+	}
+
+	for index := range request.Modules {
+		module := &request.Modules[index]
+		if module.Path == "" || module.Dir == "" {
+			continue
+		}
+		if _, taken := loader.modules[module.Path]; !taken {
+			loader.modules[module.Path] = module.Dir
+		}
 	}
 
 	for index := range request.Packages {
@@ -579,6 +771,12 @@ func isDirectory(path string) bool {
 //     directory's source.
 //
 // The order matters: the export data is what the build compiled, so it wins.
+//
+// The export data WINS only when it can be read. A capture that outlived its
+// build names export data files that the build deleted with its temporary
+// directory, and a dependency that is then given up on is a dependency whose
+// calls resolve to nothing -- a missing finding, not a missing precision. So
+// an export data that cannot be read falls back to the source directory.
 func (loader *packageLoader) Import(path string) (*types.Package, error) {
 	if pkg, ok := loader.packages[path]; ok && pkg.Complete() {
 		return pkg, nil
@@ -595,7 +793,23 @@ func (loader *packageLoader) Import(path string) (*types.Package, error) {
 		return loaded.pkg, nil
 	}
 	if _, ok := loader.exportData[path]; ok {
-		return loader.importFromExportData(path)
+		pkg, err := loader.importFromExportData(path)
+		if err == nil {
+			return pkg, nil
+		}
+		// The export data is NAMED but cannot be read.
+		//
+		// The export data lives in the build's temporary directory, and the
+		// build deletes that directory when it ends -- so a capture that
+		// outlived its build names files that are gone. Failing here would
+		// leave the dependency unresolved, and an unresolved dependency is a
+		// missing finding rather than a missing precision. The source is a
+		// second opinion about the dependency's types, and a second opinion
+		// beats no answer at all.
+		if dir, ok := loader.sourceDirs[path]; ok {
+			return loader.importFromSource(path, dir)
+		}
+		return nil, err
 	}
 	if dir, ok := loader.sourceDirs[path]; ok {
 		return loader.importFromSource(path, dir)
@@ -635,6 +849,17 @@ func (loader *packageLoader) sourceDirectoryOf(path string) string {
 	if path == "" {
 		return ""
 	}
+	// A module the Java side named comes FIRST.
+	//
+	// A REPLACED dependency (`replace other.example/mod => ../repo`) and a
+	// dependency that belongs to another module of a WORKSPACE are
+	// directories on disk, not downloads, so the module cache does not hold
+	// them and go/build does not know about them. The Java side read the
+	// module's own build description, which is the only place the
+	// replacement is written down, and named the directory here.
+	if dir := loader.localModuleDirectory(path); dir != "" {
+		return dir
+	}
 	context := loader.buildContext
 	anchor := loader.projectRoot
 	if anchor == "" {
@@ -652,6 +877,44 @@ func (loader *packageLoader) sourceDirectoryOf(path string) string {
 		return dir
 	}
 	return ""
+}
+
+// localModuleDirectory finds a dependency's source directory in the modules the
+// Java side named.
+//
+// The import path may name a package INSIDE a module, so every module path is
+// a candidate prefix -- and the LONGEST one wins, so a module named
+// "example.com/m" does not swallow the import "example.com/m2/pkg".
+func (loader *packageLoader) localModuleDirectory(path string) string {
+	if path == "" || len(loader.modules) == 0 {
+		return ""
+	}
+	best := ""
+	for module := range loader.modules {
+		if module == "" {
+			continue
+		}
+		if path != module && !strings.HasPrefix(path, module+"/") {
+			continue
+		}
+		if len(module) > len(best) {
+			best = module
+		}
+	}
+	if best == "" {
+		return ""
+	}
+	directory := loader.modules[best]
+	if directory == "" {
+		return ""
+	}
+	if path != best {
+		directory = filepath.Join(directory, filepath.FromSlash(path[len(best)+1:]))
+	}
+	if !isDirectory(directory) {
+		return ""
+	}
+	return directory
 }
 
 // sourceFilesOf lists the Go files of a source directory.

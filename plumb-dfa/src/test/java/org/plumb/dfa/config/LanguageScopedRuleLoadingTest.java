@@ -251,13 +251,51 @@ class LanguageScopedRuleLoadingTest {
             "jsp-include.sinks",
             "expression-injection.sinks",
             "template-injection.sinks",
-            "file-permission.sinks",
-            "taint.sources.web",
-            "taint.sources.io");
+            "file-permission.sinks");
 
     assertThat(loaded.names())
         .as("the families with a C# table must survive")
-        .contains("sql.sinks", "command.sinks", "cookie.sinks", "regex.sinks");
+        .contains(
+            "sql.sinks",
+            "command.sinks",
+            "cookie.sinks",
+            "regex.sinks",
+            // The source families carry a C# table too: `System.Console.ReadLine`,
+            // `System.Environment.GetEnvironmentVariable`, the .NET file reads
+            // and the ASP.NET Core request. Without them a C# run has no
+            // source at all, so every sink value would be untainted and the
+            // scan would report nothing -- the failure that looks like "the
+            // code is clean".
+            "taint.sources.web",
+            "taint.sources.io",
+            "taint.sources.network",
+            "taint.sources.console",
+            "taint.sources.env");
+  }
+
+  @Test
+  @DisplayName("a family's per-language table is reachable from the language it names")
+  void everyPerLanguageTableIsReachable() {
+    // A family that names a language in its per-language table but not in its scope has a table
+    // that can never match: `appliesTo` gates the WHOLE family, so the table is dead weight.
+    //
+    // This is not a theoretical failure. The catalogue carried a Go table on a family whose scope
+    // named only the JVM, and the ten Go patterns in it never fired -- a false negative that looks
+    // exactly like "the code is clean".
+    List<String> unreachable = new java.util.ArrayList<>();
+    for (SinkFamily family : shipped().sinkFamilies().all()) {
+      for (SourceLanguage language : family.languageRules().languages()) {
+        if (!family.appliesTo(language)) {
+          unreachable.add(family.name() + "." + language);
+        }
+      }
+    }
+
+    assertThat(unreachable)
+        .as(
+            "a per-language table whose language is not in the family's scope can never match: "
+                + "the scope gates the whole family")
+        .isEmpty();
   }
 
   @Test

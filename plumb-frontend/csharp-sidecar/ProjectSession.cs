@@ -31,6 +31,17 @@ internal sealed class ProjectSession
     private readonly CSharpCompilation _compilation;
     private readonly Dictionary<string, SyntaxTree> _treesByPath = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// The counter that names the closures of the project.
+    /// </summary>
+    /// <remarks>
+    /// It is shared by every member of the project, because the name has to be
+    /// unique across the project: the TAC matches a call to a callee by the
+    /// bare key -- the name and the arity, with the owner dropped -- and two
+    /// closures with the same name would share it.
+    /// </remarks>
+    private readonly ClosureCounter _closureCounter = new();
+
     private ProjectSession(string projectId, CSharpCompilation compilation)
     {
         _projectId = projectId;
@@ -92,8 +103,21 @@ internal sealed class ProjectSession
         // analysis.
         metadataReferences.AddRange(FrameworkReferences());
 
+        // A file with TOP-LEVEL STATEMENTS is an executable: the compiler
+        // synthesizes the entry point for it. Compiling such a source as a
+        // library would report "must be an executable" -- a diagnostic about
+        // the compilation's OUTPUT KIND, not about the code under analysis.
+        // The output kind follows the source, so the diagnostics say what is
+        // true about the CODE.
+        var hasTopLevelStatements = trees.Any(tree =>
+            (tree.GetRoot() as CompilationUnitSyntax)?.Members
+                .OfType<GlobalStatementSyntax>()
+                .Any() == true);
+
         var options = new CSharpCompilationOptions(
-            OutputKind.DynamicallyLinkedLibrary,
+            hasTopLevelStatements
+                ? OutputKind.ConsoleApplication
+                : OutputKind.DynamicallyLinkedLibrary,
             nullableContextOptions: ResolveNullableOptions(request.NullableContextOptions),
             allowUnsafe: request.Unsafe,
             // The compilation is never emitted; it exists only to bind symbols.
@@ -358,16 +382,29 @@ internal sealed class ProjectSession
         var model = _compilation.GetSemanticModel(tree);
         var root = tree.GetRoot();
 
+        // The TOP-LEVEL STATEMENTS of the file. They are the body of the
+        // entry point the compiler synthesizes for them, and they are the
+        // WHOLE of a modern console application's logic -- so a file that
+        // has nothing else would otherwise contribute nothing to the
+        // analysis.
+        var topLevel = (root as CompilationUnitSyntax)?.Members
+            .OfType<GlobalStatementSyntax>()
+            .ToList() ?? new List<GlobalStatementSyntax>();
+        if (topLevel.Count > 0)
+        {
+            functions.AddRange(TranslateTopLevel(topLevel, model));
+        }
+
         foreach (var declaration in root.DescendantNodes())
         {
             switch (declaration)
             {
                 case MethodDeclarationSyntax method:
-                    functions.Add(TranslateMethod(method, model));
+                    functions.AddRange(TranslateMethod(method, model));
                     break;
 
                 case ConstructorDeclarationSyntax constructor:
-                    functions.Add(TranslateConstructor(constructor, model));
+                    functions.AddRange(TranslateConstructor(constructor, model));
                     break;
 
                 case PropertyDeclarationSyntax property:
@@ -376,16 +413,16 @@ internal sealed class ProjectSession
                     // target of its own.
                     foreach (var accessor in property.AccessorList?.Accessors ?? default)
                     {
-                        functions.Add(TranslateAccessor(accessor, model, property));
+                        functions.AddRange(TranslateAccessor(accessor, model, property));
                     }
                     if (property.ExpressionBody is not null)
                     {
-                        functions.Add(TranslateExpressionBodyProperty(property, model));
+                        functions.AddRange(TranslateExpressionBodyProperty(property, model));
                     }
                     break;
 
                 case LocalFunctionStatementSyntax localFunction:
-                    functions.Add(TranslateLocalFunction(localFunction, model));
+                    functions.AddRange(TranslateLocalFunction(localFunction, model));
                     break;
             }
         }
@@ -393,100 +430,183 @@ internal sealed class ProjectSession
         return functions;
     }
 
-    private Function TranslateMethod(MethodDeclarationSyntax method, SemanticModel model)
+    /// <summary>
+    /// Lower the top-level statements of a file.
+    /// </summary>
+    /// <param name="statements">the statements</param>
+    /// <param name="model">the semantic model</param>
+    /// <returns>the function</returns>
+    /// <remarks>
+    /// <para>
+    /// The compiler wraps top-level statements in a synthesized entry point
+    /// named {@code <Main>$}, on a synthesized class named {@code Program}.
+    /// The symbol is read from the compilation, so the function carries the
+    /// entry point's own signature -- including the parameters the file
+    /// declares, such as {@code string[] args}.
+    /// </para>
+    /// <para>
+    /// When the symbol cannot be found the function is still emitted: the
+    /// statements are the code, and dropping them would drop the file.
+    /// </para>
+    /// </remarks>
+    private List<Function> TranslateTopLevel(List<GlobalStatementSyntax> statements, SemanticModel model)
+    {
+        var entry = TopLevelEntryPoint();
+        var translator = new TacTranslator(model, _closureCounter);
+        translator.TranslateTopLevel(statements, entry);
+        return WithClosures(
+            BuildFunction(
+                entry,
+                name: "<Main>$",
+                enclosingClass: entry?.ContainingType?.Name ?? "Program",
+                translator),
+            translator);
+    }
+
+    /// <summary>
+    /// The synthesized entry point of a compilation that has top-level statements.
+    /// </summary>
+    /// <returns>the method symbol, or null when the compilation has none</returns>
+    private IMethodSymbol? TopLevelEntryPoint()
+    {
+        var program = _compilation.GetTypeByMetadataName("Program");
+        if (program is null)
+        {
+            return null;
+        }
+        foreach (var member in program.GetMembers())
+        {
+            if (member is IMethodSymbol method && method.Name == "<Main>$")
+            {
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private List<Function> TranslateMethod(MethodDeclarationSyntax method, SemanticModel model)
     {
         var symbol = model.GetDeclaredSymbol(method) as IMethodSymbol;
-        var translator = new TacTranslator(model);
+        var translator = new TacTranslator(model, _closureCounter);
         translator.Translate(method, symbol);
         if (method.ExpressionBody is not null)
         {
-            translator.TranslateArrow(method.ExpressionBody);
+            translator.TranslateArrow(method.ExpressionBody, symbol);
         }
 
-        return BuildFunction(
-            symbol,
-            name: method.Identifier.ValueText,
-            enclosingClass: symbol?.ContainingType.Name,
+        return WithClosures(
+            BuildFunction(
+                symbol,
+                name: method.Identifier.ValueText,
+                enclosingClass: symbol?.ContainingType.Name,
+                translator),
             translator);
     }
 
-    private Function TranslateConstructor(ConstructorDeclarationSyntax constructor, SemanticModel model)
+    private List<Function> TranslateConstructor(ConstructorDeclarationSyntax constructor, SemanticModel model)
     {
         var symbol = model.GetDeclaredSymbol(constructor) as IMethodSymbol;
-        var translator = new TacTranslator(model);
+        var translator = new TacTranslator(model, _closureCounter);
         translator.Translate(constructor, symbol);
         if (constructor.ExpressionBody is not null)
         {
-            translator.TranslateArrow(constructor.ExpressionBody);
+            translator.TranslateArrow(constructor.ExpressionBody, symbol);
         }
 
-        return BuildFunction(
-            symbol,
-            name: symbol?.Name ?? constructor.Identifier.ValueText,
-            enclosingClass: symbol?.ContainingType.Name ?? constructor.Identifier.ValueText,
+        return WithClosures(
+            BuildFunction(
+                symbol,
+                name: symbol?.Name ?? constructor.Identifier.ValueText,
+                enclosingClass: symbol?.ContainingType.Name ?? constructor.Identifier.ValueText,
+                translator),
             translator);
     }
 
-    private Function TranslateAccessor(
+    private List<Function> TranslateAccessor(
         AccessorDeclarationSyntax accessor,
         SemanticModel model,
         PropertyDeclarationSyntax property)
     {
         var symbol = model.GetDeclaredSymbol(accessor) as IMethodSymbol;
-        var translator = new TacTranslator(model);
+        var translator = new TacTranslator(model, _closureCounter);
         translator.Translate(accessor, symbol);
         if (accessor.ExpressionBody is not null)
         {
-            translator.TranslateArrow(accessor.ExpressionBody);
+            translator.TranslateArrow(accessor.ExpressionBody, symbol);
         }
 
-        return BuildFunction(
-            symbol,
-            name: $"{property.Identifier.ValueText}.{accessor.Keyword.ValueText}",
-            enclosingClass: symbol?.ContainingType.Name ?? property.Identifier.ValueText,
+        return WithClosures(
+            BuildFunction(
+                symbol,
+                name: $"{property.Identifier.ValueText}.{accessor.Keyword.ValueText}",
+                enclosingClass: symbol?.ContainingType.Name ?? property.Identifier.ValueText,
+                translator),
             translator);
     }
 
-    private Function TranslateExpressionBodyProperty(
+    private List<Function> TranslateExpressionBodyProperty(
         PropertyDeclarationSyntax property,
         SemanticModel model)
     {
         var symbol = model.GetDeclaredSymbol(property) as IPropertySymbol;
         var getter = symbol?.GetMethod;
-        var translator = new TacTranslator(model);
+        var translator = new TacTranslator(model, _closureCounter);
 
         // An expression-bodied property is a getter whose body is the
         // expression. It is lowered as a function so that a taint flowing into
         // the property's value is visible.
         if (property.ExpressionBody is not null)
         {
-            translator.TranslateArrow(property.ExpressionBody);
+            translator.TranslateArrow(property.ExpressionBody, getter);
         }
 
-        return BuildFunction(
-            getter,
-            name: $"{property.Identifier.ValueText}.get",
-            enclosingClass: symbol?.ContainingType.Name,
+        return WithClosures(
+            BuildFunction(
+                getter,
+                name: $"{property.Identifier.ValueText}.get",
+                enclosingClass: symbol?.ContainingType.Name,
+                translator),
             translator);
     }
 
-    private Function TranslateLocalFunction(
+    private List<Function> TranslateLocalFunction(
         LocalFunctionStatementSyntax localFunction,
         SemanticModel model)
     {
         var symbol = model.GetDeclaredSymbol(localFunction) as IMethodSymbol;
-        var translator = new TacTranslator(model);
+        var translator = new TacTranslator(model, _closureCounter);
         translator.Translate(localFunction, symbol);
         if (localFunction.ExpressionBody is not null)
         {
-            translator.TranslateArrow(localFunction.ExpressionBody);
+            translator.TranslateArrow(localFunction.ExpressionBody, symbol);
         }
 
-        return BuildFunction(
-            symbol,
-            name: localFunction.Identifier.ValueText,
-            enclosingClass: symbol?.ContainingType.Name,
+        return WithClosures(
+            BuildFunction(
+                symbol,
+                name: localFunction.Identifier.ValueText,
+                enclosingClass: symbol?.ContainingType.Name,
+                translator),
             translator);
+    }
+
+    /// <summary>
+    /// A member's function, followed by the functions its closures produced.
+    /// </summary>
+    /// <param name="function">the member's own function</param>
+    /// <param name="translator">the translator that lowered the member</param>
+    /// <returns>the member's function and its closures</returns>
+    /// <remarks>
+    /// A closure is a function of its own, and it has to reach the store like
+    /// any other, or the body it holds would be invisible to the analysis:
+    /// the finding inside a handler that the program registers would be
+    /// absent, and the scan would report success.
+    /// </remarks>
+    private static List<Function> WithClosures(Function function, TacTranslator translator)
+    {
+        var functions = new List<Function> { function };
+        functions.AddRange(translator.ClosureFunctions);
+        return functions;
     }
 
     private static Function BuildFunction(

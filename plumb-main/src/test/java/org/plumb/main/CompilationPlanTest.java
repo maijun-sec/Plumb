@@ -227,6 +227,68 @@ class CompilationPlanTest {
   }
 
   @Test
+  @DisplayName("a compilation that names no compiler is recognised by the unit it compiled")
+  void aCompilationWithoutACompilerIsRecognisedByItsUnit(@TempDir Path directory)
+      throws IOException {
+    // A build that compiles inside the JVM hands the compiler's options over
+    // as a list, so the database entry has no compiler to name -- the first
+    // argument is an option. The unit is still named, and the unit says
+    // which language it is.
+    Path source = directory.resolve("src/main/java/demo/app/App.java");
+    Files.createDirectories(source.getParent());
+    Files.writeString(source, "package demo.app;\npublic final class App {}\n");
+
+    CompilationDatabaseEntry entry =
+        new CompilationDatabaseEntry(
+            directory.toString(), List.of("-d", "out", "-classpath", "lib.jar"), source.toString());
+
+    assertThat(JavacCompilePlan.isJvmCommand(entry)).isTrue();
+
+    CaptureEntry capture = JavacCompilePlan.captureOf(entry);
+    assertThat(capture.sourceFiles()).containsExactly(source);
+    assertThat(capture.language()).isEqualTo("java");
+  }
+
+  @Test
+  @DisplayName("the derived source root has the package path peeled off it")
+  void theDerivedSourceRootHasThePackagePathPeeledOff(@TempDir Path directory) throws IOException {
+    // The compiled file lives two segments below the source root, and the
+    // package says so. A type solver looks a type up at root/<package path>,
+    // so a root that still holds the package path misses by one segment --
+    // and the miss is silent.
+    Path source = directory.resolve("src/main/java/demo/core/Core.java");
+    Files.createDirectories(source.getParent());
+    Files.writeString(source, "package demo.core;\npublic final class Core {}\n");
+
+    CompilationDatabaseEntry entry =
+        new CompilationDatabaseEntry(
+            directory.toString(), List.of("javac", "-d", "out", source.toString()), null);
+
+    CaptureEntry capture = JavacCompilePlan.captureOf(entry);
+
+    assertThat(capture.sourcePath()).containsExactly(directory.resolve("src/main/java"));
+  }
+
+  @Test
+  @DisplayName("a source root that is already the root is left alone")
+  void aSourceRootThatIsAlreadyTheRootIsLeftAlone(@TempDir Path directory) throws IOException {
+    // The file sits directly in the root, and its package says one segment.
+    // The root does not end with that segment, so nothing is peeled and the
+    // root stays where it is.
+    Path source = directory.resolve("src/Main.java");
+    Files.createDirectories(source.getParent());
+    Files.writeString(source, "package demo;\npublic final class Main {}\n");
+
+    CompilationDatabaseEntry entry =
+        new CompilationDatabaseEntry(
+            directory.toString(), List.of("javac", "-d", "out", source.toString()), null);
+
+    CaptureEntry capture = JavacCompilePlan.captureOf(entry);
+
+    assertThat(capture.sourcePath()).containsExactly(directory.resolve("src"));
+  }
+
+  @Test
   @DisplayName("an explicit source path is read, and resolved against the compile's directory")
   void anExplicitSourcePathIsRead(@TempDir Path directory) throws IOException {
     Files.createDirectories(directory.resolve("src/main/java"));

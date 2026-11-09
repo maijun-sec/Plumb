@@ -27,16 +27,23 @@ import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.Problem;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.resolution.TypeSolver;
+import com.github.javaparser.resolution.declarations.ResolvedReferenceTypeDeclaration;
+import com.github.javaparser.resolution.model.SymbolReference;
 import com.github.javaparser.symbolsolver.JavaSymbolSolver;
+import com.github.javaparser.symbolsolver.resolution.typesolvers.ClassLoaderTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.JarTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.JavaParserTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -212,6 +219,15 @@ public final class JavaSourceParser {
     // by N modules only opens its index once.
     Set<Path> seenCp = new HashSet<>();
     Set<Path> seenSrcRoots = new HashSet<>();
+    // The classpath entries, split by what they are.
+    //
+    // An ARCHIVE is read by JarTypeSolver. A DIRECTORY is not an archive and
+    // cannot be opened as one -- and a multi-module build puts its sibling
+    // modules on the classpath as directories ("core/target/classes"), so the
+    // directory is the normal case in a multi-module project, not the corner
+    // case.
+    List<Path> archives = new ArrayList<>();
+    List<Path> directories = new ArrayList<>();
     for (JavaModule m : modules) {
       if (m == null) continue;
       // (2) the module's own source root as a
@@ -231,24 +247,112 @@ public final class JavaSourceParser {
           }
         }
       }
-      // (3) every classpath entry as a JarTypeSolver.
-      // JavaParser accepts a Path / File / directory
-      // root, so this single API call covers both
-      // "foo.jar" and "build/classes" (a class-folder).
+      // (3) every classpath entry, read by what it is.
       for (Path cp : m.classpath()) {
         if (cp == null || !Files.exists(cp)) continue;
         Path canon = canonical(cp);
         if (!seenCp.add(canon)) continue;
-        try {
-          combined.add(new JarTypeSolver(cp));
-        } catch (IOException ex) {
-          LOG.warn("JarTypeSolver({}) failed: {}", cp, ex.getMessage());
-        } catch (RuntimeException ex) {
-          LOG.warn("JarTypeSolver({}) failed: {}", cp, ex.getMessage());
+        if (Files.isDirectory(cp)) {
+          directories.add(cp);
+        } else {
+          archives.add(cp);
         }
       }
     }
+    for (Path archive : archives) {
+      try {
+        combined.add(new JarTypeSolver(archive));
+      } catch (IOException ex) {
+        LOG.warn("JarTypeSolver({}) failed: {}", archive, ex.getMessage());
+      } catch (RuntimeException ex) {
+        LOG.warn("JarTypeSolver({}) failed: {}", archive, ex.getMessage());
+      }
+    }
+    // (4) the class directories, through a class loader.
+    //
+    // A class directory is a place where a class is found BY NAME, and that is
+    // what a class loader does. The loader is given the whole classpath and
+    // not just the directories, because a class in a directory refers to the
+    // classes in the archives beside it.
+    //
+    // The loader is added LAST, so the source solvers keep the precedence
+    // they have always had: a type that is in the project's own source is
+    // answered from that source, and the compiled copy is only consulted when
+    // the source is not there.
+    if (!directories.isEmpty()) {
+      TypeSolver classDirectorySolver = classDirectorySolver(directories, archives);
+      if (classDirectorySolver != null) {
+        combined.add(classDirectorySolver);
+      }
+    }
     return combined;
+  }
+
+  /**
+   * The solver that reads the class directories on the classpath.
+   *
+   * <p>The loader is built over the whole classpath, and every lookup it cannot answer is answered
+   * with "not found" rather than with an exception: a class directory can hold a class whose own
+   * dependencies are missing, and that is a fact about the classpath, not a reason to fail the
+   * scan.
+   *
+   * @param directories the class directories
+   * @param archives the archives beside them
+   * @return the solver, or {@code null} when none could be built
+   */
+  private static TypeSolver classDirectorySolver(List<Path> directories, List<Path> archives) {
+    List<URL> urls = new ArrayList<>();
+    for (Path entry : directories) {
+      URL url = toUrl(entry);
+      if (url != null) urls.add(url);
+    }
+    for (Path archive : archives) {
+      URL url = toUrl(archive);
+      if (url != null) urls.add(url);
+    }
+    if (urls.isEmpty()) {
+      return null;
+    }
+    try {
+      URLClassLoader loader =
+          new URLClassLoader(urls.toArray(new URL[0]), JavaSourceParser.class.getClassLoader());
+      return new GuardedClassLoaderTypeSolver(loader);
+    } catch (RuntimeException ex) {
+      LOG.warn("the class directories could not be read: {}", ex.getMessage());
+      return null;
+    }
+  }
+
+  private static URL toUrl(Path path) {
+    try {
+      return path.toUri().toURL();
+    } catch (MalformedURLException ex) {
+      LOG.warn("the classpath entry {} has no usable URL", path);
+      return null;
+    }
+  }
+
+  /**
+   * A class loader solver that answers "not found" instead of failing.
+   *
+   * <p>A class directory is allowed to hold a class whose dependencies are not on the classpath,
+   * and loading such a class fails with a linkage error rather than with "not found". The failure
+   * says something about the classpath, and it must not take the scan down with it.
+   */
+  private static final class GuardedClassLoaderTypeSolver extends ClassLoaderTypeSolver {
+
+    GuardedClassLoaderTypeSolver(ClassLoader loader) {
+      super(loader);
+    }
+
+    @Override
+    public SymbolReference<ResolvedReferenceTypeDeclaration> tryToSolveType(String name) {
+      try {
+        return super.tryToSolveType(name);
+      } catch (RuntimeException | LinkageError ex) {
+        return SymbolReference.unsolved();
+      }
+    }
   }
 
   private static Path canonical(Path p) {

@@ -493,8 +493,38 @@ type Request struct {
 	// set of packages, and a package's files only type-check together.
 	Packages []PackageSpec `json:"packages,omitempty"`
 
+	// The modules that live on disk, for openProject.
+	//
+	// Go-specific and OPTIONAL.
+	//
+	// A module path and the directory that holds it. The sidecar uses it to
+	// find the source of a dependency that the toolchain's own lookup cannot
+	// find: one that was REPLACED (`replace other.example/mod => ../repo`),
+	// or one that belongs to another module of a WORKSPACE (`go.work`). The
+	// module cache holds neither -- a replaced module is a directory, not a
+	// download -- so without this the dependency's types are unknown and every
+	// call into it is unresolved. That is a missing finding, not a missing
+	// precision.
+	//
+	// The Java side reads the module's own build description for this, which
+	// is the only place the replacement is written down.
+	//
+	// An absent value is not an error: the sidecar falls back to the module
+	// cache, as it always did, so an older frontend that does not send it
+	// still works.
+	Modules []ModuleSpec `json:"modules,omitempty"`
+
 	// The file to translate, for translate.
 	Path string `json:"path,omitempty"`
+}
+
+// One module of the project, and the directory that holds it.
+type ModuleSpec struct {
+	// The module's import path, as its go.mod declares it.
+	Path string `json:"path"`
+
+	// The module's root directory.
+	Dir string `json:"dir,omitempty"`
 }
 
 // A response to the Java side.

@@ -46,6 +46,17 @@ import java.util.Locale;
  * {@code out.write(x)} and {@code writer.append(x)} all accumulate their argument into the
  * receiver's state, and every later read of that state carries the taint.
  *
+ * <p><b>Go has the same shapes, and they are modelled here too.</b> A Go map write, a channel send
+ * and a slice append put a value into a container, and a Go builder or buffer accumulates what is
+ * written into it. The Go front end lowers the three statement forms to calls with a synthetic
+ * owner, so they arrive here as ordinary callee signatures.
+ *
+ * <p><b>Why the Go shapes are NOT in receiver-passthrough.yaml.</b> That file models the OTHER
+ * direction -- a tainted receiver handing its state back to the result -- and it does so as a
+ * fallback for callees the engine has no summary for. A Go map write is the opposite: the VALUE
+ * taints the CONTAINER. That is what the mutator direction is for, and putting it in the
+ * passthrough file would both invert the direction and leave the read side uncovered.
+ *
  * <p>Two directions are therefore modelled:
  *
  * <ul>
@@ -65,6 +76,25 @@ import java.util.Locale;
  * arguments follow at {@code args[1]}.
  */
 public final class AccumulatorCatalog {
+
+  /**
+   * The owner of the calls the Go front end synthesises.
+   *
+   * <p>A Go map write, a channel send and a slice append are not calls to anything the user wrote:
+   * the front end lowers them to a call with a synthetic owner so that they can be told apart from
+   * a real package. The owner is the same string the front end emits, so the catalogue and the
+   * front end cannot drift apart without the tests noticing.
+   */
+  private static final String GO_SYNTHETIC_OWNER = "<go>";
+
+  /**
+   * The Go types that accumulate what is written into them.
+   *
+   * <p>They are named by their full path because that is how the front end names them: the owner of
+   * {@code strings.Builder.WriteString} is {@code strings.builder}, the package path plus the type.
+   */
+  private static final java.util.List<String> GO_ACCUMULATOR_OWNERS =
+      java.util.List.of("strings.builder", "bytes.buffer", "bufio.writer");
 
   private AccumulatorCatalog() {}
 
@@ -194,6 +224,26 @@ public final class AccumulatorCatalog {
           || method.equals("append")
           || method.equals("writeint");
     }
+    // Go: the runtime operations the front end models, and Go's own
+    // accumulating types.
+    //
+    // A Go map write, a channel send and a slice append all put a value
+    // INTO a container, so the container's state -- and every later read
+    // of that state -- carries the value. A Go builder and a Go buffer
+    // do the same thing with a method call.
+    if (GO_SYNTHETIC_OWNER.equals(owner)) {
+      return method.equals("mapstore")
+          || method.equals("chansend")
+          || method.equals("append")
+          || method.equals("copy");
+    }
+    if (GO_ACCUMULATOR_OWNERS.contains(owner)) {
+      return method.equals("write")
+          || method.equals("writestring")
+          || method.equals("writebyte")
+          || method.equals("writebytes")
+          || method.equals("writerune");
+    }
     return false;
   }
 
@@ -236,6 +286,23 @@ public final class AccumulatorCatalog {
     if (ownerIs(owner, "list", "set", "collection", "queue", "deque", "map")) {
       return method.equals("get") || method.equals("remove") || method.equals("poll");
     }
+    // Go: the reads that hand a container's contents back out.
+    //
+    // A map read, a channel receive and the key/value of a range over a
+    // map all return what the container holds, so they carry the
+    // container's taint to the result. The range is a chain: the map
+    // taints the iterator, and the iterator taints the key and the
+    // value, so all three links are listed.
+    if (GO_SYNTHETIC_OWNER.equals(owner)) {
+      return method.equals("mapindex")
+          || method.equals("chanrecv")
+          || method.equals("mapiter")
+          || method.equals("mapkey")
+          || method.equals("mapvalue");
+    }
+    if (GO_ACCUMULATOR_OWNERS.contains(owner)) {
+      return method.equals("string") || method.equals("bytes");
+    }
     return false;
   }
 
@@ -253,10 +320,33 @@ public final class AccumulatorCatalog {
   public static java.util.List<Integer> mutatorArgIndices(org.plumb.tac.ir.TacInstruction ins) {
     java.util.List<Integer> out = new java.util.ArrayList<>();
     if (ins == null || ins.args == null) return out;
+    // A Go map write is `m[key] = value`: the KEY indexes the map and the VALUE is what the map
+    // holds. Only the value is part of the map's state, so only the value taints the map. A tainted
+    // KEY would make every later read of the map look tainted -- including the read of a different
+    // key, whose value was never written from tainted data. The other mutators take their values
+    // from the first argument onwards, which is what the loop below already does.
+    if (isGoMapStore(ins.calleeSig)) {
+      out.add(2);
+      return out;
+    }
     for (int i = 1; i < ins.args.size(); i++) {
       out.add(i);
     }
     return out;
+  }
+
+  /**
+   * Whether the call is a Go map write.
+   *
+   * <p>The synthetic signature the Go front end emits for {@code m[k] = v} carries the map at
+   * {@code args[0]}, the key at {@code args[1]} and the value at {@code args[2]}.
+   *
+   * @param calleeSig the callee signature in {@code owner.method/arity} form
+   * @return true when the call writes into a Go map
+   */
+  private static boolean isGoMapStore(String calleeSig) {
+    if (calleeSig == null || calleeSig.isEmpty()) return false;
+    return GO_SYNTHETIC_OWNER.equals(ownerOf(calleeSig)) && "mapstore".equals(methodOf(calleeSig));
   }
 
   /**

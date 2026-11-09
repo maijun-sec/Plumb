@@ -125,3 +125,75 @@ func TestCompareVersionsOrdersVersionsNumerically(t *testing.T) {
 		}
 	}
 }
+
+// WHY THESE TESTS EXIST. A REPLACED dependency (`replace other.example/mod
+// => ../repo`) and a dependency that belongs to another module of a WORKSPACE
+// are directories on disk, not downloads: the module cache does not hold
+// them, and go/build does not know about them. The Java side reads the
+// module's own build description -- the only place the replacement is
+// written down -- and names the directory. Without this lookup the
+// dependency's types are unknown and every call into it is unresolved, which
+// is a missing finding rather than a missing precision.
+
+func TestLocalModuleDirectoryFindsAPackageInsideAModule(t *testing.T) {
+	root := t.TempDir()
+	packageDir := filepath.Join(root, "pkg", "lib")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatalf("the package directory could not be created: %v", err)
+	}
+	loader := &packageLoader{modules: map[string]string{"example.com/lib": root}}
+
+	found := loader.localModuleDirectory("example.com/lib/pkg/lib")
+
+	if found != packageDir {
+		t.Errorf("the package was found at %q, want %q", found, packageDir)
+	}
+}
+
+func TestLocalModuleDirectoryFindsTheModuleItself(t *testing.T) {
+	root := t.TempDir()
+	loader := &packageLoader{modules: map[string]string{"example.com/lib": root}}
+
+	found := loader.localModuleDirectory("example.com/lib")
+
+	if found != root {
+		t.Errorf("the module was found at %q, want %q", found, root)
+	}
+}
+
+func TestLocalModuleDirectoryPrefersTheLongestModulePath(t *testing.T) {
+	short := t.TempDir()
+	long := t.TempDir()
+	longPackage := filepath.Join(long, "pkg")
+	if err := os.MkdirAll(longPackage, 0o755); err != nil {
+		t.Fatalf("the package directory could not be created: %v", err)
+	}
+	loader := &packageLoader{modules: map[string]string{
+		"example.com/m":  short,
+		"example.com/m2": long,
+	}}
+
+	found := loader.localModuleDirectory("example.com/m2/pkg")
+
+	// The module named "example.com/m" must not swallow the import
+	// "example.com/m2/pkg": the prefix has to end at a path separator.
+	if found != longPackage {
+		t.Errorf("the package was found at %q, want %q", found, longPackage)
+	}
+}
+
+func TestLocalModuleDirectoryReturnsNothingForAnUnknownModule(t *testing.T) {
+	loader := &packageLoader{modules: map[string]string{"example.com/lib": t.TempDir()}}
+
+	if found := loader.localModuleDirectory("fmt"); found != "" {
+		t.Errorf("an unknown module was found at %q", found)
+	}
+}
+
+func TestLocalModuleDirectoryReturnsNothingWithoutModules(t *testing.T) {
+	loader := &packageLoader{modules: map[string]string{}}
+
+	if found := loader.localModuleDirectory("example.com/lib"); found != "" {
+		t.Errorf("a module was found at %q without a module map", found)
+	}
+}

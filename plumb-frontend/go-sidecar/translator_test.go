@@ -51,7 +51,7 @@ func translateSource(t *testing.T, source string) []Function {
 		if !ok || function.Body == nil {
 			continue
 		}
-		functions = append(functions, translateFunction(fset, loaded, function))
+		functions = append(functions, translateFunction(fset, loaded, function)...)
 	}
 	return functions
 }
@@ -303,8 +303,12 @@ func use(file *File) {
 	if use.Precision != PrecisionLowered {
 		t.Errorf("the precision is %q, want %q", use.Precision, PrecisionLowered)
 	}
-	if !hasProblemOfKind(use, ProblemSourceLowered) {
-		t.Errorf("the function did not report a lowering problem: %+v", use.Problems)
+	// The FACT -- that the call runs at the exit -- travels in the side
+	// table, and the Java side reports it from there. The sidecar only
+	// marks the function as not fully understood, so the fact is said
+	// once and not twice.
+	if hasProblemOfKind(use, ProblemSourceLowered) {
+		t.Errorf("the function reported the defer as a lowering problem: %+v", use.Problems)
 	}
 }
 
@@ -334,8 +338,10 @@ func use() {
 	if use.Precision != PrecisionLowered {
 		t.Errorf("the precision is %q, want %q", use.Precision, PrecisionLowered)
 	}
-	if !hasProblemOfKind(use, ProblemSourceLowered) {
-		t.Errorf("the function did not report a lowering problem: %+v", use.Problems)
+	// The FACT -- that the function starts a goroutine -- travels in the
+	// wire's own flag, and the Java side reports it from there.
+	if hasProblemOfKind(use, ProblemSourceLowered) {
+		t.Errorf("the function reported the goroutine as a lowering problem: %+v", use.Problems)
 	}
 
 	work := functionNamed(t, functions, "work")

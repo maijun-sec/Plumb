@@ -160,10 +160,7 @@ public final class CompilationDatabaseBuilder {
     Map<String, Path> outputs = new LinkedHashMap<>();
     Map<String, CsharpCompilePlan.Project> byName = new LinkedHashMap<>();
     for (CsharpCompilePlan.Project project : projects) {
-      String name = moduleNameOf(project);
-      if (byName.containsKey(name)) {
-        continue;
-      }
+      String name = uniqueName(moduleNameOf(project), byName);
       byName.put(name, project);
       if (project.output() != null) {
         outputs.put(name, project.output());
@@ -327,6 +324,30 @@ public final class CompilationDatabaseBuilder {
     }
     Path root = sourceRootOf(project);
     return root.getFileName() == null ? "csharp" : root.getFileName().toString();
+  }
+
+  /**
+   * A module name that no other project uses.
+   *
+   * <p>Two projects can produce an assembly with the same name: the assembly is named after the
+   * project's own directory by default, and two directories can carry the same name. The second
+   * project used to be dropped, and with it every one of its sources -- so a solution with two
+   * same-named projects was analysed as if it had one. The name is made unique instead: the first
+   * project keeps the plain name and the next ones carry a counter.
+   *
+   * @param name the name the project would have
+   * @param taken the names that are already in use
+   * @return a name that is not in use
+   */
+  private static String uniqueName(String name, Map<String, ?> taken) {
+    if (!taken.containsKey(name)) {
+      return name;
+    }
+    int count = 2;
+    while (taken.containsKey(name + "#" + count)) {
+      count++;
+    }
+    return name + "#" + count;
   }
 
   /**

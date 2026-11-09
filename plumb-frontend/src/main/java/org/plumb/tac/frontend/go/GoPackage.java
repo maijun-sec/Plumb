@@ -42,12 +42,22 @@ import java.util.Map;
  * {@code GOOS}, or a vendored or replaced dependency. Resolving from the export data is what makes
  * the analysis agree with the build.
  *
+ * <h2>Why the package also carries the modules it belongs to</h2>
+ *
+ * <p>The export data is gone by the time the analysis reads the capture -- the build deletes its
+ * temporary directory when it ends -- so a dependency is usually resolved from its source instead.
+ * The source of a dependency that was <b>replaced</b> or that belongs to another module of a
+ * <b>workspace</b> is not in the toolchain's module cache, so the front end reads it from the
+ * module's own build description and passes it on.
+ *
  * @param importPath the package's import path, as the compiler was told it
  * @param directory the directory the package was compiled in
  * @param files the source files the package was compiled from
  * @param goVersion the language version the package was compiled at, or null
  * @param buildTags the build constraints the package was compiled under, or empty
  * @param imports the dependencies' export data, keyed by the dependency's import path
+ * @param modules the modules that live on disk, keyed by their module path; a dependency the
+ *     toolchain's own lookup finds is absent from it
  */
 public record GoPackage(
     String importPath,
@@ -55,12 +65,14 @@ public record GoPackage(
     List<Path> files,
     String goVersion,
     List<String> buildTags,
-    Map<String, Path> imports) {
+    Map<String, Path> imports,
+    Map<String, Path> modules) {
 
   public GoPackage {
     files = files == null ? List.of() : List.copyOf(files);
     buildTags = buildTags == null ? List.of() : List.copyOf(buildTags);
     imports = imports == null ? Map.of() : Map.copyOf(imports);
+    modules = modules == null ? Map.of() : Map.copyOf(modules);
   }
 
   /**
@@ -70,6 +82,6 @@ public record GoPackage(
    * @return the package
    */
   public static GoPackage empty(String importPath) {
-    return new GoPackage(importPath, null, List.of(), null, List.of(), Map.of());
+    return new GoPackage(importPath, null, List.of(), null, List.of(), Map.of(), Map.of());
   }
 }

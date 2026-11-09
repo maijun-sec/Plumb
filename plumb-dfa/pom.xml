@@ -154,6 +154,10 @@
                         <include>org/plumb/dfa/taint/InputSourcePatternsTest.java</include>
                         <include>org/plumb/dfa/taint/TaintDomainTest.java</include>
                         <include>org/plumb/dfa/taint/GuardTrackerTest.java</include>
+                        <!-- The Go sink catalogue: the Go front end's symbols must
+                             be the ones the catalogue names, and the Go
+                             accumulators must carry the taint both ways. -->
+                        <include>org/plumb/dfa/taint/GoSinkCatalogTest.java</include>
                         <include>org/plumb/dfa/taint/R804FollowupFieldTaintTrackerTest.java</include>
                         <include>org/plumb/dfa/taint/R807ConstSourcePassTest.java</include>
                         <!-- R-810: StaticFieldResolver short-name

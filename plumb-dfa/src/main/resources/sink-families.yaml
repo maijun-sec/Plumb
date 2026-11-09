@@ -30,68 +30,48 @@
 # (INFO/LOW/MEDIUM/HIGH/CRITICAL); cwe is "CWE-NNN"
 # or null for non-CWE-tagged families (e.g. taint
 # sources).
+#
+# The Go tables
+# -------------
+#
+# A Go call site is written `owner.method/arity`, where the owner is
+# the receiver's type for a method and the PACKAGE'S IMPORT PATH for
+# a package-level function: `database/sql.DB.Exec/2` is a method of
+# the `database/sql` package's `DB` type, and `os.Getenv/1` is a
+# function of the `os` package. The import path is the whole path,
+# not the directory name, so `path/filepath.Join` and `path.Join` stay
+# apart.
+#
+# `arg_index` is the USER-VISIBLE argument index. The engine adds the
+# receiver slot itself: a method call puts the receiver at args[0], so
+# the catalogue's index 0 is the engine's args[1]. A package-level
+# function puts the package path at args[0] as well, so its first
+# real argument is also at args[1] and the same index means the same
+# thing for both.
+#
+# A Go function whose LAST parameter is variadic counts that parameter
+# ONCE in the arity, but the front end puts each variadic value in its
+# own argument slot. So `exec.Command(name, arg...)` is `os/exec.Command/2`
+# and its values sit at user index 0, 1, 2, ... -- which is why the
+# command table lists a span of positions rather than one.
+#
+# Every symbol named in a Go table was MEASURED: the Go front end was
+# run over a probe that calls it, and the callee signature the front
+# end emitted was read back out of the TAC. A symbol the front end
+# cannot produce is a pattern that never fires, so the table names
+# what the front end actually emits.
+#
+# One Go-specific case is worth naming: `os.Open` is listed next to
+# `os.OpenFile` even though the first calls the second. A front end
+# that resolved a standard-library wrapper to the function it wraps
+# would not need the entry; this one does not inline the standard
+# library, so the wrapper has to be named on its own.
 
 families:
-  taint.sources.web:
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - '^javax\.servlet\.http\.HttpServletRequest\.getParameter(/\d+)?'
-      - '^javax\.servlet\.http\.HttpServletRequest\.getHeader(/\d+)?'
-      - '^javax\.servlet\.http\.HttpServletRequest\.getCookies(/\d+)?'
-      - '^javax\.servlet\.http\.HttpServletRequest\.getQueryString(/\d+)?'
-      - '^io\.undertow\.server\.HttpServerExchange\.getQueryParameters(/\d+)?'
-      - '^org\.springframework\.http\.HttpHeaders\.getFirst(/\d+)?'
-
-  taint.sources.io:
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - '^java\.io\.InputStream\.read(/\d+)?'
-      - '^java\.io\.Reader\.read(/\d+)?'
-      - '^java\.io\.BufferedReader\.readLine(/\d+)?'
-      - '^java\.util\.Scanner\.next(/\d+)?'
-      - '^java\.util\.Scanner\.nextLine(/\d+)?'
-      - '^java\.nio\.channels\.ReadableByteChannel\.read(/\d+)?'
-
-  taint.sources.network:
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - '^java\.net\.Socket\.getInputStream(/\d+)?'
-      - '^java\.net\.DatagramSocket\.receive(/\d+)?'
-      - '^java\.net\.URLConnection\.getInputStream(/\d+)?'
-
-  taint.sources.console:
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - '^java\.io\.Console\.readLine(/\d+)?'
-      - '^java\.lang\.System\.console(/\d+)?'
-    by_language:
-      kotlin:
-        - pattern: '^kotlin\.io\.readLine(/\d+)?'
-          arg_index: 0
-        - pattern: '^kotlin\.io\.readln(/\d+)?'
-          arg_index: 0
-      scala:
-        - pattern: '^scala\.io\.StdIn\$\$anon\$1\.readLine(/\d+)?'
-          arg_index: 0
-        - pattern: '^scala\.io\.StdIn\.readLine(/\d+)?'
-          arg_index: 0
-
-  taint.sources.env:
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - '^java\.lang\.System\.getenv(/\d+)?'
-      - '^java\.lang\.System\.getProperty(/\d+)?'
-    by_language:
-      kotlin:
-        - pattern: '^kotlin\.system\.getenv(/\d+)?'
-          arg_index: 0
-      scala:
-        - pattern: '^scala\.sys\.package\$\$anon\$\d+\.getenv(/\d+)?'
-          arg_index: 0
   url.sinks:
     cwe: CWE-918
     severity: HIGH
-    languages: ['java', 'kotlin', 'scala']
+    languages: ['java', 'kotlin', 'scala', 'go']
     patterns:
       - '^java\.net\.URL\.<init>(/\d+)?'
       - '^java\.net\.URL\.openStream(/\d+)?'
@@ -101,6 +81,10 @@ families:
       - '^java\.net\.URLConnection\.connect(/\d+)?'
       - '^org\.apache\.http\.client\.HttpClient\.execute(/\d+)?'
       - '^org\.apache\.http\.impl\.client\.HttpClients\.createDefault/0'
+    by_language:
+      go:
+        - pattern: '^net/url\.Parse(/\d+)?'
+          arg_index: 0
   sensitive.exfil.sinks:
     cwe: CWE-200
     severity: HIGH
@@ -149,7 +133,7 @@ families:
   format-string.sinks:
     cwe: CWE-134
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
+    languages: ['java', 'kotlin', 'scala', 'go']
     patterns:
       - '^java\.lang\.String\.format(/\d+)?'
       - '^java\.io\.PrintStream\.printf(/\d+)?'
@@ -165,10 +149,18 @@ families:
       - '^java\.lang\.System\.format(/\d+)?'
       - '^java\.lang\.System\.printf(/\d+)?'
 
+    by_language:
+      go:
+        - pattern: '^fmt\.Printf(/\d+)?'
+          arg_index: 0
+        - pattern: '^fmt\.Sprintf(/\d+)?'
+          arg_index: 0
+        - pattern: '^fmt\.Fprintf(/\d+)?'
+          arg_index: 1
   log.sinks:
     cwe: CWE-117
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
+    languages: ['java', 'kotlin', 'scala', 'go']
     patterns:
       - pattern: '^java\.util\.logging\.Logger\.info(/\d+)?'
       - pattern: '^java\.util\.logging\.Logger\.warning(/\d+)?'
@@ -186,6 +178,32 @@ families:
       - pattern: '^org\.slf4j\.Logger\.trace(/\d+)?'
       - pattern: '^java\.lang\.System\.Logger\.log(/\d+)?'
         arg_index: 1
+    by_language:
+      go:
+        - pattern: '^log\.Print(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.Printf(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^log\.Println(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.Fatal(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.Fatalf(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^log\.Fatalln(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.Panic(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.Panicf(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^log\.Panicln(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.Logger\.Print(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.Logger\.Printf(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^log\.Logger\.Println(/\d+)?'
+          arg_index: 0
   format.sinks:
     cwe: CWE-134
     severity: HIGH
@@ -333,7 +351,7 @@ families:
   random.sinks:
     cwe: CWE-330
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
+    languages: ['java', 'kotlin', 'scala', 'go']
     patterns:
       - '^java\.util\.Random\.next(/\d+)?'
       - '^java\.util\.Random\.nextInt(/\d+)?'
@@ -349,6 +367,14 @@ families:
       - '^java\.lang\.Math\.random(/\d+)?'
       - '^org\.apache\.commons\.lang3\.RandomUtils\.next(/\d+)?'
 
+    by_language:
+      go:
+        - pattern: '^math/rand\.Intn(/\d+)?'
+          arg_index: 0
+        - pattern: '^math/rand\.Int31n(/\d+)?'
+          arg_index: 0
+        - pattern: '^math/rand\.Int63n(/\d+)?'
+          arg_index: 0
   code-execution.sinks:
     cwe: CWE-94
     severity: CRITICAL
@@ -406,7 +432,7 @@ families:
   external.config.sinks:
     cwe: CWE-15
     severity: CRITICAL
-    languages: ['java', 'kotlin', 'scala']
+    languages: ['java', 'kotlin', 'scala', 'go']
     patterns:
       - '^java\.lang\.System\.setProperty(/\d+)?'
       - '^System\.setProperty(/\d+)?'
@@ -425,6 +451,14 @@ families:
       - '^java\.sql\.DriverManager\.setLogWriter(/\d+)?'
       - '^DriverManager\.setLogWriter(/\d+)?'
 
+    by_language:
+      go:
+        - pattern: '^os\.Setenv(/\d+)?'
+          arg_index: 1
+        - pattern: '^os\.Unsetenv(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.Clearenv(/\d+)?'
+          arg_index: 0
   cleartext-tx.sinks:
     cwe: CWE-319
     severity: HIGH
@@ -478,15 +512,17 @@ families:
     patterns: []
     by_language:
       csharp:
-        # The response header that carries the CORS policy. The owner is
-        # `System.Net.Http.Headers.HttpResponseHeaders` -- the type that
-        # DECLARES the method -- and not `System.Net.Http.HttpResponseMessage`,
-        # which is the type the caller holds. The C# frontend resolves the
-        # owner from the symbol's declaring type, so the pattern has to name
-        # the declaring type.
-        - pattern: '^System\.Net\.Http\.Headers\.HttpResponseHeaders\.Add(/\d+)?'
+        # The response header that carries the CORS policy. The owner is the
+        # type that DECLARES the method, and for `Add` and
+        # `TryAddWithoutValidation` that type is
+        # `System.Net.Http.Headers.HttpHeaders` -- `HttpResponseHeaders` only
+        # re-declares `AddHeaders`, so the other two are INHERITED and the
+        # frontend names their base type. The C# frontend resolves the owner
+        # from the symbol's declaring type, so the pattern has to name the
+        # declaring type, not the type the caller holds.
+        - pattern: '^System\.Net\.Http\.Headers\.HttpHeaders\.Add(/\d+)?'
           arg_index: 1
-        - pattern: '^System\.Net\.Http\.Headers\.HttpResponseHeaders\.TryAddWithoutValidation(/\d+)?'
+        - pattern: '^System\.Net\.Http\.Headers\.HttpHeaders\.TryAddWithoutValidation(/\d+)?'
           arg_index: 1
         - pattern: '^System\.Collections\.Specialized\.NameValueCollection\.Add(/\d+)?'
           arg_index: 1
@@ -835,6 +871,29 @@ families:
         - pattern: '^Microsoft\.VisualBasic\.Interaction\.Shell(/\d+)?'
           arg_index: 0
         - '^(System\.Management\.ManagementObject|System\.Management\.ManagementClass)\.InvokeMethod(/\d+)?'
+      go:
+        - pattern: '^os/exec\.Command(/\d+)?'
+          arg_index: [0, 1, 2, 3, 4, 5]
+        - pattern: '^os/exec\.CommandContext(/\d+)?'
+          arg_index: [1, 2, 3, 4, 5, 6]
+        - pattern: '^os/exec\.Cmd\.Run(/\d+)?'
+          arg_index: -2
+        - pattern: '^os/exec\.Cmd\.Start(/\d+)?'
+          arg_index: -2
+        - pattern: '^os/exec\.Cmd\.Output(/\d+)?'
+          arg_index: -2
+        - pattern: '^os/exec\.Cmd\.CombinedOutput(/\d+)?'
+          arg_index: -2
+        - pattern: '^net/smtp\.Client\.(Mail|Rcpt|Hello|Verify|Auth)(/\d+)?'
+          arg_index: -2
+        - pattern: '^os/exec\.Cmd\.(Run|Start|CombinedOutput)(/\d+)?'
+          arg_index: -2
+        - pattern: '^os\.StartProcess(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.ForkExec(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.(AllThreadsSyscall6|AllThreadsSyscall|RawSyscall6|RawSyscall)(/\d+)?'
+          arg_index: 0
       kotlin:
         - pattern: '^kotlin\.process\.ProcessKt\.ProcessBuilder(/\d+)?'
           arg_index: 0
@@ -925,6 +984,11 @@ families:
           arg_index: 0
         - pattern: '^Microsoft\.AspNet\.SignalR\.Cookie\.(set_Domain|set_Name|set_Path|set_Value|\<init\>)(/\d+)?'
           arg_index: 0
+      go:
+        - pattern: '^net/http\.Request\.AddCookie(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.SetCookie(/\d+)?'
+          arg_index: 1
       scala:
         - pattern: '^play\.api\.libs\.ws\.DefaultWSCookie\.\<init\>(/\d+)?'
           arg_index: [2, 3]
@@ -1131,6 +1195,8 @@ families:
         arg_index: 1
       - pattern: '^java\.sql\.DriverManager\.getConnection(/\d+)?'
         arg_index: 0
+      - pattern: '^java\.sql\.DriverManager\.getConnection(/\d+)?'
+        arg_index: 0
     by_language:
       csharp:
         - pattern: '^System\.Web\.Security\.MembershipProvider\.ChangePasswordQuestionAndAnswer(/\d+)?'
@@ -1264,6 +1330,15 @@ families:
         - pattern: '^(Ionic\.Zip\.ZipFile|Ionic\.Zip\.ZipEntry)\.set_Password(/\d+)?'
           arg_index: 0
         - pattern: '^Ionic\.Zip\.ZipFile\.CheckZipPassword(/\d+)?'
+          arg_index: 1
+      go:
+        - pattern: '^net/url\.UserPassword(/\d+)?'
+          arg_index: 1
+        - pattern: '^net/http\.Request\.SetBasicAuth(/\d+)?'
+          arg_index: 1
+        - pattern: '^crypto/tls\.LoadX509KeyPair(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^database/sql\.Open(/\d+)?'
           arg_index: 1
       scala:
         - pattern: '^akka\.http\.(java|scala)dsl\.model\.headers\.GenericHttpCredentials\.apply(/\d+)?'
@@ -1587,13 +1662,11 @@ families:
           arg_index: 0
         - pattern: '^System\.Data\.IDataParameterCollection\.set_Item(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Data\.IDataParameterCollection\.Add(/\d+)?'
+        - pattern: '^System\.Collections\.IList\.Add(/\d+)?'
           arg_index: [0, 1]
         - pattern: '^System\.Data\.IDataParameter\.set_Value(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Data\.IDbCommand\.set_CommandText(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Data\.IDbCommand\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Data\.SqlClient\.SqlCommand\.\<init\>(/\d+)?'
           arg_index: 0
@@ -1853,6 +1926,43 @@ families:
           arg_index: 0
         - pattern: '^ADODB\.Recordset\.Open(/\d+)?'
           arg_index: 0
+      go:
+        - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Prepare|Query|QueryRow)Context(/\d+)?'
+          arg_index: [1, 2]
+        - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Query|QueryRow)(/\d+)?'
+          arg_index: 1
+        - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Prepare|Query|QueryRow)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.Dialect\.(HasColumn|RemoveIndex)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.Dialect\.ModifyColumn(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.Take(/\d+)?'
+          arg_index: 1
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.ModifyColumn(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.Exec(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.(AddIndex|AddUniqueIndex|DropTable)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.(DropColumn|Group|Order|Pluck|Not|Raw|RemoveIndex)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.(Add|Remove)ForeignKey(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.(Having|Or|Raw|Select|Table|Where)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.(Attrs|Assign|Create|Delete|First|FirstOrCreate|FirstOrInit|Find|Last|Update|UpdateColumn)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.(Updates|UpdateColumns|Save)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.SQLCommon\.(Exec|Query|QueryRow)(/\d+)?'
+          arg_index: 1
+        - pattern: '^github\.com/jinzhu/gorm\.Scope\.Raw(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.SQLCommon\.(Exec|Prepare|Query|QueryRow)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.(DropTableIfExists|Joins)(/\d+)?'
+          arg_index: 0
       scala:
         - pattern: '^slick\.lifted\.ColumnExtensionMethods\.(\<|\<=|=!=|===|\>|\>=|between|in|inSet|inSetBind)(/\d+)?'
           arg_index: 0
@@ -1952,6 +2062,11 @@ families:
           arg_index: [0, 2]
         - pattern: '^Newtonsoft\.Json\.JsonConvert\.DeserializeObject(/\d+)?'
           arg_index: [0, 1]
+      go:
+        - pattern: '^encoding/gob\.Decoder\.Decode(/\d+)?'
+          arg_index: -2
+        - pattern: '^encoding/json\.Decoder\.Decode(/\d+)?'
+          arg_index: -2
 
   dos.sinks:
     cwe: CWE-730,CWE-776
@@ -2070,6 +2185,9 @@ families:
         - pattern: '^Azure\.Storage\.Queues\.Models\.QueueCorsRule\.set_MaxAgeInSeconds(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.Azure\.Cosmos\.Table\.CorsRule\.set_MaxAgeInSeconds(/\d+)?'
+          arg_index: 0
+      go:
+        - pattern: '^runtime\.KeepAlive(/\d+)?'
           arg_index: 0
       kotlin:
         - pattern: '^kotlin\.text\.(replace|appendln)(/\d+)?'
@@ -2355,8 +2473,6 @@ families:
           arg_index: 0
         - pattern: '^System\.Security\.Cryptography\.X509Certificates\.X509Certificate(2Collection)?\.((Ex|Im)port|\<init\>|CreateFrom(Cert|Signed)File)(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Security\.AccessControl\.FileSystemSecurity\.\<init\>(/\d+)?'
-          arg_index: 0
         - pattern: '^System\.Resources\.ResourceManager\.GetString(/\d+)?'
           arg_index: -2
         - pattern: '^System\.Reflection\.Assembly\.ReflectionOnlyLoadFrom(/\d+)?'
@@ -2495,6 +2611,105 @@ families:
           arg_index: 1
         - pattern: '^Castle\.ActiveRecord\.ActiveRecordStarter\.GenerateDropScripts(/\d+)?'
           arg_index: 0
+      go:
+        - pattern: '^os\.Open(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.OpenFile(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.Create(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.ReadFile(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.WriteFile(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.Mkdir(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.MkdirAll(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.Remove(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.RemoveAll(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.Rename(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^os\.ReadDir(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.Chdir(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.Truncate(/\d+)?'
+          arg_index: 0
+        - pattern: '^io/ioutil\.ReadFile(/\d+)?'
+          arg_index: 0
+        - pattern: '^io/ioutil\.WriteFile(/\d+)?'
+          arg_index: 0
+        - pattern: '^path/filepath\.Glob(/\d+)?'
+          arg_index: 0
+        - pattern: '^path/filepath\.Walk(/\d+)?'
+          arg_index: 0
+        - pattern: '^text/template\.Template\.ParseFiles(/\d+)?'
+          arg_index: 0
+        - pattern: '^text/template\.Template\.ParseGlob(/\d+)?'
+          arg_index: 0
+        - pattern: '^io/fs\.(WalkDir|Read(Dir|File)|Stat)(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.((Mkdir|Remove)All|(Mkdir|Remove))(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.Ch(mod|own|times)(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.(Chdir|Truncate|Lchown)(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.NewFile(/\d+)?'
+          arg_index: 1
+        - pattern: '^os\.(OpenFile|Create)(/\d+)?'
+          arg_index: 0
+        - pattern: '^io/ioutil\.Temp(Dir|File)(/\d+)?'
+          arg_index: 0
+        - pattern: '^io/ioutil\.Read(Dir|File)(/\d+)?'
+          arg_index: 0
+        - pattern: '^io/ioutil\.(WriteFile|TempFile|TempDir|ReadFile|ReadDir)(/\d+)?'
+          arg_index: 0
+        - pattern: '^archive/zip\.OpenReader(/\d+)?'
+          arg_index: 0
+        - pattern: '^archive/zip\.Reader\.Open(/\d+)?'
+          arg_index: 0
+        - pattern: '^path/filepath\.(Glob|Walk)(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.NewFileTransport(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Dir\.Open(/\d+)?'
+          arg_index: -2
+        - pattern: '^syscall\.UnlinkAt(/\d+)?'
+          arg_index: 1
+        - pattern: '^syscall\.Unlink(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.Symlink(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.Renameat(/\d+)?'
+          arg_index: 1
+        - pattern: '^syscall\.Rename(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.(Mkdirat|Mknodat|Openat|Mkfifo)(/\d+)?'
+          arg_index: 1
+        - pattern: '^syscall\.(Mkdir|Mknod|Open|Truncate|Rmdir)(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.Link(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.(Fchmodat|Fchownat)(/\d+)?'
+          arg_index: 1
+        - pattern: '^syscall\.(Fchdir|Fchmod|Fchown)(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.(Chdir|Chmod|Chown|Lchown|Chroot|Creat)(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.(Create|Mkdir)Temp(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.DirFS(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.(Write|Read)File(/\d+)?'
+          arg_index: 0
+        - pattern: '^crypto/tls\.LoadX509KeyPair(/\d+)?'
+          arg_index: 0
+        - pattern: '^embed\.FS\.(Open|ReadDir|ReadFile)(/\d+)?'
+          arg_index: 0
       kotlin:
         - pattern: '^kotlin\.io\.path\.Path(/\d+)?'
           arg_index: 0
@@ -2532,7 +2747,7 @@ families:
   file-permission.sinks:
     cwe: CWE-732,CWE-264
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
+    languages: ['java', 'kotlin', 'scala', 'go']
     patterns:
       - pattern: '^java\.io\.File\.setReadable(/\d+)?'
         arg_index: 0
@@ -2546,6 +2761,30 @@ families:
         arg_index: 0
       - pattern: '^java\.nio\.file\.Files\.setPosixFilePermissions(/\d+)?'
         arg_index: 1
+      - pattern: '^java\.nio\.file\.Files\.setPosixFilePermissions(/\d+)?'
+        arg_index: 1
+    by_language:
+      go:
+        - pattern: '^os\.Lchown(/\d+)?'
+          arg_index: 1
+        - pattern: '^os\.Chown(/\d+)?'
+          arg_index: 1
+        - pattern: '^os\.Chmod(/\d+)?'
+          arg_index: 1
+        - pattern: '^os\.File\.Chmod(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.File\.Chown(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.Fchownat(/\d+)?'
+          arg_index: 2
+        - pattern: '^syscall\.(Chown|Fchown|Lchown)(/\d+)?'
+          arg_index: 1
+        - pattern: '^syscall\.Fchmodat(/\d+)?'
+          arg_index: 2
+        - pattern: '^syscall\.(Chmod|Fchmod)(/\d+)?'
+          arg_index: 1
+        - pattern: '^os\.WriteFile(/\d+)?'
+          arg_index: 2
 
   formula-injection.sinks:
     cwe: CWE-1236
@@ -2600,6 +2839,11 @@ families:
         - pattern: '^DocumentFormat\.OpenXml\.Spreadsheet\.CellType\.set_CellFormula(/\d+)?'
           arg_index: 0
         - pattern: '^CsvHelper\.CsvWriter\.(WriteRecords|WriteRecord|WriteField|WriteConvertedField)(/\d+)?'
+          arg_index: 0
+      go:
+        - pattern: '^encoding/csv\.Writer\.Write(/\d+)?'
+          arg_index: 0
+        - pattern: '^encoding/csv\.Writer\.(WriteAll|Write)(/\d+)?'
           arg_index: 0
       kotlin:
         - pattern: '^kotlin\.io\.(appendBytes|appendText|writeBytes|writeText)(/\d+)?'
@@ -2741,8 +2985,6 @@ families:
           arg_index: 0
         - pattern: '^System\.Net\.Http(\.Headers)?\.HttpHeaders\.(set_.*|Add|TryAddWithoutValidation)(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Net\.Http\.HttpClient\.set_DefaultRequestHeaders(/\d+)?'
-          arg_index: 0
         - pattern: '^System\.Net\.HttpWebRequest\.(AddRange|set_(Accept|Connection|Expect|Host|IfModifiedSince|Referer|TransferEncoding|UserAgent))(/\d+)?'
           arg_index: 0
         - pattern: '^(System\.Net\.WebClient|System\.Net\.WebRequest)\.set_(Encoding|Headers|ContentType|ContentLength)(/\d+)?'
@@ -2794,6 +3036,21 @@ families:
         - pattern: '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayHttpApiV2ProxyResponse\.SetHeaderValues(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.AspNet\.SignalR\.Hosting\.IResponse\.set_ContentType(/\d+)?'
+          arg_index: 0
+      go:
+        - pattern: '^net/http\.Header\.Set(/\d+)?'
+          arg_index: 1
+        - pattern: '^net/http\.Header\.Add(/\d+)?'
+          arg_index: 1
+        - pattern: '^net/http\.Request\.AddCookie(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.SetCookie(/\d+)?'
+          arg_index: 1
+        - pattern: '^net/smtp\.SendMail(/\d+)?'
+          arg_index: 4
+        - pattern: '^net/http\.Header\.(Add|Set)(/\d+)?'
+          arg_index: 0
+        - pattern: '^(google\.golang\.org/grpc\.ServerStream|google\.golang\.org/grpc\.ServerTransportStream)\.(SetHeader|SendHeader)(/\d+)?'
           arg_index: 0
       scala:
         - pattern: '^play\.api\.mvc\.ResponseHeader\.\<init\>(/\d+)?'
@@ -2886,7 +3143,7 @@ families:
           arg_index: 0
 
   insecure-random.sinks:
-    cwe: CWE-335,CWE-330
+    cwe: CWE-335,CWE-330,CWE-338
     severity: MEDIUM
     patterns:
       - pattern: '^java\.util\.random\.RandomGeneratorFactory\.create(/\d+)?'
@@ -2911,6 +3168,21 @@ families:
           arg_index: 0
         - pattern: '^System\.Random\.NextSingle(/\d+)?'
           arg_index: 0
+      go:
+        - pattern: '^math/rand\.NewSource(/\d+)?'
+          arg_index: 0
+        - pattern: '^crypto/ecdh\.Curve\.GenerateKey(/\d+)?'
+          arg_index: 0
+        - pattern: '^crypto\/(ecdsa|ed25519|rsa)\.PrivateKey\.(Sign|Decrypt)(/\d+)?'
+          arg_index: 0
+        - pattern: '^crypto/ecdsa\.(Sign|SignASN1)(/\d+)?'
+          arg_index: 0
+        - pattern: '^crypto\/(elliptic|ecdsa)\.GenerateKey(/\d+)?'
+          arg_index: 1
+        - pattern: '^crypto\/(rsa|ed25519)\.(GenerateKey|GenerateMultiPrimeKey|EncryptPKCS1v15|DecryptPKCS1v15|DecryptPKCS1v15SessionKey|SignPKCS1v15|SignPSS)(/\d+)?'
+          arg_index: 0
+        - pattern: '^crypto/ed25519\.NewKeyFromSeed(/\d+)?'
+          arg_index: 0
       kotlin:
         - pattern: '^kotlin\.random\.Random(/\d+)?'
           arg_index: 0
@@ -2931,6 +3203,17 @@ families:
         - pattern: '^Newtonsoft\.Json\.Linq\.JRaw\.(Create|\<init\>)(/\d+)?'
           arg_index: 0
         - pattern: '^Newtonsoft\.Json\.JsonWriter\.(WriteRawValue|WriteRaw)(/\d+)?'
+          arg_index: 0
+      go:
+        - pattern: '^encoding/json\.Marshal(/\d+)?'
+          arg_index: 0
+        - pattern: '^encoding/json\.MarshalIndent(/\d+)?'
+          arg_index: 0
+        - pattern: '^encoding/json\.Encoder\.Encode(/\d+)?'
+          arg_index: 0
+        - pattern: '^(encoding/json\.RawMessage|encoding/json\.Marshaler)\.MarshalJSON(/\d+)?'
+          arg_index: -2
+        - pattern: '^encoding/json\.(MarshalIndent|Marshal)(/\d+)?'
           arg_index: 0
       scala:
         - pattern: '^scala\.util\.parsing\.json\.JSON\.(parseFull|parseRaw)(/\d+)?'
@@ -3285,6 +3568,27 @@ families:
           arg_index: 0
         - pattern: '^log4net\.ILog\.((Debug|Error|Fatal|Info|Warn)Format|(Debug|Error|Fatal|Info|Warn))(/\d+)?'
           arg_index: 0
+      go:
+        - pattern: '^log/syslog\.Writer\.Debug(/\d+)?'
+          arg_index: -2
+        - pattern: '^log/syslog\.Writer\.(Alert|Crit|Emerg|Err|Info|Notice|Warning)(/\d+)?'
+          arg_index: -2
+        - pattern: '^log\.Logger\.(Fatalln|Fatalf|Fatal)(/\d+)?'
+          arg_index: -2
+        - pattern: '^log\.Logger\.(Panicln|Panicf|Panic)(/\d+)?'
+          arg_index: -2
+        - pattern: '^log\.Logger\.(Println|Printf|Print)(/\d+)?'
+          arg_index: -2
+        - pattern: '^log\.(Fatalln|Fatalf|Fatal)(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.(Panicln|Panicf|Panic)(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.(Println|Printf|Print)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.Logger\.Println(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.LogWriter\.PrintLn(/\d+)?'
+          arg_index: 0
 
   nosql.sinks:
     cwe: CWE-943,CWE-89
@@ -3440,6 +3744,11 @@ families:
           arg_index: 1
         - pattern: '^Microsoft\.AspNetCore\.Http\.HttpResponse\.Redirect(/\d+)?'
           arg_index: 0
+      go:
+        - pattern: '^net/http\.Redirect(/\d+)?'
+          arg_index: 2
+        - pattern: '^net/http\.RedirectHandler(/\d+)?'
+          arg_index: 0
       scala:
         - pattern: '^play\.api\.mvc\.Results\.(PermanentRedirect|Redirect|SeeOther|TemporaryRedirect|MovedPermanently|Found)(/\d+)?'
           arg_index: 0
@@ -3456,7 +3765,6 @@ families:
     patterns:
       - pattern: '^java\.util\.Properties\.getProperty(/\d+)?'
         arg_index: 0
-      - '^java\.util\.Properties\.(store|save)(/\d+)?'
       - pattern: '^javax\.swing\.text\.JTextComponent\.setText(/\d+)?'
         arg_index: 0
       - pattern: '^javax\.swing\.J(EditorPane|TextArea|TextField)\.\<init\>(/\d+)?'
@@ -4069,6 +4377,7 @@ families:
         arg_index: 0
       - pattern: '^com\.google\.gwt\.user\.client\.ui\.HasText\.\<init\>(/\d+)?'
         arg_index: 0
+      - '^java\.util\.Properties\.(store|save)(/\d+)?'
     by_language:
       csharp:
         - pattern: '^System\.Xml\.Serialization\.XmlSerializer\.Serialize(/\d+)?'
@@ -4397,7 +4706,7 @@ families:
           arg_index: 2
         - pattern: '^System\.IO\.Ports\.SerialPort\.(WriteLine|Write)(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.IO\.MemoryMappedFiles\.MemoryMappedViewAccessor\.Write.*(/\d+)?'
+        - pattern: '^System\.IO\.UnmanagedMemoryAccessor\.(Write|WriteArray)(/\d+)?'
           arg_index: 1
         - pattern: '^System\.IO\.Log\.IRecordSequence\.Begin(Append|WriteRestartArea|ReserveAndAppend)(/\d+)?'
           arg_index: 0
@@ -4593,6 +4902,185 @@ families:
           arg_index: [-2, 0]
         - pattern: '^Newtonsoft\.Json\.JsonSerializer\.Serialize(/\d+)?'
           arg_index: [0, 1]
+      go:
+        - pattern: '^(html|text)\/template\.(HTMLEscape|JSEscape)(/\d+)?'
+          arg_index: 1
+        - pattern: '^fmt\.(Fprintln|Fprintf|Fprint)(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^fmt\.(Println|Printf|Print)(/\d+)?'
+          arg_index: 0
+        - pattern: '^strings\.Replacer\.WriteString(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^strings\.Reader\.WriteTo(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^io/ioutil\.WriteFile(/\d+)?'
+          arg_index: 1
+        - pattern: '^io\.(CopyBuffer|WriteString|CopyN)(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^(bytes\.Reader|bytes\.Buffer)\.WriteTo(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^archive/tar\.Writer\.(Write|WriteHeader)(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^net\.UnixConn\.WriteMsgUnix(/\d+)?'
+          arg_index: 0
+        - pattern: '^net\.UnixConn\.(Write|WriteTo|WriteToUnix)(/\d+)?'
+          arg_index: 0
+        - pattern: '^net\.UDPConn\.WriteMsgUDP(/\d+)?'
+          arg_index: 0
+        - pattern: '^net\.UDPConn\.(Write|WriteTo|WriteToUDP)(/\d+)?'
+          arg_index: 0
+        - pattern: '^net\.IPConn\.WriteMsgIP(/\d+)?'
+          arg_index: 0
+        - pattern: '^net\.IPConn\.(Write|WriteTo|WriteToIP)(/\d+)?'
+          arg_index: 0
+        - pattern: '^net\.TCPConn\.Write(/\d+)?'
+          arg_index: 0
+        - pattern: '^net\.Conn\.Write(/\d+)?'
+          arg_index: 0
+        - pattern: '^net\.Buffers\.WriteTo(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^net/http/httputil\.ClientConn\.(Do|Read|Write)(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Request\.AddCookie(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Header\.(Add|Set)(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Client\.PostForm(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Client\.Post(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Client\.(Do|Get|Head)(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.PostForm(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Post(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.(Get|Head)(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.(Error|SetCookie)(/\d+)?'
+          arg_index: 1
+        - pattern: '^net/http\.Response\.Write(/\d+)?'
+          arg_index: -2
+        - pattern: '^net/http\.Request\.(WriteProxy|Write)(/\d+)?'
+          arg_index: -2
+        - pattern: '^encoding/binary\.Write(/\d+)?'
+          arg_index: [0, 2]
+        - pattern: '^os\.File\.(WriteAt|WriteString|Write)(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^log/syslog\.Writer\.(Alert|Crit|Debug|Emerg|Err|Info|Notice|Warning)(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.Logger\.Output(/\d+)?'
+          arg_index: [-2, 1]
+        - pattern: '^log\.Logger\.(Fatalln|Fatalf|Fatal)(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^log\.Logger\.(Panicln|Panicf|Panic)(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^log\.Logger\.(Println|Printf|Print)(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^log\.Logger\.SetPrefix(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^log\.New(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^log\.SetPrefix(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.(Fatalln|Fatalf|Fatal)(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.(Panicln|Panicf|Panic)(/\d+)?'
+          arg_index: 0
+        - pattern: '^log\.(Println|Printf|Print)(/\d+)?'
+          arg_index: 0
+        - pattern: '^mime/quotedprintable\.Writer\.Write(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^encoding/csv\.Writer\.(WriteAll|Write)(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^(bufio\.Writer|bufio\.ReadWriter)\.(WriteByte|WriteRune|WriteString|Write)(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^encoding/json\.Encoder\.Encode(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^os\.WriteFile(/\d+)?'
+          arg_index: 1
+        - pattern: '^compress/zlib\.Writer\.Write(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^compress/gzip\.Writer\.Write(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^compress/flate\.Writer\.Write(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^encoding/xml\.Encoder\.(EncodeElement|EncodeToken|Encode)(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^encoding/xml\.(EscapeText|Escape)(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^encoding/xml\.Encoder\.Indent(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^encoding/pem\.Encode(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^github\.com/jinzhu/gorm\.Logger\.Println(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.LogWriter\.PrintLn(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.Scope\.Log(/\d+)?'
+          arg_index: 0
+        - pattern: '^crypto/tls\.Conn\.Write(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.StdLogger\.(Printf|Println|Print)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.StdLogger\.(Panicf|Panicln|Panic)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.StdLogger\.(Fatalf|Fatalln|Fatal)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.(Warningf|Warningln|Warning)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.(Tracef|Traceln|Trace)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.(Printf|Println|Print)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.(Panicf|Panicln|Panic)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.(Logf|Logln|Log)(/\d+)?'
+          arg_index: 1
+        - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.(Infof|Infoln|Info)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.(Fatalf|Fatalln|Fatal)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.(Errorf|Errorln|Error)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.(Debugf|Debugln|Debug)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.Entry\.(Warningf|Warningln|Warning)(/\d+)?'
+          arg_index: -2
+        - pattern: '^github\.com/sirupsen/logrus\.Entry\.(Tracef|Traceln|Trace)(/\d+)?'
+          arg_index: -2
+        - pattern: '^github\.com/sirupsen/logrus\.Entry\.(Printf|Println|Print)(/\d+)?'
+          arg_index: -2
+        - pattern: '^github\.com/sirupsen/logrus\.Entry\.(Panicf|Panicln|Panic)(/\d+)?'
+          arg_index: -2
+        - pattern: '^github\.com/sirupsen/logrus\.Entry\.(Logf|Logln|Log)(/\d+)?'
+          arg_index: -2
+        - pattern: '^github\.com/sirupsen/logrus\.Entry\.(Infof|Infoln|Info)(/\d+)?'
+          arg_index: -2
+        - pattern: '^github\.com/sirupsen/logrus\.Entry\.(Fatalf|Fatalln|Fatal)(/\d+)?'
+          arg_index: -2
+        - pattern: '^github\.com/sirupsen/logrus\.Entry\.(Errorf|Errorln|Error)(/\d+)?'
+          arg_index: -2
+        - pattern: '^github\.com/sirupsen/logrus\.Entry\.(Debugf|Debugln|Debug)(/\d+)?'
+          arg_index: -2
+        - pattern: '^github\.com/sirupsen/logrus\.(Warningf|Warningln|Warning)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.(Tracef|Traceln|Trace)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.(Printf|Println|Print)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.(Panicf|Panicln|Panic)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.(Infof|Infoln|Info)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.(Fatalf|Fatalln|Fatal)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.(Errorf|Errorln|Error)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/sirupsen/logrus\.(Debugf|Debugln|Debug)(/\d+)?'
+          arg_index: 0
+        - pattern: '^(google\.golang\.org/grpc\.ServerStream|google\.golang\.org/grpc\.ServerTransportStream)\.(Send|SendAndClose|SendMsg|SetHeader|SendHeader)(/\d+)?'
+          arg_index: 0
       kotlin:
         - pattern: '^kotlin\.io\.path\.createTemp(Directory|File)(/\d+)?'
           arg_index: 0
@@ -4629,7 +5117,6 @@ families:
           arg_index: 0
         - pattern: '^play\.api\.mvc\.Results\$Status\.(apply|chunked)(/\d+)?'
           arg_index: 0
-        - '^scala\.collection\.immutable\.Stream\.print(/\d+)?'
         - pattern: '^scala\.xml\.XML\.write(/\d+)?'
           arg_index: [0, 1]
         - pattern: '^scala\.Predef\.(printf|println|print)(/\d+)?'
@@ -4698,6 +5185,7 @@ families:
           arg_index: 0
         - pattern: '^akka\.http\.(java|scala)dsl\.model\.HttpEntity\.(apply|\<init\>)(/\d+)?'
           arg_index: 0
+        - '^scala\.collection\.immutable\.Stream\.print(/\d+)?'
 
   reflection.sinks:
     cwe: CWE-470,CWE-494
@@ -4797,6 +5285,11 @@ families:
         - pattern: '^Microsoft\.VisualBasic\.Interaction\.CallByName(/\d+)?'
           arg_index: 0
         - '^(System\.Reflection\.MethodBase|System\.Reflection\.MethodInfo)\.Invoke(/\d+)?'
+      go:
+        - pattern: '^reflect\.Value\.(Method|Field)ByName(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.Scope\.CallMethod(/\d+)?'
+          arg_index: 0
       scala:
         - pattern: '^scala\.compat\.Platform\.getClassForName(/\d+)?'
           arg_index: 0
@@ -4833,6 +5326,11 @@ families:
           arg_index: 0
         - pattern: '^MongoDB\.Driver\.FilterDefinitionBuilder\.Regex(/\d+)?'
           arg_index: 1
+      go:
+        - pattern: '^regexp\.(MustCompilePOSIX|MustCompile)(/\d+)?'
+          arg_index: 0
+        - pattern: '^regexp\.(MatchReader|MatchString|Match)(/\d+)?'
+          arg_index: 0
       kotlin:
         - pattern: '^kotlin\.text\.Regex\.<init>'
           arg_index: 0
@@ -5008,7 +5506,6 @@ families:
         arg_index: 0
       - pattern: '^javax\.jdo\.PersistenceManagerFactory\.setConnectionURL(/\d+)?'
         arg_index: 0
-      - '^(javax|jakarta)\.mail\.Transport\.send.*(/\d+)?'
       - pattern: '^(javax|jakarta)\.mail\.Fo1der\.fetchA11(/\d+)?'
         arg_index: 0
       - pattern: '^(javax|jakarta)\.mail\.Folder\.(fetch|((append|copy)Messages))(/\d+)?'
@@ -5165,6 +5662,7 @@ families:
         arg_index: 0
       - pattern: '^com\.google\.gwt\.user\.client\.rpc\.ServiceDefTarget\.setServiceEntryPoint(/\d+)?'
         arg_index: 0
+      - '^(javax|jakarta)\.mail\.Transport\.send.*(/\d+)?'
     by_language:
       csharp:
         - pattern: '^Grpc\.Core\.ClientBase\.WithHost(/\d+)?'
@@ -5191,15 +5689,11 @@ families:
           arg_index: 0
         - pattern: '^System\.Messaging\.MessageQueue\.Send(/\d+)?'
           arg_index: 0
-        - '^(System\.IO\.DirectoryInfo|System\.IO\.FileInfo)\.(Create|CreateText|AppendText)(/\d+)?'
-        - '^System\.IO\.FileInfo\.(Open|OpenRead|OpenText|OpenWrite)(/\d+)?'
         - pattern: '^Microsoft\.WindowsAzure\.Storage\.CloudStorageAccount\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Exception\.set_HelpLink(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.MarshalByRefObject\.CreateObjRef(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Activator\.((Create(Com)?Instance(From)?)|(GetObject))(/\d+)?'
+        - pattern: '^System\.Activator\.(CreateInstance|CreateInstanceFrom)(/\d+)?'
           arg_index: 0
         - pattern: '^Azure\.Storage\.Queues\.QueueServiceClient\.GetQueueClient(/\d+)?'
           arg_index: 0
@@ -5271,6 +5765,17 @@ families:
           arg_index: 0
         - pattern: '^Castle\.ActiveRecord\.ActiveRecordStarter\.(Create|Drop)Schema(/\d+)?'
           arg_index: 0
+        - '^(System\.IO\.DirectoryInfo|System\.IO\.FileInfo)\.(Create|CreateText|AppendText)(/\d+)?'
+        - '^System\.IO\.FileInfo\.(Open|OpenRead|OpenText|OpenWrite)(/\d+)?'
+      go:
+        - pattern: '^net/smtp\.SendMail(/\d+)?'
+          arg_index: 2
+        - pattern: '^syscall\.(Mkfifo|Mknod)(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.BindToDevice(/\d+)?'
+          arg_index: 1
+        - pattern: '^syscall\.Bind(/\d+)?'
+          arg_index: 1
       scala:
         - pattern: '^(play\.api\.cache\.SyncCacheApi|play\.api\.cache\.AsyncCacheApi)\.set(/\d+)?'
           arg_index: 0
@@ -5339,15 +5844,10 @@ families:
         arg_index: 2
       - pattern: '^((javax|jakarta)\.servlet\.jsp\.el\.ImplicitObjectELResolver|(javax|jakarta)\.servlet\.jsp\.el\.ScopedAttributeELResolver)\.setValue(/\d+)?'
         arg_index: 3
-      - '^(javax|jakarta)\.xml\.parsers\.SAXParser\.set(.)*(/\d+)?'
-      - '^(javax|jakarta)\.xml\.parsers\.DocumentBuilder\.set(.)*(/\d+)?'
-      - '^(javax\.xml\.transform\.(TransformerFactory)|javax\.xml\.transform\.(Transformer))\.set(.)*(/\d+)?'
-      - '^((javax|jakarta)\.xml\.parsers\.(DocumentBuilderFactory)|(javax|jakarta)\.xml\.parsers\.(SAXParserFactory))\.set(.)*(/\d+)?'
       - pattern: '^(com\.sun\.mail\.imap\.IMAPFolder|com\.sun\.mail\.imap\.IMAPStore)\.setQuota(/\d+)?'
         arg_index: 0
       - pattern: '^(javax|jakarta)\.mail\.Session\.set.*(/\d+)?'
         arg_index: 0
-      - '^(javax|jakarta)\.mail\.Service\.connect(/\d+)?'
       - pattern: '^(javax|jakarta)\.mail\.Folder\.renameTo(/\d+)?'
         arg_index: 0
       - pattern: '^(javax|jakarta)\.mail\.Folder\.open(/\d+)?'
@@ -5526,6 +6026,11 @@ families:
         arg_index: 1
       - pattern: '^com\.google\.common\.cache\.CacheBuilder\.(expireAfterWrite|concurrencyLevel|initialCapacity|refreshAfterWrite|maximum(Size|Weight))(/\d+)?'
         arg_index: 0
+      - '^(javax|jakarta)\.xml\.parsers\.SAXParser\.set(.)*(/\d+)?'
+      - '^(javax|jakarta)\.xml\.parsers\.DocumentBuilder\.set(.)*(/\d+)?'
+      - '^(javax\.xml\.transform\.(TransformerFactory)|javax\.xml\.transform\.(Transformer))\.set(.)*(/\d+)?'
+      - '^((javax|jakarta)\.xml\.parsers\.(DocumentBuilderFactory)|(javax|jakarta)\.xml\.parsers\.(SAXParserFactory))\.set(.)*(/\d+)?'
+      - '^(javax|jakarta)\.mail\.Service\.connect(/\d+)?'
     by_language:
       csharp:
         - pattern: '^System\.Threading\.RateLimiting\.(Concurrency|FixedWindowRate|SlidingWindowRate|TokenBucketRate)LimiterOptions\.set_((SegmentsPer)?Window|(Permit|Queue|Token)Limit|ReplenishmentPeriod|TokensPerPeriod)(/\d+)?'
@@ -5569,8 +6074,6 @@ families:
         - pattern: '^System\.Configuration\.ConfigurationElement\.set_Item(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Collections\.Specialized\.NameObjectCollectionBase\.set_IsReadOnly(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Attribute\.set_(.*)(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Environment\.set_.*(/\d+)?'
           arg_index: 0
@@ -5644,6 +6147,37 @@ families:
           arg_index: 0
         - pattern: '^IBM\.Data\.DB2\.DB2DataAdapter\.\<init\>(/\d+)?'
           arg_index: 1
+      go:
+        - pattern: '^runtime\.(Callers|GOMAXPROCS)(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.ResponseController\.Set(Read|Write)Deadline(/\d+)?'
+          arg_index: 0
+        - pattern: '^context\.With(Timeout(Cause)?|Deadline(Cause)?)(/\d+)?'
+          arg_index: 1
+        - pattern: '^os\.Unsetenv(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.Setenv(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.Unsetenv(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.Setgroups(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.Setenv(/\d+)?'
+          arg_index: 0
+        - pattern: '^syscall\.(Setdomainname|Sethostname)(/\d+)?'
+          arg_index: 0
+        - pattern: '^encoding/json\.Encoder\.SetEscapeHTML(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.(BlockGlobalUpdate|LogMode|SingularTable)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.Set(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.StructField\.TagSettingsDelete(/\d+)?'
+          arg_index: 0
+        - pattern: '^crypto/tls\.Conn\.(SetReadDeadline|SetWriteDeadline)(/\d+)?'
+          arg_index: 0
+        - pattern: '^crypto/tls\.Config\.SetSessionTicketKeys(/\d+)?'
+          arg_index: 0
       scala:
         - pattern: '^play\.api\.Configuration\.(get|getAndValidate|getOptional|getPrototypedMap|getPrototypedSeq|entrySet)(/\d+)?'
           arg_index: 0
@@ -5885,8 +6419,6 @@ families:
           arg_index: 0
         - pattern: '^System\.Data\.Common\.DbBatchCommand\.set_CommandText(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Data\.IDbCommand\.\<init\>(/\d+)?'
-          arg_index: 0
         - pattern: '^System\.Data\.IDbCommand\.set_CommandText(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Data\.Common\.DbDataAdapter\.\<init\>(/\d+)?'
@@ -6060,6 +6592,57 @@ families:
         - pattern: '^NHibernate\.Impl\.QueryImpl\.(\<init\>|set_Query)(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.ApplicationBlocks\.Data\.SqlHelper\.UpdateDataset(/\d+)?'
+          arg_index: 0
+      go:
+        - pattern: '^database/sql\.DB\.Exec(/\d+)?'
+          arg_index: 0
+        - pattern: '^database/sql\.DB\.ExecContext(/\d+)?'
+          arg_index: 1
+        - pattern: '^database/sql\.DB\.Query(/\d+)?'
+          arg_index: 0
+        - pattern: '^database/sql\.DB\.QueryContext(/\d+)?'
+          arg_index: 1
+        - pattern: '^database/sql\.DB\.QueryRow(/\d+)?'
+          arg_index: 0
+        - pattern: '^database/sql\.DB\.QueryRowContext(/\d+)?'
+          arg_index: 1
+        - pattern: '^database/sql\.DB\.Prepare(/\d+)?'
+          arg_index: 0
+        - pattern: '^database/sql\.DB\.PrepareContext(/\d+)?'
+          arg_index: 1
+        - pattern: '^database/sql\.Tx\.Exec(/\d+)?'
+          arg_index: 0
+        - pattern: '^database/sql\.Tx\.Query(/\d+)?'
+          arg_index: 0
+        - pattern: '^database/sql\.Tx\.QueryRow(/\d+)?'
+          arg_index: 0
+        - pattern: '^database/sql\.Stmt\.Exec(/\d+)?'
+          arg_index: -2
+        - pattern: '^database/sql\.Stmt\.Query(/\d+)?'
+          arg_index: -2
+        - pattern: '^gorm\.io/gorm\.DB\.Find(/\d+)?'
+          arg_index: -2
+        - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Prepare|Query|QueryRow)Context(/\d+)?'
+          arg_index: 1
+        - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Prepare|Query|QueryRow)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.Dialect\.(HasColumn|RemoveIndex)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.Dialect\.ModifyColumn(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.Take(/\d+)?'
+          arg_index: 1
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.ModifyColumn(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.Exec(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.(AddIndex|AddUniqueIndex|DropTable)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.DB\.(DropColumn|Group|Having|Order|Pluck|Not|Raw|RemoveIndex|Or|Select|Table|Where)(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.Scope\.Raw(/\d+)?'
+          arg_index: 0
+        - pattern: '^github\.com/jinzhu/gorm\.SQLCommon\.(Exec|Prepare|Query|QueryRow)(/\d+)?'
           arg_index: 0
       scala:
         - pattern: '^slick\.jdbc\.SQLActionBuilder\.\<init\>(/\d+)?'
@@ -6239,6 +6822,55 @@ families:
           arg_index: [0, 1]
         - pattern: '^System\.UriBuilder\.\<init\>(/\d+)?'
           arg_index: 2
+      go:
+        - pattern: '^net/http\.Get(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Head(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Post(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.PostForm(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.NewRequest(/\d+)?'
+          arg_index: 1
+        - pattern: '^net/http\.NewRequestWithContext(/\d+)?'
+          arg_index: 2
+        - pattern: '^net/http\.Client\.Get(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Client\.Head(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Client\.Post(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Client\.PostForm(/\d+)?'
+          arg_index: 0
+        - pattern: '^net\.Dial(/\d+)?'
+          arg_index: 1
+        - pattern: '^net\.Dialer\.Dial(/\d+)?'
+          arg_index: 1
+        - pattern: '^crypto/tls\.Dial(/\d+)?'
+          arg_index: 1
+        - pattern: '^net/http/httputil\.ProxyRequest\.SetURL(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/textproto\.Dial(/\d+)?'
+          arg_index: 1
+        - pattern: '^net/smtp\.(SendMail|Dial|NewClient)(/\d+)?'
+          arg_index: 0
+        - pattern: '^net\.Resolver\.LookupIPAddr(/\d+)?'
+          arg_index: 1
+        - pattern: '^net/http\.(Get|Head|Post|PostForm)(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Client\.(Get|Head|Post|PostForm)(/\d+)?'
+          arg_index: 0
+        - pattern: '^crypto/tls\.DialWithDialer(/\d+)?'
+          arg_index: 2
+        - pattern: '^crypto/tls\.Dialer\.DialContext(/\d+)?'
+          arg_index: 2
+        - pattern: '^crypto/tls\.Dialer\.Dial(/\d+)?'
+          arg_index: 1
+        - pattern: '^crypto/tls\.Listen(/\d+)?'
+          arg_index: 1
+        - pattern: '^crypto/tls\.NewListener(/\d+)?'
+          arg_index: 0
       kotlin:
         - pattern: '^kotlin\.io\.read(Bytes|Text)(/\d+)?'
           arg_index: 0
@@ -6253,6 +6885,257 @@ families:
           arg_index: 0
         - pattern: '^akka\.http\.(java|scala)dsl\.model\.HttpRequest\.(\<init\>|apply)(/\d+)?'
           arg_index: 1
+
+  taint.sources.console:
+    cwe: null
+    severity: MEDIUM
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp']
+    patterns:
+      - '^java\.io\.Console\.readLine(/\d+)?'
+      - '^java\.lang\.System\.console(/\d+)?'
+    by_language:
+      csharp:
+        - '^System\.Console\.ReadLine(/\d+)?'
+        - '^System\.Console\.Read(/\d+)?'
+        - '^System\.Environment\.GetCommandLineArgs(/\d+)?'
+        - '^System\.Console\.(ReadLines|Read)(/\d+)?'
+        - '^System\.Console\.(ReadLine|Read)(/\d+)?'
+        - '^(Microsoft\.VisualBasic\.ApplicationServices\.ApplicationBase|Microsoft\.VisualBasic\.ApplicationServices\.StartupEventArgs)\.get_CommandLineArgs(/\d+)?'
+        - '^Microsoft\.VisualBasic\.Interaction\.Command(/\d+)?'
+      go:
+        - '^bufio\.Scanner\.Text(/\d+)?'
+        - '^bufio\.Scanner\.Bytes(/\d+)?'
+        - '^flag\.Arg(/\d+)?'
+        - '^flag\.Args(/\d+)?'
+        - '^fmt\.Scanf(/\d+)?'
+        - '^fmt\.(Scanln|Scan)(/\d+)?'
+        - '^flag\.FlagSet\.(Float64|Int64|Uint64|Uint)(/\d+)?'
+        - '^flag\.FlagSet\.String(/\d+)?'
+        - '^flag\.(Float64|Int64|String|Uint64|Uint)(/\d+)?'
+        - '^flag\.(Args|Arg)(/\d+)?'
+        - '^flag\.FlagSet\.StringVar(/\d+)?'
+        - '^flag\.FlagSet\.(Float64Var|Int64Var|Uint64Var)(/\d+)?'
+        - '^flag\.(Float64Var|Int64Var|Uint64Var)(/\d+)?'
+        - '^flag\.StringVar(/\d+)?'
+      kotlin:
+        - pattern: '^kotlin\.io\.readLine(/\d+)?'
+          arg_index: 0
+        - pattern: '^kotlin\.io\.readln(/\d+)?'
+          arg_index: 0
+      scala:
+        - pattern: '^scala\.io\.StdIn\$\$anon\$1\.readLine(/\d+)?'
+          arg_index: 0
+        - pattern: '^scala\.io\.StdIn\.readLine(/\d+)?'
+          arg_index: 0
+
+  taint.sources.env:
+    cwe: null
+    severity: MEDIUM
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp']
+    patterns:
+      - '^java\.lang\.System\.getenv(/\d+)?'
+      - '^java\.lang\.System\.getProperty(/\d+)?'
+    by_language:
+      csharp:
+        - '^System\.Environment\.GetEnvironmentVariable(/\d+)?'
+        - '^System\.Environment\.GetCommandLineArgs(/\d+)?'
+        - '^System\.Windows\.Forms\.Clipboard\.GetDataObject(/\d+)?'
+        - '^System\.Diagnostics\.ProcessStartInfo\.get_EnvironmentVariables(/\d+)?'
+        - '^System\.Environment\.ExpandEnvironmentVariables(/\d+)?'
+        - '^System\.Environment\.(GetEnvironmentVariables|GetEnvironmentVariable)(/\d+)?'
+        - '^Microsoft\.VisualBasic\.MyServices\.ClipboardProxy\.(GetDataObject|GetText)(/\d+)?'
+        - '^Microsoft\.VisualBasic\.ApplicationServices\.ApplicationBase\.GetEnvironmentVariable(/\d+)?'
+        - '^Microsoft\.VisualBasic\.Interaction\.Environ(/\d+)?'
+      go:
+        - '^os\.Getenv(/\d+)?'
+        - '^os\.LookupEnv(/\d+)?'
+        - '^os\.ExpandEnv(/\d+)?'
+        - '^os\.Environ(/\d+)?'
+        - '^os\.(Lookup|Expand)Env(/\d+)?'
+        - '^net/http\.ProxyFromEnvironment(/\d+)?'
+      kotlin:
+        - pattern: '^kotlin\.system\.getenv(/\d+)?'
+          arg_index: 0
+      scala:
+        - pattern: '^scala\.sys\.package\$\$anon\$\d+\.getenv(/\d+)?'
+          arg_index: 0
+
+  taint.sources.io:
+    cwe: null
+    severity: MEDIUM
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp']
+    patterns:
+      - '^java\.io\.InputStream\.read(/\d+)?'
+      - '^java\.io\.Reader\.read(/\d+)?'
+      - '^java\.io\.BufferedReader\.readLine(/\d+)?'
+      - '^java\.util\.Scanner\.next(/\d+)?'
+      - '^java\.util\.Scanner\.nextLine(/\d+)?'
+      - '^java\.nio\.channels\.ReadableByteChannel\.read(/\d+)?'
+    by_language:
+      csharp:
+        - '^System\.IO\.File\.ReadAllText(/\d+)?'
+        - '^System\.IO\.File\.ReadAllLines(/\d+)?'
+        - '^System\.IO\.File\.ReadAllBytes(/\d+)?'
+        - '^System\.IO\.File\.OpenText(/\d+)?'
+        - '^System\.IO\.StreamReader\.ReadLine(/\d+)?'
+        - '^System\.IO\.StreamReader\.ReadToEnd(/\d+)?'
+        - '^System\.Windows\.Application\.GetResourceStream(/\d+)?'
+        - '^Microsoft\.WindowsAzure\.Storage\.Blob\.ICloudBlob\.(BeginDownloadRangeToByteArrayAsync|BeginDownloadRangeToByteArray)(/\d+)?'
+        - '^System\.IO\.UnmanagedMemoryAccessor\.Read.*(/\d+)?'
+        - '^System\.IO\.Stream\.BeginRead(/\d+)?'
+        - '^System\.IO\.UnmanagedMemoryStream\.Read(/\d+)?'
+        - '^System\.IO\.Stream\.CopyTo(/\d+)?'
+        - '^System\.IO\.UnmanagedMemoryStream\.ReadByte(/\d+)?'
+        - '^System\.IO\.Compression\.ZipArchive\.(g|G)etEntr(y|ies)(/\d+)?'
+        - '^(System\.IO\.BinaryReader|System\.IO\.Stream|System\.IO\.TextReader)\.((Read|BeginRead|ReadBlock|ReadExactly)Async|(Read|BeginRead|ReadBlock|ReadExactly))(/\d+)?'
+        - '^System\.IO\.BinaryReader\.Read(Bytes|Chars)(/\d+)?'
+        - '^System\.IO\.BinaryReader\.Read(7BitEncodedInt(64)?|Decimal|Double|(U)?Int(16|32|64)|Single)(/\d+)?'
+        - '^System\.IO\.BinaryReader\.(ReadByte|ToString|ReadChar|ReadSByte|ReadString)(/\d+)?'
+        - '^System\.IO\.Stream\.ReadByte(/\d+)?'
+        - '^(System\.IO\.BinaryReader|System\.IO\.TextReader)\.(ReadLineAsync|ReadLine)(/\d+)?'
+        - '^System\.IO\.TextReader\.((Read|ReadToEnd)Async|(Read|ReadToEnd))(/\d+)?'
+        - '^(System\.IO\.BinaryReader|System\.IO\.TextReader)\.(PeekChar|Peek)(/\d+)?'
+        - '^System\.IO\.BinaryReader\.FillBuffer(/\d+)?'
+        - '^SubSonic\.Sugar\.Files\.GetFileText(/\d+)?'
+        - '^ICSharpCode\.SharpZipLib\.Zip\.ZipFile\.(GetEntry|GetEnumerator|GetInputStream)(/\d+)?'
+        - '^Microsoft\.VisualBasic\.FileSystem\.LineInput(/\d+)?'
+        - '^Microsoft\.VisualBasic\.FileSystem\.(InputString|Input)(/\d+)?'
+        - '^Microsoft\.VisualBasic\.FileSystem\.(FileGetObject|FileGet)(/\d+)?'
+        - '^Ionic\.Zip\.ZipEntry\.get_InputStream(/\d+)?'
+      go:
+        - '^bufio\.Reader\.ReadString(/\d+)?'
+        - '^bufio\.Reader\.ReadBytes(/\d+)?'
+        - '^bufio\.Reader\.ReadLine(/\d+)?'
+        - '^io\.Reader\.Read(/\d+)?'
+        - '^os\.File\.Read(/\d+)?'
+        - '^net\.Conn\.Read(/\d+)?'
+        - '^encoding/gob\.NewDecoder(/\d+)?'
+        - '^encoding/json\.NewDecoder(/\d+)?'
+        - '^io/fs\.ReadFile(/\d+)?'
+        - '^io/ioutil\.ReadFile(/\d+)?'
+        - '^os\.File\.(ReadAt|Read)(/\d+)?'
+        - '^encoding/csv\.Reader\.(ReadAll|Read)(/\d+)?'
+        - '^os\.ReadFile(/\d+)?'
+        - '^io\.Read(Full|AtLeast)(/\d+)?'
+        - '^embed\.FS\.ReadFile(/\d+)?'
+
+  taint.sources.network:
+    cwe: null
+    severity: MEDIUM
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp']
+    patterns:
+      - '^java\.net\.Socket\.getInputStream(/\d+)?'
+      - '^java\.net\.DatagramSocket\.receive(/\d+)?'
+      - '^java\.net\.URLConnection\.getInputStream(/\d+)?'
+    by_language:
+      csharp:
+        - '^System\.Net\.WebClient\.DownloadString(/\d+)?'
+        - '^System\.Net\.Sockets\.UdpClient\.(EndReceiveAsync|EndReceive)(/\d+)?'
+        - '^System\.Net\.Sockets\.Socket\.(ReceiveMessageFromAsync|BeginReceiveFrom|BeginReceive)(/\d+)?'
+        - '^System\.Messaging\.MessageQueue\.(GetPrivateQueuesByMachine|Receive.*|Peek.*|BeginPeek|BeginReceive|GetAllMessages|GetMessageEnumerator2|GetMessageQueueEnumerator|GetPublicQueues.*)(/\d+)?'
+        - '^System\.IO\.Ports\.SerialPort\.(ReadLine|ReadByte|ReadChar|ReadExisting|Read)(/\d+)?'
+        - '^System\.IO\.Pipes\.PipeStream\.(BeginReadAsync|BeginReadByte|BeginRead)(/\d+)?'
+      go:
+        - '^net\.UnixConn\.ReadMsgUnix(/\d+)?'
+        - '^net\.UDPConn\.ReadMsgUDP(/\d+)?'
+        - '^net\.IPConn\.ReadMsgIP(/\d+)?'
+        - '^net\.Conn\.Read(/\d+)?'
+        - '^crypto/tls\.Conn\.Read(/\d+)?'
+        - '^io\.Read(Full|AtLeast)(/\d+)?'
+
+  taint.sources.web:
+    cwe: null
+    severity: MEDIUM
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp']
+    patterns:
+      - '^javax\.servlet\.http\.HttpServletRequest\.getParameter(/\d+)?'
+      - '^javax\.servlet\.http\.HttpServletRequest\.getHeader(/\d+)?'
+      - '^javax\.servlet\.http\.HttpServletRequest\.getCookies(/\d+)?'
+      - '^javax\.servlet\.http\.HttpServletRequest\.getQueryString(/\d+)?'
+      - '^io\.undertow\.server\.HttpServerExchange\.getQueryParameters(/\d+)?'
+      - '^org\.springframework\.http\.HttpHeaders\.getFirst(/\d+)?'
+    by_language:
+      csharp:
+        - '^Microsoft\.AspNetCore\.Http\.HttpRequest\.get_Query(/\d+)?'
+        - '^Microsoft\.AspNetCore\.Http\.HttpRequest\.get_Form(/\d+)?'
+        - '^Microsoft\.AspNetCore\.Http\.HttpRequest\.get_Headers(/\d+)?'
+        - '^Microsoft\.AspNetCore\.Http\.HttpRequest\.get_Cookies(/\d+)?'
+        - '^Microsoft\.AspNetCore\.Http\.HttpRequest\.get_Path(/\d+)?'
+        - '^Microsoft\.AspNetCore\.Http\.HttpRequest\.get_QueryString(/\d+)?'
+        - '^Microsoft\.AspNetCore\.Http\.HttpRequest\.get_RouteValues(/\d+)?'
+        - '^System\.Windows\.Application\.GetCookie(/\d+)?'
+        - '^System\.Windows\.Interop\.BrowserInteropHelper\.get_Source(/\d+)?'
+        - '^System\.Deployment\.Application\.ApplicationDeployment\.get_ActivationUri(/\d+)?'
+        - '^System\.Web\.Services\.Protocols\.SoapHttpClientProtocol\.Invoke(/\d+)?'
+        - '^System\.Net\.WebSockets\.WebSocket\.ReceiveAsync(/\d+)?'
+        - '^System\.Net\.WebSockets\.WebSocket\.get_CloseStatusDescription(/\d+)?'
+        - '^System\.(Web|Net)\.WebSockets\.WebSocketContext\.get_(ClientCertificate|CookieCollection|Cookies|Headers|Origin|QueryString|RawUrl|RequestUri|ServerVariables|UrlReferrer|UserAgent|UserHostName|UserLanguages)(/\d+)?'
+        - '^System\.Web\.UI\.WebControls\.ModelMethodContext\.(UpdateModel|TryUpdateModel)(/\d+)?'
+        - '^System\.Web\.UI\.WebControls\.HiddenField\.get_Value(/\d+)?'
+        - '^System\.Web\.UI\.WebControls\.Login\.get_UserName(/\d+)?'
+        - '^System\.Web\.UI\.WebControls\.ListControl\.get_(Text|SelectedValue)(/\d+)?'
+        - '^System\.Web\.UI\.WebControls\.TextBox\.get_Text(/\d+)?'
+        - '^System\.Web\.UI\.HtmlControls\.HtmlInputControl\.get_Value(/\d+)?'
+        - '^System\.Web\.UI\.HtmlControls\.HtmlTextArea\.get_Value(/\d+)?'
+        - '^System\.Web\.UI\.HtmlControls\.HtmlTableCellCollection\.get_Item(/\d+)?'
+        - '^System\.Web\.UI\.HtmlControls\.HtmlContainerControl\.(get_InnerHtml|get_InnerText)(/\d+)?'
+        - '^System\.Web\.UI\.Page\.(UpdateModel|TryUpdateModel)(/\d+)?'
+        - '^System\.Web\.Routing\.RouteData\.(get_Values|GetRequiredString|get_DataTokens)(/\d+)?'
+        - '^System\.Web\.Routing\.RouteValueDictionary\.get_Item(/\d+)?'
+        - '^System\.Web\.Mvc\.Controller\.(UpdateModel|TryUpdateModel)(/\d+)?'
+        - '^System\.Web\.Compilation\.RouteValueExpressionBuilder\.GetRouteValue(/\d+)?'
+        - '^System\.Web\.HttpWorkerRequest\.(GetKnownRequestHeader|GetUnknownRequestHeaders|GetUnknownRequestHeader)(/\d+)?'
+        - '^(System\.Web\.HttpRequest|System\.Web\.HttpRequestBase)\.(get_UserHostAddress|get_UserHostName)(/\d+)?'
+        - '^(System\.Web\.UnvalidatedRequestValues|System\.Web\.UnvalidatedRequestValuesBase)\.get.*(/\d+)?'
+        - '^System\.Web\.HttpWorkerRequest\.(GetQueryString|GetQueryStringRawBytes|GetRawUrl)(/\d+)?'
+        - '^(System\.Web\.HttpRequest|System\.Web\.HttpRequestBase)\.(get_InputStream|BinaryRead|get_Item|get_Url|get_Cookies|get_Form|get_Params|get_QueryString|get_RawUrl|get_Files)(/\d+)?'
+        - '^System\.Net\.Http\.HttpContent\.get_(Headers|Value)(/\d+)?'
+        - '^System\.Net\.HttpWebResponse\.get_(Cookies|CharacterSet|ContentEncoding|LastModified|Method|Server|StatusDescription)(/\d+)?'
+        - '^Microsoft\.Azure\.Functions\.Worker\.Http\.HttpRequestDataExtensions\.(ReadAsStringAsync|ReadFromJsonAsync)(/\d+)?'
+        - '^Microsoft\.Azure\.Functions\.Worker\.Http\.HttpRequestData\.(get_Body|get_Headers|get_Cookies|get_Url)(/\d+)?'
+        - '^Microsoft\.AspNetCore\.Mvc\.ControllerBase\.TryUpdateModelAsync(/\d+)?'
+        - '^Microsoft\.AspNetCore\.Http\.Extensions\.HttpRequestMultipartExtensions\.GetMultipartBoundary(/\d+)?'
+        - '^Microsoft\.AspNetCore\.Http\.RequestTrailerExtensions\.(GetDeclaredTrailers|GetTrailer)(/\d+)?'
+        - '^Microsoft\.AspNetCore\.Http\.RequestFormReaderExtensions\.ReadFormAsync(/\d+)?'
+        - '^Microsoft\.AspNetCore\.Http\.IFormFile\.(CopyToAsync|CopyTo)(/\d+)?'
+        - '^Microsoft\.AspNetCore\.Http\.HttpRequest\.(get_Body|get_Cookies|get_Form|get_Headers|get_Query|get_QueryString)(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayProxyRequest\.ProxyRequestContext\.get_Path(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayHttpApiV2ProxyRequest\.HttpDescription\.get_Path(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayProxyRequest\.get_Body(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayProxyRequest\.get_PathParameters(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayProxyRequest\.get_MultiValueQueryStringParameters(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayProxyRequest\.get_QueryStringParameters(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayProxyRequest\.get_MultiValueHeaders(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayProxyRequest\.get_Headers(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayProxyRequest\.get_Path(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayHttpApiV2ProxyRequest\.get_PathParameters(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayHttpApiV2ProxyRequest\.get_Body(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayHttpApiV2ProxyRequest\.get_QueryStringParameters(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayHttpApiV2ProxyRequest\.get_Headers(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayHttpApiV2ProxyRequest\.get_Cookies(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayHttpApiV2ProxyRequest\.get_RawQueryString(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayHttpApiV2ProxyRequest\.get_RawPath(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayCustomAuthorizerRequest\.get_PathParameters(/\d+)?'
+        - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayCustomAuthorizerRequest\.get_Path(/\d+)?'
+        - '^SubSonic\.Sugar\.Web\.Scrape(Images|Links)(/\d+)?'
+        - '^SubSonic\.Sugar\.Web\.ReadWebPage(/\d+)?'
+        - '^Microsoft\.AspNet\.SignalR\.Client\.Http\.IResponse\.GetResponseStream(/\d+)?'
+        - '^Microsoft\.AspNet\.SignalR\.Owin\.ServerRequest\.get_(Cookies|Form|Headers|RequestHeaders|Items|QueryString|Url)(/\d+)?'
+        - '^Microsoft\.AspNet\.SignalR\.IRequest\.get_(Cookies|Headers|QueryString|Url|Form)(/\d+)?'
+        - '^Microsoft\.AspNet\.SignalR\.Hubs\.HubCallerContext\.get_(Headers|QueryString|RequestCookies)(/\d+)?'
+      go:
+        - '^net/http\.Request\.FormValue(/\d+)?'
+        - '^net/http\.Request\.PostFormValue(/\d+)?'
+        - '^net/http\.Request\.FormFile(/\d+)?'
+        - '^net/http\.Request\.Referer(/\d+)?'
+        - '^net/http\.Request\.UserAgent(/\d+)?'
+        - '^net/http\.Header\.Get(/\d+)?'
+        - '^net/url\.URL\.Query(/\d+)?'
+        - '^net/http\.Response\.(Cookies|Location)(/\d+)?'
+        - '^net/http\.Request\.(Cookies|PostFormValue|Referer|UserAgent|FormValue)(/\d+)?'
+        - '^net/http\.Request\.(GetBody|Cookie|MultipartReader)(/\d+)?'
+        - '^google\.golang\.org/grpc\.ServerStream\.RecvMsg(/\d+)?'
+        - '^google\.golang\.org/grpc\.ServerStream\.Recv(/\d+)?'
 
   template-injection.sinks:
     cwe: CWE-95
@@ -6405,7 +7288,7 @@ families:
           arg_index: 1
         - pattern: '^System\.Security\.PermissionSet\.\<init\>(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Formats\.Tar\.TarEntry\.Set_Mode(/\d+)?'
+        - pattern: '^System\.Formats\.Tar\.TarEntry\.set_Mode(/\d+)?'
           arg_index: 0
         - pattern: '^System\.IO\.File(SystemInfo|StreamOptions)\.set_(UnixFileMode|UnixCreateMode)(/\d+)?'
           arg_index: 0
@@ -6761,6 +7644,27 @@ families:
           arg_index: 0
         - pattern: '^Ionic\.Zip\.ZipFile\.CheckZipPassword(/\d+)?'
           arg_index: 1
+      go:
+        - pattern: '^crypto/aes\.NewCipher(/\d+)?'
+          arg_index: 0
+        - pattern: '^crypto/des\.NewCipher(/\d+)?'
+          arg_index: 0
+        - pattern: '^crypto/rc4\.NewCipher(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/url\.UserPassword(/\d+)?'
+          arg_index: 1
+        - pattern: '^crypto/des\.NewTripleDESCipher(/\d+)?'
+          arg_index: 0
+        - pattern: '^net/http\.Request\.SetBasicAuth(/\d+)?'
+          arg_index: 1
+        - pattern: '^crypto/rsa\.GenerateMultiPrimeKey(/\d+)?'
+          arg_index: 2
+        - pattern: '^crypto/rsa\.GenerateKey(/\d+)?'
+          arg_index: 1
+        - pattern: '^crypto/dsa\.GenerateParameters(/\d+)?'
+          arg_index: 2
+        - pattern: '^crypto/ecdsa\.GenerateKey(/\d+)?'
+          arg_index: 0
       scala:
         - pattern: '^akka\.http\.(java|scala)dsl\.model\.headers\.GenericHttpCredentials\.apply(/\d+)?'
           arg_index: 1
@@ -6832,6 +7736,13 @@ families:
           arg_index: 1
         - pattern: '^DocumentFormat\.OpenXml\.OpenXmlWriter\.WriteString(/\d+)?'
           arg_index: 0
+      go:
+        - pattern: '^encoding/xml\.MarshalIndent(/\d+)?'
+          arg_index: 0
+        - pattern: '^encoding/xml\.MarshalIndent(/\d+)?'
+          arg_index: 1
+        - pattern: '^encoding/xml\.Encoder\.Indent(/\d+)?'
+          arg_index: 0
       scala:
         - pattern: '^scala\.xml\.factory\.XMLLoader\.(load|loadString|loadFile|loadXML)(/\d+)?'
           arg_index: 0
@@ -6879,9 +7790,7 @@ families:
           arg_index: 0
         - pattern: '^System\.Xml\.XPath\.XPathNavigator\.(Evaluate|Matches|Select)(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Xml\.Linq\.XElement\.(XPathEvaluate|XPathSelectElement)(/\d+)?'
-          arg_index: 1
-        - pattern: '^System\.Xml\.XPath\.Extensions\.(XPathEvaluate|XPathSelectElement)(/\d+)?'
+        - pattern: '^System\.Xml\.XPath\.Extensions\.XPathExtensions\.(XPathEvaluate|XPathSelectElement)(/\d+)?'
           arg_index: 1
         - pattern: '^Saxon\.Api\.XPathCompiler\.(Compile|Evaluate|EvaluateSingle)(/\d+)?'
           arg_index: 0
@@ -7561,6 +8470,63 @@ families:
         - pattern: '^Newtonsoft\.Json\.Linq\.J(Array|Constructor|Object|Property|Value|Token)\.WriteTo(/\d+)?'
           arg_index: [-2, 0]
         - pattern: '^Newtonsoft\.Json\.JsonSerializer\.Serialize(/\d+)?'
+          arg_index: [0, 1]
+      go:
+        - pattern: '^net/http\.ResponseWriter\.Write(/\d+)?'
+          arg_index: 0
+        - pattern: '^fmt\.Fprint(/\d+)?'
+          arg_index: 1
+        - pattern: '^fmt\.Fprintf(/\d+)?'
+          arg_index: 1
+        - pattern: '^fmt\.Fprintln(/\d+)?'
+          arg_index: 1
+        - pattern: '^io\.Copy(/\d+)?'
+          arg_index: 1
+        - pattern: '^io\.WriteString(/\d+)?'
+          arg_index: 1
+        - pattern: '^bufio\.Writer\.Write(/\d+)?'
+          arg_index: 0
+        - pattern: '^bufio\.Writer\.WriteString(/\d+)?'
+          arg_index: 0
+        - pattern: '^fmt\.(Fprintln|Fprintf|Fprint)(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^strings\.Replacer\.WriteString(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^strings\.Reader\.WriteTo(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^io\.(CopyBuffer|WriteString|CopyN)(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^(bytes\.Reader|bytes\.Buffer)\.WriteTo(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^net\.Conn\.Write(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^net\.Buffers\.WriteTo(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^net/http\.Response\.Write(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^encoding/binary\.Write(/\d+)?'
+          arg_index: [0, 2]
+        - pattern: '^mime/quotedprintable\.Writer\.Write(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^encoding/csv\.Writer\.(WriteAll|Write)(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^(bufio\.Writer|bufio\.ReadWriter)\.(WriteByte|WriteRune|WriteString|Write)(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^encoding/json\.Encoder\.Encode(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^compress/zlib\.Writer\.Write(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^compress/gzip\.Writer\.Write(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^compress/flate\.Writer\.Write(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^encoding/xml\.Encoder\.(EncodeElement|EncodeToken|Encode)(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^encoding/xml\.(EscapeText|Escape)(/\d+)?'
+          arg_index: [0, 1]
+        - pattern: '^encoding/xml\.Encoder\.Indent(/\d+)?'
+          arg_index: [-2, 0]
+        - pattern: '^encoding/pem\.Encode(/\d+)?'
           arg_index: [0, 1]
       kotlin:
         - pattern: '^kotlin\.io\.copyTo(/\d+)?'

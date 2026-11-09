@@ -70,9 +70,9 @@ public final class LanguageSemanticsRegistry {
   /**
    * The registry with the built-in tables.
    *
-   * <p>Java, Kotlin, Scala and C# are populated; the rest get the empty table until their semantics
-   * are written down. That is the honest state: an unwritten table is not a claim that every call
-   * preserves taint, it is an absence of claims.
+   * <p>Java, Kotlin, Scala, C# and Go are populated; the rest get the empty table until their
+   * semantics are written down. That is the honest state: an unwritten table is not a claim that
+   * every call preserves taint, it is an absence of claims.
    */
   public static LanguageSemanticsRegistry withDefaults() {
     LanguageSemanticsRegistry reg = new LanguageSemanticsRegistry();
@@ -80,6 +80,7 @@ public final class LanguageSemanticsRegistry {
     reg.register(kotlinSemantics());
     reg.register(scalaSemantics());
     reg.register(csharpSemantics());
+    reg.register(goSemantics());
     return reg;
   }
 
@@ -744,5 +745,145 @@ public final class LanguageSemanticsRegistry {
         // --- secrets: the value itself, so its taint ---
         "System.Security.Cryptography.PasswordDeriveBytes.GetBytes/",
         TaintBehaviour.PRESERVES);
+  }
+
+  /**
+   * Go's standard library semantics.
+   *
+   * <p><b>Why the table is mostly about what DISSOCIATES.</b> A callee that no table mentions is
+   * {@link TaintBehaviour#UNKNOWN}, and the engine treats that as taint-preserving. So the entries
+   * that change an outcome are the ones that say a call does <b>not</b> carry its argument's taint:
+   * a hash, a parsed number, a formatted number. Without them a value that was hashed or parsed
+   * reads as tainted afterwards, and every sink downstream of it is a false positive.
+   *
+   * <p><b>Why the owner is the package's IMPORT PATH.</b> A package-level function's owner is the
+   * path the package is imported by -- {@code path/filepath}, not {@code filepath} -- so a project
+   * that vendors a package of its own cannot be confused with the standard library's. The paths
+   * below are import paths, not directory names.
+   *
+   * <p><b>What is deliberately NOT here.</b> A random generator is not listed as producing taint: a
+   * random value is not attacker-controlled, and marking it tainted would make every sink that
+   * receives one a false positive. The table records behaviour the engine can rely on, and an
+   * absent entry means {@link TaintBehaviour#UNKNOWN}, which is the conservative choice.
+   */
+  public static LanguageSemantics goSemantics() {
+    return LanguageSemantics.of(
+        SourceLanguage.GO,
+        // --- strings: the result carries the input's taint ---
+        "strings.TrimSpace/",
+        TaintBehaviour.PRESERVES,
+        "strings.Trim/",
+        TaintBehaviour.PRESERVES,
+        "strings.TrimLeft/",
+        TaintBehaviour.PRESERVES,
+        "strings.TrimRight/",
+        TaintBehaviour.PRESERVES,
+        "strings.TrimPrefix/",
+        TaintBehaviour.PRESERVES,
+        "strings.TrimSuffix/",
+        TaintBehaviour.PRESERVES,
+        "strings.ToLower/",
+        TaintBehaviour.PRESERVES,
+        "strings.ToUpper/",
+        TaintBehaviour.PRESERVES,
+        "strings.Replace/",
+        TaintBehaviour.PRESERVES,
+        "strings.ReplaceAll/",
+        TaintBehaviour.PRESERVES,
+        "strings.Repeat/",
+        TaintBehaviour.PRESERVES,
+        "strings.Join/",
+        TaintBehaviour.PRESERVES,
+        "strings.Split/",
+        TaintBehaviour.PRESERVES,
+        "strings.Fields/",
+        TaintBehaviour.PRESERVES,
+        // --- paths and URLs: the result carries the input's taint ---
+        "path.Join/",
+        TaintBehaviour.PRESERVES,
+        "path/filepath.Join/",
+        TaintBehaviour.PRESERVES,
+        "path/filepath.Clean/",
+        TaintBehaviour.PRESERVES,
+        "path/filepath.Base/",
+        TaintBehaviour.PRESERVES,
+        "net/url.QueryEscape/",
+        TaintBehaviour.PRESERVES,
+        "net/url.PathEscape/",
+        TaintBehaviour.PRESERVES,
+        // --- the format functions: the formatted text carries the taint ---
+        //
+        // `fmt.Sprintf` and its siblings take the values to format and return
+        // the formatted string. The result is the concatenation of the format
+        // and the values, so a tainted value makes the result tainted -- and
+        // WITHOUT this the taint stops at the call: the result would look
+        // clean and every sink downstream of it would be blind.
+        //
+        // `fmt.Fprintf` is the odd one out: its result is the number of
+        // bytes written, which carries nothing. The WRITE is the sink, and
+        // the sink table names it separately.
+        "fmt.Sprintf/",
+        TaintBehaviour.PRESERVES,
+        "fmt.Sprint/",
+        TaintBehaviour.PRESERVES,
+        "fmt.Sprintln/",
+        TaintBehaviour.PRESERVES,
+        "fmt.Errorf/",
+        TaintBehaviour.PRESERVES,
+        "fmt.Fprintf/",
+        TaintBehaviour.DISSOCIATES,
+        // --- the readers and the buffers: the new value carries the taint ---
+        //
+        // A reader or a buffer built over tainted bytes carries that taint:
+        // what comes out of it later is the tainted content.
+        "io.ReadAll/",
+        TaintBehaviour.PRESERVES,
+        "strings.NewReader/",
+        TaintBehaviour.PRESERVES,
+        "bytes.NewReader/",
+        TaintBehaviour.PRESERVES,
+        "bytes.NewBufferString/",
+        TaintBehaviour.PRESERVES,
+        // --- encodings: the bytes are the text ---
+        "encoding/json.Marshal/",
+        TaintBehaviour.PRESERVES,
+        "encoding/base64.StdEncoding.EncodeToString/",
+        TaintBehaviour.PRESERVES,
+        "encoding/base64.URLEncoding.EncodeToString/",
+        TaintBehaviour.PRESERVES,
+        // --- hashes: the digest does not carry the input's taint ---
+        "crypto/sha256.Sum256/",
+        TaintBehaviour.DISSOCIATES,
+        "crypto/sha256.New/",
+        TaintBehaviour.DISSOCIATES,
+        "crypto/sha1.Sum/",
+        TaintBehaviour.DISSOCIATES,
+        "crypto/sha1.New/",
+        TaintBehaviour.DISSOCIATES,
+        "crypto/md5.Sum/",
+        TaintBehaviour.DISSOCIATES,
+        "crypto/md5.New/",
+        TaintBehaviour.DISSOCIATES,
+        // --- numbers: a parsed or formatted number is not the text ---
+        "strconv.Atoi/",
+        TaintBehaviour.DISSOCIATES,
+        "strconv.ParseInt/",
+        TaintBehaviour.DISSOCIATES,
+        "strconv.ParseUint/",
+        TaintBehaviour.DISSOCIATES,
+        "strconv.ParseFloat/",
+        TaintBehaviour.DISSOCIATES,
+        "strconv.ParseBool/",
+        TaintBehaviour.DISSOCIATES,
+        "strconv.Itoa/",
+        TaintBehaviour.DISSOCIATES,
+        "strconv.FormatInt/",
+        TaintBehaviour.DISSOCIATES,
+        "strconv.FormatUint/",
+        TaintBehaviour.DISSOCIATES,
+        "strconv.FormatFloat/",
+        TaintBehaviour.DISSOCIATES,
+        "strconv.FormatBool/",
+        TaintBehaviour.DISSOCIATES);
   }
 }

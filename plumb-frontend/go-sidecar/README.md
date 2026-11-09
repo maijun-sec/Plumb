@@ -99,6 +99,9 @@ catch.
   "projectId": "<opaque>",
   "goroot": "C:/go",
   "sources": [ { "path": "<absolute>", "text": "<the caller's text>" } ],
+  "modules": [
+    { "path": "example.com/lib", "dir": "C:/src/lib" }
+  ],
   "packages": [
     {
       "importPath": "github.com/example/proj/internal/store",
@@ -126,6 +129,7 @@ catch.
 | `imports[].importPath` | The dependency's import path. |
 | `imports[].exportData` | The dependency's **compile-time export data** file (a `.a` archive or an export data file). |
 | `imports[].dir` | The dependency's source directory. Optional: it is used only when there is no export data. |
+| `modules` | The **modules that live on disk**, each with the directory that holds it. Optional: it names the modules the toolchain's own lookup cannot find -- a REPLACED dependency, or one that belongs to another module of a workspace. |
 | `sources` | The **caller's copy** of each file's text. |
 | `goroot` | The **Go toolchain's root directory**. Optional; see below. |
 
@@ -209,13 +213,14 @@ empty placeholder, and every type that mentions it would come out invalid.
 
 When there is no export data -- and after a finished build there usually is
 none, because the build deletes its temporary directory -- the dependency is
-type-checked from its **source**. There are two places where that source
-lives, and the sidecar looks in both.
+type-checked from its **source**. There are three places where that source
+lives, and the sidecar looks in all of them.
 
 | The dependency | Where its source is | How it is found |
 |---|---|---|
 | The **standard library** | `<goroot>/src/<import path>` | The toolchain's root -- see [`goroot`](#goroot-the-toolchain-not-the-environment) |
 | A **third-party module** | `$GOMODCACHE/<module>@<version>/<package path>` | Searched directly |
+| A **replaced or workspace module** | The directory the module's own build description names | Named by the Java side, in `modules` |
 
 The module cache is searched directly because `go/build` does not know it: the
 cache is keyed by **module path and version**, while the import path names a
@@ -227,10 +232,18 @@ One twist in the cache's layout: an uppercase letter in the module path is
 stored as an exclamation mark followed by the lowercase letter, so
 `github.com/Azure` is stored as `github.com/!azure`.
 
-When neither place yields the dependency, the import fails **loudly**: the
-failure names the import path and says which places were searched. A
-dependency whose types are missing is a dependency whose findings are
-missing, so it is never reported as "no findings".
+A **replaced** dependency (`replace other.example/mod => ../other-repo`) and a
+dependency that belongs to another module of a **workspace** (`go.work`) are
+not in the cache at all: they are directories on disk. `go/build` does not know
+them either, so the sidecar could never find them on its own. The Java side
+reads the module's own build description -- the only place the replacement is
+written down -- and names the directories in `modules`; the sidecar then
+resolves an import path against them by the **longest** matching module path.
+
+When none of the three places yields the dependency, the import fails
+**loudly**: the failure names the import path and says which places were
+searched. A dependency whose types are missing is a dependency whose findings
+are missing, so it is never reported as "no findings".
 
 ### `translate`
 
@@ -313,7 +326,7 @@ a silent "no findings"**.
 | `enclosingClass` | The receiver type's short name. Absent for a package-level function. |
 | `returnType` | The first declared result's type. |
 | `precision` | `SOURCE_FULL` or `SOURCE_LOWERED`. |
-| `synthetic` | Always false: every function in the stream is one the user wrote. |
+| `synthetic` | Always false: every function in the stream comes from the user's own code. |
 | `params` | The parameters, in declaration order. |
 | `locals` | The locals. |
 | `instructions` | The instruction stream, in source order. |
@@ -417,11 +430,15 @@ Plumb frontend emits and the same form the sink catalogue matches on.
 **The receiver comes FIRST.** It is the TAC's own call convention:
 
 ```
-args[0] = the receiver, when the call has one
+args[0] = the receiver slot
 args[1..] = the actual arguments
 ```
 
-A static call has no receiver, so its first real argument is at `args[0]`.
+The slot is reserved whether or not the call has a receiver object. A
+package-level function has none -- `fmt.Println` is a function of the
+PACKAGE, and there is no instance to call it on -- so the slot holds the
+**package's import path** as a constant. The arity does not count it: the
+real arguments of `fmt.Println` are at `args[1..]`.
 
 The arity counts the **declared parameters**. The receiver is not one of
 them: `func (f *os.File) Close() error` is `os.File.Close/0`, with the file
@@ -474,6 +491,31 @@ See [`startsGoroutine`](#startsgoroutine) above.
 **The cost**: the call is placed in the ordinary order, and no happens-before
 relation is modelled at all.
 
+### Package-level variables and `init`
+
+Go initialises a package's variables before its `init` functions run, and runs
+those functions once per program. The TAC has no package initialiser of its
+own, so a file's package-level variables and the bodies of its `init`
+functions are lowered into **one function of their own**, named after the
+file. The variables are bound under their **qualified** name (`pkg.name`), so
+the files of a package read and write the same variable.
+
+**The cost**: the order between the files of a package is not modelled -- each
+file's declarations are initialised in the file that declares them -- and the
+report says so.
+
+### Function literals
+
+A function literal becomes a **function of its own**, named after the file it
+is in, and the variables it captured become **leading parameters** of that
+function. A call through the literal passes the captured values, so the taint
+reaches the body.
+
+**The cost**: the TAC has no function value, so the literal is a name rather
+than a value. A literal that is stored in a variable and called through that
+variable is followed; a literal that is merely passed around is not the same
+thing as the function it denotes.
+
 ### The type mapping
 
 | Go | TAC |
@@ -509,12 +551,18 @@ with a real package:
 
 ```
 <go>.len/1        <go>.cap/1        <go>.append/2      <go>.copy/2
-<go>.delete/2     <go>.make/2        <go>.print/1       <go>.recover/0
+<go>.delete/2     <go>.make/1        <go>.print/1       <go>.recover/0
 <go>.mapIndex/2   <go>.mapStore/3    <go>.mapIter/1     <go>.mapNext/1
-<go>.chanSend/2   <go>.chanRecv/1    <go>.selectReady/1 <go>.slice/3
-<go>.complex/2    <go>.real/1        <go>.imag/1        <go>.min/2
-<go>.max/2        <go>.clear/1
+<go>.mapKey/1     <go>.mapValue/1    <go>.chanSend/2    <go>.chanRecv/1
+<go>.selectReady/1 <go>.slice/3      <go>.complex/2     <go>.real/1
+<go>.imag/1       <go>.min/2         <go>.max/2         <go>.clear/1
+<go>.close/1
 ```
+
+The arity is the number of arguments the call had. The variadic ones
+(`append`, `print`, `min`, `max`, `slice`) and `make` vary with the call:
+`make`'s **type** argument is not an argument at all, and its size argument is
+optional.
 
 A `range` over a slice is an indexed loop, a `range` over a map is a call
 on the map iterator, and a `range` over a channel is a single receive.
@@ -523,15 +571,14 @@ on the map iterator, and a `range` over a channel is a single receive.
 
 Each of these produces a problem; none is silent:
 
-* **Function literals and method values.** Go's functions are first-class
-  values and the TAC has no way to name one.
+* **Method values.** A method used as a *value* -- `f := x.M` -- is a
+  function the TAC has no way to name. (A method that is *called* is a call,
+  and is lowered as one.)
 * **Pointer dereferences.** There is no "load through a reference" opcode, so
   a dereference is modelled as a conversion of the pointer. The pointer's
   taint survives; the loaded value's own taint does not.
 * **The address of a value.** The TAC has no pointer type.
 * **`goto`.** A jump to an arbitrary label has no TAC counterpart.
-* **A map range's key and value.** The TAC cannot destructure an iterator
-  entry, so both are bound to unknown values.
 * **A type switch's narrowing.** The bound variable keeps the original
   value's type.
 * **A channel range's blocking read**, and a **`select`**'s readiness
@@ -600,9 +647,14 @@ there would corrupt it.
 * A third-party dependency that has no export data is read from the **newest**
   version of its module in the module cache, not from the version the build
   used. The build's own version was named in the import configuration, which
-  the build deleted. A `replace` directive pointing at a local directory is
-  not followed either, for the same reason.
+  the build deleted. A `replace` directive pointing at a local directory, and
+  a module of a `go.work` workspace, are found through the `modules` the Java
+  side names -- see [where a dependency's source comes from](#where-a-dependencys-source-comes-from).
 * A `defer` is placed at the `defer` statement rather than at the exit. The
   taint is right; the order is not.
 * No concurrency is modelled. A `go` statement is an ordinary call.
-* A function literal is not modelled, so a closure's body is invisible.
+* A function literal becomes a function of its own, named after the file it is
+  in, and the variables it captured become leading parameters. The call is
+  lowered, so the taint reaches the body; but the TAC has no function value,
+  so a literal that is *passed around* rather than called is not the same
+  thing as the function it denotes.

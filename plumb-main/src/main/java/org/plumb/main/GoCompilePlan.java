@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.plumb.tac.frontend.go.GoModuleSources;
 import org.plumb.tac.frontend.go.GoPackage;
 import org.plumb.tac.frontend.go.GoProjectProfile;
 
@@ -323,7 +324,13 @@ public final class GoCompilePlan {
     Map<String, Path> imports =
         importConfig == null ? Map.of() : readImportConfig(importConfig, lost);
     Path packageDirectory = files.isEmpty() ? directory : files.get(0).getParent();
-    return new GoPackage(importPath, packageDirectory, files, goVersion, tags, imports);
+    // The export data is gone by the time the analysis reads the capture -- the build
+    // deletes its temporary directory when it ends -- so the dependencies are resolved
+    // from their source. A dependency that was REPLACED, or that belongs to another
+    // module of a workspace, is not in the toolchain's module cache, so the modules
+    // that live on disk are read from the module's own build description.
+    Map<String, Path> modules = GoModuleSources.modulesOf(moduleRootOf(packageDirectory));
+    return new GoPackage(importPath, packageDirectory, files, goVersion, tags, imports, modules);
   }
 
   /**

@@ -85,6 +85,17 @@ internal static class TypeMapper
 
         if (type is INamedTypeSymbol named)
         {
+            // An ANONYMOUS type has no name of its own: the compiler gives it
+            // a display form and nothing else. The display form is what the
+            // setter and the getter of an anonymous type's property BOTH
+            // carry, so they name the same owner -- and they have to, or the
+            // value written through the setter and the value read through the
+            // getter would be two different variables.
+            if (named.Name.Length == 0)
+            {
+                return named.ToDisplayString(AnonymousTypeFormat);
+            }
+
             // A generic type's name carries its type arguments, but the TAC
             // erases generics -- so `List<int>` and `List<string>` are the same
             // `System.Collections.Generic.List`. The arity is dropped so the
@@ -111,6 +122,17 @@ internal static class TypeMapper
 
         return type.Name;
     }
+
+    /// <summary>
+    /// The display form of an ANONYMOUS type.
+    /// </summary>
+    /// <remarks>
+    /// The generics are dropped, for the same reason every other type's are:
+    /// the TAC erases them.
+    /// </remarks>
+    private static readonly SymbolDisplayFormat AnonymousTypeFormat =
+        SymbolDisplayFormat.CSharpErrorMessageFormat.WithGenericsOptions(
+            SymbolDisplayGenericsOptions.None);
 }
 
 /// <summary>

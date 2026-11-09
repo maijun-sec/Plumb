@@ -332,10 +332,24 @@ public final class GoTacFrontend implements TacFrontend, AutoCloseable {
     }
     request.put("sources", sourceArray);
     Json.JsonArray packageArray = new Json.JsonArray();
+    Map<String, Path> modules = new LinkedHashMap<>();
     for (GoPackage goPackage : project.packages()) {
       packageArray.add(toWirePackage(goPackage));
+      modules.putAll(goPackage.modules());
     }
     request.put("packages", packageArray);
+    // The modules that live on disk. The sidecar uses them to find the source
+    // of a dependency that the toolchain's own lookup cannot: one that was
+    // REPLACED, or one that belongs to another module of a workspace. Neither
+    // is in the module cache.
+    Json.JsonArray moduleArray = new Json.JsonArray();
+    for (Map.Entry<String, Path> entry : modules.entrySet()) {
+      moduleArray.add(
+          new Json.JsonObject()
+              .put("path", entry.getKey())
+              .put("dir", entry.getValue() == null ? null : entry.getValue().toString()));
+    }
+    request.put("modules", moduleArray);
 
     Json.JsonObject response = exchange(request);
     String incompatible = SidecarProtocol.incompatibility(response);
@@ -454,10 +468,19 @@ public final class GoTacFrontend implements TacFrontend, AutoCloseable {
     wire.put("buildTags", tags);
     Json.JsonArray imports = new Json.JsonArray();
     for (Map.Entry<String, Path> entry : goPackage.imports().entrySet()) {
-      imports.add(
+      Json.JsonObject dependency =
           new Json.JsonObject()
               .put("importPath", entry.getKey())
-              .put("exportData", entry.getValue() == null ? null : entry.getValue().toString()));
+              .put("exportData", entry.getValue() == null ? null : entry.getValue().toString());
+      // The dependency's source directory. It is what lets the sidecar resolve a
+      // dependency that the toolchain's own lookup cannot find: one that was
+      // replaced, or one that belongs to another module of a workspace. A
+      // dependency without it is still resolved from the module cache.
+      Path sourceDirectory = GoModuleSources.directoryFor(goPackage.modules(), entry.getKey());
+      if (sourceDirectory != null) {
+        dependency.put("dir", sourceDirectory.toString());
+      }
+      imports.add(dependency);
     }
     wire.put("imports", imports);
     return wire;
@@ -589,6 +612,47 @@ public final class GoTacFrontend implements TacFrontend, AutoCloseable {
         "SOURCE_LOWERED".equals(wire.getString("precision"))
             ? IrPrecision.SOURCE_LOWERED
             : IrPrecision.SOURCE_FULL;
+
+    // The Go-specific facts the sidecar reports in the wire's own fields.
+    //
+    // They are reported HERE rather than by the sidecar, because they are
+    // STRUCTURED: the side table says WHICH call runs at the exit and WHERE
+    // the defer was written, and the flag says that the function starts a
+    // goroutine. A single sentence from the sidecar could not carry that.
+    //
+    // The sidecar marks the function as not fully understood for both of
+    // them, so the information is not lost by being reported on this side.
+    Json.JsonArray wireDeferred = wire.getArray("deferredCalls");
+    if (wireDeferred != null) {
+      for (int i = 0; i < wireDeferred.size(); i++) {
+        Json.JsonObject deferred = wireDeferred.getObject(i);
+        if (deferred == null) {
+          continue;
+        }
+        String callee = deferred.getString("calleeSig");
+        structuredProblems.add(
+            new TacProgram.FunctionProblem(
+                path == null ? "<file>" : path.toString(),
+                "SOURCE_LOWERED",
+                "the call "
+                    + (callee == null ? "<unknown>" : callee)
+                    + " runs when the function exits; the TAC places it at the defer statement",
+                null,
+                deferred.getInt("line", -1),
+                deferred.getInt("column", -1)));
+      }
+    }
+    if (wire.getBoolean("startsGoroutine", false)) {
+      structuredProblems.add(
+          new TacProgram.FunctionProblem(
+              path == null ? "<file>" : path.toString(),
+              "SOURCE_LOWERED",
+              "the function starts a goroutine; the analysis models no happens-before between"
+                  + " goroutines",
+              null,
+              -1,
+              -1));
+    }
 
     return new TacFunction(
         wire.getString("name") == null ? "<unknown>" : wire.getString("name"),
