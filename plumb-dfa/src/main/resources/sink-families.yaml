@@ -771,8 +771,6 @@ families:
           arg_index: 1
         - pattern: '^Microsoft\.Azure\.Cosmos\.Scripts\.UserDefinedFunctionProperties\.set_Body(/\d+)?'
           arg_index: 0
-        - pattern: '^MongoDB\.Driver\.Command\.op_Implicit(/\d+)?'
-          arg_index: 0
         - pattern: '^MongoDB\.Driver\.BsonValue\.(get_AsBsonJavaScriptWithScope|get_AsBsonJavaScript)(/\d+)?'
           arg_index: -2
         - pattern: '^MongoDB\.Driver\.IMongoDatabase\.RunCommand(/\d+)?'
@@ -784,11 +782,11 @@ families:
     cwe: CWE-78,CWE-77,CWE-88,CWE-93,CWE-114,CWE-147,CWE-494
     severity: CRITICAL
     patterns:
-      - pattern: '^java\.lang\.Runtime\.exec(/\d+)?'
-        arg_index: 0
       - pattern: '^java\.lang\.ProcessBuilder\.(command|\<init\>)(/\d+)?'
         arg_index: 0
       - pattern: '^(java\.lang\.Runtime|java\.lang\.System)\.(load|loadLibrary)(/\d+)?'
+        arg_index: 0
+      - pattern: '^java\.lang\.Runtime\.exec(/\d+)?'
         arg_index: 0
       - pattern: '^(java\.io\.OutputStream|java\.io\.Writer)\.(write|append)(/\d+)?'
         arg_index: 0
@@ -1195,8 +1193,6 @@ families:
         arg_index: 1
       - pattern: '^java\.sql\.DriverManager\.getConnection(/\d+)?'
         arg_index: 0
-      - pattern: '^java\.sql\.DriverManager\.getConnection(/\d+)?'
-        arg_index: 0
     by_language:
       csharp:
         - pattern: '^System\.Web\.Security\.MembershipProvider\.ChangePasswordQuestionAndAnswer(/\d+)?'
@@ -1285,8 +1281,6 @@ families:
           arg_index: 1
         - pattern: '^Amazon\.Runtime\.SAMLImmutableCredentials\.\<init\>(/\d+)?'
           arg_index: 1
-        - pattern: '^Amazon\.Runtime\.ImmutableCredentials\.set_SecretKey(/\d+)?'
-          arg_index: 0
         - pattern: '^Amazon\.Runtime\.ImmutableCredentials\.\<init\>(/\d+)?'
           arg_index: 1
         - pattern: '^Amazon\.Runtime\.BasicAWSCredentials\.\<init\>(/\d+)?'
@@ -1315,7 +1309,7 @@ families:
           arg_index: 0
         - pattern: '^Npgsql\.NpgsqlConnectionStringBuilder\.set_Password(/\d+)?'
           arg_index: 0
-        - pattern: '^MySql\.Data\.MySqlClient\.MySqlConnectionStringBuilder\.set_Password(/\d+)?'
+        - pattern: '^MySql\.Data\.MySqlClient\.MySqlBaseConnectionStringBuilder\.set_Password(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.VisualBasic\.Devices\.Network\.(Down|Up)loadFile(/\d+)?'
           arg_index: 3
@@ -1332,13 +1326,13 @@ families:
         - pattern: '^Ionic\.Zip\.ZipFile\.CheckZipPassword(/\d+)?'
           arg_index: 1
       go:
-        - pattern: '^net/url\.UserPassword(/\d+)?'
-          arg_index: 1
-        - pattern: '^net/http\.Request\.SetBasicAuth(/\d+)?'
-          arg_index: 1
         - pattern: '^crypto/tls\.LoadX509KeyPair(/\d+)?'
           arg_index: [0, 1]
         - pattern: '^database/sql\.Open(/\d+)?'
+          arg_index: 1
+        - pattern: '^net/url\.UserPassword(/\d+)?'
+          arg_index: 1
+        - pattern: '^net/http\.Request\.SetBasicAuth(/\d+)?'
           arg_index: 1
       scala:
         - pattern: '^akka\.http\.(java|scala)dsl\.model\.headers\.GenericHttpCredentials\.apply(/\d+)?'
@@ -1634,6 +1628,10 @@ families:
         arg_index: [0, 1]
     by_language:
       csharp:
+        - pattern: '^System\.Data\.SqlClient\.SqlCommand\.\<init\>(/\d+)?'
+          arg_index: 0
+        - pattern: '^System\.Data\.Common\.DbCommand\.\<init\>(/\d+)?'
+          arg_index: 0
         - pattern: '^Microsoft\.WindowsAzure\.Storage\.Table\.(Dynamic)?TableEntity\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.WindowsAzure\.Storage\.Table\.ITableEntity\.set_(PartitionKey|RowKey)(/\d+)?'
@@ -1661,16 +1659,12 @@ families:
         - pattern: '^System\.Data(\.Entity\.Core)?\.EntityKey\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Data\.IDataParameterCollection\.set_Item(/\d+)?'
-          arg_index: 0
+          arg_index: 1
         - pattern: '^System\.Collections\.IList\.Add(/\d+)?'
           arg_index: [0, 1]
         - pattern: '^System\.Data\.IDataParameter\.set_Value(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Data\.IDbCommand\.set_CommandText(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Data\.SqlClient\.SqlCommand\.\<init\>(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Data\.Common\.DbCommand\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Data\.Common\.DbDataAdapter\.\<init\>(/\d+)?'
           arg_index: 0
@@ -1866,7 +1860,7 @@ families:
           arg_index: 0
         - pattern: '^SubSonic\.ActiveRecord\.Delete(/\d+)?'
           arg_index: 0
-        - pattern: '^Saxon\.Api\.XQueryEvaluator\.setExternalVariable(/\d+)?'
+        - pattern: '^Saxon\.Api\.XQueryEvaluator\.SetExternalVariable(/\d+)?'
           arg_index: 1
         - pattern: '^NHibernate\.SqlCommand\.SqlStringBuilder\.Insert(/\d+)?'
           arg_index: 1
@@ -2004,8 +1998,6 @@ families:
           arg_index: 0
         - pattern: '^System\.Text\.Json\.JsonSerializer\.Deserialize(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Runtime\.Serialization\.DataContractSerializer\.ReadObject(/\d+)?'
-          arg_index: [-2, 0]
         - pattern: '^System\.Runtime\.Remoting\.Channels\.Http\.HttpChannel\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Runtime\.Remoting\.Channels\.Tcp\.TcpChannel\.\<init\>(/\d+)?'
@@ -2026,6 +2018,8 @@ families:
           arg_index: 0
         - pattern: '^System\.Runtime\.Serialization\.XmlObjectSerializer\.ReadObject(/\d+)?'
           arg_index: 0
+        - pattern: '^System\.Runtime\.Serialization\.DataContractSerializer\.ReadObject(/\d+)?'
+          arg_index: [-2, 0]
         - pattern: '^System\.Runtime\.Serialization\.NetDataContractSerializer\.(Deserialize|ReadObject)(/\d+)?'
           arg_index: 0
         - pattern: '^(System\.Runtime\.Remoting\.Channels\.SoapServerFormatterSink|System\.Runtime\.Remoting\.Channels\.BinaryServerFormatterSink)\.ProcessMessage(/\d+)?'
@@ -2198,13 +2192,13 @@ families:
     severity: CRITICAL
     languages: ['java', 'kotlin', 'scala']
     patterns:
-      - pattern: '^org\.springframework\.expression\.ExpressionParser\.parseExpression(/\d+)?'
-        arg_index: 0
       - pattern: '^org\.springframework\.web\.util\.ExpressionEvaluationUtils\.(evaluate|evaluateExpression|doEvaluate|evaluateBoolean|evaluateInteger)(/\d+)?'
         arg_index: 0
       - pattern: '^org\.springframework\.web\.util\.ExpressionEvaluationUtils\.(evaluate|evaluateString)(/\d+)?'
         arg_index: 1
       - pattern: '^org\.springframework\.expression\.spel\.standard\.SpelExpressionParser\.(doParseExpression|parseRaw)(/\d+)?'
+        arg_index: 0
+      - pattern: '^org\.springframework\.expression\.ExpressionParser\.parseExpression(/\d+)?'
         arg_index: 0
       - pattern: '^org\.springframework\.binding\.expression\.el\.ELExpressionParser\.(parseExpressionInternal|parseValueExpression)(/\d+)?'
         arg_index: 0
@@ -2293,13 +2287,11 @@ families:
     cwe: CWE-22,CWE-73
     severity: HIGH
     patterns:
-      - pattern: '^java\.nio\.file\.Paths\.get(/\d+)?'
-        arg_index: 0
-      - pattern: '^java\.nio\.file\.Files\.copy(/\d+)?'
-        arg_index: 1
       - pattern: '^(java\.util\.zip\.ZipFile|org\.apache\.commons\.compress\.archivers\.zip\.ZipFile)\.\<init\>(/\d+)?'
         arg_index: 0
       - pattern: '^java\.nio\.file\.Path\.(resolveSibling|resolve)(/\d+)?'
+        arg_index: 0
+      - pattern: '^java\.nio\.file\.Paths\.get(/\d+)?'
         arg_index: 0
       - pattern: '^java\.nio\.file\.Path\.getFile(/\d+)?'
         arg_index: -2
@@ -2309,6 +2301,8 @@ families:
         arg_index: 0
       - pattern: '^java\.nio\.file\.FileSystems\.newFileSystem(/\d+)?'
         arg_index: 0
+      - pattern: '^java\.nio\.file\.Files\.copy(/\d+)?'
+        arg_index: 1
       - pattern: '^java\.nio\.file\.Path\.of(/\d+)?'
         arg_index: 0
       - pattern: '^java\.net\.URL\.\<init\>(/\d+)?'
@@ -2616,8 +2610,6 @@ families:
           arg_index: 0
         - pattern: '^os\.OpenFile(/\d+)?'
           arg_index: 0
-        - pattern: '^os\.Create(/\d+)?'
-          arg_index: 0
         - pattern: '^os\.ReadFile(/\d+)?'
           arg_index: 0
         - pattern: '^os\.WriteFile(/\d+)?'
@@ -2632,15 +2624,11 @@ families:
           arg_index: 0
         - pattern: '^os\.Rename(/\d+)?'
           arg_index: [0, 1]
-        - pattern: '^os\.ReadDir(/\d+)?'
-          arg_index: 0
         - pattern: '^os\.Chdir(/\d+)?'
           arg_index: 0
         - pattern: '^os\.Truncate(/\d+)?'
           arg_index: 0
         - pattern: '^io/ioutil\.ReadFile(/\d+)?'
-          arg_index: 0
-        - pattern: '^io/ioutil\.WriteFile(/\d+)?'
           arg_index: 0
         - pattern: '^path/filepath\.Glob(/\d+)?'
           arg_index: 0
@@ -2661,6 +2649,8 @@ families:
         - pattern: '^os\.NewFile(/\d+)?'
           arg_index: 1
         - pattern: '^os\.(OpenFile|Create)(/\d+)?'
+          arg_index: 0
+        - pattern: '^io/ioutil\.WriteFile(/\d+)?'
           arg_index: 0
         - pattern: '^io/ioutil\.Temp(Dir|File)(/\d+)?'
           arg_index: 0
@@ -2699,6 +2689,10 @@ families:
         - pattern: '^syscall\.(Fchdir|Fchmod|Fchown)(/\d+)?'
           arg_index: 0
         - pattern: '^syscall\.(Chdir|Chmod|Chown|Lchown|Chroot|Creat)(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.Create(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.ReadDir(/\d+)?'
           arg_index: 0
         - pattern: '^os\.(Create|Mkdir)Temp(/\d+)?'
           arg_index: 0
@@ -2759,8 +2753,6 @@ families:
         arg_index: 0
       - pattern: '^java\.io\.File\.setReadOnly(/\d+)?'
         arg_index: 0
-      - pattern: '^java\.nio\.file\.Files\.setPosixFilePermissions(/\d+)?'
-        arg_index: 1
       - pattern: '^java\.nio\.file\.Files\.setPosixFilePermissions(/\d+)?'
         arg_index: 1
     by_language:
@@ -3022,7 +3014,7 @@ families:
         - pattern: '^Microsoft\.AspNetCore\.Http\.HeaderDictionaryExtensions\.(Append|AppendCommaSeparatedValues|SetCommaSeparatedValues)(/\d+)?'
           arg_index: 2
         - pattern: '^Microsoft\.AspNetCore\.Http\.IHeaderDictionary\.(set_Item|Add)(/\d+)?'
-          arg_index: 0
+          arg_index: 1
         - pattern: '^Microsoft\.AspNetCore\.Http\.IHeaderDictionary\.(set_Accept|set_AcceptCharset|set_AcceptEncoding|set_AcceptLanguage|set_AcceptRanges|set_AccessControlAllowCredentials|set_AccessControlAllowHeaders|set_AccessControlAllowMethods|set_AccessControlAllowOrigin|set_AccessControlExposeHeaders|set_AccessControlMaxAge|set_AccessControlRequestHeaders|set_AccessControlRequestMethod|set_Age|set_Allow|set_AltSvc|set_Authorization|set_Baggage|set_CacheControl|set_Connection|set_ContentDisposition|set_ContentEncoding|set_ContentLanguage|set_ContentLocation|set_ContentMD5|set_ContentRange|set_ContentSecurityPolicy|set_ContentSecurityPolicyReportOnly|set_ContentType|set_CorrelationContext|set_Cookie|set_Date|set_ETag|set_Expires|set_Expect|set_From|set_GrpcAcceptEncoding|set_GrpcEncoding|set_GrpcMessage|set_GrpcStatus|set_GrpcTimeout|set_Host|set_KeepAlive|set_IfMatch|set_IfModifiedSince|set_IfNoneMatch|set_IfRange|set_IfUnmodifiedSince|set_LastModified|set_Link|set_Location|set_MaxForwards|set_Origin|set_Pragma|set_ProxyAuthenticate|set_ProxyAuthorization|set_ProxyConnection|set_Range|set_Referer|set_RetryAfter|set_RequestId|set_SecWebSocketAccept|set_SecWebSocketKey|set_SecWebSocketProtocol|set_SecWebSocketVersion|set_SecWebSocketExtensions|set_Server|set_SetCookie|set_StrictTransportSecurity|set_TE|set_Trailer|set_TransferEncoding|set_Translate|set_TraceParent|set_TraceState|set_Upgrade|set_UpgradeInsecureRequests|set_UserAgent|set_Vary|set_Via|set_Warning|set_WebSocketSubProtocols|set_WWWAuthenticate|set_XContentTypeOptions|set_XFrameOptions|set_XPoweredBy|set_XRequestedWith|set_XUACompatible|set_XXSSProtection)(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.AspNetCore\.Http\.HeaderDictionaryTypeExtensions\.AppendList(/\d+)?'
@@ -3164,10 +3156,6 @@ families:
           arg_index: 0
         - pattern: '^System\.Random\.NextBytes(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Random\.NextDouble(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Random\.NextSingle(/\d+)?'
-          arg_index: 0
       go:
         - pattern: '^math/rand\.NewSource(/\d+)?'
           arg_index: 0
@@ -3209,11 +3197,11 @@ families:
           arg_index: 0
         - pattern: '^encoding/json\.MarshalIndent(/\d+)?'
           arg_index: 0
-        - pattern: '^encoding/json\.Encoder\.Encode(/\d+)?'
-          arg_index: 0
         - pattern: '^(encoding/json\.RawMessage|encoding/json\.Marshaler)\.MarshalJSON(/\d+)?'
           arg_index: -2
         - pattern: '^encoding/json\.(MarshalIndent|Marshal)(/\d+)?'
+          arg_index: 0
+        - pattern: '^encoding/json\.Encoder\.Encode(/\d+)?'
           arg_index: 0
       scala:
         - pattern: '^scala\.util\.parsing\.json\.JSON\.(parseFull|parseRaw)(/\d+)?'
@@ -3224,8 +3212,6 @@ families:
     severity: HIGH
     default_arg_index: 1
     patterns:
-      - pattern: '^javax\.naming\.directory\.DirContext\.search(/\d+)?'
-        arg_index: [0, 1, 2, 3]
       - pattern: '^org\.springframework\.ldap(\.core)?\.Ldap(Template|Operations)\.search(/\d+)?'
         arg_index: [0, 1, 2, 3]
       - pattern: '^org\.springframework\.ldap\.support\.DistinguishedName\.add(/\d+)?'
@@ -3312,6 +3298,8 @@ families:
         arg_index: 3
       - pattern: '^netscape\.ldap\.beans\.LDAPGetEntries\.getEntries(/\d+)?'
         arg_index: 4
+      - pattern: '^javax\.naming\.directory\.DirContext\.search(/\d+)?'
+        arg_index: [0, 1, 2, 3]
       - pattern: '^javax\.naming\.spi\.DirStateFactory\$Result\.\<init\>(/\d+)?'
         arg_index: 0
       - pattern: '^javax\.naming\.spi\.NamingManager\.(getInitialContext|getObjectInstance|getURLContext)(/\d+)?'
@@ -3627,8 +3615,6 @@ families:
           arg_index: 0
         - pattern: '^(Amazon\.DynamoDBv2\.Model\.QueryRequest|Amazon\.DynamoDBv2\.Model\.ScanRequest)\.set_ExpressionAttributeValues(/\d+)?'
           arg_index: [-2, 0]
-        - pattern: '^MongoDB\.Driver\.FilterDefinition\.op_Implicit(/\d+)?'
-          arg_index: 0
         - pattern: '^MongoDB\.Bson\.BsonDocument\.(Parse|TryParse)(/\d+)?'
           arg_index: 0
 
@@ -3745,10 +3731,10 @@ families:
         - pattern: '^Microsoft\.AspNetCore\.Http\.HttpResponse\.Redirect(/\d+)?'
           arg_index: 0
       go:
-        - pattern: '^net/http\.Redirect(/\d+)?'
-          arg_index: 2
         - pattern: '^net/http\.RedirectHandler(/\d+)?'
           arg_index: 0
+        - pattern: '^net/http\.Redirect(/\d+)?'
+          arg_index: 2
       scala:
         - pattern: '^play\.api\.mvc\.Results\.(PermanentRedirect|Redirect|SeeOther|TemporaryRedirect|MovedPermanently|Found)(/\d+)?'
           arg_index: 0
@@ -4634,7 +4620,7 @@ families:
           arg_index: 2
         - pattern: '^System\.Web\.Mvc\.Html\.SelectExtensions\.DropDownList(/\d+)?'
           arg_index: 1
-        - pattern: '^System\.Web\.Mvc\.Html\.InputExtensions\.Checkbox(/\d+)?'
+        - pattern: '^System\.Web\.Mvc\.Html\.InputExtensions\.CheckBox(/\d+)?'
           arg_index: 1
         - pattern: '^System\.Web\.Mvc\.Ajax\.AjaxExtensions\.RouteLink(/\d+)?'
           arg_index: 4
@@ -5191,8 +5177,6 @@ families:
     cwe: CWE-470,CWE-494
     severity: HIGH
     patterns:
-      - pattern: '^java\.lang\.ClassLoader\.loadClass(/\d+)?'
-        arg_index: 0
       - pattern: '^java\.lang\.Class\.getDeclared(Constructor|Method|Field|ClassLoader)(/\d+)?'
         arg_index: -2
       - pattern: '^java\.lang\.Class\.getDeclared(Classes|Constructors|Methods|Fields|Constructors)(/\d+)?'
@@ -5210,6 +5194,8 @@ families:
       - pattern: '^(java\.lang\.reflect\.InvocationHandler|java\.lang\.reflect\.Method)\.(invokeDefault|invoke)(/\d+)?'
         arg_index: 0
       - pattern: '^java\.net\.URLClassLoader\.(\<init\>|addURL|findClass|findResource|findResources|newInstance)(/\d+)?'
+        arg_index: 0
+      - pattern: '^java\.lang\.ClassLoader\.loadClass(/\d+)?'
         arg_index: 0
       - pattern: '^javax\.script\.Invocable\.invokeFunction(/\d+)?'
         arg_index: 0
@@ -6134,7 +6120,7 @@ families:
         - pattern: '^Microsoft\.VisualBasic\.Interaction\.(DeleteSetting|SaveSetting)(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.Practices\.EnterpriseLibrary\.Common\.Configuration\.IConfigurationSource\.Remove(/\d+)?'
-          arg_index: 1
+          arg_index: 0
         - pattern: '^Microsoft\.Practices\.EnterpriseLibrary\.Common\.Configuration\.IConfigurationSource\.Add(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.ApplicationBlocks\.Data\.SqlHelperParameterCache\.(CacheParameterSet|Get(Cached|Sp)ParameterSet)(/\d+)?'
@@ -6190,23 +6176,19 @@ families:
     cwe: CWE-89,CWE-564
     severity: CRITICAL
     patterns:
+      - pattern: '^javax\.sql\.RowSet\.setCommand(/\d+)?'
+        arg_index: 0
       - pattern: '^java\.sql\.Statement\.execute(/\d+)?'
+        arg_index: 0
+      - pattern: '^java\.sql\.Statement\.addBatch(/\d+)?'
         arg_index: 0
       - pattern: '^java\.sql\.Statement\.executeQuery(/\d+)?'
         arg_index: 0
       - pattern: '^java\.sql\.Statement\.executeUpdate(/\d+)?'
         arg_index: 0
-      - pattern: '^java\.sql\.Statement\.addBatch(/\d+)?'
-        arg_index: 0
-      - pattern: '^java\.sql\.Connection\.prepareStatement(/\d+)?'
-        arg_index: 0
       - pattern: '^java\.sql\.Connection\.prepareCall(/\d+)?'
         arg_index: 0
-      - pattern: '^org\.springframework\.jdbc\.core\.JdbcTemplate\.query(/\d+)?'
-        arg_index: 0
-      - pattern: '^org\.springframework\.jdbc\.core\.JdbcTemplate\.batchUpdate(/\d+)?'
-        arg_index: [0, 1]
-      - pattern: '^javax\.sql\.RowSet\.setCommand(/\d+)?'
+      - pattern: '^java\.sql\.Connection\.prepareStatement(/\d+)?'
         arg_index: 0
       - pattern: '^org\.springframework\.orm\.jdo\.JdoTemplate\.find(/\d+)?'
         arg_index: 0
@@ -6227,6 +6209,10 @@ families:
       - pattern: '^org\.springframework\.jdbc\.core\.namedparam\.NamedParameterJdbcOperations\.(update|execute|queryForInt|queryForList|queryForMap|queryForObject|queryForRowSet|query)(/\d+)?'
         arg_index: 0
       - pattern: '^org\.springframework\.jdbc\.core\.simple\.SimpleJdbcOperations\.update(/\d+)?'
+        arg_index: 0
+      - pattern: '^org\.springframework\.jdbc\.core\.JdbcTemplate\.batchUpdate(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^org\.springframework\.jdbc\.core\.JdbcTemplate\.query(/\d+)?'
         arg_index: 0
       - pattern: '^org\.springframework\.jdbc\.core\.JdbcTemplate\.execute(/\d+)?'
         arg_index: 0
@@ -6415,6 +6401,10 @@ families:
           arg_index: 0
         - pattern: '^System\.Data\.SqlClient\.SqlDataAdapter\.set_SelectCommand(/\d+)?'
           arg_index: 0
+        - pattern: '^System\.Data\.SqlClient\.SqlCommand\.\<init\>(/\d+)?'
+          arg_index: 0
+        - pattern: '^System\.Data\.Common\.DbCommand\.\<init\>(/\d+)?'
+          arg_index: 0
         - pattern: '^System\.Web\.UI\.WebControls\.SqlDataSource\.set_(SelectCommand|DeleteCommand|InsertCommand|UpdateCommand)(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Data\.Common\.DbBatchCommand\.set_CommandText(/\d+)?'
@@ -6442,10 +6432,6 @@ families:
         - pattern: '^Microsoft\.EntityFrameworkCore\.RelationalDatabaseFacadeExtensions\.(ExecuteSqlRawAsync|ExecuteSqlRaw)(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.EntityFrameworkCore\.RelationalQueryableExtensions\.(FromSqlRaw|FromSql)(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Data\.SqlClient\.SqlCommand\.\<init\>(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Data\.Common\.DbCommand\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.SharePoint\.Search\.Query\.FullTextSqlQuery\.set_QueryText(/\d+)?'
           arg_index: 0
@@ -6847,8 +6833,6 @@ families:
           arg_index: 1
         - pattern: '^net\.Dialer\.Dial(/\d+)?'
           arg_index: 1
-        - pattern: '^crypto/tls\.Dial(/\d+)?'
-          arg_index: 1
         - pattern: '^net/http/httputil\.ProxyRequest\.SetURL(/\d+)?'
           arg_index: 0
         - pattern: '^net/textproto\.Dial(/\d+)?'
@@ -6863,6 +6847,8 @@ families:
           arg_index: 0
         - pattern: '^crypto/tls\.DialWithDialer(/\d+)?'
           arg_index: 2
+        - pattern: '^crypto/tls\.Dial(/\d+)?'
+          arg_index: 1
         - pattern: '^crypto/tls\.Dialer\.DialContext(/\d+)?'
           arg_index: 2
         - pattern: '^crypto/tls\.Dialer\.Dial(/\d+)?'
@@ -7126,13 +7112,13 @@ families:
       go:
         - '^net/http\.Request\.FormValue(/\d+)?'
         - '^net/http\.Request\.PostFormValue(/\d+)?'
-        - '^net/http\.Request\.FormFile(/\d+)?'
         - '^net/http\.Request\.Referer(/\d+)?'
         - '^net/http\.Request\.UserAgent(/\d+)?'
         - '^net/http\.Header\.Get(/\d+)?'
         - '^net/url\.URL\.Query(/\d+)?'
         - '^net/http\.Response\.(Cookies|Location)(/\d+)?'
         - '^net/http\.Request\.(Cookies|PostFormValue|Referer|UserAgent|FormValue)(/\d+)?'
+        - '^net/http\.Request\.FormFile(/\d+)?'
         - '^net/http\.Request\.(GetBody|Cookie|MultipartReader)(/\d+)?'
         - '^google\.golang\.org/grpc\.ServerStream\.RecvMsg(/\d+)?'
         - '^google\.golang\.org/grpc\.ServerStream\.Recv(/\d+)?'
@@ -7163,8 +7149,6 @@ families:
     cwe: CWE-501,CWE-264,CWE-287,CWE-359,CWE-732
     severity: MEDIUM
     patterns:
-      - pattern: '^java\.util\.Map\.put(/\d+)?'
-        arg_index: [-2, 1]
       - pattern: '^javax\.websocket\.Encoder\.(Text|TextStream|Binary|BinaryStream)\.encode(/\d+)?'
         arg_index: 0
       - pattern: '^(java\.io\.Writer|java\.io\.OutputStream)\.(append|write)(/\d+)?'
@@ -7175,6 +7159,8 @@ families:
         arg_index: 1
       - pattern: '^javax\.websocket\.RemoteEndpoint\.(Basic|Async)\.send(Text|Object|Binary)(/\d+)?'
         arg_index: 0
+      - pattern: '^java\.util\.Map\.put(/\d+)?'
+        arg_index: [-2, 1]
       - pattern: '^org\.springframework\.web\.(servlet|portlet)\.ModelAndView\.\<init\>(/\d+)?'
         arg_index: 0
       - pattern: '^org\.springframework\.web\.servlet\.ModelAndView\.addAllObjects(/\d+)?'
@@ -7598,8 +7584,6 @@ families:
           arg_index: 1
         - pattern: '^Amazon\.Runtime\.SAMLImmutableCredentials\.\<init\>(/\d+)?'
           arg_index: 1
-        - pattern: '^Amazon\.Runtime\.ImmutableCredentials\.set_SecretKey(/\d+)?'
-          arg_index: 0
         - pattern: '^Amazon\.Runtime\.ImmutableCredentials\.\<init\>(/\d+)?'
           arg_index: 1
         - pattern: '^Amazon\.Runtime\.BasicAWSCredentials\.\<init\>(/\d+)?'
@@ -7628,7 +7612,7 @@ families:
           arg_index: 0
         - pattern: '^Npgsql\.NpgsqlConnectionStringBuilder\.set_Password(/\d+)?'
           arg_index: 0
-        - pattern: '^MySql\.Data\.MySqlClient\.MySqlConnectionStringBuilder\.set_Password(/\d+)?'
+        - pattern: '^MySql\.Data\.MySqlClient\.MySqlBaseConnectionStringBuilder\.set_Password(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.VisualBasic\.Devices\.Network\.(Down|Up)loadFile(/\d+)?'
           arg_index: 3
@@ -7645,18 +7629,18 @@ families:
         - pattern: '^Ionic\.Zip\.ZipFile\.CheckZipPassword(/\d+)?'
           arg_index: 1
       go:
-        - pattern: '^crypto/aes\.NewCipher(/\d+)?'
-          arg_index: 0
         - pattern: '^crypto/des\.NewCipher(/\d+)?'
-          arg_index: 0
-        - pattern: '^crypto/rc4\.NewCipher(/\d+)?'
           arg_index: 0
         - pattern: '^net/url\.UserPassword(/\d+)?'
           arg_index: 1
+        - pattern: '^crypto/aes\.NewCipher(/\d+)?'
+          arg_index: 0
         - pattern: '^crypto/des\.NewTripleDESCipher(/\d+)?'
           arg_index: 0
         - pattern: '^net/http\.Request\.SetBasicAuth(/\d+)?'
           arg_index: 1
+        - pattern: '^crypto/rc4\.NewCipher(/\d+)?'
+          arg_index: 0
         - pattern: '^crypto/rsa\.GenerateMultiPrimeKey(/\d+)?'
           arg_index: 2
         - pattern: '^crypto/rsa\.GenerateKey(/\d+)?'

@@ -2893,10 +2893,31 @@ which no longer had them (the merge had moved them into a managed region), and r
 the converter's version alone. That silently dropped `default_arg_index` -- so `ldap.sinks` lost
 `default_arg_index: 1`, and every LDAP finding pointed at the base DN instead of the filter.
 
-The merge now reads the hand-written families from a **pristine base file**
-(`sink-families-base.yaml`) that is never written to. The merge is a pure function of
-(base + fragments): running it twice produces the same file, and a converter fix takes effect at
-once.
+The merge now reads the hand-written families from a **separate base file**
+(`sink-families-base.yaml`). The merge is a pure function of (base + fragments): running it twice
+produces the same file, and a converter fix takes effect at once.
+
+**But "separate" was not enough -- and this is the second half of the same defect.** The base used
+to be *rebuilt from the merged file*, so it held a copy of every pack pattern. The merge unions
+the two, so deleting a pattern from a pack changed nothing: the base's copy put the entry straight
+back into the catalogue. The merge was idempotent and the deletion was a no-op at the same time --
+the two properties are independent, and only one of them was being checked.
+
+The base is now an **explicit hand-maintained list**: it holds the entries a person wrote, and
+nothing else. An entry may repeat a pack entry's *text* only when it claims something the pack
+entry does not -- a different argument position, say -- and then it is the hand-written layer
+doing its job. An entry that merely repeats the pack entry is a copy, and a copy is now an
+**error**: `--check` reports it, and `--prune-base` removes it (and only it -- the comments, the
+blank lines, the formatting of every other entry stay byte for byte). The ordinary merge still
+never writes the base; the two maintenance commands that do are `--prune-base` and
+`--rebuild-base`, and `--rebuild-base` reproduces the same file byte for byte.
+
+The measurement that pins this down: delete one pattern from a pack, merge, and the tracked
+catalogue goes from one entry to zero. Under the old base it stayed at one -- the bug reproduced
+exactly. And with the pack entries removed from the base, the engine's own matcher sees the same
+9497 probe symbols with the same first-match and the same position set as before, for all six
+languages: the pruning changed no behaviour, it only removed the thing that would have undone a
+future deletion.
 
 **What the measurement now shows.** For a symbol that has nothing to do with any sink:
 
