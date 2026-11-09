@@ -28,8 +28,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.plumb.parser.JavaModule;
 import org.plumb.parser.JavaSourceParser;
@@ -77,6 +79,26 @@ public final class ScanRunner {
   private final ScanConfig config;
 
   /**
+   * The checkers that survived the language filter, by the CLASS they implement.
+   *
+   * <p>Empty means "no filter was applied" -- every checker is in scope. Populated where the
+   * language filter is applied to the loaded configuration, and consulted by {@link
+   * #buildDfaCheckers()} so a checker that declares only the JVM is never CONSTRUCTED in a C# run.
+   *
+   * <p><b>Why the construction has to be gated, not just the registry.</b> The checkers in {@code
+   * checkers.yaml} are registered through the config, but the majority are wired by a boolean flag
+   * and constructed directly. Narrowing the registry alone would leave those checkers running: the
+   * request was that a C# scan does not LOAD the Java rules, and a checker that is constructed and
+   * walks every instruction is loaded, whatever the registry says.
+   *
+   * <p>The key is the CLASS, because that is what identifies a checker across the two mechanisms:
+   * the config names it as a class, and the engine holds an instance of it. The config's own name
+   * ({@code DivideByZero}) is a registry key, while the instance's {@code name()} is its RULE id
+   * ({@code dfa-taint-divide-by-zero}) -- neither of them is the class.
+   */
+  private final java.util.Map<String, org.plumb.dfa.config.CheckerConfig> languageScopedCheckers;
+
+  /**
    * How many workers this scan may use, and why.
    *
    * <p>Decided once in {@link #run()} and obeyed by both the parse phase and the analysis phase.
@@ -119,6 +141,16 @@ public final class ScanRunner {
    * exactly like a clean file. The list is what tells them apart.
    */
   private final List<String> unparsedFiles = new ArrayList<>();
+
+  /**
+   * The degradation messages already reported.
+   *
+   * <p>It exists so that a project-level degradation -- the Go toolchain's root could not be
+   * located, the C# project's compilation inputs were not captured -- is reported once instead of
+   * once per file. The frontend reports it on every file, because the frontend does not know which
+   * file the reader will look at.
+   */
+  private final Set<String> reportedDegradations = new LinkedHashSet<>();
 
   /**
    * R-output-dir: layout of the on-disk cache + report directory. {@code null} when the user did
@@ -191,6 +223,40 @@ public final class ScanRunner {
   public ScanRunner(ScanConfig config) {
     this.config = config;
     this.layout = (config.outputDir == null) ? null : new OutputLayout(config.outputDir);
+    this.languageScopedCheckers = loadLanguageScopedCheckers();
+  }
+
+  /**
+   * The checkers of the loaded catalogue, by the CLASS they implement.
+   *
+   * <p>Loaded here, in the constructor, because the checker list is built BEFORE the analysis phase
+   * loads its configuration: a scope discovered later would arrive too late to stop the
+   * construction it exists to prevent.
+   *
+   * <p>The map holds EVERY catalogued checker, not only the surviving ones. A checker that was
+   * filtered out has to be IN the map with its scope attached: the map is what says "this checker
+   * is JVM-only", and a map that only held the survivors would say nothing about the ones that were
+   * dropped -- which is exactly the set that must not be built.
+   */
+  private java.util.Map<String, org.plumb.dfa.config.CheckerConfig> loadLanguageScopedCheckers() {
+    org.plumb.dfa.config.LanguageFilter filter = languageFilter();
+    if (!filter.isSelective()) return java.util.Map.of();
+    try {
+      org.plumb.dfa.config.EngineConfig cfg = org.plumb.dfa.config.ConfigLoader.loadFromClasspath();
+      java.util.Map<String, org.plumb.dfa.config.CheckerConfig> all =
+          new java.util.LinkedHashMap<>();
+      for (org.plumb.dfa.config.CheckerConfig c : cfg.checkers().all()) {
+        if (c.className() != null && !c.className().isBlank()) {
+          all.put(c.className(), c);
+        }
+      }
+      return java.util.Collections.unmodifiableMap(all);
+    } catch (RuntimeException ex) {
+      // A catalogue that cannot be read must not take the scan down: the
+      // checkers then run unscoped, which is the pre-existing behaviour.
+      LOG.warn("could not load the checker's language scope; every checker stays in scope", ex);
+      return java.util.Map.of();
+    }
   }
 
   public int run() throws IOException {
@@ -277,15 +343,24 @@ public final class ScanRunner {
         // -i pointing at an empty dir, or they
         // forgot -i entirely. Emit a clear stderr
         // hint so the dist isn't a black box.
+        //
+        // This is a LOUD failure, not a clean report. A scan that analysed
+        // nothing and reported nothing is indistinguishable from a clean
+        // project, and that is the one outcome a scanner must never produce
+        // silently. The exit code is non-zero so a CI pipeline sees it.
         System.err.println(
             "plumb: no source files found in any input "
-                + "(recognised: .java, .kt, .scala; this run analyses "
+                + "(recognised: "
+                + String.join(
+                    ", ",
+                    FrontendRegistry.knownExtensions().stream().map(e -> "." + e).sorted().toList())
+                + "; this run analyses "
                 + languageFilter().describe()
                 + "). "
                 + "Pass -i <path> on the command line, or add an "
                 + "inputs: block to your YAML config.");
         emit(List.of());
-        return 0;
+        return 2;
       }
       // Step 7 — build the checker lists once so
       // the unified engine AND the AI dedup pass can
@@ -1835,13 +1910,11 @@ public final class ScanRunner {
       return null;
     }
     FrontendRegistry.ParsedSourceFile parsed = registry.parseFile(file);
+    reportDegradations(parsed.problems());
     if (parsed.functions().isEmpty() && !parsed.problems().isEmpty()) {
-      // The frontend could not read the file at all. Report it and move on;
-      // dropping it silently would make "the frontend cannot read this" look
-      // exactly like "there is nothing here".
-      for (org.plumb.tac.ir.TacProgram.FunctionProblem problem : parsed.problems()) {
-        LOG.warn("{} [{}] {}", problem.functionName(), problem.kind(), problem.message());
-      }
+      // The frontend could not read the file at all. Dropping it silently
+      // would make "the frontend cannot read this" look exactly like "there is
+      // nothing here".
       return null;
     }
     org.plumb.tac.ir.TacProgram program = new org.plumb.tac.ir.TacProgram(file, "");
@@ -1853,6 +1926,32 @@ public final class ScanRunner {
     }
     storeCachedProgram(file, program);
     return new TranslatedFile(file, null, program, List.of());
+  }
+
+  /**
+   * Report the frontend's degradations.
+   *
+   * <p>EVERY degradation is reported, not only the ones that left the file empty. A file that
+   * produced functions <em>and</em> a problem is the dangerous case: the functions look analysed,
+   * and the problem -- which says the analysis is reasoning about a different program than the one
+   * that ships -- would be the only thing that tells the two apart. A degradation that is reported
+   * only when it is total is a degradation that is silently partial when it is not.
+   *
+   * <p>A message is reported once. A project-level degradation -- the Go toolchain's root could not
+   * be located, the C# project's compilation inputs were not captured -- is reported by the
+   * frontend on every file of the project, because the frontend does not know which file the reader
+   * will look at. One line per file would bury the finding rather than repeat it.
+   *
+   * @param problems the frontend's problems for one file
+   */
+  private void reportDegradations(List<org.plumb.tac.ir.TacProgram.FunctionProblem> problems) {
+    for (org.plumb.tac.ir.TacProgram.FunctionProblem problem : problems) {
+      String key = problem.kind() + "\n" + problem.message();
+      if (!reportedDegradations.add(key)) {
+        continue;
+      }
+      LOG.warn("{} [{}] {}", problem.functionName(), problem.kind(), problem.message());
+    }
   }
 
   /**
@@ -2416,7 +2515,45 @@ public final class ScanRunner {
     // The loose (path-insensitive, no-taint-required) checkers are not registered. The strict
     // `plumb.numeric.*` / `plumb.boundary.*` rules cover CWE-190/191, and `plumb.ast.*`
     // `CatchGenericException` covers class-level CWE-491/580/585.
-    return filterByLanguage(checkers);
+    return filterByLanguage(filterByConfiguredLanguageScope(checkers));
+  }
+
+  /**
+   * Drop the checkers whose CONFIGURED language scope does not include this run's languages.
+   *
+   * <p>This is the gate that makes the request literally true. The rule's own scope ({@link
+   * #filterByLanguage}) says which languages a defect class is expressed in; the configuration's
+   * scope says which languages the checker is MECHANISM for. A checker that hardcodes {@code
+   * java.lang.Math.min} is Java-only by its own code, whatever the rule says.
+   *
+   * <p>The checkers are matched by CLASS, because that is the only identifier the two mechanisms
+   * share: the configuration names a class, and the engine holds an instance of it.
+   *
+   * <p>A checker the configuration does not mention is KEPT: the configuration is a catalogue of
+   * the rules a user can turn on and off, and a checker that is wired but not catalogued has
+   * declared no scope to contradict.
+   */
+  private List<org.plumb.dfa.engine.DfaChecker> filterByConfiguredLanguageScope(
+      List<org.plumb.dfa.engine.DfaChecker> checkers) {
+    if (languageScopedCheckers.isEmpty()) return checkers;
+    org.plumb.dfa.config.LanguageFilter filter = languageFilter();
+    if (!filter.isSelective()) return checkers;
+    List<org.plumb.dfa.engine.DfaChecker> kept = new java.util.ArrayList<>();
+    for (org.plumb.dfa.engine.DfaChecker c : checkers) {
+      org.plumb.dfa.config.CheckerConfig scope = languageScopedCheckers.get(c.getClass().getName());
+      if (scope == null) {
+        // The configuration does not catalogued this checker, so it has declared
+        // no scope to contradict. It stays.
+        kept.add(c);
+        continue;
+      }
+      if (filter.keepsRule(scope.languages())) {
+        kept.add(c);
+      } else {
+        LOG.info("language filter: dropped the checker {} ({})", c.name(), scope.languages());
+      }
+    }
+    return kept;
   }
 
   /**
@@ -2429,6 +2566,12 @@ public final class ScanRunner {
    * <p>This is the checker's own gate, {@link org.plumb.dfa.engine.DfaChecker#supports}, applied
    * one layer earlier. The runtime gate stays as the second line of defence: a checker that
    * survived registration can still decline a function of another language.
+   *
+   * <p><b>Two scopes, and the effective scope is their intersection.</b> The RULE says which
+   * languages the defect class is expressed in; the CONFIGURATION says which languages the
+   * checker's own mechanism is for. A checker whose rule names every language but whose
+   * configuration names {@code java} is still Java-only, because the second scope is the one that
+   * says what the checker can actually see. Both are consulted here.
    */
   private List<org.plumb.dfa.engine.DfaChecker> filterByLanguage(
       List<org.plumb.dfa.engine.DfaChecker> checkers) {
@@ -2555,8 +2698,12 @@ public final class ScanRunner {
       org.plumb.dfa.config.LanguageFilter languageFilter = languageFilter();
       if (languageFilter.isSelective()) {
         baseCfg = baseCfg.withSinkFamilies(languageFilter.filterFamilies(baseCfg.sinkFamilies()));
+        // The checker CONFIGURATION is filtered on the same terms, so a
+        // checker that declares the languages it applies to is not even
+        // registered when none of them was selected.
+        baseCfg = baseCfg.withCheckers(languageFilter.filterCheckers(baseCfg.checkers()));
         LOG.info(
-            "language filter: {} (sink families narrowed before registration)",
+            "language filter: {} (sink families and checkers narrowed before registration)",
             languageFilter.describe());
       }
       org.plumb.dfa.config.EngineConfig unifiedCfg =

@@ -318,7 +318,7 @@ public final class SastMain {
         Option.builder()
             .longOpt("language")
             .hasArg()
-            .argName("java|kotlin|scala")
+            .argName(org.plumb.dfa.config.LanguageFilter.knownLanguageNames().replace(", ", "|"))
             .desc(
                 "Analyse only these languages (repeatable, or comma-separated). The rules, sink"
                     + " patterns and frontends of the other languages are not loaded at all, so"

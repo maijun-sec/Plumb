@@ -165,6 +165,26 @@ public final class LanguageFilter {
   }
 
   /**
+   * The checkers that survive the filter, with the per-checker configuration narrowed to the
+   * selected languages.
+   *
+   * <p>A checker with no language declaration survives -- the conservative default, because a
+   * checker with no language-specific mechanism has nothing to be excluded from.
+   *
+   * @param checkers the loaded checker configuration
+   * @return the surviving configuration
+   */
+  public CheckerRegistry filterCheckers(CheckerRegistry checkers) {
+    if (checkers == null || languages.isEmpty()) return checkers;
+    Map<String, CheckerConfig> kept = new LinkedHashMap<>();
+    for (CheckerConfig c : checkers.all()) {
+      if (!keepsRule(c.languages())) continue;
+      kept.put(c.name(), c);
+    }
+    return new CheckerRegistry(kept);
+  }
+
+  /**
    * The families that survive the filter, with the per-language pattern tables narrowed to the
    * selected languages.
    *
@@ -208,11 +228,14 @@ public final class LanguageFilter {
   /**
    * Whether a rule that declares itself applicable to {@code declared} survives the filter.
    *
-   * <p>An empty declaration means "every language", so the rule survives.
+   * <p>An empty declaration means "every language", so the rule survives. A declaration that names
+   * {@code all} also means "every language" -- including a language that did not exist when the
+   * declaration was written.
    */
   public boolean keepsRule(Set<String> declared) {
     if (languages.isEmpty()) return true;
     if (declared == null || declared.isEmpty()) return true;
+    if (declared.contains(ConfigLoader.ALL_LANGUAGES)) return true;
     for (String name : declared) {
       SourceLanguage language = SourceLanguage.parse(name);
       if (language == SourceLanguage.UNKNOWN) continue;

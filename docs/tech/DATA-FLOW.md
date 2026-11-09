@@ -119,7 +119,7 @@ pins this fact down: it asserts that no `.has(...Trait...)` call exists in the p
 | `plumb.call.side-effect-recorded` | `SIDE_EFFECT_RECORDED` | `:238` | BY_DECL |
 
 **These are two different catalogues, not one**: `org.plumb.dfa.config.ConfigLoader.parseFactKinds`
-(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:394-431`) first puts these 15 built-in kinds into the registry, then overwrites or
+(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:452-489`) first puts these 15 built-in kinds into the registry, then overwrites or
 appends them with the **12** entries of `fact-kinds.yaml` — the YAML entries use a different naming scheme
 (`UntrustedSource`, `MayBeNull`, `Freed`, etc.). The two naming spaces differ but they **land in the same registry**,
 so the effective number of fact kinds is 27. `capability_baseline` measures the two catalogues separately

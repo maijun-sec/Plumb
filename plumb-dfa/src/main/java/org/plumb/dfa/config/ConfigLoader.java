@@ -69,6 +69,14 @@ public final class ConfigLoader {
     "sink-families.yaml", "fact-kinds.yaml", "checkers.yaml", "cwe-mappings.yaml", "tuning.yaml",
   };
 
+  /**
+   * The name that means "every language" in a checker's {@code languages:} list.
+   *
+   * <p>A checker with no language-specific mechanism carries this, so a language added tomorrow
+   * picks the checker up without the catalogue being edited.
+   */
+  static final String ALL_LANGUAGES = "all";
+
   private ConfigLoader() {}
 
   /**
@@ -278,6 +286,56 @@ public final class ConfigLoader {
   }
 
   /**
+   * Parse the languages a checker declares.
+   *
+   * <p>Unlike a sink family's restriction, a checker's declaration is kept as the NAMES the YAML
+   * wrote, because {@link CheckerConfig#languages()} is a name set that the filter matches against.
+   *
+   * <p><b>The {@code all} keyword.</b> A checker with no language-specific mechanism declares
+   * {@code languages: [all]}, and that means EVERY language -- including one added after this
+   * catalogue was written. Spelling the languages out one by one would make a new language load
+   * ZERO checkers the day it is added, which is the silent disappearance this whole change exists
+   * to remove. The languages a checker is <em>not</em> for are named explicitly.
+   *
+   * <p><b>Why an unknown name is dropped rather than kept.</b> A name that is not a language Plumb
+   * knows matches nothing, so a checker that declared only {@code [jav]} would be dropped from
+   * EVERY run -- including a Java run -- and the rule would simply stop firing. That is a silent
+   * disappearance, so the name is reported instead.
+   *
+   * @param checker the checker's name, for the message
+   * @param raw the YAML value
+   * @return the language names, lower-cased; empty means "every language"
+   */
+  private static Set<String> parseCheckerLanguages(String checker, Object raw) {
+    Set<String> out = new LinkedHashSet<>();
+    for (String name : asStringList(raw)) {
+      String key = name.trim().toLowerCase(java.util.Locale.ROOT);
+      if (key.isEmpty()) continue;
+      if ("all".equals(key) || "*".equals(key)) {
+        // Every language, now and later. The set is cleared so an explicit name
+        // cannot contradict the wildcard.
+        out.clear();
+        out.add(ALL_LANGUAGES);
+        continue;
+      }
+      if (ALL_LANGUAGES.equals(key)) {
+        out.clear();
+        out.add(ALL_LANGUAGES);
+        continue;
+      }
+      if (SourceLanguage.parse(key) == SourceLanguage.UNKNOWN) {
+        LOG.warn(
+            "Unknown language '{}' in the language restriction of checker '{}'; ignored",
+            name,
+            checker);
+        continue;
+      }
+      out.add(key);
+    }
+    return out;
+  }
+
+  /**
    * parse a patterns list whose entries are either bare strings or maps with {@code pattern} and
    * optional {@code arg_index}.
    *
@@ -455,10 +513,24 @@ public final class ConfigLoader {
       // overridden per-checker here.
       String aggressiveness = asString(spec.get("aggressiveness"));
       if (aggressiveness == null) aggressiveness = "medium";
+      // The languages this checker applies to. Absent means "every language",
+      // which is the conservative default: a checker with no language-specific
+      // mechanism should not be excluded from a run that named one language.
+      java.util.Set<String> languages = parseCheckerLanguages(name, spec.get("languages"));
       out.put(
           name,
           new CheckerConfig(
-              name, enabled, sev, cwe, ctxDepth, path, taintDom, cls, desc, aggressiveness));
+              name,
+              enabled,
+              sev,
+              cwe,
+              ctxDepth,
+              path,
+              taintDom,
+              cls,
+              desc,
+              aggressiveness,
+              languages));
     }
     return new CheckerRegistry(out);
   }

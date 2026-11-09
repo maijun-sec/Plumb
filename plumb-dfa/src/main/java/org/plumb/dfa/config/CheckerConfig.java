@@ -44,6 +44,34 @@ public final class CheckerConfig {
   private final String description;
 
   /**
+   * The languages this checker applies to.
+   *
+   * <p>An EMPTY set means "every language" -- the conservative default, and the one a checker that
+   * has no language-specific mechanism should carry.
+   *
+   * <p><b>Why this is on the CONFIG and not only on the rule.</b> A checker's language scope has
+   * two independent sources, and they can disagree:
+   *
+   * <ul>
+   *   <li>The RULE's scope says which languages the <em>defect class</em> is expressed in. A
+   *       checker that watches {@code jni.sinks} is Java-shaped because the APIs it matches ({@code
+   *       java.lang.System.load}) exist only on the JVM.
+   *   <li>The CONFIG's scope says which languages the checker is <em>mechanism</em> for. A checker
+   *       that hardcodes {@code java.lang.Math.min} in its body is Java-shaped by its own code,
+   *       whatever the rule says.
+   * </ul>
+   *
+   * <p>Both are honoured, and the effective scope is the INTERSECTION: a checker loads only when
+   * the run selected every language the rule names AND the checker names. A checker whose rule says
+   * "every language" but whose config says {@code [java]} is still Java-only.
+   *
+   * <p><b>Directional rule.</b> This selects which checkers run against which code. It never
+   * establishes that code is safe -- a checker that does not apply simply produces no findings for
+   * that language, which is different from "the language is clean".
+   */
+  private final java.util.Set<String> languages;
+
+  /**
    * analysis-style aggressiveness knob. One of {@code "low"} / {@code "medium"} / {@code "high"}.
    *
    * <ul>
@@ -95,6 +123,32 @@ public final class CheckerConfig {
       String className,
       String description,
       String aggressiveness) {
+    this(
+        name,
+        enabled,
+        severityLabel,
+        cwe,
+        contextDepth,
+        pathSensitivity,
+        taintDomain,
+        className,
+        description,
+        aggressiveness,
+        java.util.Set.of());
+  }
+
+  public CheckerConfig(
+      String name,
+      boolean enabled,
+      String severityLabel,
+      String cwe,
+      int contextDepth,
+      String pathSensitivity,
+      String taintDomain,
+      String className,
+      String description,
+      String aggressiveness,
+      java.util.Set<String> languages) {
     this.name = Objects.requireNonNull(name, "name");
     this.enabled = enabled;
     this.severityLabel = severityLabel;
@@ -105,6 +159,8 @@ public final class CheckerConfig {
     this.className = className;
     this.description = description == null ? "" : description;
     this.aggressiveness = normaliseAggressiveness(aggressiveness);
+    this.languages =
+        languages == null ? java.util.Set.of() : java.util.Collections.unmodifiableSet(languages);
   }
 
   public String name() {
@@ -141,6 +197,32 @@ public final class CheckerConfig {
 
   public String description() {
     return description;
+  }
+
+  /**
+   * The languages this checker applies to.
+   *
+   * <p>Empty means "every language". The names are the {@link SourceLanguage} enum names in lower
+   * case, which is also what the YAML uses.
+   *
+   * @return the languages, or an empty set for "every language"
+   */
+  public java.util.Set<String> languages() {
+    return languages;
+  }
+
+  /**
+   * Whether this checker applies to a language.
+   *
+   * @param language the language
+   * @return true when the checker applies, or when it applies to every language
+   */
+  public boolean appliesTo(org.plumb.tac.ir.SourceLanguage language) {
+    if (languages.isEmpty()) return true;
+    if (languages.contains(ConfigLoader.ALL_LANGUAGES)) return true;
+    if (language == null) return false;
+    return languages.contains(language.name())
+        || languages.contains(language.name().toLowerCase(java.util.Locale.ROOT));
   }
 
   /**

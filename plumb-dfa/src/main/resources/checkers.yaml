@@ -3,6 +3,31 @@
 # Per-checker configuration. A checker is enabled by
 # default; set `enabled: false` to disable.
 #
+# THE LANGUAGES A CHECKER APPLIES TO
+#
+# Every checker declares `languages:` -- the languages its
+# mechanism can see. A run that selected one language loads
+# only the checkers that name it, so `--language csharp`
+# loads the C# rules and none of the Java ones.
+#
+#   languages: [all]
+#       The checker has no language-specific mechanism, so
+#       it applies to EVERY language -- including one added
+#       after this file was written. Spelling the languages
+#       out one by one would make a new language load ZERO
+#       checkers the day it arrives.
+#
+#   languages: [java, kotlin, scala]
+#       The checker is JVM-shaped by its own code (a
+#       hardcoded java.lang.* symbol, a JavaParser AST, a
+#       JVM framework), so it does not apply to C#.
+#
+# The scope is the INTERSECTION of two things: the RULE says
+# which languages the defect class is expressed in, and this
+# CONFIGURATION says which languages the checker can see. A
+# checker whose rule names every language but whose
+# configuration names [java] is still Java-only.
+#
 # Adding a custom checker (one you wrote and added to
 # the classpath):
 #   checkers:
@@ -14,10 +39,12 @@
 #       context_depth: 2
 #       sink_family: sql.sinks
 #       taint_domain: MIXED
+#       languages: [all]
 
 checkers:
   DivideByZero:
     enabled: true
+    languages: [all]
     severity: HIGH
     cwe: CWE-369
     context_depth: 2
@@ -26,6 +53,7 @@ checkers:
     class: org.plumb.dfa.checkers.taint.DivByZeroChecker
   IntegerOverflow:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-190
     context_depth: 2
@@ -34,6 +62,7 @@ checkers:
     class: org.plumb.dfa.checkers.taint.IntOverflowChecker
   NullDereference:
     enabled: true
+    languages: [all]
     severity: HIGH
     cwe: CWE-476
     context_depth: 1
@@ -42,6 +71,7 @@ checkers:
     class: org.plumb.dfa.checkers.taint.NullDerefChecker
   ResourceLeak:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-404
     context_depth: 2
@@ -50,6 +80,7 @@ checkers:
     class: org.plumb.dfa.checkers.taint.ResourceLeakChecker
   SensitiveDataLeak:
     enabled: true
+    languages: [java, kotlin, scala]
     severity: CRITICAL
     cwe: CWE-532
     context_depth: 3
@@ -59,6 +90,7 @@ checkers:
     class: org.plumb.dfa.checkers.taint.SensitiveDataLeakChecker
   UncheckedReturn:
     enabled: true
+    languages: [java, kotlin, scala]
     severity: MEDIUM
     cwe: CWE-252
     context_depth: 1
@@ -67,6 +99,7 @@ checkers:
     class: org.plumb.style.security.UncheckedReturnCheck
   ConstantCondition:
     enabled: true
+    languages: [all]
     severity: LOW
     cwe: CWE-570
     description: "CWE-570/571: branch condition is a compile-time constant"
@@ -78,6 +111,7 @@ checkers:
   # happens after aliasing or several statements later.
   OrmLoadNullCheckDfa:
     enabled: true
+    languages: [java, kotlin, scala]
     severity: LOW
     cwe: CWE-252
     context_depth: 1
@@ -90,6 +124,7 @@ checkers:
   # access" case that the AST version can't track.
   OrmUnnecessaryGetDfa:
     enabled: true
+    languages: [java, kotlin, scala]
     severity: LOW
     cwe: CWE-252
     context_depth: 1
@@ -103,6 +138,7 @@ checkers:
   # persist/save/merge calls).
   OrmLostUpdateDfa:
     enabled: true
+    languages: [java, kotlin, scala]
     severity: MEDIUM
     cwe: CWE-459
     context_depth: 1
@@ -120,6 +156,7 @@ checkers:
     # to enable the DFA implementation (which inspects more
     # methods but is noisier on real codebases).
     enabled: false
+    languages: [java, kotlin, scala]
     severity: HIGH
     cwe: CWE-366
     context_depth: 1
@@ -135,6 +172,7 @@ checkers:
     # the same CWE-362 with better precision. Set to true
     # to enable the DFA implementation.
     enabled: false
+    languages: [java, kotlin, scala]
     severity: HIGH
     cwe: CWE-362
     context_depth: 1
@@ -150,24 +188,28 @@ checkers:
   # whitelist decides which actually reports.
   BoundaryOverflow:
     enabled: true
+    languages: [all]
     severity: HIGH
     cwe: CWE-190
     description: "CWE-190 integer overflow via range + Z3 constraint"
     class: org.plumb.dfa.checkers.boundary.OverflowConstraintChecker
   BoundaryUnderflow:
     enabled: true
+    languages: [all]
     severity: HIGH
     cwe: CWE-191
     description: "CWE-191 integer underflow via range + Z3 constraint"
     class: org.plumb.dfa.checkers.boundary.UnderflowConstraintChecker
   BoundaryDivZero:
     enabled: true
+    languages: [all]
     severity: HIGH
     cwe: CWE-369
     description: "CWE-369 div/mod-by-zero via range + Z3 constraint"
     class: org.plumb.dfa.checkers.boundary.DivZeroConstraintChecker
   BoundaryArrayBounds:
     enabled: true
+    languages: [all]
     severity: HIGH
     cwe: CWE-129
     description: "CWE-129 array out-of-bounds via range + Z3 constraint"
@@ -181,6 +223,7 @@ checkers:
   # class, one CWE, and no language sees another's sink.
   RegexInjection:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-1333
     description: "CWE-1333: regular expression compiled from tainted data (ReDoS / bypass)"
@@ -190,48 +233,56 @@ checkers:
   # no rule is a family that can never fire.
   ServerSideTemplateInjection:
     enabled: true
+    languages: [java, kotlin, scala]
     severity: CRITICAL
     cwe: CWE-1336
     description: "CWE-1336: tainted data compiled as a server-side template"
     class: org.plumb.dfa.checkers.taint.ServerSideTemplateInjectionChecker
   HttpParameterPollution:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-235
     description: "CWE-235: tainted data in an outbound HTTP request's URI or parameters"
     class: org.plumb.dfa.checkers.taint.HttpParameterPollutionChecker
   DangerousFileInclusion:
     enabled: true
+    languages: [all]
     severity: CRITICAL
     cwe: CWE-98
     description: "CWE-98: tainted data choosing which file is included"
     class: org.plumb.dfa.checkers.taint.DangerousFileInclusionChecker
   NoSqlInjection:
     enabled: true
+    languages: [all]
     severity: HIGH
     cwe: CWE-943
     description: "CWE-943: tainted data in a NoSQL query filter or document"
     class: org.plumb.dfa.checkers.taint.NoSqlInjectionChecker
   JsonInjection:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-91
     description: "CWE-91: tainted data in a JSON serializer's structural position"
     class: org.plumb.dfa.checkers.taint.JsonInjectionChecker
   XQueryInjection:
     enabled: true
+    languages: [all]
     severity: HIGH
     cwe: CWE-943
     description: "CWE-943: tainted data in an XQuery expression"
     class: org.plumb.dfa.checkers.taint.XQueryInjectionChecker
   XsltInjection:
     enabled: true
+    languages: [all]
     severity: HIGH
     cwe: CWE-643
     description: "CWE-643: tainted data in an XSLT stylesheet or transform"
     class: org.plumb.dfa.checkers.taint.XsltInjectionChecker
   XmlInjection:
     enabled: true
+    languages: [all]
     severity: HIGH
     cwe: CWE-91
     description: "CWE-91: tainted data in an XML serializer's element name or attribute"
@@ -244,6 +295,7 @@ checkers:
   # `setReadable(true)` is.
   FilePermission:
     enabled: true
+    languages: [java, kotlin, scala]
     severity: MEDIUM
     cwe: CWE-732
     description: "CWE-732: file permissions granted to everyone instead of the owner"
@@ -259,72 +311,84 @@ checkers:
   # family key.
   CodeInjection:
     enabled: true
+    languages: [all]
     severity: CRITICAL
     cwe: CWE-94,CWE-95,CWE-494
     description: "CWE-94/95/494: tainted data evaluated as code"
     class: org.plumb.dfa.checkers.taint.CodeInjectionChecker
   CookieInjection:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-113
     description: "CWE-113: tainted data written into a response cookie"
     class: org.plumb.dfa.checkers.taint.CookieInjectionChecker
   CredentialExposure:
     enabled: true
+    languages: [all]
     severity: HIGH
     cwe: CWE-256,CWE-798
     description: "CWE-256/798: credential stored or transmitted in the clear"
     class: org.plumb.dfa.checkers.taint.CredentialExposureChecker
   DenialOfService:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-730,CWE-776
     description: "CWE-730/776: tainted data controls a resource quantity"
     class: org.plumb.dfa.checkers.taint.DenialOfServiceChecker
   FormulaInjection:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-1236
     description: "CWE-1236: tainted data written into a spreadsheet cell"
     class: org.plumb.dfa.checkers.taint.FormulaInjectionChecker
   HeaderInjection:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-93,CWE-113
     description: "CWE-93/113: CRLF injection into an HTTP header"
     class: org.plumb.dfa.checkers.taint.HeaderInjectionChecker
   InsecureCommunication:
     enabled: true
+    languages: [all]
     severity: HIGH
     cwe: CWE-297,CWE-319,CWE-326,CWE-327
     description: "CWE-297/319/326/327: sensitive data sent over an unprotected channel"
     class: org.plumb.dfa.checkers.taint.InsecureCommunicationChecker
   InsecureRandomFamily:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-335,CWE-330
     description: "CWE-335/330: predictable value used where unpredictability matters"
     class: org.plumb.dfa.checkers.taint.InsecureRandomFamilyChecker
   LogInjectionFamily:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-117
     description: "CWE-117: tainted data written into a log record"
     class: org.plumb.dfa.checkers.taint.LogInjectionFamilyChecker
   PrivacyViolation:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-215,CWE-359,CWE-489,CWE-497
     description: "CWE-215/359/489/497: personal data leaves the boundary it belongs inside"
     class: org.plumb.dfa.checkers.taint.PrivacyViolationChecker
   ResourceInjection:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-94,CWE-95,CWE-99,CWE-502
     description: "CWE-94/95/99/502: tainted data selects the resource that is used"
     class: org.plumb.dfa.checkers.taint.ResourceInjectionChecker
   SettingManipulation:
     enabled: true
+    languages: [all]
     severity: MEDIUM
     cwe: CWE-15
     description: "CWE-15: tainted data controls a system or configuration setting"

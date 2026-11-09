@@ -147,6 +147,10 @@
                              patterns and checkers of the languages that were not
                              selected must never be registered. -->
                         <include>org/plumb/dfa/config/LanguageFilterTest.java</include>
+                        <!-- The rules are loaded PER LANGUAGE: the shipped catalogue itself
+                             must load only the checkers and the sink families of the
+                             languages that were selected. -->
+                        <include>org/plumb/dfa/config/LanguageScopedRuleLoadingTest.java</include>
                         <include>org/plumb/dfa/taint/InputSourcePatternsTest.java</include>
                         <include>org/plumb/dfa/taint/TaintDomainTest.java</include>
                         <include>org/plumb/dfa/taint/GuardTrackerTest.java</include>
