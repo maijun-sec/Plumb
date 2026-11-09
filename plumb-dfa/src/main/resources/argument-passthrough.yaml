@@ -66,8 +66,6 @@ families:
   library-argument-passthrough-csharp:
     enabled: true
     patterns:
-      - pattern: '^Grpc\.Core\.AsyncStreamReaderExtensions\.(ReadAllAsyncCore|ReadAllAsync)(/\d+)?'
-        arg_index: 0
       - pattern: '^System\.Workflow\.ComponentModel\.DependencyObject\.GetValue\b(/\d+)?'
         arg_index: 0
       - pattern: '^System\.Workflow\.ComponentModel\.DependencyObject\.GetValueBase\b(/\d+)?'
@@ -82,7 +80,7 @@ families:
         arg_index: 0
       - pattern: '^System\.Workflow\.Activity\.CompensatableSequenceActivity\.(GetValue|GetValueBase)(/\d+)?'
         arg_index: 0
-      - pattern: '^System\.Workflow\.Activities\.ConditionedActivityGroup\.(GetValue|GetValueBase|GetBoundValue|GetWhenCondition)(/\d+)?'
+      - pattern: '^(System\.Workflow\.Activities\.ConditionedActivityGroup|System\.Workflow\.ComponentModel\.DependencyObject)\.(GetValue|GetValueBase|GetBoundValue|GetWhenCondition)(/\d+)?'
         arg_index: 0
       - pattern: '^System\.Workflow\.Activities\.ActiveDirectoryRoleFactory\.(CreateFromAlias|CreateFromEmailAddress|CreateFromSecurityIdentifier)(/\d+)?'
         arg_index: 0
@@ -128,8 +126,6 @@ families:
         arg_index: 0
       - pattern: '^System\.Web\.Globalization\.ResourceFileStringLocalizerProvider\.GetLocalizedString\b(/\d+)?'
         arg_index: [1, 2]
-      - pattern: '^System\.Web\.HttpUtility\.JavaScriptEncode\b(/\d+)?'
-        arg_index: 0
       - pattern: '^(System\.Web\.HttpServerUtility|System\.Web\.HttpUtility)\.UrlPathEncode\b(/\d+)?'
         arg_index: 0
       - pattern: '^System\.Web\.HttpUtility\.JavaScriptStringEncode\b(/\d+)?'
@@ -186,9 +182,9 @@ families:
         arg_index: 0
       - pattern: '^System\.Security\.Cryptography\.FromBase64Transform\.TransformFinalBlock\b(/\d+)?'
         arg_index: 0
-      - pattern: '^(System\.Security\.Cryptography\.ProtectedData|System\.Security\.Cryptography\.DpapiDataProtector)\.Unprotect\b(/\d+)?'
+      - pattern: '^(System\.Security\.Cryptography\.ProtectedData|System\.Security\.Cryptography\.DpapiDataProtector|System\.Security\.Cryptography\.DataProtector)\.Unprotect\b(/\d+)?'
         arg_index: 0
-      - pattern: '^(System\.Security\.Cryptography\.ProtectedData|System\.Security\.Cryptography\.DpapiDataProtector)\.Protect\b(/\d+)?'
+      - pattern: '^(System\.Security\.Cryptography\.ProtectedData|System\.Security\.Cryptography\.DpapiDataProtector|System\.Security\.Cryptography\.DataProtector)\.Protect\b(/\d+)?'
         arg_index: 0
       - pattern: '^System\.Security\.SecurityElement\.FromString\b(/\d+)?'
         arg_index: 0
@@ -210,7 +206,7 @@ families:
         arg_index: 0
       - pattern: '^System\.Numerics\.BigInteger\.(Abs|Add|Compare|Divide|DivRem|GreatestCommonDenominator|Log|Log10|Max|Negate|Parse|Pow|Remainder|Subtract)(/\d+)?'
         arg_index: any
-      - pattern: '^(System\.Numerics\.BigInteger|System\.Numerics\.Complex)\.operator.*(/\d+)?'
+      - pattern: '^(System\.Numerics\.BigInteger|System\.Numerics\.Complex)\.op_.*(/\d+)?'
         arg_index: any
       - pattern: '^System\.Numerics\.Complex\.(Abs|Acod|Add|Asin|Atan|Conjugate|Cos|Cosh|Divide|Exp|FromPolarCoordinates|Log|Log10|Multiply|Negate|Pow|Reciprocal|Sin|Sinh|Sqrt|Subtract|Tan|Tanh)(/\d+)?'
         arg_index: any
@@ -266,15 +262,11 @@ families:
         arg_index: 0
       - pattern: '^System\.Collections\.Specialized\.BitVector32\.Create(Mask|Section)(/\d+)?'
         arg_index: [0, 1]
-      - pattern: '^System\.Collections\.Frozen\.Frozen(Dictionary|Set)\.ToFrozen(Dictionary|Set)(/\d+)?'
-        arg_index: 0
       - pattern: '^System\.Collections\.ArrayList\.(Adapter|FixedSize|ReadOnly|Repeat)(/\d+)?'
         arg_index: 0
-      - pattern: '^System\.Collections\.ICollection\.Synchronized\b(/\d+)?'
+      - pattern: '^System\.Collections\.ArrayList\.Synchronized\b(/\d+)?'
         arg_index: 0
       - pattern: '^System\.Random\.GetItems\b(/\d+)?'
-        arg_index: 0
-      - pattern: '^System\.TupleExtensions\.(ToValueTuple@\d|ToValueTuple)(/\d+)?'
         arg_index: 0
       - pattern: '^System\.(Value)?Tuple(@\d)?\.(Create@\d|Create)(/\d+)?'
         arg_index: 7
@@ -316,11 +308,7 @@ families:
         arg_index: [0, 1]
       - pattern: '^System\.Buffer\.ByteLength\b(/\d+)?'
         arg_index: 0
-      - pattern: '^System\.Object\.(ToString|MemberwiseClone)(/\d+)?'
-        arg_index: 0
-      - pattern: '^System\.Strings\.FormatStrings\b(/\d+)?'
-        arg_index: any
-      - pattern: '^System\.Math\.SignsIRounds\b(/\d+)?'
+      - pattern: '^System\.Math\.(Sign|Round)(/\d+)?'
         arg_index: 2
       - pattern: '^System\.Math\.(Round|Sign|Sinh|Sqrt|Tanh|Tan)(/\d+)?'
         arg_index: any
@@ -334,7 +322,7 @@ families:
         arg_index: 0
       - pattern: '^System\.String\.(Concat|Join)(/\d+)?'
         arg_index: any
-      - pattern: '^System\.ValueType\.(op_Addition|op_Implicit|op_Explicit|op_UnaryPlus|op_UnaryNegation|op_Subtraction|op_Multiply|op_Modulus|op_Increment|op_Division|op_Decrement)(/\d+)?'
+      - pattern: '^(System\.Decimal|System\.Math)\.(Add|Divide|Floor|FromOACurrency|GetBits|Multiply|Negate|Remainder|Round|Subtract|Truncate)(/\d+)?'
         arg_index: any
       - pattern: '^System\.Enum\.Parse\b(/\d+)?'
         arg_index: 1
@@ -343,12 +331,6 @@ families:
       - pattern: '^System\.Array\.AsReadOnly\b(/\d+)?'
         arg_index: 0
       - pattern: '^System\.Array\.(Find|FindAll|FindLast)(/\d+)?'
-        arg_index: 0
-      - pattern: '^System\.MemoryExtensions\.EnumerateLines\b(/\d+)?'
-        arg_index: 0
-      - pattern: '^System\.MemoryExtensions\.(TrimEnd|TrimStart|Trim)(/\d+)?'
-        arg_index: 0
-      - pattern: '^System\.MemoryExtensions\.As(Memory|Span)(/\d+)?'
         arg_index: 0
       - pattern: '^System\.(ReadOnly)?Memory\.TryCopyTo\b(/\d+)?'
         arg_index: 0
@@ -372,7 +354,7 @@ families:
         arg_index: 0
       - pattern: '^Microsoft\.Security\.Application\.Encoder\.LdapDistinguishedNameEncode\b(/\d+)?'
         arg_index: 0
-      - pattern: '^(System\.Web\.Security\.AntiXss\.AntiXss|System\.Web\.Security\.AntiXss\.Encoder|System\.Web\.Security\.AntiXss\.AntiXssEncoder|Microsoft\.Security\.Application\.AntiXss|Microsoft\.Security\.Application\.Encoder|Microsoft\.Security\.Application\.AntiXssEncoder)\.JavaScriptEncode\b(/\d+)?'
+      - pattern: '^(Microsoft\.Security\.Application\.AntiXss|Microsoft\.Security\.Application\.Encoder|Microsoft\.Security\.Application\.AntiXssEncoder)\.JavaScriptEncode\b(/\d+)?'
         arg_index: 0
       - pattern: '^(System\.Web\.Security\.AntiXss\.Encoder|System\.Web\.Security\.AntiXss\.AntiXssEncoder|Microsoft\.Security\.Application\.Encoder|Microsoft\.Security\.Application\.AntiXssEncoder)\.HtmlFormUrlEncode\b(/\d+)?'
         arg_index: 0
@@ -382,21 +364,15 @@ families:
         arg_index: 0
       - pattern: '^(System\.Web\.Security\.AntiXss\.AntiXssEncoder|System\.Web\.Security\.AntiXss\.Encoder|Microsoft\.Security\.Application\.AntiXssEncoder|Microsoft\.Security\.Application\.Encoder)\.CssEncode\b(/\d+)?'
         arg_index: 0
-      - pattern: '^System\.Web\.Security\.AntiXss\.AntiXssEncoder\.HtmlDecode\b(/\d+)?'
+      - pattern: '^System\.Web\.Util\.HttpEncoder\.HtmlDecode\b(/\d+)?'
         arg_index: 0
       - pattern: '^(System\.Linq\.Enumerable|System\.Linq\.ParallelEnumerable|System\.Linq\.Queryable)\.(Concat|DefaultIfEmpty|GroupJoin|(Union|Intersect)By|Join|Zip)(/\d+)?'
-        arg_index: [0, 1, 2]
-      - pattern: '^(System\.Linq\.Enumerable|System\.Linq\.ParallelEnumerable|System\.Linq\.Queryable)\.(Aggregate|As(Enumerable|Ordered|Parallel|Queryable|Sequential|Unordered)|Cast|ElementAt|ElementAtOrDefault|(Distinct|Except|Max|Min)By|First|FirstOrDefault|GroupBy|Last|LastOrDefault|OfType|OrderBy|OrderByDescending|Repeat|Reverse|Select|SelectMany|Single|SingleOrDefault|Skip|SkipWhile|Take|TakeWhile|ThenBy|ThenByDescending|ToArray|ToDictionary|ToHashSet|ToList|ToLookup|Where|Chunk|With(Cancellation|DegreeOfParallelism|ExecutionMode|MergeOptions))(/\d+)?'
-        arg_index: 0
+        arg_index: [0, 1]
       - pattern: '^System\.Runtime\.Serialization\.Json\.DataContractJsonSerializer\.ReadObject\b(/\d+)?'
         arg_index: 0
       - pattern: '^Microsoft\.Extensions\.Primitives\.StringValues\.Concat\b(/\d+)?'
         arg_index: any
       - pattern: '^System\.Data\.Entity\.DbExtensions\.Include\b(/\d+)?'
-        arg_index: 0
-      - pattern: '^Microsoft\.EntityFrameworkCore\.EntityFrameworkQueryableExtensions\.(AllAsync|AnyAsync|AsAsyncEnumerable|AsNoTrackingWithIdentityResolution|AverageAsync|ContainsAsync|CountAsync|FirstOrDefaultAsync|ForEachAsync|IgnoreAutoIncludes|IgnoreQueryFilters|Include|LastOrDefaultAsync|LoadAsync|LongCountAsync|MaxAsync|MinAsync|SingleOrDefaultAsync|SumAsync|TagWithCallSite|ThenInclude|ToArrayAsync|ToDictionaryAsync|ToListAsync|ToQueryString)(/\d+)?'
-        arg_index: 0
-      - pattern: '^Microsoft\.EntityFrameworkCore\.RelationalQueryableExtensions\.(As(Single|Split)Query|CreateDbCommand)(/\d+)?'
         arg_index: 0
       - pattern: '^Azure\.Messaging\.ServiceBus\.ServiceBusMessage\.\<init\>(/\d+)?'
         arg_index: 0
@@ -437,8 +413,6 @@ families:
       - pattern: '^System\.Net\.Http\.HttpRequestHeadersExtensions\.GetCookies\b(/\d+)?'
         arg_index: 0
       - pattern: '^fastJSON\.JSON\.(DeepCopy|Parse|ToNiceJSON|ToObject|Beautify)(/\d+)?'
-        arg_index: 0
-      - pattern: '^Dapper\.SqlMapper\.AsList\b(/\d+)?'
         arg_index: 0
       - pattern: '^YamlDotNet\.Serialization\.Deserializer\.(Serialize|Deserialize)(/\d+)?'
         arg_index: 0
@@ -490,11 +464,7 @@ families:
         arg_index: 0
       - pattern: '^NHibernate\.Util\.CollectionHelper\.CreateCaseInsensitiveHashtable\b(/\d+)?'
         arg_index: 0
-      - pattern: '^NHibernate\.Util\.ArrayHelper\.(To2DStringArray|ToArray|ToIntArray|ToSqlTypeArray|ToTypeArray)(/\d+)?'
-        arg_index: 0
       - pattern: '^(MongoDB\.Bson\.BsonDocument|MongoDB\.Bson\.BsonValue)\.(Create|Parse)(/\d+)?'
-        arg_index: 0
-      - pattern: '^MongoDB\.Bson\.BsonExtensionMethods\.(ToBson|ToBsonDocument|ToJson)(/\d+)?'
         arg_index: 0
       - pattern: '^Microsoft\.VisualBasic\.Strings\.Replace\b(/\d+)?'
         arg_index: [1, 3]
@@ -527,8 +497,6 @@ families:
       - pattern: '^Microsoft\.Practices\.EnterpriseLibrary\.Security\.Cryptography\.Cryptographer\.(Encrypt|Decrypt)Symmetric\b(/\d+)?'
         arg_index: 1
       - pattern: '^Newtonsoft\.Json\.JsonSerializer\.(Create|CreateDefault)(/\d+)?'
-        arg_index: 0
-      - pattern: '^Newtonsoft\.Json\.Linq\.Extensions\.(Ancestors|AsJEnumerable|Children|Descendants|Properties|Values|Value)(/\d+)?'
         arg_index: 0
       - pattern: '^Newtonsoft\.Json\.Linq\.JToken\.(Load|Parse|ReadFrom)(/\d+)?'
         arg_index: 0
@@ -573,6 +541,8 @@ families:
       - pattern: '^net/smtp\.(PlainAuth|CRAMMD5Auth)(/\d+)?'
         arg_index: any
       - pattern: '^(html|text)\/template\.(HTMLEscape(String)|JSEscape(String)|URLQueryEscaper|JSEscape(r)|HTMLEscape(r))(/\d+)?'
+        arg_index: any
+      - pattern: '^(html|text)\/template\.(Template)?\.(ParseFS|ParseFiles|ParseGlob|Parse)(/\d+)?'
         arg_index: any
       - pattern: '^fmt\.Errorf\b(/\d+)?'
         arg_index: any
@@ -678,6 +648,8 @@ families:
         arg_index: [0, 1]
       - pattern: '^github\.com/jinzhu/gorm\.Dialect\.Quote\b(/\d+)?'
         arg_index: 0
+      - pattern: '^github\.com/jinzhu/gorm\.DefaultForeignKeyNamer\.BuildKeyName\b(/\d+)?'
+        arg_index: any
       - pattern: '^github\.com/jinzhu/gorm\.Expr\b(/\d+)?'
         arg_index: any
       - pattern: '^github\.com/jinzhu/gorm\.Scope\.(New|Quote)(/\d+)?'
@@ -692,5 +664,7 @@ families:
         arg_index: [0, 1]
       - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.WithError\b(/\d+)?'
         arg_index: 0
+      - pattern: '^github\.com/sirupsen/logrus\.(JSON|Text)?Formatter\.Format\b(/\d+)?'
+        arg_index: any
       - pattern: '^google\.golang\.org/grpc/metadata\.(Join|Pairs)(/\d+)?'
         arg_index: any

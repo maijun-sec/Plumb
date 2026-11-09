@@ -493,11 +493,17 @@ families:
         # `StreamWriter.Write` is included because the .NET `StreamWriter`
         # hierarchy is what application code writes through -- and its
         # receiver is the stream, so the value is argument 0.
+        #
+        # `TextWriter` is named too, because `TextWriter` is the type that
+        # DECLARES `Write` and `WriteLine`: the C# frontend names the type
+        # the compiler binds to, so a call through a `TextWriter`-typed
+        # reference is emitted as `System.IO.TextWriter.Write/1`, and a
+        # pattern that named only `StreamWriter` would miss it.
         - pattern: '^System\.Net\.Sockets\.NetworkStream\.Write(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.IO\.StreamWriter\.Write(/\d+)?'
+        - pattern: '^(System\.IO\.StreamWriter|System\.IO\.TextWriter)\.Write(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.IO\.StreamWriter\.WriteLine(/\d+)?'
+        - pattern: '^(System\.IO\.StreamWriter|System\.IO\.TextWriter)\.WriteLine(/\d+)?'
           arg_index: 0
         - pattern: '^System\.IO\.Stream\.Write(/\d+)?'
           arg_index: 0
@@ -1630,8 +1636,6 @@ families:
       csharp:
         - pattern: '^System\.Data\.SqlClient\.SqlCommand\.\<init\>(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Data\.Common\.DbCommand\.\<init\>(/\d+)?'
-          arg_index: 0
         - pattern: '^Microsoft\.WindowsAzure\.Storage\.Table\.(Dynamic)?TableEntity\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.WindowsAzure\.Storage\.Table\.ITableEntity\.set_(PartitionKey|RowKey)(/\d+)?'
@@ -1661,7 +1665,7 @@ families:
         - pattern: '^System\.Data\.IDataParameterCollection\.set_Item(/\d+)?'
           arg_index: 1
         - pattern: '^System\.Collections\.IList\.Add(/\d+)?'
-          arg_index: [0, 1]
+          arg_index: 0
         - pattern: '^System\.Data\.IDataParameter\.set_Value(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Data\.IDbCommand\.set_CommandText(/\d+)?'
@@ -1675,8 +1679,6 @@ families:
         - pattern: '^Microsoft\.SharePoint\.Search\.Query\.FullTextSqlQuery\.set_QueryText(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Data\.Linq\.DataContext\.ExecuteQuery(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Data\.Linq\.Table\.Execute(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Linq\.Expressions\.Expression\.Call(/\d+)?'
           arg_index: 1
@@ -1754,7 +1756,7 @@ families:
           arg_index: [0, 1]
         - pattern: '^System\.Data\.Entity\.DbSet\.(FindAsync|Find)(/\d+)?'
           arg_index: [0, 1]
-        - pattern: '^System\.Data\.Entity\.DbSet\.(Attach|Include|(Add|Remove)Range|(Add|Remove))(/\d+)?'
+        - pattern: '^(System\.Data\.Entity\.DbSet|System\.Data\.Entity\.Infrastructure\.DbQuery)\.(Attach|Include|(Add|Remove)Range|(Add|Remove))(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.EntityFrameworkCore\.Storage\.IRawSqlCommandBuilder\.Build(/\d+)?'
           arg_index: 0
@@ -1775,7 +1777,7 @@ families:
         - pattern: '^Microsoft\.EntityFrameworkCore\.DbContext\.(Add|AddAsync|Attach|Update|Remove|AddRange|AddRangeAsync|AttachRange|UpdateRange|RemoveRange)(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.EntityFrameworkCore\.EntityFrameworkQueryableExtensions\.Include(/\d+)?'
-          arg_index: 1
+          arg_index: 0
         - pattern: '^Microsoft\.EntityFrameworkCore\.DbSet\.(Remove|RemoveRange)(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.EntityFrameworkCore\.DbSet\.(Attach|AttachRange)(/\d+)?'
@@ -1875,10 +1877,6 @@ families:
         - pattern: '^NHibernate\.ISession\.CreateFilter(/\d+)?'
           arg_index: 1
         - pattern: '^NHibernate\.ISession\.(CreateQuery|CreateSQLQuery|Delete|Find|Enumerable)(/\d+)?'
-          arg_index: 0
-        - pattern: '^NHibernate\.IQuery\.(\<init\>|set_Query)(/\d+)?'
-          arg_index: 0
-        - pattern: '^NHibernate\.Impl\.QueryImpl\.(\<init\>|set_Query)(/\d+)?'
           arg_index: 0
         - pattern: '^NHibernate\.IMultiQuery\.(Add|AddNamedQuery)(/\d+)?'
           arg_index: 0
@@ -2479,7 +2477,7 @@ families:
           arg_index: 0
         - pattern: '^System\.IO\.Compression\.ZipFile\.(ExtractTo|CreateFrom)Directory(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.IO\.Compression\.ZipArchive(Entry)?\.(CreateEntryFromFile|ExtractTo(Directory|File))(/\d+)?'
+        - pattern: '^System\.IO\.Compression\.ZipFileExtensions\.(CreateEntryFromFile|ExtractTo(Directory|File))(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Formats\.Tar\.TarWriter\.(WriteEntryAsync|WriteEntry)(/\d+)?'
           arg_index: 0
@@ -2562,7 +2560,7 @@ families:
         - pattern: '^SharpCompress\.Readers\.IReaderExtensions\.WriteEntryToDirectory(/\d+)?'
           arg_index: 0
         - pattern: '^SharpCompress\.Archives\.IArchive\.ExtractAllEntries(/\d+)?'
-          arg_index: [-2, 0]
+          arg_index: -2
         - pattern: '^Ionic\.Zip\.ZipEntry\.(Extract|ExtractWithPassword)(/\d+)?'
           arg_index: 0
         - pattern: '^Ionic\.Zip\.ZipFile\.ExtractAll(/\d+)?'
@@ -2577,7 +2575,7 @@ families:
           arg_index: 0
         - pattern: '^SharpCompress\.Readers\.IReaderExtensions\.WriteEntryToFile(/\d+)?'
           arg_index: 1
-        - pattern: '^SharpCompress\.Archives\.(Zip|Rar|GZip|SevenZip|Tar)\.(Zip|Rar|GZip|SevenZip|Tar)Archive\.(Open|AddAllFromDirectory|SaveTo)(/\d+)?'
+        - pattern: '^(SharpCompress\.Archives\.(Zip|Rar|GZip|SevenZip|Tar)\.(Zip|Rar|GZip|SevenZip|Tar)Archive|SharpCompress\.Archives\.AbstractWritableArchive)\.(Open|AddAllFromDirectory|SaveTo)(/\d+)?'
           arg_index: 0
         - pattern: '^(DocumentFormat\.OpenXml\.Packaging\.WordprocessingDocument|DocumentFormat\.OpenXml\.Packaging\.SpreadsheetDocument|DocumentFormat\.OpenXml\.Packaging\.PresentationDocument)\.Create(/\d+)?'
           arg_index: 0
@@ -2985,7 +2983,7 @@ families:
           arg_index: 0
         - pattern: '^(System\.Collections\.Specialized\.NameObjectCollectionBase|System\.Collections\.Specialized\.NameValueCollection)\.(set_AllKeys|set_Item|set_Keys|Add|AddRange|AddWithoutValidate|Set|BaseAdd|BaseSet)(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.DirectoryServices\.Protocols\.DsmlSoapHttpConnection\.set_Soap(Request|Action)Header(/\d+)?'
+        - pattern: '^(System\.DirectoryServices\.Protocols\.DsmlSoapHttpConnection|System\.DirectoryServices\.Protocols\.DsmlSoapConnection)\.set_Soap(Request|Action)Header(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.SharePoint\.SPSite\.OpenWeb(/\d+)?'
           arg_index: 0
@@ -4538,9 +4536,9 @@ families:
           arg_index: 0
         - pattern: '^System\.Web\.UI\.WebControls\.CustomValidator\.set_ClientValidationFunction(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Web\.UI\.WebControls\.CreateUserWizard\.set_(AnswerLabelText|CancelButtonText|CompleteSuccessText|ConfirmPasswordCompareErrorMessage|ConfirmPasswordLabelText|ContinueButtonText|CreateUserButtonText|DuplicateEmailErrorMessage|DuplicateUserNameErrorMessage|EditProfileText|EmailLabelText|EmailRegularExpressionErrorMessage|FinishCompleteButtonText|FinishPreviousButtonText|HeaderText|HelpPageText|InstructionText|InvalidAnswerErrorMessage|InvalidEmailErrorMessage|InvalidPasswordErrorMessage|InvalidQuestionErrorMessage|PasswordHintText|PasswordLabelText|PasswordRegularExpressionErrorMessage|QuestionLabelText|SkipLinkText|StartNextButtonText|StepNextButtonText|StepPreviousButtonText|UnknownErrorMessage|UserNameLabelText)(/\d+)?'
+        - pattern: '^(System\.Web\.UI\.WebControls\.CreateUserWizard|System\.Web\.UI\.WebControls\.Wizard)\.set_(AnswerLabelText|CancelButtonText|CompleteSuccessText|ConfirmPasswordCompareErrorMessage|ConfirmPasswordLabelText|ContinueButtonText|CreateUserButtonText|DuplicateEmailErrorMessage|DuplicateUserNameErrorMessage|EditProfileText|EmailLabelText|EmailRegularExpressionErrorMessage|FinishCompleteButtonText|FinishPreviousButtonText|HeaderText|HelpPageText|InstructionText|InvalidAnswerErrorMessage|InvalidEmailErrorMessage|InvalidPasswordErrorMessage|InvalidQuestionErrorMessage|PasswordHintText|PasswordLabelText|PasswordRegularExpressionErrorMessage|QuestionLabelText|SkipLinkText|StartNextButtonText|StepNextButtonText|StepPreviousButtonText|UnknownErrorMessage|UserNameLabelText)(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Web\.UI\.WebControls\.CreateUserWizard\.set_(Answer|AnswerRequiredErrorMessage|CancelButtonImageUrl|ConfirmPasswordRequiredErrorMessage|ContinueButtonImageUrl|CreateUserButtonImageUrl|EditProfileIconUrl|EditProfileUrl|Email|EmailRegularExpression|EmailRequiredErrorMessage|FinishCompleteButtonImageUrl|FinishPreviousButtonImageUrl|HelpPageIconUrl|HelpPageUrl|PasswordRegularExpression|PasswordRequiredErrorMessage|Question|QuestionRequiredErrorMessage|StartNextButtonImageUrl|StepNextButtonImageUrl|StepPreviousButtonImageUrl|UserName|UserNameRequiredErrorMessage)(/\d+)?'
+        - pattern: '^(System\.Web\.UI\.WebControls\.CreateUserWizard|System\.Web\.UI\.WebControls\.Wizard)\.set_(Answer|AnswerRequiredErrorMessage|CancelButtonImageUrl|ConfirmPasswordRequiredErrorMessage|ContinueButtonImageUrl|CreateUserButtonImageUrl|EditProfileIconUrl|EditProfileUrl|Email|EmailRegularExpression|EmailRequiredErrorMessage|FinishCompleteButtonImageUrl|FinishPreviousButtonImageUrl|HelpPageIconUrl|HelpPageUrl|PasswordRegularExpression|PasswordRequiredErrorMessage|Question|QuestionRequiredErrorMessage|StartNextButtonImageUrl|StepNextButtonImageUrl|StepPreviousButtonImageUrl|UserName|UserNameRequiredErrorMessage)(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Web\.UI\.WebControls\.CompareValidator\.set_ValueToCompare(/\d+)?'
           arg_index: 0
@@ -5737,7 +5735,7 @@ families:
           arg_index: 0
         - pattern: '^Microsoft\.Practices\.EnterpriseLibrary\.Logging\.Configuration\.FlatFileTraceListenerData\.(\<init\>|set_(FileName|Footer|Header))(/\d+)?'
           arg_index: 0
-        - pattern: '^Microsoft\.Practices\.EnterpriseLibrary\.Logging\.Configuration\.EmailMessage\.set_(FromAddress|SmtpPort|SmtpServer|SubjectLineEnder|SubjectLineStarter|ToAddress)(/\d+)?'
+        - pattern: '^Microsoft\.Practices\.EnterpriseLibrary\.Logging\.Configuration\.EmailTraceListenerData\.set_(FromAddress|SmtpPort|SmtpServer|SubjectLineEnder|SubjectLineStarter|ToAddress)(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.Practices\.EnterpriseLibrary\.Logging\.Configuration\.EmailMessage\.\<init\>(/\d+)?'
           arg_index: 0
@@ -6403,8 +6401,6 @@ families:
           arg_index: 0
         - pattern: '^System\.Data\.SqlClient\.SqlCommand\.\<init\>(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Data\.Common\.DbCommand\.\<init\>(/\d+)?'
-          arg_index: 0
         - pattern: '^System\.Web\.UI\.WebControls\.SqlDataSource\.set_(SelectCommand|DeleteCommand|InsertCommand|UpdateCommand)(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Data\.Common\.DbBatchCommand\.set_CommandText(/\d+)?'
@@ -6427,15 +6423,11 @@ families:
           arg_index: 0
         - pattern: '^Microsoft\.EntityFrameworkCore\.CosmosQueryableExtensions\.FromSqlRaw(/\d+)?'
           arg_index: 0
-        - pattern: '^Microsoft\.EntityFrameworkCore\.RelationalDatabaseFacadeExtensions\.(ExecuteSqlCommandAsync|ExecuteSqlCommand)(/\d+)?'
-          arg_index: 0
         - pattern: '^Microsoft\.EntityFrameworkCore\.RelationalDatabaseFacadeExtensions\.(ExecuteSqlRawAsync|ExecuteSqlRaw)(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.EntityFrameworkCore\.RelationalQueryableExtensions\.(FromSqlRaw|FromSql)(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.SharePoint\.Search\.Query\.FullTextSqlQuery\.set_QueryText(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Data\.Linq\.Table\.Execute(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Linq\.Expressions\.Expression\.Call(/\d+)?'
           arg_index: 1
@@ -6541,8 +6533,6 @@ families:
           arg_index: [0, 1]
         - pattern: '^NHibernate\.ISession\.(CreateQuery|CreateSQLQuery|Delete|Find|Enumerable)(/\d+)?'
           arg_index: 0
-        - pattern: '^NHibernate\.IQuery\.(\<init\>|set_Query)(/\d+)?'
-          arg_index: 0
         - pattern: '^NHibernate\.IMultiQuery\.(Add|AddNamedQuery)(/\d+)?'
           arg_index: 0
         - pattern: '^MySql\.Data\.MySqlClient\.MySqlHelper\.(Execute(DataRow|Dataset|NonQuery|Reader|Scalar)Async|Execute(DataRow|Dataset|NonQuery|Reader|Scalar))(/\d+)?'
@@ -6574,8 +6564,6 @@ families:
         - pattern: '^(Amazon\.DynamoDBv2\.Model\.BatchStatementRequest|Amazon\.DynamoDBv2\.Model\.ExecuteStatementRequest|Amazon\.DynamoDBv2\.Model\.ParameterizedStatement)\.set_Statement(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Data\.SQLite\.SQLiteCommand\.Execute(/\d+)?'
-          arg_index: 0
-        - pattern: '^NHibernate\.Impl\.QueryImpl\.(\<init\>|set_Query)(/\d+)?'
           arg_index: 0
         - pattern: '^Microsoft\.ApplicationBlocks\.Data\.SqlHelper\.UpdateDataset(/\d+)?'
           arg_index: 0
@@ -6798,7 +6786,7 @@ families:
           arg_index: 0
         - pattern: '^System\.Net\.WebClient\.(Upload(Data|File|Values|String)TaskAsync|OpenWriteTaskAsync|OpenWriteTask)(/\d+)?'
           arg_index: 1
-        - pattern: '^System\.Net\.WebRequest\.(set_RequestUri|set_Method|Create(.*))(/\d+)?'
+        - pattern: '^(System\.Net\.WebRequest|System\.MarshalByRefObject)\.(set_RequestUri|set_Method|Create(.*))(/\d+)?'
           arg_index: 0
         - pattern: '^System\.IO\.Ports\.SerialPort\.Open(/\d+)?'
           arg_index: -2
@@ -6886,7 +6874,6 @@ families:
         - '^System\.Environment\.GetCommandLineArgs(/\d+)?'
         - '^System\.Console\.(ReadLines|Read)(/\d+)?'
         - '^System\.Console\.(ReadLine|Read)(/\d+)?'
-        - '^(Microsoft\.VisualBasic\.ApplicationServices\.ApplicationBase|Microsoft\.VisualBasic\.ApplicationServices\.StartupEventArgs)\.get_CommandLineArgs(/\d+)?'
         - '^Microsoft\.VisualBasic\.Interaction\.Command(/\d+)?'
       go:
         - '^bufio\.Scanner\.Text(/\d+)?'
@@ -6976,7 +6963,7 @@ families:
         - '^(System\.IO\.BinaryReader|System\.IO\.Stream|System\.IO\.TextReader)\.((Read|BeginRead|ReadBlock|ReadExactly)Async|(Read|BeginRead|ReadBlock|ReadExactly))(/\d+)?'
         - '^System\.IO\.BinaryReader\.Read(Bytes|Chars)(/\d+)?'
         - '^System\.IO\.BinaryReader\.Read(7BitEncodedInt(64)?|Decimal|Double|(U)?Int(16|32|64)|Single)(/\d+)?'
-        - '^System\.IO\.BinaryReader\.(ReadByte|ToString|ReadChar|ReadSByte|ReadString)(/\d+)?'
+        - '^(System\.IO\.BinaryReader|System\.Object)\.(ReadByte|ToString|ReadChar|ReadSByte|ReadString)(/\d+)?'
         - '^System\.IO\.Stream\.ReadByte(/\d+)?'
         - '^(System\.IO\.BinaryReader|System\.IO\.TextReader)\.(ReadLineAsync|ReadLine)(/\d+)?'
         - '^System\.IO\.TextReader\.((Read|ReadToEnd)Async|(Read|ReadToEnd))(/\d+)?'
@@ -7105,7 +7092,6 @@ families:
         - '^Amazon\.Lambda\.APIGatewayEvents\.APIGatewayCustomAuthorizerRequest\.get_Path(/\d+)?'
         - '^SubSonic\.Sugar\.Web\.Scrape(Images|Links)(/\d+)?'
         - '^SubSonic\.Sugar\.Web\.ReadWebPage(/\d+)?'
-        - '^Microsoft\.AspNet\.SignalR\.Client\.Http\.IResponse\.GetResponseStream(/\d+)?'
         - '^Microsoft\.AspNet\.SignalR\.Owin\.ServerRequest\.get_(Cookies|Form|Headers|RequestHeaders|Items|QueryString|Url)(/\d+)?'
         - '^Microsoft\.AspNet\.SignalR\.IRequest\.get_(Cookies|Headers|QueryString|Url|Form)(/\d+)?'
         - '^Microsoft\.AspNet\.SignalR\.Hubs\.HubCallerContext\.get_(Headers|QueryString|RequestCookies)(/\d+)?'
@@ -8271,7 +8257,7 @@ families:
           arg_index: 0
         - pattern: '^System\.Web\.UI\.WebControls\.DataControlField\.set_(FooterText|HeaderText)(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Web\.UI\.WebControls\.CreateUserWizard\.set_(AnswerLabelText|CancelButtonText|CompleteSuccessText|ConfirmPasswordCompareErrorMessage|ConfirmPasswordLabelText|ContinueButtonText|CreateUserButtonText|DuplicateEmailErrorMessage|DuplicateUserNameErrorMessage|EditProfileText|EmailLabelText|EmailRegularExpressionErrorMessage|FinishCompleteButtonText|FinishPreviousButtonText|HeaderText|HelpPageText|InstructionText|InvalidAnswerErrorMessage|InvalidEmailErrorMessage|InvalidPasswordErrorMessage|InvalidQuestionErrorMessage|PasswordHintText|PasswordLabelText|PasswordRegularExpressionErrorMessage|QuestionLabelText|SkipLinkText|StartNextButtonText|StepNextButtonText|StepPreviousButtonText|UnknownErrorMessage|UserNameLabelText)(/\d+)?'
+        - pattern: '^(System\.Web\.UI\.WebControls\.CreateUserWizard|System\.Web\.UI\.WebControls\.Wizard)\.set_(AnswerLabelText|CancelButtonText|CompleteSuccessText|ConfirmPasswordCompareErrorMessage|ConfirmPasswordLabelText|ContinueButtonText|CreateUserButtonText|DuplicateEmailErrorMessage|DuplicateUserNameErrorMessage|EditProfileText|EmailLabelText|EmailRegularExpressionErrorMessage|FinishCompleteButtonText|FinishPreviousButtonText|HeaderText|HelpPageText|InstructionText|InvalidAnswerErrorMessage|InvalidEmailErrorMessage|InvalidPasswordErrorMessage|InvalidQuestionErrorMessage|PasswordHintText|PasswordLabelText|PasswordRegularExpressionErrorMessage|QuestionLabelText|SkipLinkText|StartNextButtonText|StepNextButtonText|StepPreviousButtonText|UnknownErrorMessage|UserNameLabelText)(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Web\.UI\.WebControls\.CheckBox\.set_Text(/\d+)?'
           arg_index: 0
@@ -8295,13 +8281,11 @@ families:
           arg_index: 0
         - pattern: '^System\.Web\.UI\.WebControls\.AdRotator\.set_Target(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Web\.UI\.HtmlControls\.HtmlControl\.(set_DefaultButton|set_Name|set_Text|set_Title|set_ValidationGroup|set_Value)(/\d+)?'
-          arg_index: 0
         - pattern: '^System\.Web\.UI\.WebControls\.BaseDataList\.set_DataSource(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Web\.UI\.WebControls\.ListItemCollection\.Add(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Web\.UI\.WebControls\.WebControl\.(set_AdvertisementFile|set_AlternateTextField|set_ApplicationName|set_AssociatedControlID|set_AssociatedHeaderCellID|set_AuthorizationFilter|set_BodyFileName|set_BrowseHelpText|set_CacheKeyDependency|set_CancelDestinationPageUrl|set_CancelImageUrl|set_CC|set_CommandArgument|set_CommandName|set_ConfigureConnectionTitle|set_ConnectionString|set_ConnectToConsumerInstructionText|set_ConnectToConsumerText|set_ConnectToConsumerTitle|set_ConnectToProviderInstructionText|set_ConnectToProviderText|set_ConnectToProviderTitle|set_ConsumerConnectionPointID|set_ConsumerFieldNames|set_ConsumerID|set_ConsumersInstructionText|set_ConsumersTitle|set_ContentPlaceHolderID|set_ContinueDestinationPageUrl|set_ControlID|set_CookieName|set_Coordinates|set_Data|set_DataAlternateTextField|set_DataAlternateTextFormatString|set_DataField|set_DataFile|set_DataImageUrlField|set_DataImageUrlFormatString|set_DataKeyField|set_DataNavigateUrlField|set_DataNavigateUrlFields|set_DataObjectTypeName|set_DefaultButton|set_DefaultValue|set_DeleteCommand|set_DeleteImageUrl|set_DeleteMethod|set_DeleteText|set_DescriptionValue|set_DestinationPageUrl|set_DisplayNameValue|set_DocumentSource|set_EditImageUrl|set_EmptyZoneText|set_EnabledField|set_ErrorText|set_EventArgument|set_ExistingConnectionErrorMessage|set_FieldName|set_FilterExpression|set_FinishDestinationPageUrl|set_FormField|set_From|set_GetFromText|set_GetText|set_ID|set_ImageToolTipField|set_ImageUrlField|set_ImportedPartLabelText|set_ImportErrorMessage|set_InsertCommand|set_InsertImageUrl|set_InsertMethod|set_InsertText|set_InstructionTitle|set_Item|set_KeywordFilter|set_LogoutPageUrl|set_MaximumRowsParameterName|set_MembershipProvider|set_MenuLabelText|set_MethodName|set_Name|set_Names|set_NavigateUrlField|set_NewConnectionErrorMessage|set_NewImageUrl|set_NewText|set_NoExistingConnectionInstructionText|set_NoExistingConnectionTitle|set_NullImageUrl|set_OldConsumerNames|set_OldProviderNames|set_OldValuesParameterFormatString|set_PartImportErrorLabelText|set_Path|set_PathToMatch|set_PopOutImageUrl|set_PopOutImageUrlField|set_PostBackValue|set_PrevPageText|set_PropertyName|set_ProviderConnectionPointID|set_ProviderFieldNames|set_ProviderID|set_ProviderName|set_ProvidersInstructionText|set_ProvidersTitle|set_QueryStringField|set_Roles|set_RowHeaderColumn|set_ScrollerClass|set_SelectableField|set_SelectCommand|set_SelectCountMethod|set_SelectedCatalogPartID|set_SelectImageUrl|set_SelectMethod|set_SelectTargetZoneText|set_SelectText|set_SendText|set_SendToText|set_SeparatorImageUrlField|set_SessionField|set_SiteMapProvider|set_SkinID|set_SortExpression|set_SortExpressionInternal|set_SortParameterName|set_SqlCacheDependency|set_StartingNodeUrl|set_StartRowIndexParameterName|set_StringProperty|set_Subject|set_SuccessPageUrl|set_TargetField|set_TextField|set_TitleIconImageUrl|set_ToolTipField|set_Transform|set_TransformFile|set_TransformSource|set_TypeName|set_UpdateCommand|set_UpdateImageUrl|set_UpdateMethod|set_UploadHelpText|set_UsernameToMatch|set_ValueField|set_WebPartsListUserControlPath|set_XPath|set_ZoneID)(/\d+)?'
+        - pattern: '^(System\.Web\.UI\.WebControls\.WebControl|System\.Web\.UI\.Control)\.(set_AdvertisementFile|set_AlternateTextField|set_ApplicationName|set_AssociatedControlID|set_AssociatedHeaderCellID|set_AuthorizationFilter|set_BodyFileName|set_BrowseHelpText|set_CacheKeyDependency|set_CancelDestinationPageUrl|set_CancelImageUrl|set_CC|set_CommandArgument|set_CommandName|set_ConfigureConnectionTitle|set_ConnectionString|set_ConnectToConsumerInstructionText|set_ConnectToConsumerText|set_ConnectToConsumerTitle|set_ConnectToProviderInstructionText|set_ConnectToProviderText|set_ConnectToProviderTitle|set_ConsumerConnectionPointID|set_ConsumerFieldNames|set_ConsumerID|set_ConsumersInstructionText|set_ConsumersTitle|set_ContentPlaceHolderID|set_ContinueDestinationPageUrl|set_ControlID|set_CookieName|set_Coordinates|set_Data|set_DataAlternateTextField|set_DataAlternateTextFormatString|set_DataField|set_DataFile|set_DataImageUrlField|set_DataImageUrlFormatString|set_DataKeyField|set_DataNavigateUrlField|set_DataNavigateUrlFields|set_DataObjectTypeName|set_DefaultButton|set_DefaultValue|set_DeleteCommand|set_DeleteImageUrl|set_DeleteMethod|set_DeleteText|set_DescriptionValue|set_DestinationPageUrl|set_DisplayNameValue|set_DocumentSource|set_EditImageUrl|set_EmptyZoneText|set_EnabledField|set_ErrorText|set_EventArgument|set_ExistingConnectionErrorMessage|set_FieldName|set_FilterExpression|set_FinishDestinationPageUrl|set_FormField|set_From|set_GetFromText|set_GetText|set_ID|set_ImageToolTipField|set_ImageUrlField|set_ImportedPartLabelText|set_ImportErrorMessage|set_InsertCommand|set_InsertImageUrl|set_InsertMethod|set_InsertText|set_InstructionTitle|set_Item|set_KeywordFilter|set_LogoutPageUrl|set_MaximumRowsParameterName|set_MembershipProvider|set_MenuLabelText|set_MethodName|set_Name|set_Names|set_NavigateUrlField|set_NewConnectionErrorMessage|set_NewImageUrl|set_NewText|set_NoExistingConnectionInstructionText|set_NoExistingConnectionTitle|set_NullImageUrl|set_OldConsumerNames|set_OldProviderNames|set_OldValuesParameterFormatString|set_PartImportErrorLabelText|set_Path|set_PathToMatch|set_PopOutImageUrl|set_PopOutImageUrlField|set_PostBackValue|set_PrevPageText|set_PropertyName|set_ProviderConnectionPointID|set_ProviderFieldNames|set_ProviderID|set_ProviderName|set_ProvidersInstructionText|set_ProvidersTitle|set_QueryStringField|set_Roles|set_RowHeaderColumn|set_ScrollerClass|set_SelectableField|set_SelectCommand|set_SelectCountMethod|set_SelectedCatalogPartID|set_SelectImageUrl|set_SelectMethod|set_SelectTargetZoneText|set_SelectText|set_SendText|set_SendToText|set_SeparatorImageUrlField|set_SessionField|set_SiteMapProvider|set_SkinID|set_SortExpression|set_SortExpressionInternal|set_SortParameterName|set_SqlCacheDependency|set_StartingNodeUrl|set_StartRowIndexParameterName|set_StringProperty|set_Subject|set_SuccessPageUrl|set_TargetField|set_TextField|set_TitleIconImageUrl|set_ToolTipField|set_Transform|set_TransformFile|set_TransformSource|set_TypeName|set_UpdateCommand|set_UpdateImageUrl|set_UpdateMethod|set_UploadHelpText|set_UsernameToMatch|set_ValueField|set_WebPartsListUserControlPath|set_XPath|set_ZoneID)(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Web\.UI\.WebControls\.HiddenField\.set_Value(/\d+)?'
           arg_index: 0
@@ -8316,8 +8300,6 @@ families:
         - pattern: '^System\.Web\.UI\.WebControls\.WebParts\.ErrorWebPart\.set_ErrorMessage(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Web\.UI\.HtmlControls\.HtmlAnchor\.set_Title(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Web\.UI\.HtmlControls\.HtmlControl\.set_Target(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Web\.UI\.HtmlControls\.HtmlSelect\.set_DataSource(/\d+)?'
           arg_index: 0
@@ -8571,15 +8553,13 @@ families:
           arg_index: 0
         - pattern: '^System\.Xml\.XPath\.XPathDocument\.\<init\>(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Web\.UI\.WebControls\.WebParts\.ImportCatalogPart\.\<init\>(/\d+)?'
-          arg_index: 0
         - pattern: '^System\.Xml\.XmlReaderSettings\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Xml\.Xml(Validating|Text)Reader\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Xml\.XmlReader\.Create(/\d+)?'
           arg_index: [0, 1]
-        - pattern: '^System\.Xml\.XmlTextReader\.Read.*(/\d+)?'
+        - pattern: '^(System\.Xml\.XmlTextReader|System\.Xml\.XmlReader)\.Read.*(/\d+)?'
           arg_index: -2
         - pattern: '^System\.Web\.UI\.WebControls\.AdRotator\.set_AdvertisementFile(/\d+)?'
           arg_index: 0
