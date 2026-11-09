@@ -499,6 +499,127 @@ C# 的自然形状——`System.Data.SqlClient.SqlCommand.set_CommandText/1`—�
 - **`$` 后缀规则已经在那儿，而 C# 不需要它。** C# 没有模块类等价物，所以不
   需要新的后缀规则。这是一个"**没有**改动"的发现。
 
+### 4.7 线格式不是 IR 契约——而且它没有版本
+
+**sidecar 说 JSON；IR 不说。** .NET 前端跑在另一个进程里，所以 TAC 必须跨一次进程边界。
+边界格式是长度前缀的 JSON，形状与 TAC 一一对应（`kind`、`dest`、`lhs1`、`lhs2`、`binop`、
+`calleeSig`、`line`、`column`……），Java 侧再把它映射回 IR 类（`CSharpTacFrontend.toInstruction`
+/ `toVar` / `toType`）。因此下游的一切——CFG、DFA 引擎、磁盘缓存——看到的都是与 Java /
+Kotlin 前端产出的同一个 `TacProgram`，磁盘契约也没有变：`IrSerializer` 照样用 Java 序列化
+写 IR，与前端是谁无关。
+
+**JSON 是瞬态的，而且并不大。** 在一个 2.3 KB 的 C# 文件上实测（8 个函数、76 条指令），
+同一份 TAC 的三种度量：
+
+| 表示 | 字节 | 说明 |
+| --- | --- | --- |
+| C# 源文件 | 2,330 | |
+| sidecar 的线格式 JSON | 19,400 | 在管道里流过，从不落盘 |
+| Java 序列化的 IR（`.tac`） | 12,788 | 缓存契约真正存的东西 |
+| 同一个 `.tac`，gzip 后 | 3,265 | |
+
+线格式 JSON 大约是二进制形式的 1.5 倍，它只存在于两个进程之间，而它占用的峰值内存由
+**单个最大文件的帧**决定，不由项目规模决定。
+
+**真正缺的是版本握手。** IR 自己的存储契约是有的：`IrSerializer` 写魔数和版本号，不匹配
+会被响亮地拒绝（`SqliteTacStore` 抛出一个点名版本的 `IOException`）。而线格式协议**没有**——
+请求里没有版本字段，响应里也没有。于是比前端新的 sidecar 不会失败，它会被**解释**：
+
+- 本构建不认识的指令种类，变成 `HAVOC`——恰好是"分析不知道"的那一个 opcode。
+- 本构建不认识的运算符，变成 `ADD`。
+
+两种降级都是静默的，而且都在最要命的方向上有损：引擎只在 `CALL`（以及 `UNINTERPRETED`）
+指令上查 sink 目录，所以一条被降级成 `HAVOC` 的调用**永远不会**与任何 sink family 匹配。
+finding 消失了，而扫描照常报成功。两种降级都不产生 `FunctionProblem`，所以这份不完整
+同样不可见。
+
+三条改动可以补上这个缺口，而且都很便宜：
+
+1. 每个响应都带上协议版本（以及 IR 自己的版本），并像缓存拒绝不兼容 IR 那样，拒绝不兼容
+   的 sidecar。
+2. 保留降级，但让降级**出声**：未知的种类或运算符必须产生一条 `FunctionProblem`，写明
+   是什么没被理解、在哪里。
+3. 加一条往返测试：sidecar 发一帧，Java 侧解析，断言每一条指令、每一个字段都还在。
+
+第三条最要紧，因为前两条只有在两半**真的**保持同步时才有用——而"保持同步"这件事只有测试
+能保证。
+
+### 4.8 前端只送了一份文件清单，而一次 C# 编译远不止一份文件清单
+
+Roslyn 编译的是**一个工程**，而一个 Roslyn `CSharpCompilation` 是五个输入之和：源文件、
+引用程序集、预处理器符号、语言版本、可空上下文。前端只提供了其中一个，另外四个写死
+（[MEASURED]）：
+
+| 一次 C# 编译需要 | 前端今天送什么 | |
+| --- | --- | --- |
+| 编译里的全部源文件 | `ensureProject` 遍历每个模块的源根，收下其下的每一个 `.cs`（`CSharpTacFrontend.java:263-284`） | 有 |
+| 引用程序集 | `references` 来自 `ctx.classpath()`（`CSharpTacFrontend.java:310-317`）——而那个 classpath 是 JVM 的：`ScanRunner.java:1881` 把 `config.classpathJars` 交给 `FrontendRegistry` | 错 |
+| 预处理器符号 | 什么都没有——请求里根本没有 `preprocessorSymbols` 字段（`CSharpTacFrontend.java:319-327`） | 缺 |
+| 语言版本 | 字面量 `"latest"`（`CSharpTacFrontend.java:325`） | 错 |
+| 可空上下文 | 字面量 `"disable"`（`CSharpTacFrontend.java:326`） | 错 |
+
+**这几个缺口并不等价，其中恰好有一个是静默的。** 直接驱动 sidecar 实测：
+
+| 缺口 | 实际发生什么 |
+| --- | --- |
+| 引用程序集 | **响亮。** 来自未被引用程序集的类型绑不上，Roslyn 报 `CS0234`，前端把每一条编译错误变成代码为 `PARSE_PROBLEM` 的 `FunctionProblem`（`CSharpTacFrontend.java:355-385`）。扫描会明说这个工程编译不过。 |
+| 预处理器符号 | **静默。** 函数体落在 `#if DEBUG` 里面的函数**根本不在 TAC 里**，而 Roslyn 报**零**条诊断：未激活的 `#if` 区域不是错误。 |
+| 语言版本 | **过度近似。** 编译按最新语言版本进行，于是工程自己会拒绝的代码也被编译了。 |
+| 可空上下文 | 只影响可空性分析；它不改变哪些函数存在。 |
+
+第二行是唯一会真正少掉 finding 的那一行。协议本身已经带着这个字段——`Protocol.cs:286-289`
+声明了 `preprocessorSymbols`，`ProjectSession.cs:60` 把它喂给 `CSharpParseOptions`——所以
+sidecar 已经就位，只是 Java 侧没发。实测：一个文件里一个函数在 `#if DEBUG` 内、一个在外面：
+
+| `preprocessorSymbols` | TAC 里的函数数 | 诊断数 |
+| --- | --- | --- |
+| `[]`（前端今天送的） | 1 | 0 |
+| `["DEBUG"]` | 2 | 0 |
+
+**缺失的引用程序集没有看上去那么严重。** sidecar 会把运行时框架自带的程序集当作引用加载
+（`ProjectSession.cs:127-145`，`TRUSTED_PLATFORM_ASSEMBLIES`），所以基础类库永远都在。真正
+缺的是**框架之外**的东西：解决方案里的其他工程，以及 NuGet 包。
+
+**语言版本只认一种拼写。** `ResolveLanguageVersion`（`ProjectSession.cs:178-197`）把请求
+里的字符串当作 Roslyn 枚举成员名来解析，解析失败就回退到 `Latest`。实测：
+
+| 送入的 `langVersion` | 编译实际按什么版本进行 |
+| --- | --- |
+| `CSharp8`、`CSharp9`、`CSharp10` | 就是那个版本——C# 12 的特性被拒绝 |
+| `"8.0"`、`"9"`、`"10"`、`"12"` | 最新版本——**被静默忽略** |
+| `"banana"` | 最新版本——**被静默忽略** |
+
+所以前端写死的 `"latest"` 目前是惰性的，而想靠送 `"10.0"` 把它变准，同样是惰性的。拼写
+必须是枚举成员名，或者 sidecar 需要一张版本号到成员名的映射表。
+
+**模块依赖图是空的，但模块归属不是。** `CompileContext.Module` 带着一个 `dependsOn` 字段
+（`CompileContext.java:107`），而 `FrontendRegistry.newContext` 给每个模块都填 `List.of()`
+（`FrontendRegistry.java:146`、`FrontendRegistry.java:150`）。模块的**身份**仍然有效——
+`DefaultCompileContext.moduleOf` 取包含该文件的最深源根（`DefaultCompileContext.java:101-119`）——
+所以 finding 会被归到正确的模块上。缺的是**边**：前端无从知道工程 A 引用了工程 B。
+
+### 4.9 编译捕获必须供出什么
+
+上面那五个输入不是前端该自己编出来的。它们是构建系统早就定好的东西，而编译捕获正是这个
+决定可见的地方。在捕获仓里，C# 的命令解析器只认出了五个中的两个：
+
+| 编译输入 | 捕获仓的状态 |
+| --- | --- |
+| 引用程序集 | **已捕获。** `/reference:` 与 `/r:` 被解析进命令的 classpath（`dotnet_backend.cpp:605-616`），适配器再把它们以 `--sys_include` 发出（`csharp_adapter.cpp:65-72`）。 |
+| 预处理器符号 | **有词汇，没有解析。** 选项类存在（`ccap_compdb_map.h:387`），适配器的输出词汇里也有一个 `-D` 槽位（`csharp_adapter.cpp:26`），但命令解析器把 `/define:` 丢在了地上：解析循环对任何既不是引用也不是 analyzer 的参数一律 `continue`（`dotnet_backend.cpp:620-622`）。 |
+| 语言版本 | **有词汇，没有解析。** 选项类存在（`ccap_compdb_map.h:382`）；命令行上带着 `/langversion:`；没有东西解析它。 |
+| 可空上下文 | **有词汇，没有解析。** 选项类存在（`ccap_compdb_map.h:381`）；没有东西解析它。 |
+| 工程引用图 | **完全没捕获。** 没有任何地方收集解决方案里各工程之间的 `<ProjectReference>` 边。 |
+
+这张表就是这项工作的形状：数据在命令行上，选项词汇已经给它起了名字，缺的是解析器里的那个
+分支。五个里的三个，是往 `dotnet_backend.cpp` 的一个循环里加几行；第四个（工程图）是新增一项
+收集；第五个（前端侧）是把一个捕获到的输入接到 sidecar 请求字段上的接线。
+
+**而接线有一个现成的形状可以照抄。** C# 请求已经为这五个输入各留了一个字段
+（`Protocol.cs:284-301`），所以前端的活是从捕获里**填**它们，而不是写死。守住两半一致
+的交叉校验，Maven 那条路已经有了：把捕获到的编译与前端实际发起的编译作比较，把差异报出来。
+一个捕获看到了、而前端没有送出的引用程序集，正是那种必须响亮的差异。
+
 ---
 
 ## 5. .NET sink 目录：真正的工作项

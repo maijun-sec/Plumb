@@ -76,6 +76,20 @@ public enum SourceLanguage {
   CSHARP,
 
   /**
+   * Go source.
+   *
+   * <p>Go is statically typed, so {@link #supportsFullDataflow()} answers {@code true}. It does
+   * <b>not</b> have a compile-time non-null type system: Go's nil is an ordinary value of every
+   * pointer, map, slice, function, channel and interface type, and nothing at the declaration site
+   * promises a non-nil value. So {@link #hasNonNullTypeSystem()} answers {@code false}, for the
+   * same reason it does for C#.
+   *
+   * <p>The Go frontend reads the source through the Go toolchain's own type checker, so the types
+   * it reports are the ones the Go compiler itself sees.
+   */
+  GO,
+
+  /**
    * The language could not be determined -- typically code loaded from a third-party {@code .jar}
    * through the bytecode frontend.
    */
@@ -105,7 +119,7 @@ public enum SourceLanguage {
 
   /** Whether this language is statically typed enough for reliable dataflow analysis. */
   public boolean supportsFullDataflow() {
-    return this == JAVA || this == KOTLIN || this == SCALA || this == CSHARP;
+    return this == JAVA || this == KOTLIN || this == SCALA || this == CSHARP || this == GO;
   }
 
   /**
@@ -137,6 +151,9 @@ public enum SourceLanguage {
       case "C#":
       case "DOTNET-CSHARP":
         return CSHARP;
+      case "GO":
+      case "GOLANG":
+        return GO;
       default:
         return UNKNOWN;
     }

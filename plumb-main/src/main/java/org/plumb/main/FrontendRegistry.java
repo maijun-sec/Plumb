@@ -211,6 +211,10 @@ final class FrontendRegistry implements AutoCloseable {
       case "scala":
       case "sc":
         return SourceLanguage.SCALA;
+      case "cs":
+        return SourceLanguage.CSHARP;
+      case "go":
+        return SourceLanguage.GO;
       default:
         return SourceLanguage.UNKNOWN;
     }
@@ -223,7 +227,7 @@ final class FrontendRegistry implements AutoCloseable {
    * dispatcher ever sees it.
    */
   static Set<String> knownExtensions() {
-    return Set.of("java", "kt", "kts", "scala", "sc");
+    return Set.of("java", "kt", "kts", "scala", "sc", "cs", "go");
   }
 
   /**
@@ -262,6 +266,22 @@ final class FrontendRegistry implements AutoCloseable {
       case SCALA:
         return built.computeIfAbsent(
             SourceLanguage.SCALA, l -> new org.plumb.tac.frontend.scala.ScalaTacFrontend());
+      case CSHARP:
+        // The C# frontend drives a .NET sidecar, so constructing it is not
+        // free the way a pure-Java frontend is: it looks for the sidecar
+        // executable. The frontend itself reports a missing toolchain as an
+        // explicit problem, so constructing it and finding no toolchain is a
+        // LOUD failure rather than a silent one.
+        return built.computeIfAbsent(
+            SourceLanguage.CSHARP, l -> new org.plumb.tac.frontend.csharp.CSharpTacFrontend());
+      case GO:
+        // The Go frontend drives a Go sidecar, so constructing it is not free
+        // the way a pure-Java frontend is: it looks for the sidecar executable.
+        // The frontend itself reports a missing toolchain as an explicit
+        // problem, so constructing it and finding no toolchain is a LOUD
+        // failure rather than a silent one.
+        return built.computeIfAbsent(
+            SourceLanguage.GO, l -> new org.plumb.tac.frontend.go.GoTacFrontend());
       default:
         return null;
     }

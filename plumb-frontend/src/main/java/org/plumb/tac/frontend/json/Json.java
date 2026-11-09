@@ -19,7 +19,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package org.plumb.tac.frontend.csharp;
+package org.plumb.tac.frontend.json;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -27,17 +27,24 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A minimal JSON reader and writer for the C# sidecar protocol.
+ * A minimal JSON reader and writer for the sidecar protocols.
  *
  * <h2>Why not a JSON library</h2>
  *
- * <p>The protocol is a small, fixed schema spoken between two halves that are built independently:
- * a .NET sidecar and a Java frontend. Pulling a JSON library into {@code plumb-frontend} for it
- * would add a dependency to a module that currently has none, and it would buy nothing: the
- * schema is a handful of flat objects, and the mapping into the IR is explicit anyway.
+ * <p>The protocols are small, fixed schemas spoken between two halves that are built
+ * independently: a native sidecar and a Java frontend. Pulling a JSON library into {@code
+ * plumb-frontend} for them would add a dependency to a module that currently has none, and it would
+ * buy nothing: the schema is a handful of flat objects, and the mapping into the IR is explicit
+ * anyway.
  *
  * <p>Writing it out also means the wire format is visible in one file, on both sides, rather than
  * being split between a schema and an annotation processor.
+ *
+ * <h2>Who uses it</h2>
+ *
+ * <p>Every sidecar speaks the same framing and the same object shape, so the reader and the writer
+ * are shared: the C# sidecar and the Go sidecar both use this one. The languages differ, the
+ * protocol does not.
  *
  * <h2>What is supported</h2>
  *

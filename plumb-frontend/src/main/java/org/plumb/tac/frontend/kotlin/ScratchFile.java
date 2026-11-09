@@ -125,15 +125,34 @@ final class ScratchFile {
         // The per-file-name directory above it, if it is now empty.
         Path parent = directory.getParent();
         if (parent != null) {
-          try (java.util.stream.Stream<java.nio.file.Path> children = Files.list(parent)) {
-            if (children.findAny().isEmpty()) {
-              Files.deleteIfExists(parent);
-            }
+          deleteIfEmpty(parent);
+          // And the scratch root above that. It is the one directory the
+          // frontend leaves in the SOURCE TREE, so a scan that writes into
+          // the project it analyses must not leave it behind when it is done.
+          Path scratchRoot = parent.getParent();
+          if (scratchRoot != null) {
+            deleteIfEmpty(scratchRoot);
           }
         }
       }
     } catch (IOException ex) {
       // Best effort.
+    }
+  }
+
+  /**
+   * Removes a directory when it is empty.
+   *
+   * @param directory the directory
+   */
+  private static void deleteIfEmpty(Path directory) {
+    try (java.util.stream.Stream<java.nio.file.Path> children = Files.list(directory)) {
+      if (children.findAny().isEmpty()) {
+        Files.deleteIfExists(directory);
+      }
+    } catch (IOException ex) {
+      // Best effort: a directory that is not empty, or that cannot be read,
+      // stays. It is scratch space, not a result.
     }
   }
 

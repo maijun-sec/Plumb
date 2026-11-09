@@ -110,30 +110,81 @@ public final class CaptureTacBuilder {
       JavaSourceParser parser = buildParser(sourceRoots, classpath, languageLevel);
       TacFrontend javaFrontend = new JavaTacFrontend(parser);
 
-      for (CaptureEntry entry : captures) {
-        if (entry == null) {
-          continue;
-        }
-        for (Path file : CaptureToTacBridge.existingSourceFiles(entry)) {
-          String key = file.toAbsolutePath().normalize().toString();
-          if (programs.containsKey(key)) {
-            // Two captures of the same file are the same file. The second one
-            // would produce the same program, and storing it twice would make
-            // the store's size a lie.
+      // The Kotlin frontend owns an Analysis API session, and a session is the
+      // expensive part: it mounts the JDK and the libraries, and that takes
+      // minutes. One session per FILE would make a project cost minutes per
+      // source file, so one frontend is built for the whole run and shared --
+      // the session is per-run state, not per-file state.
+      KotlinFrontend kotlin = new KotlinFrontend(context);
+      try {
+        for (CaptureEntry entry : captures) {
+          if (entry == null) {
             continue;
           }
-          try {
-            TacProgram program = translate(file, javaFrontend, context);
-            if (program != null) {
-              programs.put(key, program);
+          for (Path file : CaptureToTacBridge.existingSourceFiles(entry)) {
+            String key = file.toAbsolutePath().normalize().toString();
+            if (programs.containsKey(key)) {
+              // Two captures of the same file are the same file. The second one
+              // would produce the same program, and storing it twice would make
+              // the store's size a lie.
+              continue;
             }
-          } catch (RuntimeException e) {
-            problems.add(file + ": " + e.getMessage());
+            try {
+              TacProgram program = translate(file, javaFrontend, kotlin, context);
+              if (program != null) {
+                programs.put(key, program);
+              }
+            } catch (RuntimeException e) {
+              problems.add(file + ": " + e.getMessage());
+            }
           }
         }
+      } finally {
+        // The session's non-daemon threads keep the JVM alive, so the frontend
+        // has to be closed or the process never exits.
+        kotlin.close();
       }
     }
     return new BuildResult(programs, problems);
+  }
+
+  /**
+   * The Kotlin frontend of a run, built once.
+   *
+   * <p>It is created on the first Kotlin file and reused for the rest, because the Analysis API
+   * session it owns is per-run state.
+   */
+  private static final class KotlinFrontend {
+
+    /** The compile context the session is built over. */
+    private final CompileContext context;
+
+    /** The frontend, or {@code null} when no Kotlin file has been seen yet. */
+    private org.plumb.tac.frontend.kotlin.KotlinTacFrontend frontend;
+
+    KotlinFrontend(CompileContext context) {
+      this.context = context;
+    }
+
+    /**
+     * The frontend for a Kotlin file.
+     *
+     * @return the frontend, or {@code null} when the session could not be built
+     */
+    org.plumb.tac.frontend.kotlin.KotlinTacFrontend get() {
+      if (frontend == null) {
+        frontend = new org.plumb.tac.frontend.kotlin.KotlinTacFrontend(context);
+      }
+      return frontend;
+    }
+
+    /** Closes the frontend, if one was built. */
+    void close() {
+      if (frontend != null) {
+        frontend.close();
+        frontend = null;
+      }
+    }
   }
 
   /**
@@ -145,17 +196,19 @@ public final class CaptureTacBuilder {
    *
    * @param file the file
    * @param javaFrontend the Java frontend
+   * @param kotlin the run's Kotlin frontend
    * @param context the compile context
    * @return the program, or {@code null} when the frontend could not read the file
    */
-  private static TacProgram translate(Path file, TacFrontend javaFrontend, CompileContext context) {
+  private static TacProgram translate(
+      Path file, TacFrontend javaFrontend, KotlinFrontend kotlin, CompileContext context) {
     String source;
     try {
       source = java.nio.file.Files.readString(file, java.nio.charset.StandardCharsets.UTF_8);
     } catch (IOException e) {
       return null;
     }
-    TacFrontend frontend = frontendFor(file, javaFrontend, context);
+    TacFrontend frontend = frontendFor(file, javaFrontend, kotlin, context);
     if (frontend == null) {
       return null;
     }
@@ -180,17 +233,18 @@ public final class CaptureTacBuilder {
    *
    * @param file the file
    * @param javaFrontend the Java frontend
+   * @param kotlin the run's Kotlin frontend
    * @param context the compile context
    * @return the frontend, or {@code null} when the file's language has none
    */
   private static TacFrontend frontendFor(
-      Path file, TacFrontend javaFrontend, CompileContext context) {
+      Path file, TacFrontend javaFrontend, KotlinFrontend kotlin, CompileContext context) {
     SourceLanguage language = FrontendRegistry.languageOf(file);
     if (language == SourceLanguage.JAVA) {
       return javaFrontend;
     }
     return switch (language) {
-      case KOTLIN -> new org.plumb.tac.frontend.kotlin.KotlinTacFrontend(context);
+      case KOTLIN -> kotlin.get();
       case SCALA -> new org.plumb.tac.frontend.scala.ScalaTacFrontend();
       case CSHARP -> new org.plumb.tac.frontend.csharp.CSharpTacFrontend();
       default -> null;

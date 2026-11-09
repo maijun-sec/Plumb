@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -189,11 +190,102 @@ internal sealed class ProjectSession
         {
             return LanguageVersion.Default;
         }
-        if (Enum.TryParse<LanguageVersion>(requested, ignoreCase: true, out var parsed))
+        if (Enum.TryParse<LanguageVersion>(requested, ignoreCase: true, out var parsed)
+            && !LooksNumeric(requested))
         {
             return parsed;
         }
+        // A build writes the version as a NUMBER ("12.0"), not as the compiler's
+        // own spelling ("CSharp12"), so the number is what a captured request
+        // normally carries.
+        //
+        // It is mapped here rather than left to Enum.TryParse, because the enum's
+        // members are NAMED and SCALED: CSharp10 is the number 1000, not 10.
+        // So Enum.TryParse("10") does not fail -- it succeeds and produces the
+        // number 10, which is not a member at all. An undefined value makes the
+        // compiler run at the newest language version, so the symptom is silent:
+        // code the project itself would reject is compiled anyway, and nothing
+        // reports the difference.
+        var numeric = NumericLanguageVersion(requested);
+        if (numeric.HasValue)
+        {
+            return numeric.Value;
+        }
         return LanguageVersion.Latest;
+    }
+
+    /// <summary>
+    /// Whether a spelling is a number rather than a name.
+    /// </summary>
+    /// <param name="requested">the requested version</param>
+    /// <returns>true when the spelling starts with a digit</returns>
+    private static bool LooksNumeric(string requested)
+    {
+        var text = requested.Trim();
+        return text.Length > 0 && char.IsDigit(text[0]);
+    }
+
+    /// <summary>
+    /// The language version for a numeric spelling.
+    /// </summary>
+    /// <remarks>
+    /// The accepted spellings are "12", "12.0" and "12.0.1" -- the shapes a build
+    /// file writes the version in. Only the leading component is read, because
+    /// the language version is the major version; the rest is the framework and
+    /// the patch level. The one exception is 7.1, 7.2 and 7.3, which are
+    /// separate language versions.
+    /// </remarks>
+    /// <param name="requested">the requested version</param>
+    /// <returns>the version, or null when the spelling names no version</returns>
+    private static LanguageVersion? NumericLanguageVersion(string requested)
+    {
+        var text = requested.Trim();
+        var dot = text.IndexOf('.');
+        var majorText = dot < 0 ? text : text.Substring(0, dot);
+        if (!int.TryParse(majorText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var major))
+        {
+            return null;
+        }
+        if (dot < 0)
+        {
+            return major switch
+            {
+                1 => LanguageVersion.CSharp1,
+                2 => LanguageVersion.CSharp2,
+                3 => LanguageVersion.CSharp3,
+                4 => LanguageVersion.CSharp4,
+                5 => LanguageVersion.CSharp5,
+                6 => LanguageVersion.CSharp6,
+                7 => LanguageVersion.CSharp7,
+                8 => LanguageVersion.CSharp8,
+                9 => LanguageVersion.CSharp9,
+                10 => LanguageVersion.CSharp10,
+                11 => LanguageVersion.CSharp11,
+                12 => LanguageVersion.CSharp12,
+                _ => null,
+            };
+        }
+        var minorText = text.Substring(dot + 1);
+        var end = minorText.IndexOf('.');
+        if (end >= 0)
+        {
+            minorText = minorText.Substring(0, end);
+        }
+        if (!int.TryParse(minorText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var minor))
+        {
+            return null;
+        }
+        if (major != 7)
+        {
+            return null;
+        }
+        return minor switch
+        {
+            1 => LanguageVersion.CSharp7_1,
+            2 => LanguageVersion.CSharp7_2,
+            3 => LanguageVersion.CSharp7_3,
+            _ => null,
+        };
     }
 
     private static NullableContextOptions ResolveNullableOptions(string? requested)

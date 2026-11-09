@@ -76,6 +76,7 @@ public final class CaptureToTacBridge {
       case "kotlin", "kt" -> SourceLanguage.KOTLIN;
       case "scala", "scala3", "scala2" -> SourceLanguage.SCALA;
       case "csharp", "c#", "cs" -> SourceLanguage.CSHARP;
+      case "go", "golang" -> SourceLanguage.GO;
       default -> null;
     };
   }
@@ -104,6 +105,8 @@ public final class CaptureToTacBridge {
         seen.add(SourceLanguage.SCALA);
       } else if (name.endsWith(".cs")) {
         seen.add(SourceLanguage.CSHARP);
+      } else if (name.endsWith(".go")) {
+        seen.add(SourceLanguage.GO);
       }
     }
     // A capture that compiles two languages is not something the frontends can

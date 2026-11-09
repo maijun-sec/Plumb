@@ -169,6 +169,7 @@ public final class TacCommands {
    */
   private static int runBuild(List<String> args) {
     Path captureDir = null;
+    Path compdb = null;
     Path outputDir = null;
     for (int i = 0; i < args.size(); i++) {
       switch (args.get(i)) {
@@ -178,6 +179,13 @@ public final class TacCommands {
             return 2;
           }
           captureDir = Path.of(args.get(i));
+        }
+        case "--compdb" -> {
+          if (++i >= args.size()) {
+            System.err.println("--compdb needs a file");
+            return 2;
+          }
+          compdb = Path.of(args.get(i));
         }
         case "--output-dir" -> {
           if (++i >= args.size()) {
@@ -192,25 +200,57 @@ public final class TacCommands {
         }
       }
     }
-    if (captureDir == null) {
-      System.err.println("build needs --capture-dir");
+    if (captureDir == null && compdb == null) {
+      System.err.println("build needs --capture-dir or --compdb");
       return 2;
     }
     if (outputDir == null) {
       System.err.println("build needs --output-dir");
       return 2;
     }
-    List<CaptureEntry> captures = CaptureReader.readAll(captureDir);
-    if (captures.isEmpty()) {
-      System.err.println("no captures in " + captureDir);
-      return 1;
+    if (captureDir != null && compdb != null) {
+      System.err.println("build takes either --capture-dir or --compdb, not both");
+      return 2;
     }
+
+    // Two sources of the same thing. The capture directory holds this
+    // project's own agent's captures; the compilation database holds a
+    // database produced by a build -- which may be another tool's. The
+    // database is the interchange format, so it is read the same way whether
+    // it came from here or from elsewhere.
+    List<CaptureEntry> captures = List.of();
+    List<CompilationDatabaseEntry> entries = List.of();
+    if (captureDir != null) {
+      captures = CaptureReader.readAll(captureDir);
+      if (captures.isEmpty()) {
+        System.err.println("no captures in " + captureDir);
+        return 1;
+      }
+    } else {
+      try {
+        entries = CompilationDatabaseReader.read(compdb);
+      } catch (IOException e) {
+        System.err.println("could not read the compilation database: " + e.getMessage());
+        return 1;
+      }
+      if (entries.isEmpty()) {
+        System.err.println("the compilation database holds no compile: " + compdb);
+        return 1;
+      }
+    }
+
     OutputLayout layout = new OutputLayout(outputDir);
     try {
       Files.createDirectories(layout.cacheDir());
-      CaptureTacBuilder.BuildResult result = CaptureTacBuilder.build(captures);
+      CaptureTacBuilder.BuildResult result =
+          captureDir != null
+              ? CaptureTacBuilder.build(captures)
+              : CompilationDatabaseBuilder.build(entries);
       Map<String, String> manifest = new LinkedHashMap<>();
-      manifest.put("producer_root", String.valueOf(captureDir.toAbsolutePath().normalize()));
+      manifest.put(
+          "producer_root",
+          String.valueOf(
+              (captureDir != null ? captureDir : compdb.getParent()).toAbsolutePath().normalize()));
       manifest.put(
           "source_root",
           CaptureToTacBridge.sourceRootsOf(captures).stream()

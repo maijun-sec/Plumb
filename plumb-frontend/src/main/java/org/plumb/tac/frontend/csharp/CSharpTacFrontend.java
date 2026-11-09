@@ -32,6 +32,8 @@ import java.util.Map;
 import java.util.Set;
 import org.plumb.tac.frontend.CompileContext;
 import org.plumb.tac.frontend.TacFrontend;
+import org.plumb.tac.frontend.json.Json;
+import org.plumb.tac.frontend.sidecar.SidecarProtocol;
 import org.plumb.tac.ir.IrPrecision;
 import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacFunction;
@@ -92,6 +94,29 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
   private final List<TacProgram.FunctionProblem> structuredProblems = new ArrayList<>();
 
   private final Path sidecarExecutable;
+
+  /**
+   * The project's compilation inputs, as the build decided them, keyed by the module's name.
+   *
+   * <p>A solution has one module per project, and each project was compiled with its own
+   * references, symbols, language version and nullable context. So the inputs are per module, and
+   * the frontend picks the module's own when it opens that module's compilation.
+   *
+   * <p>An empty map means the scan had no build capture. That is a state the frontend has to
+   * report, not one it may paper over: without the captured references, symbols, language version
+   * and nullable context, the compilation is a different program from the one the project ships.
+   * See {@link CSharpProjectProfile} for what each missing input costs.
+   */
+  private final Map<String, CSharpProjectProfile> profiles;
+
+  /**
+   * Whether the open project's compilation inputs were captured.
+   *
+   * <p>It is checked on every parse, so the problem is reported against every file rather than
+   * only against the one that happened to open the project.
+   */
+  private boolean projectInputsCaptured = true;
+
   private CSharpSidecarClient sidecar;
   private boolean projectOpen;
   private String openProjectId;
@@ -115,7 +140,37 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
    * @param sidecarExecutable the executable, or null to look in the default places
    */
   public CSharpTacFrontend(Path sidecarExecutable) {
+    this(sidecarExecutable, (CSharpProjectProfile) null);
+  }
+
+  /**
+   * A frontend over the default sidecar, with the project's compilation inputs.
+   *
+   * @param profile the captured inputs, or null when there was no capture
+   */
+  public CSharpTacFrontend(CSharpProjectProfile profile) {
+    this(CSharpSidecarClient.locateExecutable(null), profile);
+  }
+
+  /**
+   * A frontend over an explicit sidecar executable, with the project's compilation inputs.
+   *
+   * @param sidecarExecutable the executable, or null to look in the default places
+   * @param profile the captured inputs, or null when there was no capture
+   */
+  public CSharpTacFrontend(Path sidecarExecutable, CSharpProjectProfile profile) {
+    this(sidecarExecutable, profile == null ? Map.of() : Map.of("", profile));
+  }
+
+  /**
+   * A frontend over an explicit sidecar executable, with each module's compilation inputs.
+   *
+   * @param sidecarExecutable the executable, or null to look in the default places
+   * @param profiles the captured inputs, keyed by the module's name
+   */
+  public CSharpTacFrontend(Path sidecarExecutable, Map<String, CSharpProjectProfile> profiles) {
     this.sidecarExecutable = sidecarExecutable;
+    this.profiles = profiles == null ? Map.of() : Map.copyOf(profiles);
   }
 
   @Override
@@ -159,6 +214,7 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
       if (!projectOpen) {
         return new ParseResult(List.of(), problems, defaultPrecision());
       }
+      reportMissingCompilationInputs(path, problems);
 
       Json.JsonObject response = request("translate", request -> request.put("path", pathKey(path)));
       if (!response.getBoolean("ok", false)) {
@@ -225,6 +281,48 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
   }
 
   /**
+   * Report that the project's compilation inputs were not captured.
+   *
+   * <p><b>Why this is a problem and not a warning.</b> A C# compilation without the captured
+   * reference assemblies, preprocessor symbols, language version and nullable context is a
+   * <i>different program</i> from the one the project ships. Two of the consequences were measured
+   * on the sidecar:
+   *
+   * <ul>
+   *   <li>with no preprocessor symbols, a function inside {@code #if DEBUG} is <b>absent from the
+   *       TAC</b> and the compiler reports <b>no error</b> -- the finding is gone and nothing says
+   *       so;
+   *   <li>with no reference assembly, the type does not bind and the compiler reports
+   *       {@code CS0234} -- which is loud, but only because the compiler happened to notice.
+   * </ul>
+   *
+   * <p>So the frontend says so itself, on every file, rather than letting the absence speak for
+   * itself.
+   *
+   * @param path the file being parsed
+   * @param problems the problems of the current parse
+   */
+  private void reportMissingCompilationInputs(Path path, List<String> problems) {
+    if (projectInputsCaptured) {
+      return;
+    }
+    String message =
+        "the C# project's compilation inputs were not captured: the reference assemblies, the "
+            + "preprocessor symbols, the language version and the nullable context are unknown, so "
+            + "the compilation may differ from the one the project ships (functions behind a "
+            + "conditional compilation block are missing from the analysis entirely)";
+    problems.add(message);
+    structuredProblems.add(
+        new TacProgram.FunctionProblem(
+            path == null ? "<file>" : path.toString(),
+            "PARSE_PROBLEM",
+            message,
+            "MISSING_COMPILATION_INPUTS",
+            -1,
+            -1));
+  }
+
+  /**
    * Ensure the sidecar holds the project this file belongs to.
    *
    * <p>The sidecar's compilation covers the WHOLE project, so it is (re)opened when the file's
@@ -243,6 +341,12 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
    */
   private void ensureProject(CompileContext ctx, Path path, String source, List<String> problems)
       throws IOException {
+    // The module's own compilation inputs. A solution has one module per project, and each
+    // project was compiled with its own references, symbols, language version and nullable
+    // context -- so the inputs are looked up per module, not once for the whole scan.
+    String moduleName = ctx == null || path == null ? null : ctx.moduleOf(path);
+    CSharpProjectProfile profile = profileFor(moduleName);
+
     String projectId = projectIdOf(ctx, path);
     boolean stale =
         !projectOpen
@@ -253,14 +357,42 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
     }
 
     if (sidecar == null) {
-      sidecar = CSharpSidecarClient.launch(sidecarExecutable, null);
+      // A null executable means "look in the default places". The lookup
+      // happens HERE rather than in the constructor, because the constructor
+      // may run long before the sidecar is needed, and the build output may
+      // have appeared in between.
+      Path executable =
+          sidecarExecutable != null ? sidecarExecutable : CSharpSidecarClient.locateExecutable(null);
+      sidecar = CSharpSidecarClient.launch(executable, null);
     }
 
     // The project's source files. The sidecar needs ALL of them: a compilation
     // over one file cannot resolve the others.
+    //
+    // With a capture, the file set is the BUILD's own list of the files it
+    // compiled -- not a walk of the source tree. The difference matters for a
+    // solution: a walk would put every project's files into every project's
+    // compilation, so each project would be compiled against the others'
+    // sources.
     List<Json.Value> sources = new ArrayList<>();
     Map<String, String> sourceTexts = new LinkedHashMap<>();
-    if (ctx != null && ctx.modules() != null) {
+    if (profile != null) {
+      CompileContext.Module module = moduleOf(ctx, path);
+      if (module != null) {
+        for (Path file : module.sourceFiles()) {
+          if (file == null || !file.getFileName().toString().endsWith(".cs")) {
+            continue;
+          }
+          String text = readTextQuietly(file);
+          if (text == null) {
+            continue;
+          }
+          String key = pathKey(file);
+          sources.add(new Json.JsonObject().put("path", key).put("text", text));
+          sourceTexts.put(key, text);
+        }
+      }
+    } else if (ctx != null && ctx.modules() != null) {
       for (CompileContext.Module module : ctx.modules()) {
         Path root = module.sourceRoot();
         if (root == null || !Files.isDirectory(root)) {
@@ -304,27 +436,54 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
       sourceTexts.put(pathKey, source);
     }
 
-    // The reference assemblies: the classpath entries the build description gave
-    // us. A C# project references .NET assemblies, not jars, so the classpath
-    // is read as a list of assembly paths.
+    // The reference assemblies.
+    //
+    // A C# project references .NET assemblies, not jars, so the classpath is
+    // read as a list of assembly paths -- but ONLY when there is no capture.
+    //
+    // The CAPTURED references are authoritative. The compile context's
+    // classpath is the JVM's, and handing a jar to Roslyn as a reference
+    // assembly is not a degradation of the analysis -- it is a different
+    // program from the one the project ships.
+    List<Path> referencePaths = new ArrayList<>();
+    if (profile != null) {
+      referencePaths.addAll(profile.references());
+    } else if (ctx != null) {
+      referencePaths.addAll(ctx.classpath());
+    }
     List<Json.Value> references = new ArrayList<>();
-    if (ctx != null) {
-      for (Path entry : ctx.classpath()) {
-        if (entry != null) {
-          references.add(new Json.JsonString(entry.toString()));
-        }
+    for (Path entry : referencePaths) {
+      if (entry != null) {
+        references.add(new Json.JsonString(entry.toString()));
       }
     }
 
+    // The preprocessor symbols, the language version, the nullable context and
+    // the unsafe flag: the captured values, or the defaults the sidecar would
+    // use anyway.
+    //
+    // The DEFAULTS ARE NOT NEUTRAL. An empty symbol set means every function
+    // behind a conditional compilation block is missing from the TAC, with no
+    // diagnostic to say so; and the latest language version means code the
+    // project itself would reject is compiled anyway. So when the values were
+    // not captured, the frontend says so -- see reportMissingCompilationInputs.
+    List<String> defines = profile == null ? List.of() : profile.defines();
+    String langVersion = profile == null ? null : profile.langVersion();
+    String nullableContext = profile == null ? null : profile.nullableContext();
+    boolean unsafeAllowed = profile != null && profile.unsafeAllowed();
+    projectInputsCaptured = profile != null && !profile.isEmpty();
+
     Json.JsonObject request =
-        new Json.JsonObject()
-            .put("op", "openProject")
-            .put("projectId", projectId)
-            .put("sources", new Json.JsonArray())
-            .put("references", new Json.JsonArray())
-            .put("langVersion", "latest")
-            .put("nullableContextOptions", "disable")
-            .put("unsafe", false);
+        SidecarProtocol.stamp(
+            new Json.JsonObject()
+                .put("op", "openProject")
+                .put("projectId", projectId)
+                .put("sources", new Json.JsonArray())
+                .put("references", new Json.JsonArray())
+                .put("preprocessorSymbols", new Json.JsonArray())
+                .put("langVersion", langVersion == null ? "latest" : langVersion)
+                .put("nullableContextOptions", nullableContext == null ? "disable" : nullableContext)
+                .put("unsafe", unsafeAllowed));
     // The arrays are filled after construction, because JsonArray is mutable.
     Json.JsonArray sourceArray = new Json.JsonArray();
     for (Json.Value value : sources) {
@@ -336,6 +495,11 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
       referenceArray.add(value);
     }
     request.put("references", referenceArray);
+    Json.JsonArray symbolArray = new Json.JsonArray();
+    for (String symbol : defines) {
+      symbolArray.add(new Json.JsonString(symbol));
+    }
+    request.put("preprocessorSymbols", symbolArray);
 
     Json.JsonObject response = exchange(request);
     if (!response.getBoolean("ok", false)) {
@@ -417,6 +581,49 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
     return path == null ? "default" : pathKey(path);
   }
 
+  /**
+   * The module a file belongs to.
+   *
+   * @param ctx the compile context
+   * @param path the file
+   * @return the module, or null when the file belongs to none
+   */
+  private static CompileContext.Module moduleOf(CompileContext ctx, Path path) {
+    if (ctx == null || ctx.modules() == null || path == null) {
+      return null;
+    }
+    String name = ctx.moduleOf(path);
+    if (name == null) {
+      return null;
+    }
+    for (CompileContext.Module module : ctx.modules()) {
+      if (name.equals(module.name())) {
+        return module;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The compilation inputs of a module.
+   *
+   * <p>The module's own inputs when it has any, and the fallback otherwise. The fallback is the
+   * profile registered under the empty name -- the one a single-project scan uses -- and null when
+   * there was no capture at all.
+   *
+   * @param moduleName the module's name, or null
+   * @return the inputs, or null
+   */
+  private CSharpProjectProfile profileFor(String moduleName) {
+    if (moduleName != null) {
+      CSharpProjectProfile profile = profiles.get(moduleName);
+      if (profile != null) {
+        return profile;
+      }
+    }
+    return profiles.get("");
+  }
+
   private static String pathKey(Path path) {
     return path.toAbsolutePath().normalize().toString();
   }
@@ -432,18 +639,28 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
   /** Send a request and read the response. */
   private Json.JsonObject request(String op, java.util.function.Consumer<Json.JsonObject> fill)
       throws IOException {
-    Json.JsonObject request = new Json.JsonObject().put("op", op);
+    Json.JsonObject request = SidecarProtocol.stamp(new Json.JsonObject().put("op", op));
     fill.accept(request);
     return exchange(request);
   }
 
   private Json.JsonObject exchange(Json.JsonObject request) throws IOException {
     String response = sidecar.exchange(Json.write(request));
+    Json.JsonObject parsed;
     try {
-      return Json.parseObject(response);
+      parsed = Json.parseObject(response);
     } catch (Json.JsonException ex) {
       throw new IOException("the C# sidecar sent a malformed response: " + ex.getMessage());
     }
+    // A sidecar that does not speak this protocol is refused, rather than
+    // interpreted. An instruction kind this build does not know used to become
+    // HAVOC, which the engine never matches against a sink family -- so the
+    // finding was absent while the scan reported success.
+    String incompatible = SidecarProtocol.incompatibility(parsed);
+    if (incompatible != null) {
+      throw new IOException("the C# sidecar is not compatible with this build: " + incompatible);
+    }
+    return parsed;
   }
 
   /** Map one wire function into the IR. */

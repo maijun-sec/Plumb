@@ -50,7 +50,7 @@ usage: sast-scan [--ai-context-lines <n>] [--ai-dedup] [--ai-dedup-stats] [--ai-
        <off|read|write|readwrite>] [--capture-dir <dir>] [--cg-strategy
        <cha|rta|vta|1cfa|stub|global|cached:<name>:<path>>] [--classpath <jar|dir>] [-D <dir>]
        [--dsl-rules <file>] [--dsl-strict] [-f <console|ndjson|sarif>] [-h] [-i <path>] [--language
-       <java|kotlin|scala>] [--list-rule-cwes] [--list-rules] [--max-parallelism <n>] [--module
+       <java|kotlin|scala|groovy|csharp|go>] [--list-rule-cwes] [--list-rules] [--max-parallelism <n>] [--module
        <id>] [--module-root <dir>] [-o <path>] [--project-root <dir>] [--rule <id>]
        [--rule-prompts-dir <path>] [--source-root <dir>] [-v]
 ```
@@ -67,7 +67,7 @@ usage: sast-scan [--ai-context-lines <n>] [--ai-dedup] [--ai-dedup-stats] [--ai-
 | — | `--cache-mode` | `off` \| `read` \| `write` \| `readwrite` | `off` | Usage mode of the on-disk IR cache |
 | — | `--cg-strategy` | See the table below | `global` | Call-graph construction strategy, passed to the `plumb-dfa` engine |
 | — | `--max-parallelism` | `<n>` | `nCPU-1` (minimum 1) | Upper bound of concurrency in the parse + translate phase |
-| — | `--language` | `java` \| `kotlin` \| `scala` | all languages | Analyse only these languages (**repeatable**, or comma-separated). The filter is applied at **load** time: the other languages' sink families, sink patterns, checkers and frontends are never constructed, and their files are never opened — so a Java-only scan does not pay for the Kotlin or the Scala compiler. An unknown language name is a usage error, not an empty scan |
+| — | `--language` | `java` \| `kotlin` \| `scala` \| `groovy` \| `csharp` \| `go` | all languages | Analyse only these languages (**repeatable**, or comma-separated). The filter is applied at **load** time: the other languages' sink families, sink patterns, checkers and frontends are never constructed, and their files are never opened — so a Java-only scan does not pay for the Kotlin or the Scala compiler. Every shipped checker declares the languages it applies to, so a `--language csharp` run loads the C# rules and none of the Java ones. An unknown language name is a usage error, not an empty scan |
 | — | `--module` | `<id>` | all modules | Analyse only this module of a multi-module project. The other modules are still read, parsed and summarised, so the call graph keeps crossing the module boundary; only the **findings** are limited to this module. A finding whose sink lies outside the module is counted and reported as dropped, never silently discarded |
 | — | `--ai-dedup` | — | off | False-positive reducer switch. Sends every finding to the LLM to judge TP/FP/UNKNOWN. The verdict is written to the `ai_verdict` + `ai_reason` fields of the NDJSON. The LLM endpoint + key are configured in YAML (`ai.apiKey` / `ai.baseUrl` / `ai.model`) |
 | — | `--ai-dedup-stats` | — | off | After the AI dedup run, prints the verdict distribution + the top 10 rules by FP ratio to **stderr**. The NDJSON on stdout is unchanged. Use it together with `--ai-dedup`; on its own it is a no-op. |

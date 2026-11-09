@@ -1,0 +1,15 @@
+# The build output. The Java side looks for the executable under bin/.
+bin/
+
+# The Go build cache, when a build is run with the cache inside this
+# directory. The build script puts the cache outside the repository; this
+# is here for the case where somebody runs `go build` here by hand.
+.gocache/
+.gopath/
+
+# The scratch directory a manual probe leaves behind.
+_probe/
+
+# A stray executable from `go build` in this directory.
+*.exe
+plumb-go-sidecar

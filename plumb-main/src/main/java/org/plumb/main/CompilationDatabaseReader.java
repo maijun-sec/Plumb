@@ -77,7 +77,7 @@ public final class CompilationDatabaseReader {
   public static List<CompilationDatabaseEntry> parse(String text) throws IOException {
     JsonNode root;
     try {
-      root = MAPPER.readTree(text);
+      root = MAPPER.readTree(stripByteOrderMark(text));
     } catch (IOException e) {
       throw new IOException("the compilation database is not valid JSON: " + e.getMessage(), e);
     }
@@ -182,5 +182,24 @@ public final class CompilationDatabaseReader {
   private static String text(JsonNode node, String field) {
     JsonNode value = node.get(field);
     return value != null && value.isTextual() ? value.asText() : null;
+  }
+
+  /**
+   * Remove the byte order mark a text file may start with.
+   *
+   * <p>A database written by a tool on Windows may start with a UTF-8 byte order mark -- the
+   * PowerShell 5.1 default adds one, and so do several other producers. The mark is not part of the
+   * JSON, and a reader that refuses it would reject a database that is perfectly good. The format
+   * is an interchange format, so it is read the way its producers write it.
+   *
+   * @param text the text
+   * @return the text without a leading byte order mark
+   */
+  static String stripByteOrderMark(String text) {
+    if (text == null || text.isEmpty()) {
+      return text;
+    }
+    char first = text.charAt(0);
+    return first == '\uFEFF' ? text.substring(1) : text;
   }
 }

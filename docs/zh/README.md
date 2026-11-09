@@ -21,6 +21,7 @@
 | [`TAC-COVERAGE.md`](../tech/TAC-COVERAGE.md) | **TAC 前端覆盖契约**：每个翻译器降解了哪些源码构造、没有降解哪些，以及一个缺口是被报告还是静默 | [中文](tech/TAC-COVERAGE.md) |
 | [JVM-LANGUAGE-GAP.md](../tech/JVM-LANGUAGE-GAP.md) | **实测出来的 JVM 差距**：三个 TAC 前端丢了什么、代价是什么，从两个参考 DFA 实现借用了哪些思路，以及哪些 sink family 根本没有任何 watcher | | [中文](tech/TAC-COVERAGE.md) |
 | [CSHARP-FRONTEND-ANALYSIS.md](../tech/CSHARP-FRONTEND-ANALYSIS.md) | **加入 C#**：两个商业工具如何产出 C# IR、给 Plumb 的 sidecar 路线，以及 C# 前端需要的 TAC 改动 | | [中文](tech/TAC-COVERAGE.md) |
+| [GO-FRONTEND-ANALYSIS.md](../tech/GO-FRONTEND-ANALYSIS.md) | **加入 Go**：为什么 JVM 解析不了 Go 的类型、原生 Go sidecar 路线、四个 IR 缺口与关闭它们的决策、构建捕获必须供出什么，以及 Go 的 TAC 如何生成 | | [中文](tech/GO-FRONTEND-ANALYSIS.md) |
 | [`DATA-FLOW.md`](../tech/DATA-FLOW.md) | **数据流分析**：引擎骨架、fact 域、污点 / 边界 / 指向 / 控制流四类分析、可空性三值语义、Z3 的真实作用、call graph 策略 | [中文](tech/DATA-FLOW.md) |
 | [`ENGINE-GAP-ANALYSIS.md`](../tech/ENGINE-GAP-ANALYSIS.md) | **实测差距清单**：配置里声明、但没有任何分析代码消费的引擎特性，以及按优先级排列的补齐工作清单 | [中文](tech/ENGINE-GAP-ANALYSIS.md) || [`CROSS-FUNCTION-ANALYSIS.md`](../tech/CROSS-FUNCTION-ANALYSIS.md) | 跨函数分析主干：summary 机制、调用图视角 | [中文](tech/CROSS-FUNCTION-ANALYSIS.md) |
 | [`CROSS-FUNCTION-OPERATION.md`](../tech/CROSS-FUNCTION-OPERATION.md) | `Operation` 体系：常量传播 / 指向 / null / 数值范围 / 副作用的 summary 侧与消费侧 | [中文](tech/CROSS-FUNCTION-OPERATION.md) |

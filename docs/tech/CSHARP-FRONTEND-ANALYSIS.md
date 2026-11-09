@@ -579,6 +579,157 @@ Two details worth stating because they will bite otherwise:
   module-class equivalent, so no new suffix rule is required. This is a case
   where the *absence* of a change is a finding.
 
+### 4.7 The wire format is not the IR contract — and it has no version
+
+**The sidecar speaks JSON; the IR does not.** The .NET frontend runs a separate
+process, so the TAC crosses a process boundary. The boundary format is
+length-prefixed JSON whose shape mirrors the TAC (`kind`, `dest`, `lhs1`,
+`lhs2`, `binop`, `calleeSig`, `line`, `column`, …), and the Java side maps it
+back into the IR classes (`CSharpTacFrontend.toInstruction` / `toVar` /
+`toType`). Everything downstream — the CFG, the DFA engine, the on-disk cache —
+therefore sees the same `TacProgram` a Java or Kotlin frontend produces, and the
+disk contract is unchanged: `IrSerializer` writes the IR with Java
+serialization, whatever the frontend was.
+
+**The JSON is transient, and it is not large.** Measured on a 2.3 KB C# file
+(8 functions, 76 instructions), the same TAC measured:
+
+| Representation | Bytes | Note |
+| --- | --- | --- |
+| The C# source file | 2,330 | |
+| The sidecar's wire JSON | 19,400 | streamed over the pipe, never stored |
+| The Java-serialized IR (`.tac`) | 12,788 | what the cache contract stores |
+| The same `.tac`, gzipped | 3,265 | |
+
+The wire JSON is about 1.5x the binary form, it exists only between the two
+processes, and the peak memory it costs is bounded by the largest single file's
+frame — not by the project.
+
+**What IS missing is a version handshake.** The IR's own storage contract has
+one: `IrSerializer` writes a magic number and a version, and a mismatch is
+refused loudly (`SqliteTacStore` raises an `IOException` naming the version).
+The wire protocol has none — there is no version field in the request or in the
+response. So a sidecar that is newer than the frontend does not fail; it is
+*interpreted*:
+
+- An instruction kind this build does not know becomes `HAVOC` — the one opcode
+  that means "the analysis does not know".
+- An operator this build does not know becomes `ADD`.
+
+Both fallbacks are silent, and both are lossy in the direction that matters: the
+engine looks up the sink catalogue on `CALL` (and `UNINTERPRETED`) instructions
+only, so a call that was demoted to `HAVOC` is never matched against a sink
+family. The finding is absent, and the scan still reports success. Neither
+fallback raises a `FunctionProblem`, so the incompleteness is not visible
+either.
+
+Three changes close this, and they are cheap:
+
+1. Carry a protocol version (and the IR's own version) in every response, and
+   refuse an incompatible sidecar the way the cache refuses an incompatible IR.
+2. Keep the fallbacks, but report them: an unknown kind or operator must raise
+   a `FunctionProblem` naming what was not understood and where.
+3. Add a round-trip test: one frame from the sidecar, parsed on the Java side,
+   asserting that every instruction and every field survives.
+
+The third one matters most, because the first two only help if the two halves
+are actually kept in step — and "kept in step" is a property only a test can
+hold.
+
+### 4.8 The frontend sends a file list; a C# compilation is more than a file list
+
+Roslyn compiles a *project*, and a Roslyn `CSharpCompilation` is the sum of five
+inputs: the source files, the reference assemblies, the preprocessor symbols,
+the language version, and the nullable context. The frontend supplies one of
+the five and hardcodes the other four ([MEASURED]):
+
+| A C# compilation needs | What the frontend sends today | |
+| --- | --- | --- |
+| Every source file of the compilation | `ensureProject` walks each module's source root and collects every `.cs` under it (`CSharpTacFrontend.java:263-284`) | present |
+| The reference assemblies | `references` is filled from `ctx.classpath()` (`CSharpTacFrontend.java:310-317`) — and that classpath is the JVM's: `ScanRunner.java:1881` hands `config.classpathJars` to `FrontendRegistry` | wrong |
+| The preprocessor symbols | nothing — the request has no `preprocessorSymbols` field (`CSharpTacFrontend.java:319-327`) | missing |
+| The language version | the literal `"latest"` (`CSharpTacFrontend.java:325`) | wrong |
+| The nullable context | the literal `"disable"` (`CSharpTacFrontend.java:326`) | wrong |
+
+**The gaps are not equal, and exactly one of them is silent.** Measured by
+driving the sidecar directly:
+
+| The gap | What actually happens |
+| --- | --- |
+| The reference assemblies | **Loud.** A type from an assembly that was not referenced does not bind, Roslyn reports `CS0234`, and the frontend turns every compile error into a `FunctionProblem` with the code `PARSE_PROBLEM` (`CSharpTacFrontend.java:355-385`). The scan says the project does not compile. |
+| The preprocessor symbols | **Silent.** A function whose body sits inside `#if DEBUG` is **not in the TAC at all**, and Roslyn reports **zero** diagnostics: an inactive `#if` region is not an error. |
+| The language version | **Over-approximating.** The compilation runs at the newest language version, so code the project itself would reject is compiled anyway. |
+| The nullable context | Nullable analysis only; it does not change which functions exist. |
+
+The second row is the one that costs findings. The protocol already carries the
+field — `Protocol.cs:286-289` declares `preprocessorSymbols`, and
+`ProjectSession.cs:60` feeds it into `CSharpParseOptions` — so the sidecar is
+ready and only the Java side does not send it. Measured on a file with one
+function inside `#if DEBUG` and one outside:
+
+| `preprocessorSymbols` | Functions in the TAC | Diagnostics |
+| --- | --- | --- |
+| `[]` (what the frontend sends) | 1 | 0 |
+| `["DEBUG"]` | 2 | 0 |
+
+**The missing reference assemblies are less severe than they look.** The sidecar
+loads the running framework's own assemblies as references
+(`ProjectSession.cs:127-145`, `TRUSTED_PLATFORM_ASSEMBLIES`), so the base class
+library is always there. What is missing is everything *outside* it: the other
+projects in the solution, and the NuGet packages.
+
+**The language version is honoured in exactly one spelling.**
+`ResolveLanguageVersion` (`ProjectSession.cs:178-197`) parses the request string
+as a Roslyn enum member name and falls back to `Latest` when that parse fails.
+Measured:
+
+| `langVersion` sent | The compilation runs at |
+| --- | --- |
+| `CSharp8`, `CSharp9`, `CSharp10` | that version — a C# 12 feature is rejected |
+| `"8.0"`, `"9"`, `"10"`, `"12"` | the newest version — **silently ignored** |
+| `"banana"` | the newest version — **silently ignored** |
+
+So the frontend's hardcoded `"latest"` is currently inert, and so would be any
+attempt to make it accurate by sending `"10.0"`. The spelling has to be the enum
+member name, or the sidecar needs a version-to-name mapping.
+
+**The module dependency graph is empty, but module attribution is not.**
+`CompileContext.Module` carries a `dependsOn` field (`CompileContext.java:107`),
+and `FrontendRegistry.newContext` fills it with `List.of()` for every module
+(`FrontendRegistry.java:146`, `FrontendRegistry.java:150`). A module's
+*identity* still works — `DefaultCompileContext.moduleOf` picks the deepest
+source root that contains the file (`DefaultCompileContext.java:101-119`) — so a
+finding is attributed to the right module. What is missing is the *edges*: the
+frontend cannot know that project A references project B.
+
+### 4.9 What the build capture has to supply
+
+The five inputs above are not the frontend's to invent. They are what a build
+system already decided, and the build capture is where that decision is visible.
+In the capture repository, the C# command parser recognises two of the five:
+
+| The compilation input | The capture repository's state |
+| --- | --- |
+| The reference assemblies | **Captured.** `/reference:` and `/r:` are parsed into the command's classpath (`dotnet_backend.cpp:605-616`) and the adapter emits them as `--sys_include` (`csharp_adapter.cpp:65-72`). |
+| The preprocessor symbols | **Vocabulary without a parser.** The option class exists (`ccap_compdb_map.h:387`) and the adapter's output vocabulary has a `-D` slot (`csharp_adapter.cpp:26`), but the command parser drops `/define:` on the floor: the parse loop `continue`s on anything that is not a reference or an analyzer (`dotnet_backend.cpp:620-622`). |
+| The language version | **Vocabulary without a parser.** The option class exists (`ccap_compdb_map.h:382`); the command line carries `/langversion:`; nothing parses it. |
+| The nullable context | **Vocabulary without a parser.** The option class exists (`ccap_compdb_map.h:381`); nothing parses it. |
+| The project reference graph | **Not captured at all.** Nothing collects the `<ProjectReference>` edges between the projects of a solution. |
+
+That table is the shape of the work: the data is on the command line, the option
+vocabulary already names it, and the parser's switch is what is missing. Three of
+the five are a small addition to one loop in `dotnet_backend.cpp`; the fourth
+(the project graph) is a new collection; the fifth (the frontend side) is the
+wiring that turns a captured input into a sidecar request field.
+
+**And the wiring has a shape to copy.** The C# request already has a field for
+each of the five inputs (`Protocol.cs:284-301`), so the frontend's job is to
+fill them from the capture rather than hardcode them. The cross-check that keeps
+the two honest is the one the Maven path already has: compare the captured
+compilation against the compilation the frontend actually performed, and report
+the difference. A reference assembly that the capture saw and the frontend did
+not send is exactly the kind of difference that has to be loud.
+
 ---
 
 ## 5. The .NET sink catalogue: the real work item

@@ -268,6 +268,20 @@ public sealed class Request
     [JsonPropertyName("op")]
     public string Op { get; set; } = "ping";
 
+    /// <summary>
+    /// The protocol version the Java side speaks.
+    /// </summary>
+    /// <remarks>
+    /// The sidecar refuses a request that names a version it does not speak, so a
+    /// frontend and a sidecar that were built against different protocols fail
+    /// loudly instead of being half-understood. A request that carries no version
+    /// is accepted: it comes from a frontend older than the handshake, and it
+    /// behaves the way that frontend expects.
+    /// </remarks>
+    [JsonPropertyName("protocolVersion")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ProtocolVersion { get; set; }
+
     /// <summary>The project id, for openProject.</summary>
     [JsonPropertyName("projectId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -320,12 +334,51 @@ public sealed class SourceFile
     public string Text { get; set; } = "";
 }
 
+/// <summary>The versions this sidecar speaks.</summary>
+public static class Versions
+{
+    /// <summary>
+    /// The wire protocol version.
+    /// </summary>
+    /// <remarks>
+    /// The Java side refuses a sidecar whose version it does not understand.
+    /// The check exists because the two halves are built independently, and an
+    /// instruction kind the frontend did not know used to become HAVOC -- which
+    /// the engine never matches against a sink family, so the finding was absent
+    /// while the scan reported success.
+    /// </remarks>
+    public const int PROTOCOL = 1;
+
+    /// <summary>
+    /// The IR version this sidecar was built against.
+    /// </summary>
+    /// <remarks>
+    /// It travels with the wire so that a sidecar built against a different IR is
+    /// refused rather than half-understood.
+    /// </remarks>
+    public const int IR = 1;
+}
+
 /// <summary>A response to the Java side.</summary>
 public sealed class Response
 {
     /// <summary>The operation this answers.</summary>
     [JsonPropertyName("op")]
     public string Op { get; set; } = "";
+
+    /// <summary>
+    /// The protocol version this sidecar speaks.
+    /// </summary>
+    /// <remarks>
+    /// Every response carries it, so the Java side can refuse a sidecar it does
+    /// not understand instead of interpreting it.
+    /// </remarks>
+    [JsonPropertyName("protocolVersion")]
+    public int ProtocolVersion { get; set; } = Versions.PROTOCOL;
+
+    /// <summary>The IR version this sidecar was built against.</summary>
+    [JsonPropertyName("irVersion")]
+    public int IrVersion { get; set; } = Versions.IR;
 
     /// <summary>Whether the operation succeeded.</summary>
     [JsonPropertyName("ok")]

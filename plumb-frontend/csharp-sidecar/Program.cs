@@ -117,6 +117,20 @@ public static class Program
 
     private static Response Dispatch(Request request, ref ProjectSession? session)
     {
+        // A request that names a protocol version this sidecar does not speak is
+        // refused, rather than interpreted. The two halves are built
+        // independently, and half-understanding each other is how a finding goes
+        // missing without a trace.
+        if (request.ProtocolVersion.HasValue && request.ProtocolVersion.Value != Versions.PROTOCOL)
+        {
+            return new Response
+            {
+                Op = request.Op,
+                Ok = false,
+                Error = $"this sidecar speaks protocol version {Versions.PROTOCOL}, and the request names {request.ProtocolVersion.Value}",
+            };
+        }
+
         switch (request.Op.ToLowerInvariant())
         {
             case "ping":

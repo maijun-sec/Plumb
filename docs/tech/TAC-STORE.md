@@ -187,19 +187,36 @@ not a subcommand goes down the original path.
 | Subcommand | Stage | Reads | Writes |
 | --- | --- | --- | --- |
 | `capture` | 1 | Captures | A compilation database |
-| `build` | 2 | Captures | A TAC store |
+| `build` | 2 | Captures or a compilation database | A TAC store |
 | `analyze` | 3 | A TAC store | Findings |
 
 | Subcommand | Options |
 | --- | --- |
 | `capture` | `--capture-dir <dir>`, `--output <file>` |
-| `build` | `--capture-dir <dir>`, `--output-dir <dir>` |
+| `build` | `--capture-dir <dir>` **or** `--compdb <file>`, `--output-dir <dir>` |
 | `analyze` | `--store <file>`, `--output <file>`, `--source-path-map <producer>=<consumer>` |
 
 `capture` writes the compilation database to standard output when `--output` is not given.
 `analyze` writes its report to standard output when `--output` is not given.
 
-### 5.1 `analyze` and the path remapping
+### 5.1 `build` and its two inputs
+
+`build` reads its input from one of two places, and the two are sources of the same thing: the
+capture directory holds this project's own agent's capture files, and `--compdb` names a compilation
+database. The database is the interchange format -- it is what a build hands to an analyser, and
+what an analyser written against another producer's output is handed as well -- so a database from
+any producer is read the same way. The two options are mutually exclusive.
+
+The language of each entry decides which front end reads it, and what it is read for. A C# compiler
+command carries the reference assemblies, the preprocessor symbols, the language version and the
+nullable context, which are the inputs a C# compilation needs and cannot guess. A Go compiler
+command carries the packages, their import paths, their language versions and their import
+configurations, which are the inputs a Go type checker needs and cannot invent.
+
+See [`CSHARP-FRONTEND-ANALYSIS.md`](CSHARP-FRONTEND-ANALYSIS.md) and
+[`GO-FRONTEND-ANALYSIS.md`](GO-FRONTEND-ANALYSIS.md) for what each front end does with them.
+
+### 5.2 `analyze` and the path remapping
 
 ```
 plumb analyze --store <store> [--output <file>] [--source-path-map <producer>=<consumer>]

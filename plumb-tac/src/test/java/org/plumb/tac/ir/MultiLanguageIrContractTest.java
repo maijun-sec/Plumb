@@ -119,6 +119,7 @@ class MultiLanguageIrContractTest {
               SourceLanguage.SCALA,
               SourceLanguage.GROOVY,
               SourceLanguage.CSHARP,
+              SourceLanguage.GO,
               SourceLanguage.UNKNOWN);
     }
 

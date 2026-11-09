@@ -167,18 +167,31 @@ producer 根下的路径被重新表述为 consumer 根下的路径。不在任�
 | 子命令 | 阶段 | 读 | 写 |
 | --- | --- | --- | --- |
 | `capture` | 1 | 捕获记录 | 编译数据库 |
-| `build` | 2 | 捕获记录 | TAC 存储 |
+| `build` | 2 | 捕获记录或编译数据库 | TAC 存储 |
 | `analyze` | 3 | TAC 存储 | 结论 |
 
 | 子命令 | 选项 |
 | --- | --- |
 | `capture` | `--capture-dir <dir>`、`--output <file>` |
-| `build` | `--capture-dir <dir>`、`--output-dir <dir>` |
+| `build` | `--capture-dir <dir>` **或** `--compdb <file>`、`--output-dir <dir>` |
 | `analyze` | `--store <file>`、`--output <file>`、`--source-path-map <producer>=<consumer>` |
 
 不给 `--output` 时，`capture` 把编译数据库写到标准输出，`analyze` 把报告写到标准输出。
 
-### 5.1 `analyze` 与路径重映射
+### 5.1 `build` 与它的两个输入
+
+`build` 的输入来自两处之一，而这两处是同一件东西的两个来源：捕获目录存放本项目自己的代理写下的捕获
+文件，`--compdb` 则指定一份编译数据库。编译数据库是**交换格式** —— 构建交给分析器的就是它，写在
+别的产出方输出上的分析器拿到的也是它 —— 所以任何产出方生成的数据库读法相同。这两个选项互斥。
+
+每条记录的语言决定由哪个前端读取它，以及读它是为了什么。C# 编译命令携带引用程序集、预处理符号、
+语言版本与可空上下文 —— 这些是 C# 编译所需、且无法自行推断的输入。Go 编译命令携带各个包、它们的导入
+路径、语言版本与导入配置 —— 这些是 Go 类型检查所需、且无法凭空造出的输入。
+
+各前端如何处理这些输入，见 [`CSHARP-FRONTEND-ANALYSIS.md`](CSHARP-FRONTEND-ANALYSIS.md) 与
+[`GO-FRONTEND-ANALYSIS.md`](GO-FRONTEND-ANALYSIS.md)。
+
+### 5.2 `analyze` 与路径重映射
 
 ```
 plumb analyze --store <store> [--output <file>] [--source-path-map <producer>=<consumer>]
