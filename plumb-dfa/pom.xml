@@ -430,6 +430,20 @@
                              no other language. -->
                         <include>org/plumb/dfa/config/SinkCatalogueCsharpTest.java</include>
 
+                        <!-- The LIVENESS of the C# catalogue: a rule that
+                             matches nothing counts as coverage and reports
+                             nothing, and a converted rule that names a type
+                             or a member that does not exist looks exactly
+                             like a rule that works.
+
+                             So the catalogue is held against a recorded
+                             measurement of the .NET reference assemblies:
+                             every C# entry has been measured, no entry is
+                             dead, every recorded signature matches the rule
+                             it is filed under, and every claimed argument
+                             position exists on the call. -->
+                        <include>org/plumb/dfa/config/CSharpCatalogueLivenessTest.java</include>
+
                         <!-- The multi-language IR contract and the language gate.
                              These pin the rules the Kotlin and Scala frontends
                              depend on: that a language-restricted sink family
