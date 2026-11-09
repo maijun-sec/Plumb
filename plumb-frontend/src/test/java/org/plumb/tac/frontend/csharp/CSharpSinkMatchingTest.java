@@ -161,6 +161,93 @@ class CSharpSinkMatchingTest {
   }
 
   @Test
+  @EnabledIf("toolchainAvailable")
+  @DisplayName("the catalogue's C# INDEXER pattern matches the signature the frontend produced")
+  void theCatalogueMatchesTheProducedIndexerSignature() {
+    // The catalogue already carries the C# indexer sinks -- the
+    // `credential.sinks` family names
+    // `System.Data.Common.DbConnectionStringBuilder.set_Item`. So the
+    // catalogue was right about what the symbol is called, and the question
+    // this test answers is whether the frontend PRODUCES that symbol.
+    //
+    // `DbConnectionStringBuilder` is in the shared framework, so it resolves
+    // without a NuGet package.
+    String source =
+        """
+        namespace Demo;
+
+        public class Sink
+        {
+            public void Run(string input)
+            {
+                System.Data.Common.DbConnectionStringBuilder builder = null;
+                builder["Password"] = input;
+            }
+        }
+        """;
+
+    TacFunction function = functionNamed(support.parse(source).functions(), "Run");
+
+    String setterSignature = null;
+    for (TacInstruction instruction : function.instructions()) {
+      if (instruction.kind == TacInstruction.Kind.CALL
+          && instruction.calleeSig != null
+          && instruction.calleeSig.contains("set_Item")) {
+        setterSignature = instruction.calleeSig;
+      }
+    }
+
+    assertThat(setterSignature)
+        .as("an indexer assignment must produce the indexer's setter signature")
+        .isNotNull();
+
+    // The catalogue's own pattern, for the C# language.
+    String pattern = "^System\\.Data\\.Common\\.DbConnectionStringBuilder\\.(set_Item|Add)(/\\d+)?";
+    assertThat(java.util.regex.Pattern.compile(pattern).matcher(setterSignature).find())
+        .as("the catalogue's C# pattern must match the produced signature: " + setterSignature)
+        .isTrue();
+  }
+
+  @Test
+  @EnabledIf("toolchainAvailable")
+  @DisplayName("the indexer's value is the SECOND user argument, which is what the catalogue names")
+  void theIndexerValueIsTheSecondUserArgument() {
+    // The catalogue's contract: "which argument carries the untrusted value",
+    // counted over the USER arguments. An indexer's setter takes the key
+    // first and the value second, so the value is user argument 1 -- which
+    // the catalogue writes as `arg_index: 1` -- and it lands at args[2]
+    // because the receiver occupies args[0].
+    String source =
+        """
+        namespace Demo;
+
+        public class Sink
+        {
+            public void Run(string input)
+            {
+                System.Data.Common.DbConnectionStringBuilder builder = null;
+                builder["Password"] = input;
+            }
+        }
+        """;
+
+    TacFunction function = functionNamed(support.parse(source).functions(), "Run");
+
+    for (TacInstruction instruction : function.instructions()) {
+      if (instruction.calleeSig != null && instruction.calleeSig.contains("set_Item")) {
+        assertThat(instruction.args)
+            .as("the receiver, the key, and the assigned value")
+            .hasSize(3);
+        assertThat(((org.plumb.tac.ir.TacOperand.TacVar) instruction.args.get(2)).name())
+            .as("user argument 1 -- the value -- is at args[2]")
+            .isEqualTo("input");
+        return;
+      }
+    }
+    throw new AssertionError("no indexer setter call was produced");
+  }
+
+  @Test
   @DisplayName("the C# sink pattern does not fire in Java")
   void theCSharpPatternDoesNotFireInJava() {
     // The C# patterns live under by_language, so a Java analysis must not be

@@ -226,3 +226,48 @@ So the rule is absolute:
 
 The distinction is decided by the resolved symbol: Roslyn's `IPropertySymbol`
 versus `IFieldSymbol`. It is never guessed from the spelling.
+
+## Why a C# indexer assignment must be a CALL
+
+An indexer is the same case as a property, one step further along.
+
+```csharp
+builder["Password"] = tainted;
+```
+
+is, at the language level, a call to `DbConnectionStringBuilder.set_Item`.
+Roslyn models a C# indexer as an `IPropertySymbol` whose `IsIndexer` is true,
+with a `set_Item` accessor — so the symbol the sink catalogue names
+(`System.Data.Common.DbConnectionStringBuilder.set_Item`) is exactly the
+accessor's symbol.
+
+The spelling is the trap. `builder["Password"] = value` and `array[0] = value`
+are both an element access, and they mean completely different things. A
+frontend that lowers every element access to an array store therefore:
+
+* produces TAC with no callee signature, so **every indexer-shaped sink is
+  structurally unreachable** — the finding is absent while the scan reports
+  success; and
+* puts the assigned value in the store's *destination*, so
+  `builder["Password"] = password` writes the parameter into itself and the
+  value never reaches a call at all.
+
+So the rule is absolute, in the same way the property rule is:
+
+* **indexer assignment → `CALL owner.set_Item/arity`**, with the receiver at
+  args[0], the indexer's key next, and the assigned value last.
+* **indexer read → `CALL owner.get_Item/arity`**, with the receiver at args[0]
+  and the key after it.
+* **array assignment → `ARRAYSTORE`**, because an array really is an array.
+
+The distinction is decided by the resolved symbol: an `IPropertySymbol` whose
+`IsIndexer` is true, versus an element access that resolves to no symbol at
+all. It is never guessed from the spelling — the spelling is identical in
+both cases.
+
+**The value is the SECOND user argument.** An indexer's setter takes the key
+before the value, so the value is user argument 1 and lands at args[2] under
+the receiver convention. The catalogue names user arguments and the engine
+applies the receiver offset itself, so a catalogue entry for the value of a
+`set_Item` reads `arg_index: 1`.
+

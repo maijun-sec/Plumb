@@ -329,15 +329,7 @@ internal sealed class TacTranslator
 
             case ElementAccessExpressionSyntax elementAccess:
             {
-                var array = TranslateExpression(elementAccess.Expression, store: false);
-                var index = elementAccess.ArgumentList.Arguments.Count > 0
-                    ? TranslateExpression(elementAccess.ArgumentList.Arguments[0].Expression, store: false)
-                    : null;
-                if (array is not null && index is not null && value is not null)
-                {
-                    Emit(InstructionKind.ARRAYSTORE, dest: value, lhs1: array, lhs2: index,
-                        node: assignment);
-                }
+                TranslateIndexerAssignment(elementAccess, value, assignment);
                 return;
             }
 
@@ -429,6 +421,200 @@ internal sealed class TacTranslator
         Report(assignment, "UNHANDLED_NODE",
             "the assignment's member could not be resolved to a property or a field",
             memberAccess.GetType().Name);
+    }
+
+    /// <summary>
+    /// Lower an assignment through an INDEXER.
+    /// </summary>
+    /// <param name="elementAccess">the element access being assigned to</param>
+    /// <param name="value">the assigned value</param>
+    /// <param name="assignment">the assignment, for the source position</param>
+    /// <remarks>
+    /// <para>
+    /// <b>The same spelling, two different things.</b> <c>holder["key"] = value</c>
+    /// and <c>array[0] = value</c> are written the same way, and they are not
+    /// the same thing. The first is a call to an indexer's setter -- a method
+    /// named <c>set_Item</c> -- and the second is a store into an array.
+    /// </para>
+    /// <para>
+    /// <b>Why the distinction decides whether findings exist.</b> The sink
+    /// catalogue is queried on <c>CALL</c> instructions. An <c>ARRAYSTORE</c>
+    /// carries no callee signature at all, so a sink reached through an indexer
+    /// is not "less precisely matched" -- it is <i>structurally unreachable</i>,
+    /// and the scan reports success while the finding is absent. The catalogue
+    /// already carries the C# symbols: the <c>credential.sinks</c> family names
+    /// <c>System.Data.Common.DbConnectionStringBuilder.set_Item</c>. The
+    /// catalogue was right; the TAC was not.
+    /// </para>
+    /// <para>
+    /// <b>What decides it.</b> The resolved symbol, and nothing else. An indexer
+    /// is an <see cref="IPropertySymbol"/> whose <c>IsIndexer</c> is true, with
+    /// a <c>set_Item</c> accessor; an array resolves to no symbol at all. The
+    /// spelling of the expression is identical in both cases, so the spelling
+    /// cannot decide it.
+    /// </para>
+    /// <para>
+    /// <b>Why the receiver still comes first.</b> The TAC's call convention is
+    /// "args[0] is the receiver, args[1..] are the actual arguments". An
+    /// indexer's setter takes the key and then the value, so the value is the
+    /// SECOND user argument and lands at args[2]. The catalogue names user
+    /// arguments and the engine applies the receiver offset itself, so the
+    /// catalogue writes <c>arg_index: 1</c> for the value of a
+    /// <c>set_Item</c> and the TAC puts it at args[2].
+    /// </para>
+    /// </remarks>
+    private void TranslateIndexerAssignment(
+        ElementAccessExpressionSyntax elementAccess,
+        Operand? value,
+        AssignmentExpressionSyntax assignment)
+    {
+        var indexer = IndexerSymbolOf(elementAccess);
+
+        if (indexer is null)
+        {
+            // Not an indexer: it is an array (or a type this frontend does not
+            // understand). A genuine array stays an ARRAYSTORE, because an
+            // array really is an array.
+            var array = TranslateExpression(elementAccess.Expression, store: false);
+            var index = elementAccess.ArgumentList.Arguments.Count > 0
+                ? TranslateExpression(elementAccess.ArgumentList.Arguments[0].Expression, store: false)
+                : null;
+            if (array is not null && index is not null && value is not null)
+            {
+                Emit(InstructionKind.ARRAYSTORE, dest: value, lhs1: array, lhs2: index,
+                    node: assignment);
+            }
+            return;
+        }
+
+        var setter = indexer.SetMethod;
+        if (setter is null)
+        {
+            // A get-only indexer cannot be assigned. There is nothing to lower.
+            Report(assignment, "UNHANDLED_NODE",
+                $"the indexer '{indexer.Name}' has no setter", elementAccess.GetType().Name);
+            return;
+        }
+
+        var arguments = new List<Operand>();
+        var receiver = TranslateExpression(elementAccess.Expression, store: false);
+        if (receiver is not null)
+        {
+            arguments.Add(receiver);
+        }
+        // The indexer's KEY comes before the value: the setter's signature is
+        // set_Item(key, value).
+        foreach (var argument in elementAccess.ArgumentList.Arguments)
+        {
+            var operand = TranslateExpression(argument.Expression, store: false);
+            if (operand is not null)
+            {
+                arguments.Add(operand);
+            }
+        }
+        if (value is not null)
+        {
+            arguments.Add(value);
+        }
+
+        Emit(InstructionKind.CALL, calleeSig: Signature.For(setter), args: arguments,
+            node: assignment);
+    }
+
+    /// <summary>
+    /// Lower a READ through an INDEXER.
+    /// </summary>
+    /// <param name="elementAccess">the element access being read</param>
+    /// <returns>the operand holding the read value</returns>
+    /// <remarks>
+    /// <para>
+    /// The read side matters for the same reason the write side does. A value
+    /// read through an indexer and then handed to a sink is a finding, and an
+    /// <c>ARRAYLOAD</c> carries no callee signature for the catalogue to match
+    /// -- so the finding would be absent while the scan reported success.
+    /// </para>
+    /// <para>
+    /// The distinction is the resolved symbol again: an indexer becomes a call
+    /// to its getter, and an array stays an <c>ARRAYLOAD</c>.
+    /// </para>
+    /// </remarks>
+    private Operand? TranslateIndexerRead(ElementAccessExpressionSyntax elementAccess)
+    {
+        var indexer = IndexerSymbolOf(elementAccess);
+
+        if (indexer is null)
+        {
+            var array = TranslateExpression(elementAccess.Expression, store: false);
+            var index = elementAccess.ArgumentList.Arguments.Count > 0
+                ? TranslateExpression(elementAccess.ArgumentList.Arguments[0].Expression, store: false)
+                : null;
+            var loadTemp = NewTemp();
+            if (array is not null && index is not null)
+            {
+                Emit(InstructionKind.ARRAYLOAD, dest: loadTemp, lhs1: array, lhs2: index,
+                    node: elementAccess);
+            }
+            return loadTemp;
+        }
+
+        var getter = indexer.GetMethod;
+        if (getter is null)
+        {
+            Report(elementAccess, "UNHANDLED_NODE",
+                $"the indexer '{indexer.Name}' has no getter", elementAccess.GetType().Name);
+            return null;
+        }
+
+        var arguments = new List<Operand>();
+        var receiver = TranslateExpression(elementAccess.Expression, store: false);
+        if (receiver is not null)
+        {
+            arguments.Add(receiver);
+        }
+        foreach (var argument in elementAccess.ArgumentList.Arguments)
+        {
+            var operand = TranslateExpression(argument.Expression, store: false);
+            if (operand is not null)
+            {
+                arguments.Add(operand);
+            }
+        }
+
+        var readTemp = NewTemp();
+        Emit(InstructionKind.CALL, dest: readTemp, calleeSig: Signature.For(getter),
+            args: arguments, node: elementAccess);
+        return readTemp;
+    }
+
+    /// <summary>
+    /// The INDEXER that an element access resolves to, or null when it is not
+    /// an indexer at all.
+    /// </summary>
+    /// <param name="elementAccess">the element access</param>
+    /// <returns>the indexer symbol, or null</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Why an indexer is a PROPERTY.</b> Roslyn models a C# indexer as an
+    /// <see cref="IPropertySymbol"/> whose <see cref="IPropertySymbol.IsIndexer"/>
+    /// is true. Its accessors are named <c>get_Item</c> and <c>set_Item</c>,
+    /// which is why the sink catalogue names
+    /// <c>System.Data.Common.DbConnectionStringBuilder.set_Item</c> for the
+    /// indexer of that type: the catalogue's symbol IS the accessor's symbol.
+    /// </para>
+    /// <para>
+    /// <b>Why the symbol decides it.</b> An array access resolves to no symbol
+    /// at all, and an indexer access resolves to this property. The two are
+    /// written identically, so the spelling cannot tell them apart.
+    /// </para>
+    /// </remarks>
+    private IPropertySymbol? IndexerSymbolOf(ElementAccessExpressionSyntax elementAccess)
+    {
+        if (_model.GetSymbolInfo(elementAccess).Symbol is IPropertySymbol property
+            && property.IsIndexer)
+        {
+            return property;
+        }
+        return null;
     }
 
     private void TranslateIf(IfStatementSyntax ifStatement)
@@ -935,17 +1121,7 @@ internal sealed class TacTranslator
 
             case ElementAccessExpressionSyntax elementAccess:
             {
-                var array = TranslateExpression(elementAccess.Expression, store: false);
-                var index = elementAccess.ArgumentList.Arguments.Count > 0
-                    ? TranslateExpression(elementAccess.ArgumentList.Arguments[0].Expression, store: false)
-                    : null;
-                var loadTemp = NewTemp();
-                if (array is not null && index is not null)
-                {
-                    Emit(InstructionKind.ARRAYLOAD, dest: loadTemp, lhs1: array, lhs2: index,
-                        node: elementAccess);
-                }
-                return loadTemp;
+                return TranslateIndexerRead(elementAccess);
             }
 
             case ThisExpressionSyntax:
