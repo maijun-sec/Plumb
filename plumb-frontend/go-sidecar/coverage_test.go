@@ -140,7 +140,7 @@ func init() {
 		files: []parsedSource{{path: "sample.go", file: file}},
 	}
 
-	initializer := translatePackageInit(fset, loaded, file)
+	initializer := translatePackageInit(fset, loaded, file, buildTypeIndex([]*loadedPackage{loaded}))
 	if initializer == nil {
 		t.Fatal("the package initialiser was not lowered")
 	}

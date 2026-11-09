@@ -46,12 +46,13 @@ func translateSource(t *testing.T, source string) []Function {
 	}
 
 	functions := []Function{}
+	index := buildTypeIndex([]*loadedPackage{loaded})
 	for _, declaration := range file.Decls {
 		function, ok := declaration.(*ast.FuncDecl)
 		if !ok || function.Body == nil {
 			continue
 		}
-		functions = append(functions, translateFunction(fset, loaded, function)...)
+		functions = append(functions, translateFunction(fset, loaded, function, index)...)
 	}
 	return functions
 }

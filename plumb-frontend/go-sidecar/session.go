@@ -157,6 +157,15 @@ type ProjectSession struct {
 	byPath     map[string]*sourceFile
 	byPathFold map[string]*sourceFile
 
+	// The program's type index: the named types the analysed packages
+	// declare, with their method sets.
+	//
+	// It is built once, when the project is opened, because it needs EVERY
+	// package: a call through an interface in one package may reach a type
+	// that another package declares, and the packages are type-checked one
+	// by one.
+	index *typeIndex
+
 	diagnostics []Diagnostic
 }
 
@@ -190,6 +199,7 @@ func Open(request *Request) (*ProjectSession, error) {
 		byPathFold: map[string]*sourceFile{},
 	}
 
+	loadedPackages := []*loadedPackage{}
 	for index := range request.Packages {
 		spec := &request.Packages[index]
 		loaded, err := loader.load(spec)
@@ -209,6 +219,7 @@ func Open(request *Request) (*ProjectSession, error) {
 			})
 			continue
 		}
+		loadedPackages = append(loadedPackages, loaded)
 		for _, source := range loaded.files {
 			entry := &sourceFile{path: source.path, pkg: loaded, file: source.file}
 			key := pathKey(source.path)
@@ -216,6 +227,12 @@ func Open(request *Request) (*ProjectSession, error) {
 			session.byPathFold[strings.ToLower(key)] = entry
 		}
 	}
+	// The type index is built from EVERY package, because a call through
+	// an interface in one package may reach a type another package
+	// declares. The packages are type-checked one by one, so the relation
+	// is worked out from the method sets rather than from the type
+	// checker's own answer.
+	session.index = buildTypeIndex(loadedPackages)
 
 	session.diagnostics = append(session.diagnostics, loader.diagnostics...)
 	return session, nil
@@ -259,7 +276,7 @@ func (session *ProjectSession) Translate(path string) []Function {
 	// without this they would be DROPPED: a package-level
 	// `var secret = readSecret()` would leave no trace in the TAC, and the
 	// taint that flows into it would be invisible.
-	if initializer := translatePackageInit(session.loader.fset, entry.pkg, entry.file); initializer != nil {
+	if initializer := translatePackageInit(session.loader.fset, entry.pkg, entry.file, session.index); initializer != nil {
 		functions = append(functions, *initializer)
 	}
 
@@ -283,7 +300,7 @@ func (session *ProjectSession) Translate(path string) []Function {
 			// instructions into the store twice.
 			continue
 		}
-		functions = append(functions, translateFunction(session.loader.fset, entry.pkg, declaration)...)
+		functions = append(functions, translateFunction(session.loader.fset, entry.pkg, declaration, session.index)...)
 	}
 	return functions
 }
@@ -306,11 +323,12 @@ func (session *ProjectSession) Translate(path string) []Function {
 // A CONSTANT needs no initialisation: it is a compile-time value, and it is
 // bound to the constant itself wherever it is used. A TYPE has no run-time
 // effect at all.
-func translatePackageInit(fset *token.FileSet, pkg *loadedPackage, file *ast.File) *Function {
+func translatePackageInit(fset *token.FileSet, pkg *loadedPackage, file *ast.File, index *typeIndex) *Function {
 	t := &translator{
 		fset:             fset,
 		info:             pkg.info,
 		pkg:              pkg.pkg,
+		index:            index,
 		instructions:     []Instruction{},
 		problems:         []Problem{},
 		params:           []Operand{},

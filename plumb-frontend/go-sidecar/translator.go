@@ -204,6 +204,15 @@ type translator struct {
 	// The operands of the objects the translator has bound.
 	bindings map[types.Object]*Operand
 
+	// The program's type index: the named types the analysed packages
+	// declare, with their method sets.
+	//
+	// It is what makes an interface call reach its implementations. Go's
+	// interface satisfaction is implicit, so the relation cannot be read
+	// off the source -- it has to be worked out structurally, and this is
+	// where the method sets it is worked out from live.
+	index *typeIndex
+
 	// How many times each base name has been used, so that a shadowed
 	// variable gets its own name in the TAC.
 	usedNames map[string]int
@@ -260,11 +269,12 @@ type closure struct {
 // It returns the function AND the closures it created: a closure is a
 // function of its own, and it must reach the store like any other, or the
 // body it holds would be invisible to the analysis.
-func translateFunction(fset *token.FileSet, pkg *loadedPackage, declaration *ast.FuncDecl) []Function {
+func translateFunction(fset *token.FileSet, pkg *loadedPackage, declaration *ast.FuncDecl, index *typeIndex) []Function {
 	t := &translator{
 		fset:         fset,
 		info:         pkg.info,
 		pkg:          pkg.pkg,
+		index:        index,
 		instructions: []Instruction{},
 		problems:     []Problem{},
 		params:       []Operand{},
@@ -408,6 +418,7 @@ func (t *translator) translateFuncLit(literal *ast.FuncLit) *Operand {
 		fset:         t.fset,
 		info:         t.info,
 		pkg:          t.pkg,
+		index:        t.index,
 		signature:    signature,
 		owner:        t.owner,
 		enclosing:    t.enclosing,
@@ -2499,11 +2510,64 @@ type calleeTarget struct {
 	// something the user wrote.
 	signature string
 
+	// The callee keys of the concrete types that may receive this call,
+	// when the call is made through an interface.
+	//
+	// The call's own key names the INTERFACE, and a program has no
+	// function for an interface, so without these the call would reach
+	// nothing. Go's interface satisfaction is implicit, so the set is
+	// worked out structurally -- from the method sets, not from a
+	// declaration.
+	dispatch []string
+
 	// The builtin's name, for a builtin call.
 	builtinName string
 
 	// The type an argument names, for a conversion, a `new` and a `make`.
 	typeArg types.Type
+}
+
+// dispatchTargets returns the callee keys of the types that may receive a
+// call made through an interface.
+//
+// WHY THIS IS NEEDED. A call through an interface is dispatched at RUN TIME
+// to a concrete type, and the source does not say which: Go's interface
+// satisfaction is implicit, so there is no declaration to read. The call's
+// own callee key names the INTERFACE, and a program has no function for an
+// interface, so the call reaches nothing -- and the taint that should cross
+// the call does not cross it.
+//
+// So the concrete types that satisfy the interface are found here, and the
+// call is emitted once for each of them. The relation is STRUCTURAL: it
+// comes from the method sets, not from a declaration, and the signatures
+// are compared, not only the names.
+//
+// The keys are the implementations' OWN: "pkg.Type.method/arity". The
+// interface's own key stays on the call as well, so a call whose
+// implementation is not in the analysed program is still a call.
+func (t *translator) dispatchTargets(expression ast.Expr, receiver types.Type, method string, arity int) []string {
+	iface := interfaceOf(receiver)
+	if iface == nil {
+		return nil
+	}
+	owners := t.index.implementationsOf(iface)
+	if len(owners) == 0 {
+		return nil
+	}
+	truncated := false
+	if len(owners) > maxInterfaceImplementations {
+		owners = owners[:maxInterfaceImplementations]
+		truncated = true
+	}
+	keys := make([]string, 0, len(owners))
+	for _, owner := range owners {
+		keys = append(keys, calleeSignature(owner, method, arity))
+	}
+	if truncated {
+		t.report(expression, ProblemSourceLowered,
+			"the call reaches more types than the interface dispatch limit allows: the extra types' bodies were not analysed")
+	}
+	return keys
 }
 
 // translateCall lowers a call expression.
@@ -2609,6 +2673,21 @@ func (t *translator) translateCall(call *ast.CallExpr, destination *Operand) *Op
 		CalleeSig: target.signature,
 		Args:     args,
 	}, call.Pos())
+	// The DISPATCH: the same call, once for each concrete type that may
+	// receive it.
+	//
+	// The destination is the SAME variable, because the call returns one
+	// value whichever type receives it. The taint engine only ever adds
+	// taint to a destination and never takes it away, so the destination
+	// ends up holding the union of what the implementations return.
+	for _, key := range target.dispatch {
+		t.emit(Instruction{
+			Kind:     KindCall,
+			Dest:     destination,
+			CalleeSig: key,
+			Args:     args,
+		}, call.Pos())
+	}
 	return destination
 }
 
@@ -2746,6 +2825,7 @@ func (t *translator) resolveCallee(expression ast.Expr) (calleeTarget, bool) {
 					kind:      callRegular,
 					receiver:  receiver,
 					signature: calleeSignature(methodOwner(selection.Recv()), function.Name(), signatureArity(signature)),
+					dispatch:  t.dispatchTargets(expression, selection.Recv(), function.Name(), signatureArity(signature)),
 				}, true
 			case types.FieldVal:
 				t.report(expression, ProblemUnhandledNode, "a call of a function-valued field was not lowered")
