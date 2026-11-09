@@ -5095,6 +5095,63 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           }
         }
       }
+      // The ARGUMENT → RESULT shape.
+      //
+      // Some methods build their result from an ARGUMENT rather than from the
+      // receiver: `Path.resolve(String)` returns a path built from the argument,
+      // and `String.valueOf(Object)` returns the argument's text. The engine has
+      // no summary for such a callee, so without a rule the result is clean and
+      // the taint stops at the call -- and a finding downstream of it goes
+      // missing.
+      //
+      // The rule is config-gated for the same reason the receiver one is: applied
+      // unconditionally, every method would pass its argument's taint on and every
+      // result would be tainted. The table says WHICH method and WHICH argument,
+      // so the inference is reviewable.
+      if (ins.dest instanceof TacOperand.TacVar argDest
+          && !taintedVars.containsKey(argDest)
+          && !ins.args.isEmpty()) {
+        List<Integer> argPositions =
+            ctx.config().argumentPassthrough().tacArgIndexesFor(calleeSig, ins.args);
+        for (Integer position : argPositions) {
+          if (position == null || position < 0 || position >= ins.args.size()) continue;
+          if (!(ins.args.get(position) instanceof TacOperand.TacVar av)) continue;
+          String argLabel = taintedVars.get(av);
+          if (argLabel == null) continue;
+          taintedVars.put(argDest, "arg-passthrough:" + argLabel);
+          List<FlowStep> argFold = new java.util.ArrayList<>();
+          List<FlowStep> argSrcPath = taintPaths.get(av);
+          if (argSrcPath != null) argFold.addAll(argSrcPath);
+          argFold.add(
+              new FlowStep(
+                  "argument-passthrough",
+                  "",
+                  ins.line,
+                  ins.column,
+                  calleeSig,
+                  "argument-tainted dest inherits: " + argLabel));
+          taintPaths.put(argDest, java.util.Collections.unmodifiableList(argFold));
+          // dual-write v2 SUMMARY_FOLD node, the same shape the receiver
+          // passthrough writes.
+          int argHandle = v2TraceHandle.getOrDefault(av, -1);
+          if (argHandle >= 0) {
+            int handle =
+                v2Builder.addSummaryFold(
+                    TraceNode.Op.SUMMARY_TAINT_PROPAGATE,
+                    calleeSig,
+                    position == 0 ? 0 : position - 1,
+                    List.of(new OperandRef.Var(argDest.name(), 0)),
+                    argHandle,
+                    "argument-tainted dest inherits: " + argLabel,
+                    "",
+                    ins.line,
+                    ins.column,
+                    calleeSig);
+            v2TraceHandle.put(argDest, handle);
+          }
+          break;
+        }
+      }
       return;
     }
     // For each user-arg index i

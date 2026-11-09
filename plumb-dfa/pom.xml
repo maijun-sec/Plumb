@@ -158,6 +158,14 @@
                              be the ones the catalogue names, and the Go
                              accumulators must carry the taint both ways. -->
                         <include>org/plumb/dfa/taint/GoSinkCatalogTest.java</include>
+                        <!-- The argument-to-return shape: a library method that
+                             carries an ARGUMENT's taint into its result is a
+                             rule of its own, and the table that says which
+                             method and which argument has to reach the
+                             engine. The negative control matters most here:
+                             a rule for Path.resolve must NOT also match
+                             Path.resolveSibling. -->
+                        <include>org/plumb/dfa/taint/ArgumentPassthroughTest.java</include>
                         <include>org/plumb/dfa/taint/R804FollowupFieldTaintTrackerTest.java</include>
                         <include>org/plumb/dfa/taint/R807ConstSourcePassTest.java</include>
                         <!-- R-810: StaticFieldResolver short-name

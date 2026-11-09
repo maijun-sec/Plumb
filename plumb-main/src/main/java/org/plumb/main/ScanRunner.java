@@ -2737,7 +2737,14 @@ public final class ScanRunner {
               // silently drop the list and
               // disable the fallback
               // entirely.
-              baseCfg.receiverPassthroughPatterns());
+              baseCfg.receiverPassthroughPatterns(),
+              // the argument->result table,
+              // which is the shape the
+              // receiver table cannot
+              // express: a method that builds
+              // its result from an ARGUMENT.
+              baseCfg.languageSemantics(),
+              baseCfg.argumentPassthrough());
       // Pass per-enclosing-class
       // source paths so the unified
       // FindingReporter can fill in

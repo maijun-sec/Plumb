@@ -60,6 +60,14 @@ public final class EngineConfig {
    */
   private final org.plumb.dfa.semantics.LanguageSemanticsRegistry languageSemantics;
 
+  /**
+   * The rules that say an ARGUMENT's taint reaches the callee's RESULT.
+   *
+   * <p>Never {@code null}: a configuration with no argument table gets an empty one, so a checker
+   * can always ask and get an answer.
+   */
+  private final ArgumentPassthrough argumentPassthrough;
+
   public EngineConfig(
       SinkFamilyRegistry sinkFamilies,
       FactKindRegistry factKinds,
@@ -85,6 +93,32 @@ public final class EngineConfig {
       TuningConfig tuning,
       List<Pattern> receiverPassthroughPatterns,
       org.plumb.dfa.semantics.LanguageSemanticsRegistry languageSemantics) {
+    this(
+        sinkFamilies,
+        factKinds,
+        checkers,
+        cweMappings,
+        tuning,
+        receiverPassthroughPatterns,
+        languageSemantics,
+        ArgumentPassthrough.empty());
+  }
+
+  /**
+   * The full constructor: the two passthrough tables and the language semantics.
+   *
+   * <p>The argument table is the one that says an ARGUMENT's taint reaches the callee's RESULT --
+   * the shape the receiver table cannot express.
+   */
+  public EngineConfig(
+      SinkFamilyRegistry sinkFamilies,
+      FactKindRegistry factKinds,
+      CheckerRegistry checkers,
+      Map<String, String> cweMappings,
+      TuningConfig tuning,
+      List<Pattern> receiverPassthroughPatterns,
+      org.plumb.dfa.semantics.LanguageSemanticsRegistry languageSemantics,
+      ArgumentPassthrough argumentPassthrough) {
     this.sinkFamilies = Objects.requireNonNull(sinkFamilies, "sinkFamilies");
     this.factKinds = Objects.requireNonNull(factKinds, "factKinds");
     this.checkers = Objects.requireNonNull(checkers, "checkers");
@@ -96,6 +130,8 @@ public final class EngineConfig {
         languageSemantics == null
             ? org.plumb.dfa.semantics.LanguageSemanticsRegistry.withDefaults()
             : languageSemantics;
+    this.argumentPassthrough =
+        argumentPassthrough == null ? ArgumentPassthrough.empty() : argumentPassthrough;
   }
 
   /**
@@ -144,6 +180,15 @@ public final class EngineConfig {
   }
 
   /**
+   * The rules that say an ARGUMENT's taint reaches the callee's RESULT.
+   *
+   * <p>Never {@code null}.
+   */
+  public ArgumentPassthrough argumentPassthrough() {
+    return argumentPassthrough;
+  }
+
+  /**
    * true iff the callee signature matches one of the configured receiver-passthrough patterns. The
    * passthrough fallback uses this to gate the receiver → dest taint inference.
    */
@@ -165,25 +210,74 @@ public final class EngineConfig {
    */
   public EngineConfig withCheckers(CheckerRegistry newCheckers) {
     return new EngineConfig(
-        sinkFamilies, factKinds, newCheckers, cweMappings, tuning, receiverPassthroughPatterns);
+        sinkFamilies,
+        factKinds,
+        newCheckers,
+        cweMappings,
+        tuning,
+        receiverPassthroughPatterns,
+        languageSemantics,
+        argumentPassthrough);
   }
 
   public EngineConfig withSinkFamilies(SinkFamilyRegistry newFamilies) {
     return new EngineConfig(
-        newFamilies, factKinds, checkers, cweMappings, tuning, receiverPassthroughPatterns);
+        newFamilies,
+        factKinds,
+        checkers,
+        cweMappings,
+        tuning,
+        receiverPassthroughPatterns,
+        languageSemantics,
+        argumentPassthrough);
   }
 
   public EngineConfig withFactKinds(FactKindRegistry newKinds) {
     return new EngineConfig(
-        sinkFamilies, newKinds, checkers, cweMappings, tuning, receiverPassthroughPatterns);
+        sinkFamilies,
+        newKinds,
+        checkers,
+        cweMappings,
+        tuning,
+        receiverPassthroughPatterns,
+        languageSemantics,
+        argumentPassthrough);
   }
 
   public EngineConfig withTuning(TuningConfig newTuning) {
     return new EngineConfig(
-        sinkFamilies, factKinds, checkers, cweMappings, newTuning, receiverPassthroughPatterns);
+        sinkFamilies,
+        factKinds,
+        checkers,
+        cweMappings,
+        newTuning,
+        receiverPassthroughPatterns,
+        languageSemantics,
+        argumentPassthrough);
   }
 
   public EngineConfig withReceiverPassthroughPatterns(List<Pattern> patterns) {
-    return new EngineConfig(sinkFamilies, factKinds, checkers, cweMappings, tuning, patterns);
+    return new EngineConfig(
+        sinkFamilies,
+        factKinds,
+        checkers,
+        cweMappings,
+        tuning,
+        patterns,
+        languageSemantics,
+        argumentPassthrough);
+  }
+
+  /** The same configuration with a different argument-passthrough table. */
+  public EngineConfig withArgumentPassthrough(ArgumentPassthrough table) {
+    return new EngineConfig(
+        sinkFamilies,
+        factKinds,
+        checkers,
+        cweMappings,
+        tuning,
+        receiverPassthroughPatterns,
+        languageSemantics,
+        table);
   }
 }

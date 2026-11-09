@@ -98,7 +98,8 @@ public final class ConfigLoader {
     Map<String, Object> cweYaml = loadYamlFromClasspath("cwe-mappings.yaml", overrides);
     Map<String, Object> tunYaml = loadYamlFromClasspath("tuning.yaml", overrides);
     Map<String, Object> rcvYaml = loadYamlFromClasspath("receiver-passthrough.yaml", overrides);
-    return build(sinkYaml, kindYaml, chkYaml, cweYaml, tunYaml, rcvYaml);
+    Map<String, Object> argYaml = loadYamlFromClasspath("argument-passthrough.yaml", overrides);
+    return build(sinkYaml, kindYaml, chkYaml, cweYaml, tunYaml, rcvYaml, argYaml);
   }
 
   /**
@@ -113,7 +114,8 @@ public final class ConfigLoader {
     Map<String, Object> cweYaml = loadYamlFromFile(yamlDir.resolve("cwe-mappings.yaml"));
     Map<String, Object> tunYaml = loadYamlFromFile(yamlDir.resolve("tuning.yaml"));
     Map<String, Object> rcvYaml = loadYamlFromFile(yamlDir.resolve("receiver-passthrough.yaml"));
-    return build(sinkYaml, kindYaml, chkYaml, cweYaml, tunYaml, rcvYaml);
+    Map<String, Object> argYaml = loadYamlFromFile(yamlDir.resolve("argument-passthrough.yaml"));
+    return build(sinkYaml, kindYaml, chkYaml, cweYaml, tunYaml, rcvYaml, argYaml);
   }
 
   @SuppressWarnings("unchecked")
@@ -123,15 +125,24 @@ public final class ConfigLoader {
       Map<String, Object> chkYaml,
       Map<String, Object> cweYaml,
       Map<String, Object> tunYaml,
-      Map<String, Object> rcvYaml) {
+      Map<String, Object> rcvYaml,
+      Map<String, Object> argYaml) {
     SinkFamilyRegistry families = parseSinkFamilies(sinkYaml);
     FactKindRegistry kinds = parseFactKinds(kindYaml);
     CheckerRegistry checkers = parseCheckers(chkYaml);
     Map<String, String> cweMappings = parseCweMappings(cweYaml);
     TuningConfig tuning = parseTuning(tunYaml);
     List<Pattern> receiverPassthroughPatterns = parseReceiverPassthrough(rcvYaml);
+    ArgumentPassthrough argumentPassthrough = parseArgumentPassthrough(argYaml);
     return new EngineConfig(
-        families, kinds, checkers, cweMappings, tuning, receiverPassthroughPatterns);
+        families,
+        kinds,
+        checkers,
+        cweMappings,
+        tuning,
+        receiverPassthroughPatterns,
+        org.plumb.dfa.semantics.LanguageSemanticsRegistry.withDefaults(),
+        argumentPassthrough);
   }
 
   /**
@@ -161,6 +172,80 @@ public final class ConfigLoader {
       for (Object item : (List<Object>) rawPatterns) {
         if (item instanceof String s) {
           out.add(Pattern.compile(s));
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * parse {@code argument-passthrough.yaml}. Returns the rules that say an ARGUMENT's taint reaches
+   * the callee's RESULT.
+   *
+   * <p>YAML shape mirrors {@code receiver-passthrough.yaml} (top-level {@code families} map; each
+   * entry has {@code enabled} + {@code patterns} list), except that each pattern is a MAP carrying
+   * the pattern text and the argument position it names.
+   */
+  @SuppressWarnings("unchecked")
+  private static ArgumentPassthrough parseArgumentPassthrough(Map<String, Object> yaml) {
+    if (yaml == null || yaml.isEmpty()) return ArgumentPassthrough.empty();
+    Object fams = yaml.get("families");
+    if (!(fams instanceof Map)) return ArgumentPassthrough.empty();
+    Map<String, Object> famsMap = (Map<String, Object>) fams;
+    List<ArgumentPassthrough.Rule> out = new ArrayList<>();
+    for (Map.Entry<String, Object> e : famsMap.entrySet()) {
+      if (!(e.getValue() instanceof Map)) continue;
+      Map<String, Object> spec = (Map<String, Object>) e.getValue();
+      // enabled defaults to true; explicit
+      // `enabled: false` skips the family.
+      if (Boolean.FALSE.equals(spec.get("enabled"))) continue;
+      Object rawPatterns = spec.get("patterns");
+      if (!(rawPatterns instanceof List)) continue;
+      for (Object item : (List<Object>) rawPatterns) {
+        if (!(item instanceof Map)) continue;
+        Map<String, Object> entry = (Map<String, Object>) item;
+        Object rawPattern = entry.get("pattern");
+        if (!(rawPattern instanceof String)) continue;
+        List<Integer> indexes = parsePassthroughArgIndexes(entry.get("arg_index"));
+        if (indexes.isEmpty()) continue;
+        try {
+          out.add(new ArgumentPassthrough.Rule(Pattern.compile((String) rawPattern), indexes));
+        } catch (java.util.regex.PatternSyntaxException ignored) {
+          // A pattern the engine cannot compile is a pattern it cannot use. The entry is
+          // dropped rather than failing the load: one bad rule must not take the whole
+          // configuration down.
+        }
+      }
+    }
+    return new ArgumentPassthrough(out);
+  }
+
+  /**
+   * The argument positions a rule names.
+   *
+   * <p>Three shapes are accepted: a single number, a list of numbers, and the word {@code any} for
+   * a rule that does not name one position.
+   */
+  @SuppressWarnings("unchecked")
+  private static List<Integer> parsePassthroughArgIndexes(Object raw) {
+    List<Integer> out = new ArrayList<>();
+    if (raw == null) return out;
+    if (raw instanceof Number n) {
+      out.add(n.intValue());
+      return out;
+    }
+    if (raw instanceof String s) {
+      if ("any".equalsIgnoreCase(s.trim())) {
+        out.add(ArgumentPassthrough.ANY_ARGUMENT);
+      }
+      return out;
+    }
+    if (raw instanceof List<?> list) {
+      for (Object item : list) {
+        if (item instanceof Number n) {
+          out.add(n.intValue());
+        } else if (item instanceof String s && "any".equalsIgnoreCase(s.trim())) {
+          out.add(ArgumentPassthrough.ANY_ARGUMENT);
         }
       }
     }

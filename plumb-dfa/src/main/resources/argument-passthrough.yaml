@@ -1,0 +1,696 @@
+# argument-passthrough configuration
+#
+# A library method can carry taint into its RESULT in two ways, and they
+# are not the same way:
+#
+#   - the RECEIVER's taint reaches the result -- that shape is in
+#     receiver-passthrough.yaml;
+#   - an ARGUMENT's taint reaches the result -- `path.resolve(userInput)`
+#     returns a path built from the argument, and `String.valueOf(x)`
+#     returns x's text. THIS file is that shape.
+#
+# The rules here apply to callees the engine has NO summary for. Without
+# them the result of such a call is clean and the taint stops at the call,
+# which is how a finding goes missing. With them applied unconditionally,
+# every method would pass its argument's taint on and the results would be
+# tainted where they are not -- so the table says WHICH method, and WHICH
+# argument, and each entry is reviewable on its own.
+#
+# Pattern form: a Java regex matched against the callee signature (e.g.
+# "java.nio.file.Path.resolve/1"). Both `.` (TAC dot form) and `#` (legacy
+# JVM form) separators are accepted by the loader.
+#
+# The method name is followed by a WORD BOUNDARY, so a rule for
+# `Path.resolve` does not also match `Path.resolveSibling`. The loader
+# matches with find(), not matches(), so without the boundary a rule
+# would match every longer name that starts with it.
+#
+# Entry form:
+#
+#   - pattern: '<regex>'
+#     arg_index: <n>        the USER argument whose taint reaches the
+#                            result. The receiver is not a user argument,
+#                            so the index is zero-based over the arguments
+#                            the source wrote.
+#     arg_index: [n, m]     several positions: the result is tainted when
+#                            any of them is.
+#     arg_index: any        the rule does not name one position: any user
+#                            argument carries its taint to the result.
+#
+# Use
+#   enabled: false
+# to turn a family off without removing the entry.
+
+families:
+  # ===== The JDK and Servlet methods whose RESULT is built from an ARGUMENT =====
+  #
+  # `Path.resolve(String)` returns a path built from the argument, so a
+  # tainted segment reaches the result -- and the result is what a file
+  # operation then uses.
+  jdk-argument-passthrough:
+    enabled: true
+    patterns:
+      - pattern: '^((?:[\w.]+\.)*)Path\.resolve\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^((?:[\w.]+\.)*)Paths\.get\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^((?:[\w.]+\.)*)String\.valueOf\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^((?:[\w.]+\.)*)String\.format\b(/\d+)?'
+        arg_index: any
+      - pattern: '^((?:[\w.]+\.)*)String\.join\b(/\d+)?'
+        arg_index: any
+      - pattern: '^((?:[\w.]+\.)*)File\.newInstance\b(/\d+)?'
+        arg_index: 0
+
+  library-argument-passthrough-csharp:
+    enabled: true
+    patterns:
+      - pattern: '^Grpc\.Core\.AsyncStreamReaderExtensions\.(ReadAllAsyncCore|ReadAllAsync)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Workflow\.ComponentModel\.DependencyObject\.GetValue\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Workflow\.ComponentModel\.DependencyObject\.GetValueBase\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Workflow\.ComponentModel\.DependencyObject\.GetBoundValue\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Workflow\.ComponentModel\.WorkflowChanges\.GetCondition\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Workflow\.ComponentModel\.Activity\.GetActivityByName\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Workflow\.ComponentModel\.DependencyObject\.(GetValue|GetValueBase|GetBoundValue)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Workflow\.Activity\.CompensatableSequenceActivity\.(GetValue|GetValueBase)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Workflow\.Activities\.ConditionedActivityGroup\.(GetValue|GetValueBase|GetBoundValue|GetWhenCondition)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Workflow\.Activities\.ActiveDirectoryRoleFactory\.(CreateFromAlias|CreateFromEmailAddress|CreateFromSecurityIdentifier)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Xml\.Serialization\.XmlSerializer\.Deserialize\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Xml\.XmlWriter\.Create\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Xml\.XmlDictionaryReader\.Create(Binary|Mtom|Text)Reader\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Net\.WebSockets\.WebSocket\.CreateFromStream\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.Util\.HttpEncoder\.UrlPathEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.Util\.HttpEncoder\.UrlEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.Util\.HttpEncoder\.JavaScriptStringEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.UI\.HtmlTextWriter\.EncodeAttributeValue\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.UI\.HtmlTextWriter\.EncodeAttributeValue\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^System\.Web\.UI\.HtmlTextWriter\.EncodeUrl\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.UI\.(ObjectState|Los)Formatter\.Deserialize\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.UI\.ObjectStateFormatter\.Serialize\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.Security\.MembershipProvider\.EncryptPassword\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.Mvc\.UrlHelper\.RouteUrl\b(/\d+)?'
+        arg_index: 3
+      - pattern: '^System\.Web\.Mvc\.UrlHelper\.GenerateUrl\b(/\d+)?'
+        arg_index: 4
+      - pattern: '^System\.Web\.Mvc\.UrlHelper\.Encode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.Mvc\.HtmlHelper\.FormatValue\b(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Web\.Mvc\.HtmlHelper\.AttributeEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.Mvc\.HtmlHelper\.Encode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.Mvc\.AjaxHelper\.JavaScriptStringEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.Globalization\.ResourceFileStringLocalizerProvider\.GetLocalizedString\b(/\d+)?'
+        arg_index: [1, 2]
+      - pattern: '^System\.Web\.HttpUtility\.JavaScriptEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.HttpServerUtility|System\.Web\.HttpUtility)\.UrlPathEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.HttpUtility\.JavaScriptStringEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.HttpUtility\.(UrlEncode|UrlEncodeToBytes|UrlEncodeUnicode|UrlEncodeUnicodeToBytes)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.HttpServerUtility\.UrlEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.HttpUtility\.HtmlEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.HttpUtility\.HtmlAttributeEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.HttpServerUtility|System\.Web\.HttpUtility)\.HtmlEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.HttpServerUtility|System\.Web\.HttpUtility)\.HtmlDecode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.HttpServerUtility\.UrlDecode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.HttpUtility\.(UrlDecode|UrlDecodeToBytes)(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.HttpServerUtility|System\.Web\.HttpUtility)\.ParseQueryString\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.RegularExpressions\.Regex\.Replace\b(/\d+)?'
+        arg_index: 2
+      - pattern: '^System\.Text\.RegularExpressions\.Regex\.(Replace|Match|Matches|Split)(/\d+)?'
+        arg_index: 1
+      - pattern: '^System\.Text\.RegularExpressions\.Regex\.(Replace|Match|Matches|Split)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.RegularExpressions\.Regex\.(Escape|Unescape)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.Json\.Nodes\.JsonNode\.(ParseAsync|Parse)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.Json\.JsonDocument\.ParseValue\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.Json\.JsonDocument\.(ParseAsync|Parse)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.Json\.JsonSerializer\.(SerializeTo(Document|Element|Node|Utf8Bytes)|Serialize)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.Json\.JsonEncodedText\.Encode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.Json\.JsonSerializer\.SerializeToUtf8Bytes\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.Json\.JsonSerializer\.(DeserializeAsync|Deserialize)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.CompositeFormat\.Parse\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.Encoding\.(GetChars|GetString)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.Encoding\.GetBytes\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Text\.Encoding\.Convert\b(/\d+)?'
+        arg_index: 2
+      - pattern: '^System\.Security\.Cryptography\.RandomNumberGenerator\.GetItems\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Security\.Cryptography\.FromBase64Transform\.TransformFinalBlock\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Security\.Cryptography\.ProtectedData|System\.Security\.Cryptography\.DpapiDataProtector)\.Unprotect\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Security\.Cryptography\.ProtectedData|System\.Security\.Cryptography\.DpapiDataProtector)\.Protect\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Security\.SecurityElement\.FromString\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Security\.SecurityElement\.Escape\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Runtime\.Serialization\.Formatters\.Soap\.SoapFormatter\.Deserialize\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Runtime\.Serialization\.Formatters\.Binary\.BinaryFormatter\.(UnsafeDeserializeMethodResponse|UnsafeDeserialize)(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Runtime\.Serialization\.NetDataContractSerializer|System\.Runtime\.Serialization\.DataContractSerializer)\.(Deserialize|ReadObject)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Runtime\.InteropServices\.Marshal\.SecureStringTo(BSTR|CoTaskMemAnsi|CoTaskMemUnicode|GlobalAllocAnsi|GlobalAllocUnicode)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Runtime\.ExceptionServices\.ExceptionDispatchInfo\.Capture\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Runtime\.CompilerServices\.RuntimeHelpers\.GetObjectValue\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Runtime\.CompilerServices\.RuntimeHelpers\.GetSubArray\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Numerics\.BigInteger\.(Abs|Add|Compare|Divide|DivRem|GreatestCommonDenominator|Log|Log10|Max|Negate|Parse|Pow|Remainder|Subtract)(/\d+)?'
+        arg_index: any
+      - pattern: '^(System\.Numerics\.BigInteger|System\.Numerics\.Complex)\.operator.*(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Numerics\.Complex\.(Abs|Acod|Add|Asin|Atan|Conjugate|Cos|Cosh|Divide|Exp|FromPolarCoordinates|Log|Log10|Multiply|Negate|Pow|Reciprocal|Sin|Sinh|Sqrt|Subtract|Tan|Tanh)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Net\.Http\.Json\.JsonContent\.Create\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Net\.WebUtility\.(UrlDecodeToBytes|UrlDecode)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Net\.WebUtility\.(UrlEncodeToBytes|UrlEncode)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Net\.WebUtility\.HtmlDecode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Net\.WebUtility\.HtmlEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Net\.IPAddress\.(HostToNetworkOrder|NetworkToHostOrder|Parse)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Messaging\.XmlMessageFormatter\.\<init\>(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Management\.ManagementObject\.GetMethodParameters\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.IO\.Directory\.CreateDirectory\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.IO\.Directory|System\.IO\.File|System\.IO\.Path)\.(Create(.*)|GetDirectoryName|GetDirectories|GetDirectoryRoot|GetFiles|GetFileSystemEntries|GetParent|AppendText|Open(.*)|Combine|Join)(/\d+)?'
+        arg_index: any
+      - pattern: '^(System\.IO\.TextReader|System\.IO\.TextWriter)\.Synchronized\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.IO\.Path\.(GetFileName|GetExtension|GetPathRoot|GetFileNameWithoutExtension|TrimEndingDirectorySeparator)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.IO\.Path\.GetFullPath\b(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Globalization\.TextInfo\.To(Lower|TitleCase|Upper)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Globalization\.StringInfo\.ParseCombiningCharacters\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Globalization\.StringInfo\.(GetNextTextElement|GetTextElementEnumerator)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Globalization\.Calendar\.(Add.*|ToDateTime)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Globalization\.CharUnicodeInfo\.Get(DecimalDigit|Digit|Numeric)Value\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Device\.Location\.CivicAddressResolver\.(ResolveAddressAsync|ResolveAddressCompleted|ResolveAddress)(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Device\.Location\.CivicAddress(Resolver)?|System\.Device\.Location\.GeoCoordinate)\.\<init\>(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Device\.Location\.GeoCoordinateWatcher\.TryStart\b(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Data\.SqlTypes\.SqlString\.Concat\b(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Data\.SqlTypes\.SqlBinary\.(Add|Concat)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Data\.Common\.DbDataAdapter\.(CreateRowUpdatedEvent|CreateRowUpdatingEvent)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Collections\.Specialized\.CollectionsUtil\.CreateCaseInsensitiveHashtable\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Collections\.Specialized\.BitVector32\.Create(Mask|Section)(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^System\.Collections\.Frozen\.Frozen(Dictionary|Set)\.ToFrozen(Dictionary|Set)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Collections\.ArrayList\.(Adapter|FixedSize|ReadOnly|Repeat)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Collections\.ICollection\.Synchronized\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Random\.GetItems\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.TupleExtensions\.(ToValueTuple@\d|ToValueTuple)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.(Value)?Tuple(@\d)?\.(Create@\d|Create)(/\d+)?'
+        arg_index: 7
+      - pattern: '^System\.(Value)?Tuple(@\d)?\.(Create@\d|Create)(/\d+)?'
+        arg_index: 6
+      - pattern: '^System\.(Value)?Tuple(@\d)?\.(Create@\d|Create)(/\d+)?'
+        arg_index: 5
+      - pattern: '^System\.(Value)?Tuple(@\d)?\.(Create@\d|Create)(/\d+)?'
+        arg_index: 4
+      - pattern: '^System\.(Value)?Tuple(@\d)?\.(Create@\d|Create)(/\d+)?'
+        arg_index: 3
+      - pattern: '^System\.(Value)?Tuple(@\d)?\.(Create@\d|Create)(/\d+)?'
+        arg_index: 2
+      - pattern: '^System\.(Value)?Tuple(@\d)?\.(Create@\d|Create)(/\d+)?'
+        arg_index: 1
+      - pattern: '^System\.(Value)?Tuple(@\d)?\.(Create@\d|Create)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Environment\.ExpandEnvironmentVariables\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Console\.OpenStandard(Error|Input|Output)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Convert\.To(Int32|Int64|SByte|Single|UInt16|UInt32|UInt64)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Convert\.FromBase64(CharArray|String)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Convert\.ToString\b(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Convert\.(ChangeType|GetTypeCode|ToChar|ToBase64String)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Convert\.To(Byte|DateTime|Decimal|Double|Int16)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.BitConverter\.To(Char|String)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.BitConverter\.To(Double|Half|Int16|Int32|Int64|Single|UInt16|UInt32|UInt64)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.BitConverter\.(DoubleToUInt64Bits|GetBytes|HalfToUInt16Bits|Int16BitsToHalf|Int32BitsToSingle|Int64BitsToDouble|SingleToUInt32Bits|UInt16BitsToHalf|UInt32BitsToSingle|UInt64BitsToDouble)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Buffer\.GetByte\b(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^System\.Buffer\.ByteLength\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Object\.(ToString|MemberwiseClone)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Strings\.FormatStrings\b(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Math\.SignsIRounds\b(/\d+)?'
+        arg_index: 2
+      - pattern: '^System\.Math\.(Round|Sign|Sinh|Sqrt|Tanh|Tan)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Math\.(Abs|Acos|Asin|Atan2|BigMul|Ceiling|Cos|Cosh|Exp|Floor|IEEERemainder|Log10|Max|Min|Pow)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Enum\.(Format|GetNames|GetUnderlyingType|GetValues|ToObject)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.String\.Format\b(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.String\.(Copy|((Is)?Intern(ed)?))(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.String\.(Concat|Join)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.ValueType\.(op_Addition|op_Implicit|op_Explicit|op_UnaryPlus|op_UnaryNegation|op_Subtraction|op_Multiply|op_Modulus|op_Increment|op_Division|op_Decrement)(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Enum\.Parse\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^(System\.Byte|System\.Char|System\.DateTime|System\.DateTimeOffset|System\.Decimal|System\.Double|System\.Guid|System\.Half|System\.Int16|System\.Int32|System\.Int64|System\.SByte|System\.Single|System\.TimeSpan|System\.UInt16|System\.UInt32|System\.UInt64|System\.Version)\.(Parse|ParseExact)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Array\.AsReadOnly\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Array\.(Find|FindAll|FindLast)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.MemoryExtensions\.EnumerateLines\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.MemoryExtensions\.(TrimEnd|TrimStart|Trim)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.MemoryExtensions\.As(Memory|Span)(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.(ReadOnly)?Memory\.TryCopyTo\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.SharePoint\.Utilities\.SPUtility\.(ConvertHtmlLinkToWikiLink|ConvertSPRightsToSPBasePermissions|ConvertWikiLinkToHtmlLink|CreateDateTimeFromISO8601DateTimeString|CreateDateTimeFromSqlString|CreateISO8601DateTimeFromSystemDateTime|FormatAccountName|FormatDate|GregorianISOToIntlISODate|ParseDate|StringToUInt64)(/\d+)?'
+        arg_index: any
+      - pattern: '^Microsoft\.Security\.Application\.Sanitizer\.(GetSafeHtmlFragment|GetSafeHtml)(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.Security\.AntiXss\.AntiXss|System\.Web\.Security\.AntiXss\.Encoder|System\.Web\.Security\.AntiXss\.AntiXssEncoder|Microsoft\.Security\.Application\.AntiXss|Microsoft\.Security\.Application\.Encoder|Microsoft\.Security\.Application\.AntiXssEncoder)\.XmlEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.Security\.AntiXss\.AntiXss|System\.Web\.Security\.AntiXss\.Encoder|System\.Web\.Security\.AntiXss\.AntiXssEncoder|Microsoft\.Security\.Application\.AntiXss|Microsoft\.Security\.Application\.Encoder|Microsoft\.Security\.Application\.AntiXssEncoder)\.XmlAttributeEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(Microsoft\.Security\.Application\.AntiXss|Microsoft\.Security\.Application\.Encoder)\.VisualBasicScriptEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.Security\.AntiXss\.AntiXssEncoder|System\.Web\.Security\.AntiXss\.Encoder|Microsoft\.Security\.Application\.AntiXssEncoder|Microsoft\.Security\.Application\.Encoder)\.UrlPathEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.Security\.AntiXss\.AntiXss|System\.Web\.Security\.AntiXss\.AntiXssEncoder|System\.Web\.Security\.AntiXss\.Encoder|Microsoft\.Security\.Application\.AntiXss|Microsoft\.Security\.Application\.AntiXssEncoder|Microsoft\.Security\.Application\.Encoder)\.UrlEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.Security\.Application\.Encoder\.LdapFilterEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.Security\.Application\.Encoder\.LdapEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.Security\.Application\.Encoder\.LdapDistinguishedNameEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.Security\.AntiXss\.AntiXss|System\.Web\.Security\.AntiXss\.Encoder|System\.Web\.Security\.AntiXss\.AntiXssEncoder|Microsoft\.Security\.Application\.AntiXss|Microsoft\.Security\.Application\.Encoder|Microsoft\.Security\.Application\.AntiXssEncoder)\.JavaScriptEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.Security\.AntiXss\.Encoder|System\.Web\.Security\.AntiXss\.AntiXssEncoder|Microsoft\.Security\.Application\.Encoder|Microsoft\.Security\.Application\.AntiXssEncoder)\.HtmlFormUrlEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.Security\.AntiXss\.AntiXss|System\.Web\.Security\.AntiXss\.AntiXssEncoder|System\.Web\.Security\.AntiXss\.Encoder|Microsoft\.Security\.Application\.AntiXss|Microsoft\.Security\.Application\.AntiXssEncoder|Microsoft\.Security\.Application\.Encoder)\.HtmlEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.Security\.AntiXss\.AntiXss|System\.Web\.Security\.AntiXss\.AntiXssEncoder|System\.Web\.Security\.AntiXss\.Encoder|Microsoft\.Security\.Application\.AntiXss|Microsoft\.Security\.Application\.AntiXssEncoder|Microsoft\.Security\.Application\.Encoder)\.HtmlAttributeEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Web\.Security\.AntiXss\.AntiXssEncoder|System\.Web\.Security\.AntiXss\.Encoder|Microsoft\.Security\.Application\.AntiXssEncoder|Microsoft\.Security\.Application\.Encoder)\.CssEncode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Web\.Security\.AntiXss\.AntiXssEncoder\.HtmlDecode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(System\.Linq\.Enumerable|System\.Linq\.ParallelEnumerable|System\.Linq\.Queryable)\.(Concat|DefaultIfEmpty|GroupJoin|(Union|Intersect)By|Join|Zip)(/\d+)?'
+        arg_index: [0, 1, 2]
+      - pattern: '^(System\.Linq\.Enumerable|System\.Linq\.ParallelEnumerable|System\.Linq\.Queryable)\.(Aggregate|As(Enumerable|Ordered|Parallel|Queryable|Sequential|Unordered)|Cast|ElementAt|ElementAtOrDefault|(Distinct|Except|Max|Min)By|First|FirstOrDefault|GroupBy|Last|LastOrDefault|OfType|OrderBy|OrderByDescending|Repeat|Reverse|Select|SelectMany|Single|SingleOrDefault|Skip|SkipWhile|Take|TakeWhile|ThenBy|ThenByDescending|ToArray|ToDictionary|ToHashSet|ToList|ToLookup|Where|Chunk|With(Cancellation|DegreeOfParallelism|ExecutionMode|MergeOptions))(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Runtime\.Serialization\.Json\.DataContractJsonSerializer\.ReadObject\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.Extensions\.Primitives\.StringValues\.Concat\b(/\d+)?'
+        arg_index: any
+      - pattern: '^System\.Data\.Entity\.DbExtensions\.Include\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.EntityFrameworkCore\.EntityFrameworkQueryableExtensions\.(AllAsync|AnyAsync|AsAsyncEnumerable|AsNoTrackingWithIdentityResolution|AverageAsync|ContainsAsync|CountAsync|FirstOrDefaultAsync|ForEachAsync|IgnoreAutoIncludes|IgnoreQueryFilters|Include|LastOrDefaultAsync|LoadAsync|LongCountAsync|MaxAsync|MinAsync|SingleOrDefaultAsync|SumAsync|TagWithCallSite|ThenInclude|ToArrayAsync|ToDictionaryAsync|ToListAsync|ToQueryString)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.EntityFrameworkCore\.RelationalQueryableExtensions\.(As(Single|Split)Query|CreateDbCommand)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Azure\.Messaging\.ServiceBus\.ServiceBusMessage\.\<init\>(/\d+)?'
+        arg_index: 0
+      - pattern: '^Azure\.Messaging\.EventHubs\.EventData\.\<init\>(/\d+)?'
+        arg_index: 0
+      - pattern: '^Azure\.Messaging\.EventGrid\.EventGridEvent\.(Parse|ParseMany)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Azure\.Identity\.AuthenticationRecord\.(DeserializeAsync|Deserialize)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.AspNetCore\.Mvc\.Rendering\.IHtmlHelper\.(GenerateIdFromName|Name)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.AspNetCore\.Mvc\.Rendering\.IHtmlHelper\.(FormatValue|Value)(/\d+)?'
+        arg_index: any
+      - pattern: '^Microsoft\.AspNetCore\.Mvc\.Rendering\.IHtmlHelper\.Encode\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.AspNetCore\.Mvc\.Razor\.RazorPageBase\.Href\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.AspNetCore\.Mvc\.Infrastructure\.ProblemDetailsFactory\.CreateValidationProblemDetails\b(/\d+)?'
+        arg_index: 5
+      - pattern: '^Microsoft\.AspNetCore\.Mvc\.Infrastructure\.ProblemDetailsFactory\.CreateValidationProblemDetails\b(/\d+)?'
+        arg_index: 3
+      - pattern: '^Microsoft\.AspNetCore\.Mvc\.Infrastructure\.ProblemDetailsFactory\.CreateProblemDetails\b(/\d+)?'
+        arg_index: 4
+      - pattern: '^Microsoft\.AspNetCore\.Mvc\.Infrastructure\.ProblemDetailsFactory\.CreateProblemDetails\b(/\d+)?'
+        arg_index: 2
+      - pattern: '^Microsoft\.AspNetCore\.Http\.Extensions\.UriHelper\.GetDisplayUrl\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.AspNetCore\.WebUtilities\.QueryHelpers\.ParseQuery\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.AspNetCore\.Http\.HeaderDictionaryExtensions\.GetCommaSeparatedValues\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^(Microsoft\.AspNetCore\.Http\.FragmentString|Microsoft\.AspNetCore\.Http\.HostString)\.FromUriComponent\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Net\.Http\.UriExtensions\.ParseQueryString\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Net\.Http\.HttpRequestMessageExtensions\.GetQueryNameValuePairs\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^System\.Net\.Http\.HttpRequestHeadersExtensions\.GetCookies\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^fastJSON\.JSON\.(DeepCopy|Parse|ToNiceJSON|ToObject|Beautify)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Dapper\.SqlMapper\.AsList\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^YamlDotNet\.Serialization\.Deserializer\.(Serialize|Deserialize)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Xamarin\.Forms\.Device\.OnPlatform\b(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^Xamarin\.Forms\.Maps\.Geocoder\.(GetAddressesForPositionAsync|GetPositionsForAddressAsync)(/\d+)?'
+        arg_index: 0
+      - pattern: '^SubSonic\.Sugar\.Strings\.EntityToText\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^SubSonic\.Sugar\.Strings\.TextToEntity\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^SubSonic\.Utilities\.Utility\.StripNonAlphaNumeric\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^SubSonic\.Sugar\.Strings\.StripNonAlphaNumeric\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^SubSonic\.Sugar\.Strings\.Pluralize\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^SubSonic\.Sugar\.Strings\.(Chop|Clip|Crop|Squeeze|ToWords|ToDelimitedList|CamelToProper|PluralToPlural|StripHTML|PluralToSingular|SingularToPlural|SingularToSingular|ToProper)(/\d+)?'
+        arg_index: 0
+      - pattern: '^SubSonic\.Utilities\.Utility\.((DataTableTo.*)|ParseCamelToProper|PluralToSingular|ShortenText|SingularToPlural|Split)(/\d+)?'
+        arg_index: 0
+      - pattern: '^ICSharpCode\.SharpZipLib\.Tar\.TarArchive\.CreateInputTarArchive\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^SharpCompress\.Readers\.ReaderFactory\.Open\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Saxon\.Api\.DocumentBuilder\.(Build|Wrap)(/\d+)?'
+        arg_index: 0
+      - pattern: '^DocumentFormat\.OpenXml\.StringValue\.op_Implicit\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^DocumentFormat\.OpenXml\.OpenXmlReader\.Create\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^DocumentFormat\.OpenXml\.StringValue\.FromString\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^DocumentFormat\.OpenXml\.OpenXmlWriter\.Create\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^DocumentFormat\.OpenXml\.OpenXmlElement\.ReplaceChild\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^org\.owasp\.validator\.html\.AntiSamy\.scan\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^NLog\.LogEventInfo\.\<init\>(/\d+)?'
+        arg_index: any
+      - pattern: '^NHibernate\.Util\.StringHelper\.(Prefix|Qualify|Split|Suffix|Unqualify)(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^NHibernate\.Util\.StringHelper\.(GenerateAlias|InternedIfPossible|MoveAndToBeginning|Repeat|Qualifier|Root|Truncate|UnqualifyEntityName|Unroot)(/\d+)?'
+        arg_index: 0
+      - pattern: '^NHibernate\.Util\.SerializationHelper\.(Deserialize|Serialize)(/\d+)?'
+        arg_index: 0
+      - pattern: '^NHibernate\.Util\.IdentityMap\.Entries\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^NHibernate\.Util\.CollectionHelper\.CreateCaseInsensitiveHashtable\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^NHibernate\.Util\.ArrayHelper\.(To2DStringArray|ToArray|ToIntArray|ToSqlTypeArray|ToTypeArray)(/\d+)?'
+        arg_index: 0
+      - pattern: '^(MongoDB\.Bson\.BsonDocument|MongoDB\.Bson\.BsonValue)\.(Create|Parse)(/\d+)?'
+        arg_index: 0
+      - pattern: '^MongoDB\.Bson\.BsonExtensionMethods\.(ToBson|ToBsonDocument|ToJson)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.VisualBasic\.Strings\.Replace\b(/\d+)?'
+        arg_index: [1, 3]
+      - pattern: '^Microsoft\.VisualBasic\.Strings\.(Chr|ChrW)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.VisualBasic\.Strings\.(Asc|AscW|Len)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.VisualBasic\.Strings\.(Format|Join|StrDup)(/\d+)?'
+        arg_index: any
+      - pattern: '^Microsoft\.VisualBasic\.Strings\.(Filter|GetChar|LCase|Left|LSet|LTrim|Mid|Right|RSet|RTrim|StrConv|StrReverse|Trim|UCase)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.VisualBasic\.Interaction\.Switch\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.VisualBasic\.Interaction\.IIf\b(/\d+)?'
+        arg_index: [1, 2]
+      - pattern: '^Microsoft\.VisualBasic\.Interaction\.Choose\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^Microsoft\.VisualBasic\.CompilerServices\.Operators\.ConcatenateObject\b(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^Microsoft\.VisualBasic\.CompilerServices\.Conversions\.(FromCharAndCount|FromCharArray|FromCharArraySubset|ToCharArrayRankOne|ToGenericType|ToChar)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.VisualBasic\.CompilerServices\.Conversions\.To(Integer|Decimal|Double|Long|Single|UInteger|ULong|UShort|Byte|SByte|Date)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.VisualBasic\.Strings\.Split\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.Practices\.EnterpriseLibrary\.Security\.Cryptography\.ISymmetricCyrptoProvider\.(Encrypt|Decrypt)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Microsoft\.Practices\.EnterpriseLibrary\.Security\.Cryptography\.CryptographyUtility\.(CombineBytes|GetBytesFromHexString|GetHexStringFromBytes)(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^Microsoft\.Practices\.EnterpriseLibrary\.Security\.Cryptography\.Cryptographer\.(Encrypt|Decrypt)Symmetric\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^Newtonsoft\.Json\.JsonSerializer\.(Create|CreateDefault)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Newtonsoft\.Json\.Linq\.Extensions\.(Ancestors|AsJEnumerable|Children|Descendants|Properties|Values|Value)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Newtonsoft\.Json\.Linq\.JToken\.(Load|Parse|ReadFrom)(/\d+)?'
+        arg_index: 0
+      - pattern: '^Newtonsoft\.Json\.Linq\.J(Array|Object|Token)\.FromObject\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Newtonsoft\.Json\.JsonSerializer\.Deserialize\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Newtonsoft\.Json\.JsonConvert\.DeserializeXmlNode\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^Newtonsoft\.Json\.JsonConvert\.(Deserialize(AnonymousType|Object(Async)?|XmlNode)|Serialize(Object(Async)?|XmlNode))(/\d+)?'
+        arg_index: 0
+      - pattern: '^Ionic\.Zip\.ZipFile\.(Read|Initialize)(/\d+)?'
+        arg_index: any
+
+  library-argument-passthrough-go:
+    enabled: true
+    patterns:
+      - pattern: '^gorm\.io/gorm\.DB\.Order\b(/\d+)?'
+        arg_index: any
+      - pattern: '^math/big\.Rat\.(Add|Mul|Quo|Sub)(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^math/big\.Rat\.(Abs|Inv|Neg)(/\d+)?'
+        arg_index: 0
+      - pattern: '^math/big\.Rat\.(SetFloat64|SetFrac|SetFrac64|SetInt|SetInt64|SetString|SetUint64|Set)(/\d+)?'
+        arg_index: 0
+      - pattern: '^math/big\.Int\.(Add|And|AndNot|Binomial|Div|DivMod|Exp|Mul|MulRange|Quo|QuoRem|Sub|GCD|Lsh|Mod|ModInverse|ModSqrt|Or|Rem|Rsh|Xor|Rand)(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^math/big\.Int\.Append\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^math/big\.Int\.(Abs|FillBytes|Neg|Not|Sqrt)(/\d+)?'
+        arg_index: 0
+      - pattern: '^math/big\.Int\.(SetBit|SetBits|SetBytes|SetInt64|SetString|SetUint64|Set)(/\d+)?'
+        arg_index: 0
+      - pattern: '^math/big\.Float\.(Add|Mul|Quo|Sub)(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^math/big\.Float\.Append\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^math/big\.Float\.(Abs|Copy|Int|Neg|Parse|Rat|Sqrt)(/\d+)?'
+        arg_index: 0
+      - pattern: '^math/big\.Float\.(SetFloat64|SetInf|SetInt|SetMantExp|SetMode|SetPrec|SetRat|SetString|SetUint64|Set)(/\d+)?'
+        arg_index: 0
+      - pattern: '^net/smtp\.(PlainAuth|CRAMMD5Auth)(/\d+)?'
+        arg_index: any
+      - pattern: '^(html|text)\/template\.(HTMLEscape(String)|JSEscape(String)|URLQueryEscaper|JSEscape(r)|HTMLEscape(r))(/\d+)?'
+        arg_index: any
+      - pattern: '^fmt\.Errorf\b(/\d+)?'
+        arg_index: any
+      - pattern: '^fmt\.(Sprintln|Sprintf|Sprint)(/\d+)?'
+        arg_index: any
+      - pattern: '^strings\.Map\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^strings\.(TrimPrefixFunc|TrimPrefix|TrimSuffixFunc|TrimSuffix|TrimSpaceFunc|TrimSpace|TrimLeftFunc|TrimLeft|TrimRightFunc|TrimRight)(/\d+)?'
+        arg_index: any
+      - pattern: '^strings\.To(Title|Lower|Upper)Special\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^strings\.(SplitAfterN|SplitAfter)(/\d+)?'
+        arg_index: any
+      - pattern: '^strings\.(Fields(Func)?|Join|Title)(/\d+)?'
+        arg_index: any
+      - pattern: '^net\.Listen\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^net\.(ListenUnix|ListenTCP)(/\d+)?'
+        arg_index: 0
+      - pattern: '^net\.ResolveUnixAddr\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^net\.ListenTCP\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^os/exec\.CommandContext\b(/\d+)?'
+        arg_index: any
+      - pattern: '^os/exec\.Command\b(/\d+)?'
+        arg_index: any
+      - pattern: '^encoding\/base(32|64)\.New(En|De)coder\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^encoding\/base(32|64)\.Encoding\.DecodeString\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^encoding\/base(32|64)\.Encoding\.EncodeToString\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^encoding\/base(32|64)\.Encoding\.(En|De)codedLen\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^io\.MultiReader\b(/\d+)?'
+        arg_index: any
+      - pattern: '^unicode\.SpecialCase\.To(Lower|Title|Upper)(/\d+)?'
+        arg_index: 0
+      - pattern: '^unicode\.To\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^bytes\.Join\b(/\d+)?'
+        arg_index: any
+      - pattern: '^bytes\.To(Lower|Title|Upper)Special\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^net\.Resolver\.LookupPort\b(/\d+)?'
+        arg_index: 2
+      - pattern: '^net\.Resolver\.LookupSRV\b(/\d+)?'
+        arg_index: [1, 2, 3]
+      - pattern: '^net\.Resolver\.(LookupHost|LookupIP)(/\d+)?'
+        arg_index: 1
+      - pattern: '^net\.Resolver\.(LookupAddr|LookupCNAME|LookupTXT|SplitHostPort|LookupMX|LookupNS)(/\d+)?'
+        arg_index: 1
+      - pattern: '^net\.(ResolveTCPAddr|ResolveUDPAddr|LookupPort)(/\d+)?'
+        arg_index: 0
+      - pattern: '^net\.ResolveIPAddr\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^net/http\.NewRequestWithContext\b(/\d+)?'
+        arg_index: [1, 2]
+      - pattern: '^net/http\.NewRequest\b(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^crypto/subtle\.ConstantTimeSelect\b(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^crypto/rsa\.DecryptOAEP\b(/\d+)?'
+        arg_index: 2
+      - pattern: '^crypto/rsa\.PrivateKey\.Decrypt\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^crypto/rsa\.DecryptPKCS1v15\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^crypto/rsa\.EncryptOAEP\b(/\d+)?'
+        arg_index: 2
+      - pattern: '^crypto/rsa\.EncryptPKCS1v15\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^crypto/elliptic\.CurveParams\.(Add|Double|Scalar(Base)?Mult)(/\d+)?'
+        arg_index: any
+      - pattern: '^crypto/elliptic\.(MarshalCompressed|UnmarshalCompressed|Unmarshal)(/\d+)?'
+        arg_index: any
+      - pattern: '^strconv\.(AppendQuoteRuneToASCII|AppendQuoteRuneToGraphic|AppendQuoteRune)(/\d+)?'
+        arg_index: 0
+      - pattern: '^strconv\.(AppendQuoteToASCII|AppendQuoteToGraphic|AppendQuote)(/\d+)?'
+        arg_index: 0
+      - pattern: '^mime\.WordDecoder\.(DecodeHeader|Decode)(/\d+)?'
+        arg_index: 0
+      - pattern: '^mime\.WordEncoder\.Encode\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^regexp\.Regexp\.Split\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^regexp\.Regexp\.(ReplaceAllLiteralString|ReplaceAllLiteral)(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^bufio\.NewReadWriter\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^encoding/json\.MarshalIndent\b(/\d+)?'
+        arg_index: any
+      - pattern: '^encoding/xml\.(MarshalIndent|Marshal)(/\d+)?'
+        arg_index: any
+      - pattern: '^github\.com/jinzhu/gorm\.Dialect\.NormalizeIndexAndColumn\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^github\.com/jinzhu/gorm\.Dialect\.NormalizeIndexAndColumn\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^github\.com/jinzhu/gorm\.Dialect\.(BuildKeyName|LastInsertIDOutputInterstitial|LastInsertIDReturningSuffix)(/\d+)?'
+        arg_index: any
+      - pattern: '^github\.com/jinzhu/gorm\.Dialect\.LimitAndOffsetSQL\b(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^github\.com/jinzhu/gorm\.Dialect\.Quote\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^github\.com/jinzhu/gorm\.Expr\b(/\d+)?'
+        arg_index: any
+      - pattern: '^github\.com/jinzhu/gorm\.Scope\.(New|Quote)(/\d+)?'
+        arg_index: 0
+      - pattern: '^github\.com/jinzhu/gorm\.NamingStrategy\.(Column|DB|Table)Name\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.(WriterLevel|Writer)(/\d+)?'
+        arg_index: 0
+      - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.WithFields\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.WithField\b(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^github\.com/sirupsen/logrus\.((Ext1)?Field)?Logger\.WithError\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^google\.golang\.org/grpc/metadata\.(Join|Pairs)(/\d+)?'
+        arg_index: any
