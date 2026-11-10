@@ -561,12 +561,94 @@ public final class ConfigLoader {
       // SAME family so the defect class stays one name with one CWE.
       LanguageRuleSet languageRules =
           parseLanguageRules(spec.get("by_language"), parsedPatterns, languages, name);
+      // The source VARIABLES: the sources a language has that are not calls.
+      java.util.Map<SourceLanguage, java.util.List<String>> sourceVariables =
+          parseSourceVariables(spec.get("source_variables"), name);
       out.put(
           name,
           new SinkFamily(
-              name, cwe, sev, enabled, defaultArgIdx, parsedPatterns, languages, languageRules));
+              name,
+              cwe,
+              sev,
+              enabled,
+              defaultArgIdx,
+              parsedPatterns,
+              languages,
+              languageRules,
+              sourceVariables));
     }
     return new SinkFamilyRegistry(out);
+  }
+
+  /**
+   * Parse the {@code source_variables} block of a family: the variables that carry untrusted data
+   * in a language where a source is not a call.
+   *
+   * <p>The block is a map from a language to the names it declares:
+   *
+   * <pre>
+   *   source_variables:
+   *     php:
+   *       - '_GET'
+   *       - '_POST'
+   * </pre>
+   *
+   * <p>A key may name several languages, separated by commas, exactly like a {@code by_language}
+   * bucket: TypeScript and JavaScript are read by one front end, so the variables their code can
+   * mention are one list.
+   *
+   * @param raw the raw YAML value
+   * @param family the family's name, for the warning
+   * @return the variable names, by language
+   */
+  @SuppressWarnings("unchecked")
+  private static java.util.Map<SourceLanguage, java.util.List<String>> parseSourceVariables(
+      Object raw, String family) {
+    if (!(raw instanceof Map)) return java.util.Map.of();
+    java.util.Map<SourceLanguage, java.util.List<String>> out = new java.util.LinkedHashMap<>();
+    for (Map.Entry<?, ?> entry : ((Map<?, ?>) raw).entrySet()) {
+      String key = String.valueOf(entry.getKey()).trim();
+      java.util.List<String> names = asNameList(entry.getValue());
+      if (names.isEmpty()) continue;
+      java.util.List<String> unknown = new java.util.ArrayList<>();
+      for (SourceLanguage lang : bucketLanguages(key, unknown)) {
+        out.computeIfAbsent(lang, k -> new java.util.ArrayList<>()).addAll(names);
+      }
+      if (!unknown.isEmpty()) {
+        LOG.warn(
+            "Unknown language '{}' in source_variables of the sink family '{}'; ignored",
+            String.join(", ", unknown),
+            family);
+      }
+    }
+    // The same name may be declared by two families; the engine seeds it once.
+    java.util.Map<SourceLanguage, java.util.List<String>> deduped = new java.util.LinkedHashMap<>();
+    for (java.util.Map.Entry<SourceLanguage, java.util.List<String>> entry : out.entrySet()) {
+      deduped.put(
+          entry.getKey(), java.util.List.copyOf(new java.util.LinkedHashSet<>(entry.getValue())));
+    }
+    return deduped;
+  }
+
+  /**
+   * Read a YAML list of strings, trimmed, with the empty ones dropped.
+   *
+   * <p>A variable name that is blank names nothing, and a name with a space in it names nothing the
+   * engine could ever match either, so both are dropped rather than seeded.
+   *
+   * @param raw the raw YAML value
+   * @return the strings; empty when the value is not a list
+   */
+  @SuppressWarnings("unchecked")
+  private static java.util.List<String> asNameList(Object raw) {
+    if (!(raw instanceof List)) return java.util.List.of();
+    java.util.List<String> out = new java.util.ArrayList<>();
+    for (Object item : (List<Object>) raw) {
+      if (!(item instanceof String s)) continue;
+      String value = s.trim();
+      if (!value.isEmpty()) out.add(value);
+    }
+    return out;
   }
 
   /**

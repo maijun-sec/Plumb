@@ -120,7 +120,7 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 | `plumb.call.side-effect-recorded` | `SIDE_EFFECT_RECORDED` | `:238` | BY_DECL |
 
 **这是两个不同的清单,不是一个**:`org.plumb.dfa.config.ConfigLoader.parseFactKinds`
-(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:785-822`)先把这 15 个内置 kind 放进 registry,再用
+(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:867-904`)先把这 15 个内置 kind 放进 registry,再用
 `fact-kinds.yaml` 的 **12 个** 条目覆盖或追加 —— YAML 的条目用另一套命名
 (`UntrustedSource`、`MayBeNull`、`Freed` 等)。两者名字空间不同但**落在同一个 registry 里**,
 所以有效的事务种类是 27 个。`capability_baseline` 把两个清单分开测量(`builtin:` /
@@ -147,7 +147,7 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 另外两个是 `BoundaryConstraintChecker` 和基类自身）。
 
 - 状态：`taintedVars: Map<TacVar, String>`（`:236`）与 `taintPaths`（`:245`）
-- 传播：`propagateMOVE`（`:1703`）等按指令种类分派
+- 传播：`propagateMOVE`（`:1878`）等按指令种类分派
 - sink 判定：按 `sinkFamilyKey` 查 `SinkFamilyRegistry`（`config/SinkFamilyRegistry.java:22`，在
   `org.plumb.dfa.config` 包），**不是** IFDS 框架
 - 跨函数：`FunctionSummary` + `Operation.TaintPropagate`
@@ -338,7 +338,7 @@ null 会互相 alias，污染 `mayAlias`）：
 
 ## 5. Z3：只做误报过滤
 
-Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:4457`，位于 sink 上报路径上。
+Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:4856`，位于 sink 上报路径上。
 
 可达性判定在**一个**地方完成，`TaintedCheckerBase.isPathSuppressed`，位于 sink 上报路径上。
 两条 sink 路径都经过它：CALL 路径和构造器路径（`checkSinkAtNew`）——
@@ -367,7 +367,7 @@ if (!composed.isEmpty()) {
 而函数中不同位置记录的两个守卫，在 sink 处也不同时成立。这两条限制都是为了保证
 这个判定不会抑制一个真实存在的 finding。
 
-- `pathConditionForSink`（`:4417`）在基类里就有实现：把那对冲突的守卫作为谓词返回，
+- `pathConditionForSink`（`:4816`）在基类里就有实现：把那对冲突的守卫作为谓词返回，
   这样读 finding 的人能看出它为什么被抑制。子类可以覆写它，提供求解器能求值的谓词。
 - 语义明确：这个判定**只用于抑制误报，绝不用于发现缺陷**（`:3237`）
 - 调用链：`CachedZ3Bridge`（LRU 4096 项，`solver/CachedZ3Bridge.java:41-66`）→

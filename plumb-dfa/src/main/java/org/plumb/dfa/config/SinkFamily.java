@@ -475,6 +475,25 @@ public final class SinkFamily {
    */
   private final LanguageRuleSet languageRules;
 
+  /**
+   * The SOURCE VARIABLES this family declares, by language.
+   *
+   * <p><b>Why a source that is not a call.</b> Every other way the catalogue names a source is a
+   * callee signature: {@code java.io.FileInputStream.read}, {@code os.environ.get}. A PHP
+   * superglobal is not a call -- {@code $_GET['user']} is a container access -- so no signature
+   * exists to name, and the value arrives with no marker at all. Measured against the PHP side car,
+   * the read lowers to an {@code ARRAYLOAD} whose base is the variable and whose index is a
+   * constant: there is no callee to point a pattern at.
+   *
+   * <p>So a source family may name VARIABLES instead, scoped by language, and the engine seeds them
+   * at the function entry beside the parameters. The scoping is what keeps it honest: the name
+   * {@code _GET} means "the request's query string" in PHP and nothing at all anywhere else, so the
+   * same name in a Java file is not a source.
+   *
+   * <p>The key is a language; the value is the list of variable names.
+   */
+  private final java.util.Map<SourceLanguage, java.util.List<String>> sourceVariables;
+
   public SinkFamily(
       String name, String cwe, String severityLabel, boolean enabled, List<String> patterns) {
     // legacy string-list constructor.
@@ -517,17 +536,20 @@ public final class SinkFamily {
       int defaultArgIndex,
       List<SinkPattern> patterns,
       Set<SourceLanguage> languages) {
-    this.name = Objects.requireNonNull(name, "name");
-    this.cwe = cwe;
-    this.severityLabel = severityLabel;
-    this.enabled = enabled;
-    this.defaultArgIndex = defaultArgIndex;
-    this.patterns = List.copyOf(Objects.requireNonNull(patterns, "patterns"));
-    this.languages = languages == null ? Set.of() : Set.copyOf(languages);
-    // The legacy constructor's patterns are the SHARED ones: they name symbols that exist once and
-    // are callable from every language. A family built the old way therefore has no
-    // language-specific patterns, and resolves identically in every language.
-    this.languageRules = new LanguageRuleSet(this.patterns, java.util.Map.of());
+    this(
+        name,
+        cwe,
+        severityLabel,
+        enabled,
+        defaultArgIndex,
+        patterns,
+        languages,
+        // The legacy constructor's patterns are the SHARED ones: they name symbols that exist once
+        // and
+        // are callable from every language. A family built the old way therefore has no
+        // language-specific patterns, and resolves identically in every language.
+        new LanguageRuleSet(patterns, java.util.Map.of()),
+        java.util.Map.of());
   }
 
   /**
@@ -548,6 +570,36 @@ public final class SinkFamily {
       List<SinkPattern> patterns,
       Set<SourceLanguage> languages,
       LanguageRuleSet languageRules) {
+    this(
+        name,
+        cwe,
+        severityLabel,
+        enabled,
+        defaultArgIndex,
+        patterns,
+        languages,
+        languageRules,
+        java.util.Map.of());
+  }
+
+  /**
+   * Full constructor including the source variables.
+   *
+   * <p>This is the constructor the YAML loader uses when a family names the variables that carry
+   * untrusted data in a language where a source is not a call.
+   *
+   * @param sourceVariables the source variable names, by language
+   */
+  public SinkFamily(
+      String name,
+      String cwe,
+      String severityLabel,
+      boolean enabled,
+      int defaultArgIndex,
+      List<SinkPattern> patterns,
+      Set<SourceLanguage> languages,
+      LanguageRuleSet languageRules,
+      java.util.Map<SourceLanguage, java.util.List<String>> sourceVariables) {
     this.name = Objects.requireNonNull(name, "name");
     this.cwe = cwe;
     this.severityLabel = severityLabel;
@@ -559,6 +611,30 @@ public final class SinkFamily {
         languageRules == null
             ? new LanguageRuleSet(this.patterns, java.util.Map.of())
             : languageRules;
+    this.sourceVariables =
+        sourceVariables == null ? java.util.Map.of() : java.util.Map.copyOf(sourceVariables);
+  }
+
+  /**
+   * The source variable names this family declares for a language.
+   *
+   * @param language the language of the code being analysed
+   * @return the names; empty when the family declares none for that language
+   */
+  public java.util.List<String> sourceVariablesFor(SourceLanguage language) {
+    if (language == null) return java.util.List.of();
+    return sourceVariables.getOrDefault(language, java.util.List.of());
+  }
+
+  /**
+   * The source variable names this family declares, across every language.
+   *
+   * @return the names, in declaration order
+   */
+  public java.util.List<String> sourceVariables() {
+    java.util.List<String> out = new java.util.ArrayList<>();
+    for (java.util.List<String> names : sourceVariables.values()) out.addAll(names);
+    return java.util.List.copyOf(out);
   }
 
   private static List<SinkPattern> toPatternList(List<String> strs) {

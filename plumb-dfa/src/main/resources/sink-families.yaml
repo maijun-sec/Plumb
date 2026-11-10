@@ -7042,6 +7042,10 @@ families:
     cwe: null
     severity: MEDIUM
     languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'python3', 'php']
+    source_variables:
+      # The environment of the process: the program did not choose its values.
+      php:
+        - '_ENV'
     patterns:
       - '^java\.lang\.System\.getenv(/\d+)?'
       - '^java\.lang\.System\.getProperty(/\d+)?'
@@ -7169,7 +7173,21 @@ families:
   taint.sources.web:
     cwe: null
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'csharp']
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'php']
+    source_variables:
+      # The request itself, as PHP spells it. A superglobal is not a call --
+      # $_GET['user'] is a container access -- so there is no signature for a
+      # pattern to name, and the catalogue names the VARIABLE instead.
+      #
+      # $_SERVER and $_FILES are deliberately absent: $_SERVER mixes the
+      # request's headers with the server's configuration, so marking the
+      # whole array untrusted claims configuration the attacker does not
+      # control, and $_FILES holds a temporary name PHP generated.
+      php:
+        - '_GET'
+        - '_POST'
+        - '_REQUEST'
+        - '_COOKIE'
     patterns:
       - '^javax\.servlet\.http\.HttpServletRequest\.getParameter(/\d+)?'
       - '^javax\.servlet\.http\.HttpServletRequest\.getHeader(/\d+)?'
@@ -7258,6 +7276,11 @@ families:
         - '^net/http\.Request\.(GetBody|Cookie|MultipartReader)(/\d+)?'
         - '^google\.golang\.org/grpc\.ServerStream\.RecvMsg(/\d+)?'
         - '^google\.golang\.org/grpc\.ServerStream\.Recv(/\d+)?'
+      php:
+        # Reads the request through PHP's own filter API, with the source
+        # given as INPUT_GET / INPUT_POST / INPUT_COOKIE.
+        - '^\\filter_input\b(/\d+)?'
+        - '^\\filter_input_array\b(/\d+)?'
 
   template-injection.sinks:
     cwe: CWE-95

@@ -947,6 +947,26 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       }
       markSource(p, "param:" + p.name(), null, fn.signature(), "param:" + p.name());
     }
+    // A source that is NOT a call. The catalogue names callee signatures, so
+    // every source it declares is a call -- except in a language where the
+    // untrusted value is read out of a VARIABLE. PHP's superglobals are that
+    // case: $_GET['user'] is a container access, so there is no signature to
+    // point a pattern at, and the value arrives with no marker at all.
+    //
+    // They are seeded here, at the function entry and beside the parameters,
+    // because a superglobal is a trust-boundary entry point in exactly that
+    // sense: the request reached the program through it. The label is the
+    // "input:" one the rest of the engine already understands, so the value
+    // keeps its taint across a constant assignment the way a parameter's does.
+    //
+    // The names come from the catalogue and are scoped BY LANGUAGE, so the
+    // name "_GET" means the request's query string in PHP and nothing at all
+    // in a Java file.
+    for (String name : ctx.config().sinkFamilies().sourceVariableNames(fn.sourceLanguage())) {
+      TacOperand.TacVar v = new TacOperand.TacVar(name, TacType.UNKNOWN, false);
+      if (taintedVars.containsKey(v)) continue;
+      markSource(v, "input:" + name, null, fn.signature(), "input " + name);
+    }
   }
 
   /**

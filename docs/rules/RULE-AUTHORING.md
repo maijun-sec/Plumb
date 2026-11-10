@@ -412,4 +412,43 @@ What PHP does not get, and why:
 - `eval`: the front end lowers it to an unknown value rather than to a call,
   so there is no callee key for a rule to name.
 - The superglobals `$_GET`, `$_POST` and the rest: they are container reads
-  rather than calls, and they carry nothing that says where they came from.
+  rather than calls, so there is no callee key for a rule to name. They are
+  covered by the second kind of source declaration, below.
+
+#### Sources that are not calls: source variables
+
+Every other source in the catalogue is a callee signature, and the catalogue
+matches on exactly that. A PHP superglobal is not a call -- `$_GET['user']` is
+a container read -- so no signature exists to name, and the value arrives with
+no marker at all. `$_GET['x']` flowing into `system()` is the most classic PHP
+vulnerability there is, and a catalogue that can only name calls sees nothing.
+
+So a source family may declare SOURCE VARIABLES: the names of variables that
+carry untrusted data, scoped by language.
+
+```yaml
+taint.sources.web:
+  source_variables:
+    php:
+      - '_GET'
+      - '_POST'
+      - '_REQUEST'
+      - '_COOKIE'
+```
+
+The engine seeds them at the function entry, beside the parameters, because a
+superglobal is a trust-boundary entry point in exactly that sense: the request
+reached the program through it. The label it carries is the `input:` one the
+rest of the engine already understands, so the value keeps its taint across a
+constant assignment the way a parameter's does.
+
+The scoping is the whole point. The name `_GET` means "the request's query
+string" in PHP and nothing at all in any other language, so the declaration
+names the language and the engine asks for the names of the language it is
+analysing. A rule that applied everywhere would claim every Java program with
+a field called `_GET`.
+
+Two names are deliberately absent, and the reason is the difference between a
+request and a configuration. `$_SERVER` mixes the request's headers with the
+server's own settings, so marking the whole array untrusted claims values the
+attacker does not control; `$_FILES` holds a temporary name PHP generated.

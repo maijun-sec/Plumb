@@ -189,6 +189,18 @@
                              `system_info`. -->
                         <include>org/plumb/dfa/taint/PhpSinkCatalogTest.java</include>
 
+                        <!-- The sources that are NOT calls. A PHP
+                             superglobal is read out of a container, so
+                             there is no callee signature for a pattern
+                             to match, and the catalogue names the
+                             VARIABLE instead, scoped by language, so
+                             the name _GET means the request's query
+                             string in PHP and nothing at all anywhere
+                             else. The negative control matters most
+                             here: an ordinary local read out of the
+                             same shape must report nothing. -->
+                        <include>org/plumb/dfa/taint/PhpSourceVariableTest.java</include>
+
                         <!-- The argument-to-return shape: a library method that
                              carries an ARGUMENT's taint into its result is a
                              rule of its own, and the table that says which

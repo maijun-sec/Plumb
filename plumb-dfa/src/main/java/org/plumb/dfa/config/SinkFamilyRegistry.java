@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.plumb.tac.ir.SourceLanguage;
 
 /**
  * Registry of {@link SinkFamily}s, indexed by family name. Thread-safe; supports both YAML-loaded
@@ -68,6 +69,7 @@ public final class SinkFamilyRegistry {
     // cache because new family might
     // match previously-uncached sigs.
     lookupAllCache.clear();
+    sourceVariableCache.clear();
     sourceMatcherCache.set(null);
     return prev;
   }
@@ -78,6 +80,7 @@ public final class SinkFamilyRegistry {
     // Same as register: cache
     // invalidation.
     lookupAllCache.clear();
+    sourceVariableCache.clear();
     sourceMatcherCache.set(null);
     return prev;
   }
@@ -114,6 +117,13 @@ public final class SinkFamilyRegistry {
       new java.util.concurrent.ConcurrentHashMap<>();
 
   /**
+   * Cache for {@link #sourceVariableNames(SourceLanguage)}. Invalidated alongside {@link
+   * #lookupAllCache}, because a registered family may declare source variables.
+   */
+  private final java.util.concurrent.ConcurrentHashMap<SourceLanguage, List<String>>
+      sourceVariableCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+  /**
    * The matcher for this catalogue's taint SOURCE families.
    *
    * <p>A source family is one with no CWE, and the matcher groups them by language so a
@@ -144,6 +154,31 @@ public final class SinkFamilyRegistry {
     org.plumb.dfa.taint.SourceFamilyMatcher created =
         new org.plumb.dfa.taint.SourceFamilyMatcher(this);
     return sourceMatcherCache.compareAndSet(null, created) ? created : sourceMatcherCache.get();
+  }
+
+  /**
+   * The source VARIABLE names the catalogue declares for a language.
+   *
+   * <p>Every family's declarations are merged, because the engine seeds them together: the point is
+   * "this variable carries untrusted data", not "this family says so". The answer is cached per
+   * language, because it is asked once per function per checker.
+   *
+   * @param language the language of the code being analysed
+   * @return the names, in registration order; empty when the catalogue declares none
+   */
+  public List<String> sourceVariableNames(SourceLanguage language) {
+    if (language == null) return List.of();
+    List<String> cached = sourceVariableCache.get(language);
+    if (cached != null) return cached;
+    java.util.ArrayList<String> out = new java.util.ArrayList<>();
+    for (SinkFamily f : byName.values()) {
+      for (String name : f.sourceVariablesFor(language)) {
+        if (!out.contains(name)) out.add(name);
+      }
+    }
+    List<String> result = out.isEmpty() ? List.of() : List.copyOf(out);
+    sourceVariableCache.put(language, result);
+    return result;
   }
 
   public List<SinkFamily> lookupAll(String calleeSignature) {
