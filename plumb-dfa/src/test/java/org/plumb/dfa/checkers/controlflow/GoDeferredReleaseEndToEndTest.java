@@ -58,23 +58,6 @@ class GoDeferredReleaseEndToEndTest {
 
   private static final String RULE_ID = "plumb.dfa-controlflow-deferred-release-in-loop";
 
-  /**
-   * The toolchains this machine is known to have.
-   *
-   * <p>The sidecar's own build script looks in exactly these places -- the GO variable, the PATH,
-   * GOROOT, and the toolchains this machine is known to have -- so a machine that can build the
-   * sidecar can run the tests too. A check that only looked at the PATH would skip on exactly those
-   * machines: the toolchain is there, the sidecar was built from it, and the test reports "the
-   * environment is missing" for an environment that is not missing.
-   */
-  private static final List<String> KNOWN_TOOLCHAINS =
-      List.of(
-          "D:\\development\\go1.26.10\\go",
-          "C:\\Program Files\\Go",
-          "C:\\Go",
-          "/usr/local/go",
-          "/usr/lib/go");
-
   /** A defer inside a loop: every iteration holds the file until the function returns. */
   private static final String DEFER_IN_LOOP =
       """
@@ -180,42 +163,18 @@ class GoDeferredReleaseEndToEndTest {
 
   /** Whether a Go toolchain is reachable. */
   private static boolean goToolchainOnPath() {
-    String go = System.getenv("GO");
-    if (go != null && !go.isBlank() && holdsGoCommand(go)) {
-      return true;
-    }
     String path = System.getenv("PATH");
-    if (path != null && !path.isBlank()) {
-      for (String dir : path.split(java.io.File.pathSeparator)) {
-        if (!dir.isBlank() && holdsGoCommand(dir)) {
-          return true;
-        }
+    if (path == null || path.isEmpty()) {
+      return false;
+    }
+    for (String dir : path.split(java.io.File.pathSeparator)) {
+      if (dir.isEmpty()) {
+        continue;
       }
-    }
-    String goroot = System.getenv("GOROOT");
-    if (goroot != null && !goroot.isBlank() && holdsGoCommand(goroot)) {
-      return true;
-    }
-    for (String known : KNOWN_TOOLCHAINS) {
-      if (holdsGoCommand(known)) {
+      if (Files.isRegularFile(Path.of(dir, "go.exe")) || Files.isRegularFile(Path.of(dir, "go"))) {
         return true;
       }
     }
     return false;
-  }
-
-  /**
-   * Whether the directory holds the Go command.
-   *
-   * <p>The command sits directly in a directory on the PATH and in {@code bin} under a toolchain's
-   * root, so both are tried. A directory that holds neither is rejected whatever the environment
-   * says about it: a GOROOT that outlived the toolchain it names points at a directory that no
-   * longer holds a command, and believing it would report a toolchain that is not there.
-   */
-  private static boolean holdsGoCommand(String directory) {
-    return Files.isRegularFile(Path.of(directory, "go.exe"))
-        || Files.isRegularFile(Path.of(directory, "go"))
-        || Files.isRegularFile(Path.of(directory, "bin", "go.exe"))
-        || Files.isRegularFile(Path.of(directory, "bin", "go"));
   }
 }
