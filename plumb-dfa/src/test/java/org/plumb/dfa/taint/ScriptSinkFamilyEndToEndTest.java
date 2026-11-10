@@ -33,6 +33,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.plumb.dfa.checkers.taint.FormatStringChecker;
+import org.plumb.dfa.checkers.taint.LogInjectionChecker;
 import org.plumb.dfa.checkers.taint.RegexInjectionChecker;
 import org.plumb.dfa.checkers.taint.XssInjectionChecker;
 import org.plumb.dfa.config.ConfigLoader;
@@ -50,6 +51,7 @@ import org.plumb.tac.frontend.ts.TsSidecarClient;
 import org.plumb.tac.frontend.ts.TsTacFrontend;
 import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacFunction;
+import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacProgram;
 
 /**
@@ -89,6 +91,7 @@ class ScriptSinkFamilyEndToEndTest {
   private static final String XSS_RULE = "dfa-taint-xss-injection";
   private static final String REGEX_RULE = "dfa-taint-regex-injection";
   private static final String FORMAT_RULE = "dfa-taint-format-string";
+  private static final String LOG_RULE = "dfa-taint-log-injection";
 
   /**
    * A TypeScript program that writes a tainted value into the page.
@@ -127,6 +130,50 @@ class ScriptSinkFamilyEndToEndTest {
       <?php
       function handler(string $name): void {
           sprintf($name, "x");
+      }
+      """;
+
+  /**
+   * A Python program in a file whose NAME is a module the catalogue knows.
+   *
+   * <p>The catalogue's Python pattern for the logging module is {@code
+   * ^logging\.(debug|info|warning|error|critical|exception)\b}, and a receiver whose type the front
+   * end could not prove used to fall back to the module the FILE belongs to. A file called {@code
+   * logging.py} therefore produced the callee key {@code logging.error/1}, and the catalogue
+   * claimed the program's own method call as the logging module's sink: a log-injection finding
+   * against a program that never called the logging module at all.
+   *
+   * <p>The degraded owner is now {@code <unknown>}. No module path can contain an angle bracket,
+   * and every sink pattern in the catalogue is anchored at the start of the callee key, so a key
+   * that begins with one cannot be claimed by any of them.
+   */
+  private static final String PYTHON_FILE_NAMED_AFTER_A_MODULE =
+      """
+      import socket
+
+
+      def handler(logger):
+          data = socket.recv(1024)
+          logger.error(data)
+      """;
+
+  /**
+   * A TypeScript program in a file whose NAME is a module the catalogue knows.
+   *
+   * <p>The catalogue's TypeScript pattern for the format helper is {@code
+   * ^(?:node:)?util\.format\b}, and the degraded owner used to be the module the FILE belongs to. A
+   * file called {@code util.ts} therefore produced the callee key {@code util.format/1}, and the
+   * catalogue claimed the program's own method call as the format helper's sink.
+   *
+   * <p>The degraded owner is now {@code <unknown>}, for the same reason as in Python: no module
+   * path can contain an angle bracket, and every sink pattern is anchored at the start of the
+   * callee key.
+   */
+  private static final String TS_FILE_NAMED_AFTER_A_MODULE =
+      """
+      export function handler(): void {
+        const value = process.env["SECRET"];
+        obj.format(value);
       }
       """;
 
@@ -184,6 +231,108 @@ class ScriptSinkFamilyEndToEndTest {
   }
 
   // ------------------------------------------------------------------ the chain
+
+  /**
+   * A file named after a module the catalogue knows is not that module.
+   *
+   * <p>This is the false positive that the degraded owner used to cause, end to end: the real front
+   * end, the real engine and the real catalogue, on a program whose own file is called {@code
+   * logging.py}.
+   */
+  @Test
+  @DisplayName("a file named after a module the catalogue knows is not that module")
+  void aFileNamedAfterAModuleTheCatalogueKnowsIsNotThatModule(@TempDir Path directory)
+      throws IOException {
+    assumeTrue(pythonAvailable(), "the Python front end needs a Python 3 runtime");
+
+    Path file = directory.resolve("logging.py");
+    Files.writeString(file, PYTHON_FILE_NAMED_AFTER_A_MODULE);
+
+    TacFrontend.ParseResult result =
+        new PythonTacFrontend().parse(PYTHON_FILE_NAMED_AFTER_A_MODULE, file, null);
+
+    List<Finding> findings = scan(result, file, new LogInjectionChecker());
+
+    assertThat(hasFinding(findings, LOG_RULE, "error"))
+        .as("the program's own file is not the logging module, so the catalogue must not claim it")
+        .isFalse();
+
+    assertThat(calleeSignatures(result))
+        .as("the receiver's type could not be proven, so the owner is unknown")
+        .contains("<unknown>.error/1")
+        .doesNotContain("logging.error/1");
+  }
+
+  /**
+   * The same false positive, in TypeScript.
+   *
+   * <p>Two front ends lower the same convention, so the convention is pinned twice: a fix in one of
+   * them that leaves the other alone would still let the catalogue claim the program's own file.
+   */
+  @Test
+  @DisplayName("a TypeScript file named after a module the catalogue knows is not that module")
+  void aTypeScriptFileNamedAfterAModuleTheCatalogueKnowsIsNotThatModule(@TempDir Path directory)
+      throws IOException {
+    assumeTrue(tsAvailable(), "the TypeScript front end needs Node and its compiler dependency");
+
+    Path file = directory.resolve("util.ts");
+    Files.writeString(file, TS_FILE_NAMED_AFTER_A_MODULE);
+
+    TacFrontend.ParseResult result =
+        new TsTacFrontend(SourceLanguage.TYPESCRIPT)
+            .parse(TS_FILE_NAMED_AFTER_A_MODULE, file, null);
+
+    List<Finding> findings = scan(result, file, new FormatStringChecker());
+
+    assertThat(hasFinding(findings, FORMAT_RULE, "format"))
+        .as("the program's own file is not the util module, so the catalogue must not claim it")
+        .isFalse();
+
+    assertThat(calleeSignatures(result))
+        .as("the receiver's type could not be proven, so the owner is unknown")
+        .contains("<unknown>.format/0")
+        .doesNotContain("util.format/0");
+  }
+
+  /**
+   * Run the parsed functions through the engine.
+   *
+   * <p>Unlike {@link #scan(TacFrontend, String, Path, DfaChecker)}, this does not require the front
+   * end to have reported nothing. The program under test is one whose receiver the front end could
+   * not type, and that is reported as a lowered precision -- which is the very thing the test is
+   * about.
+   */
+  private static List<Finding> scan(TacFrontend.ParseResult result, Path file, DfaChecker checker) {
+    TacProgram program = new TacProgram(file, "app");
+    for (TacFunction function : result.functions()) {
+      program.addFunction(function);
+    }
+
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+    FindingReporter reporter =
+        new DfaEngine(config, List.of(checker), "global", null)
+            .runWithGlobalStore(List.of(program), 0);
+    List<Finding> findings = new ArrayList<>();
+    for (Finding finding : reporter.all()) {
+      if (finding.ruleId().startsWith("dfa-taint-")) {
+        findings.add(finding);
+      }
+    }
+    return findings;
+  }
+
+  /** Every callee key the front end emitted, in the order it emitted them. */
+  private static List<String> calleeSignatures(TacFrontend.ParseResult result) {
+    List<String> signatures = new ArrayList<>();
+    for (TacFunction function : result.functions()) {
+      for (TacInstruction instruction : function.instructions()) {
+        if (instruction.calleeSig != null) {
+          signatures.add(instruction.calleeSig);
+        }
+      }
+    }
+    return signatures;
+  }
 
   /**
    * Run the source through the front end, then through the engine.
