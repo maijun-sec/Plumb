@@ -45,13 +45,19 @@
  *       same class does not match.
  *   I4  The strict form always wins when it matches, so a qualified callee is
  *       never answered by the relaxed fallback.
+ *   I5  A pattern's alternation is GROUPED, so every branch of it names the
+ *       same owner. An ungrouped alternation ends the qualified name, and
+ *       the branches after it are looked for anywhere in the signature.
  */
 package org.plumb.dfa.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.plumb.tac.ir.SourceLanguage;
 
 class SinkPatternNameFormTest {
 
@@ -177,5 +183,102 @@ class SinkPatternNameFormTest {
       // for the class and escaped-dot for the method.
       assertThat(relaxed).contains("\\.");
     }
+  }
+
+  /**
+   * The pattern as it was written in the catalogue: the owner is qualified, but the alternation
+   * after it is not grouped.
+   */
+  private static final String UNGROUPED_LOG_PATTERN =
+      "^org\\.apache\\.commons\\.logging\\.log\\.debug|error|fatal|info|trace|warn(/\\d+)?";
+
+  /** The same intent, with the alternation grouped under the owner. */
+  private static final String GROUPED_LOG_PATTERN =
+      "^org\\.apache\\.commons\\.logging\\.Log\\.(debug|error|fatal|info|trace|warn)(/\\d+)?";
+
+  /**
+   * Whether the pattern has an alternation that is not inside a group.
+   *
+   * <p>A {@code |} that is not inside a group ends the qualified name. Everything after it becomes
+   * a SEPARATE branch -- and the engine matches a pattern with {@code find()}, so a branch of its
+   * own is looked for ANYWHERE in the callee signature, not only where the qualified name put it.
+   */
+  private static boolean hasUngroupedAlternation(String pattern) {
+    int depth = 0;
+    boolean inCharacterClass = false;
+    for (int i = 0; i < pattern.length(); i++) {
+      char c = pattern.charAt(i);
+      if (c == '\\') {
+        i++; // the next character is escaped, whatever it is
+        continue;
+      }
+      if (inCharacterClass) {
+        if (c == ']') inCharacterClass = false;
+      } else if (c == '[') {
+        inCharacterClass = true;
+      } else if (c == '(') {
+        depth++;
+      } else if (c == ')') {
+        depth--;
+      } else if (c == '|' && depth == 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Records every pattern whose alternation is not grouped. */
+  private static void collectUngrouped(
+      String owner, List<SinkFamily.SinkPattern> patterns, List<String> offenders) {
+    for (SinkFamily.SinkPattern pattern : patterns) {
+      if (hasUngroupedAlternation(pattern.pattern())) {
+        offenders.add(owner + ": " + pattern.pattern());
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("an ungrouped alternation turns a qualified name into a substring match")
+  void anUngroupedAlternationTurnsAQualifiedNameIntoASubstringMatch() {
+    SinkFamily ungrouped = sqlFamily(UNGROUPED_LOG_PATTERN);
+    SinkFamily grouped = sqlFamily(GROUPED_LOG_PATTERN);
+
+    // The owner is qualified, but "info" is a branch of its own -- and a branch of its own
+    // is found anywhere in the signature. So a call on a class that has nothing to do with
+    // logging reaches the logging sink.
+    assertThat(ungrouped.matches("com.example.OrderService.info/1"))
+        .as("this is what the defect does: the owner is not part of the branch")
+        .isTrue();
+
+    // Grouped, every branch keeps the owner, so the unrelated class does not match.
+    assertThat(grouped.matches("com.example.OrderService.info/1"))
+        .as("a call on an unrelated class must not reach a logging sink")
+        .isFalse();
+
+    // And the call the pattern was written for still matches.
+    assertThat(grouped.matches("org.apache.commons.logging.Log.info/1"))
+        .as("the grouped pattern still names the call it was written for")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("no pattern in the catalogue leaves its alternation ungrouped")
+  void noPatternInTheCatalogueLeavesItsAlternationUngrouped() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+    List<String> offenders = new ArrayList<>();
+
+    for (SinkFamily family : config.sinkFamilies().all()) {
+      collectUngrouped(family.name(), family.patterns(), offenders);
+      for (SourceLanguage language : family.languageRules().languages()) {
+        collectUngrouped(
+            family.name() + " [" + language + "]",
+            family.languageRules().patternsForExactly(language).orElse(List.of()),
+            offenders);
+      }
+    }
+
+    assertThat(offenders)
+        .as("an ungrouped alternation makes the branches after it match anywhere in a signature")
+        .isEmpty();
   }
 }

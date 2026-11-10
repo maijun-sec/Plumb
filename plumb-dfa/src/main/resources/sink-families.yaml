@@ -3625,7 +3625,7 @@ families:
         arg_index: 0
       - pattern: '^org\.apache\.hadoop\.mapred\.JobHistory\.(JobInfo|Task|MapAttempt|ReduceAttempt|TaskAttempt)\.log(Failed|Finished|Inited|JobInfo|Killed|JobPriority|Started|Submitted)(/\d+)?'
         arg_index: 0
-      - pattern: '^org\.apache\.commons\.logging\.log\.debug|error|fatal|info|trace|warn(/\d+)?'
+      - pattern: '^org\.apache\.commons\.logging\.Log\.(debug|error|fatal|info|trace|warn)(/\d+)?'
         arg_index: 0
       - pattern: '^org\.apache\.commons\.logging\.Log\.debug(/\d+)?'
         arg_index: 0

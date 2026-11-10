@@ -229,6 +229,29 @@ pre-commit 钩子会拒绝"改了目录却没带上它们"的提交。
 **索引**而不是工作树：工作树已经重新生成、但没有暂存，那仍然是一个会写下旧数字的
 提交，同样会被拒。
 
+#### 多个方法名要写在一组里
+
+一条 pattern 要同时点好几个方法名，它们必须放在**一组**里：
+
+```yaml
+- '^org\.apache\.commons\.logging\.Log\.(debug|error|fatal|info|trace|warn)(/\d+)?'
+```
+
+不在组里的 `|` 会**结束那个限定名**。它后面的东西各自成为一个分支，而引擎用
+`find()` 匹配——于是**自己成为一个分支**的东西，会在 callee 签名的**任何位置**
+被找到：
+
+```
+'^org\.apache\.commons\.logging\.log\.debug|error|fatal|info|trace|warn(/\d+)?'
+```
+
+它会匹配 `com.example.OrderService.info/1`，因为 `info(/\d+)?` 这个分支根本没
+提 owner。一个族里有这么一条没分组的 alternation，这个族就会认领**所有**方法名
+叫 `error`、`fatal`、`info`、`trace` 或 `warn` 的调用——不管接收者是谁。
+
+`SinkPatternNameFormTest` 拒绝这样的目录：它读引擎实际加载的每一条 pattern，
+遇到第一条没分组的 alternation 就失败。
+
 #### passthrough 表：语言，以及分桶
 
 两张 passthrough 表——`receiver-passthrough.yaml` 与 `argument-passthrough.yaml`

@@ -257,6 +257,31 @@ commit, and it asks the question of the INDEX rather than of the working tree:
 a working tree that has been regenerated but not staged is still a commit that
 would state the old number, and it is refused as well.
 
+#### An alternation belongs to the name it qualifies
+
+A pattern that names several methods must put them in a GROUP:
+
+```yaml
+- '^org\.apache\.commons\.logging\.Log\.(debug|error|fatal|info|trace|warn)(/\d+)?'
+```
+
+A `|` that is not inside a group **ends the qualified name**. Everything after it
+becomes a branch of its own, and the engine matches a pattern with `find()` --
+so a branch of its own is looked for ANYWHERE in the callee signature:
+
+```
+'^org\.apache\.commons\.logging\.log\.debug|error|fatal|info|trace|warn(/\d+)?'
+```
+
+That pattern matches `com.example.OrderService.info/1`, because the branch
+`info(/\d+)?` never mentions the owner. One ungrouped alternation in one family
+makes that family claim EVERY call whose method is named `error`, `fatal`,
+`info`, `trace` or `warn` -- whatever the receiver is.
+
+`SinkPatternNameFormTest` refuses a catalogue that contains one: it reads every
+pattern the engine loads and fails on the first whose alternation is not
+grouped.
+
 #### The passthrough tables: which language, and which bucket
 
 The two passthrough tables -- `receiver-passthrough.yaml` and
