@@ -828,10 +828,10 @@ families:
           arg_index: 0
         # The global eval. A free function has no receiver object and no module
         # to name, so its owner is the stand-in for an unknown one: <unknown>.
-        # The pattern names the method alone, so it also claims a method of
-        # that name on any receiver. The word boundary keeps
+        # The pattern names that stand-in, so it claims the global and not a
+        # method of the same name on some object. The word boundary keeps
         # `evaluate` and `evalSync` out.
-        - pattern: '\.eval\b(/\d+)?'
+        - pattern: '^<unknown>\.eval\b(/\d+)?'
           arg_index: 0
       python3:
         # The builtins that evaluate code. Their owner is `builtins`,
@@ -7055,8 +7055,8 @@ families:
           arg_index: 0
         # The global fetch. A free function has no receiver object and no module
         # to name, so its owner is the stand-in for an unknown one: <unknown>,
-        # and the pattern names the method alone.
-        - pattern: '\.fetch\b(/\d+)?'
+        # and the pattern names that stand-in.
+        - pattern: '^<unknown>\.fetch\b(/\d+)?'
           arg_index: 0
       python3:
         # The URL is the first argument of every one of these.

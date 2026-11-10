@@ -243,8 +243,16 @@ class TsSinkCatalogTest {
                 .sinkFamilies()
                 .byName("code-injection.sinks")
                 .orElseThrow()
-                .matches("app.eval/1", SourceLanguage.TYPESCRIPT))
-        .as("the global eval evaluates code, and its owner is the file's module")
+                .matches("<unknown>.eval/1", SourceLanguage.TYPESCRIPT))
+        .as("the global eval evaluates code, and its owner is the stand-in for an unknown one")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("ssrf.sinks")
+                .orElseThrow()
+                .matches("<unknown>.fetch/2", SourceLanguage.TYPESCRIPT))
+        .as("the global fetch sends its argument to a URL, and its owner is the same stand-in")
         .isTrue();
   }
 
@@ -735,5 +743,25 @@ class TsSinkCatalogTest {
               family.name())
           .isFalse();
     }
+  }
+
+  @Test
+  @DisplayName("a method of the same name on an object is not the global")
+  void aMethodOfTheSameNameOnAnObjectIsNotTheGlobal() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+    SinkFamily codeInjection = config.sinkFamilies().byName("code-injection.sinks").orElseThrow();
+    SinkFamily ssrf = config.sinkFamilies().byName("ssrf.sinks").orElseThrow();
+
+    // The two patterns that name the stand-in claim the GLOBAL function and nothing else:
+    // a method of the same name on some object is a different thing.
+    assertThat(codeInjection.matches("__object.eval/0", SourceLanguage.TYPESCRIPT))
+        .as("a method called eval on an object is not the global eval")
+        .isFalse();
+    assertThat(ssrf.matches("__object.fetch/0", SourceLanguage.TYPESCRIPT))
+        .as("a method called fetch on an object is not the global fetch")
+        .isFalse();
+    assertThat(codeInjection.matches("app.eval/1", SourceLanguage.TYPESCRIPT))
+        .as("a function the file declares is not the global eval either")
+        .isFalse();
   }
 }

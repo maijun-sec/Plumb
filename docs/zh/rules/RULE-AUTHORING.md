@@ -331,8 +331,10 @@ TypeScript、JavaScript 和 ArkTS 是通过**模块**而不是通过类去够它
 injection sink。一个叫 `pickle.py` 的文件同样撞进了反序列化 sink。换成
 `<unknown>` 之后，owner 如实说明：没人知道。
 
-要认领这类调用的规则必须**故意**写出这个替身，而这样的规则少到目录里一个
-都没有。
+要认领这类调用的规则必须**故意**写出这个替身。目录里正好两处这么写——全局
+`eval` 和全局 `fetch`——而它们是目录里最后两条「只点名方法」的 pattern：改完之后，
+每一条 pattern 都锚定在 callee key 的开头。其余的族都不许认领 owner 是这个替身的
+调用，`SinkPatternNameFormTest` 对整个目录说了这件事。
 
 **这个替身既不是类名也不是模块名。** 仓库里已经用 `<php>` 表示 TAC 没有对应物的
 语言构造——那是「TAC 表达不出来的东西」的替身。`<unknown>` 表示的是 TAC **能**

@@ -281,4 +281,42 @@ class SinkPatternNameFormTest {
         .as("an ungrouped alternation makes the branches after it match anywhere in a signature")
         .isEmpty();
   }
+
+  /**
+   * The methods a family is asked not to claim when it does not name the stand-in owner.
+   *
+   * <p>The catalogue names the stand-in in exactly two places -- the global {@code eval} and the
+   * global {@code fetch} -- and a family that does not name it must not claim a call whose owner is
+   * it. The point is not the two families that do name it; it is every family that does NOT,
+   * because a pattern that matched the stand-in by accident would claim a call whose receiver the
+   * front end could not type.
+   */
+  private static final String[] STAND_IN_OWNER_METHODS = {
+    "eval", "fetch", "error", "info", "exec", "loads", "trim", "strip"
+  };
+
+  @Test
+  @DisplayName("a family that does not name the stand-in owner claims no call whose owner is it")
+  void aFamilyThatDoesNotNameTheStandInOwnerClaimsNoCallWhoseOwnerIsIt() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    for (SinkFamily family : config.sinkFamilies().all()) {
+      for (SourceLanguage language : SourceLanguage.values()) {
+        boolean namesTheStandIn =
+            family.patternsFor(language).stream()
+                .anyMatch(pattern -> pattern.pattern().contains("<unknown>"));
+        if (namesTheStandIn) {
+          // It means to claim such a call, and its pattern says so.
+          continue;
+        }
+        for (String method : STAND_IN_OWNER_METHODS) {
+          assertThat(family.matches("<unknown>." + method + "/1", language))
+              .as(
+                  "%s must not claim <unknown>.%s: it does not name the stand-in owner",
+                  family.name(), method)
+              .isFalse();
+        }
+      }
+    }
+  }
 }

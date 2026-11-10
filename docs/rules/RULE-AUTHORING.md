@@ -374,8 +374,12 @@ program with a logger of its own was reported as a log-injection sink. A file
 called `pickle.py` reached the deserialisation sink the same way. With
 `<unknown>` the owner says what it is: nobody knows.
 
-A rule that means to claim such a call has to name the stand-in on purpose, and
-there are few enough of those that the catalogue does not.
+A rule that means to claim such a call has to name the stand-in on purpose. The
+catalogue does that in exactly two places -- the global `eval` and the global
+`fetch` -- and those two were the last patterns that named a method on its own:
+every pattern in the catalogue is now anchored at the start of the callee key.
+Every other family must not claim a call whose owner is the stand-in, and
+`SinkPatternNameFormTest` says so over the whole catalogue.
 
 **The stand-in is not a class name and not a module.** The repository already
 uses `<php>` for the language constructs the TAC has no counterpart for -- that
