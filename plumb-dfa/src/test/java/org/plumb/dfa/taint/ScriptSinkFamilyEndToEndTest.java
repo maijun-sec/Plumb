@@ -84,6 +84,12 @@ import org.plumb.tac.ir.TacProgram;
  * <p>Each language needs its own runtime: Node and the TypeScript compiler for the script front
  * ends, Python for the Python one. A machine without them is missing an environment, not carrying a
  * broken product -- the same reason the Go front end's test skips when there is no Go toolchain.
+ *
+ * <p><b>The skip is not a pass, and it says what to do about it.</b> A Node front end also needs
+ * the package its script imports, and that package lives in {@code node_modules}, which is not in
+ * version control. A fresh checkout therefore has no {@code node_modules} and the front end has
+ * nothing to run: the test skips, the build stays green, and the script languages are quietly
+ * unanalysed. The message says which command fixes it, so a skip is a to-do and not a shrug.
  */
 @DisplayName("Taint: the script languages reach their own sinks through the real front ends")
 class ScriptSinkFamilyEndToEndTest {
@@ -192,7 +198,10 @@ class ScriptSinkFamilyEndToEndTest {
   @Test
   @DisplayName("a TypeScript page write reaches the XSS rule")
   void aTypeScriptPageWriteReachesTheXssRule(@TempDir Path directory) throws IOException {
-    assumeTrue(tsAvailable(), "the TypeScript front end needs Node and its compiler dependency");
+    assumeTrue(
+        tsAvailable(),
+        "the TypeScript front end needs Node and its compiler dependency: run npm ci in"
+            + " plumb-frontend/ts-sidecar");
 
     Path file = directory.resolve("app.ts");
     Files.writeString(file, TS_SOURCE);
@@ -213,7 +222,7 @@ class ScriptSinkFamilyEndToEndTest {
   @DisplayName("a Python pattern compiled from the network reaches the regex rule")
   void aPythonPatternCompiledFromTheNetworkReachesTheRegexRule(@TempDir Path directory)
       throws IOException {
-    assumeTrue(pythonAvailable(), "the Python front end needs a Python 3 runtime");
+    assumeTrue(pythonAvailable(), "the Python front end needs a Python 3 runtime on the PATH");
 
     Path file = directory.resolve("app.py");
     Files.writeString(file, PYTHON_SOURCE);
@@ -229,7 +238,10 @@ class ScriptSinkFamilyEndToEndTest {
   @Test
   @DisplayName("a PHP format string reaches the format rule")
   void aPhpFormatStringReachesTheFormatRule(@TempDir Path directory) throws IOException {
-    assumeTrue(phpAvailable(), "the PHP front end needs Node and its parser dependency");
+    assumeTrue(
+        phpAvailable(),
+        "the PHP front end needs Node and its parser dependency: run npm ci in"
+            + " plumb-frontend/php-sidecar");
 
     Path file = directory.resolve("app.php");
     Files.writeString(file, PHP_SOURCE);
@@ -255,7 +267,7 @@ class ScriptSinkFamilyEndToEndTest {
   @DisplayName("a file named after a module the catalogue knows is not that module")
   void aFileNamedAfterAModuleTheCatalogueKnowsIsNotThatModule(@TempDir Path directory)
       throws IOException {
-    assumeTrue(pythonAvailable(), "the Python front end needs a Python 3 runtime");
+    assumeTrue(pythonAvailable(), "the Python front end needs a Python 3 runtime on the PATH");
 
     Path file = directory.resolve("logging.py");
     Files.writeString(file, PYTHON_FILE_NAMED_AFTER_A_MODULE);
@@ -285,7 +297,10 @@ class ScriptSinkFamilyEndToEndTest {
   @DisplayName("a TypeScript file named after a module the catalogue knows is not that module")
   void aTypeScriptFileNamedAfterAModuleTheCatalogueKnowsIsNotThatModule(@TempDir Path directory)
       throws IOException {
-    assumeTrue(tsAvailable(), "the TypeScript front end needs Node and its compiler dependency");
+    assumeTrue(
+        tsAvailable(),
+        "the TypeScript front end needs Node and its compiler dependency: run npm ci in"
+            + " plumb-frontend/ts-sidecar");
 
     Path file = directory.resolve("util.ts");
     Files.writeString(file, TS_FILE_NAMED_AFTER_A_MODULE);
@@ -321,7 +336,10 @@ class ScriptSinkFamilyEndToEndTest {
   @Test
   @DisplayName("a construction names the class it constructs")
   void aConstructionNamesTheClassItConstructs(@TempDir Path directory) throws IOException {
-    assumeTrue(tsAvailable(), "the TypeScript front end needs Node and its compiler dependency");
+    assumeTrue(
+        tsAvailable(),
+        "the TypeScript front end needs Node and its compiler dependency: run npm ci in"
+            + " plumb-frontend/ts-sidecar");
 
     Path file = directory.resolve("app.ts");
     Files.writeString(file, TS_CONSTRUCTION);
