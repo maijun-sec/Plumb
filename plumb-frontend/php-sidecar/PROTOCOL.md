@@ -13,6 +13,24 @@ shapes this sidecar reads are the ones the PHP community writes rules about.
 
 So the analysis runs in a sidecar, which drives that parser.
 
+## Running it locally
+
+The sidecar is a Node program, and the Node program imports the PHP parser.
+The parser is an npm dependency, and `node_modules` is not in version
+control, so a fresh checkout installs it once:
+
+```
+cd plumb-frontend/php-sidecar
+npm ci
+```
+
+Without that install the sidecar dies on its first request, and the analysis
+fails with the sidecar's own last words in the message -- Node's
+`Cannot find module` error for the parser the script imports. The same install
+is what the end-to-end test needs: without it the test SKIPS instead of
+failing, because a machine without the toolchain is missing an environment
+rather than carrying a broken product.
+
 ## Framing: length-prefixed JSON
 
 Each message is a JSON object, UTF-8 encoded, framed as:

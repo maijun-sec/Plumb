@@ -21,6 +21,24 @@ shape. The wire protocol is the same *shape* -- the same framing, the same
 handshake, the same instruction kinds -- but the two sidecars own their own
 copy of it, so neither can break the other.
 
+## Running it locally
+
+The sidecar is a Node program, and the Node program imports the ArkTS
+compiler. The compiler is an npm dependency, and `node_modules` is not in
+version control, so a fresh checkout installs it once:
+
+```
+cd plumb-frontend/arkts-sidecar
+npm ci
+```
+
+Without that install the sidecar dies on its first request, and the analysis
+fails with the sidecar's own last words in the message -- Node's
+`Cannot find module` error for the compiler the script imports. The same
+install is what the end-to-end test needs: without it the test SKIPS instead of
+failing, because a machine without the toolchain is missing an environment
+rather than carrying a broken product.
+
 ## Framing: length-prefixed JSON
 
 Each message is a JSON object, UTF-8 encoded, framed as:

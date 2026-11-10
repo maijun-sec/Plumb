@@ -20,6 +20,13 @@ sidecar says so instead of half-reading it. The interpreter's own version
 is reported in the `ping` response, and the frontend refuses one that is
 not a Python 3.
 
+## Running it locally
+
+There is nothing to install: the sidecar parses with the interpreter's own
+`ast` module, so a Python 3 on the PATH is the whole requirement. A machine
+without one is missing an environment rather than carrying a broken product,
+so the end-to-end test SKIPS instead of failing.
+
 ## Framing: length-prefixed JSON
 
 Each message is a JSON object, UTF-8 encoded, framed as:

@@ -20,6 +20,24 @@ the project is opened once and kept open -- opening it per file would
 re-parse the standard library for every file, and the standard library is the
 bulk of the work.
 
+## Running it locally
+
+The sidecar is a Node program, and the Node program imports the TypeScript
+compiler. The compiler is an npm dependency, and `node_modules` is not in
+version control, so a fresh checkout installs it once:
+
+```
+cd plumb-frontend/ts-sidecar
+npm ci
+```
+
+Without that install the sidecar dies on its first request, and the analysis
+fails with the sidecar's own last words in the message -- Node's
+`Cannot find module` error for the compiler the script imports. The same
+install is what the end-to-end test needs: without it the test SKIPS instead of
+failing, because a machine without the toolchain is missing an environment
+rather than carrying a broken product.
+
 ## Framing: length-prefixed JSON
 
 Each message is a JSON object, UTF-8 encoded, framed as:
