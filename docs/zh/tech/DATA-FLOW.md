@@ -299,14 +299,15 @@ sink 的值没有框架来源可写。
 
 ### 3.4 控制流检查（controlflow）
 
-`checkers/controlflow/` 下 16 个类，**全部直接 `implements DfaChecker`，没有共同基类**：
+`checkers/controlflow/` 下 17 个类，**全部直接 `implements DfaChecker`，没有共同基类**：
 `DeadlockChecker`、`CollectionSelfReferenceChecker`、`IteratorConcurrentModificationChecker`、
 `ServletAtomicityDfaChecker`、`XxeChecker`、`EqualsCalledOnNullChecker`、`OffByOneChecker`、
 `MissingCryptoInitChecker`、`TryCatchFinallyChecker`、`UnlockNotLockedChecker`、
 `OrmUnnecessaryGetDfaChecker`、`SingletonRaceDfaChecker`、`OrmLostUpdateDfaChecker`、
-`CompareWithSelfChecker`、`OrmLoadNullCheckDfaChecker`、`UncaughtExceptionPropagator`。
+`CompareWithSelfChecker`、`OrmLoadNullCheckDfaChecker`、`UncaughtExceptionPropagator`、
+`DeferredReleaseInLoopChecker`。
 
-它们是 16 个独立的 TAC 模式检查器，只是共用一个包名，**不是**某种统一的数据流分析。
+它们是 17 个独立的 TAC 模式检查器，只是共用一个包名，**不是**某种统一的数据流分析。
 
 ---
 

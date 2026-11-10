@@ -29,7 +29,7 @@ inspired by Fathom, but the implementation is entirely Java.
 | Dimension | Number | Source |
 | --- | --- | --- |
 | Style checkers | **601** (`CheckerCategories` registers 593) | `plumb-style/**` |
-| DFA checkers | **90** actually registered | `ScanRunner.buildDfaCheckers()` |
+| DFA checkers | **91** actually registered | `ScanRunner.buildDfaCheckers()` |
 | Taint rules | **12** | `TaintRuleRegistry` |
 | Taint source / sink patterns | **19** / **397** | `sink-families.yaml` |
 | Unit tests | **262** Java test files (219 of them `*Test.java`) | each module's `src/test/` |
@@ -191,7 +191,7 @@ measured by the generator, and `--check` mode proves they have not gone
 stale. But the numbers in **hand-written** documents are nobody's
 responsibility -- the repository at one point carried both "595 checker
 classes" and "601" when the real number was 601; `ARCHITECTURE.md` claimed
-"71 DFA checkers" when the engine actually registers 90.
+"71 DFA checkers" when the engine actually registers 91.
 `check_doc_numbers` measures these numbers against the source again,
 including the per-subdirectory table in `RULE-STYLE-OP.md`. A number
 either becomes the measured value, or it moves into a generated document

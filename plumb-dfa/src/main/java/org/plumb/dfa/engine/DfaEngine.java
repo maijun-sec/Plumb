@@ -2371,74 +2371,12 @@ public final class DfaEngine {
     if (cfg.blocks().isEmpty()) {
       return List.of();
     }
-    // Identify the back edges: an edge u -> v where v is an ancestor of u in the depth-first
-    // search tree. Those are the edges that close a loop.
-    java.util.Map<Integer, Integer> dfsParent = new HashMap<>();
-    ArrayList<Integer> postOrder = new ArrayList<>();
-    HashSet<Integer> visited = new HashSet<>();
-    ArrayDeque<int[]> stack = new ArrayDeque<>();
-    stack.push(new int[] {cfg.entryId(), 0});
-    while (!stack.isEmpty()) {
-      int[] top = stack.peek();
-      int blockId = top[0];
-      int childIdx = top[1];
-      if (childIdx == 0 && !visited.add(blockId)) {
-        stack.pop();
-        continue;
-      }
-      java.util.List<Integer> blockSuccs = cfg.succs(blockId);
-      if (childIdx < blockSuccs.size()) {
-        top[1] = childIdx + 1;
-        int nextSucc = blockSuccs.get(childIdx);
-        if (visited.contains(nextSucc)) continue;
-        dfsParent.put(nextSucc, blockId);
-        stack.push(new int[] {nextSucc, 0});
-        continue;
-      }
-      stack.pop();
-      postOrder.add(blockId);
-    }
-    // The blocks that are loop headers: the targets of the back edges.
-    HashSet<Integer> loopHeaders = new HashSet<>();
-    // The blocks that are inside some loop: every block on a path from a loop header to the
-    // back-edge source, plus the header itself.
-    HashSet<Integer> inLoop = new HashSet<>();
-    //
-    // A back edge is an edge u -> v where v is an ANCESTOR of u in the depth-first search tree.
-    // The DFS tree edges are recorded in `dfsParent` (child -> parent), so the ancestors of a
-    // node are the chain obtained by following `dfsParent` upwards. For every block u and every
-    // successor v of u, v is a back-edge target when the upward chain from u reaches v.
-    for (Map.Entry<Integer, java.util.List<Integer>> e : cfg.successors().entrySet()) {
-      int u = e.getKey();
-      for (int v : e.getValue()) {
-        int walker = u;
-        int guard = 0;
-        boolean isBackEdge = false;
-        while (guard++ < dfsParent.size() + 1) {
-          if (walker == v) {
-            isBackEdge = true;
-            break;
-          }
-          Integer next = dfsParent.get(walker);
-          if (next == null) break;
-          walker = next;
-        }
-        if (!isBackEdge) continue;
-        loopHeaders.add(v);
-        // The natural loop of the back edge v -> u: the header v, every block on the DFS parent
-        // chain from u back to v, and v itself.
-        inLoop.add(v);
-        int p = u;
-        int g2 = 0;
-        while (g2++ < dfsParent.size() + 1) {
-          inLoop.add(p);
-          if (p == v) break;
-          Integer next = dfsParent.get(p);
-          if (next == null) break;
-          p = next;
-        }
-      }
-    }
+    // The walk finds the back edges and the loops they close. It is the engine's ONE
+    // implementation of "what is a loop": a checker that asks the same question about the
+    // same graph reads the answer from here, so the two cannot drift apart.
+    CfgWalk walk = CfgWalk.of(cfg);
+    Set<Integer> loopHeaders = walk.loopHeaders;
+    Set<Integer> inLoop = walk.blocksInLoop;
     if (loopHeaders.isEmpty()) {
       // No loop: the plain RPO is already a correct forward order.
       return bbRpoOrder(fn);
@@ -2467,9 +2405,9 @@ public final class DfaEngine {
           });
       reordered.put(e.getKey(), sorted);
     }
-    postOrder = new ArrayList<>();
-    visited = new HashSet<>();
-    stack = new ArrayDeque<>();
+    ArrayList<Integer> postOrder = new ArrayList<>();
+    HashSet<Integer> visited = new HashSet<>();
+    ArrayDeque<int[]> stack = new ArrayDeque<>();
     stack.push(new int[] {cfg.entryId(), 0});
     while (!stack.isEmpty()) {
       int[] top = stack.peek();
@@ -2511,6 +2449,41 @@ public final class DfaEngine {
     for (int i = 0; i < n; ++i) {
       if (seen.contains(i)) continue;
       out.add(i);
+    }
+    return out;
+  }
+
+  /**
+   * The instruction indexes that are inside some loop.
+   *
+   * <p><b>What it answers.</b> "Is this instruction in the body of a loop?" -- the question a
+   * checker asks about a statement that runs once per iteration rather than once per call.
+   *
+   * <p><b>How it is computed.</b> From the same walk the analysis order uses, so the two agree
+   * about what a loop is. A second implementation would drift, and the one that drifted would be
+   * the one answering a question about the code.
+   *
+   * <p><b>When to call it.</b> It walks the whole function, so a checker should call it once per
+   * function and only for the functions where the answer can change what it reports.
+   *
+   * @param fn the function
+   * @return the indexes of the instructions inside a loop; empty when the function has none
+   */
+  public static Set<Integer> loopInstructionIndexes(TacFunction fn) {
+    Objects.requireNonNull(fn, "fn");
+    TacCfg cfg = TacCfgBuilder.build(fn);
+    if (cfg.blocks().isEmpty()) {
+      return Set.of();
+    }
+    CfgWalk walk = CfgWalk.of(cfg);
+    if (walk.loopHeaders.isEmpty()) {
+      return Set.of();
+    }
+    Set<Integer> out = new HashSet<>();
+    for (Integer blockId : walk.blocksInLoop) {
+      TacBasicBlock block = cfg.block(blockId);
+      if (block == null) continue;
+      out.addAll(block.indices());
     }
     return out;
   }

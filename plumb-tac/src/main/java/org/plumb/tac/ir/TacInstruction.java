@@ -22,9 +22,12 @@
 package org.plumb.tac.ir;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 // IR-serializable: this class participates in the disk-cache contract.
 // Instances are written via IrSerializer (ObjectOutputStream) and read
@@ -153,6 +156,39 @@ public final class TacInstruction implements java.io.Serializable {
     UNINTERPRETED
   }
 
+  /**
+   * How the call at this instruction actually runs, when that is not the same as "here, in this
+   * order".
+   *
+   * <p>The instruction stream is a sequence of steps, and for most calls that sequence IS the order
+   * they run in. Two language primitives break that assumption, and the effect says which one
+   * applies.
+   *
+   * <p><b>Each language keeps its own primitives here</b>, rather than being forced into one shared
+   * thread model. Go's {@code defer} and {@code go} are not Java's {@code synchronized}, and a
+   * single "concurrency" flag would say less than the truth about any of them. A language that has
+   * no such primitive leaves the set empty, and the instruction is an ordinary step.
+   */
+  public enum Effect {
+    /**
+     * The call runs when the enclosing function returns, not at this point in the stream.
+     *
+     * <p>Go's {@code defer f(x)} evaluates its arguments HERE and runs the call when the function
+     * exits. The arguments are already in the instruction stream in the right place, so the taint
+     * that reaches them is correct; only the TIMING of the call is not. A checker that wants to
+     * know what the program does with the result has to know that the result arrives later.
+     */
+    DEFERRED,
+    /**
+     * The call runs on another thread of execution, concurrently with the rest of the function.
+     *
+     * <p>Go's {@code go f()} starts a goroutine. The engine models no happens-before relation
+     * between it and anything else, so a checker that relies on the order of the instructions would
+     * conclude something the program does not guarantee.
+     */
+    CONCURRENT
+  }
+
   public final Kind kind;
   public final TacOperand dest; // may be null; usually TacVar but for STOREs can be any operand
   public final TacOperand lhs1; // for BINOP / UNARYOP / FIELDLOAD / ARRAYLOAD
@@ -188,6 +224,15 @@ public final class TacInstruction implements java.io.Serializable {
   /** Source column for diagnostics. -1 if unknown. */
   public final int column;
 
+  /**
+   * The execution effects of this instruction. Empty for an ordinary step.
+   *
+   * <p>Only a CALL has one: it is the call whose timing or concurrency differs from the order of
+   * the instruction stream. An instruction with an empty set runs here, in this order, like any
+   * other.
+   */
+  public final Set<Effect> effects;
+
   private TacInstruction(Builder b) {
     this.kind = b.kind;
     this.dest = b.dest;
@@ -208,6 +253,29 @@ public final class TacInstruction implements java.io.Serializable {
     this.label = b.label;
     this.line = b.line;
     this.column = b.column;
+    this.effects =
+        b.effects == null || b.effects.isEmpty()
+            ? Collections.emptySet()
+            : Collections.unmodifiableSet(EnumSet.copyOf(b.effects));
+  }
+
+  /**
+   * Whether the call runs when the enclosing function returns rather than at this point in the
+   * stream.
+   */
+  public boolean isDeferred() {
+    // The set is null on an instruction that came from a cache written
+    // before the field existed: deserialization does not run a
+    // constructor. An instruction with no effects is an ordinary one.
+    return effects != null && effects.contains(Effect.DEFERRED);
+  }
+
+  /**
+   * Whether the call runs on another thread of execution, concurrently with the rest of the
+   * function.
+   */
+  public boolean isConcurrent() {
+    return effects != null && effects.contains(Effect.CONCURRENT);
   }
 
   public static Builder builder(Kind kind) {
@@ -231,6 +299,7 @@ public final class TacInstruction implements java.io.Serializable {
     private String label;
     private int line = -1;
     private int column = -1;
+    private Set<Effect> effects;
 
     private Builder(Kind kind) {
       this.kind = Objects.requireNonNull(kind);
@@ -311,6 +380,30 @@ public final class TacInstruction implements java.io.Serializable {
       return this;
     }
 
+    /** Records one execution effect on this instruction. */
+    public Builder effect(Effect e) {
+      if (e == null) {
+        return this;
+      }
+      if (this.effects == null) {
+        this.effects = EnumSet.noneOf(Effect.class);
+      }
+      this.effects.add(e);
+      return this;
+    }
+
+    /** Records several execution effects at once. */
+    public Builder effects(Collection<Effect> es) {
+      if (es == null || es.isEmpty()) {
+        return this;
+      }
+      if (this.effects == null) {
+        this.effects = EnumSet.noneOf(Effect.class);
+      }
+      this.effects.addAll(es);
+      return this;
+    }
+
     public TacInstruction build() {
       return new TacInstruction(this);
     }
@@ -334,6 +427,7 @@ public final class TacInstruction implements java.io.Serializable {
       case CALL -> {
         if (dest != null) sb.append(dest).append(" = ");
         sb.append(calleeSig == null ? "<call>" : calleeSig).append('(').append(args).append(')');
+        appendEffects(sb);
       }
       case NEW -> {
         if (dest != null) sb.append(dest).append(" = ");
@@ -374,5 +468,21 @@ public final class TacInstruction implements java.io.Serializable {
       }
     }
     return sb.toString();
+  }
+
+  private void appendEffects(StringBuilder sb) {
+    if (effects == null || effects.isEmpty()) {
+      return;
+    }
+    sb.append(" [");
+    boolean first = true;
+    for (Effect e : effects) {
+      if (!first) {
+        sb.append(',');
+      }
+      first = false;
+      sb.append(e);
+    }
+    sb.append(']');
   }
 }

@@ -237,6 +237,12 @@ type Instruction struct {
 
 	// The source column. -1 when unknown.
 	Column int `json:"column"`
+
+	// The execution effect of this instruction, when it is not an
+	// ordinary step. DEFERRED means the call runs when the function
+	// returns; CONCURRENT means it runs on another goroutine. Empty
+	// means the call runs here, in this order.
+	Effect string `json:"effect,omitempty"`
 }
 
 // A structured problem: something the frontend could not lower.

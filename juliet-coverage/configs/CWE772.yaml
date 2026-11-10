@@ -22,6 +22,7 @@ rules:
     - ast-security-unchecked-return
     - dfa-taint-leak
     - ast-security-unclosed-resource
+    - dfa-controlflow-deferred-release-in-loop
 
 ai:
   enabled: false

@@ -438,3 +438,117 @@ func (file *File) Write(data string) {
 		t.Errorf("the enclosing scope is %q, want the receiver type %q", write.EnclosingClass, "sample.File")
 	}
 }
+
+// A deferred call runs when the function returns, not where it is written. The
+// instruction stream says "here", so the instruction carries the marker that
+// says otherwise.
+func TestTheDeferredCallCarriesTheDeferredEffect(t *testing.T) {
+	functions := translateSource(t, `
+package sample
+
+type File struct{}
+
+func (f *File) Close() error {
+	return nil
+}
+
+func use(file *File) {
+	defer file.Close()
+}
+`)
+
+	use := functionNamed(t, functions, "use")
+
+	calls := callsTo(use, "sample.File.Close/0")
+	if len(calls) != 1 {
+		t.Fatalf("the call count is %d, want exactly 1", len(calls))
+	}
+	if calls[0].Effect != effectDeferred {
+		t.Errorf("the deferred call's effect is %q, want %q", calls[0].Effect, effectDeferred)
+	}
+}
+
+// The goroutine's call runs on another goroutine, concurrently with the rest of
+// the function.
+func TestTheGoroutineCallCarriesTheConcurrentEffect(t *testing.T) {
+	functions := translateSource(t, `
+package sample
+
+func work() {
+}
+
+func use() {
+	go work()
+}
+`)
+
+	use := functionNamed(t, functions, "use")
+
+	calls := callsTo(use, "sample.work/0")
+	if len(calls) != 1 {
+		t.Fatalf("the call count is %d, want exactly 1", len(calls))
+	}
+	if calls[0].Effect != effectConcurrent {
+		t.Errorf("the goroutine call's effect is %q, want %q", calls[0].Effect, effectConcurrent)
+	}
+}
+
+// An ordinary call runs here, in this order. It must not be marked: a marker
+// on everything would make the marker say nothing.
+func TestAnOrdinaryCallCarriesNoEffect(t *testing.T) {
+	functions := translateSource(t, `
+package sample
+
+type File struct{}
+
+func (f *File) Close() error {
+	return nil
+}
+
+func use(file *File) {
+	file.Close()
+}
+`)
+
+	use := functionNamed(t, functions, "use")
+
+	calls := callsTo(use, "sample.File.Close/0")
+	if len(calls) != 1 {
+		t.Fatalf("the call count is %d, want exactly 1", len(calls))
+	}
+	if calls[0].Effect != "" {
+		t.Errorf("an ordinary call carries the effect %q, want none", calls[0].Effect)
+	}
+}
+
+// A deferred release inside a loop is the case the marker exists for: the
+// release runs when the function returns, so every iteration holds the
+// resource until then. The marker has to survive the loop -- the sidecar
+// lowers the loop, and the marker travels on the call.
+func TestADeferredReleaseInsideALoopIsStillMarked(t *testing.T) {
+	functions := translateSource(t, `
+package sample
+
+type File struct{}
+
+func (f *File) Close() error {
+	return nil
+}
+
+func use(files []*File) {
+	for _, file := range files {
+		defer file.Close()
+	}
+}
+`)
+
+	use := functionNamed(t, functions, "use")
+
+	calls := callsTo(use, "sample.File.Close/0")
+	if len(calls) != 1 {
+		t.Fatalf("the call count is %d, want exactly 1", len(calls))
+	}
+	if calls[0].Effect != effectDeferred {
+		t.Errorf("the deferred call's effect is %q, want %q", calls[0].Effect, effectDeferred)
+	}
+}

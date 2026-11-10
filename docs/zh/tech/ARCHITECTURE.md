@@ -103,13 +103,13 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
 
 ### 3.0 DFA checker 的实现形态
 
-`plumb-dfa/src/main/java` 下共 193 个 `.java`，并非每个都是独立的分析器。按**实际实现
+`plumb-dfa/src/main/java` 下共 195 个 `.java`，并非每个都是独立的分析器。按**实际实现
 机制**可分成几类（数量为实测）：
 
 | 形态 | 数量 | 含义 |
 | --- | ---: | --- |
 | **TaintedCheckerBase 子类** | 69 | 继承统一污点传播基类，`checkers/taint/` 下绝大多数（不含基类自身） |
-| **直接 `implements DfaChecker`** | 20 | 自带逻辑，不共享传播层；`checkers/controlflow/` 的 15 个全在此列 |
+| **直接 `implements DfaChecker`** | 21 | 自带逻辑，不共享传播层；`checkers/controlflow/` 的 16 个全在此列 |
 | **PathSensitiveCheckerBase 子类** | 1 | 反向检测底座（alloc-without-close 类） |
 | **求解器 / 格 / 引擎 / SPI** | 其余 | `points/`、`solver/`、`summary/`、`taint/`、`engine/` |
 

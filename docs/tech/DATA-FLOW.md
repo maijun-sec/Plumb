@@ -302,14 +302,15 @@ and the `Range` with a method length threshold is defined at `:56`.
 
 ### 3.4 Control-flow checks (controlflow)
 
-There are 16 classes under `checkers/controlflow/`, and they **all directly `implements DfaChecker`, with no common base class**:
+There are 17 classes under `checkers/controlflow/`, and they **all directly `implements DfaChecker`, with no common base class**:
 `DeadlockChecker`, `CollectionSelfReferenceChecker`, `IteratorConcurrentModificationChecker`,
 `ServletAtomicityDfaChecker`, `XxeChecker`, `EqualsCalledOnNullChecker`, `OffByOneChecker`,
 `MissingCryptoInitChecker`, `TryCatchFinallyChecker`, `UnlockNotLockedChecker`,
 `OrmUnnecessaryGetDfaChecker`, `SingletonRaceDfaChecker`, `OrmLostUpdateDfaChecker`,
-`CompareWithSelfChecker`, `OrmLoadNullCheckDfaChecker`, `UncaughtExceptionPropagator`.
+`CompareWithSelfChecker`, `OrmLoadNullCheckDfaChecker`, `UncaughtExceptionPropagator`,
+`DeferredReleaseInLoopChecker`.
 
-They are 16 independent TAC pattern checkers that merely share a package name; they are **not** some unified dataflow analysis.
+They are 17 independent TAC pattern checkers that merely share a package name; they are **not** some unified dataflow analysis.
 
 ---
 

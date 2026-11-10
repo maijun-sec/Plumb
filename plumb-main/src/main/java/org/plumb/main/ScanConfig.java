@@ -227,6 +227,10 @@ public final class ScanConfig {
   public boolean runOrmLostUpdate = true;
   public boolean runOrmUnnecessaryGet = true;
   public boolean runUnlockNotLocked = true;
+
+  /** Whether to report a release that a loop defers to the end of the function (CWE-772). */
+  public boolean runDeferredReleaseInLoop = true;
+
   // ServletAtomicityDfa SingletonRaceDfa
   // suppressed because plumb-style has ServletAtomicityCheck
   // SingletonRaceCheck (concurrency/) covering the same

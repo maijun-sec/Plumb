@@ -22,7 +22,7 @@
 | Taint source 模式 | plumb-dfa | **195** | `sink-families.yaml` 的 6 个 `taint.sources.*` family | taint |
 | Taint sink 模式 | plumb-dfa | **4062** | `sink-families.yaml` 的 76 个 `*.sinks` family | taint |
 | DFA checker（YAML 声明） | plumb-dfa | **38**（36 启用 / 2 禁用） | `checkers.yaml` | dfa |
-| DFA checker（实际注册） | plumb-main | **90** | `ScanRunner.buildDfaCheckers()` | dfa |
+| DFA checker（实际注册） | plumb-main | **91** | `ScanRunner.buildDfaCheckers()` | dfa |
 | Style / 命名 / 设计 | plumb-style | **602** | JavaParser AST visitor | style |
 | 已注册规则总数 | 全部 | **1158** | AST + DFA 的实际注册 | — |
 
@@ -32,7 +32,7 @@
 >   多个 checker 声明，所以两个数不相等。
 >
 > `checkers.yaml` 声明的 38 条 DFA checker 也不是全部：`ScanRunner` 实际注册了
-> 90 个 DFA checker，差的那部分（污点、边界、控制流）是**按层实现**的，
+> 91 个 DFA checker，差的那部分（污点、边界、控制流）是**按层实现**的，
 > 它们不通过 YAML 开关。
 
 ### 1.1 Style 规则子目录分布（实测）
@@ -76,7 +76,7 @@ checker 按"跑在哪一层"分成两大类，AI 不构成第三类——它是 
 | 类别 | 位置 | 数量（实测） | 触发器 | 适用场景 |
 | --- | --- | ---: | --- | --- |
 | **Style**（AST-only） | `plumb-style/` | **602** 个 checker 类 | 仅 JavaParser | 编码风格、命名、纯结构 bug |
-| **DFA** | `plumb-dfa/` | **69** 个继承 `TaintedCheckerBase` + **21** 个直接 `implements DfaChecker` | TAC + CFG（污点 / 数值 / 资源 / 控制流） | 需跨语句 def-use、type-tracking、source-to-sink 数据流 |
+| **DFA** | `plumb-dfa/` | **69** 个继承 `TaintedCheckerBase` + **22** 个直接 `implements DfaChecker` | TAC + CFG（污点 / 数值 / 资源 / 控制流） | 需跨语句 def-use、type-tracking、source-to-sink 数据流 |
 
 DFA 内部的实现形态细分见 [`../tech/ARCHITECTURE.md`](../tech/ARCHITECTURE.md) §3.0，
 四类分析（污点 / 边界 / 指向 / 控制流）见 [`../tech/DATA-FLOW.md`](../tech/DATA-FLOW.md)。

@@ -701,6 +701,22 @@ public final class GoTacFrontend implements TacFrontend, AutoCloseable {
     builder.line(wire.getInt("line", -1));
     builder.column(wire.getInt("column", -1));
 
+    // The execution effect: a call that does NOT run here, in this order. Go's
+    // defer runs when the function returns; its go statement starts a goroutine.
+    // Without this the engine cannot tell either of them from an ordinary call,
+    // and a checker cannot see that a deferred call in a loop is not released
+    // until the function returns.
+    String effectName = wire.getString("effect");
+    if (effectName != null) {
+      try {
+        builder.effect(TacInstruction.Effect.valueOf(effectName));
+      } catch (IllegalArgumentException ex) {
+        // An effect this build does not know. The instruction keeps the default:
+        // it runs here, in this order. That under-claims the execution rather
+        // than over-claiming it, which is the safe direction.
+      }
+    }
+
     String binop = wire.getString("binop");
     if (binop != null) {
       try {

@@ -60,22 +60,13 @@ MUTANTS = [
      "`XxeCheckerTypo`"),
 
     # --- a wrong count ----------------------------------------------
-    ("wrong-fact-kind-count",
-     DOC,
-     "registers **15** built-in kinds",
-     "registers **14** built-in kinds"),
-    ("wrong-checker-count",
-     DOC,
-     "There are 16 classes under `checkers/controlflow/`",
-     "There are 17 classes under `checkers/controlflow/`"),
-    ("wrong-binding-annotation-count",
-     DOC,
-     "with **30** binding annotations",
-     "with **31** binding annotations"),
-    ("wrong-tainted-subclass-count",
-     DOC,
-     "there are 69 `extends TaintedCheckerBase`",
-     "there are 68 `extends TaintedCheckerBase`"),
+    #
+    # The counts are DERIVED from the document at run time, not
+    # hard-coded: every one of them is a claim about the code, so
+    # it moves whenever the code moves. A hard-coded anchor is a
+    # second source of truth -- when the count changed, the
+    # battery reported "could not build", which says NOTHING
+    # about the gate. See derive_count_mutants() below.
 
     # --- a fact-kind row that names a kind that does not exist ------
     ("phantom-fact-kind",
@@ -204,6 +195,61 @@ def derive_range_mutant():
     return None
 
 
+def derive_count_mutants():
+    """Build the wrong-count mutants FROM the document.
+
+    Every one of these numbers is a claim about the code, so it
+    moves whenever the code moves. A hard-coded anchor is a
+    second source of truth: the battery would report "could not
+    build" -- which says NOTHING about the gate -- the first
+    time the number changed.
+
+    So the number is read out of the document at run time and the
+    mutant replaces it with that number plus one. The gate has
+    to notice a count that is off by one; it does not care which
+    way. The assertion -- the gate must FAIL -- is the same one
+    the hard-coded mutant asserted.
+
+    Returns None for a count the document does not carry in the
+    shape the mutant needs, which is itself a defect the gate
+    should catch -- so the caller reports it.
+    """
+    text = DOC.read_text(encoding="utf-8")
+    # (name, the regular expression that finds the claimed count)
+    shapes = [
+        ("wrong-fact-kind-count",
+         r"\*\*(\d+)\*\* built-in kinds"),
+        ("wrong-checker-count",
+         r"There are (\d+) classes under `checkers/controlflow/`"),
+        ("wrong-binding-annotation-count",
+         r"with \*\*(\d+)\*\* binding annotations"),
+        ("wrong-tainted-subclass-count",
+         r"there are (\d+) `extends TaintedCheckerBase`"),
+    ]
+
+    out = []
+    for name, pattern in shapes:
+        matches = list(re.finditer(pattern, text))
+        if len(matches) != 1:
+            # The document states the count zero or more than one
+            # times, so the anchor would not be unique. That is
+            # itself a defect the gate should catch.
+            out.append((name, None, None))
+            continue
+        whole = matches[0].group(0)
+        if len(re.findall(r"\d+", whole)) != 1:
+            out.append((name, None, None))
+            continue
+        # Bump the ONE number in the phrase. The rest of the
+        # phrase is what makes the anchor unique.
+        new = re.sub(r"\d+",
+                      lambda m: str(int(m.group(0)) + 1),
+                      whole, count=1)
+        out.append((name, whole, new))
+
+    return out
+
+
 def main():
     if not DOC.is_file():
         print("FAIL: %s does not exist" % DOC)
@@ -249,6 +295,17 @@ def main():
               "range-citation mutant cannot be built")
         return 1
     mutants.append((ranged[0], DOC, ranged[1], ranged[2]))
+
+    # The count mutants are derived the same way: their anchors are
+    # read out of the document, so a count that moves with the code
+    # does not turn into a "could not build" that says nothing about
+    # the gate.
+    for name, old, new in derive_count_mutants():
+        if old is None:
+            print("FAIL: %s -- the document does not state the count "
+                  "in the shape the mutant needs" % name)
+            return 1
+        mutants.append((name, DOC, old, new))
 
     for name, target, old, new in mutants:
         if not target.is_file():

@@ -2235,6 +2235,8 @@ public final class ScanRunner {
       checkers.add(new org.plumb.dfa.checkers.controlflow.OrmUnnecessaryGetDfaChecker());
     if (config.runUnlockNotLocked)
       checkers.add(new org.plumb.dfa.checkers.controlflow.UnlockNotLockedChecker());
+    if (config.runDeferredReleaseInLoop)
+      checkers.add(new org.plumb.dfa.checkers.controlflow.DeferredReleaseInLoopChecker());
     // ServletAtomicityDfa and
     // SingletonRaceDfa are intentionally NOT registered by
     // default: plumb-style has AST equivalents

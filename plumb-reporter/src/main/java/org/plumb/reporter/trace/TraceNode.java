@@ -228,6 +228,11 @@ public final class TraceNode {
     RESOURCE_LEAK,
     RECURSION,
     UNLOCK_NOT_LOCKED,
+    /**
+     * A release that a loop defers to the end of the function, so every iteration holds the
+     * resource until the function exits.
+     */
+    DEFERRED_IN_LOOP,
     INLINE_LITERAL_PASSWORD,
     INLINE_LITERAL_KEY,
     STATIC_API_KEY,

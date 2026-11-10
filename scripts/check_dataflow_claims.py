@@ -164,7 +164,7 @@ CONTROLFLOW = [
     "UnlockNotLockedChecker", "OrmUnnecessaryGetDfaChecker",
     "SingletonRaceDfaChecker", "OrmLostUpdateDfaChecker",
     "CompareWithSelfChecker", "OrmLoadNullCheckDfaChecker",
-    "UncaughtExceptionPropagator",
+    "UncaughtExceptionPropagator", "DeferredReleaseInLoopChecker",
 ]
 
 # The call-graph strategy names the document lists.

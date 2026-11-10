@@ -33,6 +33,14 @@ import (
 // see at a glance that the call is a stand-in.
 const syntheticOwner = "<go>"
 
+// The execution effects an instruction can carry. The engine reads
+// them to tell a call that runs HERE from one that runs when the
+// function returns, or on another goroutine.
+const (
+	effectDeferred   = "DEFERRED"
+	effectConcurrent = "CONCURRENT"
+)
+
 // The synthetic callee names.
 const (
 	syntheticLen       = "len"
@@ -1799,6 +1807,7 @@ func (t *translator) translateDefer(statement *ast.DeferStmt) {
 		Dest:     result,
 		CalleeSig: signature,
 		Args:     args,
+		Effect:   effectDeferred,
 	}, statement.Pos())
 
 	// And the side table records that the call really happens at the
@@ -1838,7 +1847,18 @@ func (t *translator) translateDefer(statement *ast.DeferStmt) {
 // not a filter on the results.
 func (t *translator) translateGo(statement *ast.GoStmt) {
 	t.startsGoroutine = true
+	// The call that starts the goroutine is the LAST instruction the
+	// call lowering emits: the arguments are evaluated first, then the
+	// call itself. Marking that one instruction -- and only a real
+	// CALL -- says which call runs on the other goroutine.
+	before := len(t.instructions)
 	t.translateCall(statement.Call, nil)
+	if len(t.instructions) > before {
+		last := len(t.instructions) - 1
+		if t.instructions[last].Kind == KindCall {
+			t.instructions[last].Effect = effectConcurrent
+		}
+	}
 	// The structured fact -- that this function starts a goroutine -- travels
 	// in the wire's own field, and the Java side reports it from there.
 	t.lowerPrecision()
