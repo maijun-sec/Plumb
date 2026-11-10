@@ -147,6 +147,65 @@ class TsSidecarEndToEndTest {
     }
   }
 
+  /**
+   * The arity in the key is the DECLARATION, not the call.
+   *
+   * <p><b>Why the catalogue must not read the arity as an argument count.</b> A pattern may name
+   * the arity, and the number in the key is NOT the number of arguments the call passed: it is the
+   * number of parameters the callee DECLARES. Two calls of the same function therefore carry the
+   * same key, however many arguments they pass.
+   *
+   * <p>Measured against the real side car: {@code two("x")} and {@code two("x", "y")} are both
+   * {@code app.two/2}, where {@code two} declares two parameters. The same holds for a call the
+   * side car can only see the declaration of: {@code console.log(x)} and {@code
+   * console.log("prefix", x)} are both {@code Console.log/1}.
+   *
+   * <p><b>What breaks if it changes.</b> A catalogue entry that named the arity would claim one
+   * spelling of a call and not the other, and the finding it was written for would disappear for
+   * half the call sites -- silently, with the scan still reporting success. The argument LIST is
+   * where the tainted value's position lives; the arity in the key is only a name the catalogue
+   * matches on.
+   */
+  @Test
+  @DisplayName("the arity in the key is the declaration, not the number of arguments")
+  void theArityInTheKeyIsTheDeclaration(@TempDir Path directory) throws IOException {
+    String source =
+        """
+        function two(a: string, b: string): string {
+          return a + b;
+        }
+
+        export function run(x: string): void {
+          two("x");
+          two("x", "y");
+        }
+        """;
+    Path file = directory.resolve("app.ts");
+    Files.writeString(file, source);
+
+    try (TsTacFrontend frontend = new TsTacFrontend(SourceLanguage.TYPESCRIPT)) {
+      assumeTrue(
+          sidecarAvailable(),
+          "the TypeScript front end needs Node and the sidecar's own compiler dependency: run npm"
+              + " ci in plumb-frontend/ts-sidecar");
+
+      TacFrontend.ParseResult result = frontend.parse(source, file);
+      assertThat(result.problems()).isEmpty();
+
+      TacFunction run = find(result, "run");
+      assertThat(run).as("the exported function must be in the stream").isNotNull();
+
+      assertThat(run.instructions())
+          .filteredOn(i -> i.kind == TacInstruction.Kind.CALL)
+          .extracting(i -> i.calleeSig)
+          .as(
+              "both calls reach the same function, so both carry the same key: the arity is the"
+                  + " number of parameters the function DECLARES, not the number of arguments the"
+                  + " call passed")
+          .containsExactly("app.two/2", "app.two/2");
+    }
+  }
+
   /** The function with the given name, or null. */
   private static TacFunction find(TacFrontend.ParseResult result, String name) {
     for (TacFunction function : result.functions()) {
