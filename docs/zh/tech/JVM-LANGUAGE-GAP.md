@@ -16,9 +16,13 @@
 |---|---|
 | Q1. Java/Kotlin/Scala 前端丢了什么，有影响吗？ | Java 静默丢 2 个构造。Kotlin 丢 7 个，全部有报告。Scala 丢 11 个，全部有报告 —— **另外还有 40 个标准库操作没有产生可用的调用：其中 31 个被报告了但理由是错的，9 个则悄无声息地消失了**。 |
 | Q2. 两个参考实现的 DFA 有哪些可借鉴，是否已经实现？ | 6 条思路，其中 **4 条已经实现**。没实现的 2 条列在下面。 |
-| Q3. 对照参考目录，差距在哪？ | **它们的 28 个 JVM 缺陷类别，这里全部有对应的 family。** 差距不在广度 —— 而在于 **19 个 family 根本没有任何 watcher**，其中 12 个来自规则包迁移。 |
+| Q3. 对照参考目录，差距在哪？ | **它们的 28 个 JVM 缺陷类别，这里全部有对应的 family，而且 56 个 sink family 每一个都有扫描真正会装配的 checker。** 差距既不在广度，也不在可达性。 |
 
-最后一行才是关键。目录看起来是完整的：81 个 family、成千上万个 pattern、每个都有 CWE。其中 19 个却永远不可能产生 finding —— 因为 family 是 *pattern 集合*，而真正去看它的是 **checker**。来自迁移的那 12 个现在各有 watcher，并且端到端验证了其中一个会触发。
+最后一行才是关键。目录看起来是完整的：67 个 family、成千上万个 pattern、每个都有 CWE。其中 29 个
+却永远不可能产生 finding —— 因为 family 是 *pattern 集合*，而真正去看它的是 **checker**。这 29 个
+现在全部归位 —— 来自迁移的那 12 个各有 checker，剩下的 19 个则分别被并进拥有其 CWE 的 family、
+拿到自己的 checker，或者因为根本不构成缺陷类别而退场。其中一个做了端到端验证：原本触发不了的
+family 现在能触发。
 
 ---
 
@@ -196,14 +200,21 @@ finding？
 
 方法是机械的：
 
-1. 取 `sink-families.yaml` 里的每个 family key（81 个）。
-2. 取每个专用 checker 命名的 family（62 个），加上每个**源** family —— `SourceFamilyMatcher`
-   用目录自己的 pattern 读它们（11 个）。合起来就是被看着的那一组（62 个）。
-3. 差集（19 个）就是不可达集合。
-4. 确认它：在目录之外，对这 19 个 key 各自全树搜索。
+1. 取 `sink-families.yaml` 里的每个 family key（67 个）。
+2. 取每个**扫描真正装配的** checker 点名的 family（67 个）—— 其中 56 个是 sink family，另外 11 个
+   是**源** family —— `SourceFamilyMatcher` 用目录自己的 pattern 读它们。
+3. 差集就是不可达集合。它是空的。
+4. 确认它：在目录之外，对每个 family key 各自全树搜索。
 
-第 4 步对全部 19 个都返回空。它们全是**死配置**：真实的 pattern、真实的 CWE，以及一条都触发
-不了的路。
+第 4 步对处于那个状态的 19 个全部返回空。它们全是**死配置**：真实的 pattern、真实的 CWE，
+以及一条都触发不了的路。它们现在全部归位 —— §3.4 逐个交代了去向，§3.5 说明这次度量本身被
+修正过两次。
+
+**watcher 必须是扫描真正装配的 checker。** 引擎的 checker 列表由调用方给出，而调用方是手工装配
+的这份列表；目录里的配置是第二份表，用于作用域和统计。所以一个存在、进了目录、写了测试、甚至
+出现在覆盖率报告里的 checker 类，仍然可能一次都不跑。`SsrfChecker` 正是这样：上百条 SSRF
+pattern、一个 checker、一个测试，以及没有接线。上面的度量数的是扫描装配的 checker，所以一个
+「仅仅存在」的类骗不过它。
 
 ### 3.2 来自规则包迁移的那部分
 
@@ -227,7 +238,8 @@ finding？
 
 **剩下的这些不是迁移欠债。** 它们在迁移之前就已经是死的，而且属于另一种工作：其中几个命名了
 已经不存在的 API（`atg.*`、`flex.*`、`oracle.jbo.*` —— 一些在这里分析的代码的 classpath 上根本
-没有的厂商产品），另外几个和已经有 watcher 的 family 重叠。它们列在 §3.4。
+没有的厂商产品），另外几个和已经有 watcher 的 family 重叠。它们的归位方式是：各自并进拥有其
+CWE 的 family、拿到自己的 checker，或者因为根本不构成缺陷类别而退场 —— §3.5 逐个说明。
 
 ### 3.3 验证
 
@@ -236,6 +248,10 @@ finding？
 - `SinkFamilyReachabilityTest` 断言这 12 个 family 各有 watcher、它们的 pattern 仍然匹配它们
   命名的 API、它们不和已经有 checker 的 family 冲突、并且它们的 checker 在 `checkers.yaml` 里
   注册过。
+- `SinkFamilyWatcherInvariantTest`（放在 `plumb-main`，因为 watcher 是扫描装配的 checker）断言
+  **每一个** sink family 都有扫描装配的 checker 看着、目录点名的每一个 checker 都被扫描装配、
+  以及那十九个死掉的 family 仍然匹配它们命名的 API。它是 §3.1 那次度量的常驻形式：加一个没有
+  watcher 的 family，或者加一个没有接线的 checker，构建就会红。
 - 测试里的 API 是用注册表本身**实测**出来的，不是从 pattern 文本里读的：pattern 的文本和它实际
   匹配的 API 是两回事。
 - 端到端：一个含 `engine.eval(userInput)` 的夹具现在会产出
@@ -246,7 +262,7 @@ finding？
 
 | 项目 | 状态 | 说明 |
 |---|---|---|
-| 19 个没有 watcher 的 family | **开着** | 早于迁移。其中九个和已有 watcher 的 family 重叠；其余命名的是这里分析的项目并不依赖的库。每个都需要一个决定：写 watcher、合并进已有 watcher 的 family，或者删掉。 |
+| 19 个没有 watcher 的 family | **已关闭** | 八个并进了拥有其 CWE 的 family，六个拿到了自己的 checker，五个退场 —— 四个是因为它们持有的每一条 pattern 都已经在别的族名下被看着，另一个是因为它命名的是一个**读**命令输出的调用而不是 sink。清单见 §3.5。 |
 | `context_depth` 作为真正的 k-CFA | **开着** | 设置已被消费（0 关闭折叠），但它不是 k-CFA。调用串投影是 1-CFA，是另一套机制；见 §2.2。 |
 | 路径敏感可达性 | **部分** | 算术矛盾判定已有；通用的路径条件还没有。 |
 | 对象敏感分析 | **已完成** | points-to 传播现在既有生产者也有消费者：引擎把被调方的分配点挂到摘要上，调用方的接收者继承它们。同一类的两个实例可以区分开了。 |
@@ -257,33 +273,60 @@ finding？
 （`LanguageSemanticsRegistry.java:79-82`），而且没有注册表的语言拿到的是一张空表而不是 null ——
 所以这四种语言之间的差别是表的大小不同，而不是「这个语言到底被理解没有」不同。
 
-### 3.5 那 19 个没有 watcher 的 family，分类之后
+### 3.5 那 19 个死掉的 family，以及各自的去向
 
-这个数字可以精确复现：目录里有 81 个 family key，被 checker 或规则点名 62 个（其中 11 个是源 family，由 \SourceFamilyMatcher\ 读），没 watcher 的
-19 个，其中没有一个是源 family —— 十一个源 family 由 `SourceFamilyMatcher` 看着（§3.6）。
+目录里有 67 个 family，其中 56 个是 sink family，另外 11 个是源 family。这个数字可以精确复现：
+目录里有 67 个 family key，被扫描装配的 checker 或源匹配器点名 67 个，没 watcher 的 0 个，其中
+11 个源 family 由 `SourceFamilyMatcher` 看着（§3.6）。
 
-**是什么改变了这次度量。** 这个数字以前是 17，而它错在**把洞藏起来**的方向上。门禁把
-「族名在 main 的 Java 源码里作为字符串字面量出现过」当作「有人看着」，而
-`TaintRuleRegistry` 点名了三个族（`ssrf.sinks`、`xxe.sinks`、`weak-crypto.sinks`）——
-**引擎从不读那张表**。只有那张表点名的族，事实上就是没人看。现在门禁只数真正会跑的 checker
-和源匹配器。
-
-**SSRF 这一类现在有 checker 了。** `ssrf.sinks` 带着上百条 pattern —— 每一条是一个让服务端
-对外发请求的 API —— 却没有任何 checker 点名它，于是污点 URL 到了任何一条那里都不报。
-`SsrfChecker` 现在看着它。同时这个 family 也被整理过：往流里写是日志写，带格式的写是格式
-串，Kotlin 读文件给的是路径，URL 变成进程是命令，交给解析器的 XML 文档是 XXE，Netscape
-那套 LDAP 调用说的是目录服务。它们过去都被报成 SSRF —— 那是错的编号 —— 现在各归各家。
-
-要紧的是它们**不是同一种东西**，而之前把它们描述成「几个命名了已不存在的 API」在要紧的
+**它们是什么。** 它们**不是同一种东西**，而之前把它们描述成「几个命名了已不存在的 API」在要紧的
 地方是错的：它提到的那些 API 名（`atg.*`、`flex.*`、`oracle.jbo.*`）在本仓库里**哪里都不存在**
 ——目录里没有，源码里也没有。它们只存在于提到它们的那份文档里。
 
-| 类别 | 数量 | 是什么 |
+| 处置 | 数量 | 是哪些，为什么 |
 |---|---:|---|
-| 和已有 watcher 的 family 重叠 | 8 | `format.sinks` 与 `format-string.sinks` 重复；`cookie-write.sinks` 与 `cookie.sinks` 重复；`http-header-write.sinks` 与 `header.sinks` 重复；`redirect.sinks` 与 `open-redirect.sinks` 重复；`sensitive-log.sinks` 和 `db-credential.sinks` 与 `credential.sinks` 重复；`predictable-seed.sinks` 与 `insecure-random.sinks` 重复；`sensitive-url.sinks` 与 `ssrf.sinks` 重复。 |
-| 真实且独立的缺陷类别 | 5 | `cors.sinks`（CWE-942）、`unencrypted-credential.sinks`（CWE-311）与 `oauth-credential.sinks`（CWE-798）—— 同样的 API，但 **CWE 不同**，所以彼此不是重复；`registry.sinks`（CWE-15）；`android-clipboard.sinks`（CWE-200）。 |
-| 还差一个 checker 的缺陷类别 | 2 | `xxe.sinks`（CWE-611）与 `weak-crypto.sinks`（CWE-261/326）：整类都进了目录，却没有任何 checker 看着它。 |
-| 命名了这里没有依赖的库 | 4 | `android-implicit-intent.sinks`、`console.sinks`、`generic.sinks`、`kms-plaintext.sinks` —— `android.*`、`org.jclouds.*`、`software.amazon.awssdk.*`：在任何被跟踪的 `pom.xml` 里都不出现。 |
+| 并进拥有该 CWE 的 family | 8 | `android-clipboard.sinks` 与 `sensitive-url.sinks` → `sensitive.exfil.sinks`；`oauth-credential.sinks` 与 `db-credential.sinks` → `credential.sinks`；`redirect.sinks` → `open-redirect.sinks`；`registry.sinks` → `external.config.sinks`；`cookie-write.sinks` → `cookie.sinks`；`http-header-write.sinks` → `header.sinks`。目录把一个缺陷类别拆成了好几个名字 —— 同一个 API 列了两遍，其中一个没人看 —— 于是那条 pattern 谁都没读。并回去就把类别边界恢复了，pattern 不用新规则就能开火。 |
+| 拿到自己的 checker | 5 | `xxe.sinks`（CWE-611）、`weak-crypto.sinks`（CWE-261/326）、`cors.sinks`（CWE-942）、`unencrypted-credential.sinks`（CWE-311）、`android-implicit-intent.sinks`（CWE-927）。 |
+| 退场：每一条 pattern 都已被看着 | 3 | `format.sinks`、`sensitive-log.sinks`、`predictable-seed.sinks`。它们的每一条 pattern 都已经在别的族名下、且参数位置相同地被看着。死的只是那个名字。 |
+| 退场：不是 sink，或者不属于那一类 | 3 | `console.sinks` 命名的是三个**读**命令输出的调用；`generic.sinks` 命名的是一个 debug dump 却归到 CWE-20；`kms-plaintext.sinks` 命名的是 KMS 客户端要加密的那个参数 —— 那正是安全的那条路。 |
+
+**weak-crypto 那一族最值得说。** 它有一百七十三条 pattern，其中一百五十二条是
+`credential.sinks` 已经在看的凭据类 API —— `KeyStore.getInstance`、
+`PasswordCallback.setPassword`、`DataSource.getConnection` —— 却挂在一个并不描述它们的 CWE 下。
+一个看着这一族的 checker 会把「弱密码学」报在密码回调上。现在这一族只留十八条命名算法或密钥
+强度的 pattern，外加目录原本完全缺的七个算法选择 API：`MessageDigest.getInstance`、
+`Cipher.getInstance`、`KeyGenerator.getInstance`、`Mac.getInstance`、
+`SecretKeyFactory.getInstance`、`KeyPairGenerator.getInstance` 和
+`AlgorithmParameters.getInstance`。污点流向算法名正是 CWE-326 的教科书场景，而目录里对此原本
+什么都没有。
+
+**并进去的时候参数位置一起搬走了，有一个位置没对上。** 搬家之后，每一条迁移来的 pattern 都重新对过：
+同一个 callee、同一个参数位置。有一条对不上。参考模型把
+`javax.servlet.http.HttpServletResponse.addCookie` 记在**第 1** 个参数上，但 `addCookie` 只接受一个
+参数 —— 那个 `Cookie`。位置 1 指的是一个根本不存在的参数，于是那条 pattern 不可能命中任何东西。
+目录把它指向 `Cookie` 本身（位置 0），并且 `cookie.sinks` 拥有这个 callee —— 搬家之前，唯一匹配
+它的是 `header.sinks`，那会把同一次调用报成「写 header」。
+
+**有一个类别丢了编号，没有丢覆盖面。** `sensitive-log.sinks` 是唯一带 CWE-532 的 family，而它那一条
+pattern 是 `java.sql.DriverManager.getConnection` —— 一个数据库连接，不是一次日志。现在没有任何
+family 带 CWE-532。这没有损失：那一族没有人看，所以从来没有一条报告带过这个编号，而它点名的那个
+callee 由 `credential.sinks` 在承载密码的那个参数上看着。这一类本身需要一条「知道这个值是敏感值、
+而不只是不可信值」的规则，本目录没有这样的规则。
+
+**是什么改变了这次度量，改了两次。** 这个数字以前是 17，而它错在**把洞藏起来**的方向上。门禁把
+「族名在 main 的 Java 源码里作为字符串字面量出现过」当作「有人看着」，而
+`TaintRuleRegistry` 点名了三个族（`ssrf.sinks`、`xxe.sinks`、`weak-crypto.sinks`）——
+**引擎从不读那张表**。只有那张表点名的族，事实上就是没人看。
+
+第二次修正更大。门禁把「族名出现在某个 checker 类里」当作「有人看着」—— 但一个没人实例化的
+checker 类永远不会跑。`SsrfChecker` 进了目录、写了测试、发了版，却一次都没开火，因为扫描从来没
+装配它。数**扫描装配的** checker，才把这个洞从「看不见」变成「构建变红」。
+
+**SSRF 这一类现在真的会开火了。** `ssrf.sinks` 带着上百条 pattern —— 每一条是一个让服务端
+对外发请求的 API —— 而扫描从来没装配它的 checker，于是污点 URL 到了任何一条那里都不报。
+`SsrfChecker` 现在被装配进扫描。同时这个 family 也被整理过：往流里写是日志写，带格式的写是格式
+串，Kotlin 读文件给的是路径，URL 变成进程是命令，交给解析器的 XML 文档是 XXE，Netscape
+那套 LDAP 调用说的是目录服务。它们过去都被报成 SSRF —— 那是错的编号 —— 现在各归各家。
 
 **为什么「源 family」这一类才是要紧的。** 一个因为与已有 family 重叠而没有 watcher 的 family
 并不损失什么：那个 watcher 会开火。一个因为库不存在而没有 watcher 的 family 也不损失什么：

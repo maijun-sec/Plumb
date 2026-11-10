@@ -32,7 +32,7 @@ than about Plumb.
 | What is the route? | **A native Go sidecar**, over the same length-prefixed JSON protocol the C# sidecar already speaks, feeding the same Java-serialised IR into the same engine. |
 | Does the TAC IR contract change? | **No.** Zero changes to the IR contract: no new opcode, no new type kind, no change to `RETURN`, no change to the callee-key contract. Go is the first language to reach the engine without moving the IR, and that is a consequence of decisions, not of luck. |
 | What does the capture have to give? | The per-package compile invocations **and** the link invocation. The link invocation's import configuration is the authoritative statement of which packages are in the binary; the compile invocations say what each package was compiled against. |
-| What is the real cost? | **The sink catalogue.** `sink-families.yaml` has 81 families, 38 of them scoped by language, and **none** of them is scoped to Go. Go does not share the JVM's standard library, so the catalogue for Go is a new body of work, not a port. |
+| What is the real cost? | **The sink catalogue.** `sink-families.yaml` has 67 families, 31 of them scoped by language, and **none** of them is scoped to Go. Go does not share the JVM's standard library, so the catalogue for Go is a new body of work, not a port. |
 
 The last row is the one that decides whether Go produces findings at all, and it is the
 same shape of problem the C# catalogue was
@@ -456,7 +456,7 @@ one on disk. Nothing else would notice.
 
 ## 6. What this document does not claim
 
-- **No claim about Go rule coverage.** `sink-families.yaml` has 81 families, 38 of
+- **No claim about Go rule coverage.** `sink-families.yaml` has 67 families, 31 of
   them scoped by language, and none scoped to Go. The catalogue for Go is the largest
   single piece of work in this plan and it has not been started.
 - **No claim that the multi-result model is complete.** It covers `(T, error)` and the
@@ -482,7 +482,7 @@ one on disk. Nothing else would notice.
 | The callee key is `owner.method/arity` | `plumb-tac/.../ir/CalleeKeyNormalizer.java:45` |
 | `SourceLanguage` is serialised by name | `plumb-tac/.../ir/SourceLanguage.java:24-25` |
 | Four languages have registered semantics | `plumb-dfa/.../semantics/LanguageSemanticsRegistry.java:77` |
-| 81 families, 38 language-scoped, 0 for Go | `plumb-dfa/src/main/resources/sink-families.yaml` |
+| 67 families, 31 language-scoped, 0 for Go | `plumb-dfa/src/main/resources/sink-families.yaml` |
 | The engine looks up sinks on `CALL` and `UNINTERPRETED` only | `plumb-dfa/.../taint/TaintedCheckerBase.java:1130`, `:1194` |
 | The wire format has no version field | `plumb-frontend/.../csharp/CSharpTacFrontend.java:319-327`, `:533-566` |
 | The C# route, and the catalogue's cost | [CSHARP-FRONTEND-ANALYSIS.md](CSHARP-FRONTEND-ANALYSIS.md) |

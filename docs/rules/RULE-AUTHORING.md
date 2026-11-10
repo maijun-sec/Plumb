@@ -18,7 +18,7 @@ Every `DfaChecker` / `AstChecker` carries its own `getAiPrompt(Finding) -> Strin
 
 The prompt is provided by the checker by default. The hand-written overrides are:
 
-- 43 `DfaChecker`s plus `TaintedCheckerBase` (auto-generated from `TaintRule` metadata)
+- 48 `DfaChecker`s plus `TaintedCheckerBase` (auto-generated from `TaintRule` metadata)
 - `plumb-style/src/main/java/org/plumb/style/security/HardcodedCredentialsCheck.java`
 - `plumb-style/src/main/java/org/plumb/style/error/EmptyCatchBlockCheck.java`
 - `plumb-style/src/main/java/org/plumb/style/style/BadShiftCheck.java`

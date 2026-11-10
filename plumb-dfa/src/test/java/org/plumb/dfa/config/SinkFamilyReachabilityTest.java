@@ -86,8 +86,10 @@ class SinkFamilyReachabilityTest {
    * The checkers that watch the twelve families.
    *
    * <p>The key is the CONFIG key -- the name the checker is registered under in checkers.yaml --
-   * because that is what turns the checker on. A checker class that exists but is not configured
-   * never runs.
+   * because that is where a checker's language scope is declared. It is NOT what turns the checker
+   * on: the scan builds the checker list, and a checker the configuration does not catalogue has
+   * declared no scope to contradict, so it stays. Whether the scan BUILDS a checker is asserted
+   * where the scan lives, in plumb-main.
    */
   private static final Map<String, String> WATCHER_BY_FAMILY =
       new LinkedHashMap<>() {
@@ -192,8 +194,9 @@ class SinkFamilyReachabilityTest {
   @Test
   @DisplayName("a family that a checker watches has the checker registered in the config")
   void everyWatcherIsConfigured() {
-    // The config is what turns a checker on. A checker that exists in the code
-    // but is absent from checkers.yaml never runs.
+    // The configuration records the checker's language scope. A checker that is absent
+    // from it still runs -- it simply declares no scope -- so this asserts the
+    // bookkeeping, not the wiring.
     List<String> missing = new ArrayList<>();
     for (String watcher : new TreeSet<>(WATCHER_BY_FAMILY.values())) {
       if (ConfigLoader.loadFromClasspath().checkers().byName(watcher).isEmpty()) {

@@ -17,12 +17,14 @@ Three questions were asked. Here is what the measurements say.
 |---|---|
 | Q1. What do the Java/Kotlin/Scala frontends lose, and does it matter? | Java loses 2 constructs silently. Kotlin loses 7, all reported. Scala loses 11, all reported — **and 40 standard-library operations that produced no usable call: 31 were reported with the wrong reason, and 9 vanished silently**. |
 | Q2. What can be borrowed from the two reference implementations' DFA? | 6 ideas, of which **4 are already implemented** in Plumb. The 2 that are not are listed. |
-| Q3. What is the gap against the reference catalogues? | **All 28 of their JVM defect classes have a family here.** The gap is not breadth — it is that **19 families had no watcher at all**, 12 of them produced by the rule-pack migration. |
+| Q3. What is the gap against the reference catalogues? | **All 28 of their JVM defect classes have a family here, and every one of the 56 sink families has a checker the scan builds.** The gap is not breadth and it is not reachability either. |
 
-The last row is the finding that matters. The catalogue looked complete: 81 families, thousands
+The last row is the finding that matters. The catalogue looked complete: 67 families, thousands
 of patterns, a CWE for each. Twenty-nine of them could never produce a finding, because a family
-is a *pattern set* and a **checker** is what looks at it. The twelve that came from the migration
-have a checker each, and one of them is verified end-to-end: a family that could not fire now
+is a *pattern set* and a **checker** is what looks at it. All twenty-nine are resolved now — the
+twelve that came from the migration got a checker each, and the nineteen that were left were
+folded into the family that owns their CWE, given a checker of their own, or retired because
+they named no defect class. One of them is verified end-to-end: a family that could not fire now
 does.
 
 ---
@@ -227,15 +229,23 @@ was **reachability**: which families can actually produce a finding?
 
 The method was mechanical:
 
-1. Take every family key in `sink-families.yaml` (81).
-2. Take every family a dedicated checker names (62), plus every SOURCE family, which
-   `SourceFamilyMatcher` reads with the catalogue's own patterns (11). Together: the
-   watched set (62).
-3. The difference (19) is the unreachable set.
-4. Confirm it: search the whole tree for each of the 19 keys, outside the catalogue itself.
+1. Take every family key in `sink-families.yaml` (67).
+2. Take every family a checker the scan **builds** names (67) — 56 of them sink families, and 11
+   SOURCE families, which `SourceFamilyMatcher` reads with the catalogue's own patterns.
+3. The difference is the unreachable set. It is empty.
+4. Confirm it: search the whole tree for each family key, outside the catalogue itself.
 
-Step 4 returned nothing for all 19. Every one of them was referenced by no rule, no checker and
-no test. They were **dead configuration**: real patterns, real CWEs, and no way to fire.
+Step 4 returned nothing for the nineteen families that used to be in that state. Every one of
+them was referenced by no rule, no checker and no test. They were **dead configuration**: real
+patterns, real CWEs, and no way to fire. They are all resolved now — §3.4 says what became of
+each of them, and §3.5 says how the measurement itself was corrected twice.
+
+**The watcher has to be a checker the scan BUILDS.** The engine takes its checker list from its
+caller, and the caller builds that list by hand; the catalogue's configuration is a second list,
+used for scoping and for reporting. So a checker class that exists, is catalogued, is tested and
+is even named in the coverage report can still never run. `SsrfChecker` was exactly that: a
+hundred SSRF patterns, a checker, a test, and no wiring. The measurement above counts the
+checkers the scan builds, so it cannot be fooled by a class that merely exists.
 
 ### 3.2 The part that came from the rule-pack migration
 
@@ -259,10 +269,12 @@ each family was never written. The migration moved the *pattern* and forgot the 
 | `resource-injection.sinks` | 94/95/99/502 | `ResourceInjectionChecker` |
 | `setting-manipulation.sinks` | 15 | `SettingManipulationChecker` |
 
-**The families that remain are not migration debt.** They were already dead before the migration, and
-they are a different kind of work: several name APIs that no longer exist (`atg.*`, `flex.*`,
+**The families that remain are not migration debt.** They were already dead before the migration,
+and they are a different kind of work: several name APIs that no longer exist (`atg.*`, `flex.*`,
 `oracle.jbo.*` — vendor products that are not on the classpath of anything analysed here), and
-several overlap a family that already has a watcher. They are listed in §3.4.
+several overlap a family that already has a watcher. They were resolved by folding each one into
+the family that owns its CWE, by giving the distinct ones a checker, or by retiring the ones that
+were not defect classes at all — §3.5 says which was which.
 
 ### 3.3 The verification
 
@@ -271,6 +283,11 @@ Reachability is now a **test**, not a claim:
 - `SinkFamilyReachabilityTest` asserts each of the twelve families has a watcher, that its
   patterns still match the API they name, that it does not collide with a family that already had
   a checker, and that its checker is registered in `checkers.yaml`.
+- `SinkFamilyWatcherInvariantTest` (in `plumb-main`, because the watcher is a checker the scan
+  builds) asserts that **every** sink family in the catalogue is watched by a checker the scan
+  builds, that every checker the catalogue names is built by the scan, and that the families which
+  used to be dead still match the APIs they name. It is the standing form of the measurement in
+  §3.1: a family added without a watcher, or a checker added without wiring, fails the build.
 - The APIs in the test were **measured** with the registry itself, not read from the pattern
   text: a pattern's text and the API it matches are two different things.
 - End-to-end: a fixture with `engine.eval(userInput)` now produces
@@ -281,7 +298,7 @@ Reachability is now a **test**, not a claim:
 
 | Item | Status | Note |
 |---|---|---|
-| 19 families with no watcher | **open** | Predate the migration. Nine overlap a family that already has a watcher; the rest name APIs from libraries no analysed project here depends on. Each needs a decision: write a watcher, merge it into a family that has one, or delete it. |
+| 19 families with no watcher | **closed** | Eight were folded into the family that already owns their CWE, six got a checker of their own, and five were retired — four because every pattern they held was already watched under another name, and one because it named a call that reads a command's output rather than a sink. §3.5 has the list. |
 | `context_depth` as real k-CFA | **open** | The setting is consumed (0 disables folding) but is not k-CFA. The call-string projection is 1-CFA and is a separate mechanism; see §2.2. |
 | Path-sensitive reachability | **partial** | The arithmetic contradiction check is in; the general path condition is not. |
 | Object-sensitive analysis | **done** | The points-to propagation has both a producer and a consumer now: the engine attaches the callee's alloc sites to the summary, and the caller's destination inherits them. Two instances of one class are separable. |
@@ -293,39 +310,63 @@ Kotlin, Scala and C# (`LanguageSemanticsRegistry.java:79-82`), and a language wi
 table gets an empty one rather than a null — so the coverage difference between the four is a
 difference in table size, not in whether the language is understood at all.
 
-### 3.5 The 19 unwatched families, classified
+### 3.5 The 19 dead families, and what became of them
 
-The count reproduces exactly: 81 family keys in the catalogue, 62 named by a checker or by the
-source matcher, 19 unwatched, of which none is a source family — the eleven SOURCE families are
+The catalogue declares 67 families, 56 of them sink families and 11 SOURCE families. The count
+reproduces exactly: 67 family keys in the catalogue, 67 named by a checker the scan builds or by
+the source matcher, 0 unwatched, and every one of the eleven SOURCE families among them is
 watched by `SourceFamilyMatcher` (§3.6).
 
-**What changed the measurement.** The number used to be 17, and it was wrong in the direction
-that hides a hole. The gate counted a family as watched when its name appeared as a string
-literal anywhere in the main Java sources — and `TaintRuleRegistry` names three families
-(`ssrf.sinks`, `xxe.sinks`, `weak-crypto.sinks`) that **the engine never reads**. A family
-that only that table names is unwatched in fact. The gate counts a checker that runs and the
-source matcher now, and nothing else.
-
-**The SSRF class has a checker now.** `ssrf.sinks` carried a hundred patterns — one per API
-that makes a server reach out — and no checker named it, so a tainted URL reached any of
-them and nothing was reported. `SsrfChecker` watches it. The family was curated at the same
-time: a write to a stream is a log write, a formatted write is a format string, a Kotlin file
-read names a path, a URL turned into a process is a command, an XML document handed to a
-parser is an XXE, and the Netscape LDAP calls talk to a directory. Each of them was reported
-with the SSRF number, which is the wrong number, and each lives in the family that describes
-it now.
-
-What matters is that they are **not one kind of thing**, and the previous description of them as
+**What they were.** They were not one kind of thing, and the previous description of them as
 "several name APIs that no longer exist" was wrong in a way that mattered: the API names it
 invoked (`atg.*`, `flex.*`, `oracle.jbo.*`) appear **nowhere in this repository** — not in the
 catalogue, not in any source file. They survive only in the document that mentions them.
 
-| Class | Count | What they are |
+| Disposition | Count | Which, and why |
 |---|---:|---|
-| Overlaps a watched family | 8 | `format.sinks` duplicates `format-string.sinks`; `cookie-write.sinks` duplicates `cookie.sinks`; `http-header-write.sinks` duplicates `header.sinks`; `redirect.sinks` duplicates `open-redirect.sinks`; `sensitive-log.sinks` and `db-credential.sinks` duplicate `credential.sinks`; `predictable-seed.sinks` duplicates `insecure-random.sinks`; `sensitive-url.sinks` duplicates `ssrf.sinks`. |
-| A real, distinct defect class | 5 | `cors.sinks` (CWE-942), `unencrypted-credential.sinks` (CWE-311) and `oauth-credential.sinks` (CWE-798) — the same APIs but **different CWEs**, so neither is a duplicate of the other; `registry.sinks` (CWE-15); `android-clipboard.sinks` (CWE-200). |
-| A defect class with no checker yet | 2 | `xxe.sinks` (CWE-611) and `weak-crypto.sinks` (CWE-261/326): the class is catalogued in full and nothing watches it. |
-| Names a library nothing here depends on | 4 | `android-implicit-intent.sinks`, `console.sinks`, `generic.sinks`, `kms-plaintext.sinks` — `android.*`, `org.jclouds.*`, `software.amazon.awssdk.*`: none appear as a dependency in any tracked `pom.xml`. |
+| Folded into the family that owns the CWE | 8 | `android-clipboard.sinks` and `sensitive-url.sinks` → `sensitive.exfil.sinks`; `oauth-credential.sinks` and `db-credential.sinks` → `credential.sinks`; `redirect.sinks` → `open-redirect.sinks`; `registry.sinks` → `external.config.sinks`; `cookie-write.sinks` → `cookie.sinks`; `http-header-write.sinks` → `header.sinks`. The catalogue had split one defect class across several names — the same API listed twice, one of the names unwatched — so the pattern was read by nobody. Folding restores the class boundary, and the patterns fire without a new rule. |
+| Given a checker of its own | 5 | `xxe.sinks` (CWE-611), `weak-crypto.sinks` (CWE-261/326), `cors.sinks` (CWE-942), `unencrypted-credential.sinks` (CWE-311), `android-implicit-intent.sinks` (CWE-927). |
+| Retired: every pattern already watched | 3 | `format.sinks`, `sensitive-log.sinks`, `predictable-seed.sinks`. Each pattern was already watched, under another family name, at the same argument position. The name was the only thing that was dead. |
+| Retired: not a sink, or not that defect class | 3 | `console.sinks` named three calls that READ a command's output; `generic.sinks` named a debug dump under CWE-20; `kms-plaintext.sinks` named the argument a KMS client encrypts, which is the safe path. |
+
+**The weak-crypto family was the interesting one.** It held a hundred and seventy-three patterns,
+a hundred and fifty-two of which were the credential-material APIs that `credential.sinks`
+already watches — `KeyStore.getInstance`, `PasswordCallback.setPassword`,
+`DataSource.getConnection` — under a CWE that does not describe them. A checker on that family
+would have reported "weak cryptography" for a password callback. The family now holds the
+eighteen patterns that name an algorithm or a key strength, and the seven algorithm-selection
+APIs the catalogue was missing entirely: `MessageDigest.getInstance`, `Cipher.getInstance`,
+`KeyGenerator.getInstance`, `Mac.getInstance`, `SecretKeyFactory.getInstance`,
+`KeyPairGenerator.getInstance` and `AlgorithmParameters.getInstance`. A tainted algorithm name is
+the textbook CWE-326 case, and there was nothing in the catalogue for it.
+
+**The folds carried the argument index with them, and one index did not survive the move.** Every
+migrated pattern was re-checked against the catalogue after the move: the same callee, the same
+argument position. One did not line up. The reference model recorded
+`javax.servlet.http.HttpServletResponse.addCookie` at argument **1**, but `addCookie` takes one
+argument — the `Cookie`. Index 1 pointed at a parameter that is not there, so that pattern could
+never fire on anything. The catalogue points it at the `Cookie` itself (index 0), and
+`cookie.sinks` owns the callee; before the move the only family that matched it was `header.sinks`,
+which reports the same call as a header write.
+
+**One class lost its label, and no coverage with it.** `sensitive-log.sinks` was the only family
+carrying CWE-532, and the one pattern it held was `java.sql.DriverManager.getConnection` — a
+database connection, not a log. No family carries CWE-532 now. Nothing was lost: that family was
+unwatched, so no report ever carried that CWE, and the callee it named is watched by
+`credential.sinks` at the argument that carries the password. The class itself needs a rule that
+knows a value is SENSITIVE rather than merely untrusted, and this catalogue has no such rule.
+
+**What changed the measurement, twice.** The number used to be 17, and it was wrong in the
+direction that hides a hole. The gate counted a family as watched when its name appeared as a
+string literal anywhere in the main Java sources — and `TaintRuleRegistry` names three families
+(`ssrf.sinks`, `xxe.sinks`, `weak-crypto.sinks`) that **the engine never reads**. A family that
+only that table names is unwatched in fact. The gate counts a checker the scan builds and the
+source matcher now, and nothing else.
+
+The second correction was larger. The gate counted a family as watched when its name appeared in
+a checker class — but a checker class that nothing instantiates never runs. `SsrfChecker` was
+catalogued, tested and shipped, and never fired once, because the scan never built it. Counting
+the checkers the scan BUILDS is what turned that from an invisible defect into a red build.
 
 **Why the source-family class is the one that matters.** A family that is unwatched because it
 overlaps a watched one loses nothing: the watcher fires. A family that is unwatched because its

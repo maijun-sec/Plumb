@@ -400,3 +400,38 @@ checkers:
     cwe: CWE-918
     description: "CWE-918: tainted data chooses the address the server reaches out to"
     class: org.plumb.dfa.checkers.taint.SsrfChecker
+  Xxe:
+    enabled: true
+    languages: [all]
+    severity: MEDIUM
+    cwe: CWE-611
+    description: "CWE-611: tainted XML reaches a parser that resolves external entities"
+    class: org.plumb.dfa.checkers.taint.TaintedXmlParserChecker
+  WeakCrypto:
+    enabled: true
+    languages: [all]
+    severity: MEDIUM
+    cwe: CWE-261,CWE-326
+    description: "CWE-261/326: tainted data chooses the algorithm or the key size"
+    class: org.plumb.dfa.checkers.taint.WeakCryptoChecker
+  CleartextCredential:
+    enabled: true
+    languages: [all]
+    severity: CRITICAL
+    cwe: CWE-311
+    description: "CWE-311: a tainted secret reaches a store that keeps it in the clear"
+    class: org.plumb.dfa.checkers.taint.CleartextCredentialChecker
+  Cors:
+    enabled: true
+    languages: [all]
+    severity: MEDIUM
+    cwe: CWE-942
+    description: "CWE-942: tainted data writes the cross-origin policy"
+    class: org.plumb.dfa.checkers.taint.CorsChecker
+  ImplicitIntent:
+    enabled: true
+    languages: [all]
+    severity: HIGH
+    cwe: CWE-927
+    description: "CWE-927: tainted data rides an intent that names no component"
+    class: org.plumb.dfa.checkers.taint.ImplicitIntentChecker

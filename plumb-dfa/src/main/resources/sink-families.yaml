@@ -89,6 +89,12 @@ families:
       - '^org\.slf4j\.Logger\.warn(/\d+)?'
       - '^org\.slf4j\.Logger\.error(/\d+)?'
       - '^org\.slf4j\.Logger\.debug(/\d+)?'
+      - pattern: '^android\.content\.ClipboardManager\.setPrimaryClip(/\d+)?'
+        arg_index: 0
+      - pattern: '^java\.net\.URL\.getContent(/\d+)?'
+        arg_index: -2
+      - pattern: '^java\.sql\.DriverManager\.getConnection(/\d+)?'
+        arg_index: 1
 
   pii.exfil.sinks:
     cwe: CWE-359
@@ -230,25 +236,6 @@ families:
           arg_index: 0
         - pattern: '^\\syslog\b(/\d+)?'
           arg_index: 1
-  format.sinks:
-    cwe: CWE-134
-    severity: HIGH
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - '^java\.lang\.String\.format(/\d+)?'
-      - '^java\.io\.PrintStream\.printf(/\d+)?'
-      - '^java\.io\.PrintStream\.format(/\d+)?'
-      - '^java\.io\.PrintWriter\.format(/\d+)?'
-      - '^java\.util\.Formatter\.format(/\d+)?'
-      - '^java\.util\.logging\.Logger\.info(/\d+)?'
-      - '^java\.util\.logging\.Logger\.warning(/\d+)?'
-      - '^java\.util\.logging\.Logger\.severe(/\d+)?'
-      - '^java\.util\.logging\.Logger\.log(/\d+)?'
-      - '^org\.slf4j\.Logger\.info(/\d+)?'
-      - '^org\.slf4j\.Logger\.warn(/\d+)?'
-      - '^org\.slf4j\.Logger\.error(/\d+)?'
-      - '^org\.slf4j\.Logger\.debug(/\d+)?'
-
   header.sinks:
     cwe: CWE-93
     severity: MEDIUM
@@ -274,6 +261,8 @@ families:
         arg_index: 1
       - pattern: '^org\.springframework\.http\.HttpHeaders\.set(/\d+)?'
       - pattern: '^org\.springframework\.http\.HttpHeaders\.add(/\d+)?'
+      - pattern: '^play\.mvc\.Http\.response\.setHeader(/\d+)?'
+        arg_index: 1
     by_language:
       php:
         # header() takes the whole header line in its FIRST argument;
@@ -485,6 +474,7 @@ families:
       - '^DriverManager\.setLogStream(/\d+)?'
       - '^java\.sql\.DriverManager\.setLogWriter(/\d+)?'
       - '^DriverManager\.setLogWriter(/\d+)?'
+      - '^java\.util\.prefs\.Preferences\.importPreferences(/\d+)?'
 
     by_language:
       go:
@@ -572,34 +562,6 @@ families:
         - pattern: '^System\.Collections\.Specialized\.NameValueCollection\.Set(/\d+)?'
           arg_index: 1
 
-  predictable-seed.sinks:
-    cwe: CWE-338
-    severity: HIGH
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - pattern: '^java\.security\.SecureRandom\.<init>(/\d+)?'
-        arg_index: 0
-      - pattern: '^java\.security\.SecureRandom\.setSeed(/\d+)?'
-        arg_index: 0
-
-  oauth-credential.sinks:
-    cwe: CWE-798
-    severity: CRITICAL
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.registerConsumer(/\d+)?'
-        arg_index: 2
-      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.revokeAccessToken(/\d+)?'
-        arg_index: 0
-      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.addAccessToken(/\d+)?'
-        arg_index: 0
-      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.registerConsumer(/\d+)?'
-        arg_index: 2
-      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.revokeAccessToken(/\d+)?'
-        arg_index: 0
-      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.addAccessToken(/\d+)?'
-        arg_index: 0
-
   unencrypted-credential.sinks:
     cwe: CWE-311
     severity: CRITICAL
@@ -613,26 +575,6 @@ families:
         arg_index: 2
       - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.addAccessToken(/\d+)?'
         arg_index: 1
-
-  kms-plaintext.sinks:
-    cwe: CWE-311
-    severity: HIGH
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - pattern: '^software\.amazon\.awssdk\.services\.kms\.model\.EncryptRequest\.setPlaintext(/\d+)?'
-        arg_index: 0
-      - pattern: '^software\.amazon\.awssdk\.services\.kms\.model\.EncryptRequest\.setPlaintextAsBytes(/\d+)?'
-        arg_index: 0
-
-  db-credential.sinks:
-    cwe: CWE-798
-    severity: CRITICAL
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - pattern: '^java\.sql\.DriverManager\.getConnection(/\d+)?'
-        arg_index: 2
-      - pattern: '^java\.sql\.Driver\.connect(/\d+)?'
-        arg_index: 2
 
   ip-address.sources:
     languages: ['java', 'kotlin', 'scala']
@@ -664,48 +606,6 @@ families:
     languages: ['java', 'kotlin', 'scala']
     patterns:
       - pattern: '^java\.lang\.System\.getProperty(/\d+)?'
-        arg_index: 0
-
-  cookie-write.sinks:
-    cwe: CWE-113
-    severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.addCookie(/\d+)?'
-        arg_index: 1
-      - pattern: '^play\.mvc\.Http\.response\.setCookie(/\d+)?'
-        arg_index: 0
-      - pattern: '^play\.mvc\.Http\.response\.cookie(/\d+)?'
-        arg_index: 0
-
-  http-header-write.sinks:
-    cwe: CWE-113
-    severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.setHeader(/\d+)?'
-        arg_index: 1
-      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.addHeader(/\d+)?'
-        arg_index: 1
-      - pattern: '^play\.mvc\.Http\.response\.setHeader(/\d+)?'
-        arg_index: 1
-
-  redirect.sinks:
-    cwe: CWE-601
-    severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.handleCallback(/\d+)?'
-        arg_index: 0
-      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.handleCallback(/\d+)?'
-        arg_index: 0
-
-  sensitive-log.sinks:
-    cwe: CWE-532
-    severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - pattern: '^java\.sql\.DriverManager\.getConnection(/\d+)?'
         arg_index: 0
 
   taint.sources.groovy.console:
@@ -1043,6 +943,10 @@ families:
         arg_index: 0
       - pattern: '^(javax|jakarta)\.servlet\.http\.Cookie\.(\<init\>|set(Comment|Domain|Path|Value))(/\d+)?'
         arg_index: 0
+      # The cookie that is written is the FIRST (only) argument; the reference model
+      # recorded index 1, which is a parameter addCookie does not have.
+      - pattern: '^javax\.servlet\.http\.HttpServletResponse\.addCookie(/\d+)?'
+        arg_index: 0
       - pattern: '^com\.amazonaws\.services\.lambda\.runtime\.events\.APIGatewayV2HTTPResponse(\$|\.)APIGatewayV2HTTPResponseBuilder\.(setCookies|withCookies)(/\d+)?'
         arg_index: 0
       - pattern: '^org\.apache\.wicket\.(protocol|request)\.http\.WebResponse\.addCookie(/\d+)?'
@@ -1054,6 +958,10 @@ families:
       - pattern: '^com\.google\.gwt\.user\.client\.Cookies\.(setCookie|loadCookies)(/\d+)?'
         arg_index: 0
       - pattern: '^com\.google\.gwt\.user\.client\.Cookies\.setCookie(/\d+)?'
+        arg_index: 0
+      - pattern: '^play\.mvc\.Http\.response\.setCookie(/\d+)?'
+        arg_index: 0
+      - pattern: '^play\.mvc\.Http\.response\.cookie(/\d+)?'
         arg_index: 0
     by_language:
       csharp:
@@ -1302,6 +1210,20 @@ families:
         arg_index: 1
       - pattern: '^java\.sql\.DriverManager\.getConnection(/\d+)?'
         arg_index: 0
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.registerConsumer(/\d+)?'
+        arg_index: 2
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.revokeAccessToken(/\d+)?'
+        arg_index: 0
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.addAccessToken(/\d+)?'
+        arg_index: 0
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.registerConsumer(/\d+)?'
+        arg_index: 2
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.revokeAccessToken(/\d+)?'
+        arg_index: 0
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.addAccessToken(/\d+)?'
+        arg_index: 0
+      - pattern: '^java\.sql\.Driver\.connect(/\d+)?'
+        arg_index: 2
     by_language:
       csharp:
         - pattern: '^System\.Web\.Security\.MembershipProvider\.ChangePasswordQuestionAndAnswer(/\d+)?'
@@ -3878,6 +3800,10 @@ families:
       - '^org\.springframework\.web\.servlet\.view\.RedirectView\.render(/\d+)?'
       - '^org\.springframework\.web\.servlet\.view\.RedirectView\.setUrl(/\d+)?'
       - '^org\.springframework\.web\.servlet\.view\.RedirectView\.<init>/\d+'
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.DefaultOAuth1Provider\.handleCallback(/\d+)?'
+        arg_index: 0
+      - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.handleCallback(/\d+)?'
+        arg_index: 0
     by_language:
       csharp:
         - pattern: '^System\.Web\.UI\.DataVisualization\.Charting\.DataPointCustomProperties\.set_LegendUrl(/\d+)?'
@@ -7579,206 +7505,30 @@ families:
     cwe: CWE-261,CWE-326
     severity: MEDIUM
     patterns:
-      - pattern: '^java\.security\.KeyStore\.getInstance(/\d+)?'
-        arg_index: 1
-      - pattern: '^java\.security\.KeyStore(Spi)?\.(setKeyEntry|engineSetKeyEntry)(/\d+)?'
-        arg_index: 2
-      - pattern: '^java\.security\.KeyStore(Spi)?\.(getKey|load|store|engineGetKey|engineLoad|engineStore)(/\d+)?'
-        arg_index: 1
-      - pattern: '^javax\.security\.auth\.callback\.PasswordCallback\.setPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^javax\.resource\.spi\.security\.PasswordCredential\.\<init\>(/\d+)?'
-        arg_index: 1
-      - pattern: '^java\.net\.URL\.set(/\d+)?'
-        arg_index: 4
-      - pattern: '^java\.net\.PasswordAuthentication\.\<init\>(/\d+)?'
-        arg_index: 1
-      - pattern: '^javax\.sql\.XADataSource\.getXAConnection(/\d+)?'
-        arg_index: 1
-      - pattern: '^javax\.sql\.DataSource\.getConnection(/\d+)?'
-        arg_index: 1
-      - pattern: '^javax\.sql\.ConnectionPoolDataSource\.getPooledConnection(/\d+)?'
-        arg_index: 1
-      - pattern: '^javax\.sql\.RowSet\.setPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^(javax\.sql\.DataSource|javax\.sql\.ConnectionPoolDataSource|javax\.sql\.XADataSource)\.(getConnection|getPooledConnection|getXAConnection)(/\d+)?'
-        arg_index: 1
-      - pattern: '^java\.sql\.DriverManager\.getConnection(/\d+)?'
-        arg_index: 2
-      - pattern: '^net\.lingala\.zip4j\.core\.ZipFile\.setPassword(/\d+)?'
-        arg_index: 0
       - pattern: '^org\.springframework\.security\.crypto\.keygen\.KeyGenerators\.(secureRandom|shared)(/\d+)?'
         arg_index: 0
       - pattern: '^org\.springframework\.security\.crypto\.keygen\.Base64StringKeyGenerator\.\<init\>(/\d+)?'
         arg_index: [0, 1]
       - pattern: '^org\.springframework\.security\.crypto\.scrypt\.SCryptPasswordEncoder\.\<init\>(/\d+)?'
         arg_index: 3
-      - pattern: '^org\.springframework\.mail\.javamail\.JavaMailSenderImpl\.setPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^org\.springframework\.ldap\.support\.AbstractContextSource\.setPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^org\.springframework\.ldap\.support\.authentication\.DefaultValuesAuthenticationSourceDecorator\.setDefaultPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^org\.springframework\.ldap\.support\.authentication\.DefaultValuesAuthenticationSourceDecorator\.\<init\>(/\d+)?'
-        arg_index: 2
-      - pattern: '^org\.springframework\.integration\.mail\.Pop3MailReceiver\.\<init\>(/\d+)?'
-        arg_index: [2, 3]
-      - pattern: '^com\.sap\.security\.api\.IUserAccount\.setPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^oracle\.jbo\.html\.jsp\.ConnectionInfo\.populateHashTableWithRemoteConnectionInfo(/\d+)?'
-        arg_index: 2
-      - pattern: '^oracle\.jbo\.html\.jsp\.ConnectionInfo\.setPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^oracle\.jbo\.html\.jsp\.datatags\.ApplicationModuleTag\.(setPassword|setIiop_password)(/\d+)?'
-        arg_index: 0
-      - pattern: '^oracle\.jbo\.html\.jsp\.datatags\.JServerUserTransactionBean\.setPasswd(/\d+)?'
-        arg_index: 0
-      - pattern: '^netscape\.ldap\.util\.ConnectionPool\.\<init\>(/\d+)?'
-        arg_index: 5
-      - pattern: '^netscape\.ldap\.beans\.LDAPSimpleAuth\.authenticate(/\d+)?'
-        arg_index: 1
-      - pattern: '^netscape\.ldap\.beans\.LDAPSimpleAuth\.\<init\>(/\d+)?'
-        arg_index: 3
-      - pattern: '^netscape\.ldap\.beans\.LDAPIsMember\.(\<init\>|isMember)(/\d+)?'
-        arg_index: 3
-      - pattern: '^netscape\.ldap\.beans\.LDAPBasePropertySupport\.setAuthPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^netscape\.ldap\.LDAPSSLSocketFactory\.enableClientAuth(/\d+)?'
-        arg_index: 2
-      - pattern: '^netscape\.ldap\.LDAPRebindAuth\.\<init\>(/\d+)?'
-        arg_index: 1
-      - pattern: '^netscape\.ldap\.LDAPConnection\.connect(/\d+)?'
-        arg_index: 3
-      - pattern: '^netscape\.ldap\.LDAPonnection\.connect(/\d+)?'
-        arg_index: 4
-      - pattern: '^netscape\.ldap\.LDAPConnection\.(authenticate|bind)(/\d+)?'
-        arg_index: [1, 2]
-      - pattern: '^netscape\.ldap\.LDAPv3\.connect(/\d+)?'
-        arg_index: 4
-      - pattern: '^netscape\.ldap\.LDAPv3\.(authenticate|bind)(/\d+)?'
-        arg_index: 2
-      - pattern: '^netscape\.ldap\.LDAPv2\.connect(/\d+)?'
-        arg_index: 3
-      - pattern: '^netscape\.ldap\.LDAPv2\.(authenticate|bind)(/\d+)?'
-        arg_index: 1
-      - pattern: '^netscape\.ldap\.LDAPAsynchronousConnection\.bind(/\d+)?'
-        arg_index: 1
-      - pattern: '^(javax|jakarta)\.jms\.ConnectionFactory\.createConnection(/\d+)?'
-        arg_index: 1
-      - pattern: '^javax\.jdo\.PersistenceManagerFactory\.setConnectionPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^javax\.jdo\.PersistenceManagerFactory\.getPersistenceManager(/\d+)?'
-        arg_index: 1
-      - pattern: '^com\.sun\.mail\.imap\.IMAPStore\.setPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^(javax|jakarta)\.mail\.Transport\.send(/\d+)?'
-        arg_index: [2, 3]
-      - pattern: '^(javax|jakarta)\.mail\.Service\.connect(/\d+)?'
-        arg_index: [1, 2, 3]
-      - pattern: '^com\.sun\.mail\.smtp\.SMTPTransport\.sasllogin(/\d+)?'
-        arg_index: 4
-      - pattern: '^(javax|jakarta)\.mail\.PasswordAuthentication\.\<init\>(/\d+)?'
-        arg_index: 1
-      - pattern: '^(javax|jakarta)\.mail\.URLName\.\<init\>(/\d+)?'
-        arg_index: 5
-      - pattern: '^java\.util\.Map\.put(/\d+)?'
-        arg_index: 1
-      - pattern: '^flex\.messaging\.services\.messaging\.adapters\.JMSSettings\.setConnectionPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^flex\.messaging\.services\.http\.ExternalProxySettings\.setPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^flex\.messaging\.security\.TomcatLogin\.login(/\d+)?'
-        arg_index: 1
-      - pattern: '^flex\.messaging\.security\.LoginCommand\.doAuthentication(/\d+)?'
-        arg_index: 1
-      - pattern: '^flex\.messaging\.FlexRemoteCredentials\.\<init\>(/\d+)?'
-        arg_index: 3
-      - pattern: '^flex\.messaging\.services\.AuthenticationService\.decodeAndLogin(/\d+)?'
-        arg_index: 0
-      - pattern: '^com\.azure\.identity\.ClientCertificateCredentialBuilder\.pfxCertificate(/\d+)?'
-        arg_index: 1
-      - pattern: '^com\.azure\.identity\.AadCredentialBuilderBase\.(authorizationCode|clientSecret|clientCertificatePassword|password)(/\d+)?'
-        arg_index: 0
-      - pattern: '^com\.amazonaws\.auth\.BasicSessionCredentials\.\<init\>(/\d+)?'
-        arg_index: [1, 2]
-      - pattern: '^com\.amazonaws\.auth\.BasicAWSCredentials\.\<init\>(/\d+)?'
-        arg_index: 1
-      - pattern: '^com\.amazonaws\.services\.identitymanagement\.model\.ServiceSpecificCredential\.(setServicePassword|withServicePassword)(/\d+)?'
-        arg_index: 0
-      - pattern: '^com\.amazonaws\.services\.identitymanagement\.model\.AccessKey\.(setSecretAccessKey|withSecretAccessKey)(/\d+)?'
-        arg_index: 0
-      - pattern: '^com\.amazonaws\.services\.identitymanagement\.model\.AccessKey\.\<init\>(/\d+)?'
-        arg_index: 3
-      - pattern: '^software\.amazon\.awssdk\.services\.iam\.model\.ServiceSpecificCredential(\$|\.)Builder\.servicePassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^software\.amazon\.awssdk\.services\.iam\.model\.AccessKey(\$|\.)Builder\.secretAccessKey(/\d+)?'
-        arg_index: 0
-      - pattern: '^org\.apache\.commons\.net\.pop3\.ExtendedPOP3Client\.auth(/\d+)?'
-        arg_index: 2
-      - pattern: '^org\.apache\.commons\.net\.pop3\.POP3Client\.login(/\d+)?'
-        arg_index: 1
-      - pattern: '^org\.apache\.commons\.net\.imap\.AuthenticatingIMAPClient\.(auth|authenticate)(/\d+)?'
-        arg_index: 2
-      - pattern: '^org\.apache\.commons\.net\.imap\.IMAPClient\.login(/\d+)?'
-        arg_index: 1
-      - pattern: '^org\.apache\.commons\.net\.smtp\.AuthenticatingSMTPClient\.auth(/\d+)?'
-        arg_index: 2
-      - pattern: '^org\.apache\.commons\.mail\.Email\.setPopBeforeSmtp(/\d+)?'
-        arg_index: 3
-      - pattern: '^org\.apache\.commons\.mail\.Email\.setAuthentication(/\d+)?'
-        arg_index: 1
-      - pattern: '^org\.apache\.commons\.httpclient\.UsernamePasswordCredentials\.\<init\>(/\d+)?'
-        arg_index: 1
-      - pattern: '^org\.apache\.axis\.MessageContext\.setPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^org\.apache\.axis\.client\.Call\.setPassword(/\d+)?'
-        arg_index: 0
-      - pattern: '^org\.apache\.axis\.client\.AdminClient\.setLogin(/\d+)?'
-        arg_index: 1
-      - pattern: '^com\.ibm\.mq\.MQQueueManager\.getJDBCConnection(/\d+)?'
-        arg_index: 2
-      - pattern: '^com\.ibm\.mq\.MQConnectionSecurityParameters\.setCSPPassword(/\d+)?'
-        arg_index: 0
       - pattern: '^com\.google\.common\.hash\.Hashing\.(hmacMd5|hmacSha1|hmacSha256|hmacSha512)(/\d+)?'
         arg_index: 0
-      - pattern: '^com\.google\.gwt\.xhr\.client\.XMLHttpRequest\.open(/\d+)?'
-        arg_index: 3
-      - pattern: '^com\.google\.gwt\.user\.client\.HasValue\.setValue(/\d+)?'
+      - pattern: '^java\.security\.MessageDigest\.getInstance(/\d+)?'
         arg_index: 0
-      - pattern: '^com\.google\.gwt\.http\.client\.RequestBuilder\.setPassword(/\d+)?'
+      - pattern: '^javax\.crypto\.Cipher\.getInstance(/\d+)?'
         arg_index: 0
-      - pattern: '^com\.google\.gwt\.user\.client\.HTTPRequest\.asyncPost(/\d+)?'
-        arg_index: 1
-      - pattern: '^com\.google\.gwt\.user\.client\.HTTPRequest\.asyncGet(/\d+)?'
-        arg_index: 1
-      - pattern: '^software\.amazon\.awssdk\.services\.kms\.model\.EncryptRequest\.plaintext(/\d+)?'
+      - pattern: '^javax\.crypto\.KeyGenerator\.getInstance(/\d+)?'
+        arg_index: 0
+      - pattern: '^javax\.crypto\.Mac\.getInstance(/\d+)?'
+        arg_index: 0
+      - pattern: '^javax\.crypto\.SecretKeyFactory\.getInstance(/\d+)?'
+        arg_index: 0
+      - pattern: '^java\.security\.KeyPairGenerator\.getInstance(/\d+)?'
+        arg_index: 0
+      - pattern: '^java\.security\.AlgorithmParameters\.getInstance(/\d+)?'
         arg_index: 0
     by_language:
       csharp:
-        - pattern: '^System\.Web\.Security\.MembershipProvider\.ChangePasswordQuestionAndAnswer(/\d+)?'
-          arg_index: 2
-        - pattern: '^System\.Web\.Security\.MembershipProvider\.(CreateUser|ValidateUser|ChangePasswordQuestionAndAnswer|ChangePassword)(/\d+)?'
-          arg_index: 1
-        - pattern: '^System\.Web\.Security\.MembershipUser\.ChangePasswordQuestionAndAnswer(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Web\.Security\.MembershipUser\.ChangePassword(/\d+)?'
-          arg_index: 0
-        - pattern: '^(System\.Web\.Security\.Membership|System\.Web\.Security\.ValidatePasswordEventArgs)\.(CreateUser|ValidateUser|\<init\>)(/\d+)?'
-          arg_index: 1
-        - pattern: '^System\.Web\.Management\.SqlServices\.((I|Uni)nstallSessionState|(I|Uni)nstall)(/\d+)?'
-          arg_index: 2
-        - pattern: '^System\.Web\.Configuration\.FormsAuthenticationUser\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^System\.Web\.Configuration\..*ConfigurationManager\.Open(Machine|Web)Configuration(/\d+)?'
-          arg_index: 3
-        - pattern: '^System\.Web\.ClientServices\.Providers\.ClientFormsAuthenticationCredentials\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^System\.Web\.ClientServices\.ClientFormsIdentity\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^System\.Web\.ApplicationServices\.AuthenticationService\.(Login|ValidateUser)(/\d+)?'
-          arg_index: 1
-        - pattern: '^System\.Security\.Cryptography\.X509Certificates\.X509Certificate(2Collection)?\.((Ex|Im)port|\<init\>)(/\d+)?'
-          arg_index: 1
         - pattern: '^System\.Security\.Cryptography\.Pkcs\.AlgorithmIdentifier\.set_KeyLength(/\d+)?'
           arg_index: -2
         - pattern: '^System\.Security\.Cryptography\.Pkcs\.AlgorithmIdentifier\.\<init\>(/\d+)?'
@@ -7787,127 +7537,17 @@ families:
           arg_index: [-2, 0]
         - pattern: '^System\.Security\.Cryptography\.AsymmetricAlgorithm\.set_KeySize(/\d+)?'
           arg_index: [-2, 0]
-        - pattern: '^System\.Security\.Cryptography\.PasswordDeriveBytes\.\<init\>(/\d+)?'
-          arg_index: 0
         - pattern: '^System\.Security\.Cryptography\.RSAC(ng|ryptoServiceProvider)\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Security\.Cryptography\.DSA(Cng|CryptoServiceProvider)\.\<init\>(/\d+)?'
           arg_index: 0
-        - pattern: '^(System\.(Diagnostics|ServiceModel\.Security)\.ProcessStartInfo|System\.(Diagnostics|ServiceModel\.Security)\.PeerCredential)\.set_(PasswordInClearText|MeshPassword)(/\d+)?'
-          arg_index: 0
-        - pattern: '^(System\.Net(\.Configuration)?\.NetworkCredential|System\.Net(\.Configuration)?\.Service(Process)?Installer(Dialog)?|System\.Net(\.Configuration)?\.ConnectionOptions|System\.Net(\.Configuration)?\.UriBuilder|System\.Net(\.Configuration)?\.DirectoryEntry|System\.Net(\.Configuration)?\.ADODC|System\.Net(\.Configuration)?\.SmtpNetworkElement|System\.Net(\.Configuration)?\.RemotingClientProxy|System\.Net(\.Configuration)?\.UserNamePasswordClientCredential|System\.Net(\.Configuration)?\.FormsAuthenticationUser|System\.Net(\.Configuration)?\.IdentitySection|System\.Net(\.Configuration)?\.ProcessModelSection|System\.Net(\.Configuration)?\.ClientFormsAuthenticationCredentials|System\.Net(\.Configuration)?\.PasswordBox|System\.ServiceProcess(\.\Design)?\.NetworkCredential|System\.ServiceProcess(\.\Design)?\.Service(Process)?Installer(Dialog)?|System\.ServiceProcess(\.\Design)?\.ConnectionOptions|System\.ServiceProcess(\.\Design)?\.UriBuilder|System\.ServiceProcess(\.\Design)?\.DirectoryEntry|System\.ServiceProcess(\.\Design)?\.ADODC|System\.ServiceProcess(\.\Design)?\.SmtpNetworkElement|System\.ServiceProcess(\.\Design)?\.RemotingClientProxy|System\.ServiceProcess(\.\Design)?\.UserNamePasswordClientCredential|System\.ServiceProcess(\.\Design)?\.FormsAuthenticationUser|System\.ServiceProcess(\.\Design)?\.IdentitySection|System\.ServiceProcess(\.\Design)?\.ProcessModelSection|System\.ServiceProcess(\.\Design)?\.ClientFormsAuthenticationCredentials|System\.ServiceProcess(\.\Design)?\.PasswordBox|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.NetworkCredential|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.Service(Process)?Installer(Dialog)?|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.ConnectionOptions|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.UriBuilder|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.DirectoryEntry|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.ADODC|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.SmtpNetworkElement|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.RemotingClientProxy|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.UserNamePasswordClientCredential|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.FormsAuthenticationUser|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.IdentitySection|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.ProcessModelSection|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.ClientFormsAuthenticationCredentials|System(\.Management|\.DirectoryServices|\.Runtime\.Remoting\.Services|\.ServiceModel\.Security|\.Web\.Configuration|\.Web\.ClientServices\.Providers|\.Windows\.Controls)?\.PasswordBox|Microsoft\.VisualBasic\.Compatibility\.VB6\.NetworkCredential|Microsoft\.VisualBasic\.Compatibility\.VB6\.Service(Process)?Installer(Dialog)?|Microsoft\.VisualBasic\.Compatibility\.VB6\.ConnectionOptions|Microsoft\.VisualBasic\.Compatibility\.VB6\.UriBuilder|Microsoft\.VisualBasic\.Compatibility\.VB6\.DirectoryEntry|Microsoft\.VisualBasic\.Compatibility\.VB6\.ADODC|Microsoft\.VisualBasic\.Compatibility\.VB6\.SmtpNetworkElement|Microsoft\.VisualBasic\.Compatibility\.VB6\.RemotingClientProxy|Microsoft\.VisualBasic\.Compatibility\.VB6\.UserNamePasswordClientCredential|Microsoft\.VisualBasic\.Compatibility\.VB6\.FormsAuthenticationUser|Microsoft\.VisualBasic\.Compatibility\.VB6\.IdentitySection|Microsoft\.VisualBasic\.Compatibility\.VB6\.ProcessModelSection|Microsoft\.VisualBasic\.Compatibility\.VB6\.ClientFormsAuthenticationCredentials|Microsoft\.VisualBasic\.Compatibility\.VB6\.PasswordBox)\.set_Password(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Net\.NetworkCredential\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^System\.Management\.ConnectionOptions\.\<init\>(/\d+)?'
-          arg_index: 2
-        - pattern: '^(System\.IdentityModel\.(Tokens|Selectors)\.UserNamePasswordValidator|System\.IdentityModel\.(Tokens|Selectors)\.UserNameSecurityToken(Provider)?)\.(Validate|\<init\>)(/\d+)?'
-          arg_index: 1
-        - pattern: '^(System\.DirectoryServices\.ActiveDirectory\.Domain|System\.DirectoryServices\.ActiveDirectory\.Forest)\.UpdateLocalSideOfTrustRelationship(/\d+)?'
-          arg_index: 1
-        - pattern: '^(System\.DirectoryServices\.ActiveDirectory\.Domain|System\.DirectoryServices\.ActiveDirectory\.Forest)\.(Create|Update)LocalSideOfTrustRelationship(/\d+)?'
-          arg_index: 2
-        - pattern: '^System\.DirectoryServices\.AccountManagement\.AuthenticablePrincipal\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^System\.DirectoryServices\.AccountManagement\.AuthenticablePrincipal\.SetPassword(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.DirectoryServices\.AccountManagement\.AuthenticablePrincipal\.ChangePassword(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.DirectoryServices\.AccountManagement\.PrincipalContext\.\<init\>(/\d+)?'
-          arg_index: [3, 4, 5]
-        - pattern: '^System\.DirectoryServices\.AccountManagement\.PrincipalContext\.ValidateCredentials(/\d+)?'
-          arg_index: 1
-        - pattern: '^System\.DirectoryServices\.DirectoryEntry\.set_Password(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.DirectoryServices\.DirectoryEntry\.\<init\>(/\d+)?'
-          arg_index: 2
-        - pattern: '^System\.Data\.SqlClient\.SqlConnectionStringBuilder\.set_Password(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Data\.Common\.DbConnectionStringBuilder\.(set_Item|Add)(/\d+)?'
-          arg_index: 1
-        - pattern: '^System\.Data\.Common\.DbConnectionStringBuilder\.AppendKeyValuePair(/\d+)?'
-          arg_index: 2
-        - pattern: '^Azure\.Identity\.UsernamePasswordCredential\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^Azure\.Identity\.(AuthorizationCode|ClientSecret|OnBehalfOf)Credential\.\<init\>(/\d+)?'
-          arg_index: 2
-        - pattern: '^Amazon\.IdentityManagement\.Model\.UpdateLoginProfileRequest\.set_Password(/\d+)?'
-          arg_index: 0
-        - pattern: '^Amazon\.IdentityManagement\.Model\.ServiceSpecificCredential\.set_ServicePassword(/\d+)?'
-          arg_index: 0
-        - pattern: '^Amazon\.IdentityManagement\.Model\.CreateLoginProfileRequest\.set_Password(/\d+)?'
-          arg_index: 0
-        - pattern: '^Amazon\.IdentityManagement\.Model\.CreateLoginProfileRequest\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^Amazon\.IdentityManagement\.Model\.ChangePasswordRequest\.(set_NewPassword|set_OldPassword)(/\d+)?'
-          arg_index: 0
-        - pattern: '^Amazon\.IdentityManagement\.Model\.AccessKey\.set_SecretAccessKey(/\d+)?'
-          arg_index: 0
-        - pattern: '^Amazon\.IdentityManagement\.Model\.AccessKey\.\<init\>(/\d+)?'
-          arg_index: 3
-        - pattern: '^Amazon\.Runtime\.CredentialManagement\.CredentialProfileOptions\.set_SecretKey(/\d+)?'
-          arg_index: 0
-        - pattern: '^Amazon\.Runtime\.SSOImmutableCredentials\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^Amazon\.Runtime\.SessionAWSCredentials\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^Amazon\.Runtime\.SAMLImmutableCredentials\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^Amazon\.Runtime\.ImmutableCredentials\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^Amazon\.Runtime\.BasicAWSCredentials\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^Amazon\.Runtime\.AssumeRoleImmutableCredentials\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^Amazon\.Util\.AWSCredentialsProfile\.Persist(/\d+)?'
-          arg_index: 2
-        - pattern: '^Amazon\.Util\.ProfileManager\.RegisterProfile(/\d+)?'
-          arg_index: 2
-        - pattern: '^Amazon\.Util\.IAMSecurityCredentialMetadata\.set_SecretAccessKey(/\d+)?'
-          arg_index: 0
-        - pattern: '^Amazon\.Util\.ProxyConfig\.set_Password(/\d+)?'
-          arg_index: 0
-        - pattern: '^Amazon\.Runtime\.AmazonServiceClient\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^System\.Data\.SQLite\.SQLiteConnectionStringBuilder\.set_HexPassword(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Data\.SQLite\.SQLiteConnection\.SetPassword(/\d+)?'
-          arg_index: 0
-        - pattern: '^ICSharpCode\.SharpZipLib\.Zip\.ZipFile\.set_Password(/\d+)?'
-          arg_index: 0
-        - pattern: '^(Oracle\.ManagedDataAccess\.Client\.OracleConnectionStringBuilder|System\.Data\.OracleClient\.OracleConnectionStringBuilder)\.set_(Password|ProxyPassword)(/\d+)?'
-          arg_index: 0
-        - pattern: '^Oracle\.ManagedDataAccess\.Client\.OracleConnection\.OpenWithNewPassword(/\d+)?'
-          arg_index: 0
-        - pattern: '^Npgsql\.NpgsqlConnectionStringBuilder\.set_Password(/\d+)?'
-          arg_index: 0
-        - pattern: '^MySql\.Data\.MySqlClient\.MySqlBaseConnectionStringBuilder\.set_Password(/\d+)?'
-          arg_index: 0
-        - pattern: '^Microsoft\.VisualBasic\.Devices\.Network\.(Down|Up)loadFile(/\d+)?'
-          arg_index: 3
-        - pattern: '^Microsoft\.Practices\.EnterpriseLibrary\.Data\.ConnectionString\.set_Password(/\d+)?'
-          arg_index: 0
-        - pattern: '^IBM\.Data\.Informix\.IfxConnectionStringBuilder\.set_Pwd(/\d+)?'
-          arg_index: 0
-        - pattern: '^IBM\.Data\.DB2\.DB2ConnectionStringBuilder\.set_(Password|WalletPwd|TrustedContextSystemPassword|SSLClientKeystoreDBPassword)(/\d+)?'
-          arg_index: 0
-        - pattern: '^Ionic\.Zip\.ZipEntry\.ExtractWithPassword(/\d+)?'
-          arg_index: 0
-        - pattern: '^(Ionic\.Zip\.ZipFile|Ionic\.Zip\.ZipEntry)\.set_Password(/\d+)?'
-          arg_index: 0
-        - pattern: '^Ionic\.Zip\.ZipFile\.CheckZipPassword(/\d+)?'
-          arg_index: 1
       go:
         - pattern: '^crypto/des\.NewCipher(/\d+)?'
           arg_index: 0
-        - pattern: '^net/url\.UserPassword(/\d+)?'
-          arg_index: 1
         - pattern: '^crypto/aes\.NewCipher(/\d+)?'
           arg_index: 0
         - pattern: '^crypto/des\.NewTripleDESCipher(/\d+)?'
           arg_index: 0
-        - pattern: '^net/http\.Request\.SetBasicAuth(/\d+)?'
-          arg_index: 1
         - pattern: '^crypto/rc4\.NewCipher(/\d+)?'
           arg_index: 0
         - pattern: '^crypto/rsa\.GenerateMultiPrimeKey(/\d+)?'
@@ -7918,18 +7558,6 @@ families:
           arg_index: 2
         - pattern: '^crypto/ecdsa\.GenerateKey(/\d+)?'
           arg_index: 0
-      scala:
-        - pattern: '^akka\.http\.(java|scala)dsl\.model\.headers\.GenericHttpCredentials\.apply(/\d+)?'
-          arg_index: 1
-        - pattern: '^akka\.http\.(java|scala)dsl\.model\.headers\.BasicHttpCredentials\.apply(/\d+)?'
-          arg_index: 0
-        - pattern: '^akka\.http\.(java|scala)dsl\.model\.headers\.OAuth2BearerToken\.\<init\>(/\d+)?'
-          arg_index: 0
-        - pattern: '^(akka\.http\.(java|scala)dsl\.model\.headers\.BasicHttpCredentials|akka\.http\.(java|scala)dsl\.model\.headers\.GenericHttpCredentials)\.\<init\>(/\d+)?'
-          arg_index: 1
-        - pattern: '^akka\.http\.(java|scala)dsl\.server\.directives\.Credentials(\.|\$)Provided\.verify(/\d+)?'
-          arg_index: 0
-
   xml-injection.sinks:
     cwe: CWE-91
     severity: HIGH
@@ -8807,19 +8435,9 @@ families:
         arg_index: 0
       - pattern: '^org\.springframework\.oxm\.Unmarshaller\.unmarshal(/\d+)?'
         arg_index: 0
-      - pattern: '^oracle\.xml\.parser\.v2\.XMLParser\.parse(/\d+)?'
-        arg_index: [-2, 0]
-      - pattern: '^(javax|jakarta)\.xml\.transform\.sax\.SAXSource\.\<init\>(/\d+)?'
-        arg_index: [0, 1]
-      - pattern: '^(javax|jakarta)\.xml\.stream\.XMLInputFactory\.createXML(Stream|Event)Reader(/\d+)?'
-        arg_index: [-2, 0]
       - pattern: '^javax\.xml\.transform\.TransformerFactory\.new(Transformer|Templates)(/\d+)?'
         arg_index: [-2, 0]
       - pattern: '^javax\.xml\.transform\.Transformer\.transform(/\d+)?'
-        arg_index: [-2, 0]
-      - pattern: '^org\.xml\.sax\.XMLReader\.parse(/\d+)?'
-        arg_index: [-2, 0]
-      - pattern: '^((javax|jakarta)\.xml\.parsers\.SAXParser|(javax|jakarta)\.xml\.parsers\.DocumentBuilder)\.parse(/\d+)?'
         arg_index: [-2, 0]
       - pattern: '^(javax|jakarta)\.xml\.bind\.Unmarshaller\.unmarshal(/\d+)?'
         arg_index: 0
@@ -8845,18 +8463,12 @@ families:
           arg_index: 0
         - pattern: '^System\.Xml\.XPath\.XPathDocument\.\<init>(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.Xml\.XPath\.XPathDocument\.\<init\>(/\d+)?'
-          arg_index: 0
-        - pattern: '^System\.Xml\.XmlReaderSettings\.\<init\>(/\d+)?'
-          arg_index: 0
         - pattern: '^System\.Xml\.Xml(Validating|Text)Reader\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Xml\.XmlReader\.Create(/\d+)?'
           arg_index: [0, 1]
         - pattern: '^(System\.Xml\.XmlTextReader|System\.Xml\.XmlReader)\.Read.*(/\d+)?'
           arg_index: -2
-        - pattern: '^System\.Web\.UI\.WebControls\.AdRotator\.set_AdvertisementFile(/\d+)?'
-          arg_index: 0
         - pattern: '^System\.Web\.UI\.WebControls\.XmlDataSource\.(set_DataFile|set_Data)(/\d+)?'
           arg_index: 0
       scala:
@@ -8864,15 +8476,6 @@ families:
           arg_index: [0, 1]
         - pattern: '^scala\.xml\.factory\.XMLLoader\.(load|loadString)(/\d+)?'
           arg_index: 0
-
-  android-clipboard.sinks:
-    cwe: CWE-200
-    severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - pattern: '^android\.content\.ClipboardManager\.setPrimaryClip(/\d+)?'
-        arg_index: 0
-
   android-implicit-intent.sinks:
     cwe: CWE-927
     severity: HIGH
@@ -8892,41 +8495,3 @@ families:
         arg_index: 3
       - pattern: '^android\.app\.Activity\.startNextMatchingActivity(/\d+)?'
         arg_index: 0
-
-  console.sinks:
-    cwe: CWE-200
-    severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - '^org\.jclouds\.compute\.domain\.ExecChannel\.getError(/\d+)?'
-      - '^org\.jclouds\.compute\.domain\.ExecChannel\.getInput(/\d+)?'
-      - '^org\.jclouds\.compute\.domain\.ExecChannel\.getOutput(/\d+)?'
-
-  generic.sinks:
-    cwe: CWE-20
-    severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - pattern: '^android\.content\.IntentFilter\.dump(/\d+)?'
-        arg_index: 0
-
-  registry.sinks:
-    cwe: CWE-15
-    severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - '^java\.util\.prefs\.Preferences\.importPreferences(/\d+)?'
-
-  sensitive-url.sinks:
-    cwe: CWE-200
-    severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
-    patterns:
-      - pattern: '^java\.net\.URL\.getContent(/\d+)?'
-        arg_index: -2
-      - pattern: '^java\.net\.URL\.openConnection(/\d+)?'
-        arg_index: -2
-      - pattern: '^java\.net\.URL\.openStream(/\d+)?'
-        arg_index: -2
-      - pattern: '^java\.sql\.DriverManager\.getConnection(/\d+)?'
-        arg_index: 1

@@ -2224,6 +2224,14 @@ public final class ScanRunner {
       checkers.add(new org.plumb.dfa.checkers.controlflow.CollectionSelfReferenceChecker());
     if (config.runUncaughtExceptionPropagator)
       checkers.add(new org.plumb.dfa.checkers.controlflow.UncaughtExceptionPropagator());
+    // These two are catalogued in checkers.yaml and were never built: the
+    // flag was read, the checker was not added. A checker that is configured
+    // but never built is the same defect as a family with no watcher -- the
+    // defect class cannot produce a finding at all.
+    if (config.runSingletonRace)
+      checkers.add(new org.plumb.dfa.checkers.controlflow.SingletonRaceDfaChecker());
+    if (config.runServletAtomicity)
+      checkers.add(new org.plumb.dfa.checkers.controlflow.ServletAtomicityDfaChecker());
     // wire the 4 DFA checkers that
     // were previously orphaned (registered in checkers.yaml
     // but never added to buildDfaCheckers()).
@@ -2474,6 +2482,32 @@ public final class ScanRunner {
       checkers.add(new org.plumb.dfa.checkers.taint.PrivacyViolationChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.ResourceInjectionChecker());
       checkers.add(new org.plumb.dfa.checkers.taint.SettingManipulationChecker());
+      // The defect classes the catalogue still had no watcher for.
+      //
+      // A sink family with patterns and no checker matches a call and the
+      // match leads nowhere: the defect class cannot produce a finding at
+      // all. Nineteen families were in that state. Eight of them were folded
+      // into the family that already owns their CWE -- the same API listed
+      // under two family names, one of the names unwatched -- and five were
+      // retired as duplicate names or as patterns that are not sinks. The
+      // remaining six got a checker of their own:
+      //
+      //   CWE-918        server-side request forgery
+      //   CWE-611        tainted XML reaches a parser
+      //   CWE-261/326    tainted data chooses the algorithm or the key size
+      //   CWE-311        a tainted secret reaches a store that keeps it plain
+      //   CWE-942        tainted data writes the cross-origin policy
+      //   CWE-927        tainted data rides an intent that names no component
+      //
+      // Registering a checker in checkers.yaml is NOT enough: the engine
+      // takes the checker list from its caller, so a checker that is only in
+      // the configuration never runs.
+      checkers.add(new org.plumb.dfa.checkers.taint.SsrfChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.TaintedXmlParserChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.WeakCryptoChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.CleartextCredentialChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.CorsChecker());
+      checkers.add(new org.plumb.dfa.checkers.taint.ImplicitIntentChecker());
       // CWE-732 (unrestricted access to a file). This one is not a taint rule:
       // the dangerous call is the call itself, so it is a plain DfaChecker that
       // reads the `ownerOnly` flag out of the argument list.

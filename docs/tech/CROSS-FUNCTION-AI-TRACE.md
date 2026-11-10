@@ -177,7 +177,7 @@ The checkers on the `plumb-dfa` side come in three implementation shapes:
 | **pattern-based** | directly `implements DfaChecker` | 16 (`checkers/controlflow/`) + 2 (`checkers/taint/`) | No taint propagation; it relies on local pattern matching over the IR; a single-step trace is emitted with `Finding.violation(...)` |
 
 `ScanRunner.buildDfaCheckers()` (`plumb-main/.../ScanRunner.java`) **actually registers
-91** DFA checkers. The registration is controlled by the per-rule flags in the YAML (for example
+99** DFA checkers. The registration is controlled by the per-rule flags in the YAML (for example
 `config.runIntOverflow`, `config.runNullDeref`); `config.runTaint` is the master switch for the
 whole taint family.
 

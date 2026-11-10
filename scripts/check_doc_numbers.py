@@ -232,6 +232,37 @@ def source_sink_families():
     return out
 
 
+def wired_checker_classes():
+    """The checker classes the PRODUCT builds.
+
+    The engine takes its checker list from its caller, and the caller builds
+    that list by hand. So a checker class that is never instantiated is a
+    checker that never runs -- and the catalogue still says it is enabled.
+
+    That is not a hypothesis: the SSRF checker was catalogued, tested and
+    shipped, and never fired once, because nothing built it. Counting the
+    family names in the class would have said it was watched.
+
+    The instantiation is spelled `new org.plumb.dfa.checkers...Checker()` in a
+    main source file, so that is what is counted here.
+    """
+    out = set()
+    for path in REPO.glob("plumb-*/src/main/java/**/*.java"):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        code = "\n".join(cb._code_lines(text))
+        for m in re.finditer(r"new\s+(org\.plumb\.dfa\.checkers\.[A-Za-z0-9_.]+)\s*\(", code):
+            out.add(m.group(1))
+    return out
+
+
+def _source_of_class(class_name):
+    """The source file of a checker class, or None."""
+    simple = class_name.rsplit(".", 1)[-1] + ".java"
+    for path in DFA_ROOT.rglob(simple):
+        return path
+    return None
+
+
 def watched_sink_families():
     """The sink families that something the engine RUNS names.
 
@@ -240,6 +271,9 @@ def watched_sink_families():
     `SourceFamilyMatcher`. Either way the name is a string literal in the
     main Java sources, so counting the literals that are exactly a family
     name measures the count.
+
+    The checker has to be one the PRODUCT BUILDS, not one that merely
+    exists: see `wired_checker_classes`.
 
     The `TaintRuleRegistry` is NOT one of the two, and counting it was
     wrong: the engine never reads that table, so a family only it names is
@@ -253,8 +287,9 @@ def watched_sink_families():
     """
     known = set(cb.measure()["sink_families"]["families"])
     named = set()
-    for path in REPO.glob("plumb-*/src/main/java/**/*.java"):
-        if path == Taint_REGISTRY:
+    for class_name in wired_checker_classes():
+        path = _source_of_class(class_name)
+        if path is None:
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         code = "\n".join(cb._code_lines(text))
@@ -499,7 +534,7 @@ ALL_MATCH_CHECKS = [
     # And the two counts that make the size mean something: the families
     # something watches, and the ones nothing does.
     ("docs/tech/JVM-LANGUAGE-GAP.md",
-     r"(?:(\d+)(?![.\d])[^\n]{0,20}?named by a checker|checker 或规则点名[ \t]*(\d+))",
+     r"(?:(\d+)(?![.\d])[^\n]{0,20}?named by a checker|checker[ \t]*(?:或[^\n]{0,12}?)?点名[ \t]*(\d+))",
      watched_sink_families),
     ("docs/tech/JVM-LANGUAGE-GAP.md",
      r"checker[^\n]{0,40}?[\(（][ \t]*(\d+)",

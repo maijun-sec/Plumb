@@ -13,7 +13,7 @@
 - 返回非 null = LLM 收到这条规则的 prompt + finding 详情 + dataflow trace + 源码窗口，输出 TP / FP / UNKNOWN
 
 prompt 默认由 checker 提供。手写 override 见：
-- 43 个 `DfaChecker` + `TaintedCheckerBase`（auto-generated from `TaintRule` 元数据）
+- 48 个 `DfaChecker` + `TaintedCheckerBase`（auto-generated from `TaintRule` 元数据）
 - `plumb-style/src/main/java/org/plumb/style/security/HardcodedCredentialsCheck.java`
 - `plumb-style/src/main/java/org/plumb/style/error/EmptyCatchBlockCheck.java`
 - `plumb-style/src/main/java/org/plumb/style/style/BadShiftCheck.java`

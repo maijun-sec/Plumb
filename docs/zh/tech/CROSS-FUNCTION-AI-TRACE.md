@@ -169,7 +169,7 @@ callee signature 的 source 模式表。IR 里同一方法的 signature 可能�
 | **pattern-based** | 直接 `implements DfaChecker` | 16（`checkers/controlflow/`）+ 2（`checkers/taint/`） | 无 taint 传播，靠 IR 局部模式匹配；用 `Finding.violation(...)` 发单步 trace |
 
 `ScanRunner.buildDfaCheckers()`（`plumb-main/.../ScanRunner.java`）**实际注册
-91 个** DFA checker。注册受 YAML 的 per-rule flag 控制（例如
+99 个** DFA checker。注册受 YAML 的 per-rule flag 控制（例如
 `config.runIntOverflow`、`config.runNullDeref`），`config.runTaint` 是
 taint 全家桶的总开关。
 
