@@ -354,6 +354,82 @@ class PhpSidecarEndToEndTest {
     }
   }
 
+  /**
+   * An unqualified class name inside a namespace is that namespace's class -- PHP never falls back
+   * to the global one.
+   *
+   * <p><b>Why this matters for the catalogue.</b> A FUNCTION has a global fallback: an unqualified
+   * call names the global function, with its leading backslash, which is why the catalogue's PHP
+   * function entries carry one. A CLASS has no such fallback. The language manual is explicit --
+   * "Class names always resolve to the current namespace name", and the page is titled "fallback to
+   * the global space <em>for functions and constants</em>" -- and the example is a fatal error:
+   * inside {@code namespace A\B\C}, {@code new ArrayObject} looks for {@code A\B\C\ArrayObject} and
+   * finds nothing, rather than looking for the global {@code ArrayObject}. Only a fully qualified
+   * spelling ({@code \ArrayObject}) or an import ({@code use ArrayObject;}) reaches the global
+   * class.
+   *
+   * <p><b>So the key follows the spelling, and the three spellings differ.</b> A catalogue entry
+   * that resolves an unqualified name to the global class would name a class PHP never looks for,
+   * and would lose the class the program actually constructs -- {@code App\Support\PDO} --
+   * silently, with the scan still reporting success. The entry has to name the class PHP resolves,
+   * which is the namespace-relative one.
+   *
+   * <p><b>Why the import is in the same test.</b> An imported name is a third spelling with its own
+   * key: {@code use PDO as Pdo; new Pdo(...)} constructs the global {@code PDO}, and the key says
+   * so, with no namespace in front of it. The three spellings of one class therefore produce three
+   * different keys, and each one is a separate key a catalogue entry has to be able to name.
+   */
+  @Test
+  @DisplayName("an unqualified class in a namespace does not fall back to the global one")
+  void anUnqualifiedClassInANamespaceDoesNotFallBackToTheGlobalOne(@TempDir Path directory)
+      throws IOException {
+    String source =
+        """
+        <?php
+        namespace App\\Support;
+
+        use PDO as Pdo;
+        use Other\\Thing as T;
+
+        function handle(string $input): void {
+            $global = new \\PDO();
+            $aliased = new Pdo($input);
+            $unqualified = new PDO($input);
+            $other = new T();
+            $service = new namespace\\Service();
+        }
+        """;
+    Files.writeString(directory.resolve("composer.json"), "{\"name\": \"app/app\"}\n");
+    Path file = directory.resolve("app.php");
+    Files.writeString(file, source);
+
+    try (PhpTacFrontend frontend = new PhpTacFrontend()) {
+      assumeTrue(
+          sidecarAvailable(),
+          "the PHP front end needs Node and the sidecar's own parser dependency: run npm ci in"
+              + " plumb-frontend/php-sidecar");
+
+      TacFrontend.ParseResult result = frontend.parse(source, file, null);
+      assertThat(result.problems()).isEmpty();
+
+      TacFunction handle = find(result, "handle");
+      assertThat(handle).as("the module's function must be in the stream").isNotNull();
+
+      assertThat(handle.instructions())
+          .filteredOn(i -> i.kind == TacInstruction.Kind.NEW)
+          .extracting(i -> i.calleeSig)
+          .as(
+              "an unqualified class in a namespace is the namespace's class and never the global"
+                  + " one; an import or a leading backslash is what reaches the global class")
+          .containsExactlyInAnyOrder(
+              "\\PDO.<init>/0",
+              "PDO.<init>/1",
+              "App\\Support\\PDO.<init>/1",
+              "Other\\Thing.<init>/0",
+              "App\\Support\\Service.<init>/0");
+    }
+  }
+
   /** The function with the given name, or null. */
   private static TacFunction find(TacFrontend.ParseResult result, String name) {
     for (TacFunction function : result.functions()) {
