@@ -2506,6 +2506,9 @@ families:
           arg_index: 2
         - pattern: '^System\.Web\.Mvc\.Controller\.File(/\d+)?'
           arg_index: 0
+        # The advertisement file is a PATH the caller controls, not an XML parser.
+        - pattern: '^System\.Web\.UI\.WebControls\.AdRotator\.set_AdvertisementFile(/\d+)?'
+          arg_index: 0
         - pattern: '^System\.Web\.Mvc\.FilePathResult\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Web\.HttpResponseBase\.(WriteFile|TransmitFile)(/\d+)?'

@@ -2733,6 +2733,13 @@ cases:
       - "System.Web.Mvc.Controller.File/3"
   - table: sink-families
     family: file-path.sinks
+    pattern: "^System\\.Web\\.UI\\.WebControls\\.AdRotator\\.set_AdvertisementFile(/\\d+)?"
+    state: alive
+    user_args: 1
+    signatures:
+      - "System.Web.UI.WebControls.AdRotator.set_AdvertisementFile/1"
+  - table: sink-families
+    family: file-path.sinks
     pattern: "^System\\.Web\\.Mvc\\.FilePathResult\\.\\<init\\>(/\\d+)?"
     state: alive
     user_args: 2
@@ -12348,13 +12355,6 @@ cases:
       - "System.Xml.XmlTextReader.ReadElementContentAsBase64/3"
       - "System.Xml.XmlTextReader.ReadElementContentAsBinHex/3"
       - "System.Xml.XmlTextReader.ReadString/0"
-  - table: sink-families
-    family: xxe.sinks
-    pattern: "^System\\.Web\\.UI\\.WebControls\\.AdRotator\\.set_AdvertisementFile(/\\d+)?"
-    state: alive
-    user_args: 1
-    signatures:
-      - "System.Web.UI.WebControls.AdRotator.set_AdvertisementFile/1"
   - table: sink-families
     family: xxe.sinks
     pattern: "^System\\.Web\\.UI\\.WebControls\\.XmlDataSource\\.(set_DataFile|set_Data)(/\\d+)?"

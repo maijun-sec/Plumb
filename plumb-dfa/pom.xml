@@ -412,6 +412,12 @@
                         <include>org/plumb/dfa/checkers/taint/DeserializationFilterTest.java</include>
                         <include>org/plumb/dfa/checkers/taint/ResourceLeakAliasTest.java</include>
                         <include>org/plumb/dfa/config/MigratedModelFamilyTest.java</include>
+                        <!-- A family that is folded into the family that owns its
+                             defect class must not take its content with it: the
+                             call would match nothing again, under a name that no
+                             longer exists to look for. This test says the name is
+                             gone and the API is still watched. -->
+                        <include>org/plumb/dfa/config/FoldedFamilyCoverageTest.java</include>
                         <include>org/plumb/dfa/config/R7SinkFamilyLookupTest.java</include>
                         <include>org/plumb/dfa/fact/FactTraitSemanticsTest.java</include>
                         <include>org/plumb/dfa/resolve/R253ProjectCompilationContextTest.java</include>
