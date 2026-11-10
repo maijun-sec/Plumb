@@ -273,6 +273,49 @@ framework **did not** bind must not be reported as a framework entry point — t
 annotation ever bound it. This model **suppresses no finding**: the carrier is still tainted, so values derived from a request
 bean still reach the sink and are still reported.
 
+### 3.1.3 The keyed namespace: a map access is a path with a key in it
+
+In Java a subscript is an **array position**: `a[0]` and `a[1]` are different locations, and the index is
+an integer. In JavaScript, Python and PHP a subscript names an **entry of a namespace**, and the key is a
+**string**: `obj[k]`, `d[k]`, `$a[$k]`. In JavaScript the two spellings are even the same thing -- `obj.userId`
+and `obj["userId"]` are one location, and `arr[0]` is `arr["0"]`.
+
+The access-path vocabulary has the form this needs: `TacAccessPath.MapKey` names one entry,
+`TacAccessPath.LazyMapKey` names one entry whose key the analysis could not resolve, and
+`TacAccessPath.MapKeySet` names every entry. The rule that makes the namespace work is that **an
+unresolved key stands for every key, in both directions**:
+
+- a read through a key the analysis cannot resolve may land on any entry, so it sees a write to a named
+  entry;
+- a write through a key the analysis cannot resolve may have landed on any entry, so a later read of a
+  named entry sees it.
+
+Two *different* named entries never cover each other -- `obj.userId` and `obj.role` are two locations --
+and a field never covers a map entry. Python has an attribute namespace and an item namespace, and PHP
+has a property namespace and an array namespace; those are different locations of the same object, so the
+path vocabulary keeps them apart (`Reference` versus `MapKey`).
+
+**Where the pieces live.**
+
+| Piece | Where |
+| --- | --- |
+| which languages have keyed subscripts | `SourceLanguage.hasKeyedContainers()` |
+| the key's shape | `AccessPathBuilder.keySelector(...)` |
+| the location of an entry | `AccessPathBuilder.mapPaths(...)` |
+| the matching rule | `TacAccessPath.coversLocation(...)`, consulted by `AccessPathTaintStore.read(...)` |
+| the read and the write | `TaintedCheckerBase.readKeyedEntry(...)`, `TaintedCheckerBase.recordKeyedStore(...)` |
+
+**Two roots, and the asymmetry between them.** A write is recorded under the receiver's **object
+identity** when the points-to solver can resolve it, and under the receiver's **variable** as well, so a
+later read that cannot resolve the object either still finds it. A read consults the object identity when
+it has one, and the variable **only** when it does not: the variable root survives a reassignment, so
+falling back to it for a receiver the engine *can* resolve would report a stale taint as a fresh one.
+
+**What a front end has to emit.** A property access is a subscript, so it is an `ARRAYLOAD` / `ARRAYSTORE`
+whose index operand is the key -- a string constant for a name the front end knows, a variable for one it
+does not. The languages whose subscripts are array positions keep the array tracker's semantics, which is
+why the answer to "is this a keyed namespace" follows the language rather than the opcode.
+
 ### 3.2 Boundary analysis (boundary)
 
 `checkers/boundary/`, all extending `BoundaryConstraintChecker` (`:64`). Each subclass writes the arithmetic predicate

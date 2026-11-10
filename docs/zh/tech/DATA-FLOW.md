@@ -269,6 +269,45 @@ sink 的值没有框架来源可写。
 **不抑制任何 finding**：载体仍然是污点的，所以从请求 bean 派生出来的值照样到达 sink、照样
 被报出来。
 
+### 3.1.3 keyed 命名空间：map 访问就是一条带键的路径
+
+在 Java 里，下标是**数组位置**：`a[0]` 和 `a[1]` 是两个不同的位置，下标是整数。而在
+JavaScript、Python、PHP 里，下标指向的是一个**命名空间里的条目**，键是**字符串**：
+`obj[k]`、`d[k]`、`$a[$k]`。在 JavaScript 里这两种写法甚至是同一件事 —— `obj.userId`
+和 `obj["userId"]` 是同一个位置，而 `arr[0]` 就是 `arr["0"]`。
+
+访问路径这套词汇正好有它需要的形式：`TacAccessPath.MapKey` 命名一条条目，
+`TacAccessPath.LazyMapKey` 命名一条键解析不出来的条目，`TacAccessPath.MapKeySet` 命名
+所有条目。让这个命名空间成立的那条规则是：**解析不出的键代表所有键，两个方向都是**。
+
+- 通过解析不出的键读，可能落在任何一条条目上，所以它看得见写到某个具名条目的污点；
+- 通过解析不出的键写，可能落在任何一条条目上，所以后来读某个具名条目也看得见它。
+
+两个**不同**的具名条目之间永远不会互相覆盖 —— `obj.userId` 和 `obj.role` 是两个位置；
+字段也永远不会覆盖 map 条目。Python 有属性命名空间和下标命名空间，PHP 有属性命名空间
+和数组命名空间，它们是同一个对象上的不同位置，所以访问路径这套词汇把它们分开
+（`Reference` 对 `MapKey`）。
+
+**这些部件分别在哪。**
+
+| 部件 | 位置 |
+| --- | --- |
+| 哪些语言的下标是 keyed 的 | `SourceLanguage.hasKeyedContainers()` |
+| 键的形状 | `AccessPathBuilder.keySelector(...)` |
+| 条目的位置 | `AccessPathBuilder.mapPaths(...)` |
+| 匹配规则 | `TacAccessPath.coversLocation(...)`，由 `AccessPathTaintStore.read(...)` 读取 |
+| 读与写 | `TaintedCheckerBase.readKeyedEntry(...)`、`TaintedCheckerBase.recordKeyedStore(...)` |
+
+**两个根，以及它们之间的不对称。** 写会记在接收者的**对象身份**下（指向求解器能解析
+时），同时也记在接收者的**变量**下，这样后来解析不出对象的读也能找到它。读在有对象
+身份时用它，**只在没有**的时候才用变量根：变量根能活过一次重新赋值，所以对引擎
+**能够**解析的接收者回退到它，会把过期的污点当成新鲜的报出来。
+
+**前端要发出什么。** 属性访问就是一次下标访问，所以它是 `ARRAYLOAD` / `ARRAYSTORE`，
+下标操作数就是那个键 —— 前端知道的键名是字符串常量，不知道的是变量。下标是数组位置
+的语言保持数组追踪器那套语义，所以"这是不是一个 keyed 命名空间"这个问题跟的是语言，
+不是操作码。
+
 ### 3.2 边界分析（boundary）
 
 `checkers/boundary/`，全部继承 `BoundaryConstraintChecker`（`:64`）。每个子类把算术谓词
