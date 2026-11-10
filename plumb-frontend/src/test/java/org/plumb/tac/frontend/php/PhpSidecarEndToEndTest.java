@@ -211,11 +211,14 @@ class PhpSidecarEndToEndTest {
    * none. The sidecar's own smoke test does assert this key, but nothing in the build runs it, so
    * the fact had no automatic guard.
    *
-   * <p><b>Why the name is the one PHP gives the class.</b> A class in a namespace is named by its
-   * namespace-relative name -- {@code App\Support\Logger} -- and a class in the global namespace is
-   * named with a leading backslash, {@code \DateTime}, because that is how PHP itself writes the
-   * two. The catalogue's PHP entries already follow the same rule for functions ({@code \system/1}
-   * for a global function), so a constructor entry has to follow it too.
+   * <p><b>Why the name is the one PHP gives the class -- and why the leading backslash is
+   * optional.</b> A class in a namespace is named by its namespace-relative name, {@code
+   * App\Support\Logger}, and a class in the global namespace is named with a leading backslash,
+   * {@code \DateTime}. But the backslash is part of the key only when the SOURCE spells the name
+   * that way: the same class written out in full is {@code \App\Support\Logger}, and that is a
+   * different key -- see the test below. A catalogue entry that insists on the backslash claims
+   * only the fully qualified spelling, and one that insists on its absence claims only the relative
+   * one, so either way half the call sites are unreachable.
    *
    * <p><b>Why the construction has no receiver slot.</b> A call keeps its receiver in the first
    * argument slot and a construction does not -- the object does not exist yet. So the same
@@ -285,6 +288,69 @@ class PhpSidecarEndToEndTest {
           .as("a class in the global namespace is named with a leading backslash")
           .isEqualTo("\\DateTime.<init>/0");
       assertThat(global.args).as("a construction with no arguments has no slots").isEmpty();
+    }
+  }
+
+  /**
+   * The same class, written two ways, has two keys.
+   *
+   * <p><b>Why the catalogue has to know this.</b> A pattern names a class, and the leading
+   * backslash is part of the key -- but only when the source spells the name that way. The same
+   * class in a namespace, written the way PHP resolves it inside that namespace, has NO leading
+   * backslash; written out in full, it has one. They are two different keys, so a pattern that
+   * insists on the backslash claims only the fully qualified spelling and a pattern that insists on
+   * its absence claims only the relative one -- and either way the other spelling is unreachable,
+   * silently, with the scan still reporting success.
+   *
+   * <p><b>Why PHP is asymmetric here.</b> A FUNCTION has a global fallback: an unqualified call
+   * names the global function, with its leading backslash, which is why the catalogue's PHP
+   * function entries carry one. A CLASS has no global fallback -- PHP looks for an unqualified
+   * class name in the current namespace and nowhere else -- so an unqualified class inside a
+   * namespace is that namespace's class, and its key has no backslash. A class entry therefore
+   * cannot copy the shape of a function entry.
+   */
+  @Test
+  @DisplayName("the same class, written two ways, has two keys")
+  void theSameClassWrittenTwoWaysHasTwoKeys(@TempDir Path directory) throws IOException {
+    String source =
+        """
+        <?php
+        namespace App\\Support;
+
+        class Logger {
+            public function __construct($path) { $this->path = $path; }
+        }
+
+        function handle(string $input): void {
+            $relative = new Logger($input);
+            $qualified = new \\App\\Support\\Logger($input);
+        }
+        """;
+    Files.writeString(directory.resolve("composer.json"), "{\"name\": \"app/app\"}\n");
+    Path file = directory.resolve("app.php");
+    Files.writeString(file, source);
+
+    try (PhpTacFrontend frontend = new PhpTacFrontend()) {
+      assumeTrue(
+          sidecarAvailable(),
+          "the PHP front end needs Node and the sidecar's own parser dependency: run npm ci in"
+              + " plumb-frontend/php-sidecar");
+
+      TacFrontend.ParseResult result = frontend.parse(source, file, null);
+      assertThat(result.problems()).isEmpty();
+
+      TacFunction handle = find(result, "handle");
+      assertThat(handle).as("the module's function must be in the stream").isNotNull();
+
+      assertThat(handle.instructions())
+          .filteredOn(i -> i.kind == TacInstruction.Kind.NEW)
+          .extracting(i -> i.calleeSig)
+          .as(
+              "the same class, written the way PHP resolves it and written out in full, must"
+                  + " produce two keys -- so a catalogue pattern has to make the leading backslash"
+                  + " optional")
+          .containsExactlyInAnyOrder(
+              "App\\Support\\Logger.<init>/1", "\\App\\Support\\Logger.<init>/1");
     }
   }
 
