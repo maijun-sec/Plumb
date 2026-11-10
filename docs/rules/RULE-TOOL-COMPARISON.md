@@ -78,8 +78,8 @@ The complete classification of the DFA checkers is in
 | Total registered rules | 1158 | The actual registrations of AST + DFA |
 | DFA checker (registered) | 91 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | 12 | `TaintRuleRegistry` |
-| Taint source family / patterns | 6 / 195 | The `taint.sources.*` of `sink-families.yaml` |
-| Taint sink family / patterns | 76 / 4062 | The `*.sinks` of `sink-families.yaml` |
+| Taint source family / patterns | 6 / 213 | The `taint.sources.*` of `sink-families.yaml` |
+| Taint sink family / patterns | 76 / 4109 | The `*.sinks` of `sink-families.yaml` |
 | Input source patterns (framework entry points) | 65 | `InputSourcePatterns` |
 | Fact kinds | 27 | Built-in + YAML |
 
