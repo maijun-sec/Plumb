@@ -186,6 +186,97 @@ class PythonSidecarEndToEndTest {
     }
   }
 
+  /**
+   * A Python construction: the key the catalogue has to name.
+   *
+   * <p><b>Why this is pinned here and not only in the sidecar's smoke test.</b> The sink catalogue
+   * matches a callee signature, so a construction's key is what decides whether a catalogue entry
+   * can ever fire. Python has no {@code new} keyword, so a construction is a CALL: its key is
+   * {@code <module>.<Class>/<arity>} and its argument list keeps the receiver slot. A sidecar that
+   * changed either would leave every Python construction entry matching nothing -- silently, and
+   * with the scan still reporting success. The sidecar's own smoke test does assert these keys, but
+   * nothing in the build runs it, so the fact had no automatic guard at all.
+   *
+   * <p><b>Why a class this module declares has no usable owner.</b> The owner of a call is the
+   * module the name came from, and a class declared HERE comes from no module: the file's name is
+   * arbitrary. A file called {@code subprocess.py} that declares {@code class Popen} would
+   * otherwise produce {@code subprocess.Popen/1} and be claimed by the catalogue's entry for the
+   * real {@code subprocess.Popen} -- the same false positive the {@code <unknown>} owner exists to
+   * prevent. So the owner degrades to {@code <unknown>}: no module path can contain an angle
+   * bracket, and every catalogue pattern is anchored at the start of the key.
+   */
+  @Test
+  @DisplayName("a construction names the module the class came from")
+  void aConstructionNamesTheModuleTheClassCameFrom(@TempDir Path directory) throws IOException {
+    String source =
+        """
+        import subprocess
+
+
+        class Greeter:
+            def __init__(self, name):
+                self.name = name
+
+
+        def handle(request):
+            proc = subprocess.Popen(request)
+            greeter = Greeter(request)
+            return proc
+        """;
+    Files.writeString(directory.resolve("pyproject.toml"), "[project]\nname = \"app\"\n");
+    Path file = directory.resolve("app.py");
+    Files.writeString(file, source);
+
+    try (PythonTacFrontend frontend = new PythonTacFrontend()) {
+      assumeTrue(
+          sidecarAvailable(),
+          "the Python front end needs a Python 3 interpreter and the sidecar's own script");
+
+      TacFrontend.ParseResult result = frontend.parse(source, file, null);
+      assertThat(result.problems()).isEmpty();
+
+      TacFunction handle = find(result, "handle");
+      assertThat(handle).as("the module's function must be in the stream").isNotNull();
+
+      // A class from another module: the owner is that module, and the key is
+      // the one the catalogue's Python entries already use.
+      TacInstruction construction =
+          handle.instructions().stream()
+              .filter(i -> i.kind == TacInstruction.Kind.CALL)
+              .filter(i -> i.calleeSig != null && i.calleeSig.startsWith("subprocess.Popen/"))
+              .findFirst()
+              .orElseThrow(
+                  () ->
+                      new AssertionError(
+                          "the construction of subprocess.Popen is not in the stream"));
+      assertThat(construction.calleeSig)
+          .as("the key is the module the class came from, with the arity of the call")
+          .isEqualTo("subprocess.Popen/1");
+      assertThat(construction.args)
+          .as("a call keeps the receiver slot, so the argument is at args[1]")
+          .hasSize(2);
+      assertThat(construction.args.get(0))
+          .as("the receiver slot holds the module's name")
+          .isEqualTo(TacOperand.Const.ofString("subprocess"));
+
+      // A class this module declares: no module to name, so the owner
+      // degrades and no catalogue entry can claim the call.
+      TacInstruction local =
+          handle.instructions().stream()
+              .filter(i -> i.calleeSig != null && i.calleeSig.endsWith(".Greeter/1"))
+              .findFirst()
+              .orElseThrow(
+                  () ->
+                      new AssertionError(
+                          "the construction of the module's own class is not in the stream"));
+      assertThat(local.calleeSig)
+          .as(
+              "the owner of a class this module declares is degraded: a file whose name looks like "
+                  + "a framework module must not produce a key the catalogue can claim")
+          .startsWith("<unknown>.");
+    }
+  }
+
   /** The function with the given name, or null. */
   private static TacFunction find(TacFrontend.ParseResult result, String name) {
     for (TacFunction function : result.functions()) {

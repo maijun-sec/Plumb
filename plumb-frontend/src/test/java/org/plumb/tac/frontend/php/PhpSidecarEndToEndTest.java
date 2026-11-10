@@ -196,6 +196,91 @@ class PhpSidecarEndToEndTest {
     }
   }
 
+  /**
+   * A PHP construction: the key the catalogue has to name.
+   *
+   * <p><b>Why this is pinned here and not only in the sidecar's smoke test.</b> The sink catalogue
+   * matches a callee signature, so a construction's key is what decides whether a catalogue entry
+   * can ever fire, and the engine's constructor-sink lookup returns immediately when a NEW carries
+   * none. The sidecar's own smoke test does assert this key, but nothing in the build runs it, so
+   * the fact had no automatic guard.
+   *
+   * <p><b>Why the name is the one PHP gives the class.</b> A class in a namespace is named by its
+   * namespace-relative name -- {@code App\Support\Logger} -- and a class in the global namespace is
+   * named with a leading backslash, {@code \DateTime}, because that is how PHP itself writes the
+   * two. The catalogue's PHP entries already follow the same rule for functions ({@code \system/1}
+   * for a global function), so a constructor entry has to follow it too.
+   *
+   * <p><b>Why the construction has no receiver slot.</b> A call keeps its receiver in the first
+   * argument slot and a construction does not -- the object does not exist yet. So the same
+   * declared position lands on a different slot in the two, and a catalogue entry for a constructor
+   * counts the arguments from the first one.
+   */
+  @Test
+  @DisplayName("a construction names the class it constructs")
+  void aConstructionNamesTheClassItConstructs(@TempDir Path directory) throws IOException {
+    String source =
+        """
+        <?php
+        namespace App\\Support;
+
+        class Logger {
+            public function __construct($path) { $this->path = $path; }
+        }
+
+        function handle(string $input): void {
+            $logger = new Logger($input);
+            $moment = new \\DateTime();
+        }
+        """;
+    Files.writeString(directory.resolve("composer.json"), "{\"name\": \"app/app\"}\n");
+    Path file = directory.resolve("app.php");
+    Files.writeString(file, source);
+
+    try (PhpTacFrontend frontend = new PhpTacFrontend()) {
+      assumeTrue(
+          sidecarAvailable(),
+          "the PHP front end needs Node and the sidecar's own parser dependency");
+
+      TacFrontend.ParseResult result = frontend.parse(source, file, null);
+      assertThat(result.problems()).isEmpty();
+
+      TacFunction handle = find(result, "handle");
+      assertThat(handle).as("the module's function must be in the stream").isNotNull();
+
+      TacInstruction namespaced =
+          handle.instructions().stream()
+              .filter(i -> i.kind == TacInstruction.Kind.NEW)
+              .filter(i -> i.calleeSig != null && i.calleeSig.contains("Logger.<init>/"))
+              .findFirst()
+              .orElseThrow(
+                  () -> new AssertionError("the construction of Logger is not in the stream"));
+      assertThat(namespaced.calleeSig)
+          .as(
+              "a class in a namespace is named by its namespace-relative name, without a leading"
+                  + " backslash")
+          .isEqualTo("App\\Support\\Logger.<init>/1");
+      assertThat(namespaced.args)
+          .as("a construction has no receiver slot, so the argument is at args[0]")
+          .hasSize(1);
+      assertThat(namespaced.ctorType)
+          .as("the construction must carry the type it built")
+          .isNotNull();
+
+      TacInstruction global =
+          handle.instructions().stream()
+              .filter(i -> i.kind == TacInstruction.Kind.NEW)
+              .filter(i -> i.calleeSig != null && i.calleeSig.contains("DateTime.<init>/"))
+              .findFirst()
+              .orElseThrow(
+                  () -> new AssertionError("the construction of DateTime is not in the stream"));
+      assertThat(global.calleeSig)
+          .as("a class in the global namespace is named with a leading backslash")
+          .isEqualTo("\\DateTime.<init>/0");
+      assertThat(global.args).as("a construction with no arguments has no slots").isEmpty();
+    }
+  }
+
   /** The function with the given name, or null. */
   private static TacFunction find(TacFrontend.ParseResult result, String name) {
     for (TacFunction function : result.functions()) {
