@@ -55,6 +55,11 @@ import org.plumb.tac.ir.TacOperand;
  * <p>The sidecar needs Node and the compiler, which npm installs. A machine without them is missing
  * an environment, not carrying a broken product -- the same reason the Go frontend's test skips
  * when there is no Go toolchain.
+ *
+ * <p><b>The skip is not a pass, and it says what to do about it.</b> The compiler the sidecar
+ * imports lives in {@code node_modules}, which is not in version control, so a fresh checkout has
+ * nothing to run: the test skips, the build stays green, and the TypeScript front end is quietly
+ * unexercised. The message names the command that fixes it, so a skip is a to-do and not a shrug.
  */
 @DisplayName("TypeScript: the real sidecar's TAC arrives as the IR's TAC")
 class TsSidecarEndToEndTest {
@@ -83,7 +88,8 @@ class TsSidecarEndToEndTest {
     try (TsTacFrontend frontend = new TsTacFrontend(SourceLanguage.TYPESCRIPT)) {
       assumeTrue(
           sidecarAvailable(),
-          "the TypeScript front end needs Node and the sidecar's own compiler dependency");
+          "the TypeScript front end needs Node and the sidecar's own compiler dependency: run npm"
+              + " ci in plumb-frontend/ts-sidecar");
 
       TacFrontend.ParseResult result = frontend.parse(SOURCE, file, null);
 

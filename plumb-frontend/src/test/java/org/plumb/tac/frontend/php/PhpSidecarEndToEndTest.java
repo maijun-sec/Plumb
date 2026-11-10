@@ -54,6 +54,11 @@ import org.plumb.tac.ir.TacOperand;
  * <p>The sidecar needs Node and an installed parser. A machine without those is missing an
  * environment, not carrying a broken product -- the same reason the Go frontend's test skips when
  * there is no Go toolchain.
+ *
+ * <p><b>The skip is not a pass, and it says what to do about it.</b> The parser the sidecar imports
+ * lives in {@code node_modules}, which is not in version control, so a fresh checkout has nothing
+ * to run: the test skips, the build stays green, and the PHP front end is quietly unexercised. The
+ * message names the command that fixes it, so a skip is a to-do and not a shrug.
  */
 @DisplayName("PHP: the real sidecar's TAC arrives as the IR's TAC")
 class PhpSidecarEndToEndTest {
@@ -88,7 +93,8 @@ class PhpSidecarEndToEndTest {
     try (PhpTacFrontend frontend = new PhpTacFrontend()) {
       assumeTrue(
           sidecarAvailable(),
-          "the PHP front end needs Node and the sidecar's own parser dependency");
+          "the PHP front end needs Node and the sidecar's own parser dependency: run npm ci in"
+              + " plumb-frontend/php-sidecar");
 
       TacFrontend.ParseResult result = frontend.parse(SOURCE, file, null);
 
@@ -240,7 +246,8 @@ class PhpSidecarEndToEndTest {
     try (PhpTacFrontend frontend = new PhpTacFrontend()) {
       assumeTrue(
           sidecarAvailable(),
-          "the PHP front end needs Node and the sidecar's own parser dependency");
+          "the PHP front end needs Node and the sidecar's own parser dependency: run npm ci in"
+              + " plumb-frontend/php-sidecar");
 
       TacFrontend.ParseResult result = frontend.parse(source, file, null);
       assertThat(result.problems()).isEmpty();

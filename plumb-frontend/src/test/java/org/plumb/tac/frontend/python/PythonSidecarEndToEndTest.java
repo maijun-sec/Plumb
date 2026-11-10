@@ -54,6 +54,10 @@ import org.plumb.tac.ir.TacOperand;
  * <p>The sidecar needs a Python interpreter. A machine without one is missing an environment, not
  * carrying a broken product -- the same reason the Go frontend's test skips when there is no Go
  * toolchain.
+ *
+ * <p><b>The skip is not a pass, and it says what to do about it.</b> This sidecar imports only the
+ * standard library, so there is nothing to install into it; the one thing it needs is a Python 3
+ * interpreter on the PATH. The message says so, so a skip is a to-do and not a shrug.
  */
 @DisplayName("Python: the real sidecar's TAC arrives as the IR's TAC")
 class PythonSidecarEndToEndTest {
@@ -88,7 +92,8 @@ class PythonSidecarEndToEndTest {
     try (PythonTacFrontend frontend = new PythonTacFrontend()) {
       assumeTrue(
           sidecarAvailable(),
-          "the Python front end needs a Python 3 interpreter and the sidecar's own script");
+          "the Python front end needs a Python 3 interpreter on the PATH (the sidecar imports only"
+              + " the standard library, so there is nothing to install into it)");
 
       TacFrontend.ParseResult result = frontend.parse(SOURCE, file, null);
 
@@ -230,7 +235,8 @@ class PythonSidecarEndToEndTest {
     try (PythonTacFrontend frontend = new PythonTacFrontend()) {
       assumeTrue(
           sidecarAvailable(),
-          "the Python front end needs a Python 3 interpreter and the sidecar's own script");
+          "the Python front end needs a Python 3 interpreter on the PATH (the sidecar imports only"
+              + " the standard library, so there is nothing to install into it)");
 
       TacFrontend.ParseResult result = frontend.parse(source, file, null);
       assertThat(result.problems()).isEmpty();
