@@ -22,6 +22,10 @@
 | [JVM-LANGUAGE-GAP.md](../tech/JVM-LANGUAGE-GAP.md) | **实测出来的 JVM 差距**：三个 TAC 前端丢了什么、代价是什么，从两个参考 DFA 实现借用了哪些思路，以及哪些 sink family 根本没有任何 watcher | | [中文](tech/TAC-COVERAGE.md) |
 | [CSHARP-FRONTEND-ANALYSIS.md](../tech/CSHARP-FRONTEND-ANALYSIS.md) | **加入 C#**：两个商业工具如何产出 C# IR、给 Plumb 的 sidecar 路线，以及 C# 前端需要的 TAC 改动 | | [中文](tech/TAC-COVERAGE.md) |
 | [GO-FRONTEND-ANALYSIS.md](../tech/GO-FRONTEND-ANALYSIS.md) | **加入 Go**：为什么 JVM 解析不了 Go 的类型、原生 Go sidecar 路线、四个 IR 缺口与关闭它们的决策、构建捕获必须供出什么，以及 Go 的 TAC 如何生成 | | [中文](tech/GO-FRONTEND-ANALYSIS.md) |
+| [TYPESCRIPT-FRONTEND-ANALYSIS.md](../tech/TYPESCRIPT-FRONTEND-ANALYSIS.md) | **加入 TypeScript 与 JavaScript**：为什么 JVM 够不到编译器、Node sidecar 路线、这门语言需要的 keyed 命名空间，以及 sink 目录匹配的那个命名约定 | | [中文](tech/TYPESCRIPT-FRONTEND-ANALYSIS.md) |
+| [ARKTS-FRONTEND-ANALYSIS.md](../tech/ARKTS-FRONTEND-ANALYSIS.md) | **加入 ArkTS**：编译器自己的文法、它需要的三个设置，以及让这三者保持诚实的 sidecar 路线 | | [中文](tech/ARKTS-FRONTEND-ANALYSIS.md) |
+| [PYTHON-FRONTEND-ANALYSIS.md](../tech/PYTHON-FRONTEND-ANALYSIS.md) | **加入 Python 3**：sidecar 驱动的运行时、这门语言有的那些命名空间，以及它们降成的 TAC 形状 | | [中文](tech/PYTHON-FRONTEND-ANALYSIS.md) |
+| [PHP-FRONTEND-ANALYSIS.md](../tech/PHP-FRONTEND-ANALYSIS.md) | **加入 PHP**：解析器自己的 AST、PHP 自己遵守的命名空间规则，以及 sink 目录匹配的限定被调用者名 | | [中文](tech/PHP-FRONTEND-ANALYSIS.md) |
 | [`DATA-FLOW.md`](../tech/DATA-FLOW.md) | **数据流分析**：引擎骨架、fact 域、污点 / 边界 / 指向 / 控制流四类分析、可空性三值语义、Z3 的真实作用、call graph 策略 | [中文](tech/DATA-FLOW.md) |
 | [`ENGINE-GAP-ANALYSIS.md`](../tech/ENGINE-GAP-ANALYSIS.md) | **实测差距清单**：配置里声明、但没有任何分析代码消费的引擎特性，以及按优先级排列的补齐工作清单 | [中文](tech/ENGINE-GAP-ANALYSIS.md) || [`CROSS-FUNCTION-ANALYSIS.md`](../tech/CROSS-FUNCTION-ANALYSIS.md) | 跨函数分析主干：summary 机制、调用图视角 | [中文](tech/CROSS-FUNCTION-ANALYSIS.md) |
 | [`CROSS-FUNCTION-OPERATION.md`](../tech/CROSS-FUNCTION-OPERATION.md) | `Operation` 体系：常量传播 / 指向 / null / 数值范围 / 副作用的 summary 侧与消费侧 | [中文](tech/CROSS-FUNCTION-OPERATION.md) |
