@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.plumb.dfa.config.ConfigLoader;
 import org.plumb.dfa.config.EngineConfig;
 import org.plumb.dfa.config.SinkFamily;
+import org.plumb.tac.ir.SourceLanguage;
 
 /**
  * R1100 regression gate: arg-index precedence between {@code sink-families.yaml} and the legacy
@@ -84,33 +85,54 @@ class R1100SinkArgIndexPrecedenceTest {
   @Test
   void everyMatchedPatternResolvesToAUsableArgIndex() {
     // The load-bearing half of the reachability argument: for every pattern in every shipped
-    // family, a callee that the pattern matches resolves to either a non-negative index or the
-    // explicit receiver sentinel. Neither value can reach the legacy sinkArgumentIndex hook,
-    // because TaintedCheckerBase.patternArgIndex returns both directly.
+    // family, a callee that the pattern matches resolves to a position the sink path can use.
+    // There are three such positions: a non-negative index, the receiver sentinel, and the
+    // last-argument sentinel. None of them can reach the legacy sinkArgumentIndex hook,
+    // because TaintedCheckerBase.patternArgIndex returns all three directly.
     //
     // The probe is derived from the pattern's own compiled regex rather than from a hand-written
     // parser: substitute a matching string for the arity group and ask the pattern to match it.
     // If the probe does not match its own pattern the probe is wrong, not the engine — so that is
     // a hard failure rather than a skip.
+    //
+    // The per-language buckets are walked too, and resolved WITH their language: a bucket's
+    // pattern is not in the family's shared table, so a language-neutral lookup would not find
+    // it, and the contract would hold for the shared patterns only.
     int probed = 0;
     for (SinkFamily f : ConfigLoader.loadFromClasspath().sinkFamilies().all()) {
       for (SinkFamily.SinkPattern p : f.patterns()) {
-        String probe = probeSignature(p);
-        if (probe == null) continue;
-        probed++;
-        assertThat(p.compiled().matcher(probe).find())
-            .as("probe %s must match its own pattern %s in family %s", probe, p.pattern(), f.name())
-            .isTrue();
-        int idx = f.argIndexFor(probe);
-        assertThat(idx == SinkFamily.RECEIVER_ARG_INDEX || idx >= 0)
-            .as(
-                "family %s resolved arg index %d for %s; only >= 0 or the receiver sentinel may"
-                    + " reach the sink path, anything else falls through to the legacy hook",
-                f.name(), idx, probe)
-            .isTrue();
+        probed += assertUsableArgIndex(f, p, null);
+      }
+      for (SourceLanguage language : f.languageRules().languages()) {
+        for (SinkFamily.SinkPattern p :
+            f.languageRules().patternsForExactly(language).orElse(java.util.List.of())) {
+          probed += assertUsableArgIndex(f, p, language);
+        }
       }
     }
     assertThat(probed).as("the probe must actually have exercised patterns").isGreaterThan(300);
+  }
+
+  /**
+   * Assert that the pattern's own probe resolves to a position the sink path can use, and report
+   * how many patterns were exercised.
+   */
+  private static int assertUsableArgIndex(
+      SinkFamily f, SinkFamily.SinkPattern p, SourceLanguage language) {
+    String probe = probeSignature(p);
+    if (probe == null) return 0;
+    assertThat(p.compiled().matcher(probe).find())
+        .as("probe %s must match its own pattern %s in family %s", probe, p.pattern(), f.name())
+        .isTrue();
+    int idx = language == null ? f.argIndexFor(probe) : f.argIndexFor(probe, language);
+    assertThat(idx == SinkFamily.RECEIVER_ARG_INDEX || idx == SinkFamily.LAST_ARG_INDEX || idx >= 0)
+        .as(
+            "family %s resolved arg index %d for %s; only >= 0, the receiver sentinel or the"
+                + " last-argument sentinel may reach the sink path, anything else falls through"
+                + " to the legacy hook",
+            f.name(), idx, probe)
+        .isTrue();
+    return 1;
   }
 
   /**
@@ -123,9 +145,22 @@ class R1100SinkArgIndexPrecedenceTest {
     int group = regex.lastIndexOf("(");
     if (group < 0) return null;
     // Keep the leading anchored literal name, which always ends in '.method'.
-    String head = regex.substring(0, group).replace("\\", "").replace("^", "");
-    if (!head.matches("[A-Za-z_$][A-Za-z0-9_$.]*\\.[A-Za-z_$][A-Za-z0-9_$]*")) return null;
-    return head + "/0";
+    //
+    // The escapes have to be UNESCAPED, not stripped. Deleting the backslash
+    // of a word boundary leaves the letter b, so the probe for
+    // `^builtins\.print\b(/\d+)?` used to be `builtins.printb/0` -- a probe
+    // its own pattern does not match, which says nothing about the pattern
+    // and fails the check for the wrong reason.
+    //
+    // A word boundary is a zero-width assertion, so dropping it leaves the
+    // text the pattern matches. An escaped dot is a separator of a dotted
+    // name. Any OTHER escape makes the head a regex rather than a name, and
+    // a name cannot be turned into a probe.
+    String head = regex.substring(0, group).replace("\\b", "").replace("\\.", ".");
+    if (head.contains("\\")) return null;
+    String plain = head.replace("^", "");
+    if (!plain.matches("[A-Za-z_$][A-Za-z0-9_$.]*\\.[A-Za-z_$][A-Za-z0-9_$]*")) return null;
+    return plain + "/0";
   }
 
   @Test

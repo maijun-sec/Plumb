@@ -170,6 +170,18 @@
                              appears. -->
                         <include>org/plumb/dfa/taint/TsSinkCatalogTest.java</include>
 
+                        <!-- The script languages' CONSTRUCTORS. The
+                             catalogue matches a callee signature, and a
+                             construction is a NEW whose key is
+                             `<Class>.<init>/<arity>`. The Function
+                             constructor takes the parameter names first
+                             and the body LAST, so its position is the
+                             last argument, and a tainted parameter NAME
+                             is not code, which is the half of the
+                             contract that keeps the rule from
+                             reporting it. -->
+                        <include>org/plumb/dfa/taint/ScriptConstructorSinkTest.java</include>
+
                         <!-- The Python rule layer. The catalogue names the
                              MODULE a function was imported from, so a rule
                              cannot claim every `loads` in a program:

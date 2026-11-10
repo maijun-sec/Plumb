@@ -1031,11 +1031,12 @@ sink_families:
 - **Kotlin 特有 sink** 需要新的 pattern：`kotlin.text.Regex#<init>`、`kotlin.io.readLine`、`kotlin.system.getenv`。
 - **Scala 特有 sink**：`scala.sys.process.ProcessBuilder#<init>`、`scala.util.matching.Regex#<init>`。
 
-**注意 `SinkPattern` 的两个既有语义（`SinkFamily.java:71-104`），新 pattern 必须遵守**：
-- **`argIndex` 语义**：`-1` = 用 family 默认值，`-2` (`RECEIVER_ARG_INDEX`) = 污染值在 receiver 上（如 `ObjectInputStream#readObject`），`>= 0` = 显式用户参数下标。Kotlin/Scala 的 sink 若污染值位置与 Java 版本不同，**必须显式指定 `argIndex`**。
+**注意 `SinkPattern` 的位置语义（`SinkFamily.java:59-148`），新 pattern 必须遵守**：
+- **`argIndex` 语义**：`-1` = 用 family 默认值，`-2` (`RECEIVER_ARG_INDEX`) = 污染值在 receiver 上（如 `ObjectInputStream#readObject`），`-3` (`LAST_ARG_INDEX`) = 污染值在最后一个用户参数上，`>= 0` = 显式用户参数下标。Kotlin/Scala 的 sink 若污染值位置与 Java 版本不同，**必须显式指定 `argIndex`**。
+- **最后一个参数哨兵是为「位置取决于调用点传了几个实参」的 sink 准备的**：JavaScript 的 `Function` 构造器把参数名放在前面、函数体放在最后，所以代码永远在最后一个参数上；写死下标要么漏掉除第一个以外的所有函数体，要么把被污染的参数名当成代码上报。哨兵是拿调用点自己的实参表解析的，而调用把 receiver 放在第一个槽、构造器的槽就是用户实参，所以同一个声明在两种形态上落在不同的槽。
 - **relaxed form 自动派生**：`SinkPattern.relaxedForm()` 会把 `^fully\.qualified\.Class\.method` 里的**包前缀变可选**，但**类名和方法名必须保留**。这意味着 `^kotlin\.text\.Regex\.<init>` 的 relaxed 形式是 `^(?:[\w.]+\.)?Regex\.<init>`——它**不会**误匹配 `java.util.regex.Pattern.compile`（方法名不同），但**会**匹配任何包下的 `Regex.<init>`。这是可接受的（`Regex.<init>` 确实是 sink），但需要知道。
 
-> 这两条语义对 Kotlin/Scala 尤其重要：Kotlin 的 `Regex`、`ProcessBuilder` 等类名在 relaxed 模式下可能与第三方库的同名类冲突。**加新 pattern 后必须跑一遍"该 pattern 是否会误匹配"的验证**。
+> 这几条语义对 Kotlin/Scala 尤其重要：Kotlin 的 `Regex`、`ProcessBuilder` 等类名在 relaxed 模式下可能与第三方库的同名类冲突。**加新 pattern 后必须跑一遍"该 pattern 是否会误匹配"的验证**。
 
 ### 4.2 `TaintRule`：加一个 `languages` 字段
 

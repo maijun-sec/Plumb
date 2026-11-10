@@ -65,10 +65,64 @@ public final class SinkFamily {
   public static final int RECEIVER_ARG_INDEX = -2;
 
   /**
+   * Sentinel {@code argIndex} meaning "the tainted value is the LAST user argument".
+   *
+   * <p>Distinct from {@code -1} ("use the family default"), from {@link #RECEIVER_ARG_INDEX}
+   * ({@code -2}, "the receiver") and from any valid user-arg index ({@code >= 0}).
+   *
+   * <h2>why a sink needs it</h2>
+   *
+   * <p>A sink whose tainted value sits at a position that depends on HOW MANY arguments the call
+   * passed cannot be written as a fixed index. The motivating case is the JavaScript {@code
+   * Function} constructor: {@code new Function(body)} takes the body as its only argument, while
+   * {@code new Function(a, b, body)} takes the parameter names FIRST and the body LAST. The code is
+   * always the last argument, and the argument before it is a parameter NAME -- naming it as the
+   * sink position would report every {@code new Function("x", tainted)} as code injection when the
+   * tainted value is only a parameter name.
+   *
+   * <p>Enumerating the arities instead does not work either: the number of parameters is the
+   * caller's choice, so the list of shapes is unbounded.
+   *
+   * <h2>where it is resolved</h2>
+   *
+   * <p>The position can only be resolved where the argument list is known, which is the engine's
+   * sink check -- NOT here: a family is asked for the positions of a callee SIGNATURE, and a
+   * signature does not say how many arguments the call site passed. The engine resolves the
+   * sentinel against the call's own argument list.
+   */
+  public static final int LAST_ARG_INDEX = -3;
+
+  /**
+   * Resolve a position the catalogue declares against a call's own argument list.
+   *
+   * <p>This is the ONE place the sentinels are turned into an argument slot, because the two places
+   * that consume them disagree about what the slots mean: a CALL keeps its receiver in the first
+   * slot, and a constructor's argument list IS the argument list.
+   *
+   * @param declaredIndex the position the catalogue declares: a user-arg index ({@code >= 0}), the
+   *     receiver sentinel, or the last-argument sentinel
+   * @param argCount how many argument slots the call has
+   * @param receiverSlot true when the first slot holds the receiver (a CALL), false when the slots
+   *     ARE the user arguments (a constructor)
+   * @return the user-visible argument index; {@link #RECEIVER_ARG_INDEX} when the declared position
+   *     is the receiver; {@code -1} when the declared position does not exist in this call
+   */
+  public static int resolveUserArgIndex(int declaredIndex, int argCount, boolean receiverSlot) {
+    if (declaredIndex == RECEIVER_ARG_INDEX) return RECEIVER_ARG_INDEX;
+    if (declaredIndex == LAST_ARG_INDEX) {
+      // The receiver slot is not a user argument, so it does not count towards the last one.
+      int lastUserArg = argCount - 1 - (receiverSlot ? 1 : 0);
+      return lastUserArg < 0 ? -1 : lastUserArg;
+    }
+    return declaredIndex;
+  }
+
+  /**
    * One pattern in a {@link SinkFamily}. The regex matches as a substring (via {@link
    * java.util.regex.Matcher#find()}) of the callee signature. {@code argIndex} names the
    * user-visible Java argument index that carries the tainted value: {@code -1} means "use the
-   * family default", and {@link #RECEIVER_ARG_INDEX} ({@code -2}) means "the receiver".
+   * family default", {@link #RECEIVER_ARG_INDEX} ({@code -2}) means "the receiver", and {@link
+   * #LAST_ARG_INDEX} ({@code -3}) means "the last user argument".
    *
    * <h2>several tainted argument positions</h2>
    *
@@ -94,7 +148,7 @@ public final class SinkFamily {
    */
   public static final class SinkPattern {
     private final String pattern;
-    private final int argIndex; // -1 = use family default, -2 = receiver
+    private final int argIndex; // -1 = use family default, -2 = receiver, -3 = last argument
 
     /**
      * Every argument position this pattern names as carrying the taint.
@@ -327,7 +381,8 @@ public final class SinkFamily {
 
     /**
      * Returns the user-arg index this pattern uses, {@link #RECEIVER_ARG_INDEX} when the tainted
-     * value is the receiver, or {@code -1} if it falls back to the family default.
+     * value is the receiver, {@link #LAST_ARG_INDEX} when it is the last argument, or {@code -1} if
+     * it falls back to the family default.
      */
     public int argIndex() {
       return argIndex;
@@ -338,8 +393,16 @@ public final class SinkFamily {
       return argIndex == RECEIVER_ARG_INDEX;
     }
 
+    /**
+     * True when this pattern explicitly names the tainted value's position.
+     *
+     * <p>The sentinels count: the receiver and the last argument are positions the pattern names,
+     * not instructions to look one up. Treating the last-argument sentinel as "unset" would send
+     * the call to the family default -- the FIRST argument -- which for a constructor whose code is
+     * the last argument names the parameter instead of the body.
+     */
     public boolean hasExplicitArgIndex() {
-      return argIndex >= 0 || argIndex == RECEIVER_ARG_INDEX;
+      return argIndex >= 0 || argIndex == RECEIVER_ARG_INDEX || argIndex == LAST_ARG_INDEX;
     }
 
     public Pattern compiled() {

@@ -338,7 +338,7 @@ null 会互相 alias，污染 `mayAlias`）：
 
 ## 5. Z3：只做误报过滤
 
-Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:4920`，位于 sink 上报路径上。
+Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:4929`，位于 sink 上报路径上。
 
 可达性判定在**一个**地方完成，`TaintedCheckerBase.isPathSuppressed`，位于 sink 上报路径上。
 两条 sink 路径都经过它：CALL 路径和构造器路径（`checkSinkAtNew`）——
@@ -367,7 +367,7 @@ if (!composed.isEmpty()) {
 而函数中不同位置记录的两个守卫，在 sink 处也不同时成立。这两条限制都是为了保证
 这个判定不会抑制一个真实存在的 finding。
 
-- `pathConditionForSink`（`:4880`）在基类里就有实现：把那对冲突的守卫作为谓词返回，
+- `pathConditionForSink`（`:4889`）在基类里就有实现：把那对冲突的守卫作为谓词返回，
   这样读 finding 的人能看出它为什么被抑制。子类可以覆写它，提供求解器能求值的谓词。
 - 语义明确：这个判定**只用于抑制误报，绝不用于发现缺陷**（`:3237`）
 - 调用链：`CachedZ3Bridge`（LRU 4096 项，`solver/CachedZ3Bridge.java:41-66`）→

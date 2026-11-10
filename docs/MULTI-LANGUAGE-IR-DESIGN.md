@@ -1031,11 +1031,12 @@ sink_families:
 - **Kotlin-specific sinks** need new patterns: `kotlin.text.Regex#<init>`, `kotlin.io.readLine`, `kotlin.system.getenv`.
 - **Scala-specific sinks**: `scala.sys.process.ProcessBuilder#<init>`, `scala.util.matching.Regex#<init>`.
 
-**Note the two existing semantics of `SinkPattern` (`SinkFamily.java:71-104`); new patterns must obey them**:
-- **The `argIndex` semantics**: `-1` = use the family's default, `-2` (`RECEIVER_ARG_INDEX`) = the tainted value is on the receiver (as in `ObjectInputStream#readObject`), `>= 0` = the explicit index of a user argument. If a Kotlin/Scala sink has the tainted value at a different position than the Java version, **`argIndex` must be specified explicitly**.
+**Note the position semantics of `SinkPattern` (`SinkFamily.java:59-148`); new patterns must obey them**:
+- **The `argIndex` semantics**: `-1` = use the family's default, `-2` (`RECEIVER_ARG_INDEX`) = the tainted value is on the receiver (as in `ObjectInputStream#readObject`), `-3` (`LAST_ARG_INDEX`) = the tainted value is the LAST user argument, `>= 0` = the explicit index of a user argument. If a Kotlin/Scala sink has the tainted value at a different position than the Java version, **`argIndex` must be specified explicitly**.
+- **The last-argument sentinel is for a sink whose position depends on how many arguments the call passed**: the JavaScript `Function` constructor takes the parameter NAMES first and the body last, so the code is always the last argument, and a fixed index would either miss every body but the first or report a tainted parameter name as code. The sentinel is resolved against the call's OWN argument list, and a call keeps its receiver in the first slot while a construction's slots ARE the user arguments, so the same declaration lands on different slots in the two.
 - **The relaxed form is derived automatically**: `SinkPattern.relaxedForm()` makes the **package prefix** of `^fully\.qualified\.Class\.method` optional, but **the class name and the method name must be kept**. This means the relaxed form of `^kotlin\.text\.Regex\.<init>` is `^(?:[\w.]+\.)?Regex\.<init>` — it **does not** falsely match `java.util.regex.Pattern.compile` (the method name differs), but it **does** match `Regex.<init>` under any package. That is acceptable (`Regex.<init>` really is a sink), but it has to be known.
 
-> These two semantics are especially important for Kotlin/Scala: class names such as Kotlin's `Regex` or `ProcessBuilder` may collide with same-named classes from third-party libraries in relaxed mode. **After adding a new pattern you must run a "will this pattern falsely match" validation.**
+> These semantics are especially important for Kotlin/Scala: class names such as Kotlin's `Regex` or `ProcessBuilder` may collide with same-named classes from third-party libraries in relaxed mode. **After adding a new pattern you must run a "will this pattern falsely match" validation.**
 
 ### 4.2 `TaintRule`: add one `languages` field
 

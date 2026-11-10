@@ -4460,7 +4460,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // +1 receiver offset.
     for (int javaArgIdx : javaArgIndexes) {
       if (javaArgIdx == SinkFamily.RECEIVER_ARG_INDEX) continue;
-      checkSinkForCtorAtArg(ins, fn, ctx, family, calleeSig, javaArgIdx);
+      // The NEW args ARE the constructor argument list, so there is no receiver
+      // slot to skip: the declared position resolves straight onto the slots.
+      int userArgIdx = SinkFamily.resolveUserArgIndex(javaArgIdx, ins.args.size(), false);
+      if (userArgIdx < 0) continue;
+      checkSinkForCtorAtArg(ins, fn, ctx, family, calleeSig, userArgIdx);
     }
   }
 
@@ -4595,9 +4599,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // was registered but structurally unreachable.
     for (int javaArgIdx : javaArgIndexes) {
       boolean receiverTainted = javaArgIdx == SinkFamily.RECEIVER_ARG_INDEX;
-      int argIdx = receiverTainted ? 0 : javaArgIdx + 1;
+      // The declared position is resolved against the call's OWN argument list: the
+      // LAST_ARG sentinel names the last user argument, and the receiver slot is
+      // not a user argument.
+      int userArgIdx = SinkFamily.resolveUserArgIndex(javaArgIdx, ins.args.size(), true);
+      if (!receiverTainted && userArgIdx < 0) continue;
+      int argIdx = receiverTainted ? 0 : userArgIdx + 1;
       if (argIdx < 0 || argIdx >= ins.args.size()) continue;
-      checkSinkAtArg(ins, fn, ctx, family, calleeSig, javaArgIdx, argIdx, receiverTainted);
+      checkSinkAtArg(ins, fn, ctx, family, calleeSig, userArgIdx, argIdx, receiverTainted);
     }
   }
 
@@ -6165,7 +6174,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // for a zero-argument sink like ObjectInputStream#readObject() that indexes
     // past the end of an empty argument list. The whole feature was inert.
     // Accept the sentinel explicitly.
-    if (fromFamily >= 0 || fromFamily == SinkFamily.RECEIVER_ARG_INDEX) return fromFamily;
+    if (fromFamily >= 0
+        || fromFamily == SinkFamily.RECEIVER_ARG_INDEX
+        || fromFamily == SinkFamily.LAST_ARG_INDEX) {
+      return fromFamily;
+    }
     // Family doesn't know about this callee, OR
     // the matching pattern's arg_index is unset.
     // Fall back to the checker override.
@@ -6187,7 +6200,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private int patternArgIndex(
       SinkFamily family, String calleeSig, TacInstruction call, SourceLanguage language) {
     int fromFamily = family.argIndexFor(calleeSig, language);
-    if (fromFamily >= 0 || fromFamily == SinkFamily.RECEIVER_ARG_INDEX) return fromFamily;
+    if (fromFamily >= 0
+        || fromFamily == SinkFamily.RECEIVER_ARG_INDEX
+        || fromFamily == SinkFamily.LAST_ARG_INDEX) {
+      return fromFamily;
+    }
     return sinkArgumentIndex(family, call);
   }
 

@@ -729,6 +729,14 @@ families:
         # `evaluate` and `evalSync` out.
         - pattern: '^<unknown>\.eval\b(/\d+)?'
           arg_index: 0
+        # The Function constructor builds a function from a STRING, which is
+        # eval under a different spelling. Its arguments are the parameter
+        # NAMES first and the BODY last, so the code is the LAST argument and
+        # the parameter names are not code at all. Naming argument 0 instead
+        # would report `new Function("x", tainted)` -- where the tainted value
+        # is only a parameter name -- as code injection.
+        - pattern: '^Function\.\<init\>(/\d+)?'
+          arg_index: -3
       python3:
         # The builtins that evaluate code. Their owner is `builtins`,
         # because that is the module Python itself provides them from.
@@ -5431,6 +5439,12 @@ families:
       # The pattern is the first argument; preg_quote is absent for the
       # same reason.
       - pattern: '^\\preg_(match|match_all|replace|replace_callback|filter|grep)\b(/\d+)?'
+        arg_index: 0
+      typescript,javascript,arkts:
+      # The PATTERN is the first argument of the constructor; the second one
+      # is the flags. A pattern the caller chose is the ReDoS risk, the same
+      # way a tainted java.util.regex.Pattern.compile is.
+      - pattern: '^RegExp\.\<init\>(/\d+)?'
         arg_index: 0
 
   resource-injection.sinks:
