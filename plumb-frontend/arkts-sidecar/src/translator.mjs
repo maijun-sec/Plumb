@@ -1815,13 +1815,23 @@ function mapType(type) {
  * would come out as a call on the FILE's module. The class name is what the
  * owner of a method call has to be, because a catalogue names the class it can
  * recognise.
+ *
+ * <p><b>Why the object-type guard is ASKED FOR, not called.</b> This compiler's
+ * build does not implement `isObjectType()` on a type at all -- asking for it
+ * throws. The throw was swallowed by the catch below, and the effect was the
+ * one the paragraph above describes, in every class of the language: an
+ * instance's type came out as `Object`, so a method call on it was keyed by
+ * the FILE's module instead of the class that owns the method. The guard is a
+ * safety net rather than a filter -- `mapType` only calls this for a type
+ * whose flags already say it is an object -- so it is asked for only when the
+ * compiler has it.
  */
 function classNameOf(type) {
   if (!type) {
     return undefined;
   }
   try {
-    if (!type.isObjectType()) {
+    if (typeof type.isObjectType === "function" && !type.isObjectType()) {
       return undefined;
     }
     const symbol = type.getSymbol();

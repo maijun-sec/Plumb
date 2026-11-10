@@ -59,6 +59,22 @@ export function run(text: string): void {
 }
 `;
 
+/**
+ * A third probe program: a receiver with NO class to name.
+ *
+ * <p>A receiver whose type is `any` has no class the compiler can report, so
+ * the owner of a call on it falls back to the file the call is written in.
+ * That fallback is what a catalogue sees, so it is pinned here rather than
+ * left to chance -- and it is a DIFFERENT fact from the one above, which is
+ * that a receiver whose class the compiler CAN name is named by that class.
+ */
+const NO_CLASS_SOURCE = `
+export function run(text: string): void {
+  const holder: any = text;
+  holder.method(text);
+}
+`;
+
 /** Fail the test with a message. */
 function fail(message) {
   console.error(`FAIL: ${message}`);
@@ -103,6 +119,8 @@ async function main() {
   writeFileSync(file, SOURCE, "utf8");
   const moduleFile = join(dir, "Modules.ets");
   writeFileSync(moduleFile, MODULE_SOURCE, "utf8");
+  const noClassFile = join(dir, "NoClass.ets");
+  writeFileSync(noClassFile, NO_CLASS_SOURCE, "utf8");
 
   const child = spawn(process.execPath, [join(here, "src", "main.mjs")], {
     stdio: ["pipe", "pipe", "inherit"],
@@ -139,7 +157,7 @@ async function main() {
         irVersion: IR_VERSION,
         projectId: "smoke",
         sourceRoot: dir,
-        sources: [{ path: file }, { path: moduleFile }],
+        sources: [{ path: file }, { path: moduleFile }, { path: noClassFile }],
       }),
     );
     response = JSON.parse(await readFrame(child.stdout));
@@ -179,19 +197,20 @@ async function main() {
 
     const instructions = render.instructions;
 
-    // A method call names the class of its receiver. When the compiler does
-    // not name one -- the receiver is an untyped global, and this compiler
-    // does not load the DOM declarations -- the owner falls back to the file
-    // the call is written in. That fallback is what a catalogue sees, so it
-    // is pinned here rather than left to chance.
+    // A method call names the class of its receiver. The class is what the
+    // sink catalogue names, so a front end that fell back to the file's
+    // module would produce TAC that matches nothing -- and a scan of a
+    // vulnerable program that reports it clean. The sibling side car names
+    // the same class for the same call, so one catalogue entry serves both
+    // languages.
     const consoleCall = instructions.find(
       (i) =>
         i.kind === "CALL" && typeof i.calleeSig === "string" && i.calleeSig.includes(".log/"),
     );
     check(!!consoleCall, "the call to the console must be in the stream");
     check(
-      consoleCall.calleeSig.startsWith("Page.log/"),
-      `a receiver with no class name falls back to the file's module: ${consoleCall.calleeSig}`,
+      consoleCall.calleeSig.startsWith("Console.log/"),
+      `a method call must name the class of its receiver: ${consoleCall.calleeSig}`,
     );
 
 
@@ -299,6 +318,36 @@ async function main() {
     check(
       !signatures.some((s) => s.startsWith("Modules.")),
       `the file's own name must not stand in for the module: ${JSON.stringify(signatures)}`,
+    );
+
+    // A receiver with NO class to name falls back to the file the call is
+    // written in. That is the other half of the rule above: a receiver whose
+    // class the compiler CAN name is named by that class, and one it cannot
+    // name is named by the file. Both are what a catalogue sees, so both are
+    // pinned here.
+    writeFrame(
+      child.stdin,
+      JSON.stringify({
+        op: OP.TRANSLATE,
+        protocolVersion: PROTOCOL_VERSION,
+        irVersion: IR_VERSION,
+        path: noClassFile,
+        language: "ARKTS",
+      }),
+    );
+    response = JSON.parse(await readFrame(child.stdout));
+    check(response.ok === true, `the file must translate: ${response.error ?? ""}`);
+
+    const noClassRun = (response.functions ?? []).find((f) => f.name === "run");
+    check(!!noClassRun, "the function whose receiver has no class must be in the stream");
+    const noClassSignatures = (noClassRun.instructions ?? [])
+      .filter((i) => i.kind === "CALL" || i.kind === "UNINTERPRETED")
+      .map((i) => i.calleeSig);
+    check(
+      noClassSignatures.some((s) => s.startsWith("NoClass.method/")),
+      `a receiver with no class name falls back to the file's module: ${JSON.stringify(
+        noClassSignatures,
+      )}`,
     );
 
     // A binary operator is a BINOP, not an unknown value. A lookup that

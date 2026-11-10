@@ -129,7 +129,11 @@ class TsSidecarEndToEndTest {
               .filter(i -> i.kind == TacInstruction.Kind.CALL)
               .findFirst()
               .orElseThrow(() -> new AssertionError("the call is not in the stream"));
-      assertThat(call.calleeSig).contains("find/1");
+      assertThat(call.calleeSig)
+          .as(
+              "the owner of a method call is the class that owns the method, so a catalogue can"
+                  + " name it")
+          .isEqualTo("UserStore.find/1");
       assertThat(call.args).hasSizeGreaterThanOrEqualTo(2);
       assertThat(((TacOperand.TacVar) call.args.get(0)).name())
           .as("the receiver comes first")

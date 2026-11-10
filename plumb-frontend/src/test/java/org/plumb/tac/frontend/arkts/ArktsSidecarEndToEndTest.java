@@ -36,6 +36,7 @@ import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
+import org.plumb.tac.ir.TacType;
 
 /**
  * The ArkTS frontend, end to end: the Java side, the Node sidecar and the compiler itself.
@@ -165,6 +166,87 @@ class ArktsSidecarEndToEndTest {
       if (result.problems().isEmpty()) {
         assertThat(result.precision()).isEqualTo(IrPrecision.SOURCE_FULL);
       }
+    }
+  }
+
+  /**
+   * A method call names the class that owns it.
+   *
+   * <p><b>Why this is pinned here.</b> The sink catalogue matches a callee signature, and the owner
+   * of a method call is the CLASS the method belongs to -- {@code Greeter.greet/0}, not {@code
+   * greet/0} and not {@code page.greet/0}. So when the sidecar cannot name the class, every
+   * catalogue entry that names a class is dead in this language, while an entry that names a module
+   * claims calls it was never written for. The name has to be right for the catalogue to mean
+   * anything, and the catalogue is the other side of this boundary.
+   *
+   * <p><b>Why it used to be wrong here and not in the sibling sidecar.</b> The name is read off the
+   * compiler's type, and the two sidecars sit on two different compiler builds. The ArkTS build
+   * does not implement the accessor the read asks for, so asking for it threw; the throw was
+   * swallowed, and EVERY class in the language came out as the base type -- so a method call on an
+   * instance was keyed by the FILE's module. Measured against the real sidecar before the fix:
+   * {@code Greeter.greet/0} came out as {@code page.greet/0}, and a construction carried the base
+   * type instead of the class it built.
+   *
+   * <p><b>Why the construction's type is the same defect seen from the other side.</b> It is what
+   * the engine propagates a taint by, so a base type there loses the class the taint belongs to.
+   */
+  @Test
+  @DisplayName("a method call names the class that owns it")
+  void aMethodCallNamesTheClassThatOwnsIt(@TempDir Path directory) throws IOException {
+    String source =
+        """
+        export class Greeter {
+          name: string;
+          constructor(name: string) { this.name = name; }
+          greet(): string { return this.name; }
+        }
+
+        export function handle(input: string): string {
+          const greeter = new Greeter(input);
+          return greeter.greet();
+        }
+        """;
+    Files.writeString(directory.resolve("build-profile.json5"), "{}\n");
+    Path file = directory.resolve("page.ets");
+    Files.writeString(file, source);
+
+    try (ArktsTacFrontend frontend = new ArktsTacFrontend(SourceLanguage.ARKTS)) {
+      assumeTrue(
+          sidecarAvailable(),
+          "the ArkTS front end needs Node and the sidecar's own compiler dependency: run npm ci in"
+              + " plumb-frontend/arkts-sidecar");
+
+      TacFrontend.ParseResult result = frontend.parse(source, file, null);
+      assertThat(result.problems()).isEmpty();
+
+      TacFunction handle = find(result, "handle");
+      assertThat(handle).as("the module's function must be in the stream").isNotNull();
+
+      TacInstruction construction =
+          handle.instructions().stream()
+              .filter(i -> i.kind == TacInstruction.Kind.NEW)
+              .findFirst()
+              .orElseThrow(() -> new AssertionError("the construction is not in the stream"));
+      assertThat(construction.calleeSig)
+          .as("the construction names the class it constructs")
+          .isEqualTo("Greeter.<init>/1");
+      assertThat(construction.ctorType)
+          .as("the construction must carry the type it built")
+          .isNotNull();
+      assertThat(construction.ctorType.kind()).isEqualTo(TacType.Kind.CLASS);
+      assertThat(construction.ctorType.className())
+          .as("a construction carries the class it built, not the base type")
+          .isEqualTo("Greeter");
+
+      TacInstruction call =
+          handle.instructions().stream()
+              .filter(i -> i.kind == TacInstruction.Kind.CALL)
+              .filter(i -> i.calleeSig != null && i.calleeSig.contains(".greet/"))
+              .findFirst()
+              .orElseThrow(() -> new AssertionError("the method call is not in the stream"));
+      assertThat(call.calleeSig)
+          .as("the owner of a method call is the class that owns the method, not the file's module")
+          .isEqualTo("Greeter.greet/0");
     }
   }
 
