@@ -27,6 +27,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -280,6 +281,81 @@ class PythonSidecarEndToEndTest {
               "the owner of a class this module declares is degraded: a file whose name looks like "
                   + "a framework module must not produce a key the catalogue can claim")
           .startsWith("<unknown>.");
+    }
+  }
+
+  /**
+   * A keyword argument does not count towards the key's arity.
+   *
+   * <p><b>Why the catalogue has to know this.</b> A pattern that names a callee can also name its
+   * arity, and the arity in the key is NOT the number of arguments the call passed. Python's side
+   * car counts only the POSITIONAL arguments: a keyword argument is lowered into the argument list
+   * like any other, but it does not count towards the key.
+   *
+   * <p>Measured against the real side car: {@code dict(request)} is {@code builtins.dict/1} and
+   * {@code dict(a=request)} is {@code builtins.dict/0} -- and both put the value at the same place
+   * in the argument list, with the same one user argument. So a pattern that insists on the arity
+   * claims one spelling and not the other, and the finding it was written for disappears for half
+   * the call sites.
+   *
+   * <p><b>Why the arity in the key cannot stand in for the argument count.</b> That is not only a
+   * quirk of keyword arguments: the count in the key is a name the catalogue matches on, and the
+   * count that decides where the tainted value lands is in the argument LIST. A catalogue entry
+   * computes its position from the list, never from the key.
+   */
+  @Test
+  @DisplayName("a keyword argument does not count towards the key's arity")
+  void aKeywordArgumentDoesNotCountTowardsTheKeyArity(@TempDir Path directory) throws IOException {
+    String source =
+        """
+        def handle(request):
+            positional = dict(request)
+            keyword = dict(a=request)
+            return positional, keyword
+        """;
+    Files.writeString(directory.resolve("pyproject.toml"), "[project]\nname = \"app\"\n");
+    Path file = directory.resolve("app.py");
+    Files.writeString(file, source);
+
+    try (PythonTacFrontend frontend = new PythonTacFrontend()) {
+      assumeTrue(
+          sidecarAvailable(),
+          "the Python front end needs a Python 3 interpreter on the PATH (the sidecar imports only"
+              + " the standard library, so there is nothing to install into it)");
+
+      TacFrontend.ParseResult result = frontend.parse(source, file, null);
+      assertThat(result.problems()).isEmpty();
+
+      TacFunction handle = find(result, "handle");
+      assertThat(handle).as("the module's function must be in the stream").isNotNull();
+
+      List<TacInstruction> calls =
+          handle.instructions().stream()
+              .filter(i -> i.kind == TacInstruction.Kind.CALL)
+              .filter(i -> i.calleeSig != null && i.calleeSig.startsWith("builtins.dict/"))
+              .toList();
+      assertThat(calls).as("both calls must be in the stream").hasSize(2);
+
+      assertThat(calls)
+          .extracting(i -> i.calleeSig)
+          .as(
+              "the positional argument counts towards the arity and the keyword argument does"
+                  + " not, so the two spellings of the same call have two different keys")
+          .containsExactlyInAnyOrder("builtins.dict/1", "builtins.dict/0");
+
+      TacInstruction keywordCall =
+          calls.stream()
+              .filter(i -> "builtins.dict/0".equals(i.calleeSig))
+              .findFirst()
+              .orElseThrow(() -> new AssertionError("the keyword call is not in the stream"));
+      assertThat(keywordCall.args)
+          .as(
+              "the value is in the argument list all the same -- the receiver slot and the one"
+                  + " user argument -- so the two calls are the same finding")
+          .hasSize(2);
+      assertThat(keywordCall.args.get(1))
+          .as("the user argument is at args[1], where a call's first argument always is")
+          .isInstanceOf(TacOperand.TacVar.class);
     }
   }
 
