@@ -64,6 +64,35 @@ class MultiLanguageIrContractTest {
     }
 
     @Test
+    @DisplayName("parse() maps the dynamic-type languages and their aliases")
+    void parsesTheDynamicTypeLanguages() {
+      // These names are what a rule catalogue writes in its `languages:` list, so
+      // a typo here would silently make the rule apply to no language at all --
+      // which reads as "the rule found nothing" rather than as an error.
+      assertThat(SourceLanguage.parse("javascript")).isEqualTo(SourceLanguage.JAVASCRIPT);
+      assertThat(SourceLanguage.parse("js")).isEqualTo(SourceLanguage.JAVASCRIPT);
+      assertThat(SourceLanguage.parse("ecmascript")).isEqualTo(SourceLanguage.JAVASCRIPT);
+      assertThat(SourceLanguage.parse("typescript")).isEqualTo(SourceLanguage.TYPESCRIPT);
+      assertThat(SourceLanguage.parse("ts")).isEqualTo(SourceLanguage.TYPESCRIPT);
+      assertThat(SourceLanguage.parse("arkts")).isEqualTo(SourceLanguage.ARKTS);
+      assertThat(SourceLanguage.parse("ets")).isEqualTo(SourceLanguage.ARKTS);
+      assertThat(SourceLanguage.parse("python3")).isEqualTo(SourceLanguage.PYTHON3);
+      assertThat(SourceLanguage.parse("py3")).isEqualTo(SourceLanguage.PYTHON3);
+      assertThat(SourceLanguage.parse("python")).isEqualTo(SourceLanguage.PYTHON3);
+      assertThat(SourceLanguage.parse("php")).isEqualTo(SourceLanguage.PHP);
+    }
+
+    @Test
+    @DisplayName("Python 2 is not a language Plumb accepts")
+    void python2IsNotAccepted() {
+      // There is no PYTHON2 constant, and "python2" must not quietly become
+      // PYTHON3: a Python 2 file has a different grammar, so parsing it with
+      // the Python 3 rules would produce a file that does not parse.
+      assertThat(SourceLanguage.parse("python2")).isEqualTo(SourceLanguage.UNKNOWN);
+      assertThat(SourceLanguage.parse("py2")).isEqualTo(SourceLanguage.UNKNOWN);
+    }
+
+    @Test
     @DisplayName("an unrecognised language is UNKNOWN, never JAVA")
     void unknownNeverBecomesJava() {
       // This matters: if an unknown language silently became JAVA, the Java-specific rules
@@ -86,6 +115,16 @@ class MultiLanguageIrContractTest {
       // true here -- the answer would let the null-dereference checker suppress
       // findings that are entirely real.
       assertThat(SourceLanguage.CSHARP.hasNonNullTypeSystem()).isFalse();
+      // The dynamic-type languages have no non-null guarantee either: `null` and
+      // `undefined` are ordinary values in JavaScript, `None` is an ordinary value
+      // of every Python type, and PHP's `null` is too. ArkTS forbids `any` but
+      // still has no non-null type system, and TypeScript's `strictNullChecks` is
+      // a compiler option rather than a property of the language.
+      assertThat(SourceLanguage.JAVASCRIPT.hasNonNullTypeSystem()).isFalse();
+      assertThat(SourceLanguage.TYPESCRIPT.hasNonNullTypeSystem()).isFalse();
+      assertThat(SourceLanguage.ARKTS.hasNonNullTypeSystem()).isFalse();
+      assertThat(SourceLanguage.PYTHON3.hasNonNullTypeSystem()).isFalse();
+      assertThat(SourceLanguage.PHP.hasNonNullTypeSystem()).isFalse();
       assertThat(SourceLanguage.UNKNOWN.hasNonNullTypeSystem()).isFalse();
     }
 
@@ -98,7 +137,38 @@ class MultiLanguageIrContractTest {
       // C# is statically typed, so it supports the full dataflow analysis.
       assertThat(SourceLanguage.CSHARP.supportsFullDataflow()).isTrue();
       assertThat(SourceLanguage.GROOVY.supportsFullDataflow()).isFalse();
+      // The dynamic-type languages answer false: their types are not known at the
+      // point of use, so the engine may not claim that a receiver is of a given
+      // type -- doing so would make it skip a target it could not resolve.
+      assertThat(SourceLanguage.JAVASCRIPT.supportsFullDataflow()).isFalse();
+      assertThat(SourceLanguage.TYPESCRIPT.supportsFullDataflow()).isFalse();
+      assertThat(SourceLanguage.ARKTS.supportsFullDataflow()).isFalse();
+      assertThat(SourceLanguage.PYTHON3.supportsFullDataflow()).isFalse();
+      assertThat(SourceLanguage.PHP.supportsFullDataflow()).isFalse();
       assertThat(SourceLanguage.UNKNOWN.supportsFullDataflow()).isFalse();
+    }
+
+    @Test
+    @DisplayName("only the languages with string-keyed subscripts have keyed containers")
+    void onlyTheDynamicFamilyHasKeyedContainers() {
+      // In these five languages a subscript names an ENTRY of a namespace, and the key
+      // is a string: JavaScript's `obj[k]`, Python's `d[k]`, PHP's `$a[$k]`.
+      assertThat(SourceLanguage.JAVASCRIPT.hasKeyedContainers()).isTrue();
+      assertThat(SourceLanguage.TYPESCRIPT.hasKeyedContainers()).isTrue();
+      assertThat(SourceLanguage.ARKTS.hasKeyedContainers()).isTrue();
+      assertThat(SourceLanguage.PYTHON3.hasKeyedContainers()).isTrue();
+      assertThat(SourceLanguage.PHP.hasKeyedContainers()).isTrue();
+      // The languages already supported answer false, and the answer is load-bearing:
+      // their subscripts are ARRAY POSITIONS, and their map-like containers are
+      // reached through a CALL rather than through a subscript. Answering true would
+      // change how their existing findings are computed.
+      assertThat(SourceLanguage.JAVA.hasKeyedContainers()).isFalse();
+      assertThat(SourceLanguage.KOTLIN.hasKeyedContainers()).isFalse();
+      assertThat(SourceLanguage.SCALA.hasKeyedContainers()).isFalse();
+      assertThat(SourceLanguage.GROOVY.hasKeyedContainers()).isFalse();
+      assertThat(SourceLanguage.CSHARP.hasKeyedContainers()).isFalse();
+      assertThat(SourceLanguage.GO.hasKeyedContainers()).isFalse();
+      assertThat(SourceLanguage.UNKNOWN.hasKeyedContainers()).isFalse();
     }
 
     @Test
@@ -120,6 +190,11 @@ class MultiLanguageIrContractTest {
               SourceLanguage.GROOVY,
               SourceLanguage.CSHARP,
               SourceLanguage.GO,
+              SourceLanguage.JAVASCRIPT,
+              SourceLanguage.TYPESCRIPT,
+              SourceLanguage.ARKTS,
+              SourceLanguage.PYTHON3,
+              SourceLanguage.PHP,
               SourceLanguage.UNKNOWN);
     }
 

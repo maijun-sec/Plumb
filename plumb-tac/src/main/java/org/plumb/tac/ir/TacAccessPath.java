@@ -203,6 +203,20 @@ public final class TacAccessPath implements java.io.Serializable {
   }
 
   /**
+   * A path rooted at a variable, extended by a map entry whose key is not statically known.
+   *
+   * <p>The hint names the key EXPRESSION, so a report can say which subscript reached the entry.
+   */
+  public TacAccessPath withLazyMapKey(String hint) {
+    return with(new LazyMapKey(hint));
+  }
+
+  /** A path rooted at a variable, extended by "every entry of the map". */
+  public TacAccessPath withMapKeySet() {
+    return with(new MapKeySet());
+  }
+
+  /**
    * This path, with an alias barrier at its end.
    *
    * <p>The barrier says: the engine can no longer prove that the next step reaches the same
@@ -259,6 +273,61 @@ public final class TacAccessPath implements java.io.Serializable {
   public boolean sameLocation(TacAccessPath other) {
     if (other == null) return false;
     return root.equals(other.root) && selectors.equals(other.selectors);
+  }
+
+  /**
+   * Whether the value at this path is visible at {@code other}.
+   *
+   * <p><b>Why this is not {@link #isPrefixOf}.</b> A prefix relation answers "is this location
+   * inside that one", which is the right question for a container and its elements. A keyed
+   * namespace asks a different question -- "is this the same entry" -- and the answer depends on
+   * the KEY, not on the shape of the chain.
+   *
+   * <p><b>Why an unknown key covers a known one, in both directions.</b> A read through a key the
+   * analysis cannot resolve may land on ANY entry, so it sees a write to a named entry. A write
+   * through a key the analysis cannot resolve may have landed on ANY entry, so a later read of a
+   * named entry sees it. Both directions are the same statement: an unknown key stands for every
+   * key.
+   *
+   * <p><b>What it does not do.</b> It does not cross the namespace boundary. A {@link Reference}
+   * names a field or an attribute; a {@link MapKey} names an entry of a keyed namespace. In a
+   * language that has both -- Python's attribute and item namespaces, PHP's property and array
+   * namespaces -- they are DIFFERENT locations, so a path ending in one never covers a path ending
+   * in the other.
+   *
+   * @param other the location to test
+   * @return true when taint at this path is visible at {@code other}
+   */
+  public boolean coversLocation(TacAccessPath other) {
+    if (other == null) return false;
+    if (!root.equals(other.root)) return false;
+    if (selectors.size() != other.selectors.size()) return false;
+    for (int i = 0; i < selectors.size(); i++) {
+      if (!selectorCovers(selectors.get(i), other.selectors.get(i))) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Whether this selector covers that one.
+   *
+   * <p>A wildcard on either side covers the other; two concrete selectors cover each other only
+   * when they are the same entry. Two DIFFERENT named entries never cover each other, because
+   * {@code obj.userId} and {@code obj.role} are different locations.
+   */
+  private static boolean selectorCovers(Selector mine, Selector theirs) {
+    if (mine.equals(theirs)) return true;
+    // A field and a map entry are different namespaces.
+    if (!isKeySelector(mine) || !isKeySelector(theirs)) return false;
+    return mine instanceof MapKeySet
+        || theirs instanceof MapKeySet
+        || mine instanceof LazyMapKey
+        || theirs instanceof LazyMapKey;
+  }
+
+  /** Whether this selector names an entry of a keyed namespace. */
+  private static boolean isKeySelector(Selector s) {
+    return s instanceof MapKey || s instanceof MapKeySet || s instanceof LazyMapKey;
   }
 
   private static boolean selectorMatches(Selector mine, Selector theirs) {

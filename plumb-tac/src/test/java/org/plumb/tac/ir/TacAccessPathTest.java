@@ -166,4 +166,75 @@ class TacAccessPathTest {
     assertThat(base.depth()).as("the base path must not change").isEqualTo(0);
     assertThat(extended.depth()).isEqualTo(1);
   }
+
+  /**
+   * A key the analysis cannot resolve covers a key it can.
+   *
+   * <p>This is the relation a keyed namespace needs, and it goes BOTH ways: a read through an
+   * unresolved key may land on any entry, and a write through an unresolved key may have landed on
+   * any entry. So the unresolved key stands for every key, in either direction.
+   */
+  @Test
+  @DisplayName("an unresolved key covers a named key, in both directions")
+  void unresolvedKeyCoversNamedKey() {
+    TacAccessPath named = TacAccessPath.root("obj").withMapKey("userId");
+    TacAccessPath unresolved = TacAccessPath.root("obj").withLazyMapKey("anyKey");
+    TacAccessPath every = TacAccessPath.root("obj").withMapKeySet();
+
+    assertThat(named.coversLocation(unresolved)).as("the read's key might be \"userId\"").isTrue();
+    assertThat(unresolved.coversLocation(named))
+        .as("the written key might have been \"userId\"")
+        .isTrue();
+    assertThat(every.coversLocation(named)).isTrue();
+    assertThat(named.coversLocation(every)).isTrue();
+  }
+
+  /**
+   * Two DIFFERENT named keys are two different entries.
+   *
+   * <p>This is the control on the rule above. If it ever goes red, the rule has degenerated into
+   * "every entry is every other entry", and the whole point of a keyed namespace is lost.
+   */
+  @Test
+  @DisplayName("two different named keys do not cover each other")
+  void differentNamedKeysDoNotCoverEachOther() {
+    TacAccessPath userId = TacAccessPath.root("obj").withMapKey("userId");
+    TacAccessPath role = TacAccessPath.root("obj").withMapKey("role");
+
+    assertThat(userId.coversLocation(role)).isFalse();
+    assertThat(role.coversLocation(userId)).isFalse();
+  }
+
+  /**
+   * A field is not a map entry.
+   *
+   * <p>Python has an attribute namespace and an item namespace, and PHP has a property namespace
+   * and an array namespace. They are DIFFERENT locations of the same object, so a path ending in
+   * one must never cover a path ending in the other.
+   */
+  @Test
+  @DisplayName("a field and a map entry are different namespaces")
+  void fieldAndMapEntryAreDifferentNamespaces() {
+    TacAccessPath field = TacAccessPath.root("obj").withField("userId");
+    TacAccessPath entry = TacAccessPath.root("obj").withMapKey("userId");
+    TacAccessPath unresolved = TacAccessPath.root("obj").withLazyMapKey("anyKey");
+
+    assertThat(field.coversLocation(entry)).isFalse();
+    assertThat(entry.coversLocation(field)).isFalse();
+    assertThat(unresolved.coversLocation(field))
+        .as("an unresolved key is a key, not a field")
+        .isFalse();
+    assertThat(field.coversLocation(unresolved)).isFalse();
+  }
+
+  /** The covering relation is about one location, so the roots have to match. */
+  @Test
+  @DisplayName("paths with different roots never cover each other")
+  void differentRootsDoNotCover() {
+    TacAccessPath one = TacAccessPath.root("a").withMapKey("k");
+    TacAccessPath other = TacAccessPath.root("b").withMapKeySet();
+
+    assertThat(one.coversLocation(other)).isFalse();
+    assertThat(other.coversLocation(one)).isFalse();
+  }
 }
