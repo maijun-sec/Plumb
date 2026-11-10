@@ -876,6 +876,42 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
+   * Mark the value read at a declared source ENTRY.
+   *
+   * <p>A source is not always a call and not always a variable: the script languages' process-level
+   * inputs are entries of a container, and the read that names the entry is what the catalogue
+   * points at. Measured against the side cars, {@code process.env.HOME} lowers to an {@code
+   * ARRAYLOAD} whose base is the variable {@code process} and whose index is the constant {@code
+   * "env"}; the key is in the IR, so no synthetic call is needed.
+   *
+   * <p>The declaration names the entry and not the container, because the rest of the container is
+   * the program's own: {@code process.pid} and {@code process.cwd} are facts about the machine, not
+   * about the attacker.
+   *
+   * @param ins the container access
+   * @param fn the function under analysis
+   * @param ctx the analysis context
+   */
+  private void markSourceEntryOnLoad(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
+    if (ins == null || fn == null || ctx == null) return;
+    if (!(ins.lhs1 instanceof TacOperand.TacVar base)) return;
+    if (!(ins.lhs2 instanceof TacOperand.Const key)) return;
+    if (key.kind() != TacOperand.Const.Kind.STRING) return;
+    Object value = key.value();
+    if (!(value instanceof String name)) return;
+    if (!ctx.config()
+        .sinkFamilies()
+        .sourceVariables()
+        .isEntry(fn.sourceLanguage(), base.name(), name)) {
+      return;
+    }
+    if (!(ins.dest instanceof TacOperand.TacVar dest)) return;
+    if (taintedVars.containsKey(dest)) return;
+    String label = "input:" + base.name() + "." + name;
+    markSource(dest, label, ins, fn.signature(), "input " + base.name() + "." + name);
+  }
+
+  /**
    * Mark all parameters of the function as "potentially tainted" : the engine will refine this set
    * during the function's analysis (a {@code Sink} summary in the caller's context may un-taint, an
    * {@code UntrustedSource} fact may confirm taint, etc.). Cleared at the start of every function.
@@ -962,11 +998,30 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // The names come from the catalogue and are scoped BY LANGUAGE, so the
     // name "_GET" means the request's query string in PHP and nothing at all
     // in a Java file.
-    for (String name : ctx.config().sinkFamilies().sourceVariableNames(fn.sourceLanguage())) {
-      TacOperand.TacVar v = new TacOperand.TacVar(name, TacType.UNKNOWN, false);
-      if (taintedVars.containsKey(v)) continue;
-      markSource(v, "input:" + name, null, fn.signature(), "input " + name);
+    for (String name : ctx.config().sinkFamilies().sourceVariables().seeds(fn.sourceLanguage())) {
+      seedSourceVariable(name, fn);
+      // A language's variable sigil is not part of the variable's NAME. The
+      // catalogue names the name without it -- `_GET`, not `$_GET` -- and the
+      // front end may write either, so the sigil form is seeded as well.
+      // Which spelling a front end writes is the front end's business, and a
+      // rule that dies when that changes has a hidden dependency.
+      //
+      // Only the sigil form of the DECLARED name is seeded, so a user's own
+      // `$GET` is not the superglobal and stays clean.
+      if (!name.startsWith("$")) seedSourceVariable("$" + name, fn);
     }
+  }
+
+  /**
+   * Mark a variable as a source, at the function entry.
+   *
+   * @param name the variable's name
+   * @param fn the function under analysis
+   */
+  private void seedSourceVariable(String name, TacFunction fn) {
+    TacOperand.TacVar v = new TacOperand.TacVar(name, TacType.UNKNOWN, false);
+    if (taintedVars.containsKey(v)) return;
+    markSource(v, "input:" + name, null, fn.signature(), "input " + name);
   }
 
   /**
@@ -1049,8 +1104,24 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // a tainted `arr[0] = v; x = arr[0]`
         // pattern flows correctly even when `arr`
         // is not directly tainted.
+        //
+        // In a language whose subscripts name a
+        // KEYED namespace rather than an array
+        // position, the tracker consulted here is
+        // the keyed one: an entry's identity is the
+        // pair (object, key), and an unresolved key
+        // stands for every key.
+        //
+        // A source can also be an ENTRY of a container: the script
+        // languages read their process-level inputs out of one
+        // (`process.env`, `sys.argv`), and the key is right there
+        // in the IR -- the index of this very read. When the
+        // catalogue declares that entry, the value read here is
+        // the source, and it is marked BEFORE the propagation, so
+        // the propagation carries it onwards.
+        markSourceEntryOnLoad(ins, fn, ctx);
         propagateMOVE(ins);
-        restoreArrayTaintOnLoad(ins);
+        restoreArrayTaintOnLoad(ins, fn, ctx);
       }
       case UNARYOP -> propagateMOVE(ins);
       // ARRAYSTORE: arr[index] = value. If the

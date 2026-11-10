@@ -388,3 +388,23 @@ Java 程序都会被认领。
 有两个名字是刻意不收的，理由是「请求」和「配置」的区别。`$_SERVER` 把请求头和服务端自己的设置
 混在一起，把整个数组标成不可信就会声称攻击者控制不了的值；`$_FILES` 里是 PHP 自己生成的临时
 文件名。
+
+#### 容器的条目：脚本语言的进程级输入
+
+源也不总是变量。脚本语言的进程级输入是从一个容器里读出来的——`process.env`、`sys.argv`——
+而键就在 IR 里：读取降级成一个 `ARRAYLOAD`，base 是容器，index 是常量键。所以声明的名字可以是
+一条**路径**，引擎在读取发生的地方认出它。
+
+```yaml
+taint.sources.env:
+  source_variables:
+    typescript,javascript,arkts:
+      - 'process.env'
+```
+
+关键是「条目」而不是「容器」。`process.pid`、`process.platform`、`process.cwd` 是关于这台机器的
+事实，不是关于攻击者的，所以一条点名整个 `process` 对象的规则会把它们一起认领。
+
+这一条不是新想法，而是补一个不一致：目录早就把 Go 的 `os.Getenv`/`os.Args`、C# 的
+`System.getenv`、Java 的 `System.getProperty` 当作源。脚本语言是唯一没有对应物的，而它们恰好
+就是那些输入要从容器里读的语言。

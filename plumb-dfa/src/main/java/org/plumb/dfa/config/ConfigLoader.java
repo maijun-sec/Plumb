@@ -563,7 +563,7 @@ public final class ConfigLoader {
           parseLanguageRules(spec.get("by_language"), parsedPatterns, languages, name);
       // The source VARIABLES: the sources a language has that are not calls.
       java.util.Map<SourceLanguage, java.util.List<String>> sourceVariables =
-          parseSourceVariables(spec.get("source_variables"), name);
+          parseSourceVariables(spec.get("source_variables"), name, languages);
       out.put(
           name,
           new SinkFamily(
@@ -597,13 +597,19 @@ public final class ConfigLoader {
    * bucket: TypeScript and JavaScript are read by one front end, so the variables their code can
    * mention are one list.
    *
+   * <p>The language a declaration names must be one the FAMILY covers, exactly as it is for a
+   * per-language bucket: a family that does not list a language does not apply to it, so a
+   * declaration for that language could never fire. A family with no language restriction covers
+   * every language, which is the common case.
+   *
    * @param raw the raw YAML value
    * @param family the family's name, for the warning
+   * @param familyLanguages the languages the family covers; empty means every language
    * @return the variable names, by language
    */
   @SuppressWarnings("unchecked")
   private static java.util.Map<SourceLanguage, java.util.List<String>> parseSourceVariables(
-      Object raw, String family) {
+      Object raw, String family, Set<SourceLanguage> familyLanguages) {
     if (!(raw instanceof Map)) return java.util.Map.of();
     java.util.Map<SourceLanguage, java.util.List<String>> out = new java.util.LinkedHashMap<>();
     for (Map.Entry<?, ?> entry : ((Map<?, ?>) raw).entrySet()) {
@@ -612,6 +618,14 @@ public final class ConfigLoader {
       if (names.isEmpty()) continue;
       java.util.List<String> unknown = new java.util.ArrayList<>();
       for (SourceLanguage lang : bucketLanguages(key, unknown)) {
+        if (!familyLanguages.isEmpty() && !familyLanguages.contains(lang)) {
+          LOG.warn(
+              "The source variable '{}' of the sink family '{}' is not among the family's"
+                  + " languages; it can never apply",
+              lang,
+              family);
+          continue;
+        }
         out.computeIfAbsent(lang, k -> new java.util.ArrayList<>()).addAll(names);
       }
       if (!unknown.isEmpty()) {

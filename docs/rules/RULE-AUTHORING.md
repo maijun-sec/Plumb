@@ -452,3 +452,27 @@ Two names are deliberately absent, and the reason is the difference between a
 request and a configuration. `$_SERVER` mixes the request's headers with the
 server's own settings, so marking the whole array untrusted claims values the
 attacker does not control; `$_FILES` holds a temporary name PHP generated.
+
+#### An entry of a container: the script languages' process-level inputs
+
+A source is not always a variable either. The script languages read their
+process-level inputs out of a container -- `process.env`, `sys.argv` -- and the
+key is in the IR: the read lowers to an `ARRAYLOAD` whose base is the container
+and whose index is the constant key. So a declared name may be a PATH, and the
+engine recognises it where the read is.
+
+```yaml
+taint.sources.env:
+  source_variables:
+    typescript,javascript,arkts:
+      - 'process.env'
+```
+
+The entry and not the container is the point. `process.pid`, `process.platform`
+and `process.cwd` are facts about the machine, not about the attacker, so a
+rule that named the whole `process` object would claim them.
+
+This closes an inconsistency rather than adding an idea: the catalogue already
+treats `os.Getenv` and `os.Args` as sources for Go, `System.getenv` for C# and
+`System.getProperty` for Java. The script languages were the only ones with no
+equivalent, and they are the ones whose inputs are read out of a container.

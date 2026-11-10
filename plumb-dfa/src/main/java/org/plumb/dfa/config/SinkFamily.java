@@ -627,14 +627,15 @@ public final class SinkFamily {
   }
 
   /**
-   * The source variable names this family declares, across every language.
+   * The source variable names this family declares, by language.
    *
-   * @return the names, in declaration order
+   * <p>The language is part of the declaration, not a filter applied to it: the name {@code _GET}
+   * means the request's query string in PHP and nothing at all in a Java file.
+   *
+   * @return the names, by language
    */
-  public java.util.List<String> sourceVariables() {
-    java.util.List<String> out = new java.util.ArrayList<>();
-    for (java.util.List<String> names : sourceVariables.values()) out.addAll(names);
-    return java.util.List.copyOf(out);
+  public java.util.Map<SourceLanguage, java.util.List<String>> sourceVariablesByLanguage() {
+    return sourceVariables;
   }
 
   private static List<SinkPattern> toPatternList(List<String> strs) {

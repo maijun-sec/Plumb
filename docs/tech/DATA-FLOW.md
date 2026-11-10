@@ -146,7 +146,7 @@ their own independent mechanisms (see below).
 repository, the other two being `BoundaryConstraintChecker` and the base class itself).
 
 - State: `taintedVars: Map<TacVar, String>` (`:263`) and `taintPaths` (`:272`)
-- Propagation: `propagateMOVE` (`:1878`) and friends, dispatched by instruction kind
+- Propagation: `propagateMOVE` (`:1942`) and friends, dispatched by instruction kind
 - Sink decision: looks up `SinkFamilyRegistry` by `sinkFamilyKey` (`config/SinkFamilyRegistry.java:22`, in the
   `org.plumb.dfa.config` package), **not** an IFDS framework
 - Cross-function: `FunctionSummary` + `Operation.TaintPropagate`
@@ -341,7 +341,7 @@ nulls would alias each other and pollute `mayAlias`):
 
 ## 5. Z3: false-positive filtering only
 
-Z3 has exactly **one** call site in the whole engine, `TaintedCheckerBase.java:4856`, on the sink
+Z3 has exactly **one** call site in the whole engine, `TaintedCheckerBase.java:4920`, on the sink
 reporting path.
 
 The reachability check happens in **one** place, `TaintedCheckerBase.isPathSuppressed`, on the sink
@@ -374,7 +374,7 @@ about whether this source reaches the sink, and two guards recorded at different
 function are not both in force at the sink. Both restrictions exist so that the check cannot
 suppress a finding that is real.
 
-- `pathConditionForSink` (`:4816`) has a base-class implementation: the conflicting pair as a
+- `pathConditionForSink` (`:4880`) has a base-class implementation: the conflicting pair as a
   predicate, so the reader of a finding can see why it was suppressed. A subclass may override it
   with a predicate the solver can evaluate.
 - The semantics are unambiguous: the check is **only used to suppress false positives, never to

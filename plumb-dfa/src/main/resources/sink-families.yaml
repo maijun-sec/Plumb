@@ -6996,7 +6996,7 @@ families:
   taint.sources.console:
     cwe: null
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'python3']
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'python3', 'typescript', 'javascript', 'arkts']
     patterns:
       - '^java\.io\.Console\.readLine(/\d+)?'
       - '^java\.lang\.System\.console(/\d+)?'
@@ -7037,15 +7037,30 @@ families:
         # The prompt the program waits on. Whatever the user types there
         # is attacker-controlled by definition.
         - '^builtins\.input\b(/\d+)?'
+    source_variables:
+      # The command line and the standard input: what the program was
+      # told, rather than what it decided.
+      typescript,javascript,arkts:
+        - 'process.argv'
+        - 'process.stdin'
+      python3:
+        - 'sys.argv'
 
   taint.sources.env:
     cwe: null
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'python3', 'php']
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'python3', 'php', 'typescript', 'javascript', 'arkts']
     source_variables:
       # The environment of the process: the program did not choose its values.
       php:
         - '_ENV'
+      # The script languages read the environment out of a container, and
+      # the key is in the IR: the read lowers to an ARRAYLOAD whose base is
+      # the container and whose index is the constant key.
+      typescript,javascript,arkts:
+        - 'process.env'
+      python3:
+        - 'os.environ'
     patterns:
       - '^java\.lang\.System\.getenv(/\d+)?'
       - '^java\.lang\.System\.getProperty(/\d+)?'

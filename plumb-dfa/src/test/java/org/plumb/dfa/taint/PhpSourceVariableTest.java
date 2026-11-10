@@ -261,8 +261,8 @@ class PhpSourceVariableTest {
     assertThat(config.sinkFamilies().sourceVariableNames(SourceLanguage.JAVA))
         .as("a Java program has no superglobals")
         .isEmpty();
-    assertThat(config.sinkFamilies().sourceVariableNames(SourceLanguage.TYPESCRIPT))
-        .as("and none in the script languages either")
+    assertThat(config.sinkFamilies().sourceVariables().seeds(SourceLanguage.TYPESCRIPT))
+        .as("the script languages have no variable of their own: what they read is an ENTRY")
         .isEmpty();
   }
 
@@ -336,6 +336,26 @@ class PhpSourceVariableTest {
   @DisplayName("a value read out of an ordinary local reaches nothing")
   void aValueReadOutOfAnOrdinaryLocalReachesNothing() {
     List<Finding> findings = scan(SourceLanguage.PHP, "local");
+
+    assertThat(hasFinding(findings, COMMAND_RULE, "\\system/1"))
+        .as("the program chose that value itself")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("the superglobal is a source under either spelling of its name")
+  void theSuperglobalIsASourceUnderEitherSpellingOfItsName() {
+    List<Finding> findings = scan(SourceLanguage.PHP, "$_GET");
+
+    assertThat(hasFinding(findings, COMMAND_RULE, "\\system/1"))
+        .as("the sigil is not part of the variable's name, so it must not matter")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("a variable that only looks like the superglobal is not one")
+  void aVariableThatOnlyLooksLikeTheSuperglobalIsNotOne() {
+    List<Finding> findings = scan(SourceLanguage.PHP, "$GET");
 
     assertThat(hasFinding(findings, COMMAND_RULE, "\\system/1"))
         .as("the program chose that value itself")

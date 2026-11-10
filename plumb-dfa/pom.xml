@@ -201,6 +201,17 @@
                              same shape must report nothing. -->
                         <include>org/plumb/dfa/taint/PhpSourceVariableTest.java</include>
 
+                        <!-- The sources that are an ENTRY of a container.
+                             The script languages read their process
+                             level inputs out of one, and the key is in
+                             the IR: the read lowers to an ARRAYLOAD
+                             whose base is the container and whose index
+                             is the constant key. Two negative controls
+                             matter here: an ordinary entry of the same
+                             container, and the same program in another
+                             language, must both report nothing. -->
+                        <include>org/plumb/dfa/taint/ScriptSourceEntryTest.java</include>
+
                         <!-- The argument-to-return shape: a library method that
                              carries an ARGUMENT's taint into its result is a
                              rule of its own, and the table that says which

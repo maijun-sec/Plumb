@@ -70,6 +70,7 @@ public final class SinkFamilyRegistry {
     // match previously-uncached sigs.
     lookupAllCache.clear();
     sourceVariableCache.clear();
+    sourceVariablesCache.set(null);
     sourceMatcherCache.set(null);
     return prev;
   }
@@ -81,6 +82,7 @@ public final class SinkFamilyRegistry {
     // invalidation.
     lookupAllCache.clear();
     sourceVariableCache.clear();
+    sourceVariablesCache.set(null);
     sourceMatcherCache.set(null);
     return prev;
   }
@@ -122,6 +124,13 @@ public final class SinkFamilyRegistry {
    */
   private final java.util.concurrent.ConcurrentHashMap<SourceLanguage, List<String>>
       sourceVariableCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+  /**
+   * Cache for {@link #sourceVariables()}. Invalidated alongside {@link #lookupAllCache}, because a
+   * registered family may declare source variables.
+   */
+  private final java.util.concurrent.atomic.AtomicReference<org.plumb.dfa.taint.SourceVariables>
+      sourceVariablesCache = new java.util.concurrent.atomic.AtomicReference<>();
 
   /**
    * The matcher for this catalogue's taint SOURCE families.
@@ -179,6 +188,25 @@ public final class SinkFamilyRegistry {
     List<String> result = out.isEmpty() ? List.of() : List.copyOf(out);
     sourceVariableCache.put(language, result);
     return result;
+  }
+
+  /**
+   * The source VARIABLES the catalogue declares, split into the two shapes.
+   *
+   * <p>A plain name is a variable that is itself a source; a dotted name is an ENTRY of a
+   * container, which is what the script languages' process-level inputs are. The split lives in
+   * {@link org.plumb.dfa.taint.SourceVariables} because it is the engine that has to act on the two
+   * shapes differently.
+   *
+   * <p>Built on first use and rebuilt whenever the catalogue changes, like the source matcher.
+   *
+   * @return the declarations
+   */
+  public org.plumb.dfa.taint.SourceVariables sourceVariables() {
+    org.plumb.dfa.taint.SourceVariables cached = sourceVariablesCache.get();
+    if (cached != null) return cached;
+    org.plumb.dfa.taint.SourceVariables created = org.plumb.dfa.taint.SourceVariables.of(this);
+    return sourceVariablesCache.compareAndSet(null, created) ? created : sourceVariablesCache.get();
   }
 
   public List<SinkFamily> lookupAll(String calleeSignature) {
