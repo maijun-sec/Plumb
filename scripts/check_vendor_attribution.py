@@ -89,13 +89,42 @@ ALLOWED = {
         "basis for the route decision -- the design cannot be argued without it",
     "docs/zh/tech/CSHARP-FRONTEND-ANALYSIS.md":
         "the Chinese C# frontend analysis: the same comparison, in Chinese",
-    "scripts/convert_coverity_model.py":
-        "the converter that reads the vendor's model library: it has to name the "
-        "library it reads, and the primitives it matches",
-    "scripts/merge_fortify_families.py":
-        "the merger that folds the converted fragments into the shipped "
-        "configuration: it names the fragments it merges",
 }
+
+# The local allow list: the files that are NOT in version control.
+#
+# A tool that converts another tool's output belongs to the machine that
+# HAS that output, not to the repository: the repository carries neither
+# the tool nor the data it reads. So the tracked allow list cannot name
+# it either -- a tracked file that names a file the repository does not
+# carry is a dead entry, and every fresh checkout fails this gate on it.
+#
+# The list itself lives in `.aethercode/`, which is ignored, so it is
+# local and stays local. A checkout without it has nothing to permit and
+# nothing to miss.
+LOCAL_ALLOW_FILE = REPO / ".aethercode" / "vendor-allow.txt"
+
+
+def read_local_allow_list():
+    """The allow-list entries that the LOCAL list adds, if there is one.
+
+    @return the entries, or an empty dict when there is no local list
+    """
+    if not LOCAL_ALLOW_FILE.is_file():
+        return {}
+    entries = {}
+    text = LOCAL_ALLOW_FILE.read_text(encoding="utf-8", errors="replace")
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        entries[line] = "a local tool the repository does not carry"
+    return entries
+
+
+# The files that may name the vendor: the tracked ones, plus the local
+# ones when the machine running the gate has them.
+PERMITTED = {**ALLOWED, **read_local_allow_list()}
 
 # The directories that are not the live tree at all.
 #
@@ -185,7 +214,7 @@ def scan(root):
         if not hits:
             continue
         pure = pathlib.PurePosixPath(rel.as_posix())
-        if pure.as_posix() in ALLOWED:
+        if pure.as_posix() in PERMITTED:
             allowed_hits[pure.as_posix()] = len(hits)
         else:
             violations.append((pure.as_posix(), hits))
@@ -246,8 +275,10 @@ def main():
         for name in sorted(allowed_hits):
             print("  %s (%d mention(s))" % (name, allowed_hits[name]))
 
-    # Every allowed file must still be reachable -- an allow list that
-    # names a file that was renamed is a hole in the allow list.
+    # Every TRACKED allowed file must still be reachable -- an allow list
+    # that names a file that was renamed is a hole in the allow list. The
+    # local entries are not in this list: the repository does not carry
+    # them, so their absence is not a rename.
     missing = [name for name in ALLOWED if not (REPO / name).is_file()]
     if missing:
         print("")
