@@ -36,6 +36,7 @@ import org.plumb.dfa.checkers.taint.SqlInjectionChecker;
 import org.plumb.dfa.checkers.taint.XssInjectionChecker;
 import org.plumb.dfa.config.ConfigLoader;
 import org.plumb.dfa.config.EngineConfig;
+import org.plumb.dfa.config.SinkFamily;
 import org.plumb.dfa.engine.DfaChecker;
 import org.plumb.dfa.engine.DfaEngine;
 import org.plumb.dfa.engine.FindingReporter;
@@ -140,9 +141,10 @@ class TsSinkCatalogTest {
     // const input = req.query.userId;
     instructions.add(move(input, req, 10));
     // const trimmed = input.trim();
-    // The owner of a string method is the module the FILE belongs to: a primitive
-    // receiver has no class to name.
-    instructions.add(call("app.trim/0", trimmed, List.of(input), 12));
+    // The receiver has no class to name, so the owner is the stand-in for an
+    // unknown one: <unknown>. It cannot be a module path, so a catalogue that
+    // names modules cannot claim it by accident.
+    instructions.add(call("<unknown>.trim/0", trimmed, List.of(input), 12));
     // cp.exec(trimmed);
     instructions.add(call("child_process.exec/2", temp("t9"), List.of(cp, trimmed), 15));
     return new TacFunction(
@@ -325,6 +327,9 @@ class TsSinkCatalogTest {
 
     assertThat(table.behaviourOf("app.trim/0"))
         .as("a trim keeps the content's taint, whichever owner spells it")
+        .isEqualTo(LanguageSemantics.TaintBehaviour.PRESERVES);
+    assertThat(table.behaviourOf("<unknown>.trim/0"))
+        .as("the stand-in owner spells the method the same way")
         .isEqualTo(LanguageSemantics.TaintBehaviour.PRESERVES);
     assertThat(table.behaviourOf("app.substring/2"))
         .as("a substring is a piece of the input")
@@ -716,5 +721,19 @@ class TsSinkCatalogTest {
     assertThat(hasFinding(findings, XSS_RULE, "Document.write/1"))
         .as("the write must be recognised, and the value must still be tainted there")
         .isTrue();
+  }
+
+  @Test
+  @DisplayName("no family claims a call whose owner nobody could name")
+  void noFamilyClaimsACallWhoseOwnerNobodyCouldName() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    for (SinkFamily family : config.sinkFamilies().all()) {
+      assertThat(family.matches("<unknown>.error/1", SourceLanguage.TYPESCRIPT))
+          .as(
+              "%s must not claim a call whose owner is the stand-in for an unknown one",
+              family.name())
+          .isFalse();
+    }
   }
 }

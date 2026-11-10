@@ -826,9 +826,10 @@ families:
         # The vm module evaluates code in a context of the caller's choosing.
         - pattern: '^(?:node:)?vm\.(runInNewContext|runInThisContext|compileFunction)\b(/\d+)?'
           arg_index: 0
-        # The global eval. A free function has no receiver object, so its owner
-        # is the module the FILE belongs to -- the file's own name -- and the
-        # pattern can only name the method. The word boundary keeps
+        # The global eval. A free function has no receiver object and no module
+        # to name, so its owner is the stand-in for an unknown one: <unknown>.
+        # The pattern names the method alone, so it also claims a method of
+        # that name on any receiver. The word boundary keeps
         # `evaluate` and `evalSync` out.
         - pattern: '\.eval\b(/\d+)?'
           arg_index: 0
@@ -7052,8 +7053,9 @@ families:
         # Node's http and https. The URL is the first argument.
         - pattern: '^(?:node:)?https?\.(get|request)\b(/\d+)?'
           arg_index: 0
-        # The global fetch. A free function has no receiver object, so its owner
-        # is the module the FILE belongs to, and the pattern names the method.
+        # The global fetch. A free function has no receiver object and no module
+        # to name, so its owner is the stand-in for an unknown one: <unknown>,
+        # and the pattern names the method alone.
         - pattern: '\.fetch\b(/\d+)?'
           arg_index: 0
       python3:

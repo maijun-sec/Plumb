@@ -34,6 +34,7 @@ import org.plumb.dfa.checkers.taint.LogInjectionChecker;
 import org.plumb.dfa.checkers.taint.RegexInjectionChecker;
 import org.plumb.dfa.config.ConfigLoader;
 import org.plumb.dfa.config.EngineConfig;
+import org.plumb.dfa.config.SinkFamily;
 import org.plumb.dfa.engine.DfaChecker;
 import org.plumb.dfa.engine.DfaEngine;
 import org.plumb.dfa.engine.FindingReporter;
@@ -136,9 +137,11 @@ class PySinkCatalogTest {
     // name = request["user"]
     instructions.add(move(name, request, 10));
     // cleaned = name.strip()
-    // The front end could not prove the receiver's type, so the owner is the module the
-    // FILE belongs to and the call is modelled as a black box.
-    instructions.add(blackBox("app.strip/0", cleaned, List.of(name), 12));
+    // The front end could not prove the receiver's type, so the owner is the
+    // stand-in for an unknown one: <unknown>. It cannot be a module path, so a
+    // catalogue that names modules cannot claim it by accident. The call is
+    // modelled as a black box.
+    instructions.add(blackBox("<unknown>.strip/0", cleaned, List.of(name), 12));
     // os.system(cleaned)
     // The receiver slot of a module-level call holds the MODULE the function came from.
     instructions.add(
@@ -327,6 +330,9 @@ class PySinkCatalogTest {
 
     assertThat(table.behaviourOf("app.strip/0"))
         .as("a strip keeps the content's taint, whichever owner spells it")
+        .isEqualTo(LanguageSemantics.TaintBehaviour.PRESERVES);
+    assertThat(table.behaviourOf("<unknown>.strip/0"))
+        .as("the stand-in owner spells the method the same way")
         .isEqualTo(LanguageSemantics.TaintBehaviour.PRESERVES);
     assertThat(table.behaviourOf("app.lower/0"))
         .as("Python names the case conversions without the word Case")
@@ -624,5 +630,19 @@ class PySinkCatalogTest {
     assertThat(hasFinding(findings, REGEX_RULE, "re.compile/1"))
         .as("the compile must be recognised, and the value must still be tainted there")
         .isTrue();
+  }
+
+  @Test
+  @DisplayName("no family claims a call whose owner nobody could name")
+  void noFamilyClaimsACallWhoseOwnerNobodyCouldName() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    for (SinkFamily family : config.sinkFamilies().all()) {
+      assertThat(family.matches("<unknown>.loads/1", SourceLanguage.PYTHON3))
+          .as(
+              "%s must not claim a call whose owner is the stand-in for an unknown one",
+              family.name())
+          .isFalse();
+    }
   }
 }

@@ -342,7 +342,7 @@ names the module the function was imported from.
 | --- | --- |
 | `child_process.exec/2` | `exec` imported from the `child_process` module |
 | `node:child_process.execSync/2` | the same module under the name Node 16 and later prefer |
-| `app.eval/1` | the global `eval`: a free function has no receiver, so the owner is the module the FILE belongs to |
+| `<unknown>.eval/1` | the global `eval`: a free function has no receiver and no module to name, so the owner is the stand-in for an unknown one |
 
 Naming the module is what keeps the rule precise. A catalogue that named the
 method alone would claim every `exec` in the program -- including
@@ -351,10 +351,37 @@ of the most common method names in a script program.
 
 The two shapes differ for a reason worth knowing. A module-level function is
 reached through the module, so its owner is the module; a free function has no
-receiver object at all, so the receiver slot holds the module's name as a
-constant and the owner is the module the FILE belongs to. That is why the
-`eval` pattern names the method alone (`\.eval\b(/\d+)?`) while the
-module-level patterns name the module.
+receiver object and no module to name, so its owner is the stand-in for an
+unknown one (`<unknown>`, described below). That is why the `eval` pattern
+names the method alone (`\.eval\b(/\d+)?`) while the module-level patterns
+name the module.
+
+#### The stand-in for an owner nobody can name
+
+A call whose receiver the front end cannot type -- a primitive, or an object the
+program built and only holds in a local -- has NO owner to name. The front end
+gives it one anyway, and the shape of that stand-in matters: it has to be
+impossible to mistake for a real owner.
+
+The stand-in is `<unknown>`. An angle bracket is not part of a module path and
+not part of a class name, so a catalogue that names modules or classes cannot
+claim one of these calls by accident.
+
+That accident is the whole reason. A file called `logging.py` that calls
+`logger.error(userInput)` used to arrive as `logging.error/1` -- the file's own
+module -- and the catalogue's `^logging\.(debug|info|...)\b` claimed it, so a
+program with a logger of its own was reported as a log-injection sink. A file
+called `pickle.py` reached the deserialisation sink the same way. With
+`<unknown>` the owner says what it is: nobody knows.
+
+A rule that means to claim such a call has to name the stand-in on purpose, and
+there are few enough of those that the catalogue does not.
+
+**The stand-in is not a class name and not a module.** The repository already
+uses `<php>` for the language constructs the TAC has no counterpart for -- that
+is a stand-in for something the TAC cannot express. `<unknown>` stands for
+something the TAC CAN express, a real call, whose receiver it cannot type. Two
+different things, so two different words.
 
 #### The agreement needs a test that goes through the whole chain
 
@@ -609,10 +636,11 @@ Three things the catalogue deliberately does NOT name, and why:
   object is a local -- `res.setHeader(...)`, `res.cookie(...)` -- so the owner is
   whatever the program called the variable, and a pattern loose enough to name it
   would name every `.setHeader` in the program.
-- **A SQL call on a cursor.** In Python the owner of `cursor.execute` is the
-  module the FILE belongs to, not the class of the cursor: the front end does
-  not name the class of an object it only sees through a local. There is no name
-  for a pattern to point at, so the Python SQL sink is not in the catalogue yet.
+- **A SQL call on a cursor.** In Python the owner of `cursor.execute` is
+  `<unknown>`, not the class of the cursor: the front end does not name the
+  class of an object it only sees through a local. Every unresolvable receiver
+  shares that owner, so a pattern pointing at it would claim every `.execute`
+  in the program; the Python SQL sink is not in the catalogue yet.
 - **ArkTS's console.** Measured against its side car, the owner of `console.log`
   there is the FILE's module name and not the `Console` type. The same shape
   keeps `process.stdout.write` out of the script bucket: its owner is the module
