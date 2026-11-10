@@ -503,11 +503,13 @@ taint.sources.env:
 
 | 族 | 读它的规则 | 脚本语言补上的 |
 | --- | --- | --- |
-| `log.sinks` | `dfa-taint-log-injection` | `Console.log`、`logging.info`、`error_log`、`syslog` |
-| `sql.sinks` | `dfa-taint-sql-injection` | `mysql.query`、`pg.query`、`knex.raw`、`mysqli_query`、`PDO::query` |
+| `log.sinks` | `dfa-taint-log-injection` | `Console.log`、`builtins.print`、`logging.info`、`logging.log`、`error_log`、`syslog` |
+| `sql.sinks` | `dfa-taint-sql-injection` | `mysql.query`、`pg.query`、`knex.raw`、`mysqli_query`、`PDO::query`、`cursor.execute` |
 | `header.sinks` | `dfa-taint-http-response-splitting` | `header`、`mail` |
 | `cookie.sinks` | `dfa-taint-cookie-injection` | `setcookie`、`setrawcookie` |
 | `reflection.sinks` | `dfa-taint-unsafe-reflection` | `call_user_func`、`call_user_func_array` |
+| `code-injection.sinks` | `dfa-taint-code-injection` | `eval` |
+| `open-redirect.sinks` | `dfa-taint-open-redirect` | `django.shortcuts.redirect`、`flask.redirect` |
 
 怎么写一条 pattern 由三件事决定，三件都是对着 side car **量**出来的，不是猜的。
 
@@ -519,16 +521,21 @@ taint.sources.env:
 | --- | --- | --- |
 | `Console.log(input)` | 第一个用户参数——第二个也是，因为 `console.log` 会打印它拿到的每个参数 | `[0, 1]` |
 | `logging.info(name)` | 第一个用户参数 | `0` |
+| `print(input)` | 第一个用户参数——目录也把 JVM 的 `java.io.PrintStream.println` 当日志 sink | `0` |
+| `logging.log(INFO, input)` | **第二个**用户参数——级别排在前面 | `1` |
 | `error_log($name)` | 第一个用户参数 | `0` |
 | `syslog(LOG_ERR, $name)` | **第二个**用户参数——优先级排在前面 | `1` |
 | `mysql.query(input)` | 第一个用户参数 | `0` |
 | `mysqli_query($link, $name)` | **第二个**用户参数——连接排在前面 | `1` |
 | `PDO::query($name)` | 第一个用户参数 | `0` |
+| `cursor.execute(sql)` | 第一个用户参数 | `0` |
 | `header($line)` | 第一个用户参数——名字和值在 PHP 里是同一个字符串 | `0` |
 | `mail($to, $subject, $body)` | **第二个**用户参数——那就是主题，而主题就是一个 header | `1` |
 | `setcookie('a', $name)` | **第二个**用户参数——cookie 名字排在前面 | `1` |
 | `setrawcookie('a', $name)` | 第二个用户参数——cookie 名字排在前面 | `1` |
 | `call_user_func($name, $arg)` | **第一个**用户参数——那就是被调用的函数 | `0` |
+| `eval($code)` | 第一个用户参数 | `0` |
+| `redirect($url)` | 第一个用户参数 | `0` |
 
 **一个名字能认领到什么。** 引擎是按**子串**匹配 pattern 的，所以这些桶里的每个名字都以词
 边界收尾：`Console.logger` 不是日志调用，`header_size` 不是写 header，`mysqli_query_all`

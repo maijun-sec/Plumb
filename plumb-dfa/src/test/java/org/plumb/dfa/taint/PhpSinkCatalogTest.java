@@ -742,4 +742,28 @@ class PhpSinkCatalogTest {
         .as("the format call must be recognised, and the value must still be tainted there")
         .isTrue();
   }
+
+  @Test
+  @DisplayName("the catalogue names the eval of PHP")
+  void theCatalogueNamesTheEvalOfPhp() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("code-injection.sinks")
+                .orElseThrow()
+                .matches("<php>.eval/1", SourceLanguage.PHP))
+        .as("eval is a language construct, and its argument is code")
+        .isTrue();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("code-injection.sinks")
+                .orElseThrow()
+                .matches("<php>.evaluate/1", SourceLanguage.PHP))
+        .as("a name that starts with eval is not the construct")
+        .isFalse();
+  }
 }

@@ -589,11 +589,13 @@ pattern reaches a finding instead of a match that leads nowhere:
 
 | Family | The rule that reads it | What the scripts add |
 | --- | --- | --- |
-| `log.sinks` | `dfa-taint-log-injection` | `Console.log`, `logging.info`, `error_log`, `syslog` |
-| `sql.sinks` | `dfa-taint-sql-injection` | `mysql.query`, `pg.query`, `knex.raw`, `mysqli_query`, `PDO::query` |
+| `log.sinks` | `dfa-taint-log-injection` | `Console.log`, `builtins.print`, `logging.info`, `logging.log`, `error_log`, `syslog` |
+| `sql.sinks` | `dfa-taint-sql-injection` | `mysql.query`, `pg.query`, `knex.raw`, `mysqli_query`, `PDO::query`, `cursor.execute` |
 | `header.sinks` | `dfa-taint-http-response-splitting` | `header`, `mail` |
 | `cookie.sinks` | `dfa-taint-cookie-injection` | `setcookie`, `setrawcookie` |
 | `reflection.sinks` | `dfa-taint-unsafe-reflection` | `call_user_func`, `call_user_func_array` |
+| `code-injection.sinks` | `dfa-taint-code-injection` | `eval` |
+| `open-redirect.sinks` | `dfa-taint-open-redirect` | `django.shortcuts.redirect`, `flask.redirect` |
 
 Three things decide how a pattern is written, and all three were MEASURED
 against the side cars rather than guessed.
@@ -608,16 +610,21 @@ the namespace the name was qualified with. Either way the first user argument is
 | --- | --- | --- |
 | `Console.log(input)` | the first user argument -- and the second as well, because `console.log` prints every argument it is given | `[0, 1]` |
 | `logging.info(name)` | the first user argument | `0` |
+| `print(input)` | the first user argument -- and the catalogue counts the JVM's `java.io.PrintStream.println` a log sink too | `0` |
+| `logging.log(INFO, input)` | the SECOND user argument -- the level comes first | `1` |
 | `error_log($name)` | the first user argument | `0` |
 | `syslog(LOG_ERR, $name)` | the SECOND user argument -- the priority comes first | `1` |
 | `mysql.query(input)` | the first user argument | `0` |
 | `mysqli_query($link, $name)` | the SECOND user argument -- the connection comes first | `1` |
 | `PDO::query($name)` | the first user argument | `0` |
+| `cursor.execute(sql)` | the first user argument | `0` |
 | `header($line)` | the first user argument -- the name and the value are one string there | `0` |
 | `mail($to, $subject, $body)` | the SECOND user argument -- that is the subject, and a subject is a header | `1` |
 | `setcookie('a', $name)` | the SECOND user argument -- the cookie name comes first | `1` |
 | `setrawcookie('a', $name)` | the second user argument -- the cookie name comes first | `1` |
 | `call_user_func($name, $arg)` | the FIRST user argument -- that is the callable | `0` |
+| `eval($code)` | the first user argument | `0` |
+| `redirect($url)` | the first user argument | `0` |
 
 **What a name may claim.** The engine matches a pattern as a SUBSTRING, so every
 name in these buckets ends with a word boundary: `Console.logger` is not a log

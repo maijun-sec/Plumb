@@ -227,6 +227,15 @@ families:
       python3:
         - pattern: '^logging\.(debug|info|warning|error|critical|exception)\b(/\d+)?'
           arg_index: 0
+        # The builtin print. The catalogue counts the JVM's
+        # java.io.PrintStream.println a log sink, and Python's print is
+        # the same thing.
+        - pattern: '^builtins\.print\b(/\d+)?'
+          arg_index: 0
+        # logging.log(level, message): the message is the SECOND
+        # argument, after the level.
+        - pattern: '^logging\.log\b(/\d+)?'
+          arg_index: 1
       php:
         # error_log writes the message; syslog's message is the SECOND
         # argument, after the priority.
@@ -841,6 +850,12 @@ families:
         # compile() turns its FIRST argument into code; the other two
         # are the file name and the mode.
         - pattern: '^builtins\.compile\b(/\d+)?'
+          arg_index: 0
+      php:
+        # eval is a language construct, not a function, so the TAC has
+        # no counterpart for it: its owner is the stand-in the language
+        # constructs use, the same one `include` has.
+        - pattern: '^<php>\.eval\b(/\d+)?'
           arg_index: 0
 
   command.sinks:
@@ -3898,6 +3913,9 @@ families:
       # Django's redirect takes the target as its first argument.
       - pattern: '^django\.shortcuts\.redirect\b(/\d+)?'
         arg_index: 0
+      # Flask's redirect takes it as its first argument too.
+      - pattern: '^flask\.redirect\b(/\d+)?'
+        arg_index: 0
 
   privacy.sinks:
     cwe: CWE-215,CWE-226,CWE-359,CWE-489,CWE-497
@@ -6810,6 +6828,13 @@ families:
         - pattern: '^\\pg_query\b(/\d+)?'
           arg_index: 1
         - pattern: '^\\PDO::(query|exec|prepare)\b(/\d+)?'
+          arg_index: 0
+      python3:
+        # The cursor's class is often unknown: an unannotated parameter
+        # has no type, so the owner is the stand-in for an unknown one.
+        # The method is the DB-API one, and in Python almost every
+        # `.execute` is a statement.
+        - pattern: '^<unknown>\.execute\b(/\d+)?'
           arg_index: 0
 
   ssrf.sinks:

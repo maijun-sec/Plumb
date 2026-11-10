@@ -645,4 +645,62 @@ class PySinkCatalogTest {
           .isFalse();
     }
   }
+
+  @Test
+  @DisplayName("the catalogue names the print, the statement and the redirect of Python")
+  void theCatalogueNamesThePrintTheStatementAndTheRedirectOfPython() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("log.sinks")
+                .orElseThrow()
+                .matches("builtins.print/1", SourceLanguage.PYTHON3))
+        .as("print writes the message, and the catalogue counts the JVM's println a log sink")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("log.sinks")
+                .orElseThrow()
+                .matches("logging.log/2", SourceLanguage.PYTHON3))
+        .as("logging.log writes the message")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("open-redirect.sinks")
+                .orElseThrow()
+                .matches("flask.redirect/1", SourceLanguage.PYTHON3))
+        .as("flask redirects to the target it is given")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("sql.sinks")
+                .orElseThrow()
+                .matches("<unknown>.execute/1", SourceLanguage.PYTHON3))
+        .as("a cursor whose class the front end could not type still runs a statement")
+        .isTrue();
+
+    // The reverse: a cursor whose class IS known is not this pattern's business,
+    // and a name that starts with print is not a print.
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("sql.sinks")
+                .orElseThrow()
+                .matches("sqlite3.Cursor.execute/1", SourceLanguage.PYTHON3))
+        .as("a cursor with a known class does not carry the stand-in owner")
+        .isFalse();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("log.sinks")
+                .orElseThrow()
+                .matches("builtins.printf/1", SourceLanguage.PYTHON3))
+        .as("a name that starts with print is not a print")
+        .isFalse();
+  }
 }
