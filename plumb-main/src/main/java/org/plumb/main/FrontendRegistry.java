@@ -215,6 +215,23 @@ final class FrontendRegistry implements AutoCloseable {
         return SourceLanguage.CSHARP;
       case "go":
         return SourceLanguage.GO;
+      case "js":
+      case "jsx":
+      case "mjs":
+      case "cjs":
+        return SourceLanguage.JAVASCRIPT;
+      case "ts":
+      case "tsx":
+      case "mts":
+      case "cts":
+        return SourceLanguage.TYPESCRIPT;
+      case "ets":
+        return SourceLanguage.ARKTS;
+      case "py":
+      case "pyi":
+        return SourceLanguage.PYTHON3;
+      case "php":
+        return SourceLanguage.PHP;
       default:
         return SourceLanguage.UNKNOWN;
     }
@@ -225,9 +242,22 @@ final class FrontendRegistry implements AutoCloseable {
    *
    * <p>Used by the file discovery, so that a Kotlin or Scala file is not skipped before the
    * dispatcher ever sees it.
+   *
+   * <p><b>This set and {@link #languageOfExtension} are not the same list, and the difference is
+   * deliberate.</b> {@code .pyi} is a Python <i>type stub</i>: it declares signatures for other
+   * modules and holds no executable body, so analysing it would report findings against
+   * declarations rather than against code. It therefore maps to {@link SourceLanguage#PYTHON3} in
+   * the language lookup -- so that a stub is never mistaken for an unknown language -- but it is
+   * not a source file, and the discovery never collects it.
+   *
+   * <p>The same reasoning excludes declaration files of the other languages ({@code .d.ts} is not
+   * in the list either) and keeps the two lists from drifting: every extension here maps to a
+   * language, and every language that has a frontend has at least one extension here.
    */
   static Set<String> knownExtensions() {
-    return Set.of("java", "kt", "kts", "scala", "sc", "cs", "go");
+    return Set.of(
+        "java", "kt", "kts", "scala", "sc", "cs", "go", "js", "jsx", "mjs", "cjs", "ts", "tsx",
+        "mts", "cts", "ets", "py", "php");
   }
 
   /**
@@ -282,6 +312,39 @@ final class FrontendRegistry implements AutoCloseable {
         // failure rather than a silent one.
         return built.computeIfAbsent(
             SourceLanguage.GO, l -> new org.plumb.tac.frontend.go.GoTacFrontend());
+      case JAVASCRIPT:
+      case TYPESCRIPT:
+        // The TypeScript frontend drives a Node sidecar, so constructing it is
+        // not free the way a pure-Java frontend is: it looks for the Node
+        // runtime and for the sidecar's script. The frontend itself reports a
+        // missing runtime as an explicit problem, so constructing it and
+        // finding no runtime is a LOUD failure rather than a silent one.
+        return built.computeIfAbsent(language, l -> new org.plumb.tac.frontend.ts.TsTacFrontend(l));
+      case ARKTS:
+        // The ArkTS frontend drives a Node sidecar too, so constructing it is
+        // not free the way a pure-Java frontend is: it looks for the Node
+        // runtime and for the sidecar's script. The frontend itself reports a
+        // missing runtime as an explicit problem, so constructing it and
+        // finding no runtime is a LOUD failure rather than a silent one.
+        return built.computeIfAbsent(
+            SourceLanguage.ARKTS, l -> new org.plumb.tac.frontend.arkts.ArktsTacFrontend(l));
+      case PYTHON3:
+        // The Python frontend drives a Python sidecar, so constructing it is
+        // not free the way a pure-Java frontend is: it looks for the
+        // interpreter and for the sidecar's script. The frontend itself
+        // reports a missing runtime as an explicit problem, so constructing
+        // it and finding no runtime is a LOUD failure rather than a silent
+        // one.
+        return built.computeIfAbsent(
+            SourceLanguage.PYTHON3, l -> new org.plumb.tac.frontend.python.PythonTacFrontend());
+      case PHP:
+        // The PHP frontend drives a Node sidecar, so constructing it is not
+        // free the way a pure-Java frontend is: it looks for the Node runtime
+        // and for the sidecar's script. The frontend itself reports a missing
+        // runtime as an explicit problem, so constructing it and finding no
+        // runtime is a LOUD failure rather than a silent one.
+        return built.computeIfAbsent(
+            SourceLanguage.PHP, l -> new org.plumb.tac.frontend.php.PhpTacFrontend());
       default:
         return null;
     }
@@ -323,7 +386,29 @@ final class FrontendRegistry implements AutoCloseable {
             language,
             null);
       }
-      return new ParsedSourceFile(List.of(), List.of(), SourceLanguage.UNKNOWN, null);
+      // The language is known, this run analyses it, and it has no frontend
+      // yet. That is a GAP, and it has to say so: a file that is collected
+      // and then dropped without a word is indistinguishable from a file
+      // that was analysed and found clean -- and the whole point of
+      // collecting it was to analyse it.
+      //
+      // The message is the same for every file of the language, and the
+      // reporter deduplicates by kind and message, so a project with a
+      // thousand Python files says it once rather than a thousand times.
+      return new ParsedSourceFile(
+          List.of(),
+          List.of(
+              new TacProgram.FunctionProblem(
+                  file.toString(),
+                  "FRONTEND_NOT_IMPLEMENTED",
+                  "this file is "
+                      + language.name().toLowerCase(Locale.ROOT)
+                      + ", and that language has no frontend yet; the file was not analysed",
+                  null,
+                  -1,
+                  -1)),
+          language,
+          null);
     }
     String source;
     try {

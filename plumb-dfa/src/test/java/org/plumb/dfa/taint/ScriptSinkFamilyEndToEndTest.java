@@ -177,6 +177,18 @@ class ScriptSinkFamilyEndToEndTest {
       }
       """;
 
+  /**
+   * A TypeScript program that builds a pattern from a value it was given.
+   *
+   * <p>A construction is looked up in the same catalogue as a call, so it has to carry a name too.
+   */
+  private static final String TS_CONSTRUCTION =
+      """
+      export function handler(input: string): void {
+        const pattern = new RegExp(input);
+      }
+      """;
+
   @Test
   @DisplayName("a TypeScript page write reaches the XSS rule")
   void aTypeScriptPageWriteReachesTheXssRule(@TempDir Path directory) throws IOException {
@@ -292,6 +304,35 @@ class ScriptSinkFamilyEndToEndTest {
         .as("the receiver's type could not be proven, so the owner is unknown")
         .contains("<unknown>.format/0")
         .doesNotContain("util.format/0");
+  }
+
+  /**
+   * A construction names the class it constructs.
+   *
+   * <p>The engine looks a construction up in the SAME catalogue as a call, so {@code new
+   * RegExp(input)} has to reach it as {@code RegExp.<init>/1} -- the shape the JVM front end
+   * already emits for a construction ({@code TacTranslator.ctorSig}, which counts the arguments
+   * PASSED to the constructor). A construction that cannot be named cannot be matched by any rule,
+   * and the symptom of that is not an error: it is a program that scans clean.
+   *
+   * <p>This is the front end's half of the contract. The rule that consumes the key belongs to the
+   * catalogue, and so does the test that says the two halves agree.
+   */
+  @Test
+  @DisplayName("a construction names the class it constructs")
+  void aConstructionNamesTheClassItConstructs(@TempDir Path directory) throws IOException {
+    assumeTrue(tsAvailable(), "the TypeScript front end needs Node and its compiler dependency");
+
+    Path file = directory.resolve("app.ts");
+    Files.writeString(file, TS_CONSTRUCTION);
+
+    TacFrontend.ParseResult result =
+        new TsTacFrontend(SourceLanguage.TYPESCRIPT).parse(TS_CONSTRUCTION, file, null);
+
+    assertThat(calleeSignatures(result))
+        .as("a construction is looked up in the same catalogue as a call")
+        .contains("RegExp.<init>/1")
+        .doesNotContain("app.<init>/1");
   }
 
   /**

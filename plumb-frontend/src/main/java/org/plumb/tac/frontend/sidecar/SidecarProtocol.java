@@ -60,8 +60,8 @@ public final class SidecarProtocol {
   /**
    * The IR version this build speaks.
    *
-   * <p>It is the serialiser's version, and it travels with the wire so that a sidecar built
-   * against a different IR is refused rather than half-understood.
+   * <p>It is the serialiser's version, and it travels with the wire so that a sidecar built against
+   * a different IR is refused rather than half-understood.
    */
   public static final int IR_VERSION = org.plumb.tac.io.IrSerializer.VERSION;
 
@@ -69,8 +69,8 @@ public final class SidecarProtocol {
    * Whether a response is one this build can read.
    *
    * <p>A response that carries no version at all is <b>not</b> accepted. A sidecar older than the
-   * handshake is exactly the case the handshake exists to catch, and treating a missing version
-   * as "probably fine" would defeat it.
+   * handshake is exactly the case the handshake exists to catch, and treating a missing version as
+   * "probably fine" would defeat it.
    *
    * @param response the sidecar's response
    * @return null when the response is compatible, or the reason it is not
@@ -82,15 +82,20 @@ public final class SidecarProtocol {
     Integer protocol = integerOf(response, "protocolVersion");
     if (protocol == null) {
       return "the sidecar did not report a protocol version, so it cannot be checked against this "
-          + "build's version " + VERSION;
+          + "build's version "
+          + VERSION;
     }
     if (protocol != VERSION) {
-      return "the sidecar speaks protocol version " + protocol + ", and this build speaks version "
+      return "the sidecar speaks protocol version "
+          + protocol
+          + ", and this build speaks version "
           + VERSION;
     }
     Integer ir = integerOf(response, "irVersion");
     if (ir != null && ir != IR_VERSION) {
-      return "the sidecar was built against IR version " + ir + ", and this build speaks version "
+      return "the sidecar was built against IR version "
+          + ir
+          + ", and this build speaks version "
           + IR_VERSION;
     }
     return null;

@@ -1,0 +1,20 @@
+{
+  "name": "plumb-arkts-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plumb's ArkTS sidecar: lowers ArkTS source into Plumb's TAC IR.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/main.mjs",
+    "test": "node smoketest.mjs"
+  },
+  "dependencies": {
+    "ohos-typescript": "4.9.5-r10"
+  },
+  "devDependencies": {
+    "@arkts/declarations": "0.0.21"
+  }
+}

@@ -69,8 +69,7 @@ public final class SidecarLocator {
       String executableName) {
 
     public Layout {
-      buildOutputPaths =
-          buildOutputPaths == null ? List.of() : List.copyOf(buildOutputPaths);
+      buildOutputPaths = buildOutputPaths == null ? List.of() : List.copyOf(buildOutputPaths);
     }
   }
 
@@ -97,7 +96,8 @@ public final class SidecarLocator {
     if (location != null) {
       Path directory = location.getParent();
       if (directory != null) {
-        candidates.add(directory.resolve(layout.projectDirectoryName()).resolve(layout.executableName()));
+        candidates.add(
+            directory.resolve(layout.projectDirectoryName()).resolve(layout.executableName()));
         candidates.add(directory.resolve(layout.executableName()));
       }
     }
@@ -163,9 +163,7 @@ public final class SidecarLocator {
       return out;
     }
     try (Stream<Path> children = Files.list(base)) {
-      children
-          .filter(child -> Files.isRegularFile(child.resolve("pom.xml")))
-          .forEach(out::add);
+      children.filter(child -> Files.isRegularFile(child.resolve("pom.xml"))).forEach(out::add);
     } catch (IOException e) {
       // The directory cannot be read, so it contributes no candidates. The
       // lookup continues with the ones it already has.
@@ -215,11 +213,7 @@ public final class SidecarLocator {
   private static Path pathOfCallingClass() {
     try {
       return Path.of(
-          SidecarLocator.class
-              .getProtectionDomain()
-              .getCodeSource()
-              .getLocation()
-              .toURI());
+          SidecarLocator.class.getProtectionDomain().getCodeSource().getLocation().toURI());
     } catch (Exception ex) {
       return null;
     }

@@ -28,6 +28,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -35,24 +36,24 @@ import java.util.concurrent.TimeUnit;
  *
  * <h2>Why a sidecar</h2>
  *
- * <p>Plumb is a JVM product, and some languages cannot be analysed from the JVM: their own
- * compiler is a native library with no JVM port, and re-implementing its semantics in the JVM
- * would mean writing a second compiler that disagrees with the real one on every corner case.
- * So the analysis runs in a sidecar -- a separate process that owns the language's own front end
- * -- and the two halves talk over stdio.
+ * <p>Plumb is a JVM product, and some languages cannot be analysed from the JVM: their own compiler
+ * is a native library with no JVM port, and re-implementing its semantics in the JVM would mean
+ * writing a second compiler that disagrees with the real one on every corner case. So the analysis
+ * runs in a sidecar -- a separate process that owns the language's own front end -- and the two
+ * halves talk over stdio.
  *
  * <h2>The framing</h2>
  *
  * <p>Each message is a JSON object, UTF-8 encoded, framed as {@code <4-byte big-endian length>
  * <payload>}. The length counts the payload bytes only.
  *
- * <p><b>Why not JSON Lines.</b> A source file may contain any byte in a string literal --
- * including a newline inside a verbatim string. A line-oriented protocol then has to either
- * escape the newlines or guess where a line ends, and a length prefix has no such ambiguity: the
- * frame boundary is explicit and cannot be spoofed by the content.
+ * <p><b>Why not JSON Lines.</b> A source file may contain any byte in a string literal -- including
+ * a newline inside a verbatim string. A line-oriented protocol then has to either escape the
+ * newlines or guess where a line ends, and a length prefix has no such ambiguity: the frame
+ * boundary is explicit and cannot be spoofed by the content.
  *
- * <p><b>Why the protocol is on stdout and the chatter is on stderr.</b> The two are separate
- * pipes, so a stray diagnostic line can never corrupt the frame stream.
+ * <p><b>Why the protocol is on stdout and the chatter is on stderr.</b> The two are separate pipes,
+ * so a stray diagnostic line can never corrupt the frame stream.
  *
  * <h2>Totality</h2>
  *
@@ -63,8 +64,8 @@ import java.util.concurrent.TimeUnit;
 public final class SidecarProcess implements AutoCloseable {
 
   /**
-   * The largest frame accepted from the sidecar. A corrupt length must not become an
-   * out-of-memory kill.
+   * The largest frame accepted from the sidecar. A corrupt length must not become an out-of-memory
+   * kill.
    */
   private static final int MAX_FRAME_BYTES = 256 * 1024 * 1024;
 
@@ -119,7 +120,38 @@ public final class SidecarProcess implements AutoCloseable {
     if (executable == null || !Files.isRegularFile(executable)) {
       throw new IOException("the " + label + " sidecar was not found at " + executable);
     }
-    ProcessBuilder builder = new ProcessBuilder(executable.toString());
+    return launch(label, List.of(executable.toString()), workingDirectory);
+  }
+
+  /**
+   * Launch a sidecar with a full command line.
+   *
+   * <p>Most sidecars are one native executable. Some are not: the TypeScript one is a Node program,
+   * so the command is the Node runtime and then the script it runs. The framing, the handshake and
+   * the process handling are the same either way -- only the command differs.
+   *
+   * @param label the sidecar's name, used in the messages and the thread name
+   * @param command the command line: the program, then its arguments
+   * @param workingDirectory the directory to run it in, or null for the current one
+   * @return the process
+   * @throws IOException when the sidecar could not be started
+   */
+  public static SidecarProcess launch(String label, List<String> command, Path workingDirectory)
+      throws IOException {
+    if (command == null || command.isEmpty()) {
+      throw new IOException("the " + label + " sidecar was given no command to run");
+    }
+    String program = command.get(0);
+    if (program == null || program.isBlank()) {
+      throw new IOException("the " + label + " sidecar was given no program to run");
+    }
+    // A program named by a PATH is looked up by the operating system; a
+    // program named by a path must exist, because a typo there would
+    // otherwise surface as an opaque "cannot start".
+    if (namesAPath(program) && !Files.isRegularFile(Path.of(program))) {
+      throw new IOException("the " + label + " sidecar was not found at " + program);
+    }
+    ProcessBuilder builder = new ProcessBuilder(command);
     if (workingDirectory != null) {
       builder.directory(workingDirectory.toFile());
     }
@@ -128,6 +160,16 @@ public final class SidecarProcess implements AutoCloseable {
     builder.redirectErrorStream(false);
     Process process = builder.start();
     return new SidecarProcess(label, process);
+  }
+
+  /**
+   * Whether a program name names a path rather than a PATH entry.
+   *
+   * @param program the program name
+   * @return true when the name carries a directory separator
+   */
+  private static boolean namesAPath(String program) {
+    return program.indexOf('/') >= 0 || program.indexOf('\\') >= 0;
   }
 
   /**
@@ -154,7 +196,8 @@ public final class SidecarProcess implements AutoCloseable {
 
     int length = fromSidecar.readInt();
     if (length < 0 || length > MAX_FRAME_BYTES) {
-      throw new IOException("the " + label + " sidecar sent a frame of " + length + " bytes, which is out of range");
+      throw new IOException(
+          "the " + label + " sidecar sent a frame of " + length + " bytes, which is out of range");
     }
     byte[] response = new byte[length];
     fromSidecar.readFully(response);

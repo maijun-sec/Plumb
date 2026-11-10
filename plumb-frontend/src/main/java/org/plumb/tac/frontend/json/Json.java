@@ -31,11 +31,10 @@ import java.util.Map;
  *
  * <h2>Why not a JSON library</h2>
  *
- * <p>The protocols are small, fixed schemas spoken between two halves that are built
- * independently: a native sidecar and a Java frontend. Pulling a JSON library into {@code
- * plumb-frontend} for them would add a dependency to a module that currently has none, and it would
- * buy nothing: the schema is a handful of flat objects, and the mapping into the IR is explicit
- * anyway.
+ * <p>The protocols are small, fixed schemas spoken between two halves that are built independently:
+ * a native sidecar and a Java frontend. Pulling a JSON library into {@code plumb-frontend} for them
+ * would add a dependency to a module that currently has none, and it would buy nothing: the schema
+ * is a handful of flat objects, and the mapping into the IR is explicit anyway.
  *
  * <p>Writing it out also means the wire format is visible in one file, on both sides, rather than
  * being split between a schema and an annotation processor.
@@ -49,8 +48,8 @@ import java.util.Map;
  * <h2>What is supported</h2>
  *
  * <p>The full JSON grammar for <em>reading</em> (objects, arrays, strings with escapes including
- * {@code \\uXXXX}, numbers, booleans, null), and enough of it for <em>writing</em> (objects, arrays,
- * strings, numbers, booleans, null).
+ * {@code \\uXXXX}, numbers, booleans, null), and enough of it for <em>writing</em> (objects,
+ * arrays, strings, numbers, booleans, null).
  *
  * <p>Reading is deliberately strict: a malformed document raises {@link JsonException} rather than
  * producing a half-built object. A silently-truncated response would look like an empty analysis.
@@ -62,8 +61,8 @@ public final class Json {
   /**
    * A JSON value.
    *
-   * <p>The variants are exactly what the protocol uses: an object, an array, a string, a number,
-   * a boolean, or null.
+   * <p>The variants are exactly what the protocol uses: an object, an array, a string, a number, a
+   * boolean, or null.
    */
   public sealed interface Value
       permits JsonObject, JsonArray, JsonString, JsonNumber, JsonBoolean, JsonNull {

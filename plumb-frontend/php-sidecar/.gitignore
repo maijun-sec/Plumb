@@ -1,0 +1,6 @@
+# The installed packages. They are not in version control: the build script
+# installs them, and the lock file pins what it installs.
+node_modules/
+
+# The scratch directory a manual probe leaves behind.
+_probe/

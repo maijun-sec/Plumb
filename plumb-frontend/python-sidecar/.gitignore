@@ -1,0 +1,6 @@
+# The Python sidecar's own bytecode cache.
+#
+# It is the interpreter's, not the repository's: it is regenerated on every
+# run and it says nothing about the source.
+__pycache__/
+*.py[cod]

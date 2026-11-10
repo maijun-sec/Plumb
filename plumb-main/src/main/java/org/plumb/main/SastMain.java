@@ -318,11 +318,18 @@ public final class SastMain {
         Option.builder()
             .longOpt("language")
             .hasArg()
-            .argName(org.plumb.dfa.config.LanguageFilter.knownLanguageNames().replace(", ", "|"))
+            // The argument NAME is deliberately short. The help formatter sizes the option
+            // column by the longest option string, so spelling every language out here
+            // squeezed the description column down to one or two characters and the
+            // wrapping degenerated into one character per line. The list belongs in the
+            // description, which wraps.
+            .argName("langs")
             .desc(
-                "Analyse only these languages (repeatable, or comma-separated). The rules, sink"
-                    + " patterns and frontends of the other languages are not loaded at all, so"
-                    + " a Java-only scan does not pay for the Kotlin or the Scala compiler.")
+                "Analyse only these languages (repeatable, or comma-separated): "
+                    + org.plumb.dfa.config.LanguageFilter.knownLanguageNames()
+                    + ". The rules, sink patterns and frontends of the other languages are not"
+                    + " loaded at all, so a Java-only scan does not pay for the Kotlin or the"
+                    + " Scala compiler.")
             .build());
     opts.addOption(
         Option.builder()
