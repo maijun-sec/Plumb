@@ -671,6 +671,16 @@
                              engine calls it clean, and every sink
                              downstream of it is blind. -->
                         <include>org/plumb/dfa/taint/SourceFamilyMatcherTest.java</include>
+                        <!-- The script languages' own sinks, through the real
+                             front ends: the owner of document.write is a
+                             CLASS, the owner of socket.recv's value is the
+                             call's RESULT, and a PHP global's owner is a
+                             NAMESPACE. A catalogue test builds its TAC by
+                             hand, so it cannot see a disagreement between the
+                             catalogue and the front end; the symptom of such a
+                             disagreement is no crash and no warning, only a
+                             scan that reports the program clean. -->
+                        <include>org/plumb/dfa/taint/ScriptSinkFamilyEndToEndTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

@@ -318,6 +318,38 @@ constant and the owner is the module the FILE belongs to. That is why the
 `eval` pattern names the method alone (`\.eval\b(/\d+)?`) while the
 module-level patterns name the module.
 
+#### The agreement needs a test that goes through the whole chain
+
+The catalogue and the front end agree on a CONTRACT, and the contract is the
+naming convention above: the owner of a call to a module-level function is
+the MODULE the function was imported from. The catalogue says
+`child_process.exec`, and the front end has to produce exactly that name.
+
+Nothing checks that agreement on its own. A catalogue test builds its TAC by
+hand, so it proves the catalogue matches the names the TEST wrote down. A
+front end test proves the front end emits the names it was WRITTEN TO emit.
+Neither notices when the two disagree -- and they can disagree, because the
+convention has to be implemented on both sides.
+
+When they disagree, the symptom is the worst kind: no crash, no warning, a
+scan that reports the program clean. A program that runs a tainted command
+looks exactly like a program that does not, and the difference is a string
+that does not match.
+
+So the check goes through the whole chain -- source, front end, TAC, engine,
+catalogue, FINDING -- and the assertion is on the finding, because the
+finding is the product and the TAC is only a means to it.
+
+**One chain test per CONVENTION, not one per language.** The convention is
+what has to be pinned, and the script languages have more than one:
+
+| Convention | What it looks like | Where it is pinned |
+| --- | --- | --- |
+| the owner is the MODULE the function was imported from | `child_process.exec`, `re.compile` | the chain test for the command family |
+| the owner is a CLASS | `document.write` is owned by the `Document` TYPE | `ScriptSinkFamilyEndToEndTest` |
+| the tainted value is the call's RESULT | `socket.recv` is a SOURCE: the bytes that arrived are what the call RETURNS | `ScriptSinkFamilyEndToEndTest` |
+| the owner is a NAMESPACE | a PHP global function's owner is the namespace its name was qualified with | `ScriptSinkFamilyEndToEndTest` |
+
 #### The script semantics table names the operation, not the owner
 
 The library-semantics table decides whether a call carries its receiver's taint
