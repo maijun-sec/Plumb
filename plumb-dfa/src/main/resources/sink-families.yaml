@@ -122,7 +122,7 @@ families:
   format-string.sinks:
     cwe: CWE-134
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'typescript', 'javascript', 'php']
+    languages: ['java', 'kotlin', 'scala', 'go', 'typescript', 'javascript', 'arkts', 'php']
     patterns:
       - '^java\.lang\.String\.format(/\d+)?'
       - '^java\.io\.PrintStream\.printf(/\d+)?'
@@ -148,10 +148,16 @@ families:
           arg_index: 0
         - pattern: '^fmt\.Fprintf(/\d+)?'
           arg_index: 1
-      typescript,javascript:
+      typescript,javascript,arkts:
       # The format string is the FIRST argument; the values after it are
       # what the format describes. The module may be spelled with or
       # without the 'node:' prefix the runtime prefers.
+      #
+      # Measured against the ArkTS side car: a BARE import of util arrives
+      # as `util.format`, the same key the TypeScript side car emits, so
+      # the entry reaches ArkTS too. A LOCAL module named util arrives as
+      # `./util.format`, and the pattern is anchored at the start of the
+      # key, so it does not claim a program's own helper.
       - pattern: '^(?:node:)?util\.format\b(/\d+)?'
         arg_index: 0
       php:
@@ -161,7 +167,7 @@ families:
   log.sinks:
     cwe: CWE-117
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'typescript', 'javascript', 'python3', 'php']
+    languages: ['java', 'kotlin', 'scala', 'go', 'typescript', 'javascript', 'arkts', 'python3', 'php']
     patterns:
       - pattern: '^java\.util\.logging\.Logger\.info(/\d+)?'
       - pattern: '^java\.util\.logging\.Logger\.warning(/\d+)?'
@@ -204,14 +210,17 @@ families:
           arg_index: [0, 1]
         - pattern: '^log\.Logger\.Println(/\d+)?'
           arg_index: 0
-      typescript,javascript:
+      typescript,javascript,arkts:
         # The console of the runtime. The receiver is the console object and
         # the message is the first user argument; console.log takes several
         # arguments and prints them all, so either can carry the taint.
         #
-        # ArkTS is deliberately absent: measured against its side car, the
-        # owner of `console.log` there is the FILE's module name and not the
-        # Console type, so there is no name to point a pattern at.
+        # Measured against both side cars: the console arrives as the Console
+        # type in all three languages -- `Console.log/1` -- so one pattern
+        # names them all. The write to the standard output stays out, because
+        # neither language can name the class of `process.stdout` (TypeScript
+        # reports `<unknown>.write/0` and ArkTS reports the file's module
+        # name), and a pattern for it would claim every write.
         - pattern: '^Console\.(log|info|warn|error|debug|trace)\b(/\d+)?'
           arg_index: [0, 1]
       python3:

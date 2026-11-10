@@ -203,6 +203,18 @@
                              of expanding it. -->
                         <include>org/plumb/dfa/taint/PySinkPathXmlTest.java</include>
 
+                        <!-- The ArkTS rule layer. ArkTS is a third
+                             script language with its own front end, and
+                             whether a catalogue entry reaches it is a
+                             question about that front end: measured
+                             against the side car, the console arrives
+                             as the Console type in all three script
+                             languages, so one pattern names them all.
+                             The write to the standard output stays out,
+                             because neither language can name the class
+                             of process.stdout. -->
+                        <include>org/plumb/dfa/taint/ArkTsSinkCatalogTest.java</include>
+
                         <!-- The PHP rule layer. PHP qualifies a global
                              function with a leading backslash, so the
                              catalogue names the qualified name PHP itself
