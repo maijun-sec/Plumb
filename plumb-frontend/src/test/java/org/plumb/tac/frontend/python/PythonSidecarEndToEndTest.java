@@ -359,6 +359,90 @@ class PythonSidecarEndToEndTest {
     }
   }
 
+  /**
+   * A module-level call keeps the MODULE in the receiver slot.
+   *
+   * <p><b>Why this is the premise under every Python entry in the catalogue.</b> A catalogue entry
+   * names the position of the interesting argument as a USER-argument index, and the engine turns
+   * that into a slot in the instruction's argument list. Every other front end puts the receiver
+   * there first, so the engine adds one -- and that is only sound if the receiver slot really is a
+   * slot, holding the receiver, for every call of that language. In Python the receiver of a
+   * module-level function is not an object at all: the function belongs to a MODULE, so the slot
+   * holds the module's path as a constant.
+   *
+   * <p><b>What breaks if it changes.</b> If the slot stopped being reserved, the first user
+   * argument would move from {@code args[1]} to {@code args[0]} and every Python entry's {@code
+   * arg_index} would be off by one -- pointing at the module path instead of the tainted value, or
+   * one argument too far. The finding would not disappear; it would be reported against the wrong
+   * argument, which is worse, because a scan that reports findings is not obviously broken.
+   *
+   * <p>Measured against the real side car: {@code os.path.join("a", request)} is {@code
+   * os.path.join/2} with the argument list {@code ["os.path", "a", request]}, and {@code
+   * open(request)} is {@code builtins.open/1} with {@code ["builtins", request]} -- a module the
+   * caller never named, because {@code open} is a builtin.
+   */
+  @Test
+  @DisplayName("a module-level call keeps the module in the receiver slot")
+  void aModuleLevelCallKeepsTheModuleInTheReceiverSlot(@TempDir Path directory) throws IOException {
+    String source =
+        """
+        import os
+
+
+        def handle(request):
+            os.path.join("a", request)
+            open(request)
+        """;
+    Files.writeString(directory.resolve("pyproject.toml"), "[project]\nname = \"app\"\n");
+    Path file = directory.resolve("app.py");
+    Files.writeString(file, source);
+
+    try (PythonTacFrontend frontend = new PythonTacFrontend()) {
+      assumeTrue(
+          sidecarAvailable(),
+          "the Python front end needs a Python 3 interpreter on the PATH (the sidecar imports only"
+              + " the standard library, so there is nothing to install into it)");
+
+      TacFrontend.ParseResult result = frontend.parse(source, file, null);
+      assertThat(result.problems()).isEmpty();
+
+      TacFunction handle = find(result, "handle");
+      assertThat(handle).as("the module's function must be in the stream").isNotNull();
+
+      TacInstruction join =
+          handle.instructions().stream()
+              .filter(i -> i.kind == TacInstruction.Kind.CALL)
+              .filter(i -> i.calleeSig != null && i.calleeSig.startsWith("os.path.join/"))
+              .findFirst()
+              .orElseThrow(
+                  () -> new AssertionError("the call of os.path.join is not in the stream"));
+      assertThat(join.args).as("the receiver slot, then the user arguments").hasSize(3);
+      assertThat(join.args.get(0))
+          .as("the receiver of a module-level function is the module it came from")
+          .isEqualTo(TacOperand.Const.ofString("os.path"));
+      assertThat(join.args.get(1))
+          .as("the first user argument follows the receiver slot")
+          .isEqualTo(TacOperand.Const.ofString("a"));
+      assertThat(join.args.get(2))
+          .as("the second user argument is the one that is followed")
+          .isInstanceOf(TacOperand.TacVar.class);
+
+      TacInstruction builtin =
+          handle.instructions().stream()
+              .filter(i -> i.kind == TacInstruction.Kind.CALL)
+              .filter(i -> i.calleeSig != null && i.calleeSig.startsWith("builtins.open/"))
+              .findFirst()
+              .orElseThrow(() -> new AssertionError("the call of open is not in the stream"));
+      assertThat(builtin.args).as("a builtin keeps its receiver slot too").hasSize(2);
+      assertThat(builtin.args.get(0))
+          .as("the module of a builtin is the builtins module, even though the caller named none")
+          .isEqualTo(TacOperand.Const.ofString("builtins"));
+      assertThat(builtin.args.get(1))
+          .as("the user argument is at args[1], where a call's first argument always is")
+          .isInstanceOf(TacOperand.TacVar.class);
+    }
+  }
+
   /** The function with the given name, or null. */
   private static TacFunction find(TacFrontend.ParseResult result, String name) {
     for (TacFunction function : result.functions()) {
