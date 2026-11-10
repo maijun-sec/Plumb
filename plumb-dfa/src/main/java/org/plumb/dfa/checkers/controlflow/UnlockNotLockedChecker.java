@@ -32,6 +32,12 @@
  * at runtime -- the lock isn't held by
  * the current thread.</p>
  *
+ * <p>The same defect exists in Go, where
+ * {@code sync.Mutex} spells its methods in
+ * UPPER case: a {@code .Unlock()} with no
+ * matching {@code .Lock()} panics with
+ * "sync: unlock of unlocked mutex".</p>
+ *
  * <p>The shape it detects:</p>
  *
  * <pre>
@@ -63,6 +69,14 @@
  *       sensitive. A function that
  *       conditionally locks (e.g. inside
  *       an if-branch) may over-fire.</li>
+ *   <li>A lock taken in another function
+ *       -- a wrapper that locks in
+ *       {@code Lock()} and unlocks in
+ *       {@code Unlock()} -- is not seen, so
+ *       the unlock in the second half is
+ *       reported. The lock's IDENTITY is
+ *       resolved across the functions of a
+ *       type, but its HELD-ness is not.</li>
  *   <li>Same-class static analysis only.
  *       If the {@code .lock()} call is in
  *       a different method (caller or
@@ -94,13 +108,14 @@ import java.util.HashSet;
 import java.util.Set;
 import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.engine.DfaChecker;
+import org.plumb.dfa.engine.LockIdentity;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.trace.PatternTrace;
 import org.plumb.reporter.trace.TraceNode;
 import org.plumb.rules.RuleDef;
+import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
-import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacProgram;
 
 public final class UnlockNotLockedChecker implements DfaChecker {
@@ -122,9 +137,19 @@ public final class UnlockNotLockedChecker implements DfaChecker {
   public void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
     if (ins.kind != TacInstruction.Kind.CALL) return;
     if (ins.calleeSig == null) return;
-    if (!ins.calleeSig.endsWith(".unlock/0")) return;
+    // Java's ReentrantLock spells the call in lower case and Go's
+    // sync.Mutex in UPPER case. The two cannot collide -- Java has
+    // no upper-case lock method and Go has no lower-case one -- so
+    // the recognition is widened rather than replaced, and a Java
+    // program is unaffected.
+    boolean go = fn.sourceLanguage() == SourceLanguage.GO;
+    if (!isUnlock(ins.calleeSig, go)) return;
     if (ins.args == null || ins.args.isEmpty()) return;
-    String unlockId = extractLockId(ins.args.get(0));
+    // The lock's identity is resolved from the TAC's structure, not
+    // from the receiver's name: a field read lands in a fresh
+    // temporary, so the two reads of one field have two names.
+    LockIdentity.Resolver ids = new LockIdentity.Resolver(fn);
+    String unlockId = ids.of(ins.args.get(0));
     if (unlockId == null || unlockId.isEmpty()) return;
     // Walk back through the function's
     // earlier instructions looking for
@@ -136,9 +161,9 @@ public final class UnlockNotLockedChecker implements DfaChecker {
       if (prev == ins) break; // don't count the unlock itself
       if (prev.kind != TacInstruction.Kind.CALL) continue;
       if (prev.calleeSig == null) continue;
-      if (!prev.calleeSig.endsWith(".lock/0")) continue;
+      if (!isLock(prev.calleeSig, go)) continue;
       if (prev.args == null || prev.args.isEmpty()) continue;
-      String lockId = extractLockId(prev.args.get(0));
+      String lockId = ids.of(prev.args.get(0));
       if (unlockId.equals(lockId)) {
         hasMatchingLock = true;
         break;
@@ -155,38 +180,64 @@ public final class UnlockNotLockedChecker implements DfaChecker {
         fn,
         ins,
         TraceNode.Op.UNLOCK_NOT_LOCKED,
-        unlockId + ".unlock/0",
+        unlockId + (go ? ".Unlock/0" : ".unlock/0"),
         name(),
         "plumb." + RULE_ID,
-        "Function '"
-            + fn.name()
-            + "' calls"
-            + " '"
-            + unlockId
-            + ".unlock()' without"
-            + " a matching '"
-            + unlockId
-            + ".lock()' earlier in the function."
-            + " The lock is not held by the current"
-            + " thread, which throws"
-            + " IllegalMonitorStateException at"
-            + " runtime (CWE-832).",
+        message(fn, unlockId, go),
         RuleDef.Severity.MEDIUM,
         "CWE-832",
-        "unlock-not-locked: " + unlockId + ".unlock()" + " has no matching .lock()");
+        "unlock-not-locked: "
+            + unlockId
+            + (go ? ".Unlock()" : ".unlock()")
+            + " has no matching "
+            + (go ? ".Lock()" : ".lock()"));
   }
 
-  private static String extractLockId(TacOperand op) {
-    if (op instanceof TacOperand.TacVar tv) {
-      String n = tv.name();
-      if (n == null) return null;
-      int colon = n.indexOf(':');
-      return colon >= 0 ? n.substring(0, colon) : n;
+  /**
+   * Whether a call releases a lock.
+   *
+   * <p>Java's {@code ReentrantLock} spells it in lower case and Go's {@code sync.Mutex} in UPPER
+   * case. The two cannot collide, so the recognition is widened rather than replaced.
+   */
+  private static boolean isUnlock(String calleeSig, boolean go) {
+    if (calleeSig.endsWith(".unlock/0")) return true;
+    return go && calleeSig.endsWith(".Unlock/0");
+  }
+
+  /** Whether a call acquires a lock. The mirror of {@link #isUnlock}. */
+  private static boolean isLock(String calleeSig, boolean go) {
+    if (calleeSig.endsWith(".lock/0")) return true;
+    return go && calleeSig.endsWith(".Lock/0");
+  }
+
+  /**
+   * The sentence the finding carries.
+   *
+   * <p>The failure differs between the two languages, so the text does too: Java throws
+   * IllegalMonitorStateException, and Go panics with "sync: unlock of unlocked mutex". Saying the
+   * Java thing about a Go program would be wrong in the text the reader reads.
+   */
+  private static String message(TacFunction fn, String unlockId, boolean go) {
+    if (go) {
+      return "Function '"
+          + fn.name()
+          + "' calls '"
+          + unlockId
+          + ".Unlock()' without a matching '"
+          + unlockId
+          + ".Lock()' earlier in the function."
+          + " The lock is not held by the current goroutine, which panics with"
+          + " 'sync: unlock of unlocked mutex' at runtime (CWE-832).";
     }
-    if (op instanceof TacOperand.Const c) {
-      return c.value() == null ? null : "const:" + c.value();
-    }
-    return null;
+    return "Function '"
+        + fn.name()
+        + "' calls '"
+        + unlockId
+        + ".unlock()' without a matching '"
+        + unlockId
+        + ".lock()' earlier in the function."
+        + " The lock is not held by the current thread, which throws"
+        + " IllegalMonitorStateException at runtime (CWE-832).";
   }
 
   @Override

@@ -43,6 +43,12 @@
  *   }
  * </pre>
  *
+ * <p>The same shape exists in Go, where
+ * {@code sync.Mutex} spells its methods in
+ * UPPER case: two functions that lock the
+ * same set of mutexes in opposite orders
+ * deadlock against each other.</p>
+ *
  * <p>Detection strategy (narrow
  * heuristic):</p>
  *
@@ -119,6 +125,7 @@ import java.util.Map;
 import java.util.Set;
 import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.engine.DfaChecker;
+import org.plumb.dfa.engine.LockIdentity;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.reporter.Finding;
 import org.plumb.reporter.trace.OperandRef;
@@ -126,9 +133,9 @@ import org.plumb.reporter.trace.Trace;
 import org.plumb.reporter.trace.TraceBuilder;
 import org.plumb.reporter.trace.TraceNode;
 import org.plumb.rules.RuleDef;
+import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
-import org.plumb.tac.ir.TacOperand;
 
 public final class DeadlockChecker implements DfaChecker {
   private static final String RULE_ID = "dfa-controlflow-deadlock-ab-ba";
@@ -173,20 +180,27 @@ public final class DeadlockChecker implements DfaChecker {
     // function.
     List<String> sequence = new ArrayList<>();
     Set<String> seen = new LinkedHashSet<>();
+    // Java's ReentrantLock spells the call in lower case and Go's
+    // sync.Mutex in UPPER case. The two cannot collide, so the
+    // recognition is widened rather than replaced.
+    boolean go = fn.sourceLanguage() == SourceLanguage.GO;
+    // The lock's identity is resolved from the TAC's structure, not
+    // from the receiver's name: a field read lands in a fresh
+    // temporary, so the two reads of one field have two names.
+    LockIdentity.Resolver ids = new LockIdentity.Resolver(fn);
     for (TacInstruction ins : fn.instructions()) {
       if (ins.kind != TacInstruction.Kind.CALL) continue;
       if (ins.calleeSig == null) continue;
-      // Match *.lock/0 calls.
-      if (!ins.calleeSig.endsWith(".lock/0")) continue;
+      // Match *.lock/0 calls -- Java's -- and, in Go, *.Lock/0.
+      if (!ins.calleeSig.endsWith(".lock/0") && !(go && ins.calleeSig.endsWith(".Lock/0")))
+        continue;
       if (ins.args == null || ins.args.isEmpty()) continue;
-      // The receiver is args[0] (per
-      // TAC convention). Extract its
-      // name. We strip SSA version
-      // (the `:` suffix) so the same
-      // source var across calls
-      // collapses to one name.
-      TacOperand recv = ins.args.get(0);
-      String lockId = extractLockId(recv);
+      // The receiver is args[0] (per TAC convention). Its
+      // IDENTITY -- not its name -- is what a lock is: a field
+      // read lands in a fresh temporary, so the name alone would
+      // pair nothing and would make two different locks look
+      // alike.
+      String lockId = ids.of(ins.args.get(0));
       if (lockId == null || lockId.isEmpty()) continue;
       // Only add if not already in the
       // sequence (dedup).
@@ -399,23 +413,6 @@ public final class DeadlockChecker implements DfaChecker {
         ctx.reporter().reportWithTrace(f, v2);
       }
     }
-  }
-
-  /**
-   * Strip the SSA-version suffix (`:N`) from a TacVar. We treat the SSA version as a "different
-   * binding" (Jimple may not have it). For our purposes the source-level name is the lock identity.
-   */
-  private static String extractLockId(TacOperand op) {
-    if (op instanceof TacOperand.TacVar tv) {
-      String n = tv.name();
-      if (n == null) return null;
-      int colon = n.indexOf(':');
-      return colon >= 0 ? n.substring(0, colon) : n;
-    }
-    if (op instanceof TacOperand.Const c) {
-      return c.value() == null ? null : "const:" + c.value();
-    }
-    return null;
   }
 
   private static boolean sameSet(List<String> a, List<String> b) {

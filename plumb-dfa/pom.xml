@@ -454,6 +454,16 @@
                         <include>org/plumb/dfa/checkers/controlflow/DeferredReleaseInLoopCheckerTest.java</include>
                         <include>org/plumb/dfa/checkers/controlflow/GoDeferredReleaseEndToEndTest.java</include>
 
+                        <!-- Go's sync.Mutex: the two lock checks that never
+                             saw it. The identity test pins the property that
+                             makes a lock the same lock (the two reads of one
+                             field agree), and the pairing test pins the
+                             recognition in both languages, so the widening
+                             cannot quietly change Java's behaviour. -->
+                        <include>org/plumb/dfa/engine/LockIdentityTest.java</include>
+                        <include>org/plumb/dfa/checkers/controlflow/GoLockPairingTest.java</include>
+                        <include>org/plumb/dfa/checkers/controlflow/GoLockPairingEndToEndTest.java</include>
+
                         <!-- The multi-language IR contract and the language gate.
                              These pin the rules the Kotlin and Scala frontends
                              depend on: that a language-restricted sink family
