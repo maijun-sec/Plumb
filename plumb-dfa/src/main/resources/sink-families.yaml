@@ -479,8 +479,6 @@ families:
           arg_index: 1
         - pattern: '^os\.Unsetenv(/\d+)?'
           arg_index: 0
-        - pattern: '^os\.Clearenv(/\d+)?'
-          arg_index: 0
   cleartext-tx.sinks:
     cwe: CWE-319
     severity: HIGH

@@ -3733,7 +3733,6 @@
       "^java\\.util\\.TimeZone\\.setDefault(/\\d+)?",
       "^java\\.util\\.prefs\\.Preferences\\.importPreferences(/\\d+)?",
       "^javax\\.swing\\.UIManager\\.setLookAndFeel(/\\d+)?",
-      "^os\\.Clearenv(/\\d+)?",
       "^os\\.Setenv(/\\d+)?",
       "^os\\.Unsetenv(/\\d+)?"
     ],
