@@ -23,9 +23,13 @@ package org.plumb.dfa.config;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
+import org.plumb.tac.ir.SourceLanguage;
 
 /**
  * The rules that say an ARGUMENT's taint reaches the RESULT.
@@ -85,15 +89,32 @@ public final class ArgumentPassthrough {
 
     private final List<Integer> argIndexes;
 
+    private final Set<SourceLanguage> languages;
+
     /**
-     * Builds a rule.
+     * Builds a rule that applies to every language.
      *
      * @param pattern the callee signatures the rule matches
      * @param argIndexes the user argument positions the rule names
      */
     public Rule(Pattern pattern, List<Integer> argIndexes) {
+      this(pattern, argIndexes, Set.of());
+    }
+
+    /**
+     * Builds a rule.
+     *
+     * @param pattern the callee signatures the rule matches
+     * @param argIndexes the user argument positions the rule names
+     * @param languages the languages the rule is for; empty means every language
+     */
+    public Rule(Pattern pattern, List<Integer> argIndexes, Set<SourceLanguage> languages) {
       this.pattern = Objects.requireNonNull(pattern, "pattern");
       this.argIndexes = List.copyOf(Objects.requireNonNull(argIndexes, "argIndexes"));
+      this.languages =
+          languages == null
+              ? Set.of()
+              : Collections.unmodifiableSet(new LinkedHashSet<>(languages));
     }
 
     /** The callee-signature pattern. */
@@ -104,6 +125,27 @@ public final class ArgumentPassthrough {
     /** The user argument positions the rule names. */
     public List<Integer> argIndexes() {
       return argIndexes;
+    }
+
+    /** The languages the rule is for; empty means every language. */
+    public Set<SourceLanguage> languages() {
+      return languages;
+    }
+
+    /**
+     * Whether the rule applies to code written in the given language.
+     *
+     * <p><b>What an unknown language answers.</b> A rule that names languages does not apply to an
+     * unknown one. The alternative -- applying a JDK rule to code whose language the engine could
+     * not determine -- is how a rule written for one language ends up firing on another, and the
+     * engine cannot tell the two apart afterwards.
+     *
+     * @param language the analysed language; null means unknown
+     * @return true when the rule applies
+     */
+    public boolean appliesTo(SourceLanguage language) {
+      if (languages.isEmpty()) return true;
+      return language != null && languages.contains(language);
     }
   }
 
@@ -135,11 +177,38 @@ public final class ArgumentPassthrough {
    * @return the positions, an empty list when no rule matched
    */
   public List<Integer> argIndexesFor(String calleeSig) {
+    return argIndexesFor(calleeSig, rule -> true);
+  }
+
+  /**
+   * The argument positions the rule that matches the callee names, in the given language.
+   *
+   * <p>This is the view the engine uses: a rule that names languages applies only to those
+   * languages, so a rule written for one language's library does not fire on another language's
+   * code.
+   *
+   * @param calleeSig the callee's signature
+   * @param language the analysed language; null means unknown
+   * @return the positions, an empty list when no rule matched
+   */
+  public List<Integer> argIndexesFor(String calleeSig, SourceLanguage language) {
+    return argIndexesFor(calleeSig, rule -> rule.appliesTo(language));
+  }
+
+  /**
+   * The argument positions the rule that matches the callee names.
+   *
+   * @param calleeSig the callee's signature
+   * @param accept which rules are considered
+   * @return the positions, an empty list when no rule matched
+   */
+  private List<Integer> argIndexesFor(String calleeSig, Predicate<Rule> accept) {
     if (calleeSig == null || calleeSig.isEmpty() || rules.isEmpty()) {
       return List.of();
     }
     String normalized = calleeSig.replace('#', '.');
     for (Rule rule : rules) {
+      if (!accept.test(rule)) continue;
       if (rule.pattern().matcher(normalized).find()) {
         return rule.argIndexes();
       }
@@ -160,7 +229,34 @@ public final class ArgumentPassthrough {
    * @return the TAC argument positions, empty when no rule matched or no position is present
    */
   public List<Integer> tacArgIndexesFor(String calleeSig, List<?> args) {
-    List<Integer> named = argIndexesFor(calleeSig);
+    return tacArgIndexesFor(argIndexesFor(calleeSig), args);
+  }
+
+  /**
+   * The user argument positions whose taint the matching rule sends to the result, in the given
+   * language.
+   *
+   * <p>This is the view the engine uses. A rule that names languages applies only to those
+   * languages, so a rule written for one language's library does not carry taint across a call in
+   * another language.
+   *
+   * @param calleeSig the callee's signature
+   * @param args the call's arguments
+   * @param language the analysed language; null means unknown
+   * @return the TAC argument positions, empty when no rule matched or no position is present
+   */
+  public List<Integer> tacArgIndexesFor(String calleeSig, List<?> args, SourceLanguage language) {
+    return tacArgIndexesFor(argIndexesFor(calleeSig, language), args);
+  }
+
+  /**
+   * The user argument positions whose taint the matching rule sends to the result.
+   *
+   * @param named the user argument positions the matching rule names
+   * @param args the call's arguments
+   * @return the TAC argument positions, empty when no rule matched or no position is present
+   */
+  private List<Integer> tacArgIndexesFor(List<Integer> named, List<?> args) {
     if (named.isEmpty() || args == null || args.isEmpty()) {
       return List.of();
     }

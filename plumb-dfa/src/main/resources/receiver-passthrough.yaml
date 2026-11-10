@@ -28,6 +28,23 @@
 # the entry (useful for project-specific
 # toggles).
 
+#
+# The LANGUAGES each family is for.
+#
+# Every entry here names LIBRARY symbols, and a library symbol belongs to one
+# language: javax.servlet.http.HttpServletRequest is a Java type, System.String
+# is a C# one, net/http is a Go package. The patterns cannot say so
+# themselves, because the front end emits a callee signature in short form
+# when the symbol solver could not resolve the fully qualified name -- so a
+# pattern has to accept a package prefix of any length, INCLUDING NONE. That
+# is why the scope lives beside the pattern and not inside it: a pattern that
+# accepts a prefix of zero length will match a receiver merely CALLED String,
+# Map or Path -- in any language.
+#
+# So a family states the languages its callees belong to, and the engine
+# applies the family only to code written in one of them. A family that
+# declares no language applies to every language.
+#
 families:
   # ===== Servlet request getters =====
   # The receiver (HttpServletRequest) is
@@ -54,6 +71,7 @@ families:
   # zero or more dotted words).
   servlet-request-getters:
     enabled: true
+    languages: [java, kotlin, scala, groovy]
     patterns:
       - '^((?:[\w.]+\.)*)HttpServletRequest\.getCookies(/\d+)?'
       - '^((?:[\w.]+\.)*)HttpServletRequest\.getParameter(/\d+)?'
@@ -88,6 +106,7 @@ families:
   # tainted data.
   cookie-getters:
     enabled: true
+    languages: [java, kotlin, scala, groovy]
     patterns:
       - '^((?:[\w.]+\.)*)Cookie\.getValue(/\d+)?'
       - '^((?:[\w.]+\.)*)Cookie\.getName(/\d+)?'
@@ -119,6 +138,7 @@ families:
   # tainted values.
   httpsession-getters:
     enabled: true
+    languages: [java, kotlin, scala, groovy]
     patterns:
       - '^((?:[\w.]+\.)*)HttpSession\.getAttribute(/\d+)?'
       - '^((?:[\w.]+\.)*)HttpSession\.getId(/\d+)?'
@@ -131,6 +151,7 @@ families:
   # URL. The stream is tainted.
   url-connection-getters:
     enabled: true
+    languages: [java, kotlin, scala, groovy]
     patterns:
       - '^((?:[\w.]+\.)*)URLConnection\.getInputStream(/\d+)?'
       - '^((?:[\w.]+\.)*)HttpURLConnection\.getInputStream(/\d+)?'
@@ -147,6 +168,7 @@ families:
   # tainted lines from a tainted reader.
   io-stream-getters:
     enabled: true
+    languages: [java, kotlin, scala, groovy]
     patterns:
       - '^((?:[\w.]+\.)*)InputStream\.read(/\d+)?'
       - '^((?:[\w.]+\.)*)Reader\.read(/\d+)?'
@@ -164,6 +186,7 @@ families:
   # bytes from a tainted socket.
   socket-getters:
     enabled: true
+    languages: [java, kotlin, scala, groovy]
     patterns:
       - '^((?:[\w.]+\.)*)Socket\.getInputStream(/\d+)?'
       - '^((?:[\w.]+\.)*)Socket\.getOutputStream(/\d+)?'
@@ -176,6 +199,7 @@ families:
   # tainted column data.
   collection-getters:
     enabled: true
+    languages: [java, kotlin, scala, groovy]
     patterns:
       - '^((?:[\w.]+\.)*)Map\.get(/\d+)?'
       - '^((?:[\w.]+\.)*)Hashtable\.get(/\d+)?'
@@ -191,6 +215,7 @@ families:
   # values.
   resultset-getters:
     enabled: true
+    languages: [java, kotlin, scala, groovy]
     patterns:
       - '^((?:[\w.]+\.)*)ResultSet\.getString(/\d+)?'
       - '^((?:[\w.]+\.)*)ResultSet\.getNString(/\d+)?'
@@ -218,6 +243,7 @@ families:
   # path also handles them.
   string-getters:
     enabled: true
+    languages: [java, kotlin, scala, groovy]
     patterns:
       - '^((?:[\w.]+\.)*)String\.substring(/\d+)?'
       - '^((?:[\w.]+\.)*)String\.trim(/\d+)?'
@@ -250,6 +276,7 @@ families:
   # in different places.
   map-getters:
     enabled: true
+    languages: [java, kotlin, scala, groovy]
     patterns:
       - '^((?:[\w.]+\.)*)Map\.get(/\d+)?'
       - '^((?:[\w.]+\.)*)Map\.getOrDefault(/\d+)?'
@@ -272,6 +299,7 @@ families:
   # itself is what carries the taint.
   collection-element-getters:
     enabled: true
+    languages: [java, kotlin, scala, groovy]
     patterns:
       - '^((?:[\w.]+\.)*)ListIterator\.next(/\d+)?'
       - '^((?:[\w.]+\.)*)Iterator\.next(/\d+)?'
@@ -282,6 +310,7 @@ families:
 
   library-receiver-passthrough-csharp:
     enabled: true
+    languages: [csharp]
     patterns:
       - '^Grpc\.Core\.AsyncDuplexStreamingCall\.get_ResponseStream(/\d+)?'
       - '^Grpc\.Core\.IAsyncStreamReader\.get_Current(/\d+)?'
@@ -646,6 +675,7 @@ families:
 
   library-receiver-passthrough-go:
     enabled: true
+    languages: [go]
     patterns:
       - '^time\.Unix(/\d+)?'
       - '^net/textproto\.Writer\.DotWriter(/\d+)?'

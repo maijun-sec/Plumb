@@ -132,7 +132,7 @@ public final class ConfigLoader {
     CheckerRegistry checkers = parseCheckers(chkYaml);
     Map<String, String> cweMappings = parseCweMappings(cweYaml);
     TuningConfig tuning = parseTuning(tunYaml);
-    List<Pattern> receiverPassthroughPatterns = parseReceiverPassthrough(rcvYaml);
+    ReceiverPassthrough receiverPassthrough = parseReceiverPassthrough(rcvYaml);
     ArgumentPassthrough argumentPassthrough = parseArgumentPassthrough(argYaml);
     return new EngineConfig(
         families,
@@ -140,7 +140,7 @@ public final class ConfigLoader {
         checkers,
         cweMappings,
         tuning,
-        receiverPassthroughPatterns,
+        receiverPassthrough,
         org.plumb.dfa.semantics.LanguageSemanticsRegistry.withDefaults(),
         argumentPassthrough);
   }
@@ -155,27 +155,31 @@ public final class ConfigLoader {
    * compiles each pattern.
    */
   @SuppressWarnings("unchecked")
-  private static List<Pattern> parseReceiverPassthrough(Map<String, Object> yaml) {
-    if (yaml == null || yaml.isEmpty()) return List.of();
+  private static ReceiverPassthrough parseReceiverPassthrough(Map<String, Object> yaml) {
+    if (yaml == null || yaml.isEmpty()) return ReceiverPassthrough.empty();
     Object fams = yaml.get("families");
-    if (!(fams instanceof Map)) return List.of();
+    if (!(fams instanceof Map)) return ReceiverPassthrough.empty();
     Map<String, Object> famsMap = (Map<String, Object>) fams;
-    List<Pattern> out = new ArrayList<>();
+    List<ReceiverPassthrough.Rule> out = new ArrayList<>();
     for (Map.Entry<String, Object> e : famsMap.entrySet()) {
       if (!(e.getValue() instanceof Map)) continue;
       Map<String, Object> spec = (Map<String, Object>) e.getValue();
       // enabled defaults to true; explicit
       // `enabled: false` skips the family.
       if (Boolean.FALSE.equals(spec.get("enabled"))) continue;
+      // The languages this family's callees belong to. A family that declares
+      // none applies to every language, which is the old behaviour.
+      Set<SourceLanguage> languages =
+          parseLanguages(spec.get("languages"), "receiver-passthrough family");
       Object rawPatterns = spec.get("patterns");
       if (!(rawPatterns instanceof List)) continue;
       for (Object item : (List<Object>) rawPatterns) {
         if (item instanceof String s) {
-          out.add(Pattern.compile(s));
+          out.add(new ReceiverPassthrough.Rule(Pattern.compile(s), languages));
         }
       }
     }
-    return out;
+    return new ReceiverPassthrough(out);
   }
 
   /**
@@ -199,6 +203,10 @@ public final class ConfigLoader {
       // enabled defaults to true; explicit
       // `enabled: false` skips the family.
       if (Boolean.FALSE.equals(spec.get("enabled"))) continue;
+      // The languages this family's callees belong to. A family that declares
+      // none applies to every language, which is the old behaviour.
+      Set<SourceLanguage> languages =
+          parseLanguages(spec.get("languages"), "argument-passthrough family");
       Object rawPatterns = spec.get("patterns");
       if (!(rawPatterns instanceof List)) continue;
       for (Object item : (List<Object>) rawPatterns) {
@@ -209,7 +217,9 @@ public final class ConfigLoader {
         List<Integer> indexes = parsePassthroughArgIndexes(entry.get("arg_index"));
         if (indexes.isEmpty()) continue;
         try {
-          out.add(new ArgumentPassthrough.Rule(Pattern.compile((String) rawPattern), indexes));
+          out.add(
+              new ArgumentPassthrough.Rule(
+                  Pattern.compile((String) rawPattern), indexes, languages));
         } catch (java.util.regex.PatternSyntaxException ignored) {
           // A pattern the engine cannot compile is a pattern it cannot use. The entry is
           // dropped rather than failing the load: one bad rule must not take the whole
@@ -355,6 +365,18 @@ public final class ConfigLoader {
    */
   @SuppressWarnings("unchecked")
   private static Set<SourceLanguage> parseLanguages(Object raw) {
+    return parseLanguages(raw, "sink family language restriction");
+  }
+
+  /**
+   * Parse a {@code languages} list into a set of {@link SourceLanguage}.
+   *
+   * @param raw the raw YAML value
+   * @param where what the list was read from, for the warning
+   * @return the languages; empty means "every language"
+   */
+  @SuppressWarnings("unchecked")
+  private static Set<SourceLanguage> parseLanguages(Object raw, String where) {
     if (!(raw instanceof List)) return Set.of();
     Set<SourceLanguage> out = new LinkedHashSet<>();
     for (Object item : (List<Object>) raw) {
@@ -362,7 +384,7 @@ public final class ConfigLoader {
       String key = s.trim();
       SourceLanguage lang = SourceLanguage.parse(key);
       if (lang == SourceLanguage.UNKNOWN) {
-        LOG.warn("Unknown language '{}' in sink family language restriction; ignored", key);
+        LOG.warn("Unknown language '{}' in {}; ignored", key, where);
         continue;
       }
       out.add(lang);

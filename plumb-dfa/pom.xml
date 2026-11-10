@@ -464,6 +464,17 @@
                         <include>org/plumb/dfa/checkers/controlflow/GoLockPairingTest.java</include>
                         <include>org/plumb/dfa/checkers/controlflow/GoLockPairingEndToEndTest.java</include>
 
+                        <!-- A rule says the language it is for. The two
+                             passthrough tables name one language's library
+                             but matched every language, because their
+                             patterns accept a package prefix of any length
+                             INCLUDING NONE, so a receiver merely CALLED
+                             String or Map matched the JDK's rules in any
+                             language. The test pins the mechanism, the data
+                             and the chain, so the scope cannot go missing
+                             again. -->
+                        <include>org/plumb/dfa/config/LanguageScopedPassthroughTest.java</include>
+
                         <!-- The multi-language IR contract and the language gate.
                              These pin the rules the Kotlin and Scala frontends
                              depend on: that a language-restricted sink family

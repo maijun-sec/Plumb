@@ -5053,7 +5053,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           && !ins.args.isEmpty()
           && ins.args.get(0) instanceof TacOperand.TacVar rcv
           && taintedVars.containsKey(rcv)
-          && ctx.config().isReceiverPassthroughEligible(calleeSig)) {
+          && ctx.config().isReceiverPassthroughEligible(calleeSig, ctx.language())) {
         String rcvLabel = taintedVars.get(rcv);
         taintedVars.put(rcvDest, "rcv-passthrough:" + rcvLabel);
         List<FlowStep> rcvFold = new java.util.ArrayList<>();
@@ -5112,7 +5112,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           && !taintedVars.containsKey(argDest)
           && !ins.args.isEmpty()) {
         List<Integer> argPositions =
-            ctx.config().argumentPassthrough().tacArgIndexesFor(calleeSig, ins.args);
+            ctx.config()
+                .argumentPassthrough()
+                .tacArgIndexesFor(calleeSig, ins.args, ctx.language());
         for (Integer position : argPositions) {
           if (position == null || position < 0 || position >= ins.args.size()) continue;
           if (!(ins.args.get(position) instanceof TacOperand.TacVar av)) continue;

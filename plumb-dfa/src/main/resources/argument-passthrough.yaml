@@ -41,6 +41,23 @@
 #   enabled: false
 # to turn a family off without removing the entry.
 
+#
+# The LANGUAGES each family is for.
+#
+# Every entry here names LIBRARY symbols, and a library symbol belongs to one
+# language: javax.servlet.http.HttpServletRequest is a Java type, System.String
+# is a C# one, net/http is a Go package. The patterns cannot say so
+# themselves, because the front end emits a callee signature in short form
+# when the symbol solver could not resolve the fully qualified name -- so a
+# pattern has to accept a package prefix of any length, INCLUDING NONE. That
+# is why the scope lives beside the pattern and not inside it: a pattern that
+# accepts a prefix of zero length will match a receiver merely CALLED String,
+# Map or Path -- in any language.
+#
+# So a family states the languages its callees belong to, and the engine
+# applies the family only to code written in one of them. A family that
+# declares no language applies to every language.
+#
 families:
   # ===== The JDK and Servlet methods whose RESULT is built from an ARGUMENT =====
   #
@@ -49,6 +66,7 @@ families:
   # operation then uses.
   jdk-argument-passthrough:
     enabled: true
+    languages: [java, kotlin, scala, groovy]
     patterns:
       - pattern: '^((?:[\w.]+\.)*)Path\.resolve\b(/\d+)?'
         arg_index: 0
@@ -65,6 +83,7 @@ families:
 
   library-argument-passthrough-csharp:
     enabled: true
+    languages: [csharp]
     patterns:
       - pattern: '^System\.Workflow\.ComponentModel\.DependencyObject\.GetValue\b(/\d+)?'
         arg_index: 0
@@ -513,6 +532,7 @@ families:
 
   library-argument-passthrough-go:
     enabled: true
+    languages: [go]
     patterns:
       - pattern: '^gorm\.io/gorm\.DB\.Order\b(/\d+)?'
         arg_index: any

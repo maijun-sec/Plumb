@@ -2739,7 +2739,7 @@ public final class ScanRunner {
               // silently drop the list and
               // disable the fallback
               // entirely.
-              baseCfg.receiverPassthroughPatterns(),
+              baseCfg.receiverPassthroughTable(),
               // the argument->result table,
               // which is the shape the
               // receiver table cannot

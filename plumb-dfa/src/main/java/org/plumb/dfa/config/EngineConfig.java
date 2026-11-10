@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
+import org.plumb.tac.ir.SourceLanguage;
 
 /**
  * Aggregated engine configuration.
@@ -42,13 +43,17 @@ public final class EngineConfig {
   private final TuningConfig tuning;
 
   /**
-   * compiled regex patterns for the receiver-passthrough fallback. The passthrough in {@code
+   * The receiver-passthrough table. The passthrough in {@code
    * TaintedCheckerBase.propagateTaintFromCalleeSummary} only fires when the callee signature
-   * matches one of these patterns. Without this gate the fallback would mark ANY JDK method
-   * returning data from a tainted receiver as tainted, producing FP on POJO getters, util-class
-   * factories, etc.
+   * matches one of these rules AND the rule is for the language being analysed. Without this gate
+   * the fallback would mark ANY JDK method returning data from a tainted receiver as tainted,
+   * producing FP on POJO getters, util-class factories, etc.
+   *
+   * <p>The table keeps the language scope each rule was written with. A rule that names languages
+   * applies to those languages only, so a rule written for one language's library does not fire on
+   * another language's code.
    */
-  private final List<Pattern> receiverPassthroughPatterns;
+  private final ReceiverPassthrough receiverPassthrough;
 
   /**
    * The per-language library semantics tables.
@@ -81,8 +86,9 @@ public final class EngineConfig {
         checkers,
         cweMappings,
         tuning,
-        receiverPassthroughPatterns,
-        org.plumb.dfa.semantics.LanguageSemanticsRegistry.withDefaults());
+        ReceiverPassthrough.of(receiverPassthroughPatterns),
+        org.plumb.dfa.semantics.LanguageSemanticsRegistry.withDefaults(),
+        ArgumentPassthrough.empty());
   }
 
   public EngineConfig(
@@ -99,7 +105,7 @@ public final class EngineConfig {
         checkers,
         cweMappings,
         tuning,
-        receiverPassthroughPatterns,
+        ReceiverPassthrough.of(receiverPassthroughPatterns),
         languageSemantics,
         ArgumentPassthrough.empty());
   }
@@ -119,13 +125,41 @@ public final class EngineConfig {
       List<Pattern> receiverPassthroughPatterns,
       org.plumb.dfa.semantics.LanguageSemanticsRegistry languageSemantics,
       ArgumentPassthrough argumentPassthrough) {
+    this(
+        sinkFamilies,
+        factKinds,
+        checkers,
+        cweMappings,
+        tuning,
+        ReceiverPassthrough.of(receiverPassthroughPatterns),
+        languageSemantics,
+        argumentPassthrough);
+  }
+
+  /**
+   * The full constructor: the two passthrough tables and the language semantics.
+   *
+   * <p>This is the one that keeps the receiver table's language scope. The overload that takes a
+   * flat list of patterns cannot carry it, so a caller that uses it gets the scope-free table.
+   *
+   * @param receiverPassthrough the receiver-passthrough table, with its language scope
+   */
+  public EngineConfig(
+      SinkFamilyRegistry sinkFamilies,
+      FactKindRegistry factKinds,
+      CheckerRegistry checkers,
+      Map<String, String> cweMappings,
+      TuningConfig tuning,
+      ReceiverPassthrough receiverPassthrough,
+      org.plumb.dfa.semantics.LanguageSemanticsRegistry languageSemantics,
+      ArgumentPassthrough argumentPassthrough) {
     this.sinkFamilies = Objects.requireNonNull(sinkFamilies, "sinkFamilies");
     this.factKinds = Objects.requireNonNull(factKinds, "factKinds");
     this.checkers = Objects.requireNonNull(checkers, "checkers");
     this.cweMappings = cweMappings == null ? Map.of() : Map.copyOf(cweMappings);
     this.tuning = Objects.requireNonNull(tuning, "tuning");
-    this.receiverPassthroughPatterns =
-        receiverPassthroughPatterns == null ? List.of() : List.copyOf(receiverPassthroughPatterns);
+    this.receiverPassthrough =
+        receiverPassthrough == null ? ReceiverPassthrough.empty() : receiverPassthrough;
     this.languageSemantics =
         languageSemantics == null
             ? org.plumb.dfa.semantics.LanguageSemanticsRegistry.withDefaults()
@@ -174,9 +208,25 @@ public final class EngineConfig {
     return tuning;
   }
 
-  /** receiver-passthrough patterns. */
+  /**
+   * The receiver-passthrough patterns, flattened.
+   *
+   * <p>The flattened view loses the language scope each rule was written with. A caller that needs
+   * the scope asks for {@link #receiverPassthroughTable()}.
+   *
+   * @return the patterns
+   */
   public List<Pattern> receiverPassthroughPatterns() {
-    return receiverPassthroughPatterns;
+    return receiverPassthrough.patterns();
+  }
+
+  /**
+   * The receiver-passthrough table, with the language scope of each rule.
+   *
+   * @return the table
+   */
+  public ReceiverPassthrough receiverPassthroughTable() {
+    return receiverPassthrough;
   }
 
   /**
@@ -193,14 +243,21 @@ public final class EngineConfig {
    * passthrough fallback uses this to gate the receiver → dest taint inference.
    */
   public boolean isReceiverPassthroughEligible(String calleeSig) {
-    if (calleeSig == null) return false;
-    String normalized = calleeSig.replace('#', '.');
-    for (Pattern p : receiverPassthroughPatterns) {
-      if (p.matcher(normalized).find()) {
-        return true;
-      }
-    }
-    return false;
+    return receiverPassthrough.matchesAnyLanguage(calleeSig);
+  }
+
+  /**
+   * Whether the receiver-passthrough fallback applies to this callee, in the given language.
+   *
+   * <p>This is the view the engine uses: a rule written for one language's library does not apply
+   * to another language's code.
+   *
+   * @param calleeSig the callee's signature
+   * @param language the analysed language; null means unknown
+   * @return true when the fallback applies
+   */
+  public boolean isReceiverPassthroughEligible(String calleeSig, SourceLanguage language) {
+    return receiverPassthrough.matches(calleeSig, language);
   }
 
   /**
@@ -215,7 +272,7 @@ public final class EngineConfig {
         newCheckers,
         cweMappings,
         tuning,
-        receiverPassthroughPatterns,
+        receiverPassthrough,
         languageSemantics,
         argumentPassthrough);
   }
@@ -227,7 +284,7 @@ public final class EngineConfig {
         checkers,
         cweMappings,
         tuning,
-        receiverPassthroughPatterns,
+        receiverPassthrough,
         languageSemantics,
         argumentPassthrough);
   }
@@ -239,7 +296,7 @@ public final class EngineConfig {
         checkers,
         cweMappings,
         tuning,
-        receiverPassthroughPatterns,
+        receiverPassthrough,
         languageSemantics,
         argumentPassthrough);
   }
@@ -251,19 +308,29 @@ public final class EngineConfig {
         checkers,
         cweMappings,
         newTuning,
-        receiverPassthroughPatterns,
+        receiverPassthrough,
         languageSemantics,
         argumentPassthrough);
   }
 
   public EngineConfig withReceiverPassthroughPatterns(List<Pattern> patterns) {
+    return withReceiverPassthroughTable(ReceiverPassthrough.of(patterns));
+  }
+
+  /**
+   * A copy of this configuration with a different receiver-passthrough table.
+   *
+   * @param table the table, with its language scope
+   * @return a new configuration; this one is unchanged
+   */
+  public EngineConfig withReceiverPassthroughTable(ReceiverPassthrough table) {
     return new EngineConfig(
         sinkFamilies,
         factKinds,
         checkers,
         cweMappings,
         tuning,
-        patterns,
+        table,
         languageSemantics,
         argumentPassthrough);
   }
@@ -276,7 +343,7 @@ public final class EngineConfig {
         checkers,
         cweMappings,
         tuning,
-        receiverPassthroughPatterns,
+        receiverPassthrough,
         languageSemantics,
         table);
   }

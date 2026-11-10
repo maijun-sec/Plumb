@@ -709,6 +709,23 @@ public final class AnalysisContext {
   }
 
   /**
+   * The language of the function currently being analysed.
+   *
+   * <p><b>Why this is asked of the CONTEXT and not of the caller.</b> A rule that says an
+   * ARGUMENT's or a RECEIVER's taint reaches the RESULT is written for one language's library, and
+   * the engine has to know which language the code in front of it is written in before it applies
+   * such a rule. The function being analysed is the only thing that carries that answer, and the
+   * context is what holds it -- so the context is what answers the question.
+   *
+   * @return the language, or {@link org.plumb.tac.ir.SourceLanguage#UNKNOWN} when no function is
+   *     being analysed
+   */
+  public org.plumb.tac.ir.SourceLanguage language() {
+    org.plumb.tac.ir.TacFunction fn = currentFunction();
+    return fn == null ? org.plumb.tac.ir.SourceLanguage.UNKNOWN : fn.sourceLanguage();
+  }
+
+  /**
    * Register a source file path for an enclosing class. Called by DfaEngine (which iterates the
    * program's functions and uses each function's enclosing class to look up the file path) and by
    * the ScanRunner (which can pre-populate the map for single-file scans where {@code
