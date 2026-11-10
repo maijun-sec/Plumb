@@ -58,10 +58,19 @@ import org.plumb.tac.ir.TacType;
  *
  * <p><b>Why the keys are measured, not inferred.</b> The catalogue matches a callee SIGNATURE, and
  * a signature the front end never emits is a pattern that never fires. The keys below are the ones
- * the TypeScript side car produced for the corresponding source, read back out of the TAC: a
- * construction is a {@code NEW} whose callee signature is {@code <Class>.<init>/<arity>}, where the
- * class is the SYNTACTIC name of the constructed expression and the arity is the number of
- * arguments PASSED.
+ * the TypeScript, JavaScript and ArkTS side cars produced for the corresponding source, read back
+ * out of the TAC: a construction is a {@code NEW} whose callee signature is {@code
+ * <Class>.<init>/<arity>}, where the class is the SYNTACTIC name of the constructed expression and
+ * the arity is the number of arguments PASSED. All three side cars emit the same keys -- {@code
+ * Function.<init>/1}, {@code RegExp.<init>/1}, {@code RegExp.<init>/2}, {@code Function.<init>/2}
+ * -- and an anonymous class expression emits no key at all rather than a made-up one.
+ *
+ * <p><b>Why the SYNTACTIC name and not the type.</b> The front end also reports a construction's
+ * type, and the type is the wrong thing to key on: a value can be given another type by its
+ * context, so the type can name a class that was never constructed. The ArkTS side car shows it
+ * plainly -- for {@code new RegExp(x)} it reports the type {@code Object}, while the callee
+ * signature still names {@code RegExp}. A key built from the type would be {@code Object.<init>/1}:
+ * a class no program ever constructed.
  *
  * <p><b>Why the Function constructor needs its own position.</b> Its arguments are the parameter
  * NAMES first and the BODY last, so the code is the last argument and a parameter name is not code
