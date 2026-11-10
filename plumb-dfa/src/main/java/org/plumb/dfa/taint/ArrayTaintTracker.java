@@ -98,6 +98,21 @@ public final class ArrayTaintTracker {
     record Constant(long value) implements IndexKey {}
 
     /**
+     * A string-literal index -- the key of a keyed namespace.
+     *
+     * <p><b>Why this exists next to {@link Constant}.</b> An array's index is a position, and a
+     * position is an integer. A keyed namespace's index is a KEY, and a key is a string. Before
+     * this case existed, a string key fell through to {@link Any}, which made the whole container
+     * tainted -- so a write to {@code obj.userId} made a read of {@code obj.role} look tainted too.
+     *
+     * <p><b>Why it is safe to add.</b> The languages whose subscripts are array positions never
+     * produce a string-literal index: a string-keyed container in those languages is reached
+     * through a CALL, not through a subscript. So this case is only ever reached by a frontend that
+     * means "keyed namespace" by it.
+     */
+    record Str(String value) implements IndexKey {}
+
+    /**
      * Symbolic index identified by the TacVar's name. We use the name (not the SSA version) because
      * the array-tracker's lifetime is local to one function; SSA versions don't cross basic-block
      * boundaries for the same source-level variable.
@@ -132,6 +147,10 @@ public final class ArrayTaintTracker {
       Object v = c.value();
       if (v instanceof Integer i) return new IndexKey.Constant(i);
       if (v instanceof Long l) return new IndexKey.Constant(l);
+      // A string literal is a KEY, not a position: it
+      // names one entry of a keyed namespace, so it
+      // must not collapse into "the whole container".
+      if (v instanceof String s) return new IndexKey.Str(s);
     }
     return ANY;
   }

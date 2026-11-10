@@ -143,4 +143,122 @@ public final class AccessPathBuilder {
     }
     return new ArrayList<>(paths);
   }
+
+  /**
+   * The prefix of a root that names a VARIABLE rather than an object.
+   *
+   * <p>The access-path store holds both kinds of root, and they must not be confused: an object
+   * label is {@code type@site:context}, and a variable name is not. The prefix makes the difference
+   * visible in the store's dump, and makes a collision with an object label impossible.
+   */
+  private static final String VARIABLE_ROOT_PREFIX = "var:";
+
+  /**
+   * Builds the coarse root of a path: the receiver's VARIABLE, not its object.
+   *
+   * <p>Two objects reached through one variable name share this root, and one object reached
+   * through two names does not. It is therefore the answer to use only when the engine cannot say
+   * which object a receiver holds -- and it must not be used when the engine CAN say.
+   *
+   * @param receiverName the receiver variable's name
+   * @return the root naming the variable
+   */
+  public static String variableRoot(String receiverName) {
+    return VARIABLE_ROOT_PREFIX + (receiverName == null ? "" : receiverName);
+  }
+
+  /**
+   * The access paths of {@code receiver[key]}, one per object the receiver may hold.
+   *
+   * <p><b>Why this is not {@link #elementPaths}.</b> An array element's identity is its position,
+   * and {@code a[0]} and {@code a[1]} are different locations. A keyed namespace's identity is the
+   * pair (object, key), so the key has to be part of the path -- and it has to be part of it in a
+   * form that says how much the analysis knows about it: a known key, a key it cannot resolve, or
+   * "every key".
+   *
+   * <p>The three forms are not interchangeable. A known key names ONE entry, so it neither sees nor
+   * is seen by a different known key. A key the analysis cannot resolve stands for every key, so it
+   * sees a write to any known key and is seen by a read of any known key. "Every key" is what a
+   * write through an unresolvable key produces: after {@code obj[k] = tainted}, every entry of
+   * {@code obj} may carry the taint, so every read of {@code obj} has to see it.
+   *
+   * @param solver the points-to solver; {@code null} means "no object information"
+   * @param signature the enclosing function's signature
+   * @param receiver the variable holding the container
+   * @param key the subscript's key expression
+   * @return the paths, or an empty list when the receiver's object is not known
+   */
+  public static List<TacAccessPath> mapPaths(
+      PointsToSolver solver, String signature, TacOperand receiver, TacOperand key) {
+    return mapPaths(solver, signature, receiver, keySelector(key));
+  }
+
+  /**
+   * The access paths of {@code receiver[key]}, with the key's shape decided by the caller.
+   *
+   * <p>The caller needs to override the shape in one case: when the key itself is tainted, the
+   * analysis does not know WHICH entry was written, so the write covers the whole namespace.
+   *
+   * @param solver the points-to solver; {@code null} means "no object information"
+   * @param signature the enclosing function's signature
+   * @param receiver the variable holding the container
+   * @param key the selector naming the entry
+   * @return the paths, or an empty list when the receiver's object is not known
+   */
+  public static List<TacAccessPath> mapPaths(
+      PointsToSolver solver, String signature, TacOperand receiver, TacAccessPath.Selector key) {
+    if (solver == null || signature == null || key == null) {
+      return List.of();
+    }
+    if (!(receiver instanceof TacOperand.TacVar recv)) {
+      return List.of();
+    }
+    Set<AbstractObject.Obj> objects;
+    try {
+      objects = solver.pointsToAcrossContexts(signature, recv);
+    } catch (RuntimeException e) {
+      // A points-to query that fails costs the refinement, not the analysis.
+      return List.of();
+    }
+    if (objects == null || objects.isEmpty()) {
+      return List.of();
+    }
+    Set<TacAccessPath> paths = new LinkedHashSet<>();
+    for (AbstractObject.Obj o : objects) {
+      if (o == null) continue;
+      String root;
+      try {
+        root = o.label();
+      } catch (RuntimeException e) {
+        continue;
+      }
+      if (root == null || root.isEmpty()) continue;
+      paths.add(TacAccessPath.root(root).with(key));
+    }
+    return new ArrayList<>(paths);
+  }
+
+  /**
+   * The selector a subscript's key denotes.
+   *
+   * <p>A key the analysis can resolve names one entry. A key it cannot -- a variable, or a constant
+   * of a shape no namespace uses as a key -- stands for every key, because the entry it reaches is
+   * not known.
+   *
+   * @param key the subscript's key operand
+   * @return the selector naming the entry the key denotes
+   */
+  public static TacAccessPath.Selector keySelector(TacOperand key) {
+    if (key == null) return new TacAccessPath.MapKeySet();
+    if (key instanceof TacOperand.Const c) {
+      Object v = c.value();
+      if (v instanceof String s) return new TacAccessPath.MapKey(s);
+      if (v instanceof Integer i) return new TacAccessPath.MapKey(String.valueOf(i));
+      if (v instanceof Long l) return new TacAccessPath.MapKey(String.valueOf(l));
+      if (v instanceof Character ch) return new TacAccessPath.MapKey(String.valueOf(ch));
+      return new TacAccessPath.MapKeySet();
+    }
+    if (key instanceof TacOperand.TacVar tv) return new TacAccessPath.LazyMapKey(tv.name());
+    return new TacAccessPath.MapKeySet();
+  }
 }

@@ -100,11 +100,36 @@ public final class AccessPathTaintStore {
     if (path == null) return null;
     Entry exact = byPath.get(path);
     if (exact != null) return exact;
+    // The same entry, reached through a key the analysis could not resolve.
+    Entry covering = readCovering(path);
+    if (covering != null) return covering;
     // The container is tainted, so the element is too.
     Entry fromContainer = readContainer(path);
     if (fromContainer != null) return fromContainer;
     // The element is tainted, so reading the container sees it.
     return readElement(path);
+  }
+
+  /**
+   * The taint at the same entry, reached through a key the analysis could not resolve.
+   *
+   * <p>This is the rule that makes a keyed namespace work. A write to {@code obj.userId} and a
+   * later read of {@code obj[anyKey]} name the same entry as far as the analysis can tell -- the
+   * read's key might be {@code userId} -- so the read has to see the write. The rule is symmetric:
+   * a write through a key the analysis could not resolve may have landed on any entry, so a read of
+   * a named entry has to see it too.
+   *
+   * <p>Two DIFFERENT named entries never match each other: {@code obj.userId} and {@code obj.role}
+   * are different locations, and treating them as one is a false positive.
+   */
+  private Entry readCovering(TacAccessPath path) {
+    for (Map.Entry<TacAccessPath, Entry> e : byPath.entrySet()) {
+      TacAccessPath candidate = e.getKey();
+      if (candidate.coversLocation(path)) {
+        return e.getValue();
+      }
+    }
+    return null;
   }
 
   private Entry readContainer(TacAccessPath path) {

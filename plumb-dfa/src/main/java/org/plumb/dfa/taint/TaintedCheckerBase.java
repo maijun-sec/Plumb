@@ -48,6 +48,7 @@ import org.plumb.reporter.trace.Trace;
 import org.plumb.reporter.trace.TraceBuilder;
 import org.plumb.reporter.trace.TraceNode;
 import org.plumb.tac.ir.SourceLanguage;
+import org.plumb.tac.ir.TacAccessPath;
 import org.plumb.tac.ir.TacBasicBlock;
 import org.plumb.tac.ir.TacCfg;
 import org.plumb.tac.ir.TacCfgBuilder;
@@ -1130,7 +1131,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // array tracker so subsequent ARRAYLOADs
       // through the same (or any) index see the
       // taint. T1.
-      case ARRAYSTORE -> recordArrayStore(ins);
+      case ARRAYSTORE -> recordArrayStore(ins, fn, ctx);
       // FIELDSTORE: y.f = x. If the
       // receiver (lhs1) is `this` and the
       // stored value (dest) is currently
@@ -1684,7 +1685,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * {@code String.split} and its equivalents: the result is a piece of the input.
    *
    * <p>Python splits with the same name, and it splits twice more: {@code rsplit} splits from the
-   * right and {@code splitlines} splits on the line breaks. All three hand back pieces of the input.
+   * right and {@code splitlines} splits on the line breaks. All three hand back pieces of the
+   * input.
    */
   private static boolean isSplitLike(String calleeSig) {
     return isMethodNamed(calleeSig, "split", "splitToSequence", "rsplit", "splitlines");
@@ -1693,11 +1695,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   /**
    * {@code String.substring} and its equivalents.
    *
-   * <p><b>Why the script spellings are here.</b> The list names the operations by what they DO,
-   * and a script language spells the same operation differently: JavaScript cuts a string with
-   * {@code substring}, {@code slice} or {@code substr}, and all three hand back a piece of the
-   * input. A list that knew only the Java spelling would drop the taint at the two the list
-   * missed -- and the drop is invisible, because the program then reports itself clean.
+   * <p><b>Why the script spellings are here.</b> The list names the operations by what they DO, and
+   * a script language spells the same operation differently: JavaScript cuts a string with {@code
+   * substring}, {@code slice} or {@code substr}, and all three hand back a piece of the input. A
+   * list that knew only the Java spelling would drop the taint at the two the list missed -- and
+   * the drop is invisible, because the program then reports itself clean.
    */
   private static boolean isSubstringLike(String calleeSig) {
     return isMethodNamed(
@@ -1718,8 +1720,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * <p><b>Why this category exists.</b> The other categories each describe one SHAPE of operation
    * -- a piece of the input, a case change, a join. Reshaping the input without changing what it
    * says is a fourth shape, and it had no home: a script language's {@code padStart} and {@code
-   * zfill} had nowhere to go, so a table that said they preserve taint had no way to say so to
-   * the engine. A table entry that cannot reach the engine is a comment.
+   * zfill} had nowhere to go, so a table that said they preserve taint had no way to say so to the
+   * engine. A table entry that cannot reach the engine is a comment.
    */
   private static boolean isDerivedLike(String calleeSig) {
     return isMethodNamed(
@@ -2917,12 +2919,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   /**
    * The method name of a callee signature in {@code owner.method/arity} form.
    *
-   * <p><b>Why a backslash counts as a separator.</b> PHP qualifies a name with its namespace, and
-   * a global function is written with a leading backslash: {@code system} arrives as {@code
+   * <p><b>Why a backslash counts as a separator.</b> PHP qualifies a name with its namespace, and a
+   * global function is written with a leading backslash: {@code system} arrives as {@code
    * \system/1} and a namespaced one as {@code App\Support\sanitize/1}. Neither has a dot, so a
    * dot-only split would name the whole thing -- {@code \trim} -- and the method-name lists would
-   * never match a PHP call. The semantics table's reader splits the same way, because the two
-   * have to agree.
+   * never match a PHP call. The semantics table's reader splits the same way, because the two have
+   * to agree.
    */
   private static String methodNameOf(String calleeSig) {
     if (calleeSig == null || calleeSig.isEmpty()) return "";
@@ -4088,7 +4090,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     };
   }
 
-  private void recordArrayStore(TacInstruction ins) {
+  private void recordArrayStore(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
+    if (usesKeyedContainers(ctx)) {
+      recordKeyedStore(ins, fn, ctx);
+      return;
+    }
     if (!(ins.lhs1 instanceof TacOperand.TacVar arr)) return;
     if (ins.dest == null) return;
     // Is the stored value (ins.dest) currently tainted?
@@ -4135,11 +4141,31 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * a specific (arr, index) entry, replace the dest's taint label + path with the tracker's. This
    * is what makes {@code a[0] = tainted; x = a[0]} flow correctly even when {@code a} itself is not
    * directly tainted.
+   *
+   * <p><b>In a language with keyed containers, the tracker consulted here is the keyed one.</b>
+   * There, a subscript names an entry of a namespace rather than a position in an array, and the
+   * entry's identity is the pair (object, key). The keyed answer is read first, and when the engine
+   * knows which object the receiver holds, that answer is the whole answer: the variable-keyed
+   * fallback survives a reassignment, so using it here would report a stale taint as a fresh one.
    */
-  private void restoreArrayTaintOnLoad(TacInstruction ins) {
+  private void restoreArrayTaintOnLoad(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
     if (!(ins.lhs1 instanceof TacOperand.TacVar arr)) return;
     if (!(ins.dest instanceof TacOperand.TacVar dv)) return;
-    ArrayTaintTracker.TaintedEntry tracked = arrayTaintTracker.readLoad(arr, ins.lhs2);
+    ArrayTaintTracker.TaintedEntry tracked = null;
+    if (usesKeyedContainers(ctx)) {
+      AccessPathTaintStore.Entry located = readKeyedEntry(ins, fn, arr, ctx);
+      if (located != null) {
+        tracked = new ArrayTaintTracker.TaintedEntry(located.label(), located.path(), -1);
+      } else if (keyedReceiverObjectIsKnown(ins, fn, arr, ctx)) {
+        // The receiver's object is KNOWN and the entry is clean. The variable-keyed answer
+        // must not be used here: it names whatever the variable held, which may be a
+        // different object entirely.
+        return;
+      }
+    }
+    if (tracked == null) {
+      tracked = arrayTaintTracker.readLoad(arr, ins.lhs2);
+    }
     if (tracked == null) return;
     // Build a path that ends at the load site.
     List<FlowStep> newPath = new ArrayList<>();
@@ -4223,6 +4249,159 @@ public abstract class TaintedCheckerBase implements DfaChecker {
               "");
     }
     v2TraceHandle.put(dv, arrHandle);
+  }
+
+  /**
+   * Whether the function being analysed addresses containers through keyed namespaces.
+   *
+   * <p>See {@link SourceLanguage#hasKeyedContainers()} for what the question is about, and why the
+   * languages already supported answer it differently.
+   */
+  private static boolean usesKeyedContainers(AnalysisContext ctx) {
+    return languageFor(ctx).hasKeyedContainers();
+  }
+
+  /**
+   * Whether the engine knows WHICH OBJECT a receiver holds.
+   *
+   * <p>The keyed twin of {@link #receiverObjectIsKnown}. The answer decides between the
+   * object-identity answer and the variable-keyed fallback, and it is the difference between
+   * reporting a fresh taint and reporting a stale one.
+   */
+  private boolean keyedReceiverObjectIsKnown(
+      TacInstruction ins, TacFunction fn, TacOperand.TacVar recv, AnalysisContext ctx) {
+    if (ins == null || fn == null || recv == null || ctx == null) return false;
+    org.plumb.dfa.points.PointsToSolver solver = ctx.pointsToSolver();
+    if (solver == null) return false;
+    try {
+      return !solver.pointsToAcrossContexts(fn.signature(), recv).isEmpty();
+    } catch (RuntimeException e) {
+      // A points-to query that fails costs the refinement, not the analysis.
+      return false;
+    }
+  }
+
+  /**
+   * Record a write into a keyed namespace.
+   *
+   * <p><b>What is written where.</b> The write is recorded under the receiver's OBJECT identity
+   * when the engine knows it -- that is the answer that keeps two objects apart -- and under the
+   * receiver's VARIABLE as well, so that a later read which cannot resolve the object either still
+   * finds it.
+   *
+   * <p><b>Why the shape of the key matters.</b> A key the analysis can resolve names one entry, so
+   * the write lands on that entry and on no other. A key it cannot resolve may have landed on ANY
+   * entry, so the write covers the whole namespace: after {@code obj[k] = tainted}, every entry of
+   * {@code obj} may carry the taint, and every read of {@code obj} has to see it.
+   *
+   * <p><b>Why a clean write records nothing.</b> The store is shared by every function the engine
+   * analyses, so erasing here could erase a write made in another function. The same reasoning
+   * keeps the field path store from erasing either.
+   */
+  private void recordKeyedStore(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
+    if (ins == null || fn == null || ins.dest == null) return;
+    if (!(ins.lhs1 instanceof TacOperand.TacVar recv)) return;
+    String valueLabel = null;
+    List<FlowStep> valuePath = null;
+    if (ins.dest instanceof TacOperand.TacVar dv && taintedVars.containsKey(dv)) {
+      valueLabel = taintedVars.get(dv);
+      valuePath = taintPaths.get(dv);
+    }
+    if (valueLabel == null) return;
+    TacAccessPath.Selector selector = keyedWriteSelector(ins);
+    for (TacAccessPath path : keyedPrecisePaths(fn, recv, ctx, selector)) {
+      accessPathTaintStore.record(path, valueLabel, valuePath);
+    }
+    for (TacAccessPath path : keyedVariablePaths(recv, selector)) {
+      accessPathTaintStore.record(path, valueLabel, valuePath);
+    }
+  }
+
+  /**
+   * The taint at a keyed entry.
+   *
+   * <p><b>Two roots, and the asymmetry between them.</b> The precise root is the receiver's OBJECT
+   * identity, and it is what keeps two objects apart. The variable root is the receiver's NAME, and
+   * it is what the engine has when it cannot say which object the receiver holds. A read consults
+   * the precise root when there is one, and the variable root ONLY when there is not: the variable
+   * root survives a reassignment, so falling back to it for a receiver the engine CAN resolve would
+   * report a stale answer as a fresh one.
+   */
+  private AccessPathTaintStore.Entry readKeyedEntry(
+      TacInstruction ins, TacFunction fn, TacOperand.TacVar recv, AnalysisContext ctx) {
+    if (ins == null || fn == null || recv == null) return null;
+    TacAccessPath.Selector selector = keyedReadSelector(ins);
+    List<TacAccessPath> precise = keyedPrecisePaths(fn, recv, ctx, selector);
+    if (!precise.isEmpty()) {
+      for (TacAccessPath path : precise) {
+        AccessPathTaintStore.Entry entry = accessPathTaintStore.read(path);
+        if (entry != null) return entry;
+      }
+      // The object is known and the entry is clean.
+      return null;
+    }
+    for (TacAccessPath path : keyedVariablePaths(recv, selector)) {
+      AccessPathTaintStore.Entry entry = accessPathTaintStore.read(path);
+      if (entry != null) return entry;
+    }
+    return null;
+  }
+
+  /**
+   * The paths of a keyed entry, one per object the receiver may hold.
+   *
+   * @return the paths, or an empty list when the engine cannot say which object the receiver holds
+   */
+  private List<TacAccessPath> keyedPrecisePaths(
+      TacFunction fn,
+      TacOperand.TacVar recv,
+      AnalysisContext ctx,
+      TacAccessPath.Selector selector) {
+    org.plumb.dfa.points.PointsToSolver solver = ctx == null ? null : ctx.pointsToSolver();
+    if (solver == null) return List.of();
+    try {
+      return AccessPathBuilder.mapPaths(solver, fn.signature(), recv, selector);
+    } catch (RuntimeException e) {
+      // A points-to query that fails costs the refinement, not the analysis.
+      return List.of();
+    }
+  }
+
+  /**
+   * The path of a keyed entry, rooted at the receiver's VARIABLE.
+   *
+   * <p>This is the coarse answer: it says which handle was written, not which object. It is the
+   * answer when the engine cannot resolve the object, and it is the answer a read falls back to
+   * only in that case.
+   */
+  private static List<TacAccessPath> keyedVariablePaths(
+      TacOperand.TacVar recv, TacAccessPath.Selector selector) {
+    if (recv == null || selector == null) return List.of();
+    return List.of(TacAccessPath.root(AccessPathBuilder.variableRoot(recv.name())).with(selector));
+  }
+
+  /**
+   * The selector naming the entry a READ reaches.
+   *
+   * <p>A key the analysis can resolve names one entry. A key it cannot resolve stands for every
+   * key, because the entry the read reaches is not known.
+   */
+  private static TacAccessPath.Selector keyedReadSelector(TacInstruction ins) {
+    return AccessPathBuilder.keySelector(ins == null ? null : ins.lhs2);
+  }
+
+  /**
+   * The selector naming the entry a WRITE reaches.
+   *
+   * <p>The difference from a read is the tainted key. When the key itself carries taint, the
+   * analysis does not know which entry was written -- and it knows the key came from outside -- so
+   * the write covers the whole namespace.
+   */
+  private TacAccessPath.Selector keyedWriteSelector(TacInstruction ins) {
+    if (ins != null && ins.lhs2 instanceof TacOperand.TacVar kv && taintedVars.containsKey(kv)) {
+      return new TacAccessPath.MapKeySet();
+    }
+    return AccessPathBuilder.keySelector(ins == null ? null : ins.lhs2);
   }
 
   /**
