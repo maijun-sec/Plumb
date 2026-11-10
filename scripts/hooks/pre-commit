@@ -1,16 +1,30 @@
 #!/usr/bin/env sh
 #
-# Pre-commit hook: refuse a commit that contains unformatted Java.
+# Pre-commit hook: refuse a commit that contains unformatted Java, and refuse a
+# commit whose rule catalogue and the documents derived from it disagree.
 #
-# The rule is "the sources must be formatted before they are committed".
-# This hook makes that a property of the repository rather than a
-# habit: an unformatted file cannot be committed.
+# Part 1 -- the sources must be formatted before they are committed.
 #
-# It runs the formatter in --check mode over the files that are STAGED
-# for commit, so the check is fast and scoped to the change. The
-# formatter itself lives in scripts/format.py, which is the single
-# implementation of the file set and the exclusion list.
+# Part 2 -- a commit must be self-consistent.
 #
+# docs/rules/RULES.md and docs/rules/RULE-TOOL-COMPARISON.md, and their Chinese
+# counterparts, quote the SIZE of the rule catalogue: how many sink patterns
+# there are, how many source patterns, how many families. A commit that adds a
+# pattern to the catalogue without regenerating them leaves the repository
+# stating a number that is no longer true, and nothing in the commit says so.
+# It has happened twice: the catalogue grew by 47 patterns in one commit and the
+# documents kept the old number until a later commit noticed.
+#
+# The gates that catch this live in scripts/check_all.py, and a gate nobody runs
+# is not a gate. This part is that gate, run at the moment the commit is made.
+#
+# What is judged is the COMMIT, not the working tree: the index is exported to
+# a temporary directory and the generators are run there. A working tree that
+# has been regenerated but not staged is still a commit that would state the
+# old number, and it is refused as such.
+#
+# The check costs about 17 seconds, and only runs when the commit touches a
+# file the generators read. The formatting gate below costs about 30.
 # To install:
 #     sh scripts/install-hooks.sh
 #
@@ -22,52 +36,57 @@ set -e
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
-# Collect the staged Java files. `git diff --cached --name-only` lists
-# them; a rename shows both the old and the new path, and only the new
-# one is in the index, so filter against what is actually staged.
-STAGED_JAVA=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.java$' || true)
+# ---------------------------------------------------------------------------
+# Part 1: the sources must be formatted.
+# ---------------------------------------------------------------------------
 
-if [ -z "$STAGED_JAVA" ]; then
-    exit 0
-fi
+format_gate() {
+    # Collect the staged Java files. `git diff --cached --name-only` lists
+    # them; a rename shows both the old and the new path, and only the new
+    # one is in the index, so filter against what is actually staged.
+    STAGED_JAVA=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.java$' || true)
 
-# The formatter's own file set is the authority on what is in scope.
-# Ask it to check, then confirm that the staged set is a subset of what
-# it looked at -- if a staged file is outside that set (a Juliet corpus
-# fixture, a testcase measurement fixture), it must not block the
-# commit.
-CHECK_OUTPUT=$(python scripts/format.py --check 2>&1) || true
-
-UNFORMATTED=$(printf '%s\n' "$CHECK_OUTPUT" | sed -n 's/^    \(.*\.java\)$/\1/p')
-
-if [ -z "$UNFORMATTED" ]; then
-    # Either everything is formatted, or the formatter failed. A failure
-    # must not silently pass: report it and let the commit through only
-    # if the formatter could not run at all (a missing jar), which
-    # format.py signals with exit code 2.
-    if printf '%s' "$CHECK_OUTPUT" | grep -q 'could not be parsed'; then
-        echo "pre-commit: the formatter could not parse a file:" >&2
-        printf '%s\n' "$CHECK_OUTPUT" | grep -A5 'could not be parsed' >&2
-        echo "pre-commit: commit refused" >&2
-        exit 1
+    if [ -z "$STAGED_JAVA" ]; then
+        return 0
     fi
-    exit 0
-fi
 
-# Only the staged files matter. A file that was already unformatted in
-# HEAD and is not part of this commit is not this commit's business.
-BLOCKING=""
-for f in $UNFORMATTED; do
-    if printf '%s\n' "$STAGED_JAVA" | grep -qx "$f"; then
-        BLOCKING="$BLOCKING $f"
+    # The formatter's own file set is the authority on what is in scope.
+    # Ask it to check, then confirm that the staged set is a subset of what
+    # it looked at -- if a staged file is outside that set (a Juliet corpus
+    # fixture, a testcase measurement fixture), it must not block the
+    # commit.
+    CHECK_OUTPUT=$(python scripts/format.py --check 2>&1) || true
+
+    UNFORMATTED=$(printf '%s\n' "$CHECK_OUTPUT" | sed -n 's/^    \(.*\.java\)$/\1/p')
+
+    if [ -z "$UNFORMATTED" ]; then
+        # Either everything is formatted, or the formatter failed. A failure
+        # must not silently pass: report it and let the commit through only
+        # if the formatter could not run at all (a missing jar), which
+        # format.py signals with exit code 2.
+        if printf '%s' "$CHECK_OUTPUT" | grep -q 'could not be parsed'; then
+            echo "pre-commit: the formatter could not parse a file:" >&2
+            printf '%s\n' "$CHECK_OUTPUT" | grep -A5 'could not be parsed' >&2
+            echo "pre-commit: commit refused" >&2
+            return 1
+        fi
+        return 0
     fi
-done
 
-if [ -z "$BLOCKING" ]; then
-    exit 0
-fi
+    # Only the staged files matter. A file that was already unformatted in
+    # HEAD and is not part of this commit is not this commit's business.
+    BLOCKING=""
+    for f in $UNFORMATTED; do
+        if printf '%s\n' "$STAGED_JAVA" | grep -qx "$f"; then
+            BLOCKING="$BLOCKING $f"
+        fi
+    done
 
-cat >&2 <<EOF
+    if [ -z "$BLOCKING" ]; then
+        return 0
+    fi
+
+    cat >&2 <<EOF
 pre-commit: these staged files are not formatted:
 
 $(for f in $BLOCKING; do echo "    $f"; done)
@@ -79,4 +98,38 @@ Run:
 and stage the result. To skip this check for one commit:
     git commit --no-verify
 EOF
-exit 1
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# Part 2: the commit must be self-consistent.
+# ---------------------------------------------------------------------------
+
+# The derived rule documents quote the SIZE of the rule catalogue, so a commit
+# that changes the catalogue without regenerating them states a number that is
+# no longer true.
+#
+# The check lives in scripts/check_generated_documents.py rather than in the
+# shell for two reasons: it is easier to be right in Python than in the shell,
+# and it is a gate in its own right, so scripts/mutate_generated_documents.py
+# can prove that it still refuses what it must.
+#
+# The gate decides for itself whether the commit can affect the documents, so
+# calling it on every commit is cheap.
+generated_documents_gate() {
+    if ! command -v python >/dev/null 2>&1; then
+        echo "pre-commit: no python on PATH; the generated-document gate did not run" >&2
+        return 0
+    fi
+
+    OUTPUT=$(python scripts/check_generated_documents.py 2>&1) || {
+        printf '%s\n' "$OUTPUT" >&2
+        echo "pre-commit: commit refused" >&2
+        return 1
+    }
+    return 0
+}
+
+format_gate || exit 1
+generated_documents_gate || exit 1
+exit 0

@@ -244,6 +244,19 @@ Three boundaries of the variant:
   `JdbcTemplate.query` would also match `JdbcTemplate.queryForList`, and the two
   have different parameter indices.
 
+Changing the catalogue changes the documents derived from it. `RULES.md` and
+`RULE-TOOL-COMPARISON.md` quote the catalogue's SIZE, so a commit that adds a
+pattern without regenerating them leaves the repository stating a number that is
+no longer true -- and nothing in the commit says so. Regenerate them, and stage
+the result together with the change: `python scripts/gen_rules_overview.py` and
+`python scripts/gen_tool_comparison.py`.
+
+The pre-commit hook refuses a commit that changes the catalogue without them.
+`python scripts/check_generated_documents.py` says the same thing outside a
+commit, and it asks the question of the INDEX rather than of the working tree:
+a working tree that has been regenerated but not staged is still a commit that
+would state the old number, and it is refused as well.
+
 #### The passthrough tables: which language, and which bucket
 
 The two passthrough tables -- `receiver-passthrough.yaml` and

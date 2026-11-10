@@ -230,6 +230,13 @@ The gates are:
     gen_rules_overview --check
                               the rules overview's numbers still match
                               the source
+    check_generated_documents    the commit as staged states the size of
+                              the rule catalogue correctly: the derived
+                              documents are regenerated when the catalogue
+                              changes, and the gate that says so runs at
+                              commit time
+    mutate_generated_documents   that gate is not checking air: every
+                              deliberate drift must make it fail
 
 The generators that WRITE (gen_rules_doc, gen_rules_index) are run
 afterwards, and their output is reported as a working-tree change, so
@@ -382,6 +389,10 @@ GATES = (
      ["python", "scripts/gen_tool_comparison.py", "--check"], "check"),
     ("gen_rules_overview",
      ["python", "scripts/gen_rules_overview.py", "--check"], "check"),
+    ("check_generated_documents",
+     ["python", "scripts/check_generated_documents.py"], "check"),
+    ("mutate_generated_documents",
+     ["python", "scripts/mutate_generated_documents.py"], "check"),
     ("linkcheck", ["python", ".aethercode/linkcheck.py"], "check"),
 )
 

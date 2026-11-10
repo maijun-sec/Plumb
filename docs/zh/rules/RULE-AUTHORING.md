@@ -218,6 +218,17 @@ Jackson、Guava）会静默失配**——分析照常跑完，只是一条 findi
 - **方法名后加了词边界 `\b`**。否则 `JdbcTemplate.query` 会连
   `JdbcTemplate.queryForList` 一起匹配上，而这两者的参数下标不同。
 
+改动目录，改的也是从它生成的那些文档。`RULES.md` 与 `RULE-TOOL-COMPARISON.md`
+引用的是目录的**规模**，所以一个加了 pattern 却没有重新生成它们的提交，
+会让仓库写下一个已经不再为真的数字——而提交本身不会说这件事。重新生成，
+并把结果和改动一起暂存：`python scripts/gen_rules_overview.py` 与
+`python scripts/gen_tool_comparison.py`。
+
+pre-commit 钩子会拒绝"改了目录却没带上它们"的提交。
+`python scripts/check_generated_documents.py` 在提交之外说同一件事；而且它问的是
+**索引**而不是工作树：工作树已经重新生成、但没有暂存，那仍然是一个会写下旧数字的
+提交，同样会被拒。
+
 #### passthrough 表：语言，以及分桶
 
 两张 passthrough 表——`receiver-passthrough.yaml` 与 `argument-passthrough.yaml`

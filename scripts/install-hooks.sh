@@ -44,4 +44,7 @@ fi
 
 echo
 echo "Hooks installed. The pre-commit hook refuses a commit that contains"
-echo "unformatted Java. Run 'scripts/format.ps1' (or format.sh) to fix."
+echo "unformatted Java, and a commit whose rule catalogue and the documents"
+echo "derived from it disagree. Run 'scripts/format.ps1' (or format.sh) to fix"
+echo "the first, and 'python scripts/check_generated_documents.py' to see the"
+echo "second."
