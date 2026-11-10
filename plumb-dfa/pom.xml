@@ -212,6 +212,19 @@
                              language, must both report nothing. -->
                         <include>org/plumb/dfa/taint/ScriptSourceEntryTest.java</include>
 
+                        <!-- The SEAM between the script front ends and the
+                             catalogue. The catalogue names the module a
+                             function came from, and the front end has to
+                             produce that name; nothing checks the agreement
+                             on its own, because a catalogue test builds its
+                             TAC by hand and a front end test proves only
+                             what the front end was written to emit. When the
+                             two disagree the symptom is no crash and no
+                             warning: a scan that reports the program clean.
+                             So this one goes source -> front end -> TAC ->
+                             engine -> catalogue -> FINDING. -->
+                        <include>org/plumb/dfa/taint/ScriptModuleSinkEndToEndTest.java</include>
+
                         <!-- The argument-to-return shape: a library method that
                              carries an ARGUMENT's taint into its result is a
                              rule of its own, and the table that says which
@@ -635,6 +648,14 @@
                              allocation identity rather than a variable name. -->
                         <include>org/plumb/dfa/taint/AccessPathTaintStoreTest.java</include>
                         <include>org/plumb/dfa/taint/AccessPathBuilderTest.java</include>
+                        <!-- The keyed namespace: a script language's property is
+                             a KEY, not a field, so two objects of one class
+                             hold two entries of one map. The engine has to
+                             keep them apart, and the tracker that keys a
+                             field by the receiver's NAME cannot. This test
+                             is the acceptance for that, and it has to be in
+                             the allow list or the build never runs it. -->
+                        <include>org/plumb/dfa/taint/KeyedNamespaceTaintTest.java</include>
                         <!-- The coarse tracker keys a field by the receiver's NAME, so
                              two objects reached through the same name share one slot.
                              This test records that behaviour explicitly, so that
