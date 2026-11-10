@@ -234,7 +234,8 @@ class GoTaintSourceScanE2ETest {
   void aGoEnvironmentReadReachesTheCommandSink() throws Exception {
     assumeTrue(
         goToolchainOnPath(),
-        "the Go front end needs a Go toolchain to resolve the project's types");
+        "the Go front end needs a Go toolchain to resolve the project's types: install Go and put "
+            + "`go` on the PATH");
 
     String ndjson = scan(FROM_ENVIRONMENT);
 
@@ -248,7 +249,8 @@ class GoTaintSourceScanE2ETest {
   void aGoValueSurvivesAMap() throws Exception {
     assumeTrue(
         goToolchainOnPath(),
-        "the Go front end needs a Go toolchain to resolve the project's types");
+        "the Go front end needs a Go toolchain to resolve the project's types: install Go and put "
+            + "`go` on the PATH");
 
     String ndjson = scan(THROUGH_A_MAP);
 
@@ -262,7 +264,8 @@ class GoTaintSourceScanE2ETest {
   void aGoValueSurvivesAChannel() throws Exception {
     assumeTrue(
         goToolchainOnPath(),
-        "the Go front end needs a Go toolchain to resolve the project's types");
+        "the Go front end needs a Go toolchain to resolve the project's types: install Go and put "
+            + "`go` on the PATH");
 
     String ndjson = scan(THROUGH_A_CHANNEL);
 
@@ -276,7 +279,8 @@ class GoTaintSourceScanE2ETest {
   void aGoLiteralIsClean() throws Exception {
     assumeTrue(
         goToolchainOnPath(),
-        "the Go front end needs a Go toolchain to resolve the project's types");
+        "the Go front end needs a Go toolchain to resolve the project's types: install Go and put "
+            + "`go` on the PATH");
 
     String ndjson = scan(FROM_A_LITERAL);
 

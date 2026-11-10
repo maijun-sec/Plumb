@@ -128,7 +128,15 @@ public final class SidecarProcess implements AutoCloseable {
    */
   public static SidecarProcess launch(String label, Path executable, Path workingDirectory)
       throws IOException {
-    if (executable == null || !Files.isRegularFile(executable)) {
+    if (executable == null) {
+      // "not found at null" names no path, so it tells the reader nothing at
+      // all. This class knows only that there was nothing to launch; the
+      // CALLER knows what the sidecar is and where it comes from, so the
+      // caller is the one that can say what to do about it.
+      throw new IOException(
+          "the " + label + " sidecar's location was not known: there was nothing to launch");
+    }
+    if (!Files.isRegularFile(executable)) {
       throw new IOException("the " + label + " sidecar was not found at " + executable);
     }
     return launch(label, List.of(executable.toString()), workingDirectory);

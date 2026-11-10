@@ -36,6 +36,27 @@ means parsing every source file and binding every reference, which is the
 expensive part. Doing it once per project and once per session is what makes the
 approach viable.
 
+## Running it locally
+
+The sidecar is a .NET program, so the Java build does not produce it: the .NET
+toolchain builds it, once, and the build output is not in version control. A
+fresh checkout builds it from the repository root with:
+
+```
+dotnet build plumb-frontend/csharp-sidecar/Plumb.CSharpSidecar.csproj -c Release
+```
+
+The output lands in `plumb-frontend/csharp-sidecar/bin/Release/net8.0`, which
+is where the frontend looks for it (`bin/Debug/net8.0` is searched as well, so
+a debug build is found too). `PLUMB_CSHARP_SIDECAR` overrides the search and
+names the executable outright.
+
+Without that build the frontend reports that the sidecar is missing and names
+this command. The end-to-end test SKIPS instead of failing, because a machine
+without the .NET toolchain is missing an environment rather than carrying a
+broken product -- and the skip message says the same command, so a reader who
+lands on the skip knows what to run.
+
 ## Framing: length-prefixed JSON
 
 Each message is a JSON object, UTF-8 encoded, framed as:

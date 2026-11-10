@@ -188,6 +188,8 @@ class CSharpTaintSourceScanE2ETest {
   @Test
   @DisplayName("a value read from the console reaches the sink")
   void consoleReadReachesTheSink() throws Exception {
+    CSharpSidecarSupport.assumeSidecarAvailable();
+
     String ndjson = scan("Vulnerable.cs", FROM_CONSOLE);
 
     assertThat(ndjson)
@@ -198,6 +200,8 @@ class CSharpTaintSourceScanE2ETest {
   @Test
   @DisplayName("a value read from the environment reaches the sink")
   void environmentReadReachesTheSink() throws Exception {
+    CSharpSidecarSupport.assumeSidecarAvailable();
+
     String ndjson = scan("Vulnerable.cs", FROM_ENVIRONMENT);
 
     assertThat(ndjson)
@@ -208,6 +212,8 @@ class CSharpTaintSourceScanE2ETest {
   @Test
   @DisplayName("a value read from a file reaches the sink")
   void fileReadReachesTheSink() throws Exception {
+    CSharpSidecarSupport.assumeSidecarAvailable();
+
     String ndjson = scan("Vulnerable.cs", FROM_FILE);
 
     assertThat(ndjson)
@@ -218,6 +224,8 @@ class CSharpTaintSourceScanE2ETest {
   @Test
   @DisplayName("a literal that reaches the sink is not reported")
   void literalReachingTheSinkIsNotReported() throws Exception {
+    CSharpSidecarSupport.assumeSidecarAvailable();
+
     String ndjson = scan("Benign.cs", FROM_A_LITERAL);
 
     assertThat(ndjson)

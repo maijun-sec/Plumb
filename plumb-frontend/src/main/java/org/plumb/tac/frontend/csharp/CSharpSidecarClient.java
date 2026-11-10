@@ -22,6 +22,7 @@
 package org.plumb.tac.frontend.csharp;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.plumb.tac.frontend.sidecar.SidecarLocator;
@@ -45,8 +46,8 @@ import org.plumb.tac.frontend.sidecar.SidecarProcess;
  * file of the same project. The symbol would simply fail to bind, and the scan would report "no
  * findings" for a project that contains a vulnerability. So the sidecar holds one compilation per
  * project and reuses it across files. That is also what makes the approach viable: building the
- * compilation is the expensive part, and doing it once per project rather than once per file is
- * the difference between usable and unusable.
+ * compilation is the expensive part, and doing it once per project rather than once per file is the
+ * difference between usable and unusable.
  *
  * <p>The process handling and the framing are shared with the other sidecars -- see {@link
  * SidecarProcess}. What is specific to C# is only where the executable lives.
@@ -57,6 +58,20 @@ public final class CSharpSidecarClient implements AutoCloseable {
 
   /** The name used in the sidecar's messages. */
   private static final String LABEL = "C#";
+
+  /**
+   * What to do when the sidecar is not on this machine.
+   *
+   * <p>The C# sidecar is a .NET program, so the Java build does not produce it: the .NET toolchain
+   * builds it, once, and its output is not in version control. A checkout that has never run that
+   * build has no sidecar, and a message that only says "not found" leaves the reader with nothing
+   * to do about it. The frontend, the tests and the protocol document all say this one sentence, so
+   * the advice does not drift between them.
+   */
+  public static final String NOT_BUILT =
+      "the C# sidecar is a .NET program and is not built by the Java build: build it once with "
+          + "`dotnet build plumb-frontend/csharp-sidecar/Plumb.CSharpSidecar.csproj -c Release` "
+          + "from the repository root, or point PLUMB_CSHARP_SIDECAR at the built executable";
 
   /**
    * Where the C# sidecar lives.
@@ -87,6 +102,13 @@ public final class CSharpSidecarClient implements AutoCloseable {
    */
   public static CSharpSidecarClient launch(Path executable, Path workingDirectory)
       throws IOException {
+    if (executable == null) {
+      throw new IOException(NOT_BUILT);
+    }
+    if (!Files.isRegularFile(executable)) {
+      throw new IOException(
+          "the " + LABEL + " sidecar was not found at " + executable + "; " + NOT_BUILT);
+    }
     return new CSharpSidecarClient(SidecarProcess.launch(LABEL, executable, workingDirectory));
   }
 

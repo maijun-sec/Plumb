@@ -185,6 +185,8 @@ class CSharpLambdaScanE2ETest {
   @Test
   @DisplayName("a C# lambda that reaches a sink is reported")
   void lambdaReachingTheSinkIsReported() throws Exception {
+    CSharpSidecarSupport.assumeSidecarAvailable();
+
     String ndjson = scan("Vulnerable.cs", LAMBDA_REACHES_SINK);
 
     assertThat(ndjson)
@@ -229,6 +231,8 @@ class CSharpLambdaScanE2ETest {
   @Test
   @DisplayName("the same sink called directly is reported")
   void directCallReachingTheSinkIsReported() throws Exception {
+    CSharpSidecarSupport.assumeSidecarAvailable();
+
     String ndjson = scan("Vulnerable.cs", DIRECT_REACHES_SINK);
 
     assertThat(ndjson)
@@ -239,6 +243,8 @@ class CSharpLambdaScanE2ETest {
   @Test
   @DisplayName("a C# lambda that reaches no sink is not reported")
   void lambdaReachingNothingIsNotReported() throws Exception {
+    CSharpSidecarSupport.assumeSidecarAvailable();
+
     String ndjson = scan("Benign.cs", LAMBDA_REACHES_NOTHING);
 
     assertThat(ndjson)
