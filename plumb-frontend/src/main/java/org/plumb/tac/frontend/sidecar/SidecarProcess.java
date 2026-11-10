@@ -76,6 +76,15 @@ public final class SidecarProcess implements AutoCloseable {
   private final Thread stderrPump;
   private final StringBuilder stderrTail = new StringBuilder();
 
+  /**
+   * Whether the stderr pump has reached the end of the sidecar's stderr.
+   *
+   * <p>The pump runs on its own thread, so the pipe can break before the pump has read what the
+   * sidecar said. The message that reports the failure waits for this flag, so that the sidecar's
+   * last words are in it.
+   */
+  private volatile boolean stderrClosed;
+
   private SidecarProcess(String label, Process process) {
     this.label = label;
     this.process = process;
@@ -99,6 +108,8 @@ public final class SidecarProcess implements AutoCloseable {
                 }
               } catch (IOException ignored) {
                 // The pipe closed with the process. Nothing to report.
+              } finally {
+                stderrClosed = true;
               }
             },
             "plumb-" + label + "-stderr");
@@ -190,18 +201,93 @@ public final class SidecarProcess implements AutoCloseable {
    */
   public String exchange(String request) throws IOException {
     byte[] payload = request.getBytes(StandardCharsets.UTF_8);
-    toSidecar.writeInt(payload.length);
-    toSidecar.write(payload);
-    toSidecar.flush();
+    try {
+      toSidecar.writeInt(payload.length);
+      toSidecar.write(payload);
+      toSidecar.flush();
+    } catch (IOException ex) {
+      throw died(ex);
+    }
 
-    int length = fromSidecar.readInt();
+    int length;
+    try {
+      length = fromSidecar.readInt();
+    } catch (IOException ex) {
+      throw died(ex);
+    }
     if (length < 0 || length > MAX_FRAME_BYTES) {
       throw new IOException(
           "the " + label + " sidecar sent a frame of " + length + " bytes, which is out of range");
     }
     byte[] response = new byte[length];
-    fromSidecar.readFully(response);
+    try {
+      fromSidecar.readFully(response);
+    } catch (IOException ex) {
+      throw died(ex);
+    }
     return new String(response, StandardCharsets.UTF_8);
+  }
+
+  /**
+   * The exception to raise when the sidecar did not answer.
+   *
+   * <p><b>Why the sidecar's own words are in the message.</b> A sidecar dies for reasons the JVM
+   * cannot see: the Node runtime cannot find the package the script imports, the runtime is missing
+   * itself, the script has a syntax error. Every one of those says itself on the sidecar's stderr,
+   * and the sidecar's stderr is exactly where it goes. Without it the reader gets a broken pipe or
+   * an end of file and has to guess which of the four reasons it was -- and the most common one, a
+   * dependency that was never installed, looks like a broken product rather than a missing setup
+   * step. So the tail of the stderr goes into the message: the cause is the one the sidecar
+   * reported.
+   *
+   * @param cause what the pipe did
+   * @return the exception to throw
+   */
+  private IOException died(IOException cause) {
+    awaitTheEnd();
+    StringBuilder message = new StringBuilder();
+    message.append("the ").append(label).append(" sidecar did not answer");
+    if (!process.isAlive()) {
+      message.append(" (it exited with ").append(process.exitValue()).append(')');
+    }
+    message.append(": ").append(cause.getMessage());
+    String tail = stderrTail().trim();
+    if (!tail.isEmpty()) {
+      message.append("; its last output was: ").append(tail);
+    }
+    return new IOException(message.toString(), cause);
+  }
+
+  /**
+   * Wait for the sidecar to end, and for its stderr to be collected.
+   *
+   * <p>The sidecar's last words are on its stderr, and the thread that collects them reads the pipe
+   * until it ends. A pipe that breaks can be noticed before that thread has read what was written,
+   * so the message would be built from an empty tail and would say nothing about the real cause. So
+   * the wait is for the sidecar to end and for the pump to catch up.
+   *
+   * <p>A sidecar that is still running is not waited for: it may answer the next request, and a
+   * failure in the middle of a conversation is not its end.
+   */
+  private void awaitTheEnd() {
+    if (process.isAlive()) {
+      return;
+    }
+    try {
+      process.waitFor(2, TimeUnit.SECONDS);
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+      return;
+    }
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+    while (!stderrClosed && System.nanoTime() < deadline) {
+      try {
+        Thread.sleep(10);
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        return;
+      }
+    }
   }
 
   /**
