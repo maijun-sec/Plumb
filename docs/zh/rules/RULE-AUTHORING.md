@@ -408,3 +408,64 @@ taint.sources.env:
 这一条不是新想法，而是补一个不一致：目录早就把 Go 的 `os.Getenv`/`os.Args`、C# 的
 `System.getenv`、Java 的 `System.getProperty` 当作源。脚本语言是唯一没有对应物的，而它们恰好
 就是那些输入要从容器里读的语言。
+
+#### 脚本语言自己的 sink：值落到哪里
+
+只认源、不认 sink 的规则层只有一半。脚本语言能读 `process.env`、`sys.argv` 之后，
+下一个问题就是这个值**落**到哪里——答案是目录还没点名的一批 API。
+
+它们各自落进一个已经有规则在读的族，所以新加的 pattern 会走到一条 finding，而不是一个
+无处可去的匹配：
+
+| 族 | 读它的规则 | 脚本语言补上的 |
+| --- | --- | --- |
+| `log.sinks` | `dfa-taint-log-injection` | `Console.log`、`logging.info`、`error_log`、`syslog` |
+| `sql.sinks` | `dfa-taint-sql-injection` | `mysql.query`、`pg.query`、`knex.raw`、`mysqli_query`、`PDO::query` |
+| `header.sinks` | `dfa-taint-http-response-splitting` | `header`、`mail` |
+| `cookie.sinks` | `dfa-taint-cookie-injection` | `setcookie`、`setrawcookie` |
+| `reflection.sinks` | `dfa-taint-unsafe-reflection` | `call_user_func`、`call_user_func_array` |
+
+怎么写一条 pattern 由三件事决定，三件都是对着 side car **量**出来的，不是猜的。
+
+**值在参数表的哪个位置。** 引擎按「用户参数 N」读被污染的参数，而 TAC 把**接收者**放在
+`args[0]`。脚本语言的模块调用里接收者是模块；PHP 的全局函数里接收者是这个名字被限定时的
+命名空间。两种情况下第一个用户参数都是 `args[1]`。
+
+| 调用 | 被污染的值 | `arg_index` |
+| --- | --- | --- |
+| `Console.log(input)` | 第一个用户参数——第二个也是，因为 `console.log` 会打印它拿到的每个参数 | `[0, 1]` |
+| `logging.info(name)` | 第一个用户参数 | `0` |
+| `error_log($name)` | 第一个用户参数 | `0` |
+| `syslog(LOG_ERR, $name)` | **第二个**用户参数——优先级排在前面 | `1` |
+| `mysql.query(input)` | 第一个用户参数 | `0` |
+| `mysqli_query($link, $name)` | **第二个**用户参数——连接排在前面 | `1` |
+| `PDO::query($name)` | 第一个用户参数 | `0` |
+| `header($line)` | 第一个用户参数——名字和值在 PHP 里是同一个字符串 | `0` |
+| `mail($to, $subject, $body)` | **第二个**用户参数——那就是主题，而主题就是一个 header | `1` |
+| `setcookie('a', $name)` | **第二个**用户参数——cookie 名字排在前面 | `1` |
+| `setrawcookie('a', $name)` | 第二个用户参数——cookie 名字排在前面 | `1` |
+| `call_user_func($name, $arg)` | **第一个**用户参数——那就是被调用的函数 | `0` |
+
+**一个名字能认领到什么。** 引擎是按**子串**匹配 pattern 的，所以这些桶里的每个名字都以词
+边界收尾：`Console.logger` 不是日志调用，`header_size` 不是写 header，`mysqli_query_all`
+不是查询。
+
+**一个桶服务哪些语言。** 桶按「量它的那个语言」限定。`error_log` 是 PHP 的 sink 而不是 Java
+的，`Console.log` 是脚本语言的 sink 而不是 Java 的——Java 程序两样都没有。
+
+**PHP 程序能遮蔽内置函数。** PHP 允许程序定义一个与内置函数同名的函数，而前端给两者的
+callee key 完全一样：程序自己定义的全局 `mail()` 和调用内置的那个，都到达成 `\mail/3`。
+所以一条点名 PHP 全局函数的 pattern，也会认领程序自己那个函数。这就是点名 PHP 全局
+函数的代价，和命令那批函数早就承担的代价一样。
+
+目录刻意**不**点名的三样东西，以及理由：
+
+- **通过变量写的响应。** 脚本程序里响应对象是个局部变量——`res.setHeader(...)`、
+  `res.cookie(...)`——owner 就是程序给这个变量起的名字，一条松到能点住它的 pattern 会把
+  程序里每一个 `.setHeader` 都认领。
+- **游标上的 SQL 调用。** Python 里 `cursor.execute` 的 owner 是**文件**所属的模块，不是游标
+  的类：前端不会给一个只通过局部变量看到的对象点名。所以没有名字可供 pattern 指过去，Python
+  的 SQL sink 暂时还不在目录里。
+- **ArkTS 的 console。** 对着它的 side car 量过：那里 `console.log` 的 owner 是**文件**的模块
+  名而不是 `Console` 类型。同样的形状也把 `process.stdout.write` 挡在脚本桶外面：它的 owner
+  是文件的模块，不是一个类。

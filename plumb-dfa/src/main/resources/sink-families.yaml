@@ -160,7 +160,7 @@ families:
   log.sinks:
     cwe: CWE-117
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go']
+    languages: ['java', 'kotlin', 'scala', 'go', 'typescript', 'javascript', 'python3', 'php']
     patterns:
       - pattern: '^java\.util\.logging\.Logger\.info(/\d+)?'
       - pattern: '^java\.util\.logging\.Logger\.warning(/\d+)?'
@@ -204,6 +204,26 @@ families:
           arg_index: [0, 1]
         - pattern: '^log\.Logger\.Println(/\d+)?'
           arg_index: 0
+      typescript,javascript:
+        # The console of the runtime. The receiver is the console object and
+        # the message is the first user argument; console.log takes several
+        # arguments and prints them all, so either can carry the taint.
+        #
+        # ArkTS is deliberately absent: measured against its side car, the
+        # owner of `console.log` there is the FILE's module name and not the
+        # Console type, so there is no name to point a pattern at.
+        - pattern: '^Console\.(log|info|warn|error|debug|trace)\b(/\d+)?'
+          arg_index: [0, 1]
+      python3:
+        - pattern: '^logging\.(debug|info|warning|error|critical|exception)\b(/\d+)?'
+          arg_index: 0
+      php:
+        # error_log writes the message; syslog's message is the SECOND
+        # argument, after the priority.
+        - pattern: '^\\error_log\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^\\syslog\b(/\d+)?'
+          arg_index: 1
   format.sinks:
     cwe: CWE-134
     severity: HIGH
@@ -226,7 +246,7 @@ families:
   header.sinks:
     cwe: CWE-93
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala']
+    languages: ['java', 'kotlin', 'scala', 'php']
     default_arg_index: 1
     patterns:
       - pattern: '^javax\.servlet\.http\.HttpServletResponse\.setHeader(/\d+)?'
@@ -248,6 +268,15 @@ families:
         arg_index: 1
       - pattern: '^org\.springframework\.http\.HttpHeaders\.set(/\d+)?'
       - pattern: '^org\.springframework\.http\.HttpHeaders\.add(/\d+)?'
+    by_language:
+      php:
+        # header() takes the whole header line in its FIRST argument;
+        # the name and the value are one string there.
+        - pattern: '^\\header\b(/\d+)?'
+          arg_index: 0
+        # mail() writes its SECOND argument into the Subject header.
+        - pattern: '^\\mail\b(/\d+)?'
+          arg_index: 1
   mem-alloc.sinks:
     cwe: CWE-789
     severity: HIGH
@@ -1065,6 +1094,14 @@ families:
           arg_index: 0
         - pattern: '^akka\.http\.(java|scala)dsl\.model\.headers\.Cookie\.apply(/\d+)?'
           arg_index: 0
+      php:
+        # setcookie() takes the name FIRST and the value SECOND, so the
+        # tainted value is the second argument.
+        - pattern: '^\\setcookie\b(/\d+)?'
+          arg_index: 1
+        # setrawcookie() has the same argument order.
+        - pattern: '^\\setrawcookie\b(/\d+)?'
+          arg_index: 1
 
   credential.sinks:
     cwe: CWE-256,CWE-522,CWE-798
@@ -5381,6 +5418,11 @@ families:
       scala:
         - pattern: '^scala\.compat\.Platform\.getClassForName(/\d+)?'
           arg_index: 0
+      php:
+        # The callable is the FIRST argument; a tainted name there
+        # means a tainted function is chosen at run time.
+        - pattern: '^\\call_user_func(_array)?\b(/\d+)?'
+          arg_index: 0
 
   regex.sinks:
     cwe: CWE-1333,CWE-185,CWE-730
@@ -6724,6 +6766,25 @@ families:
           arg_index: 0
       scala:
         - pattern: '^slick\.jdbc\.SQLActionBuilder\.\<init\>(/\d+)?'
+          arg_index: 0
+      typescript,javascript:
+        # The client packages, named by the module they came from. A project
+        # that wraps its own database client names something the catalogue
+        # cannot know, and those calls are out of reach -- deliberately,
+        # because a pattern loose enough to name them would name every
+        # `.query` in the program.
+        - pattern: '^(mysql|pg)\.query\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^knex\.raw\b(/\d+)?'
+          arg_index: 0
+      php:
+        # The SQL is the SECOND argument of the procedural APIs and the FIRST
+        # of the PDO ones.
+        - pattern: '^\\mysqli_(query|prepare)\b(/\d+)?'
+          arg_index: 1
+        - pattern: '^\\pg_query\b(/\d+)?'
+          arg_index: 1
+        - pattern: '^\\PDO::(query|exec|prepare)\b(/\d+)?'
           arg_index: 0
 
   ssrf.sinks:

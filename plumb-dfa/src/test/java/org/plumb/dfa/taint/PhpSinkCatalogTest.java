@@ -30,8 +30,10 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.plumb.dfa.checkers.taint.CommandInjectionChecker;
+import org.plumb.dfa.checkers.taint.SqlInjectionChecker;
 import org.plumb.dfa.config.ConfigLoader;
 import org.plumb.dfa.config.EngineConfig;
+import org.plumb.dfa.engine.DfaChecker;
 import org.plumb.dfa.engine.DfaEngine;
 import org.plumb.dfa.engine.FindingReporter;
 import org.plumb.dfa.semantics.LanguageSemantics;
@@ -74,6 +76,7 @@ import org.plumb.tac.ir.TacType;
 class PhpSinkCatalogTest {
 
   private static final String COMMAND_RULE = "dfa-taint-command-injection";
+  private static final String SQL_RULE = "dfa-taint-sql-injection";
 
   private static TacOperand.TacVar temp(String name) {
     return new TacOperand.TacVar(name, TacType.UNKNOWN, true);
@@ -345,6 +348,289 @@ class PhpSinkCatalogTest {
 
     assertThat(hasFinding(findings, COMMAND_RULE, "\\system/1"))
         .as("the rule is scoped to PHP")
+        .isFalse();
+  }
+
+  // ------------------------------------------- response, cookie and database
+
+  /**
+   * The PHP handler that queries a database, as the front end lowers it.
+   *
+   * <p>Measured against the PHP side car: the receiver slot of a global function holds the
+   * NAMESPACE the name was qualified with, so the connection is the first user argument and the
+   * statement is the second.
+   *
+   * @param language the language the function is written in
+   * @return the function under analysis
+   */
+  private static TacFunction sqlHandler(SourceLanguage language) {
+    TacOperand.TacVar request = new TacOperand.TacVar("request", TacType.UNKNOWN, false);
+    TacOperand.TacVar link = new TacOperand.TacVar("link", TacType.UNKNOWN, false);
+    TacOperand.TacVar name = new TacOperand.TacVar("name", TacType.STRING, false);
+
+    List<TacInstruction> instructions = new ArrayList<>();
+    instructions.add(move(name, request, 10));
+    // mysqli_query($link, $name);
+    instructions.add(
+        blackBox(
+            "\\mysqli_query/2",
+            temp("t9"),
+            List.of(TacOperand.Const.ofString("\\"), link, name),
+            12));
+    return new TacFunction(
+        "handle",
+        "app\\handle(string):string",
+        TacType.STRING,
+        List.of(request),
+        List.of(link, name),
+        instructions,
+        List.of(),
+        List.of(),
+        Map.of(),
+        Map.of(),
+        null,
+        SourceOrigin.SOURCE,
+        List.of(),
+        language,
+        IrPrecision.SOURCE_FULL);
+  }
+
+  /**
+   * Scan a function with the given checkers.
+   *
+   * @param language the language the function is written in
+   * @param function the function under analysis
+   * @param checkers the checkers to run
+   * @return the taint findings
+   */
+  private List<Finding> scan(
+      SourceLanguage language, TacFunction function, DfaChecker... checkers) {
+    TacProgram program = new TacProgram(Path.of("handler.php"), "app");
+    program.addFunction(function);
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+    FindingReporter reporter =
+        new DfaEngine(config, List.of(checkers), "global", null)
+            .runWithGlobalStore(List.of(program), 0);
+    List<Finding> out = new ArrayList<>();
+    for (Finding f : reporter.all()) {
+      if (f.ruleId().startsWith("dfa-taint-")) out.add(f);
+    }
+    return out;
+  }
+
+  @Test
+  @DisplayName("the catalogue names the PHP response, cookie, log and database APIs")
+  void theCatalogueNamesThePhpResponseCookieLogAndDatabaseApis() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("header.sinks")
+                .orElseThrow()
+                .matches("\\header/1", SourceLanguage.PHP))
+        .as("header writes a response header")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("header.sinks")
+                .orElseThrow()
+                .matches("\\mail/3", SourceLanguage.PHP))
+        .as("mail writes its subject into a header")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("cookie.sinks")
+                .orElseThrow()
+                .matches("\\setcookie/2", SourceLanguage.PHP))
+        .as("setcookie writes a cookie value")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("cookie.sinks")
+                .orElseThrow()
+                .matches("\\setrawcookie/2", SourceLanguage.PHP))
+        .as("setrawcookie writes a cookie value too")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("reflection.sinks")
+                .orElseThrow()
+                .matches("\\call_user_func/2", SourceLanguage.PHP))
+        .as("call_user_func chooses a function by name")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("sql.sinks")
+                .orElseThrow()
+                .matches("\\mysqli_query/2", SourceLanguage.PHP))
+        .as("mysqli_query sends the statement to the database")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("sql.sinks")
+                .orElseThrow()
+                .matches("\\PDO::query/1", SourceLanguage.PHP))
+        .as("PDO::query sends the statement to the database")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("log.sinks")
+                .orElseThrow()
+                .matches("\\error_log/1", SourceLanguage.PHP))
+        .as("error_log writes the message to the log")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("the PHP buckets do not reach into another language")
+  void thePhpBucketsDoNotReachIntoAnotherLanguage() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("header.sinks")
+                .orElseThrow()
+                .matches("\\header/1", SourceLanguage.JAVA))
+        .as("a Java program has no PHP built-ins")
+        .isFalse();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("sql.sinks")
+                .orElseThrow()
+                .matches("\\mysqli_query/2", SourceLanguage.JAVA))
+        .as("a Java program has no PHP built-ins")
+        .isFalse();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("log.sinks")
+                .orElseThrow()
+                .matches("\\error_log/1", SourceLanguage.JAVA))
+        .as("a Java program has no PHP built-ins")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("the new PHP buckets do not claim a name on its own")
+  void theNewPhpBucketsDoNotClaimANameOnItsOwn() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("log.sinks")
+                .orElseThrow()
+                .matches("\\error_logging/1", SourceLanguage.PHP))
+        .as("a name that starts with error_log is not a log call")
+        .isFalse();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("header.sinks")
+                .orElseThrow()
+                .matches("\\header_size/1", SourceLanguage.PHP))
+        .as("a name that starts with header is not a header call")
+        .isFalse();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("header.sinks")
+                .orElseThrow()
+                .matches("\\mailer/1", SourceLanguage.PHP))
+        .as("a name that starts with mail is not a mail call")
+        .isFalse();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("cookie.sinks")
+                .orElseThrow()
+                .matches("\\setcookiex/2", SourceLanguage.PHP))
+        .as("a name that starts with setcookie is not a cookie call")
+        .isFalse();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("cookie.sinks")
+                .orElseThrow()
+                .matches("\\setrawcookiez/2", SourceLanguage.PHP))
+        .as("a name that starts with setrawcookie is not a cookie call")
+        .isFalse();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("reflection.sinks")
+                .orElseThrow()
+                .matches("\\call_user_func_extra/2", SourceLanguage.PHP))
+        .as("a name that starts with call_user_func is not a call")
+        .isFalse();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("sql.sinks")
+                .orElseThrow()
+                .matches("\\mysqli_query_all/2", SourceLanguage.PHP))
+        .as("a name that starts with mysqli_query is not a query")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("a tainted value reaches the database call")
+  void aTaintedValueReachesTheDatabaseCall() {
+    List<Finding> findings =
+        scan(SourceLanguage.PHP, sqlHandler(SourceLanguage.PHP), new SqlInjectionChecker());
+
+    assertThat(hasFinding(findings, SQL_RULE, "\\mysqli_query/2"))
+        .as("the query call must be recognised, and the value must still be tainted there")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("the tainted connection is not the statement")
+  void theTaintedConnectionIsNotTheStatement() {
+    TacOperand.TacVar request = new TacOperand.TacVar("request", TacType.UNKNOWN, false);
+    TacOperand.TacVar link = new TacOperand.TacVar("link", TacType.STRING, false);
+    TacOperand.TacVar name = new TacOperand.TacVar("name", TacType.STRING, false);
+
+    List<TacInstruction> instructions = new ArrayList<>();
+    instructions.add(move(link, request, 10));
+    instructions.add(
+        blackBox(
+            "\\mysqli_query/2",
+            temp("t9"),
+            List.of(TacOperand.Const.ofString("\\"), link, name),
+            12));
+    TacFunction function =
+        new TacFunction(
+            "handle",
+            "app\\handle(string):string",
+            TacType.STRING,
+            List.of(request),
+            List.of(link, name),
+            instructions,
+            List.of(),
+            List.of(),
+            Map.of(),
+            Map.of(),
+            null,
+            SourceOrigin.SOURCE,
+            List.of(),
+            SourceLanguage.PHP,
+            IrPrecision.SOURCE_FULL);
+
+    List<Finding> findings = scan(SourceLanguage.PHP, function, new SqlInjectionChecker());
+
+    assertThat(hasFinding(findings, SQL_RULE, "\\mysqli_query/2"))
+        .as("the statement is the second argument; the connection is not the statement")
         .isFalse();
   }
 }

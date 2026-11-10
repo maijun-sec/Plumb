@@ -30,8 +30,10 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.plumb.dfa.checkers.taint.CommandInjectionChecker;
+import org.plumb.dfa.checkers.taint.LogInjectionChecker;
 import org.plumb.dfa.config.ConfigLoader;
 import org.plumb.dfa.config.EngineConfig;
+import org.plumb.dfa.engine.DfaChecker;
 import org.plumb.dfa.engine.DfaEngine;
 import org.plumb.dfa.engine.FindingReporter;
 import org.plumb.dfa.semantics.LanguageSemantics;
@@ -77,6 +79,7 @@ import org.plumb.tac.ir.TacType;
 class PySinkCatalogTest {
 
   private static final String COMMAND_RULE = "dfa-taint-command-injection";
+  private static final String LOG_RULE = "dfa-taint-log-injection";
 
   private static TacOperand.TacVar temp(String name) {
     return new TacOperand.TacVar(name, TacType.UNKNOWN, true);
@@ -359,6 +362,151 @@ class PySinkCatalogTest {
 
     assertThat(hasFinding(findings, COMMAND_RULE, "os.system/1"))
         .as("the rule is scoped to Python")
+        .isFalse();
+  }
+
+  // ------------------------------------------------------------------- logging
+
+  /**
+   * The Python handler that writes to the log, as the front end lowers it.
+   *
+   * <p>Measured against the Python side car: the receiver slot holds the MODULE the function came
+   * from and the message is the first user argument.
+   *
+   * @param language the language the function is written in
+   * @return the function under analysis
+   */
+  private static TacFunction logHandler(SourceLanguage language) {
+    TacOperand.TacVar request = new TacOperand.TacVar("request", TacType.UNKNOWN, false);
+    TacOperand.TacVar module = new TacOperand.TacVar("logging", TacType.UNKNOWN, false);
+    TacOperand.TacVar name = new TacOperand.TacVar("name", TacType.STRING, false);
+
+    List<TacInstruction> instructions = new ArrayList<>();
+    instructions.add(move(name, request, 10));
+    // logging.info(name)
+    instructions.add(call("logging.info/1", temp("t9"), List.of(module, name), 12));
+    return new TacFunction(
+        "handler",
+        "app.handler(string):string",
+        TacType.STRING,
+        List.of(request),
+        List.of(module, name),
+        instructions,
+        List.of(),
+        List.of(),
+        Map.of(),
+        Map.of(),
+        null,
+        SourceOrigin.SOURCE,
+        List.of(),
+        language,
+        IrPrecision.SOURCE_FULL);
+  }
+
+  /**
+   * Scan a function with the given checkers.
+   *
+   * @param language the language the function is written in
+   * @param function the function under analysis
+   * @param checkers the checkers to run
+   * @return the taint findings
+   */
+  private List<Finding> scan(
+      SourceLanguage language, TacFunction function, DfaChecker... checkers) {
+    TacProgram program = new TacProgram(Path.of("app.py"), "app");
+    program.addFunction(function);
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+    FindingReporter reporter =
+        new DfaEngine(config, List.of(checkers), "global", null)
+            .runWithGlobalStore(List.of(program), 0);
+    List<Finding> out = new ArrayList<>();
+    for (Finding f : reporter.all()) {
+      if (f.ruleId().startsWith("dfa-taint-")) out.add(f);
+    }
+    return out;
+  }
+
+  @Test
+  @DisplayName("the catalogue names the logging module")
+  void theCatalogueNamesTheLoggingModule() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("log.sinks")
+                .orElseThrow()
+                .matches("logging.info/1", SourceLanguage.PYTHON3))
+        .as("the logging module writes what it is given")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("log.sinks")
+                .orElseThrow()
+                .matches("logging.info/1", SourceLanguage.TYPESCRIPT))
+        .as("a TypeScript program has no logging module")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("the logging bucket does not claim a name on its own")
+  void theLoggingBucketDoesNotClaimANameOnItsOwn() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("log.sinks")
+                .orElseThrow()
+                .matches("logging.infox/1", SourceLanguage.PYTHON3))
+        .as("a name that starts with info is not a log call")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("a tainted value reaches the log")
+  void aTaintedValueReachesTheLog() {
+    List<Finding> findings =
+        scan(SourceLanguage.PYTHON3, logHandler(SourceLanguage.PYTHON3), new LogInjectionChecker());
+
+    assertThat(hasFinding(findings, LOG_RULE, "logging.info/1"))
+        .as("the log call must be recognised, and the value must still be tainted there")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("the tainted module is not the message")
+  void theTaintedModuleIsNotTheMessage() {
+    TacOperand.TacVar request = new TacOperand.TacVar("request", TacType.UNKNOWN, false);
+    TacOperand.TacVar module = new TacOperand.TacVar("logging", TacType.STRING, false);
+    TacOperand.TacVar name = new TacOperand.TacVar("name", TacType.STRING, false);
+
+    List<TacInstruction> instructions = new ArrayList<>();
+    instructions.add(move(module, request, 10));
+    instructions.add(call("logging.info/1", temp("t9"), List.of(module, name), 12));
+    TacFunction function =
+        new TacFunction(
+            "handler",
+            "app.handler(string):string",
+            TacType.STRING,
+            List.of(request),
+            List.of(module, name),
+            instructions,
+            List.of(),
+            List.of(),
+            Map.of(),
+            Map.of(),
+            null,
+            SourceOrigin.SOURCE,
+            List.of(),
+            SourceLanguage.PYTHON3,
+            IrPrecision.SOURCE_FULL);
+
+    List<Finding> findings = scan(SourceLanguage.PYTHON3, function, new LogInjectionChecker());
+
+    assertThat(hasFinding(findings, LOG_RULE, "logging.info/1"))
+        .as("the message is the first user argument; the module is not the message")
         .isFalse();
   }
 }

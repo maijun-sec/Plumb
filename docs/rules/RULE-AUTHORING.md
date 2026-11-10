@@ -476,3 +476,74 @@ This closes an inconsistency rather than adding an idea: the catalogue already
 treats `os.Getenv` and `os.Args` as sources for Go, `System.getenv` for C# and
 `System.getProperty` for Java. The script languages were the only ones with no
 equivalent, and they are the ones whose inputs are read out of a container.
+
+#### The script languages' own sinks: where the value lands
+
+A rule layer that names only the sources is half a rule layer. Once the script
+languages can read `process.env` and `sys.argv`, the next question is where that
+value LANDS -- and the answer is a set of APIs the catalogue did not name.
+
+Each of them lands in a family that already has a rule reading it, so a new
+pattern reaches a finding instead of a match that leads nowhere:
+
+| Family | The rule that reads it | What the scripts add |
+| --- | --- | --- |
+| `log.sinks` | `dfa-taint-log-injection` | `Console.log`, `logging.info`, `error_log`, `syslog` |
+| `sql.sinks` | `dfa-taint-sql-injection` | `mysql.query`, `pg.query`, `knex.raw`, `mysqli_query`, `PDO::query` |
+| `header.sinks` | `dfa-taint-http-response-splitting` | `header`, `mail` |
+| `cookie.sinks` | `dfa-taint-cookie-injection` | `setcookie`, `setrawcookie` |
+| `reflection.sinks` | `dfa-taint-unsafe-reflection` | `call_user_func`, `call_user_func_array` |
+
+Three things decide how a pattern is written, and all three were MEASURED
+against the side cars rather than guessed.
+
+**Where the value sits in the argument list.** The engine reads the tainted
+argument as `user argument N`, and the TAC keeps the RECEIVER in `args[0]`. For a
+script module call the receiver is the module; for a PHP global function it is
+the namespace the name was qualified with. Either way the first user argument is
+`args[1]`.
+
+| Call | The tainted value | `arg_index` |
+| --- | --- | --- |
+| `Console.log(input)` | the first user argument -- and the second as well, because `console.log` prints every argument it is given | `[0, 1]` |
+| `logging.info(name)` | the first user argument | `0` |
+| `error_log($name)` | the first user argument | `0` |
+| `syslog(LOG_ERR, $name)` | the SECOND user argument -- the priority comes first | `1` |
+| `mysql.query(input)` | the first user argument | `0` |
+| `mysqli_query($link, $name)` | the SECOND user argument -- the connection comes first | `1` |
+| `PDO::query($name)` | the first user argument | `0` |
+| `header($line)` | the first user argument -- the name and the value are one string there | `0` |
+| `mail($to, $subject, $body)` | the SECOND user argument -- that is the subject, and a subject is a header | `1` |
+| `setcookie('a', $name)` | the SECOND user argument -- the cookie name comes first | `1` |
+| `setrawcookie('a', $name)` | the second user argument -- the cookie name comes first | `1` |
+| `call_user_func($name, $arg)` | the FIRST user argument -- that is the callable | `0` |
+
+**What a name may claim.** The engine matches a pattern as a SUBSTRING, so every
+name in these buckets ends with a word boundary: `Console.logger` is not a log
+call, `header_size` is not a header call, and `mysqli_query_all` is not a query.
+
+**Which language a bucket serves.** A bucket is scoped to the language it was
+measured in. `error_log` is a PHP sink and not a Java one, and `Console.log` is a
+script sink and not a Java one -- a Java program has neither.
+
+**What a PHP program can shadow.** PHP lets a program define a function of the
+same name as a built-in, and the front end gives both the same callee key: a
+program that defines its own global `mail()` and a call to the built-in both
+arrive as `\mail/3`. So a pattern that names a PHP global names that program's
+own function too. That is the price of naming PHP's globals at all, and it is
+the price the command functions already carry.
+
+Three things the catalogue deliberately does NOT name, and why:
+
+- **A response written through a variable.** In a script program the response
+  object is a local -- `res.setHeader(...)`, `res.cookie(...)` -- so the owner is
+  whatever the program called the variable, and a pattern loose enough to name it
+  would name every `.setHeader` in the program.
+- **A SQL call on a cursor.** In Python the owner of `cursor.execute` is the
+  module the FILE belongs to, not the class of the cursor: the front end does
+  not name the class of an object it only sees through a local. There is no name
+  for a pattern to point at, so the Python SQL sink is not in the catalogue yet.
+- **ArkTS's console.** Measured against its side car, the owner of `console.log`
+  there is the FILE's module name and not the `Console` type. The same shape
+  keeps `process.stdout.write` out of the script bucket: its owner is the module
+  of the file, not a class.
