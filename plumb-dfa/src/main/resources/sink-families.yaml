@@ -172,11 +172,8 @@ families:
       - pattern: '^java\.util\.logging\.Logger\.config(/\d+)?'
       - pattern: '^java\.util\.logging\.Logger\.log(/\d+)?'
         arg_index: 1
-      - pattern: '^org\.slf4j\.Logger\.info(/\d+)?'
-      - pattern: '^org\.slf4j\.Logger\.warn(/\d+)?'
-      - pattern: '^org\.slf4j\.Logger\.error(/\d+)?'
+      - pattern: '^org\.slf4j\.Logger\.(error|fatal|info|trace|warn)(/\d+)?'
       - pattern: '^org\.slf4j\.Logger\.debug(/\d+)?'
-      - pattern: '^org\.slf4j\.Logger\.trace(/\d+)?'
       - pattern: '^java\.lang\.System\.Logger\.log(/\d+)?'
         arg_index: 1
       - pattern: '^(java\.io\.Writer|java\.io\.OutputStream)\.(println|write.*)(/\d+)?'
@@ -504,9 +501,12 @@ families:
       - '^java\.io\.Writer\.write(/\d+)?'
       - '^java\.io\.BufferedWriter\.write(/\d+)?'
       - '^java\.io\.PrintStream\.write(/\d+)?'
-      - '^java\.net\.Socket\.getOutputStream(/\d+)?'
-      - '^java\.net\.URLConnection\.getOutputStream(/\d+)?'
-      - '^java\.net\.HttpURLConnection\.getOutputStream(/\d+)?'
+      - pattern: '^java\.net\.Socket\.getOutputStream(/\d+)?'
+        arg_index: -2
+      - pattern: '^java\.net\.URLConnection\.getOutputStream(/\d+)?'
+        arg_index: -2
+      - pattern: '^java\.net\.HttpURLConnection\.getOutputStream(/\d+)?'
+        arg_index: -2
       - '^java\.nio\.channels\.SocketChannel\.write(/\d+)?'
       - '^java\.nio\.channels\.WritableByteChannel\.write(/\d+)?'
     by_language:
@@ -2129,24 +2129,14 @@ families:
         arg_index: [-2, 0]
       - pattern: '^java\.lang\.String\.formatted(/\d+)?'
         arg_index: -2
-      - pattern: '^oracle\.xml\.parser\.v2\.XMLParser\.parse(/\d+)?'
-        arg_index: [-2, 0]
       - pattern: '^oracle\.jbo\.html\.jsp\.datatags\.ApplicationModuleTag\.setWaittimeout(/\d+)?'
         arg_index: 0
       - pattern: '^(javax|jakarta)\.xml\.transform\.sax\.SAXSource\.\<init\>(/\d+)?'
         arg_index: [0, 1]
-      - pattern: '^(javax|jakarta)\.xml\.stream\.XMLInputFactory\.createXML(Stream|Event)Reader(/\d+)?'
-        arg_index: [-2, 0]
       - pattern: '^(javax|jakarta)\.servlet\.ServletInputStream\.readLine(/\d+)?'
         arg_index: 2
       - pattern: '^(javax|jakarta)\.faces\.context\.ExternalContext(Wrapper)?\.setSessionMaxInactiveInterval(/\d+)?'
         arg_index: 0
-      - pattern: '^javax\.xml\.transform\.TransformerFactory\.new(Transformer|Templates)(/\d+)?'
-        arg_index: [-2, 0]
-      - pattern: '^org\.xml\.sax\.XMLReader\.parse(/\d+)?'
-        arg_index: [-2, 0]
-      - pattern: '^((javax|jakarta)\.xml\.parsers\.SAXParser|(javax|jakarta)\.xml\.parsers\.DocumentBuilder)\.parse(/\d+)?'
-        arg_index: [-2, 0]
       - pattern: '^javax\.naming\.directory\.SearchControls\.(setCountLimit|setTimeLimit)(/\d+)?'
         arg_index: 0
       - pattern: '^io\.grpc\.CallOptions\.withMax(Inbound|Outbound)MessageSize(/\d+)?'
@@ -2167,8 +2157,6 @@ families:
         arg_index: 0
       - pattern: '^com\.amazonaws\.services\.ec2\.AmazonEC2(Async)?\.((delete.*|cancelBundleTask|cancelSpotInstanceRequests|deactivateLicense|deregisterImage|detach(Volume|VpnGateway)|(disassociate|release)Address|revokeSecurityGroupIngress|(stop|terminate)Instances)Async|(delete.*|cancelBundleTask|cancelSpotInstanceRequests|deactivateLicense|deregisterImage|detach(Volume|VpnGateway)|(disassociate|release)Address|revokeSecurityGroupIngress|(stop|terminate)Instances))(/\d+)?'
         arg_index: 0
-      - pattern: '^org\.apache\.xerces\.parsers\.(SAX|DOM)Parser\.parse.*(/\d+)?'
-        arg_index: [-2, 0]
       - pattern: '^org\.apache\.http\.params\.HttpConnectionParams\.(set(Connection|So)Timeout|setSocketBufferSize)(/\d+)?'
         arg_index: 1
       - pattern: '^org\.apache\.http\.params\.HttpConnectionParamBean\.(set(Connection|So)Timeout|setSocketBufferSize)(/\d+)?'
@@ -3489,14 +3477,6 @@ families:
         arg_index: 0
       - pattern: '^java\.util\.logging\.LogRecord\.setMessage(/\d+)?'
         arg_index: 0
-      - pattern: '^java\.util\.logging\.Logger\.(finer|finest|fine)(/\d+)?'
-        arg_index: 0
-      - pattern: '^java\.util\.logging\.Logger\.log(/\d+)?'
-        arg_index: [0, 1, 5]
-      - pattern: '^java\.util\.logging\.Logger\.(severe|warning|info|config)(/\d+)?'
-        arg_index: 0
-      - pattern: '^java\.util\.logging\.Logger\.(logp|logrb|log)(/\d+)?'
-        arg_index: 1
       - pattern: '^java\.util\.logging\.Logger\.(throwing|getLogger)(/\d+)?'
         arg_index: 0
       - pattern: '^java\.sql\.DriverManager\.println(/\d+)?'
@@ -3589,10 +3569,6 @@ families:
         arg_index: 0
       - pattern: '^org\.apache\.commons\.logging\.Log\.(error|fatal|info|trace|warn)(/\d+)?'
         arg_index: 0
-      - pattern: '^org\.slf4j\.Logger\.debug(/\d+)?'
-        arg_index: 0
-      - pattern: '^org\.slf4j\.Logger\.(error|fatal|info|trace|warn)(/\d+)?'
-        arg_index: 0
       - pattern: '^org\.apache\.ibatis\.logging\.jdbc\.BaseJdbcLogger\.debug(/\d+)?'
         arg_index: 0
       - pattern: '^org\.apache\.ibatis\.logging\.jdbc\.BaseJdbcLogger\.trace(/\d+)?'
@@ -3605,29 +3581,15 @@ families:
         arg_index: 0
       - pattern: '^(com\.google\.gwt\.core\.client\.GWT|com\.google\.gwt\.core\.client\.GWTBridge)\.log(/\d+)?'
         arg_index: 0
-      - pattern: '^java\.util\.logging\.Logger\.config(/\d+)?'
-        arg_index: 0
       - pattern: '^java\.util\.logging\.Logger\.entering(/\d+)?'
         arg_index: 0
       - pattern: '^java\.util\.logging\.Logger\.exiting(/\d+)?'
-        arg_index: 0
-      - pattern: '^java\.util\.logging\.Logger\.fine(/\d+)?'
-        arg_index: 0
-      - pattern: '^java\.util\.logging\.Logger\.finer(/\d+)?'
-        arg_index: 0
-      - pattern: '^java\.util\.logging\.Logger\.finest(/\d+)?'
-        arg_index: 0
-      - pattern: '^java\.util\.logging\.Logger\.info(/\d+)?'
         arg_index: 0
       - pattern: '^java\.util\.logging\.Logger\.logp(/\d+)?'
         arg_index: 1
       - pattern: '^java\.util\.logging\.Logger\.logrb(/\d+)?'
         arg_index: 2
-      - pattern: '^java\.util\.logging\.Logger\.severe(/\d+)?'
-        arg_index: 0
       - pattern: '^java\.util\.logging\.Logger\.throwing(/\d+)?'
-        arg_index: 0
-      - pattern: '^java\.util\.logging\.Logger\.warning(/\d+)?'
         arg_index: 0
     by_language:
       csharp:
@@ -5913,11 +5875,7 @@ families:
         arg_index: 1
       - pattern: '^java\.nio\.file\.Files\.setAttribute(/\d+)?'
         arg_index: 1
-      - pattern: '^java\.lang\.System\.setProperty(/\d+)?'
-        arg_index: 0
       - pattern: '^java\.lang\.System\.set(Err|In|Out|Properties|SecurityManager)(/\d+)?'
-        arg_index: 0
-      - pattern: '^java\.sql\.Connection\.setCatalog(/\d+)?'
         arg_index: 0
       - pattern: '^java\.io\.FilePermission\.\<init\>(/\d+)?'
         arg_index: 0
@@ -6273,10 +6231,6 @@ families:
           arg_index: 0
         - pattern: '^context\.With(Timeout(Cause)?|Deadline(Cause)?)(/\d+)?'
           arg_index: 1
-        - pattern: '^os\.Unsetenv(/\d+)?'
-          arg_index: 0
-        - pattern: '^os\.Setenv(/\d+)?'
-          arg_index: 0
         - pattern: '^syscall\.Unsetenv(/\d+)?'
           arg_index: 0
         - pattern: '^syscall\.Setgroups(/\d+)?'
@@ -7589,9 +7543,6 @@ families:
         arg_index: 0
       - pattern: '^com\.google\.gwt\.xml\.client\.Node\.(appendChild|insertBefore|replaceChild|setNodeValue|createCDATASection|createComment|createTextNode|importNode)(/\d+)?'
         arg_index: 0
-      - '^javax\.xml\.transform\.Transformer\.transform(/\d+)?'
-      - '^org\.xml\.sax\.XMLReader\.parse(/\d+)?'
-      - '^javax\.xml\.parsers\.DocumentBuilder\.parse(/\d+)?'
     by_language:
       csharp:
         - pattern: '^System\.Xml\.XmlNode\.set_InnerXml(/\d+)?'
@@ -7702,8 +7653,6 @@ families:
       - pattern: '^net\.sf\.saxon\.s9api\.XsltCompiler\.compile(/\d+)?'
         arg_index: 0
       - pattern: '^oracle\.xml\.parser\.v2\.XSLProcessor\.processXSL(/\d+)?'
-        arg_index: 0
-      - pattern: '^javax\.xml\.transform\.TransformerFactory\.new(Transformer|Templates)(/\d+)?'
         arg_index: 0
       - pattern: '^org\.apache\.xalan\.xslt\.XSLTProcessor\.process(/\d+)?'
         arg_index: 1
@@ -8430,9 +8379,20 @@ families:
     cwe: CWE-611
     severity: MEDIUM
     patterns:
-      - pattern: '^java\.beans\.XMLDecoder\.\<init\>(/\d+)?'
+      # The parsers that read an XML document. An untrusted document that
+      # reaches one of them is the XXE: the parser resolves the entities
+      # the document names. The document is the FIRST argument of the
+      # call; the parser itself is the receiver.
+      - pattern: '^javax\.xml\.parsers\.DocumentBuilder\.parse(/\d+)?'
+      - pattern: '^((javax|jakarta)\.xml\.parsers\.SAXParser|(javax|jakarta)\.xml\.parsers\.DocumentBuilder)\.parse(/\d+)?'
         arg_index: 0
-      - pattern: '^javax\.xml\.xpath\.XPathExpression\.evaluate(/\d+)?'
+      - pattern: '^org\.xml\.sax\.XMLReader\.parse(/\d+)?'
+        arg_index: 0
+      - pattern: '^(javax|jakarta)\.xml\.stream\.XMLInputFactory\.createXML(Stream|Event)Reader(/\d+)?'
+        arg_index: 0
+      - pattern: '^org\.apache\.xerces\.parsers\.(SAX|DOM)Parser\.parse.*(/\d+)?'
+        arg_index: 0
+      - pattern: '^oracle\.xml\.parser\.v2\.XMLParser\.parse(/\d+)?'
         arg_index: 0
       - pattern: '^org\.springframework\.oxm\.AbstractMarshaller\.unmarshal(InputStream|Reader|StreamSource)(/\d+)?'
         arg_index: 0
@@ -8484,17 +8444,31 @@ families:
     severity: HIGH
     languages: ['java', 'kotlin', 'scala']
     patterns:
+      # The intent that carries the payload. A sensitive value that goes
+      # into an intent is what an implicit intent hands to whoever
+      # answers it, so the payload's own entry points are the sinks.
+      - pattern: '^android\.content\.Intent\.(putExtra|setExtra)(/\d+)?'
+        arg_index: 1
+      - pattern: '^android\.content\.Intent\.(setAction|setData|setType|setClassName)(/\d+)?'
+        arg_index: 0
+      - pattern: '^android\.content\.Intent\.setDataAndType(/\d+)?'
+        arg_index: 0
+      - pattern: '^android\.content\.Intent\.\<init\>(/\d+)?'
+        arg_index: 0
+      # The launch sites. The intent is the FIRST argument of each of
+      # them; the request code that follows it is a number, not a
+      # payload, so a position past the intent names nothing.
       - pattern: '^android\.app\.Activity\.startActivityForResult(/\d+)?'
         arg_index: 0
       - pattern: '^android\.app\.Activity\.startActivityFromChild(/\d+)?'
-        arg_index: 1
+        arg_index: 0
       - pattern: '^android\.app\.Activity\.startActivityFromFragment(/\d+)?'
-        arg_index: 1
+        arg_index: 0
       - pattern: '^android\.app\.Activity\.startActivityIfNeeded(/\d+)?'
         arg_index: 0
       - pattern: '^android\.app\.Activity\.startIntentSenderForResult(/\d+)?'
-        arg_index: 2
+        arg_index: 0
       - pattern: '^android\.app\.Activity\.startIntentSenderFromChild(/\d+)?'
-        arg_index: 3
+        arg_index: 0
       - pattern: '^android\.app\.Activity\.startNextMatchingActivity(/\d+)?'
         arg_index: 0

@@ -692,6 +692,11 @@
                              patterns that named other defect classes moved to the
                              families that describe them. -->
                         <include>org/plumb/dfa/checkers/taint/SsrfCheckerTest.java</include>
+                        <!-- The families that got a checker must be able to
+                             fire: the registration says the rule is
+                             installed, and only a finding says the rule
+                             works. -->
+                        <include>org/plumb/dfa/checkers/taint/FamilyWatcherTriggerTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

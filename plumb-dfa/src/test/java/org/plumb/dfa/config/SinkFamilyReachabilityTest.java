@@ -78,7 +78,7 @@ class SinkFamilyReachabilityTest {
           put("log-injection.sinks", "javax.servlet.GenericServlet.log/1");
           put("privacy.sinks", "java.util.Properties.store/2");
           put("resource-injection.sinks", "javax.mail.Transport.send/1");
-          put("setting-manipulation.sinks", "java.lang.System.setProperty/2");
+          put("setting-manipulation.sinks", "java.nio.file.Files.setAttribute/3");
         }
       };
 
@@ -151,6 +151,48 @@ class SinkFamilyReachabilityTest {
     }
 
     assertThat(unmatched).as("families whose patterns no longer match: %s", unmatched).isEmpty();
+  }
+
+  @Test
+  @DisplayName("an API belongs to the family that describes its defect class")
+  void anApiBelongsToTheFamilyThatDescribesItsDefectClass() {
+    // Two families that claim the same API report the same call twice: the
+    // engine's sink dispatch walks every family that matches the callee and
+    // reports each one on its own. When the two families carry the same CWE
+    // the second report is the first one again, with the same number.
+    //
+    // The APIs below each moved to the family that owns their defect class,
+    // and the family that gave it up must not claim it any more.
+    Map<String, String> owner = new LinkedHashMap<>();
+    owner.put("java.lang.System.setProperty/2", "external.config.sinks");
+    owner.put("java.sql.Connection.setCatalog/1", "external.config.sinks");
+    owner.put("javax.xml.parsers.DocumentBuilder.parse/1", "xxe.sinks");
+    owner.put("javax.xml.xpath.XPathExpression.evaluate/2", "xpath.sinks");
+    owner.put("java.util.logging.Logger.info/1", "log.sinks");
+
+    List<String> unwatched = new ArrayList<>();
+    for (Map.Entry<String, String> e : owner.entrySet()) {
+      if (!familiesFor(e.getKey()).contains(e.getValue())) {
+        unwatched.add(e.getValue() + " does not watch " + e.getKey());
+      }
+    }
+    assertThat(unwatched).as("APIs nobody watches at the right place: %s", unwatched).isEmpty();
+
+    assertThat(familiesFor("java.lang.System.setProperty/2"))
+        .as("the two CWE-15 families must not both claim one API")
+        .doesNotContain("setting-manipulation.sinks");
+    assertThat(familiesFor("java.sql.Connection.setCatalog/1"))
+        .as("the two CWE-15 families must not both claim one API")
+        .doesNotContain("setting-manipulation.sinks");
+    assertThat(familiesFor("javax.xml.parsers.DocumentBuilder.parse/1"))
+        .as("a document parser is an XXE, not a denial of service and not an injection")
+        .doesNotContain("dos.sinks", "xml-injection.sinks");
+    assertThat(familiesFor("javax.xml.xpath.XPathExpression.evaluate/2"))
+        .as("an XPath expression is not an external entity")
+        .doesNotContain("xxe.sinks");
+    assertThat(familiesFor("java.util.logging.Logger.info/1"))
+        .as("one CWE-117 family, one finding")
+        .doesNotContain("log-injection.sinks");
   }
 
   @Test

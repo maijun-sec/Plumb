@@ -90,6 +90,8 @@ JDK_NAMES = {
     "StringBuilder", "StringBuffer", "FileWriter", "FileReader", "OutputStreamWriter",
     "InputStreamReader", "File", "FileInputStream", "FileOutputStream",
     "PrintStream", "PrintWriter", "BufferedReader", "BufferedWriter",
+    "DocumentBuilder", "SAXParser", "XMLReader", "XMLInputFactory",
+    "XMLDecoder", "TransformerFactory",
 }
 
 # A .NET framework type is just as real as a JDK class -- it is resolved by the

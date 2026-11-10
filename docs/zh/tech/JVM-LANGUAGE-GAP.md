@@ -372,6 +372,60 @@ CWE-191）就靠它。子串清单**没有 owner**，所以它会匹配 `com.exa
 标准输入。注册表本来就能回答「这个 family 适不适用于这个语言」，所以这个问题在那里问，
 而不是在这里重问一遍。
 
+### 3.7 一个 API，一个缺陷类别
+
+**测量方式。** 第 3.1 节问的是「每个 family 是否都有人看」，并回答了。它没有问同一个问题的另外
+一半：**同一个 API 会不会被两个 family 同时看着？** 把目录按 family 摊平——每个 `patterns:` 条目
+和每个 `by_language:` 条目，按「有几个 family 写了它」计一次——然后两两比较：
+
+| 测什么 | 调整前 | 调整后 |
+|---|---:|---:|
+| 被一个以上的 family 写下的目录条目 | 602 | 587 |
+| 两个 family 用不同 CWE 认领同一条目的次数 | 700，覆盖 108 对 family | 671，覆盖 99 对 |
+| 两个 family 用**同一个** CWE 认领同一条目的次数 | 17 | 4 |
+
+剩下的 4 条都是污点源 family：一份从网络进来的数据既是 IO 源也是网络源。源只负责把污点标上、
+不产生 finding，所以重叠的代价是一次集合运算，不是一条重复的报告。
+
+**重复认领的代价是什么。** 引擎的分发会遍历所有匹配该 callee 的 family，并各自报一次，所以重复
+认领不是「一条重复的 pattern」，而是**一次调用、两行报告、两个 CWE 编号**。API
+`java.util.logging.Logger.info` 当时被四个 family 认领——`sensitive.exfil.sinks`（CWE-200）、
+`pii.exfil.sinks`（CWE-359）、`log.sinks`（CWE-117）、`log-injection.sinks`（CWE-117）。其中两个
+编号相同，于是一行被污染的日志在同一行报了两次 CWE-117，另外还有两次是回答同一个调用的另外
+一个问题。
+
+**XML 解析器是最严重的一处，而 XXE family 一个都没占到。** `xxe.sinks`（CWE-611）里装的是
+`XMLDecoder`、一次 XPath 求值、一个 transformer、一个 unmarshaller 和一个 digester——唯独没有
+那些「读一份不可信文档」的解析器。`DocumentBuilder.parse`、`SAXParser.parse`、
+`XMLReader.parse`、`XMLInputFactory.createXMLStreamReader` 以及 Xerces 的解析器，散落在
+`dos.sinks`（CWE-730/776，讲的是实体膨胀这个后果）和 `xml-injection.sinks`（CWE-91，讲的是
+构造器而不是解析器）里。于是「一份不可信文档到达解析器」会被报成拒绝服务、也会被报成 XML 注入，
+**从来不会**被报成 CWE-611。解析器归 XXE family，描述缺陷类别的那一族拥有承载它的 API。
+
+**另外两处编号互相矛盾，也都改掉了。** `XPathExpression.evaluate` 同时被 `xxe.sinks`（CWE-611）
+和 `xpath.sinks`（CWE-643）认领——XPath 表达式不是外部实体。`java.beans.XMLDecoder` 同时被
+`xxe.sinks`（CWE-611）和 `code-execution.sinks`（CWE-94）认领——会执行流的解码器不是带外部实体
+的文档。
+
+**两个同 CWE 的 family 在报同一条 finding。** `log.sinks` 与 `log-injection.sinks` 都是 CWE-117，
+而且都在看 `java.util.logging.Logger` 和 `org.slf4j.Logger`。`external.config.sinks` 与
+`setting-manipulation.sinks` 都是 CWE-15，而且都在看 `System.setProperty`、
+`Connection.setCatalog` 以及 Go 的 `os.Setenv`。重叠的条目现在各归一族。
+
+**有两个 family 指名的参数位置根本不存在。** `Socket.getOutputStream()` 不接受参数，目录指名的
+第一个参数因此不是这个调用上的位置，那条 pattern 永远不可能命中。通道就是接收者，所以现在这
+一族指名接收者。`android-implicit-intent.sinks` 更糟：七条里有三条指名的参数在调用末尾之外
+（`startIntentSenderForResult` 接受两个参数，pattern 却指了第三个），指名了真实位置的那几条指的
+是 `Intent` 对象——而它不承载载荷。intent 把载荷放在 extra 里，所以这一族的 sink 是 intent 自己
+的入口——`Intent.putExtra`、`Intent.setAction`、`Intent.setData`——而启动点则把 intent 指在它
+真正所在的位置上。
+
+**这些 family 的 watcher 现在有了证据。** 登记不是证据：checker 可以被装配进扫描、写在配置里，
+却永远不报——因为它看的 family 指名的位置并不存在。`FamilyWatcherTriggerTest` 为拿到 checker 的
+五个 family 各自构造出前端会产生的那份 TAC，断言被污染的值落在指名位置时是一条带该规则自己
+CWE 的 finding——并且断言同一个调用换成程序自己写的值时不是 finding。没有后半句，前半句只能说明
+这个 checker 对什么都会报。
+
 ---
 
 ## 4. Scala 的 semantics 表

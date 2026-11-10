@@ -420,6 +420,71 @@ language's call: `kotlin.io.readLine` is a Kotlin API, and a Java file containin
 not reading Kotlin's stdin. The registry already answers "does this family apply to this
 language", so the question is asked there rather than restated.
 
+### 3.7 One API, one defect class
+
+**The measurement.** Section 3.1 asked whether every family is watched, and answered it. It said
+nothing about the other half of the same question: **can one API be watched by two families at
+once?** The catalogue was flattened per family -- every `patterns:` entry and every
+`by_language:` entry, counted once per family that names it -- and the families were compared:
+
+| What | Before | After |
+|---|---:|---:|
+| Catalogue entries named by more than one family | 602 | 587 |
+| Pattern instances claimed by two families under different CWE numbers | 700, over 108 family pairs | 671, over 99 pairs |
+| Pattern instances claimed by two families under the **same** CWE number | 17 | 4 |
+
+The four that remain are SOURCE families: a value that arrives over the network is both an IO
+source and a network source. A source seeds taint and reports nothing, so the overlap costs a set
+operation, not a finding.
+
+**What a duplicate claim costs.** The engine's sink dispatch walks every family that matches the
+callee and reports each one on its own, so a duplicate claim is not a duplicate pattern: it is two
+findings, at the same line, with two different CWE numbers, for one call. The API
+`java.util.logging.Logger.info` was claimed by four families -- `sensitive.exfil.sinks` (CWE-200),
+`pii.exfil.sinks` (CWE-359), `log.sinks` (CWE-117) and `log-injection.sinks` (CWE-117). Two of
+them carried the same number, so one tainted log line was reported twice under CWE-117 alone, and
+three times more under numbers that answer different questions about the same call.
+
+**The XML parsers were the worst case, and the XXE family owned none of them.** `xxe.sinks`
+(CWE-611) held `XMLDecoder`, a XPath evaluation, a transformer, an unmarshaller and a digester --
+and none of the parsers that read an untrusted document. `DocumentBuilder.parse`,
+`SAXParser.parse`, `XMLReader.parse`, `XMLInputFactory.createXMLStreamReader` and the Xerces
+parsers sat in `dos.sinks` (CWE-730/776, the entity-expansion consequence) and in
+`xml-injection.sinks` (CWE-91, the builder rather than the parser). So an untrusted document
+reaching a parser was reported as a denial of service and as an XML injection, and **never** as
+CWE-611. The parsers belong to the XXE family, and the family that describes the defect class
+owns the API that carries it.
+
+**Two more numbers contradicted each other, and both were fixed.** `XPathExpression.evaluate` was
+claimed by `xxe.sinks` (CWE-611) and by `xpath.sinks` (CWE-643) -- an XPath expression is not an
+external entity. `java.beans.XMLDecoder` was claimed by `xxe.sinks` (CWE-611) and by
+`code-execution.sinks` (CWE-94) -- a decoder that runs a stream is not a document with external
+entities.
+
+**Two families that carried the same CWE reported the same finding twice.** `log.sinks` and
+`log-injection.sinks` both carry CWE-117, and both watched `java.util.logging.Logger` and
+`org.slf4j.Logger`. `external.config.sinks` and `setting-manipulation.sinks` both carry CWE-15,
+and both watched `System.setProperty`, `Connection.setCatalog` and the Go `os.Setenv`. The
+overlapping entries live in one family each now.
+
+**Two families named a position that is not there.** `Socket.getOutputStream()` takes no
+argument, so the argument the catalogue named -- the first one -- was not a position of that
+call, and the pattern could not fire on anything. The channel is the receiver, so the receiver is
+what the family names now. `android-implicit-intent.sinks` was worse: three of its seven patterns
+named an argument past the end of the call (`startIntentSenderForResult` takes two arguments and
+the pattern named the third), and the ones that named a real position named the `Intent` object,
+which carries no payload. An intent carries its payload in its extras, so the family's sinks are
+the intent's own entry points -- `Intent.putExtra`, `Intent.setAction`, `Intent.setData` -- and
+the launch sites name the intent at the position it actually has.
+
+**And the watchers of these families have a proof.** Registration is not a proof: a checker can
+be assembled into the scan, sit in the configuration and still never report, because the family
+it watches names positions that do not exist. `FamilyWatcherTriggerTest` builds the TAC the front
+end produces for each of the five families that gained a checker, and asserts that a tainted
+value at the named position is a finding with the rule's own CWE -- and that the same call with a
+value the program wrote itself is not a finding. Without the second half the first half would
+only say that the checker fires on everything.
+
 ---
 
 ## 4. The Scala semantics table

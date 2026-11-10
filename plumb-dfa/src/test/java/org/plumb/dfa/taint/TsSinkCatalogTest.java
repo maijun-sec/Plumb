@@ -746,6 +746,25 @@ class TsSinkCatalogTest {
   }
 
   @Test
+  @DisplayName("the catalogue still claims the call once its owner can be named")
+  void theCatalogueStillClaimsTheCallOnceItsOwnerCanBeNamed() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    // The test above can go green with an empty catalogue, so it needs a
+    // pair: the same call, with an owner somebody could name, must still
+    // be claimed. console.error writes to the log, and the catalogue
+    // names its owner the Console type.
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("log.sinks")
+                .orElseThrow()
+                .matches("Console.error/1", SourceLanguage.TYPESCRIPT))
+        .as("console.error writes to the log, and its owner is the Console type")
+        .isTrue();
+  }
+
+  @Test
   @DisplayName("a method of the same name on an object is not the global")
   void aMethodOfTheSameNameOnAnObjectIsNotTheGlobal() {
     EngineConfig config = ConfigLoader.loadFromClasspath();
