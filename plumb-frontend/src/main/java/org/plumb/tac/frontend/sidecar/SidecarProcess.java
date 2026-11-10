@@ -232,10 +232,10 @@ public final class SidecarProcess implements AutoCloseable {
    * The exception to raise when the sidecar did not answer.
    *
    * <p><b>Why the sidecar's own words are in the message.</b> A sidecar dies for reasons the JVM
-   * cannot see: the Node runtime cannot find the package the script imports, the runtime is missing
+   * cannot see: the Node runtime cannot find the module the script imports, the runtime is missing
    * itself, the script has a syntax error. Every one of those says itself on the sidecar's stderr,
    * and the sidecar's stderr is exactly where it goes. Without it the reader gets a broken pipe or
-   * an end of file and has to guess which of the four reasons it was -- and the most common one, a
+   * an end of file and has to guess which of the reasons it was -- and the most common one, a
    * dependency that was never installed, looks like a broken product rather than a missing setup
    * step. So the tail of the stderr goes into the message: the cause is the one the sidecar
    * reported.
