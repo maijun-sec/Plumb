@@ -2347,6 +2347,17 @@ The new `SourcePathResolver.MAX_INDEXED_FILES = 5000`:
 the index stops at that budget and says so (`indexTruncated()`), rather than reading a whole tree.
 Over budget = "no cross-file constant resolution is offered", **not** "an empty one is offered".
 
+The budget also decides **which** files are indexed, so the order matters. It is:
+
+1. the caller's work-list -- the sub-tree the context was asked to analyse -- first;
+2. the rest of the project root, **shallowest first**: the shared classes live near the top of a
+   source tree, while the bulk of a corpus lives deep.
+
+Without that order the budget was spent on whatever the directory walk met first, which is
+arbitrary: a root that holds a large tree left the caller's own files outside the index, and a
+partial index looks like a complete one -- the cross-file references into those files simply
+stopped resolving, and the findings that depended on them went missing without a word.
+
 `ScanRunner` (the path **with** source code) opts in explicitly, with the root directory being the parent of the scan input;
 `IrAnalysisRunner` (the path **without** source code) does **not** opt in, and says why in a code comment.
 

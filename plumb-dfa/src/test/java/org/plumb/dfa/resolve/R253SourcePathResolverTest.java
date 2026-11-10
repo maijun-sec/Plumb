@@ -288,4 +288,68 @@ class R253SourcePathResolverTest {
     assertThat(sfr.lookup("a.A", "F").value).isEqualTo(1L);
     assertThat(sfr.lookup("b.B", "F").value).isEqualTo(2L);
   }
+
+  /**
+   * The files the analysis reads must not be the ones a budget drops.
+   *
+   * <p>The resolver indexes a project root under a budget, and the budget decides which files the
+   * losers are. It used to spend itself on whatever the directory walk met first, which is
+   * arbitrary: a project root that holds a large tree (a vendored directory, a test corpus, a home
+   * directory) could leave the caller's OWN files outside the index. A partial index looks like a
+   * complete one, so the cross-file references into those files stopped resolving without a word.
+   *
+   * <p>The work-list comes first now.
+   */
+  @Test
+  void theWorkListSurvivesATreeThatIsOverTheBudget(@TempDir Path tmp) throws Exception {
+    Path project = tmp.resolve("proj");
+    Path work = project.resolve("src").resolve("main").resolve("java").resolve("app");
+    Files.createDirectories(work);
+    Files.writeString(work.resolve("Main.java"), "package app;\npublic class Main {}\n");
+    // A big tree elsewhere in the project root, and DEEPER than the work-list.
+    Path bulk = project.resolve("corpus").resolve("cwe").resolve("cases");
+    Files.createDirectories(bulk);
+    int over = SourcePathResolver.MAX_INDEXED_FILES + 5;
+    for (int i = 0; i < over; i++) {
+      Files.writeString(bulk.resolve("C" + i + ".java"), "package cwe;\nclass C" + i + " {}\n");
+    }
+
+    ProjectCompilationContext ctx = new ProjectCompilationContext(project, work);
+    ctx.index();
+
+    assertThat(ctx.sourcePath().resolveClass("app.Main"))
+        .as("the file the analysis reads must be in the index")
+        .isNotNull();
+  }
+
+  /**
+   * The shared classes near the top of a source tree come before the bulk that lives deep.
+   *
+   * <p>A test corpus puts thousands of cases in deep directories and its helper classes in a
+   * shallow one, and the helper classes are the ones the analysis has to resolve. Spending the
+   * budget on directory order lost them.
+   */
+  @Test
+  void theShallowFilesAreIndexedBeforeTheDeepOnes(@TempDir Path tmp) throws Exception {
+    Path project = tmp.resolve("proj");
+    Path support = project.resolve("src").resolve("testcasesupport");
+    Files.createDirectories(support);
+    Files.writeString(support.resolve("IO.java"), "package testcasesupport;\npublic class IO {}\n");
+    Path bulk = project.resolve("src").resolve("testcases").resolve("cwe").resolve("s01");
+    Files.createDirectories(bulk);
+    int over = SourcePathResolver.MAX_INDEXED_FILES + 5;
+    for (int i = 0; i < over; i++) {
+      Files.writeString(bulk.resolve("C" + i + ".java"), "package cwe;\nclass C" + i + " {}\n");
+    }
+
+    SourcePathResolver r = new SourcePathResolver(project);
+    r.index();
+
+    assertThat(r.resolveClass("testcasesupport.IO"))
+        .as("a shared helper near the top of the tree is indexed before the deep bulk")
+        .isNotNull();
+    assertThat(r.indexTruncated())
+        .as("an index that stopped at the budget still says that it stopped")
+        .isTrue();
+  }
 }

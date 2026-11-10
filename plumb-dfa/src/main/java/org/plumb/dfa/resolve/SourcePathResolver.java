@@ -56,6 +56,21 @@ public final class SourcePathResolver {
   private final BuildOutputFilter buildFilter;
 
   /**
+   * The sub-tree the caller wants analysed, when it knows one.
+   *
+   * <p>It is indexed FIRST, whatever else the tree holds: these are the files the analysis reads,
+   * so they must not be the ones a budget drops. {@code null} means "the project root is all there
+   * is".
+   */
+  private final Path preferredRoot;
+
+  /** The files already indexed, so a second pass does not read them again. */
+  private final Set<Path> seen = new LinkedHashSet<>();
+
+  /** Whether the last pass found anything at the deepest level it looked at. */
+  private boolean reachedDepth;
+
+  /**
    * The most {@code .java} files {@link #index()} will index.
    *
    * <p>This is a safety budget, not a policy. The resolver reads every file it indexes, so a root
@@ -79,11 +94,25 @@ public final class SourcePathResolver {
           "\\b(?:public\\s+|final\\s+|abstract\\s+)?(?:class|interface|enum)\\s+([\\w$]+)");
 
   public SourcePathResolver(Path projectRoot) {
-    this(projectRoot, new BuildOutputFilter());
+    this(projectRoot, null, new BuildOutputFilter());
   }
 
   public SourcePathResolver(Path projectRoot, BuildOutputFilter buildFilter) {
+    this(projectRoot, null, buildFilter);
+  }
+
+  /**
+   * A resolver that indexes the caller's work-list before the rest of the project root.
+   *
+   * <p>See {@link #index()} for why the order matters.
+   *
+   * @param projectRoot the search space
+   * @param preferredRoot the sub-tree the caller wants analysed; {@code null} for none
+   * @param buildFilter the build-output filter
+   */
+  public SourcePathResolver(Path projectRoot, Path preferredRoot, BuildOutputFilter buildFilter) {
     this.projectRoot = projectRoot;
+    this.preferredRoot = preferredRoot;
     this.buildFilter = buildFilter == null ? new BuildOutputFilter() : buildFilter;
   }
 
@@ -92,35 +121,91 @@ public final class SourcePathResolver {
   }
 
   /**
-   * Walk the project root once and index every {@code .java} file by package + class name. The walk
-   * is O(N) in the number of files and uses {@link Files#walk} for a one-pass scan. The walk
-   * delegates the build-output decision to the injected {@link BuildOutputFilter} so the same
-   * indexer works for Maven, Gradle, Ant, Eclipse, IntelliJ, and any other build tool that drops
-   * copies of source files into a known output directory.
+   * Index the project root: every {@code .java} file by package + class name.
+   *
+   * <p>The walk delegates the build-output decision to the injected {@link BuildOutputFilter} so
+   * the same indexer works for Maven, Gradle, Ant, Eclipse, IntelliJ, and any other build tool that
+   * drops copies of source files into a known output directory.
+   *
+   * <p><b>The order decides which files a budget keeps.</b> When the tree holds more files than
+   * {@link #MAX_INDEXED_FILES} allows, the budget picks the losers, and it used to spend itself on
+   * whatever the directory walk met first -- which is arbitrary. A root that holds a large tree (a
+   * test corpus, a vendored directory, a home directory) therefore left the caller's OWN files
+   * outside the index, and every cross-file reference into them stopped resolving. A partial index
+   * looks like a complete one, so nothing said so: the findings that depended on those references
+   * were simply missing.
+   *
+   * <p>Two rules decide it now:
+   *
+   * <ol>
+   *   <li>The <b>preferred root</b> -- the sub-tree the caller wants analysed -- comes first. Those
+   *       are the files the analysis reads.
+   *   <li>The rest of the project root comes <b>shallowest first</b>. The shared classes live near
+   *       the top of a source tree, while the bulk of a corpus lives deep.
+   * </ol>
    */
   public void index() throws IOException {
     if (projectRoot == null || !Files.isDirectory(projectRoot)) {
       return;
     }
     indexTruncated = false;
-    int indexed = 0;
-    try (var stream = Files.walk(projectRoot)) {
+    seen.clear();
+    int budget = MAX_INDEXED_FILES;
+
+    // The caller's own work-list first: the files the analysis reads.
+    if (preferredRoot != null && Files.isDirectory(preferredRoot)) {
+      budget = indexTree(preferredRoot, budget, Integer.MAX_VALUE);
+    }
+    // Then the search space, shallowest first.
+    int depth = 1;
+    while (budget > 0) {
+      reachedDepth = false;
+      budget = indexTree(projectRoot, budget, depth);
+      if (!reachedDepth) {
+        // Nothing sits at this depth, so nothing sits deeper either: the tree is exhausted.
+        break;
+      }
+      depth++;
+    }
+  }
+
+  /**
+   * Index the {@code .java} files under {@code root} that are at most {@code maxDepth} levels down,
+   * and return the budget that is left.
+   *
+   * <p>Files that are already indexed are skipped: the preferred root sits inside the project root,
+   * so the second pass meets the first pass's files again.
+   *
+   * @param root the tree to walk
+   * @param budget how many files may still be indexed
+   * @param maxDepth how many levels below {@code root} to look
+   * @return the budget that is left
+   */
+  private int indexTree(Path root, int budget, int maxDepth) throws IOException {
+    int rootDepth = root.getNameCount();
+    try (var stream = Files.walk(root, maxDepth)) {
       var it = stream.iterator();
       while (it.hasNext()) {
         Path p = it.next();
+        if (p.getNameCount() - rootDepth == maxDepth) {
+          // Something sits at the deepest level this pass looked at, so a deeper one may exist.
+          reachedDepth = true;
+        }
         if (!Files.isRegularFile(p)) continue;
         if (!p.toString().toLowerCase(Locale.ROOT).endsWith(".java")) continue;
         if (buildFilter.isBuildOutput(p)) continue;
-        if (indexed >= MAX_INDEXED_FILES) {
+        if (!seen.add(p)) continue;
+        if (budget <= 0) {
           // The budget is exhausted. Stop walking -- the remaining tree is
           // unbounded as far as the caller is concerned -- and say so.
           indexTruncated = true;
-          break;
+          return 0;
         }
         indexOne(p);
-        indexed++;
+        budget--;
       }
     }
+    return budget;
   }
 
   /**

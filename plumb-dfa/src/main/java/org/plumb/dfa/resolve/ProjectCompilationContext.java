@@ -90,7 +90,10 @@ public final class ProjectCompilationContext {
               + ")");
     }
     this.buildFilter = buildFilter;
-    this.sourcePath = new SourcePathResolver(this.projectRoot, this.buildFilter);
+    // The work-list is indexed before the rest of the project root: when the tree holds more
+    // files than the resolver's budget allows, the files the analysis reads must not be the
+    // ones the budget drops.
+    this.sourcePath = new SourcePathResolver(this.projectRoot, this.sourceRoot, this.buildFilter);
     this.staticFields = new StaticFieldResolver(this.sourcePath);
   }
 
