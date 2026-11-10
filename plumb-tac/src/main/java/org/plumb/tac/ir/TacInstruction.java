@@ -197,7 +197,12 @@ public final class TacInstruction implements java.io.Serializable {
   public final UnaryOperator unop; // when kind == UNARYOP
   public final TacType castType; // when kind == UNARYOP and unop == CAST
 
-  /** For CALL: the callee signature string (e.g. {@code "java.lang.Runtime#exec"}). */
+  /**
+   * For CALL / NEW: the callee signature string.
+   *
+   * <p>A call names the method it calls ({@code "java.lang.Runtime.exec/1"}); a construction names
+   * the class it constructs ({@code "java.io.File.<init>/1"}).
+   */
   public final String calleeSig;
 
   /** For CALL / NEW: the actual argument list. */
