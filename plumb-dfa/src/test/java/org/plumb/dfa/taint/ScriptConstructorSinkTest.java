@@ -22,13 +22,17 @@
 package org.plumb.dfa.taint;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.plumb.dfa.checkers.taint.CodeInjectionChecker;
 import org.plumb.dfa.checkers.taint.RegexInjectionChecker;
 import org.plumb.dfa.config.ConfigLoader;
@@ -38,6 +42,9 @@ import org.plumb.dfa.engine.DfaChecker;
 import org.plumb.dfa.engine.DfaEngine;
 import org.plumb.dfa.engine.FindingReporter;
 import org.plumb.reporter.Finding;
+import org.plumb.tac.frontend.TacFrontend;
+import org.plumb.tac.frontend.ts.TsSidecarClient;
+import org.plumb.tac.frontend.ts.TsTacFrontend;
 import org.plumb.tac.ir.IrPrecision;
 import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.SourceOrigin;
@@ -89,6 +96,38 @@ class ScriptConstructorSinkTest {
   private static final String CODE_RULE = "dfa-taint-code-injection";
   private static final String REGEX_RULE = "dfa-taint-regex-injection";
 
+  /**
+   * A TypeScript program that builds a function from the request's own text.
+   *
+   * <pre>
+   * export function handler(body: string): void {
+   *   const fn = new Function(body);
+   * }
+   * </pre>
+   */
+  private static final String TS_FUNCTION_SOURCE =
+      """
+      export function handler(body: string): void {
+        const fn = new Function(body);
+      }
+      """;
+
+  /**
+   * A TypeScript program that compiles a pattern the request chose.
+   *
+   * <pre>
+   * export function handler(pattern: string): void {
+   *   const re = new RegExp(pattern, "gi");
+   * }
+   * </pre>
+   */
+  private static final String TS_REGEX_SOURCE =
+      """
+      export function handler(pattern: string): void {
+        const re = new RegExp(pattern, "gi");
+      }
+      """;
+
   // ------------------------------------------------------------------ the catalogue
 
   @Test
@@ -138,6 +177,34 @@ class ScriptConstructorSinkTest {
         .as("the entry names a JavaScript global, and a Java program cannot reach it")
         .isFalse();
     assertThat(family.matches("RegExp.<init>/1", SourceLanguage.JAVA)).isFalse();
+  }
+
+  @Test
+  @DisplayName("a constructor belongs to the one family that describes its defect class")
+  void aConstructorBelongsToOneFamily() {
+    assertThat(familiesFor("Function.<init>/1"))
+        .as("the construction is evaluated as code, so only the code injection family may claim it")
+        .containsExactly("code-injection.sinks");
+    assertThat(familiesFor("RegExp.<init>/1"))
+        .as("the construction compiles a pattern, so only the regex family may claim it")
+        .containsExactly("regex.sinks");
+  }
+
+  /**
+   * The families that claim a callee, by the engine's own matcher.
+   *
+   * <p>Not by pattern text: the patterns carry alternation groups and optional package prefixes, so
+   * a text comparison confuses two patterns for different methods that share a class prefix.
+   */
+  private static List<String> familiesFor(String calleeSig) {
+    List<String> names = new ArrayList<>();
+    for (SinkFamily family :
+        ConfigLoader.loadFromClasspath()
+            .sinkFamilies()
+            .lookupAll(calleeSig, SourceLanguage.TYPESCRIPT)) {
+      names.add(family.name());
+    }
+    return names;
   }
 
   // ------------------------------------------------------------------ the position
@@ -207,6 +274,109 @@ class ScriptConstructorSinkTest {
     assertThat(findings)
         .as("the tainted value is the flags, and a flag string is not a pattern")
         .isEmpty();
+  }
+
+  // ------------------------------------------------------------------ the chain
+
+  @Test
+  @DisplayName("a TypeScript function constructor reaches the code injection rule")
+  void aTypeScriptFunctionConstructorReachesTheCodeInjectionRule(@TempDir Path directory)
+      throws IOException {
+    assumeTrue(
+        tsAvailable(),
+        "the TypeScript front end needs Node and its compiler dependency: run npm ci in"
+            + " plumb-frontend/ts-sidecar");
+
+    Path file = directory.resolve("app.ts");
+    Files.writeString(file, TS_FUNCTION_SOURCE);
+
+    List<Finding> findings =
+        scanThrough(
+            new TsTacFrontend(SourceLanguage.TYPESCRIPT),
+            TS_FUNCTION_SOURCE,
+            file,
+            new CodeInjectionChecker());
+
+    assertThat(findings)
+        .as(
+            "the whole chain has to agree: the front end has to name the construction, the"
+                + " catalogue has to claim that name and the rule has to report it -- and a"
+                + " break anywhere in that chain reads as a clean program")
+        .isNotEmpty();
+    assertThat(findings.get(0).cwe()).as("the finding carries CWE-94").contains("CWE-94");
+  }
+
+  @Test
+  @DisplayName("a TypeScript pattern constructor reaches the regex rule")
+  void aTypeScriptPatternConstructorReachesTheRegexRule(@TempDir Path directory)
+      throws IOException {
+    assumeTrue(
+        tsAvailable(),
+        "the TypeScript front end needs Node and its compiler dependency: run npm ci in"
+            + " plumb-frontend/ts-sidecar");
+
+    Path file = directory.resolve("app.ts");
+    Files.writeString(file, TS_REGEX_SOURCE);
+
+    List<Finding> findings =
+        scanThrough(
+            new TsTacFrontend(SourceLanguage.TYPESCRIPT),
+            TS_REGEX_SOURCE,
+            file,
+            new RegexInjectionChecker());
+
+    assertThat(findings)
+        .as("the pattern the request chose is compiled by the program")
+        .isNotEmpty();
+    assertThat(findings.get(0).cwe()).as("the finding carries CWE-1333").isEqualTo("CWE-1333");
+  }
+
+  /**
+   * Run the source through the real front end, then through the real engine and the real catalogue.
+   *
+   * <p>This is the half a hand-written TAC cannot prove: that the front end emits the name the
+   * catalogue matches on.
+   */
+  private static List<Finding> scanThrough(
+      TacFrontend frontend, String source, Path file, DfaChecker checker) {
+    TacFrontend.ParseResult result = frontend.parse(source, file, null);
+    assertThat(result.problems()).as("the source must lower without a problem").isEmpty();
+
+    TacProgram program = new TacProgram(file, "app");
+    for (TacFunction function : result.functions()) {
+      program.addFunction(function);
+    }
+
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+    FindingReporter reporter =
+        new DfaEngine(config, List.of(checker), "global", null)
+            .runWithGlobalStore(List.of(program), 0);
+    List<Finding> out = new ArrayList<>();
+    for (Finding finding : reporter.all()) {
+      if (finding.ruleId().equals(ruleIdOf(checker))) out.add(finding);
+    }
+    return out;
+  }
+
+  /**
+   * Whether the TypeScript front end can run here.
+   *
+   * <p>Node, the sidecar's script and the package the script imports all have to be there. The
+   * third one is the one that is easy to miss, and its absence would make the sidecar die on its
+   * first request -- which reads like a broken product rather than a missing dependency.
+   */
+  private static boolean tsAvailable() {
+    Path node = TsSidecarClient.locateNode();
+    Path script = TsSidecarClient.locateScript(null);
+    if (node == null || script == null) {
+      return false;
+    }
+    Path project = script.getParent();
+    if (project == null) {
+      return false;
+    }
+    Path root = project.getParent();
+    return root != null && Files.isDirectory(root.resolve("node_modules").resolve("typescript"));
   }
 
   // ------------------------------------------------------------------ the TAC
