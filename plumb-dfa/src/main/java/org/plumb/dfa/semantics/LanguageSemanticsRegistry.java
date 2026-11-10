@@ -70,9 +70,9 @@ public final class LanguageSemanticsRegistry {
   /**
    * The registry with the built-in tables.
    *
-   * <p>Java, Kotlin, Scala, C#, Go, TypeScript, JavaScript and ArkTS are populated; the rest get
-   * the empty table until their semantics are written down. That is the honest state: an unwritten
-   * table is not a claim that every call preserves taint, it is an absence of claims.
+   * <p>Java, Kotlin, Scala, C#, Go, TypeScript, JavaScript, ArkTS and Python are populated; the
+   * rest get the empty table until their semantics are written down. That is the honest state: an
+   * unwritten table is not a claim that every call preserves taint, it is an absence of claims.
    */
   public static LanguageSemanticsRegistry withDefaults() {
     LanguageSemanticsRegistry reg = new LanguageSemanticsRegistry();
@@ -84,6 +84,7 @@ public final class LanguageSemanticsRegistry {
     reg.register(typescriptSemantics());
     reg.register(javascriptSemantics());
     reg.register(arktsSemantics());
+    reg.register(pythonSemantics());
     return reg;
   }
 
@@ -128,6 +129,77 @@ public final class LanguageSemanticsRegistry {
    */
   public static LanguageSemantics arktsSemantics() {
     return scriptSemantics(SourceLanguage.ARKTS);
+  }
+
+  /**
+   * Python's standard library semantics.
+   *
+   * <p><b>Why this table names METHODS and not owners.</b> The same reason the script tables do. A
+   * Python string is a primitive, so it carries no class symbol, and when the front end cannot
+   * prove a receiver's type it falls back to the module the file belongs to. Measured against the
+   * Python sidecar: {@code text.strip()} on an ordinary variable arrives as {@code probe.strip/0},
+   * and only a parameter WITH an annotation arrives as {@code str.strip/0}. So a table keyed on
+   * owners would name the annotated case and lose the ordinary one -- which is the case that
+   * matters.
+   *
+   * <p><b>What the engine does with a PRESERVES entry.</b> A Python call the sidecar could not
+   * resolve is modelled as a black box, and a black box carries its arguments' taint ONLY if this
+   * table says so. That makes the table the difference between a finding and a clean report.
+   *
+   * @return the table
+   */
+  public static LanguageSemantics pythonSemantics() {
+    return LanguageSemantics.ofEntries(
+        SourceLanguage.PYTHON3,
+        // --- the result carries the input's taint ---
+        // Whitespace removal.
+        LanguageSemantics.Entry.byMethod("strip", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("lstrip", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("rstrip", TaintBehaviour.PRESERVES),
+        // Case conversion.
+        LanguageSemantics.Entry.byMethod("lower", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("upper", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("casefold", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("title", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("capitalize", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("swapcase", TaintBehaviour.PRESERVES),
+        // A piece of the input.
+        LanguageSemantics.Entry.byMethod("split", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("rsplit", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("splitlines", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("removeprefix", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("removesuffix", TaintBehaviour.PRESERVES),
+        // Replaced content.
+        LanguageSemantics.Entry.byMethod("replace", TaintBehaviour.PRESERVES),
+        // Assembly.
+        LanguageSemantics.Entry.byMethod("join", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("format", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("format_map", TaintBehaviour.PRESERVES),
+        // The same content in another encoding.
+        LanguageSemantics.Entry.byMethod("encode", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("decode", TaintBehaviour.PRESERVES),
+        // Reshaped rather than changed: padding and alignment.
+        LanguageSemantics.Entry.byMethod("zfill", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("center", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("ljust", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("rjust", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("expandtabs", TaintBehaviour.PRESERVES),
+        // The value rendered as text.
+        LanguageSemantics.Entry.byMethod("str", TaintBehaviour.PRESERVES),
+        // --- the result does NOT carry the input's taint ---
+        // A parsed number is not the text it was parsed from.
+        LanguageSemantics.Entry.byMethod("int", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("float", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("bool", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("complex", TaintBehaviour.DISSOCIATES),
+        // A count, a code point or a hash is not the text either.
+        LanguageSemantics.Entry.byMethod("len", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("ord", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("chr", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("hash", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("hex", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("oct", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("bin", TaintBehaviour.DISSOCIATES));
   }
 
   /**

@@ -793,6 +793,15 @@ families:
         # `evaluate` and `evalSync` out.
         - pattern: '\.eval\b(/\d+)?'
           arg_index: 0
+      python3:
+        # The builtins that evaluate code. Their owner is `builtins`,
+        # because that is the module Python itself provides them from.
+        - pattern: '^builtins\.(eval|exec)(/\d+)?'
+          arg_index: 0
+        # compile() turns its FIRST argument into code; the other two
+        # are the file name and the mode.
+        - pattern: '^builtins\.compile(/\d+)?'
+          arg_index: 0
 
   command.sinks:
     cwe: CWE-78,CWE-77,CWE-88,CWE-93,CWE-114,CWE-147,CWE-494
@@ -938,6 +947,22 @@ families:
         #
         # The command line is the FIRST argument, so arg_index is 0.
         - pattern: '^(?:node:)?child_process\.(execSync|execFileSync|spawnSync|execFile|exec|spawn|fork)(/\d+)?'
+          arg_index: 0
+      python3:
+        # os.system runs its argument through the SHELL, so a tainted
+        # argument is a command injection. The owner is the MODULE the
+        # function was imported from, so `from os import system` arrives
+        # as os.system -- the alias is resolved away.
+        - pattern: '^os\.system(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.popen(/\d+)?'
+          arg_index: 0
+        # The exec family: the process is replaced by the command.
+        - pattern: '^os\.(execl|execle|execlp|execlpe|execv|execve|execvp|execvpe)(/\d+)?'
+          arg_index: 0
+        # The subprocess family. The command is the first argument, and
+        # with shell=True it is what the shell runs.
+        - pattern: '^subprocess\.(run|call|check_call|check_output|Popen)(/\d+)?'
           arg_index: 0
 
   cookie.sinks:
@@ -2079,6 +2104,18 @@ families:
           arg_index: -2
         - pattern: '^encoding/json\.Decoder\.Decode(/\d+)?'
           arg_index: -2
+      python3:
+        # The bytes are the first argument.
+        - pattern: '^pickle\.loads?(/\d+)?'
+          arg_index: 0
+        - pattern: '^marshal\.loads?(/\d+)?'
+          arg_index: 0
+        - pattern: '^shelve\.open(/\d+)?'
+          arg_index: 0
+        # PyYAML constructs arbitrary objects unless the loader says
+        # otherwise, and unsafe_load always does.
+        - pattern: '^yaml\.(load|unsafe_load|full_load)(/\d+)?'
+          arg_index: 0
 
   dos.sinks:
     cwe: CWE-730,CWE-776
@@ -2760,6 +2797,20 @@ families:
         - pattern: '^(?:node:)?fs\.(readFile|readFileSync|writeFile|writeFileSync|appendFile|appendFileSync|unlink|unlinkSync|rmdir|rmdirSync|createReadStream|createWriteStream)(/\d+)?'
           arg_index: 0
         - pattern: '^(?:node:)?fs/promises\.(readFile|writeFile|appendFile|unlink|rmdir|rm)(/\d+)?'
+          arg_index: 0
+      python3:
+        # Removing and renaming a path the program did not choose.
+        - pattern: '^os\.(remove|unlink|rmdir|removedirs)(/\d+)?'
+          arg_index: 0
+        - pattern: '^shutil\.(rmtree|copyfile|copy2)(/\d+)?'
+          arg_index: 0
+        # Both paths of a move or a copy can be the tainted one.
+        - pattern: '^shutil\.(move|copy|copytree)(/\d+)?'
+          arg_index: [0, 1]
+        # The path builder. A tainted segment makes the whole path point
+        # somewhere the program did not choose -- the same shape as
+        # java.nio.file.Path.resolve, which is in this family too.
+        - pattern: '^os\.path\.join(/\d+)?'
           arg_index: 0
 
   file-permission.sinks:
@@ -6893,11 +6944,21 @@ families:
         # is the module the FILE belongs to, and the pattern names the method.
         - pattern: '\.fetch\b(/\d+)?'
           arg_index: 0
+      python3:
+        # The URL is the first argument of every one of these.
+        - pattern: '^urllib\.request\.urlopen(/\d+)?'
+          arg_index: 0
+        - pattern: '^requests\.(get|post|put|patch|delete|head|options)(/\d+)?'
+          arg_index: 0
+        # The connection carries the URL in its constructor, and the
+        # constructor is an ordinary call: there is no __init__ spelling.
+        - pattern: '^http\.client\.HTTP(S)?Connection(/\d+)?'
+          arg_index: 0
 
   taint.sources.console:
     cwe: null
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'csharp']
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'python3']
     patterns:
       - '^java\.io\.Console\.readLine(/\d+)?'
       - '^java\.lang\.System\.console(/\d+)?'
@@ -6934,11 +6995,15 @@ families:
           arg_index: 0
         - pattern: '^scala\.io\.StdIn\.readLine(/\d+)?'
           arg_index: 0
+      python3:
+        # The prompt the program waits on. Whatever the user types there
+        # is attacker-controlled by definition.
+        - '^builtins\.input(/\d+)?'
 
   taint.sources.env:
     cwe: null
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'csharp']
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'python3']
     patterns:
       - '^java\.lang\.System\.getenv(/\d+)?'
       - '^java\.lang\.System\.getProperty(/\d+)?'
@@ -6966,6 +7031,9 @@ families:
       scala:
         - pattern: '^scala\.sys\.package\$\$anon\$\d+\.getenv(/\d+)?'
           arg_index: 0
+      python3:
+        # An environment variable: the program did not choose its value.
+        - '^os\.environ\.get(/\d+)?'
 
   taint.sources.io:
     cwe: null

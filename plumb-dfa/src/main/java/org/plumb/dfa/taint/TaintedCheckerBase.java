@@ -1589,9 +1589,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     return false;
   }
 
-  /** {@code String.split} and its equivalents: the result is a piece of the input. */
+  /**
+   * {@code String.split} and its equivalents: the result is a piece of the input.
+   *
+   * <p>Python splits with the same name, and it splits twice more: {@code rsplit} splits from the
+   * right and {@code splitlines} splits on the line breaks. All three hand back pieces of the input.
+   */
   private static boolean isSplitLike(String calleeSig) {
-    return isMethodNamed(calleeSig, "split", "splitToSequence");
+    return isMethodNamed(calleeSig, "split", "splitToSequence", "rsplit", "splitlines");
   }
 
   /**
@@ -1605,7 +1610,38 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    */
   private static boolean isSubstringLike(String calleeSig) {
     return isMethodNamed(
-        calleeSig, "substring", "substringAfter", "substringBefore", "slice", "substr");
+        calleeSig,
+        "substring",
+        "substringAfter",
+        "substringBefore",
+        "slice",
+        "substr",
+        // Python takes the affixes off with two methods of their own.
+        "removeprefix",
+        "removesuffix");
+  }
+
+  /**
+   * Operations whose result is the input, reshaped: padded, repeated, normalized.
+   *
+   * <p><b>Why this category exists.</b> The other categories each describe one SHAPE of operation
+   * -- a piece of the input, a case change, a join. Reshaping the input without changing what it
+   * says is a fourth shape, and it had no home: a script language's {@code padStart} and {@code
+   * zfill} had nowhere to go, so a table that said they preserve taint had no way to say so to
+   * the engine. A table entry that cannot reach the engine is a comment.
+   */
+  private static boolean isDerivedLike(String calleeSig) {
+    return isMethodNamed(
+        calleeSig,
+        "padStart",
+        "padEnd",
+        "repeat",
+        "normalize",
+        "zfill",
+        "center",
+        "ljust",
+        "rjust",
+        "expandtabs");
   }
 
   /** {@code String.trim} and its equivalents: whitespace removal keeps the content's taint. */
@@ -1618,7 +1654,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         "stripTrailing",
         "trimIndent",
         "trimStart",
-        "trimEnd");
+        "trimEnd",
+        // Python says which END it strips instead of saying it once.
+        "lstrip",
+        "rstrip");
   }
 
   /** Case conversion and replacement: the result is derived from the input. */
@@ -1637,7 +1676,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         "toUpperInvariant",
         "replace",
         "replaceAll",
-        "replaceFirst");
+        "replaceFirst",
+        // Python's case conversions have no "Case" in the name at all.
+        "lower",
+        "upper",
+        "casefold",
+        "title",
+        "capitalize",
+        "swapcase");
   }
 
   /**
@@ -1647,7 +1693,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * joins two strings. Both carry the taint of what they render.
    */
   private static boolean isValueOfLike(String calleeSig) {
-    if (isMethodNamed(calleeSig, "valueOf", "concat", "concatToString")) return true;
+    // "str" is Python's own rendering of a value as text. The name is short and generic, so it
+    // only takes effect where a table says so: the per-language semantics table scopes it.
+    if (isMethodNamed(calleeSig, "valueOf", "concat", "concatToString", "str")) return true;
     // The Throwable case is excluded: e.getMessage() is handled by its own category.
     return isMethodNamed(calleeSig, "toString") && !isThrowableMessageMethod(calleeSig);
   }
@@ -1682,7 +1730,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
 
   /** Formatting and joining: the result is assembled from the arguments. */
   private static boolean isFormatterLike(String calleeSig) {
-    return isMethodNamed(calleeSig, "format", "join", "formatted");
+    return isMethodNamed(calleeSig, "format", "join", "formatted", "format_map");
   }
 
   /**
@@ -1693,7 +1741,15 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    */
   private static boolean isCharByteLike(String calleeSig) {
     return isMethodNamed(
-        calleeSig, "toCharArray", "getBytes", "getEncoded", "getPassword", "clone");
+        calleeSig,
+        "toCharArray",
+        "getBytes",
+        "getEncoded",
+        "getPassword",
+        "clone",
+        // Python's spelling of the same idea: the text, in another encoding.
+        "encode",
+        "decode");
   }
 
   /**
@@ -2407,6 +2463,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     boolean isCharBytePassthrough =
         behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
             && isCharByteLike(calleeSig);
+    // The input, reshaped.
+    boolean isDerived =
+        behaviour == org.plumb.dfa.semantics.LanguageSemantics.TaintBehaviour.PRESERVES
+            && isDerivedLike(calleeSig);
     if (!(isSplit
         || isSub
         || isTrim
@@ -2416,7 +2476,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         || isTokenizer
         || isFormatter
         || isThrowableMsg
-        || isCharBytePassthrough)) {
+        || isCharBytePassthrough
+        || isDerived)) {
       return;
     }
     // Pick the tainted source operand.

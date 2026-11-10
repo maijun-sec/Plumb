@@ -301,3 +301,31 @@ LanguageSemantics.Entry.byMethod("trim", TaintBehaviour.PRESERVES)
 的调用找不到 PRESERVES 条目，污点就停在那里。代价是按方法名的条目分不清字符串的
 `trim` 和用户对象的 `trim`，所以这张表只列那些「无论在哪里拼写、行为都相同」的
 操作。
+
+#### Python：同样的形状，而且别名被解析掉了
+
+Python 和脚本语言一样，是通过**模块**到达它的库的，而前端会把别名解析掉，所以目录
+点名的是函数**被导入自**的那个模块，而不是程序里写的那个名字。
+
+| callee key | 它是什么 |
+| --- | --- |
+| `os.system/1` | `os.system`，也包括 `from os import system` |
+| `subprocess.run/1` | subprocess 家族 |
+| `builtins.eval/1` | 内建函数：owner 是 Python 自己提供它的那个模块 |
+| `pickle.loads/1` | 字节串是第一个参数 |
+| `os.environ.get/1` | 环境变量：值不是程序自己选的 |
+
+这个形状带来两条规则。只点名方法名的规则会认领程序里的每一个 `loads`——而
+`json.loads` 是最常见的一个，它解析 JSON，不构造对象。另外，内建函数是按 Python
+提供它们的那个模块命名的，所以 `eval` 是 `builtins.eval` 而不是 `eval`。
+
+Python 的 semantics 表同样是按方法名写的，原因和脚本语言一样。Python 的字符串是
+原始类型，前端推不出接收者类型时退回**文件**所属的模块：只有带注解的参数才会带着
+类型到达，所以按 owner 写的表只会点名带注解的那一半，把普通的那一半丢掉。
+
+Python 没有覆盖到的部分，以及原因：
+
+- `socket.connect`，以及程序自己造出来的对象上的其他方法：接收者的类型推不出来，
+  owner 就是文件所属的模块，这条调用没有可以被匹配的名字。
+- 读文件：内容是通过文件对象上**之后**的一次调用到达的，而那次调用有同样的、
+  点不出名字的 owner。

@@ -343,3 +343,36 @@ would find no PRESERVES entry and the taint would stop there. The cost is that
 a method-name entry cannot tell a string's `trim` from a user object's `trim`,
 which is why the table lists only operations whose behaviour is the same
 wherever they are spelled.
+
+#### Python: the same shape, and the alias resolved away
+
+Python reaches its libraries the way the script languages do -- through MODULES
+-- and the front end resolves the alias away, so the catalogue names the module
+the function was IMPORTED from rather than the name the program wrote.
+
+| Callee key | What it is |
+| --- | --- |
+| `os.system/1` | `os.system`, and also `from os import system` |
+| `subprocess.run/1` | the subprocess family |
+| `builtins.eval/1` | a builtin: the owner is the module Python itself provides it from |
+| `pickle.loads/1` | the bytes are the first argument |
+| `os.environ.get/1` | an environment variable: the program did not choose its value |
+
+Two rules follow from the shape. A rule that named the method alone would claim
+every `loads` in the program, and `json.loads` -- which parses JSON and builds no
+objects -- is the most common one there is. And a builtin is named by the module
+Python provides it from, so `eval` is `builtins.eval` and not `eval`.
+
+Python's semantics table is a method-name table for the same reason the script
+one is. A Python string is a primitive, and when the front end cannot prove a
+receiver's type it falls back to the module the file belongs to: only a
+parameter WITH an annotation arrives with a type, so an owner-keyed table would
+name the annotated case and lose the ordinary one.
+
+What Python does not get, and why:
+
+- `socket.connect`, and the other methods of an object the program built: the
+  receiver's type is not provable, so the owner is the module the file belongs
+  to and the call has no name to be matched by.
+- A file read: the content arrives through a later call on the file object, and
+  that call has the same owner with no name.

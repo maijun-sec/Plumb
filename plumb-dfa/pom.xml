@@ -170,6 +170,15 @@
                              appears. -->
                         <include>org/plumb/dfa/taint/TsSinkCatalogTest.java</include>
 
+                        <!-- The Python rule layer. The catalogue names the
+                             MODULE a function was imported from, so a rule
+                             cannot claim every `loads` in a program:
+                             json.loads parses JSON and does not build
+                             objects. And the semantics table names the
+                             OPERATION, because a string receiver is a
+                             primitive and has no class to name. -->
+                        <include>org/plumb/dfa/taint/PySinkCatalogTest.java</include>
+
                         <!-- The argument-to-return shape: a library method that
                              carries an ARGUMENT's taint into its result is a
                              rule of its own, and the table that says which
