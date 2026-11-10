@@ -70,9 +70,9 @@ public final class LanguageSemanticsRegistry {
   /**
    * The registry with the built-in tables.
    *
-   * <p>Java, Kotlin, Scala, C#, Go, TypeScript, JavaScript, ArkTS and Python are populated; the
-   * rest get the empty table until their semantics are written down. That is the honest state: an
-   * unwritten table is not a claim that every call preserves taint, it is an absence of claims.
+   * <p>Java, Kotlin, Scala, C#, Go, TypeScript, JavaScript, ArkTS, Python and PHP are populated;
+   * the rest get the empty table until their semantics are written down. That is the honest state:
+   * an unwritten table is not a claim that every call preserves taint, it is an absence of claims.
    */
   public static LanguageSemanticsRegistry withDefaults() {
     LanguageSemanticsRegistry reg = new LanguageSemanticsRegistry();
@@ -85,6 +85,7 @@ public final class LanguageSemanticsRegistry {
     reg.register(javascriptSemantics());
     reg.register(arktsSemantics());
     reg.register(pythonSemantics());
+    reg.register(phpSemantics());
     return reg;
   }
 
@@ -129,6 +130,81 @@ public final class LanguageSemanticsRegistry {
    */
   public static LanguageSemantics arktsSemantics() {
     return scriptSemantics(SourceLanguage.ARKTS);
+  }
+
+  /**
+   * PHP's standard library semantics.
+   *
+   * <p><b>Why this table names METHODS and not owners.</b> PHP has no owner to name for a built-in:
+   * {@code system} is a global function, so its callee key is {@code \system/1} and there is
+   * nothing in front of the name. The table names the operation instead.
+   *
+   * <p><b>Why the table matters more here than elsewhere.</b> A PHP call to a built-in is modelled
+   * as a BLACK BOX -- the front end did not resolve it -- and a black box carries its arguments'
+   * taint only if the table says the operation can. So the DISSOCIATES entries are what stop the
+   * taint at the calls that really do drop it: a parsed number is not the text it was parsed from,
+   * and a digest is not the text either.
+   *
+   * @return the table
+   */
+  public static LanguageSemantics phpSemantics() {
+    return LanguageSemantics.ofEntries(
+        SourceLanguage.PHP,
+        // --- the result carries the input's taint ---
+        // Whitespace removal.
+        LanguageSemantics.Entry.byMethod("trim", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("ltrim", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("rtrim", TaintBehaviour.PRESERVES),
+        // Case conversion.
+        LanguageSemantics.Entry.byMethod("strtolower", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("strtoupper", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("ucfirst", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("ucwords", TaintBehaviour.PRESERVES),
+        // A piece of the input.
+        LanguageSemantics.Entry.byMethod("substr", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("substr_replace", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("strrev", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("str_pad", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("strtr", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("wordwrap", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("nl2br", TaintBehaviour.PRESERVES),
+        // Replaced content.
+        LanguageSemantics.Entry.byMethod("str_replace", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("str_ireplace", TaintBehaviour.PRESERVES),
+        // Assembly.
+        LanguageSemantics.Entry.byMethod("explode", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("implode", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("sprintf", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("printf", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("vsprintf", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("vprintf", TaintBehaviour.PRESERVES),
+        // The value rendered as text.
+        LanguageSemantics.Entry.byMethod("strval", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("print_r", TaintBehaviour.PRESERVES),
+        // Escaped, but still the same text: the value is still attacker-controlled.
+        LanguageSemantics.Entry.byMethod("htmlspecialchars", TaintBehaviour.PRESERVES),
+        // --- the result does NOT carry the input's taint ---
+        // A parsed number is not the text it was parsed from.
+        LanguageSemantics.Entry.byMethod("intval", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("floatval", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("doubleval", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("boolval", TaintBehaviour.DISSOCIATES),
+        // A count, a length or a digest is not the text either.
+        LanguageSemantics.Entry.byMethod("strlen", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("count", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("sizeof", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("md5", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("sha1", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("hash", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("crc32", TaintBehaviour.DISSOCIATES),
+        // The cipher text is not the plain text.
+        LanguageSemantics.Entry.byMethod("base64_encode", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("gzencode", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("bin2hex", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("dechex", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("decoct", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("ord", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("chr", TaintBehaviour.DISSOCIATES));
   }
 
   /**

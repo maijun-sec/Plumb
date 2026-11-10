@@ -2823,13 +2823,24 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     return methodNameOf(calleeSig).equals("next");
   }
 
-  /** The method name of a callee signature in {@code owner.method/arity} form. */
+  /**
+   * The method name of a callee signature in {@code owner.method/arity} form.
+   *
+   * <p><b>Why a backslash counts as a separator.</b> PHP qualifies a name with its namespace, and
+   * a global function is written with a leading backslash: {@code system} arrives as {@code
+   * \system/1} and a namespaced one as {@code App\Support\sanitize/1}. Neither has a dot, so a
+   * dot-only split would name the whole thing -- {@code \trim} -- and the method-name lists would
+   * never match a PHP call. The semantics table's reader splits the same way, because the two
+   * have to agree.
+   */
   private static String methodNameOf(String calleeSig) {
     if (calleeSig == null || calleeSig.isEmpty()) return "";
-    int slash = calleeSig.indexOf('/');
+    int slash = calleeSig.lastIndexOf('/');
     String qualified = slash < 0 ? calleeSig : calleeSig.substring(0, slash);
     int dot = qualified.lastIndexOf('.');
-    return dot < 0 ? qualified : qualified.substring(dot + 1);
+    int backslash = qualified.lastIndexOf('\\');
+    int cut = Math.max(dot, backslash);
+    return cut < 0 ? qualified : qualified.substring(cut + 1);
   }
 
   /**

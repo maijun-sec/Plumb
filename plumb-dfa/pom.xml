@@ -179,6 +179,16 @@
                              primitive and has no class to name. -->
                         <include>org/plumb/dfa/taint/PySinkCatalogTest.java</include>
 
+                        <!-- The PHP rule layer. PHP qualifies a global
+                             function with a leading backslash, so the
+                             catalogue names the qualified name PHP itself
+                             writes, and every name ends with a word
+                             boundary: the engine matches a pattern as a
+                             substring, and a rule that claimed `systemctl`
+                             would claim a project that defines its own
+                             `system_info`. -->
+                        <include>org/plumb/dfa/taint/PhpSinkCatalogTest.java</include>
+
                         <!-- The argument-to-return shape: a library method that
                              carries an ARGUMENT's taint into its result is a
                              rule of its own, and the table that says which

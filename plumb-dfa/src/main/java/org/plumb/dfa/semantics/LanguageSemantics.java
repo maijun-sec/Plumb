@@ -212,7 +212,14 @@ public final class LanguageSemantics {
    * The method name of a callee key.
    *
    * <p>The key is {@code owner.method/arity}: the method is what stands between the last dot and
-   * the arity. A key with no dot names no method.
+   * the arity.
+   *
+   * <p><b>Why a backslash counts as a separator too.</b> PHP qualifies a name with its namespace,
+   * and a global function is written with a leading backslash: {@code system} arrives as {@code
+   * \system/1} and a namespaced one as {@code App\Support\sanitize/1}. Neither has a dot, so a
+   * dot-only split would name the whole thing -- or nothing at all -- and a method-name entry would
+   * never match. The engine's own method-name reader splits the same way, because the two have to
+   * agree: a call the engine calls a trim has to find a PRESERVES entry.
    *
    * @param calleeSig the callee key
    * @return the method name; empty when the key names none
@@ -222,7 +229,9 @@ public final class LanguageSemantics {
     int slash = calleeSig.lastIndexOf('/');
     String head = slash < 0 ? calleeSig : calleeSig.substring(0, slash);
     int dot = head.lastIndexOf('.');
-    return dot < 0 ? "" : head.substring(dot + 1);
+    int backslash = head.lastIndexOf('\\');
+    int cut = Math.max(dot, backslash);
+    return cut < 0 ? head : head.substring(cut + 1);
   }
 
   /**

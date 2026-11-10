@@ -785,7 +785,7 @@ families:
           arg_index: 0
       typescript,javascript,arkts:
         # The vm module evaluates code in a context of the caller's choosing.
-        - pattern: '^(?:node:)?vm\.(runInNewContext|runInThisContext|compileFunction)(/\d+)?'
+        - pattern: '^(?:node:)?vm\.(runInNewContext|runInThisContext|compileFunction)\b(/\d+)?'
           arg_index: 0
         # The global eval. A free function has no receiver object, so its owner
         # is the module the FILE belongs to -- the file's own name -- and the
@@ -796,11 +796,11 @@ families:
       python3:
         # The builtins that evaluate code. Their owner is `builtins`,
         # because that is the module Python itself provides them from.
-        - pattern: '^builtins\.(eval|exec)(/\d+)?'
+        - pattern: '^builtins\.(eval|exec)\b(/\d+)?'
           arg_index: 0
         # compile() turns its FIRST argument into code; the other two
         # are the file name and the mode.
-        - pattern: '^builtins\.compile(/\d+)?'
+        - pattern: '^builtins\.compile\b(/\d+)?'
           arg_index: 0
 
   command.sinks:
@@ -946,23 +946,29 @@ families:
         # the same module under the name Node 16 and later prefer.
         #
         # The command line is the FIRST argument, so arg_index is 0.
-        - pattern: '^(?:node:)?child_process\.(execSync|execFileSync|spawnSync|execFile|exec|spawn|fork)(/\d+)?'
+        - pattern: '^(?:node:)?child_process\.(execSync|execFileSync|spawnSync|execFile|exec|spawn|fork)\b(/\d+)?'
           arg_index: 0
       python3:
         # os.system runs its argument through the SHELL, so a tainted
         # argument is a command injection. The owner is the MODULE the
         # function was imported from, so `from os import system` arrives
         # as os.system -- the alias is resolved away.
-        - pattern: '^os\.system(/\d+)?'
+        - pattern: '^os\.system\b(/\d+)?'
           arg_index: 0
-        - pattern: '^os\.popen(/\d+)?'
+        - pattern: '^os\.popen\b(/\d+)?'
           arg_index: 0
         # The exec family: the process is replaced by the command.
-        - pattern: '^os\.(execl|execle|execlp|execlpe|execv|execve|execvp|execvpe)(/\d+)?'
+        - pattern: '^os\.(execl|execle|execlp|execlpe|execv|execve|execvp|execvpe)\b(/\d+)?'
           arg_index: 0
         # The subprocess family. The command is the first argument, and
         # with shell=True it is what the shell runs.
-        - pattern: '^subprocess\.(run|call|check_call|check_output|Popen)(/\d+)?'
+        - pattern: '^subprocess\.(run|call|check_call|check_output|Popen)\b(/\d+)?'
+          arg_index: 0
+      php:
+        # PHP's own command functions. The callee key carries the fully
+        # qualified global name, so a global function is written with a
+        # leading backslash.
+        - pattern: '^\\(system|exec|shell_exec|passthru|popen|proc_open|pcntl_exec)\b(/\d+)?'
           arg_index: 0
 
   cookie.sinks:
@@ -2106,15 +2112,19 @@ families:
           arg_index: -2
       python3:
         # The bytes are the first argument.
-        - pattern: '^pickle\.loads?(/\d+)?'
+        - pattern: '^pickle\.loads?\b(/\d+)?'
           arg_index: 0
-        - pattern: '^marshal\.loads?(/\d+)?'
+        - pattern: '^marshal\.loads?\b(/\d+)?'
           arg_index: 0
-        - pattern: '^shelve\.open(/\d+)?'
+        - pattern: '^shelve\.open\b(/\d+)?'
           arg_index: 0
         # PyYAML constructs arbitrary objects unless the loader says
         # otherwise, and unsafe_load always does.
-        - pattern: '^yaml\.(load|unsafe_load|full_load)(/\d+)?'
+        - pattern: '^yaml\.(load|unsafe_load|full_load)\b(/\d+)?'
+          arg_index: 0
+      php:
+        # The bytes are the first argument.
+        - pattern: '^\\unserialize\b(/\d+)?'
           arg_index: 0
 
   dos.sinks:
@@ -2337,6 +2347,12 @@ families:
       csharp:
         - pattern: '^System\.Web\.UI\.ClientScriptManager\.RegisterClientScriptInclude(/\d+)?'
           arg_index: [1, 2]
+      php:
+        # `include`, `require` and `require_once` are language constructs
+        # rather than calls, so the front end gives them a synthetic owner
+        # instead of a name. The path is the first argument.
+        - pattern: '^<php>\.include\b(/\d+)?'
+          arg_index: 0
 
   file-path.sinks:
     cwe: CWE-22,CWE-73
@@ -2794,24 +2810,35 @@ families:
         - '^better\.files\.File\.(zipTo|zipIn)(/\d+)?'
       typescript,javascript,arkts:
         # Node's fs. The PATH is the first argument, so arg_index is 0.
-        - pattern: '^(?:node:)?fs\.(readFile|readFileSync|writeFile|writeFileSync|appendFile|appendFileSync|unlink|unlinkSync|rmdir|rmdirSync|createReadStream|createWriteStream)(/\d+)?'
+        - pattern: '^(?:node:)?fs\.(readFile|readFileSync|writeFile|writeFileSync|appendFile|appendFileSync|unlink|unlinkSync|rmdir|rmdirSync|createReadStream|createWriteStream)\b(/\d+)?'
           arg_index: 0
-        - pattern: '^(?:node:)?fs/promises\.(readFile|writeFile|appendFile|unlink|rmdir|rm)(/\d+)?'
+        - pattern: '^(?:node:)?fs/promises\.(readFile|writeFile|appendFile|unlink|rmdir|rm)\b(/\d+)?'
           arg_index: 0
       python3:
         # Removing and renaming a path the program did not choose.
-        - pattern: '^os\.(remove|unlink|rmdir|removedirs)(/\d+)?'
+        - pattern: '^os\.(remove|unlink|rmdir|removedirs)\b(/\d+)?'
           arg_index: 0
-        - pattern: '^shutil\.(rmtree|copyfile|copy2)(/\d+)?'
+        - pattern: '^shutil\.(rmtree|copyfile|copy2)\b(/\d+)?'
           arg_index: 0
         # Both paths of a move or a copy can be the tainted one.
-        - pattern: '^shutil\.(move|copy|copytree)(/\d+)?'
+        - pattern: '^shutil\.(move|copy|copytree)\b(/\d+)?'
           arg_index: [0, 1]
         # The path builder. A tainted segment makes the whole path point
         # somewhere the program did not choose -- the same shape as
         # java.nio.file.Path.resolve, which is in this family too.
-        - pattern: '^os\.path\.join(/\d+)?'
+        - pattern: '^os\.path\.join\b(/\d+)?'
           arg_index: 0
+      php:
+        # The path is the first argument of each of these.
+        - pattern: '^\\(file_get_contents|file_put_contents|fopen|unlink|rename|copy|rmdir|mkdir|chmod|chown|dir)\b(/\d+)?'
+          arg_index: 0
+        # A write names both the file and the content, and either of them
+        # can be the tainted one.
+        - pattern: '^\\(fwrite|fputs)\b(/\d+)?'
+          arg_index: [0, 1]
+        # A move or a copy names both paths.
+        - pattern: '^\\(rename|copy)\b(/\d+)?'
+          arg_index: [0, 1]
 
   file-permission.sinks:
     cwe: CWE-732,CWE-264
@@ -6938,7 +6965,7 @@ families:
           arg_index: 1
       typescript,javascript,arkts:
         # Node's http and https. The URL is the first argument.
-        - pattern: '^(?:node:)?https?\.(get|request)(/\d+)?'
+        - pattern: '^(?:node:)?https?\.(get|request)\b(/\d+)?'
           arg_index: 0
         # The global fetch. A free function has no receiver object, so its owner
         # is the module the FILE belongs to, and the pattern names the method.
@@ -6946,13 +6973,24 @@ families:
           arg_index: 0
       python3:
         # The URL is the first argument of every one of these.
-        - pattern: '^urllib\.request\.urlopen(/\d+)?'
+        - pattern: '^urllib\.request\.urlopen\b(/\d+)?'
           arg_index: 0
-        - pattern: '^requests\.(get|post|put|patch|delete|head|options)(/\d+)?'
+        - pattern: '^requests\.(get|post|put|patch|delete|head|options)\b(/\d+)?'
           arg_index: 0
         # The connection carries the URL in its constructor, and the
         # constructor is an ordinary call: there is no __init__ spelling.
-        - pattern: '^http\.client\.HTTP(S)?Connection(/\d+)?'
+        - pattern: '^http\.client\.HTTP(S)?Connection\b(/\d+)?'
+          arg_index: 0
+      php:
+        # The URL is the first argument.
+        - pattern: '^\\curl_init\b(/\d+)?'
+          arg_index: 0
+        # curl_setopt names the handle, the option and then the value, so
+        # the URL is the THIRD argument.
+        - pattern: '^\\curl_setopt\b(/\d+)?'
+          arg_index: 2
+        # file_get_contents reads a URL as happily as it reads a path.
+        - pattern: '^\\file_get_contents\b(/\d+)?'
           arg_index: 0
 
   taint.sources.console:
@@ -6998,12 +7036,12 @@ families:
       python3:
         # The prompt the program waits on. Whatever the user types there
         # is attacker-controlled by definition.
-        - '^builtins\.input(/\d+)?'
+        - '^builtins\.input\b(/\d+)?'
 
   taint.sources.env:
     cwe: null
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'python3']
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'python3', 'php']
     patterns:
       - '^java\.lang\.System\.getenv(/\d+)?'
       - '^java\.lang\.System\.getProperty(/\d+)?'
@@ -7033,12 +7071,15 @@ families:
           arg_index: 0
       python3:
         # An environment variable: the program did not choose its value.
-        - '^os\.environ\.get(/\d+)?'
+        - '^os\.environ\.get\b(/\d+)?'
+      php:
+        # An environment variable: the program did not choose its value.
+        - '^\\getenv\b(/\d+)?'
 
   taint.sources.io:
     cwe: null
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'javascript', 'typescript', 'arkts']
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'javascript', 'typescript', 'arkts', 'php']
     patterns:
       - '^java\.io\.InputStream\.read(/\d+)?'
       - '^java\.io\.Reader\.read(/\d+)?'
@@ -7095,8 +7136,11 @@ families:
         - '^embed\.FS\.ReadFile(/\d+)?'
       typescript,javascript,arkts:
         # A file read hands back content the program did not write.
-        - pattern: '^(?:node:)?fs\.(readFile|readFileSync)(/\d+)?'
+        - pattern: '^(?:node:)?fs\.(readFile|readFileSync)\b(/\d+)?'
         - pattern: '^(?:node:)?fs/promises\.readFile(/\d+)?'
+      php:
+        # The content of a file the program did not write.
+        - '^\\file_get_contents\b(/\d+)?'
 
   taint.sources.network:
     cwe: null

@@ -376,3 +376,40 @@ What Python does not get, and why:
   to and the call has no name to be matched by.
 - A file read: the content arrives through a later call on the file object, and
   that call has the same owner with no name.
+
+#### PHP: the qualified name PHP itself writes
+
+PHP qualifies a name with its namespace, and a global function is written with
+a leading backslash. The catalogue names the qualified name PHP itself writes:
+
+| Callee key | What it is |
+| --- | --- |
+| `\system/1` | a global function: `system`, and a call to it from inside a namespace too |
+| `App\Support\sanitize/1` | a function of a namespace |
+| `App\Http\Greeter::greet/1` | a static method |
+| `<php>.include/1` | `include`, `require` and `require_once`: language constructs, so the front end gives them a synthetic owner |
+
+Two things follow from that. A call to a built-in is a BLACK BOX -- the front
+end did not resolve it -- so the semantics table decides whether the taint
+crosses it, and its DISSOCIATES entries are what stop the taint at the calls
+that really do drop it: a parsed number is not the text it was parsed from,
+and a digest is not the text either.
+
+And the method name has to be read with PHP's separator in mind. A global
+function's key has no dot in it at all -- `\trim/1` -- so a reader that splits
+on dots alone names the whole thing, and the method-name lists never match.
+The engine's reader and the semantics table's reader now both split on a dot
+OR a backslash, because the two have to agree.
+
+Every name in the PHP bucket ends with a word boundary, and that is not
+decoration. The engine matches a sink pattern as a SUBSTRING, so a pattern
+that named `system` without a boundary would also claim `systemctl` -- and a
+project that defines its own `system_info` would be reported as command
+injection.
+
+What PHP does not get, and why:
+
+- `eval`: the front end lowers it to an unknown value rather than to a call,
+  so there is no callee key for a rule to name.
+- The superglobals `$_GET`, `$_POST` and the rest: they are container reads
+  rather than calls, and they carry nothing that says where they came from.
