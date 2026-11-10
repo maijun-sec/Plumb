@@ -239,6 +239,162 @@ class LanguageScopedPassthroughTest {
     }
   }
 
+  // --------------------------------------------------------------------- buckets
+
+  /**
+   * A family whose symbols only ONE language can mention.
+   *
+   * <p>The shared pattern is the one every language of the family can reach; the bucket holds the
+   * symbol that only C#'s code can mention.
+   */
+  private static final String RECEIVER_WITH_BUCKET =
+      """
+      families:
+        collection-getters:
+          enabled: true
+          languages: [java, kotlin, scala, groovy, csharp]
+          patterns:
+            - '^((?:[\\w.]+\\.)*)Map\\.get(/\\d+)?'
+          by_language:
+            csharp:
+              - '^((?:[\\w.]+\\.)*)Dictionary\\.get(/\\d+)?'
+      """;
+
+  /** A bucket for a language the family does not cover: the family never applies there. */
+  private static final String RECEIVER_WITH_DEAD_BUCKET =
+      """
+      families:
+        collection-getters:
+          enabled: true
+          languages: [java, kotlin, scala, groovy]
+          patterns:
+            - '^((?:[\\w.]+\\.)*)Map\\.get(/\\d+)?'
+          by_language:
+            csharp:
+              - '^((?:[\\w.]+\\.)*)Dictionary\\.get(/\\d+)?'
+      """;
+
+  /** The argument table's shape: the pattern carries the position it names. */
+  private static final String ARGUMENT_WITH_BUCKET =
+      """
+      families:
+        path-argument-passthrough:
+          enabled: true
+          languages: [java, kotlin, scala, groovy, go]
+          patterns:
+            - pattern: '^java\\.nio\\.file\\.Path\\.resolve(/\\d+)?'
+              arg_index: 0
+          by_language:
+            go:
+              - pattern: '^path/filepath\\.Join(/\\d+)?'
+                arg_index: 0
+      """;
+
+  @Test
+  @DisplayName("a bucket's patterns apply to that language and to no other")
+  void aBucketsPatternsApplyToThatLanguageAndToNoOther() throws IOException {
+    EngineConfig config = loadTables("receiver-bucket", RECEIVER_WITH_BUCKET, null);
+
+    assertThat(config.isReceiverPassthroughEligible("java.util.Map.get/1", SourceLanguage.JAVA))
+        .as("the shared pattern is reachable from every language the family covers")
+        .isTrue();
+    assertThat(config.isReceiverPassthroughEligible("java.util.Map.get/1", SourceLanguage.CSHARP))
+        .as("and the family covers that language too")
+        .isTrue();
+    assertThat(
+            config.isReceiverPassthroughEligible(
+                "System.Collections.Generic.Dictionary.get/1", SourceLanguage.CSHARP))
+        .as("the bucket's pattern applies in the language the bucket names")
+        .isTrue();
+    assertThat(
+            config.isReceiverPassthroughEligible(
+                "System.Collections.Generic.Dictionary.get/1", SourceLanguage.JAVA))
+        .as("and to no other language")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("a bucket for a language the family does not cover can never apply")
+  void aBucketForALanguageTheFamilyDoesNotCoverCanNeverApply() throws IOException {
+    EngineConfig config = loadTables("dead-bucket", RECEIVER_WITH_DEAD_BUCKET, null);
+
+    assertThat(
+            config.isReceiverPassthroughEligible(
+                "System.Collections.Generic.Dictionary.get/1", SourceLanguage.CSHARP))
+        .as("the family does not cover C#, so its bucket cannot fire there")
+        .isFalse();
+    assertThat(
+            config.isReceiverPassthroughEligible(
+                "System.Collections.Generic.Dictionary.get/1", SourceLanguage.JAVA))
+        .as("nor anywhere else")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("the argument table's buckets work the same way")
+  void theArgumentTablesBucketsWorkTheSameWay() throws IOException {
+    EngineConfig config = loadTables("argument-bucket", null, ARGUMENT_WITH_BUCKET);
+
+    assertThat(
+            config
+                .argumentPassthrough()
+                .argIndexesFor("java.nio.file.Path.resolve/1", SourceLanguage.JAVA))
+        .as("the shared pattern names the first user argument")
+        .containsExactly(0);
+    assertThat(
+            config.argumentPassthrough().argIndexesFor("path/filepath.Join/2", SourceLanguage.GO))
+        .as("the bucket's pattern applies in the language the bucket names")
+        .containsExactly(0);
+    assertThat(
+            config.argumentPassthrough().argIndexesFor("path/filepath.Join/2", SourceLanguage.JAVA))
+        .as("and to no other language")
+        .isEmpty();
+  }
+
+  @Test
+  @DisplayName("no family in the two tables has a bucket outside its own languages")
+  void noFamilyInTheTwoTablesHasABucketOutsideItsOwnLanguages() throws IOException {
+    for (String file : List.of("receiver-passthrough.yaml", "argument-passthrough.yaml")) {
+      Map<?, ?> families = (Map<?, ?>) yaml(file).get("families");
+      for (Map.Entry<?, ?> family : families.entrySet()) {
+        Map<?, ?> spec = (Map<?, ?>) family.getValue();
+        Object buckets = spec.get("by_language");
+        if (!(buckets instanceof Map)) continue;
+        List<String> declared = new ArrayList<>();
+        Object languages = spec.get("languages");
+        if (languages instanceof List) {
+          for (Object language : (List<?>) languages) {
+            declared.add(String.valueOf(language));
+          }
+        }
+        for (Object bucket : ((Map<?, ?>) buckets).keySet()) {
+          assertThat(declared)
+              .as(
+                  "%s: the bucket '%s' has to be among the family's own languages, or the family"
+                      + " never applies there and the bucket can never fire",
+                  file, bucket)
+              .contains(String.valueOf(bucket));
+        }
+      }
+    }
+  }
+
+  /**
+   * Loads the two passthrough tables from a directory of their own, so the test can state a shape
+   * the shipped tables do not use yet.
+   */
+  private EngineConfig loadTables(String dirName, String receiverYaml, String argumentYaml)
+      throws IOException {
+    Path dir = Files.createDirectories(tmp.resolve(dirName));
+    if (receiverYaml != null) {
+      Files.writeString(dir.resolve("receiver-passthrough.yaml"), receiverYaml);
+    }
+    if (argumentYaml != null) {
+      Files.writeString(dir.resolve("argument-passthrough.yaml"), argumentYaml);
+    }
+    return ConfigLoader.loadFromDirectory(dir);
+  }
+
   // --------------------------------------------------------------------- engine
 
   @Test

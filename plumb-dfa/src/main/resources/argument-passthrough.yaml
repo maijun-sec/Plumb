@@ -58,6 +58,29 @@
 # applies the family only to code written in one of them. A family that
 # declares no language applies to every language.
 #
+# The PER-LANGUAGE BUCKETS of a family.
+#
+# `languages:` says which languages the family covers. `patterns:` holds the
+# symbols that every one of them can reach -- the JDK's own libraries, which
+# Kotlin and Scala reach too, because they all run on the JVM. `by_language:`
+# holds the symbols that only ONE language can mention, so a defect class
+# stays ONE family with ONE name instead of growing a `-csharp` and a `-go`
+# key:
+#
+#   families:
+#     collection-getters:
+#       enabled: true
+#       languages: [java, kotlin, scala, groovy, csharp]
+#       patterns:                     # every language of the family
+#         - '^((?:[\w.]+\.)*)Map\.get(/\d+)?'
+#       by_language:                  # only the language that can mention it
+#         csharp:
+#           - '^((?:[\w.]+\.)*)Dictionary\.get(/\d+)?'
+#
+# A bucket for a language the family does not cover is DEAD: the family does
+# not apply to that language, so its patterns can never fire. The loader says
+# so when it reads one.
+#
 families:
   # ===== The JDK and Servlet methods whose RESULT is built from an ARGUMENT =====
   #

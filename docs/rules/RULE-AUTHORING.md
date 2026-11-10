@@ -243,3 +243,30 @@ Three boundaries of the variant:
 - **A word boundary `\b` is added after the method name**. Otherwise
   `JdbcTemplate.query` would also match `JdbcTemplate.queryForList`, and the two
   have different parameter indices.
+
+#### The passthrough tables: which language, and which bucket
+
+The two passthrough tables -- `receiver-passthrough.yaml` and
+`argument-passthrough.yaml` -- say which language a family is for, and they
+can say which language a single pattern is for:
+
+```yaml
+families:
+  collection-getters:
+    enabled: true
+    languages: [java, kotlin, scala, groovy, csharp]
+    patterns:                     # every language of the family
+      - '^((?:[\w.]+\.)*)Map\.get(/\d+)?'
+    by_language:                  # only the language that can mention it
+      csharp:
+        - '^((?:[\w.]+\.)*)Dictionary\.get(/\d+)?'
+```
+
+`languages:` is the gate. A family that names no language applies to every
+language; a family that names languages applies to those and to no other. A
+bucket names ONE language, and the patterns in it fire there and nowhere
+else.
+
+A bucket for a language the family does not cover is dead: the family does
+not apply to that language, so its patterns can never fire. The loader says
+so when it reads one.

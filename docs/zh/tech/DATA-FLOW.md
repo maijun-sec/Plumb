@@ -120,7 +120,7 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 | `plumb.call.side-effect-recorded` | `SIDE_EFFECT_RECORDED` | `:238` | BY_DECL |
 
 **这是两个不同的清单,不是一个**:`org.plumb.dfa.config.ConfigLoader.parseFactKinds`
-(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:537-574`)先把这 15 个内置 kind 放进 registry,再用
+(`plumb-dfa/src/main/java/org/plumb/dfa/config/ConfigLoader.java:723-760`)先把这 15 个内置 kind 放进 registry,再用
 `fact-kinds.yaml` 的 **12 个** 条目覆盖或追加 —— YAML 的条目用另一套命名
 (`UntrustedSource`、`MayBeNull`、`Freed` 等)。两者名字空间不同但**落在同一个 registry 里**,
 所以有效的事务种类是 27 个。`capability_baseline` 把两个清单分开测量(`builtin:` /

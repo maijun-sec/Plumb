@@ -172,14 +172,111 @@ public final class ConfigLoader {
       Set<SourceLanguage> languages =
           parseLanguages(spec.get("languages"), "receiver-passthrough family");
       Object rawPatterns = spec.get("patterns");
-      if (!(rawPatterns instanceof List)) continue;
-      for (Object item : (List<Object>) rawPatterns) {
-        if (item instanceof String s) {
-          out.add(new ReceiverPassthrough.Rule(Pattern.compile(s), languages));
+      if (rawPatterns instanceof List) {
+        for (Object item : (List<Object>) rawPatterns) {
+          if (item instanceof String s) {
+            out.add(new ReceiverPassthrough.Rule(Pattern.compile(s), languages));
+          }
+        }
+      }
+      // The per-language buckets: the symbols only ONE language can mention.
+      // They stay on the SAME family, so a defect class keeps one name
+      // instead of growing a "-csharp" and a "-go" key.
+      for (Map.Entry<SourceLanguage, List<Pattern>> bucket :
+          parseReceiverBuckets(spec.get("by_language"), e.getKey(), languages).entrySet()) {
+        for (Pattern pattern : bucket.getValue()) {
+          out.add(new ReceiverPassthrough.Rule(pattern, Set.of(bucket.getKey())));
         }
       }
     }
     return new ReceiverPassthrough(out);
+  }
+
+  /**
+   * The per-language buckets of a receiver-passthrough family.
+   *
+   * <p>The YAML shape is:
+   *
+   * <pre>
+   *   families:
+   *     collection-getters:
+   *       enabled: true
+   *       languages: [java, kotlin, scala, groovy, csharp]
+   *       patterns:                     # every language of the family
+   *         - '^((?:[\w.]+\.)*)Map\.get(/\d+)?'
+   *       by_language:                  # only the language that can mention it
+   *         csharp:
+   *           - '^((?:[\w.]+\.)*)Dictionary\.get(/\d+)?'
+   * </pre>
+   *
+   * <p>A bucket is a rule that names ONE language. The shared patterns are the ones that are
+   * reachable from every language the family covers; a bucket holds the symbols that only that
+   * language's code can mention.
+   *
+   * @param raw the raw YAML value
+   * @param family the family's name, for the warnings
+   * @param familyLanguages the languages the family covers
+   * @return the patterns per language; empty when the family declares none
+   */
+  @SuppressWarnings("unchecked")
+  private static Map<SourceLanguage, List<Pattern>> parseReceiverBuckets(
+      Object raw, String family, Set<SourceLanguage> familyLanguages) {
+    Map<SourceLanguage, List<Pattern>> out = new LinkedHashMap<>();
+    if (!(raw instanceof Map)) return out;
+    Map<String, Object> byLang = (Map<String, Object>) raw;
+    for (Map.Entry<String, Object> e : byLang.entrySet()) {
+      SourceLanguage lang = SourceLanguage.parse(e.getKey());
+      if (lang == SourceLanguage.UNKNOWN) {
+        LOG.warn(
+            "Unknown language '{}' in by_language of the receiver-passthrough family '{}';"
+                + " ignored",
+            e.getKey(),
+            family);
+        continue;
+      }
+      if (!bucketApplies(lang, familyLanguages, family, "receiver-passthrough")) continue;
+      if (!(e.getValue() instanceof List)) continue;
+      List<Pattern> patterns = new ArrayList<>();
+      for (Object item : (List<Object>) e.getValue()) {
+        if (!(item instanceof String s)) continue;
+        try {
+          patterns.add(Pattern.compile(s));
+        } catch (java.util.regex.PatternSyntaxException ignored) {
+          // A pattern the engine cannot compile is a pattern it cannot use. The entry is
+          // dropped rather than failing the load: one bad rule must not take the whole
+          // configuration down.
+        }
+      }
+      if (!patterns.isEmpty()) out.put(lang, patterns);
+    }
+    return out;
+  }
+
+  /**
+   * Whether a per-language bucket can apply at all.
+   *
+   * <p>The family's own {@code languages:} is the gate, the same way it is for a sink family: a
+   * bucket for a language the family does not cover can never fire, because the family itself does
+   * not apply there. A rule that looks configured and can never fire is worse than one that is
+   * absent, so the loader says so.
+   *
+   * @param bucket the bucket's language
+   * @param familyLanguages the languages the family covers; empty means every language
+   * @param family the family's name, for the warning
+   * @param table which table the family is in, for the warning
+   * @return true when the bucket can apply
+   */
+  private static boolean bucketApplies(
+      SourceLanguage bucket, Set<SourceLanguage> familyLanguages, String family, String table) {
+    if (familyLanguages.isEmpty()) return true;
+    if (familyLanguages.contains(bucket)) return true;
+    LOG.warn(
+        "The by_language bucket '{}' of the {} family '{}' is not among the family's languages;"
+            + " its patterns can never apply",
+        bucket,
+        table,
+        family);
+    return false;
   }
 
   /**
@@ -208,8 +305,75 @@ public final class ConfigLoader {
       Set<SourceLanguage> languages =
           parseLanguages(spec.get("languages"), "argument-passthrough family");
       Object rawPatterns = spec.get("patterns");
-      if (!(rawPatterns instanceof List)) continue;
-      for (Object item : (List<Object>) rawPatterns) {
+      if (rawPatterns instanceof List) {
+        for (Object item : (List<Object>) rawPatterns) {
+          if (!(item instanceof Map)) continue;
+          Map<String, Object> entry = (Map<String, Object>) item;
+          Object rawPattern = entry.get("pattern");
+          if (!(rawPattern instanceof String)) continue;
+          List<Integer> indexes = parsePassthroughArgIndexes(entry.get("arg_index"));
+          if (indexes.isEmpty()) continue;
+          try {
+            out.add(
+                new ArgumentPassthrough.Rule(
+                    Pattern.compile((String) rawPattern), indexes, languages));
+          } catch (java.util.regex.PatternSyntaxException ignored) {
+            // A pattern the engine cannot compile is a pattern it cannot use. The entry is
+            // dropped rather than failing the load: one bad rule must not take the whole
+            // configuration down.
+          }
+        }
+      }
+      // The per-language buckets: the symbols only ONE language can mention.
+      out.addAll(parseArgumentBuckets(spec.get("by_language"), e.getKey(), languages));
+    }
+    return new ArgumentPassthrough(out);
+  }
+
+  /**
+   * The per-language buckets of an argument-passthrough family.
+   *
+   * <p>The shape is the receiver table's, except that each pattern is a MAP carrying the pattern
+   * text and the argument position it names:
+   *
+   * <pre>
+   *   families:
+   *     path-argument-passthrough:
+   *       enabled: true
+   *       languages: [java, kotlin, scala, groovy, go]
+   *       patterns:
+   *         - pattern: '^java\.nio\.file\.Path\.resolve(/\d+)?'
+   *           arg_index: 0
+   *       by_language:
+   *         go:
+   *           - pattern: '^path\.filepath\.Join(/\d+)?'
+   *             arg_index: 0
+   * </pre>
+   *
+   * @param raw the raw YAML value
+   * @param family the family's name, for the warnings
+   * @param familyLanguages the languages the family covers
+   * @return the rules the buckets hold; empty when the family declares none
+   */
+  @SuppressWarnings("unchecked")
+  private static List<ArgumentPassthrough.Rule> parseArgumentBuckets(
+      Object raw, String family, Set<SourceLanguage> familyLanguages) {
+    List<ArgumentPassthrough.Rule> out = new ArrayList<>();
+    if (!(raw instanceof Map)) return out;
+    Map<String, Object> byLang = (Map<String, Object>) raw;
+    for (Map.Entry<String, Object> e : byLang.entrySet()) {
+      SourceLanguage lang = SourceLanguage.parse(e.getKey());
+      if (lang == SourceLanguage.UNKNOWN) {
+        LOG.warn(
+            "Unknown language '{}' in by_language of the argument-passthrough family '{}';"
+                + " ignored",
+            e.getKey(),
+            family);
+        continue;
+      }
+      if (!bucketApplies(lang, familyLanguages, family, "argument-passthrough")) continue;
+      if (!(e.getValue() instanceof List)) continue;
+      for (Object item : (List<Object>) e.getValue()) {
         if (!(item instanceof Map)) continue;
         Map<String, Object> entry = (Map<String, Object>) item;
         Object rawPattern = entry.get("pattern");
@@ -219,7 +383,7 @@ public final class ConfigLoader {
         try {
           out.add(
               new ArgumentPassthrough.Rule(
-                  Pattern.compile((String) rawPattern), indexes, languages));
+                  Pattern.compile((String) rawPattern), indexes, Set.of(lang)));
         } catch (java.util.regex.PatternSyntaxException ignored) {
           // A pattern the engine cannot compile is a pattern it cannot use. The entry is
           // dropped rather than failing the load: one bad rule must not take the whole
@@ -227,7 +391,7 @@ public final class ConfigLoader {
         }
       }
     }
-    return new ArgumentPassthrough(out);
+    return out;
   }
 
   /**

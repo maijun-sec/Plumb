@@ -217,3 +217,26 @@ Jackson、Guava）会静默失配**——分析照常跑完，只是一条 findi
   `JdbcTemplate.query` 不会匹配 `NamedParameterJdbcTemplate.query`。
 - **方法名后加了词边界 `\b`**。否则 `JdbcTemplate.query` 会连
   `JdbcTemplate.queryForList` 一起匹配上，而这两者的参数下标不同。
+
+#### passthrough 表：语言，以及分桶
+
+两张 passthrough 表——`receiver-passthrough.yaml` 与 `argument-passthrough.yaml`
+——既说清一个 family 属于哪种语言，也能说清单条 pattern 属于哪种语言：
+
+```yaml
+families:
+  collection-getters:
+    enabled: true
+    languages: [java, kotlin, scala, groovy, csharp]
+    patterns:                     # family 里的每种语言都能到达
+      - '^((?:[\w.]+\.)*)Map\.get(/\d+)?'
+    by_language:                  # 只有该语言能提到的符号
+      csharp:
+        - '^((?:[\w.]+\.)*)Dictionary\.get(/\d+)?'
+```
+
+`languages:` 是闸门。不声明语言的 family 对所有语言生效；声明了的，只对声明
+的那些语言生效。桶只属于一种语言，桶里的 pattern 只在那里触发。
+
+桶里的语言不在 family 自己的 `languages:` 里，这个桶就是死的：family 在那种
+语言上根本不生效，桶里的 pattern 永远不会触发。loader 读到时会说出这件事。
