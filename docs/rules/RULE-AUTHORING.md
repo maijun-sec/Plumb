@@ -653,9 +653,9 @@ Three things the catalogue deliberately does NOT name, and why:
   shares that owner, so a pattern pointing at it would claim every `.execute`
   in the program; the Python SQL sink is not in the catalogue yet.
 - **A write to the standard output.** Neither language can name the class of
-  `process.stdout` -- the TypeScript side car reports `<unknown>.write/0` and
-  the ArkTS one `stdout.write/0` -- so no pattern can point at it and it stays
-  out of the script bucket.
+  `process.stdout`: the TypeScript side car reports `<unknown>.write/0`, and the
+  ArkTS one names the FILE the call is written in (`page.write/0`), so the key
+  depends on the file rather than on anything a pattern could name.
 
 #### The script languages' own sinks: the format, the pattern, the page
 

@@ -559,8 +559,8 @@ callee key 完全一样：程序自己定义的全局 `mail()` 和调用内置�
   解不出来的接收者共用这个 owner，指过去的 pattern 会把程序里每一个 `.execute` 都认领；
   Python 的 SQL sink 暂时还不在目录里。
 - **写标准输出。** 两个语言都点不出 `process.stdout` 的类——TypeScript 侧车报
-  `<unknown>.write/0`，ArkTS 侧车报 `stdout.write/0`——所以没有名字可供 pattern 指过去，
-  它留在脚本桶外面。
+  `<unknown>.write/0`，ArkTS 侧车把**调用所在的那个文件**当 owner（`page.write/0`）
+  ——所以这个键取决于文件，而不是 pattern 能点名的任何东西。
 
 #### 脚本语言自己的 sink：格式化串、pattern、页面
 
