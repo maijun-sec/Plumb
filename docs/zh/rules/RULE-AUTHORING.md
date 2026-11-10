@@ -469,3 +469,47 @@ callee key 完全一样：程序自己定义的全局 `mail()` 和调用内置�
 - **ArkTS 的 console。** 对着它的 side car 量过：那里 `console.log` 的 owner 是**文件**的模块
   名而不是 `Console` 类型。同样的形状也把 `process.stdout.write` 挡在脚本桶外面：它的 owner
   是文件的模块，不是一个类。
+
+#### 脚本语言自己的 sink：格式化串、pattern、页面
+
+第二轮给脚本语言补 sink，问的还是第一个问题——**污点值落到哪里**——只不过这次问的是把值变成
+文本、变成 pattern、变成页面的那些 API。
+
+| 族 | 读它的规则 | 脚本语言加了什么 |
+| --- | --- | --- |
+| `format-string.sinks` | `dfa-taint-format-string` | `util.format`、`printf`、`sprintf`、`vprintf`、`vsprintf` |
+| `regex.sinks` | `dfa-taint-regex-injection` | `re.compile` 及其兄弟、`preg_match` 及其兄弟 |
+| `xss.sinks` | `dfa-taint-xss-injection` | `Document.write`、`django.utils.html.mark_safe` |
+| `open-redirect.sinks` | `dfa-taint-open-redirect` | `django.shortcuts.redirect` |
+
+**值落在哪里。** 规则和第一轮一样：接收者在 `args[0]`，所以第一个用户参数是 `args[1]`，
+`arg_index` 从用户参数数起。
+
+| 调用 | 污点值 | `arg_index` |
+| --- | --- | --- |
+| `util.format(fmt, input)` | **第一个**用户参数——格式化串 | `0` |
+| `sprintf($fmt, $x)` | **第一个**用户参数——格式化串 | `0` |
+| `re.compile(pattern)` | **第一个**用户参数——pattern | `0` |
+| `preg_match($pattern, $subject)` | **第一个**用户参数——pattern | `0` |
+| `document.write(text)` | **第一个**用户参数——文本 | `0` |
+| `mark_safe(text)` | **第一个**用户参数——文本 | `0` |
+| `redirect(target)` | **第一个**用户参数——目标 | `0` |
+
+**三种 owner，三种形状。** `util.format` 的 owner 是这个函数来自的**模块**，而那个模块可能写成
+`util` 也可能写成 `node:util`（运行时偏好的那个名字），所以 pattern 两种都收。`re.compile` 的
+owner 是 `re` 模块。`document.write` 的 owner 是 **`Document` 这个类型**：这是唯一一个 owner 是
+类而不是模块的情形。
+
+**pattern 不能认领什么。** 认领了 `re.compile` 的桶不能认领 `re.escape`——后者是**转义**一个
+pattern，不是**使用**一个；`preg_quote` 和 `django.utils.html.escape` 同理。只是以 sink 的名字
+开头也不算：`util.formatAll` 不是格式化调用，`Document.writeAll` 也不是一次写入。每一个都有
+一条测试钉着这句话。
+
+**源是反过来的。** `socket.recv` 是**源**，而源的 pattern 匹配的是那次**调用**，污点值是调用的
+**结果**——到达的字节——所以源桶根本不带 `arg_index`。sink 桶点的是**参数**，源桶点的是**结果**。
+这就是 `taint.sources.network` 和上面四个族的全部差别，也是源那条 pattern 不写参数下标的原因。
+
+**构造器挡住的那一个。** `new RegExp(userInput)` 和 `new Function(userInput)` 是脚本语言的正则
+注入和代码注入，目录里各有一个族能收它们。它们到达引擎时是一条 NEW 指令，而 NEW 只带它构造的
+类、不带 callee 签名，引擎的构造器路径却要靠签名去查族——没有签名就直接返回。pattern 本身好写，
+缺的是一条能指过去的**名字**。

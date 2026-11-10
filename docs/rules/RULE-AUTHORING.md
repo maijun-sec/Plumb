@@ -547,3 +547,58 @@ Three things the catalogue deliberately does NOT name, and why:
   there is the FILE's module name and not the `Console` type. The same shape
   keeps `process.stdout.write` out of the script bucket: its owner is the module
   of the file, not a class.
+
+#### The script languages' own sinks: the format, the pattern, the page
+
+The second pass at the script languages' sinks asks the first pass' question --
+where does the tainted value LAND -- about the APIs that turn a value into text,
+into a pattern, or into a page.
+
+| Family | The rule that reads it | What the scripts add |
+| --- | --- | --- |
+| `format-string.sinks` | `dfa-taint-format-string` | `util.format`, `printf`, `sprintf`, `vprintf`, `vsprintf` |
+| `regex.sinks` | `dfa-taint-regex-injection` | `re.compile` and its siblings, `preg_match` and its siblings |
+| `xss.sinks` | `dfa-taint-xss-injection` | `Document.write`, `django.utils.html.mark_safe` |
+| `open-redirect.sinks` | `dfa-taint-open-redirect` | `django.shortcuts.redirect` |
+
+**Where the value sits.** The same rule as the first pass: the receiver is
+`args[0]`, so the first user argument is `args[1]`, and `arg_index` counts user
+arguments from there.
+
+| Call | The tainted value | `arg_index` |
+| --- | --- | --- |
+| `util.format(fmt, input)` | the FIRST user argument -- the format string | `0` |
+| `sprintf($fmt, $x)` | the FIRST user argument -- the format string | `0` |
+| `re.compile(pattern)` | the FIRST user argument -- the pattern | `0` |
+| `preg_match($pattern, $subject)` | the FIRST user argument -- the pattern | `0` |
+| `document.write(text)` | the FIRST user argument -- the text | `0` |
+| `mark_safe(text)` | the FIRST user argument -- the text | `0` |
+| `redirect(target)` | the FIRST user argument -- the target | `0` |
+
+**Three owners, three shapes.** `util.format` is owned by the MODULE the
+function came from, and that module may be spelled `util` or `node:util` -- the
+name the runtime prefers -- so the pattern accepts both. `re.compile` is owned
+by the `re` module. `document.write` is owned by the `Document` TYPE: it is the
+one case where the owner is a class rather than a module.
+
+**What a pattern must not claim.** A bucket that names `re.compile` must not
+name `re.escape` -- that one escapes a pattern rather than using one -- and the
+same goes for `preg_quote` and `django.utils.html.escape`. Nor does a name that
+merely starts with the sink's name count: `util.formatAll` is not a format
+call, and `Document.writeAll` is not a write. Every one of those has a test
+that says so.
+
+**A source is the other way round.** `socket.recv` is a SOURCE, and a source's
+pattern matches the CALL while the tainted value is the call's RESULT -- the
+bytes that arrived -- so a source bucket carries no `arg_index` at all. A sink
+bucket names an argument; a source bucket names a result. That is the whole
+difference between `taint.sources.network` and the four families above, and it
+is why the source pattern is written without an argument index.
+
+**What the constructor rules out.** `new RegExp(userInput)` and `new
+Function(userInput)` are the script languages' regex injection and code
+injection, and the catalogue has a family for each. They arrive as a NEW
+instruction, and a NEW carries the class it builds but no callee signature,
+while the engine's constructor path needs one to look the family up -- it
+returns when there is none. The pattern would be easy to write; what is missing
+is the name to write it against.

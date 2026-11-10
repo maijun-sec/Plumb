@@ -30,6 +30,7 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.plumb.dfa.checkers.taint.CommandInjectionChecker;
+import org.plumb.dfa.checkers.taint.FormatStringChecker;
 import org.plumb.dfa.checkers.taint.SqlInjectionChecker;
 import org.plumb.dfa.config.ConfigLoader;
 import org.plumb.dfa.config.EngineConfig;
@@ -77,6 +78,7 @@ class PhpSinkCatalogTest {
 
   private static final String COMMAND_RULE = "dfa-taint-command-injection";
   private static final String SQL_RULE = "dfa-taint-sql-injection";
+  private static final String FORMAT_RULE = "dfa-taint-format-string";
 
   private static TacOperand.TacVar temp(String name) {
     return new TacOperand.TacVar(name, TacType.UNKNOWN, true);
@@ -632,5 +634,112 @@ class PhpSinkCatalogTest {
     assertThat(hasFinding(findings, SQL_RULE, "\\mysqli_query/2"))
         .as("the statement is the second argument; the connection is not the statement")
         .isFalse();
+  }
+
+  // ------------------------------------------------- the format and the pattern
+
+  /**
+   * The PHP handler that formats a string, as the front end lowers it.
+   *
+   * <p>Measured against the PHP side car: the receiver slot of a global function holds the
+   * NAMESPACE, so the format string is the FIRST user argument.
+   *
+   * @param language the language the function is written in
+   * @return the function under analysis
+   */
+  private static TacFunction formatHandler(SourceLanguage language) {
+    TacOperand.TacVar request = new TacOperand.TacVar("request", TacType.UNKNOWN, false);
+    TacOperand.TacVar format = new TacOperand.TacVar("format", TacType.STRING, false);
+
+    List<TacInstruction> instructions = new ArrayList<>();
+    instructions.add(move(format, request, 10));
+    // sprintf($format, "x");
+    instructions.add(
+        blackBox(
+            "\\sprintf/2",
+            temp("t9"),
+            List.of(TacOperand.Const.ofString("\\"), format, TacOperand.Const.ofString("x")),
+            12));
+    return new TacFunction(
+        "handle",
+        "app\\handle(string):string",
+        TacType.STRING,
+        List.of(request),
+        List.of(format),
+        instructions,
+        List.of(),
+        List.of(),
+        Map.of(),
+        Map.of(),
+        null,
+        SourceOrigin.SOURCE,
+        List.of(),
+        language,
+        IrPrecision.SOURCE_FULL);
+  }
+
+  @Test
+  @DisplayName("the catalogue names the PHP format and pattern APIs")
+  void theCatalogueNamesThePhpFormatAndPatternApis() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("format-string.sinks")
+                .orElseThrow()
+                .matches("\\printf/1", SourceLanguage.PHP))
+        .as("the format string is the first argument")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("format-string.sinks")
+                .orElseThrow()
+                .matches("\\sprintf/2", SourceLanguage.PHP))
+        .as("and so it is for sprintf")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("regex.sinks")
+                .orElseThrow()
+                .matches("\\preg_match/2", SourceLanguage.PHP))
+        .as("a pattern the program did not choose")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("the PHP format and pattern buckets do not claim a name on its own")
+  void thePhpFormatAndPatternBucketsDoNotClaimANameOnItsOwn() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("format-string.sinks")
+                .orElseThrow()
+                .matches("\\printfx/1", SourceLanguage.PHP))
+        .as("a name that starts with printf is not a format")
+        .isFalse();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("regex.sinks")
+                .orElseThrow()
+                .matches("\\preg_quote/1", SourceLanguage.PHP))
+        .as("preg_quote escapes a pattern rather than using one")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("a tainted value reaches the format string")
+  void aTaintedValueReachesTheFormatString() {
+    List<Finding> findings =
+        scan(SourceLanguage.PHP, formatHandler(SourceLanguage.PHP), new FormatStringChecker());
+
+    assertThat(hasFinding(findings, FORMAT_RULE, "\\sprintf/2"))
+        .as("the format call must be recognised, and the value must still be tainted there")
+        .isTrue();
   }
 }

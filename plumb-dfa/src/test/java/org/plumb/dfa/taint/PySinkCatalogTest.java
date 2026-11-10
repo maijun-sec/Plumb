@@ -31,6 +31,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.plumb.dfa.checkers.taint.CommandInjectionChecker;
 import org.plumb.dfa.checkers.taint.LogInjectionChecker;
+import org.plumb.dfa.checkers.taint.RegexInjectionChecker;
 import org.plumb.dfa.config.ConfigLoader;
 import org.plumb.dfa.config.EngineConfig;
 import org.plumb.dfa.engine.DfaChecker;
@@ -80,6 +81,7 @@ class PySinkCatalogTest {
 
   private static final String COMMAND_RULE = "dfa-taint-command-injection";
   private static final String LOG_RULE = "dfa-taint-log-injection";
+  private static final String REGEX_RULE = "dfa-taint-regex-injection";
 
   private static TacOperand.TacVar temp(String name) {
     return new TacOperand.TacVar(name, TacType.UNKNOWN, true);
@@ -508,5 +510,119 @@ class PySinkCatalogTest {
     assertThat(hasFinding(findings, LOG_RULE, "logging.info/1"))
         .as("the message is the first user argument; the module is not the message")
         .isFalse();
+  }
+
+  // ------------------------------------------------------------ the regex
+
+  /**
+   * The Python handler that compiles a pattern, as the front end lowers it.
+   *
+   * <p>Measured against the Python side car: the receiver slot holds the MODULE the function came
+   * from, and the pattern is the first user argument.
+   *
+   * @param language the language the function is written in
+   * @return the function under analysis
+   */
+  private static TacFunction regexHandler(SourceLanguage language) {
+    TacOperand.TacVar request = new TacOperand.TacVar("request", TacType.UNKNOWN, false);
+    TacOperand.TacVar module = new TacOperand.TacVar("re", TacType.UNKNOWN, false);
+    TacOperand.TacVar pattern = new TacOperand.TacVar("pattern", TacType.STRING, false);
+
+    List<TacInstruction> instructions = new ArrayList<>();
+    instructions.add(move(pattern, request, 10));
+    // re.compile(pattern)
+    instructions.add(call("re.compile/1", temp("t9"), List.of(module, pattern), 12));
+    return new TacFunction(
+        "handler",
+        "app.handler(string):string",
+        TacType.STRING,
+        List.of(request),
+        List.of(module, pattern),
+        instructions,
+        List.of(),
+        List.of(),
+        Map.of(),
+        Map.of(),
+        null,
+        SourceOrigin.SOURCE,
+        List.of(),
+        language,
+        IrPrecision.SOURCE_FULL);
+  }
+
+  @Test
+  @DisplayName("the catalogue names the regex and the page of the script languages")
+  void theCatalogueNamesTheRegexAndThePageOfTheScriptLanguages() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("regex.sinks")
+                .orElseThrow()
+                .matches("re.compile/1", SourceLanguage.PYTHON3))
+        .as("a pattern the program did not choose")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("xss.sinks")
+                .orElseThrow()
+                .matches("django.utils.html.mark_safe/1", SourceLanguage.PYTHON3))
+        .as("mark_safe says 'do not escape this'")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("open-redirect.sinks")
+                .orElseThrow()
+                .matches("django.shortcuts.redirect/1", SourceLanguage.PYTHON3))
+        .as("the target of a redirect the program did not choose")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("taint.sources.network")
+                .orElseThrow()
+                .matches("socket.recv/1", SourceLanguage.PYTHON3))
+        .as("the bytes that arrived over the socket")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("the regex bucket does not claim the function that escapes a pattern")
+  void theRegexBucketDoesNotClaimTheFunctionThatEscapesAPattern() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("regex.sinks")
+                .orElseThrow()
+                .matches("re.escape/1", SourceLanguage.PYTHON3))
+        .as("re.escape escapes a pattern rather than using one")
+        .isFalse();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("xss.sinks")
+                .orElseThrow()
+                .matches("django.utils.html.escape/1", SourceLanguage.PYTHON3))
+        .as("escape is the safe one")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("a tainted value reaches the pattern")
+  void aTaintedValueReachesThePattern() {
+    List<Finding> findings =
+        scan(
+            SourceLanguage.PYTHON3,
+            regexHandler(SourceLanguage.PYTHON3),
+            new RegexInjectionChecker());
+
+    assertThat(hasFinding(findings, REGEX_RULE, "re.compile/1"))
+        .as("the compile must be recognised, and the value must still be tainted there")
+        .isTrue();
   }
 }

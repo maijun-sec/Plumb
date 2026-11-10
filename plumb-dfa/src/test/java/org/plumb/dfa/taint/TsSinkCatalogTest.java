@@ -33,6 +33,7 @@ import org.plumb.dfa.checkers.taint.CommandInjectionChecker;
 import org.plumb.dfa.checkers.taint.LogInjectionChecker;
 import org.plumb.dfa.checkers.taint.PathTraversalChecker;
 import org.plumb.dfa.checkers.taint.SqlInjectionChecker;
+import org.plumb.dfa.checkers.taint.XssInjectionChecker;
 import org.plumb.dfa.config.ConfigLoader;
 import org.plumb.dfa.config.EngineConfig;
 import org.plumb.dfa.engine.DfaChecker;
@@ -89,6 +90,7 @@ class TsSinkCatalogTest {
   private static final String PATH_RULE = "dfa-taint-path-traversal";
   private static final String LOG_RULE = "dfa-taint-log-injection";
   private static final String SQL_RULE = "dfa-taint-sql-injection";
+  private static final String XSS_RULE = "dfa-taint-xss-injection";
 
   /** The module the free function came from: the receiver slot of a module-level call. */
   private static TacOperand.Const str(String value) {
@@ -608,5 +610,111 @@ class TsSinkCatalogTest {
     assertThat(hasFinding(findings, LOG_RULE, "Console.log/1"))
         .as("the message is the first user argument; the receiver is not the message")
         .isFalse();
+  }
+
+  // --------------------------------------------------- the page and the format
+
+  /**
+   * The script handler that writes into the page, as the front end lowers it.
+   *
+   * <p>Measured against the TypeScript side car: the owner of {@code document.write} is the {@code
+   * Document} TYPE, not the module the page came from, and the text is the first user argument.
+   *
+   * @param language the language the function is written in
+   * @return the function under analysis
+   */
+  private static TacFunction documentHandler(SourceLanguage language) {
+    TacOperand.TacVar req = new TacOperand.TacVar("req", TacType.UNKNOWN, false);
+    TacOperand.TacVar document = new TacOperand.TacVar("document", TacType.UNKNOWN, false);
+    TacOperand.TacVar input = new TacOperand.TacVar("input", TacType.STRING, false);
+
+    List<TacInstruction> instructions = new ArrayList<>();
+    instructions.add(move(input, req, 10));
+    // document.write(input);
+    instructions.add(call("Document.write/1", temp("t9"), List.of(document, input), 12));
+    return new TacFunction(
+        "handler",
+        "app.handler(string):string",
+        TacType.STRING,
+        List.of(req),
+        List.of(document, input),
+        instructions,
+        List.of(),
+        List.of(),
+        Map.of(),
+        Map.of(),
+        null,
+        SourceOrigin.SOURCE,
+        List.of(),
+        language,
+        IrPrecision.SOURCE_FULL);
+  }
+
+  @Test
+  @DisplayName("the catalogue names the page and the format of the script languages")
+  void theCatalogueNamesThePageAndTheFormatOfTheScriptLanguages() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("xss.sinks")
+                .orElseThrow()
+                .matches("Document.write/1", SourceLanguage.TYPESCRIPT))
+        .as("document.write puts the text into the page as markup")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("format-string.sinks")
+                .orElseThrow()
+                .matches("util.format/0", SourceLanguage.TYPESCRIPT))
+        .as("util.format takes the format string first")
+        .isTrue();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("format-string.sinks")
+                .orElseThrow()
+                .matches("node:util.format/0", SourceLanguage.TYPESCRIPT))
+        .as("the same module under the name Node prefers")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("the page and the format buckets do not claim a name on its own")
+  void thePageAndTheFormatBucketsDoNotClaimANameOnItsOwn() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("xss.sinks")
+                .orElseThrow()
+                .matches("Document.writeAll/1", SourceLanguage.TYPESCRIPT))
+        .as("a name that starts with write is not a write")
+        .isFalse();
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("format-string.sinks")
+                .orElseThrow()
+                .matches("util.formatAll/0", SourceLanguage.TYPESCRIPT))
+        .as("a name that starts with format is not a format")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("a tainted value reaches the page")
+  void aTaintedValueReachesThePage() {
+    List<Finding> findings =
+        scan(
+            SourceLanguage.TYPESCRIPT,
+            documentHandler(SourceLanguage.TYPESCRIPT),
+            new XssInjectionChecker());
+
+    assertThat(hasFinding(findings, XSS_RULE, "Document.write/1"))
+        .as("the write must be recognised, and the value must still be tainted there")
+        .isTrue();
   }
 }

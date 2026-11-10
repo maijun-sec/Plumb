@@ -133,7 +133,7 @@ families:
   format-string.sinks:
     cwe: CWE-134
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go']
+    languages: ['java', 'kotlin', 'scala', 'go', 'typescript', 'javascript', 'php']
     patterns:
       - '^java\.lang\.String\.format(/\d+)?'
       - '^java\.io\.PrintStream\.printf(/\d+)?'
@@ -157,6 +157,16 @@ families:
           arg_index: 0
         - pattern: '^fmt\.Fprintf(/\d+)?'
           arg_index: 1
+      typescript,javascript:
+      # The format string is the FIRST argument; the values after it are
+      # what the format describes. The module may be spelled with or
+      # without the 'node:' prefix the runtime prefers.
+      - pattern: '^(?:node:)?util\.format\b(/\d+)?'
+        arg_index: 0
+      php:
+      # The format string is the FIRST argument of all four.
+      - pattern: '^\\(printf|sprintf|vprintf|vsprintf)\b(/\d+)?'
+        arg_index: 0
   log.sinks:
     cwe: CWE-117
     severity: MEDIUM
@@ -3883,6 +3893,10 @@ families:
           arg_index: 0
         - pattern: '^akka\.http\.(java|scala)dsl\.model\.headers\.Location\.\<init\>(/\d+)?'
           arg_index: 0
+      python3:
+      # Django's redirect takes the target as its first argument.
+      - pattern: '^django\.shortcuts\.redirect\b(/\d+)?'
+        arg_index: 0
 
   privacy.sinks:
     cwe: CWE-215,CWE-226,CWE-359,CWE-489,CWE-497
@@ -5481,6 +5495,16 @@ families:
           arg_index: -2
         - pattern: '^scala\.util\.matching\.Regex\.\<init\>(/\d+)?'
           arg_index: 0
+      python3:
+      # The PATTERN is the first argument of every one of these. re.escape
+      # is deliberately absent: it escapes a pattern rather than using one.
+      - pattern: '^re\.(compile|match|fullmatch|search|findall|finditer|split|sub|subn)\b(/\d+)?'
+        arg_index: 0
+      php:
+      # The pattern is the first argument; preg_quote is absent for the
+      # same reason.
+      - pattern: '^\\preg_(match|match_all|replace|replace_callback|filter|grep)\b(/\d+)?'
+        arg_index: 0
 
   resource-injection.sinks:
     cwe: CWE-94,CWE-95,CWE-99,CWE-502
@@ -7225,7 +7249,7 @@ families:
   taint.sources.network:
     cwe: null
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'csharp']
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'python3']
     patterns:
       - '^java\.net\.Socket\.getInputStream(/\d+)?'
       - '^java\.net\.DatagramSocket\.receive(/\d+)?'
@@ -7245,6 +7269,10 @@ families:
         - '^net\.Conn\.Read(/\d+)?'
         - '^crypto/tls\.Conn\.Read(/\d+)?'
         - '^io\.Read(Full|AtLeast)(/\d+)?'
+      python3:
+      # The bytes that arrived over the socket are what the call RETURNS,
+      # so the source is the call and the tainted value is its result.
+      - pattern: '^socket\.recv\b(/\d+)?'
 
   taint.sources.web:
     cwe: null
@@ -8751,6 +8779,15 @@ families:
           arg_index: [0, 1]
         - pattern: '^akka\.http\.(java|scala)dsl\.model\.HttpEntity\.apply(/\d+)?'
           arg_index: [0, 1]
+      typescript,javascript:
+      # document.write puts the argument into the page as markup.
+      - pattern: '^Document\.(write|writeln)\b(/\d+)?'
+        arg_index: 0
+      python3:
+      # mark_safe is Django's 'do not escape this'; a tainted value marked
+      # safe reaches the page as markup.
+      - pattern: '^django\.utils\.html\.mark_safe\b(/\d+)?'
+        arg_index: 0
 
   xxe.sinks:
     cwe: CWE-611
