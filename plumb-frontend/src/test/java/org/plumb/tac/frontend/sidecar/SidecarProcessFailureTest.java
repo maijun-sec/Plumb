@@ -59,7 +59,10 @@ class SidecarProcessFailureTest {
           .isInstanceOf(IOException.class)
           .hasMessageContaining("the stand-in sidecar did not answer")
           .hasMessageContaining("it exited with")
-          .hasMessageContaining("Unrecognized option");
+          .hasMessageContaining("Unrecognized option")
+          // an end of file carries no message of its own, and a message that
+          // says "null" says less than the name of the exception does
+          .hasMessageNotContaining(": null");
     } finally {
       process.close();
     }

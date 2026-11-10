@@ -247,15 +247,54 @@ public final class SidecarProcess implements AutoCloseable {
     awaitTheEnd();
     StringBuilder message = new StringBuilder();
     message.append("the ").append(label).append(" sidecar did not answer");
-    if (!process.isAlive()) {
-      message.append(" (it exited with ").append(process.exitValue()).append(')');
+    Integer exit = exitCode();
+    if (exit != null) {
+      message.append(" (it exited with ").append(exit).append(')');
     }
-    message.append(": ").append(cause.getMessage());
+    message.append(": ").append(why(cause));
     String tail = stderrTail().trim();
     if (!tail.isEmpty()) {
       message.append("; its last output was: ").append(tail);
     }
     return new IOException(message.toString(), cause);
+  }
+
+  /**
+   * The sidecar's exit code, when it has one.
+   *
+   * <p>A pipe that breaks is a sidecar that is ending, but the process is not reaped at the same
+   * instant the pipe closes: there is a window in which the sidecar has ended and the process still
+   * answers {@code isAlive()}. So the code is asked for only after the wait, and a sidecar that is
+   * somehow still running has no code to report.
+   *
+   * @return the exit code, or null when the sidecar has not ended
+   */
+  private Integer exitCode() {
+    if (process.isAlive()) {
+      return null;
+    }
+    try {
+      return process.exitValue();
+    } catch (IllegalThreadStateException ex) {
+      return null;
+    }
+  }
+
+  /**
+   * What the pipe did, in words.
+   *
+   * <p>An end of file carries no message of its own, and a message that says "null" says less than
+   * the name of the exception does.
+   *
+   * @param cause what the pipe did
+   * @return the reason, in words
+   */
+  private static String why(IOException cause) {
+    String message = cause.getMessage();
+    if (message == null || message.isBlank()) {
+      return cause.getClass().getSimpleName();
+    }
+    return message;
   }
 
   /**
@@ -266,13 +305,11 @@ public final class SidecarProcess implements AutoCloseable {
    * so the message would be built from an empty tail and would say nothing about the real cause. So
    * the wait is for the sidecar to end and for the pump to catch up.
    *
-   * <p>A sidecar that is still running is not waited for: it may answer the next request, and a
-   * failure in the middle of a conversation is not its end.
+   * <p>The wait for the sidecar is also what makes its exit code available: the pipe closes a
+   * moment before the process is reaped, and a message that cannot say how the sidecar ended is a
+   * message that leaves the reader guessing.
    */
   private void awaitTheEnd() {
-    if (process.isAlive()) {
-      return;
-    }
     try {
       process.waitFor(2, TimeUnit.SECONDS);
     } catch (InterruptedException ex) {
