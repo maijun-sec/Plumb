@@ -2803,6 +2803,21 @@ families:
         # java.nio.file.Path.resolve, which is in this family too.
         - pattern: '^os\.path\.join\b(/\d+)?'
           arg_index: 0
+        # Opening a file the program did not choose. The path is the first
+        # argument of every one of them; the arity in the key counts the
+        # positional arguments only, so all of them match.
+        - pattern: '^(builtins|io)\.open\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^os\.open\b(/\d+)?'
+          arg_index: 0
+        # The path object, and the file a log record is written to.
+        - pattern: '^pathlib\.Path\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^logging\.FileHandler\b(/\d+)?'
+          arg_index: 0
+        # A directory the program did not choose.
+        - pattern: '^os\.makedirs\b(/\d+)?'
+          arg_index: 0
       php:
         # The path is the first argument of each of these.
         - pattern: '^\\(file_get_contents|file_put_contents|fopen|unlink|rename|copy|rmdir|mkdir|chmod|chown|dir)\b(/\d+)?'
@@ -8450,6 +8465,15 @@ families:
         - pattern: '^scala\.xml\.factory\.XMLLoader\.loadXML(/\d+)?'
           arg_index: [0, 1]
         - pattern: '^scala\.xml\.factory\.XMLLoader\.(load|loadString)(/\d+)?'
+          arg_index: 0
+      python3:
+        # lxml is the only Python XML parser that can resolve an external
+        # entity. The standard library's own parsers are built on expat
+        # without an external entity handler, so a document that names one
+        # is refused rather than expanded -- measured, not assumed. lxml
+        # expands it when the parser resolves entities, so the document it
+        # is given is the one that decides what the parser reads.
+        - pattern: '^lxml\.etree\.(fromstring|parse|parseid)\b(/\d+)?'
           arg_index: 0
   android-implicit-intent.sinks:
     cwe: CWE-927

@@ -191,6 +191,18 @@
                              primitive and has no class to name. -->
                         <include>org/plumb/dfa/taint/PySinkCatalogTest.java</include>
 
+                        <!-- The Python path and XML sinks. The keys were
+                             measured against the Python side car: the
+                             receiver slot holds the MODULE as a constant,
+                             and the arity counts the positional
+                             arguments only, so the catalogue matches it
+                             loosely and names the position by the user
+                             argument index. The external-entity family
+                             names lxml alone, because the standard
+                             library's parsers refuse an entity instead
+                             of expanding it. -->
+                        <include>org/plumb/dfa/taint/PySinkPathXmlTest.java</include>
+
                         <!-- The PHP rule layer. PHP qualifies a global
                              function with a leading backslash, so the
                              catalogue names the qualified name PHP itself
