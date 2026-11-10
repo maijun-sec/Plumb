@@ -74,10 +74,11 @@ import org.plumb.tac.ir.TacType;
  *
  * <p><b>Why the SYNTACTIC name and not the type.</b> The front end also reports a construction's
  * type, and the type is the wrong thing to key on: a value can be given another type by its
- * context, so the type can name a class that was never constructed. The ArkTS side car shows it
- * plainly -- for {@code new RegExp(x)} it reports the type {@code Object}, while the callee
- * signature still names {@code RegExp}. A key built from the type would be {@code Object.<init>/1}:
- * a class no program ever constructed.
+ * context, so the type can name a class that was never constructed. An anonymous class expression
+ * shows it plainly -- for {@code new (class Inner{})()} the side car reports the type {@code Inner}
+ * and emits NO callee signature at all, because the syntax has no name to give. A key built from
+ * the type would be {@code Inner.<init>/0}: a class the program never names, so no catalogue entry
+ * could ever be written for it.
  *
  * <p><b>Why the Function constructor needs its own position.</b> Its arguments are the parameter
  * NAMES first and the BODY last, so the code is the last argument and a parameter name is not code

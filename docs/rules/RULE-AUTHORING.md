@@ -652,10 +652,10 @@ Three things the catalogue deliberately does NOT name, and why:
   class of an object it only sees through a local. Every unresolvable receiver
   shares that owner, so a pattern pointing at it would claim every `.execute`
   in the program; the Python SQL sink is not in the catalogue yet.
-- **ArkTS's console.** Measured against its side car, the owner of `console.log`
-  there is the FILE's module name and not the `Console` type. The same shape
-  keeps `process.stdout.write` out of the script bucket: its owner is the module
-  of the file, not a class.
+- **A write to the standard output.** Neither language can name the class of
+  `process.stdout` -- the TypeScript side car reports `<unknown>.write/0` and
+  the ArkTS one `stdout.write/0` -- so no pattern can point at it and it stays
+  out of the script bucket.
 
 #### The script languages' own sinks: the format, the pattern, the page
 

@@ -554,12 +554,13 @@ callee key 完全一样：程序自己定义的全局 `mail()` 和调用内置�
 - **通过变量写的响应。** 脚本程序里响应对象是个局部变量——`res.setHeader(...)`、
   `res.cookie(...)`——owner 就是程序给这个变量起的名字，一条松到能点住它的 pattern 会把
   程序里每一个 `.setHeader` 都认领。
-- **游标上的 SQL 调用。** Python 里 `cursor.execute` 的 owner 是**文件**所属的模块，不是游标
-  的类：前端不会给一个只通过局部变量看到的对象点名。所以没有名字可供 pattern 指过去，Python
-  的 SQL sink 暂时还不在目录里。
-- **ArkTS 的 console。** 对着它的 side car 量过：那里 `console.log` 的 owner 是**文件**的模块
-  名而不是 `Console` 类型。同样的形状也把 `process.stdout.write` 挡在脚本桶外面：它的 owner
-  是文件的模块，不是一个类。
+- **游标上的 SQL 调用。** Python 里 `cursor.execute` 的 owner 是 `<unknown>`，不是游标的类：
+  前端不会给一个只通过局部变量看到的对象点名。所以没有名字可供 pattern 指过去，而且所有
+  解不出来的接收者共用这个 owner，指过去的 pattern 会把程序里每一个 `.execute` 都认领；
+  Python 的 SQL sink 暂时还不在目录里。
+- **写标准输出。** 两个语言都点不出 `process.stdout` 的类——TypeScript 侧车报
+  `<unknown>.write/0`，ArkTS 侧车报 `stdout.write/0`——所以没有名字可供 pattern 指过去，
+  它留在脚本桶外面。
 
 #### 脚本语言自己的 sink：格式化串、pattern、页面
 
