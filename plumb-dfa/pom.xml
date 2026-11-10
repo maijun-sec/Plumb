@@ -158,6 +158,18 @@
                              be the ones the catalogue names, and the Go
                              accumulators must carry the taint both ways. -->
                         <include>org/plumb/dfa/taint/GoSinkCatalogTest.java</include>
+
+                        <!-- The TypeScript and JavaScript rule layer. The script
+                             catalogue names the MODULE a function came from, so a
+                             rule cannot claim every `exec` in a program:
+                             RegExp.exec runs a regular expression, not a command.
+                             And the script semantics table names the OPERATION,
+                             because a string receiver is a primitive and has no
+                             class to name. Without it the taint stops at the
+                             first string operation and the finding never
+                             appears. -->
+                        <include>org/plumb/dfa/taint/TsSinkCatalogTest.java</include>
+
                         <!-- The argument-to-return shape: a library method that
                              carries an ARGUMENT's taint into its result is a
                              rule of its own, and the table that says which

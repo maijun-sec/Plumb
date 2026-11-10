@@ -240,3 +240,64 @@ families:
 
 桶里的语言不在 family 自己的 `languages:` 里，这个桶就是死的：family 在那种
 语言上根本不生效，桶里的 pattern 永远不会触发。loader 读到时会说出这件事。
+
+#### 一个桶可以声明多种语言
+
+两种语言可能到达**同一批**库符号：TypeScript 和 JavaScript 由同一个前端读取，
+产生同样的 callee signature，所以它们的代码能提到的符号是一份清单而不是两份。
+把这份清单写两遍，两份就会慢慢分叉；而一份自相矛盾的目录，其行为取决于文件
+恰好是用哪种语言写的。
+
+所以桶的键可以声明多种语言，用逗号分隔：
+
+```yaml
+    by_language:
+      typescript,javascript,arkts:
+        - pattern: '^(?:node:)?child_process\.(exec|execSync)(/\d+)?'
+          arg_index: 0
+```
+
+每种被点名的语言都会拿到这些 pattern，并且各自单独与 family 自己的
+`languages:` 闸门对照：桶里点名了 family 不覆盖的语言时，那种语言的那一份会被
+丢弃，loader 会说出这件事。
+
+#### 脚本语言：按模块写的目录
+
+TypeScript、JavaScript 和 ArkTS 是通过**模块**而不是通过类去够它们的库的：
+`child_process.exec` 是 `child_process` 模块的一个函数，没有类可以点名。所以目录
+点名的是这个函数从哪个模块导入而来。
+
+| callee key | 它是什么 |
+| --- | --- |
+| `child_process.exec/2` | 从 `child_process` 模块导入的 `exec` |
+| `node:child_process.execSync/2` | 同一个模块，换成 Node 16 之后偏好的写法 |
+| `app.eval/1` | 全局 `eval`：自由函数没有接收者，所以 owner 是**文件**所属的模块 |
+
+点名模块正是规则保持精确的原因。一份只点名方法名的目录会认领程序里的每一个
+`exec`——包括 `RegExp.exec`，它跑的是正则表达式而不是命令，而 `exec` 是脚本程序
+里最常见的方法名之一。
+
+这两种形状的差别有个值得记住的原因。模块级函数是通过模块到达的，所以它的 owner
+是那个模块；自由函数根本没有接收者对象，接收者槽里放的是模块名的常量，于是
+owner 变成了**文件**所属的模块。这就是为什么 `eval` 的 pattern 只点名方法
+（`\.eval\b(/\d+)?`），而模块级的 pattern 点名模块。
+
+#### 脚本语言的 semantics 表按操作命名，不按 owner
+
+库语义表决定一次调用是否把接收者的污点带进结果，污点引擎在把一次调用当作字符串
+透传之前会查这张表。它的键是 callee key，而 callee key 只有在前端能解析出接收者
+类型时才带 owner。在脚本语言里字符串是**原始类型**，而原始类型不带类符号：对着
+TypeScript 编译器实测，字符串接收者的类型根本不报符号，数组接收者报 `Array`，
+类实例报它自己的类。
+
+于是，在脚本程序里承载污点的那些操作——字符串的那些——恰恰是一张按 owner 写的表
+点不到名的。所以脚本语言的表按**操作**命名：
+
+```java
+LanguageSemantics.Entry.byMethod("trim", TaintBehaviour.PRESERVES)
+```
+
+比较时忽略大小写，与引擎自己的方法名分类一致：两者必须对齐，否则引擎认成 trim
+的调用找不到 PRESERVES 条目，污点就停在那里。代价是按方法名的条目分不清字符串的
+`trim` 和用户对象的 `trim`，所以这张表只列那些「无论在哪里拼写、行为都相同」的
+操作。

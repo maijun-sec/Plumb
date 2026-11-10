@@ -195,7 +195,11 @@ public final class AccumulatorCatalog {
           || method.equals("setcharat");
     }
     // Collections and maps: an element added to a container is part of the container's state.
-    if (ownerIs(owner, "list", "set", "collection", "queue", "deque")) {
+    //
+    // "array" is the script language's container: a JavaScript array is a namespace whose
+    // elements are written with push, and the element is part of the array's state the same
+    // way a list's element is part of the list's.
+    if (ownerIs(owner, "list", "set", "collection", "queue", "deque", "array")) {
       return method.equals("add")
           || method.equals("addall")
           || method.equals("set")
@@ -285,6 +289,10 @@ public final class AccumulatorCatalog {
     // is worse than an extra one.
     if (ownerIs(owner, "list", "set", "collection", "queue", "deque", "map")) {
       return method.equals("get") || method.equals("remove") || method.equals("poll");
+    }
+    // A script language's container hands an element back out with pop and shift.
+    if (ownerIs(owner, "array")) {
+      return method.equals("pop") || method.equals("shift");
     }
     // Go: the reads that hand a container's contents back out.
     //

@@ -270,3 +270,76 @@ else.
 A bucket for a language the family does not cover is dead: the family does
 not apply to that language, so its patterns can never fire. The loader says
 so when it reads one.
+
+#### A bucket may name several languages
+
+Two languages can reach the SAME library symbols: TypeScript and JavaScript are
+read by one front end and produce the same callee signatures, so the symbols
+their code can mention are one list rather than two. Writing that list twice
+invites the two copies to drift, and a catalogue whose halves disagree is a
+catalogue whose behaviour depends on which language the file happened to be
+written in.
+
+So a bucket key may name several languages, separated by commas:
+
+```yaml
+    by_language:
+      typescript,javascript,arkts:
+        - pattern: '^(?:node:)?child_process\.(exec|execSync)(/\d+)?'
+          arg_index: 0
+```
+
+Each named language gets the patterns, and each is checked against the family's
+own `languages:` gate on its own: a bucket that names a language the family does
+not cover has that language's share dropped, and the loader says so.
+
+#### The script languages: a catalogue keyed on the module
+
+TypeScript, JavaScript and ArkTS reach their libraries through MODULES rather
+than through classes: `child_process.exec` is a function of the
+`child_process` module, and there is no class to name. The catalogue therefore
+names the module the function was imported from.
+
+| Callee key | What it is |
+| --- | --- |
+| `child_process.exec/2` | `exec` imported from the `child_process` module |
+| `node:child_process.execSync/2` | the same module under the name Node 16 and later prefer |
+| `app.eval/1` | the global `eval`: a free function has no receiver, so the owner is the module the FILE belongs to |
+
+Naming the module is what keeps the rule precise. A catalogue that named the
+method alone would claim every `exec` in the program -- including
+`RegExp.exec`, which runs a regular expression and not a command, and it is one
+of the most common method names in a script program.
+
+The two shapes differ for a reason worth knowing. A module-level function is
+reached through the module, so its owner is the module; a free function has no
+receiver object at all, so the receiver slot holds the module's name as a
+constant and the owner is the module the FILE belongs to. That is why the
+`eval` pattern names the method alone (`\.eval\b(/\d+)?`) while the
+module-level patterns name the module.
+
+#### The script semantics table names the operation, not the owner
+
+The library-semantics table decides whether a call carries its receiver's taint
+into its result, and the taint engine consults it before it treats a call as a
+string passthrough. It is keyed on the callee key, and a key carries an owner
+only when the front end could resolve the receiver's type. In a script language
+a string is a PRIMITIVE, and a primitive type carries no class symbol: measured
+against the TypeScript compiler, the type of a string receiver reports no
+symbol at all, while an array receiver reports `Array` and a class instance
+reports its class.
+
+So the operations that carry the taint through a script program -- the string
+ones -- are exactly the ones a table keyed on owners could not name. The script
+table therefore names the OPERATION:
+
+```java
+LanguageSemantics.Entry.byMethod("trim", TaintBehaviour.PRESERVES)
+```
+
+The comparison ignores case, the same way the engine's own method-name
+classification does: the two have to agree, or a call the engine calls a trim
+would find no PRESERVES entry and the taint would stop there. The cost is that
+a method-name entry cannot tell a string's `trim` from a user object's `trim`,
+which is why the table lists only operations whose behaviour is the same
+wherever they are spelled.

@@ -1594,9 +1594,18 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     return isMethodNamed(calleeSig, "split", "splitToSequence");
   }
 
-  /** {@code String.substring} and its equivalents. */
+  /**
+   * {@code String.substring} and its equivalents.
+   *
+   * <p><b>Why the script spellings are here.</b> The list names the operations by what they DO,
+   * and a script language spells the same operation differently: JavaScript cuts a string with
+   * {@code substring}, {@code slice} or {@code substr}, and all three hand back a piece of the
+   * input. A list that knew only the Java spelling would drop the taint at the two the list
+   * missed -- and the drop is invisible, because the program then reports itself clean.
+   */
   private static boolean isSubstringLike(String calleeSig) {
-    return isMethodNamed(calleeSig, "substring", "substringAfter", "substringBefore");
+    return isMethodNamed(
+        calleeSig, "substring", "substringAfter", "substringBefore", "slice", "substr");
   }
 
   /** {@code String.trim} and its equivalents: whitespace removal keeps the content's taint. */

@@ -225,16 +225,17 @@ public final class ConfigLoader {
     if (!(raw instanceof Map)) return out;
     Map<String, Object> byLang = (Map<String, Object>) raw;
     for (Map.Entry<String, Object> e : byLang.entrySet()) {
-      SourceLanguage lang = SourceLanguage.parse(e.getKey());
-      if (lang == SourceLanguage.UNKNOWN) {
+      List<String> unknown = new ArrayList<>();
+      List<SourceLanguage> langs = bucketLanguages(e.getKey(), unknown);
+      if (!unknown.isEmpty()) {
         LOG.warn(
             "Unknown language '{}' in by_language of the receiver-passthrough family '{}';"
                 + " ignored",
-            e.getKey(),
+            String.join(", ", unknown),
             family);
         continue;
       }
-      if (!bucketApplies(lang, familyLanguages, family, "receiver-passthrough")) continue;
+      if (langs.isEmpty()) continue;
       if (!(e.getValue() instanceof List)) continue;
       List<Pattern> patterns = new ArrayList<>();
       for (Object item : (List<Object>) e.getValue()) {
@@ -247,7 +248,52 @@ public final class ConfigLoader {
           // configuration down.
         }
       }
-      if (!patterns.isEmpty()) out.put(lang, patterns);
+      if (patterns.isEmpty()) continue;
+      // One bucket may serve several languages, so each named language gets the patterns.
+      for (SourceLanguage lang : langs) {
+        if (!bucketApplies(lang, familyLanguages, family, "receiver-passthrough")) continue;
+        out.put(lang, patterns);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The languages a {@code by_language} bucket names.
+   *
+   * <p><b>Why a bucket may name more than one language.</b> Two languages can reach the SAME
+   * library symbols: TypeScript and JavaScript are read by one front end and produce the same
+   * callee signatures, so the symbols their code can mention are one list, not two. Writing that
+   * list twice invites the two copies to drift, and a catalogue whose halves disagree is a
+   * catalogue whose behaviour depends on which language the file happened to be written in. So a
+   * bucket key may name several languages, separated by commas:
+   *
+   * <pre>
+   *   by_language:
+   *     typescript,javascript:
+   *       - pattern: '^(?:node:)?child_process\.exec(/\d+)?'
+   *         arg_index: 0
+   * </pre>
+   *
+   * <p>The names are the ones {@link SourceLanguage#parse(String)} accepts, so the aliases work too
+   * ({@code ts,js}).
+   *
+   * @param key the bucket's key
+   * @param unknownNames collects the names that are not languages
+   * @return the languages the bucket names; empty when the key names none
+   */
+  private static List<SourceLanguage> bucketLanguages(String key, List<String> unknownNames) {
+    List<SourceLanguage> out = new ArrayList<>();
+    if (key == null) return out;
+    for (String part : key.split(",")) {
+      String name = part.trim();
+      if (name.isEmpty()) continue;
+      SourceLanguage lang = SourceLanguage.parse(name);
+      if (lang == SourceLanguage.UNKNOWN) {
+        unknownNames.add(name);
+        continue;
+      }
+      if (!out.contains(lang)) out.add(lang);
     }
     return out;
   }
@@ -362,16 +408,17 @@ public final class ConfigLoader {
     if (!(raw instanceof Map)) return out;
     Map<String, Object> byLang = (Map<String, Object>) raw;
     for (Map.Entry<String, Object> e : byLang.entrySet()) {
-      SourceLanguage lang = SourceLanguage.parse(e.getKey());
-      if (lang == SourceLanguage.UNKNOWN) {
+      List<String> unknown = new ArrayList<>();
+      List<SourceLanguage> langs = bucketLanguages(e.getKey(), unknown);
+      if (!unknown.isEmpty()) {
         LOG.warn(
             "Unknown language '{}' in by_language of the argument-passthrough family '{}';"
                 + " ignored",
-            e.getKey(),
+            String.join(", ", unknown),
             family);
         continue;
       }
-      if (!bucketApplies(lang, familyLanguages, family, "argument-passthrough")) continue;
+      if (langs.isEmpty()) continue;
       if (!(e.getValue() instanceof List)) continue;
       for (Object item : (List<Object>) e.getValue()) {
         if (!(item instanceof Map)) continue;
@@ -381,9 +428,12 @@ public final class ConfigLoader {
         List<Integer> indexes = parsePassthroughArgIndexes(entry.get("arg_index"));
         if (indexes.isEmpty()) continue;
         try {
-          out.add(
-              new ArgumentPassthrough.Rule(
-                  Pattern.compile((String) rawPattern), indexes, Set.of(lang)));
+          Pattern compiled = Pattern.compile((String) rawPattern);
+          // One bucket may serve several languages, so each named language gets the rule.
+          for (SourceLanguage lang : langs) {
+            if (!bucketApplies(lang, familyLanguages, family, "argument-passthrough")) continue;
+            out.add(new ArgumentPassthrough.Rule(compiled, indexes, Set.of(lang)));
+          }
         } catch (java.util.regex.PatternSyntaxException ignored) {
           // A pattern the engine cannot compile is a pattern it cannot use. The entry is
           // dropped rather than failing the load: one bad rule must not take the whole
@@ -509,7 +559,8 @@ public final class ConfigLoader {
       Set<SourceLanguage> languages = parseLanguages(spec.get("languages"));
       // The per-language pattern table: the symbols only one language can mention, kept on the
       // SAME family so the defect class stays one name with one CWE.
-      LanguageRuleSet languageRules = parseLanguageRules(spec.get("by_language"), parsedPatterns);
+      LanguageRuleSet languageRules =
+          parseLanguageRules(spec.get("by_language"), parsedPatterns, languages, name);
       out.put(
           name,
           new SinkFamily(
@@ -694,25 +745,36 @@ public final class ConfigLoader {
    * rather than to separate families.
    *
    * @param raw the raw YAML value
+   * @param familyLanguages the languages the family covers; empty means every language
+   * @param family the family's name, for the warning
    * @return the per-language pattern table; empty when the family declares none
    */
   private static LanguageRuleSet parseLanguageRules(
-      Object raw, List<SinkFamily.SinkPattern> shared) {
+      Object raw,
+      List<SinkFamily.SinkPattern> shared,
+      Set<SourceLanguage> familyLanguages,
+      String family) {
     if (!(raw instanceof Map)) {
       return new LanguageRuleSet(shared, java.util.Map.of());
     }
     Map<String, Object> byLang = (Map<String, Object>) raw;
     Map<org.plumb.tac.ir.SourceLanguage, List<SinkFamily.SinkPattern>> out = new LinkedHashMap<>();
     for (Map.Entry<String, Object> e : byLang.entrySet()) {
-      org.plumb.tac.ir.SourceLanguage lang = org.plumb.tac.ir.SourceLanguage.parse(e.getKey());
-      if (lang == org.plumb.tac.ir.SourceLanguage.UNKNOWN) {
+      List<String> unknown = new ArrayList<>();
+      List<SourceLanguage> langs = bucketLanguages(e.getKey(), unknown);
+      if (!unknown.isEmpty()) {
         // An unknown language name is a TYPO, not a language to ignore. Dropping it silently
         // would make the rule look like it was configured, while never being able to fire.
         throw new IllegalArgumentException(
-            "unknown language '" + e.getKey() + "' in by_language of a sink family");
+            "unknown language '"
+                + String.join(", ", unknown)
+                + "' in by_language of a sink family");
       }
       List<SinkFamily.SinkPattern> pats = parsePatterns(e.getValue());
-      if (!pats.isEmpty()) {
+      if (pats.isEmpty()) continue;
+      // One bucket may serve several languages, so each named language gets the patterns.
+      for (SourceLanguage lang : langs) {
+        if (!bucketApplies(lang, familyLanguages, family, "sink family")) continue;
         out.put(lang, pats);
       }
     }

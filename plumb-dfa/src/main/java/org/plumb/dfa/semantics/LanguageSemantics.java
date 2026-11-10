@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.plumb.tac.ir.SourceLanguage;
 
 /**
@@ -99,27 +100,73 @@ public final class LanguageSemantics {
   /**
    * One rule in a language's semantics table.
    *
-   * <p>The matcher is a prefix on the canonical callee key ({@code owner.method/arity}), which is
-   * the form every frontend produces. A prefix rather than a full key because the arity often
-   * varies with overloads and the behaviour does not.
+   * <p>An entry matches in one of two ways. A PREFIX entry matches the canonical callee key ({@code
+   * owner.method/arity}), which is the form every frontend produces; a prefix rather than a full
+   * key because the arity often varies with overloads and the behaviour does not. A METHOD-NAME
+   * entry matches the operation alone, for the languages whose callee keys carry no owner to name
+   * -- see {@link #byMethod(String, TaintBehaviour)} for why a script language needs one.
    */
   public static final class Entry {
     private final String prefix;
+    private final String methodName;
     private final TaintBehaviour behaviour;
 
     Entry(String prefix, TaintBehaviour behaviour) {
+      this(prefix, null, behaviour);
+    }
+
+    private Entry(String prefix, String methodName, TaintBehaviour behaviour) {
       this.prefix = prefix;
+      this.methodName = methodName;
       this.behaviour = behaviour;
     }
 
-    /** The callee-key prefix this entry matches. */
+    /**
+     * An entry keyed by the METHOD NAME rather than by a prefix of the callee key.
+     *
+     * <p><b>Why a language needs it.</b> A prefix entry names the OWNER as well as the method, and
+     * the owner is only there when the front end could resolve the receiver's type. In a script
+     * language a string is a PRIMITIVE, and a primitive type carries no class symbol -- so {@code
+     * s.trim()} has no owner to name, and the front end falls back to the module the file belongs
+     * to. Measured against the TypeScript compiler: the type of a string receiver reports no symbol
+     * at all, while an array receiver reports {@code Array} and a class instance reports its class.
+     *
+     * <p>So the operations that matter most in a script language -- the string ones -- are exactly
+     * the ones a prefix entry cannot name, and a table that could only say {@code
+     * java.lang.String.trim} would say nothing about them. A method-name entry names what the
+     * operation IS rather than which class spells it.
+     *
+     * <p><b>Why the comparison ignores case.</b> The engine classifies a call by its method name in
+     * the same way (see the taint engine's own method-name helpers), and the two have to agree: a
+     * call the engine calls a trim must find a PRESERVES entry, or the taint stops there.
+     *
+     * @param methodName the method name, without the owner or the arity
+     * @param behaviour the behaviour of a matching callee
+     * @return the entry
+     */
+    public static Entry byMethod(String methodName, TaintBehaviour behaviour) {
+      return new Entry(null, Objects.requireNonNull(methodName, "methodName"), behaviour);
+    }
+
+    /** The callee-key prefix this entry matches; null for a method-name entry. */
     public String prefix() {
       return prefix;
+    }
+
+    /** The method name this entry matches; null for a prefix entry. */
+    public String methodName() {
+      return methodName;
     }
 
     /** The behaviour of a matching callee. */
     public TaintBehaviour behaviour() {
       return behaviour;
+    }
+
+    /** Whether this entry matches the callee key. */
+    boolean matches(String calleeSig) {
+      if (prefix != null) return calleeSig.startsWith(prefix);
+      return methodName.equalsIgnoreCase(methodNameOf(calleeSig));
     }
   }
 
@@ -142,6 +189,40 @@ public final class LanguageSemantics {
     List<Entry> copy = new ArrayList<>();
     for (Entry e : entries) copy.add(new Entry(e.prefix(), e.behaviour()));
     return new LanguageSemantics(language, copy);
+  }
+
+  /**
+   * Builds a semantics table from entries.
+   *
+   * <p>This is the form for a table that mixes the two kinds of entry: a prefix entry for the
+   * symbols whose owner the front end resolves, and a method-name entry for the ones whose receiver
+   * is a primitive and has no owner to name.
+   *
+   * @param language the language this table describes
+   * @param entries the rules, in priority order -- the first match wins
+   * @return the table
+   */
+  public static LanguageSemantics ofEntries(SourceLanguage language, Entry... entries) {
+    List<Entry> copy = new ArrayList<>();
+    for (Entry e : entries) copy.add(e);
+    return new LanguageSemantics(language, copy);
+  }
+
+  /**
+   * The method name of a callee key.
+   *
+   * <p>The key is {@code owner.method/arity}: the method is what stands between the last dot and
+   * the arity. A key with no dot names no method.
+   *
+   * @param calleeSig the callee key
+   * @return the method name; empty when the key names none
+   */
+  static String methodNameOf(String calleeSig) {
+    if (calleeSig == null || calleeSig.isEmpty()) return "";
+    int slash = calleeSig.lastIndexOf('/');
+    String head = slash < 0 ? calleeSig : calleeSig.substring(0, slash);
+    int dot = head.lastIndexOf('.');
+    return dot < 0 ? "" : head.substring(dot + 1);
   }
 
   /**
@@ -188,7 +269,7 @@ public final class LanguageSemantics {
     if (cached != null) return cached;
     TaintBehaviour found = TaintBehaviour.UNKNOWN;
     for (Entry e : entries) {
-      if (calleeSig.startsWith(e.prefix())) {
+      if (e.matches(calleeSig)) {
         found = e.behaviour();
         break;
       }

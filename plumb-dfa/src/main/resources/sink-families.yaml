@@ -783,6 +783,16 @@ families:
           arg_index: 0
         - pattern: '^(MongoDB\.Bson\.BsonJavaScript|MongoDB\.Bson\.BsonJavaScriptWithScope)\.\<init\>(/\d+)?'
           arg_index: 0
+      typescript,javascript,arkts:
+        # The vm module evaluates code in a context of the caller's choosing.
+        - pattern: '^(?:node:)?vm\.(runInNewContext|runInThisContext|compileFunction)(/\d+)?'
+          arg_index: 0
+        # The global eval. A free function has no receiver object, so its owner
+        # is the module the FILE belongs to -- the file's own name -- and the
+        # pattern can only name the method. The word boundary keeps
+        # `evaluate` and `evalSync` out.
+        - pattern: '\.eval\b(/\d+)?'
+          arg_index: 0
 
   command.sinks:
     cwe: CWE-78,CWE-77,CWE-88,CWE-93,CWE-114,CWE-147,CWE-494
@@ -919,6 +929,16 @@ families:
         - pattern: '^scala\.sys\.process\.ProcessBuilder\.(@bang|!!|lineStream_!|run|!\<|!!\<)(/\d+)?'
           arg_index: -2
         - '^scala\.sys\.process\.ProcessBuilder\.\#(\#\#|&&|\||\|\|)(/\d+)?'
+      typescript,javascript,arkts:
+        # Node's child_process. The owner of a module-level function is the
+        # MODULE it was imported from, so the pattern names the module and not
+        # the method alone: `exec` alone would also claim `RegExp.exec`, which
+        # runs a regular expression and not a command. The "node:" prefix is
+        # the same module under the name Node 16 and later prefer.
+        #
+        # The command line is the FIRST argument, so arg_index is 0.
+        - pattern: '^(?:node:)?child_process\.(execSync|execFileSync|spawnSync|execFile|exec|spawn|fork)(/\d+)?'
+          arg_index: 0
 
   cookie.sinks:
     cwe: CWE-113
@@ -2735,6 +2755,12 @@ families:
         - pattern: '^akka\.http\.(java|scala)dsl\.server\.directives\.FileAndResourceDirectives\.(getFromBrowseableDirectories|getFromBrowseableDirectory|getFromDirectory|getFromFile|getFromResource|getFromResourceDirectory|listDirectoryContents)(/\d+)?'
           arg_index: 0
         - '^better\.files\.File\.(zipTo|zipIn)(/\d+)?'
+      typescript,javascript,arkts:
+        # Node's fs. The PATH is the first argument, so arg_index is 0.
+        - pattern: '^(?:node:)?fs\.(readFile|readFileSync|writeFile|writeFileSync|appendFile|appendFileSync|unlink|unlinkSync|rmdir|rmdirSync|createReadStream|createWriteStream)(/\d+)?'
+          arg_index: 0
+        - pattern: '^(?:node:)?fs/promises\.(readFile|writeFile|appendFile|unlink|rmdir|rm)(/\d+)?'
+          arg_index: 0
 
   file-permission.sinks:
     cwe: CWE-732,CWE-264
@@ -6859,6 +6885,14 @@ families:
           arg_index: 0
         - pattern: '^akka\.http\.(java|scala)dsl\.model\.HttpRequest\.(\<init\>|apply)(/\d+)?'
           arg_index: 1
+      typescript,javascript,arkts:
+        # Node's http and https. The URL is the first argument.
+        - pattern: '^(?:node:)?https?\.(get|request)(/\d+)?'
+          arg_index: 0
+        # The global fetch. A free function has no receiver object, so its owner
+        # is the module the FILE belongs to, and the pattern names the method.
+        - pattern: '\.fetch\b(/\d+)?'
+          arg_index: 0
 
   taint.sources.console:
     cwe: null
@@ -6936,7 +6970,7 @@ families:
   taint.sources.io:
     cwe: null
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'csharp']
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'javascript', 'typescript', 'arkts']
     patterns:
       - '^java\.io\.InputStream\.read(/\d+)?'
       - '^java\.io\.Reader\.read(/\d+)?'
@@ -6991,6 +7025,10 @@ families:
         - '^os\.ReadFile(/\d+)?'
         - '^io\.Read(Full|AtLeast)(/\d+)?'
         - '^embed\.FS\.ReadFile(/\d+)?'
+      typescript,javascript,arkts:
+        # A file read hands back content the program did not write.
+        - pattern: '^(?:node:)?fs\.(readFile|readFileSync)(/\d+)?'
+        - pattern: '^(?:node:)?fs/promises\.readFile(/\d+)?'
 
   taint.sources.network:
     cwe: null

@@ -70,9 +70,9 @@ public final class LanguageSemanticsRegistry {
   /**
    * The registry with the built-in tables.
    *
-   * <p>Java, Kotlin, Scala, C# and Go are populated; the rest get the empty table until their
-   * semantics are written down. That is the honest state: an unwritten table is not a claim that
-   * every call preserves taint, it is an absence of claims.
+   * <p>Java, Kotlin, Scala, C#, Go, TypeScript, JavaScript and ArkTS are populated; the rest get
+   * the empty table until their semantics are written down. That is the honest state: an unwritten
+   * table is not a claim that every call preserves taint, it is an absence of claims.
    */
   public static LanguageSemanticsRegistry withDefaults() {
     LanguageSemanticsRegistry reg = new LanguageSemanticsRegistry();
@@ -81,7 +81,106 @@ public final class LanguageSemanticsRegistry {
     reg.register(scalaSemantics());
     reg.register(csharpSemantics());
     reg.register(goSemantics());
+    reg.register(typescriptSemantics());
+    reg.register(javascriptSemantics());
+    reg.register(arktsSemantics());
     return reg;
+  }
+
+  /**
+   * TypeScript's standard library semantics.
+   *
+   * <p><b>Why the table names METHODS and not owners.</b> The other tables name the owner as well
+   * as the method, because the front end resolved the receiver's type and the owner is a fact about
+   * the program. A script language cannot offer that fact for its most common receiver: a
+   * JavaScript string is a primitive, and a primitive type carries no class symbol. Measured
+   * against the TypeScript compiler, the type of a string receiver reports no symbol, while an
+   * array receiver reports {@code Array} and a class instance reports its class -- so a table keyed
+   * on owners would name the array operations and lose the string ones, which are the ones that
+   * carry the taint through a program.
+   *
+   * <p>So this table names the operation. That is also the honest answer for a language whose
+   * libraries are reached through a module rather than through a class: {@code trim} is the same
+   * operation wherever it is spelled.
+   *
+   * @return the table
+   */
+  public static LanguageSemantics typescriptSemantics() {
+    return scriptSemantics(SourceLanguage.TYPESCRIPT);
+  }
+
+  /**
+   * JavaScript's standard library semantics.
+   *
+   * @return the table
+   */
+  public static LanguageSemantics javascriptSemantics() {
+    return scriptSemantics(SourceLanguage.JAVASCRIPT);
+  }
+
+  /**
+   * ArkTS's standard library semantics.
+   *
+   * <p>ArkTS is TypeScript with the dynamic parts removed, so the operations are the same ones and
+   * the table is the same table.
+   *
+   * @return the table
+   */
+  public static LanguageSemantics arktsSemantics() {
+    return scriptSemantics(SourceLanguage.ARKTS);
+  }
+
+  /**
+   * The script languages' semantics: one table, three languages.
+   *
+   * <p><b>What the engine does with a PRESERVES entry.</b> The taint engine consults this table
+   * before it treats a call as a string passthrough, and a passthrough is what carries a value's
+   * taint from the receiver into the result. Without a PRESERVES entry the engine has nothing to
+   * match and the taint STOPS at the call -- which is how {@code exec(userInput.trim())} ends up
+   * reporting a clean program. The entry is therefore not a refinement: it is what makes the
+   * finding exist.
+   *
+   * <p><b>What the DISSOCIATES entries are for.</b> They apply to a call the compiler could not
+   * resolve, which the engine models as a black box: the black box's result is assumed to carry its
+   * arguments' taint unless the table says the operation cannot. A parsed number is not the text it
+   * was parsed from, so it does not.
+   *
+   * @param language the language the table describes
+   * @return the table
+   */
+  private static LanguageSemantics scriptSemantics(SourceLanguage language) {
+    return LanguageSemantics.ofEntries(
+        language,
+        // --- the result carries the input's taint ---
+        // Whitespace removal keeps the content's taint.
+        LanguageSemantics.Entry.byMethod("trim", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("trimStart", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("trimEnd", TaintBehaviour.PRESERVES),
+        // A piece of the input.
+        LanguageSemantics.Entry.byMethod("substring", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("slice", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("substr", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("split", TaintBehaviour.PRESERVES),
+        // Derived from the input.
+        LanguageSemantics.Entry.byMethod("toLowerCase", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("toUpperCase", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("replace", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("replaceAll", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("padStart", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("padEnd", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("repeat", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("normalize", TaintBehaviour.PRESERVES),
+        // The join of two strings.
+        LanguageSemantics.Entry.byMethod("concat", TaintBehaviour.PRESERVES),
+        // The value rendered as text.
+        LanguageSemantics.Entry.byMethod("toString", TaintBehaviour.PRESERVES),
+        LanguageSemantics.Entry.byMethod("valueOf", TaintBehaviour.PRESERVES),
+        // The elements assembled into one string.
+        LanguageSemantics.Entry.byMethod("join", TaintBehaviour.PRESERVES),
+        // --- the result does NOT carry the input's taint ---
+        // A parsed number is not the text it was parsed from.
+        LanguageSemantics.Entry.byMethod("parseInt", TaintBehaviour.DISSOCIATES),
+        LanguageSemantics.Entry.byMethod("parseFloat", TaintBehaviour.DISSOCIATES));
   }
 
   /**
