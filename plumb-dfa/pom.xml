@@ -681,6 +681,11 @@
                              disagreement is no crash and no warning, only a
                              scan that reports the program clean. -->
                         <include>org/plumb/dfa/taint/ScriptSinkFamilyEndToEndTest.java</include>
+                        <!-- The SSRF defect class: the catalogue names the sinks of
+                             every language, the checker watches the family, and the
+                             patterns that named other defect classes moved to the
+                             families that describe them. -->
+                        <include>org/plumb/dfa/checkers/taint/SsrfCheckerTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

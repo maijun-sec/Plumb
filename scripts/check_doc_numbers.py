@@ -185,6 +185,91 @@ def declared_dfa_checkers():
     return len(re.findall(r"^\s{2}[a-z0-9\-]+:\s*$", text, re.MULTILINE))
 
 
+def sink_families():
+    """The sink families the catalogue declares.
+
+    `capability_baseline` reports the catalogue as a mapping of family to
+    patterns, with the FAMILY NAMES carried in a list under the file's own
+    top-level key. That key is a container, not a family, so the count is
+    the length of the name list -- not the length of the mapping, which is
+    one larger and would have made every document that quotes the
+    catalogue's size wrong by exactly one.
+    """
+    catalogue = cb.measure()["sink_families"]
+    names = catalogue.get("families")
+    if isinstance(names, list):
+        return len(names)
+    return len([k for k in catalogue if k != "families"])
+
+
+def source_sink_families():
+    """The catalogue's SOURCE families: the ones that carry no CWE.
+
+    The catalogue has no role marker. The absence of a CWE is what says
+    "this is where data comes in", and `SourceFamilyMatcher` reads exactly
+    those families -- with the catalogue's own anchored patterns. A source
+    family is therefore watched, even though no checker names it.
+
+    The CWE is read from the file's own lines rather than from a YAML
+    library, because the capability gate parses the same file with a regex
+    and the two gates must not disagree about what the catalogue says.
+    """
+    out = set()
+    current = None
+    has_cwe = False
+    for line in cb.SINK_FAMILIES.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = re.match(r"^  ([A-Za-z0-9_.\-]+):\s*$", line)
+        if m:
+            if current is not None and not has_cwe:
+                out.add(current)
+            current = m.group(1)
+            has_cwe = False
+            continue
+        if current is not None and re.match(r"^    cwe:\s*(?!null)\S", line):
+            has_cwe = True
+    if current is not None and not has_cwe:
+        out.add(current)
+    return out
+
+
+def watched_sink_families():
+    """The sink families that something the engine RUNS names.
+
+    Two things watch a family. A dedicated checker carries the family key in
+    its rule's `sinkFamilyKey`, and a SOURCE family is read by
+    `SourceFamilyMatcher`. Either way the name is a string literal in the
+    main Java sources, so counting the literals that are exactly a family
+    name measures the count.
+
+    The `TaintRuleRegistry` is NOT one of the two, and counting it was
+    wrong: the engine never reads that table, so a family only it names is
+    unwatched in fact even though a literal says otherwise. The gate that
+    reported seventeen unwatched families was counting three dead ones as
+    watched.
+
+    The comments are excluded with the capability gate's own notion of
+    what is code, so the two gates cannot disagree about it and a family
+    mentioned in prose is not counted as a family something watches.
+    """
+    known = set(cb.measure()["sink_families"]["families"])
+    named = set()
+    for path in REPO.glob("plumb-*/src/main/java/**/*.java"):
+        if path == Taint_REGISTRY:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        code = "\n".join(cb._code_lines(text))
+        for m in re.finditer(r'"([A-Za-z0-9_.\-]+)"', code):
+            if m.group(1) in known:
+                named.add(m.group(1))
+    named |= source_sink_families()
+    return len(named)
+
+
+def unwatched_sink_families():
+    """The sink families nothing watches: the catalogue's size, less the watched ones."""
+    return sink_families() - watched_sink_families()
+
+
 # (relative document path, the literal that must appear, the number it must be)
 #
 # The literal is matched EXACTLY, so a document cannot drift by changing the
@@ -378,6 +463,58 @@ CHECKS = [
      r"(\d+)\s*(?:项|entries?|keys?)", default_config_checks),
 ]
 
+# Claims that appear MORE THAN ONCE in a document, where EVERY occurrence
+# must carry the measured number.
+#
+# The first-match rule above is enough for a claim that appears once. It is
+# not enough for a claim the document repeats -- once in prose and again in
+# the summary table -- because a gate that checked only the first occurrence
+# would let the second rot. That is what happened to the catalogue's size:
+# the analysis document quoted 81 families in the method that found the gap
+# and 82 in the verification of it, each true of a different moment, and a
+# reader could not tell which was the current one.
+ALL_MATCH_CHECKS = [
+    # The catalogue's size, as the front-end analyses quote it.
+    ("docs/tech/TYPESCRIPT-FRONTEND-ANALYSIS.md",
+     r"`sink-families\.yaml`[^|\n]{0,30}?(\d+)[ \t]*(?:个[ \t]*)?famil",
+     sink_families),
+    ("docs/tech/GO-FRONTEND-ANALYSIS.md",
+     r"`sink-families\.yaml`[^|\n]{0,30}?(\d+)[ \t]*(?:个[ \t]*)?famil",
+     sink_families),
+    # The same document repeats it in the summary table, where the number
+    # comes BEFORE the file name rather than after it.
+    ("docs/tech/GO-FRONTEND-ANALYSIS.md",
+     r"\|[ \t]*(\d+)[ \t]*(?:个[ \t]*)?famil",
+     sink_families),
+    # The catalogue analysis states its size in three places.
+    ("docs/tech/JVM-LANGUAGE-GAP.md",
+     r"(\d+)[ \t]*(?:个[ \t]*)?famil(?:y|ies)[ \t]+keys?",
+     sink_families),
+    ("docs/tech/JVM-LANGUAGE-GAP.md",
+     r"(\d+)[ \t]*(?:个[ \t]*)?famil(?:y|ies)[ \t]*[,、]",
+     sink_families),
+    ("docs/tech/JVM-LANGUAGE-GAP.md",
+     r"`sink-families\.yaml`[^\n]{0,40}?[\(（][ \t]*(\d+)",
+     sink_families),
+    # And the two counts that make the size mean something: the families
+    # something watches, and the ones nothing does.
+    ("docs/tech/JVM-LANGUAGE-GAP.md",
+     r"(?:(\d+)(?![.\d])[^\n]{0,20}?named by a checker|checker 或规则点名[ \t]*(\d+))",
+     watched_sink_families),
+    ("docs/tech/JVM-LANGUAGE-GAP.md",
+     r"checker[^\n]{0,40}?[\(（][ \t]*(\d+)",
+     watched_sink_families),
+    # "unwatched" names TWO quantities in that document -- the whole
+    # unreachable set, and the part of it that is left after the migration
+    # families got their watchers -- so the anchor has to be the one that
+    # says which: the count that is followed by a comma, and not the
+    # heading that counts what is left.
+    ("docs/tech/JVM-LANGUAGE-GAP.md",
+     r"(?:(\d+)[ \t]*\n?[ \t]*unwatched[ \t]*,|(\d+)[ \t]*(?:个[ \t]*)?famil(?:y|ies)[ \t]+"
+     r"(?:had no watcher|根本没有任何 watcher)|没 watcher[ \t]*的[ \t]*\n?[ \t]*(\d+))",
+     unwatched_sink_families),
+]
+
 # Claims whose content is a SET of module names rather than a count.
 #
 # The dependency list is compared as a SET: the order the pom happens to list
@@ -435,6 +572,45 @@ def _check_number_claim(failures, rel, pattern, measure, tree_label):
     return True
 
 
+def _check_number_claim_all(failures, rel, pattern, measure, tree_label):
+    """Check EVERY occurrence of one number claim in one document.
+
+    The same pattern checks the English document and its Chinese
+    counterpart, because the patterns name the SEMANTIC anchors of the
+    claim and not the prose around them.
+    """
+    path = REPO / rel
+    if not path.is_file():
+        failures.append("%s: the document does not exist" % rel)
+        return False
+    text = path.read_text(encoding="utf-8", errors="replace")
+    expected = measure()
+    found = False
+    ok = True
+    for m in re.finditer(pattern, text):
+        found = True
+        claimed = None
+        for group in m.groups():
+            if group is not None:
+                claimed = int(group)
+                break
+        if claimed is None:
+            failures.append("%s: the claim %r carries no number" % (rel, pattern))
+            ok = False
+            continue
+        if claimed != expected:
+            line_no = text.count("\n", 0, m.start()) + 1
+            failures.append("%s: %s line %d says %d, the source says %d"
+                            % (rel, tree_label, line_no, claimed, expected))
+            ok = False
+    if not found:
+        failures.append(
+            "%s: no number matching %r was found -- the claim moved or was "
+            "removed; re-check it" % (rel, pattern))
+        return False
+    return ok
+
+
 def main():
     failures = []
     checked = 0
@@ -448,6 +624,16 @@ def main():
         if (REPO / zh_rel).is_file():
             if _check_number_claim(failures, zh_rel, pattern, measure,
                                    "the Chinese document"):
+                checked += 1
+
+    # The claims that appear more than once: every occurrence is checked.
+    for rel, pattern, measure in ALL_MATCH_CHECKS:
+        if _check_number_claim_all(failures, rel, pattern, measure, "the document"):
+            checked += 1
+        zh_rel = "docs/zh/" + rel[len("docs/"):]
+        if (REPO / zh_rel).is_file():
+            if _check_number_claim_all(failures, zh_rel, pattern, measure,
+                                       "the Chinese document"):
                 checked += 1
 
     # The set claims: the dependency list of a module, compared as a SET.

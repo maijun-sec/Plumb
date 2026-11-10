@@ -393,3 +393,10 @@ checkers:
     cwe: CWE-15
     description: "CWE-15: tainted data controls a system or configuration setting"
     class: org.plumb.dfa.checkers.taint.SettingManipulationChecker
+  Ssrf:
+    enabled: true
+    languages: [all]
+    severity: HIGH
+    cwe: CWE-918
+    description: "CWE-918: tainted data chooses the address the server reaches out to"
+    class: org.plumb.dfa.checkers.taint.SsrfChecker

@@ -48,7 +48,7 @@ Plumb 的做法分两阶段：
 | **AST checker（`plumb-style`）** | 601 | 规则类，看 AST 形态 |
 | **`CheckerCategories` 登记** | 599 | 上面这些里被登记进规则表的 |
 | **DFA checker（已注册）** | 91 | 引擎实际装配的，涉及数据流 / 跨函数 |
-| **其中 `extends TaintedCheckerBase`** | 69 | 继承统一污点传播基类 |
+| **其中 `extends TaintedCheckerBase`** | 70 | 继承统一污点传播基类 |
 | **事实种类（fact kinds）** | 27 | 内置 15 个 + `fact-kinds.yaml` 12 个 |
 
 **分工原则**：只依赖 AST 形态的规则放在 `plumb-style`。用 DFA 实现 style rule 既不提升精度
@@ -68,7 +68,7 @@ Plumb 的做法分两阶段：
 | DFA checker（已注册） | 91 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | 12 | `TaintRuleRegistry` |
 | Taint source family / 模式 | 6 / 214 | `sink-families.yaml` 的 `taint.sources.*` |
-| Taint sink family / 模式 | 76 / 4121 | `sink-families.yaml` 的 `*.sinks` |
+| Taint sink family / 模式 | 75 / 4111 | `sink-families.yaml` 的 `*.sinks` |
 | 输入源模式（框架入口） | 65 | `InputSourcePatterns` |
 | 事实种类 | 27 | 内置 + YAML |
 

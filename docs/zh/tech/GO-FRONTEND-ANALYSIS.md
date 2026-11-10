@@ -30,7 +30,7 @@ Plumb 的。
 | 路线是什么？ | **一个原生 Go sidecar**，用 C# sidecar 已经在讲的那套长度前缀 JSON 协议，把同样一份 Java 序列化的 IR 喂给同一个引擎。 |
 | TAC 的 IR 契约要改吗？ | **不改。** IR 契约零改动：没有新 opcode，没有新类型种类，`RETURN` 不变，被调用者键契约不变。Go 是第一个**不用动 IR** 就接进引擎的语言，而这是决策的结果，不是运气。 |
 | 捕获要交出什么？ | 每个包的编译命令**以及**链接命令。链接命令的 import 配置才是"二进制里到底有哪些包"的权威说法；编译命令说的是每个包是对着什么编译的。 |
-| 真正的成本是什么？ | **sink 目录。** `sink-families.yaml` 有 82 个 family，其中 38 个按语言限定，而**没有一个**限定到 Go。Go 不共享 JVM 的标准库，所以 Go 的目录是一份新的工作量，不是一次移植。 |
+| 真正的成本是什么？ | **sink 目录。** `sink-families.yaml` 有 81 个 family，其中 38 个按语言限定，而**没有一个**限定到 Go。Go 不共享 JVM 的标准库，所以 Go 的目录是一份新的工作量，不是一次移植。 |
 
 最后一行决定了 Go 到底能不能出 finding，而它与 C# 目录是同一个形状的问题
 （[CSHARP-FRONTEND-ANALYSIS.md](CSHARP-FRONTEND-ANALYSIS.md)）。
@@ -388,7 +388,7 @@ sidecar 会在不同时刻各自漂移。
 
 ## 6. 本文不主张什么
 
-- **不主张 Go 的规则覆盖度。** `sink-families.yaml` 有 82 个 family，其中 38 个按语言
+- **不主张 Go 的规则覆盖度。** `sink-families.yaml` 有 81 个 family，其中 38 个按语言
   限定，没有一个限定到 Go。Go 的目录是这份计划里最大的一块工作量，而且还没开始。
 - **不主张多结果模型是完备的。** 它覆盖 `(T, error)` 与被丢弃的结果。返回两个都有意义
   的结果的函数会被降级，并且被报出来。
@@ -411,7 +411,7 @@ sidecar 会在不同时刻各自漂移。
 | 被调用者键是 `owner.method/arity` | `plumb-tac/.../ir/CalleeKeyNormalizer.java:45` |
 | `SourceLanguage` 按名字序列化 | `plumb-tac/.../ir/SourceLanguage.java:24-25` |
 | 四个语言注册了语义 | `plumb-dfa/.../semantics/LanguageSemanticsRegistry.java:77` |
-| 82 个 family，38 个按语言限定，0 个属于 Go | `plumb-dfa/src/main/resources/sink-families.yaml` |
+| 81 个 family，38 个按语言限定，0 个属于 Go | `plumb-dfa/src/main/resources/sink-families.yaml` |
 | 引擎只在 `CALL` 与 `UNINTERPRETED` 上查 sink | `plumb-dfa/.../taint/TaintedCheckerBase.java:1130`、`:1194` |
 | 线格式没有版本字段 | `plumb-frontend/.../csharp/CSharpTacFrontend.java:319-327`、`:533-566` |
 | C# 路线，以及目录的成本 | [CSHARP-FRONTEND-ANALYSIS.md](CSHARP-FRONTEND-ANALYSIS.md) |

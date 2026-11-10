@@ -57,7 +57,7 @@ speed. See
 | **AST checker (`plumb-style`)** | 601 | Rule classes, looking at AST shapes |
 | **Registered in `CheckerCategories`** | 599 | The subset of those that is registered into the rule table |
 | **DFA checker (registered)** | 91 | The ones the engine actually assembles; they involve data flow / cross-function analysis |
-| **Of those, `extends TaintedCheckerBase`** | 69 | Inherit the common taint-propagation base class |
+| **Of those, `extends TaintedCheckerBase`** | 70 | Inherit the common taint-propagation base class |
 | **Fact kinds** | 27 | 15 built-in + 12 from `fact-kinds.yaml` |
 
 **The division of labour**: a rule that depends only on the AST shape belongs in
@@ -79,7 +79,7 @@ The complete classification of the DFA checkers is in
 | DFA checker (registered) | 91 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | 12 | `TaintRuleRegistry` |
 | Taint source family / patterns | 6 / 214 | The `taint.sources.*` of `sink-families.yaml` |
-| Taint sink family / patterns | 76 / 4121 | The `*.sinks` of `sink-families.yaml` |
+| Taint sink family / patterns | 75 / 4111 | The `*.sinks` of `sink-families.yaml` |
 | Input source patterns (framework entry points) | 65 | `InputSourcePatterns` |
 | Fact kinds | 27 | Built-in + YAML |
 

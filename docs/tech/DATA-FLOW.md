@@ -142,7 +142,7 @@ their own independent mechanisms (see below).
 **Driver class**: `taint/TaintedCheckerBase.java` (note that it lives in the `dfa/taint/` package, not in
 `dfa/checkers/taint/`). It **is both the abstract base class and the propagation engine** — which differs from the
 "a subclass needs only a few lines" impression the documentation gives: the concrete subclasses under
-`checkers/taint/` override `checkInstruction` in bulk (there are 69 `extends TaintedCheckerBase` in the whole
+`checkers/taint/` override `checkInstruction` in bulk (there are 70 `extends TaintedCheckerBase` in the whole
 repository, the other two being `BoundaryConstraintChecker` and the base class itself).
 
 - State: `taintedVars: Map<TacVar, String>` (`:263`) and `taintPaths` (`:272`)

@@ -16,9 +16,9 @@
 |---|---|
 | Q1. Java/Kotlin/Scala 前端丢了什么，有影响吗？ | Java 静默丢 2 个构造。Kotlin 丢 7 个，全部有报告。Scala 丢 11 个，全部有报告 —— **另外还有 40 个标准库操作没有产生可用的调用：其中 31 个被报告了但理由是错的，9 个则悄无声息地消失了**。 |
 | Q2. 两个参考实现的 DFA 有哪些可借鉴，是否已经实现？ | 6 条思路，其中 **4 条已经实现**。没实现的 2 条列在下面。 |
-| Q3. 对照参考目录，差距在哪？ | **它们的 28 个 JVM 缺陷类别，这里全部有对应的 family。** 差距不在广度 —— 而在于 **29 个 family 根本没有任何 watcher**，其中 12 个来自规则包迁移。 |
+| Q3. 对照参考目录，差距在哪？ | **它们的 28 个 JVM 缺陷类别，这里全部有对应的 family。** 差距不在广度 —— 而在于 **19 个 family 根本没有任何 watcher**，其中 12 个来自规则包迁移。 |
 
-最后一行才是关键。目录看起来是完整的：81 个 family、成千上万个 pattern、每个都有 CWE。其中 29 个却永远不可能产生 finding —— 因为 family 是 *pattern 集合*，而真正去看它的是 **checker**。来自迁移的那 12 个现在各有 watcher，并且端到端验证了其中一个会触发。
+最后一行才是关键。目录看起来是完整的：81 个 family、成千上万个 pattern、每个都有 CWE。其中 19 个却永远不可能产生 finding —— 因为 family 是 *pattern 集合*，而真正去看它的是 **checker**。来自迁移的那 12 个现在各有 watcher，并且端到端验证了其中一个会触发。
 
 ---
 
@@ -197,16 +197,17 @@ finding？
 方法是机械的：
 
 1. 取 `sink-families.yaml` 里的每个 family key（81 个）。
-2. 取每个 checker 的 rule 命名的 family，加上每个专用 checker 命名的 family（52 个）。
-3. 差集（29 个）就是不可达集合。
-4. 确认它：在目录之外，对这 29 个 key 各自全树搜索。
+2. 取每个专用 checker 命名的 family（62 个），加上每个**源** family —— `SourceFamilyMatcher`
+   用目录自己的 pattern 读它们（11 个）。合起来就是被看着的那一组（62 个）。
+3. 差集（19 个）就是不可达集合。
+4. 确认它：在目录之外，对这 19 个 key 各自全树搜索。
 
-第 4 步对全部 29 个都返回空。它们全是**死配置**：真实的 pattern、真实的 CWE，以及一条都触发
+第 4 步对全部 19 个都返回空。它们全是**死配置**：真实的 pattern、真实的 CWE，以及一条都触发
 不了的路。
 
 ### 3.2 来自规则包迁移的那部分
 
-29 个里有 **12 个来自规则包迁移**。它们的 pattern 是从真实规则包转换来的，所以符号是真的、CWE
+在补上那十二个 checker 之前不可达的那些 family 里，**12 个来自规则包迁移**。它们的 pattern 是从真实规则包转换来的，所以符号是真的、CWE
 也是真的 —— 但每个 family 该有的 checker 从来没被写出来。迁移搬走了 *pattern*，忘了 *rule*。
 
 | Family | CWE | Watcher（现在） |
@@ -224,7 +225,7 @@ finding？
 | `resource-injection.sinks` | 94/95/99/502 | `ResourceInjectionChecker` |
 | `setting-manipulation.sinks` | 15 | `SettingManipulationChecker` |
 
-**剩下 17 个不是迁移欠债。** 它们在迁移之前就已经是死的，而且属于另一种工作：其中几个命名了
+**剩下的这些不是迁移欠债。** 它们在迁移之前就已经是死的，而且属于另一种工作：其中几个命名了
 已经不存在的 API（`atg.*`、`flex.*`、`oracle.jbo.*` —— 一些在这里分析的代码的 classpath 上根本
 没有的厂商产品），另外几个和已经有 watcher 的 family 重叠。它们列在 §3.4。
 
@@ -245,7 +246,7 @@ finding？
 
 | 项目 | 状态 | 说明 |
 |---|---|---|
-| 17 个没有 watcher 的 family | **开着** | 早于迁移。其中九个和已有 watcher 的 family 重叠；其余命名的是这里分析的项目并不依赖的库。每个都需要一个决定：写 watcher、合并进已有 watcher 的 family，或者删掉。 |
+| 19 个没有 watcher 的 family | **开着** | 早于迁移。其中九个和已有 watcher 的 family 重叠；其余命名的是这里分析的项目并不依赖的库。每个都需要一个决定：写 watcher、合并进已有 watcher 的 family，或者删掉。 |
 | `context_depth` 作为真正的 k-CFA | **开着** | 设置已被消费（0 关闭折叠），但它不是 k-CFA。调用串投影是 1-CFA，是另一套机制；见 §2.2。 |
 | 路径敏感可达性 | **部分** | 算术矛盾判定已有；通用的路径条件还没有。 |
 | 对象敏感分析 | **已完成** | points-to 传播现在既有生产者也有消费者：引擎把被调方的分配点挂到摘要上，调用方的接收者继承它们。同一类的两个实例可以区分开了。 |
@@ -256,10 +257,22 @@ finding？
 （`LanguageSemanticsRegistry.java:79-82`），而且没有注册表的语言拿到的是一张空表而不是 null ——
 所以这四种语言之间的差别是表的大小不同，而不是「这个语言到底被理解没有」不同。
 
-### 3.5 那 17 个没有 watcher 的 family，分类之后
+### 3.5 那 19 个没有 watcher 的 family，分类之后
 
-这个数字可以精确复现：目录里有 82 个 family key，被 checker 或规则点名 53 个，没 watcher 的
-29 个，其中迁移来的 12 个现在都有了 watcher —— 于是剩下 **17**。
+这个数字可以精确复现：目录里有 81 个 family key，被 checker 或规则点名 62 个（其中 11 个是源 family，由 \SourceFamilyMatcher\ 读），没 watcher 的
+19 个，其中没有一个是源 family —— 十一个源 family 由 `SourceFamilyMatcher` 看着（§3.6）。
+
+**是什么改变了这次度量。** 这个数字以前是 17，而它错在**把洞藏起来**的方向上。门禁把
+「族名在 main 的 Java 源码里作为字符串字面量出现过」当作「有人看着」，而
+`TaintRuleRegistry` 点名了三个族（`ssrf.sinks`、`xxe.sinks`、`weak-crypto.sinks`）——
+**引擎从不读那张表**。只有那张表点名的族，事实上就是没人看。现在门禁只数真正会跑的 checker
+和源匹配器。
+
+**SSRF 这一类现在有 checker 了。** `ssrf.sinks` 带着上百条 pattern —— 每一条是一个让服务端
+对外发请求的 API —— 却没有任何 checker 点名它，于是污点 URL 到了任何一条那里都不报。
+`SsrfChecker` 现在看着它。同时这个 family 也被整理过：往流里写是日志写，带格式的写是格式
+串，Kotlin 读文件给的是路径，URL 变成进程是命令，交给解析器的 XML 文档是 XXE，Netscape
+那套 LDAP 调用说的是目录服务。它们过去都被报成 SSRF —— 那是错的编号 —— 现在各归各家。
 
 要紧的是它们**不是同一种东西**，而之前把它们描述成「几个命名了已不存在的 API」在要紧的
 地方是错的：它提到的那些 API 名（`atg.*`、`flex.*`、`oracle.jbo.*`）在本仓库里**哪里都不存在**
@@ -267,10 +280,10 @@ finding？
 
 | 类别 | 数量 | 是什么 |
 |---|---:|---|
-| 和已有 watcher 的 family 重叠 | 9 | `format.sinks` 与 `format-string.sinks` 重复；`cookie-write.sinks` 与 `cookie.sinks` 重复；`http-header-write.sinks` 与 `header.sinks` 重复；`redirect.sinks` 与 `open-redirect.sinks` 重复；`sensitive-log.sinks` 和 `db-credential.sinks` 与 `credential.sinks` 重复；`predictable-seed.sinks` 与 `insecure-random.sinks` 重复；`url.sinks` 和 `sensitive-url.sinks` 与 `ssrf.sinks` 重复。 |
+| 和已有 watcher 的 family 重叠 | 8 | `format.sinks` 与 `format-string.sinks` 重复；`cookie-write.sinks` 与 `cookie.sinks` 重复；`http-header-write.sinks` 与 `header.sinks` 重复；`redirect.sinks` 与 `open-redirect.sinks` 重复；`sensitive-log.sinks` 和 `db-credential.sinks` 与 `credential.sinks` 重复；`predictable-seed.sinks` 与 `insecure-random.sinks` 重复；`sensitive-url.sinks` 与 `ssrf.sinks` 重复。 |
 | 真实且独立的缺陷类别 | 5 | `cors.sinks`（CWE-942）、`unencrypted-credential.sinks`（CWE-311）与 `oauth-credential.sinks`（CWE-798）—— 同样的 API，但 **CWE 不同**，所以彼此不是重复；`registry.sinks`（CWE-15）；`android-clipboard.sinks`（CWE-200）。 |
-| 污点**源** family | 8 | `taint.sources.*` 之类。它们的消费者是 `InputSourcePatterns`，而它的 `DEFAULT_PATTERNS` 是一份**硬编码清单**（`InputSourcePatterns.java:62`），从不读目录 —— 所以目录里的源条目在结构上是死的。 |
-| 命名了这里没有依赖的库 | 其余 | `org.glassfish.jersey.*`、`software.amazon.awssdk.*`、`android.*`、`org.apache.dubbo.*`、`org.jclouds.*`、`play.mvc.*` —— 在任何被跟踪的 `pom.xml` 里都不出现。 |
+| 还差一个 checker 的缺陷类别 | 2 | `xxe.sinks`（CWE-611）与 `weak-crypto.sinks`（CWE-261/326）：整类都进了目录，却没有任何 checker 看着它。 |
+| 命名了这里没有依赖的库 | 4 | `android-implicit-intent.sinks`、`console.sinks`、`generic.sinks`、`kms-plaintext.sinks` —— `android.*`、`org.jclouds.*`、`software.amazon.awssdk.*`：在任何被跟踪的 `pom.xml` 里都不出现。 |
 
 **为什么「源 family」这一类才是要紧的。** 一个因为与已有 family 重叠而没有 watcher 的 family
 并不损失什么：那个 watcher 会开火。一个因为库不存在而没有 watcher 的 family 也不损失什么：

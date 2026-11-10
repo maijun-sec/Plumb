@@ -68,23 +68,6 @@
 # library, so the wrapper has to be named on its own.
 
 families:
-  url.sinks:
-    cwe: CWE-918
-    severity: HIGH
-    languages: ['java', 'kotlin', 'scala', 'go']
-    patterns:
-      - '^java\.net\.URL\.<init>(/\d+)?'
-      - '^java\.net\.URL\.openStream(/\d+)?'
-      - '^java\.net\.URL\.openConnection(/\d+)?'
-      - '^java\.net\.URLConnection\.getInputStream(/\d+)?'
-      - '^java\.net\.HttpURLConnection\.<init>(/\d+)?'
-      - '^java\.net\.URLConnection\.connect(/\d+)?'
-      - '^org\.apache\.http\.client\.HttpClient\.execute(/\d+)?'
-      - '^org\.apache\.http\.impl\.client\.HttpClients\.createDefault/0'
-    by_language:
-      go:
-        - pattern: '^net/url\.Parse(/\d+)?'
-          arg_index: 0
   sensitive.exfil.sinks:
     cwe: CWE-200
     severity: HIGH
@@ -148,6 +131,8 @@ families:
       - '^java\.lang\.System\.err\.printf(/\d+)?'
       - '^java\.lang\.System\.format(/\d+)?'
       - '^java\.lang\.System\.printf(/\d+)?'
+      - pattern: '^(java\.io\.Writer|java\.io\.OutputStream)\.(printf|format)(/\d+)?'
+        arg_index: [-2, 0, 1]
 
     by_language:
       go:
@@ -188,6 +173,8 @@ families:
       - pattern: '^org\.slf4j\.Logger\.trace(/\d+)?'
       - pattern: '^java\.lang\.System\.Logger\.log(/\d+)?'
         arg_index: 1
+      - pattern: '^(java\.io\.Writer|java\.io\.OutputStream)\.(println|write.*)(/\d+)?'
+        arg_index: [-2, 0]
     by_language:
       go:
         - pattern: '^log\.Print(/\d+)?'
@@ -993,6 +980,8 @@ families:
         - pattern: '^scala\.sys\.process\.ProcessBuilder\.(@bang|!!|lineStream_!|run|!\<|!!\<)(/\d+)?'
           arg_index: -2
         - '^scala\.sys\.process\.ProcessBuilder\.\#(\#\#|&&|\||\|\|)(/\d+)?'
+        - pattern: '^(scala\.sys\.process\.ProcessImplicits|scala\.sys\.process\.package)\.urlToProcess(/\d+)?'
+          arg_index: 2
       typescript,javascript,arkts:
         # Node's child_process. The owner of a module-level function is the
         # MODULE it was imported from, so the pattern names the module and not
@@ -2843,6 +2832,10 @@ families:
           arg_index: 0
         - pattern: '^kotlin\.io\.(resolveSibling|resolve)(/\d+)?'
           arg_index: 1
+        - pattern: '^kotlin\.io\.read(Bytes|Text)(/\d+)?'
+          arg_index: 0
+        - pattern: '^kotlin\.io\.copyTo(/\d+)?'
+          arg_index: [0, 1]
       scala:
         - pattern: '^scala\.reflect\.io\.Path\.(apply|makeTemp)(/\d+)?'
           arg_index: 0
@@ -3504,6 +3497,30 @@ families:
       - '^javax\.naming\.InitialContext\.lookup(/\d+)?'
       - '^org\.springframework\.ldap\.core\.LdapTemplate\.search(/\d+)?'
       - '^org\.springframework\.ldap\.core\.LdapTemplate\.find(/\d+)?'
+      - pattern: '^netscape\.ldap\.util\.ConnectionPool\.\<init\>(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^netscape\.ldap\.beans\.LDAPSimpleAuth\.\<init\>(/\d+)?'
+        arg_index: 0
+      - pattern: '^netscape\.ldap\.beans\.LDAPIsMember\.(\<init\>|isMember)(/\d+)?'
+        arg_index: 0
+      - pattern: '^netscape\.ldap\.beans\.LDAPGetProperty\.(\<init\>|getProperty)(/\d+)?'
+        arg_index: 0
+      - pattern: '^netscape\.ldap\.beans\.LDAPGetEntries\.(\<init\>|getEntries)(/\d+)?'
+        arg_index: 0
+      - pattern: '^netscape\.ldap\.beans\.LDAPBasePropertySupport\.connect(/\d+)?'
+        arg_index: 1
+      - pattern: '^netscape\.ldap\.factory\.JSSSocketFactory\.makeSocket(/\d+)?'
+        arg_index: 0
+      - pattern: '^netscape\.ldap\.LDAPRebind\.getRebindAuthentication(/\d+)?'
+        arg_index: 0
+      - pattern: '^netscape\.ldap\.LDAPConnection\.connect(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^netscape\.ldap\.LDAPv3\.connect(/\d+)?'
+        arg_index: 1
+      - pattern: '^netscape\.ldap\.LDAPv2\.connect(/\d+)?'
+        arg_index: 0
+      - pattern: '^netscape\.ldap\.LDAPSocketFactory\.makeSocket(/\d+)?'
+        arg_index: 0
     by_language:
       csharp:
         - pattern: '^System\.DirectoryServices\.DirectorySearcher\.set_Filter(/\d+)?'
@@ -6843,10 +6860,6 @@ families:
     patterns:
       - pattern: '^java\.net\.SocketAddress\.\<init\>(/\d+)?'
         arg_index: 0
-      - pattern: '^(java\.io\.Writer|java\.io\.OutputStream)\.(println|write.*)(/\d+)?'
-        arg_index: [-2, 0]
-      - pattern: '^(java\.io\.Writer|java\.io\.OutputStream)\.(printf|format)(/\d+)?'
-        arg_index: [-2, 0, 1]
       - pattern: '^javax\.net\.SocketFactory\.createSocket(/\d+)?'
         arg_index: 0
       - pattern: '^java\.net\.URL\.(openConnection|openStream|getContent)(/\d+)?'
@@ -6888,30 +6901,6 @@ families:
       - pattern: '^org\.restlet(\.client)?\.resource\.ClientResource\.(\<init\>|addSegment|setReference)(/\d+)?'
         arg_index: 0
       - pattern: '^org\.restlet(\.client)?\.resource\.ClientResource\.(put|post)(/\d+)?'
-        arg_index: 0
-      - pattern: '^netscape\.ldap\.util\.ConnectionPool\.\<init\>(/\d+)?'
-        arg_index: [0, 1]
-      - pattern: '^netscape\.ldap\.beans\.LDAPSimpleAuth\.\<init\>(/\d+)?'
-        arg_index: 0
-      - pattern: '^netscape\.ldap\.beans\.LDAPIsMember\.(\<init\>|isMember)(/\d+)?'
-        arg_index: 0
-      - pattern: '^netscape\.ldap\.beans\.LDAPGetProperty\.(\<init\>|getProperty)(/\d+)?'
-        arg_index: 0
-      - pattern: '^netscape\.ldap\.beans\.LDAPGetEntries\.(\<init\>|getEntries)(/\d+)?'
-        arg_index: 0
-      - pattern: '^netscape\.ldap\.beans\.LDAPBasePropertySupport\.connect(/\d+)?'
-        arg_index: 1
-      - pattern: '^netscape\.ldap\.factory\.JSSSocketFactory\.makeSocket(/\d+)?'
-        arg_index: 0
-      - pattern: '^netscape\.ldap\.LDAPRebind\.getRebindAuthentication(/\d+)?'
-        arg_index: 0
-      - pattern: '^netscape\.ldap\.LDAPConnection\.connect(/\d+)?'
-        arg_index: [0, 1]
-      - pattern: '^netscape\.ldap\.LDAPv3\.connect(/\d+)?'
-        arg_index: 1
-      - pattern: '^netscape\.ldap\.LDAPv2\.connect(/\d+)?'
-        arg_index: 0
-      - pattern: '^netscape\.ldap\.LDAPSocketFactory\.makeSocket(/\d+)?'
         arg_index: 0
       - pattern: '^com\.sun\.jersey\.api\.client\.(Async)?(Web|View)Resource(\$Builder)?\.(delete|post|put)(/\d+)?'
         arg_index: 1
@@ -6955,8 +6944,6 @@ families:
         arg_index: 0
       - pattern: '^org\.apache\.commons\.httpclient\.HttpMethodBase\.(setURI|setPath)(/\d+)?'
         arg_index: 0
-      - pattern: '^org\.apache\.commons\.digester\.Digester\.parse(/\d+)?'
-        arg_index: 0
       - pattern: '^org\.apache\.axis2\.client\.ServiceClient\.\<init\>(/\d+)?'
         arg_index: 1
       - pattern: '^org\.apache\.axis2\.addressing\.EndpointReference\.(\<init\>|setAddress)(/\d+)?'
@@ -6973,14 +6960,18 @@ families:
         arg_index: 0
       - pattern: '^org\.apache\.ibatis\.io\.Resources\.getUrlAs.*(/\d+)?'
         arg_index: 0
-      - pattern: '^com\.google\.gwt\.user\.server\.rpc\.RemoteServiceServlet\.getSerializationPolicy(/\d+)?'
+      - pattern: '^java\.net\.URL\.<init>(/\d+)?'
         arg_index: 0
-      - pattern: '^com\.google\.gwt\.user\.server\.rpc\.RemoteServiceServlet\.doGetSerializationPolicy(/\d+)?'
-        arg_index: [1, 2]
+      - pattern: '^java\.net\.URLConnection\.getInputStream(/\d+)?'
+        arg_index: -2
+      - pattern: '^java\.net\.HttpURLConnection\.<init>(/\d+)?'
+        arg_index: 0
+      - pattern: '^java\.net\.URLConnection\.connect(/\d+)?'
+        arg_index: -2
+      - pattern: '^org\.apache\.http\.client\.HttpClient\.execute(/\d+)?'
+        arg_index: 0
     by_language:
       csharp:
-        - pattern: '^System\.IO\.Stream\.(BeginWriteAsync|CopyToAsync|WriteByte)(/\d+)?'
-          arg_index: 0
         - pattern: '^System\.Net\.Sockets\.TcpClient\.(\<init\>|BeginConnectAsync|BeginConnect)(/\d+)?'
           arg_index: 0
         - pattern: '^System\.Net\.Sockets\.SocketAsyncEventArgs\.set_RemoteEndPoint(/\d+)?'
@@ -7003,8 +6994,6 @@ families:
           arg_index: 1
         - pattern: '^(System\.Net\.WebRequest|System\.MarshalByRefObject)\.(set_RequestUri|set_Method|Create(.*))(/\d+)?'
           arg_index: 0
-        - pattern: '^System\.IO\.Ports\.SerialPort\.Open(/\d+)?'
-          arg_index: -2
         - pattern: '^System\.DirectoryServices\.Protocols\.(Ldap|DsmlSoapHttp)Connection\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^System\.DirectoryServices\.AccountManagement\.PrincipalContext\.\<init\>(/\d+)?'
@@ -7056,20 +7045,10 @@ families:
           arg_index: 2
         - pattern: '^crypto/tls\.Dialer\.Dial(/\d+)?'
           arg_index: 1
-        - pattern: '^crypto/tls\.Listen(/\d+)?'
-          arg_index: 1
-        - pattern: '^crypto/tls\.NewListener(/\d+)?'
-          arg_index: 0
       kotlin:
-        - pattern: '^kotlin\.io\.read(Bytes|Text)(/\d+)?'
-          arg_index: 0
-        - pattern: '^kotlin\.io\.copyTo(/\d+)?'
-          arg_index: [0, 1]
       scala:
         - pattern: '^(play\.api\.libs\.ws\.WSClient|play\.api\.libs\.ws\.StandaloneWSClient)\.url(/\d+)?'
           arg_index: 0
-        - pattern: '^(scala\.sys\.process\.ProcessImplicits|scala\.sys\.process\.package)\.urlToProcess(/\d+)?'
-          arg_index: 2
         - pattern: '^akka\.http\.(java|scala)dsl\.model\.headers\.Raw-Request-URI\.\<init\>(/\d+)?'
           arg_index: 0
         - pattern: '^akka\.http\.(java|scala)dsl\.model\.HttpRequest\.(\<init\>|apply)(/\d+)?'
@@ -8848,6 +8827,8 @@ families:
         arg_index: 0
       - pattern: '^org\.apache\.xerces\.framework\.XMLParser\.parse.*(/\d+)?'
         arg_index: [-2, 0]
+      - pattern: '^org\.apache\.commons\.digester\.Digester\.parse(/\d+)?'
+        arg_index: 0
     by_language:
       csharp:
         - pattern: '^System\.Xml\.XmlReaderSettings\.set_XmlResolver(/\d+)?'
