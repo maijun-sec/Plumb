@@ -1,16 +1,7 @@
-- **A return value passed to an UNKNOWN callee is not reported.** `report(f.delete())` is not
-  reported, because the outer call may well use the value — and a call whose own result is unused
-  cannot be shown to ignore its arguments. Only the callees that provably ignore their arguments
-  (`println`, `print`, `log`, `trace`, `debug`, `info`, `warn`, `error`, `fatal`) count as
-  discarding.
-- **The read analysis is method-wide, not flow-sensitive.** A local read on ONE path counts as
-  observed everywhere. `boolean ok = f.delete(); if (x) { use(ok); }` is therefore not reported,
-  even though `ok` is unobserved when `x` is false.
-- **A call nested inside a larger expression is not the discard shape.** `boolean ok = !f.delete();`
-  assigns a negated value, and the rule does not claim to understand it. Only a DIRECT
-  initializer and a DIRECT argument position are recognised.
-- **The must-check list is a method-NAME list.** A call whose name is not on the list is not
-  reported, whatever its receiver's type. A third-party method that returns a success flag under a
-  different name is missed.
-- **CWE-703 is not covered here.** A void method that throws and whose exception is not handled is
-  a different rule.
+- **A return value passed to a callee the RESOLVER cannot reach is not reported.** The callee's body decides, so the body has to be there. A method of the analysed source is reachable; a method of the JDK, of a jar, or behind an unresolved receiver is not, and there the callee's NAME is the only fact there is. `report(f.delete())` is reported when `report` is the project's own method, and is not reported when `report` comes from a library.
+- **A callee whose parameter is unused in ITS OWN body counts as ignoring it.** The body is the fact the rule reads, and a body that never touches the parameter says the value is dropped. An OVERRIDE that uses the parameter is a different body, and the rule does not look at the override: the call has to be resolved to the overriding method for the value to count as used.
+- **A value stored in a FIELD is not reported.** The holder has to be a local: whether a field is read afterwards is a question about the whole program, and this rule answers questions about one method.
+- **The read analysis is method-wide, not flow-sensitive.** A local read on ONE path counts as observed everywhere. `boolean ok = f.delete(); if (x) { use(ok); }` is therefore not reported, even though `ok` is unobserved when `x` is false.
+- **A call inside a COMBINING expression is not the discard shape.** A value-preserving wrapper is recognised -- `!f.delete()` and `(f.delete())` hold the value -- but a call inside a binary expression is not: `boolean ok = f.delete() && other;` assigns a combined value, and the rule does not claim to understand it.
+- **The must-check list is a method-NAME list.** A call whose name is not on the list is not reported, whatever its receiver's type. A third-party method that returns a success flag under a different name is missed.
+- **CWE-703 is not covered here.** A void method that throws and whose exception is not handled is a different rule.

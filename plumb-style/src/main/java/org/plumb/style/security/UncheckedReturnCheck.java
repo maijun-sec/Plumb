@@ -63,6 +63,25 @@
  * type cannot be resolved, the call is treated as having a return value:
  * an unresolved type is a missing fact, never a proof of safety.
  *
+ * <p><b>Who decides whether an ARGUMENT is dropped.</b> The callee's BODY
+ * decides, and the callee's name is only the fallback. When the resolver
+ * can reach the callee's declaration -- a method of the analysed source --
+ * the declaration says whether the parameter is read at all, and whether
+ * every read merely forwards it to a call that ignores its arguments. So:
+ *
+ * <pre>
+ *   private void log(boolean deleted) { System.out.println(deleted); }
+ *       // forwards it and nothing else -> the value is dropped
+ *   private void log(boolean deleted) { if (!deleted) throw new IllegalStateException(); }
+ *       // ACTS on it -> the value is observed, and reporting it is a false positive
+ * </pre>
+ *
+ * <p>The name lists cannot tell those two apart: both callees are called
+ * {@code log}. The body can, so the body wins. The name lists are what is
+ * left for a callee the resolver cannot reach -- a JDK method, a jar, a
+ * receiver it cannot resolve -- and there the name is the only fact there
+ * is.
+ *
  * <p><b>Void methods are a DIFFERENT CWE.</b> A void method reports
  * failure by THROWING, not by returning a flag: {@code InputStream.close()},
  * {@code Connection.commit()}, {@code Writer.flush()} and
@@ -73,15 +92,22 @@
  */
 package org.plumb.style.security;
 
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.VariableDeclarator;
+import com.github.javaparser.ast.expr.AssignExpr;
+import com.github.javaparser.ast.expr.EnclosedExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
-import com.github.javaparser.ast.expr.VariableDeclarationExpr;
+import com.github.javaparser.ast.expr.UnaryExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
+import com.github.javaparser.resolution.declarations.ResolvedFieldDeclaration;
 import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
+import com.github.javaparser.resolution.declarations.ResolvedValueDeclaration;
 import com.github.javaparser.resolution.types.ResolvedType;
+import com.github.javaparser.symbolsolver.javaparsermodel.declarations.JavaParserMethodDeclaration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -146,9 +172,10 @@ public final class UncheckedReturnCheck implements AstChecker {
    * on neither the value nor its own return value. So {@code log(f.delete())} discards the
    * deletion's success flag just as surely as {@code f.delete();} does.
    *
-   * <p>This is the inverse of the "argument position" case: {@code String.valueOf(f.delete())} USES
-   * the value, because the string it returns depends on it. The rule therefore only treats an
-   * argument as discarded when the enclosing call is one of these.
+   * <p>This is the FALLBACK for a callee the resolver cannot reach. When the callee IS the analysed
+   * source, its body says what happens to the parameter, and the body wins -- a callee named {@code
+   * log} that throws when the value is false acts on the value, and reporting that would be a false
+   * positive.
    */
   private static final Set<String> IGNORES_ARGUMENTS =
       Set.of(
@@ -234,7 +261,7 @@ public final class UncheckedReturnCheck implements AstChecker {
         // check. `void close()` is not an unchecked return.
         continue;
       }
-      if (!isDiscarded(call, body, readLocals, ctx)) {
+      if (!isDiscarded(call, readLocals)) {
         continue;
       }
       report(call, ctx);
@@ -283,86 +310,220 @@ public final class UncheckedReturnCheck implements AstChecker {
    * <ol>
    *   <li>the call is the whole expression of an expression statement;
    *   <li>the call's value is stored in a local that is never read;
-   *   <li>the call is an argument to a call that ignores its arguments.
+   *   <li>the call is an argument to a call that ignores it.
    * </ol>
    *
    * <p>Everything else observes the value: an {@code if} condition, a {@code return}, an assignment
    * that is read later, or an argument to a call that uses it.
+   *
+   * @param call the call whose value is in question
+   * @param readLocals the names of the locals that are read somewhere in the method
    */
-  private boolean isDiscarded(
-      MethodCallExpr call, BlockStmt body, Set<String> readLocals, StyleContext ctx) {
+  private boolean isDiscarded(MethodCallExpr call, Set<String> readLocals) {
+    // The value's holder. A wrapper does not change WHAT the value is, only
+    // how it is spelled: `!f.delete()` and `(f.delete())` carry the same
+    // value, and the same holder decides whether it is observed.
+    Node value = call;
+    Node parent = value.getParentNode().orElse(null);
+    while (parent instanceof EnclosedExpr || parent instanceof UnaryExpr) {
+      value = parent;
+      parent = value.getParentNode().orElse(null);
+    }
+
     // (1) The bare statement shape. The call's value is the statement's
     // value, and an expression statement drops it.
-    if (call.getParentNode().orElse(null) instanceof ExpressionStmt) {
+    if (parent instanceof ExpressionStmt) {
       return true;
     }
 
-    // (2) The assigned-but-never-read shape.
-    VariableDeclarationExpr assigned = assignedVariable(call);
-    if (assigned != null) {
-      for (com.github.javaparser.ast.body.VariableDeclarator declarator : assigned.getVariables()) {
-        if (!readLocals.contains(declarator.getNameAsString())) {
-          return true;
-        }
-      }
-      return false;
+    // (2) The stored-but-never-read shape.
+    String holder = receivingLocalName(parent);
+    if (holder != null) {
+      return !readLocals.contains(holder);
     }
 
     // (3) The argument shape. The value is discarded only when the
-    // enclosing call ignores its arguments.
-    MethodCallExpr enclosing = enclosingCall(call);
-    if (enclosing != null) {
-      String callee = enclosing.getNameAsString();
-      if (IGNORES_ARGUMENTS.contains(callee)) {
-        return true;
-      }
-      if (USES_ARGUMENTS.contains(callee)) {
-        return false;
-      }
-      // An unknown callee: it may well use the argument. The value is
-      // NOT discarded unless the enclosing call's own result is known
-      // not to depend on it -- and a call whose result is unused cannot
-      // be shown to ignore its arguments.
-      return false;
+    // enclosing call ignores it.
+    if (parent instanceof MethodCallExpr enclosing && enclosing.getArguments().contains(value)) {
+      return enclosingIgnoresArgument(value, enclosing);
     }
 
     return false;
   }
 
   /**
-   * The variable declaration whose initializer is {@code call}, or {@code null}.
+   * The name of the LOCAL variable that receives the value, or {@code null}.
    *
-   * <p>Only a DIRECT initializer counts. A call nested inside a larger initializer ({@code boolean
-   * ok = !f.delete();}) is not a plain store, and the rule does not claim to understand it.
+   * <p>Two ways to receive it: a declaration ({@code boolean ok = f.delete();}) and a plain
+   * assignment to a local ({@code ok = f.delete();}). A compound assignment ({@code ok += ...})
+   * READS its target as well, so the value is used there and this returns {@code null}.
+   *
+   * <p>A name on the left of an assignment is a local only when it resolves to one. The same
+   * spelling is a FIELD when the assignment writes a field, and the rule does not claim to know
+   * whether a field is read afterwards.
    */
-  private VariableDeclarationExpr assignedVariable(MethodCallExpr call) {
-    com.github.javaparser.ast.Node parent = call.getParentNode().orElse(null);
-    if (parent instanceof VariableDeclarator) {
-      com.github.javaparser.ast.Node grand = parent.getParentNode().orElse(null);
-      if (grand instanceof VariableDeclarationExpr) {
-        return (VariableDeclarationExpr) grand;
-      }
+  private String receivingLocalName(Node parent) {
+    if (parent instanceof VariableDeclarator declarator
+        && declarator.getParentNode().orElse(null)
+            instanceof com.github.javaparser.ast.expr.VariableDeclarationExpr) {
+      // A LOCAL declaration. A field's declarator hangs off a
+      // FieldDeclaration, and a field is not a local: whether it is read
+      // afterwards is a question about the whole program, not about this
+      // method.
+      return declarator.getNameAsString();
+    }
+    if (parent instanceof AssignExpr assign
+        && assign.getOperator() == AssignExpr.Operator.ASSIGN
+        && assign.getTarget() instanceof NameExpr target
+        && isLocalVariable(target)) {
+      return target.getNameAsString();
     }
     return null;
   }
 
   /**
-   * The call that {@code call} is an argument of, or {@code null}.
+   * Whether {@code name} is a local variable rather than a field.
    *
-   * <p>Only a DIRECT argument counts. A call nested deeper (inside a lambda, for instance) is not a
-   * plain argument position, and the rule does not claim to understand it.
+   * <p>Both are spelled the same way at an assignment's left-hand side, so the resolver is what
+   * tells them apart.
    */
-  private MethodCallExpr enclosingCall(MethodCallExpr call) {
-    com.github.javaparser.ast.Node parent = call.getParentNode().orElse(null);
-    if (parent instanceof com.github.javaparser.ast.expr.MethodCallExpr) {
-      MethodCallExpr enclosing = (MethodCallExpr) parent;
-      // Only when the call really is one of the arguments -- a receiver
-      // (`getStream().close()`) is not an argument.
-      if (enclosing.getArguments().contains(call)) {
-        return enclosing;
+  private boolean isLocalVariable(NameExpr name) {
+    try {
+      ResolvedValueDeclaration decl = name.resolve();
+      if (decl == null) {
+        return false;
+      }
+      // A field is not a local. The same spelling at an assignment's
+      // left-hand side is a field when it resolves to one, and whether a
+      // field is read afterwards is a question about the whole program.
+      return !(decl instanceof ResolvedFieldDeclaration);
+    } catch (RuntimeException ex) {
+      // Unresolvable: the fact is not available, and the rule does not
+      // claim it. A field write is not a local store, and guessing
+      // otherwise would report a value that is probably observed.
+      return false;
+    }
+  }
+
+  /**
+   * Whether the enclosing call IGNORES the argument the value sits in.
+   *
+   * <p>The callee's body decides, and the callee's name is only the fallback.
+   *
+   * @param value the argument expression, possibly wrapped
+   * @param enclosing the call the value is an argument of
+   */
+  private boolean enclosingIgnoresArgument(Node value, MethodCallExpr enclosing) {
+    Boolean byBody = ignoresArgumentByBody(value, enclosing);
+    if (byBody != null) {
+      return byBody;
+    }
+    // The callee's declaration is out of reach -- a JDK method, a jar, an
+    // unresolved receiver. The name is the only fact there is.
+    String callee = enclosing.getNameAsString();
+    if (IGNORES_ARGUMENTS.contains(callee)) {
+      return true;
+    }
+    if (USES_ARGUMENTS.contains(callee)) {
+      return false;
+    }
+    // An unknown callee: it may well use the argument. The value is NOT
+    // discarded unless the enclosing call's own result is known not to
+    // depend on it -- and a call whose result is unused cannot be shown to
+    // ignore its arguments.
+    return false;
+  }
+
+  /**
+   * Whether the callee's BODY shows that it ignores the argument, or {@code null} when the body
+   * cannot be reached.
+   *
+   * <p>{@code null} means "no fact": the callee is not the analysed source, or it has no body (an
+   * abstract method, an interface method, a native method), or the resolver could not reach it. In
+   * that case the caller falls back to the name lists.
+   *
+   * <p>A parameter that is never read is ignored. A parameter whose every read merely FORWARDS it
+   * to a call that ignores its arguments is ignored too: a logger that prints the value and does
+   * nothing else drops it, exactly as the name lists say.
+   *
+   * <p>A parameter that is read anywhere else is ACTED ON: the value reaches a condition, a return,
+   * or a callee that may use it. The value is observed, and reporting it would be a false positive.
+   */
+  private Boolean ignoresArgumentByBody(Node value, MethodCallExpr enclosing) {
+    int index = enclosing.getArguments().indexOf(value);
+    if (index < 0) {
+      return null;
+    }
+    MethodDeclaration callee = sourceBodyOf(enclosing);
+    if (callee == null || callee.getBody().isEmpty()) {
+      return null;
+    }
+    List<Parameter> parameters = callee.getParameters();
+    if (index >= parameters.size()) {
+      return null;
+    }
+    String parameter = parameters.get(index).getNameAsString();
+    for (NameExpr read : callee.findAll(NameExpr.class)) {
+      if (!read.getNameAsString().equals(parameter)) {
+        continue;
+      }
+      if (isWrite(read)) {
+        continue;
+      }
+      if (!isForwardedToIgnoringCall(read)) {
+        // The value reaches a condition, a return, or a callee that may
+        // use it: the callee ACTS on it.
+        return Boolean.FALSE;
       }
     }
+    return Boolean.TRUE;
+  }
+
+  /**
+   * The callee's declaration, when it is a method of the analysed source.
+   *
+   * <p>The symbol solver hands back the AST node for a method it parsed from the project's own
+   * source, and that node carries the body. A method from the JDK or from a jar has no AST, so this
+   * returns {@code null} for it.
+   */
+  private MethodDeclaration sourceBodyOf(MethodCallExpr enclosing) {
+    try {
+      ResolvedMethodDeclaration decl = enclosing.resolve();
+      if (decl instanceof JavaParserMethodDeclaration source) {
+        return source.getWrappedNode();
+      }
+    } catch (RuntimeException ex) {
+      // Unresolvable: the fact is not available.
+    }
     return null;
+  }
+
+  /**
+   * Whether the read is a WRITE rather than a use.
+   *
+   * <p>An assignment's target is written, not read, so a parameter that is only assigned is still a
+   * parameter that is never used.
+   */
+  private boolean isWrite(NameExpr name) {
+    Node parent = name.getParentNode().orElse(null);
+    if (parent instanceof AssignExpr assign && assign.getTarget() == name) {
+      // A compound assignment READS its target as well as writing it, so
+      // only a plain assignment makes the name a pure write.
+      return assign.getOperator() == AssignExpr.Operator.ASSIGN;
+    }
+    return false;
+  }
+
+  /** Whether the read merely FORWARDS the value to a call that ignores its arguments. */
+  private boolean isForwardedToIgnoringCall(NameExpr read) {
+    Node parent = read.getParentNode().orElse(null);
+    if (!(parent instanceof MethodCallExpr enclosing)) {
+      return false;
+    }
+    if (!enclosing.getArguments().contains(read)) {
+      return false;
+    }
+    return IGNORES_ARGUMENTS.contains(enclosing.getNameAsString());
   }
 
   /**
@@ -378,12 +539,9 @@ public final class UncheckedReturnCheck implements AstChecker {
     for (NameExpr name : body.findAll(NameExpr.class)) {
       // A name in a DECLARATION is not a read. The declarator's own name
       // is not a NameExpr, so every NameExpr here is a use -- except when
-      // it is the target of an assignment, which is a write.
-      com.github.javaparser.ast.Node parent = name.getParentNode().orElse(null);
-      if (parent instanceof com.github.javaparser.ast.expr.AssignExpr assign) {
-        if (assign.getTarget() == name) {
-          continue;
-        }
+      // it is the target of a plain assignment, which is a write.
+      if (isWrite(name)) {
+        continue;
       }
       read.add(name.getNameAsString());
     }

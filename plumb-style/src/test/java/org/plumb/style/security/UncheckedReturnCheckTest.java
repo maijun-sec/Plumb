@@ -61,6 +61,11 @@ import org.plumb.style.StyleContext;
  *   <li>It missed the two shapes above that are MORE common in real code than the bare statement.
  * </ul>
  *
+ * <p><b>Who decides.</b> The statement drops a value; the LOCAL THAT HOLDS IT decides whether a
+ * stored value is observed; and the CALLEE'S BODY decides whether an argument is observed. The body
+ * is a fact and the callee's name is only a heuristic, so the body wins: two methods called {@code
+ * log} can drop the value or act on it, and only one of them is a defect.
+ *
  * <p>The tests use the PRODUCTION parser, because the rule needs a symbol resolver to tell a void
  * call from one that returns a flag. A parser without a resolver cannot answer that question at
  * all, and the rule then has to assume the call returns something.
@@ -305,5 +310,129 @@ class UncheckedReturnCheckTest {
     // 'setReadOnly' returns a boolean, is NOT on the list, and must not fire.
     assertThat(count("class T { void m(java.io.File f) { f.setReadOnly(); } }")).isZero();
     assertThat(count("class T { void m(java.io.File f) { f.setWritable(true); } }")).isZero();
+  }
+
+  // ---------- the callee's BODY decides what happens to an argument ----------
+
+  /**
+   * A callee that never touches its parameter drops the value.
+   *
+   * <p>The callee here is named {@code report}, which is on no name list. The only thing that says
+   * the value is dropped is the callee's body -- and a rule that can only ask the NAME misses this
+   * one.
+   */
+  @Test
+  void anArgumentToACalleeThatIgnoresItsParameterIsDiscarded() throws Exception {
+    assertThat(
+            count(
+                "class T { void m(java.io.File f) { report(f.delete()); } "
+                    + "void report(boolean ok) { } }"))
+        .isEqualTo(1);
+  }
+
+  /**
+   * A callee that ACTS on the parameter observes the value.
+   *
+   * <p>It throws when the flag is false, so the value decides whether the program continues.
+   */
+  @Test
+  void anArgumentToACalleeThatActsOnItsParameterIsNotDiscarded() throws Exception {
+    assertThat(
+            count(
+                "class T { void m(java.io.File f) { check(f.delete()); } void check(boolean ok) {"
+                    + " if (!ok) { throw new IllegalStateException(); } } }"))
+        .isZero();
+  }
+
+  /**
+   * The NAME and the BODY disagree, and the body is right.
+   *
+   * <p>The callee is called {@code log}, which is on the list of callees that ignore their
+   * arguments. But its body throws when the flag is false, so it acts on the value, and reporting
+   * it is a false positive.
+   */
+  @Test
+  void aCalleeNamedLikeALoggerThatActsOnTheValueIsNotDiscarded() throws Exception {
+    assertThat(
+            count(
+                "class T { void m(java.io.File f) { log(f.delete()); } "
+                    + "void log(boolean ok) { if (!ok) { throw new IllegalStateException(); } } }"))
+        .isZero();
+  }
+
+  /**
+   * A callee that only FORWARDS the value to a logger drops it.
+   *
+   * <p>The parameter is read, but the only thing done with it is handing it to a call that ignores
+   * its arguments -- which is exactly what the name lists say about {@code println}.
+   */
+  @Test
+  void anArgumentForwardedToALoggerIsDiscarded() throws Exception {
+    assertThat(
+            count(
+                "class T { void m(java.io.File f) { forward(f.delete()); } "
+                    + "void forward(boolean ok) { System.out.println(ok); } }"))
+        .isEqualTo(1);
+  }
+
+  // ---------- the local that HOLDS the value decides ----------
+
+  /** A negation does not change what the value IS, so the unread local still holds it. */
+  @Test
+  void aValueNegatedIntoAnUnreadLocalIsDiscarded() throws Exception {
+    assertThat(count("class T { void m(java.io.File f) { boolean ok = !f.delete(); } }"))
+        .isEqualTo(1);
+  }
+
+  @Test
+  void aValueNegatedIntoAReadLocalIsNotDiscarded() throws Exception {
+    assertThat(
+            count("class T { void m(java.io.File f) { boolean ok = !f.delete(); if (ok) { } } }"))
+        .isZero();
+  }
+
+  /**
+   * Only the declarator that holds the value decides.
+   *
+   * <p>A declaration can hold several variables at once. The one that holds the value is the one
+   * whose reads matter -- the others are a different variable.
+   */
+  @Test
+  void theDeclaratorThatHoldsTheValueIsTheOneThatDecides() throws Exception {
+    assertThat(
+            count(
+                "class T { void m(java.io.File f) { boolean first = f.delete(), second = true; "
+                    + "if (first) { } } }"))
+        .isZero();
+    assertThat(
+            count(
+                "class T { void m(java.io.File f) { boolean first = true, second = f.delete(); }"
+                    + " }"))
+        .isEqualTo(1);
+  }
+
+  /** A plain assignment stores the value in a local, exactly as a declaration does. */
+  @Test
+  void aValueAssignedToAnUnreadLocalIsDiscarded() throws Exception {
+    assertThat(count("class T { void m(java.io.File f) { boolean ok; ok = f.delete(); } }"))
+        .isEqualTo(1);
+  }
+
+  @Test
+  void aValueAssignedToAReadLocalIsNotDiscarded() throws Exception {
+    assertThat(
+            count(
+                "class T { void m(java.io.File f) { boolean ok; ok = f.delete(); if (ok) { } } }"))
+        .isZero();
+  }
+
+  /**
+   * A FIELD is not a local, and whether a field is read afterwards is a question about the whole
+   * program. The rule does not claim it, so the assignment is not reported.
+   */
+  @Test
+  void aValueAssignedToAFieldIsNotAStoredValue() throws Exception {
+    assertThat(count("class T { private boolean ok; void m(java.io.File f) { ok = f.delete(); } }"))
+        .isZero();
   }
 }

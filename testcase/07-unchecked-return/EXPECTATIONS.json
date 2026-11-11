@@ -5,6 +5,8 @@
     "This category covers one capability: is a return value OBSERVED? CWE-252 is about a method whose return value says 'did this work?' being thrown away, and a value can be discarded in three shapes -- a bare statement, a value stored in a local that is never read, and a value passed to a call that ignores it. All three are real defects, and the first is the only one a name-based rule finds.",
     "A VOID method has no return value, so there is nothing to discard. The JDK signatures are the authority: InputStream.close(), Connection.commit(), Writer.flush() and Files.delete(Path) are all void, and they report failure by THROWING. Failing to handle that exception is CWE-703 (improper check of exceptional conditions), a different rule with a different mechanism -- this category says nothing about it.",
     "The rule resolves the call's return type, so it needs symbol resolution. That is why the scan pipeline order matters: the TAC translation runs FIRST, and before the fix below it re-parented the AST, which silently disabled type resolution for every AST checker that ran afterwards. The translator now copies a field's declarator instead of moving it.",
+    "WHO DECIDES whether a value passed as an ARGUMENT is dropped is the callee's BODY, not the callee's name. Two methods called `log` can behave completely differently: one prints the value and does nothing else, the other throws when the value is false. The body says which, so the body wins; the name lists are only the fallback for a callee the resolver cannot reach (a JDK method, a jar, an unresolved receiver).",
+    "WHO DECIDES whether a STORED value is dropped is the local that HOLDS it, and only that one: a declaration can hold several variables at once (`boolean a = f.delete(), b = true;`), and the declarator that holds the value is the one whose reads matter. How the value is spelled on the way in -- negated, parenthesised, assigned rather than declared -- does not change what it is.",
     "The style findings on these fixtures are NOT part of this category. The category scores the one rule; the style noise is measured by the style categories."
   ],
   "cases": [
@@ -57,6 +59,56 @@
         "ast-security-unchecked-return"
       ],
       "note": "Files.deleteIfExists(Path) returns a boolean, while Files.delete(Path) in the same file is void. The pair is what makes the void check measurable: an implementation that skipped every 'delete'-named call would miss this one, and an implementation that reported every 'delete'-named call would report the void one."
+    },
+    {
+      "id": "TP-callee-never-reads-its-parameter",
+      "kind": "tp",
+      "file": "ArgumentToCallee.java",
+      "line": 18,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "The callee's body never reads its parameter, so the deletion's success flag reaches a method that does nothing with it: the value is dropped. The callee is named 'report', which is on no name list -- the body is the only thing that says the value is dropped, and without the body fact this case is a silent false negative."
+    },
+    {
+      "id": "TP-callee-forwards-the-value-to-a-logger",
+      "kind": "tp",
+      "file": "ArgumentToCallee.java",
+      "line": 33,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "The callee reads its parameter, but the only thing it does with it is hand it to a logger that ignores its arguments. So the value is forwarded and dropped, which is the same defect as passing it to a logger directly -- and the name 'forward' is on no list either."
+    },
+    {
+      "id": "TP-negated-into-an-unread-local",
+      "kind": "tp",
+      "file": "StoredValue.java",
+      "line": 19,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "The value is negated on the way into the local, and the local is never read. The negation does not change what the value IS, so the local still holds a dropped success flag. A rule that only recognises a DIRECT initializer misses this one."
+    },
+    {
+      "id": "TP-the-value-is-in-the-unread-declarator",
+      "kind": "tp",
+      "file": "StoredValue.java",
+      "line": 40,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "Two declarators, and the value is in the SECOND one. 'first' is read and 'second' is not, so the only declarator that matters is the one that holds the value."
+    },
+    {
+      "id": "TP-assigned-to-an-unread-local",
+      "kind": "tp",
+      "file": "StoredValue.java",
+      "line": 46,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "A plain assignment stores the value in a local, and the local is never read. The holder is the local, and how the value got there -- declared or assigned -- does not change that."
     },
     {
       "id": "TN-assigned-and-read",
@@ -147,6 +199,56 @@
         "ast-security-unchecked-return"
       ],
       "note": "PRECISION PROBE: the user's own void method happens to be named 'close'. A name-only rule reports it. There is no return value to check."
+    },
+    {
+      "id": "TN-callee-acts-on-its-parameter",
+      "kind": "tn",
+      "file": "ArgumentToCallee.java",
+      "line": 23,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: the callee throws when the flag is false, so it ACTS on the value -- the value decides whether the program continues. Reporting it would be a false positive."
+    },
+    {
+      "id": "TN-callee-named-like-a-logger",
+      "kind": "tn",
+      "file": "ArgumentToCallee.java",
+      "line": 28,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: the callee is NAMED like a logger, so a name list reports it -- but its body throws when the flag is false, so the value is acted on and the finding is a false positive. The name and the body disagree, and the body is right."
+    },
+    {
+      "id": "TN-negated-into-a-read-local",
+      "kind": "tn",
+      "file": "StoredValue.java",
+      "line": 24,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: the same negated shape, but the local IS read, so the value is observed."
+    },
+    {
+      "id": "TN-the-value-is-in-the-read-declarator",
+      "kind": "tn",
+      "file": "StoredValue.java",
+      "line": 32,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: two declarators, and the value is in the FIRST one, which IS read. The SECOND declarator is unread, and it does not hold the value -- so the finding would be a false positive. A rule that looks at every declarator of the declaration reports here."
+    },
+    {
+      "id": "TN-assigned-to-a-read-local",
+      "kind": "tn",
+      "file": "StoredValue.java",
+      "line": 52,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: a plain assignment to a local that IS read, so the value is observed."
     }
   ]
 }

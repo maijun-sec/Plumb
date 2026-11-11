@@ -5,7 +5,7 @@
   "rules_enabled": [
     "ast-security-unchecked-return"
   ],
-  "total_findings": 5,
+  "total_findings": 10,
   "cases": [
     {
       "id": "TP-bare-statement",
@@ -80,6 +80,81 @@
       "hits": 1,
       "hit_lines": [
         66
+      ]
+    },
+    {
+      "id": "TP-callee-never-reads-its-parameter",
+      "kind": "tp",
+      "file": "ArgumentToCallee.java",
+      "line": 18,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "The callee's body never reads its parameter, so the deletion's success flag reaches a method that does nothing with it: the value is dropped. The callee is named 'report', which is on no name list -- the body is the only thing that says the value is dropped, and without the body fact this case is a silent false negative.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        18
+      ]
+    },
+    {
+      "id": "TP-callee-forwards-the-value-to-a-logger",
+      "kind": "tp",
+      "file": "ArgumentToCallee.java",
+      "line": 33,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "The callee reads its parameter, but the only thing it does with it is hand it to a logger that ignores its arguments. So the value is forwarded and dropped, which is the same defect as passing it to a logger directly -- and the name 'forward' is on no list either.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        33
+      ]
+    },
+    {
+      "id": "TP-negated-into-an-unread-local",
+      "kind": "tp",
+      "file": "StoredValue.java",
+      "line": 19,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "The value is negated on the way into the local, and the local is never read. The negation does not change what the value IS, so the local still holds a dropped success flag. A rule that only recognises a DIRECT initializer misses this one.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        19
+      ]
+    },
+    {
+      "id": "TP-the-value-is-in-the-unread-declarator",
+      "kind": "tp",
+      "file": "StoredValue.java",
+      "line": 40,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "Two declarators, and the value is in the SECOND one. 'first' is read and 'second' is not, so the only declarator that matters is the one that holds the value.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        40
+      ]
+    },
+    {
+      "id": "TP-assigned-to-an-unread-local",
+      "kind": "tp",
+      "file": "StoredValue.java",
+      "line": 46,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "A plain assignment stores the value in a local, and the local is never read. The holder is the local, and how the value got there -- declared or assigned -- does not change that.",
+      "status": "supported",
+      "hits": 1,
+      "hit_lines": [
+        46
       ]
     },
     {
@@ -198,17 +273,82 @@
       "status": "supported",
       "hits": 0,
       "hit_lines": []
+    },
+    {
+      "id": "TN-callee-acts-on-its-parameter",
+      "kind": "tn",
+      "file": "ArgumentToCallee.java",
+      "line": 23,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: the callee throws when the flag is false, so it ACTS on the value -- the value decides whether the program continues. Reporting it would be a false positive.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-callee-named-like-a-logger",
+      "kind": "tn",
+      "file": "ArgumentToCallee.java",
+      "line": 28,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: the callee is NAMED like a logger, so a name list reports it -- but its body throws when the flag is false, so the value is acted on and the finding is a false positive. The name and the body disagree, and the body is right.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-negated-into-a-read-local",
+      "kind": "tn",
+      "file": "StoredValue.java",
+      "line": 24,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: the same negated shape, but the local IS read, so the value is observed.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-the-value-is-in-the-read-declarator",
+      "kind": "tn",
+      "file": "StoredValue.java",
+      "line": 32,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: two declarators, and the value is in the FIRST one, which IS read. The SECOND declarator is unread, and it does not hold the value -- so the finding would be a false positive. A rule that looks at every declarator of the declaration reports here.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
+    },
+    {
+      "id": "TN-assigned-to-a-read-local",
+      "kind": "tn",
+      "file": "StoredValue.java",
+      "line": 52,
+      "rule_ids": [
+        "ast-security-unchecked-return"
+      ],
+      "note": "PRECISION PROBE: a plain assignment to a local that IS read, so the value is observed.",
+      "status": "supported",
+      "hits": 0,
+      "hit_lines": []
     }
   ],
   "summary": {
-    "tp_total": 5,
-    "tp_supported": 5,
+    "tp_total": 10,
+    "tp_supported": 10,
     "tp_false_negative": 0,
-    "tn_total": 9,
-    "tn_supported": 9,
+    "tn_total": 14,
+    "tn_supported": 14,
     "tn_false_positive": 0
   },
   "cwe_histogram": {
-    "CWE-252": 5
+    "CWE-252": 10
   }
 }
