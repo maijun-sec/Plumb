@@ -568,6 +568,13 @@ public final class TacTranslator {
           // source-path lookup can find the file the
           // nested class lives in.
           syntheticInit.setEnclosingClass(enclosingClassName);
+          // The initializers this <init> holds are assignments on `this`, and `this`
+          // is the class. The receiver's type is what tells a field of THIS class
+          // from a field of another class that happens to have the same name, so it
+          // carries the class -- like every other `this` in the translator.
+          syntheticInit
+              .locals()
+              .add(new TacOperand.TacVar("this", TacType.ofClass(classShortName), false));
         }
         syntheticInit.addClassAnnotations(classAnns);
         // Field-level annotations on instance fields
@@ -800,9 +807,22 @@ public final class TacTranslator {
       }
     }
     if (rhs == null) return; // give up; better no FIELDSTORE than a wrong one
+    // The receiver is the `this` of the function, which carries the class it belongs to.
+    // A fresh `this` without a type would name no class, and the field would be
+    // indistinguishable from another class's field of the same name.
+    TacOperand receiver = null;
+    for (TacOperand.TacVar local : b.locals()) {
+      if ("this".equals(local.name())) {
+        receiver = local;
+        break;
+      }
+    }
+    if (receiver == null) {
+      receiver = new TacOperand.TacVar("this", TacType.UNKNOWN, false);
+    }
     b.emit(
         TacInstruction.builder(TacInstruction.Kind.FIELDSTORE)
-            .lhs1(new TacOperand.TacVar("this", TacType.UNKNOWN, false))
+            .lhs1(receiver)
             .fieldName(v.getNameAsString())
             .dest(rhs)
             .line(nodeLine(v))

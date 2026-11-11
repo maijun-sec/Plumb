@@ -99,9 +99,11 @@ public final class UnusedFieldChecker extends TaintedCheckerBase {
    * <p>The owner is the FIRST function in program order that writes the field. The order is the
    * program's, not the schedule's, so the finding lands in the same place on every run.
    *
-   * <p>The field key names the field, not the class that declares it, so two classes with a field
-   * of the same name share one key. That is a property of the IR, which carries the field name and
-   * not the declaring type.
+   * <p>The field key names the field AND the class it belongs to, so two classes that declare a
+   * field of the same name are two fields: one class's read no longer suppresses the other class's
+   * report. The class is the one the field hangs on -- the type of the receiver the access is made
+   * on -- and not the class the access happens to be written in: a base class's field written in
+   * the subclass and read in the base class is one field.
    */
   @Override
   public void finish(AnalysisContext ctx) {
@@ -129,8 +131,7 @@ public final class UnusedFieldChecker extends TaintedCheckerBase {
           if (!reported.add(fieldKey) || t.isRead(fieldKey)) {
             continue;
           }
-          String fieldName =
-              fieldKey.startsWith("field:") ? fieldKey.substring("field:".length()) : fieldKey;
+          String fieldName = FieldDefUseTracker.nameOf(fieldKey);
           // The reporter resolves the finding's file from the CURRENT function, so it has to
           // be the owner of the field and not whatever the analysis happened to leave behind.
           ctx.setCurrentFunction(fn);

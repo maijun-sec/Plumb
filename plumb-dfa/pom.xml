@@ -527,6 +527,10 @@
                              once, after every function has been visited. Answered per
                              function, the answer depends on the schedule. -->
                         <include>org/plumb/dfa/checkers/taint/UnusedFieldDeterminismTest.java</include>
+                        <!-- Two classes that declare a field of the SAME name are two fields:
+                             the rule's key has to name the class the field belongs to, or the
+                             two fields share one key and only one of them is reported. -->
+                        <include>org/plumb/dfa/checkers/taint/UnusedFieldClassScopeTest.java</include>
                         <include>org/plumb/dfa/taint/FrameworkFieldBindingSourceTest.java</include>
                         <include>org/plumb/dfa/translate/R259JavaIntLiteralTest.java</include>
 
