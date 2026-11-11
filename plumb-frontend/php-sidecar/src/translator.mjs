@@ -1934,14 +1934,38 @@ export class Translator {
   qualifyFunction(name, namespace) {
     const scope = namespace ?? this.namespace;
     if (!name) return this.namespacePrefix();
-    if (name.startsWith("\\")) return name;
+    if (name.startsWith("\\")) return this.canonicalName(name);
     const alias = this.functionAliases.get(scope)?.get(name);
-    if (alias) return alias;
+    if (alias) return this.canonicalName(alias);
     const declared = this.namespaceFunctions.get(scope);
     if (declared && declared.has(name)) {
-      return scope ? `${scope}\\${name}` : `\\${name}`;
+      return this.canonicalName(scope ? `${scope}\\${name}` : name);
     }
-    return `\\${name}`;
+    return this.canonicalName(name);
+  }
+
+  /**
+   * A class or function name in the ONE spelling PHP knows it by.
+   *
+   * <p>The sources spell the same name several ways: `system($cmd)` and
+   * `\system($cmd)` and `use function system;` all name the global function
+   * `system`, and the catalogue's entry for it is written `^\\(system|exec|...)`.
+   * A name that arrives spelled `system` does not match that entry, so a call
+   * that the catalogue would otherwise report is missed -- silently, with the
+   * scan still reporting success.
+   *
+   * <p>PHP's own spelling is the rule: a name in the GLOBAL namespace carries
+   * the leading backslash (`\system`, `\SimpleXMLElement`) and a name in a
+   * namespace carries none (`App\Support\Logger`). One name, one spelling, so
+   * that an entry names a class or a function and every call to it matches.
+   *
+   * @param {string} name the qualified name, in any of the spellings PHP allows
+   * @return {string} the name in the canonical spelling
+   */
+  canonicalName(name) {
+    const trimmed = name.replace(/^\\+/, "");
+    if (!trimmed) return name;
+    return trimmed.includes("\\") ? trimmed : `\\${trimmed}`;
   }
 
   /**
@@ -1957,10 +1981,10 @@ export class Translator {
   qualifyClass(name, namespace) {
     const scope = namespace ?? this.namespace;
     if (!name) return this.namespacePrefix();
-    if (name.startsWith("\\")) return name;
+    if (name.startsWith("\\")) return this.canonicalName(name);
     const alias = this.classAliases.get(scope)?.get(name);
-    if (alias) return alias;
-    return scope ? `${scope}\\${name}` : `\\${name}`;
+    if (alias) return this.canonicalName(alias);
+    return this.canonicalName(scope ? `${scope}\\${name}` : name);
   }
 
   /** The current namespace, spelled the way PHP spells it. */
@@ -1991,11 +2015,16 @@ export class Translator {
     }
     const name = node.name ?? "";
     if (node.resolution === "fqn") {
-      return name;
+      // A name written out in full. It names the class or function it says it
+      // names, and it is spelled the same way however it was written -- so it
+      // goes through the same canonical spelling as every other name.
+      return this.canonicalName(name);
     }
     if (node.resolution === "rn") {
       const relative = name.replace(/^namespace\\/, "");
-      return this.namespace ? `${this.namespace}\\${relative}` : `\\${relative}`;
+      return this.canonicalName(
+        this.namespace ? `${this.namespace}\\${relative}` : `\\${relative}`,
+      );
     }
     return qualify(name);
   }

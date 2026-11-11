@@ -65,6 +65,29 @@ function choose(int $b): string {
 }
 `;
 
+/**
+ * The third probe program: the same name, written several ways.
+ *
+ * PHP lets a name be written unqualified, fully qualified, or imported with a
+ * `use` statement, and all of them name ONE class or function. The catalogue's
+ * entries name that class or function once, so the callee key has to spell it
+ * the same way every time -- otherwise an entry matches some of the calls to
+ * its name and misses the others, and the scan reports success either way.
+ */
+const SPELLINGS_SOURCE = `<?php
+namespace App\\Services;
+
+use function system;
+use SimpleXMLElement;
+
+function spellings(string $cmd, string $xml): void {
+    $a = system($cmd);
+    $b = \\system($cmd);
+    $c = new SimpleXMLElement($xml);
+    $d = new \\SimpleXMLElement($xml);
+}
+`;
+
 /** Fail the test with a message. */
 function fail(message) {
   console.error(`FAIL: ${message}`);
@@ -356,6 +379,52 @@ async function main() {
     check(
       armBodies.every((body) => !noMatchPath.has(choose.instructions.indexOf(body))),
       "the path where no arm matched must not run an arm's body",
+    );
+
+    // The third file: ONE name, written several ways. The catalogue names it
+    // once, so the key must spell it once.
+    const spellingsFile = join(dir, "spellings.php");
+    writeFileSync(spellingsFile, SPELLINGS_SOURCE, "utf8");
+    writeFrame(
+      child.stdin,
+      JSON.stringify({
+        op: OP.TRANSLATE,
+        protocolVersion: PROTOCOL_VERSION,
+        irVersion: IR_VERSION,
+        path: spellingsFile,
+        language: "PHP",
+      }),
+    );
+    response = JSON.parse(await readFrame(child.stdout));
+    check(response.ok === true, `the third file must translate: ${response.error ?? ""}`);
+    const spellings = (response.functions ?? []).find((f) => f.name === "spellings");
+    check(!!spellings, "the function must be in the stream");
+    const spellingSigs = (spellings.instructions ?? [])
+      .filter((i) => i.calleeSig)
+      .map((i) => i.calleeSig);
+
+    // A global FUNCTION, imported and written out: both are the same function,
+    // and the catalogue's entry for it is written `^\\(system|exec|...)`. A key
+    // that spells it `system/1` does not match that entry, and the command
+    // injection is missed with the scan still reporting success.
+    check(
+      spellingSigs.filter((s) => s === "\\system/1").length === 2,
+      `a global function must have one spelling whatever way it is written: ${spellingSigs.join(", ")}`,
+    );
+    check(
+      !spellingSigs.some((s) => s === "system/1"),
+      `a global function must not be spelled without its namespace: ${spellingSigs.join(", ")}`,
+    );
+
+    // A global CLASS, imported and written out: the same rule, and the
+    // construction's key is what a catalogue entry for the class matches.
+    check(
+      spellingSigs.filter((s) => s === "\\SimpleXMLElement.<init>/1").length === 2,
+      `a global class must have one spelling whatever way it is written: ${spellingSigs.join(", ")}`,
+    );
+    check(
+      !spellingSigs.some((s) => s === "SimpleXMLElement.<init>/1"),
+      `a global class must not be spelled without its namespace: ${spellingSigs.join(", ")}`,
     );
 
     console.log("ok: the sidecar answers over the wire, and the TAC has the expected shape");

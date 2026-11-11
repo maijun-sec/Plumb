@@ -292,26 +292,30 @@ class PhpSidecarEndToEndTest {
   }
 
   /**
-   * The same class, written two ways, has two keys.
+   * The same class, written two ways, has one key.
    *
-   * <p><b>Why the catalogue has to know this.</b> A pattern names a class, and the leading
-   * backslash is part of the key -- but only when the source spells the name that way. The same
-   * class in a namespace, written the way PHP resolves it inside that namespace, has NO leading
-   * backslash; written out in full, it has one. They are two different keys, so a pattern that
-   * insists on the backslash claims only the fully qualified spelling and a pattern that insists on
-   * its absence claims only the relative one -- and either way the other spelling is unreachable,
-   * silently, with the scan still reporting success.
+   * <p><b>Why the catalogue needs this.</b> A pattern names a class, and the class is ONE class
+   * however the source spells it: {@code new Logger($x)} inside {@code namespace App\Support} and
+   * {@code new \App\Support\Logger($x)} construct the same class. If they produced two keys, a
+   * pattern that insists on the leading backslash would claim only the fully qualified spelling and
+   * a pattern that insists on its absence would claim only the relative one -- and either way the
+   * other spelling is unreachable, silently, with the scan still reporting success.
    *
-   * <p><b>Why PHP is asymmetric here.</b> A FUNCTION has a global fallback: an unqualified call
-   * names the global function, with its leading backslash, which is why the catalogue's PHP
-   * function entries carry one. A CLASS has no global fallback -- PHP looks for an unqualified
-   * class name in the current namespace and nowhere else -- so an unqualified class inside a
-   * namespace is that namespace's class, and its key has no backslash. A class entry therefore
-   * cannot copy the shape of a function entry.
+   * <p><b>What the key is.</b> PHP's own spelling: a name in the GLOBAL namespace carries the
+   * leading backslash ({@code \system}, {@code \DateTime}) and a name in a namespace carries none
+   * ({@code App\Support\Logger}). That is the shape the catalogue's PHP entries already assume for
+   * the global functions, so one entry names a class and every call to it matches.
+   *
+   * <p><b>Why the asymmetry with an unqualified class still holds.</b> A FUNCTION has a global
+   * fallback: an unqualified call names the global function, with its leading backslash. A CLASS
+   * has no global fallback -- PHP looks for an unqualified class name in the current namespace and
+   * nowhere else -- so an unqualified class inside a namespace is that namespace's class, and its
+   * key is the namespace-relative one. The canonical spelling does not merge the two: the global
+   * {@code \PDO} and the namespaced {@code App\Support\PDO} stay different keys.
    */
   @Test
-  @DisplayName("the same class, written two ways, has two keys")
-  void theSameClassWrittenTwoWaysHasTwoKeys(@TempDir Path directory) throws IOException {
+  @DisplayName("the same class, written two ways, has one key")
+  void theSameClassWrittenTwoWaysHasOneKey(@TempDir Path directory) throws IOException {
     String source =
         """
         <?php
@@ -347,10 +351,8 @@ class PhpSidecarEndToEndTest {
           .extracting(i -> i.calleeSig)
           .as(
               "the same class, written the way PHP resolves it and written out in full, must"
-                  + " produce two keys -- so a catalogue pattern has to make the leading backslash"
-                  + " optional")
-          .containsExactlyInAnyOrder(
-              "App\\Support\\Logger.<init>/1", "\\App\\Support\\Logger.<init>/1");
+                  + " produce one key -- so a catalogue pattern names the class exactly")
+          .containsOnly("App\\Support\\Logger.<init>/1");
     }
   }
 
@@ -368,16 +370,17 @@ class PhpSidecarEndToEndTest {
    * spelling ({@code \ArrayObject}) or an import ({@code use ArrayObject;}) reaches the global
    * class.
    *
-   * <p><b>So the key follows the spelling, and the three spellings differ.</b> A catalogue entry
-   * that resolves an unqualified name to the global class would name a class PHP never looks for,
-   * and would lose the class the program actually constructs -- {@code App\Support\PDO} --
-   * silently, with the scan still reporting success. The entry has to name the class PHP resolves,
-   * which is the namespace-relative one.
+   * <p><b>So the key names the class PHP resolves, and the global class keeps its own key.</b> A
+   * catalogue entry that resolves an unqualified name to the global class would name a class PHP
+   * never looks for, and would lose the class the program actually constructs -- {@code
+   * App\Support\PDO} -- silently, with the scan still reporting success. The entry has to name the
+   * class PHP resolves, which is the namespace-relative one. The global {@code \PDO} is a different
+   * class and keeps a different key.
    *
-   * <p><b>Why the import is in the same test.</b> An imported name is a third spelling with its own
-   * key: {@code use PDO as Pdo; new Pdo(...)} constructs the global {@code PDO}, and the key says
-   * so, with no namespace in front of it. The three spellings of one class therefore produce three
-   * different keys, and each one is a separate key a catalogue entry has to be able to name.
+   * <p><b>Why the import is in the same test.</b> An imported name reaches the global class: {@code
+   * use PDO as Pdo; new Pdo(...)} constructs the global {@code PDO}, and its key says so, with the
+   * leading backslash the global namespace carries. The canonical spelling is what lets one
+   * catalogue entry name that class, whichever of the three spellings the source used.
    */
   @Test
   @DisplayName("an unqualified class in a namespace does not fall back to the global one")
@@ -423,7 +426,7 @@ class PhpSidecarEndToEndTest {
                   + " one; an import or a leading backslash is what reaches the global class")
           .containsExactlyInAnyOrder(
               "\\PDO.<init>/0",
-              "PDO.<init>/1",
+              "\\PDO.<init>/1",
               "App\\Support\\PDO.<init>/1",
               "Other\\Thing.<init>/0",
               "App\\Support\\Service.<init>/0");
