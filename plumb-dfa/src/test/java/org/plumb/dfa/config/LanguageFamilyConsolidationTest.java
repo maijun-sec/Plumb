@@ -119,6 +119,32 @@ class LanguageFamilyConsolidationTest {
   }
 
   @Test
+  @DisplayName("the PATTERN is the first argument in every language of the family")
+  void thePatternIsTheFirstArgumentInEveryLanguage() {
+    // The symbol table says WHICH API; the argument position says WHICH
+    // ARGUMENT. The two are separate claims, and the second one is easy to
+    // lose: a position that drifts off the pattern does not report the wrong
+    // thing, it reports nothing, because the second argument of a pattern
+    // constructor is the flags and the flags are never the tainted one.
+    //
+    // The positions are read from the family's own table through the engine's
+    // matcher, not from the pattern text: a pattern carries alternation
+    // groups and optional package prefixes, so a text comparison confuses two
+    // patterns for different methods that share a class prefix.
+    SinkFamily regex = load().byName("regex.sinks").orElseThrow();
+
+    assertThat(regex.argIndexesFor("java.util.regex.Pattern.compile/1", SourceLanguage.JAVA))
+        .as("the pattern is the first argument of the call")
+        .containsExactly(0);
+    assertThat(regex.argIndexesFor("kotlin.text.Regex.<init>/1", SourceLanguage.KOTLIN))
+        .as("the pattern is the first argument of the construction")
+        .containsExactly(0);
+    assertThat(regex.argIndexesFor("scala.util.matching.Regex.<init>/1", SourceLanguage.SCALA))
+        .as("the pattern is the first argument of the construction")
+        .containsExactly(0);
+  }
+
+  @Test
   @DisplayName("a language's symbol is invisible to the other languages")
   void aLanguageSymbolIsInvisibleToTheOthers() {
     assertThat(familiesFor("kotlin.text.Regex.<init>/1", SourceLanguage.JAVA)).isEmpty();
