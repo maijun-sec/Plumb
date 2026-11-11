@@ -46,10 +46,12 @@ package org.plumb.tac.ir;
  *       tells the engine to skip these unless the user explicitly opted in.
  * </ol>
  *
- * <p><b>Default analysis policy.</b> The engine analyses {@code SOURCE} functions by default.
- * {@code LIBRARY} is opt-in ({@code TuningConfig.libraryAnalysisEnabled}). {@code SYSTEM_LIBRARY}
- * is opt-in AND requires an explicit flag ({@code TuningConfig.analyseSystemLibraries}); skipping
- * JDK code by default keeps the analysis focused and the per-program work bounded.
+ * <p><b>Default analysis policy.</b> The engine analyses a function body when its origin is in the
+ * set of analysed origins ({@code TuningConfig.analysedOrigins()}), and that set holds {@code
+ * SOURCE} and nothing else by default. {@code LIBRARY} is opt-in: the caller has to put it in that
+ * set. {@code SYSTEM_LIBRARY} is opt-in as well AND requires an explicit flag ({@code
+ * TuningConfig.analyseSystemLibraries}); skipping JDK code by default keeps the analysis focused
+ * and the per-program work bounded.
  *
  * <p>The {@code origin} field is on {@link TacFunction} rather than {@link TacProgram} so that a
  * single merged program (see {@link MergedProgram}) can mix sources: most TUs are {@code SOURCE}, a
@@ -61,14 +63,17 @@ public enum SourceOrigin {
   SOURCE,
 
   /**
-   * User-provided {@code .jar} / {@code .class} bytecode. Analysed only when {@code
-   * TuningConfig.libraryAnalysisEnabled} is true.
+   * User-provided {@code .jar} / {@code .class} bytecode.
+   *
+   * <p>Analysed only when the engine's set of analysed origins ({@code
+   * TuningConfig.analysedOrigins()}) holds it. The default set does not, so a scan has to ask for
+   * the JAR's bodies explicitly.
    */
   LIBRARY,
 
   /**
-   * JDK / JRE runtime code. Analysed only when both {@code TuningConfig.libraryAnalysisEnabled} AND
-   * {@code TuningConfig.analyseSystemLibraries} are true. Default: skipped.
+   * JDK / JRE runtime code. Analysed only when the engine's set of analysed origins holds it AND
+   * {@code TuningConfig.analyseSystemLibraries} is true. Default: skipped.
    */
   SYSTEM_LIBRARY,
 
