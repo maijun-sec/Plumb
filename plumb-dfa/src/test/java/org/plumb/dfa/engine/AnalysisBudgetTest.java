@@ -180,4 +180,88 @@ class AnalysisBudgetTest {
     AnalysisBudget budget = AnalysisBudget.unlimited();
     assertThat(budget.report().summary()).isEqualTo("analysis complete within budget");
   }
+
+  /**
+   * A limit that fires a million times is ONE record with a count, not a million records.
+   *
+   * <p><b>What went wrong.</b> Every fact past the worklist cap recorded its own exhaustion, and
+   * every record was a separate object in an unbounded list. A scan of one jar produced 557039
+   * records and a summary string built by concatenating all of them; the summary was written to the
+   * log, into the SARIF document and into the scan's completeness note, so the report of the budget
+   * grew larger than the analysis it was reporting on. The scan died of a heap exhaustion while
+   * writing it, and produced no report at all.
+   *
+   * <p>The number of records is the number of LIMITS that were hit. The number of firings is a
+   * count on one of them.
+   */
+  @Test
+  void aLimitThatFiresRepeatedlyIsOneRecordWithACount() {
+    AnalysisBudget budget = new AnalysisBudget(0L, 0L, 10, 0, 0, 0);
+
+    for (int i = 0; i < 10; i++) {
+      assertThat(budget.accountFact("f")).isTrue();
+    }
+    for (int i = 0; i < 9_990; i++) {
+      assertThat(budget.accountFact("com.example.Thing.handle")).isFalse();
+    }
+
+    AnalysisBudget.BudgetReport report = budget.report();
+    assertThat(report.exhaustions())
+        .as("one limit was hit, so there is one record -- not one per firing")
+        .hasSize(1);
+    assertThat(report.exhaustions().get(0).occurrences()).isEqualTo(9_990L);
+    assertThat(report.exhaustions().get(0).subject()).isEqualTo("com.example.Thing.handle");
+  }
+
+  /**
+   * The summary must stay short, because it is written into the log and into the report.
+   *
+   * <p>The summary is the only place the user is told that the analysis stopped early, so it cannot
+   * be the thing that exhausts the heap. Its length is bounded by the number of limits and by the
+   * number of sampled subjects per limit -- not by the number of events.
+   */
+  @Test
+  void theSummaryStaysShort() {
+    AnalysisBudget budget = new AnalysisBudget(0L, 0L, 1, 0, 0, 0);
+
+    for (int i = 0; i < 100_000; i++) {
+      budget.accountFact("com.example.Thing.handle");
+    }
+
+    String summary = budget.report().summary();
+    assertThat(summary.length())
+        .as("the summary must not grow with the number of events")
+        .isLessThan(1_000);
+    // The cap of one lets the first fact through, so 99999 of the 100000 were refused.
+    assertThat(summary).contains("WORKLIST_SIZE").contains("99999 time(s)");
+  }
+
+  /**
+   * The subjects a limit was hit on are sampled, so a long list of them cannot grow the report.
+   *
+   * <p>Which functions ran out of memory is worth saying, but a scan where half a million functions
+   * did is not a list anyone reads. The record keeps the first few and the count of the rest.
+   */
+  @Test
+  void theSubjectsAreSampled() {
+    AnalysisBudget budget = AnalysisBudget.unlimited();
+
+    for (int i = 0; i < 500; i++) {
+      budget.record(
+          AnalysisBudget.Dimension.WORKLIST_SIZE,
+          Integer.MAX_VALUE,
+          "com.example.Thing.handle" + i + " (out of memory)");
+    }
+
+    AnalysisBudget.BudgetReport report = budget.report();
+    assertThat(report.exhaustions()).hasSize(1);
+    assertThat(report.exhaustions().get(0).occurrences()).isEqualTo(500L);
+    assertThat(report.exhaustions().get(0).samples())
+        .as("the sample is bounded, so the record cannot grow with the events")
+        .hasSizeLessThanOrEqualTo(8);
+    assertThat(report.summary())
+        .contains("com.example.Thing.handle0")
+        .contains("500 time(s)")
+        .hasSizeLessThan(1_000);
+  }
 }

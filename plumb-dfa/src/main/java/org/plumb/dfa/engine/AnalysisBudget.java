@@ -45,6 +45,8 @@ import org.plumb.dfa.config.TuningConfig;
  *       hit the engine stops doing that work rather than running unbounded.
  *   <li><b>Say so out loud.</b> Every cap that fires is recorded here with the dimension, the
  *       limit, and the thing that was being analysed when it fired. Nothing is truncated silently.
+ *       A cap that fires a million times is one record with a count on it, not a million records:
+ *       the report of the budget must not grow larger than the analysis the budget is bounding.
  * </ul>
  *
  * <p><b>Silence is the failure mode this class exists to prevent.</b> A silently truncated analysis
@@ -91,16 +93,49 @@ public final class AnalysisBudget {
    * <p>The record names the dimension, the limit that was hit, and -- crucially -- <em>what</em>
    * was under analysis. "The 30-second budget ran out" is not actionable; "the 30-second budget ran
    * out while analysing {@code com.example.Thing.handle}" is.
+   *
+   * <p><b>One record per limit, not one per event.</b> A limit that fires once is a fact about the
+   * RUN; a limit that fires a million times is the same fact with a count. Recording each firing
+   * separately was how a single jar scan produced half a million records and a summary string of
+   * the same order -- the report of the budget grew larger than the analysis the budget was
+   * bounding, and the scan died of a heap exhaustion while writing it. So the record carries a
+   * count and a bounded sample of the subjects, and the list of records stays as short as the list
+   * of limits.
    */
   public static final class Exhaustion {
     private final Dimension dimension;
     private final long limit;
     private final String subject;
+    private long occurrences;
+    private final List<String> samples;
 
     Exhaustion(Dimension dimension, long limit, String subject) {
       this.dimension = dimension;
       this.limit = limit;
       this.subject = subject == null ? "" : subject;
+      this.occurrences = 1;
+      this.samples = new ArrayList<>();
+      if (!this.subject.isEmpty()) {
+        this.samples.add(this.subject);
+      }
+    }
+
+    /**
+     * Records another firing of the same limit.
+     *
+     * <p>Guarded by the budget's lock, like every other mutation of the record.
+     */
+    void addOccurrence(String subject) {
+      occurrences++;
+      if (subject == null || subject.isEmpty()) {
+        return;
+      }
+      if (samples.size() >= MAX_SAMPLES) {
+        return;
+      }
+      if (!samples.contains(subject)) {
+        samples.add(subject);
+      }
     }
 
     /** Which budget dimension ran out. */
@@ -118,13 +153,42 @@ public final class AnalysisBudget {
       return subject;
     }
 
+    /** How many times this limit was hit. */
+    public long occurrences() {
+      return occurrences;
+    }
+
+    /**
+     * The subjects this limit was hit on, up to a bounded number.
+     *
+     * <p>The first one is always {@link #subject()}; the rest are the other distinct subjects seen
+     * before the sample filled up.
+     */
+    public List<String> samples() {
+      synchronized (samples) {
+        return List.copyOf(samples);
+      }
+    }
+
     @Override
     public String toString() {
-      return dimension
-          + " limit "
-          + limit
-          + " exceeded"
-          + (subject.isEmpty() ? "" : " while analysing " + subject);
+      StringBuilder sb = new StringBuilder();
+      sb.append(dimension).append(" limit ").append(limit).append(" exceeded");
+      if (occurrences > 1) {
+        sb.append(' ').append(occurrences).append(" time(s)");
+      }
+      if (!subject.isEmpty()) {
+        sb.append(" while analysing ").append(subject);
+      }
+      List<String> others;
+      synchronized (samples) {
+        others =
+            samples.size() > 1 ? new ArrayList<>(samples.subList(1, samples.size())) : List.of();
+      }
+      if (!others.isEmpty()) {
+        sb.append(" (also ").append(String.join(", ", others)).append(')');
+      }
+      return sb.toString();
     }
   }
 
@@ -133,6 +197,11 @@ public final class AnalysisBudget {
    *
    * <p>This is the "overflow rule" the third-party analyzers emit: a visible marker that the
    * analysis was incomplete, carrying enough detail to tell the user where to look.
+   *
+   * <p><b>The record is bounded by the number of LIMITS, not by the number of events.</b> The
+   * summary string is written to the log, into the SARIF document and into the scan's completeness
+   * note, so it has to be short: a summary that grows with the number of events is a report that
+   * can exhaust the heap it is reporting on.
    */
   public static final class BudgetReport {
     private final List<Exhaustion> exhaustions;
@@ -182,8 +251,11 @@ public final class AnalysisBudget {
   private final int summaryCacheSize;
 
   private final AtomicLong factsTracked = new AtomicLong();
-  private final List<Exhaustion> exhaustions = new ArrayList<>();
+  private final Map<String, Exhaustion> exhaustions = new LinkedHashMap<>();
   private final Object lock = new Object();
+
+  /** How many distinct subjects one exhaustion record keeps. */
+  private static final int MAX_SAMPLES = 8;
 
   /**
    * Builds a budget from the tuning configuration.
@@ -279,6 +351,11 @@ public final class AnalysisBudget {
    * engine has tracked. This is deliberately coarse: the point is to bound the work, not to model a
    * per-function worklist precisely.
    *
+   * <p>Every fact past the cap is refused, and every refusal is COUNTED on the one record for this
+   * limit. The count is the number the user needs -- "the cap was passed 557039 times" says how far
+   * past it the analysis went -- and keeping it as a count rather than as a record per fact is what
+   * keeps the report from growing with the analysis it reports on.
+   *
    * @param subject the function being analysed
    * @return true if the caller may keep tracking facts
    */
@@ -340,10 +417,20 @@ public final class AnalysisBudget {
    *
    * <p>Public so that a checker which discovers it has hit a limit (rather than the engine
    * discovering it) can report the same way.
+   *
+   * <p>A limit that fires again does not add a second record: it counts the firing on the record
+   * that is already there. The number of records is the number of LIMITS that were hit, which is a
+   * handful, and the number of firings is a count on one of them.
    */
   public void record(Dimension dimension, long limit, String subject) {
     synchronized (lock) {
-      exhaustions.add(new Exhaustion(dimension, limit, subject));
+      String key = dimension.name() + '@' + limit;
+      Exhaustion existing = exhaustions.get(key);
+      if (existing == null) {
+        exhaustions.put(key, new Exhaustion(dimension, limit, subject));
+      } else {
+        existing.addOccurrence(subject);
+      }
     }
   }
 
@@ -364,7 +451,7 @@ public final class AnalysisBudget {
       limits.put(Dimension.CONTEXT_DEPTH, Long.valueOf(contextDepth));
       limits.put(Dimension.REVERSE_WALK_DEPTH, Long.valueOf(reverseWalkMaxDepth));
       limits.put(Dimension.SUMMARY_CACHE_SIZE, Long.valueOf(summaryCacheSize));
-      return new BudgetReport(exhaustions, limits);
+      return new BudgetReport(new ArrayList<>(exhaustions.values()), limits);
     }
   }
 }
