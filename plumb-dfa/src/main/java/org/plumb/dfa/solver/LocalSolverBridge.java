@@ -196,7 +196,14 @@ public final class LocalSolverBridge implements SolverZ3Bridge {
       if (p.equals("+") || p.equals("-")) {
         s.advance(1);
         Object right = parseMul(s, env);
-        if (left instanceof Long ll && right instanceof Long rr) {
+        if (left == UNBOUND || right == UNBOUND) {
+          // An unbound variable is neither a number nor a string: it is the
+          // "cannot decide" marker. Folding it into a value here would decide
+          // the very question the marker exists to leave open -- an unbound
+          // variable read as 0 makes a reachable path look unreachable -- so it
+          // travels on to the comparison, which answers SAT.
+          left = UNBOUND;
+        } else if (left instanceof Long ll && right instanceof Long rr) {
           left = p.equals("+") ? ll + rr : ll - rr;
         } else if (left instanceof Double || right instanceof Double) {
           left = toDouble(left) + (p.equals("+") ? toDouble(right) : -toDouble(right));
@@ -217,7 +224,11 @@ public final class LocalSolverBridge implements SolverZ3Bridge {
       if (p.equals("*") || p.equals("/")) {
         s.advance(1);
         Object right = parseAtom(s, env);
-        if (left instanceof Long ll && right instanceof Long rr) {
+        if (left == UNBOUND || right == UNBOUND) {
+          // See parseAdd: the marker travels on instead of being folded into a
+          // value, so the comparison can answer "cannot decide" (SAT).
+          left = UNBOUND;
+        } else if (left instanceof Long ll && right instanceof Long rr) {
           if (p.equals("*")) {
             left = ll * rr;
           } else {

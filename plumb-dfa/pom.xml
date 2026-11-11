@@ -147,6 +147,17 @@
                              depended on the order the functions were analysed
                              in. -->
                         <include>org/plumb/dfa/summary/CallerSeedScopeTest.java</include>
+                        <!-- The two solver bridges have to read the same predicate
+                             the same way. The Z3 bridge read a bracketed comparison
+                             as an arithmetic expression, so every term after the
+                             first one was dropped, and it read a signed literal as
+                             the name of a free variable, so every type bound became
+                             an unknown value; between them the solver could not
+                             refute a predicate that is false for every value of its
+                             operands. The local bridge folded an unbound variable
+                             into a number, so it refuted a predicate that some value
+                             satisfies. -->
+                        <include>org/plumb/dfa/solver/SolverBridgeGrammarTest.java</include>
                         <!-- The module boundary: what is read, what is reported, and
                              what the report says about what it did not look at. -->
                         <include>org/plumb/dfa/engine/ModuleScopeTest.java</include>

@@ -126,41 +126,47 @@ public final class Z3Bridge implements SolverZ3Bridge {
       tokens.clear();
       pos = 0;
       tokens.addAll(tokenize(predicate));
-      return parseOr();
+      Expr value = parseOr();
+      if (value instanceof BoolExpr b) {
+        return b;
+      }
+      // A predicate that is not a comparison carries no claim for the solver to
+      // check. The local bridge answers SAT for it, and so does this one.
+      return ctx.mkTrue();
     }
 
-    private BoolExpr parseOr() {
-      BoolExpr left = parseAnd();
+    private Expr parseOr() {
+      Expr left = parseAnd();
       while (pos < tokens.size() && tokens.get(pos).equals("||")) {
         pos++;
-        BoolExpr right = parseAnd();
-        left = ctx.mkOr(left, right);
+        Expr right = parseAnd();
+        left = ctx.mkOr(asBool(left), asBool(right));
       }
       return left;
     }
 
-    private BoolExpr parseAnd() {
-      BoolExpr left = parseNot();
+    private Expr parseAnd() {
+      Expr left = parseNot();
       while (pos < tokens.size() && tokens.get(pos).equals("&&")) {
         pos++;
-        BoolExpr right = parseNot();
-        left = ctx.mkAnd(left, right);
+        Expr right = parseNot();
+        left = ctx.mkAnd(asBool(left), asBool(right));
       }
       return left;
     }
 
-    private BoolExpr parseNot() {
+    private Expr parseNot() {
       if (pos < tokens.size() && tokens.get(pos).equals("!")) {
         pos++;
-        return ctx.mkNot(parseNot());
+        return ctx.mkNot(asBool(parseNot()));
       }
       return parseCmp();
     }
 
-    private BoolExpr parseCmp() {
+    private Expr parseCmp() {
       Expr left = parseAddSub();
       if (pos >= tokens.size()) {
-        return ctx.mkEq(asBool(left), ctx.mkTrue());
+        return left;
       }
       String op = tokens.get(pos);
       if (op.equals("==")
@@ -172,9 +178,9 @@ public final class Z3Bridge implements SolverZ3Bridge {
         pos++;
         Expr right = parseAddSub();
         if (op.equals("==")) {
-          return ctx.mkEq(left, right);
+          return ctx.mkEq(asInt(left), asInt(right));
         } else if (op.equals("!=")) {
-          return ctx.mkNot(ctx.mkEq(left, right));
+          return ctx.mkNot(ctx.mkEq(asInt(left), asInt(right)));
         } else if (op.equals("<")) {
           return ctx.mkLt(asInt(left), asInt(right));
         } else if (op.equals("<=")) {
@@ -185,7 +191,10 @@ public final class Z3Bridge implements SolverZ3Bridge {
           return ctx.mkGe(asInt(left), asInt(right));
         }
       }
-      return ctx.mkEq(asBool(left), ctx.mkTrue());
+      // No comparison operator follows, so the expression's VALUE is the value
+      // of the comparison. The local bridge reads it the same way, and it is
+      // what makes "(1 + 32767)" the number 32768 rather than a claim about it.
+      return left;
     }
 
     private Expr parseAddSub() {
@@ -224,7 +233,13 @@ public final class Z3Bridge implements SolverZ3Bridge {
       }
       String tok = tokens.get(pos++);
       if (tok.equals("(")) {
-        Expr e = parseAddSub();
+        // The parenthesised expression can be a COMPARISON, not only an
+        // arithmetic one: the checkers write their predicates as
+        // "((x + 1) > LIMIT || (x + 1) < -LIMIT)", and a parenthesised
+        // comparison is the whole reason the guard is inside the brackets.
+        // Parsing only the arithmetic part here turned every such predicate
+        // into "true", which made the solver unable to refute ANY of them.
+        Expr e = parseOr();
         if (pos < tokens.size() && tokens.get(pos).equals(")")) {
           pos++;
         }
@@ -232,6 +247,13 @@ public final class Z3Bridge implements SolverZ3Bridge {
       }
       if (tok.equals("true")) return ctx.mkTrue();
       if (tok.equals("false")) return ctx.mkFalse();
+      if (tok.equals("-") || tok.equals("+")) {
+        // A signed literal. The sign belongs to the NUMBER: "-2147483648" is
+        // one literal, and reading it as the name of a free variable would
+        // turn the lower bound of every type range into an unknown value.
+        Expr value = parseAtom();
+        return tok.equals("-") ? ctx.mkSub(ctx.mkInt(0), asInt(value)) : asInt(value);
+      }
       // String literal.
       if (tok.startsWith("\"")) {
         return ctx.mkInt(tok.length());
@@ -277,12 +299,14 @@ public final class Z3Bridge implements SolverZ3Bridge {
         return v != 0 ? ctx.mkTrue() : ctx.mkFalse();
       }
       if (e instanceof IntExpr) {
-        return ctx.mkEq(e, ctx.mkInt(0));
+        // A number is true when it is not zero. The local bridge reads it the
+        // same way, and the difference matters: reading a number as "number ==
+        // 0" is the opposite of what the predicate says.
+        return ctx.mkNot(ctx.mkEq(e, ctx.mkInt(0)));
       }
-      if (e instanceof ArithExpr) {
-        return ctx.mkEq(e, ctx.mkInt(0));
-      }
-      return ctx.mkFalse();
+      // A value the bridge cannot decide (a real, say): the path might be
+      // reachable, so it is true.
+      return ctx.mkTrue();
     }
   }
 
