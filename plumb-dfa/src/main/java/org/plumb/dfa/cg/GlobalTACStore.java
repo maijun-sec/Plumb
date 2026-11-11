@@ -250,14 +250,25 @@ public final class GlobalTACStore {
 
   /**
    * build a MergedProgram-style merged key for a {@link TacFunction}: {@code enclosingClass + " ::
-   * " + signature}. Returns empty string if enclosing class is missing.
+   * " + signature}, and the bare signature when the enclosing class is missing.
+   *
+   * <p>This is {@link org.plumb.tac.ir.MergedProgram#mergedKey(TacFunction)}, called rather than
+   * copied. The index this key feeds is the one the call-graph builder reads, and the builder
+   * produces node ids that the engine resolves against the merged program -- so the two key spaces
+   * have to be the same key space. A local copy of the rule is what let them drift: this one
+   * returned an EMPTY string for a function without an enclosing class, the registration guards
+   * ({@code mk != null && !mk.isEmpty()}) then dropped that function on the floor, and {@link
+   * #allFunctions()} returned a list without it. The bytecode front end records no enclosing class
+   * for the functions it lowers, so every one of them was dropped: the call graph saw no function,
+   * no call site and no edge, and the cross-function analysis had nothing to follow.
+   *
+   * <p>A function without an enclosing class is not missing an identity -- it is a top-level
+   * function (a Kotlin or Scala file-level function, a Java package-private helper outside any
+   * class) or a function whose front end does not record one. Its signature identifies it, and the
+   * merged program keys it the same way.
    */
   private static String mergedKey(TacFunction fn) {
-    String enc = fn.enclosingClass();
-    if (enc == null || enc.isEmpty()) {
-      return "";
-    }
-    return enc + " :: " + fn.signature();
+    return org.plumb.tac.ir.MergedProgram.mergedKey(fn);
   }
 
   /** All source files that have been added via {@link #addProgram}. */

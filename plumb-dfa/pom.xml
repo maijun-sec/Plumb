@@ -301,6 +301,16 @@
                              canonical form for every frontend, so a
                              cross-language call can find its callee. -->
                         <include>org/plumb/dfa/cg/CalleeKeyNormalizerTest.java</include>
+                        <!-- The key a function is filed under is a SHARED
+                             convention too, and the global store and the
+                             merged program have to agree on it: the store
+                             feeds the call-graph builder, and the builder
+                             produces node ids the engine resolves against
+                             the merged program. The bytecode front end
+                             records no enclosing class, and a store that
+                             dropped those functions left the call graph
+                             with no edges at all. -->
+                        <include>org/plumb/dfa/cg/GlobalStoreMergedKeyTest.java</include>
                         <!-- R1099: Math.min / Math.max must narrow the
                              range domain like the equivalent guard. -->
                         <include>org/plumb/dfa/checkers/boundary/R1099MathClampRangeTest.java</include>
