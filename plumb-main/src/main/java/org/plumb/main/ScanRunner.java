@@ -139,8 +139,36 @@ public final class ScanRunner {
    *
    * <p>A file that fails to parse produces no findings, and a file that produces no findings looks
    * exactly like a clean file. The list is what tells them apart.
+   *
+   * <p>It is written from the parse workers as well as from the caller's thread, so it is a
+   * synchronized list. An {@link ArrayList} written by several threads at once can lose entries and
+   * end up reporting a size that does not match its contents -- and this list is the record that
+   * says which files the analysis looked at.
    */
-  private final List<String> unparsedFiles = new ArrayList<>();
+  private final List<String> unparsedFiles =
+      java.util.Collections.synchronizedList(new ArrayList<>());
+
+  /**
+   * The files that were not analysed because the machine ran out of memory.
+   *
+   * <p>These are kept apart from {@link #unparsedFiles} because the two are different facts. A file
+   * that could not be parsed is broken; a file that ran the heap out is fine, and the scan did not
+   * get to it. The report says which, because the remedy is different: one is a source fix, the
+   * other is a bigger machine.
+   *
+   * <p>Like {@link #unparsedFiles}, it is written from the parse workers, so it is synchronized.
+   */
+  private final List<String> outOfMemoryFiles =
+      java.util.Collections.synchronizedList(new ArrayList<>());
+
+  /**
+   * The number of files the parse phase never reached because the scan was interrupted.
+   *
+   * <p>They are counted rather than named, because naming them would put them in the same list as
+   * the files that could not be parsed, and the two are not the same fact: these were never given a
+   * chance.
+   */
+  private int interruptedFiles;
 
   /**
    * The degradation messages already reported.
@@ -149,8 +177,13 @@ public final class ScanRunner {
    * located, the C# project's compilation inputs were not captured -- is reported once instead of
    * once per file. The frontend reports it on every file, because the frontend does not know which
    * file the reader will look at.
+   *
+   * <p>It is written from the parse workers as well as from the caller's thread, so it is a
+   * synchronized set. {@code add} has to be atomic, or a degradation would be reported twice --
+   * once per worker that happened to see it.
    */
-  private final Set<String> reportedDegradations = new LinkedHashSet<>();
+  private final Set<String> reportedDegradations =
+      java.util.Collections.synchronizedSet(new LinkedHashSet<>());
 
   /**
    * R-output-dir: layout of the on-disk cache + report directory. {@code null} when the user did
@@ -1388,6 +1421,13 @@ public final class ScanRunner {
    * by construction ({@code parallelStream()} keeps encounter order), and a caller may depend on
    * it, so the futures are read back in order rather than as they complete.
    *
+   * <p>Nothing is dropped. A file the pool could not do -- because the heap guard refused to start
+   * it, or because the worker ran out of memory -- is done afterwards by THIS thread, and a file
+   * that could not be translated at all is recorded as unanalysed. The result used to lose the
+   * first kind of file without a trace: the worker answered {@code null} for "deferred" and for
+   * "failed", the caller could not tell the two apart, and the report said nothing about the files
+   * that were never looked at.
+   *
    * @param files the files to translate
    * @param rules the rule registry, for the style checks
    * @param styleChecks the style checkers, or {@code null} to skip style
@@ -1395,6 +1435,28 @@ public final class ScanRunner {
    */
   private List<TranslatedFile> translateAll(
       List<Path> files, RuleRegistry rules, List<org.plumb.style.AstChecker> styleChecks) {
+    return translateAll(files, rules, styleChecks, heapGuard::mayStartMoreWork);
+  }
+
+  /**
+   * Parse and translate every file, with the deferral test supplied.
+   *
+   * <p>The deferral test is the heap guard's "may I start more work" question. It is a parameter so
+   * that a test can force the guard to refuse and check that the files it refused are still
+   * analysed. The failure this exists to prevent was SILENT, and a silent failure cannot be tested
+   * against a real heap.
+   *
+   * @param files the files to translate
+   * @param rules the rule registry, for the style checks
+   * @param styleChecks the style checkers, or {@code null} to skip style
+   * @param mayStartMoreWork whether a new file's parse may start right now
+   * @return the translated files, in input order, with the failures omitted
+   */
+  List<TranslatedFile> translateAll(
+      List<Path> files,
+      RuleRegistry rules,
+      List<org.plumb.style.AstChecker> styleChecks,
+      java.util.function.BooleanSupplier mayStartMoreWork) {
     int workers = Math.max(1, Math.min(plan.workers, files.size()));
     java.util.concurrent.ExecutorService pool =
         java.util.concurrent.Executors.newFixedThreadPool(
@@ -1413,54 +1475,130 @@ public final class ScanRunner {
               }
             });
     try {
-      java.util.List<java.util.concurrent.Future<TranslatedFile>> futures =
+      java.util.List<java.util.concurrent.Future<Phase1Outcome>> futures =
           new java.util.ArrayList<>(files.size());
       for (Path f : files) {
         futures.add(
-            pool.submit(
-                () -> {
-                  // The heap guard. A parse that starts when the heap is nearly full is a
-                  // parse that fails, so the work is deferred to the caller when there is no
-                  // headroom. The file is not lost: the caller translates it itself.
-                  if (!heapGuard.mayStartMoreWork()) {
-                    return null;
-                  }
-                  try {
-                    return config.runStyle
-                        ? translateAndStyleOne(f, rules, styleChecks)
-                        : translateOne(f);
-                  } catch (OutOfMemoryError oom) {
-                    // An OOM in ONE file must not take the whole scan down. The file is
-                    // reported as unanalysed and the scan continues.
-                    LOG.warn("out of memory while parsing {}; the file was not analysed", f);
-                    return null;
-                  }
-                }));
+            pool.submit(() -> translateOneForPhase1(f, rules, styleChecks, mayStartMoreWork)));
       }
-      java.util.List<TranslatedFile> out = new java.util.ArrayList<>(files.size());
-      for (java.util.concurrent.Future<TranslatedFile> fut : futures) {
+      // The outcomes come back in INPUT ORDER, not as they complete: a caller may depend on
+      // the order of the result.
+      java.util.List<Phase1Outcome> outcomes = new java.util.ArrayList<>(files.size());
+      java.util.List<Integer> deferred = new java.util.ArrayList<>();
+      for (int i = 0; i < futures.size(); i++) {
         try {
-          TranslatedFile t = fut.get();
-          if (t == null) {
-            // The guard deferred the work, or the parse ran out of memory. Do it here, on
-            // the caller's thread, so the file is not silently dropped.
-            continue;
+          Phase1Outcome outcome = futures.get(i).get();
+          outcomes.add(outcome);
+          if (outcome != null && outcome.retryOnCaller()) {
+            deferred.add(i);
           }
-          out.add(t);
         } catch (java.util.concurrent.ExecutionException e) {
-          // One file's failure must not lose the other files' results.
+          // One file's failure must not lose the other files' results -- and it must not lose
+          // THAT file either. It is recorded as unanalysed: it produced no findings, and a
+          // file that produces no findings has to be distinguishable from a file that was
+          // never read.
           LOG.warn(
               "parallel translate failed: {}",
               e.getCause() == null ? e.toString() : e.getCause().toString());
+          outcomes.add(Phase1Outcome.failed());
+          unparsedFiles.add(files.get(i).toString());
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
           LOG.warn("parallel translate interrupted");
+          // The scan is being torn down. The files that were not read back are counted, not
+          // dropped: an interrupted scan says so, it does not look complete. They are NOT
+          // recorded as unparseable -- they were never given a chance.
+          interruptedFiles += files.size() - i;
+          for (int j = i; j < files.size(); j++) {
+            outcomes.add(Phase1Outcome.failed());
+          }
           break;
+        }
+      }
+      // The files the pool refused are done HERE, on the caller's thread, one at a time, with
+      // the pool idle. Doing them after the pool has drained is the point: the pool was refused
+      // because the heap was full, and the pool finishing is what gives the heap back.
+      if (!deferred.isEmpty()) {
+        LOG.info(
+            "{} file(s) met a full heap while parsing and are parsed on the main thread instead",
+            deferred.size());
+        for (Integer index : deferred) {
+          Path f = files.get(index);
+          outcomes.set(index, Phase1Outcome.done(translateOnCallerThread(f, rules, styleChecks)));
+        }
+      }
+      java.util.List<TranslatedFile> out = new java.util.ArrayList<>(files.size());
+      for (Phase1Outcome outcome : outcomes) {
+        if (outcome != null && outcome.translated() != null) {
+          out.add(outcome.translated());
         }
       }
       return out;
     } finally {
       pool.shutdown();
+    }
+  }
+
+  /**
+   * Translate one file on a pool worker.
+   *
+   * <p>The heap guard comes first. A parse that starts when the heap is nearly full is a parse that
+   * fails, so the work is deferred to the caller when there is no headroom.
+   *
+   * @param file the file to translate
+   * @param rules the rule registry, for the style checks
+   * @param styleChecks the style checkers, or {@code null} to skip style
+   * @param mayStartMoreWork whether a new parse may start right now
+   * @return what happened to the file
+   */
+  private Phase1Outcome translateOneForPhase1(
+      Path file,
+      RuleRegistry rules,
+      List<org.plumb.style.AstChecker> styleChecks,
+      java.util.function.BooleanSupplier mayStartMoreWork) {
+    if (!mayStartMoreWork.getAsBoolean()) {
+      return Phase1Outcome.deferred();
+    }
+    try {
+      TranslatedFile t =
+          config.runStyle ? translateAndStyleOne(file, rules, styleChecks) : translateOne(file);
+      // A null result here is a GENUINE failure, not a deferral: the translation step logged
+      // it and recorded the file as unanalysed.
+      return Phase1Outcome.done(t);
+    } catch (OutOfMemoryError oom) {
+      // An OOM in ONE file must not take the whole scan down, and it must not lose the file
+      // either. The translation step catches the OOMs it can see; this one got past it, so
+      // the file is retried on the caller's thread, where the rest of the pool is not
+      // competing for the heap.
+      LOG.warn("out of memory while parsing {}; the file will be retried", file);
+      return Phase1Outcome.deferred();
+    }
+  }
+
+  /**
+   * Translate one file on the caller's thread.
+   *
+   * <p>This is the fallback for the files the pool could not do. It runs one file at a time, with
+   * the pool idle, so it needs a fraction of the heap the pool needed.
+   *
+   * @param file the file to translate
+   * @param rules the rule registry, for the style checks
+   * @param styleChecks the style checkers, or {@code null} to skip style
+   * @return the translated file, or {@code null} when the file could not be translated
+   */
+  private TranslatedFile translateOnCallerThread(
+      Path file, RuleRegistry rules, List<org.plumb.style.AstChecker> styleChecks) {
+    try {
+      return config.runStyle ? translateAndStyleOne(file, rules, styleChecks) : translateOne(file);
+    } catch (OutOfMemoryError oom) {
+      LOG.warn(
+          "out of memory while parsing {} on the main thread; the file was not analysed", file);
+      outOfMemoryFiles.add(file.toString());
+      return null;
+    } catch (Throwable t) {
+      LOG.warn("parse failure for {}: {}", file, t.getMessage());
+      unparsedFiles.add(file.toString());
+      return null;
     }
   }
 
@@ -1801,7 +1939,7 @@ public final class ScanRunner {
   private TranslatedFile translateOne(Path file) {
     org.plumb.tac.ir.TacProgram program = loadCachedProgram(file);
     if (program != null) {
-      return new TranslatedFile(file, null, program, List.of());
+      return new TranslatedFile(file, program, List.of());
     }
     try {
       // JAVA keeps its existing path: the parser carries the resolved
@@ -1814,7 +1952,14 @@ public final class ScanRunner {
       ParsedSource ps = buildParser().parse(file);
       program = translateJava(ps, file);
       storeCachedProgram(file, program);
-      return new TranslatedFile(file, ps, program, List.of());
+      return new TranslatedFile(file, program, List.of());
+    } catch (OutOfMemoryError oom) {
+      // The machine ran out of memory, not the parser. The file is recorded as not
+      // analysed, and it is recorded apart from a broken file, because the remedy is
+      // different: this one wants a bigger machine, not a fixed source file.
+      LOG.warn("out of memory while parsing {}; the file was not analysed", file);
+      outOfMemoryFiles.add(file.toString());
+      return null;
     } catch (Throwable e) {
       // Catch Throwable (not just Exception): see the
       // sibling catch in translateAndStyleOne for rationale.
@@ -1927,7 +2072,9 @@ public final class ScanRunner {
     if (parsed.functions().isEmpty() && !parsed.problems().isEmpty()) {
       // The frontend could not read the file at all. Dropping it silently
       // would make "the frontend cannot read this" look exactly like "there is
-      // nothing here".
+      // nothing here" -- so it is recorded as unanalysed, the same way a file that
+      // could not be parsed is.
+      unparsedFiles.add(file.toString());
       return null;
     }
     org.plumb.tac.ir.TacProgram program = new org.plumb.tac.ir.TacProgram(file, "");
@@ -1938,7 +2085,7 @@ public final class ScanRunner {
       program.addProgramProblem(problem);
     }
     storeCachedProgram(file, program);
-    return new TranslatedFile(file, null, program, List.of());
+    return new TranslatedFile(file, program, List.of());
   }
 
   /**
@@ -2066,10 +2213,20 @@ public final class ScanRunner {
       // We still need an AST for style checks. Re-parse (cheap).
       try {
         ps = buildParser().parse(file);
+      } catch (OutOfMemoryError oom) {
+        // The machine ran out of memory, not the parser. The file is recorded as not
+        // analysed, and it is recorded apart from a broken file, because the remedy is
+        // different: this one wants a bigger machine, not a fixed source file.
+        LOG.warn("out of memory while re-parsing {}; the file was not analysed", file);
+        outOfMemoryFiles.add(file.toString());
+        return null;
       } catch (Throwable parseFail) {
         // Catch Throwable (not just Exception): see the
         // sibling catch below for rationale.
         LOG.warn("Re-parse failure for cached TAC {}: {}", file, parseFail.getMessage());
+        // The file is in the project and was not analysed, so it is recorded -- the same
+        // way a fresh parse failure is.
+        unparsedFiles.add(file.toString());
         return null;
       }
     } else {
@@ -2077,6 +2234,10 @@ public final class ScanRunner {
         ps = buildParser().parse(file);
         program = translateJava(ps, file);
         storeCachedProgram(file, program);
+      } catch (OutOfMemoryError oom) {
+        LOG.warn("out of memory while parsing {}; the file was not analysed", file);
+        outOfMemoryFiles.add(file.toString());
+        return null;
       } catch (Throwable e) {
         // Catch Throwable (not just Exception) because
         // JavaParser occasionally throws Errors for
@@ -2093,7 +2254,7 @@ public final class ScanRunner {
       }
     }
     List<Finding> styleFindings = runStyleChecks(ps, file, rules, styleChecks);
-    return new TranslatedFile(file, ps, program, styleFindings);
+    return new TranslatedFile(file, program, styleFindings);
   }
 
   /**
@@ -3654,12 +3815,52 @@ public final class ScanRunner {
     };
   }
 
-  /** bag of per-file parse/translate/style results. */
-  private record TranslatedFile(
-      Path file,
-      ParsedSource parsed,
-      org.plumb.tac.ir.TacProgram program,
-      List<Finding> styleFindings) {}
+  /**
+   * bag of per-file parse/translate/style results.
+   *
+   * <p>It does NOT hold the parse tree. It used to, and that was the single biggest reason a scan
+   * ran out of heap: every file's whole AST stayed reachable from here until the parse phase
+   * finished, so a scan of a few thousand files held a few thousand parse trees at once. Nothing
+   * ever read the tree back -- the style checks run while the file is being translated -- so it is
+   * not kept.
+   */
+  record TranslatedFile(
+      Path file, org.plumb.tac.ir.TacProgram program, List<Finding> styleFindings) {}
+
+  /**
+   * What happened to one file in the parallel parse phase.
+   *
+   * <p>Three things can happen to a file, and they are NOT the same thing:
+   *
+   * <ul>
+   *   <li>it was translated, and {@code translated} holds the result;
+   *   <li>it could not be translated -- a broken file, or one that ran the heap out. The
+   *       translation step logged it and recorded it as unanalysed, so the caller must not try it
+   *       again;
+   *   <li>it was DEFERRED -- the heap guard refused to start it, or the worker ran out of memory.
+   *       Nothing was translated and nothing was recorded, so the caller has to do the work itself.
+   * </ul>
+   *
+   * <p>The worker used to answer {@code null} for all three, and the caller could not tell them
+   * apart: a deferred file was dropped without a trace.
+   */
+  private record Phase1Outcome(TranslatedFile translated, boolean retryOnCaller) {
+
+    /** The file was translated, or failed in a way the translation step already recorded. */
+    static Phase1Outcome done(TranslatedFile translated) {
+      return new Phase1Outcome(translated, false);
+    }
+
+    /** The file could not be translated; the translation step recorded it. */
+    static Phase1Outcome failed() {
+      return new Phase1Outcome(null, false);
+    }
+
+    /** The file was not attempted; the caller has to do it. */
+    static Phase1Outcome deferred() {
+      return new Phase1Outcome(null, true);
+    }
+  }
 
   private List<Finding> runStyleChecks(
       ParsedSource ps,
@@ -4407,7 +4608,7 @@ public final class ScanRunner {
   /**
    * The completeness record for this scan: what it did NOT do.
    *
-   * <p>Four things can make an analysis partial, and all four are recorded:
+   * <p>Six things can make an analysis partial, and all six are recorded:
    *
    * <ul>
    *   <li>a <b>budget</b> that ran out -- the analysis stopped early on purpose;
@@ -4415,7 +4616,10 @@ public final class ScanRunner {
    *   <li>a <b>heap reduction</b> -- the analysis pool was shrunk, which is safe, but the user
    *       should know the scan ran under pressure;
    *   <li><b>files that could not be parsed</b> -- they are in the project and they were not
-   *       analysed, so their findings are not in the report.
+   *       analysed, so their findings are not in the report;
+   *   <li><b>files that ran the machine out of memory</b> -- the same, for a different reason:
+   *       those files are fine, and the machine was not big enough to look at them;
+   *   <li>an <b>interrupted scan</b> -- the files the parse phase never reached.
    * </ul>
    *
    * <p>The record is a claim about the ANALYSIS, not about the code. It may only make the report
@@ -4448,13 +4652,69 @@ public final class ScanRunner {
           "the heap came under pressure, so the analysis pool was reduced: " + heapGuard.reason());
     }
     if (!unparsedFiles.isEmpty()) {
+      List<String> unparsed = snapshotOf(unparsedFiles);
+      if (!unparsed.isEmpty()) {
+        notes.add(
+            unparsed.size()
+                + " file(s) could not be parsed and were not analysed: "
+                + summarise(unparsed));
+      }
+    }
+    if (!outOfMemoryFiles.isEmpty()) {
+      List<String> starved = snapshotOf(outOfMemoryFiles);
+      if (!starved.isEmpty()) {
+        notes.add(
+            starved.size()
+                + " file(s) ran the machine out of memory and were not analysed: "
+                + summarise(starved));
+      }
+    }
+    if (interruptedFiles > 0) {
       notes.add(
-          unparsedFiles.size()
-              + " file(s) could not be parsed and were not analysed: "
-              + summarise(unparsedFiles));
+          "the scan was interrupted before "
+              + interruptedFiles
+              + " file(s) were parsed, so they were not analysed");
     }
     if (notes.isEmpty()) return org.plumb.reporter.AnalysisCompleteness.allComplete();
     return org.plumb.reporter.AnalysisCompleteness.incomplete(notes);
+  }
+
+  /**
+   * A copy of a list the parse workers may still be writing to.
+   *
+   * <p>The workers are done by the time the completeness record is built, but the record must not
+   * depend on that: it reads the list once and works on the copy, so a file that arrives late
+   * cannot make the count and the names disagree.
+   *
+   * @param list the list to copy
+   * @return the copy
+   */
+  private static List<String> snapshotOf(List<String> list) {
+    synchronized (list) {
+      return new ArrayList<>(list);
+    }
+  }
+
+  /**
+   * The files the scan could not look at because they could not be parsed.
+   *
+   * <p>Package-private so that a test can check the record. The record is the point of the fix: a
+   * file that was not analysed has to be visible somewhere, and this list is where it becomes
+   * visible to the user.
+   *
+   * @return the files that could not be parsed
+   */
+  List<String> unparsedFiles() {
+    return snapshotOf(unparsedFiles);
+  }
+
+  /**
+   * The files the scan did not look at because the machine ran out of memory.
+   *
+   * @return the files that ran the machine out of memory
+   */
+  List<String> outOfMemoryFiles() {
+    return snapshotOf(outOfMemoryFiles);
   }
 
   /** A short list of the names, for a note that has to stay readable. */
