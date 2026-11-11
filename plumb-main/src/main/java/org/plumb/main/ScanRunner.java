@@ -2878,6 +2878,83 @@ public final class ScanRunner {
     return engine;
   }
 
+  /**
+   * The engine configuration the scan runs with.
+   *
+   * <p><b>Why the tuning is the CONFIGURED tuning.</b> {@code tuning.yaml} declares the knobs that
+   * bound the analysis -- the worklist cap, the solver timeout, the summary cache's capacity, the
+   * reverse walk's depth, the per-function timeout, the pre-scan -- and the engine reads them. The
+   * runner used to build a tuning of its own instead of the configured one, so the declared values
+   * never reached the engine: the worklist cap was a tenth of the declared one, the summary cache
+   * was a tenth of the declared one, the solver timeout was a fifth, and the per-function timeout
+   * was not enforced at all. A user who lowered {@code per_function_timeout_ms} saw no change and
+   * concluded the knob was broken, which is the one thing a declared-and-ignored knob must not do.
+   *
+   * <p>Package-private so that a test can assert the claim that rots silently: that the engine's
+   * tuning IS the configured tuning.
+   *
+   * @return the engine configuration
+   */
+  org.plumb.dfa.config.EngineConfig unifiedEngineConfig() {
+    // Load the base EngineConfig from classpath so the
+    // sql.sinks / command.sinks / xss.sinks / file-path.sinks
+    // / ... sink families defined in sink-families.yaml are
+    // registered. Without this, every taint-family checker
+    // (SqlInjection / CommandInjection / XSS / PathTraversal /
+    // LDAP / EL / OGNL / CodeInjection / JCR / JspDynamicInclude /
+    // ...) silently no-ops: their checkSinkAtCall() returns
+    // immediately when the registry is empty. The older minimal config
+    // used SinkFamilyRegistry.empty() + CheckerRegistry.empty() for
+    // the 7 baseline DFA checkers (NullDeref, IntOverflow, ...),
+    // which don't need sink families. But the same call also
+    // runs the taint-family checkers listed in buildDfaCheckers()
+    // and those DO need the sink families, so we load the
+    // classpath defaults.
+    org.plumb.dfa.config.EngineConfig baseCfg =
+        org.plumb.dfa.config.ConfigLoader.loadFromClasspath();
+    // The language filter is applied to the LOADED configuration: the sink families of the
+    // languages that were not selected, and their per-language patterns, are never
+    // registered. A Java-only scan therefore does not compile the Kotlin and the Scala
+    // patterns at all.
+    org.plumb.dfa.config.LanguageFilter languageFilter = languageFilter();
+    if (languageFilter.isSelective()) {
+      baseCfg = baseCfg.withSinkFamilies(languageFilter.filterFamilies(baseCfg.sinkFamilies()));
+      // The checker CONFIGURATION is filtered on the same terms, so a
+      // checker that declares the languages it applies to is not even
+      // registered when none of them was selected.
+      baseCfg = baseCfg.withCheckers(languageFilter.filterCheckers(baseCfg.checkers()));
+      LOG.info(
+          "language filter: {} (sink families and checkers narrowed before registration)",
+          languageFilter.describe());
+    }
+    return new org.plumb.dfa.config.EngineConfig(
+        baseCfg.sinkFamilies(),
+        org.plumb.dfa.fact.BuiltinFactKinds.registryWithBuiltins(),
+        baseCfg.checkers(),
+        baseCfg.cweMappings(),
+        // The tuning the configuration declared, not a copy of it.
+        baseCfg.tuning(),
+        // forward the
+        // receiver-passthrough
+        // patterns loaded from
+        // receiver-passthrough.yaml
+        // so TaintedCheckerBase's
+        // receiver->first fallback is
+        // config-gated. The legacy
+        // 5-arg constructor would
+        // silently drop the list and
+        // disable the fallback
+        // entirely.
+        baseCfg.receiverPassthroughTable(),
+        // the argument->result table,
+        // which is the shape the
+        // receiver table cannot
+        // express: a method that builds
+        // its result from an ARGUMENT.
+        baseCfg.languageSemantics(),
+        baseCfg.argumentPassthrough());
+  }
+
   private List<Finding> runUnifiedCheckers(
       org.plumb.tac.ir.MergedProgram merged,
       org.plumb.tac.ir.TacProgram programView,
@@ -2899,62 +2976,7 @@ public final class ScanRunner {
       // runs the taint-family checkers listed in buildDfaCheckers()
       // and those DO need the sink families, so we load the
       // classpath defaults and keep the conservative TuningConfig.
-      org.plumb.dfa.config.EngineConfig baseCfg =
-          org.plumb.dfa.config.ConfigLoader.loadFromClasspath();
-      // The language filter is applied to the LOADED configuration: the sink families of the
-      // languages that were not selected, and their per-language patterns, are never
-      // registered. A Java-only scan therefore does not compile the Kotlin and the Scala
-      // patterns at all.
-      org.plumb.dfa.config.LanguageFilter languageFilter = languageFilter();
-      if (languageFilter.isSelective()) {
-        baseCfg = baseCfg.withSinkFamilies(languageFilter.filterFamilies(baseCfg.sinkFamilies()));
-        // The checker CONFIGURATION is filtered on the same terms, so a
-        // checker that declares the languages it applies to is not even
-        // registered when none of them was selected.
-        baseCfg = baseCfg.withCheckers(languageFilter.filterCheckers(baseCfg.checkers()));
-        LOG.info(
-            "language filter: {} (sink families and checkers narrowed before registration)",
-            languageFilter.describe());
-      }
-      org.plumb.dfa.config.EngineConfig unifiedCfg =
-          new org.plumb.dfa.config.EngineConfig(
-              baseCfg.sinkFamilies(),
-              org.plumb.dfa.fact.BuiltinFactKinds.registryWithBuiltins(),
-              baseCfg.checkers(),
-              baseCfg.cweMappings(),
-              new org.plumb.dfa.config.TuningConfig(
-                  2,
-                  1000,
-                  1000,
-                  100,
-                  4,
-                  false,
-                  false,
-                  false,
-                  "full",
-                  "cwe_family",
-                  "sarif",
-                  false,
-                  0),
-              // forward the
-              // receiver-passthrough
-              // patterns loaded from
-              // receiver-passthrough.yaml
-              // so TaintedCheckerBase's
-              // receiver->first fallback is
-              // config-gated. The legacy
-              // 5-arg constructor would
-              // silently drop the list and
-              // disable the fallback
-              // entirely.
-              baseCfg.receiverPassthroughTable(),
-              // the argument->result table,
-              // which is the shape the
-              // receiver table cannot
-              // express: a method that builds
-              // its result from an ARGUMENT.
-              baseCfg.languageSemantics(),
-              baseCfg.argumentPassthrough());
+      org.plumb.dfa.config.EngineConfig unifiedCfg = unifiedEngineConfig();
       // Pass per-enclosing-class
       // source paths so the unified
       // FindingReporter can fill in
