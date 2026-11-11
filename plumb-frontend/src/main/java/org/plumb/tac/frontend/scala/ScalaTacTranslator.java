@@ -1673,10 +1673,39 @@ final class ScalaTacTranslator {
         TacInstruction.builder(TacInstruction.Kind.NEW)
             .dest(dest)
             .ctorType(type)
+            .calleeSig(constructorSignature(type, operands.size()))
             .args(operands)
             .line(lineOf(tree))
             .build());
     return dest;
+  }
+
+  /**
+   * The signature of a CONSTRUCTOR, in the form the sink families match: {@code
+   * "java.io.File.<init>/1"}.
+   *
+   * <p><b>Why a construction needs one.</b> The DFA's checkers match a sink family against an
+   * instruction's callee signature, and a construction is matched the same way: {@code
+   * FilePermissionChecker} and {@code PathTraversalChecker} both handle {@code Kind.NEW} and both
+   * skip an instruction whose signature is null. A NEW with no signature is therefore invisible to
+   * every constructor family -- the analysis runs, reports nothing, and looks like clean code.
+   *
+   * <p>The Java lane has always emitted the signature for a construction, and so has Kotlin.
+   * Without it the Scala lane was the odd one out.
+   *
+   * @param type the constructed type
+   * @param arity the number of constructor arguments
+   * @return the constructor's signature, or null when the type does not name a class
+   */
+  private String constructorSignature(TacType type, int arity) {
+    if (type == null || type.kind() != TacType.Kind.CLASS) {
+      return null;
+    }
+    String owner = type.className();
+    if (owner == null || owner.isEmpty()) {
+      return null;
+    }
+    return owner + ".<init>/" + arity;
   }
 
   /** Lowers an assignment. */
