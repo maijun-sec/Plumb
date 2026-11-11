@@ -107,6 +107,16 @@ public final class TacTranslator {
    */
   private int anonymousClassCounter = 0;
 
+  /**
+   * The package the translated file declares, or {@code ""} when it declares none.
+   *
+   * <p>The package is part of a class's IDENTITY, not decoration: two classes with the same simple
+   * name in different packages are two different classes. The merged view keys a function on its
+   * declaring class, so without the package one of two same-named classes was dropped from the
+   * analysis whole -- its functions never ran, and nothing said so.
+   */
+  private String packageName = "";
+
   public TacTranslator(ParsedSource source) {
     this.source = source;
     this.program = new TacProgram(source.path(), source.primaryTypeName());
@@ -266,6 +276,9 @@ public final class TacTranslator {
               column));
     }
     CompilationUnit unit = source.unit();
+    // The package the file declares. It is part of every class's identity, so it is read once
+    // here and used wherever a class is named.
+    this.packageName = unit.getPackageDeclaration().map(pd -> pd.getNameAsString()).orElse("");
     for (TypeDeclaration<?> td : unit.getTypes()) {
       translateType(td);
     }
@@ -299,6 +312,26 @@ public final class TacTranslator {
       return classShortName;
     }
     return prefix;
+  }
+
+  /**
+   * The package-qualified name of a class.
+   *
+   * <p>The package goes in front ONCE. A nested type's chain already carries it -- the chain is
+   * built from the enclosing type's own name, and that name is already qualified -- so a name that
+   * already starts with the package is left as it is.
+   *
+   * @param localName the class's name without the package
+   * @return the class's name with the package in front of it
+   */
+  private String qualifiedClassName(String localName) {
+    if (packageName.isEmpty() || localName == null || localName.isEmpty()) {
+      return localName;
+    }
+    if (localName.startsWith(packageName + ".")) {
+      return localName;
+    }
+    return packageName + "." + localName;
   }
 
   private void translateTypeWithPrefix(TypeDeclaration<?> td, String prefix, String outerChain) {
@@ -368,8 +401,18 @@ public final class TacTranslator {
     // scored as a miss. The nested class's file path is knowable --
     // the nested class lives in the file of the type that declares
     // it -- so the qualified name is the key that finds it.
-    String enclosingClassName =
+    String localClassName =
         outerChain.isEmpty() ? classShortName : outerChain + "$" + classShortName;
+    // The declaring class is named by its FULL name, package included.
+    //
+    // WHY IT MATTERS. The merged view keys a function on "<enclosing class> :: <signature>", and
+    // two classes with the same simple name in different packages have the same signature for
+    // the same method. With the short name alone, the second class's functions were written over
+    // the first class's: the whole class dropped out of the analysis, and nothing reported it.
+    //
+    // A nested type keeps the JVM-style "$" chain, with the package in front of it
+    // ("pkg.Outer$Inner").
+    String enclosingClassName = qualifiedClassName(localClassName);
     if (prefix.isEmpty()
         && td instanceof com.github.javaparser.ast.body.ClassOrInterfaceDeclaration cid) {
       // Only register the parent at the top-level class
@@ -464,7 +507,7 @@ public final class TacTranslator {
                 new TacBuilder.FunctionSpec("<clinit>", "<clinit>()", TacType.VOID), List.of());
         // The synthetic <clinit> also belongs to
         // this class for CHA walk purposes.
-        if (prefix.isEmpty()) clinit.setEnclosingClass(classShortName);
+        if (prefix.isEmpty()) clinit.setEnclosingClass(enclosingClassName);
       }
       clinit.addClassAnnotations(classAnns);
       // Field-level annotations on static fields (e.g.

@@ -457,8 +457,12 @@ public final class TacBuilder {
   }
 
   /**
-   * Short name of the declaring class (e.g. {@code "MyThread"}) to attach to the function being
-   * built. Setter is package-private; the {@link TacTranslator} is the only caller.
+   * The declaring class of the function being built (e.g. {@code "pkg.MyThread"}).
+   *
+   * <p><b>Why the package is part of it.</b> The name is the class's IDENTITY, not a label: two
+   * classes with the same simple name in different packages are two different classes. The merged
+   * view keeps same-named methods on different classes apart by exactly this name, so a name
+   * without the package lets one of the two classes drop out of the analysis whole.
    */
   private String enclosingClass;
 
