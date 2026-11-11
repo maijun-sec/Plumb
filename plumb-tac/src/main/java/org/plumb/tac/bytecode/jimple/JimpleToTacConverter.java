@@ -396,7 +396,19 @@ public final class JimpleToTacConverter {
         List.of(),
         java.util.Map.of(),
         java.util.Map.of(),
-        null,
+        // The DECLARING CLASS. The owner-aware index of the call graph is keyed by
+        // "owner.method/arity", and the owner comes from this field -- a function
+        // without one is not in that index at all, so a call to it is resolved by
+        // bare name across the WHOLE program, which guesses between same-named
+        // methods of different classes.
+        //
+        // The fully qualified name, because this is what the bytecode lane's own
+        // `this` carries: the receiver of a call on `this` is typed with the
+        // declaring class's FQN, and a rule that compares the receiver's type with
+        // the declaring class has to see the same spelling on both sides. The
+        // owner-aware index compares owners by their LAST segment, so the FQN
+        // matches a source-lane declaration that records the short name.
+        className,
         SourceOrigin.LIBRARY,
         tryRegions,
         // The bytecode path does not know what language the class was written in. It says

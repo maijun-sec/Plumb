@@ -31,6 +31,9 @@ package bytecode;
  */
 public class OverloadDemo {
 
+  /** A field, so that the compiled code has a receiver to type. */
+  private int counter;
+
   /** The narrow overload. */
   public String pick(String value) {
     return value;
@@ -49,5 +52,10 @@ public class OverloadDemo {
   /** A method with no parameters. */
   public String nothing() {
     return "";
+  }
+
+  /** A method that reads a field, so its bytecode has a receiver. */
+  public int bump() {
+    return ++counter;
   }
 }
