@@ -173,4 +173,38 @@ class FunctionSummaryTest {
     assertNotNull(new Operation.Sink("sql.sinks", 0));
     assertNotNull(new Operation.TaintPropagate("bu-0001", 0.5));
   }
+
+  @Test
+  void aCopyUnderAnotherSignatureKeepsTheReturnTaintCauses() {
+    // The engine stores one summary under SEVERAL keys -- the function's own signature, the key
+    // that names the declaring class, the canonical key -- and every one of them has to carry the
+    // same facts.
+    //
+    // The field that matters is the return taint's CAUSES: it says which formal parameter the
+    // return taint flows through, and the context-sensitive projection uses it to decide whether
+    // the return taint is reachable at a call site. A copy without it keeps the return taint at
+    // EVERY call site, including the ones that pass nothing tainted.
+    FunctionSummary summary =
+        new FunctionSummary.Builder("echo(String):String")
+            .recordParamOp(0, new Operation.TaintPropagate("param:v in echo", 1.0))
+            .recordReturnOp(new Operation.TaintPropagate("return:v in echo", 1.0))
+            .recordReturnTaintCause(0)
+            .build();
+
+    FunctionSummary alias = summary.aliasedAs("Helper :: echo/1");
+
+    assertEquals("Helper :: echo/1", alias.signature());
+    assertTrue(alias.hasBody(), "the alias key exists to say the function HAS a body");
+    assertEquals(
+        java.util.Set.of(0),
+        alias.returnTaintCauses(),
+        "the copy has to keep the return taint's causes, or the projection cannot narrow it");
+    assertTrue(alias.returnOps().contains(new Operation.TaintPropagate("return:v in echo", 1.0)));
+    assertTrue(
+        alias.projectThrough(CallSiteBinding.NONE).returnOps().isEmpty(),
+        "a call site that taints nothing must be able to rule the return taint out");
+    assertFalse(
+        alias.projectThrough(CallSiteBinding.of(java.util.Map.of(0, 0))).returnOps().isEmpty(),
+        "a call site that taints the parameter must keep the return taint");
+  }
 }

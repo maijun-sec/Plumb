@@ -29,6 +29,7 @@ import org.plumb.dfa.config.CheckerConfig;
 import org.plumb.dfa.config.EngineConfig;
 import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.engine.DfaChecker;
+import org.plumb.dfa.summary.CalleeSummaryKeys;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.reporter.Finding;
 import org.plumb.rules.RuleDef;
@@ -282,7 +283,8 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
     if (ins.kind == TacInstruction.Kind.CALL
         && ins.calleeSig != null
         && ins.dest instanceof TacOperand.TacVar destVar) {
-      FunctionSummary calleeSummary = ctx.summaryCache().get(ins.calleeSig);
+      FunctionSummary calleeSummary =
+          CalleeSummaryKeys.lookup(ctx.summaryCache(), ins.calleeSig, ctx.currentClass()).summary();
       boolean retAlloc = calleeSummary.returnOps().stream().anyMatch(op -> isAllocReturnOp(op));
       if (retAlloc) {
         allocSites.put(destVar, ins);

@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.solver.SolverZ3Bridge;
+import org.plumb.dfa.summary.CalleeSummaryKeys;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.summary.Operation;
 import org.plumb.dfa.taint.GuardTracker;
@@ -254,7 +255,11 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     // looking unbounded, so every downstream division / allocation check on the
     // clamped value fired -- a whole class of false positives.
     if (applyMathClamp(ins)) return;
-    FunctionSummary calleeSummary = ctx.summaryCache().get(calleeSig);
+    // The class the callee belongs to is part of the key the summary is stored under, so the
+    // lookup goes through the one place that builds the candidate keys. Asking under the bare
+    // key alone would read whichever class of that method name was written first.
+    FunctionSummary calleeSummary =
+        CalleeSummaryKeys.lookup(ctx.summaryCache(), calleeSig, ctx.currentClass()).summary();
     if (calleeSummary == null) return;
     for (var entry : calleeSummary.paramOps().entrySet()) {
       int i = entry.getKey();

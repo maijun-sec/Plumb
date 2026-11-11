@@ -28,6 +28,7 @@ import java.util.Set;
 import org.plumb.dfa.config.CheckerConfig;
 import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.engine.DfaChecker;
+import org.plumb.dfa.summary.CalleeSummaryKeys;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.summary.Operation;
 import org.plumb.dfa.trace.PatternTrace;
@@ -343,7 +344,8 @@ public final class OrmLostUpdateDfaChecker implements DfaChecker {
     //    recall (avoiding the "the wrapper
     //    doesn't really persist" false positive).
     if ("low".equals(aggressiveness)) return;
-    FunctionSummary calleeSummary = ctx.summaryCache().get(callee);
+    FunctionSummary calleeSummary =
+        CalleeSummaryKeys.lookup(ctx.summaryCache(), callee, ctx.currentClass()).summary();
     if (calleeSummary != null) {
       // PersistsParam ops on params
       for (int pi = 0; pi < ins.args.size(); pi++) {

@@ -37,6 +37,7 @@ import org.plumb.dfa.fact.Fact;
 import org.plumb.dfa.solver.CachedZ3Bridge;
 import org.plumb.dfa.solver.SolverZ3Bridge;
 import org.plumb.dfa.solver.Z3Bridge;
+import org.plumb.dfa.summary.CalleeSummaryKeys;
 import org.plumb.dfa.summary.FieldOp;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.summary.Operation;
@@ -5119,12 +5120,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    *
    * @param ins the CALL instruction
    * @param ctx the analysis context
-   * @param calleeSig the callee's signature, for the lookup key
+   * @param summaryKey the key the callee's summary was found under, for the projection cache
    * @param calleeSummary the context-free summary, as resolved by the caller
    * @return the projected summary
    */
   private FunctionSummary projectForCallSite(
-      TacInstruction ins, AnalysisContext ctx, String calleeSig, FunctionSummary calleeSummary) {
+      TacInstruction ins, AnalysisContext ctx, String summaryKey, FunctionSummary calleeSummary) {
     if (ins == null || ctx == null || calleeSummary == null) return calleeSummary;
     if (calleeSummary.isTrivial() && !calleeSummary.hasBody()) return calleeSummary;
     String callString = callStringOf(ctx);
@@ -5163,12 +5164,18 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // second visit to the same call site gets the same answer. The cache
     // exists so that a callee reached from MANY call sites does not have its
     // summary re-projected once per site.
-    FunctionSummary cached = ctx.summaryCache().getInContext(calleeSig, callString);
+    // The projection is cached under the key the summary was FOUND under, not under the spelling
+    // the call site used. Two classes that each declare a method of the same name reach DIFFERENT
+    // summaries through the same spelling, and a projection cached under the spelling would mix
+    // them. Keying it by the resolved key also lets the cache drop a projection when the summary
+    // it was derived from is replaced.
+    String projectionKey = summaryKey == null ? "" : summaryKey;
+    FunctionSummary cached = ctx.summaryCache().getInContext(projectionKey, callString);
     if (cached != null && (!cached.isTrivial() || cached.hasBody())) {
       return cached;
     }
     FunctionSummary projected = calleeSummary.projectThrough(site);
-    ctx.summaryCache().putInContext(calleeSig, callString, projected);
+    ctx.summaryCache().putInContext(projectionKey, callString, projected);
     return projected;
   }
 
@@ -5179,140 +5186,22 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // callee's facts never reach its callers, and every finding is about an intra-procedural
     // flow. That is the setting the report's claims can be checked against.
     if (contextDepth <= 0) return;
-    FunctionSummary calleeSummary = ctx.summaryCache().get(calleeSig);
-    // Cross-language lookup. A Kotlin call site emits "JavaSink.run/1" (owner-qualified,
-    // slash-arity) while the Java function's own signature is "run(java.lang.String):void"
-    // (paren form, no owner). The two describe the SAME method, but they are different
-    // strings, so the direct lookup misses and the taint never crosses the language
-    // boundary.
+    // The class the callee belongs to is PART of the key the summary is looked up under.
     //
-    // The fix is to compare the two sides by their CANONICAL callee key
-    // (CalleeKeyNormalizer.canonicalCalleeKey), which both sides reduce to. The bare
-    // canonical form ("run/1") is what actually joins them: the owner on the call site
-    // is the caller's view of the target, and the target's own signature may not carry
-    // one.
+    // A call that names no class names the CALLER's own class -- that is what an unqualified
+    // call means -- and the caller knows that class. So the lookup asks under the caller's class
+    // first, and reaches the bare key (which every class declaring a method of that name shares)
+    // only when the specific key is absent.
     //
-    // This is the cross-language counterpart of the call-graph's owner-aware index. The
-    // call graph finds the EDGE; this finds the SUMMARY the edge leads to.
-    if (calleeSummary == null || (calleeSummary.isTrivial() && !calleeSummary.hasBody())) {
-      String canonical = org.plumb.tac.ir.CalleeKeyNormalizer.canonicalCalleeKey(calleeSig);
-      if (canonical != null) {
-        // The candidate spellings, most precise first:
-        //   "demo.JavaSink.run/1" -- the call site's own spelling
-        //   "JavaSink.run/1"       -- the same owner, simple name
-        //   "run/1"                -- no owner at all
-        //
-        // The owner on the call site is the caller's VIEW of the target, and the target's
-        // own signature may carry no owner; and the two may spell the owner differently (a
-        // Java declaration's enclosing class is "JavaSink", a Kotlin call may name it
-        // "demo.JavaSink"). So all three spellings are tried.
-        String bare = org.plumb.tac.ir.CalleeKeyNormalizer.bareCalleeKey(canonical);
-        String simpleOwner = org.plumb.tac.ir.CalleeKeyNormalizer.ownerSimpleName(canonical);
-        java.util.LinkedHashSet<String> candidates = new java.util.LinkedHashSet<>();
-        candidates.add(canonical);
-        if (simpleOwner != null && !simpleOwner.isEmpty() && bare != null) {
-          candidates.add(simpleOwner + "." + bare);
-        }
-        candidates.add(bare);
-        for (String candidate : candidates) {
-          if (candidate == null) continue;
-          FunctionSummary viaCanonical = ctx.summaryCache().get(candidate);
-          if (viaCanonical != null && (!viaCanonical.isTrivial() || viaCanonical.hasBody())) {
-            calleeSummary = viaCanonical;
-            break;
-          }
-        }
-      }
-    }
-    // Cross-class call lookup fallback. The
-    // summary cache is populated under
-    // the bare-name-with-arity form
-    // (e.g. {@code "setData/1"}), but a cross-class
-    // CALL's {@code ins.calleeSig} uses the
-    // {@code "ClassName.methodName/arity"} form
-    // (e.g. {@code "Helper.setData/1"}). When the
-    // direct lookup misses (or returns a trivial
-    // summary that is really a "no entry" mask),
-    // try the bare-name form before giving up.
-    // This unblocks the getter pattern (caller's
-    // receiver has tainted fields, getter's dest
-    // inherits via the cross-fn fold's
-    // conservative passthrough) and is generally
-    // correct: the bare-name alias is the
-    // canonical entry point for the body-driven
-    // TaintPropagate / fieldOp fold.
-    //
-    // Also accept a trivial-but-hasBody
-    // summary in the fallback. Trivial-with-body
-    // is the getter / setter / passthrough shape
-    // where the standalone analysis saw no taint
-    // (no TaintPropagate in returnOps) but the
-    // function has a body the cross-fn fold needs
-    // to know about. The engine populates these
-    // in the cache.
-    if (calleeSummary == null || (calleeSummary.isTrivial() && !calleeSummary.hasBody())) {
-      // in merged mode the bare alias collides across
-      // files (Juliet Variant 42/45 all share {@code badSource/0}).
-      // The {@code r53StripClassPrefix} helper returns null for an
-      // already-bare sig (no {@code ClassName.} prefix), but in
-      // merged mode that bare name IS the alias key the engine put
-      // (qualified with the enclosing class). Try the qualified
-      // form first; if it misses fall back to the bare alias for
-      // single-file backward compatibility.
-      org.plumb.tac.ir.TacFunction callerFn = ctx.currentFunction();
-      String callerEnc = callerFn != null ? callerFn.enclosingClass() : null;
-      String bareName = r53StripClassPrefix(calleeSig);
-      // For same-class calls (implicit-this), {@code calleeSig}
-      // is already the bare alias (no {@code ClassName.} prefix).
-      // Use it directly so the qualified-lookup block below
-      // matches on the engine's bare alias key.
-      if (bareName == null && calleeSig != null && calleeSig.contains("/")) {
-        int slash = calleeSig.indexOf('/');
-        if (slash > 0 && calleeSig.lastIndexOf('.', slash - 1) < 0) {
-          bareName = calleeSig;
-        }
-      }
-      // Always try the qualified alias first when we have a bare
-      // name (cross-class and same-class merged-mode calls).
-      if (bareName != null) {
-        if (callerEnc != null && !callerEnc.isEmpty()) {
-          String qualified = callerEnc + " :: " + bareName;
-          FunctionSummary qAliased = ctx.summaryCache().get(qualified);
-          if (qAliased != null && (!qAliased.isTrivial() || qAliased.hasBody())) {
-            calleeSummary = qAliased;
-          }
-        }
-        // The CALLEE's own class. The engine stores a summary under
-        // "<callee's enclosing class> :: <bare name>", so a call that
-        // crosses a class boundary has to be looked up under the callee's
-        // class -- not the caller's. The caller's class was the only key
-        // tried, so a cross-class call never found its summary: a record's
-        // accessor (`R.name()` called from `C`) looked under `C :: name/0`
-        // while the summary was stored under `R :: name/0`, and the
-        // accessor's tainted return value never reached the caller.
-        String calleeEnc = calleeClassOf(calleeSig);
-        // The cache's get() returns an EMPTY summary for a missing key, never
-        // null -- so "not found yet" means "still trivial", not "null".
-        if (calleeEnc != null
-            && !calleeEnc.isEmpty()
-            && calleeSummary != null
-            && calleeSummary.isTrivial()
-            && !calleeSummary.hasBody()) {
-          String qualified = calleeEnc + " :: " + bareName;
-          FunctionSummary qAliased = ctx.summaryCache().get(qualified);
-          if (qAliased != null && (!qAliased.isTrivial() || qAliased.hasBody())) {
-            calleeSummary = qAliased;
-          }
-        }
-        if (calleeSummary == null || (calleeSummary.isTrivial() && !calleeSummary.hasBody())) {
-          // Bare alias fallback (single-file mode uses this).
-          FunctionSummary aliased = ctx.summaryCache().get(bareName);
-          if (aliased != null && (!aliased.isTrivial() || aliased.hasBody())) {
-            calleeSummary = aliased;
-          }
-        }
-      }
-    }
+    // The order is the whole point. Two classes that each declare a method of the same name
+    // write that method under the bare key as well, and whichever of them was written first owns
+    // it. Asking under the bare key first therefore hands one class another class's facts: the
+    // taint that reaches the sink is the other method's taint, and the finding is attributed to
+    // a file that never contained it.
+    String callerEnc = ctx.currentClass();
+    CalleeSummaryKeys.Resolution resolution =
+        CalleeSummaryKeys.lookup(ctx.summaryCache(), calleeSig, callerEnc);
+    FunctionSummary calleeSummary = resolution.summary();
     // The context-sensitive projection.
     //
     // The summary above is the CALLEE's context-free statement about itself: "this function
@@ -5328,7 +5217,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // not reach the sink:
     //   1. the call site's own projection, if one was recorded;
     //   2. otherwise the context-free summary (the union over all call sites).
-    calleeSummary = projectForCallSite(ins, ctx, calleeSig, calleeSummary);
+    calleeSummary = projectForCallSite(ins, ctx, resolution.key(), calleeSummary);
     if (calleeSummary == null || (calleeSummary.isTrivial() && !calleeSummary.hasBody())) {
       // for JDK getter-style methods with no
       // plumb-side summary. The classic
@@ -6630,59 +6519,5 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             new FieldSource(calleeSig == null ? "<fold>" : calleeSig, FieldSource.KIND_ALIASED));
       }
     }
-  }
-
-  /**
-   * Strip a leading class-name prefix from a callee sig of the form {@code
-   * "ClassName.methodName/arity"}.
-   *
-   * <p>Examples:
-   *
-   * <ul>
-   *   <li>{@code "Helper.setData/1"} : {@code "setData/1"}
-   *   <li>{@code "com.example.Helper.setData/1"} : {@code "setData/1"} (only the last {@code .} is
-   *       stripped, the FQN prefix is dropped as a unit)
-   *   <li>{@code "setData/1"} : {@code null} (already bare-name)
-   *   <li>{@code "setData"} : {@code null} (no arity suffix)
-   *   <li>{@code "buildQuery/1"} : {@code null} (same-class call, already bare)
-   * </ul>
-   */
-  static String r53StripClassPrefix(String sig) {
-    if (sig == null || sig.isEmpty()) return null;
-    int slash = sig.indexOf('/');
-    if (slash <= 0) return null;
-    int dot = sig.lastIndexOf('.', slash - 1);
-    if (dot < 0) return null;
-    return sig.substring(dot + 1);
-  }
-
-  /**
-   * The class a callee signature names, or {@code null} when the signature does not name one.
-   *
-   * <p>The TAC's callee signature is {@code owner.method/arity}. The owner is the DECLARING type
-   * for a resolved call, so it is the class whose summary the engine stored -- and therefore the
-   * class the summary has to be looked up under.
-   *
-   * <p>Only the LAST segment of a dotted owner is returned, because the engine qualifies its
-   * summary aliases with the enclosing class's SHORT name ({@code "R :: name/0"}), not with a
-   * fully-qualified one.
-   *
-   * @param sig the callee signature
-   * @return the owner's short name, or {@code null}
-   */
-  static String calleeClassOf(String sig) {
-    if (sig == null || sig.isEmpty()) return null;
-    int slash = sig.indexOf('/');
-    if (slash <= 0) return null;
-    String owner = sig.substring(0, slash);
-    int dot = owner.lastIndexOf('.');
-    if (dot <= 0) return null;
-    // The owner's LAST segment is the method name; the class is everything
-    // before it. For "R.name/0" the class is "R"; for "java.lang.String.trim/1"
-    // it is "java.lang.String".
-    String className = owner.substring(0, dot);
-    int lastDot = className.lastIndexOf('.');
-    String simple = lastDot < 0 ? className : className.substring(lastDot + 1);
-    return simple.isEmpty() ? null : simple;
   }
 }

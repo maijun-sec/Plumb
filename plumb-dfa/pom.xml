@@ -819,6 +819,13 @@
                              method: the reader of the class that wrote the
                              field does see the taint. -->
                         <include>org/plumb/dfa/taint/ClassFieldIdentityTest.java</include>
+                        <!-- The summary lookup has to ask under the CLASS that
+                             declares the method, not under the bare method
+                             name: two classes that each declare a method of
+                             the same name are two different methods, and a
+                             call that names no class names the caller's own
+                             class. -->
+                        <include>org/plumb/dfa/summary/CalleeSummaryKeysTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

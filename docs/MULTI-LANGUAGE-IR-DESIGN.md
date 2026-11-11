@@ -2488,7 +2488,7 @@ The audit changed both layers:
 - `TaintedCheckerBase.recordFieldOpForStore(...)` — a **clean** write clears the field taint; a **tainted**
   write records it. These are different semantics and the old code conflated them.
 - `TaintedCheckerBase.isThrowableMessageMethod(...)` — matched by **method name**, not by an owner list.
-- `TaintedCheckerBase.calleeClassOf(...)` — the cross-class summary lookup uses the callee's class.
+- `CalleeSummaryKeys` (new) — the cross-class summary lookup asks under the class that DECLARES the method: a call that names no class names the caller's own class, so two classes that each declare a method of the same name do not read each other's summary.
 - `DfaEngine.analysisOrder(...)` — the loop-aware order: back edges are identified, natural loops are
   computed, and the successor that **leaves** the loop is explored **after** the body.
 

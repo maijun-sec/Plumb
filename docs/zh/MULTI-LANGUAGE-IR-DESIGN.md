@@ -2480,7 +2480,7 @@ discriminator 确实带污点，但被赋值的变量只可能拿到常量 `"saf
 - `TaintedCheckerBase.recordFieldOpForStore(...)`——**干净**写清字段污点；**带污点**写记录污点。
   这是两种不同语义，旧代码把它们混为一谈。
 - `TaintedCheckerBase.isThrowableMessageMethod(...)`——按**方法名**匹配，不再维护 owner 列表。
-- `TaintedCheckerBase.calleeClassOf(...)`——跨类 summary 查找用被调用方的类。
+- `CalleeSummaryKeys`（新增）——跨类 summary 查找用**声明该方法的类**：不指明类的调用指向调用方自己的类，因此两个各自声明了同名方法的类不会互相读到对方的摘要。
 - `DfaEngine.analysisOrder(...)`——循环感知的分析顺序：识别 back edge、算出 natural loop，
   并且**离开**循环的 successor 在循环体**之后**才探索。
 

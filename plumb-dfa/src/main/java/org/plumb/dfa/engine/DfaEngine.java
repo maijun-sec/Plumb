@@ -48,6 +48,7 @@ import org.plumb.dfa.config.CheckerConfig;
 import org.plumb.dfa.config.EngineConfig;
 import org.plumb.dfa.resolve.SourcePathResolver;
 import org.plumb.dfa.resolve.StaticFieldResolver;
+import org.plumb.dfa.summary.CalleeSummaryKeys;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.summary.SummaryApplier;
 import org.plumb.dfa.taint.FrameworkEntryPoints;
@@ -2647,29 +2648,19 @@ public final class DfaEngine {
     }
     String enclosing = fn.enclosingClass();
     if (enclosing != null && !enclosing.isEmpty()) {
-      alias = enclosing + " :: " + (String) alias;
+      alias = CalleeSummaryKeys.aliasKey(enclosing, (String) alias);
     }
     if (merged.hasBody()) {
       ctx.summaryCache().put((String) alias, merged);
     } else {
-      FunctionSummary.Builder aliasBuilder = new FunctionSummary.Builder((String) alias);
-      for (Map.Entry entry : merged.paramOps().entrySet()) {
-        for (org.plumb.dfa.summary.Operation op :
-            (Set<org.plumb.dfa.summary.Operation>) entry.getValue()) {
-          aliasBuilder.recordParamOp(((Integer) entry.getKey()).intValue(), op);
-        }
-      }
-      for (org.plumb.dfa.summary.Operation op : merged.returnOps()) {
-        aliasBuilder.recordReturnOp(op);
-      }
-      for (org.plumb.dfa.summary.StringOp sop : merged.stringOps()) {
-        aliasBuilder.recordStringOp(sop);
-      }
-      for (org.plumb.dfa.summary.FieldOp fop : merged.fieldOps()) {
-        aliasBuilder.recordFieldOp(fop);
-      }
-      aliasBuilder.markHasBody();
-      ctx.summaryCache().put((String) alias, aliasBuilder.build());
+      // The alias key exists to say "this function HAS a body", so the copy is made with the body
+      // flag set.
+      //
+      // It has to be a FAITHFUL copy. A summary that lost the return taint's CAUSES keeps the
+      // return taint at every call site -- including the ones that pass nothing tainted -- so the
+      // copy would answer a different question than the summary it was copied from, and the
+      // lookup that finds it would report a false positive.
+      ctx.summaryCache().put((String) alias, merged.aliasedAs((String) alias));
     }
     putCanonicalSummary(ctx, fn, merged);
   }
@@ -2704,19 +2695,20 @@ public final class DfaEngine {
     String ownerQualified = canonical;
     String enclosing = fn.enclosingClass();
     if (enclosing != null && !enclosing.isEmpty() && !canonical.contains(".")) {
-      ownerQualified = enclosing + "." + canonical;
+      ownerQualified = CalleeSummaryKeys.qualifiedKey(enclosing, canonical);
       // The owner may be spelled fully qualified here and simply at the call site (or the
-      // other way round): a Java declaration's enclosing class is "JavaSink", while a Kotlin
-      // call may name it "demo.JavaSink". Both spellings are stored, so the call site finds
+      // other way round): a Java declaration's enclosing class is "demo.JavaSink", while a
+      // call may name it "JavaSink". Both spellings are stored, so the call site finds
       // the summary whichever it uses.
-      int lastDot = enclosing.lastIndexOf('.');
-      if (lastDot >= 0) {
-        String simple = enclosing.substring(lastDot + 1);
-        if (!simple.isEmpty() && !simple.equals(enclosing)) {
-          ctx.summaryCache().put(simple + "." + canonical, merged);
-        }
+      //
+      // The fully qualified one is the specific one: it tells two classes of the same simple
+      // name apart. The simple one addresses both of them, so it is only a fallback.
+      String simple = CalleeSummaryKeys.simpleName(enclosing);
+      if (simple != null && !simple.equals(enclosing)) {
+        ctx.summaryCache().put(CalleeSummaryKeys.qualifiedKey(simple, canonical), merged);
       }
     }
+
     String bare = org.plumb.tac.ir.CalleeKeyNormalizer.bareCalleeKey(canonical);
     for (String key : new String[] {ownerQualified, canonical, bare}) {
       if (key == null) continue;

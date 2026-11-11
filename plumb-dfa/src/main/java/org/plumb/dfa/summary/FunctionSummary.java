@@ -477,6 +477,55 @@ public final class FunctionSummary {
   }
 
   /**
+   * A copy of this summary under another signature, with the body flag set.
+   *
+   * <p>The engine stores one summary under SEVERAL keys -- the function's own signature, the key
+   * that names the declaring class, the canonical key -- and every one of them has to carry the
+   * SAME facts. A summary that was rebuilt field by field and left a field out is not a copy: the
+   * lookup that finds it answers a different question than the lookup that finds the original.
+   *
+   * <p>The field that matters most is {@link #returnTaintCauses()}: it says which formal parameter
+   * the return taint flows through, and {@link #projectThrough(CallSiteBinding)} uses it to decide
+   * whether the return taint is reachable at a call site. A copy without it keeps the return taint
+   * at EVERY call site, including the ones that pass nothing tainted -- and that is a false
+   * positive, not a missed one.
+   *
+   * <p>The body flag is set because the alias key exists to say "this function HAS a body", which
+   * is what the conservative argument-to-result rule asks.
+   *
+   * @param signature the signature to store the copy under
+   * @return the copy
+   */
+  public FunctionSummary aliasedAs(String signature) {
+    Builder b = new Builder(signature);
+    for (Map.Entry<Integer, Set<Operation>> entry : paramOps.entrySet()) {
+      for (Operation op : entry.getValue()) {
+        b.recordParamOp(entry.getKey().intValue(), op);
+      }
+    }
+    for (Operation op : returnOps) {
+      b.recordReturnOp(op);
+    }
+    for (String callee : calleesReached) {
+      b.recordCallee(callee);
+    }
+    if (hasUnmodelledBehavior) {
+      b.markUnmodelled();
+    }
+    b.markHasBody();
+    for (StringOp sop : stringOps) {
+      b.recordStringOp(sop);
+    }
+    for (FieldOp fop : fieldOps) {
+      b.recordFieldOp(fop);
+    }
+    for (Integer cause : returnTaintCauses) {
+      b.recordReturnTaintCause(cause.intValue());
+    }
+    return b.build();
+  }
+
+  /**
    * Project the summary through ONE call site's binding: keep only the operations on the formal
    * parameters that the call site actually feeds with taint.
    *

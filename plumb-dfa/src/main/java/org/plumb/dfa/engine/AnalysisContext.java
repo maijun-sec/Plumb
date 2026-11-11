@@ -803,6 +803,21 @@ public final class AnalysisContext {
   }
 
   /**
+   * The class of the function currently being analysed, or {@code null} when there is none.
+   *
+   * <p>The class is spelled the way the IR spells the declaring class -- with its package when the
+   * IR knows it. A summary lookup needs it, because the class is part of the key the summary is
+   * stored under: two classes that each declare a method of the same name are two different
+   * methods.
+   *
+   * @return the declaring class of the function being analysed, or {@code null}
+   */
+  public String currentClass() {
+    org.plumb.tac.ir.TacFunction fn = currentFunction();
+    return fn == null ? null : fn.enclosingClass();
+  }
+
+  /**
    * The language of the function currently being analysed.
    *
    * <p><b>Why this is asked of the CONTEXT and not of the caller.</b> A rule that says an
