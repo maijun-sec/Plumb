@@ -111,7 +111,29 @@ public final class JimpleToTacConverter {
     String methodName = sig.getName();
     // Synthetic <init>, <clinit> should keep the angle brackets; the
     // existing AST translator does the same.
-    String signature = className + "." + methodName + "(" + sig.getParameterTypes().size() + ")";
+    //
+    // The parenthesised part of the signature is the KEY, and the key carries the
+    // PARAMETER TYPES. Every reader of that part counts the entries it finds -- the
+    // callee-key normaliser and the call graph's bare-name index both do -- so what
+    // belongs there is a parameter list and not a number. A number reads as one
+    // parameter named "2".
+    //
+    // Two things follow when the number is there, and both are silent:
+    //
+    //   * every method's key claims an arity of one, so a call to a method with any
+    //     other number of parameters never meets its declaration and the edge
+    //     between them is never built;
+    //   * two methods that share a name and an arity share a key, so one of the two
+    //     bodies is dropped and never analysed.
+    //
+    // The AST front end already writes the parameter types here, so this makes the
+    // two front ends agree on the shape of a key.
+    StringBuilder paramTypes = new StringBuilder();
+    for (Type pt : sig.getParameterTypes()) {
+      if (paramTypes.length() > 0) paramTypes.append(',');
+      paramTypes.append(pt.toString());
+    }
+    String signature = className + "." + methodName + "(" + paramTypes + ")";
 
     // Return type.
     TacType returnType = op.tacTypeOf(sig.getType());

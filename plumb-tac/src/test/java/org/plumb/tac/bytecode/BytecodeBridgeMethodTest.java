@@ -41,11 +41,12 @@ import org.plumb.tac.ir.TacProgram;
  * The bytecode front end must not let a compiler-generated bridge method stand in for the method it
  * forwards to.
  *
- * <p>The TAC function key is {@code class.name(arity)}. It does not carry the return type, so a
- * covariant override and the bridge javac adds beside it land on ONE key, and only one of the two
- * bodies can be kept. The bridge's body is a call to the method it forwards to -- a call to a
- * method of its own name on {@code this} -- so when the bridge is the one that survives, the class
- * holds a self-call that no source file contains, and the method's real body is gone.
+ * <p>The TAC function key names a method by its parameters. It does not carry the return type, so a
+ * covariant override and the bridge javac adds beside it -- the same name, the same parameters --
+ * land on ONE key, and only one of the two bodies can be kept. The bridge's body is a call to the
+ * method it forwards to -- a call to a method of its own name on {@code this} -- so when the bridge
+ * is the one that survives, the class holds a self-call that no source file contains, and the
+ * method's real body is gone.
  *
  * <p>Measured on a real artifact: of 89 uncontrolled-recursion findings in one JAR, 17 were
  * self-calls on {@code this} inside the same class, and 8 of those were bridge methods standing in
@@ -85,10 +86,10 @@ class BytecodeBridgeMethodTest {
 
     // The bridge and the method it forwards to share one key, so exactly one function carries it.
     assertThat(program.functions())
-        .filteredOn(f -> "bytecode.BridgeDemo$Child.produce(0)".equals(f.signature()))
+        .filteredOn(f -> "bytecode.BridgeDemo$Child.produce()".equals(f.signature()))
         .hasSize(1);
 
-    TacFunction produce = program.function("bytecode.BridgeDemo$Child.produce(0)");
+    TacFunction produce = program.function("bytecode.BridgeDemo$Child.produce()");
     assertThat(produce).isNotNull();
 
     // The bridge's whole body is a call to the method it forwards to. If that body is the one
@@ -114,7 +115,7 @@ class BytecodeBridgeMethodTest {
             .filter(p -> "bytecode.BridgeDemo".equals(p.typeName()))
             .findFirst()
             .orElseThrow();
-    TacFunction baseProduce = base.function("bytecode.BridgeDemo.produce(0)");
+    TacFunction baseProduce = base.function("bytecode.BridgeDemo.produce()");
     assertThat(baseProduce).isNotNull();
     assertThat(baseProduce.instructions()).anyMatch(i -> i.kind == TacInstruction.Kind.NEW);
   }

@@ -71,7 +71,7 @@ class BytecodeConstructorArgsTest {
         programs.stream().filter(p -> "bytecode.CtorArgDemo".equals(p.typeName())).findFirst();
     assertThat(demo).isPresent();
 
-    TacFunction make = demo.get().function("bytecode.CtorArgDemo.make(1)");
+    TacFunction make = demo.get().function("bytecode.CtorArgDemo.make(java.lang.String)");
     assertThat(make).isNotNull();
 
     List<TacInstruction> allocations =

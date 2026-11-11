@@ -93,13 +93,13 @@ class BytecodeAnalyzerTest {
         .contains("getSecret", "setSecret", "doubleIt", "buildMessage", "add", "asString", "main");
 
     // 6. `setSecret` should contain a FIELDSTORE for "secret".
-    TacFunction setSecret = program.function("R140Demo.setSecret(1)");
+    TacFunction setSecret = program.function("R140Demo.setSecret(java.lang.String)");
     assertThat(setSecret).isNotNull();
     assertThat(setSecret.instructions())
         .anyMatch(i -> i.kind == TacInstruction.Kind.FIELDSTORE && "secret".equals(i.fieldName));
 
     // 7. `doubleIt` should contain a BINOP, a RETURN, and no CALL.
-    TacFunction doubleIt = program.function("R140Demo.doubleIt(1)");
+    TacFunction doubleIt = program.function("R140Demo.doubleIt(int)");
     assertThat(doubleIt).isNotNull();
     assertThat(doubleIt.instructions()).anyMatch(i -> i.kind == TacInstruction.Kind.BINOP);
     assertThat(doubleIt.instructions()).anyMatch(i -> i.kind == TacInstruction.Kind.RETURN);
@@ -107,7 +107,7 @@ class BytecodeAnalyzerTest {
 
     // 8. `buildMessage` should have a NEW for StringBuilder and
     //    multiple CALLs (append).
-    TacFunction buildMessage = program.function("R140Demo.buildMessage(1)");
+    TacFunction buildMessage = program.function("R140Demo.buildMessage(java.lang.String)");
     assertThat(buildMessage).isNotNull();
     assertThat(buildMessage.instructions()).anyMatch(i -> i.kind == TacInstruction.Kind.NEW);
     long callCount =
@@ -117,13 +117,13 @@ class BytecodeAnalyzerTest {
     assertThat(callCount).isGreaterThanOrEqualTo(2);
 
     // 9. `add` is static — should have no `this` param.
-    TacFunction add = program.function("R140Demo.add(2)");
+    TacFunction add = program.function("R140Demo.add(int,int)");
     assertThat(add).isNotNull();
     assertThat(add.params()).extracting(p -> p.name()).doesNotContain("this");
     assertThat(add.instructions()).anyMatch(i -> i.kind == TacInstruction.Kind.BINOP);
 
     // 10. `asString` should contain a static CALL (String.valueOf).
-    TacFunction asString = program.function("R140Demo.asString(1)");
+    TacFunction asString = program.function("R140Demo.asString(int)");
     assertThat(asString).isNotNull();
     assertThat(asString.instructions())
         .anyMatch(
