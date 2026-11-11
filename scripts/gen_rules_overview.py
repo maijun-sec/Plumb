@@ -80,10 +80,14 @@ def _count_cwe_mappings():
 
 def measure():
     surface = cb.measure()
-    sink = surface["sink_families"]
-    families = [k for k in sink if k != "families"]
-    source_families = [f for f in families if f.startswith("taint.sources.")]
-    sink_families = [f for f in families if not f.startswith("taint.sources.")]
+    # The catalogue, measured the way the ENGINE holds it: a family with no CWE is a
+    # source, the source variables are not patterns, and the family name is not the
+    # role. Counting by the name prefix found six of the eleven source families and
+    # counted the other five as sinks, and it counted the ten source variables as
+    # source patterns -- so the two numbers below were not the catalogue's numbers.
+    catalogue = cb.catalogue_families()
+    source_names = cb.source_family_names(catalogue)
+    sink_names = cb.sink_family_names(catalogue)
 
     style_by_dir = {}
     style_total = 0
@@ -113,10 +117,11 @@ def measure():
     taint_rules = _taint_rules()
 
     return {
-        "source_families": len(source_families),
-        "source_patterns": sum(len(sink.get(f, [])) for f in source_families),
-        "sink_families": len(sink_families),
-        "sink_patterns": sum(len(sink.get(f, [])) for f in sink_families),
+        "source_families": len(source_names),
+        "source_patterns": sum(catalogue[f]["patterns"] for f in source_names),
+        "source_variables": sum(f["source_variables"] for f in catalogue.values()),
+        "sink_families": len(sink_names),
+        "sink_patterns": sum(catalogue[f]["patterns"] for f in sink_names),
         "dfa_declared": declared,
         "dfa_enabled": enabled,
         "dfa_disabled": disabled,
@@ -240,8 +245,9 @@ them.
 
 | Category | Module | Count | How it is implemented | Stage |
 | --- | --- | ---: | --- | --- |
-| Taint source patterns | plumb-dfa | **%(source_patterns)d** | The %(source_families)d `taint.sources.*` families of `sink-families.yaml` | taint |
-| Taint sink patterns | plumb-dfa | **%(sink_patterns)d** | The %(sink_families)d `*.sinks` families of `sink-families.yaml` | taint |
+| Taint source patterns | plumb-dfa | **%(source_patterns)d** | The %(source_families)d source families of `sink-families.yaml` -- the ones that carry no CWE | taint |
+| Taint sink patterns | plumb-dfa | **%(sink_patterns)d** | The %(sink_families)d sink families of `sink-families.yaml` -- the ones that carry a CWE | taint |
+| Taint source variables | plumb-dfa | **%(source_variables)d** | The `source_variables:` blocks of `sink-families.yaml` -- the sources that are not calls | taint |
 | DFA checker (declared in YAML) | plumb-dfa | **%(dfa_declared)d** (%(dfa_enabled)d enabled / %(dfa_disabled)d disabled) | `checkers.yaml` | dfa |
 | DFA checker (actually registered) | plumb-main | **%(dfa_registered)d** | `ScanRunner.buildDfaCheckers()` | dfa |
 | Style / naming / design | plumb-style | **%(style_total)d** | JavaParser AST visitor | style |
@@ -451,8 +457,9 @@ ZH_TEMPLATE = """# Plumb 规则清单
 
 | 类别 | 模块 | 数量 | 实现方式 | 阶段 |
 | --- | --- | ---: | --- | --- |
-| Taint source 模式 | plumb-dfa | **%(source_patterns)d** | `sink-families.yaml` 的 %(source_families)d 个 `taint.sources.*` family | taint |
-| Taint sink 模式 | plumb-dfa | **%(sink_patterns)d** | `sink-families.yaml` 的 %(sink_families)d 个 `*.sinks` family | taint |
+| Taint source 模式 | plumb-dfa | **%(source_patterns)d** | `sink-families.yaml` 的 %(source_families)d 个 source family（不带 CWE 的那些） | taint |
+| Taint sink 模式 | plumb-dfa | **%(sink_patterns)d** | `sink-families.yaml` 的 %(sink_families)d 个 sink family（带 CWE 的那些） | taint |
+| Taint source 变量 | plumb-dfa | **%(source_variables)d** | `sink-families.yaml` 的 `source_variables:` 块 —— 不是调用的那些 source | taint |
 | DFA checker（YAML 声明） | plumb-dfa | **%(dfa_declared)d**（%(dfa_enabled)d 启用 / %(dfa_disabled)d 禁用） | `checkers.yaml` | dfa |
 | DFA checker（实际注册） | plumb-main | **%(dfa_registered)d** | `ScanRunner.buildDfaCheckers()` | dfa |
 | Style / 命名 / 设计 | plumb-style | **%(style_total)d** | JavaParser AST visitor | style |

@@ -103,7 +103,7 @@ Plumb 是一个**纯 Java** 的静态分析工具，**独立项目**（不是 Fa
 
 ### 3.0 DFA checker 的实现形态
 
-`plumb-dfa/src/main/java` 下共 205 个 `.java`，并非每个都是独立的分析器。按**实际实现
+`plumb-dfa/src/main/java` 下共 206 个 `.java`，并非每个都是独立的分析器。按**实际实现
 机制**可分成几类（数量为实测）：
 
 | 形态 | 数量 | 含义 |

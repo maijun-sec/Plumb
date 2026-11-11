@@ -36,29 +36,6 @@ CWE_MAPPINGS = REPO / "plumb-dfa" / "src" / "main" / "resources" / "cwe-mappings
 RULE_REGISTRY = REPO / "plumb-rules" / "src" / "main" / "java" / "org" / "plumb" / "rules" / "RuleRegistry.java"
 
 
-def _pattern_count(sink, names):
-    """The number of patterns in the named sink families.
-
-    `capability_baseline.measure()` returns the sink families as a dict: the key
-    "families" holds the list of family NAMES, and each family name is a key of its
-    own whose value is that family's list of patterns.
-
-    An earlier version of this script read the "families" key -- the list of names --
-    and then looked each name up in it, so every family counted zero patterns and the
-    document stated "0 / 0" taint sources and sinks.
-    """
-    total = 0
-    for name in names:
-        patterns = sink.get(name)
-        if isinstance(patterns, list):
-            total += len(patterns)
-        elif isinstance(patterns, dict):
-            inner = patterns.get("patterns")
-            if isinstance(inner, list):
-                total += len(inner)
-    return total
-
-
 def _product_cwes():
     """Every CWE the product can attach to a finding, and where it comes from.
 
@@ -90,9 +67,14 @@ def _product_cwes():
 def measure():
     """Every number the document states about Plumb."""
     surface = cb.measure()
-    sink = surface["sink_families"]
-    names = [f for f in sink.get("families", []) if f != "families"]
-    source_families = [f for f in names if f.startswith("taint.sources.")]
+    # The catalogue, measured the way the ENGINE holds it: a family with no CWE is a
+    # source, the source variables are not patterns, and the family name is not the
+    # role. Counting by the name prefix found six of the eleven source families and
+    # counted the other five as sinks, and it counted the ten source variables as
+    # source patterns.
+    catalogue = cb.catalogue_families()
+    source_names = cb.source_family_names(catalogue)
+    sink_names = cb.sink_family_names(catalogue)
 
     style_classes = [p for p in STYLE_ROOT.rglob("*.java")
                       if p.name.endswith("Check.java") or p.name.endswith("Checker.java")]
@@ -126,10 +108,11 @@ def measure():
         "registered_rules": len(surface["registered_rules"]),
         "tainted_subclasses": tainted,
         "taint_rules": len(re.findall(r"new TaintRule\(|TaintRule\.of\(", trr)),
-        "sink_families": len(names),
-        "sink_patterns": _pattern_count(sink, names),
-        "source_families": len(source_families),
-        "source_patterns": _pattern_count(sink, source_families),
+        "sink_families": len(sink_names),
+        "sink_patterns": sum(catalogue[f]["patterns"] for f in sink_names),
+        "source_families": len(source_names),
+        "source_patterns": sum(catalogue[f]["patterns"] for f in source_names),
+        "source_variables": sum(f["source_variables"] for f in catalogue.values()),
         "input_source_patterns": len(surface["input_source_patterns"]),
         "rule_to_cwe_entries": len(cwes),
         "cwe_count": len(cwes),
@@ -220,8 +203,9 @@ The complete classification of the DFA checkers is in
 | Total registered rules | {registered_rules} | The actual registrations of AST + DFA |
 | DFA checker (registered) | {registered_checkers} | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | {taint_rules} | `TaintRuleRegistry` |
-| Taint source family / patterns | {source_families} / {source_patterns} | The `taint.sources.*` of `sink-families.yaml` |
-| Taint sink family / patterns | {sink_family_count} / {sink_pattern_count} | The `*.sinks` of `sink-families.yaml` |
+| Taint source family / patterns | {source_families} / {source_patterns} | The source families of `sink-families.yaml` -- the ones that carry no CWE |
+| Taint sink family / patterns | {sink_families} / {sink_patterns} | The sink families of `sink-families.yaml` -- the ones that carry a CWE |
+| Taint source variable | {source_variables} | The `source_variables:` blocks of `sink-families.yaml` -- the sources that are not calls |
 | Input source patterns (framework entry points) | {input_source_patterns} | `InputSourcePatterns` |
 | Fact kinds | {fact_kinds} | Built-in + YAML |
 
@@ -377,8 +361,9 @@ Plumb 的做法分两阶段：
 | 已注册规则总数 | {registered_rules} | AST + DFA 的实际注册 |
 | DFA checker（已注册） | {registered_checkers} | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | {taint_rules} | `TaintRuleRegistry` |
-| Taint source family / 模式 | {source_families} / {source_patterns} | `sink-families.yaml` 的 `taint.sources.*` |
-| Taint sink family / 模式 | {sink_family_count} / {sink_pattern_count} | `sink-families.yaml` 的 `*.sinks` |
+| Taint source family / 模式 | {source_families} / {source_patterns} | `sink-families.yaml` 的 source family（不带 CWE 的那些） |
+| Taint sink family / 模式 | {sink_families} / {sink_patterns} | `sink-families.yaml` 的 sink family（带 CWE 的那些） |
+| Taint source 变量 | {source_variables} | `sink-families.yaml` 的 `source_variables:` 块 —— 不是调用的那些 source |
 | 输入源模式（框架入口） | {input_source_patterns} | `InputSourcePatterns` |
 | 事实种类 | {fact_kinds} | 内置 + YAML |
 
@@ -468,8 +453,6 @@ def main():
     m = measure()
     m["built_in_kinds"] = len([k for k in surface["fact_kinds"] if k.startswith("builtin:")])
     m["yaml_kinds"] = len([k for k in surface["fact_kinds"] if k.startswith("yaml:")])
-    m["sink_family_count"] = m["sink_families"] - m["source_families"]
-    m["sink_pattern_count"] = m["sink_patterns"] - m["source_patterns"]
 
     text = render(m)
     zh_text = render_zh(m)

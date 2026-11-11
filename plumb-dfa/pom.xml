@@ -826,6 +826,12 @@
                              call that names no class names the caller's own
                              class. -->
                         <include>org/plumb/dfa/summary/CalleeSummaryKeysTest.java</include>
+                        <!-- The documents quote the size of the catalogue, and
+                             the number has to be the one the ENGINE holds: the
+                             engine drops a bucket whose language it does not
+                             know, a bucket outside the family's languages, and
+                             the earlier of two buckets for the same language. -->
+                        <include>org/plumb/dfa/config/SinkFamilyHoldingsTest.java</include>
                     </includes>
                 </configuration>
             </plugin>

@@ -210,26 +210,30 @@ def source_sink_families():
     those families -- with the catalogue's own anchored patterns. A source
     family is therefore watched, even though no checker names it.
 
-    The CWE is read from the file's own lines rather than from a YAML
-    library, because the capability gate parses the same file with a regex
-    and the two gates must not disagree about what the catalogue says.
+    The measurement is the SHARED one, so this gate and the document generators
+    cannot disagree about what the catalogue says. It used to be a second reader
+    of the same file, and the two readers agreed by luck rather than by design.
     """
-    out = set()
-    current = None
-    has_cwe = False
-    for line in cb.SINK_FAMILIES.read_text(encoding="utf-8", errors="replace").splitlines():
-        m = re.match(r"^  ([A-Za-z0-9_.\-]+):\s*$", line)
-        if m:
-            if current is not None and not has_cwe:
-                out.add(current)
-            current = m.group(1)
-            has_cwe = False
-            continue
-        if current is not None and re.match(r"^    cwe:\s*(?!null)\S", line):
-            has_cwe = True
-    if current is not None and not has_cwe:
-        out.add(current)
-    return out
+    return cb.source_family_names()
+
+
+def catalogue_split():
+    """The catalogue's source/sink split, the way the engine holds it.
+
+    A family with no CWE is a source; the patterns are the ones in the
+    `patterns:` list and in every `by_language:` bucket; the source variables
+    are NOT patterns -- the engine holds them in a field of their own.
+    """
+    catalogue = cb.catalogue_families()
+    sources = cb.source_family_names(catalogue)
+    sinks = cb.sink_family_names(catalogue)
+    return {
+        "source_family_count": len(sources),
+        "sink_family_count": len(sinks),
+        "source_pattern_count": sum(catalogue[f]["patterns"] for f in sources),
+        "sink_pattern_count": sum(catalogue[f]["patterns"] for f in sinks),
+        "source_variable_count": sum(f["source_variables"] for f in catalogue.values()),
+    }
 
 
 def wired_checker_classes():
@@ -567,6 +571,45 @@ SET_CHECKS = [
     ("docs/tech/MODULE-MERGE.md", "tac"),
 ]
 
+# The catalogue's source/sink split, as the two generated documents state it.
+#
+# Those documents are GENERATED, and `check_generated_documents.py` proves they
+# match their generator. That proof is not enough on its own: a generator that
+# measures the catalogue the wrong way produces a document that is wrong in the
+# same way, and a gate that compares a document with its generator stays green.
+# So the numbers are measured HERE -- from the catalogue, the way the ENGINE
+# holds it -- and the documents are checked against that measurement.
+#
+# It is not a formality. The documents used to say 214 source patterns and 3914
+# sink patterns: the ten source variables were counted as source patterns, and
+# the five source families that are not named `taint.sources.*` were counted as
+# sinks. The generator and the documents agreed with each other, and both were
+# wrong about the catalogue.
+#
+# (document, the English row label, the Chinese row label, the measurement key)
+CATALOGUE_ROWS = (
+    ("docs/rules/RULES.md",
+     "Taint source patterns", "Taint source 模式", "source_pattern_count"),
+    ("docs/rules/RULES.md",
+     "Taint sink patterns", "Taint sink 模式", "sink_pattern_count"),
+    ("docs/rules/RULES.md",
+     "Taint source variables", "Taint source 变量", "source_variable_count"),
+)
+
+# The comparison document states the same split as "families / patterns", so both
+# numbers live in ONE cell and are checked together.
+#
+# (document, the English row label, the Chinese row label, the family key, the pattern key)
+CATALOGUE_COMPARISON_ROWS = (
+    ("docs/rules/RULE-TOOL-COMPARISON.md",
+     "Taint source family / patterns", "Taint source family / 模式",
+     "source_family_count", "source_pattern_count"),
+    ("docs/rules/RULE-TOOL-COMPARISON.md",
+     "Taint sink family / patterns", "Taint sink family / 模式",
+     "sink_family_count", "sink_pattern_count"),
+)
+
+
 def _check_number_claim(failures, rel, pattern, measure, tree_label):
     """Check one number claim in one document.
 
@@ -691,6 +734,58 @@ def main():
                 % (rel, module,
                    ", ".join(sorted(claimed)) or "(none)",
                    ", ".join(sorted(expected)) or "(none)"))
+
+    # The catalogue's source/sink split, as the generated documents state it.
+    #
+    # The measurement is taken here, from the catalogue and the way the ENGINE
+    # holds it, and not from the generator that wrote the documents: a
+    # generator that measures the catalogue the wrong way would otherwise
+    # produce a document that is wrong in the same way, and the gate that
+    # compares the document with the generator would not see it.
+    split = catalogue_split()
+    for rel, label_en, label_zh, key in CATALOGUE_ROWS:
+        expected = split[key]
+        for path, label in ((REPO / rel, label_en),
+                            (REPO / ("docs/zh/" + rel[len("docs/"):]), label_zh)):
+            if not path.is_file():
+                failures.append("%s: the document does not exist" % path.relative_to(REPO))
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            # The row is "| <label> | <module> | **N** | ...".
+            row = re.search(r"\|\s*%s\s*\|[^|\n]*\|\s*\*\*(\d+)\*\*" % re.escape(label), text)
+            if not row:
+                failures.append("%s: the row for %s is gone" % (path.relative_to(REPO), label))
+                continue
+            claimed = int(row.group(1))
+            if claimed != expected:
+                failures.append("%s: %s says %d, the catalogue says %d"
+                                % (path.relative_to(REPO), label, claimed, expected))
+
+    # The comparison document states the split as "families / patterns" in one
+    # cell, so both numbers are read from the same row.
+    for rel, label_en, label_zh, family_key, pattern_key in CATALOGUE_COMPARISON_ROWS:
+        for path, label in ((REPO / rel, label_en),
+                            (REPO / ("docs/zh/" + rel[len("docs/"):]), label_zh)):
+            if not path.is_file():
+                failures.append("%s: the document does not exist" % path.relative_to(REPO))
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            row = re.search(r"\|\s*%s\s*\|\s*(\d+)\s*/\s*(\d+)\s*\|" % re.escape(label), text)
+            if not row:
+                failures.append("%s: the row for %s is gone" % (path.relative_to(REPO), label))
+                continue
+            claimed_families = int(row.group(1))
+            claimed_patterns = int(row.group(2))
+            expected_families = split[family_key]
+            expected_patterns = split[pattern_key]
+            if claimed_families != expected_families:
+                failures.append("%s: %s says %d families, the catalogue says %d"
+                                % (path.relative_to(REPO), label, claimed_families,
+                                   expected_families))
+            if claimed_patterns != expected_patterns:
+                failures.append("%s: %s says %d patterns, the catalogue says %d"
+                                % (path.relative_to(REPO), label, claimed_patterns,
+                                   expected_patterns))
 
     # The per-directory table: every row must carry the count the source has.
     table_path = REPO / DIRECTORY_TABLE

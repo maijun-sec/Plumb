@@ -78,8 +78,9 @@ The complete classification of the DFA checkers is in
 | Total registered rules | 1158 | The actual registrations of AST + DFA |
 | DFA checker (registered) | 99 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | 12 | `TaintRuleRegistry` |
-| Taint source family / patterns | 6 / 214 | The `taint.sources.*` of `sink-families.yaml` |
-| Taint sink family / patterns | 61 / 3914 | The `*.sinks` of `sink-families.yaml` |
+| Taint source family / patterns | 11 / 215 | The source families of `sink-families.yaml` -- the ones that carry no CWE |
+| Taint sink family / patterns | 56 / 3903 | The sink families of `sink-families.yaml` -- the ones that carry a CWE |
+| Taint source variable | 10 | The `source_variables:` blocks of `sink-families.yaml` -- the sources that are not calls |
 | Input source patterns (framework entry points) | 65 | `InputSourcePatterns` |
 | Fact kinds | 27 | Built-in + YAML |
 

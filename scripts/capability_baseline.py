@@ -108,6 +108,115 @@ def yaml_families(path):
     return result
 
 
+def catalogue_families(path=None):
+    """Every family of the catalogue, measured the way the ENGINE holds it.
+
+    <p>The catalogue carries three facts per family, and none of them is visible in the
+    file's layout:
+
+    <ul>
+      <li>the ROLE -- a family with no CWE is a SOURCE. The catalogue has no role marker,
+          so the absence of the {@code cwe:} key is what says "this is where data comes
+          in", and the engine's {@code SourceFamilyMatcher} reads exactly those families;
+      <li>the PATTERNS -- the {@code patterns:} list plus every {@code by_language:}
+          bucket, which is what the engine holds as the family's rules;
+      <li>the SOURCE VARIABLES -- the names in a {@code source_variables:} block, which the
+          engine holds in a field of its own, beside the patterns and not among them.
+    </ul>
+
+    <p><b>Why a YAML library and not the line reader above.</b> A pattern and a source
+    variable are both list items under a key, and only the key says which one it is. The
+    line reader cannot see that boundary, so it took the variable names for patterns: the
+    generated documents then reported the source variables as source patterns, and the
+    source count was overstated by exactly the number of variables the catalogue declares.
+    The engine reads the file with a YAML loader, so this measurement does too -- the
+    question here is what the ENGINE holds, not what the text looks like.
+
+    @param path the catalogue to read; the sink families by default
+    @return the family name to its role, pattern count and variable count
+    """
+    target = SINK_FAMILIES if path is None else path
+    if not target.is_file():
+        return {}
+    try:
+        import yaml
+    except ImportError:  # a YAML parser is not needed by the baseline's own measurement
+        return {}
+    data = yaml.safe_load(target.read_text(encoding="utf-8", errors="replace")) or {}
+    families = data.get("families")
+    if not isinstance(families, dict):
+        return {}
+    out = {}
+    for name, spec in families.items():
+        spec = spec if isinstance(spec, dict) else {}
+        by_language = spec.get("by_language")
+        by_language = by_language if isinstance(by_language, dict) else {}
+        variables = spec.get("source_variables")
+        variables = variables if isinstance(variables, dict) else {}
+        patterns = spec.get("patterns")
+        patterns = patterns if isinstance(patterns, list) else []
+        count = len(patterns)
+        for bucket in by_language.values():
+            count += len(bucket) if isinstance(bucket, list) else 0
+        variable_count = 0
+        for names in variables.values():
+            variable_count += len(names) if isinstance(names, list) else 0
+        out[name] = {
+            "cwe": spec.get("cwe"),
+            "patterns": count,
+            "source_variables": variable_count,
+        }
+    return out
+
+
+def source_family_names(families=None):
+    """The catalogue's SOURCE families: the ones that carry no CWE.
+
+    <p>The catalogue has no role marker. The absence of a CWE is what says "this is where
+    data comes in", and {@code SourceFamilyMatcher} reads exactly those families -- with
+    the catalogue's own anchored patterns. A source family is therefore watched, even
+    though no checker names it.
+
+    <p><b>The name is not the role.</b> Six of the source families are named
+    {@code taint.sources.*}, but five are named after what they carry ({@code
+    ip-address.sources}, {@code dns.sources}, {@code principal.sources}, {@code rpc.sources}
+    and {@code login.sources}). Counting by the name prefix found six of the eleven, and
+    the five it missed were counted as SINKS -- so the sink count was overstated by their
+    patterns, and the two numbers did not add up to the catalogue.
+
+    @param families the measured families; the catalogue by default
+    @return the names of the source families
+    """
+    measured = catalogue_families() if families is None else families
+    return {name for name, spec in measured.items() if spec.get("cwe") is None}
+
+
+def sink_family_names(families=None):
+    """The catalogue's SINK families: the ones that carry a CWE.
+
+    @param families the measured families; the catalogue by default
+    @return the names of the sink families
+    """
+    measured = catalogue_families() if families is None else families
+    return {name for name, spec in measured.items() if spec.get("cwe") is not None}
+
+
+def family_count(mapping):
+    """The number of families in a surface that carries them under the container key.
+
+    <p>The surface is a mapping of family to patterns, and it holds the FAMILY NAMES in a list
+    under the file's own top-level key. That key is a container, not a family, so the size of the
+    mapping is one more than the number of families. Counting the mapping instead of the names
+    reported a catalogue of 82 as 83 -- and a document that quotes the catalogue's size was
+    measured against the wrong number until it was noticed.
+    """
+    if isinstance(mapping, dict):
+        names = mapping.get("families")
+        if isinstance(names, list):
+            return len(names)
+    return len(mapping)
+
+
 def flatten(surface):
     """The surface as a flat set of strings, so a removal is a set difference.
 
