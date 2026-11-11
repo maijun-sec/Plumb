@@ -664,8 +664,10 @@ public final class ExpressionTranslator {
     // "scope" + simple-name fallbacks that miss
     // FQN-anchored sink patterns.
     TacType returnType = TacType.UNKNOWN;
+    boolean calleeResolved = false;
     try {
       returnType = TypeMapper.mapResolved(mce.calculateResolvedType());
+      calleeResolved = true;
     } catch (Exception ignore) {
       // unresolved / unsupported type; fall back to UNKNOWN
     }
@@ -693,10 +695,66 @@ public final class ExpressionTranslator {
         TacInstruction.builder(TacInstruction.Kind.CALL)
             .dest(dest)
             .calleeSig(sig)
+            .calleeParamTypes(calleeResolved ? resolvedCalleeParamTypes(mce) : null)
             .args(argOps)
             .line(TacTranslator.nodeLine(mce))
             .build());
     return new ExpressionResult(dest, returnType);
+  }
+
+  /**
+   * The parameter types of the overload this call selects, or {@code null} when the callee did not
+   * resolve.
+   *
+   * <p>A call names the method and the NUMBER of its parameters, and two overloads share both:
+   * {@code append(Object)} and {@code append(String)} are the same call by that description. The
+   * resolved declaration says which one it is, so the call site can record it -- otherwise a
+   * consumer that has to choose between the two overloads has nothing to choose by, and declining
+   * to choose loses the taint that crossed the call.
+   *
+   * <p>Resolution fails for a class declared in the scanned source: it is not on the reflection
+   * type solver's classpath, so {@code resolve()} throws. The call then keeps naming the method and
+   * its arity, which is what the catalogue matches on.
+   */
+  private static List<String> resolvedCalleeParamTypes(
+      com.github.javaparser.ast.expr.MethodCallExpr mce) {
+    try {
+      var resolved = mce.resolve();
+      return TacTranslator.calleeParamTypesOf(resolved.formalParameterTypes());
+    } catch (RuntimeException ignore) {
+      return null;
+    }
+  }
+
+  /**
+   * The parameter types of the method a reference names, or {@code null} when it did not resolve.
+   *
+   * <p>A method reference names a method without calling it, and the reference is the one place
+   * that says which overload it means.
+   */
+  private static List<String> referencedParamTypes(
+      com.github.javaparser.ast.expr.MethodReferenceExpr mre) {
+    try {
+      var resolved = mre.resolve();
+      return TacTranslator.calleeParamTypesOf(resolved.formalParameterTypes());
+    } catch (RuntimeException ignore) {
+      return null;
+    }
+  }
+
+  /**
+   * The parameter types of the constructor this {@code new} selects, or {@code null} when it did
+   * not resolve.
+   */
+  private static List<String> constructedParamTypes(
+      com.github.javaparser.ast.expr.ObjectCreationExpr oce) {
+    try {
+      var resolved = oce.resolve();
+      if (resolved == null) return null;
+      return TacTranslator.calleeParamTypesOf(resolved.formalParameterTypes());
+    } catch (RuntimeException ignore) {
+      return null;
+    }
   }
 
   /**
@@ -773,6 +831,7 @@ public final class ExpressionTranslator {
         TacInstruction.builder(TacInstruction.Kind.CALL)
             .dest(dest)
             .calleeSig(sig)
+            .calleeParamTypes(referencedParamTypes(mre))
             .args(argOps)
             .line(TacTranslator.nodeLine(mre))
             .column(TacTranslator.nodeColumn(mre))
@@ -802,8 +861,12 @@ public final class ExpressionTranslator {
       String receiverTypeName,
       String methodName) {
     try {
-      var resolved = mre.resolve();
-      var method = resolved.asMethod();
+      // `mre.resolve()` IS the resolved method declaration. Asking it for one
+      // (`resolved.asMethod()`) throws UnsupportedOperationException -- the
+      // declaration is not asked that way -- and the catch below swallowed the
+      // throw, so every reference was bound with the arity -1 and matched no
+      // callee at all.
+      var method = mre.resolve();
       int params = method.getNumberOfParams();
       // An unbound instance-method reference receives the receiver as the
       // functional interface's first argument.
@@ -1169,6 +1232,7 @@ public final class ExpressionTranslator {
             .dest(dest)
             .ctorType(TacType.ofClass(textual))
             .calleeSig(TacTranslator.ctorSig(ctorSigName, oce.getArguments().size()))
+            .calleeParamTypes(constructedParamTypes(oce))
             .args(argOps)
             .line(TacTranslator.nodeLine(oce))
             .build());

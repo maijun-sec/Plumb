@@ -1721,6 +1721,34 @@ public final class TacTranslator {
     return typeName + ".<init>/" + argCount;
   }
 
+  /**
+   * The parameter types of the overload a call selects, as the resolved declaration names them.
+   *
+   * <p>One entry per parameter, written the way a function signature writes its parameter list
+   * ({@code "java.lang.String"}, {@code "int"}), so a consumer compares the list against the
+   * parameter list of a signature directly. The bytecode lane writes the descriptor's own names and
+   * this writes the resolved type's qualified name; both spell {@code java.lang.String} the same
+   * way, so a consumer that compares the two lists compares their last segment.
+   *
+   * <p>{@code null} when the declaration could not be resolved, and {@code null} as well when one
+   * of the parameter types did not resolve: an unknown type is not "a parameter of type Object",
+   * and a list that guesses would make a consumer resolve the call to the WRONG overload. A class
+   * declared in the scanned source is not on the reflection type solver's classpath, so resolving
+   * it throws and the call keeps naming the method and its arity, which is what the catalogue
+   * matches on.
+   */
+  public static List<String> calleeParamTypesOf(
+      List<com.github.javaparser.resolution.types.ResolvedType> paramTypes) {
+    if (paramTypes == null) return null;
+    List<String> out = new ArrayList<>(paramTypes.size());
+    for (com.github.javaparser.resolution.types.ResolvedType pt : paramTypes) {
+      TacType mapped = TypeMapper.mapResolved(pt);
+      if (mapped == null || mapped == TacType.UNKNOWN) return null;
+      out.add(mapped.displayName());
+    }
+    return out;
+  }
+
   // ------------------------------------------------------------------
   // Common BinaryOperator / UnaryOperator mappings from JavaParser.
   // ------------------------------------------------------------------
