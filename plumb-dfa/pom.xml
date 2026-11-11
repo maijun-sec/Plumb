@@ -139,6 +139,14 @@
                              the sequential one finds. Without this the
                              per-thread fact bag is an untested claim. -->
                         <include>org/plumb/dfa/engine/ParallelAnalysisConsistencyTest.java</include>
+                        <!-- A range seed belongs to the function that recorded it.
+                             The map that holds the seeds was cleared at every call
+                             but not at the function boundary, and it is keyed by
+                             variable name, so one function's seed reached the
+                             next one's variable of the same name and the findings
+                             depended on the order the functions were analysed
+                             in. -->
+                        <include>org/plumb/dfa/summary/CallerSeedScopeTest.java</include>
                         <!-- The module boundary: what is read, what is reported, and
                              what the report says about what it did not look at. -->
                         <include>org/plumb/dfa/engine/ModuleScopeTest.java</include>

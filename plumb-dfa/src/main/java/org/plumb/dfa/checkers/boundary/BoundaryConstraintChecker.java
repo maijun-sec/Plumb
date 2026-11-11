@@ -164,6 +164,15 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     guards.clear();
     guardTracker.clear();
     reported.clear();
+    // The caller-seeded ranges are PER FUNCTION. They are cleared at every
+    // CALL as well, but a function whose body has no call never clears them,
+    // and the map's keys are variable names -- a TacVar is identified by its
+    // name, so a seed recorded for the caller's "data" is the same key as the
+    // callee's parameter "data". The next function the worker analyses would
+    // therefore start with the previous function's seeds, and whether a
+    // boundary finding fires or not would depend on which function happened
+    // to be analysed before it -- a schedule, not a property of the program.
+    callerSeededRanges.clear();
   }
 
   // ─────────── Cross-function range seed ───────────
