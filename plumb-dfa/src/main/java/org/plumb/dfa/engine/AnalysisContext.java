@@ -63,6 +63,13 @@ import org.plumb.tac.ir.TacProgram;
  */
 public final class AnalysisContext {
 
+  /**
+   * The smallest method-summary cache the engine builds, whatever the program looks like.
+   *
+   * <p>A program with fewer functions than this gets a cache with room to spare.
+   */
+  private static final int METHOD_SUMMARY_CACHE_MINIMUM = 4096;
+
   private final TacProgram program;
   private final CallGraph callGraph;
   private final EngineConfig config;
@@ -271,6 +278,22 @@ public final class AnalysisContext {
   }
 
   /**
+   * How many method summaries the cache may hold.
+   *
+   * <p>The cache holds one summary per function the engine analysed, and the engine builds exactly
+   * one per function, so the program's function count is the number of entries the cache can ever
+   * need. A fixed bound below that number does not bound memory: the summaries are built either
+   * way, and a bound that drops them makes the call sites that need them fold nothing.
+   *
+   * @param program the program being analysed
+   * @return the capacity to give the cache
+   */
+  private static int methodSummaryCapacity(TacProgram program) {
+    int functions = program == null ? 0 : program.functions().size();
+    return Math.max(METHOD_SUMMARY_CACHE_MINIMUM, functions);
+  }
+
+  /**
    * Full constructor including the analysis budget.
    *
    * <p>The engine passes its own budget here so that every checker in a run shares one set of
@@ -292,7 +315,9 @@ public final class AnalysisContext {
     this.summaryCache =
         summaryCache == null ? new FunctionSummaryCache(config.tuning()) : summaryCache;
     this.methodSummaryCache =
-        methodSummaryCache == null ? new MethodSummaryCache() : methodSummaryCache;
+        methodSummaryCache == null
+            ? new MethodSummaryCache(null, methodSummaryCapacity(program))
+            : methodSummaryCache;
     this.budget = budget == null ? new AnalysisBudget(config.tuning()) : budget;
     this.currentFunctionStartNanos = System.nanoTime();
     // Per-function state is PER THREAD, not per context.

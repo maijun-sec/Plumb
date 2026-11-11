@@ -2248,24 +2248,45 @@ public final class DfaEngine {
     }
   }
 
-  private static FunctionSignature parseFnSignature(TacFunction fn) {
+  /**
+   * The key a function's summary is stored under.
+   *
+   * <p>The key names the class that DECLARES the function. That class is what tells two same-named
+   * methods of different classes apart; a key without it addresses every one of them at once, so
+   * the summary that comes back may belong to a different method than the one that was called.
+   *
+   * <p>The class comes from the signature when the signature carries one — the bytecode lane writes
+   * the canonical form {@code pkg.Class#method(args):ret} — and from the IR's enclosing class
+   * otherwise. The source lane writes the signature as {@code method(args):ret}, which names no
+   * class at all, and carries the declaring class beside it.
+   *
+   * <p>The package is dropped and the class is reduced to its simple name, because the call site
+   * names the class the same way: it knows the receiver's type, not the package the receiver came
+   * from. Two classes of the same simple name in different packages therefore share a key.
+   *
+   * @param fn the function to build the key for
+   * @return the key
+   */
+  public static FunctionSignature parseFnSignature(TacFunction fn) {
     String s = fn.signature();
     String name = fn.name();
-    if (s == null || s.isEmpty()) {
-      return new FunctionSignature(
-          "", "<unknown>", name == null ? "<unknown>" : name, List.of(), "?");
-    }
+    String method = name == null ? SummaryApplier.NO_CLASS : name;
+    String cls = null;
     FunctionSignature parsed = null;
     try {
-      parsed = FunctionSignature.parse((String) s);
+      parsed = FunctionSignature.parse(s);
     } catch (RuntimeException runtimeException) {
       // empty catch block
     }
     if (parsed != null) {
-      return parsed;
+      cls = SummaryApplier.simpleClassName(parsed.className());
+      method = parsed.method();
+    }
+    if (cls == null) {
+      cls = SummaryApplier.simpleClassName(fn.enclosingClass());
     }
     return new FunctionSignature(
-        "", "<unknown>", name == null ? "<unknown>" : name, List.of(), "?");
+        "", cls == null ? SummaryApplier.NO_CLASS : cls, method, List.of(), "?");
   }
 
   public static List<Integer> bbRpoOrder(TacFunction fn) {

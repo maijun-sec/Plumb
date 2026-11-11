@@ -488,6 +488,11 @@
                         <include>org/plumb/dfa/solver/R242PathConditionTest.java</include>
                         <include>org/plumb/dfa/summary/FunctionSummaryTest.java</include>
                         <include>org/plumb/dfa/summary/R32FunctionSummaryEnhancementTest.java</include>
+                        <!-- The two ends of a summary lookup have to spell the class the
+                             same way: the engine keys a function by the class that DECLARES
+                             it, and the call site looks it up by the receiver's class. Two
+                             same-named methods of two classes have to be two keys. -->
+                        <include>org/plumb/dfa/summary/CalleeKeyResolutionTest.java</include>
                         <include>org/plumb/dfa/taint/FrameworkFieldBindingSourceTest.java</include>
                         <include>org/plumb/dfa/translate/R259JavaIntLiteralTest.java</include>
 
@@ -627,6 +632,11 @@
                              counted across the whole run refuses nearly every fact a large scan
                              is offered, and the loss is invisible in the report. -->
                         <include>org/plumb/dfa/engine/WorklistCapScopeTest.java</include>
+                        <!-- A call to a method of the caller's own class has to find THAT
+                             method's summary. The IR names such a call by the method alone,
+                             and a key without a class in it addresses nothing, so those calls
+                             find nothing at all. -->
+                        <include>org/plumb/dfa/engine/UnqualifiedCallFoldingTest.java</include>
                         <include>org/plumb/dfa/engine/FunctionOrderCacheIdentityTest.java</include>
                         <include>org/plumb/dfa/solver/TimeBoundedSolverBridgeTest.java</include>
                         <include>org/plumb/dfa/semantics/LanguageSemanticsTest.java</include>

@@ -108,26 +108,11 @@ public final class SummaryApplier {
       // fall through to null
     }
     if (sig == null) {
-      // FunctionSignature.parse returns
-      // null for the
-      // {@code Class.method/arity} form
-      // that the IR uses for CALL
-      // instructions (e.g.
-      // {@code "IO.staticReturnsTrue/0"}).
-      // Try a shape-only fallback that
-      // splits on '.' and '/' so the
-      // cache lookup can find a
-      // pre-computed summary the
-      // engine stored via
-      // {@code parseFnSignature(fn)}
-      // with class="<unknown>" and
-      // method="staticReturnsTrue".
-      // Without this fallback the
-      // caller-side fold consumer
-      // never sees the
-      // {@code RETURN_VALUE_FOLDED}
-      // fact for cross-TU calls.
-      sig = fallbackParse(calleeSig);
+      // FunctionSignature.parse returns null for the "Class.method/arity" form that the IR
+      // uses for CALL instructions (e.g. "IO.staticReturnsTrue/0"). The fallback builds the
+      // same shape of key the engine stores its summaries under, so the lookup can find a
+      // pre-computed summary.
+      sig = fallbackParse(calleeSig, callerClassOf(ctx));
     }
     if (sig == null) {
       // Genuinely non-canonical: the
@@ -144,54 +129,96 @@ public final class SummaryApplier {
   }
 
   /**
-   * Fallback parser for the {@code Class.method/arity} form that CALL instructions use when the
-   * engine has not yet canonicalised the signature. Returns a {@code FunctionSignature} with {@code
-   * class="<unknown>"} (matching the engine's {@code parseFnSignature} fallback) so the cache
-   * lookup can find a pre-computed summary.
+   * The key a call site looks a callee's summary up under.
    *
-   * <p>The fallback accepts:
+   * <p>The IR spells a call in one of two ways:
    *
    * <ul>
-   *   <li>{@code "Class.method/N"} → method="method", arity=N (ignored for cache key)
-   *   <li>{@code "Class.method"} (no arity) → method="method"
-   *   <li>Anything else → {@code null} (caller treats as genuinely non-canonical)
+   *   <li>{@code "Class.method/N"} — the receiver's type names the class
+   *   <li>{@code "method/N"} — a call to a method of the caller's own class, which names no class
+   *       at all
    * </ul>
    *
-   * <p>The cache key intentionally drops the arity and the return type so it matches whatever the
-   * engine's {@code parseFnSignature(fn)} fallback produced for the same method. The arity
-   * difference is acceptable because the {@link MethodSummary} is a per-method view (the {@link
-   * org.plumb.dfa.summary.ReturnShape} encodes the return value regardless of arity, and the
-   * side-effect set already tracks writes-param:N for any N). Multiple overloads of the same method
-   * name would collide -- for Juliet this never happens; the general case is a known limitation
-   * (see fallbackParse's doc for details).
+   * <p>The second form carries no class, and a key without a class in it addresses nothing: the
+   * most common call there is is never found, so the callee's return shape is never folded into the
+   * caller and the callee's side effects are never recorded. The declaring class of that call is
+   * the caller's own class, and the caller knows it.
+   *
+   * <p>Both forms are reduced to the shape the engine stores under: no package, the class's SIMPLE
+   * name, the method name, no parameter types, an unknown return type. The arity is not part of the
+   * key, because the summary it addresses is a per-method view — the return shape does not depend
+   * on how many arguments were passed, and the side-effect set records a parameter write by index.
+   *
+   * @param calleeSig the callee signature as the IR spells it
+   * @param callerClass the declaring class of the function the call sits in, or null when the
+   *     caller has none
+   * @return the key to look the summary up under, or null when the signature is not a shape the
+   *     engine can address
    */
-  static FunctionSignature fallbackParse(String calleeSig) {
+  static FunctionSignature fallbackParse(String calleeSig, String callerClass) {
     if (calleeSig == null || calleeSig.isEmpty()) return null;
     int slash = calleeSig.indexOf('/');
     String head = slash < 0 ? calleeSig : calleeSig.substring(0, slash);
-    // Validate the arity if present
-    // — we don't use it for the key
-    // but we want to reject
-    // non-numeric slashes.
+    // Validate the arity if present — it is not part of the key, but a non-numeric slash
+    // means the signature is not a shape this parser understands.
     if (slash >= 0) {
       for (int i = slash + 1; i < calleeSig.length(); i++) {
         if (!Character.isDigit(calleeSig.charAt(i))) return null;
       }
     }
     int dot = head.lastIndexOf('.');
-    if (dot < 0) return null;
-    String method = head.substring(dot + 1);
+    String method;
+    String cls;
+    if (dot < 0) {
+      // The call names no class, so the callee is a method of the caller's own class.
+      method = head;
+      cls = simpleClassName(callerClass);
+    } else {
+      method = head.substring(dot + 1);
+      cls = simpleClassName(head.substring(0, dot));
+    }
     if (method.isEmpty()) return null;
-    // Synthesise a cache key with
-    // class="<unknown>" to match
-    // the engine's parseFnSignature
-    // fallback exactly. Empty
-    // paramTypes and "?" return
-    // type so the canonical() form
-    // matches regardless of the
-    // function's actual arity or
-    // return type.
-    return new FunctionSignature("", "<unknown>", method, java.util.List.of(), "?");
+    return new FunctionSignature(
+        "", cls == null ? NO_CLASS : cls, method, java.util.List.of(), "?");
+  }
+
+  /**
+   * The class name a key addresses, when the engine has none.
+   *
+   * <p>A function the IR did not place in a class — a free function, a synthetic initialiser —
+   * lands here, and so does a call site whose class the IR did not name. It is a bucket of its own:
+   * it holds the functions that have no class and nothing else, so a lookup that lands in it can
+   * only find a class-less function.
+   */
+  public static final String NO_CLASS = "<unknown>";
+
+  /**
+   * The simple name of a type: the last dot-separated segment of a qualified name.
+   *
+   * <p>The two ends of a summary lookup have to spell the class the same way. The IR spells a
+   * receiver's type by its simple name on the source lane and by its fully qualified name on the
+   * bytecode lane, so both ends reduce the name to its last segment before it becomes part of a
+   * key.
+   *
+   * @param qualified the type name, qualified or not
+   * @return the simple name, or null when there is no name to reduce
+   */
+  public static String simpleClassName(String qualified) {
+    if (qualified == null || qualified.isEmpty()) return null;
+    int dot = qualified.lastIndexOf('.');
+    String simple = dot < 0 ? qualified : qualified.substring(dot + 1);
+    return simple.isEmpty() ? null : simple;
+  }
+
+  /**
+   * The declaring class of the function being analysed on this thread.
+   *
+   * @param ctx the analysis context
+   * @return the class name, or null when no function is being analysed
+   */
+  private static String callerClassOf(AnalysisContext ctx) {
+    org.plumb.tac.ir.TacFunction fn = ctx.currentFunction();
+    return fn == null ? null : fn.enclosingClass();
   }
 
   /**
