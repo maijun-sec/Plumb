@@ -7002,6 +7002,13 @@ families:
         # file_get_contents reads a URL as happily as it reads a path.
         - pattern: '^\\file_get_contents\b(/\d+)?'
           arg_index: 0
+        # SoapClient fetches the WSDL it is given, over the network, in its
+        # CONSTRUCTOR -- the same shape as curl_init above, one argument
+        # earlier. The URL is the first argument. The other way to give
+        # SoapClient a URL is the options array, and that is not claimed:
+        # the array carries flags as well, and a tainted flag is not a URL.
+        - pattern: '^\\SoapClient\.\<init\>(/\d+)?'
+          arg_index: 0
 
   taint.sources.console:
     cwe: null

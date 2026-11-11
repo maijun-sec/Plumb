@@ -215,6 +215,20 @@ class ScriptSinkFamilyEndToEndTest {
       """;
 
   /**
+   * A PHP program that hands a WSDL it was given to SoapClient.
+   *
+   * <p>The constructor fetches the WSDL over the network, so the URL is the sink even though the
+   * fetch happens inside a constructor rather than in a call the program writes.
+   */
+  private static final String PHP_SOAP_CONSTRUCTION =
+      """
+      <?php
+      function handler(string $url): void {
+          $client = new SoapClient($url);
+      }
+      """;
+
+  /**
    * A TypeScript program that evaluates a value it was given.
    *
    * <p>The global {@code eval} is a FREE FUNCTION: it has no receiver object and no module to name,
@@ -331,6 +345,25 @@ class ScriptSinkFamilyEndToEndTest {
 
     assertThat(hasFinding(findings, FORMAT_RULE, "\\sprintf"))
         .as("the format string is the first user argument of a PHP global function")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("a PHP construction reaches the SSRF rule")
+  void aPhpConstructionReachesTheSsrfRule(@TempDir Path directory) throws IOException {
+    assumeTrue(
+        phpAvailable(),
+        "the PHP front end needs Node and its parser dependency: run npm ci in"
+            + " plumb-frontend/php-sidecar");
+
+    Path file = directory.resolve("app.php");
+    Files.writeString(file, PHP_SOAP_CONSTRUCTION);
+
+    List<Finding> findings =
+        scan(new PhpTacFrontend(), PHP_SOAP_CONSTRUCTION, file, new SsrfChecker());
+
+    assertThat(hasFinding(findings, SSRF_RULE, "\\SoapClient.<init>"))
+        .as("the WSDL the constructor fetches is the URL the program was given")
         .isTrue();
   }
 
