@@ -26,7 +26,6 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -42,9 +41,9 @@ import org.plumb.tac.ir.TacInstruction;
  * checker then cannot see that a deferred release inside a loop is not released until the function
  * exits -- and the rule that would say so has nothing to look at.
  *
- * <p><b>Why this is a frontend test.</b> The marker is set where the language's primitive is
- * known: the sidecar that lowers Go. The sidecar's own tests cover the lowering; this test covers
- * the other half of the trip -- that the marker survives the wire and arrives in the TAC.
+ * <p><b>Why this is a frontend test.</b> The marker is set where the language's primitive is known:
+ * the sidecar that lowers Go. The sidecar's own tests cover the lowering; this test covers the
+ * other half of the trip -- that the marker survives the wire and arrives in the TAC.
  */
 @DisplayName("Go: the calls that do not run where they are written are marked")
 class GoDeferredEffectTest {
@@ -119,10 +118,12 @@ class GoDeferredEffectTest {
     try (GoTacFrontend frontend = new GoTacFrontend()) {
       assumeTrue(
           frontend.isToolchainAvailable(),
-          "the Go front end needs the sidecar executable to reach the project's types");
+          "the Go front end needs the sidecar executable to reach the project's types: build it"
+              + " with plumb-frontend/go-sidecar/build.ps1");
       assumeTrue(
-          goToolchainOnPath(),
-          "the Go front end needs a Go toolchain to resolve the project's types");
+          GoProjectDiscovery.toolchainRootOf() != null,
+          "the Go front end needs a Go toolchain to resolve the project's types: install Go"
+              + " (https://go.dev/dl) and put `go` on the PATH");
       for (TacFunction function : frontend.parse(source, file).functions()) {
         if (name.equals(function.name())) {
           return function;
@@ -135,34 +136,10 @@ class GoDeferredEffectTest {
   /** The instruction that calls the given callee, or null. */
   private static TacInstruction callTo(TacFunction function, String calleeSig) {
     for (TacInstruction instruction : function.instructions()) {
-      if (instruction.kind == TacInstruction.Kind.CALL
-          && calleeSig.equals(instruction.calleeSig)) {
+      if (instruction.kind == TacInstruction.Kind.CALL && calleeSig.equals(instruction.calleeSig)) {
         return instruction;
       }
     }
     return null;
-  }
-
-  /**
-   * Whether a Go toolchain is reachable.
-   *
-   * <p>The sidecar resolves the project's types with the toolchain's own source, so without one
-   * it cannot answer the question the test asks. That is a missing environment, not a broken
-   * product, so the test SKIPS.
-   */
-  private static boolean goToolchainOnPath() {
-    String path = System.getenv("PATH");
-    if (path == null || path.isEmpty()) {
-      return false;
-    }
-    for (String dir : path.split(java.io.File.pathSeparator)) {
-      if (dir.isEmpty()) {
-        continue;
-      }
-      if (Files.isRegularFile(Path.of(dir, "go.exe")) || Files.isRegularFile(Path.of(dir, "go"))) {
-        return true;
-      }
-    }
-    return false;
   }
 }

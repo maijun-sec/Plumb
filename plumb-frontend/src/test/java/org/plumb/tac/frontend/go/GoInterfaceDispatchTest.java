@@ -31,7 +31,6 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.plumb.tac.frontend.go.GoTacFrontend;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 
@@ -40,21 +39,21 @@ import org.plumb.tac.ir.TacInstruction;
  *
  * <h2>Why the interface's own name is not enough</h2>
  *
- * <p>Go's interface satisfaction is implicit: nothing in the source says which type a call
- * through an interface dispatches to, and the type checker checks it rather than the programmer
- * stating it. So the relation has to be worked out from the method sets -- and when it is not,
- * the call names the INTERFACE, and a program has no function for an interface.
+ * <p>Go's interface satisfaction is implicit: nothing in the source says which type a call through
+ * an interface dispatches to, and the type checker checks it rather than the programmer stating it.
+ * So the relation has to be worked out from the method sets -- and when it is not, the call names
+ * the INTERFACE, and a program has no function for an interface.
  *
- * <p>That is the shape this test pins: the call carries the interface's key AND the key of
- * every type that satisfies the interface.
+ * <p>That is the shape this test pins: the call carries the interface's key AND the key of every
+ * type that satisfies the interface.
  *
  * <h2>Why this is a frontend test and not an end-to-end one</h2>
  *
  * <p>An end-to-end test cannot tell the two apart. The engine has a conservative fallback that
- * hands a callee's taint to the caller's result whenever the callee has a body, so a scan
- * reports the finding whether or not the dispatch was resolved -- the finding is there for a
- * different reason, and the test would pass for the wrong one. The TAC is where the relation is
- * actually carried, so that is where it is measured.
+ * hands a callee's taint to the caller's result whenever the callee has a body, so a scan reports
+ * the finding whether or not the dispatch was resolved -- the finding is there for a different
+ * reason, and the test would pass for the wrong one. The TAC is where the relation is actually
+ * carried, so that is where it is measured.
  */
 class GoInterfaceDispatchTest {
 
@@ -168,37 +167,14 @@ class GoInterfaceDispatchTest {
     try (GoTacFrontend frontend = new GoTacFrontend()) {
       assumeTrue(
           frontend.isToolchainAvailable(),
-          "the Go front end needs the sidecar executable to reach the project's types");
+          "the Go front end needs the sidecar executable to reach the project's types: build it"
+              + " with plumb-frontend/go-sidecar/build.ps1");
       assumeTrue(
-          goToolchainOnPath(),
-          "the Go front end needs a Go toolchain to resolve the project's types");
+          GoProjectDiscovery.toolchainRootOf() != null,
+          "the Go front end needs a Go toolchain to resolve the project's types: install Go"
+              + " (https://go.dev/dl) and put `go` on the PATH");
       return frontend.parse(source, file).functions();
     }
-  }
-
-  /**
-   * Whether a Go toolchain is reachable.
-   *
-   * <p>The sidecar resolves the project's types with the toolchain's own source, so without one
-   * it cannot answer the question the test asks. That is a missing environment, not a broken
-   * product, so the test SKIPS.
-   *
-   * @return true when a {@code go} command is on the PATH
-   */
-  private static boolean goToolchainOnPath() {
-    String path = System.getenv("PATH");
-    if (path == null || path.isEmpty()) {
-      return false;
-    }
-    for (String dir : path.split(java.io.File.pathSeparator)) {
-      if (dir.isEmpty()) {
-        continue;
-      }
-      if (Files.isRegularFile(Path.of(dir, "go.exe")) || Files.isRegularFile(Path.of(dir, "go"))) {
-        return true;
-      }
-    }
-    return false;
   }
 
   /**

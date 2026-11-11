@@ -21,6 +21,8 @@
  */
 package org.plumb.tac.frontend.csharp;
 
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -31,16 +33,15 @@ import org.plumb.tac.frontend.TacFrontend;
 /**
  * Shared scaffolding for the C# frontend's tests.
  *
- * <p><b>Why the frontend is created per test class.</b> The C# frontend holds a
- * sidecar PROCESS, so each test class gets its own: the process is expensive to
- * start, and sharing one across classes would make the tests order-dependent.
+ * <p><b>Why the frontend is created per test class.</b> The C# frontend holds a sidecar PROCESS, so
+ * each test class gets its own: the process is expensive to start, and sharing one across classes
+ * would make the tests order-dependent.
  *
- * <p><b>Why the toolchain's absence is an explicit skip.</b> The C# frontend
- * needs a .NET toolchain, and not every machine that builds Plumb has one. A
- * test that silently passed because it analysed nothing would be worse than no
- * test at all -- it would report "the C# frontend works" on a machine where it
- * was never exercised. So the absence is a skip with a stated reason, which the
- * test report shows.
+ * <p><b>Why the toolchain's absence is an explicit skip.</b> The C# frontend needs a .NET
+ * toolchain, and not every machine that builds Plumb has one. A test that silently passed because
+ * it analysed nothing would be worse than no test at all -- it would report "the C# frontend works"
+ * on a machine where it was never exercised. So the absence is a skip with a stated reason, which
+ * the test report shows.
  */
 final class CSharpTestSupport implements AutoCloseable {
 
@@ -50,37 +51,20 @@ final class CSharpTestSupport implements AutoCloseable {
   /** The compile context. */
   private final CompileContext context = new TestContext();
 
-  /** Whether the .NET toolchain was found. */
-  private final boolean toolchainAvailable;
-
   /**
-   * Whether the .NET toolchain was found.
+   * Where the C# sidecar is, or null when it is not on this machine.
    *
-   * <p>It is resolved in a STATIC INITIALIZER, not in the constructor: JUnit evaluates an
-   * {@code @EnabledIf} condition BEFORE the lifecycle callbacks run, so a flag set in
-   * {@code @BeforeAll} would still read {@code false} and every test would be skipped.
+   * <p>It is resolved in a STATIC INITIALIZER, so the answer is computed once for the whole JVM:
+   * the lookup walks the disk, and eight test classes would otherwise each repeat it -- and eight
+   * answers to one question are eight chances to drift apart.
    */
-  private static final boolean TOOLCHAIN_AVAILABLE =
-      CSharpSidecarClient.locateExecutable(null) != null;
+  private static final Path EXECUTABLE = CSharpSidecarClient.locateExecutable(null);
+
+  /** Whether the .NET toolchain was found. */
+  private static final boolean TOOLCHAIN_AVAILABLE = EXECUTABLE != null;
 
   CSharpTestSupport() {
-    Path executable = CSharpSidecarClient.locateExecutable(null);
-    this.toolchainAvailable = executable != null;
-    this.frontend = new CSharpTacFrontend(executable);
-  }
-
-  /** Whether the .NET toolchain was found. */
-  boolean toolchainAvailable() {
-    return toolchainAvailable;
-  }
-
-  /**
-   * Whether the .NET toolchain is available, for a JUnit {@code @EnabledIf} condition.
-   *
-   * @return true when the sidecar was found
-   */
-  static boolean toolchainPresent() {
-    return TOOLCHAIN_AVAILABLE;
+    this.frontend = new CSharpTacFrontend(EXECUTABLE);
   }
 
   /** The frontend under test. */
@@ -100,6 +84,7 @@ final class CSharpTestSupport implements AutoCloseable {
    * @return the parse result
    */
   TacFrontend.ParseResult parse(String source) {
+    assumeTheSidecarIsThere();
     return frontend.parse(source, Path.of("Test.cs"), context);
   }
 
@@ -110,7 +95,26 @@ final class CSharpTestSupport implements AutoCloseable {
    * @return the structured parse result
    */
   TacFrontend.StructuredParseResult parseStructured(String source) {
+    assumeTheSidecarIsThere();
     return frontend.parseStructured(source, Path.of("Test.cs"), context);
+  }
+
+  /**
+   * The sidecar has to be there for a parse to mean anything.
+   *
+   * <p>The condition lives HERE, and not in the test classes, for two reasons. There is ONE copy of
+   * it in the whole suite, so the question cannot drift between the classes that ask it. And it
+   * sits on the operation that needs the sidecar, so a test that never reaches the sidecar -- the
+   * catalogue's language filter, the language registry -- keeps running on a machine that has no
+   * sidecar, instead of being skipped for a reason that has nothing to do with it.
+   *
+   * <p>It ABORTS the test rather than disabling it, because a disabled test is reported with the
+   * condition's name and nothing else -- "@EnabledIf evaluated to false" -- while an aborted test
+   * is reported with the sentence that says what to do about it: {@link
+   * CSharpSidecarClient#NOT_BUILT}.
+   */
+  private static void assumeTheSidecarIsThere() {
+    assumeTrue(TOOLCHAIN_AVAILABLE, CSharpSidecarClient.NOT_BUILT);
   }
 
   @Override

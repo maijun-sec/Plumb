@@ -29,31 +29,28 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 
 /**
  * The catalogue's C# symbols must be symbols the C# frontend PRODUCES.
  *
- * <p><b>Why this is a separate test from the lowering one.</b> The lowering
- * test proves the frontend emits a {@code CALL}. This one proves the
- * catalogue RECOGNISES it. Either alone is not enough: a {@code CALL} the
- * catalogue does not match is as invisible as a {@code FIELDSTORE}, and the
- * whole point of the measurement is that the catalogue's symbols are the ones
- * the frontend emits.
+ * <p><b>Why this is a separate test from the lowering one.</b> The lowering test proves the
+ * frontend emits a {@code CALL}. This one proves the catalogue RECOGNISES it. Either alone is not
+ * enough: a {@code CALL} the catalogue does not match is as invisible as a {@code FIELDSTORE}, and
+ * the whole point of the measurement is that the catalogue's symbols are the ones the frontend
+ * emits.
  *
- * <p><b>Why the owner must be the DECLARING type.</b> The C# frontend names a
- * callee's owner after the type that DECLARES the member, not the type the
- * caller holds: a member that the holder only INHERITS is attributed to the
- * type that declares it. A catalogue pattern that names the caller's type
- * names a symbol the frontend never emits, and the entry is dead --
- * silently, because the scan still reports success. That is the shape the
- * indexer bug had, and this test is what keeps it fixed.
+ * <p><b>Why the owner must be the DECLARING type.</b> The C# frontend names a callee's owner after
+ * the type that DECLARES the member, not the type the caller holds: a member that the holder only
+ * INHERITS is attributed to the type that declares it. A catalogue pattern that names the caller's
+ * type names a symbol the frontend never emits, and the entry is dead -- silently, because the scan
+ * still reports success. That is the shape the indexer bug had, and this test is what keeps it
+ * fixed.
  *
- * <p>The cases below are the ones the shared framework can reach. A pattern
- * whose type needs a package is not here: there is nothing to produce without
- * the package, so the case would pass for the wrong reason.
+ * <p>The cases below are the ones the shared framework can reach. A pattern whose type needs a
+ * package is not here: there is nothing to produce without the package, so the case would pass for
+ * the wrong reason.
  */
 @DisplayName("C#: the catalogue's C# symbols are the ones the frontend produces")
 class CSharpSinkReachabilityTest {
@@ -73,8 +70,8 @@ class CSharpSinkReachabilityTest {
   }
 
   /**
-   * One case: the catalogue's pattern, and the C# source whose call must
-   * produce a signature the pattern matches.
+   * One case: the catalogue's pattern, and the C# source whose call must produce a signature the
+   * pattern matches.
    *
    * @param family the catalogue family
    * @param pattern the catalogue's own regex
@@ -188,7 +185,6 @@ class CSharpSinkReachabilityTest {
               """));
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("every case produces a signature the catalogue's own pattern matches")
   void everyCaseProducesAMatchableSignature() {
     for (Case testCase : CASES) {
@@ -219,7 +215,6 @@ class CSharpSinkReachabilityTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the owner's name in the signature is the type that DECLARES the member")
   void theOwnerIsTheDeclaringType() {
     // `StreamWriter` declares its own `WriteLine` -- it OVERRIDES the one
@@ -263,9 +258,5 @@ class CSharpSinkReachabilityTest {
         .as("the signature names the type that declares the method")
         .hasSize(1)
         .allMatch(s -> s.startsWith("System.IO.StreamWriter.WriteLine/"));
-  }
-
-  static boolean toolchainAvailable() {
-    return CSharpTestSupport.toolchainPresent();
   }
 }

@@ -28,43 +28,34 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 
 /**
- * The lowering of an INDEXER, which is the second thing that looks like a field
- * but is not one.
+ * The lowering of an INDEXER, which is the second thing that looks like a field but is not one.
  *
- * <p><b>The question.</b> In C#, {@code builder["Password"] = value} and
- * {@code array[0] = value} are written the same way. They are not the same
- * thing. The first is a call to an indexer's setter -- a method named
- * {@code set_Item} -- and the second is a store into an array.
+ * <p><b>The question.</b> In C#, {@code builder["Password"] = value} and {@code array[0] = value}
+ * are written the same way. They are not the same thing. The first is a call to an indexer's setter
+ * -- a method named {@code set_Item} -- and the second is a store into an array.
  *
- * <p><b>Why the distinction decides whether findings exist.</b> The sink
- * catalogue is queried on {@code CALL} instructions. A {@code FIELDSTORE} and an
- * {@code ARRAYSTORE} carry no callee signature at all, so a sink that is
- * reached through an indexer is not "less precisely matched" -- it is
- * <i>structurally unreachable</i>, and the scan reports success while the
- * finding is absent. The catalogue already carries the C# symbols: the
- * {@code credential.sinks} family names
- * {@code System.Data.Common.DbConnectionStringBuilder.set_Item}. The catalogue
- * was right; the TAC was not.
+ * <p><b>Why the distinction decides whether findings exist.</b> The sink catalogue is queried on
+ * {@code CALL} instructions. A {@code FIELDSTORE} and an {@code ARRAYSTORE} carry no callee
+ * signature at all, so a sink that is reached through an indexer is not "less precisely matched" --
+ * it is <i>structurally unreachable</i>, and the scan reports success while the finding is absent.
+ * The catalogue already carries the C# symbols: the {@code credential.sinks} family names {@code
+ * System.Data.Common.DbConnectionStringBuilder.set_Item}. The catalogue was right; the TAC was not.
  *
- * <p><b>What decides the distinction.</b> The resolved symbol, and nothing
- * else. An indexer is an {@code IIndexerSymbol} with a {@code set_Item}
- * accessor; an array is an {@code IArrayTypeSymbol}. The spelling of the
- * expression is the same in both cases, so the spelling cannot decide it.
+ * <p><b>What decides the distinction.</b> The resolved symbol, and nothing else. An indexer is an
+ * {@code IIndexerSymbol} with a {@code set_Item} accessor; an array is an {@code IArrayTypeSymbol}.
+ * The spelling of the expression is the same in both cases, so the spelling cannot decide it.
  *
- * <p><b>Why the receiver still comes first.</b> The TAC's call convention is
- * "args[0] is the receiver, args[1..] are the actual arguments". An indexer's
- * setter takes the key and then the value, so the value is the SECOND user
- * argument -- and it lands at args[2]. The catalogue names user arguments, and
- * the engine applies the receiver offset itself, so the catalogue writes
- * {@code arg_index: 1} for the value of a {@code set_Item} and the TAC puts it
- * at args[2]. A sidecar that put the value at args[1] would produce TAC that
- * matches the catalogue and reports nothing.
+ * <p><b>Why the receiver still comes first.</b> The TAC's call convention is "args[0] is the
+ * receiver, args[1..] are the actual arguments". An indexer's setter takes the key and then the
+ * value, so the value is the SECOND user argument -- and it lands at args[2]. The catalogue names
+ * user arguments, and the engine applies the receiver offset itself, so the catalogue writes {@code
+ * arg_index: 1} for the value of a {@code set_Item} and the TAC puts it at args[2]. A sidecar that
+ * put the value at args[1] would produce TAC that matches the catalogue and reports nothing.
  */
 @DisplayName("C#: the TAC lowering of an indexer")
 class CSharpIndexerLoweringTest {
@@ -86,9 +77,9 @@ class CSharpIndexerLoweringTest {
   /**
    * A source with an indexer and an array, written the same way.
    *
-   * <p>The indexer is a custom one so the test does not depend on a framework's
-   * reference assemblies; the catalogue's real C# symbols are checked
-   * separately in {@code CSharpSinkMatchingTest}.
+   * <p>The indexer is a custom one so the test does not depend on a framework's reference
+   * assemblies; the catalogue's real C# symbols are checked separately in {@code
+   * CSharpSinkMatchingTest}.
    */
   private static final String SOURCE =
       """
@@ -117,7 +108,6 @@ class CSharpIndexerLoweringTest {
       """;
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("an indexer assignment becomes a CALL to set_Item, not an ARRAYSTORE")
   void indexerAssignmentBecomesACall() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Run");
@@ -143,7 +133,6 @@ class CSharpIndexerLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the indexer call carries the receiver, then the key, then the value")
   void theIndexerCallCarriesTheReceiverThenTheKeyThenTheValue() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Run");
@@ -158,9 +147,7 @@ class CSharpIndexerLoweringTest {
     }
 
     assertThat(setterCall).isNotNull();
-    assertThat(setterCall.args)
-        .as("the receiver, the key, and the assigned value")
-        .hasSize(3);
+    assertThat(setterCall.args).as("the receiver, the key, and the assigned value").hasSize(3);
     assertThat(((TacOperand.TacVar) setterCall.args.get(0)).name())
         .as("args[0] is the RECEIVER, by the TAC's call convention")
         .isEqualTo("holder");
@@ -172,14 +159,14 @@ class CSharpIndexerLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("an array assignment stays an ARRAYSTORE")
   void arrayAssignmentStaysAnArrayStore() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Run");
 
-    long arrayStores = function.instructions().stream()
-        .filter(i -> i.kind == TacInstruction.Kind.ARRAYSTORE)
-        .count();
+    long arrayStores =
+        function.instructions().stream()
+            .filter(i -> i.kind == TacInstruction.Kind.ARRAYSTORE)
+            .count();
 
     assertThat(arrayStores)
         .as("an array really is an array: only the indexer becomes a call")
@@ -187,7 +174,6 @@ class CSharpIndexerLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the two are distinguished by the resolved symbol, not the spelling")
   void indexerAndArrayAreDistinguishedBySymbol() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Run");
@@ -195,16 +181,16 @@ class CSharpIndexerLoweringTest {
     // Both are written `x[...] = value`. The shapes differ. The only thing
     // that can decide this is the resolved symbol: an indexer has a setter,
     // an array does not.
-    long setterCalls = function.instructions().stream()
-        .filter(i -> i.kind == TacInstruction.Kind.CALL)
-        .filter(i -> i.calleeSig != null && i.calleeSig.contains("set_Item"))
-        .count();
+    long setterCalls =
+        function.instructions().stream()
+            .filter(i -> i.kind == TacInstruction.Kind.CALL)
+            .filter(i -> i.calleeSig != null && i.calleeSig.contains("set_Item"))
+            .count();
 
     assertThat(setterCalls).as("the indexer assignment is a CALL").isEqualTo(1);
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("an indexer READ becomes a CALL to get_Item, not an ARRAYLOAD")
   void indexerReadBecomesACall() {
     // The read side matters for the same reason the write side does: a
@@ -253,13 +239,10 @@ class CSharpIndexerLoweringTest {
     assertThat(getterCall.calleeSig)
         .as("the callee signature must be the canonical owner.method/arity form")
         .isEqualTo("Demo.Holder.get_Item/1");
-    assertThat(getterCall.args)
-        .as("the receiver and the key")
-        .hasSize(2);
+    assertThat(getterCall.args).as("the receiver and the key").hasSize(2);
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("an array READ stays an ARRAYLOAD")
   void arrayReadStaysAnArrayLoad() {
     String source =
@@ -280,15 +263,15 @@ class CSharpIndexerLoweringTest {
 
     TacFunction function = functionNamed(support.parse(source).functions(), "Run");
 
-    long arrayLoads = function.instructions().stream()
-        .filter(i -> i.kind == TacInstruction.Kind.ARRAYLOAD)
-        .count();
+    long arrayLoads =
+        function.instructions().stream()
+            .filter(i -> i.kind == TacInstruction.Kind.ARRAYLOAD)
+            .count();
 
     assertThat(arrayLoads).as("an array really is an array").isEqualTo(1);
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the indexer assignment does not clobber the value it assigns")
   void theIndexerAssignmentDoesNotClobberTheValue() {
     // The array lowering put the ASSIGNED VALUE in the store's destination --
@@ -308,13 +291,10 @@ class CSharpIndexerLoweringTest {
 
     assertThat(setterCall).isNotNull();
     assertThat(setterCall.dest)
-        .as("a call has no destination: the assigned value is an argument, not a written-to variable")
+        .as(
+            "a call has no destination: the assigned value is an argument, not a written-to"
+                + " variable")
         .isNull();
-  }
-
-  /** Whether the .NET toolchain is available. */
-  static boolean toolchainAvailable() {
-    return CSharpTestSupport.toolchainPresent();
   }
 
   private static TacFunction functionNamed(List<TacFunction> functions, String name) {

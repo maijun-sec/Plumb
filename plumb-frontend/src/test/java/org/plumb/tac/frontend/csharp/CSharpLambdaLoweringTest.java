@@ -28,32 +28,27 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 
 /**
- * A C# lambda is a function of its own, and the variables it captures are its
- * LEADING PARAMETERS.
+ * A C# lambda is a function of its own, and the variables it captures are its LEADING PARAMETERS.
  *
- * <p><b>Why this is pinned.</b> The TAC has no nested function and no function
- * value, so a lambda cannot be a value in an instruction stream. Before this
- * the lambda's WHOLE BODY was invisible: the finding inside a handler that the
- * program registers was absent, and the scan reported success.
+ * <p><b>Why this is pinned.</b> The TAC has no nested function and no function value, so a lambda
+ * cannot be a value in an instruction stream. Before this the lambda's WHOLE BODY was invisible:
+ * the finding inside a handler that the program registers was absent, and the scan reported
+ * success.
  *
- * <p><b>Why the capture is a PARAMETER and not something else.</b> A C# lambda
- * reads an enclosing variable as it is when the lambda RUNS. The TAC has no
- * reference, so the value is passed at the call site -- and the engine binds a
- * callee's formal {@code i} to the call site's {@code args[i+1]}. The layout
- * is therefore fixed: the receiver occupies {@code args[0]}, the captured
- * variables follow, and the arguments the source wrote come last. That is
- * what these tests measure.
+ * <p><b>Why the capture is a PARAMETER and not something else.</b> A C# lambda reads an enclosing
+ * variable as it is when the lambda RUNS. The TAC has no reference, so the value is passed at the
+ * call site -- and the engine binds a callee's formal {@code i} to the call site's {@code
+ * args[i+1]}. The layout is therefore fixed: the receiver occupies {@code args[0]}, the captured
+ * variables follow, and the arguments the source wrote come last. That is what these tests measure.
  *
- * <p><b>Why every test parses ONCE.</b> The closure's name carries a
- * project-wide counter, so two parses of the same source produce two sets of
- * names. A test that parsed twice and compared the two sets would be
- * comparing a closure with itself.
+ * <p><b>Why every test parses ONCE.</b> The closure's name carries a project-wide counter, so two
+ * parses of the same source produce two sets of names. A test that parsed twice and compared the
+ * two sets would be comparing a closure with itself.
  */
 @DisplayName("C#: a lambda is a function of its own, and its captures are leading parameters")
 class CSharpLambdaLoweringTest {
@@ -75,9 +70,9 @@ class CSharpLambdaLoweringTest {
   /**
    * The fixture.
    *
-   * <p>It holds the four shapes a lambda takes in real code: a lambda with its
-   * own parameter, a lambda that CAPTURES an enclosing variable, a lambda that
-   * captures the enclosing INSTANCE, and an explicitly typed lambda.
+   * <p>It holds the four shapes a lambda takes in real code: a lambda with its own parameter, a
+   * lambda that CAPTURES an enclosing variable, a lambda that captures the enclosing INSTANCE, and
+   * an explicitly typed lambda.
    */
   private static final String SOURCE =
       """
@@ -113,7 +108,6 @@ class CSharpLambdaLoweringTest {
       """;
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a lambda becomes a function of its own")
   void aLambdaBecomesAFunctionOfItsOwn() {
     List<TacFunction> functions = support.parse(SOURCE).functions();
@@ -121,9 +115,7 @@ class CSharpLambdaLoweringTest {
     List<TacFunction> closures =
         functions.stream().filter(f -> f.name().contains(".lambda")).toList();
 
-    assertThat(closures)
-        .as("every lambda in the fixture must be a function of its own")
-        .hasSize(4);
+    assertThat(closures).as("every lambda in the fixture must be a function of its own").hasSize(4);
     for (TacFunction closure : closures) {
       assertThat(closure.signature())
           .as("the closure's signature must carry its name and its arity")
@@ -135,23 +127,19 @@ class CSharpLambdaLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the captured variable is the closure's LEADING parameter")
   void theCapturedVariableIsTheLeadingParameter() {
     List<TacFunction> functions = support.parse(SOURCE).functions();
 
     TacFunction closure = closureCapturing(functions, "captured");
 
-    assertThat(closure.params())
-        .as("the closure takes the capture and nothing else")
-        .hasSize(1);
+    assertThat(closure.params()).as("the closure takes the capture and nothing else").hasSize(1);
     assertThat(closure.params().get(0).name())
         .as("the capture is the closure's first parameter")
         .isEqualTo("captured");
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the call site reaches the closure and passes the capture")
   void theCallSiteReachesTheClosureAndPassesTheCapture() {
     List<TacFunction> functions = support.parse(SOURCE).functions();
@@ -172,7 +160,6 @@ class CSharpLambdaLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the enclosing INSTANCE is a capture too")
   void theEnclosingInstanceIsACaptureToo() {
     // A lambda that mentions `this` holds the instance. Without it the
@@ -191,7 +178,6 @@ class CSharpLambdaLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a field read inside a lambda keeps its receiver")
   void aFieldReadInsideALambdaKeepsItsReceiver() {
     // The receiver used to be resolved with the enclosing symbol at POSITION
@@ -213,7 +199,6 @@ class CSharpLambdaLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("an anonymous object is an allocation whose arguments are the members")
   void anAnonymousObjectIsLowered() {
     List<TacFunction> functions = support.parse(SOURCE).functions();
@@ -226,16 +211,13 @@ class CSharpLambdaLoweringTest {
             .orElseThrow(() -> new AssertionError("the anonymous object was not lowered"));
 
     assertThat(allocation.ctorType).as("the allocation carries the anonymous type").isNotNull();
-    assertThat(allocation.args)
-        .as("the members are the constructor's arguments")
-        .hasSize(2);
+    assertThat(allocation.args).as("the members are the constructor's arguments").hasSize(2);
     assertThat(((TacOperand.TacVar) allocation.args.get(0)).name())
         .as("the first member holds the tainted value")
         .isEqualTo("userInput");
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("nothing in the fixture was left unlowered")
   void nothingWasLeftUnlowered() {
     // The frontend's problem list carries the COMPILER's diagnostics too --
@@ -248,13 +230,10 @@ class CSharpLambdaLoweringTest {
             .map(p -> p.functionName() + ": " + p.message())
             .toList();
 
-    assertThat(unlowered)
-        .as("a lambda and an anonymous object are both lowered now")
-        .isEmpty();
+    assertThat(unlowered).as("a lambda and an anonymous object are both lowered now").isEmpty();
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a call through a variable that holds a lambda reaches the closure")
   void aCallThroughAClosureVariableReachesTheClosure() {
     // `handler(userInput)` is the commonest shape of all: the lambda is
@@ -266,14 +245,11 @@ class CSharpLambdaLoweringTest {
 
     TacInstruction call = callCarrying(run, "userInput");
 
-    assertThat(call.args)
-        .as("the receiver slot, then the argument the source wrote")
-        .hasSize(2);
+    assertThat(call.args).as("the receiver slot, then the argument the source wrote").hasSize(2);
     assertThat(((TacOperand.TacVar) call.args.get(1)).name()).isEqualTo("userInput");
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a null-conditional call of a closure reaches the closure")
   void aNullConditionalCallOfAClosureReachesTheClosure() {
     // `handler?.Invoke()` is the same call, guarded. The guard is the
@@ -369,9 +345,5 @@ class CSharpLambdaLoweringTest {
       }
     }
     throw new AssertionError("no closure call carries '" + value + "'");
-  }
-
-  static boolean toolchainAvailable() {
-    return CSharpTestSupport.toolchainPresent();
   }
 }

@@ -28,23 +28,20 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 
 /**
  * A C# {@code break} and {@code continue} are JUMPS, and they must lower to one.
  *
- * <p><b>Why this needs its own test.</b> Dropping them does not make the TAC
- * smaller; it makes the TAC describe a control flow the program does not have:
+ * <p><b>Why this needs its own test.</b> Dropping them does not make the TAC smaller; it makes the
+ * TAC describe a control flow the program does not have:
  *
  * <ul>
- *   <li>a dropped {@code break} inside a switch lets the case body fall through
- *       into the next case, so the dataflow engine follows a path the program
- *       never takes;
- *   <li>a dropped {@code continue} inside a loop runs the rest of the body
- *       instead of restarting the iteration, so the taint state at the top of
- *       the next iteration is wrong.
+ *   <li>a dropped {@code break} inside a switch lets the case body fall through into the next case,
+ *       so the dataflow engine follows a path the program never takes;
+ *   <li>a dropped {@code continue} inside a loop runs the rest of the body instead of restarting
+ *       the iteration, so the taint state at the top of the next iteration is wrong.
  * </ul>
  *
  * <p>Both are invisible in a scan that reports success.
@@ -67,7 +64,6 @@ class CSharpBreakContinueTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a `continue` in a `for` jumps to the increment, skipping the rest of the body")
   void aContinueInAForJumpsToTheIncrement() {
     String source =
@@ -116,9 +112,7 @@ class CSharpBreakContinueTest {
     assertThat(continueJump)
         .as("the `continue` must lower to a JUMP to the loop's increment label")
         .isGreaterThanOrEqualTo(0);
-    assertThat(doWork)
-        .as("the loop body must be lowered")
-        .isGreaterThanOrEqualTo(0);
+    assertThat(doWork).as("the loop body must be lowered").isGreaterThanOrEqualTo(0);
     assertThat(continueJump)
         .as(
             "the `continue` must come BEFORE the rest of the loop body, so that the "
@@ -128,7 +122,6 @@ class CSharpBreakContinueTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a `break` in a `while` jumps to the loop's end")
   void aBreakInAWhileJumpsToTheEnd() {
     String source =
@@ -171,7 +164,6 @@ class CSharpBreakContinueTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a `break` inside a switch case jumps to the end of the SWITCH, not the loop")
   void aBreakInsideASwitchJumpsToTheSwitchEnd() {
     // The innermost context wins: a `break` inside a switch inside a loop
@@ -226,7 +218,6 @@ class CSharpBreakContinueTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a `continue` inside a switch continues the enclosing LOOP")
   void aContinueInsideASwitchContinuesTheLoop() {
     // In C#, `continue` inside a switch continues the enclosing LOOP. The
@@ -273,7 +264,6 @@ class CSharpBreakContinueTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a `continue` in a `while` jumps to the condition, not to the body")
   void aContinueInAWhileJumpsToTheCondition() {
     String source =
@@ -314,11 +304,6 @@ class CSharpBreakContinueTest {
                 + "condition label; jumping to the body instead would run the body "
                 + "again without re-testing the condition")
         .isTrue();
-  }
-
-  /** Whether the .NET toolchain is available. */
-  static boolean toolchainAvailable() {
-    return CSharpTestSupport.toolchainPresent();
   }
 
   /** The function with the given name. */

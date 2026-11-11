@@ -29,25 +29,24 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 
 /**
- * The C# {@code switch} lowering must produce a CFG in which each case BODY is
- * reached by a branch, and the case COMPARISONS are not re-executed on the way in.
+ * The C# {@code switch} lowering must produce a CFG in which each case BODY is reached by a branch,
+ * and the case COMPARISONS are not re-executed on the way in.
  *
- * <p><b>Why this is a separate test.</b> A switch is the one construct in C# whose
- * lowering has to get the ORDER of two groups of instructions right: the comparison
- * chain (one test per case label) and the case bodies. If the two are interleaved,
- * the result is still <em>well-formed</em> -- every label resolves, the CFG builder
- * accepts it, and the scan reports success. It is just semantically wrong: the
- * branch that selects a case lands on the comparison again instead of on the body.
+ * <p><b>Why this is a separate test.</b> A switch is the one construct in C# whose lowering has to
+ * get the ORDER of two groups of instructions right: the comparison chain (one test per case label)
+ * and the case bodies. If the two are interleaved, the result is still <em>well-formed</em> --
+ * every label resolves, the CFG builder accepts it, and the scan reports success. It is just
+ * semantically wrong: the branch that selects a case lands on the comparison again instead of on
+ * the body.
  *
- * <p><b>What the shape must be.</b> The Java reference lowering emits the whole
- * comparison chain first, then a jump to the end, then the bodies under their
- * labels. The C# lowering must do the same, so that:
+ * <p><b>What the shape must be.</b> The Java reference lowering emits the whole comparison chain
+ * first, then a jump to the end, then the bodies under their labels. The C# lowering must do the
+ * same, so that:
  *
  * <ul>
  *   <li>every comparison BRANCH targets a label that appears LATER in the stream;
@@ -99,7 +98,6 @@ class CSharpSwitchLoweringTest {
       """;
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("every case comparison branches FORWARD to the body it selects")
   void everyCaseComparisonBranchesForwardToItsBody() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Pick");
@@ -151,7 +149,6 @@ class CSharpSwitchLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the case bodies are emitted AFTER the comparison chain, not interleaved")
   void theCaseBodiesComeAfterTheComparisonChain() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Pick");
@@ -176,9 +173,7 @@ class CSharpSwitchLoweringTest {
       }
     }
 
-    assertThat(lastComparison)
-        .as("the switch must lower to comparisons")
-        .isGreaterThanOrEqualTo(0);
+    assertThat(lastComparison).as("the switch must lower to comparisons").isGreaterThanOrEqualTo(0);
     assertThat(firstBodyStore)
         .as("the first case body must lower to a constant assignment")
         .isGreaterThanOrEqualTo(0);
@@ -210,7 +205,6 @@ class CSharpSwitchLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the default body is reachable: the no-match jump lands on it, not past it")
   void theDefaultBodyIsReachable() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Pick");
@@ -241,13 +235,10 @@ class CSharpSwitchLoweringTest {
         switchEnd = i;
       }
     }
-    assertThat(switchEnd)
-        .as("the switch must have an end label")
-        .isGreaterThan(defaultBody);
+    assertThat(switchEnd).as("the switch must have an end label").isGreaterThan(defaultBody);
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a `break` inside a case jumps to the end of the switch")
   void aBreakInsideACaseJumpsToTheEndOfTheSwitch() {
     // Without the jump, the case body FALLS THROUGH into the next case body --
@@ -299,7 +290,6 @@ class CSharpSwitchLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a `break` inside a loop jumps to the end of the loop")
   void aBreakInsideALoopJumpsToTheEndOfTheLoop() {
     String source =
@@ -338,7 +328,6 @@ class CSharpSwitchLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a `continue` inside a loop jumps to the loop's increment, not to its end")
   void aContinueInsideALoopJumpsToTheIncrement() {
     // A `continue` that is dropped is worse than a `break` that is dropped: the
@@ -388,11 +377,6 @@ class CSharpSwitchLoweringTest {
                 + "label; dropping it runs the rest of the body instead of restarting "
                 + "the iteration")
         .isNotNull();
-  }
-
-  /** Whether the .NET toolchain is available. */
-  static boolean toolchainAvailable() {
-    return CSharpTestSupport.toolchainPresent();
   }
 
   /** The function with the given name. */

@@ -28,7 +28,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
 import org.plumb.tac.frontend.TacFrontend;
 import org.plumb.tac.ir.IrPrecision;
 import org.plumb.tac.ir.SourceLanguage;
@@ -39,25 +38,22 @@ import org.plumb.tac.ir.TacOperand;
 /**
  * Phase 0: the measurement that decides how the C# frontend is built.
  *
- * <p><b>The question.</b> Can a C# property assignment be lowered into the TAC
- * in a way that the sink catalogue can match, without a second,
- * property-aware matching mechanism?
+ * <p><b>The question.</b> Can a C# property assignment be lowered into the TAC in a way that the
+ * sink catalogue can match, without a second, property-aware matching mechanism?
  *
- * <p><b>Why it is the FIRST thing to measure.</b> The answer decides the shape of
- * everything downstream. If a property assignment could NOT become a
- * {@code CALL} whose callee signature the catalogue matches, the frontend would
- * need a second matching path -- one that knows about properties, one that every
- * checker and every rule would have to learn about, and one whose behaviour would
- * differ from the JVM languages'. That is a large and permanent cost. If it CAN,
- * the C# frontend is an ordinary frontend: it produces the same TAC shapes the
- * other languages produce, and everything downstream works unchanged.
+ * <p><b>Why it is the FIRST thing to measure.</b> The answer decides the shape of everything
+ * downstream. If a property assignment could NOT become a {@code CALL} whose callee signature the
+ * catalogue matches, the frontend would need a second matching path -- one that knows about
+ * properties, one that every checker and every rule would have to learn about, and one whose
+ * behaviour would differ from the JVM languages'. That is a large and permanent cost. If it CAN,
+ * the C# frontend is an ordinary frontend: it produces the same TAC shapes the other languages
+ * produce, and everything downstream works unchanged.
  *
- * <p><b>What the measurement shows.</b> A C# property assignment becomes a
- * {@code CALL} to {@code owner.set_X/arity}, with the assigned value as argument
- * 0. That is the shape the catalogue matches, so no second mechanism is needed.
+ * <p><b>What the measurement shows.</b> A C# property assignment becomes a {@code CALL} to {@code
+ * owner.set_X/arity}, with the assigned value as argument 0. That is the shape the catalogue
+ * matches, so no second mechanism is needed.
  *
- * <p>The tests below are the measurement, written so that a change in the
- * lowering breaks them.
+ * <p>The tests below are the measurement, written so that a change in the lowering breaks them.
  */
 @DisplayName("C#: the TAC lowering of a property assignment")
 class CSharpPropertyLoweringTest {
@@ -100,7 +96,6 @@ class CSharpPropertyLoweringTest {
       """;
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a property assignment becomes a CALL to the setter, not a FIELDSTORE")
   void propertyAssignmentBecomesACall() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Run");
@@ -127,12 +122,13 @@ class CSharpPropertyLoweringTest {
         .as("args[0] is the RECEIVER, by the TAC's call convention")
         .isEqualTo("cmd");
     assertThat(((TacOperand.TacVar) setterCall.args.get(1)).name())
-        .as("the assigned value is the first USER argument, which is what the catalogue's arg_index 0 names")
+        .as(
+            "the assigned value is the first USER argument, which is what the catalogue's arg_index"
+                + " 0 names")
         .isEqualTo("input");
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a field assignment stays a FIELDSTORE")
   void fieldAssignmentStaysAFieldStore() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Run");
@@ -154,29 +150,30 @@ class CSharpPropertyLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
-  @DisplayName("the property and the field are distinguished by the resolved symbol, not the spelling")
+  @DisplayName(
+      "the property and the field are distinguished by the resolved symbol, not the spelling")
   void propertyAndFieldAreDistinguishedBySymbol() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Run");
 
     // Both assignments are to a member named after a property or a field, and
     // the shapes differ. The only thing that can decide this is the resolved
     // symbol: a property has a setter, a field does not.
-    long calls = function.instructions().stream()
-        .filter(i -> i.kind == TacInstruction.Kind.CALL)
-        .filter(i -> i.calleeSig != null && i.calleeSig.contains("CommandText"))
-        .count();
-    long fieldStores = function.instructions().stream()
-        .filter(i -> i.kind == TacInstruction.Kind.FIELDSTORE)
-        .filter(i -> "Field".equals(i.fieldName))
-        .count();
+    long calls =
+        function.instructions().stream()
+            .filter(i -> i.kind == TacInstruction.Kind.CALL)
+            .filter(i -> i.calleeSig != null && i.calleeSig.contains("CommandText"))
+            .count();
+    long fieldStores =
+        function.instructions().stream()
+            .filter(i -> i.kind == TacInstruction.Kind.FIELDSTORE)
+            .filter(i -> "Field".equals(i.fieldName))
+            .count();
 
     assertThat(calls).as("the property assignment is a CALL").isEqualTo(1);
     assertThat(fieldStores).as("the field assignment is a FIELDSTORE").isEqualTo(1);
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the function is tagged as C#, at full precision")
   void theFunctionIsTaggedAsCSharp() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Run");
@@ -186,7 +183,6 @@ class CSharpPropertyLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the assigned value is the first USER argument, which is what the catalogue names")
   void theSettersArgumentIndexIsZero() {
     // The catalogue's contract: "which argument carries the untrusted value",
@@ -205,16 +201,13 @@ class CSharpPropertyLoweringTest {
     }
 
     assertThat(setterCall).isNotNull();
-    assertThat(setterCall.args)
-        .as("the receiver plus the assigned value")
-        .hasSize(2);
+    assertThat(setterCall.args).as("the receiver plus the assigned value").hasSize(2);
     assertThat(((TacOperand.TacVar) setterCall.args.get(1)).name())
         .as("the user argument 0 is the assigned value")
         .isEqualTo("input");
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the parameter is the variable that reaches the setter")
   void theParameterReachesTheSetter() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Run");
@@ -223,7 +216,6 @@ class CSharpPropertyLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the null-forgiving operator is NOT a NULL_CHECK")
   void theNullForgivingOperatorIsNotANullCheck() {
     // `x!` tells the COMPILER that the value is not null. It inserts NO runtime
@@ -259,7 +251,6 @@ class CSharpPropertyLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("await lowers the value and downgrades the precision")
   void awaitDowngradesThePrecision() {
     String source =
@@ -284,7 +275,6 @@ class CSharpPropertyLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a catch clause lowers to a CATCH_HANDLER carrying the caught type")
   void catchBecomesACatchHandler() {
     String source =
@@ -323,13 +313,11 @@ class CSharpPropertyLoweringTest {
     assertThat(handler.ctorType)
         .as("the handler must carry the DECLARED exception type, so the engine can route")
         .isNotNull();
-    assertThat(handler.ctorType.kind())
-        .isEqualTo(org.plumb.tac.ir.TacType.Kind.CLASS);
+    assertThat(handler.ctorType.kind()).isEqualTo(org.plumb.tac.ir.TacType.Kind.CLASS);
     assertThat(handler.ctorType.className()).isEqualTo("System.IO.IOException");
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a source that does not compile is reported, not silently ignored")
   void aBrokenSourceIsReported() {
     String source =
@@ -353,7 +341,6 @@ class CSharpPropertyLoweringTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("a `new` carries the callee signature a constructor sink needs")
   void aNewCarriesTheCalleeSignature() {
     // A constructor is a NEW instruction, and the engine's constructor-sink
@@ -388,9 +375,7 @@ class CSharpPropertyLoweringTest {
     }
 
     assertThat(newInstruction).as("the source must lower to a NEW instruction").isNotNull();
-    assertThat(newInstruction.ctorType)
-        .as("the NEW must carry the constructed type")
-        .isNotNull();
+    assertThat(newInstruction.ctorType).as("the NEW must carry the constructed type").isNotNull();
     assertThat(newInstruction.calleeSig)
         .as(
             "the NEW must carry the callee signature: without it the engine's constructor-sink "
@@ -399,11 +384,6 @@ class CSharpPropertyLoweringTest {
     assertThat(newInstruction.calleeSig)
         .as("the constructor's callee key must use the <init> convention every frontend uses")
         .contains(".<init>/");
-  }
-
-  /** Whether the .NET toolchain is available. */
-  static boolean toolchainAvailable() {
-    return CSharpTestSupport.toolchainPresent();
   }
 
   private static TacFunction functionNamed(List<TacFunction> functions, String name) {

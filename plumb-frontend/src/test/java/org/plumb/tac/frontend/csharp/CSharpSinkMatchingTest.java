@@ -23,33 +23,27 @@ package org.plumb.tac.frontend.csharp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
-import org.plumb.tac.frontend.TacFrontend;
 import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 
 /**
- * Phase 0, second half: the sink catalogue must MATCH what the C# frontend
- * produces.
+ * Phase 0, second half: the sink catalogue must MATCH what the C# frontend produces.
  *
- * <p><b>Why this is a separate test from the lowering one.</b> The lowering
- * test proves the frontend emits a {@code CALL}. This one proves the catalogue
- * recognises it. Either alone is not enough: a {@code CALL} the catalogue does
- * not match is as invisible as a {@code FIELDSTORE}, and the whole point of the
- * measurement is that the EXISTING catalogue works.
+ * <p><b>Why this is a separate test from the lowering one.</b> The lowering test proves the
+ * frontend emits a {@code CALL}. This one proves the catalogue recognises it. Either alone is not
+ * enough: a {@code CALL} the catalogue does not match is as invisible as a {@code FIELDSTORE}, and
+ * the whole point of the measurement is that the EXISTING catalogue works.
  *
- * <p><b>Why the catalogue's language filter matters.</b> The C# sink patterns
- * live under {@code by_language: csharp:}. That means they must NOT fire in
- * Java, Kotlin or Scala: a C#-specific symbol must not be blamed for a
- * Java call. The test checks both directions -- it matches in C#, and it does
- * NOT match in Java.
+ * <p><b>Why the catalogue's language filter matters.</b> The C# sink patterns live under {@code
+ * by_language: csharp:}. That means they must NOT fire in Java, Kotlin or Scala: a C#-specific
+ * symbol must not be blamed for a Java call. The test checks both directions -- it matches in C#,
+ * and it does NOT match in Java.
  */
 @DisplayName("C#: the sink catalogue matches what the C# frontend produces")
 class CSharpSinkMatchingTest {
@@ -71,13 +65,13 @@ class CSharpSinkMatchingTest {
   /**
    * A source whose property assignment carries the canonical sink shape.
    *
-   * <p><b>Why {@code System.Data.Common.DbCommand} and not {@code SqlCommand}.</b> The
-   * concrete ADO.NET provider ({@code System.Data.SqlClient}) ships as a NUGET PACKAGE, not as
-   * part of the shared framework, so a machine without that package restored cannot resolve the
-   * type -- and the test would fail for a reason that has nothing to do with the lowering. The
-   * ABSTRACT base class {@code System.Data.Common.DbCommand} IS in the shared framework, and it
-   * declares the very same {@code CommandText} property, so the setter's signature -- the thing
-   * the catalogue matches -- is the same one.
+   * <p><b>Why {@code System.Data.Common.DbCommand} and not {@code SqlCommand}.</b> The concrete
+   * ADO.NET provider ({@code System.Data.SqlClient}) ships as a NUGET PACKAGE, not as part of the
+   * shared framework, so a machine without that package restored cannot resolve the type -- and the
+   * test would fail for a reason that has nothing to do with the lowering. The ABSTRACT base class
+   * {@code System.Data.Common.DbCommand} IS in the shared framework, and it declares the very same
+   * {@code CommandText} property, so the setter's signature -- the thing the catalogue matches --
+   * is the same one.
    *
    * <p>The type cannot be instantiated, but that does not matter: the setter is resolved from the
    * DECLARED type, and the assignment is still lowered.
@@ -97,7 +91,6 @@ class CSharpSinkMatchingTest {
       """;
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the setter call's signature is the shape the catalogue matches")
   void theSetterCallSignatureIsCatalogueMatchable() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Run");
@@ -120,7 +113,6 @@ class CSharpSinkMatchingTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the catalogue's C# pattern matches the signature the frontend produced")
   void theCatalogueMatchesTheProducedSignature() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Run");
@@ -141,16 +133,13 @@ class CSharpSinkMatchingTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the assigned value is the first USER argument, which is what the catalogue names")
   void theAssignedValueIsArgumentZero() {
     TacFunction function = functionNamed(support.parse(SOURCE).functions(), "Run");
 
     for (TacInstruction instruction : function.instructions()) {
       if (instruction.calleeSig != null && instruction.calleeSig.contains("set_CommandText")) {
-        assertThat(instruction.args)
-            .as("the receiver plus the assigned value")
-            .hasSize(2);
+        assertThat(instruction.args).as("the receiver plus the assigned value").hasSize(2);
         assertThat(((org.plumb.tac.ir.TacOperand.TacVar) instruction.args.get(1)).name())
             .as("the user argument 0 is the assigned value")
             .isEqualTo("input");
@@ -161,7 +150,6 @@ class CSharpSinkMatchingTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the catalogue's C# INDEXER pattern matches the signature the frontend produced")
   void theCatalogueMatchesTheProducedIndexerSignature() {
     // The catalogue already carries the C# indexer sinks -- the
@@ -209,7 +197,6 @@ class CSharpSinkMatchingTest {
   }
 
   @Test
-  @EnabledIf("toolchainAvailable")
   @DisplayName("the indexer's value is the SECOND user argument, which is what the catalogue names")
   void theIndexerValueIsTheSecondUserArgument() {
     // The catalogue's contract: "which argument carries the untrusted value",
@@ -235,9 +222,7 @@ class CSharpSinkMatchingTest {
 
     for (TacInstruction instruction : function.instructions()) {
       if (instruction.calleeSig != null && instruction.calleeSig.contains("set_Item")) {
-        assertThat(instruction.args)
-            .as("the receiver, the key, and the assigned value")
-            .hasSize(3);
+        assertThat(instruction.args).as("the receiver, the key, and the assigned value").hasSize(3);
         assertThat(((org.plumb.tac.ir.TacOperand.TacVar) instruction.args.get(2)).name())
             .as("user argument 1 -- the value -- is at args[2]")
             .isEqualTo("input");
@@ -281,10 +266,6 @@ class CSharpSinkMatchingTest {
     assertThat(SourceLanguage.parse("csharp")).isEqualTo(SourceLanguage.CSHARP);
     assertThat(SourceLanguage.parse("C#")).isEqualTo(SourceLanguage.CSHARP);
     assertThat(SourceLanguage.parse("CSHARP")).isEqualTo(SourceLanguage.CSHARP);
-  }
-
-  static boolean toolchainAvailable() {
-    return CSharpTestSupport.toolchainPresent();
   }
 
   private static TacFunction functionNamed(List<TacFunction> functions, String name) {
