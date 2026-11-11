@@ -290,6 +290,96 @@ class PythonSidecarEndToEndTest {
   }
 
   /**
+   * A local that shadows a class is not a construction.
+   *
+   * <p><b>Why the scope has to decide this.</b> Python decides the scope of a name when the
+   * function is COMPILED, not when a statement runs: a name a function assigns is local to that
+   * function for its whole body, whatever the order of the statements is. So the very same spelling
+   * -- a call of a name the module also declares as a class -- is a construction in one function
+   * and a call of a value in the next, and only the scope tells the two apart.
+   *
+   * <p><b>What breaks if this is wrong.</b> A false construction is a {@code NEW} whose key names a
+   * constructor that is never called, and a catalogue entry written for constructors claims that
+   * one: the finding is reported against a call that builds nothing, and nothing in the scan says
+   * so. The other way round -- reading a real construction as a black box -- loses the finding.
+   *
+   * <p><b>What the black box costs.</b> The sidecar cannot see what the local holds, so the call
+   * stays unresolved and the function says so: a call of a value is a call the analysis cannot see
+   * inside. That is the honest answer, and it is what the front end said before constructions were
+   * recognised at all.
+   */
+  @Test
+  @DisplayName("a local that shadows a class is not a construction")
+  void aLocalThatShadowsAClassIsNotAConstruction(@TempDir Path directory) throws IOException {
+    String source =
+        """
+        class Greeter:
+            def __init__(self, name):
+                self.name = name
+
+
+        def shadowed(request):
+            Greeter = request
+            return Greeter(request)
+
+
+        def by_parameter(Greeter, request):
+            return Greeter(request)
+
+
+        def constructed(request):
+            return Greeter(request)
+        """;
+    Files.writeString(directory.resolve("pyproject.toml"), "[project]\nname = \"app\"\n");
+    Path file = directory.resolve("app.py");
+    Files.writeString(file, source);
+
+    try (PythonTacFrontend frontend = new PythonTacFrontend()) {
+      assumeTrue(
+          sidecarAvailable(),
+          "the Python front end needs a Python 3 interpreter on the PATH (the sidecar imports only"
+              + " the standard library, so there is nothing to install into it)");
+
+      TacFrontend.ParseResult result = frontend.parse(source, file, null);
+
+      // A local that shadows the class: the call is a call of a value, so it
+      // is not a construction.
+      TacFunction shadowed = find(result, "shadowed");
+      assertThat(shadowed).as("the shadowing function must be in the stream").isNotNull();
+      assertThat(shadowed.instructions())
+          .as("a call of a local that shadows a class must not become a construction")
+          .noneMatch(i -> i.kind == TacInstruction.Kind.NEW);
+      assertThat(shadowed.instructions())
+          .as("a call of a local that shadows a class is a call of a value, so it is a black box")
+          .anyMatch(i -> i.kind == TacInstruction.Kind.UNINTERPRETED);
+
+      // A parameter that shadows the class: the same answer, because a
+      // parameter binds the name too.
+      TacFunction byParameter = find(result, "by_parameter");
+      assertThat(byParameter).as("the function must be in the stream").isNotNull();
+      assertThat(byParameter.instructions())
+          .as("a parameter that shadows a class must not become a construction")
+          .noneMatch(i -> i.kind == TacInstruction.Kind.NEW);
+
+      // And the call that IS a construction still is one: the scope is what
+      // decides, and a scope that binds nothing leaves the class alone.
+      TacFunction constructed = find(result, "constructed");
+      assertThat(constructed).as("the function must be in the stream").isNotNull();
+      TacInstruction construction =
+          constructed.instructions().stream()
+              .filter(i -> i.kind == TacInstruction.Kind.NEW)
+              .findFirst()
+              .orElseThrow(
+                  () ->
+                      new AssertionError(
+                          "the construction of the module's own class is not in the stream"));
+      assertThat(construction.calleeSig)
+          .as("the key of a construction names the constructor")
+          .isEqualTo("<unknown>.Greeter.<init>/1");
+    }
+  }
+
+  /**
    * A keyword argument does not count towards the key's arity.
    *
    * <p><b>Why the catalogue has to know this.</b> A pattern that names a callee can also name its

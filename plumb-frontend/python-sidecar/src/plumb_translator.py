@@ -171,6 +171,11 @@ class FunctionState:
         # no static types, so they come from the annotations and from the
         # few assignments that name a class.
         self.types = {}
+        # The names this scope binds that shadow a name from an outer scope.
+        # Python decides the scope of a name when the function is compiled,
+        # not when a statement runs, so a local named after one of the
+        # module's own classes is that local EVERYWHERE in the function.
+        self.shadowed_names = set()
         self.break_label = None
         self.continue_label = None
 
@@ -220,6 +225,7 @@ class Translator:
         self.collect_bindings(tree)
         outer = self.state
         state = self.begin_function("<module>", self.module_name, None, synthetic=True)
+        state.shadowed_names = self.scope_shadowed_names(tree.body, module_scope=True)
         self.guard(tree, lambda: self.lower_body(tree.body))
         functions = [self.finish_function(state)]
         self.state = outer
@@ -277,6 +283,98 @@ class Translator:
         for child in ast.iter_child_nodes(node):
             self.walk_bindings(child, node)
 
+    # ---- scope ----------------------------------------------------------------------------
+
+    def scope_shadowed_names(self, body, module_scope=False):
+        """The names a scope binds that shadow a name from an outer scope.
+
+        <p>Python decides the scope of a name when the function is compiled,
+        not when a statement runs: a name a function assigns is local to that
+        function for its WHOLE body, whatever the order of the statements is.
+        So a local named after one of the module's own classes is that local
+        everywhere in the function, and a call of that name is a call of a
+        VALUE -- not a construction of the class.
+
+        <p>The names a nested class binds are not shadows. A class is still a
+        class, and a call of that name still constructs one.
+
+        <p>A ``global`` or ``nonlocal`` statement says the name belongs to an
+        outer scope, so it does not bind it here.
+        """
+        bound = set()
+        outer = set()
+        self.walk_scope_bindings(body, bound, outer, module_scope)
+        return bound - outer
+
+    def walk_scope_bindings(self, nodes, bound, outer, module_scope):
+        """Collect the names one scope binds.
+
+        ``bound`` receives the names the scope binds to a value that is not a
+        class; ``outer`` receives the names a ``global`` or ``nonlocal``
+        statement gives to an outer scope.
+        """
+        for node in nodes:
+            if isinstance(node, ast.ClassDef):
+                # A class binds its name to a class, so it shadows nothing,
+                # and its body is a scope of its own.
+                continue
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                # A function binds its name to a function, and its body is a
+                # scope of its own. At the module level the name is the
+                # module's own declaration, which the module's names already
+                # record.
+                if not module_scope:
+                    bound.add(node.name)
+                continue
+            if isinstance(node, ast.Lambda):
+                # A lambda binds nothing, and its body is a scope of its own.
+                continue
+            if isinstance(
+                node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+            ):
+                # A comprehension has a scope of its own, so its target binds
+                # nothing here. A walrus inside it binds the scope that
+                # encloses the comprehension.
+                self.collect_walrus_targets(node, bound)
+                continue
+            if isinstance(node, (ast.Global, ast.Nonlocal)):
+                outer.update(node.names)
+                continue
+            if isinstance(node, ast.ExceptHandler):
+                # `except E as name` binds the name.
+                if node.name:
+                    bound.add(node.name)
+                continue
+            if isinstance(node, (ast.MatchAs, ast.MatchStar)):
+                # A capture pattern binds the name it captures.
+                if node.name:
+                    bound.add(node.name)
+                continue
+            if isinstance(node, ast.Import):
+                # `import a.b` binds the name `a`.
+                for alias in node.names:
+                    bound.add(alias.asname or alias.name.split(".")[0])
+                continue
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    bound.add(alias.asname or alias.name.split(".")[0])
+                continue
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                bound.add(node.id)
+                continue
+            for child in ast.iter_child_nodes(node):
+                self.walk_scope_bindings([child], bound, outer, False)
+
+    def collect_walrus_targets(self, node, bound):
+        """The names a walrus binds in the scope that encloses it.
+
+        A walrus inside a comprehension binds the scope that ENCLOSES the
+        comprehension, and not the comprehension's own scope.
+        """
+        for child in ast.walk(node):
+            if isinstance(child, ast.NamedExpr) and isinstance(child.target, ast.Name):
+                bound.add(child.target.id)
+
     # ---- functions ------------------------------------------------------------------------
 
     def begin_function(self, name, signature, enclosing_class, synthetic=False):
@@ -322,6 +420,9 @@ class Translator:
         state = self.begin_function(
             node.name, self.function_signature(node, owner), enclosing_class
         )
+        state.shadowed_names = self.scope_shadowed_names(node.body)
+        for parameter in self.parameters_of(node):
+            state.shadowed_names.add(parameter.arg)
         try:
             self.lower_parameters(node)
             self.report_non_constant_defaults(node)
@@ -399,6 +500,7 @@ class Translator:
             class_name,
             synthetic=True,
         )
+        state.shadowed_names = self.scope_shadowed_names(node.body)
         try:
             self.guard(node, lambda: self.lower_class_body(node, functions))
         finally:
@@ -1457,7 +1559,8 @@ class Translator:
         calls.
 
         <p>The answer is a fact about the module's own declarations, so it is
-        the same for every call of that name in the module.
+        the same for every call of that name in the module -- UNLESS the scope
+        being lowered binds the name to something of its own.
         """
         function = node.func
         if not isinstance(function, ast.Name):
@@ -1468,6 +1571,13 @@ class Translator:
         if name in self.defined_functions:
             # The module declares both a class and a function under this
             # name, so the name alone cannot say which one the call means.
+            return None
+        if name in self.state.shadowed_names:
+            # The scope being lowered binds this name to a value of its own --
+            # a local, a parameter, an import. Python decides the scope of a
+            # name when the function is compiled, so the local shadows the
+            # class for the WHOLE body, and the call is a call of a value
+            # and not a construction of the class.
             return None
         return name
 

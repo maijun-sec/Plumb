@@ -38,6 +38,11 @@ def handle(request):
     box["label"] = key + "!"
     os.system(box["label"])
     return box["label"]
+
+
+def shadowed(request):
+    UserStore = request
+    return UserStore(request)
 '''
 
 
@@ -256,6 +261,24 @@ def main():
         check(
             not any(i["kind"] == "UNINTERPRETED" for i in instructions),
             "a construction of a class this module declares must not be a black box",
+        )
+
+        # A local that shadows a class is not a construction. Python decides
+        # the scope of a name when the function is compiled, so the local is
+        # the local everywhere in the body, and the call is a call of a
+        # value. A construction here would name a constructor that is never
+        # called -- and a catalogue entry that claims constructors would
+        # claim it.
+        shadowed_function = next((f for f in functions if f["name"] == "shadowed"), None)
+        check(shadowed_function is not None, "the shadowing function must be in the stream")
+        shadowed_instructions = shadowed_function["instructions"]
+        check(
+            not any(i["kind"] == "NEW" for i in shadowed_instructions),
+            "a call of a local that shadows a class must not be a construction",
+        )
+        check(
+            any(i["kind"] == "UNINTERPRETED" for i in shadowed_instructions),
+            "a call of a local that shadows a class is a call of a value, so it is a black box",
         )
 
         # A binary operator is a BINOP, not an unknown value. A lookup that
