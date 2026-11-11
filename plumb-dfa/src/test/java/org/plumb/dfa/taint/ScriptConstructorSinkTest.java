@@ -129,6 +129,22 @@ class ScriptConstructorSinkTest {
       }
       """;
 
+  /**
+   * A TypeScript program whose pattern is fixed and whose FLAGS came from the request.
+   *
+   * <pre>
+   * export function handler(flags: string): void {
+   *   const re = new RegExp("fixed", flags);
+   * }
+   * </pre>
+   */
+  private static final String TS_REGEX_FLAGS_SOURCE =
+      """
+      export function handler(flags: string): void {
+        const re = new RegExp("fixed", flags);
+      }
+      """;
+
   // ------------------------------------------------------------------ the catalogue
 
   @Test
@@ -330,6 +346,62 @@ class ScriptConstructorSinkTest {
         .as("the pattern the request chose is compiled by the program")
         .isNotEmpty();
     assertThat(findings.get(0).cwe()).as("the finding carries CWE-1333").isEqualTo("CWE-1333");
+  }
+
+  /**
+   * The flags of a pattern are not the pattern, through the real front end.
+   *
+   * <p>The catalogue names the PATTERN as the constructor's first argument, and a flag string
+   * cannot make the matching exponential: a program that only lets an attacker choose the flags has
+   * no ReDoS risk. A rule that looked at "whichever argument happened to be tainted" would report
+   * it anyway, and report it as a ReDoS.
+   *
+   * <p>The hand-written TAC pins that at the catalogue's level. This pins the front end's half: the
+   * arguments have to arrive in the order the source wrote them, or "the first argument" means one
+   * thing on the way in and another on the way out.
+   *
+   * <p>The control case is in this test on purpose. An assertion that a set is EMPTY is also
+   * satisfied by a rule that stopped reporting anything at all, so the two halves have to be read
+   * together: the same program with the PATTERN tainted does report.
+   */
+  @Test
+  @DisplayName("a TypeScript pattern whose FLAGS are tainted is not a regex finding")
+  void aTypeScriptPatternWhoseFlagsAreTaintedIsNotARegexFinding(@TempDir Path directory)
+      throws IOException {
+    assumeTrue(
+        tsAvailable(),
+        "the TypeScript front end needs Node and its compiler dependency: run npm ci in"
+            + " plumb-frontend/ts-sidecar");
+
+    Path taintedPattern = directory.resolve("app.ts");
+    Files.writeString(taintedPattern, TS_REGEX_SOURCE);
+
+    List<Finding> reported =
+        scanThrough(
+            new TsTacFrontend(SourceLanguage.TYPESCRIPT),
+            TS_REGEX_SOURCE,
+            taintedPattern,
+            new RegexInjectionChecker());
+
+    assertThat(reported)
+        .as("the control: the pattern the request chose is compiled by the program")
+        .isNotEmpty();
+
+    Path taintedFlags = directory.resolve("flags.ts");
+    Files.writeString(taintedFlags, TS_REGEX_FLAGS_SOURCE);
+
+    List<Finding> notReported =
+        scanThrough(
+            new TsTacFrontend(SourceLanguage.TYPESCRIPT),
+            TS_REGEX_FLAGS_SOURCE,
+            taintedFlags,
+            new RegexInjectionChecker());
+
+    assertThat(notReported)
+        .as(
+            "a flag string is not a pattern: the catalogue names the first argument, and that is"
+                + " the pattern")
+        .isEmpty();
   }
 
   /**
