@@ -70,7 +70,6 @@ class Phase1DeferralTest {
         runner.translateAll(
             files,
             new RuleRegistry(),
-            List.of(),
             () -> {
               consulted.incrementAndGet();
               return false;
@@ -95,7 +94,6 @@ class Phase1DeferralTest {
         runner.translateAll(
             files,
             new RuleRegistry(),
-            List.of(),
             () -> {
               consulted.incrementAndGet();
               return true;
@@ -116,7 +114,6 @@ class Phase1DeferralTest {
         runner.translateAll(
             files,
             new RuleRegistry(),
-            List.of(),
             // Refuse exactly one file. WHICH file is refused depends on the order the
             // workers happen to take the files in, and it does not matter: the count is
             // what the fix is about.
@@ -135,7 +132,7 @@ class Phase1DeferralTest {
     ScanRunner runner = new ScanRunner(cfg);
 
     List<ScanRunner.TranslatedFile> out =
-        runner.translateAll(files, new RuleRegistry(), List.of(), () -> false);
+        runner.translateAll(files, new RuleRegistry(), () -> false);
 
     assertThat(out)
         .as("the style path is the production default, and it must not lose a file either")
@@ -152,7 +149,7 @@ class Phase1DeferralTest {
 
     ScanRunner runner = runner();
     List<ScanRunner.TranslatedFile> out =
-        runner.translateAll(files, new RuleRegistry(), List.of(), () -> false);
+        runner.translateAll(files, new RuleRegistry(), () -> false);
 
     assertThat(out)
         .as("the readable files are analysed even when the guard refuses every file")

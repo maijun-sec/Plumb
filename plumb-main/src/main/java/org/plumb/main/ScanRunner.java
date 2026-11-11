@@ -1433,9 +1433,8 @@ public final class ScanRunner {
    * @param styleChecks the style checkers, or {@code null} to skip style
    * @return the translated files, in input order, with the failures omitted
    */
-  private List<TranslatedFile> translateAll(
-      List<Path> files, RuleRegistry rules, List<org.plumb.style.AstChecker> styleChecks) {
-    return translateAll(files, rules, styleChecks, heapGuard::mayStartMoreWork);
+  private List<TranslatedFile> translateAll(List<Path> files, RuleRegistry rules) {
+    return translateAll(files, rules, heapGuard::mayStartMoreWork);
   }
 
   /**
@@ -1446,17 +1445,26 @@ public final class ScanRunner {
    * analysed. The failure this exists to prevent was SILENT, and a silent failure cannot be tested
    * against a real heap.
    *
+   * <p><b>Why the workers do not share the style checkers.</b> An AST checker holds the state of
+   * the file it is looking at -- the positions of a duplicated string literal, the names it has
+   * already seen -- and the dispatcher's lifecycle is per FILE: init(), then the visits, then
+   * finish(). The workers run at the same time, so one shared set of checkers is two files writing
+   * into one state: a worker's init() clears what another worker collected, and the checker throws
+   * while the other worker is reading it. The file whose findings are lost is whichever one the
+   * scheduler picked, so two runs of the same scan on the same tree report DIFFERENT numbers.
+   *
+   * <p>Each worker therefore builds its OWN set. The set is built once per worker and not once per
+   * file: the checkers are numerous, and building them for every file would cost more than the
+   * phase they accelerate.
+   *
    * @param files the files to translate
    * @param rules the rule registry, for the style checks
-   * @param styleChecks the style checkers, or {@code null} to skip style
    * @param mayStartMoreWork whether a new file's parse may start right now
    * @return the translated files, in input order, with the failures omitted
    */
   List<TranslatedFile> translateAll(
-      List<Path> files,
-      RuleRegistry rules,
-      List<org.plumb.style.AstChecker> styleChecks,
-      java.util.function.BooleanSupplier mayStartMoreWork) {
+      List<Path> files, RuleRegistry rules, java.util.function.BooleanSupplier mayStartMoreWork) {
+    final PerWorkerStyleChecks perWorker = new PerWorkerStyleChecks(this::styleChecksForWorker);
     int workers = Math.max(1, Math.min(plan.workers, files.size()));
     java.util.concurrent.ExecutorService pool =
         java.util.concurrent.Executors.newFixedThreadPool(
@@ -1479,7 +1487,13 @@ public final class ScanRunner {
           new java.util.ArrayList<>(files.size());
       for (Path f : files) {
         futures.add(
-            pool.submit(() -> translateOneForPhase1(f, rules, styleChecks, mayStartMoreWork)));
+            pool.submit(
+                () ->
+                    translateOneForPhase1(
+                        f,
+                        rules,
+                        config.runStyle ? perWorker.forCurrentWorker() : null,
+                        mayStartMoreWork)));
       }
       // The outcomes come back in INPUT ORDER, not as they complete: a caller may depend on
       // the order of the result.
@@ -1524,7 +1538,11 @@ public final class ScanRunner {
             deferred.size());
         for (Integer index : deferred) {
           Path f = files.get(index);
-          outcomes.set(index, Phase1Outcome.done(translateOnCallerThread(f, rules, styleChecks)));
+          outcomes.set(
+              index,
+              Phase1Outcome.done(
+                  translateOnCallerThread(
+                      f, rules, config.runStyle ? perWorker.forCurrentWorker() : null)));
         }
       }
       java.util.List<TranslatedFile> out = new java.util.ArrayList<>(files.size());
@@ -1629,7 +1647,7 @@ public final class ScanRunner {
       // whatever `--max-parallelism` said, and shared with every other
       // parallel stream in the JVM. A user who asked for four workers
       // got sixty-four.
-      translated = translateAll(files, rules, styleChecks);
+      translated = translateAll(files, rules);
     } else {
       translated = new ArrayList<>(files.size());
       for (Path f : files) {
@@ -3985,12 +4003,46 @@ public final class ScanRunner {
   }
 
   /**
-   * Step 7 — the list of {@link org.plumb.style.AstChecker}s the runner uses for AI dedup. Built
+   * The number of parse workers this scan uses.
    *
-   * <p>once and shared with {@link #runStyleChecks(ParsedSource, Path, RuleRegistry, List)} so the
-   * AI
+   * <p>Package-private so that a test can drive the parallel phase with more than one worker. The
+   * plan is otherwise decided in {@link #run()}, which a test that calls the parse phase directly
+   * never reaches -- and a parse phase with a single worker cannot show that the workers do not
+   * share their state, because they never overlap.
    *
-   * <p>dedup pass can look up the rule prompt for each style finding by its rule id.
+   * @param workers how many parse workers the phase may use
+   * @return the number of workers the plan actually allows
+   */
+  int useParseWorkers(int workers) {
+    this.plan =
+        ParallelismPlan.decide(
+            workers,
+            Runtime.getRuntime().availableProcessors(),
+            ParallelismPlan.maxHeapMegabytes());
+    this.heapGuard = HeapGuard.forWorkers(plan.workers);
+    return plan.workers;
+  }
+
+  /**
+   * The AST checkers ONE worker runs with.
+   *
+   * <p>The registry builds a fresh instance of every checker on every call, so this returns
+   * instances that share nothing with another worker's set. The DSL checker is the one exception:
+   * it holds compiled rules and no per-file state, so its single instance is shared on purpose.
+   *
+   * @return a set of checkers that no other worker is using
+   */
+  List<org.plumb.style.AstChecker> styleChecksForWorker() {
+    return buildStyleChecks();
+  }
+
+  /**
+   * Step 7 — the list of {@link org.plumb.style.AstChecker}s the runner uses for AI dedup.
+   *
+   * <p>The catalogue is built once, so the AI dedup pass can look up the rule prompt for each style
+   * finding by its rule id. The parse workers do not use the catalogue: they each build their own
+   * set, because a checker holds the state of the file it is looking at and the workers run at the
+   * same time.
    */
   private List<org.plumb.style.AstChecker> buildStyleChecks() {
     List<org.plumb.style.AstChecker> out = new ArrayList<>();
