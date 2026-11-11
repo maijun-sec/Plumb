@@ -419,6 +419,48 @@ class ScriptSinkFamilyEndToEndTest {
   }
 
   /**
+   * A TypeScript construction reaches the regex rule.
+   *
+   * <p><b>What this pins.</b> The other half of the contract {@link
+   * #aConstructionNamesTheClassItConstructs} names. That test says the front end emits the key;
+   * this one says the CATALOGUE claims it and the ENGINE reports the finding. The catalogue's claim
+   * is {@code ^RegExp\.\<init\>(/\d+)?} with {@code arg_index: 0}, and the two halves have to agree
+   * about what that index means.
+   *
+   * <p><b>Why the index is 0 and not 1.</b> A METHOD call puts its receiver in the first argument
+   * slot, so the catalogue's first user argument is the engine's second. A CONSTRUCTION has no
+   * receiver: its arguments are the constructor's arguments, in order. So the pattern -- the first
+   * argument of {@code new RegExp(input)} -- is index 0, and index 1 would be the FLAGS. Getting
+   * this wrong does not report the wrong thing; it reports nothing, because the flags are never
+   * tainted.
+   *
+   * <p><b>Why the two halves have to be pinned together.</b> A disagreement between the front end
+   * and the catalogue is not an error and not a warning: it is a program that scans CLEAN. A
+   * pattern the caller chose is a ReDoS, and the only thing that catches it is the two halves
+   * agreeing.
+   */
+  @Test
+  @DisplayName("a TypeScript construction reaches the regex rule")
+  void aTypeScriptConstructionReachesTheRegexRule(@TempDir Path directory) throws IOException {
+    assumeTrue(
+        tsAvailable(),
+        "the TypeScript front end needs Node and its compiler dependency: run npm ci in"
+            + " plumb-frontend/ts-sidecar");
+
+    Path file = directory.resolve("app.ts");
+    Files.writeString(file, TS_CONSTRUCTION);
+
+    TacFrontend.ParseResult result =
+        new TsTacFrontend(SourceLanguage.TYPESCRIPT).parse(TS_CONSTRUCTION, file, null);
+
+    List<Finding> findings = scan(result, file, new RegexInjectionChecker());
+
+    assertThat(hasFinding(findings, REGEX_RULE, "RegExp.<init>"))
+        .as("the pattern is the first argument of the construction")
+        .isTrue();
+  }
+
+  /**
    * The global eval reaches the code injection rule.
    *
    * <p><b>What this pins.</b> A free function -- a call with no receiver object -- has no module to
