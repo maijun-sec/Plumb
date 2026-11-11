@@ -40,8 +40,16 @@ import org.plumb.tac.ir.TacProgram;
  * <p>The arity came from the resolved declaration, and the resolution never happened: the code
  * asked the resolved declaration to hand back a method, and a resolved method declaration is not
  * asked that way -- the call throws, the catch swallowed it, and every reference was bound with the
- * arity {@code -1}. A callee signature with the arity {@code -1} matches nothing, so the rewrite
- * found no callee and the taint stopped at the application: the program was reported clean.
+ * arity {@code -1}. A callee signature whose arity is {@code -1} names no declaration: the call
+ * graph's key is an arity, and {@code -1} is not one.
+ *
+ * <p>What the malformed arity costs is NOT a missing finding, and these tests do not claim one. The
+ * catalogue's patterns are anchored at the start, so a sink still matched, and the engine's taint
+ * already crossed the call. Measured on three shapes of method reference -- an unbound reference to
+ * a sink, an unbound reference whose result is concatenated into a sink, and a bound reference to a
+ * method whose body holds the sink -- the finding count is the same before and after the change.
+ * What the change buys is a signature that means something: the report no longer prints {@code
+ * java.lang.Runtime.exec/-1}, and the call graph can key the reference.
  */
 class MethodReferenceArityTest {
 
@@ -81,6 +89,27 @@ class MethodReferenceArityTest {
     assertThat(targets)
         .as("a static reference takes the arguments and no receiver")
         .containsValue("java.lang.String.valueOf/1");
+  }
+
+  @Test
+  void aBoundReferenceTakesTheMethodsOwnParameters() {
+    String src =
+        "import java.util.function.Consumer;\n"
+            + "class Helper {\n"
+            + "  void run(String cmd) { }\n"
+            + "}\n"
+            + "class Use {\n"
+            + "  void go(String userInput) {\n"
+            + "    Consumer<String> c = new Helper()::run;\n"
+            + "    c.accept(userInput);\n"
+            + "  }\n"
+            + "}\n";
+
+    TacProgram program = translate(src);
+
+    assertThat(program.deferredTargets())
+        .as("a bound reference already has its receiver, so the call takes the method's parameters")
+        .containsValue("Helper.run/1");
   }
 
   @Test

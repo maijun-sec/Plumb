@@ -843,9 +843,18 @@ public final class ExpressionTranslator {
   /**
    * The number of arguments the deferred invocation of a referenced method takes.
    *
-   * <p>For an unbound reference to an instance method ({@code String::trim}) the functional
-   * interface supplies the receiver as its first argument, so the deferred call takes the
-   * referenced method's own parameter count plus one.
+   * <p>The deferred call is the application site rewritten into the call it is: the functional
+   * interface's argument becomes the argument of the referenced method. How many arguments that is
+   * depends on how the reference is bound:
+   *
+   * <ul>
+   *   <li>a BOUND reference ({@code new Helper()::run}) already has its receiver, so the deferred
+   *       call takes the referenced method's own parameters;
+   *   <li>an UNBOUND reference ({@code String::trim}) takes the receiver from the functional
+   *       interface, so the deferred call takes one argument more than the method declares;
+   *   <li>a STATIC reference ({@code String::valueOf}) takes the parameters the method declares --
+   *       the functional interface supplies them all.
+   * </ul>
    *
    * <p>JavaParser exposes the referenced method's parameter count through the resolved symbol when
    * the symbol solver can see it. When it cannot, the count is unknown, and {@code -1} is returned:
@@ -864,14 +873,20 @@ public final class ExpressionTranslator {
       // `mre.resolve()` IS the resolved method declaration. Asking it for one
       // (`resolved.asMethod()`) throws UnsupportedOperationException -- the
       // declaration is not asked that way -- and the catch below swallowed the
-      // throw, so every reference was bound with the arity -1 and matched no
-      // callee at all.
+      // throw, so every reference was bound with the arity -1, which names no
+      // declaration: the call graph's key is an arity, and -1 is not one.
       var method = mre.resolve();
       int params = method.getNumberOfParams();
-      // An unbound instance-method reference receives the receiver as the
-      // functional interface's first argument.
       boolean staticRef = method.isStatic();
-      return staticRef ? params : params + 1;
+      // A scope that names a TYPE means the reference is unbound: the receiver
+      // comes from the functional interface, so the deferred call carries one
+      // argument more than the method declares. A scope that is an EXPRESSION
+      // means the reference is bound and the receiver is already there.
+      var scope = mre.getScope();
+      boolean unbound =
+          scope instanceof com.github.javaparser.ast.expr.TypeExpr
+              || scope instanceof com.github.javaparser.ast.expr.ClassExpr;
+      return unbound && !staticRef ? params + 1 : params;
     } catch (Throwable ignore) {
       // Unresolvable: leave the arity alone rather than guess.
       return -1;
