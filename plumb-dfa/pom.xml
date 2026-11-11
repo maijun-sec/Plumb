@@ -179,6 +179,10 @@
                         <include>org/plumb/dfa/taint/InputSourcePatternsTest.java</include>
                         <include>org/plumb/dfa/taint/TaintDomainTest.java</include>
                         <include>org/plumb/dfa/taint/GuardTrackerTest.java</include>
+                        <!-- The parameter origin across a program that declares the same method
+                             name twice: the call site can only name the class by its simple
+                             name, and a call that names no class names the caller's own. -->
+                        <include>org/plumb/dfa/taint/ParamOriginSurvivesASameNamedMethodTest.java</include>
                         <!-- The Go sink catalogue: the Go front end's symbols must
                              be the ones the catalogue names, and the Go
                              accumulators must carry the taint both ways. -->

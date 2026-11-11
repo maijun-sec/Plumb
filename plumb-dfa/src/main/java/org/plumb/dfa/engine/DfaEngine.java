@@ -1188,12 +1188,26 @@ public final class DfaEngine {
     // the same question by looking up only that class's candidates.
     java.util.Map<String, List<TacFunction>> byBare = new java.util.HashMap<>();
     java.util.Map<String, List<TacFunction>> byBareAndClass = new java.util.HashMap<>();
+    // The same index under the declaring class's SIMPLE name.
+    //
+    // The two ends of a lookup spell the same class differently: a declaration names its
+    // class with the package it lives in ("demo.ShapeScoped"), while a call site in the
+    // source lane can only name it the way the source wrote it ("ShapeScoped"). The index
+    // has to answer to both spellings, or the lookup misses and the parameter origin is
+    // never transferred.
+    java.util.Map<String, List<TacFunction>> byBareAndSimpleClass = new java.util.HashMap<>();
     for (TacFunction fn : fns) {
       String bare = nameArity(fn.signature());
       byBare.computeIfAbsent(bare, k -> new ArrayList<>()).add(fn);
       String enc = fn.enclosingClass();
       if (enc != null && !enc.isEmpty()) {
         byBareAndClass.computeIfAbsent(bare + " :: " + enc, k -> new ArrayList<>()).add(fn);
+        String simple = simpleClassName(enc);
+        if (simple != null) {
+          byBareAndSimpleClass
+              .computeIfAbsent(bare + " :: " + simple, k -> new ArrayList<>())
+              .add(fn);
+        }
       }
     }
 
@@ -1296,11 +1310,41 @@ public final class DfaEngine {
         if (lab == null) continue;
         for (TacInstruction call : caller.instructions()) {
           if (call.kind != TacInstruction.Kind.CALL) continue;
-          TacFunction callee = resolveCallee(program, byBare, byBareAndClass, call.calleeSig);
+          TacFunction callee =
+              resolveCallee(
+                  program,
+                  byBare,
+                  byBareAndClass,
+                  byBareAndSimpleClass,
+                  call.calleeSig,
+                  caller.enclosingClass());
           if (callee == null) continue;
           List<org.plumb.tac.ir.TacOperand> args = call.args;
-          for (int j = 0; j < callee.params().size(); j++) {
-            int argIdx = j + 1; // args[0] is the receiver slot
+          // Where the caller's FIRST USER ARGUMENT sits in the operand list.
+          //
+          // A call that has a receiver -- an instance call, or a call that names the class it
+          // calls -- carries that receiver in args[0], so the first user argument is at args[1].
+          // A call that names NO class carries no such slot: its first user argument is at
+          // args[0]. The old code assumed the receiver slot was always there, so for an
+          // unqualified call it read the operand AFTER the argument the caller passed -- the
+          // next argument, or past the end of the list -- and the callee's parameter inherited
+          // the wrong origin, or none at all.
+          //
+          // The operand COUNT decides, because the IR records the callee's declared parameter
+          // count: one more operand than parameters means the receiver slot is there. Operands
+          // that do not add up -- a missing argument, a varargs call -- are not mapped at all,
+          // because guessing which operand is the receiver would attribute the caller's taint
+          // to the wrong parameter.
+          int firstArg;
+          if (args.size() == callee.params().size() + 1) {
+            firstArg = 1; // a receiver slot is present
+          } else if (args.size() == callee.params().size() && qualifierOf(call.calleeSig) == null) {
+            firstArg = 0; // no receiver slot: the call names no class at all
+          } else {
+            firstArg = -1; // the operands do not add up: do not guess
+          }
+          for (int j = 0; firstArg >= 0 && j < callee.params().size(); j++) {
+            int argIdx = j + firstArg;
             if (argIdx >= args.size()) break;
             String k = key(callee, j);
             // was this argument a literal? Only a literal is positive proof
@@ -1504,12 +1548,19 @@ public final class DfaEngine {
    * call's qualifier, then a unique candidate. If neither is decisive we return {@code null}:
    * attributing a finding to an arbitrary overload would be worse than keeping the honest {@code
    * param:} label.
+   *
+   * <p>The class is looked for under every spelling the two ends can produce: the class as the call
+   * site wrote it, the class by its simple name (the source lane cannot spell a package it never
+   * sees), and the module-class spelling a Scala call site uses. A call that names no class at all
+   * is a call to a method of the CALLER's own class, and the caller knows that class.
    */
   private static TacFunction resolveCallee(
       TacProgram program,
       java.util.Map<String, List<TacFunction>> byBare,
       java.util.Map<String, List<TacFunction>> byBareAndClass,
-      String calleeSig) {
+      java.util.Map<String, List<TacFunction>> byBareAndSimpleClass,
+      String calleeSig,
+      String callerEnclosingClass) {
     if (calleeSig == null || byBare == null) return null;
     TacFunction exact = program.function(calleeSig);
     if (exact != null) return exact;
@@ -1537,15 +1588,34 @@ public final class DfaEngine {
         if (inClass.size() > 1) return null; // ambiguous within the same class
         return inClass.get(0);
       }
+      // The class by its SIMPLE name.
+      //
+      // The two ends of a lookup spell one class two ways: a declaration names its class with
+      // the package it lives in ("demo.ShapeScoped"), while a call site in the source lane can
+      // only name it the way the source wrote it ("ShapeScoped"). The index holds both
+      // spellings, so the lookup asks for both -- and it asks for the simple one even when the
+      // qualifier carries no package at all, which is the shape the source lane produces.
+      //
+      // Without this the lookup fell through to the bare key, which every same-named method in
+      // the program shares: the call resolved to another class's method, or to none at all, and
+      // the parameter origin was never transferred.
+      String simpleOwner = simpleClassName(qualifier);
+      List<TacFunction> bySimple =
+          byBareAndSimpleClass == null
+              ? null
+              : byBareAndSimpleClass.get(bare + " :: " + simpleOwner);
+      if (bySimple != null && !bySimple.isEmpty()) {
+        if (bySimple.size() > 1) return null; // ambiguous: two classes of that name
+        return bySimple.get(0);
+      }
+      List<TacFunction> bySimpleAsWritten =
+          byBareAndClass == null ? null : byBareAndClass.get(bare + " :: " + simpleOwner);
+      if (bySimpleAsWritten != null && !bySimpleAsWritten.isEmpty()) {
+        if (bySimpleAsWritten.size() > 1) return null; // ambiguous
+        return bySimpleAsWritten.get(0);
+      }
       int lastDot = qualifier.lastIndexOf('.');
       if (lastDot >= 0) {
-        String simpleOwner = qualifier.substring(lastDot + 1);
-        List<TacFunction> bySimple =
-            byBareAndClass == null ? null : byBareAndClass.get(bare + " :: " + simpleOwner);
-        if (bySimple != null && !bySimple.isEmpty()) {
-          if (bySimple.size() > 1) return null; // ambiguous
-          return bySimple.get(0);
-        }
         // The MODULE-CLASS spelling. A Scala call to a Java STATIC method names the
         // callee through the Java class's synthetic module class, whose name is the
         // class's name with a '$' appended: "demo.JavaSink$.run/1" for a method
@@ -1557,12 +1627,20 @@ public final class DfaEngine {
         String withoutModuleSuffix = stripModuleClassSuffix(simpleOwner);
         if (!withoutModuleSuffix.equals(simpleOwner)) {
           List<TacFunction> byModule =
-              byBareAndClass == null
+              byBareAndSimpleClass == null
                   ? null
-                  : byBareAndClass.get(bare + " :: " + withoutModuleSuffix);
+                  : byBareAndSimpleClass.get(bare + " :: " + withoutModuleSuffix);
           if (byModule != null && !byModule.isEmpty()) {
             if (byModule.size() > 1) return null; // ambiguous
             return byModule.get(0);
+          }
+          List<TacFunction> byModuleAsWritten =
+              byBareAndClass == null
+                  ? null
+                  : byBareAndClass.get(bare + " :: " + withoutModuleSuffix);
+          if (byModuleAsWritten != null && !byModuleAsWritten.isEmpty()) {
+            if (byModuleAsWritten.size() > 1) return null; // ambiguous
+            return byModuleAsWritten.get(0);
           }
         }
         // The same, with the owner's QUALIFIED spelling. The index is keyed by the
@@ -1586,6 +1664,29 @@ public final class DfaEngine {
       }
       return null;
     }
+    // The call names NO class. An unqualified call is a call to a method of the CALLER's own
+    // class -- that is what an unqualified call means -- and the caller knows that class.
+    //
+    // The lookup used to give up here, so in a corpus that declares the same method name in
+    // many classes every unqualified call resolved to nothing: the parameter origin was never
+    // transferred, and the reported source stayed the callee's own parameter.
+    if (callerEnclosingClass != null && !callerEnclosingClass.isEmpty()) {
+      List<TacFunction> inCaller =
+          byBareAndClass == null ? null : byBareAndClass.get(bare + " :: " + callerEnclosingClass);
+      if (inCaller != null && !inCaller.isEmpty()) {
+        if (inCaller.size() > 1) return null; // ambiguous within the same class
+        return inCaller.get(0);
+      }
+      String simpleCaller = simpleClassName(callerEnclosingClass);
+      List<TacFunction> bySimpleCaller =
+          byBareAndSimpleClass == null
+              ? null
+              : byBareAndSimpleClass.get(bare + " :: " + simpleCaller);
+      if (bySimpleCaller != null && !bySimpleCaller.isEmpty()) {
+        if (bySimpleCaller.size() > 1) return null; // ambiguous
+        return bySimpleCaller.get(0);
+      }
+    }
     return null;
   }
 
@@ -1604,6 +1705,22 @@ public final class DfaEngine {
     if (name == null || name.length() < 2) return name;
     if (!name.endsWith("$")) return name;
     return name.substring(0, name.length() - 1);
+  }
+
+  /**
+   * A class name with its package removed.
+   *
+   * <p>The last DOT, not the last {@code $}: a nested class is {@code Outer$Inner}, and the
+   * engine's own keys spell it that way.
+   *
+   * @param name the class name, qualified or not
+   * @return the simple name, or null when there is no name to reduce
+   */
+  private static String simpleClassName(String name) {
+    if (name == null || name.isEmpty()) return null;
+    int dot = name.lastIndexOf('.');
+    String simple = dot < 0 ? name : name.substring(dot + 1);
+    return simple.isEmpty() ? null : simple;
   }
 
   /**
