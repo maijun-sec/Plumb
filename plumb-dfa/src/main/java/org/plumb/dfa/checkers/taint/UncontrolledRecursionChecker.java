@@ -113,6 +113,19 @@ public final class UncontrolledRecursionChecker extends TaintedCheckerBase {
     if (shortName == null || shortName.isEmpty()) {
       return false;
     }
+    // A CONSTRUCTOR is never recursion. `X.<init>` runs the constructor of X, and a constructor
+    // that called itself would not return -- the language rejects it at compile time. So the
+    // comparison below could only ever match by accident: the constructor's name and the
+    // enclosing constructor's name are the same word, and the receiver is `this` in both cases.
+    //
+    // This is not hypothetical. The bytecode front end names the implicit super() call that the
+    // compiler inserts, so every class with a constructor produces `java.lang.Object.<init>/0`
+    // with `this` as the receiver -- and every one of them was reported as uncontrolled
+    // recursion. The source front end does not emit that call, which is why the false positive
+    // only showed up on bytecode.
+    if (isConstructorName(shortName)) {
+      return false;
+    }
     int arity = fn.params() == null ? 0 : fn.params().size();
 
     // Split "pkg.Cls.method/arity" (or "method/arity") into the method
@@ -134,6 +147,11 @@ public final class UncontrolledRecursionChecker extends TaintedCheckerBase {
     if (!shortName.equals(calleeMethod)) {
       return false;
     }
+    // The callee is a constructor: running a constructor is not re-entering the enclosing
+    // method, whichever class the constructor belongs to.
+    if (isConstructorName(calleeMethod)) {
+      return false;
+    }
     if (calleeArity >= 0 && calleeArity != arity) {
       return false;
     }
@@ -152,7 +170,7 @@ public final class UncontrolledRecursionChecker extends TaintedCheckerBase {
       // A constant receiver can never be the enclosing instance.
       return false;
     }
-    String enclosing = fn.enclosingClass();
+    String enclosing = enclosingClassOf(fn);
     boolean enclosingKnown = enclosing != null && !enclosing.isEmpty();
     String recvType = classNameOf(recvVar.type());
 
@@ -212,6 +230,76 @@ public final class UncontrolledRecursionChecker extends TaintedCheckerBase {
       return ins.args.get(0);
     }
     return null;
+  }
+
+  /**
+   * The class that declares the function under analysis.
+   *
+   * <p>The IR records it on the function when the front end knows it. When it does not, the
+   * function's SIGNATURE may still name the declaring class: the bytecode front end writes {@code
+   * org.apache.commons.text.StringTokenizer.add(1)}, while the source front end writes {@code
+   * open(BufferedReader):File} and leaves the class to the enclosing-class field.
+   *
+   * <p>Why the fallback matters: without it, a front end that does not record the enclosing class
+   * leaves every receiver named {@code this} looking like the enclosing instance, and every call on
+   * {@code this} was reported as recursion. The bytecode lane does not record the enclosing class,
+   * so every method that called a method of the same name on itself was reported -- including the
+   * ones whose own body throws, such as a method the class declares only to refuse the call.
+   *
+   * @param fn the function under analysis
+   * @return the declaring class, or {@code null} when neither source names it
+   */
+  private static String enclosingClassOf(TacFunction fn) {
+    String recorded = fn.enclosingClass();
+    if (recorded != null && !recorded.isEmpty()) {
+      return recorded;
+    }
+    return declaringClassOfSignature(fn.signature());
+  }
+
+  /**
+   * The class named in a function signature, or {@code null} when the signature names none.
+   *
+   * <p>The signature comes in two shapes. The bytecode front end writes {@code
+   * org.apache.commons.text.StringTokenizer.add(1)} -- the class, then the method, then the arity
+   * in parentheses. The source front end writes {@code open(BufferedReader):File} -- the method,
+   * its parameters, its return type -- and leaves the class to the enclosing-class field. The two
+   * are told apart by the dot before the method name: the first has one, the second does not.
+   *
+   * <p>Only the part BEFORE the parameter list is looked at. The return type may itself be a
+   * qualified name ({@code open(String):java.io.File}), and its dots are not the declaring class.
+   *
+   * @param signature the function signature
+   * @return the declaring class, or {@code null}
+   */
+  private static String declaringClassOfSignature(String signature) {
+    if (signature == null) {
+      return null;
+    }
+    int paren = signature.indexOf('(');
+    if (paren <= 0) {
+      return null;
+    }
+    String head = signature.substring(0, paren);
+    int lastDot = head.lastIndexOf('.');
+    if (lastDot <= 0) {
+      return null;
+    }
+    return head.substring(0, lastDot);
+  }
+
+  /**
+   * Whether a method name is a constructor's.
+   *
+   * <p>The JVM names an instance constructor {@code <init>} and a static initialiser {@code
+   * <clinit>}. Both are called by the runtime rather than by the program, and neither can re-enter
+   * itself.
+   *
+   * @param name the method name
+   * @return true when the name belongs to a constructor
+   */
+  private static boolean isConstructorName(String name) {
+    return "<init>".equals(name) || "<clinit>".equals(name);
   }
 
   /** The class name of a type, or {@code null} when it carries none. */

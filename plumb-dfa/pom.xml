@@ -214,6 +214,7 @@
                              because neither language can name the class
                              of process.stdout. -->
                         <include>org/plumb/dfa/taint/ArkTsSinkCatalogTest.java</include>
+                        <include>org/plumb/dfa/taint/BytecodeConstructorSinkTest.java</include>
 
                         <!-- The PHP rule layer. PHP qualifies a global
                              function with a leading backslash, so the

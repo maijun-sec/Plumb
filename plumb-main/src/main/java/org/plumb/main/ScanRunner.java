@@ -1282,7 +1282,20 @@ public final class ScanRunner {
       LOG.info("Bytecode analysis produced no TAC programs (empty .jar? library-only?)");
       return out;
     }
-    org.plumb.tac.ir.MergedProgram merged = new org.plumb.tac.ir.MergedProgram(programs);
+    // The artifacts in `inputs` are the ones the user named on the command line, so they are the
+    // code under review. The bytecode front end cannot tell them from a dependency (both arrive
+    // as class files), so it marks everything it lowers as LIBRARY -- and the engine analyses a
+    // LIBRARY body only when the library analysis is switched on, which it is not by default. The
+    // result was that a scan of a JAR analysed nothing and reported nothing: indistinguishable
+    // from a clean artifact. Re-stamping the origin here is what the user's choice of input
+    // already means.
+    List<org.plumb.tac.ir.TacProgram> scanned = new ArrayList<>(programs.size());
+    for (org.plumb.tac.ir.TacProgram program : programs) {
+      scanned.add(
+          org.plumb.dfa.engine.ScannedOrigin.restampProgram(
+              program, org.plumb.tac.ir.SourceOrigin.SOURCE));
+    }
+    org.plumb.tac.ir.MergedProgram merged = new org.plumb.tac.ir.MergedProgram(scanned);
     var programView = merged.asProgram();
     if (config.runTaint
         || config.runDivByZero

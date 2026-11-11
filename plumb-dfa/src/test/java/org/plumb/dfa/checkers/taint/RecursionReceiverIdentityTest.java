@@ -38,7 +38,11 @@ import org.plumb.dfa.fact.BuiltinFactKinds;
 import org.plumb.parser.JavaSourceParser;
 import org.plumb.parser.ParsedSource;
 import org.plumb.reporter.Finding;
+import org.plumb.tac.ir.TacFunction;
+import org.plumb.tac.ir.TacInstruction;
+import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacProgram;
+import org.plumb.tac.ir.TacType;
 import org.plumb.tac.translate.TacTranslator;
 
 /**
@@ -292,6 +296,145 @@ class RecursionReceiverIdentityTest {
             """,
             "DifferentName.java");
     assertThat(out).as("a different method name is not recursion").isEmpty();
+  }
+
+  /**
+   * A constructor is not recursion.
+   *
+   * <p>A constructor that called itself would never return, and the language rejects it at compile
+   * time -- so the comparison of the callee's name against the enclosing method's name could only
+   * ever match by accident: the constructor's name and the enclosing constructor's name are the
+   * same word, and the receiver is {@code this} in both cases.
+   *
+   * <p>This is not hypothetical. The bytecode front end names the implicit super() call the
+   * compiler inserts, so every class with a constructor carries a {@code java.lang.Object.<init>/0}
+   * call whose receiver is {@code this} -- and every one of them was reported as uncontrolled
+   * recursion. The source front end does not emit that call, which is why the false positive only
+   * showed up on bytecode.
+   */
+  @Test
+  void aConstructorCallIsNotRecursion() throws Exception {
+    List<Finding> out =
+        scan(
+            """
+            class T {
+              public T() {
+                super();
+              }
+              public void loop(String a) { }
+            }
+            """,
+            "Constructor.java");
+    assertThat(out).as("running a constructor is not re-entering the enclosing method").isEmpty();
+  }
+
+  /**
+   * A front end that does not record the enclosing class still gets the right answer.
+   *
+   * <p>The bytecode front end does not record it, so the receiver named {@code this} had no class
+   * to be compared against, and every call on {@code this} looked like a call on the enclosing
+   * instance. The function's signature names the declaring class when the front end knows it, so
+   * that is where the class comes from.
+   *
+   * <p>The control is a receiver of ANOTHER type: the call leaves the enclosing class, so it is
+   * delegation and must stay silent.
+   */
+  @Test
+  void theDeclaringClassComesFromTheSignatureWhenTheEnclosingClassIsAbsent() throws Exception {
+    TacFunction function =
+        functionWithoutEnclosingClass(
+            "org.apache.commons.text.StringTokenizer.add(1)",
+            "add",
+            List.of(new TacOperand.TacVar("$stack2:java.lang.String", TacType.STRING, false)));
+
+    TacInstruction onThis =
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .calleeSig("org.apache.commons.text.StringTokenizer.add/1")
+            .args(
+                List.of(
+                    new TacOperand.TacVar(
+                        "this:org.apache.commons.text.StringTokenizer",
+                        TacType.ofClass("org.apache.commons.text.StringTokenizer"),
+                        false),
+                    new TacOperand.TacVar("$stack2:java.lang.String", TacType.STRING, false)))
+            .line(7)
+            .column(1)
+            .build();
+
+    assertThat(UncontrolledRecursionChecker.isSelfRecursion(onThis, function))
+        .as(
+            "a call on this, inside the class the signature names, is recursion"
+                + " [fn.name()="
+                + function.name()
+                + " sig="
+                + function.signature()
+                + " enclosing="
+                + function.enclosingClass()
+                + "]")
+        .isTrue();
+
+    TacInstruction onAnother =
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .calleeSig("org.apache.commons.text.StringTokenizer.add/1")
+            .args(
+                List.of(
+                    new TacOperand.TacVar(
+                        "other:org.apache.commons.text.StringLookupFactory",
+                        TacType.ofClass("org.apache.commons.text.StringLookupFactory"),
+                        false),
+                    new TacOperand.TacVar("$stack2:java.lang.String", TacType.STRING, false)))
+            .line(7)
+            .column(1)
+            .build();
+
+    assertThat(UncontrolledRecursionChecker.isSelfRecursion(onAnother, function))
+        .as("a call on another object of another type is delegation")
+        .isFalse();
+
+    // The return type may itself be a qualified name, and its dots are not the declaring
+    // class. A source front end that does not record the enclosing class must not pick the
+    // return type's package apart as the class.
+    TacFunction sourceShaped =
+        functionWithoutEnclosingClass(
+            "open(String):java.io.File",
+            "open",
+            List.of(new TacOperand.TacVar("$stack2:java.lang.String", TacType.STRING, false)));
+    TacInstruction onThisInSourceShape =
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .calleeSig("open/1")
+            .args(
+                List.of(
+                    new TacOperand.TacVar(
+                        "this:java.io.File", TacType.ofClass("java.io.File"), false),
+                    new TacOperand.TacVar("$stack2:java.lang.String", TacType.STRING, false)))
+            .line(7)
+            .column(1)
+            .build();
+
+    assertThat(UncontrolledRecursionChecker.isSelfRecursion(onThisInSourceShape, sourceShaped))
+        .as("the return type's package is not the declaring class")
+        .isFalse();
+  }
+
+  /** A function whose enclosing class was never recorded, as the bytecode front end produces. */
+  private static TacFunction functionWithoutEnclosingClass(
+      String signature, String name, List<TacOperand.TacVar> params) {
+    return new TacFunction(
+        name,
+        signature,
+        TacType.VOID,
+        params,
+        List.of(),
+        List.of(),
+        List.of(),
+        List.of(),
+        java.util.Map.of(),
+        java.util.Map.of(),
+        null,
+        org.plumb.tac.ir.SourceOrigin.SOURCE,
+        List.of(),
+        org.plumb.tac.ir.SourceLanguage.JAVA,
+        org.plumb.tac.ir.IrPrecision.SOURCE_FULL);
   }
 
   /** Scan several files together, as a cross-TU scan does. */
