@@ -197,11 +197,11 @@ class PythonSidecarEndToEndTest {
    *
    * <p><b>Why this is pinned here and not only in the sidecar's smoke test.</b> The sink catalogue
    * matches a callee signature, so a construction's key is what decides whether a catalogue entry
-   * can ever fire. Python has no {@code new} keyword, so a construction is a CALL: its key is
-   * {@code <module>.<Class>/<arity>} and its argument list keeps the receiver slot. A sidecar that
-   * changed either would leave every Python construction entry matching nothing -- silently, and
-   * with the scan still reporting success. The sidecar's own smoke test does assert these keys, but
-   * nothing in the build runs it, so the fact had no automatic guard at all.
+   * can ever fire. Python has no {@code new} keyword, so a construction and a call are spelled the
+   * same way, and only what the name resolves to tells them apart. A sidecar that changed the key
+   * would leave every Python construction entry matching nothing -- silently, and with the scan
+   * still reporting success. The sidecar's own smoke test does assert these keys, but nothing in
+   * the build runs it, so the fact had no automatic guard at all.
    *
    * <p><b>Why a class this module declares has no usable owner.</b> The owner of a call is the
    * module the name came from, and a class declared HERE comes from no module: the file's name is
@@ -270,7 +270,8 @@ class PythonSidecarEndToEndTest {
       // degrades and no catalogue entry can claim the call.
       TacInstruction local =
           handle.instructions().stream()
-              .filter(i -> i.calleeSig != null && i.calleeSig.endsWith(".Greeter/1"))
+              .filter(i -> i.kind == TacInstruction.Kind.NEW)
+              .filter(i -> i.calleeSig != null && i.calleeSig.endsWith(".Greeter.<init>/1"))
               .findFirst()
               .orElseThrow(
                   () ->
@@ -281,6 +282,10 @@ class PythonSidecarEndToEndTest {
               "the owner of a class this module declares is degraded: a file whose name looks like "
                   + "a framework module must not produce a key the catalogue can claim")
           .startsWith("<unknown>.");
+      assertThat(local.ctorType).as("the construction must carry the type it built").isNotNull();
+      assertThat(local.args)
+          .as("a construction has no receiver slot, so the argument is at args[0]")
+          .hasSize(1);
     }
   }
 

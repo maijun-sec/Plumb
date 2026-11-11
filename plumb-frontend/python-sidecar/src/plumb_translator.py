@@ -1408,6 +1408,9 @@ class Translator:
         holds the MODULE's name as a constant -- the same shape the other
         front ends use for a static call.
         """
+        construction = self.resolve_construction(node)
+        if construction is not None:
+            return self.lower_construction(node, construction)
         callee = self.resolve_callee(node)
         arguments = []
         for argument in node.args:
@@ -1437,6 +1440,80 @@ class Translator:
                 "dest": dest,
                 "calleeSig": "%s.%s/%d" % (callee["owner"], callee["method"], callee["arity"]),
                 "args": args,
+                **self.position(node),
+            }
+        )
+        return dest
+
+    def resolve_construction(self, node):
+        """The class a call CONSTRUCTS, when the call constructs one.
+
+        <p>Python has no ``new`` keyword: ``Store(x)`` and ``store(x)`` are
+        spelled the same way, and only what the name resolves to tells them
+        apart. A name this module DECLARES as a class is a construction; a
+        name it declares as a function is a call. A name from an import is
+        neither -- the import does not say which of the two it binds -- so it
+        stays a call, because the catalogue's Python entries are written for
+        calls.
+
+        <p>The answer is a fact about the module's own declarations, so it is
+        the same for every call of that name in the module.
+        """
+        function = node.func
+        if not isinstance(function, ast.Name):
+            return None
+        name = function.id
+        if name not in self.defined_classes:
+            return None
+        if name in self.defined_functions:
+            # The module declares both a class and a function under this
+            # name, so the name alone cannot say which one the call means.
+            return None
+        return name
+
+    def lower_construction(self, node, class_name):
+        """A construction: a NEW whose callee key names the constructor.
+
+        <p>The key is ``<unknown>.<Class>.<init>/<arity>``. The
+        ``<init>`` part is what the JVM, TypeScript, ArkTS, C# and PHP front
+        ends all use for a construction, so a catalogue entry written for one
+        of them can match a Python construction too -- the catalogue has no
+        Python constructor entries yet, and this is the shape they will have
+        to use when it gets them.
+
+        <p>The owner stays ``<unknown>``, and that is deliberate: a file
+        called ``subprocess.py`` that declares ``class Popen`` must not
+        produce a key the catalogue can claim for the real
+        ``subprocess.Popen``. The owner of a class this module declares
+        cannot be named, because the file's name is arbitrary.
+
+        <p>The arity counts the POSITIONAL arguments only, which is what the
+        catalogue's Python entries are written against: ``dict(a=x)`` is
+        ``builtins.dict/0`` and ``dict(x)`` is ``builtins.dict/1``. The
+        keyword argument is still lowered into the argument list, because
+        that is where the tainted value lands.
+        """
+        arguments = []
+        for argument in node.args:
+            arguments.append(self.lower_argument(argument))
+        for keyword in node.keywords:
+            arguments.append(self.lower_argument(keyword.value))
+        if node.keywords:
+            self.report(
+                Problem.SOURCE_LOWERED,
+                node,
+                "a keyword argument is passed as a positional one, so the arguments' order is "
+                "not the order the callee sees",
+            )
+        dest = self.state.new_temp(self.tac_type_of_name(class_name))
+        self.emit(
+            {
+                "kind": Kind.NEW,
+                "dest": dest,
+                "calleeSig": "%s.%s.<init>/%d"
+                % (UNKNOWN_OWNER, class_name, self.passed_arity(node)),
+                "ctorType": self.tac_type_of_name(class_name),
+                "args": arguments,
                 **self.position(node),
             }
         )

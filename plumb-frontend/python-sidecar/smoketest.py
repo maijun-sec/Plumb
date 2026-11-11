@@ -229,6 +229,35 @@ def main():
             % find_call["calleeSig"],
         )
 
+        # A construction is a NEW, and its key names the CONSTRUCTOR. The
+        # `<init>` part is the shape every other front end uses for a
+        # construction, so a catalogue entry written for one of them can
+        # match this one. The owner stays `<unknown>`: a class this module
+        # declares comes from no module, and a file whose name looks like a
+        # framework module must not produce a key the catalogue can claim.
+        construction = next((i for i in instructions if i["kind"] == "NEW"), None)
+        check(
+            construction is not None,
+            "the construction of a class this module declares must be a NEW",
+        )
+        check(
+            construction["calleeSig"] == "<unknown>.UserStore.<init>/0",
+            "the callee signature of a construction must name the constructor: %s"
+            % construction["calleeSig"],
+        )
+        check(
+            len(construction.get("args") or []) == 0,
+            "a construction has no receiver slot, so it carries only the arguments",
+        )
+        check(
+            construction.get("ctorType") is not None,
+            "a construction must carry the type it built",
+        )
+        check(
+            not any(i["kind"] == "UNINTERPRETED" for i in instructions),
+            "a construction of a class this module declares must not be a black box",
+        )
+
         # A binary operator is a BINOP, not an unknown value. A lookup that
         # always misses does not look like a lookup: every binary expression
         # would become a HAVOC, and the taint that flowed through it would
