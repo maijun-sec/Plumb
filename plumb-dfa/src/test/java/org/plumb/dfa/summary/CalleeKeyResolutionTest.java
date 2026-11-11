@@ -107,9 +107,19 @@ class CalleeKeyResolutionTest {
     return all;
   }
 
+  /**
+   * The method a class declares.
+   *
+   * <p>The class is matched by its SIMPLE name, because that is what this test is about: the two
+   * ends of a summary lookup have to agree on the class that DECLARES the method, and they reduce
+   * it to the simple name to agree. The IR names the declaring class with its package ({@code
+   * com.example.Caps}), so matching the whole name here would pin the spelling instead of the
+   * property.
+   */
   private TacFunction methodOf(List<TacFunction> functions, String className, String methodName) {
     return functions.stream()
-        .filter(f -> className.equals(f.enclosingClass()) && methodName.equals(f.name()))
+        .filter(f -> className.equals(SummaryApplier.simpleClassName(f.enclosingClass())))
+        .filter(f -> methodName.equals(f.name()))
         .findFirst()
         .orElseThrow(
             () ->
