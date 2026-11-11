@@ -1564,6 +1564,24 @@ public final class DfaEngine {
             return byModule.get(0);
           }
         }
+        // The same, with the owner's QUALIFIED spelling. The index is keyed by the
+        // declaring class AS THE IR SPELLS IT, and the IR spells it with the package
+        // ("demo.JavaSink"), so the simple spelling above cannot match it.
+        //
+        // Without this the call resolves to no candidate, the parameter origin is never
+        // transferred, and the caller's taint stops at the language boundary -- while the
+        // scan still reports success.
+        String qualifiedWithoutModule = stripModuleClassSuffix(qualifier);
+        if (!qualifiedWithoutModule.equals(qualifier)) {
+          List<TacFunction> byQualifiedModule =
+              byBareAndClass == null
+                  ? null
+                  : byBareAndClass.get(bare + " :: " + qualifiedWithoutModule);
+          if (byQualifiedModule != null && !byQualifiedModule.isEmpty()) {
+            if (byQualifiedModule.size() > 1) return null; // ambiguous
+            return byQualifiedModule.get(0);
+          }
+        }
       }
       return null;
     }
