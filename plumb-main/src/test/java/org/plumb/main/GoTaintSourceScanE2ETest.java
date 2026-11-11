@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.plumb.tac.frontend.go.GoProjectDiscovery;
 
 /**
  * The end-to-end proof that a Go run has a SOURCE, and that the Go containers carry it.
@@ -133,32 +134,6 @@ class GoTaintSourceScanE2ETest {
       """;
 
   /**
-   * Whether a Go toolchain is reachable.
-   *
-   * <p>The front end looks for the {@code go} command on the PATH and takes the toolchain's root
-   * from it. The environment's {@code GOROOT} is deliberately not consulted: it outlives the
-   * toolchain it names, and a value pointing at a directory that no longer exists makes the
-   * standard library's source look absent.
-   *
-   * @return true when a {@code go} command is on the PATH
-   */
-  private static boolean goToolchainOnPath() {
-    String path = System.getenv("PATH");
-    if (path == null || path.isEmpty()) {
-      return false;
-    }
-    for (String dir : path.split(java.io.File.pathSeparator)) {
-      if (dir.isEmpty()) {
-        continue;
-      }
-      if (Files.isRegularFile(Path.of(dir, "go.exe")) || Files.isRegularFile(Path.of(dir, "go"))) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /**
    * Runs a scan over one Go module, with everything but the taint checker disabled.
    *
    * @param source the Go source
@@ -233,7 +208,7 @@ class GoTaintSourceScanE2ETest {
   @DisplayName("a Go environment read reaches the command sink")
   void aGoEnvironmentReadReachesTheCommandSink() throws Exception {
     assumeTrue(
-        goToolchainOnPath(),
+        GoProjectDiscovery.toolchainRootOf() != null,
         "the Go front end needs a Go toolchain to resolve the project's types: install Go and put "
             + "`go` on the PATH");
 
@@ -248,7 +223,7 @@ class GoTaintSourceScanE2ETest {
   @DisplayName("a Go value survives a map write and a map read")
   void aGoValueSurvivesAMap() throws Exception {
     assumeTrue(
-        goToolchainOnPath(),
+        GoProjectDiscovery.toolchainRootOf() != null,
         "the Go front end needs a Go toolchain to resolve the project's types: install Go and put "
             + "`go` on the PATH");
 
@@ -263,7 +238,7 @@ class GoTaintSourceScanE2ETest {
   @DisplayName("a Go value survives a channel send and a receive")
   void aGoValueSurvivesAChannel() throws Exception {
     assumeTrue(
-        goToolchainOnPath(),
+        GoProjectDiscovery.toolchainRootOf() != null,
         "the Go front end needs a Go toolchain to resolve the project's types: install Go and put "
             + "`go` on the PATH");
 
@@ -278,7 +253,7 @@ class GoTaintSourceScanE2ETest {
   @DisplayName("a Go literal is clean: nothing is reported")
   void aGoLiteralIsClean() throws Exception {
     assumeTrue(
-        goToolchainOnPath(),
+        GoProjectDiscovery.toolchainRootOf() != null,
         "the Go front end needs a Go toolchain to resolve the project's types: install Go and put "
             + "`go` on the PATH");
 

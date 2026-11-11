@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 import org.plumb.tac.frontend.go.GoModuleSources;
 import org.plumb.tac.frontend.go.GoPackage;
+import org.plumb.tac.frontend.go.GoProjectDiscovery;
 import org.plumb.tac.frontend.go.GoProjectProfile;
 
 /**
@@ -224,10 +225,10 @@ public final class GoCompilePlan {
   /**
    * A path, when it names a Go toolchain's root.
    *
-   * <p>The check is for the standard library's <b>source</b>, and not merely for a directory. A
-   * directory can outlive the toolchain that filled it: an emptied GOROOT that still holds the
-   * module cache looks exactly like a toolchain to a directory check, and the front end would then
-   * look for the standard library where it has never been.
+   * <p>The rule itself -- what makes a directory a toolchain's root -- is not restated here. It
+   * lives with the front end's own answer, because the capture lane and the PATH lane have to agree
+   * on it: a copy that drifts hands the front end a root whose standard library is gone, and the
+   * standard library's imports then fail SILENTLY.
    *
    * @param path the path as it was written
    * @return the path, or null when it does not name a toolchain
@@ -238,11 +239,7 @@ public final class GoCompilePlan {
     }
     try {
       Path candidate = Path.of(path.replace('/', java.io.File.separatorChar)).toAbsolutePath();
-      if (!Files.isDirectory(candidate)) {
-        return null;
-      }
-      Path source = candidate.resolve("src");
-      return Files.isDirectory(source) ? candidate.normalize() : null;
+      return GoProjectDiscovery.isToolchainRoot(candidate) ? candidate.normalize() : null;
     } catch (RuntimeException e) {
       // A path the platform cannot even parse is not a toolchain.
       return null;

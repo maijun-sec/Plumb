@@ -36,6 +36,7 @@ import org.plumb.dfa.config.EngineConfig;
 import org.plumb.dfa.engine.DfaEngine;
 import org.plumb.dfa.engine.FindingReporter;
 import org.plumb.reporter.Finding;
+import org.plumb.tac.frontend.go.GoProjectDiscovery;
 import org.plumb.tac.frontend.go.GoTacFrontend;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacProgram;
@@ -135,7 +136,7 @@ class GoLockPairingEndToEndTest {
           "the Go front end needs the sidecar executable to reach the project's types: build it"
               + " with plumb-frontend/go-sidecar/build.ps1");
       assumeTrue(
-          goToolchainOnPath(),
+          GoProjectDiscovery.toolchainRootOf() != null,
           "the Go front end needs a Go toolchain to resolve the project's types: install Go"
               + " (https://go.dev/dl) and put `go` on the PATH, or set GO to a toolchain root");
       for (TacFunction function : frontend.parse(source, file).functions()) {
@@ -154,22 +155,5 @@ class GoLockPairingEndToEndTest {
       }
     }
     return out;
-  }
-
-  /** Whether a Go toolchain is reachable. */
-  private static boolean goToolchainOnPath() {
-    String path = System.getenv("PATH");
-    if (path == null || path.isEmpty()) {
-      return false;
-    }
-    for (String dir : path.split(java.io.File.pathSeparator)) {
-      if (dir.isEmpty()) {
-        continue;
-      }
-      if (Files.isRegularFile(Path.of(dir, "go.exe")) || Files.isRegularFile(Path.of(dir, "go"))) {
-        return true;
-      }
-    }
-    return false;
   }
 }

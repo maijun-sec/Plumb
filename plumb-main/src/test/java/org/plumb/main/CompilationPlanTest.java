@@ -35,6 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.plumb.build.capture.CaptureEntry;
 import org.plumb.tac.frontend.csharp.CSharpProjectProfile;
 import org.plumb.tac.frontend.go.GoPackage;
+import org.plumb.tac.frontend.go.GoProjectDiscovery;
 import org.plumb.tac.frontend.go.GoProjectProfile;
 
 /**
@@ -532,6 +533,45 @@ class CompilationPlanTest {
     GoProjectProfile profile = GoCompilePlan.projectOf(List.of(entry));
 
     assertThat(profile.goroot()).isEqualTo(root.toAbsolutePath().normalize());
+  }
+
+  @Test
+  @DisplayName("the two lanes agree on what a toolchain's root is")
+  void theCaptureLaneAndThePathLaneAgreeOnTheToolchainRoot(@TempDir Path directory)
+      throws IOException {
+    // The capture lane asks "is this directory the toolchain's root?" about the path the
+    // compiler's own command names; the PATH lane asks the same question about a directory
+    // found on the PATH. Two copies of that answer drift apart, and a drifted copy hands the
+    // front end a root whose standard library is gone -- every standard library import then
+    // fails SILENTLY and the findings that depend on it vanish while the scan reports success.
+    Path root = directory.resolve("go");
+    Files.createDirectories(root.resolve("src"));
+
+    Path compiler =
+        root.resolve("pkg").resolve("tool").resolve("windows_amd64").resolve("compile.exe");
+    CompilationDatabaseEntry entry =
+        new CompilationDatabaseEntry(
+            "/src/mod", List.of(compiler.toString(), "-p", "example.com/mod", "a.go"), null);
+
+    assertThat(GoCompilePlan.toolchainRootOf(entry)).isEqualTo(root.toAbsolutePath().normalize());
+    assertThat(GoProjectDiscovery.isToolchainRoot(root)).isTrue();
+  }
+
+  @Test
+  @DisplayName("a directory that outlived its toolchain is not one, in either lane")
+  void aDirectoryWithoutTheStandardLibraryIsNotAToolchain(@TempDir Path directory)
+      throws IOException {
+    // The directory is there and the compiler's own path names it, but the standard library's
+    // source is gone: an emptied GOROOT that still holds the module cache.
+    Path hollow = directory.resolve("hollow");
+    Files.createDirectories(hollow.resolve("pkg").resolve("tool"));
+    Path compiler = hollow.resolve("pkg").resolve("tool").resolve("compile.exe");
+    CompilationDatabaseEntry entry =
+        new CompilationDatabaseEntry(
+            "/src/mod", List.of(compiler.toString(), "-p", "example.com/mod", "a.go"), null);
+
+    assertThat(GoCompilePlan.toolchainRootOf(entry)).isNull();
+    assertThat(GoProjectDiscovery.isToolchainRoot(hollow)).isFalse();
   }
 
   @Test

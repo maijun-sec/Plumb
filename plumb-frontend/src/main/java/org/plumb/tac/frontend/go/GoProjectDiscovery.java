@@ -102,9 +102,13 @@ public final class GoProjectDiscovery {
    * directory which no longer exists makes the standard library's source look absent -- which makes
    * every standard library import fail silently.
    *
+   * <p>This is the ONE place the answer is computed. A caller that wants to know whether a Go
+   * toolchain is reachable asks THIS one rather than keeping its own copy of the search: a copy
+   * answers a slightly different question, and copies drift apart.
+   *
    * @return the toolchain's root directory, or null when there is no go command on the PATH
    */
-  static Path toolchainRootOf() {
+  public static Path toolchainRootOf() {
     return toolchainRootIn(System.getenv("PATH"));
   }
 
@@ -152,10 +156,14 @@ public final class GoProjectDiscovery {
    * module cache looks exactly like a toolchain to a directory check, and the front end would then
    * look for the standard library where it has never been.
    *
+   * <p>This is the ONE place the rule is applied. The build's capture lane and the PATH lane both
+   * have to answer the same question -- "is this the toolchain's root?" -- and two copies of the
+   * answer drift apart: one of them hands the front end a root whose standard library is gone.
+   *
    * @param root the candidate root
    * @return true when the root holds a Go toolchain
    */
-  private static boolean isToolchainRoot(Path root) {
+  public static boolean isToolchainRoot(Path root) {
     return root != null
         && Files.isDirectory(root)
         && Files.isDirectory(root.resolve("src"));
