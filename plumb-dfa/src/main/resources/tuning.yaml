@@ -1,10 +1,12 @@
 # tuning.yaml
 #
 # Engine-wide tuning knobs. Defaults are tuned for
-# mid-size projects (10K-100K LoC). For larger
-# projects, increase worklist_max_size and
-# z3_timeout_ms; for smaller projects, you can lower
-# context_depth to 1 for faster analysis.
+# mid-size projects (10K-100K LoC). worklist_max_size
+# bounds the facts ONE function may record, so raise it
+# only for a function that records more than the
+# default; z3_timeout_ms bounds ONE solver query.
+# For smaller projects, you can lower context_depth to
+# 1 for faster analysis.
 #
 # All values can be overridden at runtime via CLI
 # flags (-X engine.context_depth=1 etc.) or by
@@ -12,7 +14,7 @@
 
 engine:
   context_depth: 2                    # how deep the engine follows a callee (0/1/2/3)
-  worklist_max_size: 10000            # max in-flight worklist entries
+  worklist_max_size: 10000            # max facts one function may track
   z3_timeout_ms: 5000                 # per-query Z3 timeout
   summary_cache_size: 1000            # per-program summary cache; a refused summary is
                                       # reported as an incomplete analysis, not silently dropped

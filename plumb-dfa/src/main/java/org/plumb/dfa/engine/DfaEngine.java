@@ -597,8 +597,7 @@ public final class DfaEngine {
       for (TacFunction fn : orderedFunctions(programView, cg)) {
         fnCount++;
         if (!analysedOrigins.contains(fn.origin())) continue;
-        ctx.factBag().clear();
-        ctx.sideEffectConsumer().clear();
+        ctx.beginFunction();
         analyseOneFunction(ctx, fn);
         FunctionSummary merged2 = summariseOneFunction(ctx, fn);
         if (!merged2.isTrivial() || merged2.hasBody()) {
@@ -881,8 +880,7 @@ public final class DfaEngine {
                   TacFunction fn = byMergedKey.get(sig);
                   if (fn != null && analysedOrigins.contains(fn.origin())) {
                     List<DfaChecker> mine = workerCheckers.get();
-                    ctx.factBag().clear();
-                    ctx.sideEffectConsumer().clear();
+                    ctx.beginFunction();
                     analyseOneFunction(ctx, fn, mine);
                     FunctionSummary m = summariseOneFunction(ctx, fn, mine);
                     if (!m.isTrivial() || m.hasBody()) {
@@ -1739,8 +1737,7 @@ public final class DfaEngine {
     for (TacFunction fn : DfaEngine.orderedFunctions(program, cg)) {
       ++fnCount;
       if (!analysedOrigins.contains(fn.origin())) continue;
-      ctx.factBag().clear();
-      ctx.sideEffectConsumer().clear();
+      ctx.beginFunction();
       this.analyseOneFunction(ctx, fn);
       FunctionSummary merged = this.summariseOneFunction(ctx, fn);
       if (!merged.isTrivial() || merged.hasBody()) {
@@ -1846,8 +1843,7 @@ public final class DfaEngine {
                   TacFunction fn = program.function(sig);
                   if (fn != null && analysedOrigins.contains(fn.origin())) {
                     List<DfaChecker> mine = workerCheckers.get();
-                    ctx.factBag().clear();
-                    ctx.sideEffectConsumer().clear();
+                    ctx.beginFunction();
                     this.analyseOneFunction(ctx, fn, mine);
                     FunctionSummary merged = this.summariseOneFunction(ctx, fn, mine);
                     if (!merged.isTrivial() || merged.hasBody()) {
@@ -1903,8 +1899,7 @@ public final class DfaEngine {
   }
 
   private void rerunOneFn(TacFunction fn2, AnalysisContext ctx) {
-    ctx.factBag().clear();
-    ctx.sideEffectConsumer().clear();
+    ctx.beginFunction();
     this.analyseOneFunction(ctx, fn2);
     FunctionSummary merged = this.summariseOneFunction(ctx, fn2);
     if (!merged.isTrivial() || merged.hasBody()) {

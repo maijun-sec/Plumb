@@ -251,6 +251,7 @@ public final class AnalysisBudget {
   private final int summaryCacheSize;
 
   private final AtomicLong factsTracked = new AtomicLong();
+  private final ThreadLocal<Long> factsInCurrentFunction = ThreadLocal.withInitial(() -> 0L);
   private final Map<String, Exhaustion> exhaustions = new LinkedHashMap<>();
   private final Object lock = new Object();
 
@@ -347,9 +348,13 @@ public final class AnalysisBudget {
   /**
    * Accounts for one tracked fact, and reports exhaustion when the worklist cap is passed.
    *
-   * <p>The counter is cumulative across the run; the cap applies to the total number of facts the
-   * engine has tracked. This is deliberately coarse: the point is to bound the work, not to model a
-   * per-function worklist precisely.
+   * <p>The cap applies to the facts tracked within ONE function, because that is the scope of the
+   * worklist it guards: the engine clears the fact bag at the start of every function, so a bag
+   * never holds more than one function's facts. The counter is reset at that same boundary, by
+   * {@link #beginFunction()}.
+   *
+   * <p>The counter is per THREAD, because the parallel worklist analyses several functions at once
+   * and each thread has its own fact bag.
    *
    * <p>Every fact past the cap is refused, and every refusal is COUNTED on the one record for this
    * limit. The count is the number the user needs -- "the cap was passed 557039 times" says how far
@@ -363,7 +368,9 @@ public final class AnalysisBudget {
     if (worklistMaxSize <= 0) {
       return true;
     }
-    long n = factsTracked.incrementAndGet();
+    factsTracked.incrementAndGet();
+    long n = factsInCurrentFunction.get() + 1;
+    factsInCurrentFunction.set(n);
     if (n <= worklistMaxSize) {
       return true;
     }
@@ -374,6 +381,24 @@ public final class AnalysisBudget {
   /** The number of facts the engine has tracked so far. */
   public long factsTracked() {
     return factsTracked.get();
+  }
+
+  /**
+   * Starts the accounting for a new function.
+   *
+   * <p>The worklist cap bounds the facts tracked within one function, so the counter has to be
+   * reset at the function boundary. The engine calls this at the same place where it clears the
+   * fact bag; a counter that survived the bag it guards would keep charging one function's facts
+   * against the next function's cap, and a long run would end up refusing nearly every fact it is
+   * offered.
+   */
+  public void beginFunction() {
+    factsInCurrentFunction.set(0L);
+  }
+
+  /** The number of facts tracked in the function currently being analysed. */
+  public long factsTrackedInCurrentFunction() {
+    return factsInCurrentFunction.get();
   }
 
   /**

@@ -24,6 +24,7 @@ package org.plumb.dfa.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -259,9 +260,93 @@ class AnalysisBudgetTest {
     assertThat(report.exhaustions().get(0).samples())
         .as("the sample is bounded, so the record cannot grow with the events")
         .hasSizeLessThanOrEqualTo(8);
-    assertThat(report.summary())
+    assertThat(budget.report().summary())
         .contains("com.example.Thing.handle0")
         .contains("500 time(s)")
         .hasSizeLessThan(1_000);
+  }
+
+  /**
+   * The worklist cap is the size of the worklist it guards, and that worklist is per-function: the
+   * engine clears the fact bag at the start of every function.
+   *
+   * <p><b>What went wrong.</b> The counter behind the cap was never reset, so the cap was a budget
+   * for the WHOLE run wearing the name of a per-function worklist size. After the first N facts the
+   * engine refused every fact it was offered, and how much interprocedural analysis survived
+   * depended on the size of the corpus rather than on the code being analysed.
+   *
+   * <p><b>What this pins.</b> Each function starts with the whole cap again.
+   */
+  @Test
+  void theWorklistCapIsCountedPerFunction() {
+    AnalysisBudget budget = new AnalysisBudget(0L, 0L, 10, 0, 0, 0);
+
+    for (int i = 0; i < 10; i++) {
+      assertThat(budget.accountFact("first")).as("fact %d of the first function", i).isTrue();
+    }
+
+    // The next function starts with an empty worklist, so it has the whole cap again.
+    budget.beginFunction();
+
+    for (int i = 0; i < 10; i++) {
+      assertThat(budget.accountFact("second")).as("fact %d of the second function", i).isTrue();
+    }
+
+    assertThat(budget.report().complete())
+        .as("no function passed its cap, so the analysis is complete")
+        .isTrue();
+  }
+
+  /**
+   * The cap is counted per THREAD, because each thread has its own fact bag.
+   *
+   * <p>The parallel worklist analyses several functions at once, one per worker thread. A counter
+   * shared across the workers would charge one worker's facts against another worker's cap.
+   */
+  @Test
+  void theWorklistCapIsCountedPerThread() throws InterruptedException {
+    AnalysisBudget budget = new AnalysisBudget(0L, 0L, 10, 0, 0, 0);
+
+    for (int i = 0; i < 10; i++) {
+      assertThat(budget.accountFact("main")).as("fact %d of the main thread", i).isTrue();
+    }
+
+    AtomicBoolean workerAcceptedAll = new AtomicBoolean(false);
+    Thread worker =
+        new Thread(
+            () -> {
+              for (int i = 0; i < 10; i++) {
+                if (!budget.accountFact("worker")) {
+                  return;
+                }
+              }
+              workerAcceptedAll.set(true);
+            });
+    worker.start();
+    worker.join();
+
+    assertThat(workerAcceptedAll.get())
+        .as("the worker has its own worklist, so it starts with the whole cap")
+        .isTrue();
+  }
+
+  /**
+   * Starting a function resets the per-function counter, and only that counter.
+   *
+   * <p>The run total keeps counting: it is what the report shows about the analysis as a whole.
+   */
+  @Test
+  void beginningAFunctionResetsOnlyThePerFunctionCounter() {
+    AnalysisBudget budget = new AnalysisBudget(0L, 0L, 10, 0, 0, 0);
+
+    for (int i = 0; i < 10; i++) {
+      budget.accountFact("f");
+    }
+    assertThat(budget.factsTrackedInCurrentFunction()).isEqualTo(10L);
+
+    budget.beginFunction();
+
+    assertThat(budget.factsTrackedInCurrentFunction()).isEqualTo(0L);
+    assertThat(budget.factsTracked()).as("the run total is not reset").isEqualTo(10L);
   }
 }

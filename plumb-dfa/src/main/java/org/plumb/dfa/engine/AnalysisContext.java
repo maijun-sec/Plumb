@@ -444,6 +444,23 @@ public final class AnalysisContext {
   }
 
   /**
+   * Starts a new function: clears the per-function state and resets the budget's per-function
+   * accounting.
+   *
+   * <p>The fact bag, the side-effect consumer and the budget's fact counter have the same scope:
+   * the function being analysed. Clearing them together keeps that scope honest -- a counter that
+   * outlived the bag it guards would keep charging one function's facts against the next function's
+   * cap, and the cap would then mean "the whole run" while claiming to mean "one function".
+   *
+   * <p>Each of the three is per THREAD, so this is called on the thread that analyses the function.
+   */
+  public void beginFunction() {
+    factBag.get().clear();
+    sideEffectConsumer.get().clear();
+    budget.beginFunction();
+  }
+
+  /**
    * Cross-checker guard store. The engine creates one per analysis run; each checker can {@code
    * add} a guard via the {@code emitSummaryOps} hook (or directly in {@code checkInstruction}) and
    * any other checker can query {@link org.plumb.dfa.solver.GuardStore#impliedGuard}.
