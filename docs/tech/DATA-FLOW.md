@@ -19,11 +19,11 @@ The entry point is `DfaEngine` (`engine/DfaEngine.java`), with three run modes e
 | Method | Purpose |
 | --- | --- |
 | `run(TacProgram)` (`:481`) | Single program |
-| `runSequential(TacProgram)` (`:1706`) | Single-threaded |
-| `runParallel(TacProgram, int)` (`:1670`) | Top-level worklist parallelism |
+| `runSequential(TacProgram)` (`:1749`) | Single-threaded |
+| `runParallel(TacProgram, int)` (`:1713`) | Top-level worklist parallelism |
 | `runWithGlobalStore(List<TacProgram>, int)` (`:509`) | Cross-file global store (the CLI default strategy `global`) |
 
-All modes eventually go through the same skeleton. The real scheduling happens in `runWorklist` (`:1769`):
+All modes eventually go through the same skeleton. The real scheduling happens in `runWorklist` (`:1813`):
 
 ```
 initEngine(ctx)              // once for all checkers
@@ -44,16 +44,16 @@ This is the place where documentation most easily goes wrong, so it is checked a
 
 | Claim | Corresponding code | Accurate? |
 | --- | --- | --- |
-| Backward, flow-insensitive pre-analysis | `warmUpMethodSummaries` (`:964`) → `MethodSummaryBuilder.build` | **Partially accurate**. It is a single linear IR scan that classifies the return shape and collects side effects, with **no dataflow solving**. It is a path-insensitive syntactic summary, not a backward flow analysis. |
-| Forward, flow-sensitive instruction traversal | `analyseOneFunction` (`:1918`), traversing in `bbRpoOrder(fn)` order | **Accurate**. Every checker maintains its own forward lattice (taint / nullable / interval) and propagates it over the instructions. |
-| Points-to is an independent pre-solve | `solvePointsTo` (`:1025`) | **Accurate**. One whole-program solve; the result hangs off `AnalysisContext`, and all checkers share the same fixpoint. |
+| Backward, flow-insensitive pre-analysis | `warmUpMethodSummaries` (`:1006`) → `MethodSummaryBuilder.build` | **Partially accurate**. It is a single linear IR scan that classifies the return shape and collects side effects, with **no dataflow solving**. It is a path-insensitive syntactic summary, not a backward flow analysis. |
+| Forward, flow-sensitive instruction traversal | `analyseOneFunction` (`:1965`), traversing in `bbRpoOrder(fn)` order | **Accurate**. Every checker maintains its own forward lattice (taint / nullable / interval) and propagates it over the instructions. |
+| Points-to is an independent pre-solve | `solvePointsTo` (`:1067`) | **Accurate**. One whole-program solve; the result hangs off `AnalysisContext`, and all checkers share the same fixpoint. |
 
 **Key fact: the engine does not have "a backward pass followed by a separate forward pass".** There is only one
 forward traversal; the summaries are a product of that traversal, not the input of another analysis pass.
 
 ### 1.3 Instruction order: BB-RPO, forward within a block
 
-`bbRpoOrder(TacFunction)` (`:2275`):
+`bbRpoOrder(TacFunction)` (`:2343`):
 
 - Basic blocks are ordered in **reverse post-order** (reverse the DFS post-order, `:1347-1350`)
 - The instructions inside a block keep their **original forward order** (`:1358-1363`)
@@ -359,7 +359,7 @@ They are 17 independent TAC pattern checkers that merely share a package name; t
 
 ## 4. Nullability: a three-valued fact domain
 
-`AnalysisContext.mayBeNull(...)` (`engine/AnalysisContext.java:549`) is a **forward to the points-to
+`AnalysisContext.mayBeNull(...)` (`engine/AnalysisContext.java:641`) is a **forward to the points-to
 solver** and stores no facts itself. The five channels are private fields of `PointsToSolver`:
 
 - `nullFields` `:147`
@@ -377,14 +377,14 @@ nulls would alias each other and pollute `mayAlias`):
 | Empty | Present | Definitely null |
 | Empty | Absent | **Unknown** (never equal to null) |
 
-⚠️ `AnalysisContext.java:547-553` explicitly warns: `mayBeNull == false` is **not** a proof of non-null
+⚠️ `AnalysisContext.java:641-645` explicitly warns: `mayBeNull == false` is **not** a proof of non-null
 (unmodelled writes leave no trace). This is the same invariant as "an empty set does not prove safety".
 
 ---
 
 ## 5. Z3: false-positive filtering only
 
-Z3 has exactly **one** call site in the whole engine, `TaintedCheckerBase.java:4929`, on the sink
+Z3 has exactly **one** call site in the whole engine, `TaintedCheckerBase.java:4903`, on the sink
 reporting path.
 
 The reachability check happens in **one** place, `TaintedCheckerBase.isPathSuppressed`, on the sink
@@ -417,7 +417,7 @@ about whether this source reaches the sink, and two guards recorded at different
 function are not both in force at the sink. Both restrictions exist so that the check cannot
 suppress a finding that is real.
 
-- `pathConditionForSink` (`:4889`) has a base-class implementation: the conflicting pair as a
+- `pathConditionForSink` (`:4863`) has a base-class implementation: the conflicting pair as a
   predicate, so the reader of a finding can see why it was suppressed. A subclass may override it
   with a predicate the solver can evaluate.
 - The semantics are unambiguous: the check is **only used to suppress false positives, never to

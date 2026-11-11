@@ -510,7 +510,7 @@ public final class FieldTaintTracker {
     // cross-instance getter patterns.
     if (srcLabel != null && !srcLabel.startsWith("param:")) {
       org.plumb.dfa.taint.TaintedCheckerBase.seedCrossFnClassFieldTaintFromFold(
-          receiverName, receiverType, fieldName, srcLabel, newPath, calleeSig, srcV2Handle);
+          receiverName, receiverType, fieldName, srcLabel, newPath, calleeSig);
     }
   }
 }

@@ -512,6 +512,7 @@ public final class DfaEngine {
       throw new IllegalArgumentException("runWithGlobalStore requires at least one program");
     }
     long t0 = System.currentTimeMillis();
+    int droppedTraceEdgesBefore = droppedTraceEdgesSoFar();
     // 1. Freeze a GlobalTACStore from the per-TU programs.
     org.plumb.dfa.cg.GlobalTACStore store = org.plumb.dfa.cg.GlobalTACStore.of(programs);
     // 2. Build a merged view so the engine can iterate every
@@ -589,8 +590,7 @@ public final class DfaEngine {
     Set<SourceOrigin> analysedOrigins = config.tuning().analysedOrigins();
     if (threads > 0) {
       // parallel
-      runWorklistGlobal(ctx, programView, cg, threads, store, analysedOrigins);
-      fnCount = ctx.factBag().operands().size();
+      fnCount = runWorklistGlobal(ctx, programView, cg, threads, store, analysedOrigins);
       summaryCount = ctx.summaryCache().size();
     } else {
       // sequential
@@ -639,7 +639,43 @@ public final class DfaEngine {
         reporter.size(),
         ms);
     logBudgetReport(ctx);
+    logDroppedTraceEdges(droppedTraceEdgesBefore);
     return reporter;
+  }
+
+  /**
+   * The number of trace edges every builder in this process has dropped so far.
+   *
+   * <p>The counter is process-wide because the facts that carry a node id across a function
+   * boundary are program-wide too, and they are read by workers on other threads.
+   */
+  private static int droppedTraceEdgesSoFar() {
+    return org.plumb.reporter.trace.TraceBuilder.droppedForeignParentsTotal();
+  }
+
+  /**
+   * Report the trace edges this run had to drop.
+   *
+   * <p>A node id names a node in the builder that issued it. A fact that crosses a function
+   * boundary can carry such an id, and the reader -- a different function, possibly a different
+   * thread -- cannot use it as a parent, because the node it names is not part of the trace being
+   * built. The edge is dropped and the node stands alone, which is the shape the "-1 means no
+   * parent" sentinel produces.
+   *
+   * <p>Dropping an edge is a loss of precision, not a crash: the scan produces the findings it
+   * would have produced otherwise, and the trace is less detailed than it could be. That is exactly
+   * why the number has to be reported -- a trace that cannot show the flow from the other function
+   * is a trace a reader may over-trust.
+   */
+  private void logDroppedTraceEdges(int droppedBefore) {
+    int dropped = droppedTraceEdgesSoFar() - droppedBefore;
+    if (dropped > 0) {
+      LOG.warn(
+          "Dropped {} trace edges that named a node in another trace: the facts that carried them"
+              + " crossed a function boundary, and a node id means nothing outside the trace that"
+              + " issued it",
+          Integer.valueOf(dropped));
+    }
   }
 
   /**
@@ -773,7 +809,7 @@ public final class DfaEngine {
    * the supplied {@link org.plumb.dfa.cg.GlobalTACStore} so the cross-TU callee view is used
    * directly. The per-TU program view is only used for the merged function iteration order.
    */
-  private void runWorklistGlobal(
+  private int runWorklistGlobal(
       AnalysisContext ctx,
       TacProgram programView,
       CallGraph cg,
@@ -846,6 +882,14 @@ public final class DfaEngine {
     // Spin up worker pool : same pattern as the standard
     // runWorklist.
     AtomicInteger processed = new AtomicInteger(0);
+    // How many functions were actually ANALYSED, as opposed to how many work
+    // items the scheduler took off the queue. The difference matters: a
+    // function whose origin is not in scope is skipped, and a work item whose
+    // function is missing is skipped. The log line that reports the analysed
+    // count has to report this number and not something else -- a reader who
+    // sees "0 functions analysed" has to believe that no function was looked
+    // at, and that is the opposite of what happened.
+    AtomicInteger analysed = new AtomicInteger(0);
     int total = deps.size();
     java.util.concurrent.ExecutorService exec =
         java.util.concurrent.Executors.newFixedThreadPool(
@@ -879,6 +923,7 @@ public final class DfaEngine {
                 try {
                   TacFunction fn = byMergedKey.get(sig);
                   if (fn != null && analysedOrigins.contains(fn.origin())) {
+                    analysed.incrementAndGet();
                     List<DfaChecker> mine = workerCheckers.get();
                     ctx.beginFunction();
                     analyseOneFunction(ctx, fn, mine);
@@ -940,6 +985,7 @@ public final class DfaEngine {
       }
     }
     LOG.info("DfaEngine global worklist: {} of {} functions processed", processed.get(), total);
+    return analysed.get();
   }
 
   /**
@@ -1672,6 +1718,7 @@ public final class DfaEngine {
       return this.runSequential(program);
     }
     long t0 = System.currentTimeMillis();
+    int droppedTraceEdgesBefore = droppedTraceEdgesSoFar();
     FindingReporter reporter = new FindingReporter();
     CallGraphStrategy strategy =
         CallGraphStrategyFactory.create(
@@ -1691,19 +1738,19 @@ public final class DfaEngine {
     reporter.setContext(ctx);
     reporter.setModuleScope(moduleScope());
     DfaEngine.registerSourcePaths(ctx, program, this.functionSourcePaths);
-    this.runWorklist(ctx, program, cg, threads);
+    int analysed = this.runWorklist(ctx, program, cg, threads);
     long ms = System.currentTimeMillis() - t0;
     LOG.info(
         "DfaEngine run (parallel x{}): {} functions analysed, {} summarised, {} findings, {} ms",
-        new Object[] {
-          threads, ctx.factBag().operands().size(), ctx.summaryCache().size(), reporter.size(), ms
-        });
+        new Object[] {threads, analysed, ctx.summaryCache().size(), reporter.size(), ms});
     logBudgetReport(ctx);
+    logDroppedTraceEdges(droppedTraceEdgesBefore);
     return reporter;
   }
 
   public FindingReporter runSequential(TacProgram program) {
     long t0 = System.currentTimeMillis();
+    int droppedTraceEdgesBefore = droppedTraceEdgesSoFar();
     FindingReporter reporter = new FindingReporter();
     CallGraphStrategy strategy =
         CallGraphStrategyFactory.create(
@@ -1758,13 +1805,14 @@ public final class DfaEngine {
         "DfaEngine run: {} functions analysed (of {}), {} summarised, {} findings, {} ms",
         new Object[] {fnCount, program.functions().size(), summaryCount, reporter.size(), ms});
     logBudgetReport(ctx);
+    logDroppedTraceEdges(droppedTraceEdgesBefore);
     return reporter;
   }
 
   /*
    * WARNING - Removed try catching itself - possible behaviour change.
    */
-  private void runWorklist(AnalysisContext ctx, TacProgram program, CallGraph cg, int threads) {
+  private int runWorklist(AnalysisContext ctx, TacProgram program, CallGraph cg, int threads) {
     FunctionNode node;
     for (DfaChecker c : this.checkers) {
       try {
@@ -1811,6 +1859,9 @@ public final class DfaEngine {
       readyQ.add((String) e.getKey());
     }
     AtomicInteger processed = new AtomicInteger(0);
+    // See the same counter in runWorklistGlobal: the number of functions
+    // actually analysed, not the number of work items the scheduler took.
+    AtomicInteger analysed = new AtomicInteger(0);
     int total = deps.size();
     ExecutorService exec =
         Executors.newFixedThreadPool(threads, DfaEngine.namedThreadFactory("plumb-dfa-worker"));
@@ -1842,6 +1893,7 @@ public final class DfaEngine {
                   List cs;
                   TacFunction fn = program.function(sig);
                   if (fn != null && analysedOrigins.contains(fn.origin())) {
+                    analysed.incrementAndGet();
                     List<DfaChecker> mine = workerCheckers.get();
                     ctx.beginFunction();
                     this.analyseOneFunction(ctx, fn, mine);
@@ -1896,6 +1948,7 @@ public final class DfaEngine {
         "DfaEngine parallel worklist: {} of {} functions processed",
         (Object) processed.get(),
         (Object) total);
+    return analysed.get();
   }
 
   private void rerunOneFn(TacFunction fn2, AnalysisContext ctx) {

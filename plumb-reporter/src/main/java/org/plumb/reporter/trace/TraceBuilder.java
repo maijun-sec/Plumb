@@ -76,8 +76,20 @@ import java.util.Objects;
 
 public final class TraceBuilder {
 
+  private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(TraceBuilder.class);
+
+  /**
+   * The parent ids every builder in this process had to drop because they named a node in another
+   * trace. See {@link #parentsThisBuilderIssued(List)}.
+   */
+  private static final java.util.concurrent.atomic.AtomicInteger droppedForeignParentsTotal =
+      new java.util.concurrent.atomic.AtomicInteger(0);
+
   private final List<TraceNode> nodes = new ArrayList<>();
   private int nextId = 0;
+
+  /** How many parent ids this builder had to drop. See {@link #parentsThisBuilderIssued(List)}. */
+  private int droppedForeignParents = 0;
 
   /**
    * Allocate a new id; package-private so {@link Trace} can iterate nodes in id order without
@@ -405,14 +417,14 @@ public final class TraceBuilder {
         // throwing.
         if (parentId == -1) continue;
         if (parentId < 0 || parentId >= nodes.size()) {
-          throw new IllegalStateException(
-              "TraceNode "
-                  + n.id()
-                  + " references unknown parent "
-                  + parentId
-                  + " (have "
-                  + nodes.size()
-                  + " nodes)");
+          // A parent this builder does not have. addNode() already drops
+          // these, so this is a backstop for a path that sets a parent some
+          // other way. Dropping the edge is what the "-1" sentinel does, and
+          // it is what a trace can live with: the node stands alone.
+          // Throwing here is what a checker cannot live with -- the
+          // exception leaves the checker that was building the trace, and
+          // the finding it was about to report is never reported.
+          continue;
         }
         nodes.get(parentId).addChildIdInternal(n.id());
       }
@@ -439,7 +451,9 @@ public final class TraceBuilder {
     for (int sinkId : sinkOrViolationIds) {
       int depth = 0;
       int cursor = sinkId;
-      while (cursor >= 0 && depth < nodes.size()) {
+      // The cursor has to stay inside the node list: a parent id that names
+      // a node this builder does not have ends the walk rather than throwing.
+      while (cursor >= 0 && cursor < nodes.size() && depth < nodes.size()) {
         TraceNode n = nodes.get(cursor);
         if (n.role() == TraceNode.Role.SOURCE) {
           break;
@@ -494,9 +508,72 @@ public final class TraceBuilder {
     b.line = line;
     b.column = column;
     b.functionSig = functionSig;
-    b.parentIds = parents;
+    b.parentIds = parentsThisBuilderIssued(parents);
     nodes.add(TraceNode.build(b));
     return id;
+  }
+
+  /**
+   * The parent ids this builder can honour.
+   *
+   * <p>A node id names a node in the builder that issued it. A builder hands out ids 0, 1, 2, ...
+   * and keeps them for its own lifetime, so an id that is not below the current node count belongs
+   * to another trace. That happens whenever a fact crosses a function boundary: the writer of a
+   * cross-function field taint records the id of the node it created, and the reader -- a different
+   * function, possibly a different thread -- cannot use that id as a parent, because the node it
+   * names is not part of the trace being built.
+   *
+   * <p>Such an id is dropped and the node stands alone: the consumer renders it as a trust boundary
+   * of its own. That is the shape the "-1 means no parent" sentinel produces, and it is the honest
+   * one -- the trace does not contain the node the id names, so it cannot claim a flow from it.
+   *
+   * <p>The "-1" sentinel is kept as it is: it means "no parent", and the build step skips it.
+   */
+  private List<Integer> parentsThisBuilderIssued(List<Integer> parents) {
+    if (parents == null || parents.isEmpty()) {
+      return List.of();
+    }
+    List<Integer> kept = new ArrayList<>(parents.size());
+    for (Integer p : parents) {
+      if (p == null) {
+        continue;
+      }
+      if (p == -1) {
+        kept.add(p);
+        continue;
+      }
+      if (p >= 0 && p < nodes.size()) {
+        kept.add(p);
+        continue;
+      }
+      droppedForeignParents++;
+      droppedForeignParentsTotal.incrementAndGet();
+      LOG.debug(
+          "Dropped a parent id that names no node in this trace: node {} wanted parent {}",
+          new Object[] {Integer.valueOf(nextId - 1), p});
+    }
+    return kept.isEmpty() ? List.of() : List.copyOf(kept);
+  }
+
+  /** How many parent ids this builder had to drop because they named a node it never created. */
+  public int droppedForeignParents() {
+    return droppedForeignParents;
+  }
+
+  /** How many parent ids every builder in this process had to drop. */
+  public static int droppedForeignParentsTotal() {
+    return droppedForeignParentsTotal.get();
+  }
+
+  /**
+   * Reset the process-wide counter.
+   *
+   * <p>The counter is monotonic on purpose: a scan that drops an edge should say so, and the engine
+   * reports the difference between the value at the start of a run and the value at the end, so a
+   * process that runs several analyses reports each of them on its own.
+   */
+  public static void resetDroppedForeignParentsTotal() {
+    droppedForeignParentsTotal.set(0);
   }
 
   /**

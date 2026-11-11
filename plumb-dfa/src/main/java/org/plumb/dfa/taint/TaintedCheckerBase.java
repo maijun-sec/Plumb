@@ -682,19 +682,17 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * is a class name) from <i>aliased</i> writes (receiver has a declared class type). The {@code
    * kind} field is one of {@link #KIND_STATIC} or {@link #KIND_ALIASED}.
    *
-   * <p><b> follow-up</b> — {@code v2Handle} is the v2 {@code Trace} node id of the source that
-   * wrote this field, propagated through the cross-function summary fold. A subsequent {@code
-   * FIELDLOAD} recovers the handle via {@code crossFnClassFieldSource.get(key)} and attaches a real
-   * parent to the new PROPAGATE node instead of a fresh orphan SOURCE. {@code v2Handle=-1} means
-   * the source predates dual-write (rare; the loader still falls back to orphan-SOURCE shape).
+   * <p><b>Why there is no trace node id here.</b> A v2 {@code Trace} node id names a node in the
+   * builder that issued it, and the builder is per function. This map is program-level and shared
+   * by every worker thread, so an id stored here belongs to whichever worker wrote the field, and
+   * the reader -- a different function, possibly a different thread -- cannot use it: the node it
+   * names is not in the trace the reader is building. Using it anyway either named a node that does
+   * not exist (the trace builder threw, the checker stopped, and the finding was never reported)
+   * or, worse, named an unrelated node that happens to have the same index (the trace claimed a
+   * flow from a node that had nothing to do with it). A reader in the SAME function gets its handle
+   * from the per-function {@link FieldTaintTracker}, whose ids are valid there.
    */
-  private record FieldSource(String functionSig, String kind, int v2Handle) {
-    // 2-arg convenience for legacy call sites that
-    // don't have a v2 handle to pass.
-    private FieldSource(String functionSig, String kind) {
-      this(functionSig, kind, -1);
-    }
-
+  private record FieldSource(String functionSig, String kind) {
     // Receiver is a class name; the write is a "static" cross-class
     // flow: ClassA.secret = u visible to any reader of ClassA.secret.
     static final String KIND_STATIC = "STATIC";
@@ -3399,8 +3397,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             key,
             new FieldSource(
                 fn.signature(),
-                "this".equals(recvName) ? FieldSource.KIND_ALIASED : FieldSource.KIND_STATIC,
-                srcV2Handle));
+                "this".equals(recvName) ? FieldSource.KIND_ALIASED : FieldSource.KIND_STATIC));
         // The same write, recorded by LOCATION.
         //
         // The class-level key above is "ClassName.fieldName" -- it names the CLASS, not the
@@ -3931,48 +3928,25 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                     + dv.name()));
         taintPaths.put(dv, java.util.Collections.unmodifiableList(newPath));
       }
-      // follow-up: dual-write v2 FIELDLOAD
-      // node. If the cross-fn FieldSource was
-      // written by a fold that already had a v2
-      // handle ( site 12/13 thread it
-      // through seedCrossFnClassFieldTaintFromFold),
-      // attach that handle as the parent of this
-      // PROPAGATE so the DAG stays connected.
-      // Otherwise (legacy / pre-dual-write source),
-      // fall back to the orphan-SOURCE shape from
-      // (a fresh trust boundary).
-      int recoveredHandle = foundSource == null ? -1 : foundSource.v2Handle();
-      int handle;
-      if (recoveredHandle >= 0) {
-        handle =
-            v2Builder.addPropagate(
-                TraceNode.Op.FIELDLOAD,
-                List.of(
-                    new OperandRef.FieldRef(
-                        resolveReceiverName((TacOperand.TacVar) ins.lhs1), ins.fieldName),
-                    new OperandRef.Var(dv.name(), 0)),
-                List.of(recoveredHandle),
-                (ins.lhs1 == null ? "?" : "") + "." + ins.fieldName + " -> " + dv.name(),
-                "",
-                ins.line,
-                ins.column,
-                fn.signature());
-      } else {
-        // Orphan: no recovered source — treat as
-        // trust boundary ( first-cut shape).
-        handle =
-            v2Builder.addSource(
-                TraceNode.Op.FIELDLOAD,
-                List.of(
-                    new OperandRef.FieldRef(
-                        resolveReceiverName((TacOperand.TacVar) ins.lhs1), ins.fieldName),
-                    new OperandRef.Var(dv.name(), 0)),
-                (ins.lhs1 == null ? "?" : "") + "." + ins.fieldName + " -> " + dv.name(),
-                "",
-                ins.line,
-                ins.column,
-                fn.signature());
-      }
+      // The v2 FIELDLOAD node. The cross-function field taint says WHICH
+      // function wrote the field, but it cannot say which trace node
+      // represents that write: the node lives in the writer's trace, and
+      // this trace does not contain it. So the load is a trust boundary of
+      // its own -- the orphan-SOURCE shape. The reader in the SAME function
+      // gets the connected shape from the per-function FieldTaintTracker,
+      // whose handle belongs to this builder.
+      int handle =
+          v2Builder.addSource(
+              TraceNode.Op.FIELDLOAD,
+              List.of(
+                  new OperandRef.FieldRef(
+                      resolveReceiverName((TacOperand.TacVar) ins.lhs1), ins.fieldName),
+                  new OperandRef.Var(dv.name(), 0)),
+              (ins.lhs1 == null ? "?" : "") + "." + ins.fieldName + " -> " + dv.name(),
+              "",
+              ins.line,
+              ins.column,
+              fn.signature());
       v2TraceHandle.put(dv, handle);
       return;
     }
@@ -6611,24 +6585,6 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       String label,
       List<FlowStep> path,
       String calleeSig) {
-    seedCrossFnClassFieldTaintFromFold(
-        receiverName, receiverType, fieldName, label, path, calleeSig, -1);
-  }
-
-  /**
-   * follow-up -- overload that threads the v2 {@code Trace} handle of the source this fold
-   * propagated from. The handle is recovered by {@code restoreFieldTaintOnLoad} via {@code
-   * crossFnClassFieldSource.get(key)} and attached to the new {@code PROPAGATE} node as a real
-   * parent. Pass {@code -1} if the source predates dual-write.
-   */
-  static void seedCrossFnClassFieldTaintFromFold(
-      String receiverName,
-      TacType receiverType,
-      String fieldName,
-      String label,
-      List<FlowStep> path,
-      String calleeSig,
-      int v2Handle) {
     if (receiverName == null || fieldName == null || label == null) return;
     // Class-name form: receiver IS a
     // class name like {@code "Helper"}.
@@ -6636,9 +6592,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       String key = receiverName + "." + fieldName;
       crossFnClassFieldTaint.put(key, label);
       crossFnClassFieldSource.put(
-          key,
-          new FieldSource(
-              calleeSig == null ? "<fold>" : calleeSig, FieldSource.KIND_STATIC, v2Handle));
+          key, new FieldSource(calleeSig == null ? "<fold>" : calleeSig, FieldSource.KIND_STATIC));
     }
     // Declared-class-type form. The
     // fold's caller passes the
@@ -6659,8 +6613,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         crossFnClassFieldTaint.put(key, label);
         crossFnClassFieldSource.put(
             key,
-            new FieldSource(
-                calleeSig == null ? "<fold>" : calleeSig, FieldSource.KIND_ALIASED, v2Handle));
+            new FieldSource(calleeSig == null ? "<fold>" : calleeSig, FieldSource.KIND_ALIASED));
       }
     }
   }

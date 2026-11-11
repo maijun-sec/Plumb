@@ -572,4 +572,141 @@ class TraceBuilderTest {
     assertThat(tb.summarizeChain(0, 5, "n/a")).isEqualTo(-1); // out of range
     assertThat(tb.summarizeChain(5, 0, "n/a")).isEqualTo(-1); // reversed
   }
+
+  // ----------------------------------------------------------------
+  // 10. A parent id that names a node in another trace
+  //
+  //     A node id names a node in the builder that issued it. A fact
+  //     that crosses a function boundary can carry such an id, and the
+  //     reader -- a different function, possibly a different thread --
+  //     cannot use it as a parent. When it did, the trace build threw
+  //     IllegalStateException, which left the checker that was building
+  //     the trace and lost the finding it was about to report.
+  //
+  //     The edge is dropped instead: the node stands alone, which is
+  //     what the "-1 means no parent" sentinel produces.
+  // ----------------------------------------------------------------
+
+  @Test
+  void dropsAParentIdThatNamesNoNodeInThisTrace() {
+    TraceBuilder tb = new TraceBuilder();
+    int src =
+        tb.addSource(
+            TraceNode.Op.PARAM,
+            List.of(new OperandRef.ParamRef(0, "p")),
+            "p",
+            "F.java",
+            1,
+            1,
+            "F#m():void");
+    // 4242 names a node in some other trace: this builder has two nodes.
+    int prop =
+        tb.addPropagate(
+            TraceNode.Op.MOVE,
+            List.of(new OperandRef.Var("p", 0), new OperandRef.Var("q", 0)),
+            4242,
+            "MOVE p -> q",
+            "F.java",
+            2,
+            1,
+            "F#m():void");
+    int viol =
+        tb.addViolation(
+            TraceNode.Op.SINK_SQL_INJECTION, List.of(), prop, "v", "F.java", 3, 1, "F#m():void");
+
+    // This call is what used to throw IllegalStateException.
+    Trace t = tb.build(List.of(viol), Trace.CompressionLevel.FULL);
+
+    // The foreign parent is gone, so the node stands alone.
+    assertThat(t.nodes().get(prop).parentIds()).isEmpty();
+    // The source did not grow a child edge to a node it does not own.
+    assertThat(t.nodes().get(src).childIds()).doesNotContain(prop);
+    // The node itself is still in the trace: dropping the edge does not
+    // drop the finding.
+    assertThat(t.nodes()).hasSize(3);
+    assertThat(t.sinkOrViolationIds()).contains(viol);
+  }
+
+  @Test
+  void countsTheParentIdsItHadToDrop() {
+    // The process-wide counter is shared by every builder in this JVM, so
+    // the assertion is on the difference, not on an absolute value.
+    int before = TraceBuilder.droppedForeignParentsTotal();
+
+    TraceBuilder tb = new TraceBuilder();
+    tb.addSource(
+        TraceNode.Op.PARAM,
+        List.of(new OperandRef.ParamRef(0, "p")),
+        "p",
+        "F.java",
+        1,
+        1,
+        "F#m():void");
+    tb.addPropagate(
+        TraceNode.Op.MOVE,
+        List.of(new OperandRef.Var("p", 0)),
+        777,
+        "MOVE p -> r",
+        "F.java",
+        2,
+        1,
+        "F#m():void");
+    tb.addPropagate(
+        TraceNode.Op.MOVE,
+        List.of(new OperandRef.Var("p", 0)),
+        888,
+        "MOVE p -> s",
+        "F.java",
+        3,
+        1,
+        "F#m():void");
+
+    assertThat(tb.droppedForeignParents()).isEqualTo(2);
+    assertThat(TraceBuilder.droppedForeignParentsTotal()).isEqualTo(before + 2);
+  }
+
+  @Test
+  void keepsAParentIdThisBuilderIssued() {
+    TraceBuilder tb = new TraceBuilder();
+    int src =
+        tb.addSource(
+            TraceNode.Op.PARAM,
+            List.of(new OperandRef.ParamRef(0, "p")),
+            "p",
+            "F.java",
+            1,
+            1,
+            "F#m():void");
+    tb.addPropagate(
+        TraceNode.Op.MOVE,
+        List.of(new OperandRef.Var("p", 0), new OperandRef.Var("q", 0)),
+        src,
+        "MOVE p -> q",
+        "F.java",
+        2,
+        1,
+        "F#m():void");
+
+    // A parent this builder issued is not a foreign parent: dropping it
+    // would silently break every ordinary trace.
+    assertThat(tb.droppedForeignParents()).isZero();
+  }
+
+  @Test
+  void keepsTheOrphanSentinel() {
+    TraceBuilder tb = new TraceBuilder();
+    tb.addPropagate(
+        TraceNode.Op.MOVE,
+        List.of(new OperandRef.Var("p", 0)),
+        -1,
+        "MOVE p -> q",
+        "F.java",
+        2,
+        1,
+        "F#m():void");
+
+    // "-1" means "no parent": it is the shape a dropped edge produces,
+    // so it is not itself a dropped edge.
+    assertThat(tb.droppedForeignParents()).isZero();
+  }
 }
