@@ -23,6 +23,7 @@ package org.plumb.dfa.engine;
 
 import org.plumb.dfa.cg.CallGraph;
 import org.plumb.dfa.config.EngineConfig;
+import org.plumb.dfa.config.TuningConfig;
 import org.plumb.dfa.fact.FactBag;
 import org.plumb.dfa.summary.FunctionSummaryCache;
 import org.plumb.dfa.summary.MethodSummaryCache;
@@ -69,6 +70,25 @@ public final class AnalysisContext {
    * <p>A program with fewer functions than this gets a cache with room to spare.
    */
   private static final int METHOD_SUMMARY_CACHE_MINIMUM = 4096;
+
+  /**
+   * The smallest function-summary cache the engine builds, whatever the program looks like.
+   *
+   * <p>It is the declared default, so a small program keeps the behaviour a small program had.
+   */
+  private static final int FUNCTION_SUMMARY_CACHE_MINIMUM = 1000;
+
+  /**
+   * How many keys one function's summary is stored under, at most.
+   *
+   * <p>The engine stores a summary under every spelling a call site might use for the callee: the
+   * function's own signature, a qualified alias ("Class :: name"), the canonical callee key with
+   * its owner, the canonical key without it, the owner's simple name in front of it, and the bare
+   * name. Some of them are shared between functions (the bare name is), so the number of entries a
+   * program needs is smaller than this, but a capacity has to cover the worst case or the cache
+   * refuses a summary that a call site needs.
+   */
+  private static final int FUNCTION_SUMMARY_KEYS_PER_FUNCTION = 6;
 
   private final TacProgram program;
   private final CallGraph callGraph;
@@ -237,7 +257,8 @@ public final class AnalysisContext {
         callGraph,
         config,
         reporter,
-        new FunctionSummaryCache(config.tuning()),
+        new FunctionSummaryCache(
+            config.tuning(), functionSummaryCapacity(program, config.tuning())),
         new MethodSummaryCache());
   }
 
@@ -294,6 +315,34 @@ public final class AnalysisContext {
   }
 
   /**
+   * How many function summaries the cache may hold.
+   *
+   * <p>The cache has to hold every function's summary, and it stores each one under every spelling
+   * a call site might use for it, so the program's function count is what it can need. A bound
+   * below that does not bound memory: the summaries are built either way, and a bound that drops
+   * them makes the call sites that need them fold nothing.
+   *
+   * <p>It also does something worse than losing facts. The cache REFUSES a summary when it is full,
+   * rather than evicting one, so the summaries that survive are the ones that arrived first, and
+   * "arrived first" is the order in which the parallel workers happened to finish. Which callee's
+   * facts a caller can see then depends on the schedule, and so do the findings. A capacity the
+   * program can outgrow is therefore not a memory knob: it is a source of non-determinism.
+   *
+   * <p>The declared tuning value is a FLOOR, not a ceiling: a program bigger than the floor gets
+   * the room it needs, and a program smaller than it keeps the room it always had.
+   *
+   * @param program the program being analysed
+   * @param tuning the engine's tuning configuration
+   * @return the capacity to give the cache
+   */
+  private static int functionSummaryCapacity(TacProgram program, TuningConfig tuning) {
+    int functions = program == null ? 0 : program.functions().size();
+    int needed = functions * FUNCTION_SUMMARY_KEYS_PER_FUNCTION + FUNCTION_SUMMARY_CACHE_MINIMUM;
+    int declared = tuning == null ? 0 : tuning.summaryCacheSize();
+    return Math.max(declared, needed);
+  }
+
+  /**
    * Full constructor including the analysis budget.
    *
    * <p>The engine passes its own budget here so that every checker in a run shares one set of
@@ -313,7 +362,10 @@ public final class AnalysisContext {
     this.config = config;
     this.reporter = reporter;
     this.summaryCache =
-        summaryCache == null ? new FunctionSummaryCache(config.tuning()) : summaryCache;
+        summaryCache == null
+            ? new FunctionSummaryCache(
+                config.tuning(), functionSummaryCapacity(program, config.tuning()))
+            : summaryCache;
     this.methodSummaryCache =
         methodSummaryCache == null
             ? new MethodSummaryCache(null, methodSummaryCapacity(program))

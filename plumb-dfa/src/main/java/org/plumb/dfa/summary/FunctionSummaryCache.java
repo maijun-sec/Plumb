@@ -109,12 +109,28 @@ public final class FunctionSummaryCache {
   private final int capacity;
 
   public FunctionSummaryCache(TuningConfig tuning) {
+    this(tuning, tuning == null ? 0 : tuning.summaryCacheSize());
+  }
+
+  /**
+   * A cache with an explicit capacity.
+   *
+   * <p>The declared tuning value is a FLOOR for the caller to compute, not a ceiling the cache
+   * enforces on its own: the cache holds what it is given, and refuses a summary when it is full.
+   * Refusing is not evicting, so the summaries that survive are the ones that arrived first, and
+   * the order the parallel workers arrive in is a schedule, not a property of the program. A
+   * capacity the program can outgrow therefore makes the findings depend on the schedule, and the
+   * caller has to size it by the program.
+   *
+   * @param tuning the engine's tuning configuration
+   * @param capacity how many entries the cache may hold; zero or less means "no limit"
+   */
+  public FunctionSummaryCache(TuningConfig tuning, int capacity) {
     this.tuning = Objects.requireNonNull(tuning, "tuning");
-    int configured = tuning.summaryCacheSize();
     // A non-positive capacity means "no limit". Treating a misconfigured zero as "cache
     // nothing" would silently disable the whole cross-function analysis, which is a much
     // bigger change than the user asked for.
-    this.capacity = configured > 0 ? configured : 0;
+    this.capacity = capacity > 0 ? capacity : 0;
   }
 
   /**

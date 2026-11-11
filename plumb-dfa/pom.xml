@@ -158,6 +158,12 @@
                              into a number, so it refuted a predicate that some value
                              satisfies. -->
                         <include>org/plumb/dfa/solver/SolverBridgeGrammarTest.java</include>
+                        <!-- The cache of function summaries has to have room for the
+                             program it holds. It refuses a summary when it is full
+                             rather than evicting one, so a capacity the program
+                             can outgrow makes the findings depend on the order the
+                             parallel workers finished in. -->
+                        <include>org/plumb/dfa/engine/SummaryCacheCapacityTest.java</include>
                         <!-- The module boundary: what is read, what is reported, and
                              what the report says about what it did not look at. -->
                         <include>org/plumb/dfa/engine/ModuleScopeTest.java</include>
