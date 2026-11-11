@@ -45,6 +45,13 @@ import org.plumb.tac.ir.TacFunction;
  * map keyed by function would keep every analysed function alive for the run's duration, which for
  * a large scan is the whole program.
  *
+ * <p><b>What the key is.</b> The key is the function's enclosing class together with its signature
+ * -- {@code MergedProgram.mergedKey}, the same key the merged view uses -- and not the bare
+ * signature. A signature is a name, and a name is not an identity: two classes can each declare a
+ * {@code handle()} method, and a project can declare the same method in many files. Keyed by the
+ * signature alone, the cache serves one function's control-flow graph and analysis order to all of
+ * them.
+ *
  * <h2>What is cached, and why both</h2>
  *
  * <p>Two things: the {@link TacCfg} and the analysis order. The CFG is cached because the order is
@@ -124,7 +131,14 @@ public final class FunctionOrderCache {
               new TacFunction(" empty", " empty", null, List.of(), List.of(), List.of())),
           List.of());
     }
-    String key = fn.signature();
+    // The identity of a function is its enclosing class TOGETHER with its signature. The bare
+    // signature is not: a name is not an identity, and two classes can declare the same method.
+    // Keyed by the signature alone, one function's control-flow graph and analysis order would be
+    // served to every function that shares the name. The lookup then ran past the end of the
+    // function's own instruction list, the lookup threw, and the engine caught it per checker:
+    // every checker failed on that function, and the function produced no findings at all.
+    // This is the key the merged view already uses.
+    String key = org.plumb.tac.ir.MergedProgram.mergedKey(fn);
     Entry cached = entries.get(key);
     if (cached != null) {
       hits.incrementAndGet();

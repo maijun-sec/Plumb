@@ -623,6 +623,7 @@
                         <include>org/plumb/dfa/config/LanguageRuleSetTest.java</include>
                         <include>org/plumb/dfa/engine/DfaLanguageGateTest.java</include>
                         <include>org/plumb/dfa/engine/AnalysisBudgetTest.java</include>
+                        <include>org/plumb/dfa/engine/FunctionOrderCacheIdentityTest.java</include>
                         <include>org/plumb/dfa/solver/TimeBoundedSolverBridgeTest.java</include>
                         <include>org/plumb/dfa/semantics/LanguageSemanticsTest.java</include>
                         <include>org/plumb/dfa/config/FactKindInterningTest.java</include>
