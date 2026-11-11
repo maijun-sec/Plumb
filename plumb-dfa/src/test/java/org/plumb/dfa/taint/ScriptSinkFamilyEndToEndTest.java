@@ -45,6 +45,8 @@ import org.plumb.dfa.engine.DfaEngine;
 import org.plumb.dfa.engine.FindingReporter;
 import org.plumb.reporter.Finding;
 import org.plumb.tac.frontend.TacFrontend;
+import org.plumb.tac.frontend.arkts.ArktsSidecarClient;
+import org.plumb.tac.frontend.arkts.ArktsTacFrontend;
 import org.plumb.tac.frontend.php.PhpSidecarClient;
 import org.plumb.tac.frontend.php.PhpTacFrontend;
 import org.plumb.tac.frontend.python.PythonTacFrontend;
@@ -193,6 +195,19 @@ class ScriptSinkFamilyEndToEndTest {
    * <p>A construction is looked up in the same catalogue as a call, so it has to carry a name too.
    */
   private static final String TS_CONSTRUCTION =
+      """
+      export function handler(input: string): void {
+        const pattern = new RegExp(input);
+      }
+      """;
+
+  /**
+   * An ArkTS program that builds a pattern from a value it was given.
+   *
+   * <p>The same program as {@link #TS_CONSTRUCTION}, in the language that has its own front end and
+   * its own side car.
+   */
+  private static final String ARKTS_CONSTRUCTION =
       """
       export function handler(input: string): void {
         const pattern = new RegExp(input);
@@ -461,6 +476,46 @@ class ScriptSinkFamilyEndToEndTest {
   }
 
   /**
+   * An ArkTS construction reaches the regex rule.
+   *
+   * <p><b>Why this is a separate case and not another language in one loop.</b> The catalogue's
+   * claim is ONE bucket for three languages -- {@code typescript,javascript,arkts} -- and each of
+   * them has its own front end and its own side car. One claim over three lanes is only as strong
+   * as the weakest of them: a lane that spells the key differently gets a program that scans CLEAN,
+   * and nothing says so. The TypeScript lane is pinned by {@link
+   * #aTypeScriptConstructionReachesTheRegexRule}; this pins the ArkTS one, which is a different
+   * side car with a different compiler dependency.
+   *
+   * <p><b>What the two halves have to agree about.</b> The same agreement the TypeScript case pins:
+   * the catalogue claims {@code ^RegExp\.\<init\>(/\d+)?} with {@code arg_index: 0}, and the
+   * pattern is the first argument of the construction.
+   */
+  @Test
+  @DisplayName("an ArkTS construction reaches the regex rule")
+  void anArkTsConstructionReachesTheRegexRule(@TempDir Path directory) throws IOException {
+    assumeTrue(
+        arktsAvailable(),
+        "the ArkTS front end needs Node and the sidecar's own compiler dependency: run npm ci in"
+            + " plumb-frontend/arkts-sidecar");
+
+    Files.writeString(directory.resolve("build-profile.json5"), "{}\n");
+    Path file = directory.resolve("page.ets");
+    Files.writeString(file, ARKTS_CONSTRUCTION);
+
+    TacFrontend.ParseResult result;
+    try (ArktsTacFrontend frontend = new ArktsTacFrontend(SourceLanguage.ARKTS)) {
+      result = frontend.parse(ARKTS_CONSTRUCTION, file, null);
+    }
+    assertThat(result.problems()).as("the source must lower without a problem").isEmpty();
+
+    List<Finding> findings = scan(result, file, new RegexInjectionChecker());
+
+    assertThat(hasFinding(findings, REGEX_RULE, "RegExp.<init>"))
+        .as("the pattern is the first argument of the construction")
+        .isTrue();
+  }
+
+  /**
    * The global eval reaches the code injection rule.
    *
    * <p><b>What this pins.</b> A free function -- a call with no receiver object -- has no module to
@@ -697,6 +752,12 @@ class ScriptSinkFamilyEndToEndTest {
   private static boolean phpAvailable() {
     return nodeSidecarAvailable(
         PhpSidecarClient.locateNode(), PhpSidecarClient.locateScript(null), "php-parser");
+  }
+
+  /** Whether the ArkTS front end can run here. */
+  private static boolean arktsAvailable() {
+    return nodeSidecarAvailable(
+        ArktsSidecarClient.locateNode(), ArktsSidecarClient.locateScript(null), "ohos-typescript");
   }
 
   /**
