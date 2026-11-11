@@ -283,10 +283,15 @@ public final class JimpleOperandConverter {
   /**
    * The comparison that means the OPPOSITE of the given one.
    *
-   * <p>SootUp's frontend rewrites a branch so that the jump is taken when the comparison HOLDS: the
-   * source's `if (x > 0) A else B` becomes `if (x <= 0) goto B; A`. So a condition that reaches the
-   * translator is the source's comparison with its operator flipped -- and the flip is the
-   * operator's, with the operands in the same order.
+   * <p>A Jimple branch's condition is the comparison the jump tests, so the comparison holds on the
+   * jump target's path and NOT on the fall-through. The engine continues into the fall-through
+   * after a branch, so the branch's condition is emitted flipped and the fall-through is its true
+   * edge.
+   *
+   * <p>This is not the same as "the source's comparison, flipped": javac usually inverts the
+   * source's comparison when it lays out a branch (`if (x > 0) A else B` becomes `if (x <= 0) goto
+   * B; A`), but not always -- for `x > 0 || y > 0` it keeps the comparison and jumps to the then
+   * path. The flip here is of the condition that arrives, whatever it is.
    *
    * @param op the comparison to negate
    * @return the opposite comparison, or null when the operator has no opposite

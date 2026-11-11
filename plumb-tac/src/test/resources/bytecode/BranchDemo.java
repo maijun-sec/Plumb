@@ -15,4 +15,15 @@ public class BranchDemo {
     }
     return 22;
   }
+
+  /**
+   * A shape where the compiler keeps the source's comparison instead of inverting it: for {@code x
+   * > 0 || y > 0} the first branch jumps to the THEN path on {@code x > 0}.
+   */
+  public static int pickOr(int x, int y) {
+    if (x > 0 || y > 0) {
+      return 11;
+    }
+    return 22;
+  }
 }

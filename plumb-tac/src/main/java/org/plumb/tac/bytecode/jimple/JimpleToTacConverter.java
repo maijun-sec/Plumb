@@ -955,19 +955,26 @@ public final class JimpleToTacConverter {
     String fallThroughLabel = fallThrough == null ? null : blockLabels.labelByStmt.get(fallThrough);
     List<TacInstruction> out = new ArrayList<>();
 
-    // The condition of a Jimple branch is a COMPARISON, and it is the NEGATION of the comparison
-    // the source wrote: the bytecode front end rewrites `if (c) A else B` as `if (!c) goto B; A`,
-    // so the jump target is the ELSE path and the fall-through is the THEN path.
+    // The condition of a Jimple branch is the comparison the JUMP tests: the jump is taken when
+    // that comparison HOLDS, so it holds on the jump target's path and it does NOT hold on the
+    // fall-through.
     //
-    // The TAC's branch says the true target is the branch taken when the condition is truthy, and
-    // the source lane's condition is the source's own comparison. So the comparison is flipped
-    // back to the source's, and the labels follow the source: true is the fall-through, false is
-    // the jump target.
+    // The engine walks a function's instructions in order, and after a branch it continues into
+    // the fall-through. So the guards it keeps active from that branch on have to describe the
+    // fall-through's path. The comparison is therefore emitted FLIPPED, and the fall-through is
+    // the true edge: the pair reads "the flipped comparison holds -> the fall-through", which
+    // is true on both paths whichever layout the compiler chose.
     //
-    // Without this the comparison was simply DROPPED: `toOperand` has no shape for it, so every
-    // branch in bytecode code carried the sentinel "<unhandled:JLtExpr>" as its condition -- and
-    // the two labels were the other way round. A branch with no comparison produces no guard at
-    // all, so the engine had no path conditions in bytecode mode.
+    // The flip is not the same thing as "the bytecode carries the negation of the source's
+    // comparison". javac usually inverts it -- `if (x > 0) A else B` becomes `if (x <= 0) goto B;
+    // A` -- but for `x > 0 || y > 0` it keeps the comparison and jumps to the THEN path. The
+    // rule above holds in both cases; "the true edge is the then path" holds only in the
+    // first.
+    //
+    // Without the comparison the branch was simply DROPPED: `toOperand` has no shape for it, so
+    // every branch in bytecode code carried the sentinel "<unhandled:JLtExpr>" as its condition
+    // -- and the two labels were the other way round. A branch with no comparison produces no
+    // guard at all, so the engine had no path conditions in bytecode mode.
     AbstractConditionExpr ce = ifs.getCondition();
     BinaryOperator source =
         JimpleOperandConverter.negateComparison(JimpleOperandConverter.binaryOpOf(ce));

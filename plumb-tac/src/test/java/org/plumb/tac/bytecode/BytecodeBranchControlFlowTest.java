@@ -61,8 +61,12 @@ import org.plumb.tac.ir.TacProgram;
  * edges). With no edges there are no loops either, so the loop-aware checks never fired in bytecode
  * mode.
  *
- * <p>And the polarity has to match the source lane: the true target is the THEN path, and the
- * condition is the source's own comparison.
+ * <p>And the polarity has to be the one the engine can use: the engine continues into the
+ * fall-through after a branch, so the branch's condition is the comparison the jump tests FLIPPED,
+ * and the fall-through is the true edge. For the demo below -- where javac inverts the source's
+ * comparison -- that makes the true edge the THEN path. It is not always so: for {@code x > 0 || y
+ * > 0} javac keeps the comparison and jumps to the then path, and then the fall-through is the
+ * condition-FALSE path.
  */
 class BytecodeBranchControlFlowTest {
 
@@ -199,12 +203,95 @@ class BytecodeBranchControlFlowTest {
     return out;
   }
 
+  /**
+   * The true edge is the path the engine's walk continues into -- the fall-through -- and the
+   * comparison it carries is the comparison the JUMP tests, flipped.
+   *
+   * <p>This is the invariant that does not depend on the compiler's layout. javac usually inverts
+   * the source's comparison and jumps to the else path, but for {@code x > 0 || y > 0} it keeps the
+   * comparison and jumps to the then path. In both cases the comparison that arrives holds on the
+   * jump target's path, so the flipped one holds on the fall-through.
+   */
+  @Test
+  void theTrueEdgeIsTheFallThroughAndTheComparisonIsFlipped(@TempDir Path tmp) throws IOException {
+    // `if (x > 0)`: javac emits `if (x <= 0) goto else`, so the comparison that arrives is LE
+    // and the flipped one is GT.
+    assertThat(comparisonsOf(pickFunction(tmp))).containsExactly(BinaryOperator.GT);
+
+    // `if (x > 0 || y > 0)`: the first jump keeps the comparison (GT) and jumps to the THEN
+    // path, the second inverts it (LE). Flipped, they are LE and GT.
+    TacFunction or = functionNamed(tmp, "pickOr");
+    assertThat(comparisonsOf(or)).containsExactly(BinaryOperator.LE, BinaryOperator.GT);
+
+    // In both cases the true edge names the block that comes right after the branch in the
+    // instruction order: the fall-through.
+    for (TacFunction fn : List.of(pickFunction(tmp), or)) {
+      TacCfg cfg = TacCfgBuilder.build(fn);
+      Map<String, Integer> labelToBlock = labelToBlock(fn, cfg);
+      for (TacInstruction branch : branchesOf(fn)) {
+        int index = fn.instructions().indexOf(branch);
+        int fallThroughBlock = blockStartingAt(cfg, fn, index + 1);
+        assertThat(fallThroughBlock).as("the fall-through of a branch").isNotEqualTo(-1);
+        assertThat(labelToBlock.get(branch.trueLabel))
+            .as("the true edge of a branch is the fall-through")
+            .isEqualTo(fallThroughBlock);
+      }
+    }
+  }
+
+  private static Map<String, Integer> labelToBlock(TacFunction fn, TacCfg cfg) {
+    Map<String, Integer> labelToBlock = new HashMap<>();
+    for (TacBasicBlock block : cfg.blocks()) {
+      TacInstruction first = fn.instructions().get(block.firstIndex());
+      if (first.kind == TacInstruction.Kind.LABEL && first.label != null) {
+        labelToBlock.put(first.label, block.id());
+      }
+    }
+    return labelToBlock;
+  }
+
+  /** The id of the block whose first instruction is at the given index, or -1. */
+  private static int blockStartingAt(TacCfg cfg, TacFunction fn, int index) {
+    for (TacBasicBlock block : cfg.blocks()) {
+      if (block.firstIndex() == index) return block.id();
+    }
+    return -1;
+  }
+
+  /** The comparison operators the branches of a function test, in order. */
+  private static List<BinaryOperator> comparisonsOf(TacFunction fn) {
+    List<BinaryOperator> operators = new java.util.ArrayList<>();
+    for (TacInstruction branch : branchesOf(fn)) {
+      if (!(branch.lhs1 instanceof TacOperand.TacVar cond)) continue;
+      for (TacInstruction ins : fn.instructions()) {
+        if (ins.kind != TacInstruction.Kind.BINOP) continue;
+        if (ins.dest instanceof TacOperand.TacVar dest && dest.name().equals(cond.name())) {
+          operators.add(ins.binop);
+          break;
+        }
+      }
+    }
+    return operators;
+  }
+
+  private static List<TacInstruction> branchesOf(TacFunction fn) {
+    List<TacInstruction> branches = new java.util.ArrayList<>();
+    for (TacInstruction ins : fn.instructions()) {
+      if (ins.kind == TacInstruction.Kind.BRANCH) branches.add(ins);
+    }
+    return branches;
+  }
+
   private static TacFunction pickFunction(Path tmp) throws IOException {
+    return functionNamed(tmp, "pick");
+  }
+
+  private static TacFunction functionNamed(Path tmp, String name) throws IOException {
     TacProgram program = analyzeBranchDemo(tmp);
     for (TacFunction fn : program.functions()) {
-      if (fn.name().equals("pick")) return fn;
+      if (fn.name().equals(name)) return fn;
     }
-    throw new AssertionError("BranchDemo produced no function named pick");
+    throw new AssertionError("BranchDemo produced no function named " + name);
   }
 
   private static TacProgram analyzeBranchDemo(Path tmp) throws IOException {
