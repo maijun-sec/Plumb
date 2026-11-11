@@ -810,6 +810,15 @@
                              installed, and only a finding says the rule
                              works. -->
                         <include>org/plumb/dfa/checkers/taint/FamilyWatcherTriggerTest.java</include>
+                        <!-- The class-level (cross-function) field key has to
+                             name the CLASS, not the spelling of it: two
+                             classes with the same simple name in different
+                             packages are two classes, and a static field
+                             tainted in one of them is not the static field of
+                             the other. The control is in the same test
+                             method: the reader of the class that wrote the
+                             field does see the taint. -->
+                        <include>org/plumb/dfa/taint/ClassFieldIdentityTest.java</include>
                     </includes>
                 </configuration>
             </plugin>
