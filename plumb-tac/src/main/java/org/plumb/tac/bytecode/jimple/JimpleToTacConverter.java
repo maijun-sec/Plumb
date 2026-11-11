@@ -904,9 +904,17 @@ public final class JimpleToTacConverter {
     } else {
       sig = JimpleOperandConverter.calleeSigOf(inv);
     }
+    // The callee's parameter types travel with the call. The callee signature says which method by
+    // name and by number of parameters, and that does not say which of the overloads was called.
+    List<String> calleeParamTypes =
+        inv instanceof sootup.core.jimple.common.expr.JDynamicInvokeExpr
+            // invokedynamic names a bootstrap method, not a method with a declared parameter list.
+            ? List.of()
+            : JimpleOperandConverter.calleeParamTypesOf(inv);
     return TacInstruction.builder(TacInstruction.Kind.CALL)
         .dest(dest)
         .calleeSig(sig)
+        .calleeParamTypes(calleeParamTypes)
         .args(op.callArgs(inv))
         .line(line)
         .build();

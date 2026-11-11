@@ -205,6 +205,25 @@ public final class TacInstruction implements java.io.Serializable {
    */
   public final String calleeSig;
 
+  /**
+   * For CALL: the parameter types of the callee, as this call site resolved them.
+   *
+   * <p>The callee signature says <em>which method by name and by number of parameters</em>, and
+   * those two facts do not say which of the overloads was called: {@code pick(String)} and {@code
+   * pick(Object)} share both. A rule that asks "is this call the method I am looking at?" cannot
+   * answer it from the signature alone, and guessing "same name, same arity, therefore the same
+   * method" reports a call to one overload as a call to another.
+   *
+   * <p>This field answers it. One entry per parameter, each written the way a function signature
+   * writes its parameter list ({@code "java.lang.String"}, {@code "int"}, {@code
+   * "java.lang.String[]"}), so a consumer compares the list against the parameter list of the
+   * enclosing function's signature directly.
+   *
+   * <p>Empty when the front end did not resolve the callee's parameter types. "Unknown" is not "the
+   * same method": a consumer that cannot decide must not read an empty list as a match.
+   */
+  public final List<String> calleeParamTypes;
+
   /** For CALL / NEW: the actual argument list. */
   public final List<TacOperand> args;
 
@@ -247,6 +266,10 @@ public final class TacInstruction implements java.io.Serializable {
     this.unop = b.unop;
     this.castType = b.castType;
     this.calleeSig = b.calleeSig;
+    this.calleeParamTypes =
+        b.calleeParamTypes == null
+            ? Collections.emptyList()
+            : Collections.unmodifiableList(new ArrayList<>(b.calleeParamTypes));
     this.args =
         b.args == null
             ? Collections.emptyList()
@@ -283,6 +306,17 @@ public final class TacInstruction implements java.io.Serializable {
     return effects != null && effects.contains(Effect.CONCURRENT);
   }
 
+  /**
+   * The callee's parameter types, or an empty list when the front end did not resolve them.
+   *
+   * <p>An instruction that came from a cache written before this field existed carries none: the
+   * deserializer does not run the constructor. Read it through this accessor, not through the
+   * field.
+   */
+  public List<String> knownCalleeParamTypes() {
+    return calleeParamTypes == null ? Collections.emptyList() : calleeParamTypes;
+  }
+
   public static Builder builder(Kind kind) {
     return new Builder(kind);
   }
@@ -296,6 +330,7 @@ public final class TacInstruction implements java.io.Serializable {
     private UnaryOperator unop;
     private TacType castType;
     private String calleeSig;
+    private List<String> calleeParamTypes;
     private List<TacOperand> args;
     private TacType ctorType;
     private String fieldName;
@@ -342,6 +377,15 @@ public final class TacInstruction implements java.io.Serializable {
 
     public Builder calleeSig(String s) {
       this.calleeSig = s;
+      return this;
+    }
+
+    /**
+     * Records the parameter types of the callee, as the call site resolved them. One entry per
+     * parameter, in the order the callee declares them.
+     */
+    public Builder calleeParamTypes(List<String> types) {
+      this.calleeParamTypes = types;
       return this;
     }
 

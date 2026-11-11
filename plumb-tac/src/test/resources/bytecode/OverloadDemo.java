@@ -58,4 +58,19 @@ public class OverloadDemo {
   public int bump() {
     return ++counter;
   }
+
+  /**
+   * Calls both overloads from one method.
+   *
+   * <p>Both calls name the same method with the same number of parameters, so the callee signature
+   * cannot tell them apart -- only the parameter types of the callee can.
+   */
+  public String pickBoth(String value) {
+    return pick(value) + pick((Object) value);
+  }
+
+  /** Calls the overload it is, twice. */
+  public String pickTwice(String value) {
+    return pick(value) + pick(value);
+  }
 }

@@ -308,6 +308,27 @@ public final class JimpleOperandConverter {
     return cls + "." + name + "/" + arity;
   }
 
+  /**
+   * The parameter types of the callee, as this call site resolved them.
+   *
+   * <p>One entry per parameter, written the way a function signature writes its parameter list
+   * ({@code "java.lang.String"}, {@code "int"}), so the list can be compared against the parameter
+   * list of a signature without translating anything.
+   *
+   * <p>The bytecode carries the chosen overload in the constant pool: {@code pick(String)} and
+   * {@code pick(Object)} are two different entries there, and the call site knows which one it
+   * used. The callee signature alone cannot express that -- it names the method by name and by
+   * number of parameters, and the overloads share both.
+   */
+  public static List<String> calleeParamTypesOf(AbstractInvokeExpr expr) {
+    List<Type> params = expr.getMethodSignature().getParameterTypes();
+    List<String> out = new ArrayList<>(params.size());
+    for (Type pt : params) {
+      out.add(pt.toString());
+    }
+    return out;
+  }
+
   public static String calleeSigOf(JSpecialInvokeExpr expr) {
     return calleeSigOf((AbstractInvokeExpr) expr);
   }
