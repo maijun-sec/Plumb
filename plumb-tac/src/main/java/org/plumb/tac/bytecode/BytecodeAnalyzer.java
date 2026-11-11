@@ -25,8 +25,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.plumb.tac.bytecode.jimple.JimpleToTacConverter;
@@ -37,6 +39,7 @@ import org.slf4j.LoggerFactory;
 import sootup.core.frontend.SootClassSource;
 import sootup.core.inputlocation.AnalysisInputLocation;
 import sootup.core.model.Body;
+import sootup.core.model.MethodModifier;
 import sootup.core.model.SootClass;
 import sootup.core.model.SootMethod;
 import sootup.core.model.SourceType;
@@ -247,9 +250,11 @@ public final class BytecodeAnalyzer {
     Path sourcePath = resolveClassSourcePath(cls);
     TacProgram program = new TacProgram(sourcePath, fqn);
     Set<? extends SootMethod> methods = cls.getMethods();
+    warnAboutOverloadCollisions(fqn, methods);
     for (SootMethod method : methods) {
       try {
         if (method.isAbstract() || method.isNative()) continue;
+        if (isRedundantBridge(method, methods)) continue;
         Body body = method.getBody();
         if (body == null) continue;
         TacFunction fn = new JimpleToTacConverter(body).convert(body);
@@ -263,6 +268,79 @@ public final class BytecodeAnalyzer {
       return null;
     }
     return program;
+  }
+
+  /**
+   * Is this method a compiler-generated bridge that the declaring class implements itself?
+   *
+   * <p>When a class narrows the return type of an inherited method, javac adds a synthetic bridge
+   * method whose whole body is a call to the method that overrides it. The bridge carries no logic
+   * of its own, but the TAC function key is {@code class.name(arity)} -- it does not mention the
+   * return type -- so the bridge and the method it forwards to share one key. Only one body can
+   * survive that key, and which one wins depends on the order SootUp hands the methods over.
+   *
+   * <p>When the bridge wins, the class keeps a body that calls a method of its own name on {@code
+   * this}: a self-call that no source file contains. The recursion rule reads that as recursion and
+   * reports it; the dataflow engine sees the method as re-entering itself. When the real method
+   * wins, nothing is lost. Either way the bridge is the body that carries no information, so it is
+   * the one to drop.
+   *
+   * <p>A bridge is only dropped when the class declares a NON-bridge method of the same name and
+   * arity -- that method is the one the bridge forwards to, and it keeps the key. A bridge whose
+   * target lives in another class (the class inherits the narrowed method and adds the bridge to
+   * satisfy an interface) is left alone: it is the only method of that name here, it loses no body,
+   * and the call it forwards names the other class.
+   *
+   * @param method the method under consideration
+   * @param siblings every method the declaring class holds
+   * @return {@code true} when the method is a bridge the class already implements
+   */
+  private static boolean isRedundantBridge(SootMethod method, Set<? extends SootMethod> siblings) {
+    if (!MethodModifier.isBridge(method.getModifiers())) {
+      return false;
+    }
+    String name = method.getName();
+    int arity = method.getParameterCount();
+    for (SootMethod other : siblings) {
+      if (other == method) continue;
+      if (MethodModifier.isBridge(other.getModifiers())) continue;
+      if (other.getName().equals(name) && other.getParameterCount() == arity) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Report methods that the TAC key cannot tell apart.
+   *
+   * <p>Two methods of one class that share a name and an arity -- {@code print(Object)} and {@code
+   * print(String)}, say -- collapse onto one TAC key, so one of the two bodies is dropped. That is
+   * a real loss of analysis, and it is silent: the scan simply does not see one of the overloads.
+   * Saying so out loud is better than letting the gap pass for a clean result.
+   *
+   * @param fqn the class being converted
+   * @param methods every method the class holds
+   */
+  private static void warnAboutOverloadCollisions(String fqn, Set<? extends SootMethod> methods) {
+    Map<String, List<SootMethod>> byKey = new LinkedHashMap<>();
+    for (SootMethod method : methods) {
+      if (MethodModifier.isBridge(method.getModifiers())) continue;
+      byKey
+          .computeIfAbsent(
+              method.getName() + "/" + method.getParameterCount(), k -> new ArrayList<>())
+          .add(method);
+    }
+    for (Map.Entry<String, List<SootMethod>> entry : byKey.entrySet()) {
+      if (entry.getValue().size() > 1) {
+        LOG.warn(
+            "Class {} declares {} methods with the same name and arity ({}); the TAC key names them"
+                + " alike, so only one body is analysed",
+            fqn,
+            entry.getValue().size(),
+            entry.getKey());
+      }
+    }
   }
 
   /**
