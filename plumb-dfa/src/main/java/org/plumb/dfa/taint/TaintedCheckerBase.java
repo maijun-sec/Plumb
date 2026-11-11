@@ -3391,13 +3391,18 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // pollute a sibling instance's field.
       String thisRecvTypeName = "this".equals(recvName) ? classNameOfType(recv.type()) : null;
       if (isLikelyClassName(recvName) || thisRecvTypeName != null) {
-        String key = (thisRecvTypeName != null ? thisRecvTypeName : recvName) + "." + ins.fieldName;
-        crossFnClassFieldTaint.put(key, fldLabel);
-        crossFnClassFieldSource.put(
-            key,
-            new FieldSource(
-                fn.signature(),
-                "this".equals(recvName) ? FieldSource.KIND_ALIASED : FieldSource.KIND_STATIC));
+        // The key names the CLASS the field belongs to. It is built by classFieldKey, the
+        // one place that does it, so the write and the read that has to see it cannot
+        // disagree about which class the field is on.
+        String key = classFieldKey(recv.type(), recvName, ins.fieldName);
+        if (key != null) {
+          crossFnClassFieldTaint.put(key, fldLabel);
+          crossFnClassFieldSource.put(
+              key,
+              new FieldSource(
+                  fn.signature(),
+                  "this".equals(recvName) ? FieldSource.KIND_ALIASED : FieldSource.KIND_STATIC));
+        }
         // The same write, recorded by LOCATION.
         //
         // The class-level key above is "ClassName.fieldName" -- it names the CLASS, not the
@@ -3434,9 +3439,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // "this".
       String thisRecvTypeName = "this".equals(recvName) ? classNameOfType(recv.type()) : null;
       if (!isParamSeeded && isLikelyClassName(recvName) && thisRecvTypeName == null) {
-        String key = recvName + "." + ins.fieldName;
-        crossFnClassFieldTaint.remove(key);
-        crossFnClassFieldSource.remove(key);
+        String key = classFieldKey(recv.type(), recvName, ins.fieldName);
+        if (key != null) {
+          crossFnClassFieldTaint.remove(key);
+          crossFnClassFieldSource.remove(key);
+        }
       }
       // T2: per-class aliasing
       // write (recvTypeName + field)
@@ -3490,21 +3497,13 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // state (last-write-wins); a tainted write must keep it.
     if (!taintedVars.containsKey(valueVar)) {
       fieldTaintTracker.clearField(recvName, ins.fieldName);
-      // Same cleanup for the unified
-      // class-field tracker.
-      // also clears the "this"-keyed
-      // entry (matching the write
-      // path's new branch).
-      if (isLikelyClassName(recvName)) {
-        String key = recvName + "." + ins.fieldName;
-        crossFnClassFieldTaint.remove(key);
-        crossFnClassFieldSource.remove(key);
-      }
-      String recvTypeName = classNameOfType(recv.type());
-      if (recvTypeName != null) {
-        String key = recvTypeName + "." + ins.fieldName;
-        crossFnClassFieldTaint.remove(key);
-        crossFnClassFieldSource.remove(key);
+      // The class-level entry for this receiver, removed under the same key the write
+      // used. One key, one place: the tracker never holds a second spelling of the
+      // same field that a clean write would leave behind.
+      String classKey = classFieldKey(recv.type(), recvName, ins.fieldName);
+      if (classKey != null) {
+        crossFnClassFieldTaint.remove(classKey);
+        crossFnClassFieldSource.remove(classKey);
       }
     }
   }
@@ -3867,40 +3866,25 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     FieldTaintTracker.TrackedTaint tracked = fieldTaintTracker.readField(recvName, ins.fieldName);
     if (tracked == null) {
       // Unified cross-function
-      // class-field read. Look up the
-      // per-class key first (declared
-      // class type case), then fall
-      // through to the class-name key
-      // (receiver is a class name with
-      // no class type or a different
-      // TacType).
+      // class-field read.
       String recvTypeName = classNameOfType(recv.type());
       String foundKey = null;
       String foundLabel = null;
       FieldSource foundSource = null;
-      if (recvTypeName != null) {
-        String aliasKey = recvTypeName + "." + ins.fieldName;
-        // register this function as a reader
-        // of recvTypeName.fieldName so a later
-        // cross-TU FIELDSTORE can request
-        // re-analysis.
-        recordFieldReader(aliasKey, fn);
-        String aliasLabel = crossFnClassFieldTaint.get(aliasKey);
-        if (aliasLabel != null) {
-          foundKey = aliasKey;
-          foundLabel = aliasLabel;
-          foundSource = crossFnClassFieldSource.get(aliasKey);
-        }
-      }
-      if (foundLabel == null && isLikelyClassName(recvName)) {
-        String globalKey = recvName + "." + ins.fieldName;
-        // register (class-name key form).
-        recordFieldReader(globalKey, fn);
-        String globalLabel = crossFnClassFieldTaint.get(globalKey);
-        if (globalLabel != null) {
-          foundKey = globalKey;
-          foundLabel = globalLabel;
-          foundSource = crossFnClassFieldSource.get(globalKey);
+      // The class-level entry for this field, under the key the write used. The read
+      // consults ONE key: the tracker holds one spelling per (class, field), so a read
+      // that looked under a second spelling would find a stale entry that the clean
+      // write already removed.
+      String classKey = classFieldKey(recv.type(), recvName, ins.fieldName);
+      if (classKey != null) {
+        // register this function as a reader of the key so a later cross-TU FIELDSTORE
+        // can request re-analysis.
+        recordFieldReader(classKey, fn);
+        String label = crossFnClassFieldTaint.get(classKey);
+        if (label != null) {
+          foundKey = classKey;
+          foundLabel = label;
+          foundSource = crossFnClassFieldSource.get(classKey);
         }
       }
       if (foundLabel != null) {
@@ -6550,9 +6534,37 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * non-class types.
    */
   static String classNameOfTypeStatic(TacType t) {
-    if (t == null) return null;
-    if (t.kind() != TacType.Kind.CLASS) return null;
-    return t.toString();
+    // The SAME identity the checker itself uses -- see
+    // {@link FieldOpClassifier#classNameOfType}. The decorated form
+    // ({@link TacType#toString} appends {@code " (non-null)"} to a
+    // non-nullable reference) is a dump, not a key: a key built
+    // from it would not match the one the same class arrives with
+    // on the other path, so a clean write would fail to remove the
+    // taint it is meant to remove.
+    return FieldOpClassifier.classNameOfType(t);
+  }
+
+  /**
+   * The class-level (cross-function) key for one field of one receiver: {@code "<class>.<field>"}.
+   *
+   * <p>Every side of the class-level tracker builds its key HERE: the write, the clean-write clear,
+   * the read, and the cross-function fold. That is what makes a write and the read that has to see
+   * it agree about which class the field belongs to.
+   *
+   * <p>And it is the CLASS they have to agree about, not the spelling of it: two classes with the
+   * same simple name in different packages are two different classes, and the IR states the class
+   * identity as the receiver's type.
+   *
+   * @param receiverType the receiver's type, or {@code null} when the IR states none
+   * @param receiverName the receiver's name, already resolved through the class-reference map
+   * @param fieldName the field name
+   * @return the key, or {@code null} when the receiver names no class
+   */
+  static String classFieldKey(TacType receiverType, String receiverName, String fieldName) {
+    if (fieldName == null || fieldName.isEmpty()) return null;
+    String className = FieldOpClassifier.classIdentity(receiverType, receiverName);
+    if (className == null || className.isEmpty()) return null;
+    return className + "." + fieldName;
   }
 
   /**
@@ -6589,10 +6601,13 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // Class-name form: receiver IS a
     // class name like {@code "Helper"}.
     if (isLikelyClassName(receiverName)) {
-      String key = receiverName + "." + fieldName;
-      crossFnClassFieldTaint.put(key, label);
-      crossFnClassFieldSource.put(
-          key, new FieldSource(calleeSig == null ? "<fold>" : calleeSig, FieldSource.KIND_STATIC));
+      String key = classFieldKey(receiverType, receiverName, fieldName);
+      if (key != null) {
+        crossFnClassFieldTaint.put(key, label);
+        crossFnClassFieldSource.put(
+            key,
+            new FieldSource(calleeSig == null ? "<fold>" : calleeSig, FieldSource.KIND_STATIC));
+      }
     }
     // Declared-class-type form. The
     // fold's caller passes the
@@ -6607,9 +6622,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // class (aliased case) see the
     // taint via the global tracker.
     if (receiverType != null) {
-      String recvTypeName = classNameOfType(receiverType);
-      if (recvTypeName != null) {
-        String key = recvTypeName + "." + fieldName;
+      String key = classFieldKey(receiverType, receiverName, fieldName);
+      if (key != null) {
         crossFnClassFieldTaint.put(key, label);
         crossFnClassFieldSource.put(
             key,

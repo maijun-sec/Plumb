@@ -85,6 +85,36 @@ public final class FieldOpClassifier {
   }
 
   /**
+   * The class a field receiver names, for the class-level (cross-function) field tracker.
+   *
+   * <p>The tracker keys its entries on {@code "<class>.<field>"}, so a write and the read that has
+   * to see it must name the class the SAME way. The receiver's TYPE is that name:
+   *
+   * <ul>
+   *   <li>a class reference -- the IR's {@code t = this.Helper; t.config = u} shape -- is typed
+   *       with the class it names;
+   *   <li>{@code this} is typed with the class that declares the function.
+   * </ul>
+   *
+   * <p>The receiver's NAME is only a fallback, for a receiver whose type the IR does not state.
+   *
+   * <p><b>Why the type and not the name.</b> A name is a spelling, not an identity: two classes
+   * with the same simple name in different packages ({@code pkg.a.Helper} and {@code pkg.b.Helper})
+   * share one spelling, so a tracker keyed on it gives the tainted static field of one to the
+   * other. The IR states the class identity as a type, so the tracker uses the type -- and the FQN
+   * it carries is what keeps two same-named classes apart.
+   *
+   * @param type the receiver's type, or {@code null} when the IR does not state one
+   * @param receiverName the receiver's name, already resolved through the class-reference map
+   * @return the class name, or {@code null} when neither the type nor the name says one
+   */
+  public static String classIdentity(TacType type, String receiverName) {
+    String typeName = classNameOfType(type);
+    if (typeName != null && !typeName.isEmpty()) return typeName;
+    return receiverName;
+  }
+
+  /**
    * Is this {@link TacType} likely a user-visible argument value type (e.g. {@code String}, a
    * primitive wrapper, an array)? The IR builder encodes {@code String u} as {@code
    * TacType.ofClass("java.lang.String")} (which is {@code Kind.CLASS} but a value type, not a class
