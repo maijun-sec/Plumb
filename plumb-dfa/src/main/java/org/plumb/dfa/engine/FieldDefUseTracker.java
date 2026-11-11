@@ -21,10 +21,10 @@
  */
 package org.plumb.dfa.engine;
 
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import org.plumb.tac.ir.TacInstruction;
 
 /**
@@ -42,21 +42,26 @@ import org.plumb.tac.ir.TacInstruction;
  */
 public final class FieldDefUseTracker {
 
-  /** Field key → set of function signatures that write it. */
-  private final Map<String, Set<String>> defs = new LinkedHashMap<>();
+  /**
+   * Field key → set of function signatures that write it.
+   *
+   * <p>Concurrent: the parallel worklist has every worker recording into this tracker, and a plain
+   * hash map mutated from several threads loses records and can corrupt itself.
+   */
+  private final Map<String, Set<String>> defs = new ConcurrentHashMap<>();
 
   /** Field key → set of function signatures that read it. */
-  private final Map<String, Set<String>> uses = new LinkedHashMap<>();
+  private final Map<String, Set<String>> uses = new ConcurrentHashMap<>();
 
   public void recordDef(String fieldKey, String fnSignature) {
     if (fieldKey == null || fieldKey.isBlank()) return;
-    defs.computeIfAbsent(fieldKey, k -> new LinkedHashSet<>())
+    defs.computeIfAbsent(fieldKey, k -> ConcurrentHashMap.newKeySet())
         .add(fnSignature == null ? "<unknown>" : fnSignature);
   }
 
   public void recordUse(String fieldKey, String fnSignature) {
     if (fieldKey == null || fieldKey.isBlank()) return;
-    uses.computeIfAbsent(fieldKey, k -> new LinkedHashSet<>())
+    uses.computeIfAbsent(fieldKey, k -> ConcurrentHashMap.newKeySet())
         .add(fnSignature == null ? "<unknown>" : fnSignature);
   }
 
@@ -94,7 +99,16 @@ public final class FieldDefUseTracker {
     if (key != null) recordUse(key, fnSignature);
   }
 
-  static String fieldKey(TacInstruction ins) {
+  /**
+   * The key a field store or load is recorded under.
+   *
+   * <p>Public because the checker walks the program's instructions to find the function that owns a
+   * field, and it has to build the same key the tracker recorded.
+   *
+   * @param ins the instruction to take the key from
+   * @return the key, or null when the instruction names no field
+   */
+  public static String fieldKey(TacInstruction ins) {
     if (ins == null) return null;
     String name = ins.fieldName;
     if (name == null || name.isEmpty()) return null;
@@ -105,14 +119,14 @@ public final class FieldDefUseTracker {
     return defs.size() + uses.size();
   }
 
-  /** All field keys that have at least one def. */
+  /** All field keys that have at least one def. Sorted, so the order does not depend on the map. */
   public Set<String> writtenKeys() {
-    return new LinkedHashSet<>(defs.keySet());
+    return new TreeSet<>(defs.keySet());
   }
 
-  /** All field keys that have at least one use. */
+  /** All field keys that have at least one use. Sorted, so the order does not depend on the map. */
   public Set<String> readKeys() {
-    return new LinkedHashSet<>(uses.keySet());
+    return new TreeSet<>(uses.keySet());
   }
 
   public void clear() {

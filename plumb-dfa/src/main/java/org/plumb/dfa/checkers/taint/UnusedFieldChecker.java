@@ -37,11 +37,10 @@
  */
 package org.plumb.dfa.checkers.taint;
 
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.Set;
 import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.engine.FieldDefUseTracker;
-import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.taint.TaintDomain;
 import org.plumb.dfa.taint.TaintRule;
 import org.plumb.dfa.taint.TaintedCheckerBase;
@@ -50,7 +49,6 @@ import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 
 public final class UnusedFieldChecker extends TaintedCheckerBase {
-  private final Set<String> emitted = new LinkedHashSet<String>();
   private AnalysisContext currentCtx;
 
   public UnusedFieldChecker() {
@@ -85,22 +83,63 @@ public final class UnusedFieldChecker extends TaintedCheckerBase {
     }
   }
 
-  public FunctionSummary summarizeFunction(AnalysisContext ctx, TacFunction fn) {
-    FunctionSummary summary = super.summarizeFunction(ctx, fn);
-    if (this.currentCtx == null) {
-      return summary;
+  /**
+   * The finding is emitted here, once, after every function has been visited.
+   *
+   * <p>Two questions decide it: "is this field ever read?" and "which function owns the finding?".
+   * Both need the WHOLE program. The first needs every function's reads to have been seen, and the
+   * second needs a rule that does not depend on the order the functions were visited in.
+   *
+   * <p>Emitting it per function, while that function is being analysed, answers the first question
+   * with whatever the analysis had seen SO FAR: a field that a later function reads looks unread,
+   * and the finding lands on whichever function happened to be visited first. With more than one
+   * worker, each worker has its own copy of this checker, so each of them can report the same
+   * field, and the set of findings depends on the schedule.
+   *
+   * <p>The owner is the FIRST function in program order that writes the field. The order is the
+   * program's, not the schedule's, so the finding lands in the same place on every run.
+   *
+   * <p>The field key names the field, not the class that declares it, so two classes with a field
+   * of the same name share one key. That is a property of the IR, which carries the field name and
+   * not the declaring type.
+   */
+  @Override
+  public void finish(AnalysisContext ctx) {
+    super.finish(ctx);
+    if (ctx == null || ctx.program() == null) {
+      return;
     }
-    FieldDefUseTracker t = this.currentCtx.fieldDefUseTracker();
+    FieldDefUseTracker t = ctx.fieldDefUseTracker();
     if (t == null) {
-      return summary;
+      return;
     }
-    for (String fieldKey : t.writtenKeys()) {
-      if (!this.emitted.add(fieldKey) || t.isRead(fieldKey)) continue;
-      String fieldName =
-          fieldKey.startsWith("field:") ? fieldKey.substring("field:".length()) : fieldKey;
-      this.emit(ctx, fn, fieldName);
+    Set<String> written = t.writtenKeys();
+    Set<String> reported = new HashSet<String>();
+    TacFunction previous = ctx.currentFunction();
+    try {
+      for (TacFunction fn : ctx.program().functions()) {
+        for (TacInstruction ins : fn.instructions()) {
+          if (ins.kind != TacInstruction.Kind.FIELDSTORE) {
+            continue;
+          }
+          String fieldKey = FieldDefUseTracker.fieldKey(ins);
+          if (fieldKey == null || !written.contains(fieldKey)) {
+            continue;
+          }
+          if (!reported.add(fieldKey) || t.isRead(fieldKey)) {
+            continue;
+          }
+          String fieldName =
+              fieldKey.startsWith("field:") ? fieldKey.substring("field:".length()) : fieldKey;
+          // The reporter resolves the finding's file from the CURRENT function, so it has to
+          // be the owner of the field and not whatever the analysis happened to leave behind.
+          ctx.setCurrentFunction(fn);
+          this.emit(ctx, fn, fieldName);
+        }
+      }
+    } finally {
+      ctx.setCurrentFunction(previous);
     }
-    return summary;
   }
 
   private void emit(AnalysisContext ctx, TacFunction fn, String fieldName) {

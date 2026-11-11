@@ -493,6 +493,11 @@
                              it, and the call site looks it up by the receiver's class. Two
                              same-named methods of two classes have to be two keys. -->
                         <include>org/plumb/dfa/summary/CalleeKeyResolutionTest.java</include>
+                        <!-- The unused-private-field rule asks a question about the WHOLE
+                             program ("is this field ever read?"), so it has to be answered
+                             once, after every function has been visited. Answered per
+                             function, the answer depends on the schedule. -->
+                        <include>org/plumb/dfa/checkers/taint/UnusedFieldDeterminismTest.java</include>
                         <include>org/plumb/dfa/taint/FrameworkFieldBindingSourceTest.java</include>
                         <include>org/plumb/dfa/translate/R259JavaIntLiteralTest.java</include>
 
