@@ -32,9 +32,11 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.plumb.dfa.checkers.taint.CodeInjectionChecker;
 import org.plumb.dfa.checkers.taint.FormatStringChecker;
 import org.plumb.dfa.checkers.taint.LogInjectionChecker;
 import org.plumb.dfa.checkers.taint.RegexInjectionChecker;
+import org.plumb.dfa.checkers.taint.SsrfChecker;
 import org.plumb.dfa.checkers.taint.XssInjectionChecker;
 import org.plumb.dfa.config.ConfigLoader;
 import org.plumb.dfa.config.EngineConfig;
@@ -98,6 +100,8 @@ class ScriptSinkFamilyEndToEndTest {
   private static final String REGEX_RULE = "dfa-taint-regex-injection";
   private static final String FORMAT_RULE = "dfa-taint-format-string";
   private static final String LOG_RULE = "dfa-taint-log-injection";
+  private static final String CODE_INJECTION_RULE = "dfa-taint-code-injection";
+  private static final String SSRF_RULE = "dfa-taint-ssrf";
 
   /**
    * A TypeScript program that writes a tainted value into the page.
@@ -192,6 +196,67 @@ class ScriptSinkFamilyEndToEndTest {
       """
       export function handler(input: string): void {
         const pattern = new RegExp(input);
+      }
+      """;
+
+  /**
+   * A TypeScript program that evaluates a value it was given.
+   *
+   * <p>The global {@code eval} is a FREE FUNCTION: it has no receiver object and no module to name,
+   * so the only owner the front end can offer is the stand-in for an unknown one, {@code
+   * <unknown>}. The catalogue names that stand-in, which is what lets the global be claimed at all
+   * -- and a global that is NOT claimed is the most dangerous one to miss, because every script
+   * that evaluates a string is written exactly this way.
+   */
+  private static final String TS_GLOBAL_EVAL =
+      """
+      export function handler(input: string): void {
+        eval(input);
+      }
+      """;
+
+  /**
+   * A TypeScript program that fetches a URL it was given.
+   *
+   * <p>The same convention as the global eval, on the other side: a free function with no receiver
+   * and no module, whose owner is the stand-in.
+   */
+  private static final String TS_GLOBAL_FETCH =
+      """
+      export function handler(input: string): void {
+        fetch(input);
+      }
+      """;
+
+  /**
+   * A Python program that evaluates a value it read.
+   *
+   * <p>A Python builtin is a free function as well, but its owner is NOT the stand-in: it is the
+   * module Python itself provides the name from, {@code builtins}. The catalogue names that owner,
+   * so the builtin is claimed.
+   */
+  private static final String PYTHON_GLOBAL_EVAL =
+      """
+      import socket
+
+
+      def handler():
+          data = socket.recv(1024)
+          return eval(data)
+      """;
+
+  /**
+   * A PHP program that evaluates a value it was given.
+   *
+   * <p>{@code eval} is a language construct rather than a function, so there is no module to name
+   * and no receiver to read: the owner is the stand-in the language's constructs use, the same one
+   * {@code include} has.
+   */
+  private static final String PHP_GLOBAL_EVAL =
+      """
+      <?php
+      function handler(string $code): void {
+          eval($code);
       }
       """;
 
@@ -351,6 +416,146 @@ class ScriptSinkFamilyEndToEndTest {
         .as("a construction is looked up in the same catalogue as a call")
         .contains("RegExp.<init>/1")
         .doesNotContain("app.<init>/1");
+  }
+
+  /**
+   * The global eval reaches the code injection rule.
+   *
+   * <p><b>What this pins.</b> A free function -- a call with no receiver object -- has no module to
+   * name either, so the only owner the front end can offer is the stand-in for an unknown one,
+   * {@code <unknown>}. The catalogue names that stand-in ({@code ^<unknown>\.eval\b}), so the two
+   * halves agree and the global is claimed.
+   *
+   * <p><b>Why it matters.</b> The symptom of a disagreement between the front end and the catalogue
+   * is not an error and not a warning: it is a program that scans CLEAN. A script that evaluates a
+   * string it was given is the most direct way to run an attacker's code, and the way it is written
+   * -- {@code eval(input)} -- is the way no module-qualified pattern can reach. So the test says
+   * both halves: the key the front end emits, and the finding the engine reports.
+   *
+   * <p><b>Why the arity is not pinned.</b> The key carries the number of DECLARED parameters, which
+   * belongs to the TypeScript library rather than to this product, and the catalogue's pattern
+   * leaves the arity optional ({@code ^<unknown>\.eval\b(/\d+)?}) because the global has to be
+   * claimed whatever its signature is. Pinning the arity here would make the test fail on a library
+   * change the product does not care about.
+   */
+  @Test
+  @DisplayName("a global eval reaches the code injection rule")
+  void aGlobalEvalReachesTheCodeInjectionRule(@TempDir Path directory) throws IOException {
+    assumeTrue(
+        tsAvailable(),
+        "the TypeScript front end needs Node and its compiler dependency: run npm ci in"
+            + " plumb-frontend/ts-sidecar");
+
+    Path file = directory.resolve("app.ts");
+    Files.writeString(file, TS_GLOBAL_EVAL);
+
+    TacFrontend.ParseResult result =
+        new TsTacFrontend(SourceLanguage.TYPESCRIPT).parse(TS_GLOBAL_EVAL, file, null);
+
+    assertThat(calleeSignatures(result))
+        .as("a free function has no receiver and no module, so its owner is the stand-in")
+        .anyMatch(signature -> signature.startsWith("<unknown>.eval/"));
+
+    List<Finding> findings = scan(result, file, new CodeInjectionChecker());
+
+    assertThat(hasFinding(findings, CODE_INJECTION_RULE, "eval"))
+        .as("the value that was given to the global eval is evaluated as code")
+        .isTrue();
+  }
+
+  /**
+   * The global fetch reaches the SSRF rule.
+   *
+   * <p>The same convention as the global eval, on the other side of the catalogue: a free function
+   * whose owner is the stand-in. The URL is the first argument, and the argument is what the
+   * catalogue's pattern claims.
+   *
+   * <p>The arity in the key is the number of DECLARED parameters, and the DOM's {@code fetch} has
+   * two -- the second one optional. The catalogue leaves the arity optional for the same reason it
+   * does for the eval, so this test does not pin it either.
+   */
+  @Test
+  @DisplayName("a global fetch reaches the SSRF rule")
+  void aGlobalFetchReachesTheSsrfRule(@TempDir Path directory) throws IOException {
+    assumeTrue(
+        tsAvailable(),
+        "the TypeScript front end needs Node and its compiler dependency: run npm ci in"
+            + " plumb-frontend/ts-sidecar");
+
+    Path file = directory.resolve("app.ts");
+    Files.writeString(file, TS_GLOBAL_FETCH);
+
+    TacFrontend.ParseResult result =
+        new TsTacFrontend(SourceLanguage.TYPESCRIPT).parse(TS_GLOBAL_FETCH, file, null);
+
+    assertThat(calleeSignatures(result))
+        .as("a free function has no receiver and no module, so its owner is the stand-in")
+        .anyMatch(signature -> signature.startsWith("<unknown>.fetch/"));
+
+    List<Finding> findings = scan(result, file, new SsrfChecker());
+
+    assertThat(hasFinding(findings, SSRF_RULE, "fetch"))
+        .as("the URL that was given to the global fetch is fetched")
+        .isTrue();
+  }
+
+  /**
+   * A Python builtin eval reaches the code injection rule.
+   *
+   * <p>The third naming convention for a call with no receiver of its own: a builtin is owned by
+   * the module the language provides it from. The catalogue names that owner, so the builtin is
+   * claimed -- and the value that was read reaches it.
+   */
+  @Test
+  @DisplayName("a Python builtin eval reaches the code injection rule")
+  void aPythonBuiltinEvalReachesTheCodeInjectionRule(@TempDir Path directory) throws IOException {
+    assumeTrue(pythonAvailable(), "the Python front end needs a Python 3 runtime on the PATH");
+
+    Path file = directory.resolve("app.py");
+    Files.writeString(file, PYTHON_GLOBAL_EVAL);
+
+    TacFrontend.ParseResult result = new PythonTacFrontend().parse(PYTHON_GLOBAL_EVAL, file, null);
+
+    assertThat(calleeSignatures(result))
+        .as("a builtin is owned by the module the language provides it from")
+        .contains("builtins.eval/1");
+
+    List<Finding> findings = scan(result, file, new CodeInjectionChecker());
+
+    assertThat(hasFinding(findings, CODE_INJECTION_RULE, "eval"))
+        .as("the value that was read is evaluated as code")
+        .isTrue();
+  }
+
+  /**
+   * A PHP eval reaches the code injection rule.
+   *
+   * <p>{@code eval} in PHP is a language construct, so the front end models it as an unmodelled
+   * call: the engine cannot know what the evaluated code does, but the call still has a name the
+   * catalogue can claim, and the argument still carries its taint.
+   */
+  @Test
+  @DisplayName("a PHP eval reaches the code injection rule")
+  void aPhpEvalReachesTheCodeInjectionRule(@TempDir Path directory) throws IOException {
+    assumeTrue(
+        phpAvailable(),
+        "the PHP front end needs Node and its parser dependency: run npm ci in"
+            + " plumb-frontend/php-sidecar");
+
+    Path file = directory.resolve("app.php");
+    Files.writeString(file, PHP_GLOBAL_EVAL);
+
+    TacFrontend.ParseResult result = new PhpTacFrontend().parse(PHP_GLOBAL_EVAL, file, null);
+
+    assertThat(calleeSignatures(result))
+        .as("a language construct has no module to name, so its owner is the language's stand-in")
+        .contains("<php>.eval/1");
+
+    List<Finding> findings = scan(result, file, new CodeInjectionChecker());
+
+    assertThat(hasFinding(findings, CODE_INJECTION_RULE, "eval"))
+        .as("the value that was given to the eval is evaluated as code")
+        .isTrue();
   }
 
   /**
