@@ -179,7 +179,13 @@ public final class CalleeKeyNormalizer {
     String qualified = slash < 0 ? canonical : canonical.substring(0, slash);
     int dot = qualified.lastIndexOf('.');
     if (dot < 0) return null;
-    return qualified.substring(dot + 1);
+    // The OWNER is everything before the last dot; the method name is after it. Taking
+    // the last segment of the whole qualified string would answer with the METHOD's name
+    // ("run" for "demo.JavaSink$.run/1"), and a caller that builds an owner-qualified key
+    // from it would key on "run.run/1" -- a key no declaration is ever published under.
+    String owner = qualified.substring(0, dot);
+    int ownerDot = owner.lastIndexOf('.');
+    return ownerDot < 0 ? owner : owner.substring(ownerDot + 1);
   }
 
   /**
