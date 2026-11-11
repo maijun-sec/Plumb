@@ -97,7 +97,11 @@ public final class SynchronizationOnStringOrBoxedCheck implements AstChecker {
     final Set<String> forbiddenFields = new HashSet<>();
     for (FieldDeclaration f : n.getFields()) {
       final String typeName = typeBaseName(f.getElementType());
-      if (FORBIDDEN_TYPES.contains(typeName)) {
+      // The helper answers null for a type that is not a class type -- a primitive, an array,
+      // a type variable -- and an immutable Set does not answer "no" for a null argument: it
+      // throws. So the null has to be answered here. A field whose type is not a class type
+      // is not one of the forbidden locks, so skipping it is the answer the rule wants.
+      if (typeName != null && FORBIDDEN_TYPES.contains(typeName)) {
         for (VariableDeclarator v : f.getVariables()) {
           forbiddenFields.add(v.getNameAsString());
         }
