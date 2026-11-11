@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory;
 import sootup.core.jimple.basic.StmtPositionInfo;
 import sootup.core.jimple.common.Immediate;
 import sootup.core.jimple.common.Local;
+import sootup.core.jimple.common.expr.AbstractConditionExpr;
 import sootup.core.jimple.common.expr.JCastExpr;
 import sootup.core.jimple.common.expr.JInstanceOfExpr;
 import sootup.core.jimple.common.expr.JLengthExpr;
@@ -100,6 +101,15 @@ public final class JimpleToTacConverter {
   private static final Logger LOG = LoggerFactory.getLogger(JimpleToTacConverter.class);
 
   private final JimpleOperandConverter op;
+
+  /**
+   * The counter behind the temporaries that hold a comparison's result.
+   *
+   * <p>A Jimple branch tests a comparison INLINE -- there is no local holding it -- so the
+   * comparison has to be given somewhere to live. The temporaries are numbered so that two
+   * comparisons in one method cannot share a name.
+   */
+  private int comparisonCounter;
 
   public JimpleToTacConverter(Body body) {
     this.op = new JimpleOperandConverter(body);
@@ -195,11 +205,6 @@ public final class JimpleToTacConverter {
     // Pre-build the instruction list and register label names
     // first so forward references resolve.
     List<TacInstruction> insns = new ArrayList<>();
-    // Track synthesized branch-fall-through labels. Each JIfStmt
-    // gets a unique "after" label that the next instruction
-    // emits as a LABEL so the BRANCH's falseTarget resolves.
-    int[] labelCounter = {0};
-    java.util.function.Supplier<String> nextLabelName = () -> "block_" + (labelCounter[0]++);
 
     // Pre-compute the set of statements that are the
     // entry of an exception handler. For each such statement
@@ -239,6 +244,20 @@ public final class JimpleToTacConverter {
         // CFG queries may fail for non-SootUp code; skip.
       }
     }
+
+    // The label names of the basic blocks, and the two successors of every branch.
+    //
+    // A BRANCH's targets and a JUMP's target are LABELS, and the CFG builder resolves a
+    // label to a block by finding the LABEL instruction that carries that name -- so the
+    // block has to EMIT one.
+    //
+    // This used to be missing. The branch wrote "block_<identityHashCode>" as its target
+    // and the body never emitted a LABEL with that name, so every branch and every jump
+    // ended its block with NO successor: the measured control-flow graph of a whole jar
+    // had no edges at all (commons-text 1.15.0: 1539 branches, 0 resolved, 4016 blocks,
+    // 0 edges), which left the engine with neither loops nor path conditions in bytecode
+    // mode.
+    BlockLabels blockLabels = computeBlockLabels(body, catchEntries);
 
     // Track each stmt's first emitted instruction
     // index so we can compute catch-handler ranges and
@@ -333,17 +352,26 @@ public final class JimpleToTacConverter {
           LOG.debug("Failed to emit CATCH_HANDLER for {}: {}", signature, ex.getMessage());
         }
       }
+      // The block's own label. A branch that can jump to this statement resolves its
+      // target through this LABEL, so a statement that starts a block has to emit one.
+      // A catch handler's block already emits its catch label above, and only the FIRST
+      // label of a block can name it, so the generic one is skipped for it.
+      String blockLabel = blockLabels.labelByStmt.get(stmt);
+      if (blockLabel != null && !catchHandlerEntries.contains(stmt)) {
+        insns.add(
+            TacInstruction.builder(TacInstruction.Kind.LABEL).label(blockLabel).line(line).build());
+      }
       try {
         if (stmt instanceof JIdentityStmt is) {
           insns.add(convertIdentity(is, line, hasThisLocal));
         } else if (stmt instanceof JAssignStmt as) {
-          insns.addAll(convertAssign(as, line, nextLabelName.get(), constructorArgs));
+          insns.addAll(convertAssign(as, line, constructorArgs));
         } else if (stmt instanceof JInvokeStmt inv) {
           insns.add(convertInvokeStmt(inv, line));
         } else if (stmt instanceof JIfStmt ifs) {
-          insns.add(convertIf(ifs, line, body, nextLabelName.get()));
+          insns.addAll(convertIf(ifs, line, body, blockLabels));
         } else if (stmt instanceof JGotoStmt gs) {
-          insns.add(convertGoto(gs, line, body));
+          insns.add(convertGoto(gs, line, blockLabels));
         } else if (stmt instanceof JNopStmt) {
           insns.add(TacInstruction.builder(TacInstruction.Kind.NOP).line(line).build());
         } else if (stmt instanceof JReturnStmt rs) {
@@ -674,10 +702,7 @@ public final class JimpleToTacConverter {
   }
 
   private List<TacInstruction> convertAssign(
-      JAssignStmt as,
-      int line,
-      String nextLabelName,
-      Map<Stmt, List<Immediate>> constructorArgsByAllocation) {
+      JAssignStmt as, int line, Map<Stmt, List<Immediate>> constructorArgsByAllocation) {
     List<TacInstruction> out = new ArrayList<>();
     Object lhs = as.getLeftOp();
     Object rhs = as.getRightOp();
@@ -920,23 +945,74 @@ public final class JimpleToTacConverter {
         .build();
   }
 
-  private TacInstruction convertIf(JIfStmt ifs, int line, Body body, String nextLabelName) {
-    // SootUp 3.0.0 doesn't store the target on JIfStmt directly;
-    // resolve it through the body's CFG.
-    List<Stmt> targets = body.getBranchTargetsOf(ifs);
-    String trueLabel = targets.isEmpty() ? nextLabelName + "_true" : labelOfTarget(targets.get(0));
-    String falseLabel = nextLabelName + "_after";
-    return TacInstruction.builder(TacInstruction.Kind.BRANCH)
-        .lhs1(op.toOperand(ifs.getCondition()))
-        .trueLabel(trueLabel)
-        .falseLabel(falseLabel)
-        .line(line)
-        .build();
+  private List<TacInstruction> convertIf(
+      JIfStmt ifs, int line, Body body, BlockLabels blockLabels) {
+    // SootUp 3.0.0 doesn't store the target on JIfStmt directly; the block-label pass
+    // resolved it through the body's CFG.
+    Stmt target = blockLabels.jumpTargetOf.get(ifs);
+    Stmt fallThrough = blockLabels.fallThroughOf.get(ifs);
+    String jumpLabel = target == null ? null : blockLabels.labelByStmt.get(target);
+    String fallThroughLabel = fallThrough == null ? null : blockLabels.labelByStmt.get(fallThrough);
+    List<TacInstruction> out = new ArrayList<>();
+
+    // The condition of a Jimple branch is a COMPARISON, and it is the NEGATION of the comparison
+    // the source wrote: the bytecode front end rewrites `if (c) A else B` as `if (!c) goto B; A`,
+    // so the jump target is the ELSE path and the fall-through is the THEN path.
+    //
+    // The TAC's branch says the true target is the branch taken when the condition is truthy, and
+    // the source lane's condition is the source's own comparison. So the comparison is flipped
+    // back to the source's, and the labels follow the source: true is the fall-through, false is
+    // the jump target.
+    //
+    // Without this the comparison was simply DROPPED: `toOperand` has no shape for it, so every
+    // branch in bytecode code carried the sentinel "<unhandled:JLtExpr>" as its condition -- and
+    // the two labels were the other way round. A branch with no comparison produces no guard at
+    // all, so the engine had no path conditions in bytecode mode.
+    AbstractConditionExpr ce = ifs.getCondition();
+    BinaryOperator source =
+        JimpleOperandConverter.negateComparison(JimpleOperandConverter.binaryOpOf(ce));
+    TacOperand condition;
+    if (source != null) {
+      // A Jimple branch tests the comparison INLINE -- there is no local holding it -- so the
+      // comparison is given somewhere to live: a boolean temporary, the same shape the source
+      // lane produces for `if (x > 0)`.
+      TacOperand.TacVar result =
+          new TacOperand.TacVar("$cmp" + (comparisonCounter++), TacType.BOOLEAN, true);
+      out.add(
+          TacInstruction.builder(TacInstruction.Kind.BINOP)
+              .dest(result)
+              .binop(source)
+              .lhs1(op.toOperand(ce.getOp1()))
+              .lhs2(op.toOperand(ce.getOp2()))
+              .line(line)
+              .build());
+      condition = result;
+    } else {
+      // A condition the project has no operator for keeps Jimple's own polarity: the jump is
+      // taken when the boolean local is true, so the jump target is the true path.
+      condition = op.toOperand(ce);
+      out.add(
+          TacInstruction.builder(TacInstruction.Kind.BRANCH)
+              .lhs1(condition)
+              .trueLabel(jumpLabel)
+              .falseLabel(fallThroughLabel)
+              .line(line)
+              .build());
+      return out;
+    }
+    out.add(
+        TacInstruction.builder(TacInstruction.Kind.BRANCH)
+            .lhs1(condition)
+            .trueLabel(fallThroughLabel)
+            .falseLabel(jumpLabel)
+            .line(line)
+            .build());
+    return out;
   }
 
-  private TacInstruction convertGoto(JGotoStmt gs, int line, Body body) {
-    List<Stmt> targets = body.getBranchTargetsOf(gs);
-    String targetLabel = targets.isEmpty() ? "block_unknown" : labelOfTarget(targets.get(0));
+  private TacInstruction convertGoto(JGotoStmt gs, int line, BlockLabels blockLabels) {
+    Stmt target = blockLabels.jumpTargetOf.get(gs);
+    String targetLabel = target == null ? null : blockLabels.labelByStmt.get(target);
     return TacInstruction.builder(TacInstruction.Kind.JUMP).label(targetLabel).line(line).build();
   }
 
@@ -947,12 +1023,122 @@ public final class JimpleToTacConverter {
         .orElseGet(() -> TacInstruction.builder(TacInstruction.Kind.NOP).line(line).build());
   }
 
-  private static String labelOfTarget(Object target) {
-    // Jimple branch targets are Stmt objects; the project's
-    // TAC uses the target stmt's simple class name + a
-    // synthetic id derived from System.identityHashCode to
-    // keep labels stable within a single body.
-    return "block_" + System.identityHashCode(target);
+  /**
+   * The label names of the basic blocks of a body, and the two successors of every branch.
+   *
+   * <p>A block's label is what a branch's target resolves to: the CFG builder finds the LABEL
+   * instruction that carries the name and takes the block it starts.
+   */
+  private static final class BlockLabels {
+    /** The label that names the block a statement starts, or null when it starts none. */
+    final java.util.Map<Stmt, String> labelByStmt;
+
+    /** The statement a branch jumps to. */
+    final java.util.Map<Stmt, Stmt> jumpTargetOf;
+
+    /** The statement a branch falls through to. */
+    final java.util.Map<Stmt, Stmt> fallThroughOf;
+
+    BlockLabels(
+        java.util.Map<Stmt, String> labelByStmt,
+        java.util.Map<Stmt, Stmt> jumpTargetOf,
+        java.util.Map<Stmt, Stmt> fallThroughOf) {
+      this.labelByStmt = labelByStmt;
+      this.jumpTargetOf = jumpTargetOf;
+      this.fallThroughOf = fallThroughOf;
+    }
+  }
+
+  /**
+   * Work out the basic blocks of a body, the label that names each one, and the two successors of
+   * every branch.
+   *
+   * <p>A block starts at the entry, at a branch's jump target, and at a branch's fall-through. Each
+   * of them gets a label, and the branch instructions use those labels.
+   *
+   * <p>The names come from the statement's index in the body, so the same body produces the same
+   * names on every run. (They used to come from the statement's identity hash code, which is
+   * different on every run.)
+   */
+  private BlockLabels computeBlockLabels(
+      Body body, java.util.Map<Stmt, sootup.core.types.ClassType> catchEntries) {
+    java.util.Map<Stmt, String> labelByStmt = new java.util.IdentityHashMap<>();
+    java.util.Map<Stmt, Stmt> jumpTargetOf = new java.util.IdentityHashMap<>();
+    java.util.Map<Stmt, Stmt> fallThroughOf = new java.util.IdentityHashMap<>();
+    List<Stmt> stmts = body.getStmts();
+    if (stmts.isEmpty()) {
+      return new BlockLabels(labelByStmt, jumpTargetOf, fallThroughOf);
+    }
+    java.util.Map<Stmt, Integer> indexOf = new java.util.IdentityHashMap<>();
+    for (int i = 0; i < stmts.size(); i++) {
+      indexOf.put(stmts.get(i), i);
+    }
+    sootup.core.graph.ControlFlowGraph<?> cfg = null;
+    try {
+      cfg = body.getControlFlowGraph();
+    } catch (RuntimeException ex) {
+      // A body without a usable CFG still has a statement order, and the fall-through of a
+      // branch is the statement after it.
+      cfg = null;
+    }
+    java.util.Set<Stmt> starts =
+        java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    starts.add(stmts.get(0));
+    for (Stmt stmt : stmts) {
+      if (!(stmt instanceof sootup.core.jimple.common.stmt.BranchingStmt branch)) continue;
+      List<Stmt> targets = body.getBranchTargetsOf(branch);
+      if (!targets.isEmpty()) {
+        jumpTargetOf.put(branch, targets.get(0));
+        starts.add(targets.get(0));
+      }
+      // An unconditional jump has no fall-through.
+      if (branch instanceof sootup.core.jimple.common.stmt.JGotoStmt) continue;
+      Stmt fallThrough = null;
+      if (cfg != null) {
+        try {
+          for (Stmt succ : cfg.successors(stmt)) {
+            boolean isTarget = false;
+            for (Stmt t : targets) {
+              if (t == succ) {
+                isTarget = true;
+                break;
+              }
+            }
+            if (!isTarget) {
+              fallThrough = succ;
+              break;
+            }
+          }
+        } catch (RuntimeException ex) {
+          fallThrough = null;
+        }
+      }
+      if (fallThrough == null) {
+        Integer idx = indexOf.get(stmt);
+        if (idx != null && idx + 1 < stmts.size()) {
+          fallThrough = stmts.get(idx + 1);
+        }
+      }
+      if (fallThrough != null) {
+        fallThroughOf.put(branch, fallThrough);
+        starts.add(fallThrough);
+      }
+    }
+    for (Stmt start : starts) {
+      Integer idx = indexOf.get(start);
+      String name = idx != null ? "block_" + idx : "block_" + labelByStmt.size();
+      if (catchEntries.containsKey(start)) {
+        // A catch handler's block is entered through its catch label, and only the FIRST
+        // label of a block can name it -- so the catch label IS the block's label. The name
+        // is built exactly the way the per-statement loop builds it, or the two would
+        // disagree and the branch's target would point at a label nobody emits.
+        sootup.core.types.ClassType exc = catchEntries.get(start);
+        String excName = exc == null ? "java.lang.Throwable" : op.tacTypeOf(exc).toString();
+        name = "L_CATCH_" + shortName(excName);
+      }
+      labelByStmt.put(start, name);
+    }
+    return new BlockLabels(labelByStmt, jumpTargetOf, fallThroughOf);
   }
 
   private static int lineOf(Stmt stmt) {

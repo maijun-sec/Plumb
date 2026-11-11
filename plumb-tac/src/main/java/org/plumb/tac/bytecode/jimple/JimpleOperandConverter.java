@@ -251,6 +251,11 @@ public final class JimpleOperandConverter {
   /**
    * Return the project's {@link BinaryOperator} for a Jimple expression, or {@code null} if the
    * operator isn't recognized (caller falls back to a no-op or logs an unhandled).
+   *
+   * <p>SootUp has two shapes for a comparison, and they are not the same thing. The condition
+   * family (JEqExpr, JNeExpr, JLtExpr, JLeExpr, JGtExpr, JGeExpr) is a BOOLEAN, and it is what a
+   * branch tests; those are mapped here. The generic JCmpExpr is the three-way INTEGER compare --
+   * "cmp" -- whose result is -1, 0 or 1, so it is not a boolean and it gets no operator here.
    */
   public static BinaryOperator binaryOpOf(AbstractBinopExpr expr) {
     if (expr instanceof JAddExpr) return BinaryOperator.ADD;
@@ -273,6 +278,30 @@ public final class JimpleOperandConverter {
       if (expr instanceof JGeExpr) return BinaryOperator.GE;
     }
     return null;
+  }
+
+  /**
+   * The comparison that means the OPPOSITE of the given one.
+   *
+   * <p>SootUp's frontend rewrites a branch so that the jump is taken when the comparison HOLDS: the
+   * source's `if (x > 0) A else B` becomes `if (x <= 0) goto B; A`. So a condition that reaches the
+   * translator is the source's comparison with its operator flipped -- and the flip is the
+   * operator's, with the operands in the same order.
+   *
+   * @param op the comparison to negate
+   * @return the opposite comparison, or null when the operator has no opposite
+   */
+  public static BinaryOperator negateComparison(BinaryOperator op) {
+    if (op == null) return null;
+    return switch (op) {
+      case EQ -> BinaryOperator.NE;
+      case NE -> BinaryOperator.EQ;
+      case LT -> BinaryOperator.GE;
+      case GE -> BinaryOperator.LT;
+      case LE -> BinaryOperator.GT;
+      case GT -> BinaryOperator.LE;
+      default -> null;
+    };
   }
 
   /**
