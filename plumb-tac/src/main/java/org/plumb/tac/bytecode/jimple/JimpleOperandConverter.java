@@ -28,6 +28,7 @@ import org.plumb.tac.ir.BinaryOperator;
 import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacType;
 import org.plumb.tac.ir.UnaryOperator;
+import sootup.core.jimple.common.Immediate;
 import sootup.core.jimple.common.Local;
 import sootup.core.jimple.common.constant.BooleanConstant;
 import sootup.core.jimple.common.constant.ClassConstant;
@@ -335,14 +336,29 @@ public final class JimpleOperandConverter {
   }
 
   /**
-   * Build the arg list for {@code new T(...)} (no receiver, the constructor's args are the
-   * operands).
+   * Build the arg list for {@code new T(...)}: the constructor's own arguments, with no receiver.
+   *
+   * <p>Jimple keeps them on the special-invoke that runs the constructor, not on the allocation
+   * itself, so the caller resolves them and hands them over. The TAC wants them on the allocation,
+   * because that is where the dataflow engine reads a construction's arguments from.
+   *
+   * @param expr the allocation
+   * @param constructorArgs the constructor's arguments, or {@code null} when they could not be
+   *     resolved
+   * @return the constructor's arguments, in declaration order
    */
-  public List<TacOperand> newArgs(JNewExpr expr) {
-    // new T() has no explicit args in Jimple; if T's constructor
-    // takes parameters they appear on the special-invoke site
-    // that follows. Return empty here.
-    return new ArrayList<>();
+  public List<TacOperand> newArgs(JNewExpr expr, List<Immediate> constructorArgs) {
+    List<TacOperand> out = new ArrayList<>();
+    if (constructorArgs == null) {
+      return out;
+    }
+    for (Immediate arg : constructorArgs) {
+      TacOperand operand = toOperand(arg);
+      if (operand != null) {
+        out.add(operand);
+      }
+    }
+    return out;
   }
 
   // ---- Field / array ref helpers -----------------------------------

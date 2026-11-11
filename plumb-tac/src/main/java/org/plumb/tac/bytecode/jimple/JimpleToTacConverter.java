@@ -22,7 +22,9 @@
 package org.plumb.tac.bytecode.jimple;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.plumb.tac.ir.BinaryOperator;
 import org.plumb.tac.ir.SourceOrigin;
 import org.plumb.tac.ir.TacFunction;
@@ -33,6 +35,7 @@ import org.plumb.tac.ir.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sootup.core.jimple.basic.StmtPositionInfo;
+import sootup.core.jimple.common.Immediate;
 import sootup.core.jimple.common.Local;
 import sootup.core.jimple.common.expr.JCastExpr;
 import sootup.core.jimple.common.expr.JInstanceOfExpr;
@@ -237,6 +240,10 @@ public final class JimpleToTacConverter {
     //   the TryRegion.
     java.util.Map<Stmt, String> catchLabelByHandler = new java.util.HashMap<>();
 
+    // The constructor arguments, resolved back onto the allocation they
+    // belong to. See constructorArgsByAllocation.
+    Map<Stmt, List<Immediate>> constructorArgs = constructorArgsByAllocation(body);
+
     for (Stmt stmt : body.getStmts()) {
       int line = lineOf(stmt);
       // Record the index of the first emitted
@@ -308,7 +315,7 @@ public final class JimpleToTacConverter {
         if (stmt instanceof JIdentityStmt is) {
           insns.add(convertIdentity(is, line, hasThisLocal));
         } else if (stmt instanceof JAssignStmt as) {
-          insns.addAll(convertAssign(as, line, nextLabelName.get()));
+          insns.addAll(convertAssign(as, line, nextLabelName.get(), constructorArgs));
         } else if (stmt instanceof JInvokeStmt inv) {
           insns.add(convertInvokeStmt(inv, line));
         } else if (stmt instanceof JIfStmt ifs) {
@@ -561,7 +568,82 @@ public final class JimpleToTacConverter {
     return TacInstruction.builder(TacInstruction.Kind.MOVE).dest(dest).lhs1(src).line(line).build();
   }
 
-  private List<TacInstruction> convertAssign(JAssignStmt as, int line, String nextLabelName) {
+  /**
+   * The constructor arguments that belong to each allocation, keyed by the statement that
+   * allocates.
+   *
+   * <p>Jimple has no constructor call. {@code new X(a, b)} is an allocation plus a separate
+   * special-invoke that runs the constructor, and the arguments ride on that invoke -- the
+   * allocation itself carries none. The TAC models a construction the way the source front ends do:
+   * ONE NEW holding the constructor's arguments. That is the shape the dataflow engine reads,
+   * because it propagates taint from a constructor's arguments into the object the NEW builds.
+   * Without the arguments on the NEW, a value that arrived over the wire and was handed to a
+   * constructor stopped there: the object it built was clean, and every later use of that object
+   * looked clean too.
+   *
+   * <p>So the arguments are moved back onto the allocation. The allocation and the invoke are two
+   * statements, and the invoke usually names a COPY of the allocated local -- javac emits {@code
+   * new; dup; invokespecial} -- so the receiver is followed back through the copies to the local
+   * the allocation wrote.
+   *
+   * @param body the body to scan
+   * @return the constructor arguments, keyed by the allocating statement
+   */
+  private static Map<Stmt, List<Immediate>> constructorArgsByAllocation(Body body) {
+    Map<Stmt, List<Immediate>> out = new HashMap<>();
+    // A local holding a COPY of another local: `r1 := r0` and `r1 := (X) r0`.
+    Map<Local, Local> copyOf = new HashMap<>();
+    // The statement that allocated a local.
+    Map<Local, Stmt> allocationOf = new HashMap<>();
+    for (Stmt stmt : body.getStmts()) {
+      if (stmt instanceof JIdentityStmt is) {
+        Object right = is.getRightOp();
+        if (right instanceof Local src) {
+          copyOf.put(is.getLeftOp(), src);
+        }
+      } else if (stmt instanceof JAssignStmt as) {
+        Object right = as.getRightOp();
+        if (right instanceof JNewExpr && as.getLeftOp() instanceof Local allocated) {
+          allocationOf.put(allocated, as);
+        } else if (right instanceof JCastExpr ce
+            && ce.getOp() instanceof Local src
+            && as.getLeftOp() instanceof Local target) {
+          copyOf.put(target, src);
+        }
+      }
+    }
+    for (Stmt stmt : body.getStmts()) {
+      if (!(stmt instanceof JInvokeStmt inv)) {
+        continue;
+      }
+      sootup.core.jimple.common.expr.AbstractInvokeExpr expr = inv.getInvokeExpr().orElse(null);
+      if (!(expr instanceof sootup.core.jimple.common.expr.JSpecialInvokeExpr special)) {
+        continue;
+      }
+      if (!"<init>".equals(special.getMethodSignature().getName())) {
+        continue;
+      }
+      Local root = special.getBase();
+      while (root != null && copyOf.containsKey(root)) {
+        root = copyOf.get(root);
+      }
+      if (root == null) {
+        continue;
+      }
+      Stmt allocation = allocationOf.get(root);
+      if (allocation == null) {
+        continue;
+      }
+      out.putIfAbsent(allocation, new ArrayList<>(special.getArgs()));
+    }
+    return out;
+  }
+
+  private List<TacInstruction> convertAssign(
+      JAssignStmt as,
+      int line,
+      String nextLabelName,
+      Map<Stmt, List<Immediate>> constructorArgsByAllocation) {
     List<TacInstruction> out = new ArrayList<>();
     Object lhs = as.getLeftOp();
     Object rhs = as.getRightOp();
@@ -716,7 +798,7 @@ public final class JimpleToTacConverter {
           TacInstruction.builder(TacInstruction.Kind.NEW)
               .dest(dest)
               .ctorType(op.newTypeOf(ne))
-              .args(op.newArgs(ne))
+              .args(op.newArgs(ne, constructorArgsByAllocation.get(as)))
               .line(line)
               .build());
       return out;
