@@ -601,7 +601,23 @@ pattern，不是**使用**一个；`preg_quote` 和 `django.utils.html.escape` �
 **结果**——到达的字节——所以源桶根本不带 `arg_index`。sink 桶点的是**参数**，源桶点的是**结果**。
 这就是 `taint.sources.network` 和上面四个族的全部差别，也是源那条 pattern 不写参数下标的原因。
 
-**构造器挡住的那一个。** `new RegExp(userInput)` 和 `new Function(userInput)` 是脚本语言的正则
-注入和代码注入，目录里各有一个族能收它们。它们到达引擎时是一条 NEW 指令，而 NEW 只带它构造的
-类、不带 callee 签名，引擎的构造器路径却要靠签名去查族——没有签名就直接返回。pattern 本身好写，
-缺的是一条能指过去的**名字**。
+**构造器怎么被点名。** `new RegExp(userInput)` 和 `new Function(userInput)` 是脚本语言的正则
+注入和代码注入，目录里各有一个族能收它们。它们到达引擎时是一条 NEW 指令，而引擎的构造器路径
+是**按 callee 签名**去查族的——所以 NEW 必须带着签名。
+
+构造器的签名形状是 `<类名>.<init>/<实参数>`：`RegExp.<init>/1`、`Function.<init>/2`、
+`scala.util.matching.Regex.<init>/1`、`\SoapClient.<init>/1`。关于它有三件事：
+
+- **类名取的是语法上的构造点，不是类型。** 前端也会报出这个构造产出的类型，而那恰恰是不该
+  拿来当键的东西：一个值可以被上下文赋予别的类型，于是类型可能点出一个程序从没构造过的类。
+  ArkTS 那条 lane 把这件事摆得很清楚——`new RegExp(input)` 报出的类型是 `Object`，名字是
+  `RegExp`；按类型造键就会点出一个程序从没构造过的类。
+- **实参数数数的是「传进去的实参」，而构造器没有 receiver 槽。** 调用把 receiver 放在
+  `args[0]`，所以调用的第一个用户参数在 `args[1]`；构造器的实参就是构造器自己的实参，按顺序
+  排。所以 `new RegExp(input)` 里那个 pattern 的 `arg_index` 是 `0`，**没有偏移**——而构造器的
+  第二个参数是 flags，flags 从来不带污点，pattern 指到它就什么都不报。
+- **每个语言按自己的写法限定类名。** PHP 的全局类保留前导反斜杠，命名空间用反斜杠分隔：
+  `\SoapClient.<init>/1`，写 pattern 时那个反斜杠要写两次。
+
+也有 lane 把构造器的名字落在 CALL 上而不是 NEW 上——JVM 字节码那条 lane 就是，因为 class 文件里
+的分配和构造器调用是两条指令。两种都无妨：目录看到的是同一个名字，同一条 pattern 照样命中。

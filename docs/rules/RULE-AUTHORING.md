@@ -704,10 +704,36 @@ bucket names an argument; a source bucket names a result. That is the whole
 difference between `taint.sources.network` and the four families above, and it
 is why the source pattern is written without an argument index.
 
-**What the constructor rules out.** `new RegExp(userInput)` and `new
+**How a construction is named.** `new RegExp(userInput)` and `new
 Function(userInput)` are the script languages' regex injection and code
 injection, and the catalogue has a family for each. They arrive as a NEW
-instruction, and a NEW carries the class it builds but no callee signature,
-while the engine's constructor path needs one to look the family up -- it
-returns when there is none. The pattern would be easy to write; what is missing
-is the name to write it against.
+instruction, and the engine's constructor path looks the family up by the
+callee signature -- so a NEW has to carry one.
+
+The signature of a construction is `<class>.<init>/<arity>`:
+`RegExp.<init>/1`, `Function.<init>/2`, `scala.util.matching.Regex.<init>/1`,
+`\SoapClient.<init>/1`. Three things about it:
+
+- **The class is the SYNTACTIC construction site, not the type.** The front
+  end reports the type the construction produces as well, and that is the
+  wrong thing to key on: a value can be given another type by its context,
+  so the type can name a class the program never constructed. The ArkTS
+  lane shows it plainly -- `new RegExp(input)` reports the type `Object` and
+  the name `RegExp`, and a key built from the type would name a class the
+  program never builds.
+- **The arity counts the arguments PASSED, and a construction has no
+  receiver slot.** A call keeps its receiver in `args[0]`, so the first user
+  argument of a call is `args[1]`; the arguments of a construction are the
+  constructor's own, in order. So the pattern of `new RegExp(input)` is
+  `arg_index: 0`, with no offset -- and the second argument of a pattern
+  constructor is the flags, which are never tainted, so a pattern that
+  points at them reports nothing at all.
+- **A language qualifies the class the way IT writes it.** PHP keeps the
+  leading backslash of a global class and separates a namespace with
+  backslashes: `\SoapClient.<init>/1`, and a pattern writes that backslash
+  twice.
+
+A lane may also name the constructor on the CALL rather than on the NEW --
+the JVM bytecode lane does, because a class file's allocation and the
+constructor call are two instructions. Either way the catalogue sees the
+same name, and one pattern matches it.
