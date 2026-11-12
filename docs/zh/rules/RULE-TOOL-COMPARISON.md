@@ -68,7 +68,7 @@ Plumb 的做法分两阶段：
 | DFA checker（已注册） | 99 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | 12 | `TaintRuleRegistry` |
 | Taint source family / 模式 | 11 / 215 | `sink-families.yaml` 的 source family（不带 CWE 的那些） |
-| Taint sink family / 模式 | 56 / 3910 | `sink-families.yaml` 的 sink family（带 CWE 的那些） |
+| Taint sink family / 模式 | 56 / 3901 | `sink-families.yaml` 的 sink family（带 CWE 的那些） |
 | Taint source 变量 | 10 | `sink-families.yaml` 的 `source_variables:` 块 —— 不是调用的那些 source |
 | 输入源模式（框架入口） | 65 | `InputSourcePatterns` |
 | 事实种类 | 27 | 内置 + YAML |

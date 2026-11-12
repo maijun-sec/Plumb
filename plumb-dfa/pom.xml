@@ -352,6 +352,14 @@
                              sink-families.yaml; the legacy
                              sinkArgumentIndex overrides are unreachable. -->
                         <include>org/plumb/dfa/taint/R1100SinkArgIndexPrecedenceTest.java</include>
+                        <!-- The catalogue names the ARGUMENT POSITION that
+                             carries the tainted value. A position no call of
+                             that API can supply is a silent failure: the
+                             check is skipped and the finding never appears.
+                             Four entries were in that state (setString,
+                             InitialContext#lookup, DataSource#getConnection,
+                             and the JDK Logger levels that do not exist). -->
+                        <include>org/plumb/dfa/taint/SinkPositionReachabilityTest.java</include>
                         <!-- R1101: the early-return divide-by-zero
                              guard idiom (`if (d == 0) return 0;`)
                              establishes a false-edge fact that the

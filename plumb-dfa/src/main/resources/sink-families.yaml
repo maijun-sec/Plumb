@@ -75,9 +75,8 @@ families:
     patterns:
       - '^java\.util\.logging\.Logger\.info(/\d+)?'
       - '^java\.util\.logging\.Logger\.warn(/\d+)?'
-      - '^java\.util\.logging\.Logger\.error(/\d+)?'
       - '^java\.util\.logging\.Logger\.severe(/\d+)?'
-      - '^java\.util\.logging\.Logger\.debug(/\d+)?'
+      - '^java\.util\.logging\.Logger\.fine(/\d+)?'
       - '^java\.util\.logging\.Logger\.log(/\d+)?'
       - '^java\.lang\.System\.out(/\d+)?'
       - '^java\.lang\.System\.err(/\d+)?'
@@ -103,9 +102,8 @@ families:
     patterns:
       - '^java\.util\.logging\.Logger\.info(/\d+)?'
       - '^java\.util\.logging\.Logger\.warn(/\d+)?'
-      - '^java\.util\.logging\.Logger\.error(/\d+)?'
       - '^java\.util\.logging\.Logger\.severe(/\d+)?'
-      - '^java\.util\.logging\.Logger\.debug(/\d+)?'
+      - '^java\.util\.logging\.Logger\.fine(/\d+)?'
       - '^java\.util\.logging\.Logger\.log(/\d+)?'
       - '^java\.lang\.System\.out(/\d+)?'
       - '^java\.lang\.System\.err(/\d+)?'
@@ -439,8 +437,10 @@ families:
     patterns:
       - '^java\.sql\.DriverManager\.getConnection(/\d+)?'
       - '^DriverManager\.getConnection(/\d+)?'
-      - '^javax\.sql\.DataSource\.getConnection(/\d+)?'
-      - '^DataSource\.getConnection(/\d+)?'
+      - pattern: '^javax\.sql\.DataSource\.getConnection(/\d+)?'
+        arg_index: 1
+      - pattern: '^DataSource\.getConnection(/\d+)?'
+        arg_index: 1
       - '^org\.springframework\.jdbc\.datasource\.DriverManagerDataSource\.<init>(/\d+)?'
       - pattern: '^java\.net\.PasswordAuthentication\.<init>(/\d+)?'
         arg_index: 1
@@ -499,8 +499,6 @@ families:
       - '^java\.io\.PrintWriter\.format(/\d+)?'
       - '^java\.io\.PrintWriter\.printf(/\d+)?'
       - '^java\.io\.OutputStream\.write(/\d+)?'
-      - '^java\.io\.OutputStream\.print(/\d+)?'
-      - '^java\.io\.OutputStream\.println(/\d+)?'
       - '^java\.io\.FilterOutputStream\.write(/\d+)?'
       - '^java\.io\.BufferedOutputStream\.write(/\d+)?'
       - '^java\.io\.DataOutputStream\.write(/\d+)?'
@@ -3444,11 +3442,16 @@ families:
         arg_index: 0
       - pattern: '^javax\.naming\.Context\.(addToEnvironment|\<init\>)(/\d+)?'
         arg_index: 0
-      - '^javax\.naming\.InitialContext\.search(/\d+)?'
-      - '^javax\.naming\.InitialDirContext\.search(/\d+)?'
-      - '^javax\.naming\.ldap\.LdapContext\.search(/\d+)?'
-      - '^javax\.naming\.Context\.lookup(/\d+)?'
-      - '^javax\.naming\.InitialContext\.lookup(/\d+)?'
+      - pattern: '^javax\.naming\.InitialContext\.search(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^javax\.naming\.InitialDirContext\.search(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^javax\.naming\.ldap\.LdapContext\.search(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^javax\.naming\.Context\.lookup(/\d+)?'
+        arg_index: 0
+      - pattern: '^javax\.naming\.InitialContext\.lookup(/\d+)?'
+        arg_index: 0
       - '^org\.springframework\.ldap\.core\.LdapTemplate\.search(/\d+)?'
       - '^org\.springframework\.ldap\.core\.LdapTemplate\.find(/\d+)?'
       - pattern: '^netscape\.ldap\.util\.ConnectionPool\.\<init\>(/\d+)?'
@@ -6500,11 +6503,6 @@ families:
       - '^java\.sql\.PreparedStatement\.executeBatch(/\d+)?'
       - '^java\.sql\.PreparedStatement\.executeLargeBatch(/\d+)?'
       - '^java\.sql\.PreparedStatement\.addBatch(/\d+)?'
-      - '^java\.sql\.PreparedStatement\.setString(/\d+)?'
-      - '^java\.sql\.PreparedStatement\.setObject(/\d+)?'
-      - '^java\.sql\.PreparedStatement\.setInt(/\d+)?'
-      - '^java\.sql\.PreparedStatement\.setLong(/\d+)?'
-      - '^java\.sql\.PreparedStatement\.setNull(/\d+)?'
       - '^java\.sql\.Connection\.nativeSQL(/\d+)?'
       - '^javax\.persistence\.EntityManager\.createQuery(/\d+)?'
       - '^javax\.persistence\.EntityManager\.createNamedQuery(/\d+)?'
