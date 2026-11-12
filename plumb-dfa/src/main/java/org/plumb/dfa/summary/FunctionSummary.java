@@ -87,21 +87,42 @@ public final class FunctionSummary {
   private final Set<String> calleesReached;
   private final boolean hasUnmodelledBehavior;
   // True if the function has at least one non-RETURN instruction
-  // in its body. Used by the cross-function summary-fold path to
-  // detect "callee does something non-trivial" so we can
-  // conservatively propagate caller-arg taint through the function
-  // even when no taint propagated during the callee's standalone
-  // analysis (because the param was not tainted standalone). For
-  // example, for
+  // in its body. It says the body does something; it does not say
+  // what. The conservative caller-arg -> dest rule asks a narrower
+  // question -- may the result depend on the argument -- and that is
+  // {@link #mayReturnArgument}. For example, for
   //   String buildQuery(String u) {
   //     return "SELECT ... " + u + " ...";
   //   }
   // analyzed standalone, the param `u` is not tainted, so no
   // TaintPropagate is recorded. The fold's existing dest-tainting
-  // rule (returnOps contains TaintPropagate) misses this case.
-  // The "hasBody" signal lets the conservative rule fire: caller
-  // passes a tainted arg to a non-trivial callee → dest is tainted.
+  // rule (returnOps contains TaintPropagate) misses this case, and
+  // the conservative rule is what covers it.
   private final boolean hasBody;
+  // True when the result of this function MAY depend on its arguments.
+  //
+  // This is the question the conservative caller-arg -> dest rule asks, and it
+  // is not the same question as "the body has a non-RETURN instruction". A body
+  // whose only instruction is `return x;` has no non-RETURN instruction, yet
+  // the argument plainly reaches the result. A body whose only instruction is
+  // `return "constant";` also has no non-RETURN instruction, and the argument
+  // plainly does NOT reach the result.
+  //
+  // The engine used to answer this question with the body flag, and the copy it
+  // stores under an alias key set that flag to true unconditionally -- so a
+  // method that returns a constant was announced as a method that might pass its
+  // argument through, and the conservative rule fired on it.
+  private final boolean mayReturnArgument;
+  // True when this summary is the COPY the engine stores under an ALIAS key.
+  //
+  // The alias key exists to say "this method is here, and this is its summary".
+  // That is an EXISTENCE claim. It is what keeps a call site from falling
+  // through to the bare key, which holds whichever class wrote it first -- and
+  // that class may be a different method entirely.
+  //
+  // It says nothing about what the method DOES, so the copy carries the method's
+  // own answer to that question in {@link #mayReturnArgument}.
+  private final boolean claimsBody;
   // String-passthrough ops and
   // field-write ops observed inside this
   // function. Both are Lists (not Sets)
@@ -140,6 +161,8 @@ public final class FunctionSummary {
         calleesReached,
         hasUnmodelledBehavior,
         hasBody,
+        false,
+        false,
         stringOps,
         fieldOps,
         Set.of());
@@ -152,6 +175,8 @@ public final class FunctionSummary {
       Set<String> calleesReached,
       boolean hasUnmodelledBehavior,
       boolean hasBody,
+      boolean mayReturnArgument,
+      boolean claimsBody,
       List<StringOp> stringOps,
       List<FieldOp> fieldOps,
       Set<Integer> returnTaintCauses) {
@@ -170,6 +195,8 @@ public final class FunctionSummary {
     this.calleesReached = Collections.unmodifiableSet(new LinkedHashSet<>(calleesReached));
     this.hasUnmodelledBehavior = hasUnmodelledBehavior;
     this.hasBody = hasBody;
+    this.mayReturnArgument = mayReturnArgument;
+    this.claimsBody = claimsBody;
     // Defensive copies of the new
     // lists. Both are ordered (consumers
     // walk them in order) so ArrayList is
@@ -209,6 +236,8 @@ public final class FunctionSummary {
     private final Set<String> calleesReached = new LinkedHashSet<>();
     private boolean hasUnmodelledBehavior;
     private boolean hasBody;
+    private boolean mayReturnArgument;
+    private boolean claimsBody;
     // Per-summary accumulators for string-passthrough ops and
     // field-write ops. Lists (not Sets) because order matters
     // for the two-pass re-application.
@@ -278,6 +307,37 @@ public final class FunctionSummary {
      */
     public Builder markHasBody() {
       this.hasBody = true;
+      // A body does something, so it MAY pass an argument through. The
+      // conservative rule asks that question, and "the body does something" is
+      // the coarse answer to it.
+      this.mayReturnArgument = true;
+      return this;
+    }
+
+    /**
+     * Record that the result of this function may depend on its arguments.
+     *
+     * <p>This is the fact the conservative caller-arg -> dest rule needs, and it is narrower than
+     * {@link #markHasBody()}: a body whose only instruction is {@code return "constant";} does not
+     * pass an argument through.
+     *
+     * @return this builder
+     */
+    public Builder markMayReturnArgument() {
+      this.mayReturnArgument = true;
+      return this;
+    }
+
+    /**
+     * Record that this summary is the copy stored under an ALIAS key.
+     *
+     * <p>See {@link FunctionSummary#claimsBody()} for why the existence of the method is a separate
+     * claim from what the method does.
+     *
+     * @return this builder
+     */
+    public Builder markClaimsBody() {
+      this.claimsBody = true;
       return this;
     }
 
@@ -318,6 +378,9 @@ public final class FunctionSummary {
     public Builder recordReturnTaintCause(int paramIndex) {
       if (paramIndex >= 0) {
         returnTaintCauses.add(paramIndex);
+        // The return taint flows through this formal, so the result
+        // depends on an argument.
+        this.mayReturnArgument = true;
       }
       return this;
     }
@@ -330,6 +393,8 @@ public final class FunctionSummary {
           calleesReached,
           hasUnmodelledBehavior,
           hasBody,
+          mayReturnArgument,
+          claimsBody,
           stringOps,
           fieldOps,
           returnTaintCauses);
@@ -376,13 +441,42 @@ public final class FunctionSummary {
   }
 
   /**
-   * True if this function has at least one non-RETURN instruction in its body. Used by the
-   * cross-function summary-fold path to detect "callee does something non-trivial" so a
-   * conservative caller-arg → dest taint passthrough rule can fire. See {@code
-   * TaintedCheckerBase.propagateTaintFromCalleeSummary} for the rule logic.
+   * True if this function has at least one non-RETURN instruction in its body.
+   *
+   * <p>It says the body does something, not what it does. The conservative caller-arg → dest rule
+   * asks the narrower question -- may the result depend on the argument -- and that is {@link
+   * #mayReturnArgument()}. See {@code TaintedCheckerBase.propagateTaintFromCalleeSummary} for the
+   * rule logic.
    */
   public boolean hasBody() {
     return hasBody;
+  }
+
+  /**
+   * True if the result of this function MAY depend on its arguments.
+   *
+   * <p>This is the question the conservative caller-arg -> dest rule asks: if the caller passes a
+   * tainted argument to such a function, the argument may reach the result. See {@code
+   * TaintedCheckerBase.propagateTaintFromCalleeSummary} for the rule.
+   *
+   * <p>It is not the same question as {@link #hasBody()}. A body whose only instruction is {@code
+   * return "constant";} has no body to speak of and passes no argument through; a body whose only
+   * instruction is {@code return x;} has no body to speak of either, and passes the argument
+   * straight through.
+   */
+  public boolean mayReturnArgument() {
+    return mayReturnArgument;
+  }
+
+  /**
+   * True if this summary is the copy the engine stores under an ALIAS key.
+   *
+   * <p>The alias key says "this method is here". A summary that carries no facts is still the right
+   * answer to that question, so the lookup accepts it -- and accepts it in preference to the bare
+   * key, which holds whichever class happened to write it first.
+   */
+  public boolean claimsBody() {
+    return claimsBody;
   }
 
   /**
@@ -457,6 +551,8 @@ public final class FunctionSummary {
     // subset of callers can filter on
     // hasBody themselves.
     if (hasBody) b.markHasBody();
+    if (mayReturnArgument) b.markMayReturnArgument();
+    if (claimsBody) b.markClaimsBody();
     // stringOps and fieldOps are
     // preserved through project() as-is.
     // They're not Operation subtypes, so
@@ -490,8 +586,10 @@ public final class FunctionSummary {
    * at EVERY call site, including the ones that pass nothing tainted -- and that is a false
    * positive, not a missed one.
    *
-   * <p>The body flag is set because the alias key exists to say "this function HAS a body", which
-   * is what the conservative argument-to-result rule asks.
+   * <p>The copy does not claim a body. The alias key exists to say "this method IS HERE", which is
+   * an existence claim, and it is carried by {@link #claimsBody()}. What the method DOES with its
+   * arguments is a separate fact, and the copy keeps the method's own answer to it in {@link
+   * #mayReturnArgument()}.
    *
    * @param signature the signature to store the copy under
    * @return the copy
@@ -512,7 +610,14 @@ public final class FunctionSummary {
     if (hasUnmodelledBehavior) {
       b.markUnmodelled();
     }
-    b.markHasBody();
+    // The copy says "this method is here". It does NOT say "this method has a
+    // body": whether the method does anything with its arguments is the method's
+    // own fact, and the copy carries it in mayReturnArgument. Setting the body
+    // flag here instead used to announce a method that returns a constant as a
+    // method that might pass an argument through, and the conservative rule
+    // fired on it.
+    b.markClaimsBody();
+    if (mayReturnArgument) b.markMayReturnArgument();
     for (StringOp sop : stringOps) {
       b.recordStringOp(sop);
     }
@@ -592,6 +697,8 @@ public final class FunctionSummary {
     }
     if (hasUnmodelledBehavior) b.markUnmodelled();
     if (hasBody) b.markHasBody();
+    if (mayReturnArgument) b.markMayReturnArgument();
+    if (claimsBody) b.markClaimsBody();
     for (StringOp sop : stringOps) b.recordStringOp(sop);
     for (FieldOp fop : fieldOps) b.recordFieldOp(fop);
     return b.build();
@@ -663,6 +770,12 @@ public final class FunctionSummary {
     // reports a body.
     if (hasBody || other.hasBody) {
       b.markHasBody();
+    }
+    if (mayReturnArgument || other.mayReturnArgument) {
+      b.markMayReturnArgument();
+    }
+    if (claimsBody || other.claimsBody) {
+      b.markClaimsBody();
     }
     return b.build();
   }

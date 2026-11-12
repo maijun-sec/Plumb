@@ -194,7 +194,13 @@ class FunctionSummaryTest {
     FunctionSummary alias = summary.aliasedAs("Helper :: echo/1");
 
     assertEquals("Helper :: echo/1", alias.signature());
-    assertTrue(alias.hasBody(), "the alias key exists to say the function HAS a body");
+    assertTrue(alias.claimsBody(), "the alias key exists to say the method IS HERE");
+    assertFalse(
+        alias.hasBody(),
+        "the copy must not claim a body: what the method does is the method's own fact");
+    assertTrue(
+        alias.mayReturnArgument(),
+        "the copy keeps the method's own answer to 'may the argument reach the result'");
     assertEquals(
         java.util.Set.of(0),
         alias.returnTaintCauses(),

@@ -301,6 +301,11 @@
                         <include>org/plumb/dfa/taint/ArgumentPassthroughTest.java</include>
                         <include>org/plumb/dfa/taint/R804FollowupFieldTaintTrackerTest.java</include>
                         <include>org/plumb/dfa/taint/R807ConstSourcePassTest.java</include>
+                        <!-- The conservative caller-arg to dest rule asks the
+                             CALLEE whether its result may depend on the
+                             argument. A copy under an alias key must not
+                             answer that question for it. -->
+                        <include>org/plumb/dfa/taint/ConservativePassthroughTest.java</include>
                         <!-- R-810: StaticFieldResolver short-name
                              lookup fidelity gate. -->
                         <include>org/plumb/dfa/resolve/R253SourcePathResolverTest.java</include>

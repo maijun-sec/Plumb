@@ -83,7 +83,13 @@ public final class CalleeSummaryKeys {
 
     /** Whether the resolution carries no usable summary. */
     public boolean isEmpty() {
-      return summary == null || (summary.isTrivial() && !summary.hasBody());
+      // A summary that CLAIMS a body is the engine's copy under an alias key. It
+      // carries no facts, but it is still the right answer: the method is here,
+      // and this is its summary. Treating it as "nothing found" would let the
+      // lookup fall through to the bare key, which holds whichever class wrote
+      // it first -- possibly a different method entirely.
+      return summary == null
+          || (summary.isTrivial() && !summary.hasBody() && !summary.claimsBody());
     }
   }
 
@@ -186,8 +192,10 @@ public final class CalleeSummaryKeys {
    * The summary a call site resolves to, and the key it was found under.
    *
    * <p>The candidates are tried in order, and the first one that holds a usable summary wins. A
-   * summary is usable when it carries facts or when it knows it has a body: the second is the
-   * getter / setter / passthrough shape, whose facts are needed even though it carries none.
+   * summary is usable when it carries facts, when it knows it has a body, or when it claims a body:
+   * the second is the getter / setter / passthrough shape, whose facts are needed even though it
+   * carries none, and the third is the engine's copy under an alias key, which carries no facts at
+   * all and says only that the method is here.
    *
    * @param cache the summary cache to read
    * @param calleeSig the callee signature as the IR spells it
@@ -203,7 +211,11 @@ public final class CalleeSummaryKeys {
     for (String key : keysFor(calleeSig, callerEnclosingClass)) {
       FunctionSummary candidate = cache.get(key);
       if (candidate == null) continue;
-      if (!candidate.isTrivial() || candidate.hasBody()) {
+      // A candidate is usable when it carries facts, when it knows it has a body,
+      // or when it CLAIMS a body -- the last one is the engine's copy under an
+      // alias key, and it is the answer that keeps this call site from reading
+      // another class's summary under the bare key.
+      if (!candidate.isTrivial() || candidate.hasBody() || candidate.claimsBody()) {
         return new Resolution(key, candidate);
       }
       if (first == null) {

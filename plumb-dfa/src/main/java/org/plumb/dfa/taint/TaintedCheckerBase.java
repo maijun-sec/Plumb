@@ -5127,7 +5127,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private FunctionSummary projectForCallSite(
       TacInstruction ins, AnalysisContext ctx, String summaryKey, FunctionSummary calleeSummary) {
     if (ins == null || ctx == null || calleeSummary == null) return calleeSummary;
-    if (calleeSummary.isTrivial() && !calleeSummary.hasBody()) return calleeSummary;
+    if (calleeSummary.isTrivial() && !calleeSummary.hasBody() && !calleeSummary.claimsBody()) {
+      return calleeSummary;
+    }
     String callString = callStringOf(ctx);
     if (callString.isEmpty()) return calleeSummary;
     // The call site's own tainted arguments, and the formal each binds to.
@@ -5171,7 +5173,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // it was derived from is replaced.
     String projectionKey = summaryKey == null ? "" : summaryKey;
     FunctionSummary cached = ctx.summaryCache().getInContext(projectionKey, callString);
-    if (cached != null && (!cached.isTrivial() || cached.hasBody())) {
+    if (cached != null && (!cached.isTrivial() || cached.hasBody() || cached.claimsBody())) {
       return cached;
     }
     FunctionSummary projected = calleeSummary.projectThrough(site);
@@ -5218,7 +5220,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     //   1. the call site's own projection, if one was recorded;
     //   2. otherwise the context-free summary (the union over all call sites).
     calleeSummary = projectForCallSite(ins, ctx, resolution.key(), calleeSummary);
-    if (calleeSummary == null || (calleeSummary.isTrivial() && !calleeSummary.hasBody())) {
+    if (calleeSummary == null
+        || (calleeSummary.isTrivial() && !calleeSummary.hasBody() && !calleeSummary.claimsBody())) {
       // for JDK getter-style methods with no
       // plumb-side summary. The classic
       // Juliet CWE89 pattern
@@ -5551,11 +5554,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     //
     // Rule: if the dest is a
     // TacVar, the dest is not already
-    // tainted, the callee has a body
-    // (calleeSummary.hasBody() == true),
-    // and any caller arg is tainted,
-    // then mark the dest tainted via
-    // that arg's taint label. We walk
+    // tainted, the callee's result MAY
+    // depend on its arguments
+    // (calleeSummary.mayReturnArgument()
+    // == true), and any caller arg is
+    // tainted, then mark the dest tainted
+    // via that arg's taint label. We walk
     // ALL args (no static/instance
     // offset assumption) because the
     // `args.size() - 1` heuristic is
@@ -5565,13 +5569,21 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // arg). Walking all args is
     // the simplest correct
     // implementation; it does not
-    // over-taint because the
-    // callee-has-body gate ensures
-    // only non-trivial functions are
-    // candidates.
+    // over-taint because the gate
+    // ensures only functions whose
+    // result may depend on their
+    // arguments are candidates.
+    //
+    // The gate asks the METHOD, not the
+    // key the summary was found under:
+    // the engine's copy under an alias
+    // key used to claim a body it did
+    // not have, so a method returning a
+    // constant was treated as a method
+    // that might pass its argument on.
     if (ins.dest instanceof TacOperand.TacVar r40Dest
         && !taintedVars.containsKey(r40Dest)
-        && calleeSummary.hasBody()) {
+        && calleeSummary.mayReturnArgument()) {
       for (int i = 0; i < ins.args.size(); i++) {
         TacOperand arg = ins.args.get(i);
         if (!(arg instanceof TacOperand.TacVar av)) continue;
@@ -6292,14 +6304,26 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     //     dest-tainting rule
     //     misses this case.
     int nonReturnCount = 0;
+    boolean returnsArgumentDependentValue = false;
     for (TacInstruction ins : fn.instructions()) {
       if (ins.kind != TacInstruction.Kind.RETURN) {
         nonReturnCount++;
-        if (nonReturnCount >= 1) break;
+        continue;
+      }
+      // A body whose ONLY instruction is the return can still pass the argument
+      // through: `return x;` is one RETURN and one operand. So the question the
+      // conservative rule asks -- "can the caller's argument reach the result?"
+      // -- is not answered by the instruction COUNT alone. A RETURN of a
+      // CONSTANT cannot, and a RETURN of anything else might.
+      if (ins.lhs1 != null && !(ins.lhs1 instanceof TacOperand.Const)) {
+        returnsArgumentDependentValue = true;
       }
     }
     if (nonReturnCount > 0) {
       b.markHasBody();
+    }
+    if (returnsArgumentDependentValue) {
+      b.markMayReturnArgument();
     }
     // 3. Subclass-specific additional
     //    ops. Default no-op. Checkers
