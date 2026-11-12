@@ -6979,7 +6979,6 @@ families:
           arg_index: 2
         - pattern: '^crypto/tls\.Dialer\.Dial(/\d+)?'
           arg_index: 1
-      kotlin:
       scala:
         - pattern: '^(play\.api\.libs\.ws\.WSClient|play\.api\.libs\.ws\.StandaloneWSClient)\.url(/\d+)?'
           arg_index: 0
