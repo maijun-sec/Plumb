@@ -102,6 +102,9 @@ class AndroidImplicitIntentFamilyTest {
   private static final String START_INTENT_SENDER_FOR_RESULT =
       "android.app.Activity.startIntentSenderForResult/6";
 
+  /** The plain sender launch: the sender first, the fill-in intent second. */
+  private static final String START_INTENT_SENDER = "android.app.Activity.startIntentSender/5";
+
   /** The call that builds the intent, and the one the launch site receives. */
   private static final String BUILD_INTENT = "com.example.Builder.buildIntent/1";
 
@@ -206,6 +209,25 @@ class AndroidImplicitIntentFamilyTest {
         .isFalse();
     assertThat(mentions(atTheFillIn, START_INTENT_SENDER_FOR_RESULT))
         .as("the fill-in intent is the third argument of this call")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("the plain sender launch names the fill-in intent, not the sender")
+  void thePlainSenderLaunchNamesTheFillInIntentNotTheSender() {
+    // startIntentSender(IntentSender intent, Intent fillInIntent, int
+    // flagsMask, int flagsValues, int extraFlags): the sender comes
+    // first and the fill-in intent second. This is the call the other
+    // two IntentSender calls are variants of, and it was the one that
+    // was missing.
+    List<Finding> atTheSender = scan(launchAt(START_INTENT_SENDER, 0, 5));
+    List<Finding> atTheFillIn = scan(launchAt(START_INTENT_SENDER, 1, 5));
+
+    assertThat(mentions(atTheSender, START_INTENT_SENDER))
+        .as("the sender is not the intent, so the finding is not there")
+        .isFalse();
+    assertThat(mentions(atTheFillIn, START_INTENT_SENDER))
+        .as("the fill-in intent is the second argument of this call")
         .isTrue();
   }
 

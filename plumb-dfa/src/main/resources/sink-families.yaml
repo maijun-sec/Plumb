@@ -8575,11 +8575,14 @@ families:
       # NOT of all of them, and the difference is the API's. The two
       # "from a child" calls take the fragment first and the intent
       # second -- startActivityFromChild(Fragment, Intent, int) -- and
-      # the two IntentSender calls take the IntentSender first and the
+      # the three IntentSender calls take the IntentSender first and the
       # intent, which is their fill-in intent, later:
+      # startIntentSender(IntentSender, Intent, int, int, int),
       # startIntentSenderForResult(IntentSender, int, Intent, int, int,
-      # int). So the position an entry names is the position of the
-      # INTENT in that API, not the position of the first argument.
+      # int) and startIntentSenderFromChild(Fragment, IntentSender, int,
+      # Intent, int, int, int). So the position an entry names is the
+      # position of the INTENT in that API, not the position of the first
+      # argument.
       #
       # startActivity is the plain one -- the call every app makes --
       # and it was missing: the rule's own text names it as one of the
@@ -8589,6 +8592,14 @@ families:
       # matches a pattern as a substring: without the boundary it
       # would also reach the startActivity* calls below, whose intent
       # is NOT at the same position.
+      #
+      # The plain startIntentSender was missing as well, and it is the
+      # one the other two are variants of: its fill-in intent is the
+      # SECOND argument, right after the sender. Its pattern ends in a
+      # word boundary for the same reason -- without it the pattern
+      # would also reach startIntentSenderForResult and
+      # startIntentSenderFromChild, whose intent is NOT at that
+      # position.
       - pattern: '^android\.app\.Activity\.startActivity\b(/\d+)?'
         arg_index: 0
       - pattern: '^android\.app\.Activity\.startActivityForResult(/\d+)?'
@@ -8599,6 +8610,8 @@ families:
         arg_index: 1
       - pattern: '^android\.app\.Activity\.startActivityIfNeeded(/\d+)?'
         arg_index: 0
+      - pattern: '^android\.app\.Activity\.startIntentSender\b(/\d+)?'
+        arg_index: 1
       - pattern: '^android\.app\.Activity\.startIntentSenderForResult(/\d+)?'
         arg_index: 2
       - pattern: '^android\.app\.Activity\.startIntentSenderFromChild(/\d+)?'

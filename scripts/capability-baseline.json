@@ -2822,6 +2822,7 @@
       "^android\\.app\\.Activity\\.startActivity\\b(/\\d+)?",
       "^android\\.app\\.Activity\\.startIntentSenderForResult(/\\d+)?",
       "^android\\.app\\.Activity\\.startIntentSenderFromChild(/\\d+)?",
+      "^android\\.app\\.Activity\\.startIntentSender\\b(/\\d+)?",
       "^android\\.app\\.Activity\\.startNextMatchingActivity(/\\d+)?",
       "^android\\.content\\.Intent\\.(putExtra|setExtra)(/\\d+)?",
       "^android\\.content\\.Intent\\.(setAction|setData|setType|setClassName)(/\\d+)?",
