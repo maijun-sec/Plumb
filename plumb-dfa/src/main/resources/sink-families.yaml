@@ -8530,6 +8530,27 @@ families:
       # The launch sites. The intent is the FIRST argument of each of
       # them; the request code that follows it is a number, not a
       # payload, so a position past the intent names nothing.
+      #
+      # These are reachable, and they are reachable by a route the
+      # payload entries above do not cover. The payload entries fire
+      # when a tainted value is put INTO an intent. The launch entries
+      # fire when the INTENT ITSELF carries the taint -- when the
+      # intent came out of a call whose result may carry the caller's
+      # argument.
+      #
+      # The engine's summary path is what connects the two. A method
+      # that builds an intent and returns it answers the summary's
+      # question -- "may this result depend on what the caller passed?"
+      # -- with YES: the walk follows the returned value back to its
+      # definition, and a construction is a shape it does not follow,
+      # so it answers YES rather than "no". The result therefore
+      # inherits the caller's taint, the intent that reaches
+      # startActivity() carries it, and the launch entry names the
+      # argument that holds it.
+      #
+      # So these entries are not a second copy of the payload entries:
+      # they are the only report point in the shape where the tainted
+      # value reaches the intent through the call that produced it.
       - pattern: '^android\.app\.Activity\.startActivityForResult(/\d+)?'
         arg_index: 0
       - pattern: '^android\.app\.Activity\.startActivityFromChild(/\d+)?'
