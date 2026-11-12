@@ -61,7 +61,9 @@ import org.plumb.tac.ir.SourceLanguage;
  * and the source matcher looks at the callee NAME only -- it never reads a position, so a source
  * family's position cannot be unreachable. A pattern that is not a plain {@code owner.method} (an
  * alternation, a group, a regular expression) names something the JDK's method table says nothing
- * about, and an API that is not on this JDK is skipped for the same reason.
+ * about, and an API that is not on this JDK is skipped for the same reason. So is a LIBRARY class:
+ * only a class in a named module is judged, because whether a library is on the classpath is a
+ * property of the build, not of the catalogue.
  */
 class CataloguePositionReachabilityTest {
 
@@ -82,10 +84,6 @@ class CataloguePositionReachabilityTest {
   private static final Map<String, String> KNOWN_UNREACHABLE =
       new LinkedHashMap<>() {
         {
-          put(
-              "ssl.sinks|^org\\.apache\\.http\\.ssl\\.SSLContexts\\.custom(/\\d+)?",
-              "custom() takes no argument: the material reaches loadTrustMaterial and"
-                  + " loadKeyMaterial, so the position has to move to those calls.");
           put(
               "random.sinks|^java\\.util\\.Random\\.nextLong(/\\d+)?",
               "nextLong() takes no argument: what is weak is the generator, so the position"
@@ -446,6 +444,15 @@ class CataloguePositionReachabilityTest {
     try {
       type = Class.forName(api.owner);
     } catch (Throwable t) {
+      return -1;
+    }
+    // Only a class in a NAMED module is judged. A JDK class lives in one
+    // (java.base, java.sql, java.desktop, ...), so its method table is the
+    // JDK's and the same on every machine that builds this project. A class
+    // on the classpath lives in the unnamed module, and whether it is there
+    // at all depends on what the build happened to put on the classpath --
+    // a gate whose verdict depends on that is not a gate.
+    if (!type.getModule().isNamed()) {
       return -1;
     }
     int max = -1;
