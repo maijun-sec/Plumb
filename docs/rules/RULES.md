@@ -23,7 +23,7 @@ them.
 | Category | Module | Count | How it is implemented | Stage |
 | --- | --- | ---: | --- | --- |
 | Taint source patterns | plumb-dfa | **215** | The 11 source families of `sink-families.yaml` -- the ones that carry no CWE | taint |
-| Taint sink patterns | plumb-dfa | **3901** | The 56 sink families of `sink-families.yaml` -- the ones that carry a CWE | taint |
+| Taint sink patterns | plumb-dfa | **3903** | The 56 sink families of `sink-families.yaml` -- the ones that carry a CWE | taint |
 | Taint source variables | plumb-dfa | **10** | The `source_variables:` blocks of `sink-families.yaml` -- the sources that are not calls | taint |
 | DFA checker (declared in YAML) | plumb-dfa | **44** (42 enabled / 2 disabled) | `checkers.yaml` | dfa |
 | DFA checker (actually registered) | plumb-main | **99** | `ScanRunner.buildDfaCheckers()` | dfa |

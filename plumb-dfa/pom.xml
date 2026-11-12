@@ -843,6 +843,15 @@
                              installed, and only a finding says the rule
                              works. -->
                         <include>org/plumb/dfa/checkers/taint/FamilyWatcherTriggerTest.java</include>
+                        <!-- The implicit intent family names two kinds of
+                             entry point, and each kind answers a different
+                             question: the payload's own entry points fire
+                             when a tainted value goes INTO an intent, and
+                             the launch sites fire when the INTENT carries
+                             the taint. A reader who cannot tell them apart
+                             concludes the launch sites are dead, and that
+                             loses the finding. -->
+                        <include>org/plumb/dfa/checkers/taint/AndroidImplicitIntentFamilyTest.java</include>
                         <!-- The class-level (cross-function) field key has to
                              name the CLASS, not the spelling of it: two
                              classes with the same simple name in different

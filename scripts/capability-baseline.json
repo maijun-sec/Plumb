@@ -2815,6 +2815,7 @@
   ],
   "sink_families": {
     "android-implicit-intent.sinks": [
+      "^android\\.app\\.Activity\\.startActivity(/\\d+)?",
       "^android\\.app\\.Activity\\.startActivityForResult(/\\d+)?",
       "^android\\.app\\.Activity\\.startActivityFromChild(/\\d+)?",
       "^android\\.app\\.Activity\\.startActivityFromFragment(/\\d+)?",
@@ -2825,6 +2826,7 @@
       "^android\\.content\\.Intent\\.(putExtra|setExtra)(/\\d+)?",
       "^android\\.content\\.Intent\\.(setAction|setData|setType|setClassName)(/\\d+)?",
       "^android\\.content\\.Intent\\.\\<init\\>(/\\d+)?",
+      "^android\\.content\\.Intent\\.put(String|CharSequence)Extra(/\\d+)?",
       "^android\\.content\\.Intent\\.setDataAndType(/\\d+)?"
     ],
     "cleartext-tx.sinks": [

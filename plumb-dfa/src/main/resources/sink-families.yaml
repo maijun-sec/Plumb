@@ -8521,6 +8521,12 @@ families:
       # answers it, so the payload's own entry points are the sinks.
       - pattern: '^android\.content\.Intent\.(putExtra|setExtra)(/\d+)?'
         arg_index: 1
+      # The payload entry points that carry a STRING. putExtra is the
+      # general one; putStringExtra is what a program calls when the
+      # payload IS a string, which is most of them. The payload sits at
+      # the same position in both, so one pattern names them.
+      - pattern: '^android\.content\.Intent\.put(String|CharSequence)Extra(/\d+)?'
+        arg_index: 1
       - pattern: '^android\.content\.Intent\.(setAction|setData|setType|setClassName)(/\d+)?'
         arg_index: 0
       - pattern: '^android\.content\.Intent\.setDataAndType(/\d+)?'
@@ -8551,6 +8557,16 @@ families:
       # So these entries are not a second copy of the payload entries:
       # they are the only report point in the shape where the tainted
       # value reaches the intent through the call that produced it.
+      #
+      # startActivity is the plain one -- the call every app makes -- and
+      # it was missing: the rule's own text names it as one of the entry
+      # points the finding is about, and a rule whose text and catalogue
+      # disagree is a rule that reports on the wrong calls. Its pattern
+      # is anchored at the START of the method name, so it also reaches
+      # the startActivity* variants below; they keep their own entries so
+      # that a reader looking for one of them finds it by name.
+      - pattern: '^android\.app\.Activity\.startActivity(/\d+)?'
+        arg_index: 0
       - pattern: '^android\.app\.Activity\.startActivityForResult(/\d+)?'
         arg_index: 0
       - pattern: '^android\.app\.Activity\.startActivityFromChild(/\d+)?'
