@@ -506,7 +506,8 @@ def main():
               % (len(surface["registered_rules"]), len(surface["registered_checkers"]),
                  len(surface["checker_classes"]),
                  len(surface["input_source_patterns"]), len(surface["fact_kinds"]),
-                 len(surface["sink_families"]), len(surface["receiver_passthrough_families"])))
+                 family_count(surface["sink_families"]),
+                 family_count(surface["receiver_passthrough_families"])))
         return 0
 
     if not BASELINE.is_file():
@@ -533,8 +534,9 @@ def main():
             old_len = len(old) if isinstance(old, list) else 0
             print("  %-32s %d (baseline %d)" % (name, len(value), old_len))
         else:
-            old_len = len(old) if isinstance(old, dict) else 0
-            print("  %-32s %d families (baseline %d)" % (name, len(value), old_len))
+            old_len = family_count(old) if isinstance(old, dict) else 0
+            print("  %-32s %d families (baseline %d)"
+                  % (name, family_count(value), old_len))
 
     if gained:
         print()
