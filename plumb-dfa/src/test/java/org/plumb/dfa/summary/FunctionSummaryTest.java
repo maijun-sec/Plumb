@@ -213,4 +213,32 @@ class FunctionSummaryTest {
         alias.projectThrough(CallSiteBinding.of(java.util.Map.of(0, 0))).returnOps().isEmpty(),
         "a call site that taints the parameter must keep the return taint");
   }
+
+  @Test
+  void aBodyIsNotTheSameFactAsAResultThatMayCarryAnArgument() {
+    FunctionSummary body = new FunctionSummary.Builder("M#m(String)").markHasBody().build();
+
+    assertTrue(body.hasBody(), "the body has an instruction that is not a return");
+    assertFalse(
+        body.mayReturnArgument(),
+        "a body says the function does something; it does not say the result may carry the "
+            + "argument, and the conservative rule asks THAT question");
+  }
+
+  @Test
+  void aMergeKeepsTheFactsOfBothSides() {
+    FunctionSummary bodyOnly = new FunctionSummary.Builder("M#m(String)").markHasBody().build();
+    FunctionSummary argumentOnly =
+        new FunctionSummary.Builder("M#m(String)").markMayReturnArgument().build();
+
+    FunctionSummary merged = bodyOnly.merge(argumentOnly);
+
+    assertTrue(merged.hasBody(), "the merged summary keeps the body fact");
+    assertTrue(
+        merged.mayReturnArgument(),
+        "the merged summary keeps the argument fact, and neither side is dropped for being empty");
+    assertTrue(
+        argumentOnly.merge(bodyOnly).mayReturnArgument(),
+        "the merge does not depend on which side is the receiver");
+  }
 }

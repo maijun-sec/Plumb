@@ -41,6 +41,7 @@ import org.plumb.dfa.summary.CalleeSummaryKeys;
 import org.plumb.dfa.summary.FieldOp;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.summary.Operation;
+import org.plumb.dfa.summary.ReturnDependency;
 import org.plumb.dfa.summary.StringOp;
 import org.plumb.reporter.Finding;
 import org.plumb.reporter.FlowStep;
@@ -5705,7 +5706,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                 calleeSig,
                 "caller arg #"
                     + i
-                    + " tainted, callee has body, "
+                    + " tainted, callee result may carry the argument, "
                     + "dest inherits taint via "
                     + "conservative passthrough"));
         // Append one
@@ -5730,7 +5731,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                 -1,
                 "caller arg #"
                     + i
-                    + " tainted, callee has body, "
+                    + " tainted, callee result may carry the argument, "
                     + "dest inherits taint via "
                     + "conservative passthrough",
                 "",
@@ -6284,45 +6285,39 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     for (FieldOp fop : fieldOps) {
       b.recordFieldOp(fop);
     }
-    // 2d. Mark the function as
-    //     having a non-trivial body if
-    //     it has at least one non-RETURN
-    //     instruction. This signal is
-    //     used by the cross-function
-    //     summary-fold path to apply a
-    //     conservative caller-arg : dest
-    //     taint passthrough rule. The
-    //     signal is intentionally
-    //     independent of
-    //     paramOps/returnOps/stringOps/fieldOps:
-    //     a function like
-    //     `return "literal" + x + "literal"`
-    //     has no recorded ops (because
-    //     the standalone analysis didn't
-    //     see x as tainted) but does
-    //     have a body, and the existing
-    //     dest-tainting rule
-    //     misses this case.
+    // 2d. Two separate facts about the body.
+    //     The first: the body has at least one non-RETURN
+    //     instruction. That is what the engine stores the
+    //     summary under, and what the lookup reads to decide
+    //     that a summary is worth keeping.
+    //     The second: the value the function RETURNS may
+    //     carry an input the caller supplied. That is the
+    //     fact the conservative caller-arg : dest rule gates
+    //     on, and it is NOT the same question. A function
+    //     with a body can return something that cannot
+    //     carry the argument:
+    //
+    //       String y = "k";
+    //       return y;
+    //
+    //     The rule's own comment says it does not
+    //     over-taint "because the gate ensures only
+    //     functions whose result may depend on their
+    //     arguments are candidates" -- so the gate has to
+    //     answer THAT question. ReturnDependency answers
+    //     it by following the returned value back through
+    //     the instructions that define it, and it answers
+    //     "may" for every shape it does not understand.
     int nonReturnCount = 0;
-    boolean returnsArgumentDependentValue = false;
     for (TacInstruction ins : fn.instructions()) {
       if (ins.kind != TacInstruction.Kind.RETURN) {
         nonReturnCount++;
-        continue;
-      }
-      // A body whose ONLY instruction is the return can still pass the argument
-      // through: `return x;` is one RETURN and one operand. So the question the
-      // conservative rule asks -- "can the caller's argument reach the result?"
-      // -- is not answered by the instruction COUNT alone. A RETURN of a
-      // CONSTANT cannot, and a RETURN of anything else might.
-      if (ins.lhs1 != null && !(ins.lhs1 instanceof TacOperand.Const)) {
-        returnsArgumentDependentValue = true;
       }
     }
     if (nonReturnCount > 0) {
       b.markHasBody();
     }
-    if (returnsArgumentDependentValue) {
+    if (ReturnDependency.mayDependOnArgument(fn)) {
       b.markMayReturnArgument();
     }
     // 3. Subclass-specific additional

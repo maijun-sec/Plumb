@@ -60,6 +60,24 @@ import org.plumb.tac.translate.TacTranslator;
  * one thing: whether the returned value is the argument or a constant. The engine could not tell
  * them apart, so it treated both as "might pass the argument through".
  *
+ * <h2>And a body is not the answer either</h2>
+ *
+ * <p>"The callee has a body" is the coarse answer to the rule's question, and it was the gate the
+ * rule used. A callee with a body can still return something that cannot carry the argument:
+ *
+ * <pre>
+ *   private String source(String x) {
+ *     String y = "k";
+ *     return y;
+ *   }
+ * </pre>
+ *
+ * <p>The rule's own comment says it does not over-taint "because the gate ensures only functions
+ * whose result may depend on their arguments are candidates" -- so the gate has to answer THAT
+ * question, and the answer is now worked out by following the returned value back through the
+ * instructions that define it. Every shape that walk does not understand answers "may", so the rule
+ * still fires wherever it is not sure.
+ *
  * <h2>What it would catch</h2>
  *
  * <ul>
@@ -68,6 +86,8 @@ import org.plumb.tac.translate.TacTranslator;
  *   <li>A rule that stops at "the callee has a body": the second test fails, and the
  *       argument-passing callee stops tainting the caller's dest -- a missed detection, not a fixed
  *       false positive.
+ *   <li>A gate that stops at "the callee has a body" again: the computed-constant test fails, and
+ *       the caller's dest is tainted by an argument the callee threw away.
  *   <li>A lookup that stops accepting a summary that claims a body: the last test fails, and a call
  *       site falls through to the bare key, which holds another class's summary.
  * </ul>
@@ -139,6 +159,71 @@ class ConservativePassthroughTest {
       }
       """;
 
+  /**
+   * A class whose {@code source} method computes a constant and returns it: the body is not empty,
+   * but the argument never reaches the result.
+   */
+  private static final String RETURNS_A_COMPUTED_CONSTANT =
+      """
+      package delta;
+
+      public class Helper {
+        void run() throws Exception {
+          String input = System.getenv("PATH");
+          String data = source(input);
+          Runtime.getRuntime().exec(data);
+        }
+
+        private String source(String x) {
+          String y = "k";
+          return y;
+        }
+      }
+      """;
+
+  /**
+   * A class whose {@code source} method hands its argument to a call: the result is whatever that
+   * call makes of the argument, so the argument reaches the result.
+   */
+  private static final String PASSES_THE_ARGUMENT_TO_A_CALL =
+      """
+      package epsilon;
+
+      public class Helper {
+        void run() throws Exception {
+          String input = System.getenv("PATH");
+          String data = source(input);
+          Runtime.getRuntime().exec(data);
+        }
+
+        private String source(String x) {
+          return x.trim();
+        }
+      }
+      """;
+
+  /**
+   * A class whose {@code source} method builds a string out of its argument and a local: the local
+   * is a constant, and the argument is still one side of the string.
+   */
+  private static final String BUILDS_A_STRING_FROM_A_LOCAL =
+      """
+      package theta;
+
+      public class Helper {
+        void run() throws Exception {
+          String input = System.getenv("PATH");
+          String data = source(input);
+          Runtime.getRuntime().exec(data);
+        }
+
+        private String source(String x) {
+          String y = "k";
+          return y + x;
+        }
+      }
+      """;
+
   @Test
   @DisplayName("a callee that returns its argument taints the caller's dest")
   void aCalleeThatReturnsItsArgumentTaintsTheCallersDest() throws Exception {
@@ -171,6 +256,40 @@ class ConservativePassthroughTest {
             "the callee returns a constant, so the argument never reaches the result and the "
                 + "caller's dest has to stay clean")
         .isEmpty();
+  }
+
+  @Test
+  @DisplayName("a callee that computes a constant does not taint the caller's dest")
+  void aCalleeThatComputesAConstantDoesNotTaintTheCallersDest() throws Exception {
+    List<String> findings = run(RETURNS_A_COMPUTED_CONSTANT, "delta");
+
+    assertThat(findings)
+        .as(
+            "the callee has a body, but the value it returns is a constant it computed, so the "
+                + "argument never reaches the result and the caller's dest has to stay clean")
+        .isEmpty();
+  }
+
+  @Test
+  @DisplayName("a callee that hands its argument to a call taints the caller's dest")
+  void aCalleeThatHandsItsArgumentToACallTaintsTheCallersDest() throws Exception {
+    List<String> findings = run(PASSES_THE_ARGUMENT_TO_A_CALL, "epsilon");
+
+    assertThat(findings)
+        .as("the result is whatever the call makes of the argument, so the argument reaches it")
+        .hasSize(1);
+    assertThat(findings.get(0)).contains("command-injection");
+  }
+
+  @Test
+  @DisplayName("a callee that builds a string from a local and its argument taints the dest")
+  void aCalleeThatBuildsAStringFromALocalAndItsArgumentTaintsTheDest() throws Exception {
+    List<String> findings = run(BUILDS_A_STRING_FROM_A_LOCAL, "theta");
+
+    assertThat(findings)
+        .as("the argument is one side of the string, so it reaches the result")
+        .hasSize(1);
+    assertThat(findings.get(0)).contains("command-injection");
   }
 
   @Test

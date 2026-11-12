@@ -298,28 +298,31 @@ public final class FunctionSummary {
     }
 
     /**
-     * Mark the function as having a non-trivial body. The cross-function summary-fold uses this
-     * signal to apply a conservative caller-arg → dest taint passthrough: if the caller passes a
-     * tainted arg to a non-trivial callee, the call's dest inherits the caller's arg taint. This
-     * covers the {@code return "literal" + x + "literal"} pattern where the standalone analysis
-     * doesn't see {@code x} as tainted (so no {@code TaintPropagate} on the returnOps), but the
-     * caller's taint should still flow through.
+     * Mark the function as having a non-trivial body.
+     *
+     * <p>This says the body has at least one instruction that is not a return. It is what the
+     * engine stores the summary under, and what the lookup reads to decide that a summary is worth
+     * keeping.
+     *
+     * <p><b>It does not say the result may depend on an argument.</b> That is a separate fact, and
+     * a body can be non-trivial and still return something that cannot carry the caller's argument
+     * ({@code String y = "k"; return y;}). The conservative caller-arg to dest rule asks THAT
+     * question, and {@link #markMayReturnArgument()} records its answer.
      */
     public Builder markHasBody() {
       this.hasBody = true;
-      // A body does something, so it MAY pass an argument through. The
-      // conservative rule asks that question, and "the body does something" is
-      // the coarse answer to it.
-      this.mayReturnArgument = true;
       return this;
     }
 
     /**
      * Record that the result of this function may depend on its arguments.
      *
-     * <p>This is the fact the conservative caller-arg -> dest rule needs, and it is narrower than
-     * {@link #markHasBody()}: a body whose only instruction is {@code return "constant";} does not
-     * pass an argument through.
+     * <p>This is the fact the conservative caller-arg -> dest rule gates on, and it is a different
+     * question from {@link #markHasBody()}: a body whose only instruction is {@code return
+     * "constant";} does not pass an argument through, and neither does a body that returns a
+     * constant it computed.
+     *
+     * <p>See {@link ReturnDependency} for how the answer is reached.
      *
      * @return this builder
      */
@@ -491,6 +494,20 @@ public final class FunctionSummary {
         && stringOps.isEmpty()
         && fieldOps.isEmpty()
         && !hasUnmodelledBehavior;
+  }
+
+  /**
+   * Whether this summary carries no fact at all.
+   *
+   * <p>{@link #isTrivial()} asks about the operation lists. This asks about the summary as a whole:
+   * a summary that knows it has a body, that its result may depend on an argument, or that it is
+   * the copy under an alias key carries a fact even when it records no operation, and {@link
+   * #merge(FunctionSummary)} must not drop it.
+   *
+   * @return true when there is nothing here worth keeping
+   */
+  private boolean carriesNoFact() {
+    return isTrivial() && !hasBody && !mayReturnArgument && !claimsBody;
   }
 
   /**
@@ -725,11 +742,15 @@ public final class FunctionSummary {
     // exactly the getter pattern that needs
     // to fire.
     if (other == null) return this;
-    if (other.isTrivial() && !other.hasBody() && this.isTrivial() && !this.hasBody()) {
+    // A summary that carries a FACT is never discarded by these short-circuits, however empty its
+    // operation lists are. The body flag was one such fact; the "may depend on an argument" fact
+    // and the alias copy's existence claim are two more, and dropping them would silently change
+    // what the conservative rule does at the call site.
+    if (other.carriesNoFact() && this.carriesNoFact()) {
       return this;
     }
-    if (this.isTrivial() && !this.hasBody()) return other;
-    if (other.isTrivial() && !other.hasBody()) return this;
+    if (this.carriesNoFact()) return other;
+    if (other.carriesNoFact()) return this;
     Builder b = new Builder(signature);
     for (Map.Entry<Integer, Set<Operation>> e : paramOps.entrySet()) {
       for (Operation op : e.getValue()) {
