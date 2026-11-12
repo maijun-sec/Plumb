@@ -4543,12 +4543,25 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (javaArgIndexes.length == 0) return;
     // The TAC CALL builder prepends the receiver to ins.args, so for instance
     // methods the Java arg index N maps to TAC
-    // arg index N+1. All sink families
-    // registered in sink-families.yaml target
-    // instance methods, so we add 1 universally
-    // here. (If a future static-method sink is
-    // added, override this in a checker that
-    // distinguishes.)
+    // arg index N+1.
+    //
+    // The +1 is universal because EVERY call keeps a slot at args[0] --
+    // NOT because every sink names an instance method. An instance call
+    // puts the receiver there; a STATIC call has no receiver to put
+    // there, so the front end writes a constant naming the type in its
+    // place (the Java translator's type placeholder, the Go side car's
+    // package slot, PHP's namespace, the TypeScript side car's owner
+    // module). Either way the first USER argument is args[1], so the
+    // offset is the same for both kinds of call.
+    //
+    // The catalogue already names static sinks -- Go's fmt.Printf and
+    // fmt.Sprintf, TypeScript's util.format, PHP's sprintf -- and they
+    // are matched with this same offset, so a static sink needs no
+    // special case here. (The engine once carried a comment saying the
+    // catalogue targeted instance methods only, and that a static sink
+    // would need a checker to override the offset. That was wrong in
+    // both halves: the static entries were already in the catalogue, and
+    // the offset they need is the one used here.)
     //
     // RECEIVER_ARG_INDEX (-2) selects the receiver itself, which in
     // the TAC encoding is args[0] with NO offset. This is what makes
