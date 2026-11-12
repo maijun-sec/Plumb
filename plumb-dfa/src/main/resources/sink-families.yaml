@@ -759,6 +759,10 @@ families:
         # constructs use, the same one `include` has.
         - pattern: '^<php>\.eval\b(/\d+)?'
           arg_index: 0
+        # assert() evaluates a STRING argument as PHP code, so the code
+        # the program was given is the first argument.
+        - pattern: '^\\assert\b(/\d+)?'
+          arg_index: 0
 
   command.sinks:
     cwe: CWE-78,CWE-77,CWE-88,CWE-93,CWE-114,CWE-147,CWE-494
@@ -2838,6 +2842,13 @@ families:
         # A move or a copy names both paths.
         - pattern: '^\\(rename|copy)\b(/\d+)?'
           arg_index: [0, 1]
+        # An archive the program opens at a path it was given. The Phar
+        # constructors and the open of a ZipArchive take the archive's
+        # path, and it is the first argument.
+        - pattern: '^\\(PharData|Phar)\.\<init\>(/\d+)?'
+          arg_index: 0
+        - pattern: '^\\ZipArchive::open\b(/\d+)?'
+          arg_index: 0
 
   file-permission.sinks:
     cwe: CWE-732,CWE-264
@@ -6765,6 +6776,10 @@ families:
           arg_index: 1
         - pattern: '^\\PDO::(query|exec|prepare)\b(/\d+)?'
           arg_index: 0
+        # The object's own query method spells the class the way PHP
+        # writes it, with `::`: the SQL is the first argument.
+        - pattern: '^\\mysqli::(query|multi_query|real_query|prepare)\b(/\d+)?'
+          arg_index: 0
       python3:
         # The cursor's class is often unknown: an unannotated parameter
         # has no type, so the owner is the stand-in for an unknown one.
@@ -7558,6 +7573,14 @@ families:
           arg_index: 2
         - pattern: '^crypto/ecdsa\.GenerateKey(/\d+)?'
           arg_index: 0
+      php:
+        # The algorithm is the FIRST argument of the hash functions and the
+        # SECOND of the openssl ones, whose first argument is the data.
+        # The tainted value is the algorithm the program chose.
+        - pattern: '^\\(hash|hash_hmac|hash_file)\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^\\openssl_(encrypt|decrypt|digest)\b(/\d+)?'
+          arg_index: 1
   xml-injection.sinks:
     cwe: CWE-91
     severity: HIGH

@@ -20,7 +20,7 @@
 | 类别 | 模块 | 数量 | 实现方式 | 阶段 |
 | --- | --- | ---: | --- | --- |
 | Taint source 模式 | plumb-dfa | **215** | `sink-families.yaml` 的 11 个 source family（不带 CWE 的那些） | taint |
-| Taint sink 模式 | plumb-dfa | **3904** | `sink-families.yaml` 的 56 个 sink family（带 CWE 的那些） | taint |
+| Taint sink 模式 | plumb-dfa | **3910** | `sink-families.yaml` 的 56 个 sink family（带 CWE 的那些） | taint |
 | Taint source 变量 | plumb-dfa | **10** | `sink-families.yaml` 的 `source_variables:` 块 —— 不是调用的那些 source | taint |
 | DFA checker（YAML 声明） | plumb-dfa | **44**（42 启用 / 2 禁用） | `checkers.yaml` | dfa |
 | DFA checker（实际注册） | plumb-main | **99** | `ScanRunner.buildDfaCheckers()` | dfa |

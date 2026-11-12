@@ -35,8 +35,11 @@ import org.junit.jupiter.api.io.TempDir;
 import org.plumb.dfa.checkers.taint.CodeInjectionChecker;
 import org.plumb.dfa.checkers.taint.FormatStringChecker;
 import org.plumb.dfa.checkers.taint.LogInjectionChecker;
+import org.plumb.dfa.checkers.taint.PathTraversalChecker;
 import org.plumb.dfa.checkers.taint.RegexInjectionChecker;
+import org.plumb.dfa.checkers.taint.SqlInjectionChecker;
 import org.plumb.dfa.checkers.taint.SsrfChecker;
+import org.plumb.dfa.checkers.taint.WeakCryptoChecker;
 import org.plumb.dfa.checkers.taint.XssInjectionChecker;
 import org.plumb.dfa.config.ConfigLoader;
 import org.plumb.dfa.config.EngineConfig;
@@ -104,6 +107,9 @@ class ScriptSinkFamilyEndToEndTest {
   private static final String LOG_RULE = "dfa-taint-log-injection";
   private static final String CODE_INJECTION_RULE = "dfa-taint-code-injection";
   private static final String SSRF_RULE = "dfa-taint-ssrf";
+  private static final String WEAK_CRYPTO_RULE = "dfa-taint-weak-crypto";
+  private static final String PATH_RULE = "dfa-taint-path-traversal";
+  private static final String SQL_RULE = "dfa-taint-sql-injection";
 
   /**
    * A TypeScript program that writes a tainted value into the page.
@@ -225,6 +231,90 @@ class ScriptSinkFamilyEndToEndTest {
       <?php
       function handler(string $url): void {
           $client = new SoapClient($url);
+      }
+      """;
+
+  /**
+   * A PHP program that asserts a value it was given.
+   *
+   * <p>{@code assert} evaluates a STRING argument as PHP code, so the code the program was given is
+   * the first argument.
+   */
+  private static final String PHP_ASSERT =
+      """
+      <?php
+      function handler(string $code): void {
+          assert($code);
+      }
+      """;
+
+  /**
+   * A PHP program that hashes with an algorithm it was given.
+   *
+   * <p>The algorithm is the first argument of {@code hash}; the data is the second.
+   */
+  private static final String PHP_HASH_ALGORITHM =
+      """
+      <?php
+      function handler(string $algorithm, string $data): void {
+          hash($algorithm, $data);
+      }
+      """;
+
+  /**
+   * A PHP program that opens an archive at a path it was given.
+   *
+   * <p>{@code PharData} takes the archive's path in its constructor, and a construction carries its
+   * arguments without a receiver slot.
+   */
+  private static final String PHP_ARCHIVE_CONSTRUCTION =
+      """
+      <?php
+      function handler(string $path): void {
+          $archive = new PharData($path);
+      }
+      """;
+
+  /**
+   * A PHP program that encrypts with a cipher it was given.
+   *
+   * <p>{@code openssl_encrypt} takes the data first and the cipher second, so the algorithm is the
+   * second argument.
+   */
+  private static final String PHP_OPENSSL_ALGORITHM =
+      """
+      <?php
+      function handler(string $algorithm, string $data): void {
+          openssl_encrypt($data, $algorithm, "key");
+      }
+      """;
+
+  /**
+   * A PHP program that opens an archive by a method.
+   *
+   * <p>{@code ZipArchive::open} spells the class the way PHP writes it, with {@code ::}, and the
+   * archive's path is the first argument.
+   */
+  private static final String PHP_ZIP_OPEN =
+      """
+      <?php
+      function handler(string $path): void {
+          ZipArchive::open($path);
+      }
+      """;
+
+  /**
+   * A PHP program that runs a statement it was given.
+   *
+   * <p>The object spells its own class the way PHP writes it, with {@code ::}, and the statement is
+   * the first user argument.
+   */
+  private static final String PHP_MYSQLI_QUERY =
+      """
+      <?php
+      function handler(string $statement): void {
+          $db = new mysqli("localhost", "user", "password");
+          $db->query($statement);
       }
       """;
 
@@ -364,6 +454,120 @@ class ScriptSinkFamilyEndToEndTest {
 
     assertThat(hasFinding(findings, SSRF_RULE, "\\SoapClient.<init>"))
         .as("the WSDL the constructor fetches is the URL the program was given")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("a PHP assert reaches the code injection rule")
+  void aPhpAssertReachesTheCodeInjectionRule(@TempDir Path directory) throws IOException {
+    assumeTrue(
+        phpAvailable(),
+        "the PHP front end needs Node and its parser dependency: run npm ci in"
+            + " plumb-frontend/php-sidecar");
+
+    Path file = directory.resolve("app.php");
+    Files.writeString(file, PHP_ASSERT);
+
+    List<Finding> findings =
+        scan(new PhpTacFrontend(), PHP_ASSERT, file, new CodeInjectionChecker());
+
+    assertThat(hasFinding(findings, CODE_INJECTION_RULE, "\\assert"))
+        .as("assert evaluates the string it was given as PHP code")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("a PHP hash algorithm reaches the weak crypto rule")
+  void aPhpHashAlgorithmReachesTheWeakCryptoRule(@TempDir Path directory) throws IOException {
+    assumeTrue(
+        phpAvailable(),
+        "the PHP front end needs Node and its parser dependency: run npm ci in"
+            + " plumb-frontend/php-sidecar");
+
+    Path file = directory.resolve("app.php");
+    Files.writeString(file, PHP_HASH_ALGORITHM);
+
+    List<Finding> findings =
+        scan(new PhpTacFrontend(), PHP_HASH_ALGORITHM, file, new WeakCryptoChecker());
+
+    assertThat(hasFinding(findings, WEAK_CRYPTO_RULE, "\\hash"))
+        .as("the algorithm the program chose is the first argument of the hash")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("a PHP archive construction reaches the path rule")
+  void aPhpArchiveConstructionReachesThePathRule(@TempDir Path directory) throws IOException {
+    assumeTrue(
+        phpAvailable(),
+        "the PHP front end needs Node and its parser dependency: run npm ci in"
+            + " plumb-frontend/php-sidecar");
+
+    Path file = directory.resolve("app.php");
+    Files.writeString(file, PHP_ARCHIVE_CONSTRUCTION);
+
+    List<Finding> findings =
+        scan(new PhpTacFrontend(), PHP_ARCHIVE_CONSTRUCTION, file, new PathTraversalChecker());
+
+    assertThat(hasFinding(findings, PATH_RULE, "\\PharData.<init>"))
+        .as("the archive is opened at the path the program was given")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("a PHP cipher reaches the weak crypto rule")
+  void aPhpCipherReachesTheWeakCryptoRule(@TempDir Path directory) throws IOException {
+    assumeTrue(
+        phpAvailable(),
+        "the PHP front end needs Node and its parser dependency: run npm ci in"
+            + " plumb-frontend/php-sidecar");
+
+    Path file = directory.resolve("app.php");
+    Files.writeString(file, PHP_OPENSSL_ALGORITHM);
+
+    List<Finding> findings =
+        scan(new PhpTacFrontend(), PHP_OPENSSL_ALGORITHM, file, new WeakCryptoChecker());
+
+    assertThat(hasFinding(findings, WEAK_CRYPTO_RULE, "\\openssl_encrypt"))
+        .as("the cipher is the second argument of openssl_encrypt")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("a PHP archive method reaches the path rule")
+  void aPhpArchiveMethodReachesThePathRule(@TempDir Path directory) throws IOException {
+    assumeTrue(
+        phpAvailable(),
+        "the PHP front end needs Node and its parser dependency: run npm ci in"
+            + " plumb-frontend/php-sidecar");
+
+    Path file = directory.resolve("app.php");
+    Files.writeString(file, PHP_ZIP_OPEN);
+
+    List<Finding> findings =
+        scan(new PhpTacFrontend(), PHP_ZIP_OPEN, file, new PathTraversalChecker());
+
+    assertThat(hasFinding(findings, PATH_RULE, "\\ZipArchive::open"))
+        .as("the archive is opened at the path the program was given")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("a PHP statement reaches the SQL rule")
+  void aPhpStatementReachesTheSqlRule(@TempDir Path directory) throws IOException {
+    assumeTrue(
+        phpAvailable(),
+        "the PHP front end needs Node and its parser dependency: run npm ci in"
+            + " plumb-frontend/php-sidecar");
+
+    Path file = directory.resolve("app.php");
+    Files.writeString(file, PHP_MYSQLI_QUERY);
+
+    List<Finding> findings =
+        scan(new PhpTacFrontend(), PHP_MYSQLI_QUERY, file, new SqlInjectionChecker());
+
+    assertThat(hasFinding(findings, SQL_RULE, "\\mysqli::query"))
+        .as("the statement is the first argument of the object's own query method")
         .isTrue();
   }
 
