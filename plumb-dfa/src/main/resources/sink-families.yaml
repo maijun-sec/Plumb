@@ -8558,26 +8558,37 @@ families:
       # they are the only report point in the shape where the tainted
       # value reaches the intent through the call that produced it.
       #
-      # startActivity is the plain one -- the call every app makes -- and
-      # it was missing: the rule's own text names it as one of the entry
-      # points the finding is about, and a rule whose text and catalogue
-      # disagree is a rule that reports on the wrong calls. Its pattern
-      # is anchored at the START of the method name, so it also reaches
-      # the startActivity* variants below; they keep their own entries so
-      # that a reader looking for one of them finds it by name.
-      - pattern: '^android\.app\.Activity\.startActivity(/\d+)?'
+      # The intent is the FIRST argument of most of these calls, but
+      # NOT of all of them, and the difference is the API's. The two
+      # "from a child" calls take the fragment first and the intent
+      # second -- startActivityFromChild(Fragment, Intent, int) -- and
+      # the two IntentSender calls take the IntentSender first and the
+      # intent, which is their fill-in intent, later:
+      # startIntentSenderForResult(IntentSender, int, Intent, int, int,
+      # int). So the position an entry names is the position of the
+      # INTENT in that API, not the position of the first argument.
+      #
+      # startActivity is the plain one -- the call every app makes --
+      # and it was missing: the rule's own text names it as one of the
+      # entry points the finding is about, and a rule whose text and
+      # catalogue disagree is a rule that reports on the wrong calls.
+      # Its pattern ends in a WORD BOUNDARY, because the engine
+      # matches a pattern as a substring: without the boundary it
+      # would also reach the startActivity* calls below, whose intent
+      # is NOT at the same position.
+      - pattern: '^android\.app\.Activity\.startActivity\b(/\d+)?'
         arg_index: 0
       - pattern: '^android\.app\.Activity\.startActivityForResult(/\d+)?'
         arg_index: 0
       - pattern: '^android\.app\.Activity\.startActivityFromChild(/\d+)?'
-        arg_index: 0
+        arg_index: 1
       - pattern: '^android\.app\.Activity\.startActivityFromFragment(/\d+)?'
-        arg_index: 0
+        arg_index: 1
       - pattern: '^android\.app\.Activity\.startActivityIfNeeded(/\d+)?'
         arg_index: 0
       - pattern: '^android\.app\.Activity\.startIntentSenderForResult(/\d+)?'
-        arg_index: 0
+        arg_index: 2
       - pattern: '^android\.app\.Activity\.startIntentSenderFromChild(/\d+)?'
-        arg_index: 0
+        arg_index: 3
       - pattern: '^android\.app\.Activity\.startNextMatchingActivity(/\d+)?'
         arg_index: 0

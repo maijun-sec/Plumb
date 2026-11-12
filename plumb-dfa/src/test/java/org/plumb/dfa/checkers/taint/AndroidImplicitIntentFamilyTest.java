@@ -94,6 +94,14 @@ class AndroidImplicitIntentFamilyTest {
   private static final String START_ACTIVITY_FOR_RESULT =
       "android.app.Activity.startActivityForResult/2";
 
+  /** The launch a child activity makes: the fragment FIRST, then the intent. */
+  private static final String START_ACTIVITY_FROM_CHILD =
+      "android.app.Activity.startActivityFromChild/3";
+
+  /** The launch that describes the activity with a sender: the sender first, the intent third. */
+  private static final String START_INTENT_SENDER_FOR_RESULT =
+      "android.app.Activity.startIntentSenderForResult/6";
+
   /** The call that builds the intent, and the one the launch site receives. */
   private static final String BUILD_INTENT = "com.example.Builder.buildIntent/1";
 
@@ -167,6 +175,40 @@ class AndroidImplicitIntentFamilyTest {
         .isFalse();
   }
 
+  @Test
+  @DisplayName("the fragment that starts the call is not the payload")
+  void theFragmentThatStartsTheCallIsNotThePayload() {
+    // startActivityFromChild(Fragment child, Intent intent, int requestCode):
+    // the fragment comes FIRST and the intent second, so the position the
+    // catalogue names has to be the second one.
+    List<Finding> atTheFragment = scan(launchAt(START_ACTIVITY_FROM_CHILD, 0, 3));
+    List<Finding> atTheIntent = scan(launchAt(START_ACTIVITY_FROM_CHILD, 1, 3));
+
+    assertThat(mentions(atTheFragment, START_ACTIVITY_FROM_CHILD))
+        .as("the fragment is not the intent, so the finding is not there")
+        .isFalse();
+    assertThat(mentions(atTheIntent, START_ACTIVITY_FROM_CHILD))
+        .as("the intent is the second argument of this call")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("the intent sender is not the payload, and the fill-in intent is")
+  void theIntentSenderIsNotThePayloadAndTheFillInIntentIs() {
+    // startIntentSenderForResult(IntentSender intent, int requestCode,
+    // Intent fillInIntent, int flagsMask, int flagsValues, int extraFlags):
+    // the sender comes first and the fill-in intent third.
+    List<Finding> atTheSender = scan(launchAt(START_INTENT_SENDER_FOR_RESULT, 0, 6));
+    List<Finding> atTheFillIn = scan(launchAt(START_INTENT_SENDER_FOR_RESULT, 2, 6));
+
+    assertThat(mentions(atTheSender, START_INTENT_SENDER_FOR_RESULT))
+        .as("the sender is not the intent, so the finding is not there")
+        .isFalse();
+    assertThat(mentions(atTheFillIn, START_INTENT_SENDER_FOR_RESULT))
+        .as("the fill-in intent is the third argument of this call")
+        .isTrue();
+  }
+
   // ------------------------------------------------------------------ the TAC
 
   /**
@@ -219,6 +261,29 @@ class AndroidImplicitIntentFamilyTest {
     instructions.add(call(callee, temp("started"), args, 12));
     return function(
         "app.handler(string):string", List.of(req), List.of(intent), instructions, null);
+  }
+
+  /**
+   * A launch call with the given number of user arguments, where the one at the given position
+   * carries the taint.
+   *
+   * <p>The position is the USER argument's own -- the receiver is not one of them -- so it is the
+   * position the catalogue names.
+   */
+  private static TacFunction launchAt(String callee, int taintedUserArg, int userArgCount) {
+    TacOperand.TacVar req = request();
+    List<TacOperand> args = new ArrayList<>();
+    List<TacOperand.TacVar> locals = new ArrayList<>();
+    args.add(temp("activity"));
+    for (int i = 0; i < userArgCount; i++) {
+      TacOperand.TacVar arg = new TacOperand.TacVar("arg" + i, TacType.UNKNOWN, false);
+      locals.add(arg);
+      args.add(arg);
+    }
+    List<TacInstruction> instructions = new ArrayList<>();
+    instructions.add(move(args.get(taintedUserArg + 1), req, 10));
+    instructions.add(call(callee, temp("started"), args, 12));
+    return function("app.handler(string):string", List.of(req), locals, instructions, null);
   }
 
   /**
