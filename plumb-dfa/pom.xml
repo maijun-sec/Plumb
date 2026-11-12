@@ -663,6 +663,11 @@
                              in that state; twelve of them came from the
                              rule-pack migration. -->
                         <include>org/plumb/dfa/config/SinkFamilyReachabilityTest.java</include>
+                        <!-- A pattern that names the arity drops the other
+                             shapes of the same callee: the TypeScript side car
+                             reports RegExp.<init>/1 and /2, the PHP side car
+                             reports \PDO.<init>/1 and /3. -->
+                        <include>org/plumb/dfa/config/SinkFamilyArityTest.java</include>
                         <!-- A sink pattern can name SEVERAL argument positions as
                              carrying the taint; the old one-index model dropped
                              one of them silently. -->
