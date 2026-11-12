@@ -2809,11 +2809,24 @@ families:
         # Both paths of a move or a copy can be the tainted one.
         - pattern: '^shutil\.(move|copy|copytree)\b(/\d+)?'
           arg_index: [0, 1]
-        # The path builder. A tainted segment makes the whole path point
-        # somewhere the program did not choose -- the same shape as
-        # java.nio.file.Path.resolve, which is in this family too.
+        # The path builder. os.path.join(a, b, ...) takes the BASE first and
+        # then the SEGMENTS, and every one of them ends up in the path. A
+        # tainted base and a tainted segment are the same defect -- the whole
+        # path points somewhere the program did not choose -- so the positions
+        # are the base and the segments. The same shape as
+        # java.nio.file.Path.resolve, which is in this family too; that one has
+        # a single user argument and it IS the segment, which is why the two
+        # entries do not name the same position.
+        #
+        # A join takes any number of components, and the catalogue cannot say
+        # "any argument", so the list names the base, the first segments, and
+        # the LAST argument -- the tail sentinel is resolved against the call's
+        # own argument list. A position the call does not have is skipped, so
+        # the list costs nothing on a short call. A join of more than four
+        # components leaves a gap in the middle; that is the shape of the
+        # limit, not of the API.
         - pattern: '^os\.path\.join\b(/\d+)?'
-          arg_index: 0
+          arg_index: [0, 1, 2, -3]
         # Opening a file the program did not choose. The path is the first
         # argument of every one of them; the arity in the key counts the
         # positional arguments only, so all of them match.

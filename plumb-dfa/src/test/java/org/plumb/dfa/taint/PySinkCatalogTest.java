@@ -31,6 +31,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.plumb.dfa.checkers.taint.CommandInjectionChecker;
 import org.plumb.dfa.checkers.taint.LogInjectionChecker;
+import org.plumb.dfa.checkers.taint.PathTraversalChecker;
 import org.plumb.dfa.checkers.taint.RegexInjectionChecker;
 import org.plumb.dfa.config.ConfigLoader;
 import org.plumb.dfa.config.EngineConfig;
@@ -83,6 +84,7 @@ class PySinkCatalogTest {
   private static final String COMMAND_RULE = "dfa-taint-command-injection";
   private static final String LOG_RULE = "dfa-taint-log-injection";
   private static final String REGEX_RULE = "dfa-taint-regex-injection";
+  private static final String PATH_RULE = "dfa-taint-path-traversal";
 
   private static TacOperand.TacVar temp(String name) {
     return new TacOperand.TacVar(name, TacType.UNKNOWN, true);
@@ -630,6 +632,116 @@ class PySinkCatalogTest {
     assertThat(hasFinding(findings, REGEX_RULE, "re.compile/1"))
         .as("the compile must be recognised, and the value must still be tainted there")
         .isTrue();
+  }
+
+  // -------------------------------------------------------------- the path
+
+  /**
+   * The Python handler that builds a path, as the front end lowers it.
+   *
+   * <p>Measured against the Python side car: a call on the path module arrives as {@code
+   * os.path.join/2}, the receiver slot holds the MODULE the function came from, and the components
+   * follow it. {@code os.path.join(a, b)} takes the BASE first and the SEGMENTS after it, and every
+   * one of them ends up in the path.
+   *
+   * @param language the language the function is written in
+   * @param taintedComponent which component carries the request: 0 = the base, 1 = a segment, 2 =
+   *     neither
+   * @return the function under analysis
+   */
+  private static TacFunction pathHandler(SourceLanguage language, int taintedComponent) {
+    TacOperand.TacVar request = new TacOperand.TacVar("request", TacType.UNKNOWN, false);
+    TacOperand.TacVar base = new TacOperand.TacVar("base", TacType.STRING, false);
+    TacOperand.TacVar segment = new TacOperand.TacVar("segment", TacType.STRING, false);
+
+    List<TacInstruction> instructions = new ArrayList<>();
+    if (taintedComponent == 0) {
+      // base = request
+      instructions.add(move(base, request, 10));
+    } else if (taintedComponent == 1) {
+      // segment = request
+      instructions.add(move(segment, request, 10));
+    }
+    // os.path.join(base, segment)
+    instructions.add(
+        call(
+            "os.path.join/2",
+            temp("t9"),
+            List.of(TacOperand.Const.ofString("os.path"), base, segment),
+            12));
+    return new TacFunction(
+        "handler",
+        "app.handler(string):string",
+        TacType.STRING,
+        List.of(request),
+        List.of(base, segment),
+        instructions,
+        List.of(),
+        List.of(),
+        Map.of(),
+        Map.of(),
+        null,
+        SourceOrigin.SOURCE,
+        List.of(),
+        language,
+        IrPrecision.SOURCE_FULL);
+  }
+
+  @Test
+  @DisplayName("the path builder names the base and the segments")
+  void thePathBuilderNamesTheBaseAndTheSegments() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("file-path.sinks")
+                .orElseThrow()
+                .argIndexesFor("os.path.join/2", SourceLanguage.PYTHON3))
+        .as("every component of a joined path can be the tainted one")
+        .containsExactly(0, 1, 2, -3);
+  }
+
+  @Test
+  @DisplayName("a tainted segment reaches the path builder")
+  void aTaintedSegmentReachesThePathBuilder() {
+    List<Finding> findings =
+        scan(
+            SourceLanguage.PYTHON3,
+            pathHandler(SourceLanguage.PYTHON3, 1),
+            new PathTraversalChecker());
+
+    assertThat(hasFinding(findings, PATH_RULE, "os.path.join/2"))
+        .as("the segment is the second component, and it is the one the program did not choose")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("a tainted base reaches the path builder")
+  void aTaintedBaseReachesThePathBuilder() {
+    List<Finding> findings =
+        scan(
+            SourceLanguage.PYTHON3,
+            pathHandler(SourceLanguage.PYTHON3, 0),
+            new PathTraversalChecker());
+
+    assertThat(hasFinding(findings, PATH_RULE, "os.path.join/2"))
+        .as("the base is the first component, and it is the one the program did not choose")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("a path built from clean components is not a finding")
+  void aPathBuiltFromCleanComponentsIsNotAFinding() {
+    List<Finding> findings =
+        scan(
+            SourceLanguage.PYTHON3,
+            pathHandler(SourceLanguage.PYTHON3, 2),
+            new PathTraversalChecker());
+
+    assertThat(hasFinding(findings, PATH_RULE, "os.path.join/2"))
+        .as("the catalogue claims the call, but nothing in it carries the taint")
+        .isFalse();
   }
 
   @Test
