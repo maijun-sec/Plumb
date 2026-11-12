@@ -263,7 +263,11 @@ def main():
 
     current = None
     if os.path.isfile(TARGET):
-        with open(TARGET, "r", encoding="utf-8", newline="") as fh:
+        # The universal-newline default: a CRLF checkout reads as LF, so the
+        # comparison is about the CONTENT and not about how the tree ends its
+        # lines. Reading it byte for byte made every fresh checkout report the
+        # file as stale, because the formatter's output ends its lines with LF.
+        with open(TARGET, "r", encoding="utf-8") as fh:
             current = fh.read()
 
     if check:
@@ -276,7 +280,9 @@ def main():
         return 1
 
     os.makedirs(os.path.dirname(TARGET), exist_ok=True)
-    with open(TARGET, "w", encoding="utf-8", newline="") as fh:
+    # The default translation: the file keeps the ending this tree uses, so
+    # writing it does not turn a checked-out file into a line-ending change.
+    with open(TARGET, "w", encoding="utf-8") as fh:
         fh.write(formatted)
     print("Wrote %s (%d annotations across %d frameworks)" % (
         os.path.relpath(TARGET, REPO).replace(os.sep, "/"), len(ANNOTATIONS), len(FRAMEWORKS)))
