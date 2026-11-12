@@ -676,6 +676,13 @@
                              reports RegExp.<init>/1 and /2, the PHP side car
                              reports \PDO.<init>/1 and /3. -->
                         <include>org/plumb/dfa/config/SinkFamilyArityTest.java</include>
+                        <!-- A catalogue position that no call can supply makes
+                             the rule structurally unreachable: the family is in
+                             the catalogue, the capability report counts it, and
+                             the finding never appears. Seventeen positions were
+                             in that state; the list in the test says what each
+                             one should be instead. -->
+                        <include>org/plumb/dfa/config/CataloguePositionReachabilityTest.java</include>
                         <!-- A sink pattern can name SEVERAL argument positions as
                              carrying the taint; the old one-index model dropped
                              one of them silently. -->
