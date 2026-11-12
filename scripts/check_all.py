@@ -92,6 +92,16 @@ The gates are:
                               a test cannot exist without running
     mutate_test_coverage        the coverage gate is not checking air:
                               every plausible drift is caught
+    check_imports_resolve       every tracked file's org.plumb import
+                              names a package the tree declares and a
+                              type that package declares, so a commit
+                              that depends on a file nobody committed
+                              is caught locally instead of being
+                              reported as "main does not compile"
+    mutate_imports_resolve      the import gate is not checking air:
+                              every planted violation is caught, and a
+                              violation that exists only in the commit
+                              is caught too
     check_support_matrix_coverage
                               the support matrix covers every measured
                               category, and every row matches its
@@ -311,6 +321,10 @@ GATES = (
      ["python", "scripts/check_test_coverage.py"], "check"),
     ("mutate_test_coverage",
      ["python", "scripts/mutate_test_coverage.py"], "check"),
+    ("check_imports_resolve",
+     ["python", "scripts/check_imports_resolve.py"], "check"),
+    ("mutate_imports_resolve",
+     ["python", "scripts/mutate_imports_resolve.py"], "check"),
     ("check_support_matrix_coverage",
      ["python", "scripts/check_support_matrix_coverage.py"], "check"),
     ("check_javadoc_links",
