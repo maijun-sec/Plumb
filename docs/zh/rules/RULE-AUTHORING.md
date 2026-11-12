@@ -618,6 +618,14 @@ pattern，不是**使用**一个；`preg_quote` 和 `django.utils.html.escape` �
   第二个参数是 flags，flags 从来不带污点，pattern 指到它就什么都不报。
 - **每个语言按自己的写法限定类名。** PHP 的全局类保留前导反斜杠，命名空间用反斜杠分隔：
   `\SoapClient.<init>/1`，写 pattern 时那个反斜杠要写两次。
+- **pattern 不能写死元数。** 同一个类可以用不同的实参数数被构造出来：TS 侧车把
+  `new RegExp(input)` 报成 `RegExp.<init>/1`，把 `new RegExp(input, 'g')` 报成
+  `RegExp.<init>/2`；PHP 侧车把 `new PDO($dsn)` 报成 `\PDO.<init>/1`，把
+  `new PDO($dsn, 'u', 'p')` 报成 `\PDO.<init>/3`。写成 `RegExp.<init>/1` 的 pattern 只会命中
+  前一种形状、后一种漏掉——那是漏报，而且没有任何东西会提示：扫描是绿的，规则是登记在册的，
+  而它本来要报的那一例没有报出来。所以 pattern 要么把元数写成 `(/\d+)?`，要么根本不写：
+  目录是用 `find()` 匹配的，不写元数的 pattern 会命中这个被调方的所有形状。写死元数的
+  pattern 构建会直接拒绝。
 
 也有 lane 把构造器的名字落在 CALL 上而不是 NEW 上——JVM 字节码那条 lane 就是，因为 class 文件里
 的分配和构造器调用是两条指令。两种都无妨：目录看到的是同一个名字，同一条 pattern 照样命中。

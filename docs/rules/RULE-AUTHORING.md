@@ -732,6 +732,17 @@ The signature of a construction is `<class>.<init>/<arity>`:
   leading backslash of a global class and separates a namespace with
   backslashes: `\SoapClient.<init>/1`, and a pattern writes that backslash
   twice.
+- **A pattern must not name the arity.** The same class can be constructed
+  with different argument counts: the TypeScript side car reports
+  `RegExp.<init>/1` for `new RegExp(input)` and `RegExp.<init>/2` for
+  `new RegExp(input, 'g')`, and the PHP side car reports `\PDO.<init>/1` for
+  `new PDO($dsn)` and `\PDO.<init>/3` for `new PDO($dsn, 'u', 'p')`. A pattern
+  that said `RegExp.<init>/1` would match the first shape and miss the
+  second -- a missed finding, with nothing to say so: the scan is green, the
+  rule is registered, and the case it was written for is not reported. So a
+  pattern writes the arity as `(/\d+)?`, or not at all: the catalogue matches
+  with `find()`, so a pattern that names no arity matches every shape of the
+  callee. The build refuses a pattern that names one.
 
 A lane may also name the constructor on the CALL rather than on the NEW --
 the JVM bytecode lane does, because a class file's allocation and the
