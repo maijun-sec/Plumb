@@ -748,3 +748,47 @@ A lane may also name the constructor on the CALL rather than on the NEW --
 the JVM bytecode lane does, because a class file's allocation and the
 constructor call are two instructions. Either way the catalogue sees the
 same name, and one pattern matches it.
+
+#### The type the argument must have: `expects_type`
+
+The taint domain is a string domain: every tainted value is treated as a
+string. That is right most of the time and wrong in one observable way. A
+value that is PROVABLY a number is not a string, so a tainted number
+reaching a sink that needs a string is not that vulnerability --
+`os.system(42)` raises a TypeError, it does not run a command.
+
+So a family may say what type its argument has to be:
+
+```yaml
+command.sinks:
+  cwe: CWE-78,CWE-77,CWE-88,CWE-93,CWE-114,CWE-147,CWE-494
+  severity: CRITICAL
+  expects_type: string
+  patterns:
+    - pattern: '^os\.system(/\d+)?'
+      arg_index: 0
+```
+
+The words the engine understands are `string`, `int`, `long`, `float`,
+`double`, `decimal`, `boolean`, `byte`, `short` and `char`. A word the
+engine does not understand switches the gate OFF, which is the worst kind of
+mistake: the family looks like it has a type and does not have one. The
+catalogue gate fails the build over such a word.
+
+**The gate fires only when the value is PROVABLY the wrong type.** The data
+flow keeps the types a variable may hold -- the type the program declared,
+and the type of a value copied into it -- and the finding is suppressed only
+when EVERY one of them is incompatible with the expected one. One compatible
+member is enough to keep the finding, and an unknown type proves nothing at
+all: a value the analysis knows nothing about is reported exactly as before.
+
+**Which families should declare one.** A family whose vulnerability needs the
+attacker to control TEXT should declare `string`: a number cannot carry the
+payload, so a tainted number is not that vulnerability. A family whose
+vulnerability is about a NON-string must not -- `format-string.sinks` is
+exactly the defect where the format is not what it should be, and
+`deserialization.sinks` takes a stream, not a string.
+
+**What it does not say.** It does not say the value is safe. It says the
+vulnerability this family describes cannot happen through a value of some
+other type. A family that declares nothing is reported exactly as before.

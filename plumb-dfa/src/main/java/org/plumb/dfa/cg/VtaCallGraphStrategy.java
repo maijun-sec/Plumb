@@ -28,6 +28,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.plumb.dfa.types.TypeCompatibility;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
@@ -293,35 +294,14 @@ public final class VtaCallGraphStrategy implements CallGraphStrategy {
    * to tell them apart from an illegal widening.
    */
   private static boolean isAssignable(TacType from, TacType to) {
-    if (from == null || to == null) return true;
-    TacType.Kind fk = from.kind();
-    TacType.Kind tk = to.kind();
-    if (fk == TacType.Kind.UNKNOWN
-        || tk == TacType.Kind.UNKNOWN
-        || fk == TacType.Kind.NULL
-        || tk == TacType.Kind.NULL
-        || fk == TacType.Kind.VOID
-        || tk == TacType.Kind.VOID) {
-      return true;
-    }
-    boolean fromPrim = isPrimitiveKind(fk);
-    boolean toPrim = isPrimitiveKind(tk);
-    if (fromPrim && toPrim) return fk == tk;
-    // A primitive on exactly one side is only legal when the other side is a boxed/unknown
-    // reference we cannot reason about. STRING and CLASS are concrete reference kinds, and a
-    // primitive is never assignable to them without a boxing conversion the IR does not model.
-    if (fromPrim != toPrim) {
-      TacType.Kind other = fromPrim ? tk : fk;
-      return other == TacType.Kind.ARRAY; // arrays accept any element expression
-    }
-    return true; // reference -> reference
+    // The rule itself lives in one place, because the type environment asks the same question
+    // and the two answers must not differ: TypeCompatibility.isAssignable is this method's
+    // former body, unchanged.
+    return TypeCompatibility.isAssignable(from, to);
   }
 
   private static boolean isPrimitiveKind(TacType.Kind k) {
-    return switch (k) {
-      case INT, LONG, DOUBLE, FLOAT, SHORT, BYTE, CHAR, BOOLEAN -> true;
-      default -> false;
-    };
+    return TypeCompatibility.isPrimitiveKind(k);
   }
 
   /** test seam for {@link #isAssignable}, which is otherwise private. */

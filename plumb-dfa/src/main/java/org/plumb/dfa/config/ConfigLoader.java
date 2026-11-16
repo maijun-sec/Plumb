@@ -564,6 +564,11 @@ public final class ConfigLoader {
       // The source VARIABLES: the sources a language has that are not calls.
       java.util.Map<SourceLanguage, java.util.List<String>> sourceVariables =
           parseSourceVariables(spec.get("source_variables"), name, languages);
+      // The type the sink's argument must have for this vulnerability to apply. Absent = the
+      // family says nothing about the type, and every value is reported as before. An unknown
+      // word means the same thing: the type gate stays off, and the catalogue gate fails the
+      // build over the word.
+      String expectsType = asString(spec.get("expects_type"));
       out.put(
           name,
           new SinkFamily(
@@ -575,7 +580,8 @@ public final class ConfigLoader {
               parsedPatterns,
               languages,
               languageRules,
-              sourceVariables));
+              sourceVariables,
+              expectsType));
     }
     return new SinkFamilyRegistry(out);
   }

@@ -484,8 +484,49 @@ mvn -pl plumb-dfa test -Dtest=ScriptSinkFamilyEndToEndTest
 to say how much of the program it actually saw. The report should carry the number of call
 sites that were analysed with a body, the number that were matched by a rule, and the number
 that were neither -- the last one is the honest black-box rate, and nothing reports it today.
+| **T1** | Carry the TYPE of each value in the data flow, and let a sink family declare the type its argument must have (`expects_type`). | A tainted value the program declared to be a number does not reach a sink that needs a string; a tainted string and a tainted value of unknown type still do. | **partly done** |
 
 ### Tier 4 — declared as absent, and that is the right call for now
+
+### 2.4b T1: the types were empty because nothing carried them, not because they were lost
+
+The complaint behind this item is that the TAC leaves the types empty. That is true of the
+FUNCTION SIGNATURE and of the analysis, and false of the IR: the operands carry their types, and
+the front ends fill them in. What was missing was the channel that brings them into the analysis.
+
+**What the IR already has.** Every operand carries a type: `TacVar.type()` and `Const.type()`
+return it, a literal's own type is what makes `x = 42` say "x is an int" even though nothing
+declared it, and a declared type is there too -- a Python annotation reaches the destination of
+the assignment, so `n: int = request["n"]` puts an `INT` on `n` in the IR. Verified by dumping
+the IR the Python side car actually sends.
+
+**What was missing.** Two things. The data flow did not carry the type of a value, so nothing
+could ask about it; and a sink family could not say what type its argument has to be, so there
+was no question to ask.
+
+**What is done.** The engine carries the type of each value in the current function (`TypeEnv`),
+and a family may declare the type its argument must have (`expects_type`). The gate fires only
+when EVERY type the value may hold is incompatible with the expected one, and it never fires on
+a value whose type nothing is known about. The types a variable may hold are the UNION over the
+whole function, not what the walk happened to meet first: a value that is an int on one path and
+a string on another keeps its finding.
+
+**What the gate is worth.** It removes the findings where the program itself says the value is
+not the text the vulnerability needs -- a number reaching a command line. It does NOT remove the
+case where the program CONVERTS the input first, because the return type of a conversion
+(`int(user_input)`) is not modelled. That is the next item, and it is the one that decides
+whether this gate has teeth in the languages that need it.
+
+**Measured.** The gate changes nothing on statically typed code, and the reason is the type
+system rather than the analysis: a number is not a string, so a compiler that checks the types
+already rejects the case the gate would suppress. `scripts/measure_type_gate.py` scans a corpus
+twice -- once with the catalogue's type declarations and once without them -- and reports the
+difference; the difference is empty. The language that needs the gate is the dynamically typed
+one, and there the Python cases are where it acts.
+
+**The honest limit.** The gate reads what the program DECLARED. A dynamically typed program that
+lies about its annotation -- `n: int = "hello"` -- gets its finding suppressed. A statically typed
+one cannot lie: the compiler rejects the program.
 
 | ID | Work | Rationale |
 |---|---|---|

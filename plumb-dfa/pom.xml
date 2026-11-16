@@ -843,6 +843,17 @@
                              disagreement is no crash and no warning, only a
                              scan that reports the program clean. -->
                         <include>org/plumb/dfa/taint/ScriptSinkFamilyEndToEndTest.java</include>
+                        <!-- The type a value has, carried in the data flow, and
+                             the sink that asks about it. The taint domain is a
+                             string domain, so a tainted NUMBER reaching a sink
+                             that needs a string was reported as that
+                             vulnerability. The gate fires only when every type
+                             the value may hold is incompatible with the
+                             expected one, and the test pins both directions:
+                             a number stops reaching the sink, a string and an
+                             unknown type keep reaching it, and a family that
+                             declares no type is untouched. -->
+                        <include>org/plumb/dfa/taint/SinkTypeGateTest.java</include>
                         <!-- The SSRF defect class: the catalogue names the sinks of
                              every language, the checker watches the family, and the
                              patterns that named other defect classes moved to the

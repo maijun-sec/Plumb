@@ -43,6 +43,7 @@ import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.summary.Operation;
 import org.plumb.dfa.summary.ReturnDependency;
 import org.plumb.dfa.summary.StringOp;
+import org.plumb.dfa.types.TypeCompatibility;
 import org.plumb.reporter.Finding;
 import org.plumb.reporter.FlowStep;
 import org.plumb.reporter.trace.OperandRef;
@@ -264,6 +265,20 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * {@link #initFunction}.
    */
   protected final Map<TacOperand.TacVar, String> taintedVars = new LinkedHashMap<>();
+
+  /**
+   * What the data flow knows about the TYPE of each value in the current function, keyed by the
+   * variable.
+   *
+   * <p><b>Why the analysis needs this.</b> The taint domain is a string domain: every tainted value
+   * is treated as a string. That is right most of the time and wrong in one observable way -- a
+   * value that is PROVABLY a number is not a string, so a tainted number reaching a sink that needs
+   * a string is not that vulnerability. Without a type in the data flow the engine has no way to
+   * say so, and reports it.
+   *
+   * <p>The set is cleared at every function boundary, like the taint state beside it.
+   */
+  protected final TypeEnv typeEnv = new TypeEnv();
 
   /**
    * Parallel to {@link #taintedVars}: each tainted operand's source-to-here path. The list is
@@ -924,6 +939,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   @Override
   public void initFunction(AnalysisContext ctx, TacFunction fn) {
     taintedVars.clear();
+    typeEnv.clear();
     taintPaths.clear();
     sinkObservations.clear();
     pathConditionFragments.clear();
@@ -4445,6 +4461,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     TacOperand arg = ins.args.get(argIdx);
     if (!(arg instanceof TacOperand.TacVar av)) return;
     if (!taintedVars.containsKey(av)) return;
+    // The same type gate the CALL path applies: the constructor's argument is a value of the
+    // same kind, so the same question is asked of it.
+    if (isIncompatibleWithExpectedType(family, fn, av)) {
+      return;
+    }
     // The same reachability question the CALL path asks, asked here too: a constructor is a
     // sink like any other call, and a source whose guards contradict each other does not
     // reach it either.
@@ -4521,6 +4542,55 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       v2Trace = Trace.fromFlowSteps(fullPath);
     }
     ctx.reporter().reportWithTrace(finding, v2Trace);
+  }
+
+  /**
+   * Whether a value is PROVABLY not the type this sink family needs.
+   *
+   * <p>A family that declares no type asks nothing, so every value is reported as before. A family
+   * that declares one is asked only about the types the analysis actually knows: an unknown type
+   * proves nothing, and a value that may hold a compatible type keeps its finding.
+   *
+   * @param family the sink family
+   * @param fn the function being analysed
+   * @param value the value reaching the sink
+   * @return whether the finding cannot apply to this value
+   */
+  private boolean isIncompatibleWithExpectedType(
+      SinkFamily family, TacFunction fn, TacOperand.TacVar value) {
+    TacType expected = expectedTypeOf(family);
+    if (expected == null) {
+      return false;
+    }
+    // The scan is done here, and not when the function starts, because most functions never
+    // reach a sink that asks about a type, and the scan is a pass over the instructions.
+    typeEnv.resolve(fn);
+    return typeEnv.typesOf(value).isDefinitelyIncompatibleWith(expected);
+  }
+
+  /**
+   * The type a sink family needs its argument to have, when the catalogue declares one.
+   *
+   * <p>Null means the family says nothing about the type of the value it claims, and every value is
+   * reported as before.
+   *
+   * @param family the family
+   * @return the expected type, or null
+   */
+  private static TacType expectedTypeOf(SinkFamily family) {
+    if (family == null) {
+      return null;
+    }
+    return TypeCompatibility.expectedType(family.expectsType());
+  }
+
+  /**
+   * What the data flow knows about the type of each value in this function.
+   *
+   * @return the type environment
+   */
+  public TypeEnv typeEnv() {
+    return typeEnv;
   }
 
   private void checkSinkForFamily(
@@ -4637,6 +4707,19 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       ArrayTaintTracker.TaintedEntry elementTaint = arrayTaintTracker.elementTaintOf(av);
       if (elementTaint == null) return;
       reportSinkWithTaint(ins, fn, ctx, family, calleeSig, av, elementTaint.label());
+      return;
+    }
+    // THE TYPE GATE. A value that is PROVABLY not the type the sink needs cannot be this
+    // vulnerability: `os.system(42)` raises a TypeError, it does not run a command. The gate
+    // fires only when EVERY type the value may hold is incompatible with the expected one,
+    // because a finding that is suppressed on a probability is a finding that is lost.
+    //
+    // The sink OBSERVATION above is kept either way: the observation is what the function
+    // summary folds, and a caller that passes a string to this function must still see the sink.
+    //
+    // The RECEIVER is not asked: a family's type is about the argument it claims, and the
+    // receiver is the object the method is called on.
+    if (!receiverTainted && isIncompatibleWithExpectedType(family, fn, av)) {
       return;
     }
     // A deserialization stream that carries a JEP-290 filter which can

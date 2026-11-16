@@ -557,6 +557,25 @@ public final class SinkFamily {
    */
   private final java.util.Map<SourceLanguage, java.util.List<String>> sourceVariables;
 
+  /**
+   * The type the sink's argument must have for this vulnerability to apply, as the catalogue words
+   * it.
+   *
+   * <p><b>Why a family declares this.</b> The taint domain is a string domain, so the engine treats
+   * every tainted value as a string. That is wrong in one observable way: a value that is provably
+   * a NUMBER is not a string, so a tainted number reaching a sink that needs a string is not that
+   * vulnerability -- {@code os.system(42)} raises a TypeError, it does not run a command.
+   *
+   * <p><b>What it does NOT say.</b> It does not say the value is safe: it says the vulnerability
+   * this family describes cannot happen through a value of some other type. A family that declares
+   * nothing is reported exactly as before.
+   *
+   * <p>The words are the ones {@code TypeCompatibility} understands; the catalogue gate checks
+   * every declared word against that list, so a typo fails the build rather than silently switching
+   * the gate off.
+   */
+  private final String expectsType;
+
   public SinkFamily(
       String name, String cwe, String severityLabel, boolean enabled, List<String> patterns) {
     // legacy string-list constructor.
@@ -663,6 +682,35 @@ public final class SinkFamily {
       Set<SourceLanguage> languages,
       LanguageRuleSet languageRules,
       java.util.Map<SourceLanguage, java.util.List<String>> sourceVariables) {
+    this(
+        name,
+        cwe,
+        severityLabel,
+        enabled,
+        defaultArgIndex,
+        patterns,
+        languages,
+        languageRules,
+        sourceVariables,
+        null);
+  }
+
+  /**
+   * Full constructor including the type the sink's argument must have.
+   *
+   * @param expectsType the type, as the catalogue words it; null when the family declares none
+   */
+  public SinkFamily(
+      String name,
+      String cwe,
+      String severityLabel,
+      boolean enabled,
+      int defaultArgIndex,
+      List<SinkPattern> patterns,
+      Set<SourceLanguage> languages,
+      LanguageRuleSet languageRules,
+      java.util.Map<SourceLanguage, java.util.List<String>> sourceVariables,
+      String expectsType) {
     this.name = Objects.requireNonNull(name, "name");
     this.cwe = cwe;
     this.severityLabel = severityLabel;
@@ -676,6 +724,7 @@ public final class SinkFamily {
             : languageRules;
     this.sourceVariables =
         sourceVariables == null ? java.util.Map.of() : java.util.Map.copyOf(sourceVariables);
+    this.expectsType = expectsType;
   }
 
   /**
@@ -707,6 +756,16 @@ public final class SinkFamily {
 
   public String name() {
     return name;
+  }
+
+  /**
+   * The type the sink's argument must have for this vulnerability to apply, as the catalogue words
+   * it.
+   *
+   * @return the type, or null when the family declares none
+   */
+  public String expectsType() {
+    return expectsType;
   }
 
   public String cwe() {
