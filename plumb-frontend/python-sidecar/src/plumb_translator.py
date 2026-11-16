@@ -171,6 +171,13 @@ class FunctionState:
         # call has to know which function it is written in: a closure can
         # only be called from inside the scope that created it.
         self.ast_node = None
+        # The names this function's scope can see: what it binds, and what
+        # the scopes around it bind. A name the MODULE binds is not in
+        # here -- a global is not a capture.
+        self.scope_names = set()
+        # The closures this function's own variables hold, by variable
+        # name. A call of such a variable has to reach the closure's body.
+        self.lambda_by_var = {}
         # The types this function inferred for its own variables. Python has
         # no static types, so they come from the annotations and from the
         # few assignments that name a class.
@@ -230,6 +237,12 @@ class Translator:
         self.function_enclosing = {}
         # The functions each function is written inside, by its AST node.
         self.function_ancestors = {}
+        # The counter that names the lambdas of one module.
+        self.lambda_counter = 0
+        # The closures of the module, by the AST node they were written
+        # as: the name of their own function, the values they capture and
+        # how many arguments they take.
+        self.lambda_by_node = {}
 
     # ---- the module ------------------------------------------------------------------------
 
@@ -541,6 +554,79 @@ class Translator:
             return True
         return enclosing in self.function_ancestors.get(current, set())
 
+    def lower_lambda(self, node):
+        """Lower a lambda's body into a function of its own.
+
+        The TAC has no nested function and no function value, so the
+        body's instructions cannot live in the enclosing function's
+        stream. The captured names become the LEADING PARAMETERS of the
+        new function, which is what the Go side car does for a closure
+        and what a nested `def` now does here: a parameter is a source,
+        so the body is analysed with the captured value already tainted,
+        and a finding inside it cannot be lost.
+
+        The value the lambda itself produces is still unknown -- the IR
+        cannot hold a function value -- so the enclosing function sees
+        the lambda as a HAVOC.
+        """
+        outer = self.state
+        captures = self.lambda_captures(node)
+        self.lambda_counter += 1
+        name = "lambda$%d" % self.lambda_counter
+        state = self.begin_function(
+            name, self.lambda_signature(node, self.module_name, captures, name), None
+        )
+        state.ast_node = node
+        state.scope_names = set(captures)
+        state.shadowed_names = self.scope_shadowed_names([node.body])
+        for parameter in self.parameters_of(node):
+            state.shadowed_names.add(parameter.arg)
+        for captured in captures:
+            declared = outer.types.get(captured) if outer is not None else None
+            if declared:
+                state.types[captured] = declared
+        try:
+            self.lower_parameters(node, captures)
+            value = self.lower_expression(node.body)
+            self.emit({"kind": Kind.RETURN, "lhs1": value, **self.position(node)})
+        finally:
+            self.state = outer
+        self.module_functions.append(self.finish_function(state))
+        self.lambda_by_node[node] = {
+            "name": name,
+            "captures": captures,
+            "arity": len(captures) + len(self.parameters_of(node)),
+        }
+
+    def lambda_captures(self, node):
+        """The names a lambda reads from the scope around it.
+
+        A lambda is a scope of its own, so the names it reads are free
+        variables of it -- unless the scope around it binds them. A name
+        the MODULE binds is a global, and a global is not a capture:
+        passing it as an argument would say something the program does
+        not say.
+        """
+        bound = set()
+        for parameter in self.parameters_of(node):
+            bound.add(parameter.arg)
+        globals_ = set()
+        self.collect_declared_globals([node.body], globals_)
+        loaded = set()
+        self.collect_loaded_names([node.body], loaded)
+        free = loaded - bound - globals_ - BUILTIN_NAMES
+        visible = self.state.scope_names if self.state is not None else set()
+        return sorted(free & visible)
+
+    def lambda_signature(self, node, owner, captures, name):
+        """The signature of a lambda's own function: ``owner.name(types):any``."""
+        types = []
+        for captured in captures:
+            types.append(self.state.types.get(captured) or "any")
+        for parameter in self.parameters_of(node):
+            types.append(self.annotation_name(parameter.annotation) or "any")
+        return "%s.%s(%s):any" % (owner, name, ",".join(types))
+
     def collect_walrus_targets(self, node, bound):
         """The names a walrus binds in the scope that encloses it.
 
@@ -601,6 +687,7 @@ class Translator:
             node.name, self.function_signature(node, owner, captures), enclosing_class
         )
         state.ast_node = node
+        state.scope_names = self.function_scope.get(node, set())
         state.shadowed_names = self.scope_shadowed_names(node.body)
         for parameter in self.parameters_of(node):
             state.shadowed_names.add(parameter.arg)
@@ -900,6 +987,17 @@ class Translator:
         if isinstance(target, ast.Name):
             variable = var_op(target.id, self.tac_type_of_variable(target.id))
             self.declare_local(variable)
+            # A variable that holds a closure: the call of that variable
+            # has to reach the closure's body, so the closure is recorded
+            # against the variable.
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Lambda):
+                closure = self.lambda_by_node.get(node.value)
+                if closure is not None:
+                    self.state.lambda_by_var[target.id] = closure
+            else:
+                # The variable holds something else now, so a call of it is
+                # a call of that value and not of the closure.
+                self.state.lambda_by_var.pop(target.id, None)
             self.emit(
                 {
                     "kind": Kind.MOVE,
@@ -1270,10 +1368,16 @@ class Translator:
         if isinstance(node, ast.DictComp):
             return self.lower_dict_comprehension(node)
         if isinstance(node, ast.Lambda):
+            # The lambda's BODY becomes a function of its own, so a sink
+            # inside it is analysed. The VALUE the lambda produces is
+            # still unknown: the TAC has no function value, so the name
+            # the lambda is held in holds an unknown value.
+            self.lower_lambda(node)
             self.report(
                 Problem.SOURCE_LOWERED,
                 node,
-                "a lambda has no TAC lowering, so the value it produces is unknown",
+                "a lambda's value is a function, and the TAC has no function value, so the value"
+                " the lambda is held in is unknown",
             )
             return self.emit_havoc(node)
         if isinstance(node, ast.Await):
@@ -1905,6 +2009,19 @@ class Translator:
                 "arity": self.passed_arity(node),
                 "resolved": True,
                 "reason": None,
+            }
+        closure = self.state.lambda_by_var.get(name) if self.state is not None else None
+        if closure is not None:
+            # The variable holds a closure of THIS function, so the values
+            # it captured are in scope here and the call passes them.
+            return {
+                "owner": self.module_name,
+                "method": closure["name"],
+                "receiver": const_op(Const.STRING, self.module_name),
+                "arity": closure["arity"],
+                "resolved": True,
+                "reason": None,
+                "leading": closure["captures"],
             }
         definition = self.defined_functions.get(name)
         if definition is not None:

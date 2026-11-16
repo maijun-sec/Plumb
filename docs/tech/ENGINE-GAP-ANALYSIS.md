@@ -401,18 +401,23 @@ the Python side car:
 | Shape | Sink in the IR? | The captured value in scope? | Verdict |
 |---|---|---|---|
 | the sink called in the body | yes -- a `CALL os.system/1` | yes, a local of the function | reported |
-| the sink inside a `lambda` | **no** -- no function is emitted at all | not applicable | **lost** |
+| the sink inside a `lambda` | yes -- the body becomes a function of its own | **yes** -- the captured names are its leading parameters | **reported** |
 | the sink inside a `def` nested in the function | yes -- a function of its own is emitted | **yes** -- the captured names are its leading parameters | **reported** |
 | the sink inside a generator (`yield`) | yes -- the value the generator yields is evaluated in the generator's own stream | **yes** -- the captured names are its leading parameters | **reported** |
 
-**Two of the four shapes are fixed, and the fix is measured.** The Python side car now lowers a
-nested function's captures as its **leading parameters** and passes them at the call site
-(`plumb-frontend/python-sidecar/src/plumb_translator.py:384`, `:592`, `:619`, `:1884`), and it
-evaluates the value a generator yields in the generator's own stream
-(`plumb-frontend/python-sidecar/src/plumb_translator.py:1283-1295`). The probe over the same wire
-protocol reports **one lost shape out of four** -- the `lambda`, whose body is still not emitted as
-a function of its own, so the side car still reports `SOURCE_LOWERED` for it
-(`plumb-frontend/python-sidecar/src/plumb_translator.py:1272-1278`).
+**All four shapes are fixed, and the fix is measured.** The Python side car now lowers a nested
+function's captures as its **leading parameters** and passes them at the call site
+(`plumb-frontend/python-sidecar/src/plumb_translator.py:397`, `:678`, `:1988`), lowers a lambda's
+body into a function of its own with the same shape
+(`plumb-frontend/python-sidecar/src/plumb_translator.py:557`, `:601`), and evaluates the value a
+generator yields in the generator's own stream
+(`plumb-frontend/python-sidecar/src/plumb_translator.py:1387-1399`). The probe over the same wire
+protocol reports **no shape that loses the finding**.
+
+The value a lambda is held in is still an unknown value -- the IR cannot hold a function value --
+so the side car says so: `SOURCE_LOWERED` for the lambda's VALUE
+(`plumb-frontend/python-sidecar/src/plumb_translator.py:1371-1382`). The body, which is where the
+finding is, is analysed.
 
 **What the fix buys, measured end to end.** A sink inside a closure, scanned with the command
 injection rule, over five shapes:
@@ -424,6 +429,7 @@ injection rule, over five shapes:
 | the sink inside a closure that captures a clean value | no finding | 1 finding, `param:value` |
 | the sink inside a closure that is never called | no finding | 1 finding, `param:value` |
 | the sink inside a generator that captures a tainted value | **no finding** | 1 finding, `param:request` |
+| the sink inside a lambda that captures a tainted value | **no finding** | 1 finding, `param:request` |
 
 The origin in the label is the point. The closure that IS called reports the caller's origin
 (`param:request`), because the call site passes the captured value; the closure that is never
@@ -459,10 +465,10 @@ precise path.
 |---|---|---|---|
 | **G13** | Lower a function value the way Go and Java do: the body becomes a function of its own and the captured variables become its leading parameters, in every front end that can express it. | A sink inside a lambda, inside a nested `def` and inside a generator is reported, and the captured value reaches it. | **partly done** |
 
-**What is done and what is not.** The Python side car is done: a nested `def` and a generator are
-lowered with their captures as leading parameters, and the call site passes them. What is left is
-the `lambda` -- whose body is not emitted as a function of its own -- and the TypeScript, ArkTS and
-PHP side cars, which still lower a function value to a `HAVOC`.
+**What is done and what is not.** The Python side car is done: a nested `def`, a lambda and a
+generator are lowered with their captures as leading parameters, and the call site passes them --
+including the call of a variable that holds a lambda, which is what the Go side car does. What is
+left is the TypeScript, ArkTS and PHP side cars, which still lower a function value to a `HAVOC`.
 
 **How to measure it.**
 

@@ -232,9 +232,15 @@ def main():
                 lost += 1
         print()
         print("shapes that lose the finding: %d of %d" % (lost, len(SHAPES)))
-        print("A lost finding is not a false positive: it is never produced, and a report")
-        print("cannot show it. The front end says which shapes it dropped, through the")
-        print("problem channel -- the report is honest, the finding is still gone.")
+        if lost:
+            print("A lost finding is not a false positive: it is never produced, and a report")
+            print("cannot show it. The front end says which shapes it dropped, through the")
+            print("problem channel -- the report is honest, the finding is still gone.")
+        else:
+            print("Every shape keeps the finding: the sink is in the IR, and the value the")
+            print("closure reads is in scope where the sink is. A capture is a PARAMETER, so")
+            print("it is analysed as untrusted -- the finding is produced, and the origin it")
+            print("names is the capture.")
     finally:
         child.kill()
 

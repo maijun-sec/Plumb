@@ -370,6 +370,17 @@ class ScriptSinkFamilyEndToEndTest {
           inner()
       """;
 
+  private static final String PYTHON_LAMBDA =
+      """
+      import os
+
+
+      def outer(request):
+          value = request["cmd"]
+          run = lambda: os.system(value)
+          run()
+      """;
+
   private static final String PYTHON_GLOBAL_EVAL =
       """
       import socket
@@ -939,6 +950,36 @@ class ScriptSinkFamilyEndToEndTest {
 
     assertThat(hasFinding(findings, COMMAND_INJECTION_RULE, "os.system"))
         .as("the sink inside the closure is reported, and the captured value reaches it")
+        .isTrue();
+  }
+
+  /**
+   * A sink inside a lambda is reported, and the captured value reaches it.
+   *
+   * <p><b>Why a lambda is its own case.</b> The TAC cannot hold a function value -- TacOperand is
+   * sealed and permits a variable and a constant -- so a lambda used to leave two holes: the body
+   * was not in the IR at all, and the name the lambda was held in held an unknown value, so a call
+   * of it reached nothing. The body is now a function of its own, with the captured value as its
+   * leading parameter, and the call of the variable that holds the lambda passes that value and
+   * names the lambda's own function.
+   *
+   * <p><b>What the finding names.</b> The origin in the label is the caller's, because the call
+   * site passes the captured value: the report says where the untrusted value entered, not that
+   * some parameter of the closure might have been.
+   */
+  @Test
+  @DisplayName("a sink inside a Python lambda is reported")
+  void aSinkInsideAPythonLambdaIsReported(@TempDir Path directory) throws IOException {
+    assumeTrue(pythonAvailable(), "the Python front end needs a Python 3 runtime on the PATH");
+
+    Path file = directory.resolve("app.py");
+    Files.writeString(file, PYTHON_LAMBDA);
+
+    List<Finding> findings =
+        scan(new PythonTacFrontend(), PYTHON_LAMBDA, file, new CommandInjectionChecker());
+
+    assertThat(hasFinding(findings, COMMAND_INJECTION_RULE, "os.system"))
+        .as("the sink inside the lambda is reported, and the captured value reaches it")
         .isTrue();
   }
 

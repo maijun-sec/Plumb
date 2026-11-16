@@ -596,6 +596,12 @@ class PythonSidecarEndToEndTest {
                 yield os.system(request["cmd"])
 
             return gen
+
+
+        def with_lambda(request):
+            value = request["cmd"]
+            run = lambda: os.system(value)
+            run()
         """;
     Files.writeString(directory.resolve("pyproject.toml"), "[project]\nname = \"app\"\n");
     Path file = directory.resolve("app.py");
@@ -670,6 +676,39 @@ class PythonSidecarEndToEndTest {
                   i.kind == TacInstruction.Kind.CALL
                       && i.calleeSig != null
                       && i.calleeSig.startsWith("os.system/"));
+
+      // The lambda: its BODY is a function of its own, and the value it
+      // captured is that function's leading parameter.
+      TacFunction lambda = find(result, "lambda$1");
+      assertThat(lambda).as("the lambda's body must be a function of its own").isNotNull();
+      assertThat(lambda.params())
+          .as("the capture is the leading parameter of the lambda's own function")
+          .extracting(p -> p.name())
+          .containsExactly("value");
+
+      // The call of the variable that holds the lambda reaches the body:
+      // it names the lambda's own function and passes the captured value.
+      TacFunction holder = find(result, "with_lambda");
+      assertThat(holder).as("the function must be in the stream").isNotNull();
+      TacInstruction closureCall =
+          holder.instructions().stream()
+              .filter(i -> i.kind == TacInstruction.Kind.CALL)
+              .filter(i -> i.calleeSig != null && i.calleeSig.contains(".lambda$"))
+              .findFirst()
+              .orElseThrow(
+                  () -> new AssertionError("the call of the closure is not in the stream"));
+      assertThat(closureCall.args)
+          .as("the receiver slot, then the captured value")
+          .hasSize(2);
+      assertThat(((TacOperand.TacVar) closureCall.args.get(1)).name())
+          .as("the value the lambda captured is the value the call passes")
+          .isEqualTo("value");
+
+      // The VALUE the lambda is held in is still unknown: the IR has no
+      // function value, so the name holds an unknown value.
+      assertThat(holder.instructions())
+          .as("a name that holds a lambda holds an unknown value")
+          .anyMatch(i -> i.kind == TacInstruction.Kind.HAVOC);
     }
   }
 
