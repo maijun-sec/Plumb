@@ -33,6 +33,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.plumb.dfa.checkers.taint.CodeInjectionChecker;
+import org.plumb.dfa.checkers.taint.CommandInjectionChecker;
 import org.plumb.dfa.checkers.taint.FormatStringChecker;
 import org.plumb.dfa.checkers.taint.LogInjectionChecker;
 import org.plumb.dfa.checkers.taint.PathTraversalChecker;
@@ -110,6 +111,7 @@ class ScriptSinkFamilyEndToEndTest {
   private static final String WEAK_CRYPTO_RULE = "dfa-taint-weak-crypto";
   private static final String PATH_RULE = "dfa-taint-path-traversal";
   private static final String SQL_RULE = "dfa-taint-sql-injection";
+  private static final String COMMAND_INJECTION_RULE = "dfa-taint-command-injection";
 
   /**
    * A TypeScript program that writes a tainted value into the page.
@@ -354,6 +356,20 @@ class ScriptSinkFamilyEndToEndTest {
    * module Python itself provides the name from, {@code builtins}. The catalogue names that owner,
    * so the builtin is claimed.
    */
+  private static final String PYTHON_CLOSURE =
+      """
+      import os
+
+
+      def outer(request):
+          value = request["cmd"]
+
+          def inner():
+              os.system(value)
+
+          inner()
+      """;
+
   private static final String PYTHON_GLOBAL_EVAL =
       """
       import socket
@@ -889,6 +905,40 @@ class ScriptSinkFamilyEndToEndTest {
 
     assertThat(hasFinding(findings, CODE_INJECTION_RULE, "eval"))
         .as("the value that was given to the eval is evaluated as code")
+        .isTrue();
+  }
+
+  /**
+   * A sink inside a closure is reported, and the captured value reaches it.
+   *
+   * <p><b>Why this is an END-TO-END claim and not a shape claim.</b> The front end's own test pins
+   * the IR: the capture is a leading parameter and the call passes it. That is not the same claim.
+   * The claim that matters to a reader of a report is that the FINDING appears -- that the value
+   * that reaches the sink is recognised as untrusted, and the sink is claimed by a rule.
+   *
+   * <p><b>What was lost before.</b> The body of the closure was in the IR, but the captured value
+   * was in neither its parameters nor its locals, so the value never arrived: the sink inside was
+   * an instruction that was analysed with nothing to report. The finding was not produced at all.
+   *
+   * <p><b>What the shape costs.</b> A parameter is a source -- every parameter of every function is
+   * marked as one -- so the captured value is analysed as untrusted even where the enclosing scope
+   * holds something clean. That is the conservative price of the shape, and it is the same price
+   * the Go front end already pays for a closure. It buys the finding: a sink that is invisible is
+   * not a finding the report can be wrong about.
+   */
+  @Test
+  @DisplayName("a sink inside a Python closure is reported")
+  void aSinkInsideAPythonClosureIsReported(@TempDir Path directory) throws IOException {
+    assumeTrue(pythonAvailable(), "the Python front end needs a Python 3 runtime on the PATH");
+
+    Path file = directory.resolve("app.py");
+    Files.writeString(file, PYTHON_CLOSURE);
+
+    List<Finding> findings =
+        scan(new PythonTacFrontend(), PYTHON_CLOSURE, file, new CommandInjectionChecker());
+
+    assertThat(hasFinding(findings, COMMAND_INJECTION_RULE, "os.system"))
+        .as("the sink inside the closure is reported, and the captured value reaches it")
         .isTrue();
   }
 

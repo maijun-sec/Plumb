@@ -167,6 +167,10 @@ class FunctionState:
         self.temp_counter = 0
         self.label_counter = 0
         self.label_prefix = ""
+        # The AST node of the function being lowered, when there is one. A
+        # call has to know which function it is written in: a closure can
+        # only be called from inside the scope that created it.
+        self.ast_node = None
         # The types this function inferred for its own variables. Python has
         # no static types, so they come from the annotations and from the
         # few assignments that name a class.
@@ -217,12 +221,22 @@ class Translator:
         # The function nodes that are methods, so that the receiver is not
         # counted twice in a method's arity.
         self.method_nodes = set()
+        # What each function captures, by its AST node. A capture is a name
+        # the function reads from the scope around it.
+        self.function_captures = {}
+        # The names each function's scope can see, by its AST node.
+        self.function_scope = {}
+        # The function each function is written inside, by its AST node.
+        self.function_enclosing = {}
+        # The functions each function is written inside, by its AST node.
+        self.function_ancestors = {}
 
     # ---- the module ------------------------------------------------------------------------
 
     def translate_module(self, tree):
         """The functions a module declares, in source order."""
         self.collect_bindings(tree)
+        self.collect_scopes(tree)
         outer = self.state
         state = self.begin_function("<module>", self.module_name, None, synthetic=True)
         state.shadowed_names = self.scope_shadowed_names(tree.body, module_scope=True)
@@ -365,6 +379,168 @@ class Translator:
             for child in ast.iter_child_nodes(node):
                 self.walk_scope_bindings([child], bound, outer, False)
 
+    # ---- the scopes of the functions ------------------------------------------------------
+
+    def collect_scopes(self, tree):
+        """Read every function's scope before anything is lowered.
+
+        A function that is written inside another function reads names from
+        the scope around it. Those names are FREE variables of the inner
+        function: they are in neither its parameters nor its locals, and the
+        engine has no way to carry the taint of a value into a function that
+        has no parameter to carry it in. A sink inside such a body is not a
+        finding the report cannot show -- it is never produced at all.
+
+        So the free variables become the inner function's LEADING PARAMETERS,
+        which is what the Go side car does for a closure. A parameter is a
+        source, so the body is analysed with the captured value already
+        tainted, and a finding inside it cannot be lost.
+
+        The scopes are read FIRST, over the whole module, because a call can
+        come BEFORE the definition it calls: the call has to know the
+        callee's arity, and the arity of a closure counts its captures.
+        """
+        self.collect_scope(tree.body, None, set(), set())
+
+    def collect_scope(self, body, enclosing, visible, ancestors):
+        """Read the scopes of the functions written in one scope.
+
+        `visible` is the set of names the scopes around this one bind. A
+        free variable of a function is a capture only when one of those
+        scopes binds it: a name the MODULE binds is a global, and a global
+        is not a capture -- passing it as an argument would say something
+        the program does not say.
+
+        `ancestors` are the functions this one is written inside.
+        """
+        for statement in body:
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                captures = sorted(self.free_variables(statement) & visible)
+                self.function_captures[statement] = captures
+                scope = self.bound_names(statement) | visible
+                self.function_scope[statement] = scope
+                self.function_enclosing[statement] = enclosing
+                self.function_ancestors[statement] = set(ancestors)
+                self.collect_scope(
+                    statement.body, statement, scope, ancestors | {statement}
+                )
+            elif isinstance(statement, ast.ClassDef):
+                # A class body is NOT a scope its methods can see: a method
+                # reads the names of the function around it, not the
+                # attributes of its class.
+                self.collect_scope(statement.body, enclosing, visible, ancestors)
+
+    def bound_names(self, node):
+        """The names a function's own scope binds."""
+        bound = set()
+        self.walk_scope_bindings(node.body, bound, set(), False)
+        for parameter in self.parameters_of(node):
+            bound.add(parameter.arg)
+        bound.add(node.name)
+        for statement in node.body:
+            if isinstance(statement, ast.ClassDef):
+                bound.add(statement.name)
+        return bound
+
+    def free_variables(self, node):
+        """The names a function reads that it does not bind itself.
+
+        Where such a name comes from -- the scope around the function, or
+        the module -- is decided by the scope that has it, not here.
+        """
+        bound = self.bound_names(node)
+        globals_ = set()
+        self.collect_declared_globals(node.body, globals_)
+        loaded = set()
+        self.collect_loaded_names(node.body, loaded)
+        return loaded - bound - globals_ - BUILTIN_NAMES
+
+    def collect_loaded_names(self, nodes, out, bound_here=frozenset()):
+        """The names a scope reads.
+
+        A nested scope is a scope of its own: the names it reads are not
+        the names this scope reads. What IS read where this scope is
+        written -- a decorator, a default value, a class's bases -- is read
+        here.
+
+        `bound_here` are the names a nested scope binds -- the loop
+        variables of a comprehension. They are not read from the scope
+        around it, so they are not free variables of anything.
+        """
+        for node in nodes:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                self.collect_loaded_names(node.decorator_list, out, bound_here)
+                defaults = list(node.args.defaults)
+                defaults.extend(d for d in node.args.kw_defaults if d is not None)
+                self.collect_loaded_names(defaults, out, bound_here)
+                continue
+            if isinstance(node, ast.Lambda):
+                defaults = list(node.args.defaults)
+                defaults.extend(d for d in node.args.kw_defaults if d is not None)
+                self.collect_loaded_names(defaults, out, bound_here)
+                continue
+            if isinstance(node, ast.ClassDef):
+                self.collect_loaded_names(node.decorator_list, out, bound_here)
+                self.collect_loaded_names(node.bases, out, bound_here)
+                continue
+            if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+                # A comprehension has a scope of its own: its loop variables
+                # are bound there, and everything else it reads comes from
+                # the scope around it.
+                inner = set(bound_here)
+                for generator in node.generators:
+                    self.collect_target_names(generator.target, inner)
+                for child in ast.iter_child_nodes(node):
+                    if isinstance(child, ast.comprehension):
+                        self.collect_loaded_names([child.iter], out, bound_here)
+                        self.collect_loaded_names(child.ifs, out, inner)
+                        continue
+                    self.collect_loaded_names([child], out, inner)
+                continue
+            if isinstance(node, ast.Name):
+                if isinstance(node.ctx, ast.Load) and node.id not in bound_here:
+                    out.add(node.id)
+                continue
+            for child in ast.iter_child_nodes(node):
+                self.collect_loaded_names([child], out, bound_here)
+
+    def collect_target_names(self, target, out):
+        """The names a target binds."""
+        if isinstance(target, ast.Name):
+            out.add(target.id)
+            return
+        if isinstance(target, (ast.Tuple, ast.List)):
+            for element in target.elts:
+                self.collect_target_names(element, out)
+
+    def collect_declared_globals(self, nodes, out):
+        """The names a scope declares global."""
+        for node in nodes:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+                continue
+            if isinstance(node, ast.Global):
+                out.update(node.names)
+                continue
+            for child in ast.iter_child_nodes(node):
+                self.collect_declared_globals([child], out)
+
+    def can_pass_captures(self, definition):
+        """Whether the call being lowered can pass a closure's captures.
+
+        The captures are the names the scope around the closure binds. A
+        call inside that scope can pass them; a call outside it cannot,
+        because they are not in scope there.
+        """
+        current = self.state.ast_node if self.state is not None else None
+        if current is None:
+            return False
+        enclosing = self.function_enclosing.get(definition)
+        if enclosing is None:
+            return True
+        if enclosing is current:
+            return True
+        return enclosing in self.function_ancestors.get(current, set())
+
     def collect_walrus_targets(self, node, bound):
         """The names a walrus binds in the scope that encloses it.
 
@@ -417,22 +593,38 @@ class Translator:
         """Lower one function into its own stream."""
         outer = self.state
         owner = enclosing_class if enclosing_class else self.module_name
+        # The values the function captures are its LEADING PARAMETERS. A
+        # parameter is a source, so the body is analysed with the captured
+        # value already tainted, and a finding inside it cannot be lost.
+        captures = self.function_captures.get(node, [])
         state = self.begin_function(
-            node.name, self.function_signature(node, owner), enclosing_class
+            node.name, self.function_signature(node, owner, captures), enclosing_class
         )
+        state.ast_node = node
         state.shadowed_names = self.scope_shadowed_names(node.body)
         for parameter in self.parameters_of(node):
             state.shadowed_names.add(parameter.arg)
+        for name in captures:
+            declared = outer.types.get(name) if outer is not None else None
+            if declared:
+                state.types[name] = declared
         try:
-            self.lower_parameters(node)
+            self.lower_parameters(node, captures)
             self.report_non_constant_defaults(node)
             self.lower_body(node.body)
         finally:
             self.state = outer
         return self.finish_function(state)
 
-    def lower_parameters(self, node):
-        """Declare the parameters, in declaration order."""
+    def lower_parameters(self, node, captures=()):
+        """Declare the parameters, in declaration order.
+
+        The captured names come FIRST: they are the leading parameters of a
+        closure, and a parameter is a source, so the body of the closure is
+        analysed with the captured value already tainted.
+        """
+        for name in captures:
+            self.state.params.append(var_op(name, self.tac_type_of_variable(name)))
         for parameter in self.parameters_of(node):
             name = parameter.arg
             operand = var_op(name, self.tac_type_of_annotation(parameter.annotation))
@@ -473,9 +665,11 @@ class Translator:
                     "called, so it is not part of the function's own stream",
                 )
 
-    def function_signature(self, node, owner):
+    def function_signature(self, node, owner, captures=()):
         """The signature string: ``owner.name(ParamTypes):Return``."""
         types = []
+        for name in captures:
+            types.append(self.state.types.get(name) or "any")
         for parameter in self.parameters_of(node):
             types.append(self.annotation_name(parameter.annotation) or "any")
         return "%s.%s(%s):%s" % (
@@ -1087,6 +1281,12 @@ class Translator:
             # The TAC has no coroutine, so the awaited value stands for it.
             return self.lower_expression(node.value)
         if isinstance(node, (ast.Yield, ast.YieldFrom)):
+            # The value a generator yields is evaluated in the generator's
+            # own stream, so it is lowered there: a sink inside it is a sink
+            # inside the generator. The value the generator produces is
+            # unknown -- the TAC has no generator.
+            if node.value is not None:
+                self.lower_expression(node.value)
             self.report(
                 Problem.UNHANDLED_NODE,
                 node,
@@ -1526,7 +1726,10 @@ class Translator:
                 "a keyword argument is passed as a positional one, so the arguments' order is "
                 "not the order the callee sees",
             )
-        args = [callee["receiver"]] + arguments
+        leading = []
+        for name in callee.get("leading") or []:
+            leading.append(var_op(name, self.tac_type_of_variable(name)))
+        args = [callee["receiver"]] + leading + arguments
         dest = self.state.new_temp()
         kind = Kind.CALL if callee["resolved"] else Kind.UNINTERPRETED
         if not callee["resolved"]:
@@ -1705,13 +1908,32 @@ class Translator:
             }
         definition = self.defined_functions.get(name)
         if definition is not None:
+            captures = self.function_captures.get(definition, [])
+            if captures and not self.can_pass_captures(definition):
+                # The closure is called from outside the scope that made
+                # it, so the values it captured are not here to pass. The
+                # call becomes a black box: the engine keeps the taint of
+                # the arguments, and the body of the closure is analysed
+                # on its own.
+                return {
+                    "owner": UNKNOWN_OWNER,
+                    "method": name,
+                    "receiver": const_op(Const.STRING, UNKNOWN_OWNER),
+                    "arity": self.passed_arity(node),
+                    "resolved": False,
+                    "reason": (
+                        "this closure is called from outside the scope that created it, so the "
+                        "values it captured cannot be passed to it"
+                    ),
+                }
             return {
                 "owner": self.module_name,
                 "method": name,
                 "receiver": const_op(Const.STRING, self.module_name),
-                "arity": self.declared_arity(definition),
+                "arity": len(captures) + self.declared_arity(definition),
                 "resolved": True,
                 "reason": None,
+                "leading": captures,
             }
         if name in self.imported_modules:
             reason = "this name is a module, so calling it could not be resolved"

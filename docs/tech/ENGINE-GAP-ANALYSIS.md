@@ -402,13 +402,38 @@ the Python side car:
 |---|---|---|---|
 | the sink called in the body | yes -- a `CALL os.system/1` | yes, a local of the function | reported |
 | the sink inside a `lambda` | **no** -- no function is emitted at all | not applicable | **lost** |
-| the sink inside a `def` nested in the function | yes -- a function of its own is emitted | **no** -- the captured name is in neither its params nor its locals | **lost** |
-| the sink inside a generator (`yield`) | **no** -- the function holds one `HAVOC` | not applicable | **lost** |
+| the sink inside a `def` nested in the function | yes -- a function of its own is emitted | **yes** -- the captured names are its leading parameters | **reported** |
+| the sink inside a generator (`yield`) | yes -- the value the generator yields is evaluated in the generator's own stream | **yes** -- the captured names are its leading parameters | **reported** |
 
-Three of the four shapes lose the finding, and the front end says so: the side car reports
-`SOURCE_LOWERED` for the lambda and `UNHANDLED_NODE` for the yield
-(`plumb-frontend/python-sidecar/src/plumb_translator.py:1078-1084` and `:1089-1095`). The report
-is honest; the finding is still gone.
+**Two of the four shapes are fixed, and the fix is measured.** The Python side car now lowers a
+nested function's captures as its **leading parameters** and passes them at the call site
+(`plumb-frontend/python-sidecar/src/plumb_translator.py:384`, `:592`, `:619`, `:1884`), and it
+evaluates the value a generator yields in the generator's own stream
+(`plumb-frontend/python-sidecar/src/plumb_translator.py:1283-1295`). The probe over the same wire
+protocol reports **one lost shape out of four** -- the `lambda`, whose body is still not emitted as
+a function of its own, so the side car still reports `SOURCE_LOWERED` for it
+(`plumb-frontend/python-sidecar/src/plumb_translator.py:1272-1278`).
+
+**What the fix buys, measured end to end.** A sink inside a closure, scanned with the command
+injection rule, over five shapes:
+
+| Shape | Before | After |
+|---|---|---|
+| the sink called in the body | 1 finding, `param:request` | 1 finding, `param:request` |
+| the sink inside a closure that captures a tainted value | **no finding** | 1 finding, `param:request` |
+| the sink inside a closure that captures a clean value | no finding | 1 finding, `param:value` |
+| the sink inside a closure that is never called | no finding | 1 finding, `param:value` |
+| the sink inside a generator that captures a tainted value | **no finding** | 1 finding, `param:request` |
+
+The origin in the label is the point. The closure that IS called reports the caller's origin
+(`param:request`), because the call site passes the captured value; the closure that is never
+called reports its own parameter (`param:value`), because there is no call site to pass it.
+
+**The price, stated plainly.** A parameter is a source, so a capture is analysed as untrusted even
+where the enclosing scope holds something clean: the third row above is a **false positive**, and
+it is the same price the Go front end already pays for a closure. The alternative is the first
+column of that table -- the sink is invisible, and an invisible sink is not a finding a report can
+be wrong about.
 
 **The IR has no way to say "a function value".** `TacOperand` is sealed and permits only a
 variable and a constant (`plumb-tac/src/main/java/org/plumb/tac/ir/TacOperand.java:34-35`), so a
@@ -432,13 +457,21 @@ precise path.
 
 | ID | Work | How to prove it | Status |
 |---|---|---|---|
-| **G13** | Lower a function value the way Go and Java do: the body becomes a function of its own and the captured variables become its leading parameters, in every front end that can express it. | A sink inside a lambda, inside a nested `def` and inside a generator is reported, and the captured value reaches it. | **open** |
+| **G13** | Lower a function value the way Go and Java do: the body becomes a function of its own and the captured variables become its leading parameters, in every front end that can express it. | A sink inside a lambda, inside a nested `def` and inside a generator is reported, and the captured value reaches it. | **partly done** |
+
+**What is done and what is not.** The Python side car is done: a nested `def` and a generator are
+lowered with their captures as leading parameters, and the call site passes them. What is left is
+the `lambda` -- whose body is not emitted as a function of its own -- and the TypeScript, ArkTS and
+PHP side cars, which still lower a function value to a `HAVOC`.
 
 **How to measure it.**
 
 ```bash
 # a sink in four shapes, over the side car's real wire protocol
 python scripts/probe_function_values.py
+
+# the same claim end to end: the FINDING is produced, not just the shape
+mvn -pl plumb-dfa test -Dtest=ScriptSinkFamilyEndToEndTest
 ```
 
 **The other half of the trust question.** A scan cannot be judged by its findings alone; it has

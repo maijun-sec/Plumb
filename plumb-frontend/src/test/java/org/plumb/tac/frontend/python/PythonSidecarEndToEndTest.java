@@ -538,6 +538,141 @@ class PythonSidecarEndToEndTest {
     }
   }
 
+  /**
+   * A closure takes the values it captures as its LEADING PARAMETERS, and the call passes them.
+   *
+   * <p><b>Why the capture has to be a parameter.</b> A function written inside another function reads
+   * names from the scope around it. Those names are FREE variables of the inner function: they are in
+   * neither its parameters nor its locals, and the engine has no way to carry the taint of a value
+   * into a function that has no parameter to carry it in. A sink inside such a body is not a finding
+   * the report cannot show -- it is never produced at all. The engine analyses every function in the
+   * program, so the body IS analysed; the VALUE is what never arrives.
+   *
+   * <p><b>What the shape buys.</b> A parameter is a source: every parameter of every function is
+   * marked as one. So a capture that is a parameter arrives in the body already tainted, and the
+   * finding inside it cannot be lost. The call site passes the captured values as the leading
+   * arguments, so the call carries the value the program actually had, and the arity in the key
+   * counts the captures -- which is what keeps the call and the callee the same node in the call
+   * graph.
+   *
+   * <p><b>Why the loop variable of a comprehension is NOT a capture.</b> A comprehension has a scope
+   * of its own, so its loop variable is bound there and not in the function around it. Treating it
+   * as a capture would put a parameter and a local of the SAME NAME in one function, and the engine
+   * identifies a variable by its name: the loop variable would BE the parameter, and the taint of
+   * the parameter would flow into the loop.
+   *
+   * <p><b>Why the value a generator yields is still evaluated.</b> The generator has no TAC of its
+   * own, so the value it produces is unknown -- but the value is EVALUATED in the generator's own
+   * stream, and a sink inside it is a sink inside the generator. Dropping it would lose the
+   * finding, not merely its precision.
+   */
+  @Test
+  @DisplayName("a closure takes its captures as leading parameters")
+  void aClosureTakesItsCapturesAsLeadingParameters(@TempDir Path directory) throws IOException {
+    String source =
+        """
+        import os
+
+
+        def outer(request):
+            value = request["cmd"]
+
+            def sink_in_closure(arg):
+                os.system(value + arg)
+
+            sink_in_closure("x")
+            return sink_in_closure
+
+
+        def with_comprehension(items):
+            def listing():
+                return [x for x in items]
+
+            return listing
+
+
+        def generator(request):
+            def gen():
+                yield os.system(request["cmd"])
+
+            return gen
+        """;
+    Files.writeString(directory.resolve("pyproject.toml"), "[project]\nname = \"app\"\n");
+    Path file = directory.resolve("app.py");
+    Files.writeString(file, source);
+
+    try (PythonTacFrontend frontend = new PythonTacFrontend()) {
+      assumeTrue(
+          sidecarAvailable(),
+          "the Python front end needs a Python 3 interpreter on the PATH (the sidecar imports only"
+              + " the standard library, so there is nothing to install into it)");
+
+      TacFrontend.ParseResult result = frontend.parse(source, file, null);
+
+      // The closure: the captured value is a parameter, and it comes FIRST.
+      TacFunction closure = find(result, "sink_in_closure");
+      assertThat(closure).as("the closure must be in the stream").isNotNull();
+      assertThat(closure.params())
+          .as("the capture is the leading parameter, and the declared one follows it")
+          .extracting(p -> p.name())
+          .containsExactly("value", "arg");
+      assertThat(closure.signature())
+          .as("the signature counts the captures, so the call and the callee are one node")
+          .contains("sink_in_closure(any,any)");
+
+      // The call: the captured value is passed as the leading user argument.
+      TacFunction enclosing = find(result, "outer");
+      assertThat(enclosing).as("the enclosing function must be in the stream").isNotNull();
+      TacInstruction call =
+          enclosing.instructions().stream()
+              .filter(i -> i.kind == TacInstruction.Kind.CALL)
+              .filter(i -> i.calleeSig != null && i.calleeSig.contains(".sink_in_closure/"))
+              .findFirst()
+              .orElseThrow(() -> new AssertionError("the call of the closure is not in the stream"));
+      assertThat(call.calleeSig)
+          .as("the key counts the capture and the declared argument")
+          .endsWith(".sink_in_closure/2");
+      assertThat(call.args)
+          .as("the receiver slot, then the captured value, then the declared argument")
+          .hasSize(3);
+      assertThat(call.args.get(1))
+          .as("the captured value is the leading user argument")
+          .isInstanceOf(TacOperand.TacVar.class);
+      assertThat(((TacOperand.TacVar) call.args.get(1)).name())
+          .as("the value the closure captured is the value the call passes")
+          .isEqualTo("value");
+
+      // The loop variable of a comprehension is bound by the comprehension,
+      // so it is a local of the function and not a parameter of it.
+      TacFunction listing = find(result, "listing");
+      assertThat(listing).as("the function must be in the stream").isNotNull();
+      assertThat(listing.params())
+          .as("the captured list is the only parameter")
+          .extracting(p -> p.name())
+          .containsExactly("items");
+      assertThat(listing.locals())
+          .as("the loop variable belongs to the comprehension, not to the function")
+          .extracting(l -> l.name())
+          .contains("x");
+
+      // The value a generator yields is evaluated in the generator's own
+      // stream, so the sink inside it is in the stream too.
+      TacFunction gen = find(result, "gen");
+      assertThat(gen).as("the generator must be in the stream").isNotNull();
+      assertThat(gen.params())
+          .as("the generator captures the value it reads")
+          .extracting(p -> p.name())
+          .containsExactly("request");
+      assertThat(gen.instructions())
+          .as("the sink inside the yielded value must not be dropped")
+          .anyMatch(
+              i ->
+                  i.kind == TacInstruction.Kind.CALL
+                      && i.calleeSig != null
+                      && i.calleeSig.startsWith("os.system/"));
+    }
+  }
+
   /** The function with the given name, or null. */
   private static TacFunction find(TacFrontend.ParseResult result, String name) {
     for (TacFunction function : result.functions()) {

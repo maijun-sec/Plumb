@@ -358,13 +358,36 @@ IR 有 22 个操作码（`plumb-tac/src/main/java/org/plumb/tac/ir/TacInstructio
 |---|---|---|---|
 | sink 直接在函数体里 | 在 —— 一条 `CALL os.system/1` | 在，是这个函数的局部变量 | 会被报出来 |
 | sink 在 `lambda` 里 | **不在** —— 根本没有发射出函数 | 不适用 | **丢了** |
-| sink 在函数内嵌套的 `def` 里 | 在 —— 发射出了一个独立的函数 | **不在** —— 捕获的名字既不在它的形参里也不在它的局部变量里 | **丢了** |
-| sink 在生成器里（`yield`） | **不在** —— 这个函数只有一条 `HAVOC` | 不适用 | **丢了** |
+| sink 在函数内嵌套的 `def` 里 | 在 —— 发射出了一个独立的函数 | **在** —— 捕获的名字是它的前导形参 | **会被报出来** |
+| sink 在生成器里（`yield`） | 在 —— 生成器 yield 的那个值在生成器自己的指令流里求值 | **在** —— 捕获的名字是它的前导形参 | **会被报出来** |
 
-四个形状里三个丢掉告警，而前端会说出来：side car 对 lambda 报 `SOURCE_LOWERED`，
-对 yield 报 `UNHANDLED_NODE`
-（`plumb-frontend/python-sidecar/src/plumb_translator.py:1078-1084` 和 `:1089-1095`）。
-报告是诚实的；告警照样没了。
+**四个形状里修好了两个，而且修法是量出来的。** Python side car 现在把嵌套函数捕获的名字
+降成它的**前导形参**，并且在调用点把它们传进去
+（`plumb-frontend/python-sidecar/src/plumb_translator.py:384`、`:592`、`:619`、`:1884`），
+并且把生成器 yield 的那个值在生成器自己的指令流里求值
+（`plumb-frontend/python-sidecar/src/plumb_translator.py:1283-1295`）。
+同一条线路协议上的探针现在报**四个形状里只丢一个** —— `lambda`，
+它的体仍然没有被发射成一个独立的函数，所以 side car 对它仍然报 `SOURCE_LOWERED`
+（`plumb-frontend/python-sidecar/src/plumb_translator.py:1272-1278`）。
+
+**修法换来了什么，端到端量。** 闭包里的 sink，用命令注入规则扫描，五个形状：
+
+| 形状 | 改之前 | 改之后 |
+|---|---|---|
+| sink 直接在函数体里 | 1 条告警，`param:request` | 1 条告警，`param:request` |
+| 闭包捕获了被污染的值 | **没有告警** | 1 条告警，`param:request` |
+| 闭包捕获了干净的值 | 没有告警 | 1 条告警，`param:value` |
+| 闭包从未被调用 | 没有告警 | 1 条告警，`param:value` |
+| 生成器捕获了被污染的值 | **没有告警** | 1 条告警，`param:request` |
+
+标签里的来源是关键。被调用的闭包报的是调用方的来源（`param:request`），
+因为调用点把捕获值传了进去；从未被调用的闭包报的是它自己的形参（`param:value`），
+因为没有调用点可以传。
+
+**代价，说清楚。** 形参就是 source，所以哪怕外层作用域里是一个干净的值，
+捕获值也会被当作被污染来分析：上表第三行是一条**误报**，
+而这正是 Go 前端早就在为闭包付的代价。另一个选择就是那张表的第一列 ——
+sink 是看不见的，而看不见的 sink 不是一条报告能弄错的告警。
 
 **IR 没有办法表达"函数值"。** `TacOperand` 是 sealed 的，只允许变量和常量
 （`plumb-tac/src/main/java/org/plumb/tac/ir/TacOperand.java:34-35`），
@@ -387,13 +410,21 @@ IR 有 22 个操作码（`plumb-tac/src/main/java/org/plumb/tac/ir/TacInstructio
 
 | ID | 工作 | 验收 | 状态 |
 |---|---|---|---|
-| **G13** | 像 Go 和 Java 那样下降函数值：体变成它自己的函数，捕获的变量变成它的前导形参，在每一个能表达这件事的前端里都做。 | lambda、嵌套 `def`、生成器里的 sink 都被报出来，且捕获的值到达了它。 | **未开始** |
+| **G13** | 像 Go 和 Java 那样下降函数值：体变成它自己的函数，捕获的变量变成它的前导形参，在每一个能表达这件事的前端里都做。 | lambda、嵌套 `def`、生成器里的 sink 都被报出来，且捕获的值到达了它。 | **部分完成** |
+
+**做完了什么、还剩什么。** Python side car 做完了：嵌套的 `def` 与生成器都带着
+"捕获值为前导形参"下降，调用点也把捕获值传了进去。还剩下的是 `lambda` ——
+它的体仍然没有被发射成一个独立的函数 —— 以及 TypeScript、ArkTS 和 PHP 三个 side car，
+它们今天仍然把函数值降成一条 `HAVOC`。
 
 **怎么量它。**
 
 ```bash
 # 四种形状里的 sink，走 side car 的真实线路协议
 python scripts/probe_function_values.py
+
+# 同一个断言的端到端版本：产出的是 finding，不只是形状
+mvn -pl plumb-dfa test -Dtest=ScriptSinkFamilyEndToEndTest
 ```
 
 **信任问题的另一半。** 一次扫描不能只靠它的告警来判断；它必须说清楚自己实际看到了多少程序。
