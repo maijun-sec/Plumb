@@ -688,6 +688,11 @@
                              catalogue has to name the receiver for that to be
                              true. -->
                         <include>org/plumb/dfa/checkers/taint/CataloguePositionRepairTest.java</include>
+                        <!-- A pattern that names one method and no other: the
+                             matcher finds a prefix, so an entry for "Exec"
+                             also claimed "ExecContext", whose text is its
+                             second argument. -->
+                        <include>org/plumb/dfa/config/SinkPatternWordBoundaryTest.java</include>
                         <!-- A sink pattern can name SEVERAL argument positions as
                              carrying the taint; the old one-index model dropped
                              one of them silently. -->

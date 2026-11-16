@@ -1,0 +1,22 @@
+# Line endings: the repository stores LF, and the working tree holds whatever
+# the machine it was checked out on produces.
+#
+# core.autocrlf already does this on a Windows clone, but it is a property of
+# the MACHINE, not of the repository. A clone on a machine with
+# core.autocrlf=false stores the working-tree bytes as they are, so a file
+# that an editor wrote with CRLF lands in the index with CRLF -- and the diff
+# is every byte of the file, not the line you changed. `text=auto` makes the
+# index LF on every machine, which is the half that belongs to the repository.
+#
+# `text=auto` also means git decides text against binary by looking at the
+# file, so the .pyc and the other binaries stay binary without being listed
+# here.
+* text=auto
+
+# A shell script with CRLF line endings does not run on Linux: the shebang
+# line ends with a carriage return, and the kernel looks for "/bin/sh\r".
+*.sh text eol=lf
+
+# A Windows batch file is the other way round -- cmd.exe reads CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf

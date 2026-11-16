@@ -28,6 +28,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -141,9 +142,23 @@ class CataloguePositionReachabilityTest {
     final String owner;
     final String method;
 
+    /**
+     * Whether the pattern spelled a word boundary after the method name.
+     *
+     * <p>A boundary says "this method and no other": without it, a pattern for {@code Exec} also
+     * claims {@code ExecContext}, because the matcher uses {@code find()}. The check therefore has
+     * to measure the method the pattern names, not the family of methods whose name starts with it.
+     */
+    final boolean exact;
+
     OwnerMethod(String owner, String method) {
+      this(owner, method, false);
+    }
+
+    OwnerMethod(String owner, String method, boolean exact) {
       this.owner = owner;
       this.method = method;
+      this.exact = exact;
     }
 
     boolean isConstructor() {
@@ -230,6 +245,67 @@ class CataloguePositionReachabilityTest {
     assertThat(unreachable(ConfigLoader.parseSinkFamiliesForTest(yaml)))
         .as("a position the API can supply must not be reported")
         .isEmpty();
+  }
+
+  @Test
+  @DisplayName("a word boundary narrows the check to the method it names")
+  void aWordBoundaryNarrowsTheCheckToTheMethodItNames() {
+    // java.io.PrintStream.print takes ONE argument in every overload, and
+    // printf takes three. Without a boundary the check measures the whole
+    // print* family, so position 1 looks supplyable. With the boundary it
+    // measures print alone, and one argument cannot supply position 1.
+    Map<String, Object> yaml = new LinkedHashMap<>();
+    Map<String, Object> family = new LinkedHashMap<>();
+    family.put("cwe", "CWE-89");
+    family.put(
+        "patterns",
+        List.of(Map.of("pattern", "^java\\.io\\.PrintStream\\.print\\b(/\\d+)?", "arg_index", 1)));
+    yaml.put("families", Map.of("probe.sinks", family));
+
+    List<Unreachable> violations = unreachable(ConfigLoader.parseSinkFamiliesForTest(yaml));
+    assertThat(violations)
+        .as("the boundary names print, whose one argument cannot supply position 1")
+        .hasSize(1);
+    assertThat(violations.get(0).position).isEqualTo(1);
+    assertThat(violations.get(0).maxArity).isEqualTo(1);
+
+    // The other half of the control: without the boundary the same position IS
+    // supplyable, because printf takes three arguments.
+    Map<String, Object> wide = new LinkedHashMap<>();
+    Map<String, Object> wideFamily = new LinkedHashMap<>();
+    wideFamily.put("cwe", "CWE-89");
+    wideFamily.put(
+        "patterns",
+        List.of(Map.of("pattern", "^java\\.io\\.PrintStream\\.print(/\\d+)?", "arg_index", 1)));
+    wide.put("families", Map.of("probe.sinks", wideFamily));
+
+    assertThat(unreachable(ConfigLoader.parseSinkFamiliesForTest(wide)))
+        .as(
+            "without the boundary the print* family is measured, and printf's three arguments"
+                + " supply position 1")
+        .isEmpty();
+  }
+
+  @Test
+  @DisplayName("a method the type declares is measured even when it is not public")
+  void aMethodTheTypeDeclaresIsMeasuredEvenWhenItIsNotPublic() {
+    // java.util.Random.next(int) is protected. A subclass calls it, and the
+    // analyser sees the call site, so the check has to measure it. The PUBLIC
+    // method table alone has no method called "next", and the entry would have
+    // looked like an API this JDK says nothing about -- and the gate would
+    // have skipped it without a word.
+    Map<String, Object> yaml = new LinkedHashMap<>();
+    Map<String, Object> family = new LinkedHashMap<>();
+    family.put("cwe", "CWE-89");
+    family.put(
+        "patterns",
+        List.of(Map.of("pattern", "^java\\.util\\.Random\\.next\\b(/\\d+)?", "arg_index", 1)));
+    yaml.put("families", Map.of("probe.sinks", family));
+
+    List<Unreachable> violations = unreachable(ConfigLoader.parseSinkFamiliesForTest(yaml));
+    assertThat(violations).as("next(int) is protected, and it takes one argument").hasSize(1);
+    assertThat(violations.get(0).position).isEqualTo(1);
+    assertThat(violations.get(0).maxArity).isEqualTo(1);
   }
 
   @Test
@@ -341,6 +417,10 @@ class CataloguePositionReachabilityTest {
     }
     body = body.substring(1);
     StringBuilder plain = new StringBuilder();
+    // Where the word boundary sat, if the pattern spelled one. A boundary is
+    // not part of the name, so it is not appended -- but it tells the check
+    // that the pattern names ONE method.
+    int boundaryAt = -1;
     for (int i = 0; i < body.length(); i++) {
       char c = body.charAt(i);
       if (c == '\\') {
@@ -348,6 +428,10 @@ class CataloguePositionReachabilityTest {
           return null;
         }
         char next = body.charAt(++i);
+        if (next == 'b') {
+          boundaryAt = plain.length();
+          continue;
+        }
         if (METACHARACTERS.indexOf(next) >= 0) {
           return null;
         }
@@ -372,7 +456,10 @@ class CataloguePositionReachabilityTest {
     if (!"<init>".equals(method) && !method.matches("[A-Za-z_$][A-Za-z0-9_$]*")) {
       return null;
     }
-    return new OwnerMethod(owner, method);
+    // The boundary has to sit at the end of the method name: a boundary
+    // anywhere else says nothing about which method the pattern names.
+    boolean exact = boundaryAt == text.length();
+    return new OwnerMethod(owner, method, exact);
   }
 
   /**
@@ -404,16 +491,37 @@ class CataloguePositionReachabilityTest {
       }
       return max;
     }
-    for (Method method : type.getMethods()) {
+    // The PUBLIC methods, and the ones the type DECLARES whatever their
+    // visibility. A protected method is still called -- by a subclass, or by
+    // a class in the same package -- and the analyser sees the call site, not
+    // the caller's access rights. Leaving the non-public ones out would hide
+    // an API whose name a pattern names exactly: java.util.Random.next(int)
+    // is protected, and the public table alone has no method called "next",
+    // so the entry would have looked like an API this JDK says nothing about
+    // and the gate would have skipped it.
+    Set<Method> candidates = new LinkedHashSet<>();
+    candidates.addAll(Arrays.asList(type.getMethods()));
+    candidates.addAll(Arrays.asList(type.getDeclaredMethods()));
+    for (Method method : candidates) {
       // An interface default method is inherited, not declared: whether it exists
       // depends on the JDK the build runs on, so a gate that counted it would
       // change its verdict with the JDK.
       if (method.isDefault()) {
         continue;
       }
+      // A synthetic method is a bridge the compiler made, not an API anybody
+      // calls by that name.
+      if (method.isSynthetic()) {
+        continue;
+      }
       // The matcher uses find(), so a pattern reaches every method whose name
-      // starts with the name it names.
-      if (!method.getName().startsWith(api.method)) {
+      // starts with the name it names -- unless the pattern spelled a word
+      // boundary, which says it names ONE method.
+      if (api.exact) {
+        if (!method.getName().equals(api.method)) {
+          continue;
+        }
+      } else if (!method.getName().startsWith(api.method)) {
         continue;
       }
       max = Math.max(max, method.getParameterCount());

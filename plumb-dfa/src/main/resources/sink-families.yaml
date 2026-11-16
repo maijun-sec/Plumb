@@ -122,7 +122,19 @@ families:
     severity: MEDIUM
     languages: ['java', 'kotlin', 'scala', 'go', 'typescript', 'javascript', 'arkts', 'php']
     patterns:
-      - '^java\.lang\.String\.format(/\d+)?'
+      # The word boundary says this entry names `format` and not
+      # `formatted`: the format of a formatted() call is the receiver,
+      # so its first argument is not the format string.
+      # The word boundary says this entry names `format` and not
+# `formatted`: the format of a formatted() call is the receiver,
+# so its first argument is not the format string.
+      - '^java\.lang\.String\.format\b(/\d+)?'
+      # A formatted() call takes its format string from the RECEIVER, so
+# the entry that names it reads the receiver. The argument of the
+# call is the value the format describes -- reporting it as a
+# format string would report every substituted value.
+      - pattern: '^java\.lang\.String\.formatted(/\d+)?'
+        arg_index: -2
       - '^java\.io\.PrintStream\.printf(/\d+)?'
       - '^java\.io\.PrintStream\.format(/\d+)?'
       - '^java\.io\.PrintWriter\.format(/\d+)?'
@@ -381,7 +393,13 @@ families:
     severity: MEDIUM
     languages: ['java', 'kotlin', 'scala', 'go']
     patterns:
-      - '^java\.util\.Random\.next(/\d+)?'
+      # The word boundary says this entry names `next(int)` and not the
+      # next* family. Without it the entry also claimed nextLong(),
+      # nextDouble() and nextGaussian(), which take no argument at all:
+      # position 0 was a position no call could supply, and for
+      # nextGaussian it was the only position the entry had, so the rule
+      # could never fire.
+      - '^java\.util\.Random\.next\b(/\d+)?'
       - '^java\.util\.Random\.nextInt(/\d+)?'
       # These four take no argument: nextBoolean() has no overload at all,
       # and the bounded nextLong(long) / nextDouble(double) /
@@ -402,6 +420,11 @@ families:
       - pattern: '^java\.util\.Random\.nextFloat(/\d+)?'
         arg_index: -2
       - pattern: '^java\.util\.Random\.nextBoolean(/\d+)?'
+        arg_index: -2
+      # nextGaussian() draws from the same generator, so it names the
+      # receiver too: what is weak is the generator, not the number
+      # it produced.
+      - pattern: '^java\.util\.Random\.nextGaussian(/\d+)?'
         arg_index: -2
       - '^java\.util\.Random\.nextBytes(/\d+)?'
       - '^java\.util\.concurrent\.ThreadLocalRandom\.next(/\d+)?'
@@ -876,7 +899,9 @@ families:
           arg_index: 0
         - '^(System\.Management\.ManagementObject|System\.Management\.ManagementClass)\.InvokeMethod(/\d+)?'
       go:
-        - pattern: '^os/exec\.Command(/\d+)?'
+        # The word boundary says this entry names `Command` and not
+        # `CommandContext`, whose first argument is the context.
+        - pattern: '^os/exec\.Command\b(/\d+)?'
           arg_index: [0, 1, 2, 3, 4, 5]
         - pattern: '^os/exec\.CommandContext(/\d+)?'
           arg_index: [1, 2, 3, 4, 5, 6]
@@ -1981,9 +2006,15 @@ families:
       go:
         - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Prepare|Query|QueryRow)Context(/\d+)?'
           arg_index: [1, 2]
-        - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Query|QueryRow)(/\d+)?'
+        # The word boundary says this entry names the three short methods and
+# not their Context variants, whose first argument is the context.
+        - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Query|QueryRow)\b(/\d+)?'
           arg_index: 1
-        - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Prepare|Query|QueryRow)(/\d+)?'
+        # The word boundary says this entry names the four short methods and
+# not their Context variants: the group ends with "Exec", and
+# without a boundary it also matched "ExecContext", whose first
+# argument is the context -- not the query.
+        - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Prepare|Query|QueryRow)\b(/\d+)?'
           arg_index: 0
         - pattern: '^github\.com/jinzhu/gorm\.Dialect\.(HasColumn|RemoveIndex)(/\d+)?'
           arg_index: 0
@@ -2154,7 +2185,9 @@ families:
         arg_index: [0, 1]
       - pattern: '^java\.io\.PrintStream\.(format|printf)(/\d+)?'
         arg_index: [0, 1]
-      - pattern: '^java\.lang\.String\.format(/\d+)?'
+      # The word boundary says this entry names `format` and not
+      # `formatted`: the format of a formatted() call is the receiver.
+      - pattern: '^java\.lang\.String\.format\b(/\d+)?'
         arg_index: [0, 1]
       - pattern: '^java\.lang\.String(Builder|Buffer)\.replace(/\d+)?'
         arg_index: [-2, 2]
@@ -2739,15 +2772,21 @@ families:
           arg_index: 0
         - pattern: '^net/http\.Dir\.Open(/\d+)?'
           arg_index: -2
-        - pattern: '^syscall\.UnlinkAt(/\d+)?'
+        # The standard library spells it Unlinkat, and the path is its
+        # second argument: the first one is the directory descriptor.
+        - pattern: '^syscall\.Unlinkat(/\d+)?'
           arg_index: 1
-        - pattern: '^syscall\.Unlink(/\d+)?'
+        # The word boundary says this entry names `Unlink` and not
+        # `Unlinkat`.
+        - pattern: '^syscall\.Unlink\b(/\d+)?'
           arg_index: 0
         - pattern: '^syscall\.Symlink(/\d+)?'
           arg_index: 0
         - pattern: '^syscall\.Renameat(/\d+)?'
           arg_index: 1
-        - pattern: '^syscall\.Rename(/\d+)?'
+        # The word boundary says this entry names `Rename` and not
+        # `Renameat`.
+        - pattern: '^syscall\.Rename\b(/\d+)?'
           arg_index: 0
         - pattern: '^syscall\.(Mkdirat|Mknodat|Openat|Mkfifo)(/\d+)?'
           arg_index: 1
@@ -3884,7 +3923,9 @@ families:
       go:
         - pattern: '^net/http\.RedirectHandler(/\d+)?'
           arg_index: 0
-        - pattern: '^net/http\.Redirect(/\d+)?'
+        # The word boundary says this entry names `Redirect` and not
+        # `RedirectHandler`.
+        - pattern: '^net/http\.Redirect\b(/\d+)?'
           arg_index: 2
       scala:
         - pattern: '^play\.api\.mvc\.Results\.(PermanentRedirect|Redirect|SeeOther|TemporaryRedirect|MovedPermanently|Found)(/\d+)?'
@@ -3923,7 +3964,14 @@ families:
         arg_index: 1
       - pattern: '^java\.net\.URLConnection\.(setRequestProperty|addRequestProperty)(/\d+)?'
         arg_index: 0
-      - pattern: '^java\.net\.URL\.(\<init\>|set)(/\d+)?'
+      # java.net.URL declares no public method called "set": the only
+      # "set" method it has is the static setURLStreamHandlerFactory,
+      # which the pattern reached by prefix. That call sets a global
+      # configuration -- external.config.sinks claims it by its own
+      # entry -- and a handler factory is not a privacy leak. The
+      # constructor is the one that can carry a credential, in the
+      # userinfo part of the spec.
+      - pattern: '^java\.net\.URL\.\<init\>(/\d+)?'
         arg_index: 0
       - pattern: '^(java\.io\.Writer|java\.io\.OutputStream)\.(println|write.*)(/\d+)?'
         arg_index: [-2, 0]
@@ -6733,19 +6781,28 @@ families:
         - pattern: '^Microsoft\.ApplicationBlocks\.Data\.SqlHelper\.UpdateDataset(/\d+)?'
           arg_index: 0
       go:
-        - pattern: '^database/sql\.DB\.Exec(/\d+)?'
+        # The word boundary says this entry names `Exec` and not
+        # `ExecContext`: the text of an ExecContext call is its second
+        # argument, the first one is the context.
+        - pattern: '^database/sql\.DB\.Exec\b(/\d+)?'
           arg_index: 0
         - pattern: '^database/sql\.DB\.ExecContext(/\d+)?'
           arg_index: 1
-        - pattern: '^database/sql\.DB\.Query(/\d+)?'
+        # The word boundary says this entry names `Query` and not
+        # `QueryContext` / `QueryRowContext`.
+        - pattern: '^database/sql\.DB\.Query\b(/\d+)?'
           arg_index: 0
         - pattern: '^database/sql\.DB\.QueryContext(/\d+)?'
           arg_index: 1
-        - pattern: '^database/sql\.DB\.QueryRow(/\d+)?'
+        # The word boundary says this entry names `QueryRow` and not
+        # `QueryRowContext`.
+        - pattern: '^database/sql\.DB\.QueryRow\b(/\d+)?'
           arg_index: 0
         - pattern: '^database/sql\.DB\.QueryRowContext(/\d+)?'
           arg_index: 1
-        - pattern: '^database/sql\.DB\.Prepare(/\d+)?'
+        # The word boundary says this entry names `Prepare` and not
+        # `PrepareContext`.
+        - pattern: '^database/sql\.DB\.Prepare\b(/\d+)?'
           arg_index: 0
         - pattern: '^database/sql\.DB\.PrepareContext(/\d+)?'
           arg_index: 1
@@ -6763,7 +6820,11 @@ families:
           arg_index: -2
         - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Prepare|Query|QueryRow)Context(/\d+)?'
           arg_index: 1
-        - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Prepare|Query|QueryRow)(/\d+)?'
+        # The word boundary says this entry names the four short methods and
+# not their Context variants: the group ends with "Exec", and
+# without a boundary it also matched "ExecContext", whose first
+# argument is the context -- not the query.
+        - pattern: '^(database/sql\.DB|database/sql\.Conn)\.(Exec|Prepare|Query|QueryRow)\b(/\d+)?'
           arg_index: 0
         - pattern: '^github\.com/jinzhu/gorm\.Dialect\.(HasColumn|RemoveIndex)(/\d+)?'
           arg_index: 0
@@ -6975,7 +7036,9 @@ families:
           arg_index: 0
         - pattern: '^net/http\.PostForm(/\d+)?'
           arg_index: 0
-        - pattern: '^net/http\.NewRequest(/\d+)?'
+        # The word boundary says this entry names `NewRequest` and not
+        # `NewRequestWithContext`, whose url is its third argument.
+        - pattern: '^net/http\.NewRequest\b(/\d+)?'
           arg_index: 1
         - pattern: '^net/http\.NewRequestWithContext(/\d+)?'
           arg_index: 2
@@ -7005,11 +7068,15 @@ families:
           arg_index: 0
         - pattern: '^crypto/tls\.DialWithDialer(/\d+)?'
           arg_index: 2
-        - pattern: '^crypto/tls\.Dial(/\d+)?'
+        # The word boundary says this entry names `Dial` and not
+        # `DialWithDialer`, whose address is its third argument.
+        - pattern: '^crypto/tls\.Dial\b(/\d+)?'
           arg_index: 1
         - pattern: '^crypto/tls\.Dialer\.DialContext(/\d+)?'
           arg_index: 2
-        - pattern: '^crypto/tls\.Dialer\.Dial(/\d+)?'
+        # The word boundary says this entry names `Dial` and not
+        # `DialContext`, whose address is its third argument.
+        - pattern: '^crypto/tls\.Dialer\.Dial\b(/\d+)?'
           arg_index: 1
       scala:
         - pattern: '^(play\.api\.libs\.ws\.WSClient|play\.api\.libs\.ws\.StandaloneWSClient)\.url(/\d+)?'
