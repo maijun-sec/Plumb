@@ -383,10 +383,26 @@ families:
     patterns:
       - '^java\.util\.Random\.next(/\d+)?'
       - '^java\.util\.Random\.nextInt(/\d+)?'
-      - '^java\.util\.Random\.nextLong(/\d+)?'
-      - '^java\.util\.Random\.nextDouble(/\d+)?'
-      - '^java\.util\.Random\.nextFloat(/\d+)?'
-      - '^java\.util\.Random\.nextBoolean(/\d+)?'
+      # These four take no argument: nextBoolean() has no overload at all,
+      # and the bounded nextLong(long) / nextDouble(double) /
+      # nextFloat(float) are DEFAULT methods of RandomGenerator, so the
+      # declared API of Random cannot supply an argument position either.
+      # A position here could never be filled, so these four entries named
+      # a rule that could never fire.
+      #
+      # What is weak is the GENERATOR, not an argument of it: a PRNG whose
+      # seed came from the request produces values the request chose. The
+      # seed reaches the generator through its constructor, and the engine
+      # carries that taint into the object it built -- so the position that
+      # holds the weakness is the RECEIVER.
+      - pattern: '^java\.util\.Random\.nextLong(/\d+)?'
+        arg_index: -2
+      - pattern: '^java\.util\.Random\.nextDouble(/\d+)?'
+        arg_index: -2
+      - pattern: '^java\.util\.Random\.nextFloat(/\d+)?'
+        arg_index: -2
+      - pattern: '^java\.util\.Random\.nextBoolean(/\d+)?'
+        arg_index: -2
       - '^java\.util\.Random\.nextBytes(/\d+)?'
       - '^java\.util\.concurrent\.ThreadLocalRandom\.next(/\d+)?'
       - '^java\.util\.concurrent\.ThreadLocalRandom\.nextInt(/\d+)?'
@@ -2874,8 +2890,11 @@ families:
         arg_index: 0
       - pattern: '^java\.nio\.file\.Files\.setPosixFilePermissions(/\d+)?'
         arg_index: 0
+      # setReadOnly() takes no argument at all: the path is in the
+      # RECEIVER -- the File the program built. The permission flag the
+      # other three carry is the boolean they name, and it is not a path.
       - pattern: '^java\.io\.File\.setReadOnly(/\d+)?'
-        arg_index: 0
+        arg_index: -2
       - pattern: '^java\.nio\.file\.Files\.setPosixFilePermissions(/\d+)?'
         arg_index: 1
     by_language:
@@ -5326,8 +5345,12 @@ families:
         arg_index: 0
       - pattern: '^java\.lang\.reflect\.Constructor\.newInstance(/\d+)?'
         arg_index: 0
+      # newInstance(Class componentType, int length) takes two arguments:
+      # the component type is the first and the length the second. The
+      # position 5 that stood here named nothing, so the rule could never
+      # fire; the component type is what the reflection carries.
       - pattern: '^java\.lang\.reflect\.Array\.newInstance(/\d+)?'
-        arg_index: [0, 5]
+        arg_index: 0
       - pattern: '^(java\.lang\.reflect\.InvocationHandler|java\.lang\.reflect\.Method)\.(invokeDefault|invoke)(/\d+)?'
         arg_index: 0
       - pattern: '^java\.net\.URLClassLoader\.(\<init\>|addURL|findClass|findResource|findResources|newInstance)(/\d+)?'

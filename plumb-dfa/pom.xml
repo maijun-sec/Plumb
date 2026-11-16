@@ -679,10 +679,15 @@
                         <!-- A catalogue position that no call can supply makes
                              the rule structurally unreachable: the family is in
                              the catalogue, the capability report counts it, and
-                             the finding never appears. Seventeen positions were
-                             in that state; the list in the test says what each
-                             one should be instead. -->
+                             the finding never appears. The positions in that
+                             state are listed in the test, each with what it
+                             should be instead. -->
                         <include>org/plumb/dfa/config/CataloguePositionReachabilityTest.java</include>
+                        <!-- The repaired positions, and one of them firing: a
+                             generator the request seeded is a finding, and the
+                             catalogue has to name the receiver for that to be
+                             true. -->
+                        <include>org/plumb/dfa/checkers/taint/CataloguePositionRepairTest.java</include>
                         <!-- A sink pattern can name SEVERAL argument positions as
                              carrying the taint; the old one-index model dropped
                              one of them silently. -->

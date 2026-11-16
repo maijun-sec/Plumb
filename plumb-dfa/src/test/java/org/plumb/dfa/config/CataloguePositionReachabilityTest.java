@@ -85,22 +85,6 @@ class CataloguePositionReachabilityTest {
       new LinkedHashMap<>() {
         {
           put(
-              "random.sinks|^java\\.util\\.Random\\.nextLong(/\\d+)?",
-              "nextLong() takes no argument: what is weak is the generator, so the position"
-                  + " has to be the receiver.");
-          put(
-              "random.sinks|^java\\.util\\.Random\\.nextDouble(/\\d+)?",
-              "nextDouble() takes no argument: what is weak is the generator, so the position"
-                  + " has to be the receiver.");
-          put(
-              "random.sinks|^java\\.util\\.Random\\.nextFloat(/\\d+)?",
-              "nextFloat() takes no argument: what is weak is the generator, so the position"
-                  + " has to be the receiver.");
-          put(
-              "random.sinks|^java\\.util\\.Random\\.nextBoolean(/\\d+)?",
-              "nextBoolean() takes no argument: what is weak is the generator, so the position"
-                  + " has to be the receiver.");
-          put(
               "random.sinks|^java\\.lang\\.Math\\.random(/\\d+)?",
               "Math.random() takes no argument and is static: there is no receiver to read"
                   + " either, so the entry has to be re-modelled or dropped.");
@@ -124,13 +108,6 @@ class CataloguePositionReachabilityTest {
               "credential.sinks|^java\\.sql\\.Driver\\.connect(/\\d+)?",
               "connect(String url, Properties info) takes two arguments: the password is a"
                   + " property of the second one, not a position.");
-          put(
-              "file-permission.sinks|^java\\.io\\.File\\.setReadOnly(/\\d+)?",
-              "setReadOnly() takes no argument: the path is in the receiver.");
-          put(
-              "reflection.sinks|^java\\.lang\\.reflect\\.Array\\.newInstance(/\\d+)?",
-              "newInstance(Class componentType, int length) takes two arguments: position 5"
-                  + " names nothing.");
           put(
               "sql.sinks|^java\\.sql\\.Statement\\.executeBatch(/\\d+)?",
               "executeBatch() takes no argument: the text was already claimed where the"
