@@ -484,7 +484,8 @@ mvn -pl plumb-dfa test -Dtest=ScriptSinkFamilyEndToEndTest
 to say how much of the program it actually saw. The report should carry the number of call
 sites that were analysed with a body, the number that were matched by a rule, and the number
 that were neither -- the last one is the honest black-box rate, and nothing reports it today.
-| **T1** | Carry the TYPE of each value in the data flow, and let a sink family declare the type its argument must have (`expects_type`). | A tainted value the program declared to be a number does not reach a sink that needs a string; a tainted string and a tainted value of unknown type still do. | **partly done** |
+| **T1** | Carry the TYPE of each value in the data flow, and let a sink family declare the type its argument must have (`expects_type`). | A tainted value the program declared to be a number does not reach a sink that needs a string; a tainted string and a tainted value of unknown type still do. | **done** |
+| **T3** | Carry the type a CALL produces: the front end writes the type of a call it can see into the TAC, and the engine resolves the calls it cannot see to the declaration and reads the type from there. | A tainted value the program says is a number does not reach a sink that needs a string, whether the number comes out of a function that declares it returns one or out of a function in ANOTHER module. | **done** |
 
 ### Tier 4 — declared as absent, and that is the right call for now
 
@@ -512,9 +513,9 @@ whole function, not what the walk happened to meet first: a value that is an int
 a string on another keeps its finding.
 
 **What the gate is worth.** It removes the findings where the program itself says the value is
-not the text the vulnerability needs -- a number reaching a command line. It does NOT remove the
+not the text the vulnerability needs -- a number reaching a command line. It did NOT remove the
 case where the program CONVERTS the input first, because the return type of a conversion
-(`int(user_input)`) is not modelled. That is the next item, and it is the one that decides
+(`int(user_input)`) was not modelled; that is item T3 below, and it is the one that decides
 whether this gate has teeth in the languages that need it.
 
 **Measured.** The gate changes nothing on statically typed code, and the reason is the type
@@ -527,6 +528,65 @@ one, and there the Python cases are where it acts.
 **The honest limit.** The gate reads what the program DECLARED. A dynamically typed program that
 lies about its annotation -- `n: int = "hello"` -- gets its finding suppressed. A statically typed
 one cannot lie: the compiler rejects the program.
+
+### 2.4c T3: the type of a call's result was nowhere, because a result is not a thing the IR could type
+
+The T1 item left one hole, and it is the hole that decides whether the gate has teeth: the value
+that reaches a sink is very often the RESULT of a call, and the result had no type. `int(user_input)`
+is an int whatever the request holds, and `to_int(user_input)` is an int when the function says so,
+but the analysis could read neither.
+
+**What the IR already has.** Two places, both empty. The destination of a CALL is an operand, and an
+operand carries a type (`TacVar.type()`), so the IR had a place to put the answer. And a function
+carries the type it returns (`TacFunction.returnType()`), so the program had a place to read it from.
+What was missing was that nobody filled the first in and nobody read the second.
+
+**Where the answer comes from, and who has it.** The type of a call's result is a property of the
+CALLEE's declaration, so there are two cases and they have different owners:
+
+- the front end can see the callee: a built-in function (`int`, `len`, `str`) and a function of the
+  same module. The front end writes the type into the destination of the call;
+- the front end cannot see the callee: a function of ANOTHER module. The front ends lower one file
+  at a time, so they cannot know what another file declares; the engine has the whole program, and
+  it resolves the call to the declaration.
+
+**What is done.** The Python side car writes the type of a built-in call and of a call of the
+module's own function into the destination, and it publishes each function's declared return type on
+the wire. The engine builds an index of the program's callees (`CalleeReturnTypes`) and reads the
+type from the callee's declaration when a call resolves to it.
+
+**The index has a rule of its own.** The IR names a callee by `owner.method/arity`, so two overloads
+of one method share a key, and two classes may declare a method of the same name. A key whose
+candidates DISAGREE about what they return is not evidence of anything: the call site cannot tell
+which one it called. Such a key is dropped, and the value stays untyped.
+
+**What it is worth.** A tainted value the program says is a number no longer reaches a sink that
+needs a string, when the number comes out of a call -- a function that declares it returns an int, or
+a function in another module that does. The gate's rule did not change; the data flow now has one
+more fact to give it.
+
+**Three things this item did NOT do.**
+
+1. It does not use the callee's PARAMETER types. The IR carries them
+   (`TacInstruction.calleeParamTypes`), the Java front end and the bytecode lane fill them in, and
+   nothing reads them. Using them to type a caller's argument would say "the argument has the type
+   the callee declares", which in a statically typed language the compiler already guarantees and in
+   a dynamically typed one the runtime does not enforce. The field's real use is telling two
+   OVERLOADS apart in a rule, not typing a value.
+2. The built-in table only lists the functions whose result is the same type for every argument.
+   `abs` is not in it: `abs(3)` is an int and `abs(3.5)` is a float, and a table that had to pick
+   one of them would be wrong half the time. A function that is missing has an untyped result, which
+   is the safe way to be wrong.
+3. It does not change the TAINT of a call's result, which is a separate question. The engine carries
+   a call's taint when the callee has a summary or when the language's table says the call preserves
+   it; a resolved call to a library function that is in neither -- `json.dumps(user_input)` in
+   Python -- drops the taint at the call, and the value that comes out is not reported. That is a
+   false negative, and it is the next thing to look at.
+
+**The honest limit.** The type of a call is the type its declaration claims. A dynamically typed
+program that lies -- a function annotated `-> int` that returns a string -- gets its finding
+suppressed. That is the same trust the variable annotation already asks for, and a statically typed
+program cannot lie: the compiler rejects the program.
 
 | ID | Work | Rationale |
 |---|---|---|

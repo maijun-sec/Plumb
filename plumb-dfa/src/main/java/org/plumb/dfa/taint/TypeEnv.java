@@ -23,6 +23,7 @@ package org.plumb.dfa.taint;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.plumb.dfa.types.CalleeReturnTypes;
 import org.plumb.dfa.types.TypeSet;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
@@ -98,6 +99,20 @@ public final class TypeEnv {
    * @param fn the function
    */
   public void resolve(TacFunction fn) {
+    resolve(fn, null);
+  }
+
+  /**
+   * Scan the function and record every type the IR shows for its values.
+   *
+   * <p>The callee index is what tells the environment the type a CALL produces: the destination of
+   * a call has no type of its own in the IR, because the type of a result is a property of the
+   * callee's declaration and not of the call site.
+   *
+   * @param fn the function
+   * @param calleeReturnTypes the program's callees, or null when the program declares none
+   */
+  public void resolve(TacFunction fn, CalleeReturnTypes calleeReturnTypes) {
     if (resolved || fn == null) return;
     resolved = true;
     for (TacOperand.TacVar p : fn.params()) {
@@ -109,7 +124,7 @@ public final class TypeEnv {
     for (int round = 0; round < MAX_ROUNDS; round++) {
       boolean learned = false;
       for (TacInstruction ins : fn.instructions()) {
-        learned |= observeInstruction(ins);
+        learned |= observeInstruction(ins, calleeReturnTypes);
       }
       if (!learned) return;
     }
@@ -121,7 +136,7 @@ public final class TypeEnv {
    * @param ins the instruction
    * @return whether anything new was learned
    */
-  private boolean observeInstruction(TacInstruction ins) {
+  private boolean observeInstruction(TacInstruction ins, CalleeReturnTypes calleeReturnTypes) {
     boolean learned = false;
     if (ins.dest instanceof TacOperand.TacVar dv) {
       // The DECLARED type of the destination is what the programmer wrote, and it is exact.
@@ -130,6 +145,16 @@ public final class TypeEnv {
       // ({@code x = 42} says x is an int even though nothing declared it).
       if (ins.kind == TacInstruction.Kind.MOVE && ins.lhs1 != null) {
         learned |= observeFrom(dv, ins.lhs1);
+      }
+      // A CALL produces a value whose type is the CALLEE's return type. The
+      // destination of the call does not carry it in the IR, so it is learned
+      // here -- from the callee's declaration, which is the only place the
+      // answer is written down.
+      if (calleeReturnTypes != null && ins.kind == TacInstruction.Kind.CALL) {
+        TacType returned = calleeReturnTypes.returnTypeOf(ins.calleeSig);
+        if (returned != null) {
+          learned |= observe(dv, returned);
+        }
       }
     }
     if (ins.args != null) {

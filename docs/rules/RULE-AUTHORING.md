@@ -782,6 +782,15 @@ when EVERY one of them is incompatible with the expected one. One compatible
 member is enough to keep the finding, and an unknown type proves nothing at
 all: a value the analysis knows nothing about is reported exactly as before.
 
+**Where the types come from.** A rule author does not have to care, but it is
+worth knowing. The gate reads the types the program DECLARED and the types a
+call PRODUCED: a variable's declared type, the type of a value copied into
+it, and the type of the result of a call. The last one is written by the front
+end for a call it can see -- a built-in (`int`, `len`) and a function of the
+same module -- and by the engine for a call it cannot: the engine resolves the
+call to the declaration and reads the type from there. A value whose type
+nothing is known about is reported exactly as before.
+
 **Which families should declare one.** A family whose vulnerability needs the
 attacker to control TEXT should declare `string`: a number cannot carry the
 payload, so a tainted number is not that vulnerability. A family whose

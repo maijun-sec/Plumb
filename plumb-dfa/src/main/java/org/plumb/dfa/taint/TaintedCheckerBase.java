@@ -43,6 +43,7 @@ import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.summary.Operation;
 import org.plumb.dfa.summary.ReturnDependency;
 import org.plumb.dfa.summary.StringOp;
+import org.plumb.dfa.types.CalleeReturnTypes;
 import org.plumb.dfa.types.TypeCompatibility;
 import org.plumb.reporter.Finding;
 import org.plumb.reporter.FlowStep;
@@ -279,6 +280,17 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * <p>The set is cleared at every function boundary, like the taint state beside it.
    */
   protected final TypeEnv typeEnv = new TypeEnv();
+
+  /**
+   * The type every callee in the program returns.
+   *
+   * <p>Built once per program and read at every sink that asks about a type. It is NOT cleared at a
+   * function boundary: it is a property of the program, not of the function being analysed.
+   */
+  private CalleeReturnTypes calleeReturnTypes;
+
+  /** The program {@link #calleeReturnTypes} was built from. */
+  private org.plumb.tac.ir.TacProgram calleeReturnTypesProgram;
 
   /**
    * Parallel to {@link #taintedVars}: each tainted operand's source-to-here path. The list is
@@ -4463,7 +4475,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (!taintedVars.containsKey(av)) return;
     // The same type gate the CALL path applies: the constructor's argument is a value of the
     // same kind, so the same question is asked of it.
-    if (isIncompatibleWithExpectedType(family, fn, av)) {
+    if (isIncompatibleWithExpectedType(family, fn, ctx, av)) {
       return;
     }
     // The same reachability question the CALL path asks, asked here too: a constructor is a
@@ -4557,15 +4569,34 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * @return whether the finding cannot apply to this value
    */
   private boolean isIncompatibleWithExpectedType(
-      SinkFamily family, TacFunction fn, TacOperand.TacVar value) {
+      SinkFamily family, TacFunction fn, AnalysisContext ctx, TacOperand.TacVar value) {
     TacType expected = expectedTypeOf(family);
     if (expected == null) {
       return false;
     }
     // The scan is done here, and not when the function starts, because most functions never
     // reach a sink that asks about a type, and the scan is a pass over the instructions.
-    typeEnv.resolve(fn);
+    typeEnv.resolve(fn, calleeReturnTypes(ctx));
     return typeEnv.typesOf(value).isDefinitelyIncompatibleWith(expected);
+  }
+
+  /**
+   * The index of the program's callees, built the first time it is needed.
+   *
+   * <p>The index is a property of the program, so it survives the function boundary that clears the
+   * rest of the per-function state. It is rebuilt when the program changes, which is what a checker
+   * that outlives one scan needs.
+   *
+   * @param ctx the analysis context
+   * @return the index
+   */
+  private CalleeReturnTypes calleeReturnTypes(AnalysisContext ctx) {
+    org.plumb.tac.ir.TacProgram program = ctx == null ? null : ctx.program();
+    if (calleeReturnTypes == null || calleeReturnTypesProgram != program) {
+      calleeReturnTypesProgram = program;
+      calleeReturnTypes = CalleeReturnTypes.of(program);
+    }
+    return calleeReturnTypes;
   }
 
   /**
@@ -4719,7 +4750,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     //
     // The RECEIVER is not asked: a family's type is about the argument it claims, and the
     // receiver is the object the method is called on.
-    if (!receiverTainted && isIncompatibleWithExpectedType(family, fn, av)) {
+    if (!receiverTainted && isIncompatibleWithExpectedType(family, fn, ctx, av)) {
       return;
     }
     // A deserialization stream that carries a JEP-290 filter which can

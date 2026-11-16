@@ -854,6 +854,17 @@
                              unknown type keep reaching it, and a family that
                              declares no type is untouched. -->
                         <include>org/plumb/dfa/taint/SinkTypeGateTest.java</include>
+                        <!-- The type a CALL produces, and where the analysis
+                             learns it. The front end writes the type of a
+                             call it can see (a built-in, a function of the
+                             same module) into the TAC, and the engine
+                             resolves the calls the front end could not see
+                             to the declaration and reads the type from
+                             there. The test pins both: a number stops
+                             reaching the sink, a string and an unknown type
+                             keep reaching it, and two callees that disagree
+                             about what they return are not evidence. -->
+                        <include>org/plumb/dfa/taint/CallReturnTypeTest.java</include>
                         <!-- The SSRF defect class: the catalogue names the sinks of
                              every language, the checker watches the family, and the
                              patterns that named other defect classes moved to the

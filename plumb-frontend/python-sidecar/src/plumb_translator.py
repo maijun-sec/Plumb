@@ -41,6 +41,73 @@ from plumb_wire import Const, Kind, Precision, Problem, Type, const_op, var_op
 # carries.
 BUILTIN_NAMES = frozenset(dir(builtins))
 
+# The type a call of a BUILT-IN function returns.
+#
+# These are facts about the language, not declarations: `int(x)` returns an int
+# whatever x is, and so does `len(x)`. A call of one of them therefore
+# produces a value whose type the analysis knows, and the TAC says so -- the
+# destination of the call carries the type.
+#
+# Only the functions whose result is the SAME TYPE for every argument are
+# listed. `abs` is not one of them: `abs(3)` is an int and `abs(3.5)` is a
+# float, and a table that had to pick one of the two would be wrong half the
+# time. A function that is missing from this table has no known result type,
+# and the destination of its call stays untyped -- which is the safe way to be
+# wrong, because an untyped value is reported rather than dismissed.
+BUILTIN_RETURN_TYPES = {
+    # The type constructors.
+    "int": "int",
+    "str": "str",
+    "bool": "bool",
+    "float": "float",
+    "bytes": "bytes",
+    # The counts and the identities: an int, always.
+    "len": "int",
+    "id": "int",
+    "ord": "int",
+    "hash": "int",
+    # The text: a str, always.
+    "chr": "str",
+    "repr": "str",
+    "ascii": "str",
+    "format": "str",
+    "input": "str",
+    "hex": "str",
+    "oct": "str",
+    "bin": "str",
+    # The questions: a bool, always.
+    "isinstance": "bool",
+    "callable": "bool",
+    "hasattr": "bool",
+    # The containers.
+    "list": "list",
+    "tuple": "tuple",
+    "set": "set",
+    "frozenset": "frozenset",
+    "dict": "dict",
+    "sorted": "list",
+}
+
+
+def return_type_of_signature(signature):
+    """The type a function's signature declares it returns.
+
+    <p>A signature is ``owner.name(paramTypes):return``. The return part is
+    what the source declared, and ``any`` means the source declared nothing.
+    """
+    if not signature:
+        return None
+    close = signature.rfind(")")
+    if close < 0:
+        return None
+    tail = signature[close + 1 :]
+    if not tail.startswith(":"):
+        return None
+    name = tail[1:].strip()
+    if not name or name == "any":
+        return None
+    return name
+
 # The owner of a CALL that stands in for something the TAC has no
 # counterpart for.
 #
@@ -225,6 +292,13 @@ class Translator:
         # from the module's own functions: a method's receiver is not one
         # of its declared parameters.
         self.defined_methods = {}
+        # The methods the module's classes declare, by the class that declares
+        # them. The plain table above is keyed by the method's name alone,
+        # which is enough to answer "how many parameters does this call
+        # pass", but NOT enough to answer "what does this call return": two
+        # classes may declare a method of the same name and return different
+        # types, and the class that asked is the one that decides.
+        self.class_methods = {}
         # The function nodes that are methods, so that the receiver is not
         # counted twice in a method's arity.
         self.method_nodes = set()
@@ -305,6 +379,7 @@ class Translator:
                 # is kept apart from the module's own functions.
                 self.method_nodes.add(id(node))
                 self.defined_methods.setdefault(node.name, node)
+                self.class_methods.setdefault((parent.name, node.name), node)
             else:
                 self.defined_functions.setdefault(node.name, node)
         for child in ast.iter_child_nodes(node):
@@ -659,6 +734,12 @@ class Translator:
         return {
             "name": state.name,
             "signature": state.signature,
+            # The type this function returns. The engine cannot learn it from
+            # the body -- a return value's type is a property of the
+            # declaration, and the body only says what was returned -- so
+            # without this field the return type of every function in the
+            # program was unknown to the analysis.
+            "returnType": self.tac_type_of_name(return_type_of_signature(state.signature)),
             "enclosingClass": state.enclosing_class,
             "precision": (
                 # ANY problem downgrades the function. A problem means a
@@ -1834,7 +1915,7 @@ class Translator:
         for name in callee.get("leading") or []:
             leading.append(var_op(name, self.tac_type_of_variable(name)))
         args = [callee["receiver"]] + leading + arguments
-        dest = self.state.new_temp()
+        dest = self.state.new_temp(self.tac_type_of_name(self.return_type_of_callee(callee)))
         kind = Kind.CALL if callee["resolved"] else Kind.UNINTERPRETED
         if not callee["resolved"]:
             self.report(
@@ -1853,6 +1934,33 @@ class Translator:
             }
         )
         return dest
+
+    def return_type_of_callee(self, callee):
+        """The type the callee returns, when the source says so.
+
+        <p>Three sources, in the order they are trusted:
+        <ul>
+          <li>a BUILT-IN function: the language says what it returns;
+          <li>a function of this module: the ``->`` annotation it declares;
+          <li>a method of one of this module's classes: the ``->`` annotation
+              it declares.
+        </ul>
+        <p>Anything else -- an imported function, a method of a class from
+        another module -- has no return type the analysis can see here, and
+        the call's destination stays untyped.
+        """
+        owner = callee.get("owner")
+        method = callee.get("method")
+        if owner == "builtins":
+            return BUILTIN_RETURN_TYPES.get(method)
+        if owner == self.module_name:
+            definition = self.defined_functions.get(method)
+            if definition is not None:
+                return self.annotation_name(definition.returns)
+        node = self.class_methods.get((owner, method))
+        if node is not None:
+            return self.annotation_name(node.returns)
+        return None
 
     def resolve_construction(self, node):
         """The class a call CONSTRUCTS, when the call constructs one.
