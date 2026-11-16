@@ -16,9 +16,9 @@ Two measurements settle this:
 
 | Measurement | Value | Meaning |
 |---|---|---|
-| Sink families in the runtime catalogue | 43 | 33 sink families + 10 source families |
-| Pattern entries | 2 466 | with 2 065 explicit argument-position declarations |
-| Taint rules bound by shipped checkers | 55 | each binding a family and a CWE |
+| Sink families in the runtime catalogue | 67 | 56 sink families + 11 source families |
+| Pattern entries | 4 110 | with 3 587 explicit argument-position declarations |
+| Taint rules bound by shipped checkers | 73 | each binding a family and a CWE |
 | **Precision features declared in configuration but never consumed** | **6** | see §1 |
 
 The last row is the finding that matters. The engine **declares** path sensitivity, k-CFA context
@@ -377,6 +377,75 @@ records which rule produced a helper's finding so that the next reader of it is 
 > because the field tracker merges them, but because the parameter was already a source. The fix
 > was to correct the test's premise, not to change the parameter rule.
 
+### 2.4a G13: a black box is not one thing, and only one of the two kinds loses findings
+
+The engine has **two** different kinds of "I cannot see inside this", and their soundness is
+opposite. Measured over a side car's real wire protocol:
+
+| Kind | What the engine sees | How it is treated | Findings lost? |
+|---|---|---|---|
+| **a call with no body** -- a library function | the call, with a signature | `UNINTERPRETED`: the call is assumed to preserve its arguments' taint, its result is assumed tainted when any argument is, and the call itself is checked as a sink | **no** |
+| **a value the front end could not model** -- a function value, a generator | a `HAVOC` temporary, and **no function at all** | `HAVOC`: the destination is left untracked, on purpose | **yes** |
+
+**The first kind is sound, and it is worth being explicit about why.** An unknown callee is
+assumed to pass its input through (`LanguageSemantics.preservesTaint` returns `true` for an
+unknown callee, `plumb-dfa/src/main/java/org/plumb/dfa/semantics/LanguageSemantics.java:290-310`),
+because assuming it does not drops taint at every API boundary, and a dropped taint is a
+missed vulnerability (`plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintedCheckerBase.java:1256-1287`).
+
+**The second kind is not sound, and the reason is stronger than "the value is unknown".** The
+body of the function is **absent from the IR**: there is no function to analyse, so a sink
+inside it is not an unknown taint, it is an instruction that is never analysed. Measured over
+the Python side car:
+
+| Shape | Sink in the IR? | The captured value in scope? | Verdict |
+|---|---|---|---|
+| the sink called in the body | yes -- a `CALL os.system/1` | yes, a local of the function | reported |
+| the sink inside a `lambda` | **no** -- no function is emitted at all | not applicable | **lost** |
+| the sink inside a `def` nested in the function | yes -- a function of its own is emitted | **no** -- the captured name is in neither its params nor its locals | **lost** |
+| the sink inside a generator (`yield`) | **no** -- the function holds one `HAVOC` | not applicable | **lost** |
+
+Three of the four shapes lose the finding, and the front end says so: the side car reports
+`SOURCE_LOWERED` for the lambda and `UNHANDLED_NODE` for the yield
+(`plumb-frontend/python-sidecar/src/plumb_translator.py:1078-1084` and `:1089-1095`). The report
+is honest; the finding is still gone.
+
+**The IR has no way to say "a function value".** `TacOperand` is sealed and permits only a
+variable and a constant (`plumb-tac/src/main/java/org/plumb/tac/ir/TacOperand.java:34-35`), so a
+function value can exist only as a variable that holds a name, and the name is all that is kept.
+
+**The fix has two working recipes in this repository already.**
+
+| Language | Recipe | Where |
+|---|---|---|
+| Go | the closure's body becomes a function of its own, the **captured variables become its leading parameters**, and the call site passes them | `plumb-frontend/go-sidecar/translator.go:396-407`, `:466-471`, `:852-862`, `:2811-2824` |
+| Java (source front end) | the lambda's body becomes the synthetic function `lambda$N`, and the variable is bound to the lambda's signature, so the engine follows `f.apply(...)` into the body | `plumb-tac/src/main/java/org/plumb/tac/translate/ExpressionTranslator.java:1623`, `.../StatementTranslator.java:321`, `.../TacTranslator.java:218-229` |
+
+**The leading-parameter form is not only about passing arguments at the call site: it makes the
+captured value a parameter of the closure, and a parameter is a source** (every parameter is
+marked as a source, `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintedCheckerBase.java:985`).
+The closure body is therefore analysed with the captured value already tainted -- structurally
+unable to lose the finding -- and where the call site is visible the same shape gives the
+precise path.
+
+**What the worklist item is.**
+
+| ID | Work | How to prove it | Status |
+|---|---|---|---|
+| **G13** | Lower a function value the way Go and Java do: the body becomes a function of its own and the captured variables become its leading parameters, in every front end that can express it. | A sink inside a lambda, inside a nested `def` and inside a generator is reported, and the captured value reaches it. | **open** |
+
+**How to measure it.**
+
+```bash
+# a sink in four shapes, over the side car's real wire protocol
+python scripts/probe_function_values.py
+```
+
+**The other half of the trust question.** A scan cannot be judged by its findings alone; it has
+to say how much of the program it actually saw. The report should carry the number of call
+sites that were analysed with a body, the number that were matched by a rule, and the number
+that were neither -- the last one is the honest black-box rate, and nothing reports it today.
+
 ### Tier 4 — declared as absent, and that is the right call for now
 
 | ID | Work | Rationale |
@@ -472,6 +541,9 @@ python scripts/capability_baseline.py --check
 
 # the source-side coverage contract
 python scripts/check_all.py
+
+# what a function value costs the analysis: the shapes that lose a finding
+python scripts/probe_function_values.py
 ```
 
 A reviewer who disagrees with a row should be able to reproduce the grep that shows it is inert.
@@ -485,11 +557,11 @@ searchable — so each inert row names the file whose field or hook was checked.
 | Measurement | Value | How measured |
 |---|---|---|
 | TAC opcodes | 22 | `TacInstruction.Kind` enum constants |
-| Sink families | 43 | runtime `sink-families.yaml` |
-| Pattern entries | 2 466 | runtime `sink-families.yaml` |
-| Explicit `arg_index` declarations | 2 065 | runtime `sink-families.yaml` |
-| `by_language` blocks | 26 | runtime `sink-families.yaml` |
-| Taint rules bound by shipped checkers | 55 | 55 `TaintedCheckerBase` subclasses |
+| Sink families | 67 | runtime `sink-families.yaml` (56 sink + 11 source) |
+| Pattern entries | 4 110 | runtime `sink-families.yaml` |
+| Explicit `arg_index` declarations | 3 587 | runtime `sink-families.yaml` |
+| `by_language` blocks | 149 | runtime `sink-families.yaml` |
+| Taint rules bound by shipped checkers | 73 | distinct non-abstract `TaintedCheckerBase` subclasses |
 | `TaintBehaviour.PRODUCES_TAINT` entries | 0 | language-semantics registry |
 | `TaintBehaviour.BLACK_BOX` entries | 0 | language-semantics registry |
 | `producesTaint` / `isBlackBox` production consumers | 0 / 0 | whole-tree grep outside their own file |

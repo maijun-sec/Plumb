@@ -16,9 +16,9 @@
 
 | 测量项 | 数值 | 含义 |
 |---|---|---|
-| 运行时目录里的 sink family | 43 | 33 个 sink family + 10 个 source family |
-| pattern 条目 | 2 466 | 其中 2 065 条显式声明参数位置 |
-| 已发布 checker 绑定的 taint 规则 | 55 | 每条绑定一个 family 和一个 CWE |
+| 运行时目录里的 sink family | 67 | 56 个 sink family + 11 个 source family |
+| pattern 条目 | 4 110 | 其中 3 587 条显式声明参数位置 |
+| 已发布 checker 绑定的 taint 规则 | 73 | 每条绑定一个 family 和一个 CWE |
 | **配置里声明但从未被消费的精度特性** | **6** | 见 §1 |
 
 最后一行才是关键。引擎在配置里**声明**了路径敏感、k-CFA 上下文深度、summary 缓存上限和
@@ -335,6 +335,71 @@ IR 有 22 个操作码（`plumb-tac/src/main/java/org/plumb/tac/ir/TacInstructio
 | 动态分派标记 | 接收者类型敏感的 sink 匹配 |
 | 显式捕获 / 写回 | 闭包状态传播 |
 
+### 2.4a G13：黑盒不是一种东西，而两种里只有一种会漏报
+
+引擎里有 **两种**不同的"我看不见这里面"，而它们的可靠性正好相反。在 side car 的真实线路协议上实测：
+
+| 种类 | 引擎看到什么 | 怎么处理 | 会漏报吗 |
+|---|---|---|---|
+| **有签名、没有函数体** —— 库函数 | 这个调用，带着签名 | `UNINTERPRETED`：假设调用保留参数的污点、任一参数被污染时结果即被污染，并且这个调用本身也当 sink 查 | **不会** |
+| **前端无法建模的值** —— 函数值、生成器 | 一个 `HAVOC` 临时量，**而且根本没有那个函数** | `HAVOC`：目的地有意不标记 | **会** |
+
+**第一种是守恒的，值得把理由说清楚。** 未识别的被调用方被假设为把输入传下去
+（`LanguageSemantics.preservesTaint` 对未识别的被调用方返回 `true`，
+`plumb-dfa/src/main/java/org/plumb/dfa/semantics/LanguageSemantics.java:290-310`），
+因为假设它不传，就会在每一个 API 边界上丢污点，而丢掉的污点就是一个漏掉的漏洞
+（`plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintedCheckerBase.java:1256-1287`）。
+
+**第二种不守恒，而且原因比"这个值不知道"更强。** 那个函数的**函数体不在 IR 里**：
+没有函数可分析，于是它内部的 sink 不是一个未知的污点，而是一条**从不会被分析的指令**。
+在 Python side car 上实测：
+
+| 形状 | sink 在 IR 里吗 | 捕获的值在作用域里吗 | 结论 |
+|---|---|---|---|
+| sink 直接在函数体里 | 在 —— 一条 `CALL os.system/1` | 在，是这个函数的局部变量 | 会被报出来 |
+| sink 在 `lambda` 里 | **不在** —— 根本没有发射出函数 | 不适用 | **丢了** |
+| sink 在函数内嵌套的 `def` 里 | 在 —— 发射出了一个独立的函数 | **不在** —— 捕获的名字既不在它的形参里也不在它的局部变量里 | **丢了** |
+| sink 在生成器里（`yield`） | **不在** —— 这个函数只有一条 `HAVOC` | 不适用 | **丢了** |
+
+四个形状里三个丢掉告警，而前端会说出来：side car 对 lambda 报 `SOURCE_LOWERED`，
+对 yield 报 `UNHANDLED_NODE`
+（`plumb-frontend/python-sidecar/src/plumb_translator.py:1078-1084` 和 `:1089-1095`）。
+报告是诚实的；告警照样没了。
+
+**IR 没有办法表达"函数值"。** `TacOperand` 是 sealed 的，只允许变量和常量
+（`plumb-tac/src/main/java/org/plumb/tac/ir/TacOperand.java:34-35`），
+所以函数值只能是一个装着名字的变量，而留下的只有那个名字。
+
+**修法在本仓库里已经有两份可用的样板。**
+
+| 语言 | 做法 | 位置 |
+|---|---|---|
+| Go | 闭包的体变成它自己的函数，**被捕获的变量变成它的前导形参**，调用点把捕获值传进去 | `plumb-frontend/go-sidecar/translator.go:396-407`、`:466-471`、`:852-862`、`:2811-2824` |
+| Java（源码前端） | lambda 的体变成合成函数 `lambda$N`，变量绑到 lambda 的签名上，于是引擎能把 `f.apply(...)` 跟进函数体 | `plumb-tac/src/main/java/org/plumb/tac/translate/ExpressionTranslator.java:1623`、`.../StatementTranslator.java:321`、`.../TacTranslator.java:218-229` |
+
+**"前导形参"这个形式不只是为了在调用点传参：它同时把捕获值变成了闭包函数的形参，
+而形参就是一个 source**（每个形参都被标成 source，
+`plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintedCheckerBase.java:985`）。
+于是闭包体是带着"捕获值已被污染"被分析的 —— **结构上不可能丢掉告警** ——
+而调用点可见时，同一个形状又能给出精确的路径。
+
+**工作清单里的那一项。**
+
+| ID | 工作 | 验收 | 状态 |
+|---|---|---|---|
+| **G13** | 像 Go 和 Java 那样下降函数值：体变成它自己的函数，捕获的变量变成它的前导形参，在每一个能表达这件事的前端里都做。 | lambda、嵌套 `def`、生成器里的 sink 都被报出来，且捕获的值到达了它。 | **未开始** |
+
+**怎么量它。**
+
+```bash
+# 四种形状里的 sink，走 side car 的真实线路协议
+python scripts/probe_function_values.py
+```
+
+**信任问题的另一半。** 一次扫描不能只靠它的告警来判断；它必须说清楚自己实际看到了多少程序。
+报告应该带上这几个数字：有函数体被分析的调用点数量、被规则匹配上的调用点数量，
+以及两者都不是的数量 —— 最后那个才是诚实的黑盒率，而今天没有任何东西报它。
+
 ### 第四梯队 —— 明确声明为不支持，且目前这是对的
 
 | ID | 工作 | 理由 |
@@ -424,6 +489,9 @@ python scripts/capability_baseline.py --check
 # 源码侧的覆盖契约
 python scripts/check_all.py
 
+# 函数值让分析付出什么代价：哪些形状会丢告警
+python scripts/probe_function_values.py
+
 ```
 
 不同意某一行的评审者，应当能复现那条 grep。`消费方` 一列是关于**不存在**的论断，
@@ -436,11 +504,11 @@ python scripts/check_all.py
 | 测量项 | 数值 | 测量方式 |
 |---|---|---|
 | TAC 操作码 | 22 | `TacInstruction.Kind` 枚举常量 |
-| Sink family | 43 | 运行时 `sink-families.yaml` |
-| Pattern 条目 | 2 466 | 运行时 `sink-families.yaml` |
-| 显式 `arg_index` 声明 | 2 065 | 运行时 `sink-families.yaml` |
-| `by_language` 块 | 26 | 运行时 `sink-families.yaml` |
-| 已发布 checker 绑定的 taint 规则 | 55 | 55 个 `TaintedCheckerBase` 子类 |
+| Sink family | 67 | 运行时 `sink-families.yaml`（56 个 sink + 11 个 source） |
+| Pattern 条目 | 4 110 | 运行时 `sink-families.yaml` |
+| 显式 `arg_index` 声明 | 3 587 | 运行时 `sink-families.yaml` |
+| `by_language` 块 | 149 | 运行时 `sink-families.yaml` |
+| 已发布 checker 绑定的 taint 规则 | 73 | 73 个不同的非抽象 `TaintedCheckerBase` 子类 |
 | `TaintBehaviour.PRODUCES_TAINT` 条目 | 0 | 语言语义注册表 |
 | `TaintBehaviour.BLACK_BOX` 条目 | 0 | 语言语义注册表 |
 | `producesTaint` / `isBlackBox` 的生产消费方 | 0 / 0 | 全树 grep（排除它们自己的文件） |
