@@ -408,7 +408,6 @@ families:
       - '^java\.util\.concurrent\.ThreadLocalRandom\.nextInt(/\d+)?'
       - '^java\.util\.concurrent\.ThreadLocalRandom\.nextLong(/\d+)?'
       - '^java\.util\.concurrent\.ThreadLocalRandom\.nextDouble(/\d+)?'
-      - '^java\.lang\.Math\.random(/\d+)?'
       - '^org\.apache\.commons\.lang3\.RandomUtils\.next(/\d+)?'
 
     by_language:
@@ -436,14 +435,21 @@ families:
       - '^BSHLikesGroovy\.eval(/\d+)?'
       - '^jdk\.nashorn\.api\.scripting\.NashornScriptEngine\.eval(/\d+)?'
       - '^NashornScriptEngine\.eval(/\d+)?'
-      - '^java\.beans\.Expression\.getValue(/\d+)?'
-      - '^Expression\.getValue(/\d+)?'
-      - '^java\.beans\.Statement\.execute(/\d+)?'
-      - '^Statement\.execute(/\d+)?'
+      # getValue() and execute() take no argument: the METHOD NAME the
+      # caller asked for came from the constructor's argument, and the
+      # engine carries that taint into the object the constructor built.
+      # What runs the caller's choice is the BEAN, so the position that
+      # holds the weakness is the RECEIVER.
+      - pattern: '^java\.beans\.Expression\.getValue(/\d+)?'
+        arg_index: -2
+      - pattern: '^Expression\.getValue(/\d+)?'
+        arg_index: -2
+      - pattern: '^java\.beans\.Statement\.execute(/\d+)?'
+        arg_index: -2
+      - pattern: '^Statement\.execute(/\d+)?'
+        arg_index: -2
       - '^java\.beans\.XMLDecoder\.<init>(/\d+)?'
       - '^XMLDecoder\.<init>(/\d+)?'
-      - '^java\.io\.ObjectInputStream\.readObject(/\d+)?'
-      - '^ObjectInputStream\.readObject(/\d+)?'
 
   db.credential.sinks:
     cwe: CWE-256
@@ -1073,8 +1079,6 @@ families:
         arg_index: 0
       - pattern: '^javax\.resource\.spi\.security\.PasswordCredential\.\<init\>(/\d+)?'
         arg_index: 1
-      - pattern: '^java\.net\.URL\.set(/\d+)?'
-        arg_index: 4
       - pattern: '^java\.net\.PasswordAuthentication\.\<init\>(/\d+)?'
         arg_index: 1
       - pattern: '^javax\.sql\.XADataSource\.getXAConnection(/\d+)?'
@@ -1255,8 +1259,6 @@ families:
         arg_index: 0
       - pattern: '^org\.glassfish\.jersey\.server\.oauth1\.OAuth1Provider\.addAccessToken(/\d+)?'
         arg_index: 0
-      - pattern: '^java\.sql\.Driver\.connect(/\d+)?'
-        arg_index: 2
     by_language:
       csharp:
         - pattern: '^System\.Web\.Security\.MembershipProvider\.ChangePasswordQuestionAndAnswer(/\d+)?'
@@ -5545,8 +5547,6 @@ families:
         arg_index: 0
       - pattern: '^java\.net\.URL\.\<init\>(/\d+)?'
         arg_index: [0, 1]
-      - pattern: '^java\.net\.URL\.set(/\d+)?'
-        arg_index: 0
       - pattern: '^java\.net\.UnixDomainSocketAddress\.of(/\d+)?'
         arg_index: 0
       - pattern: '^java\.lang\.ClassLoader\.defineClass(/\d+)?'
@@ -6529,15 +6529,10 @@ families:
         arg_index: 0
       - pattern: '^org\.apache\.ibatis\.executor\.Executor\.query(/\d+)?'
         arg_index: 0
-      - '^java\.sql\.Statement\.executeBatch(/\d+)?'
-      - '^java\.sql\.Statement\.executeLargeBatch(/\d+)?'
       - '^java\.sql\.Statement\.executeLargeUpdate(/\d+)?'
-      - '^java\.sql\.Statement\.clearBatch(/\d+)?'
       - '^java\.sql\.PreparedStatement\.execute(/\d+)?'
       - '^java\.sql\.PreparedStatement\.executeQuery(/\d+)?'
       - '^java\.sql\.PreparedStatement\.executeUpdate(/\d+)?'
-      - '^java\.sql\.PreparedStatement\.executeBatch(/\d+)?'
-      - '^java\.sql\.PreparedStatement\.executeLargeBatch(/\d+)?'
       - '^java\.sql\.PreparedStatement\.addBatch(/\d+)?'
       - '^java\.sql\.Connection\.nativeSQL(/\d+)?'
       - '^javax\.persistence\.EntityManager\.createQuery(/\d+)?'
@@ -6826,7 +6821,10 @@ families:
     cwe: CWE-918
     severity: HIGH
     patterns:
-      - pattern: '^java\.net\.SocketAddress\.\<init\>(/\d+)?'
+      # java.net.SocketAddress is abstract and its constructor takes no
+      # argument, so the host is not in it: it is in
+      # InetSocketAddress's constructor, where it is the FIRST argument.
+      - pattern: '^java\.net\.InetSocketAddress\.\<init\>(/\d+)?'
         arg_index: 0
       - pattern: '^javax\.net\.SocketFactory\.createSocket(/\d+)?'
         arg_index: 0

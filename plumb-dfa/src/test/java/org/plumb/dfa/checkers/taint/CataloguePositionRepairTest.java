@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.plumb.dfa.config.ConfigLoader;
 import org.plumb.dfa.config.EngineConfig;
 import org.plumb.dfa.config.SinkFamily;
+import org.plumb.dfa.engine.DfaChecker;
 import org.plumb.dfa.engine.DfaEngine;
 import org.plumb.dfa.engine.FindingReporter;
 import org.plumb.reporter.Finding;
@@ -51,12 +52,15 @@ import org.plumb.tac.ir.TacType;
  * the taint. When that argument is one no overload of the named API can supply, the rule is
  * registered, the family matches, and the finding never appears -- a rule that reads as if it were
  * in charge and is not. The position gate in {@code CataloguePositionReachabilityTest} measures
- * that; this class pins what the repaired entries now name, and shows one of them firing.
+ * that; this class pins what the repaired entries now name, and shows them firing.
  *
- * <p><b>What each test proves.</b> The first three say what the catalogue says: the position is the
- * RECEIVER for the APIs that take no argument, and the first argument for the one that names a
- * type. The last two say what that means: a generator the request seeded is a finding, and a
- * generator the program seeded is not.
+ * <p><b>What each test proves.</b> The catalogue tests say what the catalogue says: the position is
+ * the RECEIVER for the APIs that take no argument -- the generators, the file that is made
+ * read-only, and the reflective bean -- the first argument for the one that names a type, and the
+ * HOST for the socket address. The engine tests say what that means: a generator the request seeded
+ * is a finding and a generator the program seeded is not; a method name the request chose is a
+ * finding and a method name the program chose is not; a host the request chose is a finding and a
+ * host the program chose is not.
  *
  * <p><b>Why the instructions are written out by hand.</b> The catalogue names callee signatures,
  * and the engine reads the argument at the position the catalogue names. The TAC below is the one
@@ -69,8 +73,23 @@ class CataloguePositionRepairTest {
   /** The rule that reads the random family. */
   private static final String RANDOM_RULE = "dfa-taint-insecure-random";
 
-  /** The generator call the last two tests report at. */
+  /** The rule that reads the reflective-bean family. */
+  private static final String CODE_EXECUTION_RULE = "dfa-taint-java-code-injection";
+
+  /** The rule that reads the server-side-request family. */
+  private static final String SSRF_RULE = "dfa-taint-ssrf";
+
+  /** The generator call the random tests report at. */
   private static final String NEXT_LONG = "java.util.Random.nextLong/0";
+
+  /** The bean construction the code-execution tests build. */
+  private static final String EXPRESSION_CTOR = "java.beans.Expression.<init>/3";
+
+  /** The reflective call the code-execution tests report at. */
+  private static final String EXPRESSION_GET_VALUE = "java.beans.Expression.getValue/0";
+
+  /** The socket construction the ssrf tests report at. */
+  private static final String INET_SOCKET_CTOR = "java.net.InetSocketAddress.<init>/2";
 
   @Test
   @DisplayName("the generators that take no argument name the receiver")
@@ -129,9 +148,52 @@ class CataloguePositionRepairTest {
   }
 
   @Test
+  @DisplayName("the reflective bean names the receiver")
+  void theReflectiveBeanNamesTheReceiver() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("code-execution.sinks")
+                .orElseThrow()
+                .argIndexesFor("java.beans.Expression.getValue/0", SourceLanguage.JAVA))
+        .as(
+            "getValue() takes no argument: the method name came from the constructor, and the"
+                + " engine carries it into the bean the constructor built")
+        .contains(SinkFamily.RECEIVER_ARG_INDEX);
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("code-execution.sinks")
+                .orElseThrow()
+                .argIndexesFor("java.beans.Statement.execute/0", SourceLanguage.JAVA))
+        .as("execute() takes no argument: what runs the caller's choice is the bean")
+        .contains(SinkFamily.RECEIVER_ARG_INDEX);
+  }
+
+  @Test
+  @DisplayName("the socket address names the host")
+  void theSocketAddressNamesTheHost() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+
+    assertThat(
+            config
+                .sinkFamilies()
+                .byName("ssrf.sinks")
+                .orElseThrow()
+                .argIndexesFor("java.net.InetSocketAddress.<init>/2", SourceLanguage.JAVA))
+        .as(
+            "InetSocketAddress(String hostname, int port): the host is the first argument, and"
+                + " SocketAddress's own constructor has none at all")
+        .containsExactly(0);
+  }
+
+  @Test
   @DisplayName("a generator the request seeded is a finding")
   void aGeneratorTheRequestSeededIsAFinding() {
-    List<Finding> findings = scan(seededGenerator(true));
+    List<Finding> findings = scan(seededGenerator(true), new InsecureRandomChecker(), RANDOM_RULE);
 
     assertThat(mentions(findings, NEXT_LONG))
         .as("the seed reached the generator, so the values it produces are the request's")
@@ -141,10 +203,52 @@ class CataloguePositionRepairTest {
   @Test
   @DisplayName("a generator the program seeded is not a finding")
   void aGeneratorTheProgramSeededIsNotAFinding() {
-    List<Finding> findings = scan(seededGenerator(false));
+    List<Finding> findings = scan(seededGenerator(false), new InsecureRandomChecker(), RANDOM_RULE);
 
     assertThat(mentions(findings, NEXT_LONG))
         .as("a seed the program chose is not the attacker's")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("a method name the request chose is a finding")
+  void aMethodNameTheRequestChoseIsAFinding() {
+    List<Finding> findings =
+        scan(beanCall(true), new JavaCodeInjectionChecker(), CODE_EXECUTION_RULE);
+
+    assertThat(mentions(findings, EXPRESSION_GET_VALUE))
+        .as("the request chose the method the bean will call")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("a method name the program chose is not a finding")
+  void aMethodNameTheProgramChoseIsNotAFinding() {
+    List<Finding> findings =
+        scan(beanCall(false), new JavaCodeInjectionChecker(), CODE_EXECUTION_RULE);
+
+    assertThat(mentions(findings, EXPRESSION_GET_VALUE))
+        .as("a method name the program chose is not the attacker's")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("a host the request chose is a finding")
+  void aHostTheRequestChoseIsAFinding() {
+    List<Finding> findings = scan(socketCall(true), new SsrfChecker(), SSRF_RULE);
+
+    assertThat(mentions(findings, INET_SOCKET_CTOR))
+        .as("the request chose the host the server will reach")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("a host the program chose is not a finding")
+  void aHostTheProgramChoseIsNotAFinding() {
+    List<Finding> findings = scan(socketCall(false), new SsrfChecker(), SSRF_RULE);
+
+    assertThat(mentions(findings, INET_SOCKET_CTOR))
+        .as("a host the program chose is not the attacker's")
         .isFalse();
   }
 
@@ -180,12 +284,120 @@ class CataloguePositionRepairTest {
             .build());
     // generator.nextLong()
     instructions.add(call(NEXT_LONG, temp("value"), List.of(generator), 11));
-    return new TacFunction(
+    return function(
         "handler",
         "app.handler(string):long",
         TacType.LONG,
         List.of(request),
         List.of(seed, generator),
+        instructions);
+  }
+
+  /**
+   * The handler that builds a reflective bean.
+   *
+   * <pre>
+   * Expression bean = new Expression(target, request.getParameter("method"), new Object[0]);
+   * </pre>
+   *
+   * @param taintedMethodName whether the method name comes from the request
+   * @return the function under analysis
+   */
+  private static TacFunction beanCall(boolean taintedMethodName) {
+    TacOperand.TacVar request = new TacOperand.TacVar("request", TacType.STRING, false);
+    TacOperand.TacVar methodName = new TacOperand.TacVar("methodName", TacType.STRING, false);
+    TacOperand.TacVar target = new TacOperand.TacVar("target", TacType.UNKNOWN, false);
+    TacOperand.TacVar arguments = new TacOperand.TacVar("arguments", TacType.UNKNOWN, false);
+    TacOperand.TacVar bean = new TacOperand.TacVar("bean", TacType.UNKNOWN, false);
+
+    List<TacInstruction> instructions = new ArrayList<>();
+    // methodName = request
+    instructions.add(
+        taintedMethodName
+            ? move(methodName, request, 8)
+            : move(methodName, TacOperand.Const.ofString("setProperty"), 8));
+    // target = the bean the call is made on
+    instructions.add(move(target, TacOperand.Const.ofString("bean"), 8));
+    // arguments = the arguments the reflective call passes
+    instructions.add(move(arguments, TacOperand.Const.ofString(""), 9));
+    // Expression bean = new Expression(target, methodName, arguments)
+    instructions.add(
+        TacInstruction.builder(TacInstruction.Kind.NEW)
+            .dest(bean)
+            .ctorType(TacType.ofClass("java.beans.Expression"))
+            .calleeSig(EXPRESSION_CTOR)
+            .args(List.of(target, methodName, arguments))
+            .line(10)
+            .column(1)
+            .build());
+    // Object value = bean.getValue()
+    instructions.add(call(EXPRESSION_GET_VALUE, temp("value"), List.of(bean), 11));
+    return function(
+        "handler",
+        "app.handler(string):void",
+        TacType.VOID,
+        List.of(request),
+        List.of(methodName, target, arguments, bean),
+        instructions);
+  }
+
+  /**
+   * The handler that builds a socket address.
+   *
+   * <pre>
+   * InetSocketAddress address = new InetSocketAddress(request.getParameter("host"), 443);
+   * </pre>
+   *
+   * @param taintedHost whether the host comes from the request
+   * @return the function under analysis
+   */
+  private static TacFunction socketCall(boolean taintedHost) {
+    TacOperand.TacVar request = new TacOperand.TacVar("request", TacType.STRING, false);
+    TacOperand.TacVar host = new TacOperand.TacVar("host", TacType.STRING, false);
+    TacOperand.TacVar port = new TacOperand.TacVar("port", TacType.INT, false);
+    TacOperand.TacVar address = new TacOperand.TacVar("address", TacType.UNKNOWN, false);
+
+    List<TacInstruction> instructions = new ArrayList<>();
+    // host = request
+    instructions.add(
+        taintedHost
+            ? move(host, request, 8)
+            : move(host, TacOperand.Const.ofString("example.com"), 8));
+    // port = 443
+    instructions.add(move(port, TacOperand.Const.ofInt(443), 8));
+    // InetSocketAddress address = new InetSocketAddress(host, port)
+    instructions.add(
+        TacInstruction.builder(TacInstruction.Kind.NEW)
+            .dest(address)
+            .ctorType(TacType.ofClass("java.net.InetSocketAddress"))
+            .calleeSig(INET_SOCKET_CTOR)
+            .args(List.of(host, port))
+            .line(9)
+            .column(1)
+            .build());
+    return function(
+        "handler",
+        "app.handler(string):void",
+        TacType.VOID,
+        List.of(request),
+        List.of(host, port, address),
+        instructions);
+  }
+
+  /** The function under analysis, with the parts every case shares. */
+  private static TacFunction function(
+      String name,
+      String signature,
+      TacType returnType,
+      List<TacOperand.TacVar> params,
+      List<TacOperand.TacVar> locals,
+      List<TacInstruction> instructions) {
+    return new TacFunction(
+        name,
+        signature,
+        returnType,
+        params,
+        locals,
         instructions,
         List.of(),
         List.of(),
@@ -200,19 +412,15 @@ class CataloguePositionRepairTest {
 
   // ------------------------------------------------------------------ the run
 
-  private List<Finding> scan(TacFunction function) {
+  private List<Finding> scan(TacFunction function, DfaChecker checker, String ruleId) {
     TacProgram program = new TacProgram(Path.of("App.java"), "app");
     program.addFunction(function);
     FindingReporter reporter =
-        new DfaEngine(
-                ConfigLoader.loadFromClasspath(),
-                List.of(new InsecureRandomChecker()),
-                "global",
-                null)
+        new DfaEngine(ConfigLoader.loadFromClasspath(), List.of(checker), "global", null)
             .runWithGlobalStore(List.of(program), 0);
     List<Finding> out = new ArrayList<>();
     for (Finding f : reporter.all()) {
-      if (f.ruleId().equals(RANDOM_RULE)) out.add(f);
+      if (f.ruleId().equals(ruleId)) out.add(f);
     }
     return out;
   }

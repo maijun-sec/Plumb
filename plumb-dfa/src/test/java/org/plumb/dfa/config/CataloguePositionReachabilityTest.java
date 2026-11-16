@@ -70,76 +70,41 @@ class CataloguePositionReachabilityTest {
   /**
    * The catalogue positions that no call can supply, with the reason each one is still there.
    *
-   * <p><b>Every entry here was MEASURED, and every entry is a defect that is still open.</b> The
-   * list is a work order, not an excuse: each entry says what the position SHOULD be, so the fix is
-   * a decision, not a search. The staleness test below fails when an entry is fixed and left behind
+   * <p><b>The list is empty.</b> Every position it used to name has been repaired: the ones that
+   * named an argument no overload can supply were moved to the argument that carries the weakness
+   * -- the receiver, the method name of a reflective bean, the host of a socket address -- and the
+   * ones that named an API that does not exist were dropped. The check below is therefore
+   * zero-tolerance: a position no call can supply now fails the build instead of waiting for a list
+   * entry.
+   *
+   * <p><b>The list is the gate's escape hatch, and it stays empty unless it has to.</b> An entry is
+   * a work order, not an excuse: each one says what the position SHOULD be, so the fix is a
+   * decision, not a search. The staleness test below fails when an entry is fixed and left behind
    * -- a list that keeps entries it no longer needs is a list nobody reads.
    *
    * <p><b>The key is the family and the pattern text.</b> The same pattern text can sit in two
    * families with two different positions, and each is its own entry: {@code
    * java.io.ObjectInputStream.readObject} is right in {@code deserialization.sinks}, which reads
-   * the receiver, and wrong in {@code code-execution.sinks}, which reads a position that no
+   * the receiver, and was wrong in {@code code-execution.sinks}, which read a position that no
    * argument list has.
    */
-  private static final Map<String, String> KNOWN_UNREACHABLE =
-      new LinkedHashMap<>() {
-        {
-          put(
-              "random.sinks|^java\\.lang\\.Math\\.random(/\\d+)?",
-              "Math.random() takes no argument and is static: there is no receiver to read"
-                  + " either, so the entry has to be re-modelled or dropped.");
-          put(
-              "code-execution.sinks|^java\\.beans\\.Expression\\.getValue(/\\d+)?",
-              "getValue() takes no argument: the method name the caller asked for came from the"
-                  + " constructor's argument, so the position has to move there.");
-          put(
-              "code-execution.sinks|^java\\.beans\\.Statement\\.execute(/\\d+)?",
-              "execute() takes no argument: the method name the caller asked for came from the"
-                  + " constructor's argument, so the position has to move there.");
-          put(
-              "code-execution.sinks|^java\\.io\\.ObjectInputStream\\.readObject(/\\d+)?",
-              "readObject() takes no argument: deserialization.sinks already reads the receiver"
-                  + " for the same API, so this copy has to say the same.");
-          put(
-              "credential.sinks|^java\\.net\\.URL\\.set(/\\d+)?",
-              "URL.set is not a public method: the pattern reaches setURLStreamHandlerFactory by"
-                  + " prefix, and position 4 is past every overload that name has.");
-          put(
-              "credential.sinks|^java\\.sql\\.Driver\\.connect(/\\d+)?",
-              "connect(String url, Properties info) takes two arguments: the password is a"
-                  + " property of the second one, not a position.");
-          put(
-              "sql.sinks|^java\\.sql\\.Statement\\.executeBatch(/\\d+)?",
-              "executeBatch() takes no argument: the text was already claimed where the"
-                  + " statement was given it.");
-          put(
-              "sql.sinks|^java\\.sql\\.Statement\\.clearBatch(/\\d+)?",
-              "clearBatch() takes no argument: the text was already claimed where the statement"
-                  + " was given it.");
-          put(
-              "sql.sinks|^java\\.sql\\.PreparedStatement\\.executeBatch(/\\d+)?",
-              "executeBatch() takes no argument: the text was already claimed where the"
-                  + " statement was prepared.");
-          put(
-              "ssrf.sinks|^java\\.net\\.SocketAddress\\.\\<init\\>(/\\d+)?",
-              "the SocketAddress constructor takes no argument and the class is abstract: the"
-                  + " host is in InetSocketAddress's constructor.");
-        }
-      };
+  private static final Map<String, String> KNOWN_UNREACHABLE = new LinkedHashMap<>();
 
   /**
    * The entries whose verdict depends on the JDK the build runs on.
    *
    * <p>An interface default method is inherited rather than declared, so whether it exists at all
    * depends on the JDK: {@code java.beans.Expression} grew and lost {@code getValue(Object)} across
-   * releases, and {@code java.net.SocketAddress}'s constructor changed visibility. These two are
-   * measured on the JDK in front of the build, and the list is re-measured when the JDK moves --
-   * which is what the staleness test is for.
+   * releases, and {@code java.net.SocketAddress}'s constructor changed visibility. An entry lands
+   * here when the position is supplyable on one JDK and not on another: the check then measures it
+   * on the JDK in front of the build, and the staleness test re-measures it when the JDK moves.
+   *
+   * <p><b>The set is empty.</b> Both entries it held were repaired -- the bean's method name moved
+   * to the constructor argument that carries it, and the socket address moved to the constructor
+   * that has a host -- and the positions they name sit inside the arity of those constructors on
+   * every JDK that has them.
    */
-  private static final Set<String> JDK_DEPENDENT =
-      Set.of(
-          "code-execution.sinks|^java\\.beans\\.Expression\\.getValue(/\\d+)?",
-          "ssrf.sinks|^java\\.net\\.SocketAddress\\.\\<init\\>(/\\d+)?");
+  private static final Set<String> JDK_DEPENDENT = Set.of();
 
   /** The catalogue's arity suffixes, as the catalogue writes them. */
   private static final String[] ARITY_SUFFIXES = {"(/\\d+)?", "(/\\d+)"};
