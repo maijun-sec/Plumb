@@ -37,18 +37,18 @@ import org.plumb.tac.frontend.CompileContext;
  *
  * <h2>Why the whole module and not the one package</h2>
  *
- * <p>A Go package cannot be type checked on its own -- it names symbols its siblings declare --
- * and the packages of a module depend on each other. So a scan that analysed only the package the
- * scanned file happens to be in would leave every cross-package call unresolved, and an
- * unresolved call is a missing finding rather than a missing precision.
+ * <p>A Go package cannot be type checked on its own -- it names symbols its siblings declare -- and
+ * the packages of a module depend on each other. So a scan that analysed only the package the
+ * scanned file happens to be in would leave every cross-package call unresolved, and an unresolved
+ * call is a missing finding rather than a missing precision.
  *
  * <p>So the discovery walks the <b>module</b>: the nearest ancestor directory that holds a {@code
  * go.mod} file, and every package inside it.
  *
  * <h2>What it does not know</h2>
  *
- * <p>The dependencies' export data. That comes from the build, and without a capture there is
- * none -- so the external packages' types may be unknown, and the frontend says so rather than
+ * <p>The dependencies' export data. That comes from the build, and without a capture there is none
+ * -- so the external packages' types may be unknown, and the frontend says so rather than
  * pretending otherwise.
  */
 public final class GoProjectDiscovery {
@@ -164,9 +164,7 @@ public final class GoProjectDiscovery {
    * @return true when the root holds a Go toolchain
    */
   public static boolean isToolchainRoot(Path root) {
-    return root != null
-        && Files.isDirectory(root)
-        && Files.isDirectory(root.resolve("src"));
+    return root != null && Files.isDirectory(root) && Files.isDirectory(root.resolve("src"));
   }
 
   /**

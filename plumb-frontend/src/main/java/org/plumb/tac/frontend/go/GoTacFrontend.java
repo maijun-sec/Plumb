@@ -36,6 +36,8 @@ import org.plumb.tac.frontend.json.Json;
 import org.plumb.tac.frontend.sidecar.SidecarProtocol;
 import org.plumb.tac.ir.IrPrecision;
 import org.plumb.tac.ir.SourceLanguage;
+import org.plumb.tac.frontend.sidecar.SidecarTacMapper;
+import org.plumb.tac.ir.TacDrop;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
@@ -48,11 +50,11 @@ import org.plumb.tac.ir.TacType;
  *
  * <h2>How it works</h2>
  *
- * <p>Plumb is a JVM product and Go's type resolver is a Go program -- {@code go/parser},
- * {@code go/types} and the toolchain's export data are Go source in the Go standard library.
- * There is no JVM port of them, and writing a second implementation of Go's type system would
- * mean a type that resolves differently, hence a different callee signature, hence a sink family
- * that does not match. So this frontend drives a long-lived <b>Go sidecar</b> over stdio instead.
+ * <p>Plumb is a JVM product and Go's type resolver is a Go program -- {@code go/parser}, {@code
+ * go/types} and the toolchain's export data are Go source in the Go standard library. There is no
+ * JVM port of them, and writing a second implementation of Go's type system would mean a type that
+ * resolves differently, hence a different callee signature, hence a sink family that does not
+ * match. So this frontend drives a long-lived <b>Go sidecar</b> over stdio instead.
  *
  * <h2>Why the sidecar is PROJECT-SCOPED</h2>
  *
@@ -62,9 +64,9 @@ import org.plumb.tac.ir.TacType;
  * unresolved call is a missing finding, not a missing precision.
  *
  * <p>So the sidecar holds <b>the whole project</b> -- every package of it -- and translates out of
- * that. The project is opened once and reused for every file, which is also what makes the
- * approach viable: type checking is the expensive part, and doing it once per project rather than
- * once per file is the difference between usable and unusable.
+ * that. The project is opened once and reused for every file, which is also what makes the approach
+ * viable: type checking is the expensive part, and doing it once per project rather than once per
+ * file is the difference between usable and unusable.
  *
  * <h2>Where the packages come from</h2>
  *
@@ -267,7 +269,9 @@ public final class GoTacFrontend implements TacFrontend, AutoCloseable {
 
     String projectId = projectIdOf(project, path);
     boolean stale =
-        !projectOpen || !projectId.equals(openProjectId) || !source.equals(openProjectSourceOf(path));
+        !projectOpen
+            || !projectId.equals(openProjectId)
+            || !source.equals(openProjectSourceOf(path));
     if (!stale) {
       return;
     }
@@ -608,10 +612,17 @@ public final class GoTacFrontend implements TacFrontend, AutoCloseable {
       }
     }
 
-    IrPrecision precision =
-        "SOURCE_LOWERED".equals(wire.getString("precision"))
-            ? IrPrecision.SOURCE_LOWERED
-            : IrPrecision.SOURCE_FULL;
+    // The DROPS the sidecar recorded, and the precision they imply. The
+    // precision is DERIVED: a sidecar that claims SOURCE_FULL while recording
+    // a SEMANTICS drop would be hiding a real loss.
+    List<TacDrop> drops = SidecarTacMapper.toDrops(wire.getArray("drops"));
+    IrPrecision precision = SidecarTacMapper.combinePrecision(wire.getString("precision"), drops);
+
+    // What kind of member this function is: a method, a constructor, a
+    // getter. A checker has to be able to tell them apart.
+    String memberKindName = wire.getString("memberKind");
+    org.plumb.tac.ir.TacMemberKind memberKind =
+        memberKindName == null ? null : org.plumb.tac.ir.TacMemberKind.fromWire(memberKindName);
 
     // The Go-specific facts the sidecar reports in the wire's own fields.
     //
@@ -661,175 +672,46 @@ public final class GoTacFrontend implements TacFrontend, AutoCloseable {
         params,
         locals,
         instructions,
-        List.of(),
-        List.of(),
-        Map.of(),
-        Map.of(),
+        SidecarTacMapper.toStringList(wire.getArray("classAnnotations")),
+        SidecarTacMapper.toStringList(wire.getArray("methodAnnotations")),
+        SidecarTacMapper.toAnnotationMap(wire.getObject("fieldAnnotations")),
+        SidecarTacMapper.toAnnotationMap(wire.getObject("paramAnnotations")),
         wire.getString("enclosingClass"),
         org.plumb.tac.ir.SourceOrigin.SOURCE,
-        List.of(),
+        SidecarTacMapper.toTryRegions(wire.getArray("tryRegions")),
         SourceLanguage.GO,
         precision,
         wire.getBoolean("synthetic", false),
-        Map.of(),
-        ctx == null || path == null ? null : ctx.moduleOf(path));
+        SidecarTacMapper.toAnnotationMap(wire.getObject("annotationValues")),
+        ctx == null || path == null ? null : ctx.moduleOf(path),
+        drops,
+        memberKind);
   }
 
   /** Map one wire instruction into the IR. */
   private static TacInstruction toInstruction(Json.JsonObject wire) {
-    String kindName = wire.getString("kind");
-    TacInstruction.Kind kind;
-    try {
-      kind = TacInstruction.Kind.valueOf(kindName == null ? "NOP" : kindName);
-    } catch (IllegalArgumentException ex) {
-      // An instruction kind this build does not know. The sidecar is newer
-      // than the frontend. The safest reading of an unknown instruction is one
-      // whose effect is unknown.
-      kind = TacInstruction.Kind.HAVOC;
-    }
-
-    TacInstruction.Builder builder = TacInstruction.builder(kind);
-    builder.dest(toOperand(wire.getObject("dest")));
-    builder.lhs1(toOperand(wire.getObject("lhs1")));
-    builder.lhs2(toOperand(wire.getObject("lhs2")));
-    builder.calleeSig(wire.getString("calleeSig"));
-    builder.ctorType(toType(wire.getObject("ctorType")));
-    builder.fieldName(wire.getString("fieldName"));
-    builder.trueLabel(wire.getString("trueLabel"));
-    builder.falseLabel(wire.getString("falseLabel"));
-    builder.label(wire.getString("label"));
-    builder.line(wire.getInt("line", -1));
-    builder.column(wire.getInt("column", -1));
-
-    // The execution effect: a call that does NOT run here, in this order. Go's
-    // defer runs when the function returns; its go statement starts a goroutine.
-    // Without this the engine cannot tell either of them from an ordinary call,
-    // and a checker cannot see that a deferred call in a loop is not released
-    // until the function returns.
-    String effectName = wire.getString("effect");
-    if (effectName != null) {
-      try {
-        builder.effect(TacInstruction.Effect.valueOf(effectName));
-      } catch (IllegalArgumentException ex) {
-        // An effect this build does not know. The instruction keeps the default:
-        // it runs here, in this order. That under-claims the execution rather
-        // than over-claiming it, which is the safe direction.
-      }
-    }
-
-    String binop = wire.getString("binop");
-    if (binop != null) {
-      try {
-        builder.binop(org.plumb.tac.ir.BinaryOperator.valueOf(binop));
-      } catch (IllegalArgumentException ex) {
-        builder.binop(org.plumb.tac.ir.BinaryOperator.ADD);
-      }
-    }
-    String unop = wire.getString("unop");
-    if (unop != null) {
-      try {
-        builder.unop(org.plumb.tac.ir.UnaryOperator.valueOf(unop));
-      } catch (IllegalArgumentException ex) {
-        builder.unop(org.plumb.tac.ir.UnaryOperator.CAST);
-      }
-    }
-    TacType castType = toType(wire.getObject("castType"));
-    if (castType != null) {
-      builder.castType(castType);
-    }
-    Json.JsonArray args = wire.getArray("args");
-    if (args != null && args.size() > 0) {
-      List<TacOperand> list = new ArrayList<>();
-      for (int i = 0; i < args.size(); i++) {
-        TacOperand operand = toOperand(args.getObject(i));
-        if (operand != null) {
-          list.add(operand);
-        }
-      }
-      builder.args(list);
-    }
-    return builder.build();
+    // The mapping is the shared one: a second copy of it drifts, and this copy
+    // had already drifted -- it read an unknown binary operator as ADD, which
+    // turns a comparison into an addition.
+    return SidecarTacMapper.toInstruction(wire);
   }
 
   /** Map one wire operand into the IR. */
   private static TacOperand toOperand(Json.JsonObject wire) {
-    if (wire == null) {
-      return null;
-    }
-    String kind = wire.getString("kind");
-    if ("CONST".equals(kind)) {
-      return toConst(wire);
-    }
-    return toVar(wire);
+    return SidecarTacMapper.toOperand(wire);
   }
 
   private static TacOperand.TacVar toVar(Json.JsonObject wire) {
-    if (wire == null) {
-      return null;
-    }
-    String name = wire.getString("name");
-    if (name == null) {
-      return null;
-    }
-    return new TacOperand.TacVar(
-        name, toType(wire.getObject("type")), wire.getBoolean("isTemp", false));
+    return SidecarTacMapper.toVar(wire);
   }
 
   private static TacOperand toConst(Json.JsonObject wire) {
-    String kindName = wire.getString("constKind");
-    if (kindName == null) {
-      kindName = "STRING";
-    }
-    String value = wire.getString("value");
-    try {
-      return switch (kindName) {
-        case "INT" -> TacOperand.Const.ofInt(Integer.parseInt(value == null ? "0" : value));
-        case "LONG" -> TacOperand.Const.ofLong(Long.parseLong(value == null ? "0" : value));
-        case "FLOAT" -> TacOperand.Const.ofFloat(Float.parseFloat(value == null ? "0" : value));
-        case "DOUBLE" -> TacOperand.Const.ofDouble(Double.parseDouble(value == null ? "0" : value));
-        case "DECIMAL" -> TacOperand.Const.ofDecimal(value == null ? "0" : value);
-        case "BOOL" -> TacOperand.Const.ofBool(Boolean.parseBoolean(value));
-        case "CHAR" -> TacOperand.Const.ofChar(value == null || value.isEmpty() ? '\0' : value.charAt(0));
-        case "NULL" -> TacOperand.Const.ofNull();
-        default -> TacOperand.Const.ofString(value == null ? "" : value);
-      };
-    } catch (NumberFormatException ex) {
-      // A constant the wire carried in a form this build cannot parse. The
-      // value is unknown, not silently zero.
-      return TacOperand.Const.ofString(value == null ? "" : value);
-    }
+    return SidecarTacMapper.toConst(wire);
   }
 
   /** Map one wire type into the IR. */
   private static TacType toType(Json.JsonObject wire) {
-    if (wire == null) {
-      return TacType.UNKNOWN;
-    }
-    String kindName = wire.getString("kind");
-    if (kindName == null) {
-      return TacType.UNKNOWN;
-    }
-    try {
-      return switch (kindName) {
-        case "BOOLEAN" -> TacType.BOOLEAN;
-        case "BYTE" -> TacType.BYTE;
-        case "SHORT" -> TacType.SHORT;
-        case "CHAR" -> TacType.CHAR;
-        case "INT" -> TacType.INT;
-        case "LONG" -> TacType.LONG;
-        case "FLOAT" -> TacType.FLOAT;
-        case "DOUBLE" -> TacType.DOUBLE;
-        case "DECIMAL" -> TacType.DECIMAL;
-        case "STRING" -> TacType.STRING;
-        case "NULL" -> TacType.NULL;
-        case "VOID" -> TacType.VOID;
-        case "CLASS" -> TacType.ofClass(wire.getString("name") == null ? "" : wire.getString("name"));
-        case "ARRAY" -> TacType.arrayOf(toType(wire.getObject("component")));
-        default -> TacType.UNKNOWN;
-      };
-    } catch (IllegalArgumentException ex) {
-      return TacType.UNKNOWN;
-    }
+    return SidecarTacMapper.toType(wire);
   }
 
   /**

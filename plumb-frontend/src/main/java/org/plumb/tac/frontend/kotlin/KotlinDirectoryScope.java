@@ -30,23 +30,21 @@ import com.intellij.psi.search.SearchScope;
 /**
  * A search scope over a directory tree, evaluated on every query.
  *
- * <p><b>Why the Analysis API's own scopes cannot be used here.</b> The Kotlin frontend
- * stages the file it analyses on disk <i>after</i> the session has been built, and the
- * session's module structure was fixed when it was built. The scope the Analysis API
- * builds for a source module is a <i>frozen list</i> of the files that existed at that
- * moment, so a file staged afterwards is outside the scope. The Analysis API then hands
- * the file to a "not under content root" module -- a module with no dependencies -- and
- * every reference in the file resolves to an error type: {@code StringBuilder} is
- * unresolved, {@code Regex} is unresolved, and every value is unknown.
+ * <p><b>Why the Analysis API's own scopes cannot be used here.</b> The Kotlin frontend stages the
+ * file it analyses on disk <i>after</i> the session has been built, and the session's module
+ * structure was fixed when it was built. The scope the Analysis API builds for a source module is a
+ * <i>frozen list</i> of the files that existed at that moment, so a file staged afterwards is
+ * outside the scope. The Analysis API then hands the file to a "not under content root" module -- a
+ * module with no dependencies -- and every reference in the file resolves to an error type: {@code
+ * StringBuilder} is unresolved, {@code Regex} is unresolved, and every value is unknown.
  *
- * <p>{@code GlobalSearchScope.filesScope} has an overload that takes a supplier, which
- * looks like the answer -- but the scope <b>freezes the supplier's result on the first
- * query</b> and never asks again. So the first file analysed resolves and every later
- * one does not.
+ * <p>{@code GlobalSearchScope.filesScope} has an overload that takes a supplier, which looks like
+ * the answer -- but the scope <b>freezes the supplier's result on the first query</b> and never
+ * asks again. So the first file analysed resolves and every later one does not.
  *
- * <p>This scope asks the question directly on every call: is this file under the
- * directory? The answer does not depend on when the file was created, so every file the
- * frontend stages is in scope.
+ * <p>This scope asks the question directly on every call: is this file under the directory? The
+ * answer does not depend on when the file was created, so every file the frontend stages is in
+ * scope.
  */
 final class KotlinDirectoryScope extends GlobalSearchScope {
 

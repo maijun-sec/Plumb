@@ -37,8 +37,8 @@ import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacType;
 
 /**
- * The Scala frontend's contract: what it produces, what it refuses to produce, and what
- * it does with a broken file.
+ * The Scala frontend's contract: what it produces, what it refuses to produce, and what it does
+ * with a broken file.
  */
 class ScalaTacFrontendTest {
 
@@ -226,12 +226,7 @@ class ScalaTacFrontendTest {
   @Test
   void aCaseClassCopyIsMarkedSynthetic() {
     TacFrontend.ParseResult result =
-        support.parse(
-            String.join(
-                "\n",
-                "package demo",
-                "",
-                "case class Point(x: Int, y: Int)"));
+        support.parse(String.join("\n", "package demo", "", "case class Point(x: Int, y: Int)"));
 
     TacFunction copy = find(result.functions(), "demo.Point.copy");
     assertThat(copy).as("the case class's copy must be lowered").isNotNull();
@@ -241,12 +236,7 @@ class ScalaTacFrontendTest {
   @Test
   void aCaseClassCompanionApplyAndUnapplyAreMarkedSynthetic() {
     TacFrontend.ParseResult result =
-        support.parse(
-            String.join(
-                "\n",
-                "package demo",
-                "",
-                "case class Point(x: Int, y: Int)"));
+        support.parse(String.join("\n", "package demo", "", "case class Point(x: Int, y: Int)"));
 
     TacFunction apply = find(result.functions(), "demo.Point$.apply");
     assertThat(apply).as("the companion's apply must be lowered").isNotNull();
@@ -260,12 +250,7 @@ class ScalaTacFrontendTest {
   @Test
   void aCaseClassAccessorIsMarkedSynthetic() {
     TacFrontend.ParseResult result =
-        support.parse(
-            String.join(
-                "\n",
-                "package demo",
-                "",
-                "case class Point(x: Int, y: Int)"));
+        support.parse(String.join("\n", "package demo", "", "case class Point(x: Int, y: Int)"));
 
     TacFunction first = find(result.functions(), "demo.Point._1");
     assertThat(first).as("the case class's first accessor must be lowered").isNotNull();
@@ -292,12 +277,7 @@ class ScalaTacFrontendTest {
   @Test
   void aConstructorIsNotMarkedSynthetic() {
     TacFrontend.ParseResult result =
-        support.parse(
-            String.join(
-                "\n",
-                "package demo",
-                "",
-                "case class Point(x: Int, y: Int)"));
+        support.parse(String.join("\n", "package demo", "", "case class Point(x: Int, y: Int)"));
 
     // The constructor is compiler-generated, but it is also the class's public API:
     // a call site can reach it, so a checker must not be told to ignore it.
@@ -361,11 +341,7 @@ class ScalaTacFrontendTest {
   void aFunctionWithoutAMatchKeepsFullPrecision() {
     TacFrontend.ParseResult result =
         support.parse(
-            String.join(
-                "\n",
-                "package demo",
-                "",
-                "def add(a: Int, b: Int): Int = a + b"));
+            String.join("\n", "package demo", "", "def add(a: Int, b: Int): Int = a + b"));
 
     // A top-level definition becomes a member of the package object, whose name
     // is derived from the file's name.
@@ -382,11 +358,11 @@ class ScalaTacFrontendTest {
   /**
    * A lowering gap has to reach the IR as a STRUCTURED problem.
    *
-   * <p><b>Why this test exists.</b> The Scala translator used to record its gaps in a plain
-   * {@code List<String>}, and the frontend handed the PHASE's structured problems to the IR. The
-   * phase only ever had the outer {@code TRANSLATION_ERROR}, so a Scala function that was only
-   * partly lowered produced findings that looked exactly as complete as a fully lowered one --
-   * which is the failure mode the whole {@code SOURCE_LOWERED} mechanism exists to prevent.
+   * <p><b>Why this test exists.</b> The Scala translator used to record its gaps in a plain {@code
+   * List<String>}, and the frontend handed the PHASE's structured problems to the IR. The phase
+   * only ever had the outer {@code TRANSLATION_ERROR}, so a Scala function that was only partly
+   * lowered produced findings that looked exactly as complete as a fully lowered one -- which is
+   * the failure mode the whole {@code SOURCE_LOWERED} mechanism exists to prevent.
    *
    * <p>So the gaps are now recorded in BOTH forms, by ONE collector, and this test asserts the
    * structured one reaches the IR.
@@ -412,9 +388,7 @@ class ScalaTacFrontendTest {
     assertThat(result.problems().get(0).kind())
         .as("the problem says WHICH kind of gap it was")
         .isNotBlank();
-    assertThat(result.problems().get(0).message())
-        .as("and it says what went wrong")
-        .isNotBlank();
+    assertThat(result.problems().get(0).message()).as("and it says what went wrong").isNotBlank();
   }
 
   /**
@@ -427,11 +401,7 @@ class ScalaTacFrontendTest {
   void aCleanFileCarriesNoProblems() {
     TacFrontend.StructuredParseResult result =
         support.parseStructured(
-            String.join(
-                "\n",
-                "package demo",
-                "",
-                "def add(a: Int, b: Int): Int = a + b"));
+            String.join("\n", "package demo", "", "def add(a: Int, b: Int): Int = a + b"));
 
     assertThat(result.problems()).isEmpty();
   }
@@ -442,12 +412,7 @@ class ScalaTacFrontendTest {
     // typer, so the frontend never sees those writes. A checker must not trust a
     // precision-dependent fact about such a constructor.
     TacFrontend.ParseResult result =
-        support.parse(
-            String.join(
-                "\n",
-                "package demo",
-                "",
-                "class Point(x: Int, y: Int)"));
+        support.parse(String.join("\n", "package demo", "", "class Point(x: Int, y: Int)"));
 
     TacFunction ctor = find(result.functions(), "demo.Point.<init>");
     assertThat(ctor).isNotNull();
@@ -526,7 +491,8 @@ class ScalaTacFrontendTest {
 
   @Test
   void aNullSourceYieldsAnEmptyResult() {
-    TacFrontend.ParseResult result = support.frontend().parse(null, java.nio.file.Path.of("X.scala"), null);
+    TacFrontend.ParseResult result =
+        support.frontend().parse(null, java.nio.file.Path.of("X.scala"), null);
     assertThat(result.functions()).isEmpty();
     assertThat(result.problems()).isEmpty();
   }
@@ -569,12 +535,7 @@ class ScalaTacFrontendTest {
     TacFrontend.ParseResult result =
         support.parse(
             String.join(
-                "\n",
-                "package demo",
-                "",
-                "class Demo {",
-                "  def s(a: String): String = a",
-                "}"));
+                "\n", "package demo", "", "class Demo {", "  def s(a: String): String = a", "}"));
 
     TacFunction fn = find(result.functions(), "demo.Demo.s");
     assertThat(fn.returnType().isNullable())
@@ -650,8 +611,11 @@ class ScalaTacFrontendTest {
 
     boolean callsTheBody =
         fn.instructions().stream()
-            .anyMatch(i -> i.kind == TacInstruction.Kind.CALL && i.calleeSig != null
-                && body.name().equals(i.calleeSig));
+            .anyMatch(
+                i ->
+                    i.kind == TacInstruction.Kind.CALL
+                        && i.calleeSig != null
+                        && body.name().equals(i.calleeSig));
     assertThat(callsTheBody)
         .as(
             "the loop's use site must CALL the function that carries the body -- by the SAME"
@@ -677,9 +641,7 @@ class ScalaTacFrontendTest {
                 "}"));
 
     TacFunction lambda = findContaining(result.functions(), "anonfun");
-    assertThat(lambda)
-        .as("the lambda must be lowered into a function of its own")
-        .isNotNull();
+    assertThat(lambda).as("the lambda must be lowered into a function of its own").isNotNull();
 
     // The lambda's own parameter crosses the boundary as a PARAMETER of the function that
     // carries the body. That is how a compiler lowers a lambda, and it is what keeps the
@@ -706,9 +668,7 @@ class ScalaTacFrontendTest {
                 "}"));
 
     TacFunction lambda = findContaining(result.functions(), "anonfun");
-    assertThat(lambda)
-        .as("the lambda must be lowered into a function of its own")
-        .isNotNull();
+    assertThat(lambda).as("the lambda must be lowered into a function of its own").isNotNull();
     assertThat(kinds(lambda))
         .as("the body's instructions must be lowered INTO the function that carries them")
         .contains(TacInstruction.Kind.CALL);
@@ -732,9 +692,7 @@ class ScalaTacFrontendTest {
                 "}"));
 
     TacFunction lambda = findContaining(result.functions(), "anonfun");
-    assertThat(lambda)
-        .as("the lambda must be lowered into a function of its own")
-        .isNotNull();
+    assertThat(lambda).as("the lambda must be lowered into a function of its own").isNotNull();
 
     // The captured variable is NOT a field of the enclosing class, and it is not a
     // local of the lambda. It is read through a SHARED CELL: a field read on a
@@ -753,9 +711,10 @@ class ScalaTacFrontendTest {
         .as("the receiver of the capture read is the shared holder, not the class")
         .isNotNull();
     assertThat(((org.plumb.tac.ir.TacOperand.TacVar) read.lhs1).name())
-        .as("the holder is a named receiver, so the engine's cross-function field tracker"
-            + " can key on it; a temp's name is unique per function and would make the"
-            + " capture function-local")
+        .as(
+            "the holder is a named receiver, so the engine's cross-function field tracker"
+                + " can key on it; a temp's name is unique per function and would make the"
+                + " capture function-local")
         .startsWith("CaptureHolder_");
   }
 
@@ -778,9 +737,7 @@ class ScalaTacFrontendTest {
                 "}"));
 
     TacFunction lambda = findContaining(result.functions(), "anonfun");
-    assertThat(lambda)
-        .as("the lambda must be lowered into a function of its own")
-        .isNotNull();
+    assertThat(lambda).as("the lambda must be lowered into a function of its own").isNotNull();
 
     // The write inside the closure must go into the shared cell. Before this, it
     // became a field store on the enclosing class -- a field nobody reads -- and the
@@ -797,7 +754,8 @@ class ScalaTacFrontendTest {
 
   @Test
   @DisplayName("the caller and the closure share one holder for one captured variable")
-  void theCallerAndTheClosureShareOneHolder() {    TacFrontend.ParseResult result =
+  void theCallerAndTheClosureShareOneHolder() {
+    TacFrontend.ParseResult result =
         support.parse(
             String.join(
                 "\n",
@@ -851,9 +809,7 @@ class ScalaTacFrontendTest {
                 "}"));
 
     TacFunction lambda = findContaining(result.functions(), "anonfun");
-    assertThat(lambda)
-        .as("the lambda must be lowered into a function of its own")
-        .isNotNull();
+    assertThat(lambda).as("the lambda must be lowered into a function of its own").isNotNull();
 
     // `s` IS a capture -- the closure reads the caller's parameter -- so there
     // IS a holder, named after it. `mine` is declared INSIDE the closure, so it
@@ -870,8 +826,9 @@ class ScalaTacFrontendTest {
         .as("the closure's own local must be a local of the closure")
         .anyMatch(l -> l.name().equals("mine"));
     assertThat(holderNamesOf(lambda))
-        .as("the closure's own local must not be lowered through a shared cell; only the"
-            + " captured 's' may have one")
+        .as(
+            "the closure's own local must not be lowered through a shared cell; only the"
+                + " captured 's' may have one")
         .doesNotContain("CaptureHolder_mine");
   }
 
@@ -893,9 +850,7 @@ class ScalaTacFrontendTest {
                 "}"));
 
     TacFunction lambda = findContaining(result.functions(), "anonfun");
-    assertThat(lambda)
-        .as("the lambda must be lowered into a function of its own")
-        .isNotNull();
+    assertThat(lambda).as("the lambda must be lowered into a function of its own").isNotNull();
 
     // `shared` is a FIELD of the class, so the closure reads the class's
     // field. It is not a captured local, and lowering it through a shared cell
@@ -904,8 +859,9 @@ class ScalaTacFrontendTest {
     // `s` IS a capture, so a holder named after it is expected -- and exactly
     // one.
     assertThat(holderNamesOf(lambda))
-        .as("only the captured parameter may have a shared cell; the class's field must"
-            + " be read as a field")
+        .as(
+            "only the captured parameter may have a shared cell; the class's field must"
+                + " be read as a field")
         .containsExactly("CaptureHolder_s");
   }
 
@@ -958,22 +914,16 @@ class ScalaTacFrontendTest {
    *
    * <p>The Scala compiler mangles a lambda's function name differently depending on the form: a
    * {@code val f = (x) => ...} becomes {@code _$_$$anonfun}, while the lambda inside {@code
-   * items.map(x => ...)} becomes {@code _$$anonfun}. The mangling is the compiler's business, so
-   * a test that cares about the SHAPE looks for the name, not for one exact spelling.
+   * items.map(x => ...)} becomes {@code _$$anonfun}. The mangling is the compiler's business, so a
+   * test that cares about the SHAPE looks for the name, not for one exact spelling.
    */
   private static TacFunction findContaining(List<TacFunction> functions, String text) {
-    return functions.stream()
-        .filter(f -> f.name().contains(text))
-        .findFirst()
-        .orElse(null);
+    return functions.stream().filter(f -> f.name().contains(text)).findFirst().orElse(null);
   }
 
   /** Finds a function whose qualified name ends with the given suffix. */
   private static TacFunction findEndingWith(List<TacFunction> functions, String suffix) {
-    return functions.stream()
-        .filter(f -> f.name().endsWith(suffix))
-        .findFirst()
-        .orElse(null);
+    return functions.stream().filter(f -> f.name().endsWith(suffix)).findFirst().orElse(null);
   }
 
   /** The instruction kinds of a function, in order. */

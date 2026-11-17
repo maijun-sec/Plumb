@@ -40,47 +40,42 @@ import org.jetbrains.kotlin.platform.jvm.JvmPlatforms;
 /**
  * Builds the module structure the Analysis API session resolves against.
  *
- * <p><b>Why the structure has to be this shape.</b> The Analysis API is not a compiler:
- * it resolves a symbol by looking it up in the <i>modules</i> the session was built
- * with. A module that is not in the container is invisible; a module that is in the
- * container but is not a dependency of the module being analysed contributes its files
- * to the index but not to the analysed module's scope. So the structure has three parts:
+ * <p><b>Why the structure has to be this shape.</b> The Analysis API is not a compiler: it resolves
+ * a symbol by looking it up in the <i>modules</i> the session was built with. A module that is not
+ * in the container is invisible; a module that is in the container but is not a dependency of the
+ * module being analysed contributes its files to the index but not to the analysed module's scope.
+ * So the structure has three parts:
  *
  * <ul>
- *   <li>An <b>SDK module</b> for the JDK, built with {@code
- *       addBinaryRootsFromJdkHome}. The JDK's own classes live in its runtime image
- *       ({@code lib/modules}), which the session's virtual file system mounts through
- *       this call and through nothing else.
- *   <li>A <b>library module</b> for the Kotlin standard library, and for the analysis
- *       classpath the caller supplied.
- *   <li>A <b>source module</b> per source root, which depends on both of the above --
- *       as a <i>regular</i> dependency and as a <i>depends-on</i> dependency. The regular
- *       dependency is what puts the libraries in the analysed module's scope; the
- *       depends-on dependency is what makes them visible to the module's own
- *       dependencies.
+ *   <li>An <b>SDK module</b> for the JDK, built with {@code addBinaryRootsFromJdkHome}. The JDK's
+ *       own classes live in its runtime image ({@code lib/modules}), which the session's virtual
+ *       file system mounts through this call and through nothing else.
+ *   <li>A <b>library module</b> for the Kotlin standard library, and for the analysis classpath the
+ *       caller supplied.
+ *   <li>A <b>source module</b> per source root, which depends on both of the above -- as a
+ *       <i>regular</i> dependency and as a <i>depends-on</i> dependency. The regular dependency is
+ *       what puts the libraries in the analysed module's scope; the depends-on dependency is what
+ *       makes them visible to the module's own dependencies.
  * </ul>
  *
- * <p><b>What happens without this.</b> Every reference to a JDK class or a stdlib class
- * resolves to an <i>error type</i>, and every value of such a type is unknown. That is
- * not a cosmetic difference: a Java method seen from Kotlin is a <i>platform</i> type,
- * and the platform type's nullability is exactly what the Kotlin frontend exists to
- * report. With the libraries missing, the frontend would report every Java-interop value
- * as unknown, and the null-dereference checker would lose the suppression it gets from a
- * Kotlin non-null declaration.
+ * <p><b>What happens without this.</b> Every reference to a JDK class or a stdlib class resolves to
+ * an <i>error type</i>, and every value of such a type is unknown. That is not a cosmetic
+ * difference: a Java method seen from Kotlin is a <i>platform</i> type, and the platform type's
+ * nullability is exactly what the Kotlin frontend exists to report. With the libraries missing, the
+ * frontend would report every Java-interop value as unknown, and the null-dereference checker would
+ * lose the suppression it gets from a Kotlin non-null declaration.
  *
  * <h2>Why the source module's content scope covers the whole root</h2>
  *
- * <p>The Analysis API builds a source module's content scope from the files that exist
- * under its source roots <i>at the moment the module is built</i> -- which is before the
- * frontend has staged anything. A scope built that way is a frozen list of files, and a
- * file staged afterwards is <b>outside the scope</b>: the Analysis API hands it to a
- * "not under content root" module, which has no dependencies, so every reference in the
- * file becomes an error type -- even a JDK class such as {@code StringBuilder} fails to
- * resolve.
+ * <p>The Analysis API builds a source module's content scope from the files that exist under its
+ * source roots <i>at the moment the module is built</i> -- which is before the frontend has staged
+ * anything. A scope built that way is a frozen list of files, and a file staged afterwards is
+ * <b>outside the scope</b>: the Analysis API hands it to a "not under content root" module, which
+ * has no dependencies, so every reference in the file becomes an error type -- even a JDK class
+ * such as {@code StringBuilder} fails to resolve.
  *
- * <p>The scope given to the module is therefore a {@link KotlinDirectoryScope}: it
- * answers "is this file under the root?" on every query, so it does not matter when the
- * frontend staged the file.
+ * <p>The scope given to the module is therefore a {@link KotlinDirectoryScope}: it answers "is this
+ * file under the root?" on every query, so it does not matter when the frontend staged the file.
  */
 final class KotlinModuleStructure {
 
@@ -246,10 +241,10 @@ final class KotlinModuleStructure {
    *
    * <p>The Kotlin standard library, plus the analysis classpath the caller supplied.
    *
-   * <p>The standard library is found on the running JVM's classpath rather than being
-   * assumed to be at a fixed location: the Analysis API brings its own copy of the
-   * standard library (as a transitive dependency), and that is the one whose classes
-   * agree with the Analysis API's own built-ins.
+   * <p>The standard library is found on the running JVM's classpath rather than being assumed to be
+   * at a fixed location: the Analysis API brings its own copy of the standard library (as a
+   * transitive dependency), and that is the one whose classes agree with the Analysis API's own
+   * built-ins.
    */
   private List<Path> libraryRoots() {
     List<Path> roots = new ArrayList<>();
@@ -273,8 +268,8 @@ final class KotlinModuleStructure {
   /**
    * The JDK's home directory, or {@code null} when it cannot be found.
    *
-   * <p>{@code java.home} points at the JDK when the tool runs on a JDK, and at the JRE
-   * inside a JDK otherwise. The SDK builder wants the JDK's home.
+   * <p>{@code java.home} points at the JDK when the tool runs on a JDK, and at the JRE inside a JDK
+   * otherwise. The SDK builder wants the JDK's home.
    */
   static Path jdkHome() {
     String home = System.getProperty("java.home");

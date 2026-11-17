@@ -184,6 +184,12 @@ export function compilerOptions(sdk, components) {
     module: ts.ModuleKind.ES2020,
     moduleResolution: ts.ModuleResolutionKind.NodeJs,
     strict: false,
+    // Nullability checks are ON even though the rest of the strict family is
+    // off: without them the compiler collapses `string | null` into `string`
+    // before the translator sees it, and a value the source calls nullable
+    // becomes a value the source does not. The other strict checks are a
+    // matter of taste for the analysed program; this one is a matter of fact.
+    strictNullChecks: true,
     noEmit: true,
     allowJs: true,
     experimentalDecorators: true,

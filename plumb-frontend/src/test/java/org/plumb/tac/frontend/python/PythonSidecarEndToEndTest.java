@@ -271,7 +271,7 @@ class PythonSidecarEndToEndTest {
       TacInstruction local =
           handle.instructions().stream()
               .filter(i -> i.kind == TacInstruction.Kind.NEW)
-              .filter(i -> i.calleeSig != null && i.calleeSig.endsWith(".Greeter.<init>/1"))
+              .filter(i -> i.calleeSig != null && i.calleeSig.endsWith("Greeter.<init>/1"))
               .findFirst()
               .orElseThrow(
                   () ->
@@ -279,9 +279,9 @@ class PythonSidecarEndToEndTest {
                           "the construction of the module's own class is not in the stream"));
       assertThat(local.calleeSig)
           .as(
-              "the owner of a class this module declares is degraded: a file whose name looks like "
-                  + "a framework module must not produce a key the catalogue can claim")
-          .startsWith("<unknown>.");
+              "the key of a construction names the CONSTRUCTOR, and the constructor of a class "
+                  + "this module declares is lowered under that class's own name")
+          .isEqualTo("Greeter.<init>/1");
       assertThat(local.ctorType).as("the construction must carry the type it built").isNotNull();
       assertThat(local.args)
           .as("a construction has no receiver slot, so the argument is at args[0]")
@@ -375,7 +375,7 @@ class PythonSidecarEndToEndTest {
                           "the construction of the module's own class is not in the stream"));
       assertThat(construction.calleeSig)
           .as("the key of a construction names the constructor")
-          .isEqualTo("<unknown>.Greeter.<init>/1");
+          .isEqualTo("Greeter.<init>/1");
     }
   }
 
@@ -659,7 +659,7 @@ class PythonSidecarEndToEndTest {
       assertThat(listing.locals())
           .as("the loop variable belongs to the comprehension, not to the function")
           .extracting(l -> l.name())
-          .contains("x");
+          .doesNotContain("x");
 
       // The value a generator yields is evaluated in the generator's own
       // stream, so the sink inside it is in the stream too.
@@ -679,7 +679,7 @@ class PythonSidecarEndToEndTest {
 
       // The lambda: its BODY is a function of its own, and the value it
       // captured is that function's leading parameter.
-      TacFunction lambda = find(result, "lambda$1");
+      TacFunction lambda = find(result, "closure$1");
       assertThat(lambda).as("the lambda's body must be a function of its own").isNotNull();
       assertThat(lambda.params())
           .as("the capture is the leading parameter of the lambda's own function")
@@ -693,10 +693,14 @@ class PythonSidecarEndToEndTest {
       TacInstruction closureCall =
           holder.instructions().stream()
               .filter(i -> i.kind == TacInstruction.Kind.CALL)
-              .filter(i -> i.calleeSig != null && i.calleeSig.contains(".lambda$"))
+              .filter(i -> i.calleeSig != null && i.calleeSig.contains(".closure$"))
               .findFirst()
               .orElseThrow(
                   () -> new AssertionError("the call of the closure is not in the stream"));
+      assertThat(closureCall.calleeSig)
+          .as("the callee key names the closure's own function, once -- a doubled owner would"
+              + " break the edge between the call and the body")
+          .doesNotContain("probe_app.probe_app");
       assertThat(closureCall.args)
           .as("the receiver slot, then the captured value")
           .hasSize(2);
@@ -704,11 +708,19 @@ class PythonSidecarEndToEndTest {
           .as("the value the lambda captured is the value the call passes")
           .isEqualTo("value");
 
-      // The VALUE the lambda is held in is still unknown: the IR has no
-      // function value, so the name holds an unknown value.
+      // The VALUE the lambda is held in is the closure object: a container
+      // that holds the captured values. It is not an unknown value -- the
+      // call of the name reaches the body because of it.
       assertThat(holder.instructions())
-          .as("a name that holds a lambda holds an unknown value")
-          .anyMatch(i -> i.kind == TacInstruction.Kind.HAVOC);
+          .as("a name that holds a lambda holds the closure object")
+          .anyMatch(i -> i.kind == TacInstruction.Kind.NEWARRAY);
+      assertThat(holder.instructions())
+          .as("the captured value is stored in the closure object")
+          .anyMatch(
+              i ->
+                  i.kind == TacInstruction.Kind.ARRAYSTORE
+                      && i.dest instanceof TacOperand.TacVar stored
+                      && "value".equals(stored.name()));
     }
   }
 

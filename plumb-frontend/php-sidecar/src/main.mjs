@@ -19,7 +19,7 @@ import { relative, resolve, sep } from "node:path";
 import phpParser from "php-parser";
 
 import { IR_VERSION, OP, PROTOCOL_VERSION, stamp } from "./protocol.mjs";
-import { Translator } from "./translator.mjs";
+import { Translator, preprocessSource } from "./translator.mjs";
 
 const { parseCode } = phpParser;
 
@@ -134,7 +134,10 @@ function translate(request) {
 
   let program;
   try {
-    program = parseCode(text, PARSER_OPTIONS);
+    // The preprocessor rewrites the few forms the parser cannot read
+    // (`"$_GET['x']"`), and it reports the shift it applied so the positions
+    // in the TAC still point at the original source.
+    program = parseCode(preprocessSource(text).text, PARSER_OPTIONS);
   } catch (e) {
     // A file that does not parse is a file that is not PHP. Saying so is
     // the difference between a known lower bound and a silent surprise.
@@ -156,7 +159,14 @@ function translate(request) {
     ...stamp(),
     op: OP.TRANSLATE,
     ok: true,
-    diagnostics: [],
+    // The capabilities the sender declares. The engine reads the new channels
+    // because the sidecar SAYS it has them, not because a key happens to be
+    // there: "the key is absent" and "the value is empty" are the same thing
+    // in JSON, and the two mean different things.
+    capabilities: ["drops", "guards", "tryRegions", "annotations", "domains", "labels", "types"],
+    problems: [],
+    programDrops: [],
+    types: result.types ?? [],
     functions: result.functions,
   };
 }

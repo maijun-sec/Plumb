@@ -21,11 +21,14 @@
  */
 package org.plumb.tac.translate;
 
+import com.github.javaparser.ast.Node;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.plumb.tac.ir.IrPrecision;
 import org.plumb.tac.ir.SourceOrigin;
+import org.plumb.tac.ir.TacDrop;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
@@ -215,6 +218,17 @@ public final class TacBuilder {
   private final List<TacProgram.FunctionProblem> problems = new ArrayList<>();
 
   /**
+   * The constructs in this function that could not be lowered faithfully.
+   *
+   * <p>Distinct from {@link #problems}: a problem is a message for a human ("this file does not
+   * compile", "I do not model this node"), while a drop is a MACHINE-READABLE receipt that the
+   * engine uses to decide the function's precision. A construct that was degraded but still
+   * modelled (a reflective call becomes an UNINTERPRETED call) produces a drop and NO problem --
+   * the analysis continues, and the precision says how far to trust the result.
+   */
+  private final List<TacDrop> drops = new ArrayList<>();
+
+  /**
    * Records a construct the translator could not lower.
    *
    * @param nodeClass the simple class name of the AST node, e.g. {@code "TextBlockLiteralExpr"}
@@ -231,6 +245,47 @@ public final class TacBuilder {
   /** The unhandled constructs recorded for this function. */
   public List<TacProgram.FunctionProblem> problems() {
     return List.copyOf(problems);
+  }
+
+  /**
+   * Records a construct that could not be lowered faithfully.
+   *
+   * <p>This is the bookkeeping half of the contract described on {@link TacDrop}: the frontend says
+   * what it lost and how badly, and the engine derives the function's precision from the answers. A
+   * frontend that degrades a construct WITHOUT calling this is silently lying about what it knows,
+   * which is the failure mode the drop channel exists to prevent.
+   *
+   * @param construct a stable, machine-readable id for the construct, e.g. {@code "reflect.invoke"}
+   *     or {@code "value.dynamic"}. This id is what a coverage report groups by, so it must be
+   *     stable and must not embed a variable part.
+   * @param detail a human-readable explanation of this occurrence. May be empty.
+   * @param impact what kind of information was lost.
+   * @param line the source line, or -1 if unknown.
+   * @param column the source column, or -1 if unknown.
+   */
+  public void reportDrop(
+      String construct, String detail, TacDrop.Impact impact, int line, int column) {
+    if (construct == null || construct.isEmpty()) return;
+    drops.add(new TacDrop(construct, detail, impact, line, column, TacDrop.Scope.FUNCTION));
+  }
+
+  /** Records a construct that could not be lowered faithfully, at a known source position. */
+  public void reportDrop(String construct, String detail, TacDrop.Impact impact, Node node) {
+    if (node == null) {
+      reportDrop(construct, detail, impact, -1, -1);
+      return;
+    }
+    reportDrop(
+        construct,
+        detail,
+        impact,
+        node.getBegin().map(p -> p.line).orElse(-1),
+        node.getBegin().map(p -> p.column).orElse(-1));
+  }
+
+  /** The drops recorded for this function. */
+  public List<TacDrop> drops() {
+    return List.copyOf(drops);
   }
 
   /**
@@ -414,7 +469,33 @@ public final class TacBuilder {
     return hint + "_" + (labelCounter++);
   }
 
+  /**
+   * What kind of member the function being built is.
+   *
+   * <p>{@code null} means "nobody said": the front end did not classify this function. It is
+   * different from {@link org.plumb.tac.ir.TacMemberKind#UNKNOWN}, which means "somebody said
+   * something this build does not know".
+   */
+  private org.plumb.tac.ir.TacMemberKind memberKind;
+
+  /**
+   * Records what kind of member the function being built is.
+   *
+   * <p>A constructor, a getter, a setter and an ordinary method are different things to a rule that
+   * matches on them, and the IR has one slot for the answer. A front end that knows says so here; a
+   * front end that does not leaves it unset, and the engine treats "nobody said" as "nothing is
+   * claimed".
+   */
+  public void setMemberKind(org.plumb.tac.ir.TacMemberKind kind) {
+    this.memberKind = kind;
+  }
+
   public TacFunction build() {
+    // The precision is not the frontend's to state: it is derived from the drops, and combined
+    // with whatever the frontend stated so that neither can talk the loss up. A frontend that
+    // states SOURCE_FULL while emitting a SEMANTICS drop would be claiming it knows more than it
+    // does.
+    IrPrecision effectivePrecision = TacFunction.combine(irPrecision, drops);
     return new TacFunction(
         spec.name(),
         spec.signature(),
@@ -430,10 +511,12 @@ public final class TacBuilder {
         origin,
         new ArrayList<>(tryRegions),
         sourceLanguage,
-        irPrecision,
+        effectivePrecision,
         synthetic,
         new java.util.LinkedHashMap<>(annotationValues),
-        module);
+        module,
+        new ArrayList<>(drops),
+        memberKind);
   }
 
   /**

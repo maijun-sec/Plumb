@@ -518,7 +518,10 @@ internal sealed class ProjectSession
                 symbol,
                 name: symbol?.Name ?? constructor.Identifier.ValueText,
                 enclosingClass: symbol?.ContainingType.Name ?? constructor.Identifier.ValueText,
-                translator),
+                translator,
+                memberKind: constructor.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword))
+                    ? MemberKinds.StaticInitializer
+                    : MemberKinds.Constructor),
             translator);
     }
 
@@ -540,7 +543,8 @@ internal sealed class ProjectSession
                 symbol,
                 name: $"{property.Identifier.ValueText}.{accessor.Keyword.ValueText}",
                 enclosingClass: symbol?.ContainingType.Name ?? property.Identifier.ValueText,
-                translator),
+                translator,
+                memberKind: MemberKinds.Getter),
             translator);
     }
 
@@ -565,7 +569,8 @@ internal sealed class ProjectSession
                 getter,
                 name: $"{property.Identifier.ValueText}.get",
                 enclosingClass: symbol?.ContainingType.Name,
-                translator),
+                translator,
+                memberKind: MemberKinds.Getter),
             translator);
     }
 
@@ -586,7 +591,8 @@ internal sealed class ProjectSession
                 symbol,
                 name: localFunction.Identifier.ValueText,
                 enclosingClass: symbol?.ContainingType.Name,
-                translator),
+                translator,
+                memberKind: MemberKinds.LocalFunction),
             translator);
     }
 
@@ -613,20 +619,179 @@ internal sealed class ProjectSession
         IMethodSymbol? symbol,
         string name,
         string? enclosingClass,
-        TacTranslator translator)
+        TacTranslator translator,
+        string? memberKind = null)
     {
+        var returnType = TypeMapper.Map(symbol?.ReturnType);
+        var precision = translator.PrecisionFromDrops();
+        if (translator.Degraded && precision == "SOURCE_FULL")
+        {
+            // A function that carries a loss is never fully understood, even
+            // if the loss was recorded by a path that does not go through a
+            // drop.
+            precision = "SOURCE_LOWERED";
+        }
+
+        var annotations = AnnotationsOf(symbol);
+
         return new Function
         {
             Name = name,
             Signature = symbol is null ? name : Signature.Declaration(symbol),
             EnclosingClass = enclosingClass,
-            ReturnType = TypeMapper.Map(symbol?.ReturnType),
-            Precision = translator.Degraded ? "SOURCE_LOWERED" : "SOURCE_FULL",
+            ReturnType = returnType,
+            Precision = precision,
+            MemberKind = memberKind ?? translator.MemberKind,
             Synthetic = symbol?.IsImplicitlyDeclared ?? false,
             Params = translator.Params.ToList(),
+            Parameters = translator.Params.ToList(),
             Locals = translator.Locals.ToList(),
+            ScopeBindings = translator.ScopeBindings.ToList(),
             Instructions = translator.Instructions.ToList(),
             Problems = translator.Problems.ToList(),
+            Drops = translator.Drops.ToList(),
+            TryRegions = translator.TryRegions.ToList(),
+            Domain = TypeMapper.Domain(returnType),
+            MethodAnnotations = annotations.Names.Count > 0 ? annotations.Names : null,
+            ClassAnnotations = annotations.ClassNames.Count > 0 ? annotations.ClassNames : null,
+            AnnotationValues = annotations.Values.Count > 0 ? annotations.Values : null,
         };
+    }
+
+    /// <summary>
+    /// The attributes on a member and on its declaring type.
+    /// </summary>
+    /// <param name="symbol">the member's symbol</param>
+    /// <returns>the names, the values, and the declaring type's names</returns>
+    /// <remarks>
+    /// <para>
+    /// An attribute is a security fact: it marks an entry point, an
+    /// authorization check, a validation, a data binding. The sidecar read
+    /// NO attributes at all -- there was not a single attribute read anywhere
+    /// in it -- so every one of those marks was invisible to the analysis.
+    /// </para>
+    /// <para>
+    /// The argument values are in a TEXT form: <c>Name(arg1,arg2)</c>. The
+    /// text form is deliberate: a structured table would need a grammar the
+    /// engine would have to know, and a text form is something a report can
+    /// print.
+    /// </para>
+    /// </remarks>
+    private static (List<string> Names, List<string> ClassNames, Dictionary<string, string> Values)
+        AnnotationsOf(ISymbol? symbol)
+    {
+        var names = new List<string>();
+        var classNames = new List<string>();
+        var values = new Dictionary<string, string>();
+
+        foreach (var attribute in symbol?.GetAttributes() ?? Enumerable.Empty<AttributeData>())
+        {
+            var name = AttributeName(attribute);
+            if (name == "")
+            {
+                continue;
+            }
+            names.Add(name);
+
+            // The arguments. A POSITIONAL argument is the first argument of
+            // the constructor; a NAMED argument is the one the source names.
+            var arguments = new List<string>();
+            foreach (var argument in attribute.ConstructorArguments)
+            {
+                arguments.Add(ArgumentText(argument));
+            }
+            foreach (var argument in attribute.NamedArguments)
+            {
+                arguments.Add(argument.Key + "=" + ArgumentText(argument.Value));
+            }
+            if (arguments.Count > 0)
+            {
+                values[name] = name + "(" + string.Join(",", arguments) + ")";
+            }
+        }
+
+        foreach (var attribute in symbol?.ContainingType?.GetAttributes() ?? Enumerable.Empty<AttributeData>())
+        {
+            var name = AttributeName(attribute);
+            if (name == "")
+            {
+                continue;
+            }
+            classNames.Add(name);
+
+            var arguments = new List<string>();
+            foreach (var argument in attribute.ConstructorArguments)
+            {
+                arguments.Add(ArgumentText(argument));
+            }
+            foreach (var argument in attribute.NamedArguments)
+            {
+                arguments.Add(argument.Key + "=" + ArgumentText(argument.Value));
+            }
+            if (arguments.Count > 0)
+            {
+                values[name] = name + "(" + string.Join(",", arguments) + ")";
+            }
+        }
+
+        return (names, classNames, values);
+    }
+
+    /// <summary>
+    /// The name of an attribute, as the source spells it.
+    /// </summary>
+    /// <param name="attribute">the attribute</param>
+    /// <returns>the name, or an empty string when it cannot be resolved</returns>
+    /// <remarks>
+    /// The <c>Attribute</c> suffix is dropped, because that is how the source
+    /// spells it: <c>[Obsolete]</c> names the class <c>ObsoleteAttribute</c>,
+    /// and a report that says "ObsoleteAttribute" is a report about a class
+    /// name rather than about the program.
+    /// </remarks>
+    private static string AttributeName(AttributeData attribute)
+    {
+        var name = attribute.AttributeClass?.Name ?? "";
+        const string suffix = "Attribute";
+        if (name.Length > suffix.Length && name.EndsWith(suffix, StringComparison.Ordinal))
+        {
+            return name.Substring(0, name.Length - suffix.Length);
+        }
+        return name;
+    }
+
+    /// <summary>
+    /// The text form of one attribute argument.
+    /// </summary>
+    /// <param name="argument">the argument</param>
+    /// <returns>the argument's text</returns>
+    /// <remarks>
+    /// <para>
+    /// The argument's VALUE, not its type: a <c>TypedConstant</c> prints as
+    /// the name of the type that holds it, so reading the text of the
+    /// constant itself would give "Microsoft.CodeAnalysis.TypedConstant"
+    /// where the program wrote <c>"legacy"</c>.
+    /// </para>
+    /// <para>
+    /// An argument whose value the COMPILER computed -- a type, an enum
+    /// member -- has no source text of its own, so its value is used
+    /// instead. The fact is not lost either way.
+    /// </para>
+    /// </remarks>
+    private static string ArgumentText(TypedConstant argument)
+    {
+        switch (argument.Kind)
+        {
+            case TypedConstantKind.Array:
+            {
+                var elements = argument.Values.Select(ArgumentText);
+                return "[" + string.Join(",", elements) + "]";
+            }
+            case TypedConstantKind.Type:
+                return argument.Type?.Name ?? "";
+            case TypedConstantKind.Enum:
+                return argument.Type?.Name + "." + argument.Value;
+            default:
+                return argument.Value?.ToString() ?? "";
+        }
     }
 }

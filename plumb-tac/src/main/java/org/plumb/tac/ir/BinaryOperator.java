@@ -50,7 +50,14 @@ public enum BinaryOperator implements java.io.Serializable {
   GE,
   // short-circuit
   LAND,
-  LOR;
+  LOR,
+  // loose equality: the language coerces the operands before comparing them
+  // (JavaScript's `==`, Python's `==` on mixed types). They are NOT the same
+  // comparison as EQ: `0 == "0"` is true under loose equality and false under
+  // strict equality, so a rule that reads a loose comparison as a strict one
+  // draws conclusions the program does not support.
+  LOOSE_EQ,
+  LOOSE_NE;
 
   private static final long serialVersionUID = 1L;
 }

@@ -85,12 +85,23 @@ class R1108AliasNullGuardTest {
         tracker.track(ins);
         if (ins.kind != TacInstruction.Kind.CALL) continue;
         if (ins.args == null || ins.args.isEmpty()) continue;
-        if (!(ins.args.get(0) instanceof TacOperand.TacVar recv)) continue;
-        if (!recv.name().equals(useReceiver.name())) continue;
-        // The full suppression predicate, minus the checker plumbing: either the receiver itself is
-        // guarded, or an alias of it is.
-        if (tracker.isProvenNonNull(recv)) return true;
-        for (TacOperand.TacVar alias : aliasesOf(p, fn, recv, probe)) {
+        // The value being used is an ARGUMENT of the call, and not necessarily its FIRST one.
+        // The IR keeps a receiver slot at args[0] for every call -- the receiver for an
+        // instance call, a constant naming the type for a static one -- so an unqualified
+        // call puts `this` there and the first USER argument at args[1]. Looking for the
+        // probed value at args[0] alone would therefore miss the use the test is about.
+        TacOperand.TacVar used = null;
+        for (TacOperand arg : ins.args) {
+          if (arg instanceof TacOperand.TacVar v && v.name().equals(useReceiver.name())) {
+            used = v;
+            break;
+          }
+        }
+        if (used == null) continue;
+        // The full suppression predicate, minus the checker plumbing: either the value itself
+        // is guarded, or an alias of it is.
+        if (tracker.isProvenNonNull(used)) return true;
+        for (TacOperand.TacVar alias : aliasesOf(p, fn, used, probe)) {
           if (tracker.isProvenNonNull(alias)) return true;
         }
         return false;

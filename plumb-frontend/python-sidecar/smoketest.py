@@ -9,6 +9,7 @@ read, and the Java side's answer to that is "no findings".
 Run it with `python smoketest.py` from this directory.
 """
 
+import ast
 import json
 import os
 import struct
@@ -19,6 +20,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
 
+from plumb_translator import Translator  # noqa: E402
 from plumb_wire import IR_VERSION, Op, PROTOCOL_VERSION  # noqa: E402
 
 # The probe program.
@@ -43,6 +45,167 @@ def handle(request):
 def shadowed(request):
     UserStore = request
     return UserStore(request)
+'''
+
+# The second probe program: the constructs whose shape has to be right.
+SECOND_SOURCE = '''import os
+
+
+class Base:
+    def ping(self):
+        return 1
+
+
+class Child(Base):
+    """A class with a docstring."""
+
+    limit = 10
+
+    def __init__(self, name):
+        self.name = name
+
+    def run(self, value):
+        if value and os.getcwd():
+            return value
+        return None
+
+    @staticmethod
+    def stat(cmd):
+        return cmd
+
+    @classmethod
+    def build(cls, name):
+        return cls(name)
+
+
+def truthy(a, b):
+    return a and b
+
+
+def coalesced(a, b):
+    return a if a else b
+
+
+def looping(items):
+    total = 0
+    for item in items:
+        if item:
+            break
+    else:
+        total = 1
+    while total:
+        break
+    return total
+
+
+def guarded():
+    try:
+        return 1
+    except OSError as error:
+        return str(error)
+    finally:
+        pass
+
+
+def matched(value):
+    match value:
+        case 1:
+            return "one"
+        case _:
+            return "other"
+
+
+def comprehended(items):
+    return [str(item) for item in items if item]
+
+
+def formatted(width):
+    return f"{width:>3}"
+
+
+def sliced(items):
+    return items[1:2]
+
+
+def contained(items, value):
+    return value in items
+
+
+def powered(value):
+    value **= 2
+    return value
+'''
+
+# The third probe program: the constructs whose shape has to be right.
+THIRD_SOURCE = '''import os
+from dataclasses import dataclass
+
+
+@dataclass
+class Record:
+    name: str
+    count: int = 0
+
+
+class Base:
+    @staticmethod
+    def stat(cmd):
+        return cmd
+
+    @classmethod
+    def build(cls, name):
+        return cls(name)
+
+
+class Child(Base):
+    pass
+
+
+def keyword(a, *, b=1, **kw):
+    return a
+
+
+def defaulted(a, *, b=os.getcwd()):
+    return b
+
+
+def reading(path):
+    with open(path) as fh:
+        return fh.read()
+
+
+def scoping():
+    G = 0
+
+    def inner():
+        nonlocal G
+        G = 2
+
+    inner()
+    return G
+
+
+def grouped():
+    try:
+        risky()
+    except* OSError:
+        pass
+    return 1
+
+
+def decorated():
+    @app.route("/x")
+    def handler():
+        return 1
+
+    return handler
+
+
+def uses():
+    Base.stat("x")
+    Base.build("y")
+    keyword(1, b=2, kw=3)
+    return Record("n")
 '''
 
 
@@ -237,16 +400,16 @@ def main():
         # A construction is a NEW, and its key names the CONSTRUCTOR. The
         # `<init>` part is the shape every other front end uses for a
         # construction, so a catalogue entry written for one of them can
-        # match this one. The owner stays `<unknown>`: a class this module
-        # declares comes from no module, and a file whose name looks like a
-        # framework module must not produce a key the catalogue can claim.
+        # match this one. The owner is the class itself: the constructor is
+        # lowered as `<Class>.<init>`, so this is the name that reaches the
+        # constructor's body.
         construction = next((i for i in instructions if i["kind"] == "NEW"), None)
         check(
             construction is not None,
             "the construction of a class this module declares must be a NEW",
         )
         check(
-            construction["calleeSig"] == "<unknown>.UserStore.<init>/0",
+            construction["calleeSig"] == "UserStore.<init>/0",
             "the callee signature of a construction must name the constructor: %s"
             % construction["calleeSig"],
         )
@@ -316,6 +479,396 @@ def main():
             isinstance(handle_function.get("signature"), str)
             and "handle" in handle_function["signature"],
             "the signature must name the function",
+        )
+
+        # The second file: the constructs whose shape has to be right.
+        second_path = os.path.join(directory, "shapes.py")
+        with open(second_path, "w", encoding="utf-8") as handle:
+            handle.write(SECOND_SOURCE)
+        write_frame(
+            child.stdin,
+            json.dumps(
+                {
+                    "op": Op.TRANSLATE,
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "irVersion": IR_VERSION,
+                    "path": second_path,
+                    "language": "PYTHON3",
+                }
+            ),
+        )
+        response = read_frame(child.stdout)
+        check(response.get("ok") is True, "the second file must translate: %s" % response.get("error", ""))
+        second_functions = response.get("functions") or []
+
+        def second_function(name):
+            return next((f for f in second_functions if f["name"] == name), None)
+
+        # A BRANCH carries a GUARD: the structured condition of the branch.
+        # A branch with no guard tells the solver nothing.
+        run = second_function("run")
+        check(run is not None, "the method must be in the stream")
+        branches = [i for i in run["instructions"] if i["kind"] == "BRANCH"]
+        check(branches, "a branch must be in the stream")
+        check(
+            all(b.get("guard") for b in branches),
+            "every branch must carry a guard",
+        )
+        check(
+            any(b["guard"]["kind"] == "Truthiness" for b in branches),
+            "a truthiness test must be a Truthiness guard",
+        )
+
+        # A LABEL and a JUMP carry a LABEL REFERENCE: what the label IS.
+        labels = [i for i in run["instructions"] if i["kind"] == "LABEL"]
+        check(labels, "a label must be in the stream")
+        check(
+            all(i.get("labelRef") and i["labelRef"].get("name") == i["label"] for i in labels),
+            "a label's reference must name the label",
+        )
+
+        # A short-circuit operator is a BRANCH CHAIN: the right operand is
+        # only evaluated when the left one says it has to be.
+        truthy = second_function("truthy")
+        check(truthy is not None, "the function must be in the stream")
+        truthy_branches = [i for i in truthy["instructions"] if i["kind"] == "BRANCH"]
+        check(truthy_branches, "a short-circuit operator must be a branch chain")
+        check(
+            not any(
+                i["kind"] == "BINOP" and i.get("binop") in ("LAND", "LOR")
+                for i in truthy["instructions"]
+            ),
+            "a short-circuit operator must not be a single binop",
+        )
+
+        # A loop's ELSE runs when the loop finished WITHOUT a break, so the
+        # break's target has to skip it: the loop's BODY end and the loop's
+        # END are two different labels.
+        looping = second_function("looping")
+        check(looping is not None, "the function must be in the stream")
+        kinds = {i.get("labelRef", {}).get("kind") for i in looping["instructions"]}
+        check("LOOP_BODY_END" in kinds, "a loop must have a body end")
+        check("LOOP_END" in kinds, "a loop must have an end")
+
+        # An EXCEPTION REGION is filled in: without it the catch body is
+        # never reached by the analysis.
+        guarded = second_function("guarded")
+        check(guarded is not None, "the function must be in the stream")
+        check(
+            guarded.get("tryRegions"),
+            "a try must produce a try region",
+        )
+        region = guarded["tryRegions"][0]
+        check(region.get("catchLabels"), "a try region's catch labels must be filled in")
+        check(
+            any(i["kind"] == "CATCH_HANDLER" for i in guarded["instructions"]),
+            "a catch must produce a catch handler",
+        )
+        check(
+            any(i["kind"] == "FINALLY_ENTER" for i in guarded["instructions"]),
+            "a finally must produce a finally enter",
+        )
+
+        # EVERY case body of a match is lowered: a body that is not lowered
+        # is a body whose findings are not there.
+        matched = second_function("matched")
+        check(matched is not None, "the function must be in the stream")
+        check(
+            any(i["kind"] == "THROW" for i in matched["instructions"]),
+            "a match that matches nothing must throw",
+        )
+        check(
+            not any(i["kind"] == "HAVOC" for i in matched["instructions"]),
+            "a match must not leave an unknown value",
+        )
+
+        # A comprehension's FILTER is lowered, and its loop variable does
+        # not leak into the scope around it.
+        comprehended = second_function("comprehended")
+        check(comprehended is not None, "the function must be in the stream")
+        check(
+            any(i["kind"] == "BRANCH" for i in comprehended["instructions"]),
+            "a comprehension's filter must be lowered",
+        )
+        check(
+            not any(
+                i.get("dest", {}).get("name") == "item" for i in comprehended["instructions"]
+            ),
+            "a comprehension's loop variable must not leak into the outer scope",
+        )
+
+        # An f-string's format specification is evaluated.
+        formatted = second_function("formatted")
+        check(formatted is not None, "the function must be in the stream")
+        check(
+            any(i["kind"] == "UNARYOP" and i.get("unop") == "CAST" for i in formatted["instructions"]),
+            "an f-string's conversion must be a cast",
+        )
+
+        # A slice's three parts are evaluated separately.
+        sliced = second_function("sliced")
+        check(sliced is not None, "the function must be in the stream")
+        check(
+            not any(i["kind"] == "HAVOC" for i in sliced["instructions"]),
+            "a slice must not be an unknown value",
+        )
+
+        # A membership test is a comparison, not an unknown value.
+        contained = second_function("contained")
+        check(contained is not None, "the function must be in the stream")
+        check(
+            any(i["kind"] == "BINOP" for i in contained["instructions"]),
+            "an in test must be a comparison",
+        )
+        check(
+            not any(i["kind"] == "HAVOC" for i in contained["instructions"]),
+            "an in test must not be an unknown value",
+        )
+
+        # A power assignment is not silently a multiplication: the operator
+        # the TAC does not have is reported.
+        powered = second_function("powered")
+        check(powered is not None, "the function must be in the stream")
+        check(
+            any(
+                "power" in (d.get("detail") or "") for d in powered.get("drops") or []
+            ),
+            "a power assignment must be reported as an approximation",
+        )
+
+        # A STATIC method has no receiver, so its arity is the number of
+        # the user's arguments.
+        stat = next((f for f in second_functions if f["name"] == "stat"), None)
+        check(stat is not None, "the static method must be in the stream")
+        check(
+            stat.get("memberKind") == "METHOD",
+            "a static method must say that it is a method",
+        )
+
+        # A CLASS's body is a `<clinit>`, and the CONSTRUCTOR is `<init>`:
+        # a construction names the constructor as `<Class>.<init>/n`.
+        clinit = next((f for f in second_functions if f["name"] == "<clinit>"), None)
+        check(clinit is not None, "the class body must be in the stream")
+        check(
+            clinit.get("memberKind") == "FIELD_INITIALIZER",
+            "the class body must say that it initialises the fields",
+        )
+        constructor = next((f for f in second_functions if f["name"] == "<init>"), None)
+        check(constructor is not None, "the constructor must be in the stream")
+        check(
+            constructor.get("memberKind") == "CONSTRUCTOR",
+            "the constructor must say that it is a constructor",
+        )
+
+        # Every function carries a RETURN TYPE and a MEMBER KIND.
+        for function in second_functions:
+            check(
+                "returnType" in function,
+                "every function must carry a return type: %s" % function.get("name"),
+            )
+            check(
+                function.get("memberKind"),
+                "every function must carry a member kind: %s" % function.get("name"),
+            )
+            check(
+                isinstance(function.get("drops"), list),
+                "every function must carry its drops: %s" % function.get("name"),
+            )
+            check(
+                isinstance(function.get("parameters"), list),
+                "every function must carry its parameters: %s" % function.get("name"),
+            )
+            check(
+                isinstance(function.get("scopeBindings"), list),
+                "every function must carry its scope bindings: %s" % function.get("name"),
+            )
+
+        # The third file: the constructs whose shape has to be right.
+        third_path = os.path.join(directory, "third.py")
+        with open(third_path, "w", encoding="utf-8") as handle:
+            handle.write(THIRD_SOURCE)
+        write_frame(
+            child.stdin,
+            json.dumps(
+                {
+                    "op": Op.TRANSLATE,
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "irVersion": IR_VERSION,
+                    "path": third_path,
+                    "language": "PYTHON3",
+                }
+            ),
+        )
+        response = read_frame(child.stdout)
+        check(response.get("ok") is True, "the third file must translate: %s" % response.get("error", ""))
+        third_functions = response.get("functions") or []
+
+        def third_function(name):
+            return next((f for f in third_functions if f["name"] == name), None)
+
+        # A STATIC method is called on the CLASS, so the receiver slot holds
+        # the class object and the arity is the number of the user's
+        # arguments -- the receiver is not one of them.
+        uses = third_function("uses")
+        check(uses is not None, "the function must be in the stream")
+        stat_call = next(
+            (i for i in uses["instructions"] if i.get("calleeSig") == "Base.stat/1"),
+            None,
+        )
+        check(stat_call is not None, "a static method must be called on the class")
+        check(
+            stat_call["args"][0].get("name", "").startswith("t_cls_"),
+            "the receiver slot of a static method must hold the class object",
+        )
+
+        # A CLASS method is called on the class as well: its receiver is the
+        # CLASS and not an instance.
+        build_call = next(
+            (i for i in uses["instructions"] if i.get("calleeSig") == "Base.build/1"),
+            None,
+        )
+        check(build_call is not None, "a class method must be called on the class")
+        check(
+            build_call["args"][0].get("name", "").startswith("t_cls_"),
+            "the receiver slot of a class method must hold the class object",
+        )
+
+        # The arity of a callee key is the arity of the SIGNATURE: a rule
+        # that matches on the key has to match on the same function.
+        keyword_call = next(
+            (i for i in uses["instructions"] if i.get("calleeSig", "").endswith("keyword/3")),
+            None,
+        )
+        check(keyword_call is not None, "a call must carry the arity of the declaration")
+        keyword_function = third_function("keyword")
+        check(
+            keyword_function is not None
+            and keyword_function["signature"].count("any") >= 3,
+            "the signature must name the parameters: %s"
+            % (keyword_function or {}).get("signature"),
+        )
+
+        # A DATACLASS gets its constructor from the decorator when it does
+        # not write one itself: the decorator is lowered and the constructor
+        # is a function of its own.
+        record_clinit = next(
+            (
+                f
+                for f in third_functions
+                if f["name"] == "<clinit>"
+                and any(
+                    "dataclass" in (i.get("calleeSig") or "") for i in f["instructions"]
+                )
+            ),
+            None,
+        )
+        check(record_clinit is not None, "a dataclass's decorator must be lowered")
+        record_init = next(
+            (
+                f
+                for f in third_functions
+                if f["name"] == "<init>"
+                and "Record" in (f.get("signature") or "")
+            ),
+            None,
+        )
+        check(record_init is not None, "a dataclass must have a constructor")
+        check(
+            record_init.get("memberKind") == "CONSTRUCTOR",
+            "the generated constructor must say that it is a constructor",
+        )
+        check(
+            any(i["kind"] == "ARRAYSTORE" for i in record_init["instructions"]),
+            "the generated constructor must write the fields into the instance",
+        )
+
+        # A DEFAULT value that is computed is evaluated where the function
+        # is defined: the expression is still lowered, so that what it
+        # reaches is not lost.
+        defaulted = third_function("defaulted")
+        check(defaulted is not None, "the function must be in the stream")
+        check(
+            any("getcwd" in (i.get("calleeSig") or "") for i in defaulted["instructions"]),
+            "a default value that is computed must be lowered",
+        )
+
+        # A `with` binds the value `__enter__` returns, and it calls
+        # `__exit__` when the block is done.
+        reading = third_function("reading")
+        check(reading is not None, "the function must be in the stream")
+        check(
+            any("__enter__" in (i.get("calleeSig") or "") for i in reading["instructions"]),
+            "a with must call __enter__",
+        )
+        check(
+            any("__exit__" in (i.get("calleeSig") or "") for i in reading["instructions"]),
+            "a with must call __exit__",
+        )
+        enter = next(
+            (i for i in reading["instructions"] if "__enter__" in (i.get("calleeSig") or "")),
+            None,
+        )
+        bound = next(
+            (
+                i
+                for i in reading["instructions"]
+                if i["kind"] == "MOVE" and i.get("dest", {}).get("name") == "fh"
+            ),
+            None,
+        )
+        check(
+            bound is not None and enter is not None,
+            "the name of a with must be bound to the value __enter__ returns",
+        )
+
+        # A `nonlocal` name belongs to the scope AROUND the function.
+        scoping = third_function("scoping")
+        check(scoping is not None, "the function must be in the stream")
+        inner = third_function("inner")
+        check(inner is not None, "the inner function must be in the stream")
+        check(
+            any(b.get("name") == "G" for b in inner.get("scopeBindings") or []),
+            "a nonlocal name must be bound to the scope around the function",
+        )
+
+        # An `except*` handler catches a GROUP of exceptions, and the TAC
+        # catches one: it is lowered and the difference is recorded.
+        grouped = third_function("grouped")
+        check(grouped is not None, "the function must be in the stream")
+        check(
+            any(i["kind"] == "CATCH_HANDLER" for i in grouped["instructions"]),
+            "an except* must be lowered",
+        )
+        check(
+            any(
+                "group" in (d.get("detail") or "").lower()
+                for d in grouped.get("drops") or []
+            ),
+            "an except* must say that it catches a group",
+        )
+
+        # A DECORATOR's name is in a callee key, so that a rule that names
+        # the decorator can match it.
+        decorated = third_function("decorated")
+        check(decorated is not None, "the function must be in the stream")
+        check(
+            any("route" in (i.get("calleeSig") or "") for i in decorated["instructions"]),
+            "a decorator's name must be in a callee key",
+        )
+
+        # The TYPE SURFACE: a class's base is a fact about the class. The
+        # types are not on the wire yet -- the entry point has to carry them
+        # -- so they are read from the translator here.
+        translator = Translator(module_name="smoke", text=THIRD_SOURCE)
+        translator.translate_module(ast.parse(THIRD_SOURCE))
+        child_type = next(
+            (t for t in translator.type_declarations if t.get("simpleName") == "Child"),
+            None,
+        )
+        check(child_type is not None, "a class must declare itself")
+        check(
+            child_type.get("superType") == "Base",
+            "a class's base must be declared: %s" % child_type.get("superType"),
         )
 
         print("ok: the sidecar answers over the wire, and the TAC has the expected shape")

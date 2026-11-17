@@ -38,8 +38,8 @@ import org.plumb.tac.ir.TacInstruction;
  *
  * <p><b>Why this test exists.</b> A Scala {@code s.trim} is not an {@code Apply} -- there are no
  * arguments to apply -- so dotc represents it as a {@code Select}. The frontend treated every
- * method selection as either a field read or an unlowerable "method reference used as a value",
- * and a parameterless call on a value fell into the second case. Three things went wrong at once:
+ * method selection as either a field read or an unlowerable "method reference used as a value", and
+ * a parameterless call on a value fell into the second case. Three things went wrong at once:
  *
  * <ol>
  *   <li>The call produced NO instruction, so the operation's effect on taint was unknown.
@@ -50,8 +50,8 @@ import org.plumb.tac.ir.TacInstruction;
  *       semantics table entry applied.
  * </ol>
  *
- * <p>Measured before the fix: 24 of the standard library's String operations were dropped this
- * way. After the fix, they are ordinary CALLs with a resolvable owner.
+ * <p>Measured before the fix: 24 of the standard library's String operations were dropped this way.
+ * After the fix, they are ordinary CALLs with a resolvable owner.
  */
 class ScalaParameterlessCallTest {
 

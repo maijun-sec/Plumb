@@ -42,6 +42,30 @@ internal sealed partial class TacTranslator
     private readonly HashSet<string> _labels = new();
 
     /// <summary>
+    /// The losses of this function: the constructs that were not lowered
+    /// faithfully.
+    /// </summary>
+    /// <remarks>
+    /// They are kept apart from the problems because the two say different
+    /// things. A problem says "the frontend could not do its job here". A
+    /// drop says "the frontend DID its job, and here is what the job cost" --
+    /// with an impact level that the engine turns into a precision.
+    /// </remarks>
+    private readonly List<Drop> _drops = new();
+
+    /// <summary>The try/catch/finally regions of this function.</summary>
+    private readonly List<TryRegion> _tryRegions = new();
+
+    /// <summary>The local-scope bindings: a source name and the slot it lives in.</summary>
+    private readonly List<ScopeBinding> _scopeBindings = new();
+
+    /// <summary>The kind of member being translated.</summary>
+    private string _memberKind = MemberKinds.Method;
+
+    /// <summary>The number of try regions declared so far, for their ids.</summary>
+    private int _tryRegionCounter;
+
+    /// <summary>
     /// The labels a `break` and a `continue` in the CURRENT context jump to.
     /// </summary>
     /// <remarks>
@@ -114,6 +138,45 @@ internal sealed partial class TacTranslator
 
     /// <summary>The problems encountered while lowering.</summary>
     public IReadOnlyList<Problem> Problems => _problems;
+
+    /// <summary>The losses of this function.</summary>
+    public IReadOnlyList<Drop> Drops => _drops;
+
+    /// <summary>The try/catch/finally regions of this function.</summary>
+    public IReadOnlyList<TryRegion> TryRegions => _tryRegions;
+
+    /// <summary>The local-scope bindings.</summary>
+    public IReadOnlyList<ScopeBinding> ScopeBindings => _scopeBindings;
+
+    /// <summary>The kind of member being translated.</summary>
+    public string MemberKind => _memberKind;
+
+    /// <summary>
+    /// The precision this function's drops imply.
+    /// </summary>
+    /// <remarks>
+    /// It is DERIVED, never asserted, and it never looks at the number of
+    /// problems: a function with one lost value is still fully understood,
+    /// and a function with one lost SEMANTICS is not. Deriving it from a
+    /// count is what makes a silently dropped construct look like a fully
+    /// analysed one.
+    /// </remarks>
+    public string PrecisionFromDrops()
+    {
+        var precision = "SOURCE_FULL";
+        foreach (var drop in _drops)
+        {
+            switch (drop.Impact)
+            {
+                case DropImpact.Semantics:
+                    return "SOURCE_DEGRADED";
+                case DropImpact.Structure:
+                    precision = "SOURCE_LOWERED";
+                    break;
+            }
+        }
+        return precision;
+    }
 
     /// <summary>The parameters, in declaration order.</summary>
     public IReadOnlyList<Operand> Params => _params;
@@ -303,8 +366,135 @@ internal sealed partial class TacTranslator
                 // A lock is a monitor acquire/release around the body. The body is
                 // still lowered; the lock itself is a concurrency detail the dataflow
                 // engine does not model.
-                TranslateExpression(lockStatement.Expression, store: false);
+                var monitor = TranslateExpression(lockStatement.Expression, store: false);
+                if (monitor is not null)
+                {
+                    Emit(InstructionKind.CALL, lhs1: monitor,
+                        calleeSig: "System.Threading.Monitor.Enter/1", node: lockStatement);
+                }
                 TranslateStatement(lockStatement.Statement);
+                if (monitor is not null)
+                {
+                    Emit(InstructionKind.CALL, lhs1: monitor,
+                        calleeSig: "System.Threading.Monitor.Exit/1", node: lockStatement);
+                }
+                Drop(lockStatement, DropIds.LockContention,
+                    "which thread enters the critical section first is a run-time fact, so the " +
+                    "critical section is over-approximated",
+                    DropImpact.Semantics);
+                return;
+
+            case DoStatementSyntax doStatement:
+                TranslateDo(doStatement);
+                return;
+
+            case CheckedStatementSyntax checkedStatement:
+                // `checked` and `unchecked` are the SAME node type: the
+                // difference is whether the UNCHECKED keyword is present.
+                //
+                // The block's body is lowered normally either way. What
+                // `checked` adds is that an arithmetic overflow THROWS, and
+                // that is a property of the domain of the operands rather
+                // than of the block's shape.
+                TranslateStatement(checkedStatement.Block);
+                if (checkedStatement.Keyword.IsKind(SyntaxKind.UncheckedKeyword))
+                {
+                    // `unchecked`: the arithmetic WRAPS, which is what C#
+                    // does by default anyway. Nothing is lost.
+                    return;
+                }
+                Drop(checkedStatement, DropIds.CheckedOverflow,
+                    "an arithmetic overflow inside a checked block throws, and the throw is not " +
+                    "modelled: the operands' domains are not carried on the instructions",
+                    DropImpact.Semantics);
+                return;
+
+            case UnsafeStatementSyntax unsafeStatement:
+                // An unsafe block is a block. The pointer semantics inside it
+                // are a separate matter.
+                TranslateStatement(unsafeStatement.Block);
+                return;
+
+            case FixedStatementSyntax fixedStatement:
+                // A `fixed` block pins its variables for the duration. The
+                // body is lowered normally.
+                foreach (var declaration in fixedStatement.Declaration.Variables)
+                {
+                    var symbol = _model.GetDeclaredSymbol(declaration) as ILocalSymbol;
+                    if (symbol is null)
+                    {
+                        continue;
+                    }
+                    _locals.Add(VariableOperand(symbol, isTemp: false));
+                }
+                TranslateStatement(fixedStatement.Statement);
+                return;
+
+            case GotoStatementSyntax gotoStatement:
+                // A goto jumps to a label in the same function. The TAC has a
+                // LABEL and a JUMP, so the jump is expressible: it is a JUMP
+                // to the label's own name.
+                //
+                // It used to fall into the catch-all below, which DROPPED
+                // THE WHOLE FUNCTION BODY that followed the goto -- the
+                // statements after it were never lowered at all.
+                if (gotoStatement.Expression is IdentifierNameSyntax gotoIdentifier)
+                {
+                    Emit(InstructionKind.JUMP, label: GotoLabelName(gotoIdentifier.Identifier.Text),
+                        node: gotoStatement);
+                    return;
+                }
+                if (gotoStatement.CaseOrDefaultKeyword.RawKind != 0)
+                {
+                    // `goto case X;` and `goto default;` jump into the
+                    // enclosing switch. The switch's case labels are
+                    // generated, so the source's name cannot be resolved to
+                    // one of them here.
+                    var target = gotoStatement.Expression is IdentifierNameSyntax caseIdentifier
+                        ? caseIdentifier.Identifier.Text
+                        : gotoStatement.CaseOrDefaultKeyword.Text;
+                    Drop(gotoStatement, DropIds.GotoCaseTarget,
+                        "a 'goto case' jumps to a case of the enclosing switch, whose label is " +
+                        "generated, so the jump's target could not be resolved",
+                        DropImpact.Structure);
+                    Emit(InstructionKind.JUMP, label: GotoLabelName(target), node: gotoStatement);
+                    return;
+                }
+                Report(gotoStatement, "UNHANDLED_NODE",
+                    "a goto had no label", gotoStatement.GetType().Name);
+                return;
+
+            case LabeledStatementSyntax labeledStatement:
+                // The label is a jump target, so the labelled statement is
+                // preceded by a LABEL instruction.
+                Emit(InstructionKind.LABEL, label: GotoLabelName(labeledStatement.Identifier.Text),
+                    node: labeledStatement);
+                TranslateStatement(labeledStatement.Statement);
+                return;
+
+            case YieldStatementSyntax yieldStatement:
+                // A `yield return` is a suspension point of an iterator: the
+                // value is produced, the consumer is given it, and the
+                // iterator resumes later. The TAC has no state machine, so
+                // the value is moved out and the suspension is recorded.
+                if (yieldStatement.IsKind(SyntaxKind.YieldReturnStatement) &&
+                    yieldStatement.Expression is ExpressionSyntax yieldExpression)
+                {
+                    var yielded = TranslateExpression(yieldExpression, store: false);
+                    if (yielded is not null)
+                    {
+                        Emit(InstructionKind.MOVE, dest: NewTemp(), lhs1: yielded, node: yieldStatement);
+                    }
+                }
+                else
+                {
+                    // `yield break` leaves the iterator.
+                    Emit(InstructionKind.RETURN, node: yieldStatement);
+                }
+                Drop(yieldStatement, DropIds.IteratorStateMachine,
+                    "an iterator's state machine is flattened: the consumer's resumption points are " +
+                    "not modelled, so the order in which the iterator's states are re-entered is unknown",
+                    DropImpact.Semantics);
                 return;
 
             default:
@@ -313,6 +503,59 @@ internal sealed partial class TacTranslator
                 return;
         }
     }
+
+    /// <summary>
+    /// Lower a <c>do { } while (cond);</c> statement.
+    /// </summary>
+    /// <remarks>
+    /// It used to fall into the catch-all, which dropped the WHOLE BODY: the
+    /// statements inside the loop were never lowered at all, so a secret that
+    /// reached a sink inside a do-while was invisible.
+    /// </remarks>
+    private void TranslateDo(DoStatementSyntax doStatement)
+    {
+        var headLabel = NewLabel("do_head");
+        var bodyLabel = NewLabel("do_body");
+        var endLabel = NewLabel("do_end");
+
+        Emit(InstructionKind.LABEL, label: headLabel, node: doStatement);
+        Emit(InstructionKind.LABEL, label: bodyLabel, node: doStatement);
+
+        _breakContexts.Push(new BreakContext { BreakLabel = endLabel, ContinueLabel = headLabel });
+        try
+        {
+            TranslateStatement(doStatement.Statement);
+        }
+        finally
+        {
+            _breakContexts.Pop();
+        }
+
+        var condition = TranslateExpression(doStatement.Condition, store: false);
+        if (condition is not null)
+        {
+            // The condition is tested AFTER the body: a do-while runs its body
+            // at least once.
+            Emit(InstructionKind.BRANCH, lhs1: condition, trueLabel: headLabel,
+                falseLabel: endLabel, node: doStatement);
+        }
+        else
+        {
+            Emit(InstructionKind.JUMP, label: headLabel, node: doStatement);
+        }
+        Emit(InstructionKind.LABEL, label: endLabel, node: doStatement);
+    }
+
+    /// <summary>
+    /// The TAC label name of a C# label.
+    /// </summary>
+    /// <remarks>
+    /// The names are prefixed so that a C# label cannot collide with one of
+    /// the translator's own labels: the translator's labels are generated,
+    /// and a generated name and a source name that happen to be equal would
+    /// be one label.
+    /// </remarks>
+    private static string GotoLabelName(string name) => "goto_" + name;
 
     private void TranslateExpressionStatement(ExpressionStatementSyntax statement)
     {
@@ -409,6 +652,31 @@ internal sealed partial class TacTranslator
                         Emit(InstructionKind.MOVE, dest: operand, lhs1: value, node: assignment);
                     }
                     RegisterClosureHolder(parameterSymbol, right);
+                    return;
+                }
+                if (symbol is IFieldSymbol fieldSymbol)
+                {
+                    // A write to a FIELD through its bare name: `X = value;`.
+                    //
+                    // This is where a secret lands. In a constructor or in a
+                    // setter, the field's name is the whole target -- there
+                    // is no receiver to write through -- and the write used
+                    // to be reported as unhandled. So the field was never
+                    // written in the TAC, and a value that reached the field
+                    // never reached anything that read it.
+                    //
+                    // The `field` keyword (a property's own backing field)
+                    // resolves to an IFieldSymbol too, so the SAME branch
+                    // lowers it -- and it writes to the same storage the
+                    // property's accessors read and write.
+                    var receiver = FieldReceiver(fieldSymbol, assignment);
+                    if (receiver is not null && value is not null)
+                    {
+                        Emit(InstructionKind.FIELDSTORE, dest: value, lhs1: receiver,
+                            fieldName: fieldSymbol.Name,
+                            ownerType: TypeMapper.FullName(fieldSymbol.ContainingType),
+                            node: assignment);
+                    }
                     return;
                 }
                 Report(assignment, "UNHANDLED_NODE",
@@ -520,6 +788,38 @@ internal sealed partial class TacTranslator
         Report(assignment, "UNHANDLED_NODE",
             "the assignment's member could not be resolved to a property or a field",
             memberAccess.GetType().Name);
+    }
+
+    /// <summary>
+    /// The receiver slot of an implicit field write.
+    /// </summary>
+    /// <param name="field">the field being written</param>
+    /// <param name="node">the node the write is at</param>
+    /// <returns>
+    /// the operand that stands for the object the field belongs to, or null
+    /// when there is none
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// An instance field belongs to <c>this</c>, so the receiver is the
+    /// enclosing object. A STATIC field belongs to no object, so the
+    /// receiver slot carries the declaring type -- the same convention the
+    /// static call convention uses.
+    /// </para>
+    /// <para>
+    /// The receiver is not optional. The engine's field tracker keys a field
+    /// by the RECEIVER and the field's name, so a field store without a
+    /// receiver is a field store that nothing can read.
+    /// </para>
+    /// </remarks>
+    private Operand? FieldReceiver(IFieldSymbol field, SyntaxNode node)
+    {
+        if (field.IsStatic)
+        {
+            return TypePlaceholder(field.ContainingType);
+        }
+        var method = _model.GetEnclosingSymbol(node.SpanStart) as IMethodSymbol;
+        return method is null ? null : OperandFor(method.ContainingType);
     }
 
     /// <summary>
@@ -765,21 +1065,78 @@ internal sealed partial class TacTranslator
         Emit(InstructionKind.THROW, lhs1: value, node: thrown);
     }
 
+    /// <summary>
+    /// Lower a <c>try</c> statement.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE CATCH BODY IS NOT ON THE NORMAL PATH.
+    /// </para>
+    /// <para>
+    /// It used to be. The try body was lowered, and then the catch bodies
+    /// were lowered right after it, and the control flow fell from one into
+    /// the other. So the analysis believed that the catch handler ran on
+    /// every call, and that the code after the catch ran again afterwards.
+    /// </para>
+    /// <para>
+    /// The shape now is the one the source has: the try body, a jump over
+    /// the handlers, the handlers themselves, the finally block, and the
+    /// code after the whole statement. Every catch ends with a jump to the
+    /// finally block, and the finally block ends with a jump past itself.
+    /// </para>
+    /// <para>
+    /// A catch FILTER is a condition on the handler: the handler runs only
+    /// when the filter is true. The filter was never read, so a handler with
+    /// a filter caught everything its type names.
+    /// </para>
+    /// </remarks>
     private void TranslateTry(TryStatementSyntax tryStatement)
     {
-        // The try body is lowered inline, and each catch handler gets its own
-        // entry label. The CATCH_HANDLER instruction carries the caught type, so
-        // the engine can decide which handler a propagating exception reaches.
-        TranslateBlock(tryStatement.Block);
+        var tryStart = NewLabel("try_start");
+        var afterTry = NewLabel("try_after");
+        var finallyLabel = tryStatement.Finally is null ? null : NewLabel("finally");
+        var endLabel = NewLabel("try_end");
 
-        foreach (var clause in tryStatement.Catches)
+        Emit(InstructionKind.LABEL, label: tryStart, node: tryStatement);
+        TranslateBlock(tryStatement.Block);
+        Emit(InstructionKind.JUMP, label: finallyLabel ?? afterTry, node: tryStatement);
+
+        var catchLabels = new List<string>();
+        var catchTypes = new List<string>();
+        var finallyExits = new List<string> { afterTry };
+
+        for (var index = 0; index < tryStatement.Catches.Count; index++)
         {
+            var clause = tryStatement.Catches[index];
             var label = NewLabel("catch");
-            Emit(InstructionKind.LABEL, label: label, node: clause);
+            catchLabels.Add(label);
 
             var caughtType = clause.Declaration is null
                 ? null
                 : _model.GetTypeInfo(clause.Declaration.Type).Type;
+            catchTypes.Add(caughtType is null ? "" : TypeMapper.FullName(caughtType));
+
+            Emit(InstructionKind.LABEL, label: label, node: clause);
+
+            // A FILTER decides whether this handler runs at all. When it is
+            // false, the exception goes to the NEXT handler.
+            if (clause.Filter is not null)
+            {
+                var filter = TranslateExpression(clause.Filter.FilterExpression, store: false);
+                var nextLabel = index + 1 < tryStatement.Catches.Count
+                    ? NewLabel("catch_next")
+                    : (finallyLabel ?? afterTry);
+                if (filter is not null)
+                {
+                    Emit(InstructionKind.BRANCH, lhs1: filter, trueLabel: label,
+                        falseLabel: nextLabel, node: clause);
+                }
+                Drop(clause.Filter, DropIds.CatchFilter,
+                    "a catch clause's filter is a condition on the handler, and the handler's " +
+                    "exception type is the whole of what the exception edge says",
+                    DropImpact.Structure);
+            }
+
             Operand? parameterOperand = null;
             if (clause.Declaration is not null)
             {
@@ -795,15 +1152,39 @@ internal sealed partial class TacTranslator
                 ctorType: TypeMapper.Map(caughtType), node: clause);
 
             TranslateBlock(clause.Block);
+            finallyExits.Add(label);
+            Emit(InstructionKind.JUMP, label: finallyLabel ?? afterTry, node: clause);
         }
 
-        if (tryStatement.Finally is not null)
+        if (tryStatement.Finally is not null && finallyLabel is not null)
         {
-            var finallyLabel = NewLabel("finally");
             Emit(InstructionKind.FINALLY_ENTER, label: finallyLabel, node: tryStatement.Finally);
             Emit(InstructionKind.LABEL, label: finallyLabel, node: tryStatement.Finally);
             TranslateBlock(tryStatement.Finally.Block);
+            Emit(InstructionKind.JUMP, label: endLabel, node: tryStatement.Finally);
         }
+
+        Emit(InstructionKind.LABEL, label: afterTry, node: tryStatement);
+        if (finallyLabel is not null)
+        {
+            // The code after the statement is reached from the try body's
+            // normal exit and from the finally block.
+            Emit(InstructionKind.LABEL, label: endLabel, node: tryStatement);
+        }
+
+        _tryRegionCounter++;
+        _tryRegions.Add(new TryRegion
+        {
+            Id = "R" + _tryRegionCounter,
+            TryStart = tryStart,
+            TryEnd = afterTry,
+            CatchLabels = catchLabels,
+            CatchTypes = catchTypes,
+            FinallyLabel = finallyLabel,
+            FinallyStart = finallyLabel,
+            FinallyEnd = finallyLabel is null ? null : endLabel,
+            FinallyExits = finallyExits,
+        });
     }
 
     private void TranslateBreak(BreakStatementSyntax breakStatement)
@@ -1094,17 +1475,250 @@ internal sealed partial class TacTranslator
         return endLabel;
     }
 
+    /// <summary>
+    /// Lower a <c>using</c> statement.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <c>using</c> statement is a <c>try</c>/<c>finally</c> in disguise:
+    /// the resource is acquired, the body runs, and the resource is disposed
+    /// on EVERY way out of the body -- including the exceptional one.
+    /// </para>
+    /// <para>
+    /// It used to be lowered as the resource's acquisition and the body, and
+    /// nothing else: <c>Dispose()</c> was never called, so the resource's
+    /// lifetime was invisible, and a rule about a resource that is not
+    /// disposed had nothing to find.
+    /// </para>
+    /// </remarks>
     private void TranslateUsing(UsingStatementSyntax usingStatement)
     {
+        var resources = new List<(string Name, Operand Operand)>();
         if (usingStatement.Declaration is not null)
         {
             TranslateVariableDeclaration(usingStatement.Declaration);
+            foreach (var declarator in usingStatement.Declaration.Variables)
+            {
+                var symbol = _model.GetDeclaredSymbol(declarator) as ILocalSymbol;
+                if (symbol is not null)
+                {
+                    resources.Add((symbol.Name, VariableOperand(symbol, isTemp: false)));
+                }
+            }
         }
         if (usingStatement.Expression is not null)
         {
-            TranslateExpression(usingStatement.Expression, store: false);
+            // `using (expr) { }` -- the EXPRESSION is the resource. It used to
+            // be translated and then forgotten: no disposal was emitted for
+            // it, so the resource's lifetime was invisible in the
+            // instruction stream, and a rule about an undisposed resource had
+            // nothing to find.
+            var operand = TranslateExpression(usingStatement.Expression, store: false);
+            if (operand is not null)
+            {
+                var name = usingStatement.Expression is IdentifierNameSyntax identifier
+                    ? identifier.Identifier.Text
+                    : "<expression>";
+                resources.Add((name, operand));
+            }
         }
-        TranslateStatement(usingStatement.Statement);
+
+        TranslateResourceScope(usingStatement.Statement, resources,
+            disposeAsync: usingStatement.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword),
+            node: usingStatement);
+    }
+
+    /// <summary>
+    /// Lower the body of a resource scope, and the disposal that follows it.
+    /// </summary>
+    /// <param name="body">the body</param>
+    /// <param name="resourceNames">the names of the resources the scope owns</param>
+    /// <param name="disposeAsync">whether the disposal is asynchronous</param>
+    /// <param name="node">the node the scope came from</param>
+    private void TranslateResourceScope(StatementSyntax body, List<(string Name, Operand Operand)> resources,
+        bool disposeAsync, SyntaxNode node)
+    {
+        var finallyLabel = NewLabel("using_finally");
+        var endLabel = NewLabel("using_end");
+        var tryStart = NewLabel("using_try");
+
+        Emit(InstructionKind.LABEL, label: tryStart, node: node);
+        TranslateStatement(body);
+        Emit(InstructionKind.JUMP, label: finallyLabel, node: node);
+
+        Emit(InstructionKind.FINALLY_ENTER, label: finallyLabel, node: node);
+        Emit(InstructionKind.LABEL, label: finallyLabel, node: node);
+        foreach (var resource in resources)
+        {
+            // The disposal is a CALL on the resource. The receiver is the
+            // resource itself; the callee's OWNER is the enclosing type,
+            // because the resource's own type is not statically known from
+            // the shape of the `using` statement.
+            Emit(InstructionKind.CALL, lhs1: resource.Operand,
+                calleeSig: disposeAsync ? $"{_ownerTypeName()}.DisposeAsync/0" : $"{_ownerTypeName()}.Dispose/0",
+                node: node);
+        }
+        Emit(InstructionKind.JUMP, label: endLabel, node: node);
+        Emit(InstructionKind.LABEL, label: endLabel, node: node);
+
+        _tryRegionCounter++;
+        _tryRegions.Add(new TryRegion
+        {
+            Id = "R" + _tryRegionCounter,
+            TryStart = tryStart,
+            TryEnd = finallyLabel,
+            CatchLabels = new List<string>(),
+            CatchTypes = new List<string>(),
+            FinallyLabel = finallyLabel,
+            FinallyStart = finallyLabel,
+            FinallyEnd = endLabel,
+            FinallyExits = new List<string> { endLabel },
+            ResourceVars = resources.Select(resource => resource.Name).ToList(),
+            SyntheticFinally = true,
+        });
+
+        Drop(node, DropIds.ResourceClosePath,
+            "the resource is disposed on the normal path out of the body, but the exceptional path " +
+            "does not reach the disposal in the instruction stream",
+            DropImpact.Structure);
+    }
+
+    /// <summary>
+    /// The name of the type that owns the member being translated.
+    /// </summary>
+    /// <remarks>
+    /// It is empty when the member has no enclosing type, and the callee key
+    /// then names the method without an owner.
+    /// </remarks>
+    private string _ownerTypeName() => _ownerType is null ? "" : TypeMapper.FullName(_ownerType);
+
+    /// <summary>
+    /// Lower a pattern into a test: an operand holding a boolean.
+    /// </summary>
+    /// <param name="value">the value the pattern is tested against</param>
+    /// <param name="pattern">the pattern</param>
+    /// <param name="node">the node the test belongs to</param>
+    /// <returns>the operand holding the test's result, or null</returns>
+    /// <remarks>
+    /// <para>
+    /// A TYPE pattern is an INSTANCEOF. A CONSTANT pattern is a comparison.
+    /// A RELATIONAL pattern is a comparison.
+    /// </para>
+    /// <para>
+    /// The patterns that combine other patterns -- <c>and</c>, <c>or</c> --
+    /// are lowered as comparisons of the two sides' results, so the whole
+    /// match is a boolean expression.
+    /// </para>
+    /// </remarks>
+    private Operand? TranslatePatternTest(Operand? value, PatternSyntax pattern, SyntaxNode node)
+    {
+        switch (pattern)
+        {
+            case ConstantPatternSyntax constant:
+            {
+                var expected = TranslateExpression(constant.Expression, store: false);
+                if (value is null || expected is null)
+                {
+                    return null;
+                }
+                var comparison = NewTemp();
+                Emit(InstructionKind.BINOP, dest: comparison, lhs1: value, lhs2: expected,
+                    binOp: "EQ", node: node);
+                return comparison;
+            }
+
+            case RelationalPatternSyntax relational:
+            {
+                var bound = TranslateExpression(relational.Expression, store: false);
+                if (value is null || bound is null)
+                {
+                    return null;
+                }
+                var comparison = NewTemp();
+                Emit(InstructionKind.BINOP, dest: comparison, lhs1: value, lhs2: bound,
+                    binOp: RelationalOperatorOf(relational.OperatorToken), node: node);
+                return comparison;
+            }
+
+            case BinaryPatternSyntax binary:
+            {
+                var left = TranslatePatternTest(value, binary.Left, node);
+                var right = TranslatePatternTest(value, binary.Right, node);
+                if (left is null || right is null)
+                {
+                    return null;
+                }
+                var combined = NewTemp();
+                Emit(InstructionKind.BINOP, dest: combined, lhs1: left, lhs2: right,
+                    binOp: binary.OperatorToken.IsKind(SyntaxKind.OrKeyword) ? "LOR" : "LAND",
+                    node: node);
+                return combined;
+            }
+
+            case UnaryPatternSyntax unary:
+            {
+                var inner = TranslatePatternTest(value, unary.Pattern, node);
+                if (inner is null)
+                {
+                    return null;
+                }
+                var negated = NewTemp();
+                Emit(InstructionKind.UNARYOP, dest: negated, lhs1: inner, unOp: "NOT", node: node);
+                return negated;
+            }
+
+            default:
+            {
+                // A type pattern, and everything else, is a type test.
+                var type = TypeMapper.Map(_model.GetTypeInfo(pattern).Type);
+                var test = NewTemp();
+                Emit(InstructionKind.INSTANCEOF, dest: test, lhs1: value, ctorType: type, node: node);
+                return test;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The TAC binary operator of a relational pattern's operator.
+    /// </summary>
+    /// <param name="operatorToken">the pattern's operator</param>
+    /// <returns>the operator's name</returns>
+    private static string RelationalOperatorOf(SyntaxToken operatorToken) => operatorToken.Kind() switch
+    {
+        SyntaxKind.LessThanExpression => "LT",
+        SyntaxKind.LessThanOrEqualExpression => "LE",
+        SyntaxKind.GreaterThanExpression => "GT",
+        SyntaxKind.GreaterThanOrEqualExpression => "GE",
+        _ => "EQ",
+    };
+
+    /// <summary>
+    /// Lower <c>default(T)</c> and the <c>default</c> literal.
+    /// </summary>
+    /// <param name="defaultExpression">the expression</param>
+    /// <returns>the operand holding the default value</returns>
+    /// <remarks>
+    /// The default value of a VALUE type is a known constant -- zero, or
+    /// false -- and the default value of a REFERENCE type is null. It used to
+    /// be null for both, so <c>default(int)</c> was a null where the
+    /// program had a zero.
+    /// </remarks>
+    private Operand? TranslateDefault(DefaultExpressionSyntax defaultExpression)
+    {
+        var type = _model.GetTypeInfo(defaultExpression).Type;
+        if (type is null || type.IsReferenceType)
+        {
+            return new Operand { Kind = "CONST", ConstKind = "NULL" };
+        }
+        if (type.SpecialType == SpecialType.System_Boolean)
+        {
+            return new Operand { Kind = "CONST", ConstKind = "BOOL", Value = "false" };
+        }
+        if (type.IsValueType)
+        {
+            return new Operand { Kind = "CONST", ConstKind = "INT", Value = "0" };
+        }
+        return new Operand { Kind = "CONST", ConstKind = "NULL" };
     }
 
     /// <summary>
@@ -1163,15 +1777,30 @@ internal sealed partial class TacTranslator
 
             case AwaitExpressionSyntax awaitExpression:
             {
-                // `await` is an async/await state machine. The frontend cannot
-                // lower that state machine into the TAC's ordinary control flow
-                // without changing what the code means, so the awaited value is
-                // taken as-is and the function's precision is downgraded. The
-                // TAINT is what matters for the analysis, and it survives: the
-                // awaited expression is still lowered, so a tainted value that is
-                // awaited stays tainted.
-                _degraded = true;
-                return TranslateExpression(awaitExpression.Expression, store: false);
+                // `await` is a suspension point: the awaited value is
+                // produced, the continuation runs later, and the function
+                // may resume at any of its suspension points.
+                //
+                // The awaited expression is still lowered, so a tainted value
+                // that is awaited stays tainted. What the instruction stream
+                // does NOT say is where the function resumes: that is a
+                // run-time fact, and it is recorded.
+                var awaited = TranslateExpression(awaitExpression.Expression, store: false);
+                if (awaited is not null)
+                {
+                    var awaitedTemp = NewTemp();
+                    Emit(InstructionKind.CALL, dest: awaitedTemp, lhs1: awaited,
+                        calleeSig: "<await>", effect: "SUSPEND", node: awaitExpression);
+                    Drop(awaitExpression, DropIds.AwaitSuspend,
+                        "an await suspends the function and resumes it later, and the resumption " +
+                        "point is not carried on the instruction",
+                        DropImpact.Semantics);
+                    Drop(awaitExpression, DropIds.ConcurrencyOrder,
+                        "the order in which an asynchronous continuation resumes is a run-time fact",
+                        DropImpact.Semantics);
+                    return awaitedTemp;
+                }
+                return awaited;
             }
 
             case ConditionalExpressionSyntax conditional:
@@ -1210,14 +1839,29 @@ internal sealed partial class TacTranslator
             case IsPatternExpressionSyntax isPattern:
             {
                 // `x is T` -- a type test. The value is a boolean.
+                //
+                // `x is not T` is the NEGATION of the test. It used to be
+                // lowered as `x is object`, which is true for every value:
+                // so `is not` was always false, and a branch on it was dead.
                 var value = TranslateExpression(isPattern.Expression, store: false);
-                var type = TypeMapper.Map(_model.GetTypeInfo(isPattern.Pattern).Type);
-                var patternTemp = NewTemp();
-                Emit(InstructionKind.INSTANCEOF, dest: patternTemp, lhs1: value, ctorType: type,
-                    node: isPattern);
-                return patternTemp;
-            }
+                var pattern = isPattern.Pattern;
 
+                if (pattern is UnaryPatternSyntax unary
+                    && unary.OperatorToken.IsKind(SyntaxKind.NotKeyword))
+                {
+                    var inner = TranslatePatternTest(value, unary.Pattern, isPattern);
+                    if (inner is null)
+                    {
+                        return null;
+                    }
+                    var negated = NewTemp();
+                    Emit(InstructionKind.UNARYOP, dest: negated, lhs1: inner, unOp: "NOT",
+                        node: isPattern);
+                    return negated;
+                }
+
+                return TranslatePatternTest(value, pattern, isPattern);
+            }
             case ElementAccessExpressionSyntax elementAccess:
             {
                 return TranslateIndexerRead(elementAccess);
@@ -1237,15 +1881,24 @@ internal sealed partial class TacTranslator
                 return method is null ? null : OperandFor(method.ContainingType);
             }
 
-            case DefaultExpressionSyntax:
-                return new Operand { Kind = "CONST", ConstKind = "NULL" };
+            case DefaultExpressionSyntax defaultExpression:
+                return TranslateDefault(defaultExpression);
 
             case TypeOfExpressionSyntax typeOf:
             {
-                var type = TypeMapper.Map(_model.GetTypeInfo(typeOf.Type).Type);
-                var typeTemp = NewTemp();
-                Emit(InstructionKind.NEW, dest: typeTemp, ctorType: type, node: typeOf);
-                return typeTemp;
+                // `typeof(X)` is a TYPE, not an instance of one. It used to
+                // be a NEW -- a phantom allocation of a type that is never
+                // allocated -- and the engine's points-to analysis believed
+                // a value of that type existed.
+                //
+                // It is a CONSTANT: the type's name is a compile-time fact.
+                var typeofType = _model.GetTypeInfo(typeOf.Type).Type;
+                return new Operand
+                {
+                    Kind = "CONST",
+                    ConstKind = "STRING",
+                    Value = typeofType is null ? "<unknown type>" : TypeMapper.FullName(typeofType),
+                };
             }
 
             case InterpolatedStringExpressionSyntax interpolated:
@@ -1454,6 +2107,24 @@ internal sealed partial class TacTranslator
     private Operand? TranslateMemberAccess(MemberAccessExpressionSyntax memberAccess, bool store)
     {
         var symbol = _model.GetSymbolInfo(memberAccess).Symbol;
+
+        // A DYNAMIC member is bound at RUN TIME: which member is called, and
+        // with what arguments, depends on the runtime type of the receiver.
+        //
+        // The compiler knows no member, so the access resolves to no symbol
+        // at all -- and the call became a black box. That is the honest
+        // answer, and it is recorded: the analysis does not know what the
+        // call does.
+        if (_model.GetTypeInfo(memberAccess.Expression).Type?.TypeKind == TypeKind.Dynamic)
+        {
+            var dynamicValue = NewTemp();
+            Emit(InstructionKind.UNINTERPRETED, dest: dynamicValue, node: memberAccess);
+            Drop(memberAccess, DropIds.DynamicBinding,
+                "a member of a dynamic value is bound at run time, so the member that is called " +
+                "is not known",
+                DropImpact.Semantics);
+            return dynamicValue;
+        }
 
         // A member access that names a TYPE is a QUALIFIER, not a value.
         // `Environment.SpecialFolder.UserProfile` is the shape that matters:
@@ -1964,8 +2635,39 @@ internal sealed partial class TacTranslator
         return $"{ownerName}.<init>/{arity}";
     }
 
+    /// <summary>
+    /// Lower a binary expression.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The COALESCE operator (<c>a ?? b</c>) is not a binary operation: it
+    /// picks one side or the other. It used to be mapped to ADD, which is
+    /// how a null-coalescing assignment came to be an addition -- and the
+    /// analysis was confident about it.
+    /// </para>
+    /// <para>
+    /// The <c>as</c> operator is a CONVERSION that yields null when it
+    /// fails. It is a CAST, and it does not throw.
+    /// </para>
+    /// </remarks>
     private Operand? TranslateBinary(BinaryExpressionSyntax binary, bool store)
     {
+        if (binary.IsKind(SyntaxKind.CoalesceExpression))
+        {
+            return TranslateCoalesce(binary);
+        }
+
+        if (binary.IsKind(SyntaxKind.AsExpression))
+        {
+            // `a as T`: a conversion that yields null rather than throwing.
+            var source = TranslateExpression(binary.Left, store: false);
+            var targetType = TypeMapper.Map(_model.GetTypeInfo(binary.Right).Type);
+            var castTemp = NewTemp(targetType);
+            Emit(InstructionKind.UNARYOP, dest: castTemp, lhs1: source, unOp: "CAST",
+                castType: targetType, node: binary);
+            return castTemp;
+        }
+
         var left = TranslateExpression(binary.Left, store: false);
         var right = TranslateExpression(binary.Right, store: false);
         var binaryTemp = NewTemp();
@@ -1975,6 +2677,50 @@ internal sealed partial class TacTranslator
                 binOp: BinaryOperatorOf(binary.Kind()), node: binary);
         }
         return binaryTemp;
+    }
+
+    /// <summary>
+    /// Lower <c>a ?? b</c>: the left side when it is not null, the right side
+    /// otherwise.
+    /// </summary>
+    /// <param name="binary">the coalescing expression</param>
+    /// <returns>the operand holding the chosen value</returns>
+    /// <remarks>
+    /// It is a branch chain: the left side is tested, the two sides are
+    /// evaluated on their own paths, and the result is merged. The merge is
+    /// what carries the taint: the result is derived from whichever side was
+    /// taken, and both sides are on the instruction stream.
+    /// </remarks>
+    private Operand? TranslateCoalesce(BinaryExpressionSyntax binary)
+    {
+        var left = TranslateExpression(binary.Left, store: false);
+        var right = TranslateExpression(binary.Right, store: false);
+        var result = NewTemp();
+        var valueLabel = NewLabel("coalesce_value");
+        var fallbackLabel = NewLabel("coalesce_fallback");
+        var endLabel = NewLabel("coalesce_end");
+
+        if (left is not null)
+        {
+            Emit(InstructionKind.BRANCH, lhs1: left, trueLabel: valueLabel,
+                falseLabel: fallbackLabel, node: binary);
+        }
+
+        Emit(InstructionKind.LABEL, label: valueLabel, node: binary);
+        if (left is not null)
+        {
+            Emit(InstructionKind.MOVE, dest: result, lhs1: left, node: binary);
+        }
+        Emit(InstructionKind.JUMP, label: endLabel, node: binary);
+
+        Emit(InstructionKind.LABEL, label: fallbackLabel, node: binary);
+        if (right is not null)
+        {
+            Emit(InstructionKind.MOVE, dest: result, lhs1: right, node: binary);
+        }
+
+        Emit(InstructionKind.LABEL, label: endLabel, node: binary);
+        return result;
     }
 
     private Operand? TranslatePrefixUnary(PrefixUnaryExpressionSyntax prefix, bool store)
@@ -2050,9 +2796,16 @@ internal sealed partial class TacTranslator
     /// The binary operator, in Plumb's own {@code BinaryOperator} names.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The names are the IR's, not C#'s: the sidecar speaks the IR's operator
     /// vocabulary directly, so the Java side does not need a translation table
     /// that could drift out of step with the enum.
+    /// </para>
+    /// <para>
+    /// The COMPOUND ASSIGNMENT kinds are here too. They used to be missing,
+    /// and the catch-all said ADD: so <c>x *= y</c> was analysed as
+    /// <c>x + y</c>, and the analysis was confident about it.
+    /// </para>
     /// </remarks>
     private static string BinaryOperatorOf(SyntaxKind kind) => kind switch
     {
@@ -2075,7 +2828,19 @@ internal sealed partial class TacTranslator
         SyntaxKind.GreaterThanOrEqualExpression => "GE",
         SyntaxKind.LogicalAndExpression => "LAND",
         SyntaxKind.LogicalOrExpression => "LOR",
-        SyntaxKind.CoalesceExpression => "ADD",
+
+        SyntaxKind.AddAssignmentExpression => "ADD",
+        SyntaxKind.SubtractAssignmentExpression => "SUB",
+        SyntaxKind.MultiplyAssignmentExpression => "MUL",
+        SyntaxKind.DivideAssignmentExpression => "DIV",
+        SyntaxKind.ModuloAssignmentExpression => "MOD",
+        SyntaxKind.AndAssignmentExpression => "AND",
+        SyntaxKind.OrAssignmentExpression => "OR",
+        SyntaxKind.ExclusiveOrAssignmentExpression => "XOR",
+        SyntaxKind.LeftShiftAssignmentExpression => "SHL",
+        SyntaxKind.RightShiftAssignmentExpression => "SHR",
+        SyntaxKind.UnsignedRightShiftAssignmentExpression => "USHR",
+
         _ => "ADD",
     };
 
@@ -2197,6 +2962,18 @@ internal sealed partial class TacTranslator
             IsTemp = isTemp,
         };
         _operands[symbol] = operand;
+
+        // The binding records the source name and the slot it landed in. The
+        // slot name is not the source name when the name was shadowed, and a
+        // reader that wants to follow a source name to the value the engine
+        // reasons about needs the pair.
+        _scopeBindings.Add(new ScopeBinding
+        {
+            Name = symbol.Name,
+            Slot = operand.Name ?? symbol.Name,
+            Type = operand.Type,
+            Parameter = symbol is IParameterSymbol,
+        });
         return operand;
     }
 
@@ -2244,6 +3021,25 @@ internal sealed partial class TacTranslator
         return label;
     }
 
+    /// <summary>
+    /// Record a problem, and the drop that goes with it.
+    /// </summary>
+    /// <param name="node">the node that caused it</param>
+    /// <param name="kind">the problem kind</param>
+    /// <param name="message">the human-readable description</param>
+    /// <param name="nodeClass">the simple name of the node's type</param>
+    /// <remarks>
+    /// <para>
+    /// It records a DROP as well, so that a loss can never be silent: the
+    /// drop carries the impact level the engine derives the function's
+    /// precision from, and the problem carries the sentence a human reads.
+    /// </para>
+    /// <para>
+    /// The construct id is the catch-all one. A site that knows WHICH
+    /// construct it lost calls <see cref="Drop"/> with its own id, so that
+    /// the id names the construct rather than the failure.
+    /// </para>
+    /// </remarks>
     private void Report(SyntaxNode node, string kind, string message, string nodeClass)
     {
         var lineSpan = node.GetLocation().GetLineSpan();
@@ -2256,6 +3052,65 @@ internal sealed partial class TacTranslator
             Column = lineSpan.StartLinePosition.Character + 1,
         });
         _degraded = true;
+
+        // The impact follows from what the problem means. A construct that
+        // was not lowered at all is a loss of MEANING: the analysis does not
+        // know what it does. A construct that was lowered into a different
+        // shape is a loss of SHAPE: it still computes the same thing.
+        var impact = kind == "SOURCE_LOWERED" ? DropImpact.Structure : DropImpact.Semantics;
+        Drop(node, DropIds.Unmodelled, message, impact);
+    }
+
+    /// <summary>
+    /// Record a loss: a construct that was not lowered faithfully.
+    /// </summary>
+    /// <param name="node">the node the construct is at</param>
+    /// <param name="construct">the stable machine-readable id of the construct</param>
+    /// <param name="detail">the human-readable description of what was lost</param>
+    /// <param name="impact">SEMANTICS, STRUCTURE, VALUE or TYPE</param>
+    /// <remarks>
+    /// <para>
+    /// WHY IT IS SEPARATE FROM Report(). A problem says the frontend could
+    /// not do its job. A drop says the frontend DID its job and this is what
+    /// the job cost, with the impact level that decides the function's
+    /// precision. The difference matters: a construct that was lowered into
+    /// the wrong shape -- a switch into a branch chain -- still computes the
+    /// right thing, and calling that "a problem" would hide the fact that
+    /// the analysis understands it.
+    /// </para>
+    /// <para>
+    /// The construct id names the CONSTRUCT, not the failure, and it carries
+    /// no variable part: a coverage report groups by it, and an id that
+    /// carried a name or a line number would split one construct into as
+    /// many groups as it has occurrences.
+    /// </para>
+    /// </remarks>
+    private void Drop(SyntaxNode? node, string construct, string detail, string impact)
+    {
+        var drop = new Drop
+        {
+            Construct = construct,
+            Detail = detail,
+            Impact = impact,
+            Line = -1,
+            Column = -1,
+            Scope = DropScope.Function,
+        };
+        if (node is not null)
+        {
+            var lineSpan = node.GetLocation().GetLineSpan();
+            drop.Line = lineSpan.StartLinePosition.Line + 1;
+            drop.Column = lineSpan.StartLinePosition.Character + 1;
+        }
+        _drops.Add(drop);
+
+        // Only a loss of meaning or of shape costs the function its
+        // precision. A single unknown value, or an unknown type fact, does
+        // not: the function still computes the same thing.
+        if (impact == DropImpact.Semantics || impact == DropImpact.Structure)
+        {
+            _degraded = true;
+        }
     }
 
     private void Emit(
@@ -2273,6 +3128,9 @@ internal sealed partial class TacTranslator
         string? trueLabel = null,
         string? falseLabel = null,
         string? label = null,
+        string? effect = null,
+        string? ownerType = null,
+        List<Operand?>? resultDests = null,
         SyntaxNode? node = null)
     {
         var instruction = new Instruction
@@ -2291,6 +3149,9 @@ internal sealed partial class TacTranslator
             TrueLabel = trueLabel,
             FalseLabel = falseLabel,
             Label = label,
+            Effect = effect,
+            OwnerType = ownerType,
+            ResultDests = resultDests,
         };
 
         if (node is not null)

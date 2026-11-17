@@ -32,27 +32,26 @@ import org.plumb.tac.ir.TacOperand;
 /**
  * The platform-type rule: a Java type seen from Kotlin may hold {@code null} at runtime.
  *
- * <p><b>Why this matters more than it looks.</b> Kotlin's type checker lets you
- * dereference a Java value without a {@code ?}, because the Java declaration says
- * nothing about null. But the Java declaration really does say nothing: the value can
- * be {@code null}, the Kotlin compiler's inserted assertion is removable with {@code
- * -Xno-call-assertions}, and ProGuard's {@code -assumenosideeffects} strips it from
- * bytecode. So a Java-interop value must be treated as nullable by the analysis, or
- * the null-dereference checker will miss a real crash.
+ * <p><b>Why this matters more than it looks.</b> Kotlin's type checker lets you dereference a Java
+ * value without a {@code ?}, because the Java declaration says nothing about null. But the Java
+ * declaration really does say nothing: the value can be {@code null}, the Kotlin compiler's
+ * inserted assertion is removable with {@code -Xno-call-assertions}, and ProGuard's {@code
+ * -assumenosideeffects} strips it from bytecode. So a Java-interop value must be treated as
+ * nullable by the analysis, or the null-dereference checker will miss a real crash.
  *
- * <p><b>Why the rule is tested at the source level.</b> The Analysis API's own
- * nullability flags cannot express this: a Java type named in the source
- * ({@code s: java.lang.StringBuilder}) comes back as an ordinary non-null type, and
- * only the <i>origin</i> of the type's classifier says it is a Java class. So the test
- * asserts the outcome the frontend produces, which is the thing that matters.
+ * <p><b>Why the rule is tested at the source level.</b> The Analysis API's own nullability flags
+ * cannot express this: a Java type named in the source ({@code s: java.lang.StringBuilder}) comes
+ * back as an ordinary non-null type, and only the <i>origin</i> of the type's classifier says it is
+ * a Java class. So the test asserts the outcome the frontend produces, which is the thing that
+ * matters.
  */
 class KotlinPlatformTypeTest {
 
   /**
    * A Java class the Kotlin source can name.
    *
-   * <p>{@code java.lang.StringBuilder} is a JDK class, so it resolves through the SDK
-   * module the session is built with -- no extra test fixture is needed.
+   * <p>{@code java.lang.StringBuilder} is a JDK class, so it resolves through the SDK module the
+   * session is built with -- no extra test fixture is needed.
    */
   private static final String JAVA_CLASS = "java.lang.StringBuilder";
 
@@ -60,8 +59,8 @@ class KotlinPlatformTypeTest {
    * A Kotlin class from the standard library.
    *
    * <p>Not {@code kotlin.text.StringBuilder}: that is a type alias for {@code
-   * java.lang.StringBuilder}, so its classifier is the Java class and it is a platform
-   * type. {@code kotlin.text.Regex} is a genuinely Kotlin class.
+   * java.lang.StringBuilder}, so its classifier is the Java class and it is a platform type. {@code
+   * kotlin.text.Regex} is a genuinely Kotlin class.
    */
   private static final String KOTLIN_CLASS = "kotlin.text.Regex";
 
@@ -69,11 +68,7 @@ class KotlinPlatformTypeTest {
   void aJavaTypeSeenFromKotlinIsNullable() {
     TacFrontend.ParseResult result =
         parse(
-            "fun takesJava(value: "
-                + JAVA_CLASS
-                + "): "
-                + JAVA_CLASS
-                + " {",
+            "fun takesJava(value: " + JAVA_CLASS + "): " + JAVA_CLASS + " {",
             "    return value",
             "}");
 
@@ -88,10 +83,7 @@ class KotlinPlatformTypeTest {
   @Test
   void aJavaReturnTypeSeenFromKotlinIsNullable() {
     TacFrontend.ParseResult result =
-        parse(
-            "fun returnsJava(): " + JAVA_CLASS + " {",
-            "    return " + JAVA_CLASS + "()",
-            "}");
+        parse("fun returnsJava(): " + JAVA_CLASS + " {", "    return " + JAVA_CLASS + "()", "}");
 
     TacFunction fn = result.functions().get(0);
     assertThat(fn.returnType().isNullable())
@@ -118,10 +110,7 @@ class KotlinPlatformTypeTest {
   @Test
   void anExplicitlyNullableKotlinTypeIsNullable() {
     TacFrontend.ParseResult result =
-        parse(
-            "fun takesNullable(value: String?): String? {",
-            "    return value",
-            "}");
+        parse("fun takesNullable(value: String?): String? {", "    return value", "}");
 
     TacFunction fn = result.functions().get(0);
     assertThat(fn.params().get(0).type().isNullable()).isTrue();
@@ -131,9 +120,9 @@ class KotlinPlatformTypeTest {
   /**
    * The JDK and the Kotlin standard library must actually resolve.
    *
-   * <p>Without them every reference is an error type, every value is unknown, and the
-   * nullability rules above would pass vacuously -- an unknown type is nullable too.
-   * This test is what stops that from happening silently.
+   * <p>Without them every reference is an error type, every value is unknown, and the nullability
+   * rules above would pass vacuously -- an unknown type is nullable too. This test is what stops
+   * that from happening silently.
    */
   @Test
   void theJdkAndTheStandardLibraryResolve() {
@@ -179,8 +168,7 @@ class KotlinPlatformTypeTest {
         stdlib.locals().stream()
             .filter(v -> "matcher".equals(v.name()))
             .findFirst()
-            .orElseThrow(
-                () -> new AssertionError("matcher was not declared: " + stdlib.locals()));
+            .orElseThrow(() -> new AssertionError("matcher was not declared: " + stdlib.locals()));
     assertThat(matcher.type().kind())
         .as("matcher's type: %s", matcher.type())
         .isNotEqualTo(org.plumb.tac.ir.TacType.Kind.UNKNOWN);

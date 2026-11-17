@@ -106,9 +106,9 @@ func TestModuleCacheDirectoryFollowsTheEnvironment(t *testing.T) {
 
 func TestCompareVersionsOrdersVersionsNumerically(t *testing.T) {
 	cases := []struct {
-		left string
+		left  string
 		right string
-		want int
+		want  int
 	}{
 		{"v1.10.0", "v1.9.0", 1},
 		{"v1.9.0", "v1.10.0", -1},

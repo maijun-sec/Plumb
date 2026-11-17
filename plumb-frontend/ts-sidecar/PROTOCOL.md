@@ -146,8 +146,11 @@ file: `TYPESCRIPT` or `JAVASCRIPT`.
       "name": "handle",
       "signature": "app.handle(string):string",
       "enclosingClass": "UserStore",
+      "memberKind": "METHOD",
       "precision": "SOURCE_FULL",
       "synthetic": false,
+      "returnType": { "kind": "STRING" },
+      "domain": null,
       "params": [ { "kind": "VAR", "name": "req", "type": { "kind": "CLASS", "name": "Object" } } ],
       "locals": [],
       "instructions": [
@@ -160,6 +163,8 @@ file: `TYPESCRIPT` or `JAVASCRIPT`.
           "column": 9
         }
       ],
+      "drops": [],
+      "tryRegions": [],
       "problems": []
     }
   ]
@@ -177,28 +182,90 @@ a silent "no findings"**.
 | `name` | The function's name. |
 | `signature` | `owner.name(ParamTypes):Return`. |
 | `enclosingClass` | The class the method belongs to. Absent for a free function. |
-| `precision` | `SOURCE_FULL` or `SOURCE_LOWERED`. |
-| `synthetic` | Always false: every function in the stream comes from the user's own code. |
+| `memberKind` | What kind of member the function is. |
+| `precision` | `SOURCE_FULL`, `SOURCE_LOWERED` or `SOURCE_DEGRADED`. |
+| `synthetic` | Whether the function is the sidecar's own rather than the user's. |
+| `returnType` | The function's return type, as a type object. |
+| `domain` | The value domain of the return type, or `null` when it has none. |
 | `params` | The parameters, in declaration order. |
 | `locals` | The locals. |
 | `instructions` | The instruction stream, in source order. |
+| `drops` | What was lowered less faithfully than the source says, and how much was lost. |
+| `tryRegions` | The try / catch / finally regions of the function. |
+| `classAnnotations` | The decorators the class carries. |
+| `methodAnnotations` | The decorators the method carries. |
+| `fieldAnnotations` | The decorators and modifiers of each field, by field name. |
+| `paramAnnotations` | The decorators of each parameter, by parameter name. |
+| `annotationValues` | The literal arguments of the decorators, by decorator name. |
+| `superType` | The base class, for a derived class. `null` otherwise. |
+| `interfaces` | The interfaces the class implements. |
 | `problems` | What could not be modelled. |
+
+### `memberKind`
+
+| Value | Meaning |
+|---|---|
+| `METHOD` | An ordinary method, or a free function. |
+| `CONSTRUCTOR` | A constructor: the name is `<init>`. |
+| `GETTER` | A getter. |
+| `SETTER` | A setter. |
+| `FIELD_INITIALIZER` | The class's own initialiser: the field initial values. |
+| `STATIC_INITIALIZER` | A static block: the class's own initialiser, run once. |
 
 ### `precision`
 
 `SOURCE_FULL` means the function was lowered faithfully. `SOURCE_LOWERED`
 means a construct was lowered into something the TAC can hold but that is not
-the construct itself.
+the construct itself. `SOURCE_DEGRADED` means something was lost that the
+engine's results depend on -- the value's meaning, not merely its shape.
 
-A function carries `SOURCE_LOWERED` when it has at least one problem, and
-`SOURCE_FULL` when it has none. A problem means something was approximated --
-an unhandled node became an unknown value, a `break` became a jump, an
-unresolved callee became a black box -- so a function that was approximated
-did not come out whole.
+The precision is derived from the function's `drops`:
+
+| Drop impact | Precision |
+|---|---|
+| `SEMANTICS` | `SOURCE_DEGRADED` |
+| `STRUCTURE` | `SOURCE_LOWERED` |
+| `VALUE`, `TYPE` | `SOURCE_FULL` (the shape is intact; only a value or a type fact is missing) |
+
+A function with a problem is `SOURCE_LOWERED` as well: a problem means
+something was approximated -- an unhandled node became an unknown value, an
+unresolved callee became a black box -- so a function that was approximated did
+not come out whole.
 
 **A degradation never suppresses a finding.** The precision is a record of
 the approximation, not a filter on the results; the analysis engine does not
 read it to decide whether to report.
+
+### `drops`
+
+A drop records one construct that was modelled less faithfully than the source
+says. It is an accounting entry, not an instruction: the value is still in the
+stream, and the engine still sees it.
+
+| Field | Meaning |
+|---|---|
+| `construct` | The name of the construct, e.g. `implements`, `closure`, `runtime-context`. |
+| `detail` | What was lost, in one sentence. |
+| `impact` | How much was lost: `SEMANTICS`, `STRUCTURE`, `VALUE` or `TYPE`. |
+| `line` | The line the construct is on. |
+| `column` | The column the construct is on. |
+| `scope` | `FUNCTION` or `PROGRAM`. |
+
+### `tryRegions`
+
+One entry per try statement. Each entry says where the parts are:
+
+| Field | Meaning |
+|---|---|
+| `tryStart`, `tryEnd` | The instruction range of the try body. |
+| `catchStart`, `catchEnd` | The instruction range of the catch body, or `-1`. |
+| `catchLabels` | The entry label of each catch clause. |
+| `catchTypes` | The type each catch clause names, or `*` when it names none. |
+| `finallyLabel` | The label the finally block is entered at, or `null`. |
+| `finallyStart`, `finallyEnd` | The instruction range of the finally body, or `-1`. |
+| `syntheticFinally` | Whether the finally block is the sidecar's own. |
+| `finallyExits` | Every label that leaves the region through the finally block. |
+| `resourceVars` | The variables a `using` declaration owns. |
 
 ## Instruction, operand and type encoding
 
@@ -212,19 +279,50 @@ The instruction kinds are the TAC's own, by name:
 Only the fields that the kind actually uses are present. The Java side
 ignores any field it does not know.
 
+Four instruction fields carry facts that are not operands:
+
+| Field | Meaning |
+|---|---|
+| `guard` | What a `BRANCH` tests. |
+| `labelRef` | What a `LABEL` marks. |
+| `ownerType` | The class that owns the field, on a `FIELDLOAD` or a `FIELDSTORE`. |
+| `fieldName` | The field's name, on a `FIELDLOAD` or a `FIELDSTORE`. |
+
+A `guard` is one of:
+
+| Kind | Meaning |
+|---|---|
+| `Truthiness` | The operand is tested for truthiness. It carries `operand`. |
+| `Compare` | Two operands are compared. It carries `lhs`, `op` and `rhs`. |
+| `PropertyPresence` | A key is tested for presence in an object. It carries `receiver` and `key`. |
+
+A `labelRef` is one of:
+
+| Kind | Meaning |
+|---|---|
+| `LOOP_HEAD` | The head of a loop. |
+| `LOOP_END` | The end of a loop. |
+| `SWITCH_CASE` | The body of a switch case. |
+| `SWITCH_END` | The end of a switch. |
+| `BLOCK` | The entry of a block. |
+| `CATCH` | The entry of a catch clause. It carries the caught name. |
+| `FINALLY_ENTRY` | The entry of a finally block. |
+
 An operand is either a variable or a constant:
 
 ```json
 { "kind": "VAR",  "name": "cmd", "type": { "kind": "CLASS", "name": "os.File" } }
 { "kind": "CONST", "constKind": "STRING", "value": "select 1" }
 { "kind": "CONST", "constKind": "NULL" }
+{ "kind": "CONST", "constKind": "REGEX", "value": "ab+c" }
 ```
 
 A variable's `type` is optional; an absent type means `UNKNOWN`. `isTemp`
 marks a synthetic temporary.
 
 The constant kinds are `INT`, `LONG`, `FLOAT`, `DOUBLE`, `BOOL`, `CHAR`,
-`STRING` and `NULL`.
+`STRING`, `NULL` and `REGEX`. A `REGEX` constant is a regular expression
+literal: it is an immutable value, not an unknown one.
 
 A type is one of the TAC's kinds:
 
@@ -232,11 +330,23 @@ A type is one of the TAC's kinds:
 { "kind": "CLASS",  "name": "UserStore" }
 { "kind": "ARRAY",  "component": { "kind": "STRING" } }
 { "kind": "STRING" }
+{ "kind": "STRING", "nullable": true, "unionMembers": [ { "kind": "NULL" }, { "kind": "STRING" } ] }
+{ "kind": "DOUBLE", "domain": { "kind": "Floating", "bits": 53, "exponentBits": 11 } }
+{ "kind": "BIGINT", "domain": { "kind": "Unbounded" } }
 ```
 
 The kinds are `BOOLEAN`, `BYTE`, `SHORT`, `CHAR`, `INT`, `LONG`, `FLOAT`,
 `DOUBLE`, `DECIMAL`, `STRING`, `CLASS`, `ARRAY`, `NULL` and `VOID`, plus
-`UNKNOWN` for a type the sidecar could not resolve.
+`UNKNOWN` for a type the sidecar could not resolve and `BIGINT` for an
+arbitrary-precision integer.
+
+Three type fields say what the type does not say on its own:
+
+| Field | Meaning |
+|---|---|
+| `nullable` | The value can be null. |
+| `unionMembers` | The members of a union. The type itself is the first non-null member. |
+| `domain` | The range of the values: `Floating` for a double, `Unbounded` for a bigint, `Dynamic` for a type nothing is known about. |
 
 ## The callee signature convention
 
@@ -267,6 +377,24 @@ absent while the scan reports success.
 
 The owner is the receiver's type for a method, and the module's name for a
 free function.
+
+### When the owner is missing
+
+A receiver whose type the compiler cannot name -- `any`, for instance -- has
+no owner. The callee key then has **no owner section at all**: `method/1`,
+not `app.method/1`.
+
+The file's own name used to stand in for it, and that was wrong: the owner of
+a call is whatever the receiver is, and naming the file claims a module the
+call never reached. The key says "the owner is missing", which matches nothing
+rather than matching the wrong thing.
+
+A global the language itself provides -- `eval`, `require` -- keeps its own
+name as the owner, because that name is what the sink catalogue is written
+against.
+
+A dynamic `import()` carries the module it names -- the literal in the source
+-- as the owner, rather than a file name.
 
 ## The keyed namespace: why a property is not a field
 
@@ -304,18 +432,42 @@ would stop there, and every function would still claim full precision.
 An assignment is not a `BINOP`. A plain assignment is a write; a compound
 assignment (`+=` and friends) is a read, a `BINOP`, and then a write.
 
-## What the sidecar does not model
+The comparison operators keep their identity: `===` and `!==` are `EQ` and
+`NE`, while `==` and `!=` -- which coerce their operands -- are `LOOSE_EQ` and
+`LOOSE_NE`. The two are different facts about a value, and a catalogue that
+matches on the operator cannot tell them apart otherwise.
 
-Every one of these is reported as a problem on the function, and the affected
-value becomes a `HAVOC` -- an unknown value. **Never a silent omission.**
+A short-circuit operator (`&&`, `||`, `??`) is not a `BINOP` either: it is
+expanded into a branch, because the right-hand side is only evaluated on one
+side of it.
+
+## What the sidecar models conservatively
+
+Every one of these is recorded as a **drop** on the function, with the impact
+that says how much was lost. The affected value stays in the stream -- it is
+not dropped from the analysis -- and the drop says that it is no longer the
+thing the source wrote.
 
 | Construct | What happens |
 |---|---|
-| A `break` or a `continue` | Reported as `SOURCE_LOWERED`. The loop's structure carries the control flow. |
-| A function used as a value (a closure) | Reported as `SOURCE_LOWERED`; the value becomes a `HAVOC`. |
+| `implements` | A `TYPE` drop. The interface names are in `interfaces`; the relation itself has no run-time behaviour. |
+| `import type` / `export type` | A `TYPE` drop. The module edge is erased at compile time. |
+| A closure (a function used as a value) | A `STRUCTURE` drop; the value becomes a `HAVOC`. |
+| `eval(x)` and `new Function(...)` | A `VALUE` drop: the result is whatever the run-time string says. |
+| `import.meta` | A `VALUE` drop: the property values are filled in per environment. |
+| A dynamic `import(x)` | A `SEMANTICS` drop: the module it names is decided at run time. |
+| `await` | A `SEMANTICS` drop: the value is complete, the micro-task timing is not in the TAC. |
+| `typeof` | A `VALUE` drop: the result is one of eight strings decided at run time. |
+| A call whose callee does not resolve | A `SEMANTICS` drop, and the call is emitted as `UNINTERPRETED`: a black box whose result may be anything. |
+| A power operator (`**`) | A `STRUCTURE` drop: it is modelled as a multiplication. |
+| The rest of a destructuring pattern | A `STRUCTURE` drop: it is modelled as an empty object or array. |
+| A regular expression | A `REGEX` constant. The pattern is kept; the flags are not analysed. |
 | A class expression | Reported as `UNHANDLED_NODE`. |
-| A call whose callee does not resolve | The call is emitted as `UNINTERPRETED`: a black box whose result may be anything. |
 | Any other statement or expression | Reported as `UNHANDLED_NODE`; the value becomes a `HAVOC`. |
+
+**A drop is never a silent omission.** A construct that is not modelled
+exactly is named, located and priced, so that a reader of the wire can tell
+what the engine did not see.
 
 ## Building and running
 

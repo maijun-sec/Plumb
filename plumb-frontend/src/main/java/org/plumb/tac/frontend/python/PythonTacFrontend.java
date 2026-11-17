@@ -243,6 +243,8 @@ public final class PythonTacFrontend implements TacFrontend, AutoCloseable {
         return new ParseResult(List.of(), problems, defaultPrecision());
       }
 
+      reportFileProblems(path, response, problems);
+
       List<TacFunction> functions = new ArrayList<>();
       Json.JsonArray array = response.getArray("functions");
       if (array != null) {
@@ -254,13 +256,9 @@ public final class PythonTacFrontend implements TacFrontend, AutoCloseable {
         }
       }
 
-      IrPrecision precision = defaultPrecision();
-      for (TacFunction function : functions) {
-        if (function.irPrecision() == IrPrecision.SOURCE_LOWERED) {
-          precision = IrPrecision.SOURCE_LOWERED;
-          break;
-        }
-      }
+      // The precision is the worst precision any of the file's functions carries: a
+      // function that lost semantics makes the whole file degraded.
+      IrPrecision precision = TacFunction.aggregatePrecision(defaultPrecision(), functions);
       return new ParseResult(functions, problems, precision);
     } catch (IOException | RuntimeException ex) {
       // A frontend must be TOTAL. A broken file reports a problem and yields
@@ -568,4 +566,44 @@ public final class PythonTacFrontend implements TacFrontend, AutoCloseable {
     projects.clear();
     interpreterChecked = false;
   }
+
+  /**
+   * Report the problems the sidecar reported for the FILE.
+   *
+   * <p>A file-level problem is not attached to any function: it says the file
+   * as a whole could not be read, or that a construct in it was dropped
+   * before any function was made. Only ArkTS read this channel; the other
+   * three dropped the problems on the floor, and a dropped problem is a
+   * silent loss.
+   *
+   * @param path the file
+   * @param response the sidecar's response
+   * @param problems the problems of the current parse
+   */
+  private void reportFileProblems(Path path, Json.JsonObject response, List<String> problems) {
+    Json.JsonArray array = response.getArray("problems");
+    if (array == null) {
+      return;
+    }
+    for (int i = 0; i < array.size(); i++) {
+      Json.JsonObject problem = array.getObject(i);
+      if (problem == null) {
+        continue;
+      }
+      String message = problem.getString("message");
+      if (message == null || message.isBlank()) {
+        message = "the file could not be analysed completely";
+      }
+      problems.add(message);
+      structuredProblems.add(
+          new TacProgram.FunctionProblem(
+              path == null ? "<file>" : path.toString(),
+              problem.getString("kind") == null ? "PARSE_PROBLEM" : problem.getString("kind"),
+              message,
+              problem.getString("nodeClass"),
+              problem.getInt("line", -1),
+              problem.getInt("column", -1)));
+    }
+  }
+
 }

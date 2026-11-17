@@ -111,6 +111,19 @@ public final class TacProgram implements java.io.Serializable {
   private final String typeName;
   private final Map<String, TacFunction> functions = new LinkedHashMap<>();
   private final List<FunctionProblem> programProblems = new ArrayList<>();
+
+  /**
+   * The losses that are about the PROGRAM rather than about one function.
+   *
+   * <p>A file that could not be parsed, a dependency that could not be resolved, a source-level
+   * capability the engine does not have -- these are not properties of any one function, so they
+   * have nowhere else to go.
+   *
+   * <p>Never null. Mutable, like {@link #programProblems()}: a frontend discovers these while it
+   * walks the program.
+   */
+  private List<TacDrop> programDrops = new ArrayList<>();
+
   private final SourceMap sourceMap = new SourceMap();
 
   /**
@@ -405,6 +418,34 @@ public final class TacProgram implements java.io.Serializable {
     programProblems.add(p);
   }
 
+  /**
+   * The program-level drops -- the losses that are not a property of any single function.
+   *
+   * <p>Never null.
+   */
+  public List<TacDrop> programDrops() {
+    // A program read from a cache written before the drop channel existed has a null
+    // list here: Java deserialization does not run the field initialiser. "Nothing was
+    // lost" is the right answer for such a program.
+    return programDrops == null ? List.of() : programDrops;
+  }
+
+  /**
+   * Records a program-level drop.
+   *
+   * <p>Convenience for the common case: the impact is SEMANTICS (the program's meaning is not fully
+   * known) and the scope is PROGRAM.
+   */
+  public void addProgramDrop(String construct, String detail) {
+    programDrops.add(
+        new TacDrop(construct, detail, TacDrop.Impact.SEMANTICS, 0, 0, TacDrop.Scope.PROGRAM));
+  }
+
+  /** Records a program-level drop with an explicit impact. */
+  public void addProgramDrop(String construct, String detail, TacDrop.Impact impact) {
+    programDrops.add(new TacDrop(construct, detail, impact, 0, 0, TacDrop.Scope.PROGRAM));
+  }
+
   public List<FunctionProblem> programProblems() {
     return Collections.unmodifiableList(programProblems);
   }
@@ -431,6 +472,11 @@ public final class TacProgram implements java.io.Serializable {
   private void readObject(java.io.ObjectInputStream in)
       throws java.io.IOException, ClassNotFoundException {
     in.defaultReadObject();
+    // The drop channel did not exist when an older cache was written, so the list
+    // arrives null. It is restored to an empty one: that program recorded no drops.
+    if (programDrops == null) {
+      programDrops = new ArrayList<>();
+    }
     Object raw = in.readObject();
     if (raw == null) {
       this.sourcePath = null;

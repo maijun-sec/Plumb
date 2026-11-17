@@ -138,40 +138,97 @@ final class JavaModernFeatures {
     TacOperand.TacVar result = b.newTemp(resultType);
 
     String endLabel = b.newLabel("L_SWEXPR_END");
+    int count = se.getEntries().size();
+
+    // The BODY label of every arm, in source order.
     List<String> armLabels = new java.util.ArrayList<>();
-    for (int i = 0; i < se.getEntries().size(); i++) {
+    for (int i = 0; i < count; i++) {
       armLabels.add(b.newLabel("L_SWEXPR_ARM_" + i));
     }
 
-    // The switch-expression context tells a `yield` statement where to assign.
-    // It is pushed for the duration of the arms and popped afterwards.
-    TacOperand.TacVar prevYieldTarget = owner.exprs().setYieldTarget(result);
+    // The `default` arm has no test of its own: it is what the LAST test
+    // falls to when nothing matched.
+    String defaultArm = null;
+    for (int i = 0; i < count; i++) {
+      if (se.getEntries().get(i).getLabels().isEmpty()) {
+        defaultArm = armLabels.get(i);
+        break;
+      }
+    }
+    String noMatch = defaultArm != null ? defaultArm : endLabel;
+
+    // The TEST label of every case label. The tests form a chain: a test that
+    // does not match goes to the NEXT TEST, not into the next arm's body.
+    List<String> testLabels = new java.util.ArrayList<>();
+    int[] testStart = new int[count];
+    int[] testCount = new int[count];
+    for (int i = 0; i < count; i++) {
+      SwitchEntry entry = se.getEntries().get(i);
+      testStart[i] = testLabels.size();
+      testCount[i] = entry.getLabels().size();
+      for (int k = 0; k < testCount[i]; k++) {
+        testLabels.add(b.newLabel("L_SWEXPR_TEST_" + i + "_" + k));
+      }
+    }
+    String[] afterEntry = new String[count];
+    for (int i = 0; i < count; i++) {
+      String next = noMatch;
+      for (int j = i + 1; j < count; j++) {
+        if (testCount[j] > 0) {
+          next = testLabels.get(testStart[j]);
+          break;
+        }
+      }
+      afterEntry[i] = next;
+    }
+
+    // The switch-expression context tells a `yield` statement where to assign
+    // AND where to jump to. It is pushed for the duration of the arms and
+    // popped afterwards.
+    ExpressionTranslator.YieldTarget prevYieldTarget =
+        owner.exprs().setYieldTarget(result, endLabel);
     try {
-      // Dispatch chain: each arm's condition branches to its body, else to the next arm.
-      for (int i = 0; i < se.getEntries().size(); i++) {
+      // The dispatch chain.
+      for (int i = 0; i < count; i++) {
         SwitchEntry entry = se.getEntries().get(i);
-        Condition condition = armCondition(entry, selector, b);
-        String next = (i + 1 < se.getEntries().size()) ? armLabels.get(i + 1) : endLabel;
-        if (condition == null) {
-          // A `default` arm: unconditional.
-          b.emit(
-              TacInstruction.builder(TacInstruction.Kind.JUMP)
-                  .label(armLabels.get(i))
-                  .line(TacTranslator.nodeLine(entry))
-                  .build());
+        if (testCount[i] == 0) {
+          // The default arm: it has no test.
           continue;
         }
-        b.emit(
-            TacInstruction.builder(TacInstruction.Kind.BRANCH)
-                .lhs1(condition.test)
-                .trueLabel(armLabels.get(i))
-                .falseLabel(next)
-                .line(TacTranslator.nodeLine(entry))
-                .build());
+        // A `when` GUARD is a second test, applied AFTER the label matched.
+        // When it fails, the switch continues with the NEXT arm's test.
+        boolean guarded = entry.getGuard().isPresent();
+        String matchLabel = guarded ? b.newLabel("L_SWEXPR_MATCH_" + i) : null;
+        for (int k = 0; k < testCount[i]; k++) {
+          Expression labelExpr = entry.getLabels().get(k);
+          String testLabel = testLabels.get(testStart[i] + k);
+          String falseTarget =
+              (k + 1 < testCount[i]) ? testLabels.get(testStart[i] + k + 1) : afterEntry[i];
+          b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(testLabel).build());
+          Condition condition = labelCondition(labelExpr, selector, b);
+          b.emit(
+              TacInstruction.builder(TacInstruction.Kind.BRANCH)
+                  .lhs1(condition.test)
+                  .trueLabel(guarded ? matchLabel : armLabels.get(i))
+                  .falseLabel(falseTarget)
+                  .line(TacTranslator.nodeLine(entry))
+                  .build());
+        }
+        if (guarded) {
+          b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(matchLabel).build());
+          ExpressionResult guardValue = owner.exprs().translate(entry.getGuard().get(), b);
+          b.emit(
+              TacInstruction.builder(TacInstruction.Kind.BRANCH)
+                  .lhs1(guardValue.operand())
+                  .trueLabel(armLabels.get(i))
+                  .falseLabel(afterEntry[i])
+                  .line(TacTranslator.nodeLine(entry))
+                  .build());
+        }
       }
 
       // The arms.
-      for (int i = 0; i < se.getEntries().size(); i++) {
+      for (int i = 0; i < count; i++) {
         SwitchEntry entry = se.getEntries().get(i);
         b.emit(
             TacInstruction.builder(TacInstruction.Kind.LABEL)
@@ -213,6 +270,17 @@ final class JavaModernFeatures {
           if (arrowValueArm) break; // the single expression statement was handled above
           owner.stmts().translate(s, b);
         }
+        // Every arm LEAVES the switch expression.
+        //
+        // Without the jump the arms ran one after another: a switch expression
+        // called EVERY arm's body, and the value it produced was whichever arm
+        // wrote last. A `yield` inside a block arm already jumped out, so this
+        // jump is only reached by the arms that fall to the end of the body.
+        b.emit(
+            TacInstruction.builder(TacInstruction.Kind.JUMP)
+                .label(endLabel)
+                .line(TacTranslator.nodeLine(entry))
+                .build());
       }
       b.emit(
           TacInstruction.builder(TacInstruction.Kind.LABEL)
@@ -220,7 +288,7 @@ final class JavaModernFeatures {
               .line(TacTranslator.nodeLine(se))
               .build());
     } finally {
-      owner.exprs().setYieldTarget(prevYieldTarget);
+      owner.exprs().restoreYieldTarget(prevYieldTarget);
     }
 
     return new ExpressionResult(result, resultType);
@@ -254,51 +322,6 @@ final class JavaModernFeatures {
     com.github.javaparser.ast.stmt.ExpressionStmt es =
         (com.github.javaparser.ast.stmt.ExpressionStmt) entry.getStatements().get(0);
     return es.getExpression();
-  }
-
-  /**
-   * The condition that selects one switch arm, or {@code null} for an unconditional {@code
-   * default}.
-   *
-   * <p>An arm's labels are a mix of the classic constant labels ({@code case 1:}) and the pattern
-   * labels of Java 21 ({@code case String s ->}). A pattern label is not a value to compare
-   * against: it is a type test plus a binding. So the condition for a pattern arm is an INSTANCEOF
-   * test, and the binding happens inside the arm's body.
-   */
-  private Condition armCondition(SwitchEntry entry, ExpressionResult selector, TacBuilder b) {
-    if (entry.getLabels().isEmpty()) {
-      // `default` (or a legacy `default:` with no label).
-      return null;
-    }
-    if (entry.getLabels().size() > 1) {
-      // Multiple labels on one arm (`case 1, 2 ->`). The condition is the OR of the
-      // individual label conditions. Each label is emitted with its own test; the OR is
-      // built as a chain of BINOPs.
-      TacOperand.TacVar acc = null;
-      for (Expression label : entry.getLabels()) {
-        Condition c = labelCondition(label, selector, b);
-        if (c == null) {
-          // A `default` among the labels makes the whole arm unconditional.
-          return null;
-        }
-        if (acc == null) {
-          acc = c.test;
-          continue;
-        }
-        TacOperand.TacVar combined = b.newTemp(TacType.BOOLEAN);
-        b.emit(
-            TacInstruction.builder(TacInstruction.Kind.BINOP)
-                .dest(combined)
-                .binop(BinaryOperator.OR)
-                .lhs1(acc)
-                .lhs2(c.test)
-                .line(TacTranslator.nodeLine(label))
-                .build());
-        acc = combined;
-      }
-      return acc == null ? null : new Condition(acc);
-    }
-    return labelCondition(entry.getLabels().get(0), selector, b);
   }
 
   /**

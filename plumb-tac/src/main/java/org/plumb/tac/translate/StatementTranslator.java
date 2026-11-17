@@ -46,8 +46,13 @@ import com.github.javaparser.ast.stmt.TryStmt;
 import com.github.javaparser.ast.stmt.UnparsableStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import com.github.javaparser.ast.stmt.YieldStmt;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import org.plumb.tac.ir.TacDrop;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
@@ -66,18 +71,51 @@ public final class StatementTranslator {
 
   private final TacTranslator owner;
 
-  /** Break / continue targets for the innermost enclosing loop. */
-  private final ThreadLocal<LoopCtx> loopCtx = ThreadLocal.withInitial(LoopCtx::new);
+  /**
+   * The breakable statements currently open, innermost LAST.
+   *
+   * <p>Java's rule for an unlabelled {@code break} is "the innermost enclosing switch, while, do or
+   * for statement" -- and the innermost is decided by NESTING, not by kind. A {@code break} inside
+   * a loop that is itself inside a switch case leaves the LOOP; a {@code break} directly in a
+   * switch case inside a loop leaves the SWITCH. A single "the switch wins" rule gets the first
+   * case wrong, and the wrong target means the jump skipped the wrong statements.
+   *
+   * <p>So the targets live on a STACK, and {@code break} takes the top of it.
+   *
+   * <p>The switch entry is also what makes {@code break;} inside a case body jump past the switch.
+   * Switch statements are lowered to an if/else-if chain (see {@link #translateSwitch}), and {@code
+   * break} inside a case body must emit a {@code JUMP} to the switch-end label, otherwise the body
+   * of subsequent cases is unreachable in TAC and downstream analyzers miss findings whose source
+   * is on a path past the first matching case (e.g. Juliet CWE191 Variant 15: {@code
+   * switch(6){...}} then {@code switch(7){...}}).
+   */
+  private final ThreadLocal<Deque<BreakTarget>> breakTargets =
+      ThreadLocal.withInitial(ArrayDeque::new);
 
   /**
-   * End label of the innermost enclosing switch -- used by {@code break;} statements inside case
-   * bodies to jump past the switch. Switch statements are lowered to an if/else-if chain (see
-   * {@link #translateSwitch}), and {@code break} inside a case body must emit a {@code JUMP} to the
-   * switch-end label, otherwise the body of subsequent cases is unreachable in TAC and downstream
-   * analyzers miss findings whose source is on a path past the first matching case (e.g. Juliet
-   * CWE191 Variant 15: {@code switch(6){...}} then {@code switch(7){...}}).
+   * Break / continue targets registered for LABELED statements.
+   *
+   * <p>Java lets a {@code break} or {@code continue} name a label instead of the innermost
+   * enclosing loop: {@code break outer;} leaves the loop labelled {@code outer}, not the one
+   * written immediately around the {@code break}. Without this table a labelled break jumped to the
+   * INNERMOST loop's end -- the wrong loop, so the jump skipped the wrong statements and the
+   * remainder of the outer loop still ran.
+   *
+   * <p>The value is the target pair: the label to jump to on {@code break}, and the label to jump
+   * to on {@code continue}. A label on a statement that is not a loop has no continue target,
+   * because Java forbids {@code continue label;} unless the label names a loop.
    */
-  private final ThreadLocal<String> switchEndLabel = new ThreadLocal<>();
+  private final ThreadLocal<Map<String, BreakTarget>> labeledTargets =
+      ThreadLocal.withInitial(LinkedHashMap::new);
+
+  /**
+   * The label of the statement currently being translated, when it was introduced by a {@code
+   * LabeledStmt}.
+   *
+   * <p>The loop translators consume it to register their own targets under that label. It is
+   * cleared as soon as a loop takes it, so a nested loop does not steal the outer loop's label.
+   */
+  private final ThreadLocal<String> pendingLabel = new ThreadLocal<>();
 
   StatementTranslator(TacTranslator owner) {
     this.owner = owner;
@@ -195,6 +233,17 @@ public final class StatementTranslator {
                 .lhs1(yielded.operand())
                 .line(TacTranslator.nodeLine(ys))
                 .build());
+        // The yield LEAVES the switch expression. Without the jump the
+        // execution fell into the next arm, so every arm ran and the
+        // expression's value was whichever arm wrote last.
+        String endLabel = owner.exprs().yieldEndLabel();
+        if (endLabel != null) {
+          b.emit(
+              TacInstruction.builder(TacInstruction.Kind.JUMP)
+                  .label(endLabel)
+                  .line(TacTranslator.nodeLine(ys))
+                  .build());
+        }
       } else {
         // No switch expression in scope. Java rejects this, so the only way to reach it is
         // a `yield` inside a switch STATEMENT -- where it is also a compile error. The
@@ -293,14 +342,35 @@ public final class StatementTranslator {
         // the write would have gone to a fresh temp's
         // slot — the taint would be invisible.
         if (initializer instanceof com.github.javaparser.ast.expr.FieldAccessExpr faeInit) {
-          ExpressionResult scope = owner.exprs().translate(faeInit.getScope(), b);
-          b.emit(
-              TacInstruction.builder(TacInstruction.Kind.FIELDLOAD)
-                  .dest(v)
-                  .lhs1(scope.operand())
-                  .fieldName(faeInit.getNameAsString())
-                  .line(TacTranslator.nodeLine(declarator))
-                  .build());
+          // A scope that names a TYPE is a STATIC field read: `System.out`,
+          // `Integer.MAX_VALUE`. Reading it as an instance field produced a
+          // ghost FIELDLOAD off `this` -- `this.System.out` -- and the static
+          // field's owner was nowhere in the TAC.
+          String scopeFqn = owner.exprs().typeScopeFqn(faeInit.getScope(), b);
+          if (scopeFqn != null) {
+            TacOperand receiver = owner.exprs().classIdentityReceiver(scopeFqn, b);
+            if (receiver == null) {
+              receiver = TacOperand.Const.ofString(scopeFqn);
+            }
+            b.emit(
+                TacInstruction.builder(TacInstruction.Kind.FIELDLOAD)
+                    .dest(v)
+                    .lhs1(receiver)
+                    .fieldName(faeInit.getNameAsString())
+                    .ownerType(scopeFqn)
+                    .line(TacTranslator.nodeLine(declarator))
+                    .build());
+          } else {
+            ExpressionResult scope = owner.exprs().translate(faeInit.getScope(), b);
+            b.emit(
+                TacInstruction.builder(TacInstruction.Kind.FIELDLOAD)
+                    .dest(v)
+                    .lhs1(scope.operand())
+                    .fieldName(faeInit.getNameAsString())
+                    .ownerType(owner.exprs().receiverTypeName(faeInit.getScope(), scope))
+                    .line(TacTranslator.nodeLine(declarator))
+                    .build());
+          }
           // Cache the mapping so a later chained
           // write can find this local as the
           // FIELDSTORE's lhs1.
@@ -333,6 +403,39 @@ public final class StatementTranslator {
     }
   }
 
+  /**
+   * Open a breakable statement.
+   *
+   * <p>If the statement is DIRECTLY labelled, its target is registered under that label so a {@code
+   * break L;} / {@code continue L;} can find it. The pending label is consumed here: a loop nested
+   * inside the labelled loop must not register itself under the same name.
+   *
+   * @param loop true for a loop, false for a switch
+   * @param breakLabel the label a {@code break} jumps to
+   * @param continueLabel the label a {@code continue} jumps to, or null for a switch (Java never
+   *     lets a {@code continue} target a switch)
+   * @return the target that was in scope before, to be passed back to {@link #restoreTarget}
+   */
+  private BreakTarget pushTarget(boolean loop, String breakLabel, String continueLabel) {
+    Deque<BreakTarget> stack = breakTargets.get();
+    BreakTarget previous = stack.peek();
+    BreakTarget target = new BreakTarget(loop, breakLabel, continueLabel);
+    stack.push(target);
+    String label = pendingLabel.get();
+    if (label != null) {
+      pendingLabel.remove();
+      labeledTargets.get().put(label, target);
+    }
+    return previous;
+  }
+
+  /** Close the innermost breakable statement and restore the previous target. */
+  private void restoreTarget(BreakTarget previous) {
+    Deque<BreakTarget> stack = breakTargets.get();
+    if (!stack.isEmpty()) stack.pop();
+    if (previous != null) stack.push(previous);
+  }
+
   private void translateIf(IfStmt is, TacBuilder b) {
     ExpressionResult cond = owner.exprs().translate(is.getCondition(), b);
     String lThen = b.newLabel("L_THEN");
@@ -357,9 +460,7 @@ public final class StatementTranslator {
     String lCond = b.newLabel("L_WHILE_COND");
     String lBody = b.newLabel("L_WHILE_BODY");
     String lEnd = b.newLabel("L_WHILE_END");
-    LoopCtx outer = loopCtx.get();
-    LoopCtx inner = new LoopCtx(lEnd, lCond);
-    loopCtx.set(inner);
+    BreakTarget outer = pushTarget(true, lEnd, lCond);
     b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(lCond).build());
     ExpressionResult cond = owner.exprs().translate(ws.getCondition(), b);
     b.emit(
@@ -373,14 +474,13 @@ public final class StatementTranslator {
     translate(ws.getBody(), b);
     b.emit(TacInstruction.builder(TacInstruction.Kind.JUMP).label(lCond).build());
     b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(lEnd).build());
-    loopCtx.set(outer);
+    restoreTarget(outer);
   }
 
   private void translateDo(DoStmt ds, TacBuilder b) {
     String lBody = b.newLabel("L_DO_BODY");
     String lEnd = b.newLabel("L_DO_END");
-    LoopCtx outer = loopCtx.get();
-    loopCtx.set(new LoopCtx(lEnd, lBody));
+    BreakTarget outer = pushTarget(true, lEnd, lBody);
     b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(lBody).build());
     translate(ds.getBody(), b);
     ExpressionResult cond = owner.exprs().translate(ds.getCondition(), b);
@@ -392,7 +492,7 @@ public final class StatementTranslator {
             .line(TacTranslator.nodeLine(ds))
             .build());
     b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(lEnd).build());
-    loopCtx.set(outer);
+    restoreTarget(outer);
   }
 
   private void translateFor(ForStmt fs, TacBuilder b) {
@@ -403,8 +503,7 @@ public final class StatementTranslator {
     String lBody = b.newLabel("L_FOR_BODY");
     String lUpdate = b.newLabel("L_FOR_UPDATE");
     String lEnd = b.newLabel("L_FOR_END");
-    LoopCtx outer = loopCtx.get();
-    loopCtx.set(new LoopCtx(lEnd, lUpdate));
+    BreakTarget outer = pushTarget(true, lEnd, lUpdate);
     b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(lCond).build());
     if (fs.getCompare().isPresent()) {
       ExpressionResult cond = owner.exprs().translate(fs.getCompare().get(), b);
@@ -435,7 +534,7 @@ public final class StatementTranslator {
             .line(TacTranslator.nodeLine(fs))
             .build());
     b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(lEnd).build());
-    loopCtx.set(outer);
+    restoreTarget(outer);
   }
 
   private void translateForEach(ForEachStmt fes, TacBuilder b) {
@@ -456,8 +555,7 @@ public final class StatementTranslator {
     String lCond = b.newLabel("L_FORE_COND");
     String lBody = b.newLabel("L_FORE_BODY");
     String lEnd = b.newLabel("L_FORE_END");
-    LoopCtx outer = loopCtx.get();
-    loopCtx.set(new LoopCtx(lEnd, lCond));
+    BreakTarget outer = pushTarget(true, lEnd, lCond);
     b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(lCond).build());
     TacOperand.TacVar hasNext = b.newTemp(TacType.BOOLEAN);
     b.emit(
@@ -503,7 +601,7 @@ public final class StatementTranslator {
     translate(fes.getBody(), b);
     b.emit(TacInstruction.builder(TacInstruction.Kind.JUMP).label(lCond).build());
     b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(lEnd).build());
-    loopCtx.set(outer);
+    restoreTarget(outer);
   }
 
   private void translateReturn(ReturnStmt rs, TacBuilder b) {
@@ -528,42 +626,102 @@ public final class StatementTranslator {
   }
 
   private void translateBreak(BreakStmt bs, TacBuilder b) {
-    // Prefer the innermost switch's end label over the loop's break label.
-    // Switch-case break statements have no enclosing LoopCtx, so without
-    // this they would silently drop (logging only a warning) and the
-    // TAC would fall through to the next case body — losing all
-    // statements past the first matching case.
-    String switchEnd = switchEndLabel.get();
-    if (switchEnd != null) {
+    int line = TacTranslator.nodeLine(bs);
+    int column = TacTranslator.nodeColumn(bs);
+
+    // A labelled break names its target explicitly. It is checked FIRST,
+    // because a labelled break inside a switch must leave the labelled
+    // loop, not the switch.
+    if (bs.getLabel().isPresent()) {
+      String label = bs.getLabel().get().getIdentifier();
+      BreakTarget target = labeledTargets.get().get(label);
+      if (target == null || target.breakLabel == null) {
+        b.reportDrop(
+            "java.break.unresolved_label",
+            "no enclosing statement labelled " + label,
+            TacDrop.Impact.SEMANTICS,
+            line,
+            column);
+        return;
+      }
       b.emit(
           TacInstruction.builder(TacInstruction.Kind.JUMP)
-              .label(switchEnd)
-              .line(TacTranslator.nodeLine(bs))
+              .label(target.breakLabel)
+              .line(line)
               .build());
       return;
     }
-    LoopCtx ctx = loopCtx.get();
+
+    // An unlabelled break leaves the INNERMOST enclosing breakable statement
+    // -- a loop or a switch, whichever encloses it more closely. The switch
+    // is not a special case: a `break` in a case body leaves the switch, and
+    // a `break` in a loop inside a case body leaves the LOOP.
+    BreakTarget ctx = breakTargets.get().peek();
     if (ctx == null || ctx.breakLabel == null) {
-      LOG.warn("break outside loop at line {}", TacTranslator.nodeLine(bs));
+      // A break with no target is not valid Java, but the translator must not
+      // drop it silently: the jump is simply not emitted, so the statements
+      // that should have been skipped keep running.
+      b.reportDrop(
+          "java.break.no_target",
+          "break outside any loop or switch",
+          TacDrop.Impact.SEMANTICS,
+          line,
+          column);
       return;
     }
     b.emit(
-        TacInstruction.builder(TacInstruction.Kind.JUMP)
-            .label(ctx.breakLabel)
-            .line(TacTranslator.nodeLine(bs))
-            .build());
+        TacInstruction.builder(TacInstruction.Kind.JUMP).label(ctx.breakLabel).line(line).build());
   }
 
   private void translateContinue(ContinueStmt cs, TacBuilder b) {
-    LoopCtx ctx = loopCtx.get();
+    int line = TacTranslator.nodeLine(cs);
+    int column = TacTranslator.nodeColumn(cs);
+
+    // A labelled continue names its target explicitly.
+    if (cs.getLabel().isPresent()) {
+      String label = cs.getLabel().get().getIdentifier();
+      BreakTarget target = labeledTargets.get().get(label);
+      if (target == null || target.continueLabel == null) {
+        b.reportDrop(
+            "java.continue.unresolved_label",
+            "no enclosing loop labelled " + label,
+            TacDrop.Impact.SEMANTICS,
+            line,
+            column);
+        return;
+      }
+      b.emit(
+          TacInstruction.builder(TacInstruction.Kind.JUMP)
+              .label(target.continueLabel)
+              .line(line)
+              .build());
+      return;
+    }
+
+    // A continue NEVER targets a switch: it always goes to the innermost
+    // enclosing LOOP, skipping any switch in between.
+    BreakTarget ctx = null;
+    for (BreakTarget candidate : breakTargets.get()) {
+      if (candidate.loop) {
+        ctx = candidate;
+        break;
+      }
+    }
     if (ctx == null || ctx.continueLabel == null) {
-      LOG.warn("continue outside loop at line {}", TacTranslator.nodeLine(cs));
+      // Same reasoning as the break: the jump is not emitted, so the
+      // statements that should have been skipped keep running. Record it.
+      b.reportDrop(
+          "java.continue.no_target",
+          "continue outside any loop",
+          TacDrop.Impact.SEMANTICS,
+          line,
+          column);
       return;
     }
     b.emit(
         TacInstruction.builder(TacInstruction.Kind.JUMP)
             .label(ctx.continueLabel)
-            .line(TacTranslator.nodeLine(cs))
+            .line(line)
             .build());
   }
 
@@ -844,63 +1002,119 @@ public final class StatementTranslator {
     // Lower to if/else-if chain: handles the common shape.
     ExpressionResult disc = owner.exprs().translate(ss.getSelector(), b);
     String lEnd = b.newLabel("L_SW_END");
-    // Push the switch end label so `break;` inside case bodies can jump
-    // to it. We save/restore the previous value to handle nested switches.
-    String prevSwitchEnd = switchEndLabel.get();
-    switchEndLabel.set(lEnd);
+    // Open the switch as a breakable statement so `break;` inside case
+    // bodies can jump to its end label. The previous target is restored in
+    // the finally block, which is what makes nested switches work.
+    BreakTarget previous = pushTarget(false, lEnd, null);
     try {
+      int count = ss.getEntries().size();
+
+      // The BODY label of every entry, in source order. The bodies are laid
+      // out one after another, so a case without a `break` falls into the
+      // next one -- which is Java's fall-through.
       List<String> caseLabels = new ArrayList<>();
-      for (int i = 0; i < ss.getEntries().size(); i++) {
+      for (int i = 0; i < count; i++) {
         caseLabels.add(b.newLabel("L_CASE_" + i));
       }
-      for (int i = 0; i < ss.getEntries().size(); i++) {
+
+      // The `default` entry has no test of its own: it is what the LAST test
+      // falls to when nothing matched. A `default` in the middle of the
+      // source therefore does not cut the tests after it short.
+      String defaultBody = null;
+      for (int i = 0; i < count; i++) {
+        if (ss.getEntries().get(i).getLabels().isEmpty()) {
+          defaultBody = caseLabels.get(i);
+          break;
+        }
+      }
+      String noMatch = defaultBody != null ? defaultBody : lEnd;
+
+      // The TEST label of every case LABEL (an entry may carry several:
+      // `case 1, 2 ->`). The tests form a chain: a test that does not match
+      // goes to the NEXT TEST, not into the next entry's body.
+      List<String> testLabels = new ArrayList<>();
+      int[] testStart = new int[count];
+      int[] testCount = new int[count];
+      for (int i = 0; i < count; i++) {
         SwitchEntry entry = ss.getEntries().get(i);
-        // For each label, emit (disc == label) -- goto case_i : fall through.
-        if (entry.getLabels().isEmpty()) {
-          // default — unconditional branch
-          b.emit(TacInstruction.builder(TacInstruction.Kind.JUMP).label(caseLabels.get(i)).build());
+        testStart[i] = testLabels.size();
+        testCount[i] = entry.getLabels().size();
+        for (int k = 0; k < testCount[i]; k++) {
+          testLabels.add(b.newLabel("L_SW_TEST_" + i + "_" + k));
+        }
+      }
+      // The test that follows an entry: the first test of the next entry that
+      // has one, or "nothing matched".
+      String[] afterEntry = new String[count];
+      for (int i = 0; i < count; i++) {
+        String next = noMatch;
+        for (int j = i + 1; j < count; j++) {
+          if (testCount[j] > 0) {
+            next = testLabels.get(testStart[j]);
+            break;
+          }
+        }
+        afterEntry[i] = next;
+      }
+
+      for (int i = 0; i < count; i++) {
+        SwitchEntry entry = ss.getEntries().get(i);
+        if (testCount[i] == 0) {
+          // The default: it has no test. It is reached from the last test's
+          // false edge.
           continue;
         }
-        for (var labelExpr : entry.getLabels()) {
+        // A `when` GUARD is a second test, applied AFTER the label matched.
+        // When it fails, the switch continues with the NEXT case's test --
+        // not with the default.
+        boolean guarded = entry.getGuard().isPresent();
+        String matchLabel = guarded ? b.newLabel("L_SW_MATCH_" + i) : null;
+        for (int k = 0; k < testCount[i]; k++) {
+          var labelExpr = entry.getLabels().get(k);
+          String testLabel = testLabels.get(testStart[i] + k);
+          String falseTarget =
+              (k + 1 < testCount[i]) ? testLabels.get(testStart[i] + k + 1) : afterEntry[i];
+          b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(testLabel).build());
           // Java 21 added pattern labels (`case String s ->`). A pattern label is a
           // TYPE TEST, not a value to compare against: the condition is an INSTANCEOF
           // and the pattern's variables are bound inside the arm's body.
+          TacOperand.TacVar test;
           if (labelExpr instanceof com.github.javaparser.ast.expr.PatternExpr pattern) {
-            TacOperand.TacVar test =
-                owner.modern().emitPatternTestForSwitch(pattern, disc, b, entry);
-            String next = (i + 1 < ss.getEntries().size()) ? caseLabels.get(i + 1) : lEnd;
+            test = owner.modern().emitPatternTestForSwitch(pattern, disc, b, entry);
+          } else {
+            ExpressionResult label = owner.exprs().translate(labelExpr, b);
+            test = b.newTemp(TacType.BOOLEAN);
             b.emit(
-                TacInstruction.builder(TacInstruction.Kind.BRANCH)
-                    .lhs1(test)
-                    .trueLabel(caseLabels.get(i))
-                    .falseLabel(next)
-                    .line(TacTranslator.nodeLine(entry))
+                TacInstruction.builder(TacInstruction.Kind.BINOP)
+                    .dest(test)
+                    .binop(org.plumb.tac.ir.BinaryOperator.EQ)
+                    .lhs1(disc.operand())
+                    .lhs2(label.operand())
+                    .line(TacTranslator.nodeLine(labelExpr))
                     .build());
-            continue;
           }
-          ExpressionResult label = owner.exprs().translate(labelExpr, b);
-          TacOperand.TacVar cmp = b.newTemp(TacType.BOOLEAN);
-          b.emit(
-              TacInstruction.builder(TacInstruction.Kind.BINOP)
-                  .dest(cmp)
-                  .binop(org.plumb.tac.ir.BinaryOperator.EQ)
-                  .lhs1(disc.operand())
-                  .lhs2(label.operand())
-                  .line(TacTranslator.nodeLine(labelExpr))
-                  .build());
-          String next = (i + 1 < ss.getEntries().size()) ? caseLabels.get(i + 1) : lEnd;
           b.emit(
               TacInstruction.builder(TacInstruction.Kind.BRANCH)
-                  .lhs1(cmp)
+                  .lhs1(test)
+                  .trueLabel(guarded ? matchLabel : caseLabels.get(i))
+                  .falseLabel(falseTarget)
+                  .line(TacTranslator.nodeLine(entry))
+                  .build());
+        }
+        if (guarded) {
+          b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(matchLabel).build());
+          ExpressionResult guardValue = owner.exprs().translate(entry.getGuard().get(), b);
+          b.emit(
+              TacInstruction.builder(TacInstruction.Kind.BRANCH)
+                  .lhs1(guardValue.operand())
                   .trueLabel(caseLabels.get(i))
-                  .falseLabel(next)
+                  .falseLabel(afterEntry[i])
                   .line(TacTranslator.nodeLine(entry))
                   .build());
         }
       }
-      // No label matched: jump to end.
-      b.emit(TacInstruction.builder(TacInstruction.Kind.JUMP).label(lEnd).build());
-      for (int i = 0; i < ss.getEntries().size(); i++) {
+
+      for (int i = 0; i < count; i++) {
         SwitchEntry entry = ss.getEntries().get(i);
         b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(caseLabels.get(i)).build());
         // A pattern label's variables are bound HERE, inside the arm's body, so that
@@ -912,7 +1126,7 @@ public final class StatementTranslator {
       }
       b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(lEnd).build());
     } finally {
-      switchEndLabel.set(prevSwitchEnd);
+      restoreTarget(previous);
     }
   }
 
@@ -935,10 +1149,45 @@ public final class StatementTranslator {
     }
   }
 
+  /**
+   * Translate a labeled statement.
+   *
+   * <p>A label has two jobs. It names a JUMP TARGET for {@code break label;} and {@code continue
+   * label;}, and it scopes those targets to the labeled statement.
+   *
+   * <p>When the labeled statement is a LOOP, the label names that loop's own break and continue
+   * targets, so the loop translator registers them (see {@link #registerPendingLabel}). When the
+   * labeled statement is anything else -- a block, say -- {@code break label;} leaves it, so the
+   * statement gets an end label of its own to jump to; Java forbids {@code continue label;} there,
+   * so that form has no continue target.
+   */
   private void translateLabeled(LabeledStmt ls, TacBuilder b) {
-    // A labeled statement; we don't model labels specially, just
-    // translate the inner statement.
-    translate(ls.getStatement(), b);
+    String label = ls.getLabel().getIdentifier();
+    Statement inner = ls.getStatement();
+    boolean isLoop =
+        inner instanceof WhileStmt
+            || inner instanceof DoStmt
+            || inner instanceof ForStmt
+            || inner instanceof ForEachStmt;
+
+    if (isLoop) {
+      pendingLabel.set(label);
+      try {
+        translate(inner, b);
+      } finally {
+        pendingLabel.remove();
+      }
+      return;
+    }
+
+    String lEnd = b.newLabel("L_LABEL_END");
+    labeledTargets.get().put(label, new BreakTarget(false, lEnd, null));
+    try {
+      translate(inner, b);
+      b.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(lEnd).build());
+    } finally {
+      labeledTargets.get().remove(label);
+    }
   }
 
   private void translateSynchronized(SynchronizedStmt syn, TacBuilder b) {
@@ -954,18 +1203,21 @@ public final class StatementTranslator {
     as.getMessage().ifPresent(m -> owner.exprs().translate(m, b));
   }
 
-  /** Per-thread break/continue label context. */
-  private static final class LoopCtx {
+  /**
+   * One breakable statement: what a {@code break} and a {@code continue} may target.
+   *
+   * <p>{@link #loop} tells the two apart. A switch is breakable but not continuable -- Java never
+   * lets a {@code continue} target a switch -- so its continue label is null.
+   */
+  private static final class BreakTarget {
+    final boolean loop;
     final String breakLabel;
     final String continueLabel;
 
-    LoopCtx(String breakLabel, String continueLabel) {
+    BreakTarget(boolean loop, String breakLabel, String continueLabel) {
+      this.loop = loop;
       this.breakLabel = breakLabel;
       this.continueLabel = continueLabel;
-    }
-
-    LoopCtx() {
-      this(null, null);
     }
   }
 }

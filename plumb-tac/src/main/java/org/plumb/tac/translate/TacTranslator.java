@@ -43,6 +43,8 @@ import com.github.javaparser.ast.expr.SingleMemberAnnotationExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
+import com.github.javaparser.ast.stmt.ExplicitConstructorInvocationStmt;
+import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.type.Type;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -191,6 +193,44 @@ public final class TacTranslator {
   void recordStaticField(String className, String fieldName) {
     if (className == null || fieldName == null || fieldName.isEmpty()) return;
     staticFieldsByClass.computeIfAbsent(className, k -> new java.util.HashSet<>()).add(fieldName);
+  }
+
+  /**
+   * The methods each class declares, split by whether they are static.
+   *
+   * <p>The table exists for the same reason the static-field table does: the symbol resolver cannot
+   * answer "is this method static?" for a class declared in the scanned source, because that class
+   * is not on the reflection type solver's classpath. Without the table an unqualified call cannot
+   * be told apart from a static one, and the difference decides whether the call passes the
+   * implicit {@code this} as its receiver.
+   */
+  private final java.util.Map<String, java.util.Set<String>> staticMethodsByClass =
+      new java.util.HashMap<>();
+
+  private final java.util.Map<String, java.util.Set<String>> instanceMethodsByClass =
+      new java.util.HashMap<>();
+
+  /** Record that {@code className} declares the method {@code methodName}. */
+  void recordMethod(String className, String methodName, boolean isStatic) {
+    if (className == null || className.isEmpty()) return;
+    if (methodName == null || methodName.isEmpty()) return;
+    java.util.Map<String, java.util.Set<String>> table =
+        isStatic ? staticMethodsByClass : instanceMethodsByClass;
+    table.computeIfAbsent(className, k -> new java.util.HashSet<>()).add(methodName);
+  }
+
+  /** Is {@code methodName} a static method of {@code className}? */
+  boolean isStaticMethodOf(String className, String methodName) {
+    if (className == null || methodName == null) return false;
+    java.util.Set<String> methods = staticMethodsByClass.get(className);
+    return methods != null && methods.contains(methodName);
+  }
+
+  /** Is {@code methodName} an instance method of {@code className}? */
+  boolean isInstanceMethodOf(String className, String methodName) {
+    if (className == null || methodName == null) return false;
+    java.util.Set<String> methods = instanceMethodsByClass.get(className);
+    return methods != null && methods.contains(methodName);
   }
 
   /** Is {@code fieldName} a static field of {@code className}? */
@@ -543,6 +583,24 @@ public final class TacTranslator {
         break;
       }
     }
+    // The INSTANCE field initializers of this class. Every constructor runs them,
+    // so they are collected here and handed to each one.
+    //
+    // Before this, the initializers only reached the synthetic `<init>`, and that
+    // synthetic function was built ONLY when the class had no constructor of its
+    // own. A class with an explicit constructor therefore had NO evidence of its
+    // field initializers anywhere in the TAC -- and the hardcoded-password rule,
+    // which reads exactly that synthetic constructor, reported nothing.
+    List<InstanceFieldInit> instanceFieldInits = new ArrayList<>();
+    for (BodyDeclaration<?> bd : members) {
+      if (!(bd instanceof FieldDeclaration fd)) continue;
+      if (fd.isStatic()) continue;
+      for (VariableDeclarator v : fd.getVariables()) {
+        if (v.getInitializer().isPresent()) {
+          instanceFieldInits.add(new InstanceFieldInit(fd, v, v.getInitializer().get()));
+        }
+      }
+    }
     TacBuilder syntheticInit = null;
     if (!hasExplicitCtor) {
       for (BodyDeclaration<?> bd : members) {
@@ -649,8 +707,14 @@ public final class TacTranslator {
       }
     }
 
+    // An interface method with no body is implicitly STATIC. The modifier is not written
+    // on it, so the flag has to come from the context.
+    boolean interfaceContext =
+        td instanceof com.github.javaparser.ast.body.ClassOrInterfaceDeclaration cid
+            && cid.isInterface();
     for (BodyDeclaration<?> bd : members) {
       if (bd instanceof MethodDeclaration md) {
+        recordMethod(classShortName, md.getNameAsString(), md.isStatic() || interfaceContext);
         String qualified =
             prefix.isEmpty() ? md.getNameAsString() : prefix + "." + md.getNameAsString();
         translateCallable(
@@ -674,7 +738,8 @@ public final class TacTranslator {
             classAnns,
             List.of(),
             enclosingClassName,
-            qualifiedDeclaringType(prefix, classShortName));
+            qualifiedDeclaringType(prefix, classShortName),
+            instanceFieldInits);
       } else if (bd instanceof com.github.javaparser.ast.body.CompactConstructorDeclaration ccd) {
         // A COMPACT constructor: `record Point(int x, int y) { Point { validate(x); } }`.
         //
@@ -762,6 +827,16 @@ public final class TacTranslator {
     if (clinit != null) finishFunction(clinit, -1);
     if (syntheticInit != null) finishFunction(syntheticInit, -1);
   }
+
+  /**
+   * An instance-field initializer: the field it initializes, the declarator that names it, and the
+   * expression that gives its value.
+   *
+   * <p>Every constructor of the class runs these, so they are collected once per class and handed
+   * to each constructor.
+   */
+  private record InstanceFieldInit(
+      FieldDeclaration declaration, VariableDeclarator declarator, Expression initializer) {}
 
   /**
    * Emit an instance-field initializer as a MOVE + FIELDSTORE pair. The MOVE evaluates the
@@ -908,6 +983,37 @@ public final class TacTranslator {
       List<String> methodAnns,
       String enclosingClass,
       String declaringType) {
+    translateCallable(
+        decl,
+        name,
+        signature,
+        retType,
+        body,
+        classAnns,
+        methodAnns,
+        enclosingClass,
+        declaringType,
+        List.of());
+  }
+
+  /**
+   * Translate a callable, running the class's INSTANCE FIELD INITIALIZERS first.
+   *
+   * <p>The initializers run inside every constructor, after the {@code super()} call and before the
+   * constructor's own body. Java puts them there, and the order matters: an initializer that reads
+   * a field the superclass set would otherwise see the field unset.
+   */
+  private <T extends CallableDeclaration<T>> void translateCallable(
+      T decl,
+      String name,
+      String signature,
+      Type retType,
+      BlockStmt body,
+      List<String> classAnns,
+      List<String> methodAnns,
+      String enclosingClass,
+      String declaringType,
+      List<InstanceFieldInit> instanceFieldInits) {
 
     TacType mappedRet =
         retType == null
@@ -1009,9 +1115,58 @@ public final class TacTranslator {
       }
       b.locals().add(new TacOperand.TacVar("this", TacType.ofClass(thisType), false));
     }
-    if (body != null) stmtTranslator.translateBlock(body, b);
+    if (!instanceFieldInits.isEmpty()) {
+      // A constructor needs a `this` to write the fields through. The field
+      // state is keyed on the receiver's type, so the receiver carries the
+      // class -- a bare `this` would name no class at all.
+      String thisType =
+          (declaringType != null && !declaringType.isEmpty())
+              ? declaringType
+              : source.primaryTypeName();
+      b.locals().add(new TacOperand.TacVar("this", TacType.ofClass(thisType), false));
+      // The initializers run AFTER the `super()` call and BEFORE the rest of
+      // the constructor's body.
+      if (body != null) {
+        List<Statement> statements = body.getStatements();
+        int superCall = -1;
+        for (int i = 0; i < statements.size(); i++) {
+          if (statements.get(i) instanceof ExplicitConstructorInvocationStmt) {
+            superCall = i;
+            break;
+          }
+        }
+        if (superCall < 0) {
+          emitInstanceFieldInits(b, instanceFieldInits);
+          stmtTranslator.translateBlock(body, b);
+        } else {
+          for (int i = 0; i <= superCall; i++) {
+            stmtTranslator.translate(statements.get(i), b);
+          }
+          emitInstanceFieldInits(b, instanceFieldInits);
+          for (int i = superCall + 1; i < statements.size(); i++) {
+            stmtTranslator.translate(statements.get(i), b);
+          }
+        }
+      } else {
+        emitInstanceFieldInits(b, instanceFieldInits);
+      }
+    } else if (body != null) {
+      stmtTranslator.translateBlock(body, b);
+    }
     ensureReturn(b, mappedRet);
     finishFunction(b, nodeLine(decl));
+  }
+
+  /**
+   * Emit every instance-field initializer of a class into a constructor.
+   *
+   * <p>Each initializer is a MOVE of the value plus a FIELDSTORE of it into the field, exactly as
+   * the synthetic constructor does.
+   */
+  private void emitInstanceFieldInits(TacBuilder b, List<InstanceFieldInit> inits) {
+    for (InstanceFieldInit init : inits) {
+      emitInstanceFieldInit(b, init.declaration(), init.declarator(), init.initializer());
+    }
   }
 
   /**
@@ -1498,10 +1653,26 @@ public final class TacTranslator {
       // The constant is compiler-generated.
       b.markSynthetic();
       b.markGenerated(true);
-      // The constant's own value is the constant. There is nothing further to model: it
-      // carries no taint of its own, because a constant in an enum declaration is a
-      // literal.
-      b.emit(TacInstruction.builder(TacInstruction.Kind.NOP).line(nodeLine(ec)).build());
+      // The constant's own value is the constant -- but the constant IS an
+      // instance of the enum, and the compiler allocates it by calling the
+      // enum's constructor with the arguments the source wrote (`PLUS("+")`).
+      //
+      // The old lowering emitted a bare NOP and never read
+      // `ec.getArguments()`, so those arguments never entered the TAC: a
+      // constant whose argument carried a taint was invisible to every rule.
+      List<TacOperand> ctorArgs = new ArrayList<>();
+      for (Expression arg : ec.getArguments()) {
+        ctorArgs.add(exprTranslator.translate(arg, b).operand());
+      }
+      TacOperand.TacVar instance = b.newTemp(enumType);
+      b.emit(
+          TacInstruction.builder(TacInstruction.Kind.NEW)
+              .dest(instance)
+              .ctorType(enumType)
+              .calleeSig(TacTranslator.ctorSig(qualifiedPrefix + enumName, ctorArgs.size()))
+              .args(ctorArgs)
+              .line(nodeLine(ec))
+              .build());
       finishFunction(b, nodeLine(ec));
     }
 

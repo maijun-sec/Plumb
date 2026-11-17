@@ -46,8 +46,8 @@ import java.util.Set;
  * <h2>Why the module cache is not enough</h2>
  *
  * <p>The toolchain's module cache holds the dependencies that were <b>downloaded</b>. A dependency
- * that was <b>replaced</b> -- {@code replace other.example/mod =&gt; ../other-repo} -- is not in the
- * cache at all: it is a directory on disk, often in another repository. And a dependency that
+ * that was <b>replaced</b> -- {@code replace other.example/mod =&gt; ../other-repo} -- is not in
+ * the cache at all: it is a directory on disk, often in another repository. And a dependency that
  * belongs to another module of a <b>workspace</b> ({@code go.work}) is in the workspace, not in the
  * cache either.
  *
@@ -75,9 +75,9 @@ public final class GoModuleSources {
    * The modules that live on disk, keyed by their module path.
    *
    * <p>The map is what the analysis needs when a dependency is neither in the module cache nor in
-   * the capture: a dependency that was <b>replaced</b>, or one that belongs to another module of
-   * a <b>workspace</b>. The module path is the prefix its import paths start with, so the map
-   * answers "where does this import path live" for every package of the module.
+   * the capture: a dependency that was <b>replaced</b>, or one that belongs to another module of a
+   * <b>workspace</b>. The module path is the prefix its import paths start with, so the map answers
+   * "where does this import path live" for every package of the module.
    *
    * <p>A replaced module's own build description is read as well, so that a replacement of a
    * replacement is found too.
@@ -138,7 +138,8 @@ public final class GoModuleSources {
     }
     Path base = modules.get(best);
     String rest = importPath.equals(best) ? "" : importPath.substring(best.length() + 1);
-    Path directory = rest.isEmpty() ? base : base.resolve(rest.replace('/', java.io.File.separatorChar));
+    Path directory =
+        rest.isEmpty() ? base : base.resolve(rest.replace('/', java.io.File.separatorChar));
     // A directory that is not there cannot be read, and naming it would only
     // replace one missing import with another.
     return Files.isDirectory(directory) ? directory : null;

@@ -21,6 +21,7 @@
  */
 package org.plumb.tac.ir;
 
+import java.util.List;
 import java.util.Objects;
 
 // IR-serializable: this class participates in the disk-cache contract.
@@ -122,14 +123,96 @@ public final class TacType implements java.io.Serializable {
    */
   private final boolean nullable;
 
+  /**
+   * What the solver may assume about this type's numbers, or {@code null} when nothing is known.
+   *
+   * <p>{@code null} is the default for every type built today, so the engine's behaviour is
+   * unchanged until a frontend states a domain. That is deliberate: an absent domain means "make no
+   * assumption", which is the safe reading.
+   *
+   * <p>A domain never makes the solver's job easier by lying -- it says what the type IS, and the
+   * solver uses it to know when its own integer model is an approximation. See {@link
+   * TacValueDomain}.
+   */
+  private final TacValueDomain domain;
+
+  /**
+   * The members of a UNION type, or an empty list when this is not a union.
+   *
+   * <p><b>Why the members and not a name.</b> A union has to be recorded as the set of types it is
+   * made of. Splicing the member names into one string ({@code "A|B"}) produces a type name that
+   * matches no type in the program, so every lookup of it fails and every rule that fires on it
+   * fires on nothing. The members are kept as types, so a rule can ask "is any member of this union
+   * a buffer?" and get an answer.
+   *
+   * <p>Empty for every type built before this field existed, so equality and hashing are unchanged
+   * for them.
+   */
+  private final List<TacType> unionMembers;
+
   private TacType(Kind kind, Object payload) {
-    this(kind, payload, true);
+    this(kind, payload, true, null);
   }
 
   private TacType(Kind kind, Object payload, boolean nullable) {
+    this(kind, payload, nullable, null);
+  }
+
+  private TacType(Kind kind, Object payload, boolean nullable, TacValueDomain domain) {
+    this(kind, payload, nullable, domain, null);
+  }
+
+  private TacType(
+      Kind kind, Object payload, boolean nullable, TacValueDomain domain, List<TacType> union) {
     this.kind = kind;
     this.payload = payload;
     this.nullable = nullable;
+    this.domain = domain;
+    this.unionMembers = union == null || union.isEmpty() ? List.of() : List.copyOf(union);
+  }
+
+  /**
+   * Returns a copy of this type carrying the given UNION members.
+   *
+   * <p>Returns {@code this} when the members are already the requested ones. Passing an empty list
+   * removes the union -- the same as never having had one.
+   */
+  public TacType withUnionMembers(List<TacType> members) {
+    List<TacType> next = members == null ? List.of() : List.copyOf(members);
+    if (next.isEmpty() && unionMembers.isEmpty()) return this;
+    if (next.equals(unionMembers)) return this;
+    return new TacType(kind, payload, nullable, domain, next);
+  }
+
+  /**
+   * The members of this union type, or an empty list when this is not a union.
+   *
+   * <p>Never null.
+   */
+  public List<TacType> unionMembers() {
+    return unionMembers == null ? List.of() : unionMembers;
+  }
+
+  /**
+   * Returns a copy of this type carrying the given value domain.
+   *
+   * <p>Returns {@code this} when the domain is already the requested one, so repeated calls are
+   * cheap and the singleton constants stay canonical.
+   *
+   * <p>Passing {@code null} removes the domain -- the same as never having stated one.
+   */
+  public TacType withDomain(TacValueDomain value) {
+    if (Objects.equals(domain, value)) return this;
+    // The union members come LAST: the five-argument constructor's fifth
+    // parameter is the union, not the domain. Leaving them out here dropped
+    // the union whenever a domain was stated -- and the union is what says
+    // "this value is one of these types".
+    return new TacType(kind, payload, nullable, value, unionMembers);
+  }
+
+  /** The value domain of this type, or {@code null} when nothing is known about it. */
+  public TacValueDomain domain() {
+    return domain;
   }
 
   /**
@@ -140,7 +223,7 @@ public final class TacType implements java.io.Serializable {
    */
   public TacType nonNull() {
     if (!nullable) return this;
-    return new TacType(kind, payload, false);
+    return new TacType(kind, payload, false, domain, unionMembers);
   }
 
   /**
@@ -151,7 +234,7 @@ public final class TacType implements java.io.Serializable {
    */
   public TacType nullable() {
     if (nullable) return this;
-    return new TacType(kind, payload, true);
+    return new TacType(kind, payload, true, domain, unionMembers);
   }
 
   /** Whether a reference of this type may hold {@code null}. */
@@ -224,7 +307,8 @@ public final class TacType implements java.io.Serializable {
     String base = displayName();
     // A non-nullable reference is worth showing: it is the marker the null-dereference checker
     // reads, and seeing it in a dump explains why a finding was suppressed.
-    if (!nullable && isReference()) return base + " (non-null)";
+    if (!nullable && isReference()) base = base + " (non-null)";
+    if (domain != null) base = base + " " + domain;
     return base;
   }
 
@@ -238,11 +322,22 @@ public final class TacType implements java.io.Serializable {
     // TacType.STRING) is unaffected, because every singleton is nullable and every type built
     // through ofClass/arrayOf is nullable too.
     if (nullable != t.nullable) return false;
+    // The value domain participates in equality, for the same reason nullability does: two types
+    // with different domains are different types as far as the solver is concerned. A float and a
+    // double have different Kind, but a double with no domain and a double that says
+    // Floating(53,11) are NOT the same type -- the first is "a number of unknown precision", the
+    // second is "an IEEE-754 double". Collapsing them would let a lookup for one find the other.
+    // Existing code is unaffected: every type built today has a null domain.
+    if (!Objects.equals(domain, t.domain)) return false;
+    // The union members participate for the same reason: a "string | null" and
+    // a plain "string" are different types, and collapsing them would let a
+    // lookup for one find the other.
+    if (!unionMembers().equals(t.unionMembers())) return false;
     return Objects.equals(payload, t.payload);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(kind, payload, nullable);
+    return Objects.hash(kind, payload, nullable, domain, unionMembers);
   }
 }

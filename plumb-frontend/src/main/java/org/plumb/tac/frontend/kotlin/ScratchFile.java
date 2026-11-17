@@ -30,23 +30,22 @@ import java.nio.file.StandardCopyOption;
 /**
  * A source file staged on disk so the Analysis API can resolve it.
  *
- * <p><b>Why a file has to exist on disk.</b> The Analysis API is a PSI-based API over
- * IntelliJ's virtual file system: it resolves a file that is <i>in the project's content
- * scope</i>, not a string. There is no public API for handing it an in-memory buffer.
- * So the frontend writes the source text to a scratch file under the session's source
- * root, resolves that, and removes the scratch file again.
+ * <p><b>Why a file has to exist on disk.</b> The Analysis API is a PSI-based API over IntelliJ's
+ * virtual file system: it resolves a file that is <i>in the project's content scope</i>, not a
+ * string. There is no public API for handing it an in-memory buffer. So the frontend writes the
+ * source text to a scratch file under the session's source root, resolves that, and removes the
+ * scratch file again.
  *
- * <p><b>Why the scratch file is not the original.</b> The caller's {@code path} may point
- * at a file that does not exist on disk (the CLI may be handed source text for a path it
- * never wrote), or at a file whose content differs from the {@code source} string (a
- * compiler plugin's virtual source, an unsaved editor buffer). Writing the text to a
- * scratch file makes the analysed content exactly the text the caller passed in, which is
- * what "parse this source" means.
+ * <p><b>Why the scratch file is not the original.</b> The caller's {@code path} may point at a file
+ * that does not exist on disk (the CLI may be handed source text for a path it never wrote), or at
+ * a file whose content differs from the {@code source} string (a compiler plugin's virtual source,
+ * an unsaved editor buffer). Writing the text to a scratch file makes the analysed content exactly
+ * the text the caller passed in, which is what "parse this source" means.
  *
- * <p><b>The scratch file's name.</b> It keeps the original file's name, so the package
- * declaration inside the source and the file name agree the way the Kotlin compiler
- * expects. It lives in a directory named after the original, so two files with the same
- * name in different packages do not collide.
+ * <p><b>The scratch file's name.</b> It keeps the original file's name, so the package declaration
+ * inside the source and the file name agree the way the Kotlin compiler expects. It lives in a
+ * directory named after the original, so two files with the same name in different packages do not
+ * collide.
  */
 final class ScratchFile {
 
@@ -67,17 +66,16 @@ final class ScratchFile {
   }
 
   /**
- * Stages {@code source} under {@code root}.
+   * Stages {@code source} under {@code root}.
    *
-   * <p>The staged file's path is <b>unique per call</b>. The Analysis API's session
-   * caches the PSI of every file it has seen, and the virtual file system caches the
-   * file itself; a second parse that reused the same path would be handed the <i>first</i>
-   * parse's file. So each parse gets its own directory, and the file inside it keeps the
-   * original's name so that the package declaration and the file name agree the way the
-   * Kotlin compiler expects.
+   * <p>The staged file's path is <b>unique per call</b>. The Analysis API's session caches the PSI
+   * of every file it has seen, and the virtual file system caches the file itself; a second parse
+   * that reused the same path would be handed the <i>first</i> parse's file. So each parse gets its
+   * own directory, and the file inside it keeps the original's name so that the package declaration
+   * and the file name agree the way the Kotlin compiler expects.
    *
-   * @param root the session's source root -- the scratch file must be under it, or the
-   *     Analysis API will not resolve it
+   * @param root the session's source root -- the scratch file must be under it, or the Analysis API
+   *     will not resolve it
    * @param origin the original file's path, used to derive the scratch file's name
    * @param source the source text
    * @return the staged file, or {@code null} when it could not be staged
@@ -113,8 +111,8 @@ final class ScratchFile {
   /**
    * Removes the staged file.
    *
-   * <p>Best-effort: a failure to clean up must not fail the parse. The per-parse
-   * directory is removed too, so the scratch area does not accumulate.
+   * <p>Best-effort: a failure to clean up must not fail the parse. The per-parse directory is
+   * removed too, so the scratch area does not accumulate.
    */
   void delete() {
     try {
@@ -191,8 +189,8 @@ final class ScratchFile {
   /**
    * Copies a file into a directory.
    *
-   * <p>Used when the session's content scope has to be extended with a file that lives
-   * outside the configured source root.
+   * <p>Used when the session's content scope has to be extended with a file that lives outside the
+   * configured source root.
    *
    * @param file the file to copy
    * @param directory the destination directory

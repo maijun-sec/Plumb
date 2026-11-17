@@ -37,13 +37,12 @@ import org.plumb.tac.ir.TacType;
 /**
  * The TAC's variable identity, and what it means for the Kotlin frontend.
  *
- * <p><b>The rule.</b> A {@link TacOperand.TacVar}'s identity is its <i>name</i> and its
- * <i>temp flag</i> -- deliberately not its type. A frontend may learn a variable's type
- * after it first saw the variable (unresolved {@code UNKNOWN} becomes a resolved class; a
- * platform type becomes nullable; a smart cast narrows a nullable type), and each
- * refinement must produce the <i>same</i> storage location. If it did not, the taint
- * recorded under the old key would not be found under the new one, and the failure would
- * be invisible: no exception, just a missing finding.
+ * <p><b>The rule.</b> A {@link TacOperand.TacVar}'s identity is its <i>name</i> and its <i>temp
+ * flag</i> -- deliberately not its type. A frontend may learn a variable's type after it first saw
+ * the variable (unresolved {@code UNKNOWN} becomes a resolved class; a platform type becomes
+ * nullable; a smart cast narrows a nullable type), and each refinement must produce the <i>same</i>
+ * storage location. If it did not, the taint recorded under the old key would not be found under
+ * the new one, and the failure would be invisible: no exception, just a missing finding.
  */
 class KotlinTacVarIdentityTest {
 

@@ -28,27 +28,25 @@ import org.plumb.tac.ir.TacType;
 /**
  * Maps Scala 3 types onto {@link TacType}.
  *
- * <p><b>Why the mapping is lossy, and why that is fine.</b> The TAC models only what the
- * dataflow engine needs: primitives, a tagged class reference, arrays, and the {@code void} /
- * {@code null} / {@code unknown} sentinels. A Scala {@code Map[String, List[Int]]} is just
- * {@code CLASS("scala.collection.immutable.Map")}; generics are erased. That is the same
- * trade the Java frontend makes, so a checker sees one shape regardless of the source
- * language.
+ * <p><b>Why the mapping is lossy, and why that is fine.</b> The TAC models only what the dataflow
+ * engine needs: primitives, a tagged class reference, arrays, and the {@code void} / {@code null} /
+ * {@code unknown} sentinels. A Scala {@code Map[String, List[Int]]} is just {@code
+ * CLASS("scala.collection.immutable.Map")}; generics are erased. That is the same trade the Java
+ * frontend makes, so a checker sees one shape regardless of the source language.
  *
- * <p><b>Nullability.</b> Scala has no non-null type system. {@code String} and {@code
- * String?} do not exist as distinct types; every reference may hold {@code null}. So every
- * reference this mapper produces stays <b>nullable</b>, which is the {@link TacType}
- * default. The frontend therefore never claims a Scala value is non-null, and a
- * null-dereference finding on Scala code is reported exactly as it would be for Java.
+ * <p><b>Nullability.</b> Scala has no non-null type system. {@code String} and {@code String?} do
+ * not exist as distinct types; every reference may hold {@code null}. So every reference this
+ * mapper produces stays <b>nullable</b>, which is the {@link TacType} default. The frontend
+ * therefore never claims a Scala value is non-null, and a null-dereference finding on Scala code is
+ * reported exactly as it would be for Java.
  *
- * <p><b>{@code Option} is not special.</b> {@code Option[T]} is an ordinary class
- * reference ({@code scala.Option}), not a null-safety mechanism. Treating it as one would
- * let a null-dereference checker prove safety from an {@code Option} -- which the
- * "nullability may only suppress, never prove" rule forbids.
+ * <p><b>{@code Option} is not special.</b> {@code Option[T]} is an ordinary class reference ({@code
+ * scala.Option}), not a null-safety mechanism. Treating it as one would let a null-dereference
+ * checker prove safety from an {@code Option} -- which the "nullability may only suppress, never
+ * prove" rule forbids.
  *
- * <p><b>Arrays.</b> {@code Array[Int]} maps to {@code TacType.arrayOf(INT)}. Scala's
- * {@code Array} is a Java array at runtime, so the array component type is what the
- * dataflow engine needs.
+ * <p><b>Arrays.</b> {@code Array[Int]} maps to {@code TacType.arrayOf(INT)}. Scala's {@code Array}
+ * is a Java array at runtime, so the array component type is what the dataflow engine needs.
  */
 final class ScalaTypeMapper {
 
@@ -125,10 +123,9 @@ final class ScalaTypeMapper {
   /**
    * The fully-qualified name of a type's class, or {@code null} when the type has none.
    *
-   * <p>{@code classSymbol} already resolves the aliases that matter: Scala's {@code
-   * String} is {@code scala.Predef.String}, whose class symbol is {@code
-   * java.lang.String}. That is the name the TAC wants, because it is the name the
-   * bytecode and the Java frontend use for the same type.
+   * <p>{@code classSymbol} already resolves the aliases that matter: Scala's {@code String} is
+   * {@code scala.Predef.String}, whose class symbol is {@code java.lang.String}. That is the name
+   * the TAC wants, because it is the name the bytecode and the Java frontend use for the same type.
    */
   private String className(Type type) {
     dotty.tools.dotc.core.Symbols.Symbol symbol = type.classSymbol(ctx);
@@ -142,14 +139,13 @@ final class ScalaTypeMapper {
   /**
    * Whether the type is an array type.
    *
-   * <p>Scala's {@code Array[T]} is {@code scala.Array} applied to a type argument. It is
-   * not a Java array type in the type system, so the check cannot be "is it a Java
-   * array" -- it is "is the class symbol the Array class".
+   * <p>Scala's {@code Array[T]} is {@code scala.Array} applied to a type argument. It is not a Java
+   * array type in the type system, so the check cannot be "is it a Java array" -- it is "is the
+   * class symbol the Array class".
    */
   private boolean isArray(Type type) {
     dotty.tools.dotc.core.Symbols.Symbol symbol = type.classSymbol(ctx);
-    return symbol != null
-        && "scala.Array".equals(symbol.denot(ctx).fullName(ctx).toString());
+    return symbol != null && "scala.Array".equals(symbol.denot(ctx).fullName(ctx).toString());
   }
 
   /**

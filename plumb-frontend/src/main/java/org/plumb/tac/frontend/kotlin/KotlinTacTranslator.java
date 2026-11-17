@@ -66,27 +66,26 @@ import org.plumb.tac.translate.TacBuilder;
  * Lowers one Kotlin function body to TAC.
  *
  * <p><b>Why PSI and not the Analysis API for the body.</b> The Analysis API gives types and
- * symbols; it does not give a structured, walkable statement tree that a three-address
- * lowering can consume. The Kotlin PSI ({@code KtBlockExpression}, {@code KtIfExpression},
- * {@code KtCallExpression}, ...) is exactly that tree, and it is what the Analysis API's
- * own {@code getPsi()} hands back. So the hybrid is: PSI for the <i>shape</i> of the body,
- * the Analysis API for the <i>meaning</i> of the types.
+ * symbols; it does not give a structured, walkable statement tree that a three-address lowering can
+ * consume. The Kotlin PSI ({@code KtBlockExpression}, {@code KtIfExpression}, {@code
+ * KtCallExpression}, ...) is exactly that tree, and it is what the Analysis API's own {@code
+ * getPsi()} hands back. So the hybrid is: PSI for the <i>shape</i> of the body, the Analysis API
+ * for the <i>meaning</i> of the types.
  *
  * <p><b>What this translator lowers.</b> The subset that the dataflow engine can act on:
- * assignments, calls, returns, branches, string templates, property reads and writes, and
- * the standard library calls that appear in security-relevant Kotlin (the
- * {@code requireNotNull} family, the string builders, the collection factories).
+ * assignments, calls, returns, branches, string templates, property reads and writes, and the
+ * standard library calls that appear in security-relevant Kotlin (the {@code requireNotNull}
+ * family, the string builders, the collection factories).
  *
- * <p><b>What it does not lower.</b> Coroutines, lambdas with captured state, inline classes
- * and the compiler's own lowering of {@code when} into a {@code tableswitch}. A construct
- * that is not lowered is reported as a problem rather than silently dropped -- see {@link
+ * <p><b>What it does not lower.</b> Coroutines, lambdas with captured state, inline classes and the
+ * compiler's own lowering of {@code when} into a {@code tableswitch}. A construct that is not
+ * lowered is reported as a problem rather than silently dropped -- see {@link
  * KotlinTacTranslator#degraded()}.
  *
- * <p><b>No new opcodes.</b> Everything here lowers into the existing instruction kinds:
- * {@code MOVE}, {@code BINOP}, {@code CALL}, {@code FIELDLOAD}, {@code FIELDSTORE},
- * {@code BRANCH}, {@code RETURN}, {@code THROW}, {@code NULL_CHECK}. A Kotlin {@code when}
- * becomes a branch chain; a Kotlin {@code if} becomes a branch; that is structure, not
- * information loss.
+ * <p><b>No new opcodes.</b> Everything here lowers into the existing instruction kinds: {@code
+ * MOVE}, {@code BINOP}, {@code CALL}, {@code FIELDLOAD}, {@code FIELDSTORE}, {@code BRANCH}, {@code
+ * RETURN}, {@code THROW}, {@code NULL_CHECK}. A Kotlin {@code when} becomes a branch chain; a
+ * Kotlin {@code if} becomes a branch; that is structure, not information loss.
  */
 final class KotlinTacTranslator {
 
@@ -105,10 +104,10 @@ final class KotlinTacTranslator {
   /**
    * Local variables by source name.
    *
-   * <p>Keyed by the Kotlin source name, not by a {@link TacOperand.TacVar}: the TAC's
-   * variable identity is name + temp flag, and a Kotlin local's name <i>is</i> its TAC
-   * name. The value carries the resolved {@link TacType} so a later refinement can be
-   * applied without changing the identity.
+   * <p>Keyed by the Kotlin source name, not by a {@link TacOperand.TacVar}: the TAC's variable
+   * identity is name + temp flag, and a Kotlin local's name <i>is</i> its TAC name. The value
+   * carries the resolved {@link TacType} so a later refinement can be applied without changing the
+   * identity.
    */
   private final Map<String, TacOperand.TacVar> locals = new HashMap<>();
 
@@ -166,12 +165,7 @@ final class KotlinTacTranslator {
    * @param column the source column, or -1
    */
   private void report(
-      String kind,
-      String functionName,
-      String nodeClass,
-      String message,
-      int line,
-      int column) {
+      String kind, String functionName, String nodeClass, String message, int line, int column) {
     problems.add(message);
     structuredProblems.add(
         new org.plumb.tac.ir.TacProgram.FunctionProblem(
@@ -181,6 +175,26 @@ final class KotlinTacTranslator {
   /** Whether a construct could not be lowered. */
   boolean degraded() {
     return degraded;
+  }
+
+  /**
+   * Records a construct that could not be lowered, in the machine-readable channel.
+   *
+   * <p>A problem is a sentence for a human; a DROP is the receipt the engine
+   * reads. A front end that degrades a construct and leaves only the sentence
+   * produces a function whose findings look exactly as complete as a fully
+   * lowered one's -- which is the failure mode the drop channel exists to
+   * prevent.
+   *
+   * <p>The impact is STRUCTURE: the function still computes the same thing,
+   * and its shape is what was lost. That is the grade these front ends
+   * already state, and the drop must not claim a different one.
+   */
+  private void reportDrop(String construct, String detail, int line, int column) {
+    if (builder == null) {
+      return;
+    }
+    builder.reportDrop(construct, detail, org.plumb.tac.ir.TacDrop.Impact.STRUCTURE, line, column);
   }
 
   /** The type mapper, exposed so the frontend can reuse it for symbol-level mapping. */
@@ -228,6 +242,48 @@ final class KotlinTacTranslator {
       String enclosingClass,
       boolean synthetic,
       String module) {
+    return translate(
+        name,
+        signature,
+        returnType,
+        params,
+        body,
+        enclosingClass,
+        synthetic,
+        module,
+        List.of(),
+        List.of(),
+        Map.of(),
+        null);
+  }
+
+  /**
+   * Translate one function, with the annotations it carries and the kind of
+   * member it is.
+   *
+   * <p>The annotations are not decoration. A rule that keys on {@code
+   * @RequestParam} or {@code @Transactional} needs the name, and the name is
+   * on the declaration -- not on the function's body, and not on the symbol
+   * the analysis API resolves.
+   *
+   * @param classAnnotations the annotations of the declaring class
+   * @param methodAnnotations the annotations of the function itself
+   * @param paramAnnotations the annotations of the parameters, by name
+   * @param memberKind what kind of member this function is
+   */
+  TacFunction translate(
+      String name,
+      String signature,
+      TacType returnType,
+      List<TacOperand.TacVar> params,
+      KtExpression body,
+      String enclosingClass,
+      boolean synthetic,
+      String module,
+      List<String> classAnnotations,
+      List<String> methodAnnotations,
+      Map<String, List<String>> paramAnnotations,
+      org.plumb.tac.ir.TacMemberKind memberKind) {
 
     this.currentFunction = name;
     this.locals.clear();
@@ -235,8 +291,7 @@ final class KotlinTacTranslator {
     this.structuredProblems.clear();
     this.degraded = false;
 
-    TacBuilder.FunctionSpec spec =
-        new TacBuilder.FunctionSpec(name, signature, returnType);
+    TacBuilder.FunctionSpec spec = new TacBuilder.FunctionSpec(name, signature, returnType);
     TacBuilder b = new TacBuilder(spec, params);
     b.setModule(module);
     b.setSourceLanguage(SourceLanguage.KOTLIN);
@@ -250,6 +305,20 @@ final class KotlinTacTranslator {
     }
     if (enclosingClass != null) {
       setEnclosingClass(b, enclosingClass);
+    }
+    if (classAnnotations != null && !classAnnotations.isEmpty()) {
+      b.addClassAnnotations(classAnnotations);
+    }
+    if (methodAnnotations != null && !methodAnnotations.isEmpty()) {
+      b.addMethodAnnotations(methodAnnotations);
+    }
+    if (paramAnnotations != null) {
+      for (Map.Entry<String, List<String>> entry : paramAnnotations.entrySet()) {
+        b.addParamAnnotations(entry.getKey(), entry.getValue());
+      }
+    }
+    if (memberKind != null) {
+      b.setMemberKind(memberKind);
     }
     this.builder = b;
 
@@ -307,6 +376,11 @@ final class KotlinTacTranslator {
               + ": "
               + ex.getClass().getSimpleName()
               + (ex.getMessage() == null ? "" : ": " + ex.getMessage()),
+          -1,
+          -1);
+      reportDrop(
+          "kotlin.translation.failed",
+          "the lowering failed: " + ex.getClass().getSimpleName(),
           -1,
           -1);
     }
@@ -411,20 +485,25 @@ final class KotlinTacTranslator {
             + lineOf(stmt),
         lineOf(stmt),
         columnOf(stmt));
+    reportDrop(
+        "kotlin.statement.unmodelled",
+        "the statement was not lowered: " + stmt.getClass().getSimpleName(),
+        lineOf(stmt),
+        columnOf(stmt));
   }
 
   /**
    * Lowers a local property declaration.
    *
-   * <p>A {@code val} is a fresh binding; a {@code var} may be reassigned later. Both are
-   * registered under their source name so later references resolve to the same TAC
-   * variable -- which is what makes taint flow through the local.
+   * <p>A {@code val} is a fresh binding; a {@code var} may be reassigned later. Both are registered
+   * under their source name so later references resolve to the same TAC variable -- which is what
+   * makes taint flow through the local.
    *
-   * <p>The variable's type is the <b>declared</b> type when there is one, and the
-   * <b>inferred</b> type of the initializer when there is not. The distinction matters:
-   * {@code val x: String = maybeNull()} declares a non-null {@code String}, while
-   * {@code val x = maybeNull()} infers whatever the initializer's type is -- which, for
-   * a Java method seen from Kotlin, is a <i>platform</i> type that may hold null.
+   * <p>The variable's type is the <b>declared</b> type when there is one, and the <b>inferred</b>
+   * type of the initializer when there is not. The distinction matters: {@code val x: String =
+   * maybeNull()} declares a non-null {@code String}, while {@code val x = maybeNull()} infers
+   * whatever the initializer's type is -- which, for a Java method seen from Kotlin, is a
+   * <i>platform</i> type that may hold null.
    */
   private void translateProperty(KtProperty prop) {
     String name = prop.getName();
@@ -463,10 +542,10 @@ final class KotlinTacTranslator {
   /**
    * The TAC type of an expression, as the Analysis API infers it.
    *
-   * <p>This is how a call's result or a constructor's result gets a type at all: the
-   * Analysis API knows that {@code StringBuilder()} produces a {@code StringBuilder} and
-   * that a Java method seen from Kotlin produces a <i>platform</i> type -- a type whose
-   * nullability is unknown, and which therefore must be mapped as nullable.
+   * <p>This is how a call's result or a constructor's result gets a type at all: the Analysis API
+   * knows that {@code StringBuilder()} produces a {@code StringBuilder} and that a Java method seen
+   * from Kotlin produces a <i>platform</i> type -- a type whose nullability is unknown, and which
+   * therefore must be mapped as nullable.
    *
    * @param expression the expression
    * @return the expression's type, or {@link TacType#UNKNOWN} when it cannot be resolved
@@ -509,9 +588,9 @@ final class KotlinTacTranslator {
   /**
    * Lowers an {@code if} into a branch.
    *
-   * <p>The condition is translated into a boolean-valued variable; the branch tests it.
-   * Both arms are lowered in sequence with a join label, which is the standard TAC shape
-   * for a two-way branch.
+   * <p>The condition is translated into a boolean-valued variable; the branch tests it. Both arms
+   * are lowered in sequence with a join label, which is the standard TAC shape for a two-way
+   * branch.
    */
   private void translateIf(KtIfExpression iff) {
     KtExpression condition = iff.getCondition();
@@ -545,32 +624,37 @@ final class KotlinTacTranslator {
     }
 
     builder.emit(
-        TacInstruction.builder(TacInstruction.Kind.LABEL).label(elseLabel).line(lineOf(iff)).build());
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(elseLabel)
+            .line(lineOf(iff))
+            .build());
     KtExpression elseBranch = iff.getElse();
     if (elseBranch != null) {
       translateStatement(elseBranch);
     }
 
     builder.emit(
-        TacInstruction.builder(TacInstruction.Kind.LABEL).label(endLabel).line(lineOf(iff)).build());
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(endLabel)
+            .line(lineOf(iff))
+            .build());
   }
 
   /**
    * Lowers a {@code when} into a branch chain.
    *
-   * <p>A {@code when} with an explicit subject becomes a chain of equality branches; a
-   * {@code when} without one is an if/else chain over its conditions. The chain says
-   * everything the {@code when} said -- only the structure differs -- so the precision is
-   * not downgraded for it.
+   * <p>A {@code when} with an explicit subject becomes a chain of equality branches; a {@code when}
+   * without one is an if/else chain over its conditions. The chain says everything the {@code when}
+   * said -- only the structure differs -- so the precision is not downgraded for it.
    */
   /**
    * Lower one arm of a `when` and move its value into the result.
    *
-   * <p>An arm whose body is an EXPRESSION has a value, and that value is the `when`'s value.
-   * An arm whose body is a statement does not, and then the result keeps whatever it had.
+   * <p>An arm whose body is an EXPRESSION has a value, and that value is the `when`'s value. An arm
+   * whose body is a statement does not, and then the result keeps whatever it had.
    *
-   * <p>The distinction is the same one the source makes: `1 -> compute()` yields a value,
-   * `1 -> doSomething()` does not.
+   * <p>The distinction is the same one the source makes: `1 -> compute()` yields a value, `1 ->
+   * doSomething()` does not.
    *
    * @param body the arm's body
    * @param result the temp the value is moved into
@@ -597,8 +681,8 @@ final class KotlinTacTranslator {
   /**
    * Whether an expression is used for its effect rather than for its value.
    *
-   * <p>A call whose result is discarded is a statement in the source's eyes, and lowering it as
-   * an expression would put a value on the stack that the source never had.
+   * <p>A call whose result is discarded is a statement in the source's eyes, and lowering it as an
+   * expression would put a value on the stack that the source never had.
    */
   private static boolean isStatementLike(KtExpression expr) {
     if (expr == null) return true;
@@ -648,6 +732,11 @@ final class KotlinTacTranslator {
                   + " was not lowered (line "
                   + lineOf(entry)
                   + ")",
+              lineOf(entry),
+              -1);
+          reportDrop(
+              "kotlin.when.isBranch",
+              "an 'is' branch of a when expression was not lowered",
               lineOf(entry),
               -1);
           continue;
@@ -819,14 +908,19 @@ final class KotlinTacTranslator {
             + lineOf(expr),
         lineOf(expr),
         columnOf(expr));
+    reportDrop(
+        "kotlin.expression.unmodelled",
+        "the expression was not lowered: " + expr.getClass().getSimpleName(),
+        lineOf(expr),
+        columnOf(expr));
     return null;
   }
 
   /**
    * Lowers a condition into a boolean-valued operand.
    *
-   * <p>A comparison becomes a {@code BINOP} with a comparison operator; a bare boolean
-   * variable is used as-is.
+   * <p>A comparison becomes a {@code BINOP} with a comparison operator; a bare boolean variable is
+   * used as-is.
    */
   private TacOperand translateCondition(KtExpression condition) {
     if (condition instanceof KtBinaryExpression bin) {
@@ -848,7 +942,8 @@ final class KotlinTacTranslator {
       }
     }
     if (condition instanceof KtPrefixExpression prefix
-        && "!".equals(prefix.getOperationReference().getText())) {      TacOperand inner = translateCondition(prefix.getBaseExpression());
+        && "!".equals(prefix.getOperationReference().getText())) {
+      TacOperand inner = translateCondition(prefix.getBaseExpression());
       TacOperand dest = builder.newTemp(TacType.BOOLEAN);
       builder.emit(
           TacInstruction.builder(TacInstruction.Kind.UNARYOP)
@@ -889,9 +984,9 @@ final class KotlinTacTranslator {
   /**
    * Lowers a property read.
    *
-   * <p>A property of the enclosing class is a {@code FIELDLOAD} off the implicit
-   * {@code this}. The receiver is a local named {@code this}, declared by the frontend for
-   * every function that has an enclosing class.
+   * <p>A property of the enclosing class is a {@code FIELDLOAD} off the implicit {@code this}. The
+   * receiver is a local named {@code this}, declared by the frontend for every function that has an
+   * enclosing class.
    */
   private TacOperand translatePropertyRead(KtExpression receiver, String name) {
     TacOperand.TacVar self = locals.get(THIS);
@@ -911,9 +1006,7 @@ final class KotlinTacTranslator {
     return dest;
   }
 
-  /**
-   * Lowers a qualified expression ({@code a.b}, {@code a.b()}, {@code a?.b}).
-   */
+  /** Lowers a qualified expression ({@code a.b}, {@code a.b()}, {@code a?.b}). */
   private TacOperand translateDotQualified(KtDotQualifiedExpression dot) {
     KtExpression selector = dot.getSelectorExpression();
     KtExpression receiver = dot.getReceiverExpression();
@@ -972,8 +1065,8 @@ final class KotlinTacTranslator {
    * {@code JAVA_SOURCE} (a Java source file in the analysed project). Both mean "this is a Java
    * declaration", and both are what makes Kotlin's property syntax a method call.
    *
-   * <p>{@code JAVA_SYNTHETIC_PROPERTY} is deliberately NOT included: it is a Kotlin-side
-   * synthetic property, not a Java method.
+   * <p>{@code JAVA_SYNTHETIC_PROPERTY} is deliberately NOT included: it is a Kotlin-side synthetic
+   * property, not a Java method.
    *
    * @param origin the symbol's origin
    * @return true when the symbol is a Java declaration
@@ -986,13 +1079,13 @@ final class KotlinTacTranslator {
    * The owner of the Java method a Kotlin property reference really names, or {@code null}.
    *
    * <p>Kotlin lets a Java method be written without parentheses when it looks like a property:
-   * {@code s.length} is {@code String.length()}. Lowering it as a FIELDLOAD would name a field
-   * that does not exist, and -- more importantly -- it would never reach a sink family, because
-   * the families are anchored to METHOD names.
+   * {@code s.length} is {@code String.length()}. Lowering it as a FIELDLOAD would name a field that
+   * does not exist, and -- more importantly -- it would never reach a sink family, because the
+   * families are anchored to METHOD names.
    *
    * <p><b>WHERE THE DECLARING CLASS ACTUALLY LIVES.</b> This reads the callable id off the
-   * PROPERTY, not off the property's getter. That is not a style choice; the getter does not
-   * carry it:
+   * PROPERTY, not off the property's getter. That is not a style choice; the getter does not carry
+   * it:
    *
    * <pre>
    *   sb.length  where sb: java.lang.StringBuilder
@@ -1000,18 +1093,16 @@ final class KotlinTacTranslator {
    *     getter    -> origin=INTERSECTION_OVERRIDE, callableId=null
    * </pre>
    *
-   * <p>The reason is that Kotlin resolves {@code sb.length} to the synthetic INTERSECTION
-   * OVERRIDE property it generates for a Java member, and that override's accessor is a
-   * synthetic function with no callable id of its own. The Java declaring class survives on
-   * the property's callable id. Reading the getter -- the obvious thing to try -- yields
-   * {@code null}, and the property silently degrades to a FIELDLOAD that no sink family can
-   * ever match.
+   * <p>The reason is that Kotlin resolves {@code sb.length} to the synthetic INTERSECTION OVERRIDE
+   * property it generates for a Java member, and that override's accessor is a synthetic function
+   * with no callable id of its own. The Java declaring class survives on the property's callable
+   * id. Reading the getter -- the obvious thing to try -- yields {@code null}, and the property
+   * silently degrades to a FIELDLOAD that no sink family can ever match.
    *
-   * <p>The origin is checked on the PROPERTY too, and for the same reason: the override's
-   * origin is {@code INTERSECTION_OVERRIDE}, not {@code JAVA_LIBRARY}. A Java member reached
-   * through Kotlin's property syntax is therefore recognised by asking whether the property
-   * resolves to a class that came from Java -- not by asking whether the symbol's origin
-   * literally says JAVA.
+   * <p>The origin is checked on the PROPERTY too, and for the same reason: the override's origin is
+   * {@code INTERSECTION_OVERRIDE}, not {@code JAVA_LIBRARY}. A Java member reached through Kotlin's
+   * property syntax is therefore recognised by asking whether the property resolves to a class that
+   * came from Java -- not by asking whether the symbol's origin literally says JAVA.
    *
    * @param ref the property reference
    * @return the Java declaring class's FQN, or {@code null} when this is not a Java method
@@ -1045,16 +1136,16 @@ final class KotlinTacTranslator {
   /**
    * Whether a class is declared in Java.
    *
-   * <p><b>WHY THE DECLARING CLASS IS ASKED, NOT THE SYMBOL.</b> Kotlin resolves a Java
-   * member reached through property syntax to a synthetic INTERSECTION OVERRIDE symbol
-   * whose origin is {@code INTERSECTION_OVERRIDE} -- not {@code JAVA_LIBRARY}. So the
-   * origin of the symbol in hand never says "this came from Java". What does say so is
-   * the class the property belongs to: for {@code sb.length} that is
-   * {@code java.lang.StringBuilder}, a Java class, and its origin is JAVA_LIBRARY.
+   * <p><b>WHY THE DECLARING CLASS IS ASKED, NOT THE SYMBOL.</b> Kotlin resolves a Java member
+   * reached through property syntax to a synthetic INTERSECTION OVERRIDE symbol whose origin is
+   * {@code INTERSECTION_OVERRIDE} -- not {@code JAVA_LIBRARY}. So the origin of the symbol in hand
+   * never says "this came from Java". What does say so is the class the property belongs to: for
+   * {@code sb.length} that is {@code java.lang.StringBuilder}, a Java class, and its origin is
+   * JAVA_LIBRARY.
    *
-   * <p>For a genuine Kotlin property the declaring class is a Kotlin class, whose origin
-   * is not a Java origin -- so the same test separates the two cases without having to
-   * special-case the intersection override.
+   * <p>For a genuine Kotlin property the declaring class is a Kotlin class, whose origin is not a
+   * Java origin -- so the same test separates the two cases without having to special-case the
+   * intersection override.
    *
    * @param classId the declaring class
    * @return true when the class comes from Java
@@ -1075,10 +1166,10 @@ final class KotlinTacTranslator {
   /**
    * The declaring class of a property, or {@code null} when it has none.
    *
-   * <p>The property's own callable id is the primary source. The getter's is a fallback for
-   * the case where the property is a plain Kotlin property with a real accessor -- but a
-   * getter that is a synthetic intersection override carries no callable id, so the fallback
-   * simply does not apply there.
+   * <p>The property's own callable id is the primary source. The getter's is a fallback for the
+   * case where the property is a plain Kotlin property with a real accessor -- but a getter that is
+   * a synthetic intersection override carries no callable id, so the fallback simply does not apply
+   * there.
    *
    * @param property the property symbol
    * @return the declaring class, or {@code null}
@@ -1113,27 +1204,44 @@ final class KotlinTacTranslator {
             .build());
 
     builder.emit(
-        TacInstruction.builder(TacInstruction.Kind.LABEL).label(thenLabel).line(lineOf(iff)).build());
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(thenLabel)
+            .line(lineOf(iff))
+            .build());
     KtExpression thenBranch = iff.getThen();
     if (thenBranch != null) {
       TacOperand v = translateExpression(thenBranch);
       if (v != null) {
         builder.emit(
-            TacInstruction.builder(TacInstruction.Kind.MOVE).dest(dest).lhs1(v).line(lineOf(iff)).build());
+            TacInstruction.builder(TacInstruction.Kind.MOVE)
+                .dest(dest)
+                .lhs1(v)
+                .line(lineOf(iff))
+                .build());
       }
     }
     builder.emit(
-        TacInstruction.builder(TacInstruction.Kind.LABEL).label(elseLabel).line(lineOf(iff)).build());
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(elseLabel)
+            .line(lineOf(iff))
+            .build());
     KtExpression elseBranch = iff.getElse();
     if (elseBranch != null) {
       TacOperand v = translateExpression(elseBranch);
       if (v != null) {
         builder.emit(
-            TacInstruction.builder(TacInstruction.Kind.MOVE).dest(dest).lhs1(v).line(lineOf(iff)).build());
+            TacInstruction.builder(TacInstruction.Kind.MOVE)
+                .dest(dest)
+                .lhs1(v)
+                .line(lineOf(iff))
+                .build());
       }
     }
     builder.emit(
-        TacInstruction.builder(TacInstruction.Kind.LABEL).label(endLabel).line(lineOf(iff)).build());
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(endLabel)
+            .line(lineOf(iff))
+            .build());
     return dest;
   }
 
@@ -1181,12 +1289,12 @@ final class KotlinTacTranslator {
         "UNHANDLED_NODE",
         currentFunction,
         "BinaryOperator:" + op,
-        "unsupported binary operator in "
-            + currentFunction
-            + ": "
-            + op
-            + " at line "
-            + lineOf(bin),
+        "unsupported binary operator in " + currentFunction + ": " + op + " at line " + lineOf(bin),
+        lineOf(bin),
+        columnOf(bin));
+    reportDrop(
+        "kotlin.binaryOperator.unmodelled",
+        "the binary operator was not lowered: " + op,
         lineOf(bin),
         columnOf(bin));
     return null;
@@ -1214,15 +1322,25 @@ final class KotlinTacTranslator {
             .build());
 
     builder.emit(
-        TacInstruction.builder(TacInstruction.Kind.LABEL).label(rhsLabel).line(lineOf(bin)).build());
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(rhsLabel)
+            .line(lineOf(bin))
+            .build());
     TacOperand rhs = translateCondition(bin.getRight());
     builder.emit(
-        TacInstruction.builder(TacInstruction.Kind.MOVE).dest(dest).lhs1(rhs).line(lineOf(bin)).build());
+        TacInstruction.builder(TacInstruction.Kind.MOVE)
+            .dest(dest)
+            .lhs1(rhs)
+            .line(lineOf(bin))
+            .build());
     builder.emit(
         TacInstruction.builder(TacInstruction.Kind.JUMP).label(endLabel).line(lineOf(bin)).build());
 
     builder.emit(
-        TacInstruction.builder(TacInstruction.Kind.LABEL).label(shortLabel).line(lineOf(bin)).build());
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(shortLabel)
+            .line(lineOf(bin))
+            .build());
     builder.emit(
         TacInstruction.builder(TacInstruction.Kind.MOVE)
             .dest(dest)
@@ -1230,22 +1348,24 @@ final class KotlinTacTranslator {
             .line(lineOf(bin))
             .build());
     builder.emit(
-        TacInstruction.builder(TacInstruction.Kind.LABEL).label(endLabel).line(lineOf(bin)).build());
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(endLabel)
+            .line(lineOf(bin))
+            .build());
     return dest;
   }
 
   /**
    * Lowers a string template.
    *
-   * <p>A template is a sequence of entries: literal text entries and interpolation
-   * entries. A template with no entries is a string constant; one with a single
-   * interpolation entry and no literal text around it is that entry's value; anything
-   * else is the concatenation of the parts.
+   * <p>A template is a sequence of entries: literal text entries and interpolation entries. A
+   * template with no entries is a string constant; one with a single interpolation entry and no
+   * literal text around it is that entry's value; anything else is the concatenation of the parts.
    *
    * <p>The Analysis API's Kotlin PSI exposes the entries as an array of {@link
    * KtStringTemplateEntry}, and the entries themselves are <i>not</i> expressions -- an
-   * interpolation entry holds its expression, a literal entry holds its text. So the two
-   * are distinguished by their type, not by their class name.
+   * interpolation entry holds its expression, a literal entry holds its text. So the two are
+   * distinguished by their type, not by their class name.
    */
   private TacOperand translateStringTemplate(KtStringTemplateExpression str) {
     KtStringTemplateEntry[] entries = str.getEntries();
@@ -1266,7 +1386,10 @@ final class KotlinTacTranslator {
     TacOperand acc = null;
     for (KtStringTemplateEntry entry : entries) {
       KtExpression hole = interpolationOf(entry);
-      TacOperand part = hole != null ? translateExpression(hole) : TacOperand.Const.ofString(unquote(entry.getText()));
+      TacOperand part =
+          hole != null
+              ? translateExpression(hole)
+              : TacOperand.Const.ofString(unquote(entry.getText()));
       if (acc == null) {
         acc = part;
       } else {
@@ -1285,10 +1408,7 @@ final class KotlinTacTranslator {
     return acc;
   }
 
-  /**
-   * The expression a string template entry interpolates, or {@code null} for a literal
-   * entry.
-   */
+  /** The expression a string template entry interpolates, or {@code null} for a literal entry. */
   private static KtExpression interpolationOf(KtStringTemplateEntry entry) {
     if (entry instanceof org.jetbrains.kotlin.psi.KtStringTemplateEntryWithExpression withExpr) {
       return withExpr.getExpression();
@@ -1299,10 +1419,9 @@ final class KotlinTacTranslator {
   /**
    * Strips the quotes from a Kotlin string literal.
    *
-   * <p>A raw string ({@code """..."""}) keeps its content verbatim; an ordinary string
-   * has its quotes removed. The escape sequences inside an ordinary string are left as
-   * they are: the TAC's string constants are compared literally, and unescaping them
-   * would change what a sink sees.
+   * <p>A raw string ({@code """..."""}) keeps its content verbatim; an ordinary string has its
+   * quotes removed. The escape sequences inside an ordinary string are left as they are: the TAC's
+   * string constants are compared literally, and unescaping them would change what a sink sees.
    */
   private static String unquote(String text) {
     if (text == null) {
@@ -1323,11 +1442,10 @@ final class KotlinTacTranslator {
   /**
    * Lowers a constant expression.
    *
-   * <p>The Analysis API's Kotlin PSI does not expose the constant's <i>kind</i> -- its
-   * {@code KtConstantExpression} has no {@code getConstant()} -- so the literal is
-   * recognised from its source text. That is exact for the literal forms Kotlin has:
-   * {@code null}, {@code true} / {@code false}, a number, a quoted string, and a
-   * character literal.
+   * <p>The Analysis API's Kotlin PSI does not expose the constant's <i>kind</i> -- its {@code
+   * KtConstantExpression} has no {@code getConstant()} -- so the literal is recognised from its
+   * source text. That is exact for the literal forms Kotlin has: {@code null}, {@code true} /
+   * {@code false}, a number, a quoted string, and a character literal.
    */
   private TacOperand constantOf(KtConstantExpression constant) {
     String text = constant.getText();
@@ -1364,9 +1482,8 @@ final class KotlinTacTranslator {
   /**
    * Recognises a numeric literal.
    *
-   * <p>The literal's suffix decides the type: {@code L} makes it a {@code Long}, {@code f}
-   * a {@code Float}, {@code F} a {@code Float}, and the rest are {@code Int} unless the
-   * value does not fit.
+   * <p>The literal's suffix decides the type: {@code L} makes it a {@code Long}, {@code f} a {@code
+   * Float}, {@code F} a {@code Float}, and the rest are {@code Int} unless the value does not fit.
    */
   private static TacOperand numberConstantOf(String text) {
     if (text == null || text.isEmpty()) {
@@ -1418,19 +1535,19 @@ final class KotlinTacTranslator {
   private void translateCallStatement(KtCallExpression call) {
     translateCall(call, null);
   }
+
   /**
    * Lowers a call.
    *
-   * <p>A call to {@code requireNotNull(x)} / {@code checkNotNull(x)} proves {@code x}
-   * non-null on the path that follows, so a {@code NULL_CHECK} is emitted for the argument.
-   * That is the one place the Kotlin frontend emits a {@code NULL_CHECK} from a call: the
-   * standard library's own null-check helpers.
+   * <p>A call to {@code requireNotNull(x)} / {@code checkNotNull(x)} proves {@code x} non-null on
+   * the path that follows, so a {@code NULL_CHECK} is emitted for the argument. That is the one
+   * place the Kotlin frontend emits a {@code NULL_CHECK} from a call: the standard library's own
+   * null-check helpers.
    *
-   * <p><b>Not</b> {@code Intrinsics.areEqual} -- that is a null-safe <i>comparison</i>, not
-   * a null check, and treating it as one would put "these two values are equal" into the
-   * non-null fact set. And <b>not</b> {@code
-   * Intrinsics.throwUninitializedPropertyAccessException} -- that is the {@code lateinit}
-   * check, not a null check.
+   * <p><b>Not</b> {@code Intrinsics.areEqual} -- that is a null-safe <i>comparison</i>, not a null
+   * check, and treating it as one would put "these two values are equal" into the non-null fact
+   * set. And <b>not</b> {@code Intrinsics.throwUninitializedPropertyAccessException} -- that is the
+   * {@code lateinit} check, not a null check.
    *
    * @param call the call to lower
    * @param receiver the receiver the call is made on, or {@code null} for an unqualified call
@@ -1508,15 +1625,14 @@ final class KotlinTacTranslator {
   /**
    * The call's arguments, with the receiver in front.
    *
-   * <p><b>Why the receiver is an argument.</b> In Kotlin a receiver is not an argument --
-   * {@code a.b(x)} has arity 1, not 2 -- but the TAC's {@code CALL} instruction carries the
-   * receiver in {@code args[0]}, and that is the convention the Java frontend and the
-   * bytecode frontend both follow. The DFA's null-dereference checker reads the receiver
-   * from {@code args[0]} for a {@code CALL}: without it, a method call on a possibly-null
-   * receiver is not reported at all.
+   * <p><b>Why the receiver is an argument.</b> In Kotlin a receiver is not an argument -- {@code
+   * a.b(x)} has arity 1, not 2 -- but the TAC's {@code CALL} instruction carries the receiver in
+   * {@code args[0]}, and that is the convention the Java frontend and the bytecode frontend both
+   * follow. The DFA's null-dereference checker reads the receiver from {@code args[0]} for a {@code
+   * CALL}: without it, a method call on a possibly-null receiver is not reported at all.
    *
-   * <p>The callee signature's arity stays the <i>argument</i> count, so the receiver does
-   * not change the call graph's edge.
+   * <p>The callee signature's arity stays the <i>argument</i> count, so the receiver does not
+   * change the call graph's edge.
    */
   private List<TacOperand> withReceiver(List<TacOperand> args, KtExpression receiver) {
     if (receiver == null) {
@@ -1546,10 +1662,10 @@ final class KotlinTacTranslator {
   /**
    * The name of the function a call refers to.
    *
-   * <p>For {@code foo.bar()} the callee is {@code bar}; for {@code bar()} it is
-   * {@code bar}. A constructor call ({@code Foo()}) has a {@link
-   * org.jetbrains.kotlin.psi.KtConstructorCalleeExpression} as its callee rather than a
-   * name reference, and the constructor's name comes from that expression.
+   * <p>For {@code foo.bar()} the callee is {@code bar}; for {@code bar()} it is {@code bar}. A
+   * constructor call ({@code Foo()}) has a {@link
+   * org.jetbrains.kotlin.psi.KtConstructorCalleeExpression} as its callee rather than a name
+   * reference, and the constructor's name comes from that expression.
    */
   private static String calledName(KtCallExpression call) {
     KtExpression callee = call.getCalleeExpression();
@@ -1562,7 +1678,7 @@ final class KotlinTacTranslator {
     }
     if (callee instanceof KtDotQualifiedExpression dot) {
       KtExpression selector = dot.getSelectorExpression();
-    if (selector instanceof KtNameReferenceExpression ref) {
+      if (selector instanceof KtNameReferenceExpression ref) {
         return ref.getReferencedName();
       }
       if (selector instanceof org.jetbrains.kotlin.psi.KtConstructorCalleeExpression ctor) {
@@ -1580,16 +1696,15 @@ final class KotlinTacTranslator {
    * what the call graph's bare-name map keys on, so it has to be the real argument count -- a call
    * whose arity is wrong resolves to no callee, and the call graph silently loses the edge.
    *
-   * <p>A receiver is not an argument in Kotlin's calling convention (it is the dispatch
-   * receiver), so {@code a.b(x)} has arity 1, not 2.
+   * <p>A receiver is not an argument in Kotlin's calling convention (it is the dispatch receiver),
+   * so {@code a.b(x)} has arity 1, not 2.
    *
-   * <p><b>The owner is what makes sink matching work.</b> The sink families in
-   * {@code sink-families.yaml} are anchored to a fully qualified name
-   * ({@code '^java\.sql\.Statement\.execute'}), and the DFA matches a call against them by its
-   * callee signature. A signature without an owner ({@code "execute/1"}) matches NONE of them --
-   * not one pattern in the file. So a Kotlin call to {@code stmt.execute(userInput)} was invisible
-   * to every taint sink rule: the analysis ran, produced zero findings, and looked like clean
-   * code.
+   * <p><b>The owner is what makes sink matching work.</b> The sink families in {@code
+   * sink-families.yaml} are anchored to a fully qualified name ({@code
+   * '^java\.sql\.Statement\.execute'}), and the DFA matches a call against them by its callee
+   * signature. A signature without an owner ({@code "execute/1"}) matches NONE of them -- not one
+   * pattern in the file. So a Kotlin call to {@code stmt.execute(userInput)} was invisible to every
+   * taint sink rule: the analysis ran, produced zero findings, and looked like clean code.
    *
    * <p>The owner comes from the RESOLVED symbol, not from the receiver's syntactic type. That
    * distinction is what makes Kotlin and Java share one rule set: a Kotlin call to a Java method
@@ -1612,11 +1727,10 @@ final class KotlinTacTranslator {
    * to the callable symbol, and the symbol's callable id names its containing class.
    *
    * <p><b>Why the symbol and not the receiver's type.</b> The receiver's type is what the call is
-   * made ON; the owner is what the method is DECLARED in. They are usually the same, but not
-   * always -- and it is the declaration that the sink families name. A call
-   * {@code stmt.execute(x)} where {@code stmt} is declared as {@code java.sql.Statement} resolves
-   * to a method declared in {@code java.sql.Statement}, so the owner is that class, and the
-   * FQN-anchored pattern matches.
+   * made ON; the owner is what the method is DECLARED in. They are usually the same, but not always
+   * -- and it is the declaration that the sink families name. A call {@code stmt.execute(x)} where
+   * {@code stmt} is declared as {@code java.sql.Statement} resolves to a method declared in {@code
+   * java.sql.Statement}, so the owner is that class, and the FQN-anchored pattern matches.
    *
    * <p>For a call on a Java class seen from Kotlin, the class id is the Java class's own FQN
    * ({@code java.sql.Statement}), which is exactly what the Java frontend produces for the same
@@ -1662,9 +1776,9 @@ final class KotlinTacTranslator {
    * Whether the call is a constructor invocation.
    *
    * <p>The PSI tells us exactly when it can: a constructor call's callee is a {@link
-   * org.jetbrains.kotlin.psi.KtConstructorCalleeExpression}, not a name reference. When
-   * the PSI cannot tell -- a name reference whose target did not resolve -- Kotlin's
-   * naming convention is the fallback: a capitalised name is a class.
+   * org.jetbrains.kotlin.psi.KtConstructorCalleeExpression}, not a name reference. When the PSI
+   * cannot tell -- a name reference whose target did not resolve -- Kotlin's naming convention is
+   * the fallback: a capitalised name is a class.
    */
   private static boolean isConstructorCall(KtCallExpression call) {
     KtExpression callee = call.getCalleeExpression();
@@ -1710,10 +1824,10 @@ final class KotlinTacTranslator {
   /**
    * The comparison operator of a binary expression, or {@code null}.
    *
-   * <p>The operator is read from the operation reference's source text rather than from
-   * the token: the Analysis API's Kotlin PSI exposes {@code getOperationToken()} as an
-   * {@code IElementType}, and mapping every operator token back to its spelling would
-   * duplicate the lexer's table. The text is the operator's own source, so it is exact.
+   * <p>The operator is read from the operation reference's source text rather than from the token:
+   * the Analysis API's Kotlin PSI exposes {@code getOperationToken()} as an {@code IElementType},
+   * and mapping every operator token back to its spelling would duplicate the lexer's table. The
+   * text is the operator's own source, so it is exact.
    */
   private static BinaryOperator comparisonOperatorOf(KtBinaryExpression bin) {
     String op = operatorTextOf(bin);
@@ -1790,8 +1904,8 @@ final class KotlinTacTranslator {
    * A type marked statically non-null.
    *
    * <p>A primitive or an already-non-null type is returned unchanged. This is the
-   * <i>suppression</i> direction only: it says "this declaration cannot hold null", and
-   * never "this value cannot be null at runtime".
+   * <i>suppression</i> direction only: it says "this declaration cannot hold null", and never "this
+   * value cannot be null at runtime".
    */
   private static TacType nonNullOf(TacType type) {
     if (type == null || !type.isReference()) {
@@ -1803,9 +1917,9 @@ final class KotlinTacTranslator {
   /**
    * The condition expression of a {@code when} entry, or {@code null}.
    *
-   * <p>A {@code when} entry carries a list of conditions; a subject-less {@code when} uses
-   * the first one. An {@code is} pattern has no expression -- it is a type test, which the
-   * TAC has no opcode for -- so it is reported as absent rather than guessed at.
+   * <p>A {@code when} entry carries a list of conditions; a subject-less {@code when} uses the
+   * first one. An {@code is} pattern has no expression -- it is a type test, which the TAC has no
+   * opcode for -- so it is reported as absent rather than guessed at.
    */
   private static KtExpression firstConditionOf(KtWhenEntry entry) {
     KtWhenCondition[] conditions = entry.getConditions();
@@ -1820,9 +1934,9 @@ final class KotlinTacTranslator {
   /**
    * The 1-based line of a PSI element, or -1.
    *
-   * <p>The line is read from the file's {@link com.intellij.openapi.editor.Document}, which
-   * is the authoritative line map. The Analysis API's bundled IntelliJ surface does not
-   * expose {@code PsiFile.getLineNumber(int)}, so the document is the way in.
+   * <p>The line is read from the file's {@link com.intellij.openapi.editor.Document}, which is the
+   * authoritative line map. The Analysis API's bundled IntelliJ surface does not expose {@code
+   * PsiFile.getLineNumber(int)}, so the document is the way in.
    */
   private static int lineOf(com.intellij.psi.PsiElement element) {
     if (element == null) {
@@ -1876,8 +1990,8 @@ final class KotlinTacTranslator {
   /**
    * The document of a file, or {@code null}.
    *
-   * <p>{@code getFileDocument()} is a default method that may return {@code null} when
-   * the file has no document (a stub-only file, for instance).
+   * <p>{@code getFileDocument()} is a default method that may return {@code null} when the file has
+   * no document (a stub-only file, for instance).
    */
   private static com.intellij.openapi.editor.Document documentOf(com.intellij.psi.PsiFile file) {
     try {
@@ -1922,9 +2036,9 @@ final class KotlinTacTranslator {
   /**
    * Whether a symbol is compiler-generated.
    *
-   * <p>A data class's {@code componentN} and {@code copy} come back from the Analysis
-   * API with the origin {@link KaSymbolOrigin#SOURCE_MEMBER_GENERATED}. That is exact: it
-   * is the compiler telling us, not a name-pattern guess.
+   * <p>A data class's {@code componentN} and {@code copy} come back from the Analysis API with the
+   * origin {@link KaSymbolOrigin#SOURCE_MEMBER_GENERATED}. That is exact: it is the compiler
+   * telling us, not a name-pattern guess.
    */
   static boolean isSynthetic(KaSymbolOrigin origin) {
     return origin == KaSymbolOrigin.SOURCE_MEMBER_GENERATED;
@@ -1933,9 +2047,9 @@ final class KotlinTacTranslator {
   /**
    * Whether a callable is a data class's generated member.
    *
-   * <p>Used as a second line of defence: a callable whose origin is
-   * {@code SOURCE_MEMBER_GENERATED} is synthetic, and so is one named {@code copy} or
-   * {@code componentN} on a data class, even if the origin says otherwise.
+   * <p>Used as a second line of defence: a callable whose origin is {@code SOURCE_MEMBER_GENERATED}
+   * is synthetic, and so is one named {@code copy} or {@code componentN} on a data class, even if
+   * the origin says otherwise.
    */
   static boolean isDataClassGenerated(KaCallableSymbol callable, boolean ownerIsData) {
     if (!ownerIsData) {
@@ -1954,8 +2068,8 @@ final class KotlinTacTranslator {
   /**
    * Whether the callable is a data class's generated member, by name.
    *
-   * <p>Kept separate from {@link #isDataClassGenerated} so the frontend can use it when
-   * the owning class's symbol is not available.
+   * <p>Kept separate from {@link #isDataClassGenerated} so the frontend can use it when the owning
+   * class's symbol is not available.
    */
   static boolean isDataClassGeneratedName(String name) {
     if (name == null) {

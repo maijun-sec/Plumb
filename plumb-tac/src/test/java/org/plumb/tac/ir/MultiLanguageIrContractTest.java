@@ -230,6 +230,8 @@ class MultiLanguageIrContractTest {
       assertThat(IrPrecision.SOURCE_LOWERED.seesParameterAnnotations()).isTrue();
       assertThat(IrPrecision.BYTECODE.seesParameterAnnotations()).isFalse();
       assertThat(IrPrecision.BYTECODE_SYNTHETIC.seesParameterAnnotations()).isFalse();
+      // A degraded function may have lost the very declaration the annotation was on.
+      assertThat(IrPrecision.SOURCE_DEGRADED.seesParameterAnnotations()).isFalse();
     }
 
     @Test
@@ -239,6 +241,10 @@ class MultiLanguageIrContractTest {
       assertThat(IrPrecision.SOURCE_LOWERED.maySuppressNullDeref()).isTrue();
       assertThat(IrPrecision.BYTECODE.maySuppressNullDeref()).isFalse();
       assertThat(IrPrecision.BYTECODE_SYNTHETIC.maySuppressNullDeref()).isFalse();
+      // "The type system says non-null" is a statement about the DECLARATION. A function whose
+      // semantics were degraded may have lost that declaration, so it must not license a
+      // suppression.
+      assertThat(IrPrecision.SOURCE_DEGRADED.maySuppressNullDeref()).isFalse();
     }
 
     @Test
@@ -248,6 +254,22 @@ class MultiLanguageIrContractTest {
       assertThat(IrPrecision.SOURCE_LOWERED.hasSourceStructure()).isFalse();
       assertThat(IrPrecision.BYTECODE.hasSourceStructure()).isFalse();
       assertThat(IrPrecision.BYTECODE_SYNTHETIC.hasSourceStructure()).isFalse();
+      assertThat(IrPrecision.SOURCE_DEGRADED.hasSourceStructure()).isFalse();
+    }
+
+    @Test
+    @DisplayName("only SOURCE_DEGRADED loses semantics")
+    void onlyDegradedLosesSemantics() {
+      assertThat(IrPrecision.SOURCE_FULL.preservesSemantics()).isTrue();
+      // SOURCE_LOWERED loses the SHAPE, not the meaning: the code still computes the same thing.
+      assertThat(IrPrecision.SOURCE_LOWERED.preservesSemantics()).isTrue();
+      assertThat(IrPrecision.SOURCE_DEGRADED.preservesSemantics()).isFalse();
+      assertThat(IrPrecision.BYTECODE.preservesSemantics()).isTrue();
+      assertThat(IrPrecision.BYTECODE_SYNTHETIC.preservesSemantics()).isTrue();
+
+      assertThat(IrPrecision.SOURCE_FULL.hasSemanticLoss()).isFalse();
+      assertThat(IrPrecision.SOURCE_LOWERED.hasSemanticLoss()).isFalse();
+      assertThat(IrPrecision.SOURCE_DEGRADED.hasSemanticLoss()).isTrue();
     }
 
     @Test
@@ -258,7 +280,10 @@ class MultiLanguageIrContractTest {
               IrPrecision.SOURCE_FULL,
               IrPrecision.SOURCE_LOWERED,
               IrPrecision.BYTECODE,
-              IrPrecision.BYTECODE_SYNTHETIC);
+              IrPrecision.BYTECODE_SYNTHETIC,
+              // APPENDED, never inserted: the disk cache serialises these by name, so a new
+              // constant is compatible and a reorder is not.
+              IrPrecision.SOURCE_DEGRADED);
     }
   }
 

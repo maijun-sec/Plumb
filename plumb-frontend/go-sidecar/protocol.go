@@ -81,6 +81,17 @@ const (
 const (
 	PrecisionFull    = "SOURCE_FULL"
 	PrecisionLowered = "SOURCE_LOWERED"
+
+	// PrecisionDegraded means the analysis does not know what part of the
+	// function DOES -- a reflective call, an open virtual dispatch, a
+	// run-time decision.
+	//
+	// It is DERIVED, never asserted: the function's drops decide it. A
+	// SEMANTICS drop degrades it, a STRUCTURE drop lowers it, and a VALUE
+	// or TYPE drop leaves it alone. Deriving it from the drops rather than
+	// from the count of problems is what makes the number mean something:
+	// a function with one lost value is still fully understood.
+	PrecisionDegraded = "SOURCE_DEGRADED"
 )
 
 // The versions this sidecar speaks.
@@ -112,10 +123,10 @@ const (
 // SOURCE_LOWERED is a construct that HAS a lowering, but not a faithful one:
 // the semantics survive, the structure does not.
 const (
-	ProblemParse          = "PARSE_PROBLEM"
-	ProblemTranslation    = "TRANSLATION_ERROR"
-	ProblemUnhandledNode  = "UNHANDLED_NODE"
-	ProblemSourceLowered  = "SOURCE_LOWERED"
+	ProblemParse         = "PARSE_PROBLEM"
+	ProblemTranslation   = "TRANSLATION_ERROR"
+	ProblemUnhandledNode = "UNHANDLED_NODE"
+	ProblemSourceLowered = "SOURCE_LOWERED"
 )
 
 // A type in the wire model.
@@ -138,6 +149,20 @@ type TypeRef struct {
 	// that a future Go dialect with nullability annotations has somewhere to
 	// go; the C# sidecar makes the same choice for the same reason.
 	Nullable *bool `json:"nullable,omitempty"`
+
+	// The numeric domain of the type, when it is a numeric type.
+	//
+	// It is a text form -- "INTEGRAL(32,signed)", "FLOATING(53,11)" -- so
+	// that a reader does not have to know a second notation. A type
+	// without a domain says nothing about its values, which is not the
+	// same as saying the values are unconstrained.
+	Domain string `json:"domain,omitempty"`
+
+	// The type arguments of a generic type, in declaration order.
+	TypeArguments []*TypeRef `json:"typeArguments,omitempty"`
+
+	// The bound of a type parameter: the constraint it satisfies.
+	Bound *TypeRef `json:"bound,omitempty"`
 }
 
 // Simple builds a type reference of a primitive kind.
@@ -238,11 +263,38 @@ type Instruction struct {
 	// The source column. -1 when unknown.
 	Column int `json:"column"`
 
-	// The execution effect of this instruction, when it is not an
-	// ordinary step. DEFERRED means the call runs when the function
-	// returns; CONCURRENT means it runs on another goroutine. Empty
-	// means the call runs here, in this order.
+	// The effect of this instruction, when it is not an ordinary step.
+	// DEFERRED means the call runs when the function returns; CONCURRENT
+	// means it runs on another goroutine; SUSPEND means the call yields and
+	// the function resumes at a later point. Empty means the call runs here,
+	// in this order.
 	Effect string `json:"effect,omitempty"`
+
+	// The results of a call that returns more than one value.
+	//
+	// The TAC's CALL has ONE destination, and Go's and C#'s multi-result
+	// calls have several. Giving up the second result is what a "the TAC
+	// has one destination" report used to mean; carrying the rest here is
+	// what makes them visible.
+	//
+	// The list is the RESULTS, in order: entry 0 is the first result, and
+	// it is the same value as DEST. A nil entry means "this result is not
+	// bound" -- the programmer discarded it with the blank identifier.
+	ResultDests []*Operand `json:"resultDests,omitempty"`
+
+	// The variables the call writes back through a by-reference argument.
+	//
+	// The list is parallel to ARGS: entry i is the variable that argument
+	// i is written back into, and a nil entry means that argument is not
+	// by reference.
+	RefOutDests []*Operand `json:"refOutDests,omitempty"`
+
+	// The type that owns the field, for FIELDLOAD and FIELDSTORE.
+	//
+	// The field name alone does not identify a storage: an embedded field
+	// and the field it promotes have the same name and two different
+	// storages. The owner says which type declared it.
+	OwnerType string `json:"ownerType,omitempty"`
 }
 
 // A structured problem: something the frontend could not lower.
@@ -318,11 +370,27 @@ type Function struct {
 	// that index then has no edge for the language at all.
 	EnclosingClass string `json:"enclosingClass,omitempty"`
 
-	// The declared return type.
-	ReturnType *TypeRef `json:"returnType"`
-
-	// SOURCE_FULL or SOURCE_LOWERED.
+	// SOURCE_FULL, SOURCE_LOWERED or SOURCE_DEGRADED.
+	//
+	// It is derived from DROPS, not asserted: a SEMANTICS drop degrades
+	// the function, a STRUCTURE drop lowers it, and a VALUE or TYPE drop
+	// leaves it alone.
 	Precision string `json:"precision"`
+
+	// What KIND of member this function is: "method", "constructor",
+	// "function", "closure" or "staticInitializer".
+	//
+	// The kind decides what a reader may conclude from the function: a
+	// constructor is an entry point, a closure is not, a finalizer runs
+	// when the object dies.
+	MemberKind string `json:"memberKind,omitempty"`
+
+	// The declared return type.
+	//
+	// It is a TYPE OBJECT, never a bare string: a type has a kind, a name
+	// and a component type, and a string cannot carry all three without
+	// inventing a notation that the engine would have to parse.
+	ReturnType *TypeRef `json:"returnType"`
 
 	// Whether the compiler generated this function.
 	//
@@ -334,14 +402,48 @@ type Function struct {
 	// The parameters, in declaration order.
 	Params []Operand `json:"params"`
 
+	// The formal parameters with their types, in declaration order.
+	//
+	// It carries the same operands as PARAMS. It is spelled out separately
+	// because the two names are used by two different readers: PARAMS is
+	// the TAC's slot list, and this one is the source-level signature the
+	// engine matches a call's arguments against.
+	Parameters []Operand `json:"parameters,omitempty"`
+
 	// The locals.
 	Locals []Operand `json:"locals"`
+
+	// The local-scope bindings: a source-level name and the slot it lives
+	// in.
+	ScopeBindings []ScopeBinding `json:"scopeBindings,omitempty"`
 
 	// The instruction stream, in source order.
 	Instructions []Instruction `json:"instructions"`
 
 	// The problems encountered while lowering this function.
 	Problems []Problem `json:"problems"`
+
+	// What this function lost: the constructs that were not lowered
+	// faithfully.
+	//
+	// This is the channel the coverage report reads. An empty array means
+	// the function was fully understood; a non-empty one says exactly what
+	// was not, and at what cost.
+	Drops []Drop `json:"drops,omitempty"`
+
+	// The try/catch/finally regions of the function.
+	//
+	// The exceptional edges of a CFG are built from these. Without them the
+	// only way to see a catch is to see the catch's BODY, and the body is
+	// the part that does not run when there is no exception.
+	TryRegions []TryRegion `json:"tryRegions,omitempty"`
+
+	// The numeric domain of the function's result, when it is known.
+	//
+	// It is a text form of the domain -- "INTEGRAL(32,signed)" -- because
+	// the domain is a property of a VALUE, and the value's own type record
+	// is where the shape lives.
+	Domain string `json:"domain,omitempty"`
 
 	// The deferred calls, in the order they were written.
 	//
@@ -565,6 +667,27 @@ type Response struct {
 
 	// The translated functions.
 	Functions []Function `json:"functions,omitempty"`
+
+	// The losses that belong to the WHOLE PROGRAM rather than to one
+	// function: a member kind that was never reached, a build fact the
+	// sidecar does not read, a package rule that is not implemented.
+	//
+	// They are here because they have no function to live in. A file that
+	// declares an embedded resource loses something no function of that
+	// file owns.
+	//
+	// The same list is also sent under the name PROGRAMDROPS, because the
+	// two names are in use: one is the file-level drop channel and the
+	// other is the wire-protocol name for it. A reader that knows either
+	// name finds the same records.
+	Drops []Drop `json:"drops,omitempty"`
+
+	// The program-level drops, under the wire-protocol name for them.
+	ProgramDrops []Drop `json:"programDrops,omitempty"`
+
+	// The named types the program declares: their fields, their methods,
+	// and the struct tags that say how they are serialized.
+	Types []TypeDecl `json:"types,omitempty"`
 }
 
 // encodeResponse serialises a response into a frame payload.

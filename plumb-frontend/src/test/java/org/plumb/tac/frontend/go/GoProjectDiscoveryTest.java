@@ -61,7 +61,8 @@ class GoProjectDiscoveryTest {
 
     String path = other + java.io.File.pathSeparator + bin;
 
-    assertThat(GoProjectDiscovery.toolchainRootIn(path)).isEqualTo(root.toAbsolutePath().normalize());
+    assertThat(GoProjectDiscovery.toolchainRootIn(path))
+        .isEqualTo(root.toAbsolutePath().normalize());
   }
 
   @Test

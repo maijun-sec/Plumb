@@ -113,6 +113,18 @@ public final class TacFunction implements java.io.Serializable {
   // Directional rule: precision may SUPPRESS a false positive. It must never be
   // used to PROVE safety -- see IrPrecision's javadoc for why.
   private final IrPrecision irPrecision;
+
+  /**
+   * The constructs in this function that could not be lowered faithfully.
+   *
+   * <p>Never null; empty when nothing was lost. See {@link TacDrop} for what a drop means and why
+   * the loss has to be recorded rather than passed over in silence.
+   *
+   * <p>The precision of this function is DERIVED from these (see {@link #derivePrecision}), so a
+   * frontend does not get to state its own precision and a drop can never be quietly ignored.
+   */
+  private final List<TacDrop> drops;
+
   // Annotation metadata. Class / method annotations are
   // captured as a flat list of simple names; field annotations
   // are a name-keyed map; parameter annotations use the same
@@ -188,6 +200,15 @@ public final class TacFunction implements java.io.Serializable {
   // must never be used to PROVE that a call is safe -- a synthetic method is
   // still a real method that a real call can reach.
   private final boolean synthetic;
+
+  /**
+   * What kind of member this function is, or {@code null} when the front end did not say.
+   *
+   * <p>{@code null} and {@link TacMemberKind#UNKNOWN} are different facts: the first means "nobody
+   * said", the second means "somebody said something this build does not know". See {@link
+   * TacMemberKind}.
+   */
+  private final TacMemberKind memberKind;
 
   public TacFunction(
       String name,
@@ -371,6 +392,8 @@ public final class TacFunction implements java.io.Serializable {
     this.irPrecision = IrPrecision.SOURCE_FULL;
     this.synthetic = false;
     this.module = null;
+    this.drops = List.of();
+    this.memberKind = null;
   }
 
   /**
@@ -546,6 +569,106 @@ public final class TacFunction implements java.io.Serializable {
       boolean synthetic,
       Map<String, List<String>> annotationValues,
       String module) {
+    this(
+        name,
+        signature,
+        returnType,
+        params,
+        locals,
+        instructions,
+        classAnnotations,
+        methodAnnotations,
+        fieldAnnotations,
+        paramAnnotations,
+        enclosingClass,
+        origin,
+        tryRegions,
+        sourceLanguage,
+        irPrecision,
+        synthetic,
+        annotationValues,
+        module,
+        List.<TacDrop>of());
+  }
+
+  /**
+   * The full constructor, including the DROPS.
+   *
+   * <p>The drops parameter comes LAST, for the same reason every other addition here comes last:
+   * the parameter lists of the older constructors are load-bearing for existing call sites, and
+   * inserting a parameter in the middle would silently change which overload a call site binds to.
+   * An older caller that does not know about drops gets an empty list.
+   */
+  public TacFunction(
+      String name,
+      String signature,
+      TacType returnType,
+      List<TacOperand.TacVar> params,
+      List<TacOperand.TacVar> locals,
+      List<TacInstruction> instructions,
+      List<String> classAnnotations,
+      List<String> methodAnnotations,
+      Map<String, List<String>> fieldAnnotations,
+      Map<String, List<String>> paramAnnotations,
+      String enclosingClass,
+      SourceOrigin origin,
+      List<TryRegion> tryRegions,
+      SourceLanguage sourceLanguage,
+      IrPrecision irPrecision,
+      boolean synthetic,
+      Map<String, List<String>> annotationValues,
+      String module,
+      List<TacDrop> drops) {
+    this(
+        name,
+        signature,
+        returnType,
+        params,
+        locals,
+        instructions,
+        classAnnotations,
+        methodAnnotations,
+        fieldAnnotations,
+        paramAnnotations,
+        enclosingClass,
+        origin,
+        tryRegions,
+        sourceLanguage,
+        irPrecision,
+        synthetic,
+        annotationValues,
+        module,
+        drops,
+        null);
+  }
+
+  /**
+   * The full constructor, including the MEMBER KIND.
+   *
+   * <p>Like every other addition here, the parameter comes LAST, so the older signatures stay
+   * byte-for-byte intact and no existing call site changes which overload it binds to.
+   */
+  public TacFunction(
+      String name,
+      String signature,
+      TacType returnType,
+      List<TacOperand.TacVar> params,
+      List<TacOperand.TacVar> locals,
+      List<TacInstruction> instructions,
+      List<String> classAnnotations,
+      List<String> methodAnnotations,
+      Map<String, List<String>> fieldAnnotations,
+      Map<String, List<String>> paramAnnotations,
+      String enclosingClass,
+      SourceOrigin origin,
+      List<TryRegion> tryRegions,
+      SourceLanguage sourceLanguage,
+      IrPrecision irPrecision,
+      boolean synthetic,
+      Map<String, List<String>> annotationValues,
+      String module,
+      List<TacDrop> drops,
+      TacMemberKind memberKind) {
     this.name = Objects.requireNonNull(name);
     this.signature = signature == null ? name : signature;
     this.returnType = returnType == null ? TacType.VOID : returnType;
@@ -567,6 +690,18 @@ public final class TacFunction implements java.io.Serializable {
     this.irPrecision = irPrecision == null ? IrPrecision.SOURCE_FULL : irPrecision;
     this.synthetic = synthetic;
     this.module = module;
+    this.drops = drops == null ? List.of() : List.copyOf(drops);
+    this.memberKind = memberKind;
+  }
+
+  /**
+   * What kind of member this function is, or {@code null} when the front end did not say.
+   *
+   * <p>Read it through this accessor, not through the field: a function read from a cache written
+   * before the field existed carries none, and Java deserialization does not run the constructor.
+   */
+  public TacMemberKind memberKind() {
+    return memberKind;
   }
 
   /**
@@ -595,6 +730,124 @@ public final class TacFunction implements java.io.Serializable {
   /** How much of the original source semantics survived the lowering. Never null. */
   public IrPrecision irPrecision() {
     return irPrecision;
+  }
+
+  /**
+   * The constructs in this function that could not be lowered faithfully.
+   *
+   * <p>Never null; empty when nothing was lost.
+   */
+  public List<TacDrop> drops() {
+    // A function read from a cache written before the drop channel existed has a null
+    // list here: Java deserialization does not run the constructor. "Nothing was lost"
+    // is the right answer for such a function, and null would make every caller guess.
+    return drops == null ? List.of() : drops;
+  }
+
+  /**
+   * The precision of a FILE: the worst precision any of its functions carries.
+   *
+   * <p>One degraded function makes the FILE degraded, because the file's finding set is only as
+   * trustworthy as its least trustworthy function.
+   *
+   * <p>The bytecode levels are NOT ranked against the source levels: a bytecode function and a
+   * source-degraded function lose different things, and saying which is "worse" would be a
+   * judgement the engine has no basis for. A bytecode base level is therefore kept as it is, and a
+   * bytecode function is skipped -- its loss is reported through its drops instead.
+   *
+   * @param base the frontend's stated precision for the file
+   * @param functions the functions the file lowered to
+   * @return the precision the file should be reported with
+   */
+  public static IrPrecision aggregatePrecision(IrPrecision base, List<TacFunction> functions) {
+    if (base == IrPrecision.BYTECODE || base == IrPrecision.BYTECODE_SYNTHETIC) {
+      return base;
+    }
+    IrPrecision precision = base;
+    if (functions == null) {
+      return precision;
+    }
+    for (TacFunction fn : functions) {
+      if (fn == null) {
+        continue;
+      }
+      IrPrecision fnPrecision = fn.irPrecision();
+      if (fnPrecision == null) {
+        continue;
+      }
+      if (fnPrecision == IrPrecision.BYTECODE || fnPrecision == IrPrecision.BYTECODE_SYNTHETIC) {
+        continue;
+      }
+      if (fnPrecision.sourceRank() > precision.sourceRank()) {
+        precision = fnPrecision;
+      }
+    }
+    return precision;
+  }
+
+  /**
+   * The precision implied by a set of drops.
+   *
+   * <p>This is the ONE rule by which precision is decided, and it is deliberately not the
+   * frontend's to state:
+   *
+   * <ul>
+   *   <li>a {@link TacDrop.Impact#SEMANTICS} drop ⇒ {@link IrPrecision#SOURCE_DEGRADED}
+   *   <li>otherwise a {@link TacDrop.Impact#STRUCTURE} drop ⇒ {@link IrPrecision#SOURCE_LOWERED}
+   *   <li>otherwise ⇒ {@link IrPrecision#SOURCE_FULL}
+   * </ul>
+   *
+   * <p>A {@link TacDrop.Impact#VALUE} or {@link TacDrop.Impact#TYPE} drop does NOT lower the
+   * precision. That is the point of having those two impacts: an unknown VALUE (the result of
+   * {@code eval}) and an unknown TYPE (a type-level computation) are facts about one value, not
+   * about what the function does.
+   */
+  public static IrPrecision derivePrecision(List<TacDrop> drops) {
+    boolean semantics = false;
+    boolean structure = false;
+    if (drops != null) {
+      for (TacDrop drop : drops) {
+        if (drop == null) {
+          continue;
+        }
+        if (drop.impact() == TacDrop.Impact.SEMANTICS) {
+          semantics = true;
+        } else if (drop.impact() == TacDrop.Impact.STRUCTURE) {
+          structure = true;
+        }
+      }
+    }
+    if (semantics) {
+      return IrPrecision.SOURCE_DEGRADED;
+    }
+    if (structure) {
+      return IrPrecision.SOURCE_LOWERED;
+    }
+    return IrPrecision.SOURCE_FULL;
+  }
+
+  /**
+   * The precision a function ends up with, given what a frontend stated and what it dropped.
+   *
+   * <p>The two are combined, not overridden: a frontend may state a precision that is LOWER than
+   * its drops imply (a Kotlin {@code when} flattened into a branch chain is SOURCE_LOWERED even
+   * with no drop at all), and the drops may imply a precision LOWER than the stated one. The worse
+   * of the two wins, so a loss can never be talked up.
+   *
+   * <p>The bytecode levels are handled separately on purpose. A bytecode function and a
+   * source-degraded function lose DIFFERENT things, so ranking one against the other would be a
+   * judgement with no basis. When the stated precision is a bytecode level it is kept as-is and the
+   * drops are reported alongside it.
+   */
+  public static IrPrecision combine(IrPrecision stated, List<TacDrop> drops) {
+    IrPrecision derived = derivePrecision(drops);
+    if (stated == null) {
+      return derived;
+    }
+    if (stated == IrPrecision.BYTECODE || stated == IrPrecision.BYTECODE_SYNTHETIC) {
+      return stated;
+    }
+    return stated.sourceRank() >= derived.sourceRank() ? stated : derived;
   }
 
   public String name() {

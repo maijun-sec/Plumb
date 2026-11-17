@@ -214,7 +214,10 @@ function translate(request) {
     ...stamp(),
     op: OP.TRANSLATE,
     ok: true,
-    diagnostics: [],
+    capabilities: ["drops", "guards", "tryRegions", "annotations", "domains", "labels", "types"],
+    problems: [],
+    programDrops: [],
+    types: result.types ?? [],
     functions: result.functions,
   };
 }

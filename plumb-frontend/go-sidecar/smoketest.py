@@ -10,8 +10,9 @@ promises:
   2. `openProject` accepts a package whose file's TEXT is supplied by the
      caller, and the analysis sees the caller's text rather than the disk's.
   3. `translate` answers with the functions, and a `defer` produces a CALL
-     instruction, a SOURCE_LOWERED precision and a SOURCE_LOWERED problem.
-  4. `go` produces the same, plus `startsGoroutine`.
+     instruction, a SOURCE_LOWERED precision and a DROP that records the
+     defer's loss.
+  4. `go` produces the same, plus `startsGoroutine` and a CONCURRENT effect.
   5. A request for another protocol version is REFUSED.
 
 Usage:
@@ -346,15 +347,24 @@ def main():
                     write_file.get("precision"), len(calls)))
                 for problem in write_file.get("problems") or []:
                     print("     problem: %s" % json.dumps(problem))
+                for drop in write_file.get("drops") or []:
+                    print("     drop: %s" % json.dumps(drop))
                 if not check("the deferred call is an instruction", len(calls) == 1):
                     failures += 1
                 if not check("the function's precision is SOURCE_LOWERED",
                              write_file.get("precision") == "SOURCE_LOWERED",
                              str(write_file.get("precision"))):
                     failures += 1
-                if not check("the function reports a SOURCE_LOWERED problem",
-                             any(problem.get("kind") == "SOURCE_LOWERED"
-                                 for problem in write_file.get("problems") or [])):
+                # The defer's loss is a DROP, not a problem. The two channels
+                # say different things -- a problem says the frontend could not
+                # do its job, a drop says what the job cost -- and the design
+                # keeps them apart. This assertion used to look for a
+                # SOURCE_LOWERED PROBLEM, which the drop model replaces.
+                if not check("the defer's loss is recorded as a drop",
+                             any(drop.get("construct") == "go.defer.order"
+                                 and drop.get("impact") == "STRUCTURE"
+                                 for drop in write_file.get("drops") or []),
+                             json.dumps(write_file.get("drops"))):
                     failures += 1
                 if not check("the deferred call is in the side table",
                              len(write_file.get("deferredCalls") or []) == 1):
@@ -369,6 +379,8 @@ def main():
                     spawn.get("precision"), spawn.get("startsGoroutine")))
                 for problem in spawn.get("problems") or []:
                     print("     problem: %s" % json.dumps(problem))
+                for drop in spawn.get("drops") or []:
+                    print("     drop: %s" % json.dumps(drop))
                 if not check("the function starts a goroutine",
                              spawn.get("startsGoroutine") is True):
                     failures += 1
@@ -376,9 +388,15 @@ def main():
                              spawn.get("precision") == "SOURCE_LOWERED",
                              str(spawn.get("precision"))):
                     failures += 1
-                if not check("the function reports a SOURCE_LOWERED problem",
-                             any(problem.get("kind") == "SOURCE_LOWERED"
-                                 for problem in spawn.get("problems") or [])):
+                # The goroutine's loss is carried by the STRUCTURED FACT -- the
+                # CONCURRENT effect on the call, and the startsGoroutine flag
+                # -- and not by a problem: the goroutine's body is lowered in
+                # full, so there is nothing the frontend failed to do. This
+                # assertion used to look for a SOURCE_LOWERED PROBLEM.
+                if not check("the goroutine call carries the CONCURRENT effect",
+                             any(instruction.get("effect") == "CONCURRENT"
+                                 for instruction in spawn.get("instructions") or []),
+                             json.dumps(spawn.get("instructions"))):
                     failures += 1
 
             print("\n4. a request for another protocol version")

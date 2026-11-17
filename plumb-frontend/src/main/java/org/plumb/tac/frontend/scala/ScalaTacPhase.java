@@ -31,35 +31,33 @@ import java.util.List;
 /**
  * The compiler phase that lowers Scala 3 source into Plumb's TAC.
  *
- * <p><b>What the phase does.</b> It runs once per compilation unit, on the fully typed
- * tree (after the {@code typer}), and hands the tree to a {@link ScalaTacTranslator}.
- * The translator produces the {@link org.plumb.tac.ir.TacFunction}s; the phase collects
- * them and hands them back to the frontend.
+ * <p><b>What the phase does.</b> It runs once per compilation unit, on the fully typed tree (after
+ * the {@code typer}), and hands the tree to a {@link ScalaTacTranslator}. The translator produces
+ * the {@link org.plumb.tac.ir.TacFunction}s; the phase collects them and hands them back to the
+ * frontend.
  *
- * <p><b>Why {@code transformUnit} and not {@code transformBlock}.</b> {@code
- * transformBlock} fires only on {@code Block} nodes, and a compilation unit is a {@code
- * PackageDef}, not a {@code Block}. {@code transformUnit} is the one hook that fires
- * exactly once per unit, with the whole typed tree -- which is what the frontend wants,
- * because it needs the enclosing package and class structure too, not just one method
- * body.
+ * <p><b>Why {@code transformUnit} and not {@code transformBlock}.</b> {@code transformBlock} fires
+ * only on {@code Block} nodes, and a compilation unit is a {@code PackageDef}, not a {@code Block}.
+ * {@code transformUnit} is the one hook that fires exactly once per unit, with the whole typed tree
+ * -- which is what the frontend wants, because it needs the enclosing package and class structure
+ * too, not just one method body.
  *
- * <p><b>Why the phase extends {@code MegaPhase.MiniPhase}.</b> In Scala, a plugin phase
- * is written {@code class MyPhase extends MiniPhase with PluginPhase}. {@code
- * MiniPhase} is where the transform hooks live; {@code PluginPhase} only adds the
- * ordering information ({@code runsBefore} / {@code runsAfter}) that the plugin API
- * needs. From Java the two are separate types: {@code PluginPhase} is an interface with
- * no transform method at all, and {@code MiniPhase} is the abstract class that carries
- * them. So the phase implements both.
+ * <p><b>Why the phase extends {@code MegaPhase.MiniPhase}.</b> In Scala, a plugin phase is written
+ * {@code class MyPhase extends MiniPhase with PluginPhase}. {@code MiniPhase} is where the
+ * transform hooks live; {@code PluginPhase} only adds the ordering information ({@code runsBefore}
+ * / {@code runsAfter}) that the plugin API needs. From Java the two are separate types: {@code
+ * PluginPhase} is an interface with no transform method at all, and {@code MiniPhase} is the
+ * abstract class that carries them. So the phase implements both.
  *
- * <p><b>Why {@code superPhase} is set by hand.</b> A {@code MiniPhase} normally belongs
- * to a {@code MegaPhase} that owns it, and {@code MiniPhase.superPhase} points back at
- * that owner. A phase that is not owned by any {@code MegaPhase} has a null {@code
- * superPhase}, and the {@code relaxedTyping} machinery NPEs on it. This phase therefore
- * owns itself: it is the single mini phase of a {@code MegaPhase} it creates.
+ * <p><b>Why {@code superPhase} is set by hand.</b> A {@code MiniPhase} normally belongs to a {@code
+ * MegaPhase} that owns it, and {@code MiniPhase.superPhase} points back at that owner. A phase that
+ * is not owned by any {@code MegaPhase} has a null {@code superPhase}, and the {@code
+ * relaxedTyping} machinery NPEs on it. This phase therefore owns itself: it is the single mini
+ * phase of a {@code MegaPhase} it creates.
  *
- * <p><b>The phase does not transform anything.</b> It reads the tree and returns it
- * unchanged. Lowering is a read-only view of the source, and dotc's own later phases
- * are left to compile the Scala normally.
+ * <p><b>The phase does not transform anything.</b> It reads the tree and returns it unchanged.
+ * Lowering is a read-only view of the source, and dotc's own later phases are left to compile the
+ * Scala normally.
  *
  * @see ScalaTacTranslator
  * @see PlumbScalaPlugin
@@ -106,8 +104,8 @@ final class ScalaTacPhase extends dotty.tools.dotc.transform.MegaPhase.MiniPhase
   /**
    * Creates the phase.
    *
-   * <p>The constructor makes the phase its own {@code MegaPhase}'s only mini phase, so
-   * that {@code superPhase} is never null.
+   * <p>The constructor makes the phase its own {@code MegaPhase}'s only mini phase, so that {@code
+   * superPhase} is never null.
    */
   ScalaTacPhase() {
     superPhase_$eq(
@@ -123,8 +121,8 @@ final class ScalaTacPhase extends dotty.tools.dotc.transform.MegaPhase.MiniPhase
   /**
    * The phases this one runs before.
    *
-   * <p>Empty: the phase wants to run as early as the pipeline allows after the {@code
-   * typer}, so it names no successor.
+   * <p>Empty: the phase wants to run as early as the pipeline allows after the {@code typer}, so it
+   * names no successor.
    */
   @Override
   public scala.collection.immutable.Set<String> runsBefore() {
@@ -134,8 +132,8 @@ final class ScalaTacPhase extends dotty.tools.dotc.transform.MegaPhase.MiniPhase
   /**
    * The phases this one runs after.
    *
-   * <p>{@code typer} only: the lowering needs resolved types, and it wants them before
-   * the trees are serialised.
+   * <p>{@code typer} only: the lowering needs resolved types, and it wants them before the trees
+   * are serialised.
    */
   @Override
   public scala.collection.immutable.Set<String> runsAfter() {
@@ -173,12 +171,7 @@ final class ScalaTacPhase extends dotty.tools.dotc.transform.MegaPhase.MiniPhase
       problems.add(message);
       structuredProblems.add(
           new org.plumb.tac.ir.TacProgram.FunctionProblem(
-              "<scala>",
-              "TRANSLATION_ERROR",
-              message,
-              ex.getClass().getSimpleName(),
-              -1,
-              -1));
+              "<scala>", "TRANSLATION_ERROR", message, ex.getClass().getSimpleName(), -1, -1));
     }
     return tree;
   }

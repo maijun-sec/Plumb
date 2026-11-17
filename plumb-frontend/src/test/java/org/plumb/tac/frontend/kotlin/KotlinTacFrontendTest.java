@@ -37,8 +37,8 @@ import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacType;
 
 /**
- * The Kotlin frontend's contract: what it produces, what it refuses to produce, and what
- * it does with a broken file.
+ * The Kotlin frontend's contract: what it produces, what it refuses to produce, and what it does
+ * with a broken file.
  */
 class KotlinTacFrontendTest {
 
@@ -119,8 +119,7 @@ class KotlinTacFrontendTest {
     assertThat(fn.name()).isEqualTo("add");
     assertThat(fn.params()).hasSize(2);
 
-    List<TacInstruction.Kind> kinds =
-        fn.instructions().stream().map(i -> i.kind).toList();
+    List<TacInstruction.Kind> kinds = fn.instructions().stream().map(i -> i.kind).toList();
 
     // The addition is a BINOP, the copy into the local is a MOVE, and the function
     // returns with a RETURN.
@@ -155,8 +154,7 @@ class KotlinTacFrontendTest {
                 "}"));
 
     TacFunction fn = result.functions().get(0);
-    List<TacInstruction.Kind> kinds =
-        fn.instructions().stream().map(i -> i.kind).toList();
+    List<TacInstruction.Kind> kinds = fn.instructions().stream().map(i -> i.kind).toList();
     assertThat(kinds).contains(TacInstruction.Kind.BRANCH);
     assertThat(kinds).contains(TacInstruction.Kind.LABEL);
     assertThat(kinds).contains(TacInstruction.Kind.RETURN);
@@ -184,18 +182,16 @@ class KotlinTacFrontendTest {
             .findFirst()
             .orElseThrow(() -> new AssertionError("useIt was not lowered: " + result.functions()));
 
-    assertThat(fn.instructions().stream().map(i -> i.kind))
-        .contains(TacInstruction.Kind.CALL);
+    assertThat(fn.instructions().stream().map(i -> i.kind)).contains(TacInstruction.Kind.CALL);
   }
 
   /**
    * A qualified call carries its receiver in {@code args[0]}.
    *
-   * <p>The TAC's {@code CALL} instruction has no separate receiver slot, so the receiver
-   * goes in front of the arguments -- the convention the Java frontend and the bytecode
-   * frontend both follow. The DFA's null-dereference checker reads the receiver from
-   * {@code args[0]}: without it, a method call on a possibly-null receiver is not
-   * reported at all.
+   * <p>The TAC's {@code CALL} instruction has no separate receiver slot, so the receiver goes in
+   * front of the arguments -- the convention the Java frontend and the bytecode frontend both
+   * follow. The DFA's null-dereference checker reads the receiver from {@code args[0]}: without it,
+   * a method call on a possibly-null receiver is not reported at all.
    */
   @Test
   void aQualifiedCallPutsItsReceiverFirstInTheArguments() {
@@ -234,9 +230,9 @@ class KotlinTacFrontendTest {
   /**
    * A {@code when} with a subject compares the subject against each entry's condition.
    *
-   * <p>The entry's <i>condition</i> is the value compared ({@code when (x) { 1 -> ... }}),
-   * and the entry's <i>expression</i> is the branch body after the arrow. Using the body
-   * as the comparison value would make the branch compare the subject against itself.
+   * <p>The entry's <i>condition</i> is the value compared ({@code when (x) { 1 -> ... }}), and the
+   * entry's <i>expression</i> is the branch body after the arrow. Using the body as the comparison
+   * value would make the branch compare the subject against itself.
    */
   @Test
   void aWhenWithASubjectComparesAgainstTheEntriesCondition() {
@@ -284,11 +280,10 @@ class KotlinTacFrontendTest {
   /**
    * A {@code when} HAS a value, and the lowering has to produce it.
    *
-   * <p><b>Why this test exists.</b> The translator lowered each arm's body as a STATEMENT, so
-   * the value was computed and thrown away, and the {@code when} produced nothing. A caller that
-   * did {@code val x = when (y) { ... }} got an undefined {@code x}, and every taint that flowed
-   * through the {@code when} was lost -- silently, with the function still claiming full
-   * precision.
+   * <p><b>Why this test exists.</b> The translator lowered each arm's body as a STATEMENT, so the
+   * value was computed and thrown away, and the {@code when} produced nothing. A caller that did
+   * {@code val x = when (y) { ... }} got an undefined {@code x}, and every taint that flowed
+   * through the {@code when} was lost -- silently, with the function still claiming full precision.
    */
   @Test
   void aWhenProducesItsValue() {
@@ -326,9 +321,9 @@ class KotlinTacFrontendTest {
   /**
    * An {@code is}-branch that cannot be lowered is REPORTED and degrades the function.
    *
-   * <p><b>Why this test exists.</b> The {@code is} branch was skipped with a bare {@code
-   * continue}, so the gap was SILENT: the function's precision stayed {@code SOURCE_FULL} and a
-   * checker trusted a function whose branch was simply gone.
+   * <p><b>Why this test exists.</b> The {@code is} branch was skipped with a bare {@code continue},
+   * so the gap was SILENT: the function's precision stayed {@code SOURCE_FULL} and a checker
+   * trusted a function whose branch was simply gone.
    */
   @Test
   void anIsBranchThatCannotBeLoweredIsReported() {
@@ -351,9 +346,7 @@ class KotlinTacFrontendTest {
     assertThat(fn.irPrecision())
         .as("a function with an unlowered branch must not claim full precision")
         .isEqualTo(IrPrecision.SOURCE_LOWERED);
-    assertThat(result.problems())
-        .as("and the gap must be reported, not just flagged")
-        .isNotEmpty();
+    assertThat(result.problems()).as("and the gap must be reported, not just flagged").isNotEmpty();
     assertThat(String.join("\n", result.problems()))
         .as("the message says what could not be lowered")
         .contains("is");
@@ -366,13 +359,7 @@ class KotlinTacFrontendTest {
   @Test
   void aNonNullParameterMapsToANonNullableType() {
     TacFrontend.ParseResult result =
-        support.parse(
-            String.join(
-                "\n",
-                "package demo",
-                "",
-                "fun takesName(name: String) {",
-                "}"));
+        support.parse(String.join("\n", "package demo", "", "fun takesName(name: String) {", "}"));
 
     TacFunction fn = result.functions().get(0);
     TacOperand.TacVar param = fn.params().get(0);
@@ -384,13 +371,7 @@ class KotlinTacFrontendTest {
   @Test
   void aNullableParameterMapsToANullableType() {
     TacFrontend.ParseResult result =
-        support.parse(
-            String.join(
-                "\n",
-                "package demo",
-                "",
-                "fun takesName(name: String?) {",
-                "}"));
+        support.parse(String.join("\n", "package demo", "", "fun takesName(name: String?) {", "}"));
 
     TacFunction fn = result.functions().get(0);
     TacOperand.TacVar param = fn.params().get(0);
@@ -403,12 +384,7 @@ class KotlinTacFrontendTest {
     TacFrontend.ParseResult result =
         support.parse(
             String.join(
-                "\n",
-                "package demo",
-                "",
-                "fun makeName(): String {",
-                "    return \"x\"",
-                "}"));
+                "\n", "package demo", "", "fun makeName(): String {", "    return \"x\"", "}"));
 
     TacFunction fn = result.functions().get(0);
     assertThat(fn.returnType().isNullable()).isFalse();
@@ -419,12 +395,7 @@ class KotlinTacFrontendTest {
     TacFrontend.ParseResult result =
         support.parse(
             String.join(
-                "\n",
-                "package demo",
-                "",
-                "fun makeName(): String? {",
-                "    return null",
-                "}"));
+                "\n", "package demo", "", "fun makeName(): String? {", "    return null", "}"));
 
     TacFunction fn = result.functions().get(0);
     assertThat(fn.returnType().isNullable()).isTrue();
@@ -471,9 +442,7 @@ class KotlinTacFrontendTest {
 
     TacFunction fn = result.functions().get(0);
     List<TacInstruction> checks =
-        fn.instructions().stream()
-            .filter(i -> i.kind == TacInstruction.Kind.NULL_CHECK)
-            .toList();
+        fn.instructions().stream().filter(i -> i.kind == TacInstruction.Kind.NULL_CHECK).toList();
     assertThat(checks).isNotEmpty();
     // The DFA reads the checked variable off `dest`, so `dest` must be the variable.
     assertThat(checks.get(0).dest).isInstanceOf(TacOperand.TacVar.class);
@@ -505,28 +474,23 @@ class KotlinTacFrontendTest {
   void aDataClasssGeneratedMembersAreMarkedSynthetic() {
     TacFrontend.ParseResult result =
         support.parse(
-            String.join(
-                "\n",
-                "package demo",
-                "",
-                "data class Point(val x: Int, val y: String)"));
+            String.join("\n", "package demo", "", "data class Point(val x: Int, val y: String)"));
 
     List<TacFunction> functions = result.functions();
     assertThat(functions).isNotEmpty();
 
     // The compiler generates `component1`, `component2` and `copy` for a data class.
     // They must come back marked synthetic, and the hand-written members must not be.
-    List<TacFunction> generated =
-        functions.stream().filter(TacFunction::isSynthetic).toList();
+    List<TacFunction> generated = functions.stream().filter(TacFunction::isSynthetic).toList();
     assertThat(generated)
         .as("the data class's generated members must be marked synthetic; got %s", functions)
         .isNotEmpty();
 
     for (TacFunction fn : generated) {
       String name = fn.name();
-      assertThat(name).satisfiesAnyOf(
-          n -> assertThat(n).endsWith("copy"),
-          n -> assertThat(n).contains("component"));
+      assertThat(name)
+          .satisfiesAnyOf(
+              n -> assertThat(n).endsWith("copy"), n -> assertThat(n).contains("component"));
     }
   }
 

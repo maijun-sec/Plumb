@@ -13,7 +13,7 @@
 // namespace is what gives that access its identity: the pair (object, key).
 //
 // EVERY FAILURE IS REPORTED. A construct this translator cannot lower becomes
-// a problem on the function, and the affected value becomes a HAVOC. It never
+// a drop on the function, and the affected value becomes a HAVOC. It never
 // becomes a silent "nothing to report": a sidecar that drops a construct
 // quietly would leave the engine believing the program had no findings.
 //
@@ -31,44 +31,77 @@ import {
 } from "./protocol.mjs";
 
 import {
+  isArrayBindingPattern,
   isArrayLiteralExpression,
+  isAsExpression,
   isAwaitExpression,
   isBinaryExpression,
   isBindingElement,
   isBlock,
   isBreakStatement,
   isCallExpression,
+  isCatchClause,
   isClassDeclaration,
   isClassExpression,
+  isClassStaticBlockDeclaration,
+  isConditionalExpression,
+  isConstructorDeclaration,
   isContinueStatement,
+  isDecorator,
+  isDoStatement,
   isElementAccessExpression,
+  isEmptyStatement,
   isExpressionStatement,
+  isForInStatement,
   isForOfStatement,
   isForStatement,
   isFunctionDeclaration,
   isFunctionExpression,
+  isGetAccessorDeclaration,
+  isHeritageClause,
   isIdentifier,
   isIfStatement,
   isImportDeclaration,
   isImportEqualsDeclaration,
-  isNewExpression,
+  isImportExpression,
+  isIndexSignatureDeclaration,
+  isJsxElement,
+  isJsxFragment,
+  isJsxSelfClosingElement,
+  isLabeledStatement,
+  isMetaProperty,
   isMethodDeclaration,
   isNamespaceImport,
+  isNewExpression,
   isNonNullExpression,
   isNullLiteral,
   isNumericLiteral,
   isObjectBindingPattern,
   isObjectLiteralExpression,
+  isOmittedExpression,
   isParenthesizedExpression,
   isPostfixUnaryExpression,
   isPrefixUnaryExpression,
+  isPrivateIdentifier,
   isPropertyAccessExpression,
+  isPropertyDeclaration,
+  isRegularExpressionLiteral,
   isReturnStatement,
+  isSatisfiesExpression,
+  isSetAccessorDeclaration,
+  isSpreadElement,
   isStringLiteral,
+  isSuperExpression,
+  isSwitchStatement,
+  isTaggedTemplateExpression,
   isTemplateExpression,
   isThrowStatement,
+  isTryStatement,
+  isTypeAssertion,
   isVariableDeclaration,
+  isVariableDeclarationList,
   isVariableStatement,
+  isVoidExpression,
   isWhileStatement,
   isArrowFunction,
   isNoSubstitutionTemplateLiteral,
@@ -94,9 +127,12 @@ const BINARY_OPERATORS = {
   [SyntaxKind.SlashToken]: "DIV",
   [SyntaxKind.PercentToken]: "MOD",
   [SyntaxKind.AsteriskAsteriskToken]: "POW",
-  [SyntaxKind.EqualsEqualsToken]: "EQ",
+  // A loose equality and a strict one are DIFFERENT operators: `==` coerces
+  // its operands, `===` does not. The token kind is what tells them apart,
+  // so the two spellings no longer share one entry.
+  [SyntaxKind.EqualsEqualsToken]: "LOOSE_EQ",
   [SyntaxKind.EqualsEqualsEqualsToken]: "EQ",
-  [SyntaxKind.ExclamationEqualsToken]: "NE",
+  [SyntaxKind.ExclamationEqualsToken]: "LOOSE_NE",
   [SyntaxKind.ExclamationEqualsEqualsToken]: "NE",
   [SyntaxKind.LessThanToken]: "LT",
   [SyntaxKind.LessThanEqualsToken]: "LE",
@@ -114,50 +150,24 @@ const BINARY_OPERATORS = {
 };
 
 /**
- * The owner of a REAL call whose owner this translator could not determine.
- *
- * <p>This is not a stand-in for a construct the TAC has no counterpart for --
- * it is a real call, whose receiver's owner is simply not knowable here.
- *
- * <p>The owner it used to carry was the MODULE the file belongs to, and that
- * shape had two faults:
- *
- * <ul>
- *   <li>It looked like a module path, so a sink catalogue written against a
- *       module could claim the program's OWN file. A file called
- *       "logging.ts" whose "logger.error(value)" reached the catalogue's
- *       "^logging\.(debug|info|...)\b" -- a finding against a program that
- *       never called the logging module at all.
- *   <li>It was a GUESS dressed as a fact. The owner of that call is whatever
- *       the logger is, and this translator cannot tell.
- * </ul>
- *
- * <p>The angle brackets are the point: no module path can contain one, and
- * every sink pattern in the catalogue is anchored at the start of the callee
- * key, so a key that begins with one cannot be claimed by any of them.
- */
-const UNKNOWN_OWNER = "<unknown>";
-
-/**
  * The operators the TAC does not have.
  *
  * <p>The TAC's binary operators are the arithmetic, the bitwise, the
- * comparison and the short-circuit ones. A power and a null-coalescing are
- * not among them.
+ * comparison and the short-circuit ones. A power is not among them.
  *
- * <p>Each is mapped onto the closest thing the TAC has and REPORTED: the
+ * <p>It is mapped onto the closest thing the TAC has and REPORTED: the
  * function is still lowered -- the taint of the operands reaches the result
  * either way -- but the reader is told that the operator in the TAC is not
  * the operator in the source.
+ *
+ * <p>The null-coalescing operator is NOT in this table any more: `a ?? b` is a
+ * SHORT-CIRCUIT expression and it is expanded into a branch chain rather than
+ * approximated by a disjunction.
  */
 const APPROXIMATED_OPERATORS = {
   [SyntaxKind.AsteriskAsteriskToken]: {
     binop: "MUL",
     note: "the TAC has no power operator, so the power is modelled as a multiplication",
-  },
-  [SyntaxKind.QuestionQuestionToken]: {
-    binop: "LOR",
-    note: "the TAC has no null-coalescing operator, so the coalescing is modelled as a disjunction",
   },
 };
 
@@ -171,6 +181,9 @@ const APPROXIMATED_OPERATORS = {
  * <p>The value is an object rather than a string, because two of the
  * operators have no counterpart in the TAC and the approximation has to be
  * reported.
+ *
+ * <p>The three LOGICAL compound assignments are not here: they are
+ * short-circuits, and each of them expands into "read, decide, maybe write".
  */
 const COMPOUND_OPERATORS = {
   [SyntaxKind.PlusEqualsToken]: { binop: "ADD" },
@@ -188,30 +201,170 @@ const COMPOUND_OPERATORS = {
   [SyntaxKind.AmpersandEqualsToken]: { binop: "AND" },
   [SyntaxKind.BarEqualsToken]: { binop: "OR" },
   [SyntaxKind.CaretEqualsToken]: { binop: "XOR" },
-  [SyntaxKind.BarBarEqualsToken]: { binop: "LOR" },
-  [SyntaxKind.AmpersandAmpersandEqualsToken]: { binop: "LAND" },
-  [SyntaxKind.QuestionQuestionEqualsToken]: {
-    binop: "LOR",
-    note: "the TAC has no null-coalescing operator, so the coalescing is modelled as a disjunction",
-  },
 };
 
 /**
- * The TAC's unary operators, by the TypeScript operator token.
+ * The logical compound assignments: `&&=`, `||=` and `??=`.
+ *
+ * <p>Each of them is a short-circuit: the right-hand side is evaluated only
+ * when the left-hand side says so, and the value of the expression is the
+ * value of the left-hand side AFTER the write.
+ */
+const LOGICAL_COMPOUND_OPERATORS = {
+  [SyntaxKind.BarBarEqualsToken]: "LOR",
+  [SyntaxKind.AmpersandAmpersandEqualsToken]: "LAND",
+  [SyntaxKind.QuestionQuestionEqualsToken]: "NULL_COALESCE",
+};
+
+/**
+ * The TAC's unary operators, by the operator's SYNTAX KIND.
+ *
+ * <p>The key is the kind, not the spelling: the compiler hands out a number,
+ * and a table keyed by the spelling would never be found.
  *
  * <p>There is no unary plus in the TAC, and there does not need to be: a
  * unary plus is a no-op, so the operand is the result.
  */
 const UNARY_OPERATORS = {
-  "-": "NEG",
-  "!": "NOT",
-  "~": "BITNOT",
+  [SyntaxKind.ExclamationToken]: "NOT",
+  [SyntaxKind.TildeToken]: "BITNOT",
+  [SyntaxKind.MinusToken]: "NEG",
 };
+
+/**
+ * The kinds of member a function can be.
+ *
+ * <p>A member kind says what the function IS, not what it does: a getter and
+ * a setter are both "a member of the class", but the engine has to tell them
+ * apart, because a getter is called and a setter is written.
+ */
+const MEMBER_KIND = {
+  METHOD: "METHOD",
+  CONSTRUCTOR: "CONSTRUCTOR",
+  GETTER: "GETTER",
+  SETTER: "SETTER",
+  STATIC_INITIALIZER: "STATIC_INITIALIZER",
+  FIELD_INITIALIZER: "FIELD_INITIALIZER",
+};
+
+/**
+ * How much a degradation costs.
+ *
+ * <p>`SEMANTICS` -- the semantics are lost, so the function is degraded.
+ * `STRUCTURE` -- only the shape is lost, so the function is lowered.
+ * `VALUE` -- one value is unknown; the precision is unchanged.
+ * `TYPE` -- only type-level information is lost; the precision is unchanged.
+ */
+const IMPACT = {
+  SEMANTICS: "SEMANTICS",
+  STRUCTURE: "STRUCTURE",
+  VALUE: "VALUE",
+  TYPE: "TYPE",
+};
+
+/**
+ * The wire values the protocol's constant tables do not carry yet.
+ *
+ * <p>The protocol tables are shared with the other front ends, and they are
+ * not this file's to change: the values are written out here so that the
+ * translator does not depend on a table that does not have them yet. The
+ * Java side maps them by name.
+ */
+const CONST_REGEX = "REGEX";
+const TYPE_BIGINT = "BIGINT";
+const PRECISION_DEGRADED = "SOURCE_DEGRADED";
+
+/**
+ * The owner of a call whose owner this translator could not determine.
+ *
+ * <p>The owner is not a sentinel: the callee key simply has no owner section,
+ * which is the shape the IR defines for "the owner is not knowable here". A
+ * sentinel that no module path can contain used to stand in for it, and a key
+ * that begins with one cannot be claimed by any sink pattern -- but it also
+ * cannot be resolved by the call graph, and it hid the difference between "the
+ * owner is missing" and "the owner is a global".
+ */
+const OWNER_MISSING = null;
+
+/**
+ * The names of the globals the language itself provides.
+ *
+ * <p>The table gives NAMES and nothing else: it says which receiver a call
+ * belongs to, and it does NOT say whether that call is a source or a sink.
+ * That is the engine's rule table's business, keyed by `owner.method`.
+ */
+const GLOBAL_OWNERS = new Set([
+  "Array",
+  "ArrayBuffer",
+  "BigInt",
+  "Boolean",
+  "Buffer",
+  "DataView",
+  "Date",
+  "Error",
+  "EvalError",
+  "Function",
+  "Intl",
+  "JSON",
+  "Map",
+  "Math",
+  "Number",
+  "Object",
+  "Promise",
+  "Proxy",
+  "RangeError",
+  "ReferenceError",
+  "Reflect",
+  "RegExp",
+  "Set",
+  "String",
+  "Symbol",
+  "SyntaxError",
+  "TypeError",
+  "URIError",
+  "URL",
+  "URLSearchParams",
+  "WeakMap",
+  "WeakRef",
+  "WeakSet",
+  "alert",
+  "clearInterval",
+  "clearTimeout",
+  "console",
+  "crypto",
+  "decodeURI",
+  "decodeURIComponent",
+  "document",
+  "encodeURI",
+  "encodeURIComponent",
+  "eval",
+  "fetch",
+  "globalThis",
+  "history",
+  "isFinite",
+  "isNaN",
+  "localStorage",
+  "location",
+  "navigator",
+  "parseFloat",
+  "parseInt",
+  "performance",
+  "postMessage",
+  "process",
+  "queueMicrotask",
+  "require",
+  "self",
+  "sessionStorage",
+  "setInterval",
+  "setTimeout",
+  "structuredClone",
+  "window",
+]);
 
 /**
  * One function's lowering state.
  *
- * The instruction list, the locals and the problems belong to the function
+ * <p>The instruction list, the locals and the problems belong to the function
  * being lowered, so they live here rather than on the translator.
  */
 class FunctionState {
@@ -219,10 +372,24 @@ class FunctionState {
     this.name = name;
     this.signature = signature;
     this.enclosingClass = enclosingClass;
+    this.memberKind = MEMBER_KIND.METHOD;
+    this.synthetic = false;
     this.params = [];
     this.locals = [];
     this.instructions = [];
     this.problems = [];
+    this.drops = [];
+    this.tryRegions = [];
+    this.fieldAnnotations = {};
+    this.classAnnotations = [];
+    this.methodAnnotations = [];
+    this.paramAnnotations = {};
+    this.annotationValues = {};
+    this.returnType = undefined;
+    this.interfaces = [];
+    this.superType = null;
+    this.labelRefs = new Map();
+    this.scopes = [];
     this.tempCounter = 0;
     this.labelCounter = 0;
     this.labelPrefix = "";
@@ -233,16 +400,20 @@ class FunctionState {
     return varOp(`t_t${this.tempCounter}`, type, true);
   }
 
-  newLabel() {
+  newLabel(kind, name) {
     this.labelCounter += 1;
-    return `${this.labelPrefix}L${this.labelCounter}`;
+    const label = `${this.labelPrefix}L${this.labelCounter}`;
+    if (kind) {
+      this.labelRefs.set(label, { kind, name: name ?? null, scopeId: this.scopes.length });
+    }
+    return label;
   }
 }
 
 /**
  * The translator.
  *
- * One instance lowers one source file.
+ * <p>One instance lowers one source file.
  */
 export class Translator {
   /**
@@ -261,37 +432,58 @@ export class Translator {
     this.imports = new Map();
     this.declaredNames = new Set();
     this.state = null;
+    this.pendingFunctions = [];
+    this.sourceFile = null;
+    this.metaProperties = [];
+    this.enclosingBase = undefined;
   }
 
   /** The functions declared in a source file, in source order. */
   translateSourceFile(sourceFile) {
+    this.sourceFile = sourceFile;
     this.collectModuleBindings(sourceFile);
     this.collectDeclaredNames(sourceFile);
+    this.metaProperties = collectMetaProperties(sourceFile);
     const functions = [];
+    const moduleStatements = [];
+    const flushModule = () => {
+      if (moduleStatements.length === 0) {
+        return;
+      }
+      const state = this.beginFunction("__top", `${this.moduleName}.__top()`, null);
+      state.synthetic = true;
+      state.memberKind = MEMBER_KIND.METHOD;
+      this.guard(moduleStatements[0], () => {
+        for (const statement of moduleStatements) {
+          this.lowerStatement(statement);
+        }
+      });
+      functions.push(this.finishFunction(state));
+      functions.push(...this.takePendingFunctions());
+      moduleStatements.length = 0;
+    };
+
     for (const statement of sourceFile.statements) {
       if (isFunctionDeclaration(statement) && statement.name) {
-        functions.push(this.lowerFunctionDeclaration(statement, null));
+        flushModule();
+        functions.push(...this.lowerFunctionDeclaration(statement, null));
         continue;
       }
       if (isClassDeclaration(statement) && statement.name) {
+        flushModule();
         functions.push(...this.lowerClass(statement));
         continue;
       }
-      if (isVariableStatement(statement)) {
-        const lifted = this.liftFunctionVariables(statement);
-        if (lifted.length > 0) {
-          functions.push(...lifted);
-          continue;
-        }
-      }
       // A top-level statement that is not a function: the module's own code.
       // It becomes a synthetic function so that the engine has somewhere to
-      // put the instructions.
-      const moduleFunction = this.beginFunction("<module>", this.moduleName, null);
-      this.guard(statement, () => {
-        this.lowerStatement(statement);
-      });
-      functions.push(this.finishFunction(moduleFunction));
+      // put the instructions -- one function for the whole module, so that
+      // the module's statements keep their order relative to each other.
+      moduleStatements.push(statement);
+    }
+    flushModule();
+
+    if (this.metaProperties.length > 0) {
+      functions.push(...this.lowerMetaFunction());
     }
     return { functions };
   }
@@ -454,29 +646,264 @@ export class Translator {
 
   // ---- functions ----------------------------------------------------------------------------
 
-  lowerFunctionDeclaration(node, enclosingClass) {
+  lowerFunctionDeclaration(node, enclosingClass, memberKind = MEMBER_KIND.METHOD) {
     const name = node.name ? node.name.text : "<anonymous>";
     const state = this.beginFunction(name, this.functionSignature(node, enclosingClass), enclosingClass);
+    state.memberKind = memberKind;
     this.guard(node, () => {
       this.lowerParameters(node.parameters);
       if (node.body) {
         this.lowerBlock(node.body);
       }
     });
-    return this.finishFunction(state);
+    if (node.type) {
+      state.returnType = this.typeOf(node.type);
+    }
+    const finished = this.finishFunction(state);
+    return [finished, ...this.takePendingFunctions()];
   }
 
-  /** The methods of a class, and the class's own field initialisers. */
+  /**
+   * The methods of a class, and the class's own field initialisers.
+   *
+   * <p>The dispatch is EXHAUSTIVE: every kind of member a class can have is
+   * lowered into a function of its own, and a member kind this translator
+   * does not know is reported rather than silently dropped. A class whose
+   * constructor, fields, accessors and static blocks all disappear still
+   * claims full precision -- that is the shape of a half-lowered program that
+   * looks like a whole one.
+   */
   lowerClass(node) {
     const out = [];
     const className = node.name ? node.name.text : "<anonymous>";
-    for (const member of node.members) {
-      // A class method is a METHOD declaration, not a function declaration:
-      // it belongs to the class, and the engine has to see it that way.
-      if (isMethodDeclaration(member) && member.name) {
-        out.push(this.lowerFunctionDeclaration(member, className));
+    const fields = (node.members ?? []).filter((member) => isPropertyDeclaration(member));
+    const base = this.baseClassNameOf(node);
+    const interfaces = this.implementedInterfacesOf(node);
+    const decorators = this.decoratorNamesOf(node);
+    const previousBase = this.enclosingBase;
+    this.enclosingBase = base;
+
+    let constructor = null;
+    for (const member of node.members ?? []) {
+      if (isConstructorDeclaration(member)) {
+        constructor = member;
+        break;
       }
     }
+    if (constructor) {
+      out.push(
+        ...this.lowerConstructor(constructor, className, fields, base, decorators, interfaces),
+      );
+    } else {
+      // Every class has an own function, even one without fields: it is where
+      // the class's own facts -- the interfaces it implements -- are recorded.
+      out.push(...this.lowerFieldInitializer(className, fields, base, decorators, interfaces));
+    }
+    for (const member of node.members ?? []) {
+      if (isMethodDeclaration(member) && member.name) {
+        out.push(...this.lowerFunctionDeclaration(member, className, MEMBER_KIND.METHOD));
+        continue;
+      }
+      if (isGetAccessorDeclaration(member)) {
+        out.push(...this.lowerAccessor(member, className, MEMBER_KIND.GETTER));
+        continue;
+      }
+      if (isSetAccessorDeclaration(member)) {
+        out.push(...this.lowerAccessor(member, className, MEMBER_KIND.SETTER));
+        continue;
+      }
+      if (isClassStaticBlockDeclaration(member)) {
+        out.push(...this.lowerStaticBlock(member, className));
+        continue;
+      }
+      if (isPropertyDeclaration(member)) {
+        // The field's initial value is in the field initialiser (or in the
+        // constructor); an auto-accessor adds a getter and a setter.
+        out.push(...this.lowerAccessorField(member, className));
+        continue;
+      }
+      if (isIndexSignatureDeclaration(member)) {
+        // An index signature has no run-time behaviour at all.
+        continue;
+      }
+      if (isConstructorDeclaration(member)) {
+        continue;
+      }
+      this.report(PROBLEM.UNHANDLED_NODE, member, "this class member has no TAC lowering");
+    }
+    this.enclosingBase = previousBase;
+    return out;
+  }
+
+  /**
+   * A constructor.
+   *
+   * <p>A constructor is a function of its own: the name is `<init>` and the
+   * member kind says so. The base class's constructor runs FIRST, so that the
+   * base's fields exist before the derived class's own fields are written.
+   */
+  lowerConstructor(node, className, fields, base, decorators, interfaces) {
+    const state = this.beginFunction(
+      "<init>",
+      `${this.moduleName}.${className}.<init>(${this.constructorParameterTypes(node)})`,
+      className,
+    );
+    state.memberKind = MEMBER_KIND.CONSTRUCTOR;
+    state.classAnnotations = decorators.slice();
+    state.superType = base ?? null;
+    state.interfaces = interfaces ? interfaces.slice() : this.implementedInterfacesOf(node);
+    this.guard(node, () => {
+      this.lowerParameters(node.parameters);
+      this.declareThis();
+      if (base) {
+        // The base constructor runs first, and it runs on THIS object.
+        const result = this.state.newTemp(TYPE.UNKNOWN);
+        this.emit({
+          kind: KIND.CALL,
+          calleeSig: `${base}.<init>/${this.baseConstructorArity(base)}`,
+          dest: result,
+          args: [varOp("this", TYPE.UNKNOWN)],
+          ...this.position(node),
+        });
+      }
+      this.lowerFieldInitializers(fields, className);
+      this.lowerParameterProperties(node, className);
+      this.emitImplementsDrop(node, state.interfaces, "the class");
+      if (node.body) {
+        this.lowerBlock(node.body);
+      }
+    });
+    const finished = this.finishFunction(state);
+    return [finished, ...this.takePendingFunctions()];
+  }
+
+  /**
+   * The field initialisers of a class that has no constructor of its own.
+   *
+   * <p>The function is synthetic: the class's fields are written when the
+   * class is initialised, and that is a moment of the program's own making.
+   */
+  lowerFieldInitializer(className, fields, base, decorators, interfaces) {
+    const state = this.beginFunction(className, `${this.moduleName}.${className}()`, className);
+    state.memberKind = MEMBER_KIND.FIELD_INITIALIZER;
+    state.synthetic = true;
+    state.classAnnotations = decorators.slice();
+    state.superType = base ?? null;
+    state.interfaces = interfaces ? interfaces.slice() : [];
+    this.guard(fields[0] ?? { getStart: () => 0 }, () => {
+      this.declareThis();
+      this.lowerFieldInitializers(fields, className);
+      this.emitImplementsDrop(fields[0] ?? null, state.interfaces, "the class");
+    });
+    const finished = this.finishFunction(state);
+    return [finished, ...this.takePendingFunctions()];
+  }
+
+  /**
+   * Record the interfaces a class implements.
+   *
+   * <p>The relation is a TYPE-level fact: it has no run-time behaviour, and it
+   * does not belong to the call graph. It is recorded on the CLASS's own
+   * function, because a drop that lands on one of the class's members says
+   * something untrue about that member.
+   */
+  emitImplementsDrop(node, interfaces, subject) {
+    if (!interfaces || interfaces.length === 0) return;
+    this.emitDrop(
+      "implements",
+      `${subject} implements ${interfaces.join(", ")}; the relation is a type-level fact`,
+      IMPACT.TYPE,
+      node,
+    );
+  }
+
+  /** A getter or a setter: a member of the class, and a function of its own. */
+  lowerAccessor(node, className, memberKind) {
+    const name = node.name ? node.name.text : "<accessor>";
+    const state = this.beginFunction(name, this.functionSignature(node, className), className);
+    state.memberKind = memberKind;
+    this.guard(node, () => {
+      this.lowerParameters(node.parameters);
+      this.declareThis();
+      if (node.body) {
+        this.lowerBlock(node.body);
+      }
+    });
+    if (node.type) {
+      state.returnType = this.typeOf(node.type);
+    }
+    const finished = this.finishFunction(state);
+    return [finished, ...this.takePendingFunctions()];
+  }
+
+  /** A static block: the class's own initialiser, run once. */
+  lowerStaticBlock(node, className) {
+    const state = this.beginFunction(
+      "<clinit>",
+      `${this.moduleName}.${className}.<clinit>()`,
+      className,
+    );
+    state.memberKind = MEMBER_KIND.STATIC_INITIALIZER;
+    state.synthetic = true;
+    this.guard(node, () => {
+      if (node.body) {
+        this.lowerBlock(node.body);
+      }
+    });
+    const finished = this.finishFunction(state);
+    return [finished, ...this.takePendingFunctions()];
+  }
+
+  /**
+   * An auto-accessor field: a private backing field, a getter and a setter.
+   */
+  lowerAccessorField(node, className) {
+    if (!this.isAccessorField(node)) {
+      return [];
+    }
+    const name = node.name ? node.name.text : "x";
+    const backing = `_${name}`;
+    const out = [];
+
+    const getter = this.beginFunction(name, `${this.moduleName}.${className}.${name}()`, className);
+    getter.memberKind = MEMBER_KIND.GETTER;
+    getter.synthetic = true;
+    this.guard(node, () => {
+      this.declareThis();
+      const value = this.state.newTemp(this.typeOf(node));
+      this.emit({
+        kind: KIND.FIELDLOAD,
+        dest: value,
+        lhs1: varOp("this", TYPE.UNKNOWN),
+        fieldName: backing,
+        ownerType: className,
+        ...this.position(node),
+      });
+      this.emit({ kind: KIND.RETURN, lhs1: value, ...this.position(node) });
+    });
+    out.push(this.finishFunction(getter));
+
+    const setter = this.beginFunction(
+      name,
+      `${this.moduleName}.${className}.${name}(${this.constructorParameterTypes(node)})`,
+      className,
+    );
+    setter.memberKind = MEMBER_KIND.SETTER;
+    setter.synthetic = true;
+    this.guard(node, () => {
+      this.declareThis();
+      const parameter = (node.parameters ?? [])[0];
+      const value = parameter ? varOp(parameter.name.text, this.typeOf(parameter)) : undefined;
+      this.emit({
+        kind: KIND.FIELDSTORE,
+        lhs1: varOp("this", TYPE.UNKNOWN),
+        fieldName: backing,
+        dest: value,
+        ownerType: className,
+        ...this.position(node),
+      });
+    });
+    out.push(this.finishFunction(setter));
     return out;
   }
 
@@ -494,6 +921,7 @@ export class Translator {
       if (!initialiser) continue;
       if (!isArrowFunction(initialiser) && !isFunctionExpression(initialiser)) continue;
       const name = declaration.name && declaration.name.text ? declaration.name.text : "<anonymous>";
+      const previous = this.state;
       const state = this.beginFunction(name, this.functionSignature(initialiser, null), null);
       this.guard(initialiser, () => {
         this.lowerParameters(initialiser.parameters);
@@ -501,9 +929,38 @@ export class Translator {
           this.lowerBlock(initialiser.body);
         }
       });
+      if (initialiser.type) {
+        state.returnType = this.typeOf(initialiser.type);
+      }
       out.push(this.finishFunction(state));
+      // The lifted function is a function of its own: the state that was
+      // being lowered is the one that continues.
+      this.state = previous;
     }
     return out;
+  }
+
+  /** The functions that were lifted while the last function was lowered. */
+  takePendingFunctions() {
+    const pending = this.pendingFunctions;
+    this.pendingFunctions = [];
+    return pending;
+  }
+
+  /**
+   * Lower a nested declaration without disturbing the function around it.
+   *
+   * <p>A nested function is lowered into a function of its own, and lowering
+   * it replaces the state that is being lowered. The state around it is put
+   * back afterwards, so the enclosing function keeps its own instructions.
+   */
+  lowerNested(node, body) {
+    const previous = this.state;
+    try {
+      return body();
+    } finally {
+      this.state = previous;
+    }
   }
 
   beginFunction(name, signature, enclosingClass) {
@@ -514,22 +971,29 @@ export class Translator {
 
   finishFunction(state) {
     const problems = state.problems;
+    const returnType = state.returnType ?? { kind: TYPE.VOID };
     return {
       name: state.name,
       signature: state.signature,
       enclosingClass: state.enclosingClass ?? undefined,
-      returnType: undefined,
-      precision:
-        // ANY problem downgrades the function. A problem means a construct was
-        // approximated -- an unhandled node became an unknown value, a break
-        // became a jump, an unresolved callee became a black box -- and a
-        // function that was approximated did not come out whole.
-        problems.length > 0 ? PRECISION.LOWERED : PRECISION.FULL,
-      synthetic: false,
+      memberKind: state.memberKind,
+      returnType,
+      domain: domainOf(returnType) ?? null,
+      precision: precisionOf(state),
+      synthetic: state.synthetic,
       params: state.params,
       locals: state.locals,
       instructions: state.instructions,
       problems,
+      drops: state.drops,
+      tryRegions: state.tryRegions,
+      classAnnotations: state.classAnnotations,
+      methodAnnotations: state.methodAnnotations,
+      fieldAnnotations: state.fieldAnnotations,
+      paramAnnotations: state.paramAnnotations,
+      annotationValues: state.annotationValues,
+      superType: state.superType ?? null,
+      interfaces: state.interfaces ?? [],
     };
   }
 
@@ -537,18 +1001,49 @@ export class Translator {
     if (!parameters) return;
     for (const parameter of parameters) {
       const name = parameter.name && parameter.name.text ? parameter.name.text : "p";
-      const operand = varOp(name, this.typeOf(parameter));
+      // A `this` parameter is a TYPE annotation: it says what `this` is, and
+      // it does not take a slot at run time.
+      if (name === "this" && isIdentifier(parameter.name)) {
+        continue;
+      }
+      const type = this.typeOf(parameter);
+      const operand = varOp(name, parameter.questionToken ? nullable(type) : type);
       this.state.params.push(operand);
+      if (parameter.dotDotDotToken) {
+        // A rest parameter is an ARRAY of the remaining arguments.
+        const array = varOp(name, { kind: TYPE.ARRAY, component: type ?? { kind: TYPE.UNKNOWN } });
+        this.state.params[this.state.params.length - 1] = array;
+      }
+      // A default value is applied when the function is entered, before the
+      // body runs. Its expression is lowered like any other: a call in a
+      // default value is a call that happens.
+      if (parameter.initializer) {
+        const value = this.lowerExpression(parameter.initializer);
+        this.emit({
+          kind: KIND.MOVE,
+          dest: this.state.params[this.state.params.length - 1],
+          lhs1: value,
+          ...this.position(parameter),
+        });
+      }
     }
   }
 
   /** The signature string: `owner.name(ParamTypes):Return`. */
   functionSignature(node, enclosingClass) {
     const owner = enclosingClass ?? this.moduleName;
-    const parameters = node.parameters ?? [];
+    const parameters = (node.parameters ?? []).filter((p) => !isThisParameter(p));
     const types = parameters.map((p) => this.typeTextOf(p));
     const returnType = this.returnTypeTextOf(node);
     return `${owner}.${node.name ? node.name.text : "<anonymous>"}(${types.join(",")}):${returnType}`;
+  }
+
+  /** The parameter types of a constructor, for its signature. */
+  constructorParameterTypes(node) {
+    return (node.parameters ?? [])
+      .filter((p) => !isThisParameter(p))
+      .map((p) => this.typeTextOf(p))
+      .join(",");
   }
 
   // ---- statements ---------------------------------------------------------------------------
@@ -565,6 +1060,9 @@ export class Translator {
     }
     if (isReturnStatement(node)) {
       const value = node.expression ? this.lowerExpression(node.expression) : undefined;
+      if (value && value.type) {
+        this.state.returnType = value.type;
+      }
       this.emit({
         kind: KIND.RETURN,
         lhs1: value,
@@ -585,6 +1083,10 @@ export class Translator {
       this.lowerWhile(node);
       return;
     }
+    if (isDoStatement(node)) {
+      this.lowerDo(node);
+      return;
+    }
     if (isForStatement(node)) {
       this.lowerFor(node);
       return;
@@ -593,32 +1095,85 @@ export class Translator {
       this.lowerForOf(node);
       return;
     }
+    if (isForInStatement(node)) {
+      this.lowerForIn(node);
+      return;
+    }
+    if (isSwitchStatement(node)) {
+      this.lowerSwitch(node);
+      return;
+    }
+    if (isTryStatement(node)) {
+      this.lowerTry(node);
+      return;
+    }
+    if (isLabeledStatement(node)) {
+      this.lowerLabels(node);
+      return;
+    }
     if (isBlock(node)) {
       this.lowerBlock(node);
       return;
     }
     if (isBreakStatement(node) || isContinueStatement(node)) {
-      // The TAC has no break or continue. The loop's own structure is what
-      // carries the control flow, so a break is recorded and the rest of the
-      // body is still lowered -- the loop's exit edge is where the value ends
-      // up, and dropping the body would hide a taint that flows through it.
-      this.report(PROBLEM.SOURCE_LOWERED, node, "a break or continue has no TAC lowering");
+      this.lowerJump(node);
+      return;
+    }
+    if (isFunctionDeclaration(node)) {
+      // A nested function is a function of its own.
+      this.pendingFunctions.push(...this.lowerNested(node, () =>
+        this.lowerFunctionDeclaration(node, this.state?.enclosingClass ?? null),
+      ));
+      return;
+    }
+    if (isClassDeclaration(node)) {
+      // A nested class is a class of its own; its members are lifted.
+      this.pendingFunctions.push(...this.lowerNested(node, () => this.lowerClass(node)));
+      return;
+    }
+    if (isImportDeclaration(node)) {
+      this.lowerImport(node);
+      return;
+    }
+    if (isImportEqualsDeclaration(node)) {
+      return;
+    }
+    if (isExportDeclaration(node) || isExportAssignment(node)) {
+      this.lowerExport(node);
+      return;
+    }
+    if (isEmptyStatement(node)) {
       return;
     }
     this.report(PROBLEM.UNHANDLED_NODE, node, "this statement has no TAC lowering");
   }
 
   lowerVariableStatement(node) {
+    // A declaration whose initialiser is a function declares a FUNCTION, not
+    // a value: it is lifted into a function of its own, and the rest of the
+    // statement is lowered as usual.
+    const lifted = this.liftFunctionVariables(node);
+    if (lifted.length > 0) {
+      this.pendingFunctions.push(...lifted);
+    }
     for (const declaration of node.declarationList.declarations) {
       if (!isVariableDeclaration(declaration)) continue;
+      const initialiser = declaration.initializer;
+      if (initialiser && (isArrowFunction(initialiser) || isFunctionExpression(initialiser))) {
+        continue;
+      }
+      if (isObjectBindingPattern(declaration.name) || isArrayBindingPattern(declaration.name)) {
+        this.lowerBindingPattern(declaration);
+        continue;
+      }
       const name = declaration.name && declaration.name.text ? declaration.name.text : "v";
       const type = this.typeOf(declaration);
       const variable = varOp(name, type);
       if (!this.state.locals.some((l) => l.name === name)) {
         this.state.locals.push(variable);
       }
-      if (!declaration.initializer) continue;
-      const value = this.lowerExpression(declaration.initializer);
+      if (!initialiser) continue;
+      const value = this.lowerExpression(initialiser);
       this.emit({
         kind: KIND.MOVE,
         dest: variable,
@@ -626,6 +1181,166 @@ export class Translator {
         ...this.position(declaration),
       });
     }
+  }
+
+  /**
+   * A destructuring declaration.
+   *
+   * <p>Each name in the pattern is read out of the value and bound to its
+   * own variable: `const {a: {b}} = o` reads `o["a"]` and then reads
+   * `["b"]` out of that, however deep the pattern is.
+   */
+  lowerBindingPattern(declaration) {
+    const source = this.lowerExpression(declaration.initializer);
+    this.bindPattern(declaration.name, source, declaration);
+  }
+
+  /** Bind every name of a pattern to the value it names. */
+  bindPattern(pattern, source, node) {
+    if (!pattern) return;
+    if (isObjectBindingPattern(pattern)) {
+      for (const element of pattern.elements ?? []) {
+        const key = element.propertyName
+          ? element.propertyName.text
+          : element.name && element.name.text;
+        const read = this.state.newTemp(TYPE.UNKNOWN);
+        this.emit({
+          kind: KIND.ARRAYLOAD,
+          dest: read,
+          lhs1: source,
+          lhs2: constOp(CONST.STRING, key ?? ""),
+          ...this.position(node),
+        });
+        if (element.dotDotDotToken) {
+          // The rest element: a fresh object that holds what is left.
+          const rest = this.state.newTemp(TYPE.UNKNOWN);
+          this.emit({
+            kind: KIND.NEW,
+            dest: rest,
+            ctorType: { kind: TYPE.CLASS, name: "Object" },
+            calleeSig: "Object.<init>/0",
+            args: [],
+            ...this.position(node),
+          });
+          const name = element.name && element.name.text;
+          if (name) {
+            this.declareLocal(varOp(name, TYPE.UNKNOWN));
+            this.emit({
+              kind: KIND.MOVE,
+              dest: varOp(name, TYPE.UNKNOWN),
+              lhs1: rest,
+              ...this.position(node),
+            });
+          }
+          this.emitDrop(
+            "rest-element",
+            "the rest of an object pattern is modelled as an empty object",
+            IMPACT.STRUCTURE,
+            node,
+          );
+          continue;
+        }
+        this.bindElement(element, read, node);
+      }
+      return;
+    }
+    if (isArrayBindingPattern(pattern)) {
+      let index = 0;
+      for (const element of pattern.elements ?? []) {
+        if (isOmittedExpression(element)) {
+          index += 1;
+          continue;
+        }
+        const read = this.state.newTemp(TYPE.UNKNOWN);
+        this.emit({
+          kind: KIND.ARRAYLOAD,
+          dest: read,
+          lhs1: source,
+          lhs2: constOp(CONST.INT, index),
+          ...this.position(node),
+        });
+        index += 1;
+        if (element.dotDotDotToken) {
+          // The rest element: a fresh array that holds what is left.
+          const rest = this.state.newTemp({ kind: TYPE.ARRAY, component: { kind: TYPE.UNKNOWN } });
+          this.emit({
+            kind: KIND.NEWARRAY,
+            dest: rest,
+            ctorType: { kind: TYPE.ARRAY, component: { kind: TYPE.UNKNOWN } },
+            lhs1: constOp(CONST.INT, 0),
+            ...this.position(node),
+          });
+          const name = element.name && element.name.text;
+          if (name) {
+            this.declareLocal(varOp(name, { kind: TYPE.ARRAY, component: { kind: TYPE.UNKNOWN } }));
+            this.emit({
+              kind: KIND.MOVE,
+              dest: varOp(name, { kind: TYPE.ARRAY, component: { kind: TYPE.UNKNOWN } }),
+              lhs1: rest,
+              ...this.position(node),
+            });
+          }
+          this.emitDrop(
+            "rest-element",
+            "the rest of an array pattern is modelled as an empty array",
+            IMPACT.STRUCTURE,
+            node,
+          );
+          continue;
+        }
+        this.bindElement(element, read, node);
+      }
+      return;
+    }
+    if (isIdentifier(pattern)) {
+      const variable = varOp(pattern.text, this.typeOf(pattern));
+      this.declareLocal(variable);
+      this.emit({
+        kind: KIND.MOVE,
+        dest: variable,
+        lhs1: source,
+        ...this.position(node),
+      });
+    }
+  }
+
+  /** Bind one element of a pattern, with its default value if it has one. */
+  bindElement(element, read, node) {
+    if (!element || !element.name) return;
+    if (isObjectBindingPattern(element.name) || isArrayBindingPattern(element.name)) {
+      this.bindPattern(element.name, read, node);
+      return;
+    }
+    const name = element.name.text;
+    const variable = varOp(name, this.typeOf(element.name));
+    this.declareLocal(variable);
+    if (!element.initializer) {
+      this.emit({
+        kind: KIND.MOVE,
+        dest: variable,
+        lhs1: read,
+        ...this.position(node),
+      });
+      return;
+    }
+    // A default value: it is used when the value that was read is undefined.
+    const defaultValue = this.lowerExpression(element.initializer);
+    const haveLabel = this.state.newLabel();
+    const defaultLabel = this.state.newLabel();
+    const endLabel = this.state.newLabel();
+    this.emitBranch(
+      read,
+      haveLabel,
+      defaultLabel,
+      { kind: "Compare", lhs: read, op: "NE", rhs: constOp(CONST.NULL, null) },
+      node,
+    );
+    this.emitLabel(haveLabel);
+    this.emit({ kind: KIND.MOVE, dest: variable, lhs1: read, ...this.position(node) });
+    this.emit({ kind: KIND.JUMP, label: endLabel });
+    this.emitLabel(defaultLabel);
+    this.emit({ kind: KIND.MOVE, dest: variable, lhs1: defaultValue, ...this.position(node) });
+    this.emitLabel(endLabel);
   }
 
   lowerBlock(node) {
@@ -639,116 +1354,489 @@ export class Translator {
     const thenLabel = this.state.newLabel();
     const elseLabel = this.state.newLabel();
     const endLabel = this.state.newLabel();
-    this.emit({
-      kind: KIND.BRANCH,
-      lhs1: condition,
-      trueLabel: thenLabel,
-      falseLabel: elseLabel,
-      ...this.position(node),
-    });
-    this.emit({ kind: KIND.LABEL, label: thenLabel });
+    this.emitBranch(condition, thenLabel, elseLabel, truthiness(condition), node);
+    this.emitLabel(thenLabel);
     if (node.thenStatement) this.lowerStatement(node.thenStatement);
     this.emit({ kind: KIND.JUMP, label: endLabel });
-    this.emit({ kind: KIND.LABEL, label: elseLabel });
+    this.emitLabel(elseLabel);
     if (node.elseStatement) this.lowerStatement(node.elseStatement);
-    this.emit({ kind: KIND.LABEL, label: endLabel });
+    this.emitLabel(endLabel);
   }
 
   lowerWhile(node) {
-    const headLabel = this.state.newLabel();
+    const headLabel = this.state.newLabel("LOOP_HEAD");
     const bodyLabel = this.state.newLabel();
-    const endLabel = this.state.newLabel();
+    const endLabel = this.state.newLabel("LOOP_END");
     this.emit({ kind: KIND.JUMP, label: headLabel });
-    this.emit({ kind: KIND.LABEL, label: headLabel });
+    this.emitLabel(headLabel);
     const condition = this.lowerExpression(node.condition);
-    this.emit({
-      kind: KIND.BRANCH,
-      lhs1: condition,
-      trueLabel: bodyLabel,
-      falseLabel: endLabel,
-      ...this.position(node),
-    });
-    this.emit({ kind: KIND.LABEL, label: bodyLabel });
+    this.emitBranch(condition, bodyLabel, endLabel, truthiness(condition), node);
+    this.emitLabel(bodyLabel);
+    this.state.scopes.push({ kind: "LOOP", endLabel, headLabel });
     if (node.statement) this.lowerStatement(node.statement);
+    this.state.scopes.pop();
     this.emit({ kind: KIND.JUMP, label: headLabel });
-    this.emit({ kind: KIND.LABEL, label: endLabel });
+    this.emitLabel(endLabel);
+  }
+
+  lowerDo(node) {
+    const bodyLabel = this.state.newLabel();
+    const condLabel = this.state.newLabel("LOOP_HEAD");
+    const endLabel = this.state.newLabel("LOOP_END");
+    this.emitLabel(bodyLabel);
+    this.state.scopes.push({ kind: "LOOP", endLabel, headLabel: condLabel });
+    if (node.statement) this.lowerStatement(node.statement);
+    this.state.scopes.pop();
+    this.emitLabel(condLabel);
+    // A `do` statement's condition is its EXPRESSION.
+    const condition = this.lowerExpression(node.condition ?? node.expression);
+    this.emitBranch(condition, bodyLabel, endLabel, truthiness(condition), node);
+    this.emitLabel(endLabel);
   }
 
   lowerFor(node) {
     if (node.initializer) {
-      if (isVariableStatement(node.initializer)) {
+      // The compiler gives a `for (let i = 0; ...)` a DECLARATION LIST, not a
+      // statement: the two are different nodes, and only the list holds the
+      // declarations.
+      if (isVariableDeclarationList(node.initializer)) {
+        for (const declaration of node.initializer.declarations ?? []) {
+          this.lowerVariableDeclaration(declaration);
+        }
+      } else if (isVariableStatement(node.initializer)) {
         this.lowerVariableStatement(node.initializer);
       } else {
         this.lowerExpression(node.initializer);
       }
     }
-    const headLabel = this.state.newLabel();
+    const headLabel = this.state.newLabel("LOOP_HEAD");
     const bodyLabel = this.state.newLabel();
     const stepLabel = this.state.newLabel();
-    const endLabel = this.state.newLabel();
+    const endLabel = this.state.newLabel("LOOP_END");
     this.emit({ kind: KIND.JUMP, label: headLabel });
-    this.emit({ kind: KIND.LABEL, label: headLabel });
+    this.emitLabel(headLabel);
     if (node.condition) {
       const condition = this.lowerExpression(node.condition);
-      this.emit({
-        kind: KIND.BRANCH,
-        lhs1: condition,
-        trueLabel: bodyLabel,
-        falseLabel: endLabel,
-        ...this.position(node),
-      });
+      this.emitBranch(condition, bodyLabel, endLabel, truthiness(condition), node);
     } else {
       this.emit({ kind: KIND.JUMP, label: bodyLabel });
     }
-    this.emit({ kind: KIND.LABEL, label: bodyLabel });
+    this.emitLabel(bodyLabel);
+    this.state.scopes.push({ kind: "LOOP", endLabel, headLabel });
     if (node.statement) this.lowerStatement(node.statement);
+    this.state.scopes.pop();
     this.emit({ kind: KIND.JUMP, label: stepLabel });
-    this.emit({ kind: KIND.LABEL, label: stepLabel });
+    this.emitLabel(stepLabel);
     if (node.incrementor) this.lowerExpression(node.incrementor);
     this.emit({ kind: KIND.JUMP, label: headLabel });
-    this.emit({ kind: KIND.LABEL, label: endLabel });
+    this.emitLabel(endLabel);
+  }
+
+  /** One declaration of a `for` loop's initialiser. */
+  lowerVariableDeclaration(declaration) {
+    if (!isVariableDeclaration(declaration)) return;
+    const name = declaration.name && declaration.name.text ? declaration.name.text : "v";
+    const variable = varOp(name, this.typeOf(declaration));
+    this.declareLocal(variable);
+    if (!declaration.initializer) return;
+    const value = this.lowerExpression(declaration.initializer);
+    this.emit({
+      kind: KIND.MOVE,
+      dest: variable,
+      lhs1: value,
+      ...this.position(declaration),
+    });
+  }
+
+  /**
+   * The declaration a `for ... of` or a `for ... in` loop binds.
+   *
+   * <p>The compiler gives the loop a DECLARATION LIST, and the declaration
+   * that binds the loop variable is the first one in it. A loop whose
+   * initialiser is an expression binds nothing.
+   */
+  loopVariableOf(node) {
+    const initializer = node.initializer;
+    if (!initializer) return undefined;
+    if (isVariableDeclaration(initializer)) return initializer;
+    if (isVariableDeclarationList(initializer)) {
+      return (initializer.declarations ?? [])[0];
+    }
+    return undefined;
   }
 
   /**
    * A `for ... of` loop.
    *
-   * The iterated value is the element, so the loop variable is bound to it
-   * with a MOVE. The TAC has no iteration opcode, so the loop's structure
-   * carries it -- the body's instructions are in the stream, and the engine's
-   * iterator handling is what turns a tainted element back into a tainted
-   * loop variable.
+   * <p>The loop variable is bound to the ELEMENT, not to the iterable: the
+   * iterable is a sequence of elements, and the value the body works with is
+   * one of them. The iteration itself is the language's own protocol, so it
+   * is lowered as the protocol's calls.
    */
   lowerForOf(node) {
     const iterable = this.lowerExpression(node.expression);
-    if (node.initializer && isVariableDeclaration(node.initializer)) {
-      const name = node.initializer.name && node.initializer.name.text ? node.initializer.name.text : "v";
-      const variable = varOp(name, this.typeOf(node.initializer));
-      if (!this.state.locals.some((l) => l.name === name)) {
-        this.state.locals.push(variable);
-      }
+    const iterator = this.state.newTemp(TYPE.UNKNOWN);
+    this.emit({
+      kind: KIND.CALL,
+      calleeSig: "Iterator[Symbol.iterator]/1",
+      dest: iterator,
+      args: [iterable],
+      ...this.position(node),
+    });
+    const headLabel = this.state.newLabel("LOOP_HEAD");
+    const bodyLabel = this.state.newLabel();
+    const endLabel = this.state.newLabel("LOOP_END");
+    this.emit({ kind: KIND.JUMP, label: headLabel });
+    this.emitLabel(headLabel);
+    const step = this.state.newTemp(TYPE.UNKNOWN);
+    this.emit({
+      kind: KIND.CALL,
+      calleeSig: "Iterator.next/0",
+      dest: step,
+      args: [iterator],
+      ...this.position(node),
+    });
+    const done = this.state.newTemp(TYPE.BOOLEAN);
+    this.emit({
+      kind: KIND.ARRAYLOAD,
+      dest: done,
+      lhs1: step,
+      lhs2: constOp(CONST.STRING, "done"),
+      ...this.position(node),
+    });
+    this.emitBranch(done, endLabel, bodyLabel, truthiness(done), node);
+    this.emitLabel(bodyLabel);
+    const item = this.state.newTemp(TYPE.UNKNOWN);
+    this.emit({
+      kind: KIND.ARRAYLOAD,
+      dest: item,
+      lhs1: step,
+      lhs2: constOp(CONST.STRING, "value"),
+      ...this.position(node),
+    });
+    const loopVariable = this.loopVariableOf(node);
+    if (loopVariable) {
+      const name = loopVariable.name && loopVariable.name.text ? loopVariable.name.text : "v";
+      const variable = varOp(name, this.typeOf(loopVariable));
+      this.declareLocal(variable);
       this.emit({
         kind: KIND.MOVE,
         dest: variable,
-        lhs1: iterable,
+        lhs1: item,
+        ...this.position(node),
+      });
+    }    this.state.scopes.push({ kind: "LOOP", endLabel, headLabel });
+    if (node.statement) this.lowerStatement(node.statement);
+    this.state.scopes.pop();
+    this.emit({ kind: KIND.JUMP, label: headLabel });
+    this.emitLabel(endLabel);
+  }
+
+  /**
+   * A `for ... in` loop.
+   *
+   * <p>The loop variable is bound to the KEY: the names of the properties
+   * are what the loop walks over, and the values are read out of the object
+   * by those names.
+   *
+   * <p>The keys are walked with an index, so that the loop ends: a loop that
+   * always reads the FIRST key is a loop that never ends, and the engine
+   * would see a program that never gets past its own `for`.
+   */
+  lowerForIn(node) {
+    const object = this.lowerExpression(node.expression);
+    const keys = this.state.newTemp({ kind: TYPE.ARRAY, component: { kind: TYPE.STRING } });
+    this.emit({
+      kind: KIND.CALL,
+      calleeSig: "Object.keys/1",
+      dest: keys,
+      args: [object],
+      ...this.position(node),
+    });
+    const length = this.state.newTemp(TYPE.INT);
+    this.emit({
+      kind: KIND.ARRAYLOAD,
+      dest: length,
+      lhs1: keys,
+      lhs2: constOp(CONST.STRING, "length"),
+      ...this.position(node),
+    });
+    const index = this.state.newTemp(TYPE.INT);
+    this.emit({
+      kind: KIND.MOVE,
+      dest: index,
+      lhs1: constOp(CONST.INT, 0),
+      ...this.position(node),
+    });
+    const headLabel = this.state.newLabel("LOOP_HEAD");
+    const bodyLabel = this.state.newLabel();
+    const endLabel = this.state.newLabel("LOOP_END");
+    this.emit({ kind: KIND.JUMP, label: headLabel });
+    this.emitLabel(headLabel);
+    const comparison = this.state.newTemp(TYPE.BOOLEAN);
+    this.emit({
+      kind: KIND.BINOP,
+      dest: comparison,
+      lhs1: index,
+      lhs2: length,
+      binop: "LT",
+      ...this.position(node),
+    });
+    this.emitBranch(
+      comparison,
+      bodyLabel,
+      endLabel,
+      { kind: "Compare", lhs: index, op: "LT", rhs: length },
+      node,
+    );
+    this.emitLabel(bodyLabel);
+    const key = this.state.newTemp({ kind: TYPE.STRING });
+    this.emit({
+      kind: KIND.ARRAYLOAD,
+      dest: key,
+      lhs1: keys,
+      lhs2: index,
+      ...this.position(node),
+    });
+    const loopVariable = this.loopVariableOf(node);
+    if (loopVariable) {
+      const name = loopVariable.name && loopVariable.name.text ? loopVariable.name.text : "v";
+      const variable = varOp(name, this.typeOf(loopVariable));
+      this.declareLocal(variable);
+      this.emit({
+        kind: KIND.MOVE,
+        dest: variable,
+        lhs1: key,
         ...this.position(node),
       });
     }
-    const headLabel = this.state.newLabel();
-    const bodyLabel = this.state.newLabel();
-    const endLabel = this.state.newLabel();
-    this.emit({ kind: KIND.JUMP, label: headLabel });
-    this.emit({ kind: KIND.LABEL, label: headLabel });
+    const next = this.state.newTemp(TYPE.INT);
     this.emit({
-      kind: KIND.BRANCH,
-      lhs1: constOp(CONST.BOOL, true),
-      trueLabel: bodyLabel,
-      falseLabel: endLabel,
+      kind: KIND.BINOP,
+      dest: next,
+      lhs1: index,
+      lhs2: constOp(CONST.INT, 1),
+      binop: "ADD",
       ...this.position(node),
     });
-    this.emit({ kind: KIND.LABEL, label: bodyLabel });
+    this.emit({
+      kind: KIND.MOVE,
+      dest: index,
+      lhs1: next,
+      ...this.position(node),
+    });
+    this.state.scopes.push({ kind: "LOOP", endLabel, headLabel });
     if (node.statement) this.lowerStatement(node.statement);
+    this.state.scopes.pop();
     this.emit({ kind: KIND.JUMP, label: headLabel });
-    this.emit({ kind: KIND.LABEL, label: endLabel });
+    this.emitLabel(endLabel);
+  }
+
+  /**
+   * A switch.
+   *
+   * <p>The cases are DISPATCHED, not run in order: each case is reached by a
+   * branch that compares the discriminant with the case's value, and the
+   * default is reached only when no case matched. A case that does not end
+   * with a break falls through into the next one, which is what the language
+   * does.
+   */
+  lowerSwitch(node) {
+    const discriminant = this.lowerExpression(node.expression);
+    const clauses = node.caseBlock?.clauses ?? [];
+    const caseClauses = clauses.filter((clause) => clause.expression !== undefined);
+    const defaultClause = clauses.find((clause) => clause.expression === undefined);
+    const bodyLabels = [];
+    const endLabel = this.state.newLabel("SWITCH_END");
+
+    for (const clause of caseClauses) {
+      const value = this.lowerExpression(clause.expression);
+      const bodyLabel = this.state.newLabel("SWITCH_CASE");
+      bodyLabels.push(bodyLabel);
+      const nextLabel = this.state.newLabel();
+      this.emitBranch(
+        discriminant,
+        bodyLabel,
+        nextLabel,
+        { kind: "Compare", lhs: discriminant, op: "EQ", rhs: value },
+        node,
+      );
+      this.emitLabel(nextLabel);
+    }
+
+    // No case matched: the default, if the switch has one.
+    const defaultEntry = this.state.newLabel();
+    this.emit({ kind: KIND.JUMP, label: defaultEntry });
+    this.emitLabel(defaultEntry);
+    const defaultLabel = this.state.newLabel("SWITCH_CASE");
+    this.emit({ kind: KIND.JUMP, label: defaultLabel });
+
+    this.state.scopes.push({ kind: "SWITCH", endLabel });
+    for (let index = 0; index < caseClauses.length; index += 1) {
+      this.emitLabel(bodyLabels[index]);
+      for (const statement of caseClauses[index].statements ?? []) {
+        this.lowerStatement(statement);
+      }
+    }
+    this.emitLabel(defaultLabel);
+    if (defaultClause) {
+      for (const statement of defaultClause.statements ?? []) {
+        this.lowerStatement(statement);
+      }
+    }
+    this.state.scopes.pop();
+    this.emitLabel(endLabel);
+  }
+
+  /**
+   * A try / catch / finally.
+   *
+   * <p>The IR has explicit instructions for this: a CATCH_HANDLER binds the
+   * catch parameter to the exception, and a FINALLY_ENTER marks the block
+   * every exit of the region runs through.
+   */
+  lowerTry(node) {
+    const tryLabel = this.state.newLabel("BLOCK");
+    const hasFinally = !!node.finallyBlock;
+    const finallyLabel = hasFinally ? this.state.newLabel("FINALLY_ENTRY") : undefined;
+    const endLabel = this.state.newLabel();
+    const catchLabels = [];
+    const catchTypes = [];
+    const finallyExits = [];
+
+    this.emitLabel(tryLabel);
+    const tryStart = this.state.instructions.length;
+    if (node.tryBlock) this.lowerBlock(node.tryBlock);
+    const tryEnd = this.state.instructions.length;
+    const tryExit = finallyLabel ?? endLabel;
+    this.emit({ kind: KIND.JUMP, label: tryExit });
+    finallyExits.push(tryExit);
+
+    let catchStart = -1;
+    let catchEnd = -1;
+    for (const clause of this.catchClausesOf(node)) {
+      const parameter = clause.variableDeclaration;
+      const name = parameter && parameter.name ? parameter.name.text : undefined;
+      const label = this.state.newLabel(name ? `CATCH_${name}` : "CATCH", name);
+      catchLabels.push(label);
+      catchTypes.push(parameter && parameter.type ? this.typeTextOf(parameter.type) : "*");
+      this.emitLabel(label);
+      if (catchStart < 0) {
+        catchStart = this.state.instructions.length;
+      }
+      if (name) {
+        const variable = varOp(name, this.typeOf(parameter));
+        this.declareLocal(variable);
+        this.emit({
+          kind: KIND.CATCH_HANDLER,
+          dest: variable,
+          ctorType: parameter && parameter.type ? this.typeOf(parameter.type) : undefined,
+          ...this.position(clause),
+        });
+      } else {
+        this.emit({ kind: KIND.CATCH_HANDLER, ...this.position(clause) });
+      }
+      if (clause.block) this.lowerBlock(clause.block);
+      this.emit({ kind: KIND.JUMP, label: tryExit });
+      finallyExits.push(tryExit);
+      catchEnd = this.state.instructions.length;
+    }
+
+    let finallyStart = -1;
+    let finallyEnd = -1;
+    if (finallyLabel) {
+      this.emitLabel(finallyLabel);
+      this.emit({ kind: KIND.FINALLY_ENTER, label: finallyLabel, ...this.position(node) });
+      finallyStart = this.state.instructions.length;
+      if (node.finallyBlock) this.lowerBlock(node.finallyBlock);
+      finallyEnd = this.state.instructions.length;
+    }
+    this.emitLabel(endLabel);
+
+    this.state.tryRegions.push({
+      tryStart,
+      tryEnd,
+      catchStart,
+      catchEnd,
+      catchLabels,
+      catchTypes,
+      finallyLabel: finallyLabel ?? null,
+      finallyStart,
+      finallyEnd,
+      syntheticFinally: false,
+      finallyExits,
+      resourceVars: [],
+    });
+  }
+
+  /** The catch clauses of a try statement, whether there is one or several. */
+  catchClausesOf(node) {
+    const clause = node.catchClause;
+    if (!clause) return [];
+    return Array.isArray(clause) ? clause : [clause];
+  }
+
+  /**
+   * A labelled statement.
+   *
+   * <p>The label itself produces no instruction: it gives the statement's
+   * end a name, so that a `break label` can jump to it.
+   */
+  lowerLabels(node) {
+    const name = node.label ? node.label.text : undefined;
+    const endLabel = this.state.newLabel("LABEL", name);
+    this.state.scopes.push({ kind: "LABEL", name, endLabel });
+    if (node.statement) this.lowerStatement(node.statement);
+    this.state.scopes.pop();
+    this.emitLabel(endLabel);
+  }
+
+  /**
+   * A break or a continue.
+   *
+   * <p>Both are jumps: the loop's own structure carries the control flow, and
+   * the jump says which edge is taken.
+   */
+  lowerJump(node) {
+    const target = this.jumpTargetOf(node);
+    if (!target) {
+      this.report(PROBLEM.SOURCE_LOWERED, node, "this break or continue has no target");
+      return;
+    }
+    this.emit({ kind: KIND.JUMP, label: target.label, ...this.position(node) });
+  }
+
+  /** The label a break or a continue jumps to. */
+  jumpTargetOf(node) {
+    const isBreak = isBreakStatement(node);
+    const name = node.label ? node.label.text : undefined;
+    const scopes = this.state.scopes;
+    if (name) {
+      const index = scopes.findIndex((scope) => scope.kind === "LABEL" && scope.name === name);
+      if (index < 0) return undefined;
+      if (isBreak) {
+        return { label: scopes[index].endLabel };
+      }
+      // The loop a labelled continue belongs to is INSIDE the labelled
+      // statement, so the search runs from the innermost scope inwards.
+      for (let scan = scopes.length - 1; scan > index; scan -= 1) {
+        if (scopes[scan].kind === "LOOP") {
+          return { label: scopes[scan].headLabel };
+        }
+      }
+      return undefined;
+    }
+    for (let scan = scopes.length - 1; scan >= 0; scan -= 1) {
+      const scope = scopes[scan];
+      if (isBreak) {
+        if (scope.kind === "LOOP" || scope.kind === "SWITCH") {
+          return { label: scope.endLabel };
+        }
+      } else if (scope.kind === "LOOP") {
+        return { label: scope.headLabel };
+      }
+    }
+    return undefined;
   }
 
   // ---- expressions --------------------------------------------------------------------------
@@ -786,27 +1874,68 @@ export class Translator {
       return this.lowerExpression(node.expression);
     }
     if (isAwaitExpression(node)) {
-      return this.lowerExpression(node.expression);
+      const value = this.lowerExpression(node.expression);
+      this.emitDrop(
+        "await",
+        "the micro-task timing of an await is not in the TAC; the value itself is complete",
+        IMPACT.SEMANTICS,
+        node,
+      );
+      return value;
     }
     if (isTypeOfExpression(node)) {
-      return this.lowerExpression(node.expression);
+      const value = this.lowerExpression(node.expression);
+      this.emitDrop(
+        "typeof",
+        "the result of typeof is one of eight strings decided at run time",
+        IMPACT.VALUE,
+        node,
+      );
+      return value;
     }
     if (node.kind === SyntaxKind.ThisKeyword) {
       // The receiver of an object's own property. It is the one object the
       // property accesses are keyed by.
-      this.declareLocal(varOp("this", TYPE.UNKNOWN));
+      this.declareThis();
+      return varOp("this", TYPE.UNKNOWN);
+    }
+    if (isSuperExpression(node)) {
+      // `super` is the object itself: the base class's member is read from
+      // the same object.
+      this.declareThis();
       return varOp("this", TYPE.UNKNOWN);
     }
     if (isNonNullExpression(node)) {
+      // A non-null assertion is a compile-time claim: it produces no
+      // instruction at all.
+      return this.lowerExpression(node.expression);
+    }
+    if (isAsExpression(node) || isSatisfiesExpression(node) || isTypeAssertion(node)) {
+      // A type assertion is a compile-time claim too: the value is the
+      // value, and the type is the type it is asserted to have.
       return this.lowerExpression(node.expression);
     }
     if (isPropertyAccessExpression(node)) {
+      if (node.questionDotToken) {
+        return this.lowerOptionalChain(node);
+      }
       return this.lowerPropertyRead(node);
     }
     if (isElementAccessExpression(node)) {
+      if (node.questionDotToken) {
+        return this.lowerOptionalChain(node);
+      }
       return this.lowerElementRead(node);
     }
     if (isCallExpression(node)) {
+      if (node.questionDotToken) {
+        return this.lowerOptionalChain(node);
+      }
+      if (node.expression && node.expression.kind === SyntaxKind.ImportKeyword) {
+        // A dynamic import: the compiler parses it as a call whose callee is
+        // the `import` keyword.
+        return this.lowerDynamicImport(node);
+      }
       return this.lowerCall(node);
     }
     if (isNewExpression(node)) {
@@ -821,6 +1950,25 @@ export class Translator {
     if (isPostfixUnaryExpression(node)) {
       return this.lowerPostfixUnary(node);
     }
+    if (isConditionalExpression(node)) {
+      return this.lowerConditional(node);
+    }
+    if (isVoidExpression(node)) {
+      return this.lowerVoid(node);
+    }
+    if (isTaggedTemplateExpression(node)) {
+      return this.lowerTaggedTemplate(node);
+    }
+    if (isRegularExpressionLiteral(node)) {
+      // A regular expression is an immutable constant.
+      return constOp(CONST_REGEX, node.text);
+    }
+    if (isMetaProperty(node)) {
+      return this.lowerImportMeta(node);
+    }
+    if (isImportExpression(node)) {
+      return this.lowerDynamicImport(node);
+    }
     if (isObjectLiteralExpression(node)) {
       return this.lowerObjectLiteral(node);
     }
@@ -830,14 +1978,26 @@ export class Translator {
     if (isTemplateExpression(node)) {
       return this.lowerTemplate(node);
     }
+    if (isSpreadElement(node)) {
+      return this.lowerExpression(node.expression);
+    }
+    if (isJsxElement(node) || isJsxSelfClosingElement(node) || isJsxFragment(node)) {
+      return this.lowerJsx(node);
+    }
     if (isClassExpression(node)) {
       this.report(PROBLEM.UNHANDLED_NODE, node, "a class expression has no TAC lowering");
       return this.emitHavoc(node);
     }
     if (isArrowFunction(node) || isFunctionExpression(node)) {
       // A function used as a value. The TAC has no closure, so the function
-      // becomes a synthetic CALL and the result is unknown.
+      // becomes an unknown value.
       this.report(PROBLEM.SOURCE_LOWERED, node, "a function value has no TAC lowering");
+      this.emitDrop(
+        "closure",
+        "a function used as a value has no TAC lowering; the value is unknown",
+        IMPACT.STRUCTURE,
+        node,
+      );
       return this.emitHavoc(node);
     }
     this.report(PROBLEM.UNHANDLED_NODE, node, "this expression has no TAC lowering");
@@ -852,14 +2012,28 @@ export class Translator {
    * same location, and the engine's keyed namespace is what keeps them
    * together.
    */
-  lowerPropertyRead(node) {
-    const receiver = this.lowerExpression(node.expression);
+  lowerPropertyRead(node, receiver) {
+    if (isSuperExpression(node.expression)) {
+      // `super.prop` reads a field of the BASE class: the owner says which
+      // class declared it.
+      const dest = this.state.newTemp(this.typeOf(node));
+      this.emit({
+        kind: KIND.FIELDLOAD,
+        dest,
+        lhs1: varOp("this", TYPE.UNKNOWN),
+        fieldName: node.name.text,
+        ownerType: this.enclosingBase,
+        ...this.position(node),
+      });
+      return dest;
+    }
+    const base = receiver ?? this.lowerExpression(node.expression);
     const key = constOp(CONST.STRING, node.name.text);
     const dest = this.state.newTemp(this.typeOf(node));
     this.emit({
       kind: KIND.ARRAYLOAD,
       dest,
-      lhs1: receiver,
+      lhs1: base,
       lhs2: key,
       ...this.position(node),
     });
@@ -867,17 +2041,59 @@ export class Translator {
   }
 
   /** A computed read: `obj[key]`. The key is a value the analysis may not resolve. */
-  lowerElementRead(node) {
-    const receiver = this.lowerExpression(node.expression);
+  lowerElementRead(node, receiver) {
+    const base = receiver ?? this.lowerExpression(node.expression);
     const key = this.lowerExpression(node.argumentExpression);
     const dest = this.state.newTemp(this.typeOf(node));
     this.emit({
       kind: KIND.ARRAYLOAD,
       dest,
-      lhs1: receiver,
+      lhs1: base,
       lhs2: key,
       ...this.position(node),
     });
+    return dest;
+  }
+
+  /**
+   * An optional chain: `a?.b`, `a?.[k]` and `a?.()`.
+   *
+   * <p>The receiver is checked FIRST: when it is nullish, the read or the
+   * call is not emitted at all and the value of the whole expression is
+   * undefined.
+   */
+  lowerOptionalChain(node) {
+    const receiver = this.lowerExpression(node.expression);
+    const dest = this.state.newTemp(this.typeOf(node));
+    const useLabel = this.state.newLabel();
+    const nullLabel = this.state.newLabel();
+    const endLabel = this.state.newLabel();
+    this.emitBranch(
+      receiver,
+      useLabel,
+      nullLabel,
+      { kind: "Compare", lhs: receiver, op: "NE", rhs: constOp(CONST.NULL, null) },
+      node,
+    );
+    this.emitLabel(useLabel);
+    let value;
+    if (isPropertyAccessExpression(node)) {
+      value = this.lowerPropertyRead(node, receiver);
+    } else if (isElementAccessExpression(node)) {
+      value = this.lowerElementRead(node, receiver);
+    } else {
+      value = this.lowerCall(node, receiver);
+    }
+    this.emit({ kind: KIND.MOVE, dest, lhs1: value, ...this.position(node) });
+    this.emit({ kind: KIND.JUMP, label: endLabel });
+    this.emitLabel(nullLabel);
+    this.emit({
+      kind: KIND.MOVE,
+      dest,
+      lhs1: constOp(CONST.NULL, null),
+      ...this.position(node),
+    });
+    this.emitLabel(endLabel);
     return dest;
   }
 
@@ -886,47 +2102,60 @@ export class Translator {
    *
    * The receiver slot is reserved whether or not the call has a receiver
    * object: `args[0]` is the receiver, `args[1..]` are the arguments. A free
-   * function has no receiver object, so the slot holds the MODULE's name as a
+   * function has no receiver object, so the slot holds the OWNER's name as a
    * constant -- the same shape the other front ends use for a static call.
    */
-  lowerCall(node) {
+  lowerCall(node, receiver) {
     const signature = this.resolveSignature(node);
     const args = node.arguments ?? [];
     const wireArgs = [];
     const owner = this.ownerOf(node);
-    let receiver = undefined;
-    if (node.expression && isPropertyAccessExpression(node.expression)) {
-      receiver = this.lowerExpression(node.expression.expression);
-      wireArgs.push(receiver);
+    let slot;
+    if (isSuperExpression(node.expression)) {
+      // `super(...)`: the base class's constructor, called on THIS object.
+      slot = varOp("this", TYPE.UNKNOWN);
+    } else if (node.expression && isPropertyAccessExpression(node.expression)) {
+      slot = receiver ?? this.lowerExpression(node.expression.expression);
     } else {
       // A free function has no receiver object, so the slot holds the OWNER
       // as a constant: the module the function was imported from. It is the
       // same shape the other front ends use for a static call.
-      receiver = constOp(CONST.STRING, owner);
-      wireArgs.push(receiver);
+      slot = constOp(CONST.STRING, owner ?? "");
     }
+    wireArgs.push(slot);
     for (const argument of args) {
       wireArgs.push(this.lowerExpression(argument));
     }
     const method = this.methodNameOf(node);
     const arity = this.arityOf(signature, args);
-    const calleeSig = `${owner}.${method}/${arity}`;
     const dest = this.state.newTemp(this.typeOf(node));
     const kind = signature ? KIND.CALL : KIND.UNINTERPRETED;
-    if (!signature) {
-      this.report(
-        PROBLEM.SOURCE_LOWERED,
-        node,
+    if (!signature && !isSuperExpression(node.expression)) {
+      this.emitDrop(
+        "unknown-callee",
         "the callee could not be resolved, so the call is modelled as a black box",
+        IMPACT.SEMANTICS,
+        node,
       );
     }
     this.emit({
       kind,
-      calleeSig,
+      calleeSig: calleeSigOf(owner, method, arity),
       dest,
       args: wireArgs,
       ...this.position(node),
     });
+    if (this.isEvalCall(node)) {
+      // `eval` computes its result at run time: the argument is evaluated, but
+      // the value that comes back is not knowable here.
+      this.emitDrop(
+        "eval-call",
+        "the value eval returns is computed at run time",
+        IMPACT.VALUE,
+        node,
+      );
+      return this.emitHavoc(node);
+    }
     return dest;
   }
 
@@ -946,6 +2175,15 @@ export class Translator {
       args: wireArgs,
       ...this.position(node),
     });
+    if (this.constructedClassName(node.expression) === "Function") {
+      // The body of a function built from a string is decided at run time.
+      this.emitDrop(
+        "new-function",
+        "the body of a function built from a string is decided at run time",
+        IMPACT.VALUE,
+        node,
+      );
+    }
     return dest;
   }
 
@@ -992,9 +2230,29 @@ export class Translator {
     if (operatorKind === SyntaxKind.EqualsToken) {
       return this.lowerAssignment(node, null);
     }
+    const logical = LOGICAL_COMPOUND_OPERATORS[operatorKind];
+    if (logical) {
+      return this.lowerLogicalAssignment(node, logical);
+    }
     const compound = COMPOUND_OPERATORS[operatorKind];
     if (compound) {
       return this.lowerAssignment(node, compound);
+    }
+    if (operatorKind === SyntaxKind.InstanceOfKeyword) {
+      return this.lowerInstanceOf(node);
+    }
+    if (operatorKind === SyntaxKind.InKeyword) {
+      return this.lowerIn(node);
+    }
+    if (operatorKind === SyntaxKind.CommaToken) {
+      return this.lowerComma(node);
+    }
+    if (
+      operatorKind === SyntaxKind.AmpersandAmpersandToken ||
+      operatorKind === SyntaxKind.BarBarToken ||
+      operatorKind === SyntaxKind.QuestionQuestionToken
+    ) {
+      return this.lowerShortCircuit(node);
     }
     const operator = BINARY_OPERATORS[operatorKind];
     const approximated = APPROXIMATED_OPERATORS[operatorKind];
@@ -1002,6 +2260,7 @@ export class Translator {
     if (approximated) {
       binop = approximated.binop;
       this.report(PROBLEM.SOURCE_LOWERED, node, approximated.note);
+      this.emitDrop("approximated-operator", approximated.note, IMPACT.STRUCTURE, node);
     }
     const left = this.lowerExpression(node.left);
     const right = this.lowerExpression(node.right);
@@ -1018,6 +2277,350 @@ export class Translator {
       binop,
       ...this.position(node),
     });
+    return dest;
+  }
+
+  /**
+   * A short-circuit operator: `a && b`, `a || b` and `a ?? b`.
+   *
+   * <p>The right-hand side is evaluated ONLY when the left-hand side says so,
+   * and the value of the expression is defined on both paths: it is the left
+   * operand when the right one is not evaluated, and the right one when it
+   * is.
+   */
+  lowerShortCircuit(node) {
+    const operatorKind = node.operatorToken.kind;
+    const left = this.lowerExpression(node.left);
+    const dest = this.state.newTemp(this.typeOf(node));
+    // The result is defined before the branch: both paths assign to it.
+    this.emit({ kind: KIND.MOVE, dest, lhs1: left, ...this.position(node) });
+    const rhsLabel = this.state.newLabel();
+    const endLabel = this.state.newLabel();
+    if (operatorKind === SyntaxKind.AmpersandAmpersandToken) {
+      this.emitBranch(left, rhsLabel, endLabel, truthiness(left), node);
+    } else if (operatorKind === SyntaxKind.BarBarToken) {
+      this.emitBranch(left, endLabel, rhsLabel, truthiness(left), node);
+    } else {
+      this.emitBranch(
+        left,
+        endLabel,
+        rhsLabel,
+        { kind: "Compare", lhs: left, op: "NE", rhs: constOp(CONST.NULL, null) },
+        node,
+      );
+    }
+    this.emitLabel(rhsLabel);
+    const right = this.lowerExpression(node.right);
+    this.emit({ kind: KIND.MOVE, dest, lhs1: right, ...this.position(node) });
+    this.emit({ kind: KIND.JUMP, label: endLabel });
+    this.emitLabel(endLabel);
+    return dest;
+  }
+
+  /**
+   * A logical compound assignment: `a &&= b`, `a ||= b` and `a ??= b`.
+   *
+   * <p>The right-hand side is evaluated only when it is needed, and the value
+   * of the expression is the value of the left-hand side after the write.
+   */
+  lowerLogicalAssignment(node, operator) {
+    const target = node.left;
+    const current = this.lowerExpression(target);
+    const dest = this.state.newTemp(this.typeOf(node));
+    const rhsLabel = this.state.newLabel();
+    const endLabel = this.state.newLabel();
+    if (operator === "LAND") {
+      this.emitBranch(current, rhsLabel, endLabel, truthiness(current), node);
+    } else if (operator === "LOR") {
+      this.emitBranch(current, endLabel, rhsLabel, truthiness(current), node);
+    } else {
+      this.emitBranch(
+        current,
+        endLabel,
+        rhsLabel,
+        { kind: "Compare", lhs: current, op: "NE", rhs: constOp(CONST.NULL, null) },
+        node,
+      );
+    }
+    this.emitLabel(rhsLabel);
+    const right = this.lowerExpression(node.right);
+    this.lowerWrite(target, right, node);
+    this.emit({ kind: KIND.MOVE, dest, lhs1: right, ...this.position(node) });
+    this.emit({ kind: KIND.JUMP, label: endLabel });
+    this.emitLabel(endLabel);
+    this.emit({ kind: KIND.MOVE, dest, lhs1: current, ...this.position(node) });
+    return dest;
+  }
+
+  /** `x instanceof Y`: a type test. */
+  lowerInstanceOf(node) {
+    const value = this.lowerExpression(node.left);
+    const dest = this.state.newTemp(TYPE.BOOLEAN);
+    this.emit({
+      kind: KIND.INSTANCEOF,
+      dest,
+      lhs1: value,
+      ctorType: this.typeOf(node.right),
+      ...this.position(node),
+    });
+    return dest;
+  }
+
+  /**
+   * `k in obj`: the property is there or it is not.
+   *
+   * <p>The TAC has no "presence" opcode, so the answer is a branch: one arm
+   * for "the property is there" and one for "it is not".
+   */
+  lowerIn(node) {
+    // `k in obj`: the KEY is on the left, the object on the right.
+    const key = this.lowerExpression(node.left);
+    const object = this.lowerExpression(node.right);
+    const dest = this.state.newTemp(TYPE.BOOLEAN);
+    const hasLabel = this.state.newLabel();
+    const hasNotLabel = this.state.newLabel();
+    const endLabel = this.state.newLabel();
+    this.emitBranch(
+      key,
+      hasLabel,
+      hasNotLabel,
+      { kind: "PropertyPresence", receiver: object, key },
+      node,
+    );
+    this.emitLabel(hasLabel);
+    this.emit({ kind: KIND.MOVE, dest, lhs1: constOp(CONST.BOOL, true), ...this.position(node) });
+    this.emit({ kind: KIND.JUMP, label: endLabel });
+    this.emitLabel(hasNotLabel);
+    this.emit({ kind: KIND.MOVE, dest, lhs1: constOp(CONST.BOOL, false), ...this.position(node) });
+    this.emitLabel(endLabel);
+    return dest;
+  }
+
+  /** `(a, b)`: both are evaluated, and only the last one is the result. */
+  lowerComma(node) {
+    this.lowerExpression(node.left);
+    const right = this.lowerExpression(node.right);
+    const dest = this.state.newTemp(this.typeOf(node));
+    this.emit({ kind: KIND.MOVE, dest, lhs1: right, ...this.position(node) });
+    return dest;
+  }
+
+  /** `c ? a : b`: two branches, and each side is evaluated once. */
+  lowerConditional(node) {
+    const condition = this.lowerExpression(node.condition);
+    const dest = this.state.newTemp(this.typeOf(node));
+    const thenLabel = this.state.newLabel();
+    const elseLabel = this.state.newLabel();
+    const endLabel = this.state.newLabel();
+    this.emitBranch(condition, thenLabel, elseLabel, truthiness(condition), node);
+    this.emitLabel(thenLabel);
+    const whenTrue = this.lowerExpression(node.whenTrue);
+    this.emit({ kind: KIND.MOVE, dest, lhs1: whenTrue, ...this.position(node) });
+    this.emit({ kind: KIND.JUMP, label: endLabel });
+    this.emitLabel(elseLabel);
+    const whenFalse = this.lowerExpression(node.whenFalse);
+    this.emit({ kind: KIND.MOVE, dest, lhs1: whenFalse, ...this.position(node) });
+    this.emitLabel(endLabel);
+    return dest;
+  }
+
+  /** `void x`: the operand is evaluated, and the result is undefined. */
+  lowerVoid(node) {
+    this.lowerExpression(node.expression);
+    const dest = this.state.newTemp(TYPE.VOID);
+    this.emit({
+      kind: KIND.MOVE,
+      dest,
+      lhs1: constOp(CONST.NULL, null),
+      ...this.position(node),
+    });
+    return dest;
+  }
+
+  /**
+   * A tagged template: `tag`a${x}b``.
+   *
+   * <p>The tag is called with the static parts as an array and the
+   * interpolated values after it.
+   */
+  lowerTaggedTemplate(node) {
+    const template = node.template;
+    const parts = [];
+    if (template && template.head && template.head.text) {
+      parts.push(template.head.text);
+    }
+    const holes = [];
+    for (const span of template.templateSpans ?? []) {
+      holes.push(this.lowerExpression(span.expression));
+      if (span.literal && span.literal.text) {
+        parts.push(span.literal.text);
+      }
+    }
+    const arrayType = { kind: TYPE.ARRAY, component: { kind: TYPE.STRING } };
+    const strings = this.state.newTemp(arrayType);
+    this.emit({
+      kind: KIND.NEWARRAY,
+      dest: strings,
+      ctorType: arrayType,
+      lhs1: constOp(CONST.INT, parts.length),
+      ...this.position(node),
+    });
+    parts.forEach((text, index) => {
+      this.emit({
+        kind: KIND.ARRAYSTORE,
+        lhs1: strings,
+        lhs2: constOp(CONST.INT, index),
+        dest: constOp(CONST.STRING, text),
+        ...this.position(node),
+      });
+    });
+    const owner = this.ownerOfExpression(node.tag);
+    const method = this.methodNameOfExpression(node.tag);
+    const dest = this.state.newTemp(this.typeOf(node));
+    this.emit({
+      kind: KIND.CALL,
+      calleeSig: calleeSigOf(owner, method, 1 + holes.length),
+      dest,
+      args: [constOp(CONST.STRING, owner ?? ""), strings, ...holes],
+      ...this.position(node),
+    });
+    return dest;
+  }
+
+  /**
+   * A JSX element: one call, with the children and the attributes as the
+   * arguments.
+   */
+  lowerJsx(node) {
+    const opening = isJsxElement(node)
+      ? node.openingElement
+      : isJsxSelfClosingElement(node)
+        ? node
+        : node.openingFragment;
+    const tagName = opening && opening.tagName ? opening.tagName.getText?.() : undefined;
+    const args = [];
+    for (const attribute of opening?.attributes ?? []) {
+      if (attribute.initializer) {
+        args.push(this.lowerExpression(attribute.initializer));
+      }
+    }
+    for (const child of node.children ?? []) {
+      if (child.expression) {
+        args.push(this.lowerExpression(child.expression));
+        continue;
+      }
+      const text = child.text ?? child.getText?.();
+      if (typeof text === "string") {
+        args.push(constOp(CONST.STRING, text));
+      }
+    }
+    const owner = tagName ?? "<jsx>";
+    const dest = this.state.newTemp(this.typeOf(node));
+    this.emit({
+      kind: KIND.CALL,
+      calleeSig: calleeSigOf(owner, owner, args.length),
+      dest,
+      args: [constOp(CONST.STRING, owner), ...args],
+      ...this.position(node),
+    });
+    return dest;
+  }
+
+  /**
+   * `import.meta`: one object per module.
+   *
+   * <p>The object is built by a synthetic function of the module's own, and
+   * every use of it calls that function: the TAC has no global variable slot,
+   * so this is the only shape that says "one object, shared by the module".
+   */
+  lowerImportMeta(node) {
+    if (!this.metaFunction) {
+      this.lowerNested(node, () => {
+        const state = this.beginFunction("__meta", `${this.moduleName}.__meta()`, null);
+        state.synthetic = true;
+        this.guard(node, () => {
+          const object = this.state.newTemp({ kind: TYPE.CLASS, name: "Object" });
+          this.emit({
+            kind: KIND.NEW,
+            dest: object,
+            ctorType: { kind: TYPE.CLASS, name: "Object" },
+            calleeSig: "Object.<init>/0",
+            args: [],
+            ...this.position(node),
+          });
+          for (const property of this.metaProperties) {
+            const value = this.emitHavoc(node);
+            this.emit({
+              kind: KIND.ARRAYSTORE,
+              lhs1: object,
+              lhs2: constOp(CONST.STRING, property),
+              dest: value,
+              ...this.position(node),
+            });
+          }
+          this.emit({ kind: KIND.RETURN, lhs1: object, ...this.position(node) });
+          this.emitDrop(
+            "import-meta",
+            "the values of import.meta are decided at run time",
+            IMPACT.VALUE,
+            node,
+          );
+        });
+        this.metaFunction = this.finishFunction(state);
+      });
+    }
+    return this.callMetaFunction(node);
+  }
+
+  /** The synthetic function that builds the module's `import.meta` object. */
+  lowerMetaFunction() {
+    if (this.metaFunction) {
+      return [this.metaFunction];
+    }
+    return [];
+  }
+
+  /** Call the module's `import.meta` function. */
+  callMetaFunction(node) {
+    const dest = this.state.newTemp({ kind: TYPE.CLASS, name: "Object" });
+    this.emit({
+      kind: KIND.CALL,
+      calleeSig: `${this.moduleName}.__meta/0`,
+      dest,
+      args: [constOp(CONST.STRING, this.moduleName)],
+      ...this.position(node),
+    });
+    return dest;
+  }
+
+  /**
+   * A dynamic import: `import(specifier)`.
+   *
+   * <p>A literal specifier names the module, so the call can name it too. A
+   * specifier that is only known at run time cannot: the key then has no
+   * owner section, which says "the target is not nameable" rather than
+   * naming the wrong module.
+   */
+  lowerDynamicImport(node) {
+    const argument = node.argument ?? (node.arguments ?? [])[0];
+    const literal = argument && isStringLiteral(argument) ? argument.text : undefined;
+    const specifier = this.lowerExpression(argument);
+    const dest = this.state.newTemp(TYPE.UNKNOWN);
+    this.emit({
+      kind: KIND.CALL,
+      calleeSig: literal ? `${literal}.import/1` : "import/1",
+      dest,
+      args: [constOp(CONST.STRING, literal ?? ""), specifier],
+      ...this.position(node),
+    });
+    if (!literal) {
+      this.emitDrop(
+        "dynamic-import",
+        "the module a dynamic import names is decided at run time",
+        IMPACT.SEMANTICS,
+        node,
+      );
+    }
     return dest;
   }
 
@@ -1040,6 +2643,7 @@ export class Translator {
       const right = this.lowerExpression(node.right);
       if (compound.note) {
         this.report(PROBLEM.SOURCE_LOWERED, node, compound.note);
+        this.emitDrop("approximated-operator", compound.note, IMPACT.STRUCTURE, node);
       }
       value = this.state.newTemp(this.typeOf(node));
       this.emit({
@@ -1099,20 +2703,24 @@ export class Translator {
       });
       return;
     }
+    if (isObjectBindingPattern(target) || isArrayBindingPattern(target)) {
+      // An assignment to a pattern binds the names that already exist.
+      this.bindPattern(target, value, node);
+      return;
+    }
     this.report(PROBLEM.UNHANDLED_NODE, target, "this assignment target has no TAC lowering");
   }
 
   lowerUnary(node) {
-    if (node.operator === "++" || node.operator === "--") {
+    if (node.operator === SyntaxKind.PlusPlusToken || node.operator === SyntaxKind.MinusMinusToken) {
+      // A prefix `++` changes the variable FIRST and yields the new value.
       const value = this.lowerExpression(node.operand);
-      const one = constOp(CONST.INT, 1);
       const updated = this.state.newTemp(this.typeOf(node));
       this.emit({
-        kind: KIND.BINOP,
+        kind: KIND.UNARYOP,
         dest: updated,
         lhs1: value,
-        lhs2: one,
-        binop: node.operator === "++" ? "ADD" : "SUB",
+        unop: node.operator === SyntaxKind.PlusPlusToken ? "PRE_INC" : "PRE_DEC",
         ...this.position(node),
       });
       this.lowerWrite(node.operand, updated, node);
@@ -1121,7 +2729,7 @@ export class Translator {
     const operator = UNARY_OPERATORS[node.operator];
     const operand = this.lowerExpression(node.operand);
     if (!operator) {
-      if (node.operator === "+") {
+      if (node.operator === SyntaxKind.PlusToken) {
         // A unary plus is a no-op: the operand is the result.
         return operand;
       }
@@ -1147,19 +2755,17 @@ export class Translator {
    * expression yields, and the new value is what is written back.
    */
   lowerPostfixUnary(node) {
-    if (node.operator !== "++" && node.operator !== "--") {
+    if (node.operator !== SyntaxKind.PlusPlusToken && node.operator !== SyntaxKind.MinusMinusToken) {
       this.report(PROBLEM.UNHANDLED_NODE, node, "this operator has no TAC lowering");
       return this.emitHavoc(node);
     }
     const before = this.lowerExpression(node.operand);
-    const one = constOp(CONST.INT, 1);
     const after = this.state.newTemp(this.typeOf(node));
     this.emit({
-      kind: KIND.BINOP,
+      kind: KIND.UNARYOP,
       dest: after,
       lhs1: before,
-      lhs2: one,
-      binop: node.operator === "++" ? "ADD" : "SUB",
+      unop: node.operator === SyntaxKind.PlusPlusToken ? "POST_INC" : "POST_DEC",
       ...this.position(node),
     });
     this.lowerWrite(node.operand, after, node);
@@ -1257,11 +2863,265 @@ export class Translator {
     return result;
   }
 
+  // ---- the class's own members ---------------------------------------------------------------
+
+  /** The field initialisers of a class, as writes to the object's fields. */
+  lowerFieldInitializers(fields, className) {
+    for (const field of fields) {
+      if (!field.initializer) {
+        continue;
+      }
+      const name = this.fieldNameOf(field);
+      const value = this.lowerExpression(field.initializer);
+      this.emit({
+        kind: KIND.FIELDSTORE,
+        lhs1: varOp("this", TYPE.UNKNOWN),
+        fieldName: name,
+        dest: value,
+        ownerType: className,
+        ...this.position(field),
+      });
+      const annotations = this.fieldAnnotationsOf(field);
+      if (annotations.length > 0) {
+        this.state.fieldAnnotations[name] = annotations;
+      }
+    }
+  }
+
+  /** The parameter properties of a constructor: fields written from parameters. */
+  lowerParameterProperties(node, className) {
+    for (const parameter of node.parameters ?? []) {
+      if (!this.isParameterProperty(parameter)) {
+        continue;
+      }
+      const name = parameter.name.text;
+      this.emit({
+        kind: KIND.FIELDSTORE,
+        lhs1: varOp("this", TYPE.UNKNOWN),
+        fieldName: name,
+        dest: varOp(name, this.typeOf(parameter)),
+        ownerType: className,
+        ...this.position(parameter),
+      });
+    }
+  }
+
+  /** The name of a field, with the `#` of a private field kept. */
+  fieldNameOf(field) {
+    const name = field.name;
+    if (!name) return "";
+    if (isPrivateIdentifier(name)) return `#${name.text.replace(/^#/, "")}`;
+    return name.text ?? name.getText?.() ?? "";
+  }
+
+  /** Whether a parameter is a parameter property. */
+  isParameterProperty(parameter) {
+    const modifiers = parameter.modifiers ?? [];
+    return modifiers.some((modifier) => {
+      const kind = modifier.kind;
+      return (
+        kind === SyntaxKind.PublicKeyword ||
+        kind === SyntaxKind.PrivateKeyword ||
+        kind === SyntaxKind.ProtectedKeyword ||
+        kind === SyntaxKind.ReadonlyKeyword ||
+        kind === SyntaxKind.OverrideKeyword
+      );
+    });
+  }
+
+  /** Whether a field is an auto-accessor. */
+  isAccessorField(field) {
+    const modifiers = field.modifiers ?? [];
+    return modifiers.some((modifier) => modifier.kind === SyntaxKind.AccessorKeyword);
+  }
+
+  /** The compile-time markers of a field: readonly, visibility, override. */
+  fieldAnnotationsOf(field) {
+    const annotations = [];
+    for (const modifier of field.modifiers ?? []) {
+      if (modifier.kind === SyntaxKind.ReadonlyKeyword) annotations.push("readonly");
+      if (modifier.kind === SyntaxKind.PublicKeyword) annotations.push("public");
+      if (modifier.kind === SyntaxKind.PrivateKeyword) annotations.push("private");
+      if (modifier.kind === SyntaxKind.ProtectedKeyword) annotations.push("protected");
+      if (modifier.kind === SyntaxKind.OverrideKeyword) annotations.push("override");
+      if (isDecorator(modifier)) {
+        const name = decoratorNameOf(modifier);
+        if (name) annotations.push(name);
+      }
+    }
+    return annotations;
+  }
+
+  /** The name of the base class, when the class extends one. */
+  baseClassNameOf(node) {
+    for (const clause of node.heritageClauses ?? []) {
+      if (!isHeritageClause(clause)) continue;
+      if (clause.token !== SyntaxKind.ExtendsKeyword) continue;
+      const first = clause.types?.[0];
+      const expression = first?.expression;
+      if (!expression) return undefined;
+      return expression.getText?.() ?? expression.text;
+    }
+    return undefined;
+  }
+
+  /** The interfaces the class implements. */
+  implementedInterfacesOf(node) {
+    const names = [];
+    for (const clause of node.heritageClauses ?? []) {
+      if (!isHeritageClause(clause)) continue;
+      if (clause.token !== SyntaxKind.ImplementsKeyword) continue;
+      for (const type of clause.types ?? []) {
+        const expression = type.expression;
+        const name = expression?.getText?.() ?? expression?.text;
+        if (name) names.push(name);
+      }
+    }
+    return names;
+  }
+
+  /** The names of the decorators on a node. */
+  decoratorNamesOf(node) {
+    const names = [];
+    for (const modifier of node.modifiers ?? []) {
+      if (!isDecorator(modifier)) continue;
+      const name = decoratorNameOf(modifier);
+      if (name) names.push(name);
+    }
+    return names;
+  }
+
+  /** The number of parameters the base class's constructor declares. */
+  baseConstructorArity(base) {
+    if (!this.sourceFile) return 0;
+    for (const statement of this.sourceFile.statements ?? []) {
+      if (!isClassDeclaration(statement)) continue;
+      if (!statement.name || statement.name.text !== base) continue;
+      for (const member of statement.members ?? []) {
+        if (isConstructorDeclaration(member)) {
+          return (member.parameters ?? []).filter((p) => !isThisParameter(p)).length;
+        }
+      }
+    }
+    return 0;
+  }
+
+  // ---- modules -------------------------------------------------------------------------------
+
+  /**
+   * A static import.
+   *
+   * <p>The binding is made at compile time, so an import produces NO
+   * instruction at all. A type-only import is erased completely; the edge it
+   * names is a type-level fact, and it is recorded as such.
+   */
+  lowerImport(node) {
+    const clause = node.importClause;
+    if (clause && clause.isTypeOnly) {
+      this.emitDrop(
+        "type-only-import",
+        "a type-only import is erased at compile time; the module edge is a type-level fact",
+        IMPACT.TYPE,
+        node,
+      );
+      return;
+    }
+    for (const element of clause?.namedBindings?.elements ?? []) {
+      if (element.isTypeOnly) {
+        this.emitDrop(
+          "type-only-import",
+          "a type-only import is erased at compile time; the module edge is a type-level fact",
+          IMPACT.TYPE,
+          node,
+        );
+      }
+    }
+  }
+
+  /**
+   * An export.
+   *
+   * <p>An export produces no instruction either: the module's export table
+   * is built at compile time. A type-only export is erased completely.
+   */
+  lowerExport(node) {
+    if (node.isTypeOnly) {
+      this.emitDrop(
+        "type-only-export",
+        "a type-only export is erased at compile time; the module edge is a type-level fact",
+        IMPACT.TYPE,
+        node,
+      );
+      return;
+    }
+    if (node.declaration) {
+      this.lowerStatement(node.declaration);
+    }
+  }
+
   // ---- helpers ------------------------------------------------------------------------------
 
   emit(instruction) {
     this.state.instructions.push(instruction);
     return instruction;
+  }
+
+  /** Emit a label, with the reference that says what the label is. */
+  emitLabel(label) {
+    const instruction = { kind: KIND.LABEL, label };
+    const reference = this.state.labelRefs.get(label);
+    if (reference) {
+      instruction.labelRef = reference;
+    }
+    this.emit(instruction);
+    return instruction;
+  }
+
+  /** Emit a branch, with the guard that says what the branch tests. */
+  emitBranch(condition, trueLabel, falseLabel, guard, node) {
+    const instruction = {
+      kind: KIND.BRANCH,
+      lhs1: condition,
+      trueLabel,
+      falseLabel,
+      ...this.position(node),
+    };
+    if (guard) {
+      instruction.guard = guard;
+    }
+    this.emit(instruction);
+    return instruction;
+  }
+
+  /**
+   * Record a degradation.
+   *
+   * <p>Every construct that is modelled less faithfully than the source says
+   * so here. The impact says how much was lost: `SEMANTICS` means the
+   * function's precision is degraded, `STRUCTURE` means it is only lowered,
+   * and `VALUE` and `TYPE` leave the precision alone.
+   */
+  emitDrop(construct, detail, impact, node) {
+    if (!this.state) {
+      return undefined;
+    }
+    const known = this.state.drops.some(
+      (drop) => drop.construct === construct && drop.detail === detail,
+    );
+    if (known) {
+      return undefined;
+    }
+    const position = node ? this.position(node) : { line: -1, column: -1 };
+    const drop = {
+      construct,
+      detail,
+      impact,
+      line: position.line,
+      column: position.column,
+      scope: "FUNCTION",
+    };
+    this.state.drops.push(drop);
+    return drop;
   }
 
   /** Declare a local, once. */
@@ -1272,6 +3132,11 @@ export class Translator {
     if (!this.state.locals.some((local) => local.name === variable.name)) {
       this.state.locals.push(variable);
     }
+  }
+
+  /** Declare the receiver of a class's or a struct's own properties. */
+  declareThis() {
+    this.declareLocal(varOp("this", TYPE.UNKNOWN));
   }
 
   /**
@@ -1293,6 +3158,9 @@ export class Translator {
     try {
       body();
     } catch (e) {
+      if (process.env.PLUMB_DEBUG) {
+        console.error(`plumb-ts-sidecar: ${e && e.stack ? e.stack : String(e)}`);
+      }
       this.report(
         PROBLEM.SOURCE_LOWERED,
         node,
@@ -1357,7 +3225,7 @@ export class Translator {
       return undefined;
     }
     if (!type) return undefined;
-    return mapType(type);
+    return mapType(type, this.checker, this);
   }
 
   typeTextOf(node) {
@@ -1383,11 +3251,24 @@ export class Translator {
   /**
    * The owner of a call: the receiver's type for a method, the module for a
    * free function.
+   *
+   * <p>The owner is resolved by a chain of five steps, and the last one is
+   * "the owner is missing": the callee key then has no owner section at all.
+   * A missing owner is never a module name and never a sentinel -- both of
+   * those name something the call is not.
    */
   ownerOf(node) {
     const expression = node.expression;
+    if (expression && isSuperExpression(expression)) {
+      // `super(...)`: the owner is the base class.
+      return this.enclosingBase ?? OWNER_MISSING;
+    }
     if (expression && isPropertyAccessExpression(expression)) {
       const base = expression.expression;
+      if (isSuperExpression(base)) {
+        // `super.m(...)`: the owner is the base class as well.
+        return this.enclosingBase ?? OWNER_MISSING;
+      }
       // `vm.runInNewContext(...)`: the base is a namespace import, so the
       // owner is the module the namespace came from.
       if (isIdentifier(base)) {
@@ -1401,12 +3282,17 @@ export class Translator {
       if (name) {
         return name;
       }
-      // No class to name: a primitive receiver, or one whose type this
-      // translator cannot read. The owner is UNKNOWN, and saying it is the
-      // module the file belongs to would hand the catalogue a module path
-      // that names the program's OWN file -- and a file called
-      // "logging.ts" would then be the logging module.
-      return UNKNOWN_OWNER;
+      // A primitive receiver: the owner is the wrapper class, which is what
+      // the method really belongs to.
+      const wrapper = this.primitiveWrapperOf(base);
+      if (wrapper) {
+        return wrapper;
+      }
+      // A known global: `console.log(x)` belongs to `console`.
+      if (isIdentifier(base) && GLOBAL_OWNERS.has(base.text)) {
+        return base.text;
+      }
+      return OWNER_MISSING;
     }
     if (expression && isIdentifier(expression)) {
       // `exec(cmd)`, where `exec` was imported: the owner is the module it
@@ -1417,12 +3303,37 @@ export class Translator {
       // is the definition's owner and the call graph resolves the two
       // against each other.
       if (this.declaredNames.has(expression.text)) return this.moduleName;
-      // A global, or a function of a module that was never imported. The
-      // owner is not this module.
-      return UNKNOWN_OWNER;
+      // A known global.
+      if (GLOBAL_OWNERS.has(expression.text)) return expression.text;
+      return OWNER_MISSING;
     }
     // The callee is not a name at all, so there is no owner to find.
-    return UNKNOWN_OWNER;
+    return OWNER_MISSING;
+  }
+
+  /** The owner of a call whose callee is an expression, such as a tag. */
+  ownerOfExpression(expression) {
+    if (!expression) return OWNER_MISSING;
+    if (isIdentifier(expression)) {
+      const binding = this.imports.get(expression.text);
+      if (binding) return binding.module;
+      if (this.declaredNames.has(expression.text)) return this.moduleName;
+      if (GLOBAL_OWNERS.has(expression.text)) return expression.text;
+      return OWNER_MISSING;
+    }
+    if (isPropertyAccessExpression(expression)) {
+      const base = expression.expression;
+      if (isIdentifier(base)) {
+        const binding = this.imports.get(base.text);
+        if (binding && binding.isNamespace) return binding.module;
+      }
+      const name = this.classNameOfNode(base);
+      if (name) return name;
+      const wrapper = this.primitiveWrapperOf(base);
+      if (wrapper) return wrapper;
+      if (isIdentifier(base) && GLOBAL_OWNERS.has(base.text)) return base.text;
+    }
+    return OWNER_MISSING;
   }
 
   /**
@@ -1431,7 +3342,7 @@ export class Translator {
    * <p>A plain object and a class instance both have a type, and the plain
    * one's type is the global `Object` -- which is a real answer, not a missing
    * one. A receiver whose type is not a class at all -- a string, a number --
-   * has no class name, and the call's owner falls back to the file's module.
+   * has no class name, and the call's owner is looked for elsewhere.
    */
   classNameOfNode(node) {
     if (!node || !this.checker) return undefined;
@@ -1444,9 +3355,43 @@ export class Translator {
     }
   }
 
+  /**
+   * The wrapper class of a primitive receiver: `"abc".trim()` belongs to
+   * `String`, `1..toFixed(2)` to `Number`, and so on.
+   */
+  primitiveWrapperOf(node) {
+    if (!node || !this.checker) return undefined;
+    let type;
+    try {
+      type = this.checker.getTypeAtLocation(node);
+    } catch (e) {
+      return undefined;
+    }
+    if (!type) return undefined;
+    const wrapper = wrapperOfType(type);
+    if (wrapper) return wrapper;
+    // A union: the wrapper of the member that is not nullish.
+    if (type.flags & TypeFlags.Union) {
+      const members = type.getTypes ? type.getTypes() : [];
+      for (const member of members) {
+        if (member.flags & (TypeFlags.Null | TypeFlags.Undefined)) continue;
+        const found = wrapperOfType(member);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  }
+
   methodNameOf(node) {
     const expression = node.expression;
+    if (expression && isSuperExpression(expression)) {
+      // `super(...)` calls the base class's constructor.
+      return "<init>";
+    }
     if (expression && isPropertyAccessExpression(expression)) {
+      if (isSuperExpression(expression.expression)) {
+        return expression.name.text;
+      }
       return expression.name.text;
     }
     if (expression && isIdentifier(expression)) {
@@ -1459,22 +3404,91 @@ export class Translator {
     return "<call>";
   }
 
+  /** The name of the method an expression names. */
+  methodNameOfExpression(expression) {
+    if (!expression) return "<call>";
+    if (isPropertyAccessExpression(expression)) {
+      return expression.name.text;
+    }
+    if (isIdentifier(expression)) {
+      const binding = this.imports.get(expression.text);
+      if (binding && binding.exported) return binding.exported;
+      return expression.text;
+    }
+    return "<call>";
+  }
+
+  /** Whether a call is a call to `eval`. */
+  isEvalCall(node) {
+    const expression = node.expression;
+    return !!expression && isIdentifier(expression) && expression.text === "eval";
+  }
+
   /**
    * The arity of a call.
    *
-   * The arity counts the DECLARED parameters, not the arguments passed: an
-   * optional parameter is still part of the signature, and the sink catalogue
-   * matches on the signature.
+   * <p>The arity counts the DECLARED parameters when the callee could be
+   * resolved: an optional parameter is still part of the signature, and the
+   * sink catalogue matches on the signature. A callee that could NOT be
+   * resolved has no declared parameters to count, so the arity is the number
+   * of arguments that were passed.
    */
   arityOf(signature, args) {
     if (signature && Array.isArray(signature.parameters) && signature.parameters.length > 0) {
       return signature.parameters.length;
     }
-    if (signature && signature.parameters && signature.parameters.length === 0) {
-      return 0;
-    }
     return args.length;
   }
+}
+
+/** The callee key of a call: `owner.method/arity`, with no owner when the owner is missing. */
+function calleeSigOf(owner, method, arity) {
+  return owner ? `${owner}.${method}/${arity}` : `${method}/${arity}`;
+}
+
+/** The guard of a branch on a value's truthiness. */
+function truthiness(operand) {
+  return { kind: "Truthiness", operand };
+}
+
+/** A type that may also be null or undefined. */
+function nullable(type) {
+  if (!type) return { kind: TYPE.UNKNOWN, nullable: true };
+  return { ...type, nullable: true };
+}
+
+/** The precision of a function, derived from its drops and its problems. */
+function precisionOf(state) {
+  if (state.drops.some((drop) => drop.impact === IMPACT.SEMANTICS)) {
+    return PRECISION_DEGRADED;
+  }
+  if (state.drops.some((drop) => drop.impact === IMPACT.STRUCTURE)) {
+    return PRECISION.LOWERED;
+  }
+  if (state.problems.length > 0) {
+    return PRECISION.LOWERED;
+  }
+  return PRECISION.FULL;
+}
+
+/** The value domain of a type, when the type has one. */
+function domainOf(type) {
+  if (!type) return undefined;
+  return type.domain ?? undefined;
+}
+
+/** Whether a parameter is the `this` parameter. */
+function isThisParameter(parameter) {
+  return !!parameter && !!parameter.name && parameter.name.text === "this";
+}
+
+/** The name of a decorator, when it names one. */
+function decoratorNameOf(decorator) {
+  const expression = decorator?.expression;
+  if (!expression) return undefined;
+  if (isIdentifier(expression)) return expression.text;
+  if (isPropertyAccessExpression(expression)) return expression.name?.text;
+  return undefined;
 }
 
 /** The offsets at which each line of the text starts. */
@@ -1486,23 +3500,136 @@ function computeLineStarts(text) {
   return starts;
 }
 
+/**
+ * The properties of `import.meta` that a file uses.
+ *
+ * <p>The object is built by the module's own synthetic function, and it has
+ * to hold the properties the file actually asks for: the shape is static even
+ * though the values are not.
+ */
+function collectMetaProperties(sourceFile) {
+  const names = [];
+  const visit = (node) => {
+    if (!node) return;
+    if (isPropertyAccessExpression(node) && isMetaProperty(node.expression)) {
+      const name = node.name?.text;
+      if (name && !names.includes(name)) names.push(name);
+    }
+    if (typeof node.forEachChild === "function") {
+      node.forEachChild(visit);
+    }
+  };
+  visit(sourceFile);
+  return names;
+}
+
 /** The TAC type of a compiler type. */
-function mapType(type) {
+function mapType(type, checker, translator) {
+  if (!type) return undefined;
   const flags = type.flags;
+
+  // A union: the members decide the type, and a nullish member makes it
+  // nullable. A union is never collapsed into its first member.
+  if (flags & TypeFlags.Union) {
+    const members = type.getTypes ? type.getTypes() : [];
+    const mapped = members.map((member) => mapType(member, checker, translator)).filter(Boolean);
+    const hasNullish = members.some(
+      (member) => member.flags & (TypeFlags.Null | TypeFlags.Undefined),
+    );
+    const primary = mapped.find((member) => member.kind !== TYPE.NULL) ?? { kind: TYPE.UNKNOWN };
+    if (mapped.length > 1) {
+      return {
+        ...primary,
+        nullable: hasNullish || primary.nullable === true,
+        unionMembers: mapped,
+      };
+    }
+    return { ...primary, nullable: hasNullish || primary.nullable === true };
+  }
+
   if (flags & TypeFlags.String) return { kind: TYPE.STRING };
-  if (flags & TypeFlags.Number) return { kind: TYPE.DOUBLE };
+  if (flags & TypeFlags.Number) return { kind: TYPE.DOUBLE, domain: FLOATING_DOMAIN };
   if (flags & TypeFlags.BooleanLike) return { kind: TYPE.BOOLEAN };
-  if (flags & TypeFlags.BigIntLike) return { kind: TYPE.LONG };
-  if (flags & TypeFlags.ESSymbolLike) return { kind: TYPE.UNKNOWN };
+  if (flags & TypeFlags.BigIntLike) {
+    // A bigint is of arbitrary precision: the domain says so.
+    return { kind: TYPE_BIGINT, domain: { kind: "Unbounded" } };
+  }
+  if (flags & TypeFlags.ESSymbolLike) return { kind: TYPE.UNKNOWN, domain: DYNAMIC_DOMAIN };
   if (flags & TypeFlags.VoidLike) return { kind: TYPE.VOID };
   if (flags & TypeFlags.Null) return { kind: TYPE.NULL };
+  if (flags & TypeFlags.Undefined) return { kind: TYPE.NULL };
+  if (flags & TypeFlags.Never) return { kind: TYPE.VOID };
+  if (flags & TypeFlags.Any || flags & TypeFlags.Unknown) {
+    return { kind: TYPE.UNKNOWN, domain: DYNAMIC_DOMAIN };
+  }
+  if (flags & TypeFlags.TypeParameter) {
+    // A type parameter's argument is only known at the instantiation.
+    return { kind: TYPE.UNKNOWN, domain: DYNAMIC_DOMAIN };
+  }
+  if (flags & TypeFlags.StringLiteral) return { kind: TYPE.STRING };
+  if (flags & TypeFlags.NumberLiteral) return { kind: TYPE.DOUBLE, domain: FLOATING_DOMAIN };
+  if (flags & TypeFlags.BooleanLiteral) return { kind: TYPE.BOOLEAN };
+  if (flags & TypeFlags.BigIntLiteral) return { kind: TYPE_BIGINT, domain: { kind: "Unbounded" } };
+
   if (flags & TypeFlags.Object) {
+    const arguments_ = typeArgumentsOf(type, checker);
+    if (checker && checker.isTupleType && checker.isTupleType(type)) {
+      // A tuple is an array whose length is part of its type: the length is
+      // not expressible, and it is reported.
+      const component = arguments_.length > 0 ? mapType(arguments_[0], checker, translator) : undefined;
+      if (translator) {
+        translator.emitDrop(
+          "tuple-type",
+          "a tuple's length is not part of the TAC's array type; the first element's type is used",
+          IMPACT.STRUCTURE,
+          null,
+        );
+      }
+      return { kind: TYPE.ARRAY, component: component ?? { kind: TYPE.UNKNOWN } };
+    }
+    if (checker && checker.isArrayType && checker.isArrayType(type)) {
+      const component =
+        arguments_.length > 0 ? mapType(arguments_[0], checker, translator) : { kind: TYPE.UNKNOWN };
+      return { kind: TYPE.ARRAY, component: component ?? { kind: TYPE.UNKNOWN } };
+    }
     const name = classNameOf(type);
-    if (name === "Array") return { kind: TYPE.ARRAY, component: { kind: TYPE.UNKNOWN } };
+    if (name === "Array") {
+      const component =
+        arguments_.length > 0 ? mapType(arguments_[0], checker, translator) : { kind: TYPE.UNKNOWN };
+      return { kind: TYPE.ARRAY, component: component ?? { kind: TYPE.UNKNOWN } };
+    }
     return { kind: TYPE.CLASS, name: name ?? "Object" };
   }
-  return { kind: TYPE.UNKNOWN };
+  return { kind: TYPE.UNKNOWN, domain: DYNAMIC_DOMAIN };
 }
+
+/** The wrapper class of a primitive type: `String`, `Number`, `Boolean`, `BigInt`. */
+function wrapperOfType(type) {
+  if (!type) return undefined;
+  const flags = type.flags;
+  if (flags & TypeFlags.StringLike) return "String";
+  if (flags & TypeFlags.NumberLike) return "Number";
+  if (flags & TypeFlags.BooleanLike) return "Boolean";
+  if (flags & TypeFlags.BigIntLike) return "BigInt";
+  return undefined;
+}
+
+/** The type arguments of a generic type, when the compiler can give them. */function typeArgumentsOf(type, checker) {
+  if (!checker || typeof checker.getTypeArguments !== "function") {
+    return [];
+  }
+  try {
+    return Array.from(checker.getTypeArguments(type) ?? []);
+  } catch (e) {
+    return [];
+  }
+}
+
+/** The domain of a JavaScript number: a double, with 53 bits of precision. */
+const FLOATING_DOMAIN = { kind: "Floating", bits: 53, exponentBits: 11 };
+
+/** The domain of a type nothing is known about. */
+const DYNAMIC_DOMAIN = { kind: "Dynamic" };
 
 /**
  * The name of a compiler type's class, when it has one.
@@ -1549,6 +3676,12 @@ function typeText(type) {
   if (!type) return "any";
   if (type.kind === TYPE.CLASS) return type.name;
   if (type.kind === TYPE.ARRAY) return `${typeText(type.component)}[]`;
+  if (type.unionMembers && type.unionMembers.length > 1) {
+    return type.unionMembers.map((member) => typeText(member)).join("|");
+  }
+  if (type.nullable === true) {
+    return `${type.kind.toLowerCase()}|null`;
+  }
   return type.kind.toLowerCase();
 }
 

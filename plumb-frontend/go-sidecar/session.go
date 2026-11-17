@@ -234,6 +234,9 @@ func Open(request *Request) (*ProjectSession, error) {
 	// checker's own answer.
 	session.index = buildTypeIndex(loadedPackages)
 
+	// The facts that belong to the whole program rather than to one file.
+	session.recordProgramFacts()
+
 	session.diagnostics = append(session.diagnostics, loader.diagnostics...)
 	return session, nil
 }
@@ -244,19 +247,26 @@ func (session *ProjectSession) Diagnostics() []Diagnostic {
 }
 
 // Translate translates one file of the project into TAC.
-func (session *ProjectSession) Translate(path string) []Function {
+//
+// It returns the file's functions and the file's TYPE DECLARATIONS. The
+// types are not functions, so they have no place in the instruction stream;
+// they are returned beside it so that the struct tags -- which say which
+// key a field is serialized under -- are not lost.
+func (session *ProjectSession) Translate(path string) ([]Function, []TypeDecl) {
 	entry := session.lookup(path)
 	if entry == nil {
 		// The file is not part of the open project. The Java side asked for
 		// something the sidecar does not have; saying so is better than
 		// returning an empty result that reads like "no findings".
 		return []Function{{
-			Name:        "<unknown>",
-			Signature:   "<unknown>",
-			ReturnType:  Simple(TypeVoid),
-			Precision:   PrecisionLowered,
-			Params:      []Operand{},
-			Locals:      []Operand{},
+			Name:         "<unknown>",
+			Signature:    "<unknown>",
+			ReturnType:   Simple(TypeVoid),
+			Precision:    PrecisionLowered,
+			MemberKind:   memberKindFunction,
+			Params:       []Operand{},
+			Parameters:   []Operand{},
+			Locals:       []Operand{},
 			Instructions: []Instruction{},
 			Problems: []Problem{{
 				Kind:    ProblemParse,
@@ -264,8 +274,16 @@ func (session *ProjectSession) Translate(path string) []Function {
 				Line:    -1,
 				Column:  -1,
 			}},
+			Drops: []Drop{{
+				Construct: DropGoUnmodelled,
+				Detail:    "the file is not part of the open project",
+				Impact:    ImpactSemantics,
+				Line:      -1,
+				Column:    -1,
+				Scope:     DropScopeFunction,
+			}},
 			DeferredCalls: []DeferredCall{},
-		}}
+		}}, []TypeDecl{}
 	}
 
 	functions := []Function{}
@@ -302,7 +320,176 @@ func (session *ProjectSession) Translate(path string) []Function {
 		}
 		functions = append(functions, translateFunction(session.loader.fset, entry.pkg, declaration, session.index)...)
 	}
-	return functions
+	return functions, translateFileTypes(session.loader.fset, entry.pkg, entry.file)
+}
+
+// translateFileTypes lowers the TYPE DECLARATIONS of a file.
+//
+// A type declaration produces no TAC instructions -- a struct is not a
+// function -- so without this the whole declaration surface of a program
+// would be invisible.
+//
+// What it carries is the part that is a SECURITY FACT: the struct tag. A
+// tag says which key a field is written under when the value is encoded, and
+// a field whose tag names the key the encoder uses is exactly the field that
+// reaches the wire. It used to be dropped: the sidecar read no tag at all,
+// and no tag field existed on the wire.
+func translateFileTypes(fset *token.FileSet, pkg *loadedPackage, file *ast.File) []TypeDecl {
+	declarations := []TypeDecl{}
+	for _, decl := range file.Decls {
+		general, ok := decl.(*ast.GenDecl)
+		if !ok || general.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range general.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			declaration := TypeDecl{
+				FQN: qualifiedSpecName(pkg, typeSpec),
+			}
+			// The DECLARED type, not the type the syntax denotes: the
+			// syntax of `type Account struct{...}` denotes the anonymous
+			// struct, and the DECLARED type is the named one the program
+			// refers to.
+			named, ok := pkg.info.Defs[typeSpec.Name].(*types.TypeName)
+			if !ok {
+				declarations = append(declarations, declaration)
+				continue
+			}
+			declared, ok := named.Type().(*types.Named)
+			if !ok {
+				declarations = append(declarations, declaration)
+				continue
+			}
+			switch underlying := declared.Underlying().(type) {
+			case *types.Interface:
+				declaration.IsInterface = true
+			case *types.Map:
+				declaration.IsMap = true
+			case *types.Chan:
+				declaration.IsChan = true
+				declaration.ChanDir = chanDirection(underlying)
+			case *types.Struct:
+				// The TAGS come from the AST: the tag is a piece of
+				// source text on the field, and the type checker does not
+				// keep it. The field TYPES come from the type checker.
+				for index := 0; index < underlying.NumFields(); index++ {
+					field := underlying.Field(index)
+					declaration.Fields = append(declaration.Fields, FieldDecl{
+						Name: field.Name(),
+						Type: mapGoType(field.Type()),
+						Tag:  structTagAt(typeSpec.Type, index),
+					})
+				}
+			}
+			declarations = append(declarations, declaration)
+		}
+	}
+	return declarations
+}
+
+// structTagAt returns the struct tag of the field at an index.
+//
+// The tag is source text on the AST's field, and the type checker does not
+// keep it: the tag says which key the field is serialized under, and that
+// is a fact about the ENCODING, not about the type.
+//
+// An index that does not name a field has no tag.
+func structTagAt(typeExpression ast.Expr, index int) string {
+	structure, ok := typeExpression.(*ast.StructType)
+	if !ok || structure.Fields == nil {
+		return ""
+	}
+	seen := 0
+	for _, field := range structure.Fields.List {
+		count := len(field.Names)
+		if count == 0 {
+			// An EMBEDDED field: it has no name of its own, but it is
+			// still a field of the struct.
+			count = 1
+		}
+		for position := 0; position < count; position++ {
+			if seen == index {
+				if field.Tag == nil {
+					return ""
+				}
+				return field.Tag.Value
+			}
+			seen++
+		}
+	}
+	return ""
+}
+
+// qualifiedSpecName returns the fully qualified name of a type declaration.
+//
+// A declared type belongs to its package, so the name is the package's
+// import path and the type's own name.
+func qualifiedSpecName(pkg *loadedPackage, spec *ast.TypeSpec) string {
+	if pkg.pkg == nil {
+		return spec.Name.Name
+	}
+	return pkg.pkg.Path() + "." + spec.Name.Name
+}
+
+// chanDirection returns the direction of a channel type: "both", "send" or
+// "recv".
+func chanDirection(channel *types.Chan) string {
+	switch channel.Dir() {
+	case types.SendOnly:
+		return "send"
+	case types.RecvOnly:
+		return "recv"
+	}
+	return "both"
+}
+
+// recordProgramFacts records the losses that belong to the WHOLE PROGRAM.
+//
+// They are recorded when the project is opened, because they are facts about
+// the project rather than about any one file: a package's visibility rule,
+// a vendored dependency tree, an embedded resource.
+func (session *ProjectSession) recordProgramFacts() {
+	// PACKAGE VISIBILITY. Go's rule is that a package under an "internal"
+	// directory may only be imported from within the same tree. The rule is
+	// a compile-time rule, and it is not implemented: the engine treats an
+	// internal package as a public one. That is an OVER-approximation --
+	// it can report a use of an internal API that no other package could
+	// actually reach -- so it cannot lose a finding.
+	for _, spec := range session.loader.specs {
+		for _, imported := range spec.Imports {
+			if !strings.Contains(imported.ImportPath, "/internal/") &&
+				!strings.HasPrefix(imported.ImportPath, "internal/") {
+				continue
+			}
+			recordProgramDrop(DropGoPackageVisibility,
+				"the package "+imported.ImportPath+" is under an 'internal' directory, and the "+
+					"rule that restricts who may import it is not implemented: the package is "+
+					"treated as a public one",
+				ImpactSemantics)
+		}
+	}
+
+	// VENDORING. The sidecar does not read a vendor directory. A dependency
+	// has to be named by the caller, with export data or a source directory;
+	// a vendored dependency that is not named is not in the TAC at all.
+	for _, spec := range session.loader.specs {
+		if spec.Dir == "" {
+			continue
+		}
+		vendor := filepath.Join(spec.Dir, "vendor")
+		info, err := os.Stat(vendor)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		recordProgramDrop(DropGoVendoring,
+			"the package "+spec.ImportPath+" has a vendor directory. A vendored dependency is "+
+				"analysed only when the caller names it, with export data or a source directory; "+
+				"a vendored dependency that is not named is not in the TAC at all",
+			ImpactSemantics)
+	}
 }
 
 // translatePackageInit lowers a file's PACKAGE-LEVEL declarations.
@@ -356,6 +543,10 @@ func translatePackageInit(fset *token.FileSet, pkg *loadedPackage, file *ast.Fil
 			if !ok {
 				continue
 			}
+			// The operands of every name of the declaration, in order.
+			// A name that is the blank one has no operand, and a name
+			// that could not be resolved has none either.
+			operands := make([]*Operand, len(value.Names))
 			for index, name := range value.Names {
 				if name.Name == "_" {
 					continue
@@ -368,9 +559,9 @@ func translatePackageInit(fset *token.FileSet, pkg *loadedPackage, file *ast.Fil
 				// The package-level variable is bound to its QUALIFIED name,
 				// so that the functions of every file of the package read
 				// and write the SAME TAC variable.
-				operand := t.binding(variable)
-				t.emitPackageVariable(value, index, operand)
+				operands[index] = t.binding(variable)
 			}
+			t.emitPackageVariable(value, operands)
 		}
 	}
 
@@ -391,12 +582,12 @@ func translatePackageInit(fset *token.FileSet, pkg *loadedPackage, file *ast.Fil
 		return nil
 	}
 
-	precision := PrecisionFull
-	if t.degraded {
+	precision := t.precisionFromDrops()
+	if t.degraded && precision == PrecisionFull {
 		precision = PrecisionLowered
 	}
 	if hasVariables {
-		t.report(file, ProblemSourceLowered,
+		t.reportConstruct(file, ProblemSourceLowered, DropGoUnmodelled,
 			"a package's variables are initialised before its 'init' functions run, and the order "+
 				"between the files of a package is not modelled: each file's declarations are "+
 				"initialised in the file that declares them")
@@ -404,46 +595,78 @@ func translatePackageInit(fset *token.FileSet, pkg *loadedPackage, file *ast.Fil
 
 	name := packageInitName(fset, file)
 	return &Function{
-		Name:          name,
-		Signature:     declarationSignature(owner, name, nil, ""),
-		EnclosingClass: owner,
-		ReturnType:    Simple(TypeVoid),
-		Precision:     precision,
-		Synthetic:     false,
-		Params:        []Operand{},
-		Locals:        t.locals,
-		Instructions:  t.instructions,
-		Problems:      t.problems,
-		DeferredCalls: t.deferred,
+		Name:            name,
+		Signature:       declarationSignature(owner, name, nil, ""),
+		EnclosingClass:  owner,
+		ReturnType:      Simple(TypeVoid),
+		Precision:       precision,
+		MemberKind:      memberKindStaticInitializer,
+		Synthetic:       false,
+		Params:          []Operand{},
+		Parameters:      []Operand{},
+		Locals:          t.locals,
+		ScopeBindings:   t.scopeBindings,
+		Instructions:    t.instructions,
+		Problems:        t.problems,
+		Drops:           t.drops,
+		DeferredCalls:   t.deferred,
 		StartsGoroutine: t.startsGoroutine,
 	}
 }
 
-// emitPackageVariable initialises one package-level variable.
+// emitPackageVariable initialises the variables of one package-level
+// declaration.
 //
-// The value of a multi-name declaration (`var a, b = f()`) is a
-// multi-valued expression: the first name takes the call's first result and
-// the rest are unknown, because the TAC's CALL has one destination.
-func (t *translator) emitPackageVariable(spec *ast.ValueSpec, index int, operand *Operand) {
+// A declaration with SEVERAL names and ONE value (`var a, b = f()`) is a
+// multi-valued expression: the call's results are bound to the names.
+//
+// The call used to be emitted TWICE -- once as an expression for the first
+// name, and once as a call for the second -- so the function ran twice, and
+// every rule that counts calls, or that reasons about a call's effects, saw
+// two of them. It is emitted once now, with the results bound to the names.
+func (t *translator) emitPackageVariable(spec *ast.ValueSpec, operands []*Operand) {
 	if len(spec.Values) == 0 {
 		return
 	}
-	if index < len(spec.Values) {
-		value := t.valueOf(spec.Values[index])
-		t.emit(Instruction{Kind: KindMove, Dest: operand, Lhs1: value}, spec.Pos())
+
+	// One value for every name: the ordinary case.
+	if len(spec.Values) == len(operands) {
+		for index, value := range spec.Values {
+			if operands[index] == nil {
+				continue
+			}
+			evaluated := t.valueOf(value)
+			t.emit(Instruction{Kind: KindMove, Dest: operands[index], Lhs1: evaluated}, spec.Pos())
+		}
 		return
 	}
-	if len(spec.Values) == 1 && index == 1 {
+
+	// One value for several names: a multi-valued expression.
+	if len(spec.Values) == 1 {
+		results := make([]*Operand, len(operands))
+		copy(results, operands)
 		if call, ok := spec.Values[0].(*ast.CallExpr); ok {
-			t.translateCall(call, operand)
-			t.report(spec, ProblemSourceLowered,
-				"a result beyond the first could not be bound: the TAC's CALL has one destination")
+			destination := operands[0]
+			t.translateCallWithResults(call, destination, results)
 			return
 		}
 	}
-	t.emit(Instruction{Kind: KindHavoc, Dest: operand}, spec.Pos())
-	t.report(spec, ProblemSourceLowered,
-		"a result beyond the first could not be bound: the TAC's CALL has one destination")
+
+	// The shape does not line up, so the values that cannot be bound are
+	// unknown, and the loss is recorded.
+	for index := range operands {
+		if operands[index] == nil {
+			continue
+		}
+		if index < len(spec.Values) {
+			evaluated := t.valueOf(spec.Values[index])
+			t.emit(Instruction{Kind: KindMove, Dest: operands[index], Lhs1: evaluated}, spec.Pos())
+			continue
+		}
+		t.emit(Instruction{Kind: KindHavoc, Dest: operands[index]}, spec.Pos())
+		t.reportConstruct(spec, ProblemSourceLowered, DropGoUnmodelled,
+			"a result beyond the first could not be bound to the declaration's name")
+	}
 }
 
 // packageInitName names a file's package initialiser.

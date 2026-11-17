@@ -111,7 +111,7 @@ func TestTheCallersTextWinsOverTheDisk(t *testing.T) {
 		t.Fatalf("the project could not be opened: %v", err)
 	}
 
-	functions := session.Translate(path)
+	functions, _ := session.Translate(path)
 	names := map[string]bool{}
 	for _, function := range functions {
 		names[function.Name] = true

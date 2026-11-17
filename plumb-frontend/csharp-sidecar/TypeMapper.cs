@@ -22,6 +22,47 @@ namespace Plumb.CSharpSidecar;
 /// </remarks>
 internal static class TypeMapper
 {
+    /// <summary>
+    /// The numeric domain of a type, in the text form the wire carries.
+    /// </summary>
+    /// <param name="type">the TAC type</param>
+    /// <returns>
+    /// the domain's text, or an empty string when the type has no numeric
+    /// domain
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The domain is a property of the VALUES a type admits, and it is what a
+    /// range check needs: a checker that knows a value is a 32-bit signed
+    /// integer can compare it against a bound without asking the type system
+    /// first.
+    /// </para>
+    /// <para>
+    /// C#'s integer types are all FIXED width, so the domain is exact. The
+    /// floating-point types are IEEE-754, and <c>decimal</c> is a 128-bit
+    /// fixed-point number whose scale is part of its value.
+    /// </para>
+    /// </remarks>
+    public static string Domain(TypeRef? type)
+    {
+        if (type is null)
+        {
+            return "";
+        }
+        return type.Kind switch
+        {
+            "BYTE" => "INTEGRAL(8,signed)",
+            "SHORT" => "INTEGRAL(16,signed)",
+            "CHAR" => "INTEGRAL(16,signed)",
+            "INT" => "INTEGRAL(32,signed)",
+            "LONG" => "INTEGRAL(64,signed)",
+            "FLOAT" => "FLOATING(24,8)",
+            "DOUBLE" => "FLOATING(53,11)",
+            "DECIMAL" => "FIXEDPOINT(128,28)",
+            _ => "",
+        };
+    }
+
     /// <summary>Map a Roslyn type onto a TAC type.</summary>
     /// <param name="type">the Roslyn type, or null</param>
     /// <returns>the TAC type; UNKNOWN when the type is unknown</returns>
@@ -32,6 +73,13 @@ internal static class TypeMapper
             return TypeRef.Simple("UNKNOWN");
         }
 
+        var mapped = MapCore(type);
+        mapped.Domain = Domain(mapped);
+        return mapped;
+    }
+
+    private static TypeRef MapCore(ITypeSymbol type)
+    {
         switch (type.SpecialType)
         {
             case SpecialType.System_Boolean: return TypeRef.Simple("BOOLEAN");
@@ -112,7 +160,7 @@ internal static class TypeMapper
                 return FullName(named.ContainingType) + "." + name;
             }
 
-            string containingNamespace = named.ContainingNamespace?.ToDisplayString();
+            string? containingNamespace = named.ContainingNamespace?.ToDisplayString();
             if (string.IsNullOrEmpty(containingNamespace) || containingNamespace == "<global namespace>")
             {
                 return name;

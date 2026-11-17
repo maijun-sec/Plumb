@@ -30,17 +30,17 @@ import java.util.Map;
  *
  * <h2>Why a package and not a file</h2>
  *
- * <p>Go's unit of compilation is the <b>package</b>, not the file. A file cannot be compiled on
- * its own: it names symbols that its siblings declare, and the compiler reads the whole package
- * at once. So the unit the analysis works on is the package, and a project is a set of packages.
+ * <p>Go's unit of compilation is the <b>package</b>, not the file. A file cannot be compiled on its
+ * own: it names symbols that its siblings declare, and the compiler reads the whole package at
+ * once. So the unit the analysis works on is the package, and a project is a set of packages.
  *
  * <h2>Why the dependencies carry export data and not source</h2>
  *
  * <p>A dependency is resolved from its <b>export data</b> -- the compiler's own record of the
  * package's exported API, produced when that package was compiled. Resolving from source instead
- * would give a different answer whenever the build used a different build tag, a different
- * {@code GOOS}, or a vendored or replaced dependency. Resolving from the export data is what makes
- * the analysis agree with the build.
+ * would give a different answer whenever the build used a different build tag, a different {@code
+ * GOOS}, or a vendored or replaced dependency. Resolving from the export data is what makes the
+ * analysis agree with the build.
  *
  * <h2>Why the package also carries the modules it belongs to</h2>
  *

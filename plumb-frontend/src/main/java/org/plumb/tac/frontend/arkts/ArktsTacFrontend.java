@@ -267,13 +267,9 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
         }
       }
 
-      IrPrecision precision = defaultPrecision();
-      for (TacFunction function : functions) {
-        if (function.irPrecision() == IrPrecision.SOURCE_LOWERED) {
-          precision = IrPrecision.SOURCE_LOWERED;
-          break;
-        }
-      }
+      // The precision is the worst precision any of the file's functions carries: a
+      // function that lost semantics makes the whole file degraded.
+      IrPrecision precision = TacFunction.aggregatePrecision(defaultPrecision(), functions);
       return new ParseResult(functions, problems, precision);
     } catch (IOException | RuntimeException ex) {
       // A frontend must be TOTAL. A broken file reports a problem and yields

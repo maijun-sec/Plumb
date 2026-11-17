@@ -45,6 +45,29 @@ public sealed class TypeRef
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Nullable { get; set; } = true;
 
+    /// <summary>
+    /// The numeric domain of the type, when it is a numeric type.
+    /// </summary>
+    /// <remarks>
+    /// It is a text form -- "INTEGRAL(32,signed)", "FLOATING(53,11)" -- so
+    /// that a reader does not have to know a second notation. A type
+    /// without a domain says nothing about its values, which is not the
+    /// same as saying the values are unconstrained.
+    /// </remarks>
+    [JsonPropertyName("domain")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Domain { get; set; }
+
+    /// <summary>The type arguments of a generic type, in declaration order.</summary>
+    [JsonPropertyName("typeArguments")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<TypeRef>? TypeArguments { get; set; }
+
+    /// <summary>The bound of a type parameter: the constraint it satisfies.</summary>
+    [JsonPropertyName("bound")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TypeRef? Bound { get; set; }
+
     public static TypeRef Simple(string kind) => new() { Kind = kind };
 
     public static TypeRef Class(string name) => new() { Kind = "CLASS", Name = name };
@@ -164,6 +187,53 @@ public sealed class Instruction
     /// <summary>The source column. -1 when unknown.</summary>
     [JsonPropertyName("column")]
     public int Column { get; set; } = -1;
+
+    /// <summary>
+    /// The execution effect of this instruction, when it is not an ordinary
+    /// step. DEFERRED means the call runs when the function returns;
+    /// CONCURRENT means it runs on another thread; SUSPEND means the call
+    /// yields and the function resumes at a later point. Empty means the call
+    /// runs here, in this order.
+    /// </summary>
+    [JsonPropertyName("effect")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Effect { get; set; }
+
+    /// <summary>
+    /// The results of a call that returns more than one value.
+    /// </summary>
+    /// <remarks>
+    /// The list is the RESULTS, in order: entry 0 is the first result, and
+    /// it is the same value as <see cref="Dest"/>. A null entry means
+    /// "this result is not bound".
+    /// </remarks>
+    [JsonPropertyName("resultDests")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Operand?>? ResultDests { get; set; }
+
+    /// <summary>
+    /// The variables the call writes back through a by-reference argument.
+    /// </summary>
+    /// <remarks>
+    /// The list is parallel to <see cref="Args"/>: entry i is the variable
+    /// that argument i is written back into, and a null entry means that
+    /// argument is not by reference.
+    /// </remarks>
+    [JsonPropertyName("refOutDests")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Operand?>? RefOutDests { get; set; }
+
+    /// <summary>
+    /// The type that owns the field, for FIELDLOAD and FIELDSTORE.
+    /// </summary>
+    /// <remarks>
+    /// The field name alone does not identify a storage: a promoted member
+    /// and the member it promotes have the same name and two different
+    /// storages. The owner says which type declared it.
+    /// </remarks>
+    [JsonPropertyName("ownerType")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OwnerType { get; set; }
 }
 
 /// <summary>A structured problem: something the frontend could not lower.</summary>
@@ -211,9 +281,30 @@ public sealed class Function
     [JsonPropertyName("returnType")]
     public TypeRef ReturnType { get; set; } = TypeRef.Simple("VOID");
 
-    /// <summary>SOURCE_FULL or SOURCE_LOWERED.</summary>
+    /// <summary>
+    /// SOURCE_FULL, SOURCE_LOWERED or SOURCE_DEGRADED.
+    /// </summary>
+    /// <remarks>
+    /// It is derived from the drops, not asserted: a SEMANTICS drop degrades
+    /// the function, a STRUCTURE drop lowers it, and a VALUE or TYPE drop
+    /// leaves it alone.
+    /// </remarks>
     [JsonPropertyName("precision")]
     public string Precision { get; set; } = "SOURCE_FULL";
+
+    /// <summary>
+    /// What KIND of member this function is: METHOD, CONSTRUCTOR, GETTER,
+    /// SETTER, PROPERTY_ACCESSOR, OPERATOR, EVENT_ACCESSOR, FINALIZER,
+    /// LOCAL_FUNCTION, CLOSURE, STATIC_INITIALIZER or FIELD_INITIALIZER.
+    /// </summary>
+    /// <remarks>
+    /// The kind decides what a reader may conclude from the function: a
+    /// constructor is an entry point, a closure is not, a finalizer runs
+    /// when the object dies.
+    /// </remarks>
+    [JsonPropertyName("memberKind")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MemberKind { get; set; }
 
     /// <summary>Whether the compiler generated this function.</summary>
     [JsonPropertyName("synthetic")]
@@ -223,9 +314,30 @@ public sealed class Function
     [JsonPropertyName("params")]
     public List<Operand> Params { get; set; } = new();
 
+    /// <summary>
+    /// The formal parameters with their types, in declaration order.
+    /// </summary>
+    /// <remarks>
+    /// It carries the same operands as <see cref="Params"/>. It is spelled
+    /// out separately because the two names are used by two different
+    /// readers: <c>params</c> is the TAC's slot list, and this one is the
+    /// source-level signature the engine matches a call's arguments against.
+    /// </remarks>
+    [JsonPropertyName("parameters")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Operand>? Parameters { get; set; }
+
     /// <summary>The locals.</summary>
     [JsonPropertyName("locals")]
     public List<Operand> Locals { get; set; } = new();
+
+    /// <summary>
+    /// The local-scope bindings: a source-level name and the slot it lives
+    /// in.
+    /// </summary>
+    [JsonPropertyName("scopeBindings")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ScopeBinding>? ScopeBindings { get; set; }
 
     /// <summary>The instruction stream, in source order.</summary>
     [JsonPropertyName("instructions")]
@@ -234,6 +346,75 @@ public sealed class Function
     /// <summary>The problems encountered while lowering this function.</summary>
     [JsonPropertyName("problems")]
     public List<Problem> Problems { get; set; } = new();
+
+    /// <summary>
+    /// What this function lost: the constructs that were not lowered
+    /// faithfully.
+    /// </summary>
+    /// <remarks>
+    /// This is the channel the coverage report reads. An empty list means
+    /// the function was fully understood; a non-empty one says exactly what
+    /// was not, and at what cost.
+    /// </remarks>
+    [JsonPropertyName("drops")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Drop>? Drops { get; set; }
+
+    /// <summary>
+    /// The try/catch/finally regions of the function.
+    /// </summary>
+    /// <remarks>
+    /// The exceptional edges of a CFG are built from these. Without them the
+    /// only way to see a catch is to see the catch's BODY, and the body is
+    /// the part that does not run when there is no exception.
+    /// </remarks>
+    [JsonPropertyName("tryRegions")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<TryRegion>? TryRegions { get; set; }
+
+    /// <summary>
+    /// The numeric domain of the function's result, when it is known.
+    /// </summary>
+    /// <remarks>
+    /// It is a text form of the domain -- "INTEGRAL(32,signed)" -- because
+    /// the domain is a property of a VALUE, and the value's own type record
+    /// is where the shape lives.
+    /// </remarks>
+    [JsonPropertyName("domain")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Domain { get; set; }
+
+    /// <summary>
+    /// The annotations on the member: the attribute names, in source order.
+    /// </summary>
+    /// <remarks>
+    /// An attribute is a security fact: it marks an entry point, an
+    /// authorization check, a validation, a data binding. The sidecar read
+    /// NO attributes at all, so every one of those marks was invisible.
+    /// </remarks>
+    [JsonPropertyName("methodAnnotations")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? MethodAnnotations { get; set; }
+
+    /// <summary>
+    /// The annotations on the member's DECLARING TYPE.
+    /// </summary>
+    [JsonPropertyName("classAnnotations")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? ClassAnnotations { get; set; }
+
+    /// <summary>
+    /// The annotations' argument values, keyed by the attribute's name.
+    /// </summary>
+    /// <remarks>
+    /// The value is a TEXT form: <c>Name(arg1,arg2)</c>. The text form is
+    /// the same one the Go side's struct tags use, and it is deliberate: a
+    /// structured table would need a grammar the engine would have to know,
+    /// and a text form is something a report can print.
+    /// </remarks>
+    [JsonPropertyName("annotationValues")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string>? AnnotationValues { get; set; }
 }
 
 /// <summary>A compiler diagnostic.</summary>
@@ -398,4 +579,30 @@ public sealed class Response
     [JsonPropertyName("functions")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<Function>? Functions { get; set; }
+
+    /// <summary>
+    /// The losses that belong to the WHOLE PROGRAM rather than to one
+    /// function: a member kind that was never reached, a build fact the
+    /// sidecar does not read, a package rule that is not implemented.
+    /// </summary>
+    /// <remarks>
+    /// They are here because they have no function to live in. A file that
+    /// declares an attribute whose value is compiled in loses something no
+    /// function of that file owns.
+    /// </remarks>
+    [JsonPropertyName("drops")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Drop>? Drops { get; set; }
+
+    /// <summary>
+    /// The program-level drops, under the wire-protocol name for them.
+    /// </summary>
+    /// <remarks>
+    /// The same records as <see cref="Drops"/>, under the other name the
+    /// file-level drop channel is known by. A reader that knows either name
+    /// finds the same records.
+    /// </remarks>
+    [JsonPropertyName("programDrops")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Drop>? ProgramDrops { get; set; }
 }

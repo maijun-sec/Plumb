@@ -29,7 +29,6 @@ import dotty.tools.dotc.core.Symbols.Symbol;
 import dotty.tools.dotc.core.Types.Type;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -46,30 +45,29 @@ import org.plumb.tac.translate.TacBuilder;
 /**
  * Lowers a typed Scala 3 tree into Plumb's TAC.
  *
- * <p><b>What this lowers.</b> The subset the dataflow engine can act on: literals,
- * local reads and writes, field reads and writes, method calls, object creation,
- * arithmetic and comparison, branches, loops, blocks, and {@code match}. A {@code match}
- * becomes a branch chain -- one {@code INSTANCEOF} plus one {@code BRANCH} per typed
- * case, with a {@code JUMP} to a merge label -- which is exactly the shape a Java {@code
- * instanceof} chain has, so the engine needs no change to read it.
+ * <p><b>What this lowers.</b> The subset the dataflow engine can act on: literals, local reads and
+ * writes, field reads and writes, method calls, object creation, arithmetic and comparison,
+ * branches, loops, blocks, and {@code match}. A {@code match} becomes a branch chain -- one {@code
+ * INSTANCEOF} plus one {@code BRANCH} per typed case, with a {@code JUMP} to a merge label -- which
+ * is exactly the shape a Java {@code instanceof} chain has, so the engine needs no change to read
+ * it.
  *
- * <p><b>What this does not lower.</b> Pattern matching on non-reference types, by-name
- * arguments, implicit conversions, varargs (beyond their first argument), and closures.
- * A construct that is not lowered is reported as a problem rather than silently
- * dropped, and it downgrades the enclosing function's precision to {@link
- * IrPrecision#SOURCE_LOWERED} -- so a checker knows not to trust a precision-dependent
- * fact about it.
+ * <p><b>What this does not lower.</b> Pattern matching on non-reference types, by-name arguments,
+ * implicit conversions, varargs (beyond their first argument), and closures. A construct that is
+ * not lowered is reported as a problem rather than silently dropped, and it downgrades the
+ * enclosing function's precision to {@link IrPrecision#SOURCE_LOWERED} -- so a checker knows not to
+ * trust a precision-dependent fact about it.
  *
- * <p><b>No new opcodes.</b> Everything here lowers into the existing instruction kinds:
- * {@code MOVE}, {@code BINOP}, {@code CALL}, {@code NEW}, {@code FIELDLOAD},
- * {@code FIELDSTORE}, {@code INSTANCEOF}, {@code BRANCH}, {@code JUMP}, {@code LABEL},
- * {@code RETURN}, {@code THROW}, {@code NOP}.
+ * <p><b>No new opcodes.</b> Everything here lowers into the existing instruction kinds: {@code
+ * MOVE}, {@code BINOP}, {@code CALL}, {@code NEW}, {@code FIELDLOAD}, {@code FIELDSTORE}, {@code
+ * INSTANCEOF}, {@code BRANCH}, {@code JUMP}, {@code LABEL}, {@code RETURN}, {@code THROW}, {@code
+ * NOP}.
  *
- * <p><b>Variables.</b> The TAC's variable identity is name + temp flag. A Scala local's
- * source name <i>is</i> its TAC name, so a body reference to a parameter or a local
- * resolves to the same storage location rather than to a fresh temp. Scala's
- * name-mangled locals ({@code x$1}) keep their mangled names, which is what the
- * compiler itself uses and what keeps two distinct locals apart.
+ * <p><b>Variables.</b> The TAC's variable identity is name + temp flag. A Scala local's source name
+ * <i>is</i> its TAC name, so a body reference to a parameter or a local resolves to the same
+ * storage location rather than to a fresh temp. Scala's name-mangled locals ({@code x$1}) keep
+ * their mangled names, which is what the compiler itself uses and what keeps two distinct locals
+ * apart.
  */
 final class ScalaTacTranslator {
 
@@ -82,14 +80,13 @@ final class ScalaTacTranslator {
   /** The builder the function being lowered is built into. */
   private TacBuilder builder;
 
-
   /**
    * The class the function being lowered belongs to.
    *
    * <p>It is what qualifies a lambda's target: the closure names the SHORT name of the function
-   * that carries the body, while the definition the translator produced is named with the
-   * qualified form. The call has to name the same function the definition produced, or the call
-   * graph's edge points at nothing.
+   * that carries the body, while the definition the translator produced is named with the qualified
+   * form. The call has to name the same function the definition produced, or the call graph's edge
+   * points at nothing.
    */
   private String currentEnclosingClass;
 
@@ -99,66 +96,63 @@ final class ScalaTacTranslator {
   /**
    * The locals of the function being lowered, by source name.
    *
-   * <p>Keyed by the Scala source name, not by a {@link TacOperand.TacVar}: the TAC's
-   * variable identity is name + temp flag, and a Scala local's name <i>is</i> its TAC
-   * name.
+   * <p>Keyed by the Scala source name, not by a {@link TacOperand.TacVar}: the TAC's variable
+   * identity is name + temp flag, and a Scala local's name <i>is</i> its TAC name.
    */
   private final Map<String, TacOperand.TacVar> locals = new HashMap<>();
 
   /**
    * The variables a closure CAPTURES, by the compiler's own symbol.
    *
-   * <p><b>Why the symbol is the key.</b> A Scala closure does not receive its captured
-   * variables as parameters. The typer leaves them as FREE IDENTIFIERS in the closure's
-   * body, and the caller's {@code val}/{@code var} definitions stay where they are, in the
-   * caller's block. The two are nevertheless THE SAME VARIABLE -- and the proof is the
-   * compiler's own symbol: the caller's {@code ValDef} and the closure's {@code Ident}
-   * resolve to one and the same {@code Symbol} object. Measured on
-   * {@code var captured = cmd; val f = () => captured}:
+   * <p><b>Why the symbol is the key.</b> A Scala closure does not receive its captured variables as
+   * parameters. The typer leaves them as FREE IDENTIFIERS in the closure's body, and the caller's
+   * {@code val}/{@code var} definitions stay where they are, in the caller's block. The two are
+   * nevertheless THE SAME VARIABLE -- and the proof is the compiler's own symbol: the caller's
+   * {@code ValDef} and the closure's {@code Ident} resolve to one and the same {@code Symbol}
+   * object. Measured on {@code var captured = cmd; val f = () => captured}:
    *
    * <pre>
    *   ValDef captured  symId=740735495
    *   Ident  captured  symId=740735495     &lt;- the same symbol
    * </pre>
    *
-   * <p>So the symbol is what carries the capture across the function boundary. A NAME is
-   * not enough: two different closures in the same method can each have their own {@code
-   * captured}, and the caller's scope can shadow one of them.
+   * <p>So the symbol is what carries the capture across the function boundary. A NAME is not
+   * enough: two different closures in the same method can each have their own {@code captured}, and
+   * the caller's scope can shadow one of them.
    *
-   * <p>The map spans the whole compilation unit, because the capture crosses a function
-   * boundary: the caller's definition and the closure's body are lowered into two
-   * different {@link TacFunction}s, and the closure's body is lowered AFTER the caller
-   * (the typer's tree walks the definition before the use site).
+   * <p>The map spans the whole compilation unit, because the capture crosses a function boundary:
+   * the caller's definition and the closure's body are lowered into two different {@link
+   * TacFunction}s, and the closure's body is lowered AFTER the caller (the typer's tree walks the
+   * definition before the use site).
    */
   private final Map<Symbol, CaptureCell> captures = new HashMap<>();
 
   /**
    * The shared holders already declared in the function being lowered, by name.
    *
-   * <p>A holder is declared once per function: the same capture read twice does not
-   * declare the receiver twice.
+   * <p>A holder is declared once per function: the same capture read twice does not declare the
+   * receiver twice.
    */
   private final Map<String, TacOperand.TacVar> holders = new HashMap<>();
 
   /**
    * A captured variable, modelled as a shared CELL.
    *
-   * <p><b>Why a cell and not a plain variable.</b> The TAC has no "captured local"
-   * concept, and adding one would be a language-specific concept in a language-neutral
-   * IR. But the IR already has a mechanism for exactly this shape: a field read and a
-   * field write on a shared receiver are visible across function boundaries, because the
-   * dataflow engine keys its cross-function field tracker on {@code (receiver, field)}.
+   * <p><b>Why a cell and not a plain variable.</b> The TAC has no "captured local" concept, and
+   * adding one would be a language-specific concept in a language-neutral IR. But the IR already
+   * has a mechanism for exactly this shape: a field read and a field write on a shared receiver are
+   * visible across function boundaries, because the dataflow engine keys its cross-function field
+   * tracker on {@code (receiver, field)}.
    *
-   * <p>So a captured variable is lowered as a field of a synthetic HOLDER: the holder is
-   * a named receiver, the variable is a field on it, and the holder's name is the same in
-   * the caller and in the closure. The engine then sees one storage location on both
-   * sides, and a write inside the closure is visible to the caller -- which is the
-   * behaviour the source has.
+   * <p>So a captured variable is lowered as a field of a synthetic HOLDER: the holder is a named
+   * receiver, the variable is a field on it, and the holder's name is the same in the caller and in
+   * the closure. The engine then sees one storage location on both sides, and a write inside the
+   * closure is visible to the caller -- which is the behaviour the source has.
    *
-   * <p>The holder's name starts with an uppercase letter because the engine's
-   * "is this a class name" heuristic -- the one that decides whether a field write is
-   * class-shared or instance-local -- is exactly that. A lowercase name would make the
-   * capture instance-local, and the write would stop at the function boundary.
+   * <p>The holder's name starts with an uppercase letter because the engine's "is this a class
+   * name" heuristic -- the one that decides whether a field write is class-shared or instance-local
+   * -- is exactly that. A lowercase name would make the capture instance-local, and the write would
+   * stop at the function boundary.
    */
   private static final class CaptureCell {
 
@@ -181,18 +175,15 @@ final class ScalaTacTranslator {
   /**
    * The prefix of a synthetic capture holder's name.
    *
-   * <p>Uppercase, so the engine's class-name heuristic treats the holder as a shared
-   * class rather than as one instance. The name is prefixed so it cannot collide with a
-   * source name.
+   * <p>Uppercase, so the engine's class-name heuristic treats the holder as a shared class rather
+   * than as one instance. The name is prefixed so it cannot collide with a source name.
    */
   private static final String CAPTURE_HOLDER_PREFIX = "CaptureHolder_";
-
 
   /**
    * Whether the function being lowered used a construct that could not be lowered.
    *
-   * <p>When true the function's precision is downgraded to {@link
-   * IrPrecision#SOURCE_LOWERED}.
+   * <p>When true the function's precision is downgraded to {@link IrPrecision#SOURCE_LOWERED}.
    */
   private boolean degraded;
 
@@ -200,18 +191,36 @@ final class ScalaTacTranslator {
   private final ProblemCollector problems = new ProblemCollector();
 
   /**
-   * The structured problems of the UNIT-level failures -- the ones raised outside a
-   * function's own lowering.
+   * Records a construct that could not be lowered, in BOTH channels.
    *
-   * <p>They are kept apart from the collector's own, because a unit-level failure has no
-   * enclosing function to name: the {@code def} it happened in is the subject.
+   * <p>A problem is the sentence a human reads; a drop is the receipt the
+   * engine reads. The two say different things, and a front end that records
+   * only the first produces findings that look exactly as complete as a fully
+   * lowered one's.
+   *
+   * <p>The impact is STRUCTURE: the function still computes the same thing,
+   * and its shape is what was lost. That is the grade this front end already
+   * states, and the drop must not claim a different one.
+   */
+  private void reportLoss(String construct, String message) {
+    problems.add(message);
+    if (builder != null) {
+      builder.reportDrop(construct, message, org.plumb.tac.ir.TacDrop.Impact.STRUCTURE, -1, -1);
+    }
+  }
+
+  /**
+   * The structured problems of the UNIT-level failures -- the ones raised outside a function's own
+   * lowering.
+   *
+   * <p>They are kept apart from the collector's own, because a unit-level failure has no enclosing
+   * function to name: the {@code def} it happened in is the subject.
    */
   private final List<org.plumb.tac.ir.TacProgram.FunctionProblem> unitStructuredProblems =
       new ArrayList<>();
 
   /**
-   * The module the unit being lowered belongs to, or {@code null} when there is no module
-   * boundary.
+   * The module the unit being lowered belongs to, or {@code null} when there is no module boundary.
    *
    * <p>It is recorded on every produced function, so a single-module analysis can tell this
    * module's functions from the ones it merely reads for symbol resolution.
@@ -225,11 +234,11 @@ final class ScalaTacTranslator {
    * lowered into its own function and the lambda's use site becomes a CALL to it. That is what a
    * compiler does, and it is the only way the body's taint survives the function boundary.
    *
-   * <p><b>Why it matters most for {@code for} comprehensions.</b> The Scala typer desugars
-   * {@code for (x <- xs) body} into {@code xs.foreach(x => body)}. Before this, the lambda was
-   * dropped, so the loop body lived in a function that was never called: the accumulator stayed at
-   * its initial value, every taint that flowed through the loop was destroyed, and the analysis
-   * reported the function as CLEAN. A silent wrong answer, not a visible gap.
+   * <p><b>Why it matters most for {@code for} comprehensions.</b> The Scala typer desugars {@code
+   * for (x <- xs) body} into {@code xs.foreach(x => body)}. Before this, the lambda was dropped, so
+   * the loop body lived in a function that was never called: the accumulator stayed at its initial
+   * value, every taint that flowed through the loop was destroyed, and the analysis reported the
+   * function as CLEAN. A silent wrong answer, not a visible gap.
    */
 
   /**
@@ -240,7 +249,6 @@ final class ScalaTacTranslator {
    */
 
   /** The counter the synthetic function names come from. */
-
   ScalaTacTranslator(Context ctx) {
     this.ctx = ctx;
     this.types = new ScalaTypeMapper(ctx);
@@ -302,9 +310,8 @@ final class ScalaTacTranslator {
   /**
    * The structured problems, in the order they were found.
    *
-   * <p>These travel with the IR, so a source-less consumer can see WHICH construct was not
-   * lowered, in WHICH function -- instead of only learning that "something went wrong
-   * somewhere".
+   * <p>These travel with the IR, so a source-less consumer can see WHICH construct was not lowered,
+   * in WHICH function -- instead of only learning that "something went wrong somewhere".
    */
   List<org.plumb.tac.ir.TacProgram.FunctionProblem> structuredProblems() {
     List<org.plumb.tac.ir.TacProgram.FunctionProblem> out = new ArrayList<>(problems.structured());
@@ -320,19 +327,18 @@ final class ScalaTacTranslator {
   /** Collects every {@code DefDef} in the unit, in source order. */
   private List<Trees.DefDef<Type>> collectDefs(Trees.Tree<Type> tree) {
     List<Trees.DefDef<Type>> defs = new ArrayList<>();
-    dotty.tools.dotc.ast.tpd.TreeOps$.MODULE$
-        .foreachSubTree$extension(
-            tree,
-            new scala.Function1<Trees.Tree<Type>, scala.runtime.BoxedUnit>() {
-              @Override
-              public scala.runtime.BoxedUnit apply(Trees.Tree<Type> t) {
-                if (t instanceof Trees.DefDef) {
-                  defs.add((Trees.DefDef<Type>) t);
-                }
-                return scala.runtime.BoxedUnit.UNIT;
-              }
-            },
-            ctx);
+    dotty.tools.dotc.ast.tpd.TreeOps$.MODULE$.foreachSubTree$extension(
+        tree,
+        new scala.Function1<Trees.Tree<Type>, scala.runtime.BoxedUnit>() {
+          @Override
+          public scala.runtime.BoxedUnit apply(Trees.Tree<Type> t) {
+            if (t instanceof Trees.DefDef) {
+              defs.add((Trees.DefDef<Type>) t);
+            }
+            return scala.runtime.BoxedUnit.UNIT;
+          }
+        },
+        ctx);
     return defs;
   }
 
@@ -428,10 +434,10 @@ final class ScalaTacTranslator {
   /**
    * Builds the parameter variables of a definition.
    *
-   * <p>Only the first parameter list is a TAC parameter list. Scala's later lists are
-   * curried or implicit parameter lists; they are still part of the function's
-   * behaviour, so they are lowered as locals instead -- which keeps them visible to
-   * the dataflow engine without pretending the function has a flat signature.
+   * <p>Only the first parameter list is a TAC parameter list. Scala's later lists are curried or
+   * implicit parameter lists; they are still part of the function's behaviour, so they are lowered
+   * as locals instead -- which keeps them visible to the dataflow engine without pretending the
+   * function has a flat signature.
    */
   private List<TacOperand.TacVar> buildParams(Trees.DefDef<Type> def) {
     List<TacOperand.TacVar> params = new ArrayList<>();
@@ -453,22 +459,20 @@ final class ScalaTacTranslator {
   /**
    * Whether a definition with an empty body has behaviour the lowering does not model.
    *
-   * <p>A class constructor that takes parameters assigns them to the class's fields.
-   * Those assignments are synthesized by the compiler <i>after</i> the typer, so at
-   * the point this frontend reads the tree the constructor's body is empty even though
-   * the constructor does something. A checker that cannot see those writes must not
-   * trust a precision-dependent fact about the constructor, so the constructor's
-   * precision is downgraded.
+   * <p>A class constructor that takes parameters assigns them to the class's fields. Those
+   * assignments are synthesized by the compiler <i>after</i> the typer, so at the point this
+   * frontend reads the tree the constructor's body is empty even though the constructor does
+   * something. A checker that cannot see those writes must not trust a precision-dependent fact
+   * about the constructor, so the constructor's precision is downgraded.
    *
-   * <p>A constructor with no parameters, and an abstract member, have no such hidden
-   * behaviour: nothing was lost, and their precision stays full.
+   * <p>A constructor with no parameters, and an abstract member, have no such hidden behaviour:
+   * nothing was lost, and their precision stays full.
    *
    * @param def the definition
    * @param params the definition's parameters
    * @return whether the definition's behaviour is not fully modelled
    */
-  private boolean hasUnmodelledBody(
-      Trees.DefDef<Type> def, List<TacOperand.TacVar> params) {
+  private boolean hasUnmodelledBody(Trees.DefDef<Type> def, List<TacOperand.TacVar> params) {
     String name = defName(def);
     if (!"<init>".equals(name)) {
       // An abstract member has no body by definition.
@@ -546,23 +550,23 @@ final class ScalaTacTranslator {
   /**
    * Whether a definition is compiler-generated.
    *
-   * <p><b>The primary test is the compiler's own flag.</b> dotc marks the members it
-   * generates for a case class -- {@code copy}, {@code copy$default$N}, the {@code _N}
-   * accessors -- and for a companion object -- {@code apply}, {@code unapply}, the
-   * {@code product*} family -- with {@code Flags.Synthetic}. The compiler knows exactly
-   * which members it generated, so its answer is authoritative.
+   * <p><b>The primary test is the compiler's own flag.</b> dotc marks the members it generates for
+   * a case class -- {@code copy}, {@code copy$default$N}, the {@code _N} accessors -- and for a
+   * companion object -- {@code apply}, {@code unapply}, the {@code product*} family -- with {@code
+   * Flags.Synthetic}. The compiler knows exactly which members it generated, so its answer is
+   * authoritative.
    *
-   * <p><b>The flag test is not a plain bitwise AND.</b> Scala's flags are 64 bits wide
-   * and split into a two-bit "kind" field (bits 0 and 1: is this a term or a type?)
-   * and the carrier bits that start at bit 2. A plain {@code flags & Flags.Synthetic()}
-   * is therefore <i>always</i> non-zero, because the kind bits alone satisfy it. The
-   * correct test masks off the kind bits first: {@code (flags >>> 2) & (flag >>> 2)}.
+   * <p><b>The flag test is not a plain bitwise AND.</b> Scala's flags are 64 bits wide and split
+   * into a two-bit "kind" field (bits 0 and 1: is this a term or a type?) and the carrier bits that
+   * start at bit 2. A plain {@code flags & Flags.Synthetic()} is therefore <i>always</i> non-zero,
+   * because the kind bits alone satisfy it. The correct test masks off the kind bits first: {@code
+   * (flags >>> 2) & (flag >>> 2)}.
    *
-   * <p><b>The owner and name checks are the fallback.</b> If the flag is missing (a
-   * different dotc version lays the flags out differently), the owner and the name
-   * still identify the generated members. {@code <init>} is never synthetic: the
-   * constructor is the class's public API, and a checker that suppresses findings
-   * about synthetic methods must not suppress them about the constructor.
+   * <p><b>The owner and name checks are the fallback.</b> If the flag is missing (a different dotc
+   * version lays the flags out differently), the owner and the name still identify the generated
+   * members. {@code <init>} is never synthetic: the constructor is the class's public API, and a
+   * checker that suppresses findings about synthetic methods must not suppress them about the
+   * constructor.
    */
   private boolean isSynthetic(Symbol symbol, String name) {
     try {
@@ -635,8 +639,8 @@ final class ScalaTacTranslator {
   /**
    * Whether a flag is set.
    *
-   * <p>Scala's flags carry their meaning in the bits above the two-bit "kind" field,
-   * so the test shifts the kind bits out before comparing.
+   * <p>Scala's flags carry their meaning in the bits above the two-bit "kind" field, so the test
+   * shifts the kind bits out before comparing.
    */
   private static boolean hasFlag(long flags, long flag) {
     return ((flags >>> 2) & (flag >>> 2)) != 0;
@@ -647,34 +651,31 @@ final class ScalaTacTranslator {
   /**
    * Finds the variables the unit's closures CAPTURE.
    *
-   * <p><b>What a capture is.</b> A closure that refers to a variable defined in the
-   * ENCLOSING method -- a {@code var} the closure writes to, or a {@code val} it reads --
-   * captures it. The typer leaves the reference as a free identifier in the closure's
-   * body; the compiler puts the captured value into a field of a synthetic holder object
-   * at runtime, but that object does not exist in the tree the typer hands over.
+   * <p><b>What a capture is.</b> A closure that refers to a variable defined in the ENCLOSING
+   * method -- a {@code var} the closure writes to, or a {@code val} it reads -- captures it. The
+   * typer leaves the reference as a free identifier in the closure's body; the compiler puts the
+   * captured value into a field of a synthetic holder object at runtime, but that object does not
+   * exist in the tree the typer hands over.
    *
-   * <p><b>How a capture is detected.</b> By the compiler's own SYMBOL and its own
-   * ENCLOSING METHOD. The closure's free identifier and the enclosing method's
-   * definition resolve to the same {@code Symbol} object; and the compiler knows which
-   * method a symbol belongs to. A symbol the closure itself declares has the CLOSURE
-   * as its enclosing method; a symbol it merely refers to has the ENCLOSING METHOD as
-   * its enclosing method. So the test is: the symbol's enclosing method is not the
-   * closure, but it IS a method in this unit.
+   * <p><b>How a capture is detected.</b> By the compiler's own SYMBOL and its own ENCLOSING METHOD.
+   * The closure's free identifier and the enclosing method's definition resolve to the same {@code
+   * Symbol} object; and the compiler knows which method a symbol belongs to. A symbol the closure
+   * itself declares has the CLOSURE as its enclosing method; a symbol it merely refers to has the
+   * ENCLOSING METHOD as its enclosing method. So the test is: the symbol's enclosing method is not
+   * the closure, but it IS a method in this unit.
    *
-   * <p><b>Why the compiler's answer and not a tree walk.</b> Deciding "is this variable
-   * the closure's own or the caller's?" by walking the tree means reproducing the
-   * compiler's notion of scope -- and a flat subtree walk cannot: the nested
-   * definition's children are in the same list as the enclosing body's, with nothing
-   * to say which belongs to which. The compiler already answers it exactly, so the
-   * frontend asks it.
+   * <p><b>Why the compiler's answer and not a tree walk.</b> Deciding "is this variable the
+   * closure's own or the caller's?" by walking the tree means reproducing the compiler's notion of
+   * scope -- and a flat subtree walk cannot: the nested definition's children are in the same list
+   * as the enclosing body's, with nothing to say which belongs to which. The compiler already
+   * answers it exactly, so the frontend asks it.
    *
-   * <p><b>Why this is a pre-pass.</b> The caller has to WRITE the captured variable into
-   * the shared holder, and the closure has to READ it from there. If the caller were
-   * lowered first -- which it is, because the typer's tree lists the definition before
-   * the use site -- then the caller's write would already be a plain local assignment by
-   * the time the capture was discovered, and the closure would read a different storage
-   * location. Detecting the captures first means both sides are lowered against the same
-   * decision.
+   * <p><b>Why this is a pre-pass.</b> The caller has to WRITE the captured variable into the shared
+   * holder, and the closure has to READ it from there. If the caller were lowered first -- which it
+   * is, because the typer's tree lists the definition before the use site -- then the caller's
+   * write would already be a plain local assignment by the time the capture was discovered, and the
+   * closure would read a different storage location. Detecting the captures first means both sides
+   * are lowered against the same decision.
    *
    * @param tree the typed compilation unit
    */
@@ -707,9 +708,8 @@ final class ScalaTacTranslator {
   /**
    * The method a symbol belongs to, or {@code null} when it belongs to none.
    *
-   * <p>The compiler's own answer: a local's enclosing method is the method that
-   * declares it, a field's is the class that declares it, and a top-level value's is
-   * the package object.
+   * <p>The compiler's own answer: a local's enclosing method is the method that declares it, a
+   * field's is the class that declares it, and a top-level value's is the package object.
    *
    * @param symbol the symbol
    * @return the enclosing method's symbol, or {@code null}
@@ -728,9 +728,9 @@ final class ScalaTacTranslator {
   /**
    * Creates the shared cell a captured variable lives in.
    *
-   * <p>The holder's name is derived from the symbol, so the SAME variable always gets the
-   * SAME holder -- in the caller and in every closure that captures it. Two closures
-   * capturing the same variable share one cell, which is what the source says.
+   * <p>The holder's name is derived from the symbol, so the SAME variable always gets the SAME
+   * holder -- in the caller and in every closure that captures it. Two closures capturing the same
+   * variable share one cell, which is what the source says.
    *
    * @param symbol the captured variable's symbol
    * @return the cell
@@ -757,14 +757,14 @@ final class ScalaTacTranslator {
   /**
    * Whether a definition is a CLOSURE.
    *
-   * <p>The compiler generates a synthetic method for a lambda -- {@code _$_$$anonfun} --
-   * and that method carries the lambda's body. A closure is exactly such a definition:
-   * a synthetic one whose name contains {@code anonfun}.
+   * <p>The compiler generates a synthetic method for a lambda -- {@code _$_$$anonfun} -- and that
+   * method carries the lambda's body. A closure is exactly such a definition: a synthetic one whose
+   * name contains {@code anonfun}.
    *
-   * <p>The name is checked with {@code contains}, not for equality: the compiler mangles
-   * the name differently depending on the form ({@code _$_$$anonfun} for a {@code val f =
-   * (x) => ...}, {@code _$$anonfun} for a lambda inside {@code items.map(x => ...)}), and
-   * the mangling is the compiler's business, not the frontend's.
+   * <p>The name is checked with {@code contains}, not for equality: the compiler mangles the name
+   * differently depending on the form ({@code _$_$$anonfun} for a {@code val f = (x) => ...},
+   * {@code _$$anonfun} for a lambda inside {@code items.map(x => ...)}), and the mangling is the
+   * compiler's business, not the frontend's.
    *
    * @param def the definition
    * @return whether it is a closure
@@ -777,9 +777,8 @@ final class ScalaTacTranslator {
   /**
    * Every subtree of a tree, in the compiler's own order.
    *
-   * <p>The compiler's walker is used rather than a hand-rolled one, so the set of
-   * trees is the compiler's set -- a tree the compiler does not walk is a tree the
-   * frontend does not see.
+   * <p>The compiler's walker is used rather than a hand-rolled one, so the set of trees is the
+   * compiler's set -- a tree the compiler does not walk is a tree the frontend does not see.
    *
    * @param tree the tree
    * @return its subtrees
@@ -790,17 +789,16 @@ final class ScalaTacTranslator {
       return out;
     }
     try {
-      dotty.tools.dotc.ast.tpd.TreeOps$.MODULE$
-          .foreachSubTree$extension(
-              tree,
-              new scala.Function1<Trees.Tree<Type>, scala.runtime.BoxedUnit>() {
-                @Override
-                public scala.runtime.BoxedUnit apply(Trees.Tree<Type> t) {
-                  out.add(t);
-                  return scala.runtime.BoxedUnit.UNIT;
-                }
-              },
-              ctx);
+      dotty.tools.dotc.ast.tpd.TreeOps$.MODULE$.foreachSubTree$extension(
+          tree,
+          new scala.Function1<Trees.Tree<Type>, scala.runtime.BoxedUnit>() {
+            @Override
+            public scala.runtime.BoxedUnit apply(Trees.Tree<Type> t) {
+              out.add(t);
+              return scala.runtime.BoxedUnit.UNIT;
+            }
+          },
+          ctx);
     } catch (RuntimeException | LinkageError ex) {
       // A tree that cannot be walked contributes no subtrees.
     }
@@ -826,9 +824,7 @@ final class ScalaTacTranslator {
     return out;
   }
 
-  /**
-   * Lowers a definition's body, as a statement.
-   */
+  /** Lowers a definition's body, as a statement. */
   private void translateBody(Trees.Tree<Type> body) {
     if (body instanceof Trees.Block) {
       translateBlock((Trees.Block<Type>) body);
@@ -902,8 +898,7 @@ final class ScalaTacTranslator {
   }
 
   /**
-   * The shared cell a symbol's value lives in, or {@code null} when the symbol is not
-   * captured.
+   * The shared cell a symbol's value lives in, or {@code null} when the symbol is not captured.
    *
    * @param symbol the symbol
    * @return the cell, or {@code null}
@@ -918,11 +913,11 @@ final class ScalaTacTranslator {
   /**
    * Declares the shared holder in the function being lowered.
    *
-   * <p>The holder is a local of the function: it is the receiver of the field reads and
-   * writes that carry the captured variable's value. It is named, not a temp, because
-   * the engine's cross-function field tracker keys on the receiver's NAME -- a temp's
-   * name is unique per function, and a unique name would make the capture
-   * function-local, which is exactly what the capture is not.
+   * <p>The holder is a local of the function: it is the receiver of the field reads and writes that
+   * carry the captured variable's value. It is named, not a temp, because the engine's
+   * cross-function field tracker keys on the receiver's NAME -- a temp's name is unique per
+   * function, and a unique name would make the capture function-local, which is exactly what the
+   * capture is not.
    */
   private void declareHolder(CaptureCell cell) {
     if (holders.containsKey(cell.holder.name())) {
@@ -1052,7 +1047,8 @@ final class ScalaTacTranslator {
     // Anything else (a lambda, an implicit conversion, a by-name argument) is not
     // lowered. The function is degraded, so a checker knows not to trust it.
     degraded = true;
-    problems.add(
+    reportLoss(
+        "scala.expression.unmodelled",
         "could not lower "
             + tree.getClass().getSimpleName()
             + " in "
@@ -1139,9 +1135,9 @@ final class ScalaTacTranslator {
   /**
    * The constant tags dotc uses on a {@code Constant}.
    *
-   * <p>These are {@code inline val}s in dotc's {@code Constants}, which erase to plain
-   * integers -- there is no static field to read from Java. The values are part of
-   * dotc's own contract and have not changed since Scala 3.0.
+   * <p>These are {@code inline val}s in dotc's {@code Constants}, which erase to plain integers --
+   * there is no static field to read from Java. The values are part of dotc's own contract and have
+   * not changed since Scala 3.0.
    */
   private static final int TAG_UNIT = 1;
 
@@ -1184,7 +1180,8 @@ final class ScalaTacTranslator {
     // An unknown name. It is degraded rather than dropped, so the function's
     // precision tells a checker that something is missing.
     degraded = true;
-    problems.add("unresolved identifier '" + name + "' in " + currentFunction);
+    reportLoss(
+        "scala.name.unresolved", "unresolved identifier '" + name + "' in " + currentFunction);
     return null;
   }
 
@@ -1253,7 +1250,9 @@ final class ScalaTacTranslator {
         // A method reference used as a value ("f" where f is a method) is not a
         // call; lowering it as one would invent behaviour.
         degraded = true;
-        problems.add("method reference '" + name + "' in " + currentFunction + " was not lowered");
+        reportLoss(
+            "scala.methodReference.asValue",
+            "method reference '" + name + "' in " + currentFunction + " was not lowered");
         return null;
       }
       TacType type = types.map(resultType);
@@ -1287,8 +1286,8 @@ final class ScalaTacTranslator {
   /**
    * The name the implicit {@code this} receiver is given.
    *
-   * <p>It matches the Java frontend's convention, so a checker that reasons about
-   * "the receiver" reads the same shape whichever language the code came from.
+   * <p>It matches the Java frontend's convention, so a checker that reasons about "the receiver"
+   * reads the same shape whichever language the code came from.
    */
   private static final String THIS_NAME = "this";
 
@@ -1303,12 +1302,11 @@ final class ScalaTacTranslator {
   }
 
   /**
-   * Whether a symbol is the accessor the compiler generated for a {@code val} or a
-   * {@code var}.
+   * Whether a symbol is the accessor the compiler generated for a {@code val} or a {@code var}.
    *
-   * <p>Scala compiles a {@code val x} into a field plus a getter method. Reading the
-   * {@code val} is a field read, and the TAC models it as a {@code FIELDLOAD} -- the
-   * getter is an implementation detail the source never mentions.
+   * <p>Scala compiles a {@code val x} into a field plus a getter method. Reading the {@code val} is
+   * a field read, and the TAC models it as a {@code FIELDLOAD} -- the getter is an implementation
+   * detail the source never mentions.
    */
   private boolean isAccessorSymbol(Symbol symbol) {
     try {
@@ -1327,8 +1325,7 @@ final class ScalaTacTranslator {
     // "<init>" on a New.
     if (fun instanceof Trees.Select) {
       Trees.Select<Type> select = (Trees.Select<Type>) fun;
-      if ("<init>".equals(select.name().toString())
-          && select.qualifier() instanceof Trees.New) {
+      if ("<init>".equals(select.name().toString()) && select.qualifier() instanceof Trees.New) {
         return translateNew((Trees.New<Type>) select.qualifier(), args, apply);
       }
     }
@@ -1350,9 +1347,9 @@ final class ScalaTacTranslator {
   /**
    * The receiver of a call, or {@code null} when the call has none.
    *
-   * <p>An implicit {@code this} is not a receiver the dataflow engine tracks, so it
-   * yields {@code null}: the TAC's {@code CALL} then carries only the real arguments,
-   * exactly as a static call does.
+   * <p>An implicit {@code this} is not a receiver the dataflow engine tracks, so it yields {@code
+   * null}: the TAC's {@code CALL} then carries only the real arguments, exactly as a static call
+   * does.
    *
    * @param fun the function being called
    * @return the receiver, or {@code null}
@@ -1389,11 +1386,11 @@ final class ScalaTacTranslator {
   /**
    * Lowers an ordinary method call.
    *
-   * <p><b>The receiver comes first.</b> A TAC {@code CALL} has no receiver slot: the
-   * receiver is passed as the first argument. That is the contract the Java frontend
-   * established, and the dataflow engine reads it: without the receiver in the
-   * argument list, a dereference of a possibly-null receiver ({@code value.length})
-   * would be invisible to the engine, and the null-dereference rule would never fire.
+   * <p><b>The receiver comes first.</b> A TAC {@code CALL} has no receiver slot: the receiver is
+   * passed as the first argument. That is the contract the Java frontend established, and the
+   * dataflow engine reads it: without the receiver in the argument list, a dereference of a
+   * possibly-null receiver ({@code value.length}) would be invisible to the engine, and the
+   * null-dereference rule would never fire.
    *
    * @param fun the function being called
    * @param args the argument expressions
@@ -1455,9 +1452,9 @@ final class ScalaTacTranslator {
    *
    * <p><b>The form matters, and it is not the dotc form.</b> The sink families in {@code
    * sink-families.yaml} are anchored to a fully qualified name with a DOT separator and an arity
-   * suffix: {@code '^java\.sql\.Statement\.execute(/\d+)?'}. The DFA matches a call against them
-   * by its callee signature. A signature in any other shape matches NONE of them -- not one pattern
-   * in the file -- so every taint sink rule is silently inert on Scala code.
+   * suffix: {@code '^java\.sql\.Statement\.execute(/\d+)?'}. The DFA matches a call against them by
+   * its callee signature. A signature in any other shape matches NONE of them -- not one pattern in
+   * the file -- so every taint sink rule is silently inert on Scala code.
    *
    * <p><b>Two things were wrong before.</b> The owner was separated by {@code #} (dotc's own
    * convention) rather than by {@code .}, and the arity suffix was missing entirely. Either one is
@@ -1566,7 +1563,10 @@ final class ScalaTacTranslator {
 
   /** Lowers a binary operation. */
   private TacOperand translateBinary(
-      BinaryOperator binop, Trees.Select<Type> select, Trees.Tree<Type> rhs, Trees.Tree<Type> tree) {
+      BinaryOperator binop,
+      Trees.Select<Type> select,
+      Trees.Tree<Type> rhs,
+      Trees.Tree<Type> tree) {
     Trees.Tree<Type> lhsTree = select.qualifier();
     TacOperand lhs = translateExpr(lhsTree);
     TacOperand rhsValue = translateExpr(rhs);
@@ -1759,7 +1759,7 @@ final class ScalaTacTranslator {
       return translateFieldStore(receiver, name, value, symbol, assign);
     }
     degraded = true;
-    problems.add("could not lower an assignment in " + currentFunction);
+    reportLoss("scala.assignment.unmodelled", "could not lower an assignment in " + currentFunction);
     return value;
   }
 
@@ -1791,11 +1791,10 @@ final class ScalaTacTranslator {
   /**
    * Lowers an {@code if} expression.
    *
-   * <p>The shape is the one the Java frontend produces: a {@code BRANCH} to the "then"
-   * block, a {@code JUMP} past the "else" block, and a merge label at the end. The
-   * "else" block is emitted between the "then" block's jump and the merge label, so
-   * the control flow is: true -> then -> jump to end; false -> else -> fall through to
-   * end.
+   * <p>The shape is the one the Java frontend produces: a {@code BRANCH} to the "then" block, a
+   * {@code JUMP} past the "else" block, and a merge label at the end. The "else" block is emitted
+   * between the "then" block's jump and the merge label, so the control flow is: true -> then ->
+   * jump to end; false -> else -> fall through to end.
    */
   private TacOperand translateIf(Trees.If<Type> ifTree) {
     String thenLabel = builder.newLabel("then");
@@ -1805,7 +1804,7 @@ final class ScalaTacTranslator {
     TacOperand cond = translateExpr(ifTree.cond());
     if (cond == null) {
       degraded = true;
-      problems.add("could not lower an if-condition in " + currentFunction);
+      reportLoss("scala.if.condition", "could not lower an if-condition in " + currentFunction);
       return null;
     }
     builder.emit(
@@ -1833,9 +1832,9 @@ final class ScalaTacTranslator {
   /**
    * Lowers a {@code while} loop.
    *
-   * <p>The shape is a labelled condition, a {@code BRANCH} to the body or past it, and
-   * a {@code JUMP} back to the condition -- the standard loop shape, the same one the
-   * Java frontend produces for a {@code while} statement.
+   * <p>The shape is a labelled condition, a {@code BRANCH} to the body or past it, and a {@code
+   * JUMP} back to the condition -- the standard loop shape, the same one the Java frontend produces
+   * for a {@code while} statement.
    */
   private TacOperand translateWhile(Trees.WhileDo<Type> whileTree) {
     String condLabel = builder.newLabel("whileCond");
@@ -1846,7 +1845,7 @@ final class ScalaTacTranslator {
     TacOperand cond = translateExpr(whileTree.cond());
     if (cond == null) {
       degraded = true;
-      problems.add("could not lower a while-condition in " + currentFunction);
+      reportLoss("scala.while.condition", "could not lower a while-condition in " + currentFunction);
       return null;
     }
     builder.emit(
@@ -1883,27 +1882,27 @@ final class ScalaTacTranslator {
    * end:
    * </pre>
    *
-   * <p>Each case's body is emitted inline after its own test, and the <i>next</i> case's
-   * test follows it. The false edge of a test goes to the next case, not to the end --
-   * that is what makes it a chain rather than a series of independent tests.
+   * <p>Each case's body is emitted inline after its own test, and the <i>next</i> case's test
+   * follows it. The false edge of a test goes to the next case, not to the end -- that is what
+   * makes it a chain rather than a series of independent tests.
    *
-   * <p>A wildcard case matches everything, so it has no test: its body is emitted
-   * directly and the chain ends there.
+   * <p>A wildcard case matches everything, so it has no test: its body is emitted directly and the
+   * chain ends there.
    *
-   * <p><b>Why the function's precision is downgraded.</b> The {@code match} is lowered
-   * away: the branch chain says which case runs, but it does not carry the pattern's
-   * binding information the way the source did -- a narrowed binding is a plain move
-   * here, with no type refinement attached to it. A checker must therefore not trust a
-   * precision-dependent fact (such as "this value is non-null because the pattern
-   * narrowed it") about a function whose {@code match} was lowered. That is exactly
-   * what {@link IrPrecision#SOURCE_LOWERED} means.
+   * <p><b>Why the function's precision is downgraded.</b> The {@code match} is lowered away: the
+   * branch chain says which case runs, but it does not carry the pattern's binding information the
+   * way the source did -- a narrowed binding is a plain move here, with no type refinement attached
+   * to it. A checker must therefore not trust a precision-dependent fact (such as "this value is
+   * non-null because the pattern narrowed it") about a function whose {@code match} was lowered.
+   * That is exactly what {@link IrPrecision#SOURCE_LOWERED} means.
    */
   private TacOperand translateMatch(Trees.Match<Type> match) {
     degraded = true;
     // The gap is RECORDED, not only flagged. A degraded function whose degradation is
     // invisible produces findings that look exactly as complete as a fully lowered one --
     // and the degradation is the whole point of the flag.
-    problems.add(
+    reportLoss(
+        "scala.match.bindings",
         "a pattern match was lowered as a branch chain without its pattern bindings in "
             + currentFunction);
 
@@ -2012,8 +2011,7 @@ final class ScalaTacTranslator {
                   .falseLabel(nextLabel)
                   .line(lineOf(caseDef))
                   .build());
-          builder.emit(
-              TacInstruction.builder(TacInstruction.Kind.LABEL).label(guardLabel).build());
+          builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(guardLabel).build());
         }
       }
 
@@ -2038,8 +2036,8 @@ final class ScalaTacTranslator {
   /**
    * The type a pattern tests, or {@code null} when the pattern does not test a type.
    *
-   * <p>A typed pattern is a {@code Bind} whose body is a {@code Typed} scrutinee: {@code
-   * "case s: String =>"} is {@code Bind(s, Typed(_, String))}.
+   * <p>A typed pattern is a {@code Bind} whose body is a {@code Typed} scrutinee: {@code "case s:
+   * String =>"} is {@code Bind(s, Typed(_, String))}.
    */
   private Type testedTypeOf(Trees.Tree<Type> pattern) {
     Trees.Tree<Type> tested = pattern;
@@ -2068,14 +2066,15 @@ final class ScalaTacTranslator {
   /**
    * The constant a pattern matches against, or {@code null} when it is not a constant.
    *
-   * <p>A constant pattern is a literal. A wildcard pattern is an {@code Ident} named
-   * {@code "_"}, which matches everything and is not a constant.
+   * <p>A constant pattern is a literal. A wildcard pattern is an {@code Ident} named {@code "_"},
+   * which matches everything and is not a constant.
    */
   private Trees.Tree<Type> constantOf(Trees.Tree<Type> pattern) {
     if (pattern instanceof Trees.Literal) {
       return pattern;
     }
-    if (pattern instanceof Trees.Ident && "_".equals(((Trees.Ident<Type>) pattern).name().toString())) {
+    if (pattern instanceof Trees.Ident
+        && "_".equals(((Trees.Ident<Type>) pattern).name().toString())) {
       return null;
     }
     return null;
@@ -2106,10 +2105,7 @@ final class ScalaTacTranslator {
   /** Emits a return. */
   private void emitReturn(TacOperand value, Trees.Tree<Type> tree) {
     builder.emit(
-        TacInstruction.builder(TacInstruction.Kind.RETURN)
-            .lhs1(value)
-            .line(lineOf(tree))
-            .build());
+        TacInstruction.builder(TacInstruction.Kind.RETURN).lhs1(value).line(lineOf(tree)).build());
   }
 
   /** The source line of a tree, or {@code -1} when it has none. */
@@ -2154,16 +2150,16 @@ final class ScalaTacTranslator {
   /**
    * The problems of the lowering, in BOTH forms.
    *
-   * <p><b>Why one collector and not two lists.</b> The string form says "something went wrong".
-   * The structured form says WHICH construct went wrong, in WHICH function, and whether the
-   * cause was an unsupported construct or a broken source. A source-less consumer needs the
-   * second: it cannot answer "is this file incomplete because the frontend lacks a feature, or
-   * because the source does not compile?" -- and those need different responses.
+   * <p><b>Why one collector and not two lists.</b> The string form says "something went wrong". The
+   * structured form says WHICH construct went wrong, in WHICH function, and whether the cause was
+   * an unsupported construct or a broken source. A source-less consumer needs the second: it cannot
+   * answer "is this file incomplete because the frontend lacks a feature, or because the source
+   * does not compile?" -- and those need different responses.
    *
-   * <p>Keeping them in one collector is what stops them drifting apart. A gap recorded only in
-   * the strings is a gap a source-less consumer cannot see; a gap recorded only in the structured
-   * list is a gap the log does not show. There is exactly one place a gap is recorded, so
-   * neither can happen.
+   * <p>Keeping them in one collector is what stops them drifting apart. A gap recorded only in the
+   * strings is a gap a source-less consumer cannot see; a gap recorded only in the structured list
+   * is a gap the log does not show. There is exactly one place a gap is recorded, so neither can
+   * happen.
    */
   private final class ProblemCollector {
 
@@ -2195,11 +2191,12 @@ final class ScalaTacTranslator {
       return List.copyOf(structured);
     }
   }
+
   /**
    * Lowers a lambda's WRAPPER into a reference to the function that carries its body.
    *
-   * <p><b>What the Scala typer leaves behind.</b> The typer desugars a lambda into a {@code
-   * DefDef} -- {@code _$_$$anonfun} -- that holds the parameters, the captures and the body. The
+   * <p><b>What the Scala typer leaves behind.</b> The typer desugars a lambda into a {@code DefDef}
+   * -- {@code _$_$$anonfun} -- that holds the parameters, the captures and the body. The
    * translator's {@code collectDefs} finds that definition and lowers it like any other, so the
    * body IS in the program.
    *
@@ -2234,8 +2231,11 @@ final class ScalaTacTranslator {
       // The closure names no function, so there is nothing to call. The gap is recorded and the
       // function degraded, so a consumer knows the value is not what it should be.
       degraded = true;
-      problems.add(
-          "a lambda in " + currentFunction + " names no callable; the function's precision was"
+      reportLoss(
+          "scala.lambda.unnamed",
+          "a lambda in "
+              + currentFunction
+              + " names no callable; the function's precision was"
               + " downgraded");
       TacOperand.TacVar unknown = builder.newTemp(TacType.UNKNOWN);
       builder.emit(
@@ -2270,8 +2270,8 @@ final class ScalaTacTranslator {
    *
    * <p><b>The symbol is the authority.</b> The closure's method is an {@code Ident} whose NAME is
    * the short one ({@code $anonfun}), while the definition the translator produced is named from
-   * its symbol's full name ({@code demo.Demo._$_$$anonfun}). The two spellings differ, so the
-   * name cannot be used to join them -- but the SYMBOL is the same object on both sides, and the
+   * its symbol's full name ({@code demo.Demo._$_$$anonfun}). The two spellings differ, so the name
+   * cannot be used to join them -- but the SYMBOL is the same object on both sides, and the
    * symbol's full name is exactly what the definition was named with.
    *
    * <p>So the closure resolves the symbol and asks for its full name. That is the same answer the

@@ -23,7 +23,6 @@ package org.plumb.tac.frontend.kotlin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -35,10 +34,10 @@ import org.plumb.tac.ir.TacOperand;
 /**
  * The callee signature's OWNER -- the thing that makes a sink reachable.
  *
- * <p><b>Why this test exists.</b> The sink families in {@code sink-families.yaml} are anchored to
- * a fully qualified name with a dot separator and an arity suffix:
- * {@code '^java\.sql\.Statement\.execute(/\d+)?'}. The DFA matches a call against them by its
- * callee signature.
+ * <p><b>Why this test exists.</b> The sink families in {@code sink-families.yaml} are anchored to a
+ * fully qualified name with a dot separator and an arity suffix: {@code
+ * '^java\.sql\.Statement\.execute(/\d+)?'}. The DFA matches a call against them by its callee
+ * signature.
  *
  * <p>The Kotlin frontend used to emit {@code "execute/1"} -- no owner at all. That signature
  * matches <b>not one pattern in the file</b>: every pattern is anchored with {@code ^} to a
@@ -150,21 +149,24 @@ class KotlinCalleeOwnerTest {
     // property syntax is a Java method; a Kotlin origin means it is a property.
     List<TacInstruction> instructions =
         new KotlinTestSupport()
-            .parse(
-                """
-                class Owner {
-                  fun run(line: String): Int = line.length
-                }
-                """)
-            .functions()
-            .stream()
-            .flatMap(fn -> fn.instructions().stream())
-            .toList();
+                .parse(
+                    """
+                    class Owner {
+                      fun run(line: String): Int = line.length
+                    }
+                    """)
+                .functions()
+                .stream()
+                .flatMap(fn -> fn.instructions().stream())
+                .toList();
 
     assertThat(instructions)
         .as("a Kotlin property must not be invented as a method call")
-        .noneMatch(i -> i.kind == TacInstruction.Kind.CALL && i.calleeSig != null
-            && i.calleeSig.contains("length"));
+        .noneMatch(
+            i ->
+                i.kind == TacInstruction.Kind.CALL
+                    && i.calleeSig != null
+                    && i.calleeSig.contains("length"));
   }
 
   @Test
@@ -262,9 +264,7 @@ class KotlinCalleeOwnerTest {
       for (TacInstruction ins : fn.instructions()) {
         if (ins.kind != TacInstruction.Kind.CALL) continue;
         sawCall = true;
-        assertThat(ins.args)
-            .as("the receiver must be the first argument")
-            .isNotEmpty();
+        assertThat(ins.args).as("the receiver must be the first argument").isNotEmpty();
         assertThat(ins.args.get(0))
             .as("the receiver must be a variable, not a null constant")
             .isNotInstanceOf(TacOperand.Const.class);

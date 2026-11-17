@@ -23,16 +23,13 @@ package org.plumb.tac.frontend.kotlin;
 
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.util.Disposer;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import kotlin.Unit;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.kotlin.analysis.api.KaSession;
-import org.jetbrains.kotlin.analysis.api.projectStructure.KaSourceModule;
 import org.jetbrains.kotlin.analysis.api.session.KaSessionProvider;
 import org.jetbrains.kotlin.analysis.api.standalone.StandaloneAnalysisAPISession;
 import org.jetbrains.kotlin.analysis.api.standalone.StandaloneAnalysisAPISessionBuilder;
@@ -41,13 +38,8 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaDeclarationSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaFunctionSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol;
-import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolOrigin;
 import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol;
-import org.jetbrains.kotlin.analysis.api.types.KaType;
 import org.jetbrains.kotlin.analysis.project.structure.builder.KaModuleContainerBuilder;
-import org.jetbrains.kotlin.analysis.project.structure.builder.KaSourceModuleBuilderKt;
-import org.jetbrains.kotlin.analysis.project.structure.builder.KtSourceModuleBuilder;
-import org.jetbrains.kotlin.platform.jvm.JvmPlatforms;
 import org.jetbrains.kotlin.psi.KtClassOrObject;
 import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.psi.KtNamedFunction;
@@ -62,53 +54,50 @@ import org.plumb.tac.ir.TacType;
 /**
  * The Kotlin frontend: Kotlin source text to {@link TacFunction}s.
  *
- * <p>It is the Kotlin sibling of {@link org.plumb.tac.frontend.java.JavaTacFrontend}, and
- * it exists for the same reason: to keep every language's path into the IR structurally
- * identical, so a difference in behaviour between them is a difference in the
- * <i>frontend</i> and not an accident of wiring.
+ * <p>It is the Kotlin sibling of {@link org.plumb.tac.frontend.java.JavaTacFrontend}, and it exists
+ * for the same reason: to keep every language's path into the IR structurally identical, so a
+ * difference in behaviour between them is a difference in the <i>frontend</i> and not an accident
+ * of wiring.
  *
  * <h2>What the Kotlin frontend contributes to the IR</h2>
  *
  * <p>Two things the Java frontend cannot give, and which the analysis actually uses:
  *
  * <ul>
- *   <li><b>Nullability.</b> Kotlin has a non-null type system. A {@code String} parameter
- *       is a {@link TacType} with {@link TacType#isNullable()} {@code false}; a {@code
- *       String?} is not. That is exactly the false positive the null-dereference checker
- *       needs to suppress, and it is the reason {@link TacType} carries a nullability
- *       dimension at all.
+ *   <li><b>Nullability.</b> Kotlin has a non-null type system. A {@code String} parameter is a
+ *       {@link TacType} with {@link TacType#isNullable()} {@code false}; a {@code String?} is not.
+ *       That is exactly the false positive the null-dereference checker needs to suppress, and it
+ *       is the reason {@link TacType} carries a nullability dimension at all.
  *   <li><b>Synthetic methods.</b> A data class's {@code componentN} and {@code copy} are
- *       compiler-generated, and the Analysis API says so exactly ({@link
- * *       KaSymbolOrigin#SOURCE_MEMBER_GENERATED}). The bytecode path can only guess from
- *       the name.
+ *       compiler-generated, and the Analysis API says so exactly ({@link *
+ *       KaSymbolOrigin#SOURCE_MEMBER_GENERATED}). The bytecode path can only guess from the name.
  * </ul>
  *
  * <h2>The session</h2>
  *
- * <p>The Analysis API needs a session, and a session is expensive to build. So the
- * frontend owns one, built lazily from the {@link CompileContext}, and reuses it for every
- * file in the run. The session is <b>not</b> thread-safe in the way the Analysis API's
- * internals are not, so {@link #parse} synchronises on the session.
+ * <p>The Analysis API needs a session, and a session is expensive to build. So the frontend owns
+ * one, built lazily from the {@link CompileContext}, and reuses it for every file in the run. The
+ * session is <b>not</b> thread-safe in the way the Analysis API's internals are not, so {@link
+ * #parse} synchronises on the session.
  *
- * <p>The frontend is therefore <i>not</i> stateless in the strict sense the SPI asks for.
- * What it <i>is</i>: free of per-file state. The session holds the compilation-wide
- * state (the module structure, the symbol index, the resolved types), which is exactly
- * what the SPI says the {@link CompileContext} is for -- and the session is memoised in
- * the context, so a second frontend over the same context gets the same session.
+ * <p>The frontend is therefore <i>not</i> stateless in the strict sense the SPI asks for. What it
+ * <i>is</i>: free of per-file state. The session holds the compilation-wide state (the module
+ * structure, the symbol index, the resolved types), which is exactly what the SPI says the {@link
+ * CompileContext} is for -- and the session is memoised in the context, so a second frontend over
+ * the same context gets the same session.
  *
  * <h2>Totality</h2>
  *
- * <p>A frontend must not throw on malformed input. Everything here is wrapped so that a
- * broken file yields a {@link ParseResult#problems()} entry and whatever could be parsed,
- * never an exception out of {@link #parse}.
+ * <p>A frontend must not throw on malformed input. Everything here is wrapped so that a broken file
+ * yields a {@link ParseResult#problems()} entry and whatever could be parsed, never an exception
+ * out of {@link #parse}.
  */
 public final class KotlinTacFrontend implements TacFrontend {
 
   /**
    * The key the analysis session is memoised under in the {@link CompileContext}.
    *
-   * <p>Session-scoped: the session is the expensive thing, and it is per-run, not
-   * per-file.
+   * <p>Session-scoped: the session is the expensive thing, and it is per-run, not per-file.
    */
   private static final String SESSION_KEY = "plumb.kotlin.analysisSession";
 
@@ -121,9 +110,9 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * The problems accumulated while building the session.
    *
-   * <p>Building the session can fail (an unreadable source root, a missing classpath).
-   * Those problems are reported on every {@link #parse}, because they affect the whole
-   * run and not just one file.
+   * <p>Building the session can fail (an unreadable source root, a missing classpath). Those
+   * problems are reported on every {@link #parse}, because they affect the whole run and not just
+   * one file.
    */
   private final List<String> sessionProblems;
 
@@ -140,8 +129,8 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * The session's source roots.
    *
-   * <p>The scratch file has to be written under one of them, or the Analysis API will
-   * not resolve it.
+   * <p>The scratch file has to be written under one of them, or the Analysis API will not resolve
+   * it.
    */
   private final List<Path> roots;
 
@@ -151,11 +140,10 @@ public final class KotlinTacFrontend implements TacFrontend {
    * <p>Used by the tests and by a caller that manages the session's lifetime itself.
    *
    * @param session the session
-   * @param disposable the disposable that owns the session, or {@code null} when the
-   *     caller keeps the session alive itself (in which case {@link #close()} must not be
-   *     called)
-   * @param roots the session's source roots; a source file is staged under one of them
-   *     so the Analysis API can resolve it
+   * @param disposable the disposable that owns the session, or {@code null} when the caller keeps
+   *     the session alive itself (in which case {@link #close()} must not be called)
+   * @param roots the session's source roots; a source file is staged under one of them so the
+   *     Analysis API can resolve it
    */
   public KotlinTacFrontend(
       StandaloneAnalysisAPISession session, Disposable disposable, List<Path> roots) {
@@ -168,8 +156,8 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * Builds a frontend from a compile context.
    *
-   * <p>The session is built once and memoised in the context, so every frontend over the
-   * same context shares it.
+   * <p>The session is built once and memoised in the context, so every frontend over the same
+   * context shares it.
    *
    * @param ctx the session-scoped compile context
    */
@@ -184,24 +172,21 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * Builds a self-contained frontend over one source root.
    *
-   * <p>The frontend builds and owns its own session. Use this when there is no compile
-   * context to build the session from -- a standalone tool, or a test that drives the
-   * frontend on its own.
+   * <p>The frontend builds and owns its own session. Use this when there is no compile context to
+   * build the session from -- a standalone tool, or a test that drives the frontend on its own.
    *
-   * <p>The caller must call {@link #close()} when it is done: the Analysis API's global
-   * application keeps non-daemon threads alive, so a frontend that is not closed leaves
-   * the JVM unable to exit.
+   * <p>The caller must call {@link #close()} when it is done: the Analysis API's global application
+   * keeps non-daemon threads alive, so a frontend that is not closed leaves the JVM unable to exit.
    *
-   * @param sourceRoot the root the session treats as its source root; the files the
-   *     frontend parses are staged under it so the Analysis API can resolve them
+   * @param sourceRoot the root the session treats as its source root; the files the frontend parses
+   *     are staged under it so the Analysis API can resolve them
    */
   public KotlinTacFrontend(Path sourceRoot) {
     Disposable owned = Disposer.newDisposable("plumb-kotlin-frontend-session");
     StandaloneAnalysisAPISession built;
     List<String> problems = new ArrayList<>();
     KotlinModuleStructure structure =
-        new KotlinModuleStructure(
-            sourceRoot == null ? List.of() : List.of(sourceRoot), List.of());
+        new KotlinModuleStructure(sourceRoot == null ? List.of() : List.of(sourceRoot), List.of());
     try {
       built =
           StandaloneAnalysisAPISessionBuilderKt.buildStandaloneAnalysisAPISession(
@@ -245,9 +230,9 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * Builds the Analysis API session.
    *
-   * <p>The module structure comes from the compile context: each {@link
-   * CompileContext.Module} becomes a Kotlin source module with its source root, and the
-   * context's classpath becomes a library module.
+   * <p>The module structure comes from the compile context: each {@link CompileContext.Module}
+   * becomes a Kotlin source module with its source root, and the context's classpath becomes a
+   * library module.
    */
   private static Built buildSession(CompileContext ctx) {
     List<String> problems = new ArrayList<>();
@@ -334,10 +319,10 @@ public final class KotlinTacFrontend implements TacFrontend {
    * Parses a Kotlin source without a compile context.
    *
    * <p>A convenience for a caller that uses a self-contained frontend (see {@link
-   * #KotlinTacFrontend(Path)}): the context's only role for the frontend is to supply the
-   * module structure and the classpath, and a self-contained frontend already has the
-   * module structure. The classpath is empty, so types that resolve only against a
-   * binary are reported as unknown rather than silently mis-typed.
+   * #KotlinTacFrontend(Path)}): the context's only role for the frontend is to supply the module
+   * structure and the classpath, and a self-contained frontend already has the module structure.
+   * The classpath is empty, so types that resolve only against a binary are reported as unknown
+   * rather than silently mis-typed.
    *
    * @param source the source text
    * @param path the file's path, used for error messages
@@ -397,7 +382,8 @@ public final class KotlinTacFrontend implements TacFrontend {
   @Override
   public StructuredParseResult parseStructured(String source, Path path, CompileContext ctx) {
     ParseResult plain = parse(source, path, ctx);
-    return new StructuredParseResult(plain.functions(), List.copyOf(structuredProblems), plain.precision());
+    return new StructuredParseResult(
+        plain.functions(), List.copyOf(structuredProblems), plain.precision());
   }
 
   /** The body of {@link #parse}, run with the session available. */
@@ -439,11 +425,7 @@ public final class KotlinTacFrontend implements TacFrontend {
 
       List<TacFunction> functions = new ArrayList<>();
       translateFile(
-          ktFile,
-          kaSession,
-          functions,
-          problems,
-          ctx == null ? null : ctx.moduleOf(path));
+          ktFile, kaSession, functions, problems, ctx == null ? null : ctx.moduleOf(path));
 
       IrPrecision precision = defaultPrecision();
       for (TacFunction fn : functions) {
@@ -461,9 +443,8 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * Translates every declaration of a Kotlin file into a {@link TacFunction}.
    *
-   * <p>Both top-level declarations and class members are translated. A class member's
-   * function name is qualified with the class's short name, so two classes' {@code
-   * toString} do not collide.
+   * <p>Both top-level declarations and class members are translated. A class member's function name
+   * is qualified with the class's short name, so two classes' {@code toString} do not collide.
    */
   private void translateFile(
       KtFile ktFile,
@@ -471,28 +452,63 @@ public final class KotlinTacFrontend implements TacFrontend {
       List<TacFunction> functions,
       List<String> problems,
       String module) {
-    for (KtClassOrObject classDecl : ktFile.getDeclarations().stream()
-        .filter(d -> d instanceof KtClassOrObject)
-        .map(d -> (KtClassOrObject) d)
-        .toList()) {
+    for (KtClassOrObject classDecl :
+        ktFile.getDeclarations().stream()
+            .filter(d -> d instanceof KtClassOrObject)
+            .map(d -> (KtClassOrObject) d)
+            .toList()) {
       translateClass(classDecl, kaSession, functions, problems, module);
     }
-    for (KtNamedFunction fn : ktFile.getDeclarations().stream()
-        .filter(d -> d instanceof KtNamedFunction)
-        .map(d -> (KtNamedFunction) d)
-        .toList()) {
-      translateFunction(fn, null, kaSession, functions, problems, module);
+    for (KtNamedFunction fn :
+        ktFile.getDeclarations().stream()
+            .filter(d -> d instanceof KtNamedFunction)
+            .map(d -> (KtNamedFunction) d)
+            .toList()) {
+      translateFunction(fn, null, kaSession, functions, problems, module, List.of());
     }
+  }
+
+  /**
+   * The names of a declaration's annotations, in simple-name form.
+   *
+   * <p>The simple name is the only shape a checker needs: {@code
+   * org.springframework.web.bind.annotation.RequestParam} becomes {@code
+   * RequestParam}. A use-site target ({@code @field:Ann}, {@code @get:Ann}) is
+   * not part of the name.
+   */
+  private static List<String> annotationNames(
+      List<? extends org.jetbrains.kotlin.psi.KtAnnotationEntry> entries) {
+    List<String> out = new ArrayList<>();
+    if (entries == null) {
+      return out;
+    }
+    for (org.jetbrains.kotlin.psi.KtAnnotationEntry entry : entries) {
+      org.jetbrains.kotlin.psi.KtTypeReference reference = entry.getTypeReference();
+      if (reference == null) {
+        continue;
+      }
+      String text = reference.getText();
+      if (text == null || text.isEmpty()) {
+        continue;
+      }
+      int dot = text.lastIndexOf('.');
+      if (dot >= 0) {
+        text = text.substring(dot + 1);
+      }
+      if (!text.isEmpty() && !out.contains(text)) {
+        out.add(text);
+      }
+    }
+    return out;
   }
 
   /**
    * Translates a class or object's members.
    *
-   * <p>A data class's compiler-generated {@code componentN} and {@code copy} are
-   * translated and marked synthetic. They are translated rather than skipped because
-   * they <i>are</i> part of the class's API -- a call site can reach them -- and a
-   * checker that reports "this method is never called" must be able to see that they are
-   * compiler-generated.
+   * <p>A data class's compiler-generated {@code componentN} and {@code copy} are translated and
+   * marked synthetic. They are translated rather than skipped because they <i>are</i> part of the
+   * class's API -- a call site can reach them -- and a checker that reports "this method is never
+   * called" must be able to see that they are compiler-generated.
    */
   private void translateClass(
       KtClassOrObject classDecl,
@@ -505,6 +521,9 @@ public final class KotlinTacFrontend implements TacFrontend {
     if (className == null) {
       return;
     }
+    // The class's own annotations. They belong to every member: a rule that
+    // keys on "@RestController" has to see it on the method it reports.
+    List<String> classAnnotations = annotationNames(classDecl.getAnnotationEntries());
     boolean isData = false;
     try {
       Object symbol = kaSession.getSymbol(classDecl);
@@ -516,11 +535,13 @@ public final class KotlinTacFrontend implements TacFrontend {
     }
 
     // The declared members of the class.
-    for (KtNamedFunction fn : classDecl.getDeclarations().stream()
-        .filter(d -> d instanceof KtNamedFunction)
-        .map(d -> (KtNamedFunction) d)
-        .toList()) {
-      translateFunction(fn, className, kaSession, functions, problems, module);
+    for (KtNamedFunction fn :
+        classDecl.getDeclarations().stream()
+            .filter(d -> d instanceof KtNamedFunction)
+            .map(d -> (KtNamedFunction) d)
+            .toList()) {
+      translateFunction(
+          fn, className, kaSession, functions, problems, module, classAnnotations);
     }
 
     // The compiler-generated members of a data class. The Analysis API reports these
@@ -534,10 +555,10 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * Translates a data class's compiler-generated members.
    *
-   * <p>These have no PSI of their own (their PSI is the primary constructor), so their
-   * bodies cannot be lowered -- there is no source to lower. They are emitted as
-   * synthetic functions with the right name, arity and types, so that a call site
-   * resolves to them and a checker can tell that they are compiler-generated.
+   * <p>These have no PSI of their own (their PSI is the primary constructor), so their bodies
+   * cannot be lowered -- there is no source to lower. They are emitted as synthetic functions with
+   * the right name, arity and types, so that a call site resolves to them and a checker can tell
+   * that they are compiler-generated.
    */
   private void translateGeneratedMembers(
       KtClassOrObject classDecl,
@@ -599,7 +620,8 @@ public final class KotlinTacFrontend implements TacFrontend {
         returnType = TacType.UNKNOWN;
       }
       String qualified = className + "." + name;
-      String signature = qualified + "(" + String.join(",", paramTypes) + "):" + returnType.displayName();
+      String signature =
+          qualified + "(" + String.join(",", paramTypes) + "):" + returnType.displayName();
 
       org.plumb.tac.translate.TacBuilder builder =
           new org.plumb.tac.translate.TacBuilder(
@@ -615,12 +637,11 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * The name of a function's {@code index}-th parameter, read from the SOURCE TEXT.
    *
-   * <p>Three sources are tried, in order of authority: the Analysis API's symbol name, the
-   * PSI declaration's name, and finally the declaration's own text. The last one is the
-   * user's code, so it always has the name -- and the name is not decoration: it is the
-   * parameter's taint label, so an unnamed parameter's taint reads as {@code
-   * "param:<no name provided>"} in every report, and the origin a caller passes in cannot be
-   * traced back to the parameter it came from.
+   * <p>Three sources are tried, in order of authority: the Analysis API's symbol name, the PSI
+   * declaration's name, and finally the declaration's own text. The last one is the user's code, so
+   * it always has the name -- and the name is not decoration: it is the parameter's taint label, so
+   * an unnamed parameter's taint reads as {@code "param:<no name provided>"} in every report, and
+   * the origin a caller passes in cannot be traced back to the parameter it came from.
    *
    * @param fn the function declaration
    * @param index the parameter's position
@@ -657,9 +678,7 @@ public final class KotlinTacFrontend implements TacFrontend {
     return null;
   }
 
-  /**
-   * The name of one parameter declaration, e.g. {@code "in: InputStream"} -> {@code "in"}.
-   */
+  /** The name of one parameter declaration, e.g. {@code "in: InputStream"} -> {@code "in"}. */
   private static String parameterNameOfSegment(String segment) {
     if (segment == null) return null;
     int colon = segment.indexOf(':');
@@ -690,14 +709,14 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * The parameter declarations of a function, from the REAL source PSI.
    *
-   * <p>The Analysis API resolves a function to its LIGHT symbol in some cases, and a light
-   * symbol's parameters have no names -- {@code getName()} answers the placeholder {@code
-   * "<no name provided>"}. The real source PSI is the declaration the user wrote, and it
-   * always has the names.
+   * <p>The Analysis API resolves a function to its LIGHT symbol in some cases, and a light symbol's
+   * parameters have no names -- {@code getName()} answers the placeholder {@code "<no name
+   * provided>"}. The real source PSI is the declaration the user wrote, and it always has the
+   * names.
    *
-   * <p>Falls back to the declaration's own stub-based PSI when the real PSI is unavailable,
-   * and to an empty list when neither is: an empty list leaves the names as the symbol
-   * reported them, which is worse but not wrong.
+   * <p>Falls back to the declaration's own stub-based PSI when the real PSI is unavailable, and to
+   * an empty list when neither is: an empty list leaves the names as the symbol reported them,
+   * which is worse but not wrong.
    */
   private static java.util.List<org.jetbrains.kotlin.psi.KtParameter> realPsiParams(
       KaFunctionSymbol symbol, KtNamedFunction fallback) {
@@ -735,8 +754,8 @@ public final class KotlinTacFrontend implements TacFrontend {
    * Translates one Kotlin function.
    *
    * @param fn the function declaration
-   * @param enclosingClass the short name of the declaring class, or {@code null} for a
-   *     top-level function
+   * @param enclosingClass the short name of the declaring class, or {@code null} for a top-level
+   *     function
    */
   private void translateFunction(
       KtNamedFunction fn,
@@ -744,7 +763,8 @@ public final class KotlinTacFrontend implements TacFrontend {
       KaSession kaSession,
       List<TacFunction> functions,
       List<String> problems,
-      String module) {
+      String module,
+      List<String> classAnnotations) {
 
     String simpleName = fn.getName();
     if (simpleName == null) {
@@ -767,6 +787,9 @@ public final class KotlinTacFrontend implements TacFrontend {
     KotlinTypeMapper mapper = new KotlinTypeMapper(kaSession);
     List<TacOperand.TacVar> params = new ArrayList<>();
     List<String> paramTypes = new ArrayList<>();
+    // The annotations of the parameters, by name. A rule that keys on
+    // "@RequestParam" needs to know WHICH parameter it was.
+    java.util.Map<String, List<String>> paramAnnotations = new java.util.LinkedHashMap<>();
     try {
       // The parameter names come from the SOURCE declaration, not from the symbol.
       //
@@ -817,6 +840,12 @@ public final class KotlinTacFrontend implements TacFrontend {
         }
         params.add(new TacOperand.TacVar(paramName, pt, false));
         paramTypes.add(pt.displayName());
+        if (i < psiParams.size()) {
+          List<String> names = annotationNames(psiParams.get(i).getAnnotationEntries());
+          if (!names.isEmpty()) {
+            paramAnnotations.put(paramName, names);
+          }
+        }
         i++;
       }
     } catch (RuntimeException ex) {
@@ -859,7 +888,16 @@ public final class KotlinTacFrontend implements TacFrontend {
             fn.getBodyExpression(),
             enclosingClass,
             synthetic,
-            module);
+            module,
+            classAnnotations,
+            annotationNames(fn.getAnnotationEntries()),
+            paramAnnotations,
+            // A function of a class is a METHOD; a top-level one is a
+            // FUNCTION. The difference matters to a rule that matches on
+            // constructors and accessors.
+            enclosingClass == null
+                ? org.plumb.tac.ir.TacMemberKind.FUNCTION
+                : org.plumb.tac.ir.TacMemberKind.METHOD);
     functions.add(function);
     problems.addAll(translator.problems());
     // The STRUCTURED problems, which travel with the IR. A source-less consumer
@@ -868,6 +906,7 @@ public final class KotlinTacFrontend implements TacFrontend {
     // broken source.
     structuredProblems.addAll(translator.structuredProblems());
   }
+
   /** The name of a symbol, or {@code null}. */
   private static String memberName(KaSymbol symbol) {
     if (symbol instanceof org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol named) {
@@ -879,11 +918,10 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * Stages the source text on disk, under one of the session's source roots.
    *
-   * <p>The scratch file must be under the session's content scope, or the Analysis API
-   * will not resolve it. When there is no source root -- a frontend built without a
-   * compile context -- the file is staged in a temporary directory and the session's
-   * content scope is not consulted; such a frontend can only resolve what it already
-   * knows.
+   * <p>The scratch file must be under the session's content scope, or the Analysis API will not
+   * resolve it. When there is no source root -- a frontend built without a compile context -- the
+   * file is staged in a temporary directory and the session's content scope is not consulted; such
+   * a frontend can only resolve what it already knows.
    */
   private ScratchFile stage(Path path, String source) {
     for (Path root : roots) {
@@ -898,11 +936,10 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * Finds the {@link KtFile} the session built for a path.
    *
-   * <p>The session's own {@code getModulesWithFiles()} is a snapshot taken when the
-   * session was built, so it does not contain a file that was staged afterwards. The
-   * file is therefore looked up through the virtual file system: the VFS is refreshed
-   * (so the staged file is visible), the file is found by its path, and the PSI is
-   * obtained from the PSI manager.
+   * <p>The session's own {@code getModulesWithFiles()} is a snapshot taken when the session was
+   * built, so it does not contain a file that was staged afterwards. The file is therefore looked
+   * up through the virtual file system: the VFS is refreshed (so the staged file is visible), the
+   * file is found by its path, and the PSI is obtained from the PSI manager.
    */
   private KtFile findFile(Path path) {
     com.intellij.openapi.vfs.VirtualFileManager vfs =
@@ -961,21 +998,21 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * Releases the session.
    *
-   * <p>The session's disposable must be disposed inside a write action -- IntelliJ's file
-   * manager asserts write access when it clears the view providers -- and the global
-   * standalone application services must be released afterwards, or the JVM keeps
-   * non-daemon threads alive and never exits.
+   * <p>The session's disposable must be disposed inside a write action -- IntelliJ's file manager
+   * asserts write access when it clears the view providers -- and the global standalone application
+   * services must be released afterwards, or the JVM keeps non-daemon threads alive and never
+   * exits.
    *
-   * <p>Called by the owner of the frontend. A frontend that was built over a
-   * {@link CompileContext} should not call this: the context owns the session. A frontend
-   * built with a {@code null} disposable must not call this either: it does not own the
-   * session.
+   * <p>Called by the owner of the frontend. A frontend that was built over a {@link CompileContext}
+   * should not call this: the context owns the session. A frontend built with a {@code null}
+   * disposable must not call this either: it does not own the session.
    */
   public void close() {
     if (session == null || disposable == null) {
       return;
     }
-    session.getApplication()
+    session
+        .getApplication()
         .runWriteAction(
             new Runnable() {
               @Override

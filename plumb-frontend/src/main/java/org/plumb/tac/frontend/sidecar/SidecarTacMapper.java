@@ -26,17 +26,24 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.plumb.tac.frontend.CompileContext;
 import org.plumb.tac.frontend.json.Json;
 import org.plumb.tac.ir.IrPrecision;
 import org.plumb.tac.ir.SourceLanguage;
+import org.plumb.tac.ir.TacDrop;
 import org.plumb.tac.ir.TacFunction;
+import org.plumb.tac.ir.TacGuard;
 import org.plumb.tac.ir.TacInstruction;
+import org.plumb.tac.ir.TacLabelRef;
+import org.plumb.tac.ir.TacMemberKind;
 import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacProgram;
 import org.plumb.tac.ir.TacType;
+import org.plumb.tac.ir.TacValueDomain;
 
 /**
  * The wire form of the TAC, mapped into the IR.
@@ -54,6 +61,14 @@ import org.plumb.tac.ir.TacType;
  * success.
  *
  * <p>So the mapping lives here once, and every sidecar frontend uses it.
+ *
+ * <p>It is PUBLIC, and its helpers are public, because the Go and C# frontends
+ * used to keep their own copy of this mapping. Two copies of one mapping
+ * drift: the copies missed the drop channel, the member kind, the try regions,
+ * the annotation channels and the instruction guard, and they read an unknown
+ * binary operator as ADD -- which turns a comparison into an addition, and
+ * says so about the PROGRAM rather than about the analysis. Those frontends
+ * delegate here now, so there is one mapping and one set of rules.
  */
 public final class SidecarTacMapper {
 
@@ -129,10 +144,17 @@ public final class SidecarTacMapper {
       }
     }
 
-    IrPrecision precision =
-        "SOURCE_LOWERED".equals(wire.getString("precision"))
-            ? IrPrecision.SOURCE_LOWERED
-            : IrPrecision.SOURCE_FULL;
+    // The DROPS the sidecar recorded: the constructs it could not lower faithfully.
+    // The function's precision is DERIVED from them -- a sidecar that claims
+    // SOURCE_FULL while recording a SEMANTICS drop would be hiding a real loss.
+    List<TacDrop> drops = toDrops(wire.getArray("drops"));
+    IrPrecision precision = combinePrecision(wire.getString("precision"), drops);
+
+    // The member kind: what this function IS. A getter is a read of a field and
+    // a constructor is not a call anybody makes, so a checker has to be able to
+    // tell them apart.
+    String memberKindName = wire.getString("memberKind");
+    TacMemberKind memberKind = memberKindName == null ? null : TacMemberKind.fromWire(memberKindName);
 
     return new TacFunction(
         wire.getString("name") == null ? "<unknown>" : wire.getString("name"),
@@ -141,18 +163,155 @@ public final class SidecarTacMapper {
         params,
         locals,
         instructions,
-        List.of(),
-        List.of(),
-        Map.of(),
-        Map.of(),
+        toStringList(wire.getArray("classAnnotations")),
+        toStringList(wire.getArray("methodAnnotations")),
+        toAnnotationMap(wire.getObject("fieldAnnotations")),
+        toAnnotationMap(wire.getObject("paramAnnotations")),
         wire.getString("enclosingClass"),
         org.plumb.tac.ir.SourceOrigin.SOURCE,
-        List.of(),
+        toTryRegions(wire.getArray("tryRegions")),
         language,
         precision,
         wire.getBoolean("synthetic", false),
-        Map.of(),
-        ctx == null || path == null ? null : ctx.moduleOf(path));
+        toAnnotationMap(wire.getObject("annotationValues")),
+        ctx == null || path == null ? null : ctx.moduleOf(path),
+        drops,
+        memberKind);
+  }
+
+  /**
+   * The annotations a member carries.
+   *
+   * <p>An annotation is the one place where the SOURCE states something about
+   * the program that the program itself does not: {@code @Transactional} says
+   * how a method must be called, and {@code @NotNull} says what a caller may
+   * assume. A rule that can see them is a rule that does not have to guess.
+   *
+   * <p>The wire carries them as a list of names; the IR keeps them as names
+   * too, because a name is what a rule matches on.
+   */
+  public static List<String> toStringList(Json.JsonArray wire) {
+    if (wire == null) {
+      return List.of();
+    }
+    List<String> out = new ArrayList<>();
+    for (int i = 0; i < wire.size(); i++) {
+      Json.Value item = wire.get(i);
+      if (item instanceof Json.JsonString text) {
+        String value = text.value();
+        if (value != null && !value.isEmpty()) {
+          out.add(value);
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * A map of member name to the annotations it carries.
+   *
+   * <p>The order of the entries is kept: a rule that reports "the first
+   * annotation that means X" must not see a different one from run to run.
+   */
+  public static Map<String, List<String>> toAnnotationMap(Json.JsonObject wire) {
+    if (wire == null || wire.isEmpty()) {
+      return Map.of();
+    }
+    Map<String, List<String>> out = new LinkedHashMap<>();
+    for (String key : wire.keys()) {
+      Json.JsonArray values = wire.getArray(key);
+      if (values != null) {
+        List<String> list = toStringList(values);
+        if (!list.isEmpty()) {
+          out.put(key, list);
+          continue;
+        }
+      }
+      // The annotation VALUES channel carries ONE value per name, not a list.
+      // Reading it as a list only dropped the value: the map came back empty
+      // and the annotation said nothing.
+      String single = wire.getString(key);
+      if (single != null && !single.isEmpty()) {
+        out.put(key, List.of(single));
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The exception regions of a function.
+   *
+   * <p>Without them the CFG has no edge from a throwing instruction to the
+   * handler that catches it, and every rule about "what happens when this
+   * call fails" silently stops applying.
+   */
+  public static List<TacFunction.TryRegion> toTryRegions(Json.JsonArray wire) {
+    if (wire == null) {
+      return List.of();
+    }
+    List<TacFunction.TryRegion> out = new ArrayList<>();
+    for (int i = 0; i < wire.size(); i++) {
+      Json.JsonObject region = wire.getObject(i);
+      if (region == null) {
+        continue;
+      }
+      out.add(
+          new TacFunction.TryRegion(
+              region.getInt("tryStart", -1),
+              region.getInt("tryEnd", -1),
+              region.getInt("catchStart", -1),
+              region.getInt("catchEnd", -1),
+              toStringList(region.getArray("catchLabels")),
+              region.getString("finallyLabel"),
+              region.getInt("finallyStart", -1),
+              region.getInt("finallyEnd", -1)));
+    }
+    return out;
+  }
+
+  /**
+   * Map one wire drop into the IR.
+   *
+   * <p>A drop is the machine-readable receipt of a construct that could not be lowered
+   * faithfully. Its impact decides the function's precision: SEMANTICS and STRUCTURE lower it,
+   * VALUE and TYPE do not.
+   */
+  public static TacDrop toDrop(Json.JsonObject wire) {
+    if (wire == null) {
+      return null;
+    }
+    String construct = wire.getString("construct");
+    if (construct == null || construct.isEmpty()) {
+      return null;
+    }
+    TacDrop.Scope scope =
+        "PROGRAM".equals(wire.getString("scope"))
+            ? TacDrop.Scope.PROGRAM
+            : TacDrop.Scope.FUNCTION;
+    return new TacDrop(
+        construct,
+        wire.getString("detail") == null ? "" : wire.getString("detail"),
+        impactOf(wire.getString("impact")),
+        wire.getInt("line", -1),
+        wire.getInt("column", -1),
+        scope);
+  }
+
+  /**
+   * The impact a wire drop carries.
+   *
+   * <p>An impact this build does not know is read as SEMANTICS: that is the impact that lowers
+   * the precision, and reading an unknown impact as harmless would hide a real loss.
+   */
+  private static TacDrop.Impact impactOf(String name) {
+    if (name == null) {
+      return TacDrop.Impact.VALUE;
+    }
+    try {
+      return TacDrop.Impact.valueOf(name);
+    } catch (IllegalArgumentException ex) {
+      return TacDrop.Impact.SEMANTICS;
+    }
   }
 
   /** Map one wire instruction into the IR. */
@@ -168,6 +327,22 @@ public final class SidecarTacMapper {
       kind = TacInstruction.Kind.HAVOC;
     }
 
+    // The binary operator is resolved BEFORE the instruction is built, because
+    // an operator this build does not know makes the whole instruction
+    // unreadable: it used to be read as ADD, which silently turned a
+    // comparison into an addition. "The value is unknown" is a claim about the
+    // ANALYSIS, and that is the honest reading.
+    String binop = wire.getString("binop");
+    org.plumb.tac.ir.BinaryOperator binaryOperator = null;
+    if (binop != null) {
+      try {
+        binaryOperator = org.plumb.tac.ir.BinaryOperator.valueOf(binop);
+      } catch (IllegalArgumentException ex) {
+        binaryOperator = null;
+        kind = TacInstruction.Kind.HAVOC;
+      }
+    }
+
     TacInstruction.Builder builder = TacInstruction.builder(kind);
     builder.dest(toOperand(wire.getObject("dest")));
     builder.lhs1(toOperand(wire.getObject("lhs1")));
@@ -178,6 +353,10 @@ public final class SidecarTacMapper {
     builder.trueLabel(wire.getString("trueLabel"));
     builder.falseLabel(wire.getString("falseLabel"));
     builder.label(wire.getString("label"));
+    builder.ownerType(wire.getString("ownerType"));
+    builder.guard(toGuard(wire.getObject("guard")));
+    builder.labelRef(toLabelRef(wire.getObject("labelRef")));
+    builder.branchRegion(wire.getString("branchRegion"));
     builder.line(wire.getInt("line", -1));
     builder.column(wire.getInt("column", -1));
 
@@ -192,13 +371,8 @@ public final class SidecarTacMapper {
       }
     }
 
-    String binop = wire.getString("binop");
-    if (binop != null) {
-      try {
-        builder.binop(org.plumb.tac.ir.BinaryOperator.valueOf(binop));
-      } catch (IllegalArgumentException ex) {
-        builder.binop(org.plumb.tac.ir.BinaryOperator.ADD);
-      }
+    if (binaryOperator != null) {
+      builder.binop(binaryOperator);
     }
     String unop = wire.getString("unop");
     if (unop != null) {
@@ -224,6 +398,94 @@ public final class SidecarTacMapper {
       builder.args(list);
     }
     return builder.build();
+  }
+
+  /**
+   * Map one wire guard into the IR.
+   *
+   * <p>A guard names the condition a branch tests. It is a statement the
+   * PROGRAM made about its own values, so a rule may use it to drop a finding,
+   * and may never use it to add one.
+   */
+  public static TacGuard toGuard(Json.JsonObject wire) {
+    if (wire == null) {
+      return null;
+    }
+    String kindName = wire.getString("kind");
+    if (kindName == null) {
+      kindName = wire.getString("guardKind");
+    }
+    TacOperand subject = toOperand(wire.getObject("subject"));
+    if (subject == null) {
+      subject = toOperand(wire.getObject("lhs"));
+    }
+    if (kindName == null) {
+      // No kind: if the wire gave a comparison, it is a comparison.
+      if (wire.getObject("rhs") != null || wire.getObject("value") != null) {
+        kindName = "COMPARE";
+      } else {
+        kindName = "TRUTHINESS";
+      }
+    }
+    switch (kindName.toUpperCase(Locale.ROOT)) {
+      case "COMPARE" -> {
+        TacOperand rhs = toOperand(wire.getObject("rhs"));
+        if (rhs == null) {
+          rhs = toOperand(wire.getObject("value"));
+        }
+        org.plumb.tac.ir.BinaryOperator op = null;
+        String opName = wire.getString("op");
+        if (opName != null) {
+          try {
+            op = org.plumb.tac.ir.BinaryOperator.valueOf(opName);
+          } catch (IllegalArgumentException ex) {
+            op = null;
+          }
+        }
+        if (op == null) {
+          op = org.plumb.tac.ir.BinaryOperator.EQ;
+        }
+        return TacGuard.compare(subject, op, rhs);
+      }
+      case "PROPERTY_PRESENCE" -> {
+        String property = wire.getString("property");
+        if (property == null) {
+          property = wire.getString("propertyName");
+        }
+        return TacGuard.propertyPresence(subject, property);
+      }
+      default -> {
+        return TacGuard.truthiness(subject);
+      }
+    }
+  }
+
+  /**
+   * Map one wire label reference into the IR.
+   *
+   * <p>An unrecognized kind reads as {@link TacLabelRef.Kind#OTHER}: the label
+   * still exists and is still named, we simply do not know what it is.
+   */
+  public static TacLabelRef toLabelRef(Json.JsonObject wire) {
+    if (wire == null) {
+      return null;
+    }
+    String name = wire.getString("name");
+    String scopeId = wire.getString("scopeId");
+    String kindName = wire.getString("kind");
+    TacLabelRef.Kind kind = TacLabelRef.Kind.OTHER;
+    if (kindName != null) {
+      for (TacLabelRef.Kind candidate : TacLabelRef.Kind.values()) {
+        if (candidate.name().equalsIgnoreCase(kindName)) {
+          kind = candidate;
+          break;
+        }
+      }
+    }
+    if (name == null && scopeId == null) {
+      return null;
+    }
+    return new TacLabelRef(name, kind, scopeId);
   }
 
   /** Map one wire operand into the IR. */
@@ -269,6 +531,10 @@ public final class SidecarTacMapper {
         case "CHAR" ->
             TacOperand.Const.ofChar(value == null || value.isEmpty() ? '\0' : value.charAt(0));
         case "NULL" -> TacOperand.Const.ofNull();
+        // A regular expression literal is not a string literal, but keeping
+        // its text is strictly more informative than dropping it, and the
+        // engine has no separate notion of a pattern.
+        case "REGEX" -> TacOperand.Const.ofString(value == null ? "" : value);
         default -> TacOperand.Const.ofString(value == null ? "" : value);
       };
     } catch (NumberFormatException ex) {
@@ -276,6 +542,55 @@ public final class SidecarTacMapper {
       // value is unknown, not silently zero.
       return TacOperand.Const.ofString(value == null ? "" : value);
     }
+  }
+
+  /**
+   * The drops a wire function carries.
+   *
+   * <p>A drop is the machine-readable receipt of a loss. The engine derives
+   * the function's precision from it, so a front end that drops it loses the
+   * only record that the function was not fully understood.
+   */
+  public static List<TacDrop> toDrops(Json.JsonArray wire) {
+    List<TacDrop> drops = new ArrayList<>();
+    if (wire == null) {
+      return drops;
+    }
+    for (int i = 0; i < wire.size(); i++) {
+      TacDrop drop = toDrop(wire.getObject(i));
+      if (drop != null) {
+        drops.add(drop);
+      }
+    }
+    return drops;
+  }
+
+  /**
+   * The precision a wire function's drops imply.
+   *
+   * <p>The sidecar's own claim and the drops are COMBINED, and the worse of
+   * the two wins. A sidecar that claims SOURCE_FULL while recording a
+   * SEMANTICS drop would be hiding a real loss, and the combination is what
+   * stops it.
+   *
+   * @param statedName the precision the sidecar stated, or {@code null} when it
+   *     stated none
+   * @param drops the drops the sidecar recorded
+   * @return the precision the function actually has
+   */
+  public static IrPrecision combinePrecision(String statedName, List<TacDrop> drops) {
+    IrPrecision stated = IrPrecision.SOURCE_FULL;
+    if (statedName != null) {
+      try {
+        stated = IrPrecision.valueOf(statedName);
+      } catch (IllegalArgumentException ex) {
+        // A precision this build does not know. The safest reading of an unknown
+        // precision is the one that loses the most: claiming full precision would
+        // hide the loss.
+        stated = IrPrecision.SOURCE_DEGRADED;
+      }
+    }
+    return TacFunction.combine(stated, drops);
   }
 
   /** Map one wire type into the IR. */
@@ -287,27 +602,110 @@ public final class SidecarTacMapper {
     if (kindName == null) {
       return TacType.UNKNOWN;
     }
+    TacType base;
     try {
-      return switch (kindName) {
-        case "BOOLEAN" -> TacType.BOOLEAN;
-        case "BYTE" -> TacType.BYTE;
-        case "SHORT" -> TacType.SHORT;
-        case "CHAR" -> TacType.CHAR;
-        case "INT" -> TacType.INT;
-        case "LONG" -> TacType.LONG;
-        case "FLOAT" -> TacType.FLOAT;
-        case "DOUBLE" -> TacType.DOUBLE;
-        case "DECIMAL" -> TacType.DECIMAL;
-        case "STRING" -> TacType.STRING;
-        case "NULL" -> TacType.NULL;
-        case "VOID" -> TacType.VOID;
-        case "CLASS" ->
-            TacType.ofClass(wire.getString("name") == null ? "" : wire.getString("name"));
-        case "ARRAY" -> TacType.arrayOf(toType(wire.getObject("component")));
-        default -> TacType.UNKNOWN;
-      };
+      base =
+          switch (kindName) {
+            case "BOOLEAN" -> TacType.BOOLEAN;
+            case "BYTE" -> TacType.BYTE;
+            case "SHORT" -> TacType.SHORT;
+            case "CHAR" -> TacType.CHAR;
+            case "INT" -> TacType.INT;
+            case "LONG" -> TacType.LONG;
+            case "FLOAT" -> TacType.FLOAT;
+            case "DOUBLE" -> TacType.DOUBLE;
+            case "DECIMAL" -> TacType.DECIMAL;
+            case "STRING" -> TacType.STRING;
+            case "NULL" -> TacType.NULL;
+            case "VOID" -> TacType.VOID;
+            case "CLASS" ->
+                TacType.ofClass(wire.getString("name") == null ? "" : wire.getString("name"));
+            case "ARRAY" -> TacType.arrayOf(toType(wire.getObject("component")));
+            // An arbitrary-precision integer has no width, so the IR has no
+            // kind for it. UNKNOWN plus an unbounded domain says exactly what
+            // is true: "a number of unknown width, and not bounded".
+            case "BIGINT" -> TacType.UNKNOWN.withDomain(TacValueDomain.unbounded());
+            default -> TacType.UNKNOWN;
+          };
     } catch (IllegalArgumentException ex) {
       return TacType.UNKNOWN;
+    }
+
+    // The union members. A union is kept as the SET of types it is made of:
+    // splicing the member names into one string produces a type name that
+    // matches nothing in the program.
+    Json.JsonArray members = wire.getArray("unionMembers");
+    if (members != null && members.size() > 0) {
+      List<TacType> union = new ArrayList<>();
+      for (int i = 0; i < members.size(); i++) {
+        union.add(toType(members.getObject(i)));
+      }
+      base = base.withUnionMembers(union);
+    }
+
+    // Nullability. Only a reference can be null, so the flag is read for
+    // references only -- otherwise a primitive would stop being equal to the
+    // IR's own constant for it.
+    Json.Value nullableValue = wire.get("nullable");
+    if (nullableValue != null && base.isReference()) {
+      base = wire.getBoolean("nullable", true) ? base.nullable() : base.nonNull();
+    }
+
+    // The value domain: what the solver may assume about the numbers.
+    TacValueDomain domain = toDomain(wire.getObject("domain"));
+    if (domain != null) {
+      base = base.withDomain(domain);
+    }
+    return base;
+  }
+
+  /**
+   * Map one wire value domain into the IR.
+   *
+   * <p>The domain is a statement about what the SOLVER may assume, never a
+   * licence to assume more than it says: an integral or unbounded domain is
+   * exact under the engine's integer model, a floating-point one is not.
+   *
+   * <p>Three spellings of the discriminator are accepted ({@code domain},
+   * {@code kind}, and the case-insensitive form of both) because the sidecars
+   * were written against the contract at different times.
+   */
+  public static TacValueDomain toDomain(Json.JsonObject wire) {
+    if (wire == null) {
+      return null;
+    }
+    String name = wire.getString("domain");
+    if (name == null) {
+      name = wire.getString("kind");
+    }
+    if (name == null) {
+      return null;
+    }
+    int bits = wire.getInt("bits", -1);
+    int exponentBits = wire.getInt("exponentBits", -1);
+    int scale = wire.getInt("scale", -1);
+    switch (name.toUpperCase(Locale.ROOT)) {
+      case "INTEGRAL" -> {
+        return TacValueDomain.integral(bits < 0 ? 32 : bits);
+      }
+      case "FLOATING" -> {
+        // The wire gives the SIGNIFICAND width in `bits` and the exponent
+        // width separately; the IR takes the exponent width first.
+        return TacValueDomain.floating(
+            exponentBits < 0 ? 11 : exponentBits, bits < 0 ? 53 : bits);
+      }
+      case "FIXED_POINT" -> {
+        return TacValueDomain.fixedPoint(bits < 0 ? 128 : bits, scale < 0 ? 0 : scale);
+      }
+      case "UNBOUNDED" -> {
+        return TacValueDomain.unbounded();
+      }
+      case "DYNAMIC" -> {
+        return TacValueDomain.dynamic();
+      }
+      default -> {
+        return null;
+      }
     }
   }
 

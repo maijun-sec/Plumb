@@ -173,7 +173,13 @@ def translate(request):
         **stamp(),
         "op": Op.TRANSLATE,
         "ok": True,
-        "diagnostics": [],
+        # The capabilities the sender declares. The engine reads the new
+        # channels because the sidecar SAYS it has them, not because a key
+        # happens to be there.
+        "capabilities": ["drops", "guards", "tryRegions", "annotations", "domains", "labels", "types"],
+        "problems": [],
+        "programDrops": [],
+        "types": translator.type_declarations,
         "functions": functions,
     }
 

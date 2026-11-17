@@ -33,16 +33,16 @@ import java.util.List;
  * packages depend on each other, so translating one of them alone would leave every cross-package
  * call unresolved -- and an unresolved call is a missing finding, not a missing precision.
  *
- * <p>So the profile carries <b>every</b> package the build compiled, and the frontend opens them
- * as one project. This is the same shape the C# frontend uses: one compilation for the whole
- * project, reused for every file.
+ * <p>So the profile carries <b>every</b> package the build compiled, and the frontend opens them as
+ * one project. This is the same shape the C# frontend uses: one compilation for the whole project,
+ * reused for every file.
  *
  * @param packages the packages the build compiled
  * @param moduleRoots the roots of the modules the packages belong to, for discovery
  * @param linkedPackages the import paths the linker put into the binary, or empty
  * @param binary the binary the build produced, or null
- * @param lostExportData the import configurations the build named but that could no longer be
- *     read, or empty
+ * @param lostExportData the import configurations the build named but that could no longer be read,
+ *     or empty
  * @param goroot the Go toolchain's root directory, or null when the build did not name one
  */
 public record GoProjectProfile(

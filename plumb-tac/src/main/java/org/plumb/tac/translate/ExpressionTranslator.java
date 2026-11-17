@@ -55,6 +55,7 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.Type;
 import java.util.ArrayList;
 import java.util.List;
+import org.plumb.tac.ir.TacDrop;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacType;
@@ -87,7 +88,17 @@ public final class ExpressionTranslator {
    * statement in a switch <i>statement</i> -- that is a compile error in Java, so the lowering
    * simply has nothing to assign to.
    */
-  private final ThreadLocal<TacOperand.TacVar> yieldTarget = new ThreadLocal<>();
+  /**
+   * The switch EXPRESSION in scope: the temp its result is written to, and the label a {@code
+   * yield} jumps to.
+   *
+   * <p>The end label is part of the context because a {@code yield} does not only assign -- it
+   * LEAVES the switch expression. Without the jump the execution fell into the next arm, so every
+   * arm ran and the expression's value was whichever arm wrote last.
+   */
+  record YieldTarget(TacOperand.TacVar temp, String endLabel) {}
+
+  private final ThreadLocal<YieldTarget> yieldTarget = new ThreadLocal<>();
 
   ExpressionTranslator(TacTranslator owner) {
     this.owner = owner;
@@ -101,19 +112,40 @@ public final class ExpressionTranslator {
    *     expression in scope"
    * @return the previous target
    */
-  TacOperand.TacVar setYieldTarget(TacOperand.TacVar target) {
-    TacOperand.TacVar prev = yieldTarget.get();
+  /**
+   * Publishes the switch expression's result temp and the label a {@code yield} jumps to.
+   *
+   * @return the context that was in scope before, so it can be restored
+   */
+  YieldTarget setYieldTarget(TacOperand.TacVar target, String endLabel) {
+    YieldTarget prev = yieldTarget.get();
     if (target == null) {
       yieldTarget.remove();
     } else {
-      yieldTarget.set(target);
+      yieldTarget.set(new YieldTarget(target, endLabel));
     }
     return prev;
   }
 
+  /** Restores the switch-expression context that was in scope before. */
+  void restoreYieldTarget(YieldTarget previous) {
+    if (previous == null) {
+      yieldTarget.remove();
+    } else {
+      yieldTarget.set(previous);
+    }
+  }
+
   /** The current {@code yield} target, or {@code null}. */
   TacOperand.TacVar yieldTarget() {
-    return yieldTarget.get();
+    YieldTarget current = yieldTarget.get();
+    return current == null ? null : current.temp();
+  }
+
+  /** The label a {@code yield} jumps to, or {@code null} when there is none. */
+  String yieldEndLabel() {
+    YieldTarget current = yieldTarget.get();
+    return current == null ? null : current.endLabel();
   }
 
   public ExpressionResult translate(Expression expr, TacBuilder b) {
@@ -167,7 +199,28 @@ public final class ExpressionTranslator {
       return new ExpressionResult(TacOperand.Const.ofLong(parseJavaLong(raw)), TacType.LONG);
     }
     if (expr instanceof CharLiteralExpr cle) {
-      return new ExpressionResult(TacOperand.Const.ofChar(cle.getValue().charAt(0)), TacType.CHAR);
+      String decoded = decodeJavaEscapes(cle.getValue());
+      if (decoded.isEmpty()) {
+        // A char literal with no content: there is no character to take. Say so rather
+        // than throwing on the first character of an empty string.
+        TacOperand.TacVar havoc = b.newTemp(TacType.UNKNOWN);
+        b.emit(
+            TacInstruction.builder(TacInstruction.Kind.HAVOC)
+                .dest(havoc)
+                .line(TacTranslator.nodeLine(cle))
+                .column(TacTranslator.nodeColumn(cle))
+                .build());
+        b.reportUnhandled(
+            "CharLiteralExpr", TacTranslator.nodeLine(cle), TacTranslator.nodeColumn(cle));
+        b.reportDrop(
+            "java.literal.char.empty",
+            "character literal with no content",
+            TacDrop.Impact.VALUE,
+            TacTranslator.nodeLine(cle),
+            TacTranslator.nodeColumn(cle));
+        return new ExpressionResult(havoc, TacType.UNKNOWN);
+      }
+      return new ExpressionResult(TacOperand.Const.ofChar(decoded.charAt(0)), TacType.CHAR);
     }
     if (expr instanceof DoubleLiteralExpr dle) {
       String raw = dle.getValue();
@@ -180,7 +233,8 @@ public final class ExpressionTranslator {
           TacOperand.Const.ofDouble(Double.parseDouble(raw)), TacType.DOUBLE);
     }
     if (expr instanceof StringLiteralExpr sle) {
-      return new ExpressionResult(TacOperand.Const.ofString(sle.getValue()), TacType.STRING);
+      return new ExpressionResult(
+          TacOperand.Const.ofString(decodeJavaEscapes(sle.getValue())), TacType.STRING);
     }
     if (expr instanceof com.github.javaparser.ast.expr.TextBlockLiteralExpr tble) {
       // A text block is a string literal spelled with triple quotes (Java 15+).
@@ -335,28 +389,116 @@ public final class ExpressionTranslator {
     return new ExpressionResult(dest, TacType.UNKNOWN);
   }
 
+  /**
+   * Translate a unary expression.
+   *
+   * <p>Three shapes are distinguished here, and the difference is load-bearing:
+   *
+   * <ul>
+   *   <li><b>Unary plus</b> ({@code +x}) is the IDENTITY of its operand. In Java it is not a
+   *       numeric operation -- the operand's value is unchanged -- so it lowers to a plain MOVE. It
+   *       used to fall through to the "unknown operator" branch, which produced a null constant:
+   *       every tainted value that passed through a unary plus was silently dropped.
+   *   <li><b>Prefix / postfix increment and decrement</b> MUTATE their operand. The engine's
+   *       UNARYOP handler writes the new value into {@code dest} and leaves {@code lhs1} alone (see
+   *       {@code TaintedCheckerBase}'s UNARYOP -&gt; propagateMOVE, and {@code
+   *       BoundaryConstraintChecker}'s propagateUnaryop, which only records a range for {@code
+   *       dest}). Storing the new value back into the mutated variable is therefore the
+   *       TRANSLATOR's job. Without it {@code i++} left {@code i} unchanged, so every later read of
+   *       {@code i} saw the pre-increment value and every loop counter ran one step short.
+   *   <li><b>Negation / complement</b> ({@code -x}, {@code !x}, {@code ~x}) are pure and need no
+   *       write-back.
+   * </ul>
+   *
+   * <p>Prefix and postfix differ in the VALUE the expression evaluates to, not in the value stored
+   * back: {@code ++x} evaluates to the new value, {@code x++} evaluates to the old one. The postfix
+   * case therefore snapshots the old value into a temporary BEFORE the write-back -- after the
+   * write-back the operand itself holds the new value, so returning the operand would return the
+   * wrong number.
+   */
   private ExpressionResult translateUnary(UnaryExpr ue, TacBuilder b) {
     UnaryOperator pre = TacTranslator.mapPreIncDec(ue.getOperator());
     UnaryOperator post = TacTranslator.mapPostIncDec(ue.getOperator());
     UnaryOperator simple = TacTranslator.mapUnary(ue.getOperator());
 
+    int line = TacTranslator.nodeLine(ue);
+    int column = TacTranslator.nodeColumn(ue);
+
+    // Unary plus is the identity: `+x` has the value of `x` and changes nothing.
+    if (ue.getOperator() == UnaryExpr.Operator.PLUS) {
+      ExpressionResult inner = translate(ue.getExpression(), b);
+      TacOperand.TacVar dest = b.newTemp(inner.type());
+      b.emit(
+          TacInstruction.builder(TacInstruction.Kind.MOVE)
+              .dest(dest)
+              .lhs1(inner.operand())
+              .line(line)
+              .column(column)
+              .build());
+      return new ExpressionResult(dest, inner.type());
+    }
+
     if (pre != null || post != null || simple != null) {
       ExpressionResult inner = translate(ue.getExpression(), b);
-      TacOperand.TacVar dest =
-          (pre != null || simple != null) ? b.newTemp(TacType.UNKNOWN) : b.newTemp(TacType.UNKNOWN);
+
+      if (simple != null && pre == null && post == null) {
+        // Pure operator: negate / complement. No write-back.
+        TacOperand.TacVar dest = b.newTemp(inner.type());
+        b.emit(
+            TacInstruction.builder(TacInstruction.Kind.UNARYOP)
+                .dest(dest)
+                .unop(simple)
+                .lhs1(inner.operand())
+                .line(line)
+                .column(column)
+                .build());
+        return new ExpressionResult(dest, inner.type());
+      }
+
+      // Mutating operator: the operand's value changes.
+      // The engine only writes the new value into `dest`; storing it back into
+      // the operand is done here.
+      TacOperand.TacVar oldValue = null;
+      if (post != null) {
+        // Postfix evaluates to the OLD value. Snapshot it before the write-back.
+        oldValue = b.newTemp(inner.type());
+        b.emit(
+            TacInstruction.builder(TacInstruction.Kind.MOVE)
+                .dest(oldValue)
+                .lhs1(inner.operand())
+                .line(line)
+                .column(column)
+                .build());
+      }
+      TacOperand.TacVar dest = b.newTemp(inner.type());
       b.emit(
           TacInstruction.builder(TacInstruction.Kind.UNARYOP)
               .dest(dest)
-              .unop(pre != null ? pre : (post != null ? post : simple))
+              .unop(pre != null ? pre : post)
               .lhs1(inner.operand())
-              .line(TacTranslator.nodeLine(ue))
-              .column(TacTranslator.nodeColumn(ue))
+              .line(line)
+              .column(column)
               .build());
-      return new ExpressionResult(dest, TacType.UNKNOWN);
+      writeLhs(ue.getExpression(), dest, b, line, column);
+      return new ExpressionResult(post != null ? oldValue : dest, inner.type());
     }
-    // Unknown unary: log and return null.
-    LOG.debug("Unknown unary operator: {}", ue.getOperator());
-    return new ExpressionResult(TacOperand.Const.ofNull(), TacType.UNKNOWN);
+    // Unknown unary operator. The value is UNKNOWN -- and it must not be a NULL
+    // constant: "the value is null" is a claim about the PROGRAM, while "the
+    // value is unknown" is a claim about the ANALYSIS, and only the second one
+    // is true here. A NULL constant would assert a fact the analyser does not
+    // have, and every downstream checker would believe it.
+    String opName = ue.getOperator().name();
+    TacOperand.TacVar havoc = b.newTemp(TacType.UNKNOWN);
+    b.emit(
+        TacInstruction.builder(TacInstruction.Kind.HAVOC)
+            .dest(havoc)
+            .line(line)
+            .column(column)
+            .build());
+    b.reportUnhandled("UnaryExpr." + opName, line, column);
+    b.reportDrop(
+        "java.unary.unknown", "unary operator " + opName, TacDrop.Impact.VALUE, line, column);
+    return new ExpressionResult(havoc, TacType.UNKNOWN);
   }
 
   private ExpressionResult translateAssign(AssignExpr ae, TacBuilder b) {
@@ -517,7 +659,7 @@ public final class ExpressionTranslator {
    * class name is upper-case by construction (a Java class name starts with an upper-case letter),
    * which is what the engine's class-reference recognition looks for.
    */
-  private TacOperand classIdentityReceiver(String className, TacBuilder b) {
+  TacOperand classIdentityReceiver(String className, TacBuilder b) {
     TacOperand.TacVar thisVar = null;
     for (TacOperand.TacVar v : b.locals()) {
       if ("this".equals(v.name())) {
@@ -584,6 +726,24 @@ public final class ExpressionTranslator {
       argOps.add(r.operand());
     }
     String receiverTypeName = null;
+    if (!mce.getScope().isPresent()) {
+      // An UNQUALIFIED call: `helper(x)`. Its receiver is the implicit `this`.
+      //
+      // The IR's convention is that args[0] is ALWAYS the receiver slot: an instance call
+      // puts the receiver there, and a static call puts a constant naming the type there.
+      // An unqualified call had no receiver in args[0] at all, so every user argument sat
+      // one slot too low -- and the engine reads the user arguments at index+1, so the
+      // taint of one argument was read as the taint of the next, and the last argument of
+      // every unqualified call was not read at all.
+      //
+      // The receiver is added only when the call is KNOWN to be an instance method: a static
+      // helper called without a scope must not get a receiver, and a call that cannot be
+      // classified keeps the shape it had.
+      TacOperand.TacVar receiver = implicitReceiverFor(mce, b);
+      if (receiver != null) {
+        argOps.add(0, receiver);
+      }
+    }
     if (mce.getScope().isPresent()) {
       Expression scopeExpr = mce.getScope().get();
       // A scope that names a CLASS is a static call: `String.valueOf(x)`,
@@ -617,6 +777,77 @@ public final class ExpressionTranslator {
         receiverTypeName = receiverTypeName(scopeExpr, scope);
       }
     }
+    // VARARGS. The callee signature must name the arity the CALLEE declares,
+    // not the number of arguments the call site shows, and the arguments past
+    // the callee's fixed parameters have to be packed into the array it
+    // declares.
+    //
+    // Without this, `log.info("x", tainted)` against `info(String, Object...)`
+    // produced a signature of `/2` where the callee declares `/2` but the
+    // arguments were `("x", tainted)` -- so the engine read the tainted value
+    // as the varargs ARRAY, and the array's own elements were never tracked.
+    int calleeArity = -1;
+    boolean variadic = false;
+    TacType varargComponent = null;
+    try {
+      var resolved = mce.resolve();
+      calleeArity = resolved.getNumberOfParams();
+      if (calleeArity > 0) {
+        // The VARIADIC parameter is the last one, and it is the parameter
+        // itself that says whether it is variadic.
+        var last = resolved.getParam(calleeArity - 1);
+        variadic = last.isVariadic();
+        if (variadic) {
+          TacType mapped = TypeMapper.mapResolved(last.getType());
+          if (mapped.kind() == TacType.Kind.ARRAY) {
+            varargComponent = mapped.arrayComponent();
+          }
+        }
+      }
+    } catch (RuntimeException ignore) {
+      // The callee is not on the symbol solver's classpath -- it is declared in
+      // the scanned source. Its declared arity is unknown, so the call keeps
+      // the arity the source shows.
+    }
+    if (variadic && calleeArity > 0) {
+      int userArgCount = argResults.size();
+      // The receiver sits in slot 0 when there is one.
+      int receiverSlots = argOps.size() - userArgCount;
+      int fixedCount = calleeArity - 1;
+      int extraCount = userArgCount - fixedCount;
+      // A single remaining argument may already BE the array.
+      boolean alreadyAnArray = false;
+      if (extraCount == 1) {
+        TacType last = argResults.get(userArgCount - 1).type();
+        alreadyAnArray = last != null && last.kind() == TacType.Kind.ARRAY;
+      }
+      if (extraCount >= 0 && !alreadyAnArray) {
+        TacType component = varargComponent == null ? TacType.UNKNOWN : varargComponent;
+        TacOperand.TacVar array = b.newTemp(TacType.arrayOf(component));
+        b.emit(
+            TacInstruction.builder(TacInstruction.Kind.NEWARRAY)
+                .dest(array)
+                .ctorType(component)
+                .lhs1(TacOperand.Const.ofInt(extraCount))
+                .line(TacTranslator.nodeLine(mce))
+                .column(TacTranslator.nodeColumn(mce))
+                .build());
+        for (int i = 0; i < extraCount; i++) {
+          b.emit(
+              TacInstruction.builder(TacInstruction.Kind.ARRAYSTORE)
+                  .lhs1(array)
+                  .lhs2(TacOperand.Const.ofInt(i))
+                  .dest(argOps.get(receiverSlots + fixedCount + i))
+                  .line(TacTranslator.nodeLine(mce))
+                  .column(TacTranslator.nodeColumn(mce))
+                  .build());
+        }
+        List<TacOperand> packed = new ArrayList<>(argOps.subList(0, receiverSlots + fixedCount));
+        packed.add(array);
+        argOps = packed;
+      }
+    }
+
     // A functional-interface application whose receiver holds a method reference is
     // really a call to the referenced method:
     //
@@ -689,8 +920,8 @@ public final class ExpressionTranslator {
       }
     }
     TacOperand.TacVar dest = b.newTemp(returnType);
-    String sig =
-        TacTranslator.methodSig(receiverTypeName, mce.getNameAsString(), mce.getArguments().size());
+    int signatureArity = calleeArity > 0 ? calleeArity : mce.getArguments().size();
+    String sig = TacTranslator.methodSig(receiverTypeName, mce.getNameAsString(), signatureArity);
     b.emit(
         TacInstruction.builder(TacInstruction.Kind.CALL)
             .dest(dest)
@@ -700,6 +931,40 @@ public final class ExpressionTranslator {
             .line(TacTranslator.nodeLine(mce))
             .build());
     return new ExpressionResult(dest, returnType);
+  }
+
+  /**
+   * The receiver an unqualified call has to pass: the implicit {@code this}.
+   *
+   * <p>Null when the call is a static one, and null when it cannot be classified either. The
+   * difference matters: a wrong receiver shifts every argument by one, while a missing one only
+   * affects a call that could not be classified anyway.
+   */
+  private TacOperand.TacVar implicitReceiverFor(
+      com.github.javaparser.ast.expr.MethodCallExpr mce, TacBuilder b) {
+    String name = mce.getNameAsString();
+    Boolean staticCall = null;
+    try {
+      staticCall = mce.resolve().isStatic();
+    } catch (Exception ignore) {
+      // The callee is not on the symbol solver's classpath -- it is declared in the scanned
+      // source. The translator's own member table answers instead.
+    }
+    if (staticCall == null) {
+      String current = owner.currentClassName();
+      if (!current.isEmpty()) {
+        if (owner.isStaticMethodOf(current, name)) {
+          staticCall = Boolean.TRUE;
+        } else if (owner.isInstanceMethodOf(current, name)) {
+          staticCall = Boolean.FALSE;
+        }
+      }
+    }
+    if (staticCall == null || staticCall) return null;
+    for (TacOperand.TacVar v : b.locals()) {
+      if ("this".equals(v.name())) return v;
+    }
+    return null;
   }
 
   /**
@@ -1029,7 +1294,7 @@ public final class ExpressionTranslator {
     return fqn;
   }
 
-  private static String receiverTypeName(Expression scopeExpr, ExpressionResult scope) {
+  static String receiverTypeName(Expression scopeExpr, ExpressionResult scope) {
     // Prefer the FQN type of the receiver operand (e.g.
     // "java.sql.Statement") so the sink-families.yaml
     // FQN patterns can match. The TacVar type comes from
@@ -1239,7 +1504,7 @@ public final class ExpressionTranslator {
     // bare short-form ctors silently never match.
     // We keep `textual` (the source-typed form) for
     // ctorType to preserve the type-argument shape.
-    String ctorSigName = TypeMapper.resolveWellKnownFqnStatic(textual);
+    String ctorSigName = TypeMapper.resolveWellKnownFqnStatic(erasedTypeName(oce.getType()));
     TacType type = TypeMapper.map(oce.getType());
     TacOperand.TacVar dest = b.newTemp(type);
     b.emit(
@@ -1252,6 +1517,21 @@ public final class ExpressionTranslator {
             .line(TacTranslator.nodeLine(oce))
             .build());
     return new ExpressionResult(dest, type);
+  }
+
+  /**
+   * The type name without its type arguments: {@code ArrayList<String>} becomes {@code ArrayList}.
+   *
+   * <p>A constructor belongs to the ERASED type -- {@code new ArrayList<String>()} calls {@code
+   * java.util.ArrayList.<init>/0}; there is no type called {@code ArrayList<String>}. The known-FQN
+   * table matches whole strings, so the textual form fell through to its default branch and
+   * produced a callee signature no rule could match.
+   */
+  private static String erasedTypeName(com.github.javaparser.ast.type.Type type) {
+    if (type instanceof com.github.javaparser.ast.type.ClassOrInterfaceType cit) {
+      return cit.getNameWithScope();
+    }
+    return type == null ? "" : type.asString();
   }
 
   private ExpressionResult translateNewArray(ArrayCreationExpr ace, TacBuilder b) {
@@ -1289,21 +1569,70 @@ public final class ExpressionTranslator {
               .line(TacTranslator.nodeLine(ace))
               .build());
     } else {
-      // Multi-dim without initializer: emit nested NEWARRAY.
-      TacOperand.TacVar outer = dest;
-      for (int lvl = 0; lvl < ace.getLevels().size(); lvl++) {
-        ExpressionResult size = translate(ace.getLevels().get(lvl).getDimension().orElseThrow(), b);
+      // Multi-dim without initializer: `new int[a][b]` is an array of `a`
+      // ROWS, each row an array of `b` ints.
+      //
+      // The rows have to be STORED into the array above them. Without the
+      // store the outer array held null rows, so every read of one of its
+      // elements produced an unknown value -- and an unknown value is not a
+      // tainted value, so a tainted element of the array was reported as
+      // clean.
+      //
+      // The row count is a run-time value, so the rows cannot be unrolled. One
+      // row per level is materialised and stored at index 0; the remaining
+      // indices stay unset. That is recorded as a STRUCTURE drop, because the
+      // array's contents are not fully modelled.
+      var levels = ace.getLevels();
+      int depth = levels.size();
+      // The element type of the array at each level: the outermost holds rows,
+      // the innermost holds the elements.
+      TacType[] elementAt = new TacType[depth];
+      TacType element = component;
+      for (int i = depth - 1; i >= 0; i--) {
+        elementAt[i] = element;
+        element = TacType.arrayOf(element);
+      }
+      TacType outerType = TacType.arrayOf(elementAt[0]);
+      TacOperand.TacVar outer = b.newTemp(outerType);
+      ExpressionResult outerSize = translate(levels.get(0).getDimension().orElseThrow(), b);
+      b.emit(
+          TacInstruction.builder(TacInstruction.Kind.NEWARRAY)
+              .dest(outer)
+              .ctorType(elementAt[0])
+              .lhs1(outerSize.operand())
+              .line(TacTranslator.nodeLine(ace))
+              .column(TacTranslator.nodeColumn(ace))
+              .build());
+      TacOperand parent = outer;
+      for (int i = 1; i < depth; i++) {
+        ExpressionResult size = translate(levels.get(i).getDimension().orElseThrow(), b);
+        TacOperand.TacVar row = b.newTemp(TacType.arrayOf(elementAt[i]));
         b.emit(
             TacInstruction.builder(TacInstruction.Kind.NEWARRAY)
-                .dest(outer)
-                .ctorType(component)
+                .dest(row)
+                .ctorType(elementAt[i])
                 .lhs1(size.operand())
                 .line(TacTranslator.nodeLine(ace))
+                .column(TacTranslator.nodeColumn(ace))
                 .build());
-        if (lvl + 1 < ace.getLevels().size()) {
-          outer = b.newTemp(TacType.arrayOf(component));
-        }
+        b.emit(
+            TacInstruction.builder(TacInstruction.Kind.ARRAYSTORE)
+                .lhs1(parent)
+                .lhs2(TacOperand.Const.ofInt(0))
+                .dest(row)
+                .line(TacTranslator.nodeLine(ace))
+                .column(TacTranslator.nodeColumn(ace))
+                .build());
+        parent = row;
       }
+      b.reportDrop(
+          "java.array.multidim.rows",
+          "a multi-dimensional array is materialised with one row per level, stored at index 0; "
+              + "the remaining indices are not populated",
+          org.plumb.tac.ir.TacDrop.Impact.STRUCTURE,
+          TacTranslator.nodeLine(ace),
+          TacTranslator.nodeColumn(ace));
+      return new ExpressionResult(outer, outerType);
     }
     return new ExpressionResult(dest, arrayType);
   }
@@ -1397,15 +1726,40 @@ public final class ExpressionTranslator {
   private ExpressionResult translateArrayAccess(ArrayAccessExpr aae, TacBuilder b) {
     ExpressionResult arr = translate(aae.getName(), b);
     ExpressionResult idx = translate(aae.getIndex(), b);
-    TacOperand.TacVar dest = b.newTemp(TacType.UNKNOWN);
+    TacType component = arrayElementType(aae, arr);
+    TacOperand.TacVar dest = b.newTemp(component);
     b.emit(
         TacInstruction.builder(TacInstruction.Kind.ARRAYLOAD)
             .dest(dest)
             .lhs1(arr.operand())
             .lhs2(idx.operand())
             .line(TacTranslator.nodeLine(aae))
+            .column(TacTranslator.nodeColumn(aae))
             .build());
-    return new ExpressionResult(dest, TacType.UNKNOWN);
+    return new ExpressionResult(dest, component);
+  }
+
+  /**
+   * The type of the elements an array access yields.
+   *
+   * <p>The declared element type is preferred; the component type of the array operand is the
+   * fallback for the cases where the declaration is not resolvable (a local whose type was
+   * inferred, a field whose type the solver does not know).
+   */
+  private static TacType arrayElementType(ArrayAccessExpr aae, ExpressionResult arr) {
+    try {
+      TacType declared = TypeMapper.mapResolved(aae.calculateResolvedType());
+      if (declared != null && declared.kind() != TacType.Kind.UNKNOWN) {
+        return declared;
+      }
+    } catch (RuntimeException | StackOverflowError ignore) {
+      // The symbol solver does not know this expression: fall through.
+    }
+    TacType arrayType = arr.type();
+    if (arrayType != null && arrayType.kind() == TacType.Kind.ARRAY) {
+      return arrayType.arrayComponent();
+    }
+    return TacType.UNKNOWN;
   }
 
   private ExpressionResult translateFieldAccess(FieldAccessExpr fae, TacBuilder b) {
@@ -1430,16 +1784,126 @@ public final class ExpressionTranslator {
             folded, TacType.INT.equals(folded.type()) ? TacType.INT : TacType.LONG);
       }
     }
+    // A scope that names a TYPE is a STATIC field read, not an instance field
+    // read: `System.out`, `Integer.MAX_VALUE`, `java.lang.System.out`.
+    //
+    // Java does not allow an instance field to be read through a type name, so
+    // a type scope means the field is static. Translating the scope as a
+    // VALUE produced a chain of ghost FIELDLOADs -- `System.out` became
+    // `this.System.out` and `java.lang.String` became `this.java.lang.String`
+    // -- fields that exist in no program, read off a receiver that is not
+    // there. The static field is now read off the CLASS, and the owner is
+    // recorded, so a rule can tell whose field it is.
+    String scopeFqn = typeScopeFqn(fae.getScope(), b);
+    if (scopeFqn != null) {
+      TacOperand receiver = classIdentityReceiver(scopeFqn, b);
+      if (receiver == null) {
+        // No `this` in scope (a static context): the class itself is the
+        // receiver. This is the same shape a static CALL uses.
+        receiver = TacOperand.Const.ofString(scopeFqn);
+      }
+      TacType fieldType = declaredFieldType(fae);
+      TacOperand.TacVar staticDest = b.newTemp(fieldType);
+      b.emit(
+          TacInstruction.builder(TacInstruction.Kind.FIELDLOAD)
+              .dest(staticDest)
+              .lhs1(receiver)
+              .fieldName(fae.getNameAsString())
+              .ownerType(scopeFqn)
+              .line(TacTranslator.nodeLine(fae))
+              .column(TacTranslator.nodeColumn(fae))
+              .build());
+      return new ExpressionResult(staticDest, fieldType);
+    }
+
     ExpressionResult scope = translate(fae.getScope(), b);
-    TacOperand.TacVar dest = b.newTemp(TacType.UNKNOWN);
+    TacType fieldType = declaredFieldType(fae);
+    TacOperand.TacVar dest = b.newTemp(fieldType);
     b.emit(
         TacInstruction.builder(TacInstruction.Kind.FIELDLOAD)
             .dest(dest)
             .lhs1(scope.operand())
             .fieldName(fae.getNameAsString())
+            .ownerType(receiverTypeName(fae.getScope(), scope))
             .line(TacTranslator.nodeLine(fae))
+            .column(TacTranslator.nodeColumn(fae))
             .build());
-    return new ExpressionResult(dest, TacType.UNKNOWN);
+    return new ExpressionResult(dest, fieldType);
+  }
+
+  /**
+   * The FQN of the TYPE a scope names, or {@code null} when the scope names a value.
+   *
+   * <p>A scope is a type reference when it is a bare name that the well-known table resolves
+   * ({@code System}), or a dotted chain whose prefix resolves ({@code java.lang.System}). A name
+   * that is a local, a parameter or a field of the enclosing class is a VALUE, whatever it is
+   * spelled like.
+   */
+  static String typeScopeFqn(Expression scopeExpr, TacBuilder b) {
+    if (scopeExpr instanceof FieldAccessExpr outer) {
+      String text = outer.toString();
+      String direct = TypeMapper.resolveWellKnownFqnStatic(text);
+      if (direct != null && !direct.equals(text)) {
+        return direct;
+      }
+      String prefix = typeScopeFqn(outer.getScope(), b);
+      if (prefix != null) {
+        String candidate = prefix + "." + outer.getNameAsString();
+        String resolved = TypeMapper.resolveWellKnownFqnStatic(candidate);
+        if (resolved != null && !resolved.equals(candidate)) {
+          return resolved;
+        }
+      }
+      return null;
+    }
+    if (!(scopeExpr instanceof NameExpr ne)) {
+      return null;
+    }
+    String text = ne.getNameAsString();
+    if (text == null || text.isEmpty()) {
+      return null;
+    }
+    // A local or a parameter with this name is a VALUE receiver.
+    for (TacOperand.TacVar v : b.params()) {
+      if (v.name().equals(text)) return null;
+    }
+    for (TacOperand.TacVar v : b.locals()) {
+      if (v.name().equals(text)) return null;
+    }
+    // A field of the enclosing class with this name is a VALUE receiver too.
+    try {
+      TypeDeclaration<?> enclosing = scopeExpr.findAncestor(TypeDeclaration.class).orElse(null);
+      if (enclosing != null && fieldTypeIn(enclosing, text) != null) {
+        return null;
+      }
+    } catch (RuntimeException ignored) {
+      // best effort -- fall through to the FQN table
+    }
+    String fqn = TypeMapper.resolveWellKnownFqnStatic(text);
+    if (fqn == null || fqn.equals(text)) {
+      return null;
+    }
+    return fqn;
+  }
+
+  /**
+   * The declared type of the field an access names, or {@link TacType#UNKNOWN} when it is not
+   * resolvable.
+   *
+   * <p>An UNKNOWN result type is not a cosmetic loss: a rule that asks "is this value a buffer?"
+   * cannot tell a buffer from a string when the type says nothing, so the rule either misses the
+   * buffer or fires on the string.
+   */
+  static TacType declaredFieldType(FieldAccessExpr fae) {
+    try {
+      TacType mapped = TypeMapper.mapResolved(fae.calculateResolvedType());
+      if (mapped != null && mapped.kind() != TacType.Kind.UNKNOWN) {
+        return mapped;
+      }
+    } catch (RuntimeException | StackOverflowError ignore) {
+      // The symbol solver does not know this field: fall through.
+    }
+    return TacType.UNKNOWN;
   }
 
   /**
@@ -1550,9 +2014,27 @@ public final class ExpressionTranslator {
     if (target instanceof ArrayAccessExpr aae) {
       return translateArrayAccess(aae, b);
     }
-    // Unsupported LHS : return null sentinel.
-    LOG.debug("Unsupported LHS read: {}", target.getClass().getSimpleName());
-    return new ExpressionResult(TacOperand.Const.ofNull(), TacType.UNKNOWN);
+    // Unsupported LHS read. The value read is UNKNOWN: a HAVOC, not a NULL
+    // constant (see the note in translateUnary). The loss is VALUE-level --
+    // one value is unknown, the function still computes everything else.
+    String targetKind = target.getClass().getSimpleName();
+    int line = TacTranslator.nodeLine(target);
+    int column = TacTranslator.nodeColumn(target);
+    TacOperand.TacVar havoc = b.newTemp(TacType.UNKNOWN);
+    b.emit(
+        TacInstruction.builder(TacInstruction.Kind.HAVOC)
+            .dest(havoc)
+            .line(line)
+            .column(column)
+            .build());
+    b.reportUnhandled("LhsRead." + targetKind, line, column);
+    b.reportDrop(
+        "java.lhs.read.unsupported",
+        "cannot read " + targetKind,
+        TacDrop.Impact.VALUE,
+        line,
+        column);
+    return new ExpressionResult(havoc, TacType.UNKNOWN);
   }
 
   /**
@@ -1710,6 +2192,18 @@ public final class ExpressionTranslator {
   }
 
   private void writeLhs(Expression target, TacOperand value, TacBuilder b, AssignExpr src) {
+    writeLhs(target, value, b, TacTranslator.nodeLine(src), TacTranslator.nodeColumn(src));
+  }
+
+  /**
+   * Write {@code value} back to {@code target}.
+   *
+   * <p>The source position is passed explicitly instead of being read off an {@code AssignExpr}
+   * because the write-back is not always an assignment: {@code i++} also has to store the
+   * incremented value back into {@code i}, and there is no assignment node to take the position
+   * from.
+   */
+  private void writeLhs(Expression target, TacOperand value, TacBuilder b, int line, int column) {
     if (target instanceof NameExpr ne) {
       // Find existing local or create one.
       String name = ne.getNameAsString();
@@ -1733,7 +2227,7 @@ public final class ExpressionTranslator {
             TacInstruction.builder(TacInstruction.Kind.MOVE)
                 .dest(dest)
                 .lhs1(value)
-                .line(TacTranslator.nodeLine(src))
+                .line(line)
                 .build());
         return;
       }
@@ -1787,7 +2281,7 @@ public final class ExpressionTranslator {
               .dest(value)
               .lhs1(lhs1This)
               .fieldName(name)
-              .line(TacTranslator.nodeLine(src))
+              .line(line)
               .build());
       return;
     }
@@ -1820,7 +2314,7 @@ public final class ExpressionTranslator {
               .dest(value)
               .lhs1(lhs1Operand)
               .fieldName(fae.getNameAsString())
-              .line(TacTranslator.nodeLine(src))
+              .line(line)
               .build());
       return;
     }
@@ -1832,11 +2326,138 @@ public final class ExpressionTranslator {
               .lhs1(arr.operand())
               .lhs2(idx.operand())
               .dest(value)
-              .line(TacTranslator.nodeLine(src))
+              .line(line)
               .build());
       return;
     }
-    LOG.debug("Unsupported LHS write: {}", target.getClass().getSimpleName());
+    // Unsupported LHS write. The value that could not be stored becomes
+    // UNKNOWN (a HAVOC), and the loss is recorded: VALUE level, because one
+    // value is unknown -- the rest of the function is still understood.
+    String targetKind = target.getClass().getSimpleName();
+    TacOperand.TacVar havoc = b.newTemp(TacType.UNKNOWN);
+    b.emit(
+        TacInstruction.builder(TacInstruction.Kind.HAVOC)
+            .dest(havoc)
+            .line(line)
+            .column(column)
+            .build());
+    b.reportUnhandled("LhsWrite." + targetKind, line, column);
+    b.reportDrop(
+        "java.lhs.write.unsupported",
+        "cannot write back to " + targetKind,
+        TacDrop.Impact.VALUE,
+        line,
+        column);
+  }
+
+  // ------------------------------------------------------------------
+  // Escape decoding.
+  // ------------------------------------------------------------------
+
+  /**
+   * Decode the escape sequences in a Java literal's source text.
+   *
+   * <p>JavaParser hands back the SOURCE TEXT of a literal, escape sequences and all. The TAC wants
+   * the VALUE the literal denotes, because a rule that matches a literal compares what the program
+   * actually holds: a newline is ONE character (0x0A), not the two characters backslash and 'n'. A
+   * secret written with an escaped newline is not the two-character string of source text, and a
+   * rule that compares against the raw source compares against something the program never
+   * contains.
+   *
+   * <p>Recognised: the simple escapes (backslash-b, -t, -n, -f, -r and -s), the quotes and the
+   * backslash itself, the octal escape (backslash-0 to backslash-377) and the unicode escape
+   * (backslash-uXXXX, with any number of leading u's). An escape that is not recognised is KEPT as
+   * it stands: guessing at what it was meant to be would be worse than keeping the text.
+   *
+   * @param raw the literal's source text, without its quotes
+   * @return the text the literal denotes
+   */
+  static String decodeJavaEscapes(String raw) {
+    if (raw == null || raw.indexOf('\\') < 0) return raw;
+    StringBuilder out = new StringBuilder(raw.length());
+    int i = 0;
+    int n = raw.length();
+    while (i < n) {
+      char c = raw.charAt(i);
+      if (c != '\\' || i + 1 >= n) {
+        out.append(c);
+        i++;
+        continue;
+      }
+      char e = raw.charAt(i + 1);
+      switch (e) {
+        case 'b' -> {
+          out.append('\b');
+          i += 2;
+        }
+        case 't' -> {
+          out.append('\t');
+          i += 2;
+        }
+        case 'n' -> {
+          out.append('\n');
+          i += 2;
+        }
+        case 'f' -> {
+          out.append('\f');
+          i += 2;
+        }
+        case 'r' -> {
+          out.append('\r');
+          i += 2;
+        }
+        case 's' -> {
+          out.append(' ');
+          i += 2;
+        }
+        case '"' -> {
+          out.append('"');
+          i += 2;
+        }
+        case '\'' -> {
+          out.append('\'');
+          i += 2;
+        }
+        case '\\' -> {
+          out.append('\\');
+          i += 2;
+        }
+        case 'u' -> {
+          int j = i + 2;
+          while (j < n && raw.charAt(j) == 'u') j++;
+          if (j + 4 <= n) {
+            try {
+              out.append((char) Integer.parseInt(raw.substring(j, j + 4), 16));
+              i = j + 4;
+            } catch (NumberFormatException nfe) {
+              out.append(c);
+              i++;
+            }
+          } else {
+            out.append(c);
+            i++;
+          }
+        }
+        default -> {
+          if (e >= '0' && e <= '7') {
+            int j = i + 1;
+            int value = 0;
+            int digits = 0;
+            while (j < n && digits < 3 && raw.charAt(j) >= '0' && raw.charAt(j) <= '7') {
+              value = value * 8 + (raw.charAt(j) - '0');
+              j++;
+              digits++;
+            }
+            out.append((char) value);
+            i = j;
+          } else {
+            out.append(c);
+            i++;
+          }
+        }
+      }
+    }
+    return out.toString();
   }
 
   // ---------------- numeric literal helpers ----------------

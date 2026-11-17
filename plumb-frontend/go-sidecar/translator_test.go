@@ -90,7 +90,17 @@ func hasProblemOfKind(function Function, kind string) bool {
 	return false
 }
 
-func TestMultiValueCallKeepsTheFirstResultAndReportsTheSecond(t *testing.T) {
+// TestMultiValueCallBindsEveryResult pins the multi-value lowering.
+//
+// IT USED TO PIN THE OPPOSITE. The test asserted that the second result of
+// a two-result call became an unknown value, that the function reported a
+// lowering problem, and that its precision was lowered. All three were the
+// old behaviour, and the design replaced them: a call's results are carried
+// in the instruction's RESULT DESTS, so the error result is BOUND rather
+// than unknown, and nothing is lost. The test was rewritten, not deleted:
+// it still asserts that the first result is the call's destination and that
+// no result is left as an unknown value.
+func TestMultiValueCallBindsEveryResult(t *testing.T) {
 	functions := translateSource(t, `
 package sample
 
@@ -115,22 +125,26 @@ func use() {
 		t.Errorf("the call's destination is %+v, want the variable 'value'", calls[0].Dest)
 	}
 
-	// The error result cannot be bound by the TAC's single-destination CALL,
-	// so it becomes an unknown value, and the loss is reported.
-	havocs := 0
+	// The error result is BOUND, not an unknown value: it is the call's
+	// second result.
+	if len(calls[0].ResultDests) != 2 {
+		t.Fatalf("the call carries %d results, want 2", len(calls[0].ResultDests))
+	}
+	if calls[0].ResultDests[1] == nil || calls[0].ResultDests[1].Name != "err" {
+		t.Errorf("the second result is %+v, want the variable 'err'", calls[0].ResultDests[1])
+	}
+
+	// No result is left as an unknown value.
 	for _, instruction := range use.Instructions {
 		if instruction.Kind == KindHavoc {
-			havocs++
+			t.Errorf("a result was bound to an unknown value: %+v", instruction)
 		}
 	}
-	if havocs != 1 {
-		t.Errorf("the unknown-value count is %d, want exactly 1", havocs)
+	if hasProblemOfKind(use, ProblemSourceLowered) {
+		t.Errorf("the function reported a lowering problem: %+v", use.Problems)
 	}
-	if !hasProblemOfKind(use, ProblemSourceLowered) {
-		t.Errorf("the function did not report a lowering problem: %+v", use.Problems)
-	}
-	if use.Precision != PrecisionLowered {
-		t.Errorf("the precision is %q, want %q", use.Precision, PrecisionLowered)
+	if use.Precision != PrecisionFull {
+		t.Errorf("the precision is %q, want %q", use.Precision, PrecisionFull)
 	}
 }
 

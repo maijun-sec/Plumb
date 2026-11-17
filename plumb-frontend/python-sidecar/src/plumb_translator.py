@@ -34,7 +34,20 @@ findings.
 import ast
 import builtins
 
-from plumb_wire import Const, Kind, Precision, Problem, Type, const_op, var_op
+from plumb_wire import (
+    Const,
+    DropImpact,
+    Guard,
+    Kind,
+    LabelKind,
+    MemberKind,
+    Precision,
+    Problem,
+    ScopeKind,
+    Type,
+    const_op,
+    var_op,
+)
 
 # The names Python's own runtime provides. A call to one of them is a call
 # into the ``builtins`` module, and that is the owner the callee signature
@@ -192,6 +205,11 @@ COMPARISON_OPERATORS = {
     ast.GtE: "GE",
     ast.Is: "EQ",
     ast.IsNot: "NE",
+    # The membership tests: ``x in items`` asks whether the VALUE is one of
+    # the items' values, and it is a comparison like any other. The TAC has
+    # no membership operator, so it is modelled as an equality test.
+    ast.In: "EQ",
+    ast.NotIn: "NE",
 }
 
 # The TAC's unary operators, by the AST's operator node.
@@ -206,6 +224,62 @@ UNARY_OPERATORS = {
 
 # The parameter names that mean "the receiver" in a method.
 RECEIVER_NAMES = ("self", "cls")
+
+# The value domain of a Python integer.
+#
+# Python's int is ARBITRARY precision: there is no width, so there is no
+# bound to check against. A checker that treated it as a 64-bit integer
+# would report an overflow that Python does not have.
+UNBOUNDED_DOMAIN = {"domain": "UNBOUNDED"}
+
+# The value domain of a Python float.
+#
+# A Python float is an IEEE 754 double, always.
+FLOATING_DOMAIN = {"domain": "FLOATING", "bits": 53, "exponentBits": 11}
+
+
+def precision_of(drops):
+    """The precision a function carries, given its drops.
+
+    A drop says what was lost. A drop that cost the function its SEMANTICS
+    leaves it DEGRADED; a drop that cost it only its SHAPE leaves it
+    LOWERED; a drop that cost one value, or one type, leaves it whole --
+    because the analysis still knows everything it needs to know about every
+    other value.
+    """
+    lowered = False
+    for drop in drops or ():
+        if drop["impact"] == DropImpact.SEMANTICS:
+            return Precision.DEGRADED
+        if drop["impact"] == DropImpact.STRUCTURE:
+            lowered = True
+    return Precision.LOWERED if lowered else Precision.FULL
+
+
+def construct_of(kind, node):
+    """The construct a problem names, when the problem does not name one.
+
+    A construct is a stable word, so that a gate can compare the words the
+    sidecar actually emits with the words the vocabulary lists.
+    """
+    node_class = type(node).__name__ if node is not None else "node"
+    if kind == Problem.UNHANDLED_NODE:
+        return "unhandled.%s" % node_class
+    if kind in (Problem.PARSE, Problem.TRANSLATION):
+        return "parse.%s" % node_class
+    return "lowered.%s" % node_class
+
+
+def impact_of_problem(kind):
+    """The impact a problem kind has, when the problem does not say itself.
+
+    A node the translator does not understand at all costs the function its
+    semantics; a construct it understood but could not shape exactly costs
+    it only its shape.
+    """
+    if kind == Problem.SOURCE_LOWERED:
+        return DropImpact.STRUCTURE
+    return DropImpact.SEMANTICS
 
 
 def synthetic_signature(name, arity):
@@ -226,6 +300,9 @@ class FunctionState:
         self.signature = signature
         self.enclosing_class = enclosing_class
         self.synthetic = synthetic
+        # The name of the parameter that holds the CLASS, in a class method.
+        # It is the class itself, so a call on it is a call on the class.
+        self.class_receiver = None
         self.params = []
         self.locals = []
         self.instructions = []
@@ -256,6 +333,48 @@ class FunctionState:
         self.shadowed_names = set()
         self.break_label = None
         self.continue_label = None
+        # What this function IS inside its owner: a method, the constructor,
+        # or the function that runs a class body's field initializers.
+        self.member_kind = MemberKind.METHOD
+        # The declared parameters, with the facts a declaration carries and
+        # a positional list cannot: whether a parameter is keyword-only,
+        # variadic, or taken by reference.
+        self.parameters = []
+        # The names this function binds in a scope that is not its own.
+        self.scope_bindings = []
+        # The exception regions this function contains.
+        self.try_regions = []
+        # The branch regions: the match dispatches, with their cases.
+        self.branch_regions = []
+        # The annotations: the five channels the IR has.
+        self.class_annotations = []
+        self.method_annotations = []
+        self.field_annotations = []
+        self.param_annotations = []
+        self.annotation_values = {}
+        # The drops: what this translator could not lower, and what that
+        # cost.
+        self.drops = []
+        self.drop_counts = {}
+        # The label kinds, by label name, so that a jump can say what it
+        # jumps to.
+        self.label_kinds = {}
+        # The scope ids, by label name, so that a jump and its target agree.
+        self.label_scopes = {}
+        # The counter that names the scopes.
+        self.scope_counter = 0
+        # The stack of enclosing loops, so that a ``break`` knows which one
+        # it leaves.
+        self.loop_stack = []
+        # The ``finally`` blocks this function is inside, innermost last. A
+        # ``return`` inside a ``try`` has to run them before it leaves.
+        self.finally_stack = []
+        # The class this function's code is in, when it is one.
+        self.super_type = None
+        # The labels a generator resumes at.
+        self.generator_states = []
+        # The generator's slot: the value it yields.
+        self.generator_slot = None
 
     def new_temp(self, type_=None):
         """A fresh temporary."""
@@ -266,6 +385,11 @@ class FunctionState:
         """A fresh label."""
         self.label_counter += 1
         return "%s%s%d" % (self.label_prefix, prefix, self.label_counter)
+
+    def new_scope(self):
+        """A fresh scope id: one step deeper than the scopes before it."""
+        self.scope_counter += 1
+        return self.scope_counter
 
 
 class Translator:
@@ -317,6 +441,21 @@ class Translator:
         # as: the name of their own function, the values they capture and
         # how many arguments they take.
         self.lambda_by_node = {}
+        # The type declarations the module's classes make. They are the
+        # module's type surface; the response's `types` key carries them.
+        self.type_declarations = []
+        # The counter that names the closures of one module.
+        self.closure_counter = 0
+        # The declared parameter names, by the callee key. A keyword
+        # argument binds by name, so the call site has to know what the
+        # callee calls them.
+        self.declared_parameter_names = {}
+        # The scopes of the comprehensions being lowered. A comprehension
+        # has a scope of its own, and its loop variable does not leak into
+        # the scope around it.
+        self.comp_scope_stack = []
+        # The counter that names the comprehensions' own locals.
+        self.comp_counter = 0
 
     # ---- the module ------------------------------------------------------------------------
 
@@ -326,6 +465,7 @@ class Translator:
         self.collect_scopes(tree)
         outer = self.state
         state = self.begin_function("<module>", self.module_name, None, synthetic=True)
+        state.member_kind = MemberKind.MODULE
         state.shadowed_names = self.scope_shadowed_names(tree.body, module_scope=True)
         self.guard(tree, lambda: self.lower_body(tree.body))
         functions = [self.finish_function(state)]
@@ -359,6 +499,11 @@ class Translator:
                     self.imported_modules[head] = head
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
+            if node.level:
+                # A RELATIVE import: the dots say how far up the package
+                # tree the module is, and the number of them is a fact
+                # about the name.
+                module = "." * node.level + module
             for alias in node.names:
                 if alias.name == "*":
                     # A star import brings in names this translator cannot
@@ -366,7 +511,12 @@ class Translator:
                     # names are reported as unresolved.
                     continue
                 local = alias.asname or alias.name
-                qualified = "%s.%s" % (module, alias.name) if module else alias.name
+                if module.endswith("."):
+                    qualified = module + alias.name
+                elif module:
+                    qualified = "%s.%s" % (module, alias.name)
+                else:
+                    qualified = alias.name
                 self.imported_names[local] = qualified
                 # `from os import path` binds a MODULE path, and
                 # `path.join(...)` is a call on it.
@@ -547,17 +697,17 @@ class Translator:
         """The names a scope reads.
 
         A nested scope is a scope of its own: the names it reads are not
-        the names this scope reads. What IS read where this scope is
-        written -- a decorator, a default value, a class's bases -- is read
-        here.
+        the names this scope reads.
 
-        `bound_here` are the names a nested scope binds -- the loop
-        variables of a comprehension. They are not read from the scope
-        around it, so they are not free variables of anything.
+        A decorator and a class's BASES are NOT read here. They are
+        evaluated where the thing they decorate is defined, and reading them
+        as names of the scope AROUND made them free variables -- which were
+        then promoted to the leading parameters of the enclosing function:
+        a parameter is a source, so a decorator's name became a taint
+        source the program never had.
         """
         for node in nodes:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                self.collect_loaded_names(node.decorator_list, out, bound_here)
                 defaults = list(node.args.defaults)
                 defaults.extend(d for d in node.args.kw_defaults if d is not None)
                 self.collect_loaded_names(defaults, out, bound_here)
@@ -568,8 +718,6 @@ class Translator:
                 self.collect_loaded_names(defaults, out, bound_here)
                 continue
             if isinstance(node, ast.ClassDef):
-                self.collect_loaded_names(node.decorator_list, out, bound_here)
-                self.collect_loaded_names(node.bases, out, bound_here)
                 continue
             if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
                 # A comprehension has a scope of its own: its loop variables
@@ -602,11 +750,17 @@ class Translator:
                 self.collect_target_names(element, out)
 
     def collect_declared_globals(self, nodes, out):
-        """The names a scope declares global."""
+        """The names a scope declares global.
+
+        A ``nonlocal`` statement says the same thing about the scope
+        AROUND this one, so it is read here too: a name that was not read
+        was a free variable of the function, and a free variable that was
+        promoted to a parameter is a source the program never had.
+        """
         for node in nodes:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
                 continue
-            if isinstance(node, ast.Global):
+            if isinstance(node, (ast.Global, ast.Nonlocal)):
                 out.update(node.names)
                 continue
             for child in ast.iter_child_nodes(node):
@@ -632,46 +786,109 @@ class Translator:
     def lower_lambda(self, node):
         """Lower a lambda's body into a function of its own.
 
-        The TAC has no nested function and no function value, so the
-        body's instructions cannot live in the enclosing function's
-        stream. The captured names become the LEADING PARAMETERS of the
-        new function, which is what the Go side car does for a closure
-        and what a nested `def` now does here: a parameter is a source,
-        so the body is analysed with the captured value already tainted,
-        and a finding inside it cannot be lost.
+        The TAC has no nested function and no function value, so the body's
+        instructions cannot live in the enclosing function's stream. The
+        body becomes a function of its own, and the value the expression
+        produces is the CLOSURE OBJECT -- a container that holds the
+        captured values.
 
-        The value the lambda itself produces is still unknown -- the IR
-        cannot hold a function value -- so the enclosing function sees
-        the lambda as a HAVOC.
+        The captured values are the LEADING PARAMETERS of that function,
+        the way a nested ``def``'s captures are. Two reasons, and the
+        second is the one that decides it:
+
+        * The engine binds a call's user arguments to the callee's
+          parameters (user argument N lands on parameter N). A capture
+          that lives only in the closure OBJECT is never bound to
+          anything, so the call could not hand the captured value over
+          and the body would be analysed with the capture missing.
+        * A parameter is a source, so the body is analysed with the
+          captured value already tainted, and a finding inside it cannot
+          be lost. The capture is read out of the object in the body
+          instead, and the object is the receiver -- which the engine
+          does not bind to the callee -- so that reading would come back
+          clean, and the finding inside the closure would disappear.
+
+        The consequence is the one the nested ``def`` already has: a
+        capture that is CLEAN is still treated as a source inside the
+        closure. That is an over-approximation, and the safe direction.
         """
         outer = self.state
         captures = self.lambda_captures(node)
-        self.lambda_counter += 1
-        name = "lambda$%d" % self.lambda_counter
-        state = self.begin_function(
-            name, self.lambda_signature(node, self.module_name, captures, name), None
-        )
+        self.closure_counter += 1
+        name = "closure$%d" % self.closure_counter
+        owner = self.module_name
+        # The signature is computed while the ENCLOSING scope is still the
+        # current one: the types of the captured values are the enclosing
+        # scope's types, and they are what the signature names.
+        signature = self.lambda_signature(node, owner, captures, name)
+        state = self.begin_function(name, "", None)
+        state.signature = signature
         state.ast_node = node
         state.scope_names = set(captures)
         state.shadowed_names = self.scope_shadowed_names([node.body])
         for parameter in self.parameters_of(node):
             state.shadowed_names.add(parameter.arg)
-        for captured in captures:
-            declared = outer.types.get(captured) if outer is not None else None
+        for capture in captures:
+            declared = outer.types.get(capture) if outer is not None else None
             if declared:
-                state.types[captured] = declared
+                state.types[capture] = declared
         try:
-            self.lower_parameters(node, captures)
+            # The captured values are the LEADING parameters, and the
+            # declared ones follow them.
+            for capture in captures:
+                state.params.append(var_op(capture))
+                state.parameters.append(
+                    {
+                        "name": capture,
+                        "type": self.tac_type_of_variable(capture),
+                        "optional": False,
+                        "variadic": False,
+                        "byRef": False,
+                        "keywordOnly": False,
+                        "defaultValue": None,
+                    }
+                )
+            for parameter in self.parameters_of(node):
+                state.params.append(var_op(parameter.arg))
+                state.parameters.append(
+                    {
+                        "name": parameter.arg,
+                        "type": self.tac_type_of_annotation(parameter.annotation),
+                        "optional": False,
+                        "variadic": parameter is node.args.vararg
+                        or parameter is node.args.kwarg,
+                        "byRef": False,
+                        "keywordOnly": parameter in list(node.args.kwonlyargs),
+                        "defaultValue": None,
+                    }
+                )
             value = self.lower_expression(node.body)
             self.emit({"kind": Kind.RETURN, "lhs1": value, **self.position(node)})
         finally:
             self.state = outer
-        self.module_functions.append(self.finish_function(state))
+        closure = self.finish_function(state)
+        self.module_functions.append(closure)
+
+        # The closure object: a container that holds the captured values.
+        object_var = self.state.new_temp({"kind": Type.ARRAY, "component": {"kind": Type.UNKNOWN}})
+        self.emit({"kind": Kind.NEWARRAY, "dest": object_var, **self.position(node)})
+        for capture in captures:
+            self.emit(
+                {
+                    "kind": Kind.ARRAYSTORE,
+                    "lhs1": object_var,
+                    "lhs2": const_op(Const.STRING, capture),
+                    "dest": var_op(capture, self.tac_type_of_variable(capture)),
+                    **self.position(node),
+                }
+            )
         self.lambda_by_node[node] = {
             "name": name,
             "captures": captures,
             "arity": len(captures) + len(self.parameters_of(node)),
+            "object": object_var,
         }
+        return object_var
 
     def lambda_captures(self, node):
         """The names a lambda reads from the scope around it.
@@ -694,10 +911,14 @@ class Translator:
         return sorted(free & visible)
 
     def lambda_signature(self, node, owner, captures, name):
-        """The signature of a lambda's own function: ``owner.name(types):any``."""
+        """The signature of a lambda's own function: ``owner.name(types):any``.
+
+        The captured values come FIRST: they are the leading parameters of
+        the function, so the signature counts them.
+        """
         types = []
-        for captured in captures:
-            types.append(self.state.types.get(captured) or "any")
+        for capture in captures:
+            types.append(self.state.types.get(capture) or "any")
         for parameter in self.parameters_of(node):
             types.append(self.annotation_name(parameter.annotation) or "any")
         return "%s.%s(%s):any" % (owner, name, ",".join(types))
@@ -730,6 +951,19 @@ class Translator:
                     entry["problem"]["message"],
                     entry["count"],
                 )
+        # A jump to a label that comes LATER in the stream could not say
+        # what the label was when it was emitted, because the label did not
+        # exist yet. It is filled in now that every label has been seen.
+        for instruction in state.instructions:
+            ref = instruction.get("labelRef")
+            if not ref or not ref.get("name"):
+                continue
+            kind = state.label_kinds.get(ref["name"])
+            if kind:
+                ref["kind"] = kind
+            scope_id = state.label_scopes.get(ref["name"])
+            if scope_id is not None:
+                ref["scopeId"] = scope_id
         problems = state.problems
         return {
             "name": state.name,
@@ -740,24 +974,47 @@ class Translator:
             # without this field the return type of every function in the
             # program was unknown to the analysis.
             "returnType": self.tac_type_of_name(return_type_of_signature(state.signature)),
-            "enclosingClass": state.enclosing_class,
-            "precision": (
-                # ANY problem downgrades the function. A problem means a
-                # construct was approximated -- an unhandled node became an
-                # unknown value, a break became a jump, an unresolved callee
-                # became a black box -- and a function that was approximated
-                # did not come out whole.
-                Precision.LOWERED if problems else Precision.FULL
+            # The value domain of what this function returns.
+            "domain": self.tac_type_of_name(return_type_of_signature(state.signature)).get(
+                "domain"
             ),
+            "enclosingClass": state.enclosing_class,
+            # The precision is DERIVED from the drops, not from whether the
+            # function has a problem: a construct whose semantics were lost
+            # is a different thing from one whose shape was lost.
+            "precision": precision_of(state.drops),
             "synthetic": state.synthetic,
+            # What this function IS inside its owner.
+            "memberKind": state.member_kind,
             "params": state.params,
             "locals": state.locals,
             "instructions": state.instructions,
             "problems": problems,
+            # What this translator could not lower, and what that cost.
+            "drops": state.drops,
+            # The declared parameters, with the facts a positional list of
+            # variables cannot carry.
+            "parameters": state.parameters,
+            # The exception regions this function contains.
+            "tryRegions": state.try_regions,
+            # The branch regions: the match dispatches.
+            "branchRegions": state.branch_regions,
+            # The names this function binds in a scope that is not its own.
+            "scopeBindings": state.scope_bindings,
+            # The annotations: the five channels the IR has.
+            "classAnnotations": state.class_annotations,
+            "methodAnnotations": state.method_annotations,
+            "fieldAnnotations": state.field_annotations,
+            "paramAnnotations": state.param_annotations,
+            "annotationValues": state.annotation_values,
+            # The labels a generator resumes at.
+            "generatorStates": state.generator_states,
         }
 
     def lower_function(self, node, enclosing_class):
         """Lower one function into its own stream."""
+        if enclosing_class and node.name == "__init__":
+            return self.lower_constructor(node, enclosing_class)
         outer = self.state
         owner = enclosing_class if enclosing_class else self.module_name
         # The values the function captures are its LEADING PARAMETERS. A
@@ -772,12 +1029,49 @@ class Translator:
         state.shadowed_names = self.scope_shadowed_names(node.body)
         for parameter in self.parameters_of(node):
             state.shadowed_names.add(parameter.arg)
+        if self.receiver_kind(node) == "class":
+            # A CLASS METHOD's first parameter IS the class: a call on it is
+            # a call on the class, and the receiver slot holds the class
+            # object and not an instance.
+            declared = self.parameters_of(node)
+            if declared:
+                state.class_receiver = declared[0].arg
         for name in captures:
             declared = outer.types.get(name) if outer is not None else None
             if declared:
                 state.types[name] = declared
+        self.annotate(state, node, "method")
         try:
             self.lower_parameters(node, captures)
+            self.report_non_constant_defaults(node)
+            self.lower_body(node.body)
+        finally:
+            self.state = outer
+        return self.finish_function(state)
+
+    def lower_constructor(self, node, enclosing_class):
+        """Lower a constructor.
+
+        A construction names the constructor it calls as ``<Class>.<init>/n``,
+        so the constructor has to be lowered under that name: a constructor
+        that keeps its Python name (``__init__``) is never reached by the
+        construction that calls it, and its body's findings are lost.
+        """
+        outer = self.state
+        state = self.begin_function(
+            "<init>",
+            self.function_signature(node, enclosing_class, (), name="<init>"),
+            enclosing_class,
+        )
+        state.member_kind = MemberKind.CONSTRUCTOR
+        state.ast_node = node
+        state.scope_names = self.function_scope.get(node, set())
+        state.shadowed_names = self.scope_shadowed_names(node.body)
+        for parameter in self.parameters_of(node):
+            state.shadowed_names.add(parameter.arg)
+        self.annotate(state, node, "method")
+        try:
+            self.lower_parameters(node)
             self.report_non_constant_defaults(node)
             self.lower_body(node.body)
         finally:
@@ -790,9 +1084,20 @@ class Translator:
         The captured names come FIRST: they are the leading parameters of a
         closure, and a parameter is a source, so the body of the closure is
         analysed with the captured value already tainted.
+
+        Each parameter also carries the facts its declaration states: whether
+        it is keyword-only, whether it is variadic, and whether it has a
+        default. Those facts decide how a call binds its arguments.
         """
         for name in captures:
             self.state.params.append(var_op(name, self.tac_type_of_variable(name)))
+        args = node.args
+        positional = list(args.posonlyargs) + list(args.args)
+        keyword_only = list(args.kwonlyargs)
+        defaulted = set(
+            id(parameter)
+            for parameter in positional[len(positional) - len(list(args.defaults)) :]
+        )
         for parameter in self.parameters_of(node):
             name = parameter.arg
             operand = var_op(name, self.tac_type_of_annotation(parameter.annotation))
@@ -800,9 +1105,37 @@ class Translator:
             annotation = self.annotation_name(parameter.annotation)
             if annotation:
                 self.state.types[name] = annotation
+            variadic = parameter is args.vararg or parameter is args.kwarg
+            self.state.parameters.append(
+                {
+                    "name": name,
+                    "type": self.tac_type_of_annotation(parameter.annotation),
+                    "optional": id(parameter) in defaulted
+                    or parameter in keyword_only
+                    or variadic,
+                    "variadic": variadic,
+                    "byRef": False,
+                    "keywordOnly": parameter in keyword_only,
+                    "defaultValue": None,
+                }
+            )
+            self.annotate_parameter(parameter)
+
+    def annotate_parameter(self, parameter):
+        """Record the annotation ONE parameter carries."""
+        annotation = parameter.annotation
+        if annotation is None:
+            return
+        name = self.annotation_name(annotation)
+        if name:
+            self.state.param_annotations.append(name)
 
     def parameters_of(self, node):
-        """A function's parameters, in declaration order."""
+        """A function's parameters, in declaration order.
+
+        Every count of parameters goes through here, so that the count a
+        call carries and the count the signature shows are the same count.
+        """
         args = node.args
         out = list(args.posonlyargs) + list(args.args)
         if args.vararg is not None:
@@ -820,29 +1153,44 @@ class Translator:
         stream per function, so a default that reads a variable cannot be
         lowered into the function's own stream without changing what it
         means.
+
+        The expression is still LOWERED, so that a sink inside it is
+        visible: the value is evaluated once, at the wrong time, and the
+        difference is reported.
         """
         args = node.args
         positional = list(args.posonlyargs) + list(args.args)
         defaults = list(args.defaults)
-        for parameter, default in zip(positional[len(positional) - len(defaults) :], defaults):
-            if not isinstance(default, ast.Constant):
-                self.report(
-                    Problem.SOURCE_LOWERED,
-                    default,
-                    "a default value is evaluated where the function is defined, not where it is "
-                    "called, so it is not part of the function's own stream",
-                )
+        pairs = list(
+            zip(positional[len(positional) - len(defaults) :], defaults)
+        )
+        # The keyword-only defaults are a list of their own, and they were
+        # not read at all before: a default of a keyword-only parameter is
+        # as much a default as any other.
+        pairs.extend(zip(args.kwonlyargs, args.kw_defaults))
+        for parameter, default in pairs:
+            if default is None:
+                continue
+            if isinstance(default, ast.Constant):
+                continue
+            self.lower_expression(default)
+            self.report(
+                Problem.SOURCE_LOWERED,
+                default,
+                "a default value is evaluated where the function is defined, not where it is "
+                "called, so it is not part of the function's own stream",
+            )
 
-    def function_signature(self, node, owner, captures=()):
+    def function_signature(self, node, owner, captures=(), name=None):
         """The signature string: ``owner.name(ParamTypes):Return``."""
         types = []
-        for name in captures:
-            types.append(self.state.types.get(name) or "any")
+        for capture in captures:
+            types.append(self.state.types.get(capture) or "any")
         for parameter in self.parameters_of(node):
             types.append(self.annotation_name(parameter.annotation) or "any")
         return "%s.%s(%s):%s" % (
             owner,
-            node.name,
+            name or node.name,
             ",".join(types),
             self.annotation_name(node.returns) or "any",
         )
@@ -851,38 +1199,278 @@ class Translator:
         """The methods of a class, and the class's own body.
 
         The class body runs when the class is created, so it is a function
-        of its own: a synthetic one, named after the class's constructor.
+        of its own: a synthetic one, named ``<clinit>``. It is NOT the
+        constructor -- the constructor is the method named ``__init__``, and
+        it is lowered as ``<init>`` so that a construction can reach it.
+
+        The class's BASES, its DECORATORS and its KEYWORDS are read here:
+        they are facts about the class, and a rule that names a base class
+        or a decorator has to be able to find them.
         """
         functions = []
         class_name = node.name
         outer = self.state
         state = self.begin_function(
-            "<init>",
-            "%s.<init>():any" % class_name,
+            "<clinit>",
+            "%s.<clinit>():any" % class_name,
             class_name,
             synthetic=True,
         )
+        state.member_kind = MemberKind.FIELD_INITIALIZER
         state.shadowed_names = self.scope_shadowed_names(node.body)
+        state.super_type = self.super_type_of(node)
+        self.annotate(state, node, "class")
         try:
+            # The class's own decorators run when the class is created, so
+            # they belong to the class body's own stream.
+            self.lower_decorators(node.decorator_list, class_name, node)
             self.guard(node, lambda: self.lower_class_body(node, functions))
+            if self.is_dataclass(node) and not self.declares_init(node):
+                # A dataclass gets a constructor from the decorator when it
+                # does not write one itself. Without it the construction
+                # reaches no body at all, and nothing the caller passes
+                # reaches the instance.
+                functions.append(self.lower_synthetic_constructor(node, class_name))
         finally:
             self.state = outer
         functions.insert(0, self.finish_function(state))
+        self.record_type_declaration(node, class_name, state.super_type)
         return functions
+
+    def is_dataclass(self, node):
+        """Whether a class is a dataclass.
+
+        A dataclass is a class the ``dataclass`` decorator was applied to:
+        that decorator is what gives it the constructor it does not write.
+        """
+        for decorator in node.decorator_list or ():
+            name = self.decorator_name(decorator)
+            if name in ("dataclass", "dataclasses.dataclass"):
+                return True
+        return False
+
+    def declares_init(self, node):
+        """Whether a class body declares its own constructor."""
+        for statement in node.body:
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if statement.name == "__init__":
+                    return True
+        return False
+
+    def dataclass_fields(self, node):
+        """The fields a dataclass declares: their names and their defaults.
+
+        The fields are the class body's ANNOTATED assignments, in declaration
+        order: that is the order the generated constructor takes them in. An
+        assignment without an annotation is not a field -- a dataclass only
+        takes the annotated ones.
+        """
+        fields = []
+        for statement in node.body:
+            if not isinstance(statement, ast.AnnAssign):
+                continue
+            if not isinstance(statement.target, ast.Name):
+                continue
+            fields.append((statement.target.id, statement.annotation, statement.value))
+        return fields
+
+    def lower_synthetic_constructor(self, node, class_name):
+        """The constructor a dataclass gets and does not write.
+
+        It takes the fields as parameters and writes them into the instance,
+        which is what the decorator generates. The default of a field is
+        only passed on when it is a CONSTANT: a default that is computed is
+        evaluated when the class is created and not when the instance is, so
+        passing it on would evaluate it twice.
+        """
+        fields = self.dataclass_fields(node)
+        arguments = [ast.arg(arg="self")]
+        defaults = []
+        body = []
+        for name, annotation, default in fields:
+            arguments.append(ast.arg(arg=name, annotation=annotation))
+            if default is not None and isinstance(default, ast.Constant):
+                defaults.append(default)
+            elif default is not None:
+                self.emit_drop(
+                    "decl.dataclass.default",
+                    "the default of the field %s is computed, and it is evaluated when the class "
+                    "is created and not when the instance is, so the generated constructor takes "
+                    "the field as a required argument" % name,
+                    DropImpact.VALUE,
+                    node,
+                )
+            body.append(
+                ast.Assign(
+                    targets=[
+                        ast.Attribute(
+                            value=ast.Name(id="self", ctx=ast.Load()),
+                            attr=name,
+                            ctx=ast.Store(),
+                        )
+                    ],
+                    value=ast.Name(id=name, ctx=ast.Load()),
+                    lineno=getattr(node, "lineno", 1),
+                    col_offset=getattr(node, "col_offset", 0),
+                )
+            )
+        synthetic = ast.FunctionDef(
+            name="__init__",
+            args=ast.arguments(
+                posonlyargs=[],
+                args=arguments,
+                vararg=None,
+                kwonlyargs=[],
+                kw_defaults=[],
+                kwarg=None,
+                defaults=defaults,
+            ),
+            body=body or [ast.Pass()],
+            decorator_list=[],
+            returns=None,
+            type_comment=None,
+            lineno=getattr(node, "lineno", 1),
+            col_offset=getattr(node, "col_offset", 0),
+        )
+        ast.fix_missing_locations(synthetic)
+        return self.lower_constructor(synthetic, class_name)
+
+    def super_type_of(self, node):
+        """The class a class extends, or None."""
+        for base in node.bases or ():
+            name = self.annotation_name(base)
+            if name:
+                return name
+        return None
+
+    def record_type_declaration(self, node, class_name, super_type):
+        """Record what a class declares about itself.
+
+        The declaration is the module's TYPE surface: what the classes are,
+        what they extend, what they declare. It is not the instruction
+        stream, and the two are separate.
+        """
+        interfaces = []
+        bases = list(node.bases or ())
+        for base in bases[1:]:
+            name = self.annotation_name(base)
+            if name:
+                interfaces.append(name)
+        metaclass = None
+        for keyword in node.keywords or ():
+            if keyword.arg == "metaclass":
+                metaclass = self.annotation_name(keyword.value)
+        annotations = []
+        for decorator in node.decorator_list or ():
+            name = self.decorator_name(decorator)
+            if name:
+                annotations.append(name)
+        type_parameters = []
+        for parameter in getattr(node, "type_params", None) or ():
+            name = getattr(parameter, "name", None)
+            if name:
+                type_parameters.append(name)
+        self.type_declarations.append(
+            {
+                "fqn": class_name,
+                "simpleName": class_name,
+                "superType": super_type,
+                "interfaces": interfaces,
+                "annotations": annotations,
+                "fields": [],
+                "fieldAnnotations": [],
+                "members": [],
+                "traits": [],
+                "modifiers": [],
+                "metaclass": metaclass,
+                "isInterface": False,
+                "isAbstract": False,
+                "isEnum": any(self.annotation_name(b) in ("Enum", "IntEnum", "StrEnum") for b in bases),
+                "isRecord": any(self.annotation_name(b) == "NamedTuple" for b in bases),
+                "isSynthetic": False,
+                "typeParameters": type_parameters,
+            }
+        )
 
     def lower_class_body(self, node, functions):
         """Lower the class body: its attributes, and its methods.
 
         A method's decorators run in the class body's scope, so they are
         emitted into the class body's own stream.
+
+        The dispatch is EXHAUSTIVE: every kind of statement a class body can
+        hold is handled here, so that a statement this translator does not
+        know about is a statement it says it does not know about -- and not
+        one it passes on to a statement lowering that would report it as an
+        unknown STATEMENT.
         """
         for statement in node.body:
             if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 functions.append(self.lower_function_declaration(statement, node.name))
             elif isinstance(statement, ast.ClassDef):
                 functions.extend(self.lower_class(statement))
-            else:
+            elif isinstance(statement, ast.AnnAssign):
+                # A class attribute with an annotation: ``x: int = 3``.
+                self.lower_class_attribute(statement)
+            elif isinstance(statement, ast.Assign):
+                # A class attribute: the receiver is the CLASS object, not
+                # the instance.
+                self.lower_class_attribute(statement)
+            elif isinstance(statement, (ast.Import, ast.ImportFrom)):
+                pass
+            elif isinstance(statement, (ast.Pass, ast.Expr, ast.Return)):
                 self.lower_statement(statement)
+            else:
+                self.report(
+                    Problem.UNHANDLED_NODE,
+                    statement,
+                    "this class member has no TAC lowering",
+                )
+
+    def lower_class_attribute(self, statement):
+        """A class attribute: a member of the CLASS, not of an instance.
+
+        The receiver is the class object, so that a read of the attribute
+        finds the value the declaration wrote.
+        """
+        owner = self.state.enclosing_class or self.module_name
+        class_object = self.class_object_of(owner)
+        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        value = None
+        if isinstance(statement, ast.Assign):
+            value = self.lower_expression(statement.value)
+        elif statement.value is not None:
+            value = self.lower_expression(statement.value)
+        for target in targets:
+            if isinstance(target, ast.Name):
+                self.emit(
+                    {
+                        "kind": Kind.ARRAYSTORE,
+                        "lhs1": class_object,
+                        "lhs2": const_op(Const.STRING, target.id),
+                        "dest": value,
+                        "ownerType": owner,
+                        **self.position(target),
+                    }
+                )
+                if isinstance(statement, ast.AnnAssign):
+                    annotation = self.annotation_name(statement.annotation)
+                    if annotation:
+                        self.state.types[target.id] = annotation
+            else:
+                self.lower_write(target, value, statement)
+
+    def class_object_of(self, qualified):
+        """The class object of a class: the synthetic variable that holds
+        it.
+
+        A class attribute and a class constant belong to the CLASS, so
+        their receiver is the class object.
+        """
+        name = "t_cls_%s" % (qualified or "unknown").replace(".", "_")
+        variable = var_op(name, {"kind": Type.CLASS, "name": qualified or "object"})
+        self.declare_local(variable)
+        return variable
 
     # ---- statements -----------------------------------------------------------------------
 
@@ -913,7 +1501,7 @@ class Translator:
             return
         if isinstance(node, ast.Return):
             value = self.lower_expression(node.value) if node.value else None
-            self.emit({"kind": Kind.RETURN, "lhs1": value, **self.position(node)})
+            self.lower_return(value, node)
             return
         if isinstance(node, ast.Raise):
             if node.cause:
@@ -931,22 +1519,10 @@ class Translator:
             self.lower_for(node)
             return
         if isinstance(node, ast.Break):
-            if self.state.break_label:
-                self.emit({"kind": Kind.JUMP, "label": self.state.break_label, **self.position(node)})
-            else:
-                self.report(
-                    Problem.UNHANDLED_NODE, node, "this break is not inside a loop"
-                )
+            self.lower_break(node)
             return
         if isinstance(node, ast.Continue):
-            if self.state.continue_label:
-                self.emit(
-                    {"kind": Kind.JUMP, "label": self.state.continue_label, **self.position(node)}
-                )
-            else:
-                self.report(
-                    Problem.UNHANDLED_NODE, node, "this continue is not inside a loop"
-                )
+            self.lower_continue(node)
             return
         if isinstance(node, (ast.With, ast.AsyncWith)):
             self.lower_with(node)
@@ -963,45 +1539,200 @@ class Translator:
             # An import binds a name; the names were read before the module
             # was lowered. Nothing is emitted for it.
             return
-        if isinstance(node, (ast.Global, ast.Nonlocal, ast.Pass)):
+        if isinstance(node, ast.Global):
+            # The names belong to the MODULE's scope, not to this one.
+            for name in node.names:
+                self.state.scope_bindings.append(
+                    {"name": name, "kind": ScopeKind.GLOBAL, "byRef": False}
+                )
+            return
+        if isinstance(node, ast.Nonlocal):
+            # The names belong to the scope AROUND this one.
+            for name in node.names:
+                self.state.scope_bindings.append(
+                    {"name": name, "kind": ScopeKind.CAPTURED, "byRef": False}
+                )
+            return
+        if isinstance(node, ast.Pass):
             return
         if isinstance(node, ast.Delete):
-            self.report(
-                Problem.SOURCE_LOWERED,
-                node,
-                "a deletion drops a value the analysis cannot see being dropped",
-            )
+            self.lower_delete(node)
             return
         if isinstance(node, ast.Match):
-            self.report(
-                Problem.UNHANDLED_NODE, node, "a match statement has no TAC lowering"
+            self.lower_match(node)
+            return
+        type_alias = getattr(ast, "TypeAlias", None)
+        if type_alias is not None and isinstance(node, type_alias):
+            # A type alias has no run-time behaviour of its own: it is a
+            # name for a type, and the name is what the module declares.
+            name = self.alias_name(node)
+            if name:
+                self.state.scope_bindings.append(
+                    {"name": name, "kind": ScopeKind.DECLARE, "byRef": False}
+                )
+            self.emit_drop(
+                "type.alias",
+                "a type alias has no run-time behaviour, so only its name is recorded",
+                DropImpact.TYPE,
+                node,
             )
-            self.lower_expression(node.subject)
+            return
+        try_star = getattr(ast, "TryStar", None)
+        if try_star is not None and isinstance(node, try_star):
+            # `except*` handles EXCEPTIONS GROUPS, and the TAC has no
+            # counterpart for a group. The body is lowered all the same.
+            self.lower_try(node)
+            self.emit_drop(
+                "exc.handler.group",
+                "an except* handler catches an exception GROUP, and the TAC's catch handler "
+                "catches one exception",
+                DropImpact.STRUCTURE,
+                node,
+            )
             return
         self.report(Problem.UNHANDLED_NODE, node, "this statement has no TAC lowering")
 
-    def lower_function_declaration(self, node, enclosing_class):
-        """A function that is declared in the stream being lowered.
+    def lower_return(self, value, node):
+        """A return.
 
-        The function itself becomes a function of its own. What stays in the
-        stream is its DECORATORS: a decorator runs where the function is
-        defined, and it is what the name of the function holds afterwards.
+        A return inside a ``try`` that has a ``finally`` does not leave the
+        function straight away: Python runs the ``finally`` first. So the
+        value is put aside, the finally is run, and the function returns
+        afterwards.
         """
-        for decorator in node.decorator_list:
+        pending = self.state.finally_stack[-1] if self.state.finally_stack else None
+        if pending is None:
+            self.emit({"kind": Kind.RETURN, "lhs1": value, **self.position(node)})
+            return
+        self.emit(
+            {"kind": Kind.MOVE, "dest": pending["return_value"], "lhs1": value, **self.position(node)}
+        )
+        self.emit(
+            {
+                "kind": Kind.MOVE,
+                "dest": pending["return_flag"],
+                "lhs1": const_op(Const.INT, "1"),
+                **self.position(node),
+            }
+        )
+        self.emit_jump(pending["label"], node)
+
+    def alias_name(self, node):
+        """The name a type alias binds."""
+        name = getattr(node, "name", None)
+        if isinstance(name, ast.Name):
+            return name.id
+        return None
+
+    def lower_break(self, node):
+        """A break.
+
+        A break leaves the innermost loop. The labels of the enclosing
+        loops are kept on a stack, so that the break knows which one it
+        leaves.
+        """
+        stack = self.state.loop_stack
+        if not stack:
+            self.report(Problem.UNHANDLED_NODE, node, "this break is not inside a loop")
+            return
+        self.emit_jump(stack[-1]["break"], node)
+
+    def lower_continue(self, node):
+        """A continue: it leaves the innermost loop too."""
+        stack = self.state.loop_stack
+        if not stack:
+            self.report(Problem.UNHANDLED_NODE, node, "this continue is not inside a loop")
+            return
+        self.emit_jump(stack[-1]["continue"], node)
+
+    def lower_delete(self, node):
+        """A deletion.
+
+        Removing a key is a STORE that says "the key is gone": the TAC has no
+        other way to say it, and a store that does not say it would leave the
+        key's taint in place -- which is a finding that is not there.
+        """
+        for target in node.targets:
+            if isinstance(target, ast.Subscript):
+                receiver = self.lower_expression(target.value)
+                key = self.lower_key(target.slice)
+                self.emit(
+                    {
+                        "kind": Kind.ARRAYSTORE,
+                        "lhs1": receiver,
+                        "lhs2": key,
+                        "deleteKey": True,
+                        **self.position(target),
+                    }
+                )
+                continue
+            if isinstance(target, ast.Attribute):
+                receiver = self.lower_expression(target.value)
+                self.emit(
+                    {
+                        "kind": Kind.ARRAYSTORE,
+                        "lhs1": receiver,
+                        "lhs2": const_op(Const.STRING, target.attr),
+                        "deleteKey": True,
+                        **self.position(target),
+                    }
+                )
+                continue
+            if isinstance(target, ast.Name):
+                variable = var_op(target.id)
+                self.declare_local(variable)
+                self.emit(
+                    {
+                        "kind": Kind.MOVE,
+                        "dest": variable,
+                        "lhs1": self.emit_havoc(target),
+                        **self.position(target),
+                    }
+                )
+                self.emit_drop(
+                    "expr.unset.variable",
+                    "a deletion of a plain variable removes the variable's value, and the TAC has "
+                    "no way to say that a variable has no value",
+                    DropImpact.STRUCTURE,
+                    target,
+                )
+                continue
+            self.report(
+                Problem.UNHANDLED_NODE, target, "this deletion target has no TAC lowering"
+            )
+
+    def lower_decorators(self, decorators, holder_name, node):
+        """Lower a list of decorators.
+
+        A decorator runs where the function or the class is defined, and it
+        is what the name holds afterwards.
+
+        The decorator's NAME goes into the callee key: a decorator is a
+        function like any other, and a rule that names one -- a framework's
+        route decorator, a task decorator -- matches on the name. A key of
+        ``<python>.decorator/1`` says nothing at all.
+        """
+        for decorator in decorators:
             value = self.lower_expression(decorator)
-            holder = var_op(node.name)
+            holder = var_op(holder_name)
             self.declare_local(holder)
             applied = self.state.new_temp()
+            name = self.decorator_name(decorator)
+            owner = self.decorator_owner(decorator)
+            arity = 1
+            if isinstance(decorator, ast.Call):
+                arity = 1 + len(decorator.args)
             self.emit(
                 {
                     "kind": Kind.CALL,
                     "dest": applied,
-                    "calleeSig": synthetic_signature("decorator", 1),
+                    "calleeSig": "%s.%s/%d" % (owner, name or "<decorator>", arity),
                     "args": [
-                        const_op(Const.STRING, SYNTHETIC_OWNER),
+                        const_op(Const.STRING, owner),
                         value,
                         holder,
                     ],
+                    "argCount": arity,
                     **self.position(node),
                 }
             )
@@ -1013,6 +1744,15 @@ class Translator:
                     **self.position(node),
                 }
             )
+
+    def lower_function_declaration(self, node, enclosing_class):
+        """A function that is declared in the stream being lowered.
+
+        The function itself becomes a function of its own. What stays in the
+        stream is its DECORATORS: a decorator runs where the function is
+        defined, and it is what the name of the function holds afterwards.
+        """
+        self.lower_decorators(node.decorator_list, node.name, node)
         return self.lower_function(node, enclosing_class)
 
     def lower_assign(self, node):
@@ -1040,11 +1780,21 @@ class Translator:
         current = self.lower_expression(node.target)
         right = self.lower_expression(node.value)
         operator = BINARY_OPERATORS.get(type(node.op))
-        if operator is None:
+        approximation = APPROXIMATED_OPERATORS.get(type(node.op))
+        if approximation is not None:
+            # The operator is one the TAC does not have, so it is modelled
+            # as the closest thing the TAC has -- and the difference is
+            # reported, because it IS a difference.
+            operator, note = approximation
             self.report(
-                Problem.UNHANDLED_NODE, node, "this operator has no TAC lowering"
+                Problem.SOURCE_LOWERED,
+                node,
+                note,
+                DropImpact.VALUE if operator is not None else DropImpact.SEMANTICS,
             )
-            return
+        if operator is None:
+            self.report(Problem.UNHANDLED_NODE, node, "this operator has no TAC lowering")
+            return self.emit_havoc(node)
         value = self.state.new_temp(self.tac_type_of_expression(node.target))
         self.emit(
             {
@@ -1066,7 +1816,7 @@ class Translator:
         index.
         """
         if isinstance(target, ast.Name):
-            variable = var_op(target.id, self.tac_type_of_variable(target.id))
+            variable = var_op(self.comp_local(target.id), self.tac_type_of_variable(target.id))
             self.declare_local(variable)
             # A variable that holds a closure: the call of that variable
             # has to reach the closure's body, so the closure is recorded
@@ -1092,12 +1842,17 @@ class Translator:
         if isinstance(target, ast.Attribute):
             receiver = self.lower_expression(target.value)
             key = const_op(Const.STRING, target.attr)
+            # The owner of an attribute is the class the receiver is an
+            # instance of: two classes may declare an attribute of the same
+            # name, and the engine's per-class field table tells them apart.
+            owner = self.type_of_receiver(target.value)
             self.emit(
                 {
                     "kind": Kind.ARRAYSTORE,
                     "lhs1": receiver,
                     "lhs2": key,
                     "dest": value,
+                    **({"ownerType": owner} if owner else {}),
                     **self.position(target),
                 }
             )
@@ -1149,14 +1904,33 @@ class Translator:
 
         A constant key names one entry; a key the analysis cannot resolve
         stands for every key.
+
+        A SLICE has three parts -- the lower bound, the upper bound and the
+        step -- and each of them is evaluated on its own. The whole slice
+        used to be an unknown value, which lost every sink in a bound.
         """
         if isinstance(node, ast.Constant):
             return self.lower_expression(node)
         if isinstance(node, ast.Slice):
-            self.report(
-                Problem.UNHANDLED_NODE, node, "a slice has no TAC lowering, so its key is unknown"
-            )
-            return self.emit_havoc(node)
+            parts = []
+            for part in (node.lower, node.upper, node.step):
+                if part is None:
+                    parts.append(const_op(Const.NULL))
+                else:
+                    parts.append(self.lower_expression(part))
+            dest = self.state.new_temp({"kind": Type.ARRAY, "component": {"kind": Type.UNKNOWN}})
+            self.emit({"kind": Kind.NEWARRAY, "dest": dest, **self.position(node)})
+            for index, part in enumerate(parts):
+                self.emit(
+                    {
+                        "kind": Kind.ARRAYSTORE,
+                        "lhs1": dest,
+                        "lhs2": const_op(Const.INT, str(index)),
+                        "dest": part,
+                        **self.position(node),
+                    }
+                )
+            return dest
         return self.lower_expression(node)
 
     def infer_type_of(self, name, value):
@@ -1178,52 +1952,55 @@ class Translator:
 
     def lower_if(self, node):
         """An if statement."""
-        condition = self.lower_expression(node.test)
+        self.state.new_scope()
+        condition = self.lower_condition(node.test)
         then_label = self.state.new_label("L")
         else_label = self.state.new_label("L")
         end_label = self.state.new_label("L")
-        self.emit(
-            {
-                "kind": Kind.BRANCH,
-                "lhs1": condition,
-                "trueLabel": then_label,
-                "falseLabel": else_label,
-                **self.position(node),
-            }
+        self.emit_branch(
+            condition["operand"], then_label, else_label, condition["guard"], node
         )
-        self.emit({"kind": Kind.LABEL, "label": then_label, **self.position(node)})
+        self.emit_label(then_label, LabelKind.BLOCK, node)
         self.lower_body(node.body)
-        self.emit({"kind": Kind.JUMP, "label": end_label, **self.position(node)})
-        self.emit({"kind": Kind.LABEL, "label": else_label, **self.position(node)})
+        self.emit_jump(end_label, node)
+        self.emit_label(else_label, LabelKind.BLOCK, node)
         if node.orelse:
             self.lower_body(node.orelse)
-        self.emit({"kind": Kind.LABEL, "label": end_label, **self.position(node)})
+        self.emit_label(end_label, LabelKind.BLOCK, node)
 
     def lower_while(self, node):
-        """A while loop."""
+        """A while loop.
+
+        The loop's ``else`` runs when the loop finished WITHOUT a break, so
+        the break's target has to SKIP it. That is why the loop's end and
+        the loop's BODY end are two different labels: the break goes to the
+        body end, and the body end jumps over the ``else`` to the end.
+        """
+        self.state.new_scope()
         condition_label = self.state.new_label("L")
         body_label = self.state.new_label("L")
+        body_end_label = self.state.new_label("L")
         end_label = self.state.new_label("L")
-        self.emit({"kind": Kind.JUMP, "label": condition_label, **self.position(node)})
-        self.emit({"kind": Kind.LABEL, "label": condition_label, **self.position(node)})
-        condition = self.lower_expression(node.test)
-        self.emit(
-            {
-                "kind": Kind.BRANCH,
-                "lhs1": condition,
-                "trueLabel": body_label,
-                "falseLabel": end_label,
-                **self.position(node),
-            }
+        self.emit_jump(condition_label, node)
+        self.emit_label(condition_label, LabelKind.LOOP_HEAD, node)
+        condition = self.lower_condition(node.test)
+        self.emit_branch(
+            condition["operand"], body_label, end_label, condition["guard"], node
         )
-        self.emit({"kind": Kind.LABEL, "label": body_label, **self.position(node)})
+        self.emit_label(body_label, LabelKind.BLOCK, node)
         outer_break, outer_continue = self.state.break_label, self.state.continue_label
-        self.state.break_label = end_label
+        self.state.break_label = body_end_label
         self.state.continue_label = condition_label
+        self.state.loop_stack.append(
+            {"kind": "loop", "break": body_end_label, "continue": condition_label}
+        )
         self.lower_body(node.body)
+        self.state.loop_stack.pop()
         self.state.break_label, self.state.continue_label = outer_break, outer_continue
-        self.emit({"kind": Kind.JUMP, "label": condition_label, **self.position(node)})
-        self.emit({"kind": Kind.LABEL, "label": end_label, **self.position(node)})
+        self.emit_jump(condition_label, node)
+        self.emit_label(body_end_label, LabelKind.LOOP_BODY_END, node)
+        self.emit_jump(end_label, node)
+        self.emit_label(end_label, LabelKind.LOOP_END, node)
         if node.orelse:
             self.lower_body(node.orelse)
 
@@ -1233,8 +2010,19 @@ class Translator:
         The loop reads the iterable by index. The length is a call to the
         language's own ``len``, under a synthetic owner: the TAC has no
         length, and a stand-in says so.
+
+        Python iterates an iterable through ``__iter__`` and ``__next__``.
+        When the iterable's type is not known, those calls are made too, so
+        that the protocol is visible to a rule that names it; when the type
+        IS known, the element is read by index, which is what the protocol
+        would have produced.
+
+        The loop's ``else`` runs when the loop finished WITHOUT a break, so
+        the break's target has to skip it.
         """
+        self.state.new_scope()
         iterable = self.lower_expression(node.iter)
+        iterable_type = self.type_of_expression(node.iter)
         length = self.state.new_temp(Type.INT)
         self.emit(
             {
@@ -1245,6 +2033,30 @@ class Translator:
                 **self.position(node),
             }
         )
+        protocol_owner = iterable_type or UNKNOWN_OWNER
+        iterator = None
+        if iterable_type is None:
+            # The type is not known, so the protocol is modelled: it is what
+            # Python actually does, and it is the only shape that is right
+            # for a generator or an iterator.
+            iterator = self.state.new_temp()
+            self.emit(
+                {
+                    "kind": Kind.CALL,
+                    "dest": iterator,
+                    "calleeSig": "%s.__iter__/0" % protocol_owner,
+                    "args": [iterable],
+                    "argCount": 0,
+                    **self.position(node),
+                }
+            )
+            self.emit_drop(
+                "ctrl.iter.protocol",
+                "the iterable's type is not known, so the loop is modelled both as an index "
+                "over it and through the __iter__ and __next__ protocol",
+                DropImpact.STRUCTURE,
+                node,
+            )
         index = self.state.new_temp(Type.INT)
         self.emit(
             {
@@ -1256,10 +2068,10 @@ class Translator:
         )
         condition_label = self.state.new_label("L")
         body_label = self.state.new_label("L")
-        post_label = self.state.new_label("L")
+        body_end_label = self.state.new_label("L")
         end_label = self.state.new_label("L")
-        self.emit({"kind": Kind.JUMP, "label": condition_label, **self.position(node)})
-        self.emit({"kind": Kind.LABEL, "label": condition_label, **self.position(node)})
+        self.emit_jump(condition_label, node)
+        self.emit_label(condition_label, LabelKind.LOOP_HEAD, node)
         comparison = self.state.new_temp(Type.BOOLEAN)
         self.emit(
             {
@@ -1271,33 +2083,56 @@ class Translator:
                 **self.position(node),
             }
         )
-        self.emit(
-            {
-                "kind": Kind.BRANCH,
-                "lhs1": comparison,
-                "trueLabel": body_label,
-                "falseLabel": end_label,
-                **self.position(node),
-            }
+        self.emit_branch(
+            comparison,
+            body_label,
+            end_label,
+            {"kind": Guard.COMPARE, "lhs": index, "op": "LT", "rhs": length},
+            node,
         )
-        self.emit({"kind": Kind.LABEL, "label": body_label, **self.position(node)})
+        self.emit_label(body_label, LabelKind.BLOCK, node)
         element = self.state.new_temp()
-        self.emit(
-            {
-                "kind": Kind.ARRAYLOAD,
-                "dest": element,
-                "lhs1": iterable,
-                "lhs2": index,
-                **self.position(node),
-            }
-        )
+        if iterator is not None:
+            step = self.state.new_temp()
+            self.emit(
+                {
+                    "kind": Kind.CALL,
+                    "dest": step,
+                    "calleeSig": "%s.__next__/0" % protocol_owner,
+                    "args": [iterator],
+                    "argCount": 0,
+                    **self.position(node),
+                }
+            )
+            self.emit(
+                {
+                    "kind": Kind.ARRAYLOAD,
+                    "dest": element,
+                    "lhs1": step,
+                    "lhs2": const_op(Const.STRING, "value"),
+                    **self.position(node),
+                }
+            )
+        else:
+            self.emit(
+                {
+                    "kind": Kind.ARRAYLOAD,
+                    "dest": element,
+                    "lhs1": iterable,
+                    "lhs2": index,
+                    **self.position(node),
+                }
+            )
         self.lower_write(node.target, element, node)
         outer_break, outer_continue = self.state.break_label, self.state.continue_label
-        self.state.break_label = end_label
-        self.state.continue_label = post_label
+        self.state.break_label = body_end_label
+        self.state.continue_label = body_end_label
+        self.state.loop_stack.append(
+            {"kind": "loop", "break": body_end_label, "continue": body_end_label}
+        )
         self.lower_body(node.body)
+        self.state.loop_stack.pop()
         self.state.break_label, self.state.continue_label = outer_break, outer_continue
-        self.emit({"kind": Kind.LABEL, "label": post_label, **self.position(node)})
         incremented = self.state.new_temp(Type.INT)
         self.emit(
             {
@@ -1317,25 +2152,42 @@ class Translator:
                 **self.position(node),
             }
         )
-        self.emit({"kind": Kind.JUMP, "label": condition_label, **self.position(node)})
-        self.emit({"kind": Kind.LABEL, "label": end_label, **self.position(node)})
+        self.emit_jump(condition_label, node)
+        self.emit_label(body_end_label, LabelKind.LOOP_BODY_END, node)
+        self.emit_jump(end_label, node)
+        self.emit_label(end_label, LabelKind.LOOP_END, node)
         if node.orelse:
             self.lower_body(node.orelse)
 
     def lower_with(self, node):
         """A with statement.
 
-        The context manager's value is bound to the target. What its
-        ``__enter__`` and ``__exit__`` do is not modelled: the TAC has no
-        protocol for them.
+        The target is bound to the value ``__enter__`` RETURNS, and not to
+        the context manager itself: ``with open(f) as fh`` binds the file
+        object, and the file object is what ``open(f).__enter__()`` gives
+        back.
+
+        ``__exit__`` is called when the block ends, whatever happened in it.
         """
+        resource_vars = []
+        context_values = []
         for item in node.items:
             value = self.lower_expression(item.context_expr)
+            context_values.append(value)
+            owner = self.type_of_expression(item.context_expr) or UNKNOWN_OWNER
+            entered = self.state.new_temp()
+            self.emit(
+                {
+                    "kind": Kind.CALL,
+                    "dest": entered,
+                    "calleeSig": "%s.__enter__/0" % owner,
+                    "args": [value],
+                    "argCount": 0,
+                    **self.position(node),
+                }
+            )
             if item.optional_vars is None:
                 continue
-            # A `with` item has no position of its own, so the statement's
-            # position is the one that is reported.
-            position = self.position(node)
             if isinstance(item.optional_vars, ast.Name):
                 variable = var_op(item.optional_vars.id)
                 self.declare_local(variable)
@@ -1343,13 +2195,221 @@ class Translator:
                     {
                         "kind": Kind.MOVE,
                         "dest": variable,
-                        "lhs1": value,
-                        **position,
+                        "lhs1": entered,
+                        **self.position(node),
                     }
                 )
+                resource_vars.append(item.optional_vars.id)
             else:
-                self.lower_write(item.optional_vars, value, node)
+                self.lower_write(item.optional_vars, entered, node)
         self.lower_body(node.body)
+        for value, owner in zip(
+            context_values,
+            [
+                self.type_of_expression(item.context_expr) or UNKNOWN_OWNER
+                for item in node.items
+            ],
+        ):
+            self.emit(
+                {
+                    "kind": Kind.CALL,
+                    "dest": self.state.new_temp(),
+                    "calleeSig": "%s.__exit__/2" % owner,
+                    "args": [value, const_op(Const.NULL), const_op(Const.BOOL, "false")],
+                    "argCount": 2,
+                    **self.position(node),
+                }
+            )
+        if resource_vars:
+            self.state.try_regions.append(
+                {
+                    "tryStart": -1,
+                    "tryEnd": -1,
+                    "catchStart": -1,
+                    "catchEnd": -1,
+                    "catchLabels": [],
+                    "catchTypes": [],
+                    "finallyLabel": None,
+                    "finallyStart": -1,
+                    "finallyEnd": -1,
+                    # A `with` is a try/finally the COMPILER makes: there is
+                    # no `finally` in the source, and there is one in the
+                    # run-time.
+                    "syntheticFinally": True,
+                    "finallyExits": [],
+                    "resourceVars": resource_vars,
+                }
+            )
+
+    def lower_match(self, node):
+        """A match statement.
+
+        Python picks the FIRST case whose pattern matches, and a case with
+        a guard matches only when the guard holds. So the cases become a
+        chain of tests -- and every case's BODY is lowered: a body that is
+        not lowered is a body whose findings are not there.
+        """
+        self.state.new_scope()
+        subject = self.lower_expression(node.subject)
+        cases = node.cases or []
+        end_label = self.state.new_label("L")
+        no_match_label = self.state.new_label("L")
+        body_labels = [self.state.new_label("L") for _ in cases]
+        region = {
+            "id": "R%d" % (len(self.state.branch_regions) + 1),
+            "kind": "MATCH",
+            "subject": subject,
+            "cases": [],
+            "defaultLabel": None,
+            "fallThrough": False,
+        }
+
+        for index, case in enumerate(cases):
+            test_label = self.state.new_label("L")
+            next_label = (
+                self.state.new_label("L") if index + 1 < len(cases) else no_match_label
+            )
+            self.emit_label(test_label, LabelKind.SWITCH_CASE, case)
+            operand, guard = self.match_pattern_test(case.pattern, subject)
+            self.emit_branch(operand, body_labels[index], next_label, guard, case)
+            region["cases"].append(
+                {
+                    "id": "C%d" % (index + 1),
+                    "guards": [guard],
+                    "bodyLabel": body_labels[index],
+                    "nextLabel": next_label,
+                }
+            )
+            if case.guard is not None:
+                # A case with a guard matches only when the guard holds.
+                guard_operand = self.lower_expression(case.guard)
+                self.emit_branch(
+                    guard_operand,
+                    body_labels[index],
+                    next_label,
+                    {"kind": Guard.TRUTHINESS, "operand": guard_operand, "sense": "TRUE"},
+                    case,
+                )
+            self.emit_label(next_label, LabelKind.SWITCH_CASE, case)
+
+        # No case matched: Python raises. The TAC has a THROW, so the path
+        # ends there rather than carrying on with an unknown value.
+        self.emit_label(no_match_label, LabelKind.BLOCK, node)
+        self.emit(
+            {
+                "kind": Kind.THROW,
+                "lhs1": const_op(Const.STRING, "MatchError"),
+                "ctorType": {"kind": Type.CLASS, "name": "MatchError"},
+                **self.position(node),
+            }
+        )
+
+        for index, case in enumerate(cases):
+            self.emit_label(body_labels[index], LabelKind.BLOCK, case)
+            self.match_pattern_bindings(case.pattern, subject)
+            self.lower_body(case.body)
+            self.emit_jump(end_label, case)
+        self.emit_label(end_label, LabelKind.BLOCK, node)
+        self.state.branch_regions.append(region)
+
+    def match_pattern_test(self, pattern, subject):
+        """The test a match pattern is.
+
+        A literal pattern is an equality test; a class pattern is a type
+        test; and a pattern that binds a name matches anything.
+        """
+        if isinstance(pattern, ast.MatchValue):
+            value = self.lower_expression(pattern.value)
+            dest = self.state.new_temp(Type.BOOLEAN)
+            self.emit(
+                {
+                    "kind": Kind.BINOP,
+                    "dest": dest,
+                    "lhs1": subject,
+                    "lhs2": value,
+                    "binop": "EQ",
+                    **self.position(pattern),
+                }
+            )
+            return dest, {"kind": Guard.COMPARE, "lhs": subject, "op": "EQ", "rhs": value}
+        if isinstance(pattern, ast.MatchClass):
+            type_name = self.annotation_name(pattern.cls) or "object"
+            dest = self.state.new_temp(Type.BOOLEAN)
+            self.emit(
+                {
+                    "kind": Kind.INSTANCEOF,
+                    "dest": dest,
+                    "lhs1": subject,
+                    "ctorType": {"kind": Type.CLASS, "name": type_name},
+                    **self.position(pattern),
+                }
+            )
+            return dest, {
+                "kind": Guard.TYPE_TEST,
+                "operand": subject,
+                "type": {"kind": Type.CLASS, "name": type_name},
+                "negated": False,
+            }
+        if isinstance(pattern, ast.MatchAs):
+            if pattern.pattern is not None:
+                return self.match_pattern_test(pattern.pattern, subject)
+            return (
+                subject,
+                {"kind": Guard.TRUTHINESS, "operand": subject, "sense": "TRUE"},
+            )
+        if isinstance(pattern, ast.MatchStar):
+            return (
+                subject,
+                {"kind": Guard.TRUTHINESS, "operand": subject, "sense": "TRUE"},
+            )
+        # A mapping or a sequence pattern: what it matches is not
+        # statically known, so the test is the subject's own truth.
+        return (
+            subject,
+            {"kind": Guard.TRUTHINESS, "operand": subject, "sense": "TRUE"},
+        )
+
+    def match_pattern_bindings(self, pattern, subject):
+        """Bind the names a match pattern captures."""
+        if isinstance(pattern, ast.MatchAs):
+            if pattern.pattern is not None:
+                self.match_pattern_bindings(pattern.pattern, subject)
+            elif pattern.name:
+                variable = var_op(pattern.name)
+                self.declare_local(variable)
+                self.emit(
+                    {
+                        "kind": Kind.MOVE,
+                        "dest": variable,
+                        "lhs1": subject,
+                        **self.position(pattern),
+                    }
+                )
+            return
+        if isinstance(pattern, ast.MatchStar):
+            if pattern.name:
+                variable = var_op(pattern.name)
+                self.declare_local(variable)
+                self.emit(
+                    {
+                        "kind": Kind.MOVE,
+                        "dest": variable,
+                        "lhs1": subject,
+                        **self.position(pattern),
+                    }
+                )
+            return
+        if isinstance(pattern, ast.MatchClass):
+            for sub in pattern.patterns or ():
+                self.match_pattern_bindings(sub, subject)
+            return
+        if isinstance(pattern, ast.MatchSequence):
+            for sub in pattern.patterns or ():
+                self.match_pattern_bindings(sub, subject)
+            return
+        if isinstance(pattern, ast.MatchMapping):
+            for sub in pattern.patterns or ():
+                self.match_pattern_bindings(sub, subject)
 
     def lower_try(self, node):
         """A try / except / else / finally.
@@ -1357,19 +2417,37 @@ class Translator:
         The IR has explicit instructions for this: a CATCH_HANDLER binds
         the exception to the handler's name, and a FINALLY_ENTER marks the
         block every exit of the region runs through.
+
+        The ``finally`` block is on the path of EVERY exit: the try body's
+        normal end, each handler's normal end, and a ``return`` out of the
+        region. A ``return`` is the awkward one: it leaves the function, and
+        Python still runs the ``finally`` first. So the value is put aside,
+        a flag says that there is one, and the function returns after the
+        ``finally`` has run.
         """
+        self.state.new_scope()
+        has_finally = bool(node.finalbody)
         else_label = self.state.new_label("L")
         after_label = self.state.new_label("L")
         end_label = self.state.new_label("L")
-        finally_label = self.state.new_label("L_FINALLY") if node.finalbody else None
+        finally_label = self.state.new_label("L_FINALLY") if has_finally else None
 
+        try_start = len(self.state.instructions)
         self.lower_body(node.body)
-        self.emit({"kind": Kind.JUMP, "label": else_label, **self.position(node)})
+        try_end = len(self.state.instructions) - 1
+        self.emit_jump(else_label, node)
 
+        catch_labels = []
+        catch_types = []
+        catch_start = -1
+        catch_end = -1
         for handler in node.handlers:
-            type_name = self.exception_type_name(handler.type)
+            types = self.exception_type_names(handler.type)
+            type_name = types[0]
             label = self.state.new_label("L_CATCH_%s" % type_name)
-            self.emit({"kind": Kind.LABEL, "label": label, **self.position(handler)})
+            if catch_start < 0:
+                catch_start = len(self.state.instructions)
+            self.emit_label(label, LabelKind.CATCH_ENTRY, handler)
             if handler.name:
                 variable = var_op(handler.name)
                 self.declare_local(variable)
@@ -1382,30 +2460,109 @@ class Translator:
                     }
                 )
             else:
-                self.emit(
-                    {"kind": Kind.CATCH_HANDLER, **self.position(handler)}
-                )
+                self.emit({"kind": Kind.CATCH_HANDLER, **self.position(handler)})
             self.lower_body(handler.body)
-            self.emit({"kind": Kind.JUMP, "label": after_label, **self.position(handler)})
+            catch_end = len(self.state.instructions) - 1
+            catch_labels.append(label)
+            catch_types.append(types)
+            self.emit_jump(finally_label if has_finally else after_label, handler)
 
-        self.emit({"kind": Kind.LABEL, "label": after_label, **self.position(node)})
-        self.emit({"kind": Kind.JUMP, "label": end_label, **self.position(node)})
-        self.emit({"kind": Kind.LABEL, "label": else_label, **self.position(node)})
+        self.emit_label(after_label, LabelKind.BLOCK, node)
+        self.emit_jump(end_label, node)
+        self.emit_label(else_label, LabelKind.BLOCK, node)
         if node.orelse:
             self.lower_body(node.orelse)
-            self.emit({"kind": Kind.JUMP, "label": end_label, **self.position(node)})
-        self.emit({"kind": Kind.LABEL, "label": end_label, **self.position(node)})
+            self.emit_jump(finally_label if has_finally else end_label, node)
 
-        if node.finalbody:
-            self.emit({"kind": Kind.LABEL, "label": finally_label, **self.position(node)})
+        finally_start = -1
+        finally_end = -1
+        if has_finally:
+            return_flag = self.state.new_temp(Type.INT)
+            return_value = self.state.new_temp()
+            self.emit(
+                {
+                    "kind": Kind.MOVE,
+                    "dest": return_flag,
+                    "lhs1": const_op(Const.INT, "0"),
+                    **self.position(node),
+                }
+            )
+            self.state.finally_stack.append(
+                {"label": finally_label, "return_flag": return_flag, "return_value": return_value}
+            )
+            finally_start = len(self.state.instructions)
+            self.emit_label(finally_label, LabelKind.FINALLY_ENTRY, node)
             self.emit(
                 {
                     "kind": Kind.FINALLY_ENTER,
                     "label": finally_label,
+                    "labelRef": self.label_ref_of(finally_label),
                     **self.position(node),
                 }
             )
             self.lower_body(node.finalbody)
+            finally_end = len(self.state.instructions) - 1
+            self.state.finally_stack.pop()
+            finally_done = self.state.new_label("L")
+            self.emit_jump(finally_done, node)
+            self.emit_label(finally_done, LabelKind.BLOCK, node)
+            return_label = self.state.new_label("L")
+            self.emit_branch(
+                return_flag,
+                return_label,
+                end_label,
+                {
+                    "kind": Guard.COMPARE,
+                    "lhs": return_flag,
+                    "op": "NE",
+                    "rhs": const_op(Const.INT, "0"),
+                },
+                node,
+            )
+            self.emit_label(return_label, LabelKind.BLOCK, node)
+            self.emit({"kind": Kind.RETURN, "lhs1": return_value, **self.position(node)})
+        self.emit_label(end_label, LabelKind.BLOCK, node)
+
+        self.state.try_regions.append(
+            {
+                "tryStart": try_start,
+                "tryEnd": try_end,
+                "catchStart": catch_start,
+                "catchEnd": catch_end,
+                "catchLabels": catch_labels,
+                "catchTypes": catch_types,
+                "finallyLabel": finally_label,
+                "finallyStart": finally_start,
+                "finallyEnd": finally_end,
+                "syntheticFinally": False,
+                "finallyExits": ([finally_label] + catch_labels) if has_finally else [],
+                "resourceVars": [],
+            }
+        )
+
+    def exception_type_names(self, node):
+        """The exception types a handler catches.
+
+        A handler that catches several types names them in a tuple, and the
+        TAC's catch handler carries ONE type: the first one is the one the
+        handler binds, and the others are recorded beside it.
+        """
+        if node is None:
+            return ["Exception"]
+        if isinstance(node, ast.Tuple) and node.elts:
+            names = []
+            for element in node.elts:
+                names.append(self.annotation_name(element) or "Exception")
+            if len(names) > 1:
+                self.emit_drop(
+                    "exc.catch.multiType",
+                    "the handler catches %s, and the TAC's catch handler carries one type, so "
+                    "only the first one is bound" % " and ".join(names),
+                    DropImpact.STRUCTURE,
+                    node,
+                )
+            return names
+        return [self.annotation_name(node) or "Exception"]
 
     # ---- expressions ----------------------------------------------------------------------
 
@@ -1421,7 +2578,7 @@ class Translator:
         if isinstance(node, ast.Constant):
             return self.lower_constant(node)
         if isinstance(node, ast.Name):
-            return var_op(node.id, self.tac_type_of_variable(node.id))
+            return var_op(self.comp_local(node.id), self.tac_type_of_variable(node.id))
         if isinstance(node, ast.Attribute):
             return self.lower_attribute_read(node)
         if isinstance(node, ast.Subscript):
@@ -1450,17 +2607,9 @@ class Translator:
             return self.lower_dict_comprehension(node)
         if isinstance(node, ast.Lambda):
             # The lambda's BODY becomes a function of its own, so a sink
-            # inside it is analysed. The VALUE the lambda produces is
-            # still unknown: the TAC has no function value, so the name
-            # the lambda is held in holds an unknown value.
-            self.lower_lambda(node)
-            self.report(
-                Problem.SOURCE_LOWERED,
-                node,
-                "a lambda's value is a function, and the TAC has no function value, so the value"
-                " the lambda is held in is unknown",
-            )
-            return self.emit_havoc(node)
+            # inside it is analysed. The VALUE it produces is the closure
+            # OBJECT -- a container that holds the captured values.
+            return self.lower_lambda(node)
         if isinstance(node, ast.Await):
             # The awaited value's result is what the expression produces.
             # The TAC has no coroutine, so the awaited value stands for it.
@@ -1485,7 +2634,7 @@ class Translator:
         if isinstance(node, ast.JoinedStr):
             return self.lower_joined_string(node)
         if isinstance(node, ast.FormattedValue):
-            return self.lower_expression(node.value)
+            return self.lower_formatted_value(node)
         if isinstance(node, ast.Starred):
             self.report(
                 Problem.UNHANDLED_NODE, node, "a starred expression has no TAC lowering"
@@ -1612,30 +2761,32 @@ class Translator:
     def lower_boolop(self, node):
         """A short-circuit operator: ``and`` or ``or``.
 
-        The TAC's LAND and LOR take both operands, and the taint of either
-        reaches the result -- which is what the short-circuit operators
-        mean for a value that is read afterwards.
+        The right operand is only evaluated when the left one says it has
+        to be, so it cannot be a single BINOP: it has to be on the branch
+        that reaches it. That is also what makes the taint of the right
+        operand reach the result only when it is evaluated.
         """
-        operator = "LAND" if isinstance(node.op, ast.And) else "LOR"
-        result = None
-        for value in node.values:
+        is_and = isinstance(node.op, ast.And)
+        dest = self.state.new_temp()
+        end_label = self.state.new_label("L")
+        rhs_label = self.state.new_label("L")
+        values = list(node.values)
+        left = self.lower_expression(values[0])
+        self.emit({"kind": Kind.MOVE, "dest": dest, "lhs1": left, **self.position(node)})
+        self.emit_branch(
+            left,
+            rhs_label if is_and else end_label,
+            end_label if is_and else rhs_label,
+            {"kind": Guard.TRUTHINESS, "operand": left, "sense": "TRUE"},
+            node,
+        )
+        self.emit_label(rhs_label, LabelKind.BLOCK, node)
+        for value in values[1:]:
             operand = self.lower_expression(value)
-            if result is None:
-                result = operand
-                continue
-            dest = self.state.new_temp()
-            self.emit(
-                {
-                    "kind": Kind.BINOP,
-                    "dest": dest,
-                    "lhs1": result,
-                    "lhs2": operand,
-                    "binop": operator,
-                    **self.position(node),
-                }
-            )
-            result = dest
-        return result
+            self.emit({"kind": Kind.MOVE, "dest": dest, "lhs1": operand, **self.position(node)})
+        self.emit_jump(end_label, node)
+        self.emit_label(end_label, LabelKind.BLOCK, node)
+        return dest
 
     def lower_compare(self, node):
         """A comparison."""
@@ -1783,84 +2934,205 @@ class Translator:
     def lower_comprehension(self, node):
         """A list, a set or a generator comprehension.
 
-        A comprehension has a scope of its own, and the TAC has no scopes.
-        The loop variables are bound once, from the first element, and the
-        element is evaluated once: the entries after the first are not.
+        A comprehension is a LOOP: the elements are produced one at a time,
+        and a filter throws some of them away. So it is lowered as one --
+        and the FILTER is lowered too: a filter that is not lowered is a
+        sink that is not there.
+
+        The loop variable lives in the COMPREHENSION's own scope. Python
+        says so, and a leak into the enclosing scope is a fact about the
+        program that is not true.
         """
-        self.report(
-            Problem.SOURCE_LOWERED,
-            node,
-            "a comprehension has a scope of its own, so its entries after the first are not "
-            "modelled",
-        )
-        for generator in node.generators:
-            iterable = self.lower_expression(generator.iter)
-            element = self.state.new_temp()
-            self.emit(
-                {
-                    "kind": Kind.ARRAYLOAD,
-                    "dest": element,
-                    "lhs1": iterable,
-                    "lhs2": const_op(Const.INT, "0"),
-                    **self.position(generator),
-                }
+        result = self.state.new_temp({"kind": Type.ARRAY, "component": {"kind": Type.UNKNOWN}})
+        self.emit({"kind": Kind.NEWARRAY, "dest": result, **self.position(node)})
+        self.comp_scope_stack.append({})
+        try:
+            self.lower_generators(
+                node.generators or (),
+                0,
+                result,
+                lambda: self.lower_comprehension_value(node, result),
             )
-            self.lower_write(generator.target, element, generator)
-        dest = self.state.new_temp({"kind": Type.ARRAY, "component": {"kind": Type.UNKNOWN}})
-        self.emit({"kind": Kind.NEWARRAY, "dest": dest, **self.position(node)})
+        finally:
+            self.comp_scope_stack.pop()
+        return result
+
+    def lower_comprehension_value(self, node, result):
+        """The element a comprehension produces."""
         value = self.lower_expression(node.elt)
         self.emit(
             {
                 "kind": Kind.ARRAYSTORE,
-                "lhs1": dest,
+                "lhs1": result,
                 "lhs2": const_op(Const.INT, "0"),
                 "dest": value,
                 **self.position(node),
             }
         )
-        return dest
 
     def lower_dict_comprehension(self, node):
-        """A dict comprehension."""
-        self.report(
-            Problem.SOURCE_LOWERED,
-            node,
-            "a comprehension has a scope of its own, so its entries after the first are not "
-            "modelled",
-        )
-        for generator in node.generators:
-            iterable = self.lower_expression(generator.iter)
-            element = self.state.new_temp()
-            self.emit(
-                {
-                    "kind": Kind.ARRAYLOAD,
-                    "dest": element,
-                    "lhs1": iterable,
-                    "lhs2": const_op(Const.INT, "0"),
-                    **self.position(generator),
-                }
+        """A dict comprehension: a loop that produces entries."""
+        result = self.state.new_temp({"kind": Type.ARRAY, "component": {"kind": Type.UNKNOWN}})
+        self.emit({"kind": Kind.NEWARRAY, "dest": result, **self.position(node)})
+        self.comp_scope_stack.append({})
+        try:
+            self.lower_generators(
+                node.generators or (),
+                0,
+                result,
+                lambda: self.lower_dict_comprehension_value(node, result),
             )
-            self.lower_write(generator.target, element, generator)
-        dest = self.state.new_temp({"kind": Type.ARRAY, "component": {"kind": Type.UNKNOWN}})
-        self.emit({"kind": Kind.NEWARRAY, "dest": dest, **self.position(node)})
+        finally:
+            self.comp_scope_stack.pop()
+        return result
+
+    def lower_dict_comprehension_value(self, node, result):
+        """The entry a dict comprehension produces."""
         key = self.lower_expression(node.key)
         value = self.lower_expression(node.value)
         self.emit(
             {
                 "kind": Kind.ARRAYSTORE,
-                "lhs1": dest,
+                "lhs1": result,
                 "lhs2": key,
                 "dest": value,
                 **self.position(node),
             }
         )
-        return dest
+
+    def lower_generators(self, generators, position, result, produce):
+        """Lower the generators of a comprehension as nested loops."""
+        if position >= len(generators):
+            produce()
+            return
+        generator = generators[position]
+        iterable = self.lower_expression(generator.iter)
+        length = self.state.new_temp(Type.INT)
+        self.emit(
+            {
+                "kind": Kind.CALL,
+                "dest": length,
+                "calleeSig": synthetic_signature("len", 1),
+                "args": [const_op(Const.STRING, SYNTHETIC_OWNER), iterable],
+                **self.position(generator),
+            }
+        )
+        index = self.state.new_temp(Type.INT)
+        self.emit(
+            {
+                "kind": Kind.MOVE,
+                "dest": index,
+                "lhs1": const_op(Const.INT, "0"),
+                **self.position(generator),
+            }
+        )
+        head = self.state.new_label("L")
+        body = self.state.new_label("L")
+        increment = self.state.new_label("L")
+        end = self.state.new_label("L")
+        self.emit_jump(head, generator)
+        self.emit_label(head, LabelKind.LOOP_HEAD, generator)
+        comparison = self.state.new_temp(Type.BOOLEAN)
+        self.emit(
+            {
+                "kind": Kind.BINOP,
+                "dest": comparison,
+                "lhs1": index,
+                "lhs2": length,
+                "binop": "LT",
+                **self.position(generator),
+            }
+        )
+        self.emit_branch(
+            comparison,
+            body,
+            end,
+            {"kind": Guard.COMPARE, "lhs": index, "op": "LT", "rhs": length},
+            generator,
+        )
+        self.emit_label(body, LabelKind.BLOCK, generator)
+        element = self.state.new_temp()
+        self.emit(
+            {
+                "kind": Kind.ARRAYLOAD,
+                "dest": element,
+                "lhs1": iterable,
+                "lhs2": index,
+                **self.position(generator),
+            }
+        )
+        self.bind_comprehension_target(generator.target)
+        self.lower_write(generator.target, element, generator)
+        # The FILTERS: an element that fails one is not produced, and the
+        # expression that decides it has to be lowered.
+        next_label = self.state.new_label("L")
+        for condition in generator.ifs or ():
+            test = self.lower_expression(condition)
+            self.emit_branch(
+                test,
+                next_label,
+                increment,
+                {"kind": Guard.TRUTHINESS, "operand": test, "sense": "TRUE"},
+                generator,
+            )
+        self.emit_label(next_label, LabelKind.BLOCK, generator)
+        self.lower_generators(generators, position + 1, result, produce)
+        self.emit_label(increment, LabelKind.LOOP_BODY_END, generator)
+        incremented = self.state.new_temp(Type.INT)
+        self.emit(
+            {
+                "kind": Kind.BINOP,
+                "dest": incremented,
+                "lhs1": index,
+                "lhs2": const_op(Const.INT, "1"),
+                "binop": "ADD",
+                **self.position(generator),
+            }
+        )
+        self.emit(
+            {
+                "kind": Kind.MOVE,
+                "dest": index,
+                "lhs1": incremented,
+                **self.position(generator),
+            }
+        )
+        self.emit_jump(head, generator)
+        self.emit_label(end, LabelKind.LOOP_END, generator)
+
+    def bind_comprehension_target(self, target):
+        """Give a comprehension's loop variable its own local.
+
+        Python gives a comprehension a scope of its own, and its loop
+        variable does not leak into the scope around it. The TAC's locals
+        are one name each, so the comprehension's variable gets a name of
+        its own.
+        """
+        if not self.comp_scope_stack:
+            return
+        scope = self.comp_scope_stack[-1]
+        if isinstance(target, ast.Name):
+            self.comp_counter += 1
+            scope[target.id] = "t_comp%d_%s" % (self.comp_counter, target.id)
+            return
+        if isinstance(target, (ast.Tuple, ast.List)):
+            for element in target.elts:
+                self.bind_comprehension_target(element)
+
+    def comp_local(self, name):
+        """The local a name lives in, when a comprehension owns it."""
+        for scope in reversed(self.comp_scope_stack):
+            if name in scope:
+                return scope[name]
+        return name
 
     def lower_joined_string(self, node):
         """An f-string.
 
         The string is the concatenation of its parts, and the taint of a
-        hole reaches the string.
+        hole reaches the string. A string with ONE hole is still a string:
+        the value of the hole is not the string, and returning it would
+        give the caller a number where the source had a text.
         """
         parts = []
         for value_node in node.values:
@@ -1870,6 +3142,19 @@ class Translator:
                 parts.append(self.lower_expression(value_node))
         if not parts:
             return const_op(Const.STRING, "")
+        if len(parts) == 1:
+            dest = self.state.new_temp(Type.STRING)
+            self.emit(
+                {
+                    "kind": Kind.UNARYOP,
+                    "dest": dest,
+                    "lhs1": parts[0],
+                    "unop": "CAST",
+                    "castType": Type.STRING,
+                    **self.position(node),
+                }
+            )
+            return dest
         result = parts[0]
         for part in parts[1:]:
             dest = self.state.new_temp(Type.STRING)
@@ -1885,6 +3170,33 @@ class Translator:
             )
             result = dest
         return result
+
+    def lower_formatted_value(self, node):
+        """One hole of an f-string.
+
+        The FORMAT SPECIFICATION is part of the expression: ``f"{x:{w}}"``
+        evaluates ``w``, and dropping it loses whatever ``w`` reached. An
+        explicit conversion (``!r`` or ``!s``) is a cast.
+        """
+        value = self.lower_expression(node.value)
+        if node.format_spec is not None:
+            self.lower_expression(node.format_spec)
+        conversion = getattr(node, "conversion", -1)
+        if conversion in (114, 115):
+            # ``!r`` (repr) and ``!s`` (str) are explicit conversions.
+            dest = self.state.new_temp(Type.STRING)
+            self.emit(
+                {
+                    "kind": Kind.UNARYOP,
+                    "dest": dest,
+                    "lhs1": value,
+                    "unop": "CAST",
+                    "castType": Type.STRING,
+                    **self.position(node),
+                }
+            )
+            return dest
+        return value
 
     def lower_call(self, node):
         """A call.
@@ -1982,6 +3294,15 @@ class Translator:
             return None
         name = function.id
         if name not in self.defined_classes:
+            # A CLASS METHOD's `cls` IS the class, so a call on it constructs
+            # one and not a method.
+            state = self.state
+            if (
+                state is not None
+                and state.class_receiver == name
+                and state.enclosing_class
+            ):
+                return state.enclosing_class
             return None
         if name in self.defined_functions:
             # The module declares both a class and a function under this
@@ -1999,18 +3320,16 @@ class Translator:
     def lower_construction(self, node, class_name):
         """A construction: a NEW whose callee key names the constructor.
 
-        <p>The key is ``<unknown>.<Class>.<init>/<arity>``. The
-        ``<init>`` part is what the JVM, TypeScript, ArkTS, C# and PHP front
-        ends all use for a construction, so a catalogue entry written for one
-        of them can match a Python construction too -- the catalogue has no
-        Python constructor entries yet, and this is the shape they will have
-        to use when it gets them.
+        <p>The key is ``<Class>.<init>/<arity>``. The ``<init>`` part is
+        what the JVM, TypeScript, ArkTS, C# and PHP front ends all use for
+        a construction, so a catalogue entry written for one of them can
+        match a Python construction too -- the catalogue has no Python
+        constructor entries yet, and this is the shape they will have to
+        use when it gets them.
 
-        <p>The owner stays ``<unknown>``, and that is deliberate: a file
-        called ``subprocess.py`` that declares ``class Popen`` must not
-        produce a key the catalogue can claim for the real
-        ``subprocess.Popen``. The owner of a class this module declares
-        cannot be named, because the file's name is arbitrary.
+        <p>The owner is the class itself: the constructor is lowered as
+        ``<Class>.<init>``, so this is the key that reaches the
+        constructor's body.
 
         <p>The arity counts the POSITIONAL arguments only, which is what the
         catalogue's Python entries are written against: ``dict(a=x)`` is
@@ -2035,14 +3354,27 @@ class Translator:
             {
                 "kind": Kind.NEW,
                 "dest": dest,
-                "calleeSig": "%s.%s.<init>/%d"
-                % (UNKNOWN_OWNER, class_name, self.passed_arity(node)),
+                # The key names the CONSTRUCTOR: the constructor is lowered
+                # as `<Class>.<init>`, so this is the name that reaches it.
+                "calleeSig": "%s.<init>/%d" % (class_name, self.constructor_arity(class_name, node)),
                 "ctorType": self.tac_type_of_name(class_name),
                 "args": arguments,
+                "argCount": self.passed_arity(node),
                 **self.position(node),
             }
         )
         return dest
+
+    def constructor_arity(self, class_name, node):
+        """The arity of a construction.
+
+        The constructor's DECLARED parameters when the module declares the
+        constructor, and the number of arguments passed otherwise.
+        """
+        definition = self.class_methods.get((class_name, "__init__"))
+        if definition is not None:
+            return self.declared_arity(definition)
+        return self.passed_arity(node)
 
     def lower_argument(self, node):
         """One argument of a call.
@@ -2120,12 +3452,13 @@ class Translator:
             }
         closure = self.state.lambda_by_var.get(name) if self.state is not None else None
         if closure is not None:
-            # The variable holds a closure of THIS function, so the values
-            # it captured are in scope here and the call passes them.
+            # The variable holds a closure of THIS function, so the values it
+            # captured are in scope here and the call passes them. The
+            # closure OBJECT is the receiver: it is the value the name holds.
             return {
                 "owner": self.module_name,
                 "method": closure["name"],
-                "receiver": const_op(Const.STRING, self.module_name),
+                "receiver": closure.get("object") or const_op(Const.STRING, self.module_name),
                 "arity": closure["arity"],
                 "resolved": True,
                 "reason": None,
@@ -2184,7 +3517,21 @@ class Translator:
                 "owner": owner,
                 "method": method,
                 "receiver": const_op(Const.STRING, owner),
-                "arity": self.arity_of_name(method, node),
+                "arity": self.arity_of_name(owner, method, node),
+                "resolved": True,
+                "reason": None,
+            }
+        # A call on a CLASS of this module: the owner is that class, and the
+        # receiver is the class object. A class is not an instance, so the
+        # receiver slot must not hold one -- and an owner that is known must
+        # not be a placeholder.
+        class_name = self.class_of_receiver(function.value)
+        if class_name is not None:
+            return {
+                "owner": class_name,
+                "method": method,
+                "receiver": self.class_object_of(class_name),
+                "arity": self.arity_of_name(class_name, method, node),
                 "resolved": True,
                 "reason": None,
             }
@@ -2205,7 +3552,7 @@ class Translator:
             "owner": receiver_type,
             "method": method,
             "receiver": receiver,
-            "arity": self.arity_of_name(method, node),
+            "arity": self.arity_of_name(receiver_type, method, node),
             "resolved": True,
             "reason": None,
         }
@@ -2245,7 +3592,29 @@ class Translator:
             return self.state.types.get(node.id)
         return None
 
-    def arity_of_name(self, method, node):
+    def class_of_receiver(self, node):
+        """The class a receiver names, when it names one.
+
+        <p>A receiver names a class when it is a class this module declares,
+        or when it is the CLASS parameter of the class method it is written
+        in. A class is not an instance, so the receiver slot of a call on it
+        holds the class object.
+        """
+        if not isinstance(node, ast.Name):
+            return None
+        name = node.id
+        state = self.state
+        if state is not None and state.class_receiver == name and state.enclosing_class:
+            return state.enclosing_class
+        if name in self.defined_classes:
+            if state is not None and name in state.shadowed_names:
+                # The scope binds the name to a value of its own, so the name
+                # does not mean the class here.
+                return None
+            return name
+        return None
+
+    def arity_of_name(self, owner, method, node):
         """The arity of a call.
 
         The arity counts the DECLARED parameters of a function the module
@@ -2253,7 +3622,16 @@ class Translator:
         on. A function from elsewhere has no declared parameters the
         analysis can see, so the arity is the number of positional
         arguments the call passes.
+
+        The declaration is looked up by the CLASS that declares the method
+        and the method's NAME: two classes may declare a method of the
+        same name, and the arity of one is not the arity of the other. The
+        name alone is the fallback, and the difference is recorded.
         """
+        if owner is not None:
+            definition = self.class_methods.get((owner, method))
+            if definition is not None:
+                return self.declared_arity(definition)
         definition = self.defined_methods.get(method)
         if definition is None:
             definition = self.defined_functions.get(method)
@@ -2266,16 +3644,239 @@ class Translator:
 
         The receiver is not one of them: a method with one parameter is
         ``UserStore.find/1``, with the receiver at ``args[0]``.
+
+        A STATIC method has no receiver at all, so its parameters are all
+        the user's: ``@staticmethod def s(a)`` is ``K.stat/1``. Counting the
+        receiver there made every call of a static method unresolvable.
         """
-        args = definition.args
-        count = len(args.posonlyargs) + len(args.args)
-        if args.vararg is not None:
-            count += 1
-        if id(definition) in self.method_nodes:
+        count = len(self.parameters_of(definition))
+        if self.has_receiver(definition):
             count -= 1
         return max(count, 0)
 
     # ---- helpers --------------------------------------------------------------------------
+
+    def label_ref(self, name, kind, scope_id):
+        """A label reference: what a label IS, and how deep it is.
+
+        The engine tells a loop's end from a loop's body end by their kind,
+        and a jump is checked against its target by their scope.
+        """
+        return {"name": name, "kind": kind, "scopeId": scope_id}
+
+    def label_ref_of(self, name):
+        """The label reference of a label this function knows."""
+        kind = self.state.label_kinds.get(name) or LabelKind.BLOCK
+        scope_id = self.state.label_scopes.get(name)
+        if scope_id is None:
+            scope_id = self.state.scope_counter
+        return self.label_ref(name, kind, scope_id)
+
+    def remember_label(self, name, kind, scope_id):
+        """Remember what a label IS, so that a jump to it can say so too."""
+        self.state.label_kinds[name] = kind
+        self.state.label_scopes[name] = scope_id
+
+    def emit_label(self, name, kind, node):
+        """Emit a label."""
+        scope_id = self.state.scope_counter
+        self.remember_label(name, kind, scope_id)
+        self.emit(
+            {
+                "kind": Kind.LABEL,
+                "label": name,
+                "labelRef": self.label_ref(name, kind, scope_id),
+                **self.position(node),
+            }
+        )
+
+    def emit_jump(self, name, node):
+        """Emit a jump."""
+        self.emit(
+            {
+                "kind": Kind.JUMP,
+                "label": name,
+                "labelRef": self.label_ref_of(name),
+                **self.position(node),
+            }
+        )
+
+    def emit_branch(self, condition, true_label, false_label, guard, node):
+        """Emit a branch.
+
+        The guard is the STRUCTURED condition: it says what the branch
+        tests, and the engine turns it into a path condition. A branch with
+        no guard tells the solver nothing, which is the same as not having
+        lowered the condition at all.
+        """
+        self.emit(
+            {
+                "kind": Kind.BRANCH,
+                "lhs1": condition,
+                "trueLabel": true_label,
+                "falseLabel": false_label,
+                "guard": guard,
+                "labelRef": self.label_ref(
+                    true_label, LabelKind.BLOCK, self.state.scope_counter
+                ),
+                **self.position(node),
+            }
+        )
+
+    def lower_condition(self, node):
+        """Lower a condition, and say what it tests.
+
+        A comparison is a Compare guard and everything else is a Truthiness
+        guard: the condition is true when the value is, and the engine's
+        language rules say what "is" means.
+
+        The guard is never a guess: it says what the SOURCE says.
+        """
+        if node is None:
+            return {
+                "operand": const_op(Const.BOOL, "true"),
+                "guard": {"kind": Guard.ALWAYS, "value": True},
+            }
+        if isinstance(node, ast.Constant) and isinstance(node.value, bool):
+            value = bool(node.value)
+            return {
+                "operand": const_op(Const.BOOL, "true" if value else "false"),
+                "guard": {"kind": Guard.ALWAYS, "value": value},
+            }
+        if (
+            isinstance(node, ast.Compare)
+            and len(node.ops) == 1
+            and len(node.comparators) == 1
+        ):
+            operator = COMPARISON_OPERATORS.get(type(node.ops[0]))
+            if operator is not None:
+                left = self.lower_expression(node.left)
+                right = self.lower_expression(node.comparators[0])
+                dest = self.state.new_temp(Type.BOOLEAN)
+                self.emit(
+                    {
+                        "kind": Kind.BINOP,
+                        "dest": dest,
+                        "lhs1": left,
+                        "lhs2": right,
+                        "binop": operator,
+                        **self.position(node),
+                    }
+                )
+                return {
+                    "operand": dest,
+                    "guard": {"kind": Guard.COMPARE, "lhs": left, "op": operator, "rhs": right},
+                }
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            operand = self.lower_expression(node.operand)
+            dest = self.state.new_temp(Type.BOOLEAN)
+            self.emit(
+                {
+                    "kind": Kind.UNARYOP,
+                    "dest": dest,
+                    "lhs1": operand,
+                    "unop": "NOT",
+                    **self.position(node),
+                }
+            )
+            return {
+                "operand": dest,
+                "guard": {"kind": Guard.TRUTHINESS, "operand": operand, "sense": "FALSE"},
+            }
+        operand = self.lower_expression(node)
+        return {
+            "operand": operand,
+            "guard": {"kind": Guard.TRUTHINESS, "operand": operand, "sense": "TRUE"},
+        }
+
+    def annotate(self, state, node, channel):
+        """Record the decorators a declaration carries.
+
+        A decorator is what the decorated thing BECOMES, so its name is
+        what a rule matches on. The IR has four channels for it, and the
+        arguments go into ``annotationValues`` so that a rule can match on
+        the value and not only on the name.
+        """
+        for decorator in getattr(node, "decorator_list", None) or ():
+            name = self.decorator_name(decorator)
+            if not name:
+                continue
+            target = state.__dict__.get("%s_annotations" % channel)
+            if target is not None:
+                target.append(name)
+            values = []
+            if isinstance(decorator, ast.Call):
+                for argument in decorator.args:
+                    values.append(self.argument_value_text(argument))
+                for keyword in decorator.keywords:
+                    values.append(self.argument_value_text(keyword.value))
+            existing = state.annotation_values.get(name) or []
+            state.annotation_values[name] = existing + values
+
+    def argument_value_text(self, node):
+        """The text of a constant argument."""
+        if isinstance(node, ast.Constant):
+            return str(node.value)
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            return node.attr
+        return ""
+
+    def decorator_name(self, decorator):
+        """The name a decorator carries.
+
+        ``@app.route("/x")`` is a decorator named ``route``, and
+        ``@dataclass`` is one named ``dataclass``.
+        """
+        if isinstance(decorator, ast.Name):
+            return decorator.id
+        if isinstance(decorator, ast.Attribute):
+            return decorator.attr
+        if isinstance(decorator, ast.Call):
+            return self.decorator_name(decorator.func)
+        return None
+
+    def decorator_owner(self, decorator):
+        """The owner a decorator's callee key carries.
+
+        A decorator that is a plain name belongs to the module the file is
+        in; one that is an attribute belongs to whatever its receiver is.
+        """
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        if isinstance(target, ast.Name):
+            return self.module_name
+        if isinstance(target, ast.Attribute):
+            owner = self.owner_of_dotted(self.dotted_name(target.value))
+            if owner is not None:
+                return owner
+            return UNKNOWN_OWNER
+        return UNKNOWN_OWNER
+
+    def receiver_kind(self, definition):
+        """What a function's implicit receiver is.
+
+        A method has one -- the INSTANCE -- except a static method, which
+        is called on the class and not on an instance, and a class method,
+        whose receiver is the CLASS.
+
+        The rule matters because the receiver is ``args[0]``: a static
+        method that is given an instance as its receiver can never be
+        called correctly.
+        """
+        if id(definition) not in self.method_nodes:
+            return None
+        for decorator in getattr(definition, "decorator_list", None) or ():
+            name = self.decorator_name(decorator)
+            if name == "staticmethod":
+                return None
+            if name == "classmethod":
+                return "class"
+        return "instance"
+
+    def has_receiver(self, definition):
+        """Whether a function has an implicit receiver."""
+        return self.receiver_kind(definition) is not None
 
     def emit(self, instruction):
         """Add one instruction to the current function."""
@@ -2310,6 +3911,7 @@ class Translator:
                 Problem.SOURCE_LOWERED,
                 node,
                 "this could not be lowered completely: %s" % exc,
+                DropImpact.SEMANTICS,
             )
 
     def emit_havoc(self, node):
@@ -2322,26 +3924,77 @@ class Translator:
         self.emit({"kind": Kind.HAVOC, "dest": dest, **self.position(node)})
         return dest
 
-    def report(self, kind, node, message):
+    def report(self, kind, node, message, impact=None):
         """Report a problem on the current function.
 
         The same problem in the same function is reported ONCE, with the
         number of times it happened: a file with fifty calls to a name the
         analysis cannot resolve has one problem, not fifty.
+
+        A problem is also a DROP. The problem is what the reader is told;
+        the drop is what the engine derives the function's precision from,
+        and what says HOW MUCH was lost. A construct that was not understood
+        at all costs the function its semantics; one that was understood but
+        whose shape is not expressible costs it only its shape.
         """
         key = (kind, message)
         entry = self.state.problem_counts.get(key)
         if entry is not None:
             entry["count"] += 1
+        else:
+            problem = {
+                "kind": kind,
+                "message": message,
+                "nodeClass": type(node).__name__ if node is not None else None,
+            }
+            problem.update(self.position(node))
+            self.state.problem_counts[key] = {"problem": problem, "count": 1}
+            self.state.problems.append(problem)
+        self.emit_drop(
+            construct_of(kind, node),
+            message,
+            impact or impact_of_problem(kind),
+            node,
+        )
+
+    def emit_drop(self, construct, detail, impact, node=None):
+        """Record a drop: something this translator could not lower, and
+        what it cost.
+
+        This is the ONE exit for a degradation. Every place that gives up on
+        a construct comes through here, so that "what did this translator
+        not understand" has exactly one answer and the engine's precision is
+        derived from the same record the reader sees.
+
+        The drops are deduped by WHERE they happened, not only by what they
+        say: two different calls of an unresolvable name are two different
+        places the analysis is blind at, and the reader is told about both.
+        """
+        position = self.position(node)
+        node_class = type(node).__name__ if node is not None else None
+        key = (
+            construct,
+            detail,
+            impact,
+            node_class,
+            position["line"],
+            position["column"],
+        )
+        entry = self.state.drop_counts.get(key)
+        if entry is not None:
+            entry["count"] += 1
             return
-        problem = {
-            "kind": kind,
-            "message": message,
-            "nodeClass": type(node).__name__ if node is not None else None,
-        }
-        problem.update(self.position(node))
-        self.state.problem_counts[key] = {"problem": problem, "count": 1}
-        self.state.problems.append(problem)
+        self.state.drop_counts[key] = {"count": 1}
+        self.state.drops.append(
+            {
+                "construct": construct,
+                "detail": detail,
+                "impact": impact,
+                "line": position["line"],
+                "column": position["column"],
+                "scope": "FUNCTION",
+            }
+        )
 
     def position(self, node):
         """The node's one-based line and column."""
@@ -2389,6 +4042,15 @@ class Translator:
         if name is None or self.state is None:
             return {"kind": Type.UNKNOWN}
         return self.tac_type_of_name(self.state.types.get(name))
+
+    def type_of_expression(self, node):
+        """The type of an expression, when the source says so."""
+        if isinstance(node, ast.Name):
+            return self.state.types.get(node.id)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id in self.defined_classes:
+                return node.func.id
+        return None
 
     def tac_type_of_expression(self, node):
         """The TAC type of an expression."""

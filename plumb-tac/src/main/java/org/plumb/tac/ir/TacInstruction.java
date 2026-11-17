@@ -242,6 +242,40 @@ public final class TacInstruction implements java.io.Serializable {
   /** For JUMP: the target label name. For LABEL: this label's own name. */
   public final String label;
 
+  /**
+   * For FIELDLOAD / FIELDSTORE: the FQN of the type that owns the field.
+   *
+   * <p>Without it, a field access says "some object's {@code name} field" and nothing more -- so a
+   * checker cannot tell a field of the audited class from a field of a local helper object. The
+   * owner makes the access attributable.
+   *
+   * <p>{@code null} when the front end did not resolve the owner.
+   */
+  public final String ownerType;
+
+  /**
+   * For BRANCH: the condition the branch tests, stated in full.
+   *
+   * <p>{@code null} for every other instruction kind, and for a branch whose front end could not
+   * describe the condition any better than "some value is true".
+   */
+  public final TacGuard guard;
+
+  /**
+   * For LABEL / JUMP / BRANCH: what the referenced label IS.
+   *
+   * <p>{@code null} when the front end did not classify the label.
+   */
+  public final TacLabelRef labelRef;
+
+  /**
+   * For BRANCH / JUMP: the id of the region this branch belongs to.
+   *
+   * <p>The region's own body lives at the function level. {@code null} when the front end did not
+   * build regions.
+   */
+  public final String branchRegion;
+
   /** Source line for diagnostics. -1 if unknown. */
   public final int line;
 
@@ -279,6 +313,10 @@ public final class TacInstruction implements java.io.Serializable {
     this.trueLabel = b.trueLabel;
     this.falseLabel = b.falseLabel;
     this.label = b.label;
+    this.ownerType = b.ownerType;
+    this.guard = b.guard;
+    this.labelRef = b.labelRef;
+    this.branchRegion = b.branchRegion;
     this.line = b.line;
     this.column = b.column;
     this.effects =
@@ -337,6 +375,10 @@ public final class TacInstruction implements java.io.Serializable {
     private String trueLabel;
     private String falseLabel;
     private String label;
+    private String ownerType;
+    private TacGuard guard;
+    private TacLabelRef labelRef;
+    private String branchRegion;
     private int line = -1;
     private int column = -1;
     private Set<Effect> effects;
@@ -416,6 +458,30 @@ public final class TacInstruction implements java.io.Serializable {
 
     public Builder label(String s) {
       this.label = s;
+      return this;
+    }
+
+    /** Records the FQN of the type that owns the accessed field. */
+    public Builder ownerType(String owner) {
+      this.ownerType = owner;
+      return this;
+    }
+
+    /** Records the condition this branch tests. */
+    public Builder guard(TacGuard g) {
+      this.guard = g;
+      return this;
+    }
+
+    /** Records what the referenced label IS. */
+    public Builder labelRef(TacLabelRef ref) {
+      this.labelRef = ref;
+      return this;
+    }
+
+    /** Records the region this branch belongs to. */
+    public Builder branchRegion(String id) {
+      this.branchRegion = id;
       return this;
     }
 

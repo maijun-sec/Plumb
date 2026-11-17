@@ -28,24 +28,24 @@ import scala.Option;
 /**
  * The Scala 3 compiler plugin that carries the TAC lowering into the compiler's pipeline.
  *
- * <p><b>Why a plugin, and not a hand-rolled phase list.</b> dotc's phase pipeline is
- * internal API: the phase names, their grouping, and the order they run in are not a
- * stable contract. The plugin API ({@link StandardPlugin} + {@link PluginPhase}) is the
- * one mechanism dotc actually supports for extending the pipeline, and it is what the
- * {@code -Xplugin} command-line option uses. Registering the phase through it means the
- * frontend asks dotc to place the phase, and dotc decides where it goes.
+ * <p><b>Why a plugin, and not a hand-rolled phase list.</b> dotc's phase pipeline is internal API:
+ * the phase names, their grouping, and the order they run in are not a stable contract. The plugin
+ * API ({@link StandardPlugin} + {@link PluginPhase}) is the one mechanism dotc actually supports
+ * for extending the pipeline, and it is what the {@code -Xplugin} command-line option uses.
+ * Registering the phase through it means the frontend asks dotc to place the phase, and dotc
+ * decides where it goes.
  *
- * <p><b>Why it is written in Java.</b> The Plumb build is a Java-only reactor: adding a
- * Scala compile step to it (through {@code scala-maven-plugin}) would make every module
- * that depends on the Scala frontend carry a second build tool. The plugin API itself is
- * reachable from Java -- the Scala traits it exposes are ordinary Java interfaces, and
- * {@code dotty.tools.dotc.transform.MegaPhase.MiniPhase} is an ordinary Java abstract
- * class. The only friction is that Scala's collections are not {@code java.util}
- * collections, which the bridge in {@link ScalaTacPhase} handles.
+ * <p><b>Why it is written in Java.</b> The Plumb build is a Java-only reactor: adding a Scala
+ * compile step to it (through {@code scala-maven-plugin}) would make every module that depends on
+ * the Scala frontend carry a second build tool. The plugin API itself is reachable from Java -- the
+ * Scala traits it exposes are ordinary Java interfaces, and {@code
+ * dotty.tools.dotc.transform.MegaPhase.MiniPhase} is an ordinary Java abstract class. The only
+ * friction is that Scala's collections are not {@code java.util} collections, which the bridge in
+ * {@link ScalaTacPhase} handles.
  *
- * <p><b>Statelessness.</b> A plugin instance is created fresh for every file the
- * frontend parses, and holds no state beyond the phase it hands out. Two frontends
- * running concurrently never share one.
+ * <p><b>Statelessness.</b> A plugin instance is created fresh for every file the frontend parses,
+ * and holds no state beyond the phase it hands out. Two frontends running concurrently never share
+ * one.
  *
  * @see ScalaTacPhase
  * @see PlumbScalaContext
@@ -88,8 +88,8 @@ final class PlumbScalaPlugin implements StandardPlugin {
   /**
    * The setter for {@link #optionsHelp()}.
    *
-   * <p>{@code optionsHelp} is a {@code var} in the Scala trait, so the trait declares
-   * this setter. The plugin takes no options, so the setter only records the value.
+   * <p>{@code optionsHelp} is a {@code var} in the Scala trait, so the trait declares this setter.
+   * The plugin takes no options, so the setter only records the value.
    */
   @Override
   public void dotty$tools$dotc$plugins$Plugin$_setter_$optionsHelp_$eq(Option<String> x) {
@@ -99,11 +99,11 @@ final class PlumbScalaPlugin implements StandardPlugin {
   /**
    * The plugin's phases.
    *
-   * <p>dotc calls this to ask the plugin what it contributes. The frontend does not
-   * install the plugin through this method -- it installs the phase directly through
-   * {@link PlumbScalaContext#addPluginPhases} -- but the method is still implemented
-   * because it is part of the plugin contract, and because it is what makes the plugin
-   * usable through dotc's own {@code -Xplugin} mechanism.
+   * <p>dotc calls this to ask the plugin what it contributes. The frontend does not install the
+   * plugin through this method -- it installs the phase directly through {@link
+   * PlumbScalaContext#addPluginPhases} -- but the method is still implemented because it is part of
+   * the plugin contract, and because it is what makes the plugin usable through dotc's own {@code
+   * -Xplugin} mechanism.
    *
    * @param options the plugin's command-line options; unused
    * @return the single phase this plugin contributes

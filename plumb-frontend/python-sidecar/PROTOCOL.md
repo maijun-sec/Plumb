@@ -165,6 +165,24 @@ Every response carries `ok`. A failure carries `ok: false` and an `error`
 message, and the Java side turns it into a structured problem -- **never
 into a silent "no findings"**.
 
+### The keys the entry point has to add
+
+The translator produces the type declarations of the module -- the classes,
+what they extend, what they declare -- and the entry point has to carry them:
+
+```json
+{ "types": [ { "fqn": "UserStore", "simpleName": "UserStore",
+               "superType": null, "interfaces": [], "annotations": [],
+               "fields": [], "fieldAnnotations": [], "members": [],
+               "traits": [], "modifiers": [], "metaclass": null,
+               "isInterface": false, "isAbstract": false, "isEnum": false,
+               "isRecord": false, "isSynthetic": false,
+               "typeParameters": [] } ] }
+```
+
+The same goes for `capabilities`, `programDrops` and `problems`: the
+translator has them, and the envelope is the entry point's.
+
 ## The function object
 
 | Field | Meaning |
@@ -172,23 +190,38 @@ into a silent "no findings"**.
 | `name` | The function's name. |
 | `signature` | `owner.name(ParamTypes):Return`. |
 | `enclosingClass` | The class the method belongs to. Absent for a free function. |
-| `precision` | `SOURCE_FULL` or `SOURCE_LOWERED`. |
+| `precision` | `SOURCE_FULL`, `SOURCE_LOWERED` or `SOURCE_DEGRADED`. **Derived from `drops`**, not from whether the function has a problem. |
 | `synthetic` | True for a function the sidecar made up: the module's own code, and a class's body. |
+| `memberKind` | What the function IS inside its owner: `MODULE`, `METHOD`, `CONSTRUCTOR`, `FIELD_INITIALIZER`, `GETTER`, `SETTER`, `DESTRUCTOR`. |
+| `returnType` | The type the annotation says the function returns, as a type object -- not a string. |
+| `domain` | The value domain of the return type: `{ "domain": "INTEGRAL", "bits": 64, "signed": true }`, or `{ "domain": "FLOATING", "bits": 53, "exponentBits": 11 }`. |
+| `drops` | What could not be lowered faithfully, and what that cost. See [the drop object](#the-drop-object). |
+| `parameters` | The declared parameters, with the facts a positional list of variables cannot carry. |
 | `params` | The parameters, in declaration order. |
 | `locals` | The locals. |
+| `tryRegions` | The exception regions the function contains. |
+| `branchRegions` | The dispatch regions: a `match`. |
+| `scopeBindings` | The names this function binds in a scope that is not its own. |
+| `classAnnotations` / `methodAnnotations` / `fieldAnnotations` / `paramAnnotations` / `annotationValues` | The five annotation channels the IR has. |
+| `generatorStates` | The labels a generator resumes at. |
 | `instructions` | The instruction stream, in source order. |
 | `problems` | What could not be modelled. |
 
 ### `precision`
 
 `SOURCE_FULL` means the function was lowered faithfully. `SOURCE_LOWERED`
-means a construct was lowered into something the TAC can hold but that is
-not the construct itself.
+means the SHAPE is not whole -- a loop's `else`, a set's order -- and
+`SOURCE_DEGRADED` means the MEANING is not whole: an unknown call target, a
+variable that is not known to exist.
 
-A function carries `SOURCE_LOWERED` when it has at least one problem, and
-`SOURCE_FULL` when it has none. A problem means something was
-approximated -- an unhandled node became an unknown value, a callee became
-a black box -- so a function that was approximated did not come out whole.
+**The precision is derived from the drops, not from the problems.** A drop's
+`impact` decides it:
+
+| The function's drops | The precision |
+|---|---|
+| A `SEMANTICS` drop | `SOURCE_DEGRADED` |
+| No `SEMANTICS` drop, but a `STRUCTURE` one | `SOURCE_LOWERED` |
+| Only `VALUE` and `TYPE` drops, or none | `SOURCE_FULL` |
 
 **A degradation never suppresses a finding.** The precision is a record of
 the approximation, not a filter on the results; the analysis engine does
@@ -197,6 +230,77 @@ not read it to decide whether to report.
 **The same problem is reported once, with a count.** A file with fifty
 calls to a name the analysis cannot resolve has one problem saying so
 fifty times, not fifty problems.
+
+### `parameters`
+
+Each entry carries the facts the declaration states and a positional list of
+variables cannot:
+
+```json
+{ "name": "b", "type": { "kind": "INT" }, "optional": true, "variadic": false,
+  "byRef": false, "keywordOnly": true, "defaultValue": null }
+```
+
+### `scopeBindings`
+
+Each entry is a name and the scope it belongs to:
+
+```json
+{ "name": "G", "kind": "CAPTURED", "byRef": false }
+```
+
+The kinds are `LOCAL`, `GLOBAL`, `STATIC_LOCAL`, `CAPTURED`, `PARAM` and
+`DECLARE`. A `nonlocal` name is a `CAPTURED` one: it belongs to the scope
+around the function.
+
+### `tryRegions`
+
+```json
+{
+  "tryStart": 65, "tryEnd": 66,
+  "catchStart": 68, "catchEnd": 70,
+  "catchLabels": ["L_CATCH_OSError4"],
+  "catchTypes": [["OSError"]],
+  "finallyLabel": "L_FINALLY5",
+  "finallyStart": 76, "finallyEnd": 78,
+  "syntheticFinally": false,
+  "finallyExits": ["L_FINALLY5", "L_CATCH_OSError4"],
+  "resourceVars": []
+}
+```
+
+`catchTypes` holds every type a handler catches, so that a handler of
+`A | B` does not lose the second one. `finallyExits` names the exits the
+`finally` runs on: the try's own completion, every handler's completion, a
+rethrow, and a `return`.
+
+## The drop object
+
+A drop is the machine-readable receipt of a construct that could not be lowered
+faithfully. It has exactly six keys:
+
+```json
+{
+  "construct": "lowered.Call",
+  "detail": "the callee could not be resolved, so the call is modelled as a black box",
+  "impact": "STRUCTURE",
+  "line": 23,
+  "column": 9,
+  "scope": "FUNCTION"
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `construct` | What was not lowered, as a dotted name. |
+| `detail` | Why, and what was done instead. |
+| `impact` | `SEMANTICS`, `STRUCTURE`, `VALUE` or `TYPE`. |
+| `line`, `column` | Where it happened. |
+| `scope` | `FUNCTION` or `PROGRAM`. |
+
+The drops are deduped by WHERE they happened, not only by what they say: two
+calls of an unresolvable name are two different places the analysis is blind
+at, and the reader is told about both.
 
 ## Instruction, operand and type encoding
 
@@ -209,6 +313,54 @@ The instruction kinds are the TAC's own, by name:
 
 Only the fields that the kind actually uses are present. The Java side
 ignores any field it does not know.
+
+### The fields an instruction may carry
+
+| Field | On | Meaning |
+|---|---|---|
+| `guard` | `BRANCH` | The STRUCTURED condition of the branch. |
+| `labelRef` | `LABEL`, `JUMP`, `BRANCH`, `FINALLY_ENTER` | What the label IS: `{ "name": "L3", "kind": "LOOP_END", "scopeId": 2 }`. |
+| `ownerType` | `ARRAYLOAD`, `ARRAYSTORE` | The class the entry belongs to, when the receiver's type is known. |
+| `branchRegion` | `BRANCH` | The dispatch region the branch belongs to. |
+| `argCount` | `CALL`, `NEW`, `UNINTERPRETED` | The number of arguments passed, keyword arguments included. |
+| `namedArgs` | `CALL`, `UNINTERPRETED` | The arguments that were passed by name. |
+| `spreadArgs` | `CALL`, `UNINTERPRETED` | The arguments that were unpacked. |
+| `aliasOf` | `MOVE`, `ARRAYSTORE` | The location the written name aliases. |
+| `deleteKey` | `ARRAYSTORE` | True when the store removes the key instead of writing it. |
+
+### The guard
+
+A guard is the condition of a branch in a shape the solver can use. Without one
+the branch is a boolean temporary, and the path condition is empty on every
+branch of the function.
+
+```json
+{ "kind": "Compare", "lhs": { "kind": "VAR", "name": "i" }, "op": "LT", "rhs": { "kind": "CONST", "constKind": "INT", "value": "3" } }
+{ "kind": "Truthiness", "operand": { "kind": "VAR", "name": "rows" }, "sense": "TRUE" }
+{ "kind": "Always", "value": true }
+{ "kind": "PropertyPresence", "receiver": { "kind": "VAR", "name": "rows" }, "key": { "kind": "CONST", "constKind": "STRING", "value": "k" } }
+```
+
+The kinds are `Compare`, `Truthiness`, `Membership`, `TypeTest`, `Always` and
+`PropertyPresence`.
+
+**The guard describes the branch's TRUE edge.** A `Compare(NE, NULL)` guard
+means the true edge is the one where the value is not null, and the false edge
+is the one where it is. A guard that described the other edge would make the
+solver's path condition the opposite of the code's.
+
+A guard that cannot be rendered into a predicate is still carried, and the loss
+is recorded as a `guard.unrenderable` drop.
+
+### The label kinds
+
+`FUNCTION_ENTRY`, `FUNCTION_EXIT`, `BLOCK`, `LOOP_HEAD`, `LOOP_BODY_END`,
+`LOOP_END`, `SWITCH_HEAD`, `SWITCH_CASE`, `SWITCH_END`, `CATCH_ENTRY` and
+`FINALLY_ENTRY`.
+
+`LOOP_BODY_END` and `LOOP_END` are two different labels on purpose: a `break`
+jumps to the body end, and the loop's `else` -- the code after the loop that
+runs when it finished without a break -- hangs off the loop's end.
 
 An operand is either a variable or a constant:
 
@@ -262,7 +414,13 @@ the catalogue matches on. So the imports are read, not merely executed:
 | `eval(x)` | `builtins` | `builtins.eval/1` |
 | `store.find(key)` where `store` is a `UserStore` | `UserStore` | `UserStore.find/1` |
 | `self.find(key)` | the enclosing class | `UserStore.find/1` |
+| `UserStore.find(key)` -- a class of this module | `UserStore` | `UserStore.find/1` |
 | `helper(x)` where `helper` is in this module | the module | `app.helper/1` |
+
+**A class is not an instance.** A call on a class of the module names that
+class as its owner, and the receiver slot holds the class object -- the
+synthetic variable `t_cls_<Class>` -- and not an instance. A static method is
+called on the class as well, and a class method's receiver is the class.
 
 **A free function has no receiver object** -- it is a function of the
 MODULE -- so the slot holds the **module's name** as a constant. A
@@ -282,6 +440,10 @@ The arity counts the **positional** parameters.
 - A function the module declares: its declared positional parameters, and
   the receiver is not one of them. A method with one parameter is
   `UserStore.find/1`, with the receiver at `args[0]`.
+- A STATIC method has no receiver at all: `@staticmethod def s(a)` is
+  `K.stat/1`, and the arity is the number of the user's arguments.
+- A CLASS method's receiver is the CLASS: `@classmethod def c(cls, a)` is
+  `K.c/1`, and `args[0]` holds the class object.
 - A function from elsewhere: the number of positional arguments the call
   passes. Python has no static types, so the declared parameters of an
   imported function are not visible here -- and a keyword argument is not
@@ -324,37 +486,50 @@ stop there, and every function would still claim full precision.
 An assignment is not a `BINOP`. A plain assignment is a write; a compound
 assignment (`+=` and friends) is a read, a `BINOP`, and then a write.
 
+**A short-circuit operator is a branch chain.** `and` and `or` only evaluate
+their right operand when the left one says it has to be, so the right operand
+is on the branch that reaches it -- and that is also what makes the taint of
+the right operand reach the result only when it is evaluated.
+
 The TAC has no power operator and no matrix-multiplication operator. A
 power is modelled as a multiplication and a matrix product as an unknown
 value, and **both are reported**.
 
-## What the sidecar does not model
+## The conservative modelling list
 
-Every one of these is reported as a problem on the function, and the
-affected value becomes a `HAVOC` -- an unknown value. **Never a silent
-omission.**
+Every one of these is lowered into something the TAC can hold, and the
+difference between that something and the source is **recorded as a drop** with
+an `impact` that says what it cost. Nothing here becomes an unknown value
+without a word, and nothing here is silently dropped.
 
-| Construct | What happens |
-|---|---|
-| A lambda | Reported as `SOURCE_LOWERED`; the value becomes a `HAVOC`. |
-| A generator (`yield`) | Reported as `UNHANDLED_NODE`; the value becomes a `HAVOC`. |
-| A match statement | Reported as `UNHANDLED_NODE`; the subject is still lowered. |
-| A comprehension | Reported as `SOURCE_LOWERED`: a comprehension has a scope of its own, so the entries after the first are not modelled. |
-| A call whose callee does not resolve | The call is emitted as `UNINTERPRETED`: a black box whose result may be anything. |
-| A keyword argument | Reported as `SOURCE_LOWERED`: it is passed as a positional one. |
-| A starred argument | Reported as `SOURCE_LOWERED`: it is passed as one argument. |
-| A default value that is not a constant | Reported as `SOURCE_LOWERED`: a default is evaluated where the function is defined. |
-| A set literal | Reported as `SOURCE_LOWERED`: a set has no order. |
-| Any other statement or expression | Reported as `UNHANDLED_NODE`; the value becomes a `HAVOC`. |
+| Construct | What is modelled | The drop |
+|---|---|---|
+| A lambda | A function of its own, plus a closure object that holds it and the values it captured. The captures live in the object and are NOT parameters: a parameter is a taint source, and a capture is not one. | -- |
+| A generator (`yield`) | The yielded value is evaluated in the generator's own stream, so a sink inside it is a sink inside the generator. The value the generator produces is unknown. | `unhandled.Yield`, `SEMANTICS` |
+| A `yield from` | The delegated value is evaluated. | `unhandled.YieldFrom`, `SEMANTICS` |
+| A `match` | Every case body is lowered, and a match that matches nothing throws. | -- |
+| A comprehension | Lowered into loops, with the filters lowered too, and its loop variable in a scope of its own. | -- |
+| A set literal | Its entries are stored under indices that say nothing about which entry is which. | `lowered.Set`, `STRUCTURE` |
+| A call whose callee does not resolve | The call is emitted as `UNINTERPRETED`: a black box whose result may be anything. | `lowered.Call`, `STRUCTURE` |
+| A keyword argument | It is passed as a positional one. | `lowered.Call`, `STRUCTURE` |
+| A starred argument | It is passed as one argument. | `lowered.Starred`, `STRUCTURE` |
+| A default value that is not a constant | The expression is lowered, but a default is evaluated where the function is defined. | `lowered.Call`, `STRUCTURE` |
+| A power | A multiplication. | `lowered.BinOp`, `STRUCTURE` |
+| A matrix product | An unknown value. | `lowered.BinOp`, `STRUCTURE` |
+| A handler of several types | The catch handler carries the first type; the region records them all. | `exc.catch.multiType`, `STRUCTURE` |
+| An `except*` handler | It catches a GROUP of exceptions, and the TAC catches one. | `exc.handler.group`, `STRUCTURE` |
+| An iteration whose iterable's type is not known | The loop is modelled both as an index over it and through the `__iter__` and `__next__` protocol. | `ctrl.iter.protocol`, `STRUCTURE` |
+| A `global` or a `nonlocal` | A scope binding, and the writes routed to that scope. | -- |
+| A dataclass's generated constructor | The fields are taken as parameters and written into the instance. | -- |
+| A dataclass field whose default is computed | The default is evaluated when the class is created, so the generated constructor takes the field as a required argument. | `decl.dataclass.default`, `VALUE` |
 
 Two things are lowered without a report, because the difference cannot
 change what the analysis sees:
 
 - **An `await`** produces the awaited value: the TAC has no coroutine.
-- **A `with`** binds the context manager's value to the target: the TAC
-  has no `__enter__` and no `__exit__`. The context expression itself is
-  lowered, so a call inside it -- `with open(path) as fp` -- is still a
-  call.
+- **A `with`** binds the value `__enter__` returns, and calls `__exit__` when
+  the block is done. The context expression itself is lowered, so a call inside
+  it -- `with open(path) as fp` -- is still a call.
 
 ## Building and running
 

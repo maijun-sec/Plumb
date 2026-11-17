@@ -33,19 +33,18 @@ import org.plumb.tac.ir.TacInstruction;
 /**
  * The callee signature's OWNER -- the thing that makes a sink reachable.
  *
- * <p><b>Why this test exists.</b> The sink families in {@code sink-families.yaml} are anchored to
- * a fully qualified name with a DOT separator and an optional arity suffix:
- * {@code '^java\.sql\.Statement\.execute(/\d+)?'}. The DFA matches a call against them by its
- * callee signature, so the signature's SHAPE is the whole contract.
+ * <p><b>Why this test exists.</b> The sink families in {@code sink-families.yaml} are anchored to a
+ * fully qualified name with a DOT separator and an optional arity suffix: {@code
+ * '^java\.sql\.Statement\.execute(/\d+)?'}. The DFA matches a call against them by its callee
+ * signature, so the signature's SHAPE is the whole contract.
  *
- * <p>The Scala frontend used to emit {@code "java.sql.Statement#execute"} -- dotc's own
- * convention: a hash separator and no arity. Every pattern in the file is anchored with
- * {@code ^} to a dotted qualified name, so <b>not one of them could ever match</b>. Every taint
- * sink rule was silently inert on Scala code: the analysis ran, produced zero findings, and
- * looked like clean code.
+ * <p>The Scala frontend used to emit {@code "java.sql.Statement#execute"} -- dotc's own convention:
+ * a hash separator and no arity. Every pattern in the file is anchored with {@code ^} to a dotted
+ * qualified name, so <b>not one of them could ever match</b>. Every taint sink rule was silently
+ * inert on Scala code: the analysis ran, produced zero findings, and looked like clean code.
  *
- * <p>This is the Scala counterpart of {@code KotlinCalleeOwnerTest}. Both languages are held to
- * the same contract, because they share one sink file.
+ * <p>This is the Scala counterpart of {@code KotlinCalleeOwnerTest}. Both languages are held to the
+ * same contract, because they share one sink file.
  */
 class ScalaCalleeOwnerTest {
 
@@ -100,7 +99,9 @@ class ScalaCalleeOwnerTest {
                 stmt.execute(sql)
             """);
 
-    assertThat(sigs).as("no signature may use dotc's hash separator").noneMatch(s -> s.contains("#"));
+    assertThat(sigs)
+        .as("no signature may use dotc's hash separator")
+        .noneMatch(s -> s.contains("#"));
   }
 
   @Test
@@ -118,7 +119,9 @@ class ScalaCalleeOwnerTest {
                 stmt.execute(sql)
             """);
 
-    assertThat(sigs).as("one argument means arity 1").anyMatch(s -> s.startsWith("java.sql.Statement.execute/1"));
+    assertThat(sigs)
+        .as("one argument means arity 1")
+        .anyMatch(s -> s.startsWith("java.sql.Statement.execute/1"));
   }
 
   @Test
@@ -158,6 +161,8 @@ class ScalaCalleeOwnerTest {
                 builder.append("x")
             """);
 
-    assertThat(sigs).as("a Scala-to-Scala call must still name its owner").anyMatch(s -> s.contains("."));
+    assertThat(sigs)
+        .as("a Scala-to-Scala call must still name its owner")
+        .anyMatch(s -> s.contains("."));
   }
 }

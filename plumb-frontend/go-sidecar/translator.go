@@ -69,7 +69,34 @@ const (
 	syntheticClear     = "clear"
 	syntheticClose     = "close"
 	syntheticNewObject = "<init>"
+	syntheticAddr      = "addr"
 )
+
+// cellValueField is the field of a cell object that holds the value the cell
+// points at.
+//
+// A cell is how the TAC models a Go pointer: the address of a value becomes
+// an object with one field, and a dereference reads that field. The name is
+// fixed, because the cell's storage has to be ONE key: a write through a
+// pointer and a read through the same pointer must land on the same field,
+// or the two would be two unrelated values.
+const cellValueField = "value"
+
+// ownerTypeOf returns the type that declares a selected member.
+//
+// It is the type the member is DECLARED in, not the type it is reached
+// through: an embedded field is declared in the embedded type, and the
+// access path through the outer type is a different storage.
+func ownerTypeOf(selection *types.Selection) string {
+	if selection == nil {
+		return ""
+	}
+	receiver := selection.Recv()
+	if receiver == nil {
+		return ""
+	}
+	return className(receiver)
+}
 
 // syntheticSignature builds a synthetic callee key.
 func syntheticSignature(name string, arity int) string {
@@ -169,7 +196,7 @@ type translator struct {
 	// A closure inherits both: it is written inside the function, and the
 	// TAC's owner convention needs the scope for the same reason the
 	// enclosing function needs one.
-	owner    string
+	owner     string
 	enclosing string
 
 	// The wire models of those closures.
@@ -197,8 +224,28 @@ type translator struct {
 
 	instructions []Instruction
 	problems     []Problem
-	params       []Operand
-	locals       []Operand
+
+	// The losses of this function: the constructs that were not lowered
+	// faithfully.
+	//
+	// They are kept apart from the problems because the two say different
+	// things. A problem says "the frontend could not do its job here". A
+	// drop says "the frontend did its job, and here is what the job cost" --
+	// with an impact level that the engine turns into a precision.
+	drops []Drop
+
+	// The try/catch/finally regions of this function.
+	tryRegions []TryRegion
+
+	// The local-scope bindings: a source name and the slot it lives in.
+	scopeBindings []ScopeBinding
+
+	// The member kind of this function: "method", "function", "closure" or
+	// "staticInitializer".
+	memberKind string
+
+	params []Operand
+	locals []Operand
 
 	// The deferred calls, in the order they were written.
 	deferred []DeferredCall
@@ -279,19 +326,19 @@ type closure struct {
 // body it holds would be invisible to the analysis.
 func translateFunction(fset *token.FileSet, pkg *loadedPackage, declaration *ast.FuncDecl, index *typeIndex) []Function {
 	t := &translator{
-		fset:         fset,
-		info:         pkg.info,
-		pkg:          pkg.pkg,
-		index:        index,
-		instructions: []Instruction{},
-		problems:     []Problem{},
-		params:       []Operand{},
-		locals:       []Operand{},
-		deferred:     []DeferredCall{},
-		bindings:     map[types.Object]*Operand{},
-		usedNames:    map[string]int{},
-		labelled:     map[string]*breakContext{},
-		closureByVar: map[types.Object]*closure{},
+		fset:             fset,
+		info:             pkg.info,
+		pkg:              pkg.pkg,
+		index:            index,
+		instructions:     []Instruction{},
+		problems:         []Problem{},
+		params:           []Operand{},
+		locals:           []Operand{},
+		deferred:         []DeferredCall{},
+		bindings:         map[types.Object]*Operand{},
+		usedNames:        map[string]int{},
+		labelled:         map[string]*breakContext{},
+		closureByVar:     map[types.Object]*closure{},
 		closureByLiteral: map[*ast.FuncLit]*closure{},
 	}
 
@@ -305,6 +352,9 @@ func translateFunction(fset *token.FileSet, pkg *loadedPackage, declaration *ast
 	owner := pkg.pkg.Path()
 	if t.signature.Recv() != nil {
 		owner = methodOwner(t.signature.Recv().Type())
+		t.memberKind = memberKindMethod
+	} else {
+		t.memberKind = memberKindFunction
 	}
 	// The enclosing scope is the PACKAGE for a package-level function, and the
 	// RECEIVER TYPE for a method. Go has no classes, but the TAC's owner
@@ -347,8 +397,10 @@ func translateFunction(fset *token.FileSet, pkg *loadedPackage, declaration *ast
 
 // buildFunction assembles the wire model of the translated function.
 func (t *translator) buildFunction(declaration *ast.FuncDecl, owner string, enclosing string) Function {
-	precision := PrecisionFull
-	if t.degraded {
+	precision := t.precisionFromDrops()
+	if t.degraded && precision == PrecisionFull {
+		// A function that carries a loss is never fully understood, even if
+		// the loss was recorded by a path that does not go through a drop.
 		precision = PrecisionLowered
 	}
 
@@ -373,18 +425,29 @@ func (t *translator) buildFunction(declaration *ast.FuncDecl, owner string, encl
 		name = declaration.Name.Name
 	}
 
+	memberKind := t.memberKind
+	if memberKind == "" {
+		memberKind = memberKindFunction
+	}
+
 	return Function{
-		Name:          name,
-		Signature:     declarationSignature(owner, name, parameters, result),
-		EnclosingClass: enclosing,
-		ReturnType:    returnType,
-		Precision:     precision,
-		Synthetic:     false,
-		Params:        t.params,
-		Locals:        t.locals,
-		Instructions:  t.instructions,
-		Problems:      t.problems,
-		DeferredCalls: t.deferred,
+		Name:            name,
+		Signature:       declarationSignature(owner, name, parameters, result),
+		EnclosingClass:  enclosing,
+		ReturnType:      returnType,
+		Precision:       precision,
+		MemberKind:      memberKind,
+		Synthetic:       false,
+		Params:          t.params,
+		Parameters:      t.params,
+		Locals:          t.locals,
+		ScopeBindings:   t.scopeBindings,
+		Instructions:    t.instructions,
+		Problems:        t.problems,
+		Drops:           t.drops,
+		TryRegions:      t.tryRegions,
+		Domain:          domainOfType(returnType),
+		DeferredCalls:   t.deferred,
 		StartsGoroutine: t.startsGoroutine,
 	}
 }
@@ -423,23 +486,24 @@ func (t *translator) translateFuncLit(literal *ast.FuncLit) *Operand {
 	captured := t.capturedVariables(literal)
 
 	sub := &translator{
-		fset:         t.fset,
-		info:         t.info,
-		pkg:          t.pkg,
-		index:        t.index,
-		signature:    signature,
-		owner:        t.owner,
-		enclosing:    t.enclosing,
-		instructions: []Instruction{},
-		problems:     []Problem{},
-		params:       []Operand{},
-		locals:       []Operand{},
-		deferred:     []DeferredCall{},
-		bindings:     map[types.Object]*Operand{},
-		usedNames:    map[string]int{},
-		labelled:     map[string]*breakContext{},
-		closureByVar: map[types.Object]*closure{},
+		fset:             t.fset,
+		info:             t.info,
+		pkg:              t.pkg,
+		index:            t.index,
+		signature:        signature,
+		owner:            t.owner,
+		enclosing:        t.enclosing,
+		instructions:     []Instruction{},
+		problems:         []Problem{},
+		params:           []Operand{},
+		locals:           []Operand{},
+		deferred:         []DeferredCall{},
+		bindings:         map[types.Object]*Operand{},
+		usedNames:        map[string]int{},
+		labelled:         map[string]*breakContext{},
+		closureByVar:     map[types.Object]*closure{},
 		closureByLiteral: map[*ast.FuncLit]*closure{},
+		memberKind:       memberKindClosure,
 	}
 
 	// The captured variables come first: they are the closure's leading
@@ -464,10 +528,10 @@ func (t *translator) translateFuncLit(literal *ast.FuncLit) *Operand {
 	arity := len(captured) + signature.Params().Len()
 
 	record := &closure{
-		literal:  literal,
-		captured: captured,
+		literal:   literal,
+		captured:  captured,
 		calleeSig: calleeSignature(t.owner, name, arity),
-		value:    t.newTemp(signature),
+		value:     t.newTemp(signature),
 	}
 	t.closureByLiteral[literal] = record
 
@@ -589,17 +653,17 @@ func (t *translator) buildClosure(name string, owner string, enclosing string,
 	}
 
 	return Function{
-		Name:          name,
-		Signature:     declarationSignature(owner, name, parameters, result),
-		EnclosingClass: enclosing,
-		ReturnType:    returnType,
-		Precision:     precision,
-		Synthetic:     false,
-		Params:        t.params,
-		Locals:        t.locals,
-		Instructions:  t.instructions,
-		Problems:      t.problems,
-		DeferredCalls: t.deferred,
+		Name:            name,
+		Signature:       declarationSignature(owner, name, parameters, result),
+		EnclosingClass:  enclosing,
+		ReturnType:      returnType,
+		Precision:       precision,
+		Synthetic:       false,
+		Params:          t.params,
+		Locals:          t.locals,
+		Instructions:    t.instructions,
+		Problems:        t.problems,
+		DeferredCalls:   t.deferred,
 		StartsGoroutine: t.startsGoroutine,
 	}
 }
@@ -627,7 +691,25 @@ func (t *translator) emit(instruction Instruction, position token.Pos) {
 // problem is not a diagnostic in the compiler's sense -- the code may
 // compile perfectly -- it is the frontend saying "the analysis did not
 // understand this part".
+//
+// It records a DROP as well, so that a loss can never be silent: the drop
+// carries the impact level the engine derives the function's precision from,
+// and the problem carries the sentence a human reads.
+//
+// The construct id is the catch-all one. A site that knows WHICH construct it
+// lost uses reportConstruct, so that the id names the construct rather than
+// the failure.
 func (t *translator) report(node ast.Node, kind string, message string) {
+	t.reportConstruct(node, kind, DropGoUnmodelled, message)
+}
+
+// reportConstruct records a problem and the drop that goes with it.
+//
+// The construct id names the CONSTRUCT, not the failure, and it carries no
+// variable part: a coverage report groups by it, and an id that carried a
+// name or a line number would split one construct into as many groups as it
+// has occurrences.
+func (t *translator) reportConstruct(node ast.Node, kind string, construct string, message string) {
 	problem := Problem{
 		Kind:    kind,
 		Message: message,
@@ -643,11 +725,70 @@ func (t *translator) report(node ast.Node, kind string, message string) {
 	}
 	t.problems = append(t.problems, problem)
 
-	// An unmodelled construct means the function is not fully understood.
-	// A checker has to know that, so the precision drops.
-	if kind == ProblemSourceLowered || kind == ProblemUnhandledNode {
+	// The impact follows from what the problem means. A construct that was
+	// not lowered at all is a loss of MEANING: the analysis does not know
+	// what it does. A construct that was lowered into a different shape is
+	// a loss of SHAPE: it still computes the same thing.
+	impact := ImpactSemantics
+	if kind == ProblemSourceLowered {
+		impact = ImpactStructure
+	}
+	t.drop(node, construct, message, impact)
+}
+
+// drop records a loss: a construct that was not lowered faithfully.
+//
+// WHY IT IS SEPARATE FROM report(). A problem says the frontend could not do
+// its job. A drop says the frontend DID its job and this is what the job
+// cost, with the impact level that decides the function's precision. The
+// difference matters: a construct that was lowered into the wrong shape -- a
+// switch into a branch chain -- still computes the right thing, and calling
+// that "a problem" would hide the fact that the analysis understands it.
+//
+// The construct id is STABLE: it names the construct and carries no variable
+// part, because a coverage report groups by it.
+func (t *translator) drop(node ast.Node, construct string, detail string, impact string) {
+	drop := Drop{
+		Construct: construct,
+		Detail:    detail,
+		Impact:    impact,
+		Line:      -1,
+		Column:    -1,
+		Scope:     DropScopeFunction,
+	}
+	if node != nil {
+		if place := t.fset.Position(node.Pos()); place.IsValid() {
+			drop.Line = place.Line
+			drop.Column = place.Column
+		}
+	}
+	t.drops = append(t.drops, drop)
+
+	// Only a loss of meaning or of shape costs the function its precision.
+	// A single unknown value, or an unknown type fact, does not: the
+	// function still computes the same thing.
+	if impact == ImpactSemantics || impact == ImpactStructure {
 		t.degraded = true
 	}
+}
+
+// precisionFromDrops derives the function's precision from its drops.
+//
+// It is DERIVED, never asserted, and it never looks at the number of
+// problems: a function with one lost value is still fully understood, and a
+// function with one lost SEMANTICS is not. Deriving it from a count is what
+// makes a silently dropped construct look like a fully analysed one.
+func (t *translator) precisionFromDrops() string {
+	precision := PrecisionFull
+	for _, drop := range t.drops {
+		switch drop.Impact {
+		case ImpactSemantics:
+			return PrecisionDegraded
+		case ImpactStructure:
+			precision = PrecisionLowered
+		}
+	}
+	return precision
 }
 
 // lowerPrecision records that the function is not fully understood.
@@ -684,9 +825,9 @@ func nodeClass(node ast.Node) string {
 func (t *translator) newTemp(goType types.Type) *Operand {
 	t.counter++
 	operand := &Operand{
-		Kind:  "VAR",
-		Name:  "t" + strconv.Itoa(t.counter),
-		Type:  mapGoType(goType),
+		Kind:   "VAR",
+		Name:   "t" + strconv.Itoa(t.counter),
+		Type:   mapGoType(goType),
 		IsTemp: true,
 	}
 	return operand
@@ -732,6 +873,16 @@ func (t *translator) declareVar(object *types.Var, local bool) Operand {
 	if local {
 		t.locals = append(t.locals, *operand)
 	}
+	// The binding records the source name and the slot it landed in. The
+	// slot name is not the source name when the name was shadowed, and a
+	// reader that wants to follow a source name to the value the engine
+	// reasons about needs the pair.
+	t.scopeBindings = append(t.scopeBindings, ScopeBinding{
+		Name:      base,
+		Slot:      name,
+		Type:      operand.Type,
+		Parameter: !local,
+	})
 	return *operand
 }
 
@@ -823,6 +974,15 @@ func (t *translator) translateAssign(statement *ast.AssignStmt) {
 		return
 	}
 
+	// A compound assignment is a READ, a COMPUTE and a WRITE. It used to be
+	// lowered as a plain MOVE of the right-hand side, which is how `x += y`
+	// came to mean "x becomes y": the addition was nowhere in the TAC, and
+	// the analysis was confident that the old value was gone.
+	if operator := compoundAssignOperator(statement.Tok); operator != "" {
+		t.translateCompoundAssign(statement, operator)
+		return
+	}
+
 	for index, right := range statement.Rhs {
 		left := statement.Lhs[index]
 		switch target := left.(type) {
@@ -864,10 +1024,162 @@ func (t *translator) translateAssign(statement *ast.AssignStmt) {
 			t.translateFieldAssign(target, t.valueOf(right), statement)
 		case *ast.IndexExpr:
 			t.translateIndexAssign(target, t.valueOf(right), statement)
+		case *ast.StarExpr:
+			// A write THROUGH a pointer. The pointer is a cell object, so
+			// the write lands in the cell's value field.
+			t.translatePointerAssign(target, t.valueOf(right), statement)
 		default:
 			t.report(statement, ProblemUnhandledNode,
 				fmt.Sprintf("the assignment target %T was not lowered", left))
 		}
+	}
+}
+
+// translateCompoundAssign lowers `x op= e`.
+//
+// IT IS THREE STEPS, NOT ONE.
+//
+//   - the READ: the target's current value;
+//   - the COMPUTE: the binary operation on it and the right-hand side;
+//   - the WRITE: the result back into the target.
+//
+// The one-step MOVE it used to be dropped the operation: `count += 1` was
+// lowered as "count becomes 1", and every rule that counts, accumulates or
+// compares afterwards read the wrong value.
+func (t *translator) translateCompoundAssign(statement *ast.AssignStmt, operator string) {
+	if len(statement.Lhs) != 1 || len(statement.Rhs) != 1 {
+		t.reportConstruct(statement, ProblemUnhandledNode, DropGoUnmodelled,
+			"a compound assignment did not have exactly one target and one value")
+		return
+	}
+	target := statement.Lhs[0]
+	right := t.valueOf(statement.Rhs[0])
+
+	// The READ.
+	current := t.readAssignTarget(target)
+	if current == nil {
+		return
+	}
+
+	// The COMPUTE.
+	result := t.newTemp(nil)
+	if statement.Tok == token.AND_NOT_ASSIGN {
+		// `x &^= e` is `x = x &^ e`, and Go's AND-NOT clears the bits that
+		// are set in e: it is `x AND (NOT e)`.
+		complement := t.newTemp(nil)
+		t.emit(Instruction{
+			Kind: KindUnaryOp,
+			Dest: complement,
+			Lhs1: right,
+			UnOp: "BITNOT",
+		}, statement.Pos())
+		t.emit(Instruction{
+			Kind:  KindBinOp,
+			Dest:  result,
+			Lhs1:  current,
+			Lhs2:  complement,
+			BinOp: "AND",
+		}, statement.Pos())
+	} else {
+		t.emit(Instruction{
+			Kind:  KindBinOp,
+			Dest:  result,
+			Lhs1:  current,
+			Lhs2:  right,
+			BinOp: operator,
+		}, statement.Pos())
+	}
+
+	// The WRITE.
+	t.writeAssignTarget(target, result, statement)
+}
+
+// readAssignTarget reads the current value of an assignment target.
+//
+// It returns the target's own operand for a variable: the variable IS the
+// slot, so a MOVE would only copy it.
+func (t *translator) readAssignTarget(target ast.Expr) *Operand {
+	switch typed := target.(type) {
+	case *ast.Ident:
+		destination := t.assignIdent(typed, false)
+		if destination == nil {
+			t.reportConstruct(typed, ProblemUnhandledNode, DropGoUnmodelled,
+				"the compound assignment's target could not be resolved")
+			return nil
+		}
+		return destination
+	case *ast.SelectorExpr:
+		selection := t.info.Selections[typed]
+		if selection == nil {
+			t.reportConstruct(typed, ProblemUnhandledNode, DropGoUnmodelled,
+				"the compound assignment's field could not be resolved")
+			return nil
+		}
+		field, ok := selection.Obj().(*types.Var)
+		if !ok {
+			t.reportConstruct(typed, ProblemUnhandledNode, DropGoUnmodelled,
+				"the compound assignment's target is not a field")
+			return nil
+		}
+		receiver := t.valueOf(typed.X)
+		result := t.newTemp(field.Type())
+		t.emit(Instruction{
+			Kind:      KindFieldLoad,
+			Dest:      result,
+			Lhs1:      receiver,
+			FieldName: field.Name(),
+			OwnerType: ownerTypeOf(selection),
+		}, typed.Pos())
+		return result
+	case *ast.IndexExpr:
+		if t.isMapIndex(typed) {
+			return t.translateMapRead(typed, nil)
+		}
+		collection := t.valueOf(typed.X)
+		index := t.valueOf(typed.Index)
+		result := t.newTemp(t.info.TypeOf(typed))
+		t.emit(Instruction{
+			Kind: KindArrayLoad,
+			Dest: result,
+			Lhs1: collection,
+			Lhs2: index,
+		}, typed.Pos())
+		return result
+	case *ast.StarExpr:
+		// A dereference: the cell's value field.
+		pointer := t.valueOf(typed.X)
+		result := t.newTemp(t.info.TypeOf(typed))
+		t.emit(Instruction{
+			Kind:      KindFieldLoad,
+			Dest:      result,
+			Lhs1:      pointer,
+			FieldName: cellValueField,
+		}, typed.Pos())
+		return result
+	}
+	t.reportConstruct(target, ProblemUnhandledNode, DropGoUnmodelled,
+		fmt.Sprintf("the compound assignment target %T was not lowered", target))
+	return nil
+}
+
+// writeAssignTarget writes a value back into an assignment target.
+func (t *translator) writeAssignTarget(target ast.Expr, value *Operand, statement *ast.AssignStmt) {
+	switch typed := target.(type) {
+	case *ast.Ident:
+		destination := t.assignIdent(typed, false)
+		if destination == nil {
+			return
+		}
+		t.emit(Instruction{Kind: KindMove, Dest: destination, Lhs1: value}, statement.Pos())
+	case *ast.SelectorExpr:
+		t.translateFieldAssign(typed, value, statement)
+	case *ast.IndexExpr:
+		t.translateIndexAssign(typed, value, statement)
+	case *ast.StarExpr:
+		t.translatePointerAssign(typed, value, statement)
+	default:
+		t.reportConstruct(target, ProblemUnhandledNode, DropGoUnmodelled,
+			fmt.Sprintf("the compound assignment target %T was not lowered", target))
 	}
 }
 
@@ -876,20 +1188,21 @@ func (t *translator) translateAssign(statement *ast.AssignStmt) {
 // THIS IS WHERE GO'S MOST COMMON SHAPE IS DECIDED.
 //
 // A Go call can return several values, and the TAC's CALL has ONE
-// destination. So one of the results has to be given up, and the choice
-// matters:
+// destination. The other results are carried in the instruction's RESULT
+// DESTS: the call's results, in order.
 //
-//   - the FIRST result is the one that is kept, because that is the value
+//   - the FIRST result is the CALL's destination, because that is the value
 //     the code uses;
-//   - a second result that is the ERROR is the call's EXCEPTIONAL exit, so
-//     it is bound to an unknown value and the error check that follows
-//     turns it into a THROW;
-//   - the blank identifier discards a result on purpose, and nothing is
-//     lost, so nothing is reported.
+//   - the SECOND and the ones after it are the call's further results. The
+//     error result among them is the call's EXCEPTIONAL exit, and the
+//     `if err != nil` that follows turns it into a THROW;
+//   - the blank identifier discards a result on purpose, so that entry is
+//     absent and nothing is lost.
 //
-// The cost: the error's VALUE is not modelled. The engine sees that the
-// function may exit exceptionally, but not what the error was, and not
-// whether the error was tainted.
+// The cost before: every result after the first was an unknown value, and
+// the function's precision was lowered because of it. The error's VALUE was
+// not modelled: the engine saw that the function might exit exceptionally,
+// but not what the error was, and not whether the error was tainted.
 func (t *translator) translateMultiAssign(statement *ast.AssignStmt) {
 	right := statement.Rhs[0]
 
@@ -897,43 +1210,39 @@ func (t *translator) translateMultiAssign(statement *ast.AssignStmt) {
 	for index, left := range statement.Lhs {
 		ident, ok := left.(*ast.Ident)
 		if !ok {
-			t.report(statement, ProblemUnhandledNode,
+			t.reportConstruct(statement, ProblemUnhandledNode, DropGoUnmodelled,
 				"a multi-value assignment target was not an identifier")
 			continue
 		}
 		destinations[index] = t.assignIdent(ident, statement.Tok == token.DEFINE)
 	}
 
+	// The results, in order. A blank identifier leaves a hole.
+	results := make([]*Operand, len(destinations))
+	for index, destination := range destinations {
+		results[index] = destination
+	}
+
 	switch typed := right.(type) {
 	case *ast.CallExpr:
-		t.translateCall(typed, destinations[0])
+		t.translateCallWithResults(typed, destinations[0], results)
 	case *ast.IndexExpr:
 		// `v, ok := m[k]`: a map read.
-		t.translateMapRead(typed, destinations[0])
+		t.translateMapReadWithResults(typed, destinations[0], results)
 	case *ast.UnaryExpr:
 		if typed.Op == token.ARROW {
-			t.translateChannelReceive(typed, destinations[0])
+			t.translateChannelReceiveWithResults(typed, destinations[0], results)
 		} else {
-			t.report(statement, ProblemUnhandledNode, "the multi-value expression was not lowered")
+			t.reportConstruct(statement, ProblemUnhandledNode, DropGoUnmodelled,
+				"the multi-value expression was not lowered")
 			return
 		}
 	case *ast.TypeAssertExpr:
-		t.translateTypeAssert(typed, destinations[0])
+		t.translateTypeAssertWithResults(typed, destinations[0], results)
 	default:
-		t.report(statement, ProblemUnhandledNode,
+		t.reportConstruct(statement, ProblemUnhandledNode, DropGoUnmodelled,
 			fmt.Sprintf("the multi-value expression %T was not lowered", right))
 		return
-	}
-
-	for index := 1; index < len(destinations); index++ {
-		if destinations[index] == nil {
-			// The blank identifier. The programmer asked for the result to
-			// be discarded, so nothing is lost and nothing is reported.
-			continue
-		}
-		t.emit(Instruction{Kind: KindHavoc, Dest: destinations[index]}, statement.Pos())
-		t.report(statement, ProblemSourceLowered,
-			"a result beyond the first could not be bound: the TAC's CALL has one destination")
 	}
 }
 
@@ -995,9 +1304,9 @@ func (t *translator) translateIndexAssign(target *ast.IndexExpr, value *Operand,
 		mapOperand := t.valueOf(target.X)
 		key := t.valueOf(target.Index)
 		t.emit(Instruction{
-			Kind:     KindCall,
+			Kind:      KindCall,
 			CalleeSig: syntheticSignature(syntheticMapStore, 3),
-			Args:     []Operand{*mapOperand, *key, *value},
+			Args:      []Operand{*mapOperand, *key, *value},
 		}, statement.Pos())
 		return
 	}
@@ -1076,7 +1385,27 @@ func (t *translator) translateValueSpec(spec *ast.ValueSpec) {
 // function whose second value is invisible to the analysis.
 func (t *translator) translateReturn(statement *ast.ReturnStmt) {
 	if len(statement.Results) == 0 {
-		t.emit(Instruction{Kind: KindReturn}, statement.Pos())
+		// A BARE RETURN returns the CURRENT values of the named results.
+		//
+		// It used to be a RETURN with no value at all, so a function like
+		//
+		//	func f() (out string, err error) {
+		//		out = read()
+		//		return
+		//	}
+		//
+		// returned nothing: the value the caller receives was unknown, and
+		// a caller that used it had nothing to reason about.
+		results := t.namedResults()
+		if len(results) == 0 {
+			t.emit(Instruction{Kind: KindReturn}, statement.Pos())
+			return
+		}
+		t.emit(Instruction{
+			Kind:        KindReturn,
+			Lhs1:        results[0],
+			ResultDests: results,
+		}, statement.Pos())
 		return
 	}
 	if len(statement.Results) == 1 {
@@ -1105,6 +1434,32 @@ func (t *translator) translateReturn(statement *ast.ReturnStmt) {
 	t.emit(Instruction{Kind: KindReturn, Lhs1: first}, statement.Pos())
 }
 
+// namedResults returns the operands of the function's named results, in
+// order.
+//
+// A result with no name has no slot: Go's bare `return` cannot return it,
+// because there is nothing to return it from.
+func (t *translator) namedResults() []*Operand {
+	if t.signature == nil || t.signature.Results().Len() == 0 {
+		return nil
+	}
+	results := []*Operand{}
+	for index := 0; index < t.signature.Results().Len(); index++ {
+		result := t.signature.Results().At(index)
+		if result.Name() == "" {
+			results = append(results, nil)
+			continue
+		}
+		operand, ok := t.bindings[result]
+		if !ok {
+			results = append(results, nil)
+			continue
+		}
+		results = append(results, operand)
+	}
+	return results
+}
+
 // declaredSecondResultIsError reports whether the function's second declared
 // result is the error type.
 func (t *translator) declaredSecondResultIsError() bool {
@@ -1131,9 +1486,9 @@ func (t *translator) translateIf(statement *ast.IfStmt) {
 	endLabel := t.newLabel("if_end")
 
 	t.emit(Instruction{
-		Kind:      KindBranch,
-		Lhs1:      condition,
-		TrueLabel: trueLabel,
+		Kind:       KindBranch,
+		Lhs1:       condition,
+		TrueLabel:  trueLabel,
 		FalseLabel: falseLabel,
 	}, statement.Pos())
 
@@ -1169,9 +1524,9 @@ func (t *translator) translateFor(statement *ast.ForStmt) {
 	if statement.Cond != nil {
 		condition := t.valueOf(statement.Cond)
 		t.emit(Instruction{
-			Kind:      KindBranch,
-			Lhs1:      condition,
-			TrueLabel: bodyLabel,
+			Kind:       KindBranch,
+			Lhs1:       condition,
+			TrueLabel:  bodyLabel,
 			FalseLabel: endLabel,
 		}, statement.Pos())
 	}
@@ -1246,16 +1601,16 @@ func (t *translator) rangeOverInteger(statement *ast.RangeStmt, count *Operand, 
 	t.emit(Instruction{Kind: KindLabel, Label: conditionLabel}, statement.Pos())
 	comparison := t.newTemp(nil)
 	t.emit(Instruction{
-		Kind: KindBinOp,
-		Dest: comparison,
-		Lhs1: index,
-		Lhs2: count,
+		Kind:  KindBinOp,
+		Dest:  comparison,
+		Lhs1:  index,
+		Lhs2:  count,
 		BinOp: "LT",
 	}, statement.Pos())
 	t.emit(Instruction{
-		Kind:      KindBranch,
-		Lhs1:      comparison,
-		TrueLabel: bodyLabel,
+		Kind:       KindBranch,
+		Lhs1:       comparison,
+		TrueLabel:  bodyLabel,
 		FalseLabel: endLabel,
 	}, statement.Pos())
 	t.emit(Instruction{Kind: KindLabel, Label: bodyLabel}, statement.Pos())
@@ -1272,10 +1627,10 @@ func (t *translator) rangeOverInteger(statement *ast.RangeStmt, count *Operand, 
 	t.emit(Instruction{Kind: KindLabel, Label: postLabel}, statement.Pos())
 	incremented := t.newTemp(nil)
 	t.emit(Instruction{
-		Kind: KindBinOp,
-		Dest: incremented,
-		Lhs1: index,
-		Lhs2: Const("INT", "1"),
+		Kind:  KindBinOp,
+		Dest:  incremented,
+		Lhs1:  index,
+		Lhs2:  Const("INT", "1"),
 		BinOp: "ADD",
 	}, statement.Pos())
 	t.emit(Instruction{Kind: KindMove, Dest: index, Lhs1: incremented}, statement.Pos())
@@ -1309,10 +1664,10 @@ func (t *translator) rangeTarget(expression ast.Expr) *Operand {
 func (t *translator) rangeOverIndexed(statement *ast.RangeStmt, collection *Operand, key *Operand, value *Operand) {
 	length := t.newTemp(nil)
 	t.emit(Instruction{
-		Kind:     KindCall,
-		Dest:     length,
+		Kind:      KindCall,
+		Dest:      length,
 		CalleeSig: syntheticSignature(syntheticLen, 1),
-		Args:     []Operand{*collection},
+		Args:      []Operand{*collection},
 	}, statement.Pos())
 
 	index := t.newTemp(nil)
@@ -1327,16 +1682,16 @@ func (t *translator) rangeOverIndexed(statement *ast.RangeStmt, collection *Oper
 	t.emit(Instruction{Kind: KindLabel, Label: conditionLabel}, statement.Pos())
 	comparison := t.newTemp(nil)
 	t.emit(Instruction{
-		Kind: KindBinOp,
-		Dest: comparison,
-		Lhs1: index,
-		Lhs2: length,
+		Kind:  KindBinOp,
+		Dest:  comparison,
+		Lhs1:  index,
+		Lhs2:  length,
 		BinOp: "LT",
 	}, statement.Pos())
 	t.emit(Instruction{
-		Kind:      KindBranch,
-		Lhs1:      comparison,
-		TrueLabel: bodyLabel,
+		Kind:       KindBranch,
+		Lhs1:       comparison,
+		TrueLabel:  bodyLabel,
 		FalseLabel: endLabel,
 	}, statement.Pos())
 	t.emit(Instruction{Kind: KindLabel, Label: bodyLabel}, statement.Pos())
@@ -1363,10 +1718,10 @@ func (t *translator) rangeOverIndexed(statement *ast.RangeStmt, collection *Oper
 	t.emit(Instruction{Kind: KindLabel, Label: postLabel}, statement.Pos())
 	incremented := t.newTemp(nil)
 	t.emit(Instruction{
-		Kind: KindBinOp,
-		Dest: incremented,
-		Lhs1: index,
-		Lhs2: Const("INT", "1"),
+		Kind:  KindBinOp,
+		Dest:  incremented,
+		Lhs1:  index,
+		Lhs2:  Const("INT", "1"),
 		BinOp: "ADD",
 	}, statement.Pos())
 	t.emit(Instruction{Kind: KindMove, Dest: index, Lhs1: incremented}, statement.Pos())
@@ -1386,10 +1741,10 @@ func (t *translator) rangeOverIndexed(statement *ast.RangeStmt, collection *Oper
 func (t *translator) rangeOverMap(statement *ast.RangeStmt, collection *Operand, key *Operand, value *Operand) {
 	iterator := t.newTemp(nil)
 	t.emit(Instruction{
-		Kind:     KindCall,
-		Dest:     iterator,
+		Kind:      KindCall,
+		Dest:      iterator,
 		CalleeSig: syntheticSignature(syntheticMapIter, 1),
-		Args:     []Operand{*collection},
+		Args:      []Operand{*collection},
 	}, statement.Pos())
 
 	conditionLabel := t.newLabel("range_cond")
@@ -1400,15 +1755,15 @@ func (t *translator) rangeOverMap(statement *ast.RangeStmt, collection *Operand,
 	t.emit(Instruction{Kind: KindLabel, Label: conditionLabel}, statement.Pos())
 	entry := t.newTemp(nil)
 	t.emit(Instruction{
-		Kind:     KindCall,
-		Dest:     entry,
+		Kind:      KindCall,
+		Dest:      entry,
 		CalleeSig: syntheticSignature(syntheticMapNext, 1),
-		Args:     []Operand{*iterator},
+		Args:      []Operand{*iterator},
 	}, statement.Pos())
 	t.emit(Instruction{
-		Kind:      KindBranch,
-		Lhs1:      entry,
-		TrueLabel: bodyLabel,
+		Kind:       KindBranch,
+		Lhs1:       entry,
+		TrueLabel:  bodyLabel,
 		FalseLabel: endLabel,
 	}, statement.Pos())
 	t.emit(Instruction{Kind: KindLabel, Label: bodyLabel}, statement.Pos())
@@ -1416,20 +1771,20 @@ func (t *translator) rangeOverMap(statement *ast.RangeStmt, collection *Operand,
 	if key != nil {
 		keyValue := t.newTemp(nil)
 		t.emit(Instruction{
-			Kind:     KindCall,
-			Dest:     keyValue,
+			Kind:      KindCall,
+			Dest:      keyValue,
 			CalleeSig: syntheticSignature(syntheticMapKey, 1),
-			Args:     []Operand{*entry},
+			Args:      []Operand{*entry},
 		}, statement.Pos())
 		t.emit(Instruction{Kind: KindMove, Dest: key, Lhs1: keyValue}, statement.Pos())
 	}
 	if value != nil {
 		entryValue := t.newTemp(nil)
 		t.emit(Instruction{
-			Kind:     KindCall,
-			Dest:     entryValue,
+			Kind:      KindCall,
+			Dest:      entryValue,
 			CalleeSig: syntheticSignature(syntheticMapValue, 1),
-			Args:     []Operand{*entry},
+			Args:      []Operand{*entry},
 		}, statement.Pos())
 		t.emit(Instruction{Kind: KindMove, Dest: value, Lhs1: entryValue}, statement.Pos())
 	}
@@ -1452,10 +1807,10 @@ func (t *translator) rangeOverMap(statement *ast.RangeStmt, collection *Operand,
 func (t *translator) rangeOverChannel(statement *ast.RangeStmt, collection *Operand, value *Operand) {
 	received := t.newTemp(nil)
 	t.emit(Instruction{
-		Kind:     KindCall,
-		Dest:     received,
+		Kind:      KindCall,
+		Dest:      received,
 		CalleeSig: syntheticSignature(syntheticChanRecv, 1),
-		Args:     []Operand{*collection},
+		Args:      []Operand{*collection},
 	}, statement.Pos())
 	if value != nil {
 		t.emit(Instruction{Kind: KindMove, Dest: value, Lhs1: received}, statement.Pos())
@@ -1470,11 +1825,25 @@ func (t *translator) rangeOverChannel(statement *ast.RangeStmt, collection *Oper
 // case label in turn. The semantics are preserved -- the structural fact
 // "this was a switch" is not, which is exactly what SOURCE_LOWERED says.
 //
-// The comparisons come FIRST and the bodies SECOND. The order is
-// load-bearing: a branch that selects a case must land on the case BODY, so
-// the label it targets has to be defined AFTER the comparison.
+// THE COMPARISONS COME FIRST AND THE BODIES SECOND.
+//
+// A case with SEVERAL values needs a TEST label and a BODY label, and they
+// are different labels. `case 1, 2:` is two comparisons that both lead to
+// the same body:
+//
+//	L_test_1:  compare the discriminant with 1
+//	           branch  -> L_body_1 / L_value_2
+//	L_value_2: compare the discriminant with 2
+//	           branch  -> L_body_1 / L_test_2
+//	L_test_2:  the next case's comparisons
+//
+// The false branch of a case's LAST value goes to the next case's TEST, not
+// to its BODY. It used to go to the BODY, which made every value after the
+// first one unreachable: `case 1, 2:` could only ever match 1, and the
+// engine believed 2 was dead code.
 func (t *translator) translateSwitch(statement *ast.SwitchStmt) {
-	t.report(statement, ProblemSourceLowered, "a switch was lowered into a branch chain")
+	t.reportConstruct(statement, ProblemSourceLowered, DropGoSwitchChain,
+		"a switch was lowered into a branch chain")
 
 	if statement.Init != nil {
 		t.translateStatement(statement.Init)
@@ -1483,8 +1852,10 @@ func (t *translator) translateSwitch(statement *ast.SwitchStmt) {
 
 	endLabel := t.newLabel("switch_end")
 	caseLabels := make([]string, len(statement.Body.List))
+	testLabels := make([]string, len(statement.Body.List))
 	for index := range statement.Body.List {
 		caseLabels[index] = t.newLabel("switch_case")
+		testLabels[index] = t.newLabel("switch_test")
 	}
 
 	defaultIndex := -1
@@ -1504,22 +1875,40 @@ func (t *translator) translateSwitch(statement *ast.SwitchStmt) {
 		if !ok {
 			continue
 		}
-		for _, expression := range caseClause.List {
+		t.emit(Instruction{Kind: KindLabel, Label: testLabels[index]}, clause.Pos())
+
+		if len(caseClause.List) == 0 {
+			// The default clause: it matches when nothing else did.
+			t.emit(Instruction{Kind: KindJump, Label: caseLabels[index]}, clause.Pos())
+			continue
+		}
+
+		for valueIndex, expression := range caseClause.List {
 			value := t.valueOf(expression)
 			comparison := t.newTemp(nil)
 			t.emit(Instruction{
-				Kind: KindBinOp,
-				Dest: comparison,
-				Lhs1: discriminant,
-				Lhs2: value,
+				Kind:  KindBinOp,
+				Dest:  comparison,
+				Lhs1:  discriminant,
+				Lhs2:  value,
 				BinOp: "EQ",
 			}, expression.Pos())
+
+			// Where the chain goes when this value does not match.
+			falseLabel := t.nextCaseLabel(testLabels, index, noMatchLabel)
+			if valueIndex+1 < len(caseClause.List) {
+				// Another value of the SAME case: try it next.
+				falseLabel = t.newLabel("switch_value")
+			}
 			t.emit(Instruction{
-				Kind:      KindBranch,
-				Lhs1:      comparison,
-				TrueLabel: caseLabels[index],
-				FalseLabel: t.nextCaseLabel(caseLabels, index, noMatchLabel),
+				Kind:       KindBranch,
+				Lhs1:       comparison,
+				TrueLabel:  caseLabels[index],
+				FalseLabel: falseLabel,
 			}, expression.Pos())
+			if valueIndex+1 < len(caseClause.List) {
+				t.emit(Instruction{Kind: KindLabel, Label: falseLabel}, expression.Pos())
+			}
 		}
 	}
 
@@ -1620,9 +2009,9 @@ func (t *translator) translateTypeSwitch(statement *ast.TypeSwitchStmt) {
 				CtorType: mapGoType(t.info.TypeOf(expression)),
 			}, expression.Pos())
 			t.emit(Instruction{
-				Kind:      KindBranch,
-				Lhs1:      test,
-				TrueLabel: caseLabels[index],
+				Kind:       KindBranch,
+				Lhs1:       test,
+				TrueLabel:  caseLabels[index],
 				FalseLabel: t.nextCaseLabel(caseLabels, index, noMatchLabel),
 			}, expression.Pos())
 		}
@@ -1659,11 +2048,21 @@ func (t *translator) translateTypeSwitch(statement *ast.TypeSwitchStmt) {
 // channel semantics, so each case becomes a branch guarded by a synthetic
 // readiness call, and the default case is the path where nothing was ready.
 //
-// The cost: the ORDER in which the cases are ready, and the fact that a
-// ready case is chosen at random, are not modelled. The analysis sees that
-// the code MAY take each branch.
+// EVERY CASE IS REACHABLE. Which case is ready is a run-time fact -- the
+// source does not say -- so the analysis has to consider them all. The
+// readiness call is what says a case MAY be taken; the fact that Go picks a
+// ready case AT RANDOM is the run-time fact the drop records.
+//
+// THE RECEIVE HAPPENS IN THE CASE BODY. A select waits on the channel and
+// then receives from it; the readiness call only says "this channel may have
+// something". So the receive is emitted where the case body is, and the
+// values a two-value receive binds are bound there.
 func (t *translator) translateSelect(statement *ast.SelectStmt) {
-	t.report(statement, ProblemSourceLowered, "a select was lowered into a chain of guarded branches")
+	t.reportConstruct(statement, ProblemSourceLowered, DropGoSelectChain,
+		"a select was lowered into a chain of guarded branches")
+	t.drop(statement, DropGoSelectReadiness,
+		"which select case is ready is a run-time fact, so every case is treated as reachable",
+		ImpactSemantics)
 
 	endLabel := t.newLabel("select_end")
 	caseLabels := make([]string, len(statement.Body.List))
@@ -1694,15 +2093,15 @@ func (t *translator) translateSelect(statement *ast.SelectStmt) {
 		}
 		ready := t.newTemp(nil)
 		t.emit(Instruction{
-			Kind:     KindCall,
-			Dest:     ready,
+			Kind:      KindCall,
+			Dest:      ready,
 			CalleeSig: syntheticSignature(syntheticSelect, 1),
-			Args:     []Operand{*channel},
+			Args:      []Operand{*channel},
 		}, commClause.Comm.Pos())
 		t.emit(Instruction{
-			Kind:      KindBranch,
-			Lhs1:      ready,
-			TrueLabel: caseLabels[index],
+			Kind:       KindBranch,
+			Lhs1:       ready,
+			TrueLabel:  caseLabels[index],
 			FalseLabel: t.nextCaseLabel(caseLabels, index, noMatchLabel),
 		}, commClause.Comm.Pos())
 	}
@@ -1715,6 +2114,7 @@ func (t *translator) translateSelect(statement *ast.SelectStmt) {
 		if !ok {
 			continue
 		}
+		t.lowerSelectReceive(commClause.Comm)
 		for _, inner := range commClause.Body {
 			t.translateStatement(inner)
 		}
@@ -1724,7 +2124,74 @@ func (t *translator) translateSelect(statement *ast.SelectStmt) {
 	t.emit(Instruction{Kind: KindLabel, Label: endLabel}, statement.Pos())
 }
 
+// lowerSelectReceive emits the receive of a select case, and binds what it
+// produces.
+//
+// A two-value receive -- `case v, ok := <-ch:` -- binds TWO values: the
+// received one and a flag that says whether the channel was closed. The
+// channel itself was already resolved for the readiness call.
+func (t *translator) lowerSelectReceive(comm ast.Stmt) {
+	assignment, ok := comm.(*ast.AssignStmt)
+	if !ok || len(assignment.Rhs) != 1 {
+		return
+	}
+	receive, ok := assignment.Rhs[0].(*ast.UnaryExpr)
+	if !ok || receive.Op != token.ARROW {
+		return
+	}
+
+	channel := t.valueOf(receive.X)
+	received := t.newTemp(nil)
+	t.emit(Instruction{
+		Kind:      KindCall,
+		Dest:      received,
+		CalleeSig: syntheticSignature(syntheticChanRecv, 1),
+		Args:      []Operand{*channel},
+	}, receive.Pos())
+
+	if len(assignment.Lhs) == 0 {
+		return
+	}
+	value, ok := assignment.Lhs[0].(*ast.Ident)
+	if !ok {
+		return
+	}
+	destination := t.assignIdent(value, assignment.Tok == token.DEFINE)
+	if destination != nil {
+		t.emit(Instruction{Kind: KindMove, Dest: destination, Lhs1: received}, receive.Pos())
+	}
+
+	// The second value says whether the channel was closed. A closed channel
+	// yields the zero value and a false flag, so the flag is a comparison
+	// against false rather than an unknown value.
+	if len(assignment.Lhs) < 2 {
+		return
+	}
+	flag, ok := assignment.Lhs[1].(*ast.Ident)
+	if !ok {
+		return
+	}
+	flagDestination := t.assignIdent(flag, assignment.Tok == token.DEFINE)
+	if flagDestination == nil {
+		return
+	}
+	open := t.newTemp(nil)
+	t.emit(Instruction{
+		Kind:  KindBinOp,
+		Dest:  open,
+		Lhs1:  received,
+		Lhs2:  Const("BOOL", "true"),
+		BinOp: "NE",
+	}, receive.Pos())
+	t.emit(Instruction{Kind: KindMove, Dest: flagDestination, Lhs1: open}, receive.Pos())
+}
+
 // selectChannel returns the channel a select case waits on.
+//
+// A case receives in one of two shapes: `case <-ch:` and `case v, ok := <-ch:`.
+// The second one is an ASSIGNMENT whose right-hand side is the receive, and
+// it used to be unresolvable -- which made the whole case unreachable, and
+// the variables it binds unbound.
 func (t *translator) selectChannel(comm ast.Stmt) *Operand {
 	switch typed := comm.(type) {
 	case *ast.ExprStmt:
@@ -1733,8 +2200,15 @@ func (t *translator) selectChannel(comm ast.Stmt) *Operand {
 		}
 	case *ast.SendStmt:
 		return t.valueOf(typed.Chan)
+	case *ast.AssignStmt:
+		if len(typed.Rhs) == 1 {
+			if receive, ok := typed.Rhs[0].(*ast.UnaryExpr); ok && receive.Op == token.ARROW {
+				return t.valueOf(receive.X)
+			}
+		}
 	}
-	t.report(comm, ProblemUnhandledNode, "the select case's channel could not be resolved")
+	t.reportConstruct(comm, ProblemUnhandledNode, DropGoUnmodelled,
+		"the select case's channel could not be resolved")
 	return nil
 }
 
@@ -1803,11 +2277,11 @@ func (t *translator) translateDefer(statement *ast.DeferStmt) {
 	// arguments' own instructions.
 	result := t.newTemp(nil)
 	t.emit(Instruction{
-		Kind:     KindCall,
-		Dest:     result,
+		Kind:      KindCall,
+		Dest:      result,
 		CalleeSig: signature,
-		Args:     args,
-		Effect:   effectDeferred,
+		Args:      args,
+		Effect:    effectDeferred,
 	}, statement.Pos())
 
 	// And the side table records that the call really happens at the
@@ -1824,7 +2298,23 @@ func (t *translator) translateDefer(statement *ast.DeferStmt) {
 	// the side table, and the Java side reports it from there. Here the
 	// function is only marked as not fully understood.
 	t.lowerPrecision()
+
+	// The loss is RECORDED. The deferred call is emitted where the `defer`
+	// is written, but Go runs it at the function's exit -- and the defer
+	// was not moved to the function's exits with a synthetic finally, so
+	// the instruction's position is wrong. The shape is lost, not the
+	// meaning: the call is still made, with the same arguments.
+	//
+	// The design's ledger (row 45) asks for the defer to be moved before
+	// every exit, with a TryRegion of its own. That was not done, and the
+	// part that was not done is exactly what a drop is for.
+	t.drop(statement, DropGoDeferOrder,
+		"a deferred call is emitted where the 'defer' is written, but Go runs it at the "+
+			"function's exit, and the defer was not moved to the function's exits with a "+
+			"synthetic finally, so the instruction's position is wrong",
+		ImpactStructure)
 }
+
 // translateGo lowers a go statement.
 //
 // A `go` statement starts a goroutine. The TAC has no concurrency model, so
@@ -1889,12 +2379,25 @@ func (t *translator) translateBranch(statement *ast.BranchStmt) {
 		}
 		t.emit(Instruction{Kind: KindJump, Label: label}, statement.Pos())
 	case token.GOTO:
-		// A goto jumps to an arbitrary label in the function, and the TAC's
-		// branches carry no such target. The jump is not lowered, and the
-		// function's control flow is therefore not the program's control
-		// flow. That is a real loss, so it is reported rather than hidden.
-		t.report(statement, ProblemUnhandledNode, "a goto was not lowered")
-		t.emit(Instruction{Kind: KindNop}, statement.Pos())
+		// A goto jumps to a label in the same function. The TAC has a LABEL
+		// and a JUMP, so the jump itself is expressible: it is a JUMP to
+		// the label's own name.
+		//
+		// It used to be a NOP, which was the worst of both: the jump was
+		// not there, and the code AFTER the goto still ran, so the
+		// analysis believed the program fell through a jump.
+		//
+		// The label's body is lowered where the label is written, and the
+		// LABEL instruction is emitted there, so the two halves meet.
+		if statement.Label == nil {
+			t.reportConstruct(statement, ProblemUnhandledNode, DropGoUnmodelled,
+				"a goto had no label")
+			return
+		}
+		t.emit(Instruction{
+			Kind:  KindJump,
+			Label: gotoLabelName(statement.Label.Name),
+		}, statement.Pos())
 	}
 }
 
@@ -1933,11 +2436,47 @@ func (t *translator) fallthroughLabel() string {
 }
 
 // translateLabeled lowers a labelled statement.
+//
+// The label is a JUMP TARGET, so the labelled statement is preceded by a
+// LABEL instruction. It used to be lowered with the label dropped, which
+// made a `goto` to it impossible and left the jump target undeclared.
 func (t *translator) translateLabeled(statement *ast.LabeledStmt) {
 	previous := t.pendingLabel
 	t.pendingLabel = statement.Label.Name
 	defer func() { t.pendingLabel = previous }()
+
+	// A label that names a LOOP or a SWITCH is a break/continue target, and
+	// the loop's own labels are the targets. A label that names anything
+	// else is a goto target, and it gets a LABEL of its own.
+	if !isBreakOrContinueTarget(statement.Stmt) {
+		t.emit(Instruction{
+			Kind:  KindLabel,
+			Label: gotoLabelName(statement.Label.Name),
+		}, statement.Pos())
+	}
 	t.translateStatement(statement.Stmt)
+}
+
+// isBreakOrContinueTarget reports whether a statement is the kind a labelled
+// break or continue can leave.
+//
+// Those labels point at the loop's or the switch's own labels, so they need
+// no label of their own.
+func isBreakOrContinueTarget(statement ast.Stmt) bool {
+	switch statement.(type) {
+	case *ast.ForStmt, *ast.RangeStmt, *ast.SwitchStmt, *ast.TypeSwitchStmt, *ast.SelectStmt:
+		return true
+	}
+	return false
+}
+
+// gotoLabelName returns the TAC label name of a Go label.
+//
+// The names are prefixed so that a Go label cannot collide with one of the
+// sidecar's own labels: the sidecar's labels are generated, and a generated
+// name and a source name that happen to be equal would be one label.
+func gotoLabelName(name string) string {
+	return "goto_" + name
 }
 
 // registerPendingLabel remembers the labels of a labelled loop or switch.
@@ -1959,10 +2498,10 @@ func (t *translator) translateIncDec(statement *ast.IncDecStmt) {
 	}
 	result := t.newTemp(nil)
 	t.emit(Instruction{
-		Kind: KindBinOp,
-		Dest: result,
-		Lhs1: current,
-		Lhs2: amount,
+		Kind:  KindBinOp,
+		Dest:  result,
+		Lhs1:  current,
+		Lhs2:  amount,
 		BinOp: operator,
 	}, statement.Pos())
 	t.emit(Instruction{Kind: KindMove, Dest: current, Lhs1: result}, statement.Pos())
@@ -1973,9 +2512,9 @@ func (t *translator) translateSend(statement *ast.SendStmt) {
 	channel := t.valueOf(statement.Chan)
 	value := t.valueOf(statement.Value)
 	t.emit(Instruction{
-		Kind:     KindCall,
+		Kind:      KindCall,
 		CalleeSig: syntheticSignature(syntheticChanSend, 2),
-		Args:     []Operand{*channel, *value},
+		Args:      []Operand{*channel, *value},
 	}, statement.Pos())
 }
 
@@ -2106,10 +2645,18 @@ func (t *translator) translateBasicLit(literal *ast.BasicLit) *Operand {
 		return Const("DOUBLE", literal.Value)
 	case token.IMAG:
 		// An imaginary literal. The TAC has no complex kind, so the value
-		// cannot be represented; the loss is reported rather than hidden
-		// behind a DOUBLE constant with a complex-looking text.
-		t.report(literal, ProblemUnhandledNode, "an imaginary literal was not lowered")
-		return nil
+		// cannot be represented: it is an uninterpreted value, and the
+		// loss is recorded as a VALUE loss -- exactly one value is
+		// unknown, and the function keeps its precision.
+		result := t.newTemp(t.info.TypeOf(literal))
+		t.emit(Instruction{
+			Kind: KindUninterpreted,
+			Dest: result,
+		}, literal.Pos())
+		t.drop(literal, DropGoComplexLiteral,
+			"an imaginary literal has no TAC counterpart: the TAC has no complex kind",
+			ImpactValue)
+		return result
 	case token.CHAR:
 		return Const("CHAR", literal.Value)
 	case token.STRING:
@@ -2167,18 +2714,57 @@ func (t *translator) constOperand(object *types.Const) *Operand {
 func (t *translator) translateBinary(expression *ast.BinaryExpr) *Operand {
 	left := t.valueOf(expression.X)
 	right := t.valueOf(expression.Y)
+
+	// `a &^ b` clears the bits that are set in b: it is `a AND (NOT b)`.
+	//
+	// The TAC has no AND-NOT operator, so it is two instructions. It used to
+	// fall through to the operator table's catch-all, which said ADD: a
+	// bit-clear was analysed as a sum, and the analysis said so with full
+	// confidence.
+	if expression.Op == token.AND_NOT {
+		complement := t.newTemp(nil)
+		t.emit(Instruction{
+			Kind: KindUnaryOp,
+			Dest: complement,
+			Lhs1: right,
+			UnOp: "BITNOT",
+		}, expression.Pos())
+		result := t.newTemp(t.info.TypeOf(expression))
+		t.emit(Instruction{
+			Kind:  KindBinOp,
+			Dest:  result,
+			Lhs1:  left,
+			Lhs2:  complement,
+			BinOp: "AND",
+		}, expression.Pos())
+		return result
+	}
+
+	operator := binaryOperator(expression.Op)
+	if operator == "" {
+		t.reportConstruct(expression, ProblemUnhandledNode, DropGoUnmodelled,
+			"the operator "+expression.Op.String()+" has no TAC counterpart")
+		return t.havoc(expression)
+	}
+
 	result := t.newTemp(t.info.TypeOf(expression))
 	t.emit(Instruction{
-		Kind: KindBinOp,
-		Dest: result,
-		Lhs1: left,
-		Lhs2: right,
-		BinOp: binaryOperator(expression.Op),
+		Kind:  KindBinOp,
+		Dest:  result,
+		Lhs1:  left,
+		Lhs2:  right,
+		BinOp: operator,
 	}, expression.Pos())
 	return result
 }
 
 // binaryOperator maps a Go operator onto a TAC operator.
+//
+// It returns "" for an operator the TAC has no counterpart for. It used to
+// return ADD for those: the catch-all was invisible, so a bit-clear was
+// analysed as a sum and the analysis was confident about it. An operator with
+// no counterpart is now reported, and the value it produces is unknown rather
+// than wrong.
 func binaryOperator(operator token.Token) string {
 	switch operator {
 	case token.ADD:
@@ -2218,7 +2804,39 @@ func binaryOperator(operator token.Token) string {
 	case token.LOR:
 		return "LOR"
 	}
-	return "ADD"
+	return ""
+}
+
+// compoundAssignOperator maps a Go compound-assignment token onto the TAC
+// operator it stands for.
+//
+// It returns "" for a token that is not a compound assignment at all.
+func compoundAssignOperator(operator token.Token) string {
+	switch operator {
+	case token.ADD_ASSIGN:
+		return "ADD"
+	case token.SUB_ASSIGN:
+		return "SUB"
+	case token.MUL_ASSIGN:
+		return "MUL"
+	case token.QUO_ASSIGN:
+		return "DIV"
+	case token.REM_ASSIGN:
+		return "MOD"
+	case token.AND_ASSIGN:
+		return "AND"
+	case token.OR_ASSIGN:
+		return "OR"
+	case token.XOR_ASSIGN:
+		return "XOR"
+	case token.SHL_ASSIGN:
+		return "SHL"
+	case token.SHR_ASSIGN:
+		return "SHR"
+	case token.AND_NOT_ASSIGN:
+		return "AND"
+	}
+	return ""
 }
 
 // translateUnary lowers a unary expression.
@@ -2242,16 +2860,35 @@ func (t *translator) translateUnary(expression *ast.UnaryExpr) *Operand {
 	case token.ADD:
 		return t.translateExpr(expression.X)
 	case token.AND:
-		// The address of a value. The TAC has no pointer type, so the
-		// pointer and the value are the same thing here.
+		// The address of a value.
 		//
-		// The cost: the identity of the pointed-to value is lost, so a
-		// write through the pointer is not tracked as a write to the
-		// original. The taint is preserved, so the analysis stays on the
-		// conservative side.
-		t.report(expression, ProblemSourceLowered,
-			"the address of a value was lowered to the value itself: the TAC has no pointer type")
-		return t.valueOf(expression.X)
+		// A pointer is a CELL: an object with one field that holds the
+		// value. The cell is what gives the pointer a storage, so that a
+		// write through it (`*p = v`) has somewhere to go.
+		//
+		// The cell holds a COPY of the value. A write through the pointer
+		// therefore does not reach the variable the pointer was taken from:
+		// Go would change it, the TAC does not. The write is visible, and
+		// the loss is recorded.
+		value := t.valueOf(expression.X)
+		cell := t.newTemp(nil)
+		t.emit(Instruction{
+			Kind:      KindNew,
+			Dest:      cell,
+			CtorType:  Class(cellTypeName),
+			CalleeSig: syntheticSignature(syntheticAddr, 1),
+			Args:      []Operand{*value},
+		}, expression.Pos())
+		t.emit(Instruction{
+			Kind:      KindFieldStore,
+			Dest:      value,
+			Lhs1:      cell,
+			FieldName: cellValueField,
+		}, expression.Pos())
+		t.drop(expression, DropGoPointerCell,
+			"the address of a value is a cell that holds a copy, so a later write through the pointer does not reach the original",
+			ImpactStructure)
+		return cell
 	case token.ARROW:
 		return t.translateChannelReceive(expression, nil)
 	}
@@ -2341,16 +2978,26 @@ func (t *translator) isMapIndex(expression *ast.IndexExpr) bool {
 // A map is not an array: it has no elements to index into, it has keys. So
 // the lookup is a runtime operation and it is a CALL.
 func (t *translator) translateMapRead(expression *ast.IndexExpr, destination *Operand) *Operand {
+	return t.translateMapReadWithResults(expression, destination, nil)
+}
+
+// translateMapReadWithResults lowers a map lookup whose results are bound to
+// several destinations.
+//
+// `v, ok := m[k]` binds two: the value, and a flag that says whether the key
+// was there. The flag is the call's second result.
+func (t *translator) translateMapReadWithResults(expression *ast.IndexExpr, destination *Operand, results []*Operand) *Operand {
 	collection := t.valueOf(expression.X)
 	key := t.valueOf(expression.Index)
 	if destination == nil {
 		destination = t.newTemp(t.info.TypeOf(expression))
 	}
 	t.emit(Instruction{
-		Kind:     KindCall,
-		Dest:     destination,
-		CalleeSig: syntheticSignature(syntheticMapIndex, 2),
-		Args:     []Operand{*collection, *key},
+		Kind:        KindCall,
+		Dest:        destination,
+		CalleeSig:   syntheticSignature(syntheticMapIndex, 2),
+		Args:        []Operand{*collection, *key},
+		ResultDests: results,
 	}, expression.Pos())
 	return destination
 }
@@ -2371,42 +3018,81 @@ func (t *translator) translateSlice(expression *ast.SliceExpr) *Operand {
 	}
 	result := t.newTemp(t.info.TypeOf(expression))
 	t.emit(Instruction{
-		Kind:     KindCall,
-		Dest:     result,
+		Kind:      KindCall,
+		Dest:      result,
 		CalleeSig: syntheticSignature(syntheticSlice, len(args)),
-		Args:     args,
+		Args:      args,
 	}, expression.Pos())
 	return result
 }
 
 // translateStar lowers a pointer dereference.
 //
-// The TAC has no "load through a reference" opcode. The dereference is
-// therefore modelled as a conversion of the pointer to the pointed-to type,
-// which preserves the taint of the POINTER.
+// A POINTER IS A CELL.
 //
-// The cost: the loaded value's own taint -- the taint of what the pointer
-// points AT -- is not seen, because the TAC has no way to model the memory
-// a pointer refers to. A checker that tracks taint through struct fields
-// will see the pointer's taint instead of the field's. The loss is reported
-// so that a reader of the TAC knows why.
+// Go has no reference type, so the TAC has none either. The way to give a
+// pointer a storage is to make it an OBJECT: `&x` allocates a cell whose one
+// field holds x's value, and `*p` reads that field.
+//
+// WHY A CELL AND NOT A CAST. A cast says "the pointer is the value". It
+// keeps the taint of the pointer, but it throws away the taint of what the
+// pointer POINTS AT, and it makes a write through the pointer impossible to
+// express at all: `*p = v` had nowhere to go.
+//
+// THE COST. A cell is a SEPARATE storage from the variable it was taken
+// from: `p := &x; *p = v` writes the cell, and x keeps its old value. Go
+// would change x. The write is visible in the TAC -- which is the point --
+// but it does not reach the original variable, and the loss is recorded.
 func (t *translator) translateStar(expression *ast.StarExpr) *Operand {
 	pointer := t.valueOf(expression.X)
 	result := t.newTemp(t.info.TypeOf(expression))
 	t.emit(Instruction{
-		Kind:     KindUnaryOp,
-		Dest:     result,
-		Lhs1:     pointer,
-		UnOp:     "CAST",
-		CastType: mapGoType(t.info.TypeOf(expression)),
+		Kind:      KindFieldLoad,
+		Dest:      result,
+		Lhs1:      pointer,
+		FieldName: cellValueField,
 	}, expression.Pos())
-	t.report(expression, ProblemSourceLowered,
-		"a pointer dereference was lowered to a conversion: the TAC has no load through a reference")
+	t.drop(expression, DropGoPointerCell,
+		"a pointer is modelled as a cell object, so a write through it does not reach the variable it was taken from",
+		ImpactStructure)
 	return result
+}
+
+// translatePointerAssign lowers a write THROUGH a pointer: `*p = v`.
+//
+// It is a FIELDSTORE into the cell's value field.
+func (t *translator) translatePointerAssign(target *ast.StarExpr, value *Operand, statement *ast.AssignStmt) {
+	pointer := t.valueOf(target.X)
+	t.emit(Instruction{
+		Kind:      KindFieldStore,
+		Dest:      value,
+		Lhs1:      pointer,
+		FieldName: cellValueField,
+	}, statement.Pos())
+	t.drop(statement, DropGoPointerCell,
+		"a write through a pointer lands in the cell, not in the variable the pointer was taken from",
+		ImpactStructure)
 }
 
 // translateTypeAssert lowers a type assertion.
 func (t *translator) translateTypeAssert(expression *ast.TypeAssertExpr, destination *Operand) *Operand {
+	return t.translateTypeAssertWithResults(expression, destination, nil)
+}
+
+// translateTypeAssertWithResults lowers a type assertion.
+//
+// A type assertion has two forms and they differ in what happens when the
+// value is NOT of the asserted type:
+//
+//   - `v := x.(T)` PANICS. So the failure path is a THROW, and the value
+//     that reaches it is the runtime error the panic carries.
+//   - `v, ok := x.(T)` does not panic: it binds a flag instead. The flag is
+//     an INSTANCEOF, and the assertion's value is the CAST.
+//
+// The failure path used to be missing entirely: the assertion was a CAST and
+// nothing else, so the analysis believed that `v` was a T whether or not it
+// was one, and that the function could not exit exceptionally.
+func (t *translator) translateTypeAssertWithResults(expression *ast.TypeAssertExpr, destination *Operand, results []*Operand) *Operand {
 	value := t.valueOf(expression.X)
 	if destination == nil {
 		destination = t.newTemp(t.info.TypeOf(expression))
@@ -2418,6 +3104,38 @@ func (t *translator) translateTypeAssert(expression *ast.TypeAssertExpr, destina
 		UnOp:     "CAST",
 		CastType: mapGoType(t.info.TypeOf(expression.Type)),
 	}, expression.Pos())
+
+	// The type test.
+	tested := t.newTemp(nil)
+	t.emit(Instruction{
+		Kind:     KindInstanceOf,
+		Dest:     tested,
+		Lhs1:     value,
+		CtorType: mapGoType(t.info.TypeOf(expression.Type)),
+	}, expression.Pos())
+
+	// The comma-ok form binds the test's result.
+	if len(results) > 1 && results[1] != nil {
+		t.emit(Instruction{Kind: KindMove, Dest: results[1], Lhs1: tested}, expression.Pos())
+		return destination
+	}
+
+	// The single-value form panics when the test fails.
+	okLabel := t.newLabel("assert_ok")
+	failLabel := t.newLabel("assert_fail")
+	t.emit(Instruction{
+		Kind:       KindBranch,
+		Lhs1:       tested,
+		TrueLabel:  okLabel,
+		FalseLabel: failLabel,
+	}, expression.Pos())
+	t.emit(Instruction{Kind: KindLabel, Label: failLabel}, expression.Pos())
+	t.emit(Instruction{
+		Kind:     KindThrow,
+		Lhs1:     Const("STRING", "interface conversion: value does not implement the asserted type"),
+		CtorType: Class("runtime.TypeAssertionError"),
+	}, expression.Pos())
+	t.emit(Instruction{Kind: KindLabel, Label: okLabel}, expression.Pos())
 	return destination
 }
 
@@ -2443,9 +3161,9 @@ func (t *translator) translateCompositeLit(literal *ast.CompositeLit) *Operand {
 			key := t.valueOf(pair.Key)
 			value := t.valueOf(pair.Value)
 			t.emit(Instruction{
-				Kind:     KindCall,
+				Kind:      KindCall,
 				CalleeSig: syntheticSignature(syntheticMapStore, 3),
-				Args:     []Operand{*result, *key, *value},
+				Args:      []Operand{*result, *key, *value},
 			}, element.Pos())
 		}
 		return result
@@ -2473,15 +3191,44 @@ func (t *translator) translateCompositeLit(literal *ast.CompositeLit) *Operand {
 	default:
 		result := t.newTemp(litType)
 		t.emit(Instruction{Kind: KindNew, Dest: result, CtorType: mapGoType(litType)}, literal.Pos())
-		for _, element := range literal.Elts {
+
+		// A struct literal is either KEYED (`Point{X: 1}`) or POSITIONAL
+		// (`Point{1, 2}`). A positional one binds its elements to the
+		// fields in DECLARATION ORDER, and the fields are read from the
+		// type: the source does not name them.
+		//
+		// A positional literal used to be reported and skipped, so the
+		// object was allocated with NONE of its fields set: a struct that
+		// carried a secret in its second field looked empty.
+		structure, isStruct := underlying.(*types.Struct)
+		for index, element := range literal.Elts {
 			pair, ok := element.(*ast.KeyValueExpr)
 			if !ok {
-				t.report(element, ProblemUnhandledNode, "the struct literal's element was not lowered")
+				if !isStruct {
+					t.reportConstruct(element, ProblemUnhandledNode, DropGoUnmodelled,
+						"the struct literal's element was not lowered")
+					continue
+				}
+				if index >= structure.NumFields() {
+					t.reportConstruct(element, ProblemUnhandledNode, DropGoUnmodelled,
+						"the positional struct literal has more elements than the type has fields")
+					continue
+				}
+				field := structure.Field(index)
+				value := t.valueOf(element)
+				t.emit(Instruction{
+					Kind:      KindFieldStore,
+					Dest:      value,
+					Lhs1:      result,
+					FieldName: field.Name(),
+					OwnerType: className(litType),
+				}, element.Pos())
 				continue
 			}
 			name, ok := pair.Key.(*ast.Ident)
 			if !ok {
-				t.report(element, ProblemUnhandledNode, "the struct literal's field name was not lowered")
+				t.reportConstruct(element, ProblemUnhandledNode, DropGoUnmodelled,
+					"the struct literal's field name was not lowered")
 				continue
 			}
 			value := t.valueOf(pair.Value)
@@ -2490,6 +3237,7 @@ func (t *translator) translateCompositeLit(literal *ast.CompositeLit) *Operand {
 				Dest:      value,
 				Lhs1:      result,
 				FieldName: name.Name,
+				OwnerType: className(litType),
 			}, element.Pos())
 		}
 		return result
@@ -2601,10 +3349,28 @@ func (t *translator) dispatchTargets(expression ast.Expr, receiver types.Type, m
 // and the finding would never be raised -- while the scan still reported
 // success.
 func (t *translator) translateCall(call *ast.CallExpr, destination *Operand) *Operand {
+	return t.translateCallWithResults(call, destination, nil)
+}
+
+// translateCallWithResults lowers a call whose results are bound to several
+// destinations.
+//
+// The results are carried in the instruction's RESULT DESTS, in order. A nil
+// entry is a result the programmer discarded.
+func (t *translator) translateCallWithResults(call *ast.CallExpr, destination *Operand, results []*Operand) *Operand {
 	target, ok := t.resolveCallee(call.Fun)
 	if !ok {
 		// The callee could not be resolved. The value is unknown rather
 		// than silently clean.
+		//
+		// The ARGUMENTS ARE STILL LOWERED. They used to be dropped whole:
+		// an unresolvable callee took the argument subtrees with it, and
+		// every call inside them -- and every taint they carried -- went
+		// with them. An argument that RUNS runs whether or not the callee
+		// could be resolved.
+		for _, argument := range call.Args {
+			t.valueOf(argument)
+		}
 		return t.havoc(call)
 	}
 
@@ -2640,9 +3406,9 @@ func (t *translator) translateCall(call *ast.CallExpr, destination *Operand) *Op
 			destination = t.newTemp(target.typeArg)
 		}
 		t.emit(Instruction{
-			Kind:     KindNew,
-			Dest:     destination,
-			CtorType: mapGoType(target.typeArg),
+			Kind:      KindNew,
+			Dest:      destination,
+			CtorType:  mapGoType(target.typeArg),
 			CalleeSig: calleeSignature(className(target.typeArg), syntheticNewObject, 0),
 		}, call.Pos())
 		return destination
@@ -2659,11 +3425,24 @@ func (t *translator) translateCall(call *ast.CallExpr, destination *Operand) *Op
 			destination = t.newTemp(t.info.TypeOf(call))
 		}
 		t.emit(Instruction{
-			Kind:     KindCall,
-			Dest:     destination,
+			Kind:      KindCall,
+			Dest:      destination,
 			CalleeSig: syntheticSignature(target.builtinName, len(args)),
-			Args:     args,
+			Args:      args,
 		}, call.Pos())
+		if target.builtinName == syntheticClear {
+			// `clear(m)` REMOVES the elements: after it, the map or slice
+			// holds nothing that was there before. The TAC has no
+			// operation for that yet, so the call stays an ordinary call --
+			// and the call says the opposite of the truth about the taint.
+			//
+			// The loss is recorded as a VALUE loss: ONE value, the
+			// cleared collection's, is wrong. The function keeps its
+			// precision, because everything else about it is still right.
+			t.drop(call, DropGoClearSemantics,
+				"the elements a 'clear' removed are still carried by the collection: the TAC has no operation for clearing",
+				ImpactValue)
+		}
 		return destination
 	}
 
@@ -2688,10 +3467,11 @@ func (t *translator) translateCall(call *ast.CallExpr, destination *Operand) *Op
 	}
 
 	t.emit(Instruction{
-		Kind:     KindCall,
-		Dest:     destination,
-		CalleeSig: target.signature,
-		Args:     args,
+		Kind:        KindCall,
+		Dest:        destination,
+		CalleeSig:   target.signature,
+		Args:        args,
+		ResultDests: results,
 	}, call.Pos())
 	// The DISPATCH: the same call, once for each concrete type that may
 	// receive it.
@@ -2702,10 +3482,11 @@ func (t *translator) translateCall(call *ast.CallExpr, destination *Operand) *Op
 	// ends up holding the union of what the implementations return.
 	for _, key := range target.dispatch {
 		t.emit(Instruction{
-			Kind:     KindCall,
-			Dest:     destination,
-			CalleeSig: key,
-			Args:     args,
+			Kind:        KindCall,
+			Dest:        destination,
+			CalleeSig:   key,
+			Args:        args,
+			ResultDests: results,
 		}, call.Pos())
 	}
 	return destination
@@ -2737,19 +3518,21 @@ func (t *translator) translateMake(call *ast.CallExpr, target calleeTarget, dest
 		if len(call.Args) > 1 {
 			length = t.valueOf(call.Args[1])
 		}
+		capacity := length
 		if len(call.Args) > 2 {
 			// The capacity is a real argument of `make`, and the TAC's
-			// ARRAY carries a component type and a length only. The
-			// capacity is dropped, and the loss is reported: a checker
-			// that reasons about a slice's capacity cannot see it.
-			t.report(call, ProblemSourceLowered,
-				"the capacity of a slice made by 'make' is not modelled: the TAC's array carries a length only")
+			// NEWARRAY carries the capacity in its second operand. It used
+			// to be dropped: a slice made with a capacity was analysed as
+			// a slice of the same length, and a checker that reasons about
+			// a slice's capacity could not see it at all.
+			capacity = t.valueOf(call.Args[2])
 		}
 		t.emit(Instruction{
 			Kind:     KindNewArray,
 			Dest:     destination,
 			CtorType: mapGoType(elementType(madeType.Underlying())),
 			Lhs1:     length,
+			Lhs2:     capacity,
 		}, call.Pos())
 		return destination
 	}
@@ -2766,10 +3549,10 @@ func (t *translator) translateMake(call *ast.CallExpr, target calleeTarget, dest
 		destination = t.newTemp(madeType)
 	}
 	t.emit(Instruction{
-		Kind:     KindCall,
-		Dest:     destination,
+		Kind:      KindCall,
+		Dest:      destination,
 		CalleeSig: syntheticSignature(syntheticMake, len(args)),
-		Args:     args,
+		Args:      args,
 	}, call.Pos())
 	return destination
 }
@@ -2946,15 +3729,25 @@ func (t *translator) resolveBuiltin(expression ast.Expr, function *types.Builtin
 
 // translateChannelReceive lowers a channel receive.
 func (t *translator) translateChannelReceive(expression *ast.UnaryExpr, destination *Operand) *Operand {
+	return t.translateChannelReceiveWithResults(expression, destination, nil)
+}
+
+// translateChannelReceiveWithResults lowers a channel receive whose results
+// are bound to several destinations.
+//
+// `v, ok := <-ch` binds two: the received value, and a flag that says
+// whether the channel was open. The flag is the call's second result.
+func (t *translator) translateChannelReceiveWithResults(expression *ast.UnaryExpr, destination *Operand, results []*Operand) *Operand {
 	channel := t.valueOf(expression.X)
 	if destination == nil {
 		destination = t.newTemp(t.info.TypeOf(expression))
 	}
 	t.emit(Instruction{
-		Kind:     KindCall,
-		Dest:     destination,
-		CalleeSig: syntheticSignature(syntheticChanRecv, 1),
-		Args:     []Operand{*channel},
+		Kind:        KindCall,
+		Dest:        destination,
+		CalleeSig:   syntheticSignature(syntheticChanRecv, 1),
+		Args:        []Operand{*channel},
+		ResultDests: results,
 	}, expression.Pos())
 	return destination
 }

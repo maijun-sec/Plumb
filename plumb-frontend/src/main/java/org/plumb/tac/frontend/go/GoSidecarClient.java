@@ -32,11 +32,11 @@ import org.plumb.tac.frontend.sidecar.SidecarProcess;
  *
  * <h2>Why a sidecar</h2>
  *
- * <p>Plumb is a JVM product, and Go's type resolver is a Go program: {@code go/parser},
- * {@code go/types} and the toolchain's export data are Go source in the Go standard library.
- * There is no JVM port of them, and re-implementing Go's type system in the JVM would mean
- * writing a second implementation that disagrees with the real one -- and a type that resolves
- * differently produces a different callee signature, which is what the sink catalogue matches on.
+ * <p>Plumb is a JVM product, and Go's type resolver is a Go program: {@code go/parser}, {@code
+ * go/types} and the toolchain's export data are Go source in the Go standard library. There is no
+ * JVM port of them, and re-implementing Go's type system in the JVM would mean writing a second
+ * implementation that disagrees with the real one -- and a type that resolves differently produces
+ * a different callee signature, which is what the sink catalogue matches on.
  *
  * <p>So the analysis runs in a Go sidecar, which links the Go toolchain's own front end.
  *
@@ -54,8 +54,8 @@ public final class GoSidecarClient implements AutoCloseable {
    * Where the Go sidecar lives.
    *
    * <p>The build output is under {@code bin}, because the Go toolchain's own build puts it there.
-   * The directory holding the sidecar's source is also a candidate, so a sidecar built in place
-   * is found without a build script.
+   * The directory holding the sidecar's source is also a candidate, so a sidecar built in place is
+   * found without a build script.
    */
   private static final SidecarLocator.Layout LAYOUT =
       new SidecarLocator.Layout(

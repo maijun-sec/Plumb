@@ -57,6 +57,86 @@ export function run(cmd: string): void {
 }
 `;
 
+/**
+ * A third probe program: the shapes the lowering has to produce.
+ *
+ * <p>Every construct here is one the TAC has an opinion about, and the
+ * assertions below say which shape it has to be. A shape that is not
+ * asserted here is a shape nobody is checking.
+ */
+const SHAPES_SOURCE = `
+import { exec } from "child_process";
+
+export class Holder {
+  #secret: string = "s";
+  readonly name: string = "n";
+  constructor(private id: string) {
+    this.id = id;
+  }
+  get label(): string {
+    return this.name;
+  }
+  set label(value: string) {
+    this.name = value;
+  }
+  static {
+    Holder.counter = 1;
+  }
+}
+
+export function shapes(input: string | null, count: number, list: string[]): string {
+  const and = input && input.length;
+  const or = input || "none";
+  const coalesce = input ?? "none";
+  const conditional = input ? count : 0;
+  const optional = input?.length;
+  const optionalCall = input?.toUpperCase();
+  const optionalIndex = input?.[0];
+  const isString = input instanceof String;
+  const hasKey = "length" in (input as any);
+  let counter = count;
+  counter &&= 1;
+  counter ||= 2;
+  counter ??= 3;
+  const negated = !input;
+  const incremented = ++counter;
+  const decremented = --counter;
+  const voided = void 0;
+  const comma = (1, 2);
+  const pattern = /ab+c/gi;
+  switch (count) {
+    case 1:
+      exec("one");
+      break;
+    case 2:
+      exec("two");
+      break;
+    default:
+      exec("other");
+  }
+  try {
+    exec("try");
+  } catch (error) {
+    exec("catch");
+  } finally {
+    exec("finally");
+  }
+  for (const item of list) {
+    exec(item);
+  }
+  for (const key in list) {
+    exec(key);
+  }
+  outer: for (const item of list) {
+    continue outer;
+  }
+  do {
+    exec("do");
+  } while (false);
+  return input ?? "";
+}
+`;
+
 /** Fail the test with a message. */
 function fail(message) {
   console.error(`FAIL: ${message}`);
@@ -66,6 +146,11 @@ function fail(message) {
 /** Assert a condition. */
 function check(condition, message) {
   if (!condition) fail(message);
+}
+
+/** The index of the first instruction that matches, or -1. */
+function indexOf(instructions, predicate) {
+  return instructions.findIndex((instruction) => predicate(instruction));
 }
 
 /** Write one frame. */
@@ -101,6 +186,8 @@ async function main() {
   writeFileSync(file, SOURCE, "utf8");
   const moduleFile = join(dir, "modules.ts");
   writeFileSync(moduleFile, MODULE_SOURCE, "utf8");
+  const shapesFile = join(dir, "shapes.ts");
+  writeFileSync(shapesFile, SHAPES_SOURCE, "utf8");
 
   const child = spawn(process.execPath, [join(here, "src", "main.mjs")], {
     stdio: ["pipe", "pipe", "inherit"],
@@ -137,7 +224,7 @@ async function main() {
         irVersion: IR_VERSION,
         projectId: "smoke",
         sourceRoot: dir,
-        sources: [{ path: file }, { path: moduleFile }],
+        sources: [{ path: file }, { path: moduleFile }, { path: shapesFile }],
       }),
     );
     response = JSON.parse(await readFrame(child.stdout));
@@ -289,6 +376,288 @@ async function main() {
     check(
       !signatures.some((s) => s.startsWith("modules.exec") || s.startsWith("modules.runInNewContext")),
       `the file's own name must not stand in for the module: ${JSON.stringify(signatures)}`,
+    );
+
+    // ---- the shapes the lowering has to produce ------------------------------------------------
+
+    writeFrame(
+      child.stdin,
+      JSON.stringify({
+        op: OP.TRANSLATE,
+        protocolVersion: PROTOCOL_VERSION,
+        irVersion: IR_VERSION,
+        path: shapesFile,
+        language: "TYPESCRIPT",
+      }),
+    );
+    response = JSON.parse(await readFrame(child.stdout));
+    check(response.ok === true, `the shapes file must translate: ${response.error ?? ""}`);
+
+    const shapeFunctions = response.functions ?? [];
+    const shapes = shapeFunctions.find((f) => f.name === "shapes");
+    check(!!shapes, "the function with the shapes must be in the stream");
+    const shapeInstructions = shapes.instructions ?? [];
+
+    // The function object carries the keys the Java side reads.
+    check(Array.isArray(shapes.drops), "a function must carry the drops it recorded");
+    check(
+      typeof shapes.memberKind === "string",
+      "a function must say what kind of member it is",
+    );
+    check(
+      shapes.returnType && shapes.returnType.kind === "STRING",
+      `a function must carry its return type: ${JSON.stringify(shapes.returnType)}`,
+    );
+    check(Array.isArray(shapes.tryRegions), "a function must carry the try regions it has");
+
+    // A short-circuit operator is a BRANCH, and the right-hand side is
+    // evaluated on ONE side of it only.
+    const truthy = shapeInstructions.filter(
+      (i) => i.kind === "BRANCH" && i.guard && i.guard.kind === "Truthiness",
+    );
+    check(truthy.length >= 3, `the short-circuit operators must be branches: ${truthy.length}`);
+    const coalesce = shapeInstructions.find(
+      (i) =>
+        i.kind === "BRANCH" &&
+        i.guard &&
+        i.guard.kind === "Compare" &&
+        i.guard.op === "NE" &&
+        i.guard.rhs &&
+        i.guard.rhs.constKind === "NULL",
+    );
+    check(!!coalesce, "a null-coalescing operator must compare against null");
+    // The result of a short-circuit is defined on BOTH paths.
+    const andMove = shapeInstructions.find(
+      (i) => i.kind === "MOVE" && i.dest && i.dest.name === "and",
+    );
+    check(!!andMove, "the short-circuit's result must be bound");
+    const andTemp = andMove && andMove.lhs1 && andMove.lhs1.name;
+    const andAssignments = shapeInstructions.filter(
+      (i) => i.kind === "MOVE" && i.dest && i.dest.name === andTemp,
+    );
+    check(
+      andAssignments.length === 2,
+      `the result of a short-circuit must be defined on both paths: ${andAssignments.length}`,
+    );
+
+    // A ternary is a branch with a MOVE on each side.
+    const conditionalMove = shapeInstructions.find(
+      (i) => i.kind === "MOVE" && i.dest && i.dest.name === "conditional",
+    );
+    check(!!conditionalMove, "the ternary's result must be bound");
+    const conditionalTemp = conditionalMove && conditionalMove.lhs1 && conditionalMove.lhs1.name;
+    const conditionalAssignments = shapeInstructions.filter(
+      (i) => i.kind === "MOVE" && i.dest && i.dest.name === conditionalTemp,
+    );
+    check(
+      conditionalAssignments.length === 2,
+      `each side of a ternary must be assigned once: ${conditionalAssignments.length}`,
+    );
+
+    // An optional chain checks the receiver FIRST: the instruction that follows
+    // the check is the read, and the nullish side has none.
+    const nullChecks = shapeInstructions
+      .map((instruction, index) => ({
+        instruction,
+        index,
+        isNullCheck:
+          instruction.kind === "BRANCH" &&
+          instruction.guard &&
+          instruction.guard.kind === "Compare" &&
+          instruction.guard.op === "NE" &&
+          instruction.guard.rhs &&
+          instruction.guard.rhs.constKind === "NULL",
+      }))
+      .filter((entry) => entry.isNullCheck);
+    check(nullChecks.length >= 1, "an optional chain must check its receiver");
+    const afterCheck = (index) => {
+      const next = shapeInstructions[index + 1];
+      if (!next) return undefined;
+      return next.kind === "LABEL" ? shapeInstructions[index + 2] : next;
+    };
+    check(
+      nullChecks.some((entry) => {
+        const next = afterCheck(entry.index);
+        return (
+          next &&
+          ((next.kind === "ARRAYLOAD" && next.lhs2 && next.lhs2.value === "length") ||
+            next.kind === "CALL")
+        );
+      }),
+      "the read of an optional chain must come after the check",
+    );
+
+    // A switch dispatches: every case is a branch with a comparison.
+    const caseBranches = shapeInstructions.filter(
+      (i) => i.kind === "BRANCH" && i.guard && i.guard.kind === "Compare" && i.guard.op === "EQ",
+    );
+    check(caseBranches.length >= 2, `a switch must dispatch on its cases: ${caseBranches.length}`);
+    check(
+      shapeInstructions.some(
+        (i) => i.kind === "LABEL" && i.labelRef && i.labelRef.kind === "SWITCH_CASE",
+      ),
+      "a switch's case must have a label reference",
+    );
+
+    // A try is a CATCH_HANDLER and a FINALLY_ENTER, and the region says
+    // where the parts are.
+    check(
+      shapeInstructions.some((i) => i.kind === "CATCH_HANDLER"),
+      "a catch must bind the exception",
+    );
+    check(
+      shapeInstructions.some((i) => i.kind === "FINALLY_ENTER"),
+      "a finally must be entered",
+    );
+    const region = (shapes.tryRegions ?? [])[0];
+    check(!!region, "a try must be recorded as a region");
+    check(region.tryStart >= 0 && region.tryEnd > region.tryStart, "the try body must be located");
+    check(
+      Array.isArray(region.catchLabels) && region.catchLabels.length === 1,
+      "the catch must have an entry label",
+    );
+    check(
+      Array.isArray(region.catchTypes) && region.catchTypes[0] === "*",
+      "a catch without a type annotation is typed '*'",
+    );
+
+    // A `for ... of` binds the ELEMENT, not the iterable.
+    const itemMove = shapeInstructions.find(
+      (i) => i.kind === "MOVE" && i.dest && i.dest.name === "item",
+    );
+    check(!!itemMove, "the loop variable must be bound");
+    check(
+      indexOf(
+        shapeInstructions,
+        (i) =>
+          i.kind === "ARRAYLOAD" &&
+          i.lhs2 &&
+          i.lhs2.kind === "CONST" &&
+          i.lhs2.value === "value",
+      ) >= 0,
+      "the element must come from the iterator's value",
+    );
+    check(
+      itemMove && itemMove.lhs1 && itemMove.lhs1.kind === "VAR" && itemMove.lhs1.isTemp === true,
+      "the loop variable must be bound to the element, not to the iterable",
+    );
+
+    // A `for ... in` binds the KEY.
+    const keyMove = shapeInstructions.find(
+      (i) => i.kind === "MOVE" && i.dest && i.dest.name === "key",
+    );
+    check(!!keyMove, "the key variable must be bound");
+
+    // A labelled continue is a JUMP.
+    check(
+      shapeInstructions.some((i) => i.kind === "JUMP"),
+      "a continue must be a jump",
+    );
+
+    // A type test is an INSTANCEOF.
+    check(
+      shapeInstructions.some((i) => i.kind === "INSTANCEOF"),
+      "an instanceof must be a type test",
+    );
+
+    // A property presence test is a branch with a presence guard.
+    check(
+      shapeInstructions.some(
+        (i) => i.kind === "BRANCH" && i.guard && i.guard.kind === "PropertyPresence",
+      ),
+      "an `in` must be a property presence test",
+    );
+
+    // The unary operators are unary operations with their own operators.
+    const unops = shapeInstructions.filter((i) => i.kind === "UNARYOP").map((i) => i.unop);
+    check(unops.includes("NOT"), `a negation must be a NOT: ${JSON.stringify(unops)}`);
+    check(unops.includes("PRE_INC"), `a prefix increment must be a PRE_INC: ${JSON.stringify(unops)}`);
+    check(
+      unops.includes("PRE_DEC"),
+      `a prefix decrement must be a PRE_DEC: ${JSON.stringify(unops)}`,
+    );
+
+    // A regular expression is a constant of its own kind.
+    check(
+      shapeInstructions.some(
+        (i) =>
+          i.kind === "MOVE" && i.lhs1 && i.lhs1.kind === "CONST" && i.lhs1.constKind === "REGEX",
+      ),
+      "a regular expression must be a REGEX constant",
+    );
+
+    // The class's own members are functions of their own, and they say what
+    // kind of member they are.
+    const constructor = shapeFunctions.find((f) => f.name === "<init>");
+    check(!!constructor, "the constructor must be in the stream");
+    check(
+      constructor.memberKind === "CONSTRUCTOR",
+      `the constructor must say so: ${constructor.memberKind}`,
+    );
+    check(
+      shapeFunctions.some((f) => f.name === "label" && f.memberKind === "GETTER"),
+      "the getter must be in the stream",
+    );
+    check(
+      shapeFunctions.some((f) => f.name === "label" && f.memberKind === "SETTER"),
+      "the setter must be in the stream",
+    );
+    check(
+      shapeFunctions.some((f) => f.memberKind === "STATIC_INITIALIZER"),
+      "the static block must be in the stream",
+    );
+
+    // A class field is a FIELDSTORE with the class that owns it.
+    const fieldStore = (constructor.instructions ?? []).find((i) => i.kind === "FIELDSTORE");
+    check(!!fieldStore, "a class field must be stored as a field");
+    check(
+      fieldStore.ownerType === "Holder",
+      `a field must name the class that owns it: ${fieldStore.ownerType}`,
+    );
+    check(
+      fieldStore.fieldName === "name" || fieldStore.fieldName === "#secret",
+      `a field must keep its name: ${fieldStore.fieldName}`,
+    );
+
+    // A union is not collapsed into its first member.
+    const inputOperand = shapeInstructions.find(
+      (i) => i.lhs1 && i.lhs1.kind === "VAR" && i.lhs1.name === "input" && i.lhs1.type,
+    );
+    check(
+      inputOperand &&
+        inputOperand.lhs1.type.kind === "STRING" &&
+        inputOperand.lhs1.type.nullable === true,
+      `a union must keep its nullability: ${JSON.stringify(inputOperand && inputOperand.lhs1.type)}`,
+    );
+
+    // A number is a double, and a double has a domain.
+    const countOperand = shapeInstructions.find(
+      (i) => i.lhs1 && i.lhs1.kind === "VAR" && i.lhs1.name === "count" && i.lhs1.type,
+    );
+    check(
+      countOperand && countOperand.lhs1.type.kind === "DOUBLE",
+      `a number must be a DOUBLE: ${JSON.stringify(countOperand && countOperand.lhs1.type)}`,
+    );
+    check(
+      countOperand &&
+        countOperand.lhs1.type.domain &&
+        countOperand.lhs1.type.domain.kind === "Floating" &&
+        countOperand.lhs1.type.domain.bits === 53,
+      `a number must carry the double's domain: ${JSON.stringify(
+        countOperand && countOperand.lhs1.type,
+      )}`,
+    );
+
+    // An array keeps its element type.
+    const listOperand = shapeInstructions
+      .flatMap((i) => [i.lhs1, i.lhs2, ...(i.args ?? [])])
+      .find((op) => op && op.kind === "VAR" && op.name === "list" && op.type);
+    check(
+      listOperand &&
+        listOperand.type.kind === "ARRAY" &&
+        listOperand.type.component &&
+        listOperand.type.component.kind === "STRING",
+      `an array must keep its element type: ${JSON.stringify(listOperand && listOperand.type)}`,
     );
 
     console.log("ok: the sidecar answers over the wire, and the TAC has the expected shape");

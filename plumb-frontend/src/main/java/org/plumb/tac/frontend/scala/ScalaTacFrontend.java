@@ -44,55 +44,52 @@ import org.plumb.tac.ir.TacFunction;
 /**
  * The Scala 3 frontend: Scala source text to {@link TacFunction}s.
  *
- * <p>It is the Scala sibling of {@link org.plumb.tac.frontend.java.JavaTacFrontend} and
- * {@link org.plumb.tac.frontend.kotlin.KotlinTacFrontend}, and it exists for the same
- * reason: to keep every language's path into the IR structurally identical, so a
- * difference in behaviour between them is a difference in the <i>frontend</i> and not an
- * accident of wiring.
+ * <p>It is the Scala sibling of {@link org.plumb.tac.frontend.java.JavaTacFrontend} and {@link
+ * org.plumb.tac.frontend.kotlin.KotlinTacFrontend}, and it exists for the same reason: to keep
+ * every language's path into the IR structurally identical, so a difference in behaviour between
+ * them is a difference in the <i>frontend</i> and not an accident of wiring.
  *
  * <h2>How it works</h2>
  *
- * <p>The frontend runs the Scala 3 compiler over the file and lowers the typed tree into
- * TAC. The lowering happens inside a real compiler plugin phase -- see {@link
- * PlumbScalaPlugin} and {@link ScalaTacPhase} -- so the trees the translator sees are
- * fully typed, and the plugin is installed through the same mechanism dotc uses for a
- * plugin loaded with {@code -Xplugin}.
+ * <p>The frontend runs the Scala 3 compiler over the file and lowers the typed tree into TAC. The
+ * lowering happens inside a real compiler plugin phase -- see {@link PlumbScalaPlugin} and {@link
+ * ScalaTacPhase} -- so the trees the translator sees are fully typed, and the plugin is installed
+ * through the same mechanism dotc uses for a plugin loaded with {@code -Xplugin}.
  *
  * <h2>What the Scala frontend contributes to the IR</h2>
  *
  * <p>Two things the Java frontend cannot give, and which the analysis actually uses:
  *
  * <ul>
- *   <li><b>Synthetic methods.</b> A case class's {@code copy}, {@code apply}, {@code
- *       unapply} and {@code _N} accessors are compiler-generated, and dotc says so
- *       exactly ({@code Flags.Synthetic}). The bytecode path can only guess from the
- *       name.
- *   <li><b>Nothing else.</b> Scala has no non-null type system, so unlike the Kotlin
- *       frontend this one adds no nullability information: every reference stays
- *       nullable, exactly as it would for Java.
+ *   <li><b>Synthetic methods.</b> A case class's {@code copy}, {@code apply}, {@code unapply} and
+ *       {@code _N} accessors are compiler-generated, and dotc says so exactly ({@code
+ *       Flags.Synthetic}). The bytecode path can only guess from the name.
+ *   <li><b>Nothing else.</b> Scala has no non-null type system, so unlike the Kotlin frontend this
+ *       one adds no nullability information: every reference stays nullable, exactly as it would
+ *       for Java.
  * </ul>
  *
  * <h2>Totality</h2>
  *
- * <p>A frontend must not throw on malformed input. Everything here is wrapped so that a
- * broken file yields a {@link ParseResult#problems()} entry and whatever could be parsed,
- * never an exception out of {@link #parse}. A Scala file that does not compile produces
- * the compiler's own diagnostics as problems.
+ * <p>A frontend must not throw on malformed input. Everything here is wrapped so that a broken file
+ * yields a {@link ParseResult#problems()} entry and whatever could be parsed, never an exception
+ * out of {@link #parse}. A Scala file that does not compile produces the compiler's own diagnostics
+ * as problems.
  *
  * <h2>Statelessness</h2>
  *
- * <p>The frontend holds no state between calls. Each parse creates its own compiler
- * context, plugin and phase, and discards them afterwards, so two frontends may run
- * concurrently without interfering.
+ * <p>The frontend holds no state between calls. Each parse creates its own compiler context, plugin
+ * and phase, and discards them afterwards, so two frontends may run concurrently without
+ * interfering.
  */
 public final class ScalaTacFrontend implements TacFrontend {
 
   /**
    * The problems of the CURRENT parse, in the IR's structured form.
    *
-   * <p>These travel with the IR. A source-less consumer can then see WHICH construct the
-   * frontend could not lower, at WHICH line -- instead of only learning that "something went
-   * wrong somewhere".
+   * <p>These travel with the IR. A source-less consumer can then see WHICH construct the frontend
+   * could not lower, at WHICH line -- instead of only learning that "something went wrong
+   * somewhere".
    */
   private final List<org.plumb.tac.ir.TacProgram.FunctionProblem> structuredProblems =
       new ArrayList<>();
@@ -119,9 +116,9 @@ public final class ScalaTacFrontend implements TacFrontend {
   /**
    * Parses a Scala source without a compile context.
    *
-   * <p>A convenience for a caller that has no session context: the context's only role
-   * for the frontend is to supply the classpath, and a context-free parse resolves
-   * against the Scala library alone.
+   * <p>A convenience for a caller that has no session context: the context's only role for the
+   * frontend is to supply the classpath, and a context-free parse resolves against the Scala
+   * library alone.
    *
    * @param source the source text
    * @param path the file's path, used for error messages
@@ -253,13 +250,12 @@ public final class ScalaTacFrontend implements TacFrontend {
   /**
    * The command-line arguments the compiler is run with.
    *
-   * <p>The classpath comes from the compile context. The Scala library itself is always
-   * on it, because the compiler needs {@code scala.Predef} to type even the simplest
-   * file.
+   * <p>The classpath comes from the compile context. The Scala library itself is always on it,
+   * because the compiler needs {@code scala.Predef} to type even the simplest file.
    *
    * <p><b>Why {@code -sourcepath} is passed.</b> The classpath holds BINARIES. A Java class that
-   * exists only as SOURCE -- which is the normal case for the code under analysis -- is not on
-   * it, so the compiler reports {@code "Not found: JavaSink"} and the file fails to compile. The
+   * exists only as SOURCE -- which is the normal case for the code under analysis -- is not on it,
+   * so the compiler reports {@code "Not found: JavaSink"} and the file fails to compile. The
    * frontend then contributes no function at all, and a cross-language call from Scala to Java is
    * not merely unresolved: the whole file is missing from the program.
    *
@@ -318,34 +314,33 @@ public final class ScalaTacFrontend implements TacFrontend {
   }
 
   /**
-   * Copies the Java sources of the project into the staging directory, each under its own
-   * package directory.
+   * Copies the Java sources of the project into the staging directory, each under its own package
+   * directory.
    *
    * <p><b>Why they are COPIED and not just pointed at.</b> A compiler's source path resolves a
-   * class of package {@code demo} as {@code <root>/demo/JavaSink.java}. So the source path
-   * entry has to be the directory ABOVE the package directory, and the package directory has to
-   * exist on disk with the source inside it.
+   * class of package {@code demo} as {@code <root>/demo/JavaSink.java}. So the source path entry
+   * has to be the directory ABOVE the package directory, and the package directory has to exist on
+   * disk with the source inside it.
    *
-   * <p>That is only true of a conventional source tree. A scanner is often handed a flat
-   * directory -- {@code JavaSink.java} and {@code Foo.scala} side by side, with the package
-   * declared inside the files -- and there the package directory does not exist, so the lookup
-   * misses and the compiler reports "Not found: JavaSink".
+   * <p>That is only true of a conventional source tree. A scanner is often handed a flat directory
+   * -- {@code JavaSink.java} and {@code Foo.scala} side by side, with the package declared inside
+   * the files -- and there the package directory does not exist, so the lookup misses and the
+   * compiler reports "Not found: JavaSink".
    *
    * <p>Copying the Java sources into a package-shaped tree makes the lookup succeed for BOTH
-   * layouts: the staged tree is laid out the way the compiler expects, whatever the original
-   * tree looked like. The package each source belongs to is read from the source's own
-   * {@code package} declaration, because that -- not the file's directory -- is what the compiler
-   * will look up.
+   * layouts: the staged tree is laid out the way the compiler expects, whatever the original tree
+   * looked like. The package each source belongs to is read from the source's own {@code package}
+   * declaration, because that -- not the file's directory -- is what the compiler will look up.
    *
    * <p>Only the Java sources are copied. The Scala sources are not: each is compiled in its own
    * parse, and copying them would make the compiler see the same declaration twice.
    *
    * <p><b>Why only the OWNING module's sources are staged.</b> The staging directory is ONE tree,
    * and a class of package {@code demo} is looked up as {@code <workDir>/demo/Class.java}. Two
-   * modules that declare the same class would therefore write to the same place, and the second
-   * one would overwrite the first -- so the compiler would read the OTHER module's source for a
-   * class it is compiling against. Staging one module's sources at a time keeps the tree to the
-   * module being compiled.
+   * modules that declare the same class would therefore write to the same place, and the second one
+   * would overwrite the first -- so the compiler would read the OTHER module's source for a class
+   * it is compiling against. Staging one module's sources at a time keeps the tree to the module
+   * being compiled.
    *
    * @param ctx the compile context
    * @param path the file being compiled
@@ -400,15 +395,15 @@ public final class ScalaTacFrontend implements TacFrontend {
    * The source path for the compiler: the staging directory, the module's source root, and the
    * file's own directory.
    *
-   * <p><b>Why a compiler's source path is not a directory to look in.</b> It is a list of roots, and
-   * a class in package {@code demo} is looked up as {@code <root>/demo/JavaSink.java}. So the root
-   * that finds a class is the one that sits ABOVE the package directory.
+   * <p><b>Why a compiler's source path is not a directory to look in.</b> It is a list of roots,
+   * and a class in package {@code demo} is looked up as {@code <root>/demo/JavaSink.java}. So the
+   * root that finds a class is the one that sits ABOVE the package directory.
    *
-   * <p>That is why the STAGING directory is the primary entry: the staged Scala file and the
-   * staged Java sources are laid out in a package-shaped tree under it, so the lookup succeeds
-   * whether the original tree was a conventional one ({@code src/main/java/demo/JavaSink.java}) or
-   * a flat one ({@code JavaSink.java} next to {@code Foo.scala}, with the package declared inside
-   * the file). See {@link #stageJavaSources}.
+   * <p>That is why the STAGING directory is the primary entry: the staged Scala file and the staged
+   * Java sources are laid out in a package-shaped tree under it, so the lookup succeeds whether the
+   * original tree was a conventional one ({@code src/main/java/demo/JavaSink.java}) or a flat one
+   * ({@code JavaSink.java} next to {@code Foo.scala}, with the package declared inside the file).
+   * See {@link #stageJavaSources}.
    *
    * <p><b>Why the roots' ANCESTORS are deliberately NOT added.</b> They would look harmless -- a
    * root above the package directory finds the class too -- but a source path entry is a place the
@@ -460,10 +455,10 @@ public final class ScalaTacFrontend implements TacFrontend {
   /**
    * The Scala library's own jars, so the compiler can resolve {@code scala.Predef}.
    *
-   * <p>These are the jars the frontend itself was loaded with. Reading them from the
-   * class loader keeps the frontend and the compiler on the same Scala version, which
-   * matters: a compiler that links against a different {@code scala3-library_3} than
-   * the one it types against produces nonsense.
+   * <p>These are the jars the frontend itself was loaded with. Reading them from the class loader
+   * keeps the frontend and the compiler on the same Scala version, which matters: a compiler that
+   * links against a different {@code scala3-library_3} than the one it types against produces
+   * nonsense.
    *
    * @return the jars, empty when they cannot be located
    */
@@ -478,9 +473,9 @@ public final class ScalaTacFrontend implements TacFrontend {
   /**
    * Adds the jar a class was loaded from to the list, if it is not already there.
    *
-   * <p>The jar is found through the class's code source, which is where the JVM
-   * actually loaded it from. That is more reliable than looking the artifact up by
-   * name: the jar's file name does not have to match the artifact's id.
+   * <p>The jar is found through the class's code source, which is where the JVM actually loaded it
+   * from. That is more reliable than looking the artifact up by name: the jar's file name does not
+   * have to match the artifact's id.
    *
    * @param type the class to look at
    * @param jars the list the jar is added to
@@ -511,12 +506,12 @@ public final class ScalaTacFrontend implements TacFrontend {
   /**
    * Turns the compiler's diagnostics into problems.
    *
-   * <p>The compiler reports errors and warnings separately. Only the errors are
-   * problems -- a warning does not mean the file failed to parse.
+   * <p>The compiler reports errors and warnings separately. Only the errors are problems -- a
+   * warning does not mean the file failed to parse.
    *
-   * <p>The diagnostics also carry a SOURCE POSITION, so they become structured problems with a
-   * line and a column. That is what lets a consumer point at the exact place the Scala file
-   * failed to compile, instead of only learning that it did.
+   * <p>The diagnostics also carry a SOURCE POSITION, so they become structured problems with a line
+   * and a column. That is what lets a consumer point at the exact place the Scala file failed to
+   * compile, instead of only learning that it did.
    *
    * @param reporter the compiler's reporter
    * @param problems the list the problems are added to
@@ -581,10 +576,9 @@ public final class ScalaTacFrontend implements TacFrontend {
   /**
    * The package the source declares, as a directory path.
    *
-   * <p>Read from the source text rather than from the file's location, because the two do not
-   * have to agree: a scanner is often handed a file whose package declaration does not match its
-   * directory, and a compiler's source-path lookup is driven by the PACKAGE, not by the
-   * directory.
+   * <p>Read from the source text rather than from the file's location, because the two do not have
+   * to agree: a scanner is often handed a file whose package declaration does not match its
+   * directory, and a compiler's source-path lookup is driven by the PACKAGE, not by the directory.
    *
    * @param source the source text
    * @return the package path ({@code "demo/sub"} for {@code package demo.sub}), or {@code null}
@@ -593,8 +587,7 @@ public final class ScalaTacFrontend implements TacFrontend {
   private static String packagePathOf(String source) {
     if (source == null) return null;
     java.util.regex.Matcher m =
-        java.util.regex.Pattern.compile("(?m)^\\s*package\\s+([\\w.]+)")
-            .matcher(source);
+        java.util.regex.Pattern.compile("(?m)^\\s*package\\s+([\\w.]+)").matcher(source);
     if (!m.find()) return null;
     return m.group(1).replace('.', java.io.File.separatorChar);
   }

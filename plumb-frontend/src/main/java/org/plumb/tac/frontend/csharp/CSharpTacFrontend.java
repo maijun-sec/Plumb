@@ -36,6 +36,8 @@ import org.plumb.tac.frontend.json.Json;
 import org.plumb.tac.frontend.sidecar.SidecarProtocol;
 import org.plumb.tac.ir.IrPrecision;
 import org.plumb.tac.ir.SourceLanguage;
+import org.plumb.tac.frontend.sidecar.SidecarTacMapper;
+import org.plumb.tac.ir.TacDrop;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
@@ -61,26 +63,25 @@ import org.plumb.tac.ir.TacType;
  *
  * <p>One thing the Java frontend cannot give: <b>the property accessor as a call</b>.
  *
- * <p>In C#, {@code cmd.CommandText = tainted} is, at the language level, a call to
- * {@code SqlCommand.set_CommandText}. The frontend therefore lowers a property assignment to a
- * {@code CALL} whose callee signature is {@code owner.set_X/arity}, with the assigned value as
- * argument 0.
+ * <p>In C#, {@code cmd.CommandText = tainted} is, at the language level, a call to {@code
+ * SqlCommand.set_CommandText}. The frontend therefore lowers a property assignment to a {@code
+ * CALL} whose callee signature is {@code owner.set_X/arity}, with the assigned value as argument 0.
  *
- * <p>This is not a stylistic choice. The DFA engine queries the sink catalogue only on {@code
- * CALL} instructions, and {@code FIELDSTORE} carries no callee signature at all. A property
- * lowered as a field store would make every property-shaped sink <b>structurally invisible</b>: the
- * finding would be absent while the scan still reported success. A genuine field assignment stays
- * a {@code FIELDSTORE}, because a field really is a field.
+ * <p>This is not a stylistic choice. The DFA engine queries the sink catalogue only on {@code CALL}
+ * instructions, and {@code FIELDSTORE} carries no callee signature at all. A property lowered as a
+ * field store would make every property-shaped sink <b>structurally invisible</b>: the finding
+ * would be absent while the scan still reported success. A genuine field assignment stays a {@code
+ * FIELDSTORE}, because a field really is a field.
  *
  * <p>Nothing else is language-specific. The DFA engine needs no change for C#.
  *
  * <h2>Nullability</h2>
  *
  * <p>C#'s nullable reference annotations are a compile-time <b>warning</b>, not an error: a program
- * that violates one still compiles and still runs. So every C# reference type stays
- * <i>nullable</i> in the IR, and {@link SourceLanguage#hasNonNullTypeSystem()} answers {@code
- * false} for C#. Mapping the annotations onto the IR's nullability would let the null-dereference
- * checker suppress findings that are entirely real.
+ * that violates one still compiles and still runs. So every C# reference type stays <i>nullable</i>
+ * in the IR, and {@link SourceLanguage#hasNonNullTypeSystem()} answers {@code false} for C#.
+ * Mapping the annotations onto the IR's nullability would let the null-dereference checker suppress
+ * findings that are entirely real.
  *
  * <h2>Totality</h2>
  *
@@ -112,8 +113,8 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
   /**
    * Whether the open project's compilation inputs were captured.
    *
-   * <p>It is checked on every parse, so the problem is reported against every file rather than
-   * only against the one that happened to open the project.
+   * <p>It is checked on every parse, so the problem is reported against every file rather than only
+   * against the one that happened to open the project.
    */
   private boolean projectInputsCaptured = true;
 
@@ -216,7 +217,8 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
       }
       reportMissingCompilationInputs(path, problems);
 
-      Json.JsonObject response = request("translate", request -> request.put("path", pathKey(path)));
+      Json.JsonObject response =
+          request("translate", request -> request.put("path", pathKey(path)));
       if (!response.getBoolean("ok", false)) {
         String error = response.getString("error");
         problems.add("the C# sidecar could not translate " + path + ": " + error);
@@ -292,8 +294,8 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
    *   <li>with no preprocessor symbols, a function inside {@code #if DEBUG} is <b>absent from the
    *       TAC</b> and the compiler reports <b>no error</b> -- the finding is gone and nothing says
    *       so;
-   *   <li>with no reference assembly, the type does not bind and the compiler reports
-   *       {@code CS0234} -- which is loud, but only because the compiler happened to notice.
+   *   <li>with no reference assembly, the type does not bind and the compiler reports {@code
+   *       CS0234} -- which is loud, but only because the compiler happened to notice.
    * </ul>
    *
    * <p>So the frontend says so itself, on every file, rather than letting the absence speak for
@@ -331,8 +333,8 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
    * <p><b>Why the file's own content is part of the key.</b> The sidecar's compilation is a
    * snapshot: it holds the source text it was given at {@code openProject} time. If the file being
    * parsed has since changed, the snapshot is stale, and the analysis would silently describe the
-   * OLD code. That is the worst possible outcome -- a scan that reports findings about code that
-   * is no longer there.
+   * OLD code. That is the worst possible outcome -- a scan that reports findings about code that is
+   * no longer there.
    *
    * <p>So the project is reopened whenever the module changes OR the file's content differs from
    * what the open project was built with. In the normal case -- a scan walking a project whose
@@ -362,7 +364,9 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
       // may run long before the sidecar is needed, and the build output may
       // have appeared in between.
       Path executable =
-          sidecarExecutable != null ? sidecarExecutable : CSharpSidecarClient.locateExecutable(null);
+          sidecarExecutable != null
+              ? sidecarExecutable
+              : CSharpSidecarClient.locateExecutable(null);
       sidecar = CSharpSidecarClient.launch(executable, null);
     }
 
@@ -424,8 +428,7 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
       String pathKey = pathKey(path);
       boolean present = false;
       for (Json.Value value : sources) {
-        if (value instanceof Json.JsonObject object
-            && pathKey.equals(object.getString("path"))) {
+        if (value instanceof Json.JsonObject object && pathKey.equals(object.getString("path"))) {
           present = true;
           break;
         }
@@ -482,7 +485,8 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
                 .put("references", new Json.JsonArray())
                 .put("preprocessorSymbols", new Json.JsonArray())
                 .put("langVersion", langVersion == null ? "latest" : langVersion)
-                .put("nullableContextOptions", nullableContext == null ? "disable" : nullableContext)
+                .put(
+                    "nullableContextOptions", nullableContext == null ? "disable" : nullableContext)
                 .put("unsafe", unsafeAllowed));
     // The arrays are filled after construction, because JsonArray is mutable.
     Json.JsonArray sourceArray = new Json.JsonArray();
@@ -720,10 +724,17 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
       }
     }
 
-    IrPrecision precision =
-        "SOURCE_LOWERED".equals(wire.getString("precision"))
-            ? IrPrecision.SOURCE_LOWERED
-            : IrPrecision.SOURCE_FULL;
+    // The DROPS the sidecar recorded, and the precision they imply. The
+    // precision is DERIVED: a sidecar that claims SOURCE_FULL while recording
+    // a SEMANTICS drop would be hiding a real loss.
+    List<TacDrop> drops = SidecarTacMapper.toDrops(wire.getArray("drops"));
+    IrPrecision precision = SidecarTacMapper.combinePrecision(wire.getString("precision"), drops);
+
+    // What kind of member this function is: a method, a constructor, a
+    // getter. A checker has to be able to tell them apart.
+    String memberKindName = wire.getString("memberKind");
+    org.plumb.tac.ir.TacMemberKind memberKind =
+        memberKindName == null ? null : org.plumb.tac.ir.TacMemberKind.fromWire(memberKindName);
 
     return new TacFunction(
         wire.getString("name") == null ? "<unknown>" : wire.getString("name"),
@@ -732,162 +743,46 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
         params,
         locals,
         instructions,
-        List.of(),
-        List.of(),
-        Map.of(),
-        Map.of(),
+        SidecarTacMapper.toStringList(wire.getArray("classAnnotations")),
+        SidecarTacMapper.toStringList(wire.getArray("methodAnnotations")),
+        SidecarTacMapper.toAnnotationMap(wire.getObject("fieldAnnotations")),
+        SidecarTacMapper.toAnnotationMap(wire.getObject("paramAnnotations")),
         wire.getString("enclosingClass"),
         org.plumb.tac.ir.SourceOrigin.SOURCE,
-        List.of(),
+        SidecarTacMapper.toTryRegions(wire.getArray("tryRegions")),
         SourceLanguage.CSHARP,
         precision,
         wire.getBoolean("synthetic", false),
-        Map.of(),
-        ctx == null || path == null ? null : ctx.moduleOf(path));
+        SidecarTacMapper.toAnnotationMap(wire.getObject("annotationValues")),
+        ctx == null || path == null ? null : ctx.moduleOf(path),
+        drops,
+        memberKind);
   }
 
   /** Map one wire instruction into the IR. */
   private static TacInstruction toInstruction(Json.JsonObject wire) {
-    String kindName = wire.getString("kind");
-    TacInstruction.Kind kind;
-    try {
-      kind = TacInstruction.Kind.valueOf(kindName == null ? "NOP" : kindName);
-    } catch (IllegalArgumentException ex) {
-      // An instruction kind this build does not know. The sidecar is newer
-      // than the frontend. The safest reading of an unknown instruction is one
-      // whose effect is unknown.
-      kind = TacInstruction.Kind.HAVOC;
-    }
-
-    TacInstruction.Builder builder = TacInstruction.builder(kind);
-    builder.dest(toOperand(wire.getObject("dest")));
-    builder.lhs1(toOperand(wire.getObject("lhs1")));
-    builder.lhs2(toOperand(wire.getObject("lhs2")));
-    builder.calleeSig(wire.getString("calleeSig"));
-    builder.ctorType(toType(wire.getObject("ctorType")));
-    builder.fieldName(wire.getString("fieldName"));
-    builder.trueLabel(wire.getString("trueLabel"));
-    builder.falseLabel(wire.getString("falseLabel"));
-    builder.label(wire.getString("label"));
-    builder.line(wire.getInt("line", -1));
-    builder.column(wire.getInt("column", -1));
-
-    String binop = wire.getString("binop");
-    if (binop != null) {
-      try {
-        builder.binop(org.plumb.tac.ir.BinaryOperator.valueOf(binop));
-      } catch (IllegalArgumentException ex) {
-        // An operator this build does not know. The sidecar speaks the IR's
-        // operator vocabulary, so this only happens when the two halves are out
-        // of step -- and an unknown operator must not become a silent identity.
-        builder.binop(org.plumb.tac.ir.BinaryOperator.ADD);
-      }
-    }
-    String unop = wire.getString("unop");
-    if (unop != null) {
-      try {
-        builder.unop(org.plumb.tac.ir.UnaryOperator.valueOf(unop));
-      } catch (IllegalArgumentException ex) {
-        builder.unop(org.plumb.tac.ir.UnaryOperator.CAST);
-      }
-    }
-    TacType castType = toType(wire.getObject("castType"));
-    if (castType != null) {
-      builder.castType(castType);
-    }
-    Json.JsonArray args = wire.getArray("args");
-    if (args != null && args.size() > 0) {
-      List<TacOperand> list = new ArrayList<>();
-      for (int i = 0; i < args.size(); i++) {
-        TacOperand operand = toOperand(args.getObject(i));
-        if (operand != null) {
-          list.add(operand);
-        }
-      }
-      builder.args(list);
-    }
-    return builder.build();
+    // The mapping is the shared one: a second copy of it drifts, and this copy
+    // had already drifted -- it read an unknown binary operator as ADD, which
+    // turns a comparison into an addition.
+    return SidecarTacMapper.toInstruction(wire);
   }
 
   /** Map one wire operand into the IR. */
   private static TacOperand toOperand(Json.JsonObject wire) {
-    if (wire == null) {
-      return null;
-    }
-    String kind = wire.getString("kind");
-    if ("CONST".equals(kind)) {
-      return toConst(wire);
-    }
-    return toVar(wire);
+    return SidecarTacMapper.toOperand(wire);
   }
 
   private static TacOperand.TacVar toVar(Json.JsonObject wire) {
-    if (wire == null) {
-      return null;
-    }
-    String name = wire.getString("name");
-    if (name == null) {
-      return null;
-    }
-    return new TacOperand.TacVar(
-        name, toType(wire.getObject("type")), wire.getBoolean("isTemp", false));
+    return SidecarTacMapper.toVar(wire);
   }
 
   private static TacOperand toConst(Json.JsonObject wire) {
-    String kindName = wire.getString("constKind");
-    if (kindName == null) {
-      kindName = "STRING";
-    }
-    String value = wire.getString("value");
-    try {
-      return switch (kindName) {
-        case "INT" -> TacOperand.Const.ofInt(Integer.parseInt(value == null ? "0" : value));
-        case "LONG" -> TacOperand.Const.ofLong(Long.parseLong(value == null ? "0" : value));
-        case "FLOAT" -> TacOperand.Const.ofFloat(Float.parseFloat(value == null ? "0" : value));
-        case "DOUBLE" -> TacOperand.Const.ofDouble(Double.parseDouble(value == null ? "0" : value));
-        case "DECIMAL" -> TacOperand.Const.ofDecimal(value == null ? "0" : value);
-        case "BOOL" -> TacOperand.Const.ofBool(Boolean.parseBoolean(value));
-        case "CHAR" -> TacOperand.Const.ofChar(value == null || value.isEmpty() ? '\0' : value.charAt(0));
-        case "NULL" -> TacOperand.Const.ofNull();
-        default -> TacOperand.Const.ofString(value == null ? "" : value);
-      };
-    } catch (NumberFormatException ex) {
-      // A constant the wire carried in a form this build cannot parse. The
-      // value is unknown, not silently zero.
-      return TacOperand.Const.ofString(value == null ? "" : value);
-    }
+    return SidecarTacMapper.toConst(wire);
   }
 
   /** Map one wire type into the IR. */
   private static TacType toType(Json.JsonObject wire) {
-    if (wire == null) {
-      return TacType.UNKNOWN;
-    }
-    String kindName = wire.getString("kind");
-    if (kindName == null) {
-      return TacType.UNKNOWN;
-    }
-    try {
-      return switch (kindName) {
-        case "BOOLEAN" -> TacType.BOOLEAN;
-        case "BYTE" -> TacType.BYTE;
-        case "SHORT" -> TacType.SHORT;
-        case "CHAR" -> TacType.CHAR;
-        case "INT" -> TacType.INT;
-        case "LONG" -> TacType.LONG;
-        case "FLOAT" -> TacType.FLOAT;
-        case "DOUBLE" -> TacType.DOUBLE;
-        case "DECIMAL" -> TacType.DECIMAL;
-        case "STRING" -> TacType.STRING;
-        case "NULL" -> TacType.NULL;
-        case "VOID" -> TacType.VOID;
-        case "CLASS" -> TacType.ofClass(wire.getString("name") == null ? "" : wire.getString("name"));
-        case "ARRAY" -> TacType.arrayOf(toType(wire.getObject("component")));
-        default -> TacType.UNKNOWN;
-      };
-    } catch (IllegalArgumentException ex) {
-      return TacType.UNKNOWN;
-    }
+    return SidecarTacMapper.toType(wire);
   }
 
   /**

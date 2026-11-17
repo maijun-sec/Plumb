@@ -139,10 +139,13 @@ func dispatch(request *Request, session **ProjectSession) *Response {
 			}
 		}
 		*session = opened
+		programDrops := takeProgramDrops()
 		return &Response{
-			Op:          request.Op,
-			OK:          true,
-			Diagnostics: opened.Diagnostics(),
+			Op:           request.Op,
+			OK:           true,
+			Diagnostics:  opened.Diagnostics(),
+			Drops:        programDrops,
+			ProgramDrops: programDrops,
 		}
 
 	case "translate":
@@ -160,10 +163,15 @@ func dispatch(request *Request, session **ProjectSession) *Response {
 				Error: "the translate request carried no path",
 			}
 		}
+		functions, types := (*session).Translate(request.Path)
+		programDrops := takeProgramDrops()
 		return &Response{
-			Op:        request.Op,
-			OK:        true,
-			Functions: (*session).Translate(request.Path),
+			Op:           request.Op,
+			OK:           true,
+			Functions:    functions,
+			Types:        types,
+			Drops:        programDrops,
+			ProgramDrops: programDrops,
 		}
 
 	case "closeproject":

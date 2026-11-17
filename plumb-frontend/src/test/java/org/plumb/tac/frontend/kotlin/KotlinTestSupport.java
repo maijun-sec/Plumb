@@ -38,43 +38,42 @@ import org.plumb.tac.frontend.TacFrontend;
 /**
  * Shared scaffolding for the Kotlin frontend's tests.
  *
- * <p><b>Why the session is a JVM-wide singleton.</b> The Analysis API's standalone
- * application is a global singleton: {@code buildStandaloneAnalysisAPISession} sets up an
- * embedded IntelliJ application, and {@code disposeGlobalStandaloneApplicationServices}
- * tears it down for the whole JVM. Two consequences follow, and both shape this class:
+ * <p><b>Why the session is a JVM-wide singleton.</b> The Analysis API's standalone application is a
+ * global singleton: {@code buildStandaloneAnalysisAPISession} sets up an embedded IntelliJ
+ * application, and {@code disposeGlobalStandaloneApplicationServices} tears it down for the whole
+ * JVM. Two consequences follow, and both shape this class:
  *
  * <ul>
- *   <li>A second session cannot be built after the global services have been released.
- *       So the session is built once, lazily, and shared by every test class.
- *   <li>The session is expensive to build (it initialises the IntelliJ platform), so
- *       building it once is also the fast option.
+ *   <li>A second session cannot be built after the global services have been released. So the
+ *       session is built once, lazily, and shared by every test class.
+ *   <li>The session is expensive to build (it initialises the IntelliJ platform), so building it
+ *       once is also the fast option.
  * </ul>
  *
- * <p><b>Why the session outlives the test classes.</b> Surefire runs every test class in
- * one JVM, and the session's own lifetime is JVM-global. The session is therefore
- * released by a JVM shutdown hook rather than by a test class's {@code @AfterAll}, so the
- * order in which the classes run cannot break the classes that run after it.
+ * <p><b>Why the session outlives the test classes.</b> Surefire runs every test class in one JVM,
+ * and the session's own lifetime is JVM-global. The session is therefore released by a JVM shutdown
+ * hook rather than by a test class's {@code @AfterAll}, so the order in which the classes run
+ * cannot break the classes that run after it.
  *
- * <p><b>Why the source is written to disk.</b> The Analysis API resolves files that are
- * on disk and inside the session's content scope. The frontend stages the source under
- * the session's source root; the test harness hands it a root so the staging lands
- * somewhere disposable.
+ * <p><b>Why the source is written to disk.</b> The Analysis API resolves files that are on disk and
+ * inside the session's content scope. The frontend stages the source under the session's source
+ * root; the test harness hands it a root so the staging lands somewhere disposable.
  */
 final class KotlinTestSupport {
 
   /**
    * The root every test class stages its source under.
    *
-   * <p>Declared before {@link SessionHolder} because the holder's initialiser reads it:
-   * static initialisers run in declaration order.
+   * <p>Declared before {@link SessionHolder} because the holder's initialiser reads it: static
+   * initialisers run in declaration order.
    */
   private static final Path ROOT = createRoot();
 
   /**
    * The shared session, built on first use.
    *
-   * <p>Held in a holder class so the session is built exactly once even when several
-   * test classes initialise at the same time.
+   * <p>Held in a holder class so the session is built exactly once even when several test classes
+   * initialise at the same time.
    */
   private static final class SessionHolder {
     static final StandaloneAnalysisAPISession INSTANCE = build();
@@ -85,14 +84,14 @@ final class KotlinTestSupport {
     static StandaloneAnalysisAPISession build() {
       com.intellij.openapi.Disposable disposable =
           com.intellij.openapi.util.Disposer.newDisposable("plumb-kotlin-test-session");
-      StandaloneAnalysisAPISession session =
-          buildSession(disposable, KotlinTestSupport.ROOT);
+      StandaloneAnalysisAPISession session = buildSession(disposable, KotlinTestSupport.ROOT);
       Runtime.getRuntime()
           .addShutdownHook(
               new Thread(
                   () -> {
                     try {
-                      session.getApplication()
+                      session
+                          .getApplication()
                           .runWriteAction(
                               () -> com.intellij.openapi.util.Disposer.dispose(disposable));
                     } finally {
@@ -120,21 +119,20 @@ final class KotlinTestSupport {
   /**
    * The library roots the session resolves against.
    *
-   * <p>Without them the Analysis API cannot resolve {@code StringBuilder}, {@code Regex},
-   * or any other class that comes from a library, and every type that comes from one
-   * resolves to an <i>error type</i> -- which would make every library-typed value
-   * unknown, and would lose the nullability the Kotlin frontend exists to provide.
+   * <p>Without them the Analysis API cannot resolve {@code StringBuilder}, {@code Regex}, or any
+   * other class that comes from a library, and every type that comes from one resolves to an
+   * <i>error type</i> -- which would make every library-typed value unknown, and would lose the
+   * nullability the Kotlin frontend exists to provide.
    *
    * <p>Two sources:
    *
    * <ul>
-   *   <li>The Kotlin standard library, found on the running JVM's classpath. It is an
-   *       ordinary jar, so the session's file system can index it.
-   *   <li>The JDK's own classes. They live in the runtime image ({@code lib/modules}),
-   *       which the session's virtual file system cannot mount -- it has no JRT file
-   *       system. The JDK's {@code lib/ct.sym} is the closest mountable equivalent: it
-   *       is an ordinary ZIP of the JDK's API signatures, and it is what the Kotlin
-   *       compiler itself uses as a library root.
+   *   <li>The Kotlin standard library, found on the running JVM's classpath. It is an ordinary jar,
+   *       so the session's file system can index it.
+   *   <li>The JDK's own classes. They live in the runtime image ({@code lib/modules}), which the
+   *       session's virtual file system cannot mount -- it has no JRT file system. The JDK's {@code
+   *       lib/ct.sym} is the closest mountable equivalent: it is an ordinary ZIP of the JDK's API
+   *       signatures, and it is what the Kotlin compiler itself uses as a library root.
    * </ul>
    *
    * @return the roots, empty when none could be located
@@ -174,8 +172,7 @@ final class KotlinTestSupport {
   /** Builds the Analysis API session over one source root. */
   private static StandaloneAnalysisAPISession buildSession(
       com.intellij.openapi.Disposable disposable, Path root) {
-    final KotlinModuleStructure structure =
-        new KotlinModuleStructure(List.of(root), List.of());
+    final KotlinModuleStructure structure = new KotlinModuleStructure(List.of(root), List.of());
     return StandaloneAnalysisAPISessionBuilderKt.buildStandaloneAnalysisAPISession(
         disposable,
         false,
@@ -194,7 +191,8 @@ final class KotlinTestSupport {
                   @Override
                   public kotlin.Unit invoke(
                       org.jetbrains.kotlin.analysis.project.structure.builder
-                          .KaModuleContainerBuilder moduleProvider) {
+                              .KaModuleContainerBuilder
+                          moduleProvider) {
                     structure.addTo(moduleProvider);
                     return kotlin.Unit.INSTANCE;
                   }
@@ -260,7 +258,7 @@ final class KotlinTestSupport {
     }
 
     @Override
-       public List<Module> modules() {
+    public List<Module> modules() {
       return List.of(new Module("test", root, List.of(), List.of(), List.of(), null));
     }
 

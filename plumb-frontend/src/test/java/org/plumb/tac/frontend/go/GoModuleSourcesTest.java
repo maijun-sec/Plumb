@@ -117,7 +117,9 @@ class GoModuleSourcesTest {
     Files.createDirectories(module);
     Files.writeString(
         module.resolve("go.mod"),
-        "module example.com/app\n\ngo 1.23\n\nreplace other.example/lib => other.example/lib v1.2.3\n");
+        "module example.com/app\n\n"
+            + "go 1.23\n\n"
+            + "replace other.example/lib => other.example/lib v1.2.3\n");
 
     assertThat(directoryOf(module, "other.example/lib/pkg")).isNull();
   }
@@ -139,7 +141,8 @@ class GoModuleSourcesTest {
 
   @Test
   @DisplayName("a module file's statements are read one directive at a time")
-  void aModuleFilesStatementsAreReadOneDirectiveAtATime(@TempDir Path directory) throws IOException {
+  void aModuleFilesStatementsAreReadOneDirectiveAtATime(@TempDir Path directory)
+      throws IOException {
     Path file = directory.resolve("go.mod");
     Files.writeString(
         file,

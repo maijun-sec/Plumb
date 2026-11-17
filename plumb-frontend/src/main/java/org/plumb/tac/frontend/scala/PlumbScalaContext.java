@@ -27,25 +27,21 @@ import dotty.tools.dotc.core.Phases.Phase;
 /**
  * The compiler context that installs the TAC lowering into dotc's phase pipeline.
  *
- * <p><b>Why this class exists.</b> dotc decides where a plugin phase runs by consulting
- * the phase plan, and the plan is built once, from the phase list the driver assembles.
- * The one extension point the driver offers is {@link
- * dotty.tools.dotc.core.Contexts.ContextBase#addPluginPhases}, which the driver calls
- * with the plan it has assembled. Overriding it and calling {@link
- * dotty.tools.dotc.plugins.Plugins#schedule} is exactly what dotc does for a plugin
- * loaded through {@code -Xplugin}, so the phase lands in the same place a real plugin's
- * phase would.
+ * <p><b>Why this class exists.</b> dotc decides where a plugin phase runs by consulting the phase
+ * plan, and the plan is built once, from the phase list the driver assembles. The one extension
+ * point the driver offers is {@link dotty.tools.dotc.core.Contexts.ContextBase#addPluginPhases},
+ * which the driver calls with the plan it has assembled. Overriding it and calling {@link
+ * dotty.tools.dotc.plugins.Plugins#schedule} is exactly what dotc does for a plugin loaded through
+ * {@code -Xplugin}, so the phase lands in the same place a real plugin's phase would.
  *
- * <p><b>Why the phase runs after {@code typer}.</b> The lowering needs fully typed
- * trees: a {@code match}'s pattern types, a method's resolved signature, and a symbol's
- * synthetic flag all only exist once the typer has run. Before the typer the trees carry
- * unresolved names; after the {@code pickler} the trees have been serialised and the
- * source-level shape is gone. So the phase asks to run after {@code typer} and before
- * everything else.
+ * <p><b>Why the phase runs after {@code typer}.</b> The lowering needs fully typed trees: a {@code
+ * match}'s pattern types, a method's resolved signature, and a symbol's synthetic flag all only
+ * exist once the typer has run. Before the typer the trees carry unresolved names; after the {@code
+ * pickler} the trees have been serialised and the source-level shape is gone. So the phase asks to
+ * run after {@code typer} and before everything else.
  *
- * <p><b>Statelessness.</b> The context holds only the plugin, and the plugin holds only
- * the phase. Both are created fresh per file by {@link ScalaTacFrontend}, so no state
- * outlives one parse.
+ * <p><b>Statelessness.</b> The context holds only the plugin, and the plugin holds only the phase.
+ * Both are created fresh per file by {@link ScalaTacFrontend}, so no state outlives one parse.
  *
  * @see PlumbScalaPlugin
  * @see ScalaTacPhase
@@ -67,9 +63,9 @@ final class PlumbScalaContext extends dotty.tools.dotc.core.Contexts.ContextBase
   /**
    * Installs the plugin's phase into the compiler's phase plan.
    *
-   * <p>This is the hook dotc calls once the plan has been assembled. The plugin's
-   * phases are handed to {@link dotty.tools.dotc.plugins.Plugins#schedule}, which places
-   * them relative to the phases they declare {@code runsAfter} / {@code runsBefore}.
+   * <p>This is the hook dotc calls once the plan has been assembled. The plugin's phases are handed
+   * to {@link dotty.tools.dotc.plugins.Plugins#schedule}, which places them relative to the phases
+   * they declare {@code runsAfter} / {@code runsBefore}.
    *
    * @param plan the plan dotc assembled
    * @param ctx the context the plan is built in

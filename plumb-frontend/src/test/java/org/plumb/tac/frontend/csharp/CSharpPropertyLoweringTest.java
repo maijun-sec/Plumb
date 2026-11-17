@@ -269,9 +269,18 @@ class CSharpPropertyLoweringTest {
 
     TacFunction function = functionNamed(support.parse(source).functions(), "RunAsync");
 
+    // The precision is DERIVED from the drops, and the await's drops are
+    // SEMANTICS ones: the resumption point is not carried on the
+    // instruction, and the order in which a continuation resumes is a
+    // run-time fact. Both are losses of MEANING, so the function is
+    // SOURCE_DEGRADED -- a stronger statement than the blanket
+    // SOURCE_LOWERED the sidecar used to assert for every loss.
     assertThat(function.irPrecision())
         .as("an async state machine is lowered away, so the precision says so")
-        .isEqualTo(IrPrecision.SOURCE_LOWERED);
+        .isEqualTo(IrPrecision.SOURCE_DEGRADED);
+    assertThat(function.drops())
+        .as("the loss is recorded, not just asserted")
+        .anyMatch(drop -> drop.construct().contains("await"));
   }
 
   @Test

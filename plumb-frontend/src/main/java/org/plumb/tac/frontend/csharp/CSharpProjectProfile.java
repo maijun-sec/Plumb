@@ -38,17 +38,17 @@ import java.util.List;
  * rather than a loud one. Two shapes of that defect were measured on the C# sidecar:
  *
  * <ul>
- *   <li>an <b>empty</b> preprocessor symbol set is silent: a function whose body sits inside
- *       {@code #if DEBUG} is simply <b>not in the TAC</b>, and the compiler reports no error at
- *       all, because an inactive conditional region is not a mistake. The finding is gone and the
- *       scan still reports success;
+ *   <li>an <b>empty</b> preprocessor symbol set is silent: a function whose body sits inside {@code
+ *       #if DEBUG} is simply <b>not in the TAC</b>, and the compiler reports no error at all,
+ *       because an inactive conditional region is not a mistake. The finding is gone and the scan
+ *       still reports success;
  *   <li>a <b>missing reference assembly</b> is loud: the type does not bind, the compiler reports
  *       {@code CS0234}, and the frontend turns it into a problem.
  * </ul>
  *
- * <p>So the two are not interchangeable. This record exists so the frontend can be handed the
- * real values instead of inventing them, and so that "we did not capture them" is a state the
- * frontend can report instead of paper over.
+ * <p>So the two are not interchangeable. This record exists so the frontend can be handed the real
+ * values instead of inventing them, and so that "we did not capture them" is a state the frontend
+ * can report instead of paper over.
  *
  * <h2>Where the values come from</h2>
  *

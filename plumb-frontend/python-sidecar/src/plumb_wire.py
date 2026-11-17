@@ -103,6 +103,98 @@ class Precision:
 
     FULL = "SOURCE_FULL"
     LOWERED = "SOURCE_LOWERED"
+    DEGRADED = "SOURCE_DEGRADED"
+
+
+class DropImpact:
+    """The impact of a drop.
+
+    The engine derives a function's precision from its drops, so the impact is
+    not a decoration:
+
+    * ``SEMANTICS`` -- the function's meaning is not whole (an unknown call
+      target, an ``eval``, a variable variable) => ``SOURCE_DEGRADED``
+    * ``STRUCTURE`` -- only the shape is not whole (a loop's ``else``, a
+      set's order) => ``SOURCE_LOWERED``
+    * ``VALUE`` -- one value is not known, and nothing else is => unchanged
+    * ``TYPE`` -- one type is not known, and nothing else is => unchanged
+    """
+
+    SEMANTICS = "SEMANTICS"
+    STRUCTURE = "STRUCTURE"
+    VALUE = "VALUE"
+    TYPE = "TYPE"
+
+
+class Guard:
+    """The guard kinds.
+
+    A guard is the STRUCTURED condition of a branch. The engine reads it to
+    build a path condition, so a branch whose condition is only a boolean
+    temporary tells the solver nothing.
+    """
+
+    COMPARE = "Compare"
+    TRUTHINESS = "Truthiness"
+    MEMBERSHIP = "Membership"
+    TYPE_TEST = "TypeTest"
+    ALWAYS = "Always"
+    PROPERTY_PRESENCE = "PropertyPresence"
+
+
+class LabelKind:
+    """The label kinds.
+
+    A label's kind says what the label IS, so that the engine can tell a
+    loop's end from a loop's body end -- Python's ``else`` hangs off the body
+    end, and a ``break`` has to skip it.
+    """
+
+    FUNCTION_ENTRY = "FUNCTION_ENTRY"
+    FUNCTION_EXIT = "FUNCTION_EXIT"
+    BLOCK = "BLOCK"
+    LOOP_HEAD = "LOOP_HEAD"
+    LOOP_BODY_END = "LOOP_BODY_END"
+    LOOP_END = "LOOP_END"
+    SWITCH_HEAD = "SWITCH_HEAD"
+    SWITCH_CASE = "SWITCH_CASE"
+    SWITCH_END = "SWITCH_END"
+    CATCH_ENTRY = "CATCH_ENTRY"
+    FINALLY_ENTRY = "FINALLY_ENTRY"
+
+
+class MemberKind:
+    """The member kinds.
+
+    A member kind says what a function IS inside its owner: a method, the
+    constructor, or the function that runs a class body's field
+    initializers.
+    """
+
+    MODULE = "MODULE"
+    METHOD = "METHOD"
+    CONSTRUCTOR = "CONSTRUCTOR"
+    FIELD_INITIALIZER = "FIELD_INITIALIZER"
+    GETTER = "GETTER"
+    SETTER = "SETTER"
+    DESTRUCTOR = "DESTRUCTOR"
+
+
+class ScopeKind:
+    """The scope binding kinds.
+
+    A scope binding says that a name belongs to a scope other than the one
+    the function's own locals live in: the module's scope (``global``), the
+    scope around the function (``nonlocal``), or the function's own
+    persistent storage.
+    """
+
+    LOCAL = "LOCAL"
+    GLOBAL = "GLOBAL"
+    STATIC_LOCAL = "STATIC_LOCAL"
+    CAPTURED = "CAPTURED"
+    PARAM = "PARAM"
+    DECLARE = "DECLARE"
 
 
 class Problem:

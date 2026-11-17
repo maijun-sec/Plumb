@@ -31,16 +31,16 @@ import org.plumb.tac.frontend.TacFrontend;
 /**
  * Shared scaffolding for the Scala frontend's tests.
  *
- * <p><b>Why the frontend is created per test class rather than shared.</b> The Scala
- * frontend holds no state between parses -- each parse creates its own compiler
- * context, plugin and phase -- so a single instance could serve every test. It is
- * created here once per test class anyway, because that mirrors how a caller uses it
- * and because it keeps the tests independent of the order they run in.
+ * <p><b>Why the frontend is created per test class rather than shared.</b> The Scala frontend holds
+ * no state between parses -- each parse creates its own compiler context, plugin and phase -- so a
+ * single instance could serve every test. It is created here once per test class anyway, because
+ * that mirrors how a caller uses it and because it keeps the tests independent of the order they
+ * run in.
  *
- * <p><b>Why the source is written to disk by the frontend.</b> dotc compiles files, not
- * strings: it needs a real path to report positions against and to write class files
- * next to. The frontend therefore stages the source in a temporary directory and
- * removes it again, which is why a test only has to hand it the source text.
+ * <p><b>Why the source is written to disk by the frontend.</b> dotc compiles files, not strings: it
+ * needs a real path to report positions against and to write class files next to. The frontend
+ * therefore stages the source in a temporary directory and removes it again, which is why a test
+ * only has to hand it the source text.
  */
 final class ScalaTestSupport {
 
@@ -78,8 +78,8 @@ final class ScalaTestSupport {
   /**
    * Parses a Scala source with the STRUCTURED problems.
    *
-   * <p>This is the form a source-less consumer receives: the functions AND the problems that
-   * say which constructs were not lowered.
+   * <p>This is the form a source-less consumer receives: the functions AND the problems that say
+   * which constructs were not lowered.
    *
    * @param source the source text
    * @return the structured parse result

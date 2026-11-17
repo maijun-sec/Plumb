@@ -145,7 +145,15 @@ public final class JavaTacFrontend implements TacFrontend {
       translator.setModule(ctx == null ? null : ctx.moduleOf(path));
       TacProgram program = translator.translate();
       List<TacFunction> functions = new ArrayList<>(program.functions());
-      return new ParseResult(functions, problems, defaultPrecision());
+      // The translator's own gaps travel with the IR: the constructs it could
+      // not lower are problems about the ANALYSIS, and a consumer of the plain
+      // result has to see them -- a file whose constructs were silently dropped
+      // looks exactly like a clean file.
+      for (TacProgram.FunctionProblem p : program.programProblems()) {
+        problems.add(p.toString());
+      }
+      return new ParseResult(
+          functions, problems, aggregatePrecision(defaultPrecision(), functions));
     } catch (RuntimeException ex) {
       // A frontend must be TOTAL: a malformed file reports a problem and yields whatever
       // could be parsed. An exception escaping here would abort the whole scan for one
@@ -154,6 +162,39 @@ public final class JavaTacFrontend implements TacFrontend {
       problems.add("parse failure in " + path + ": " + ex.getMessage());
       return new ParseResult(List.of(), problems, defaultPrecision());
     }
+  }
+
+  /**
+   * The precision of the FILE as a whole: the worst precision any of its functions carries.
+   *
+   * <p>One degraded function makes the FILE degraded, because the file's finding set is only as
+   * trustworthy as its least trustworthy function.
+   *
+   * <p>The bytecode levels are NOT ranked against the source levels: a bytecode function and a
+   * source-degraded function lose different things, and saying which is "worse" would be a
+   * judgement the engine has no basis for. A bytecode base level is therefore kept as it is, and a
+   * bytecode function is skipped -- its loss is reported through its drops instead.
+   *
+   * @param base the frontend's stated precision for the file
+   * @param functions the functions the file lowered to
+   * @return the precision the file should be reported with
+   */
+  private static IrPrecision aggregatePrecision(IrPrecision base, List<TacFunction> functions) {
+    if (base == IrPrecision.BYTECODE || base == IrPrecision.BYTECODE_SYNTHETIC) {
+      return base;
+    }
+    IrPrecision precision = base;
+    for (TacFunction fn : functions) {
+      IrPrecision fnPrecision = fn.irPrecision();
+      if (fnPrecision == null) continue;
+      if (fnPrecision == IrPrecision.BYTECODE || fnPrecision == IrPrecision.BYTECODE_SYNTHETIC) {
+        continue;
+      }
+      if (fnPrecision.sourceRank() > precision.sourceRank()) {
+        precision = fnPrecision;
+      }
+    }
+    return precision;
   }
 
   /**
@@ -182,16 +223,7 @@ public final class JavaTacFrontend implements TacFrontend {
       for (TacProgram.FunctionProblem p : program.programProblems()) {
         messages.add(p.toString());
       }
-      // The precision is the lowest precision any function carries: one degraded function
-      // makes the FILE's precision degraded, because the file's finding set is only as
-      // trustworthy as its least trustworthy function.
-      IrPrecision precision = defaultPrecision();
-      for (TacFunction fn : functions) {
-        if (fn.irPrecision() == IrPrecision.SOURCE_LOWERED) {
-          precision = IrPrecision.SOURCE_LOWERED;
-          break;
-        }
-      }
+      IrPrecision precision = aggregatePrecision(defaultPrecision(), functions);
       return new StructuredParseResult(
           functions, List.copyOf(program.programProblems()), precision);
     } catch (RuntimeException ex) {
