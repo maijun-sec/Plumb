@@ -217,4 +217,41 @@ class SidecarTacMapperWireV2Test {
         .as("the pattern must not be dropped")
         .isEqualTo(org.plumb.tac.ir.TacOperand.Const.ofString("[0-9]+"));
   }
+
+  @Test
+  @DisplayName("an argument that cannot be read does not move the arguments after it")
+  void anArgumentThatCannotBeReadDoesNotMoveTheArgumentsAfterIt() {
+    TacFunction fn =
+        map(
+            "{\"name\":\"x\",\"instructions\":[{\"kind\":\"CALL\",\"calleeSig\":\"a.b/2\","
+                + "\"args\":[{\"kind\":\"VAR\",\"name\":\"recv\"},{\"kind\":\"VAR\"},"
+                + "{\"kind\":\"VAR\",\"name\":\"payload\"}]}]}");
+
+    assertThat(fn.instructions()).hasSize(1);
+    List<org.plumb.tac.ir.TacOperand> args = fn.instructions().get(0).args;
+    assertThat(args)
+        .as("an unreadable argument must not shorten the list and shift the rest")
+        .hasSize(3);
+    assertThat(args.get(0)).isEqualTo(new org.plumb.tac.ir.TacOperand.TacVar("recv", null, false));
+    assertThat(args.get(2))
+        .as("the last argument must still be the last one")
+        .isEqualTo(new org.plumb.tac.ir.TacOperand.TacVar("payload", null, false));
+  }
+
+  @Test
+  @DisplayName("a guard written under the sidecar's own key names its subject")
+  void aGuardWrittenUnderTheSidecarsOwnKeyNamesItsSubject() {
+    TacFunction fn =
+        map(
+            "{\"name\":\"x\",\"instructions\":[{\"kind\":\"BRANCH\",\"guard\":{\"kind\":\"TRUTHINESS\","
+                + "\"operand\":{\"kind\":\"VAR\",\"name\":\"t1\"}},\"trueLabel\":\"L_A\","
+                + "\"falseLabel\":\"L_B\"}]}");
+
+    assertThat(fn.instructions()).hasSize(1);
+    org.plumb.tac.ir.TacGuard guard = fn.instructions().get(0).guard;
+    assertThat(guard).as("the guard must reach the IR").isNotNull();
+    assertThat(guard.subject())
+        .as("a guard whose subject was dropped says nothing about any value")
+        .isEqualTo(new org.plumb.tac.ir.TacOperand.TacVar("t1", null, false));
+  }
 }

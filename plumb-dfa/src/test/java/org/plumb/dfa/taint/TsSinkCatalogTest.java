@@ -143,7 +143,9 @@ class TsSinkCatalogTest {
     // const trimmed = input.trim();
     // The receiver has no class to name, so the owner is the stand-in for an
     // unknown one: <unknown>. It cannot be a module path, so a catalogue that
-    // names modules cannot claim it by accident.
+    // names modules cannot claim it by accident. TypeScript itself no longer
+    // produces this shape -- its key carries no owner -- but Python still does,
+    // and the engine's handling of a stand-in owner is what this pins.
     instructions.add(call("<unknown>.trim/0", trimmed, List.of(input), 12));
     // cp.exec(trimmed);
     instructions.add(call("child_process.exec/2", temp("t9"), List.of(cp, trimmed), 15));
@@ -243,16 +245,16 @@ class TsSinkCatalogTest {
                 .sinkFamilies()
                 .byName("code-injection.sinks")
                 .orElseThrow()
-                .matches("<unknown>.eval/1", SourceLanguage.TYPESCRIPT))
-        .as("the global eval evaluates code, and its owner is the stand-in for an unknown one")
+                .matches("eval.eval/1", SourceLanguage.TYPESCRIPT))
+        .as("the global eval evaluates code, and its owner is the global it came from")
         .isTrue();
     assertThat(
             config
                 .sinkFamilies()
                 .byName("ssrf.sinks")
                 .orElseThrow()
-                .matches("<unknown>.fetch/2", SourceLanguage.TYPESCRIPT))
-        .as("the global fetch sends its argument to a URL, and its owner is the same stand-in")
+                .matches("fetch.fetch/2", SourceLanguage.TYPESCRIPT))
+        .as("the global fetch sends its argument to a URL, and its owner is that global too")
         .isTrue();
   }
 
@@ -737,9 +739,9 @@ class TsSinkCatalogTest {
     EngineConfig config = ConfigLoader.loadFromClasspath();
 
     for (SinkFamily family : config.sinkFamilies().all()) {
-      assertThat(family.matches("<unknown>.error/1", SourceLanguage.TYPESCRIPT))
+      assertThat(family.matches("error/1", SourceLanguage.TYPESCRIPT))
           .as(
-              "%s must not claim a call whose owner is the stand-in for an unknown one",
+              "%s must not claim a call whose owner nobody could name -- the key carries no owner",
               family.name())
           .isFalse();
     }

@@ -414,7 +414,7 @@ the sink catalogue -- and then the engine reads `args[0]`, finds the
 absent while the scan reports success.
 
 The owner is the receiver's type for a method, and the module's name for a
-free function.
+free function the file itself declares.
 
 ### When the owner is missing
 
@@ -427,6 +427,18 @@ a call is whatever the receiver is, and naming the file claims a module the
 call never reached -- a file called `logging.ets` would then be the logging
 module. The key says "the owner is missing", which matches nothing rather
 than matching the wrong thing.
+
+A global the language itself provides keeps its own name as the owner:
+`eval(x)` is `eval.eval/1`, `require("./x")` is `require.require/1`. That is
+**not** the same as the global object as a RECEIVER -- `console.log(x)` names
+`console` because the method belongs to that object -- and the difference
+matters: a call whose receiver nobody could type has no owner at all, so the
+key tells the global and the untyped receiver apart.
+
+This is the shape the sink catalogue is written against. The catalogue still
+named the *stand-in* owner (`<unknown>.eval`) after the front end had stopped
+producing it, so the global `eval` matched no pattern at all and a program
+that evaluated tainted input scanned clean.
 
 The same rule applies to a dynamic `import()`: the module it names is a
 literal in the source, and the key carries that literal rather than a file

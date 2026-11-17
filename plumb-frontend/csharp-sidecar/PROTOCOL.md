@@ -137,7 +137,10 @@ project it already holds.
           "kind": "CALL",
           "calleeSig": "System.Data.SqlClient.SqlCommand.set_CommandText/1",
           "dest": null,
-          "args": [ { "kind": "VAR", "name": "input" } ],
+          "args": [
+            { "kind": "VAR", "name": "cmd", "type": { "kind": "CLASS", "name": "System.Data.SqlClient.SqlCommand" } },
+            { "kind": "VAR", "name": "input" }
+          ],
           "line": 14,
           "column": 9
         }
@@ -184,6 +187,31 @@ A variable's `type` is optional; an absent type means `UNKNOWN`.
 { "kind": "INT" }
 ```
 
+### `tryRegions`
+
+One entry per `try` statement. Each entry says where the parts are:
+
+| Field | Meaning |
+|---|---|
+| `tryStart`, `tryEnd` | The instruction range of the `try` body. |
+| `catchStart`, `catchEnd` | The instruction range of the catch handlers, or `-1`. |
+| `catchLabels` | The entry label of each catch clause. |
+| `catchTypes` | The type each catch clause names, or `*` when it names none. |
+| `finallyLabel` | The label the `finally` block is entered at, or `null`. |
+| `finallyStart`, `finallyEnd` | The instruction range of the `finally` body, or `-1`. |
+| `syntheticFinally` | Whether the `finally` block is the sidecar's own. |
+| `finallyExits` | Every label that leaves the region through the `finally` block. |
+| `resourceVars` | The variables a `using` declaration owns. |
+
+**The ranges are INSTRUCTION INDICES, not labels.** The engine's CFG builder
+asks which instruction range a region covers, and a label is not a range: two
+labels can name the same place, and a label says nothing about where the region
+ends. When the ranges were written as labels, every region arrived empty, the
+builder wired no exceptional edge at all, and a catch body was unreachable on
+the exception path — so the taint that flowed into it was lost, silently. An
+index of `-1` means "this part is not there"; a `try` with no `catch` has
+`catchStart` and `catchEnd` at `-1`.
+
 ## The callee signature format
 
 The signature is `owner.method/arity`, the same canonical form every other
@@ -205,7 +233,11 @@ args[0] = the receiver, when the call has one
 args[1..] = the actual arguments
 ```
 
-A static call has no receiver, so its first real argument is at `args[0]`.
+A static call has no receiver **object**, so the slot carries the **declaring
+type** as a constant. The slot is still there: the engine adds one to the
+catalogue's argument index unconditionally, so a static call whose first real
+argument sat at `args[0]` would be read one argument too far, and the finding
+would never be raised.
 
 The engine reads the catalogue's `arg_index` against this convention: a
 catalogue entry that says `arg_index: 0` names the **first user argument**, and

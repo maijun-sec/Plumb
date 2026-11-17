@@ -240,11 +240,22 @@ type TryRegion struct {
 	// The region's id, unique within the function.
 	ID string `json:"id"`
 
-	// The label the protected region starts at.
-	TryStart string `json:"tryStart"`
+	// The index of the first instruction of the protected region, or -1.
+	//
+	// An INDEX, not a label. The engine's CFG builder asks which instruction RANGE a
+	// region covers, and a label is not a range. A region written as labels arrives
+	// empty, the builder wires no exceptional edge, and a catch body is unreachable on
+	// the exception path.
+	TryStart int `json:"tryStart"`
 
-	// The label the protected region ends at.
-	TryEnd string `json:"tryEnd"`
+	// The index of the last instruction of the protected region, or -1.
+	TryEnd int `json:"tryEnd"`
+
+	// The index of the first instruction of the catch handlers, or -1.
+	CatchStart int `json:"catchStart"`
+
+	// The index of the last instruction of the catch handlers, or -1.
+	CatchEnd int `json:"catchEnd"`
 
 	// The labels of the catch handlers, in source order.
 	CatchLabels []string `json:"catchLabels,omitempty"`
@@ -256,11 +267,11 @@ type TryRegion struct {
 	// The label of the finally block.
 	FinallyLabel string `json:"finallyLabel,omitempty"`
 
-	// The label the finally block starts at.
-	FinallyStart string `json:"finallyStart,omitempty"`
+	// The index of the first instruction of the finally block, or -1.
+	FinallyStart int `json:"finallyStart,omitempty"`
 
-	// The label the finally block ends at.
-	FinallyEnd string `json:"finallyEnd,omitempty"`
+	// The index of the last instruction of the finally block, or -1.
+	FinallyEnd int `json:"finallyEnd,omitempty"`
 
 	// The labels the finally block runs on the way out: the normal exit,
 	// every catch's exit, and the rethrow's exit.

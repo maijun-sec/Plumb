@@ -61,7 +61,19 @@ public enum TacMemberKind implements Serializable {
   /** A module-level function that holds the file's top-level statements. */
   MODULE,
   /** The front end said something this build does not know. */
-  UNKNOWN;
+  UNKNOWN,
+  /**
+   * An enum entry -- a value of an enum's type, reached through an accessor.
+   *
+   * <p>An enum entry is neither a method nor a field: it is a VALUE. Reading one is a call to the
+   * entry's accessor, and the accessor constructs a value of the enum's type. Without a kind for
+   * it, the engine cannot tell an enum entry from an ordinary static field, and the two are read
+   * differently -- one is a call, the other is a field load.
+   *
+   * <p>Appended at the end, because the enum is serialised by name: an existing constant must keep
+   * its position.
+   */
+  ENUM_ENTRY;
 
   private static final long serialVersionUID = 1L;
 

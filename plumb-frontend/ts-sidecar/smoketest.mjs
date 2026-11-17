@@ -137,6 +137,36 @@ export function shapes(input: string | null, count: number, list: string[]): str
 }
 `;
 
+/**
+ * A fourth probe program: the decorators.
+ *
+ * <p>A decorator runs where the thing it decorates is DEFINED, and it is
+ * what the name holds afterwards. So it is a CALL, and it belongs to the
+ * stream of the definition -- the class's own stream, or the module's --
+ * and never to the body of the function it decorates.
+ */
+const DECORATORS_SOURCE = `
+export function trace(value: unknown): unknown {
+  return value;
+}
+
+export class Decorated {
+  constructor(private id: string) {
+    this.id = id;
+  }
+
+  @trace
+  method(a: string): string {
+    return a;
+  }
+}
+
+@trace("tag")
+export function topLevel(a: string): string {
+  return a;
+}
+`;
+
 /** Fail the test with a message. */
 function fail(message) {
   console.error(`FAIL: ${message}`);
@@ -188,6 +218,8 @@ async function main() {
   writeFileSync(moduleFile, MODULE_SOURCE, "utf8");
   const shapesFile = join(dir, "shapes.ts");
   writeFileSync(shapesFile, SHAPES_SOURCE, "utf8");
+  const decoratorFile = join(dir, "decorators.ts");
+  writeFileSync(decoratorFile, DECORATORS_SOURCE, "utf8");
 
   const child = spawn(process.execPath, [join(here, "src", "main.mjs")], {
     stdio: ["pipe", "pipe", "inherit"],
@@ -224,7 +256,7 @@ async function main() {
         irVersion: IR_VERSION,
         projectId: "smoke",
         sourceRoot: dir,
-        sources: [{ path: file }, { path: moduleFile }, { path: shapesFile }],
+        sources: [{ path: file }, { path: moduleFile }, { path: shapesFile }, { path: decoratorFile }],
       }),
     );
     response = JSON.parse(await readFrame(child.stdout));
@@ -370,8 +402,8 @@ async function main() {
       `a namespace member must name the module it came from: ${JSON.stringify(signatures)}`,
     );
     check(
-      signatures.some((s) => s.includes(".eval/")),
-      `a global free function keeps the file's own module as its owner: ${JSON.stringify(signatures)}`,
+      signatures.some((s) => s.startsWith("eval.eval/")),
+      `a global free function belongs to the global it came from, and names it as its owner: ${JSON.stringify(signatures)}`,
     );
     check(
       !signatures.some((s) => s.startsWith("modules.exec") || s.startsWith("modules.runInNewContext")),
@@ -658,6 +690,127 @@ async function main() {
         listOperand.type.component &&
         listOperand.type.component.kind === "STRING",
       `an array must keep its element type: ${JSON.stringify(listOperand && listOperand.type)}`,
+    );
+
+    // ---- the decorators ----------------------------------------------------------------------
+
+    writeFrame(
+      child.stdin,
+      JSON.stringify({
+        op: OP.TRANSLATE,
+        protocolVersion: PROTOCOL_VERSION,
+        irVersion: IR_VERSION,
+        path: decoratorFile,
+        language: "TYPESCRIPT",
+      }),
+    );
+    response = JSON.parse(await readFrame(child.stdout));
+    check(response.ok === true, `the decorators file must translate: ${response.error ?? ""}`);
+
+    const decoratorFunctions = response.functions ?? [];
+    const decoratedMethod = decoratorFunctions.find((f) => f.name === "method");
+    check(!!decoratedMethod, "the decorated method must be in the stream");
+
+    // A decorator runs where the thing it decorates is DEFINED. A call in
+    // the body of the decorated function would run it once per CALL of that
+    // function instead of once per definition -- and a rule that matches on
+    // a decorator's name would then match a call that never happens.
+    const methodCalls = (decoratedMethod.instructions ?? [])
+      .filter((i) => i.kind === "CALL" || i.kind === "UNINTERPRETED")
+      .map((i) => i.calleeSig);
+    check(
+      !methodCalls.some((signature) => signature && signature.includes("trace")),
+      `a decorator must not run in the body of the function it decorates: ${JSON.stringify(
+        methodCalls,
+      )}`,
+    );
+
+    // The decorator's call is in the CLASS's own stream: the constructor's.
+    const classStream = decoratorFunctions.find((f) => f.name === "<init>");
+    check(!!classStream, "the class's own stream must be in the stream");
+    const classInstructions = classStream.instructions ?? [];
+    const classCallKeys = classInstructions
+      .filter((i) => i.kind === "CALL")
+      .map((i) => i.calleeSig);
+    const decoratorCall = classInstructions.find(
+      (i) => i.kind === "CALL" && i.calleeSig === "decorators.trace/1",
+    );
+    check(
+      !!decoratorCall,
+      `a decorator must be a call in the class's own stream: ${JSON.stringify(classCallKeys)}`,
+    );
+
+    // The callee key names the decorator, and its owner is the decorator's
+    // OWN: the module that declares it. An owner that names nothing at all
+    // would make a rule that matches on a decorator's name match nothing
+    // too.
+    check(
+      decoratorCall.calleeSig.startsWith("decorators.trace/"),
+      `a decorator's callee key must name it: ${decoratorCall.calleeSig}`,
+    );
+    check(
+      !decoratorCall.calleeSig.startsWith("<"),
+      `a decorator's callee key must not carry a placeholder owner: ${decoratorCall.calleeSig}`,
+    );
+
+    // The receiver slot comes first: the owner is a constant, and the real
+    // arguments follow it. The decorated thing is the last of them.
+    check(
+      decoratorCall.args[0] &&
+        decoratorCall.args[0].kind === "CONST" &&
+        decoratorCall.args[0].constKind === "STRING",
+      `a decorator's first argument must be the constant owner slot: ${JSON.stringify(
+        decoratorCall.args[0],
+      )}`,
+    );
+    check(
+      decoratorCall.args[0].value === "decorators",
+      `the owner slot must name the decorator's owner: ${decoratorCall.args[0].value}`,
+    );
+    check(
+      decoratorCall.args.length === 3,
+      `a decorator's arguments are the owner, the decorator and the holder: ${JSON.stringify(
+        decoratorCall.args,
+      )}`,
+    );
+    check(
+      decoratorCall.args[2] && decoratorCall.args[2].name === "method",
+      `the holder must be the decorated thing: ${JSON.stringify(decoratorCall.args[2])}`,
+    );
+
+    // What the decorator returns is what the name holds afterwards.
+    const writeBack = classInstructions.find(
+      (i) => i.kind === "MOVE" && i.dest && i.dest.name === "method",
+    );
+    check(
+      !!writeBack,
+      "the decorator's result must be written back to the decorated name",
+    );
+
+    // A top-level function's decorator runs in the MODULE's stream. The
+    // decorator that is CALLED runs its factory first, and the factory's
+    // result is what decorates: the two calls have different arities.
+    const moduleStream = decoratorFunctions.find((f) => f.name === "__top");
+    check(!!moduleStream, "the module's own stream must be in the stream");
+    const moduleCallKeys = (moduleStream.instructions ?? [])
+      .filter((i) => i.kind === "CALL")
+      .map((i) => i.calleeSig);
+    check(
+      moduleCallKeys.includes("decorators.trace/1"),
+      `a decorator that is called must run its factory: ${JSON.stringify(moduleCallKeys)}`,
+    );
+    check(
+      moduleCallKeys.includes("decorators.trace/2"),
+      `a top-level function's decorator must run in the module's stream: ${JSON.stringify(
+        moduleCallKeys,
+      )}`,
+    );
+    const topLevel = decoratorFunctions.find((f) => f.name === "topLevel");
+    check(
+      !((topLevel.instructions ?? []).some(
+        (i) => i.kind === "CALL" && i.calleeSig && i.calleeSig.includes("trace"),
+      )),
+      "a top-level function's decorator must not run in its own body",
     );
 
     console.log("ok: the sidecar answers over the wire, and the TAC has the expected shape");

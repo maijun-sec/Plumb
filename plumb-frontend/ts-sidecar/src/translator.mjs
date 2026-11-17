@@ -446,25 +446,38 @@ export class Translator {
     this.metaProperties = collectMetaProperties(sourceFile);
     const functions = [];
     const moduleStatements = [];
+    // The decorators of the module's own functions. A decorator runs where
+    // the function is DEFINED, so its call belongs to the module's stream
+    // and not to the body of the function it decorates.
+    const moduleDecorators = [];
     const flushModule = () => {
-      if (moduleStatements.length === 0) {
+      if (moduleStatements.length === 0 && moduleDecorators.length === 0) {
         return;
       }
       const state = this.beginFunction("__top", `${this.moduleName}.__top()`, null);
       state.synthetic = true;
       state.memberKind = MEMBER_KIND.METHOD;
-      this.guard(moduleStatements[0], () => {
+      this.guard(moduleStatements[0] ?? moduleDecorators[0].decorator, () => {
         for (const statement of moduleStatements) {
           this.lowerStatement(statement);
+        }
+        for (const application of moduleDecorators) {
+          this.lowerDecorator(application);
         }
       });
       functions.push(this.finishFunction(state));
       functions.push(...this.takePendingFunctions());
       moduleStatements.length = 0;
+      moduleDecorators.length = 0;
     };
 
     for (const statement of sourceFile.statements) {
       if (isFunctionDeclaration(statement) && statement.name) {
+        // The function's decorators run where the function is defined: in
+        // the module's own stream, before the function's own body.
+        moduleDecorators.push(
+          ...this.decoratorApplicationsOf(statement, statement.name.text),
+        );
         flushModule();
         functions.push(...this.lowerFunctionDeclaration(statement, null));
         continue;
@@ -680,6 +693,9 @@ export class Translator {
     const base = this.baseClassNameOf(node);
     const interfaces = this.implementedInterfacesOf(node);
     const decorators = this.decoratorNamesOf(node);
+    // The class's own decorators, and those of its members. They all run
+    // where the CLASS is defined, which is the class's own stream.
+    const applications = this.classDecoratorApplications(node, className);
     const previousBase = this.enclosingBase;
     this.enclosingBase = base;
 
@@ -692,12 +708,29 @@ export class Translator {
     }
     if (constructor) {
       out.push(
-        ...this.lowerConstructor(constructor, className, fields, base, decorators, interfaces),
+        ...this.lowerConstructor(
+          constructor,
+          className,
+          fields,
+          base,
+          decorators,
+          interfaces,
+          applications,
+        ),
       );
     } else {
       // Every class has an own function, even one without fields: it is where
       // the class's own facts -- the interfaces it implements -- are recorded.
-      out.push(...this.lowerFieldInitializer(className, fields, base, decorators, interfaces));
+      out.push(
+        ...this.lowerFieldInitializer(
+          className,
+          fields,
+          base,
+          decorators,
+          interfaces,
+          applications,
+        ),
+      );
     }
     for (const member of node.members ?? []) {
       if (isMethodDeclaration(member) && member.name) {
@@ -742,7 +775,7 @@ export class Translator {
    * member kind says so. The base class's constructor runs FIRST, so that the
    * base's fields exist before the derived class's own fields are written.
    */
-  lowerConstructor(node, className, fields, base, decorators, interfaces) {
+  lowerConstructor(node, className, fields, base, decorators, interfaces, applications) {
     const state = this.beginFunction(
       "<init>",
       `${this.moduleName}.${className}.<init>(${this.constructorParameterTypes(node)})`,
@@ -755,6 +788,11 @@ export class Translator {
     this.guard(node, () => {
       this.lowerParameters(node.parameters);
       this.declareThis();
+      // The class's decorators, and those of its members, run where the class
+      // is defined: in the class's own stream.
+      for (const application of applications ?? []) {
+        this.lowerDecorator(application);
+      }
       if (base) {
         // The base constructor runs first, and it runs on THIS object.
         const result = this.state.newTemp(TYPE.UNKNOWN);
@@ -783,7 +821,7 @@ export class Translator {
    * <p>The function is synthetic: the class's fields are written when the
    * class is initialised, and that is a moment of the program's own making.
    */
-  lowerFieldInitializer(className, fields, base, decorators, interfaces) {
+  lowerFieldInitializer(className, fields, base, decorators, interfaces, applications) {
     const state = this.beginFunction(className, `${this.moduleName}.${className}()`, className);
     state.memberKind = MEMBER_KIND.FIELD_INITIALIZER;
     state.synthetic = true;
@@ -792,6 +830,11 @@ export class Translator {
     state.interfaces = interfaces ? interfaces.slice() : [];
     this.guard(fields[0] ?? { getStart: () => 0 }, () => {
       this.declareThis();
+      // The class's decorators, and those of its members, run where the class
+      // is defined: in the class's own stream.
+      for (const application of applications ?? []) {
+        this.lowerDecorator(application);
+      }
       this.lowerFieldInitializers(fields, className);
       this.emitImplementsDrop(fields[0] ?? null, state.interfaces, "the class");
     });
@@ -1006,6 +1049,17 @@ export class Translator {
       if (name === "this" && isIdentifier(parameter.name)) {
         continue;
       }
+      // A parameter decorator runs where the function is defined, and it
+      // replaces nothing: there is no value of the parameter that it
+      // changes, and so no holder for it to write back to. It is reported
+      // rather than silently dropped.
+      for (const decorator of this.decoratorNodesOf(parameter)) {
+        this.report(
+          PROBLEM.UNHANDLED_NODE,
+          decorator,
+          "a parameter decorator has no TAC lowering",
+        );
+      }
       const type = this.typeOf(parameter);
       const operand = varOp(name, parameter.questionToken ? nullable(type) : type);
       this.state.params.push(operand);
@@ -1120,6 +1174,11 @@ export class Translator {
       return;
     }
     if (isFunctionDeclaration(node)) {
+      // A nested function's decorators run where it is defined -- in THIS
+      // stream, and not in the body of the function they decorate.
+      for (const application of this.decoratorApplicationsOf(node, node.name?.text)) {
+        this.lowerDecorator(application);
+      }
       // A nested function is a function of its own.
       this.pendingFunctions.push(...this.lowerNested(node, () =>
         this.lowerFunctionDeclaration(node, this.state?.enclosingClass ?? null),
@@ -2991,6 +3050,141 @@ export class Translator {
     return names;
   }
 
+  /**
+   * The decorators a node carries.
+   *
+   * <p>A decorator is a modifier of the thing it decorates, so it lives among
+   * the modifiers: `readonly`, `static`, and the decorator itself.
+   */
+  decoratorNodesOf(node) {
+    const decorators = [];
+    for (const modifier of node?.modifiers ?? []) {
+      if (isDecorator(modifier)) decorators.push(modifier);
+    }
+    return decorators;
+  }
+
+  /**
+   * The decorator applications of a declaration.
+   *
+   * <p>An application is the decorator and the HOLDER of the thing it
+   * decorates: the name that holds the decorated thing before the decorator
+   * runs, and that holds the decorator's result afterwards.
+   */
+  decoratorApplicationsOf(node, holderName) {
+    const applications = [];
+    for (const decorator of this.decoratorNodesOf(node)) {
+      applications.push({ decorator, holder: holderName });
+    }
+    return applications;
+  }
+
+  /**
+   * The decorator applications of a class: its own, and those of its
+   * members.
+   *
+   * <p>They all run where the CLASS is defined -- which is the class's own
+   * stream: the constructor's, or the field initialiser's.
+   */
+  classDecoratorApplications(node, className) {
+    const applications = this.decoratorApplicationsOf(node, className);
+    for (const member of node.members ?? []) {
+      const name = member.name?.text;
+      if (!name) continue;
+      const decorated =
+        isMethodDeclaration(member) ||
+        isGetAccessorDeclaration(member) ||
+        isSetAccessorDeclaration(member) ||
+        isPropertyDeclaration(member);
+      if (!decorated) continue;
+      applications.push(...this.decoratorApplicationsOf(member, name));
+    }
+    return applications;
+  }
+
+  /**
+   * A decorator, as a call.
+   *
+   * <p>A decorator runs where the thing it decorates is DEFINED, and it is
+   * what the name holds afterwards. So the call belongs to the stream of the
+   * definition -- the class's own stream, or the module's -- and never to
+   * the body of the decorated function, which would run the decorator once
+   * per call instead of once per definition.
+   *
+   * <p>The callee key NAMES the decorator: a decorator is a function like any
+   * other, and a rule that matches on one matches on its name. The owner is
+   * the decorator's own: the module it was imported from, or the module that
+   * declares it.
+   *
+   * <p>The arguments are the owner slot, the decorator's own value, and the
+   * holder of the decorated thing. The arity counts the decorator's
+   * arguments plus the decorated thing itself.
+   */
+  lowerDecorator(application) {
+    const decorator = application?.decorator;
+    const expression = decorator?.expression;
+    if (!expression) return;
+    const value = this.lowerExpression(expression);
+    if (!value) return;
+    const holder = this.decoratorHolder(application.holder);
+    const applied = this.state.newTemp(TYPE.UNKNOWN);
+    const name = decoratorNameOf(decorator);
+    const owner = this.decoratorOwnerOf(decorator);
+    const arity = 1 + this.decoratorArgumentCount(expression);
+    this.emit({
+      kind: KIND.CALL,
+      calleeSig: calleeSigOf(owner, name ?? "<decorator>", arity),
+      dest: applied,
+      args: [constOp(CONST.STRING, owner ?? ""), value, holder],
+      ...this.position(decorator),
+    });
+    this.emit({
+      kind: KIND.MOVE,
+      dest: holder,
+      lhs1: applied,
+      ...this.position(decorator),
+    });
+  }
+
+  /**
+   * The variable that holds the decorated thing.
+   *
+   * <p>The holder is a local of the stream the decorator runs in. A name
+   * that is already a local of that stream would have its value replaced by
+   * the decorator's result, so a temporary stands in for it then.
+   */
+  decoratorHolder(name) {
+    if (!name) return this.state.newTemp(TYPE.UNKNOWN);
+    if (this.state.locals.some((local) => local.name === name)) {
+      return this.state.newTemp(TYPE.UNKNOWN);
+    }
+    const holder = varOp(name, TYPE.UNKNOWN);
+    this.declareLocal(holder);
+    return holder;
+  }
+
+  /**
+   * The owner a decorator's callee key carries.
+   *
+   * <p>The owner is the decorator's OWN: the module it was imported from, or
+   * the module that declares it. An owner that names nothing at all would
+   * make a rule that matches on a decorator's name match nothing too.
+   */
+  decoratorOwnerOf(decorator) {
+    const expression = decorator?.expression;
+    if (!expression) return undefined;
+    // A decorator that is called -- `@app.route("/x")` -- is owned by what
+    // the CALL is owned by: the factory, not its result.
+    const target = isCallExpression(expression) ? expression.expression : expression;
+    return this.ownerOfExpression(target) ?? undefined;
+  }
+
+  /** The number of arguments a decorator expression passes. */
+  decoratorArgumentCount(expression) {
+    if (!isCallExpression(expression)) return 0;
+    return (expression.arguments ?? []).length;
+  }
+
   /** The number of parameters the base class's constructor declares. */
   baseConstructorArity(base) {
     if (!this.sourceFile) return 0;
@@ -3303,7 +3497,12 @@ export class Translator {
       // is the definition's owner and the call graph resolves the two
       // against each other.
       if (this.declaredNames.has(expression.text)) return this.moduleName;
-      // A known global.
+      // A known global: `eval(x)` belongs to the global it came from, so the
+      // owner is that global's own name. It is NOT the same as the global
+      // object as a RECEIVER -- `console.log(x)` names `console` because the
+      // method belongs to that object -- and the difference matters: a call
+      // whose receiver nobody could type has NO owner, so the key tells the
+      // two apart.
       if (GLOBAL_OWNERS.has(expression.text)) return expression.text;
       return OWNER_MISSING;
     }
@@ -3318,6 +3517,8 @@ export class Translator {
       const binding = this.imports.get(expression.text);
       if (binding) return binding.module;
       if (this.declaredNames.has(expression.text)) return this.moduleName;
+      // A known global: it keeps its own name as the owner, the same as in
+      // `ownerOf`. See there for why the two are told apart.
       if (GLOBAL_OWNERS.has(expression.text)) return expression.text;
       return OWNER_MISSING;
     }
@@ -3484,10 +3685,21 @@ function isThisParameter(parameter) {
 
 /** The name of a decorator, when it names one. */
 function decoratorNameOf(decorator) {
-  const expression = decorator?.expression;
+  return decoratorNameOfExpression(decorator?.expression);
+}
+
+/**
+ * The name a decorator expression carries.
+ *
+ * <p>A decorator that is CALLED -- `@app.route("/x")` -- is named after the
+ * function it calls: the factory's result is what decorates, but the name a
+ * rule matches on is the factory's.
+ */
+function decoratorNameOfExpression(expression) {
   if (!expression) return undefined;
   if (isIdentifier(expression)) return expression.text;
   if (isPropertyAccessExpression(expression)) return expression.name?.text;
+  if (isCallExpression(expression)) return decoratorNameOfExpression(expression.expression);
   return undefined;
 }
 

@@ -189,7 +189,7 @@ class SsrfCheckerTest {
                 .sinkFamilies()
                 .byName("ssrf.sinks")
                 .orElseThrow()
-                .matches("<unknown>.fetch/2", SourceLanguage.TYPESCRIPT))
+                .matches("fetch.fetch/2", SourceLanguage.TYPESCRIPT))
         .as("the global fetch sends its argument to a URL")
         .isTrue();
     assertThat(

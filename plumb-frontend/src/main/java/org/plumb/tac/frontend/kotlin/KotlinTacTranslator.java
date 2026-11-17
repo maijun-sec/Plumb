@@ -21,7 +21,9 @@
  */
 package org.plumb.tac.frontend.kotlin;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,29 +37,49 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolOrigin;
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol;
 import org.jetbrains.kotlin.analysis.api.types.KaType;
+import org.jetbrains.kotlin.psi.KtAnnotatedExpression;
+import org.jetbrains.kotlin.psi.KtArrayAccessExpression;
 import org.jetbrains.kotlin.psi.KtBinaryExpression;
 import org.jetbrains.kotlin.psi.KtBlockExpression;
+import org.jetbrains.kotlin.psi.KtBreakExpression;
 import org.jetbrains.kotlin.psi.KtCallExpression;
+import org.jetbrains.kotlin.psi.KtCallableReferenceExpression;
 import org.jetbrains.kotlin.psi.KtConstantExpression;
+import org.jetbrains.kotlin.psi.KtContinueExpression;
+import org.jetbrains.kotlin.psi.KtDoWhileExpression;
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression;
 import org.jetbrains.kotlin.psi.KtExpression;
+import org.jetbrains.kotlin.psi.KtForExpression;
 import org.jetbrains.kotlin.psi.KtIfExpression;
+import org.jetbrains.kotlin.psi.KtIsExpression;
+import org.jetbrains.kotlin.psi.KtLabeledExpression;
+import org.jetbrains.kotlin.psi.KtLambdaExpression;
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression;
+import org.jetbrains.kotlin.psi.KtObjectLiteralExpression;
+import org.jetbrains.kotlin.psi.KtPostfixExpression;
 import org.jetbrains.kotlin.psi.KtPrefixExpression;
 import org.jetbrains.kotlin.psi.KtProperty;
 import org.jetbrains.kotlin.psi.KtReturnExpression;
+import org.jetbrains.kotlin.psi.KtSafeQualifiedExpression;
 import org.jetbrains.kotlin.psi.KtSimpleNameExpression;
 import org.jetbrains.kotlin.psi.KtStringTemplateEntry;
 import org.jetbrains.kotlin.psi.KtStringTemplateExpression;
+import org.jetbrains.kotlin.psi.KtSuperExpression;
+import org.jetbrains.kotlin.psi.KtThrowExpression;
+import org.jetbrains.kotlin.psi.KtTryExpression;
 import org.jetbrains.kotlin.psi.KtValueArgument;
 import org.jetbrains.kotlin.psi.KtWhenCondition;
+import org.jetbrains.kotlin.psi.KtWhenConditionIsPattern;
 import org.jetbrains.kotlin.psi.KtWhenConditionWithExpression;
 import org.jetbrains.kotlin.psi.KtWhenEntry;
 import org.jetbrains.kotlin.psi.KtWhenExpression;
+import org.jetbrains.kotlin.psi.KtWhileExpression;
 import org.plumb.tac.ir.BinaryOperator;
 import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacFunction;
+import org.plumb.tac.ir.TacGuard;
 import org.plumb.tac.ir.TacInstruction;
+import org.plumb.tac.ir.TacLabelRef;
 import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacType;
 import org.plumb.tac.translate.TacBuilder;
@@ -109,7 +131,7 @@ final class KotlinTacTranslator {
    * carries the resolved {@link TacType} so a later refinement can be applied without changing the
    * identity.
    */
-  private final Map<String, TacOperand.TacVar> locals = new HashMap<>();
+  private Map<String, TacOperand.TacVar> locals = new HashMap<>();
 
   /** The problems found while lowering, in the order they were found. */
   private final List<String> problems = new ArrayList<>();
@@ -133,6 +155,75 @@ final class KotlinTacTranslator {
    * precision-dependent fact about it.
    */
   private boolean degraded;
+
+  /**
+   * The labels a loop's {@code break} and {@code continue} jump to.
+   *
+   * <p>A loop pushes its own targets when it starts and pops them when it ends, so a {@code break}
+   * inside a nested loop leaves the INNERMOST loop, and a {@code break} inside a lambda inside a
+   * loop leaves the loop -- a lambda is not a loop, so it does not push anything.
+   *
+   * @param continueLabel the label the loop's back-edge jumps to
+   * @param breakLabel the label a {@code break} jumps to
+   * @param scopeId an id that is unique per loop, so two loops' labels cannot be confused
+   * @param labelName the source label the loop carries, or {@code null} when it has none
+   */
+  private record LoopTargets(
+      String continueLabel, String breakLabel, String scopeId, String labelName) {}
+
+  /** The loops the function being lowered is inside, innermost first. */
+  private final Deque<LoopTargets> loops = new ArrayDeque<>();
+
+  /**
+   * The label of the statement being lowered, when it carries one.
+   *
+   * <p>A label is read by the statement it labels -- in Kotlin, a loop -- so the label has to
+   * travel from the labelled statement to the loop below it.
+   */
+  private String pendingLabel;
+
+  /**
+   * The fully qualified name of the class the function being lowered belongs to.
+   *
+   * <p>This is the {@code ownerType} of a field access. Without it a field read says "some
+   * object's {@code name} field" and nothing more, so the engine cannot tell a field of the audited
+   * class from a field of a local helper object, and the cross-function field tracker buckets every
+   * field under the same name.
+   *
+   * <p>It is the FQN rather than the short name so that a Kotlin class and a Java class with the
+   * same simple name stay apart -- and so that a field written in Kotlin and a field written in
+   * Java are the SAME field when they really are.
+   */
+  private String enclosingClassFqn;
+
+  /** A counter that gives every loop its own scope id. */
+  private int loopCounter;
+
+  /**
+   * The functions the lambdas in the function being lowered produced.
+   *
+   * <p>A lambda is a FUNCTION, not an expression: its body is a scope of its own, and a sink
+   * inside it is a finding in that function. The front end adds these to the program next to
+   * the function they were found in.
+   */
+  private final List<TacFunction> nestedFunctions = new ArrayList<>();
+
+  /** The functions the lambdas in the function being lowered produced. */
+  List<TacFunction> nestedFunctions() {
+    return List.copyOf(nestedFunctions);
+  }
+
+  /** A counter that gives every lambda in the function being lowered a distinct name. */
+  private int lambdaCounter;
+
+  /** The class the function being lowered belongs to, by short name. */
+  private String currentEnclosingClass;
+
+  /** The module the function being lowered belongs to. */
+  private String currentModule;
+
+  /** The annotations of the class the function being lowered belongs to. */
+  private List<String> currentClassAnnotations = List.of();
 
   KotlinTacTranslator(KaSession session) {
     this.session = session;
@@ -200,6 +291,28 @@ final class KotlinTacTranslator {
   /** The type mapper, exposed so the frontend can reuse it for symbol-level mapping. */
   KotlinTypeMapper types() {
     return types;
+  }
+
+  /**
+   * Sets the fully qualified name of the class the function being lowered belongs to.
+   *
+   * <p>It becomes the {@code ownerType} of every field access in that function. The front end
+   * knows it from the class declaration's symbol; the translator does not, because the class
+   * declaration is not part of the function's body.
+   *
+   * @param fqn the class's fully qualified name, or {@code null} when there is none
+   */
+  void setEnclosingClassFqn(String fqn) {
+    this.enclosingClassFqn = fqn;
+  }
+
+  /**
+   * The {@code ownerType} a field access in the function being lowered carries.
+   *
+   * @return the owning class's FQN, or {@code null} when the front end did not resolve one
+   */
+  private String ownerType() {
+    return enclosingClassFqn;
   }
 
   /**
@@ -290,6 +403,10 @@ final class KotlinTacTranslator {
     this.problems.clear();
     this.structuredProblems.clear();
     this.degraded = false;
+    this.currentEnclosingClass = enclosingClass;
+    this.currentModule = module;
+    this.currentClassAnnotations =
+        classAnnotations == null ? List.of() : List.copyOf(classAnnotations);
 
     TacBuilder.FunctionSpec spec = new TacBuilder.FunctionSpec(name, signature, returnType);
     TacBuilder b = new TacBuilder(spec, params);
@@ -327,6 +444,25 @@ final class KotlinTacTranslator {
     for (TacOperand.TacVar p : params) {
       this.locals.put(p.name(), p);
       b.addLocal(p);
+    }
+
+    // Register the implicit receiver.
+    //
+    // WHY THIS MATTERS. A member function's body reads and writes the class's own
+    // properties. Those reads are FIELDLOADs off `this` -- and the receiver is
+    // `this`. The local named "this" was NEVER registered, so every property
+    // read fell into the "no receiver available" branch and returned a fresh
+    // unknown temp: the read produced NO instruction at all. A value that came
+    // from a field therefore never reached the field, and the field's taint
+    // stopped at the property access.
+    //
+    // A top-level function has no receiver, so it gets none: a property of the
+    // enclosing file is a different thing, and pretending it has a `this` would
+    // invent a receiver that does not exist.
+    if (enclosingClass != null && !enclosingClass.isEmpty()) {
+      TacOperand.TacVar self = new TacOperand.TacVar(THIS, TacType.UNKNOWN, false);
+      this.locals.put(THIS, self);
+      b.addLocal(self);
     }
 
     if (body == null) {
@@ -437,6 +573,38 @@ final class KotlinTacTranslator {
       translateIf(iff);
       return;
     }
+    if (stmt instanceof KtWhileExpression whileExpr) {
+      translateWhile(whileExpr);
+      return;
+    }
+    if (stmt instanceof KtDoWhileExpression doWhile) {
+      translateDoWhile(doWhile);
+      return;
+    }
+    if (stmt instanceof KtForExpression forExpr) {
+      translateFor(forExpr);
+      return;
+    }
+    if (stmt instanceof KtBreakExpression brk) {
+      translateBreak(brk);
+      return;
+    }
+    if (stmt instanceof KtContinueExpression cont) {
+      translateContinue(cont);
+      return;
+    }
+    if (stmt instanceof KtThrowExpression thr) {
+      translateThrow(thr);
+      return;
+    }
+    if (stmt instanceof KtTryExpression tryExpr) {
+      translateTry(tryExpr);
+      return;
+    }
+    if (stmt instanceof KtLabeledExpression labeled) {
+      translateLabeled(labeled);
+      return;
+    }
     if (stmt instanceof KtCallExpression call) {
       translateCallStatement(call);
       return;
@@ -457,6 +625,15 @@ final class KotlinTacTranslator {
       return;
     }
     if (stmt instanceof KtBinaryExpression bin) {
+      // An assignment used as a statement WRITES; a comparison or an arithmetic
+      // expression does not. The assignment has to go through the expression
+      // lowering, because that is where the store is emitted -- lowering only
+      // the operands (which is what this branch used to do) computes the
+      // right-hand side and throws the result away, so the write never happened.
+      if (isAssignmentOperator(operatorTextOf(bin))) {
+        translateExpression(bin);
+        return;
+      }
       // A comparison or arithmetic used as a statement: lower the operands for their
       // side effects, then discard the result.
       translateExpression(bin.getLeft());
@@ -465,6 +642,18 @@ final class KotlinTacTranslator {
     }
     if (stmt instanceof KtBlockExpression inner) {
       translateBlock(inner);
+      return;
+    }
+    if (stmt instanceof KtPostfixExpression postfix) {
+      // "n++" as a statement. The statement's VALUE is discarded, but the variable
+      // still changes -- so the expression lowering is the right one: it emits the
+      // UNARYOP and the write-back.
+      translateExpression(postfix);
+      return;
+    }
+    if (stmt instanceof KtPrefixExpression prefix) {
+      // "++n" as a statement. Same reasoning as the postfix form.
+      translateExpression(prefix);
       return;
     }
     if (stmt instanceof KtWhenExpression when) {
@@ -536,6 +725,989 @@ final class KotlinTacTranslator {
               .line(lineOf(prop))
               .column(columnOf(prop))
               .build());
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Loops, jumps and exceptions
+  // ------------------------------------------------------------------
+
+  /**
+   * Lowers a {@code while} loop.
+   *
+   * <p>The shape is the standard one: a condition label, a branch to the body or past it, the
+   * body, and a jump back to the condition.
+   *
+   * <p><b>WHY THE LOOP MATTERS.</b> A loop body is where a tainted value is usually read,
+   * sanitised and written. Before this, a {@code while} statement fell into the catch-all
+   * branch of the statement lowering: the body produced NO instructions at all, so every taint
+   * inside it was invisible to the analysis -- a silent false negative on one of the most
+   * common shapes a bug takes in Kotlin.
+   */
+  private void translateWhile(KtWhileExpression loop) {
+    String condLabel = builder.newLabel("whileCond");
+    String bodyLabel = builder.newLabel("whileBody");
+    String endLabel = builder.newLabel("whileEnd");
+    String scopeId = nextLoopScope();
+    String label = pendingLabel;
+
+    emitLabel(condLabel, TacLabelRef.Kind.LOOP_HEAD, scopeId);
+    TacOperand cond = translateCondition(loop.getCondition());
+    if (cond == null) {
+      cond = unknownCondition(loop);
+    }
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BRANCH)
+            .lhs1(cond)
+            .trueLabel(bodyLabel)
+            .falseLabel(endLabel)
+            .guard(TacGuard.truthiness(cond))
+            .labelRef(new TacLabelRef(bodyLabel, TacLabelRef.Kind.LOOP_HEAD, scopeId))
+            .line(lineOf(loop))
+            .column(columnOf(loop))
+            .build());
+    emitLabel(bodyLabel, TacLabelRef.Kind.LOOP_HEAD, scopeId);
+
+    loops.push(new LoopTargets(condLabel, endLabel, scopeId, label));
+    try {
+      translateStatement(loop.getBody());
+    } finally {
+      loops.pop();
+    }
+
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.JUMP)
+            .label(condLabel)
+            .labelRef(new TacLabelRef(condLabel, TacLabelRef.Kind.LOOP_HEAD, scopeId))
+            .line(lineOf(loop))
+            .build());
+    emitLabel(endLabel, TacLabelRef.Kind.LOOP_END, scopeId);
+  }
+
+  /**
+   * Lowers a {@code do-while} loop.
+   *
+   * <p>The body runs BEFORE the first test, which is what "do-while" means. The {@code continue}
+   * target is therefore the CONDITION, not the body: a {@code continue} in a do-while goes back
+   * to the test, not to the top of the body.
+   */
+  private void translateDoWhile(KtDoWhileExpression loop) {
+    String bodyLabel = builder.newLabel("doBody");
+    String condLabel = builder.newLabel("doCond");
+    String endLabel = builder.newLabel("doEnd");
+    String scopeId = nextLoopScope();
+    String label = pendingLabel;
+
+    emitLabel(bodyLabel, TacLabelRef.Kind.LOOP_HEAD, scopeId);
+    loops.push(new LoopTargets(condLabel, endLabel, scopeId, label));
+    try {
+      translateStatement(loop.getBody());
+    } finally {
+      loops.pop();
+    }
+
+    emitLabel(condLabel, TacLabelRef.Kind.LOOP_HEAD, scopeId);
+    TacOperand cond = translateCondition(loop.getCondition());
+    if (cond == null) {
+      cond = unknownCondition(loop);
+    }
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BRANCH)
+            .lhs1(cond)
+            .trueLabel(bodyLabel)
+            .falseLabel(endLabel)
+            .guard(TacGuard.truthiness(cond))
+            .labelRef(new TacLabelRef(bodyLabel, TacLabelRef.Kind.LOOP_HEAD, scopeId))
+            .line(lineOf(loop))
+            .column(columnOf(loop))
+            .build());
+    emitLabel(endLabel, TacLabelRef.Kind.LOOP_END, scopeId);
+  }
+
+  /**
+   * Lowers a {@code for} loop.
+   *
+   * <p>The loop is lowered through the ITERATION PROTOCOL: the collection is asked for an
+   * iterator, the loop asks the iterator whether it has another element, and the element comes
+   * from the iterator. The protocol method names are the REAL ones -- {@code
+   * java.lang.Iterable.iterator}, {@code java.util.Iterator.hasNext}, {@code
+   * java.util.Iterator.next} -- because the shared semantics table is keyed on them, and a
+   * synthetic short name would reach no summary at all.
+   *
+   * <p>Lowering the {@code for} as a call to the collection's own {@code forEach} would have
+   * been shorter, but the body would then live inside a call the engine cannot see into: the
+   * taint inside the body would not flow.
+   */
+  private void translateFor(KtForExpression loop) {
+    KtExpression collectionExpr = loop.getLoopRange();
+    if (collectionExpr == null) {
+      degraded = true;
+      report(
+          "UNSUPPORTED_CONSTRUCT",
+          currentFunction,
+          "KtForExpression",
+          "a for loop without a collection in " + currentFunction + " (line " + lineOf(loop) + ")",
+          lineOf(loop),
+          columnOf(loop));
+      reportDrop(
+          "kotlin.for.unmodelled",
+          "the for loop was not lowered: it has no collection expression",
+          lineOf(loop),
+          columnOf(loop));
+      return;
+    }
+
+    String condLabel = builder.newLabel("forCond");
+    String bodyLabel = builder.newLabel("forBody");
+    String endLabel = builder.newLabel("forEnd");
+    String scopeId = nextLoopScope();
+    String label = pendingLabel;
+
+    TacOperand collection = translateExpression(collectionExpr);
+    if (collection == null) {
+      collection = TacOperand.Const.ofNull();
+    }
+    TacOperand iterator = builder.newTemp(TacType.UNKNOWN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .dest(iterator)
+            .calleeSig("java.lang.Iterable.iterator/0")
+            .args(List.of(collection))
+            .line(lineOf(loop))
+            .build());
+
+    // The loop variable. It is registered BEFORE the body is lowered, so a reference to it
+    // inside the body resolves to the same TAC variable the iterator's element is moved into.
+    org.jetbrains.kotlin.psi.KtParameter parameter = loop.getLoopParameter();
+    TacOperand.TacVar variable = null;
+    if (parameter != null && parameter.getName() != null && !parameter.getName().isEmpty()) {
+      TacType elementType = declaredTypeOf(parameter.getTypeReference());
+      variable = new TacOperand.TacVar(parameter.getName(), elementType, false);
+      locals.put(parameter.getName(), variable);
+      builder.addLocal(variable);
+    }
+
+    emitLabel(condLabel, TacLabelRef.Kind.LOOP_HEAD, scopeId);
+    TacOperand hasNext = builder.newTemp(TacType.BOOLEAN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .dest(hasNext)
+            .calleeSig("java.util.Iterator.hasNext/0")
+            .args(List.of(iterator))
+            .line(lineOf(loop))
+            .build());
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BRANCH)
+            .lhs1(hasNext)
+            .trueLabel(bodyLabel)
+            .falseLabel(endLabel)
+            .guard(TacGuard.truthiness(hasNext))
+            .labelRef(new TacLabelRef(bodyLabel, TacLabelRef.Kind.LOOP_HEAD, scopeId))
+            .line(lineOf(loop))
+            .column(columnOf(loop))
+            .build());
+    emitLabel(bodyLabel, TacLabelRef.Kind.LOOP_HEAD, scopeId);
+
+    TacOperand next = builder.newTemp(TacType.UNKNOWN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .dest(next)
+            .calleeSig("java.util.Iterator.next/0")
+            .args(List.of(iterator))
+            .line(lineOf(loop))
+            .build());
+    if (variable != null) {
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.MOVE)
+              .dest(variable)
+              .lhs1(next)
+              .line(lineOf(loop))
+              .build());
+    }
+
+    loops.push(new LoopTargets(condLabel, endLabel, scopeId, label));
+    try {
+      translateStatement(loop.getBody());
+    } finally {
+      loops.pop();
+    }
+
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.JUMP)
+            .label(condLabel)
+            .labelRef(new TacLabelRef(condLabel, TacLabelRef.Kind.LOOP_HEAD, scopeId))
+            .line(lineOf(loop))
+            .build());
+    emitLabel(endLabel, TacLabelRef.Kind.LOOP_END, scopeId);
+  }
+
+  /** Lowers a {@code break}. */
+  private void translateBreak(KtBreakExpression brk) {
+    LoopTargets targets = loopTargetsFor(brk.getLabelName());
+    if (targets == null) {
+      // A `break` with no loop around it does not compile in Kotlin, so this is source the
+      // compiler would reject. There is no loop to leave, and inventing one would put a
+      // jump into the TAC that the source does not have.
+      degraded = true;
+      report(
+          "UNSUPPORTED_CONSTRUCT",
+          currentFunction,
+          "KtBreakExpression",
+          "a break outside a loop in " + currentFunction + " (line " + lineOf(brk) + ")",
+          lineOf(brk),
+          columnOf(brk));
+      reportDrop(
+          "kotlin.break.unmodelled",
+          "the break was not lowered: there is no loop to leave",
+          lineOf(brk),
+          columnOf(brk));
+      return;
+    }
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.JUMP)
+            .label(targets.breakLabel())
+            .labelRef(
+                new TacLabelRef(targets.breakLabel(), TacLabelRef.Kind.LOOP_END, targets.scopeId()))
+            .line(lineOf(brk))
+            .column(columnOf(brk))
+            .build());
+  }
+
+  /** Lowers a {@code continue}. */
+  private void translateContinue(KtContinueExpression cont) {
+    LoopTargets targets = loopTargetsFor(cont.getLabelName());
+    if (targets == null) {
+      degraded = true;
+      report(
+          "UNSUPPORTED_CONSTRUCT",
+          currentFunction,
+          "KtContinueExpression",
+          "a continue outside a loop in " + currentFunction + " (line " + lineOf(cont) + ")",
+          lineOf(cont),
+          columnOf(cont));
+      reportDrop(
+          "kotlin.continue.unmodelled",
+          "the continue was not lowered: there is no loop to continue",
+          lineOf(cont),
+          columnOf(cont));
+      return;
+    }
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.JUMP)
+            .label(targets.continueLabel())
+            .labelRef(
+                new TacLabelRef(
+                    targets.continueLabel(), TacLabelRef.Kind.LOOP_HEAD, targets.scopeId()))
+            .line(lineOf(cont))
+            .column(columnOf(cont))
+            .build());
+  }
+
+  /**
+   * Lowers a {@code throw}.
+   *
+   * <p>The thrown value is the instruction's operand; the THROW itself terminates the path,
+   * which is what the CFG builder reads.
+   */
+  private void translateThrow(KtThrowExpression thr) {
+    TacOperand value = translateExpression(thr.getThrownExpression());
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.THROW)
+            .lhs1(value)
+            .line(lineOf(thr))
+            .column(columnOf(thr))
+            .build());
+  }
+
+  /**
+   * Lowers a {@code try} / {@code catch} / {@code finally}.
+   *
+   * <p>The shape is the one the Java front end produces and the CFG builder understands: the
+   * try body, then one {@code CATCH_HANDLER} per catch clause (each preceded by a {@code
+   * L_CATCH_<Type>} label), then the finally block behind a {@code FINALLY_ENTER} marker. The
+   * region is registered on the function, and the CFG builder wires the exception edges from
+   * the try body to the handlers.
+   */
+  private void translateTry(KtTryExpression tryExpr) {
+    int tryStart = builder.instructions().size();
+    KtBlockExpression tryBlock = tryExpr.getTryBlock();
+    if (tryBlock != null) {
+      translateBlock(tryBlock);
+    }
+    int tryEnd = builder.instructions().size() - 1;
+
+    List<String> catchLabels = new ArrayList<>();
+    int firstCatchStart = -1;
+    int lastCatchEnd = -1;
+    for (org.jetbrains.kotlin.psi.KtCatchClause clause : tryExpr.getCatchClauses()) {
+      org.jetbrains.kotlin.psi.KtParameter parameter = clause.getCatchParameter();
+      TacType catchType = TacType.UNKNOWN;
+      String catchTypeName = "";
+      if (parameter != null) {
+        catchType = declaredTypeOf(parameter.getTypeReference());
+        catchTypeName = simpleNameOf(catchType);
+      }
+      String labelName =
+          catchTypeName.isEmpty() ? builder.newLabel("L_CATCH") : builder.newLabel("L_CATCH_" + catchTypeName);
+      catchLabels.add(labelName);
+      if (firstCatchStart < 0) {
+        firstCatchStart = builder.instructions().size();
+      }
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.LABEL)
+              .label(labelName)
+              .labelRef(new TacLabelRef(labelName, TacLabelRef.Kind.CATCH, null))
+              .line(lineOf(clause))
+              .build());
+      if (parameter != null && parameter.getName() != null && !parameter.getName().isEmpty()) {
+        TacOperand.TacVar caught = new TacOperand.TacVar(parameter.getName(), catchType, false);
+        locals.put(parameter.getName(), caught);
+        builder.addLocal(caught);
+        builder.emit(
+            TacInstruction.builder(TacInstruction.Kind.CATCH_HANDLER)
+                .dest(caught)
+                .ctorType(catchType)
+                .line(lineOf(clause))
+                .build());
+      } else {
+        builder.emit(
+            TacInstruction.builder(TacInstruction.Kind.CATCH_HANDLER)
+                .ctorType(catchType)
+                .line(lineOf(clause))
+                .build());
+      }
+      KtExpression catchBody = clause.getCatchBody();
+      if (catchBody instanceof KtBlockExpression catchBlock) {
+        translateBlock(catchBlock);
+      } else if (catchBody != null) {
+        translateStatement(catchBody);
+      }
+      lastCatchEnd = builder.instructions().size() - 1;
+    }
+
+    String finallyLabel = null;
+    int finallyStart = -1;
+    int finallyEnd = -1;
+    org.jetbrains.kotlin.psi.KtFinallySection finallySection = tryExpr.getFinallyBlock();
+    if (finallySection != null) {
+      finallyLabel = builder.newLabel("L_FINALLY");
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.LABEL)
+              .label(finallyLabel)
+              .labelRef(new TacLabelRef(finallyLabel, TacLabelRef.Kind.FINALLY_ENTRY, null))
+              .build());
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.FINALLY_ENTER)
+              .label(finallyLabel)
+              .build());
+      finallyStart = builder.instructions().size();
+      KtExpression finalExpression = finallySection.getFinalExpression();
+      if (finalExpression instanceof KtBlockExpression finalBlock) {
+        translateBlock(finalBlock);
+      } else if (finalExpression != null) {
+        translateStatement(finalExpression);
+      }
+      finallyEnd = builder.instructions().size() - 1;
+    }
+
+    if (tryStart <= tryEnd) {
+      builder.recordTryRegion(
+          new TacFunction.TryRegion(
+              tryStart,
+              tryEnd,
+              firstCatchStart,
+              lastCatchEnd,
+              catchLabels,
+              finallyLabel,
+              finallyStart,
+              finallyEnd));
+    }
+  }
+
+  /**
+   * Lowers a labelled statement.
+   *
+   * <p>The label itself does not change the shape of the control flow; it NAMES a place a
+   * {@code break@label} or {@code continue@label} can reach. The label is therefore handed to
+   * the statement it labels -- which, in Kotlin, is a loop -- and the body is lowered normally.
+   */
+  private void translateLabeled(KtLabeledExpression labeled) {
+    String previous = pendingLabel;
+    pendingLabel = labeled.getLabelName();
+    try {
+      translateStatement(labeled.getBaseExpression());
+    } finally {
+      pendingLabel = previous;
+    }
+  }
+
+  /**
+   * The loop a {@code break} or {@code continue} leaves.
+   *
+   * <p>Without a label, that is the innermost loop. With one, it is the loop that carries that
+   * label -- which may be further out, and is the whole point of a labelled jump.
+   *
+   * @param label the label's name, or {@code null}
+   * @return the loop's targets, or {@code null} when there is no such loop
+   */
+  private LoopTargets loopTargetsFor(String label) {
+    if (label == null || label.isEmpty()) {
+      return loops.peek();
+    }
+    for (LoopTargets targets : loops) {
+      if (label.equals(targets.labelName())) {
+        return targets;
+      }
+    }
+    return null;
+  }
+
+  /** A scope id that is unique to one loop. */
+  private String nextLoopScope() {
+    return "loop" + (++loopCounter);
+  }
+
+  /** Emits a label that says what KIND of place it names. */
+  private void emitLabel(String label, TacLabelRef.Kind kind, String scopeId) {
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(label)
+            .labelRef(new TacLabelRef(label, kind, scopeId))
+            .build());
+  }
+
+  /**
+   * A condition the front end could not resolve.
+   *
+   * <p>The branch has to be well-formed, and it must not be a claim the source does not make:
+   * "the condition is false" would say the arm never runs, and "the condition is true" would
+   * say it always does. An unknown value says neither -- the engine knows nothing about it,
+   * and both arms stay reachable.
+   */
+  private TacOperand unknownCondition(KtExpression condition) {
+    TacOperand dest = builder.newTemp(TacType.UNKNOWN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.HAVOC)
+            .dest(dest)
+            .line(lineOf(condition))
+            .build());
+    return dest;
+  }
+
+  /** The simple name of a type, for a label. */
+  private static String simpleNameOf(TacType type) {
+    if (type == null) {
+      return "";
+    }
+    String s = type.displayName();
+    if (s == null) {
+      return "";
+    }
+    int lt = s.indexOf('<');
+    if (lt >= 0) {
+      s = s.substring(0, lt);
+    }
+    int dot = s.lastIndexOf('.');
+    if (dot >= 0) {
+      s = s.substring(dot + 1);
+    }
+    return s;
+  }
+
+  /**
+   * Lowers a lambda into a synthetic function and a call to it.
+   *
+   * <p>A lambda is a FUNCTION, not an expression: its body is a scope of its own, and a sink
+   * inside it is a finding in that function. Lowering the body inline would lose the boundary,
+   * and dropping the lambda would lose the body -- and with it every taint that reaches a sink
+   * inside the lambda.
+   *
+   * <p><b>WHERE THE CAPTURED VALUES GO.</b> The engine binds a call's arguments to the callee's
+   * parameters from {@code args[1]} onwards; {@code args[0]} is the receiver slot and the engine
+   * never binds it to the callee. A value the lambda reads from the enclosing scope therefore
+   * has to travel as a LEADING PARAMETER: the call site passes it as the first real argument,
+   * and the engine binds it to the lambda's first parameter. Without that, the body reads a
+   * variable that no parameter holds, and the taint stops at the closure's boundary.
+   *
+   * <p>The captured values come first in the parameter list, and the closure's own parameters
+   * come after them, because the call site passes them in that order.
+   */
+  private TacOperand translateLambda(KtLambdaExpression lambda) {
+    List<org.jetbrains.kotlin.psi.KtParameter> declared = lambda.getValueParameters();
+    List<String> captures = discoverCaptures(lambda, declared);
+
+    List<TacOperand.TacVar> params = new ArrayList<>();
+    List<String> paramTypes = new ArrayList<>();
+    for (String capture : captures) {
+      TacOperand.TacVar enclosing = locals.get(capture);
+      TacType type = enclosing == null ? TacType.UNKNOWN : enclosing.type();
+      TacOperand.TacVar param = new TacOperand.TacVar(capture, type, false);
+      params.add(param);
+      paramTypes.add(type.displayName());
+    }
+    for (org.jetbrains.kotlin.psi.KtParameter parameter : declared) {
+      String name = parameter.getName();
+      if (name == null || name.isEmpty()) {
+        name = "arg" + params.size();
+      }
+      TacType type = declaredTypeOf(parameter.getTypeReference());
+      params.add(new TacOperand.TacVar(name, type, false));
+      paramTypes.add(type.displayName());
+    }
+
+    String name = currentFunction + "$L$" + lambdaCounter++;
+    TacType returnType = expressionTypeOf(lambda);
+    String signature = name + "(" + String.join(",", paramTypes) + "):" + returnType.displayName();
+
+    // The body is lowered into a builder of its own.
+    TacBuilder outerBuilder = builder;
+    Map<String, TacOperand.TacVar> outerLocals = locals;
+    boolean outerDegraded = degraded;
+    List<String> outerProblems = new ArrayList<>(problems);
+    List<org.plumb.tac.ir.TacProgram.FunctionProblem> outerStructured =
+        new ArrayList<>(structuredProblems);
+
+    TacBuilder nested =
+        new TacBuilder(new TacBuilder.FunctionSpec(name, signature, returnType), params);
+    nested.setSourceLanguage(SourceLanguage.KOTLIN);
+    nested.setIrPrecision(org.plumb.tac.ir.IrPrecision.SOURCE_FULL);
+    if (currentEnclosingClass != null) {
+      nested.setEnclosingClass(currentEnclosingClass);
+    }
+    if (currentModule != null) {
+      nested.setModule(currentModule);
+    }
+    if (!currentClassAnnotations.isEmpty()) {
+      nested.addClassAnnotations(currentClassAnnotations);
+    }
+    builder = nested;
+    locals = new HashMap<>();
+    for (TacOperand.TacVar p : params) {
+      locals.put(p.name(), p);
+      nested.addLocal(p);
+    }
+    try {
+      KtExpression lambdaBody = lambda.getBodyExpression();
+      if (lambdaBody instanceof KtBlockExpression lambdaBlock) {
+        // The last statement of the body is the lambda's VALUE. It is lowered as an
+        // EXPRESSION, so the value is computed rather than discarded: a lambda whose
+        // body is "{ prefix -> prefix + input }" used to lower to an empty function,
+        // because a statement's operands are lowered for their side effects and the
+        // arithmetic between them was thrown away.
+        List<KtExpression> stmts = lambdaBlock.getStatements();
+        for (int i = 0; i < stmts.size(); i++) {
+          boolean last = i == stmts.size() - 1;
+          if (last && !(stmts.get(i) instanceof KtReturnExpression)) {
+            translateExpression(stmts.get(i));
+          } else {
+            translateStatement(stmts.get(i));
+          }
+        }
+      } else if (lambdaBody != null) {
+        translateExpression(lambdaBody);
+      }
+    } finally {
+      TacFunction function = nested.build();
+      builder = outerBuilder;
+      locals = outerLocals;
+      degraded = outerDegraded;
+      problems.clear();
+      problems.addAll(outerProblems);
+      structuredProblems.clear();
+      structuredProblems.addAll(outerStructured);
+      nestedFunctions.add(function);
+    }
+
+    // The call site. The receiver slot holds nothing -- a lambda has no receiver -- and the
+    // closure's own parameters are not bound at the point the closure is CREATED: they are
+    // bound where it is CALLED, and that call is not modelled here.
+    List<TacOperand> args = new ArrayList<>();
+    args.add(TacOperand.Const.ofNull());
+    for (String capture : captures) {
+      TacOperand value = locals.get(capture);
+      args.add(value == null ? TacOperand.Const.ofNull() : value);
+    }
+    for (int i = 0; i < declared.size(); i++) {
+      args.add(TacOperand.Const.ofNull());
+    }
+    TacOperand dest = builder.newTemp(TacType.UNKNOWN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .dest(dest)
+            .calleeSig(name + "/" + params.size())
+            .args(args)
+            .line(lineOf(lambda))
+            .column(columnOf(lambda))
+            .build());
+    return dest;
+  }
+
+  /**
+   * The names the lambda's body reads from the enclosing scope.
+   *
+   * <p>The names come from the body's own text: a name that the enclosing scope declares and
+   * that the body mentions is a capture. The test is deliberately generous -- it can name a
+   * capture that the body does not really use, and a capture it names twice is named once.
+   * Both errors are in the safe direction: an extra capture passes a value that may not be
+   * needed, and a missing one would lose taint.
+   *
+   * @param lambda the lambda
+   * @param declared the lambda's own parameters, which are not captures
+   * @return the captured names, in the order they were found
+   */
+  private List<String> discoverCaptures(
+      KtLambdaExpression lambda, List<org.jetbrains.kotlin.psi.KtParameter> declared) {
+    List<String> captures = new ArrayList<>();
+    KtBlockExpression body = lambda.getBodyExpression();
+    if (body == null) {
+      return captures;
+    }
+    String text = body.getText();
+    if (text == null || text.isEmpty()) {
+      return captures;
+    }
+    for (Map.Entry<String, TacOperand.TacVar> entry : locals.entrySet()) {
+      String name = entry.getKey();
+      if (name == null || name.isEmpty() || THIS.equals(name)) {
+        continue;
+      }
+      boolean declaredHere = false;
+      for (org.jetbrains.kotlin.psi.KtParameter parameter : declared) {
+        if (name.equals(parameter.getName())) {
+          declaredHere = true;
+          break;
+        }
+      }
+      if (declaredHere) {
+        continue;
+      }
+      if (mentions(text, name) && !captures.contains(name)) {
+        captures.add(name);
+      }
+    }
+    return captures;
+  }
+
+  /**
+   * Whether a text mentions a name as a whole word.
+   *
+   * <p>The word boundary matters: a local named {@code id} must not match inside {@code width}.
+   */
+  private static boolean mentions(String text, String name) {
+    int from = 0;
+    while (true) {
+      int at = text.indexOf(name, from);
+      if (at < 0) {
+        return false;
+      }
+      boolean startOk = at == 0 || !Character.isJavaIdentifierPart(text.charAt(at - 1));
+      int end = at + name.length();
+      boolean endOk = end >= text.length() || !Character.isJavaIdentifierPart(text.charAt(end));
+      if (startOk && endOk) {
+        return true;
+      }
+      from = at + 1;
+    }
+  }
+
+  /**
+   * Lowers a class's primary constructor.
+   *
+   * <p><b>WHY A CONSTRUCTOR IS THE MOST IMPORTANT FUNCTION IN A KOTLIN CLASS.</b> The TAC had
+   * no constructor function at all: a class's members were translated, and the class's
+   * CONSTRUCTOR -- the function every {@code new} call actually enters -- was not. A call to
+   * {@code Foo(userInput)} therefore named a callee that did not exist in the program, the call
+   * graph's edge went nowhere, and the value that entered the object never reached the fields
+   * it initialised. Every finding that depended on a value passing through a constructor was
+   * therefore invisible.
+   *
+   * <p>The body has three parts, in the order Kotlin runs them: the constructor's own
+   * parameters that declare properties become the backing fields of those properties; the
+   * property initialisers run; the {@code init} blocks run.
+   *
+   * @param name the constructor's qualified name
+   * @param signature the canonical signature
+   * @param returnType the constructed type
+   * @param params the constructor's parameters
+   * @param valueParameters the constructor's parameter declarations
+   * @param properties the class's member properties
+   * @param initBlocks the class's {@code init} blocks
+   * @param enclosingClass the declaring class
+   * @param module the module
+   * @param classAnnotations the class's annotations
+   * @param methodAnnotations the constructor's annotations
+   * @param paramAnnotations the parameters' annotations, by name
+   * @return the lowered constructor
+   */
+  TacFunction translateConstructor(
+      String name,
+      String signature,
+      TacType returnType,
+      List<TacOperand.TacVar> params,
+      List<org.jetbrains.kotlin.psi.KtParameter> valueParameters,
+      List<org.jetbrains.kotlin.psi.KtProperty> properties,
+      List<KtExpression> initBlocks,
+      String enclosingClass,
+      String module,
+      List<String> classAnnotations,
+      List<String> methodAnnotations,
+      Map<String, List<String>> paramAnnotations) {
+
+    this.currentFunction = name;
+    this.locals.clear();
+    this.problems.clear();
+    this.structuredProblems.clear();
+    this.degraded = false;
+    this.currentEnclosingClass = enclosingClass;
+    this.currentModule = module;
+    this.currentClassAnnotations =
+        classAnnotations == null ? List.of() : List.copyOf(classAnnotations);
+
+    TacBuilder.FunctionSpec spec = new TacBuilder.FunctionSpec(name, signature, returnType);
+    TacBuilder b = new TacBuilder(spec, params);
+    b.setModule(module);
+    b.setSourceLanguage(SourceLanguage.KOTLIN);
+    b.setIrPrecision(org.plumb.tac.ir.IrPrecision.SOURCE_FULL);
+    if (enclosingClass != null && !enclosingClass.isEmpty()) {
+      b.setEnclosingClass(enclosingClass);
+    }
+    if (classAnnotations != null && !classAnnotations.isEmpty()) {
+      b.addClassAnnotations(classAnnotations);
+    }
+    if (methodAnnotations != null && !methodAnnotations.isEmpty()) {
+      b.addMethodAnnotations(methodAnnotations);
+    }
+    if (paramAnnotations != null) {
+      for (Map.Entry<String, List<String>> entry : paramAnnotations.entrySet()) {
+        b.addParamAnnotations(entry.getKey(), entry.getValue());
+      }
+    }
+    b.setMemberKind(org.plumb.tac.ir.TacMemberKind.CONSTRUCTOR);
+    this.builder = b;
+
+    for (TacOperand.TacVar p : params) {
+      this.locals.put(p.name(), p);
+      b.addLocal(p);
+    }
+    TacOperand.TacVar self = new TacOperand.TacVar(THIS, TacType.UNKNOWN, false);
+    this.locals.put(THIS, self);
+    b.addLocal(self);
+
+    // The constructor's parameters that declare a property become the property's
+    // backing field.
+    for (org.jetbrains.kotlin.psi.KtParameter parameter : valueParameters) {
+      String parameterName = parameter.getName();
+      if (parameterName == null || parameterName.isEmpty() || !parameter.hasValOrVar()) {
+        continue;
+      }
+      TacOperand.TacVar value = locals.get(parameterName);
+      if (value == null) {
+        continue;
+      }
+      b.emit(
+          TacInstruction.builder(TacInstruction.Kind.FIELDSTORE)
+              .dest(value)
+              .lhs1(self)
+              .fieldName(parameterName)
+              .ownerType(ownerType())
+              .line(lineOf(parameter))
+              .build());
+    }
+
+    // The property initialisers.
+    for (KtProperty property : properties) {
+      String propertyName = property.getName();
+      KtExpression initializer = property.getInitializer();
+      if (propertyName == null || initializer == null || !property.isMember()) {
+        continue;
+      }
+      if (isConstructorProperty(propertyName, valueParameters)) {
+        // Already stored from the constructor's parameter.
+        continue;
+      }
+      TacOperand value = translateExpression(initializer);
+      if (value == null) {
+        continue;
+      }
+      b.emit(
+          TacInstruction.builder(TacInstruction.Kind.FIELDSTORE)
+              .dest(value)
+              .lhs1(self)
+              .fieldName(propertyName)
+              .ownerType(ownerType())
+              .line(lineOf(property))
+              .build());
+    }
+
+    // The init blocks.
+    for (KtExpression initBlock : initBlocks) {
+      if (initBlock instanceof KtBlockExpression block) {
+        translateBlock(block);
+      } else {
+        translateStatement(initBlock);
+      }
+    }
+
+    if (degraded) {
+      b.setIrPrecision(org.plumb.tac.ir.IrPrecision.SOURCE_LOWERED);
+    }
+    return b.build();
+  }
+
+  /**
+   * Whether a property is one the constructor's parameters declare.
+   *
+   * <p>Such a property's value comes from the parameter, not from an initialiser, so the
+   * constructor must not store it twice.
+   */
+  private static boolean isConstructorProperty(
+      String propertyName, List<org.jetbrains.kotlin.psi.KtParameter> valueParameters) {
+    for (org.jetbrains.kotlin.psi.KtParameter parameter : valueParameters) {
+      if (propertyName.equals(parameter.getName())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Lowers a property's accessor.
+   *
+   * <p>A property with no accessor of its own has a DEFAULT one: the getter reads the backing
+   * field, the setter writes it. A property with an accessor of its own has a body, and that
+   * body is user code -- it can do anything, and the analysis has to see what it does.
+   *
+   * @param name the accessor's qualified name
+   * @param signature the canonical signature
+   * @param returnType the property's type
+   * @param params the accessor's parameters (the setter's value)
+   * @param body the accessor's own body, or {@code null} for the default accessor
+   * @param fieldName the backing field's name
+   * @param setter whether this is the setter
+   * @param enclosingClass the declaring class
+   * @param module the module
+   * @param classAnnotations the class's annotations
+   * @param methodAnnotations the accessor's annotations
+   * @param paramAnnotations the parameters' annotations, by name
+   * @return the lowered accessor
+   */
+  TacFunction translateAccessor(
+      String name,
+      String signature,
+      TacType returnType,
+      List<TacOperand.TacVar> params,
+      KtExpression body,
+      String fieldName,
+      boolean setter,
+      String enclosingClass,
+      String module,
+      List<String> classAnnotations,
+      List<String> methodAnnotations,
+      Map<String, List<String>> paramAnnotations) {
+
+    this.currentFunction = name;
+    this.locals.clear();
+    this.problems.clear();
+    this.structuredProblems.clear();
+    this.degraded = false;
+    this.currentEnclosingClass = enclosingClass;
+    this.currentModule = module;
+    this.currentClassAnnotations =
+        classAnnotations == null ? List.of() : List.copyOf(classAnnotations);
+
+    TacBuilder.FunctionSpec spec = new TacBuilder.FunctionSpec(name, signature, returnType);
+    TacBuilder b = new TacBuilder(spec, params);
+    b.setModule(module);
+    b.setSourceLanguage(SourceLanguage.KOTLIN);
+    b.setIrPrecision(org.plumb.tac.ir.IrPrecision.SOURCE_FULL);
+    if (enclosingClass != null && !enclosingClass.isEmpty()) {
+      b.setEnclosingClass(enclosingClass);
+    }
+    if (classAnnotations != null && !classAnnotations.isEmpty()) {
+      b.addClassAnnotations(classAnnotations);
+    }
+    if (methodAnnotations != null && !methodAnnotations.isEmpty()) {
+      b.addMethodAnnotations(methodAnnotations);
+    }
+    if (paramAnnotations != null) {
+      for (Map.Entry<String, List<String>> entry : paramAnnotations.entrySet()) {
+        b.addParamAnnotations(entry.getKey(), entry.getValue());
+      }
+    }
+    b.setMemberKind(
+        setter ? org.plumb.tac.ir.TacMemberKind.SETTER : org.plumb.tac.ir.TacMemberKind.GETTER);
+    this.builder = b;
+
+    for (TacOperand.TacVar p : params) {
+      this.locals.put(p.name(), p);
+      b.addLocal(p);
+    }
+    TacOperand.TacVar self = new TacOperand.TacVar(THIS, TacType.UNKNOWN, false);
+    this.locals.put(THIS, self);
+    b.addLocal(self);
+
+    if (setter) {
+      TacOperand value = params.isEmpty() ? null : params.get(0);
+      if (value != null) {
+        b.emit(
+            TacInstruction.builder(TacInstruction.Kind.FIELDSTORE)
+                .dest(value)
+                .lhs1(self)
+                .fieldName(fieldName)
+                .ownerType(ownerType())
+                .line(lineOf(body))
+                .build());
+      }
+    } else if (body != null) {
+      // The accessor has a body of its own: it is user code, and its value is the
+      // accessor's value.
+      TacOperand value = translateExpression(body);
+      if (value != null) {
+        b.emit(
+            TacInstruction.builder(TacInstruction.Kind.RETURN)
+                .lhs1(value)
+                .line(lineOf(body))
+                .build());
+      }
+    } else {
+      // The default getter: it reads the backing field.
+      TacOperand value = builder.newTemp(returnType);
+      b.emit(
+          TacInstruction.builder(TacInstruction.Kind.FIELDLOAD)
+              .dest(value)
+              .lhs1(self)
+              .fieldName(fieldName)
+              .ownerType(ownerType())
+              .build());
+      b.emit(
+          TacInstruction.builder(TacInstruction.Kind.RETURN)
+              .lhs1(value)
+              .build());
+    }
+
+    if (degraded) {
+      b.setIrPrecision(org.plumb.tac.ir.IrPrecision.SOURCE_LOWERED);
+    }
+    return b.build();
+  }
+
+  /**
+   * Lowers one expression into a builder the caller owns.
+   *
+   * <p>It is how a top-level property's initialiser is computed: the value belongs to the
+   * file's field initializer, and the field initializer's builder is the caller's.
+   *
+   * @param expression the expression to lower
+   * @param target the builder to lower into
+   * @return the expression's value, or {@code null}
+   */
+  TacOperand lowerInitializer(KtExpression expression, TacBuilder target) {
+    TacBuilder outerBuilder = builder;
+    builder = target;
+    try {
+      return translateExpression(expression);
+    } finally {
+      builder = outerBuilder;
     }
   }
 
@@ -709,25 +1881,20 @@ final class KotlinTacTranslator {
         if (entry.isElse()) {
           continue;
         }
-        // The value the subject is compared against is the entry's *condition*
-        // (`when (x) { 1 -> ... }`), not the entry's expression (which is the branch
-        // body, after the arrow).
-        KtExpression match = firstConditionOf(entry);
-        if (match == null) {
-          // An `is`-pattern branch ("is String -> ...") has no condition to compare
-          // against: it tests the subject's runtime type. The comparison chain cannot
-          // express it, so the branch is NOT lowered.
-          //
-          // It used to be skipped with a bare `continue`, which made the gap SILENT: the
-          // function's precision stayed SOURCE_FULL, so a checker trusted a function
-          // whose branch was simply gone. The gap is now reported and the function is
-          // degraded, which is what "the frontend could not lower this" has to mean.
+        // The entry's CONDITIONS, not its body. An entry can name several of them
+        // ("1, 2 -> ..."), and every one of them has to be tested: testing only the
+        // first made the entry match less than the source says.
+        TacOperand eq = whenTest(subjectValue, entry);
+        if (eq == null) {
+          // A condition the front end could not read. The branch is not lowered, and
+          // the gap is reported -- a silently skipped branch is a function whose
+          // precision lies.
           degraded = true;
           report(
               "UNSUPPORTED_CONSTRUCT",
               currentFunction,
-              "KtWhenEntryWithIsCondition",
-              "an 'is' branch of a when expression in "
+              "KtWhenEntry",
+              "a branch of a when expression in "
                   + currentFunction
                   + " was not lowered (line "
                   + lineOf(entry)
@@ -736,21 +1903,11 @@ final class KotlinTacTranslator {
               -1);
           reportDrop(
               "kotlin.when.isBranch",
-              "an 'is' branch of a when expression was not lowered",
+              "a branch of a when expression was not lowered",
               lineOf(entry),
               -1);
           continue;
         }
-        TacOperand matchValue = translateExpression(match);
-        TacOperand eq = builder.newTemp(TacType.BOOLEAN);
-        builder.emit(
-            TacInstruction.builder(TacInstruction.Kind.BINOP)
-                .dest(eq)
-                .lhs1(subjectValue)
-                .lhs2(matchValue)
-                .binop(BinaryOperator.EQ)
-                .line(lineOf(entry))
-                .build());
 
         String matchLabel = builder.newLabel("whenmatch");
         String nextLabel = builder.newLabel("whennext");
@@ -871,6 +2028,16 @@ final class KotlinTacTranslator {
     if (expr instanceof KtBinaryExpression bin) {
       return translateBinary(bin);
     }
+    if (expr instanceof org.jetbrains.kotlin.psi.KtBinaryExpressionWithTypeRHS cast) {
+      // A CAST: "x as String" and "x as? String".
+      //
+      // <b>Why this is a class of its own.</b> A cast with a type on the right is NOT a
+      // KtBinaryExpression -- it is a KtBinaryExpressionWithTypeRHS, which extends
+      // KtExpression directly. A check for KtBinaryExpression therefore never matched it,
+      // and every cast in a Kotlin program fell through to the catch-all: the cast was
+      // reported as unlowerable and produced NO instruction at all.
+      return translateCastWithTypeRhs(cast);
+    }
     if (expr instanceof KtIfExpression iff) {
       return translateIfExpression(iff);
     }
@@ -894,6 +2061,38 @@ final class KotlinTacTranslator {
     }
     if (expr instanceof KtConstantExpression constant) {
       return constantOf(constant);
+    }
+    if (expr instanceof KtSafeQualifiedExpression safe) {
+      return translateSafeQualified(safe);
+    }
+    if (expr instanceof KtArrayAccessExpression access) {
+      return translateArrayAccess(access);
+    }
+    if (expr instanceof KtLambdaExpression lambda) {
+      return translateLambda(lambda);
+    }
+    if (expr instanceof KtCallableReferenceExpression reference) {
+      return translateCallableReference(reference);
+    }
+    if (expr instanceof KtObjectLiteralExpression object) {
+      return translateObjectLiteral(object);
+    }
+    if (expr instanceof KtIsExpression is) {
+      return translateIs(is);
+    }
+    if (expr instanceof KtPostfixExpression postfix) {
+      return translatePostfix(postfix);
+    }
+    if (expr instanceof KtPrefixExpression prefix) {
+      return translatePrefix(prefix);
+    }
+    if (expr instanceof KtAnnotatedExpression annotated) {
+      // An annotation on an expression carries no runtime behaviour, so the
+      // expression is lowered as-is.
+      return translateExpression(annotated.getBaseExpression());
+    }
+    if (expr instanceof KtSuperExpression superExpression) {
+      return translateSuper(superExpression);
     }
     degraded = true;
     report(
@@ -956,15 +2155,14 @@ final class KotlinTacTranslator {
     }
     TacOperand operand = translateExpression(condition);
     if (operand == null) {
-      // An unresolved condition: a fresh false, so the branch is well-formed.
-      TacOperand dest = builder.newTemp(TacType.BOOLEAN);
-      builder.emit(
-          TacInstruction.builder(TacInstruction.Kind.MOVE)
-              .dest(dest)
-              .lhs1(TacOperand.Const.ofBool(false))
-              .line(lineOf(condition))
-              .build());
-      return dest;
+      // An unresolved condition.
+      //
+      // WHY NOT A CONSTANT false. The branch has to be well-formed, and a constant false is
+      // well-formed -- but it is also a CLAIM: it says the guarded arm never runs, so every
+      // taint inside it becomes unreachable and the engine stops reporting it. The source did
+      // not say that; the front end merely could not read the condition. An unknown value
+      // says "the analysis does not know", and both arms stay reachable.
+      return unknownCondition(condition);
     }
     return operand;
   }
@@ -1000,8 +2198,40 @@ final class KotlinTacTranslator {
             .dest(dest)
             .lhs1(self)
             .fieldName(name)
+            .ownerType(ownerType())
             .line(lineOf(receiver))
             .column(columnOf(receiver))
+            .build());
+    return dest;
+  }
+
+  /**
+   * Lowers a field read off an arbitrary receiver.
+   *
+   * <p>The implicit-receiver read ({@code this.field}) has its own helper, because it reads
+   * off {@code this}. A read off an arbitrary receiver ({@code a?.b}) must read off THAT
+   * receiver -- reading it off {@code this} would answer a question about a different
+   * object.
+   *
+   * @param receiver the receiver's value
+   * @param name the field's name
+   * @param tree the tree being lowered, for the source position
+   * @return the field's value
+   */
+  private TacOperand translateFieldRead(
+      TacOperand receiver, String name, org.jetbrains.kotlin.psi.KtExpression tree) {
+    if (receiver == null) {
+      return builder.newTemp(TacType.UNKNOWN);
+    }
+    TacOperand dest = builder.newTemp(TacType.UNKNOWN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.FIELDLOAD)
+            .dest(dest)
+            .lhs1(receiver)
+            .fieldName(name)
+            .ownerType(ownerType())
+            .line(lineOf(tree))
+            .column(columnOf(tree))
             .build());
     return dest;
   }
@@ -1247,6 +2477,27 @@ final class KotlinTacTranslator {
 
   /** Lowers a binary expression: arithmetic, comparison, or a logical operator. */
   private TacOperand translateBinary(KtBinaryExpression bin) {
+    String op = operatorTextOf(bin);
+
+    // An assignment is a STORE, not a value. It has to be recognised before the
+    // comparison and arithmetic branches: neither of them knows what to do with
+    // "=", and the arithmetic branch would turn "x = y" into a comparison.
+    if (isAssignmentOperator(op)) {
+      return translateAssignment(bin, op);
+    }
+    // A cast: "x as String" and "x as? String".
+    if ("as".equals(op) || "as?".equals(op)) {
+      return translateCast(bin, "as?".equals(op));
+    }
+    // A membership test: "x in collection" and "x !in collection".
+    if ("in".equals(op) || "!in".equals(op)) {
+      return translateMembership(bin, "!in".equals(op));
+    }
+    // The Elvis operator: "a ?: b".
+    if ("?:".equals(op)) {
+      return translateElvis(bin);
+    }
+
     BinaryOperator comparison = comparisonOperatorOf(bin);
     if (comparison != null) {
       TacOperand lhs = translateExpression(bin.getLeft());
@@ -1280,7 +2531,6 @@ final class KotlinTacTranslator {
       return dest;
     }
     // A logical operator (`&&`, `||`) becomes a short-circuit branch chain.
-    String op = operatorTextOf(bin);
     if ("&&".equals(op) || "||".equals(op)) {
       return translateShortCircuit(bin, "&&".equals(op));
     }
@@ -1298,6 +2548,800 @@ final class KotlinTacTranslator {
         lineOf(bin),
         columnOf(bin));
     return null;
+  }
+
+  /**
+   * Lowers an assignment.
+   *
+   * <p>A plain assignment stores the right-hand side. A COMPOUND assignment stores the result of
+   * the operation: {@code x += v} is {@code x = x + v}. Lowering the compound form as a plain
+   * store would throw the old value away, and lowering it as a bare arithmetic expression would
+   * compute the new value and never store it.
+   *
+   * @param bin the assignment
+   * @param op the operator's source text
+   * @return the stored value
+   */
+  private TacOperand translateAssignment(KtBinaryExpression bin, String op) {
+    TacOperand value = translateExpression(bin.getRight());
+    if (value == null) {
+      return null;
+    }
+    if (!"=".equals(op)) {
+      BinaryOperator arithmetic = compoundOperatorOf(op);
+      if (arithmetic == null) {
+        degraded = true;
+        report(
+            "UNHANDLED_NODE",
+            currentFunction,
+            "BinaryOperator:" + op,
+            "unsupported compound assignment in " + currentFunction + ": " + op,
+            lineOf(bin),
+            columnOf(bin));
+        reportDrop(
+            "kotlin.assignment.unmodelled",
+            "the compound assignment was not lowered: " + op,
+            lineOf(bin),
+            columnOf(bin));
+        return null;
+      }
+      TacOperand current = translateExpression(bin.getLeft());
+      if (current == null) {
+        return null;
+      }
+      TacOperand computed = builder.newTemp(TacType.UNKNOWN);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.BINOP)
+              .dest(computed)
+              .lhs1(current)
+              .lhs2(value)
+              .binop(arithmetic)
+              .line(lineOf(bin))
+              .column(columnOf(bin))
+              .build());
+      value = computed;
+    }
+    return store(bin.getLeft(), value, bin);
+  }
+
+  /**
+   * Stores a value into the place a left-hand side names.
+   *
+   * <p>Three shapes, in the order the source decides them: a local, a property of an object, and
+   * an element of an array.
+   */
+  private TacOperand store(KtExpression lhs, TacOperand value, KtExpression tree) {
+    if (lhs instanceof KtNameReferenceExpression ref) {
+      String name = ref.getReferencedName();
+      TacOperand.TacVar local = locals.get(name);
+      if (local != null) {
+        builder.emit(
+            TacInstruction.builder(TacInstruction.Kind.MOVE)
+                .dest(local)
+                .lhs1(value)
+                .line(lineOf(tree))
+                .column(columnOf(tree))
+                .build());
+        return local;
+      }
+      return storeProperty(null, name, value, tree);
+    }
+    if (lhs instanceof KtDotQualifiedExpression dot) {
+      KtExpression selector = dot.getSelectorExpression();
+      if (selector instanceof KtNameReferenceExpression ref) {
+        return storeProperty(dot.getReceiverExpression(), ref.getReferencedName(), value, tree);
+      }
+    }
+    if (lhs instanceof KtArrayAccessExpression access) {
+      return storeArrayElement(access, value, tree);
+    }
+    degraded = true;
+    report(
+        "UNHANDLED_NODE",
+        currentFunction,
+        lhs.getClass().getSimpleName(),
+        "unsupported assignment target in " + currentFunction + " at line " + lineOf(tree),
+        lineOf(tree),
+        columnOf(tree));
+    reportDrop(
+        "kotlin.assignment.unmodelled",
+        "the assignment target was not lowered: " + lhs.getClass().getSimpleName(),
+        lineOf(tree),
+        columnOf(tree));
+    return value;
+  }
+
+  /**
+   * Stores a value into a property.
+   *
+   * @param receiverExpr the receiver expression, or {@code null} for the implicit {@code this}
+   * @param name the property's name
+   * @param value the value being stored
+   * @param tree the tree being lowered, for the source position
+   * @return the stored value
+   */
+  private TacOperand storeProperty(
+      KtExpression receiverExpr, String name, TacOperand value, KtExpression tree) {
+    TacOperand receiver;
+    String owner;
+    if (receiverExpr == null) {
+      receiver = locals.get(THIS);
+      owner = ownerType();
+    } else {
+      receiver = translateExpression(receiverExpr);
+      owner = ownerTypeOf(expressionTypeOf(receiverExpr));
+    }
+    if (receiver == null) {
+      // A top-level property: there is no receiver to write to, and inventing one
+      // would put a field store into the TAC that the program does not perform.
+      degraded = true;
+      report(
+          "UNHANDLED_NODE",
+          currentFunction,
+          "KtPropertyAssignment",
+          "a write to a top-level property in " + currentFunction + " at line " + lineOf(tree),
+          lineOf(tree),
+          columnOf(tree));
+      reportDrop(
+          "kotlin.assignment.unmodelled",
+          "the write to a top-level property was not lowered: there is no receiver",
+          lineOf(tree),
+          columnOf(tree));
+      return value;
+    }
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.FIELDSTORE)
+            .dest(value)
+            .lhs1(receiver)
+            .fieldName(name)
+            .ownerType(owner)
+            .line(lineOf(tree))
+            .column(columnOf(tree))
+            .build());
+    return value;
+  }
+
+  /**
+   * Stores a value into an array element.
+   *
+   * <p>The element's type is the ARRAY's element type, not the array's own type: the value that
+   * goes in is the element, so a checker that looks at the store's type has to see the element's.
+   */
+  private TacOperand storeArrayElement(
+      KtArrayAccessExpression access, TacOperand value, KtExpression tree) {
+    TacOperand array = translateExpression(access.getArrayExpression());
+    TacOperand index = translateIndex(access);
+    if (array == null || index == null) {
+      return value;
+    }
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.ARRAYSTORE)
+            .dest(value)
+            .lhs1(array)
+            .lhs2(index)
+            .line(lineOf(tree))
+            .column(columnOf(tree))
+            .build());
+    return value;
+  }
+
+  /**
+   * Lowers a cast.
+   *
+   * <p>A plain cast ({@code x as String}) throws when it fails, so the value afterwards is the
+   * target type. A SAFE cast ({@code x as? String}) yields null instead of throwing, so the
+   * value afterwards is the target type MARKED NULLABLE -- and the path continues, which is the
+   * difference that matters to the analysis.
+   *
+   * <p>The target type is read from the expression's own type, because the Analysis API already
+   * resolved the cast: asking the PSI for the type reference and mapping it again would do the
+   * same work with a second chance to disagree.
+   */
+  private TacOperand translateCast(KtBinaryExpression bin, boolean safe) {
+    TacType target = expressionTypeOf(bin);
+    if (safe && target.isReference()) {
+      target = target.nullable();
+    }
+    TacOperand value = translateExpression(bin.getLeft());
+    if (value == null) {
+      return null;
+    }
+    TacOperand dest = builder.newTemp(target);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.UNARYOP)
+            .dest(dest)
+            .lhs1(value)
+            .unop(org.plumb.tac.ir.UnaryOperator.CAST)
+            .castType(target)
+            .line(lineOf(bin))
+            .column(columnOf(bin))
+            .build());
+    return dest;
+  }
+
+  /**
+   * Lowers a cast whose right side is a TYPE: {@code x as String}, {@code x as? String}.
+   *
+   * <p>A plain cast throws when it fails, so the value afterwards is the target type. A SAFE
+   * cast yields null instead of throwing, so the value afterwards is the target type MARKED
+   * NULLABLE -- and the path continues, which is the difference that matters to the analysis.
+   *
+   * <p>The target type is read from the type reference the source wrote down. The Analysis API
+   * has already resolved the cast, so the expression's own type would say the same thing; the
+   * reference is used because it says it even when the resolution failed.
+   */
+  private TacOperand translateCastWithTypeRhs(
+      org.jetbrains.kotlin.psi.KtBinaryExpressionWithTypeRHS cast) {
+    String op = cast.getOperationReference().getText();
+    boolean safe = "as?".equals(op);
+    TacOperand value = translateExpression(cast.getLeft());
+    if (value == null) {
+      return null;
+    }
+    TacType target = declaredTypeOf(cast.getRight());
+    if (target == null || target == TacType.UNKNOWN) {
+      target = expressionTypeOf(cast);
+    }
+    if (safe && target.isReference()) {
+      target = target.nullable();
+    }
+    TacOperand dest = builder.newTemp(target);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.UNARYOP)
+            .dest(dest)
+            .lhs1(value)
+            .unop(org.plumb.tac.ir.UnaryOperator.CAST)
+            .castType(target)
+            .line(lineOf(cast))
+            .column(columnOf(cast))
+            .build());
+    return dest;
+  }
+
+  /**
+   * Lowers a membership test.
+   *
+   * <p>{@code x in collection} asks the COLLECTION whether it holds {@code x}, so the collection
+   * is the receiver and {@code x} is the argument. The owner comes from the resolved symbol, so
+   * the call names the real function rather than a guessed one.
+   */
+  private TacOperand translateMembership(KtBinaryExpression bin, boolean negated) {
+    TacOperand element = translateExpression(bin.getLeft());
+    TacOperand collection = translateExpression(bin.getRight());
+    if (element == null || collection == null) {
+      return null;
+    }
+    String owner = ownerOfMembership(bin);
+    String signature = (owner == null || owner.isEmpty() ? "contains" : owner + ".contains") + "/2";
+    TacOperand dest = builder.newTemp(TacType.BOOLEAN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .dest(dest)
+            .calleeSig(signature)
+            .args(List.of(collection, element))
+            .line(lineOf(bin))
+            .column(columnOf(bin))
+            .build());
+    if (!negated) {
+      return dest;
+    }
+    TacOperand negatedDest = builder.newTemp(TacType.BOOLEAN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.UNARYOP)
+            .dest(negatedDest)
+            .lhs1(dest)
+            .unop(org.plumb.tac.ir.UnaryOperator.NOT)
+            .line(lineOf(bin))
+            .column(columnOf(bin))
+            .build());
+    return negatedDest;
+  }
+
+  /**
+   * The owner of the function an {@code in} test calls.
+   *
+   * <p>Resolved from the operator's own symbol: {@code in} is an extension function, and the
+   * extension's receiver is the collection. The owner is whatever the symbol says; when the
+   * symbol does not resolve, the bare name is the honest fallback.
+   */
+  private String ownerOfMembership(KtBinaryExpression bin) {
+    try {
+      KaSymbol symbol = session.resolveSymbol(bin.getOperationReference());
+      if (symbol instanceof KaFunctionSymbol function) {
+        org.jetbrains.kotlin.name.ClassId classId = function.getCallableId().getClassId();
+        if (classId != null && !classId.isLocal()) {
+          String rendered = classId.asSingleFqName().asString();
+          if (rendered != null && !rendered.isEmpty()) {
+            return rendered;
+          }
+        }
+      }
+    } catch (RuntimeException | LinkageError ex) {
+      // Best effort: the bare name still carries the call graph's bare-name edge.
+    }
+    return null;
+  }
+
+  /**
+   * Lowers the Elvis operator: {@code a ?: b}.
+   *
+   * <p>The value is {@code a} when {@code a} is not null, and {@code b} otherwise. The TAC has
+   * no "is null" test, so the branch is made on a comparison against the null constant: the
+   * shape says exactly what the source says, and a checker that understands the comparison gets
+   * the narrowing for free.
+   *
+   * <p>Lowering this as "the value is {@code a}, and {@code b} is computed too" would lose the
+   * difference between the two arms, and lowering it as "the value is {@code b}" would lose
+   * {@code a}'s value entirely -- which is how a tainted {@code a} used to lose its taint.
+   */
+  private TacOperand translateElvis(KtBinaryExpression bin) {
+    TacOperand left = translateExpression(bin.getLeft());
+    TacOperand right = translateExpression(bin.getRight());
+    if (left == null || right == null) {
+      return null;
+    }
+    TacOperand dest = builder.newTemp(TacType.UNKNOWN);
+    TacOperand isNull = builder.newTemp(TacType.BOOLEAN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BINOP)
+            .dest(isNull)
+            .lhs1(left)
+            .lhs2(TacOperand.Const.ofNull())
+            .binop(BinaryOperator.EQ)
+            .line(lineOf(bin))
+            .column(columnOf(bin))
+            .build());
+
+    String nullLabel = builder.newLabel("elvisNull");
+    String notNullLabel = builder.newLabel("elvisValue");
+    String endLabel = builder.newLabel("elvisEnd");
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BRANCH)
+            .lhs1(isNull)
+            .trueLabel(nullLabel)
+            .falseLabel(notNullLabel)
+            .guard(TacGuard.compare(left, BinaryOperator.EQ, TacOperand.Const.ofNull()))
+            .line(lineOf(bin))
+            .column(columnOf(bin))
+            .build());
+
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.LABEL).label(notNullLabel).build());
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.MOVE)
+            .dest(dest)
+            .lhs1(left)
+            .line(lineOf(bin))
+            .build());
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.JUMP).label(endLabel).build());
+
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(nullLabel).build());
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.MOVE)
+            .dest(dest)
+            .lhs1(right)
+            .line(lineOf(bin))
+            .build());
+
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(endLabel).build());
+    return dest;
+  }
+
+  /**
+   * Lowers a safe call: {@code a?.b} and {@code a?.b()}.
+   *
+   * <p>The receiver is checked FIRST: when it is null, the read or the call does not happen at
+   * all and the value of the whole expression is null. Lowering it as an ordinary call would
+   * make the engine's null-dereference checker fire on every such call -- a false positive on
+   * exactly the construct that exists to PREVENT the dereference.
+   */
+  private TacOperand translateSafeQualified(KtSafeQualifiedExpression safe) {
+    KtExpression receiverExpr = safe.getReceiverExpression();
+    KtExpression selector = safe.getSelectorExpression();
+    TacOperand receiver = translateExpression(receiverExpr);
+    if (receiver == null) {
+      return null;
+    }
+    TacOperand dest = builder.newTemp(TacType.UNKNOWN);
+    TacOperand isNull = builder.newTemp(TacType.BOOLEAN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BINOP)
+            .dest(isNull)
+            .lhs1(receiver)
+            .lhs2(TacOperand.Const.ofNull())
+            .binop(BinaryOperator.EQ)
+            .line(lineOf(safe))
+            .column(columnOf(safe))
+            .build());
+
+    String useLabel = builder.newLabel("safeUse");
+    String nullLabel = builder.newLabel("safeNull");
+    String endLabel = builder.newLabel("safeEnd");
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BRANCH)
+            .lhs1(isNull)
+            .trueLabel(nullLabel)
+            .falseLabel(useLabel)
+            .guard(TacGuard.compare(receiver, BinaryOperator.EQ, TacOperand.Const.ofNull()))
+            .line(lineOf(safe))
+            .column(columnOf(safe))
+            .build());
+
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(useLabel).build());
+    TacOperand value;
+    if (selector instanceof KtCallExpression call) {
+      value = translateCall(call, receiverExpr, receiver);
+    } else if (selector instanceof KtNameReferenceExpression ref) {
+      value = translateFieldRead(receiver, ref.getReferencedName(), safe);
+    } else {
+      value = translateExpression(selector);
+    }
+    if (value != null) {
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.MOVE)
+              .dest(dest)
+              .lhs1(value)
+              .line(lineOf(safe))
+              .build());
+    }
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.JUMP).label(endLabel).build());
+
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(nullLabel).build());
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.MOVE)
+            .dest(dest)
+            .lhs1(TacOperand.Const.ofNull())
+            .line(lineOf(safe))
+            .build());
+
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(endLabel).build());
+    return dest;
+  }
+
+  /**
+   * Lowers an array access: {@code a[i]}.
+   *
+   * <p>The element's type is the expression's own type, which is the element's type -- not the
+   * array's.
+   */
+  private TacOperand translateArrayAccess(KtArrayAccessExpression access) {
+    TacOperand array = translateExpression(access.getArrayExpression());
+    TacOperand index = translateIndex(access);
+    if (array == null || index == null) {
+      return null;
+    }
+    TacOperand dest = builder.newTemp(expressionTypeOf(access));
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.ARRAYLOAD)
+            .dest(dest)
+            .lhs1(array)
+            .lhs2(index)
+            .line(lineOf(access))
+            .column(columnOf(access))
+            .build());
+    return dest;
+  }
+
+  /**
+   * Lowers a type test: {@code x is String} and {@code x !is String}.
+   *
+   * <p>The test is an {@code INSTANCEOF} against the tested type, which is what the engine's
+   * type narrowing reads.
+   */
+  private TacOperand translateIs(KtIsExpression is) {
+    TacOperand value = translateExpression(is.getLeftHandSide());
+    if (value == null) {
+      return null;
+    }
+    TacType tested = declaredTypeOf(is.getTypeReference());
+    TacOperand dest = builder.newTemp(TacType.BOOLEAN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.INSTANCEOF)
+            .dest(dest)
+            .lhs1(value)
+            .ctorType(tested)
+            .line(lineOf(is))
+            .column(columnOf(is))
+            .build());
+    return dest;
+  }
+
+  /**
+   * Lowers a postfix operator: {@code x++} and {@code x--}.
+   *
+   * <p>The value of the expression is the value BEFORE the change, and the variable is changed.
+   * A postfix increment whose value is discarded still changes the variable, so the store
+   * happens either way.
+   */
+  private TacOperand translatePostfix(KtPostfixExpression postfix) {
+    String op = postfix.getOperationReference().getText();
+
+    // The NOT-NULL ASSERTION: "x!!".
+    //
+    // <b>Why it is here and not in the PREFIX lowering.</b> "!!" is a POSTFIX operator in
+    // Kotlin -- the value is read and THEN asserted -- so the prefix branch never saw it,
+    // and the assertion was lowered as the plain value: every null check the programmer
+    // wrote was invisible to the engine's null-dereference checker.
+    if ("!!".equals(op)) {
+      TacOperand value = translateExpression(postfix.getBaseExpression());
+      if (value == null) {
+        return null;
+      }
+      TacOperand.TacVar checked = asVar(value);
+      if (checked != null) {
+        builder.emit(
+            TacInstruction.builder(TacInstruction.Kind.NULL_CHECK)
+                .dest(checked)
+                .line(lineOf(postfix))
+                .column(columnOf(postfix))
+                .build());
+      }
+      return value;
+    }
+
+    org.plumb.tac.ir.UnaryOperator unop = null;
+    if ("++".equals(op)) {
+      unop = org.plumb.tac.ir.UnaryOperator.POST_INC;
+    } else if ("--".equals(op)) {
+      unop = org.plumb.tac.ir.UnaryOperator.POST_DEC;
+    }
+    if (unop == null) {
+      return translateExpression(postfix.getBaseExpression());
+    }
+    TacOperand base = translateExpression(postfix.getBaseExpression());
+    if (base == null) {
+      return null;
+    }
+    // The postfix form evaluates to the OLD value, so the value is snapshotted BEFORE the
+    // write-back: after the write-back the variable holds the new one.
+    TacOperand.TacVar oldValue = builder.newTemp(TacType.UNKNOWN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.MOVE)
+            .dest(oldValue)
+            .lhs1(base)
+            .line(lineOf(postfix))
+            .column(columnOf(postfix))
+            .build());
+    TacOperand dest = builder.newTemp(TacType.UNKNOWN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.UNARYOP)
+            .dest(dest)
+            .lhs1(base)
+            .unop(unop)
+            .line(lineOf(postfix))
+            .column(columnOf(postfix))
+            .build());
+    // The engine's UNARYOP writes the new value into `dest` and leaves the operand alone,
+    // so storing it back is the TRANSLATOR's job. Without it the variable never changed,
+    // so every later read saw the pre-increment value and every loop counter ran one
+    // step short.
+    store(postfix.getBaseExpression(), dest, postfix);
+    return oldValue;
+  }
+
+  /**
+   * Lowers a prefix operator.
+   *
+   * <p>{@code !x} negates, {@code -x} negates a number, and {@code ++x} and {@code --x} change the
+   * variable and yield the NEW value.
+   *
+   * <p><b>Why the not-null assertion is NOT here.</b> {@code !!x} is Kotlin's "I assert this is
+   * not null", and the TAC's {@code NULL_CHECK} is exactly that claim -- but {@code !!} is a
+   * POSTFIX operator, so the expression reaches {@link #translatePostfix}. A branch that can
+   * never be taken is worse than no branch at all: it says the frontend handles something it
+   * does not.
+   */
+  private TacOperand translatePrefix(KtPrefixExpression prefix) {
+    String op = prefix.getOperationReference().getText();
+    KtExpression base = prefix.getBaseExpression();
+    if ("++".equals(op) || "--".equals(op)) {
+      TacOperand baseValue = translateExpression(base);
+      if (baseValue == null) {
+        return null;
+      }
+      TacOperand dest = builder.newTemp(TacType.UNKNOWN);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.UNARYOP)
+              .dest(dest)
+              .lhs1(baseValue)
+              .unop(
+                  "++".equals(op)
+                      ? org.plumb.tac.ir.UnaryOperator.PRE_INC
+                      : org.plumb.tac.ir.UnaryOperator.PRE_DEC)
+              .line(lineOf(prefix))
+              .column(columnOf(prefix))
+              .build());
+      // The engine's UNARYOP writes the new value into `dest` and leaves the operand
+      // alone, so the write-back is the TRANSLATOR's job.
+      store(base, dest, prefix);
+      // The prefix form evaluates to the NEW value.
+      return dest;
+    }
+    if ("!".equals(op)) {
+      TacOperand value = translateCondition(base);
+      TacOperand dest = builder.newTemp(TacType.BOOLEAN);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.UNARYOP)
+              .dest(dest)
+              .lhs1(value)
+              .unop(org.plumb.tac.ir.UnaryOperator.NOT)
+              .line(lineOf(prefix))
+              .column(columnOf(prefix))
+              .build());
+      return dest;
+    }
+    if ("-".equals(op)) {
+      TacOperand value = translateExpression(base);
+      if (value == null) {
+        return null;
+      }
+      TacOperand dest = builder.newTemp(TacType.UNKNOWN);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.UNARYOP)
+              .dest(dest)
+              .lhs1(value)
+              .unop(org.plumb.tac.ir.UnaryOperator.NEG)
+              .line(lineOf(prefix))
+              .column(columnOf(prefix))
+              .build());
+      return dest;
+    }
+    // A unary plus, or an operator this front end does not know: the operand is
+    // lowered for its value, and the operator itself carries nothing.
+    return translateExpression(base);
+  }
+
+  /**
+   * Lowers {@code super}.
+   *
+   * <p>The super receiver is a value the TAC carries: a call on it puts the receiver in
+   * {@code args[0]}, exactly as any other call does. Lowering {@code super} as nothing made
+   * {@code super.f()} a call with no receiver at all, and the engine's null-dereference checker
+   * read the missing receiver as a null one.
+   */
+  private TacOperand translateSuper(KtSuperExpression superExpression) {
+    TacOperand.TacVar self = locals.get(THIS);
+    if (self == null) {
+      return builder.newTemp(TacType.UNKNOWN);
+    }
+    return self;
+  }
+
+  /**
+   * Lowers an object literal: {@code object : Base { ... }}.
+   *
+   * <p>The literal is a construction of an anonymous type. The type's name carries the outer
+   * class's name, so two literals in one file do not collide.
+   */
+  private TacOperand translateObjectLiteral(KtObjectLiteralExpression object) {
+    TacType constructed = expressionTypeOf(object);
+    TacOperand dest = builder.newTemp(constructed);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.NEW)
+            .dest(dest)
+            .ctorType(constructed)
+            .calleeSig(constructed == null ? null : constructed.className() + ".<init>/0")
+            .args(List.of())
+            .line(lineOf(object))
+            .column(columnOf(object))
+            .build());
+    return dest;
+  }
+
+  /**
+   * Lowers a callable reference: {@code ::f} and {@code receiver::f}.
+   *
+   * <p>A callable reference is a FUNCTION VALUE. The TAC has no representation for one: there
+   * is no operand that holds "a function". Lowering it as an ordinary call would claim the
+   * function is invoked at the point the reference is written, which it is not.
+   *
+   * <p>So the reference is lowered as a CALL -- the shape every other front end uses for a
+   * function value -- and the gap is recorded. The alternative, dropping it, loses the taint
+   * that flows into the reference; the CALL keeps the data flow visible and lets the checker
+   * see that the function is used as a value.
+   */
+  private TacOperand translateCallableReference(KtCallableReferenceExpression reference) {
+    String name =
+            reference.getCallableReference() == null
+                ? null
+                : reference.getCallableReference().getReferencedName();
+    if (name == null || name.isEmpty()) {
+      return null;
+    }
+    String owner = ownerOfCallableReference(reference);
+    String signature = (owner == null || owner.isEmpty() ? name : owner + "." + name) + "/0";
+    TacOperand dest = builder.newTemp(TacType.UNKNOWN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .dest(dest)
+            .calleeSig(signature)
+            .args(List.of())
+            .line(lineOf(reference))
+            .column(columnOf(reference))
+            .build());
+    reportDrop(
+        "kotlin.callableReference.asValue",
+        "the callable reference was lowered as a call; the function value itself is not modelled",
+        lineOf(reference),
+        columnOf(reference));
+    return dest;
+  }
+
+  /** The owner of the member a callable reference names, or {@code null}. */
+  private String ownerOfCallableReference(KtCallableReferenceExpression reference) {
+    try {
+      KaSymbol symbol = session.resolveSymbol(reference);
+      if (symbol instanceof KaCallableSymbol callable) {
+        org.jetbrains.kotlin.name.ClassId classId = callable.getCallableId().getClassId();
+        if (classId != null && !classId.isLocal()) {
+          String rendered = classId.asSingleFqName().asString();
+          if (rendered != null && !rendered.isEmpty()) {
+            return rendered;
+          }
+        }
+      }
+    } catch (RuntimeException | LinkageError ex) {
+      // Best effort.
+    }
+    return null;
+  }
+
+  /**
+   * The index of an array access.
+   *
+   * <p>An array access carries a LIST of index expressions, because {@code a[i, j]} is one
+   * access with two indices. The first one is the index the TAC models; the rest are lowered
+   * for their side effects, so a call inside them is not lost.
+   */
+  private TacOperand translateIndex(KtArrayAccessExpression access) {
+    List<KtExpression> indices = access.getIndexExpressions();
+    if (indices == null || indices.isEmpty()) {
+      return null;
+    }
+    TacOperand index = translateExpression(indices.get(0));
+    for (int i = 1; i < indices.size(); i++) {
+      translateExpression(indices.get(i));
+    }
+    return index;
+  }
+
+  /**
+   * The owner of a type, for a field access.
+   *
+   * @param type the type
+   * @return the class's name, or {@code null} when the type does not name a class
+   */
+  private static String ownerTypeOf(TacType type) {
+    if (type == null || type.kind() != TacType.Kind.CLASS) {
+      return null;
+    }
+    return type.className();
+  }
+
+  /**
+   * The binary operator of a compound assignment.
+   *
+   * @param op the operator's source text, e.g. {@code "+="}
+   * @return the operator, or {@code null} when the text is not a compound assignment
+   */
+  private static BinaryOperator compoundOperatorOf(String op) {
+    if (op == null || op.length() < 2) {
+      return null;
+    }
+    switch (op.charAt(0)) {
+      case '+':
+        return BinaryOperator.ADD;
+      case '-':
+        return BinaryOperator.SUB;
+      case '*':
+        return BinaryOperator.MUL;
+      case '/':
+        return BinaryOperator.DIV;
+      case '%':
+        return BinaryOperator.MOD;
+      default:
+        return null;
+    }
   }
 
   /**
@@ -1554,6 +3598,24 @@ final class KotlinTacTranslator {
    * @return the call's result, or {@code null} for a {@code Unit}-returning call
    */
   private TacOperand translateCall(KtCallExpression call, KtExpression receiver) {
+    return translateCall(call, receiver, null);
+  }
+
+  /**
+   * Lowers a call whose receiver has already been lowered.
+   *
+   * <p>The safe-call lowering needs this: it checks the receiver FIRST and then calls on it,
+   * so the receiver is lowered once -- before the check -- and the call must use that same
+   * value. Lowering the receiver a second time inside the call would emit the receiver's
+   * instructions twice, and a call inside the receiver would then happen twice.
+   *
+   * @param call the call to lower
+   * @param receiver the receiver expression, or {@code null} for an unqualified call
+   * @param receiverOperand the already-lowered receiver, or {@code null}
+   * @return the call's result
+   */
+  private TacOperand translateCall(
+      KtCallExpression call, KtExpression receiver, TacOperand receiverOperand) {
     String calleeName = calledName(call);
     int arity = call.getValueArguments().size();
 
@@ -1615,7 +3677,7 @@ final class KotlinTacTranslator {
         TacInstruction.builder(TacInstruction.Kind.CALL)
             .dest(dest)
             .calleeSig(calleeSignature(calleeName, receiver, arity, call))
-            .args(withReceiver(args, receiver))
+            .args(withReceiver(args, receiver, receiverOperand))
             .line(lineOf(call))
             .column(columnOf(call))
             .build());
@@ -1634,7 +3696,14 @@ final class KotlinTacTranslator {
    * <p>The callee signature's arity stays the <i>argument</i> count, so the receiver does not
    * change the call graph's edge.
    */
-  private List<TacOperand> withReceiver(List<TacOperand> args, KtExpression receiver) {
+  private List<TacOperand> withReceiver(
+      List<TacOperand> args, KtExpression receiver, TacOperand receiverOperand) {
+    if (receiverOperand != null) {
+      List<TacOperand> withSlot = new ArrayList<>(args.size() + 1);
+      withSlot.add(receiverOperand);
+      withSlot.addAll(args);
+      return withSlot;
+    }
     if (receiver == null) {
       return args;
     }
@@ -1809,7 +3878,16 @@ final class KotlinTacTranslator {
 
   /** The declared type of a local property, or {@link TacType#UNKNOWN}. */
   private TacType declaredTypeOf(KtProperty prop) {
-    org.jetbrains.kotlin.psi.KtTypeReference ref = prop.getTypeReference();
+    return declaredTypeOf(prop == null ? null : prop.getTypeReference());
+  }
+
+  /**
+   * The declared type of a type reference, or {@link TacType#UNKNOWN}.
+   *
+   * @param ref the type reference, or {@code null}
+   * @return the declared type
+   */
+  private TacType declaredTypeOf(org.jetbrains.kotlin.psi.KtTypeReference ref) {
     if (ref == null) {
       return TacType.UNKNOWN;
     }
@@ -1819,6 +3897,27 @@ final class KotlinTacTranslator {
     } catch (RuntimeException ex) {
       return TacType.UNKNOWN;
     }
+  }
+
+  /**
+   * Whether an operator writes to its left-hand side.
+   *
+   * <p>An assignment is not an expression whose value is discarded: it is a store. The two are
+   * lowered differently, and treating an assignment as a discarded value means the store never
+   * happens.
+   *
+   * @param op the operator's source text, or {@code null}
+   * @return true for {@code =} and for every compound assignment
+   */
+  private static boolean isAssignmentOperator(String op) {
+    if (op == null || op.isEmpty()) {
+      return false;
+    }
+    if ("=".equals(op)) {
+      return true;
+    }
+    // A compound assignment: "+=", "-=", "*=", "/=", "%=".
+    return op.length() >= 2 && op.endsWith("=") && "+-*/%".indexOf(op.charAt(0)) >= 0;
   }
 
   /**
@@ -1912,6 +4011,95 @@ final class KotlinTacTranslator {
       return type == null ? TacType.UNKNOWN : type;
     }
     return type.nonNull();
+  }
+
+  /**
+   * The test of a {@code when} entry.
+   *
+   * <p>An entry can name several conditions, and it matches when ANY of them matches. An
+   * {@code is} pattern tests the subject's runtime type. The tests are combined with a
+   * bitwise-or over booleans, which is the same thing the source says.
+   *
+   * @param subject the subject's value
+   * @param entry the entry
+   * @return the test, or {@code null} when the entry's conditions could not be read
+   */
+  private TacOperand whenTest(TacOperand subject, KtWhenEntry entry) {
+    TacOperand combined = null;
+    for (KtWhenCondition condition : entry.getConditions()) {
+      TacOperand one = whenConditionTest(subject, condition, entry);
+      if (one == null) {
+        continue;
+      }
+      if (combined == null) {
+        combined = one;
+        continue;
+      }
+      TacOperand merged = builder.newTemp(TacType.BOOLEAN);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.BINOP)
+              .dest(merged)
+              .lhs1(combined)
+              .lhs2(one)
+              .binop(BinaryOperator.OR)
+              .line(lineOf(entry))
+              .build());
+      combined = merged;
+    }
+    return combined;
+  }
+
+  /**
+   * The test of ONE condition of a {@code when} entry.
+   *
+   * @param subject the subject's value
+   * @param condition the condition
+   * @param entry the entry the condition belongs to
+   * @return the test, or {@code null} when the condition could not be read
+   */
+  private TacOperand whenConditionTest(
+      TacOperand subject, KtWhenCondition condition, KtWhenEntry entry) {
+    if (condition instanceof KtWhenConditionIsPattern isPattern) {
+      // An `is` pattern: the subject's runtime type is the test.
+      TacType tested = declaredTypeOf(isPattern.getTypeReference());
+      TacOperand test = builder.newTemp(TacType.BOOLEAN);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.INSTANCEOF)
+              .dest(test)
+              .lhs1(subject)
+              .ctorType(tested)
+              .line(lineOf(entry))
+              .build());
+      if (isPattern.isNegated()) {
+        TacOperand negated = builder.newTemp(TacType.BOOLEAN);
+        builder.emit(
+            TacInstruction.builder(TacInstruction.Kind.UNARYOP)
+                .dest(negated)
+                .lhs1(test)
+                .unop(org.plumb.tac.ir.UnaryOperator.NOT)
+                .line(lineOf(entry))
+                .build());
+        return negated;
+      }
+      return test;
+    }
+    if (condition instanceof KtWhenConditionWithExpression withExpression) {
+      TacOperand expected = translateExpression(withExpression.getExpression());
+      if (expected == null) {
+        return null;
+      }
+      TacOperand test = builder.newTemp(TacType.BOOLEAN);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.BINOP)
+              .dest(test)
+              .lhs1(subject)
+              .lhs2(expected)
+              .binop(BinaryOperator.EQ)
+              .line(lineOf(entry))
+              .build());
+      return test;
+    }
+    return null;
   }
 
   /**

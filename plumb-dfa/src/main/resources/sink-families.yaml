@@ -229,8 +229,8 @@ families:
         # type in all three languages -- `Console.log/1` -- so one pattern
         # names them all. The write to the standard output stays out, because
         # neither language can name the class of `process.stdout` (TypeScript
-        # reports `<unknown>.write/0` and ArkTS reports the file's module
-        # name), and a pattern for it would claim every write.
+        # reports `write/1` -- no owner at all -- and ArkTS reports the file's
+        # module name), and a pattern for it would claim every write.
         - pattern: '^Console\.(log|info|warn|error|debug|trace)\b(/\d+)?'
           arg_index: [0, 1]
       python3:
@@ -773,12 +773,12 @@ families:
         # The vm module evaluates code in a context of the caller's choosing.
         - pattern: '^(?:node:)?vm\.(runInNewContext|runInThisContext|compileFunction)\b(/\d+)?'
           arg_index: 0
-        # The global eval. A free function has no receiver object and no module
-        # to name, so its owner is the stand-in for an unknown one: <unknown>.
-        # The pattern names that stand-in, so it claims the global and not a
-        # method of the same name on some object. The word boundary keeps
-        # `evaluate` and `evalSync` out.
-        - pattern: '^<unknown>\.eval\b(/\d+)?'
+        # The global eval. A free function belongs to the global it came from,
+        # and that global's own name is its owner: `eval.eval/1`. A call whose
+        # RECEIVER nobody could type has no owner at all (`eval/1`), so this
+        # pattern claims the global and not a method of the same name on some
+        # object. The word boundary keeps `evaluate` and `evalSync` out.
+        - pattern: '^eval\.eval\b(/\d+)?'
           arg_index: 0
         # The Function constructor builds a function from a STRING, which is
         # eval under a different spelling. Its arguments are the parameter
@@ -7095,10 +7095,12 @@ families:
         # Node's http and https. The URL is the first argument.
         - pattern: '^(?:node:)?https?\.(get|request)\b(/\d+)?'
           arg_index: 0
-        # The global fetch. A free function has no receiver object and no module
-        # to name, so its owner is the stand-in for an unknown one: <unknown>,
-        # and the pattern names that stand-in.
-        - pattern: '^<unknown>\.fetch\b(/\d+)?'
+        # The global fetch. A free function belongs to the global it came
+        # from, and that global's own name is its owner: `fetch.fetch/2`. A
+        # call whose RECEIVER nobody could type has no owner at all
+        # (`fetch/1`), so this pattern claims the global and not a method of
+        # the same name on some object.
+        - pattern: '^fetch\.fetch\b(/\d+)?'
           arg_index: 0
       python3:
         # The URL is the first argument of every one of these.

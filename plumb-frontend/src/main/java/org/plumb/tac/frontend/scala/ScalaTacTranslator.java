@@ -38,8 +38,10 @@ import org.plumb.tac.ir.IrPrecision;
 import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
+import org.plumb.tac.ir.TacMemberKind;
 import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacType;
+import org.plumb.tac.ir.UnaryOperator;
 import org.plumb.tac.translate.TacBuilder;
 
 /**
@@ -47,21 +49,20 @@ import org.plumb.tac.translate.TacBuilder;
  *
  * <p><b>What this lowers.</b> The subset the dataflow engine can act on: literals, local reads and
  * writes, field reads and writes, method calls, object creation, arithmetic and comparison,
- * branches, loops, blocks, and {@code match}. A {@code match} becomes a branch chain -- one {@code
- * INSTANCEOF} plus one {@code BRANCH} per typed case, with a {@code JUMP} to a merge label -- which
- * is exactly the shape a Java {@code instanceof} chain has, so the engine needs no change to read
- * it.
+ * branches, loops, blocks, {@code if} and {@code match} as expressions, string interpolation, and
+ * the pattern kinds a {@code match} can carry. A {@code match} becomes a branch chain -- one test
+ * plus one {@code BRANCH} per case, with a {@code JUMP} to a merge label -- which is exactly the
+ * shape a Java {@code instanceof} chain has, so the engine needs no change to read it.
  *
- * <p><b>What this does not lower.</b> Pattern matching on non-reference types, by-name arguments,
- * implicit conversions, varargs (beyond their first argument), and closures. A construct that is
- * not lowered is reported as a problem rather than silently dropped, and it downgrades the
- * enclosing function's precision to {@link IrPrecision#SOURCE_LOWERED} -- so a checker knows not to
- * trust a precision-dependent fact about it.
+ * <p><b>What this does not lower.</b> By-name arguments, implicit conversions, and the varargs
+ * splice. A construct that is not lowered is reported as a problem rather than silently dropped,
+ * and it downgrades the enclosing function's precision to {@link IrPrecision#SOURCE_LOWERED} -- so
+ * a checker knows not to trust a precision-dependent fact about it.
  *
  * <p><b>No new opcodes.</b> Everything here lowers into the existing instruction kinds: {@code
- * MOVE}, {@code BINOP}, {@code CALL}, {@code NEW}, {@code FIELDLOAD}, {@code FIELDSTORE}, {@code
- * INSTANCEOF}, {@code BRANCH}, {@code JUMP}, {@code LABEL}, {@code RETURN}, {@code THROW}, {@code
- * NOP}.
+ * MOVE}, {@code BINOP}, {@code UNARYOP}, {@code CALL}, {@code NEW}, {@code FIELDLOAD}, {@code
+ * FIELDSTORE}, {@code INSTANCEOF}, {@code BRANCH}, {@code JUMP}, {@code LABEL}, {@code RETURN},
+ * {@code THROW}, {@code NOP}, {@code HAVOC}.
  *
  * <p><b>Variables.</b> The TAC's variable identity is name + temp flag. A Scala local's source name
  * <i>is</i> its TAC name, so a body reference to a parameter or a local resolves to the same
@@ -136,6 +137,59 @@ final class ScalaTacTranslator {
   private final Map<String, TacOperand.TacVar> holders = new HashMap<>();
 
   /**
+   * The FIELD initialisers the unit declares, by the class that owns them.
+   *
+   * <p><b>Why they are collected before anything is lowered.</b> A {@code val} in a class body is a
+   * field, and the value that fills it is the class's own behaviour: it runs on every construction,
+   * before the constructor's own body. The constructor has to CALL it, and the call has to name the
+   * function that carries the value -- so both sides have to agree on the name before either is
+   * lowered. Collecting them first is what makes that agreement possible.
+   *
+   * <p>The key is the OWNING CLASS ITSELF, not its name: the constructor's owner and the template's
+   * class are the same symbol, and only the symbol says so for every shape a class can take. A name
+   * is not enough -- a class declared inside a package object carries a different name in the
+   * template than in the members it declares.
+   */
+  private final Map<Symbol, List<FieldInitializer>> fieldInitializers = new HashMap<>();
+
+  /**
+   * One field's initialiser: the value a class body's {@code val} carries.
+   *
+   * <p><b>Why it is a function and not a field write in the constructor.</b> The compiler
+   * synthesises the constructor's field assignments AFTER the typer, so at the point this frontend
+   * reads the tree the constructor's body is empty -- the assignment is not there to be read. A
+   * separate function for the initialiser is what makes the value visible at all: the constructor
+   * calls it, and the call graph's edge says the constructor runs the initialiser.
+   */
+  private static final class FieldInitializer {
+
+    /** The class that declares the field. */
+    private final String ownerFqn;
+
+    /** The short name of the class that declares the field. */
+    private final String ownerSimpleName;
+
+    /** The field's name. */
+    private final String field;
+
+    /** The declaration, which carries the field's type and its initialiser. */
+    private final Trees.ValDef<Type> declaration;
+
+    FieldInitializer(
+        String ownerFqn, String ownerSimpleName, String field, Trees.ValDef<Type> declaration) {
+      this.ownerFqn = ownerFqn;
+      this.ownerSimpleName = ownerSimpleName;
+      this.field = field;
+      this.declaration = declaration;
+    }
+
+    /** The name of the function that carries this initialiser's value. */
+    String functionName() {
+      return ownerFqn + "." + field + "$init";
+    }
+  }
+
+  /**
    * A captured variable, modelled as a shared CELL.
    *
    * <p><b>Why a cell and not a plain variable.</b> The TAC has no "captured local" concept, and
@@ -193,14 +247,13 @@ final class ScalaTacTranslator {
   /**
    * Records a construct that could not be lowered, in BOTH channels.
    *
-   * <p>A problem is the sentence a human reads; a drop is the receipt the
-   * engine reads. The two say different things, and a front end that records
-   * only the first produces findings that look exactly as complete as a fully
-   * lowered one's.
+   * <p>A problem is the sentence a human reads; a drop is the receipt the engine reads. The two say
+   * different things, and a front end that records only the first produces findings that look
+   * exactly as complete as a fully lowered one's.
    *
-   * <p>The impact is STRUCTURE: the function still computes the same thing,
-   * and its shape is what was lost. That is the grade this front end already
-   * states, and the drop must not claim a different one.
+   * <p>The impact is STRUCTURE: the function still computes the same thing, and its shape is what
+   * was lost. That is the grade this front end already states, and the drop must not claim a
+   * different one.
    */
   private void reportLoss(String construct, String message) {
     problems.add(message);
@@ -278,6 +331,26 @@ final class ScalaTacTranslator {
     // in its instruction list as a plain local assignment, and the
     // closure would read a different storage location.
     detectCaptures(tree);
+    // The field initialisers are found BEFORE anything is lowered, for the same
+    // reason the captures are: the constructor has to CALL the initialiser, and
+    // the call has to name the function the initialiser produced. One side
+    // cannot be lowered against a decision the other side has not made yet.
+    detectFieldInitializers(tree);
+    for (FieldInitializer init : fieldInitializersInSourceOrder()) {
+      try {
+        TacFunction fn = translateFieldInitializer(init);
+        if (fn != null) {
+          functions.add(fn);
+        }
+      } catch (RuntimeException ex) {
+        unitProblems.add(
+            "lowering failure in "
+                + init.functionName()
+                + ": "
+                + ex.getClass().getSimpleName()
+                + (ex.getMessage() == null ? "" : ": " + ex.getMessage()));
+      }
+    }
     for (Trees.DefDef<Type> def : collectDefs(tree)) {
       try {
         TacFunction fn = translateDef(def);
@@ -402,6 +475,13 @@ final class ScalaTacTranslator {
       // A constructor with no parameters, and an abstract member, have no body at
       // all: there is nothing to model and nothing lost, so they keep full
       // precision.
+      //
+      // The class's FIELD INITIALISERS are a different thing: they are the
+      // class's own behaviour, and the compiler runs them from the constructor.
+      // They are called here, because the constructor is where they run.
+      if ("<init>".equals(name)) {
+        emitFieldInitializerCalls(symbol, def);
+      }
       if (hasUnmodelledBody(def, params)) {
         b.setIrPrecision(IrPrecision.SOURCE_LOWERED);
         problems.add(
@@ -415,6 +495,12 @@ final class ScalaTacTranslator {
 
     try {
       translateBody(rhs);
+      // A constructor that DOES have a body of its own still runs the class's
+      // field initialisers: they are part of the construction, not of the
+      // constructor's own statements.
+      if ("<init>".equals(name)) {
+        emitFieldInitializerCalls(symbol, def);
+      }
     } catch (RuntimeException ex) {
       problems.add(
           "lowering failure in "
@@ -434,24 +520,24 @@ final class ScalaTacTranslator {
   /**
    * Builds the parameter variables of a definition.
    *
-   * <p>Only the first parameter list is a TAC parameter list. Scala's later lists are curried or
-   * implicit parameter lists; they are still part of the function's behaviour, so they are lowered
-   * as locals instead -- which keeps them visible to the dataflow engine without pretending the
-   * function has a flat signature.
+   * <p><b>Every parameter list is flattened into one.</b> Scala allows a definition to take several
+   * lists -- {@code def f(a: Int, b: Int)(c: String)} -- and the later ones are curried or implicit
+   * parameters, but they are still parameters: the caller supplies them, and the body reads them.
+   * Reading only the first list made the later ones read as {@code this.b}, so a body that used a
+   * second-list parameter saw a field of the enclosing class instead of its argument -- a wrong
+   * value, and a wrong arity on the call graph's edge.
+   *
+   * @param def the definition
+   * @return the parameters, in declaration order
    */
   private List<TacOperand.TacVar> buildParams(Trees.DefDef<Type> def) {
     List<TacOperand.TacVar> params = new ArrayList<>();
-    scala.collection.immutable.List<scala.collection.immutable.List<Trees.ValDef<Type>>> all =
-        def.termParamss(ctx);
-    scala.collection.Iterator<scala.collection.immutable.List<Trees.ValDef<Type>>> it =
-        all.iterator();
-    if (!it.hasNext()) {
-      return params;
-    }
-    scala.collection.Iterator<Trees.ValDef<Type>> vit = it.next().iterator();
-    while (vit.hasNext()) {
-      Trees.ValDef<Type> v = vit.next();
-      params.add(new TacOperand.TacVar(v.name().toString(), types.map(v.tpt().tpe()), false));
+    scala.collection.Iterator<scala.collection.immutable.List<Trees.ValDef<Type>>> lists =
+        def.termParamss(ctx).iterator();
+    while (lists.hasNext()) {
+      for (Trees.ValDef<Type> v : toJavaList(lists.next())) {
+        params.add(new TacOperand.TacVar(v.name().toString(), types.map(v.tpt().tpe()), false));
+      }
     }
     return params;
   }
@@ -644,6 +730,242 @@ final class ScalaTacTranslator {
    */
   private static boolean hasFlag(long flags, long flag) {
     return ((flags >>> 2) & (flag >>> 2)) != 0;
+  }
+
+  /**
+   * Finds the FIELD initialisers the unit declares.
+   *
+   * <p><b>What a template-level {@code val} is.</b> A {@code val} in a class body is a field, and
+   * the value that fills it is part of the class's behaviour. dotc keeps it in the class's template
+   * as a {@code ValDef}; it is not a definition of its own, so the walk that collects the unit's
+   * definitions never sees it, and the value was in no function at all.
+   *
+   * <p><b>Which ones are skipped.</b> A {@code val} with no initialiser -- the {@code val x} of a
+   * case class's constructor parameter -- is filled by the constructor, not by an initialiser, so
+   * it has no value to carry.
+   *
+   * @param tree the typed compilation unit
+   */
+  private void detectFieldInitializers(Trees.Tree<Type> tree) {
+    for (Trees.Tree<Type> node : subTreesOf(tree)) {
+      if (!(node instanceof Trees.Template)) {
+        continue;
+      }
+      Trees.Template<Type> template = (Trees.Template<Type>) node;
+      Symbol owner = templateOwner(template);
+      if (owner == null) {
+        continue;
+      }
+      for (Trees.Tree<Type> member : toJavaList(template.body(ctx))) {
+        if (!(member instanceof Trees.ValDef)) {
+          continue;
+        }
+        Trees.ValDef<Type> val = (Trees.ValDef<Type>) member;
+        Trees.Tree<Type> rhs = val.rhs(ctx);
+        if (rhs == null || rhs instanceof Trees.EmptyTree) {
+          // A constructor parameter: the constructor fills it.
+          continue;
+        }
+        fieldInitializers
+            .computeIfAbsent(owner, key -> new ArrayList<>())
+            .add(
+                new FieldInitializer(
+                    fqnOf(owner), simpleNameOf(fqnOf(owner)), val.name().toString(), val));
+      }
+    }
+  }
+
+  /**
+   * The class a template declares, or {@code null}.
+   *
+   * <p><b>Why the constructor is asked.</b> The template's own symbol is not always the class the
+   * members belong to: a class declared inside a package object carries a different name in the
+   * template than in its members. The constructor's owner IS the class, and it is the same symbol
+   * the constructor's own lookup finds -- which is what makes the two sides agree.
+   *
+   * @param template the template
+   * @return the class symbol
+   */
+  private Symbol templateOwner(Trees.Template<Type> template) {
+    try {
+      Symbol constructor = template.constr().symbol(ctx);
+      if (constructor == null) {
+        return null;
+      }
+      Symbol owner = constructor.denot(ctx).owner();
+      return owner;
+    } catch (RuntimeException | LinkageError ex) {
+      return null;
+    }
+  }
+
+  /**
+   * The short name of a fully qualified class name.
+   *
+   * @param fqn the qualified name
+   * @return the name without its package
+   */
+  private static String simpleNameOf(String fqn) {
+    if (fqn == null || fqn.isEmpty()) {
+      return null;
+    }
+    int dot = fqn.lastIndexOf('.');
+    String simple = dot < 0 ? fqn : fqn.substring(dot + 1);
+    // A module class is named after its companion object ("Plain$"). The class the
+    // source declared is "Plain".
+    return simple.endsWith("$") ? simple.substring(0, simple.length() - 1) : simple;
+  }
+
+  /**
+   * The field initialisers of the unit, in the order the classes were declared.
+   *
+   * <p>The map is keyed by class, so the order across classes is the order the classes were found
+   * in -- which is the order the source declares them in.
+   *
+   * @return the initialisers
+   */
+  private List<FieldInitializer> fieldInitializersInSourceOrder() {
+    List<FieldInitializer> out = new ArrayList<>();
+    for (List<FieldInitializer> inits : fieldInitializers.values()) {
+      out.addAll(inits);
+    }
+    return out;
+  }
+
+  /**
+   * Lowers one field's initialiser into a function of its own.
+   *
+   * <p><b>Why a function.</b> The value is the class's behaviour, and it runs on every
+   * construction. A separate function says that: the constructor CALLS it, and the call graph's
+   * edge carries the value's taint from the initialiser into the constructor.
+   *
+   * <p><b>Why a MOVE before the FIELDSTORE.</b> The store's value is a temp, and the temp is what
+   * the engine tracks. Naming it first means a later read of the field and this write refer to the
+   * same value, rather than to a temp nothing else can name.
+   *
+   * @param init the initialiser
+   * @return the function, or {@code null} when the value could not be lowered
+   */
+  private TacFunction translateFieldInitializer(FieldInitializer init) {
+    TacType type = types.map(init.declaration.tpt().tpe());
+    String name = init.functionName();
+
+    this.currentFunction = name;
+    this.currentEnclosingClass = init.ownerSimpleName;
+    this.locals.clear();
+    this.holders.clear();
+    this.degraded = false;
+
+    TacBuilder b =
+        new TacBuilder(
+            new TacBuilder.FunctionSpec(name, name + "():void", TacType.VOID), List.of());
+    b.setSourceLanguage(SourceLanguage.SCALA);
+    b.setModule(module);
+    b.setIrPrecision(IrPrecision.SOURCE_FULL);
+    b.setMemberKind(TacMemberKind.FIELD_INITIALIZER);
+    if (init.ownerSimpleName != null) {
+      setEnclosingClass(b, init.ownerSimpleName);
+    }
+    this.builder = b;
+
+    Trees.Tree<Type> rhs = init.declaration.rhs(ctx);
+    TacOperand value = translateExpr(rhs);
+    if (value == null) {
+      // The value could not be lowered. The function is still produced -- an
+      // empty one -- so the constructor's CALL has a target, and the loss is
+      // recorded rather than silent.
+      degraded = true;
+      reportLoss(
+          "scala.fieldInitializer.unmodelled",
+          "the initialiser of '" + init.ownerFqn + "." + init.field + "' was not lowered");
+    } else {
+      TacOperand.TacVar stored = builder.newTemp(type);
+      emitMove(stored, value, rhs);
+      // The receiver is the object the field belongs to, so its type is the
+      // CLASS's type -- not the field's.
+      TacType ownerType = init.ownerFqn == null ? TacType.UNKNOWN : TacType.ofClass(init.ownerFqn);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.FIELDSTORE)
+              .dest(stored)
+              .lhs1(thisReceiver(ownerType))
+              .fieldName(init.field)
+              .ownerType(init.ownerFqn)
+              .line(lineOf(rhs))
+              .build());
+    }
+
+    if (degraded) {
+      b.setIrPrecision(IrPrecision.SOURCE_LOWERED);
+    }
+    return b.build();
+  }
+
+  /**
+   * Emits the calls a constructor makes to its class's field initialisers.
+   *
+   * <p><b>Why the constructor has to make them.</b> The compiler synthesises the field assignments
+   * into the constructor's body AFTER the typer, so the body this frontend reads is empty. Without
+   * these calls the class's initialisers are not part of the program at all, and every value they
+   * carry -- a constant, a read of a parameter, a call whose result is tainted -- is invisible.
+   *
+   * @param symbol the constructor's symbol
+   * @param tree the constructor, for the source position
+   */
+  private void emitFieldInitializerCalls(Symbol symbol, Trees.Tree<Type> tree) {
+    Symbol owner = ownerSymbolOf(symbol);
+    if (owner == null) {
+      return;
+    }
+    List<FieldInitializer> inits = fieldInitializers.get(owner);
+    if (inits == null) {
+      return;
+    }
+    for (FieldInitializer init : inits) {
+      TacOperand.TacVar dest = builder.newTemp(TacType.VOID);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.CALL)
+              .dest(dest)
+              .calleeSig(init.functionName() + "/0")
+              .args(List.of())
+              .line(lineOf(tree))
+              .build());
+    }
+  }
+
+  /**
+   * The class that owns a symbol, or {@code null}.
+   *
+   * @param symbol the symbol
+   * @return the owning class
+   */
+  private Symbol ownerSymbolOf(Symbol symbol) {
+    if (symbol == null) {
+      return null;
+    }
+    try {
+      Symbol owner = symbol.denot(ctx).owner();
+      return owner;
+    } catch (RuntimeException | LinkageError ex) {
+      return null;
+    }
+  }
+
+  /**
+   * The fully qualified name of a symbol, or {@code null}.
+   *
+   * @param symbol the symbol
+   * @return the name
+   */
+  private String fqnOf(Symbol symbol) {
+    if (symbol == null) {
+      return null;
+    }
+    try {
+      String full = symbol.denot(ctx).fullName(ctx).toString();
+      return full == null || full.isEmpty() ? null : full;
+    } catch (RuntimeException | LinkageError ex) {
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------- lowering
@@ -1011,6 +1333,9 @@ final class ScalaTacTranslator {
     if (tree instanceof Trees.Match) {
       return translateMatch((Trees.Match<Type>) tree);
     }
+    if (tree instanceof Trees.Try) {
+      return translateTry((Trees.Try<Type>) tree);
+    }
     if (tree instanceof Trees.Bind) {
       return translateBind((Trees.Bind<Type>) tree);
     }
@@ -1223,6 +1548,17 @@ final class ScalaTacTranslator {
    */
   private TacOperand translateMemberAccess(
       TacOperand receiver, String name, Symbol symbol, Trees.Tree<Type> tree) {
+    // The logical negation. The compiler rewrites "!x" to "x.unary_!", and the
+    // tree is a SELECT with no argument list -- so this is reached before the
+    // "a method selected on a value is a parameterless call" branch below, which
+    // would have made it an ordinary CALL.
+    //
+    // Lowering it as a CALL would be wrong twice over: the operation's taint
+    // behaviour would never be classified, so a rule about the operation could
+    // not fire.
+    if (isNegationOperator(name)) {
+      return translateNegation(receiver, tree);
+    }
     if (symbol != null && symbol.isTerm(ctx)) {
       Type resultType = symbol.denot(ctx).info(ctx);
       // A "val" or "var" is compiled into an accessor method, but reading it is a
@@ -1321,6 +1657,13 @@ final class ScalaTacTranslator {
     Trees.Tree<Type> fun = apply.fun();
     List<Trees.Tree<Type>> args = toJavaList(apply.args());
 
+    // A string interpolation: s"text $value". The compiler builds it as a call
+    // on StringContext, and the call carries the literal parts and the values
+    // in two separate lists.
+    if (isInterpolationCall(apply)) {
+      return translateInterpolation(apply);
+    }
+
     // A constructor call: "new P(x, y)" is an Apply whose function is a Select of
     // "<init>" on a New.
     if (fun instanceof Trees.Select) {
@@ -1331,13 +1674,33 @@ final class ScalaTacTranslator {
     }
 
     // A binary operator: "a + b" is an Apply of a Select of "+" to one argument.
-    if (fun instanceof Trees.Select && args.size() == 1) {
-      Trees.Select<Type> select = (Trees.Select<Type>) fun;
-      String op = select.name().toString();
+    //
+    // The operator is not always a Select: an operator with an explicit type
+    // argument ("xs ++[Int](ys)") is a TypeApply around one, and the TypeApply
+    // has to be unwrapped before the operator's name can be read.
+    Trees.Select<Type> operator = operatorSelectOf(fun);
+    if (operator != null && args.size() == 1) {
+      String op = operator.name().toString();
+      if ("&&".equals(op) || "||".equals(op)) {
+        return translateShortCircuit(operator, args.get(0), apply, "&&".equals(op));
+      }
+      if (isNegationOperator(op)) {
+        return translateNegation(translateExpr(operator.qualifier()), apply);
+      }
+      String method = collectionOperatorMethod(op);
+      if (method != null) {
+        return translateOperatorCall(operator, args.get(0), apply, method);
+      }
       BinaryOperator binop = binaryOperator(op);
       if (binop != null) {
-        return translateBinary(binop, select, args.get(0), apply);
+        return translateBinary(binop, operator, args.get(0), apply);
       }
+    }
+
+    // "a -> b" is not a Select-based operator: the compiler builds it as an
+    // application of an application, and the operator is an Ident in the middle.
+    if (isTypeLevelOperator(operatorNameOf(fun))) {
+      return translateTypeLevelOperator(operatorNameOf(fun), fun, args, apply);
     }
 
     // An ordinary method call.
@@ -1345,22 +1708,558 @@ final class ScalaTacTranslator {
   }
 
   /**
+   * Whether a call is a string interpolation.
+   *
+   * <p>The compiler builds {@code s"text $value"} as a call on {@code StringContext}: the inner
+   * call carries the literal PARTS, and the outer one carries the VALUES. Both are sequences -- a
+   * {@code SeqLiteral}, wrapped in the type ascription the varargs carry.
+   *
+   * @param apply the call
+   * @return whether the call is an interpolation
+   */
+  private static boolean isInterpolationCall(Trees.Apply<Type> apply) {
+    return interpolationParts(apply) != null && interpolationValues(apply) != null;
+  }
+
+  /**
+   * The literal parts of a string interpolation.
+   *
+   * @param apply the call
+   * @return the parts, or {@code null} when the call is not an interpolation
+   */
+  private static Trees.SeqLiteral<Type> interpolationParts(Trees.Apply<Type> apply) {
+    Trees.Tree<Type> inner = interpolationCallee(apply);
+    if (inner == null) {
+      return null;
+    }
+    List<Trees.Tree<Type>> innerArgs = toJavaList(((Trees.Apply<Type>) inner).args());
+    if (innerArgs.size() != 1) {
+      return null;
+    }
+    return seqLiteralOf(innerArgs.get(0));
+  }
+
+  /**
+   * The interpolated values of a string interpolation.
+   *
+   * @param apply the call
+   * @return the values, or {@code null} when the call is not an interpolation
+   */
+  private static Trees.SeqLiteral<Type> interpolationValues(Trees.Apply<Type> apply) {
+    List<Trees.Tree<Type>> args = toJavaList(apply.args());
+    if (args.size() != 1) {
+      return null;
+    }
+    return seqLiteralOf(args.get(0));
+  }
+
+  /**
+   * The {@code StringContext.apply(parts)} call an interpolation is built on.
+   *
+   * @param apply the call
+   * @return the inner call, or {@code null} when the call is not an interpolation
+   */
+  private static Trees.Tree<Type> interpolationCallee(Trees.Apply<Type> apply) {
+    Trees.Tree<Type> fun = apply.fun();
+    if (!(fun instanceof Trees.Select)) {
+      return null;
+    }
+    Trees.Select<Type> select = (Trees.Select<Type>) fun;
+    // Only the "s" interpolator builds a string. The others ("f", "raw") have
+    // their own semantics and are left to the ordinary call lowering.
+    if (!"s".equals(select.name().toString())) {
+      return null;
+    }
+    Trees.Tree<Type> inner = select.qualifier();
+    if (!(inner instanceof Trees.Apply)) {
+      return null;
+    }
+    // The inner call must be the one on StringContext.
+    Trees.Tree<Type> innerFun = ((Trees.Apply<Type>) inner).fun();
+    if (!(innerFun instanceof Trees.Select)) {
+      return null;
+    }
+    if (!"apply".equals(((Trees.Select<Type>) innerFun).name().toString())) {
+      return null;
+    }
+    return inner;
+  }
+
+  /**
+   * The sequence a varargs argument carries, or {@code null}.
+   *
+   * <p>The compiler wraps a varargs argument in the type ascription the sequence's element type
+   * gives it, so the sequence is under the ascription.
+   *
+   * @param tree the argument
+   * @return the sequence, or {@code null}
+   */
+  private static Trees.SeqLiteral<Type> seqLiteralOf(Trees.Tree<Type> tree) {
+    if (tree instanceof Trees.SeqLiteral) {
+      return (Trees.SeqLiteral<Type>) tree;
+    }
+    if (tree instanceof Trees.Typed) {
+      Trees.Tree<Type> expr = ((Trees.Typed<Type>) tree).expr();
+      if (expr instanceof Trees.SeqLiteral) {
+        return (Trees.SeqLiteral<Type>) expr;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Lowers a string interpolation into a concatenation of its parts.
+   *
+   * <p><b>What the runtime does.</b> The {@code s} interpolator writes the literal parts and the
+   * values, in that order, into one string. That is what the concatenation chain says: the parts
+   * and the values, interleaved, added together.
+   *
+   * <p><b>Why the values matter.</b> An interpolated value is an ordinary expression: it can be
+   * tainted, and it can be a call with side effects. Lowering the template to a constant would have
+   * hidden both.
+   *
+   * @param apply the interpolation
+   * @return the string
+   */
+  private TacOperand translateInterpolation(Trees.Apply<Type> apply) {
+    Trees.SeqLiteral<Type> parts = interpolationParts(apply);
+    Trees.SeqLiteral<Type> values = interpolationValues(apply);
+    if (parts == null || values == null) {
+      return unknownInterpolationValue(apply);
+    }
+    List<Trees.Tree<Type>> partTrees = toJavaList(parts.elems());
+    List<Trees.Tree<Type>> valueTrees = toJavaList(values.elems());
+
+    List<TacOperand> components = new ArrayList<>();
+    for (int i = 0; i < partTrees.size(); i++) {
+      Trees.Tree<Type> partTree = partTrees.get(i);
+      // An empty literal part contributes nothing: the string it would add is
+      // the empty string.
+      if (!isEmptyStringLiteral(partTree)) {
+        TacOperand part = translateExpr(partTree);
+        if (part == null) {
+          return unknownInterpolationValue(apply);
+        }
+        components.add(part);
+      }
+      if (i < valueTrees.size()) {
+        TacOperand value = translateExpr(valueTrees.get(i));
+        if (value == null) {
+          return unknownInterpolationValue(apply);
+        }
+        components.add(value);
+      }
+    }
+    if (components.isEmpty()) {
+      return TacOperand.Const.ofString("");
+    }
+    TacOperand result = components.get(0);
+    for (int i = 1; i < components.size(); i++) {
+      result = concat(result, components.get(i), apply);
+    }
+    return result;
+  }
+
+  /**
+   * Whether a tree is a literal empty string.
+   *
+   * @param tree the tree
+   * @return whether it is the empty string
+   */
+  private static boolean isEmptyStringLiteral(Trees.Tree<Type> tree) {
+    if (!(tree instanceof Trees.Literal)) {
+      return false;
+    }
+    Object value = ((Trees.Literal<Type>) tree)._1().value();
+    return value instanceof String && ((String) value).isEmpty();
+  }
+
+  /**
+   * The value of an interpolation this frontend could not lower.
+   *
+   * @param tree the interpolation, for the source position
+   * @return an unknown value
+   */
+  private TacOperand unknownInterpolationValue(Trees.Tree<Type> tree) {
+    degraded = true;
+    reportLoss(
+        "scala.interpolation.unmodelled",
+        "could not lower a string interpolation in " + currentFunction);
+    TacOperand.TacVar unknown = builder.newTemp(TacType.UNKNOWN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.HAVOC).dest(unknown).line(lineOf(tree)).build());
+    return unknown;
+  }
+
+  /**
+   * Concatenates two values into a string.
+   *
+   * @param left the value on the left
+   * @param right the value on the right
+   * @param tree the expression, for the source position
+   * @return the concatenation
+   */
+  private TacOperand concat(TacOperand left, TacOperand right, Trees.Tree<Type> tree) {
+    TacOperand.TacVar dest = builder.newTemp(TacType.STRING);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BINOP)
+            .dest(dest)
+            .lhs1(left)
+            .lhs2(right)
+            .binop(BinaryOperator.ADD)
+            .line(lineOf(tree))
+            .build());
+    return dest;
+  }
+
+  /**
+   * The operator a call names, when the call is written as an operator.
+   *
+   * <p>An operator with an explicit type argument is a {@code TypeApply} around the {@code Select}
+   * that names it, so the wrapper is unwrapped first.
+   *
+   * @param fun the call's function
+   * @return the operator's selection, or {@code null} when the call names no operator
+   */
+  private static Trees.Select<Type> operatorSelectOf(Trees.Tree<Type> fun) {
+    Trees.Tree<Type> current = fun;
+    for (int depth = 0; depth < 4 && current != null; depth++) {
+      if (current instanceof Trees.Select) {
+        return (Trees.Select<Type>) current;
+      }
+      if (current instanceof Trees.TypeApply) {
+        current = ((Trees.TypeApply<Type>) current).fun();
+        continue;
+      }
+      return null;
+    }
+    return null;
+  }
+
+  /**
+   * The name of the method a call names, looking through the wrappers a call is written in.
+   *
+   * <p>A call may be an application of an application -- {@code "a -> b"} is one -- and the
+   * operator's name is in the middle of the chain. The chain is walked to its end, and the
+   * innermost name is the one the call is really about.
+   *
+   * @param fun the call's function
+   * @return the name, or {@code null} when the chain names nothing
+   */
+  private static String operatorNameOf(Trees.Tree<Type> fun) {
+    Trees.Tree<Type> current = fun;
+    for (int depth = 0; depth < 8 && current != null; depth++) {
+      if (current instanceof Trees.TypeApply) {
+        current = ((Trees.TypeApply<Type>) current).fun();
+        continue;
+      }
+      if (current instanceof Trees.Apply) {
+        current = ((Trees.Apply<Type>) current).fun();
+        continue;
+      }
+      if (current instanceof Trees.Select) {
+        return ((Trees.Select<Type>) current).name().toString();
+      }
+      if (current instanceof Trees.Ident) {
+        return ((Trees.Ident<Type>) current).name().toString();
+      }
+      return null;
+    }
+    return null;
+  }
+
+  /**
+   * Whether an operator name is the logical negation.
+   *
+   * <p>The compiler rewrites {@code !x} to {@code x.unary_!}, so both spellings have to be
+   * recognised.
+   *
+   * @param name the operator's name
+   * @return whether it is the negation
+   */
+  private static boolean isNegationOperator(String name) {
+    return "!".equals(name) || "unary_!".equals(name);
+  }
+
+  /**
+   * The method an operator name really is, or {@code null}.
+   *
+   * <p>{@code ::}, {@code :::} and {@code ++} are METHODS on the collections, not operators the TAC
+   * has. Lowering them as something else -- an ADD, say -- would report behaviour the program does
+   * not have, so they become CALLs to the method they name.
+   *
+   * <p>{@code ++=} is the JVM name of the method: the compiler spells it {@code $plus$plus$eq}.
+   *
+   * @param name the operator's name
+   * @return the method's name, or {@code null} when the operator is not a collection method
+   */
+  private static String collectionOperatorMethod(String name) {
+    switch (name) {
+      case "::":
+      case ":::":
+      case "++":
+        return name;
+      case "++=":
+      case "$plus$plus$eq":
+        return "$plus$plus$eq";
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Whether an operator name is a TYPE-LEVEL construct.
+   *
+   * <p>{@code ->} builds a tuple, {@code <-} is the generator of a for-comprehension, and {@code ?}
+   * is a type wildcard. None of them is an operation on values the TAC can express.
+   *
+   * @param name the operator's name
+   * @return whether the operator is type-level
+   */
+  private static boolean isTypeLevelOperator(String name) {
+    return "->".equals(name) || "<-".equals(name) || "?".equals(name);
+  }
+
+  /**
+   * Lowers {@code a && b} / {@code a || b} into a short-circuit branch.
+   *
+   * <p><b>Why not LAND / LOR.</b> The engine evaluates both sides of a binary operation, always. A
+   * Scala {@code &&} that evaluated its right operand when the left one was false would report a
+   * dereference of a null the program never performs -- as a FINDING, in code that is correct. So
+   * the operator becomes a branch chain: the right operand is only evaluated on the branch that
+   * reaches it, and the result is a temp the two branches assign.
+   *
+   * <p>This is the shape the Kotlin frontend produces for the same construct.
+   *
+   * @param select the operator's selection
+   * @param rhsTree the right operand
+   * @param tree the call, for the source position
+   * @param and whether the operator is {@code &&}
+   * @return the operator's value
+   */
+  private TacOperand translateShortCircuit(
+      Trees.Select<Type> select, Trees.Tree<Type> rhsTree, Trees.Tree<Type> tree, boolean and) {
+    TacOperand.TacVar dest = builder.newTemp(TacType.BOOLEAN);
+    String rhsLabel = builder.newLabel("scRhs");
+    String shortLabel = builder.newLabel("scShort");
+    String endLabel = builder.newLabel("scEnd");
+
+    TacOperand lhs = translateExpr(select.qualifier());
+    if (lhs == null) {
+      degraded = true;
+      reportLoss(
+          "scala.operator.unmodelled",
+          "could not lower the left operand of '"
+              + (and ? "&&" : "||")
+              + "' in "
+              + currentFunction);
+      return null;
+    }
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BRANCH)
+            .lhs1(lhs)
+            .trueLabel(and ? rhsLabel : shortLabel)
+            .falseLabel(and ? shortLabel : rhsLabel)
+            .line(lineOf(tree))
+            .build());
+
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(rhsLabel)
+            .line(lineOf(tree))
+            .build());
+    TacOperand rhs = translateExpr(rhsTree);
+    if (rhs != null) {
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.MOVE)
+              .dest(dest)
+              .lhs1(rhs)
+              .line(lineOf(tree))
+              .build());
+    }
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.JUMP)
+            .label(endLabel)
+            .line(lineOf(tree))
+            .build());
+
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(shortLabel)
+            .line(lineOf(tree))
+            .build());
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.MOVE)
+            .dest(dest)
+            .lhs1(TacOperand.Const.ofBool(!and))
+            .line(lineOf(tree))
+            .build());
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(endLabel)
+            .line(lineOf(tree))
+            .build());
+    return dest;
+  }
+
+  /**
+   * Lowers the logical negation.
+   *
+   * @param receiver the negated value
+   * @param tree the call, for the source position
+   * @return the negated value
+   */
+  private TacOperand translateNegation(TacOperand receiver, Trees.Tree<Type> tree) {
+    if (receiver == null) {
+      degraded = true;
+      reportLoss("scala.operator.unmodelled", "could not lower a negation in " + currentFunction);
+      return null;
+    }
+    TacOperand.TacVar dest = builder.newTemp(TacType.BOOLEAN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.UNARYOP)
+            .dest(dest)
+            .lhs1(receiver)
+            .unop(UnaryOperator.NOT)
+            .line(lineOf(tree))
+            .build());
+    return dest;
+  }
+
+  /**
+   * Lowers a collection operator as the CALL it really is.
+   *
+   * <p>{@code xs :: x} is {@code List.::}, {@code xs ++ ys} is {@code Seq.++}. They are methods,
+   * and the TAC's convention is that a call's receiver is its first argument -- so the receiver
+   * goes there, and the callee's name is the method's own.
+   *
+   * @param select the operator's selection
+   * @param argTree the operator's argument
+   * @param tree the call, for the source position
+   * @param method the method's name
+   * @return the call's result
+   */
+  private TacOperand translateOperatorCall(
+      Trees.Select<Type> select, Trees.Tree<Type> argTree, Trees.Tree<Type> tree, String method) {
+    TacOperand receiver = translateExpr(select.qualifier());
+    TacOperand argument = translateExpr(argTree);
+    TacOperand.TacVar dest = builder.newTemp(types.map(tree.tpe()));
+    List<TacOperand> args = new ArrayList<>();
+    // The receiver slot is always there: the engine binds a callee's formal i
+    // to args[i+1], so a call without the slot would mis-bind its arguments.
+    args.add(receiver == null ? thisReceiver(TacType.UNKNOWN) : receiver);
+    if (argument != null) {
+      args.add(argument);
+    }
+    String owner = ownerOf(select);
+    String callee = (owner == null || owner.isEmpty() ? method : owner + "." + method) + "/1";
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .dest(dest)
+            .calleeSig(callee)
+            .args(args)
+            .line(lineOf(tree))
+            .build());
+    return dest;
+  }
+
+  /**
+   * Lowers an operator that is not an operation on values.
+   *
+   * <p><b>Why nothing is emitted for the operator.</b> The operator itself is not something the TAC
+   * can express, and emitting something else would report behaviour the program does not have. The
+   * operands are still real expressions, so they are evaluated -- their effects and their taint
+   * belong in the program -- and the operator's own result is a value the analysis does not know: a
+   * {@code HAVOC}, which says "unknown" rather than "nothing".
+   *
+   * @param op the operator's name
+   * @param fun the call's function
+   * @param args the call's arguments
+   * @param tree the call, for the source position
+   * @return the operator's unknown value
+   */
+  private TacOperand translateTypeLevelOperator(
+      String op, Trees.Tree<Type> fun, List<Trees.Tree<Type>> args, Trees.Tree<Type> tree) {
+    for (Trees.Tree<Type> operand : operandsOf(fun, args)) {
+      translateExpr(operand);
+    }
+    degraded = true;
+    reportLoss(
+        "scala.operator.unmodelled",
+        "the operator '" + op + "' is type-level and was not lowered in " + currentFunction);
+    TacOperand.TacVar unknown = builder.newTemp(TacType.UNKNOWN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.HAVOC).dest(unknown).line(lineOf(tree)).build());
+    return unknown;
+  }
+
+  /**
+   * The operand expressions of a call written as a chain of applications.
+   *
+   * <p>Each application in the chain contributes its own arguments, and the chain is walked from
+   * the outside in. The operator's own application is the one whose function IS the operator, so
+   * its arguments are the operands the operator was applied to.
+   *
+   * @param fun the call's function
+   * @param args the call's arguments
+   * @return the operands
+   */
+  private static List<Trees.Tree<Type>> operandsOf(
+      Trees.Tree<Type> fun, List<Trees.Tree<Type>> args) {
+    List<Trees.Tree<Type>> out = new ArrayList<>(args);
+    Trees.Tree<Type> current = fun;
+    for (int depth = 0; depth < 8 && current != null; depth++) {
+      if (current instanceof Trees.TypeApply) {
+        current = ((Trees.TypeApply<Type>) current).fun();
+        continue;
+      }
+      if (current instanceof Trees.Apply) {
+        Trees.Apply<Type> apply = (Trees.Apply<Type>) current;
+        for (Trees.Tree<Type> arg : toJavaList(apply.args())) {
+          if (!out.contains(arg)) {
+            out.add(arg);
+          }
+        }
+        current = apply.fun();
+        continue;
+      }
+      break;
+    }
+    return out;
+  }
+
+  /**
    * The receiver of a call, or {@code null} when the call has none.
    *
-   * <p>An implicit {@code this} is not a receiver the dataflow engine tracks, so it yields {@code
-   * null}: the TAC's {@code CALL} then carries only the real arguments, exactly as a static call
-   * does.
+   * <p><b>An implicit {@code this} is not a receiver</b> the dataflow engine tracks, so it yields
+   * {@code null}: the TAC's {@code CALL} then carries only the real arguments, exactly as a static
+   * call does.
+   *
+   * <p><b>A {@code super} IS a receiver.</b> {@code super.f(x)} calls the base class's {@code f} on
+   * this object, so the object is the receiver and the TAC's convention puts it in the first
+   * argument. Without it the call had no receiver at all, and a dereference of the base class's
+   * state was invisible to the engine.
    *
    * @param fun the function being called
    * @return the receiver, or {@code null}
    */
   private TacOperand receiverOf(Trees.Tree<Type> fun) {
-    if (!(fun instanceof Trees.Select)) {
+    Trees.Tree<Type> callee = fun;
+    // An operator with an explicit type argument is a TypeApply around the
+    // Select that names it, and the receiver is under the wrapper.
+    if (callee instanceof Trees.TypeApply) {
+      callee = ((Trees.TypeApply<Type>) callee).fun();
+    }
+    if (!(callee instanceof Trees.Select)) {
       return null;
     }
-    Trees.Tree<Type> qualifier = ((Trees.Select<Type>) fun).qualifier();
+    Trees.Tree<Type> qualifier = ((Trees.Select<Type>) callee).qualifier();
     if (qualifier instanceof Trees.This) {
       return null;
+    }
+    if (qualifier instanceof Trees.Super) {
+      // The base class's member is read from this object.
+      return thisReceiver(TacType.UNKNOWN);
     }
     if (qualifier instanceof Trees.Ident) {
       String name = ((Trees.Ident<Type>) qualifier).name().toString();
@@ -1403,12 +2302,35 @@ final class ScalaTacTranslator {
 
     // The receiver, if the call has one.
     TacOperand receiver = receiverOf(fun);
-    if (receiver != null) {
-      operands.add(receiver);
+    if (receiver == null) {
+      // The slot is RESERVED even when the call is unqualified.
+      //
+      // <b>Why an implicit {@code this} IS a receiver here.</b> The engine binds a
+      // callee's formal i to args[i+1], and falls back to args[i] only when
+      // args[i+1] is out of range. A call whose first argument is the USER's
+      // first argument therefore binds formal 0 to the SECOND argument -- and
+      // formal 1 to that same second argument, because args[2] does not exist.
+      // The first argument reached NO parameter at all, and the taint in it
+      // stopped at the call boundary.
+      //
+      // Every other front end reserves the slot the same way: a static call
+      // carries the declaring type as a constant (Java, C#), a package-level
+      // call carries the package (Go), a module call carries the owner module
+      // (TypeScript). Scala's implicit receiver is this object, so this object
+      // is what the slot carries.
+      receiver = thisReceiver(TacType.UNKNOWN);
     }
+    operands.add(receiver);
 
-    for (Trees.Tree<Type> arg : args) {
-      TacOperand value = translateExpr(arg);
+    // The arguments, in the order the CALLEE declares them.
+    List<Trees.Tree<Type>> ordered = orderArguments(fun, args);
+    for (Trees.Tree<Type> arg : ordered) {
+      Trees.Tree<Type> valueTree = arg;
+      if (arg instanceof Trees.NamedArg) {
+        // A named argument carries its value one level down.
+        valueTree = ((Trees.NamedArg<Type>) arg).arg();
+      }
+      TacOperand value = translateExpr(valueTree);
       if (value != null) {
         operands.add(value);
       }
@@ -1418,7 +2340,7 @@ final class ScalaTacTranslator {
     // calling convention (it is the dispatch receiver), so `a.b(x)` has arity 1.
     // The arity is what the sink patterns' trailing `(/\d+)?` group matches against,
     // so it has to be the real argument count.
-    String callee = calleeSignature(fun, args.size());
+    String callee = calleeSignature(fun, ordered.size());
     Symbol symbol = fun.symbol(ctx);
     Type resultType = null;
     if (symbol != null) {
@@ -1444,6 +2366,105 @@ final class ScalaTacTranslator {
             .line(lineOf(tree))
             .build());
     return dest;
+  }
+
+  /**
+   * The arguments of a call, in the order the CALLEE declares them.
+   *
+   * <p><b>Why the order matters.</b> A named argument -- {@code d(a = 1, b = 3)} -- says which
+   * parameter the value belongs to. Without the names, the value was dropped: the call was emitted
+   * with NO arguments at all, and every taint that flowed through the argument was lost with it.
+   * And keeping the values in the order they were WRITTEN is not enough either: a callee whose
+   * parameters are {@code (a, b)} and a call {@code f(b = 2, a = 1)} would receive {@code (2, 1)}.
+   *
+   * <p>The declaration order comes from the compiler's own symbol: the method's type carries the
+   * parameter names in the order the method declares them. When the symbol does not resolve, the
+   * source order is kept -- an argument is never DROPPED, because dropping it would say the callee
+   * was called with fewer arguments than the source passed.
+   *
+   * @param fun the called function
+   * @param args the arguments as written
+   * @return the arguments, in the callee's order
+   */
+  private List<Trees.Tree<Type>> orderArguments(Trees.Tree<Type> fun, List<Trees.Tree<Type>> args) {
+    boolean anyNamed = false;
+    for (Trees.Tree<Type> arg : args) {
+      if (arg instanceof Trees.NamedArg) {
+        anyNamed = true;
+        break;
+      }
+    }
+    if (!anyNamed) {
+      return args;
+    }
+    List<String> declared = declaredParameterNames(fun);
+    if (declared == null || declared.isEmpty()) {
+      // The declaration order is not known: the source order is kept.
+      return args;
+    }
+    List<Trees.Tree<Type>> slots = new ArrayList<>(declared.size());
+    for (int i = 0; i < declared.size(); i++) {
+      slots.add(null);
+    }
+    List<Trees.Tree<Type>> extras = new ArrayList<>();
+    for (Trees.Tree<Type> arg : args) {
+      if (arg instanceof Trees.NamedArg) {
+        String name = ((Trees.NamedArg<Type>) arg).name().toString();
+        int index = declared.indexOf(name);
+        if (index >= 0 && slots.get(index) == null) {
+          slots.set(index, arg);
+          continue;
+        }
+        extras.add(arg);
+        continue;
+      }
+      // A positional argument fills the next free slot.
+      int index = 0;
+      while (index < slots.size() && slots.get(index) != null) {
+        index++;
+      }
+      if (index < slots.size()) {
+        slots.set(index, arg);
+      } else {
+        extras.add(arg);
+      }
+    }
+    List<Trees.Tree<Type>> out = new ArrayList<>();
+    for (Trees.Tree<Type> slot : slots) {
+      if (slot != null) {
+        out.add(slot);
+      }
+    }
+    out.addAll(extras);
+    return out;
+  }
+
+  /**
+   * The names of a called method's parameters, in the order it declares them.
+   *
+   * @param fun the called function
+   * @return the parameter names, or {@code null} when the declaration cannot be read
+   */
+  private List<String> declaredParameterNames(Trees.Tree<Type> fun) {
+    try {
+      Symbol symbol = fun.symbol(ctx);
+      if (symbol == null) {
+        return null;
+      }
+      Type info = symbol.denot(ctx).info(ctx);
+      if (!(info instanceof dotty.tools.dotc.core.Types.MethodType)) {
+        return null;
+      }
+      List<String> names = new ArrayList<>();
+      scala.collection.Iterator<TermName> it =
+          ((dotty.tools.dotc.core.Types.MethodType) info).paramNames().iterator();
+      while (it.hasNext()) {
+        names.add(it.next().toString());
+      }
+      return names;
+    } catch (RuntimeException | LinkageError ex) {
+      return null;
+    }
   }
 
   /**
@@ -1586,7 +2607,20 @@ final class ScalaTacTranslator {
     return dest;
   }
 
-  /** The TAC binary operator for a Scala operator name, or {@code null}. */
+  /**
+   * The TAC binary operator for a Scala operator name, or {@code null}.
+   *
+   * <p><b>Why {@code &&} and {@code ||} are NOT here.</b> The TAC has {@code LAND} and {@code LOR},
+   * and the engine evaluates BOTH sides of a binary operation, always. A Scala {@code &&} that
+   * evaluated its right operand when the left one was false would report a dereference of a null
+   * the program never performs -- and it would report it as a FINDING, in code that is correct. So
+   * the two logical operators are lowered as a branch chain instead, by {@link
+   * #translateShortCircuit}.
+   *
+   * <p>A name that is not in this table is not an operator the TAC can express. It is never
+   * reinterpreted as something else: an unknown operator is either a CALL to the method it names or
+   * a recorded loss.
+   */
   private static BinaryOperator binaryOperator(String name) {
     switch (name) {
       case "+":
@@ -1635,10 +2669,6 @@ final class ScalaTacTranslator {
         return BinaryOperator.GT;
       case ">=":
         return BinaryOperator.GE;
-      case "&&":
-        return BinaryOperator.LAND;
-      case "||":
-        return BinaryOperator.LOR;
       default:
         return null;
     }
@@ -1759,7 +2789,8 @@ final class ScalaTacTranslator {
       return translateFieldStore(receiver, name, value, symbol, assign);
     }
     degraded = true;
-    reportLoss("scala.assignment.unmodelled", "could not lower an assignment in " + currentFunction);
+    reportLoss(
+        "scala.assignment.unmodelled", "could not lower an assignment in " + currentFunction);
     return value;
   }
 
@@ -1795,6 +2826,12 @@ final class ScalaTacTranslator {
    * {@code JUMP} past the "else" block, and a merge label at the end. The "else" block is emitted
    * between the "then" block's jump and the merge label, so the control flow is: true -> then ->
    * jump to end; false -> else -> fall through to end.
+   *
+   * <p><b>Why there is a result.</b> A Scala {@code if} is an EXPRESSION: {@code val x = if (c) a
+   * else b} binds {@code x} to the value of the arm that ran. Lowering it to a branch with no value
+   * lost both arms' values -- {@code x} was bound to nothing, and every taint that flowed through
+   * either arm stopped at the branch. So the arms assign a result temp, and the temp is what the
+   * expression produces.
    */
   private TacOperand translateIf(Trees.If<Type> ifTree) {
     String thenLabel = builder.newLabel("then");
@@ -1815,18 +2852,54 @@ final class ScalaTacTranslator {
             .line(lineOf(ifTree))
             .build());
 
+    // The value of the whole expression.
+    TacOperand.TacVar dest = builder.newTemp(types.map(ifTree.tpe()));
+
     builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(thenLabel).build());
-    translateStatement(ifTree.thenp());
+    TacOperand thenValue = lowerArmValue(ifTree.thenp());
+    if (thenValue != null) {
+      emitMove(dest, thenValue, ifTree);
+    }
     builder.emit(TacInstruction.builder(TacInstruction.Kind.JUMP).label(endLabel).build());
 
     builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(elseLabel).build());
     Trees.Tree<Type> elsep = ifTree.elsep();
     if (elsep != null && !(elsep instanceof Trees.EmptyTree)) {
-      translateStatement(elsep);
+      TacOperand elseValue = lowerArmValue(elsep);
+      if (elseValue != null) {
+        emitMove(dest, elseValue, ifTree);
+      }
     }
 
     builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(endLabel).build());
-    return null;
+    return dest;
+  }
+
+  /**
+   * Lowers one arm of an {@code if} and returns the arm's value.
+   *
+   * <p><b>Why an arm is not always a value.</b> An arm may be a statement -- {@code if (c) x = 1
+   * else y = 2} -- and a statement produces no value. The result temp is then left unassigned on
+   * that path, which is the honest answer: the path produces nothing, and the TAC says so by not
+   * assigning anything.
+   *
+   * @param arm the arm
+   * @return the arm's value, or {@code null} when the arm is a statement
+   */
+  private TacOperand lowerArmValue(Trees.Tree<Type> arm) {
+    if (arm == null || arm instanceof Trees.EmptyTree) {
+      return null;
+    }
+    if (arm instanceof Trees.ValDef) {
+      // A definition is a statement: it binds a name and produces Unit.
+      translateValDef((Trees.ValDef<Type>) arm);
+      return null;
+    }
+    if (arm instanceof Trees.DefDef) {
+      // A local definition: the compiler generates a separate function for it.
+      return null;
+    }
+    return translateExpr(arm);
   }
 
   /**
@@ -1845,7 +2918,8 @@ final class ScalaTacTranslator {
     TacOperand cond = translateExpr(whileTree.cond());
     if (cond == null) {
       degraded = true;
-      reportLoss("scala.while.condition", "could not lower a while-condition in " + currentFunction);
+      reportLoss(
+          "scala.while.condition", "could not lower a while-condition in " + currentFunction);
       return null;
     }
     builder.emit(
@@ -1862,6 +2936,281 @@ final class ScalaTacTranslator {
 
     builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(endLabel).build());
     return null;
+  }
+
+  /** What kind of pattern a case carries. */
+  private enum PatternKind {
+    /** A type test: "case s: String". */
+    TYPED,
+    /** A constant: "case 1". */
+    CONSTANT,
+    /** A binding: "case x". It matches anything, and names the selector. */
+    BINDING,
+    /** A tuple: "case (a, b)". */
+    TUPLE,
+    /** An extractor: "case Point(a, b)". */
+    EXTRACTOR,
+    /** An alternative: "case 1 | 2". */
+    ALTERNATIVE,
+    /** A sequence: "case Seq(a, b, rest*)". */
+    SEQUENCE,
+    /** The wildcard: "case _". */
+    WILDCARD,
+    /** A pattern this frontend cannot classify. */
+    UNKNOWN
+  }
+
+  /**
+   * A classified case pattern.
+   *
+   * <p>The compiler's own shapes say what a pattern is, and this holds the answer: the kind, the
+   * name the pattern binds, the constant it matches, the type it tests, and the parts it pulls out
+   * of the matched value.
+   */
+  private static final class MatchPattern {
+
+    /** What the pattern is. */
+    private final PatternKind kind;
+
+    /** The name the pattern binds at its own level, or {@code null}. */
+    private String binding;
+
+    /** The type of the bound name, or {@code null}. */
+    private Type bindingType;
+
+    /** The constant a CONSTANT pattern matches, or {@code null}. */
+    private final Trees.Tree<Type> constant;
+
+    /** The type a TYPED, TUPLE, EXTRACTOR or SEQUENCE pattern tests, or {@code null}. */
+    private final Type testedType;
+
+    /** The extractor call of an EXTRACTOR pattern, or {@code null}. */
+    private final Trees.Tree<Type> extractor;
+
+    /** The sub-patterns of a TUPLE, EXTRACTOR or SEQUENCE pattern. */
+    private final List<Trees.Tree<Type>> parts;
+
+    /** The alternatives of an ALTERNATIVE pattern. */
+    private final List<Trees.Tree<Type>> alternatives;
+
+    private MatchPattern(
+        PatternKind kind,
+        String binding,
+        Type bindingType,
+        Trees.Tree<Type> constant,
+        Type testedType,
+        Trees.Tree<Type> extractor,
+        List<Trees.Tree<Type>> parts,
+        List<Trees.Tree<Type>> alternatives) {
+      this.kind = kind;
+      this.binding = binding;
+      this.bindingType = bindingType;
+      this.constant = constant;
+      this.testedType = testedType;
+      this.extractor = extractor;
+      this.parts = parts;
+      this.alternatives = alternatives;
+    }
+
+    static MatchPattern typed(String binding, Type bindingType, Type testedType) {
+      return new MatchPattern(
+          PatternKind.TYPED, binding, bindingType, null, testedType, null, List.of(), List.of());
+    }
+
+    static MatchPattern constant(String binding, Type bindingType, Trees.Tree<Type> constant) {
+      return new MatchPattern(
+          PatternKind.CONSTANT, binding, bindingType, constant, null, null, List.of(), List.of());
+    }
+
+    static MatchPattern binding(String binding, Type bindingType) {
+      return new MatchPattern(
+          PatternKind.BINDING, binding, bindingType, null, null, null, List.of(), List.of());
+    }
+
+    static MatchPattern tuple(List<Trees.Tree<Type>> parts, Type testedType) {
+      return new MatchPattern(
+          PatternKind.TUPLE, null, null, null, testedType, null, parts, List.of());
+    }
+
+    static MatchPattern extractor(
+        Trees.Tree<Type> extractor, List<Trees.Tree<Type>> parts, Type testedType) {
+      return new MatchPattern(
+          PatternKind.EXTRACTOR, null, null, null, testedType, extractor, parts, List.of());
+    }
+
+    static MatchPattern sequence(List<Trees.Tree<Type>> parts, Type testedType) {
+      return new MatchPattern(
+          PatternKind.SEQUENCE, null, null, null, testedType, null, parts, List.of());
+    }
+
+    static MatchPattern alternative(List<Trees.Tree<Type>> alternatives) {
+      return new MatchPattern(
+          PatternKind.ALTERNATIVE, null, null, null, null, null, List.of(), alternatives);
+    }
+
+    static MatchPattern wildcard() {
+      return new MatchPattern(
+          PatternKind.WILDCARD, null, null, null, null, null, List.of(), List.of());
+    }
+
+    static MatchPattern unknown() {
+      return new MatchPattern(
+          PatternKind.UNKNOWN, null, null, null, null, null, List.of(), List.of());
+    }
+  }
+
+  /**
+   * Lowers a {@code try} expression.
+   *
+   * <p><b>The shape is the Java frontend's, copied exactly.</b> The try body, then a {@code LABEL}
+   * and a {@code CATCH_HANDLER} per catch clause, then the {@code FINALLY_ENTER} marker and the
+   * finalizer -- and a {@code TryRegion}, which is what tells the CFG builder where the exception
+   * edges go. A catch handler's parameter is the {@code CATCH_HANDLER}'s {@code dest}, and the
+   * caught type is its {@code ctorType}.
+   *
+   * <p>Without this, a Scala {@code try} was not lowered at all: the whole construct fell into the
+   * "unrecognised expression" branch, so the catch handlers' bodies and the finalizer were not in
+   * the program, and the code after the {@code try} was not either.
+   *
+   * @param tryTree the try expression
+   * @return the value of the try, or of the catch that ran
+   */
+  private TacOperand translateTry(Trees.Try<Type> tryTree) {
+    // The value of the whole expression. A Scala "try" is an expression, and the
+    // body that ran -- the try's or a catch's -- is what produced the value.
+    TacOperand.TacVar dest = builder.newTemp(types.map(tryTree.tpe()));
+
+    // The try body.
+    int tryStart = builder.instructions().size();
+    TacOperand bodyValue = lowerArmValue(tryTree.expr());
+    if (bodyValue != null) {
+      emitMove(dest, bodyValue, tryTree);
+    }
+    int tryEnd = builder.instructions().size() - 1;
+
+    // The catch clauses.
+    List<String> catchLabels = new ArrayList<>();
+    int firstCatchStart = -1;
+    int lastCatchEnd = -1;
+    for (Trees.CaseDef<Type> clause : toJavaList(tryTree.cases())) {
+      Type caughtType = caughtTypeOf(clause);
+      String labelName = builder.newLabel("L_CATCH_" + simpleTypeName(types.map(caughtType)));
+      catchLabels.add(labelName);
+      if (firstCatchStart < 0) {
+        firstCatchStart = builder.instructions().size();
+      }
+      // The LABEL comes first, so the label-name-based tooling keeps working.
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.LABEL)
+              .label(labelName)
+              .line(lineOf(clause))
+              .build());
+      TacOperand.TacVar parameter = catchParameter(clause, caughtType);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.CATCH_HANDLER)
+              .dest(parameter)
+              .ctorType(types.map(caughtType))
+              .line(lineOf(clause))
+              .build());
+      TacOperand catchValue = translateCaseBody(clause);
+      if (catchValue != null) {
+        emitMove(dest, catchValue, clause);
+      }
+      lastCatchEnd = builder.instructions().size() - 1;
+    }
+
+    // The finally block.
+    String finallyLabel = null;
+    int finallyStart = -1;
+    int finallyEnd = -1;
+    Trees.Tree<Type> finalizer = tryTree.finalizer();
+    if (finalizer != null && !(finalizer instanceof Trees.EmptyTree)) {
+      finallyLabel = builder.newLabel("L_FINALLY");
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.LABEL)
+              .label(finallyLabel)
+              .line(lineOf(finalizer))
+              .build());
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.FINALLY_ENTER)
+              .label(finallyLabel)
+              .line(lineOf(finalizer))
+              .build());
+      finallyStart = builder.instructions().size();
+      translateStatement(finalizer);
+      finallyEnd = builder.instructions().size() - 1;
+    }
+
+    // The region, so the CFG builder can add the exception-flow edges.
+    if (tryStart <= tryEnd) {
+      builder.recordTryRegion(
+          new TacFunction.TryRegion(
+              tryStart,
+              tryEnd,
+              firstCatchStart,
+              lastCatchEnd,
+              catchLabels,
+              finallyLabel,
+              finallyStart,
+              finallyEnd));
+    }
+    return dest;
+  }
+
+  /**
+   * The type a catch clause catches, or {@code null}.
+   *
+   * <p>The clause's pattern is a binding of the exception's name to a typed scrutinee: {@code "case
+   * e: IOException =>"} is {@code Bind(e, Typed(_, IOException))}.
+   *
+   * @param clause the catch clause
+   * @return the caught type
+   */
+  private Type caughtTypeOf(Trees.CaseDef<Type> clause) {
+    Trees.Tree<Type> pattern = clause.pat();
+    if (pattern instanceof Trees.Bind) {
+      pattern = ((Trees.Bind<Type>) pattern).body();
+    }
+    if (pattern instanceof Trees.Typed) {
+      return ((Trees.Typed<Type>) pattern).tpt().tpe();
+    }
+    return null;
+  }
+
+  /**
+   * The variable a catch clause binds the caught exception to.
+   *
+   * @param clause the catch clause
+   * @param caughtType the caught type
+   * @return the parameter
+   */
+  private TacOperand.TacVar catchParameter(Trees.CaseDef<Type> clause, Type caughtType) {
+    String name = boundName(clause.pat());
+    if (name == null || name.isEmpty()) {
+      name = "exc";
+    }
+    TacOperand.TacVar parameter = new TacOperand.TacVar(name, types.map(caughtType), false);
+    locals.put(name, parameter);
+    builder.addLocal(parameter);
+    return parameter;
+  }
+
+  /**
+   * The short name of a type, for a label.
+   *
+   * @param type the type
+   * @return the name without its package
+   */
+  private static String simpleTypeName(TacType type) {
+    if (type == null || type.kind() != TacType.Kind.CLASS) {
+      return "";
+    }
+    String name = type.className();
+    if (name == null || name.isEmpty()) {
+      return "";
+    }
+    int dot = name.lastIndexOf('.');
+    return dot < 0 ? name : name.substring(dot + 1);
   }
 
   /**
@@ -1886,8 +3235,11 @@ final class ScalaTacTranslator {
    * follows it. The false edge of a test goes to the next case, not to the end -- that is what
    * makes it a chain rather than a series of independent tests.
    *
-   * <p>A wildcard case matches everything, so it has no test: its body is emitted directly and the
-   * chain ends there.
+   * <p><b>Why the pattern kinds matter.</b> Every pattern that was neither a type test nor a
+   * constant used to fall into the "wildcard" branch, and a wildcard matches unconditionally AND
+   * ends the chain. So {@code case Point(x, y) =>} swallowed every case after it: the rest of the
+   * match was never lowered at all. Each kind is now classified and lowered on its own, and no case
+   * is dropped.
    *
    * <p><b>Why the function's precision is downgraded.</b> The {@code match} is lowered away: the
    * branch chain says which case runs, but it does not carry the pattern's binding information the
@@ -1901,10 +3253,16 @@ final class ScalaTacTranslator {
     // The gap is RECORDED, not only flagged. A degraded function whose degradation is
     // invisible produces findings that look exactly as complete as a fully lowered one --
     // and the degradation is the whole point of the flag.
+    //
+    // What the lowering DOES reproduce: the pattern's type test, its constant test, its
+    // bindings, an extractor's own call, and a guard. What it does NOT reproduce is the
+    // compiler's own decision tree: the cases are a branch chain, so a match's
+    // EXHAUSTIVENESS is not decided, and a checker must not read "the match always
+    // matches" into a function whose matcher may not.
     reportLoss(
-        "scala.match.bindings",
-        "a pattern match was lowered as a branch chain without its pattern bindings in "
-            + currentFunction);
+        "scala.match.shape",
+        "a pattern match was lowered as a branch chain in " + currentFunction
+            + "; its bindings are lowered, but the match's exhaustiveness is not decided");
 
     TacOperand selector = translateExpr(match.selector());
     if (selector == null) {
@@ -1923,84 +3281,77 @@ final class ScalaTacTranslator {
       caseLabels.add(builder.newLabel("matchCase"));
     }
 
+    // The value of the whole match. A Scala "match" is an expression, and the case
+    // that ran is what produced the value.
+    TacOperand.TacVar dest = builder.newTemp(types.map(match.tpe()));
+
     for (int i = 0; i < cases.size(); i++) {
       Trees.CaseDef<Type> caseDef = cases.get(i);
-      Trees.Tree<Type> pattern = caseDef.pat();
       String bodyLabel = caseLabels.get(i);
       // The case after this one, or the end of the match.
       String nextLabel = i + 1 < cases.size() ? caseLabels.get(i + 1) : endLabel;
 
-      // A typed pattern ("case s: String =>") tests the selector's runtime type.
-      Type testedType = testedTypeOf(pattern);
-      if (testedType != null) {
-        TacType type = types.map(testedType);
-        TacOperand.TacVar test = builder.newTemp(TacType.BOOLEAN);
-        builder.emit(
-            TacInstruction.builder(TacInstruction.Kind.INSTANCEOF)
-                .dest(test)
-                .lhs1(selector)
-                .ctorType(type)
-                .line(lineOf(caseDef))
-                .build());
-        builder.emit(
-            TacInstruction.builder(TacInstruction.Kind.BRANCH)
-                .lhs1(test)
-                .trueLabel(bodyLabel)
-                .falseLabel(nextLabel)
-                .line(lineOf(caseDef))
-                .build());
-        builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(bodyLabel).build());
+      MatchPattern pattern = classifyPattern(caseDef.pat());
+      Trees.Tree<Type> guard = caseDef.guard();
+      boolean hasGuard = guard != null && !(guard instanceof Trees.EmptyTree);
 
-        // The pattern's binding: "s" receives the selector narrowed to the tested
-        // type. The narrowing itself is not expressible in the TAC, so the binding
-        // is a plain move -- which is why the precision is downgraded.
-        String bound = boundName(pattern);
-        if (bound != null && !"_".equals(bound)) {
-          TacOperand.TacVar target = new TacOperand.TacVar(bound, type, false);
-          locals.put(bound, target);
-          builder.addLocal(target);
-          emitMove(target, selector, caseDef);
-        }
-      } else {
-        // A constant pattern ("case 1 =>") compares the selector against a value.
-        Trees.Tree<Type> constant = constantOf(pattern);
-        if (constant == null) {
-          // A wildcard case: it matches everything, so there is no test. Its body is
-          // emitted directly and the chain ends there. The label is still emitted,
-          // because the previous case's false edge names it.
+      // A wildcard matches everything, so the chain ends there -- unless it carries
+      // a guard, in which case a guard that fails falls through to the next case
+      // and the chain continues.
+      boolean endsChain = pattern.kind == PatternKind.WILDCARD && !hasGuard;
+
+      switch (pattern.kind) {
+        case TYPED:
+          emitTypeTest(pattern, pattern.testedType, selector, caseDef, bodyLabel, nextLabel);
+          break;
+        case CONSTANT:
+          emitConstantTest(pattern, selector, caseDef, bodyLabel, nextLabel);
+          break;
+        case BINDING:
+          emitBindingCase(pattern, selector, caseDef, bodyLabel);
+          break;
+        case TUPLE:
+          {
+            // The tuple's type is the type its extractor matches, which the compiler
+            // writes down only when it differs from the scrutinee's type.
+            Type matchedType = resolvedMatchedType(pattern);
+            if (matchedType == null) {
+              emitUnknownPattern(caseDef, bodyLabel, nextLabel);
+              break;
+            }
+            emitTypeTest(pattern, matchedType, selector, caseDef, bodyLabel, nextLabel);
+            bindProductParts(pattern.parts, selector, caseDef);
+            break;
+          }
+        case EXTRACTOR:
+          emitExtractorTest(pattern, selector, caseDef, bodyLabel, nextLabel);
+          break;
+        case SEQUENCE:
+          {
+            Type matchedType = resolvedMatchedType(pattern);
+            if (matchedType == null) {
+              emitUnknownPattern(caseDef, bodyLabel, nextLabel);
+              break;
+            }
+            emitTypeTest(pattern, matchedType, selector, caseDef, bodyLabel, nextLabel);
+            bindSequenceParts(pattern.parts, selector, caseDef);
+            break;
+          }
+        case ALTERNATIVE:
+          emitAlternativeTest(pattern, selector, caseDef, bodyLabel, nextLabel);
+          break;
+        case WILDCARD:
+          // No test: the case matches everything.
           builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(bodyLabel).build());
-          translateCaseBody(caseDef);
-          builder.emit(TacInstruction.builder(TacInstruction.Kind.JUMP).label(endLabel).build());
-          builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(endLabel).build());
-          return null;
-        }
-        TacOperand expected = translateExpr(constant);
-        if (expected == null) {
-          continue;
-        }
-        TacOperand.TacVar test = builder.newTemp(TacType.BOOLEAN);
-        builder.emit(
-            TacInstruction.builder(TacInstruction.Kind.BINOP)
-                .dest(test)
-                .lhs1(selector)
-                .lhs2(expected)
-                .binop(BinaryOperator.EQ)
-                .line(lineOf(caseDef))
-                .build());
-        builder.emit(
-            TacInstruction.builder(TacInstruction.Kind.BRANCH)
-                .lhs1(test)
-                .trueLabel(bodyLabel)
-                .falseLabel(nextLabel)
-                .line(lineOf(caseDef))
-                .build());
-        builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(bodyLabel).build());
+          break;
+        default:
+          emitUnknownPattern(caseDef, bodyLabel, nextLabel);
+          break;
       }
 
       // The case's guard, if it has one. A guard that fails falls through to the
       // next case.
-      Trees.Tree<Type> guard = caseDef.guard();
-      if (guard != null && !(guard instanceof Trees.EmptyTree)) {
+      if (hasGuard) {
         TacOperand guardValue = translateExpr(guard);
         if (guardValue != null) {
           String guardLabel = builder.newLabel("matchGuard");
@@ -2015,40 +3366,874 @@ final class ScalaTacTranslator {
         }
       }
 
-      translateCaseBody(caseDef);
+      TacOperand caseValue = translateCaseBody(caseDef);
+      if (caseValue != null) {
+        emitMove(dest, caseValue, caseDef);
+      }
       builder.emit(TacInstruction.builder(TacInstruction.Kind.JUMP).label(endLabel).build());
+
+      if (endsChain) {
+        break;
+      }
     }
 
     builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(endLabel).build());
-    return null;
-  }
-
-  /** Lowers a case's body. */
-  private void translateCaseBody(Trees.CaseDef<Type> caseDef) {
-    Trees.Tree<Type> body = caseDef.body();
-    if (body instanceof Trees.Block) {
-      translateBlock((Trees.Block<Type>) body);
-      return;
-    }
-    translateStatement(body);
+    return dest;
   }
 
   /**
-   * The type a pattern tests, or {@code null} when the pattern does not test a type.
+   * Emits the test of a pattern that tests a TYPE: "case s: String", "case (a, b)".
    *
-   * <p>A typed pattern is a {@code Bind} whose body is a {@code Typed} scrutinee: {@code "case s:
-   * String =>"} is {@code Bind(s, Typed(_, String))}.
+   * <p>The test is the selector's runtime type, and the false edge goes to the next case.
+   *
+   * @param pattern the pattern
+   * @param selector the value being matched
+   * @param caseDef the case, for the source position
+   * @param bodyLabel the label the case's body starts at
+   * @param nextLabel the label the next case starts at
    */
-  private Type testedTypeOf(Trees.Tree<Type> pattern) {
-    Trees.Tree<Type> tested = pattern;
-    if (tested instanceof Trees.Bind) {
-      tested = ((Trees.Bind<Type>) tested).body();
+  private void emitTypeTest(
+      MatchPattern pattern,
+      Type testedType,
+      TacOperand selector,
+      Trees.CaseDef<Type> caseDef,
+      String bodyLabel,
+      String nextLabel) {
+    TacType type = testedType == null ? TacType.UNKNOWN : types.map(testedType);
+    TacOperand.TacVar test = builder.newTemp(TacType.BOOLEAN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.INSTANCEOF)
+            .dest(test)
+            .lhs1(selector)
+            .ctorType(type)
+            .line(lineOf(caseDef))
+            .build());
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BRANCH)
+            .lhs1(test)
+            .trueLabel(bodyLabel)
+            .falseLabel(nextLabel)
+            .line(lineOf(caseDef))
+            .build());
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(bodyLabel).build());
+
+    // The pattern's binding: "s" receives the selector narrowed to the tested
+    // type. The narrowing itself is not expressible in the TAC, so the binding
+    // is a plain move -- which is why the precision is downgraded.
+    bindPatternVariable(
+        pattern.binding,
+        pattern.bindingType == null ? type : types.map(pattern.bindingType),
+        selector,
+        caseDef);
+  }
+
+  /**
+   * Emits the test of a CONSTANT pattern: "case 1" and "case y @ 1".
+   *
+   * @param pattern the pattern
+   * @param selector the value being matched
+   * @param caseDef the case, for the source position
+   * @param bodyLabel the label the case's body starts at
+   * @param nextLabel the label the next case starts at
+   */
+  private void emitConstantTest(
+      MatchPattern pattern,
+      TacOperand selector,
+      Trees.CaseDef<Type> caseDef,
+      String bodyLabel,
+      String nextLabel) {
+    TacOperand expected = translateExpr(pattern.constant);
+    if (expected == null) {
+      // The constant could not be lowered. The case still has to run, and the chain
+      // must not break, so the case is emitted on an unknown condition.
+      emitUnknownPattern(caseDef, bodyLabel, nextLabel);
+      return;
     }
-    if (tested instanceof Trees.Typed) {
-      Trees.Typed<Type> typed = (Trees.Typed<Type>) tested;
-      return typed.tpt().tpe();
+    TacOperand.TacVar test = builder.newTemp(TacType.BOOLEAN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BINOP)
+            .dest(test)
+            .lhs1(selector)
+            .lhs2(expected)
+            .binop(BinaryOperator.EQ)
+            .line(lineOf(caseDef))
+            .build());
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BRANCH)
+            .lhs1(test)
+            .trueLabel(bodyLabel)
+            .falseLabel(nextLabel)
+            .line(lineOf(caseDef))
+            .build());
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(bodyLabel).build());
+
+    // A named constant ("case y @ 1") binds the selector once the constant matched.
+    bindPatternVariable(
+        pattern.binding,
+        pattern.bindingType == null ? TacType.UNKNOWN : types.map(pattern.bindingType),
+        selector,
+        caseDef);
+  }
+
+  /**
+   * Emits a BINDING pattern: "case x".
+   *
+   * <p>It matches anything, so there is no test: the name is bound and the body runs. The chain is
+   * NOT ended -- a binding pattern whose guard fails falls through to the next case, exactly as any
+   * other case does.
+   *
+   * @param pattern the pattern
+   * @param selector the value being matched
+   * @param caseDef the case, for the source position
+   * @param bodyLabel the label the case's body starts at
+   */
+  private void emitBindingCase(
+      MatchPattern pattern, TacOperand selector, Trees.CaseDef<Type> caseDef, String bodyLabel) {
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(bodyLabel).build());
+    bindPatternVariable(
+        pattern.binding,
+        pattern.bindingType == null ? TacType.UNKNOWN : types.map(pattern.bindingType),
+        selector,
+        caseDef);
+  }
+
+  /**
+   * Emits the test of an EXTRACTOR pattern: "case Point(a, b)".
+   *
+   * <p><b>The type test comes first.</b> The compiler's own shape is: the selector has to have the
+   * matched type, and only then is the extractor's own call made. So the lowering is a type test, a
+   * branch to the case's body or to the next case, and -- on the path where the type matched -- the
+   * extractor's own call.
+   *
+   * <p><b>Three shapes after the type test, decided by the extractor's own result type.</b> An
+   * extractor that returns an {@code Option} -- the usual shape for a general extractor -- is asked
+   * whether the Option is defined, and the parts are read from the Option's content. An extractor
+   * that returns the product ITSELF -- the shape the compiler gives a case class -- has its parts
+   * read from the product. An extractor that returns the CONTENT -- the shape of an extractor whose
+   * {@code unapply} yields the matched value -- has its parts read from the content.
+   *
+   * <p><b>Why the result type decides.</b> A case class's {@code unapply} returns the case class,
+   * not an {@code Option}: asking such a value whether it is defined would be a call to a method
+   * the class does not have, and a wrong call is worse than a missing one.
+   *
+   * @param pattern the pattern
+   * @param selector the value being matched
+   * @param caseDef the case, for the source position
+   * @param bodyLabel the label the case's body starts at
+   * @param nextLabel the label the next case starts at
+   */
+  private void emitExtractorTest(
+      MatchPattern pattern,
+      TacOperand selector,
+      Trees.CaseDef<Type> caseDef,
+      String bodyLabel,
+      String nextLabel) {
+    Type matchedType = resolvedMatchedType(pattern);
+    if (matchedType == null) {
+      // Neither the pattern's type nor the extractor's own parameter is known, so
+      // the pattern's shape is not either.
+      emitUnknownPattern(caseDef, bodyLabel, nextLabel);
+      return;
     }
-    return null;
+    Type resultType = extractorResultType(pattern);
+
+    // The type test comes FIRST. The compiler's own shape is: the selector has
+    // to have the matched type, and only then is the extractor's own call made.
+    // The call therefore never runs on a value the pattern cannot match.
+    String typeOkLabel = builder.newLabel("matchExtractType");
+    emitTypeTest(pattern, matchedType, selector, caseDef, typeOkLabel, nextLabel);
+
+    if (resultType != null && isOptionType(resultType)) {
+      emitOptionExtractorTest(pattern, selector, caseDef, bodyLabel, nextLabel);
+      return;
+    }
+    if (resultType == null || sameType(resultType, matchedType)) {
+      // A product extractor: the pattern matches instances of the product, and the
+      // parts are the product's own fields.
+      builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(bodyLabel).build());
+      bindProductParts(pattern.parts, selector, caseDef);
+      return;
+    }
+    // The extractor returns the CONTENT itself. The pattern still tests the
+    // selector's type, and the content is what the parts are read from.
+    TacOperand content = callExtractor(pattern, selector, caseDef);
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(bodyLabel).build());
+    if (content != null) {
+      bindExtractedParts(pattern.parts, content, caseDef);
+    }
+  }
+
+  /**
+   * The type a pattern tests: the type the pattern wrote down, or -- when it wrote none -- the
+   * extractor's own first parameter.
+   *
+   * <p>The compiler writes the type down as an ascription only when it differs from the scrutinee's
+   * type; when it does not, the extractor's own parameter is the only place the matched type is
+   * written.
+   *
+   * @param pattern the pattern
+   * @return the matched type, or {@code null} when it cannot be read
+   */
+  private Type resolvedMatchedType(MatchPattern pattern) {
+    if (pattern.testedType != null) {
+      return pattern.testedType;
+    }
+    return extractorMatchedType(pattern);
+  }
+
+  /**
+   * Binds the parts an extractor produced.
+   *
+   * <p><b>Why one part is the content itself.</b> When the extractor yields a single value, that
+   * value IS the part -- "case Some(v)" binds {@code v} to the option's content, not to a field of
+   * it. Several parts are the fields of a product, and they are read as such.
+   *
+   * @param parts the pattern's sub-patterns
+   * @param content the extracted value
+   * @param tree the case, for the source position
+   */
+  private void bindExtractedParts(
+      List<Trees.Tree<Type>> parts, TacOperand content, Trees.Tree<Type> tree) {
+    if (parts.size() == 1) {
+      bindPatternVariable(boundName(parts.get(0)), partType(parts.get(0)), content, tree);
+      return;
+    }
+    bindProductParts(parts, content, tree);
+  }
+
+  /**
+   * Calls an extractor's own method.
+   *
+   * @param pattern the pattern
+   * @param selector the value being matched
+   * @param caseDef the case, for the source position
+   * @return the extracted value
+   */
+  private TacOperand callExtractor(
+      MatchPattern pattern, TacOperand selector, Trees.CaseDef<Type> caseDef) {
+    String owner = ownerOf(pattern.extractor);
+    String unapply = (owner == null || owner.isEmpty() ? "unapply" : owner + ".unapply") + "/1";
+    TacOperand.TacVar result = builder.newTemp(TacType.UNKNOWN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .dest(result)
+            .calleeSig(unapply)
+            .args(List.of(selector))
+            .line(lineOf(caseDef))
+            .build());
+    return result;
+  }
+
+  /**
+   * Emits the test of an extractor that returns an {@code Option}.
+   *
+   * <p>The type test has already been emitted by the caller: this runs on the path where the
+   * selector had the matched type, and it asks the Option whether it is defined. The parts are read
+   * from the Option's content.
+   *
+   * <p><b>Why this shape.</b> It is the compiler's own: Scala 3's {@code Some.unapply} and {@code
+   * Tuple2.unapply} both yield an {@code Option}, and the pattern matches when that Option is
+   * defined.
+   *
+   * @param pattern the pattern
+   * @param selector the value being matched
+   * @param caseDef the case, for the source position
+   * @param bodyLabel the label the case's body starts at
+   * @param nextLabel the label the next case starts at
+   */
+  private void emitOptionExtractorTest(
+      MatchPattern pattern,
+      TacOperand selector,
+      Trees.CaseDef<Type> caseDef,
+      String bodyLabel,
+      String nextLabel) {
+    TacOperand option = callExtractor(pattern, selector, caseDef);
+
+    TacOperand.TacVar defined = builder.newTemp(TacType.BOOLEAN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .dest(defined)
+            .calleeSig("scala.Option.isDefined/1")
+            .args(List.of(option))
+            .line(lineOf(caseDef))
+            .build());
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BRANCH)
+            .lhs1(defined)
+            .trueLabel(bodyLabel)
+            .falseLabel(nextLabel)
+            .line(lineOf(caseDef))
+            .build());
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(bodyLabel).build());
+
+    // The content of the Option holds the parts. The content is read only on the
+    // branch where the Option is defined, which is the branch the body runs on.
+    TacOperand.TacVar content = builder.newTemp(TacType.UNKNOWN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.CALL)
+            .dest(content)
+            .calleeSig("scala.Option.get/1")
+            .args(List.of(option))
+            .line(lineOf(caseDef))
+            .build());
+
+    bindExtractedParts(pattern.parts, content, caseDef);
+  }
+
+  /**
+   * Emits the test of an ALTERNATIVE pattern: "case 1 | 2".
+   *
+   * <p><b>One test.</b> The pattern matches when the selector equals ANY of the alternatives, so
+   * the test is the alternatives' comparisons OR-ed together. A chain of tests would be wrong: the
+   * second alternative would only be tried when the first one failed, and the case would run on the
+   * wrong path.
+   *
+   * @param pattern the pattern
+   * @param selector the value being matched
+   * @param caseDef the case, for the source position
+   * @param bodyLabel the label the case's body starts at
+   * @param nextLabel the label the next case starts at
+   */
+  private void emitAlternativeTest(
+      MatchPattern pattern,
+      TacOperand selector,
+      Trees.CaseDef<Type> caseDef,
+      String bodyLabel,
+      String nextLabel) {
+    TacOperand test = null;
+    for (Trees.Tree<Type> alternative : pattern.alternatives) {
+      TacOperand expected = translateExpr(alternative);
+      if (expected == null) {
+        // One of the alternatives could not be lowered, so the test as a whole is
+        // unknown: the case is emitted on an unknown condition.
+        emitUnknownPattern(caseDef, bodyLabel, nextLabel);
+        return;
+      }
+      TacOperand.TacVar equals = builder.newTemp(TacType.BOOLEAN);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.BINOP)
+              .dest(equals)
+              .lhs1(selector)
+              .lhs2(expected)
+              .binop(BinaryOperator.EQ)
+              .line(lineOf(caseDef))
+              .build());
+      if (test == null) {
+        test = equals;
+        continue;
+      }
+      TacOperand.TacVar either = builder.newTemp(TacType.BOOLEAN);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.BINOP)
+              .dest(either)
+              .lhs1(test)
+              .lhs2(equals)
+              .binop(BinaryOperator.OR)
+              .line(lineOf(caseDef))
+              .build());
+      test = either;
+    }
+    if (test == null) {
+      emitUnknownPattern(caseDef, bodyLabel, nextLabel);
+      return;
+    }
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BRANCH)
+            .lhs1(test)
+            .trueLabel(bodyLabel)
+            .falseLabel(nextLabel)
+            .line(lineOf(caseDef))
+            .build());
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(bodyLabel).build());
+  }
+
+  /**
+   * Emits a case whose pattern this frontend could not classify.
+   *
+   * <p><b>Why the condition is unknown rather than true.</b> The old lowering treated every
+   * unrecognised pattern as a wildcard: it matched unconditionally, and -- because a wildcard ends
+   * the chain -- it DROPPED every case after it. The case is still emitted here, but on a condition
+   * the analysis does not know: the engine then sees both edges as live, so the case runs on one
+   * path and the NEXT case runs on the other. No case is dropped, and nothing claims the pattern
+   * matched when it may not have.
+   *
+   * <p>The gap is recorded, so the function's precision says the match was not fully lowered.
+   *
+   * @param caseDef the case, for the source position
+   * @param bodyLabel the label the case's body starts at
+   * @param nextLabel the label the next case starts at
+   */
+  private void emitUnknownPattern(Trees.CaseDef<Type> caseDef, String bodyLabel, String nextLabel) {
+    degraded = true;
+    reportLoss(
+        "scala.match.patternKind",
+        "a case pattern of an unknown kind was not lowered in " + currentFunction);
+    TacOperand.TacVar unknown = builder.newTemp(TacType.BOOLEAN);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.HAVOC)
+            .dest(unknown)
+            .line(lineOf(caseDef))
+            .build());
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.BRANCH)
+            .lhs1(unknown)
+            .trueLabel(bodyLabel)
+            .falseLabel(nextLabel)
+            .line(lineOf(caseDef))
+            .build());
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(bodyLabel).build());
+  }
+
+  /**
+   * Lowers a case's body.
+   *
+   * <p><b>Why the body is not lowered as a function body.</b> A block's value is normally the
+   * function's RETURN, and lowering a case's block that way ended the FUNCTION at the first case:
+   * every case after it was unreachable, and so was everything the function did after the match. A
+   * case's block is an expression, and its value is the case's value.
+   *
+   * @param caseDef the case
+   * @return the case's value, or {@code null} when the body produces none
+   */
+  private TacOperand translateCaseBody(Trees.CaseDef<Type> caseDef) {
+    Trees.Tree<Type> body = caseDef.body();
+    if (body == null || body instanceof Trees.EmptyTree) {
+      return null;
+    }
+    if (body instanceof Trees.Block) {
+      return translateBlockValue((Trees.Block<Type>) body);
+    }
+    if (body instanceof Trees.ValDef) {
+      // A definition is a statement: it binds a name and produces Unit.
+      translateValDef((Trees.ValDef<Type>) body);
+      return null;
+    }
+    return translateExpr(body);
+  }
+
+  /**
+   * Classifies a case's pattern.
+   *
+   * <p><b>What the compiler leaves behind.</b> The typer rewrites a pattern into one of a few
+   * shapes, and the shape says what the pattern is:
+   *
+   * <ul>
+   *   <li>a type test is a {@code Bind} of a name to a {@code Typed} scrutinee -- "case s: String";
+   *   <li>a constant is a literal, or a stable identifier -- "case 1", "case SomeValue";
+   *   <li>a binding is a {@code Bind} of a name to the wildcard -- "case x";
+   *   <li>a tuple and an extractor are a {@code Typed} scrutinee around an {@code UnApply} -- "case
+   *       (a, b)" and "case Point(a, b)";
+   *   <li>a sequence is an {@code UnApply} of "unapplySeq" -- "case Seq(a, b, rest*)";
+   *   <li>an alternative is an {@code Alternative} -- "case 1 | 2";
+   *   <li>the wildcard is the name "_" on its own.
+   * </ul>
+   *
+   * <p>A pattern this frontend cannot classify is UNKNOWN, and it is lowered as an unknown
+   * condition -- never as a wildcard, which would swallow the cases after it.
+   *
+   * @param pattern the pattern
+   * @return the classified pattern
+   */
+  private MatchPattern classifyPattern(Trees.Tree<Type> pattern) {
+    if (pattern == null) {
+      return MatchPattern.unknown();
+    }
+    if (pattern instanceof Trees.Bind) {
+      Trees.Bind<Type> bind = (Trees.Bind<Type>) pattern;
+      String name = bind.name().toString();
+      Trees.Tree<Type> body = bind.body();
+      if (body instanceof Trees.Typed) {
+        // "case s: String" -- a type test that also binds the narrowed value.
+        return MatchPattern.typed(
+            name, bindingTypeOf(bind), ((Trees.Typed<Type>) body).tpt().tpe());
+      }
+      if (body instanceof Trees.Literal) {
+        // "case y @ 1" -- the constant is tested first, and the name is bound after it.
+        return MatchPattern.constant(name, bindingTypeOf(bind), body);
+      }
+      if (isWildcardIdent(body)) {
+        // "case x" -- a binding: it matches anything.
+        return MatchPattern.binding(name, bindingTypeOf(bind));
+      }
+      MatchPattern inner = classifyPattern(body);
+      if (inner.kind == PatternKind.UNKNOWN) {
+        return inner;
+      }
+      // "case x @ Point(a, b)" -- the outer name binds the whole match.
+      inner.binding = name;
+      inner.bindingType = bindingTypeOf(bind);
+      return inner;
+    }
+    if (pattern instanceof Trees.Alternative) {
+      return MatchPattern.alternative(toJavaList(((Trees.Alternative<Type>) pattern).trees()));
+    }
+    if (pattern instanceof Trees.Literal) {
+      return MatchPattern.constant(null, null, pattern);
+    }
+    if (pattern instanceof Trees.Ident) {
+      if (isWildcardIdent(pattern)) {
+        return MatchPattern.wildcard();
+      }
+      // A stable identifier: "case SomeValue =>" compares the selector with it.
+      return MatchPattern.constant(null, null, pattern);
+    }
+    if (pattern instanceof Trees.Select) {
+      // A stable identifier written as a selection: "case Point.X =>".
+      return MatchPattern.constant(null, null, pattern);
+    }
+    if (pattern instanceof Trees.UnApply) {
+      Trees.UnApply<Type> un = (Trees.UnApply<Type>) pattern;
+      return classifyExtractor(un.fun(), toJavaList(un.patterns()), null);
+    }
+    if (pattern instanceof Trees.Typed) {
+      Trees.Typed<Type> typed = (Trees.Typed<Type>) pattern;
+      Trees.Tree<Type> expr = typed.expr();
+      if (expr instanceof Trees.UnApply) {
+        Trees.UnApply<Type> un = (Trees.UnApply<Type>) expr;
+        return classifyExtractor(un.fun(), toJavaList(un.patterns()), typed.tpt().tpe());
+      }
+      // A type test with no binding: "case _: String".
+      return MatchPattern.typed(null, null, typed.tpt().tpe());
+    }
+    return MatchPattern.unknown();
+  }
+
+  /**
+   * Classifies the extractor of a pattern.
+   *
+   * @param extractor the extractor's call
+   * @param parts the pattern's sub-patterns
+   * @param testedType the type the pattern tests, or {@code null}
+   * @return the classified pattern
+   */
+  private MatchPattern classifyExtractor(
+      Trees.Tree<Type> extractor, List<Trees.Tree<Type>> parts, Type testedType) {
+    String method = operatorNameOf(extractor);
+    Type resultType = extractorResultTypeOf(extractor);
+    // The type the pattern TESTS. The compiler writes it down as an ascription
+    // only when it differs from the scrutinee's type; when it does not, the
+    // extractor's own first parameter is where the type is written.
+    Type matchedType = testedType != null ? testedType : extractorMatchedTypeOf(extractor);
+    if ("unapplySeq".equals(method)) {
+      return MatchPattern.sequence(parts, matchedType);
+    }
+    if (isTupleType(resultType)) {
+      // An extractor that yields the tuple ITSELF: the parts are the product's
+      // own fields.
+      //
+      // Scala 3's own tuple does NOT take this path: its "unapply" yields an
+      // Option -- measured, "scala.Tuple2$.unapply" returns Option[Tuple2] --
+      // so a tuple pattern is lowered as an Option extractor, which is the shape
+      // the compiler itself uses.
+      return MatchPattern.tuple(parts, matchedType);
+    }
+    return MatchPattern.extractor(extractor, parts, matchedType);
+  }
+
+  /**
+   * Whether a type is a tuple.
+   *
+   * @param type the type
+   * @return whether it is a tuple
+   */
+  private boolean isTupleType(Type type) {
+    if (type == null) {
+      return false;
+    }
+    TacType mapped = types.map(type);
+    if (mapped.kind() != TacType.Kind.CLASS) {
+      return false;
+    }
+    String name = mapped.className();
+    return "scala.Tuple2".equals(name) || "scala.Tuple3".equals(name);
+  }
+
+  /**
+   * The result type of an extractor's own call, or {@code null}.
+   *
+   * @param extractor the extractor's call
+   * @return the result type
+   */
+  private Type extractorResultTypeOf(Trees.Tree<Type> extractor) {
+    return resultTypeOf(extractorInfoOf(extractor));
+  }
+
+  /**
+   * The result type of a method, or {@code null}.
+   *
+   * <p><b>Why the method type is unwrapped.</b> A method with type parameters has a POLY type, and
+   * the poly type's "result" is the METHOD type -- not what the method returns. Reading it as the
+   * result said that every extractor's result was a method type, and then no extractor could be
+   * recognised: the case class's own extractor looked like something that yields a method.
+   *
+   * @param info the method's type
+   * @return the result type
+   */
+  private Type resultTypeOf(Type info) {
+    if (info == null) {
+      return null;
+    }
+    try {
+      Type result = info.resultType(ctx);
+      if (result instanceof dotty.tools.dotc.core.Types.MethodType) {
+        result = ((dotty.tools.dotc.core.Types.MethodType) result).resultType(ctx);
+      }
+      return result;
+    } catch (RuntimeException ex) {
+      return null;
+    }
+  }
+
+  /**
+   * The type of an extractor's own call, or {@code null}.
+   *
+   * @param extractor the extractor's call
+   * @return the method type
+   */
+  private Type extractorInfoOf(Trees.Tree<Type> extractor) {
+    if (extractor == null) {
+      return null;
+    }
+    try {
+      Symbol symbol = extractor.symbol(ctx);
+      if (symbol == null) {
+        return null;
+      }
+      return symbol.denot(ctx).info(ctx);
+    } catch (RuntimeException | LinkageError ex) {
+      return null;
+    }
+  }
+
+  /**
+   * The type an extractor's own call MATCHES: the type of its first parameter.
+   *
+   * <p>This is the type the pattern tests, whether or not the compiler wrapped the pattern in a
+   * type ascription. The wrapper is only there when the pattern's type differs from the
+   * scrutinee's, so a pattern on a typed scrutinee has no wrapper -- and then the extractor's own
+   * parameter is the only place the matched type is written down.
+   *
+   * @param extractor the extractor's call
+   * @return the matched type, or {@code null} when it cannot be read
+   */
+  private Type extractorMatchedTypeOf(Trees.Tree<Type> extractor) {
+    Type info = extractorInfoOf(extractor);
+    if (info == null) {
+      return null;
+    }
+    try {
+      List<Type> params = toJavaList(info.firstParamTypes(ctx));
+      return params.isEmpty() ? null : params.get(0);
+    } catch (RuntimeException ex) {
+      return null;
+    }
+  }
+
+  /**
+   * The type an extractor MATCHES: the type of its first parameter.
+   *
+   * @param pattern the pattern
+   * @return the matched type
+   */
+  private Type extractorMatchedType(MatchPattern pattern) {
+    return extractorMatchedTypeOf(pattern.extractor);
+  }
+
+  /**
+   * The result type of an extractor's own call, or {@code null}.
+   *
+   * @param pattern the pattern
+   * @return the result type
+   */
+  private Type extractorResultType(MatchPattern pattern) {
+    return resultTypeOf(extractorInfoOf(pattern.extractor));
+  }
+
+  /**
+   * Whether a type is {@code scala.Option}.
+   *
+   * @param type the type
+   * @return whether it is an Option
+   */
+  private boolean isOptionType(Type type) {
+    TacType mapped = types.map(type);
+    return mapped.kind() == TacType.Kind.CLASS && "scala.Option".equals(mapped.className());
+  }
+
+  /**
+   * Whether two types are the same class.
+   *
+   * <p><b>Why the names and not the symbols.</b> A method's own result type mentions the method's
+   * type parameters -- {@code Tuple2.unapply} yields {@code Tuple2[T1, T2]} -- while the type the
+   * pattern tests is {@code Tuple2[Any, Any]}. The two are the same class, but their symbols are
+   * not the same object, so the symbol test said "different" where the names say "the same".
+   *
+   * @param a the first type
+   * @param b the second type
+   * @return whether they name the same class
+   */
+  private boolean sameType(Type a, Type b) {
+    if (a == null || b == null) {
+      return false;
+    }
+    TacType left = types.map(a);
+    TacType right = types.map(b);
+    if (left.kind() != TacType.Kind.CLASS || right.kind() != TacType.Kind.CLASS) {
+      return false;
+    }
+    String leftName = left.className();
+    String rightName = right.className();
+    return leftName != null && leftName.equals(rightName);
+  }
+
+  /**
+   * The type of a bound name, or {@code null} when it cannot be read.
+   *
+   * @param bind the binding
+   * @return the type
+   */
+  private Type bindingTypeOf(Trees.Tree<Type> bind) {
+    try {
+      return bind.tpe();
+    } catch (RuntimeException ex) {
+      return null;
+    }
+  }
+
+  /**
+   * Whether a tree is the wildcard.
+   *
+   * @param tree the tree
+   * @return whether it is the wildcard
+   */
+  private static boolean isWildcardIdent(Trees.Tree<Type> tree) {
+    return tree instanceof Trees.Ident && "_".equals(((Trees.Ident<Type>) tree).name().toString());
+  }
+
+  /**
+   * Whether a pattern's part is the varargs part -- the "rest*" of "case Seq(a, b, rest*)".
+   *
+   * @param part the part
+   * @return whether it is the varargs part
+   */
+  private static boolean isVarargsPart(Trees.Tree<Type> part) {
+    if (!(part instanceof Trees.Bind)) {
+      return false;
+    }
+    Trees.Tree<Type> body = ((Trees.Bind<Type>) part).body();
+    if (!(body instanceof Trees.Typed)) {
+      return false;
+    }
+    Trees.Tree<Type> expr = ((Trees.Typed<Type>) body).expr();
+    return expr instanceof Trees.Ident && "_*".equals(((Trees.Ident<Type>) expr).name().toString());
+  }
+
+  /**
+   * The type of a pattern's part.
+   *
+   * @param part the part
+   * @return the type
+   */
+  private TacType partType(Trees.Tree<Type> part) {
+    try {
+      return types.map(part.tpe());
+    } catch (RuntimeException ex) {
+      return TacType.UNKNOWN;
+    }
+  }
+
+  /**
+   * Declares a pattern's binding and fills it.
+   *
+   * @param name the bound name, or {@code null} when the pattern binds nothing
+   * @param type the bound name's type
+   * @param value the value the name receives
+   * @param tree the case, for the source position
+   */
+  private void bindPatternVariable(
+      String name, TacType type, TacOperand value, Trees.Tree<Type> tree) {
+    if (name == null || name.isEmpty() || "_".equals(name)) {
+      return;
+    }
+    TacOperand.TacVar target = new TacOperand.TacVar(name, type, false);
+    locals.put(name, target);
+    builder.addLocal(target);
+    emitMove(target, value, tree);
+  }
+
+  /**
+   * Binds a product pattern's parts by reading the product's positional fields.
+   *
+   * <p>The fields are numbered, the way a product's accessors are: the first part is "_1", the
+   * second "_2".
+   *
+   * <p><b>Why the positional accessor and not the declared field.</b> A tuple's parts ARE its
+   * positional accessors, and a case class -- which is a product too -- has the same ones, so
+   * "_1" and "_2" name methods that really exist on the matched value. A name that does not exist
+   * on it would be a field the source never wrote.
+   *
+   * @param parts the pattern's sub-patterns
+   * @param product the matched product
+   * @param tree the case, for the source position
+   */
+  private void bindProductParts(
+      List<Trees.Tree<Type>> parts, TacOperand product, Trees.Tree<Type> tree) {
+    for (int i = 0; i < parts.size(); i++) {
+      String name = boundName(parts.get(i));
+      if (name == null) {
+        continue;
+      }
+      TacType type = partType(parts.get(i));
+      TacOperand.TacVar value = builder.newTemp(type);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.FIELDLOAD)
+              .dest(value)
+              .lhs1(product)
+              .fieldName("_" + (i + 1))
+              .line(lineOf(tree))
+              .build());
+      bindPatternVariable(name, type, value, tree);
+    }
+  }
+
+  /**
+   * Binds a sequence pattern's parts by reading the sequence's elements.
+   *
+   * @param parts the pattern's sub-patterns
+   * @param sequence the matched sequence
+   * @param tree the case, for the source position
+   */
+  private void bindSequenceParts(
+      List<Trees.Tree<Type>> parts, TacOperand sequence, Trees.Tree<Type> tree) {
+    for (int i = 0; i < parts.size(); i++) {
+      Trees.Tree<Type> part = parts.get(i);
+      String name = boundName(part);
+      if (name == null) {
+        continue;
+      }
+      if (isVarargsPart(part)) {
+        // The REST of the sequence. The TAC has no slice, so the value is unknown
+        // rather than wrong.
+        TacOperand.TacVar unknown = builder.newTemp(TacType.UNKNOWN);
+        builder.emit(
+            TacInstruction.builder(TacInstruction.Kind.HAVOC)
+                .dest(unknown)
+                .line(lineOf(tree))
+                .build());
+        bindPatternVariable(name, TacType.UNKNOWN, unknown, tree);
+        continue;
+      }
+      TacType type = partType(part);
+      TacOperand.TacVar value = builder.newTemp(type);
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.ARRAYLOAD)
+              .dest(value)
+              .lhs1(sequence)
+              .lhs2(TacOperand.Const.ofInt(i))
+              .line(lineOf(tree))
+              .build());
+      bindPatternVariable(name, type, value, tree);
+    }
   }
 
   /**
@@ -2059,23 +4244,6 @@ final class ScalaTacTranslator {
   private String boundName(Trees.Tree<Type> pattern) {
     if (pattern instanceof Trees.Bind) {
       return ((Trees.Bind<Type>) pattern).name().toString();
-    }
-    return null;
-  }
-
-  /**
-   * The constant a pattern matches against, or {@code null} when it is not a constant.
-   *
-   * <p>A constant pattern is a literal. A wildcard pattern is an {@code Ident} named {@code "_"},
-   * which matches everything and is not a constant.
-   */
-  private Trees.Tree<Type> constantOf(Trees.Tree<Type> pattern) {
-    if (pattern instanceof Trees.Literal) {
-      return pattern;
-    }
-    if (pattern instanceof Trees.Ident
-        && "_".equals(((Trees.Ident<Type>) pattern).name().toString())) {
-      return null;
     }
     return null;
   }

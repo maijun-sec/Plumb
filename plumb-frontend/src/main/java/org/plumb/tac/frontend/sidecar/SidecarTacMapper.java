@@ -391,9 +391,25 @@ public final class SidecarTacMapper {
       List<TacOperand> list = new ArrayList<>();
       for (int i = 0; i < args.size(); i++) {
         TacOperand operand = toOperand(args.getObject(i));
-        if (operand != null) {
-          list.add(operand);
+        if (operand == null) {
+          // The POSITION of an argument is the meaning, not the operand.
+          //
+          // The engine reads every argument index against the call
+          // convention -- the sink check adds ONE to the catalogue's index,
+          // and the callee summary binds formal i to args[i+1] -- so an
+          // argument that vanished would shift EVERY argument after it one
+          // position to the left. The value at args[1] would then be read
+          // as args[0], and the finding that names it would be reported
+          // against the wrong argument -- or not reported at all.
+          //
+          // A constant takes the place of the operand that could not be
+          // mapped. A constant carries no taint, so the analysis stays on the
+          // conservative side: an argument we know nothing about is not
+          // reported, rather than an argument we know nothing about being
+          // reported at the wrong index.
+          operand = TacOperand.Const.ofString("");
         }
+        list.add(operand);
       }
       builder.args(list);
     }
@@ -418,6 +434,15 @@ public final class SidecarTacMapper {
     TacOperand subject = toOperand(wire.getObject("subject"));
     if (subject == null) {
       subject = toOperand(wire.getObject("lhs"));
+    }
+    if (subject == null) {
+      // The sidecars write the operand under "operand".
+      //
+      // WHY THIS MATTERS. A guard is a RECORD of what the source said about a value, and
+      // a record without its subject says nothing: the kind survived the trip, the value
+      // the kind is about did not. Every truthiness guard therefore arrived as
+      // "some value is true", and the engine could not use it to suppress a finding.
+      subject = toOperand(wire.getObject("operand"));
     }
     if (kindName == null) {
       // No kind: if the wire gave a comparison, it is a comparison.
@@ -451,6 +476,15 @@ public final class SidecarTacMapper {
         String property = wire.getString("property");
         if (property == null) {
           property = wire.getString("propertyName");
+        }
+        if (property == null) {
+          // PHP writes the property's name under "key".
+          property = wire.getString("key");
+        }
+        if (property == null) {
+          // And the receiver under "receiver" -- a property-presence guard is about a
+          // property OF something, so without the receiver it is about nothing.
+          subject = toOperand(wire.getObject("receiver"));
         }
         return TacGuard.propertyPresence(subject, property);
       }

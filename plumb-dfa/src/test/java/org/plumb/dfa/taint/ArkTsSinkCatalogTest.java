@@ -60,9 +60,9 @@ import org.plumb.tac.ir.TacProgram;
  * languages -- {@code Console.log/1} -- so one pattern names them all.
  *
  * <p><b>Why the write to the standard output is NOT an entry.</b> Neither language can name the
- * class of {@code process.stdout}: TypeScript reports {@code <unknown>.write/0} and ArkTS reports
- * the file's module name. A pattern for it would claim every write, and the catalogue has a test
- * that refuses to claim a call whose owner nobody could name.
+ * class of {@code process.stdout}: TypeScript reports {@code write/1} -- the key carries no owner
+ * at all -- and ArkTS reports the file's module name. A pattern for it would claim every write, and
+ * the catalogue has a test that refuses to claim a call whose owner nobody could name.
  */
 @DisplayName("Taint: the ArkTS rule layer")
 class ArkTsSinkCatalogTest {
@@ -137,7 +137,7 @@ class ArkTsSinkCatalogTest {
   @Test
   @DisplayName("the write to the standard output is not claimed")
   void theWriteToTheStandardOutputIsNotClaimed() {
-    assertThat(familiesFor("<unknown>.write/0", SourceLanguage.TYPESCRIPT))
+    assertThat(familiesFor("write/1", SourceLanguage.TYPESCRIPT))
         .as("TypeScript cannot name the class of process.stdout")
         .isEmpty();
     assertThat(familiesFor("probe.write/0", SourceLanguage.ARKTS))

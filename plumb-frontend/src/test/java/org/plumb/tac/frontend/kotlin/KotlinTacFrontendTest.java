@@ -319,23 +319,28 @@ class KotlinTacFrontendTest {
   }
 
   /**
-   * An {@code is}-branch that cannot be lowered is REPORTED and degrades the function.
+   * A {@code when} branch that cannot be lowered is REPORTED and degrades the function.
    *
    * <p><b>Why this test exists.</b> The {@code is} branch was skipped with a bare {@code continue},
    * so the gap was SILENT: the function's precision stayed {@code SOURCE_FULL} and a checker
    * trusted a function whose branch was simply gone.
+   *
+   * <p><b>Why the example is a RANGE and not an {@code is}.</b> The {@code is} branch is lowered
+   * now -- it is an {@code INSTANCEOF} -- so it can no longer be the branch that is not lowered.
+   * The property under test is the same one, and a range condition is a branch this front end
+   * still cannot read.
    */
   @Test
-  void anIsBranchThatCannotBeLoweredIsReported() {
+  void aWhenBranchThatCannotBeLoweredIsReported() {
     TacFrontend.ParseResult result =
         support.parse(
             String.join(
                 "\n",
                 "package demo",
                 "",
-                "fun pick(x: Any): Int {",
+                "fun pick(x: Int): Int {",
                 "    when (x) {",
-                "        is String -> 1",
+                "        in 1..5 -> 1",
                 "        else -> 0",
                 "    }",
                 "    return 0",
@@ -349,7 +354,7 @@ class KotlinTacFrontendTest {
     assertThat(result.problems()).as("and the gap must be reported, not just flagged").isNotEmpty();
     assertThat(String.join("\n", result.problems()))
         .as("the message says what could not be lowered")
-        .contains("is");
+        .contains("branch");
   }
 
   // ------------------------------------------------------------------

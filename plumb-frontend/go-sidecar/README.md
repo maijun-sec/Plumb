@@ -440,6 +440,23 @@ PACKAGE, and there is no instance to call it on -- so the slot holds the
 **package's import path** as a constant. The arity does not count it: the
 real arguments of `fmt.Println` are at `args[1..]`.
 
+**The synthetic calls are the one exception, and it is a deliberate one.**
+The runtime operations the sidecar models -- `<go>.mapStore`, `<go>.chanSend`,
+`<go>.append` -- are not calls to a package, so they have no import path to
+put in the slot. Instead the slot holds **the value the operation works on**:
+the map, the channel, the slice. That is not a convenience, it is what the
+engine reads: the accumulator catalogue treats `args[0]` as the receiver of a
+mutator and the argument that follows it as the value that enters the
+receiver's state, so `<go>.append` taints the destination slice when the
+appended value is tainted. A constant in that slot would have left the
+destination untainted, and a slice that collects attacker input would have
+read back clean.
+
+A builtin with no container to work on -- `len`, `cap`, `println` -- has only
+its own argument, so that argument occupies the slot. The synthetic signatures
+are not in the sink catalogue, so nothing is matched against them by argument
+index; the slot is there for the engine's convention, not for a rule.
+
 The arity counts the **declared parameters**. The receiver is not one of
 them: `func (f *os.File) Close() error` is `os.File.Close/0`, with the file
 at `args[0]`, and `func Println(a ...any) int` is `fmt.Println/1`.

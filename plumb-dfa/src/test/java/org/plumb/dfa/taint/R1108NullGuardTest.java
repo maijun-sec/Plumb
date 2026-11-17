@@ -83,9 +83,14 @@ class R1108NullGuardTest {
         tracker.track(ins);
         if (ins.kind != TacInstruction.Kind.CALL) continue;
         if (ins.args == null || ins.args.isEmpty()) continue;
-        if (!(ins.args.get(0) instanceof TacOperand.TacVar recv)) continue;
-        if (recv.name().equals(probe)) {
-          return tracker.provenNonNullVars();
+        // The IR keeps a receiver slot at args[0] for EVERY call: the receiver
+        // for an instance call, a constant owner for a free one. The probed
+        // value is therefore in the ARGUMENTS -- looking at args[0] alone
+        // would miss the very use this test is about.
+        for (TacOperand arg : ins.args) {
+          if (arg instanceof TacOperand.TacVar v && v.name().equals(probe)) {
+            return tracker.provenNonNullVars();
+          }
         }
       }
     }

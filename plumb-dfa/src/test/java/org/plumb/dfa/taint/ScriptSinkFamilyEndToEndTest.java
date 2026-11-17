@@ -185,9 +185,10 @@ class ScriptSinkFamilyEndToEndTest {
    * file called {@code util.ts} therefore produced the callee key {@code util.format/1}, and the
    * catalogue claimed the program's own method call as the format helper's sink.
    *
-   * <p>The degraded owner is now {@code <unknown>}, for the same reason as in Python: no module
-   * path can contain an angle bracket, and every sink pattern is anchored at the start of the
-   * callee key.
+   * <p>The degraded owner is now <b>absent</b>: the key carries no owner section at all, so it is
+   * {@code format/1}. Every sink pattern in the catalogue is anchored at the start of the callee
+   * key, so a key that begins with the FILE's name cannot be claimed by any of them, and one that
+   * begins with a method name can only be claimed by a pattern that means that method.
    */
   private static final String TS_FILE_NAMED_AFTER_A_MODULE =
       """
@@ -323,11 +324,13 @@ class ScriptSinkFamilyEndToEndTest {
   /**
    * A TypeScript program that evaluates a value it was given.
    *
-   * <p>The global {@code eval} is a FREE FUNCTION: it has no receiver object and no module to name,
-   * so the only owner the front end can offer is the stand-in for an unknown one, {@code
-   * <unknown>}. The catalogue names that stand-in, which is what lets the global be claimed at all
-   * -- and a global that is NOT claimed is the most dangerous one to miss, because every script
-   * that evaluates a string is written exactly this way.
+   * <p>The global {@code eval} is a FREE FUNCTION: it belongs to the global it came from, and that
+   * global's own name is its owner, so the key the front end emits is {@code eval.eval/1}. The
+   * catalogue's pattern is anchored at the start of the key, so it claims the global and only the
+   * global: a method of the same name on some object has that object's name as its owner, and a
+   * receiver nobody could type has no owner at all. A global that is NOT claimed is the most
+   * dangerous one to miss, because every script that evaluates a string is written exactly this
+   * way.
    */
   private static final String TS_GLOBAL_EVAL =
       """
@@ -660,9 +663,9 @@ class ScriptSinkFamilyEndToEndTest {
         .isFalse();
 
     assertThat(calleeSignatures(result))
-        .as("the receiver's type could not be proven, so the owner is unknown")
-        .contains("<unknown>.format/0")
-        .doesNotContain("util.format/0");
+        .as("the receiver's type could not be proven, so the key carries no owner")
+        .contains("format/1")
+        .doesNotContain("util.format/1");
   }
 
   /**
@@ -782,9 +785,9 @@ class ScriptSinkFamilyEndToEndTest {
   /**
    * The global eval reaches the code injection rule.
    *
-   * <p><b>What this pins.</b> A free function -- a call with no receiver object -- has no module to
-   * name either, so the only owner the front end can offer is the stand-in for an unknown one,
-   * {@code <unknown>}. The catalogue names that stand-in ({@code ^<unknown>\.eval\b}), so the two
+   * <p><b>What this pins.</b> A free function -- a call with no receiver object -- belongs to the
+   * global it came from, and that global's own name is its owner: the key is {@code eval.eval/1}.
+   * The catalogue's pattern is anchored at the start of the key ({@code ^eval\.eval\b}), so the two
    * halves agree and the global is claimed.
    *
    * <p><b>Why it matters.</b> The symptom of a disagreement between the front end and the catalogue
@@ -795,9 +798,9 @@ class ScriptSinkFamilyEndToEndTest {
    *
    * <p><b>Why the arity is not pinned.</b> The key carries the number of DECLARED parameters, which
    * belongs to the TypeScript library rather than to this product, and the catalogue's pattern
-   * leaves the arity optional ({@code ^<unknown>\.eval\b(/\d+)?}) because the global has to be
-   * claimed whatever its signature is. Pinning the arity here would make the test fail on a library
-   * change the product does not care about.
+   * leaves the arity optional ({@code ^eval\.eval\b(/\d+)?}) because the global has to be claimed
+   * whatever its signature is. Pinning the arity here would make the test fail on a library change
+   * the product does not care about.
    */
   @Test
   @DisplayName("a global eval reaches the code injection rule")
@@ -814,8 +817,8 @@ class ScriptSinkFamilyEndToEndTest {
         new TsTacFrontend(SourceLanguage.TYPESCRIPT).parse(TS_GLOBAL_EVAL, file, null);
 
     assertThat(calleeSignatures(result))
-        .as("a free function has no receiver and no module, so its owner is the stand-in")
-        .anyMatch(signature -> signature.startsWith("<unknown>.eval/"));
+        .as("a free function belongs to the global it came from, and names it as its owner")
+        .anyMatch(signature -> signature.startsWith("eval.eval/"));
 
     List<Finding> findings = scan(result, file, new CodeInjectionChecker());
 
@@ -850,8 +853,8 @@ class ScriptSinkFamilyEndToEndTest {
         new TsTacFrontend(SourceLanguage.TYPESCRIPT).parse(TS_GLOBAL_FETCH, file, null);
 
     assertThat(calleeSignatures(result))
-        .as("a free function has no receiver and no module, so its owner is the stand-in")
-        .anyMatch(signature -> signature.startsWith("<unknown>.fetch/"));
+        .as("a free function belongs to the global it came from, and names it as its owner")
+        .anyMatch(signature -> signature.startsWith("fetch.fetch/"));
 
     List<Finding> findings = scan(result, file, new SsrfChecker());
 

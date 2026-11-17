@@ -26,6 +26,7 @@ import com.intellij.openapi.util.Disposer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import kotlin.Unit;
 import kotlin.jvm.functions.Function1;
@@ -40,14 +41,22 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol;
 import org.jetbrains.kotlin.analysis.project.structure.builder.KaModuleContainerBuilder;
+import org.jetbrains.kotlin.psi.KtClassInitializer;
 import org.jetbrains.kotlin.psi.KtClassOrObject;
+import org.jetbrains.kotlin.psi.KtEnumEntry;
+import org.jetbrains.kotlin.psi.KtExpression;
 import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.psi.KtNamedFunction;
+import org.jetbrains.kotlin.psi.KtPrimaryConstructor;
+import org.jetbrains.kotlin.psi.KtProperty;
+import org.jetbrains.kotlin.psi.KtPropertyAccessor;
+import org.jetbrains.kotlin.psi.KtSecondaryConstructor;
 import org.plumb.tac.frontend.CompileContext;
 import org.plumb.tac.frontend.TacFrontend;
 import org.plumb.tac.ir.IrPrecision;
 import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacFunction;
+import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacType;
 
@@ -464,8 +473,96 @@ public final class KotlinTacFrontend implements TacFrontend {
             .filter(d -> d instanceof KtNamedFunction)
             .map(d -> (KtNamedFunction) d)
             .toList()) {
-      translateFunction(fn, null, kaSession, functions, problems, module, List.of());
+      translateFunction(fn, null, null, kaSession, functions, problems, module, List.of());
     }
+    // The TOP-LEVEL PROPERTIES. A top-level `val` is a field of the file's own class,
+    // and its initialiser runs before anything else in the file uses it.
+    for (KtProperty property :
+        ktFile.getDeclarations().stream()
+            .filter(d -> d instanceof KtProperty)
+            .map(d -> (KtProperty) d)
+            .toList()) {
+      translateTopLevelProperty(
+          property, ktFile, kaSession, functions, problems, module);
+    }
+  }
+
+  /**
+   * Translates a top-level property.
+   *
+   * <p>It becomes a field of the file's own class, and the function that computes it is a field
+   * initializer. The value it holds is the value the property has from then on.
+   */
+  private void translateTopLevelProperty(
+      KtProperty property,
+      KtFile ktFile,
+      KaSession kaSession,
+      List<TacFunction> functions,
+      List<String> problems,
+      String module) {
+
+    String propertyName = property.getName();
+    KtExpression initializer = property.getInitializer();
+    if (propertyName == null || propertyName.isEmpty() || initializer == null) {
+      return;
+    }
+    String fileClass = fileClassName(ktFile);
+    String qualified = fileClass + "." + propertyName;
+    String signature = qualified + "():" + fileClass;
+
+    KotlinTypeMapper mapper = new KotlinTypeMapper(kaSession);
+    TacType propertyType = TacType.UNKNOWN;
+    try {
+      if (property.getTypeReference() != null) {
+        propertyType = mapper.map(kaSession.getType(property.getTypeReference()));
+      }
+    } catch (RuntimeException ex) {
+      // The type could not be resolved.
+    }
+
+    org.plumb.tac.translate.TacBuilder builder =
+        new org.plumb.tac.translate.TacBuilder(
+            new org.plumb.tac.translate.TacBuilder.FunctionSpec(
+                qualified, signature, propertyType),
+            List.of());
+    builder.setSourceLanguage(SourceLanguage.KOTLIN);
+    builder.setIrPrecision(IrPrecision.SOURCE_FULL);
+    builder.setMemberKind(org.plumb.tac.ir.TacMemberKind.FIELD_INITIALIZER);
+    builder.setModule(module);
+    builder.setEnclosingClass(fileClass);
+
+    // The initialiser is the value. It is computed by the translator, because it is
+    // ordinary source code.
+    KotlinTacTranslator translator = new KotlinTacTranslator(kaSession);
+    TacOperand value = translator.lowerInitializer(initializer, builder);
+    if (value != null) {
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.FIELDSTORE)
+              .dest(value)
+              .lhs1(new TacOperand.TacVar("this", TacType.UNKNOWN, false))
+              .fieldName(propertyName)
+              .ownerType(fileClass)
+              .build());
+    }
+    functions.add(builder.build());
+    problems.addAll(translator.problems());
+    structuredProblems.addAll(translator.structuredProblems());
+  }
+
+  /**
+   * The JVM class name of a Kotlin file.
+   *
+   * <p>A file's top-level declarations live in a class named after the file: {@code Greeter.kt}
+   * holds them in {@code GreeterKt}.
+   */
+  private static String fileClassName(KtFile file) {
+    String name = file.getName();
+    if (name == null || name.isEmpty()) {
+      return "FileKt";
+    }
+    int dot = name.lastIndexOf('.');
+    String base = dot >= 0 ? name.substring(0, dot) : name;
+    return base + "Kt";
   }
 
   /**
@@ -533,6 +630,17 @@ public final class KotlinTacFrontend implements TacFrontend {
     } catch (RuntimeException ex) {
       // The symbol could not be resolved; carry on with the source-level view.
     }
+    String classFqn = fqnOf(classDecl);
+
+    // The PRIMARY CONSTRUCTOR.
+    //
+    // WHY IT COMES FIRST. A `new Foo(x)` call enters the constructor, and the
+    // constructor is where the object's fields get their values. Without a
+    // constructor function in the TAC, the call named a callee that did not
+    // exist, the call graph's edge went nowhere, and the value that entered
+    // the object never reached the fields it initialised.
+    translatePrimaryConstructor(
+        classDecl, className, classFqn, kaSession, functions, problems, module, classAnnotations);
 
     // The declared members of the class.
     for (KtNamedFunction fn :
@@ -541,7 +649,63 @@ public final class KotlinTacFrontend implements TacFrontend {
             .map(d -> (KtNamedFunction) d)
             .toList()) {
       translateFunction(
-          fn, className, kaSession, functions, problems, module, classAnnotations);
+          fn, className, classFqn, kaSession, functions, problems, module, classAnnotations);
+    }
+
+    // The properties. Each one becomes a getter (and, for a `var`, a setter).
+    //
+    // WHY THEY MATTER. A Kotlin property is a FIELD with accessors around it.
+    // A value that reaches the field has to reach it through the setter, and
+    // a value read out of it has to come through the getter -- otherwise the
+    // field's taint never moves.
+    for (KtProperty property :
+        classDecl.getDeclarations().stream()
+            .filter(d -> d instanceof KtProperty)
+            .map(d -> (KtProperty) d)
+            .toList()) {
+      translatePropertyAccessors(
+          property,
+          className,
+          classFqn,
+          kaSession,
+          functions,
+          problems,
+          module,
+          classAnnotations);
+    }
+
+    // The SECONDARY CONSTRUCTORS. Each one is a constructor of its own.
+    for (KtSecondaryConstructor constructor : classDecl.getSecondaryConstructors()) {
+      translateSecondaryConstructor(
+          constructor,
+          className,
+          classFqn,
+          kaSession,
+          functions,
+          problems,
+          module,
+          classAnnotations);
+    }
+
+    // The ENUM ENTRIES. Each entry is a value of the enum's type, and reading
+    // it is a call to the entry's accessor.
+    for (KtEnumEntry entry :
+        classDecl.getDeclarations().stream()
+            .filter(d -> d instanceof KtEnumEntry)
+            .map(d -> (KtEnumEntry) d)
+            .toList()) {
+      translateEnumEntry(
+          entry, className, classFqn, kaSession, functions, problems, module, classAnnotations);
+    }
+
+    // The NESTED classes and the COMPANION OBJECT. They are classes of their
+    // own, and their members belong to them.
+    for (KtClassOrObject nested :
+        classDecl.getDeclarations().stream()
+            .filter(d -> d instanceof KtClassOrObject)
+            .map(d -> (KtClassOrObject) d)
+            .toList()) {
+      translateClass(nested, kaSession, functions, problems, module);
     }
 
     // The compiler-generated members of a data class. The Analysis API reports these
@@ -550,6 +714,324 @@ public final class KotlinTacFrontend implements TacFrontend {
     if (isData) {
       translateGeneratedMembers(classDecl, className, kaSession, functions, problems);
     }
+  }
+
+  /**
+   * The fully qualified name of a class, or {@code null}.
+   *
+   * <p>It is what a field access's {@code ownerType} carries. Without it, a field read says
+   * "some object's field" and nothing more, and two classes with the same simple name share one
+   * bucket of fields.
+   */
+  private static String fqnOf(KtClassOrObject classDecl) {
+    try {
+      org.jetbrains.kotlin.name.ClassId classId = classDecl.getClassId();
+      if (classId == null || classId.isLocal()) {
+        return null;
+      }
+      String rendered = classId.asSingleFqName().asString();
+      return rendered == null || rendered.isEmpty() ? null : rendered;
+    } catch (RuntimeException | LinkageError ex) {
+      return null;
+    }
+  }
+
+  /**
+   * Translates a class's primary constructor.
+   *
+   * <p>The constructor's parameters that declare a property become that property's backing
+   * field; the property initialisers run; the {@code init} blocks run. That is the order Kotlin
+   * runs them in, and it is the order the taint has to follow.
+   */
+  private void translatePrimaryConstructor(
+      KtClassOrObject classDecl,
+      String className,
+      String classFqn,
+      KaSession kaSession,
+      List<TacFunction> functions,
+      List<String> problems,
+      String module,
+      List<String> classAnnotations) {
+
+    KtPrimaryConstructor constructor = classDecl.getPrimaryConstructor();
+    List<org.jetbrains.kotlin.psi.KtParameter> valueParameters =
+        constructor == null ? List.of() : constructor.getValueParameters();
+
+    KotlinTypeMapper mapper = new KotlinTypeMapper(kaSession);
+    List<TacOperand.TacVar> params = new ArrayList<>();
+    List<String> paramTypes = new ArrayList<>();
+    java.util.Map<String, List<String>> paramAnnotations = new java.util.LinkedHashMap<>();
+    for (org.jetbrains.kotlin.psi.KtParameter parameter : valueParameters) {
+      String name = parameter.getName();
+      if (name == null || name.isEmpty()) {
+        name = "arg" + params.size();
+      }
+      TacType type = TacType.UNKNOWN;
+      try {
+        if (parameter.getTypeReference() != null) {
+          type = mapper.map(kaSession.getType(parameter.getTypeReference()));
+        }
+      } catch (RuntimeException ex) {
+        // The type could not be resolved; the parameter's value is still tracked.
+      }
+      params.add(new TacOperand.TacVar(name, type, false));
+      paramTypes.add(type.displayName());
+      List<String> names = annotationNames(parameter.getAnnotationEntries());
+      if (!names.isEmpty()) {
+        paramAnnotations.put(name, names);
+      }
+    }
+
+    String qualified = className + ".<init>";
+    String signature = qualified + "(" + String.join(",", paramTypes) + "):" + className;
+    TacType returnType = classFqn == null ? TacType.ofClass(className) : TacType.ofClass(classFqn);
+
+    List<KtProperty> properties =
+        classDecl.getDeclarations().stream()
+            .filter(d -> d instanceof KtProperty)
+            .map(d -> (KtProperty) d)
+            .toList();
+    List<KtExpression> initBlocks = new ArrayList<>();
+    for (org.jetbrains.kotlin.psi.KtAnonymousInitializer initializer :
+        classDecl.getAnonymousInitializers()) {
+      initBlocks.add(initializer.getBody());
+    }
+
+    KotlinTacTranslator translator = new KotlinTacTranslator(kaSession);
+    translator.setEnclosingClassFqn(classFqn);
+    TacFunction function =
+        translator.translateConstructor(
+            qualified,
+            signature,
+            returnType,
+            params,
+            valueParameters,
+            properties,
+            initBlocks,
+            className,
+            module,
+            classAnnotations,
+            List.of(),
+            paramAnnotations);
+    functions.add(function);
+    functions.addAll(translator.nestedFunctions());
+    problems.addAll(translator.problems());
+    structuredProblems.addAll(translator.structuredProblems());
+  }
+
+  /**
+   * Translates a property's accessors.
+   *
+   * <p>A property with no accessor of its own still has a default one: the getter reads the
+   * backing field and the setter writes it. Both are produced, so that a call to the accessor
+   * resolves to something.
+   */
+  private void translatePropertyAccessors(
+      KtProperty property,
+      String className,
+      String classFqn,
+      KaSession kaSession,
+      List<TacFunction> functions,
+      List<String> problems,
+      String module,
+      List<String> classAnnotations) {
+
+    String propertyName = property.getName();
+    if (propertyName == null || propertyName.isEmpty()) {
+      return;
+    }
+    KotlinTypeMapper mapper = new KotlinTypeMapper(kaSession);
+    TacType propertyType = TacType.UNKNOWN;
+    try {
+      if (property.getTypeReference() != null) {
+        propertyType = mapper.map(kaSession.getType(property.getTypeReference()));
+      }
+    } catch (RuntimeException ex) {
+      // The type could not be resolved; the accessor's value is still tracked.
+    }
+    List<String> fieldAnnotations = annotationNames(property.getAnnotationEntries());
+
+    // The getter.
+    String getterName = className + ".get" + capitalise(propertyName);
+    String getterSignature = getterName + "():" + propertyType.displayName();
+    KtPropertyAccessor getter = property.getGetter();
+    KtExpression getterBody =
+        getter == null ? null : getter.getBodyExpression();
+    KotlinTacTranslator getterTranslator = new KotlinTacTranslator(kaSession);
+    getterTranslator.setEnclosingClassFqn(classFqn);
+    TacFunction getterFunction =
+        getterTranslator.translateAccessor(
+            getterName,
+            getterSignature,
+            propertyType,
+            List.of(),
+            getterBody,
+            propertyName,
+            false,
+            className,
+            module,
+            classAnnotations,
+            List.of(),
+            Map.of());
+    if (!fieldAnnotations.isEmpty()) {
+      getterFunction.fieldAnnotations().put(propertyName, fieldAnnotations);
+    }
+    functions.add(getterFunction);
+    functions.addAll(getterTranslator.nestedFunctions());
+    problems.addAll(getterTranslator.problems());
+    structuredProblems.addAll(getterTranslator.structuredProblems());
+
+    if (!property.isVar()) {
+      // A `val` has no setter.
+      return;
+    }
+    String setterName = className + ".set" + capitalise(propertyName);
+    String setterSignature = setterName + "(" + propertyType.displayName() + "):void";
+    TacOperand.TacVar value =
+        new TacOperand.TacVar("value", propertyType, false);
+    KtPropertyAccessor setter = property.getSetter();
+    KtExpression setterBody = setter == null ? null : setter.getBodyExpression();
+    KotlinTacTranslator setterTranslator = new KotlinTacTranslator(kaSession);
+    setterTranslator.setEnclosingClassFqn(classFqn);
+    TacFunction setterFunction =
+        setterTranslator.translateAccessor(
+            setterName,
+            setterSignature,
+            TacType.VOID,
+            List.of(value),
+            setterBody,
+            propertyName,
+            true,
+            className,
+            module,
+            classAnnotations,
+            List.of(),
+            Map.of());
+    functions.add(setterFunction);
+    functions.addAll(setterTranslator.nestedFunctions());
+    problems.addAll(setterTranslator.problems());
+    structuredProblems.addAll(setterTranslator.structuredProblems());
+  }
+
+  /**
+   * Translates a secondary constructor.
+   *
+   * <p>It is a constructor like any other: a call to it is a call to it.
+   */
+  private void translateSecondaryConstructor(
+      KtSecondaryConstructor constructor,
+      String className,
+      String classFqn,
+      KaSession kaSession,
+      List<TacFunction> functions,
+      List<String> problems,
+      String module,
+      List<String> classAnnotations) {
+
+    KotlinTypeMapper mapper = new KotlinTypeMapper(kaSession);
+    List<TacOperand.TacVar> params = new ArrayList<>();
+    List<String> paramTypes = new ArrayList<>();
+    java.util.Map<String, List<String>> paramAnnotations = new java.util.LinkedHashMap<>();
+    for (org.jetbrains.kotlin.psi.KtParameter parameter : constructor.getValueParameters()) {
+      String name = parameter.getName();
+      if (name == null || name.isEmpty()) {
+        name = "arg" + params.size();
+      }
+      TacType type = TacType.UNKNOWN;
+      try {
+        if (parameter.getTypeReference() != null) {
+          type = mapper.map(kaSession.getType(parameter.getTypeReference()));
+        }
+      } catch (RuntimeException ex) {
+        // The type could not be resolved.
+      }
+      params.add(new TacOperand.TacVar(name, type, false));
+      paramTypes.add(type.displayName());
+      List<String> names = annotationNames(parameter.getAnnotationEntries());
+      if (!names.isEmpty()) {
+        paramAnnotations.put(name, names);
+      }
+    }
+    String qualified = className + ".<init>";
+    String signature = qualified + "(" + String.join(",", paramTypes) + "):" + className;
+    TacType returnType = classFqn == null ? TacType.ofClass(className) : TacType.ofClass(classFqn);
+
+    KotlinTacTranslator translator = new KotlinTacTranslator(kaSession);
+    translator.setEnclosingClassFqn(classFqn);
+    TacFunction function =
+        translator.translate(
+            qualified,
+            signature,
+            returnType,
+            params,
+            constructor.getBodyExpression(),
+            className,
+            false,
+            module,
+            classAnnotations,
+            annotationNames(constructor.getAnnotationEntries()),
+            paramAnnotations,
+            org.plumb.tac.ir.TacMemberKind.CONSTRUCTOR);
+    functions.add(function);
+    functions.addAll(translator.nestedFunctions());
+    problems.addAll(translator.problems());
+    structuredProblems.addAll(translator.structuredProblems());
+  }
+
+  /**
+   * Translates an enum entry.
+   *
+   * <p>An entry is a VALUE of the enum's type. Reading it is a call to the entry's accessor,
+   * and the accessor constructs a value of the enum's type.
+   */
+  private void translateEnumEntry(
+      KtEnumEntry entry,
+      String className,
+      String classFqn,
+      KaSession kaSession,
+      List<TacFunction> functions,
+      List<String> problems,
+      String module,
+      List<String> classAnnotations) {
+
+    String entryName = entry.getName();
+    if (entryName == null || entryName.isEmpty()) {
+      return;
+    }
+    String qualified = className + "." + entryName;
+    String signature = qualified + "():" + className;
+    TacType enumType = classFqn == null ? TacType.ofClass(className) : TacType.ofClass(classFqn);
+
+    org.plumb.tac.translate.TacBuilder builder =
+        new org.plumb.tac.translate.TacBuilder(
+            new org.plumb.tac.translate.TacBuilder.FunctionSpec(qualified, signature, enumType),
+            List.of());
+    builder.setSourceLanguage(SourceLanguage.KOTLIN);
+    builder.setIrPrecision(IrPrecision.SOURCE_FULL);
+    builder.setEnclosingClass(className);
+    builder.setMemberKind(org.plumb.tac.ir.TacMemberKind.ENUM_ENTRY);
+    builder.setModule(module);
+    if (!classAnnotations.isEmpty()) {
+      builder.addClassAnnotations(classAnnotations);
+    }
+    TacOperand.TacVar value = builder.newTemp(enumType);
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.NEW)
+            .dest(value)
+            .ctorType(enumType)
+            .calleeSig(qualified + ".<init>/0")
+            .args(List.of())
+            .build());
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.RETURN).lhs1(value).build());
+    functions.add(builder.build());
+  }
+
+  /** A name with its first letter in upper case. */
+  private static String capitalise(String name) {
+    if (name == null || name.isEmpty()) {
+      return "";
+    }
+    return Character.toUpperCase(name.charAt(0)) + name.substring(1);
   }
 
   /**
@@ -760,6 +1242,7 @@ public final class KotlinTacFrontend implements TacFrontend {
   private void translateFunction(
       KtNamedFunction fn,
       String enclosingClass,
+      String enclosingClassFqn,
       KaSession kaSession,
       List<TacFunction> functions,
       List<String> problems,
@@ -870,6 +1353,7 @@ public final class KotlinTacFrontend implements TacFrontend {
     boolean synthetic = KotlinTacTranslator.isSynthetic(symbol.getOrigin());
 
     KotlinTacTranslator translator = new KotlinTacTranslator(kaSession);
+    translator.setEnclosingClassFqn(enclosingClassFqn);
     TacFunction function =
         translator.translate(
             qualified,
@@ -899,6 +1383,9 @@ public final class KotlinTacFrontend implements TacFrontend {
                 ? org.plumb.tac.ir.TacMemberKind.FUNCTION
                 : org.plumb.tac.ir.TacMemberKind.METHOD);
     functions.add(function);
+    // The functions the lambdas in this function produced. A lambda is a
+    // function of its own, and a sink inside it is a finding in THAT function.
+    functions.addAll(translator.nestedFunctions());
     problems.addAll(translator.problems());
     // The STRUCTURED problems, which travel with the IR. A source-less consumer
     // can then see which construct the frontend could not lower, in which

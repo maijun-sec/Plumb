@@ -175,13 +175,31 @@ public sealed class TryRegion
     [JsonPropertyName("id")]
     public string Id { get; set; } = "";
 
-    /// <summary>The label the protected region starts at.</summary>
+    /// <summary>
+    /// The index of the first instruction of the protected region, or -1.
+    /// </summary>
+    /// <remarks>
+    /// An INDEX, not a label. The engine's CFG builder asks which instruction RANGE a
+    /// region covers, and a label is not a range: two labels can name the same place, and
+    /// a label says nothing about where the region ends. When the region was written as
+    /// labels, every region arrived empty, the builder wired no exceptional edge at all,
+    /// and a catch body was unreachable on the exception path -- so the taint that flowed
+    /// into it was lost, silently.
+    /// </remarks>
     [JsonPropertyName("tryStart")]
-    public string TryStart { get; set; } = "";
+    public int TryStart { get; set; } = -1;
 
-    /// <summary>The label the protected region ends at.</summary>
+    /// <summary>The index of the last instruction of the protected region, or -1.</summary>
     [JsonPropertyName("tryEnd")]
-    public string TryEnd { get; set; } = "";
+    public int TryEnd { get; set; } = -1;
+
+    /// <summary>The index of the first instruction of the catch handlers, or -1.</summary>
+    [JsonPropertyName("catchStart")]
+    public int CatchStart { get; set; } = -1;
+
+    /// <summary>The index of the last instruction of the catch handlers, or -1.</summary>
+    [JsonPropertyName("catchEnd")]
+    public int CatchEnd { get; set; } = -1;
 
     /// <summary>The labels of the catch handlers, in source order.</summary>
     [JsonPropertyName("catchLabels")]
@@ -198,15 +216,13 @@ public sealed class TryRegion
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? FinallyLabel { get; set; }
 
-    /// <summary>The label the finally block starts at.</summary>
+    /// <summary>The index of the first instruction of the finally block, or -1.</summary>
     [JsonPropertyName("finallyStart")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? FinallyStart { get; set; }
+    public int FinallyStart { get; set; } = -1;
 
-    /// <summary>The label the finally block ends at.</summary>
+    /// <summary>The index of the last instruction of the finally block, or -1.</summary>
     [JsonPropertyName("finallyEnd")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? FinallyEnd { get; set; }
+    public int FinallyEnd { get; set; } = -1;
 
     /// <summary>
     /// The labels the finally block runs on the way out: the normal exit,

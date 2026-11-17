@@ -285,11 +285,15 @@ class SinkPatternNameFormTest {
   /**
    * The methods a family is asked not to claim when it does not name the stand-in owner.
    *
-   * <p>The catalogue names the stand-in in exactly two places -- the global {@code eval} and the
-   * global {@code fetch} -- and a family that does not name it must not claim a call whose owner is
-   * it. The point is not the two families that do name it; it is every family that does NOT,
-   * because a pattern that matched the stand-in by accident would claim a call whose receiver the
-   * front end could not type.
+   * <p>The catalogue names the stand-in in exactly one place -- Python's {@code execute}, whose
+   * receiver is a call whose type the front end cannot name -- and a family that does not name it
+   * must not claim a call whose owner is it. The point is not that one family; it is every family
+   * that does NOT, because a pattern that matched the stand-in by accident would claim a call whose
+   * receiver the front end could not type.
+   *
+   * <p>TypeScript and ArkTS do not produce the stand-in at all: a call whose owner nobody could
+   * name carries no owner section, so its key is {@code method/1}. The stand-in is a Python-only
+   * shape today, and the rule below still holds for it.
    */
   private static final String[] STAND_IN_OWNER_METHODS = {
     "eval", "fetch", "error", "info", "exec", "loads", "trim", "strip"

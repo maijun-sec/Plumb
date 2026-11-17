@@ -244,13 +244,14 @@ public final class CSharpTacFrontend implements TacFrontend, AutoCloseable {
         }
       }
 
-      IrPrecision precision = defaultPrecision();
-      for (TacFunction function : functions) {
-        if (function.irPrecision() == IrPrecision.SOURCE_LOWERED) {
-          precision = IrPrecision.SOURCE_LOWERED;
-          break;
-        }
-      }
+      // The file's precision is the WORST of its functions'.
+      //
+      // WHY NOT A SCAN FOR SOURCE_LOWERED. The precision has three grades, not two: a
+      // function can be SOURCE_DEGRADED, which means something was lost that did not
+      // change the function's shape. A scan that only looks for SOURCE_LOWERED reported
+      // a file whose functions were all SOURCE_DEGRADED as SOURCE_FULL -- the file
+      // looked complete, and it was not.
+      IrPrecision precision = TacFunction.aggregatePrecision(defaultPrecision(), functions);
       return new ParseResult(functions, problems, precision);
     } catch (IOException | RuntimeException ex) {
       // A frontend must be TOTAL. A broken file reports a problem and yields

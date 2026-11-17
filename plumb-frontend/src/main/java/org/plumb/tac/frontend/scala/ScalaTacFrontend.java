@@ -58,16 +58,32 @@ import org.plumb.tac.ir.TacFunction;
  *
  * <h2>What the Scala frontend contributes to the IR</h2>
  *
- * <p>Two things the Java frontend cannot give, and which the analysis actually uses:
+ * <p>Three things the Java frontend cannot give, and which the analysis actually uses:
  *
  * <ul>
  *   <li><b>Synthetic methods.</b> A case class's {@code copy}, {@code apply}, {@code unapply} and
  *       {@code _N} accessors are compiler-generated, and dotc says so exactly ({@code
  *       Flags.Synthetic}). The bytecode path can only guess from the name.
+ *   <li><b>Field initialisers.</b> A {@code val} in a class body is a field, and the value that
+ *       fills it is the class's own behaviour -- it runs on every construction. The compiler
+ *       synthesises the constructor's field assignments AFTER the typer, so a frontend that reads
+ *       the typed tree finds an empty constructor body. The Scala frontend gives each such value a
+ *       function of its own ({@link org.plumb.tac.ir.TacMemberKind#FIELD_INITIALIZER}) and makes
+ *       the constructor call it.
  *   <li><b>Nothing else.</b> Scala has no non-null type system, so unlike the Kotlin frontend this
  *       one adds no nullability information: every reference stays nullable, exactly as it would
  *       for Java.
  * </ul>
+ *
+ * <h2>What has no home in the IR</h2>
+ *
+ * <p>Scala's class modifiers have nowhere to go in the IR as it exists today. A {@code sealed}
+ * class has a statically countable set of permitted subtypes, but the IR has no type declaration to
+ * carry them ({@code TacTypeDecl} does not exist), and a drop would be the wrong instrument: a drop
+ * says the frontend LOST something, and nothing was lost here. A {@code final} or a {@code case}
+ * class has no run-time effect at all, so no instruction is needed for it either. The modifiers are
+ * read by the translator where they DO have an effect -- a case class's generated members are
+ * marked synthetic -- and reported here as a known absence rather than faked into the IR.
  *
  * <h2>Totality</h2>
  *

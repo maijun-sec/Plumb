@@ -201,6 +201,12 @@ a silent "no findings"**.
 | `interfaces` | The interfaces the class implements. |
 | `problems` | What could not be modelled. |
 
+The decorator channels carry the decorator's NAME. The same name is in the
+callee key of the decorator's CALL, so a rule can match a decorator either
+way -- and the call is what carries the decorator's arguments and their
+taint. A decorator that is called -- `@trace("tag")` -- is named after the
+factory it calls.
+
 ### `memberKind`
 
 | Value | Meaning |
@@ -376,7 +382,7 @@ the sink catalogue -- and then the engine reads `args[0]`, finds the
 absent while the scan reports success.
 
 The owner is the receiver's type for a method, and the module's name for a
-free function.
+free function the file itself declares.
 
 ### When the owner is missing
 
@@ -389,12 +395,75 @@ a call is whatever the receiver is, and naming the file claims a module the
 call never reached. The key says "the owner is missing", which matches nothing
 rather than matching the wrong thing.
 
-A global the language itself provides -- `eval`, `require` -- keeps its own
-name as the owner, because that name is what the sink catalogue is written
-against.
+A global the language itself provides keeps its own name as the owner:
+`eval(x)` is `eval.eval/1`, `require("./x")` is `require.require/1`. That is
+**not** the same as the global object as a RECEIVER -- `console.log(x)` names
+`console` because the method belongs to that object -- and the difference
+matters: a call whose receiver nobody could type has no owner at all, so the
+key tells the global and the untyped receiver apart.
+
+This is the shape the sink catalogue is written against. An earlier version
+of this document claimed the catalogue was written against a *stand-in* owner
+(`<unknown>.eval`); it was not -- the catalogue still named the stand-in after
+the front end had stopped producing it, so the global `eval` matched no
+pattern at all and a program that evaluated tainted input scanned clean. The
+finding was absent, and the scan reported success.
 
 A dynamic `import()` carries the module it names -- the literal in the source
 -- as the owner, rather than a file name.
+
+## The decorators
+
+A decorator is a call, and it is a call **where the thing it decorates is
+defined**:
+
+```
+@trace
+method(a: string): string { ... }
+
+@trace("tag")
+function topLevel(a: string): string { ... }
+```
+
+The decorator's call is not in the body of the function it decorates. A
+decorator runs once, where the declaration is; a call in the body would run
+it once per call of the decorated function instead.
+
+Where the call goes depends on what is decorated:
+
+| Decorated | The call is in |
+|---|---|
+| A method, a getter, a setter or a field | The class's own stream: the constructor's, or the field initialiser's. |
+| The class itself | The class's own stream, the same one. |
+| A top-level function | The module's own stream: the synthetic `__top` function. |
+| A function nested in another function | The enclosing function's body -- the place the nested function is declared. |
+
+The call has the shape of every other call:
+
+```
+calleeSig = <owner>.<decoratorName>/<arity>
+args      = [ the constant owner slot, the decorator's value, the holder ]
+```
+
+- The **owner** is the decorator's own: the module it was imported from, or
+  the module that declares it. It is never a placeholder: an owner that
+  names nothing at all would make a rule that matches on a decorator's name
+  match nothing too.
+- The **arity** counts the decorator's own arguments plus the decorated
+  thing itself: `@trace` is `trace/1`, `@trace("tag")` is `trace/2`.
+- The **first argument** is the receiver slot, and it holds the owner as a
+  constant -- the same slot every other call has.
+- The **second argument** is the decorator's own value. A decorator that is
+  called -- `@trace("tag")` -- runs its factory first, so the TAC has two
+  calls: the factory's, and the decorator's.
+- The **third argument** is the **holder**: the variable that holds the
+  decorated thing, and that holds the decorator's result afterwards. A
+  `MOVE` writes the result back to it, because a decorator is what the
+  name holds once it has run.
+
+A **parameter decorator** has no TAC lowering: it runs where the function is
+defined and it replaces nothing, so there is no holder for it to write back
+to. It is reported as `UNHANDLED_NODE` rather than dropped quietly.
 
 ## The keyed namespace: why a property is not a field
 
@@ -463,6 +532,7 @@ thing the source wrote.
 | The rest of a destructuring pattern | A `STRUCTURE` drop: it is modelled as an empty object or array. |
 | A regular expression | A `REGEX` constant. The pattern is kept; the flags are not analysed. |
 | A class expression | Reported as `UNHANDLED_NODE`. |
+| A parameter decorator | Reported as `UNHANDLED_NODE`: it runs where the function is defined and it replaces nothing. |
 | Any other statement or expression | Reported as `UNHANDLED_NODE`; the value becomes a `HAVOC`. |
 
 **A drop is never a silent omission.** A construct that is not modelled

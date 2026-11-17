@@ -3232,7 +3232,12 @@ export class Translator {
       if (binding) {
         return binding.module;
       }
-      // A known global.
+      // A known global: `eval(x)` belongs to the global it came from, so the
+      // owner is that global's own name. It is NOT the same as the global
+      // object as a RECEIVER -- `console.log(x)` names `console` because the
+      // method belongs to that object -- and the difference matters: a call
+      // whose receiver nobody could type has NO owner, so the key tells the
+      // two apart.
       if (GLOBAL_OWNERS.has(expression.text)) {
         return expression.text;
       }
@@ -3251,6 +3256,8 @@ export class Translator {
       if (binding) {
         return binding.module;
       }
+      // A known global: it keeps its own name as the owner, the same as in
+      // `ownerOf`. See there for why the two are told apart.
       if (GLOBAL_OWNERS.has(expression.text)) {
         return expression.text;
       }

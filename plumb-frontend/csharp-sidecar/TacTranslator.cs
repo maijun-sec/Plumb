@@ -1098,12 +1098,22 @@ internal sealed partial class TacTranslator
         var endLabel = NewLabel("try_end");
 
         Emit(InstructionKind.LABEL, label: tryStart, node: tryStatement);
+
+        // The region's instruction range. The engine asks WHICH INSTRUCTIONS the region
+        // covers, so the range has to be an index range: a label says where a place is,
+        // not how far the region reaches.
+        var tryStartIndex = _instructions.Count;
         TranslateBlock(tryStatement.Block);
+        var tryEndIndex = _instructions.Count - 1;
         Emit(InstructionKind.JUMP, label: finallyLabel ?? afterTry, node: tryStatement);
 
         var catchLabels = new List<string>();
         var catchTypes = new List<string>();
         var finallyExits = new List<string> { afterTry };
+        var catchStartIndex = -1;
+        var catchEndIndex = -1;
+        var finallyStartIndex = -1;
+        var finallyEndIndex = -1;
 
         for (var index = 0; index < tryStatement.Catches.Count; index++)
         {
@@ -1117,6 +1127,10 @@ internal sealed partial class TacTranslator
             catchTypes.Add(caughtType is null ? "" : TypeMapper.FullName(caughtType));
 
             Emit(InstructionKind.LABEL, label: label, node: clause);
+            if (catchStartIndex < 0)
+            {
+                catchStartIndex = _instructions.Count - 1;
+            }
 
             // A FILTER decides whether this handler runs at all. When it is
             // false, the exception goes to the NEXT handler.
@@ -1154,13 +1168,16 @@ internal sealed partial class TacTranslator
             TranslateBlock(clause.Block);
             finallyExits.Add(label);
             Emit(InstructionKind.JUMP, label: finallyLabel ?? afterTry, node: clause);
+            catchEndIndex = _instructions.Count - 1;
         }
 
         if (tryStatement.Finally is not null && finallyLabel is not null)
         {
             Emit(InstructionKind.FINALLY_ENTER, label: finallyLabel, node: tryStatement.Finally);
             Emit(InstructionKind.LABEL, label: finallyLabel, node: tryStatement.Finally);
+            finallyStartIndex = _instructions.Count;
             TranslateBlock(tryStatement.Finally.Block);
+            finallyEndIndex = _instructions.Count - 1;
             Emit(InstructionKind.JUMP, label: endLabel, node: tryStatement.Finally);
         }
 
@@ -1176,13 +1193,15 @@ internal sealed partial class TacTranslator
         _tryRegions.Add(new TryRegion
         {
             Id = "R" + _tryRegionCounter,
-            TryStart = tryStart,
-            TryEnd = afterTry,
+            TryStart = tryStartIndex,
+            TryEnd = tryEndIndex,
+            CatchStart = catchStartIndex,
+            CatchEnd = catchEndIndex,
             CatchLabels = catchLabels,
             CatchTypes = catchTypes,
             FinallyLabel = finallyLabel,
-            FinallyStart = finallyLabel,
-            FinallyEnd = finallyLabel is null ? null : endLabel,
+            FinallyStart = finallyStartIndex,
+            FinallyEnd = finallyEndIndex,
             FinallyExits = finallyExits,
         });
     }
@@ -1543,11 +1562,14 @@ internal sealed partial class TacTranslator
         var tryStart = NewLabel("using_try");
 
         Emit(InstructionKind.LABEL, label: tryStart, node: node);
+        var tryStartIndex = _instructions.Count;
         TranslateStatement(body);
+        var tryEndIndex = _instructions.Count - 1;
         Emit(InstructionKind.JUMP, label: finallyLabel, node: node);
 
         Emit(InstructionKind.FINALLY_ENTER, label: finallyLabel, node: node);
         Emit(InstructionKind.LABEL, label: finallyLabel, node: node);
+        var finallyStartIndex = _instructions.Count;
         foreach (var resource in resources)
         {
             // The disposal is a CALL on the resource. The receiver is the
@@ -1558,6 +1580,7 @@ internal sealed partial class TacTranslator
                 calleeSig: disposeAsync ? $"{_ownerTypeName()}.DisposeAsync/0" : $"{_ownerTypeName()}.Dispose/0",
                 node: node);
         }
+        var finallyEndIndex = _instructions.Count - 1;
         Emit(InstructionKind.JUMP, label: endLabel, node: node);
         Emit(InstructionKind.LABEL, label: endLabel, node: node);
 
@@ -1565,13 +1588,15 @@ internal sealed partial class TacTranslator
         _tryRegions.Add(new TryRegion
         {
             Id = "R" + _tryRegionCounter,
-            TryStart = tryStart,
-            TryEnd = finallyLabel,
+            TryStart = tryStartIndex,
+            TryEnd = tryEndIndex,
+            CatchStart = -1,
+            CatchEnd = -1,
             CatchLabels = new List<string>(),
             CatchTypes = new List<string>(),
             FinallyLabel = finallyLabel,
-            FinallyStart = finallyLabel,
-            FinallyEnd = endLabel,
+            FinallyStart = finallyStartIndex,
+            FinallyEnd = finallyEndIndex,
             FinallyExits = new List<string> { endLabel },
             ResourceVars = resources.Select(resource => resource.Name).ToList(),
             SyntheticFinally = true,
