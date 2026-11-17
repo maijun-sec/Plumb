@@ -1802,21 +1802,55 @@ func (t *translator) rangeOverMap(statement *ast.RangeStmt, collection *Operand,
 
 // rangeOverChannel lowers a range over a channel.
 //
-// The task's rule is one receive: the TAC has no channel semantics, so the
-// blocking read is not modelled and the loop becomes a single receive.
+// A channel range reads ONE value per iteration, and it ends when the channel
+// is CLOSED: the receive then reports that it is closed, and the loop stops.
+//
+// THE BODY USED TO BE DROPPED. The range became a single receive and nothing
+// else -- no loop, no body. So every statement inside the loop was missing
+// from the TAC, including a call to a sink: the finding was absent while the
+// scan reported success.
+//
+// The receive BLOCKS until a value arrives, and the blocking is not modelled:
+// the analysis assumes the value is there. That is recorded.
 func (t *translator) rangeOverChannel(statement *ast.RangeStmt, collection *Operand, value *Operand) {
+	conditionLabel := t.newLabel("range_cond")
+	bodyLabel := t.newLabel("range_body")
+	endLabel := t.newLabel("range_end")
+
+	t.emit(Instruction{Kind: KindJump, Label: conditionLabel}, statement.Pos())
+	t.emit(Instruction{Kind: KindLabel, Label: conditionLabel}, statement.Pos())
+
 	received := t.newTemp(nil)
+	open := t.newTemp(nil)
 	t.emit(Instruction{
-		Kind:      KindCall,
-		Dest:      received,
-		CalleeSig: syntheticSignature(syntheticChanRecv, 1),
-		Args:      []Operand{*collection},
+		Kind:        KindCall,
+		Dest:        received,
+		CalleeSig:   syntheticSignature(syntheticChanRecv, 1),
+		Args:        []Operand{*collection},
+		ResultDests: []*Operand{received, open},
 	}, statement.Pos())
+	t.emit(Instruction{
+		Kind:       KindBranch,
+		Lhs1:       open,
+		TrueLabel:  bodyLabel,
+		FalseLabel: endLabel,
+	}, statement.Pos())
+	t.emit(Instruction{Kind: KindLabel, Label: bodyLabel}, statement.Pos())
+
 	if value != nil {
 		t.emit(Instruction{Kind: KindMove, Dest: value, Lhs1: received}, statement.Pos())
 	}
-	t.report(statement, ProblemSourceLowered,
-		"a channel range was lowered to a single receive: the blocking read is not modelled")
+
+	t.pushBreak(&breakContext{breakLabel: endLabel, continueLabel: conditionLabel})
+	t.registerPendingLabel(endLabel, conditionLabel)
+	t.translateStatement(statement.Body)
+	t.popBreak()
+
+	t.emit(Instruction{Kind: KindJump, Label: conditionLabel}, statement.Pos())
+	t.emit(Instruction{Kind: KindLabel, Label: endLabel}, statement.Pos())
+
+	t.reportConstruct(statement, ProblemSourceLowered, DropGoChannelRange,
+		"a channel range is lowered to one receive per iteration: the receive BLOCKS until a value arrives, and the blocking is not modelled")
 }
 
 // translateSwitch lowers an expression switch.

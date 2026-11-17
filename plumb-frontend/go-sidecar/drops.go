@@ -151,6 +151,10 @@ const (
 	// DropGoClearSemantics: `clear` removes the elements, and the TAC has
 	// no operation for that yet.
 	DropGoClearSemantics = "go.clear.semantics"
+
+	// DropGoChannelRange: a receive from a channel blocks until a value
+	// arrives, and the blocking is not modelled.
+	DropGoChannelRange = "go.channel.range"
 )
 
 // The member kinds a function can be.

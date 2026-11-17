@@ -23,12 +23,17 @@ package org.plumb.tac.frontend.csharp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.plumb.tac.ir.TacBasicBlock;
+import org.plumb.tac.ir.TacCfg;
+import org.plumb.tac.ir.TacCfgBuilder;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
@@ -377,6 +382,103 @@ class CSharpSwitchLoweringTest {
                 + "label; dropping it runs the rest of the body instead of restarting "
                 + "the iteration")
         .isNotNull();
+  }
+
+  @Test
+  @DisplayName("every case body is REACHABLE, the last case and the default included")
+  void everyCaseBodyIsReachable() {
+    // Three cases and a default. The chain of comparisons used to end each
+    // comparison's FALSE edge on the next case's BODY, and the body labels are
+    // defined after the whole chain -- so the false edge SKIPPED every
+    // remaining comparison. The second and later comparisons never ran: the
+    // last case's body and the default's were unreachable, and a sink inside
+    // them was never reached.
+    String source =
+        """
+        namespace Demo;
+
+        public class Switcher
+        {
+            public int Pick(int mode)
+            {
+                int result;
+                switch (mode)
+                {
+                    case 1:
+                        result = 10;
+                        break;
+                    case 2:
+                        result = 20;
+                        break;
+                    case 3:
+                        result = 30;
+                        break;
+                    default:
+                        result = 99;
+                        break;
+                }
+                return result;
+            }
+        }
+        """;
+
+    TacFunction function = functionNamed(support.parse(source).functions(), "Pick");
+    TacCfg cfg = TacCfgBuilder.build(function);
+    List<Integer> reachable = reachableBlocks(cfg);
+
+    for (String constant : List.of("10", "20", "30", "99")) {
+      int index = indexOfStoreOf(function, constant);
+      assertThat(index)
+          .as("the case body that stores %s must be in the instruction stream", constant)
+          .isGreaterThanOrEqualTo(0);
+      Integer block = blockOf(cfg, index);
+      assertThat(block).as("the body that stores %s must be in a block", constant).isNotNull();
+      assertThat(reachable)
+          .as(
+              "the body that stores %s must be reachable from the function's entry: an "
+                  + "unreachable body is dead code, and a sink inside it is never reached",
+              constant)
+          .contains(block);
+    }
+  }
+
+  /** The blocks reachable from the function's entry. */
+  private static List<Integer> reachableBlocks(TacCfg cfg) {
+    List<Integer> reachable = new ArrayList<>();
+    Deque<Integer> pending = new ArrayDeque<>();
+    pending.add(cfg.entryId());
+    while (!pending.isEmpty()) {
+      int id = pending.poll();
+      if (id < 0 || reachable.contains(id)) {
+        continue;
+      }
+      reachable.add(id);
+      pending.addAll(cfg.succs(id));
+    }
+    return reachable;
+  }
+
+  /** The block that holds the instruction at the given index, or null. */
+  private static Integer blockOf(TacCfg cfg, int instructionIndex) {
+    for (TacBasicBlock block : cfg.blocks()) {
+      if (block.indices().contains(instructionIndex)) {
+        return block.id();
+      }
+    }
+    return null;
+  }
+
+  /** The index of the instruction that stores the given constant, or -1. */
+  private static int indexOfStoreOf(TacFunction function, String constant) {
+    List<TacInstruction> instructions = function.instructions();
+    for (int i = 0; i < instructions.size(); i++) {
+      TacInstruction instruction = instructions.get(i);
+      if (instruction.kind == TacInstruction.Kind.MOVE
+          && constant.equals(literalOf(instruction.lhs1))) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   /** The function with the given name. */

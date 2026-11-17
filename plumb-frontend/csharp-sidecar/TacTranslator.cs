@@ -1353,28 +1353,59 @@ internal sealed partial class TacTranslator
         var operand = VariableOperand(symbol, isTemp: false);
         _locals.Add(operand);
 
-        if (collection is not null)
+        var collectionType = _model.GetTypeInfo(foreachStatement.Expression).Type;
+
+        // The loop's SHAPE: a body, a way back to the head, and an end. Without
+        // them a `break` inside the body has no target, and the body would run
+        // exactly once -- which is the opposite of what the program does.
+        var bodyLabel = NewLabel("foreach_body");
+        var endLabel = NewLabel("foreach_end");
+
+        // The VALUE of the loop variable is the ELEMENT, and not the
+        // collection.
+        //
+        // It used to be the collection: the loop variable was bound to the
+        // collection itself. So the variable held the collection where the
+        // program has an element -- a value of the wrong type, carrying the
+        // wrong taint. A tainted element reached a clean variable (the finding
+        // was missing), and a tainted collection reached a tainted variable
+        // where the program has none (the finding was spurious).
+        if (collectionType is IArrayTypeSymbol arrayType)
         {
-            Emit(InstructionKind.MOVE, dest: operand, lhs1: collection, node: foreachStatement);
+            TranslateForEachOverArray(foreachStatement, collection, operand, arrayType,
+                bodyLabel, endLabel);
+            return;
+        }
+        if (collectionType is INamedTypeSymbol namedType)
+        {
+            var enumerator = EnumeratorOf(namedType);
+            if (enumerator is not null)
+            {
+                TranslateForEachOverEnumerator(foreachStatement, collection, operand, enumerator,
+                    bodyLabel, endLabel);
+                return;
+            }
         }
 
-        // The iteration itself is not modelled as an array walk: the TAC has no
-        // iterator protocol. The element is bound to the loop variable, which is
-        // what the dataflow engine needs -- the collection's taint reaches the
-        // variable.
+        // The collection's type is not known, so the iteration protocol cannot
+        // be resolved. The element's value is unknown then, and an UNKNOWN
+        // value is the conservative answer: it is treated as tainted, so the
+        // engine reports the findings rather than losing them.
         //
-        // The loop still has its SHAPE, though: a body, an increment and an
-        // end. Without them a `break` inside the body has no target, and the
-        // body would run exactly once -- which is the opposite of what the
-        // program does.
-        var bodyLabel = NewLabel("foreach_body");
-        var incrementLabel = NewLabel("foreach_inc");
-        var endLabel = NewLabel("foreach_end");
+        // The old shape -- binding the collection to the loop variable -- was
+        // neither conservative nor correct: it reported the collection's taint
+        // as the element's, and lost the element's own taint.
+        var unknown = NewTemp();
+        Emit(InstructionKind.HAVOC, dest: unknown, node: foreachStatement);
+        Emit(InstructionKind.MOVE, dest: operand, lhs1: unknown, node: foreachStatement);
+        Drop(foreachStatement, DropIds.Unmodelled,
+            "the collection's type is not known, so the iteration protocol could not be " +
+            "resolved and the element's value is unknown",
+            DropImpact.Value);
 
         Emit(InstructionKind.LABEL, label: bodyLabel, node: foreachStatement);
         Emit(InstructionKind.NOP, node: foreachStatement);
-
-        _breakContexts.Push(new BreakContext { BreakLabel = endLabel, ContinueLabel = incrementLabel });
+        _breakContexts.Push(new BreakContext { BreakLabel = endLabel, ContinueLabel = endLabel });
         try
         {
             TranslateStatement(foreachStatement.Statement);
@@ -1383,10 +1414,273 @@ internal sealed partial class TacTranslator
         {
             _breakContexts.Pop();
         }
-
-        Emit(InstructionKind.LABEL, label: incrementLabel, node: foreachStatement);
-        Emit(InstructionKind.JUMP, label: bodyLabel, node: foreachStatement);
+        Emit(InstructionKind.JUMP, label: endLabel, node: foreachStatement);
         Emit(InstructionKind.LABEL, label: endLabel, node: foreachStatement);
+    }
+
+    /// <summary>
+    /// Lower a <c>foreach</c> over an ARRAY.
+    /// </summary>
+    /// <param name="foreachStatement">the statement</param>
+    /// <param name="collection">the collection</param>
+    /// <param name="element">the loop variable</param>
+    /// <param name="collectionType">the array's type</param>
+    /// <param name="bodyLabel">the label of the loop's body</param>
+    /// <param name="endLabel">the label of the loop's end</param>
+    /// <remarks>
+    /// <para>
+    /// An array is walked by its INDEX: the length is read once, and the
+    /// element is read out of the array. The array's enumerator is a hidden
+    /// compiler-generated type, and naming it would put a type the program
+    /// cannot mention into the callee keys.
+    /// </para>
+    /// </remarks>
+    private void TranslateForEachOverArray(
+        ForEachStatementSyntax foreachStatement,
+        Operand? collection,
+        Operand element,
+        IArrayTypeSymbol collectionType,
+        string bodyLabel,
+        string endLabel)
+    {
+        var headLabel = NewLabel("foreach_head");
+        var postLabel = NewLabel("foreach_post");
+
+        if (collection is not null)
+        {
+            var length = NewTemp();
+            Emit(InstructionKind.CALL, dest: length, calleeSig: "System.Array.get_Length/0",
+                args: new List<Operand> { collection }, node: foreachStatement);
+            var index = NewTemp();
+            Emit(InstructionKind.MOVE, dest: index,
+                lhs1: new Operand { Kind = "CONST", ConstKind = "INT", Value = "0" },
+                node: foreachStatement);
+
+            Emit(InstructionKind.LABEL, label: headLabel, node: foreachStatement);
+            var test = NewTemp();
+            Emit(InstructionKind.BINOP, dest: test, lhs1: index, lhs2: length, binOp: "LT",
+                node: foreachStatement);
+            Emit(InstructionKind.BRANCH, lhs1: test, trueLabel: bodyLabel, falseLabel: endLabel,
+                node: foreachStatement);
+
+            Emit(InstructionKind.LABEL, label: bodyLabel, node: foreachStatement);
+            var read = NewTemp();
+            Emit(InstructionKind.ARRAYLOAD, dest: read, lhs1: collection, lhs2: index,
+                node: foreachStatement);
+            Emit(InstructionKind.MOVE, dest: element, lhs1: read, node: foreachStatement);
+
+            _breakContexts.Push(new BreakContext { BreakLabel = endLabel, ContinueLabel = postLabel });
+            try
+            {
+                TranslateStatement(foreachStatement.Statement);
+            }
+            finally
+            {
+                _breakContexts.Pop();
+            }
+
+            Emit(InstructionKind.LABEL, label: postLabel, node: foreachStatement);
+            var next = NewTemp();
+            Emit(InstructionKind.BINOP, dest: next, lhs1: index,
+                lhs2: new Operand { Kind = "CONST", ConstKind = "INT", Value = "1" }, binOp: "ADD",
+                node: foreachStatement);
+            Emit(InstructionKind.MOVE, dest: index, lhs1: next, node: foreachStatement);
+            Emit(InstructionKind.JUMP, label: headLabel, node: foreachStatement);
+        }
+        else
+        {
+            Emit(InstructionKind.LABEL, label: headLabel, node: foreachStatement);
+            Emit(InstructionKind.LABEL, label: bodyLabel, node: foreachStatement);
+            _breakContexts.Push(new BreakContext { BreakLabel = endLabel, ContinueLabel = headLabel });
+            try
+            {
+                TranslateStatement(foreachStatement.Statement);
+            }
+            finally
+            {
+                _breakContexts.Pop();
+            }
+            Emit(InstructionKind.JUMP, label: headLabel, node: foreachStatement);
+        }
+
+        Emit(InstructionKind.LABEL, label: endLabel, node: foreachStatement);
+    }
+
+    /// <summary>
+    /// Lower a <c>foreach</c> over anything that has an enumerator.
+    /// </summary>
+    /// <param name="foreachStatement">the statement</param>
+    /// <param name="collection">the collection</param>
+    /// <param name="element">the loop variable</param>
+    /// <param name="enumerator">the collection's enumerator</param>
+    /// <param name="bodyLabel">the label of the loop's body</param>
+    /// <param name="endLabel">the label of the loop's end</param>
+    /// <remarks>
+    /// <para>
+    /// The iteration is the ITERATION PROTOCOL, with the real method names:
+    /// <c>GetEnumerator</c>, <c>MoveNext</c>, <c>Current</c> and <c>Dispose</c>.
+    /// The element is the enumerator's <c>Current</c>, so the value that the
+    /// program iterates over is the value the loop variable holds.
+    /// </para>
+    /// <para>
+    /// The disposal is after the loop's end label on purpose: a <c>break</c>
+    /// jumps to that label, and the enumerator is still disposed on that path.
+    /// </para>
+    /// </remarks>
+    private void TranslateForEachOverEnumerator(
+        ForEachStatementSyntax foreachStatement,
+        Operand? collection,
+        Operand element,
+        EnumeratorProtocol enumerator,
+        string bodyLabel,
+        string endLabel)
+    {
+        var headLabel = NewLabel("foreach_head");
+        var iterator = NewTemp();
+
+        if (collection is not null)
+        {
+            Emit(InstructionKind.CALL, dest: iterator, calleeSig: enumerator.GetEnumerator,
+                args: new List<Operand> { collection }, node: foreachStatement);
+        }
+
+        Emit(InstructionKind.LABEL, label: headLabel, node: foreachStatement);
+        var moved = NewTemp();
+        Emit(InstructionKind.CALL, dest: moved, calleeSig: enumerator.MoveNext,
+            args: new List<Operand> { iterator }, node: foreachStatement);
+        Emit(InstructionKind.BRANCH, lhs1: moved, trueLabel: bodyLabel, falseLabel: endLabel,
+            node: foreachStatement);
+
+        Emit(InstructionKind.LABEL, label: bodyLabel, node: foreachStatement);
+        var current = NewTemp();
+        Emit(InstructionKind.CALL, dest: current, calleeSig: enumerator.Current,
+            args: new List<Operand> { iterator }, node: foreachStatement);
+        Emit(InstructionKind.MOVE, dest: element, lhs1: current, node: foreachStatement);
+
+        _breakContexts.Push(new BreakContext { BreakLabel = endLabel, ContinueLabel = headLabel });
+        try
+        {
+            TranslateStatement(foreachStatement.Statement);
+        }
+        finally
+        {
+            _breakContexts.Pop();
+        }
+        Emit(InstructionKind.JUMP, label: headLabel, node: foreachStatement);
+
+        Emit(InstructionKind.LABEL, label: endLabel, node: foreachStatement);
+        Emit(InstructionKind.CALL, calleeSig: enumerator.Dispose,
+            args: new List<Operand> { iterator }, node: foreachStatement);
+    }
+
+    /// <summary>
+    /// The iteration protocol of a collection: the four calls it takes.
+    /// </summary>
+    private sealed class EnumeratorProtocol
+    {
+        /// <summary>The callee key of the enumerator's factory.</summary>
+        public string GetEnumerator { get; init; } = "";
+
+        /// <summary>The callee key of the enumerator's advance.</summary>
+        public string MoveNext { get; init; } = "";
+
+        /// <summary>The callee key of the enumerator's current element.</summary>
+        public string Current { get; init; } = "";
+
+        /// <summary>The callee key of the enumerator's disposal.</summary>
+        public string Dispose { get; init; } = "";
+    }
+
+    /// <summary>
+    /// Resolve the iteration protocol of a collection.
+    /// </summary>
+    /// <param name="collectionType">the collection's type</param>
+    /// <returns>the protocol, or null when the type has no enumerator</returns>
+    private static EnumeratorProtocol? EnumeratorOf(INamedTypeSymbol collectionType)
+    {
+        var factory = MethodOf(collectionType, "GetEnumerator", 0);
+        if (factory is null)
+        {
+            return null;
+        }
+        if (factory.ReturnType is not INamedTypeSymbol enumeratorType)
+        {
+            return null;
+        }
+        var advance = MethodOf(enumeratorType, "MoveNext", 0);
+        var current = PropertyOf(enumeratorType, "Current");
+        if (advance is null || current?.GetMethod is null)
+        {
+            return null;
+        }
+        var dispose = MethodOf(enumeratorType, "Dispose", 0);
+        return new EnumeratorProtocol
+        {
+            GetEnumerator = Signature.For(factory),
+            MoveNext = Signature.For(advance),
+            Current = Signature.For(current.GetMethod),
+            Dispose = dispose is null ? $"{TypeMapper.FullName(enumeratorType)}.Dispose/0" : Signature.For(dispose),
+        };
+    }
+
+    /// <summary>A method of a type, or of a type it implements, with the given arity.</summary>
+    private static IMethodSymbol? MethodOf(INamedTypeSymbol? type, string name, int arity)
+    {
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers(name))
+            {
+                if (member is IMethodSymbol method && method.Parameters.Length == arity)
+                {
+                    return method;
+                }
+            }
+        }
+        if (type is null)
+        {
+            return null;
+        }
+        foreach (var contract in type.AllInterfaces)
+        {
+            foreach (var member in contract.GetMembers(name))
+            {
+                if (member is IMethodSymbol method && method.Parameters.Length == arity)
+                {
+                    return method;
+                }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>A property of a type, or of a type it implements.</summary>
+    private static IPropertySymbol? PropertyOf(INamedTypeSymbol? type, string name)
+    {
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers(name))
+            {
+                if (member is IPropertySymbol property)
+                {
+                    return property;
+                }
+            }
+        }
+        if (type is null)
+        {
+            return null;
+        }
+        foreach (var contract in type.AllInterfaces)
+        {
+            foreach (var member in contract.GetMembers(name))
+            {
+                if (member is IPropertySymbol property)
+                {
+                    return property;
+                }
+            }
+        }
+        return null;
     }
 
     private void TranslateSwitch(SwitchStatementSyntax switchStatement)
@@ -1401,19 +1695,39 @@ internal sealed partial class TacTranslator
         var endLabel = NewLabel("switch_end");
         var caseLabels = new List<string>();
         var defaultIndex = -1;
+
+        // The TESTS, in source order. A test is one case LABEL, and a section
+        // may carry several of them (`case 1: case 2:`).
+        //
+        // Each test gets its OWN label. The false edge of a test has to be the
+        // NEXT TEST, and not the next case's BODY: the body label is defined
+        // after the whole chain, so a false edge that pointed at it would SKIP
+        // every remaining comparison.
+        //
+        // That is not a hypothetical. The false edge used to point at the next
+        // section's body label, and the result was that the SECOND and every
+        // later comparison never ran: the second case's body was entered
+        // without its test, and the last case's body -- and the default's --
+        // were unreachable. A sink inside such a body was never reached, so
+        // the finding was absent while the scan reported success.
+        var tests = new List<SwitchTest>();
         for (var index = 0; index < switchStatement.Sections.Count; index++)
         {
+            var section = switchStatement.Sections[index];
             caseLabels.Add(NewLabel("case"));
-            // The default section is the one that runs when no case matched. It
-            // is reachable in two ways: the LAST comparison's false edge, and
-            // the jump that follows the whole chain. Without both, the default
-            // body is unreachable and the switch silently loses a branch.
-            foreach (var clause in switchStatement.Sections[index].Labels)
+            foreach (var clause in section.Labels)
             {
                 if (clause is DefaultSwitchLabelSyntax)
                 {
                     defaultIndex = index;
+                    continue;
                 }
+                tests.Add(new SwitchTest
+                {
+                    Section = index,
+                    Label = clause,
+                    TestLabel = NewLabel("switch_test"),
+                });
             }
         }
         // Where "no case matched" goes: the default body when there is one, the
@@ -1433,13 +1747,17 @@ internal sealed partial class TacTranslator
         // The result of the interleaved form is still a well-formed CFG: every
         // label resolves and the builder accepts it. It is just semantically
         // wrong, and wrong in a way a scan cannot see -- it reports success.
-        for (var index = 0; index < switchStatement.Sections.Count; index++)
+        for (var index = 0; index < tests.Count; index++)
         {
-            var section = switchStatement.Sections[index];
-            var label = caseLabels[index];
-            foreach (var clause in section.Labels)
+            var test = tests[index];
+            var nextTest = index + 1 < tests.Count ? tests[index + 1].TestLabel : noMatchLabel;
+            var bodyLabel = caseLabels[test.Section];
+
+            Emit(InstructionKind.LABEL, label: test.TestLabel, node: switchStatement);
+
+            switch (test.Label)
             {
-                if (clause is CaseSwitchLabelSyntax caseLabel)
+                case CaseSwitchLabelSyntax caseLabel:
                 {
                     var caseValue = TranslateExpression(caseLabel.Value, store: false);
                     if (discriminant is not null && caseValue is not null)
@@ -1447,15 +1765,61 @@ internal sealed partial class TacTranslator
                         var comparison = NewTemp();
                         Emit(InstructionKind.BINOP, dest: comparison, lhs1: discriminant,
                             lhs2: caseValue, binOp: "EQ", node: caseLabel);
-                        Emit(InstructionKind.BRANCH, lhs1: comparison, trueLabel: label,
-                            falseLabel: NextCaseLabel(caseLabels, label, noMatchLabel), node: caseLabel);
+                        Emit(InstructionKind.BRANCH, lhs1: comparison, trueLabel: bodyLabel,
+                            falseLabel: nextTest, node: caseLabel);
                     }
+                    else
+                    {
+                        // The value could not be evaluated, so the case cannot be
+                        // selected. The chain continues with the next test.
+                        Emit(InstructionKind.JUMP, label: nextTest, node: caseLabel);
+                    }
+                    break;
+                }
+
+                case CasePatternSwitchLabelSyntax patternLabel:
+                {
+                    var matched = TranslatePatternTest(discriminant, patternLabel.Pattern, patternLabel);
+                    if (matched is null)
+                    {
+                        Emit(InstructionKind.JUMP, label: nextTest, node: patternLabel);
+                        break;
+                    }
+
+                    // The pattern's VARIABLES are bound on the path where the
+                    // pattern matched, and a `when` guard reads them -- so the
+                    // binding sits BETWEEN the test and the guard. A guard that
+                    // read an unbound variable would compare against nothing.
+                    var bindLabel = NewLabel("switch_bind");
+                    Emit(InstructionKind.BRANCH, lhs1: matched, trueLabel: bindLabel,
+                        falseLabel: nextTest, node: patternLabel);
+                    Emit(InstructionKind.LABEL, label: bindLabel, node: patternLabel);
+                    BindPatternVariables(patternLabel.Pattern, discriminant, patternLabel);
+
+                    if (patternLabel.WhenClause is not null)
+                    {
+                        var guard = TranslateExpression(patternLabel.WhenClause.Condition, store: false);
+                        if (guard is null)
+                        {
+                            Emit(InstructionKind.JUMP, label: bodyLabel, node: patternLabel);
+                            break;
+                        }
+                        Emit(InstructionKind.BRANCH, lhs1: guard, trueLabel: bodyLabel,
+                            falseLabel: nextTest, node: patternLabel);
+                        break;
+                    }
+                    Emit(InstructionKind.JUMP, label: bodyLabel, node: patternLabel);
+                    break;
                 }
             }
         }
 
-        // No case matched: the default body, or the end of the switch.
-        Emit(InstructionKind.JUMP, label: noMatchLabel, node: switchStatement);
+        // A switch with no test at all -- only a default -- still has to reach
+        // the default body.
+        if (tests.Count == 0)
+        {
+            Emit(InstructionKind.JUMP, label: noMatchLabel, node: switchStatement);
+        }
 
         // Now the bodies, each under its own label.
         //
@@ -1484,14 +1848,17 @@ internal sealed partial class TacTranslator
         Emit(InstructionKind.LABEL, label: endLabel, node: switchStatement);
     }
 
-    private string NextCaseLabel(List<string> caseLabels, string current, string endLabel)
+    /// <summary>One case LABEL of a switch, with the label of its test.</summary>
+    private sealed class SwitchTest
     {
-        int index = caseLabels.IndexOf(current);
-        if (index >= 0 && index + 1 < caseLabels.Count)
-        {
-            return caseLabels[index + 1];
-        }
-        return endLabel;
+        /// <summary>The index of the section the label belongs to.</summary>
+        public int Section { get; init; }
+
+        /// <summary>The label itself.</summary>
+        public SwitchLabelSyntax Label { get; init; } = null!;
+
+        /// <summary>The label of the test that selects this case.</summary>
+        public string TestLabel { get; init; } = "";
     }
 
     /// <summary>
@@ -1692,6 +2059,44 @@ internal sealed partial class TacTranslator
                 return negated;
             }
 
+            case DeclarationPatternSyntax declaration:
+            {
+                // `case int i:` -- a TYPE test that also binds a variable.
+                //
+                // The type comes from the pattern's own TYPE SYNTAX. The
+                // semantic model's type information for a pattern node is not
+                // always the declared type, and a test against the wrong type
+                // selects the wrong case.
+                if (value is null)
+                {
+                    return null;
+                }
+                var type = TypeMapper.Map(_model.GetTypeInfo(declaration.Type).Type);
+                var test = NewTemp();
+                Emit(InstructionKind.INSTANCEOF, dest: test, lhs1: value, ctorType: type, node: node);
+                return test;
+            }
+
+            case DiscardPatternSyntax:
+            {
+                // `case _:` matches everything. It used to be lowered as a type
+                // test against `object`, which a null does not pass -- so the
+                // discard case was skipped for exactly the value it is meant
+                // to catch.
+                return new Operand { Kind = "CONST", ConstKind = "BOOL", Value = "true" };
+            }
+
+            case VarPatternSyntax:
+            {
+                // `case var x:` matches everything, and binds the value.
+                return new Operand { Kind = "CONST", ConstKind = "BOOL", Value = "true" };
+            }
+
+            case ParenthesizedPatternSyntax parenthesized:
+            {
+                return TranslatePatternTest(value, parenthesized.Pattern, node);
+            }
+
             default:
             {
                 // A type pattern, and everything else, is a type test.
@@ -1716,6 +2121,119 @@ internal sealed partial class TacTranslator
         SyntaxKind.GreaterThanOrEqualExpression => "GE",
         _ => "EQ",
     };
+
+    /// <summary>
+    /// Bind the variables a pattern designates.
+    /// </summary>
+    /// <param name="pattern">the pattern</param>
+    /// <param name="value">the value the pattern matched</param>
+    /// <param name="node">the node the binding belongs to</param>
+    /// <remarks>
+    /// <para>
+    /// A pattern that designates a variable BINDS it: <c>case int i:</c> makes
+    /// <c>i</c> hold the value the case matched.
+    /// </para>
+    /// <para>
+    /// <b>The binding is what gives the variable its value.</b> Without it the
+    /// variable was a name that nothing ever assigned: a tainted value that
+    /// arrived through the matched value reached the variable as nothing at
+    /// all, and a sink that read the variable saw a clean value.
+    /// </para>
+    /// </remarks>
+    private void BindPatternVariables(PatternSyntax pattern, Operand? value, SyntaxNode node)
+    {
+        switch (pattern)
+        {
+            case DeclarationPatternSyntax declaration:
+                BindDesignation(declaration.Designation, value, node);
+                return;
+
+            case VarPatternSyntax varPattern:
+                BindDesignation(varPattern.Designation, value, node);
+                return;
+
+            case ParenthesizedPatternSyntax parenthesized:
+                BindPatternVariables(parenthesized.Pattern, value, node);
+                return;
+
+            case RecursivePatternSyntax recursive when recursive.PropertyPatternClause is not null:
+            {
+                // A property pattern: `Point { X: var px }`. The designated
+                // names hold the PROPERTIES' values, not the whole object, and
+                // reading them is a field read per property.
+                foreach (var subpattern in recursive.PropertyPatternClause.Subpatterns)
+                {
+                    if (subpattern.ExpressionColon is null)
+                    {
+                        continue;
+                    }
+                    var designation = DesignationOf(subpattern.Pattern);
+                    if (designation is null)
+                    {
+                        continue;
+                    }
+                    var propertyName = PropertyNameOf(subpattern.ExpressionColon.Expression);
+                    if (propertyName is null || value is null)
+                    {
+                        continue;
+                    }
+                    var read = NewTemp();
+                    Emit(InstructionKind.FIELDLOAD, dest: read, lhs1: value,
+                        fieldName: propertyName, node: node);
+                    BindDesignation(designation, read, node);
+                }
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The variable a pattern designates, or null when it designates none.
+    /// </summary>
+    /// <param name="pattern">the pattern</param>
+    /// <returns>the designation, or null</returns>
+    private static VariableDesignationSyntax? DesignationOf(PatternSyntax pattern) => pattern switch
+    {
+        DeclarationPatternSyntax declaration => declaration.Designation,
+        VarPatternSyntax varPattern => varPattern.Designation,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The name of the property an expression names.
+    /// </summary>
+    /// <param name="expression">the expression</param>
+    /// <returns>the property's name, or null when it is not a property</returns>
+    private string? PropertyNameOf(ExpressionSyntax expression)
+    {
+        if (_model.GetSymbolInfo(expression).Symbol is IPropertySymbol property)
+        {
+            return property.Name;
+        }
+        return expression is IdentifierNameSyntax identifier ? identifier.Identifier.Text : null;
+    }
+
+    /// <summary>
+    /// Bind the variable a designation names.
+    /// </summary>
+    /// <param name="designation">the designation</param>
+    /// <param name="value">the value the variable holds</param>
+    /// <param name="node">the node the binding belongs to</param>
+    private void BindDesignation(VariableDesignationSyntax designation, Operand? value, SyntaxNode node)
+    {
+        if (designation is not SingleVariableDesignationSyntax single || value is null)
+        {
+            return;
+        }
+        var symbol = _model.GetDeclaredSymbol(single) as ILocalSymbol;
+        if (symbol is null)
+        {
+            return;
+        }
+        var operand = VariableOperand(symbol, isTemp: false);
+        _locals.Add(operand);
+        Emit(InstructionKind.MOVE, dest: operand, lhs1: value, node: node);
+    }
 
     /// <summary>
     /// Lower <c>default(T)</c> and the <c>default</c> literal.
@@ -1773,6 +2291,18 @@ internal sealed partial class TacTranslator
 
             case ObjectCreationExpressionSyntax creation:
                 return TranslateObjectCreation(creation, store);
+
+            case ArrayCreationExpressionSyntax arrayCreation:
+                return TranslateArrayCreation(arrayCreation);
+
+            case SwitchExpressionSyntax switchExpression:
+                return TranslateSwitchExpression(switchExpression);
+
+            case WithExpressionSyntax withExpression:
+                return TranslateWithExpression(withExpression);
+
+            case TupleExpressionSyntax tupleExpression:
+                return TranslateTupleExpression(tupleExpression);
 
             case AssignmentExpressionSyntax assignment:
                 TranslateAssignment(assignment);
@@ -2388,15 +2918,544 @@ internal sealed partial class TacTranslator
 
         if (creation.Initializer is not null)
         {
-            foreach (var initializer in creation.Initializer.Expressions)
+            // The SEMANTIC type, and not `creation.Type`: that is the type's
+            // SYNTAX, and the members of a type are looked up on its symbol.
+            // With the syntax there was no symbol to look at, so the
+            // collection's `Add` was never found and the elements were dropped.
+            TranslateInitializer(creation.Initializer, newTemp,
+                _model.GetTypeInfo(creation).Type as INamedTypeSymbol, creation);
+        }
+        return newTemp;
+    }
+
+    /// <summary>
+    /// Lower an array creation.
+    /// </summary>
+    /// <param name="creation">the array creation</param>
+    /// <returns>the operand holding the array</returns>
+    /// <remarks>
+    /// <para>
+    /// An array is an allocation plus its ELEMENTS: <c>new int[] { 1, 2, 3 }</c>
+    /// allocates three slots and stores 1, 2 and 3 into them.
+    /// </para>
+    /// <para>
+    /// <b>The elements are the array's taint.</b> The array used to be dropped
+    /// whole, so the variable that held it was never assigned at all: a tainted
+    /// element never reached the array, and a read of the array saw a variable
+    /// that nothing had written.
+    /// </para>
+    /// </remarks>
+    private Operand? TranslateArrayCreation(ArrayCreationExpressionSyntax creation)
+    {
+        var arrayType = _model.GetTypeInfo(creation).Type;
+        var elementType = arrayType is IArrayTypeSymbol array
+            ? TypeMapper.Map(array.ElementType)
+            : TypeRef.Simple("UNKNOWN");
+
+        var elements = creation.Initializer?.Expressions.ToList();
+        var size = NewTemp();
+        if (elements is { Count: > 0 })
+        {
+            Emit(InstructionKind.MOVE, dest: size,
+                lhs1: new Operand { Kind = "CONST", ConstKind = "INT", Value = elements.Count.ToString() },
+                node: creation);
+        }
+        else if ((creation.Type as ArrayTypeSyntax)?.RankSpecifiers.Count > 0
+            && ((ArrayTypeSyntax)creation.Type).RankSpecifiers[0].Sizes.Count > 0)
+        {
+            var length = TranslateExpression(
+                ((ArrayTypeSyntax)creation.Type).RankSpecifiers[0].Sizes[0], store: false);
+            if (length is null)
             {
-                if (initializer is AssignmentExpressionSyntax assignment)
+                return null;
+            }
+            Emit(InstructionKind.MOVE, dest: size, lhs1: length, node: creation);
+        }
+        else
+        {
+            Report(creation, "UNHANDLED_NODE",
+                "the array's size could not be determined", creation.GetType().Name);
+            return null;
+        }
+
+        var result = NewTemp(TypeRef.Array(elementType));
+        Emit(InstructionKind.NEWARRAY, dest: result, lhs1: size, ctorType: elementType, node: creation);
+
+        if (elements is null)
+        {
+            return result;
+        }
+        for (var index = 0; index < elements.Count; index++)
+        {
+            var value = TranslateExpression(elements[index], store: false);
+            if (value is null)
+            {
+                continue;
+            }
+            var key = new Operand { Kind = "CONST", ConstKind = "INT", Value = index.ToString() };
+            Emit(InstructionKind.ARRAYSTORE, dest: value, lhs1: result, lhs2: key, node: creation);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Lower a switch EXPRESSION.
+    /// </summary>
+    /// <param name="switchExpression">the switch expression</param>
+    /// <returns>the operand holding the expression's value</returns>
+    /// <remarks>
+    /// <para>
+    /// The expression is a chain of tests, and the arm that matched supplies
+    /// the value. The value is the MERGE of the arms: every arm writes the same
+    /// temporary, and the paths join at the end.
+    /// </para>
+    /// <para>
+    /// <b>The value used to be lost.</b> The whole expression was dropped, so
+    /// the function returned a value that nothing had computed: a tainted value
+    /// that reached the expression never reached the caller, and a sink that
+    /// read the result saw nothing at all.
+    /// </para>
+    /// </remarks>
+    private Operand? TranslateSwitchExpression(SwitchExpressionSyntax switchExpression)
+    {
+        var discriminant = TranslateExpression(switchExpression.GoverningExpression, store: false);
+        var result = NewTemp();
+        var endLabel = NewLabel("switch_expr_end");
+        var noMatchLabel = NewLabel("switch_expr_no_match");
+
+        var arms = switchExpression.Arms;
+        var testLabels = new List<string>();
+        foreach (var arm in arms)
+        {
+            testLabels.Add(NewLabel("switch_expr_test"));
+        }
+
+        for (var index = 0; index < arms.Count; index++)
+        {
+            var arm = arms[index];
+            var bodyLabel = NewLabel("switch_expr_arm");
+            var nextTest = index + 1 < arms.Count ? testLabels[index + 1] : noMatchLabel;
+
+            Emit(InstructionKind.LABEL, label: testLabels[index], node: switchExpression);
+            var matched = TranslatePatternTest(discriminant, arm.Pattern, switchExpression);
+            if (matched is null)
+            {
+                Emit(InstructionKind.JUMP, label: nextTest, node: switchExpression);
+                continue;
+            }
+
+            // The pattern's variables are bound where the pattern matched, and
+            // a `when` guard reads them.
+            var bindLabel = NewLabel("switch_expr_bind");
+            Emit(InstructionKind.BRANCH, lhs1: matched, trueLabel: bindLabel, falseLabel: nextTest,
+                node: switchExpression);
+            Emit(InstructionKind.LABEL, label: bindLabel, node: switchExpression);
+            BindPatternVariables(arm.Pattern, discriminant, switchExpression);
+
+            if (arm.WhenClause is not null)
+            {
+                var guard = TranslateExpression(arm.WhenClause.Condition, store: false);
+                if (guard is null)
                 {
-                    TranslateAssignment(assignment);
+                    Emit(InstructionKind.JUMP, label: bodyLabel, node: switchExpression);
+                }
+                else
+                {
+                    Emit(InstructionKind.BRANCH, lhs1: guard, trueLabel: bodyLabel, falseLabel: nextTest,
+                        node: switchExpression);
+                }
+            }
+            else
+            {
+                Emit(InstructionKind.JUMP, label: bodyLabel, node: switchExpression);
+            }
+
+            // The arm's body: its value is the expression's value.
+            Emit(InstructionKind.LABEL, label: bodyLabel, node: switchExpression);
+            var value = TranslateExpression(arm.Expression, store: false);
+            if (value is not null)
+            {
+                Emit(InstructionKind.MOVE, dest: result, lhs1: value, node: switchExpression);
+            }
+            Emit(InstructionKind.JUMP, label: endLabel, node: switchExpression);
+        }
+
+        // No arm matched. C# requires an exhaustive switch, so this path does
+        // not exist in a program that compiles -- but the value has to be
+        // defined on it anyway, and an unknown value is the conservative one.
+        Emit(InstructionKind.LABEL, label: noMatchLabel, node: switchExpression);
+        Emit(InstructionKind.HAVOC, dest: result, node: switchExpression);
+        Emit(InstructionKind.JUMP, label: endLabel, node: switchExpression);
+        Drop(switchExpression, DropIds.Unmodelled,
+            "no arm of the switch expression matched, so the expression's value is unknown",
+            DropImpact.Value);
+
+        Emit(InstructionKind.LABEL, label: endLabel, node: switchExpression);
+        return result;
+    }
+
+    /// <summary>
+    /// Lower a <c>with</c> expression: a copy of a record with some members changed.
+    /// </summary>
+    /// <param name="withExpression">the expression</param>
+    /// <returns>the operand holding the copy</returns>
+    /// <remarks>
+    /// <para>
+    /// A <c>with</c> expression is a NEW object that carries over the source's
+    /// members and then has the named ones replaced. The copy is what makes it
+    /// a copy: the source and the result are two objects.
+    /// </para>
+    /// <para>
+    /// It used to be dropped whole, so the expression's value was nothing at
+    /// all -- and a tainted member of the source never reached the copy.
+    /// </para>
+    /// </remarks>
+    private Operand? TranslateWithExpression(WithExpressionSyntax withExpression)
+    {
+        var source = TranslateExpression(withExpression.Expression, store: false);
+        var recordType = _model.GetTypeInfo(withExpression.Expression).Type as INamedTypeSymbol;
+        if (source is null || recordType is null)
+        {
+            Report(withExpression, "UNHANDLED_NODE",
+                "the `with` expression's source could not be resolved", withExpression.GetType().Name);
+            return null;
+        }
+
+        var copy = NewTemp(TypeMapper.Map(recordType));
+        Emit(InstructionKind.NEW, dest: copy, ctorType: TypeMapper.Map(recordType),
+            calleeSig: $"{TypeMapper.FullName(recordType)}.<init>/1", node: withExpression);
+
+        // The members that are NOT changed are carried over.
+        var changed = new HashSet<string>();
+        if (withExpression.Initializer is not null)
+        {
+            foreach (var element in withExpression.Initializer.Expressions)
+            {
+                if (element is AssignmentExpressionSyntax assignment)
+                {
+                    changed.Add(MemberNameOf(assignment.Left));
                 }
             }
         }
-        return newTemp;
+        foreach (var member in recordType.GetMembers())
+        {
+            if (member is IPropertySymbol property && property.GetMethod is not null)
+            {
+                // A compiler-generated property -- a record's `EqualityContract`
+                // -- is the compiler's own storage, not a member of the record
+                // that the program can see. Carrying it over would say
+                // something about the copy that is not about the program.
+                if (property.IsImplicitlyDeclared)
+                {
+                    continue;
+                }
+                if (!changed.Contains(property.Name))
+                {
+                    var setter = property.SetMethod;
+                    if (setter is null)
+                    {
+                        // A property that cannot be written is not carried over:
+                        // reading it and then dropping the value would say the
+                        // copy holds something it does not.
+                        continue;
+                    }
+                    var read = NewTemp();
+                    Emit(InstructionKind.CALL, dest: read, calleeSig: Signature.For(property.GetMethod),
+                        args: new List<Operand> { source }, node: withExpression);
+                    Emit(InstructionKind.CALL, calleeSig: Signature.For(setter),
+                        args: new List<Operand> { copy, read }, node: withExpression);
+                }
+                continue;
+            }
+            if (member is IFieldSymbol field && !changed.Contains(field.Name))
+            {
+                // A compiler-generated backing field is the property's storage,
+                // and the property's accessor already writes it. Carrying it
+                // over twice would say the same thing twice.
+                if (field.IsImplicitlyDeclared)
+                {
+                    continue;
+                }
+                var read = NewTemp();
+                Emit(InstructionKind.FIELDLOAD, dest: read, lhs1: source, fieldName: field.Name,
+                    ownerType: TypeMapper.FullName(field.ContainingType), node: withExpression);
+                Emit(InstructionKind.FIELDSTORE, dest: read, lhs1: copy, fieldName: field.Name,
+                    ownerType: TypeMapper.FullName(field.ContainingType), node: withExpression);
+            }
+        }
+
+        // The members that ARE changed are written into the copy.
+        if (withExpression.Initializer is not null)
+        {
+            TranslateInitializer(withExpression.Initializer, copy, recordType, withExpression);
+        }
+        return copy;
+    }
+
+    /// <summary>
+    /// Lower a tuple expression.
+    /// </summary>
+    /// <param name="tupleExpression">the expression</param>
+    /// <returns>the operand holding the tuple</returns>
+    /// <remarks>
+    /// <para>
+    /// A tuple is an object with the elements as its fields: <c>Item1</c>,
+    /// <c>Item2</c>, and so on. The elements are stored into it.
+    /// </para>
+    /// <para>
+    /// It used to be dropped whole, so the variable that held the tuple was
+    /// never assigned: a tainted element never reached the tuple, and reading
+    /// <c>t.Item1</c> read a field of an object that did not exist.
+    /// </para>
+    /// </remarks>
+    private Operand? TranslateTupleExpression(TupleExpressionSyntax tupleExpression)
+    {
+        var tupleType = _model.GetTypeInfo(tupleExpression).Type as INamedTypeSymbol;
+        if (tupleType is null)
+        {
+            Report(tupleExpression, "UNHANDLED_NODE",
+                "the tuple's type could not be resolved", tupleExpression.GetType().Name);
+            return null;
+        }
+
+        var result = NewTemp(TypeMapper.Map(tupleType));
+        Emit(InstructionKind.NEW, dest: result, ctorType: TypeMapper.Map(tupleType),
+            calleeSig: $"{TypeMapper.FullName(tupleType)}.<init>/{tupleExpression.Arguments.Count}",
+            node: tupleExpression);
+
+        var index = 1;
+        foreach (var argument in tupleExpression.Arguments)
+        {
+            var value = TranslateExpression(argument.Expression, store: false);
+            if (value is not null)
+            {
+                Emit(InstructionKind.FIELDSTORE, dest: value, lhs1: result,
+                    fieldName: "Item" + index, ownerType: TypeMapper.FullName(tupleType),
+                    node: tupleExpression);
+            }
+            index++;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Lower an object or collection initializer.
+    /// </summary>
+    /// <param name="initializer">the initializer</param>
+    /// <param name="receiver">the object the initializer writes to</param>
+    /// <param name="createdType">the type being created, or null when it is unknown</param>
+    /// <param name="node">the node the initializer belongs to</param>
+    /// <remarks>
+    /// <para>
+    /// <b>The receiver is the object that was just created.</b> An initializer is
+    /// a sequence of writes to ONE object: <c>new Foo { X = 1 }</c> writes 1 into
+    /// <c>X</c> of the new <c>Foo</c>. It used to be lowered as a sequence of
+    /// STANDALONE assignments -- the same call the statement <c>X = 1;</c> makes
+    /// -- and a standalone assignment to a bare member name resolves against the
+    /// ENCLOSING scope, not against the new object.
+    /// </para>
+    /// <para>
+    /// <b>So the value never reached the object.</b> The write went to a field of
+    /// some other object -- the enclosing one, through a placeholder that names
+    /// the type -- and a PROPERTY initializer reached nothing at all: a bare
+    /// name is not a property, so the assignment was reported as unresolved and
+    /// the setter was never called. The sink catalogue matches on CALL, and there
+    /// was no call to match: the finding was absent while the scan reported
+    /// success.
+    /// </para>
+    /// </remarks>
+    private void TranslateInitializer(
+        InitializerExpressionSyntax initializer,
+        Operand receiver,
+        INamedTypeSymbol? createdType,
+        SyntaxNode node)
+    {
+        foreach (var element in initializer.Expressions)
+        {
+            if (element is AssignmentExpressionSyntax assignment)
+            {
+                TranslateInitializerMember(assignment, receiver, createdType);
+                continue;
+            }
+            TranslateInitializerElement(element, receiver, createdType);
+        }
+    }
+
+    /// <summary>
+    /// Lower one member assignment of an object initializer.
+    /// </summary>
+    /// <param name="assignment">the assignment, whose left side names the member</param>
+    /// <param name="receiver">the object being initialized</param>
+    /// <param name="createdType">the type being created</param>
+    private void TranslateInitializerMember(
+        AssignmentExpressionSyntax assignment,
+        Operand receiver,
+        INamedTypeSymbol? createdType)
+    {
+        var member = assignment.Left;
+        var value = TranslateExpression(assignment.Right, store: false);
+
+        var symbol = InitializerMemberOf(member, createdType);
+        if (symbol is null)
+        {
+            Report(assignment, "UNHANDLED_NODE",
+                "the initializer's member could not be resolved to a property or a field",
+                member.GetType().Name);
+            return;
+        }
+
+        // A PROPERTY is a method in disguise: its setter is `set_X`, and the
+        // assignment is an invocation of it. The receiver goes into args[0],
+        // following the TAC's call convention.
+        if (symbol is IPropertySymbol property)
+        {
+            var setter = property.SetMethod;
+            if (setter is null)
+            {
+                Report(assignment, "UNHANDLED_NODE",
+                    $"the property '{property.Name}' has no setter", member.GetType().Name);
+                return;
+            }
+            var arguments = new List<Operand> { receiver };
+            if (value is not null)
+            {
+                arguments.Add(value);
+            }
+            Emit(InstructionKind.CALL, calleeSig: Signature.For(setter), args: arguments,
+                node: assignment);
+            return;
+        }
+
+        // A FIELD stays a field store -- but into the object being initialized.
+        if (symbol is IFieldSymbol field)
+        {
+            if (value is not null)
+            {
+                Emit(InstructionKind.FIELDSTORE, dest: value, lhs1: receiver,
+                    fieldName: field.Name,
+                    ownerType: TypeMapper.FullName(field.ContainingType),
+                    node: assignment);
+            }
+            return;
+        }
+
+        Report(assignment, "UNHANDLED_NODE",
+            "the initializer's member is neither a property nor a field", member.GetType().Name);
+    }
+
+    /// <summary>
+    /// Resolve the member an object initializer writes to.
+    /// </summary>
+    /// <param name="member">the left side of the initializer's assignment</param>
+    /// <param name="createdType">the type being created</param>
+    /// <returns>the property or the field, or null when neither is found</returns>
+    /// <remarks>
+    /// <para>
+    /// The name is resolved against the TYPE BEING CREATED, and not against the
+    /// enclosing scope. In an initializer the name on the left of the `=` is a
+    /// member of the new object -- the enclosing scope has no such binding, and
+    /// resolving it there is what made the write land on the wrong object.
+    /// </para>
+    /// <para>
+    /// The base types are walked too, because an initializer may set a member
+    /// that the base declares.
+    /// </para>
+    /// </remarks>
+    private ISymbol? InitializerMemberOf(ExpressionSyntax member, INamedTypeSymbol? createdType)
+    {
+        for (var type = createdType; type is not null; type = type.BaseType)
+        {
+            foreach (var candidate in type.GetMembers(MemberNameOf(member)))
+            {
+                if (candidate is IPropertySymbol or IFieldSymbol)
+                {
+                    return candidate;
+                }
+            }
+        }
+        var symbol = _model.GetSymbolInfo(member).Symbol;
+        return symbol is IPropertySymbol or IFieldSymbol ? symbol : null;
+    }
+
+    /// <summary>The name a member access names, or an empty string.</summary>
+    private static string MemberNameOf(ExpressionSyntax member) => member switch
+    {
+        IdentifierNameSyntax identifier => identifier.Identifier.Text,
+        MemberAccessExpressionSyntax memberAccess => memberAccess.Name.Identifier.Text,
+        _ => "",
+    };
+
+    /// <summary>
+    /// Lower one element of a collection initializer.
+    /// </summary>
+    /// <param name="element">the element</param>
+    /// <param name="receiver">the collection being initialized</param>
+    /// <param name="createdType">the type being created</param>
+    /// <remarks>
+    /// <para>
+    /// A collection initializer is a sequence of ADDS: <c>new List&lt;int&gt; { 1,
+    /// 2 }</c> calls <c>Add(1)</c> and then <c>Add(2)</c>. It used to be lowered
+    /// as a sequence of standalone assignments, which wrote to a field of the
+    /// enclosing scope -- so the elements never entered the collection, and a
+    /// tainted element never reached whatever read the collection back.
+    /// </para>
+    /// </remarks>
+    private void TranslateInitializerElement(
+        ExpressionSyntax element,
+        Operand receiver,
+        INamedTypeSymbol? createdType)
+    {
+        var values = new List<Operand>();
+        if (element is InitializerExpressionSyntax nested)
+        {
+            foreach (var entry in nested.Expressions)
+            {
+                var operand = TranslateExpression(entry, store: false);
+                if (operand is not null)
+                {
+                    values.Add(operand);
+                }
+            }
+        }
+        else
+        {
+            var operand = TranslateExpression(element, store: false);
+            if (operand is not null)
+            {
+                values.Add(operand);
+            }
+        }
+        if (values.Count == 0)
+        {
+            return;
+        }
+
+        var add = AddMethodOf(createdType, values.Count);
+        if (add is null)
+        {
+            Report(element, "UNHANDLED_NODE",
+                "the collection's Add method could not be resolved", element.GetType().Name);
+            return;
+        }
+        var arguments = new List<Operand> { receiver };
+        arguments.AddRange(values);
+        Emit(InstructionKind.CALL, calleeSig: Signature.For(add), args: arguments, node: element);
+    }
+
+    /// <summary>The collection's Add method with the given number of arguments.</summary>
+    private static IMethodSymbol? AddMethodOf(INamedTypeSymbol? type, int arity)
+    {
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers("Add"))
+            {
+                if (member is IMethodSymbol method && method.Parameters.Length == arity)
+                {
+                    return method;
+                }
+            }
+        }
+        return null;
     }
 
     /// <summary>
