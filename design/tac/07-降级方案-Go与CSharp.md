@@ -370,6 +370,24 @@
 | `PROTOCOL.md` | 字段表（`:114-186`） | 同步新字段 | — |
 | `CSharpTacFrontend.java` | `toFunction`（`:669-749`）、`toInstruction`（`:752-812`）、`toType`（`:865-903`） | 读全部新字段（**含 `effect`**）；`tryRegions` 不再 `List.of()`（`:737`） | 全部 |
 
+### 11.3 本轮落地（2026-11-18）：C# 的值流与可达性、Go 的 channel range
+
+上表写的都是**该做什么**。这一轮用**探针**（直接驱动 sidecar 走 wire 协议，把构造喂进去、把 TAC 打出来）逐条核对，**发现其中六行「做了，但做错了」** ⇒ 这一轮把它们**改成了设计里写的形状**：
+
+| §11 的行 | 落地情况 | 这一轮改掉的**具体错** |
+|---|---|---|
+| §11.2「`TranslateSwitch`… 补 `CasePatternSwitchLabelSyntax` + 每 arm 末尾 `JUMP L_end`」 | **已落地** | 比较链的**假边指向下一个 case 的体**（体标签定义在链之后）⇒ 第二个及以后的比较**从不执行**，最后一个 case 与 `default` 的体**在 CFG 里不可达** ⇒ 里面的 sink 走不到。改成：每个 case 标签一个**测试标签**，假边指向**下一个测试**。**模式 case** 与 `when` 守卫一并补上（守卫读的是刚绑定的模式变量 ⇒ 绑定必须在守卫之前） |
+| §11.2「`TranslateForEach`… 迭代协议（真实方法名）+ 出口边」 | **已落地** | 循环变量绑的是**集合本身**（`MOVE item = list`）⇒ 值是错的类型、错的污点。改成真协议 `GetEnumerator/0` → `MoveNext/0` → `get_Current/0` → `Dispose/0`；**数组**走下标循环（数组的枚举器是编译器生成的隐藏类型） |
+| §11.2「`TranslateObjectCreation`… 对象/集合初始化器逐 setter/逐元素」 | **已落地** | 初始化器被降成**两条独立赋值**，独立赋值按**外层作用域**解析 ⇒ 写进了别的对象；**属性初始化器被整个丢弃**（裸名不是属性）⇒ 没有 `CALL` ⇒ 规则目录（按 `CALL` 匹配）**没有可匹配的目标**。改成：接收者是**刚创建的对象**，属性 ⇒ `CALL <owner>.set_P/1`，字段 ⇒ `FIELDSTORE`，集合 ⇒ `CALL <owner>.Add/1` |
+| §11.2「`TranslateStatement`… 补 `SwitchExpressionSyntax`」 | **已落地** | `switch` 表达式**整个被丢** ⇒ 函数返回一个谁都没算过的值。改成：分支链 + **merge temp**（每个 arm 写同一个 temp，每 arm 末尾 `JUMP L_end`） |
+| §6.2「`stackalloc`/集合表达式/元组/`with`… 全部未降级」 | **部分落地** | `new T[] { … }`（`NEWARRAY` + 逐元素 `ARRAYSTORE`）、元组（`NEW` + 逐元素 `FIELDSTORE`）、`with`（`NEW` 出副本 + 未改成员逐个搬过去 + 改动成员写进副本）已落地；`stackalloc` 与**集合表达式**（`[...]`）仍未做 |
+| §7.1 Go「over channel = 循环体内发 `CALL <go>.chanRecv/1(ch)`，退出条件 `Compare(ok, EQ, false)`」 | **已落地** | `range` over channel 原先是**一次接收、然后什么都不做** ⇒ **循环体整块消失** ⇒ 循环里的 sink 永远走不到。改成：接收在循环头、`ok` 是退出条件、体在自己的标签下 |
+
+> **两条要注意的**：
+>
+> 1. **`creation.Type` 是类型的语法，不是符号** —— 在它上面查成员永远查不到（集合的 `Add` 就这样丢的）。查成员要用**语义类型**（`_model.GetTypeInfo(creation).Type`）。
+> 2. **Go 侧车早就写好了这个形状**（`rangeOverMap` 的写法），**只有 channel 这一支**是「一次接收然后什么都不做」；而 **C# 的 `switch` 与 Go 的 `switch` 是同一个缺陷**——Go 修过（`translator.go` 里有一段注释写着「假分支指向**下一测试**……它以前指向**体**」），C# 没同步。
+
 ---
 
 ## 12. 验收口径
