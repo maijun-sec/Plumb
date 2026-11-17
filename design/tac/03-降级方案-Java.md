@@ -416,7 +416,7 @@ L_ASSERT_OK:
 | 11 | `sealed`/`permits` | IR-N `permittedSubtypes`+`typeParameters` | `List<String> permittedSubtypes`；`List<TacTypeParam> typeParameters` | IR 里没有类型节点 ⇒ 允许的子类型无处可放 |
 | 12 | `synchronized` 的临界区 | IR-M `TacCriticalSection` | 函数级 `List<TacCriticalSection>{label, monitorExpr, kind}` | `translateSynchronized`（`StatementTranslator.java:944-948`）**不留任何痕迹** ⇒ 原子性 checker 无从判断两条写是否在同一把锁下 |
 | 13 | 数值宽度/溢出 | IR-D `TacValueDomain` | `TacType.domain : TacValueDomain?` | `TacType` 无域字段 ⇒ int32 回绕不是 Z3 推出来的，而是 checker 自维护区间（`01` §IR-D） |
-| 14 | 迭代协议与接收者的 callee 规范；**lambda 的元数分离** | IR-P 命名规范（规范文本，非字段） | `<ownerFqn>#<method>/<arity>`；接收者一律 `args[0]`（无接收者时该槽**缺省**，与「owner 未知」同款）；迭代协议用真名；**lambda 的 `calleeSig` 元数 = 显式形参数**（不含接收者、不含捕获数），捕获数不进 `calleeSig`，改由**合成函数形参表**承载（形参表 = `[接收者?] + 捕获 + 显式形参`） | for-each 用合成短名 `"iterator/0"`/`"hasNext/0"`/`"next/0"`（`StatementTranslator.java:451`、`:466`、`:482`）⇒ 调用图解析不到；**lambda 的签名元数**（`ExpressionTranslator.java:1576` 的 `params+captures`）与**创建点实参数**（`:1626-1639` 的 `[null]+captures`）恒不相等，且形参表把显式形参排在捕获之前（`:1584-1592`）⇒ 捕获值按位置落到显式形参的槽位上 |
+| 14 | 迭代协议与接收者的 callee 规范；**lambda 的元数分离** | IR-P 命名规范（规范文本，非字段） | `<ownerFqn>.<methodName>/<arity>`；接收者一律 `args[0]`（无接收者时该槽**缺省**，与「owner 未知」同款）；迭代协议用真名；**lambda 的 `calleeSig` 元数 = 显式形参数**（不含接收者、不含捕获数），捕获数不进 `calleeSig`，改由**合成函数形参表**承载（形参表 = `[接收者?] + 捕获 + 显式形参`） | for-each 用合成短名 `"iterator/0"`/`"hasNext/0"`/`"next/0"`（`StatementTranslator.java:451`、`:466`、`:482`）⇒ 调用图解析不到；**lambda 的签名元数**（`ExpressionTranslator.java:1576` 的 `params+captures`）与**创建点实参数**（`:1626-1639` 的 `[null]+captures`）恒不相等，且形参表把显式形参排在捕获之前（`:1584-1592`）⇒ 捕获值按位置落到显式形参的槽位上 |
 | 15 | 方法引用是「延迟调用」 | 现有 `Effect.DEFERRED` | `TacInstruction.effects += DEFERRED` | `Effect.DEFERRED` 已存在（`TacInstruction.java:181`）但 Java 路径从未用过；方法引用 `calleeSig` 用错元数（`ExpressionTranslator.java:828` vs `:839`） |
 | 16 | 注解类型的零值成员 | IR-AM（新增小项） | 「按类型构造零值」的常量能力 | `translateAnnotationMember` 对无默认值成员发 `NOP`（`TacTranslator.java:1254`）⇒ **该成员没有返回值** |
 | 17 | 类型使用注解（type-use） | IR-AN：类型上的注解槽位 | 类型记录上加注解列表 | IR 只有 class/method/field/param 四个注解通道（`TacFunction.java:123-126`）⇒ 类型注解无处可放；**低优先级**（编译期语义，运行时无效果） |
@@ -938,7 +938,7 @@ L_ASSERT_OK:
 #### U-JE4 —— 泛型 / 菱形构造器的 `calleeSig` 形态（表达式 #12）
 
 - **源码核实**：`plumb-tac/src/main/java/org/plumb/tac/translate/ExpressionTranslator.java:1232` 取 `oce.getType().asString()`（带类型实参的源码形，如 `ArrayList<String>`），`:1242` 用它去 `TypeMapper.resolveWellKnownFqnStatic(textual)`，`:1249` 用结果拼 `calleeSig` ⇒ 实参带 `<>` 时得不到类 FQN，`calleeSig` 不是 `FQN.<init>/arity` 形式。审计结论成立。
-- **已覆盖的部分**：§8 IR 需求 #14 给出了 IR-P 的命名规范（`<ownerFqn>#<method>/<arity>`），§3 末段也要求 `fqn` 改存 FQN ⇒ **目标形状是确定的**。
+- **已覆盖的部分**：§8 IR 需求 #14 给出了 IR-P 的命名规范（`<ownerFqn>.<methodName>/<arity>`），§3 末段也要求 `fqn` 改存 FQN ⇒ **目标形状是确定的**。
 - **残留**：§4 表达式面表「`new T(...)`」行的目标形态写的是「**保留**」，与 §8 #14 的口径**不一致**；§9 改动清单也没有 `translateNew` 的条目 ⇒ 实现者按 §4 做会把当前形态原样留下。
 - **建议**：§4「`new T(...)`」行的目标形态写成「`calleeSig` 用**剥掉类型实参后的 FQN**（`ArrayList.<init>/0`）」，并在 §9 增一条 `translateNew` 的改动条目。
 
