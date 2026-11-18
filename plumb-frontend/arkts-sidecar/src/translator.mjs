@@ -3333,6 +3333,20 @@ export class Translator {
       if (base && base.kind === ts.SyntaxKind.SuperKeyword) {
         return this.enclosingBase ?? null;
       }
+      // `this.m(...)`: the receiver is THIS object, so the owner is the class the
+      // method is written in.
+      //
+      // The compiler's own type of `this` cannot answer it. The `this` type is not an
+      // object type, and the class-name lookup drops every type that is not one -- so
+      // `this.m()` used to get NO owner at all, and a call key without an owner names
+      // every method of that name in every class. The owner is taken from the function
+      // being lowered instead: that is the class whose name the function's own
+      // SIGNATURE carries, so the call key and the signature agree and the call graph
+      // can resolve the call to this function rather than to the first same-named
+      // method it finds.
+      if (base && base.kind === ts.SyntaxKind.ThisKeyword) {
+        return this.state?.enclosingClass ?? null;
+      }
       // `vm.runInNewContext(...)`: the base is a namespace import, so the
       // owner is the module the namespace came from.
       if (ts.isIdentifier(base)) {
