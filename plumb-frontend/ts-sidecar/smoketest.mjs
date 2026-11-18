@@ -37,6 +37,23 @@ export function handle(req: { query: { userId: string } }): string {
 `;
 
 /**
+ * A third probe program: an immediately invoked function.
+ *
+ * <p>An IIFE calls a function literal, and the literal's body is CODE. If
+ * the body is not in the TAC at all -- not as instructions, and not as a drop
+ * either -- then the function around it reports full precision, the scan
+ * reports success, and the code is simply gone.
+ */
+const IIFE_SOURCE = `
+export function runIife(request: any): any {
+  (() => {
+    eval(request["cmd"]);
+  })();
+  return request;
+}
+`;
+
+/**
  * A second probe program: the calls that reach a MODULE.
  *
  * <p>A script language reaches its libraries through modules rather than
@@ -220,6 +237,8 @@ async function main() {
   writeFileSync(shapesFile, SHAPES_SOURCE, "utf8");
   const decoratorFile = join(dir, "decorators.ts");
   writeFileSync(decoratorFile, DECORATORS_SOURCE, "utf8");
+  const iifeFile = join(dir, "iife.ts");
+  writeFileSync(iifeFile, IIFE_SOURCE, "utf8");
 
   const child = spawn(process.execPath, [join(here, "src", "main.mjs")], {
     stdio: ["pipe", "pipe", "inherit"],
@@ -256,7 +275,13 @@ async function main() {
         irVersion: IR_VERSION,
         projectId: "smoke",
         sourceRoot: dir,
-        sources: [{ path: file }, { path: moduleFile }, { path: shapesFile }, { path: decoratorFile }],
+        sources: [
+          { path: file },
+          { path: moduleFile },
+          { path: shapesFile },
+          { path: decoratorFile },
+          { path: iifeFile },
+        ],
       }),
     );
     response = JSON.parse(await readFrame(child.stdout));
@@ -811,6 +836,50 @@ async function main() {
         (i) => i.kind === "CALL" && i.calleeSig && i.calleeSig.includes("trace"),
       )),
       "a top-level function's decorator must not run in its own body",
+    );
+
+    // The body of an immediately invoked function is CODE, and it has to be in
+    // the TAC: as a function of its own, with the call naming it. Without
+    // that, the code is not merely coarse -- it is absent, and nothing says
+    // so.
+    writeFrame(
+      child.stdin,
+      JSON.stringify({
+        op: OP.TRANSLATE,
+        protocolVersion: PROTOCOL_VERSION,
+        irVersion: IR_VERSION,
+        path: iifeFile,
+        language: "TYPESCRIPT",
+      }),
+    );
+    response = JSON.parse(await readFrame(child.stdout));
+    check(response.ok === true, `the IIFE file must translate: ${response.error ?? ""}`);
+
+    const iifeFunctions = response.functions ?? [];
+    const iifeOuter = iifeFunctions.find((f) => f.name === "runIife");
+    check(!!iifeOuter, "the function that holds the IIFE must be in the stream");
+    const iifeBody = iifeFunctions.find((f) => f.name !== "runIife");
+    check(
+      !!iifeBody,
+      "the IIFE's body must be a function of its own: otherwise the code inside it is gone",
+    );
+    const bodyCalls = (iifeBody.instructions ?? [])
+      .filter((i) => i.kind === "CALL")
+      .map((i) => i.calleeSig);
+    check(
+      bodyCalls.some((signature) => signature && signature.startsWith("eval.eval/")),
+      `the IIFE's body must keep its own code: ${JSON.stringify(bodyCalls)}`,
+    );
+    const outerCalls = (iifeOuter.instructions ?? [])
+      .filter((i) => i.kind === "CALL")
+      .map((i) => i.calleeSig);
+    check(
+      outerCalls.some((signature) => signature && signature.includes("closure$")),
+      `the call must name the function the body was lifted into: ${JSON.stringify(outerCalls)}`,
+    );
+    check(
+      (iifeOuter.drops ?? []).some((d) => d.construct === "iife-body"),
+      "the capture the lifting cannot model must be recorded as a drop",
     );
 
     console.log("ok: the sidecar answers over the wire, and the TAC has the expected shape");

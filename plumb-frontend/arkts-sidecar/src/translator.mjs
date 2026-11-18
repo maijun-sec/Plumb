@@ -277,6 +277,7 @@ const GLOBAL_OWNERS = new Set([
   "console",
   "decodeURIComponent",
   "encodeURIComponent",
+  "eval",
   "globalThis",
   "parseFloat",
   "parseInt",
@@ -356,6 +357,7 @@ export class Translator {
     this.imports = new Map();
     this.state = null;
     this.pendingFunctions = [];
+    this.inlineCounter = 0;
     this.enclosingBase = undefined;
   }
 
@@ -841,6 +843,64 @@ export class Translator {
     return out;
   }
 
+  /**
+   * The body of an immediately invoked function, lifted into a function of its own.
+   *
+   * <p>An IIFE -- {@code (() => { ... })()} -- calls a function literal, and the
+   * literal's body is CODE. The engine resolves a call by the callee's name, so
+   * the body has to be a function with a name of its own: otherwise the call has
+   * nothing to resolve to and the body is not in the TAC at all -- not as
+   * instructions, and not as a drop either. That is the worst of both: the
+   * function reports full precision and the code is simply gone.
+   *
+   * <p><b>What is NOT modelled: the capture.</b> A lifted function has its own
+   * scope, so the names the body read from the scope around it are not in it. The
+   * body is lowered anyway -- a sink in it is still a sink -- and the loss is
+   * recorded with a drop, so that the precision says so.
+   *
+   * @param {object} node the call node
+   * @returns {{name: string, arity: number}|null} the lifted function's name and arity,
+   *     or null when the callee is not a function literal
+   */
+  liftInlineFunction(node) {
+    let literal = node.expression;
+    // The callee is usually PARENTHESIZED -- `(() => { ... })()` -- and the
+    // brackets are not part of the function, so they come off before the
+    // literal is recognised.
+    while (literal && ts.isParenthesizedExpression(literal)) {
+      literal = literal.expression;
+    }
+    if (!literal) {
+      return null;
+    }
+    if (!ts.isArrowFunction(literal) && !ts.isFunctionExpression(literal)) {
+      return null;
+    }
+    const name = `closure$${this.inlineCounter += 1}`;
+    const previous = this.state;
+    const state = this.beginFunction(name, this.functionSignature(literal, null, name), null, true);
+    this.guard(literal, () => {
+      this.lowerParameters(literal.parameters);
+      if (literal.body) {
+        this.lowerBlock(literal.body);
+      }
+    });
+    const finished = this.finishFunction(state);
+    this.state = previous;
+    this.pendingFunctions.push(finished);
+    this.emitDrop(
+      "iife-body",
+      "the body of an immediately invoked function is lifted into a function of its own, and"
+        + " the names it read from the scope around it are not in that function",
+      IMPACT.STRUCTURE,
+      node,
+    );
+    return {
+      name,
+      arity: (literal.parameters ?? []).filter((p) => !isThisParameter(p)).length,
+    };
+  }
+
   /** The functions that were lifted while the last function was lowered. */
   takePendingFunctions() {
     const pending = this.pendingFunctions;
@@ -934,12 +994,16 @@ export class Translator {
   }
 
   /** The signature string: `owner.name(ParamTypes):Return`. */
-  functionSignature(node, enclosingClass) {
+  functionSignature(node, enclosingClass, nameOverride) {
     const owner = enclosingClass ?? this.moduleName;
     const parameters = (node.parameters ?? []).filter((p) => !isThisParameter(p));
     const types = parameters.map((p) => this.typeTextOf(p));
     const returnType = this.returnTypeTextOf(node);
-    const name = node.name ? nameTextOf(node.name) : "<anonymous>";
+    // A name OVERRIDE is for a function literal that has no name of its own.
+    // Two of them would otherwise share the name "<anonymous>", and the
+    // function table is keyed by the signature -- so the second one would
+    // replace the first, and its body would be gone.
+    const name = nameOverride ?? (node.name ? nameTextOf(node.name) : "<anonymous>");
     return `${owner}.${name}(${types.join(",")}):${returnType}`;
   }
 
@@ -2081,11 +2145,15 @@ export class Translator {
     for (const argument of args) {
       wireArgs.push(this.lowerExpression(argument));
     }
-    const method = this.methodNameOf(node);
-    const arity = this.arityOf(signature, args);
+    // An IIFE: the callee is a function literal, and its body is a function of
+    // its own. Lifting it gives the call a callee the engine can resolve, and
+    // puts the body's instructions into the TAC.
+    const inline = this.liftInlineFunction(node);
+    const method = inline ? inline.name : this.methodNameOf(node);
+    const arity = inline ? inline.arity : this.arityOf(signature, args);
     const dest = this.state.newTemp(this.typeOf(node));
-    const kind = signature ? KIND.CALL : KIND.UNINTERPRETED;
-    if (!signature) {
+    const kind = inline || signature ? KIND.CALL : KIND.UNINTERPRETED;
+    if (!signature && !inline) {
       this.emitDrop(
         "unknown-callee",
         "the callee could not be resolved, so the call is modelled as a black box",
@@ -2095,7 +2163,7 @@ export class Translator {
     }
     this.emit({
       kind,
-      calleeSig: calleeSigOf(owner, method, arity),
+      calleeSig: calleeSigOf(inline ? this.moduleName : owner, method, arity),
       dest,
       args: wireArgs,
       ...this.position(node),

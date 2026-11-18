@@ -2876,12 +2876,21 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * element yields tainted values, because the analysis cannot know which element the iterator
    * reaches first.
    *
-   * <p><b>Why the protocol's names are language-specific.</b> The two names are the ones the
-   * language itself uses: {@code iterator} / {@code next} for Java, C# and Go, and {@code __iter__}
-   * / {@code __next__} for Python, whose iteration protocol really is those two methods. The engine
-   * recognises both, because the alternative -- asking the front end to spell Python's protocol as
-   * {@code iterator} / {@code next} -- would put a name in the TAC that no Python program contains,
-   * and a rule that names a real method would never match it.
+   * <p><b>Why the protocol's names are language-specific.</b> The names are the ones the language
+   * itself uses: {@code iterator} / {@code next} for Java, C# and Go, {@code __iter__} / {@code
+   * __next__} for Python, the computed property name {@code Symbol.iterator} for TypeScript and
+   * ArkTS, and {@code GetEnumerator} for C#. The engine recognises all of them, because the
+   * alternative -- asking the front end to spell a language's protocol in another language's words
+   * -- would put a name in the TAC that no program in that language contains, and a rule that names
+   * a real method would never match it.
+   *
+   * <p><b>Why the element does not need a rule per language.</b> The engine taints what the
+   * protocol's ADVANCE call returns, and every language's side car takes the element out of that in
+   * a way the engine already understands. Java, Python and Go make the advance call's result the
+   * element itself. TypeScript and ArkTS make it the iterator RESULT -- an object whose {@code
+   * value} member holds the element -- and the member read hands the receiver's taint to the
+   * member, so the element is tainted the same way. So the engine has one rule, and the front ends
+   * differ in how they spell it.
    */
   private void propagateIteratorTaint(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
     String calleeSig = ins.calleeSig;
@@ -2898,8 +2907,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       return;
     }
 
-    // `next()` on such an iterator: the result carries the iterator's element taint.
-    if (isIteratorNext(calleeSig)) {
+    // `next()` on such an iterator, or the call that takes the element out of it:
+    // the result carries the iterator's element taint. Both look the receiver
+    // up in the iterator map, so a call that is not on a known iterator -- a
+    // `Current` on something else, a `next` on an unrelated object -- is not
+    // read as one.
+    if (isIteratorNext(calleeSig) || isIteratorCurrent(calleeSig)) {
       if (!(ins.args.get(0) instanceof TacOperand.TacVar recv)) return;
       ArrayTaintTracker.TaintedEntry entry = iteratorTaint.get(recv);
       if (entry == null) return;
@@ -2938,24 +2951,81 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   /**
    * Is this call the creation of an iterator over a collection?
    *
-   * <p>Recognised by the method name: {@code iterator} for Java, C# and Go, and {@code __iter__}
-   * for Python, whose iteration protocol is those two methods by name. The owner is not checked:
-   * the enhanced-for loop is the shape that matters, and the IR may or may not have resolved the
-   * collection's declaring type.
+   * <p>Recognised by the method name, and the names are the ones the LANGUAGE uses, because IR-P
+   * requires a protocol's callee name to be a real method name:
+   *
+   * <ul>
+   *   <li>{@code iterator} for Java, C# and Go;
+   *   <li>{@code __iter__} for Python, whose iteration protocol is those two methods by name;
+   *   <li>{@code GetEnumerator} for C#, whose enumerator is made by that method;
+   *   <li>the computed property name {@code Symbol.iterator} for TypeScript and ArkTS, which spell
+   *       the protocol that way.
+   * </ul>
+   *
+   * <p>The owner is not checked: the enhanced-for loop is the shape that matters, and the IR may or
+   * may not have resolved the collection's declaring type.
    */
   private static boolean isIteratorFactory(String calleeSig) {
     String name = methodNameOf(calleeSig);
-    return name.equals("iterator") || name.equals("__iter__");
+    if (name.equals("iterator") || name.equals("__iter__") || name.equals("GetEnumerator")) {
+      return true;
+    }
+    // A COMPUTED property name. The side car writes the protocol the way the language spells
+    // it, and TypeScript spells the iterator protocol as `Iterator[Symbol.iterator]`: the name
+    // inside the brackets is the method.
+    return computedPropertyMethodName(calleeSig).equals("iterator");
+  }
+
+  /**
+   * The method name of a callee whose name is a COMPUTED property, such as {@code
+   * Owner[Symbol.iterator]/1}.
+   *
+   * <p><b>Why this is not {@link #methodNameOf}.</b> That one splits on the last dot, so it reads
+   * {@code Iterator[Symbol.iterator]} as the method {@code iterator]} -- with the closing bracket
+   * still on it. It is used by the general method-name predicates, where a computed property name
+   * has no business being read as a plain name, so it is left alone and the computed form is
+   * unpacked here, where the protocol is the only thing that cares.
+   *
+   * @param calleeSig the callee key
+   * @return the method name inside the brackets, or an empty string when the name is not computed
+   */
+  private static String computedPropertyMethodName(String calleeSig) {
+    if (calleeSig == null || calleeSig.isEmpty()) return "";
+    int slash = calleeSig.lastIndexOf('/');
+    String qualified = slash < 0 ? calleeSig : calleeSig.substring(0, slash);
+    if (!qualified.endsWith("]")) return "";
+    int open = qualified.lastIndexOf('[');
+    if (open < 0) return "";
+    String inner = qualified.substring(open + 1, qualified.length() - 1);
+    int dot = inner.lastIndexOf('.');
+    return dot < 0 ? inner : inner.substring(dot + 1);
   }
 
   /**
    * Is this call the {@code next()} that advances an iterator?
    *
    * <p>The same two spellings as the factory: {@code next} and Python's {@code __next__}.
+   *
+   * <p><b>Why C#'s {@code MoveNext} is not one of them.</b> C#'s enumerator does not return the
+   * element from the call that advances it: {@code MoveNext} says whether there IS an element, and
+   * {@code Current} hands it out. Tainting the boolean would taint nothing that the program uses.
    */
   private static boolean isIteratorNext(String calleeSig) {
     String name = methodNameOf(calleeSig);
     return name.equals("next") || name.equals("__next__");
+  }
+
+  /**
+   * Is this call the one that takes the element out of an iterator?
+   *
+   * <p>C#'s enumerator keeps the element behind a property, so the call that hands it out is the
+   * property's getter, {@code get_Current}. The name is checked together with the RECEIVER: the
+   * call only carries the iterator's taint when the receiver IS a known iterator, so a method that
+   * happens to be called {@code Current} on something else is not read as one.
+   */
+  private static boolean isIteratorCurrent(String calleeSig) {
+    String name = methodNameOf(calleeSig);
+    return name.equals("get_Current") || name.equals("Current");
   }
 
   /**

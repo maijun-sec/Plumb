@@ -865,6 +865,14 @@
                              keep reaching it, and two callees that disagree
                              about what they return are not evidence. -->
                         <include>org/plumb/dfa/taint/CallReturnTypeTest.java</include>
+                        <!-- The iteration protocol has a different NAME in every language
+                             that has one, and the engine recognises each of them. The
+                             list has to name these classes: a test that is not on the
+                             allow list never runs, and a test that never runs is
+                             indistinguishable from a test that does not exist. -->
+                        <include>org/plumb/dfa/taint/PythonIteratorTaintTest.java</include>
+                        <include>org/plumb/dfa/taint/TypeScriptIteratorTaintTest.java</include>
+                        <include>org/plumb/dfa/taint/CsharpEnumeratorTaintTest.java</include>
                         <!-- The SSRF defect class: the catalogue names the sinks of
                              every language, the checker watches the family, and the
                              patterns that named other defect classes moved to the
