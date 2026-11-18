@@ -229,4 +229,69 @@ class ParallelAnalysisConsistencyTest {
           .isEqualTo(sequential);
     }
   }
+
+  /**
+   * A program whose taint crosses a RETURN VALUE between two functions.
+   *
+   * <p>The fixture above hands the taint over as an ARGUMENT. This one returns it, so the caller
+   * can only see the taint by reading the callee's SUMMARY. That makes the ORDER of the two
+   * functions part of the answer: a caller that reads the summary before the callee has written it
+   * sees nothing, and the finding disappears -- silently, and only when the scheduler happens to
+   * run the two functions in the wrong order.
+   */
+  private static final String RETURN_FLOW_PROGRAM =
+      """
+      class ReturnFlow {
+        void entry() {
+          Runtime.getRuntime().exec(readEnv());
+        }
+
+        private String readEnv() {
+          return System.getenv("PATH");
+        }
+      }
+      """;
+
+  /** Run the return-value fixture with the given worker count. */
+  private List<String> runReturnFlow(int threads) throws Exception {
+    Path file = tmp.resolve("ReturnFlow.java");
+    Files.writeString(file, RETURN_FLOW_PROGRAM);
+    ParsedSource ps = new JavaSourceParser().parse(file);
+    TacProgram program = new TacTranslator(ps).translate();
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+    List<DfaChecker> checkers = List.of(new CommandInjectionChecker());
+    java.util.function.Supplier<List<DfaChecker>> factory =
+        () -> List.of(new CommandInjectionChecker());
+    FindingReporter reporter =
+        new DfaEngine(config, checkers, "global", null, threads, factory)
+            .runWithGlobalStore(List.of(program), threads);
+    List<String> out = new ArrayList<>();
+    for (Finding f : reporter.all()) {
+      out.add(f.ruleId() + "@" + f.file() + ":" + f.line() + ":" + f.message());
+    }
+    out.sort(String::compareTo);
+    return out;
+  }
+
+  @Test
+  @DisplayName("a taint that crosses a return value survives the parallel worklist")
+  void returnValueTaintSurvivesParallelism() throws Exception {
+    List<String> sequential = runReturnFlow(0);
+    assertThat(sequential)
+        .as(
+            "the fixture must produce findings sequentially, or the comparison below is vacuous:"
+                + " two empty lists are equal")
+        .isNotEmpty();
+    for (int threads : new int[] {1, 2, 4, 8}) {
+      for (int attempt = 0; attempt < 5; attempt++) {
+        assertThat(runReturnFlow(threads))
+            .as(
+                "the taint crosses a RETURN VALUE, so the caller has to read the callee's summary"
+                    + " -- and it can only do that after the callee has written it. A worker count"
+                    + " that lets the caller run first loses the finding, and loses it only"
+                    + " sometimes, which is the worst shape a lost finding can have")
+            .isEqualTo(sequential);
+      }
+    }
+  }
 }

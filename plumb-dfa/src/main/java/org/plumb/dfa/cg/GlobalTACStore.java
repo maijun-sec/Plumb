@@ -204,6 +204,23 @@ public final class GlobalTACStore {
     return Optional.ofNullable(bySignature.get(sig));
   }
 
+  /**
+   * Look up a function by its MERGED key ({@code "enclosingClass :: signature"}).
+   *
+   * <p>The global call graph names its nodes by the merged key, so a consumer that walks the call
+   * graph has to look its functions up under THAT key. The signature-keyed view ({@link
+   * #functionBySignature}) never holds it, and a lookup that misses there reads as "this call has
+   * no callee in the scan" -- which is how a caller came to run beside the callee whose summary it
+   * had to read.
+   *
+   * @param mergedKey the merged key, as {@link org.plumb.tac.ir.MergedProgram#mergedKey} spells it
+   * @return the function, or empty when the scan does not hold it
+   */
+  public Optional<TacFunction> functionByMergedKey(String mergedKey) {
+    if (mergedKey == null) return Optional.empty();
+    return Optional.ofNullable(byMergedKey.get(mergedKey));
+  }
+
   /** Look up the source file a function was loaded from. */
   public Optional<Path> sourceOf(String sig) {
     if (sig == null) return Optional.empty();

@@ -835,26 +835,40 @@ public final class DfaEngine {
     // we just need to count "in-TU callees" per function.
     java.util.concurrent.ConcurrentMap<String, AtomicInteger> deps =
         new java.util.concurrent.ConcurrentHashMap<>();
+    // The callees each caller waits for, by the callee's SIGNATURE. The signature is the key the
+    // callee's summary is written under, so "the callee whose summary this caller will read" and
+    // "the callee this caller waits for" are the same thing -- and a caller waits for ONE callee
+    // however many call sites reach it.
+    java.util.Map<String, java.util.Set<String>> calleesOf = new java.util.HashMap<>();
     for (var entry : byMergedKey.entrySet()) {
       TacFunction fn = entry.getValue();
       if (!analysedOrigins.contains(fn.origin())) continue;
-      org.plumb.dfa.cg.FunctionNode node = new org.plumb.dfa.cg.FunctionNode(fn.signature());
-      int calleeCount = 0;
+      // The call graph names its nodes by the MERGED key ("enclosingClass :: signature"), so the
+      // caller has to be asked for under THAT key. Asked under the bare signature the lookup
+      // finds nothing: every function looks like a leaf, the caller runs BESIDE the callee whose
+      // summary it has to read, and the cross-function fold turns into a race between two
+      // workers -- the same input then gets two different answers.
+      String callerKey = org.plumb.tac.ir.MergedProgram.mergedKey(fn);
+      org.plumb.dfa.cg.FunctionNode node = new org.plumb.dfa.cg.FunctionNode(callerKey);
+      java.util.Set<String> calleeSigs = new java.util.LinkedHashSet<>();
       for (var cs : cg.callsFrom(node)) {
         String calleeSig = cs.callee().signature();
-        if (calleeSig.equals(fn.signature())) continue;
+        if (calleeSig.equals(callerKey)) continue;
         // Count the callee only if it's in any TU we know
         // about (via the global store). Library calls
-        // don't count.
-        if (store.functionBySignature(calleeSig).isPresent()) {
-          calleeCount++;
-        }
+        // don't count -- and neither does a callee that is not
+        // ANALYSED, because a function that is never analysed
+        // never writes a summary for the caller to read.
+        TacFunction callee = store.functionByMergedKey(calleeSig).orElse(null);
+        if (callee == null || !analysedOrigins.contains(callee.origin())) continue;
+        calleeSigs.add(callee.signature());
       }
-      deps.put(entry.getKey(), new AtomicInteger(calleeCount));
+      calleesOf.put(entry.getKey(), calleeSigs);
+      deps.put(entry.getKey(), new AtomicInteger(calleeSigs.size()));
     }
     // Reverse caller map. Keyed by the CALLEE SIGNATURE, because that is what the call graph
     // resolves to; the values are the callers' merged keys.
-    java.util.Map<String, java.util.List<String>> callersOf = new java.util.HashMap<>();
+    java.util.Map<String, java.util.Set<String>> callersOf = new java.util.HashMap<>();
     // How many merged keys share each signature. A caller must wait for ALL of them: the
     // summary of a signature is what the caller reads, and the last writer wins, so letting a
     // caller proceed while a sibling variant is still unanalysed would make the result depend on
@@ -866,23 +880,28 @@ public final class DfaEngine {
       variantsOfSignature
           .computeIfAbsent(fn.signature(), k -> new AtomicInteger())
           .incrementAndGet();
-      org.plumb.dfa.cg.FunctionNode node = new org.plumb.dfa.cg.FunctionNode(fn.signature());
-      for (var cs : cg.callsFrom(node)) {
-        String calleeSig = cs.callee().signature();
-        if (calleeSig.equals(fn.signature())) continue;
-        if (store.functionBySignature(calleeSig).isEmpty()) continue;
-        callersOf.computeIfAbsent(calleeSig, k -> new java.util.ArrayList<>()).add(entry.getKey());
+      for (String calleeSig : calleesOf.getOrDefault(entry.getKey(), java.util.Set.of())) {
+        callersOf
+            .computeIfAbsent(calleeSig, k -> new java.util.LinkedHashSet<>())
+            .add(entry.getKey());
       }
     }
-    // Initial ready queue: leaves (deps == 0)
+    // Initial ready queue: leaves (deps == 0). The queue is filled in the MERGED order, so two
+    // runs of the same program hand the workers the same functions in the same order -- a
+    // reproducible run starts from a reproducible frontier.
     java.util.concurrent.ConcurrentLinkedQueue<String> readyQ =
         new java.util.concurrent.ConcurrentLinkedQueue<>();
-    for (var e : deps.entrySet()) {
-      if (e.getValue().get() == 0) readyQ.add(e.getKey());
+    for (var e : byMergedKey.entrySet()) {
+      AtomicInteger d = deps.get(e.getKey());
+      if (d != null && d.get() == 0) readyQ.add(e.getKey());
     }
     // Spin up worker pool : same pattern as the standard
     // runWorklist.
     AtomicInteger processed = new AtomicInteger(0);
+    // The merged keys that were actually analysed. The dependency map can leave a function
+    // unanalysed -- when the call graph has a CYCLE, no member's dependency count ever
+    // reaches zero -- and the functions that are still missing here are exactly those.
+    java.util.Set<String> processedKeys = java.util.concurrent.ConcurrentHashMap.newKeySet();
     // How many functions were actually ANALYSED, as opposed to how many work
     // items the scheduler took off the queue. The difference matters: a
     // function whose origin is not in scope is skipped, and a work item whose
@@ -946,26 +965,31 @@ public final class DfaEngine {
                     // classes and thus different
                     // qualified keys : no race.
                     r716putQualifiedAliasSummary(ctx, fn, m);
-                  }
-                  // The callers wait for EVERY variant that shares this signature.
-                  AtomicInteger variantsLeft =
-                      variantsOfSignature.get(fn == null ? sig : fn.signature());
-                  boolean lastVariant = variantsLeft == null || variantsLeft.decrementAndGet() == 0;
-                  if (!lastVariant) {
-                    return;
-                  }
-                  java.util.List<String> cs = callersOf.get(fn == null ? sig : fn.signature());
-                  if (cs != null) {
-                    for (String callerSig : cs) {
-                      AtomicInteger c = deps.get(callerSig);
-                      if (c != null && c.decrementAndGet() == 0) {
-                        readyQ.add(callerSig);
+                    // The callers wait for EVERY variant that shares this signature.
+                    //
+                    // The summary is written ABOVE, before this notification, so a caller that
+                    // is released here reads a summary that is already there. That is the whole
+                    // point of the dependency map: the caller must not read the callee's
+                    // summary before the callee has written it.
+                    AtomicInteger variantsLeft = variantsOfSignature.get(fn.signature());
+                    boolean lastVariant =
+                        variantsLeft == null || variantsLeft.decrementAndGet() == 0;
+                    if (lastVariant) {
+                      java.util.Set<String> cs = callersOf.get(fn.signature());
+                      if (cs != null) {
+                        for (String callerSig : cs) {
+                          AtomicInteger c = deps.get(callerSig);
+                          if (c != null && c.decrementAndGet() == 0) {
+                            readyQ.add(callerSig);
+                          }
+                        }
                       }
                     }
                   }
                 } catch (RuntimeException ex) {
                   LOG.warn("Global analysis of {} failed: {}", sig, ex.toString());
                 } finally {
+                  processedKeys.add(sig);
                   processed.incrementAndGet();
                   phaser.arriveAndDeregister();
                 }
@@ -986,6 +1010,61 @@ public final class DfaEngine {
       }
     }
     LOG.info("DfaEngine global worklist: {} of {} functions processed", processed.get(), total);
+    // A cycle in the call graph leaves its members waiting for each other: no member's dependency
+    // count ever reaches zero, so none of them is ever queued and none of them is analysed. What
+    // is still unprocessed when the queue drains is exactly that, and it is run here -- in the
+    // merged order, so the answer stays reproducible.
+    //
+    // A cycle therefore costs the ORDER and not the findings. A member may still read a callee
+    // summary that was written after it ran, which is the conservative shape a cycle can honestly
+    // have: the engine reports what it knows and does not pretend the recursion was resolved.
+    java.util.ArrayDeque<String> remaining = new java.util.ArrayDeque<>();
+    for (var entry : byMergedKey.entrySet()) {
+      TacFunction fn = entry.getValue();
+      if (!analysedOrigins.contains(fn.origin())) continue;
+      if (!processedKeys.contains(entry.getKey())) remaining.add(entry.getKey());
+    }
+    if (!remaining.isEmpty()) {
+      LOG.info(
+          "DfaEngine global worklist: {} functions left by a call-graph cycle, running them in"
+              + " merged order",
+          remaining.size());
+    }
+    while (!remaining.isEmpty()) {
+      String key = remaining.poll();
+      TacFunction fn = byMergedKey.get(key);
+      if (fn == null || !analysedOrigins.contains(fn.origin())) continue;
+      if (!processedKeys.add(key)) continue;
+      List<DfaChecker> mine = workerCheckers.get();
+      ctx.beginFunction();
+      analyseOneFunction(ctx, fn, mine);
+      FunctionSummary m = summariseOneFunction(ctx, fn, mine);
+      if (!m.isTrivial() || m.hasBody()) {
+        ctx.summaryCache().merge(fn.signature(), m);
+      }
+      r716putQualifiedAliasSummary(ctx, fn, m);
+      analysed.incrementAndGet();
+      processed.incrementAndGet();
+      // The callers of this signature are released, so the functions that were waiting on it are
+      // run too -- a cycle is broken here, one member at a time.
+      AtomicInteger variantsLeft = variantsOfSignature.get(fn.signature());
+      boolean lastVariant = variantsLeft == null || variantsLeft.decrementAndGet() == 0;
+      if (lastVariant) {
+        java.util.Set<String> cs = callersOf.get(fn.signature());
+        if (cs != null) {
+          for (String callerSig : cs) {
+            AtomicInteger c = deps.get(callerSig);
+            if (c != null && c.decrementAndGet() == 0) {
+              remaining.add(callerSig);
+            }
+          }
+        }
+      }
+      String released;
+      while ((released = readyQ.poll()) != null) {
+        remaining.add(released);
+      }
+    }
     return analysed.get();
   }
 
