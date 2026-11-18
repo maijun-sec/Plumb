@@ -518,7 +518,7 @@ without a word, and nothing here is silently dropped.
 | A matrix product | An unknown value. | `lowered.BinOp`, `STRUCTURE` |
 | A handler of several types | The catch handler carries the first type; the region records them all. | `exc.catch.multiType`, `STRUCTURE` |
 | An `except*` handler | It catches a GROUP of exceptions, and the TAC catches one. | `exc.handler.group`, `STRUCTURE` |
-| An iteration whose iterable's type is not known | The loop is modelled both as an index over it and through the `__iter__` and `__next__` protocol. | `ctrl.iter.protocol`, `STRUCTURE` |
+| An iteration whose iterable's type is not known | The loop is modelled through the `__iter__` and `__next__` protocol, and its bound is the iterable's length. | `ctrl.iter.protocol`, `STRUCTURE` |
 | A `global` or a `nonlocal` | A scope binding, and the writes routed to that scope. | -- |
 | A dataclass's generated constructor | The fields are taken as parameters and written into the instance. | -- |
 | A dataclass field whose default is computed | The default is evaluated when the class is created, so the generated constructor takes the field as a required argument. | `decl.dataclass.default`, `VALUE` |

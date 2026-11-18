@@ -717,20 +717,34 @@ L_END:
   **不叫 `loop`** ⇒ `PHP/translator.mjs:776` 的 `node.loop` 是 `undefined` ⇒ **增量被静默丢弃**。
 ⇒ 修法：`node.test?.[0]` / `node.increment`。
 
-**Python 的 `for`**（`PY/plumb_translator.py:1230-1323`）现在按「下标 + `len()`」降级，
-⇒ 迭代协议（`__iter__`/`__next__`）不建模、**字典迭代得到值而不是键**（审计 C69）：
+**Python 的 `for`**（`plumb-frontend/python-sidecar/src/plumb_translator.py` 的 `lower_for`）现在按「下标 + `len()`」降级，
+⇒ 迭代协议（`__iter__`/`__next__`）在**容器类型定不出来**时建模、**字典迭代得到值而不是键**（审计 C69，仍未改）：
 
 ```
 // 通用迭代协议（IR v2 §IR-P：迭代协议 callee 名必须是真实方法名）
   t_it = <iterable>
-  t_iter = CALL <iterable.__iter__>/0   args = [t_it]
-L_HEAD: t_step = CALL <iterable.__next__>/0  args = [t_iter]
-        t_done = ARRAYLOAD t_step["done"]
-  BRANCH t_done -> L_END, L_BODY        ; guard = Truthiness(t_done, TRUE)
-L_BODY:  t_item = ARRAYLOAD t_step["value"] ; MOVE <target> = t_item
+  t_iter = CALL <iterable.__iter__>/0   args = [t_it]      ; 接收者槽 = 被迭代的容器
+L_HEAD: t_item = CALL <iterable.__next__>/0  args = [t_iter] ; 接收者槽 = 迭代器
+L_BODY:  MOVE <target> = t_item          ; ★ 元素就是 __next__ 的结果
          <body> ; JUMP L_HEAD
 L_END:
 ```
+
+⇒ **两个地方与上面的「通用协议」形状不同，都是 Python 自己的语义，不是实现取巧**：
+
+1. **没有 `done` 标志**。Python 的 `__next__` 到头时**抛 `StopIteration`**，它不返回一对「值 + 结束标志」。
+   ⇒ `{"value", "done"}` 那个形状是 **JavaScript** 的迭代器结果（`IteratorResult`），**不是** Python 的。
+   ⇒ 循环的**界**因此用 `len()`（一个**合成调用**，因为 TAC 没有长度），
+   元素的**来源**用 `__next__` 的结果。
+   ⇒ **这个区别有后果**：引擎的迭代器传播染色的是 `__next__` 的**结果**，
+   若再从它里面读一个 `["value"]` 成员，读到的**不是**那个结果 ⇒ **元素的污点在这里断掉**。
+
+2. **字典迭代得到的是键**（`for k in d` 交出来的是键，不是值）。
+   引擎在 keyed 的语言里是**保守**的（容器里**任何**脏东西都算）⇒ 这一条**会多报**，是**已知偏差**。
+
+⇒ **引擎侧要配套**：`plumb-dfa` 的 `TaintedCheckerBase` 的 `isIteratorFactory` / `isIteratorNext`
+原本只认 Java / C# 的 `iterator` / `next` ⇒ Python 的 `__iter__` / `__next__` 认不出来 ⇒ 元素的污点跨不过协议。
+（**不要**改侧车去凑 `iterator` / `next`：IR-P 要求 callee 名是**真实存在的方法名**，而 Python 的迭代协议**就是**这两个方法。）
 
 ### 6.5 `foreach`（PHP）
 
@@ -1427,7 +1441,7 @@ private final String aliasOf;   // 这个位置与哪个变量是同一个位置
 |---|---|---|
 | `if x:` | `BRANCH` + `guard` | `Truthiness`（`PYTHON_LIKE`） |
 | `a and b` | `BRANCH` 链；`b` 只在需要时求值 | `Truthiness` |
-| `for x in d:` | 迭代协议（`__iter__`/`__next__`）或**字典迭代得到键** | `Compare(LT)` |
+| `for x in d:` | 迭代协议（`__iter__`/`__next__`），**元素就是 `__next__` 的结果**（Python 没有 `{"value","done"}` 那个形状）；**字典迭代得到键**（已知偏差，引擎保守 ⇒ 多报） | `Compare(LT)`（界用 `len()`，因为 Python 到头抛 `StopIteration` 而不是返回标志） |
 | `while ... else:` | `break` 跳 `LOOP_BODY_END`（**跳过** else）；正常流进 `LOOP_END`（进 else） | `LOOP_BODY_END` / `LOOP_END` |
 | `try/except/else/finally` | `CATCH_HANDLER` + `FINALLY_ENTER`；`tryRegions` 非空；**except 体可达**；`finally` 的**四个出口**都有边 | `CATCH_ENTRY` / `FINALLY_ENTRY` |
 | `except*`（3.11+） | 被降级（`ast.TryStar` 现在落到兜底） | — |
@@ -1963,7 +1977,7 @@ private final String aliasOf;   // 这个位置与哪个变量是同一个位置
 |---|---|---|---|---|---|
 | C67 | `if` / `elif` / `else` | KEPT | `ast.If` | 保持 + `guard`/`labelRef` | §6.2 |
 | C68 | `while` | KEPT | `ast.While` | 保持 + **`else` 语义修正** | §6.4 §6.8 |
-| C69 | `for` | DEGRADED | `ast.For` | 迭代协议（`__iter__`/`__next__`）；**字典迭代得键**（现在得值） | §6.4 |
+| C69 | `for` | DEGRADED | `ast.For` | 迭代协议（`__iter__`/`__next__`），**元素就是 `__next__` 的结果**；**字典迭代得键**（现在得值） | §6.4 |
 | C70 | `break` | DEGRADED | `ast.Break` | 跳 `LOOP_BODY_END`（**跳过** else；现在与 else 同块 ⇒ 语义反了） | §6.8 |
 | C71 | `continue` | KEPT | `ast.Continue` | 跳 `LOOP_HEAD`（`for` 是 post 标签） | §6.4 |
 | C72 | `try` / `except` / `else` / `finally` | DEGRADED | `ast.Try`（`.body, .handlers, .orelse, .finalbody`） | **接 `tryRegions`** ⇒ except 体可达；finally 的四个出口都有边 | §6.7 |
