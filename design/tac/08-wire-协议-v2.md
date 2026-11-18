@@ -290,6 +290,7 @@ sidecar 报「丢了什么」时用**同一批字符串**，这样报告才能�
 | `type.nullable.collapsed` | 可空性被塌陷 | TS/ArkTS |
 | `value.dynamic` | 运行期才确定的类型 | TS/Python/PHP |
 | `meta.decorator.unread` | 装饰器/特性未被读取 | TS/ArkTS/C#/PHP/Go/Python |
+| `iife-body` | 立即调用的函数体被提升成独立函数，它从外面读的名字不在其中 | TS/ArkTS |
 
 **词表的纪律**：
 - 一个词条只描述**一件事**；
