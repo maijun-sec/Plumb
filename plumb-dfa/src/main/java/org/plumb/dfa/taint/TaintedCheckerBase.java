@@ -1238,7 +1238,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         propagateAccumulatorTaint(ins);
         // An iterator hands out an array's elements one at a time, so the
         // taint of a tainted element crosses the iterator indirection.
-        propagateIteratorTaint(ins);
+        propagateIteratorTaint(ins, fn, ctx);
         // If the callee was a known
         // passthrough, also record a StringOp
         // on the per-function
@@ -2853,7 +2853,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
-   * Propagate taint through an ITERATOR: the object that hands out an array's elements one at a
+   * Propagate taint through an ITERATOR: the object that hands out a container's elements one at a
    * time.
    *
    * <p>The enhanced-for loop is lowered to
@@ -2875,8 +2875,15 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * <p>Both are conservative in the same direction: an iterator over an array with ANY tainted
    * element yields tainted values, because the analysis cannot know which element the iterator
    * reaches first.
+   *
+   * <p><b>Why the protocol's names are language-specific.</b> The two names are the ones the
+   * language itself uses: {@code iterator} / {@code next} for Java, C# and Go, and {@code __iter__}
+   * / {@code __next__} for Python, whose iteration protocol really is those two methods. The engine
+   * recognises both, because the alternative -- asking the front end to spell Python's protocol as
+   * {@code iterator} / {@code next} -- would put a name in the TAC that no Python program contains,
+   * and a rule that names a real method would never match it.
    */
-  private void propagateIteratorTaint(TacInstruction ins) {
+  private void propagateIteratorTaint(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
     String calleeSig = ins.calleeSig;
     if (calleeSig == null || calleeSig.isEmpty()) return;
     if (ins.args == null || ins.args.isEmpty()) return;
@@ -2885,7 +2892,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // `iterator()` over the array: the new iterator yields the array's element taint.
     if (isIteratorFactory(calleeSig)) {
       if (!(ins.args.get(0) instanceof TacOperand.TacVar source)) return;
-      ArrayTaintTracker.TaintedEntry entry = arrayTaintTracker.elementTaintOf(source);
+      ArrayTaintTracker.TaintedEntry entry = elementTaintOf(source, fn, ctx);
       if (entry == null) return;
       iteratorTaint.put(dv, entry);
       return;
@@ -2931,17 +2938,100 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   /**
    * Is this call the creation of an iterator over a collection?
    *
-   * <p>Recognised by the method name {@code iterator}. The owner is not checked: the enhanced-for
-   * loop is the shape that matters, and the IR may or may not have resolved the collection's
-   * declaring type.
+   * <p>Recognised by the method name: {@code iterator} for Java, C# and Go, and {@code __iter__}
+   * for Python, whose iteration protocol is those two methods by name. The owner is not checked:
+   * the enhanced-for loop is the shape that matters, and the IR may or may not have resolved the
+   * collection's declaring type.
    */
   private static boolean isIteratorFactory(String calleeSig) {
-    return methodNameOf(calleeSig).equals("iterator");
+    String name = methodNameOf(calleeSig);
+    return name.equals("iterator") || name.equals("__iter__");
   }
 
-  /** Is this call the {@code next()} that advances an iterator? */
+  /**
+   * Is this call the {@code next()} that advances an iterator?
+   *
+   * <p>The same two spellings as the factory: {@code next} and Python's {@code __next__}.
+   */
   private static boolean isIteratorNext(String calleeSig) {
-    return methodNameOf(calleeSig).equals("next");
+    String name = methodNameOf(calleeSig);
+    return name.equals("next") || name.equals("__next__");
+  }
+
+  /**
+   * The taint of the values a container hands out.
+   *
+   * <p><b>Why the question is asked of the CONTAINER and not of one element.</b> An iterator yields
+   * whatever is inside the container, one element at a time, and the analysis cannot know which one
+   * it reaches first. So the answer is the taint of the container's contents, and it is
+   * conservative in one direction: a container with ANY tainted content yields tainted values.
+   *
+   * <p><b>Where the contents live depends on the language.</b> In a language whose subscripts are
+   * array positions, the per-element tracker holds them, and that is where the answer comes from.
+   * In a language whose subscripts name entries of a namespace, the entries live in the keyed store
+   * instead, and the answer is read from the container's entries with the store's own "every key"
+   * wildcard.
+   *
+   * <p><b>Why the container's own taint is an answer too.</b> A container that is itself tainted
+   * got its contents from outside the program, so everything the iterator hands out came from
+   * outside as well. That is the only evidence there is when the entries were never written
+   * individually -- a list read out of a request, say.
+   *
+   * @param source the container the iterator walks
+   * @return the tainted entry the iterator yields, or {@code null}
+   */
+  private ArrayTaintTracker.TaintedEntry elementTaintOf(
+      TacOperand.TacVar source, TacFunction fn, AnalysisContext ctx) {
+    if (usesKeyedContainers(ctx)) {
+      ArrayTaintTracker.TaintedEntry stored = keyedElementTaintOf(fn, source, ctx);
+      if (stored != null) return stored;
+      String containerLabel = taintedVars.get(source);
+      if (containerLabel != null) {
+        return new ArrayTaintTracker.TaintedEntry(containerLabel, taintPaths.get(source), -1);
+      }
+      return null;
+    }
+    return arrayTaintTracker.elementTaintOf(source);
+  }
+
+  /**
+   * The taint of a keyed container's entries.
+   *
+   * <p><b>Why the wildcard.</b> The question is not "what is at this key" but "does the container
+   * hold anything tainted" -- an iterator hands out the container's contents and not one named
+   * entry of it. The store already has a selector that says exactly that: {@link
+   * TacAccessPath.MapKeySet} names every entry of a namespace, and a path ending in it sees a write
+   * made under any key.
+   *
+   * <p><b>Why the precise root comes first and the variable root only as a fallback.</b> This
+   * mirrors what {@link #readKeyedEntry} does for a single entry: the precise root names the OBJECT
+   * the receiver holds, and it is the answer that keeps two containers apart. The variable root
+   * names the HANDLE, and it survives a reassignment, so using it when the object IS known would
+   * report a stale answer as a fresh one.
+   */
+  private ArrayTaintTracker.TaintedEntry keyedElementTaintOf(
+      TacFunction fn, TacOperand.TacVar source, AnalysisContext ctx) {
+    // "every key": the iterator hands out whatever is in the container, not one
+    // named entry of it. The store's own wildcard is the selector that says so.
+    TacAccessPath.Selector everyKey = new TacAccessPath.MapKeySet();
+    List<TacAccessPath> precise = keyedPrecisePaths(fn, source, ctx, everyKey);
+    if (!precise.isEmpty()) {
+      for (TacAccessPath path : precise) {
+        AccessPathTaintStore.Entry entry = accessPathTaintStore.read(path);
+        if (entry != null) {
+          return new ArrayTaintTracker.TaintedEntry(entry.label(), entry.path(), -1);
+        }
+      }
+      // The object is known and its entries are clean.
+      return null;
+    }
+    for (TacAccessPath path : keyedVariablePaths(source, everyKey)) {
+      AccessPathTaintStore.Entry entry = accessPathTaintStore.read(path);
+      if (entry != null) {
+        return new ArrayTaintTracker.TaintedEntry(entry.label(), entry.path(), -1);
+      }
+    }
+    return null;
   }
 
   /**

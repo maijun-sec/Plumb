@@ -550,6 +550,44 @@ def main():
         check("LOOP_BODY_END" in kinds, "a loop must have a body end")
         check("LOOP_END" in kinds, "a loop must have an end")
 
+        # The iteration protocol: the element IS the result of __next__.
+        # Python's __next__ returns the element -- it is not a pair of a value
+        # and a done flag, the way JavaScript's iterator result is. Reading a
+        # "value" out of it says the element is a MEMBER of what __next__
+        # returned, and the engine's iterator propagation taints the RESULT:
+        # so the element's taint would stop right here, silently.
+        next_call = next(
+            (
+                i
+                for i in looping["instructions"]
+                if i["kind"] == "CALL"
+                and str(i.get("calleeSig") or "").endswith(".__next__/0")
+            ),
+            None,
+        )
+        check(next_call is not None, "the iteration protocol must call __next__")
+        element = next_call["dest"]["name"]
+        check(
+            not any(
+                i["kind"] == "ARRAYLOAD"
+                and i.get("lhs1", {}).get("name") == element
+                for i in looping["instructions"]
+            ),
+            "nothing may read a member out of what __next__ returned: it returns the element",
+        )
+        item_assignment = next(
+            (
+                i
+                for i in looping["instructions"]
+                if i["kind"] == "MOVE" and i.get("dest", {}).get("name") == "item"
+            ),
+            None,
+        )
+        check(
+            item_assignment is not None and item_assignment["lhs1"]["name"] == element,
+            "the loop variable must be the result of __next__",
+        )
+
         # An EXCEPTION REGION is filled in: without it the catch body is
         # never reached by the analysis.
         guarded = second_function("guarded")

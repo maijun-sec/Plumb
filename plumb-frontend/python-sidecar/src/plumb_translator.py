@@ -2012,10 +2012,18 @@ class Translator:
         length, and a stand-in says so.
 
         Python iterates an iterable through ``__iter__`` and ``__next__``.
-        When the iterable's type is not known, those calls are made too, so
+        When the iterable's type is not known, those calls are made, so
         that the protocol is visible to a rule that names it; when the type
         IS known, the element is read by index, which is what the protocol
         would have produced.
+
+        The element of the protocol branch is the RESULT of ``__next__``.
+        Python's ``__next__`` returns the element itself -- it is not a
+        pair of a value and a done flag, the way JavaScript's iterator
+        result is -- so there is nothing to take apart, and the loop
+        variable IS the call's result. Reading a ``["value"]`` out of it
+        would be reading a member of the element, which is a different
+        thing entirely.
 
         The loop's ``else`` runs when the loop finished WITHOUT a break, so
         the break's target has to skip it.
@@ -2052,8 +2060,8 @@ class Translator:
             )
             self.emit_drop(
                 "ctrl.iter.protocol",
-                "the iterable's type is not known, so the loop is modelled both as an index "
-                "over it and through the __iter__ and __next__ protocol",
+                "the iterable's type is not known, so the loop is modelled through the "
+                "__iter__ and __next__ protocol, and its bound is the iterable's length",
                 DropImpact.STRUCTURE,
                 node,
             )
@@ -2093,23 +2101,15 @@ class Translator:
         self.emit_label(body_label, LabelKind.BLOCK, node)
         element = self.state.new_temp()
         if iterator is not None:
-            step = self.state.new_temp()
+            # The element IS the result of __next__: Python's __next__ returns
+            # the element, not a pair of a value and a done flag.
             self.emit(
                 {
                     "kind": Kind.CALL,
-                    "dest": step,
+                    "dest": element,
                     "calleeSig": "%s.__next__/0" % protocol_owner,
                     "args": [iterator],
                     "argCount": 0,
-                    **self.position(node),
-                }
-            )
-            self.emit(
-                {
-                    "kind": Kind.ARRAYLOAD,
-                    "dest": element,
-                    "lhs1": step,
-                    "lhs2": const_op(Const.STRING, "value"),
                     **self.position(node),
                 }
             )
