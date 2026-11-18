@@ -505,7 +505,6 @@ public final class SidecarTacMapper {
       return null;
     }
     String name = wire.getString("name");
-    String scopeId = wire.getString("scopeId");
     String kindName = wire.getString("kind");
     TacLabelRef.Kind kind = TacLabelRef.Kind.OTHER;
     if (kindName != null) {
@@ -516,7 +515,19 @@ public final class SidecarTacMapper {
         }
       }
     }
-    if (name == null && scopeId == null) {
+    // The scope id is a NUMBER on the wire, and reading it as a string
+    // found nothing. The name is absent as well for every STRUCTURAL kind
+    // -- a loop head has no name of its own -- so the whole label
+    // reference was dropped, and the engine never learned which label was
+    // a loop head: the one fact a label reference exists to carry.
+    String scopeId = wire.getString("scopeId");
+    if (scopeId == null) {
+      int numeric = wire.getInt("scopeId", -1);
+      if (numeric >= 0) {
+        scopeId = String.valueOf(numeric);
+      }
+    }
+    if (name == null && scopeId == null && kind == TacLabelRef.Kind.OTHER) {
       return null;
     }
     return new TacLabelRef(name, kind, scopeId);

@@ -89,6 +89,7 @@ import {
   isReturnStatement,
   isSatisfiesExpression,
   isSetAccessorDeclaration,
+  isSpreadAssignment,
   isSpreadElement,
   isStringLiteral,
   isSuperExpression,
@@ -1409,7 +1410,7 @@ export class Translator {
   }
 
   lowerIf(node) {
-    const condition = this.lowerExpression(node.condition);
+    const condition = this.lowerExpression(conditionOf(node));
     const thenLabel = this.state.newLabel();
     const elseLabel = this.state.newLabel();
     const endLabel = this.state.newLabel();
@@ -1428,7 +1429,7 @@ export class Translator {
     const endLabel = this.state.newLabel("LOOP_END");
     this.emit({ kind: KIND.JUMP, label: headLabel });
     this.emitLabel(headLabel);
-    const condition = this.lowerExpression(node.condition);
+    const condition = this.lowerExpression(conditionOf(node));
     this.emitBranch(condition, bodyLabel, endLabel, truthiness(condition), node);
     this.emitLabel(bodyLabel);
     this.state.scopes.push({ kind: "LOOP", endLabel, headLabel });
@@ -1448,7 +1449,7 @@ export class Translator {
     this.state.scopes.pop();
     this.emitLabel(condLabel);
     // A `do` statement's condition is its EXPRESSION.
-    const condition = this.lowerExpression(node.condition ?? node.expression);
+    const condition = this.lowerExpression(conditionOf(node));
     this.emitBranch(condition, bodyLabel, endLabel, truthiness(condition), node);
     this.emitLabel(endLabel);
   }
@@ -1474,8 +1475,8 @@ export class Translator {
     const endLabel = this.state.newLabel("LOOP_END");
     this.emit({ kind: KIND.JUMP, label: headLabel });
     this.emitLabel(headLabel);
-    if (node.condition) {
-      const condition = this.lowerExpression(node.condition);
+    if (conditionOf(node)) {
+      const condition = this.lowerExpression(conditionOf(node));
       this.emitBranch(condition, bodyLabel, endLabel, truthiness(condition), node);
     } else {
       this.emit({ kind: KIND.JUMP, label: bodyLabel });
@@ -1792,6 +1793,20 @@ export class Translator {
           ctorType: parameter && parameter.type ? this.typeOf(parameter.type) : undefined,
           ...this.position(clause),
         });
+      } else if (parameter && parameter.name) {
+        // A catch parameter may be a PATTERN: `catch ({ message })`. The
+        // pattern has no name of its own, and the caught value reaches the
+        // names through the pattern. Without this the caught value was
+        // dropped and the names were never assigned -- and the catch body
+        // read a variable that nothing had ever written.
+        const caught = this.state.newTemp(this.typeOf(parameter));
+        this.declareLocal(caught);
+        this.emit({
+          kind: KIND.CATCH_HANDLER,
+          dest: caught,
+          ...this.position(clause),
+        });
+        this.bindPattern(parameter.name, caught, parameter);
       } else {
         this.emit({ kind: KIND.CATCH_HANDLER, ...this.position(clause) });
       }
@@ -1876,9 +1891,11 @@ export class Translator {
       if (isBreak) {
         return { label: scopes[index].endLabel };
       }
-      // The loop a labelled continue belongs to is INSIDE the labelled
-      // statement, so the search runs from the innermost scope inwards.
-      for (let scan = scopes.length - 1; scan > index; scan -= 1) {
+      // A labelled continue continues the loop the label is ON. The label's
+      // scope is pushed BEFORE the statement the label decorates, so the loop
+      // it names is the FIRST one after it -- not the innermost one, which is
+      // a loop nested inside it and the wrong loop entirely.
+      for (let scan = index + 1; scan < scopes.length; scan += 1) {
         if (scopes[scan].kind === "LOOP") {
           return { label: scopes[scan].headLabel };
         }
@@ -2141,7 +2158,16 @@ export class Translator {
     } else if (isElementAccessExpression(node)) {
       value = this.lowerElementRead(node, receiver);
     } else {
-      value = this.lowerCall(node, receiver);
+      // `rec.f?.()`: the check above is on the FUNCTION -- it is the function
+      // that may be missing -- but the call's RECEIVER is the object the
+      // function was read from, because that is what `this` is. Passing the
+      // function value as the receiver made the call look like a method of
+      // the function itself.
+      const object =
+        node.expression && isPropertyAccessExpression(node.expression)
+          ? this.lowerExpression(node.expression.expression)
+          : undefined;
+      value = this.lowerCall(node, object);
     }
     this.emit({ kind: KIND.MOVE, dest, lhs1: value, ...this.position(node) });
     this.emit({ kind: KIND.JUMP, label: endLabel });
@@ -2466,7 +2492,7 @@ export class Translator {
 
   /** `c ? a : b`: two branches, and each side is evaluated once. */
   lowerConditional(node) {
-    const condition = this.lowerExpression(node.condition);
+    const condition = this.lowerExpression(conditionOf(node));
     const dest = this.state.newTemp(this.typeOf(node));
     const thenLabel = this.state.newLabel();
     const elseLabel = this.state.newLabel();
@@ -2848,6 +2874,10 @@ export class Translator {
       ...this.position(node),
     });
     for (const property of node.properties) {
+      if (isSpreadAssignment(property)) {
+        this.lowerObjectSpread(property, dest);
+        continue;
+      }
       if (!property.name) continue;
       const key = constOp(CONST.STRING, property.name.text ?? property.name.getText?.() ?? "");
       const value = this.lowerExpression(property.initializer);
@@ -2860,6 +2890,39 @@ export class Translator {
       });
     }
     return dest;
+  }
+
+  /**
+   * A spread in an object literal: `{ ...other }`.
+   *
+   * <p>The spread copies the source's OWN properties into the object being
+   * built. An object in this TAC is a NAMESPACE -- a set of key/value pairs --
+   * and the source's KEYS are not known here, so the copy cannot be written
+   * out property by property. It is modelled as the call that performs it:
+   * `Object.assign(target, source)`.
+   *
+   * <p>The call is UNINTERPRETED on purpose. The engine cannot see inside
+   * `Object.assign`, and an unknown call is assumed to carry its arguments'
+   * taint into its result -- which is what puts the source's taint into the
+   * new object. As an ordinary CALL the source would have been dropped: the
+   * spread's properties were simply not there, and the object came out clean.
+   */
+  lowerObjectSpread(node, target) {
+    const source = this.lowerExpression(node.expression);
+    const merged = this.state.newTemp(TYPE.UNKNOWN);
+    this.emit({
+      kind: KIND.UNINTERPRETED,
+      calleeSig: "Object.assign/2",
+      dest: merged,
+      args: [constOp(CONST.STRING, "Object"), target, source],
+      ...this.position(node),
+    });
+    this.emit({
+      kind: KIND.MOVE,
+      dest: target,
+      lhs1: merged,
+      ...this.position(node),
+    });
   }
 
   /** An array literal: a fresh array, then one write per element. */
@@ -3650,6 +3713,24 @@ function calleeSigOf(owner, method, arity) {
 /** The guard of a branch on a value's truthiness. */
 function truthiness(operand) {
   return { kind: "Truthiness", operand };
+}
+
+/**
+ * The condition of a statement or an expression that has one.
+ *
+ * <p>The name of the field is NOT the same in every compiler. The `if`, the
+ * `while` and the `do` call it `expression`; the `for` and the conditional
+ * expression call it `condition`. Asking a node for the one it does not have
+ * returns UNDEFINED -- and a branch on UNDEFINED has NO SUBJECT: the
+ * comparison is never evaluated, the guard says nothing, and the path
+ * condition is lost.
+ *
+ * <p>That loss is invisible. The instruction stream is still well formed,
+ * every label still resolves and the scan still reports success, so nothing
+ * but reading the instructions tells that the condition is not there.
+ */
+function conditionOf(node) {
+  return node?.condition ?? node?.expression;
 }
 
 /** A type that may also be null or undefined. */
