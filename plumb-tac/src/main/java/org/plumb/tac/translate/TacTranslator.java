@@ -44,6 +44,7 @@ import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.ExplicitConstructorInvocationStmt;
+import com.github.javaparser.ast.stmt.ExpressionStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.type.Type;
 import java.util.ArrayList;
@@ -522,8 +523,10 @@ public final class TacTranslator {
       }
     }
 
-    // Collect static field initializers into a synthetic <clinit>.
-    TacBuilder clinit = null;
+    // The class's STATIC FIELDS are recorded first, whatever order they are
+    // written in: the record tells the expression translator that a field
+    // access is a static one, and a static field's initialiser may read
+    // another static field that is declared later.
     for (BodyDeclaration<?> bd : members) {
       if (!(bd instanceof FieldDeclaration fd)) continue;
       if (!fd.isStatic()) continue;
@@ -533,49 +536,33 @@ public final class TacTranslator {
       for (VariableDeclarator v : fd.getVariables()) {
         recordStaticField(classShortName, v.getNameAsString());
       }
-      boolean anyInit = false;
-      for (VariableDeclarator v : fd.getVariables()) {
-        if (v.getInitializer().isPresent()) {
-          anyInit = true;
-          break;
-        }
-      }
-      if (!anyInit) continue;
-      if (clinit == null) {
-        clinit =
-            newBuilder(
-                new TacBuilder.FunctionSpec("<clinit>", "<clinit>()", TacType.VOID), List.of());
-        // The synthetic <clinit> also belongs to
-        // this class for CHA walk purposes.
-        if (prefix.isEmpty()) clinit.setEnclosingClass(enclosingClassName);
-      }
-      clinit.addClassAnnotations(classAnns);
-      // Field-level annotations on static fields (e.g.
-      // {@code @Value("${...}")} on a static config field).
-      for (VariableDeclarator v : fd.getVariables()) {
-        List<String> fAnns = extractAnnotationNames(fd.getAnnotations());
-        if (!fAnns.isEmpty()) {
-          clinit.addFieldAnnotations(v.getNameAsString(), fAnns);
-        }
-      }
-      for (VariableDeclarator v : fd.getVariables()) {
-        if (v.getInitializer().isPresent()) {
-          emitFieldInit(clinit, fd, v, v.getInitializer().get());
-        }
-      }
     }
-    // Collect instance field initializers into a synthetic
-    // {@code <init>}. The translator previously dropped
-    // non-static field declarations entirely (only static
-    // fields were captured into {@code <clinit>}), which
-    // made {@code private String password = "literal"} invisible
-    // to FIELDSTORE-based checks. We emit a default-argument
-    // {@code <init>} that holds one FIELDSTORE per initialized
-    // instance field; if a real constructor is present, the
-    // real one wins (we don't double-emit). The synthetic
-    // {@code <init>} is what {@link
-    // org.plumb.dfa.checker.FieldHardcodedPasswordCheck}
-    // looks at.
+    // The class's STATIC INITIALISERS -- the static fields' initialisers and
+    // the static initialiser blocks -- all run when the class is initialised,
+    // and Java runs them in the order they are written. They share ONE
+    // function: the synthetic <clinit>.
+    //
+    // They used to be TWO functions with the SAME key. The field initialisers
+    // went into the synthetic <clinit> (<clinit> / <clinit>()), and a static
+    // initialiser BLOCK was lowered into a function of its own that was also
+    // named <clinit> with the signature <clinit>(). Functions are indexed by
+    // name and signature, so the two overwrote each other and the loser of
+    // the pair lost its WHOLE BODY -- silently, with no drop to say so.
+    //
+    // The consequence was measured, not guessed: a class with a static field
+    // initialiser AND a static initialiser block lost the block, so a sink in
+    // the block was invisible, while the same class without the field
+    // initialiser reported it. One function for both is what Java does, and
+    // it removes the collision instead of renaming around it.
+    TacBuilder clinit = null;
+    // Whether the class declares a constructor of its own. The translator
+    // previously dropped non-static field declarations entirely (only static
+    // fields were captured into {@code <clinit>}), which made {@code private
+    // String password = "literal"} invisible to FIELDSTORE-based checks. We
+    // emit a default-argument {@code <init>} that holds one FIELDSTORE per
+    // initialized instance field; if a real constructor is present, the real one
+    // wins (we don't double-emit). The synthetic {@code <init>} is what
+    // {@link org.plumb.dfa.checker.FieldHardcodedPasswordCheck} looks at.
     boolean hasExplicitCtor = false;
     for (BodyDeclaration<?> bd : members) {
       if (bd instanceof ConstructorDeclaration) {
@@ -583,72 +570,74 @@ public final class TacTranslator {
         break;
       }
     }
-    // The INSTANCE field initializers of this class. Every constructor runs them,
-    // so they are collected here and handed to each one.
+    // The INSTANCE INITIALISERS of this class: the instance fields' initialisers
+    // AND the instance initialiser blocks, in the order they are written.
+    // Every constructor runs them, so they are collected once per class and
+    // handed to each one.
     //
-    // Before this, the initializers only reached the synthetic `<init>`, and that
-    // synthetic function was built ONLY when the class had no constructor of its
-    // own. A class with an explicit constructor therefore had NO evidence of its
-    // field initializers anywhere in the TAC -- and the hardcoded-password rule,
-    // which reads exactly that synthetic constructor, reported nothing.
-    List<InstanceFieldInit> instanceFieldInits = new ArrayList<>();
+    // Before this, the initializers only reached the synthetic `<init>`, and
+    // that synthetic function was built ONLY when the class had no constructor
+    // of its own. A class with an explicit constructor therefore had NO evidence
+    // of its field initializers anywhere in the TAC -- and the hardcoded-password
+    // rule, which reads exactly that synthetic constructor, reported nothing.
+    //
+    // The BLOCKS are in this list for a REASON, not for tidiness. An instance
+    // initialiser block used to be lowered into a function of its own, named
+    // `<init>` with the signature `<init>()` -- the SAME key as the synthetic
+    // `<init>` that holds the field initialisers. The two overwrote each other
+    // and one of the two bodies disappeared, silently. Putting the block's
+    // statements where the block actually runs removes the collision AND makes
+    // the shape faithful: the block runs inside every constructor, after the
+    // super() call and before the constructor's own body.
+    List<InstanceInit> instanceInits = new ArrayList<>();
     for (BodyDeclaration<?> bd : members) {
-      if (!(bd instanceof FieldDeclaration fd)) continue;
-      if (fd.isStatic()) continue;
-      for (VariableDeclarator v : fd.getVariables()) {
-        if (v.getInitializer().isPresent()) {
-          instanceFieldInits.add(new InstanceFieldInit(fd, v, v.getInitializer().get()));
+      if (bd instanceof FieldDeclaration fd && !fd.isStatic()) {
+        for (VariableDeclarator v : fd.getVariables()) {
+          if (v.getInitializer().isPresent()) {
+            instanceInits.add(InstanceInit.field(fd, v, v.getInitializer().get()));
+          }
+        }
+      } else if (bd instanceof InitializerDeclaration id && !id.isStatic()) {
+        BlockStmt blockBody = id.getBody();
+        if (blockBody != null) {
+          instanceInits.add(InstanceInit.block(blockBody));
         }
       }
     }
     TacBuilder syntheticInit = null;
-    if (!hasExplicitCtor) {
-      for (BodyDeclaration<?> bd : members) {
-        if (!(bd instanceof FieldDeclaration fd)) continue;
-        if (fd.isStatic()) continue;
-        boolean anyInit = false;
-        for (VariableDeclarator v : fd.getVariables()) {
-          if (v.getInitializer().isPresent()) {
-            anyInit = true;
-            break;
-          }
+    if (!hasExplicitCtor && !instanceInits.isEmpty()) {
+      String qualifiedCtor = prefix.isEmpty() ? "<init>" : prefix + ".<init>";
+      syntheticInit =
+          newBuilder(
+              new TacBuilder.FunctionSpec(qualifiedCtor, qualifiedCtor + "()", TacType.VOID),
+              List.of());
+      // Synthetic instance <init> belongs to
+      // this class. The enclosing class is the
+      // qualified name for a nested type, so the
+      // source-path lookup can find the file the
+      // nested class lives in.
+      syntheticInit.setEnclosingClass(enclosingClassName);
+      // The initializers this <init> holds are assignments on `this`, and `this`
+      // is the class. The receiver's type is what tells a field of THIS class
+      // from a field of another class that happens to have the same name, so it
+      // carries the class -- like every other `this` in the translator.
+      syntheticInit
+          .locals()
+          .add(new TacOperand.TacVar("this", TacType.ofClass(classShortName), false));
+      syntheticInit.addClassAnnotations(classAnns);
+      // Field-level annotations on instance fields
+      // (e.g. {@code @Value("${app.password}")} on a
+      // {@code @ConfigurationProperties} class).
+      for (InstanceInit init : instanceInits) {
+        if (init.field() == null) continue;
+        FieldDeclaration fd = init.field().declaration();
+        List<String> fAnns = extractAnnotationNames(fd.getAnnotations());
+        if (!fAnns.isEmpty()) {
+          syntheticInit.addFieldAnnotations(init.field().declarator().getNameAsString(), fAnns);
         }
-        if (!anyInit) continue;
-        if (syntheticInit == null) {
-          String qualifiedCtor = prefix.isEmpty() ? "<init>" : prefix + ".<init>";
-          syntheticInit =
-              newBuilder(
-                  new TacBuilder.FunctionSpec(qualifiedCtor, qualifiedCtor + "()", TacType.VOID),
-                  List.of());
-          // Synthetic instance <init> belongs to
-          // this class. The enclosing class is the
-          // qualified name for a nested type, so the
-          // source-path lookup can find the file the
-          // nested class lives in.
-          syntheticInit.setEnclosingClass(enclosingClassName);
-          // The initializers this <init> holds are assignments on `this`, and `this`
-          // is the class. The receiver's type is what tells a field of THIS class
-          // from a field of another class that happens to have the same name, so it
-          // carries the class -- like every other `this` in the translator.
-          syntheticInit
-              .locals()
-              .add(new TacOperand.TacVar("this", TacType.ofClass(classShortName), false));
-        }
-        syntheticInit.addClassAnnotations(classAnns);
-        // Field-level annotations on instance fields
-        // (e.g. {@code @Value("${app.password}")} on a
-        // {@code @ConfigurationProperties} class).
-        for (VariableDeclarator v : fd.getVariables()) {
-          List<String> fAnns = extractAnnotationNames(fd.getAnnotations());
-          if (!fAnns.isEmpty()) {
-            syntheticInit.addFieldAnnotations(v.getNameAsString(), fAnns);
-          }
-        }
-        for (VariableDeclarator v : fd.getVariables()) {
-          if (v.getInitializer().isPresent()) {
-            emitInstanceFieldInit(syntheticInit, fd, v, v.getInitializer().get());
-          }
-        }
+      }
+      for (InstanceInit init : instanceInits) {
+        emitInstanceInit(syntheticInit, init);
       }
     }
     // A Java record's implicit members. Java 16 records get, for free:
@@ -739,7 +728,7 @@ public final class TacTranslator {
             List.of(),
             enclosingClassName,
             qualifiedDeclaringType(prefix, classShortName),
-            instanceFieldInits);
+            instanceInits);
       } else if (bd instanceof com.github.javaparser.ast.body.CompactConstructorDeclaration ccd) {
         // A COMPACT constructor: `record Point(int x, int y) { Point { validate(x); } }`.
         //
@@ -772,16 +761,61 @@ public final class TacTranslator {
                   -1,
                   -1));
         }
+      } else if (bd instanceof FieldDeclaration staticField && staticField.isStatic()) {
+        // A STATIC FIELD's initialiser runs when the class is initialised, so it
+        // belongs in the class's <clinit> -- the same function the static
+        // initialiser blocks go into, and in the order they are written.
+        boolean anyInit = false;
+        for (VariableDeclarator v : staticField.getVariables()) {
+          if (v.getInitializer().isPresent()) {
+            anyInit = true;
+            break;
+          }
+        }
+        if (!anyInit) continue;
+        if (clinit == null) {
+          clinit =
+              newBuilder(
+                  new TacBuilder.FunctionSpec("<clinit>", "<clinit>()", TacType.VOID), List.of());
+          // The synthetic <clinit> also belongs to
+          // this class for CHA walk purposes.
+          if (prefix.isEmpty()) clinit.setEnclosingClass(enclosingClassName);
+        }
+        clinit.addClassAnnotations(classAnns);
+        // Field-level annotations on static fields (e.g.
+        // {@code @Value("${...}")} on a static config field).
+        for (VariableDeclarator v : staticField.getVariables()) {
+          List<String> fAnns = extractAnnotationNames(staticField.getAnnotations());
+          if (!fAnns.isEmpty()) {
+            clinit.addFieldAnnotations(v.getNameAsString(), fAnns);
+          }
+        }
+        for (VariableDeclarator v : staticField.getVariables()) {
+          if (v.getInitializer().isPresent()) {
+            emitFieldInit(clinit, staticField, v, v.getInitializer().get());
+          }
+        }
       } else if (bd instanceof InitializerDeclaration id) {
-        String fnName = id.isStatic() ? "<clinit>" : "<init>";
-        TacBuilder.FunctionSpec spec =
-            new TacBuilder.FunctionSpec(fnName, fnName + "()", TacType.VOID);
-        TacBuilder b = newBuilder(spec, List.of());
-        b.addClassAnnotations(classAnns);
-        b.setEnclosingClass(enclosingClassName);
-        BlockStmt body = id.getBody();
-        if (body != null) stmtTranslator.translateBlock(body, b);
-        finishFunction(b, nodeLine(id));
+        if (id.isStatic()) {
+          // A STATIC INITIALISER BLOCK runs when the class is initialised, so
+          // it belongs in the class's <clinit> -- the same function the static
+          // fields' initialisers go into. It used to be a function of its own
+          // with the SAME name and signature, and the two overwrote each other.
+          if (clinit == null) {
+            clinit =
+                newBuilder(
+                    new TacBuilder.FunctionSpec("<clinit>", "<clinit>()", TacType.VOID), List.of());
+            if (prefix.isEmpty()) clinit.setEnclosingClass(enclosingClassName);
+          }
+          clinit.addClassAnnotations(classAnns);
+          BlockStmt body = id.getBody();
+          if (body != null) stmtTranslator.translateBlock(body, clinit);
+        }
+        // An INSTANCE initialiser block runs inside every constructor, after the
+        // super() call and before the constructor's own body. Its statements
+        // were collected into `instanceInits` above and handed to the
+        // constructors there, so there is nothing left to do here -- and making
+        // it a function of its own would collide with the synthetic <init>.
       } else if (bd instanceof com.github.javaparser.ast.body.ClassOrInterfaceDeclaration inner) {
         String newPrefix =
             prefix.isEmpty() ? inner.getNameAsString() : prefix + "$" + inner.getNameAsString();
@@ -839,6 +873,29 @@ public final class TacTranslator {
       FieldDeclaration declaration, VariableDeclarator declarator, Expression initializer) {}
 
   /**
+   * One thing that runs when an object is constructed: an instance field's initializer, or an
+   * instance initializer block's statements.
+   *
+   * <p>They are one type because they run in ONE place and in ONE order: Java runs the instance
+   * field initializers and the instance initializer blocks of a class, in the order they are
+   * written, inside every constructor of that class, after the {@code super()} call and before the
+   * constructor's own body.
+   *
+   * <p>Exactly one of the two members is set: {@code field} for a field initializer, {@code block}
+   * for an initializer block.
+   */
+  private record InstanceInit(InstanceFieldInit field, BlockStmt block) {
+    static InstanceInit field(
+        FieldDeclaration declaration, VariableDeclarator declarator, Expression initializer) {
+      return new InstanceInit(new InstanceFieldInit(declaration, declarator, initializer), null);
+    }
+
+    static InstanceInit block(BlockStmt body) {
+      return new InstanceInit(null, body);
+    }
+  }
+
+  /**
    * Emit an instance-field initializer as a MOVE + FIELDSTORE pair. The MOVE evaluates the
    * initializer expression into a temp; the FIELDSTORE assigns the temp to {@code this.field}. A
    * bare FIELDSTORE with a literal destination would lose array / object initializers that need a
@@ -853,8 +910,7 @@ public final class TacTranslator {
     // field; the translation emits a MOVE (or whatever the
     // initializer lowers to) into a TacVar that the next call
     // can FIELDSTORE from.
-    stmtTranslator.translate(
-        new com.github.javaparser.ast.stmt.ExpressionStmt(syntheticDeclaration(v)), b);
+    stmtTranslator.translate(fieldInitializerStatement(fd, v), b);
     // Now emit {@code this.<field> = <temp>} where the temp is
     // the TacVar the statement-translation just produced. We
     // look up the last MOVE / NEWARRAY / etc. that wrote to
@@ -908,8 +964,7 @@ public final class TacTranslator {
       TacBuilder b, FieldDeclaration fd, VariableDeclarator v, Expression init) {
     // Synthesize a VariableDeclarationExpr and route through the
     // existing statement-translation path.
-    stmtTranslator.translate(
-        new com.github.javaparser.ast.stmt.ExpressionStmt(syntheticDeclaration(v)), b);
+    stmtTranslator.translate(fieldInitializerStatement(fd, v), b);
   }
 
   /**
@@ -934,13 +989,54 @@ public final class TacTranslator {
    * returns {@code void} cannot answer, and has to assume the worst.
    *
    * <p>Cloning leaves the original tree intact: the copy carries its own children, and the original
-   * declarator keeps its parent, so both trees resolve.
+   * declarator keeps its parent.
+   *
+   * <p><b>But the copy does NOT resolve</b>, and that is not obvious from the copy alone. The
+   * copy's parent chain stops at the wrapper, because the wrapper is not attached to the
+   * compilation unit. The symbol resolver walks that chain to find the unit, so {@code resolve()}
+   * throws for the copy and for everything under it. A call that cannot be resolved has no return
+   * type, so a CHAINED call loses the receiver's FQN and is lowered with the placeholder owner
+   * {@code scope} -- and no sink family matches {@code scope.exec/1}. The same call in an
+   * initializer BLOCK keeps its real owner ({@code java.lang.Runtime.exec/1}) and is reported. So
+   * the wrapper is pointed at the declarator's own parent: the chain reaches the compilation unit
+   * again, while the ORIGINAL tree stays untouched (the wrapper is not added to the field's child
+   * list).
    *
    * @param declarator the declarator to copy
    */
   private VariableDeclarationExpr syntheticDeclaration(VariableDeclarator declarator) {
     VariableDeclarator copy = declarator.clone();
     return new VariableDeclarationExpr(com.github.javaparser.ast.NodeList.nodeList(copy));
+  }
+
+  /**
+   * The statement that carries a field's initializer into the lowering.
+   *
+   * <p><b>Why the parent chain is set here and not on the declaration.</b> The declaration is a
+   * COPY (see {@link #syntheticDeclaration}), and a copy that is not part of the compilation unit
+   * cannot be resolved: JavaParser's symbol resolver walks the parent chain to find the unit and
+   * throws {@code IllegalStateException: The node is not inserted in a CompilationUnit}. A call
+   * that cannot be resolved has no return type, so a CHAINED call loses the receiver's FQN and is
+   * lowered with the placeholder owner {@code scope} -- and no sink family matches {@code
+   * scope.exec/1}. The same call in an initializer BLOCK keeps its real owner ({@code
+   * java.lang.Runtime.exec/1}) and is reported.
+   *
+   * <p>Setting the parent on the DECLARATION is not enough: {@code new ExpressionStmt(declaration)}
+   * re-parents the declaration onto the statement, and the statement is itself detached. So the
+   * statement is the node that gets the field as its parent, and the chain runs {@code call ->
+   * declarator -> declaration -> statement -> field -> class -> compilation unit}.
+   *
+   * <p>The ORIGINAL tree is untouched: the copy carries its own children, the original declarator
+   * keeps its parent, and the statement is never added to the field's child list.
+   *
+   * @param fd the field the initializer belongs to
+   * @param declarator the declarator to copy
+   */
+  private ExpressionStmt fieldInitializerStatement(
+      FieldDeclaration fd, VariableDeclarator declarator) {
+    ExpressionStmt statement = new ExpressionStmt(syntheticDeclaration(declarator));
+    statement.setParentNode(fd);
+    return statement;
   }
 
   private <T extends CallableDeclaration<T>> void translateCallable(
@@ -997,11 +1093,16 @@ public final class TacTranslator {
   }
 
   /**
-   * Translate a callable, running the class's INSTANCE FIELD INITIALIZERS first.
+   * Translate a callable, running the class's INSTANCE INITIALIZERS first.
    *
    * <p>The initializers run inside every constructor, after the {@code super()} call and before the
    * constructor's own body. Java puts them there, and the order matters: an initializer that reads
    * a field the superclass set would otherwise see the field unset.
+   *
+   * <p>The initializers are the instance fields' initialisers AND the instance initialiser blocks,
+   * in the order they are written. The blocks belong here because that is where they run: a block
+   * used to be lowered into a function of its own, and that function's name and signature were the
+   * same as the synthetic {@code <init>}'s, so the two overwrote each other.
    */
   private <T extends CallableDeclaration<T>> void translateCallable(
       T decl,
@@ -1013,7 +1114,7 @@ public final class TacTranslator {
       List<String> methodAnns,
       String enclosingClass,
       String declaringType,
-      List<InstanceFieldInit> instanceFieldInits) {
+      List<InstanceInit> instanceInits) {
 
     TacType mappedRet =
         retType == null
@@ -1115,7 +1216,7 @@ public final class TacTranslator {
       }
       b.locals().add(new TacOperand.TacVar("this", TacType.ofClass(thisType), false));
     }
-    if (!instanceFieldInits.isEmpty()) {
+    if (!instanceInits.isEmpty()) {
       // A constructor needs a `this` to write the fields through. The field
       // state is keyed on the receiver's type, so the receiver carries the
       // class -- a bare `this` would name no class at all.
@@ -1136,19 +1237,19 @@ public final class TacTranslator {
           }
         }
         if (superCall < 0) {
-          emitInstanceFieldInits(b, instanceFieldInits);
+          emitInstanceInits(b, instanceInits);
           stmtTranslator.translateBlock(body, b);
         } else {
           for (int i = 0; i <= superCall; i++) {
             stmtTranslator.translate(statements.get(i), b);
           }
-          emitInstanceFieldInits(b, instanceFieldInits);
+          emitInstanceInits(b, instanceInits);
           for (int i = superCall + 1; i < statements.size(); i++) {
             stmtTranslator.translate(statements.get(i), b);
           }
         }
       } else {
-        emitInstanceFieldInits(b, instanceFieldInits);
+        emitInstanceInits(b, instanceInits);
       }
     } else if (body != null) {
       stmtTranslator.translateBlock(body, b);
@@ -1158,15 +1259,31 @@ public final class TacTranslator {
   }
 
   /**
-   * Emit every instance-field initializer of a class into a constructor.
+   * Emit every instance initializer of a class into a constructor.
    *
-   * <p>Each initializer is a MOVE of the value plus a FIELDSTORE of it into the field, exactly as
-   * the synthetic constructor does.
+   * <p>Each field initializer is a MOVE of the value plus a FIELDSTORE of it into the field,
+   * exactly as the synthetic constructor does; each initializer block is its own statements, in the
+   * order they are written.
    */
-  private void emitInstanceFieldInits(TacBuilder b, List<InstanceFieldInit> inits) {
-    for (InstanceFieldInit init : inits) {
-      emitInstanceFieldInit(b, init.declaration(), init.declarator(), init.initializer());
+  private void emitInstanceInits(TacBuilder b, List<InstanceInit> inits) {
+    for (InstanceInit init : inits) {
+      emitInstanceInit(b, init);
     }
+  }
+
+  /**
+   * Emit ONE instance initializer: a field's initializer, or an initializer block's statements.
+   *
+   * <p>The two are different shapes, so they cannot share an emitter: a field initializer is a
+   * write into a field, and a block is a sequence of statements.
+   */
+  private void emitInstanceInit(TacBuilder b, InstanceInit init) {
+    if (init.block() != null) {
+      stmtTranslator.translateBlock(init.block(), b);
+      return;
+    }
+    emitInstanceFieldInit(
+        b, init.field().declaration(), init.field().declarator(), init.field().initializer());
   }
 
   /**
@@ -1213,6 +1330,10 @@ public final class TacTranslator {
       com.github.javaparser.ast.NodeList<com.github.javaparser.ast.body.BodyDeclaration<?>> body,
       String prefix,
       String enclosingClass) {
+    TacBuilder anonInit = null;
+    TacBuilder anonClinit = null;
+    int anonInitLine = -1;
+    int anonClinitLine = -1;
     for (com.github.javaparser.ast.body.BodyDeclaration<?> bd : body) {
       if (bd instanceof MethodDeclaration md) {
         String qualified = prefix + "." + md.getNameAsString();
@@ -1227,20 +1348,50 @@ public final class TacTranslator {
             enclosingClass,
             prefix);
       } else if (bd instanceof com.github.javaparser.ast.body.InitializerDeclaration id) {
-        String fnName = id.isStatic() ? "<clinit>" : "<init>";
-        TacBuilder.FunctionSpec spec =
-            new TacBuilder.FunctionSpec(fnName, fnName + "()", TacType.VOID);
-        TacBuilder b = newBuilder(spec, List.of());
-        b.setEnclosingClass(enclosingClass);
+        // The anonymous class's INITIALISERS -- its fields' initializers and its
+        // initializer blocks -- all run when the object is constructed, so they all
+        // belong in ONE function per kind. They used to be one function EACH, and
+        // the field initialiser's function and the initializer block's function had
+        // the SAME name and signature, so they overwrote each other and one of the
+        // two bodies was lost, silently.
+        TacBuilder b = id.isStatic() ? anonClinit : anonInit;
+        if (b == null) {
+          String fnName = id.isStatic() ? "<clinit>" : "<init>";
+          b =
+              newBuilder(
+                  new TacBuilder.FunctionSpec(fnName, fnName + "()", TacType.VOID), List.of());
+          b.setEnclosingClass(enclosingClass);
+          if (id.isStatic()) {
+            anonClinit = b;
+            anonClinitLine = nodeLine(id);
+          } else {
+            anonInit = b;
+            anonInitLine = nodeLine(id);
+          }
+        }
         BlockStmt idBody = id.getBody();
         if (idBody != null) stmtTranslator.translateBlock(idBody, b);
-        finishFunction(b, nodeLine(id));
       } else if (bd instanceof com.github.javaparser.ast.body.FieldDeclaration fd) {
         // A field of an anonymous class. Its initializer is real data flow, so it is
-        // lowered into a synthetic initialiser.
-        TacBuilder b =
-            newBuilder(new TacBuilder.FunctionSpec("<init>", "<init>()", TacType.VOID), List.of());
-        b.setEnclosingClass(enclosingClass);
+        // lowered into the anonymous class's synthetic initialiser -- the SAME
+        // function the initializer blocks go into.
+        boolean anyInit = false;
+        for (VariableDeclarator v : fd.getVariables()) {
+          if (v.getInitializer().isPresent()) {
+            anyInit = true;
+            break;
+          }
+        }
+        if (!anyInit) continue;
+        TacBuilder b = anonInit;
+        if (b == null) {
+          b =
+              newBuilder(
+                  new TacBuilder.FunctionSpec("<init>", "<init>()", TacType.VOID), List.of());
+          b.setEnclosingClass(enclosingClass);
+          anonInit = b;
+          anonInitLine = nodeLine(fd);
+        }
         for (VariableDeclarator v : fd.getVariables()) {
           if (!v.getInitializer().isPresent()) continue;
           ExpressionResult r = exprTranslator.translate(v.getInitializer().get(), b);
@@ -1258,9 +1409,10 @@ public final class TacTranslator {
                   .line(nodeLine(v))
                   .build());
         }
-        finishFunction(b, nodeLine(fd));
       }
     }
+    if (anonInit != null) finishFunction(anonInit, anonInitLine);
+    if (anonClinit != null) finishFunction(anonClinit, anonClinitLine);
   }
 
   /**
