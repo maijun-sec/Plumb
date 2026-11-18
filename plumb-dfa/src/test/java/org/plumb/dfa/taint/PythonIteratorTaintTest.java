@@ -120,6 +120,23 @@ class PythonIteratorTaintTest {
         .isEmpty();
   }
 
+  @Test
+  @DisplayName("the element written with append crosses the protocol")
+  void theElementWrittenWithAppendCrossesTheProtocol() {
+    // A Python list is filled by a CALL, not by a subscript write: `append`
+    // is the spelling of the same act that Java and C# spell `add`. The
+    // catalogue has to know the spelling, or the container never learns that
+    // it holds a tainted value and the loop hands out clean values.
+    List<Finding> findings = scan(pythonOverAContainerFilledWithAppend());
+
+    assertThat(hasFinding(findings, COMMAND_RULE, "os.system/1"))
+        .as(
+            "items = []; items.append(cmd); for x in items: os.system(x) -- the value is put into"
+                + " the list by a call, so the container has to learn that it holds a tainted"
+                + " element")
+        .isTrue();
+  }
+
   // ---- the programs ---------------------------------------------------------------------------
 
   /**
@@ -220,14 +237,45 @@ class PythonIteratorTaintTest {
     return function(out, SourceLanguage.JAVA, List.of(request), List.of(array, x));
   }
 
+  /**
+   * {@code cmd = request["cmd"]; items = []; items.append(cmd); for x in items: os.system(x)}
+   *
+   * <p>The list is empty and the element is put in by a call, which is how a Python list is filled.
+   */
+  private static TacFunction pythonOverAContainerFilledWithAppend() {
+    List<TacInstruction> out = new ArrayList<>();
+    TacOperand.TacVar request = var("request");
+    TacOperand.TacVar items = var("items");
+    TacOperand.TacVar x = var("x");
+
+    TacOperand.TacVar cmd = temp("t_cmd");
+    out.add(arrayLoad(cmd, request, str("cmd"), 10));
+    TacOperand.TacVar array = temp("t_array");
+    out.add(newArray(array, 11));
+    out.add(move(items, array, 11));
+
+    // The write: `items.append(cmd)`. The owner is the list's own type, which
+    // is what the Python side car emits when the list's type is known.
+    out.add(call("list.append/1", temp("t_appended"), List.of(items, cmd), 11));
+
+    appendIteration(out, items, x, 12);
+    out.add(command("os.system/1", x, 13));
+    return pythonFunction("app.py_iterator_append(any):any", out, request, items, x);
+  }
+
   // ---- the harness ---------------------------------------------------------------------------
 
   private static TacFunction pythonFunction(List<TacInstruction> out, TacOperand.TacVar... locals) {
+    return pythonFunction("app.py_iterator_handler(any):any", out, locals);
+  }
+
+  private static TacFunction pythonFunction(
+      String signature, List<TacInstruction> out, TacOperand.TacVar... locals) {
     List<TacOperand.TacVar> vars = new ArrayList<>();
     for (TacOperand.TacVar v : locals) {
       vars.add(v);
     }
-    return function(out, SourceLanguage.PYTHON3, List.of(vars.get(0)), vars);
+    return function(out, SourceLanguage.PYTHON3, List.of(vars.get(0)), vars, signature);
   }
 
   private static TacFunction function(
@@ -235,6 +283,15 @@ class PythonIteratorTaintTest {
       SourceLanguage language,
       List<TacOperand.TacVar> params,
       List<TacOperand.TacVar> locals) {
+    return function(out, language, params, locals, "app.py_iterator_handler(any):any");
+  }
+
+  private static TacFunction function(
+      List<TacInstruction> out,
+      SourceLanguage language,
+      List<TacOperand.TacVar> params,
+      List<TacOperand.TacVar> locals,
+      String signature) {
     return new TacFunction(
         "handle",
         // The signature is part of the OBJECT LABEL the points-to solver
@@ -244,7 +301,7 @@ class PythonIteratorTaintTest {
         // share the store's keys -- so a test that reuses a common
         // signature can be broken by a test that ran before it. This one
         // names itself.
-        "app.py_iterator_handler(any):any",
+        signature,
         TacType.UNKNOWN,
         params,
         locals,

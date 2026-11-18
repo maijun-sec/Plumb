@@ -873,6 +873,12 @@
                         <include>org/plumb/dfa/taint/PythonIteratorTaintTest.java</include>
                         <include>org/plumb/dfa/taint/TypeScriptIteratorTaintTest.java</include>
                         <include>org/plumb/dfa/taint/CsharpEnumeratorTaintTest.java</include>
+                        <!-- A collection is filled by a CALL, not by an array
+                             store, so the taint of what was put into it has to
+                             reach the loop that reads it back out. The rule is
+                             the engine's, so the Java control in this class
+                             keeps it from being a C#-only rule. -->
+                        <include>org/plumb/dfa/taint/CsharpCollectionTaintTest.java</include>
                         <!-- The SSRF defect class: the catalogue names the sinks of
                              every language, the checker watches the family, and the
                              patterns that named other defect classes moved to the

@@ -199,15 +199,30 @@ public final class AccumulatorCatalog {
     // "array" is the script language's container: a JavaScript array is a namespace whose
     // elements are written with push, and the element is part of the array's state the same
     // way a list's element is part of the list's.
-    if (ownerIs(owner, "list", "set", "collection", "queue", "deque", "array")) {
+    //
+    // "stack" is the same container under another name: a stack holds what was pushed onto it,
+    // exactly as a list holds what was added to it.
+    //
+    // The METHOD names are the family's spellings of the same act, and they differ per language:
+    // `add` (Java, C#, .NET), `append` (Python), `enqueue` (a .NET queue), `insert` (a list that
+    // is written at a position), `addRange` (a list that receives another collection's elements),
+    // `offer` (a queue), `push` (a stack).
+    if (ownerIs(owner, "list", "set", "collection", "queue", "deque", "array", "stack")) {
       return method.equals("add")
           || method.equals("addall")
+          || method.equals("addrange")
+          || method.equals("append")
+          || method.equals("insert")
+          || method.equals("enqueue")
           || method.equals("set")
           || method.equals("offer")
           || method.equals("push");
     }
-    if (ownerIs(owner, "map")) {
-      return method.equals("put") || method.equals("putall");
+    if (ownerIs(owner, "map", "dictionary")) {
+      return method.equals("put")
+          || method.equals("putall")
+          || method.equals("add")
+          || method.equals("set_item");
     }
     // Character / byte streams and writers: written bytes are part of the stream's state.
     if (ownerIs(
@@ -287,8 +302,15 @@ public final class AccumulatorCatalog {
     // That makes the read conservative -- it can report a taint that was in
     // a different element -- which is the safe direction: a missed finding
     // is worse than an extra one.
-    if (ownerIs(owner, "list", "set", "collection", "queue", "deque", "map")) {
-      return method.equals("get") || method.equals("remove") || method.equals("poll");
+    //
+    // "get_item" is .NET's spelling of the indexer's getter: `list[0]` is a
+    // call to `List<T>.get_Item`, not to `get`, so a rule that knew only the
+    // Java spelling would leave every C# collection read empty.
+    if (ownerIs(owner, "list", "set", "collection", "queue", "deque", "map", "dictionary")) {
+      return method.equals("get")
+          || method.equals("get_item")
+          || method.equals("remove")
+          || method.equals("poll");
     }
     // A script language's container hands an element back out with pop and shift.
     if (ownerIs(owner, "array")) {
@@ -337,10 +359,39 @@ public final class AccumulatorCatalog {
       out.add(2);
       return out;
     }
+    // The same distinction, for the maps that are written through a METHOD: `map.put(k, v)` and
+    // `dict.Add(k, v)` put the VALUE in, and the key only names the slot. The value is the LAST
+    // argument in both spellings, so that is the one that taints the container.
+    if (isMapWrite(ins.calleeSig) && ins.args.size() > 1) {
+      out.add(ins.args.size() - 1);
+      return out;
+    }
     for (int i = 1; i < ins.args.size(); i++) {
       out.add(i);
     }
     return out;
+  }
+
+  /**
+   * Whether the call writes a value into a map through a method call.
+   *
+   * <p><b>Why the map family is called out separately from the other containers.</b> A map's write
+   * takes a KEY and a VALUE, and only the value is one of the map's values. The list family's write
+   * takes the value and (sometimes) a position, and a tainted position is a reason to treat the
+   * whole container as tainted -- but a tainted KEY is not a reason to treat the map's values as
+   * tainted.
+   *
+   * @param calleeSig the callee signature in {@code owner.method/arity} form
+   * @return true when the call writes a value into a map
+   */
+  private static boolean isMapWrite(String calleeSig) {
+    if (calleeSig == null || calleeSig.isEmpty()) return false;
+    if (!ownerIs(ownerOf(calleeSig), "map", "dictionary")) return false;
+    String method = methodOf(calleeSig);
+    return method.equals("put")
+        || method.equals("putall")
+        || method.equals("add")
+        || method.equals("set_item");
   }
 
   /**

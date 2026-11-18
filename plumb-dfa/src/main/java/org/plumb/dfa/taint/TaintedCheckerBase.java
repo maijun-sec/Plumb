@@ -3061,7 +3061,30 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       }
       return null;
     }
-    return arrayTaintTracker.elementTaintOf(source);
+    ArrayTaintTracker.TaintedEntry stored = arrayTaintTracker.elementTaintOf(source);
+    if (stored != null) return stored;
+    // The container's OWN taint is an answer here too, and it is the answer that
+    // carries a collection WRITE.
+    //
+    // A collection is filled by a CALL -- `list.add(x)`, `list.Add(x)` -- and
+    // not by an array store, so the per-element tracker never hears about it.
+    // What hears about it is the accumulator rule: a mutator taints its
+    // RECEIVER, because the value has entered the receiver's state. So the
+    // receiver's taint IS the container's contents' taint, and an iterator over
+    // that container hands out that taint.
+    //
+    // Without this, a language whose subscripts are array positions -- C#,
+    // Java, Go, Kotlin, Scala -- loses the element at exactly this point: the
+    // collection holds a tainted value, the loop over it produces a clean
+    // variable, and the sink never fires. The language whose subscripts name
+    // entries of a namespace has always had this answer (the branch above),
+    // which is why the same program in TypeScript reported and the same program
+    // in C# did not.
+    String containerLabel = taintedVars.get(source);
+    if (containerLabel != null) {
+      return new ArrayTaintTracker.TaintedEntry(containerLabel, taintPaths.get(source), -1);
+    }
+    return null;
   }
 
   /**
