@@ -235,15 +235,25 @@ def classify(cwe: str, findings: list[dict], truth: dict) -> dict:
     """Classify the findings as TP / FP against the method-level ground truth."""
     files = truth.get(cwe, {})
     span_cache: dict[str, dict] = {}
+    unresolved: set[str] = set()
 
     def spans_for(name: str) -> dict:
         if name not in span_cache:
             path = None
+            # The testcase file can sit in a SUITE SUBDIRECTORY (Juliet's layout puts
+            # the multi-variant CWEs under s01/, s02/, ...), and it can sit directly
+            # in the CWE directory (the single-file CWEs do).  Searching only the
+            # first level finds the second kind and misses the first, and a file
+            # that is not found has NO method spans -- so every finding in it is
+            # classified as "not in a bad method", the recall comes out as zero,
+            # and nothing says why.  Hence the recursive search.
             for candidate in JULIET_ROOT.glob(f"{cwe}_*"):
-                probe = candidate / name
-                if probe.is_file():
+                probe = next(candidate.rglob(name), None)
+                if probe is not None and probe.is_file():
                     path = probe
                     break
+            if path is None:
+                unresolved.add(name)
             span_cache[name] = method_spans(path, files.get(name, [])) if path else {}
         return span_cache[name]
 
@@ -329,6 +339,7 @@ def classify(cwe: str, findings: list[dict], truth: dict) -> dict:
         "fp": fp,
         "tp_files": tp_files,
         "fn_files": len(fn_files),
+        "unresolved_files": len(unresolved),
         "recall": recall,
         "precision": precision,
         "f1": (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0,
@@ -393,6 +404,14 @@ def main() -> int:
             f"   TP files={r['tp_files']}  FN(files)={r['fn_files']}"
             f"\n   recall={r['recall']:.4f}  precision={r['precision']:.4f}  f1={r['f1']:.4f}"
         )
+        if r.get("unresolved_files"):
+            # A file the ground truth names that cannot be found on disk has no
+            # method spans, so every finding in it counts as a false positive and
+            # the recall collapses towards zero WITHOUT saying why.  Say it.
+            print(
+                f"  WARNING: {r['unresolved_files']} ground-truth file(s) could not be"
+                f" located on disk -- the recall and precision above are NOT trustworthy"
+            )
         if r["tp_by_rule"]:
             print("  TP by rule:")
             for rule, count in r["tp_by_rule"].items():
