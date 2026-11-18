@@ -2295,6 +2295,9 @@ internal sealed partial class TacTranslator
             case ArrayCreationExpressionSyntax arrayCreation:
                 return TranslateArrayCreation(arrayCreation);
 
+            case ImplicitArrayCreationExpressionSyntax implicitArrayCreation:
+                return TranslateImplicitArrayCreation(implicitArrayCreation);
+
             case SwitchExpressionSyntax switchExpression:
                 return TranslateSwitchExpression(switchExpression);
 
@@ -2956,9 +2959,7 @@ internal sealed partial class TacTranslator
         var size = NewTemp();
         if (elements is { Count: > 0 })
         {
-            Emit(InstructionKind.MOVE, dest: size,
-                lhs1: new Operand { Kind = "CONST", ConstKind = "INT", Value = elements.Count.ToString() },
-                node: creation);
+            return LowerArrayFromElements(elements, elementType, size, creation);
         }
         else if ((creation.Type as ArrayTypeSyntax)?.RankSpecifiers.Count > 0
             && ((ArrayTypeSyntax)creation.Type).RankSpecifiers[0].Sizes.Count > 0)
@@ -2980,11 +2981,80 @@ internal sealed partial class TacTranslator
 
         var result = NewTemp(TypeRef.Array(elementType));
         Emit(InstructionKind.NEWARRAY, dest: result, lhs1: size, ctorType: elementType, node: creation);
+        return result;
+    }
 
-        if (elements is null)
+    /// <summary>
+    /// Lower an IMPLICIT array creation: <c>new[] { 1, 2, 3 }</c>.
+    /// </summary>
+    /// <param name="creation">the array creation</param>
+    /// <returns>the operand holding the array</returns>
+    /// <remarks>
+    /// <para>
+    /// The same shape as the explicit form <c>new int[] { 1, 2, 3 }</c>: an
+    /// allocation plus its elements. The one difference is that the element
+    /// type is not written down -- it is INFERRED from the elements -- so it
+    /// comes from the semantic model instead of from the syntax.
+    /// </para>
+    /// <para>
+    /// <b>Why it matters.</b> The implicit form used to be dropped whole, so
+    /// the variable that held the array was never assigned at all, and a call
+    /// that took the array as its argument took an UNKNOWN placeholder in
+    /// place of it. The elements of a collection are what the collection's
+    /// taint is made of, so losing this expression loses the taint of
+    /// everything that was put into the array.
+    /// </para>
+    /// </remarks>
+    private Operand? TranslateImplicitArrayCreation(ImplicitArrayCreationExpressionSyntax creation)
+    {
+        var arrayType = _model.GetTypeInfo(creation).Type;
+        var elementType = arrayType is IArrayTypeSymbol array
+            ? TypeMapper.Map(array.ElementType)
+            : TypeRef.Simple("UNKNOWN");
+
+        var elements = creation.Initializer?.Expressions.ToList();
+        if (elements is null || elements.Count == 0)
         {
-            return result;
+            Report(creation, "UNHANDLED_NODE",
+                "the implicit array's size could not be determined", creation.GetType().Name);
+            return null;
         }
+
+        var size = NewTemp();
+        return LowerArrayFromElements(elements, elementType, size, creation);
+    }
+
+    /// <summary>
+    /// Lower an array that is given its elements: allocate the slots, then store each element.
+    /// </summary>
+    /// <param name="elements">the elements, in order</param>
+    /// <param name="elementType">the type of one element</param>
+    /// <param name="size">the temporary that holds the number of slots</param>
+    /// <param name="node">the node the array is at</param>
+    /// <returns>the operand holding the array</returns>
+    /// <remarks>
+    /// <para>
+    /// Both array forms -- the explicit <c>new int[] { 1, 2 }</c> and the
+    /// implicit <c>new[] { 1, 2 }</c> -- are an allocation plus their
+    /// elements, so they are lowered here, once.
+    /// </para>
+    /// <para>
+    /// <b>The elements are the array's taint.</b> An array with no elements
+    /// holds no taint, so each element is stored into its own slot: the
+    /// element's taint has to reach the array, or a read of the array sees a
+    /// value that nothing wrote.
+    /// </para>
+    /// </remarks>
+    private Operand LowerArrayFromElements(
+        List<ExpressionSyntax> elements, TypeRef elementType, Operand size, SyntaxNode node)
+    {
+        Emit(InstructionKind.MOVE, dest: size,
+            lhs1: new Operand { Kind = "CONST", ConstKind = "INT", Value = elements.Count.ToString() },
+            node: node);
+
+        var result = NewTemp(TypeRef.Array(elementType));
+        Emit(InstructionKind.NEWARRAY, dest: result, lhs1: size, ctorType: elementType, node: node);
+
         for (var index = 0; index < elements.Count; index++)
         {
             var value = TranslateExpression(elements[index], store: false);
@@ -2993,7 +3063,7 @@ internal sealed partial class TacTranslator
                 continue;
             }
             var key = new Operand { Kind = "CONST", ConstKind = "INT", Value = index.ToString() };
-            Emit(InstructionKind.ARRAYSTORE, dest: value, lhs1: result, lhs2: key, node: creation);
+            Emit(InstructionKind.ARRAYSTORE, dest: value, lhs1: result, lhs2: key, node: node);
         }
         return result;
     }

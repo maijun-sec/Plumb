@@ -1235,7 +1235,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // out. Without this the classic
         //     sb.append(userInput); exec(sb.toString());
         // reports a clean program.
-        propagateAccumulatorTaint(ins);
+        propagateAccumulatorTaint(ins, fn, ctx);
         // An iterator hands out an array's elements one at a time, so the
         // taint of a tainted element crosses the iterator indirection.
         propagateIteratorTaint(ins, fn, ctx);
@@ -2754,7 +2754,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * never removes it, so a clean write cannot launder a tainted object and a tainted object cannot
    * be laundered clean by reading it.
    */
-  private void propagateAccumulatorTaint(TacInstruction ins) {
+  private void propagateAccumulatorTaint(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
     String calleeSig = ins.calleeSig;
     if (calleeSig == null || calleeSig.isEmpty()) return;
     if (ins.args == null || ins.args.isEmpty()) return;
@@ -2774,8 +2774,23 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         for (int argIdx : AccumulatorCatalog.mutatorArgIndices(ins)) {
           if (argIdx >= ins.args.size()) break;
           if (!(ins.args.get(argIdx) instanceof TacOperand.TacVar arg)) continue;
-          String label = taintedVars.get(arg);
-          if (label == null) continue;
+          // The receiver accumulates what the argument CARRIES. That is the
+          // argument's own taint, and -- when the argument is a container --
+          // the taint of what the container holds.
+          //
+          // The second half is not a detail: `list.AddRange(new[] { userInput
+          // })` passes an array whose ELEMENT is tainted while the array
+          // reference itself never was, so a rule that only asks "is the
+          // argument dirty?" sees a clean array and the taint stops there.
+          // The receiver receives the argument's CONTENTS, so the contents'
+          // taint is what it accumulates.
+          //
+          // The question is asked with the same function the iterator path
+          // asks it with -- "what does this container hand out?" -- so the two
+          // paths cannot answer it differently for the same container.
+          ArrayTaintTracker.TaintedEntry carried = elementTaintOf(arg, fn, ctx);
+          if (carried == null) continue;
+          String label = carried.label();
           // The receiver accumulates. It may already be tainted (from an
           // earlier append); in that case the existing label stays and the
           // new source is recorded as an additional path step, so the
@@ -2784,7 +2799,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           if (existing == null) {
             taintedVars.put(recv, label);
             List<FlowStep> path = new ArrayList<>();
-            List<FlowStep> srcPath = taintPaths.get(arg);
+            List<FlowStep> srcPath = carried.path();
             if (srcPath != null) path.addAll(srcPath);
             path.add(
                 new FlowStep(

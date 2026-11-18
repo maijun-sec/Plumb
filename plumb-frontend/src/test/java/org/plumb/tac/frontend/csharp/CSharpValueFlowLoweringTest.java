@@ -54,6 +54,13 @@ import org.plumb.tac.ir.TacOperand;
  *       held them was never assigned.
  * </ul>
  *
+ * <p><b>Why the implicit array form is in here too.</b> {@code new int[] { 1, 2 }} and {@code new[]
+ * { 1, 2 }} are the same construct written two ways, and only the first one was lowered. The second
+ * was dropped whole, so the variable that held the array was never assigned -- and a call that took
+ * the array as its argument took an unknown placeholder in place of it. The two forms have to end
+ * up in the same shape, or a program that writes one of them is analysed as a different program from
+ * the one that writes the other.
+ *
  * <p><b>How the assertions are shaped.</b> They pin the SHAPE -- which instruction carries which
  * value -- and not the position of an instruction, because the positions are an implementation
  * detail and the shapes are the contract.
@@ -329,6 +336,49 @@ class CSharpValueFlowLoweringTest {
     assertThat(stores)
         .as("every element must be stored into the array: an array with no elements holds no taint")
         .isEqualTo(3);
+  }
+
+  @Test
+  @DisplayName("an implicit array creation stores its elements into the array")
+  void anImplicitArrayCreationStoresItsElements() {
+    String source =
+        """
+        namespace Demo;
+
+        public class Builder
+        {
+            public void Build()
+            {
+                var values = new[] { 1, 2, 3 };
+            }
+        }
+        """;
+
+    TacFunction function = functionNamed(support.parse(source).functions(), "Build");
+
+    assertThat(firstOfKind(function, TacInstruction.Kind.NEWARRAY))
+        .as("the array must be allocated: the implicit form is an allocation like the explicit one")
+        .isNotNull();
+
+    int stores = 0;
+    for (TacInstruction instruction : function.instructions()) {
+      if (instruction.kind == TacInstruction.Kind.ARRAYSTORE) {
+        stores++;
+      }
+    }
+    assertThat(stores)
+        .as("every element must be stored into the array: an array with no elements holds no taint")
+        .isEqualTo(3);
+
+    assertThat(moveTo(function, "values"))
+        .as(
+            "the variable that holds the array must be assigned: a dropped expression leaves the"
+                + " variable unwritten, and every later read of it sees a value nothing computed")
+        .isNotNull();
+
+    assertThat(function.drops())
+        .as("the implicit form is lowered now, so nothing may be reported as lost")
+        .isEmpty();
   }
 
   @Test

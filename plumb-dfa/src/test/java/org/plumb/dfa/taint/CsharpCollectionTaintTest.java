@@ -278,6 +278,71 @@ class CsharpCollectionTaintTest {
       }
       """;
 
+  /**
+   * A list that receives another collection's elements, where that collection is written as an
+   * ARRAY LITERAL.
+   *
+   * <p>The literal is the IMPLICIT array form, {@code new[] { input }}: the element type is
+   * inferred rather than written down. The tainted value is the array's ELEMENT, not the array
+   * reference, so this measures whether the receiver accumulates what the argument CARRIES rather
+   * than only what the argument IS.
+   */
+  private static final String LIST_ADD_RANGE_LITERAL =
+      """
+      namespace Demo;
+
+      public class Coll
+      {
+          public void Run(string input)
+          {
+              var list = new System.Collections.Generic.List<string>();
+              list.AddRange(new[] { input });
+              foreach (var item in list)
+              {
+                  System.Diagnostics.Process.Start(item);
+              }
+          }
+      }
+      """;
+
+  /** The same shape, with an element that never came from outside the program. */
+  private static final String LIST_ADD_RANGE_LITERAL_CLEAN =
+      """
+      namespace Demo;
+
+      public class Coll
+      {
+          public void Run()
+          {
+              var list = new System.Collections.Generic.List<string>();
+              list.AddRange(new[] { "safe" });
+              foreach (var item in list)
+              {
+                  System.Diagnostics.Process.Start(item);
+              }
+          }
+      }
+      """;
+
+  /** The same shape, with the array written in the EXPLICIT form. */
+  private static final String LIST_ADD_RANGE_EXPLICIT =
+      """
+      namespace Demo;
+
+      public class Coll
+      {
+          public void Run(string input)
+          {
+              var list = new System.Collections.Generic.List<string>();
+              list.AddRange(new string[] { input });
+              foreach (var item in list)
+              {
+                  System.Diagnostics.Process.Start(item);
+              }
+          }
+      }
+      """;
+
   /** The same shape, with a value that never came from outside the program. */
   private static final String COLLECTION_CLEAN =
       """
@@ -349,6 +414,50 @@ class CsharpCollectionTaintTest {
           }
       }
       """;
+
+  @Test
+  @EnabledIf("toolchainAvailable")
+  @DisplayName("a list that receives an array literal hands the tainted element back out")
+  void aListThatReceivesAnArrayLiteralHandsTheTaintedElementBackOut() {
+    // The receiver receives the argument's CONTENTS, so the contents' taint is
+    // what it accumulates. Here the argument is an array whose ELEMENT is the
+    // tainted one: the array reference itself never was, because nothing ever
+    // assigned a tainted value to it.
+    List<Finding> implicit = scan(LIST_ADD_RANGE_LITERAL, "AddRangeImplicit.cs");
+
+    assertThat(hasFinding(implicit, COMMAND_RULE, "System.Diagnostics.Process.Start"))
+        .as(
+            "list.AddRange(new[] { input }) -- the array's element is the tainted one, so the list"
+                + " has to accumulate what the array carries")
+        .isTrue();
+
+    // The explicit form is measured too, and it has to answer the same way: the
+    // two spellings are the same construct, and a rule that answered one of
+    // them and not the other would report one program and not its twin.
+    List<Finding> explicit = scan(LIST_ADD_RANGE_EXPLICIT, "AddRangeExplicit.cs");
+
+    assertThat(hasFinding(explicit, COMMAND_RULE, "System.Diagnostics.Process.Start"))
+        .as(
+            "list.AddRange(new string[] { input }) -- the same construct written the other way has"
+                + " to answer the same way")
+        .isTrue();
+  }
+
+  @Test
+  @EnabledIf("toolchainAvailable")
+  @DisplayName("a list that receives a clean array literal stays clean")
+  void aListThatReceivesACleanArrayLiteralStaysClean() {
+    // The reverse control: if the receiver accumulated something for every
+    // array it was handed, this would report, and the test above would prove
+    // nothing.
+    List<Finding> findings = scan(LIST_ADD_RANGE_LITERAL_CLEAN, "AddRangeClean.cs");
+
+    assertThat(hasFinding(findings, COMMAND_RULE, "System.Diagnostics.Process.Start"))
+        .as(
+            "list.AddRange(new[] { \"safe\" }) -- nothing tainted went into the array, so nothing"
+                + " tainted is in the list")
+        .isFalse();
+  }
 
   @Test
   @EnabledIf("toolchainAvailable")
