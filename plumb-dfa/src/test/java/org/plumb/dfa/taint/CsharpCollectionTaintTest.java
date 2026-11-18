@@ -343,6 +343,62 @@ class CsharpCollectionTaintTest {
       }
       """;
 
+  /** The collection expression spelling of the same write: `AddRange([input])`. */
+  private static final String LIST_ADD_RANGE_COLLECTION_EXPRESSION =
+      """
+      namespace Demo;
+
+      public class Coll
+      {
+          public void Run(string input)
+          {
+              var list = new System.Collections.Generic.List<string>();
+              list.AddRange([input]);
+              foreach (var item in list)
+              {
+                  System.Diagnostics.Process.Start(item);
+              }
+          }
+      }
+      """;
+
+  /** The collection expression spelling with a LIST target: the collection is built and filled. */
+  private static final String LIST_COLLECTION_EXPRESSION =
+      """
+      namespace Demo;
+
+      public class Coll
+      {
+          public void Run(string input)
+          {
+              System.Collections.Generic.List<string> list = [input];
+              foreach (var item in list)
+              {
+                  System.Diagnostics.Process.Start(item);
+              }
+          }
+      }
+      """;
+
+  /** The same collection expression, with a value that never came from outside the program. */
+  private static final String LIST_ADD_RANGE_COLLECTION_EXPRESSION_CLEAN =
+      """
+      namespace Demo;
+
+      public class Coll
+      {
+          public void Run()
+          {
+              var list = new System.Collections.Generic.List<string>();
+              list.AddRange(["safe"]);
+              foreach (var item in list)
+              {
+                  System.Diagnostics.Process.Start(item);
+              }
+          }
+      }
+      """;
+
   /** The same shape, with a value that never came from outside the program. */
   private static final String COLLECTION_CLEAN =
       """
@@ -455,6 +511,57 @@ class CsharpCollectionTaintTest {
     assertThat(hasFinding(findings, COMMAND_RULE, "System.Diagnostics.Process.Start"))
         .as(
             "list.AddRange(new[] { \"safe\" }) -- nothing tainted went into the array, so nothing"
+                + " tainted is in the list")
+        .isFalse();
+  }
+
+  @Test
+  @EnabledIf("toolchainAvailable")
+  @DisplayName("a list that receives a collection expression hands the tainted element back out")
+  void aListThatReceivesACollectionExpressionHandsTheTaintedElementBackOut() {
+    // The third spelling of the same construct: `AddRange([input])`. The
+    // argument is a collection expression whose target type is an interface,
+    // so it is carried by the array shape -- and the element inside it is the
+    // tainted one.
+    List<Finding> findings = scan(LIST_ADD_RANGE_COLLECTION_EXPRESSION, "AddRangeCollection.cs");
+
+    assertThat(hasFinding(findings, COMMAND_RULE, "System.Diagnostics.Process.Start"))
+        .as(
+            "list.AddRange([input]) -- the collection expression's element is the tainted one, so"
+                + " the list has to accumulate what it carries")
+        .isTrue();
+  }
+
+  @Test
+  @EnabledIf("toolchainAvailable")
+  @DisplayName("a list built by a collection expression hands the tainted element back out")
+  void aListBuiltByACollectionExpressionHandsTheTaintedElementBackOut() {
+    // The same construct with a LIST target: the collection is built and then
+    // filled, so the taint reaches it by the collection write rather than by
+    // an array. The two shapes reach the taint by different paths, and both
+    // have to reach it.
+    List<Finding> findings = scan(LIST_COLLECTION_EXPRESSION, "CollectionExpressionTarget.cs");
+
+    assertThat(hasFinding(findings, COMMAND_RULE, "System.Diagnostics.Process.Start"))
+        .as(
+            "List<string> list = [input] -- the element is added to the collection, so the"
+                + " collection has to accumulate what was added to it")
+        .isTrue();
+  }
+
+  @Test
+  @EnabledIf("toolchainAvailable")
+  @DisplayName("a list that receives a clean collection expression stays clean")
+  void aListThatReceivesACleanCollectionExpressionStaysClean() {
+    // The reverse control: if the receiver accumulated something for every
+    // collection it was handed, this would report, and the test above would
+    // prove nothing.
+    List<Finding> findings =
+        scan(LIST_ADD_RANGE_COLLECTION_EXPRESSION_CLEAN, "AddRangeCollectionClean.cs");
+
+    assertThat(hasFinding(findings, COMMAND_RULE, "System.Diagnostics.Process.Start"))
+        .as(
+            "list.AddRange([\"safe\"]) -- nothing tainted went into the collection, so nothing"
                 + " tainted is in the list")
         .isFalse();
   }

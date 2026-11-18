@@ -2298,6 +2298,9 @@ internal sealed partial class TacTranslator
             case ImplicitArrayCreationExpressionSyntax implicitArrayCreation:
                 return TranslateImplicitArrayCreation(implicitArrayCreation);
 
+            case CollectionExpressionSyntax collectionExpression:
+                return TranslateCollectionExpression(collectionExpression);
+
             case SwitchExpressionSyntax switchExpression:
                 return TranslateSwitchExpression(switchExpression);
 
@@ -3022,6 +3025,210 @@ internal sealed partial class TacTranslator
 
         var size = NewTemp();
         return LowerArrayFromElements(elements, elementType, size, creation);
+    }
+
+    /// <summary>
+    /// Lower a collection expression: <c>[1, 2, 3]</c>.
+    /// </summary>
+    /// <param name="expression">the collection expression</param>
+    /// <returns>the operand holding the collection</returns>
+    /// <remarks>
+    /// <para>
+    /// This is the THIRD spelling of "a collection literal" in C# 12, after the
+    /// explicit <c>new int[] { 1, 2 }</c> and the implicit <c>new[] { 1, 2 }</c>.
+    /// It used to fall into the default branch of the expression dispatch, so
+    /// the whole expression disappeared and all that was left was a
+    /// <c>csharp.unmodelled</c> drop.
+    /// </para>
+    /// <para>
+    /// <b>What disappeared with it.</b> In an argument position the argument
+    /// became an UNKNOWN placeholder, and in a variable declaration the
+    /// variable was left UNASSIGNED -- a read of it saw a variable that
+    /// nothing had written. The elements are what a collection's taint is made
+    /// of, so this lost the taint of everything that went into it.
+    /// </para>
+    /// <para>
+    /// <b>The TARGET TYPE decides the shape</b>, because the same syntax means
+    /// different things for different targets:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>an ARRAY target (<c>string[] items = [x]</c>) is the array shape,
+    /// so it goes through the same helper as the explicit and the implicit
+    /// array forms -- one shape per construct;</item>
+    /// <item>a NAMED COLLECTION target (<c>List&lt;string&gt; items = [x]</c>)
+    /// is built and filled, which is what the collection-builder pattern
+    /// does: construct the collection, then <c>Add</c> each element;</item>
+    /// <item>an INTERFACE target (<c>list.AddRange([x])</c>, whose parameter is
+    /// <c>IEnumerable&lt;string&gt;</c>) has no collection to construct, so the
+    /// elements are carried by the array shape -- an array IS an
+    /// <c>IEnumerable</c> of the same elements.</item>
+    /// </list>
+    /// </remarks>
+    private Operand? TranslateCollectionExpression(CollectionExpressionSyntax expression)
+    {
+        var elements = new List<ExpressionSyntax>();
+        foreach (var element in expression.Elements)
+        {
+            // A SPREAD element (`[..rest]`) is not one value: it stands for the
+            // contents of another collection, which cannot be written slot by
+            // slot. It is reported and left out -- the rest of the expression
+            // is still lowered, and the loss is on the record.
+            if (element is SpreadElementSyntax spread)
+            {
+                Report(spread, "UNHANDLED_NODE",
+                    "a spread element cannot be lowered element by element",
+                    spread.GetType().Name);
+                continue;
+            }
+
+            // An element is not an EXPRESSION: it is a wrapper node that
+            // carries one. (`CollectionElementSyntax` is not an
+            // `ExpressionSyntax`, so the value has to be unwrapped.)
+            if (element is ExpressionElementSyntax wrapper)
+            {
+                elements.Add(wrapper.Expression);
+                continue;
+            }
+
+            Report(element, "UNHANDLED_NODE",
+                "the collection element's shape is not known", element.GetType().Name);
+        }
+
+        if (elements.Count == 0)
+        {
+            Report(expression, "UNHANDLED_NODE",
+                "the collection expression has no elements that could be lowered",
+                expression.GetType().Name);
+            return null;
+        }
+
+        var target = CollectionExpressionTarget(expression);
+        if (target is INamedTypeSymbol named && CollectionAddMethodOf(named) is { } add)
+        {
+            return LowerNamedCollection(elements, named, add, expression);
+        }
+
+        var size = NewTemp();
+        return LowerArrayFromElements(elements, CollectionElementType(target), size, expression);
+    }
+
+    /// <summary>
+    /// The type a collection expression is converted TO.
+    /// </summary>
+    /// <param name="expression">the collection expression</param>
+    /// <returns>the target type, or null when the semantic model has none</returns>
+    /// <remarks>
+    /// A collection expression has no natural type of its own: <c>[x]</c> is an
+    /// array, a <c>List</c> or an <c>IEnumerable</c> depending on what it is
+    /// converted to. The CONVERTED type is the one that says which, and the
+    /// natural type is only a fallback -- for <c>var items = [1, 2]</c> it is
+    /// the array the compiler picks.
+    /// </remarks>
+    private ITypeSymbol? CollectionExpressionTarget(CollectionExpressionSyntax expression)
+    {
+        var info = _model.GetTypeInfo(expression);
+        return info.ConvertedType ?? info.Type;
+    }
+
+    /// <summary>
+    /// The type of one element of a collection expression.
+    /// </summary>
+    /// <param name="target">the type the expression is converted to</param>
+    /// <returns>the element type, or UNKNOWN when it cannot be determined</returns>
+    /// <remarks>
+    /// An array says it in its element type; a generic collection says it in
+    /// its first type argument (<c>IEnumerable&lt;string&gt;</c> is a sequence
+    /// of strings). When neither does, the element type is UNKNOWN -- the
+    /// elements are still stored, so their taint still crosses.
+    /// </remarks>
+    private static TypeRef CollectionElementType(ITypeSymbol? target)
+    {
+        if (target is IArrayTypeSymbol array)
+        {
+            return TypeMapper.Map(array.ElementType);
+        }
+        if (target is INamedTypeSymbol named && named.TypeArguments.Length == 1)
+        {
+            return TypeMapper.Map(named.TypeArguments[0]);
+        }
+        return TypeRef.Simple("UNKNOWN");
+    }
+
+    /// <summary>
+    /// The collection's own public <c>Add</c> method, or null when it has none.
+    /// </summary>
+    /// <param name="type">the type being built</param>
+    /// <returns>the method, or null</returns>
+    /// <remarks>
+    /// This is the collection-builder pattern: a type that has an <c>Add</c>
+    /// method is filled by calling it. An EXPLICIT interface implementation is
+    /// not that -- it cannot be called by name -- and an interface has no
+    /// <c>Add</c> at all, so neither of them is a collection to build here.
+    /// </remarks>
+    private static IMethodSymbol? CollectionAddMethodOf(INamedTypeSymbol type)
+    {
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers("Add"))
+            {
+                if (member is IMethodSymbol method
+                    && method.Parameters.Length == 1
+                    && !method.IsStatic
+                    && method.DeclaredAccessibility == Accessibility.Public
+                    && method.ExplicitInterfaceImplementations.Length == 0)
+                {
+                    return method;
+                }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Lower a collection expression whose target is a named collection: build
+    /// the collection, then add each element to it.
+    /// </summary>
+    /// <param name="elements">the elements, in order</param>
+    /// <param name="target">the type being built</param>
+    /// <param name="add">the collection's Add method</param>
+    /// <param name="node">the node the collection is at</param>
+    /// <returns>the operand holding the collection</returns>
+    private Operand LowerNamedCollection(
+        List<ExpressionSyntax> elements, INamedTypeSymbol target, IMethodSymbol add, SyntaxNode node)
+    {
+        var type = TypeMapper.Map(target);
+        var collection = NewTemp(type);
+        Emit(InstructionKind.NEW, dest: collection, ctorType: type,
+            calleeSig: NamedCollectionConstructor(target), args: new List<Operand>(), node: node);
+
+        foreach (var element in elements)
+        {
+            var value = TranslateExpression(element, store: false);
+            if (value is null)
+            {
+                continue;
+            }
+            Emit(InstructionKind.CALL, calleeSig: Signature.For(add),
+                args: new List<Operand> { collection, value }, node: node);
+        }
+        return collection;
+    }
+
+    /// <summary>
+    /// The constructor signature of a collection that is built empty.
+    /// </summary>
+    /// <param name="target">the type being built</param>
+    /// <returns>the callee signature, in the same shape as every other constructor</returns>
+    /// <remarks>
+    /// The arity is the number of CONSTRUCTOR ARGUMENTS: the receiver is not
+    /// an argument of a constructor. A collection with no parameterless
+    /// constructor would not be built this way at all, so the arity falls back
+    /// to zero rather than to a number that was never measured.
+    /// </remarks>
+    private static string NamedCollectionConstructor(INamedTypeSymbol target)
+    {
+        var constructor = target.InstanceConstructors.FirstOrDefault(c => c.Parameters.Length == 0);
+        return $"{TypeMapper.FullName(target)}.<init>/{constructor?.Parameters.Length ?? 0}";
     }
 
     /// <summary>

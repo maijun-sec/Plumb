@@ -61,6 +61,13 @@ import org.plumb.tac.ir.TacOperand;
  * up in the same shape, or a program that writes one of them is analysed as a different program from
  * the one that writes the other.
  *
+ * <p><b>And the collection expression.</b> {@code ["a", "b"]} is the third spelling of the same
+ * construct, and it was dropped whole as well: in an argument position the argument became an
+ * unknown placeholder, and in a variable declaration the variable was never assigned. Its TARGET
+ * TYPE is what decides the shape -- an array target is the array shape, a list target is a
+ * construction followed by adds -- so both shapes are pinned here, because getting the target type
+ * wrong is not a cosmetic difference: the two shapes reach the taint by different paths.
+ *
  * <p><b>How the assertions are shaped.</b> They pin the SHAPE -- which instruction carries which
  * value -- and not the position of an instruction, because the positions are an implementation
  * detail and the shapes are the contract.
@@ -447,6 +454,90 @@ class CSharpValueFlowLoweringTest {
     assertThat(nameOf(carried.args.get(0)))
         .as("the carried-over member must be written into the COPY")
         .isEqualTo(nameOf(copy.dest));
+  }
+
+  @Test
+  @DisplayName("a collection expression with an array target stores its elements into the array")
+  void aCollectionExpressionWithAnArrayTargetStoresItsElements() {
+    String source =
+        """
+        namespace Demo;
+
+        public class Builder
+        {
+            public void Build()
+            {
+                string[] values = ["a", "b"];
+            }
+        }
+        """;
+
+    TacFunction function = functionNamed(support.parse(source).functions(), "Build");
+
+    assertThat(firstOfKind(function, TacInstruction.Kind.NEWARRAY))
+        .as(
+            "the array must be allocated: a collection expression with an array target is the array"
+                + " shape, the same one the explicit and the implicit forms use")
+        .isNotNull();
+
+    int stores = 0;
+    for (TacInstruction instruction : function.instructions()) {
+      if (instruction.kind == TacInstruction.Kind.ARRAYSTORE) {
+        stores++;
+      }
+    }
+    assertThat(stores)
+        .as("every element must be stored into the array: an array with no elements holds no taint")
+        .isEqualTo(2);
+
+    assertThat(moveTo(function, "values"))
+        .as(
+            "the variable that holds the array must be assigned: the expression used to vanish"
+                + " whole, so every later read of the variable saw a value nothing computed")
+        .isNotNull();
+
+    assertThat(function.drops())
+        .as("the collection expression is lowered now, so nothing may be reported as lost")
+        .isEmpty();
+  }
+
+  @Test
+  @DisplayName("a collection expression with a list target is built and filled")
+  void aCollectionExpressionWithAListTargetIsBuiltAndFilled() {
+    String source =
+        """
+        namespace Demo;
+
+        public class Builder
+        {
+            public void Build()
+            {
+                System.Collections.Generic.List<string> values = ["a", "b"];
+            }
+        }
+        """;
+
+    TacFunction function = functionNamed(support.parse(source).functions(), "Build");
+
+    assertThat(firstNew(function))
+        .as(
+            "the collection must be built: a list target is not an array, so the shape is a"
+                + " construction followed by adds")
+        .isNotNull();
+
+    assertThat(callTo(function, "System.Collections.Generic.List.Add/1"))
+        .as(
+            "every element must be added to the collection: a collection that was built but never"
+                + " filled holds no taint at all")
+        .isNotNull();
+
+    assertThat(moveTo(function, "values"))
+        .as("the variable that holds the collection must be assigned")
+        .isNotNull();
+
+    assertThat(function.drops())
+        .as("the collection expression is lowered now, so nothing may be reported as lost")
+        .isEmpty();
   }
 
   /** The function with the given name, or null. */
