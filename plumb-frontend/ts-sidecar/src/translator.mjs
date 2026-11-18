@@ -3071,10 +3071,19 @@ export class Translator {
    */
   lowerFieldInitializers(fields, className) {
     for (const field of fields) {
+      const name = this.fieldNameOf(field);
+      // The DECLARATION is a fact of its own, and it is recorded whether or not the
+      // member has an initial value: a member with no initialiser is written later --
+      // in the constructor, or in a method -- and until it is, the only thing the TAC
+      // knows about it is that it was declared. A rule that asks "was this member ever
+      // read?" needs the declaration to ask it about.
+      const annotations = this.fieldAnnotationsOf(field);
+      if (annotations.length > 0) {
+        this.state.fieldAnnotations[name] = annotations;
+      }
       if (!field.initializer) {
         continue;
       }
-      const name = this.fieldNameOf(field);
       const value = this.lowerExpression(field.initializer);
       this.emit({
         kind: KIND.ARRAYSTORE,
@@ -3085,10 +3094,6 @@ export class Translator {
         dest: value,
         ...this.position(field),
       });
-      const annotations = this.fieldAnnotationsOf(field);
-      if (annotations.length > 0) {
-        this.state.fieldAnnotations[name] = annotations;
-      }
     }
   }
 
@@ -3105,6 +3110,12 @@ export class Translator {
         continue;
       }
       const name = parameter.name.text;
+      // A parameter property is a MEMBER, so its declaration is recorded the way every
+      // other member's declaration is: the member exists, and it may be private.
+      const annotations = this.parameterPropertyAnnotationsOf(parameter);
+      if (annotations.length > 0) {
+        this.state.fieldAnnotations[name] = annotations;
+      }
       this.emit({
         kind: KIND.ARRAYSTORE,
         lhs1: varOp("this", TYPE.UNKNOWN),
@@ -3142,6 +3153,19 @@ export class Translator {
   isAccessorField(field) {
     const modifiers = field.modifiers ?? [];
     return modifiers.some((modifier) => modifier.kind === SyntaxKind.AccessorKeyword);
+  }
+
+  /** The compile-time markers of a parameter property: readonly, visibility, override. */
+  parameterPropertyAnnotationsOf(parameter) {
+    const annotations = [];
+    for (const modifier of parameter.modifiers ?? []) {
+      if (modifier.kind === SyntaxKind.ReadonlyKeyword) annotations.push("readonly");
+      if (modifier.kind === SyntaxKind.PublicKeyword) annotations.push("public");
+      if (modifier.kind === SyntaxKind.PrivateKeyword) annotations.push("private");
+      if (modifier.kind === SyntaxKind.ProtectedKeyword) annotations.push("protected");
+      if (modifier.kind === SyntaxKind.OverrideKeyword) annotations.push("override");
+    }
+    return annotations;
   }
 
   /** The compile-time markers of a field: readonly, visibility, override. */

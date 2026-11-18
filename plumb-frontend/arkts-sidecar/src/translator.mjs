@@ -645,10 +645,19 @@ export class Translator {
    */
   lowerFieldInitializers(fields, className) {
     for (const field of fields) {
+      const name = this.fieldNameOf(field);
+      // The DECLARATION is a fact of its own, and it is recorded whether or not the
+      // member has an initial value: a member with no initialiser is written later --
+      // in the constructor, or in a method -- and until it is, the only thing the TAC
+      // knows about it is that it was declared. A rule that asks "was this member ever
+      // read?" needs the declaration to ask it about.
+      const annotations = this.fieldAnnotationsOf(field);
+      if (annotations.length > 0) {
+        this.state.fieldAnnotations[name] = annotations;
+      }
       if (!field.initializer) {
         continue;
       }
-      const name = this.fieldNameOf(field);
       const value = this.lowerExpression(field.initializer);
       this.emit({
         kind: KIND.ARRAYSTORE,
@@ -659,10 +668,6 @@ export class Translator {
         dest: value,
         ...this.position(field),
       });
-      const annotations = this.fieldAnnotationsOf(field);
-      if (annotations.length > 0) {
-        this.state.fieldAnnotations[name] = annotations;
-      }
     }
   }
 

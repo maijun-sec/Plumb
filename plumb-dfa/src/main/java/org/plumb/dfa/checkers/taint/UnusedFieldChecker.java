@@ -38,9 +38,11 @@
 package org.plumb.dfa.checkers.taint;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.engine.FieldDefUseTracker;
+import org.plumb.dfa.engine.KeyedMemberUseIndex;
 import org.plumb.dfa.taint.TaintDomain;
 import org.plumb.dfa.taint.TaintRule;
 import org.plumb.dfa.taint.TaintedCheckerBase;
@@ -111,6 +113,18 @@ public final class UnusedFieldChecker extends TaintedCheckerBase {
     if (ctx == null || ctx.program() == null) {
       return;
     }
+    finishFields(ctx);
+    finishNamespaceMembers(ctx);
+  }
+
+  /**
+   * The findings of the field languages: a field that is written and never read.
+   *
+   * <p>The same two questions as the namespace path, asked of the instructions that carry the facts
+   * in those languages: a {@code FIELDSTORE} is the assignment, a {@code FIELDLOAD} is the read,
+   * and the field belongs to the class the receiver names.
+   */
+  private void finishFields(AnalysisContext ctx) {
     FieldDefUseTracker t = ctx.fieldDefUseTracker();
     if (t == null) {
       return;
@@ -120,6 +134,12 @@ public final class UnusedFieldChecker extends TaintedCheckerBase {
     TacFunction previous = ctx.currentFunction();
     try {
       for (TacFunction fn : ctx.program().functions()) {
+        // A language whose values live in NAMESPACES has no fields to watch: its members
+        // are keyed stores and keyed loads, and the namespace path below answers for them.
+        // The two paths must not both answer for the same program.
+        if (fn.sourceLanguage().hasKeyedContainers()) {
+          continue;
+        }
         for (TacInstruction ins : fn.instructions()) {
           if (ins.kind != TacInstruction.Kind.FIELDSTORE) {
             continue;
@@ -135,7 +155,11 @@ public final class UnusedFieldChecker extends TaintedCheckerBase {
           // The reporter resolves the finding's file from the CURRENT function, so it has to
           // be the owner of the field and not whatever the analysis happened to leave behind.
           ctx.setCurrentFunction(fn);
-          this.emit(ctx, fn, fieldName);
+          // The LINE is not decoration: the reporter tells two findings apart by
+          // (file, line, rule, cwe), so a finding without a line cannot be told from
+          // another finding in the same file. Two classes that each declare an unread
+          // private field are two findings.
+          this.emit(ctx, fn, fieldName, ins.line, ins.column);
         }
       }
     } finally {
@@ -143,7 +167,35 @@ public final class UnusedFieldChecker extends TaintedCheckerBase {
     }
   }
 
-  private void emit(AnalysisContext ctx, TacFunction fn, String fieldName) {
+  /**
+   * The findings of the namespace languages: a member that is assigned and never read.
+   *
+   * <p>The same two questions as the field path, asked of the instructions that carry the facts in
+   * those languages: a keyed store is the assignment and a keyed load is the read, and the
+   * declaration -- which member exists, and whether it is private -- comes from the TAC's member
+   * annotations rather than from the way the value is written. A keyed language has no fields, so
+   * the way a value is stored says nothing about what was declared.
+   */
+  private void finishNamespaceMembers(AnalysisContext ctx) {
+    List<KeyedMemberUseIndex.UnusedMember> unused =
+        KeyedMemberUseIndex.unusedPrivateMembers(ctx.program());
+    if (unused.isEmpty()) {
+      return;
+    }
+    TacFunction previous = ctx.currentFunction();
+    try {
+      for (KeyedMemberUseIndex.UnusedMember member : unused) {
+        // The reporter resolves the finding's file from the CURRENT function, so it has to be
+        // the function that holds the assignment and not whatever the analysis left behind.
+        ctx.setCurrentFunction(member.owner());
+        this.emit(ctx, member.owner(), member.memberName(), member.line(), member.column());
+      }
+    } finally {
+      ctx.setCurrentFunction(previous);
+    }
+  }
+
+  private void emit(AnalysisContext ctx, TacFunction fn, String fieldName, int line, int column) {
     Finding finding =
         Finding.dfa(
             this.rule.ruleId(),
@@ -152,8 +204,8 @@ public final class UnusedFieldChecker extends TaintedCheckerBase {
             this.rule.severity(),
             this.rule.cwe(),
             "",
-            -1,
-            -1,
+            line,
+            column,
             "unused-private-field: " + fieldName);
     ctx.reporter().report(finding);
   }

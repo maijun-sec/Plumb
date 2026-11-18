@@ -54,6 +54,16 @@ CONFIG_DIR = REPO / "juliet-coverage" / "configs"
 DEFAULT_JAR = REPO / "plumb-main" / "target" / "plumb-main-0.1.0-SNAPSHOT-all.jar"
 
 # The Juliet directory name for each CWE id we measure.
+#
+# The list is the set of CWE ids whose CORPUS is on this machine. It is not
+# the set of CWE ids the engine knows about: a CWE without a directory here
+# cannot be measured at all, and a rule can therefore look "harmless" simply
+# because the CWE that would expose it was never on the list.
+#
+# CWE563 is on it because the "assigned but never read" rule is that CWE's
+# rule, and a finding that carries no LINE can never be recognised as a true
+# positive by this instrument -- it always falls outside every method's line
+# span. Measuring it is the only way to see that.
 CWE_DIRS = {
     "CWE129": "CWE129_Improper_Validation_of_Array_Index",
     "CWE190": "CWE190_Integer_Overflow",
@@ -61,6 +71,7 @@ CWE_DIRS = {
     "CWE252": "CWE252_Unchecked_Return_Value",
     "CWE253": "CWE253_Incorrect_Check_of_Function_Return_Value",
     "CWE369": "CWE369_Divide_By_Zero",
+    "CWE563": "CWE563_Unused_Variable",
 }
 
 # The files Juliet ships to drive the suite; they are not testcases.
