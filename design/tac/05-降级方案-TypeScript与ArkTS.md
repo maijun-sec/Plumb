@@ -1224,6 +1224,30 @@ ArkTS 侧 `npm/ohos/lib/typescript.d.ts:2576`）⇒ 实参具体时按上表「�
 
 ---
 
+## 14. 本轮落地（2026-11-18）：探针实测出来的五处，外加一处 Java 侧
+
+这一轮**没有**先读这份设计，而是先写探针：直接驱动 sidecar 走它的 wire 协议，把构造喂进去，把 TAC 打出来。**这份设计早就写明了这些构念该长什么样，代码却不是那样** —— 而且缺的那部分**在扫描里完全看不出来**：TAC 格式良好、标签全解析、精度仍是 `SOURCE_FULL`、扫描报告成功。
+
+| 构念 | 原状 | 现在 |
+|---|---|---|
+| `if` / `while` 的**条件** | **条件根本没有被求值**：比较没有指令、分支**没有主语**、guard 没有 operand ⇒ **路径条件**与**条件的污点**全丢 | 条件按 `conditionOf(node)` 读 ⇒ 比较有指令、分支有主语、guard 有 operand |
+| `continue <label>` | 跳到**最内层**的循环（扫作用域的方向反了）⇒ 控制流是错的 | 跳到**标签所标注的那个循环**（标签之后的**第一个** `LOOP`） |
+| `catch ({ message })` | 捕获值被**整个丢掉**，模式里的名字**从未被赋值**，且**没有 drop** | `CATCH_HANDLER` 落一个临时量 + 用**已经存在**的 `bindPattern` 把模式里的名字绑上去 |
+| `{ ...rec }` | 展开被跳过 ⇒ 新对象**只有显式写出的属性**，源对象的污点全丢 | 建模成 `UNINTERPRETED Object.assign/2` —— **故意**用 `UNINTERPRETED`：引擎对**认不出来的被调方**按「保留实参的污点」处理（`LanguageSemantics.preservesTaint` 对未知返回 true），写成普通 `CALL` 则因为没有 callee summary 而**不会**染色 ⇒ 等于没修 |
+| `rec.f?.()` | 调用的**接收者是函数值** ⇒ 看起来像是「函数自己的方法」 | 接收者是**函数被读出来的那个对象**（`this` 就是它）；**空值检查的对象仍然是函数**（可能缺的是函数） |
+
+**根因是编译器家族，不是翻译逻辑**：`typescript/unstable/ast`（TS 7.0.2）与 `ohos-typescript@4.9.5` 里，`if` / `while` / `do` 的条件字段叫 **`expression`**；而 `for` 与条件表达式叫 **`condition`**。翻译器读的是 `.condition` ⇒ 对 `if` / `while` 读到的是 **undefined** ⇒ `lowerExpression(undefined)` 返回 undefined ⇒ 分支**没有主语**。
+
+⇒ 因此修法是**读两个并取先到的那个**（`node?.condition ?? node?.expression`），**不是**改成某一个名字 —— 换一族编译器就会再坏一次。这个 helper 的注释里写明了这一点。
+
+**Java 侧的一处**：`SidecarTacMapper.toLabelRef` 用 `getString("scopeId")` 读一个**数字**字段 ⇒ 拿到 null；而结构类标签（`LOOP_HEAD` / `LOOP_END` / `SWITCH_CASE` / `SWITCH_END` / `BLOCK` / `CATCH` / `FINALLY_ENTRY`）的 `name` 本来就是 null（结构类标签没有自己的名字）⇒ **整个 labelRef 被丢弃** ⇒ **所有 sidecar** 的「哪个标签是循环头 / 循环尾 / case 体」这一层事实全部消失 ⇒ 引擎无法判断「这条分支是不是离开了它所在的循环」。
+
+**这一轮刻意没改的**（逐条理由见 `14` §3.8.7）：默认参数（两条修法都要先定口径）、**两条协议调用的 `args[0]`**（**改了会把「多报」变成「漏报」**：引擎的 `propagateIteratorTaint` 正是从 `args[0]` 取被迭代的数组）、基类构造器实参、getter、IIFE。
+
+**验收**：新增两个测试类（TS 6 例 / ArkTS 4 例），只断言**形状**、不钉指令位置；并且**做过变异测试** —— 把两个 sidecar 换回仓库里的旧版本再跑 ⇒ **10 个用例全红**，每个失败都指向对应的缺陷；恢复后逐字节校验 sha256 一致。
+
+---
+
 ## 附录 A. TypeScript / JavaScript 审计台账 A.1–A.21 逐条去向（192 行）
 
 **审计来源**：`D:\work\tmp\audit\08-typescript.md` 的 `## A. Coverage ledger` 节（子小节 A.1–A.21）。
