@@ -751,11 +751,26 @@ async function main() {
         initializer.fieldAnnotations.message.includes("State"),
       `a state field must be annotated: ${JSON.stringify(initializer.fieldAnnotations)}`,
     );
-    const fieldStore = (initializer.instructions ?? []).find((i) => i.kind === "FIELDSTORE");
-    check(!!fieldStore, "a class field must be stored as a field");
+    // A class member is an entry of the instance's NAMESPACE, so its
+    // declaration is a keyed store -- the same mechanism every read of it
+    // uses. It used to be a FIELDSTORE, and the two never met: the
+    // declaration wrote one location and the read read another, so a value
+    // written by a declaration never reached the place that reads it.
+    const memberStore = (initializer.instructions ?? []).find(
+      (i) =>
+        i.kind === "ARRAYSTORE" &&
+        i.lhs2 &&
+        i.lhs2.kind === "CONST" &&
+        i.lhs2.value === "message",
+    );
+    check(!!memberStore, "a class member must be stored as a namespace entry");
     check(
-      fieldStore.ownerType === "ProfilePage",
-      `a field must name the class that owns it: ${fieldStore.ownerType}`,
+      memberStore.lhs1 && memberStore.lhs1.kind === "VAR" && memberStore.lhs1.name === "this",
+      `a member must be stored on the instance: ${JSON.stringify(memberStore.lhs1)}`,
+    );
+    check(
+      !(initializer.instructions ?? []).some((i) => i.kind === "FIELDSTORE" || i.kind === "FIELDLOAD"),
+      "a member must not be stored as a field: in this language a property is a namespace entry",
     );
 
     // A built-in decorator never runs: there is no such function at run time,

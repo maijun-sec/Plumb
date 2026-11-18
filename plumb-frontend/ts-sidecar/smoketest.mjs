@@ -664,16 +664,26 @@ async function main() {
       "the static block must be in the stream",
     );
 
-    // A class field is a FIELDSTORE with the class that owns it.
-    const fieldStore = (constructor.instructions ?? []).find((i) => i.kind === "FIELDSTORE");
-    check(!!fieldStore, "a class field must be stored as a field");
+    // A class member is an entry of the instance's NAMESPACE, so its
+    // declaration is a keyed store -- the same mechanism every read of it
+    // uses. It used to be a FIELDSTORE, and the two never met: the
+    // declaration wrote one location and the read read another, so a value
+    // written by a declaration never reached the place that reads it.
+    const memberStore = (constructor.instructions ?? []).find(
+      (i) =>
+        i.kind === "ARRAYSTORE" &&
+        i.lhs2 &&
+        i.lhs2.kind === "CONST" &&
+        ["name", "#secret", "id"].includes(i.lhs2.value),
+    );
+    check(!!memberStore, "a class member must be stored as a namespace entry");
     check(
-      fieldStore.ownerType === "Holder",
-      `a field must name the class that owns it: ${fieldStore.ownerType}`,
+      memberStore.lhs1 && memberStore.lhs1.kind === "VAR" && memberStore.lhs1.name === "this",
+      `a member must be stored on the instance: ${JSON.stringify(memberStore.lhs1)}`,
     );
     check(
-      fieldStore.fieldName === "name" || fieldStore.fieldName === "#secret",
-      `a field must keep its name: ${fieldStore.fieldName}`,
+      !(constructor.instructions ?? []).some((i) => i.kind === "FIELDSTORE" || i.kind === "FIELDLOAD"),
+      "a member must not be stored as a field: in this language a property is a namespace entry",
     );
 
     // A union is not collapsed into its first member.

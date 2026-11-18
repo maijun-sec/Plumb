@@ -907,7 +907,6 @@ export class Translator {
       return [];
     }
     const name = node.name ? node.name.text : "x";
-    const backing = `_${name}`;
     const out = [];
 
     const getter = this.beginFunction(name, `${this.moduleName}.${className}.${name}()`, className);
@@ -917,11 +916,10 @@ export class Translator {
       this.declareThis();
       const value = this.state.newTemp(this.typeOf(node));
       this.emit({
-        kind: KIND.FIELDLOAD,
+        kind: KIND.ARRAYLOAD,
         dest: value,
         lhs1: varOp("this", TYPE.UNKNOWN),
-        fieldName: backing,
-        ownerType: className,
+        lhs2: constOp(CONST.STRING, name),
         ...this.position(node),
       });
       this.emit({ kind: KIND.RETURN, lhs1: value, ...this.position(node) });
@@ -940,11 +938,10 @@ export class Translator {
       const parameter = (node.parameters ?? [])[0];
       const value = parameter ? varOp(parameter.name.text, this.typeOf(parameter)) : undefined;
       this.emit({
-        kind: KIND.FIELDSTORE,
+        kind: KIND.ARRAYSTORE,
         lhs1: varOp("this", TYPE.UNKNOWN),
-        fieldName: backing,
+        lhs2: constOp(CONST.STRING, name),
         dest: value,
-        ownerType: className,
         ...this.position(node),
       });
     });
@@ -2151,15 +2148,16 @@ export class Translator {
    */
   lowerPropertyRead(node, receiver) {
     if (isSuperExpression(node.expression)) {
-      // `super.prop` reads a field of the BASE class: the owner says which
-      // class declared it.
+      // `super.prop` reads the BASE class's member -- and that member is an
+      // entry of THIS instance's namespace, because the base class's field
+      // initialiser wrote it there. So it is the location `this.prop` reads,
+      // and it is read the same way.
       const dest = this.state.newTemp(this.typeOf(node));
       this.emit({
-        kind: KIND.FIELDLOAD,
+        kind: KIND.ARRAYLOAD,
         dest,
         lhs1: varOp("this", TYPE.UNKNOWN),
-        fieldName: node.name.text,
-        ownerType: this.enclosingBase,
+        lhs2: constOp(CONST.STRING, node.name.text),
         ...this.position(node),
       });
       return dest;
@@ -3052,7 +3050,25 @@ export class Translator {
 
   // ---- the class's own members ---------------------------------------------------------------
 
-  /** The field initialisers of a class, as writes to the object's fields. */
+  /**
+   * The field initialisers of a class, as writes to the object's namespace.
+   *
+   * <p>A class field IS an entry of the instance's namespace: `this.value` and
+   * `this["value"]` are the same location, and that is the location every
+   * other access to the member uses. So the initialiser is a keyed store --
+   * an ARRAYSTORE whose key is the member's name -- and not a field write.
+   *
+   * <p>It used to be a FIELDSTORE, and that gave ONE location two mechanisms:
+   * the declaration wrote it as a field while every read of it was an
+   * ARRAYLOAD on the namespace. The two never met, so a tainted initialiser
+   * never reached the place that reads the member -- and the engine's
+   * "assigned but never read" rule, which watches field writes, reported
+   * members that were read all the time.
+   *
+   * <p>A STATIC field belongs to the class rather than to an instance, so it
+   * is written on the class: `Shapes.counter = 1` writes the entry "counter"
+   * of the class object, and that is where the read `Shapes.counter` looks.
+   */
   lowerFieldInitializers(fields, className) {
     for (const field of fields) {
       if (!field.initializer) {
@@ -3061,11 +3077,12 @@ export class Translator {
       const name = this.fieldNameOf(field);
       const value = this.lowerExpression(field.initializer);
       this.emit({
-        kind: KIND.FIELDSTORE,
-        lhs1: varOp("this", TYPE.UNKNOWN),
-        fieldName: name,
+        kind: KIND.ARRAYSTORE,
+        lhs1: this.isStaticField(field)
+          ? varOp(className, TYPE.UNKNOWN)
+          : varOp("this", TYPE.UNKNOWN),
+        lhs2: constOp(CONST.STRING, name),
         dest: value,
-        ownerType: className,
         ...this.position(field),
       });
       const annotations = this.fieldAnnotationsOf(field);
@@ -3075,7 +3092,13 @@ export class Translator {
     }
   }
 
-  /** The parameter properties of a constructor: fields written from parameters. */
+  /** Whether a field is a static one: it belongs to the class, not to an instance. */
+  isStaticField(field) {
+    const modifiers = field.modifiers ?? [];
+    return modifiers.some((modifier) => modifier.kind === SyntaxKind.StaticKeyword);
+  }
+
+  /** The parameter properties of a constructor: members written from parameters. */
   lowerParameterProperties(node, className) {
     for (const parameter of node.parameters ?? []) {
       if (!this.isParameterProperty(parameter)) {
@@ -3083,12 +3106,11 @@ export class Translator {
       }
       const name = parameter.name.text;
       this.emit({
-        kind: KIND.FIELDSTORE,
+        kind: KIND.ARRAYSTORE,
         lhs1: varOp("this", TYPE.UNKNOWN),
-        fieldName: name,
+        lhs2: constOp(CONST.STRING, name),
         dest: varOp(name, this.typeOf(parameter)),
-        ownerType: className,
-        ...this.position(parameter),
+        ...this.position(node),
       });
     }
   }

@@ -629,8 +629,19 @@ export class Translator {
   /**
    * A property's initial value.
    *
-   * <p>A field is a FIELD, not a container entry: it has a name, an owner
-   * and a type, and the engine has to be able to tell whose field it is.
+   * <p>A property is an entry of the instance's NAMESPACE: `this.value` and
+   * `this["value"]` are the same location, and that is the location every
+   * other access to the member uses. So the initial value is a keyed store --
+   * an ARRAYSTORE whose key is the member's name -- and not a field write.
+   *
+   * <p>It used to be a FIELDSTORE, and that gave ONE location two mechanisms:
+   * the declaration wrote it as a field while every read of it was an
+   * ARRAYLOAD on the namespace. The two never met, so a tainted initialiser
+   * never reached the place that reads the member.
+   *
+   * <p>A STATIC field belongs to the class rather than to an instance, so it
+   * is written on the class: the entry "counter" of the class object is where
+   * the read `Shapes.counter` looks.
    */
   lowerFieldInitializers(fields, className) {
     for (const field of fields) {
@@ -640,11 +651,12 @@ export class Translator {
       const name = this.fieldNameOf(field);
       const value = this.lowerExpression(field.initializer);
       this.emit({
-        kind: KIND.FIELDSTORE,
-        lhs1: varOp("this", TYPE.UNKNOWN),
-        fieldName: name,
+        kind: KIND.ARRAYSTORE,
+        lhs1: this.isStaticField(field)
+          ? varOp(className, TYPE.UNKNOWN)
+          : varOp("this", TYPE.UNKNOWN),
+        lhs2: constOp(CONST.STRING, name),
         dest: value,
-        ownerType: className,
         ...this.position(field),
       });
       const annotations = this.fieldAnnotationsOf(field);
@@ -652,6 +664,12 @@ export class Translator {
         this.state.fieldAnnotations[name] = annotations;
       }
     }
+  }
+
+  /** Whether a field is a static one: it belongs to the class, not to an instance. */
+  isStaticField(field) {
+    const modifiers = field.modifiers ?? [];
+    return modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword);
   }
 
   /**
@@ -2032,14 +2050,16 @@ export class Translator {
    */
   lowerPropertyRead(node, receiver) {
     if (node.expression && node.expression.kind === ts.SyntaxKind.SuperKeyword) {
-      // `super.prop` reads a field of the BASE class.
+      // `super.prop` reads the BASE class's member -- and that member is an
+      // entry of THIS instance's namespace, because the base class's field
+      // initialiser wrote it there. So it is the location `this.prop` reads,
+      // and it is read the same way.
       const dest = this.state.newTemp(this.typeOf(node));
       this.emit({
-        kind: KIND.FIELDLOAD,
+        kind: KIND.ARRAYLOAD,
         dest,
         lhs1: varOp("this", TYPE.UNKNOWN),
-        fieldName: node.name.text,
-        ownerType: this.enclosingBase,
+        lhs2: constOp(CONST.STRING, node.name.text),
         ...this.position(node),
       });
       return dest;
