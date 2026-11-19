@@ -506,6 +506,17 @@ export class Translator {
       structName,
       true,
     );
+    // A struct whose body holds a nested declaration is a struct the COMPILER
+    // cut short: the members that come after the nested one are not in the
+    // struct at all. The loss is reported, so that the struct's precision
+    // drops instead of the loss passing for a whole analysis.
+    if (this.classBodyIsLost(node)) {
+      this.report(
+        PROBLEM.SOURCE_LOWERED,
+        node,
+        "this struct's members were not lowered: the compiler's syntax tree does not contain them",
+      );
+    }
     initializer.memberKind = MEMBER_KIND.FIELD_INITIALIZER;
     initializer.classAnnotations = decorators.slice();
     initializer.interfaces = interfaces.slice();
@@ -552,6 +563,16 @@ export class Translator {
     const out = [];
     const className = node.name ? node.name.text : "<anonymous>";
     const fields = node.members.filter((member) => ts.isPropertyDeclaration(member));
+    // The compiler's syntax tree for a class whose body holds a nested class is
+    // TRUNCATED: the class node stops at the nested class, and the members that
+    // come after it are not in the class at all -- they come back as fragments
+    // of the FILE's statement list. The class's real members -- and every sink
+    // in them -- would be gone without a word. So the loss is REPORTED: the
+    // class's own function carries the problem, its precision drops, and the
+    // reader is told that this class was not analysed.
+    const lostBody = this.classBodyIsLost(node)
+      ? "this class's members were not lowered: the compiler's syntax tree does not contain them"
+      : null;
     const decorators = this.decoratorNamesOf(node);
     const interfaces = this.implementedInterfacesOf(node);
     const base = this.baseClassNameOf(node);
@@ -570,7 +591,15 @@ export class Translator {
       // The field initialisers run inside the constructor, after the base
       // class's constructor: that is the order the language defines.
       out.push(
-        ...this.lowerConstructor(constructor, className, fields, base, decorators, interfaces),
+        ...this.lowerConstructor(
+          constructor,
+          className,
+          fields,
+          base,
+          decorators,
+          interfaces,
+          lostBody,
+        ),
       );
     } else {
       const initializer = this.beginFunction(
@@ -579,6 +608,7 @@ export class Translator {
         className,
         true,
       );
+      if (lostBody) this.report(PROBLEM.SOURCE_LOWERED, node, lostBody);
       initializer.memberKind = MEMBER_KIND.FIELD_INITIALIZER;
       initializer.classAnnotations = decorators.slice();
       initializer.interfaces = interfaces.slice();
@@ -684,13 +714,14 @@ export class Translator {
    * member kind says so. The base class's constructor runs FIRST, so that the
    * base's fields exist before the derived class's own fields are written.
    */
-  lowerConstructor(node, className, fields, base, decorators, interfaces) {
+  lowerConstructor(node, className, fields, base, decorators, interfaces, lostBody) {
     const state = this.beginFunction(
       "<init>",
       `${this.moduleName}.${className}.<init>(${this.constructorParameterTypes(node)})`,
       className,
       false,
     );
+    if (lostBody) this.report(PROBLEM.SOURCE_LOWERED, node, lostBody);
     state.memberKind = MEMBER_KIND.CONSTRUCTOR;
     state.classAnnotations = decorators.slice();
     state.superType = base ?? null;
@@ -974,6 +1005,39 @@ export class Translator {
     return identity.startsWith(prefix) ? identity.slice(prefix.length) : identity;
   }
 
+  /**
+   * Whether the compiler's syntax tree lost this class's body.
+   *
+   * <p>The truncation shows in the POSITIONS. A class the compiler has finished
+   * ends AFTER its members: the closing brace of the class comes after the
+   * last member, so the class's end is strictly greater than the end of its
+   * member list. A class whose end is at or before the end of its members is a
+   * class the compiler stopped in the middle of -- and the compiler stops in
+   * the middle of a class when the class holds a nested class.
+   *
+   * <p>The positions are the measure, not the text: the class's own text can
+   * still end with a closing brace when the truncation cut it off right after
+   * a member whose body ended with one. A class that lost the members that
+   * came after a nested class looks complete to the eye and is not.
+   *
+   * @param node the class node
+   * @return true when the class's body is missing
+   */
+  classBodyIsLost(node) {
+    if (!node) return false;
+    const membersEnd = node.members ? node.members.end : undefined;
+    if (typeof membersEnd === "number" && typeof node.end === "number") {
+      return node.end <= membersEnd;
+    }
+    // A compiler that does not say where the member list ends leaves only the
+    // text to go by: a class declaration always ends with a closing brace, so
+    // a class whose own text does not is a class the compiler did not finish.
+    if (!node.getText) return false;
+    const text = node.getText();
+    if (!text) return false;
+    return !text.trimEnd().endsWith("}");
+  }
+
   finishFunction(state) {
     const problems = state.problems;
     const returnType = state.returnType ?? { kind: TYPE.VOID };
@@ -1136,19 +1200,28 @@ export class Translator {
     }
     if (ts.isFunctionDeclaration(node)) {
       // A nested function is a function of its own.
-      this.pendingFunctions.push(
-        ...this.lowerNested(node, () =>
-          this.lowerFunctionDeclaration(node, this.simpleClassName(this.state?.enclosingClass) ?? null),
-        ),
+      //
+      // The functions are collected FIRST and pushed afterwards. A push whose
+      // ARGUMENT is the lowering itself evaluates its receiver
+      // (`this.pendingFunctions`) before the argument -- and the lowering
+      // REPLACES that array when it takes the functions it has lifted so far.
+      // The push would land in the array nobody reads any more, and the nested
+      // function would vanish without a word.
+      const nested = this.lowerNested(node, () =>
+        this.lowerFunctionDeclaration(node, this.simpleClassName(this.state?.enclosingClass) ?? null),
       );
+      this.pendingFunctions.push(...nested);
       return;
     }
     if (ts.isClassDeclaration(node) || ts.isStructDeclaration(node)) {
-      this.pendingFunctions.push(
-        ...this.lowerNested(node, () =>
-          ts.isStructDeclaration(node) ? this.lowerStruct(node) : this.lowerClass(node),
-        ),
+      // A nested class is a class of its own; its members are lifted.
+      //
+      // Collected first, pushed afterwards: see the nested function above for
+      // why the order of the evaluation matters here.
+      const nested = this.lowerNested(node, () =>
+        ts.isStructDeclaration(node) ? this.lowerStruct(node) : this.lowerClass(node),
       );
+      this.pendingFunctions.push(...nested);
       return;
     }
     // These declare a TYPE, and a type has no run-time effect at all. They

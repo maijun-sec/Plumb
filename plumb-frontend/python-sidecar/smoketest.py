@@ -326,8 +326,10 @@ def main():
         find = next((f for f in functions if f["name"] == "find"), None)
         check(find is not None, "the class method must be in the stream")
         check(
-            find.get("enclosingClass") == "UserStore",
-            "a method must name the class it belongs to",
+            isinstance(find.get("enclosingClass"), str)
+            and find.get("enclosingClass").endswith("UserStore")
+            and find.get("enclosingClass") != "UserStore",
+            "a method must name the class it belongs to, and the class's identity is its QUALIFIED name: the module it lives in plus its name",
         )
 
         instructions = handle_function["instructions"]

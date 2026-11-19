@@ -202,7 +202,27 @@ internal static class Signature
     public static string For(IMethodSymbol method)
     {
         string owner = TypeMapper.FullName(method.ContainingType);
-        return $"{owner}.{method.Name}/{method.Parameters.Length}";
+        return $"{owner}.{MethodName(method)}/{method.Parameters.Length}";
+    }
+
+    /// <summary>
+    /// The name a method is known by in the TAC.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A constructor's METADATA name is <c>.ctor</c>, and that is a name the
+    /// rest of the TAC never uses: every callee key spells a construction
+    /// <c>owner.&lt;init&gt;/arity</c>, and the IR's own convention is the
+    /// same. A constructor whose function is named <c>.ctor</c> therefore
+    /// never matches the call that reaches it, and the call graph lands on a
+    /// placeholder node instead of on the constructor's body.
+    /// </para>
+    /// </remarks>
+    /// <param name="method">the method</param>
+    /// <returns>the name</returns>
+    public static string MethodName(IMethodSymbol method)
+    {
+        return method.MethodKind == MethodKind.Constructor ? "<init>" : method.Name;
     }
 
     /// <summary>The declaration signature, in Plumb's <c>owner.method(Params):Return</c> form.</summary>
@@ -217,6 +237,6 @@ internal static class Signature
             parameters.Add(TypeMapper.FullName(parameter.Type));
         }
         string returnType = TypeMapper.FullName(method.ReturnType);
-        return $"{owner}.{method.Name}({string.Join(",", parameters)}):{returnType}";
+        return $"{owner}.{MethodName(method)}({string.Join(",", parameters)}):{returnType}";
     }
 }

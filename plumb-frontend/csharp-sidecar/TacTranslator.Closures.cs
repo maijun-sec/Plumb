@@ -396,7 +396,7 @@ internal sealed partial class TacTranslator
         {
             Name = name,
             Signature = $"{ownerName}.{name}({string.Join(",", parameters)}):{returnType}",
-            EnclosingClass = owner.Name,
+            EnclosingClass = TypeMapper.FullName(owner),
             ReturnType = TypeMapper.Map(method.ReturnType),
             Precision = sub.Degraded ? "SOURCE_LOWERED" : "SOURCE_FULL",
             Synthetic = false,

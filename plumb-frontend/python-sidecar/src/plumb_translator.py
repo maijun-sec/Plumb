@@ -1195,7 +1195,7 @@ class Translator:
             self.annotation_name(node.returns) or "any",
         )
 
-    def lower_class(self, node):
+    def lower_class(self, node, outer_class=None):
         """The methods of a class, and the class's own body.
 
         The class body runs when the class is created, so it is a function
@@ -1206,14 +1206,28 @@ class Translator:
         The class's BASES, its DECORATORS and its KEYWORDS are read here:
         they are facts about the class, and a rule that names a base class
         or a decorator has to be able to find them.
+
+        <p>The class's IDENTITY is the module it lives in PLUS the path of
+        names that leads to it. A simple name is a spelling, not an
+        identity: two modules that each declare a class called ``Holder`` are
+        two classes, and their members are two members. The Java front end
+        states the same thing the same way -- a class's identity is its
+        qualified name -- so the engine can keep two same-named classes
+        apart on every language.
+
+        <p>The CALL key still spells the class the way the source spells it
+        (the class path, without the module), because the sink catalogue and
+        the call graph match owners by that name.
         """
         functions = []
         class_name = node.name
+        class_path = "%s.%s" % (outer_class, class_name) if outer_class else class_name
+        identity = self.class_identity(class_path)
         outer = self.state
         state = self.begin_function(
             "<clinit>",
-            "%s.<clinit>():any" % class_name,
-            class_name,
+            "%s.<clinit>():any" % identity,
+            identity,
             synthetic=True,
         )
         state.member_kind = MemberKind.FIELD_INITIALIZER
@@ -1224,18 +1238,49 @@ class Translator:
             # The class's own decorators run when the class is created, so
             # they belong to the class body's own stream.
             self.lower_decorators(node.decorator_list, class_name, node)
-            self.guard(node, lambda: self.lower_class_body(node, functions))
+            self.guard(node, lambda: self.lower_class_body(node, functions, class_path))
             if self.is_dataclass(node) and not self.declares_init(node):
                 # A dataclass gets a constructor from the decorator when it
                 # does not write one itself. Without it the construction
                 # reaches no body at all, and nothing the caller passes
                 # reaches the instance.
-                functions.append(self.lower_synthetic_constructor(node, class_name))
+                functions.append(self.lower_synthetic_constructor(node, identity))
         finally:
             self.state = outer
         functions.insert(0, self.finish_function(state))
-        self.record_type_declaration(node, class_name, state.super_type)
+        self.record_type_declaration(node, identity, class_name, state.super_type)
         return functions
+
+    def class_identity(self, class_path):
+        """The class's identity: the module it lives in plus its class path.
+
+        <p>This is what the function table and the member index key on, so
+        two classes of the same name in two modules stay two classes.
+
+        @param class_path the names that lead to the class, without the module
+        @return the identity, or None when there is no class
+        """
+        if not class_path:
+            return None
+        return "%s.%s" % (self.module_name, class_path)
+
+    def class_path_of(self, identity):
+        """The class path of an identity: the names without the module.
+
+        <p>The CALL key spells the class the way the source spells it, so
+        this is what a call key's owner is. The identity carries the module
+        in front; the call key must not, because the call graph and the sink
+        catalogue match owners by the simple name.
+
+        @param identity the class's identity
+        @return the class path, or the identity when it carries no module
+        """
+        if not identity:
+            return identity
+        prefix = "%s." % self.module_name
+        if identity.startswith(prefix):
+            return identity[len(prefix) :]
+        return identity
 
     def is_dataclass(self, node):
         """Whether a class is a dataclass.
@@ -1343,7 +1388,7 @@ class Translator:
                 return name
         return None
 
-    def record_type_declaration(self, node, class_name, super_type):
+    def record_type_declaration(self, node, identity, simple_name, super_type):
         """Record what a class declares about itself.
 
         The declaration is the module's TYPE surface: what the classes are,
@@ -1372,8 +1417,8 @@ class Translator:
                 type_parameters.append(name)
         self.type_declarations.append(
             {
-                "fqn": class_name,
-                "simpleName": class_name,
+                "fqn": identity,
+                "simpleName": simple_name,
                 "superType": super_type,
                 "interfaces": interfaces,
                 "annotations": annotations,
@@ -1392,7 +1437,7 @@ class Translator:
             }
         )
 
-    def lower_class_body(self, node, functions):
+    def lower_class_body(self, node, functions, class_path):
         """Lower the class body: its attributes, and its methods.
 
         A method's decorators run in the class body's scope, so they are
@@ -1406,9 +1451,13 @@ class Translator:
         """
         for statement in node.body:
             if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                functions.append(self.lower_function_declaration(statement, node.name))
+                functions.append(
+                    self.lower_function_declaration(
+                        statement, self.class_identity(class_path)
+                    )
+                )
             elif isinstance(statement, ast.ClassDef):
-                functions.extend(self.lower_class(statement))
+                functions.extend(self.lower_class(statement, class_path))
             elif isinstance(statement, ast.AnnAssign):
                 # A class attribute with an annotation: ``x: int = 3``.
                 self.lower_class_attribute(statement)
@@ -1433,7 +1482,7 @@ class Translator:
         The receiver is the class object, so that a read of the attribute
         finds the value the declaration wrote.
         """
-        owner = self.state.enclosing_class or self.module_name
+        owner = self.class_path_of(self.state.enclosing_class) or self.module_name
         class_object = self.class_object_of(owner)
         targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
         value = None
@@ -3302,7 +3351,7 @@ class Translator:
                 and state.class_receiver == name
                 and state.enclosing_class
             ):
-                return state.enclosing_class
+                return self.class_path_of(state.enclosing_class)
             return None
         if name in self.defined_functions:
             # The module declares both a class and a function under this
@@ -3605,7 +3654,7 @@ class Translator:
         name = node.id
         state = self.state
         if state is not None and state.class_receiver == name and state.enclosing_class:
-            return state.enclosing_class
+            return self.class_path_of(state.enclosing_class)
         if name in self.defined_classes:
             if state is not None and name in state.shadowed_names:
                 # The scope binds the name to a value of its own, so the name

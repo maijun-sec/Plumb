@@ -121,8 +121,13 @@ class CSharpLambdaLoweringTest {
           .as("the closure's signature must carry its name and its arity")
           .contains(closure.name());
       assertThat(closure.enclosingClass())
-          .as("the closure belongs to the type that encloses the member")
-          .isEqualTo("Runner");
+          .as(
+              "the closure belongs to the type that encloses the member, and the class's identity is"
+                  + " its QUALIFIED name: the namespace it lives in plus its name")
+          .endsWith("Runner");
+      assertThat(closure.enclosingClass())
+          .as("the identity is not the simple name: it carries the namespace in front")
+          .isNotEqualTo("Runner");
     }
   }
 

@@ -458,7 +458,7 @@ internal sealed class ProjectSession
             BuildFunction(
                 entry,
                 name: "<Main>$",
-                enclosingClass: entry?.ContainingType?.Name ?? "Program",
+                enclosingClass: entry?.ContainingType is null ? "Program" : TypeMapper.FullName(entry.ContainingType),
                 translator),
             translator);
     }
@@ -498,7 +498,7 @@ internal sealed class ProjectSession
             BuildFunction(
                 symbol,
                 name: method.Identifier.ValueText,
-                enclosingClass: symbol?.ContainingType.Name,
+                enclosingClass: symbol?.ContainingType is null ? null : TypeMapper.FullName(symbol.ContainingType),
                 translator),
             translator);
     }
@@ -516,8 +516,8 @@ internal sealed class ProjectSession
         return WithClosures(
             BuildFunction(
                 symbol,
-                name: symbol?.Name ?? constructor.Identifier.ValueText,
-                enclosingClass: symbol?.ContainingType.Name ?? constructor.Identifier.ValueText,
+                name: symbol is null ? constructor.Identifier.ValueText : Signature.MethodName(symbol),
+                enclosingClass: symbol?.ContainingType is null ? constructor.Identifier.ValueText : TypeMapper.FullName(symbol.ContainingType),
                 translator,
                 memberKind: constructor.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword))
                     ? MemberKinds.StaticInitializer
@@ -542,7 +542,7 @@ internal sealed class ProjectSession
             BuildFunction(
                 symbol,
                 name: $"{property.Identifier.ValueText}.{accessor.Keyword.ValueText}",
-                enclosingClass: symbol?.ContainingType.Name ?? property.Identifier.ValueText,
+                enclosingClass: symbol?.ContainingType is null ? property.Identifier.ValueText : TypeMapper.FullName(symbol.ContainingType),
                 translator,
                 memberKind: MemberKinds.Getter),
             translator);
@@ -568,7 +568,7 @@ internal sealed class ProjectSession
             BuildFunction(
                 getter,
                 name: $"{property.Identifier.ValueText}.get",
-                enclosingClass: symbol?.ContainingType.Name,
+                enclosingClass: symbol?.ContainingType is null ? null : TypeMapper.FullName(symbol.ContainingType),
                 translator,
                 memberKind: MemberKinds.Getter),
             translator);
@@ -590,7 +590,7 @@ internal sealed class ProjectSession
             BuildFunction(
                 symbol,
                 name: localFunction.Identifier.ValueText,
-                enclosingClass: symbol?.ContainingType.Name,
+                enclosingClass: symbol?.ContainingType is null ? null : TypeMapper.FullName(symbol.ContainingType),
                 translator,
                 memberKind: MemberKinds.LocalFunction),
             translator);

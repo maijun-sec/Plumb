@@ -109,8 +109,13 @@ class PythonSidecarEndToEndTest {
       TacFunction find = find(result, "find");
       assertThat(find).as("the class's method must be in the stream").isNotNull();
       assertThat(find.enclosingClass())
-          .as("a method must name the class it belongs to")
-          .isEqualTo("UserStore");
+          .as(
+              "a method must name the class it belongs to, and the class's identity is its"
+                  + " QUALIFIED name: the module it lives in plus its name")
+          .endsWith("UserStore");
+      assertThat(find.enclosingClass())
+          .as("the identity is not the simple name: it carries the module in front")
+          .isNotEqualTo("UserStore");
 
       // An attribute read is a CONTAINER ACCESS with a string key, not a field
       // access: in this language an object is a namespace, and `box["label"]`

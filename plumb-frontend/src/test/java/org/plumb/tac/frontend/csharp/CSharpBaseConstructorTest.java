@@ -202,6 +202,39 @@ class CSharpBaseConstructorTest {
   }
 
   @Test
+  @DisplayName("a constructor is named the way every callee key names it, so the call reaches its body")
+  void aConstructorIsNamedTheWayEveryCalleeKeyNamesIt() {
+    List<TacFunction> functions = support.parse(SOURCE).functions();
+
+    TacFunction base = constructorOf(functions, "Base", 1);
+    TacFunction derived = constructorOf(functions, "Derived", 1);
+
+    assertThat(base.name())
+        .as("a constructor's function is named the way every callee key names it")
+        .isEqualTo("<init>");
+    assertThat(derived.name()).as("both constructors carry that name").isEqualTo("<init>");
+    assertThat(base.signature())
+        .as("the signature carries that name too, or the call graph cannot match the two")
+        .startsWith("Demo.Base.<init>(");
+    assertThat(derived.signature())
+        .as("the derived constructor's signature too")
+        .startsWith("Demo.Derived.<init>(");
+
+    // The string the CALL names and the name the callee's own declaration
+    // carries are the same string. That is what lets the call graph reach the
+    // base constructor's BODY instead of a placeholder node -- and a
+    // constructor named ".ctor" is a name no callee key ever spells, so the
+    // two would never meet.
+    TacInstruction call = callTo(derived, "Demo.Base.<init>/1");
+    assertThat(call)
+        .as("the derived constructor must call the base constructor by that key")
+        .isNotNull();
+    assertThat(call.calleeSig)
+        .as("the call names the base constructor the way the catalogue spells a construction")
+        .isEqualTo("Demo.Base.<init>/1");
+  }
+
+  @Test
   @DisplayName("a this initializer calls another constructor of the same class")
   void aThisInitializerCallsAnotherConstructorOfTheSameClass() {
     TacFunction constructor = constructorOf(support.parse(CHAINING_SOURCE).functions(), "Chain", 1);
@@ -230,6 +263,10 @@ class CSharpBaseConstructorTest {
   /**
    * The constructor of a class.
    *
+   * <p>The class is named the way the SOURCE names it -- the simple name --
+   * because a class's identity is its qualified name and the test asks about
+   * the class, not about the file it happens to live in.
+   *
    * @param functions the functions of the program
    * @param enclosingClass the simple name of the class that declares the constructor
    * @param parameterCount the number of parameters the constructor takes
@@ -238,7 +275,7 @@ class CSharpBaseConstructorTest {
   private static TacFunction constructorOf(
       List<TacFunction> functions, String enclosingClass, int parameterCount) {
     for (TacFunction function : functions) {
-      if (enclosingClass.equals(function.enclosingClass())
+      if (enclosingClass.equals(simpleNameOf(function.enclosingClass()))
           && function.memberKind() == TacMemberKind.CONSTRUCTOR
           && function.params().size() == parameterCount) {
         return function;
@@ -251,6 +288,20 @@ class CSharpBaseConstructorTest {
             + parameterCount
             + " parameters in "
             + functions.stream().map(f -> f.enclosingClass() + "." + f.name()).toList());
+  }
+
+  /**
+   * The simple name of a class: the last dot-separated segment.
+   *
+   * @param qualified the class name, qualified or not
+   * @return the simple name
+   */
+  private static String simpleNameOf(String qualified) {
+    if (qualified == null || qualified.isEmpty()) {
+      return qualified;
+    }
+    int dot = qualified.lastIndexOf('.');
+    return dot < 0 ? qualified : qualified.substring(dot + 1);
   }
 
   /**
