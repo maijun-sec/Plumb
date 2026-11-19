@@ -169,4 +169,90 @@ class AccessPathTaintStoreTest {
 
     assertThat(store.readExact(beforeBarrier)).as("the pre-barrier path is unaffected").isNotNull();
   }
+
+  /**
+   * A write to a named entry is visible through a key the analysis could not resolve.
+   *
+   * <p>The read's key might be the written one, so the read has to see the taint. This is the rule
+   * that makes a keyed namespace work at all: without it, a write to {@code obj.userId} is
+   * invisible to a read of {@code obj[anyKey]}.
+   */
+  @Test
+  @DisplayName("a named entry is visible through an unresolved key")
+  void aNamedEntryIsVisibleThroughAnUnresolvedKey() {
+    AccessPathTaintStore store = new AccessPathTaintStore();
+
+    TacAccessPath named = TacAccessPath.root(ALLOC_A).withMapKey("userId");
+    TacAccessPath unresolved = TacAccessPath.root(ALLOC_A).withLazyMapKey("anyKey");
+
+    store.record(named, "input:request", List.of());
+
+    assertThat(store.read(unresolved))
+        .as("the read's key might be \"userId\", so the taint has to reach it")
+        .isNotNull();
+  }
+
+  /**
+   * A write through an unresolved key is visible through every named entry.
+   *
+   * <p>The written key might have been any of them, so every entry of the namespace may carry the
+   * taint.
+   */
+  @Test
+  @DisplayName("an unresolved key covers every named entry")
+  void anUnresolvedKeyCoversEveryNamedEntry() {
+    AccessPathTaintStore store = new AccessPathTaintStore();
+
+    TacAccessPath unresolved = TacAccessPath.root(ALLOC_A).withLazyMapKey("dynamicKey");
+    TacAccessPath named = TacAccessPath.root(ALLOC_A).withMapKey("userId");
+
+    store.record(unresolved, "input:request", List.of());
+
+    assertThat(store.read(named))
+        .as("the written key might have been \"userId\", so the named entry may carry the taint")
+        .isNotNull();
+  }
+
+  /**
+   * Two DIFFERENT named entries stay apart.
+   *
+   * <p>This is the control on the two rules above. If it goes red, the store has become "every
+   * entry is every other entry", and the other two assertions prove nothing.
+   */
+  @Test
+  @DisplayName("two different named entries stay apart")
+  void twoDifferentNamedEntriesStayApart() {
+    AccessPathTaintStore store = new AccessPathTaintStore();
+
+    TacAccessPath userId = TacAccessPath.root(ALLOC_A).withMapKey("userId");
+    TacAccessPath role = TacAccessPath.root(ALLOC_A).withMapKey("role");
+
+    store.record(userId, "input:request", List.of());
+
+    assertThat(store.read(role))
+        .as("\"userId\" and \"role\" are different entries of the same object")
+        .isNull();
+  }
+
+  /**
+   * A field and a map entry of the same object stay apart.
+   *
+   * <p>Python has an attribute namespace and an item namespace; PHP has a property namespace and an
+   * array namespace. They are different locations, and a store that merged them would report an
+   * attribute's taint on a dict lookup.
+   */
+  @Test
+  @DisplayName("a field and a map entry of the same object stay apart")
+  void aFieldAndAMapEntryStayApart() {
+    AccessPathTaintStore store = new AccessPathTaintStore();
+
+    TacAccessPath attribute = TacAccessPath.root(ALLOC_A).withField("userId");
+    TacAccessPath entry = TacAccessPath.root(ALLOC_A).withMapKey("userId");
+
+    store.record(attribute, "input:request", List.of());
+
+    assertThat(store.read(entry))
+        .as("the attribute namespace and the item namespace are different locations")
+        .isNull();
+  }
 }

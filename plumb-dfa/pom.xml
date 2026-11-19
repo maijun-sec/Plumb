@@ -879,6 +879,13 @@
                              the engine's, so the Java control in this class
                              keeps it from being a C#-only rule. -->
                         <include>org/plumb/dfa/taint/CsharpCollectionTaintTest.java</include>
+                        <!-- How much of the analysed code the engine actually
+                             modelled. The report carries the ratio, so the
+                             counting rules have to be pinned: a call to a
+                             function the scan analysed has a model, a call the
+                             language table names has a model, a call nobody
+                             knows has none, and the buckets add up. -->
+                        <include>org/plumb/dfa/engine/ModelCoverageTest.java</include>
                         <!-- The SSRF defect class: the catalogue names the sinks of
                              every language, the checker watches the family, and the
                              patterns that named other defect classes moved to the

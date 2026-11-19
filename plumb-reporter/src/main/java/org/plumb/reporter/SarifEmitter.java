@@ -83,6 +83,16 @@ public final class SarifEmitter {
    */
   private final AnalysisCompleteness completeness;
 
+  /**
+   * How much of the analysed code the engine modelled, or {@code null} when nothing is known about
+   * it.
+   *
+   * <p>The findings say what was found; this says how much of the code the engine understood while
+   * looking. A SARIF consumer that reads only the results cannot tell "no findings" from "no
+   * findings because most of the code was not modelled", so the ratio travels with the run.
+   */
+  private final ModelCoverage coverage;
+
   public SarifEmitter(Writer out) {
     this(out, null);
   }
@@ -94,8 +104,20 @@ public final class SarifEmitter {
    * @param completeness the completeness record, or {@code null} for "not known"
    */
   public SarifEmitter(Writer out, AnalysisCompleteness completeness) {
+    this(out, completeness, null);
+  }
+
+  /**
+   * An emitter that records how complete the analysis was and how much of it was modelled.
+   *
+   * @param out where to write
+   * @param completeness the completeness record, or {@code null} for "not known"
+   * @param coverage the coverage record, or {@code null} for "not known"
+   */
+  public SarifEmitter(Writer out, AnalysisCompleteness completeness, ModelCoverage coverage) {
     this.out = out;
     this.completeness = completeness;
+    this.coverage = coverage;
   }
 
   public void emit(List<Finding> findings) throws IOException {
@@ -116,6 +138,7 @@ public final class SarifEmitter {
     kv(sb, "informationUri", TOOL_INFO_URI);
     sb.append("}},");
     emitInvocations(sb);
+    emitCoverageProperties(sb);
     sb.append("\"results\":[");
     boolean first = true;
     for (Finding f : findings) {
@@ -153,6 +176,21 @@ public final class SarifEmitter {
       sb.append(']');
     }
     sb.append("}],");
+  }
+
+  /**
+   * The run-level property bag: how much of the analysed code the engine modelled.
+   *
+   * <p>It is emitted only when a coverage record is known, so a report from a caller that has none
+   * is byte-identical to what it was before.
+   */
+  private void emitCoverageProperties(StringBuilder sb) {
+    if (coverage == null) return;
+    sb.append("\"properties\":{");
+    sb.append("\"modelCoverage\":").append(coverage.toJson());
+    sb.append(',');
+    kv(sb, "modelCoverageSummary", coverage.summary());
+    sb.append("},");
   }
 
   private static void emitResult(StringBuilder sb, Finding f) {

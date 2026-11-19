@@ -5528,8 +5528,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // a file that never contained it.
     String callerEnc = ctx.currentClass();
     CalleeSummaryKeys.Resolution resolution =
-        CalleeSummaryKeys.lookup(
-            ctx.summaryCache(), calleeSig, callerEnc, ctx.classHierarchy());
+        CalleeSummaryKeys.lookup(ctx.summaryCache(), calleeSig, callerEnc, ctx.classHierarchy());
     FunctionSummary calleeSummary = resolution.summary();
     // The context-sensitive projection.
     //
@@ -5670,8 +5669,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             // does this container yield?"), and the same function answers it.
             // Asking the question twice, with two answers, is how a taint
             // stops at a call and a finding goes missing.
-            ArrayTaintTracker.TaintedEntry carried =
-                elementTaintOf(av, ctx.currentFunction(), ctx);
+            ArrayTaintTracker.TaintedEntry carried = elementTaintOf(av, ctx.currentFunction(), ctx);
             if (carried == null) continue;
             argLabel = carried.label();
             argSrcPath = carried.path();

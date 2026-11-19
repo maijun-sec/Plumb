@@ -168,4 +168,65 @@ class AccessPathBuilderTest {
 
     assertThat(paths).isEmpty();
   }
+
+  /**
+   * A key the analysis can resolve names ONE entry; a key it cannot stands for every key.
+   *
+   * <p>This is the decision the whole keyed namespace rests on: the difference between "the entry
+   * called {@code userId}" and "some entry, we do not know which".
+   */
+  @Test
+  @DisplayName("a resolved key names one entry and an unresolved key stands for every key")
+  void theKeyDecidesWhichEntryIsNamed() {
+    assertThat(AccessPathBuilder.keySelector(TacOperand.Const.ofString("userId")))
+        .as("a string literal is a key the analysis knows")
+        .isEqualTo(new TacAccessPath.MapKey("userId"));
+    assertThat(AccessPathBuilder.keySelector(TacOperand.Const.ofInt(0)))
+        .as("an integer literal is a key too -- an array index IS a property name")
+        .isEqualTo(new TacAccessPath.MapKey("0"));
+    assertThat(AccessPathBuilder.keySelector(var("k")))
+        .as("a variable is a key the analysis cannot resolve")
+        .isEqualTo(new TacAccessPath.LazyMapKey("k"));
+    assertThat(AccessPathBuilder.keySelector(null))
+        .as("no key at all stands for every key")
+        .isEqualTo(new TacAccessPath.MapKeySet());
+  }
+
+  /**
+   * The coarse root names the VARIABLE, and it cannot be mistaken for an object.
+   *
+   * <p>An object label is {@code type@site:context}. A variable name is not, and the prefix makes
+   * the difference impossible to miss in the store's dump.
+   */
+  @Test
+  @DisplayName("the variable root is not an object label")
+  void theVariableRootIsNotAnObjectLabel() {
+    String root = AccessPathBuilder.variableRoot("obj");
+
+    assertThat(root).isNotEqualTo("obj");
+    assertThat(root).doesNotContain("@");
+    assertThat(AccessPathBuilder.variableRoot("obj"))
+        .as("the same variable always yields the same coarse root")
+        .isEqualTo(root);
+  }
+
+  /**
+   * A keyed path is rooted at the object and carries the key.
+   *
+   * <p>The key is part of the path because an entry's identity is the PAIR (object, key) -- the
+   * same shape the field path has, with the key taking the place of the field name.
+   */
+  @Test
+  @DisplayName("a keyed path carries the key")
+  void aKeyedPathCarriesTheKey() {
+    PointsToSolver solver = new PointsToSolver(Policy.CONTEXT_INSENSITIVE);
+    AbstractObject.Obj obj = alloc(12);
+    solver.addPointsTo(SIG, var("a"), List.of(obj));
+
+    List<TacAccessPath> paths =
+        AccessPathBuilder.mapPaths(solver, SIG, var("a"), TacOperand.Const.ofString("userId"));
+
+    assertThat(paths).hasSize(1);
+    assertThat(paths.get(0)).isEqualTo(TacAccessPath.root(obj.label()).withMapKey("userId"));
+  }
 }

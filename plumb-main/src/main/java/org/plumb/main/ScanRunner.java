@@ -195,6 +195,18 @@ public final class ScanRunner {
   private final OutputLayout layout;
 
   /**
+   * The analysis coverage of this scan: how much of the analysed code the engine actually modelled.
+   *
+   * <p>It is a claim about the ANALYSIS, not about the code, and it travels with the report beside
+   * the completeness record. A report with no findings and no coverage record cannot be told apart
+   * from a report about code the engine did not understand.
+   *
+   * <p>It is accumulated over the analysis runs, because one scan may analyse in more than one step
+   * (a bytecode artefact and a source tree, say), and each step sees a different set of programs.
+   */
+  private final ModelCoverageTotals coverage = new ModelCoverageTotals();
+
+  /**
    * File count threshold above which Phase 1 (parse + translate + style) runs in parallel. Below
    *
    * <p>the threshold, sequential is faster on small projects because the ForkJoin common-pool
@@ -2995,6 +3007,13 @@ public final class ScanRunner {
       // and those DO need the sink families, so we load the
       // classpath defaults and keep the conservative TuningConfig.
       org.plumb.dfa.config.EngineConfig unifiedCfg = unifiedEngineConfig();
+      // The coverage of what is about to be analysed: how much of it the engine can model. It is a
+      // property of the PROGRAMS, not of the walk, so it is computed by walking the IR -- and it is
+      // computed BEFORE the analysis, so a run that fails half way still reports the coverage of
+      // the code it was looking at.
+      coverage.add(
+          org.plumb.dfa.engine.ModelCoverageComputer.compute(
+              analysedPrograms(merged, programView), unifiedCfg));
       // Pass per-enclosing-class
       // source paths so the unified
       // FindingReporter can fill in
@@ -3098,6 +3117,24 @@ public final class ScanRunner {
       LOG.warn("plumb-dfa failure: {}", e.toString());
       return List.of();
     }
+  }
+
+  /**
+   * The programs one analysis run covers.
+   *
+   * <p>A merged run covers every source of the merge; a single-file run covers the one program. The
+   * merged VIEW ({@code merged.asProgram()}) is not counted on its own: it holds the same functions
+   * as the sources it was built from, so counting both would count every function twice.
+   *
+   * @param merged the merged program, or null when the run is not merged
+   * @param programView the single-program view, or null
+   * @return the programs
+   */
+  private static List<org.plumb.tac.ir.TacProgram> analysedPrograms(
+      org.plumb.tac.ir.MergedProgram merged, org.plumb.tac.ir.TacProgram programView) {
+    if (merged != null) return merged.sources();
+    if (programView != null) return List.of(programView);
+    return List.of();
   }
 
   /**
@@ -4809,6 +4846,12 @@ public final class ScanRunner {
     if (!completeness.complete()) {
       LOG.warn("the analysis was not complete: {}", completeness.summary());
     }
+    // The coverage record. The findings say what was found; this says how much of the code the
+    // engine actually understood. "No findings" and "no findings because most of the code was not
+    // modelled" are different statements, and only the second one is a caveat on the result.
+    org.plumb.reporter.ModelCoverage coverageRecord = coverage.snapshot();
+    LOG.info("analysis coverage: {}", coverageRecord.summary());
+    writeCoverageFile(coverageRecord);
     if (config.outputFormat == ScanConfig.OutputFormat.NDJSON) {
       Writer w =
           (config.outputPath != null)
@@ -4837,7 +4880,7 @@ public final class ScanRunner {
               ? Files.newBufferedWriter(config.outputPath, StandardCharsets.UTF_8)
               : new OutputStreamWriter(System.out, StandardCharsets.UTF_8);
       try {
-        new org.plumb.reporter.SarifEmitter(w, completeness).emit(findings);
+        new org.plumb.reporter.SarifEmitter(w, completeness, coverageRecord).emit(findings);
       } finally {
         // The stdout branch MUST flush: the writer buffers, and
         // SastMain calls System.exit() right after run() returns,
@@ -4883,6 +4926,60 @@ public final class ScanRunner {
         }
       }
     }
+  }
+
+  /**
+   * Write the coverage record beside the findings.
+   *
+   * <p>The NDJSON and the console format have no place for a claim about the analysis: NDJSON is a
+   * stream of findings, and adding a record to that stream would break every consumer that assumes
+   * one finding per line. So the coverage goes into its own file, next to the findings file, and
+   * the one-line summary goes to the log -- which is on stderr, so it never pollutes the findings
+   * stream.
+   *
+   * <p>A failure to write it is a WARN and not a scan failure: the findings are the result, and the
+   * coverage is a caveat on them. Losing the caveat must not lose the result.
+   *
+   * @param coverageRecord the record to write
+   */
+  private void writeCoverageFile(org.plumb.reporter.ModelCoverage coverageRecord) {
+    Path path = coverageFilePath();
+    if (path == null) return;
+    try {
+      Path parent = path.getParent();
+      if (parent != null) {
+        Files.createDirectories(parent);
+      }
+      Files.writeString(path, coverageRecord.toJson() + "\n", StandardCharsets.UTF_8);
+      LOG.info("analysis coverage written to {}", path);
+    } catch (IOException e) {
+      LOG.warn("could not write the analysis coverage to {}: {}", path, e.getMessage());
+    }
+  }
+
+  /**
+   * Where the coverage record goes.
+   *
+   * <p>Beside the findings file when there is one -- that is the file the reader is looking at --
+   * and in the report directory otherwise. When the findings go to stdout there is no findings file
+   * to sit next to, so the record goes to the report directory; a scan with no report directory at
+   * all leaves it to the log.
+   *
+   * @return the path, or null when there is nowhere to write it
+   */
+  private Path coverageFilePath() {
+    if (config.outputPath != null) {
+      Path fileName = config.outputPath.getFileName();
+      if (fileName == null) return null;
+      String name = fileName.toString();
+      int dot = name.lastIndexOf('.');
+      String stem = dot > 0 ? name.substring(0, dot) : name;
+      return config.outputPath.resolveSibling(stem + ".coverage.json");
+    }
+    if (layout != null) {
+      return layout.reportDir().resolve("coverage.json");
+    }
+    return null;
   }
 
   /**

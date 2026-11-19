@@ -167,6 +167,10 @@ class R323ScanRunnerUnifiedE2ETest {
           .contains("ast-error-empty-catch-block");
     } finally {
       Files.deleteIfExists(outFile);
+      // The scan writes the analysis coverage BESIDE the findings file, so the
+      // cleanup has to take it away too -- otherwise the directory is not empty
+      // and the delete below fails with DirectoryNotEmptyException.
+      Files.deleteIfExists(dir.resolve("out.coverage.json"));
       Files.deleteIfExists(tmp);
       Files.deleteIfExists(dir);
     }
@@ -235,6 +239,10 @@ class R323ScanRunnerUnifiedE2ETest {
       assertThat(ndjson.trim()).isEmpty();
     } finally {
       Files.deleteIfExists(outFile);
+      // The scan writes the analysis coverage BESIDE the findings file, so the
+      // cleanup has to take it away too -- otherwise the directory is not empty
+      // and the delete below fails with DirectoryNotEmptyException.
+      Files.deleteIfExists(dir.resolve("out.coverage.json"));
       Files.deleteIfExists(tmp);
       Files.deleteIfExists(dir);
     }
