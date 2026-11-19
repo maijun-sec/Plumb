@@ -481,11 +481,12 @@ mvn -pl plumb-dfa test -Dtest=ScriptSinkFamilyEndToEndTest
 ```
 
 **The other half of the trust question.** A scan cannot be judged by its findings alone; it has
-to say how much of the program it actually saw. The report should carry the number of call
-sites that were analysed with a body, the number that were matched by a rule, and the number
-that were neither -- the last one is the honest black-box rate, and nothing reports it today.
+to say how much of the program it actually saw. The report now carries the number of call sites
+that were analysed with a body, the number that were named by a rule, and the number that were
+neither -- the last one is the honest black-box rate.
 | **T1** | Carry the TYPE of each value in the data flow, and let a sink family declare the type its argument must have (`expects_type`). | A tainted value the program declared to be a number does not reach a sink that needs a string; a tainted string and a tainted value of unknown type still do. | **done** |
 | **T3** | Carry the type a CALL produces: the front end writes the type of a call it can see into the TAC, and the engine resolves the calls it cannot see to the declaration and reads the type from there. | A tainted value the program says is a number does not reach a sink that needs a string, whether the number comes out of a function that declares it returns one or out of a function in ANOTHER module. | **done** |
+| **T4** | Report how much of the analysed code the engine actually modelled: the call sites that had a body, the ones a rule named, and the ones that had neither. | A scan says how many of its call sites had no model, beside the findings it produced. | **done** |
 
 ### Tier 4 — declared as absent, and that is the right call for now
 

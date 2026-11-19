@@ -2,15 +2,68 @@
 
 **English** | [中文](README.zh.md)
 
-> **A Java static-analysis toolchain** — JavaParser → TAC IR → DFA (with taint) + AST style rules → NDJSON reports, with **optional** LLM false-positive reduction.
+> **A multi-language static-analysis toolchain** — source → TAC IR → DFA (with taint) + AST style rules → NDJSON reports, with **optional** LLM false-positive reduction.
 
 [![Version](https://img.shields.io/badge/version-0.1.0--SNAPSHOT-blue)](docs/README.md)
-[![Tests](https://img.shields.io/badge/tests-262%20java%20test%20files-green)](pom.xml)
+[![Tests](https://img.shields.io/badge/tests-520%20java%20test%20files-green)](pom.xml)
 [![Support](https://img.shields.io/badge/tests-passing-brightgreen)](testcase/SUPPORT-MATRIX.md)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-An independent Java project (NOT a port of Fathom). The architecture is
-inspired by Fathom, but the implementation is entirely Java.
+An independent project (NOT a port of Fathom). The architecture is inspired by
+Fathom, but the implementation is entirely Java -- the implementation language,
+not the set of languages it analyses.
+
+---
+
+## 0. The languages
+
+One IR, one engine, one rule catalogue. A language is added by writing a
+frontend that lowers it to TAC; the analysis engine does not change.
+
+| Language | Status | Frontend |
+| --- | --- | --- |
+| Java | ✅ supported | JavaParser, in-process |
+| Kotlin | ✅ supported | Analysis API, in-process |
+| Scala | ✅ supported | compiler plugin, in-process |
+| C# | ✅ supported | .NET sidecar |
+| Go | ✅ supported | Go sidecar |
+| JavaScript | 🚧 in progress | TypeScript compiler, sidecar |
+| TypeScript | 🚧 in progress | TypeScript compiler, sidecar |
+| ArkTS | 🚧 in progress | ohos-typescript, sidecar |
+| Python 3 | 🚧 in progress | CPython `ast`, sidecar |
+| PHP | 🚧 in progress | php-parser, sidecar |
+
+> **Python 3 means Python 3.** Python 2 is not supported: the two major
+> versions have different grammars, and the frontend parses with the `ast`
+> module of the running interpreter, so a Python 2 file is a parse error
+> rather than a silently mis-analysed file.
+
+**Why the engine survives the language changes.** The TAC is a language-neutral
+contract: `MOVE`, `CALL`, `FIELDLOAD`, `BRANCH` and the rest mean the same
+thing to the dataflow engine whichever language produced them. A frontend
+lowers a language construct into an existing opcode, or emits `HAVOC` for the
+part it could not model and records a structured problem saying so. The
+analysis engine, the call graph, the points-to solver, the sink catalogue and
+the reporter never learn which language they are looking at.
+
+**Where the work actually goes.** For a language whose standard library is the
+JVM's, the marginal cost of adding it is the size of its native symbol table:
+the catalogue carries 26 Kotlin entries and 120 Scala ones today, and neither
+language needed an engine change.
+A language with its own standard library costs more, because the sink
+catalogue is a list of JVM APIs and has to be extended per language. The
+`by_language` table in `sink-families.yaml` carries that extension: one
+defect class, one CWE, and a per-language symbol table.
+
+**The dynamic-type languages are a different kind of work.** JavaScript,
+Python and PHP have no static type at the point of use, and their objects are
+maps rather than typed records. The engine's field-sensitive taint tracking is
+keyed by an access path, and a map access is a path with a key in it -- so the
+access-path vocabulary has a map form, and that form is wired up: a keyed
+namespace tracks one entry per key, and a key the analysis cannot resolve
+stands for every key.
+
+---
 
 ---
 
@@ -28,11 +81,12 @@ inspired by Fathom, but the implementation is entirely Java.
 
 | Dimension | Number | Source |
 | --- | --- | --- |
-| Style checkers | **601** (`CheckerCategories` registers 593) | `plumb-style/**` |
-| DFA checkers | **91** actually registered | `ScanRunner.buildDfaCheckers()` |
+| Languages | **5** supported, **5** in progress | `SourceLanguage`, `FrontendRegistry` |
+| Style checkers | **601** (`CheckerCategories` registers 599) | `plumb-style/**` |
+| DFA checkers | **99** actually registered | `ScanRunner.buildDfaCheckers()` |
 | Taint rules | **12** | `TaintRuleRegistry` |
 | Taint source / sink patterns | **19** / **397** | `sink-families.yaml` |
-| Unit tests | **262** Java test files (219 of them `*Test.java`) | each module's `src/test/` |
+| Unit tests | **520** Java test files (468 of them `*Test.java`) | each module's `src/test/` |
 
 > The rows below need an external corpus or a benchmark environment to
 > reproduce, and this repository has neither the data nor the harness for
@@ -73,6 +127,11 @@ inspired by Fathom, but the implementation is entirely Java.
        │   plumb-main    │  ← CLI                │
        └─────────────────┘                        │
 ```
+
+`plumb-frontend` does not appear in the diagram because it is not a layer of
+the pipeline: it is the set of frontends that lower each language into TAC,
+and the engine above never learns which language it is looking at. See
+[the languages](#0-the-languages) above.
 
 See [`docs/README.md`](docs/README.md) for the full index.
 
@@ -191,7 +250,7 @@ measured by the generator, and `--check` mode proves they have not gone
 stale. But the numbers in **hand-written** documents are nobody's
 responsibility -- the repository at one point carried both "595 checker
 classes" and "601" when the real number was 601; `ARCHITECTURE.md` claimed
-"71 DFA checkers" when the engine actually registers 91.
+"71 DFA checkers" when the engine actually registers 99.
 `check_doc_numbers` measures these numbers against the source again,
 including the per-subdirectory table in `RULE-STYLE-OP.md`. A number
 either becomes the measured value, or it moves into a generated document

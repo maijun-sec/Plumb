@@ -741,10 +741,55 @@ src/main/java/Foo.java:42:5  [HIGH] TAINT_SINK_SQL_INJECTION  Tainted id flows i
 │   └── callgraph.tac            全局 call graph（可选）
 └── report/
     ├── findings.ndjson          实际写入的发现（如果 -f ndjson）
-    └── findings.console         人类可读（如果 -f console）
+    ├── findings.console         人类可读（如果 -f console）
+    └── coverage.json            引擎实际建模了多少被分析的代码
 ```
 
 详见 `docs/build/PACKAGE.md` §5。
+
+### 5.4 分析覆盖率记录
+
+每次扫描都会在告警旁边再写一份记录：引擎实际建模了多少被分析的代码。它是对**分析**的声明，
+不是对代码的声明，而且它回答的是告警本身回答不了的问题：「没有发现」和「没有发现，因为大部分
+代码并没有被理解」是两句话，只有第一句是可以据以行动的。
+
+一个调用点被**建模**，当且仅当引擎对这个调用对数据做了什么有话可说：被调方的函数体被分析过、
+按语言的语义表点名了它、或者某个透传表点名了它。其余的调用点是**无模型**的 —— 也就是说，引擎
+对流过它的数据得出的结论是默认给的，不是推出来的。
+
+这份记录落在哪里：
+
+| 输出 | 覆盖率落在哪里 |
+| --- | --- |
+| `-f sarif` | `runs[0].properties.modelCoverage`（各项计数）与 `runs[0].properties.modelCoverageSummary`（一行摘要） |
+| 告警文件（`-o`） | 一个同目录的旁挂文件 `<findings-stem>.coverage.json`，紧挨着告警文件 |
+| `--output-dir` 且没有告警文件 | `<outputDir>/report/coverage.json` |
+| 两者都没有 | 只有 stderr 上的一行摘要（日志） |
+
+从上到下依次生效：告警文件优先于输出目录，日志是最后的后手。
+
+各项字段：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `functions` | int | 被分析程序里的函数数 |
+| `functionsAtFullPrecision` | int | 以完整源码精度分析的函数数 |
+| `functionsBelowFullPrecision` | int | 以低于完整源码精度分析的函数数 |
+| `declaredProblems` | int | 前端声明自己降不下去的构造数量 |
+| `callSites` | int | 调用指令数（CALL 与 UNINTERPRETED） |
+| `callSitesWithBody` | int | 被调方被分析过的调用点数 |
+| `callSitesWithSemantics` | int | 被按语言语义表点名的调用点数 |
+| `callSitesWithPassthrough` | int | 被某个透传表点名的调用点数 |
+| `callSitesUnmodelled` | int | 引擎对其毫无说法的调用点数 |
+| `unmodelledCallRatio` | number | `callSitesUnmodelled` 除以 `callSites` |
+| `instructions` | int | 被分析程序里的指令数 |
+| `havocInstructions` | int | 前端建模不了的值的指令数 |
+| `uninterpretedInstructions` | int | 前端看不见函数体的调用数 |
+| `havocInstructionRatio` | number | `havocInstructions` 除以 `instructions` |
+
+四个调用点桶互斥且相加等于总数：`callSites` = `callSitesWithBody` + `callSitesWithSemantics` +
+`callSitesWithPassthrough` + `callSitesUnmodelled`。报告零发现的那一次扫描，和在它没有建模的代码
+上报告零发现的那一次扫描，靠的就是这个数字区分。
 
 ## 6. 退出码
 

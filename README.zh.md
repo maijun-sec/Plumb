@@ -2,14 +2,58 @@
 
 [English](README.md) | **中文**
 
-> **Java 静态分析工具链** — JavaParser → TAC IR → DFA（含 taint）+ AST 风格规则 → NDJSON 报告，**可选** LLM 误报消减。
+> **多语言静态分析工具链** — 源码 → TAC IR → DFA（含 taint）+ AST 风格规则 → NDJSON 报告，**可选** LLM 误报消减。
 
 [![Version](https://img.shields.io/badge/version-0.1.0--SNAPSHOT-blue)](docs/zh/README.md)
-[![Tests](https://img.shields.io/badge/tests-262%20java%20test%20files-green)](pom.xml)
+[![Tests](https://img.shields.io/badge/tests-520%20java%20test%20files-green)](pom.xml)
 [![Support](https://img.shields.io/badge/tests-passing-brightgreen)](testcase/SUPPORT-MATRIX.md)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-独立 Java 项目（NOT a port of Fathom），架构灵感来自 Fathom 但完全 Java-only。
+独立项目（NOT a port of Fathom），架构灵感来自 Fathom 但完全用 Java 实现——
+这里的 Java 指**实现语言**，不是它分析的语言范围。
+
+---
+
+## 0. 支持的语言
+
+一套 IR、一套引擎、一份规则目录。加一门语言 = 写一个把它降到 TAC 的前端，
+分析引擎本身不用改。
+
+| 语言 | 状态 | 前端 |
+| --- | --- | --- |
+| Java | ✅ 已支持 | JavaParser，进程内 |
+| Kotlin | ✅ 已支持 | Analysis API，进程内 |
+| Scala | ✅ 已支持 | 编译器插件，进程内 |
+| C# | ✅ 已支持 | .NET sidecar |
+| Go | ✅ 已支持 | Go sidecar |
+| JavaScript | 🚧 进行中 | TypeScript 编译器，sidecar |
+| TypeScript | 🚧 进行中 | TypeScript 编译器，sidecar |
+| ArkTS | 🚧 进行中 | ohos-typescript，sidecar |
+| Python 3 | 🚧 进行中 | CPython `ast`，sidecar |
+| PHP | 🚧 进行中 | php-parser，sidecar |
+
+> **Python 3 就是 Python 3**，不支持 Python 2：两个大版本的文法不同，而前端用
+> 运行中解释器的 `ast` 模块解析，所以 Python 2 文件会**解析报错**，而不是被
+> 静默地分析错。
+
+**为什么引擎扛得住语言变化。** TAC 是一份语言中立的契约：`MOVE`、`CALL`、
+`FIELDLOAD`、`BRANCH` 这些指令，对数据流引擎来说是什么意思，与哪种语言产出
+它们无关。前端要么把某个语言构造降成一个已有指令，要么对降不下来的部分发出
+`HAVOC`，并同时记一条结构化问题说明降不下去。分析引擎、调用图、指向求解器、
+sink 目录和报告器，永远不需要知道自己看的是哪种语言。
+
+**真正的成本在哪里。** 对标准库就是 JVM 的语言，加它的边际成本是它自己的符号表
+有多大：目录里今天有 26 条 Kotlin 符号、120 条 Scala 符号，而这两门语言都没让引擎
+改过一行。而标准库不是 JVM
+的语言成本更高——sink 目录本身是一份 JVM API 清单，必须按语言扩。扩的方式是
+`sink-families.yaml` 里的 `by_language` 表：一个缺陷类、一个 CWE，加一张按语言
+分桶的符号表。
+
+**动态类型语言是另一类工作。** JavaScript、Python、PHP 在使用点上没有静态类型，
+对象是 map 而不是有类型的记录。引擎的字段敏感污点追踪按访问路径（access path）
+定键，而 map 访问就是一条带键的路径——所以访问路径这套词汇里**已经有** map 的
+形式，而且这个形式已经接上线：一个 keyed 命名空间按键逐条追踪，而分析解析不出的
+键代表所有键。
 
 ---
 
@@ -27,11 +71,12 @@
 
 | 维度 | 数据 | 来源 |
 | --- | --- | --- |
-| Style checker | **601** 个（`CheckerCategories` 登记 593） | `plumb-style/**` |
-| DFA checker | **91** 个实际注册 | `ScanRunner.buildDfaCheckers()` |
+| 语言 | **5** 种已支持，**5** 种进行中 | `SourceLanguage`、`FrontendRegistry` |
+| Style checker | **601** 个（`CheckerCategories` 登记 599） | `plumb-style/**` |
+| DFA checker | **99** 个实际注册 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | **12** 条 | `TaintRuleRegistry` |
 | Taint source / sink 模式 | **19** / **397** | `sink-families.yaml` |
-| 单元测试 | **262** 个 java test 文件（其中 219 个 `*Test.java`） | 各模块 `src/test/` |
+| 单元测试 | **520** 个 java test 文件（其中 468 个 `*Test.java`） | 各模块 `src/test/` |
 
 > 下面的行需要外部语料 / 基准环境才能复现，本仓库里没有对应的数据或 harness：
 > Juliet 用例集的 CWE 覆盖率与召回、AI dedup 准确率、启动与单文件扫描耗时、
@@ -70,6 +115,10 @@
        │   plumb-main    │  ← CLI                │
        └─────────────────┘                        │
 ```
+
+`plumb-frontend` 没有画进这张图，因为它不是流水线的一层：它是把各门语言降到
+TAC 的那组前端，而上面的引擎永远不需要知道自己看的是哪种语言。见上面的
+[支持的语言](#0-支持的语言)。
 
 完整索引见 [`docs/zh/README.md`](docs/zh/README.md)。
 
@@ -178,7 +227,7 @@ python scripts/check_all.py
 **关于"手写文档里的数字"**：生成的文档（`RULES.md`、`RULE-TOOL-COMPARISON.md`）的数字
 由生成器实测，`--check` 模式能证明它们没过期。但**手写**文档里的数字没人管 —— 仓库里
 同时写着"595 个 checker 类"和"601 个"就会和实际值对不上，而实际是 601；`ARCHITECTURE.md` 写着
-"71 个 DFA checker"，而引擎实际注册 91 个。`check_doc_numbers` 把这些数字对着源码
+"71 个 DFA checker"，而引擎实际注册 99 个。`check_doc_numbers` 把这些数字对着源码
 重新测一遍，包括 `RULE-STYLE-OP.md` 里那张按子目录分类的表。数字要么改成实测值，
 要么搬进生成文档里让生成器负责 —— 不能靠记忆。
 

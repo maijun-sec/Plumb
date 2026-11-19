@@ -825,10 +825,59 @@ src/main/java/Foo.java:42:5  [HIGH] TAINT_SINK_SQL_INJECTION  Tainted id flows i
 │   └── callgraph.tac            the global call graph (optional)
 └── report/
     ├── findings.ndjson          the findings actually written (if -f ndjson)
-    └── findings.console         human-readable (if -f console)
+    ├── findings.console         human-readable (if -f console)
+    └── coverage.json            how much of the analysed code the engine modelled
 ```
 
 See `docs/build/PACKAGE.md` §5 for details.
+
+### 5.4 The analysis coverage record
+
+Every scan writes a second record beside the findings: how much of the analysed code the engine
+actually modelled. It is a claim about the ANALYSIS, not about the code, and it answers the
+question the findings cannot: "no findings" and "no findings, because most of the code was not
+understood" are different statements, and only the first one is safe to act on.
+
+A call site is **modelled** when the engine has a statement about what the call does to the data:
+the callee's body was analysed, the per-language semantics table names the callee, or a
+passthrough table names it. Every other call site is **unmodelled**, which means that whatever the
+engine concluded about the data flowing through it was a default rather than a derivation.
+
+Where the record goes:
+
+| Output | Where the coverage lands |
+| --- | --- |
+| `-f sarif` | `runs[0].properties.modelCoverage` (the counts) and `runs[0].properties.modelCoverageSummary` (one line) |
+| a findings file (`-o`) | a sibling file `<findings-stem>.coverage.json`, next to the findings file |
+| `--output-dir` and no findings file | `<outputDir>/report/coverage.json` |
+| neither | the one-line summary on stderr (the log) only |
+
+The first row that applies wins: a findings file beats the output directory, and the
+log is the last resort.
+
+The fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `functions` | int | The functions in the analysed programs |
+| `functionsAtFullPrecision` | int | The functions analysed at full source precision |
+| `functionsBelowFullPrecision` | int | The functions analysed below full source precision |
+| `declaredProblems` | int | The constructs the front end declared it could not lower |
+| `callSites` | int | The call instructions (the CALLs and the UNINTERPRETEDs) |
+| `callSitesWithBody` | int | The call sites whose callee was analysed |
+| `callSitesWithSemantics` | int | The call sites the per-language semantics table names |
+| `callSitesWithPassthrough` | int | The call sites a passthrough table names |
+| `callSitesUnmodelled` | int | The call sites with no statement at all |
+| `unmodelledCallRatio` | number | `callSitesUnmodelled` divided by `callSites` |
+| `instructions` | int | The instructions in the analysed programs |
+| `havocInstructions` | int | The instructions whose value the front end could not model |
+| `uninterpretedInstructions` | int | The calls whose body the front end could not see |
+| `havocInstructionRatio` | number | `havocInstructions` divided by `instructions` |
+
+The four call-site buckets are disjoint and add up: `callSites` is `callSitesWithBody` plus
+`callSitesWithSemantics` plus `callSitesWithPassthrough` plus `callSitesUnmodelled`. A scan that
+reports no findings and a scan that reports no findings over code it did not model are told apart
+by that number.
 
 ## 6. Exit codes
 
