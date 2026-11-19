@@ -602,7 +602,7 @@ public final class DfaEngine {
         analyseOneFunction(ctx, fn);
         FunctionSummary merged2 = summariseOneFunction(ctx, fn);
         if (!merged2.isTrivial() || merged2.hasBody()) {
-          ctx.summaryCache().put(fn.signature(), merged2);
+          publishSummary(ctx, fn, fn.signature(), merged2);
           summaryCount++;
         }
         // qualified-alias put. Juliet's cross-TU
@@ -2003,7 +2003,7 @@ public final class DfaEngine {
       this.analyseOneFunction(ctx, fn);
       FunctionSummary merged = this.summariseOneFunction(ctx, fn);
       if (!merged.isTrivial() || merged.hasBody()) {
-        ctx.summaryCache().put(fn.signature(), merged);
+        publishSummary(ctx, fn, fn.signature(), merged);
         ++summaryCount;
       }
       this.r716putQualifiedAliasSummary(ctx, fn, merged);
@@ -2114,7 +2114,7 @@ public final class DfaEngine {
                     this.analyseOneFunction(ctx, fn, mine);
                     FunctionSummary merged = this.summariseOneFunction(ctx, fn, mine);
                     if (!merged.isTrivial() || merged.hasBody()) {
-                      ctx.summaryCache().put(sig, merged);
+                      publishSummary(ctx, fn, sig, merged);
                     }
                     this.r716putQualifiedAliasSummary(ctx, fn, merged);
                   }
@@ -2171,7 +2171,7 @@ public final class DfaEngine {
     this.analyseOneFunction(ctx, fn2);
     FunctionSummary merged = this.summariseOneFunction(ctx, fn2);
     if (!merged.isTrivial() || merged.hasBody()) {
-      ctx.summaryCache().put(fn2.signature(), merged);
+      publishSummary(ctx, fn2, fn2.signature(), merged);
     }
     this.r716putQualifiedAliasSummary(ctx, fn2, merged);
   }
@@ -2862,6 +2862,32 @@ public final class DfaEngine {
   }
 
   /**
+   * Publishes a function's summary under one key, when that key belongs to this function alone.
+   *
+   * <p>A key that more than one method of the program claims is not published. The engine stores
+   * one summary under several spellings so that a call site finds it whichever way the callee is
+   * named there, and some of those spellings -- the bare {@code name/arity}, and the function's own
+   * signature -- name no class at all. Two classes that declare a method with the same name and
+   * arity therefore contend for the same spelling, and the one that wins would be decided by the
+   * engine's schedule rather than by the program.
+   *
+   * <p>Not publishing the key makes the call site find nothing there and fall through to the more
+   * specific spellings. That is silence rather than a wrong answer.
+   *
+   * @param ctx the analysis context
+   * @param fn the function the summary belongs to
+   * @param key the key to publish it under
+   * @param summary the summary
+   */
+  private void publishSummary(
+      AnalysisContext ctx, TacFunction fn, String key, FunctionSummary summary) {
+    if (key == null || key.isEmpty()) return;
+    String identity = org.plumb.dfa.summary.SummaryKeyOwnership.identityOf(fn);
+    if (!ctx.summaryKeyOwnership().isExclusivelyClaimedBy(key, identity)) return;
+    ctx.summaryCache().put(key, summary);
+  }
+
+  /**
    * Stores a function's summary under its canonical callee key.
    *
    * <p><b>Why this is needed.</b> A function's own signature is whatever its frontend produced: a
@@ -2876,39 +2902,28 @@ public final class DfaEngine {
    *
    * <p>Both the qualified canonical form and the bare one are stored, because a function whose own
    * signature carries no owner (a top-level function) can only be reached by the bare key.
+   *
+   * <p><b>Which of them are stored is decided by the PROGRAM, not by the schedule.</b> The bare key
+   * names no class at all, and the simple-name key names a class only by its simple name, so both
+   * of them address EVERY method of that name and arity in the program. When two classes declare
+   * such a method -- the ordinary case in a corpus with one file per test case -- only one of their
+   * summaries can sit under that key, and which one it is would be decided by which method the
+   * engine happened to write first. The engine's schedule decides that, so the summary a call site
+   * reads would be a function of the analysis order, and the findings would move when the order
+   * moves.
+   *
+   * <p>So a key that more than one method claims is not published at all. The call site then finds
+   * no summary under it and falls through to the more specific keys; if none of those match either,
+   * it finds nothing. That is silence rather than a wrong answer: a missing finding is recoverable,
+   * a finding that carries another method's facts is not.
    */
   private void putCanonicalSummary(AnalysisContext ctx, TacFunction fn, FunctionSummary merged) {
-    String canonical = org.plumb.tac.ir.CalleeKeyNormalizer.canonicalCalleeKey(fn.signature());
-    if (canonical == null) return;
-    // The canonical key of the SIGNATURE may carry no owner: a Java method's signature is
-    // "run(java.lang.String):void", and the canonical form of that is "run/1" -- no owner.
-    // But the CALL SITE names the owner ("JavaSink.run/1"), because the call site knows which
-    // class it is calling into.
-    //
-    // So the owner is taken from the function's ENCLOSING CLASS, the same source the call
-    // graph's owner-aware index uses. Without this the summary is stored under a key the call
-    // site never asks for, and the taint stops at the language boundary.
-    String ownerQualified = canonical;
-    String enclosing = fn.enclosingClass();
-    if (enclosing != null && !enclosing.isEmpty() && !canonical.contains(".")) {
-      ownerQualified = CalleeSummaryKeys.qualifiedKey(enclosing, canonical);
-      // The owner may be spelled fully qualified here and simply at the call site (or the
-      // other way round): a Java declaration's enclosing class is "demo.JavaSink", while a
-      // call may name it "JavaSink". Both spellings are stored, so the call site finds
-      // the summary whichever it uses.
-      //
-      // The fully qualified one is the specific one: it tells two classes of the same simple
-      // name apart. The simple one addresses both of them, so it is only a fallback.
-      String simple = CalleeSummaryKeys.simpleName(enclosing);
-      if (simple != null && !simple.equals(enclosing)) {
-        ctx.summaryCache().put(CalleeSummaryKeys.qualifiedKey(simple, canonical), merged);
-      }
-    }
-
-    String bare = org.plumb.tac.ir.CalleeKeyNormalizer.bareCalleeKey(canonical);
-    for (String key : new String[] {ownerQualified, canonical, bare}) {
-      if (key == null) continue;
+    if (org.plumb.tac.ir.CalleeKeyNormalizer.canonicalCalleeKey(fn.signature()) == null) return;
+    String identity = org.plumb.dfa.summary.SummaryKeyOwnership.identityOf(fn);
+    for (String key : org.plumb.dfa.summary.SummaryKeyOwnership.publishedKeys(fn)) {
+      if (key == null || key.isEmpty()) continue;
       if (key.equals(fn.signature())) continue;
+      if (!ctx.summaryKeyOwnership().isExclusivelyClaimedBy(key, identity)) continue;
       FunctionSummary existing = ctx.summaryCache().get(key);
       // Do not overwrite a summary that is already there: another function may share the
       // bare key, and last-write-wins would pick an arbitrary one.

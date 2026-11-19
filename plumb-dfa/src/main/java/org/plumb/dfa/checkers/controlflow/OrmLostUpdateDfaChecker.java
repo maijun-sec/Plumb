@@ -345,7 +345,9 @@ public final class OrmLostUpdateDfaChecker implements DfaChecker {
     //    doesn't really persist" false positive).
     if ("low".equals(aggressiveness)) return;
     FunctionSummary calleeSummary =
-        CalleeSummaryKeys.lookup(ctx.summaryCache(), callee, ctx.currentClass()).summary();
+        CalleeSummaryKeys.lookup(
+                ctx.summaryCache(), callee, ctx.currentClass(), ctx.classHierarchy())
+            .summary();
     if (calleeSummary != null) {
       // PersistsParam ops on params
       for (int pi = 0; pi < ins.args.size(); pi++) {

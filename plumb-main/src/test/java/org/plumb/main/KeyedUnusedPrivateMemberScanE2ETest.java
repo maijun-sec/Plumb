@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -145,6 +146,30 @@ class KeyedUnusedPrivateMemberScanE2ETest {
       }
       """;
 
+  /** The same class name in two files: the members are two members. */
+  private static final String TS_SAME_NAME_UNREAD =
+      """
+      export class Holder {
+        private slot: number = 1;
+
+        run(): void {
+          const other = 2;
+        }
+      }
+      """;
+
+  /** The same class name in a second file, and its member IS read. */
+  private static final String TS_SAME_NAME_READ =
+      """
+      export class Holder {
+        private slot: number = 1;
+
+        run(): number {
+          return this.slot;
+        }
+      }
+      """;
+
   @Test
   @DisplayName("a TypeScript private member that is never read is reported")
   void aTypeScriptPrivateMemberThatIsNeverReadIsReported(@TempDir Path directory) throws Exception {
@@ -229,6 +254,45 @@ class KeyedUnusedPrivateMemberScanE2ETest {
     assertThat(findings.get(0)).contains("'value'");
   }
 
+  @Test
+  @DisplayName("two TypeScript classes with the same name in two files are two reports")
+  void twoTypeScriptClassesWithTheSameNameInTwoFilesAreTwoReports(@TempDir Path directory)
+      throws Exception {
+    assumeTrue(
+        tsSidecarAvailable(),
+        "the TypeScript front end needs Node and the sidecar's own compiler dependency: run npm ci"
+            + " in plumb-frontend/ts-sidecar");
+
+    List<String> findings =
+        scanFiles(directory, Map.of("x.ts", TS_SAME_NAME_UNREAD, "y.ts", TS_SAME_NAME_UNREAD));
+
+    assertThat(findings)
+        .as(
+            "the two files declare two classes of the same name, so they declare two members: a"
+                + " member belongs to its class, and one class's report must not swallow the other"
+                + " class's")
+        .hasSize(2);
+  }
+
+  @Test
+  @DisplayName("a TypeScript class's read does not suppress another file's class of the same name")
+  void aTypeScriptClasssReadDoesNotSuppressAnotherFilesClassOfTheSameName(@TempDir Path directory)
+      throws Exception {
+    assumeTrue(
+        tsSidecarAvailable(),
+        "the TypeScript front end needs Node and the sidecar's own compiler dependency: run npm ci"
+            + " in plumb-frontend/ts-sidecar");
+
+    List<String> findings =
+        scanFiles(directory, Map.of("x.ts", TS_SAME_NAME_UNREAD, "y.ts", TS_SAME_NAME_READ));
+
+    assertThat(findings)
+        .as(
+            "the read belongs to y.ts's class, so it suppresses that class's member and not the"
+                + " member of the class of the same name in the other file")
+        .hasSize(1);
+  }
+
   // ---- helpers -------------------------------------------------------------------------------
 
   /**
@@ -245,6 +309,44 @@ class KeyedUnusedPrivateMemberScanE2ETest {
     Files.writeString(input, source);
     Path outFile = directory.resolve("out.ndjson");
     try {
+      return runScan(input, outFile);
+    } finally {
+      deleteRecursively(directory);
+    }
+  }
+
+  /**
+   * Runs a scan over a directory of source files and returns the rule's findings.
+   *
+   * <p>The files are scanned together, because that is the shape the question is about: two classes
+   * of the same name in two files are two classes only when the analysis sees both files.
+   *
+   * @param directory the directory to scan
+   * @param files the file name and the source of each file
+   * @return the messages of the findings the rule produced
+   */
+  private static List<String> scanFiles(Path directory, Map<String, String> files)
+      throws Exception {
+    for (Map.Entry<String, String> entry : files.entrySet()) {
+      Files.writeString(directory.resolve(entry.getKey()), entry.getValue());
+    }
+    Path outFile = directory.resolve("out.ndjson");
+    try {
+      return runScan(directory, outFile);
+    } finally {
+      deleteRecursively(directory);
+    }
+  }
+
+  /**
+   * Runs the scan and collects the rule's findings.
+   *
+   * @param input the file or directory to scan
+   * @param outFile where the NDJSON findings are written
+   * @return the messages of the findings the rule produced
+   */
+  private static List<String> runScan(Path input, Path outFile) throws Exception {
+    {
       ScanConfig cfg = new ScanConfig();
       cfg.inputs.add(input);
       cfg.outputPath = outFile;
@@ -312,8 +414,6 @@ class KeyedUnusedPrivateMemberScanE2ETest {
         }
       }
       return messages;
-    } finally {
-      deleteRecursively(directory);
     }
   }
 

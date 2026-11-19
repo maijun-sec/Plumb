@@ -111,9 +111,10 @@ class ArktsMemberDeclarationTest {
 
     assertThat(owner).as("the class must have a function of its own").isNotNull();
     assertThat(owner.enclosingClass())
-        .as("the declaration names the class it belongs to, so two classes' members of the same name"
-            + " are two members")
-        .isEqualTo("Session");
+        .as(
+            "the declaration names the class it belongs to, so two classes' members of the same name"
+                + " are two members")
+        .endsWith("Session");
     assertThat(owner.memberKind())
         .as("the class's own function is where the class's facts are recorded")
         .isIn(TacMemberKind.CONSTRUCTOR, TacMemberKind.FIELD_INITIALIZER);

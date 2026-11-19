@@ -78,7 +78,9 @@ class ArktsSidecarWireTest {
       TacFunction function = result.functions().get(0);
       assertThat(function.name()).isEqualTo("render");
       assertThat(function.signature()).isEqualTo("Page.render(string):string");
-      assertThat(function.enclosingClass()).isEqualTo("Page");
+      assertThat(function.enclosingClass())
+          .as("the class's identity is its qualified name: the module plus the class name")
+          .endsWith("Page");
       assertThat(function.sourceLanguage()).isEqualTo(SourceLanguage.ARKTS);
       assertThat(function.irPrecision()).isEqualTo(IrPrecision.SOURCE_FULL);
       assertThat(result.precision()).isEqualTo(IrPrecision.SOURCE_FULL);

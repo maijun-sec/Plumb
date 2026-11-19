@@ -305,8 +305,10 @@ async function main() {
     const build = functions.find((f) => f.name === "build");
     check(!!build, "the struct's build method must be in the stream");
     check(
-      build.enclosingClass === "ProfilePage",
-      "a struct's method must name the struct it belongs to",
+      typeof build.enclosingClass === "string" &&
+        build.enclosingClass.endsWith("ProfilePage") &&
+        build.enclosingClass !== "ProfilePage",
+      "a struct's method must name the struct it belongs to, and the class's identity is its QUALIFIED name: the module it lives in plus its name",
     );
     const render = functions.find((f) => f.name === "render");
     check(!!render, "the struct's other method must be in the stream");

@@ -103,7 +103,11 @@ class TsSidecarEndToEndTest {
 
       TacFunction find = find(result, "find");
       assertThat(find).as("the class method must be in the stream").isNotNull();
-      assertThat(find.enclosingClass()).as("a method must name its class").isEqualTo("UserStore");
+      assertThat(find.enclosingClass())
+        .as(
+            "a method must name the class it belongs to, and the class's identity is its"
+                + " QUALIFIED name: the module it lives in plus its name")
+        .endsWith("UserStore");
 
       // A property read is a CONTAINER ACCESS with a string key, not a field
       // access: in this language an object is a namespace, and `obj.userId`

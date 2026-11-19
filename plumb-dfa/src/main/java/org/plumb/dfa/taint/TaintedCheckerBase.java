@@ -5528,7 +5528,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // a file that never contained it.
     String callerEnc = ctx.currentClass();
     CalleeSummaryKeys.Resolution resolution =
-        CalleeSummaryKeys.lookup(ctx.summaryCache(), calleeSig, callerEnc);
+        CalleeSummaryKeys.lookup(
+            ctx.summaryCache(), calleeSig, callerEnc, ctx.classHierarchy());
     FunctionSummary calleeSummary = resolution.summary();
     // The context-sensitive projection.
     //
@@ -5655,10 +5656,30 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           if (position == null || position < 0 || position >= ins.args.size()) continue;
           if (!(ins.args.get(position) instanceof TacOperand.TacVar av)) continue;
           String argLabel = taintedVars.get(av);
-          if (argLabel == null) continue;
+          List<FlowStep> argSrcPath = taintPaths.get(av);
+          int argHandle = v2TraceHandle.getOrDefault(av, -1);
+          String inheritedBy = "argument";
+          if (argLabel == null) {
+            // The argument may be a VARARGS CONTAINER.
+            //
+            // A Java front end lowers `String.format("%s", x)` into an ARRAY:
+            // the taint is in the array's ELEMENT, not in the array itself, so
+            // the array variable is clean and the rule finds nothing to carry.
+            // The rule names the argument, and the callee receives the array's
+            // ELEMENTS -- so the question is the one the iterator asks ("what
+            // does this container yield?"), and the same function answers it.
+            // Asking the question twice, with two answers, is how a taint
+            // stops at a call and a finding goes missing.
+            ArrayTaintTracker.TaintedEntry carried =
+                elementTaintOf(av, ctx.currentFunction(), ctx);
+            if (carried == null) continue;
+            argLabel = carried.label();
+            argSrcPath = carried.path();
+            argHandle = carried.v2Handle();
+            inheritedBy = "argument element";
+          }
           taintedVars.put(argDest, "arg-passthrough:" + argLabel);
           List<FlowStep> argFold = new java.util.ArrayList<>();
-          List<FlowStep> argSrcPath = taintPaths.get(av);
           if (argSrcPath != null) argFold.addAll(argSrcPath);
           argFold.add(
               new FlowStep(
@@ -5667,11 +5688,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                   ins.line,
                   ins.column,
                   calleeSig,
-                  "argument-tainted dest inherits: " + argLabel));
+                  inheritedBy + "-tainted dest inherits: " + argLabel));
           taintPaths.put(argDest, java.util.Collections.unmodifiableList(argFold));
           // dual-write v2 SUMMARY_FOLD node, the same shape the receiver
           // passthrough writes.
-          int argHandle = v2TraceHandle.getOrDefault(av, -1);
           if (argHandle >= 0) {
             int handle =
                 v2Builder.addSummaryFold(
@@ -5680,7 +5700,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                     position == 0 ? 0 : position - 1,
                     List.of(new OperandRef.Var(argDest.name(), 0)),
                     argHandle,
-                    "argument-tainted dest inherits: " + argLabel,
+                    inheritedBy + "-tainted dest inherits: " + argLabel,
                     "",
                     ins.line,
                     ins.column,

@@ -87,6 +87,7 @@ import { exec } from "child_process";
 export class Holder {
   #secret: string = "s";
   readonly name: string = "n";
+  accessor auto: string = "a";
   constructor(private id: string) {
     this.id = id;
   }
@@ -200,6 +201,12 @@ function indexOf(instructions, predicate) {
   return instructions.findIndex((instruction) => predicate(instruction));
 }
 
+/** The parameter list of a signature: the text between its parentheses. */
+function parameterListOf(signature) {
+  const match = /\(([^)]*)\)/.exec(signature ?? "");
+  return match ? match[1] : "";
+}
+
 /** Write one frame. */
 function writeFrame(stream, payload) {
   const bytes = Buffer.from(payload, "utf8");
@@ -307,8 +314,10 @@ async function main() {
     const find = functions.find((f) => f.name === "find");
     check(!!find, "the class method must be in the stream");
     check(
-      find.enclosingClass === "UserStore",
-      "a method must name the class it belongs to",
+      typeof find.enclosingClass === "string" &&
+        find.enclosingClass.endsWith("UserStore") &&
+        find.enclosingClass !== "UserStore",
+      "a method must name the class it belongs to, and the class's identity is its QUALIFIED name: the module it lives in plus its name",
     );
 
     const instructions = handleFunction.instructions;
@@ -662,6 +671,25 @@ async function main() {
     check(
       shapeFunctions.some((f) => f.memberKind === "STATIC_INITIALIZER"),
       "the static block must be in the stream",
+    );
+
+    // An auto-accessor is a getter and a setter, and they are TWO functions
+    // of the class. The function table is keyed by the signature, so two
+    // functions that share one signature replace each other and one of them
+    // is gone from the program. The explicit `get`/`set` pair keeps them
+    // apart -- the setter's signature carries the value it takes -- and the
+    // auto-accessor has to keep them apart the same way.
+    const autoGetter = shapeFunctions.find((f) => f.name === "auto" && f.memberKind === "GETTER");
+    const autoSetter = shapeFunctions.find((f) => f.name === "auto" && f.memberKind === "SETTER");
+    check(!!autoGetter, "the auto-accessor's getter must be in the stream");
+    check(!!autoSetter, "the auto-accessor's setter must be in the stream");
+    check(
+      autoGetter.signature !== autoSetter.signature,
+      `an auto-accessor's getter and setter must not share a signature: ${autoGetter.signature}`,
+    );
+    check(
+      parameterListOf(autoSetter.signature) !== "",
+      `the setter's signature must name the value it takes: ${autoSetter.signature}`,
     );
 
     // A class member is an entry of the instance's NAMESPACE, so its

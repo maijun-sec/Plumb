@@ -259,7 +259,9 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     // lookup goes through the one place that builds the candidate keys. Asking under the bare
     // key alone would read whichever class of that method name was written first.
     FunctionSummary calleeSummary =
-        CalleeSummaryKeys.lookup(ctx.summaryCache(), calleeSig, ctx.currentClass()).summary();
+        CalleeSummaryKeys.lookup(
+                ctx.summaryCache(), calleeSig, ctx.currentClass(), ctx.classHierarchy())
+            .summary();
     if (calleeSummary == null) return;
     for (var entry : calleeSummary.paramOps().entrySet()) {
       int i = entry.getKey();

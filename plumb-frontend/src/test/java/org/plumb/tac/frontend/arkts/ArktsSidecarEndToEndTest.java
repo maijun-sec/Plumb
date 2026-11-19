@@ -108,8 +108,8 @@ class ArktsSidecarEndToEndTest {
       assertThat(build).as("the struct's build method must be in the stream").isNotNull();
       assertThat(build.sourceLanguage()).isEqualTo(SourceLanguage.ARKTS);
       assertThat(build.enclosingClass())
-          .as("a method must name its struct")
-          .isEqualTo("ProfilePage");
+          .as("a method must name its struct, and the class's identity is its qualified name")
+          .endsWith("ProfilePage");
 
       TacFunction render = find(result, "render");
       assertThat(render).as("the struct's other method must be in the stream").isNotNull();

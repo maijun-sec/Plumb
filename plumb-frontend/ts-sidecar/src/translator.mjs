@@ -907,9 +907,23 @@ export class Translator {
       return [];
     }
     const name = node.name ? node.name.text : "x";
+    // The getter and the setter are TWO functions of the class, and the
+    // function table is keyed by the signature: two functions that share one
+    // signature replace each other, and one of them is gone from the program.
+    //
+    // The explicit `get`/`set` pair already keeps the two apart -- the
+    // setter's signature carries the value it takes -- and the auto-accessor
+    // follows the same convention: the getter's signature carries the type it
+    // returns, and the setter's carries the type it takes. The value is the
+    // member's own type, because that is what the member holds.
+    const valueType = this.typeTextOf(node);
     const out = [];
 
-    const getter = this.beginFunction(name, `${this.moduleName}.${className}.${name}()`, className);
+    const getter = this.beginFunction(
+      name,
+      `${this.moduleName}.${className}.${name}():${valueType}`,
+      className,
+    );
     getter.memberKind = MEMBER_KIND.GETTER;
     getter.synthetic = true;
     this.guard(node, () => {
@@ -928,7 +942,7 @@ export class Translator {
 
     const setter = this.beginFunction(
       name,
-      `${this.moduleName}.${className}.${name}(${this.constructorParameterTypes(node)})`,
+      `${this.moduleName}.${className}.${name}(${valueType}):any`,
       className,
     );
     setter.memberKind = MEMBER_KIND.SETTER;
@@ -1061,9 +1075,34 @@ export class Translator {
   }
 
   beginFunction(name, signature, enclosingClass) {
-    const state = new FunctionState(name, signature, enclosingClass);
+    // The class's IDENTITY is the module it lives in PLUS its name. A simple name is a
+    // spelling, not an identity: two files that each declare a class called "Holder" are
+    // two classes, and their members are two members. The Java front end states the same
+    // thing the same way -- a class's identity is its qualified name -- so the engine can
+    // keep two same-named classes apart on every language.
+    //
+    // The CALL key still spells the class the simple way (see ownerOf): the sink catalogue
+    // and the call graph match owners by simple name, and that is where the spelling
+    // belongs.
+    const identity = enclosingClass ? `${this.moduleName}.${enclosingClass}` : enclosingClass;
+    const state = new FunctionState(name, signature, identity);
     this.state = state;
     return state;
+  }
+
+  /**
+   * The class's SIMPLE name: the spelling the source uses, without the module.
+   *
+   * <p>The identity carries the module in front; the call key must not, because the
+   * call graph and the sink catalogue match owners by simple name.
+   *
+   * @param identity the class's identity
+   * @return the simple name, or the identity when it does not carry the module
+   */
+  simpleClassName(identity) {
+    if (!identity) return identity;
+    const prefix = `${this.moduleName}.`;
+    return identity.startsWith(prefix) ? identity.slice(prefix.length) : identity;
   }
 
   finishFunction(state) {
@@ -1240,7 +1279,7 @@ export class Translator {
       }
       // A nested function is a function of its own.
       this.pendingFunctions.push(...this.lowerNested(node, () =>
-        this.lowerFunctionDeclaration(node, this.state?.enclosingClass ?? null),
+        this.lowerFunctionDeclaration(node, this.simpleClassName(this.state?.enclosingClass) ?? null),
       ));
       return;
     }
@@ -3649,7 +3688,10 @@ export class Translator {
       // can resolve the call to this function rather than to the first same-named
       // method it finds.
       if (base && base.kind === SyntaxKind.ThisKeyword) {
-        return this.state?.enclosingClass ?? OWNER_MISSING;
+        // The SIMPLE name: the call key spells the class the way the source spells it,
+        // because that is what the call graph and the sink catalogue match owners by. The
+        // class's identity (module + name) is what the function itself carries.
+        return this.simpleClassName(this.state?.enclosingClass) ?? OWNER_MISSING;
       }
       // `vm.runInNewContext(...)`: the base is a namespace import, so the
       // owner is the module the namespace came from.

@@ -77,7 +77,9 @@ class TsSidecarWireTest {
       TacFunction function = result.functions().get(0);
       assertThat(function.name()).isEqualTo("handle");
       assertThat(function.signature()).isEqualTo("app.handle(Object):string");
-      assertThat(function.enclosingClass()).isEqualTo("UserStore");
+      assertThat(function.enclosingClass())
+          .as("the class's identity is its qualified name: the module plus the class name")
+          .endsWith("UserStore");
       assertThat(function.sourceLanguage()).isEqualTo(SourceLanguage.TYPESCRIPT);
       assertThat(function.irPrecision()).isEqualTo(IrPrecision.SOURCE_FULL);
       assertThat(result.precision()).isEqualTo(IrPrecision.SOURCE_FULL);

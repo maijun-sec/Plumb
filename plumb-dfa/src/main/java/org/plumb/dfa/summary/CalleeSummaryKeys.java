@@ -67,6 +67,14 @@ import org.plumb.tac.ir.CalleeKeyNormalizer;
  */
 public final class CalleeSummaryKeys {
 
+  /**
+   * How many ancestors the hierarchy walk follows.
+   *
+   * <p>A class hierarchy is a finite chain in practice; the bound is here so that a table that
+   * loops back on itself cannot make the lookup spin.
+   */
+  private static final int MAX_HIERARCHY_DEPTH = 16;
+
   private CalleeSummaryKeys() {}
 
   /**
@@ -147,6 +155,30 @@ public final class CalleeSummaryKeys {
    * @return the candidate keys, most specific first
    */
   public static List<String> keysFor(String calleeSig, String callerEnclosingClass) {
+    return keysFor(calleeSig, callerEnclosingClass, java.util.Map.of());
+  }
+
+  /**
+   * The candidate keys a call site may find its callee's summary under, most specific first.
+   *
+   * <p>This is the hierarchy-aware form of {@link #keysFor(String, String)}: it also asks under the
+   * classes the receiver's class INHERITS from.
+   *
+   * <p><b>Why the ancestors have to be in the chain.</b> A call to an inherited method names the
+   * receiver's class, but the method is DECLARED in a superclass. The receiver's own keys therefore
+   * name a class that does not declare the method, and the lookup would fall through to the bare
+   * key -- the one key that every class of that method name shares, and the one whose owner is
+   * decided by which method the engine happened to write first. Asking under the declaring class
+   * instead makes the answer depend on the PROGRAM rather than on the schedule.
+   *
+   * @param calleeSig the callee signature as the IR spells it
+   * @param callerEnclosingClass the class of the function the call sits in, or null when it has
+   *     none
+   * @param classToParent the class hierarchy, keyed by SHORT class name; may be empty
+   * @return the candidate keys, most specific first
+   */
+  public static List<String> keysFor(
+      String calleeSig, String callerEnclosingClass, java.util.Map<String, String> classToParent) {
     if (calleeSig == null || calleeSig.isEmpty()) return List.of();
     LinkedHashSet<String> keys = new LinkedHashSet<>();
 
@@ -169,6 +201,8 @@ public final class CalleeSummaryKeys {
       // The call names no class: the callee is a method of the caller's own class.
       addClassKeys(keys, callerClass, bare);
       addClassKeys(keys, callerSimple, bare);
+      // An unqualified call may reach a method the caller's class INHERITS.
+      addAncestorClassKeys(keys, callerSimple, bare, classToParent);
     } else {
       String ownerSimple = simpleName(owner);
       // An owner that carries a package names the class exactly.
@@ -176,16 +210,49 @@ public final class CalleeSummaryKeys {
         addClassKeys(keys, owner, bare);
       }
       addClassKeys(keys, ownerSimple, bare);
+      // The method may be declared in a SUPERCLASS of the receiver's class.
+      addAncestorClassKeys(keys, ownerSimple, bare, classToParent);
       // A call whose receiver is the caller's own class names it by its simple name, so the
       // caller's own class is the one the lookup has to ask under.
       if (callerClass != null && ownerSimple != null && ownerSimple.equals(callerSimple)) {
         addClassKeys(keys, callerClass, bare);
+        addAncestorClassKeys(keys, callerSimple, bare, classToParent);
       }
     }
     // The bare key addresses every method of that name and arity, in every class. It is the last
     // resort, because whichever class wrote it first owns it.
     keys.add(bare);
     return List.copyOf(keys);
+  }
+
+  /**
+   * Add the keys of the classes a class INHERITS from, nearest ancestor first.
+   *
+   * <p>The hierarchy table is keyed by SHORT class name, so the walk starts from the short name and
+   * every ancestor is asked under its short name. The walk is bounded: a hierarchy that loops back
+   * on itself would otherwise spin forever.
+   *
+   * @param keys the key set to add to
+   * @param className the class whose ancestors to ask, by short name
+   * @param bare the bare method key
+   * @param classToParent the class hierarchy, keyed by short class name
+   */
+  private static void addAncestorClassKeys(
+      LinkedHashSet<String> keys,
+      String className,
+      String bare,
+      java.util.Map<String, String> classToParent) {
+    if (className == null || className.isEmpty()) return;
+    if (classToParent == null || classToParent.isEmpty()) return;
+    String current = className;
+    for (int depth = 0; depth < MAX_HIERARCHY_DEPTH; ++depth) {
+      String parent = classToParent.get(current);
+      if (parent == null || parent.isEmpty()) return;
+      addClassKeys(keys, parent, bare);
+      String next = simpleName(parent);
+      if (next == null || next.equals(current)) return;
+      current = next;
+    }
   }
 
   /**
@@ -205,10 +272,33 @@ public final class CalleeSummaryKeys {
    */
   public static Resolution lookup(
       FunctionSummaryCache cache, String calleeSig, String callerEnclosingClass) {
+    return lookup(cache, calleeSig, callerEnclosingClass, java.util.Map.of());
+  }
+
+  /**
+   * The summary a call site resolves to, and the key it was found under.
+   *
+   * <p>This is the hierarchy-aware form of {@link #lookup(FunctionSummaryCache, String, String)}:
+   * the candidates also include the classes the receiver's class inherits from, so a call to an
+   * inherited method finds the summary of the class that DECLARES it rather than the one key that
+   * every class of that method name shares.
+   *
+   * @param cache the summary cache to read
+   * @param calleeSig the callee signature as the IR spells it
+   * @param callerEnclosingClass the class of the function the call sits in, or null when it has
+   *     none
+   * @param classToParent the class hierarchy, keyed by SHORT class name; may be empty
+   * @return the resolution; never null, and the summary is never null
+   */
+  public static Resolution lookup(
+      FunctionSummaryCache cache,
+      String calleeSig,
+      String callerEnclosingClass,
+      java.util.Map<String, String> classToParent) {
     if (cache == null) return new Resolution(null, FunctionSummary.empty());
     FunctionSummary first = null;
     String firstKey = null;
-    for (String key : keysFor(calleeSig, callerEnclosingClass)) {
+    for (String key : keysFor(calleeSig, callerEnclosingClass, classToParent)) {
       FunctionSummary candidate = cache.get(key);
       if (candidate == null) continue;
       // A candidate is usable when it carries facts, when it knows it has a body,

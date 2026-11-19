@@ -217,6 +217,10 @@ internal sealed partial class TacTranslator
                 TranslateBlock(methodDeclaration.Body);
                 return;
             case ConstructorDeclarationSyntax constructor:
+                // The INITIALIZER comes first, because that is the order the
+                // program runs in: the base constructor has already run by the
+                // time the derived constructor's first statement executes.
+                TranslateConstructorInitializer(constructor.Initializer);
                 TranslateBlock(constructor.Body);
                 return;
             case AccessorDeclarationSyntax accessor:
@@ -3993,6 +3997,151 @@ internal sealed partial class TacTranslator
             return null;
         }
         int arity = creation.ArgumentList is null ? 0 : creation.ArgumentList.Arguments.Count;
+        return $"{ownerName}.<init>/{arity}";
+    }
+
+    /// <summary>
+    /// Lower a constructor's INITIALIZER: the <c>: base(x)</c> or the
+    /// <c>: this(x)</c> that names the constructor this one delegates to.
+    /// </summary>
+    /// <param name="initializer">the initializer, or null when there is none</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Why the initializer is not part of the body.</b> In Roslyn's syntax
+    /// tree the initializer is a SIBLING of the constructor's body, not a
+    /// statement inside it. A frontend that walks the body never visits it,
+    /// so the base constructor's body is not part of the derived
+    /// constructor's flow: the base constructor appears in the TAC as a
+    /// function that nothing calls, and the constructor chain is invisible to
+    /// the call graph.
+    /// </para>
+    /// <para>
+    /// <b>Why the shape is a CALL.</b> A constructor call IS a call, and the
+    /// engine's call graph reads CALL instructions. The JVM bytecode front end
+    /// lowers the implicit <c>super()</c> the same way -- a CALL to
+    /// <c>owner.&lt;init&gt;/arity</c> -- and the engine already knows that a
+    /// constructor's name is <c>&lt;init&gt;</c>. So the key is the one the
+    /// sidecar already writes for a constructor, the same one the sink
+    /// catalogue matches.
+    /// </para>
+    /// <para>
+    /// <b>Why the receiver comes first.</b> The TAC's call convention is
+    /// "args[0] is the receiver, args[1..] are the actual arguments", and the
+    /// engine reads every argument index against it: the catalogue's
+    /// <c>arg_index</c> names a USER argument, and the engine adds the
+    /// receiver offset itself. The receiver of a base constructor call is
+    /// <c>this</c> -- the base constructor runs on the very object the derived
+    /// constructor is building.
+    /// </para>
+    /// <para>
+    /// The call has no destination: a constructor produces no value.
+    /// </para>
+    /// </remarks>
+    private void TranslateConstructorInitializer(ConstructorInitializerSyntax? initializer)
+    {
+        if (initializer is null)
+        {
+            // No initializer written. The compiler inserts a call to the base
+            // constructor, but that call is not in the SOURCE, and the sidecar
+            // reports what the source says.
+            return;
+        }
+
+        if (_ownerType is null)
+        {
+            // The constructor's own type could not be resolved, so there is
+            // no `this` to call the base constructor on. The loss is
+            // recorded rather than passed over in silence.
+            Report(initializer, "UNHANDLED_NODE",
+                "the constructor initializer's enclosing type could not be resolved",
+                initializer.GetType().Name);
+            return;
+        }
+
+        // The ARGUMENTS are evaluated before the call, so they are lowered
+        // first: their instructions come before the call in the stream, which
+        // is the order they run in.
+        var userArguments = new List<Operand>();
+        foreach (var argument in initializer.ArgumentList.Arguments)
+        {
+            var operand = TranslateExpression(argument.Expression, store: false);
+            if (operand is null)
+            {
+                // An argument the frontend could not lower. The value is
+                // unknown rather than silently clean.
+                var unknown = NewTemp();
+                Emit(InstructionKind.HAVOC, dest: unknown, node: argument);
+                operand = unknown;
+            }
+            userArguments.Add(operand);
+        }
+
+        var callee = ConstructorInitializerSignature(initializer, userArguments.Count);
+        if (callee is null)
+        {
+            Report(initializer, "UNHANDLED_NODE",
+                "the constructor the initializer names could not be resolved",
+                initializer.GetType().Name);
+            return;
+        }
+
+        var arguments = new List<Operand> { OperandFor(_ownerType) };
+        arguments.AddRange(userArguments);
+
+        Emit(InstructionKind.CALL, calleeSig: callee, args: arguments, node: initializer);
+    }
+
+    /// <summary>
+    /// The callee key of the constructor a constructor initializer names.
+    /// </summary>
+    /// <param name="initializer">the initializer</param>
+    /// <param name="arity">
+    /// the number of arguments the initializer passes, used when the
+    /// constructor itself cannot be resolved
+    /// </param>
+    /// <returns>
+    /// the callee key in the <c>owner.&lt;init&gt;/arity</c> form, or null
+    /// when neither the constructor nor the type it belongs to can be resolved
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The RESOLVED constructor is the best answer, because it carries the
+    /// overload the arguments select and the type that declares it. Roslyn
+    /// binds the initializer to that constructor, so the key is read off the
+    /// symbol rather than guessed from the spelling.
+    /// </para>
+    /// <para>
+    /// Without a symbol the TYPE is still recoverable: the base type for a
+    /// <c>: base(...)</c>, this type for a <c>: this(...)</c>. The arity then
+    /// comes from the argument list. That is the honest answer for a source
+    /// that does not compile, and it still names the constructor the
+    /// initializer means.
+    /// </para>
+    /// </remarks>
+    private string? ConstructorInitializerSignature(ConstructorInitializerSyntax initializer, int arity)
+    {
+        var symbol = _model.GetSymbolInfo(initializer).Symbol as IMethodSymbol;
+        if (symbol is not null)
+        {
+            string owner = TypeMapper.FullName(symbol.ContainingType);
+            return $"{owner}.<init>/{symbol.Parameters.Length}";
+        }
+
+        var ownerType = initializer.ThisOrBaseKeyword.Kind() switch
+        {
+            SyntaxKind.BaseKeyword => _ownerType?.BaseType,
+            SyntaxKind.ThisKeyword => _ownerType,
+            _ => null,
+        };
+        if (ownerType is null)
+        {
+            return null;
+        }
+        string ownerName = TypeMapper.FullName(ownerType);
+        if (string.IsNullOrEmpty(ownerName))
+        {
+            return null;
+        }
         return $"{ownerName}.<init>/{arity}";
     }
 

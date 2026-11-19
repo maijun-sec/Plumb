@@ -98,6 +98,18 @@ public final class AnalysisContext {
   private final MethodSummaryCache methodSummaryCache;
 
   /**
+   * Which summary key belongs to which method of this program.
+   *
+   * <p>It answers one question: may this key be published, or does more than one method claim it? A
+   * key that two methods claim is not published at all, because publishing it would make the
+   * summary a call site reads depend on WHICH method the engine happened to write first. The index
+   * is built from the program, so the answer does not depend on the analysis order.
+   *
+   * @see org.plumb.dfa.summary.SummaryKeyOwnership
+   */
+  private final org.plumb.dfa.summary.SummaryKeyOwnership summaryKeyOwnership;
+
+  /**
    * The per-function fact bag, PER THREAD.
    *
    * <p>See the constructor for why the per-function state is thread-local rather than shared.
@@ -371,6 +383,7 @@ public final class AnalysisContext {
             ? new MethodSummaryCache(null, methodSummaryCapacity(program))
             : methodSummaryCache;
     this.budget = budget == null ? new AnalysisBudget(config.tuning()) : budget;
+    this.summaryKeyOwnership = org.plumb.dfa.summary.SummaryKeyOwnership.of(program);
     this.currentFunctionStartNanos = System.nanoTime();
     // Per-function state is PER THREAD, not per context.
     //
@@ -492,6 +505,28 @@ public final class AnalysisContext {
 
   public FunctionSummaryCache summaryCache() {
     return summaryCache;
+  }
+
+  /**
+   * The program-wide index of which summary key belongs to which method.
+   *
+   * @return the index; never null
+   */
+  public org.plumb.dfa.summary.SummaryKeyOwnership summaryKeyOwnership() {
+    return summaryKeyOwnership;
+  }
+
+  /**
+   * The class hierarchy of the program, keyed by SHORT class name.
+   *
+   * <p>A summary lookup uses it to ask under the class that DECLARES an inherited method, rather
+   * than under the one key that every class of that method name shares.
+   *
+   * @return the hierarchy; empty when there is no program
+   */
+  public java.util.Map<String, String> classHierarchy() {
+    if (program == null) return java.util.Map.of();
+    return program.classToParent();
   }
 
   /**

@@ -284,7 +284,9 @@ public abstract class PathSensitiveCheckerBase implements DfaChecker {
         && ins.calleeSig != null
         && ins.dest instanceof TacOperand.TacVar destVar) {
       FunctionSummary calleeSummary =
-          CalleeSummaryKeys.lookup(ctx.summaryCache(), ins.calleeSig, ctx.currentClass()).summary();
+          CalleeSummaryKeys.lookup(
+                  ctx.summaryCache(), ins.calleeSig, ctx.currentClass(), ctx.classHierarchy())
+              .summary();
       boolean retAlloc = calleeSummary.returnOps().stream().anyMatch(op -> isAllocReturnOp(op));
       if (retAlloc) {
         allocSites.put(destVar, ins);

@@ -116,8 +116,46 @@ public final class KeyedMemberUseIndex {
     if (program == null) {
       return List.of();
     }
+    // The classes the program declares: the qualified name of each class, and the SIMPLE
+    // name it is also known by.
+    //
+    // The qualified name is the class's IDENTITY. Two classes that share a simple name --
+    // "Holder" in two modules -- are two classes, and the members they declare are two
+    // members. The simple name is only a SPELLING, and it is what a receiver's type says.
+    // The simple name -> every class that goes by it.
+    Map<String, List<String>> classesBySimpleName = new LinkedHashMap<>();
     // The declarations: class -> the private members it declares.
     Map<String, Set<String>> declaredPrivate = new LinkedHashMap<>();
+
+    // ---- the first pass: what classes are there, and what do they declare ---------------
+    for (TacFunction fn : program.functions()) {
+      // A language whose values live in fields has its own tracker and its own path. This
+      // index is about namespaces, and the two must not both answer for the same program.
+      if (!fn.sourceLanguage().hasKeyedContainers()) {
+        continue;
+      }
+      String enclosing = fn.enclosingClass();
+      if (enclosing == null || enclosing.isBlank()) {
+        continue;
+      }
+      String simple = simpleName(enclosing);
+      List<String> sameName = classesBySimpleName.computeIfAbsent(simple, k -> new ArrayList<>());
+      if (!sameName.contains(enclosing)) {
+        sameName.add(enclosing);
+      }
+
+      // The declaration fact: the class's own function carries the class's member
+      // annotations. A front end that puts them on every function of the class produces
+      // the same map twice, and the member is still one member.
+      for (Map.Entry<String, List<String>> entry : fn.fieldAnnotations().entrySet()) {
+        List<String> annotations = entry.getValue();
+        if (annotations == null || !annotations.contains(PRIVATE)) {
+          continue;
+        }
+        declaredPrivate.computeIfAbsent(enclosing, k -> new LinkedHashSet<>()).add(entry.getKey());
+      }
+    }
+
     // The assignments: "class.member" -> where the FIRST one is.
     Map<String, Assignment> assigned = new LinkedHashMap<>();
     // The reads that name a class: "class.member".
@@ -127,60 +165,44 @@ public final class KeyedMemberUseIndex {
     // The classes whose members a computed access could have reached.
     Set<String> opaqueClasses = new HashSet<>();
 
+    // ---- the second pass: the accesses --------------------------------------------------
     for (TacFunction fn : program.functions()) {
-      // A language whose values live in fields has its own tracker and its own path. This
-      // index is about namespaces, and the two must not both answer for the same program.
       if (!fn.sourceLanguage().hasKeyedContainers()) {
         continue;
       }
-      String enclosing = fn.enclosingClass();
-
-      // The declaration fact: the class's own function carries the class's member
-      // annotations. A front end that puts them on every function of the class produces
-      // the same map twice, and the member is still one member.
-      if (enclosing != null && !enclosing.isBlank()) {
-        for (Map.Entry<String, List<String>> entry : fn.fieldAnnotations().entrySet()) {
-          List<String> annotations = entry.getValue();
-          if (annotations == null || !annotations.contains(PRIVATE)) {
-            continue;
-          }
-          declaredPrivate
-              .computeIfAbsent(enclosing, k -> new LinkedHashSet<>())
-              .add(entry.getKey());
-        }
-      }
-
       for (TacInstruction ins : fn.instructions()) {
         boolean store = ins.kind == TacInstruction.Kind.ARRAYSTORE;
         boolean load = ins.kind == TacInstruction.Kind.ARRAYLOAD;
         if (!store && !load) {
           continue;
         }
-        String owner = ownerClass(ins, fn);
+        // The classes the access could be made on. One class when the receiver says which
+        // one; every class of that SIMPLE name when the receiver only says the spelling.
+        List<String> owners = ownerClasses(ins, fn, classesBySimpleName);
         String key = stringKey(ins.lhs2);
         if (key == null) {
           // A computed access: `this[name]`. It names no member, so any member of the
           // receiver could be the one that was touched.
-          if (owner != null) {
-            opaqueClasses.add(owner);
-          } else {
+          if (owners.isEmpty()) {
             // The receiver's class is unknown too, so the access could be any object's:
             // nothing at all can be concluded about any member.
             return List.of();
           }
+          opaqueClasses.addAll(owners);
           continue;
         }
         if (store) {
-          if (owner == null) {
+          for (String owner : owners) {
             // An assignment that cannot be placed is not a member of any class we can name.
-            continue;
+            assigned.putIfAbsent(owner + "." + key, new Assignment(fn, ins.line, ins.column));
           }
-          assigned.putIfAbsent(owner + "." + key, new Assignment(fn, ins.line, ins.column));
         } else {
-          if (owner == null) {
+          if (owners.isEmpty()) {
             readNames.add(key);
           } else {
-            readMembers.add(owner + "." + key);
+            for (String owner : owners) {
+              readMembers.add(owner + "." + key);
+            }
           }
         }
       }
@@ -192,6 +214,8 @@ public final class KeyedMemberUseIndex {
       if (opaqueClasses.contains(ownerClass)) {
         continue;
       }
+      // A read that named the class only by its SPELLING reaches every class of that name.
+      // The member it read is therefore read in every class that goes by the name.
       for (String member : entry.getValue()) {
         String full = ownerClass + "." + member;
         Assignment assignment = assigned.get(full);
@@ -212,6 +236,23 @@ public final class KeyedMemberUseIndex {
   }
 
   /**
+   * The simple name of a class: its last dot-separated segment.
+   *
+   * <p>The last DOT, not the last {@code '$'}: a nested class is {@code Outer$Inner}, and the
+   * engine's own keys spell it that way.
+   *
+   * @param qualified the class name, qualified or not
+   * @return the simple name
+   */
+  private static String simpleName(String qualified) {
+    if (qualified == null || qualified.isEmpty()) {
+      return "";
+    }
+    int dot = qualified.lastIndexOf('.');
+    return dot < 0 ? qualified : qualified.substring(dot + 1);
+  }
+
+  /**
    * Where an assignment is: the function that holds it, and the place in the source.
    *
    * <p>The place matters: the reporter tells two findings apart by (file, line, rule, cwe), so a
@@ -225,7 +266,7 @@ public final class KeyedMemberUseIndex {
   private record Assignment(TacFunction function, int line, int column) {}
 
   /**
-   * The class whose namespace an access belongs to.
+   * The classes whose namespace an access could belong to.
    *
    * <p>The receiver is the thing the member hangs on, so its class is the class the member belongs
    * to. The receiver says that twice: as its type ({@code other:Config} names {@code Config}), and
@@ -233,32 +274,51 @@ public final class KeyedMemberUseIndex {
    * itself).
    *
    * <p>{@code this} is the object the code is written for, so its member belongs to the class the
-   * code is written in.
+   * code is written in -- and that class is known by its QUALIFIED name, so the access is placed on
+   * exactly one class.
+   *
+   * <p>A receiver whose TYPE names a class names it by its SPELLING: a type says "Config", not
+   * "which module's Config". So the access is placed on EVERY class that goes by that name -- the
+   * conservative reading, because the other one is how a member that IS read gets reported as
+   * unread.
    *
    * @param ins the access
    * @param fn the function the access is written in
-   * @return the class, or null when the access names none
+   * @param classesBySimpleName every class of the program, by its simple name
+   * @return the classes the access could be made on; empty when it names none
    */
-  private static String ownerClass(TacInstruction ins, TacFunction fn) {
+  private static List<String> ownerClasses(
+      TacInstruction ins, TacFunction fn, Map<String, List<String>> classesBySimpleName) {
     if (ins == null || fn == null) {
-      return null;
+      return List.of();
     }
     if (!(ins.lhs1 instanceof TacOperand.TacVar receiver)) {
-      return null;
+      return List.of();
+    }
+    String enclosing = fn.enclosingClass();
+    // `this` is checked FIRST: the receiver named `this` is the object the code is written
+    // for, so its class is the class the code is written in -- and that is known exactly.
+    // A front end that types `this` with the class says the same thing in a spelling that
+    // does not say WHICH module's class it is.
+    if ("this".equals(receiver.name())) {
+      if (enclosing == null || enclosing.isBlank()) {
+        return List.of();
+      }
+      return List.of(enclosing);
     }
     String byType = FieldOpClassifier.classNameOfType(receiver.type());
     if (byType != null && !byType.isEmpty()) {
-      return byType;
+      List<String> candidates = classesBySimpleName.get(simpleName(byType));
+      return candidates == null ? List.of() : candidates;
     }
-    if ("this".equals(receiver.name())) {
-      return fn.enclosingClass();
+    // A static member: the receiver IS the class. The receiver is named the way the class
+    // is named -- by its qualified name, or by the simple name the source spells.
+    if (enclosing != null && !enclosing.isBlank()) {
+      if (enclosing.equals(receiver.name()) || simpleName(enclosing).equals(receiver.name())) {
+        return List.of(enclosing);
+      }
     }
-    // A static member: the receiver IS the class.
-    String enclosing = fn.enclosingClass();
-    if (enclosing != null && enclosing.equals(receiver.name())) {
-      return enclosing;
-    }
-    return null;
+    return List.of();
   }
 
   /**
