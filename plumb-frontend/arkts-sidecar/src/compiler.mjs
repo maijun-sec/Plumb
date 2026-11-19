@@ -297,7 +297,53 @@ export function openProgram(request) {
     checker: program.getTypeChecker(),
     components: [...components],
     addedComponents: added,
+    rootNames,
+    sdk,
   };
+}
+
+/**
+ * A program over the project's files, with ONE file's text replaced.
+ *
+ * <p>The compiler truncates the body of a class whose body holds a nested
+ * class, and the repair takes the nested class out of the text the compiler
+ * reads. The repaired text has to reach the compiler AT THE FILE'S OWN PATH:
+ * at any other path the relative imports would resolve elsewhere, and the file
+ * would lose its place in the program.
+ *
+ * <p>So the program is built over a compiler host that answers for that one
+ * file and reads the rest from the disk.
+ *
+ * <p>A program is an expensive thing to build -- it parses the SDK's
+ * declarations as well as the project -- so this is asked for only when a
+ * file's class body actually needs the repair.
+ *
+ * @param {object} session the open program, as {@link openProgram} returned it
+ * @param {string} path the file whose text is replaced
+ * @param {string} text the repaired text
+ * <p>A failure here is NOT swallowed: it is thrown, so that the caller falls
+ * back to the original file AND says that the repair did not happen. A repair
+ * that silently does not happen is a loss that looks like a finding that is
+ * not there.
+ *
+ * @returns {{program: object, checker: object}|null} the program, or null when
+ *     there is no program to rebuild
+ * @throws {Error} when the program cannot be built
+ */
+export function programWithPatchedFile(session, path, text) {
+  if (!session || !session.program) return null;
+  const options = compilerOptions(session.sdk, session.components ?? []);
+  const host = ts.createCompilerHost(options, true);
+  const originalReadFile = host.readFile.bind(host);
+  const wanted = path.replace(/\\/g, "/");
+  host.readFile = (fileName) => {
+    if (fileName.replace(/\\/g, "/") === wanted) {
+      return text;
+    }
+    return originalReadFile(fileName);
+  };
+  const program = ts.createProgram(session.rootNames, options, host);
+  return { program, checker: program.getTypeChecker() };
 }
 
 /** The texts of the project's files, as far as they can be read. */

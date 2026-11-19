@@ -17,7 +17,13 @@ import { readFileSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 
 import { IR_VERSION, OP, PROBLEM, PROTOCOL_VERSION, stamp } from "./protocol.mjs";
-import { openProgram, sdkDeclarations, sourceFileOf, syntaxErrorsOf } from "./compiler.mjs";
+import {
+  openProgram,
+  programWithPatchedFile,
+  sdkDeclarations,
+  sourceFileOf,
+  syntaxErrorsOf,
+} from "./compiler.mjs";
 import { Translator } from "./translator.mjs";
 
 /** The project the sidecar currently holds. */
@@ -31,12 +37,14 @@ let session = null;
  * project.
  */
 class Session {
-  constructor(program, checker, sourceRoot, components, addedComponents) {
+  constructor(program, checker, sourceRoot, components, addedComponents, rootNames, sdk) {
     this.program = program;
     this.checker = checker;
     this.sourceRoot = sourceRoot;
     this.components = components;
     this.addedComponents = addedComponents;
+    this.rootNames = rootNames;
+    this.sdk = sdk;
   }
 
   /** The module a file belongs to: its path under the source root, without the extension. */
@@ -117,6 +125,8 @@ function openProject(request) {
       request.sourceRoot,
       opened.components,
       opened.addedComponents,
+      opened.rootNames,
+      opened.sdk,
     );
     const response = {
       ...stamp(),
@@ -179,16 +189,65 @@ function translate(request) {
     text = "";
   }
   const language = request.language ?? "ARKTS";
-  const translator = new Translator({
-    checker: session.checker,
-    sourceFile,
-    moduleName: session.moduleNameOf(path),
-    language,
-    text,
-  });
-  let result;
+  const moduleName = session.moduleNameOf(path);
+  const makeTranslator = (sourceText, checker, sourceFileNode) =>
+    new Translator({
+      checker: checker ?? session.checker,
+      sourceFile: sourceFileNode,
+      moduleName,
+      language,
+      text: sourceText,
+    });
+  let result = null;
   try {
-    result = translator.translateSourceFile();
+    // The compiler truncates the body of a class whose body holds a nested
+    // class, and the members that came after it come back as fragments of
+    // the FILE. The repair takes the nested class out of the text the
+    // compiler reads, so that the compiler builds the outer class whole.
+    const plan = makeTranslator(text, null, sourceFile).planClassBodyRepair(sourceFile);
+    if (plan) {
+      const patched = programWithPatchedFile(session, path, plan.patchedText);
+      if (patched) {
+        const patchedSourceFile = sourceFileOf(patched.program, path);
+        if (patchedSourceFile) {
+          try {
+            result = makeTranslator(
+              plan.patchedText,
+              patched.checker,
+              patchedSourceFile,
+            ).translateRepaired(patchedSourceFile, plan);
+          } catch (e) {
+            // The repair is an improvement, not a requirement: a failure in it
+            // must not cost the file its translation.
+            console.error(
+              `plumb-arkts-sidecar: the repaired tree could not be lowered: ${describe(e)}`,
+            );
+            result = null;
+          }
+        } else {
+          // The program was built but does not hold the file: the repair did
+          // not happen, and that has to be said.
+          console.error(
+            `plumb-arkts-sidecar: the repaired program holds no source file for ${path}`,
+          );
+        }
+      } else {
+        console.error(
+          `plumb-arkts-sidecar: the repaired program could not be built for ${path}`,
+        );
+      }
+    }
+  } catch (e) {
+    // The repair is optional; the original path below still runs. The failure
+    // is reported, because a repair that silently does not happen is a loss
+    // that looks like a finding that is not there.
+    console.error(`plumb-arkts-sidecar: the class body could not be repaired: ${describe(e)}`);
+    result = null;
+  }
+  try {
+    if (!result) {
+      result = makeTranslator(text, null, sourceFile).translateSourceFile();
+    }
   } catch (e) {
     return failure(OP.TRANSLATE, `the file could not be translated: ${describe(e)}`);
   }

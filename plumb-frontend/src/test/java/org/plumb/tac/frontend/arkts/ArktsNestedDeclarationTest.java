@@ -35,6 +35,7 @@ import org.plumb.tac.frontend.TacFrontend;
 import org.plumb.tac.ir.IrPrecision;
 import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacFunction;
+import org.plumb.tac.ir.TacInstruction;
 
 /**
  * The ArkTS frontend: a declaration inside a function is a function of its own.
@@ -129,6 +130,21 @@ class ArktsNestedDeclarationTest {
       }
       """;
 
+  /** A class whose body holds a nested class and a method with a sink after it. */
+  private static final String NESTED_THEN_SINK =
+      """
+      export class Holder {
+        class BodyInner {
+          go(): void {
+            const value = 1;
+          }
+        }
+        plain(cmd: string): void {
+          eval(cmd);
+        }
+      }
+      """;
+
   @Test
   @DisplayName("a function declared inside a function is in the program")
   void aFunctionDeclaredInsideAFunctionIsInTheProgram(@TempDir Path directory) throws IOException {
@@ -174,17 +190,19 @@ class ArktsNestedDeclarationTest {
   }
 
   @Test
-  @DisplayName("a class whose body holds a nested class is reported as not analysed")
-  void aClassWhoseBodyHoldsANestedClassIsReportedAsNotAnalysed(@TempDir Path directory)
-      throws IOException {
+  @DisplayName("a class whose body holds a nested class is analysed whole")
+  void aClassWhoseBodyHoldsANestedClassIsAnalysedWhole(@TempDir Path directory) throws IOException {
     TacFrontend.ParseResult result = parse(NESTED_IN_BODY, directory);
 
     assertThat(result.precision())
         .as(
-            "the compiler's syntax tree does not contain this class's members, so the class was not"
-                + " analysed whole -- and the analysis has to say so, because a loss that is not"
-                + " reported is a finding that is not there")
-        .isNotEqualTo(IrPrecision.SOURCE_FULL);
+            "the compiler's syntax tree stops this class at the nested class, so the repair takes"
+                + " the nested class out of the text the compiler reads -- and with the class whole,"
+                + " there is nothing left to report")
+        .isEqualTo(IrPrecision.SOURCE_FULL);
+    assertThat(result.functions())
+        .as("the nested class is a class of its own, and its method is a function of the program")
+        .anyMatch(function -> "go".equals(function.name()));
   }
 
   @Test
@@ -200,17 +218,19 @@ class ArktsNestedDeclarationTest {
   }
 
   @Test
-  @DisplayName("a class with a constructor whose body holds a nested class is reported as not analysed")
-  void aClassWithAConstructorWhoseBodyHoldsANestedClassIsReportedAsNotAnalysed(
+  @DisplayName("a class with a constructor whose body holds a nested class keeps the constructor")
+  void aClassWithAConstructorWhoseBodyHoldsANestedClassKeepsTheConstructor(
       @TempDir Path directory) throws IOException {
     TacFrontend.ParseResult result = parse(NESTED_WITH_CONSTRUCTOR, directory);
 
-    assertThat(result.precision())
+    assertThat(result.functions())
         .as(
             "a class that declares its own constructor has THAT constructor as its own function --"
-                + " and the loss has to be carried by whichever function is the class's own, or the"
-                + " class would be reported whole while half of it was never analysed")
-        .isNotEqualTo(IrPrecision.SOURCE_FULL);
+                + " and the repair must not lose it")
+        .anyMatch(function -> "<init>".equals(function.name()));
+    assertThat(result.precision())
+        .as("with the class whole, the file keeps its full precision")
+        .isEqualTo(IrPrecision.SOURCE_FULL);
   }
 
   @Test
@@ -226,7 +246,87 @@ class ArktsNestedDeclarationTest {
         .isEqualTo(IrPrecision.SOURCE_FULL);
   }
 
+  @Test
+  @DisplayName("a member after a nested class is a member of its class, not a call of the module")
+  void aMemberAfterANestedClassIsAMemberOfItsClass(@TempDir Path directory) throws IOException {
+    List<TacFunction> functions = functionsOf(NESTED_THEN_SINK, directory);
+
+    assertThat(functions)
+        .as(
+            "the member after the nested class used to come back as a fragment of the FILE, and a"
+                + " fragment was lowered as MODULE-level code -- so the program grew a function the"
+                + " source does not have, and a call that names a method the source does not have"
+                + " there")
+        .noneMatch(
+            function ->
+                function.instructions().stream()
+                    .anyMatch(
+                        instruction ->
+                            instruction.kind == TacInstruction.Kind.CALL
+                                && instruction.calleeSig != null
+                                && instruction.calleeSig.startsWith("plain/")));
+  }
+
+  @Test
+  @DisplayName("the sink in a member after a nested class is a call")
+  void theSinkInAMemberAfterANestedClassIsACall(@TempDir Path directory) throws IOException {
+    List<TacFunction> functions = functionsOf(NESTED_THEN_SINK, directory);
+
+    assertThat(functions)
+        .as(
+            "a fragment has no call expression inside it -- the member's body is not a tree the"
+                + " compiler gave over -- so the sink in it was not a call at all, and a sink that is"
+                + " not a call cannot be matched by any rule")
+        .anyMatch(
+            function ->
+                function.instructions().stream()
+                    .anyMatch(
+                        instruction ->
+                            instruction.kind == TacInstruction.Kind.CALL
+                                && instruction.calleeSig != null
+                                && instruction.calleeSig.contains("eval")));
+  }
+
+  @Test
+  @DisplayName("the repair does not move the sink: it stays on the line the source has it on")
+  void theRepairDoesNotMoveTheSink(@TempDir Path directory) throws IOException {
+    List<TacFunction> functions = functionsOf(NESTED_THEN_SINK, directory);
+    int sinkLine = lineOf(NESTED_THEN_SINK, "eval(cmd);");
+
+    assertThat(functions)
+        .as(
+            "the repair takes the nested class out of the text the compiler reads -- and it has to"
+                + " keep that text's LENGTH and its LINE COUNT, or every position below the nested"
+                + " class moves and the finding points at a line the reader cannot see")
+        .anyMatch(
+            function ->
+                function.instructions().stream()
+                    .anyMatch(
+                        instruction ->
+                            instruction.kind == TacInstruction.Kind.CALL
+                                && instruction.calleeSig != null
+                                && instruction.calleeSig.contains("eval")
+                                && instruction.line == sinkLine));
+  }
+
   // ---- helpers -------------------------------------------------------------------------------
+
+  /**
+   * The one-based line of the source line that holds a piece of text.
+   *
+   * <p>The expected line is derived from the source rather than written down, so that the
+   * assertion says what it means -- the lowering and the repair agree about where the sink is --
+   * and does not become a number that has to be edited when the fixture changes.
+   */
+  private static int lineOf(String source, String needle) {
+    List<String> lines = source.lines().toList();
+    for (int i = 0; i < lines.size(); i += 1) {
+      if (lines.get(i).contains(needle)) {
+        return i + 1;
+      }
+    }
+    throw new IllegalArgumentException("the source has no line that holds " + needle);
+  }
 
   /** The functions of the source, translated through the real sidecar. */
   private static List<TacFunction> functionsOf(String source, Path directory) throws IOException {

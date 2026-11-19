@@ -37,6 +37,12 @@
 
 import { CONST, KIND, PRECISION, PROBLEM, TYPE, constOp, varOp } from "./protocol.mjs";
 
+import {
+  blankNestedClasses,
+  membersOfTruncatedClasses,
+  truncatedClasses,
+} from "./class-body-repair.mjs";
+
 import * as ts from "ohos-typescript";
 
 /**
@@ -414,6 +420,67 @@ export class Translator {
       moduleStatements.push(statement);
     }
     flushModule();
+    return { functions };
+  }
+
+  /**
+   * The plan to repair a class body the compiler truncated.
+   *
+   * <p>The compiler's tree for a class whose body holds a nested class is cut
+   * short at the nested class: the members that came after it come back as
+   * fragments of the FILE, and a sink inside one of them is not lowered as a
+   * call at all. The repair takes the nested class out of the text the
+   * compiler reads, so that the compiler builds the outer class whole.
+   *
+   * <p>Nothing is repaired when the file has no truncated class, so the common
+   * case costs one walk of the file's own statements.
+   *
+   * @param {object} sourceFile the compiler's source file
+   * @return {object|null} the plan, or null when there is nothing to repair
+   */
+  planClassBodyRepair(sourceFile) {
+    const truncated = truncatedClasses(sourceFile, this.text ?? "");
+    if (truncated.length === 0) return null;
+    const members = membersOfTruncatedClasses(sourceFile, truncated);
+    // Only a nested CLASS is taken out of the text. The fragments of the
+    // other members are left alone: they are what the compiler needs to put
+    // the outer class back together.
+    const nested = members.filter((member) => ts.isClassDeclaration(member));
+    if (nested.length === 0) return null;
+    return {
+      truncated,
+      nested,
+      patchedText: blankNestedClasses(this.text ?? "", nested, sourceFile),
+    };
+  }
+
+  /**
+   * Translate a repaired tree, and the nested classes the repair took out of it.
+   *
+   * <p>The repaired tree holds the outer class whole. The nested classes are
+   * NOT in it -- they were taken out of the text -- so they are lowered from
+   * the compiler's own tree, where they are complete.
+   *
+   * <p>The fragments are not lowered at all: in the repaired tree they are
+   * members of the class they belong to, and lowering them as module-level
+   * code is what invented the calls the source does not have.
+   *
+   * @param {object} patchedSourceFile the compiler's tree of the repaired text
+   * @param {object} plan the plan from {@link planClassBodyRepair}
+   * @return {{functions: object[]}} the functions
+   */
+  translateRepaired(patchedSourceFile, plan) {
+    const previous = this.sourceFile;
+    let functions;
+    try {
+      this.sourceFile = patchedSourceFile;
+      functions = this.translateSourceFile().functions;
+    } finally {
+      this.sourceFile = previous;
+    }
+    for (const node of plan.nested) {
+      functions.push(...this.lowerClass(node));
+    }
     return { functions };
   }
 
