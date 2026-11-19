@@ -364,6 +364,7 @@ export class Translator {
     this.state = null;
     this.pendingFunctions = [];
     this.inlineCounter = 0;
+    this.objectCounter = 0;
     this.enclosingBase = undefined;
   }
 
@@ -2904,6 +2905,13 @@ export class Translator {
 
   /**
    * An object literal.
+   *
+   * <p>The members of a literal are NOT all properties with an initialiser. A
+   * method, a getter and a setter are members of their own, and a shorthand
+   * property stands for a name rather than for a value. Reading
+   * `property.initializer` for those shapes gets `undefined`, and an undefined
+   * value is a member that was never lowered: the body of a method would be
+   * gone, and with it every sink in it, with no drop and no problem to say so.
    */
   lowerObjectLiteral(node) {
     const dest = this.state.newTemp(TYPE.UNKNOWN);
@@ -2914,6 +2922,11 @@ export class Translator {
       args: [],
       ...this.position(node),
     });
+    // The identity of the literal. An object literal has no name of its own,
+    // so its members are given one: the function table is keyed by the
+    // signature, and two literals that each have a `run` would otherwise share
+    // one signature and the second one's body would replace the first one's.
+    const owner = `object$${this.objectCounter += 1}`;
     for (const property of node.properties) {
       if (ts.isSpreadAssignment(property)) {
         this.lowerObjectSpread(property, dest);
@@ -2923,7 +2936,20 @@ export class Translator {
         continue;
       }
       const key = constOp(CONST.STRING, nameTextOf(property.name) ?? "");
-      const value = this.lowerExpression(property.initializer);
+      let value;
+      if (
+        ts.isMethodDeclaration(property) ||
+        ts.isGetAccessor(property) ||
+        ts.isSetAccessor(property)
+      ) {
+        value = this.lowerObjectMember(property, owner);
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        // `{ cmd }` stands for the value of `cmd`: the name is a shorthand for
+        // the property and the variable of the same name.
+        value = this.lowerExpression(property.name);
+      } else {
+        value = this.lowerExpression(property.initializer);
+      }
       this.emit({
         kind: KIND.ARRAYSTORE,
         lhs1: dest,
@@ -2933,6 +2959,73 @@ export class Translator {
       });
     }
     return dest;
+  }
+
+  /**
+   * A method or an accessor of an object literal.
+   *
+   * <p>Its body is a function of its own, the way the body of a class's method
+   * is: the TAC has no nested function, so the instructions of a body cannot
+   * live in the stream of the function around it. A sink in the body is still
+   * a sink, and it is still found -- but only if the body is lowered at all,
+   * and reading `initializer` (which a method does not have) lowers nothing.
+   *
+   * <p>The body has a scope of its own, so the names it reads from the scope
+   * around it are not in it. That loss is recorded, the way the same loss is
+   * recorded when an immediately invoked function is lifted.
+   *
+   * <p>The VALUE the literal stores is a function, and the TAC has no function
+   * value: the property holds an unknown value. The name of the method is
+   * kept, though, so that a call of `literal.run(x)` finds this function --
+   * the call key of a property call names the method and not the object, and
+   * the engine matches a function by that key.
+   *
+   * @param {object} node the method or accessor
+   * @param {string} owner the identity of the literal the member belongs to
+   * @returns {object} the value the property holds: unknown
+   */
+  lowerObjectMember(node, owner) {
+    const name = node.name ? node.name.text : "<anonymous>";
+    const memberKind = ts.isGetAccessor(node)
+      ? MEMBER_KIND.GETTER
+      : ts.isSetAccessor(node)
+        ? MEMBER_KIND.SETTER
+        : MEMBER_KIND.METHOD;
+    const previous = this.state;
+    const state = this.beginFunction(
+      name,
+      this.functionSignature(node, owner),
+      owner,
+      true,
+    );
+    state.memberKind = memberKind;
+    this.guard(node, () => {
+      this.lowerParameters(node.parameters);
+      // `this` is the object the literal builds. It is not the same object as
+      // the one the literal is written in, and the TAC has no way to say which
+      // one it is, so the receiver is unknown.
+      this.declareThis();
+      if (node.body) {
+        this.lowerBlock(node.body);
+      }
+    });
+    if (node.type) {
+      state.returnType = this.typeOf(node.type);
+    }
+    const finished = this.finishFunction(state);
+    this.state = previous;
+    this.pendingFunctions.push(finished);
+    // The loss is recorded on the function that holds the literal, because
+    // that is the function whose shape changed.
+    this.emitDrop(
+      "object-literal-method",
+      "the body of a method in an object literal is lowered into a function of its own, and the"
+        + " names it read from the scope around it are not in that function; the value the"
+        + " literal stores for it is unknown",
+      IMPACT.STRUCTURE,
+      node,
+    );
+    return this.emitHavoc(node);
   }
 
   /**
