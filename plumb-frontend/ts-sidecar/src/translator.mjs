@@ -59,6 +59,7 @@ import {
   isEmptyStatement,
   isExportAssignment,
   isExportDeclaration,
+  isEnumDeclaration,
   isExpressionStatement,
   isForInStatement,
   isForOfStatement,
@@ -503,6 +504,11 @@ export class Translator {
       if (isClassDeclaration(statement) && statement.name) {
         flushModule();
         functions.push(...this.lowerClass(statement));
+        continue;
+      }
+      if (isEnumDeclaration(statement) && statement.name) {
+        flushModule();
+        functions.push(...this.lowerEnum(statement));
         continue;
       }
       // A top-level statement that is not a function: the module's own code.
@@ -1232,6 +1238,29 @@ export class Translator {
   }
 
   /**
+   * Whether the compiler's syntax tree lost this enum's body.
+   *
+   * <p>An enum that holds a METHOD comes back cut off: the enum's own text
+   * ends at the method's name, and the method comes back as a stray
+   * statement of the file. A well-formed enum ends with a closing brace
+   * AFTER its last member, so an enum whose end is at or before the end of
+   * its last member is one the compiler stopped in the middle of.
+   *
+   * <p>The member at the cut is then not a constant: it is the head of what
+   * was lost. Giving it a value would state a number the source does not
+   * say.
+   *
+   * @param {object} node the enum
+   * @return true when the enum's body is missing
+   */
+  enumBodyIsLost(node) {
+    const members = node?.members ?? [];
+    if (members.length === 0) return false;
+    const membersEnd = members[members.length - 1].end;
+    if (typeof membersEnd !== "number" || typeof node.end !== "number") return false;
+    return node.end <= membersEnd;
+  }
+  /**
    * Whether the compiler's syntax tree lost this class's body.
    *
    * <p>The truncation shows in the POSITIONS. A class the compiler has finished
@@ -1424,6 +1453,11 @@ export class Translator {
           this.pendingFunctions.push(...lifted);
           continue;
         }
+        if (isEnumDeclaration(statement) && statement.name) {
+          const lifted = this.lowerEnum(statement, path);
+          this.pendingFunctions.push(...lifted);
+          continue;
+        }
         if (isModuleDeclaration(statement)) {
           this.lowerNamespace(statement, path);
           continue;
@@ -1452,6 +1486,105 @@ export class Translator {
       const taken = this.takePendingFunctions();
       this.pendingFunctions.push(finished, ...taken);
     });
+  }
+
+  /**
+   * An enum: its members are CONSTANTS of the enum object.
+   *
+   * <p>An enum member is an entry of the enum's own namespace, exactly like a
+   * STATIC field of a class is an entry of the class object: the member is
+   * written with a keyed store whose key is the member's name, and that is
+   * where the read `Colour.RED` looks. So the write and the read are ONE
+   * mechanism -- which is what lets the value reach the read.
+   *
+   * <p>A member without an initialiser takes the value after the PREVIOUS
+   * member's value, not after the number of the members: `A = 5, B` gives B
+   * the value 6.
+   *
+   * @param {object} node the enum
+   * @param {string} ownerPath the namespaces above it, dotted
+   * @return {object[]} the enum's own function and its methods
+   */
+  lowerEnum(node, ownerPath) {
+    const simpleName = node.name ? node.name.text : "<anonymous>";
+    // The enum's IDENTITY carries the NAMESPACES it lives in, like every other
+    // declaration that can live in one.
+    const enumName = ownerPath ? `${ownerPath}.${simpleName}` : simpleName;
+    const methods = [];
+    const state = this.beginFunction(enumName, `${this.moduleName}.${enumName}()`, enumName);
+    state.memberKind = MEMBER_KIND.FIELD_INITIALIZER;
+    state.synthetic = true;
+    // The compiler's tree is cut off at the last member when the enum holds a
+    // method: the member at the cut is the head of what was lost, so it gets
+    // no value, and the loss is reported rather than papered over.
+    const lost = this.enumBodyIsLost(node);
+    if (lost) {
+      this.report(
+        PROBLEM.SOURCE_LOWERED,
+        node,
+        "this enum's body was not lowered: the compiler's syntax tree does not contain it",
+      );
+    }
+    this.guard(node, () => {
+      // The value the next auto-numbered member takes, and whether it is
+      // known: a member whose value is computed cannot be counted from.
+      let next = 0;
+      let known = true;
+      const members = node.members ?? [];
+      for (const member of lost ? members.slice(0, -1) : members) {
+        if (isMethodDeclaration(member)) {
+          // An enum can have methods, and they are methods of the enum.
+          methods.push(member);
+          continue;
+        }
+        const name = member.name ? member.name.text : undefined;
+        if (!name) {
+          continue;
+        }
+        let value;
+        if (member.initializer) {
+          value = this.lowerExpression(member.initializer);
+          const literal = isNumericLiteral(member.initializer) ? Number(member.initializer.text) : null;
+          if (literal === null || !Number.isFinite(literal)) {
+            known = false;
+          } else {
+            next = literal + 1;
+            known = true;
+          }
+        } else if (known) {
+          // The same shape a numeric literal has, so that the value can be
+          // compared with the literal the source writes next to it.
+          value = constOp(CONST.DOUBLE, String(next));
+          next += 1;
+        } else {
+          // The previous member's value is not known, so this one's is not
+          // either. An unknown value is said so, rather than invented.
+          value = this.emitHavoc(member);
+          this.emitDrop(
+            "ts.enum.memberValueUnknown",
+            "the value of the enum member '" + name + "' is not known",
+            IMPACT.VALUE,
+            member,
+          );
+        }
+        this.emit({
+          kind: KIND.ARRAYSTORE,
+          lhs1: varOp(enumName, TYPE.UNKNOWN),
+          lhs2: constOp(CONST.STRING, name),
+          dest: value,
+          ...this.position(member),
+        });
+      }
+    });
+    const finished = this.finishFunction(state);
+    // The methods are lowered after the enum's own function is finished: a
+    // function of its own needs the stream it belongs to, and the enum's
+    // stream is closed by then.
+    const out = [];
+    for (const method of methods) {
+      out.push(...this.lowerFunctionDeclaration(method, enumName, MEMBER_KIND.METHOD));
+    }
+    return [finished, ...out, ...this.takePendingFunctions()];
   }
   lowerStatement(node) {
     if (!node) return;
@@ -1550,6 +1683,12 @@ export class Translator {
       // Collected first, pushed afterwards: see the nested function above for
       // why the order of the evaluation matters here.
       const nested = this.lowerNested(node, () => this.lowerClass(node));
+      this.pendingFunctions.push(...nested);
+      return;
+    }
+    if (isEnumDeclaration(node)) {
+      // A nested enum is an enum of its own; its members are lifted.
+      const nested = this.lowerNested(node, () => this.lowerEnum(node));
       this.pendingFunctions.push(...nested);
       return;
     }
