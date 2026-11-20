@@ -282,6 +282,37 @@ const SCALAR_TYPES = new Set([
 ]);
 
 /**
+ * The object an arrow function is bound to.
+ *
+ * An arrow function defined in a method sees that method's `$this`.  It is not
+ * a variable the arrow function copies, so it is not one of its captures.
+ */
+const THE_OBJECT = "this";
+
+/**
+ * The superglobals: the variables that are in scope in every scope.
+ *
+ * That is what makes a superglobal a superglobal, so an arrow function does
+ * not capture one either -- it is always there.
+ *
+ * The names are the ones the parser writes, and they carry no sigil: `$_GET`
+ * is the name `_GET`.
+ */
+const SUPERGLOBALS = new Set([
+  "GLOBALS",
+  "argc",
+  "argv",
+  "_GET",
+  "_POST",
+  "_SERVER",
+  "_COOKIE",
+  "_FILES",
+  "_ENV",
+  "_REQUEST",
+  "_SESSION",
+]);
+
+/**
  * The precision a function carries, given its drops.
  *
  * A drop says what was lost. A drop that cost the function its SEMANTICS
@@ -2714,7 +2745,9 @@ export class Translator {
     const name = `closure$${this.closureCounter}`;
     const owner = this.closureOwner();
     const qualified = `${owner}$${name}`;
-    const uses = node.uses ?? [];
+    // An arrow function has no `use` list: the parser gives none, because its
+    // captures are implicit.  The list has to be worked out from the body.
+    const uses = node.kind === "arrowfunc" ? this.implicitCapturesOf(node) : (node.uses ?? []);
     const captureNames = uses.map((use) => this.nameText(use) ?? "cap");
     const state = this.beginFunction(name, "", outer?.enclosingClass ?? null);
     state.signature = this.closureSignature(node, qualified, captureNames);
@@ -2797,6 +2830,137 @@ export class Translator {
       captures: captureNames,
     });
     return object;
+  }
+
+  /**
+   * The variables an arrow function captures.
+   *
+   * An arrow function captures by value the outer variables its body uses, and
+   * the parser does not say which those are: an `arrowfunc` has no `use` list,
+   * while a closure has one.  So the list has to be worked out from the body.
+   *
+   * The rule is the language's own: a name the body READS, that the arrow
+   * function does not bind itself, and that is not in scope everywhere, is
+   * captured.  A name the body ASSIGNS is the arrow function's own -- the
+   * capture is by value, so assigning to it does not reach the outer variable,
+   * and the arrow function does not capture the outer one.
+   *
+   * The captures are handed over exactly like an explicit `use` list: copied
+   * into the closure object, and passed as the closure's leading parameters.
+   *
+   * @param {object} node the arrow function
+   * @return {object[]} the captures, as the `use` entries they stand for
+   */
+  implicitCapturesOf(node) {
+    const bound = new Set();
+    for (const parameter of node.arguments ?? []) {
+      const name = this.nameText(parameter.name);
+      if (name) bound.add(name);
+    }
+    const reads = new Set();
+    this.collectArrowReads(node.body, bound, reads);
+    const candidates = [...reads].filter((name) => !bound.has(name));
+    const names = candidates.filter((name) => !this.isAlwaysInScope(name)).sort();
+    return names.map((name) => ({ kind: "variable", name, byref: false }));
+  }
+
+  /**
+   * Whether a name is in scope everywhere, so it is not a capture.
+   *
+   * @param {string} name the name
+   * @return {boolean} whether the name is in scope everywhere
+   */
+  isAlwaysInScope(name) {
+    return name === THE_OBJECT || SUPERGLOBALS.has(name);
+  }
+
+  /**
+   * The names an arrow function's body reads, and the names it binds.
+   *
+   * @param {object} node the expression
+   * @param {Set<string>} bound the names the arrow function binds itself
+   * @param {Set<string>} reads the names the body reads
+   */
+  collectArrowReads(node, bound, reads) {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const item of node) this.collectArrowReads(item, bound, reads);
+      return;
+    }
+    if (typeof node.kind !== "string") return;
+    if (node.kind === "variable") {
+      // A variable variable (`$$x`) names a slot whose name is only known at
+      // run time, so there is no name to capture.
+      if (typeof node.name === "string") reads.add(node.name);
+      return;
+    }
+    if (node.kind === "assign") {
+      // What the body WRITES to is the arrow function's own, and what it
+      // reads on the right is the enclosing scope's.
+      this.collectArrowTarget(node.left, bound, reads);
+      this.collectArrowReads(node.right, bound, reads);
+      return;
+    }
+    if (node.kind === "list") {
+      this.collectArrowTarget(node, bound, reads);
+      return;
+    }
+    if (node.kind === "closure") {
+      // A nested closure has its OWN scope: its body is not read here.  Its
+      // `use` list, on the other hand, is resolved in THIS scope.
+      for (const use of node.uses ?? []) this.collectArrowReads(use, bound, reads);
+      return;
+    }
+    if (node.kind === "arrowfunc") {
+      // A nested arrow function captures from THIS scope, so the names its
+      // body reads are read here too -- but the names it binds are its own,
+      // and a name it binds must not become a capture of THIS one.
+      const inner = new Set(bound);
+      for (const parameter of node.arguments ?? []) {
+        const name = this.nameText(parameter.name);
+        if (name) inner.add(name);
+      }
+      const innerReads = new Set();
+      this.collectArrowReads(node.body, inner, innerReads);
+      for (const name of innerReads) {
+        if (!inner.has(name)) reads.add(name);
+      }
+      return;
+    }
+    for (const key of Object.keys(node)) {
+      if (key === "kind" || key === "loc") continue;
+      const value = node[key];
+      if (value && typeof value === "object") this.collectArrowReads(value, bound, reads);
+    }
+  }
+
+  /**
+   * The names an assignment target binds.
+   *
+   * @param {object} node the target
+   * @param {Set<string>} bound the names the arrow function binds itself
+   * @param {Set<string>} reads the names the target reads
+   */
+  collectArrowTarget(node, bound, reads) {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const item of node) this.collectArrowTarget(item, bound, reads);
+      return;
+    }
+    if (node.kind === "variable") {
+      if (typeof node.name === "string") bound.add(node.name);
+      return;
+    }
+    if (node.kind === "list") {
+      for (const item of node.items ?? []) this.collectArrowTarget(item, bound, reads);
+      return;
+    }
+    if (node.kind === "entry") {
+      this.collectArrowTarget(node.value, bound, reads);
+      return;
+    }
+    // A property or an element is not a name: the RECEIVER is read, though.
+    this.collectArrowReads(node, bound, reads);
   }
 
   /**
