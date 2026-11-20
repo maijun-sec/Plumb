@@ -93,7 +93,7 @@
 | **包可见性（`internal`）** | **没有专属节点**：是**导入路径**上的作用域规则（`…/internal/…` 只能被同一父目录树导入） | **本方案不实现包级可见性** ⇒ 引擎把 `internal` 包**当公开包分析**（过近似：不会漏报，只可能把不可达的包当成可达）⇒ 记一条 `drop(SEMANTICS, "pkg.visibility")` 让精度标注可见（现状：侧车完全没有可见性处理（审计记 `NOT FOUND`，`10-go.md:194`、`:270`）） | — | — | **不需新 IR**（取舍声明，见 §13 的 `U10`） |
 | import（别名/点/空） | `ast.GenDecl{Tok: token.IMPORT}` → `ast.ImportSpec{Path, Name}` | 无节点；别名解析到真实 import path（现状正确） | — | — | — |
 | **import 解析 / vendoring** | **没有专属节点**：是**构建期**事实（`vendor/` 目录树 + `vendor/modules.txt`） | **侧车不解析 `vendor/` 目录**：依赖必须由 **Java 侧在请求的 import 列表里点名**（带 export data 或源码目录）⇒ **被点名的 vendored 依赖照常降级**，未被点名的不存在于 TAC 里（现状：现状正是如此（审计 `10-go.md:193`：「a vendored dependency is resolved only if the Java side names it in the request's import list with export data or a source directory; the sidecar does not consult…」）） | — | — | **不需新 IR**（边界声明，见 §13 的 `U9`） |
-| **Go 版本假设**（`go.mod` 的 `go` 指令 / 构建标签） | **没有专属节点**：是**构建期**事实（`go.mod` 的 `go 1.22` 指令；`//go:build` 标签，侧车已读，`session.go:1191-1202`） | 声明为**会话级假设** `goVersion`；影响点只有一处：**循环变量捕获语义**（pre-1.22 共享 cell / post-1.22 每轮新 cell，见 §6.1「闭包**按引用捕获**」行）；版本未知 ⇒ 取**更保守**的一侧（pre-1.22 共享 cell）并记 `drop(SEMANTICS, "go.version")`（现状：**完全没有版本假设** ⇒ pre-1.22 程序被按 post-1.22 语义静默分析（审计 `10-go.md:180`、`:258`、`:324`）） | — | — | **不需新 IR**（会话级假设，见 §6.1 / §7.1） |
+| **Go 版本假设**（`go.mod` 的 `go` 指令 / 构建标签） | **没有专属节点**：是**构建期**事实（`go.mod` 的 `go 1.22` 指令；`//go:build` 标签，侧车已读，`session.go:1191-1202`） | 声明为**会话级假设** `goVersion`；影响点只有一处：**循环变量捕获语义**（pre-1.22 共享 cell / post-1.22 每轮新 cell，见 §6.1「闭包**按引用捕获**」行）；版本未知 ⇒ 记 `drop(SEMANTICS, "go.version")`；已知 ≥1.22 ⇒ 记 `drop(SEMANTICS, "go.loopVar.scope")`（**⚠ R20 实测更正**：见 §7.1 同名段 —— 「取哪一侧」的方向反了，而现状是**共享 cell**，不是 post-1.22） | — | — | **不需新 IR**（会话级假设，见 §6.1 / §7.1） |
 | `const`/`var`（含分组） | `ast.GenDecl{Tok: token.CONST\|token.VAR}` → `ast.ValueSpec{Names, Values, Type}` | `TacOperand.Const`（现状正确，`translator.go:2127-2164`）；包级变量由合成 `STATIC_INITIALIZER` 承载 | `STATIC_INITIALIZER` | — | IR-E |
 | `iota` | **没有专属节点**：是 `ast.ValueSpec.Values` 中的 `*ast.Ident{Name:"iota"}` | 由 `go/types` 求值成 `Const` | — | — | — |
 | `func` / 方法 | `ast.FuncDecl{Name, Recv, Type}`；接收者是 `FuncDecl.Recv`（`*ast.FieldList`，首元素 `*ast.StarExpr` 或 `*ast.Ident`） | 一个 `TacFunction`；`ownerType` = 接收者元素类型 | `METHOD` | — | IR-E + **IR-AI** |
@@ -207,7 +207,17 @@
 1. **`range` over int**：`goVersion ≥ 1.22` 时 `for i := range n` 是计数循环（语义自 1.22 才有）；`goVersion < 1.22` 时该语法不存在 ⇒ 不出现。
 2. **循环变量捕获**：`goVersion ≥ 1.22` ⇒ 每轮新 cell；`goVersion < 1.22` ⇒ 共享一个 cell（见 §6.1「闭包**按引用捕获**」行）。
 
-**版本未知** ⇒ 取**更保守**的一侧（pre-1.22 共享 cell：所有闭包看到最后一次赋值 ⇒ 跨迭代的污点流被高估 ⇒ 可能多报、不会漏报），并在该会话记 `drop(SEMANTICS, "go.version")`。**这一条必须在版本未知时显式记账**——现状是「无版本假设 ⇒ 按 post-1.22 静默分析」，那对 pre-1.22 程序是**漏报方向**的错误（审计 `10-go.md:258`：「silently analysed with post-1.22 per-iteration semantics, with no Go-version assumption」）。
+**版本未知** ⇒ 在该会话记 `drop(SEMANTICS, "go.version")`（**版本是构建期事实，调用方才知道；不知道的时候，这条记账才成立**）。
+
+**⚠ R20 实测更正了本段的两句话，方向与现状都跟原来写的相反。**
+
+**更正一：「取哪一侧」的方向反了。** 原来这里写的是「取**更保守**的一侧（pre-1.22 共享 cell：所有闭包看到最后一次赋值 ⇒ 跨迭代的污点流被高估 ⇒ 可能多报、不会漏报）」。**而那个理由是反的**：共享 cell 用在 **≤1.22** 的程序上是**精确**的（程序本来就是这样）；用在 **≥1.22** 的程序上才会**少报** —— 早一轮的值被后一轮覆盖，早一轮的污点就没了。反过来，**per-iteration 模型用在 ≤1.22 的程序上是多报**（每个闭包都看见自己那一轮的值，而程序其实让它们都看见最后一次赋值）⇒ **per-iteration 才是保守的那一侧**。
+
+**更正二：现状不是「按 post-1.22 静默分析」。** R20 的探针实测：侧车把 range 变量**声明一次**，循环体每次往**同一个槽**里写，闭包捕获的就是那个槽 ⇒ **侧车建模的是 pre-1.22 的共享 cell**（`walk` 的 local 只有一个 `item`，闭包的前导参数就是它）。原来写的「现状是按 post-1.22 静默分析 ⇒ 对 pre-1.22 程序是漏报方向」**不成立**：那个方向上侧车本来就是对的。
+
+**⇒ 而按更正后的方向，这一轮记的是**：**版本未知** ⇒ 程序级 `drop(SEMANTICS, "go.version")`；**已知 ≥1.22** ⇒ 函数级 `drop(SEMANTICS, "go.loopVar.scope")`（`go.loopVar.scope` 是 R20 新增的 id，见 `14-实现结果与不可支持清单.md` §3.25）。
+
+**⇒ 而「按版本分两种捕获形态」这一条本身还没有实现**（它是本表 §11.1 改动清单里的一条）：现在**两种版本都用共享 cell**，并把可能出错的那一处记下来。**这是一件独立的事，估计要一轮独立的侧车工作** —— 而按 R19 起的口径，写「估计」，不写「不需要」。
 
 **`switch`（表达式）** = `ast.SwitchStmt{Init, Tag, Body}` → `ast.CaseClause{List, Body}`（现状假分支跳到下一 case 的**体**，`translator.go:1507-1522`）⇒ 修正为跳到下一 case 的**测试**；每个 case 的多个值合并成**一条** `BRANCH ▸ Membership(tag, [1,2])`（IR-C）；`case nil` 用 `Compare(x, EQ, NULL)` 而非 `INSTANCEOF` 打 `NULL` 类型（现状如此，`translator.go:1614-1621`）。`fallthrough` = `ast.BranchStmt{Tok: token.FALLTHROUGH}` ⇒ case 体末尾**不发** `JUMP`（IR-I 的 `fallThrough=true`，现状 `:1884-1890`）。**类型 `switch`** = `ast.TypeSwitchStmt{Assign, Body}` → `ast.CaseClause{List}`（`List` 元素是 `*ast.TypeAssertExpr`，`Type==nil` 即 `case nil`）⇒ `INSTANCEOF t = x (T)` + `BRANCH ▸ TypeTest(x, T, false)`，绑定变量 `MOVE v = x`（narrowing 记 `TacBinding.sourceType`；现状不窄化，`translator.go:1561-1663`）。三者结构进 `TacBranchRegion`。
 
@@ -633,7 +643,7 @@
 | # | 审计的 construct | 审计状态 | 审计证据 (file:line) | 本方案的去向（章节号 + 表行/小节） |
 |---|---|---|---|---|
 | 101 | the closure body as its own function, captures as leading parameters | DEGRADED | `translator.go:396-407` (doc + entry), `:445-459` (captures become `sub.params`), `:466-471` (the closure record and its callee key), `:852-862` (the closure stored in a variable), `:2811-2824` (the call site passes the captures) | §5.1 Go 声明面表「函数字面量（闭包）」行（合成 `TacFunction`，捕获作前导形参；`memberKind` 列 `CLOSURE`（**IR-AG**）；IR-E）+ §6.1 Go 表达式面表「闭包**按引用捕获**」行（捕获变量提升为 **cell 对象**）+ §11.1 改动清单「`translator.go`」行（`translateFuncLit`（`:407-478`）… 捕获按引用（cell 对象化）+ `memberKind=CLOSURE`）+ §14.1 K4（现状捕获形参在引擎侧被**当成污点源** ⇒ cell 形参要能在引擎侧与「真形参」区分） |
-| 102 | capturing a loop variable (pre-1.22 vs post-1.22 semantics) | DEGRADED | `translator.go:489-520` | §5.1 Go 声明面表「**Go 版本假设**（`go.mod` 的 `go` 指令 / 构建标签）」行（会话级 `goVersion`）+ §6.1 Go 表达式面表「闭包**按引用捕获**」行（**按 Go 版本分两种捕获形态**：post-1.22 每轮新 cell / pre-1.22 共享一个 cell）+ §7.1 Go 控制流「**Go 版本假设（全局声明，不只属于 `range`）**」段（版本未知 ⇒ 取更保守的 pre-1.22 共享 cell + `drop(SEMANTICS, "go.version")`）+ §11.1 改动清单「`session.go`」行（读 `go.mod` 的 `go` 指令） |
+| 102 | capturing a loop variable (pre-1.22 vs post-1.22 semantics) | DEGRADED | `translator.go:489-520` | §5.1 Go 声明面表「**Go 版本假设**（`go.mod` 的 `go` 指令 / 构建标签）」行（会话级 `goVersion`）+ §6.1 Go 表达式面表「闭包**按引用捕获**」行（**按 Go 版本分两种捕获形态**：post-1.22 每轮新 cell / pre-1.22 共享一个 cell）+ §7.1 Go 控制流「**Go 版本假设（全局声明，不只属于 `range`）**」段（版本未知 ⇒ 记 `drop(SEMANTICS, "go.version")`；已知 ≥1.22 ⇒ `drop(SEMANTICS, "go.loopVar.scope")`；**⚠ R20 实测更正了「取哪一侧」的方向**）+ §11.1 改动清单「`session.go`」行（读 `go.mod` 的 `go` 指令） |
 | 103 | capturing by reference (the write-back) | DROPPED-SILENT | `translator.go:445-459` | §6.1 Go 表达式面表「闭包**按引用捕获**」行（捕获变量提升为 **cell 对象**：`NEW cell = <go>.cell/0()` + `FIELDSTORE cell.value = x`；闭包体 `FIELDLOAD t = cell.value` / `FIELDSTORE cell.value = v` ⇒ 写回方向恢复；IR 能力列「**不需新 IR**（FIELDLOAD/FIELDSTORE + 会话级 `goVersion` 假设）」）+ §11.1 改动清单「`translator.go`」行（`translateFuncLit`（`:407-478`）、`capturedVariables`（`:489-520`）… 捕获按引用（cell 对象化）+ `memberKind=CLOSURE`） |
 | 104 | immediately-invoked func literals | KEPT | `translator.go:2886-2900` | 保持现状（无需改动） |
 | 105 | function values (`f := g`) | DROPPED-NOTED | `translator.go:2093`, `:2823` | §6.1 Go 表达式面表「函数值 / 方法值 / 方法表达式」行（合成闭包 + `MOVE`；现状 报 UNHANDLED（`translator.go:2284`、`:2302`、`:2305`）；IR-E）+ §11.1 改动清单「`translator.go`」行（`translateSelector`（`:2263-2307`）… 方法值/表达式 → 合成闭包） |
@@ -695,7 +705,7 @@
 
 | 编号 | construct | 现在的落点 | 分类 |
 |---|---|---|---|
-| U-GO1 | Go #102 循环变量捕获语义（pre- vs post-1.22） | §5.1 Go 声明面表「**Go 版本假设**（`go.mod` 的 `go` 指令 / 构建标签）」行 + §6.1 Go 表达式面表「闭包**按引用捕获**」行（**按版本分两种捕获形态**）+ §7.1 Go 控制流「**Go 版本假设（全局声明，不只属于 `range`）**」段 + §11.1 改动清单「`session.go`」行 | **完整表达**（版本未知时取保守侧 + `drop(SEMANTICS, "go.version")`；承载能力 = 既有 `FIELDLOAD`/`FIELDSTORE` + 会话级假设，**不需新 IR**） |
+| U-GO1 | Go #102 循环变量捕获语义（pre- vs post-1.22） | §5.1 Go 声明面表「**Go 版本假设**（`go.mod` 的 `go` 指令 / 构建标签）」行 + §6.1 Go 表达式面表「闭包**按引用捕获**」行（**按版本分两种捕获形态**）+ §7.1 Go 控制流「**Go 版本假设（全局声明，不只属于 `range`）**」段 + §11.1 改动清单「`session.go`」行 | **完整表达**（版本未知时记 `drop(SEMANTICS, "go.version")`、已知 ≥1.22 时记 `drop(SEMANTICS, "go.loopVar.scope")`；**⚠ R20 实测更正了「取哪一侧」的方向** —— 保守的那一侧是 per-iteration，不是共享 cell；承载能力 = 既有 `FIELDLOAD`/`FIELDSTORE` + 会话级假设，**不需新 IR**） |
 | U-GO2 | Go #110 vendoring | §13 的 `U9` + §5.1 Go 声明面表「**import 解析 / vendoring**」行 + §11.1 改动清单「`session.go`」行 | **`C` 档**（**规则本身可静态判定** —— `go.mod` + `vendor/modules.txt` 给出依赖集 —— 本方案**未实现** ⇒ **前端工作量 + 显式边界**，不是 IR 能力缺口：依赖必须由 Java 侧在 import 列表里点名） |
 | U-GO3 | Go #111 `internal` 可见性 | §13 的 `U10` + §5.1 Go 声明面表「**包可见性（`internal`）**」行 | **`C` 档**（**规则本身可静态判定** —— 导入路径的作用域 —— 本方案**未实现** ⇒ **前端工作量 + 显式取舍**，不是 IR 能力缺口：按公开包分析，过近似 + `drop(SEMANTICS, "pkg.visibility")`） |
 
