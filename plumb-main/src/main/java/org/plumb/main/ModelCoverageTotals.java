@@ -21,6 +21,8 @@
  */
 package org.plumb.main;
 
+import java.util.Map;
+import java.util.TreeMap;
 import org.plumb.reporter.ModelCoverage;
 
 /**
@@ -49,6 +51,8 @@ final class ModelCoverageTotals {
   private int instructions;
   private int havocInstructions;
   private int uninterpretedInstructions;
+  private final Map<String, Integer> drops = new TreeMap<>();
+  private final Map<String, Integer> programDrops = new TreeMap<>();
 
   /**
    * Add one analysis run's coverage.
@@ -68,6 +72,23 @@ final class ModelCoverageTotals {
     instructions += coverage.instructions();
     havocInstructions += coverage.havocInstructions();
     uninterpretedInstructions += coverage.uninterpretedInstructions();
+    merge(drops, coverage.drops().byFunction());
+    merge(programDrops, coverage.drops().byProgram());
+  }
+
+  /**
+   * Add one group's counts into another.
+   *
+   * <p>The counts are added, not replaced: two files that lost the same construct count twice, and
+   * a reader wants to know that the construct was lost twice.
+   *
+   * @param into the group being accumulated
+   * @param from the group being added
+   */
+  private static void merge(Map<String, Integer> into, Map<String, Integer> from) {
+    for (Map.Entry<String, Integer> entry : from.entrySet()) {
+      into.merge(entry.getKey(), entry.getValue(), Integer::sum);
+    }
   }
 
   /**
@@ -87,6 +108,7 @@ final class ModelCoverageTotals {
         callSitesUnmodelled,
         instructions,
         havocInstructions,
-        uninterpretedInstructions);
+        uninterpretedInstructions,
+        new ModelCoverage.DropCounts(drops, programDrops));
   }
 }

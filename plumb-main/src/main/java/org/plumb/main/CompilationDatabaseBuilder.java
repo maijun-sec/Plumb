@@ -294,6 +294,9 @@ public final class CompilationDatabaseBuilder {
       for (TacFunction function : parsed.functions()) {
         program.addFunction(function);
       }
+      for (org.plumb.tac.ir.TacDrop drop : parsed.programDrops()) {
+        program.addProgramDrop(drop);
+      }
       for (String problem : parsed.problems()) {
         program.addProgramProblem(
             new TacProgram.FunctionProblem(

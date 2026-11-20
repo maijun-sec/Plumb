@@ -27,6 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import org.plumb.dfa.cg.CallGraphBuilder;
 import org.plumb.dfa.config.EngineConfig;
 import org.plumb.dfa.semantics.LanguageSemantics;
@@ -125,13 +126,25 @@ public final class ModelCoverageComputer {
     int havoc = 0;
     int uninterpreted = 0;
 
+    // The drops, grouped by the construct id.  The two scopes are kept apart: a function-level
+    // drop already moved the precision count, while a program-level drop moved nothing and would
+    // be invisible if the two were mixed into one pile.
+    Map<String, Integer> drops = new TreeMap<>();
+    Map<String, Integer> programDrops = new TreeMap<>();
+
     for (TacProgram program : programs) {
       if (program == null) continue;
       declaredProblems += program.programProblems().size();
+      for (org.plumb.tac.ir.TacDrop drop : program.programDrops()) {
+        programDrops.merge(drop.construct(), 1, Integer::sum);
+      }
       for (TacFunction fn : program.functions()) {
         functions++;
         if (fn.irPrecision() == IrPrecision.SOURCE_FULL) {
           functionsAtFullPrecision++;
+        }
+        for (org.plumb.tac.ir.TacDrop drop : fn.drops()) {
+          drops.merge(drop.construct(), 1, Integer::sum);
         }
         LanguageSemantics semantics = semanticsFor(config, fn.sourceLanguage());
         for (TacInstruction ins : fn.instructions()) {
@@ -172,7 +185,8 @@ public final class ModelCoverageComputer {
         unmodelled,
         instructions,
         havoc,
-        uninterpreted);
+        uninterpreted,
+        new ModelCoverage.DropCounts(drops, programDrops));
   }
 
   /**

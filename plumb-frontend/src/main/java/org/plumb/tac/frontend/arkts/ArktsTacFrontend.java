@@ -36,6 +36,7 @@ import org.plumb.tac.frontend.sidecar.SidecarProtocol;
 import org.plumb.tac.frontend.sidecar.SidecarTacMapper;
 import org.plumb.tac.ir.IrPrecision;
 import org.plumb.tac.ir.SourceLanguage;
+import org.plumb.tac.ir.TacDrop;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacProgram;
 
@@ -270,7 +271,11 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
       // The precision is the worst precision any of the file's functions carries: a
       // function that lost semantics makes the whole file degraded.
       IrPrecision precision = TacFunction.aggregatePrecision(defaultPrecision(), functions);
-      return new ParseResult(functions, problems, precision);
+      // The PROGRAM-LEVEL drops: the losses that belong to the whole program
+      // rather than to one function. They arrive BESIDE the functions, not
+      // inside one of them, and no function owns them.
+      List<TacDrop> programDrops = SidecarTacMapper.toProgramDrops(response);
+      return new ParseResult(functions, problems, precision, programDrops);
     } catch (IOException | RuntimeException ex) {
       // A frontend must be TOTAL. A broken file reports a problem and yields
       // whatever could be parsed; an exception escaping here would abort the
@@ -293,7 +298,8 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
   public StructuredParseResult parseStructured(String source, Path path, CompileContext ctx) {
     ParseResult plain = parse(source, path, ctx);
     return new StructuredParseResult(
-        plain.functions(), List.copyOf(structuredProblems), plain.precision());
+        plain.functions(), List.copyOf(structuredProblems), plain.precision(),
+        plain.programDrops());
   }
 
   /**

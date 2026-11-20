@@ -706,6 +706,47 @@ public final class SidecarTacMapper {
   }
 
   /**
+   * The PROGRAM-LEVEL drops of a sidecar response.
+   *
+   * <p><b>Why this exists.</b> The wire protocol carries the program-level losses in the response's
+   * TOP-LEVEL array, beside the functions rather than inside one of them: they belong to the whole
+   * program, so no function owns them. The function-level channel is a different array -- inside each
+   * function's own object -- and the two must not be mixed: a function-level drop lowers that
+   * function's precision, while a program-level one lowers no function at all.
+   *
+   * <p>The protocol names that array two ways -- {@code programDrops} in the wire document,
+   * {@code drops} in the task statement -- and the Go sidecar sends the SAME list under both names.
+   * So the reader takes {@code programDrops} when it is there and falls back to {@code drops}, and
+   * never reads both: reading both would count every program drop twice.
+   *
+   * <p>Whatever the wire says about the scope, a drop that arrives in this channel is a program-level
+   * drop. A sidecar that left the scope field empty must not make the loss look like a function's.
+   *
+   * @param response the sidecar's response object
+   * @return the program-level drops; empty when the response carries none
+   */
+  public static List<TacDrop> toProgramDrops(Json.JsonObject response) {
+    if (response == null) {
+      return List.of();
+    }
+    Json.JsonArray wire = response.getArray("programDrops");
+    if (wire == null) {
+      wire = response.getArray("drops");
+    }
+    if (wire == null) {
+      return List.of();
+    }
+    List<TacDrop> drops = new ArrayList<>();
+    for (int i = 0; i < wire.size(); i++) {
+      TacDrop drop = toDrop(wire.getObject(i));
+      if (drop != null) {
+        drops.add(drop.withScope(TacDrop.Scope.PROGRAM));
+      }
+    }
+    return drops;
+  }
+
+  /**
    * The precision a wire function's drops imply.
    *
    * <p>The sidecar's own claim and the drops are COMBINED, and the worse of

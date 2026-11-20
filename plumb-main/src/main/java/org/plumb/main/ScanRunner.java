@@ -2111,6 +2111,11 @@ public final class ScanRunner {
     for (org.plumb.tac.ir.TacFunction fn : parsed.functions()) {
       program.addFunction(fn);
     }
+    // The losses that belong to the whole program rather than to one function.
+    // They lower no function's precision, so nothing else would carry them.
+    for (org.plumb.tac.ir.TacDrop drop : parsed.programDrops()) {
+      program.addProgramDrop(drop);
+    }
     for (org.plumb.tac.ir.TacProgram.FunctionProblem problem : parsed.problems()) {
       program.addProgramProblem(problem);
     }

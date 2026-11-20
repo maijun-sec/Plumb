@@ -22,6 +22,8 @@
 package org.plumb.reporter;
 
 import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * How much of the analysed code the engine actually modelled.
@@ -104,6 +106,51 @@ public final class ModelCoverage {
   /** The instructions that are calls whose body the frontend could not see. */
   private final int uninterpretedInstructions;
 
+  /** The drops the frontends declared, grouped by construct id. */
+  private final DropCounts drops;
+
+  /**
+   * The drops the frontends declared, grouped by the construct id.
+   *
+   * <p><b>Why a group and not a count.</b> A drop id is a promise: the front end says "this
+   * construct can be lost, and when it is, it is this id". A count says how many losses there were;
+   * it does not say WHICH construct was lost, so a reader cannot tell a project that lost one
+   * unfamiliar construct from a project that lost a familiar one ten times. The id is what makes
+   * the loss nameable, and the name is what a report groups by.
+   *
+   * <p>The two scopes are kept apart, and that is not bookkeeping. A function-level drop lowered
+   * that function's precision, so it already moved {@code functionsAtFullPrecision}. A
+   * program-level drop belongs to no function: it lowered no precision, and it would be invisible
+   * if the two were mixed into one pile.
+   *
+   * @param byFunction the function-level drops, by construct id
+   * @param byProgram the program-level drops, by construct id
+   */
+  public record DropCounts(Map<String, Integer> byFunction, Map<String, Integer> byProgram) {
+
+    public DropCounts {
+      byFunction = byFunction == null ? Map.of() : Map.copyOf(byFunction);
+      byProgram = byProgram == null ? Map.of() : Map.copyOf(byProgram);
+    }
+
+    /** No drops at all. */
+    public static DropCounts none() {
+      return new DropCounts(Map.of(), Map.of());
+    }
+
+    /** How many drops there are, over both scopes. */
+    public int total() {
+      int sum = 0;
+      for (int count : byFunction.values()) {
+        sum += count;
+      }
+      for (int count : byProgram.values()) {
+        sum += count;
+      }
+      return sum;
+    }
+  }
+
   /**
    * A coverage record.
    *
@@ -118,6 +165,7 @@ public final class ModelCoverage {
    * @param instructions the instructions
    * @param havocInstructions the instructions whose value could not be modelled
    * @param uninterpretedInstructions the calls whose body could not be seen
+   * @param drops the drops the frontends declared, grouped by construct id
    */
   public ModelCoverage(
       int functions,
@@ -130,7 +178,8 @@ public final class ModelCoverage {
       int callSitesUnmodelled,
       int instructions,
       int havocInstructions,
-      int uninterpretedInstructions) {
+      int uninterpretedInstructions,
+      DropCounts drops) {
     this.functions = functions;
     this.functionsAtFullPrecision = functionsAtFullPrecision;
     this.declaredProblems = declaredProblems;
@@ -142,11 +191,17 @@ public final class ModelCoverage {
     this.instructions = instructions;
     this.havocInstructions = havocInstructions;
     this.uninterpretedInstructions = uninterpretedInstructions;
+    this.drops = drops == null ? DropCounts.none() : drops;
   }
 
   /** A record for an analysis that modelled nothing: no functions, no call sites. */
   public static ModelCoverage nothingAnalysed() {
-    return new ModelCoverage(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    return new ModelCoverage(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DropCounts.none());
+  }
+
+  /** The drops the frontends declared, grouped by construct id. Never null. */
+  public DropCounts drops() {
+    return drops;
   }
 
   /** The functions in the analysed programs. */
@@ -269,6 +324,10 @@ public final class ModelCoverage {
    * what it counts. A consumer that wants the ratio computes it, rather than trusting a ratio that
    * was rounded somewhere.
    *
+   * <p>The two drop groups are the one exception to "flat": a drop id is a NAME and not a count,
+   * and a count per name is the only way to say WHICH construct was lost. The keys are sorted, so
+   * the same coverage always prints the same bytes.
+   *
    * @return the JSON text, without a trailing newline
    */
   public String toJson() {
@@ -301,8 +360,51 @@ public final class ModelCoverage {
     number(sb, "uninterpretedInstructions", uninterpretedInstructions);
     sb.append(',');
     number(sb, "havocInstructionRatio", havocInstructionRatio());
+    sb.append(',');
+    number(sb, "declaredDrops", drops.total());
+    sb.append(',');
+    counts(sb, "drops", drops.byFunction());
+    sb.append(',');
+    counts(sb, "programDrops", drops.byProgram());
     sb.append('}');
     return sb.toString();
+  }
+
+  /** Write a group of counts as a JSON object, with the keys sorted. */
+  private static void counts(StringBuilder sb, String key, Map<String, Integer> counts) {
+    sb.append('"').append(key).append("\":{");
+    boolean first = true;
+    for (Map.Entry<String, Integer> entry : new TreeMap<>(counts).entrySet()) {
+      if (!first) {
+        sb.append(',');
+      }
+      first = false;
+      jsonString(sb, entry.getKey());
+      sb.append(':').append(entry.getValue());
+    }
+    sb.append('}');
+  }
+
+  /** Write a string as a JSON string. */
+  private static void jsonString(StringBuilder sb, String value) {
+    sb.append('"');
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      if (c == '"' || c == '\\') {
+        sb.append('\\').append(c);
+      } else if (c == '\n') {
+        sb.append("\\n");
+      } else if (c == '\r') {
+        sb.append("\\r");
+      } else if (c == '\t') {
+        sb.append("\\t");
+      } else if (c < 0x20) {
+        sb.append(String.format(Locale.ROOT, "\\u%04x", (int) c));
+      } else {
+        sb.append(c);
+      }
+    }
+    sb.append('"');
   }
 
   private static void number(StringBuilder sb, String key, long value) {

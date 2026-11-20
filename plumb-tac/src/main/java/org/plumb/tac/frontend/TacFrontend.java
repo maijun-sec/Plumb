@@ -103,13 +103,31 @@ public interface TacFrontend {
    *     parsed cleanly. A non-empty list does NOT invalidate the functions -- partial results are
    *     the normal case for a file that references an unresolvable symbol.
    * @param precision the precision of the produced functions
+   * @param programDrops the losses that belong to the WHOLE program rather than to one function: a
+   *     build fact the frontend knows, and no function owns. Empty for a front end that has no
+   *     program-level channel.
    */
-  record ParseResult(List<TacFunction> functions, List<String> problems, IrPrecision precision) {
+  record ParseResult(
+      List<TacFunction> functions,
+      List<String> problems,
+      IrPrecision precision,
+      List<org.plumb.tac.ir.TacDrop> programDrops) {
 
     public ParseResult {
       functions = functions == null ? List.of() : List.copyOf(functions);
       problems = problems == null ? List.of() : List.copyOf(problems);
       precision = precision == null ? IrPrecision.SOURCE_FULL : precision;
+      programDrops = programDrops == null ? List.of() : List.copyOf(programDrops);
+    }
+
+    /**
+     * The three-component form: a file with no program-level drops.
+     *
+     * <p>Most front ends have none, and a front end that does not know about the program-level
+     * channel should not have to say so.
+     */
+    public ParseResult(List<TacFunction> functions, List<String> problems, IrPrecision precision) {
+      this(functions, problems, precision, List.of());
     }
 
     /** A result with no functions and no problems. */
@@ -144,12 +162,27 @@ public interface TacFrontend {
   record StructuredParseResult(
       List<TacFunction> functions,
       List<org.plumb.tac.ir.TacProgram.FunctionProblem> problems,
-      IrPrecision precision) {
+      IrPrecision precision,
+      List<org.plumb.tac.ir.TacDrop> programDrops) {
 
     public StructuredParseResult {
       functions = functions == null ? List.of() : List.copyOf(functions);
       problems = problems == null ? List.of() : List.copyOf(problems);
       precision = precision == null ? IrPrecision.SOURCE_FULL : precision;
+      programDrops = programDrops == null ? List.of() : List.copyOf(programDrops);
+    }
+
+    /**
+     * The three-component form: a file with no program-level drops.
+     *
+     * <p>Most front ends have none, and a front end that does not know about the program-level
+     * channel should not have to say so.
+     */
+    public StructuredParseResult(
+        List<TacFunction> functions,
+        List<org.plumb.tac.ir.TacProgram.FunctionProblem> problems,
+        IrPrecision precision) {
+      this(functions, problems, precision, List.of());
     }
 
     /** A result with no functions and no problems. */
@@ -184,6 +217,7 @@ public interface TacFrontend {
           new org.plumb.tac.ir.TacProgram.FunctionProblem(
               path == null ? "<file>" : path.toString(), "UNHANDLED_NODE", problem, null, -1, -1));
     }
-    return new StructuredParseResult(plain.functions(), structured, plain.precision());
+    return new StructuredParseResult(
+        plain.functions(), structured, plain.precision(), plain.programDrops());
   }
 }

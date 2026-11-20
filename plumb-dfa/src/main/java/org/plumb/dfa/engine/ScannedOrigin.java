@@ -110,6 +110,12 @@ public final class ScannedOrigin {
     for (Map.Entry<String, String> binding : program.lambdaBindings().entrySet()) {
       out.bindLambda(binding.getKey(), binding.getValue());
     }
+    // The program-level losses travel with the program. They belong to no function, so
+    // copying the functions alone would drop them, and a loss that vanishes on the way
+    // through a copy is a loss the report cannot mention.
+    for (org.plumb.tac.ir.TacDrop drop : program.programDrops()) {
+      out.addProgramDrop(drop);
+    }
     return out;
   }
 

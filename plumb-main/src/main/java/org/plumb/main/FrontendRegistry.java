@@ -430,7 +430,11 @@ final class FrontendRegistry implements AutoCloseable {
     try {
       TacFrontend.StructuredParseResult result = frontend.parseStructured(source, file, context);
       return new ParsedSourceFile(
-          result.functions(), result.problems(), language, result.precision());
+          result.functions(),
+          result.problems(),
+          language,
+          result.precision(),
+          result.programDrops());
     } catch (RuntimeException | LinkageError ex) {
       // A frontend must be total, but a compiler API can still fail in a way
       // its author did not anticipate. The scan continues; the file is
@@ -487,10 +491,32 @@ final class FrontendRegistry implements AutoCloseable {
    * @param problems what the frontend could not lower, with the construct and the position
    * @param language the file's language
    * @param precision the precision of the produced functions
+   * @param programDrops the losses that belong to the whole program rather than to one function.
+   *     Empty for a front end that has no program-level channel.
    */
   record ParsedSourceFile(
       List<TacFunction> functions,
       List<TacProgram.FunctionProblem> problems,
       SourceLanguage language,
-      org.plumb.tac.ir.IrPrecision precision) {}
+      org.plumb.tac.ir.IrPrecision precision,
+      List<org.plumb.tac.ir.TacDrop> programDrops) {
+
+    public ParsedSourceFile {
+      programDrops = programDrops == null ? List.of() : programDrops;
+    }
+
+    /**
+     * The four-component form: a file with no program-level drops.
+     *
+     * <p>Most front ends have none, and a front end that does not know about the program-level
+     * channel should not have to say so.
+     */
+    public ParsedSourceFile(
+        List<TacFunction> functions,
+        List<TacProgram.FunctionProblem> problems,
+        SourceLanguage language,
+        org.plumb.tac.ir.IrPrecision precision) {
+      this(functions, problems, language, precision, List.of());
+    }
+  }
 }

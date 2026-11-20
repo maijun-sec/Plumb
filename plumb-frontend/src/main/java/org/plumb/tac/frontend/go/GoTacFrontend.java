@@ -101,6 +101,14 @@ public final class GoTacFrontend implements TacFrontend, AutoCloseable {
   /** Whether the open project's packages were captured rather than discovered. */
   private boolean packagesCaptured;
 
+  /**
+   * The losses that belong to the whole project, as the sidecar reported them when the project was
+   * opened.
+   *
+   * <p>They travel with every file of the project, because they apply to every file of it.
+   */
+  private final List<TacDrop> projectDrops = new ArrayList<>();
+
   /** A frontend that finds the sidecar in the default places. */
   public GoTacFrontend() {
     this(GoSidecarClient.locateExecutable(null), null);
@@ -212,7 +220,15 @@ public final class GoTacFrontend implements TacFrontend, AutoCloseable {
       // a file whose functions were all SOURCE_DEGRADED as SOURCE_FULL -- the file
       // looked complete, and it was not.
       IrPrecision precision = TacFunction.aggregatePrecision(defaultPrecision(), functions);
-      return new ParseResult(functions, problems, precision);
+      // The PROGRAM-LEVEL drops: the losses that belong to the whole program
+      // rather than to one function. They arrive BESIDE the functions, not
+      // inside one of them, and no function owns them.
+      //
+      // The project's own losses travel with every file of the project; the
+      // response's are this file's.
+      List<TacDrop> programDrops = new ArrayList<>(projectDrops);
+      programDrops.addAll(SidecarTacMapper.toProgramDrops(response));
+      return new ParseResult(functions, problems, precision, programDrops);
     } catch (IOException | RuntimeException ex) {
       // A frontend must be TOTAL. A broken file reports a problem and yields
       // whatever could be parsed; an exception escaping here would abort the
@@ -240,7 +256,8 @@ public final class GoTacFrontend implements TacFrontend, AutoCloseable {
   public StructuredParseResult parseStructured(String source, Path path, CompileContext ctx) {
     ParseResult plain = parse(source, path, ctx);
     return new StructuredParseResult(
-        plain.functions(), List.copyOf(structuredProblems), plain.precision());
+        plain.functions(), List.copyOf(structuredProblems), plain.precision(),
+        plain.programDrops());
   }
 
   /**
@@ -378,6 +395,18 @@ public final class GoTacFrontend implements TacFrontend, AutoCloseable {
               -1));
       return;
     }
+
+    // The losses that belong to the WHOLE PROJECT, which the sidecar records when the
+    // project is opened: a package's visibility rule, a vendored dependency tree, the
+    // Go version the packages were built with. They arrive in the openProject response,
+    // not in the translate response, because they are facts about the project rather
+    // than about the file being translated.
+    //
+    // They are kept here and travel with every file of the project: they apply to
+    // every file of it, and a loss that is attached to only one of them would look
+    // like a loss that happened in one file.
+    projectDrops.clear();
+    projectDrops.addAll(SidecarTacMapper.toProgramDrops(response));
 
     // The type checker's diagnostics are the frontend's problems: they say the
     // source does not compile, which the caller must see.

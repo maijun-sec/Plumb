@@ -220,6 +220,9 @@ public final class CaptureTacBuilder {
     for (TacFunction fn : parsed.functions()) {
       program.addFunction(fn);
     }
+    for (org.plumb.tac.ir.TacDrop drop : parsed.programDrops()) {
+      program.addProgramDrop(drop);
+    }
     for (String problem : parsed.problems()) {
       program.addProgramProblem(
           new TacProgram.FunctionProblem(

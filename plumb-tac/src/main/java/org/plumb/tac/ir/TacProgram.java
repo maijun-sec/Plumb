@@ -446,6 +446,24 @@ public final class TacProgram implements java.io.Serializable {
     programDrops.add(new TacDrop(construct, detail, impact, 0, 0, TacDrop.Scope.PROGRAM));
   }
 
+  /**
+   * Records a program-level drop that already exists.
+   *
+   * <p><b>Why this exists.</b> The string form above invents a drop: it has no source position and
+   * a fixed impact. A drop that came from a sidecar has all of that already, and throwing it away
+   * would lose the position the sidecar knew. The scope is forced to PROGRAM: this is the
+   * program-level channel, so a drop that arrives here is a program-level drop whatever scope the
+   * wire gave it.
+   *
+   * @param drop the drop to record; null is ignored
+   */
+  public void addProgramDrop(TacDrop drop) {
+    if (drop == null) {
+      return;
+    }
+    programDrops.add(drop.withScope(TacDrop.Scope.PROGRAM));
+  }
+
   public List<FunctionProblem> programProblems() {
     return Collections.unmodifiableList(programProblems);
   }

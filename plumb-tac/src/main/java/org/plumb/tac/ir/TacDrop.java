@@ -164,6 +164,24 @@ public final class TacDrop implements Serializable {
     return scope;
   }
 
+  /**
+   * The same drop, with a different scope.
+   *
+   * <p><b>Why this exists.</b> The wire carries the scope, but the CHANNEL a drop arrives in
+   * decides it too: the top-level array of a sidecar response is the program-level channel by
+   * protocol, so a drop that arrives there is a program-level drop whatever its own scope field
+   * says. A sidecar that forgot to fill the field in must not make the loss look like a function's.
+   *
+   * @param newScope the scope the drop has
+   * @return the drop under the new scope
+   */
+  public TacDrop withScope(Scope newScope) {
+    if (newScope == null || newScope == scope) {
+      return this;
+    }
+    return new TacDrop(construct, detail, impact, line, column, newScope);
+  }
+
   /** Whether this drop loses semantics (as opposed to only shape, value, or type). */
   public boolean losesSemantics() {
     return impact == Impact.SEMANTICS;
