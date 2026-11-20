@@ -565,28 +565,123 @@ public final class SidecarTacMapper {
       kindName = "STRING";
     }
     String value = wire.getString("value");
-    try {
-      return switch (kindName) {
-        case "INT" -> TacOperand.Const.ofInt(Integer.parseInt(value == null ? "0" : value));
-        case "LONG" -> TacOperand.Const.ofLong(Long.parseLong(value == null ? "0" : value));
-        case "FLOAT" -> TacOperand.Const.ofFloat(Float.parseFloat(value == null ? "0" : value));
-        case "DOUBLE" -> TacOperand.Const.ofDouble(Double.parseDouble(value == null ? "0" : value));
-        case "DECIMAL" -> TacOperand.Const.ofDecimal(value == null ? "0" : value);
-        case "BOOL" -> TacOperand.Const.ofBool(Boolean.parseBoolean(value));
-        case "CHAR" ->
-            TacOperand.Const.ofChar(value == null || value.isEmpty() ? '\0' : value.charAt(0));
-        case "NULL" -> TacOperand.Const.ofNull();
-        // A regular expression literal is not a string literal, but keeping
-        // its text is strictly more informative than dropping it, and the
-        // engine has no separate notion of a pattern.
-        case "REGEX" -> TacOperand.Const.ofString(value == null ? "" : value);
-        default -> TacOperand.Const.ofString(value == null ? "" : value);
-      };
-    } catch (NumberFormatException ex) {
-      // A constant the wire carried in a form this build cannot parse. The
-      // value is unknown, not silently zero.
-      return TacOperand.Const.ofString(value == null ? "" : value);
+    switch (kindName) {
+      case "INT" -> {
+        Long parsed = parseIntegerLiteral(value);
+        return parsed == null
+            ? TacOperand.Const.ofString(value == null ? "" : value)
+            : TacOperand.Const.ofInt(parsed.intValue());
+      }
+      case "LONG" -> {
+        Long parsed = parseIntegerLiteral(value);
+        return parsed == null
+            ? TacOperand.Const.ofString(value == null ? "" : value)
+            : TacOperand.Const.ofLong(parsed);
+      }
+      case "FLOAT" -> {
+        Double parsed = parseDoubleLiteral(value);
+        return parsed == null
+            ? TacOperand.Const.ofString(value == null ? "" : value)
+            : TacOperand.Const.ofFloat(parsed.floatValue());
+      }
+      case "DOUBLE" -> {
+        Double parsed = parseDoubleLiteral(value);
+        return parsed == null
+            ? TacOperand.Const.ofString(value == null ? "" : value)
+            : TacOperand.Const.ofDouble(parsed);
+      }
+      case "DECIMAL" -> {
+        return TacOperand.Const.ofDecimal(value == null ? "0" : value);
+      }
+      case "BOOL" -> {
+        return TacOperand.Const.ofBool(Boolean.parseBoolean(value));
+      }
+      case "CHAR" -> {
+        return TacOperand.Const.ofChar(value == null || value.isEmpty() ? '\0' : value.charAt(0));
+      }
+      case "NULL" -> {
+        return TacOperand.Const.ofNull();
+      }
+      // A regular expression literal is not a string literal, but keeping
+      // its text is strictly more informative than dropping it, and the
+      // engine has no separate notion of a pattern.
+      case "REGEX" -> {
+        return TacOperand.Const.ofString(value == null ? "" : value);
+      }
+      default -> {
+        return TacOperand.Const.ofString(value == null ? "" : value);
+      }
     }
+  }
+
+  /**
+   * Parse an integer literal the way a source file writes one.
+   *
+   * <p>The side cars carry the literal's own text, and that text is not always a decimal number:
+   * {@code 0xFF}, {@code 0o17}, {@code 0b1010} and {@code 1_000} are all integers, and every
+   * language in the tree writes at least one of them.
+   *
+   * <p>{@link Integer#parseInt} reads a decimal number and nothing else, so a hex literal used to
+   * arrive here, fail, and be carried on as a STRING. The constant changed its TYPE without
+   * anybody being told, and every comparison against it was comparing a string.
+   *
+   * @param text the literal as it was written
+   * @return the value, or {@code null} when the text is not an integer literal
+   */
+  private static Long parseIntegerLiteral(String text) {
+    if (text == null || text.isEmpty()) {
+      return null;
+    }
+    String digits = text.replace("_", "");
+    long sign = 1;
+    if (digits.startsWith("-")) {
+      sign = -1;
+      digits = digits.substring(1);
+    } else if (digits.startsWith("+")) {
+      digits = digits.substring(1);
+    }
+    int radix = 10;
+    if (digits.length() > 2 && (digits.startsWith("0x") || digits.startsWith("0X"))) {
+      radix = 16;
+      digits = digits.substring(2);
+    } else if (digits.length() > 2 && (digits.startsWith("0o") || digits.startsWith("0O"))) {
+      radix = 8;
+      digits = digits.substring(2);
+    } else if (digits.length() > 2 && (digits.startsWith("0b") || digits.startsWith("0B"))) {
+      radix = 2;
+      digits = digits.substring(2);
+    }
+    if (digits.isEmpty()) {
+      return null;
+    }
+    try {
+      return sign * Long.parseLong(digits, radix);
+    } catch (NumberFormatException ex) {
+      return null;
+    }
+  }
+
+  /**
+   * Parse a floating-point literal the way a source file writes one.
+   *
+   * <p>The decimal form is {@link Double#parseDouble}'s. The other forms are the ones an integer
+   * literal may carry -- a prefix and a separator -- and they are read as integers, because that
+   * is what they are.
+   *
+   * @param text the literal as it was written
+   * @return the value, or {@code null} when the text is not a number
+   */
+  private static Double parseDoubleLiteral(String text) {
+    if (text == null || text.isEmpty()) {
+      return null;
+    }
+    try {
+      return Double.parseDouble(text);
+    } catch (NumberFormatException ex) {
+      // Not a decimal float; the integer forms are tried below.
+    }
+    Long asInteger = parseIntegerLiteral(text);
+    return asInteger == null ? null : asInteger.doubleValue();
   }
 
   /**

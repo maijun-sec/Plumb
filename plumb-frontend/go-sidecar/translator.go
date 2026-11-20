@@ -2674,8 +2674,29 @@ func (t *translator) translateIdent(ident *ast.Ident) *Operand {
 func (t *translator) translateBasicLit(literal *ast.BasicLit) *Operand {
 	switch literal.Kind {
 	case token.INT:
+		// The literal's own text is not always a decimal number: Go writes
+		// `0xFF`, `0o17`, `0b1010` and `1_000` too. The wire carries a
+		// NUMBER and the reader on the other side parses a decimal one, so
+		// the text is normalised here, where the language's rules are known.
+		//
+		// The text comes back unchanged when it already is a decimal
+		// number: only the literals that would not parse are rewritten.
+		if _, err := strconv.ParseInt(literal.Value, 10, 64); err == nil {
+			return Const("INT", literal.Value)
+		}
+		// Base 0 reads the prefix and allows the separator.
+		if value, err := strconv.ParseInt(literal.Value, 0, 64); err == nil {
+			return Const("INT", strconv.FormatInt(value, 10))
+		}
 		return Const("INT", literal.Value)
 	case token.FLOAT:
+		if _, err := strconv.ParseFloat(literal.Value, 64); err == nil {
+			return Const("DOUBLE", literal.Value)
+		}
+		// A separator in a float is not a decimal digit.
+		if value, err := strconv.ParseFloat(strings.ReplaceAll(literal.Value, "_", ""), 64); err == nil {
+			return Const("DOUBLE", strconv.FormatFloat(value, 'g', -1, 64))
+		}
 		return Const("DOUBLE", literal.Value)
 	case token.IMAG:
 		// An imaginary literal. The TAC has no complex kind, so the value
@@ -2692,6 +2713,13 @@ func (t *translator) translateBasicLit(literal *ast.BasicLit) *Operand {
 			ImpactValue)
 		return result
 	case token.CHAR:
+		// A rune literal is written with its quotes: `'a'`. The wire carries
+		// the CHARACTER, so the quotes come off -- otherwise the value is
+		// the apostrophe, and every rune literal in the program is the same
+		// character.
+		if value, err := strconv.Unquote(literal.Value); err == nil {
+			return Const("CHAR", value)
+		}
 		return Const("CHAR", literal.Value)
 	case token.STRING:
 		value, err := strconv.Unquote(literal.Value)

@@ -57,6 +57,8 @@ import {
   isDoStatement,
   isElementAccessExpression,
   isEmptyStatement,
+  isExportAssignment,
+  isExportDeclaration,
   isExpressionStatement,
   isForInStatement,
   isForOfStatement,
@@ -1067,13 +1069,26 @@ export class Translator {
       const state = this.beginFunction(name, this.functionSignature(initialiser, null), null);
       this.guard(initialiser, () => {
         this.lowerParameters(initialiser.parameters);
-        if (initialiser.body) {
-          this.lowerBlock(initialiser.body);
-        }
+        this.lowerFunctionBody(initialiser.body);
       });
       if (initialiser.type) {
         state.returnType = this.typeOf(initialiser.type);
       }
+      // The lifted function has a scope of its own, so the names its body
+      // reads from the scope around it are not in it. That loss belongs to
+      // the LIFTED function -- it is the one whose TAC cannot see them -- and
+      // it is recorded here, so that function's precision says so instead of
+      // claiming that its body was lowered whole.
+      //
+      // The function AROUND it keeps its precision: the body does not run
+      // where the declaration is, so nothing it does reaches this scope.
+      this.emitDrop(
+        "lifted-function",
+        "the body of this function is lowered into a function of its own, and the names it"
+          + " reads from the scope around it are not in that function",
+        IMPACT.STRUCTURE,
+        initialiser,
+      );
       out.push(this.finishFunction(state));
       // The lifted function is a function of its own: the state that was
       // being lowered is the one that continues.
@@ -1117,10 +1132,19 @@ export class Translator {
     state.synthetic = true;
     this.guard(literal, () => {
       this.lowerParameters(literal.parameters);
-      if (literal.body) {
-        this.lowerBlock(literal.body);
-      }
+      this.lowerFunctionBody(literal.body);
     });
+    // The lifted body has a scope of its own, so the names it reads from the
+    // scope around it are not in it. That loss belongs to the LIFTED function,
+    // and the enclosing one already carries the `iife-body` drop: the body ran
+    // HERE, and its effect on this scope is not here either.
+    this.emitDrop(
+      "lifted-function",
+      "the body of this function is lowered into a function of its own, and the names it"
+        + " reads from the scope around it are not in that function",
+      IMPACT.STRUCTURE,
+      literal,
+    );
     const finished = this.finishFunction(state);
     this.state = previous;
     this.pendingFunctions.push(finished);
@@ -1635,6 +1659,31 @@ export class Translator {
     for (const statement of node.statements) {
       this.lowerStatement(statement);
     }
+  }
+
+  /**
+   * The body of a function.
+   *
+   * <p>A function's body is usually a BLOCK, but an arrow function may have a
+   * single EXPRESSION instead: `() => value`. That expression is code, and it
+   * is what the function returns.
+   *
+   * <p>Lowering an expression as a block lowers NOTHING: a block has
+   * `statements` and an expression does not, so the iteration runs over
+   * `undefined` and throws. The guard turns the throw into a problem, and the
+   * whole body is gone -- with the sink that was in it.
+   */
+  lowerFunctionBody(body) {
+    if (!body) {
+      return;
+    }
+    if (isBlock(body)) {
+      this.lowerBlock(body);
+      return;
+    }
+    // The concise body is an expression, and the function returns its value.
+    const value = this.lowerExpression(body);
+    this.emit({ kind: KIND.RETURN, lhs1: value, ...this.position(body) });
   }
 
   lowerIf(node) {

@@ -2380,6 +2380,19 @@ export class Translator {
         const alias = this.constantAliases.get(this.namespace)?.get(node.name);
         return varOp(alias ?? node.name);
       }
+      case "name": {
+        // A bare CONSTANT -- `PHP_EOL`, `DEBUG` -- is a different node kind
+        // from an identifier, and it had no branch of its own: it fell
+        // through to the fallback, which THROWS, and the throw ends the whole
+        // statement. A statement that mentions a constant -- `if (DEBUG) {
+        // ... }` -- was therefore lowered to nothing at all, and every sink
+        // in it with it.
+        //
+        // The value of the constant is not known here; the NAME it is known
+        // by is, and a `use const` binds an alias to a qualified name.
+        const alias = this.constantAliases.get(this.namespace)?.get(node.name);
+        return varOp(alias ?? node.name);
+      }
       case "number":
         return this.numberConstant(node.value);
       case "string":
@@ -2720,7 +2733,7 @@ export class Translator {
         dest: value,
         ...this.position(node),
       });
-      if (use && use.byRef === true) {
+      if (use && use.byref === true) {
         this.emitDrop(
           "op.assign.byref",
           `the closure captures ${capture} by reference, and the TAC's locations are one name each`,
