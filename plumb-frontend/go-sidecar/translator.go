@@ -966,8 +966,17 @@ func (t *translator) newLabel(prefix string) string {
 // treated it as tainted would report findings the code may not deserve --
 // but the problem that accompanies it says the analysis lost track.
 func (t *translator) havoc(expression ast.Expr) *Operand {
-	operand := t.newTemp(t.info.TypeOf(expression))
-	t.emit(Instruction{Kind: KindHavoc, Dest: operand}, expression.Pos())
+	// The expression can be nil: an absent tag, an absent subject.  The
+	// sidecar must not die on it -- a crash takes the WHOLE file down,
+	// and with it every finding in that file.
+	var goType types.Type
+	var position token.Pos
+	if expression != nil {
+		goType = t.info.TypeOf(expression)
+		position = expression.Pos()
+	}
+	operand := t.newTemp(goType)
+	t.emit(Instruction{Kind: KindHavoc, Dest: operand}, position)
 	return operand
 }
 
@@ -2017,7 +2026,17 @@ func (t *translator) translateSwitch(statement *ast.SwitchStmt) {
 	if statement.Init != nil {
 		t.translateStatement(statement.Init)
 	}
-	discriminant := t.valueOf(statement.Tag)
+	// A switch with no tag is a chain of CONDITIONS, not a chain of
+	// comparisons: `case cond:` means "if cond is true".  There is no
+	// discriminant to compare against, and asking for one used to take
+	// the whole file down -- the tag is nil, and lowering a nil
+	// expression crashed the sidecar.  Each case's condition is
+	// therefore the branch condition itself, exactly as it is in an `if`.
+	expressionless := statement.Tag == nil
+	var discriminant *Operand
+	if !expressionless {
+		discriminant = t.valueOf(statement.Tag)
+	}
 
 	endLabel := t.newLabel("switch_end")
 	caseLabels := make([]string, len(statement.Body.List))
@@ -2047,12 +2066,34 @@ func (t *translator) translateSwitch(statement *ast.SwitchStmt) {
 		t.emit(Instruction{Kind: KindLabel, Label: testLabels[index]}, clause.Pos())
 
 		if len(caseClause.List) == 0 {
-			// The default clause: it matches when nothing else did.
-			t.emit(Instruction{Kind: KindJump, Label: caseLabels[index]}, clause.Pos())
+			// The default clause is not a TEST.  The chain has to continue
+			// past it, or the cases after it would be unreachable -- and
+			// the default's BODY belongs to the noMatch path, which is
+			// where noMatchLabel points.
+			t.emit(Instruction{Kind: KindJump, Label: t.nextCaseLabel(testLabels, index, noMatchLabel)}, clause.Pos())
 			continue
 		}
 
 		for valueIndex, expression := range caseClause.List {
+			if expressionless {
+				// The condition IS the case: the branch is on it, and the
+				// next case is tried when it is false.
+				condition := t.valueOf(expression)
+				falseLabel := t.nextCaseLabel(testLabels, index, noMatchLabel)
+				if valueIndex+1 < len(caseClause.List) {
+					falseLabel = t.newLabel("switch_value")
+				}
+				t.emit(Instruction{
+					Kind:       KindBranch,
+					Lhs1:       condition,
+					TrueLabel:  caseLabels[index],
+					FalseLabel: falseLabel,
+				}, expression.Pos())
+				if valueIndex+1 < len(caseClause.List) {
+					t.emit(Instruction{Kind: KindLabel, Label: falseLabel}, expression.Pos())
+				}
+				continue
+			}
 			value := t.valueOf(expression)
 			comparison := t.newTemp(nil)
 			t.emit(Instruction{
