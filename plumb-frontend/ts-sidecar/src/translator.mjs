@@ -73,12 +73,14 @@ import {
   isImportEqualsDeclaration,
   isImportExpression,
   isIndexSignatureDeclaration,
+  isInterfaceDeclaration,
   isJsxElement,
   isJsxFragment,
   isJsxSelfClosingElement,
   isLabeledStatement,
   isMetaProperty,
   isMethodDeclaration,
+  isModuleDeclaration,
   isNamespaceImport,
   isNewExpression,
   isNonNullExpression,
@@ -115,6 +117,7 @@ import {
   isWhileStatement,
   isArrowFunction,
   isNoSubstitutionTemplateLiteral,
+  isTypeAliasDeclaration,
   isTypeOfExpression,
   SyntaxKind,
 } from "typescript/unstable/ast";
@@ -755,9 +758,12 @@ export class Translator {
    * claims full precision -- that is the shape of a half-lowered program that
    * looks like a whole one.
    */
-  lowerClass(node) {
+  lowerClass(node, ownerPath) {
     const out = [];
-    const className = node.name ? node.name.text : "<anonymous>";
+    const simpleName = node.name ? node.name.text : "<anonymous>";
+    // The class's IDENTITY carries the NAMESPACES it lives in: a class in a
+    // namespace is not the class of the same name at the top level.
+    const className = ownerPath ? `${ownerPath}.${simpleName}` : simpleName;
     const fields = (node.members ?? []).filter((member) => isPropertyDeclaration(member));
     // The compiler's syntax tree for a class whose body holds a nested class is
     // TRUNCATED: the class node stops at the nested class, and the members that
@@ -1368,6 +1374,85 @@ export class Translator {
 
   // ---- statements ---------------------------------------------------------------------------
 
+  /**
+   * A namespace: its members are functions and classes of their own.
+   *
+   * <p>A namespace is a SCOPE, and the scope is part of the identity of
+   * everything declared in it: a class in a namespace is not the class of the
+   * same name at the top level, and two namespaces of one file are not the
+   * same scope. So the members are lifted with the namespace's path in front
+   * of their name.
+   *
+   * <p>The call site spells the same path, because it asks the compiler which
+   * namespaces the receiver's declaration lives in. The two ends of a call
+   * therefore agree on which class they mean -- which is the whole point of
+   * an identity.
+   *
+   * <p>The namespace's own statements -- the constants it declares, the code
+   * it runs -- get a stream of their own: a namespace is initialised when the
+   * module that holds it is loaded, and a stream of its own keeps that
+   * stream's signature unique.
+   *
+   * @param {object} node the namespace
+   * @param {string} ownerPath the namespaces above it, dotted
+   */
+  lowerNamespace(node, ownerPath) {
+    const name = namespaceNameOf(node);
+    if (!name || isAmbientNamespace(node)) {
+      // An AMBIENT declaration (`declare namespace X`, `declare module "x"`):
+      // it declares a shape and runs nothing, so there is nothing to lower --
+      // and nothing to report either.
+      return;
+    }
+    const path = ownerPath ? `${ownerPath}.${name}` : name;
+    // The members are lifted while the namespace's own statements are
+    // lowered, and both change the function being lowered. The state is saved
+    // and put back, or the stream that asked for the namespace would go on
+    // writing into the namespace's stream.
+    this.lowerNested(node, () => {
+      const statements = [];
+      for (const statement of node.body?.statements ?? []) {
+        if (isFunctionDeclaration(statement) && statement.name) {
+          // Collected first, pushed afterwards: see the nested function in
+          // lowerStatement for why the order of the evaluation matters here.
+          const lifted = this.lowerFunctionDeclaration(statement, path);
+          this.pendingFunctions.push(...lifted);
+          continue;
+        }
+        if (isClassDeclaration(statement) && statement.name) {
+          const lifted = this.lowerClass(statement, path);
+          this.pendingFunctions.push(...lifted);
+          continue;
+        }
+        if (isModuleDeclaration(statement)) {
+          this.lowerNamespace(statement, path);
+          continue;
+        }
+        if (isInterfaceDeclaration(statement) || isTypeAliasDeclaration(statement)) {
+          // A TYPE has no run-time effect at all: there is nothing in it for a
+          // dataflow finding to be about, and reporting it would downgrade
+          // every file that happens to declare an interface.
+          continue;
+        }
+        // Everything else is the namespace's own code.
+        statements.push(statement);
+      }
+      if (statements.length === 0) {
+        return;
+      }
+      const state = this.beginFunction("__top", `${this.moduleName}.${path}.__top()`, path);
+      state.synthetic = true;
+      state.memberKind = MEMBER_KIND.METHOD;
+      this.guard(node, () => {
+        for (const statement of statements) {
+          this.lowerStatement(statement);
+        }
+      });
+      const finished = this.finishFunction(state);
+      const taken = this.takePendingFunctions();
+      this.pendingFunctions.push(finished, ...taken);
+    });
+  }
   lowerStatement(node) {
     if (!node) return;
     if (isExpressionStatement(node)) {
@@ -1466,6 +1551,19 @@ export class Translator {
       // why the order of the evaluation matters here.
       const nested = this.lowerNested(node, () => this.lowerClass(node));
       this.pendingFunctions.push(...nested);
+      return;
+    }
+    if (isModuleDeclaration(node)) {
+      // A NAMESPACE is a scope, and the scope is part of the identity of
+      // everything declared in it.
+      this.lowerNamespace(node, null);
+      return;
+    }
+    if (isInterfaceDeclaration(node) || isTypeAliasDeclaration(node)) {
+      // These declare a TYPE, and a type has no run-time effect at all. They
+      // are skipped rather than reported: there is nothing in them for a
+      // dataflow finding to be about, and reporting them would downgrade every
+      // file that happens to declare an interface.
       return;
     }
     if (isImportDeclaration(node)) {
@@ -4004,7 +4102,12 @@ export class Translator {
       // The receiver's CLASS is what a catalogue can name. It is asked of the
       // compiler's own type, because the mapped TAC type cannot tell a class
       // that has a name from one that does not.
-      const name = this.classNameOfNode(base);
+      //
+      // The name carries the NAMESPACES the receiver's declaration lives in:
+      // the call key and the declaration have to spell the same class, and a
+      // class in a namespace is not the class of the same name at the top
+      // level.
+      const name = this.qualifiedNameOfNode(base);
       if (name) {
         return this.qualifiedClassName(name, node);
       }
@@ -4077,6 +4180,61 @@ export class Translator {
    * one. A receiver whose type is not a class at all -- a string, a number --
    * has no class name, and the call's owner is looked for elsewhere.
    */
+  /**
+   * The receiver's name, qualified with the NAMESPACES it lives in.
+   *
+   * <p>A class's identity is the module it lives in plus its name -- and a
+   * class that lives in a namespace has the namespace in its identity too, or
+   * two namespaces of one file would each declare a class of the same name.
+   *
+   * <p>The namespace path is asked of the COMPILER: the receiver's type names
+   * the declaration, and the declaration's symbol knows the namespaces it is
+   * written in. So the key the call site writes and the signature the
+   * declaration carries spell the same class.
+   *
+   * @param {object} node the receiver
+   * @return the qualified name, or undefined when the receiver has no name
+   */
+  qualifiedNameOfNode(node) {
+    const name = this.classNameOfNode(node);
+    if (!name) return undefined;
+    const path = this.namespacePathOfNode(node);
+    return path ? `${path}.${name}` : name;
+  }
+
+  /**
+   * The namespaces the receiver's declaration is written in, outermost first.
+   *
+   * <p>The compiler's symbol chain is the answer: a method's symbol's parent
+   * is the class, the class's parent is the namespace, and the namespace's
+   * parent is the module. The chain therefore names the namespaces on the way
+   * out, and they are read in reverse.
+   *
+   * @param {object} node the receiver
+   * @return the dotted path, or null when the receiver is not in a namespace
+   */
+  namespacePathOfNode(node) {
+    if (!node || !this.checker) return null;
+    let symbol;
+    try {
+      const type = this.checker.getTypeAtLocation(node);
+      symbol = type && type.getSymbol();
+    } catch (e) {
+      return null;
+    }
+    if (!symbol) return null;
+    const parts = [];
+    // The first symbol is the receiver's OWN declaration: the class, or the
+    // namespace. The ones above it are the namespaces it lives in.
+    let current = parentSymbolOf(symbol);
+    while (current) {
+      const name = namespaceNameOfSymbol(current);
+      if (name === null) break;
+      parts.unshift(name);
+      current = parentSymbolOf(current);
+    }
+    return parts.length ? parts.join(".") : null;
+  }
   classNameOfNode(node) {
     if (!node || !this.checker) return undefined;
     try {
@@ -4476,6 +4634,81 @@ const FLOATING_DOMAIN = { kind: "Floating", bits: 53, exponentBits: 11 };
 /** The domain of a type nothing is known about. */
 const DYNAMIC_DOMAIN = { kind: "Dynamic" };
 
+/**
+ * A symbol's parent, or null.
+ *
+ * <p>The two compiler builds spell it differently: the native preview has an
+ * accessor, the classic one a property. Both are asked for, and a build that
+ * has neither simply has no parent to offer.
+ *
+ * @param {object} symbol the symbol
+ * @return the parent symbol, or null
+ */
+function parentSymbolOf(symbol) {
+  if (!symbol) return null;
+  try {
+    if (typeof symbol.getParent === "function") return symbol.getParent() ?? null;
+    return symbol.parent ?? null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * The name of a symbol that is a NAMESPACE, or null when it is not one.
+ *
+ * <p>The chain of symbols above a declaration is walked until it leaves the
+ * namespaces: a class's parent is the namespace it is written in, and a
+ * namespace's parent is the namespace above it -- and then the module, which
+ * is not a namespace.
+ *
+ * @param {object} symbol the symbol
+ * @return the name, or null
+ */
+function namespaceNameOfSymbol(symbol) {
+  const declarations = symbol.declarations ?? [];
+  for (const declaration of declarations) {
+    let kind;
+    try {
+      kind = declaration.kind;
+    } catch (e) {
+      continue;
+    }
+    if (kind === SyntaxKind.ModuleDeclaration) {
+      const name = symbol.name;
+      return typeof name === "string" && name.length > 0 ? name : null;
+    }
+  }
+  return null;
+}
+
+/**
+ * The name of a namespace, or null when it has none.
+ *
+ * @param {object} node the namespace
+ * @return the name
+ */
+function namespaceNameOf(node) {
+  const name = node && node.name;
+  if (!name) return null;
+  const text = name.text;
+  return typeof text === "string" && text.length > 0 ? text : null;
+}
+
+/**
+ * Whether a namespace is an AMBIENT declaration.
+ *
+ * <p>`declare namespace X { ... }` and `declare module "x" { ... }` declare
+ * a shape and run nothing: their members have no bodies. There is nothing to
+ * lower, and nothing lost by not lowering it.
+ *
+ * @param {object} node the namespace
+ * @return whether the namespace is ambient
+ */
+function isAmbientNamespace(node) {
+  const modifiers = node.modifiers ?? [];
+  return modifiers.some((modifier) => modifier.kind === SyntaxKind.DeclareKeyword);
+}
 /**
  * The name of a compiler type's class, when it has one.
  *
