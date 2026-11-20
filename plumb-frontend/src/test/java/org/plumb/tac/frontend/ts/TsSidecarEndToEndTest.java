@@ -136,8 +136,9 @@ class TsSidecarEndToEndTest {
       assertThat(call.calleeSig)
           .as(
               "the owner of a method call is the class that owns the method, so a catalogue can"
-                  + " name it")
-          .isEqualTo("UserStore.find/1");
+                  + " name it -- and the owner is the class's IDENTITY, so the module it lives in"
+                  + " is part of it")
+          .isEqualTo("app.UserStore.find/1");
       assertThat(call.args).hasSizeGreaterThanOrEqualTo(2);
       assertThat(((TacOperand.TacVar) call.args.get(0)).name())
           .as("the receiver comes first")

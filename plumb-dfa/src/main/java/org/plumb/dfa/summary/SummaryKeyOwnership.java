@@ -158,27 +158,30 @@ public final class SummaryKeyOwnership {
     if (fn == null) return List.of();
     String canonical = CalleeKeyNormalizer.canonicalCalleeKey(fn.signature());
     if (canonical == null) return List.of();
+    String bare = CalleeKeyNormalizer.bareCalleeKey(canonical);
 
-    // The class-qualified form: the class that DECLARES the method, spelled the way the IR spells
-    // it.
-    String ownerQualified = canonical;
+    // The DECLARING class, spelled the way the IR spells it. The enclosing class is the class
+    // that DECLARES the method, and it is the only spelling that tells two same-named classes
+    // apart: "modA/store.UserStore" and "modB/store.UserStore" are two classes, while
+    // "UserStore" is two classes and a hope.
+    //
+    // This key is published whatever the signature's own owner says. A signature that already
+    // names its owner ("UserStore.run/1") and one that names no owner at all ("run/1") both
+    // describe the SAME method, and the class that declares it is known either way.
     String enclosing = fn.enclosingClass();
-    if (enclosing != null && !enclosing.isEmpty() && !canonical.contains(".")) {
-      ownerQualified = CalleeSummaryKeys.qualifiedKey(enclosing, canonical);
-      keys.add(ownerQualified);
-      // The same class under its simple name: a call site that knows only the simple name asks for
-      // this one. It addresses EVERY class of that name, so it is shared whenever two classes share
-      // a simple name.
+    if (enclosing != null && !enclosing.isEmpty() && bare != null && !bare.isEmpty()) {
+      keys.add(CalleeSummaryKeys.qualifiedKey(enclosing, bare));
+      // The same class under its simple name: a call site that knows only the simple name asks
+      // for this one. It addresses EVERY class of that name, so it is shared whenever two classes
+      // share a simple name -- and the ownership gate then withholds it. Silence is recoverable;
+      // another class's summary is not.
       String simple = CalleeSummaryKeys.simpleName(enclosing);
       if (simple != null && !simple.equals(enclosing)) {
-        keys.add(CalleeSummaryKeys.qualifiedKey(simple, canonical));
+        keys.add(CalleeSummaryKeys.qualifiedKey(simple, bare));
       }
-    } else {
-      keys.add(ownerQualified);
     }
 
     keys.add(canonical);
-    String bare = CalleeKeyNormalizer.bareCalleeKey(canonical);
     if (bare != null && !bare.isEmpty()) keys.add(bare);
     return List.copyOf(keys);
   }

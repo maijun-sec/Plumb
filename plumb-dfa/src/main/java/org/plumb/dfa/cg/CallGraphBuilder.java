@@ -373,7 +373,7 @@ public final class CallGraphBuilder {
    * @return the keys to index it under
    */
   public static java.util.List<String> ownerKeysOf(TacFunction fn) {
-    java.util.List<String> keys = new java.util.ArrayList<>(2);
+    java.util.List<String> keys = new java.util.ArrayList<>(3);
     if (fn == null) return keys;
     String owner = fn.enclosingClass();
     if (owner == null || owner.isEmpty()) return keys;
@@ -387,9 +387,15 @@ public final class CallGraphBuilder {
     int dot = method.lastIndexOf('.');
     if (dot >= 0) method = method.substring(dot + 1);
     if (method.isEmpty()) return keys;
+    // The owner AS SPELLED: the declaring class with its module. This is the key that tells
+    // two same-named classes apart, and it is the one a call that names the qualified owner
+    // asks for.
+    keys.add(owner + "." + method + methodAndArity);
     // The simple owner name, so a fully qualified call finds a short-named declaration.
     String simpleOwner = owner.substring(owner.lastIndexOf('.') + 1);
-    keys.add(simpleOwner + "." + method + methodAndArity);
+    if (!simpleOwner.equals(owner)) {
+      keys.add(simpleOwner + "." + method + methodAndArity);
+    }
     return keys;
   }
 
@@ -694,17 +700,21 @@ public final class CallGraphBuilder {
     String owner = qualified.substring(0, dot);
     String method = qualified.substring(dot + 1);
     String arity = slash < 0 ? "" : canonical.substring(slash);
-    // The simple owner name, because a declaration's owner is the short class name.
-    String simpleOwner = owner.substring(owner.lastIndexOf('.') + 1);
-    java.util.List<String> candidates = ownerKeyToCanonical.get(simpleOwner + "." + method + arity);
-    if (candidates != null && !candidates.isEmpty()) {
-      return candidates;
-    }
-    // Also try the owner as written: a declaration whose owner is already fully qualified.
+    // The owner AS WRITTEN first. A call that names the fully qualified owner
+    // ("modA/store.UserStore.run/1") must find the declaration of THAT class: the
+    // simple-name key addresses EVERY class of that name, so asking it first would
+    // answer with whichever of them the index happened to hold.
     java.util.List<String> qualifiedCandidates =
         ownerKeyToCanonical.get(owner + "." + method + arity);
     if (qualifiedCandidates != null && !qualifiedCandidates.isEmpty()) {
       return qualifiedCandidates;
+    }
+    // Then the owner by its SIMPLE name, because a declaration's owner is often the
+    // short class name ("JavaSink") while the call names it fully ("demo.JavaSink").
+    String simpleOwner = owner.substring(owner.lastIndexOf('.') + 1);
+    java.util.List<String> candidates = ownerKeyToCanonical.get(simpleOwner + "." + method + arity);
+    if (candidates != null && !candidates.isEmpty()) {
+      return candidates;
     }
     // The MODULE-CLASS spelling. A Scala call to a Java STATIC method names the callee through
     // the Java class's synthetic module class, whose name is the class's name with a '$'

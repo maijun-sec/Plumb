@@ -870,6 +870,17 @@ public final class SinkFamily {
     for (SinkPattern p : patternsFor(language)) {
       if (p.matches(calleeSignature)) return true;
     }
+    // A MODULE-QUALIFIED receiver: see matchPattern for why the module is dropped and
+    // the patterns are tried again on the bare class name.
+    String withoutModule = moduleStripped(calleeSignature);
+    if (withoutModule != null) {
+      for (SinkPattern p : patternsFor(language)) {
+        if (p.matches(withoutModule)) return true;
+      }
+      for (SinkPattern p : patternsFor(language)) {
+        if (p.relaxed().matcher(withoutModule).find()) return true;
+      }
+    }
     if (!simpleName) return false;
     for (SinkPattern p : patternsFor(language)) {
       if (p.relaxed().matcher(calleeSignature).find()) return true;
@@ -921,6 +932,27 @@ public final class SinkFamily {
     for (SinkPattern p : applicable) {
       if (p.matches(calleeSignature)) return p;
     }
+    // A MODULE-QUALIFIED receiver: "modA/store.UserStore.run/1". The class's module is
+    // part of its identity and stays in the key space -- but the catalogue names library
+    // classes by their own name, so the module is dropped and the patterns are tried
+    // again on the bare class name.
+    //
+    // This is a FALLBACK. The receiver is tried as it is first, so a catalogue that names
+    // the qualified form still matches, and only the shape no catalogue names is re-read.
+    //
+    // The re-read is done the way a receiver with NO module is read: the strict form
+    // first, and then the relaxed one.  Stopping at the strict form would quietly take
+    // a claim away -- the relaxed form is what reaches an entry whose class is named but
+    // whose package the receiver does not carry.
+    String withoutModule = moduleStripped(calleeSignature);
+    if (withoutModule != null) {
+      for (SinkPattern p : applicable) {
+        if (p.matches(withoutModule)) return p;
+      }
+      for (SinkPattern p : applicable) {
+        if (p.relaxed.matcher(withoutModule).find()) return p;
+      }
+    }
     if (!simpleName) return null;
     for (SinkPattern p : applicable) {
       if (p.relaxed.matcher(calleeSignature).find()) return p;
@@ -942,6 +974,44 @@ public final class SinkFamily {
    *
    * <p>So the type part is what remains after dropping the trailing method name and the arity.
    */
+  /**
+   * The callee signature with the MODULE prefix dropped from its receiver type.
+   *
+   * <p>A script language's class identity is its module plus its name, so a receiver type can read
+   * "modA/store.UserStore". The module is part of the identity and it stays in the key space -- two
+   * classes of the same name in two modules ARE two classes. But the sink catalogue names library
+   * classes by their own name, so a catalogue entry that says "UserStore.run" has to be able to
+   * claim a call whose receiver carries a module.
+   *
+   * <p>Only a receiver type that carries a module is rewritten, and only when the part after the
+   * module names a CLASS: "database/sql.DB" is a Go package path, and the class in it is "DB" --
+   * which the catalogue already names in full ("database/sql.DB"), so the rewrite is only a
+   * fallback there.
+   *
+   * <p>The rewrite drops the WHOLE module path, not its last segment: a script language's module is
+   * the directory the class lives in, and the catalogue names the class by its own name.
+   *
+   * @param calleeSignature the callee signature
+   * @return the rewritten signature, or null when there is no module to drop
+   */
+  private static String moduleStripped(String calleeSignature) {
+    if (calleeSignature == null) return null;
+    int aritySlash = calleeSignature.lastIndexOf('/');
+    if (aritySlash < 0) return null;
+    String nameAndMethod = calleeSignature.substring(0, aritySlash);
+    int dot = nameAndMethod.lastIndexOf('.');
+    if (dot < 0) return null; // no receiver type at all
+    String receiver = nameAndMethod.substring(0, dot);
+    int moduleSlash = receiver.lastIndexOf('/');
+    if (moduleSlash < 0) return null; // the receiver carries no module
+    String className = receiver.substring(moduleSlash + 1);
+    int classDot = className.lastIndexOf('.');
+    if (classDot < 0) return null; // the receiver is a package path, not a class
+    className = className.substring(classDot + 1);
+    if (className.isEmpty()) return null;
+    return className + nameAndMethod.substring(dot) + calleeSignature.substring(aritySlash);
+  }
+
   private static boolean hasSimpleNameReceiver(String calleeSignature) {
     if (calleeSignature == null) return false;
     int slash = calleeSignature.lastIndexOf('/');
@@ -1010,8 +1080,17 @@ public final class SinkFamily {
     if (calleeSignature == null) return new int[0];
     java.util.ArrayList<Integer> out = new java.util.ArrayList<>();
     boolean simpleName = hasSimpleNameReceiver(calleeSignature);
+    // A MODULE-QUALIFIED receiver: see matchPattern for why the module is dropped and
+    // the patterns are tried again on the bare class name.  The positions have to come
+    // from the SAME pattern that matchPattern settles on, or the two would answer
+    // different questions about one call.
+    String withoutModule = moduleStripped(calleeSignature);
     for (SinkPattern p : patternsFor(language)) {
       boolean matched = p.matches(calleeSignature);
+      if (!matched && withoutModule != null) matched = p.matches(withoutModule);
+      if (!matched && withoutModule != null) {
+        matched = p.relaxed().matcher(withoutModule).find();
+      }
       if (!matched && simpleName) matched = p.relaxed().matcher(calleeSignature).find();
       if (!matched) continue;
       for (int idx : p.argIndexes()) {

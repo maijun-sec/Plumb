@@ -430,12 +430,15 @@ export class Translator {
    * @param {object} options
    * @param {object} options.checker the compiler's checker
    * @param {string} options.moduleName the module the file belongs to
+   * @param {function(string):string} [options.moduleNameOf] the module a FILE
+   *     belongs to; it answers null for a file outside the analysed project
    * @param {string} options.language the source language, for the wire
    * @param {string} options.text the file's text, for the line and column
    */
   constructor(options) {
     this.checker = options.checker;
     this.moduleName = options.moduleName;
+    this.moduleNameOf = options.moduleNameOf;
     this.language = options.language;
     this.text = options.text;
     this.lineStarts = computeLineStarts(options.text ?? "");
@@ -1191,13 +1194,35 @@ export class Translator {
     // thing the same way -- a class's identity is its qualified name -- so the engine can
     // keep two same-named classes apart on every language.
     //
-    // The CALL key still spells the class the simple way (see ownerOf): the sink catalogue
-    // and the call graph match owners by simple name, and that is where the spelling
-    // belongs.
-    const identity = enclosingClass ? `${this.moduleName}.${enclosingClass}` : enclosingClass;
+    // The CALL key spells the class the SAME way, so the two ends of a call agree on
+    // which class they mean.  The sink catalogue still recognises the call, because the
+    // engine drops the module when it looks for a catalogue entry.
+    const identity = enclosingClass ? this.classIdentity(enclosingClass) : enclosingClass;
     const state = new FunctionState(name, signature, identity);
     this.state = state;
     return state;
+  }
+
+  /**
+   * The IDENTITY of a class: the module it lives in plus its name.
+   *
+   * <p>A simple name is a spelling, not an identity: two files that each
+   * declare a class called "Holder" are two classes, and their members are
+   * two members. The function table is keyed by the signature, so a member
+   * whose signature carries only the simple name REPLACES the member of the
+   * other file -- one body is gone from the program, with no drop and no
+   * problem to say so.
+   *
+   * <p>This is the spelling the class's own function, its constructor and its
+   * accessors already use (`moduleName.ClassName.<init>(...)`), so the
+   * methods join them rather than inventing a second convention.
+   *
+   * @param {string} className the class's simple name
+   * @return the identity
+   */
+  classIdentity(className) {
+    if (!className) return this.moduleName;
+    return `${this.moduleName}.${className}`;
   }
 
   /**
@@ -1321,7 +1346,7 @@ export class Translator {
 
   /** The signature string: `owner.name(ParamTypes):Return`. */
   functionSignature(node, enclosingClass, nameOverride) {
-    const owner = enclosingClass ?? this.moduleName;
+    const owner = enclosingClass ? this.classIdentity(enclosingClass) : this.moduleName;
     const parameters = (node.parameters ?? []).filter((p) => !isThisParameter(p));
     const types = parameters.map((p) => this.typeTextOf(p));
     const returnType = this.returnTypeTextOf(node);
@@ -2568,7 +2593,13 @@ export class Translator {
    */
   constructorSig(node, arity) {
     const name = this.constructedClassName(node.expression);
-    return name ? `${name}.<init>/${arity}` : undefined;
+    if (!name) return undefined;
+    // The class's SIMPLE name, not its identity.  This key is what the sink
+    // catalogue reads -- a catalogue entry names the class by its own name
+    // ("RegExp.<init>/1"), so qualifying it here would change the shape every
+    // constructor sink is reported in, and that is a different change from
+    // this one.
+    return `${name}.<init>/${arity}`;
   }
 
   /**
@@ -3957,10 +3988,12 @@ export class Translator {
       // can resolve the call to this function rather than to the first same-named
       // method it finds.
       if (base && base.kind === SyntaxKind.ThisKeyword) {
-        // The SIMPLE name: the call key spells the class the way the source spells it,
-        // because that is what the call graph and the sink catalogue match owners by. The
-        // class's identity (module + name) is what the function itself carries.
-        return this.simpleClassName(this.state?.enclosingClass) ?? OWNER_MISSING;
+        // The class's IDENTITY: the module it lives in plus its name. The call key
+        // and the declaration have to agree on it, or the call graph cannot connect
+        // them -- and the simple name does not let them: two files that each
+        // declare a class called "Holder" share it, and the call would land on
+        // whichever of them was registered first.
+        return this.state?.enclosingClass ?? OWNER_MISSING;
       }
       // `vm.runInNewContext(...)`: the base is a namespace import, so the
       // owner is the module the namespace came from.
@@ -3973,7 +4006,7 @@ export class Translator {
       // that has a name from one that does not.
       const name = this.classNameOfNode(base);
       if (name) {
-        return name;
+        return this.qualifiedClassName(name, node);
       }
       // A primitive receiver: the owner is the wrapper class, which is what
       // the method really belongs to.
@@ -4053,6 +4086,89 @@ export class Translator {
     } catch (e) {
       return undefined;
     }
+  }
+
+  /**
+   * The receiver's class, qualified with the module it is DECLARED in.
+   *
+   * <p>The call site knows the class's NAME; the compiler knows where the class
+   * was declared. So the module comes from the compiler's own answer rather
+   * than from a guess about the import that brought the class in.
+   *
+   * <p>A class from OUTSIDE the analysed program keeps its bare name. A
+   * library class is named by the sink catalogue by its own name, and a
+   * module prefix would stop the catalogue from claiming the call.
+   *
+   * @param {string} className the class's name
+   * @param {object} callNode the call the receiver belongs to
+   * @return the qualified name, or the bare one
+   */
+  qualifiedClassName(className, callNode) {
+    if (!className) return className;
+    const module = this.moduleOfCallee(callNode);
+    return module ? `${module}.${className}` : className;
+  }
+
+  /**
+   * The module the CALLEE of a call is declared in, or null when the callee is
+   * not part of the analysed program.
+   *
+   * <p>The compiler's resolved signature is the answer: it names the very
+   * declaration the call reaches, so the module is the one that declaration
+   * lives in.
+   *
+   * @param {object} callNode the call
+   * @return the module path, or null
+   */
+  moduleOfCallee(callNode) {
+    if (!callNode || !this.checker || !this.moduleNameOf) return null;
+    let signature;
+    try {
+      signature = this.checker.getResolvedSignature(callNode);
+    } catch (e) {
+      return null;
+    }
+    return this.moduleOfDeclaration(signature && signature.declaration);
+  }
+
+  /**
+   * The module a declaration lives in, or null when it is outside the source
+   * root.
+   *
+   * <p>The source root is what tells a PROGRAM class from a LIBRARY class: a
+   * module path that climbs out of the source root is not a module of this
+   * project.
+   *
+   * @param {object} node the declaration
+   * @return the module path, or null
+   */
+  moduleOfDeclaration(node) {
+    if (!node || !this.moduleNameOf) return null;
+    // The file the declaration lives in.  The compiler's own AST node carries
+    // the path as a PROPERTY -- a probe measured it: the node's own keys are
+    // `canonicalProject`, `index`, `kind` and `path`, and there is no
+    // `getSourceFile()` method at all.  The method is kept as a fallback for a
+    // compiler that does have one.
+    let filePath;
+    try {
+      if (typeof node.getSourceFile === "function") {
+        const file = node.getSourceFile();
+        filePath = file && file.fileName;
+      }
+    } catch (e) {
+      filePath = undefined;
+    }
+    if (!filePath) filePath = node.path;
+    if (!filePath) return null;
+    let module;
+    try {
+      module = this.moduleNameOf(filePath);
+    } catch (e) {
+      return null;
+    }
+    if (!module) return null;
+    if (module.startsWith("..")) return null;
+    return module;
   }
 
   /**

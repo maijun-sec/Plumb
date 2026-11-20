@@ -245,8 +245,11 @@ class ArktsSidecarEndToEndTest {
               .findFirst()
               .orElseThrow(() -> new AssertionError("the method call is not in the stream"));
       assertThat(call.calleeSig)
-          .as("the owner of a method call is the class that owns the method, not the file's module")
-          .isEqualTo("Greeter.greet/0");
+          .as(
+              "the owner of a method call is the class that owns the method, not the file's module"
+                  + " -- and the owner is the class's IDENTITY, so the module it lives in is part of"
+                  + " it")
+          .isEqualTo("page.Greeter.greet/0");
     }
   }
 

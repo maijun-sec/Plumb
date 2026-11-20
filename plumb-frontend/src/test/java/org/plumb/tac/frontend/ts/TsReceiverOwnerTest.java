@@ -80,8 +80,9 @@ class TsReceiverOwnerTest {
     assertThat(callKeyOf(run))
         .as(
             "the receiver is `this`, so the owner is the class the call is written in -- without"
-                + " it the key names every method called `helper` in every class")
-        .isEqualTo("Owner.helper/0");
+                + " it the key names every method called `helper` in every class.  The owner is the"
+                + " class's IDENTITY, so the module it lives in is part of it")
+        .isEqualTo("app.Owner.helper/0");
   }
 
   @Test
@@ -132,8 +133,10 @@ class TsReceiverOwnerTest {
     TacFunction run = translate(source, directory, "app.ts", "run");
 
     assertThat(callKeyOf(run))
-        .as("the receiver is an object of a known class, so the owner is that class")
-        .isEqualTo("Other.helper/0");
+        .as(
+            "the receiver is an object of a known class, so the owner is that class -- and the"
+                + " owner is the class's IDENTITY, so the module it lives in is part of it")
+        .isEqualTo("app.Other.helper/0");
   }
 
   @Test

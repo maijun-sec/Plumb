@@ -45,6 +45,16 @@ class Session {
     this.addedComponents = addedComponents;
     this.rootNames = rootNames;
     this.sdk = sdk;
+    /**
+     * The project's files, keyed by their lower-cased absolute path.
+     *
+     * <p>The compiler hands out lower-cased paths, while the request that
+     * opened the project spells them the way the project does. The module path
+     * has to be ONE spelling: a declaration and the call that reaches it must
+     * land in the same key space, and "modA/store" and "moda/store" are two
+     * different ones.
+     */
+    this.sourcePaths = new Map();
   }
 
   /** The module a file belongs to: its path under the source root, without the extension. */
@@ -53,7 +63,10 @@ class Session {
     if (!this.sourceRoot) {
       return stripExtension(basename(absolute));
     }
-    const rel = relative(resolve(this.sourceRoot), absolute);
+    // The path the PROJECT spells, when the compiler handed out a lower-cased
+    // one. See the sourcePaths map.
+    const original = this.sourcePaths.get(absolute.toLowerCase());
+    const rel = relative(resolve(this.sourceRoot), resolve(original ?? absolute));
     return stripExtension(rel.split(sep).join("/"));
   }
 }
@@ -128,6 +141,9 @@ function openProject(request) {
       opened.rootNames,
       opened.sdk,
     );
+    // The project's files, in the spelling the project uses. The compiler
+    // hands out lower-cased paths, and the module path has to be one spelling.
+    session.sourcePaths = new Map(paths.map((p) => [resolve(p).toLowerCase(), p]));
     const response = {
       ...stamp(),
       op: OP.OPEN_PROJECT,
@@ -195,6 +211,7 @@ function translate(request) {
       checker: checker ?? session.checker,
       sourceFile: sourceFileNode,
       moduleName,
+      moduleNameOf: (filePath) => session.moduleNameOf(filePath),
       language,
       text: sourceText,
     });
