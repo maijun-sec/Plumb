@@ -53,17 +53,17 @@ import org.plumb.tac.ir.TacOperand;
  *
  * <h2>Why the PLACE is the thing to pin</h2>
  *
- * <p>The write and the read have to ask for the same place, and a place has three parts: the
- * object it is on, the owner it belongs to, and the key inside it. A write that names the class
- * and a read that names it differently are two different places, and so are a write on one object
- * and a read on another -- the value still cannot get from one to the other. So the assertion is
- * about the pair, not about one of them, and it says all three parts.
+ * <p>The write and the read have to ask for the same place, and a place has three parts: the object
+ * it is on, the owner it belongs to, and the key inside it. A write that names the class and a read
+ * that names it differently are two different places, and so are a write on one object and a read
+ * on another -- the value still cannot get from one to the other. So the assertion is about the
+ * pair, not about one of them, and it says all three parts.
  *
  * <h2>Why this test is a frontend test</h2>
  *
- * <p>The parser's facts are the fact here: the visibility on a parameter IS the promotion, and
- * only the real parser produces it. A test that checked the mapping would pass if the sidecar
- * stopped asking.
+ * <p>The parser's facts are the fact here: the visibility on a parameter IS the promotion, and only
+ * the real parser produces it. A test that checked the mapping would pass if the sidecar stopped
+ * asking.
  */
 @DisplayName("PHP: a property the constructor promotes is written")
 class PhpPromotedPropertyTest {
@@ -137,9 +137,7 @@ class PhpPromotedPropertyTest {
             "the write and the read have to name the same owner: two owners are two places, and the"
                 + " value cannot get from one to the other")
         .isEqualTo(load.ownerType);
-    assertThat(keyOf(store))
-        .as("and the same key")
-        .isEqualTo(keyOf(load));
+    assertThat(keyOf(store)).as("and the same key").isEqualTo(keyOf(load));
     assertThat(receiverNameOf(store))
         .as(
             "and they have to be on the same object: a write on one object and a read on another"
@@ -175,8 +173,8 @@ class PhpPromotedPropertyTest {
 
     assertThat(constructor.drops())
         .as(
-            "the property takes the value the caller passed, and its default is used when the caller"
-                + " passes none -- the TAC cannot say that, so the loss is recorded")
+            "the property takes the value the caller passed, and its default is used when the"
+                + " caller passes none -- the TAC cannot say that, so the loss is recorded")
         .extracting(TacDrop::construct)
         .contains("value.promoted.default");
     assertThat(constructor.irPrecision())
