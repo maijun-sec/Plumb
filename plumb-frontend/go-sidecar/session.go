@@ -130,6 +130,17 @@ type loadedPackage struct {
 	files []parsedSource
 }
 
+// goVersion returns the Go version the package was built with, or "".
+//
+// It is empty when the caller did not say: the version is a build fact, and
+// the caller is the one that knows it.
+func (pkg *loadedPackage) goVersion() string {
+	if pkg == nil || pkg.spec == nil {
+		return ""
+	}
+	return pkg.spec.GoVersion
+}
+
 // A source file and the package it belongs to.
 type sourceFile struct {
 	// The file's path, as the request listed it.
@@ -287,6 +298,11 @@ func (session *ProjectSession) Translate(path string) ([]Function, []TypeDecl) {
 	}
 
 	functions := []Function{}
+
+	// An EMBEDDED RESOURCE. The directive `//go:embed` names a file whose
+	// CONTENT becomes the variable's value, and the sidecar reads the
+	// source and not the build -- so that content is nowhere in the TAC.
+	recordEmbedFacts(entry.file)
 
 	// The file's PACKAGE-LEVEL declarations. A Go package's variables are
 	// initialised before the program starts, and its `init` functions run
@@ -490,6 +506,91 @@ func (session *ProjectSession) recordProgramFacts() {
 				"a vendored dependency that is not named is not in the TAC at all",
 			ImpactSemantics)
 	}
+
+	// The Go VERSION. It decides the scope of a range variable, and the
+	// sidecar models the scope of the versions before Go 1.22: the variable
+	// is ONE variable shared by every iteration. A program built with Go
+	// 1.22 or later gives every iteration its own variable, and the model
+	// is wrong for it.
+	//
+	// The version is a build fact, and the caller is the one that knows
+	// it. When the caller did not say, the sidecar does not know which
+	// rule applies -- and that is recorded, because the loss is in the
+	// direction that finds less.
+	for _, spec := range session.loader.specs {
+		if spec.GoVersion != "" {
+			continue
+		}
+		recordProgramDrop(DropGoVersion,
+			"the Go version the package "+spec.ImportPath+" was built with is unknown, so the "+
+				"scope of a range variable is not known: it is modelled as one variable shared "+
+				"by every iteration, which is the rule of the versions before Go 1.22",
+			ImpactSemantics)
+	}
+}
+
+// recordEmbedFacts records the resources a file embeds.
+//
+// The directive `//go:embed` is a BUILD-TIME fact: the named file's content
+// becomes the variable's value. The sidecar reads the source and not the
+// build, so that content is nowhere in the TAC -- a variable that holds an
+// embedded file holds nothing the analysis can see, and the bytes it holds
+// may carry a secret.
+//
+// The loss belongs to the PROGRAM: the directive is on a package-level
+// declaration, and no function of the file owns the resource.
+func recordEmbedFacts(file *ast.File) {
+	if file == nil {
+		return
+	}
+	for _, declaration := range file.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range general.Specs {
+			value, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			patterns := embedPatterns(general.Doc, value.Doc, value.Comment)
+			if len(patterns) == 0 {
+				continue
+			}
+			for _, name := range value.Names {
+				if name.Name == "_" {
+					continue
+				}
+				recordProgramDrop(DropGoEmbedValue,
+					"the variable "+name.Name+" embeds "+strings.Join(patterns, ", ")+
+						", and the embedded content is a build-time fact: the sidecar reads the "+
+						"source and not the build, so the content is not in the TAC",
+					ImpactSemantics)
+			}
+		}
+	}
+}
+
+// embedPatterns returns the files a declaration embeds.
+//
+// The directive is `//go:embed <pattern>`: it is a comment on the
+// declaration, and the patterns it names are the files whose content becomes
+// the variable's value.
+func embedPatterns(groups ...*ast.CommentGroup) []string {
+	patterns := []string{}
+	for _, group := range groups {
+		if group == nil {
+			continue
+		}
+		for _, comment := range group.List {
+			text := comment.Text
+			if !strings.HasPrefix(text, "//go:embed") {
+				continue
+			}
+			patterns = append(patterns, strings.Fields(strings.TrimPrefix(text, "//go:embed"))...)
+		}
+	}
+	return patterns
 }
 
 // translatePackageInit lowers a file's PACKAGE-LEVEL declarations.
@@ -515,6 +616,7 @@ func translatePackageInit(fset *token.FileSet, pkg *loadedPackage, file *ast.Fil
 		fset:             fset,
 		info:             pkg.info,
 		pkg:              pkg.pkg,
+		goVersion:        pkg.goVersion(),
 		index:            index,
 		instructions:     []Instruction{},
 		problems:         []Problem{},
@@ -526,6 +628,7 @@ func translatePackageInit(fset *token.FileSet, pkg *loadedPackage, file *ast.Fil
 		labelled:         map[string]*breakContext{},
 		closureByVar:     map[types.Object]*closure{},
 		closureByLiteral: map[*ast.FuncLit]*closure{},
+		rangeVars:        map[*types.Var]bool{},
 	}
 
 	owner := pkg.pkg.Path()

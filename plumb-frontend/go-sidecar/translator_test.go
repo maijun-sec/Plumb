@@ -19,6 +19,17 @@ import (
 // measure the importer rather than the translator.
 func translateSource(t *testing.T, source string) []Function {
 	t.Helper()
+	return translateSourceWithVersion(t, source, "")
+}
+
+// translateSourceWithVersion type-checks a source snippet and translates every
+// function in it, as a package built with a given Go version.
+//
+// The version is a build fact, and it decides the scope of a range variable:
+// before Go 1.22 the loop variable was one variable shared by every
+// iteration, and since Go 1.22 every iteration has its own.
+func translateSourceWithVersion(t *testing.T, source string, version string) []Function {
+	t.Helper()
 
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "sample.go", source,
@@ -39,7 +50,7 @@ func translateSource(t *testing.T, source string) []Function {
 	}
 
 	loaded := &loadedPackage{
-		spec:  &PackageSpec{ImportPath: "sample"},
+		spec:  &PackageSpec{ImportPath: "sample", GoVersion: version},
 		pkg:   pkg,
 		info:  info,
 		files: []parsedSource{{path: "sample.go", file: file}},

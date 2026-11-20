@@ -187,6 +187,20 @@ type translator struct {
 	info *types.Info
 	pkg  *types.Package
 
+	// The Go version the package was built with, when the caller said it.
+	//
+	// It decides the scope of a range variable: before Go 1.22 the loop
+	// variable was one variable shared by every iteration, and since Go
+	// 1.22 every iteration has its own. The range variable is modelled as
+	// one slot, which is the older rule.
+	goVersion string
+
+	// The range variables this function declares, by their object.
+	//
+	// A closure that captures one is where the two rules differ, so the
+	// translator has to know which variables are range variables.
+	rangeVars map[*types.Var]bool
+
 	// The function's signature, for the decisions that depend on it (the
 	// error result, the named results).
 	signature *types.Signature
@@ -329,6 +343,7 @@ func translateFunction(fset *token.FileSet, pkg *loadedPackage, declaration *ast
 		fset:             fset,
 		info:             pkg.info,
 		pkg:              pkg.pkg,
+		goVersion:        pkg.goVersion(),
 		index:            index,
 		instructions:     []Instruction{},
 		problems:         []Problem{},
@@ -340,6 +355,7 @@ func translateFunction(fset *token.FileSet, pkg *loadedPackage, declaration *ast
 		labelled:         map[string]*breakContext{},
 		closureByVar:     map[types.Object]*closure{},
 		closureByLiteral: map[*ast.FuncLit]*closure{},
+		rangeVars:        map[*types.Var]bool{},
 	}
 
 	object, _ := pkg.info.Defs[declaration.Name].(*types.Func)
@@ -485,10 +501,39 @@ func (t *translator) translateFuncLit(literal *ast.FuncLit) *Operand {
 
 	captured := t.capturedVariables(literal)
 
+	// A closure that WRITES to one of the variables it captures writes to
+	// its own copy of it: the capture travels as a leading parameter, so
+	// the enclosing function's variable keeps the value it had before the
+	// closure ran.
+	//
+	// The loss belongs to the ENCLOSING function, because the enclosing
+	// function is the one whose variable is stale.
+	if writesToCaptured(t.info, literal, captured) {
+		t.drop(literal, DropGoClosureCapture,
+			"the closure writes to a variable it captures, but the capture travels as a leading "+
+				"parameter, so the enclosing function's variable keeps the value it had before "+
+				"the closure ran",
+			ImpactSemantics)
+	}
+
+	// The scope of a RANGE variable depends on the Go version, and the
+	// range variable is modelled as one slot shared by every iteration.
+	// A closure that captures one and outlives the iteration sees the
+	// wrong value under that model.
+	if loss, detail := t.loopVarScopeLoss(); loss {
+		for _, variable := range captured {
+			if t.rangeVars[variable] {
+				t.drop(literal, DropGoLoopVarScope, detail, ImpactSemantics)
+				break
+			}
+		}
+	}
+
 	sub := &translator{
 		fset:             t.fset,
 		info:             t.info,
 		pkg:              t.pkg,
+		goVersion:        t.goVersion,
 		index:            t.index,
 		signature:        signature,
 		owner:            t.owner,
@@ -503,6 +548,7 @@ func (t *translator) translateFuncLit(literal *ast.FuncLit) *Operand {
 		labelled:         map[string]*breakContext{},
 		closureByVar:     map[types.Object]*closure{},
 		closureByLiteral: map[*ast.FuncLit]*closure{},
+		rangeVars:        map[*types.Var]bool{},
 		memberKind:       memberKindClosure,
 	}
 
@@ -606,6 +652,80 @@ func (t *translator) unknownValue(goType types.Type) *Operand {
 	operand := t.newTemp(goType)
 	t.emit(Instruction{Kind: KindHavoc, Dest: operand}, token.NoPos)
 	return operand
+}
+
+// writesToCaptured reports whether a function literal's body writes to one
+// of the variables it captures.
+//
+// A WRITE is an assignment to the name, or an increment or a decrement of
+// it. A READ is not a write: a closure that only reads a captured variable
+// gets the value the caller passed, and that is right.
+func writesToCaptured(info *types.Info, literal *ast.FuncLit, captured []*types.Var) bool {
+	if len(captured) == 0 {
+		return false
+	}
+	written := false
+	ast.Inspect(literal.Body, func(node ast.Node) bool {
+		if written {
+			return false
+		}
+		switch statement := node.(type) {
+		case *ast.AssignStmt:
+			for _, target := range statement.Lhs {
+				if ident, ok := target.(*ast.Ident); ok && isCaptured(info, ident, captured) {
+					written = true
+				}
+			}
+		case *ast.IncDecStmt:
+			if ident, ok := statement.X.(*ast.Ident); ok && isCaptured(info, ident, captured) {
+				written = true
+			}
+		}
+		return !written
+	})
+	return written
+}
+
+// isCaptured reports whether an identifier names one of the captured
+// variables.
+func isCaptured(info *types.Info, ident *ast.Ident, captured []*types.Var) bool {
+	object := info.ObjectOf(ident)
+	if object == nil {
+		return false
+	}
+	for _, variable := range captured {
+		if variable == object {
+			return true
+		}
+	}
+	return false
+}
+
+// loopVarScopeLoss reports whether the scope of a range variable is a loss
+// in this program, and says why.
+//
+// BEFORE GO 1.22 the loop variable was ONE variable, shared by every
+// iteration; since Go 1.22 every iteration has its own. The range variable
+// is modelled as one slot, which is the older rule.
+//
+// The version decides whether that is a loss. It is known when the caller
+// said it, and it is unknown otherwise -- and "unknown" is a loss too: the
+// program may be one where the two rules differ.
+func (t *translator) loopVarScopeLoss() (bool, string) {
+	major, minor, known := parseGoVersion(t.goVersion)
+	if known && (major < 1 || (major == 1 && minor < 22)) {
+		// The program was built with a version whose rule is the one the
+		// sidecar models.
+		return false, ""
+	}
+	if known {
+		return true, "the program was built with Go " + strconv.Itoa(major) + "." +
+			strconv.Itoa(minor) + ", where every iteration has its own loop variable, but the " +
+			"range variable is modelled as one slot shared by every iteration"
+	}
+	return true, "the Go version the program was built with is unknown, so the scope of the " +
+		"range variable is not known: it is modelled as one slot shared by every iteration, " +
+		"which is the rule of the versions before Go 1.22"
 }
 
 // closureName names a closure.
@@ -1308,6 +1428,17 @@ func (t *translator) translateIndexAssign(target *ast.IndexExpr, value *Operand,
 			CalleeSig: syntheticSignature(syntheticMapStore, 3),
 			Args:      []Operand{*mapOperand, *key, *value},
 		}, statement.Pos())
+		// The map's CONTENTS are not modelled. The value that is stored
+		// here does not come back out of a later read: the read is a call
+		// on a synthetic type, and the analysis does not know that what it
+		// returns is what was stored.
+		//
+		// It is a VALUE-level loss: the value that is stored is known, and
+		// what is unknown is the read that follows it.
+		t.drop(target, DropGoMapContents,
+			"the value put into the map is not tracked, so a later read of the same key does not "+
+				"return it",
+			ImpactValue)
 		return
 	}
 	collection := t.valueOf(target.X)
@@ -1656,6 +1787,10 @@ func (t *translator) rangeTarget(expression ast.Expr) *Operand {
 		t.report(expression, ProblemUnhandledNode, "the range variable could not be resolved")
 		return nil
 	}
+	// The variable is a RANGE variable, and its scope depends on the Go
+	// version. It is recorded so that a closure capturing it can be told
+	// apart from a closure capturing any other variable.
+	t.rangeVars[object] = true
 	operand := t.declareVar(object, true)
 	return &operand
 }
@@ -1788,7 +1923,7 @@ func (t *translator) rangeOverMap(statement *ast.RangeStmt, collection *Operand,
 		}, statement.Pos())
 		t.emit(Instruction{Kind: KindMove, Dest: value, Lhs1: entryValue}, statement.Pos())
 	}
-	t.report(statement, ProblemSourceLowered,
+	t.reportConstruct(statement, ProblemSourceLowered, DropGoMapContents,
 		"a map range was lowered to a call on the map iterator: the key and the value are read out of the iterator's entry, and the map's contents are not modelled")
 
 	t.pushBreak(&breakContext{breakLabel: endLabel, continueLabel: conditionLabel})
@@ -2011,6 +2146,17 @@ func (t *translator) translateTypeSwitch(statement *ast.TypeSwitchStmt) {
 		t.report(statement, ProblemUnhandledNode, "the type switch's subject could not be resolved")
 		return
 	}
+
+	// The NARROWING is not carried. The bound variable is bound to the
+	// value the switch tested, so inside a case the concrete type is not
+	// known to the analysis.
+	//
+	// It is a TYPE-level fact that is lost -- not the meaning of the code
+	// and not its shape -- so the function keeps its precision.
+	t.drop(statement, DropGoTypeSwitchNarrowing,
+		"the type switch binds the variable to the value before the narrowing, so the concrete "+
+			"type inside a case is not known to the analysis",
+		ImpactType)
 
 	endLabel := t.newLabel("switch_end")
 	caseLabels := make([]string, len(statement.Body.List))
@@ -2386,6 +2532,18 @@ func (t *translator) translateGo(statement *ast.GoStmt) {
 	// The structured fact -- that this function starts a goroutine -- travels
 	// in the wire's own field, and the Java side reports it from there.
 	t.lowerPrecision()
+
+	// The ORDER is not modelled either. The call is emitted where the `go`
+	// statement is written, and Go runs it on another goroutine, at a time
+	// the analysis does not model. The shape is wrong: the instruction's
+	// position says something the program does not guarantee.
+	//
+	// The drop goes with the structured fact rather than instead of it: the
+	// same way a deferred call is both a side-table entry and a drop.
+	t.drop(statement, DropGoConcurrencyOrder,
+		"the call a 'go' statement names is emitted where the statement is written, but Go runs "+
+			"it on another goroutine, at a time the analysis does not model",
+		ImpactStructure)
 }
 
 // translateBranch lowers a break, a continue, a goto or a fallthrough.
@@ -2663,7 +2821,8 @@ func (t *translator) translateIdent(ident *ast.Ident) *Operand {
 		// A function used as a VALUE. Go's functions are first-class
 		// values, and the TAC has no way to name one, so a call through
 		// such a value is invisible to the analysis.
-		t.report(ident, ProblemUnhandledNode, "a function value was not lowered")
+		t.reportConstruct(ident, ProblemUnhandledNode, DropGoFuncValue,
+			"a function value was not lowered")
 		return nil
 	}
 	t.report(ident, ProblemUnhandledNode, "the identifier could not be resolved")
@@ -3643,7 +3802,8 @@ func (t *translator) resolveCallee(expression ast.Expr) (calleeTarget, bool) {
 				// A method value: the method without its receiver. Go's
 				// method values are first-class functions, and the TAC has
 				// no way to name one.
-				t.report(expression, ProblemUnhandledNode, "a method value was not lowered")
+				t.reportConstruct(expression, ProblemUnhandledNode, DropGoFuncValue,
+					"a method value was not lowered")
 				return calleeTarget{}, false
 			}
 			return calleeTarget{
@@ -3665,7 +3825,8 @@ func (t *translator) resolveCallee(expression ast.Expr) (calleeTarget, bool) {
 					signature: record.calleeSig,
 				}, true
 			}
-			t.report(expression, ProblemUnhandledNode, "a call of a function value was not lowered")
+			t.reportConstruct(expression, ProblemUnhandledNode, DropGoFuncValue,
+				"a call of a function value was not lowered")
 			return calleeTarget{}, false
 		}
 		t.report(expression, ProblemUnhandledNode, "the callee could not be resolved")
@@ -3685,6 +3846,24 @@ func (t *translator) resolveCallee(expression ast.Expr) (calleeTarget, bool) {
 					t.report(expression, ProblemUnhandledNode, "the called method's signature could not be read")
 					return calleeTarget{}, false
 				}
+				// A call into a BLACK BOX package. The engine treats a call
+				// it has no body for as preserving its arguments' taint, and
+				// that covers the VALUE these packages carry. It does not
+				// cover a field `reflect` digs out of a struct, nor a write
+				// through an `unsafe` pointer.
+				if id, path, black := blackBoxOfType(selection.Recv()); black {
+					t.drop(expression, id,
+						"a call into the "+path+" package is a black box to the analysis",
+						ImpactSemantics)
+				}
+				// A LOCK. The analysis models no mutual exclusion, so two
+				// critical sections are not ordered relative to each other.
+				if isLockMethod(selection) {
+					t.drop(expression, DropGoLockContention,
+						"a lock is lowered as an ordinary call, and the analysis models no mutual "+
+							"exclusion: two critical sections are not ordered relative to each other",
+						ImpactStructure)
+				}
 				receiver := t.valueOf(typed.X)
 				return calleeTarget{
 					kind:      callRegular,
@@ -3693,13 +3872,26 @@ func (t *translator) resolveCallee(expression ast.Expr) (calleeTarget, bool) {
 					dispatch:  t.dispatchTargets(expression, selection.Recv(), function.Name(), signatureArity(signature)),
 				}, true
 			case types.FieldVal:
-				t.report(expression, ProblemUnhandledNode, "a call of a function-valued field was not lowered")
+				t.reportConstruct(expression, ProblemUnhandledNode, DropGoFuncValue,
+					"a call of a function-valued field was not lowered")
 				return calleeTarget{}, false
 			}
 		}
 		// A package-qualified function.
-		function, ok := t.info.ObjectOf(typed.Sel).(*types.Func)
+		object := t.info.ObjectOf(typed.Sel)
+		function, ok := object.(*types.Func)
 		if !ok {
+			// A package-qualified TYPE: `unsafe.Pointer(x)`,
+			// `time.Duration(n)`. A conversion is not a call, and the type
+			// is named from another package.
+			//
+			// It used to fall through to "the callee could not be
+			// resolved", and the conversion became an unknown value: the
+			// pointer the program asked for was not the pointer the TAC
+			// carried.
+			if typeName, isType := object.(*types.TypeName); isType {
+				return t.resolveConversion(expression, typeName.Type())
+			}
 			t.report(expression, ProblemUnhandledNode, "the callee could not be resolved")
 			return calleeTarget{}, false
 		}
@@ -3707,6 +3899,14 @@ func (t *translator) resolveCallee(expression ast.Expr) (calleeTarget, bool) {
 		if !ok {
 			t.report(expression, ProblemUnhandledNode, "the callee's signature could not be read")
 			return calleeTarget{}, false
+		}
+		// A call into a BLACK BOX package: `reflect` and `unsafe`.
+		if function.Pkg() != nil {
+			if id, ok := blackBoxPackage(function.Pkg().Path()); ok {
+				t.drop(expression, id,
+					"a call into the "+function.Pkg().Path()+" package is a black box to the analysis",
+					ImpactSemantics)
+			}
 		}
 		return calleeTarget{
 			kind:      callRegular,
@@ -3759,7 +3959,72 @@ func (t *translator) resolveConversion(expression ast.Expr, targetType types.Typ
 		t.report(expression, ProblemUnhandledNode, "the conversion's target type could not be resolved")
 		return calleeTarget{}, false
 	}
+	// A conversion INTO a black box package. `unsafe.Pointer(x)` is the one
+	// that matters: the pointer's target is not modelled, so a write
+	// through it is a write the analysis cannot see.
+	if id, path, black := blackBoxOfType(targetType); black {
+		t.drop(expression, id,
+			"a conversion into the "+path+" package is a black box to the analysis",
+			ImpactSemantics)
+	}
 	return calleeTarget{kind: callConversion, typeArg: targetType}, true
+}
+
+// blackBoxPackage returns the drop id for a package whose calls the analysis
+// cannot see into.
+//
+// Two packages are black boxes: `reflect` and `unsafe`. The engine treats a
+// call it has no body for as preserving its arguments' taint, and that
+// covers the VALUE these packages carry. It does not cover a field `reflect`
+// digs out of a struct -- the struct is not tainted, the field is, and
+// reflect is what joins them -- and it does not cover a write through an
+// `unsafe` pointer.
+func blackBoxPackage(path string) (string, bool) {
+	switch path {
+	case "reflect":
+		return DropGoReflectValue, true
+	case "unsafe":
+		return DropGoUnsafePointer, true
+	}
+	return "", false
+}
+
+// blackBoxOfType returns the drop id and the package's path for a type whose
+// package is a black box.
+func blackBoxOfType(goType types.Type) (string, string, bool) {
+	named, ok := goType.(*types.Named)
+	if !ok {
+		return "", "", false
+	}
+	object := named.Obj()
+	if object == nil || object.Pkg() == nil {
+		return "", "", false
+	}
+	path := object.Pkg().Path()
+	id, ok := blackBoxPackage(path)
+	if !ok {
+		return "", "", false
+	}
+	return id, path, true
+}
+
+// isLockMethod reports whether a method selection is a mutex lock.
+//
+// The lock methods of the sync package are the ones that take a critical
+// section: Lock, Unlock, RLock and RUnlock.
+func isLockMethod(selection *types.Selection) bool {
+	function, ok := selection.Obj().(*types.Func)
+	if !ok {
+		return false
+	}
+	if function.Pkg() == nil || function.Pkg().Path() != "sync" {
+		return false
+	}
+	switch function.Name() {
+	case "Lock", "Unlock", "RLock", "RUnlock":
+		return true
+	}
+	return false
 }
 
 // resolveBuiltin lowers a call to a builtin.

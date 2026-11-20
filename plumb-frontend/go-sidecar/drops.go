@@ -79,10 +79,23 @@ const (
 	DropGoVendoring = "go.pkg.vendoring"
 
 	// DropGoEmbedValue: the bytes of an embedded file are a build-time fact.
+	//
+	// The directive `//go:embed` names a file whose CONTENT becomes the
+	// variable's value. The sidecar reads the source and not the build, so
+	// that content is nowhere in the TAC: the variable holds nothing the
+	// analysis can see, and the bytes it holds may carry a secret.
 	DropGoEmbedValue = "go.embed.value"
 
-	// DropGoVersion: the Go version the program was built with is unknown, so
-	// the conservative side is taken for the one thing the version decides.
+	// DropGoVersion: the Go version the program was built with is unknown.
+	//
+	// The version decides the scope of a range variable, and the sidecar
+	// models the scope of the versions before Go 1.22 -- the variable is
+	// ONE variable shared by every iteration. A program built with Go 1.22
+	// or later gives every iteration its own variable, so the model is
+	// wrong for it.
+	//
+	// This id is recorded when the version is UNKNOWN, and only then: the
+	// version is a build fact, and the caller is the one that knows it.
 	DropGoVersion = "go.version"
 
 	// DropGoSelectReadiness: which select case is ready is a run-time fact.
@@ -94,22 +107,35 @@ const (
 
 	// DropGoLockContention: which goroutine enters a critical section first
 	// is a run-time fact.
+	//
+	// A lock is lowered as an ordinary call, and the analysis models no
+	// mutual exclusion: two critical sections are not ordered relative to
+	// each other, and a value one of them writes is not seen by the other.
 	DropGoLockContention = "go.lock.contention"
 
 	// DropGoConcurrencyOrder: how goroutines interleave is a run-time fact.
+	//
+	// The call a `go` statement names is emitted where the statement is
+	// written, but Go runs it on another goroutine, at a time the analysis
+	// does not model. The shape is wrong: the instruction's position says
+	// something the program does not guarantee.
 	DropGoConcurrencyOrder = "go.concurrency.order"
-
-	// DropGoEvaluationOrder: Go leaves the evaluation order of a call's
-	// arguments unspecified. One order is fixed here.
-	DropGoEvaluationOrder = "go.evalOrder"
 
 	// DropGoComplexLiteral: the TAC has no complex kind.
 	DropGoComplexLiteral = "go.complex.literal"
 
 	// DropGoReflectValue: a reflect read or write is a black box.
+	//
+	// The engine treats a call it has no body for as preserving its
+	// arguments' taint, and that covers the VALUE reflect carries. It does
+	// not cover a field reflect digs OUT of a struct: the struct itself is
+	// not tainted, the field is, and reflect is what joins the two.
 	DropGoReflectValue = "go.reflect.value"
 
 	// DropGoUnsafePointer: an unsafe pointer's target is not modelled.
+	//
+	// A write through an unsafe pointer is a write the analysis cannot see,
+	// and a read through one is a read of a value it never tracked.
 	DropGoUnsafePointer = "go.unsafe.pointer"
 
 	// DropGoDeferOrder: a deferred call runs when the function exits, not
@@ -119,6 +145,9 @@ const (
 	// DropGoClosureCapture: a closure's captures travel as leading
 	// parameters, so a write back to the captured variable is not modelled
 	// as a write to the original.
+	//
+	// The write lands on the CLOSURE's own copy, and the enclosing
+	// function's variable keeps the value it had before the closure ran.
 	DropGoClosureCapture = "go.closure.capture"
 
 	// DropGoSwitchChain: a switch is lowered into a branch chain.
@@ -126,7 +155,20 @@ const (
 
 	// DropGoTypeSwitchNarrowing: a type switch does not narrow the bound
 	// variable's type.
+	//
+	// The bound variable is bound to the value the switch tested, so the
+	// concrete type inside a case is not known to the analysis.
 	DropGoTypeSwitchNarrowing = "go.typeSwitch.narrowing"
+
+	// DropGoLoopVarScope: the scope of a range variable depends on the Go
+	// version the program was built with.
+	//
+	// Before Go 1.22 the loop variable was ONE variable, shared by every
+	// iteration. Since Go 1.22 every iteration has its own. The range
+	// variable is modelled as one slot, which is the older rule, so a
+	// program built with Go 1.22 or later is modelled with the older rule
+	// and a closure that escapes the iteration sees the wrong value.
+	DropGoLoopVarScope = "go.loopVar.scope"
 
 	// DropGoPointerCell: a pointer is modelled as a cell object, so a write
 	// through a pointer and a write to the original are two shapes until the
@@ -134,14 +176,18 @@ const (
 	DropGoPointerCell = "go.pointer.cell"
 
 	// DropGoFuncValue: a function value is modelled as a synthetic closure.
+	//
+	// Go's functions are first-class values, and the TAC has no way to name
+	// one: a call through a function value reaches no body, and the value
+	// itself is not one the analysis can carry.
 	DropGoFuncValue = "go.funcValue"
-
-	// DropGoStructPositional: a positional composite literal binds its
-	// elements by field order.
-	DropGoStructPositional = "go.struct.positional"
 
 	// DropGoMapContents: a map's contents are modelled as calls on a
 	// synthetic map type.
+	//
+	// A value put into a map does not come back out of it: the read is a
+	// call on a synthetic type, and the analysis does not know that what it
+	// returns is what was stored.
 	DropGoMapContents = "go.map.contents"
 
 	// DropGoUnmodelled: a construct the translator has no lowering for at
