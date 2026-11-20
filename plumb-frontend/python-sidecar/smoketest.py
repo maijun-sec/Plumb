@@ -822,14 +822,23 @@ def main():
             "the generated constructor must write the fields into the instance",
         )
 
-        # A DEFAULT value that is computed is evaluated where the function
-        # is defined: the expression is still lowered, so that what it
-        # reaches is not lost.
+        # A DEFAULT value that is computed is evaluated where the
+        # DECLARATION is written, so the expression is lowered in the
+        # stream that declaration is in -- and not in the declared
+        # function's own.  A default that read a variable of the
+        # enclosing scope was, before, lowered into the declared
+        # function's own stream, where that variable does not exist.
         defaulted = third_function("defaulted")
         check(defaulted is not None, "the function must be in the stream")
+        module_stream = third_function("<module>")
+        check(module_stream is not None, "the module's own stream must be in the stream")
         check(
-            any("getcwd" in (i.get("calleeSig") or "") for i in defaulted["instructions"]),
-            "a default value that is computed must be lowered",
+            any("getcwd" in (i.get("calleeSig") or "") for i in module_stream["instructions"]),
+            "a default value that is computed must be lowered where the declaration is written",
+        )
+        check(
+            not any("getcwd" in (i.get("calleeSig") or "") for i in defaulted["instructions"]),
+            "and it must not be lowered in the declared function's own stream",
         )
 
         # A `with` binds the value `__enter__` returns, and it calls

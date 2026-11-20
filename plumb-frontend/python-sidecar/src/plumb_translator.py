@@ -375,6 +375,14 @@ class FunctionState:
         self.generator_states = []
         # The generator's slot: the value it yields.
         self.generator_slot = None
+        # The class body that was being lowered when this function started.
+        # A function is a scope of its own, so the class body context stops
+        # here and comes back when the function is finished.
+        self.outer_class_body_owner = None
+        # The names this class body binds. They are attributes of the class,
+        # so a name written in the body and a name read in the body are the
+        # same location. It is empty everywhere but on a class body.
+        self.class_body_names = set()
 
     def new_temp(self, type_=None):
         """A fresh temporary."""
@@ -456,6 +464,11 @@ class Translator:
         self.comp_scope_stack = []
         # The counter that names the comprehensions' own locals.
         self.comp_counter = 0
+        # The class whose BODY is being lowered right now, by its class path.
+        # A name written in a class body is an attribute of the class and not
+        # a local of the stream that lowers the body, so the body has to say
+        # which class it belongs to. It is None everywhere else.
+        self.class_body_owner = None
 
     # ---- the module ------------------------------------------------------------------------
 
@@ -821,6 +834,9 @@ class Translator:
         # current one: the types of the captured values are the enclosing
         # scope's types, and they are what the signature names.
         signature = self.lambda_signature(node, owner, captures, name)
+        # A default value is evaluated where the lambda is WRITTEN, so it
+        # belongs to the stream the lambda is written in.
+        self.lower_default_values(node)
         state = self.begin_function(name, "", None)
         state.signature = signature
         state.ast_node = node
@@ -862,6 +878,10 @@ class Translator:
                         "defaultValue": None,
                     }
                 )
+            # A default value is evaluated where the lambda is WRITTEN, so
+            # the difference that is left is reported here, on the closure
+            # the default belongs to.
+            self.report_non_constant_defaults(node)
             value = self.lower_expression(node.body)
             self.emit({"kind": Kind.RETURN, "lhs1": value, **self.position(node)})
         finally:
@@ -938,6 +958,12 @@ class Translator:
     def begin_function(self, name, signature, enclosing_class, synthetic=False):
         """Start a function's lowering."""
         state = FunctionState(name, signature, enclosing_class, synthetic)
+        # A function is a scope of its own: a name written inside it is that
+        # function's own, even when the function is written inside a class
+        # body. So the class body context stops here, and comes back when
+        # the function is finished.
+        state.outer_class_body_owner = self.class_body_owner
+        self.class_body_owner = None
         self.state = state
         if enclosing_class:
             state.types["self"] = enclosing_class
@@ -965,6 +991,10 @@ class Translator:
             if scope_id is not None:
                 ref["scopeId"] = scope_id
         problems = state.problems
+        # The class body context comes back: the function that was lowered
+        # between the two class bodies is a scope of its own, and the class
+        # body around it did not stop being a class body.
+        self.class_body_owner = state.outer_class_body_owner
         return {
             "name": state.name,
             "signature": state.signature,
@@ -1021,6 +1051,11 @@ class Translator:
         # parameter is a source, so the body is analysed with the captured
         # value already tainted, and a finding inside it cannot be lost.
         captures = self.function_captures.get(node, [])
+        # The annotations are evaluated where the declaration is written,
+        # so they belong to the stream the declaration is in and not to the
+        # function's own. So do the default values.
+        self.lower_annotations(node)
+        self.lower_default_values(node)
         state = self.begin_function(
             node.name, self.function_signature(node, owner, captures), enclosing_class
         )
@@ -1058,6 +1093,8 @@ class Translator:
         construction that calls it, and its body's findings are lost.
         """
         outer = self.state
+        self.lower_annotations(node)
+        self.lower_default_values(node)
         state = self.begin_function(
             "<init>",
             self.function_signature(node, enclosing_class, (), name="<init>"),
@@ -1077,6 +1114,24 @@ class Translator:
         finally:
             self.state = outer
         return self.finish_function(state)
+
+    def lower_annotations(self, node):
+        """The annotation expressions a declaration evaluates.
+
+        An annotation is EVALUATED when the declaration runs, unless the
+        module turned the evaluation off. So a call inside an annotation is
+        a call the program makes, and it has to be in the TAC.
+
+        They are lowered into the stream the declaration is written in --
+        the one the ``def`` statement itself lives in -- because that is
+        where Python evaluates them.
+        """
+        for parameter in self.parameters_of(node):
+            if parameter.annotation is not None:
+                self.lower_expression(parameter.annotation)
+        returns = getattr(node, "returns", None)
+        if returns is not None:
+            self.lower_expression(returns)
 
     def lower_parameters(self, node, captures=()):
         """Declare the parameters, in declaration order.
@@ -1145,18 +1200,11 @@ class Translator:
             out.append(args.kwarg)
         return out
 
-    def report_non_constant_defaults(self, node):
-        """Report a default value that is not a constant.
+    def default_pairs(self, node):
+        """The parameters that have a default, with their default values.
 
-        A default is evaluated when the function is DEFINED, not when it is
-        called, and it is evaluated in the enclosing scope. The TAC has one
-        stream per function, so a default that reads a variable cannot be
-        lowered into the function's own stream without changing what it
-        means.
-
-        The expression is still LOWERED, so that a sink inside it is
-        visible: the value is evaluated once, at the wrong time, and the
-        difference is reported.
+        A positional default belongs to the LAST positional parameters, and
+        a keyword-only parameter has a default of its own.
         """
         args = node.args
         positional = list(args.posonlyargs) + list(args.args)
@@ -1164,21 +1212,43 @@ class Translator:
         pairs = list(
             zip(positional[len(positional) - len(defaults) :], defaults)
         )
-        # The keyword-only defaults are a list of their own, and they were
-        # not read at all before: a default of a keyword-only parameter is
-        # as much a default as any other.
         pairs.extend(zip(args.kwonlyargs, args.kw_defaults))
-        for parameter, default in pairs:
+        return pairs
+
+    def lower_default_values(self, node):
+        """The default values a declaration evaluates.
+
+        A default is evaluated where the declaration is WRITTEN, and it is
+        evaluated ONCE -- not at every call. So the expression belongs to
+        the stream the declaration is in, and it is lowered there: that is
+        where the names it reads are defined, and a sink inside it carries
+        the taint of the values it reads.
+        """
+        for parameter, default in self.default_pairs(node):
             if default is None:
                 continue
             if isinstance(default, ast.Constant):
                 continue
             self.lower_expression(default)
+
+    def report_non_constant_defaults(self, node):
+        """Report a default value that is not a constant.
+
+        The value is evaluated once, where the declaration is written, and
+        the TAC has no place to keep it: at a call that leaves the argument
+        out, the parameter's value is unknown.
+        """
+        for parameter, default in self.default_pairs(node):
+            if default is None:
+                continue
+            if isinstance(default, ast.Constant):
+                continue
             self.report(
                 Problem.SOURCE_LOWERED,
                 default,
-                "a default value is evaluated where the function is defined, not where it is "
-                "called, so it is not part of the function's own stream",
+                "a default value is evaluated once, where the declaration is written, and it is "
+                "not bound to the parameter at a call that leaves the argument out",
+                DropImpact.VALUE,
             )
 
     def function_signature(self, node, owner, captures=(), name=None):
@@ -1194,6 +1264,21 @@ class Translator:
             ",".join(types),
             self.annotation_name(node.returns) or "any",
         )
+
+    def lower_class_bases(self, node):
+        """The expressions a class declaration evaluates.
+
+        The bases and the keywords are evaluated when the class is
+        created, so a call inside one of them is a call the program makes.
+
+        They are lowered into the stream the declaration is written in --
+        the one the ``class`` statement itself lives in -- because that is
+        where Python evaluates them, before the class body runs.
+        """
+        for base in node.bases or ():
+            self.lower_expression(base)
+        for keyword in node.keywords or ():
+            self.lower_expression(keyword.value)
 
     def lower_class(self, node, outer_class=None):
         """The methods of a class, and the class's own body.
@@ -1224,6 +1309,9 @@ class Translator:
         class_path = "%s.%s" % (outer_class, class_name) if outer_class else class_name
         identity = self.class_identity(class_path)
         outer = self.state
+        # The bases are evaluated where the class statement is written, and
+        # before the class body runs.
+        self.lower_class_bases(node)
         state = self.begin_function(
             "<clinit>",
             "%s.<clinit>():any" % identity,
@@ -1234,6 +1322,11 @@ class Translator:
         state.shadowed_names = self.scope_shadowed_names(node.body)
         state.super_type = self.super_type_of(node)
         self.annotate(state, node, "class")
+        # The body of a class is a scope of its own, and a name written in
+        # it is an attribute of the class. So the body says which class it
+        # belongs to, and a name written in it goes to that class.
+        self.class_body_owner = class_path
+        state.class_body_names = self.class_body_names(node)
         try:
             # The class's own decorators run when the class is created, so
             # they belong to the class body's own stream.
@@ -1443,11 +1536,12 @@ class Translator:
         A method's decorators run in the class body's scope, so they are
         emitted into the class body's own stream.
 
-        The dispatch is EXHAUSTIVE: every kind of statement a class body can
-        hold is handled here, so that a statement this translator does not
-        know about is a statement it says it does not know about -- and not
-        one it passes on to a statement lowering that would report it as an
-        unknown STATEMENT.
+        The statements that are MEMBERS are handled here: a method, a nested
+        class, and a class attribute. Every other statement is delegated to
+        the statement lowering, so that a class body can hold an ``if``, a
+        ``try``, a ``for``, a ``with`` or a ``match`` -- and so that a
+        statement this translator does not know about is a statement it says
+        it does not know about.
         """
         for statement in node.body:
             if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -1470,11 +1564,78 @@ class Translator:
             elif isinstance(statement, (ast.Pass, ast.Expr, ast.Return)):
                 self.lower_statement(statement)
             else:
-                self.report(
-                    Problem.UNHANDLED_NODE,
-                    statement,
-                    "this class member has no TAC lowering",
-                )
+                # A class body is a BLOCK, and a block holds the statements
+                # the language has. So the statement is lowered the way every
+                # other statement is lowered, and the class body's own scope
+                # -- the class it belongs to -- is what makes the difference:
+                # a name written in here is an attribute of the class.
+                #
+                # The guard is per statement: one statement this translator
+                # cannot lower must not take the rest of the class body with
+                # it.
+                self.guard(statement, lambda s=statement: self.lower_statement(s))
+
+    def class_body_names(self, node):
+        """The names a class body binds.
+
+        They are attributes of the class: a name written in the body and a
+        name read in the body are the same location, and both are the
+        class's and not the body's.
+
+        A name a ``global`` or a ``nonlocal`` statement gives to an outer
+        scope is not one of them.
+        """
+        bound = set()
+        outer = set()
+        self.walk_scope_bindings(node.body, bound, outer, False)
+        return bound - outer
+
+    def write_class_attribute(self, owner, name, value, node):
+        """A name written in a class body: an attribute of the CLASS.
+
+        The receiver is the class object, so that a read of the attribute
+        finds the value the declaration wrote.
+
+        @param owner the class path of the class the name belongs to
+        @param name the name being written
+        @param value the value being written
+        @param node the AST node the position is taken from
+        """
+        class_object = self.class_object_of(owner)
+        self.emit(
+            {
+                "kind": Kind.ARRAYSTORE,
+                "lhs1": class_object,
+                "lhs2": const_op(Const.STRING, name),
+                "dest": value,
+                "ownerType": owner,
+                **self.position(node),
+            }
+        )
+
+    def read_class_attribute(self, owner, name, node):
+        """A name read in a class body: an attribute of the CLASS.
+
+        It reads the same location the write wrote, so that a value the
+        class body gave a name is the value a later read of that name sees.
+
+        @param owner the class path of the class the name belongs to
+        @param name the name being read
+        @param node the AST node the position is taken from
+        @return the operand the read produced
+        """
+        class_object = self.class_object_of(owner)
+        dest = self.state.new_temp(self.tac_type_of_variable(name))
+        self.emit(
+            {
+                "kind": Kind.ARRAYLOAD,
+                "dest": dest,
+                "lhs1": class_object,
+                "lhs2": const_op(Const.STRING, name),
+                **self.position(node),
+            }
+        )
+        return dest
 
     def lower_class_attribute(self, statement):
         """A class attribute: a member of the CLASS, not of an instance.
@@ -1482,8 +1643,11 @@ class Translator:
         The receiver is the class object, so that a read of the attribute
         finds the value the declaration wrote.
         """
-        owner = self.class_path_of(self.state.enclosing_class) or self.module_name
-        class_object = self.class_object_of(owner)
+        owner = (
+            self.class_body_owner
+            or self.class_path_of(self.state.enclosing_class)
+            or self.module_name
+        )
         targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
         value = None
         if isinstance(statement, ast.Assign):
@@ -1492,22 +1656,16 @@ class Translator:
             value = self.lower_expression(statement.value)
         for target in targets:
             if isinstance(target, ast.Name):
-                self.emit(
-                    {
-                        "kind": Kind.ARRAYSTORE,
-                        "lhs1": class_object,
-                        "lhs2": const_op(Const.STRING, target.id),
-                        "dest": value,
-                        "ownerType": owner,
-                        **self.position(target),
-                    }
-                )
+                self.write_class_attribute(owner, target.id, value, target)
                 if isinstance(statement, ast.AnnAssign):
                     annotation = self.annotation_name(statement.annotation)
                     if annotation:
                         self.state.types[target.id] = annotation
             else:
                 self.lower_write(target, value, statement)
+        if isinstance(statement, ast.AnnAssign) and statement.annotation is not None:
+            # The annotation is evaluated when the class body runs.
+            self.lower_expression(statement.annotation)
 
     def class_object_of(self, qualified):
         """The class object of a class: the synthetic variable that holds
@@ -1534,10 +1692,18 @@ class Translator:
             self.lower_expression(node.value)
             return
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            self.module_functions.append(self.lower_function_declaration(node, None))
+            # A method written inside a class body is a member of THAT
+            # class, even when the statement that holds it is an ``if``.
+            enclosing = (
+                self.class_identity(self.class_body_owner)
+                if self.class_body_owner
+                else None
+            )
+            self.module_functions.append(self.lower_function_declaration(node, enclosing))
             return
         if isinstance(node, ast.ClassDef):
-            self.module_functions.extend(self.lower_class(node))
+            # A class written inside a class body is nested in that class.
+            self.module_functions.extend(self.lower_class(node, self.class_body_owner))
             return
         if isinstance(node, ast.Assign):
             self.lower_assign(node)
@@ -1811,8 +1977,14 @@ class Translator:
             self.lower_write(target, value, node)
 
     def lower_ann_assign(self, node):
-        """An annotated assignment: ``a: T = b``."""
+        """An annotated assignment: ``a: T = b``.
+
+        The annotation is EVALUATED when the statement runs, so a call
+        inside it is a call the program makes.
+        """
         value = self.lower_expression(node.value) if node.value else None
+        if node.annotation is not None:
+            self.lower_expression(node.annotation)
         annotation = self.annotation_name(node.annotation)
         if isinstance(node.target, ast.Name) and annotation:
             self.state.types[node.target.id] = annotation
@@ -1865,6 +2037,18 @@ class Translator:
         index.
         """
         if isinstance(target, ast.Name):
+            if self.class_body_owner is not None and self.comp_local(target.id) == target.id:
+                # A name written in a class body is an attribute of the
+                # CLASS and not a local of the stream that lowers the body.
+                # A name a comprehension owns is that comprehension's own,
+                # and the comprehension is a scope of its own.
+                self.write_class_attribute(
+                    self.class_body_owner, target.id, value, target
+                )
+                self.infer_type_of(
+                    target.id, node.value if isinstance(node, ast.Assign) else None
+                )
+                return
             variable = var_op(self.comp_local(target.id), self.tac_type_of_variable(target.id))
             self.declare_local(variable)
             # A variable that holds a closure: the call of that variable
@@ -2419,46 +2603,168 @@ class Translator:
         )
 
     def match_pattern_bindings(self, pattern, subject):
-        """Bind the names a match pattern captures."""
+        """Bind the names a match pattern captures.
+
+        A capture binds the VALUE it captured and not the thing that was
+        matched: ``case {"a": x}`` binds x to the entry under "a", and
+        ``case [x, y]`` binds x to the first element and y to the second.
+        A name that was never bound is a name the program reads that does
+        not exist.
+        """
         if isinstance(pattern, ast.MatchAs):
             if pattern.pattern is not None:
                 self.match_pattern_bindings(pattern.pattern, subject)
-            elif pattern.name:
-                variable = var_op(pattern.name)
-                self.declare_local(variable)
-                self.emit(
-                    {
-                        "kind": Kind.MOVE,
-                        "dest": variable,
-                        "lhs1": subject,
-                        **self.position(pattern),
-                    }
-                )
+            if pattern.name:
+                # `case [x] as whole:` binds the inner captures AND the
+                # whole matched value.
+                self.bind_capture(pattern.name, subject, pattern)
             return
         if isinstance(pattern, ast.MatchStar):
+            # `case [a, *rest]`: the rest is the elements that are left.
+            # The TAC cannot subtract the named ones from the sequence, so
+            # the rest holds the whole sequence -- more than it should, and
+            # more is the safe direction.
             if pattern.name:
-                variable = var_op(pattern.name)
-                self.declare_local(variable)
-                self.emit(
-                    {
-                        "kind": Kind.MOVE,
-                        "dest": variable,
-                        "lhs1": subject,
-                        **self.position(pattern),
-                    }
+                self.bind_capture(pattern.name, subject, pattern)
+                self.report(
+                    Problem.SOURCE_LOWERED,
+                    pattern,
+                    "the elements a sequence pattern does not name are not subtracted from the "
+                    "subject, so the rest holds the whole sequence",
+                    DropImpact.VALUE,
                 )
             return
         if isinstance(pattern, ast.MatchClass):
             for sub in pattern.patterns or ():
                 self.match_pattern_bindings(sub, subject)
+            for keyword, sub in self.match_class_keywords(pattern):
+                # A keyword capture reads the entry of that name: the
+                # keyword IS the name of the entry.
+                value = self.state.new_temp()
+                self.emit(
+                    {
+                        "kind": Kind.ARRAYLOAD,
+                        "dest": value,
+                        "lhs1": subject,
+                        "lhs2": const_op(Const.STRING, keyword),
+                        **self.position(pattern),
+                    }
+                )
+                self.match_pattern_bindings(sub, value)
             return
         if isinstance(pattern, ast.MatchSequence):
-            for sub in pattern.patterns or ():
-                self.match_pattern_bindings(sub, subject)
+            for index, sub in enumerate(pattern.patterns or ()):
+                if isinstance(sub, ast.MatchStar):
+                    # The star holds the elements that are left, so it reads
+                    # the whole sequence and not the element at its place.
+                    self.match_pattern_bindings(sub, subject)
+                    continue
+                element = self.state.new_temp()
+                self.emit(
+                    {
+                        "kind": Kind.ARRAYLOAD,
+                        "dest": element,
+                        "lhs1": subject,
+                        "lhs2": const_op(Const.INT, str(index)),
+                        **self.position(pattern),
+                    }
+                )
+                self.match_pattern_bindings(sub, element)
             return
         if isinstance(pattern, ast.MatchMapping):
-            for sub in pattern.patterns or ():
-                self.match_pattern_bindings(sub, subject)
+            keys = pattern.keys or ()
+            values = pattern.patterns or ()
+            for key, value_pattern in zip(keys, values):
+                self.match_pattern_bindings(
+                    value_pattern, self.match_mapping_entry(pattern, key, subject)
+                )
+            if pattern.rest:
+                # `**rest` holds the entries the other patterns did not
+                # name. The TAC cannot subtract the named ones from the
+                # subject, so the rest holds the whole subject -- more than
+                # it should, and more is the safe direction.
+                self.bind_capture(pattern.rest, subject, pattern)
+                if values:
+                    self.report(
+                        Problem.SOURCE_LOWERED,
+                        pattern,
+                        "the entries a mapping pattern does not name are not subtracted from the "
+                        "subject, so the rest holds the whole subject",
+                        DropImpact.VALUE,
+                    )
+            return
+
+    def bind_capture(self, name, value, node):
+        """Bind a name a pattern captures."""
+        variable = var_op(name)
+        self.declare_local(variable)
+        self.emit(
+            {
+                "kind": Kind.MOVE,
+                "dest": variable,
+                "lhs1": value,
+                **self.position(node),
+            }
+        )
+
+    def match_class_keywords(self, pattern):
+        """The keyword captures of a class pattern, as (name, pattern) pairs.
+
+        The shape of the AST changed between Python versions: the names
+        used to be in the patterns themselves, as (name, pattern) pairs,
+        and they are now a list of names beside the patterns. So the shape
+        is READ and not assumed -- assuming it is how a sidecar ends up
+        working on one version of Python and failing on another.
+        """
+        entries = pattern.kwd_patterns or ()
+        if entries and isinstance(entries[0], tuple):
+            return [(entry[0], entry[1]) for entry in entries]
+        names = list(getattr(pattern, "kwd_attrs", None) or ())
+        return list(zip(names, entries))
+
+    def match_mapping_key_expression(self, key):
+        """The expression a mapping pattern's key names, or None.
+
+        The shape of the AST changed here too: a key used to be a
+        PATTERN and it is now an EXPRESSION. A key that names no value
+        gives None.
+        """
+        if isinstance(key, ast.MatchValue):
+            return key.value
+        if isinstance(key, ast.expr):
+            return key
+        return None
+
+    def match_mapping_entry(self, pattern, key, subject):
+        """The entry of the subject a mapping pattern names.
+
+        A key that names a value says which entry it is: ``case {"a": x}``
+        names the entry under "a", and ``case {Color.RED: v}`` names the
+        entry under that value. A key that names no value says nothing
+        here, so the entry is not read and the difference is reported.
+        """
+        expression = self.match_mapping_key_expression(key)
+        if expression is not None:
+            name = self.lower_expression(expression)
+            entry = self.state.new_temp()
+            self.emit(
+                {
+                    "kind": Kind.ARRAYLOAD,
+                    "dest": entry,
+                    "lhs1": subject,
+                    "lhs2": name,
+                    **self.position(pattern),
+                }
+            )
+            return entry
+        self.report(
+            Problem.SOURCE_LOWERED,
+            pattern,
+            "the key of a mapping pattern does not name a value, so the entry it matches is "
+            "not read",
+            DropImpact.VALUE,
+        )
+        return subject
 
     def lower_try(self, node):
         """A try / except / else / finally.
@@ -2627,6 +2933,14 @@ class Translator:
         if isinstance(node, ast.Constant):
             return self.lower_constant(node)
         if isinstance(node, ast.Name):
+            if (
+                self.class_body_owner is not None
+                and node.id in self.state.class_body_names
+                and self.comp_local(node.id) == node.id
+            ):
+                # A name the class body binds is an attribute of the class,
+                # so a read of it in the body reads that attribute.
+                return self.read_class_attribute(self.class_body_owner, node.id, node)
             return var_op(self.comp_local(node.id), self.tac_type_of_variable(node.id))
         if isinstance(node, ast.Attribute):
             return self.lower_attribute_read(node)

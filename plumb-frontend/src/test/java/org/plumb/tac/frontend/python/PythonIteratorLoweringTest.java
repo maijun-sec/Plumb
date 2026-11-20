@@ -22,15 +22,13 @@
 package org.plumb.tac.frontend.python;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.plumb.tac.frontend.TacFrontend;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
 import org.plumb.tac.ir.TacOperand;
@@ -67,19 +65,15 @@ class PythonIteratorLoweringTest {
   void theLoopVariableIsTheResultOfNext(@TempDir Path directory) throws IOException {
     TacFunction handle = translate(directory, SOURCE);
 
-    TacInstruction next = callWhoseNameIs(handle, "__next__");
+    TacInstruction next = PythonTestSupport.firstCallTo(handle, "__next__");
     assertThat(next).as("the iteration protocol must call __next__").isNotNull();
     assertThat(next.dest)
         .as("__next__ returns the element, so it must produce a value")
         .isInstanceOf(TacOperand.TacVar.class);
 
     TacOperand.TacVar element = (TacOperand.TacVar) next.dest;
-    TacInstruction assignment =
-        handle.instructions().stream()
-            .filter(i -> i.kind == TacInstruction.Kind.MOVE)
-            .filter(i -> i.dest instanceof TacOperand.TacVar v && "x".equals(v.name()))
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("the loop variable is never assigned"));
+    TacInstruction assignment = PythonTestSupport.moveTo(handle, "x");
+    assertThat(assignment).as("the loop variable is never assigned").isNotNull();
     assertThat(assignment.lhs1)
         .as("the loop variable is the result of __next__, not a member of it")
         .isEqualTo(element);
@@ -100,7 +94,7 @@ class PythonIteratorLoweringTest {
   void theProtocolCallsCarryTheRealPythonMethodNames(@TempDir Path directory) throws IOException {
     TacFunction handle = translate(directory, SOURCE);
 
-    TacInstruction iter = callWhoseNameIs(handle, "__iter__");
+    TacInstruction iter = PythonTestSupport.firstCallTo(handle, "__iter__");
     assertThat(iter).as("the iteration protocol must call __iter__").isNotNull();
     assertThat(iter.args)
         .as("the receiver comes first: __iter__ is called ON the iterable")
@@ -109,7 +103,7 @@ class PythonIteratorLoweringTest {
         .as("the receiver of __iter__ is the iterable itself")
         .isInstanceOf(TacOperand.TacVar.class);
 
-    TacInstruction next = callWhoseNameIs(handle, "__next__");
+    TacInstruction next = PythonTestSupport.firstCallTo(handle, "__next__");
     assertThat(next).as("the iteration protocol must call __next__").isNotNull();
     assertThat(next.args)
         .as("the receiver comes first: __next__ is called ON the iterator")
@@ -123,53 +117,9 @@ class PythonIteratorLoweringTest {
 
   /** Translate the source and return the function under test. */
   private static TacFunction translate(Path directory, String source) throws IOException {
-    Files.writeString(directory.resolve("pyproject.toml"), "[project]\nname = \"app\"\n");
-    Path file = directory.resolve("app.py");
-    Files.writeString(file, source);
-
-    try (PythonTacFrontend frontend = new PythonTacFrontend()) {
-      assumeTrue(
-          sidecarAvailable(),
-          "the Python front end needs a Python 3 interpreter on the PATH (the sidecar imports only"
-              + " the standard library, so there is nothing to install into it)");
-
-      TacFrontend.ParseResult result = frontend.parse(source, file, null);
-      assertThat(result.problems()).isEmpty();
-      TacFunction handle = null;
-      for (TacFunction function : result.functions()) {
-        if ("handle".equals(function.name())) handle = function;
-      }
-      assertThat(handle).as("the function must be in the stream").isNotNull();
-      return handle;
-    }
-  }
-
-  /** The call whose callee signature ends with the given method name. */
-  private static TacInstruction callWhoseNameIs(TacFunction function, String methodName) {
-    for (TacInstruction instruction : function.instructions()) {
-      if (instruction.kind != TacInstruction.Kind.CALL) continue;
-      String callee = instruction.calleeSig;
-      if (callee == null) continue;
-      int slash = callee.lastIndexOf('/');
-      String qualified = slash < 0 ? callee : callee.substring(0, slash);
-      int dot = qualified.lastIndexOf('.');
-      String name = dot < 0 ? qualified : qualified.substring(dot + 1);
-      if (methodName.equals(name)) return instruction;
-    }
-    return null;
-  }
-
-  /**
-   * Whether the sidecar can run here.
-   *
-   * <p>Two things have to be there: a Python interpreter and the sidecar's own script. The script
-   * has no dependency to install -- {@code ast} is in the standard library -- so the interpreter is
-   * the only thing that can be missing.
-   */
-  private static boolean sidecarAvailable() {
-    if (PythonSidecarClient.locatePython() == null) {
-      return false;
-    }
-    return PythonSidecarClient.locateScript(null) != null;
+    List<TacFunction> functions = PythonTestSupport.translateAll(directory, source);
+    TacFunction handle = PythonTestSupport.functionNamed(functions, "handle");
+    assertThat(handle).as("the function must be in the stream").isNotNull();
+    return handle;
   }
 }
