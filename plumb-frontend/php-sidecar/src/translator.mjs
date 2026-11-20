@@ -1024,6 +1024,7 @@ export class Translator {
     this.annotate(state, node, "method");
     try {
       this.lowerParameters(node);
+      this.lowerPromotedProperties(node, enclosingClass);
       if (node.body) {
         this.lowerBody(node.body.children ?? []);
       }
@@ -1031,6 +1032,54 @@ export class Translator {
       this.state = outer;
     }
     return this.finishFunction(state);
+  }
+
+  /**
+   * The properties a constructor promotes.
+   *
+   * A parameter with a VISIBILITY is a property: PHP 8.0 lets the
+   * constructor's parameter list declare one, and the constructor assigns it
+   * before the body runs. Without that assignment the property is never
+   * written, and whatever reads it later sees an unknown value -- so the
+   * value the CALLER passed never reaches the code that uses the property.
+   *
+   * The assignment has the shape an ordinary property write already has: a
+   * keyed store on the object, under the class's own name. That is what
+   * makes the write and the read meet: the read of `$this->name` asks for
+   * the same owner and the same key.
+   *
+   * @param {object} node the constructor
+   * @param {string} enclosingClass the class the constructor belongs to
+   */
+  lowerPromotedProperties(node, enclosingClass) {
+    const parameters = node.arguments ?? [];
+    for (let index = 0; index < parameters.length; index += 1) {
+      const parameter = parameters[index];
+      const flags = parameter.flags;
+      if (flags === undefined || flags === null || flags === 0) continue;
+      const name = this.nameText(parameter.name);
+      if (!name) continue;
+      const value = this.state.params[index];
+      if (!value) continue;
+      this.annotate(this.state, parameter, "field");
+      this.emit({
+        kind: KIND.ARRAYSTORE,
+        lhs1: varOp("this", { kind: TYPE.CLASS, name: enclosingClass }),
+        lhs2: constOp(CONST.STRING, name),
+        dest: value,
+        ownerType: enclosingClass,
+        ...this.position(parameter),
+      });
+      if (parameter.value !== undefined && parameter.value !== null) {
+        this.emitDrop(
+          "value.promoted.default",
+          "a promoted property takes the value the caller passed, and its default is used when the "
+            + "caller passes none, which the TAC cannot say",
+          DROP_IMPACT.VALUE,
+          parameter,
+        );
+      }
+    }
   }
 
   /**
