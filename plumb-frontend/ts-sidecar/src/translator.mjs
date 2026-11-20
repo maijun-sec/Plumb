@@ -888,14 +888,32 @@ export class Translator {
       for (const application of applications ?? []) {
         this.lowerDecorator(application);
       }
+      // The base constructor runs FIRST, and it runs on THIS object.
+      //
+      // There is EXACTLY ONE such call, and it carries the arguments the
+      // source passed to `super(...)`. The compiler's tree holds that call:
+      // `super(input, 7)` is an expression statement in the constructor's
+      // body. So the call is lowered HERE -- before the field initialisers,
+      // because the base's fields have to exist before the derived class's
+      // own fields are written -- and the statement itself is not lowered
+      // again when the body is walked, or the base constructor would be
+      // called twice.
+      //
+      // The arity is the base constructor's DECLARED parameter count, which
+      // the compiler knows even when the base class is in another file. A
+      // count taken from the arguments that were passed would be a different
+      // number whenever the source passed fewer arguments than the base
+      // declares, and the callee key would then name a function that does
+      // not exist.
+      const superCall = base ? this.findSuperCall(node) : undefined;
       if (base) {
-        // The base constructor runs first, and it runs on THIS object.
         const result = this.state.newTemp(TYPE.UNKNOWN);
+        const args = superCall ? (superCall.arguments ?? []).map((a) => this.lowerExpression(a)) : [];
         this.emit({
           kind: KIND.CALL,
-          calleeSig: `${base}.<init>/${this.baseConstructorArity(base)}`,
+          calleeSig: `${base}.<init>/${this.baseConstructorArity(base, superCall)}`,
           dest: result,
-          args: [varOp("this", TYPE.UNKNOWN)],
+          args: [varOp("this", TYPE.UNKNOWN), ...args],
           ...this.position(node),
         });
       }
@@ -1588,6 +1606,18 @@ export class Translator {
   }
   lowerStatement(node) {
     if (!node) return;
+    if (this.isSuperCallStatement(node)) {
+      // The base constructor is called ONCE: the constructor emits that call
+      // itself, before the field initialisers.  This statement is the
+      // SOURCE's way of saying the same thing, so it is not lowered here --
+      // otherwise the base would be called twice, and the arguments would be
+      // evaluated twice.
+      //
+      // The test is the statement's SHAPE, not the identity of the node that
+      // was found: a `super(...)` call is legal inside a branch as well, and
+      // it is the base's call wherever it sits.
+      return;
+    }
     if (isExpressionStatement(node)) {
       this.lowerExpression(node.expression);
       return;
@@ -1917,6 +1947,11 @@ export class Translator {
     this.emitLabel(endLabel);
   }
 
+  /**
+   * A block of statements.
+   *
+   * @param {object} node the block
+   */
   lowerBlock(node) {
     for (const statement of node.statements) {
       this.lowerStatement(statement);
@@ -3935,8 +3970,27 @@ export class Translator {
     return (expression.arguments ?? []).length;
   }
 
-  /** The number of parameters the base class's constructor declares. */
-  baseConstructorArity(base) {
+  /**
+   * The number of parameters the base class's constructor declares.
+   *
+   * <p>The compiler knows this number: the `super(...)` call resolves to the
+   * base constructor's own signature, and that signature lists the declared
+   * parameters. Reading it there means the answer does not depend on the base
+   * class living in the same file -- a scan of the file's own class
+   * declarations cannot see a base class in another module, and it answered
+   * "zero parameters" there, which named a function that does not exist.
+   *
+   * <p>When the compiler cannot resolve the call -- no `super(...)` statement
+   * to resolve, or no checker -- the file's own declarations are the fallback,
+   * and a base class that is in neither place has no known parameter count.
+   */
+  baseConstructorArity(base, superCall) {
+    if (superCall) {
+      const signature = this.resolveSignature(superCall);
+      if (signature && Array.isArray(signature.parameters) && signature.parameters.length > 0) {
+        return signature.parameters.length;
+      }
+    }
     if (!this.sourceFile) return 0;
     for (const statement of this.sourceFile.statements ?? []) {
       if (!isClassDeclaration(statement)) continue;
@@ -3948,6 +4002,100 @@ export class Translator {
       }
     }
     return 0;
+  }
+
+  /**
+   * Whether a statement is a call to `super(...)`.
+   *
+   * <p>The shape is what matters, not the identity of the node: the base
+   * constructor is called once, and the constructor emits that call. So a
+   * statement of this shape is left alone wherever it sits -- in the body's
+   * own statement list, or nested inside a branch.
+   *
+   * @param {object} statement the statement
+   * @return {boolean} whether it is a `super(...)` call
+   */
+  isSuperCallStatement(statement) {
+    if (!isExpressionStatement(statement)) return false;
+    const expression = statement.expression;
+    if (!isCallExpression(expression)) return false;
+    return isSuperExpression(expression.expression);
+  }
+
+  /**
+   * The `super(...)` call in a constructor's body, or null when there is none.
+   *
+   * <p>The call is usually the first statement of the body, but it does not
+   * have to be: a class without initialised properties or parameter
+   * properties may put the call inside a branch. So the body is searched at
+   * every depth -- and the compiler's own checker resolves the call it finds
+   * there, which is how the base constructor's declared parameter count is
+   * known even when the base class lives in another module.
+   *
+   * @param {object} node the constructor declaration
+   * @return {object|null} the call expression, or null
+   */
+  findSuperCall(node) {
+    return this.findSuperCallIn(node?.body?.statements ?? []);
+  }
+
+  /**
+   * The first `super(...)` call in a list of statements, at any depth.
+   *
+   * @param {Array} statements the statements
+   * @return {object|null} the call expression, or null
+   */
+  findSuperCallIn(statements) {
+    for (const statement of statements ?? []) {
+      if (this.isSuperCallStatement(statement)) return statement.expression;
+      const nested = this.nestedSuperCallOf(statement);
+      if (nested) return nested;
+    }
+    return null;
+  }
+
+  /**
+   * The `super(...)` call inside a statement that can hold one, or null.
+   *
+   * @param {object} statement the statement
+   * @return {object|null} the call expression, or null
+   */
+  nestedSuperCallOf(statement) {
+    if (isBlock(statement)) return this.findSuperCallIn(statement.statements);
+    if (isIfStatement(statement)) {
+      const inThen = this.findSuperCallIn(
+        statement.thenStatement ? [statement.thenStatement] : [],
+      );
+      if (inThen) return inThen;
+      if (statement.elseStatement) return this.findSuperCallIn([statement.elseStatement]);
+      return null;
+    }
+    if (isTryStatement(statement)) {
+      const blocks = [];
+      if (statement.tryBlock) blocks.push(statement.tryBlock);
+      if (statement.catchClause?.block) blocks.push(statement.catchClause.block);
+      if (statement.finallyBlock) blocks.push(statement.finallyBlock);
+      return this.findSuperCallIn(blocks);
+    }
+    if (isSwitchStatement(statement)) {
+      const clauses = statement.caseBlock?.clauses ?? [];
+      for (const clause of clauses) {
+        const found = this.findSuperCallIn(clause.statements);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (
+      isWhileStatement(statement) ||
+      isDoStatement(statement) ||
+      isForStatement(statement) ||
+      isForOfStatement(statement) ||
+      isForInStatement(statement) ||
+      isLabeledStatement(statement)
+    ) {
+      return statement.statement ? this.findSuperCallIn([statement.statement]) : null;
+    }
+    return null;
   }
 
   // ---- modules -------------------------------------------------------------------------------

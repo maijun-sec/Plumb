@@ -342,8 +342,13 @@ async function main() {
     // right and match nothing.
     const call = instructions.find((i) => i.kind === "CALL" || i.kind === "UNINTERPRETED");
     check(!!call, "the call must be in the stream");
+    // The owner is the class's QUALIFIED name: the module it lives in plus
+    // its name.  The class's identity carries the module because two files
+    // that each declare a class called "UserStore" share it, and a call key
+    // that names only the simple name lands on whichever of them was
+    // registered first.
     check(
-      call.calleeSig.startsWith("UserStore.find/"),
+      call.calleeSig.startsWith("app.UserStore.find/"),
       `a method call must name the class of its receiver: ${call.calleeSig}`,
     );
     check(call.args.length >= 1, "a call must carry the receiver slot");
