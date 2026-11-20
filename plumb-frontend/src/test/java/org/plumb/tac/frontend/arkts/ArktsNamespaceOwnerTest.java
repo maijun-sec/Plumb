@@ -48,9 +48,9 @@ import org.plumb.tac.ir.TacInstruction;
  * verified on one sidecar and assumed on the other is a change that is verified once -- and the
  * assumption is exactly where the bug would be.
  *
- * <p>The corpus is the same as the sibling's: two modules that each declare a namespace of the
- * same name, a namespace that holds a class, a namespace inside a namespace, and a caller that
- * reaches all of them.
+ * <p>The corpus is the same as the sibling's: two modules that each declare a namespace of the same
+ * name, a namespace that holds a class, a namespace inside a namespace, and a caller that reaches
+ * all of them.
  */
 @DisplayName("ArkTS: a namespace is part of the identity of what it holds")
 class ArktsNamespaceOwnerTest {
@@ -220,7 +220,8 @@ class ArktsNamespaceOwnerTest {
     CompileContext context =
         new DefaultCompileContext(
             List.of(
-                new CompileContext.Module("arkts", directory, List.of(), List.of(), List.of(), null)));
+                new CompileContext.Module(
+                    "arkts", directory, List.of(), List.of(), List.of(), null)));
 
     try (ArktsTacFrontend frontend = new ArktsTacFrontend(SourceLanguage.ARKTS)) {
       assumeTrue(
@@ -269,10 +270,15 @@ class ArktsNamespaceOwnerTest {
 
       List<TacFunction> functions = new ArrayList<>();
       functions.addAll(
-          frontend.parse(STORE_A, directory.resolve("modA").resolve("store.ets"), context).functions());
+          frontend
+              .parse(STORE_A, directory.resolve("modA").resolve("store.ets"), context)
+              .functions());
       functions.addAll(
-          frontend.parse(STORE_B, directory.resolve("modB").resolve("store.ets"), context).functions());
-      functions.addAll(frontend.parse(CALLER, directory.resolve("caller.ets"), context).functions());
+          frontend
+              .parse(STORE_B, directory.resolve("modB").resolve("store.ets"), context)
+              .functions());
+      functions.addAll(
+          frontend.parse(CALLER, directory.resolve("caller.ets"), context).functions());
       return functions;
     }
   }
@@ -327,7 +333,8 @@ class ArktsNamespaceOwnerTest {
     Files.writeString(directory.resolve("caller.ets"), CALLER);
 
     return new DefaultCompileContext(
-        List.of(new CompileContext.Module("arkts", directory, List.of(), List.of(), List.of(), null)));
+        List.of(
+            new CompileContext.Module("arkts", directory, List.of(), List.of(), List.of(), null)));
   }
 
   /**

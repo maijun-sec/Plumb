@@ -54,8 +54,8 @@ import org.plumb.tac.ir.TacOperand;
  * nothing said so.
  *
  * <p>The assertions here are about the SHAPE, and the shape is a pair: the receiver and the key. A
- * declaration and a read of the same member have to agree on BOTH, or they are two locations wearing
- * one name.
+ * declaration and a read of the same member have to agree on BOTH, or they are two locations
+ * wearing one name.
  *
  * <h2>Why it SKIPS</h2>
  *
@@ -240,6 +240,7 @@ class ArktsClassMemberShapeTest {
       return false;
     }
     Path root = project.getParent();
-    return root != null && Files.isDirectory(root.resolve("node_modules").resolve("ohos-typescript"));
+    return root != null
+        && Files.isDirectory(root.resolve("node_modules").resolve("ohos-typescript"));
   }
 }

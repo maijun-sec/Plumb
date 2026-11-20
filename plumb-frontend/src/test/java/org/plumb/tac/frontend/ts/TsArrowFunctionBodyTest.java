@@ -55,13 +55,13 @@ import org.plumb.tac.ir.TacInstruction;
  *
  * <h2>Why the lifting is recorded where it is</h2>
  *
- * <p>Lifting a function body into a function of its own gives that body a scope of its own, and
- * the names it read from the scope around it are not in it. That loss belongs to the LIFTED
- * function -- it is the one whose TAC cannot see those names -- and the loss is recorded on it, so
- * that its precision says so.
+ * <p>Lifting a function body into a function of its own gives that body a scope of its own, and the
+ * names it read from the scope around it are not in it. That loss belongs to the LIFTED function --
+ * it is the one whose TAC cannot see those names -- and the loss is recorded on it, so that its
+ * precision says so.
  *
- * <p>The function AROUND it keeps its precision: the body does not run where the declaration is,
- * so nothing the body does reaches that scope. A drop on the wrong function would make the wrong
+ * <p>The function AROUND it keeps its precision: the body does not run where the declaration is, so
+ * nothing the body does reaches that scope. A drop on the wrong function would make the wrong
  * function look degraded, and would hide the fact that the right one is.
  *
  * <h2>Why the export needs its own test</h2>
@@ -165,7 +165,8 @@ class TsArrowFunctionBodyTest {
         .anyMatch(function -> "helper".equals(function.name()));
     assertThat(result.functions())
         .as("nothing in the file was lost")
-        .allSatisfy(function -> assertThat(function.irPrecision()).isEqualTo(IrPrecision.SOURCE_FULL));
+        .allSatisfy(
+            function -> assertThat(function.irPrecision()).isEqualTo(IrPrecision.SOURCE_FULL));
   }
 
   // ---- the harness ---------------------------------------------------------------------------

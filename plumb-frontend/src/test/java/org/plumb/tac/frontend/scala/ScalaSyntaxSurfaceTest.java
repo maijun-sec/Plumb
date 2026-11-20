@@ -36,9 +36,9 @@ import org.plumb.tac.ir.TacOperand;
 /**
  * The Scala front end's SYNTAX surface: the constructs it lowers into real TAC shapes.
  *
- * <p>Every test here pins one construct. The assertion is about the SHAPE -- an instruction of
- * such a kind -- and not about the exact position, because the position is an accident of the
- * lowering order and the shape is the contract.
+ * <p>Every test here pins one construct. The assertion is about the SHAPE -- an instruction of such
+ * a kind -- and not about the exact position, because the position is an accident of the lowering
+ * order and the shape is the contract.
  */
 class ScalaSyntaxSurfaceTest {
 
@@ -91,7 +91,8 @@ class ScalaSyntaxSurfaceTest {
   }
 
   @Test
-  @DisplayName("Every case of a match is lowered; an unrecognised pattern does not swallow the rest")
+  @DisplayName(
+      "Every case of a match is lowered; an unrecognised pattern does not swallow the rest")
   void matchDoesNotSwallowTheLaterCases() {
     TacFunction fn =
         parseSingle(
@@ -107,12 +108,8 @@ class ScalaSyntaxSurfaceTest {
     // Three cases: a type test, a comparison, and the wildcard. The wildcard used to
     // be the fall-through for EVERY unrecognised pattern, which dropped the cases
     // after it.
-    assertThat(ofKind(fn, TacInstruction.Kind.INSTANCEOF))
-        .as("the type case")
-        .isNotEmpty();
-    assertThat(ofKind(fn, TacInstruction.Kind.BINOP))
-        .as("the constant case")
-        .isNotEmpty();
+    assertThat(ofKind(fn, TacInstruction.Kind.INSTANCEOF)).as("the type case").isNotEmpty();
+    assertThat(ofKind(fn, TacInstruction.Kind.BINOP)).as("the constant case").isNotEmpty();
   }
 
   @Test
@@ -153,10 +150,7 @@ class ScalaSyntaxSurfaceTest {
   void ifAsAnExpressionHasAValue() {
     TacFunction fn =
         parseSingle(
-            ".f",
-            "object Demo {",
-            "  def f(c: Boolean): String = if (c) \"yes\" else \"no\"",
-            "}");
+            ".f", "object Demo {", "  def f(c: Boolean): String = if (c) \"yes\" else \"no\"", "}");
 
     assertThat(kinds(fn)).as("the if's instructions").contains(TacInstruction.Kind.MOVE);
     assertThat(kinds(fn)).as("the if's instructions").contains(TacInstruction.Kind.BRANCH);
@@ -166,11 +160,7 @@ class ScalaSyntaxSurfaceTest {
   @DisplayName("A string interpolation is a concatenation")
   void stringInterpolationIsAConcatenation() {
     TacFunction fn =
-        parseSingle(
-            ".f",
-            "object Demo {",
-            "  def f(name: String): String = s\"hello $name\"",
-            "}");
+        parseSingle(".f", "object Demo {", "  def f(name: String): String = s\"hello $name\"", "}");
 
     assertThat(ofKind(fn, TacInstruction.Kind.BINOP))
         .as("the concatenation")
@@ -184,19 +174,14 @@ class ScalaSyntaxSurfaceTest {
   void logicalAndIsShortCircuit() {
     TacFunction fn =
         parseSingle(
-            ".f",
-            "object Demo {",
-            "  def f(a: Boolean, b: Boolean): Boolean = a && b",
-            "}");
+            ".f", "object Demo {", "  def f(a: Boolean, b: Boolean): Boolean = a && b", "}");
 
     assertThat(kinds(fn)).as("the operator's instructions").contains(TacInstruction.Kind.BRANCH);
     assertThat(ofKind(fn, TacInstruction.Kind.BINOP))
         .as("a logical and is not a plain bitwise and")
         .noneSatisfy(
             instruction ->
-                assertThat(instruction.binop)
-                    .as("the operator")
-                    .isEqualTo(BinaryOperator.LAND));
+                assertThat(instruction.binop).as("the operator").isEqualTo(BinaryOperator.LAND));
   }
 
   @Test
@@ -223,18 +208,15 @@ class ScalaSyntaxSurfaceTest {
   @DisplayName("A tuple literal is a call to the tuple's own constructor")
   void tupleLiteralIsAConstruction() {
     TacFunction fn =
-        parseSingle(
-            ".f",
-            "object Demo {",
-            "  def f(a: Int, b: Int): Any = (a, b)",
-            "}");
+        parseSingle(".f", "object Demo {", "  def f(a: Int, b: Int): Any = (a, b)", "}");
 
     // A Scala tuple is a PRODUCT: the literal is the companion's `apply`, which
     // is what builds it. The TAC's NEW is for a class constructor, and a tuple
     // has none of its own -- so the call is the honest shape.
     assertThat(calleeSignatures(fn))
         .as("the literal's call")
-        .anySatisfy(signature -> assertThat(signature).as("the tuple's constructor").contains("Tuple2"));
+        .anySatisfy(
+            signature -> assertThat(signature).as("the tuple's constructor").contains("Tuple2"));
   }
 
   @Test
@@ -250,13 +232,13 @@ class ScalaSyntaxSurfaceTest {
 
     TacInstruction call =
         ofKind(fn, TacInstruction.Kind.CALL).stream()
-            .filter(instruction -> instruction.calleeSig != null && instruction.calleeSig.endsWith(".g/2"))
+            .filter(
+                instruction ->
+                    instruction.calleeSig != null && instruction.calleeSig.endsWith(".g/2"))
             .findFirst()
             .orElse(null);
     assertThat(call).as("the call to g").isNotNull();
-    assertThat(call.args)
-        .as("the receiver slot and the two arguments")
-        .hasSize(3);
+    assertThat(call.args).as("the receiver slot and the two arguments").hasSize(3);
     // The values are in the order the CALLEE declares them -- x first, y second
     // -- even though the source wrote them the other way round. A call that kept
     // the source order would hand the callee (3, 1) for a callee that means
@@ -269,11 +251,7 @@ class ScalaSyntaxSurfaceTest {
   @DisplayName("Every parameter of every parameter list is a parameter")
   void everyParameterListIsFlattened() {
     TacFunction fn =
-        parseSingle(
-            ".f",
-            "object Demo {",
-            "  def f(a: Int)(b: Int): Int = a + b",
-            "}");
+        parseSingle(".f", "object Demo {", "  def f(a: Int)(b: Int): Int = a + b", "}");
 
     assertThat(fn.params()).as("both parameter lists").hasSize(2);
   }
@@ -287,11 +265,7 @@ class ScalaSyntaxSurfaceTest {
   void classFieldIsAFieldInitializer() {
     TacFrontend.ParseResult result =
         support.parse(
-            String.join(
-                "\n",
-                "class Holder(input: String) {",
-                "  val value: String = input",
-                "}"));
+            String.join("\n", "class Holder(input: String) {", "  val value: String = input", "}"));
 
     assertThat(result.functions())
         .as("the class's fields became functions")

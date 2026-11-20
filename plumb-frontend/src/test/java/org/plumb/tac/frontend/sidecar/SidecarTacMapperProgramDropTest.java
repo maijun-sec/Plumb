@@ -34,11 +34,11 @@ import org.plumb.tac.ir.TacDrop;
  *
  * <h2>Why this is worth pinning</h2>
  *
- * <p>The sidecar records the losses that belong to the WHOLE PROGRAM -- a build fact it knows and no
- * function owns -- in the response's top-level array, beside the functions rather than inside one of
- * them. That array was never read on the Java side: the front ends read each function's own drop
- * array and stopped there. So a drop the sidecar did the work to record was thrown away on the way
- * in, and the TAC looked complete.
+ * <p>The sidecar records the losses that belong to the WHOLE PROGRAM -- a build fact it knows and
+ * no function owns -- in the response's top-level array, beside the functions rather than inside
+ * one of them. That array was never read on the Java side: the front ends read each function's own
+ * drop array and stopped there. So a drop the sidecar did the work to record was thrown away on the
+ * way in, and the TAC looked complete.
  *
  * <p>Nothing said so. A loss that is dropped on the way in looks exactly like a loss that never
  * happened, and the report cannot tell the two apart.
@@ -103,7 +103,8 @@ class SidecarTacMapperProgramDropTest {
             + "\"impact\":\"SEMANTICS\",\"line\":-1,\"column\":-1,\"scope\":\"FUNCTION\"}";
 
     List<TacDrop> drops =
-        SidecarTacMapper.toProgramDrops(Json.parseObject("{\"programDrops\":[" + withoutScope + "]}"));
+        SidecarTacMapper.toProgramDrops(
+            Json.parseObject("{\"programDrops\":[" + withoutScope + "]}"));
     List<TacDrop> mislabelled =
         SidecarTacMapper.toProgramDrops(
             Json.parseObject("{\"programDrops\":[" + withFunctionScope + "]}"));

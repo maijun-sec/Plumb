@@ -29,7 +29,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -61,8 +60,8 @@ import org.plumb.tac.ir.TacOperand;
  * </ul>
  *
  * <p>The assertions here are about the SHAPE, and the shape is a pair: the receiver and the key. A
- * declaration and a read of the same member have to agree on BOTH, or they are two locations wearing
- * one name.
+ * declaration and a read of the same member have to agree on BOTH, or they are two locations
+ * wearing one name.
  *
  * <h2>Why it SKIPS</h2>
  *

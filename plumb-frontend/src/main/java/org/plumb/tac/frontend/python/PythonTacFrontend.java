@@ -287,7 +287,9 @@ public final class PythonTacFrontend implements TacFrontend, AutoCloseable {
   public StructuredParseResult parseStructured(String source, Path path, CompileContext ctx) {
     ParseResult plain = parse(source, path, ctx);
     return new StructuredParseResult(
-        plain.functions(), List.copyOf(structuredProblems), plain.precision(),
+        plain.functions(),
+        List.copyOf(structuredProblems),
+        plain.precision(),
         plain.programDrops());
   }
 
@@ -576,10 +578,9 @@ public final class PythonTacFrontend implements TacFrontend, AutoCloseable {
   /**
    * Report the problems the sidecar reported for the FILE.
    *
-   * <p>A file-level problem is not attached to any function: it says the file
-   * as a whole could not be read, or that a construct in it was dropped
-   * before any function was made. Only ArkTS read this channel; the other
-   * three dropped the problems on the floor, and a dropped problem is a
+   * <p>A file-level problem is not attached to any function: it says the file as a whole could not
+   * be read, or that a construct in it was dropped before any function was made. Only ArkTS read
+   * this channel; the other three dropped the problems on the floor, and a dropped problem is a
    * silent loss.
    *
    * @param path the file
@@ -611,5 +612,4 @@ public final class PythonTacFrontend implements TacFrontend, AutoCloseable {
               problem.getInt("column", -1)));
     }
   }
-
 }

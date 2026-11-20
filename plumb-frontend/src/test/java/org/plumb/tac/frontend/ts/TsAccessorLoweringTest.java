@@ -87,7 +87,8 @@ class TsAccessorLoweringTest {
 
   @Test
   @DisplayName("an auto-accessor's getter and setter do not share a signature")
-  void anAutoAccessorsGetterAndSetterDoNotShareASignature(@TempDir Path directory) throws IOException {
+  void anAutoAccessorsGetterAndSetterDoNotShareASignature(@TempDir Path directory)
+      throws IOException {
     TacFunction getter = accessorOf(SOURCE, directory, "value", TacMemberKind.GETTER);
     TacFunction setter = accessorOf(SOURCE, directory, "value", TacMemberKind.SETTER);
 

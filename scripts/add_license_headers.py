@@ -21,6 +21,7 @@ That sharing is deliberate: the two gates must agree about what a
 had separate file lists, a file could be formatted but unlicenced, and
 nobody would notice.
 """
+import ast
 import os
 import sys
 from pathlib import Path
@@ -37,20 +38,25 @@ REPO = Path(__file__).resolve().parents[1]
 def source_roots():
     """The module source roots, read out of scripts/format.py.
 
-    Read out of the formatter rather than repeated here: a second copy
-    of the list is a second truth, and the day a module is added, one
-    of the two lists would be wrong.
+    Read out of the formatter rather than repeated here: a second copy of
+    the list is a second truth, and the day a module is added, one of the two
+    lists would be wrong.
+
+    The tuple is PARSED, not scanned for its end: the first version took the
+    text between "SOURCE_ROOTS = (" and the next ")", and a parenthesis
+    inside a COMMENT in that tuple truncated the list -- silently, because
+    the applier then reported "checked N files, added the header to 0" as
+    success.  The symptom is the same shape as the bug this whole exercise
+    is about: a gate that reads fewer files than it should, and says nothing.
     """
     fmt = (REPO / "scripts" / "format.py").read_text(encoding="utf-8")
-    marker = "SOURCE_ROOTS = ("
-    start = fmt.index(marker) + len(marker)
-    end = fmt.index(")", start)
-    roots = []
-    for line in fmt[start:end].splitlines():
-        line = line.strip().strip(",").strip('"').strip("'")
-        if line:
-            roots.append(line)
-    return roots
+    for node in ast.parse(fmt).body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == "SOURCE_ROOTS" for t in node.targets):
+            continue
+        return list(ast.literal_eval(node.value))
+    raise RuntimeError("scripts/format.py has no SOURCE_ROOTS assignment")
 
 
 # The files a GENERATOR owns. The generator emits the header itself,

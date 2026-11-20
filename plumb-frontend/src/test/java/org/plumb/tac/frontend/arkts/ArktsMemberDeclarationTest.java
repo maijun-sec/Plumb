@@ -48,8 +48,8 @@ import org.plumb.tac.ir.TacMemberKind;
  * start from the declaration.
  *
  * <p>The declaration used to be recorded only for the members that had an initial value. A member
- * declared without one -- {@code private timeout: number;} -- is written later, in the constructor or
- * in a method, and until it is, the only thing the TAC knew about it was nothing at all. So the
+ * declared without one -- {@code private timeout: number;} -- is written later, in the constructor
+ * or in a method, and until it is, the only thing the TAC knew about it was nothing at all. So the
  * member was invisible to every rule that asks about members.
  *
  * <h2>Why it SKIPS</h2>
@@ -112,8 +112,8 @@ class ArktsMemberDeclarationTest {
     assertThat(owner).as("the class must have a function of its own").isNotNull();
     assertThat(owner.enclosingClass())
         .as(
-            "the declaration names the class it belongs to, so two classes' members of the same name"
-                + " are two members")
+            "the declaration names the class it belongs to, so two classes' members of the same"
+                + " name are two members")
         .endsWith("Session");
     assertThat(owner.memberKind())
         .as("the class's own function is where the class's facts are recorded")
@@ -178,6 +178,7 @@ class ArktsMemberDeclarationTest {
       return false;
     }
     Path root = project.getParent();
-    return root != null && Files.isDirectory(root.resolve("node_modules").resolve("ohos-typescript"));
+    return root != null
+        && Files.isDirectory(root.resolve("node_modules").resolve("ohos-typescript"));
   }
 }

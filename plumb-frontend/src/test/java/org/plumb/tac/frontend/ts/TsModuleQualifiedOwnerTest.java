@@ -34,7 +34,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.plumb.tac.frontend.CompileContext;
 import org.plumb.tac.frontend.DefaultCompileContext;
-import org.plumb.tac.frontend.TacFrontend;
 import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
@@ -49,18 +48,18 @@ import org.plumb.tac.ir.TacInstruction;
  * second one REPLACES the first, and one method body is gone from the program. There is no drop and
  * no problem to say so: the body simply is not there any more.
  *
- * <p>The same collision decides where a CALL goes. A call key is {@code owner.name/arity}, and a key
- * whose owner is a simple name addresses every method of that name in every class -- so the call
- * graph has to fall back on "the first same-named method it finds", which the engine's schedule
- * decides.
+ * <p>The same collision decides where a CALL goes. A call key is {@code owner.name/arity}, and a
+ * key whose owner is a simple name addresses every method of that name in every class -- so the
+ * call graph has to fall back on "the first same-named method it finds", which the engine's
+ * schedule decides.
  *
  * <p>A class's identity is its MODULE plus its name, and the sidecar already said so for the
  * class's own function, its constructor and its accessors. The methods were the ones left out, and
  * this test pins that they now say it too.
  *
- * <p><b>Why this drives the real sidecar.</b> The module of a class is a fact the COMPILER knows and
- * the sidecar asks it for: the resolved signature names the declaration the call reaches, and the
- * declaration's file names the module. A test that only checked the mapping would pass if the
+ * <p><b>Why this drives the real sidecar.</b> The module of a class is a fact the COMPILER knows
+ * and the sidecar asks it for: the resolved signature names the declaration the call reaches, and
+ * the declaration's file names the module. A test that only checked the mapping would pass if the
  * sidecar stopped asking -- and that is exactly the failure this is about.
  */
 @DisplayName("TypeScript: two modules that declare the same class name keep their own members")
@@ -182,7 +181,8 @@ class TsModuleQualifiedOwnerTest {
     // (FrontendRegistry builds the context), and so does this test.
     CompileContext context =
         new DefaultCompileContext(
-            List.of(new CompileContext.Module("ts", directory, List.of(), List.of(), List.of(), null)));
+            List.of(
+                new CompileContext.Module("ts", directory, List.of(), List.of(), List.of(), null)));
 
     try (TsTacFrontend frontend = new TsTacFrontend(SourceLanguage.TYPESCRIPT)) {
       assumeTrue(

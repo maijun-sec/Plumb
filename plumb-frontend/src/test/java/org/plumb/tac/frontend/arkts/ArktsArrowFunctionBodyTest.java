@@ -43,11 +43,11 @@ import org.plumb.tac.ir.TacInstruction;
  *
  * <h2>Why this test exists next to the TypeScript one</h2>
  *
- * <p>The two sidecars are separate programs, and a fix in one of them is not a fix in the other: the
- * TypeScript sidecar was missing an import that the ArkTS one has, and the ArkTS sidecar has its
- * own lowering of the same constructs. A test that only walked one of them would leave the other
- * free to keep the defect, and the defect is silent -- the body is gone, the function still reports
- * full precision, and the sink inside it is never reached.
+ * <p>The two sidecars are separate programs, and a fix in one of them is not a fix in the other:
+ * the TypeScript sidecar was missing an import that the ArkTS one has, and the ArkTS sidecar has
+ * its own lowering of the same constructs. A test that only walked one of them would leave the
+ * other free to keep the defect, and the defect is silent -- the body is gone, the function still
+ * reports full precision, and the sink inside it is never reached.
  *
  * <h2>What the body is, and what it is not</h2>
  *

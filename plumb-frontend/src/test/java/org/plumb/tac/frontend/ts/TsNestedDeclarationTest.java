@@ -51,8 +51,8 @@ import org.plumb.tac.ir.TacInstruction;
  * <p>The second case is the other end of the same trade. A class whose body holds a nested class is
  * a class the COMPILER loses: the syntax tree it hands over stops at the nested class, and the
  * members that come after it are not in the class at all. The sidecar used to report that loss --
- * the class's own function carried the problem and the file's precision dropped -- because there was
- * nothing better to do. There is now: the sidecar takes the nested class out of the text the
+ * the class's own function carried the problem and the file's precision dropped -- because there
+ * was nothing better to do. There is now: the sidecar takes the nested class out of the text the
  * compiler reads, so the compiler builds the outer class whole, and the members that come after the
  * nested class are members of their class again.
  *
@@ -177,10 +177,13 @@ class TsNestedDeclarationTest {
     assertThat(functions)
         .as(
             "a class declared inside a method body is a class of its own, and its methods are"
-                + " functions of the program -- a class that is lifted out of the method must not be"
-                + " lifted out of the program as well")
-        .anyMatch(function -> "go".equals(function.name()) && function.enclosingClass() != null
-            && function.enclosingClass().endsWith("Inner"));
+                + " functions of the program -- a class that is lifted out of the method must not"
+                + " be lifted out of the program as well")
+        .anyMatch(
+            function ->
+                "go".equals(function.name())
+                    && function.enclosingClass() != null
+                    && function.enclosingClass().endsWith("Inner"));
   }
 
   @Test
@@ -204,8 +207,8 @@ class TsNestedDeclarationTest {
     assertThat(result.precision())
         .as(
             "the compiler's syntax tree stops this class at the nested class, so the repair takes"
-                + " the nested class out of the text the compiler reads -- and with the class whole,"
-                + " there is nothing left to report")
+                + " the nested class out of the text the compiler reads -- and with the class"
+                + " whole, there is nothing left to report")
         .isEqualTo(IrPrecision.SOURCE_FULL);
     assertThat(result.functions())
         .as("the nested class is a class of its own, and its method is a function of the program")
@@ -214,8 +217,8 @@ class TsNestedDeclarationTest {
 
   @Test
   @DisplayName("a class whose body holds a nested class between two methods keeps both methods")
-  void aClassWhoseBodyHoldsANestedClassBetweenTwoMethodsKeepsBothMethods(
-      @TempDir Path directory) throws IOException {
+  void aClassWhoseBodyHoldsANestedClassBetweenTwoMethodsKeepsBothMethods(@TempDir Path directory)
+      throws IOException {
     TacFrontend.ParseResult result = parse(NESTED_IN_MIDDLE, directory);
 
     assertThat(result.functions())
@@ -253,9 +256,9 @@ class TsNestedDeclarationTest {
 
     assertThat(result.precision())
         .as(
-            "the control: a class whose body holds no nested class is in the tree whole, so its file"
-                + " keeps its full precision -- without this, the cases above would pass for the wrong"
-                + " reason")
+            "the control: a class whose body holds no nested class is in the tree whole, so its"
+                + " file keeps its full precision -- without this, the cases above would pass for"
+                + " the wrong reason")
         .isEqualTo(IrPrecision.SOURCE_FULL);
   }
 
@@ -288,8 +291,8 @@ class TsNestedDeclarationTest {
     assertThat(functions)
         .as(
             "a fragment has no call expression inside it -- the member's body is not a tree the"
-                + " compiler gave over -- so the sink in it was not a call at all, and a sink that is"
-                + " not a call cannot be matched by any rule")
+                + " compiler gave over -- so the sink in it was not a call at all, and a sink that"
+                + " is not a call cannot be matched by any rule")
         .anyMatch(
             function ->
                 function.instructions().stream()
@@ -327,9 +330,9 @@ class TsNestedDeclarationTest {
   /**
    * The one-based line of the source line that holds a piece of text.
    *
-   * <p>The expected line is derived from the source rather than written down, so that the
-   * assertion says what it means -- the lowering and the repair agree about where the sink is --
-   * and does not become a number that has to be edited when the fixture changes.
+   * <p>The expected line is derived from the source rather than written down, so that the assertion
+   * says what it means -- the lowering and the repair agree about where the sink is -- and does not
+   * become a number that has to be edited when the fixture changes.
    */
   private static int lineOf(String source, String needle) {
     List<String> lines = source.lines().toList();

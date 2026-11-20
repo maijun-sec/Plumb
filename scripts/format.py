@@ -91,6 +91,17 @@ SOURCE_ROOTS = (
     "plumb-build/plumb-build-capture/src",
     "plumb-ai/src",
     "plumb-main/src",
+    # The language frontends. They are the module this project spends most of
+    # its TAC work on -- six frontends, the shared wire mapper, and their
+    # tests -- and they were NOT on this list, which means neither this gate
+    # nor the licence gate (which reads the same list) had ever looked at
+    # them: 121 files, of which 46 were not in the formatter's shape and 37
+    # carried no licence header.
+    #
+    # A module that is not on the list is a module nothing checks -- and the
+    # gap is invisible from the gate's own output, because a gate that never
+    # reads a file cannot report it.
+    "plumb-frontend/src",
     # The Kotlin DSL module. The FORMATTER has nothing to say about it --
     # google-java-format reads .java only -- but the root is listed
     # because these roots are the project's list of where source lives,

@@ -546,12 +546,12 @@ class PythonSidecarEndToEndTest {
   /**
    * A closure takes the values it captures as its LEADING PARAMETERS, and the call passes them.
    *
-   * <p><b>Why the capture has to be a parameter.</b> A function written inside another function reads
-   * names from the scope around it. Those names are FREE variables of the inner function: they are in
-   * neither its parameters nor its locals, and the engine has no way to carry the taint of a value
-   * into a function that has no parameter to carry it in. A sink inside such a body is not a finding
-   * the report cannot show -- it is never produced at all. The engine analyses every function in the
-   * program, so the body IS analysed; the VALUE is what never arrives.
+   * <p><b>Why the capture has to be a parameter.</b> A function written inside another function
+   * reads names from the scope around it. Those names are FREE variables of the inner function:
+   * they are in neither its parameters nor its locals, and the engine has no way to carry the taint
+   * of a value into a function that has no parameter to carry it in. A sink inside such a body is
+   * not a finding the report cannot show -- it is never produced at all. The engine analyses every
+   * function in the program, so the body IS analysed; the VALUE is what never arrives.
    *
    * <p><b>What the shape buys.</b> A parameter is a source: every parameter of every function is
    * marked as one. So a capture that is a parameter arrives in the body already tainted, and the
@@ -560,11 +560,11 @@ class PythonSidecarEndToEndTest {
    * counts the captures -- which is what keeps the call and the callee the same node in the call
    * graph.
    *
-   * <p><b>Why the loop variable of a comprehension is NOT a capture.</b> A comprehension has a scope
-   * of its own, so its loop variable is bound there and not in the function around it. Treating it
-   * as a capture would put a parameter and a local of the SAME NAME in one function, and the engine
-   * identifies a variable by its name: the loop variable would BE the parameter, and the taint of
-   * the parameter would flow into the loop.
+   * <p><b>Why the loop variable of a comprehension is NOT a capture.</b> A comprehension has a
+   * scope of its own, so its loop variable is bound there and not in the function around it.
+   * Treating it as a capture would put a parameter and a local of the SAME NAME in one function,
+   * and the engine identifies a variable by its name: the loop variable would BE the parameter, and
+   * the taint of the parameter would flow into the loop.
    *
    * <p><b>Why the value a generator yields is still evaluated.</b> The generator has no TAC of its
    * own, so the value it produces is unknown -- but the value is EVALUATED in the generator's own
@@ -639,7 +639,8 @@ class PythonSidecarEndToEndTest {
               .filter(i -> i.kind == TacInstruction.Kind.CALL)
               .filter(i -> i.calleeSig != null && i.calleeSig.contains(".sink_in_closure/"))
               .findFirst()
-              .orElseThrow(() -> new AssertionError("the call of the closure is not in the stream"));
+              .orElseThrow(
+                  () -> new AssertionError("the call of the closure is not in the stream"));
       assertThat(call.calleeSig)
           .as("the key counts the capture and the declared argument")
           .endsWith(".sink_in_closure/2");
@@ -703,12 +704,11 @@ class PythonSidecarEndToEndTest {
               .orElseThrow(
                   () -> new AssertionError("the call of the closure is not in the stream"));
       assertThat(closureCall.calleeSig)
-          .as("the callee key names the closure's own function, once -- a doubled owner would"
-              + " break the edge between the call and the body")
+          .as(
+              "the callee key names the closure's own function, once -- a doubled owner would"
+                  + " break the edge between the call and the body")
           .doesNotContain("probe_app.probe_app");
-      assertThat(closureCall.args)
-          .as("the receiver slot, then the captured value")
-          .hasSize(2);
+      assertThat(closureCall.args).as("the receiver slot, then the captured value").hasSize(2);
       assertThat(((TacOperand.TacVar) closureCall.args.get(1)).name())
           .as("the value the lambda captured is the value the call passes")
           .isEqualTo("value");

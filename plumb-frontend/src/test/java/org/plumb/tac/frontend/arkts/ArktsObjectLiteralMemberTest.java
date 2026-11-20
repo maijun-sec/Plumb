@@ -272,7 +272,9 @@ class ArktsObjectLiteralMemberTest {
         .orElseThrow(
             () ->
                 new AssertionError(
-                    "there is no function named " + name + ": the body of the member of the object"
+                    "there is no function named "
+                        + name
+                        + ": the body of the member of the object"
                         + " literal is not in the TAC at all, so the code inside it is gone"));
   }
 
@@ -351,6 +353,7 @@ class ArktsObjectLiteralMemberTest {
       return false;
     }
     Path root = project.getParent();
-    return root != null && Files.isDirectory(root.resolve("node_modules").resolve("ohos-typescript"));
+    return root != null
+        && Files.isDirectory(root.resolve("node_modules").resolve("ohos-typescript"));
   }
 }

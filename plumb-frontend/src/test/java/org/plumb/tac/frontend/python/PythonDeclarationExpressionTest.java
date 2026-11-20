@@ -34,15 +34,15 @@ import org.plumb.tac.ir.TacFunction;
 /**
  * The expressions a declaration evaluates, as the side car lowers them.
  *
- * <p><b>Why they belong to the stream the declaration is written in.</b> Python evaluates a
- * default value, an annotation and a class's bases when the declaration is written -- not when the
- * function is called, and not when the class body runs. So they belong to the enclosing stream,
- * and that is also where the names they read are defined. A default that read a variable of the
- * enclosing function was, before this, lowered into the declared function's own stream, where that
- * variable does not exist: the sink inside it was visible and its argument was not.
+ * <p><b>Why they belong to the stream the declaration is written in.</b> Python evaluates a default
+ * value, an annotation and a class's bases when the declaration is written -- not when the function
+ * is called, and not when the class body runs. So they belong to the enclosing stream, and that is
+ * also where the names they read are defined. A default that read a variable of the enclosing
+ * function was, before this, lowered into the declared function's own stream, where that variable
+ * does not exist: the sink inside it was visible and its argument was not.
  *
- * <p><b>Why the assertion names the streams rather than counting instructions.</b> What has to
- * stay true is WHERE the call is: in the enclosing function's stream, and in no other.
+ * <p><b>Why the assertion names the streams rather than counting instructions.</b> What has to stay
+ * true is WHERE the call is: in the enclosing function's stream, and in no other.
  */
 @DisplayName("Python: a declaration's expressions are evaluated where it is written")
 class PythonDeclarationExpressionTest {
@@ -126,8 +126,7 @@ class PythonDeclarationExpressionTest {
   @DisplayName("a parameter's annotation is evaluated where the function is written")
   void aParametersAnnotationIsEvaluatedWhereTheFunctionIsWritten(@TempDir Path directory)
       throws IOException {
-    List<TacFunction> functions =
-        PythonTestSupport.translateAll(directory, PARAMETER_ANNOTATION);
+    List<TacFunction> functions = PythonTestSupport.translateAll(directory, PARAMETER_ANNOTATION);
 
     assertThat(PythonTestSupport.functionsCalling(functions, "system"))
         .as("the annotation is evaluated where the declaration is written")

@@ -46,9 +46,9 @@ import org.plumb.tac.ir.TacOperand;
  *
  * <h2>Why the text that already reads stays as it is</h2>
  *
- * <p>A literal that is already a decimal number is carried through unchanged. That is not a
- * detail: the change is meant to fix the literals that could not be read, and a literal that reads
- * today must not move.
+ * <p>A literal that is already a decimal number is carried through unchanged. That is not a detail:
+ * the change is meant to fix the literals that could not be read, and a literal that reads today
+ * must not move.
  *
  * <p>The assertions are about SHAPES: the constant's KIND and the VALUE it spells. They do not pin
  * how the text was parsed.

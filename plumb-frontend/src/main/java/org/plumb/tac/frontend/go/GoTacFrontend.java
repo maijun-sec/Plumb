@@ -34,9 +34,9 @@ import org.plumb.tac.frontend.CompileContext;
 import org.plumb.tac.frontend.TacFrontend;
 import org.plumb.tac.frontend.json.Json;
 import org.plumb.tac.frontend.sidecar.SidecarProtocol;
+import org.plumb.tac.frontend.sidecar.SidecarTacMapper;
 import org.plumb.tac.ir.IrPrecision;
 import org.plumb.tac.ir.SourceLanguage;
-import org.plumb.tac.frontend.sidecar.SidecarTacMapper;
 import org.plumb.tac.ir.TacDrop;
 import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacInstruction;
@@ -256,7 +256,9 @@ public final class GoTacFrontend implements TacFrontend, AutoCloseable {
   public StructuredParseResult parseStructured(String source, Path path, CompileContext ctx) {
     ParseResult plain = parse(source, path, ctx);
     return new StructuredParseResult(
-        plain.functions(), List.copyOf(structuredProblems), plain.precision(),
+        plain.functions(),
+        List.copyOf(structuredProblems),
+        plain.precision(),
         plain.programDrops());
   }
 

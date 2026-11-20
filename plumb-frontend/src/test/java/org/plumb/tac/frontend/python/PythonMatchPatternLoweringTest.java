@@ -36,13 +36,13 @@ import org.plumb.tac.ir.TacInstruction;
  * The names a match pattern captures, as the side car lowers them.
  *
  * <p><b>Why a capture binds a VALUE and not the thing that was matched.</b> {@code case {"a": x}}
- * binds x to the entry under "a", and {@code case [x, y]} binds x to the first element and y to
- * the second. A name that was never bound is a name the program reads that does not exist, and a
- * sink that reads it is a sink whose argument the analysis knows nothing about.
+ * binds x to the entry under "a", and {@code case [x, y]} binds x to the first element and y to the
+ * second. A name that was never bound is a name the program reads that does not exist, and a sink
+ * that reads it is a sink whose argument the analysis knows nothing about.
  *
  * <p><b>Why the assertions are about relations.</b> What has to stay true is that the capture is
- * assigned the thing the pattern names: the entry under that key, the element at that position,
- * the whole matched value.
+ * assigned the thing the pattern names: the entry under that key, the element at that position, the
+ * whole matched value.
  */
 @DisplayName("Python: a match pattern binds the value it captures")
 class PythonMatchPatternLoweringTest {
@@ -90,8 +90,8 @@ class PythonMatchPatternLoweringTest {
 
     assertThat(handle).as("the function must be in the stream").isNotNull();
     TacInstruction rest = PythonTestSupport.moveTo(handle, "rest");
-    assertThat(rest).as("the rest must be bound: a name that is read and never bound does not"
-            + " exist")
+    assertThat(rest)
+        .as("the rest must be bound: a name that is read and never bound does not" + " exist")
         .isNotNull();
     assertThat(rest.lhs1)
         .as("the rest holds the value the match tested")

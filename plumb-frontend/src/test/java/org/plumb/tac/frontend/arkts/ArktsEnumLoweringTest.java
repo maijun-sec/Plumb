@@ -45,21 +45,21 @@ import org.plumb.tac.ir.TacOperand;
 /**
  * The ArkTS frontend: an enum is lowered into the entries of its own object.
  *
- * <p><b>Why this file exists next to the sibling one.</b> The ArkTS sidecar is a DIFFERENT
- * program on a DIFFERENT compiler build, and the enum lowering changed both of them the same
- * way. A change that is verified on one sidecar and assumed on the other is a change that is
- * verified once -- and the assumption is exactly where the bug would be.
+ * <p><b>Why this file exists next to the sibling one.</b> The ArkTS sidecar is a DIFFERENT program
+ * on a DIFFERENT compiler build, and the enum lowering changed both of them the same way. A change
+ * that is verified on one sidecar and assumed on the other is a change that is verified once -- and
+ * the assumption is exactly where the bug would be.
  *
- * <p><b>And the sibling has one case this one cannot have.</b> The ArkTS sidecar's compiler
- * rejects an enum that holds a method outright -- the file does not parse -- so the case where
- * the compiler's tree is cut off in the middle of an enum does not exist here. The other seven
- * cases are the same shape, and they are the ones that pin the shape of the lowering.
+ * <p><b>And the sibling has one case this one cannot have.</b> The ArkTS sidecar's compiler rejects
+ * an enum that holds a method outright -- the file does not parse -- so the case where the
+ * compiler's tree is cut off in the middle of an enum does not exist here. The other seven cases
+ * are the same shape, and they are the ones that pin the shape of the lowering.
  *
  * <p><b>What this side already had, and what was wrong with it.</b> The ArkTS sidecar already
  * lowered an enum, but nothing read it: there was no test for it. Reading it showed that its
- * members were written as LOCALS of a synthetic function while the read {@code Colour.RED} is
- * a keyed load on the enum object -- two different mechanisms, which can never meet -- and that
- * the member after a value was counted from zero, so {@code A = 5, B} gave B the value 0.
+ * members were written as LOCALS of a synthetic function while the read {@code Colour.RED} is a
+ * keyed load on the enum object -- two different mechanisms, which can never meet -- and that the
+ * member after a value was counted from zero, so {@code A = 5, B} gave B the value 0.
  */
 @DisplayName("ArkTS: an enum is lowered into the entries of its own object")
 class ArktsEnumLoweringTest {
@@ -234,7 +234,8 @@ class ArktsEnumLoweringTest {
 
   @Test
   @DisplayName("the value of a member after a computed value is not invented")
-  void theValueOfAMemberAfterAComputedValueIsNotInvented(@TempDir Path directory) throws IOException {
+  void theValueOfAMemberAfterAComputedValueIsNotInvented(@TempDir Path directory)
+      throws IOException {
     List<TacFunction> functions = translate(directory);
 
     TacFunction computed = functionNamed(functions, "Computed");
@@ -280,8 +281,8 @@ class ArktsEnumLoweringTest {
    * The load of the given key from the given object, or null when there is no such load.
    *
    * <p>The object is part of the question: a namespaced member is read in two loads -- the
-   * namespace object, then the member's own object -- so a search by key alone can land on
-   * the wrong one.
+   * namespace object, then the member's own object -- so a search by key alone can land on the
+   * wrong one.
    */
   private static TacInstruction loadWithKey(TacFunction function, String key, String object) {
     for (TacInstruction instruction : function.instructions()) {
@@ -326,12 +327,19 @@ class ArktsEnumLoweringTest {
 
       List<TacFunction> functions = new ArrayList<>();
       functions.addAll(
-          frontend.parse(STORE_A, directory.resolve("modA").resolve("store.ets"), context).functions());
+          frontend
+              .parse(STORE_A, directory.resolve("modA").resolve("store.ets"), context)
+              .functions());
       functions.addAll(
-          frontend.parse(STORE_B, directory.resolve("modB").resolve("store.ets"), context).functions());
-      functions.addAll(frontend.parse(NAMESPACED, directory.resolve("ns.ets"), context).functions());
-      functions.addAll(frontend.parse(CALLER, directory.resolve("caller.ets"), context).functions());
-      functions.addAll(frontend.parse(COMPUTED, directory.resolve("computed.ets"), context).functions());
+          frontend
+              .parse(STORE_B, directory.resolve("modB").resolve("store.ets"), context)
+              .functions());
+      functions.addAll(
+          frontend.parse(NAMESPACED, directory.resolve("ns.ets"), context).functions());
+      functions.addAll(
+          frontend.parse(CALLER, directory.resolve("caller.ets"), context).functions());
+      functions.addAll(
+          frontend.parse(COMPUTED, directory.resolve("computed.ets"), context).functions());
       return functions;
     }
   }
@@ -383,6 +391,7 @@ class ArktsEnumLoweringTest {
       return false;
     }
     Path root = project.getParent();
-    return root != null && Files.isDirectory(root.resolve("node_modules").resolve("ohos-typescript"));
+    return root != null
+        && Files.isDirectory(root.resolve("node_modules").resolve("ohos-typescript"));
   }
 }

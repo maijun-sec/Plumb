@@ -58,8 +58,8 @@ import org.plumb.tac.ir.TacOperand;
  * { 1, 2 }} are the same construct written two ways, and only the first one was lowered. The second
  * was dropped whole, so the variable that held the array was never assigned -- and a call that took
  * the array as its argument took an unknown placeholder in place of it. The two forms have to end
- * up in the same shape, or a program that writes one of them is analysed as a different program from
- * the one that writes the other.
+ * up in the same shape, or a program that writes one of them is analysed as a different program
+ * from the one that writes the other.
  *
  * <p><b>And the collection expression.</b> {@code ["a", "b"]} is the third spelling of the same
  * construct, and it was dropped whole as well: in an argument position the argument became an

@@ -37,11 +37,11 @@ import org.plumb.tac.ir.TacOperand;
  * The TAC lowering of a CONSTRUCTOR INITIALIZER: the <code>: base(x)</code> and the <code>: this(x)
  * </code> that name the constructor a constructor delegates to.
  *
- * <p><b>The question.</b> In Roslyn's syntax tree the initializer is a SIBLING of the
- * constructor's body, not a statement inside it. A frontend that walks the body never visits it, so
- * the base constructor's body is not part of the derived constructor's flow: the base constructor
- * appears in the TAC as a function that nothing calls, and the constructor chain is invisible to
- * the call graph.
+ * <p><b>The question.</b> In Roslyn's syntax tree the initializer is a SIBLING of the constructor's
+ * body, not a statement inside it. A frontend that walks the body never visits it, so the base
+ * constructor's body is not part of the derived constructor's flow: the base constructor appears in
+ * the TAC as a function that nothing calls, and the constructor chain is invisible to the call
+ * graph.
  *
  * <p><b>Why that is a FIDELITY gap and not a lost finding.</b> The engine analyses constructors as
  * entry points, so a sink inside the base constructor is still reported. What is missing is the
@@ -152,7 +152,9 @@ class CSharpBaseConstructorTest {
                 + "the object the derived constructor is building")
         .isEqualTo("Derived");
     assertThat(((TacOperand.TacVar) call.args.get(1)).name())
-        .as("the initializer's argument is the first USER argument, which is what the catalogue names")
+        .as(
+            "the initializer's argument is the first USER argument, which is what the catalogue"
+                + " names")
         .isEqualTo("x");
   }
 
@@ -179,7 +181,8 @@ class CSharpBaseConstructorTest {
   }
 
   @Test
-  @DisplayName("the base constructor call has no destination, because a constructor returns nothing")
+  @DisplayName(
+      "the base constructor call has no destination, because a constructor returns nothing")
   void theBaseConstructorCallHasNoDestination() {
     TacFunction constructor = constructorOf(support.parse(SOURCE).functions(), "Derived", 1);
 
@@ -196,13 +199,15 @@ class CSharpBaseConstructorTest {
 
     assertThat(callsOf(constructor))
         .as(
-            "the base constructor has no initializer, so it has no call to make: the compiler's "
-                + "implicit call is not in the source, and the sidecar reports what the source says")
+            "the base constructor has no initializer, so it has no call to make: the compiler's"
+                + " implicit call is not in the source, and the sidecar reports what the source"
+                + " says")
         .isEmpty();
   }
 
   @Test
-  @DisplayName("a constructor is named the way every callee key names it, so the call reaches its body")
+  @DisplayName(
+      "a constructor is named the way every callee key names it, so the call reaches its body")
   void aConstructorIsNamedTheWayEveryCalleeKeyNamesIt() {
     List<TacFunction> functions = support.parse(SOURCE).functions();
 
@@ -263,9 +268,9 @@ class CSharpBaseConstructorTest {
   /**
    * The constructor of a class.
    *
-   * <p>The class is named the way the SOURCE names it -- the simple name --
-   * because a class's identity is its qualified name and the test asks about
-   * the class, not about the file it happens to live in.
+   * <p>The class is named the way the SOURCE names it -- the simple name -- because a class's
+   * identity is its qualified name and the test asks about the class, not about the file it happens
+   * to live in.
    *
    * @param functions the functions of the program
    * @param enclosingClass the simple name of the class that declares the constructor

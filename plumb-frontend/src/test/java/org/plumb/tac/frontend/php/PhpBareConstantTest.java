@@ -45,11 +45,11 @@ import org.plumb.tac.ir.TacInstruction;
  * resolves, and the parser gives them a node of their own -- so the expression lowering had no
  * branch for them, and the fallback THREW.
  *
- * <p>A throw inside a statement's lowering ends that statement. So {@code if (DEBUG) { system($cmd);
- * }} was lowered to nothing: not the branch, not the sink, not even an honest report of what was
- * lost. The function around it reported a loss, which is true, but the sink that the loss hid was
- * simply gone -- and a scan that finds nothing looks exactly like a scan of a program that has
- * nothing to find.
+ * <p>A throw inside a statement's lowering ends that statement. So {@code if (DEBUG) {
+ * system($cmd); }} was lowered to nothing: not the branch, not the sink, not even an honest report
+ * of what was lost. The function around it reported a loss, which is true, but the sink that the
+ * loss hid was simply gone -- and a scan that finds nothing looks exactly like a scan of a program
+ * that has nothing to find.
  *
  * <h2>Why a capture by reference needs its own test</h2>
  *

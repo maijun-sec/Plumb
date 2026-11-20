@@ -327,8 +327,8 @@ class KotlinTacFrontendTest {
    *
    * <p><b>Why the example is a RANGE and not an {@code is}.</b> The {@code is} branch is lowered
    * now -- it is an {@code INSTANCEOF} -- so it can no longer be the branch that is not lowered.
-   * The property under test is the same one, and a range condition is a branch this front end
-   * still cannot read.
+   * The property under test is the same one, and a range condition is a branch this front end still
+   * cannot read.
    */
   @Test
   void aWhenBranchThatCannotBeLoweredIsReported() {

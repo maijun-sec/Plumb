@@ -38,9 +38,9 @@ import org.plumb.tac.ir.UnaryOperator;
 /**
  * The Kotlin front end's SYNTAX surface: the constructs it lowers into real TAC shapes.
  *
- * <p>Every test here pins one construct. The assertion is about the SHAPE -- an instruction of
- * such a kind, with such an operand -- and not about the exact position, because the position is
- * an accident of the lowering order and the shape is the contract.
+ * <p>Every test here pins one construct. The assertion is about the SHAPE -- an instruction of such
+ * a kind, with such an operand -- and not about the exact position, because the position is an
+ * accident of the lowering order and the shape is the contract.
  */
 class KotlinSyntaxSurfaceTest {
 
@@ -107,7 +107,9 @@ class KotlinSyntaxSurfaceTest {
     List<String> callees = calleeSignatures(fn);
     assertThat(callees)
         .as("the loop asks for an iterator, then for the next element")
-        .contains("java.lang.Iterable.iterator/0", "java.util.Iterator.hasNext/0",
+        .contains(
+            "java.lang.Iterable.iterator/0",
+            "java.util.Iterator.hasNext/0",
             "java.util.Iterator.next/0");
   }
 
@@ -231,10 +233,7 @@ class KotlinSyntaxSurfaceTest {
   @DisplayName("A safe call checks its receiver and produces null on the other branch")
   void safeCallChecksTheReceiver() {
     TacFunction fn =
-        parseSingle(
-            "fun read(input: String?): String? {",
-            "    return input?.trim()",
-            "}");
+        parseSingle("fun read(input: String?): String? {", "    return input?.trim()", "}");
 
     assertThat(kinds(fn)).as("the safe call's instructions").contains(TacInstruction.Kind.BRANCH);
     assertThat(ofKind(fn, TacInstruction.Kind.BRANCH))
@@ -246,12 +245,11 @@ class KotlinSyntaxSurfaceTest {
   @DisplayName("A double bang proves the value is not null")
   void doubleBangProvesNonNull() {
     TacFunction fn =
-        parseSingle(
-            "fun require(input: String?): String {",
-            "    return input!!",
-            "}");
+        parseSingle("fun require(input: String?): String {", "    return input!!", "}");
 
-    assertThat(kinds(fn)).as("the assertion's instructions").contains(TacInstruction.Kind.NULL_CHECK);
+    assertThat(kinds(fn))
+        .as("the assertion's instructions")
+        .contains(TacInstruction.Kind.NULL_CHECK);
   }
 
   @Test
@@ -271,17 +269,16 @@ class KotlinSyntaxSurfaceTest {
         .as("every cast is a CAST")
         .allSatisfy(
             instruction ->
-                assertThat(instruction.unop).as("the unary operator").isEqualTo(UnaryOperator.CAST));
+                assertThat(instruction.unop)
+                    .as("the unary operator")
+                    .isEqualTo(UnaryOperator.CAST));
   }
 
   @Test
   @DisplayName("A type test is an instanceof")
   void typeTestIsInstanceOf() {
     TacFunction fn =
-        parseSingle(
-            "fun test(input: Any): Boolean {",
-            "    return input is String",
-            "}");
+        parseSingle("fun test(input: Any): Boolean {", "    return input is String", "}");
 
     assertThat(kinds(fn)).as("the test's instructions").contains(TacInstruction.Kind.INSTANCEOF);
   }
@@ -304,10 +301,7 @@ class KotlinSyntaxSurfaceTest {
   @DisplayName("The Elvis operator takes the left side unless it is null")
   void elvisBranchesOnNull() {
     TacFunction fn =
-        parseSingle(
-            "fun elvis(input: String?): String {",
-            "    return input ?: \"fallback\"",
-            "}");
+        parseSingle("fun elvis(input: String?): String {", "    return input ?: \"fallback\"", "}");
 
     assertThat(kinds(fn)).as("the operator's instructions").contains(TacInstruction.Kind.BRANCH);
   }
@@ -317,9 +311,7 @@ class KotlinSyntaxSurfaceTest {
   void arrayAccessIsAnArrayLoad() {
     TacFunction fn =
         parseSingle(
-            "fun read(items: Array<String>, index: Int): String {",
-            "    return items[index]",
-            "}");
+            "fun read(items: Array<String>, index: Int): String {", "    return items[index]", "}");
 
     assertThat(kinds(fn)).as("the access's instructions").contains(TacInstruction.Kind.ARRAYLOAD);
   }
@@ -335,7 +327,8 @@ class KotlinSyntaxSurfaceTest {
             "    return result",
             "}");
 
-    assertThat(kinds(fn)).as("the compound assignment's instructions")
+    assertThat(kinds(fn))
+        .as("the compound assignment's instructions")
         .contains(TacInstruction.Kind.BINOP, TacInstruction.Kind.MOVE);
     assertThat(ofKind(fn, TacInstruction.Kind.BINOP))
         .as("the addition")
@@ -349,19 +342,13 @@ class KotlinSyntaxSurfaceTest {
   void incrementIsAUnaryOperation() {
     TacFunction fn =
         parseSingle(
-            "fun bump(counter: Int): Int {",
-            "    var n = counter",
-            "    n++",
-            "    return n",
-            "}");
+            "fun bump(counter: Int): Int {", "    var n = counter", "    n++", "    return n", "}");
 
     assertThat(ofKind(fn, TacInstruction.Kind.UNARYOP))
         .as("the increment")
         .anySatisfy(
             instruction ->
-                assertThat(instruction.unop)
-                    .as("the operator")
-                    .isEqualTo(UnaryOperator.POST_INC));
+                assertThat(instruction.unop).as("the operator").isEqualTo(UnaryOperator.POST_INC));
   }
 
   @Test
@@ -412,7 +399,9 @@ class KotlinSyntaxSurfaceTest {
 
     TacFunction constructor = functionNamed(result, "Holder.<init>");
     assertThat(constructor).as("the class has a constructor").isNotNull();
-    assertThat(constructor.memberKind()).as("it is a constructor").isEqualTo(TacMemberKind.CONSTRUCTOR);
+    assertThat(constructor.memberKind())
+        .as("it is a constructor")
+        .isEqualTo(TacMemberKind.CONSTRUCTOR);
     List<TacInstruction> stores = ofKind(constructor, TacInstruction.Kind.FIELDSTORE);
     assertThat(stores).as("the constructor stores the fields").isNotEmpty();
     assertThat(stores)
@@ -438,28 +427,16 @@ class KotlinSyntaxSurfaceTest {
     TacFunction getter = functionNamed(result, "Holder.getValue");
     assertThat(getter).as("the var has a getter").isNotNull();
     assertThat(getter.memberKind()).as("it is a getter").isEqualTo(TacMemberKind.GETTER);
-    assertThat(functionNamed(result, "Holder.setValue"))
-        .as("the var has a setter")
-        .isNotNull();
-    assertThat(functionNamed(result, "Holder.getFixed"))
-        .as("the val has a getter")
-        .isNotNull();
-    assertThat(functionNamed(result, "Holder.setFixed"))
-        .as("the val has no setter")
-        .isNull();
+    assertThat(functionNamed(result, "Holder.setValue")).as("the var has a setter").isNotNull();
+    assertThat(functionNamed(result, "Holder.getFixed")).as("the val has a getter").isNotNull();
+    assertThat(functionNamed(result, "Holder.setFixed")).as("the val has no setter").isNull();
   }
 
   @Test
   @DisplayName("An enum entry is a member of its own kind")
   void enumEntryHasItsOwnMemberKind() {
     TacFrontend.ParseResult result =
-        support.parse(
-            String.join(
-                "\n",
-                "enum class Colour {",
-                "    RED,",
-                "    GREEN",
-                "}"));
+        support.parse(String.join("\n", "enum class Colour {", "    RED,", "    GREEN", "}"));
 
     TacFunction entry = functionNamed(result, "Colour.RED");
     assertThat(entry).as("the enum entry became a function").isNotNull();
@@ -501,7 +478,10 @@ class KotlinSyntaxSurfaceTest {
 
   /** The function with the given name, or {@code null}. */
   private static TacFunction functionNamed(TacFrontend.ParseResult result, String name) {
-    return result.functions().stream().filter(fn -> fn.name().equals(name)).findFirst().orElse(null);
+    return result.functions().stream()
+        .filter(fn -> fn.name().equals(name))
+        .findFirst()
+        .orElse(null);
   }
 
   /** The kinds of a function's instructions, in order. */
@@ -527,5 +507,4 @@ class KotlinSyntaxSurfaceTest {
         .filter(signature -> signature != null)
         .toList();
   }
-
 }

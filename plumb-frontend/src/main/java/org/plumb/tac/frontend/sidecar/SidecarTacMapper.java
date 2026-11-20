@@ -62,13 +62,12 @@ import org.plumb.tac.ir.TacValueDomain;
  *
  * <p>So the mapping lives here once, and every sidecar frontend uses it.
  *
- * <p>It is PUBLIC, and its helpers are public, because the Go and C# frontends
- * used to keep their own copy of this mapping. Two copies of one mapping
- * drift: the copies missed the drop channel, the member kind, the try regions,
- * the annotation channels and the instruction guard, and they read an unknown
- * binary operator as ADD -- which turns a comparison into an addition, and
- * says so about the PROGRAM rather than about the analysis. Those frontends
- * delegate here now, so there is one mapping and one set of rules.
+ * <p>It is PUBLIC, and its helpers are public, because the Go and C# frontends used to keep their
+ * own copy of this mapping. Two copies of one mapping drift: the copies missed the drop channel,
+ * the member kind, the try regions, the annotation channels and the instruction guard, and they
+ * read an unknown binary operator as ADD -- which turns a comparison into an addition, and says so
+ * about the PROGRAM rather than about the analysis. Those frontends delegate here now, so there is
+ * one mapping and one set of rules.
  */
 public final class SidecarTacMapper {
 
@@ -154,7 +153,8 @@ public final class SidecarTacMapper {
     // a constructor is not a call anybody makes, so a checker has to be able to
     // tell them apart.
     String memberKindName = wire.getString("memberKind");
-    TacMemberKind memberKind = memberKindName == null ? null : TacMemberKind.fromWire(memberKindName);
+    TacMemberKind memberKind =
+        memberKindName == null ? null : TacMemberKind.fromWire(memberKindName);
 
     return new TacFunction(
         wire.getString("name") == null ? "<unknown>" : wire.getString("name"),
@@ -182,13 +182,13 @@ public final class SidecarTacMapper {
   /**
    * The annotations a member carries.
    *
-   * <p>An annotation is the one place where the SOURCE states something about
-   * the program that the program itself does not: {@code @Transactional} says
-   * how a method must be called, and {@code @NotNull} says what a caller may
-   * assume. A rule that can see them is a rule that does not have to guess.
+   * <p>An annotation is the one place where the SOURCE states something about the program that the
+   * program itself does not: {@code @Transactional} says how a method must be called, and
+   * {@code @NotNull} says what a caller may assume. A rule that can see them is a rule that does
+   * not have to guess.
    *
-   * <p>The wire carries them as a list of names; the IR keeps them as names
-   * too, because a name is what a rule matches on.
+   * <p>The wire carries them as a list of names; the IR keeps them as names too, because a name is
+   * what a rule matches on.
    */
   public static List<String> toStringList(Json.JsonArray wire) {
     if (wire == null) {
@@ -210,8 +210,8 @@ public final class SidecarTacMapper {
   /**
    * A map of member name to the annotations it carries.
    *
-   * <p>The order of the entries is kept: a rule that reports "the first
-   * annotation that means X" must not see a different one from run to run.
+   * <p>The order of the entries is kept: a rule that reports "the first annotation that means X"
+   * must not see a different one from run to run.
    */
   public static Map<String, List<String>> toAnnotationMap(Json.JsonObject wire) {
     if (wire == null || wire.isEmpty()) {
@@ -241,9 +241,8 @@ public final class SidecarTacMapper {
   /**
    * The exception regions of a function.
    *
-   * <p>Without them the CFG has no edge from a throwing instruction to the
-   * handler that catches it, and every rule about "what happens when this
-   * call fails" silently stops applying.
+   * <p>Without them the CFG has no edge from a throwing instruction to the handler that catches it,
+   * and every rule about "what happens when this call fails" silently stops applying.
    */
   public static List<TacFunction.TryRegion> toTryRegions(Json.JsonArray wire) {
     if (wire == null) {
@@ -272,9 +271,9 @@ public final class SidecarTacMapper {
   /**
    * Map one wire drop into the IR.
    *
-   * <p>A drop is the machine-readable receipt of a construct that could not be lowered
-   * faithfully. Its impact decides the function's precision: SEMANTICS and STRUCTURE lower it,
-   * VALUE and TYPE do not.
+   * <p>A drop is the machine-readable receipt of a construct that could not be lowered faithfully.
+   * Its impact decides the function's precision: SEMANTICS and STRUCTURE lower it, VALUE and TYPE
+   * do not.
    */
   public static TacDrop toDrop(Json.JsonObject wire) {
     if (wire == null) {
@@ -285,9 +284,7 @@ public final class SidecarTacMapper {
       return null;
     }
     TacDrop.Scope scope =
-        "PROGRAM".equals(wire.getString("scope"))
-            ? TacDrop.Scope.PROGRAM
-            : TacDrop.Scope.FUNCTION;
+        "PROGRAM".equals(wire.getString("scope")) ? TacDrop.Scope.PROGRAM : TacDrop.Scope.FUNCTION;
     return new TacDrop(
         construct,
         wire.getString("detail") == null ? "" : wire.getString("detail"),
@@ -300,8 +297,8 @@ public final class SidecarTacMapper {
   /**
    * The impact a wire drop carries.
    *
-   * <p>An impact this build does not know is read as SEMANTICS: that is the impact that lowers
-   * the precision, and reading an unknown impact as harmless would hide a real loss.
+   * <p>An impact this build does not know is read as SEMANTICS: that is the impact that lowers the
+   * precision, and reading an unknown impact as harmless would hide a real loss.
    */
   private static TacDrop.Impact impactOf(String name) {
     if (name == null) {
@@ -419,9 +416,8 @@ public final class SidecarTacMapper {
   /**
    * Map one wire guard into the IR.
    *
-   * <p>A guard names the condition a branch tests. It is a statement the
-   * PROGRAM made about its own values, so a rule may use it to drop a finding,
-   * and may never use it to add one.
+   * <p>A guard names the condition a branch tests. It is a statement the PROGRAM made about its own
+   * values, so a rule may use it to drop a finding, and may never use it to add one.
    */
   public static TacGuard toGuard(Json.JsonObject wire) {
     if (wire == null) {
@@ -497,8 +493,8 @@ public final class SidecarTacMapper {
   /**
    * Map one wire label reference into the IR.
    *
-   * <p>An unrecognized kind reads as {@link TacLabelRef.Kind#OTHER}: the label
-   * still exists and is still named, we simply do not know what it is.
+   * <p>An unrecognized kind reads as {@link TacLabelRef.Kind#OTHER}: the label still exists and is
+   * still named, we simply do not know what it is.
    */
   public static TacLabelRef toLabelRef(Json.JsonObject wire) {
     if (wire == null) {
@@ -622,8 +618,8 @@ public final class SidecarTacMapper {
    * language in the tree writes at least one of them.
    *
    * <p>{@link Integer#parseInt} reads a decimal number and nothing else, so a hex literal used to
-   * arrive here, fail, and be carried on as a STRING. The constant changed its TYPE without
-   * anybody being told, and every comparison against it was comparing a string.
+   * arrive here, fail, and be carried on as a STRING. The constant changed its TYPE without anybody
+   * being told, and every comparison against it was comparing a string.
    *
    * @param text the literal as it was written
    * @return the value, or {@code null} when the text is not an integer literal
@@ -665,8 +661,8 @@ public final class SidecarTacMapper {
    * Parse a floating-point literal the way a source file writes one.
    *
    * <p>The decimal form is {@link Double#parseDouble}'s. The other forms are the ones an integer
-   * literal may carry -- a prefix and a separator -- and they are read as integers, because that
-   * is what they are.
+   * literal may carry -- a prefix and a separator -- and they are read as integers, because that is
+   * what they are.
    *
    * @param text the literal as it was written
    * @return the value, or {@code null} when the text is not a number
@@ -687,9 +683,9 @@ public final class SidecarTacMapper {
   /**
    * The drops a wire function carries.
    *
-   * <p>A drop is the machine-readable receipt of a loss. The engine derives
-   * the function's precision from it, so a front end that drops it loses the
-   * only record that the function was not fully understood.
+   * <p>A drop is the machine-readable receipt of a loss. The engine derives the function's
+   * precision from it, so a front end that drops it loses the only record that the function was not
+   * fully understood.
    */
   public static List<TacDrop> toDrops(Json.JsonArray wire) {
     List<TacDrop> drops = new ArrayList<>();
@@ -710,17 +706,18 @@ public final class SidecarTacMapper {
    *
    * <p><b>Why this exists.</b> The wire protocol carries the program-level losses in the response's
    * TOP-LEVEL array, beside the functions rather than inside one of them: they belong to the whole
-   * program, so no function owns them. The function-level channel is a different array -- inside each
-   * function's own object -- and the two must not be mixed: a function-level drop lowers that
+   * program, so no function owns them. The function-level channel is a different array -- inside
+   * each function's own object -- and the two must not be mixed: a function-level drop lowers that
    * function's precision, while a program-level one lowers no function at all.
    *
-   * <p>The protocol names that array two ways -- {@code programDrops} in the wire document,
-   * {@code drops} in the task statement -- and the Go sidecar sends the SAME list under both names.
-   * So the reader takes {@code programDrops} when it is there and falls back to {@code drops}, and
-   * never reads both: reading both would count every program drop twice.
+   * <p>The protocol names that array two ways -- {@code programDrops} in the wire document, {@code
+   * drops} in the task statement -- and the Go sidecar sends the SAME list under both names. So the
+   * reader takes {@code programDrops} when it is there and falls back to {@code drops}, and never
+   * reads both: reading both would count every program drop twice.
    *
-   * <p>Whatever the wire says about the scope, a drop that arrives in this channel is a program-level
-   * drop. A sidecar that left the scope field empty must not make the loss look like a function's.
+   * <p>Whatever the wire says about the scope, a drop that arrives in this channel is a
+   * program-level drop. A sidecar that left the scope field empty must not make the loss look like
+   * a function's.
    *
    * @param response the sidecar's response object
    * @return the program-level drops; empty when the response carries none
@@ -749,13 +746,11 @@ public final class SidecarTacMapper {
   /**
    * The precision a wire function's drops imply.
    *
-   * <p>The sidecar's own claim and the drops are COMBINED, and the worse of
-   * the two wins. A sidecar that claims SOURCE_FULL while recording a
-   * SEMANTICS drop would be hiding a real loss, and the combination is what
-   * stops it.
+   * <p>The sidecar's own claim and the drops are COMBINED, and the worse of the two wins. A sidecar
+   * that claims SOURCE_FULL while recording a SEMANTICS drop would be hiding a real loss, and the
+   * combination is what stops it.
    *
-   * @param statedName the precision the sidecar stated, or {@code null} when it
-   *     stated none
+   * @param statedName the precision the sidecar stated, or {@code null} when it stated none
    * @param drops the drops the sidecar recorded
    * @return the precision the function actually has
    */
@@ -843,13 +838,13 @@ public final class SidecarTacMapper {
   /**
    * Map one wire value domain into the IR.
    *
-   * <p>The domain is a statement about what the SOLVER may assume, never a
-   * licence to assume more than it says: an integral or unbounded domain is
-   * exact under the engine's integer model, a floating-point one is not.
+   * <p>The domain is a statement about what the SOLVER may assume, never a licence to assume more
+   * than it says: an integral or unbounded domain is exact under the engine's integer model, a
+   * floating-point one is not.
    *
-   * <p>Three spellings of the discriminator are accepted ({@code domain},
-   * {@code kind}, and the case-insensitive form of both) because the sidecars
-   * were written against the contract at different times.
+   * <p>Three spellings of the discriminator are accepted ({@code domain}, {@code kind}, and the
+   * case-insensitive form of both) because the sidecars were written against the contract at
+   * different times.
    */
   public static TacValueDomain toDomain(Json.JsonObject wire) {
     if (wire == null) {
@@ -872,8 +867,7 @@ public final class SidecarTacMapper {
       case "FLOATING" -> {
         // The wire gives the SIGNIFICAND width in `bits` and the exponent
         // width separately; the IR takes the exponent width first.
-        return TacValueDomain.floating(
-            exponentBits < 0 ? 11 : exponentBits, bits < 0 ? 53 : bits);
+        return TacValueDomain.floating(exponentBits < 0 ? 11 : exponentBits, bits < 0 ? 53 : bits);
       }
       case "FIXED_POINT" -> {
         return TacValueDomain.fixedPoint(bits < 0 ? 128 : bits, scale < 0 ? 0 : scale);

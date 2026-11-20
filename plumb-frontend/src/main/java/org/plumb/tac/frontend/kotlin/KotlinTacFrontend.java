@@ -41,7 +41,6 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol;
 import org.jetbrains.kotlin.analysis.project.structure.builder.KaModuleContainerBuilder;
-import org.jetbrains.kotlin.psi.KtClassInitializer;
 import org.jetbrains.kotlin.psi.KtClassOrObject;
 import org.jetbrains.kotlin.psi.KtEnumEntry;
 import org.jetbrains.kotlin.psi.KtExpression;
@@ -482,8 +481,7 @@ public final class KotlinTacFrontend implements TacFrontend {
             .filter(d -> d instanceof KtProperty)
             .map(d -> (KtProperty) d)
             .toList()) {
-      translateTopLevelProperty(
-          property, ktFile, kaSession, functions, problems, module);
+      translateTopLevelProperty(property, ktFile, kaSession, functions, problems, module);
     }
   }
 
@@ -522,8 +520,7 @@ public final class KotlinTacFrontend implements TacFrontend {
 
     org.plumb.tac.translate.TacBuilder builder =
         new org.plumb.tac.translate.TacBuilder(
-            new org.plumb.tac.translate.TacBuilder.FunctionSpec(
-                qualified, signature, propertyType),
+            new org.plumb.tac.translate.TacBuilder.FunctionSpec(qualified, signature, propertyType),
             List.of());
     builder.setSourceLanguage(SourceLanguage.KOTLIN);
     builder.setIrPrecision(IrPrecision.SOURCE_FULL);
@@ -569,9 +566,8 @@ public final class KotlinTacFrontend implements TacFrontend {
    * The names of a declaration's annotations, in simple-name form.
    *
    * <p>The simple name is the only shape a checker needs: {@code
-   * org.springframework.web.bind.annotation.RequestParam} becomes {@code
-   * RequestParam}. A use-site target ({@code @field:Ann}, {@code @get:Ann}) is
-   * not part of the name.
+   * org.springframework.web.bind.annotation.RequestParam} becomes {@code RequestParam}. A use-site
+   * target ({@code @field:Ann}, {@code @get:Ann}) is not part of the name.
    */
   private static List<String> annotationNames(
       List<? extends org.jetbrains.kotlin.psi.KtAnnotationEntry> entries) {
@@ -664,14 +660,7 @@ public final class KotlinTacFrontend implements TacFrontend {
             .map(d -> (KtProperty) d)
             .toList()) {
       translatePropertyAccessors(
-          property,
-          className,
-          classFqn,
-          kaSession,
-          functions,
-          problems,
-          module,
-          classAnnotations);
+          property, className, classFqn, kaSession, functions, problems, module, classAnnotations);
     }
 
     // The SECONDARY CONSTRUCTORS. Each one is a constructor of its own.
@@ -719,9 +708,9 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * The fully qualified name of a class, or {@code null}.
    *
-   * <p>It is what a field access's {@code ownerType} carries. Without it, a field read says
-   * "some object's field" and nothing more, and two classes with the same simple name share one
-   * bucket of fields.
+   * <p>It is what a field access's {@code ownerType} carries. Without it, a field read says "some
+   * object's field" and nothing more, and two classes with the same simple name share one bucket of
+   * fields.
    */
   private static String fqnOf(KtClassOrObject classDecl) {
     try {
@@ -739,9 +728,9 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * Translates a class's primary constructor.
    *
-   * <p>The constructor's parameters that declare a property become that property's backing
-   * field; the property initialisers run; the {@code init} blocks run. That is the order Kotlin
-   * runs them in, and it is the order the taint has to follow.
+   * <p>The constructor's parameters that declare a property become that property's backing field;
+   * the property initialisers run; the {@code init} blocks run. That is the order Kotlin runs them
+   * in, and it is the order the taint has to follow.
    */
   private void translatePrimaryConstructor(
       KtClassOrObject classDecl,
@@ -822,9 +811,9 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * Translates a property's accessors.
    *
-   * <p>A property with no accessor of its own still has a default one: the getter reads the
-   * backing field and the setter writes it. Both are produced, so that a call to the accessor
-   * resolves to something.
+   * <p>A property with no accessor of its own still has a default one: the getter reads the backing
+   * field and the setter writes it. Both are produced, so that a call to the accessor resolves to
+   * something.
    */
   private void translatePropertyAccessors(
       KtProperty property,
@@ -855,8 +844,7 @@ public final class KotlinTacFrontend implements TacFrontend {
     String getterName = className + ".get" + capitalise(propertyName);
     String getterSignature = getterName + "():" + propertyType.displayName();
     KtPropertyAccessor getter = property.getGetter();
-    KtExpression getterBody =
-        getter == null ? null : getter.getBodyExpression();
+    KtExpression getterBody = getter == null ? null : getter.getBodyExpression();
     KotlinTacTranslator getterTranslator = new KotlinTacTranslator(kaSession);
     getterTranslator.setEnclosingClassFqn(classFqn);
     TacFunction getterFunction =
@@ -887,8 +875,7 @@ public final class KotlinTacFrontend implements TacFrontend {
     }
     String setterName = className + ".set" + capitalise(propertyName);
     String setterSignature = setterName + "(" + propertyType.displayName() + "):void";
-    TacOperand.TacVar value =
-        new TacOperand.TacVar("value", propertyType, false);
+    TacOperand.TacVar value = new TacOperand.TacVar("value", propertyType, false);
     KtPropertyAccessor setter = property.getSetter();
     KtExpression setterBody = setter == null ? null : setter.getBodyExpression();
     KotlinTacTranslator setterTranslator = new KotlinTacTranslator(kaSession);
@@ -981,8 +968,8 @@ public final class KotlinTacFrontend implements TacFrontend {
   /**
    * Translates an enum entry.
    *
-   * <p>An entry is a VALUE of the enum's type. Reading it is a call to the entry's accessor,
-   * and the accessor constructs a value of the enum's type.
+   * <p>An entry is a VALUE of the enum's type. Reading it is a call to the entry's accessor, and
+   * the accessor constructs a value of the enum's type.
    */
   private void translateEnumEntry(
       KtEnumEntry entry,

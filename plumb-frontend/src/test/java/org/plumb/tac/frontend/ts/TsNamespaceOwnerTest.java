@@ -45,25 +45,22 @@ import org.plumb.tac.ir.TacInstruction;
  *
  * <h2>Why this is worth pinning</h2>
  *
- * <p>A namespace is a SCOPE. A class declared in one is not the class of the
- * same name declared at the top level, and two namespaces of the same name in
- * two files are not the same scope -- so the namespace has to be part of the
- * identity, the way the module is.
+ * <p>A namespace is a SCOPE. A class declared in one is not the class of the same name declared at
+ * the top level, and two namespaces of the same name in two files are not the same scope -- so the
+ * namespace has to be part of the identity, the way the module is.
  *
- * <p>Without it, the function table (keyed by the signature) holds ONE member
- * for two same-named namespaces: the second replaces the first and one body is
- * gone from the program, with no drop and no problem to say so.
+ * <p>Without it, the function table (keyed by the signature) holds ONE member for two same-named
+ * namespaces: the second replaces the first and one body is gone from the program, with no drop and
+ * no problem to say so.
  *
- * <p><b>And the two ends of a call have to agree.</b> The declaration side
- * knows the namespace because it walks the namespace tree; the call side knows
- * it because the compiler says which namespaces the receiver's declaration
- * lives in. When the two spell the class differently the call graph cannot
- * connect the call to the declaration, and the taint stops at the call.
+ * <p><b>And the two ends of a call have to agree.</b> The declaration side knows the namespace
+ * because it walks the namespace tree; the call side knows it because the compiler says which
+ * namespaces the receiver's declaration lives in. When the two spell the class differently the call
+ * graph cannot connect the call to the declaration, and the taint stops at the call.
  *
- * <p><b>Why this drives the real sidecar.</b> The namespace path of a
- * receiver is a fact the COMPILER knows. A test that only checked the mapping
- * would pass if the sidecar stopped asking -- and that is exactly the failure
- * this is about.
+ * <p><b>Why this drives the real sidecar.</b> The namespace path of a receiver is a fact the
+ * COMPILER knows. A test that only checked the mapping would pass if the sidecar stopped asking --
+ * and that is exactly the failure this is about.
  */
 @DisplayName("TypeScript: a namespace is part of the identity of what it holds")
 class TsNamespaceOwnerTest {
@@ -239,7 +236,8 @@ class TsNamespaceOwnerTest {
 
     CompileContext context =
         new DefaultCompileContext(
-            List.of(new CompileContext.Module("ts", directory, List.of(), List.of(), List.of(), null)));
+            List.of(
+                new CompileContext.Module("ts", directory, List.of(), List.of(), List.of(), null)));
 
     try (TsTacFrontend frontend = new TsTacFrontend(SourceLanguage.TYPESCRIPT)) {
       assumeTrue(
@@ -287,8 +285,14 @@ class TsNamespaceOwnerTest {
               + " ci in plumb-frontend/ts-sidecar");
 
       List<TacFunction> functions = new ArrayList<>();
-      functions.addAll(frontend.parse(STORE_A, directory.resolve("modA").resolve("store.ts"), context).functions());
-      functions.addAll(frontend.parse(STORE_B, directory.resolve("modB").resolve("store.ts"), context).functions());
+      functions.addAll(
+          frontend
+              .parse(STORE_A, directory.resolve("modA").resolve("store.ts"), context)
+              .functions());
+      functions.addAll(
+          frontend
+              .parse(STORE_B, directory.resolve("modB").resolve("store.ts"), context)
+              .functions());
       functions.addAll(frontend.parse(CALLER, directory.resolve("caller.ts"), context).functions());
       return functions;
     }
@@ -310,7 +314,8 @@ class TsNamespaceOwnerTest {
           "the TypeScript front end needs Node and the sidecar's own compiler dependency: run npm"
               + " ci in plumb-frontend/ts-sidecar");
 
-      for (TacFunction function : frontend.parse(CALLER, directory.resolve("caller.ts"), context).functions()) {
+      for (TacFunction function :
+          frontend.parse(CALLER, directory.resolve("caller.ts"), context).functions()) {
         if (!"go".equals(function.name())) continue;
         for (TacInstruction instruction : function.instructions()) {
           if (instruction.kind != TacInstruction.Kind.CALL) continue;

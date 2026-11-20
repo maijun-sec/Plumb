@@ -39,20 +39,20 @@ import org.plumb.tac.ir.TacFunction;
  * <h2>Why this is worth pinning</h2>
  *
  * <p>The Go sidecar records the losses that belong to the WHOLE PROGRAM in the response's top-level
- * array, beside the functions rather than inside one of them. The Java side read each function's own
- * drop array and stopped there, so the program's losses were thrown away on the way in. Nothing said
- * so: a loss dropped on the way in looks exactly like a loss that never happened.
+ * array, beside the functions rather than inside one of them. The Java side read each function's
+ * own drop array and stopped there, so the program's losses were thrown away on the way in. Nothing
+ * said so: a loss dropped on the way in looks exactly like a loss that never happened.
  *
- * <p><b>Why this drives the real sidecar.</b> The point is the TRIP, and the trip has three links: the
- * sidecar has to record the loss, the wire has to carry it, and the Java side has to read it. A test
- * that only checked the mapping would still pass if the sidecar stopped recording the loss -- and
- * that is exactly the failure this change is about. So the test writes a Go module that loses
+ * <p><b>Why this drives the real sidecar.</b> The point is the TRIP, and the trip has three links:
+ * the sidecar has to record the loss, the wire has to carry it, and the Java side has to read it. A
+ * test that only checked the mapping would still pass if the sidecar stopped recording the loss --
+ * and that is exactly the failure this change is about. So the test writes a Go module that loses
  * something, translates it with the sidecar, and reads what came back.
  *
- * <p>The loss it uses is an embedded resource: the content of an embedded file is a build-time fact,
- * and the sidecar reads the source and not the build -- so the bytes are nowhere in the TAC. It
- * belongs to the program, because the directive sits on a package-level declaration and no function
- * owns the resource.
+ * <p>The loss it uses is an embedded resource: the content of an embedded file is a build-time
+ * fact, and the sidecar reads the source and not the build -- so the bytes are nowhere in the TAC.
+ * It belongs to the program, because the directive sits on a package-level declaration and no
+ * function owns the resource.
  */
 @DisplayName("Go: the losses that belong to the whole program reach the Java side")
 class GoProgramDropTest {

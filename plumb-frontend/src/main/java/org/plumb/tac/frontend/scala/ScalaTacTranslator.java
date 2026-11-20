@@ -3261,7 +3261,8 @@ final class ScalaTacTranslator {
     // matches" into a function whose matcher may not.
     reportLoss(
         "scala.match.shape",
-        "a pattern match was lowered as a branch chain in " + currentFunction
+        "a pattern match was lowered as a branch chain in "
+            + currentFunction
             + "; its bindings are lowered, but the match's exhaustiveness is not decided");
 
     TacOperand selector = translateExpr(match.selector());
@@ -4168,9 +4169,9 @@ final class ScalaTacTranslator {
    * second "_2".
    *
    * <p><b>Why the positional accessor and not the declared field.</b> A tuple's parts ARE its
-   * positional accessors, and a case class -- which is a product too -- has the same ones, so
-   * "_1" and "_2" name methods that really exist on the matched value. A name that does not exist
-   * on it would be a field the source never wrote.
+   * positional accessors, and a case class -- which is a product too -- has the same ones, so "_1"
+   * and "_2" name methods that really exist on the matched value. A name that does not exist on it
+   * would be a field the source never wrote.
    *
    * @param parts the pattern's sub-patterns
    * @param product the matched product

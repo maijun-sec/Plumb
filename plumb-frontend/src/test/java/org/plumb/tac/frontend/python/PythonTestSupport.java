@@ -39,8 +39,8 @@ import org.plumb.tac.ir.TacOperand;
  * <p><b>Why the sidecar's absence is an explicit skip.</b> The Python frontend needs a Python 3
  * interpreter on the PATH, and not every machine that builds Plumb has one. A test that silently
  * passed because it analysed nothing would be worse than no test at all: it would report "the
- * Python frontend works" on a machine where it was never exercised. So the absence is a skip with
- * a stated reason, which the test report shows.
+ * Python frontend works" on a machine where it was never exercised. So the absence is a skip with a
+ * stated reason, which the test report shows.
  *
  * <p><b>Why the helpers look at SHAPES and not at positions.</b> The instructions move whenever
  * anything above them changes. What has to stay true is the RELATION between them: which stream a

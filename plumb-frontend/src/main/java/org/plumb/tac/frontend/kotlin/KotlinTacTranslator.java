@@ -185,10 +185,10 @@ final class KotlinTacTranslator {
   /**
    * The fully qualified name of the class the function being lowered belongs to.
    *
-   * <p>This is the {@code ownerType} of a field access. Without it a field read says "some
-   * object's {@code name} field" and nothing more, so the engine cannot tell a field of the audited
-   * class from a field of a local helper object, and the cross-function field tracker buckets every
-   * field under the same name.
+   * <p>This is the {@code ownerType} of a field access. Without it a field read says "some object's
+   * {@code name} field" and nothing more, so the engine cannot tell a field of the audited class
+   * from a field of a local helper object, and the cross-function field tracker buckets every field
+   * under the same name.
    *
    * <p>It is the FQN rather than the short name so that a Kotlin class and a Java class with the
    * same simple name stay apart -- and so that a field written in Kotlin and a field written in
@@ -202,9 +202,9 @@ final class KotlinTacTranslator {
   /**
    * The functions the lambdas in the function being lowered produced.
    *
-   * <p>A lambda is a FUNCTION, not an expression: its body is a scope of its own, and a sink
-   * inside it is a finding in that function. The front end adds these to the program next to
-   * the function they were found in.
+   * <p>A lambda is a FUNCTION, not an expression: its body is a scope of its own, and a sink inside
+   * it is a finding in that function. The front end adds these to the program next to the function
+   * they were found in.
    */
   private final List<TacFunction> nestedFunctions = new ArrayList<>();
 
@@ -271,15 +271,14 @@ final class KotlinTacTranslator {
   /**
    * Records a construct that could not be lowered, in the machine-readable channel.
    *
-   * <p>A problem is a sentence for a human; a DROP is the receipt the engine
-   * reads. A front end that degrades a construct and leaves only the sentence
-   * produces a function whose findings look exactly as complete as a fully
-   * lowered one's -- which is the failure mode the drop channel exists to
-   * prevent.
+   * <p>A problem is a sentence for a human; a DROP is the receipt the engine reads. A front end
+   * that degrades a construct and leaves only the sentence produces a function whose findings look
+   * exactly as complete as a fully lowered one's -- which is the failure mode the drop channel
+   * exists to prevent.
    *
-   * <p>The impact is STRUCTURE: the function still computes the same thing,
-   * and its shape is what was lost. That is the grade these front ends
-   * already state, and the drop must not claim a different one.
+   * <p>The impact is STRUCTURE: the function still computes the same thing, and its shape is what
+   * was lost. That is the grade these front ends already state, and the drop must not claim a
+   * different one.
    */
   private void reportDrop(String construct, String detail, int line, int column) {
     if (builder == null) {
@@ -296,9 +295,9 @@ final class KotlinTacTranslator {
   /**
    * Sets the fully qualified name of the class the function being lowered belongs to.
    *
-   * <p>It becomes the {@code ownerType} of every field access in that function. The front end
-   * knows it from the class declaration's symbol; the translator does not, because the class
-   * declaration is not part of the function's body.
+   * <p>It becomes the {@code ownerType} of every field access in that function. The front end knows
+   * it from the class declaration's symbol; the translator does not, because the class declaration
+   * is not part of the function's body.
    *
    * @param fqn the class's fully qualified name, or {@code null} when there is none
    */
@@ -371,13 +370,11 @@ final class KotlinTacTranslator {
   }
 
   /**
-   * Translate one function, with the annotations it carries and the kind of
-   * member it is.
+   * Translate one function, with the annotations it carries and the kind of member it is.
    *
-   * <p>The annotations are not decoration. A rule that keys on {@code
-   * @RequestParam} or {@code @Transactional} needs the name, and the name is
-   * on the declaration -- not on the function's body, and not on the symbol
-   * the analysis API resolves.
+   * <p>The annotations are not decoration. A rule that keys on {@code @RequestParam} or
+   * {@code @Transactional} needs the name, and the name is on the declaration -- not on the
+   * function's body, and not on the symbol the analysis API resolves.
    *
    * @param classAnnotations the annotations of the declaring class
    * @param methodAnnotations the annotations of the function itself
@@ -735,14 +732,14 @@ final class KotlinTacTranslator {
   /**
    * Lowers a {@code while} loop.
    *
-   * <p>The shape is the standard one: a condition label, a branch to the body or past it, the
-   * body, and a jump back to the condition.
+   * <p>The shape is the standard one: a condition label, a branch to the body or past it, the body,
+   * and a jump back to the condition.
    *
-   * <p><b>WHY THE LOOP MATTERS.</b> A loop body is where a tainted value is usually read,
-   * sanitised and written. Before this, a {@code while} statement fell into the catch-all
-   * branch of the statement lowering: the body produced NO instructions at all, so every taint
-   * inside it was invisible to the analysis -- a silent false negative on one of the most
-   * common shapes a bug takes in Kotlin.
+   * <p><b>WHY THE LOOP MATTERS.</b> A loop body is where a tainted value is usually read, sanitised
+   * and written. Before this, a {@code while} statement fell into the catch-all branch of the
+   * statement lowering: the body produced NO instructions at all, so every taint inside it was
+   * invisible to the analysis -- a silent false negative on one of the most common shapes a bug
+   * takes in Kotlin.
    */
   private void translateWhile(KtWhileExpression loop) {
     String condLabel = builder.newLabel("whileCond");
@@ -788,8 +785,8 @@ final class KotlinTacTranslator {
    * Lowers a {@code do-while} loop.
    *
    * <p>The body runs BEFORE the first test, which is what "do-while" means. The {@code continue}
-   * target is therefore the CONDITION, not the body: a {@code continue} in a do-while goes back
-   * to the test, not to the top of the body.
+   * target is therefore the CONDITION, not the body: a {@code continue} in a do-while goes back to
+   * the test, not to the top of the body.
    */
   private void translateDoWhile(KtDoWhileExpression loop) {
     String bodyLabel = builder.newLabel("doBody");
@@ -827,16 +824,15 @@ final class KotlinTacTranslator {
   /**
    * Lowers a {@code for} loop.
    *
-   * <p>The loop is lowered through the ITERATION PROTOCOL: the collection is asked for an
-   * iterator, the loop asks the iterator whether it has another element, and the element comes
-   * from the iterator. The protocol method names are the REAL ones -- {@code
-   * java.lang.Iterable.iterator}, {@code java.util.Iterator.hasNext}, {@code
-   * java.util.Iterator.next} -- because the shared semantics table is keyed on them, and a
-   * synthetic short name would reach no summary at all.
+   * <p>The loop is lowered through the ITERATION PROTOCOL: the collection is asked for an iterator,
+   * the loop asks the iterator whether it has another element, and the element comes from the
+   * iterator. The protocol method names are the REAL ones -- {@code java.lang.Iterable.iterator},
+   * {@code java.util.Iterator.hasNext}, {@code java.util.Iterator.next} -- because the shared
+   * semantics table is keyed on them, and a synthetic short name would reach no summary at all.
    *
-   * <p>Lowering the {@code for} as a call to the collection's own {@code forEach} would have
-   * been shorter, but the body would then live inside a call the engine cannot see into: the
-   * taint inside the body would not flow.
+   * <p>Lowering the {@code for} as a call to the collection's own {@code forEach} would have been
+   * shorter, but the body would then live inside a call the engine cannot see into: the taint
+   * inside the body would not flow.
    */
   private void translateFor(KtForExpression loop) {
     KtExpression collectionExpr = loop.getLoopRange();
@@ -1006,8 +1002,8 @@ final class KotlinTacTranslator {
   /**
    * Lowers a {@code throw}.
    *
-   * <p>The thrown value is the instruction's operand; the THROW itself terminates the path,
-   * which is what the CFG builder reads.
+   * <p>The thrown value is the instruction's operand; the THROW itself terminates the path, which
+   * is what the CFG builder reads.
    */
   private void translateThrow(KtThrowExpression thr) {
     TacOperand value = translateExpression(thr.getThrownExpression());
@@ -1022,11 +1018,11 @@ final class KotlinTacTranslator {
   /**
    * Lowers a {@code try} / {@code catch} / {@code finally}.
    *
-   * <p>The shape is the one the Java front end produces and the CFG builder understands: the
-   * try body, then one {@code CATCH_HANDLER} per catch clause (each preceded by a {@code
+   * <p>The shape is the one the Java front end produces and the CFG builder understands: the try
+   * body, then one {@code CATCH_HANDLER} per catch clause (each preceded by a {@code
    * L_CATCH_<Type>} label), then the finally block behind a {@code FINALLY_ENTER} marker. The
-   * region is registered on the function, and the CFG builder wires the exception edges from
-   * the try body to the handlers.
+   * region is registered on the function, and the CFG builder wires the exception edges from the
+   * try body to the handlers.
    */
   private void translateTry(KtTryExpression tryExpr) {
     int tryStart = builder.instructions().size();
@@ -1048,7 +1044,9 @@ final class KotlinTacTranslator {
         catchTypeName = simpleNameOf(catchType);
       }
       String labelName =
-          catchTypeName.isEmpty() ? builder.newLabel("L_CATCH") : builder.newLabel("L_CATCH_" + catchTypeName);
+          catchTypeName.isEmpty()
+              ? builder.newLabel("L_CATCH")
+              : builder.newLabel("L_CATCH_" + catchTypeName);
       catchLabels.add(labelName);
       if (firstCatchStart < 0) {
         firstCatchStart = builder.instructions().size();
@@ -1097,9 +1095,7 @@ final class KotlinTacTranslator {
               .labelRef(new TacLabelRef(finallyLabel, TacLabelRef.Kind.FINALLY_ENTRY, null))
               .build());
       builder.emit(
-          TacInstruction.builder(TacInstruction.Kind.FINALLY_ENTER)
-              .label(finallyLabel)
-              .build());
+          TacInstruction.builder(TacInstruction.Kind.FINALLY_ENTER).label(finallyLabel).build());
       finallyStart = builder.instructions().size();
       KtExpression finalExpression = finallySection.getFinalExpression();
       if (finalExpression instanceof KtBlockExpression finalBlock) {
@@ -1127,9 +1123,9 @@ final class KotlinTacTranslator {
   /**
    * Lowers a labelled statement.
    *
-   * <p>The label itself does not change the shape of the control flow; it NAMES a place a
-   * {@code break@label} or {@code continue@label} can reach. The label is therefore handed to
-   * the statement it labels -- which, in Kotlin, is a loop -- and the body is lowered normally.
+   * <p>The label itself does not change the shape of the control flow; it NAMES a place a {@code
+   * break@label} or {@code continue@label} can reach. The label is therefore handed to the
+   * statement it labels -- which, in Kotlin, is a loop -- and the body is lowered normally.
    */
   private void translateLabeled(KtLabeledExpression labeled) {
     String previous = pendingLabel;
@@ -1179,10 +1175,10 @@ final class KotlinTacTranslator {
   /**
    * A condition the front end could not resolve.
    *
-   * <p>The branch has to be well-formed, and it must not be a claim the source does not make:
-   * "the condition is false" would say the arm never runs, and "the condition is true" would
-   * say it always does. An unknown value says neither -- the engine knows nothing about it,
-   * and both arms stay reachable.
+   * <p>The branch has to be well-formed, and it must not be a claim the source does not make: "the
+   * condition is false" would say the arm never runs, and "the condition is true" would say it
+   * always does. An unknown value says neither -- the engine knows nothing about it, and both arms
+   * stay reachable.
    */
   private TacOperand unknownCondition(KtExpression condition) {
     TacOperand dest = builder.newTemp(TacType.UNKNOWN);
@@ -1217,20 +1213,20 @@ final class KotlinTacTranslator {
   /**
    * Lowers a lambda into a synthetic function and a call to it.
    *
-   * <p>A lambda is a FUNCTION, not an expression: its body is a scope of its own, and a sink
-   * inside it is a finding in that function. Lowering the body inline would lose the boundary,
-   * and dropping the lambda would lose the body -- and with it every taint that reaches a sink
-   * inside the lambda.
+   * <p>A lambda is a FUNCTION, not an expression: its body is a scope of its own, and a sink inside
+   * it is a finding in that function. Lowering the body inline would lose the boundary, and
+   * dropping the lambda would lose the body -- and with it every taint that reaches a sink inside
+   * the lambda.
    *
    * <p><b>WHERE THE CAPTURED VALUES GO.</b> The engine binds a call's arguments to the callee's
    * parameters from {@code args[1]} onwards; {@code args[0]} is the receiver slot and the engine
-   * never binds it to the callee. A value the lambda reads from the enclosing scope therefore
-   * has to travel as a LEADING PARAMETER: the call site passes it as the first real argument,
-   * and the engine binds it to the lambda's first parameter. Without that, the body reads a
-   * variable that no parameter holds, and the taint stops at the closure's boundary.
+   * never binds it to the callee. A value the lambda reads from the enclosing scope therefore has
+   * to travel as a LEADING PARAMETER: the call site passes it as the first real argument, and the
+   * engine binds it to the lambda's first parameter. Without that, the body reads a variable that
+   * no parameter holds, and the taint stops at the closure's boundary.
    *
-   * <p>The captured values come first in the parameter list, and the closure's own parameters
-   * come after them, because the call site passes them in that order.
+   * <p>The captured values come first in the parameter list, and the closure's own parameters come
+   * after them, because the call site passes them in that order.
    */
   private TacOperand translateLambda(KtLambdaExpression lambda) {
     List<org.jetbrains.kotlin.psi.KtParameter> declared = lambda.getValueParameters();
@@ -1345,11 +1341,11 @@ final class KotlinTacTranslator {
   /**
    * The names the lambda's body reads from the enclosing scope.
    *
-   * <p>The names come from the body's own text: a name that the enclosing scope declares and
-   * that the body mentions is a capture. The test is deliberately generous -- it can name a
-   * capture that the body does not really use, and a capture it names twice is named once.
-   * Both errors are in the safe direction: an extra capture passes a value that may not be
-   * needed, and a missing one would lose taint.
+   * <p>The names come from the body's own text: a name that the enclosing scope declares and that
+   * the body mentions is a capture. The test is deliberately generous -- it can name a capture that
+   * the body does not really use, and a capture it names twice is named once. Both errors are in
+   * the safe direction: an extra capture passes a value that may not be needed, and a missing one
+   * would lose taint.
    *
    * @param lambda the lambda
    * @param declared the lambda's own parameters, which are not captures
@@ -1413,17 +1409,17 @@ final class KotlinTacTranslator {
   /**
    * Lowers a class's primary constructor.
    *
-   * <p><b>WHY A CONSTRUCTOR IS THE MOST IMPORTANT FUNCTION IN A KOTLIN CLASS.</b> The TAC had
-   * no constructor function at all: a class's members were translated, and the class's
-   * CONSTRUCTOR -- the function every {@code new} call actually enters -- was not. A call to
-   * {@code Foo(userInput)} therefore named a callee that did not exist in the program, the call
-   * graph's edge went nowhere, and the value that entered the object never reached the fields
-   * it initialised. Every finding that depended on a value passing through a constructor was
-   * therefore invisible.
+   * <p><b>WHY A CONSTRUCTOR IS THE MOST IMPORTANT FUNCTION IN A KOTLIN CLASS.</b> The TAC had no
+   * constructor function at all: a class's members were translated, and the class's CONSTRUCTOR --
+   * the function every {@code new} call actually enters -- was not. A call to {@code
+   * Foo(userInput)} therefore named a callee that did not exist in the program, the call graph's
+   * edge went nowhere, and the value that entered the object never reached the fields it
+   * initialised. Every finding that depended on a value passing through a constructor was therefore
+   * invisible.
    *
-   * <p>The body has three parts, in the order Kotlin runs them: the constructor's own
-   * parameters that declare properties become the backing fields of those properties; the
-   * property initialisers run; the {@code init} blocks run.
+   * <p>The body has three parts, in the order Kotlin runs them: the constructor's own parameters
+   * that declare properties become the backing fields of those properties; the property
+   * initialisers run; the {@code init} blocks run.
    *
    * @param name the constructor's qualified name
    * @param signature the canonical signature
@@ -1574,8 +1570,8 @@ final class KotlinTacTranslator {
    * Lowers a property's accessor.
    *
    * <p>A property with no accessor of its own has a DEFAULT one: the getter reads the backing
-   * field, the setter writes it. A property with an accessor of its own has a body, and that
-   * body is user code -- it can do anything, and the analysis has to see what it does.
+   * field, the setter writes it. A property with an accessor of its own has a body, and that body
+   * is user code -- it can do anything, and the analysis has to see what it does.
    *
    * @param name the accessor's qualified name
    * @param signature the canonical signature
@@ -1679,10 +1675,7 @@ final class KotlinTacTranslator {
               .fieldName(fieldName)
               .ownerType(ownerType())
               .build());
-      b.emit(
-          TacInstruction.builder(TacInstruction.Kind.RETURN)
-              .lhs1(value)
-              .build());
+      b.emit(TacInstruction.builder(TacInstruction.Kind.RETURN).lhs1(value).build());
     }
 
     if (degraded) {
@@ -1694,8 +1687,8 @@ final class KotlinTacTranslator {
   /**
    * Lowers one expression into a builder the caller owns.
    *
-   * <p>It is how a top-level property's initialiser is computed: the value belongs to the
-   * file's field initializer, and the field initializer's builder is the caller's.
+   * <p>It is how a top-level property's initialiser is computed: the value belongs to the file's
+   * field initializer, and the field initializer's builder is the caller's.
    *
    * @param expression the expression to lower
    * @param target the builder to lower into
@@ -2208,10 +2201,9 @@ final class KotlinTacTranslator {
   /**
    * Lowers a field read off an arbitrary receiver.
    *
-   * <p>The implicit-receiver read ({@code this.field}) has its own helper, because it reads
-   * off {@code this}. A read off an arbitrary receiver ({@code a?.b}) must read off THAT
-   * receiver -- reading it off {@code this} would answer a question about a different
-   * object.
+   * <p>The implicit-receiver read ({@code this.field}) has its own helper, because it reads off
+   * {@code this}. A read off an arbitrary receiver ({@code a?.b}) must read off THAT receiver --
+   * reading it off {@code this} would answer a question about a different object.
    *
    * @param receiver the receiver's value
    * @param name the field's name
@@ -2554,9 +2546,9 @@ final class KotlinTacTranslator {
    * Lowers an assignment.
    *
    * <p>A plain assignment stores the right-hand side. A COMPOUND assignment stores the result of
-   * the operation: {@code x += v} is {@code x = x + v}. Lowering the compound form as a plain
-   * store would throw the old value away, and lowering it as a bare arithmetic expression would
-   * compute the new value and never store it.
+   * the operation: {@code x += v} is {@code x = x + v}. Lowering the compound form as a plain store
+   * would throw the old value away, and lowering it as a bare arithmetic expression would compute
+   * the new value and never store it.
    *
    * @param bin the assignment
    * @param op the operator's source text
@@ -2607,8 +2599,8 @@ final class KotlinTacTranslator {
   /**
    * Stores a value into the place a left-hand side names.
    *
-   * <p>Three shapes, in the order the source decides them: a local, a property of an object, and
-   * an element of an array.
+   * <p>Three shapes, in the order the source decides them: a local, a property of an object, and an
+   * element of an array.
    */
   private TacOperand store(KtExpression lhs, TacOperand value, KtExpression tree) {
     if (lhs instanceof KtNameReferenceExpression ref) {
@@ -2729,13 +2721,13 @@ final class KotlinTacTranslator {
    * Lowers a cast.
    *
    * <p>A plain cast ({@code x as String}) throws when it fails, so the value afterwards is the
-   * target type. A SAFE cast ({@code x as? String}) yields null instead of throwing, so the
-   * value afterwards is the target type MARKED NULLABLE -- and the path continues, which is the
+   * target type. A SAFE cast ({@code x as? String}) yields null instead of throwing, so the value
+   * afterwards is the target type MARKED NULLABLE -- and the path continues, which is the
    * difference that matters to the analysis.
    *
    * <p>The target type is read from the expression's own type, because the Analysis API already
-   * resolved the cast: asking the PSI for the type reference and mapping it again would do the
-   * same work with a second chance to disagree.
+   * resolved the cast: asking the PSI for the type reference and mapping it again would do the same
+   * work with a second chance to disagree.
    */
   private TacOperand translateCast(KtBinaryExpression bin, boolean safe) {
     TacType target = expressionTypeOf(bin);
@@ -2762,13 +2754,13 @@ final class KotlinTacTranslator {
   /**
    * Lowers a cast whose right side is a TYPE: {@code x as String}, {@code x as? String}.
    *
-   * <p>A plain cast throws when it fails, so the value afterwards is the target type. A SAFE
-   * cast yields null instead of throwing, so the value afterwards is the target type MARKED
-   * NULLABLE -- and the path continues, which is the difference that matters to the analysis.
+   * <p>A plain cast throws when it fails, so the value afterwards is the target type. A SAFE cast
+   * yields null instead of throwing, so the value afterwards is the target type MARKED NULLABLE --
+   * and the path continues, which is the difference that matters to the analysis.
    *
-   * <p>The target type is read from the type reference the source wrote down. The Analysis API
-   * has already resolved the cast, so the expression's own type would say the same thing; the
-   * reference is used because it says it even when the resolution failed.
+   * <p>The target type is read from the type reference the source wrote down. The Analysis API has
+   * already resolved the cast, so the expression's own type would say the same thing; the reference
+   * is used because it says it even when the resolution failed.
    */
   private TacOperand translateCastWithTypeRhs(
       org.jetbrains.kotlin.psi.KtBinaryExpressionWithTypeRHS cast) {
@@ -2801,9 +2793,9 @@ final class KotlinTacTranslator {
   /**
    * Lowers a membership test.
    *
-   * <p>{@code x in collection} asks the COLLECTION whether it holds {@code x}, so the collection
-   * is the receiver and {@code x} is the argument. The owner comes from the resolved symbol, so
-   * the call names the real function rather than a guessed one.
+   * <p>{@code x in collection} asks the COLLECTION whether it holds {@code x}, so the collection is
+   * the receiver and {@code x} is the argument. The owner comes from the resolved symbol, so the
+   * call names the real function rather than a guessed one.
    */
   private TacOperand translateMembership(KtBinaryExpression bin, boolean negated) {
     TacOperand element = translateExpression(bin.getLeft());
@@ -2841,8 +2833,8 @@ final class KotlinTacTranslator {
    * The owner of the function an {@code in} test calls.
    *
    * <p>Resolved from the operator's own symbol: {@code in} is an extension function, and the
-   * extension's receiver is the collection. The owner is whatever the symbol says; when the
-   * symbol does not resolve, the bare name is the honest fallback.
+   * extension's receiver is the collection. The owner is whatever the symbol says; when the symbol
+   * does not resolve, the bare name is the honest fallback.
    */
   private String ownerOfMembership(KtBinaryExpression bin) {
     try {
@@ -2865,14 +2857,14 @@ final class KotlinTacTranslator {
   /**
    * Lowers the Elvis operator: {@code a ?: b}.
    *
-   * <p>The value is {@code a} when {@code a} is not null, and {@code b} otherwise. The TAC has
-   * no "is null" test, so the branch is made on a comparison against the null constant: the
-   * shape says exactly what the source says, and a checker that understands the comparison gets
-   * the narrowing for free.
+   * <p>The value is {@code a} when {@code a} is not null, and {@code b} otherwise. The TAC has no
+   * "is null" test, so the branch is made on a comparison against the null constant: the shape says
+   * exactly what the source says, and a checker that understands the comparison gets the narrowing
+   * for free.
    *
    * <p>Lowering this as "the value is {@code a}, and {@code b} is computed too" would lose the
-   * difference between the two arms, and lowering it as "the value is {@code b}" would lose
-   * {@code a}'s value entirely -- which is how a tainted {@code a} used to lose its taint.
+   * difference between the two arms, and lowering it as "the value is {@code b}" would lose {@code
+   * a}'s value entirely -- which is how a tainted {@code a} used to lose its taint.
    */
   private TacOperand translateElvis(KtBinaryExpression bin) {
     TacOperand left = translateExpression(bin.getLeft());
@@ -2905,8 +2897,7 @@ final class KotlinTacTranslator {
             .column(columnOf(bin))
             .build());
 
-    builder.emit(
-        TacInstruction.builder(TacInstruction.Kind.LABEL).label(notNullLabel).build());
+    builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(notNullLabel).build());
     builder.emit(
         TacInstruction.builder(TacInstruction.Kind.MOVE)
             .dest(dest)
@@ -2930,10 +2921,10 @@ final class KotlinTacTranslator {
   /**
    * Lowers a safe call: {@code a?.b} and {@code a?.b()}.
    *
-   * <p>The receiver is checked FIRST: when it is null, the read or the call does not happen at
-   * all and the value of the whole expression is null. Lowering it as an ordinary call would
-   * make the engine's null-dereference checker fire on every such call -- a false positive on
-   * exactly the construct that exists to PREVENT the dereference.
+   * <p>The receiver is checked FIRST: when it is null, the read or the call does not happen at all
+   * and the value of the whole expression is null. Lowering it as an ordinary call would make the
+   * engine's null-dereference checker fire on every such call -- a false positive on exactly the
+   * construct that exists to PREVENT the dereference.
    */
   private TacOperand translateSafeQualified(KtSafeQualifiedExpression safe) {
     KtExpression receiverExpr = safe.getReceiverExpression();
@@ -3025,8 +3016,8 @@ final class KotlinTacTranslator {
   /**
    * Lowers a type test: {@code x is String} and {@code x !is String}.
    *
-   * <p>The test is an {@code INSTANCEOF} against the tested type, which is what the engine's
-   * type narrowing reads.
+   * <p>The test is an {@code INSTANCEOF} against the tested type, which is what the engine's type
+   * narrowing reads.
    */
   private TacOperand translateIs(KtIsExpression is) {
     TacOperand value = translateExpression(is.getLeftHandSide());
@@ -3049,9 +3040,9 @@ final class KotlinTacTranslator {
   /**
    * Lowers a postfix operator: {@code x++} and {@code x--}.
    *
-   * <p>The value of the expression is the value BEFORE the change, and the variable is changed.
-   * A postfix increment whose value is discarded still changes the variable, so the store
-   * happens either way.
+   * <p>The value of the expression is the value BEFORE the change, and the variable is changed. A
+   * postfix increment whose value is discarded still changes the variable, so the store happens
+   * either way.
    */
   private TacOperand translatePostfix(KtPostfixExpression postfix) {
     String op = postfix.getOperationReference().getText();
@@ -3125,11 +3116,10 @@ final class KotlinTacTranslator {
    * <p>{@code !x} negates, {@code -x} negates a number, and {@code ++x} and {@code --x} change the
    * variable and yield the NEW value.
    *
-   * <p><b>Why the not-null assertion is NOT here.</b> {@code !!x} is Kotlin's "I assert this is
-   * not null", and the TAC's {@code NULL_CHECK} is exactly that claim -- but {@code !!} is a
-   * POSTFIX operator, so the expression reaches {@link #translatePostfix}. A branch that can
-   * never be taken is worse than no branch at all: it says the frontend handles something it
-   * does not.
+   * <p><b>Why the not-null assertion is NOT here.</b> {@code !!x} is Kotlin's "I assert this is not
+   * null", and the TAC's {@code NULL_CHECK} is exactly that claim -- but {@code !!} is a POSTFIX
+   * operator, so the expression reaches {@link #translatePostfix}. A branch that can never be taken
+   * is worse than no branch at all: it says the frontend handles something it does not.
    */
   private TacOperand translatePrefix(KtPrefixExpression prefix) {
     String op = prefix.getOperationReference().getText();
@@ -3194,10 +3184,10 @@ final class KotlinTacTranslator {
   /**
    * Lowers {@code super}.
    *
-   * <p>The super receiver is a value the TAC carries: a call on it puts the receiver in
-   * {@code args[0]}, exactly as any other call does. Lowering {@code super} as nothing made
-   * {@code super.f()} a call with no receiver at all, and the engine's null-dereference checker
-   * read the missing receiver as a null one.
+   * <p>The super receiver is a value the TAC carries: a call on it puts the receiver in {@code
+   * args[0]}, exactly as any other call does. Lowering {@code super} as nothing made {@code
+   * super.f()} a call with no receiver at all, and the engine's null-dereference checker read the
+   * missing receiver as a null one.
    */
   private TacOperand translateSuper(KtSuperExpression superExpression) {
     TacOperand.TacVar self = locals.get(THIS);
@@ -3231,20 +3221,20 @@ final class KotlinTacTranslator {
   /**
    * Lowers a callable reference: {@code ::f} and {@code receiver::f}.
    *
-   * <p>A callable reference is a FUNCTION VALUE. The TAC has no representation for one: there
-   * is no operand that holds "a function". Lowering it as an ordinary call would claim the
-   * function is invoked at the point the reference is written, which it is not.
+   * <p>A callable reference is a FUNCTION VALUE. The TAC has no representation for one: there is no
+   * operand that holds "a function". Lowering it as an ordinary call would claim the function is
+   * invoked at the point the reference is written, which it is not.
    *
-   * <p>So the reference is lowered as a CALL -- the shape every other front end uses for a
-   * function value -- and the gap is recorded. The alternative, dropping it, loses the taint
-   * that flows into the reference; the CALL keeps the data flow visible and lets the checker
-   * see that the function is used as a value.
+   * <p>So the reference is lowered as a CALL -- the shape every other front end uses for a function
+   * value -- and the gap is recorded. The alternative, dropping it, loses the taint that flows into
+   * the reference; the CALL keeps the data flow visible and lets the checker see that the function
+   * is used as a value.
    */
   private TacOperand translateCallableReference(KtCallableReferenceExpression reference) {
     String name =
-            reference.getCallableReference() == null
-                ? null
-                : reference.getCallableReference().getReferencedName();
+        reference.getCallableReference() == null
+            ? null
+            : reference.getCallableReference().getReferencedName();
     if (name == null || name.isEmpty()) {
       return null;
     }
@@ -3289,9 +3279,9 @@ final class KotlinTacTranslator {
   /**
    * The index of an array access.
    *
-   * <p>An array access carries a LIST of index expressions, because {@code a[i, j]} is one
-   * access with two indices. The first one is the index the TAC models; the rest are lowered
-   * for their side effects, so a call inside them is not lost.
+   * <p>An array access carries a LIST of index expressions, because {@code a[i, j]} is one access
+   * with two indices. The first one is the index the TAC models; the rest are lowered for their
+   * side effects, so a call inside them is not lost.
    */
   private TacOperand translateIndex(KtArrayAccessExpression access) {
     List<KtExpression> indices = access.getIndexExpressions();
@@ -3604,10 +3594,10 @@ final class KotlinTacTranslator {
   /**
    * Lowers a call whose receiver has already been lowered.
    *
-   * <p>The safe-call lowering needs this: it checks the receiver FIRST and then calls on it,
-   * so the receiver is lowered once -- before the check -- and the call must use that same
-   * value. Lowering the receiver a second time inside the call would emit the receiver's
-   * instructions twice, and a call inside the receiver would then happen twice.
+   * <p>The safe-call lowering needs this: it checks the receiver FIRST and then calls on it, so the
+   * receiver is lowered once -- before the check -- and the call must use that same value. Lowering
+   * the receiver a second time inside the call would emit the receiver's instructions twice, and a
+   * call inside the receiver would then happen twice.
    *
    * @param call the call to lower
    * @param receiver the receiver expression, or {@code null} for an unqualified call
@@ -4016,9 +4006,9 @@ final class KotlinTacTranslator {
   /**
    * The test of a {@code when} entry.
    *
-   * <p>An entry can name several conditions, and it matches when ANY of them matches. An
-   * {@code is} pattern tests the subject's runtime type. The tests are combined with a
-   * bitwise-or over booleans, which is the same thing the source says.
+   * <p>An entry can name several conditions, and it matches when ANY of them matches. An {@code is}
+   * pattern tests the subject's runtime type. The tests are combined with a bitwise-or over
+   * booleans, which is the same thing the source says.
    *
    * @param subject the subject's value
    * @param entry the entry

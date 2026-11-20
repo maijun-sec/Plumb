@@ -123,8 +123,8 @@ class SidecarTacMapperWireV2Test {
   void aDropLowersThePrecisionAndIsKeptAsAReceipt() {
     TacFunction fn =
         map(
-            "{\"name\":\"x\",\"precision\":\"SOURCE_FULL\",\"drops\":"
-                + "[{\"construct\":\"ts.decorator\",\"detail\":\"not read\",\"impact\":\"SEMANTICS\","
+            "{\"name\":\"x\",\"precision\":\"SOURCE_FULL\",\"drops\":[{\"construct\":\"ts.decorator\",\"detail\":\"not"
+                + " read\",\"impact\":\"SEMANTICS\","
                 + "\"line\":12,\"column\":3,\"scope\":\"FUNCTION\"}]}");
 
     assertThat(fn.drops()).hasSize(1);

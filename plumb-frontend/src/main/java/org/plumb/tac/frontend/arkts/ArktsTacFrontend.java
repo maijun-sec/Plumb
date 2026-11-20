@@ -298,7 +298,9 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
   public StructuredParseResult parseStructured(String source, Path path, CompileContext ctx) {
     ParseResult plain = parse(source, path, ctx);
     return new StructuredParseResult(
-        plain.functions(), List.copyOf(structuredProblems), plain.precision(),
+        plain.functions(),
+        List.copyOf(structuredProblems),
+        plain.precision(),
         plain.programDrops());
   }
 

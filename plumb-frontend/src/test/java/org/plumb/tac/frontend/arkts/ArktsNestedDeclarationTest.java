@@ -52,9 +52,9 @@ import org.plumb.tac.ir.TacInstruction;
  * a class the COMPILER loses: the syntax tree it hands over stops at the nested class, and the
  * members that come after it are not in the class at all. The sidecar cannot restore what the
  * compiler did not give it, but it can say so: the class's own function carries the problem, the
- * file's precision drops, and the reader is told that this class was not analysed. A silent loss and
- * a reported loss are very different things -- the first is a finding that is not there, the second
- * is a finding about the analysis itself.
+ * file's precision drops, and the reader is told that this class was not analysed. A silent loss
+ * and a reported loss are very different things -- the first is a finding that is not there, the
+ * second is a finding about the analysis itself.
  *
  * <p>The assertions are about the SHAPE: the nested function is a function of the program, with a
  * name of its own and the signature that names it.
@@ -171,7 +171,9 @@ class ArktsNestedDeclarationTest {
 
     assertThat(nested).as("the nested function must be in the program").isNotNull();
     assertThat(nested.signature())
-        .as("the signature is what the function is called by, so it has to name the nested function")
+        .as(
+            "the signature is what the function is called by, so it has to name the nested"
+                + " function")
         .contains("inner(");
   }
 
@@ -185,8 +187,11 @@ class ArktsNestedDeclarationTest {
             "a class declared inside a function body is a class of its own, and its methods are"
                 + " functions of the program -- a class that is lifted out of the function must not"
                 + " be lifted out of the program as well")
-        .anyMatch(function -> "go".equals(function.name()) && function.enclosingClass() != null
-            && function.enclosingClass().endsWith("Inner"));
+        .anyMatch(
+            function ->
+                "go".equals(function.name())
+                    && function.enclosingClass() != null
+                    && function.enclosingClass().endsWith("Inner"));
   }
 
   @Test
@@ -197,8 +202,8 @@ class ArktsNestedDeclarationTest {
     assertThat(result.precision())
         .as(
             "the compiler's syntax tree stops this class at the nested class, so the repair takes"
-                + " the nested class out of the text the compiler reads -- and with the class whole,"
-                + " there is nothing left to report")
+                + " the nested class out of the text the compiler reads -- and with the class"
+                + " whole, there is nothing left to report")
         .isEqualTo(IrPrecision.SOURCE_FULL);
     assertThat(result.functions())
         .as("the nested class is a class of its own, and its method is a function of the program")
@@ -212,15 +217,15 @@ class ArktsNestedDeclarationTest {
 
     assertThat(functions)
         .as(
-            "the compiler lifts the nested class out of the class that held it, but the nested class"
-                + " itself is whole -- its own members are functions of the program")
+            "the compiler lifts the nested class out of the class that held it, but the nested"
+                + " class itself is whole -- its own members are functions of the program")
         .anyMatch(function -> "go".equals(function.name()));
   }
 
   @Test
   @DisplayName("a class with a constructor whose body holds a nested class keeps the constructor")
-  void aClassWithAConstructorWhoseBodyHoldsANestedClassKeepsTheConstructor(
-      @TempDir Path directory) throws IOException {
+  void aClassWithAConstructorWhoseBodyHoldsANestedClassKeepsTheConstructor(@TempDir Path directory)
+      throws IOException {
     TacFrontend.ParseResult result = parse(NESTED_WITH_CONSTRUCTOR, directory);
 
     assertThat(result.functions())
@@ -240,9 +245,9 @@ class ArktsNestedDeclarationTest {
 
     assertThat(result.precision())
         .as(
-            "the control: a class whose body holds no nested class is in the tree whole, so its file"
-                + " keeps its full precision -- without this, the case above would pass for the wrong"
-                + " reason")
+            "the control: a class whose body holds no nested class is in the tree whole, so its"
+                + " file keeps its full precision -- without this, the case above would pass for"
+                + " the wrong reason")
         .isEqualTo(IrPrecision.SOURCE_FULL);
   }
 
@@ -275,8 +280,8 @@ class ArktsNestedDeclarationTest {
     assertThat(functions)
         .as(
             "a fragment has no call expression inside it -- the member's body is not a tree the"
-                + " compiler gave over -- so the sink in it was not a call at all, and a sink that is"
-                + " not a call cannot be matched by any rule")
+                + " compiler gave over -- so the sink in it was not a call at all, and a sink that"
+                + " is not a call cannot be matched by any rule")
         .anyMatch(
             function ->
                 function.instructions().stream()
@@ -314,9 +319,9 @@ class ArktsNestedDeclarationTest {
   /**
    * The one-based line of the source line that holds a piece of text.
    *
-   * <p>The expected line is derived from the source rather than written down, so that the
-   * assertion says what it means -- the lowering and the repair agree about where the sink is --
-   * and does not become a number that has to be edited when the fixture changes.
+   * <p>The expected line is derived from the source rather than written down, so that the assertion
+   * says what it means -- the lowering and the repair agree about where the sink is -- and does not
+   * become a number that has to be edited when the fixture changes.
    */
   private static int lineOf(String source, String needle) {
     List<String> lines = source.lines().toList();
@@ -369,6 +374,7 @@ class ArktsNestedDeclarationTest {
       return false;
     }
     Path root = project.getParent();
-    return root != null && Files.isDirectory(root.resolve("node_modules").resolve("ohos-typescript"));
+    return root != null
+        && Files.isDirectory(root.resolve("node_modules").resolve("ohos-typescript"));
   }
 }

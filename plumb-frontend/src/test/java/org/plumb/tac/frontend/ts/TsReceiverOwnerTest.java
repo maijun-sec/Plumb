@@ -41,17 +41,15 @@ import org.plumb.tac.ir.TacInstruction;
  *
  * <h2>Why this test exists</h2>
  *
- * <p>A call key is {@code owner.name/arity}. The owner is what tells two methods of the same
- * name apart, and the call graph resolves a call to the function whose OWN SIGNATURE carries that
- * owner. So a call key without an owner does not merely lose a label: it names every method of
- * that name in every class, and the graph has to fall back on "the first same-named method it
- * finds".
+ * <p>A call key is {@code owner.name/arity}. The owner is what tells two methods of the same name
+ * apart, and the call graph resolves a call to the function whose OWN SIGNATURE carries that owner.
+ * So a call key without an owner does not merely lose a label: it names every method of that name
+ * in every class, and the graph has to fall back on "the first same-named method it finds".
  *
- * <p>{@code this.m()} used to produce exactly such a key. The owner was asked of the compiler's
- * own type of the receiver, and the {@code this} type is not an object type -- the class-name
- * lookup drops every type that is not one -- so the answer was "no owner" for every {@code this}
- * call in the program. The receiver was right there in the source and the key said nothing about
- * it.
+ * <p>{@code this.m()} used to produce exactly such a key. The owner was asked of the compiler's own
+ * type of the receiver, and the {@code this} type is not an object type -- the class-name lookup
+ * drops every type that is not one -- so the answer was "no owner" for every {@code this} call in
+ * the program. The receiver was right there in the source and the key said nothing about it.
  *
  * <p>The assertions here are about SHAPES: the key carries the class the method is written in, and
  * that class is the one the callee's own signature names -- otherwise the key still cannot be

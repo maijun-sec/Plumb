@@ -272,7 +272,9 @@ class TsObjectLiteralMemberTest {
         .orElseThrow(
             () ->
                 new AssertionError(
-                    "there is no function named " + name + ": the body of the member of the object"
+                    "there is no function named "
+                        + name
+                        + ": the body of the member of the object"
                         + " literal is not in the TAC at all, so the code inside it is gone"));
   }
 

@@ -48,22 +48,22 @@ import org.plumb.tac.ir.TacInstruction;
  * second one REPLACES the first, and one method body is gone from the program. There is no drop and
  * no problem to say so: the body simply is not there any more.
  *
- * <p>The same collision decides where a CALL goes. A call key is {@code owner.name/arity}, and a key
- * whose owner is a simple name addresses every method of that name in every class -- so the call
- * graph has to fall back on "the first same-named method it finds", which the engine's schedule
- * decides.
+ * <p>The same collision decides where a CALL goes. A call key is {@code owner.name/arity}, and a
+ * key whose owner is a simple name addresses every method of that name in every class -- so the
+ * call graph has to fall back on "the first same-named method it finds", which the engine's
+ * schedule decides.
  *
- * <p><b>Why this file exists next to the sibling one.</b> The ArkTS sidecar is a DIFFERENT program on
- * a DIFFERENT compiler build, and A2 changed both of them the same way. A change that is verified on
- * one sidecar and assumed on the other is a change that is verified once -- and the assumption is
- * exactly where the bug would be: the ArkTS sidecar was given the module-qualified identity, and
- * the only ArkTS test that existed measured the CALL key, which the declaration's identity does
- * not reach. The mutation that took the module off the ArkTS declaration's identity changed
- * nothing that any test could see.
+ * <p><b>Why this file exists next to the sibling one.</b> The ArkTS sidecar is a DIFFERENT program
+ * on a DIFFERENT compiler build, and A2 changed both of them the same way. A change that is
+ * verified on one sidecar and assumed on the other is a change that is verified once -- and the
+ * assumption is exactly where the bug would be: the ArkTS sidecar was given the module-qualified
+ * identity, and the only ArkTS test that existed measured the CALL key, which the declaration's
+ * identity does not reach. The mutation that took the module off the ArkTS declaration's identity
+ * changed nothing that any test could see.
  *
- * <p><b>Why this drives the real sidecar.</b> The module of a class is a fact the COMPILER knows and
- * the sidecar asks it for: the resolved signature names the declaration the call reaches, and the
- * declaration's file names the module. A test that only checked the mapping would pass if the
+ * <p><b>Why this drives the real sidecar.</b> The module of a class is a fact the COMPILER knows
+ * and the sidecar asks it for: the resolved signature names the declaration the call reaches, and
+ * the declaration's file names the module. A test that only checked the mapping would pass if the
  * sidecar stopped asking -- and that is exactly the failure this is about.
  */
 @DisplayName("ArkTS: two modules that declare the same class name keep their own members")
@@ -187,7 +187,8 @@ class ArktsModuleQualifiedOwnerTest {
     CompileContext context =
         new DefaultCompileContext(
             List.of(
-                new CompileContext.Module("arkts", directory, List.of(), List.of(), List.of(), null)));
+                new CompileContext.Module(
+                    "arkts", directory, List.of(), List.of(), List.of(), null)));
 
     try (ArktsTacFrontend frontend = new ArktsTacFrontend(SourceLanguage.ARKTS)) {
       assumeTrue(

@@ -47,29 +47,28 @@ import org.plumb.tac.ir.TacOperand;
  *
  * <h2>Why this is worth pinning</h2>
  *
- * <p>Before this, the TypeScript sidecar had NO enum lowering at all: an enum statement
- * reached the catch-all branch, reported UNHANDLED_NODE, and the whole file's precision
- * dropped. The enum's members -- and every sink in them -- were not in the TAC at all.
+ * <p>Before this, the TypeScript sidecar had NO enum lowering at all: an enum statement reached the
+ * catch-all branch, reported UNHANDLED_NODE, and the whole file's precision dropped. The enum's
+ * members -- and every sink in them -- were not in the TAC at all.
  *
- * <p><b>The write and the read have to be the same mechanism.</b> An enum member is an
- * entry of the enum's own namespace, exactly like a static field of a class is an entry of
- * the class object. So the member is written with a keyed store whose key is the member's
- * name, and the read {@code Colour.RED} looks in the same place. A lowering that writes
- * the members somewhere else -- as locals of a synthetic function, say -- puts the two
- * halves in two different mechanisms, and they can never meet.
+ * <p><b>The write and the read have to be the same mechanism.</b> An enum member is an entry of the
+ * enum's own namespace, exactly like a static field of a class is an entry of the class object. So
+ * the member is written with a keyed store whose key is the member's name, and the read {@code
+ * Colour.RED} looks in the same place. A lowering that writes the members somewhere else -- as
+ * locals of a synthetic function, say -- puts the two halves in two different mechanisms, and they
+ * can never meet.
  *
- * <p><b>The value follows the PREVIOUS member.</b> A member without an initialiser takes
- * the value after the previous member's value, not after the number of the members: in
- * {@code A = 5, B} the value of B is 6.
+ * <p><b>The value follows the PREVIOUS member.</b> A member without an initialiser takes the value
+ * after the previous member's value, not after the number of the members: in {@code A = 5, B} the
+ * value of B is 6.
  *
- * <p><b>And nothing is invented.</b> When the compiler's own syntax tree is cut off, the
- * member at the cut is the head of what was lost: it gets no value, and the loss is
- * reported.
+ * <p><b>And nothing is invented.</b> When the compiler's own syntax tree is cut off, the member at
+ * the cut is the head of what was lost: it gets no value, and the loss is reported.
  *
  * <h2>Why this drives the real sidecar</h2>
  *
- * <p>The compiler's tree is the fact here, and only the real compiler produces it. A test
- * that checked the mapping would pass if the sidecar stopped asking.
+ * <p>The compiler's tree is the fact here, and only the real compiler produces it. A test that
+ * checked the mapping would pass if the sidecar stopped asking.
  */
 @DisplayName("TypeScript: an enum is lowered into the entries of its own object")
 class TsEnumLoweringTest {
@@ -131,8 +130,8 @@ class TsEnumLoweringTest {
   /**
    * An enum that holds a METHOD.
    *
-   * <p>The compiler's syntax tree for this one is cut off: the enum's own text ends at the
-   * method's name, and the method comes back as a stray statement of the file.
+   * <p>The compiler's syntax tree for this one is cut off: the enum's own text ends at the method's
+   * name, and the method comes back as a stray statement of the file.
    */
   private static final String TRUNCATED =
       """
@@ -299,7 +298,8 @@ class TsEnumLoweringTest {
 
   @Test
   @DisplayName("the value of a member after a computed value is not invented")
-  void theValueOfAMemberAfterAComputedValueIsNotInvented(@TempDir Path directory) throws IOException {
+  void theValueOfAMemberAfterAComputedValueIsNotInvented(@TempDir Path directory)
+      throws IOException {
     List<TacFunction> functions = translate(directory);
 
     TacFunction computed = functionNamed(functions, "Computed");
@@ -345,8 +345,8 @@ class TsEnumLoweringTest {
    * The load of the given key from the given object, or null when there is no such load.
    *
    * <p>The object is part of the question: a namespaced member is read in two loads -- the
-   * namespace object, then the member's own object -- so a search by key alone can land on
-   * the wrong one.
+   * namespace object, then the member's own object -- so a search by key alone can land on the
+   * wrong one.
    */
   private static TacInstruction loadWithKey(TacFunction function, String key, String object) {
     for (TacInstruction instruction : function.instructions()) {
@@ -391,12 +391,17 @@ class TsEnumLoweringTest {
 
       List<TacFunction> functions = new ArrayList<>();
       functions.addAll(
-          frontend.parse(STORE_A, directory.resolve("modA").resolve("store.ts"), context).functions());
+          frontend
+              .parse(STORE_A, directory.resolve("modA").resolve("store.ts"), context)
+              .functions());
       functions.addAll(
-          frontend.parse(STORE_B, directory.resolve("modB").resolve("store.ts"), context).functions());
+          frontend
+              .parse(STORE_B, directory.resolve("modB").resolve("store.ts"), context)
+              .functions());
       functions.addAll(frontend.parse(NAMESPACED, directory.resolve("ns.ts"), context).functions());
       functions.addAll(frontend.parse(CALLER, directory.resolve("caller.ts"), context).functions());
-      functions.addAll(frontend.parse(COMPUTED, directory.resolve("computed.ts"), context).functions());
+      functions.addAll(
+          frontend.parse(COMPUTED, directory.resolve("computed.ts"), context).functions());
       functions.addAll(
           frontend.parse(TRUNCATED, directory.resolve("truncated.ts"), context).functions());
       return functions;

@@ -39,9 +39,9 @@ import org.plumb.tac.ir.TacOperand;
  * The Go frontend: a switch with no tag is a file, not a loss.
  *
  * <p><b>What used to happen.</b> A switch with no tag -- {@code switch { case cond: }} -- used to
- * take the whole file down: the Go sidecar died on it with a nil pointer dereference, and the
- * file produced no TAC at all. Not a degraded TAC: none. Every function in that file, and every
- * finding in it, was gone.
+ * take the whole file down: the Go sidecar died on it with a nil pointer dereference, and the file
+ * produced no TAC at all. Not a degraded TAC: none. Every function in that file, and every finding
+ * in it, was gone.
  *
  * <p><b>Why the loss was file-level.</b> The sidecar's answer to one file is one answer. A
  * construct it cannot lower is a problem in that function, and the other functions of the file are
@@ -90,7 +90,9 @@ class GoSwitchLoweringTest {
     TacInstruction comparison = comparisonOf(classify);
 
     assertThat(branch)
-        .as("the case's condition is the branch's condition: the switch has no tag to compare it with")
+        .as(
+            "the case's condition is the branch's condition: the switch has no tag to compare it"
+                + " with")
         .isNotNull();
     assertThat(comparison).as("the case's own comparison is in the instruction stream").isNotNull();
     assertThat(comparison.binop)
@@ -99,9 +101,7 @@ class GoSwitchLoweringTest {
     assertThat(comparison.dest)
         .as("the comparison has a result to branch on")
         .isInstanceOf(TacOperand.TacVar.class);
-    assertThat(branch.lhs1)
-        .as("the branch has a condition")
-        .isInstanceOf(TacOperand.TacVar.class);
+    assertThat(branch.lhs1).as("the branch has a condition").isInstanceOf(TacOperand.TacVar.class);
     assertThat(((TacOperand.TacVar) branch.lhs1).name())
         .as("the branch is on the comparison's own result, and the wire has to carry that name")
         .isEqualTo(((TacOperand.TacVar) comparison.dest).name());
