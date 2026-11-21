@@ -351,9 +351,12 @@ export class Translator {
    * @param {object} options.sourceFile the file being lowered
    * @param {string} options.moduleName the module the file belongs to
    * @param {function(string):string} [options.moduleNameOf] the module a FILE
-   *     belongs to, wherever it is.  It is what tells a class of THIS project
-   *     from a class of a library: a library's declaration lives outside the
-   *     source root, so it has no module here.
+   *     belongs to, wherever it is
+   * @param {function(string):boolean} [options.isProjectFile] whether a file is
+   *     one of the analysed project's own files.  It is what tells a class of
+   *     THIS project from a class of a library: a library's declaration is not
+   *     one of the project's own files, and a library class keeps its own name
+   *     as its owner.
    * @param {string} options.language the source language, for the wire
    * @param {string} options.text the file's text, for the line and column
    */
@@ -362,6 +365,7 @@ export class Translator {
     this.sourceFile = options.sourceFile;
     this.moduleName = options.moduleName;
     this.moduleNameOf = options.moduleNameOf;
+    this.isProjectFile = options.isProjectFile;
     this.language = options.language ?? "ARKTS";
     this.text = options.text ?? "";
     this.lineStarts = computeLineStarts(this.text);
@@ -4251,12 +4255,17 @@ export class Translator {
   }
 
   /**
-   * The module a declaration lives in, or null when it is outside the source
-   * root.
+   * The module a declaration lives in, or null when the declaration is not
+   * part of the analysed program.
    *
-   * <p>The source root is what tells a PROGRAM class from a LIBRARY class: a
-   * module path that climbs out of the source root is not a module of this
-   * project.
+   * <p>A LIBRARY class has no module here. The sink catalogue names library
+   * classes by their own name -- `Console.log`, not the path of the file the
+   * standard library happens to be installed in -- and a module prefix would
+   * stop the catalogue from claiming the call.
+   *
+   * <p>The module comes from the compiler's own answer rather than from a
+   * guess about the import that brought the class in: the resolved signature
+   * names the very declaration the call reaches.
    *
    * @param {object} node the declaration
    * @return {string} the module path, or null
@@ -4274,6 +4283,12 @@ export class Translator {
     }
     if (!filePath) filePath = node.path;
     if (!filePath) return null;
+    // The file of a LIBRARY is not one of the project's own files, and the
+    // class it declares keeps its own name.  The source root cannot tell them
+    // apart -- a dependency sits INSIDE the project -- and the path of the
+    // file is not a module name either: on another drive the relative path is
+    // the absolute one.
+    if (!this.isProjectFile || !this.isProjectFile(filePath)) return null;
     let module;
     try {
       module = this.moduleNameOf(filePath);
@@ -4281,7 +4296,6 @@ export class Translator {
       return null;
     }
     if (!module) return null;
-    if (module.startsWith("..")) return null;
     return module;
   }
 

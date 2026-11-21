@@ -384,6 +384,20 @@ absent while the scan reports success.
 The owner is the receiver's type for a method, and the module's name for a
 free function the file itself declares.
 
+A **library** type is named by its own name: `console.log(x)` is
+`Console.log/1`, because the receiver's type is the `Console` of the standard
+library. A class of THIS project is named by the module it lives in plus its
+name, so two files that each declare a class called `Store` stay two classes.
+
+The reason a library type keeps that bare name is the sink catalogue: it is
+written against `Console.log`, and a module prefix in front of it stops the
+catalogue from claiming the call. Which module a declaration lives in is
+therefore not asked of the source root -- a dependency sits INSIDE the
+project, under `node_modules`, and the standard library may sit on another
+drive, where the relative path is the absolute one. The question that does
+answer it is whether the file is one of the files the scan asked for, and the
+file of a library is never one of them.
+
 ### When the owner is missing
 
 A receiver whose type the compiler cannot name -- `any`, for instance -- has
@@ -398,9 +412,9 @@ rather than matching the wrong thing.
 A global the language itself provides keeps its own name as the owner:
 `eval(x)` is `eval.eval/1`, `require("./x")` is `require.require/1`. That is
 **not** the same as the global object as a RECEIVER -- `console.log(x)` names
-`console` because the method belongs to that object -- and the difference
-matters: a call whose receiver nobody could type has no owner at all, so the
-key tells the global and the untyped receiver apart.
+the receiver's type, `Console`, because the method belongs to that type -- and
+the difference matters: a call whose receiver nobody could type has no owner
+at all, so the key tells the global and the untyped receiver apart.
 
 This is the shape the sink catalogue is written against. An earlier version
 of this document claimed the catalogue was written against a *stand-in* owner

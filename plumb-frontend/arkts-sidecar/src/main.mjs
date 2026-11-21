@@ -57,7 +57,13 @@ class Session {
     this.sourcePaths = new Map();
   }
 
-  /** The module a file belongs to: its path under the source root, without the extension. */
+  /**
+   * The module a file belongs to: its path under the source root, without the
+   * extension.
+   *
+   * @param {string} path the file
+   * @return {string} the module
+   */
   moduleNameOf(path) {
     const absolute = resolve(path);
     if (!this.sourceRoot) {
@@ -68,6 +74,29 @@ class Session {
     const original = this.sourcePaths.get(absolute.toLowerCase());
     const rel = relative(resolve(this.sourceRoot), resolve(original ?? absolute));
     return stripExtension(rel.split(sep).join("/"));
+  }
+
+  /**
+   * Whether a file is one of the analysed project's OWN files.
+   *
+   * <p>The project's own files are the ones the scan asked for, and that set is
+   * what tells a class of THIS project from a class of a LIBRARY: the file of a
+   * library is never in it. The source root cannot tell them apart -- a
+   * dependency often sits INSIDE the project, under `node_modules` -- and the
+   * path of a file the compiler hands out is not a module name either: on
+   * another drive the relative path is the absolute one, so the owner of a
+   * call to the standard library became the whole path of the file it is
+   * installed in.
+   *
+   * <p>A library class is named by its OWN name: the sink catalogue is written
+   * against it, and a module prefix in front of it stops the catalogue from
+   * claiming the call.
+   *
+   * @param {string} path the file
+   * @return {boolean} true when the file is one of the project's own
+   */
+  isProjectFile(path) {
+    return this.sourcePaths.has(resolve(path).toLowerCase());
   }
 }
 
@@ -205,6 +234,8 @@ function translate(request) {
     text = "";
   }
   const language = request.language ?? "ARKTS";
+  // The file being translated is one of the project's own files, so it has a
+  // module: the scan asks for the file it is parsing.
   const moduleName = session.moduleNameOf(path);
   const makeTranslator = (sourceText, checker, sourceFileNode) =>
     new Translator({
@@ -212,6 +243,7 @@ function translate(request) {
       sourceFile: sourceFileNode,
       moduleName,
       moduleNameOf: (filePath) => session.moduleNameOf(filePath),
+      isProjectFile: (filePath) => session.isProjectFile(filePath),
       language,
       text: sourceText,
     });
