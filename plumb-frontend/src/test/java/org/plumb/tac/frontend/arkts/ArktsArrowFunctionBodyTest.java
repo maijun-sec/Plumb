@@ -100,16 +100,17 @@ class ArktsArrowFunctionBodyTest {
   }
 
   @Test
-  @DisplayName("the capture the lifting cannot model is recorded on the lifted function")
-  void theCaptureTheLiftingCannotModelIsRecordedOnTheLiftedFunction(@TempDir Path directory)
-      throws IOException {
+  @DisplayName("the by-reference loss is recorded on the lifted function")
+  void theByReferenceLossIsRecordedOnTheLiftedFunction(@TempDir Path directory) throws IOException {
     List<TacFunction> functions = translateAll(CONCISE_BODY, directory, "app.ets");
 
     TacFunction body = theFunctionHoldingTheEval(functions);
     assertThat(body.drops())
-        .as("the names the body read from the scope around it are not in the lifted function")
+        .as(
+            "the source shares one binding between the scope and the closure, and the TAC hands"
+                + " the captured value over by copy")
         .extracting(TacDrop::construct)
-        .contains("lifted-function");
+        .contains("closure-capture");
     assertThat(body.irPrecision())
         .as("a recorded loss must not be reported as full precision")
         .isNotEqualTo(IrPrecision.SOURCE_FULL);

@@ -91,6 +91,7 @@ import {
   isObjectLiteralExpression,
   isOmittedExpression,
   isParenthesizedExpression,
+  isParameterDeclaration,
   isPostfixUnaryExpression,
   isPrefixUnaryExpression,
   isPrivateIdentifier,
@@ -459,6 +460,15 @@ export class Translator {
     this.sourceFile = null;
     this.metaProperties = [];
     this.enclosingBase = undefined;
+    /**
+     * The captures of every closure this file declares, by the position of
+     * the literal they belong to.
+     *
+     * <p>The same closure is asked about twice -- once where it is lifted,
+     * and once at every call that reaches it -- and both ends have to agree
+     * on the list, or the call hands over values the closure does not expect.
+     */
+    this.capturesByPos = new Map();
   }
 
   /** The functions declared in a source file, in source order. */
@@ -1088,6 +1098,237 @@ export class Translator {
     return out;
   }
 
+  // ---- closures ----------------------------------------------------------------------------
+
+  /**
+   * The names a closure's body takes from the scope AROUND it.
+   *
+   * <p><b>What a capture is.</b> A name the closure's body mentions that the
+   * scope around it declares, and the closure does not: a variable, a
+   * parameter, anything with a binding outside the closure. That name is the
+   * closure's CAPTURE -- the closure body runs somewhere else, and the value
+   * it uses is the outer one.
+   *
+   * <p><b>How a capture is found.</b> By the compiler's own SYMBOL, not by
+   * walking the scopes. The compiler already knows which declaration each
+   * name in the body refers to, and a declaration's POSITION says whether it
+   * is inside the closure or outside it. So the question "is this name the
+   * closure's own?" is answered by asking where the compiler says the name
+   * was declared -- and the compiler's answer is the language's own.
+   *
+   * <p><b>Why the declaration's FILE matters.</b> A name another file declares
+   * is a module's import or the standard library's: neither is this closure's
+   * scope, and neither is a value the caller hands over.
+   *
+   * <p><b>Why only a variable.</b> A function, a class and a type are not
+   * values a caller hands over: a call that reaches one is resolved by name,
+   * and the body reads it through that name.
+   *
+   * @param {object} literal the function literal
+   * @return {{name: string, type: object}[]} the captures, by name
+   */
+  capturesOf(literal) {
+    if (!literal || !this.checker) return [];
+    // The same literal is asked about twice: once where it is lifted, and
+    // once at every call that reaches it. The answer is the same both times,
+    // and it is not cheap to work out, so it is kept.
+    const cached = this.capturesByPos.get(literal.pos);
+    if (cached) return cached;
+    const mentions = this.mentionsOf(literal);
+    if (mentions.length === 0) {
+      this.capturesByPos.set(literal.pos, []);
+      return [];
+    }
+    let symbols;
+    try {
+      symbols = this.checker.getSymbolAtLocation(mentions);
+    } catch (e) {
+      return [];
+    }
+    if (!Array.isArray(symbols)) return [];
+    const seen = new Set();
+    const captures = [];
+    for (let index = 0; index < mentions.length; index++) {
+      const symbol = symbols[index];
+      if (!symbol) continue;
+      // One SYMBOL is one binding: the same name mentioned twice is one
+      // capture, and two names that happen to be spelled the same are two.
+      if (seen.has(symbol.id)) continue;
+      seen.add(symbol.id);
+      const mention = mentions[index];
+      const declarations = this.declarationsOf(symbol);
+      if (declarations.length === 0) continue;
+      // A name the closure binds ITSELF is not a capture.
+      if (declarations.some((declaration) => this.isInside(declaration, literal))) continue;
+      // A name another file declares is not this scope's.
+      if (!declarations.some((declaration) => this.isInThisFile(declaration))) continue;
+      // Only a variable is a value that can be handed over.
+      const isValue = declarations.some(
+        (declaration) =>
+          isVariableDeclaration(declaration)
+          || isParameterDeclaration(declaration)
+          || isBindingElement(declaration),
+      );
+      if (!isValue) continue;
+      captures.push({ name: mention.text, type: this.typeOf(mention) });
+    }
+    // The order has to be the same on both ends: the call site hands the
+    // captured values over in this order, and the closure's own leading
+    // parameters are in this order.
+    captures.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+    this.capturesByPos.set(literal.pos, captures);
+    return captures;
+  }
+
+  /**
+   * The names a closure's body mentions.
+   *
+   * <p>Every identifier in the closure counts, the ones in a NESTED closure
+   * included: a nested closure reads the outer scope too, and the value it
+   * reads has to be handed over twice -- once to the nested closure, and once
+   * to the closure around it.
+   *
+   * <p>A property NAME is not a mention: `obj.name` reads `obj`, and `name`
+   * is the key it reads it by.
+   *
+   * @param {object} literal the function literal
+   * @return {object[]} the identifiers
+   */
+  mentionsOf(literal) {
+    const mentions = [];
+    const visit = (node) => {
+      if (!node) return;
+      if (isIdentifier(node) && !this.isPropertyName(node)) mentions.push(node);
+      if (typeof node.forEachChild === "function") node.forEachChild(visit);
+    };
+    visit(literal);
+    return mentions;
+  }
+
+  /**
+   * Whether an identifier is a property's NAME rather than a value the body reads.
+   *
+   * @param {object} node the identifier
+   * @return {boolean} whether it is a property name
+   */
+  isPropertyName(node) {
+    const parent = node?.parent;
+    if (!parent) return false;
+    return isPropertyAccessExpression(parent) && parent.name === node;
+  }
+
+  /**
+   * The declarations a symbol stands for, as AST nodes.
+   *
+   * @param {object} symbol the symbol
+   * @return {object[]} the declarations
+   */
+  declarationsOf(symbol) {
+    const handles = symbol?.declarations ?? [];
+    const declarations = [];
+    for (const handle of handles) {
+      let declaration = null;
+      try {
+        declaration = handle.resolve();
+      } catch (e) {
+        declaration = null;
+      }
+      if (declaration) declarations.push(declaration);
+    }
+    return declarations;
+  }
+
+  /**
+   * Whether a node lies inside another one.
+   *
+   * @param {object} node the node
+   * @param {object} container the node that may contain it
+   * @return {boolean} whether it lies inside
+   */
+  isInside(node, container) {
+    if (!node || !container) return false;
+    return node.pos >= container.pos && node.end <= container.end;
+  }
+
+  /**
+   * Whether a node belongs to the file being translated.
+   *
+   * @param {object} node the node
+   * @return {boolean} whether it is in this file
+   */
+  isInThisFile(node) {
+    const file = node?.getSourceFile?.();
+    const mine = this.sourceFile;
+    if (!file || !mine) return false;
+    return String(file.fileName).toLowerCase() === String(mine.fileName).toLowerCase();
+  }
+
+  /**
+   * The signature of a closure's own function.
+   *
+   * <p>The captured values are the LEADING parameters of the function, so the
+   * signature counts them before the declared ones -- the order the call site
+   * hands them over in.
+   *
+   * <p>The name is the VARIABLE's name and not the placeholder: the function
+   * table is keyed by the signature, and two closures of one file that shared
+   * the placeholder would replace each other -- one body would be gone from
+   * the program, with no drop and no problem to say so.
+   *
+   * @param {object} node the function literal
+   * @param {string} name the name the closure is known by
+   * @param {{name: string, type: object}[]} captures the captured values
+   * @return {string} the signature
+   */
+  closureSignature(node, name, captures) {
+    const types = captures.map((capture) => (capture.type ? typeText(capture.type) : "any"));
+    for (const parameter of node.parameters ?? []) {
+      if (isThisParameter(parameter)) continue;
+      types.push(this.typeTextOf(parameter));
+    }
+    return `${this.moduleName}.${name}(${types.join(",")}):${this.returnTypeTextOf(node)}`;
+  }
+
+  /**
+   * The closure a call reaches, when the callee is a function literal.
+   *
+   * <p>The compiler's resolved signature says which function the call
+   * reaches, and a function literal is a closure: the values it captures are
+   * the ones the call has to hand over.
+   *
+   * @param {object} node the call
+   * @return {{captures: {name: string, type: object}[], arity: number}|null} the
+   *     closure, or null when the callee is not a literal
+   */
+  closureCalledAt(node, signature) {
+    const declaration = this.declarationOfSignature(signature);
+    if (!declaration) return null;
+    if (!isArrowFunction(declaration) && !isFunctionExpression(declaration)) return null;
+    const captures = this.capturesOf(declaration);
+    const declared = (declaration.parameters ?? []).filter((p) => !isThisParameter(p)).length;
+    return {
+      captures,
+      arity: captures.length + declared,
+      leading: captures.map((capture) => varOp(capture.name, capture.type)),
+    };
+  }
+
+  /**
+   * The declaration a resolved signature stands for, as an AST node.
+   *
+   * @param {object} signature the resolved signature
+   * @return {object|null} the declaration, or null
+   */
+  declarationOfSignature(signature) {
+    const handle = signature?.declaration;
+    if (!handle) return null;
+    try {
+      return handle.resolve() ?? null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   /**
    * A variable whose initialiser is a function.
    *
@@ -1102,30 +1343,44 @@ export class Translator {
       if (!initialiser) continue;
       if (!isArrowFunction(initialiser) && !isFunctionExpression(initialiser)) continue;
       const name = declaration.name && declaration.name.text ? declaration.name.text : "<anonymous>";
+      // The values the closure takes from the scope around it. They are the
+      // closure's LEADING parameters, and the call that reaches the closure
+      // hands them over before the arguments the source wrote.
+      const captures = this.capturesOf(initialiser);
       const previous = this.state;
-      const state = this.beginFunction(name, this.functionSignature(initialiser, null), null);
+      const state = this.beginFunction(
+        name,
+        this.closureSignature(initialiser, name, captures),
+        null,
+      );
       this.guard(initialiser, () => {
+        for (const capture of captures) {
+          state.params.push(varOp(capture.name, capture.type));
+        }
         this.lowerParameters(initialiser.parameters);
         this.lowerFunctionBody(initialiser.body);
       });
       if (initialiser.type) {
         state.returnType = this.typeOf(initialiser.type);
       }
-      // The lifted function has a scope of its own, so the names its body
-      // reads from the scope around it are not in it. That loss belongs to
-      // the LIFTED function -- it is the one whose TAC cannot see them -- and
-      // it is recorded here, so that function's precision says so instead of
-      // claiming that its body was lowered whole.
+      // The captured values are handed over BY COPY, while the source shares
+      // ONE binding between the scope and the closure. So a write inside the
+      // closure does not reach the outer variable: the closure sees the copy
+      // it was given, and the outer variable keeps the value it had.
       //
-      // The function AROUND it keeps its precision: the body does not run
-      // where the declaration is, so nothing it does reaches this scope.
-      this.emitDrop(
-        "lifted-function",
-        "the body of this function is lowered into a function of its own, and the names it"
-          + " reads from the scope around it are not in that function",
-        IMPACT.STRUCTURE,
-        initialiser,
-      );
+      // The loss belongs to the LIFTED function: it is the one whose TAC
+      // cannot see the outer variable's later writes. The function AROUND it
+      // keeps its precision: the body does not run where the declaration is,
+      // so nothing it does reaches this scope.
+      if (captures.length > 0) {
+        this.emitDrop(
+          "closure-capture",
+          "the closure shares the variable it captures, and the TAC hands the captured value over"
+            + " by copy, so a write inside the closure does not reach the outer variable",
+          IMPACT.SEMANTICS,
+          initialiser,
+        );
+      }
       out.push(this.finishFunction(state));
       // The lifted function is a function of its own: the state that was
       // being lowered is the one that continues.
@@ -1164,37 +1419,47 @@ export class Translator {
     if (!literal) return null;
     if (!isArrowFunction(literal) && !isFunctionExpression(literal)) return null;
     const name = `closure$${this.inlineCounter += 1}`;
+    // The values the closure takes from the scope around it. They are the
+    // closure's LEADING parameters, and the call hands them over before the
+    // arguments the source wrote.
+    const captures = this.capturesOf(literal);
     const previous = this.state;
-    const state = this.beginFunction(name, this.functionSignature(literal, null, name), null);
+    const state = this.beginFunction(name, this.closureSignature(literal, name, captures), null);
     state.synthetic = true;
     this.guard(literal, () => {
+      for (const capture of captures) {
+        state.params.push(varOp(capture.name, capture.type));
+      }
       this.lowerParameters(literal.parameters);
       this.lowerFunctionBody(literal.body);
     });
-    // The lifted body has a scope of its own, so the names it reads from the
-    // scope around it are not in it. That loss belongs to the LIFTED function,
-    // and the enclosing one already carries the `iife-body` drop: the body ran
-    // HERE, and its effect on this scope is not here either.
-    this.emitDrop(
-      "lifted-function",
-      "the body of this function is lowered into a function of its own, and the names it"
-        + " reads from the scope around it are not in that function",
-      IMPACT.STRUCTURE,
-      literal,
-    );
+    // The captured values are handed over BY COPY, while the source shares
+    // ONE binding between the scope and the closure -- see the same drop on
+    // a closure that is bound to a variable.
+    if (captures.length > 0) {
+      this.emitDrop(
+        "closure-capture",
+        "the closure shares the variable it captures, and the TAC hands the captured value over"
+          + " by copy, so a write inside the closure does not reach the outer variable",
+        IMPACT.SEMANTICS,
+        literal,
+      );
+    }
     const finished = this.finishFunction(state);
     this.state = previous;
     this.pendingFunctions.push(finished);
     this.emitDrop(
       "iife-body",
-      "the body of an immediately invoked function is lifted into a function of its own, and"
-        + " the names it read from the scope around it are not in that function",
+      "the body of an immediately invoked function runs in a function of its own, so what it does"
+        + " to the scope around it does not reach this scope",
       IMPACT.STRUCTURE,
       node,
     );
     return {
       name,
-      arity: (literal.parameters ?? []).filter((p) => !isThisParameter(p)).length,
+      arity:
+        captures.length + (literal.parameters ?? []).filter((p) => !isThisParameter(p)).length,
+      leading: captures.map((capture) => varOp(capture.name, capture.type)),
     };
   }
 
@@ -2787,15 +3052,28 @@ export class Translator {
       slot = constOp(CONST.STRING, owner ?? "");
     }
     wireArgs.push(slot);
-    for (const argument of args) {
-      wireArgs.push(this.lowerExpression(argument));
-    }
     // An IIFE: the callee is a function literal, and its body is a function of
     // its own. Lifting it gives the call a callee the engine can resolve, and
     // puts the body's instructions into the TAC.
     const inline = this.liftInlineFunction(node);
+    // A callee that is a function LITERAL is a closure: the values it
+    // captures are the ones the call has to hand over, and they are the
+    // closure's LEADING parameters, so they come before the arguments the
+    // source wrote.
+    const closure = inline ? null : this.closureCalledAt(node, signature);
+    const leading = inline ? inline.leading : (closure ? closure.leading : []);
+    for (const capture of leading) {
+      wireArgs.push(capture);
+    }
+    for (const argument of args) {
+      wireArgs.push(this.lowerExpression(argument));
+    }
     const method = inline ? inline.name : this.methodNameOf(node);
-    const arity = inline ? inline.arity : this.arityOf(signature, args);
+    const arity = inline
+      ? inline.arity
+      : closure
+        ? closure.arity
+        : this.arityOf(signature, args);
     const dest = this.state.newTemp(this.typeOf(node));
     const kind = inline || signature ? KIND.CALL : KIND.UNINTERPRETED;
     if (!signature && !inline && !isSuperExpression(node.expression)) {

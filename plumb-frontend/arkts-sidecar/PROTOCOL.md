@@ -212,7 +212,7 @@ that the file did not parse, so what came back is not the whole program.
 | `synthetic` | True for a function the frontend invented: the module's own code, a struct's initialiser. |
 | `returnType` | The function's return type, as a type object. |
 | `domain` | The value domain of the return type, or `null` when it has none. |
-| `params` | The parameters, in declaration order. |
+| `params` | The parameters, in declaration order. A closure's captured values come **first**: see the callee signature convention. |
 | `locals` | The locals. |
 | `instructions` | The instruction stream, in source order. |
 | `drops` | What was lowered less faithfully than the source says, and how much was lost. |
@@ -407,6 +407,35 @@ The arity counts the **declared parameters**. The receiver is not one of
 them: a method with one parameter is `ProfilePage.render/1`, with the receiver
 at `args[0]`.
 
+**A CLOSURE counts its captured values first.** A closure body runs in a scope
+of its own, so the names it reads from the scope around it are not in it --
+and the engine binds a call's arguments to the callee's parameters, never the
+receiver. So a captured value is the closure's **leading parameter**, and the
+call that reaches the closure hands it over **before** the arguments the
+source wrote:
+
+```
+args[0]            = the receiver slot
+args[1..captures]  = the captured values
+args[..]           = the arguments the source wrote
+```
+
+The arity counts them too: a closure with one capture and one declared
+parameter is `helper/2`. The two ends have to agree on the order, or the
+engine binds the arguments to the wrong parameters.
+
+**Which names are captures is the compiler's own answer.** A name the closure
+declares itself is not one; a name another file declares -- an import, the
+standard library -- is not one; and neither is a function or a class, because
+a call that reaches one is resolved by name rather than handed over. What is
+left is a variable of the scope around the closure.
+
+**What the shape costs.** The engine seeds every parameter with a source, so
+a **clean** captured value still reaches the sink as a taint inside the
+closure. The value is also handed over by copy, while the source shares ONE
+binding between the scope and the closure, so a write inside the closure does
+not reach the outer variable; that is recorded as a `closure-capture` drop.
+
 **Why this is worth stating so loudly.** A sidecar that emits
 `args = [tainted]` produces TAC that looks perfectly reasonable and matches
 the sink catalogue -- and then the engine reads `args[0]`, finds the
@@ -537,7 +566,7 @@ thing the source wrote.
 | `implements` | A `TYPE` drop. The interface names are in `interfaces`; the relation itself has no run-time behaviour. |
 | `import type` / `export type` | A `TYPE` drop. The module edge is erased at compile time. |
 | `abilityContext` | A `VALUE` drop: the framework fills the object's properties in at run time. |
-| A closure (a function used as a value) | A `STRUCTURE` drop; the value becomes a `HAVOC`. |
+| A function used as a **value** (`arr.map(x => ...)`) | A `STRUCTURE` drop; the value becomes a `HAVOC`, and its body is not in the TAC. |\n| A closure that **captures** a variable | A `SEMANTICS` drop: the value is handed over by copy, while the source shares one binding, so a write inside the closure does not reach the outer variable. |
 | `new Function(...)` | A `VALUE` drop: the body is decided at run time. |
 | `import.meta` | A `VALUE` drop: the property values are filled in per environment. |
 | A dynamic `import(x)` | A `SEMANTICS` drop: the module it names is decided at run time. |
