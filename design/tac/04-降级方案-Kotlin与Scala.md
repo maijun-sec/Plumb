@@ -75,7 +75,7 @@
 | 嵌套类 / 局部类 / 匿名对象 | 各自合成类型（FQN 带外层类名或 `$local`/`$anon$N`）+`CONSTRUCTOR` | `METHOD`/`CONSTRUCTOR` | `classAnnotations` | `E` |
 | 扩展函数 / 扩展属性 | 接收者=**首个 TAC 形参**；`CALL <owner>.ext/1 args=[recv,...]`；属性读=合成 `GETTER` | `EXTENSION_FUNCTION`/`PROPERTY_ACCESSOR` | `methodAnnotations`/`fieldAnnotations` | `E`,`P` |
 | 挂起函数 | 状态机展开：按挂起点切段，每段一个合成函数；挂起点挂 `Effect.SUSPEND`；函数级 `resumePoints` | `METHOD` | — | `L` |
-| 内联函数 / `reified` | 声明侧同普通函数；**调用点做展开**（S8）；展开前 `TacDrop(STRUCTURE,"inline.notExpanded")`；`T::class`→`CLASS("java.lang.Class")`，类型实参被擦除⇒该值 `TacDrop(VALUE)` | `METHOD` | — | `X`（§13 的 `KS3`） |
+| 内联函数 / `reified` | 声明侧同普通函数；**调用点做展开**（S8）；展开前 `TacDrop(SEMANTICS,"inline.notExpanded")`；`T::class`→`CLASS("java.lang.Class")`，类型实参被擦除⇒该值 `TacDrop(VALUE)` | `METHOD` | — | `X`（§13 的 `KS3`） |
 | 尾递归 | 标注即可；TAC 的 `JUMP` 回边就是尾递归形态 | `METHOD` | — | `X` |
 | 操作符重载/中缀 | `OPERATOR`；调用点 `CALL <owner>.plus/2`（现状是 `BINOP`，`KTT:1759-1778`） | `OPERATOR` | — | `E`,`P` |
 | 局部函数 | 合成函数，名字=`<enclosing>.<name>$local`；调用点用**同一名字**（现状两边不一致⇒调用图边指向不存在的函数） | `METHOD` | — | `X` |
@@ -489,7 +489,7 @@ IR v2 之外需要 **4 条**新能力，全部是「加字段」或「枚举末�
 | A-09 | companion object | DROPPED-SILENT | `KTF:501-507` | §4.1「伴生对象」行（成员 `enclosingClass`=**外层类 FQN**；`Holder.make()`→`CALL <外层类>.make/0`）+ §10 IR-P 细则表「伴生对象 owner」行 |
 | A-10 | extension function | DEGRADED | `KTT:1613-1620`, `KTT:1641-1667` | §4.1「扩展函数 / 扩展属性」行（接收者=**首个 TAC 形参**；`CALL <owner>.ext/1 args=[recv,...]`）+ §10 IR-P 细则表「顶层函数/扩展函数的 owner」行 |
 | A-11 | extension property | DROPPED-SILENT | `KTF:455-507` | §4.1「扩展函数 / 扩展属性」行（属性读=合成 `GETTER`）+ §10 IR-P 细则表「顶层函数/扩展函数的 owner」行 |
-| A-12 | inline function | DEGRADED | `KTF:722-851` | §4.1「内联函数 / `reified`」行（声明侧同普通函数；**调用点做展开**（S8）；展开前 `TacDrop(STRUCTURE,"inline.notExpanded")`）+ §13 的 `KS3` |
+| A-12 | inline function | DEGRADED | `KTF:722-851` | §4.1「内联函数 / `reified`」行（声明侧同普通函数；**调用点做展开**（S8）；展开前 `TacDrop(SEMANTICS,"inline.notExpanded")`）+ §13 的 `KS3` |
 | A-13 | infix function (declaration) | KEPT | `KTF:501-507` | 保持现状（无需改动）—— §4.1「操作符重载/中缀」行（`memberKind=OPERATOR`） |
 | Kotlin #22 | infix call site (`a pow2 b`) | DROPPED-NOTED | `KTT:1186-1199` | §5.1「中缀 `a pow2 b` / 用户类型 `a + b`」行（`CALL <owner>.pow2/2`）+ §4.1「操作符重载/中缀」行 + §10 IR-P 细则 |
 | A-14 | operator function (declaration) | KEPT | `KTF:501-507` | 保持现状（无需改动）—— §4.1「操作符重载/中缀」行 |

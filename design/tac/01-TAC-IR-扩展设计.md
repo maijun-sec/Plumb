@@ -290,7 +290,9 @@ public record TacDrop(
     /** 语义真的丢了（例：switch 的 fall-through 未建模、finally 未接到所有出口）。 */
     SEMANTICS,
     /** 单个值未知（例：某个表达式降级成 HAVOC）。函数整体仍可 SOURCE_FULL。 */
-    VALUE
+    VALUE,
+    /** 只丢了类型层的信息（例：Go 的类型 switch 收窄）。运行期行为不受影响 ⇒ 精度不变。 */
+    TYPE
   }
 }
 ```
