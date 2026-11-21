@@ -2201,8 +2201,10 @@ func (t *translator) translateTypeSwitch(statement *ast.TypeSwitchStmt) {
 
 	endLabel := t.newLabel("switch_end")
 	caseLabels := make([]string, len(statement.Body.List))
+	testLabels := make([]string, len(statement.Body.List))
 	for index := range statement.Body.List {
 		caseLabels[index] = t.newLabel("switch_case")
+		testLabels[index] = t.newLabel("switch_test")
 	}
 	defaultIndex := -1
 	for index, clause := range statement.Body.List {
@@ -2221,7 +2223,18 @@ func (t *translator) translateTypeSwitch(statement *ast.TypeSwitchStmt) {
 		if !ok {
 			continue
 		}
-		for _, expression := range caseClause.List {
+		t.emit(Instruction{Kind: KindLabel, Label: testLabels[index]}, clause.Pos())
+
+		if len(caseClause.List) == 0 {
+			// The default clause is not a TEST.  The chain has to continue
+			// past it, or the cases after it would be unreachable -- and
+			// the default's BODY belongs to the noMatch path, which is
+			// where noMatchLabel points.
+			t.emit(Instruction{Kind: KindJump, Label: t.nextCaseLabel(testLabels, index, noMatchLabel)}, clause.Pos())
+			continue
+		}
+
+		for valueIndex, expression := range caseClause.List {
 			test := t.newTemp(nil)
 			t.emit(Instruction{
 				Kind:     KindInstanceOf,
@@ -2229,12 +2242,25 @@ func (t *translator) translateTypeSwitch(statement *ast.TypeSwitchStmt) {
 				Lhs1:     subject,
 				CtorType: mapGoType(t.info.TypeOf(expression)),
 			}, expression.Pos())
+
+			// Where the chain goes when this type does not match.  Another
+			// type of the SAME case is tried next; otherwise the NEXT CASE
+			// is tried -- its TEST, not its body.  The body used to be the
+			// target, which left every case after the first with a dead
+			// test and the default's body unreachable.
+			falseLabel := t.nextCaseLabel(testLabels, index, noMatchLabel)
+			if valueIndex+1 < len(caseClause.List) {
+				falseLabel = t.newLabel("switch_value")
+			}
 			t.emit(Instruction{
 				Kind:       KindBranch,
 				Lhs1:       test,
 				TrueLabel:  caseLabels[index],
-				FalseLabel: t.nextCaseLabel(caseLabels, index, noMatchLabel),
+				FalseLabel: falseLabel,
 			}, expression.Pos())
+			if valueIndex+1 < len(caseClause.List) {
+				t.emit(Instruction{Kind: KindLabel, Label: falseLabel}, expression.Pos())
+			}
 		}
 	}
 
