@@ -156,9 +156,20 @@ public final class UnlockNotLockedChecker implements DfaChecker {
     // any matching .lock() call. We
     // collect lock IDs up to this point
     // (linearly, no path-sensitivity).
+    //
+    // A DEFERRED unlock is the exception, and the exception IS the point of
+    // the rule: it runs when the function EXITS, so the lock it pairs with may
+    // be taken ANYWHERE in the body -- including after the `defer` statement
+    // that registers it.  Looking only at the instructions before it reports a
+    // program Go accepts: the lock IS held when the deferred unlock runs, so
+    // Go does not panic.
     boolean hasMatchingLock = false;
+    boolean runsAtExit = ins.isDeferred();
     for (TacInstruction prev : fn.instructions()) {
-      if (prev == ins) break; // don't count the unlock itself
+      if (prev == ins) {
+        if (!runsAtExit) break; // don't count the unlock itself
+        continue; // a deferred unlock runs later, so the search goes on
+      }
       if (prev.kind != TacInstruction.Kind.CALL) continue;
       if (prev.calleeSig == null) continue;
       if (!isLock(prev.calleeSig, go)) continue;

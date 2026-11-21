@@ -111,6 +111,75 @@ class GoLockPairingEndToEndTest {
     assertThat(findings.get(0).cwe()).isEqualTo("CWE-832");
   }
 
+  /**
+   * The unlock is deferred and the lock is taken AFTER the `defer` statement: the deferred unlock
+   * runs when the function returns, and the lock IS held by then. Go accepts this program.
+   */
+  private static final String UNLOCK_THEN_LOCK =
+      """
+      package demo
+
+      import "sync"
+
+      type Counter struct {
+      	mu sync.Mutex
+      	n  int
+      }
+
+      func (c *Counter) Late() {
+      	defer c.mu.Unlock()
+      	c.mu.Lock()
+      	c.n++
+      }
+      """;
+
+  @Test
+  @DisplayName("a lock taken after the deferred unlock is not reported")
+  void aLockTakenAfterTheDeferredUnlockIsNotReported(@TempDir Path directory) throws Exception {
+    List<Finding> findings = runOn(directory, "late", UNLOCK_THEN_LOCK);
+
+    assertThat(findings)
+        .as(
+            "the deferred unlock runs when the function returns, so the lock the body takes is"
+                + " held by then")
+        .isEmpty();
+  }
+
+  /**
+   * The unlock is ORDINARY and the lock is taken after it: the unlock runs where it is written, so
+   * nothing is locked when it runs and Go panics.
+   */
+  private static final String ORDINARY_UNLOCK_THEN_LOCK =
+      """
+      package demo
+
+      import "sync"
+
+      type Counter struct {
+      	mu sync.Mutex
+      	n  int
+      }
+
+      func (c *Counter) Ordinary() {
+      	c.mu.Unlock()
+      	c.mu.Lock()
+      	c.n++
+      }
+      """;
+
+  @Test
+  @DisplayName("an ordinary unlock before the lock is still reported")
+  void anOrdinaryUnlockBeforeTheLockIsStillReported(@TempDir Path directory) throws Exception {
+    List<Finding> findings = runOn(directory, "ordinary", ORDINARY_UNLOCK_THEN_LOCK);
+
+    assertThat(findings)
+        .as(
+            "the unlock runs where it is written, so the lock that comes after it is not the lock"
+                + " it releases -- Go panics")
+        .hasSize(1);
+    assertThat(findings.get(0).cwe()).isEqualTo("CWE-832");
+  }
+
   @Test
   @DisplayName("a lock taken before the deferred unlock is not reported")
   void aLockTakenBeforeTheDeferredUnlockIsNotReported(@TempDir Path directory) throws Exception {
