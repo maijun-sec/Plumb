@@ -234,13 +234,6 @@ final class ScalaTacTranslator {
    */
   private static final String CAPTURE_HOLDER_PREFIX = "CaptureHolder_";
 
-  /**
-   * Whether the function being lowered used a construct that could not be lowered.
-   *
-   * <p>When true the function's precision is downgraded to {@link IrPrecision#SOURCE_LOWERED}.
-   */
-  private boolean degraded;
-
   /** The problems found while lowering, in the order they were found. */
   private final ProblemCollector problems = new ProblemCollector();
 
@@ -251,14 +244,18 @@ final class ScalaTacTranslator {
    * different things, and a front end that records only the first produces findings that look
    * exactly as complete as a fully lowered one's.
    *
-   * <p>The impact is STRUCTURE: the function still computes the same thing, and its shape is what
-   * was lost. That is the grade this front end already states, and the drop must not claim a
-   * different one.
+   * <p><b>The impact says WHAT was lost, and it decides the function's precision.</b> The engine
+   * derives the precision from the drops ({@link org.plumb.tac.ir.TacFunction#derivePrecision}), so
+   * a drop that claims the wrong grade makes the precision a lie in the same direction the loss is.
+   * A construct whose effect is gone is {@link org.plumb.tac.ir.TacDrop.Impact#SEMANTICS}; one that
+   * only lost its shape is {@link org.plumb.tac.ir.TacDrop.Impact#STRUCTURE}; one that only lost a
+   * single value is {@link org.plumb.tac.ir.TacDrop.Impact#VALUE}.
    */
-  private void reportLoss(String construct, String message) {
+  private void reportLoss(
+      org.plumb.tac.ir.TacDrop.Impact impact, String construct, String message) {
     problems.add(message);
     if (builder != null) {
-      builder.reportDrop(construct, message, org.plumb.tac.ir.TacDrop.Impact.STRUCTURE, -1, -1);
+      builder.reportDrop(construct, message, impact, -1, -1);
     }
   }
 
@@ -439,7 +436,6 @@ final class ScalaTacTranslator {
     this.currentEnclosingClass = enclosingClassName(symbol);
     this.locals.clear();
     this.holders.clear();
-    this.degraded = false;
 
     TacBuilder b =
         new TacBuilder(
@@ -483,8 +479,13 @@ final class ScalaTacTranslator {
         emitFieldInitializerCalls(symbol, def);
       }
       if (hasUnmodelledBody(def, params)) {
-        b.setIrPrecision(IrPrecision.SOURCE_LOWERED);
-        problems.add(
+        // The body was not lowered, and the field writes the compiler synthesizes for
+        // a constructor with parameters are not in the TAC at all -- so what the
+        // constructor does is not there. The loss is RECORDED: a gap that leaves no
+        // receipt is a gap the engine cannot see.
+        reportLoss(
+            org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
+            "scala.body.unmodelled",
             "the body of "
                 + qualified
                 + " is compiler-generated and was not lowered;"
@@ -508,12 +509,19 @@ final class ScalaTacTranslator {
               + ": "
               + ex.getClass().getSimpleName()
               + (ex.getMessage() == null ? "" : ": " + ex.getMessage()));
-      b.setIrPrecision(IrPrecision.SOURCE_LOWERED);
+      reportLoss(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
+          "scala.translation.failed",
+          "lowering failure in "
+              + qualified
+              + ": "
+              + ex.getClass().getSimpleName()
+              + (ex.getMessage() == null ? "" : ": " + ex.getMessage()));
     }
 
-    if (degraded) {
-      b.setIrPrecision(IrPrecision.SOURCE_LOWERED);
-    }
+    // The precision is NOT stated here: it is derived from the drops (the builder
+    // combines the two), and a front end that states it as well can only talk the
+    // loss up.
     return b.build();
   }
 
@@ -854,7 +862,6 @@ final class ScalaTacTranslator {
     this.currentEnclosingClass = init.ownerSimpleName;
     this.locals.clear();
     this.holders.clear();
-    this.degraded = false;
 
     TacBuilder b =
         new TacBuilder(
@@ -874,8 +881,8 @@ final class ScalaTacTranslator {
       // The value could not be lowered. The function is still produced -- an
       // empty one -- so the constructor's CALL has a target, and the loss is
       // recorded rather than silent.
-      degraded = true;
       reportLoss(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
           "scala.fieldInitializer.unmodelled",
           "the initialiser of '" + init.ownerFqn + "." + init.field + "' was not lowered");
     } else {
@@ -894,9 +901,9 @@ final class ScalaTacTranslator {
               .build());
     }
 
-    if (degraded) {
-      b.setIrPrecision(IrPrecision.SOURCE_LOWERED);
-    }
+    // The precision is NOT stated here: it is derived from the drops (the builder
+    // combines the two), and a front end that states it as well can only talk the
+    // loss up.
     return b.build();
   }
 
@@ -1371,8 +1378,8 @@ final class ScalaTacTranslator {
     }
     // Anything else (a lambda, an implicit conversion, a by-name argument) is not
     // lowered. The function is degraded, so a checker knows not to trust it.
-    degraded = true;
     reportLoss(
+        org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
         "scala.expression.unmodelled",
         "could not lower "
             + tree.getClass().getSimpleName()
@@ -1502,11 +1509,14 @@ final class ScalaTacTranslator {
     if (symbol != null && symbol.isTerm(ctx)) {
       return translateMemberAccess(null, name, symbol, ident);
     }
-    // An unknown name. It is degraded rather than dropped, so the function's
-    // precision tells a checker that something is missing.
-    degraded = true;
+    // An unknown name. It is recorded rather than dropped, and the grade is
+    // VALUE: what is missing is ONE value -- this name's -- while everything
+    // else about the construct is intact. So the function's precision does not
+    // move; the receipt is what says that something is missing.
     reportLoss(
-        "scala.name.unresolved", "unresolved identifier '" + name + "' in " + currentFunction);
+        org.plumb.tac.ir.TacDrop.Impact.VALUE,
+        "scala.name.unresolved",
+        "unresolved identifier '" + name + "' in " + currentFunction);
     return null;
   }
 
@@ -1585,8 +1595,8 @@ final class ScalaTacTranslator {
         }
         // A method reference used as a value ("f" where f is a method) is not a
         // call; lowering it as one would invent behaviour.
-        degraded = true;
         reportLoss(
+            org.plumb.tac.ir.TacDrop.Impact.VALUE,
             "scala.methodReference.asValue",
             "method reference '" + name + "' in " + currentFunction + " was not lowered");
         return null;
@@ -1881,8 +1891,8 @@ final class ScalaTacTranslator {
    * @return an unknown value
    */
   private TacOperand unknownInterpolationValue(Trees.Tree<Type> tree) {
-    degraded = true;
     reportLoss(
+        org.plumb.tac.ir.TacDrop.Impact.VALUE,
         "scala.interpolation.unmodelled",
         "could not lower a string interpolation in " + currentFunction);
     TacOperand.TacVar unknown = builder.newTemp(TacType.UNKNOWN);
@@ -2046,8 +2056,8 @@ final class ScalaTacTranslator {
 
     TacOperand lhs = translateExpr(select.qualifier());
     if (lhs == null) {
-      degraded = true;
       reportLoss(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
           "scala.operator.unmodelled",
           "could not lower the left operand of '"
               + (and ? "&&" : "||")
@@ -2111,8 +2121,10 @@ final class ScalaTacTranslator {
    */
   private TacOperand translateNegation(TacOperand receiver, Trees.Tree<Type> tree) {
     if (receiver == null) {
-      degraded = true;
-      reportLoss("scala.operator.unmodelled", "could not lower a negation in " + currentFunction);
+      reportLoss(
+          org.plumb.tac.ir.TacDrop.Impact.VALUE,
+          "scala.operator.unmodelled",
+          "could not lower a negation in " + currentFunction);
       return null;
     }
     TacOperand.TacVar dest = builder.newTemp(TacType.BOOLEAN);
@@ -2183,8 +2195,8 @@ final class ScalaTacTranslator {
     for (Trees.Tree<Type> operand : operandsOf(fun, args)) {
       translateExpr(operand);
     }
-    degraded = true;
     reportLoss(
+        org.plumb.tac.ir.TacDrop.Impact.STRUCTURE,
         "scala.operator.unmodelled",
         "the operator '" + op + "' is type-level and was not lowered in " + currentFunction);
     TacOperand.TacVar unknown = builder.newTemp(TacType.UNKNOWN);
@@ -2788,9 +2800,10 @@ final class ScalaTacTranslator {
       }
       return translateFieldStore(receiver, name, value, symbol, assign);
     }
-    degraded = true;
     reportLoss(
-        "scala.assignment.unmodelled", "could not lower an assignment in " + currentFunction);
+        org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
+        "scala.assignment.unmodelled",
+        "could not lower an assignment in " + currentFunction);
     return value;
   }
 
@@ -2840,8 +2853,10 @@ final class ScalaTacTranslator {
 
     TacOperand cond = translateExpr(ifTree.cond());
     if (cond == null) {
-      degraded = true;
-      reportLoss("scala.if.condition", "could not lower an if-condition in " + currentFunction);
+      reportLoss(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
+          "scala.if.condition",
+          "could not lower an if-condition in " + currentFunction);
       return null;
     }
     builder.emit(
@@ -2917,9 +2932,10 @@ final class ScalaTacTranslator {
     builder.emit(TacInstruction.builder(TacInstruction.Kind.LABEL).label(condLabel).build());
     TacOperand cond = translateExpr(whileTree.cond());
     if (cond == null) {
-      degraded = true;
       reportLoss(
-          "scala.while.condition", "could not lower a while-condition in " + currentFunction);
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
+          "scala.while.condition",
+          "could not lower a while-condition in " + currentFunction);
       return null;
     }
     builder.emit(
@@ -3249,7 +3265,6 @@ final class ScalaTacTranslator {
    * That is exactly what {@link IrPrecision#SOURCE_LOWERED} means.
    */
   private TacOperand translateMatch(Trees.Match<Type> match) {
-    degraded = true;
     // The gap is RECORDED, not only flagged. A degraded function whose degradation is
     // invisible produces findings that look exactly as complete as a fully lowered one --
     // and the degradation is the whole point of the flag.
@@ -3260,6 +3275,7 @@ final class ScalaTacTranslator {
     // EXHAUSTIVENESS is not decided, and a checker must not read "the match always
     // matches" into a function whose matcher may not.
     reportLoss(
+        org.plumb.tac.ir.TacDrop.Impact.STRUCTURE,
         "scala.match.shape",
         "a pattern match was lowered as a branch chain in "
             + currentFunction
@@ -3765,8 +3781,8 @@ final class ScalaTacTranslator {
    * @param nextLabel the label the next case starts at
    */
   private void emitUnknownPattern(Trees.CaseDef<Type> caseDef, String bodyLabel, String nextLabel) {
-    degraded = true;
     reportLoss(
+        org.plumb.tac.ir.TacDrop.Impact.VALUE,
         "scala.match.patternKind",
         "a case pattern of an unknown kind was not lowered in " + currentFunction);
     TacOperand.TacVar unknown = builder.newTemp(TacType.BOOLEAN);
@@ -4399,8 +4415,8 @@ final class ScalaTacTranslator {
     if (target == null || target.isEmpty()) {
       // The closure names no function, so there is nothing to call. The gap is recorded and the
       // function degraded, so a consumer knows the value is not what it should be.
-      degraded = true;
       reportLoss(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
           "scala.lambda.unnamed",
           "a lambda in "
               + currentFunction

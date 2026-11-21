@@ -416,7 +416,10 @@ class ScalaTacFrontendTest {
 
     TacFunction ctor = find(result.functions(), "demo.Point.<init>");
     assertThat(ctor).isNotNull();
-    assertThat(ctor.irPrecision()).isEqualTo(IrPrecision.SOURCE_LOWERED);
+    // DEGRADED and not LOWERED: the field writes are not in the TAC at all, so what
+    // the constructor does is not knowable from the source. That is a loss of
+    // meaning, and the receipt for it says so.
+    assertThat(ctor.irPrecision()).isEqualTo(IrPrecision.SOURCE_DEGRADED);
   }
 
   @Test

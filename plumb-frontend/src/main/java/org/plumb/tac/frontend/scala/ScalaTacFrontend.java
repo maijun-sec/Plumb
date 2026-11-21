@@ -124,8 +124,8 @@ public final class ScalaTacFrontend implements TacFrontend {
   public IrPrecision defaultPrecision() {
     // Every Scala construct this frontend lowers keeps its meaning: a `match` becomes a
     // branch chain, and the chain says everything the `match` said. Only a construct
-    // that could NOT be lowered downgrades a function's precision to SOURCE_LOWERED,
-    // and that is decided per function by the translator.
+    // that could NOT be lowered lowers a function's precision, and HOW MUCH it lowers
+    // it is decided by the grade of the drop that records the loss -- not stated here.
     return IrPrecision.SOURCE_FULL;
   }
 
@@ -249,14 +249,11 @@ public final class ScalaTacFrontend implements TacFrontend {
       // The STRUCTURED problems, which travel with the IR.
       structuredProblems.addAll(phase.structuredProblems());
 
-      IrPrecision precision = defaultPrecision();
-      for (TacFunction fn : functions) {
-        if (fn.irPrecision() == IrPrecision.SOURCE_LOWERED) {
-          precision = IrPrecision.SOURCE_LOWERED;
-          break;
-        }
-      }
-      return new ParseResult(functions, problems, precision);
+      // The file's precision is the WORST of the functions'. Looking for one level
+      // instead of ranking them misses SOURCE_DEGRADED -- a function that lost its
+      // semantics would then be reported as part of a SOURCE_FULL file.
+      return new ParseResult(
+          functions, problems, TacFunction.aggregatePrecision(defaultPrecision(), functions));
     } finally {
       deleteRecursively(workDir);
       deleteRecursively(outputDir);

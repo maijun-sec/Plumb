@@ -101,8 +101,8 @@ import org.plumb.tac.translate.TacBuilder;
  *
  * <p><b>What it does not lower.</b> Coroutines, lambdas with captured state, inline classes and the
  * compiler's own lowering of {@code when} into a {@code tableswitch}. A construct that is not
- * lowered is reported as a problem rather than silently dropped -- see {@link
- * KotlinTacTranslator#degraded()}.
+ * lowered is reported as a problem rather than silently dropped -- and as a {@link
+ * org.plumb.tac.ir.TacDrop}, which is what says how far the function may be trusted.
  *
  * <p><b>No new opcodes.</b> Everything here lowers into the existing instruction kinds: {@code
  * MOVE}, {@code BINOP}, {@code CALL}, {@code FIELDLOAD}, {@code FIELDSTORE}, {@code BRANCH}, {@code
@@ -146,15 +146,6 @@ final class KotlinTacTranslator {
    */
   private final List<org.plumb.tac.ir.TacProgram.FunctionProblem> structuredProblems =
       new ArrayList<>();
-
-  /**
-   * Whether the function being lowered used a construct the translator could not lower.
-   *
-   * <p>When true the function's precision is downgraded to {@link
-   * org.plumb.tac.ir.IrPrecision#SOURCE_LOWERED}, so a checker knows not to trust a
-   * precision-dependent fact about it.
-   */
-  private boolean degraded;
 
   /**
    * The labels a loop's {@code break} and {@code continue} jump to.
@@ -263,11 +254,6 @@ final class KotlinTacTranslator {
             functionName, kind, message, nodeClass, line, column));
   }
 
-  /** Whether a construct could not be lowered. */
-  boolean degraded() {
-    return degraded;
-  }
-
   /**
    * Records a construct that could not be lowered, in the machine-readable channel.
    *
@@ -276,15 +262,23 @@ final class KotlinTacTranslator {
    * exactly as complete as a fully lowered one's -- which is the failure mode the drop channel
    * exists to prevent.
    *
-   * <p>The impact is STRUCTURE: the function still computes the same thing, and its shape is what
-   * was lost. That is the grade these front ends already state, and the drop must not claim a
-   * different one.
+   * <p><b>The impact says WHAT was lost, and it decides the function's precision.</b> The engine
+   * derives the precision from the drops ({@link org.plumb.tac.ir.TacFunction#derivePrecision}), so
+   * a drop that claims the wrong grade makes the precision a lie in the same direction the loss is.
+   * A construct whose effect is gone is {@link org.plumb.tac.ir.TacDrop.Impact#SEMANTICS}; one that
+   * only lost its shape is {@link org.plumb.tac.ir.TacDrop.Impact#STRUCTURE}; one that only lost a
+   * single value is {@link org.plumb.tac.ir.TacDrop.Impact#VALUE}.
    */
-  private void reportDrop(String construct, String detail, int line, int column) {
+  private void reportDrop(
+      org.plumb.tac.ir.TacDrop.Impact impact,
+      String construct,
+      String detail,
+      int line,
+      int column) {
     if (builder == null) {
       return;
     }
-    builder.reportDrop(construct, detail, org.plumb.tac.ir.TacDrop.Impact.STRUCTURE, line, column);
+    builder.reportDrop(construct, detail, impact, line, column);
   }
 
   /** The type mapper, exposed so the frontend can reuse it for symbol-level mapping. */
@@ -399,7 +393,6 @@ final class KotlinTacTranslator {
     this.locals.clear();
     this.problems.clear();
     this.structuredProblems.clear();
-    this.degraded = false;
     this.currentEnclosingClass = enclosingClass;
     this.currentModule = module;
     this.currentClassAnnotations =
@@ -465,8 +458,16 @@ final class KotlinTacTranslator {
     if (body == null) {
       // An abstract function, or a function whose body the compiler generated. There is
       // nothing to lower.
-      b.setIrPrecision(org.plumb.tac.ir.IrPrecision.SOURCE_LOWERED);
-      this.degraded = true;
+      //
+      // The loss is RECORDED: a function with no body at all is worse than one whose
+      // body was lowered with a gap in it, and a gap that leaves no receipt is a gap
+      // the engine cannot see.
+      reportDrop(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
+          "kotlin.body.absent",
+          "the function has no body to lower: it is abstract, or the compiler generated it",
+          -1,
+          -1);
       return b.build();
     }
 
@@ -512,15 +513,16 @@ final class KotlinTacTranslator {
           -1,
           -1);
       reportDrop(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
           "kotlin.translation.failed",
           "the lowering failed: " + ex.getClass().getSimpleName(),
           -1,
           -1);
     }
 
-    if (degraded) {
-      b.setIrPrecision(org.plumb.tac.ir.IrPrecision.SOURCE_LOWERED);
-    }
+    // The precision is NOT stated here: it is derived from the drops (the builder
+    // combines the two), and a front end that states it as well can only talk the
+    // loss up.
     return b.build();
   }
 
@@ -658,7 +660,6 @@ final class KotlinTacTranslator {
       return;
     }
     // Anything else is not lowered. Report it rather than dropping it silently.
-    degraded = true;
     report(
         "UNHANDLED_NODE",
         currentFunction,
@@ -672,6 +673,7 @@ final class KotlinTacTranslator {
         lineOf(stmt),
         columnOf(stmt));
     reportDrop(
+        org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
         "kotlin.statement.unmodelled",
         "the statement was not lowered: " + stmt.getClass().getSimpleName(),
         lineOf(stmt),
@@ -837,7 +839,6 @@ final class KotlinTacTranslator {
   private void translateFor(KtForExpression loop) {
     KtExpression collectionExpr = loop.getLoopRange();
     if (collectionExpr == null) {
-      degraded = true;
       report(
           "UNSUPPORTED_CONSTRUCT",
           currentFunction,
@@ -846,6 +847,7 @@ final class KotlinTacTranslator {
           lineOf(loop),
           columnOf(loop));
       reportDrop(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
           "kotlin.for.unmodelled",
           "the for loop was not lowered: it has no collection expression",
           lineOf(loop),
@@ -944,7 +946,6 @@ final class KotlinTacTranslator {
       // A `break` with no loop around it does not compile in Kotlin, so this is source the
       // compiler would reject. There is no loop to leave, and inventing one would put a
       // jump into the TAC that the source does not have.
-      degraded = true;
       report(
           "UNSUPPORTED_CONSTRUCT",
           currentFunction,
@@ -953,6 +954,7 @@ final class KotlinTacTranslator {
           lineOf(brk),
           columnOf(brk));
       reportDrop(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
           "kotlin.break.unmodelled",
           "the break was not lowered: there is no loop to leave",
           lineOf(brk),
@@ -973,7 +975,6 @@ final class KotlinTacTranslator {
   private void translateContinue(KtContinueExpression cont) {
     LoopTargets targets = loopTargetsFor(cont.getLabelName());
     if (targets == null) {
-      degraded = true;
       report(
           "UNSUPPORTED_CONSTRUCT",
           currentFunction,
@@ -982,6 +983,7 @@ final class KotlinTacTranslator {
           lineOf(cont),
           columnOf(cont));
       reportDrop(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
           "kotlin.continue.unmodelled",
           "the continue was not lowered: there is no loop to continue",
           lineOf(cont),
@@ -1258,7 +1260,6 @@ final class KotlinTacTranslator {
     // The body is lowered into a builder of its own.
     TacBuilder outerBuilder = builder;
     Map<String, TacOperand.TacVar> outerLocals = locals;
-    boolean outerDegraded = degraded;
     List<String> outerProblems = new ArrayList<>(problems);
     List<org.plumb.tac.ir.TacProgram.FunctionProblem> outerStructured =
         new ArrayList<>(structuredProblems);
@@ -1306,7 +1307,6 @@ final class KotlinTacTranslator {
       TacFunction function = nested.build();
       builder = outerBuilder;
       locals = outerLocals;
-      degraded = outerDegraded;
       problems.clear();
       problems.addAll(outerProblems);
       structuredProblems.clear();
@@ -1453,7 +1453,6 @@ final class KotlinTacTranslator {
     this.locals.clear();
     this.problems.clear();
     this.structuredProblems.clear();
-    this.degraded = false;
     this.currentEnclosingClass = enclosingClass;
     this.currentModule = module;
     this.currentClassAnnotations =
@@ -1544,9 +1543,9 @@ final class KotlinTacTranslator {
       }
     }
 
-    if (degraded) {
-      b.setIrPrecision(org.plumb.tac.ir.IrPrecision.SOURCE_LOWERED);
-    }
+    // The precision is NOT stated here: it is derived from the drops (the builder
+    // combines the two), and a front end that states it as well can only talk the
+    // loss up.
     return b.build();
   }
 
@@ -1605,7 +1604,6 @@ final class KotlinTacTranslator {
     this.locals.clear();
     this.problems.clear();
     this.structuredProblems.clear();
-    this.degraded = false;
     this.currentEnclosingClass = enclosingClass;
     this.currentModule = module;
     this.currentClassAnnotations =
@@ -1678,9 +1676,9 @@ final class KotlinTacTranslator {
       b.emit(TacInstruction.builder(TacInstruction.Kind.RETURN).lhs1(value).build());
     }
 
-    if (degraded) {
-      b.setIrPrecision(org.plumb.tac.ir.IrPrecision.SOURCE_LOWERED);
-    }
+    // The precision is NOT stated here: it is derived from the drops (the builder
+    // combines the two), and a front end that states it as well can only talk the
+    // loss up.
     return b.build();
   }
 
@@ -1760,7 +1758,15 @@ final class KotlinTacTranslator {
   private void translateIf(KtIfExpression iff) {
     KtExpression condition = iff.getCondition();
     if (condition == null) {
-      degraded = true;
+      // The condition could not be read, so the `if` is not lowered at all: neither
+      // arm runs in the TAC, and the value the `if` produces is gone. The loss is
+      // recorded -- a silently missing branch is a function whose precision lies.
+      reportDrop(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
+          "kotlin.if.condition",
+          "the if-condition could not be read, so the if was not lowered",
+          lineOf(iff),
+          columnOf(iff));
       return;
     }
     TacOperand cond = translateCondition(condition);
@@ -1882,7 +1888,6 @@ final class KotlinTacTranslator {
           // A condition the front end could not read. The branch is not lowered, and
           // the gap is reported -- a silently skipped branch is a function whose
           // precision lies.
-          degraded = true;
           report(
               "UNSUPPORTED_CONSTRUCT",
               currentFunction,
@@ -1895,6 +1900,7 @@ final class KotlinTacTranslator {
               lineOf(entry),
               -1);
           reportDrop(
+              org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
               "kotlin.when.isBranch",
               "a branch of a when expression was not lowered",
               lineOf(entry),
@@ -2087,7 +2093,6 @@ final class KotlinTacTranslator {
     if (expr instanceof KtSuperExpression superExpression) {
       return translateSuper(superExpression);
     }
-    degraded = true;
     report(
         "UNHANDLED_NODE",
         currentFunction,
@@ -2101,6 +2106,7 @@ final class KotlinTacTranslator {
         lineOf(expr),
         columnOf(expr));
     reportDrop(
+        org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
         "kotlin.expression.unmodelled",
         "the expression was not lowered: " + expr.getClass().getSimpleName(),
         lineOf(expr),
@@ -2526,7 +2532,6 @@ final class KotlinTacTranslator {
     if ("&&".equals(op) || "||".equals(op)) {
       return translateShortCircuit(bin, "&&".equals(op));
     }
-    degraded = true;
     report(
         "UNHANDLED_NODE",
         currentFunction,
@@ -2535,6 +2540,7 @@ final class KotlinTacTranslator {
         lineOf(bin),
         columnOf(bin));
     reportDrop(
+        org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
         "kotlin.binaryOperator.unmodelled",
         "the binary operator was not lowered: " + op,
         lineOf(bin),
@@ -2562,7 +2568,6 @@ final class KotlinTacTranslator {
     if (!"=".equals(op)) {
       BinaryOperator arithmetic = compoundOperatorOf(op);
       if (arithmetic == null) {
-        degraded = true;
         report(
             "UNHANDLED_NODE",
             currentFunction,
@@ -2571,6 +2576,7 @@ final class KotlinTacTranslator {
             lineOf(bin),
             columnOf(bin));
         reportDrop(
+            org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
             "kotlin.assignment.unmodelled",
             "the compound assignment was not lowered: " + op,
             lineOf(bin),
@@ -2627,7 +2633,6 @@ final class KotlinTacTranslator {
     if (lhs instanceof KtArrayAccessExpression access) {
       return storeArrayElement(access, value, tree);
     }
-    degraded = true;
     report(
         "UNHANDLED_NODE",
         currentFunction,
@@ -2636,6 +2641,7 @@ final class KotlinTacTranslator {
         lineOf(tree),
         columnOf(tree));
     reportDrop(
+        org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
         "kotlin.assignment.unmodelled",
         "the assignment target was not lowered: " + lhs.getClass().getSimpleName(),
         lineOf(tree),
@@ -2666,7 +2672,6 @@ final class KotlinTacTranslator {
     if (receiver == null) {
       // A top-level property: there is no receiver to write to, and inventing one
       // would put a field store into the TAC that the program does not perform.
-      degraded = true;
       report(
           "UNHANDLED_NODE",
           currentFunction,
@@ -2675,6 +2680,7 @@ final class KotlinTacTranslator {
           lineOf(tree),
           columnOf(tree));
       reportDrop(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
           "kotlin.assignment.unmodelled",
           "the write to a top-level property was not lowered: there is no receiver",
           lineOf(tree),
@@ -3250,6 +3256,7 @@ final class KotlinTacTranslator {
             .column(columnOf(reference))
             .build());
     reportDrop(
+        org.plumb.tac.ir.TacDrop.Impact.VALUE,
         "kotlin.callableReference.asValue",
         "the callable reference was lowered as a call; the function value itself is not modelled",
         lineOf(reference),

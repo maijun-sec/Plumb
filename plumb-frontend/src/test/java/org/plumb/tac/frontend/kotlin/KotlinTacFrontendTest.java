@@ -349,8 +349,10 @@ class KotlinTacFrontendTest {
     TacFunction fn = result.functions().get(0);
 
     assertThat(fn.irPrecision())
-        .as("a function with an unlowered branch must not claim full precision")
-        .isEqualTo(IrPrecision.SOURCE_LOWERED);
+        .as(
+            "a function with an unlowered branch must not claim full precision: the branch is"
+                + " skipped outright, so the function lost its MEANING and not only its shape")
+        .isEqualTo(IrPrecision.SOURCE_DEGRADED);
     assertThat(result.problems()).as("and the gap must be reported, not just flagged").isNotEmpty();
     assertThat(String.join("\n", result.problems()))
         .as("the message says what could not be lowered")
@@ -578,7 +580,7 @@ class KotlinTacFrontendTest {
   }
 
   @Test
-  void aFunctionThatCouldNotBeFullyLoweredIsMarkedSourceLowered() {
+  void aFunctionThatCouldNotBeFullyLoweredIsMarkedSourceDegraded() {
     TacFrontend.ParseResult result =
         support.parse(
             String.join(
@@ -591,8 +593,12 @@ class KotlinTacFrontendTest {
 
     // A checker consults the precision before trusting a precision-dependent fact
     // about the function, so a function that lost information must say so.
-    assertThat(result.precision()).isEqualTo(IrPrecision.SOURCE_LOWERED);
-    assertThat(result.functions().get(0).irPrecision()).isEqualTo(IrPrecision.SOURCE_LOWERED);
+    //
+    // The grade is DEGRADED and not LOWERED: the body could not be lowered at all,
+    // so what the function does is not knowable from the source. That is a loss of
+    // meaning, and the receipt for it says so.
+    assertThat(result.precision()).isEqualTo(IrPrecision.SOURCE_DEGRADED);
+    assertThat(result.functions().get(0).irPrecision()).isEqualTo(IrPrecision.SOURCE_DEGRADED);
   }
 
   @Test
