@@ -25,6 +25,7 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.util.Disposer;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,6 +43,7 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol;
 import org.jetbrains.kotlin.analysis.project.structure.builder.KaModuleContainerBuilder;
 import org.jetbrains.kotlin.psi.KtClassOrObject;
+import org.jetbrains.kotlin.psi.KtDeclaration;
 import org.jetbrains.kotlin.psi.KtEnumEntry;
 import org.jetbrains.kotlin.psi.KtExpression;
 import org.jetbrains.kotlin.psi.KtFile;
@@ -446,6 +448,56 @@ public final class KotlinTacFrontend implements TacFrontend {
   }
 
   /**
+   * The functions the file declares, by name.
+   *
+   * <p>A top-level function is keyed by its name; a class member by {@code Owner.name}, so a member
+   * of the class being lowered is told apart from a top-level function of the same name.
+   */
+  private Map<String, List<KtNamedFunction>> sourceDeclarations = Map.of();
+
+  /**
+   * Collects the file's function declarations.
+   *
+   * @param ktFile the file being translated
+   * @return the declarations, by name
+   */
+  private static Map<String, List<KtNamedFunction>> collectDeclarations(KtFile ktFile) {
+    Map<String, List<KtNamedFunction>> declarations = new HashMap<>();
+    for (KtDeclaration declaration : ktFile.getDeclarations()) {
+      if (declaration instanceof KtNamedFunction function) {
+        declarations.computeIfAbsent(function.getName(), key -> new ArrayList<>()).add(function);
+        continue;
+      }
+      if (declaration instanceof KtClassOrObject classDecl) {
+        String owner = classDecl.getName();
+        if (owner == null || owner.isEmpty()) {
+          continue;
+        }
+        for (KtDeclaration member : classDecl.getDeclarations()) {
+          if (member instanceof KtNamedFunction function) {
+            declarations
+                .computeIfAbsent(owner + "." + function.getName(), key -> new ArrayList<>())
+                .add(function);
+          }
+        }
+      }
+    }
+    return declarations;
+  }
+
+  /**
+   * Creates a translator that knows the file's declarations.
+   *
+   * @param kaSession the Analysis API session
+   * @return the translator
+   */
+  private KotlinTacTranslator newTranslator(KaSession kaSession) {
+    KotlinTacTranslator translator = new KotlinTacTranslator(kaSession);
+    translator.setSourceDeclarations(sourceDeclarations);
+    return translator;
+  }
+
+  /**
    * Translates every declaration of a Kotlin file into a {@link TacFunction}.
    *
    * <p>Both top-level declarations and class members are translated. A class member's function name
@@ -457,6 +509,14 @@ public final class KotlinTacFrontend implements TacFrontend {
       List<TacFunction> functions,
       List<String> problems,
       String module) {
+    // The file's own declarations, handed to the translators.
+    //
+    // WHY THEY ARE COLLECTED HERE. A call to a function declared in the file being analysed
+    // does not resolve through the Analysis API session this frontend runs in: the resolver
+    // sees the library, not the file. So the callee of a call cannot be found by resolving
+    // it -- it has to be found by looking at the file's own declarations, which this method
+    // walks anyway.
+    this.sourceDeclarations = collectDeclarations(ktFile);
     for (KtClassOrObject classDecl :
         ktFile.getDeclarations().stream()
             .filter(d -> d instanceof KtClassOrObject)
@@ -527,7 +587,7 @@ public final class KotlinTacFrontend implements TacFrontend {
 
     // The initialiser is the value. It is computed by the translator, because it is
     // ordinary source code.
-    KotlinTacTranslator translator = new KotlinTacTranslator(kaSession);
+    KotlinTacTranslator translator = newTranslator(kaSession);
     TacOperand value = translator.lowerInitializer(initializer, builder);
     if (value != null) {
       builder.emit(
@@ -783,7 +843,7 @@ public final class KotlinTacFrontend implements TacFrontend {
       initBlocks.add(initializer.getBody());
     }
 
-    KotlinTacTranslator translator = new KotlinTacTranslator(kaSession);
+    KotlinTacTranslator translator = newTranslator(kaSession);
     translator.setEnclosingClassFqn(classFqn);
     TacFunction function =
         translator.translateConstructor(
@@ -842,7 +902,7 @@ public final class KotlinTacFrontend implements TacFrontend {
     String getterSignature = getterName + "():" + propertyType.displayName();
     KtPropertyAccessor getter = property.getGetter();
     KtExpression getterBody = getter == null ? null : getter.getBodyExpression();
-    KotlinTacTranslator getterTranslator = new KotlinTacTranslator(kaSession);
+    KotlinTacTranslator getterTranslator = newTranslator(kaSession);
     getterTranslator.setEnclosingClassFqn(classFqn);
     TacFunction getterFunction =
         getterTranslator.translateAccessor(
@@ -875,7 +935,7 @@ public final class KotlinTacFrontend implements TacFrontend {
     TacOperand.TacVar value = new TacOperand.TacVar("value", propertyType, false);
     KtPropertyAccessor setter = property.getSetter();
     KtExpression setterBody = setter == null ? null : setter.getBodyExpression();
-    KotlinTacTranslator setterTranslator = new KotlinTacTranslator(kaSession);
+    KotlinTacTranslator setterTranslator = newTranslator(kaSession);
     setterTranslator.setEnclosingClassFqn(classFqn);
     TacFunction setterFunction =
         setterTranslator.translateAccessor(
@@ -940,7 +1000,7 @@ public final class KotlinTacFrontend implements TacFrontend {
     String signature = qualified + "(" + String.join(",", paramTypes) + "):" + className;
     TacType returnType = classFqn == null ? TacType.ofClass(className) : TacType.ofClass(classFqn);
 
-    KotlinTacTranslator translator = new KotlinTacTranslator(kaSession);
+    KotlinTacTranslator translator = newTranslator(kaSession);
     translator.setEnclosingClassFqn(classFqn);
     TacFunction function =
         translator.translate(
@@ -1336,7 +1396,7 @@ public final class KotlinTacFrontend implements TacFrontend {
 
     boolean synthetic = KotlinTacTranslator.isSynthetic(symbol.getOrigin());
 
-    KotlinTacTranslator translator = new KotlinTacTranslator(kaSession);
+    KotlinTacTranslator translator = newTranslator(kaSession);
     translator.setEnclosingClassFqn(enclosingClassFqn);
     TacFunction function =
         translator.translate(

@@ -25,12 +25,14 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jetbrains.kotlin.analysis.api.KaSession;
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaFunctionSymbol;
+import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaPropertyGetterSymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaPropertySymbol;
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol;
@@ -55,6 +57,7 @@ import org.jetbrains.kotlin.psi.KtIsExpression;
 import org.jetbrains.kotlin.psi.KtLabeledExpression;
 import org.jetbrains.kotlin.psi.KtLambdaExpression;
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression;
+import org.jetbrains.kotlin.psi.KtNamedFunction;
 import org.jetbrains.kotlin.psi.KtObjectLiteralExpression;
 import org.jetbrains.kotlin.psi.KtPostfixExpression;
 import org.jetbrains.kotlin.psi.KtPrefixExpression;
@@ -65,6 +68,7 @@ import org.jetbrains.kotlin.psi.KtSimpleNameExpression;
 import org.jetbrains.kotlin.psi.KtStringTemplateEntry;
 import org.jetbrains.kotlin.psi.KtStringTemplateExpression;
 import org.jetbrains.kotlin.psi.KtSuperExpression;
+import org.jetbrains.kotlin.psi.KtThisExpression;
 import org.jetbrains.kotlin.psi.KtThrowExpression;
 import org.jetbrains.kotlin.psi.KtTryExpression;
 import org.jetbrains.kotlin.psi.KtValueArgument;
@@ -163,7 +167,7 @@ final class KotlinTacTranslator {
       String continueLabel, String breakLabel, String scopeId, String labelName) {}
 
   /** The loops the function being lowered is inside, innermost first. */
-  private final Deque<LoopTargets> loops = new ArrayDeque<>();
+  private Deque<LoopTargets> loops = new ArrayDeque<>();
 
   /**
    * The label of the statement being lowered, when it carries one.
@@ -206,6 +210,92 @@ final class KotlinTacTranslator {
 
   /** A counter that gives every lambda in the function being lowered a distinct name. */
   private int lambdaCounter;
+
+  /**
+   * A counter that gives every expanded scope its own suffix.
+   *
+   * <p>The suffix is what keeps two locals with the same source name apart. The TAC's variable
+   * identity is the NAME, so an expanded inline body's {@code x} and the caller's {@code x} would
+   * be one variable without it -- and the caller's value would be overwritten by the callee's.
+   */
+  private int expansionCounter;
+
+  /**
+   * The suffix the CURRENT scope gives to the locals it declares.
+   *
+   * <p>Empty in the function's own scope. An expanded inline body and an inlined lambda each push
+   * their own suffix, so a name declared in one of them can never collide with a name declared in
+   * another scope of the same TAC function.
+   */
+  private String scopeSuffix = "";
+
+  /**
+   * The inline expansions being lowered, innermost last.
+   *
+   * <p>An expansion is what makes a call to an inline function a copy of its body rather than a
+   * call. While one is in progress, a call to one of its lambda parameters is not a call at all:
+   * the lambda's body is inlined where it is called.
+   */
+  private final Deque<InlineExpansion> expansions = new ArrayDeque<>();
+
+  /**
+   * Where a {@code return} in the scope being lowered goes, innermost last.
+   *
+   * <p>The bottom entry is the function's own scope: a {@code return} there leaves the TAC
+   * function. An entry above it belongs to an expanded inline body, and a {@code return} there ends
+   * the expansion: it assigns the expansion's result and jumps past the body.
+   */
+  private final Deque<ReturnTarget> returnTargets = new ArrayDeque<>();
+
+  /**
+   * Where a {@code return} in the scope being lowered goes.
+   *
+   * @param resultVar the variable that receives the returned value, or {@code null} when the return
+   *     leaves the TAC function
+   * @param endLabel the label the return jumps to, or {@code null} when it leaves the function
+   */
+  private record ReturnTarget(TacOperand.TacVar resultVar, String endLabel) {}
+
+  /**
+   * One inline expansion in progress.
+   *
+   * @param callee the expanded function's name
+   * @param lambdas the lambda arguments, by the callee's parameter name
+   * @param callerLocals the caller's locals, for the lambdas' free variables
+   * @param callerSuffix the caller's scope suffix
+   * @param callerLoops the caller's loops, for a {@code break} inside an inlined lambda
+   * @param callerReturnTarget where a {@code return} inside an inlined lambda goes
+   */
+  private record InlineExpansion(
+      String callee,
+      Map<String, KtLambdaExpression> lambdas,
+      Map<String, TacOperand.TacVar> callerLocals,
+      String callerSuffix,
+      Deque<LoopTargets> callerLoops,
+      ReturnTarget callerReturnTarget) {}
+
+  /**
+   * The functions the file being translated declares, by name.
+   *
+   * <p><b>WHY THE DECLARATIONS ARE HANDED IN RATHER THAN RESOLVED.</b> A call to a function
+   * declared in the file being analysed does not resolve through the Analysis API session this
+   * frontend runs in: the resolver sees the library, not the file. So the callee of a call cannot
+   * be found by resolving it -- it has to be found by looking at the file's own declarations, which
+   * the frontend already walks.
+   *
+   * <p>A top-level function is keyed by its name; a class member by {@code Owner.name}, so a member
+   * of the class being lowered is told apart from a top-level function of the same name.
+   */
+  private Map<String, List<KtNamedFunction>> sourceDeclarations = Map.of();
+
+  /**
+   * Sets the functions the file declares.
+   *
+   * @param declarations the declarations, by name (see {@link #sourceDeclarations})
+   */
+  void setSourceDeclarations(Map<String, List<KtNamedFunction>> declarations) {
+    this.sourceDeclarations = declarations == null ? Map.of() : declarations;
+  }
 
   /** The class the function being lowered belongs to, by short name. */
   private String currentEnclosingClass;
@@ -309,6 +399,24 @@ final class KotlinTacTranslator {
   }
 
   /**
+   * The TAC name a local declared in the CURRENT scope gets.
+   *
+   * <p>The name is the source name with the current scope's suffix. The suffix is what keeps two
+   * locals with the same source name apart: the TAC's variable identity is the NAME, so an expanded
+   * inline body's {@code x} and the caller's {@code x} would be one storage location without it --
+   * and the caller's value would be overwritten by the callee's.
+   *
+   * <p>In the function's own scope the suffix is empty, so the name is the source name and nothing
+   * changes for ordinary code.
+   *
+   * @param sourceName the name the source gives the local
+   * @return the name the local gets in the TAC
+   */
+  private String tacName(String sourceName) {
+    return scopeSuffix + sourceName;
+  }
+
+  /**
    * Lowers a function.
    *
    * @param name the qualified function name (e.g. {@code "com.example.Greeter.greet"})
@@ -393,6 +501,12 @@ final class KotlinTacTranslator {
     this.locals.clear();
     this.problems.clear();
     this.structuredProblems.clear();
+    // The scopes of the PREVIOUS function do not belong to this one: an expansion in one
+    // function must not leak its suffix, its lambdas or its return target into the next.
+    this.scopeSuffix = "";
+    this.expansions.clear();
+    this.returnTargets.clear();
+    this.returnTargets.push(new ReturnTarget(null, null));
     this.currentEnclosingClass = enclosingClass;
     this.currentModule = module;
     this.currentClassAnnotations =
@@ -702,7 +816,7 @@ final class KotlinTacTranslator {
     if (init == null) {
       // A declaration with no initializer (`var x: String`) has no value yet. The local
       // still exists, with an unknown type.
-      TacOperand.TacVar v = new TacOperand.TacVar(name, TacType.UNKNOWN, false);
+      TacOperand.TacVar v = new TacOperand.TacVar(tacName(name), TacType.UNKNOWN, false);
       locals.put(name, v);
       builder.addLocal(v);
       return;
@@ -713,7 +827,7 @@ final class KotlinTacTranslator {
       // No declared type: the initializer's own type is the declaration's type.
       declared = expressionTypeOf(init);
     }
-    TacOperand.TacVar v = new TacOperand.TacVar(name, declared, false);
+    TacOperand.TacVar v = new TacOperand.TacVar(tacName(name), declared, false);
     locals.put(name, v);
     builder.addLocal(v);
     if (value != null) {
@@ -880,7 +994,7 @@ final class KotlinTacTranslator {
     TacOperand.TacVar variable = null;
     if (parameter != null && parameter.getName() != null && !parameter.getName().isEmpty()) {
       TacType elementType = declaredTypeOf(parameter.getTypeReference());
-      variable = new TacOperand.TacVar(parameter.getName(), elementType, false);
+      variable = new TacOperand.TacVar(tacName(parameter.getName()), elementType, false);
       locals.put(parameter.getName(), variable);
       builder.addLocal(variable);
     }
@@ -1060,7 +1174,8 @@ final class KotlinTacTranslator {
               .line(lineOf(clause))
               .build());
       if (parameter != null && parameter.getName() != null && !parameter.getName().isEmpty()) {
-        TacOperand.TacVar caught = new TacOperand.TacVar(parameter.getName(), catchType, false);
+        TacOperand.TacVar caught =
+            new TacOperand.TacVar(tacName(parameter.getName()), catchType, false);
         locals.put(parameter.getName(), caught);
         builder.addLocal(caught);
         builder.emit(
@@ -1263,6 +1378,10 @@ final class KotlinTacTranslator {
     List<String> outerProblems = new ArrayList<>(problems);
     List<org.plumb.tac.ir.TacProgram.FunctionProblem> outerStructured =
         new ArrayList<>(structuredProblems);
+    // A lambda is a function of its OWN, so its locals live in that function and cannot
+    // collide with the enclosing scope's. The scope suffix is therefore dropped here: it
+    // belongs to the scope the lambda was written in, not to the lambda.
+    String outerSuffix = scopeSuffix;
 
     TacBuilder nested =
         new TacBuilder(new TacBuilder.FunctionSpec(name, signature, returnType), params);
@@ -1279,6 +1398,7 @@ final class KotlinTacTranslator {
     }
     builder = nested;
     locals = new HashMap<>();
+    scopeSuffix = "";
     for (TacOperand.TacVar p : params) {
       locals.put(p.name(), p);
       nested.addLocal(p);
@@ -1307,6 +1427,7 @@ final class KotlinTacTranslator {
       TacFunction function = nested.build();
       builder = outerBuilder;
       locals = outerLocals;
+      scopeSuffix = outerSuffix;
       problems.clear();
       problems.addAll(outerProblems);
       structuredProblems.clear();
@@ -1406,6 +1527,789 @@ final class KotlinTacTranslator {
     }
   }
 
+  // ------------------------------------------------------------------
+  // Inline expansion
+  // ------------------------------------------------------------------
+
+  /**
+   * Where a {@code return} in the scope being lowered goes.
+   *
+   * @return the innermost return target, or the function's own scope when there is none
+   */
+  private ReturnTarget currentReturnTarget() {
+    ReturnTarget target = returnTargets.peek();
+    return target == null ? new ReturnTarget(null, null) : target;
+  }
+
+  /**
+   * Lowers a call to an inline function by expanding its body at the call site.
+   *
+   * <p><b>WHY THE BODY HAS TO BE EXPANDED.</b> An {@code inline} function has no run-time
+   * counterpart: the compiler copies its body into every call site, and what the call site really
+   * runs is the COPY. Lowering the call as an ordinary {@code CALL} therefore loses the copy -- and
+   * with it the control flow that exists only in the copy. The sharpest case is a {@code return}
+   * inside a lambda passed to an inline function: after the copy, that {@code return} leaves the
+   * function that CALLED the inline one, and lowered as an ordinary call it leaves the lambda
+   * instead -- a different function, with a different result.
+   *
+   * <p><b>WHY THE ENGINE CANNOT BE ASKED TO DO IT.</b> A non-local return is a jump that leaves
+   * another function. The IR has no way to say that: its label references have no such kind, and
+   * the engine does not read label references at all. So the only correct expression of a non-local
+   * return is to have the code in ONE function -- which is exactly what the expansion does.
+   *
+   * <p>A call that cannot be expanded is not silently left alone: it records a {@code
+   * inline.notExpanded} drop, so the function that carries it says how far it may be trusted.
+   *
+   * @param call the call being lowered
+   * @param receiver the receiver the call is made on, or {@code null} for an unqualified call
+   * @return the call's value, or {@code null} when the call is not an expandable inline call
+   */
+  private TacOperand expandInlineCall(KtCallExpression call, KtExpression receiver) {
+    String calleeName = calledName(call);
+    // A QUALIFIED call names a member of the receiver's type or an extension function. Those bind a
+    // receiver that the expansion would have to reproduce exactly, so the file's own declarations
+    // are looked for under the receiver's type -- and, for an extension function, under the bare
+    // name.
+    KtNamedFunction declaration =
+        receiver == null
+            ? findSourceDeclaration(calleeName, call.getValueArguments().size())
+            : findQualifiedDeclaration(calleeName, call.getValueArguments().size(), receiver);
+    if (declaration != null) {
+      KaNamedFunctionSymbol symbol = symbolOf(declaration);
+      if (symbol == null || !symbol.isInline()) {
+        // Not an inline function: there is no copy to make, so nothing is lost.
+        return null;
+      }
+      if (hasReifiedTypeParameter(symbol)) {
+        // The type argument is lost: the copied body sees the erased type, not the one the
+        // caller asked for. That is a lost VALUE, not a lost control flow -- the function
+        // stays at full precision.
+        reportDrop(
+            org.plumb.tac.ir.TacDrop.Impact.VALUE,
+            "inline.reifiedTypeArgument",
+            "the reified type argument of the inline function is erased: the expanded body sees "
+                + "the erased type, not the type the caller asked for",
+            lineOf(call),
+            columnOf(call));
+      }
+      String reason = whyNotExpandable(declaration, call, symbol);
+      if (reason != null) {
+        // The impact says WHAT the lost copy cost. The copy is the callee's body with the
+        // call's lambda arguments inlined at the parameter call sites, so the copy could change
+        // the call site when the body -- or one of those lambdas -- could return, throw or
+        // loop. A copy that only computes a value costs one value.
+        boolean changes =
+            copyChangesTheCallSite(declaration.getBodyExpression())
+                || argumentsCarryALostCopy(call);
+        reportDrop(
+            changes
+                ? org.plumb.tac.ir.TacDrop.Impact.SEMANTICS
+                : org.plumb.tac.ir.TacDrop.Impact.VALUE,
+            "inline.notExpanded",
+            reason,
+            lineOf(call),
+            columnOf(call));
+        return null;
+      }
+      return expandInlineBody(call, declaration, symbol);
+    }
+    // The file does not declare the callee: it may be an inline function from the library,
+    // whose body is not in the analysed sources.
+    if (libraryInlineSymbolOf(call) == null) {
+      return null;
+    }
+    // A library inline call's body is not in the analysis -- and a library body is not in the
+    // analysis for ANY call, inline or not, so what is missing there is not measured. What
+    // IS measurable is the call's own arguments: they are in the analysed sources, and the
+    // copy would have put them at the call site. So the loss is the control flow when one of
+    // them could return, throw or loop, and one value when none of them could.
+    boolean changes = argumentsCarryALostCopy(call);
+    reportDrop(
+        changes ? org.plumb.tac.ir.TacDrop.Impact.SEMANTICS : org.plumb.tac.ir.TacDrop.Impact.VALUE,
+        "inline.notExpanded",
+        changes
+            ? "the inline function has no source in this analysis, so the copy that would carry "
+                + "the argument's control flow to the call site is missing"
+            : "the inline function has no source in this analysis, so the value its copy would "
+                + "produce is not in the TAC",
+        lineOf(call),
+        columnOf(call));
+    return null;
+  }
+
+  /**
+   * The declaration of the function a call names, or {@code null} when the file does not declare
+   * it.
+   *
+   * <p>A member of the class being lowered shadows a top-level function of the same name, so the
+   * member is looked for first. A local of that name shadows both.
+   *
+   * @param name the callee's name
+   * @param arity the call's argument count
+   * @return the declaration, or {@code null}
+   */
+  private KtNamedFunction findSourceDeclaration(String name, int arity) {
+    if (name == null || name.isEmpty() || locals.containsKey(name)) {
+      return null;
+    }
+    if (currentEnclosingClass != null) {
+      KtNamedFunction member =
+          pickByArity(sourceDeclarations.get(currentEnclosingClass + "." + name), arity);
+      if (member != null) {
+        return member;
+      }
+    }
+    return pickByArity(sourceDeclarations.get(name), arity);
+  }
+
+  /**
+   * The declaration a QUALIFIED call names, or {@code null} when the file does not declare it.
+   *
+   * <p>A qualified call names a member of the receiver's type, or an extension function -- a
+   * top-level function the receiver is passed to. The member is looked for under the receiver's
+   * type name, the extension function under the bare name.
+   *
+   * <p><b>WHY THE MEMBER IS FOUND AT ALL.</b> A member that is inline is copied into every call
+   * site, and the copy is not made here. If the member were not looked for, the call site would
+   * look exactly like an ordinary call -- and the loss would be SILENT, which is the one thing a
+   * receipt exists to prevent.
+   *
+   * @param name the callee's name
+   * @param arity the call's argument count
+   * @param receiver the receiver the call is made on
+   * @return the declaration, or {@code null}
+   */
+  private KtNamedFunction findQualifiedDeclaration(String name, int arity, KtExpression receiver) {
+    if (name == null || name.isEmpty()) {
+      return null;
+    }
+    String typeName = shortTypeNameOf(receiver);
+    if (typeName != null) {
+      KtNamedFunction member = pickByArity(sourceDeclarations.get(typeName + "." + name), arity);
+      if (member != null) {
+        return member;
+      }
+    }
+    // An extension function: a top-level declaration the receiver is passed to.
+    KtNamedFunction extension = pickByArity(sourceDeclarations.get(name), arity);
+    if (extension != null) {
+      return extension;
+    }
+    // The receiver's type could not be read. That is what happens when the receiver is an
+    // object of a class in the file being analysed: this session does not resolve the file's
+    // own classes. The call may still name a member of one of them, so the file's members
+    // are searched by name -- and the loss is recorded rather than left silent.
+    //
+    // The name search runs ONLY when the type is unreadable. A readable type that has no
+    // member of that name means the call names a member of a LIBRARY type -- and matching
+    // that against this file's members would be a guess, not a reading.
+    if (typeName == null) {
+      return pickMemberByName(name, arity);
+    }
+    return null;
+  }
+
+  /**
+   * The member of one of the file's classes that has the given name, or {@code null}.
+   *
+   * <p>When several classes declare a member with that name, the first one does: the call's owner
+   * cannot be read, and the receipt's grade is the heavier of the two anyway.
+   *
+   * @param name the member's name
+   * @param arity the call's argument count
+   * @return the member, or {@code null}
+   */
+  private KtNamedFunction pickMemberByName(String name, int arity) {
+    String suffix = "." + name;
+    for (Map.Entry<String, List<KtNamedFunction>> entry : sourceDeclarations.entrySet()) {
+      if (!entry.getKey().endsWith(suffix)) {
+        continue;
+      }
+      KtNamedFunction member = pickByArity(entry.getValue(), arity);
+      if (member != null) {
+        return member;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The short name of the receiver's type, or {@code null} when it cannot be read.
+   *
+   * <p>The short name is the one the file's declarations are keyed by: a member is keyed by {@code
+   * Owner.name}, and the owner is the class's short name.
+   */
+  private String shortTypeNameOf(KtExpression receiver) {
+    try {
+      TacType type = expressionTypeOf(receiver);
+      if (type == null || type.kind() != TacType.Kind.CLASS) {
+        return null;
+      }
+      String name = type.className();
+      if (name == null || name.isEmpty()) {
+        return null;
+      }
+      int dot = name.lastIndexOf('.');
+      return dot < 0 ? name : name.substring(dot + 1);
+    } catch (RuntimeException | LinkageError ex) {
+      // The receiver's type could not be read.
+      return null;
+    }
+  }
+
+  /** The declaration whose parameter count matches the call, or the first one. */
+  private static KtNamedFunction pickByArity(List<KtNamedFunction> candidates, int arity) {
+    if (candidates == null || candidates.isEmpty()) {
+      return null;
+    }
+    for (KtNamedFunction candidate : candidates) {
+      if (candidate.getValueParameters().size() == arity) {
+        return candidate;
+      }
+    }
+    return candidates.get(0);
+  }
+
+  /** The symbol of a declaration, or {@code null} when it cannot be read. */
+  private KaNamedFunctionSymbol symbolOf(KtNamedFunction declaration) {
+    try {
+      KaFunctionSymbol symbol = session.getSymbol(declaration);
+      return symbol instanceof KaNamedFunctionSymbol named ? named : null;
+    } catch (RuntimeException | LinkageError ex) {
+      return null;
+    }
+  }
+
+  /**
+   * The inline function a call names in the LIBRARY, or {@code null} when it is not one.
+   *
+   * <p>Only library callees are found this way: a call to a function declared in the file being
+   * analysed does not resolve through this session, so the file's own declarations are consulted
+   * instead.
+   */
+  private KaNamedFunctionSymbol libraryInlineSymbolOf(KtCallExpression call) {
+    if (call == null) {
+      return null;
+    }
+    try {
+      KaFunctionSymbol function = session.resolveSymbol(call);
+      if (!(function instanceof KaNamedFunctionSymbol named)) {
+        return null;
+      }
+      return named.isInline() ? named : null;
+    } catch (RuntimeException | LinkageError ex) {
+      // Resolution is best-effort: a call whose callee cannot be resolved is not known to be
+      // inline, and saying so would be a guess.
+      return null;
+    }
+  }
+
+  /**
+   * Whether a function has a reified type parameter.
+   *
+   * <p>A reified type parameter is the one thing an {@code inline} function gets from the type
+   * system, and the copy of its body cannot have it: the copy is not generic.
+   */
+  private static boolean hasReifiedTypeParameter(KaNamedFunctionSymbol symbol) {
+    try {
+      for (org.jetbrains.kotlin.analysis.api.symbols.KaTypeParameterSymbol parameter :
+          symbol.getTypeParameters()) {
+        if (parameter.isReified()) {
+          return true;
+        }
+      }
+    } catch (RuntimeException | LinkageError ex) {
+      // The type parameters could not be read.
+    }
+    return false;
+  }
+
+  /**
+   * Why an inline function cannot be expanded at this call site, or {@code null} when it can.
+   *
+   * <p>Every reason here is a reason the expansion would produce a WRONG graph, not a reason it
+   * would be inconvenient: the drop says what was lost, and the loss is real.
+   */
+  private String whyNotExpandable(
+      KtNamedFunction declaration, KtCallExpression call, KaNamedFunctionSymbol symbol) {
+    if (declaration.getContainingFile() != call.getContainingFile()) {
+      return "the inline function is declared in another file, so its body is not expanded here";
+    }
+    KtExpression body;
+    try {
+      body = declaration.getBodyExpression();
+    } catch (RuntimeException | LinkageError ex) {
+      body = null;
+    }
+    if (body == null) {
+      return "the inline function has no body to expand";
+    }
+    if (!declaration.isTopLevel()) {
+      return "the inline function has a receiver, so expanding it here would bind the wrong one";
+    }
+    if (containsThis(body)) {
+      return "the inline function's body reads `this`, which the expansion cannot bind";
+    }
+    if (declaration.getValueParameters().size() != call.getValueArguments().size()) {
+      return "the call's argument count does not match the inline function's parameters, so the "
+          + "arguments cannot be bound one to one";
+    }
+
+    List<KtValueArgument> arguments = call.getValueArguments();
+    List<org.jetbrains.kotlin.psi.KtParameter> parameters = declaration.getValueParameters();
+    for (int i = 0; i < parameters.size(); i++) {
+      org.jetbrains.kotlin.psi.KtParameter parameter = parameters.get(i);
+      String name = parameter.getName();
+      if (name == null || name.isEmpty()) {
+        continue;
+      }
+      if (isVararg(symbol, i)) {
+        return "the inline function takes a variadic parameter, so its arguments cannot be bound "
+            + "one to one";
+      }
+      KtExpression argument =
+          i < arguments.size() ? arguments.get(i).getArgumentExpression() : null;
+      if (argument == null && i < arguments.size()) {
+        return "the argument for the inline function's parameter `"
+            + name
+            + "` is spread, so it cannot be bound";
+      }
+      if (!(argument instanceof KtLambdaExpression lambda)) {
+        if (isFunctionTyped(parameter)) {
+          return "the argument for the inline function's parameter `"
+              + name
+              + "` is not a lambda, so it cannot be inlined";
+        }
+        continue;
+      }
+      if (isPassedAsValue(symbol, i)) {
+        // A `noinline` or `crossinline` parameter is passed on as a VALUE: the lambda stays a
+        // function of its own, and its `return` leaves the lambda -- which is exactly what
+        // those modifiers mean.
+        continue;
+      }
+      if (!isOnlyCalled(body, name)) {
+        return "the inline function passes its parameter `"
+            + name
+            + "` on as a value, so the argument cannot be inlined";
+      }
+      if (lambda.getValueParameters().size() > 1) {
+        return "the inline function's parameter `"
+            + name
+            + "` takes a lambda with several parameters, whose types cannot be bound one to one";
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Whether a parameter is passed as a value rather than inlined.
+   *
+   * <p>{@code noinline} and {@code crossinline} are exactly the modifiers that say "this lambda is
+   * an ordinary function value".
+   */
+  private static boolean isPassedAsValue(KaNamedFunctionSymbol symbol, int index) {
+    try {
+      List<org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol> parameters =
+          symbol.getValueParameters();
+      if (index >= parameters.size()) {
+        return false;
+      }
+      org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol parameter =
+          parameters.get(index);
+      return parameter.isNoinline() || parameter.isCrossinline();
+    } catch (RuntimeException | LinkageError ex) {
+      return false;
+    }
+  }
+
+  /** Whether a parameter is variadic. */
+  private static boolean isVararg(KaNamedFunctionSymbol symbol, int index) {
+    try {
+      List<org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol> parameters =
+          symbol.getValueParameters();
+      if (index >= parameters.size()) {
+        return false;
+      }
+      return parameters.get(index).isVararg();
+    } catch (RuntimeException | LinkageError ex) {
+      return false;
+    }
+  }
+
+  /** Whether a parameter's declared type is a function type. */
+  private static boolean isFunctionTyped(org.jetbrains.kotlin.psi.KtParameter parameter) {
+    org.jetbrains.kotlin.psi.KtTypeReference reference = parameter.getTypeReference();
+    if (reference == null) {
+      return false;
+    }
+    return reference.getTypeElement() instanceof org.jetbrains.kotlin.psi.KtFunctionType;
+  }
+
+  /**
+   * Whether every mention of a name in a subtree is the callee of a call.
+   *
+   * <p>A parameter that is only ever CALLED can be replaced by the caller's argument: the
+   * argument's body is inlined where the parameter is called. A parameter that is also used as a
+   * VALUE cannot: the value has to exist, and the argument's body has no value to give.
+   */
+  private static boolean isOnlyCalled(com.intellij.psi.PsiElement scope, String name) {
+    for (KtNameReferenceExpression reference : referencesNamed(scope, name)) {
+      if (!isCalleeOf(reference)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** Whether a name reference is the callee of a call. */
+  private static boolean isCalleeOf(KtNameReferenceExpression reference) {
+    com.intellij.psi.PsiElement parent = reference.getParent();
+    if (parent instanceof KtCallExpression call) {
+      return call.getCalleeExpression() == reference;
+    }
+    if (parent instanceof KtDotQualifiedExpression dot
+        && dot.getSelectorExpression() == reference
+        && dot.getParent() instanceof KtCallExpression qualified
+        && qualified.getCalleeExpression() == dot) {
+      return true;
+    }
+    return false;
+  }
+
+  /** Every name reference in a subtree that names {@code name}. */
+  private static List<KtNameReferenceExpression> referencesNamed(
+      com.intellij.psi.PsiElement scope, String name) {
+    List<KtNameReferenceExpression> out = new ArrayList<>();
+    collectReferences(scope, name, out);
+    return out;
+  }
+
+  private static void collectReferences(
+      com.intellij.psi.PsiElement element, String name, List<KtNameReferenceExpression> out) {
+    for (com.intellij.psi.PsiElement child : element.getChildren()) {
+      if (child instanceof KtNameReferenceExpression reference
+          && name.equals(reference.getReferencedName())) {
+        out.add(reference);
+      }
+      collectReferences(child, name, out);
+    }
+  }
+
+  /**
+   * Whether a subtree reads {@code this}.
+   *
+   * <p>An expanded body lives in the CALLER's function, where {@code this} means the caller's
+   * receiver. A body that reads {@code this} would therefore read the wrong object, so it is not
+   * expanded.
+   */
+  private static boolean containsThis(com.intellij.psi.PsiElement scope) {
+    for (com.intellij.psi.PsiElement child : scope.getChildren()) {
+      if (child instanceof KtThisExpression) {
+        return true;
+      }
+      if (containsThis(child)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Whether the copy of a subtree could change what the CALL SITE does.
+   *
+   * <p><b>WHY THESE THREE AND NOT A BRANCH.</b> The copy of an inline body runs at the call site,
+   * so a {@code return} in it leaves the CALLER (that is what an inline function's {@code return}
+   * means once the body is copied), a {@code throw} in it can stop the call site from continuing,
+   * and a loop in it can stop the call site from continuing. A branch, on the other hand, does
+   * neither: the copy still produces one value and still returns, so all that is missing is the
+   * VALUE the call produces.
+   *
+   * <p>So the receipt's grade follows this: a copy that could change the call site costs the
+   * function its MEANING, and a copy that only computes a value costs it one value.
+   *
+   * @param scope the body the copy would carry
+   * @return whether the copy could change what the call site does
+   */
+  private static boolean copyChangesTheCallSite(com.intellij.psi.PsiElement scope) {
+    if (scope == null) {
+      return false;
+    }
+    for (com.intellij.psi.PsiElement child : scope.getChildren()) {
+      if (child instanceof KtReturnExpression
+          || child instanceof KtThrowExpression
+          || child instanceof KtForExpression
+          || child instanceof KtWhileExpression
+          || child instanceof KtDoWhileExpression) {
+        return true;
+      }
+      if (copyChangesTheCallSite(child)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Whether one of the call's LAMBDA arguments carries something the copy would have put at the
+   * call site.
+   *
+   * <p>After the expansion the lambda's body is code at the call site, so a {@code return} in it is
+   * the non-local return the expansion exists for, and a {@code throw} or a loop in it can stop the
+   * call site from continuing. Without the expansion the lambda is a function of its own: its
+   * {@code return} leaves the LAMBDA -- a different function -- and its {@code throw} stays inside
+   * it.
+   *
+   * @param call the call being lowered
+   * @return whether the call passes a lambda whose copy would change the call site
+   */
+  private static boolean argumentsCarryALostCopy(com.intellij.psi.PsiElement call) {
+    if (!(call instanceof KtCallExpression expression)) {
+      return false;
+    }
+    for (KtValueArgument argument : expression.getValueArguments()) {
+      KtExpression value = argument.getArgumentExpression();
+      if (value instanceof KtLambdaExpression lambda
+          && copyChangesTheCallSite(lambda.getBodyExpression())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Expands an inline function's body at the call site.
+   *
+   * <p>The body is lowered into the CALLER's function, in a scope of its own: the parameters are
+   * bound to the caller's arguments, the body's locals are renamed so they cannot collide with the
+   * caller's, and a {@code return} in the body ends the expansion rather than the function.
+   *
+   * @param call the call site
+   * @param declaration the expanded function's declaration
+   * @param symbol the expanded function's symbol
+   * @return the value the call produces
+   */
+  private TacOperand expandInlineBody(
+      KtCallExpression call, KtNamedFunction declaration, KaNamedFunctionSymbol symbol) {
+    List<org.jetbrains.kotlin.psi.KtParameter> parameters = declaration.getValueParameters();
+    List<KtValueArgument> arguments = call.getValueArguments();
+
+    // The lambdas that are INLINED rather than passed as values.
+    Map<String, KtLambdaExpression> inlineLambdas = new LinkedHashMap<>();
+    for (int i = 0; i < parameters.size(); i++) {
+      org.jetbrains.kotlin.psi.KtParameter parameter = parameters.get(i);
+      String name = parameter.getName();
+      if (name == null || name.isEmpty()) {
+        continue;
+      }
+      KtExpression argument =
+          i < arguments.size() ? arguments.get(i).getArgumentExpression() : null;
+      if (argument instanceof KtLambdaExpression lambda && !isPassedAsValue(symbol, i)) {
+        inlineLambdas.put(name, lambda);
+      }
+    }
+
+    // The arguments that ARE values, evaluated in the CALLER's scope.
+    List<TacOperand> argumentValues = new ArrayList<>();
+    for (int i = 0; i < arguments.size(); i++) {
+      KtExpression argument = arguments.get(i).getArgumentExpression();
+      TacOperand value = null;
+      if (argument != null && !inlineLambdas.containsValue(argument)) {
+        value = translateExpression(argument);
+      }
+      argumentValues.add(value);
+    }
+
+    // The scope the expansion introduces.
+    Map<String, TacOperand.TacVar> callerLocals = locals;
+    String callerSuffix = scopeSuffix;
+    Deque<LoopTargets> callerLoops = loops;
+    String callerPendingLabel = pendingLabel;
+    ReturnTarget callerReturn = currentReturnTarget();
+
+    String expansionSuffix = callerSuffix + "$inl" + (++expansionCounter);
+    Map<String, TacOperand.TacVar> expansionLocals = new HashMap<>();
+
+    TacType returnType = declaredTypeOf(declaration.getTypeReference());
+    TacOperand.TacVar result = builder.newTemp(returnType);
+    String endLabel = builder.newLabel("inlineEnd");
+
+    // Bind the parameters. A parameter that takes an inlined lambda has no run-time value:
+    // its body is inlined where it is called.
+    for (int i = 0; i < parameters.size(); i++) {
+      org.jetbrains.kotlin.psi.KtParameter parameter = parameters.get(i);
+      String name = parameter.getName();
+      if (name == null || name.isEmpty() || inlineLambdas.containsKey(name)) {
+        continue;
+      }
+      TacType type = declaredTypeOf(parameter.getTypeReference());
+      TacOperand.TacVar variable = new TacOperand.TacVar(expansionSuffix + name, type, true);
+      expansionLocals.put(name, variable);
+      builder.addLocal(variable);
+      TacOperand value = i < argumentValues.size() ? argumentValues.get(i) : null;
+      if (value != null) {
+        builder.emit(
+            TacInstruction.builder(TacInstruction.Kind.MOVE)
+                .dest(variable)
+                .lhs1(value)
+                .line(lineOf(call))
+                .column(columnOf(call))
+                .build());
+      }
+    }
+
+    // Lower the body in the expansion's scope.
+    locals = expansionLocals;
+    scopeSuffix = expansionSuffix;
+    loops = new ArrayDeque<>();
+    pendingLabel = null;
+    returnTargets.push(new ReturnTarget(result, endLabel));
+    expansions.push(
+        new InlineExpansion(
+            declaration.getName(),
+            inlineLambdas,
+            callerLocals,
+            callerSuffix,
+            callerLoops,
+            callerReturn));
+    TacOperand bodyValue = null;
+    try {
+      KtExpression body = declaration.getBodyExpression();
+      if (body instanceof KtBlockExpression block) {
+        List<KtExpression> statements = block.getStatements();
+        for (int i = 0; i < statements.size(); i++) {
+          boolean last = i == statements.size() - 1;
+          if (last && !(statements.get(i) instanceof KtReturnExpression)) {
+            bodyValue = translateExpression(statements.get(i));
+          } else {
+            translateStatement(statements.get(i));
+          }
+        }
+      } else if (body != null) {
+        bodyValue = translateExpression(body);
+      }
+    } finally {
+      expansions.pop();
+      returnTargets.pop();
+      locals = callerLocals;
+      scopeSuffix = callerSuffix;
+      loops = callerLoops;
+      pendingLabel = callerPendingLabel;
+    }
+
+    // The body's value is the call's value. A body that returned early has already written the
+    // result and jumped past this assignment.
+    if (bodyValue != null) {
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.MOVE)
+              .dest(result)
+              .lhs1(bodyValue)
+              .line(lineOf(call))
+              .column(columnOf(call))
+              .build());
+    }
+    builder.emit(
+        TacInstruction.builder(TacInstruction.Kind.LABEL)
+            .label(endLabel)
+            .line(lineOf(call))
+            .build());
+    return result;
+  }
+
+  /**
+   * Lowers a call to an inline function's lambda parameter by inlining the lambda's body.
+   *
+   * <p>After the expansion the lambda is not a function: it is code, and the code runs where the
+   * parameter is called. A {@code return} inside it leaves the function the lambda was WRITTEN in
+   * -- the non-local return that the expansion exists for.
+   *
+   * @param call the call to the lambda parameter
+   * @param receiver the receiver, or {@code null} for an unqualified call
+   * @return the call's value, or {@code null} when the callee is not a lambda parameter
+   */
+  private TacOperand expandInlineLambdaCall(KtCallExpression call, KtExpression receiver) {
+    if (receiver != null) {
+      return null;
+    }
+    InlineExpansion expansion = expansions.peek();
+    if (expansion == null) {
+      return null;
+    }
+    KtLambdaExpression lambda = expansion.lambdas().get(calledName(call));
+    if (lambda == null) {
+      return null;
+    }
+
+    // The arguments are evaluated where the lambda is CALLED -- in the expanded function's
+    // scope, not in the lambda's own.
+    List<TacOperand> argumentValues = new ArrayList<>();
+    for (KtValueArgument argument : call.getValueArguments()) {
+      KtExpression expression = argument.getArgumentExpression();
+      argumentValues.add(expression == null ? null : translateExpression(expression));
+    }
+
+    Map<String, TacOperand.TacVar> savedLocals = locals;
+    String savedSuffix = scopeSuffix;
+    Deque<LoopTargets> savedLoops = loops;
+    String savedPendingLabel = pendingLabel;
+
+    // The lambda's scope: the CALLER's locals (the lambda was written there, so the names it
+    // reads are the caller's) plus the lambda's own parameters and locals, renamed.
+    String lambdaSuffix = expansion.callerSuffix() + "$lam" + (++expansionCounter);
+    Map<String, TacOperand.TacVar> lambdaLocals = new HashMap<>(expansion.callerLocals());
+    locals = lambdaLocals;
+    scopeSuffix = lambdaSuffix;
+    loops = expansion.callerLoops();
+    pendingLabel = null;
+    returnTargets.push(expansion.callerReturnTarget());
+
+    try {
+      List<org.jetbrains.kotlin.psi.KtParameter> lambdaParameters = lambda.getValueParameters();
+      for (int i = 0; i < lambdaParameters.size(); i++) {
+        String name = lambdaParameters.get(i).getName();
+        if (name == null || name.isEmpty()) {
+          continue;
+        }
+        TacType type = declaredTypeOf(lambdaParameters.get(i).getTypeReference());
+        TacOperand.TacVar variable = new TacOperand.TacVar(lambdaSuffix + name, type, true);
+        lambdaLocals.put(name, variable);
+        builder.addLocal(variable);
+        TacOperand value = i < argumentValues.size() ? argumentValues.get(i) : null;
+        if (value != null) {
+          builder.emit(
+              TacInstruction.builder(TacInstruction.Kind.MOVE)
+                  .dest(variable)
+                  .lhs1(value)
+                  .line(lineOf(call))
+                  .column(columnOf(call))
+                  .build());
+        }
+      }
+      TacOperand value = null;
+      KtExpression lambdaBody = lambda.getBodyExpression();
+      if (lambdaBody instanceof KtBlockExpression block) {
+        List<KtExpression> statements = block.getStatements();
+        for (int i = 0; i < statements.size(); i++) {
+          boolean last = i == statements.size() - 1;
+          if (last && !(statements.get(i) instanceof KtReturnExpression)) {
+            value = translateExpression(statements.get(i));
+          } else {
+            translateStatement(statements.get(i));
+          }
+        }
+      } else if (lambdaBody != null) {
+        value = translateExpression(lambdaBody);
+      }
+      return value;
+    } finally {
+      returnTargets.pop();
+      locals = savedLocals;
+      scopeSuffix = savedSuffix;
+      loops = savedLoops;
+      pendingLabel = savedPendingLabel;
+    }
+  }
+
   /**
    * Lowers a class's primary constructor.
    *
@@ -1453,6 +2357,12 @@ final class KotlinTacTranslator {
     this.locals.clear();
     this.problems.clear();
     this.structuredProblems.clear();
+    // The scopes of the PREVIOUS function do not belong to this one: an expansion in one
+    // function must not leak its suffix, its lambdas or its return target into the next.
+    this.scopeSuffix = "";
+    this.expansions.clear();
+    this.returnTargets.clear();
+    this.returnTargets.push(new ReturnTarget(null, null));
     this.currentEnclosingClass = enclosingClass;
     this.currentModule = module;
     this.currentClassAnnotations =
@@ -1604,6 +2514,12 @@ final class KotlinTacTranslator {
     this.locals.clear();
     this.problems.clear();
     this.structuredProblems.clear();
+    // The scopes of the PREVIOUS function do not belong to this one: an expansion in one
+    // function must not leak its suffix, its lambdas or its return target into the next.
+    this.scopeSuffix = "";
+    this.expansions.clear();
+    this.returnTargets.clear();
+    this.returnTargets.push(new ReturnTarget(null, null));
     this.currentEnclosingClass = enclosingClass;
     this.currentModule = module;
     this.currentClassAnnotations =
@@ -1728,10 +2644,31 @@ final class KotlinTacTranslator {
     }
   }
 
-  /** Lowers a {@code return} statement. */
+  /**
+   * Lowers a {@code return} statement.
+   *
+   * <p><b>WHERE THE RETURN GOES.</b> In the function's own scope a {@code return} leaves the TAC
+   * function. Inside an expanded inline body it ends the EXPANSION: it hands the value to the
+   * expansion's result variable and jumps past the body, because that is what the copy of the body
+   * does -- the copy returns to the call site, not out of the function that was copied.
+   *
+   * <p>And inside an INLINED LAMBDA it leaves the function the lambda was WRITTEN in. That is the
+   * non-local return: the lambda is not a function at all after the expansion, so its {@code
+   * return} has to leave whatever function contains the code the lambda was written in.
+   */
   private void translateReturn(KtReturnExpression ret) {
     KtExpression value = ret.getReturnedExpression();
+    ReturnTarget target = currentReturnTarget();
     if (value == null) {
+      if (target.resultVar() != null) {
+        builder.emit(
+            TacInstruction.builder(TacInstruction.Kind.JUMP)
+                .label(target.endLabel())
+                .line(lineOf(ret))
+                .column(columnOf(ret))
+                .build());
+        return;
+      }
       builder.emit(
           TacInstruction.builder(TacInstruction.Kind.RETURN)
               .line(lineOf(ret))
@@ -1740,6 +2677,22 @@ final class KotlinTacTranslator {
       return;
     }
     TacOperand operand = translateExpression(value);
+    if (target.resultVar() != null) {
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.MOVE)
+              .dest(target.resultVar())
+              .lhs1(operand)
+              .line(lineOf(ret))
+              .column(columnOf(ret))
+              .build());
+      builder.emit(
+          TacInstruction.builder(TacInstruction.Kind.JUMP)
+              .label(target.endLabel())
+              .line(lineOf(ret))
+              .column(columnOf(ret))
+              .build());
+      return;
+    }
     builder.emit(
         TacInstruction.builder(TacInstruction.Kind.RETURN)
             .lhs1(operand)
@@ -3664,6 +4617,21 @@ final class KotlinTacTranslator {
               .column(columnOf(call))
               .build());
       return dest;
+    }
+
+    // An INLINE FUNCTION: its body is a copy that the compiler puts at the call site, so
+    // the copy is what the call site really runs. Lowering the call as an ordinary CALL
+    // loses that copy -- and with it the control flow that exists only in the copy.
+    TacOperand expanded = expandInlineCall(call, receiver);
+    if (expanded != null) {
+      return expanded;
+    }
+
+    // A call to an inline function's LAMBDA PARAMETER: after the expansion the lambda is
+    // not a function any more, so its body is inlined where it is called.
+    TacOperand inlined = expandInlineLambdaCall(call, receiver);
+    if (inlined != null) {
+      return inlined;
     }
 
     // A general call.

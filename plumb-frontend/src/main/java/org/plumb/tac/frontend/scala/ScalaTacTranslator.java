@@ -260,6 +260,25 @@ final class ScalaTacTranslator {
   }
 
   /**
+   * Records a construct that was not lowered faithfully, in the drop channel only.
+   *
+   * <p>Some losses are not a PROBLEM: the construct is understood, and what is missing is a control
+   * flow that only the compiler's own expansion could produce. The receipt is what tells a checker
+   * how far the function may be trusted, and it is the receipt alone -- there is no malformed
+   * source to complain about.
+   *
+   * @param impact what was lost
+   * @param construct the construct's id
+   * @param message the human-readable description
+   */
+  private void recordDrop(
+      org.plumb.tac.ir.TacDrop.Impact impact, String construct, String message) {
+    if (builder != null) {
+      builder.reportDrop(construct, message, impact, -1, -1);
+    }
+  }
+
+  /**
    * The structured problems of the UNIT-level failures -- the ones raised outside a function's own
    * lowering.
    *
@@ -1662,6 +1681,26 @@ final class ScalaTacTranslator {
     }
   }
 
+  /**
+   * Whether a symbol denotes an inline method.
+   *
+   * <p>The compiler's own flag is the answer: {@code inline def} and {@code transparent inline}
+   * both carry it, and nothing else does.
+   *
+   * @param symbol the symbol
+   * @return whether it is an inline method
+   */
+  private boolean isInlineSymbol(Symbol symbol) {
+    if (symbol == null) {
+      return false;
+    }
+    try {
+      return symbol.denot(ctx).is(Flags.Inline(), ctx);
+    } catch (RuntimeException | LinkageError ex) {
+      return false;
+    }
+  }
+
   /** Lowers a call. */
   private TacOperand translateApply(Trees.Apply<Type> apply) {
     Trees.Tree<Type> fun = apply.fun();
@@ -2354,6 +2393,22 @@ final class ScalaTacTranslator {
     // so it has to be the real argument count.
     String callee = calleeSignature(fun, ordered.size());
     Symbol symbol = fun.symbol(ctx);
+
+    // An INLINE method: the compiler copies its body into every call site, and the copy is
+    // what the call site really runs.
+    //
+    // WHY THE COPY IS NOT HERE. This frontend reads the typed tree BEFORE dotc's inliner
+    // runs, so the tree holds the call, not the copy. The copy's control flow -- and the
+    // non-local return that only the copy can express -- is therefore not in the TAC, and the
+    // loss is RECORDED: a function whose copy is missing says so instead of looking complete.
+    if (isInlineSymbol(symbol)) {
+      recordDrop(
+          org.plumb.tac.ir.TacDrop.Impact.SEMANTICS,
+          "inline.notExpanded",
+          "the inline method's body is not expanded at the call site: the compiler's copy of it "
+              + "is not in the tree this frontend reads");
+    }
+
     Type resultType = null;
     if (symbol != null) {
       try {
